@@ -298,6 +298,15 @@ select.modal-input{background:#fff}
 .imagen-link-chip{display:inline-flex;align-items:center;gap:6px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:6px;padding:5px 10px;margin-top:6px;font-size:12px;font-weight:600;color:#0369a1;max-width:100%;overflow:hidden}
 .imagen-link-chip a{color:#0369a1;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
 .link-del-btn{background:none;border:none;color:#0369a1;cursor:pointer;font-size:14px;padding:0;margin-left:2px;font-weight:700;line-height:1}
+.card-critica { box-shadow: 0 0 0 2px #dc2626, 0 4px 16px rgba(220,38,38,.2) !important; }
+.checklist-row{display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:6px 10px;background:#f0f9ff;border-radius:6px;margin-bottom:6px;border:1px solid #bae6fd}
+.ck-title{font-size:10px;font-weight:700;color:#475569;white-space:nowrap}
+.ck-sep{color:#cbd5e1;font-size:12px}
+.ck-item{font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;cursor:pointer;background:#e2e8f0;color:#475569;border:1px solid #cbd5e1;user-select:none;transition:.15s}
+.ck-item:hover{background:#dbeafe;border-color:#93c5fd}
+.ck-item.ck-on{background:#059669;color:#fff;border-color:#047857}
+.ck-dieta{font-size:11px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:6px;outline:none}
+.ck-dieta:focus{border-color:#0ea5e9}
 /* SYNC STATUS */
 #sync-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:4px 10px;border-radius:12px;border:1px solid transparent;transition:all .3s;font-weight:600}
 #sync-status.synced{background:rgba(39,174,96,.2);border-color:rgba(39,174,96,.4);color:#a8f0c6}
@@ -876,7 +885,8 @@ function defaultData(){
     imagen:"",imagen_file:"",imagen_file_type:"",imagen_file_name:"",imagen_link:"",
     sv:"",balance:"",pendientes:"",misc:"",
     labs:{hb:"",leucos:"",plaq:"",cr:"",glu:"",na:"",k:"",alb:"",pcr:"",pct:"",inr:"",urea:"",fecha_labs:""},
-    labHistory:[], imagenHistory:[]};
+    labHistory:[], imagenHistory:[],
+    checklist:{npo:false, atb:false, tvp:false, dieta:"", dren:false}};
 }
 
 // ─── DATE HELPERS ────────────────────────────────────────────────────────────────
@@ -896,6 +906,9 @@ function migrateNote(nd){
     if(LAB_FIELDS.some(lf=>ol[lf.key])){
       nd.labHistory.push({fecha:ol.fecha_labs||todayStr(),labs:{...ol},extra:[]});
     }
+  }
+  if(!nd.checklist || typeof nd.checklist !== "object"){
+    nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false};
   }
   if(!Array.isArray(nd.imagenHistory)){
     nd.imagenHistory = [];
@@ -1291,13 +1304,51 @@ function renderPiso(pts){
   document.getElementById("view-piso").innerHTML = `<div id="piso-grid">${html}</div>`;
 }
 
+// ─── ALERTAS OPERATIVAS ───────────────────────────────────────────────────────────
+function computeAlerts(p, nd){
+  const alerts = [];
+  nd = migrateNote(nd);
+  const today = todayStr();
+
+  // Sin labs hoy
+  const hasLabsToday = (nd.labHistory||[]).some(s => s.fecha === today &&
+    Object.values(s.labs||{}).some(v => v && String(v).trim() !== ""));
+  if(!hasLabsToday) alerts.push({type:"labs", label:"Sin labs hoy", color:"#f59e0b"});
+
+  // Sin plan / pendientes
+  if(!nd.pendientes || !nd.pendientes.trim())
+    alerts.push({type:"plan", label:"Sin plan", color:"#ef4444"});
+
+  // Sin adscrito
+  if(!p.adscrito || !p.adscrito.trim())
+    alerts.push({type:"ads", label:"Sin adscrito", color:"#8b5cf6"});
+
+  // Sin residente
+  if(!p.residente || !p.residente.trim())
+    alerts.push({type:"res", label:"Sin residente", color:"#64748b"});
+
+  // Paciente GRAVE sin plan — alerta crítica compuesta
+  if(p.estado === "GRAVE" && !nd.pendientes?.trim())
+    alerts.push({type:"critico", label:"⚠️ GRAVE sin plan", color:"#dc2626"});
+
+  return alerts;
+}
+
+function renderAlertBadges(alerts){
+  if(!alerts.length) return "";
+  return alerts.map(a =>
+    `<span style="background:${a.color};color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap;opacity:.92">${a.label}</span>`
+  ).join("");
+}
+
 function renderFullCard(p,nd,k){
   const ec = ESP_COLORS[p.esp]||"#333";
   const sc = ESTADO_COLORS[p.estado]||"#95a5a6";
   const days = daysSince(p.ingreso);
   const exp = expandedCards[k]!==false;
   const noEnCenso = p._noEnCenso || nd._noEnCenso;
-  return `<div class="full-card${noEnCenso?' flag-noencenso':''}" id="card-${k}">
+  const alerts = computeAlerts(p, nd);
+  return `<div class="full-card${noEnCenso?' flag-noencenso':''}${alerts.some(a=>a.type==='critico')?' card-critica':''}" id="card-${k}">
     <div class="card-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}cc 100%)">
       <div class="card-header-row1">
         <span class="card-bed" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.cama)}</span>
@@ -1314,6 +1365,7 @@ function renderFullCard(p,nd,k){
         </div>
       </div>
       <div class="card-sub">Exp: ${esc(p.exp)} · Ing: ${esc(p.ingreso)} · ${esc(p.adscrito)}/${esc(p.residente)}</div>
+      ${alerts.length ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding:3px 10px 5px">${renderAlertBadges(alerts)}</div>` : ""}
     </div>
     ${exp ? `<div class="card-body">
       ${noEnCenso?`<div style="background:#fff3cd;border:1px solid #fcd34d;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:12px;color:#78350f">
@@ -1337,6 +1389,7 @@ function renderFullCard(p,nd,k){
         ${renderImagenField(nd, k)}
         ${fieldRow("📊 Signos vitales", nd.sv, k, "sv", 3)}
       </div>
+      ${renderChecklist(nd, k)}
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
       ${renderLabSection(nd, k)}
@@ -1345,7 +1398,12 @@ function renderFullCard(p,nd,k){
         <button class="card-note-btn cnb-preqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'prequirurgica')">PreQx</button>
         <button class="card-note-btn cnb-postqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'postquirurgica')">PostQx</button>
         <button class="card-note-btn cnb-med" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'medica')">Evolución</button>
-
+        <span style="margin-left:8px;border-left:1px solid rgba(255,255,255,.25);padding-left:8px;display:inline-flex;gap:4px">
+          <button class="card-note-btn" style="background:#0ea5e9;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'labs')" title="Crea entrada de labs para hoy">🧪 Labs hoy</button>
+          <button class="card-note-btn" style="background:#7c3aed;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'imagen')" title="Crea entrada de imagen para hoy">🖼 Imagen hoy</button>
+          <button class="card-note-btn" style="background:#059669;color:#fff" data-hk="${k}" onclick="openNoteModal(this.dataset.hk,'medica')" title="Abrir modal de evolución">📋 Evol hoy</button>
+        </span>
+        <button class="card-note-btn" style="background:#334155;color:#fff;margin-left:auto" data-cpk="${k}" onclick="copiarPase(this.dataset.cpk)" title="Copiar pase completo al portapapeles">📋 Copiar pase</button>
       </div>
     </div>` : ""}
   </div>`;
@@ -1825,19 +1883,39 @@ const LAB_QUICK = {
   }
 };
 
-function labCellHtml(lf, val, k, fecha){
+function labCellHtml(lf, val, k, fecha, prevVal){
   const num = parseFloat(val);
   const crit = val&&((lf.cl!=null&&num<=lf.cl)||(lf.ch!=null&&num>=lf.ch));
   const abn  = val&&!crit&&((lf.low!=null&&num<lf.low)||(lf.high!=null&&num>lf.high));
   const cls  = crit?"crit":abn?"abn":"";
   const hasAlert = (crit||abn) && LAB_QUICK[lf.key];
   const tid  = ("tip-"+k+"-"+lf.key).replace(/[^a-zA-Z0-9]/g,"_");
-  return `<div class='lab-cell ${cls}' ${hasAlert?`onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"`:""}>`+
+
+  // ── Tendencia Δ ──────────────────────────────────────────────────────────
+  let trendHtml = "";
+  if(val && prevVal !== undefined && prevVal !== "" && prevVal !== null){
+    const prev = parseFloat(prevVal);
+    if(!isNaN(prev) && !isNaN(num) && prev !== 0){
+      const delta = num - prev;
+      const pct   = Math.abs(delta / prev * 100);
+      if(pct >= 3){
+        const arrow  = delta > 0 ? "↑" : "↓";
+        const tColor = delta > 0
+          ? (lf.high!=null&&num>lf.high ? "#ef4444" : "#10b981")
+          : (lf.low!=null&&num<lf.low   ? "#ef4444" : "#10b981");
+        const absDelta = Math.abs(delta) < 10 ? Math.abs(delta).toFixed(1) : Math.round(Math.abs(delta));
+        trendHtml = `<div style="font-size:9px;color:${tColor};font-weight:700;line-height:1;margin-top:1px">${arrow}${absDelta}</div>`;
+      }
+    }
+  }
+
+  return `<div class='lab-cell ${cls}' ${hasAlert?`onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"`:""}>` +
     `<div class='lab-key'>${lf.label}</div>`+
     `<input class='lab-input ${cls}' value='${esc(val)}' placeholder='—'`+
     ` data-key='${k}' data-labkey='${lf.key}' data-fecha='${fecha}'`+
     ` oninput="liveLabUpdate(this)" onchange="updateLabHistory(this.dataset.key,this.dataset.fecha,this.dataset.labkey,this.value)"/>`+
     `<div class='lab-unit'>${lf.unit}</div>`+
+    trendHtml +
     (hasAlert ? renderLabTipHtml(tid, lf, val, num, crit) : "")+
   `</div>`;
 }
@@ -1846,6 +1924,7 @@ function renderLabTipHtml(tid, lf, val, num, crit){
   const rec = LAB_QUICK[lf.key] ? LAB_QUICK[lf.key](num) : null;
   if(!rec) return "";
   return `<div class='lab-tip' id='${tid}'>`+
+    `<div style='font-size:9px;color:#94a3b8;margin-bottom:4px;letter-spacing:.3px'>📋 CONTEXTO CLÍNICO · Evaluar con criterio y situación del paciente</div>`+
     `<div class='lab-tip-title'><span class='lab-tip-sev-${rec.sev}'>${rec.sev==="crit"?"🔴":"🟡"}</span> ${esc(rec.title)} <span style='font-weight:400;font-size:10px;color:#64748b'>(${esc(String(val))} ${esc(lf.unit||"")})</span></div>`+
     `<div class='lab-tip-rec'>${esc(rec.rec)}</div>`+
     `<div style='font-size:9.5px;color:#475569;margin-top:5px;border-top:1px solid rgba(255,255,255,.1);padding-top:5px'>💡 Usa «🧠 Análisis IA» para recomendaciones considerando todo el contexto clínico</div>`+
@@ -1891,7 +1970,12 @@ function renderLabSection(nd, k){
       const hasVals = grp.fields.some(lf=>labs[lf.key]);
       const isBase = grp.id==="basico";
       const expanded = isBase || hasVals;
-      let cells = grp.fields.map(lf=>labCellHtml(lf, labs[lf.key]||"", k, activeFecha)).join("");
+      // Obtener labs de la fecha anterior para tendencia Δ
+      const prevDates = dates.filter(d=>d < activeFecha);
+      const prevFecha = prevDates.length ? prevDates[0] : null;
+      const prevSnap  = prevFecha ? history.find(s=>s.fecha===prevFecha) : null;
+      const prevLabs  = prevSnap ? (prevSnap.labs||{}) : {};
+      let cells = grp.fields.map(lf=>labCellHtml(lf, labs[lf.key]||"", k, activeFecha, prevFecha ? (prevLabs[lf.key]??undefined) : undefined)).join("");
       groupsHtml += `<div style="margin-bottom:4px">
         <div class="lab-group-label">${grp.label}
           <button class="lab-group-toggle" onclick="toggleEl('${gid}')">${expanded?"▼":"▶ Ver"}</button>
@@ -4613,6 +4697,164 @@ function renderDupBanner(duplicates){
 
 // ─── START ───────────────────────────────────────────────────────────────────────
 init();
+
+// ─── CHECKLIST OPERATIVO ─────────────────────────────────────────────────────────
+const CHECKLIST_ITEMS = [
+  {key:"npo",  label:"NPO",   title:"Ayuno / nada por vía oral"},
+  {key:"atb",  label:"ATB",   title:"Antibioticoterapia activa"},
+  {key:"tvp",  label:"TVP",   title:"Profilaxis TVP (HBPM/compresión)"},
+  {key:"dren", label:"Dren",  title:"Drenaje activo en sitio"},
+];
+
+function toggleChecklist(k, item){
+  const nd = getNote(k);
+  if(!nd.checklist) nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false};
+  nd.checklist[item] = !nd.checklist[item];
+  noteData[k] = nd;
+  saveNote(k, nd);
+  // Actualizar solo el badge del ítem sin re-render completo
+  const el = document.getElementById("ck-"+k.replace(/[^a-zA-Z0-9]/g,"_")+"-"+item);
+  if(el){
+    el.className = "ck-item" + (nd.checklist[item] ? " ck-on" : "");
+    el.querySelector(".ck-label") && (el.querySelector(".ck-label").textContent = nd.checklist[item] ? "✓ "+CHECKLIST_ITEMS.find(x=>x.key===item).label : CHECKLIST_ITEMS.find(x=>x.key===item).label);
+  }
+}
+
+function updateDieta(k, val){
+  const nd = getNote(k);
+  if(!nd.checklist) nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false};
+  nd.checklist.dieta = val;
+  noteData[k] = nd;
+  saveNote(k, nd);
+}
+
+function renderChecklist(nd, k){
+  nd = migrateNote(nd);
+  const cl = nd.checklist||{};
+  const ek = k.replace(/[^a-zA-Z0-9]/g,"_");
+  const items = CHECKLIST_ITEMS.map(item=>{
+    const on = !!cl[item.key];
+    return `<span id="ck-${ek}-${item.key}" class="ck-item${on?" ck-on":""}"
+      data-ck="${k}" data-item="${item.key}"
+      onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
+      title="${item.title}"><span class="ck-label">${on?"✓ ":""} ${item.label}</span></span>`;
+  }).join("");
+  const dieta = esc(cl.dieta||"");
+  return `<div class="checklist-row">
+    <span class="ck-title">✅ Checklist:</span>
+    ${items}
+    <span class="ck-sep">|</span>
+    <span class="ck-title">🍽 Dieta:</span>
+    <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..."
+      data-ck="${k}" oninput="updateDieta(this.dataset.ck, this.value)" style="width:140px"/>
+  </div>`;
+}
+
+// ─── HOY SHORTCUTS ──────────────────────────────────────────────────────────────
+function addHoy(k, type){
+  const today = todayStr();
+  const nd = getNote(k);
+
+  if(type === "labs"){
+    if(!nd.labHistory.find(s=>s.fecha===today)){
+      nd.labHistory.push({fecha:today, labs:{}, extra:[]});
+    }
+    noteData[k] = nd;
+    activeLabDate[k] = today;
+    saveNote(k, nd);
+    renderView();
+    // Enfocar el primer input de lab visible
+    setTimeout(()=>{
+      const card = document.getElementById("card-"+k);
+      if(card){
+        const inp = card.querySelector("input.lab-input");
+        if(inp){ inp.focus(); inp.scrollIntoView({block:"nearest", behavior:"smooth"}); }
+      }
+    }, 80);
+  }
+
+  if(type === "imagen"){
+    if(!nd.imagenHistory.find(e=>e.fecha===today)){
+      nd.imagenHistory.push({fecha:today, estudios:[]});
+    }
+    noteData[k] = nd;
+    activeImagenDate[k] = today;
+    saveNote(k, nd);
+    renderView();
+    setTimeout(()=>{
+      const card = document.getElementById("card-"+k);
+      if(card){
+        const btn = card.querySelector(".img-date-chip.active");
+        if(btn) btn.scrollIntoView({block:"nearest", behavior:"smooth"});
+      }
+    }, 80);
+  }
+}
+
+// ─── COPIAR PASE ────────────────────────────────────────────────────────────────
+function copiarPase(k){
+  const p = patients.find(x=>pid(x)===k);
+  if(!p){ alert("Paciente no encontrado"); return; }
+  const nd = migrateNote(noteData[k]||defaultData());
+  const today = todayStr();
+
+  // Labs más recientes
+  let labsTexto = "";
+  const sortedLabs = (nd.labHistory||[]).slice().sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  if(sortedLabs.length){
+    const snap = sortedLabs[0];
+    const vals = snap.labs||{};
+    const partes = [];
+    const claves = ["hb","leucos","plaq","cr","urea","glu","na","k","alb","pcr","pct","inr"];
+    const labels  = {hb:"Hb",leucos:"Leuc",plaq:"Plaq",cr:"Cr",urea:"Ur",glu:"Glu",na:"Na",k:"K",alb:"Alb",pcr:"PCR",pct:"PCT",inr:"INR"};
+    claves.forEach(c=>{ if(vals[c]) partes.push(`${labels[c]} ${vals[c]}`); });
+    if(partes.length) labsTexto = `📊 Labs (${snap.fecha}): ${partes.join(" | ")}`;
+  }
+
+  // Imagen más reciente
+  let imagenTexto = "";
+  const sortedImg = (nd.imagenHistory||[]).slice().sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  if(sortedImg.length){
+    const ei = sortedImg[0];
+    const tipos = (ei.estudios||[]).map(e=>e.tipo).filter(Boolean);
+    if(tipos.length) imagenTexto = `🖼 Imagen (${ei.fecha}): ${tipos.join(", ")}`;
+  }
+
+  const lineas = [
+    `╔══ ${p.cama} · ${p.nombre} · ${p.edad}a ══`,
+    `Dx: ${(nd.dx||p.dx||"—").trim()}`,
+    p.esp ? `Esp: ${p.esp}` : null,
+    (p.adscrito||p.residente) ? `Ads/Res: ${p.adscrito||"—"} / ${p.residente||"—"}` : null,
+    `Ing: ${p.ingreso||"—"} (Día ${daysSince(p.ingreso)})`,
+    `Estado: ${p.estado||"—"}`,
+    "",
+    nd.qx?.trim() ? `🔧 Qx/Proc: ${nd.qx.trim()}` : null,
+    nd.manejo?.trim() ? `💉 Manejo: ${nd.manejo.trim()}` : null,
+    nd.sv?.trim() ? `📊 SV: ${nd.sv.trim()}` : null,
+    (nd.drenajes||nd.sangrado||nd.balance) ? `🩸 Drenajes: ${nd.drenajes||"—"} · Sangrado: ${nd.sangrado||"—"} · Balance: ${nd.balance||"—"}` : null,
+    labsTexto || null,
+    imagenTexto || null,
+    "",
+    nd.pendientes?.trim() ? `⚠️ Plan / Pendientes:
+${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
+    nd.misc?.trim() ? `📝 Misc: ${nd.misc.trim()}` : null,
+    `╚${"═".repeat(40)}`,
+  ].filter(l => l !== null).join("
+");
+
+  navigator.clipboard.writeText(lineas).then(()=>{
+    // Feedback visual breve en el botón
+    const btn = document.querySelector(`[data-cpk="${CSS.escape(k)}"]`);
+    if(btn){ const orig=btn.textContent; btn.textContent="✅ Copiado"; setTimeout(()=>btn.textContent=orig, 1800); }
+  }).catch(()=>{
+    // Fallback si clipboard API no disponible
+    const ta = document.createElement("textarea");
+    ta.value = lineas; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+    document.body.removeChild(ta);
+    alert("Pase copiado al portapapeles.");
+  });
+}
 
 // ─── KEYBOARD SHORTCUTS ─────────────────────────────────────────────────────────
 document.addEventListener("keydown", function(e){
