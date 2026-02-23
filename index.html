@@ -1118,7 +1118,7 @@ function renderFullCard(p,nd,k){
       </div>
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
-      ${renderLabSection(nd, k)}
+      <div id="labs-wrap-${k.replace(/[^a-zA-Z0-9]/g,'_')}">${renderLabSection(nd, k)}</div>
     </div>` : ""}
   </div>`;
 }
@@ -1879,10 +1879,18 @@ function updateLab(k, labKey, value){
 
 function setActiveLabDate(k, fecha){
   activeLabDate[k] = fecha;
-  const p = patients.find(p=>pid(p)===k);
-  if(p && !SIMPLE_ESP.has(p.esp)){
-    const cardEl = document.getElementById("card-"+k);
-    if(cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
+  const wrapperId = "labs-wrap-"+k.replace(/[^a-zA-Z0-9]/g,"_");
+  const wrapper = document.getElementById(wrapperId);
+  if(wrapper){
+    const nd = noteData[k] || defaultData();
+    wrapper.innerHTML = renderLabSection(nd, k);
+    wrapper.scrollIntoView({block:"nearest", behavior:"smooth"});
+  } else {
+    const p = patients.find(p=>pid(p)===k);
+    if(p && !SIMPLE_ESP.has(p.esp)){
+      const cardEl = document.getElementById("card-"+k);
+      if(cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
+    }
   }
 }
 
