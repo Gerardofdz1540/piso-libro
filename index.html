@@ -2606,7 +2606,7 @@ function renderPrint(pts){
   const gi = getGuardInfo();
   const PR_SECTIONS = [
     {id:"piso3",label:"🏥 PISO 3",color:"#0a1628"},{id:"uci",label:"🚨 UCI",color:"#7b0000"},
-    {id:"med_interna",label:"🏨 MEDICINA INTERNA",color:"#1a5276"},{id:"gyo_onco",label:"🏨 GYO / ONCOLOGÍA",color:"#6b006b"},{id:"tyo",label:"🏨 TYO / NCX",color:"#1a5c3a"},{id:"pediatria",label:"👶 PEDIATRÍA",color:"#0077b6"},
+    {id:"med_interna",label:"🏨 MEDICINA INTERNA",color:"#1a5276"},{id:"gyo_onco",label:"🏨 GYO / ONCOLOGÍA",color:"#6b006b"},{id:"tyo_ncx",label:"🏨 TYO / NCX",color:"#1a5c3a"},{id:"pediatria",label:"👶 PEDIATRÍA",color:"#0077b6"},
     {id:"procedimientos",label:"🔬 PROCEDIMIENTOS",color:"#4a3580"},{id:"altas",label:"✅ ALTAS",color:"#27ae60"},
     {id:"defunciones",label:"🕊 DEFUNCIONES",color:"#555"},{id:"otros",label:"📋 OTROS",color:"#888"},
   ];
@@ -2619,7 +2619,7 @@ function renderPrint(pts){
     if(/^\d+-\d+$/.test(s)){
       const esp2=String(p.esp||"").toUpperCase();
       if(/GYO|ONCO/i.test(esp2))return"gyo_onco";
-      if(/TYO|NCX|COLUMNA/i.test(esp2))return"tyo";
+      if(/TYO|NCX|COLUMNA/i.test(esp2))return"tyo_ncx";
       if(/PEDI/i.test(esp2))return"pediatria";
       return"med_interna";
     }
@@ -4839,8 +4839,7 @@ function copiarPase(k){
 ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     nd.misc?.trim() ? `📝 Misc: ${nd.misc.trim()}` : null,
     `╚${"═".repeat(40)}`,
-  ].filter(l => l !== null).join("
-");
+  ].filter(l => l !== null).join("\n");
 
   navigator.clipboard.writeText(lineas).then(()=>{
     // Feedback visual breve en el botón
