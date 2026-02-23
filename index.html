@@ -17,7 +17,8 @@
 }
 body{font-family:var(--font);background:var(--bg);min-height:100vh;color:#1e293b}
 /* HEADER */
-#header{background:linear-gradient(135deg,var(--navy) 0%,var(--blue) 60%,#0d5484 100%);color:#fff;padding:0 20px;box-shadow:0 2px 12px rgba(0,0,0,.3);position:sticky;top:0;z-index:100}
+#header{background:linear-gradient(135deg,#0a1628 0%,#0f2d52 50%,#0d4a7a 100%);color:#fff;padding:0;box-shadow:0 4px 24px rgba(0,0,0,.4);position:sticky;top:0;z-index:100}
+#quote-bar{background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.02));border-bottom:1px solid rgba(255,255,255,.08);padding:5px 20px;font-size:11px;color:#94c5f0;font-style:italic;text-align:center;letter-spacing:.3px}
 #header-inner{max-width:1440px;margin:0 auto}
 #header-top{display:flex;align-items:center;justify-content:space-between;padding:12px 0 8px;flex-wrap:wrap;gap:8px}
 .header-title .sub{font-size:11px;letter-spacing:3px;color:#7eb8e8;font-weight:600;text-transform:uppercase}
@@ -317,15 +318,16 @@ select.modal-input{background:#fff}
 
 <!-- HEADER -->
 <div id="header">
+  <div id="quote-bar" id="quote-bar">“El cuidado del paciente es la única razón por la que estamos aquí.”
+  </div>
   <div id="header-inner">
     <div id="header-top">
       <div class="header-title">
-        <div class="sub">Hospital General de León</div>
-        <h1>📋 Piso Libro — Cirugía General</h1>
+        <div class="sub">Hospital General de León — Cirugía General</div>
+        <h1>📋 Piso Libro</h1>
       </div>
       <div class="header-controls">
-        <input class="header-input" id="gi-fecha" placeholder="Fecha" style="width:100px"/>
-        <input class="header-input" id="gi-turno" placeholder="Turno" style="width:80px"/>
+        <input class="header-input" id="gi-fecha" placeholder="Fecha" style="width:105px"/>
         <input class="header-input" id="gi-entrega" placeholder="Entrega Dr." style="width:115px"/>
         <input class="header-input" id="gi-recibe" placeholder="Recibe Dr." style="width:115px"/>
         <button class="btn-green" onclick="exportToExcel()">📊 Exportar Excel</button>
@@ -385,11 +387,20 @@ select.modal-input{background:#fff}
       <div class="modal-title" id="modal-title">➕ Agregar nuevo paciente</div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-    <div class="modal-grid">
-      <div class="modal-field"><label>Cama *</label><input class="modal-input" id="mf-cama" placeholder="Ej: 3-153, UCI 1"/></div>
-      <div class="modal-field"><label>Expediente *</label><input class="modal-input" id="mf-exp" placeholder="Ej: 26-03589"/></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:6px">
+      <div class="modal-field modal-span3" style="grid-column:span 3"><label>Nombre completo *</label><input class="modal-input" id="mf-nombre" placeholder="APELLIDO APELLIDO NOMBRE" style="text-transform:uppercase"/></div>
       <div class="modal-field"><label>Edad</label><input class="modal-input" id="mf-edad" type="number" placeholder="Años"/></div>
-      <div class="modal-field modal-span3"><label>Nombre completo *</label><input class="modal-input" id="mf-nombre" placeholder="APELLIDO APELLIDO NOMBRE"/></div>
+      <div class="modal-field"><label>Expediente *</label><input class="modal-input" id="mf-exp" placeholder="Ej: 26-03589"/></div>
+      <div class="modal-field"><label>Cama *</label><input class="modal-input" id="mf-cama" placeholder="Ej: 3-153, UCI 1"/></div>
+      <div class="modal-field modal-span3" style="grid-column:span 3"><label>Diagnóstico *</label><textarea class="modal-input" id="mf-dx" rows="3" placeholder="DX principal + procedimientos + comorbilidades..."></textarea></div>
+      <div class="modal-field modal-span3" style="grid-column:span 3"><label>APP (antecedentes patológicos)</label><textarea class="modal-input" id="mf-app-modal" rows="2" placeholder="HTA, DM2, cardiopatía..."></textarea></div>
+      <div class="modal-field modal-span3" style="grid-column:span 3"><label>PA (procedimiento actual / QX)</label><textarea class="modal-input" id="mf-pa-modal" rows="2" placeholder="Procedimiento quirúrgico realizado..."></textarea></div>
+      <div class="modal-field modal-span3" style="grid-column:span 3"><label>Procedimiento / Manejo</label><textarea class="modal-input" id="mf-manejo-modal" rows="2" placeholder="Plan de manejo, antibióticos, soluciones..."></textarea></div>
+      <div class="modal-field"><label>Sangrado estimado</label><input class="modal-input" id="mf-sangrado-modal" placeholder="Ej: 200 mL"/></div>
+      <div class="modal-field modal-span2" style="grid-column:span 2"><label>Drenajes</label><input class="modal-input" id="mf-drenajes-modal" placeholder="Ej: Blake HD 100cc serosanguinolento"/></div>
+      <div class="modal-field modal-span3" style="grid-column:span 3"><label>Pendientes / Plan</label><textarea class="modal-input" id="mf-pendientes-modal" rows="2" placeholder="Pendientes, estudios, interconsultas..."></textarea></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
       <div class="modal-field"><label>Especialidad *</label>
         <select class="modal-input" id="mf-esp">
           <option>CG</option><option>CCR</option><option>CTV</option><option>CT</option>
@@ -398,17 +409,26 @@ select.modal-input{background:#fff}
           <option>ENDOS</option><option>OTRO</option>
         </select>
       </div>
-      <div class="modal-field"><label>Adscrito</label><input class="modal-input" id="mf-adscrito" list="dl-ads" placeholder="Dr. Apellido" autocomplete="off"/><datalist id="dl-ads"></datalist></div>
-      <div class="modal-field"><label>Residente</label><input class="modal-input" id="mf-residente" list="dl-res" placeholder="Dr. Apellido" autocomplete="off"/><datalist id="dl-res"></datalist></div>
+      <div class="modal-field"><label>Adscrito</label>
+        <select class="modal-input" id="mf-adscrito-sel" onchange="document.getElementById('mf-adscrito').value=this.value">
+          <option value="">— Seleccionar —</option>
+        </select>
+        <input class="modal-input" id="mf-adscrito" list="dl-ads" placeholder="o escribe..." autocomplete="off" style="margin-top:4px;font-size:11px"/>
+        <datalist id="dl-ads"></datalist>
+      </div>
+      <div class="modal-field"><label>Residente</label>
+        <select class="modal-input" id="mf-residente-sel" onchange="document.getElementById('mf-residente').value=this.value">
+          <option value="">— Seleccionar —</option>
+        </select>
+        <input class="modal-input" id="mf-residente" list="dl-res" placeholder="o escribe..." autocomplete="off" style="margin-top:4px;font-size:11px"/>
+        <datalist id="dl-res"></datalist>
+      </div>
       <div class="modal-field"><label>Fecha de ingreso</label><input class="modal-input" id="mf-ingreso" placeholder="DD/MM/AA"/></div>
       <div class="modal-field"><label>Estado clínico</label>
         <select class="modal-input" id="mf-estado">
           <option>ESTABLE</option><option>DELICADO</option><option>GRAVE</option>
           <option>ALTA</option><option>DEFUNCIÓN</option>
         </select>
-      </div>
-      <div class="modal-field modal-span3" style="grid-column:span 3"><label>Diagnóstico *</label>
-        <textarea class="modal-input" id="mf-dx" rows="4" placeholder="DX principal + procedimientos + comorbilidades..."></textarea>
       </div>
     </div>
     <div class="modal-warn" id="modal-warn-edit" style="display:none">
@@ -674,6 +694,32 @@ let pendingSyncs = 0;   // contador de operaciones en curso
 let exportTemplateBuffer = null;
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────────
+// ── Motivational Quotes ──────────────────────────────────────────────────
+const QUOTES=[
+  "El cuidado del paciente es la única razón por la que estamos aquí.",
+  "La medicina es un arte: curar a veces, aliviar a menudo, consolar siempre.",
+  "El buen médico trata la enfermedad; el gran médico trata al paciente.",
+  "Primero, no hacer daño. — Hipócrates",
+  "La compasión es la base de toda la moral médica.",
+  "La precisión es al cirujano lo que la palabra es al orador.",
+  "Cada paciente lleva una historia de confianza; honra esa confianza.",
+  "La excelencia no es un acto, es un hábito.",
+  "En la guardia más larga, tu próximo paciente merece tu mejor versión.",
+  "El trabajo en equipo salva vidas; ningún cirujano opera solo.",
+  "La humildad intelectual es la virtud más importante del médico.",
+  "La fatiga es el enemigo de la atención; cuídate para cuidar mejor.",
+  "No hay atajos en la medicina; el camino correcto es siempre el más seguro.",
+  "Cuando la ciencia termina, el arte del médico comienza.",
+  "Un cirujano que opera bien y juzga mal no merece ninguna confianza.",
+];
+function rotateQuote(){
+  var el=document.getElementById("quote-bar");
+  if(!el)return;
+  var h=new Date().getHours();
+  var idx=(new Date().getDate()*4+Math.floor(h/6))%QUOTES.length;
+  el.textContent="“"+QUOTES[idx]+"”";
+}
+
 function getConfig(){
   try{ return JSON.parse(localStorage.getItem(CONFIG_KEY)||"{}"); }
   catch{ return {}; }
@@ -1022,6 +1068,7 @@ async function init(){
   buildEspFilters();
   renderView();
   updateProxyPill();
+  rotateQuote();
 }
 // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
 function setView(v, btn){
@@ -1805,8 +1852,19 @@ Sé conciso, clínico y práctico. No repitas el diagnóstico. Usa terminología
     });
     if(!resp.ok) throw new Error("HTTP "+resp.status);
     const data = await resp.json();
-    const txt = (data.content?.[0]?.text||"{}").replace(/```[a-z]*/g,"").replace(/```/g,"").trim();
-    const result = JSON.parse(txt);
+    var _raw = (data.content?.[0]?.text||"{}").replace(/```json/g,"").replace(/```/g,"").trim();
+    // Extract JSON object robustly — find outermost { }
+    var _jstart = _raw.indexOf("{"); var _jend = _raw.lastIndexOf("}");
+    var _jsonStr = (_jstart>=0&&_jend>_jstart) ? _raw.slice(_jstart,_jend+1) : "{}";
+    // Truncate any incomplete trailing content that breaks JSON
+    var result;
+    try { result = JSON.parse(_jsonStr); }
+    catch(e2) {
+      // Attempt to salvage by trimming at last complete property
+      var _trimmed = _jsonStr.replace(/,\s*"[^"]*"\s*:\s*[^}]*$/, "") + "}";
+      try { result = JSON.parse(_trimmed); }
+      catch(e3) { result = {alteraciones:[], resumen:"Error al parsear respuesta IA. Intenta de nuevo.", prioridad:"baja"}; }
+    }
 
     // Build HTML panel
     let panelHtml = "";
@@ -2267,7 +2325,8 @@ function openAddModal(){
   document.getElementById("modal-title").textContent = "➕ Agregar nuevo paciente";
   document.getElementById("modal-save-btn").textContent = "✓ Agregar al censo";
   document.getElementById("modal-warn-edit").style.display = "none";
-  ["cama","exp","edad","nombre","adscrito","residente","ingreso","dx"].forEach(f=>document.getElementById("mf-"+f).value="");
+  ["cama","exp","edad","nombre","adscrito","residente","ingreso","dx"].forEach(f=>{var el=document.getElementById("mf-"+f);if(el)el.value="";});
+  ["mf-app-modal","mf-pa-modal","mf-manejo-modal","mf-sangrado-modal","mf-drenajes-modal","mf-pendientes-modal"].forEach(function(id){var el=document.getElementById(id);if(el)el.value="";});
   document.getElementById("mf-esp").value = "CG";
   document.getElementById("mf-estado").value = "ESTABLE";
   _fillDL();
@@ -2279,6 +2338,11 @@ function _fillDL(){
   var dA=document.getElementById("dl-ads"),dR=document.getElementById("dl-res");
   if(dA)dA.innerHTML=a.map(function(x){return "<option value='"+esc(x)+"'>"+esc(x)+"</option>";}).join("");
   if(dR)dR.innerHTML=r.map(function(x){return "<option value='"+esc(x)+"'>"+esc(x)+"</option>";}).join("");
+  var sA=document.getElementById("mf-adscrito-sel"),sR=document.getElementById("mf-residente-sel");
+  var aOpts="<option value=''>-- Seleccionar --</option>"+a.map(function(x){return "<option value='"+esc(x)+"'>"+esc(x)+"</option>";}).join("");
+  var rOpts="<option value=''>-- Seleccionar --</option>"+r.map(function(x){return "<option value='"+esc(x)+"'>"+esc(x)+"</option>";}).join("");
+  if(sA)sA.innerHTML=aOpts;
+  if(sR)sR.innerHTML=rOpts;
 }
 function openEditModal(k){
   const p = patients.find(p=>pid(p)===k); if(!p) return;
@@ -2296,6 +2360,13 @@ function openEditModal(k){
   document.getElementById("mf-ingreso").value = p.ingreso||"";
   document.getElementById("mf-estado").value = p.estado||"ESTABLE";
   document.getElementById("mf-dx").value = p.dx||"";
+  var _nd_e = noteData[k]||defaultData();
+  var _ae = document.getElementById("mf-app-modal"); if(_ae) _ae.value=_nd_e.app||"";
+  var _pe = document.getElementById("mf-pa-modal");  if(_pe) _pe.value=_nd_e.pa||"";
+  var _me = document.getElementById("mf-manejo-modal"); if(_me) _me.value=_nd_e.manejo||"";
+  var _se = document.getElementById("mf-sangrado-modal"); if(_se) _se.value=_nd_e.sangrado||"";
+  var _de = document.getElementById("mf-drenajes-modal"); if(_de) _de.value=_nd_e.drenajes||"";
+  var _pde = document.getElementById("mf-pendientes-modal"); if(_pde) _pde.value=_nd_e.pendientes||"";
   _fillDL();
   document.getElementById("patient-modal").style.display = "flex";
 }
@@ -2305,19 +2376,36 @@ function saveModal(){
   const exp = document.getElementById("mf-exp").value.trim();
   const nombre = document.getElementById("mf-nombre").value.trim().toUpperCase();
   if(!cama||!exp||!nombre){ alert("Cama, nombre y expediente son obligatorios"); return; }
+  var _ads_val = document.getElementById("mf-adscrito").value.trim()||document.getElementById("mf-adscrito-sel").value;
+  var _res_val = document.getElementById("mf-residente").value.trim()||document.getElementById("mf-residente-sel").value;
   const p = {
     cama, exp, nombre,
     edad: parseInt(document.getElementById("mf-edad").value)||"",
     esp: document.getElementById("mf-esp").value,
-    adscrito: document.getElementById("mf-adscrito").value.trim().toUpperCase(),
-    residente: document.getElementById("mf-residente").value.trim().toUpperCase(),
+    adscrito: _ads_val.toUpperCase(),
+    residente: _res_val.toUpperCase(),
     ingreso: document.getElementById("mf-ingreso").value.trim(),
     estado: document.getElementById("mf-estado").value,
     dx: document.getElementById("mf-dx").value.trim().toUpperCase()
   };
+  var _modalExtra = {
+    app: (document.getElementById("mf-app-modal")||{}).value||"",
+    pa:  (document.getElementById("mf-pa-modal")||{}).value||"",
+    manejo: (document.getElementById("mf-manejo-modal")||{}).value||"",
+    sangrado: (document.getElementById("mf-sangrado-modal")||{}).value||"",
+    drenajes: (document.getElementById("mf-drenajes-modal")||{}).value||"",
+    pendientes: (document.getElementById("mf-pendientes-modal")||{}).value||""
+  };
   if(modalMode==="add"){
     patients.push(p);
-    noteData[pid(p)] = defaultData();
+    var _nd0 = defaultData();
+    if(_modalExtra.app) _nd0.app = _modalExtra.app;
+    if(_modalExtra.pa)  _nd0.pa  = _modalExtra.pa;
+    if(_modalExtra.manejo) _nd0.manejo = _modalExtra.manejo;
+    if(_modalExtra.sangrado) _nd0.sangrado = _modalExtra.sangrado;
+    if(_modalExtra.drenajes) _nd0.drenajes = _modalExtra.drenajes;
+    if(_modalExtra.pendientes) _nd0.pendientes = _modalExtra.pendientes;
+    noteData[pid(p)] = _nd0;
   } else {
     const newKey = pid(p);
     patients = patients.map(pt=>pid(pt)===modalOrigKey?p:pt);
@@ -2648,173 +2736,159 @@ function resetCenso(){
 function getGuardInfo(){
   return {
     fecha: document.getElementById("gi-fecha").value||"",
-    turno: document.getElementById("gi-turno").value||"",
+    turno: document.getElementById("gi-fecha-hidden").value||"",
     entrega: document.getElementById("gi-entrega").value||"",
     recibe: document.getElementById("gi-recibe").value||""
   };
 }
 function exportToExcel(){
   const gi = getGuardInfo();
-
-  // ── If ExcelJS is available use it for full styling ──────────────────
-  if(window.ExcelJS){
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "PisoLibro HGL";
-    const ws = wb.addWorksheet("Hoja1");
-
-    // Column widths (matching screenshot)
-    ws.columns = [
-      {width:4},   // A – vacío
-      {width:9},   // B – CAMA
-      {width:13},  // C – EXPEDIENTE
-      {width:32},  // D – NOMBRE
-      {width:6},   // E – EDAD
-      {width:70},  // F – DIAGNÓSTICO
-      {width:12},  // G – ESPECIALIDAD
-      {width:14},  // H – ADSCRITO
-      {width:14},  // I – RESIDENTE
-      {width:11},  // J – INGRESO
-      {width:6},   // K – DIAS
-      {width:11},  // L – ESTADO
-    ];
-
-    const NAVY  = "FF0A1628";
-    const WHITE = "FFFFFFFF";
-    const GRAY1 = "FFF9FAFB";  // odd rows
-    const GRAY2 = "FFFFFFFF";  // even rows
-
-    const estadoBg = {
-      "ESTABLE":   "FFD1FAE5",
-      "DELICADO":  "FFFEF3C7",
-      "GRAVE":     "FFFEE2E2",
-      "ALTA":      "FFDBEAFE",
-      "DEFUNCIÓN": "FFE5E7EB",
-    };
-    const estadoFg = {
-      "ESTABLE":  "FF065F46",
-      "DELICADO": "FF92400E",
-      "GRAVE":    "FF991B1B",
-      "ALTA":     "FF1E40AF",
-      "DEFUNCIÓN":"FF374151",
-    };
-
-    function applyBorder(cell){
-      cell.border = {
-        top:{style:"thin",color:{argb:"FFD1D5DB"}},
-        left:{style:"thin",color:{argb:"FFD1D5DB"}},
-        bottom:{style:"thin",color:{argb:"FFD1D5DB"}},
-        right:{style:"thin",color:{argb:"FFD1D5DB"}}
-      };
-    }
-
-    // Row 1 – CIRUGIA GENERAL
-    const r1 = ws.getRow(1);
-    r1.height = 24;
-    const c1 = ws.getCell("A1");
-    c1.value = "CIRUGIA GENERAL";
-    c1.font   = {name:"Helvetica Neue",size:14,bold:true,color:{argb:WHITE}};
-    c1.fill   = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
-    c1.alignment = {horizontal:"center",vertical:"middle"};
-    ws.mergeCells("A1:L1");
-
-    // Row 2 – Fecha
-    const r2 = ws.getRow(2);
-    r2.height = 16;
-    const c2 = ws.getCell("A2");
-    // Parse date from gi.fecha (DD/MM/YY or DD/MM/YYYY)
-    const fp = gi.fecha ? gi.fecha.split("/") : [];
-    const fechaStr = fp.length===3 ? fp[0]+"/"+fp[1]+"/"+(fp[2].length===4?fp[2].slice(2):fp[2]) : (gi.fecha||"");
-    c2.value = fechaStr;
-    c2.font  = {name:"Helvetica Neue",size:11,bold:true,color:{argb:WHITE}};
-    c2.fill  = {type:"pattern",pattern:"solid",fgColor:{argb:"FF1A3A6B"}};
-    c2.alignment = {horizontal:"center",vertical:"middle"};
-    ws.mergeCells("A2:L2");
-
-    // Row 3 – Headers
-    const headers = ["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"];
-    const r3 = ws.getRow(3);
-    r3.height = 18;
-    headers.forEach((h,i)=>{
-      const cell = r3.getCell(i+1);
-      cell.value = h;
-      cell.font  = {name:"Helvetica Neue",size:10,bold:true,color:{argb:WHITE}};
-      cell.fill  = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
-      cell.alignment = {horizontal:"center",vertical:"middle"};
-      applyBorder(cell);
-    });
-
-    // Data rows
-    const sorted = [...patients].sort((a,b)=>{
-      const am = String(a.cama||"").match(/^(\d+)-(\d+)$/);
-      const bm = String(b.cama||"").match(/^(\d+)-(\d+)$/);
-      if(am&&bm) return (parseInt(am[1])*1000+parseInt(am[2])) - (parseInt(bm[1])*1000+parseInt(bm[2]));
-      return String(a.cama||"").localeCompare(String(b.cama||""));
-    });
-
-    sorted.forEach((p,idx)=>{
-      const rowNum = 4 + idx;
-      const row = ws.getRow(rowNum);
-      row.height = 40;
-
-      const days = p.ingreso ? Math.floor((new Date()-parseDate(p.ingreso))/86400000) : "";
-      const estado = (p.estado||"").toUpperCase().trim();
-      const rowIsColored = !!estadoBg[estado];
-      const rowBgArgb = rowIsColored ? estadoBg[estado] : (idx%2===0 ? GRAY2 : GRAY1);
-
-      const vals = ["", p.cama||"", p.exp||"", p.nombre||"", p.edad||"", p.dx||"",
-                    p.esp||"", p.adscrito||"", p.residente||"", p.ingreso||"",
-                    Number.isFinite(days)?days:"", p.estado||""];
-
-      vals.forEach((v,ci)=>{
-        const cell = row.getCell(ci+1);
-        cell.value = v;
-        const isEstado = ci===11;
-        const bgArgb = isEstado ? (estadoBg[estado]||rowBgArgb) : rowBgArgb;
-        cell.fill = {type:"pattern",pattern:"solid",fgColor:{argb:bgArgb}};
-        cell.font = {
-          name:"Helvetica Neue", size:10,
-          bold: isEstado,
-          color:{argb: isEstado ? (estadoFg[estado]||"FF374151") : "FF111827"}
-        };
-        cell.alignment = {
-          horizontal: (ci===0||ci===10||ci===4||ci===11)?"center":"left",
-          vertical:"top",
-          wrapText: ci===5  // wrap DX column
-        };
-        applyBorder(cell);
-      });
-    });
-
-    // Write and download
-    wb.xlsx.writeBuffer().then(function(buffer){
-      const blob = new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href = url;
-      a.download = "Censo_HGL_"+( gi.fecha||"").replace(/\//g,"-")+".xlsx";
-      a.click();
-      URL.revokeObjectURL(url);
-    });
+  if(!window.ExcelJS){
+    if(!window.XLSX){alert("Librería cargando, espera un momento.");return;}
+    // SheetJS fallback
+    const wb2=XLSX.utils.book_new();
+    const rows=[["CIRUGIA GENERAL"],[gi.fecha||""],["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"]];
+    patients.forEach(p=>{const d=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";rows.push(["",p.cama,p.exp,p.nombre,p.edad,p.dx,p.esp,p.adscrito,p.residente,p.ingreso,Number.isFinite(d)?d:"",p.estado]);});
+    const ws2=XLSX.utils.aoa_to_sheet(rows);ws2["!cols"]=[{wch:3},{wch:8},{wch:11},{wch:36},{wch:8},{wch:78},{wch:12},{wch:18},{wch:23},{wch:10},{wch:12},{wch:14}];
+    XLSX.utils.book_append_sheet(wb2,ws2,"Hoja1");
+    XLSX.writeFile(wb2,"Censo_HGL_"+(gi.fecha||"").replace(/\//g,"-")+".xlsx");
     return;
   }
 
-  // ── Fallback: SheetJS without styles ─────────────────────────────────
-  if(!window.XLSX){alert("Librería cargando, intenta en segundos");return;}
-  const wb2 = XLSX.utils.book_new();
-  const rows = [["CIRUGIA GENERAL"],[gi.fecha||""],[],["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"]];
-  patients.forEach(p=>{
-    const days = p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
-    rows.push(["",p.cama,p.exp,p.nombre,p.edad,p.dx,p.esp,p.adscrito,p.residente,p.ingreso,Number.isFinite(days)?days:"",p.estado]);
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "PisoLibro HGL";
+  const ws = wb.addWorksheet("Hoja1");
+
+  // Column widths matching original
+  ws.columns = [
+    {width:3},    // A – vacío
+    {width:8},    // B – CAMA
+    {width:11.2}, // C – EXPEDIENTE
+    {width:36.2}, // D – NOMBRE
+    {width:8.2},  // E – EDAD
+    {width:77.7}, // F – DIAGNÓSTICO
+    {width:11.7}, // G – ESPECIALIDAD
+    {width:18.2}, // H – ADSCRITO
+    {width:22.7}, // I – RESIDENTE
+    {width:10},   // J – INGRESO
+    {width:12.2}, // K – DIAS
+    {width:14.2}, // L – ESTADO
+  ];
+
+  // Colors (from screenshot)
+  var NAVY  = "FF0A1628";
+  var WHITE = "FFFFFFFF";
+  var LGRAY = "FFF2F2F2";  // light gray for alternating rows
+
+  // Status background colors (matching screenshot yellow for DELICADO)
+  var STATUS_BG = {
+    "ESTABLE":   null,          // no special bg
+    "DELICADO":  "FFFFF2CC",   // yellow (as in screenshot)
+    "GRAVE":     "FFFDE8E8",   // light red
+    "ALTA":      "FFE8F4FD",   // light blue
+    "DEFUNCIÓN": "FFE8E8E8",  // gray
+  };
+  var STATUS_FG = {
+    "ESTABLE":   "FF1F7A3E",
+    "DELICADO":  "FF7D5A00",
+    "GRAVE":     "FF8B0000",
+    "ALTA":      "FF1A5276",
+    "DEFUNCIÓN": "FF555555",
+  };
+
+  function border(cell){
+    cell.border={
+      top:{style:"thin",color:{argb:"FFD0D0D0"}},
+      left:{style:"thin",color:{argb:"FFD0D0D0"}},
+      bottom:{style:"thin",color:{argb:"FFD0D0D0"}},
+      right:{style:"thin",color:{argb:"FFD0D0D0"}}
+    };
+  }
+
+  // ── Row 1: CIRUGIA GENERAL ──────────────────────────────────────────
+  ws.mergeCells("A1:L1");
+  var r1=ws.getRow(1); r1.height=21.75;
+  var c1=ws.getCell("A1");
+  c1.value="CIRUGIA GENERAL";
+  c1.font={name:"Helvetica Neue",size:20,bold:true};
+  c1.alignment={horizontal:"center",vertical:"middle"};
+
+  // ── Row 2: Date ─────────────────────────────────────────────────────
+  ws.mergeCells("A2:L2");
+  var r2=ws.getRow(2); r2.height=20.25;
+  var c2=ws.getCell("A2");
+  // Format date from DD/MM/AA → DD/MM/YY display
+  var dateParts=(gi.fecha||"").split("/");
+  var dateDisplay=dateParts.length>=2?dateParts[0]+"/"+dateParts[1]+"/"+(dateParts[2]||""):(gi.fecha||"");
+  c2.value=dateDisplay;
+  c2.font={name:"Helvetica Neue",size:11};
+  c2.alignment={horizontal:"center",vertical:"middle"};
+
+  // ── Row 3: Headers ──────────────────────────────────────────────────
+  var headers=["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"];
+  var r3=ws.getRow(3); r3.height=16.5;
+  headers.forEach(function(h,i){
+    var cell=r3.getCell(i+1);
+    cell.value=h;
+    cell.font={name:"Helvetica Neue",size:9};
+    cell.alignment={horizontal:"center",vertical:"middle"};
+    border(cell);
   });
-  const ws2 = XLSX.utils.aoa_to_sheet(rows);
-  ws2["!cols"]=[{wch:4},{wch:9},{wch:13},{wch:32},{wch:6},{wch:70},{wch:12},{wch:14},{wch:14},{wch:11},{wch:6},{wch:11}];
-  XLSX.utils.book_append_sheet(wb2,ws2,"Hoja1");
-  // Labs sheet
-  const labRows=[["RESUMEN LABS"],[],["CAMA","PACIENTE","HB","LEUCOS","PLAQ","CR","GLU","NA","K","ALB","PCR","PCT","INR","UREA","FECHA"]];
-  patients.forEach(p=>{const nd=noteData[pid(p)];if(!nd?.labs)return;const l=nd.labs;if(!l.hb&&!l.leucos&&!l.cr)return;labRows.push([p.cama,p.nombre,l.hb,l.leucos,l.plaq,l.cr,l.glu,l.na,l.k,l.alb,l.pcr,l.pct,l.inr,l.urea,l.fecha_labs]);});
-  const ws3=XLSX.utils.aoa_to_sheet(labRows);
-  XLSX.utils.book_append_sheet(wb2,ws3,"RESUMEN LABS");
-  XLSX.writeFile(wb2,"Censo_HGL_"+( gi.fecha||"").replace(/\//g,"-")+".xlsx");
+
+  // ── Data rows ────────────────────────────────────────────────────────
+  // Sort by bed number
+  var sorted=[...patients].sort(function(a,b){
+    var am=String(a.cama||"").match(/^(\d+)-(\d+)$/);
+    var bm=String(b.cama||"").match(/^(\d+)-(\d+)$/);
+    if(am&&bm)return(parseInt(am[1])*1000+parseInt(am[2]))-(parseInt(bm[1])*1000+parseInt(bm[2]));
+    return String(a.cama||"").localeCompare(String(b.cama||""));
+  });
+
+  sorted.forEach(function(p,idx){
+    var rowNum=4+idx;
+    var row=ws.getRow(rowNum);
+    row.height=idx===0?50:28; // vary height like original
+
+    var days=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
+    var estado=(p.estado||"").trim().toUpperCase();
+    
+    // Format ingreso date
+    var ingresoDisplay="";
+    var ingresoDate=parseDate(p.ingreso);
+    if(ingresoDate){
+      var d=ingresoDate;
+      ingresoDisplay=d.getFullYear()+"-"+(""+(d.getMonth()+1)).padStart(2,"0")+"-"+(""+d.getDate()).padStart(2,"0");
+    } else {
+      ingresoDisplay=p.ingreso||"";
+    }
+
+    var vals=["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",ingresoDisplay,Number.isFinite(days)?days:"",p.estado||""];
+    var aligns=["center","center","center","left","center","left","center","center","center","center","center","center"];
+
+    vals.forEach(function(v,ci){
+      var cell=row.getCell(ci+1);
+      cell.value=v;
+      var statusBg=STATUS_BG[estado];
+      var rowBg=statusBg||(idx%2===0?"FFFFFFFF":LGRAY);
+      cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:rowBg}};
+      cell.font={
+        name:"Helvetica Neue",size:9,
+        bold:ci===11,
+        color:{argb:ci===11?(STATUS_FG[estado]||"FF374151"):"FF000000"}
+      };
+      cell.alignment={horizontal:aligns[ci],vertical:"top",wrapText:ci===5};
+      border(cell);
+    });
+  });
+
+  // ── Write & download ─────────────────────────────────────────────────
+  wb.xlsx.writeBuffer().then(function(buffer){
+    var blob=new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=url; a.download="Censo_HGL_"+(gi.fecha||"").replace(/\//g,"-")+".xlsx";
+    a.click(); URL.revokeObjectURL(url);
+  });
 }
 
 
