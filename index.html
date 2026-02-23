@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Piso Libro — HGL Cirugía General</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -685,6 +685,7 @@ let currentView = "piso";
 let selectedEsp = "ALL";
 let selectedResidente = "ALL";
 let selectedAdscrito = "ALL";
+let showSoloIngresos = false;
 let modalMode = "add";
 let modalOrigKey = null;
 let pendingImport = null;
@@ -1083,8 +1084,9 @@ function renderView(){
     const em = selectedEsp==="ALL"||p.esp===selectedEsp;
     const rm = selectedResidente==="ALL"||(p.residente||"")===selectedResidente;
     const am = selectedAdscrito==="ALL"||(p.adscrito||"")===selectedAdscrito;
+    const im = !showSoloIngresos||(function(){if(!p.ingreso)return false;var d=parseDate(p.ingreso),t=new Date();t.setHours(0,0,0,0);var y=new Date(t);y.setDate(t.getDate()-1);return d>=y;})();
     const sm = !search||p.nombre.toLowerCase().includes(search)||String(p.cama).toLowerCase().includes(search)||(p.exp||"").toLowerCase().includes(search);
-    return em&&sm&&rm&&am;
+    return em&&sm&&rm&&am&&im;
   });
   document.getElementById("count-badge").textContent = filtered.length+" pacientes";
   ["piso","census","print"].forEach(v=>{
@@ -1114,6 +1116,7 @@ function setEsp(v,btn){
 }
 function setCensusResidente(v){selectedResidente=v;renderView();}
 function setCensusAdscrito(v){selectedAdscrito=v;renderView();}
+function toggleSoloIngresos(){showSoloIngresos=!showSoloIngresos;renderView();}
 function quitarFiltrosCenso(){selectedResidente="ALL";selectedAdscrito="ALL";renderView();}
 
 // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
@@ -1818,37 +1821,57 @@ async function analyzeLabsAI(k, fecha){
     if(extras.length) labLines.push("Otros/Cultivos: "+extras.join(", "));
   }
 
-  const prompt = `Eres un médico clínico experto. Analiza los siguientes laboratorios de un paciente hospitalizado.
+  const labRefRanges = [
+    "Hb: H<7 g/dL CRITICA, <10 MODERADA, >16 alta",
+    "Leucos: <4 o >10 k/µL anormal, >15 CRITICO",
+    "Plaq: <50 k/µL CRITICA, <100 MODERADA (trombocitopenia), >600 trombocitosis",
+    "Cr: >1.25 mg/dL anormal, >3 CRITICO",
+    "Urea: >43 mg/dL anormal",
+    "Glu: <70 hipoglucemia, >110 hiperglucemia",
+    "Na: <135 hiponatremia, >145 hipernatremia, <120 CRITICO, >155 CRITICO",
+    "K: <3.5 HIPOKALEMIA (anormal), <2.8 CRITICA, >5.1 hiperkalemia, >6.0 CRITICA",
+    "Alb: <3.5 g/dL hipoalbuminemia, <2.0 SEVERA",
+    "PCR: >10 mg/L elevada",
+    "PCT: >0.5 ng/mL elevada, >2 sepsis probable",
+    "INR: >1.5 coagulopatía, >2.5 SEVERA",
+    "Mg: <0.7 hipomagnesemia, <0.5 SEVERA",
+    "Ca: <2.1 hipocalcemia, <1.75 SEVERA, >2.6 hipercalcemia",
+    "P: <0.81 hipofosfatemia, <0.5 SEVERA",
+    "BT/BD/BI: >2 mg/dL hiperbilirrubinemia",
+    "TGO/TGP: >40 U/L elevadas",
+    "FA: >120 U/L elevada",
+    "GGT: >50 U/L elevada",
+    "LDH: >250 U/L elevada",
+    "CPK: >200 U/L elevada",
+    "pH: <7.35 acidosis, >7.45 alcalosis",
+    "pCO2: <35 hipocapnia, >45 hipercapnia",
+    "Lactato: >2 mmol/L elevado, >4 CRITICO",
+  ].join("\n");
+
+  const prompt = `Eres un médico clínico experto en cirugía general. Analiza los laboratorios de un paciente hospitalizado usando los rangos de referencia EXACTOS provistos. Debes detectar CUALQUIER valor fuera del rango normal, aunque sea levemente anormal.
 
 DIAGNÓSTICO / CONTEXTO CLÍNICO: ${p?.dx||nd.dx||"No especificado"}
 ESPECIALIDAD: ${p?.esp||"Cirugía General"}
 FECHA DE LABS: ${fecha}
 
-LABORATORIOS:
+RANGOS DE REFERENCIA (usa EXACTAMENTE estos para clasificar):
+${labRefRanges}
+
+LABORATORIOS DEL PACIENTE (revisa CADA UNO contra los rangos):
 ${labLines.join("\n")}
 
-Responde ÚNICAMENTE con JSON válido (sin markdown), con esta estructura exacta:
-{
-  "alteraciones": [
-    {
-      "nombre": "nombre corto de la alteración",
-      "severidad": "critica"|"moderada"|"leve",
-      "valor": "valor con unidad",
-      "interpretacion": "1-2 oraciones de interpretación clínica en contexto del dx del paciente",
-      "recomendacion": "recomendación específica y práctica (dosis, velocidad, monitoreo)"
-    }
-  ],
-  "resumen": "párrafo breve (3-4 oraciones) resumiendo el perfil metabólico/hematológico del paciente y la prioridad de corrección",
-  "prioridad": "alta"|"media"|"baja"
-}
-Si no hay alteraciones, devuelve alteraciones:[] y un resumen con los hallazgos normales relevantes.
-Sé conciso, clínico y práctico. No repitas el diagnóstico. Usa terminología médica en español.`;
+INSTRUCCIÓN CRÍTICA: Si CUALQUIER valor está fuera del rango normal (aunque sea levemente), DEBES incluirlo en "alteraciones". No omitas ninguna alteración aunque parezca leve. K<3.5 ES hipokalemia. Plaq<100 ES trombocitopenia.
+
+Responde ÚNICAMENTE con JSON compacto (sin markdown, sin saltos de línea innecesarios):
+{"alteraciones":[{"nombre":"nombre","severidad":"critica|moderada|leve","valor":"valor+unidad","interpretacion":"interpretación clínica breve","recomendacion":"tratamiento específico con dosis"}],"resumen":"resumen breve","prioridad":"alta|media|baja"}
+Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
+
 
   try {
     const resp = await fetch(proxyUrl+"/api/ai",{
       method:"POST",
       headers:{...apiHeaders()},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,messages:[{role:"user",content:prompt}]})
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:3000,messages:[{role:"user",content:prompt}]})
     });
     if(!resp.ok) throw new Error("HTTP "+resp.status);
     const data = await resp.json();
@@ -2240,7 +2263,11 @@ function renderCensus(pts){
   var _cA={};patients.forEach(function(p){if(p.adscrito)_cA[p.adscrito]=(_cA[p.adscrito]||0)+1;});
   function _opt(v,lbl,cnt,cur){return "<option value='"+esc(v)+"'"+( cur===v?" selected":"")+">"+lbl+(cnt?" ("+cnt+")":"")+"</option>";}
   var _sel="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:12px;font-family:inherit;background:#fff;cursor:pointer";
+  var _hoy=new Date();_hoy.setHours(0,0,0,0);var _ayer=new Date(_hoy);_ayer.setDate(_hoy.getDate()-1);
+  var _nIngresos=patients.filter(function(p){if(!p.ingreso)return false;var d=parseDate(p.ingreso);return d>=_ayer;}).length;
   var _fb="<div style='background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:18px;flex-wrap:wrap;align-items:center'>"
+    +(showSoloIngresos?"":" <button onclick='toggleSoloIngresos()' style='background:#dcfce7;border:1.5px solid #86efac;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;color:#166534'>🏥 Ingresos ("+_nIngresos+")</button>")
+    +(showSoloIngresos?"<button onclick='toggleSoloIngresos()' style='background:#16a34a;border:none;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;color:#fff'>✓ Ingresos · "+_nIngresos+" pac — quitar</button>":"")
     +"<span style='font-size:11px;font-weight:700;color:#475569'>Residente:</span>"
     +"<select style='"+_sel+"' onchange='setCensusResidente(this.value)'>"
     +_opt("ALL","Todos — "+patients.length+" pac","",selectedResidente)
@@ -2261,61 +2288,82 @@ function renderCensus(pts){
 // ─── PRINT / ENTREGA VIEW ─────────────────────────────────────────────────────────
 function renderPrint(pts){
   const gi = getGuardInfo();
-  const full = pts.filter(p=>FULL_CARD_ESP.has(p.esp));
-  const simple = pts.filter(p=>SIMPLE_ESP.has(p.esp));
-  let fullCards = "";
-  full.forEach(p=>{
-    const nd = noteData[pid(p)]||defaultData();
-    const days = daysSince(p.ingreso);
-    const ec = ESP_COLORS[p.esp]||"#333";
-    const sc = ESTADO_COLORS[p.estado]||"#95a5a6";
-    const pf = (label,v,hi)=>v?`<div class="pf-line ${hi?"hi":""}" style="grid-column:${hi?"span 2":"auto"}"><b>${label}:</b> ${esc(v)}</div>`:"";
-    const labs = nd.labs||{};
-    const labStr = ["hb","leucos","plaq","cr","na","k","alb","pcr","pct","inr"].filter(k=>labs[k]).map(k=>k.toUpperCase()+":"+labs[k]).join(" | ");
-    fullCards += `<div class="entrega-card">
-      <div class="entrega-card-header" style="background:${ec}">
-        <span style="font-weight:700;font-size:12px">${esc(p.esp)} | Cama ${esc(p.cama)} | ${esc(p.nombre)} | ${p.edad}a | Exp:${esc(p.exp)} | Ing:${esc(p.ingreso)} Día ${days} | ${esc(p.adscrito)}/${esc(p.residente)}</span>
-        <span style="background:${sc};padding:1px 8px;border-radius:8px;font-size:10px;font-weight:700">${esc(p.estado)}</span>
+  // All patients sorted by bed
+  const sorted=[...pts].sort(function(a,b){
+    var am=String(a.cama||"").match(/^(\d+)-(\d+)$/);
+    var bm=String(b.cama||"").match(/^(\d+)-(\d+)$/);
+    if(am&&bm)return(parseInt(am[1])*1000+parseInt(am[2]))-(parseInt(bm[1])*1000+parseInt(bm[2]));
+    return String(a.cama||"").localeCompare(String(b.cama||""));
+  });
+
+  function pf(label,v){
+    if(!v||!String(v).trim()) return "";
+    return `<div class="pf-row"><span class="pf-label">${esc(label)}</span><span class="pf-val">${esc(String(v))}</span></div>`;
+  }
+  function pfHighlight(label,v){
+    if(!v||!String(v).trim()) return "";
+    return `<div class="pf-row pf-highlight"><span class="pf-label">${esc(label)}</span><span class="pf-val">${esc(String(v))}</span></div>`;
+  }
+
+  let cards="";
+  sorted.forEach(p=>{
+    const nd=noteData[pid(p)]||defaultData();
+    const days=daysSince(p.ingreso);
+    const ec=ESP_COLORS[p.esp]||"#1a3a6b";
+    const sc=ESTADO_COLORS[p.estado]||"#95a5a6";
+    const snap=(nd.labHistory||[]).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+    const labs=snap?snap.labs||{}:{};
+    const labStr=["hb","leucos","plaq","cr","na","k","alb","pcr","pct","inr"].filter(k=>labs[k]).map(k=>k.toUpperCase()+": "+labs[k]).join(" | ");
+    const labDate=snap?" ("+fmtDateChip(snap.fecha)+")":"";
+    cards+=`<div class="pf-card">
+      <div class="pf-header" style="background:${ec}">
+        <div>
+          <span class="pf-cama">Cama ${esc(p.cama)}</span>
+          <span class="pf-nombre">${esc(p.nombre)}</span>
+          <span style="opacity:.8;font-size:10px"> · ${p.edad||"—"}a · ${esc(p.esp)} · Día ${days} · ${esc(p.adscrito||"")}/${esc(p.residente||"")}</span>
+        </div>
+        <span class="pf-estado-badge" style="background:${sc}">${esc(p.estado||"")}</span>
       </div>
-      <div class="entrega-card-body">
-        ${pf("DX",nd.dx||p.dx)}${pf("APP",nd.app)}${pf("PA",nd.pa)}
-        ${pf("QX",nd.qx)}${pf("Manejo",nd.manejo)}${pf("Drenajes",nd.drenajes)}
-        ${pf("Sangrado",nd.sangrado)}${pf("Imagen",nd.imagen)}
-        ${pf("Balance",nd.balance)}${pf("SV",nd.sv)}
-        ${pf("⚠️ PENDIENTES",nd.pendientes,true)}
-        ${pf("Misc",nd.misc)}
-        ${labStr?`<div class="pf-line" style="grid-column:span 2"><b>🧪 LABS ${labs.fecha_labs?"("+esc(labs.fecha_labs)+")":""}:</b> <span style="font-size:10px">${labStr}</span></div>`:""}
+      <div class="pf-body">
+        ${pf("DX",p.dx||nd.dx)}
+        ${pf("APP",nd.app)}
+        ${pf("PA",nd.pa)}
+        ${pf("Procedimiento",nd.qx||nd.manejo)}
+        ${pf("Sangrado",nd.sangrado)}
+        ${pf("Drenajes",nd.drenajes)}
+        ${pfHighlight("Pendientes / Plan",nd.pendientes)}
+        ${labStr?`<div class="pf-row pf-labs"><span class="pf-label">🧪 Labs${labDate}</span><span class="pf-val" style="font-size:10px">${labStr}</span></div>`:""}
       </div>
     </div>`;
   });
 
-  let simpleRows = "";
-  simple.forEach((p,i)=>{
-    const nd = noteData[pid(p)]||defaultData();
-    simpleRows += `<tr style="background:${i%2===0?"#fff":"#f8fafc"}">
-      <td style="padding:4px 8px;font-weight:700;color:${ESP_COLORS[p.esp]||"#333"}">${esc(p.cama)}</td>
-      <td style="padding:4px 8px;font-weight:600">${esc(p.nombre)}</td>
-      <td style="padding:4px 8px;text-align:center">${p.edad}</td>
-      <td style="padding:4px 8px"><span style="background:${ESP_COLORS[p.esp]||"#555"};color:#fff;padding:1px 6px;border-radius:4px;font-size:10px">${esc(p.esp)}</span></td>
-      <td style="padding:4px 8px;color:#374151;max-width:260px;font-size:11px">${esc((p.dx||"").length>100?p.dx.slice(0,100)+"...":p.dx)}</td>
-      <td style="padding:4px 8px"><span style="background:${ESTADO_COLORS[p.estado]||"#ccc"};color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700">${esc(p.estado)}</span></td>
-      <td style="padding:4px 8px;color:#374151">${esc(nd.pendientes||"")}</td>
-    </tr>`;
-  });
-
-  document.getElementById("view-print").innerHTML = `<div class="entrega-wrap">
-    <div class="entrega-title-block">
-      <div style="font-size:18px;font-weight:700;color:#0a1628">🏥 HOSPITAL GENERAL DE LEÓN</div>
-      <div style="font-size:14px;font-weight:600">ENTREGA DE GUARDIA — CIRUGÍA GENERAL</div>
-      <div style="font-size:12px;color:#555;margin-top:4px">Fecha: ${esc(gi.fecha)} | Turno: ${esc(gi.turno)} | Entrega: Dr. ${esc(gi.entrega)} | Recibe: Dr. ${esc(gi.recibe)}</div>
+  document.getElementById("view-print").innerHTML=`
+  <div style="max-width:1200px;margin:0 auto;padding:16px">
+    <div style="text-align:center;margin-bottom:16px;border-bottom:2px solid #1a3a6b;padding-bottom:12px">
+      <div style="font-size:13px;font-weight:700;color:#1a3a6b;letter-spacing:2px">HOSPITAL GENERAL DE LEÓN</div>
+      <div style="font-size:18px;font-weight:800;color:#0a1628">ENTREGA DE GUARDIA — CIRUGÍA GENERAL</div>
+      <div style="font-size:11px;color:#555;margin-top:4px">
+        Fecha: ${esc(gi.fecha)} &nbsp;|&nbsp; Entrega: Dr. ${esc(gi.entrega)} &nbsp;|&nbsp; Recibe: Dr. ${esc(gi.recibe)} &nbsp;|&nbsp; ${sorted.length} pacientes
+      </div>
     </div>
-    <div style="font-size:13px;font-weight:700;color:#0a1628;margin-bottom:10px;border-bottom:1px solid #ccc;padding-bottom:4px">▌ CIRUGÍA GENERAL — TARJETAS COMPLETAS (${full.length})</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(560px,1fr));gap:12px;margin-bottom:20px">${fullCards}</div>
-    <div style="font-size:13px;font-weight:700;color:#0a1628;margin-bottom:10px;border-bottom:1px solid #ccc;padding-bottom:4px">▌ URO / NCX / COLUMNA — RESUMEN (${simple.length})</div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px">
-      <thead><tr style="background:#0a1628;color:#fff">${["Cama","Paciente","Edad","Esp","DX","Estado","Pendiente"].map(h=>`<th style="padding:5px 8px;text-align:left;font-weight:600">${h}</th>`).join("")}</tr></thead>
-      <tbody>${simpleRows}</tbody>
-    </table>
+    <style>
+      .pf-card{border:1px solid #dde3ed;border-radius:8px;overflow:hidden;margin-bottom:10px;break-inside:avoid}
+      .pf-header{color:#fff;padding:7px 12px;display:flex;justify-content:space-between;align-items:center}
+      .pf-cama{font-size:13px;font-weight:800;margin-right:10px}
+      .pf-nombre{font-size:13px;font-weight:700}
+      .pf-estado-badge{font-size:10px;font-weight:700;padding:2px 10px;border-radius:20px;color:#fff}
+      .pf-body{padding:6px 10px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;background:#fff}
+      .pf-row{display:contents}
+      .pf-label{font-size:10px;font-weight:700;color:#475569;padding:3px 0;white-space:nowrap}
+      .pf-val{font-size:11px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9}
+      .pf-highlight .pf-label{color:#b45309}
+      .pf-highlight .pf-val{color:#92400e;font-weight:600}
+      .pf-labs .pf-label{color:#0e7490}
+      @media print{.pf-card{break-inside:avoid}}
+    </style>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:10px">
+      ${cards}
+    </div>
   </div>`;
 }
 
@@ -2734,161 +2782,82 @@ function resetCenso(){
 
 // ─── EXPORT TO EXCEL ──────────────────────────────────────────────────────────────
 function getGuardInfo(){
+  var _el=function(id){var e=document.getElementById(id);return e?e.value:"";};
   return {
-    fecha: document.getElementById("gi-fecha").value||"",
-    turno: document.getElementById("gi-fecha-hidden").value||"",
+    fecha: _el("gi-fecha"),
+    turno: "",
     entrega: document.getElementById("gi-entrega").value||"",
     recibe: document.getElementById("gi-recibe").value||""
   };
 }
 function exportToExcel(){
   const gi = getGuardInfo();
-  if(!window.ExcelJS){
-    if(!window.XLSX){alert("Librería cargando, espera un momento.");return;}
-    // SheetJS fallback
-    const wb2=XLSX.utils.book_new();
-    const rows=[["CIRUGIA GENERAL"],[gi.fecha||""],["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"]];
-    patients.forEach(p=>{const d=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";rows.push(["",p.cama,p.exp,p.nombre,p.edad,p.dx,p.esp,p.adscrito,p.residente,p.ingreso,Number.isFinite(d)?d:"",p.estado]);});
-    const ws2=XLSX.utils.aoa_to_sheet(rows);ws2["!cols"]=[{wch:3},{wch:8},{wch:11},{wch:36},{wch:8},{wch:78},{wch:12},{wch:18},{wch:23},{wch:10},{wch:12},{wch:14}];
-    XLSX.utils.book_append_sheet(wb2,ws2,"Hoja1");
-    XLSX.writeFile(wb2,"Censo_HGL_"+(gi.fecha||"").replace(/\//g,"-")+".xlsx");
-    return;
-  }
-
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "PisoLibro HGL";
-  const ws = wb.addWorksheet("Hoja1");
-
-  // Column widths matching original
-  ws.columns = [
-    {width:3},    // A – vacío
-    {width:8},    // B – CAMA
-    {width:11.2}, // C – EXPEDIENTE
-    {width:36.2}, // D – NOMBRE
-    {width:8.2},  // E – EDAD
-    {width:77.7}, // F – DIAGNÓSTICO
-    {width:11.7}, // G – ESPECIALIDAD
-    {width:18.2}, // H – ADSCRITO
-    {width:22.7}, // I – RESIDENTE
-    {width:10},   // J – INGRESO
-    {width:12.2}, // K – DIAS
-    {width:14.2}, // L – ESTADO
-  ];
-
-  // Colors (from screenshot)
-  var NAVY  = "FF0A1628";
-  var WHITE = "FFFFFFFF";
-  var LGRAY = "FFF2F2F2";  // light gray for alternating rows
-
-  // Status background colors (matching screenshot yellow for DELICADO)
-  var STATUS_BG = {
-    "ESTABLE":   null,          // no special bg
-    "DELICADO":  "FFFFF2CC",   // yellow (as in screenshot)
-    "GRAVE":     "FFFDE8E8",   // light red
-    "ALTA":      "FFE8F4FD",   // light blue
-    "DEFUNCIÓN": "FFE8E8E8",  // gray
-  };
-  var STATUS_FG = {
-    "ESTABLE":   "FF1F7A3E",
-    "DELICADO":  "FF7D5A00",
-    "GRAVE":     "FF8B0000",
-    "ALTA":      "FF1A5276",
-    "DEFUNCIÓN": "FF555555",
-  };
-
-  function border(cell){
-    cell.border={
-      top:{style:"thin",color:{argb:"FFD0D0D0"}},
-      left:{style:"thin",color:{argb:"FFD0D0D0"}},
-      bottom:{style:"thin",color:{argb:"FFD0D0D0"}},
-      right:{style:"thin",color:{argb:"FFD0D0D0"}}
-    };
-  }
-
-  // ── Row 1: CIRUGIA GENERAL ──────────────────────────────────────────
-  ws.mergeCells("A1:L1");
-  var r1=ws.getRow(1); r1.height=21.75;
-  var c1=ws.getCell("A1");
-  c1.value="CIRUGIA GENERAL";
-  c1.font={name:"Helvetica Neue",size:20,bold:true};
-  c1.alignment={horizontal:"center",vertical:"middle"};
-
-  // ── Row 2: Date ─────────────────────────────────────────────────────
-  ws.mergeCells("A2:L2");
-  var r2=ws.getRow(2); r2.height=20.25;
-  var c2=ws.getCell("A2");
-  // Format date from DD/MM/AA → DD/MM/YY display
-  var dateParts=(gi.fecha||"").split("/");
-  var dateDisplay=dateParts.length>=2?dateParts[0]+"/"+dateParts[1]+"/"+(dateParts[2]||""):(gi.fecha||"");
-  c2.value=dateDisplay;
-  c2.font={name:"Helvetica Neue",size:11};
-  c2.alignment={horizontal:"center",vertical:"middle"};
-
-  // ── Row 3: Headers ──────────────────────────────────────────────────
-  var headers=["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"];
-  var r3=ws.getRow(3); r3.height=16.5;
-  headers.forEach(function(h,i){
-    var cell=r3.getCell(i+1);
-    cell.value=h;
-    cell.font={name:"Helvetica Neue",size:9};
-    cell.alignment={horizontal:"center",vertical:"middle"};
-    border(cell);
-  });
-
-  // ── Data rows ────────────────────────────────────────────────────────
-  // Sort by bed number
-  var sorted=[...patients].sort(function(a,b){
+  const sorted=[...patients].sort(function(a,b){
     var am=String(a.cama||"").match(/^(\d+)-(\d+)$/);
     var bm=String(b.cama||"").match(/^(\d+)-(\d+)$/);
     if(am&&bm)return(parseInt(am[1])*1000+parseInt(am[2]))-(parseInt(bm[1])*1000+parseInt(bm[2]));
     return String(a.cama||"").localeCompare(String(b.cama||""));
   });
 
-  sorted.forEach(function(p,idx){
-    var rowNum=4+idx;
-    var row=ws.getRow(rowNum);
-    row.height=idx===0?50:28; // vary height like original
-
-    var days=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
-    var estado=(p.estado||"").trim().toUpperCase();
-    
-    // Format ingreso date
-    var ingresoDisplay="";
-    var ingresoDate=parseDate(p.ingreso);
-    if(ingresoDate){
-      var d=ingresoDate;
-      ingresoDisplay=d.getFullYear()+"-"+(""+(d.getMonth()+1)).padStart(2,"0")+"-"+(""+d.getDate()).padStart(2,"0");
-    } else {
-      ingresoDisplay=p.ingreso||"";
-    }
-
-    var vals=["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",ingresoDisplay,Number.isFinite(days)?days:"",p.estado||""];
-    var aligns=["center","center","center","left","center","left","center","center","center","center","center","center"];
-
-    vals.forEach(function(v,ci){
-      var cell=row.getCell(ci+1);
-      cell.value=v;
-      var statusBg=STATUS_BG[estado];
-      var rowBg=statusBg||(idx%2===0?"FFFFFFFF":LGRAY);
-      cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:rowBg}};
-      cell.font={
-        name:"Helvetica Neue",size:9,
-        bold:ci===11,
-        color:{argb:ci===11?(STATUS_FG[estado]||"FF374151"):"FF000000"}
-      };
-      cell.alignment={horizontal:aligns[ci],vertical:"top",wrapText:ci===5};
-      border(cell);
+  function doExcelJS(){
+    const wb=new ExcelJS.Workbook();
+    const ws=wb.addWorksheet("Hoja1");
+    ws.columns=[{width:3},{width:8},{width:11.2},{width:36.2},{width:8.2},{width:77.7},{width:11.7},{width:18.2},{width:22.7},{width:10},{width:12.2},{width:14.2}];
+    var NAVY="FF0A1628";
+    var STATUS_BG={"ESTABLE":null,"DELICADO":"FFFFF2CC","GRAVE":"FFFDE8E8","ALTA":"FFE8F4FD","DEFUNCIÓN":"FFE8E8E8"};
+    var STATUS_FG={"ESTABLE":"FF1F7A3E","DELICADO":"FF7D5A00","GRAVE":"FF8B0000","ALTA":"FF1A5276","DEFUNCIÓN":"FF555555"};
+    function brd(cell){cell.border={top:{style:"thin",color:{argb:"FFD0D0D0"}},left:{style:"thin",color:{argb:"FFD0D0D0"}},bottom:{style:"thin",color:{argb:"FFD0D0D0"}},right:{style:"thin",color:{argb:"FFD0D0D0"}}};}
+    ws.mergeCells("A1:L1");
+    var r1=ws.getRow(1);r1.height=21.75;
+    var c1=ws.getCell("A1");c1.value="CIRUGIA GENERAL";c1.font={name:"Helvetica Neue",size:20,bold:true};c1.alignment={horizontal:"center",vertical:"middle"};
+    ws.mergeCells("A2:L2");
+    var r2=ws.getRow(2);r2.height=20.25;
+    var c2=ws.getCell("A2");c2.value=gi.fecha||"";c2.font={name:"Helvetica Neue",size:11};c2.alignment={horizontal:"center",vertical:"middle"};
+    var hdr=["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"];
+    var r3=ws.getRow(3);r3.height=16.5;
+    hdr.forEach(function(h,i){var cell=r3.getCell(i+1);cell.value=h;cell.font={name:"Helvetica Neue",size:9};cell.alignment={horizontal:"center",vertical:"middle"};brd(cell);});
+    sorted.forEach(function(p,idx){
+      var rowNum=4+idx;var row=ws.getRow(rowNum);row.height=30;
+      var days=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
+      var estado=(p.estado||"").trim().toUpperCase();
+      var statusBg=STATUS_BG[estado];var rowBg=statusBg||(idx%2===0?"FFFFFFFF":"FFF5F5F5");
+      var vals=["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",p.ingreso||"",Number.isFinite(days)?days:"",p.estado||""];
+      var aligns=["center","center","center","left","center","left","center","center","center","center","center","center"];
+      vals.forEach(function(v,ci){
+        var cell=row.getCell(ci+1);cell.value=v;
+        cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:rowBg}};
+        cell.font={name:"Helvetica Neue",size:9,bold:ci===11,color:{argb:ci===11?(STATUS_FG[estado]||"FF374151"):"FF000000"}};
+        cell.alignment={horizontal:aligns[ci],vertical:"top",wrapText:ci===5};
+        brd(cell);
+      });
     });
-  });
+    return wb.xlsx.writeBuffer();
+  }
 
-  // ── Write & download ─────────────────────────────────────────────────
-  wb.xlsx.writeBuffer().then(function(buffer){
-    var blob=new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement("a");
-    a.href=url; a.download="Censo_HGL_"+(gi.fecha||"").replace(/\//g,"-")+".xlsx";
-    a.click(); URL.revokeObjectURL(url);
-  });
+  function doSheetJS(){
+    if(!window.XLSX){alert("Librería cargando, espera un momento.");return;}
+    const wb2=XLSX.utils.book_new();
+    const rows=[["CIRUGIA GENERAL"],[gi.fecha||""],["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"]];
+    sorted.forEach(function(p){var d=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";rows.push(["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",p.ingreso||"",Number.isFinite(d)?d:"",p.estado||""]);});
+    const ws2=XLSX.utils.aoa_to_sheet(rows);
+    ws2["!cols"]=[{wch:3},{wch:8},{wch:11},{wch:36},{wch:8},{wch:78},{wch:12},{wch:18},{wch:23},{wch:10},{wch:12},{wch:14}];
+    ws2["!merges"]=[{s:{r:0,c:0},e:{r:0,c:11}},{s:{r:1,c:0},e:{r:1,c:11}}];
+    XLSX.utils.book_append_sheet(wb2,ws2,"Hoja1");
+    XLSX.writeFile(wb2,"Censo_HGL_"+(gi.fecha||"hoy").replace(/\//g,"-")+".xlsx");
+  }
+
+  var fname="Censo_HGL_"+(gi.fecha||"hoy").replace(/\//g,"-")+".xlsx";
+  if(window.ExcelJS){
+    doExcelJS().then(function(buffer){
+      var blob=new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      var url=URL.createObjectURL(blob);var a=document.createElement("a");
+      a.href=url;a.download=fname;a.click();URL.revokeObjectURL(url);
+    }).catch(function(err){
+      console.warn("ExcelJS error:",err);doSheetJS();
+    });
+  } else {
+    doSheetJS();
+  }
 }
 
 
