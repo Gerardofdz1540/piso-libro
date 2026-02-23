@@ -326,7 +326,7 @@ select.modal-input{background:#fff}
 
 <!-- HEADER -->
 <div id="header">
-  <div id="quote-bar" id="quote-bar">“El cuidado del paciente es la única razón por la que estamos aquí.”
+  <div id="quote-bar">“El cuidado del paciente es la única razón por la que estamos aquí.”
   </div>
   <div id="header-inner">
     <div id="header-top">
@@ -1135,6 +1135,7 @@ function quitarFiltrosCenso(){selectedResidente="ALL";selectedAdscrito="ALL";ren
 
 // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
 function renderPiso(pts){
+  renderDupBanner(detectDuplicateBeds(patients));
   let html = "";
   pts.forEach(p=>{
     const k = pid(p);
@@ -2089,7 +2090,9 @@ function updateExtraLab(k, fecha, idx, field, value){
 function toggleEl(id){
   const el=document.getElementById(id); if(!el) return;
   const open = el.style.display!=="none";
-  el.style.display = open?"none":"block";
+  // Si el contenedor tiene grid-template-columns en su style, restaurar como grid (lab groups)
+  const displayType = el.style.gridTemplateColumns ? "grid" : "block";
+  el.style.display = open ? "none" : displayType;
   const arrow=document.getElementById(id+"-arrow");
   if(arrow) arrow.textContent = open?"▶":"▼";
 }
@@ -3695,6 +3698,11 @@ function saveModal(){
   const exp = document.getElementById("mf-exp").value.trim();
   const nombre = document.getElementById("mf-nombre").value.trim().toUpperCase();
   if(!cama||!exp||!nombre){ alert("Cama, nombre y expediente son obligatorios"); return; }
+  // Validar formato fecha de ingreso (DD/MM/AA o DD/MM/AAAA)
+  const ingresoVal = document.getElementById("mf-ingreso").value.trim();
+  if(ingresoVal && !parseDmy(ingresoVal)){
+    if(!confirm(`⚠️ La fecha de ingreso "${ingresoVal}" no parece válida (usa DD/MM/AA).\n\n¿Continuar de todas formas?`)) return;
+  }
   var _ads_val = document.getElementById("mf-adscrito").value.trim()||document.getElementById("mf-adscrito-sel").value;
   var _res_val = document.getElementById("mf-residente").value.trim()||document.getElementById("mf-residente-sel").value;
   const p = {
@@ -4379,6 +4387,33 @@ function saveSyscfg(){
 function toggleSyscfgPass(){
   const el = document.getElementById("syscfg-pass");
   el.type = el.type==="password" ? "text" : "password";
+}
+
+// ─── DETECT DUPLICATE BEDS ───────────────────────────────────────────────────────
+function detectDuplicateBeds(pts){
+  const bedCount = {};
+  pts.forEach(p => {
+    if(!bedCount[p.cama]) bedCount[p.cama] = [];
+    bedCount[p.cama].push(p);
+  });
+  return Object.entries(bedCount)
+    .filter(([,list]) => list.length > 1)
+    .map(([cama, list]) => ({ cama, patients: list }));
+}
+
+function renderDupBanner(duplicates){
+  const existing = document.getElementById("dup-bed-banner");
+  if(existing) existing.remove();
+  if(!duplicates || duplicates.length === 0) return;
+  const names = duplicates.map(d =>
+    `<b>${d.cama}</b>: ${d.patients.map(p => p.nombre).join(" / ")}`
+  ).join(" &nbsp;·&nbsp; ");
+  const banner = document.createElement("div");
+  banner.id = "dup-bed-banner";
+  banner.style.cssText = "background:#dc2626;color:#fff;padding:8px 16px;border-radius:8px;margin-bottom:10px;font-size:12px;display:flex;align-items:center;gap:10px;font-weight:600;";
+  banner.innerHTML = `<span style="font-size:18px">🔴</span><div><strong>CAMAS DUPLICADAS DETECTADAS</strong> &mdash; Verificar urgente: ${names}</div>`;
+  const filterbar = document.getElementById("filterbar");
+  if(filterbar) filterbar.parentNode.insertBefore(banner, filterbar);
 }
 
 // ─── START ───────────────────────────────────────────────────────────────────────
