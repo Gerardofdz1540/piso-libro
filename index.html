@@ -2288,83 +2288,409 @@ function renderCensus(pts){
 // ─── PRINT / ENTREGA VIEW ─────────────────────────────────────────────────────────
 function renderPrint(pts){
   const gi = getGuardInfo();
-  // All patients sorted by bed
-  const sorted=[...pts].sort(function(a,b){
-    var am=String(a.cama||"").match(/^(\d+)-(\d+)$/);
-    var bm=String(b.cama||"").match(/^(\d+)-(\d+)$/);
-    if(am&&bm)return(parseInt(am[1])*1000+parseInt(am[2]))-(parseInt(bm[1])*1000+parseInt(bm[2]));
-    return String(a.cama||"").localeCompare(String(b.cama||""));
-  });
 
-  function pf(label,v){
-    if(!v||!String(v).trim()) return "";
-    return `<div class="pf-row"><span class="pf-label">${esc(label)}</span><span class="pf-val">${esc(String(v))}</span></div>`;
+  // Secciones para agrupar
+  const PR_SECTIONS = [
+    {id:"piso3",   label:"🏥 PISO 3",              color:"#0a1628", border:"#1a3a6b"},
+    {id:"uci",     label:"🚨 UCI",                  color:"#7b0000", border:"#b91c1c"},
+    {id:"otro_piso",label:"🏨 OTRO PISO",           color:"#2d6a4f", border:"#059669"},
+    {id:"pediatria",label:"👶 PEDIATRÍA",           color:"#0077b6", border:"#0ea5e9"},
+    {id:"procedimientos",label:"🔬 PROCEDIMIENTOS", color:"#4a3580", border:"#7c3aed"},
+    {id:"altas",   label:"✅ ALTAS",                color:"#27ae60", border:"#34d399"},
+    {id:"defunciones",label:"🕊 DEFUNCIONES",       color:"#555",    border:"#9ca3af"},
+    {id:"otros",   label:"📋 OTROS",                color:"#888",    border:"#d1d5db"},
+  ];
+  function prGetSection(p){
+    const estado = String(p.estado||"").trim().toUpperCase();
+    if(estado === "ALTA") return "altas";
+    if(estado === "DEFUNCIÓN" || estado === "DEFUNCION") return "defunciones";
+    const s = String(p.cama||"").trim().toUpperCase();
+    if(/^3-\d+$/.test(s)) return "piso3";
+    if(/^UCI/i.test(s)) return "uci";
+    if(/^(RECU|RECUP|ENDOS|PROC|CIRUG|ENDOSC)/i.test(s)) return "procedimientos";
+    if(/^(ALTA|EGRESO)/i.test(s)) return "altas";
+    if(/^(DEF|FALLEC|OBITO)/i.test(s)) return "defunciones";
+    if(/^PEDI/i.test(s)) return "pediatria";
+    if(/^\d+-\d+$/.test(s)) return "otro_piso";
+    return "otros";
   }
-  function pfHighlight(label,v){
-    if(!v||!String(v).trim()) return "";
-    return `<div class="pf-row pf-highlight"><span class="pf-label">${esc(label)}</span><span class="pf-val">${esc(String(v))}</span></div>`;
+  function prBedSort(cama){
+    const s = String(cama||"");
+    const m = s.match(/^(\d+)-(\d+)$/); if(m) return parseInt(m[1])*10000+parseInt(m[2]);
+    const u = s.match(/^UCI\s*(\d+)$/i); if(u) return parseInt(u[1]);
+    return 9999;
   }
 
-  let cards="";
-  sorted.forEach(p=>{
-    const nd=noteData[pid(p)]||defaultData();
-    const days=daysSince(p.ingreso);
-    const ec=ESP_COLORS[p.esp]||"#1a3a6b";
-    const sc=ESTADO_COLORS[p.estado]||"#95a5a6";
-    const snap=(nd.labHistory||[]).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
-    const labs=snap?snap.labs||{}:{};
-    const labStr=["hb","leucos","plaq","cr","na","k","alb","pcr","pct","inr"].filter(k=>labs[k]).map(k=>k.toUpperCase()+": "+labs[k]).join(" | ");
-    const labDate=snap?" ("+fmtDateChip(snap.fecha)+")":"";
-    cards+=`<div class="pf-card">
-      <div class="pf-header" style="background:${ec}">
-        <div>
-          <span class="pf-cama">Cama ${esc(p.cama)}</span>
-          <span class="pf-nombre">${esc(p.nombre)}</span>
-          <span style="opacity:.8;font-size:10px"> · ${p.edad||"—"}a · ${esc(p.esp)} · Día ${days} · ${esc(p.adscrito||"")}/${esc(p.residente||"")}</span>
+  const bySection = {};
+  pts.forEach(p=>{ const sid=prGetSection(p); if(!bySection[sid]) bySection[sid]=[]; bySection[sid].push(p); });
+
+  function mkField(icon,label,v){
+    if(!v||!String(v).trim()) return "";
+    return `<div class="eg-field"><div class="eg-field-label">${icon} ${esc(label)}</div><div class="eg-field-val">${esc(String(v))}</div></div>`;
+  }
+  function mkFieldHighlight(icon,label,v){
+    if(!v||!String(v).trim()) return "";
+    return `<div class="eg-field eg-field-hl"><div class="eg-field-label">${icon} ${esc(label)}</div><div class="eg-field-val">${esc(String(v))}</div></div>`;
+  }
+  function mkFieldFull(icon,label,v){
+    if(!v||!String(v).trim()) return "";
+    return `<div class="eg-field eg-field-full"><div class="eg-field-label">${icon} ${esc(label)}</div><div class="eg-field-val">${esc(String(v))}</div></div>`;
+  }
+
+  let totalPx = 0;
+  let sectionsHtml = "";
+
+  PR_SECTIONS.forEach(sec=>{
+    const grp = bySection[sec.id];
+    if(!grp || grp.length === 0) return;
+    const sorted = [...grp].sort((a,b)=> prBedSort(a.cama) - prBedSort(b.cama));
+    totalPx += sorted.length;
+
+    let cards = "";
+    sorted.forEach(p=>{
+      const nd = noteData[pid(p)]||defaultData();
+      const days = daysSince(p.ingreso);
+      const ec = ESP_COLORS[p.esp]||"#1a3a6b";
+      const sc = ESTADO_COLORS[p.estado]||"#95a5a6";
+      const snap = (nd.labHistory||[]).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+      const labs = snap?snap.labs||{}:{};
+      const labStr = ["hb","leucos","plaq","cr","na","k","alb","pcr","pct","inr"].filter(k=>labs[k]).map(k=>`<span class="eg-lab-chip">${k.toUpperCase()}: <b>${labs[k]}</b></span>`).join("");
+      const labDate = snap?" · "+fmtDateChip(snap.fecha):"";
+
+      const pk = pid(p);
+      cards += `<div class="eg-card" style="border-left:4px solid ${ec}">
+        <div class="eg-card-top">
+          <div class="eg-card-id">
+            <span class="eg-cama" style="background:${ec}">🛏 ${esc(p.cama)}</span>
+            <span class="eg-estado" style="background:${sc}">${esc(p.estado||"ESTABLE")}</span>
+            <span class="eg-esp">${esc(p.esp)}</span>
+            <span class="eg-dia">Día ${days}</span>
+          </div>
+          <div class="eg-card-patient">
+            <span class="eg-nombre">${esc(p.nombre)}</span>
+            <span class="eg-meta">${p.edad||"—"} años · Exp: ${esc(p.exp||"—")} · ${esc(p.adscrito||"")} / ${esc(p.residente||"")}</span>
+          </div>
         </div>
-        <span class="pf-estado-badge" style="background:${sc}">${esc(p.estado||"")}</span>
-      </div>
-      <div class="pf-body">
-        ${pf("DX",p.dx||nd.dx)}
-        ${pf("APP",nd.app)}
-        ${pf("PA",nd.pa)}
-        ${pf("Procedimiento",nd.qx||nd.manejo)}
-        ${pf("Sangrado",nd.sangrado)}
-        ${pf("Drenajes",nd.drenajes)}
-        ${pfHighlight("Pendientes / Plan",nd.pendientes)}
-        ${labStr?`<div class="pf-row pf-labs"><span class="pf-label">🧪 Labs${labDate}</span><span class="pf-val" style="font-size:10px">${labStr}</span></div>`:""}
-      </div>
-    </div>`;
+        <div class="eg-card-body">
+          ${mkFieldFull("📋","Diagnóstico",p.dx||nd.dx)}
+          <div class="eg-row-2">
+            ${mkField("🩺","APP",nd.app)}
+            ${mkField("💊","PA",nd.pa)}
+          </div>
+          ${mkFieldFull("🔪","Procedimiento",nd.qx||nd.manejo)}
+          <div class="eg-row-2">
+            ${mkField("🩸","Sangrado",nd.sangrado)}
+            ${mkField("💧","Drenajes",nd.drenajes)}
+          </div>
+          ${mkFieldHighlight("📌","Plan / Pendientes",nd.pendientes)}
+          ${labStr?`<div class="eg-labs-row"><span class="eg-labs-title">🧪 Labs${labDate}</span><div class="eg-labs-chips">${labStr}</div></div>`:""}
+        </div>
+        <div class="eg-card-actions no-print">
+          <button class="eg-note-btn" onclick="openNoteModal('${pk}','prequirurgica')">📝 Nota PreQx</button>
+          <button class="eg-note-btn" onclick="openNoteModal('${pk}','postquirurgica')">📋 Nota PostQx</button>
+          <button class="eg-note-btn eg-note-btn-med" onclick="openNoteModal('${pk}','medica')">🩺 Nota Médica</button>
+        </div>
+      </div>`;
+    });
+
+    sectionsHtml += `
+      <div class="eg-section">
+        <div class="eg-section-header" style="background:${sec.color}">
+          <span>${sec.label}</span>
+          <span class="eg-section-count">${sorted.length} paciente${sorted.length!==1?"s":""}</span>
+        </div>
+        <div class="eg-section-cards">${cards}</div>
+      </div>`;
   });
 
   document.getElementById("view-print").innerHTML=`
-  <div style="max-width:1200px;margin:0 auto;padding:16px">
-    <div style="text-align:center;margin-bottom:16px;border-bottom:2px solid #1a3a6b;padding-bottom:12px">
-      <div style="font-size:13px;font-weight:700;color:#1a3a6b;letter-spacing:2px">HOSPITAL GENERAL DE LEÓN</div>
-      <div style="font-size:18px;font-weight:800;color:#0a1628">ENTREGA DE GUARDIA — CIRUGÍA GENERAL</div>
-      <div style="font-size:11px;color:#555;margin-top:4px">
-        Fecha: ${esc(gi.fecha)} &nbsp;|&nbsp; Entrega: Dr. ${esc(gi.entrega)} &nbsp;|&nbsp; Recibe: Dr. ${esc(gi.recibe)} &nbsp;|&nbsp; ${sorted.length} pacientes
+  <div class="eg-wrap">
+    <style>
+      .eg-wrap{max-width:1200px;margin:0 auto;padding:16px}
+      .eg-header{text-align:center;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid #0a1628;background:linear-gradient(180deg,#f8fafc,#fff);border-radius:8px 8px 0 0;padding:16px}
+      .eg-header-hospital{font-size:13px;font-weight:700;color:#1a3a6b;letter-spacing:3px;text-transform:uppercase}
+      .eg-header-title{font-size:20px;font-weight:800;color:#0a1628;margin:4px 0}
+      .eg-header-meta{font-size:12px;color:#64748b;display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+      .eg-header-meta span{display:inline-flex;align-items:center;gap:4px}
+      .eg-header-meta b{color:#1e293b}
+      .eg-section{margin-bottom:20px;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+      .eg-section-header{color:#fff;padding:8px 16px;font-size:13px;font-weight:700;letter-spacing:.5px;display:flex;justify-content:space-between;align-items:center}
+      .eg-section-count{opacity:.8;font-weight:400;font-size:11px}
+      .eg-section-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:10px;padding:12px;background:#f8fafc}
+      .eg-card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);break-inside:avoid;border:1px solid #e2e8f0}
+      .eg-card-top{padding:8px 12px;background:#fafbfc;border-bottom:1px solid #f1f5f9}
+      .eg-card-id{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+      .eg-cama{color:#fff;padding:2px 8px;border-radius:5px;font-size:12px;font-weight:800}
+      .eg-estado{color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+      .eg-esp{font-size:10px;font-weight:700;color:#64748b;background:#f1f5f9;padding:2px 6px;border-radius:4px}
+      .eg-dia{font-size:10px;color:#94a3b8;font-weight:600}
+      .eg-card-patient{margin-top:2px}
+      .eg-nombre{font-size:13px;font-weight:700;color:#0f172a;display:block}
+      .eg-meta{font-size:10px;color:#64748b}
+      .eg-card-body{padding:8px 12px}
+      .eg-field{margin-bottom:5px}
+      .eg-field-label{font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px}
+      .eg-field-val{font-size:11px;color:#1e293b;line-height:1.5;padding:2px 0}
+      .eg-field-hl{background:#fffbeb;border-left:3px solid #f59e0b;padding:4px 8px;border-radius:0 6px 6px 0;margin:6px 0}
+      .eg-field-hl .eg-field-label{color:#b45309}
+      .eg-field-hl .eg-field-val{color:#92400e;font-weight:600}
+      .eg-field-full{grid-column:span 2}
+      .eg-row-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      .eg-labs-row{margin-top:6px;padding-top:6px;border-top:1px dashed #e2e8f0}
+      .eg-labs-title{font-size:10px;font-weight:700;color:#0e7490;display:block;margin-bottom:3px}
+      .eg-labs-chips{display:flex;gap:4px;flex-wrap:wrap}
+      .eg-lab-chip{background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px;padding:1px 6px;font-size:10px;color:#0369a1}
+      .eg-lab-chip b{color:#0c4a6e}
+      .eg-card-actions{display:flex;gap:6px;padding:6px 12px;background:#f8fafc;border-top:1px solid #f1f5f9;flex-wrap:wrap}
+      .eg-note-btn{background:#fff;border:1px solid #d1d5db;border-radius:5px;padding:3px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;color:#475569;transition:all .15s}
+      .eg-note-btn:hover{background:#f1f5f9;border-color:#94a3b8}
+      .eg-note-btn-med{border-color:#7c3aed;color:#7c3aed}
+      .eg-note-btn-med:hover{background:#faf5ff}
+      @media print{
+        .eg-card-actions,.no-print{display:none !important}
+        .eg-section-cards{padding:6px}
+        .eg-card{box-shadow:none;break-inside:avoid}
+      }
+      @media(max-width:640px){
+        .eg-section-cards{grid-template-columns:1fr}
+        .eg-row-2{grid-template-columns:1fr}
+      }
+    </style>
+    <div class="eg-header">
+      <div class="eg-header-hospital">HOSPITAL GENERAL DE LEÓN</div>
+      <div class="eg-header-title">ENTREGA DE GUARDIA — CIRUGÍA GENERAL</div>
+      <div class="eg-header-meta">
+        <span>📅 <b>${esc(gi.fecha)}</b></span>
+        <span>🔵 Entrega: <b>Dr. ${esc(gi.entrega)}</b></span>
+        <span>🟢 Recibe: <b>Dr. ${esc(gi.recibe)}</b></span>
+        <span>👥 <b>${totalPx} pacientes</b></span>
       </div>
     </div>
-    <style>
-      .pf-card{border:1px solid #dde3ed;border-radius:8px;overflow:hidden;margin-bottom:10px;break-inside:avoid}
-      .pf-header{color:#fff;padding:7px 12px;display:flex;justify-content:space-between;align-items:center}
-      .pf-cama{font-size:13px;font-weight:800;margin-right:10px}
-      .pf-nombre{font-size:13px;font-weight:700}
-      .pf-estado-badge{font-size:10px;font-weight:700;padding:2px 10px;border-radius:20px;color:#fff}
-      .pf-body{padding:6px 10px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;background:#fff}
-      .pf-row{display:contents}
-      .pf-label{font-size:10px;font-weight:700;color:#475569;padding:3px 0;white-space:nowrap}
-      .pf-val{font-size:11px;color:#1e293b;padding:3px 0;border-bottom:1px solid #f1f5f9}
-      .pf-highlight .pf-label{color:#b45309}
-      .pf-highlight .pf-val{color:#92400e;font-weight:600}
-      .pf-labs .pf-label{color:#0e7490}
-      @media print{.pf-card{break-inside:avoid}}
-    </style>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));gap:10px">
-      ${cards}
+    ${sectionsHtml}
+  </div>`;
+}
+
+// ─── NOTAS MÉDICAS (PLANTILLAS) ─────────────────────────────────────────────────
+const NOTE_TEMPLATES = {
+  prequirurgica: {
+    title: "📝 NOTA PREQUIRÚRGICA",
+    fields: [
+      {id:"npreq_fecha",label:"Fecha y hora",val:"",type:"text"},
+      {id:"npreq_nombre",label:"Nombre del paciente",val:"",type:"text"},
+      {id:"npreq_edad",label:"Edad",val:"",type:"text"},
+      {id:"npreq_exp",label:"No. Expediente",val:"",type:"text"},
+      {id:"npreq_cama",label:"Cama",val:"",type:"text"},
+      {id:"npreq_dx_pre",label:"Diagnóstico preoperatorio",val:"",type:"textarea"},
+      {id:"npreq_plan_qx",label:"Procedimiento quirúrgico planeado",val:"",type:"textarea"},
+      {id:"npreq_riesgo",label:"Riesgo quirúrgico (ASA)",val:"",type:"select",opts:["ASA I","ASA II","ASA III","ASA IV","ASA V","ASA VI"]},
+      {id:"npreq_app",label:"Antecedentes personales patológicos",val:"",type:"textarea"},
+      {id:"npreq_alergias",label:"Alergias",val:"",type:"text"},
+      {id:"npreq_medicamentos",label:"Medicamentos actuales",val:"",type:"textarea"},
+      {id:"npreq_labs",label:"Laboratorios relevantes",val:"",type:"textarea"},
+      {id:"npreq_imagen",label:"Estudios de imagen relevantes",val:"",type:"textarea"},
+      {id:"npreq_grupo_rh",label:"Grupo y Rh",val:"",type:"text"},
+      {id:"npreq_reserva",label:"Reserva de hemoderivados",val:"",type:"text"},
+      {id:"npreq_ayuno",label:"Tiempo de ayuno",val:"",type:"text"},
+      {id:"npreq_consentimiento",label:"Consentimiento informado",val:"Firmado",type:"select",opts:["Firmado","Pendiente"]},
+      {id:"npreq_profilaxis",label:"Profilaxis antibiótica",val:"",type:"text"},
+      {id:"npreq_tromboprofilaxis",label:"Tromboprofilaxis",val:"",type:"text"},
+      {id:"npreq_plan",label:"Plan quirúrgico detallado",val:"",type:"textarea"},
+      {id:"npreq_medico",label:"Médico que elabora",val:"",type:"text"},
+    ]
+  },
+  postquirurgica: {
+    title: "📋 NOTA POSTQUIRÚRGICA",
+    fields: [
+      {id:"npostq_fecha",label:"Fecha y hora",val:"",type:"text"},
+      {id:"npostq_nombre",label:"Nombre del paciente",val:"",type:"text"},
+      {id:"npostq_edad",label:"Edad",val:"",type:"text"},
+      {id:"npostq_exp",label:"No. Expediente",val:"",type:"text"},
+      {id:"npostq_cama",label:"Cama",val:"",type:"text"},
+      {id:"npostq_dx_pre",label:"Diagnóstico preoperatorio",val:"",type:"textarea"},
+      {id:"npostq_dx_post",label:"Diagnóstico postoperatorio",val:"",type:"textarea"},
+      {id:"npostq_procedimiento",label:"Procedimiento realizado",val:"",type:"textarea"},
+      {id:"npostq_hallazgos",label:"Hallazgos transoperatorios",val:"",type:"textarea"},
+      {id:"npostq_cirujano",label:"Cirujano",val:"",type:"text"},
+      {id:"npostq_ayudante",label:"Primer ayudante",val:"",type:"text"},
+      {id:"npostq_anestesiologo",label:"Anestesiólogo",val:"",type:"text"},
+      {id:"npostq_tipo_anestesia",label:"Tipo de anestesia",val:"",type:"select",opts:["General balanceada","Regional (bloqueo)","Sedación","Local","Neuroaxial"]},
+      {id:"npostq_inicio",label:"Hora de inicio",val:"",type:"text"},
+      {id:"npostq_termino",label:"Hora de término",val:"",type:"text"},
+      {id:"npostq_tiempo_qx",label:"Tiempo quirúrgico",val:"",type:"text"},
+      {id:"npostq_sangrado",label:"Sangrado estimado (mL)",val:"",type:"text"},
+      {id:"npostq_cristaloides",label:"Cristaloides (mL)",val:"",type:"text"},
+      {id:"npostq_coloides",label:"Coloides / hemoderivados",val:"",type:"text"},
+      {id:"npostq_uresis",label:"Uresis transoperatoria",val:"",type:"text"},
+      {id:"npostq_drenajes",label:"Drenajes colocados",val:"",type:"textarea"},
+      {id:"npostq_material",label:"Material de sutura / implantes",val:"",type:"textarea"},
+      {id:"npostq_pieza",label:"Pieza quirúrgica / envío a patología",val:"",type:"text"},
+      {id:"npostq_complicaciones",label:"Complicaciones transoperatorias",val:"Ninguna",type:"text"},
+      {id:"npostq_conteo",label:"Conteo de material completo",val:"Sí",type:"select",opts:["Sí","No","Pendiente"]},
+      {id:"npostq_estado_post",label:"Estado postquirúrgico inmediato",val:"",type:"textarea"},
+      {id:"npostq_indicaciones",label:"Indicaciones postquirúrgicas",val:"",type:"textarea"},
+      {id:"npostq_pronostico",label:"Pronóstico",val:"",type:"select",opts:["Bueno para la vida, reservado para la función","Bueno para la vida y la función","Reservado para la vida y la función","Malo para la vida y la función"]},
+      {id:"npostq_medico",label:"Médico que elabora",val:"",type:"text"},
+    ]
+  },
+  medica: {
+    title: "🩺 NOTA MÉDICA / EVOLUCIÓN",
+    fields: [
+      {id:"nmed_fecha",label:"Fecha y hora",val:"",type:"text"},
+      {id:"nmed_nombre",label:"Nombre del paciente",val:"",type:"text"},
+      {id:"nmed_edad",label:"Edad",val:"",type:"text"},
+      {id:"nmed_exp",label:"No. Expediente",val:"",type:"text"},
+      {id:"nmed_cama",label:"Cama",val:"",type:"text"},
+      {id:"nmed_dia",label:"Día de estancia / PO",val:"",type:"text"},
+      {id:"nmed_subjetivo",label:"Subjetivo (síntomas referidos)",val:"",type:"textarea"},
+      {id:"nmed_sv",label:"Signos vitales",val:"TA: / FC: FR: Temp: SpO2:",type:"textarea"},
+      {id:"nmed_ef",label:"Exploración física",val:"Neurológico: \nCardiopulmonar: \nAbdomen: \nExtremidades: \nHerida quirúrgica: \nDrenajes: ",type:"textarea"},
+      {id:"nmed_labs",label:"Paraclínicos relevantes",val:"",type:"textarea"},
+      {id:"nmed_imagen",label:"Estudios de imagen",val:"",type:"textarea"},
+      {id:"nmed_balance",label:"Balance hídrico",val:"Ingresos: \nEgresos: \nBalance: ",type:"textarea"},
+      {id:"nmed_analisis",label:"Análisis / Valoración",val:"",type:"textarea"},
+      {id:"nmed_plan",label:"Plan",val:"",type:"textarea"},
+      {id:"nmed_indicaciones",label:"Indicaciones",val:"1. Dieta: \n2. Soluciones: \n3. Medicamentos: \n4. Cuidados: \n5. Laboratorios: \n6. Especiales: ",type:"textarea"},
+      {id:"nmed_medico",label:"Médico que elabora",val:"",type:"text"},
+    ]
+  }
+};
+
+function openNoteModal(patKey, noteType){
+  const p = patients.find(x=>pid(x)===patKey);
+  const nd = noteData[patKey]||defaultData();
+  const tmpl = NOTE_TEMPLATES[noteType];
+  if(!tmpl || !p) return;
+
+  const now = new Date();
+  const fechaStr = now.toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"numeric"})+" "+now.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+
+  let fieldsHtml = "";
+  tmpl.fields.forEach(f=>{
+    let val = f.val||"";
+    // Auto-fill from patient data
+    if(f.id.endsWith("_fecha")) val = fechaStr;
+    if(f.id.endsWith("_nombre")) val = p.nombre||"";
+    if(f.id.endsWith("_edad")) val = (p.edad||"")+" años";
+    if(f.id.endsWith("_exp")) val = p.exp||"";
+    if(f.id.endsWith("_cama")) val = p.cama||"";
+    if(f.id.endsWith("_app") && nd.app) val = nd.app;
+    if(f.id.endsWith("_dx_pre") && (p.dx||nd.dx)) val = p.dx||nd.dx;
+    if(f.id.endsWith("_dx_post") && (p.dx||nd.dx)) val = p.dx||nd.dx;
+    if(f.id.endsWith("_sangrado") && nd.sangrado) val = nd.sangrado;
+    if(f.id.endsWith("_drenajes") && nd.drenajes) val = nd.drenajes;
+
+    if(f.type==="select"){
+      const opts = (f.opts||[]).map(o=>`<option value="${esc(o)}"${o===val?" selected":""}>${esc(o)}</option>`).join("");
+      fieldsHtml += `<div class="nm-field ${f.type==='textarea'?'nm-field-full':''}">
+        <label class="nm-label">${esc(f.label)}</label>
+        <select class="nm-input nm-select" data-nf="${f.id}">${opts}</select>
+      </div>`;
+    } else if(f.type==="textarea"){
+      fieldsHtml += `<div class="nm-field nm-field-full">
+        <label class="nm-label">${esc(f.label)}</label>
+        <textarea class="nm-input nm-ta" data-nf="${f.id}" rows="3">${esc(val)}</textarea>
+      </div>`;
+    } else {
+      fieldsHtml += `<div class="nm-field">
+        <label class="nm-label">${esc(f.label)}</label>
+        <input class="nm-input" data-nf="${f.id}" value="${esc(val)}"/>
+      </div>`;
+    }
+  });
+
+  const modalHtml = `
+  <div class="nm-overlay" id="note-modal-overlay" onclick="if(event.target===this)closeNoteModal()">
+    <div class="nm-modal">
+      <div class="nm-header">
+        <div>
+          <div class="nm-title">${tmpl.title}</div>
+          <div class="nm-subtitle">${esc(p.nombre)} · Cama ${esc(p.cama)}</div>
+        </div>
+        <button class="nm-close" onclick="closeNoteModal()">✕</button>
+      </div>
+      <div class="nm-body" id="nm-fields-container">
+        ${fieldsHtml}
+      </div>
+      <div class="nm-footer">
+        <button class="nm-btn nm-btn-copy" onclick="copyNoteToClipboard()">📋 Copiar al portapapeles</button>
+        <button class="nm-btn nm-btn-print" onclick="printNote()">🖨 Imprimir</button>
+        <button class="nm-btn nm-btn-close" onclick="closeNoteModal()">Cerrar</button>
+      </div>
     </div>
   </div>`;
+
+  // Inject styles if not already
+  if(!document.getElementById("nm-styles")){
+    const styleEl = document.createElement("style");
+    styleEl.id = "nm-styles";
+    styleEl.textContent = `
+      .nm-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
+      .nm-modal{background:#fff;border-radius:12px;width:100%;max-width:800px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+      .nm-header{background:linear-gradient(135deg,#0a1628,#1a3a6b);color:#fff;padding:14px 20px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center}
+      .nm-title{font-size:16px;font-weight:800}
+      .nm-subtitle{font-size:11px;opacity:.8;margin-top:2px}
+      .nm-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px}
+      .nm-body{padding:16px 20px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      .nm-field{display:flex;flex-direction:column}
+      .nm-field-full{grid-column:span 2}
+      .nm-label{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px}
+      .nm-input{border:1px solid #d1d5db;border-radius:6px;padding:6px 10px;font-size:12px;font-family:inherit;color:#1e293b;outline:none;transition:border-color .15s}
+      .nm-input:focus{border-color:#4fc3f7}
+      .nm-ta{resize:vertical;min-height:60px;line-height:1.5}
+      .nm-select{background:#fff;cursor:pointer}
+      .nm-footer{padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end}
+      .nm-btn{padding:7px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:filter .15s}
+      .nm-btn:hover{filter:brightness(.95)}
+      .nm-btn-copy{background:#0e7490;color:#fff}
+      .nm-btn-print{background:#7c3aed;color:#fff}
+      .nm-btn-close{background:#f1f5f9;color:#475569;border:1px solid #d1d5db}
+      @media(max-width:640px){.nm-body{grid-template-columns:1fr} .nm-field-full{grid-column:span 1}}
+    `;
+    document.head.appendChild(styleEl);
+  }
+
+  // Remove existing modal if any
+  const existing = document.getElementById("note-modal-overlay");
+  if(existing) existing.remove();
+  document.body.insertAdjacentHTML("beforeend", modalHtml);
+}
+
+function closeNoteModal(){
+  const el = document.getElementById("note-modal-overlay");
+  if(el) el.remove();
+}
+
+function copyNoteToClipboard(){
+  const container = document.getElementById("nm-fields-container");
+  if(!container) return;
+  let text = "";
+  container.querySelectorAll("[data-nf]").forEach(el=>{
+    const label = el.closest(".nm-field").querySelector(".nm-label");
+    const lbl = label?label.textContent:"";
+    const val = el.value||"";
+    if(val.trim()) text += lbl.toUpperCase()+": "+val.trim()+"\n";
+  });
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn = container.closest(".nm-modal").querySelector(".nm-btn-copy");
+    if(btn){const orig=btn.textContent;btn.textContent="✅ Copiado!";setTimeout(()=>{btn.textContent=orig;},1500);}
+  }).catch(()=>alert("Error al copiar. Intenta de nuevo."));
+}
+
+function printNote(){
+  const container = document.getElementById("nm-fields-container");
+  if(!container) return;
+  const title = container.closest(".nm-modal").querySelector(".nm-title").textContent;
+  const subtitle = container.closest(".nm-modal").querySelector(".nm-subtitle").textContent;
+  let rows = "";
+  container.querySelectorAll("[data-nf]").forEach(el=>{
+    const label = el.closest(".nm-field").querySelector(".nm-label");
+    const lbl = label?label.textContent:"";
+    const val = (el.value||"").replace(/\n/g,"<br>");
+    if(val.trim()) rows += `<tr><td style="font-weight:700;color:#475569;font-size:11px;padding:4px 8px;vertical-align:top;width:180px;border-bottom:1px solid #f1f5f9">${lbl}</td><td style="font-size:12px;color:#1e293b;padding:4px 8px;border-bottom:1px solid #f1f5f9">${val}</td></tr>`;
+  });
+  const w = window.open("","_blank","width=800,height=600");
+  w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>body{font-family:-apple-system,sans-serif;padding:30px;color:#1e293b}h2{color:#0a1628;margin:0 0 4px}p{color:#64748b;font-size:12px;margin:0 0 16px}table{width:100%;border-collapse:collapse}</style></head><body><h2>${title}</h2><p>${subtitle}</p><table>${rows}</table><script>window.print();<\/script></body></html>`);
+  w.document.close();
 }
 
 // ─── MODAL ADD/EDIT ──────────────────────────────────────────────────────────────
@@ -2792,43 +3118,99 @@ function getGuardInfo(){
 }
 function exportToExcel(){
   const gi = getGuardInfo();
-  const sorted=[...patients].sort(function(a,b){
-    var am=String(a.cama||"").match(/^(\d+)-(\d+)$/);
-    var bm=String(b.cama||"").match(/^(\d+)-(\d+)$/);
-    if(am&&bm)return(parseInt(am[1])*1000+parseInt(am[2]))-(parseInt(bm[1])*1000+parseInt(bm[2]));
-    return String(a.cama||"").localeCompare(String(b.cama||""));
-  });
+
+  // ── Secciones para agrupar por piso (misma lógica que renderCensus) ──
+  const EX_SECTIONS = [
+    {id:"piso3",   label:"PISO 3 — CIRUGÍA GENERAL",   color:"FF0A1628"},
+    {id:"uci",     label:"UCI",                          color:"FF7B0000"},
+    {id:"otro_piso",label:"OTRO PISO",                   color:"FF2D6A4F"},
+    {id:"pediatria",label:"PEDIATRÍA",                   color:"FF0077B6"},
+    {id:"procedimientos",label:"PROCEDIMIENTOS / RECUPERACIÓN", color:"FF4A3580"},
+    {id:"altas",   label:"ALTAS",                        color:"FF27AE60"},
+    {id:"defunciones",label:"DEFUNCIONES",               color:"FF555555"},
+    {id:"otros",   label:"OTROS",                        color:"FF888888"},
+  ];
+  function exGetSection(p){
+    const estado = String(p.estado||"").trim().toUpperCase();
+    if(estado === "ALTA") return "altas";
+    if(estado === "DEFUNCIÓN" || estado === "DEFUNCION") return "defunciones";
+    const s = String(p.cama||"").trim().toUpperCase();
+    if(/^3-\d+$/.test(s)) return "piso3";
+    if(/^UCI/i.test(s)) return "uci";
+    if(/^(RECU|RECUP|ENDOS|PROC|CIRUG|ENDOSC)/i.test(s)) return "procedimientos";
+    if(/^(ALTA|EGRESO)/i.test(s)) return "altas";
+    if(/^(DEF|FALLEC|OBITO)/i.test(s)) return "defunciones";
+    if(/^PEDI/i.test(s)) return "pediatria";
+    if(/^\d+-\d+$/.test(s)) return "otro_piso";
+    return "otros";
+  }
+  function exBedSort(cama){
+    const s = String(cama||"");
+    const m = s.match(/^(\d+)-(\d+)$/); if(m) return parseInt(m[1])*10000 + parseInt(m[2]);
+    const u = s.match(/^UCI\s*(\d+)$/i); if(u) return parseInt(u[1]);
+    const n = s.match(/^(\d+)$/); if(n) return parseInt(n[1]);
+    return 9999;
+  }
+  // Agrupar
+  const bySection = {};
+  patients.forEach(p=>{ const sid = exGetSection(p); if(!bySection[sid]) bySection[sid]=[]; bySection[sid].push(p); });
 
   function doExcelJS(){
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Hoja1");
     ws.columns=[{width:3},{width:8},{width:11.2},{width:36.2},{width:8.2},{width:77.7},{width:11.7},{width:18.2},{width:22.7},{width:10},{width:12.2},{width:14.2}];
-    var NAVY="FF0A1628";
     var STATUS_BG={"ESTABLE":null,"DELICADO":"FFFFF2CC","GRAVE":"FFFDE8E8","ALTA":"FFE8F4FD","DEFUNCIÓN":"FFE8E8E8"};
     var STATUS_FG={"ESTABLE":"FF1F7A3E","DELICADO":"FF7D5A00","GRAVE":"FF8B0000","ALTA":"FF1A5276","DEFUNCIÓN":"FF555555"};
     function brd(cell){cell.border={top:{style:"thin",color:{argb:"FFD0D0D0"}},left:{style:"thin",color:{argb:"FFD0D0D0"}},bottom:{style:"thin",color:{argb:"FFD0D0D0"}},right:{style:"thin",color:{argb:"FFD0D0D0"}}};}
+
+    // Título
     ws.mergeCells("A1:L1");
     var r1=ws.getRow(1);r1.height=21.75;
     var c1=ws.getCell("A1");c1.value="CIRUGIA GENERAL";c1.font={name:"Helvetica Neue",size:20,bold:true};c1.alignment={horizontal:"center",vertical:"middle"};
     ws.mergeCells("A2:L2");
     var r2=ws.getRow(2);r2.height=20.25;
     var c2=ws.getCell("A2");c2.value=gi.fecha||"";c2.font={name:"Helvetica Neue",size:11};c2.alignment={horizontal:"center",vertical:"middle"};
+    // Header
     var hdr=["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"];
     var r3=ws.getRow(3);r3.height=16.5;
-    hdr.forEach(function(h,i){var cell=r3.getCell(i+1);cell.value=h;cell.font={name:"Helvetica Neue",size:9};cell.alignment={horizontal:"center",vertical:"middle"};brd(cell);});
-    sorted.forEach(function(p,idx){
-      var rowNum=4+idx;var row=ws.getRow(rowNum);row.height=30;
-      var days=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
-      var estado=(p.estado||"").trim().toUpperCase();
-      var statusBg=STATUS_BG[estado];var rowBg=statusBg||(idx%2===0?"FFFFFFFF":"FFF5F5F5");
-      var vals=["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",p.ingreso||"",Number.isFinite(days)?days:"",p.estado||""];
-      var aligns=["center","center","center","left","center","left","center","center","center","center","center","center"];
-      vals.forEach(function(v,ci){
-        var cell=row.getCell(ci+1);cell.value=v;
-        cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:rowBg}};
-        cell.font={name:"Helvetica Neue",size:9,bold:ci===11,color:{argb:ci===11?(STATUS_FG[estado]||"FF374151"):"FF000000"}};
-        cell.alignment={horizontal:aligns[ci],vertical:"top",wrapText:ci===5};
-        brd(cell);
+    hdr.forEach(function(h,i){var cell=r3.getCell(i+1);cell.value=h;cell.font={name:"Helvetica Neue",size:9,bold:true};cell.alignment={horizontal:"center",vertical:"middle"};cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFE2E8F0"}};brd(cell);});
+
+    var rowNum = 4;
+    var altIdx = 0;
+    EX_SECTIONS.forEach(function(sec){
+      var grp = bySection[sec.id];
+      if(!grp || grp.length === 0) return;
+      var sorted = [...grp].sort(function(a,b){ return exBedSort(a.cama) - exBedSort(b.cama); });
+
+      // Fila separadora de piso
+      ws.mergeCells("A"+rowNum+":L"+rowNum);
+      var secRow = ws.getRow(rowNum);
+      secRow.height = 20;
+      var secCell = ws.getCell("A"+rowNum);
+      secCell.value = sec.label + " (" + sorted.length + " pacientes)";
+      secCell.font = {name:"Helvetica Neue", size:11, bold:true, color:{argb:"FFFFFFFF"}};
+      secCell.alignment = {horizontal:"center", vertical:"middle"};
+      secCell.fill = {type:"pattern", pattern:"solid", fgColor:{argb:sec.color}};
+      for(var ci=1;ci<=12;ci++){ brd(ws.getRow(rowNum).getCell(ci)); }
+      rowNum++;
+      altIdx = 0;
+
+      sorted.forEach(function(p){
+        var row=ws.getRow(rowNum);row.height=30;
+        var days=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
+        var estado=(p.estado||"").trim().toUpperCase();
+        var statusBg=STATUS_BG[estado];var rowBg=statusBg||(altIdx%2===0?"FFFFFFFF":"FFF5F5F5");
+        var vals=["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",p.ingreso||"",Number.isFinite(days)?days:"",p.estado||""];
+        var aligns=["center","center","center","left","center","left","center","center","center","center","center","center"];
+        vals.forEach(function(v,ci){
+          var cell=row.getCell(ci+1);cell.value=v;
+          cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:rowBg}};
+          cell.font={name:"Helvetica Neue",size:9,bold:ci===11,color:{argb:ci===11?(STATUS_FG[estado]||"FF374151"):"FF000000"}};
+          cell.alignment={horizontal:aligns[ci],vertical:"top",wrapText:ci===5};
+          brd(cell);
+        });
+        rowNum++;
+        altIdx++;
       });
     });
     return wb.xlsx.writeBuffer();
@@ -2838,10 +3220,23 @@ function exportToExcel(){
     if(!window.XLSX){alert("Librería cargando, espera un momento.");return;}
     const wb2=XLSX.utils.book_new();
     const rows=[["CIRUGIA GENERAL"],[gi.fecha||""],["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"]];
-    sorted.forEach(function(p){var d=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";rows.push(["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",p.ingreso||"",Number.isFinite(d)?d:"",p.estado||""]);});
+    const merges=[{s:{r:0,c:0},e:{r:0,c:11}},{s:{r:1,c:0},e:{r:1,c:11}}];
+    EX_SECTIONS.forEach(function(sec){
+      var grp = bySection[sec.id];
+      if(!grp || grp.length === 0) return;
+      var sorted = [...grp].sort(function(a,b){ return exBedSort(a.cama) - exBedSort(b.cama); });
+      // Fila separadora
+      var secRow = [sec.label + " (" + sorted.length + " pacientes)"];
+      merges.push({s:{r:rows.length,c:0},e:{r:rows.length,c:11}});
+      rows.push(secRow);
+      sorted.forEach(function(p){
+        var d=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
+        rows.push(["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",p.ingreso||"",Number.isFinite(d)?d:"",p.estado||""]);
+      });
+    });
     const ws2=XLSX.utils.aoa_to_sheet(rows);
     ws2["!cols"]=[{wch:3},{wch:8},{wch:11},{wch:36},{wch:8},{wch:78},{wch:12},{wch:18},{wch:23},{wch:10},{wch:12},{wch:14}];
-    ws2["!merges"]=[{s:{r:0,c:0},e:{r:0,c:11}},{s:{r:1,c:0},e:{r:1,c:11}}];
+    ws2["!merges"]=merges;
     XLSX.utils.book_append_sheet(wb2,ws2,"Hoja1");
     XLSX.writeFile(wb2,"Censo_HGL_"+(gi.fecha||"hoy").replace(/\//g,"-")+".xlsx");
   }
