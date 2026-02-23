@@ -350,6 +350,7 @@ select.modal-input{background:#fff}
         <button class="btn-green" onclick="exportToExcel()">📊 Exportar Excel</button>
         <button class="btn-blue" onclick="window.print()">🖨 Imprimir</button>
         <button class="btn-orange" onclick="resetCenso()" title="Borra todos los datos y carga el censo base">🗑 Reiniciar</button>
+        <button style="background:#7c3aed;border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)" onclick="saveGuardSnapshot()" title="Guardar corte/snapshot del censo actual">📸 Corte</button>
         <!-- ACCESOS RÁPIDOS -->
         <div class="quick-access-group">
           <button class="qa-btn qa-lab" onclick="openSystem('lab')" title="Abrir Laboratorio">🧪 Labs</button>
@@ -470,11 +471,11 @@ select.modal-input{background:#fff}
     <div style="font-size:15px;font-weight:700;margin-bottom:4px" id="confirm-name"></div>
     <div style="font-size:12px;color:#64748b;margin-bottom:16px" id="confirm-sub"></div>
     <div style="font-size:12px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:20px">
-      ⚠️ Se eliminará del censo y se borrarán todos sus datos clínicos y laboratorios guardados.
+      ⚠️ El paciente se <strong>archivará</strong> — saldrá del censo activo pero sus notas, labs e imágenes quedan guardados y consultables en la sección <em>Historial</em> de la pestaña Altas.
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn-cancel" onclick="document.getElementById('confirm-modal').style.display='none'">Cancelar</button>
-      <button style="padding:8px 20px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700;font-family:var(--font)" id="confirm-btn">Sí, dar de alta</button>
+      <button style="padding:8px 20px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-size:13px;font-weight:700;font-family:var(--font)" id="confirm-btn">🗃 Archivar y dar de alta</button>
     </div>
   </div>
 </div>
@@ -649,6 +650,24 @@ const STORAGE_KEY   = "censo-pacientes-v3";
 const NOTES_PREFIX  = "note-";
 const CONFIG_KEY    = "hgl-worker-config";   // {url, token}
 const EXCEL_TEMPLATE_KEY = "hgl-export-template-b64";
+const ARCHIVE_KEY   = "pl_archive_v1";    // pacientes egresados/archivados
+const SNAPSHOT_KEY  = "pl_snapshots_v1";  // cortes de guardia
+
+// Camas que admiten múltiples pacientes sin considerarse "duplicado"
+// (pacientes externos, pasillos, espera, etc.)
+const MULTI_BED = new Set(["EXT","EXTERNO","EXTERNO1","EXTERNO2","PASILLO","ESPERA","URGENCIAS","URG","CORR","CORREDOR"]);
+
+// Listado completo de camas físicas del servicio
+// (para calcular camas libres; editable en Config)
+const DEFAULT_BEDS_PISO3 = [
+  "3-150","3-151","3-152","3-153","3-154","3-155","3-156","3-157","3-158","3-159",
+  "3-160","3-161","3-162","3-163","3-164","3-165","3-166","3-167","3-168","3-169",
+  "3-170","3-171","3-172","3-173","3-174","3-175","3-176","3-177","3-178","3-179",
+  "3-180","3-181","3-182","3-183","3-184","3-185","3-186","3-187","3-188","3-189","3-190"
+];
+const DEFAULT_BEDS_UCI = ["UCI 1","UCI 2","UCI 3","UCI 4"];
+const DEFAULT_BEDS_OTROS = ["RECU","2-102"];
+let ALL_BEDS = [...DEFAULT_BEDS_PISO3, ...DEFAULT_BEDS_UCI, ...DEFAULT_BEDS_OTROS];
 
 // ─── DEFAULT CENSO ──────────────────────────────────────────────────────────────
 const DEFAULT_CENSO = [
@@ -722,6 +741,8 @@ let lastMeta = {patients_ts:0, notes_ts:0};
 let syncInterval = null;
 let pendingSyncs = 0;   // contador de operaciones en curso
 let exportTemplateBuffer = null;
+let archivados = [];    // pacientes egresados (no se borran, se archivan)
+let snapshots  = [];    // cortes de guardia guardados
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────────
 // ── Motivational Quotes ──────────────────────────────────────────────────
@@ -1184,6 +1205,16 @@ function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repla
 
 // ─── INIT ────────────────────────────────────────────────────────────────────────
 async function init(){
+  // Cargar lista de camas guardada (si el usuario la personalizó)
+  try{
+    const saved = localStorage.getItem("pl_all_beds_v1");
+    if(saved){ const arr = JSON.parse(saved); if(Array.isArray(arr)&&arr.length) ALL_BEDS = arr; }
+  }catch(e){}
+
+  // Cargar archivados y snapshots
+  try{ archivados = JSON.parse(localStorage.getItem(ARCHIVE_KEY)||"[]"); }catch(e){ archivados=[]; }
+  try{ snapshots  = JSON.parse(localStorage.getItem(SNAPSHOT_KEY)||"[]"); }catch(e){ snapshots=[]; }
+
   const today = new Date();
   document.getElementById("gi-fecha").value = today.toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"numeric"});
 
@@ -1257,7 +1288,7 @@ function renderView(){
     }
     return em&&sm&&rm&&am&&im;
   });
-  document.getElementById("count-badge").textContent = filtered.length+" pacientes";
+  document.getElementById("count-badge").textContent = filtered.length+" pacientes" + (ALL_BEDS.length ? " · "+getFreeBeds().length+" camas libres" : "");
   ["piso","census","print","altas","formatos"].forEach(v=>{
     document.getElementById("view-"+v).style.display = currentView===v?"":"none";
   });
@@ -1301,7 +1332,138 @@ function renderPiso(pts){
     if(isSimple) html += renderSimpleCard(p,nd,k);
     else html += renderFullCard(p,nd,k);
   });
-  document.getElementById("view-piso").innerHTML = `<div id="piso-grid">${html}</div>`;
+  document.getElementById("view-piso").innerHTML =
+    `<div id="piso-grid">${html}</div>` + renderFreeBeds();
+}
+
+// ─── CAMAS LIBRES ────────────────────────────────────────────────────────────────
+function getFreeBeds(){
+  const occupied = new Set(patients.map(p=>(p.cama||"").trim().toUpperCase()));
+  return ALL_BEDS.filter(b => !occupied.has(b.toUpperCase()));
+}
+function renderFreeBeds(){
+  const free = getFreeBeds();
+  if(!free.length && ALL_BEDS.length > 0){
+    return `<div id="free-beds-panel" style="margin-top:18px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:12px;color:#166534;font-weight:600;display:flex;align-items:center;gap:8px">
+      ✅ <span>Todas las camas registradas están ocupadas</span>
+      <button onclick="openBedManager()" style="margin-left:auto;background:none;border:1px solid #86efac;border-radius:5px;padding:2px 10px;font-size:11px;cursor:pointer;color:#166534;font-family:var(--font)">⚙️ Administrar camas</button>
+    </div>`;
+  }
+  if(!free.length) return "";
+
+  // Agrupar: piso 3, UCI, otros
+  const gr = {p3:[], uci:[], otros:[]};
+  free.forEach(b => {
+    const u = b.toUpperCase();
+    if(/^3-\d+$/.test(u)) gr.p3.push(b);
+    else if(/^UCI/i.test(u)) gr.uci.push(b);
+    else gr.otros.push(b);
+  });
+
+  function chips(arr, color){
+    return arr.map(b =>
+      `<button onclick="openAddModalWithBed('${esc(b)}')"
+        title="Agregar paciente en ${b}"
+        style="background:#fff;border:1.5px solid ${color};color:${color};border-radius:8px;padding:4px 11px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .12s"
+        onmouseover="this.style.background='${color}';this.style.color='#fff'"
+        onmouseout="this.style.background='#fff';this.style.color='${color}'">${b}</button>`
+    ).join("");
+  }
+
+  let body = "";
+  if(gr.p3.length)    body += `<div style="margin-bottom:8px"><span style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">🏥 Piso 3 — ${gr.p3.length} libre${gr.p3.length!==1?"s":""}</span><div style="display:flex;flex-wrap:wrap;gap:6px">${chips(gr.p3,"#0f4c75")}</div></div>`;
+  if(gr.uci.length)   body += `<div style="margin-bottom:8px"><span style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">🚨 UCI — ${gr.uci.length} libre${gr.uci.length!==1?"s":""}</span><div style="display:flex;flex-wrap:wrap;gap:6px">${chips(gr.uci,"#7b0000")}</div></div>`;
+  if(gr.otros.length) body += `<div><span style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">📋 Otros — ${gr.otros.length} libre${gr.otros.length!==1?"s":""}</span><div style="display:flex;flex-wrap:wrap;gap:6px">${chips(gr.otros,"#4a3580")}</div></div>`;
+
+  return `<div id="free-beds-panel" style="margin-top:18px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.06)">
+    <div style="background:#f1f5f9;border-bottom:1px solid #e2e8f0;padding:9px 14px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleFreeBeds()">
+      <span style="font-size:15px">🛏</span>
+      <span style="font-size:12px;font-weight:700;color:#334155">${free.length} cama${free.length!==1?"s":""} libre${free.length!==1?"s":""} — clic para ver</span>
+      <span id="free-beds-arrow" style="margin-left:auto;font-size:13px;color:#64748b">▾</span>
+      <button onclick="event.stopPropagation();openBedManager()"
+        style="background:none;border:1px solid #cbd5e1;border-radius:5px;padding:2px 9px;font-size:11px;cursor:pointer;color:#475569;font-family:var(--font)">⚙️ Configurar</button>
+    </div>
+    <div id="free-beds-body" style="padding:12px 14px;display:none">${body}</div>
+  </div>`;
+}
+
+function toggleFreeBeds(){
+  const body = document.getElementById("free-beds-body");
+  const arrow = document.getElementById("free-beds-arrow");
+  if(!body) return;
+  const open = body.style.display !== "none";
+  body.style.display = open ? "none" : "block";
+  if(arrow) arrow.textContent = open ? "▾" : "▴";
+}
+
+function openAddModalWithBed(bed){
+  openAddModal();
+  setTimeout(()=>{
+    const el = document.getElementById("mf-cama");
+    if(el){ el.value = bed; el.focus(); }
+  }, 80);
+}
+
+function toggleArchivados(){
+  const body = document.getElementById("arch-body");
+  const arrow = document.getElementById("arch-arrow");
+  if(!body) return;
+  const open = body.style.display !== "none";
+  body.style.display = open ? "none" : "grid";
+  if(arrow) arrow.textContent = open ? "▸" : "▾";
+}
+
+function clearAllArchivados(){
+  if(!archivados.length) return;
+  if(!confirm(`¿Eliminar permanentemente los ${archivados.length} pacientes del historial? Esta acción no se puede deshacer.`)) return;
+  archivados = [];
+  try{ localStorage.removeItem(ARCHIVE_KEY); }catch(e){}
+  renderView();
+}
+
+// ─── BED MANAGER MODAL ───────────────────────────────────────────────────────────
+function openBedManager(){
+  let modal = document.getElementById("bed-mgr-modal");
+  if(!modal){
+    modal = document.createElement("div");
+    modal.id = "bed-mgr-modal";
+    modal.className = "modal-bg";
+    modal.innerHTML = `<div class="modal-box" style="max-width:560px">
+      <div class="modal-header">
+        <div class="modal-title">🛏 Configurar camas del servicio</div>
+        <button class="modal-close" onclick="document.getElementById('bed-mgr-modal').style.display='none'">✕</button>
+      </div>
+      <p style="font-size:12px;color:#64748b;margin-bottom:10px">
+        Una cama por línea. Usa el formato exacto: <code>3-150</code>, <code>UCI 1</code>, <code>RECU</code>, etc.
+      </p>
+      <textarea id="bed-mgr-ta" style="width:100%;height:240px;font-family:monospace;font-size:12px;border:1px solid #d1d5db;border-radius:6px;padding:8px;resize:vertical;outline:none"></textarea>
+      <div style="font-size:11px;color:#94a3b8;margin:6px 0 14px">
+        💡 Las camas que ya tienen paciente se mostrarán igualmente en el piso — solo las <em>sin paciente</em> aparecen como libres.
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="document.getElementById('bed-mgr-modal').style.display='none'">Cancelar</button>
+        <button class="btn-cancel" onclick="bedMgrReset()" style="border-color:#f59e0b;color:#92400e">↺ Restaurar predeterminado</button>
+        <button class="btn-save" onclick="bedMgrSave()">✓ Guardar</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+  }
+  document.getElementById("bed-mgr-ta").value = ALL_BEDS.join("\n");
+  modal.style.display = "flex";
+}
+function bedMgrSave(){
+  const lines = document.getElementById("bed-mgr-ta").value
+    .split("\n").map(l=>l.trim().toUpperCase()).filter(Boolean);
+  if(!lines.length){ alert("Ingresa al menos una cama"); return; }
+  ALL_BEDS = [...new Set(lines)];
+  try{ localStorage.setItem("pl_all_beds_v1", JSON.stringify(ALL_BEDS)); }catch(e){}
+  document.getElementById("bed-mgr-modal").style.display = "none";
+  renderView();
+}
+function bedMgrReset(){
+  ALL_BEDS = [...DEFAULT_BEDS_PISO3, ...DEFAULT_BEDS_UCI, ...DEFAULT_BEDS_OTROS];
+  try{ localStorage.removeItem("pl_all_beds_v1"); }catch(e){}
+  document.getElementById("bed-mgr-ta").value = ALL_BEDS.join("\n");
 }
 
 // ─── ALERTAS OPERATIVAS ───────────────────────────────────────────────────────────
@@ -2860,6 +3022,27 @@ function renderAltas(pts){
     </div>`;
   });
 
+  // ── Historial de egresados archivados ───────────────────────────────────────
+  let archHtml = "";
+  if(archivados.length){
+    archivados.forEach((arc, idx) => {
+      const fechaArc = arc._archivedAt ? new Date(arc._archivedAt).toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
+      const col = ESTADO_COLORS[arc.estado]||"#95a5a6";
+      archHtml += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:13px;font-weight:700;color:#1e293b">${esc(arc.nombre)}</div>
+          <div style="font-size:11px;color:#64748b">Cama: ${esc(arc.cama)} · Exp: ${esc(arc.exp)} · ${esc(arc.esp)} · Ing: ${esc(arc.ingreso||"—")}</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:2px">Archivado: ${fechaArc}</div>
+        </div>
+        <span style="background:${col};color:#fff;padding:2px 10px;border-radius:10px;font-size:10px;font-weight:700">${esc(arc.estado||"—")}</span>
+        <button onclick="restorePatient(${idx})"
+          style="background:#059669;color:#fff;border:none;border-radius:5px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)">↩ Restaurar al censo</button>
+        <button onclick="deleteArchivedPermanently(${idx})"
+          style="background:#dc2626;color:#fff;border:none;border-radius:5px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑 Eliminar</button>
+      </div>`;
+    });
+  }
+
   document.getElementById("view-altas").innerHTML=`
   <div class="altas-wrap">
     <style>
@@ -2897,7 +3080,16 @@ function renderAltas(pts){
     </style>
     <div style="text-align:center;font-size:16px;font-weight:800;color:#0a1628;margin-bottom:4px;padding-bottom:10px;border-bottom:2px solid #001746">🏠 NOTA DE ALTA / EGRESO HOSPITALARIO</div>
     <p style="text-align:center;font-size:11px;color:#64748b;margin-bottom:16px">Edita los campos haciendo clic · El formato de impresión incluye logos oficiales del HGL</p>
-    ${html||'<div style="text-align:center;color:#94a3b8;padding:40px">No hay pacientes en la lista.</div>'}
+    ${html||'<div style="text-align:center;color:#94a3b8;padding:20px 0">No hay pacientes marcados como ALTA en el censo activo.</div>'}
+    ${archivados.length ? `
+    <div style="margin-top:24px;border-top:2px solid #e2e8f0;padding-top:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;cursor:pointer" onclick="toggleArchivados()">
+        <span style="font-size:14px;font-weight:800;color:#0a1628">🗃 Historial de egresados — ${archivados.length} paciente${archivados.length!==1?"s":""} archivado${archivados.length!==1?"s":""}</span>
+        <span id="arch-arrow" style="font-size:13px;color:#64748b">▾</span>
+        <button onclick="event.stopPropagation();clearAllArchivados()" style="margin-left:auto;background:none;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:2px 10px;font-size:11px;cursor:pointer;font-family:var(--font)">🗑 Vaciar historial</button>
+      </div>
+      <div id="arch-body" style="display:grid;gap:0">${archHtml}</div>
+    </div>` : ""}
   </div>`;
 }
 // ─── FORMATOS INSTITUCIONALES ──────────────────────────────────────────────────
@@ -4100,14 +4292,74 @@ function openConfirm(k){
   document.getElementById("confirm-modal").style.display = "flex";
 }
 function dischargePatient(k){
-  patients = patients.filter(p=>pid(p)!==k);
+  const p = patients.find(pt=>pid(pt)===k);
+  if(!p){ document.getElementById("confirm-modal").style.display="none"; return; }
+  // Archivar: guardar paciente + sus notas antes de quitarlo del censo activo
+  const nd = noteData[k]||defaultData();
+  const archived = {
+    ...p,
+    _archivedAt: new Date().toISOString(),
+    _archiveKey: k,
+    _note: nd
+  };
+  archivados.unshift(archived);
+  try{ localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); }catch(e){}
+  // Quitar del censo activo
+  patients = patients.filter(pt=>pid(pt)!==k);
   delete noteData[k];
   localStorage.removeItem(NOTES_PREFIX+k);
   savePts();
   deleteNoteRemote(k);
-  document.getElementById("confirm-modal").style.display = "none";
+  document.getElementById("confirm-modal").style.display="none";
   buildEspFilters();
   renderView();
+  // Feedback
+  const badge = document.getElementById("count-badge");
+  if(badge){ const prev=badge.textContent; badge.style.color="#27ae60"; badge.textContent="✅ Paciente archivado"; setTimeout(()=>{ badge.style.color=""; badge.textContent=prev; },2200); }
+}
+
+function restorePatient(archiveIdx){
+  const arc = archivados[archiveIdx]; if(!arc) return;
+  if(!confirm(`¿Restaurar a ${arc.nombre} al censo activo?`)) return;
+  const { _archivedAt, _archiveKey, _note, ...p } = arc;
+  patients.push(p);
+  noteData[pid(p)] = _note||defaultData();
+  archivados.splice(archiveIdx, 1);
+  try{ localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); }catch(e){}
+  savePts();
+  saveNote(pid(p), noteData[pid(p)]);
+  buildEspFilters();
+  renderView();
+}
+
+function deleteArchivedPermanently(archiveIdx){
+  const arc = archivados[archiveIdx]; if(!arc) return;
+  if(!confirm(`¿Eliminar permanentemente a ${arc.nombre}? Esta acción no se puede deshacer.`)) return;
+  archivados.splice(archiveIdx, 1);
+  try{ localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); }catch(e){}
+  renderView();
+}
+
+// ─── SNAPSHOTS DE GUARDIA ──────────────────────────────────────────────────────
+function saveGuardSnapshot(){
+  const gi = getGuardInfo();
+  const label = prompt("Nombre del corte (ej: Guardia Lunes 23 Feb - HERNÁNDEZ):", `Corte ${new Date().toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit"})}`);
+  if(!label) return;
+  const snap = {
+    id: Date.now(),
+    label: label.trim(),
+    fecha: new Date().toISOString(),
+    guardia: gi,
+    patients: JSON.parse(JSON.stringify(patients)),
+    total: patients.length
+  };
+  snapshots.unshift(snap);
+  if(snapshots.length > 30) snapshots = snapshots.slice(0,30); // max 30 cortes
+  try{ localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots)); }catch(e){
+    alert("No hay espacio para guardar el corte. Elimina cortes anteriores.");
+    return;
+  }
+  alert(`✅ Corte guardado: "${snap.label}"\n${snap.total} pacientes registrados.`);
 }
 
 // ─── EXCEL IMPORT ────────────────────────────────────────────────────────────────
@@ -4736,8 +4988,11 @@ function toggleSyscfgPass(){
 function detectDuplicateBeds(pts){
   const bedCount = {};
   pts.forEach(p => {
-    if(!bedCount[p.cama]) bedCount[p.cama] = [];
-    bedCount[p.cama].push(p);
+    const c = (p.cama||"").trim().toUpperCase();
+    // No marcar como duplicado camas que admiten múltiples pacientes
+    if(MULTI_BED.has(c)) return;
+    if(!bedCount[c]) bedCount[c] = [];
+    bedCount[c].push(p);
   });
   return Object.entries(bedCount)
     .filter(([,list]) => list.length > 1)
