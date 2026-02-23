@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Piso Libro — HGL Cirugía General</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -87,7 +88,7 @@ body{font-family:var(--font);background:var(--bg);min-height:100vh;color:#1e293b
 .lab-unit{font-size:9px;color:#94a3b8}
 /* LAB TOOLTIP */
 .lab-cell{position:relative;cursor:pointer}
-.lab-tip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#0f172a;color:#f1f5f9;font-size:11px;border-radius:8px;padding:8px 11px;min-width:200px;max-width:280px;z-index:900;box-shadow:0 6px 20px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .15s;line-height:1.5;font-family:var(--font)}
+.lab-tip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#0f172a;color:#f1f5f9;font-size:11px;border-radius:8px;padding:8px 11px;min-width:220px;max-width:420px;z-index:900;box-shadow:0 6px 20px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .15s;line-height:1.5;font-family:var(--font)}
 .lab-tip.visible{opacity:1;pointer-events:auto}
 .lab-tip::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#0f172a}
 .lab-tip-title{font-weight:700;font-size:12px;margin-bottom:4px;display:flex;align-items:center;gap:5px}
@@ -2653,117 +2654,167 @@ function getGuardInfo(){
   };
 }
 function exportToExcel(){
-  if(!window.XLSX){alert("SheetJS cargando, intenta en unos segundos");return;}
   const gi = getGuardInfo();
-  let wb = null;
 
-  // Intentar exportar con formato exacto usando la plantilla importada.
-  const templateBuffer = getExportTemplateBuffer();
-  if(templateBuffer){
-    try{
-      wb = XLSX.read(templateBuffer, {type:"array", cellStyles:true, cellDates:false});
-      let censoSheetName = wb.SheetNames.includes("Hoja1") ? "Hoja1" : wb.SheetNames[0];
-      let wsCenso = wb.Sheets[censoSheetName];
-      if(wsCenso){
-        if(censoSheetName!=="Hoja1"){
-          wb.Sheets["Hoja1"] = wsCenso;
-          delete wb.Sheets[censoSheetName];
-          censoSheetName = "Hoja1";
-          wsCenso = wb.Sheets["Hoja1"];
-        }
-        // Dejar únicamente censo y regenerar las demás hojas con datos actuales.
-        wb.SheetNames = ["Hoja1"];
-        Object.keys(wb.Sheets).forEach(n=>{ if(n!=="Hoja1") delete wb.Sheets[n]; });
-        if(wb.Workbook && Array.isArray(wb.Workbook.Sheets)){
-          wb.Workbook.Sheets = wb.Workbook.Sheets.filter(s=>s.name==="Hoja1");
-          if(wb.Workbook.Sheets.length===0) wb.Workbook.Sheets = [{name:"Hoja1"}];
-        }
+  // ── If ExcelJS is available use it for full styling ──────────────────
+  if(window.ExcelJS){
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "PisoLibro HGL";
+    const ws = wb.addWorksheet("Hoja1");
 
-        const cols = ["A","B","C","D","E","F","G","H","I","J","K","L"];
-        const header = ["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"];
+    // Column widths (matching screenshot)
+    ws.columns = [
+      {width:4},   // A – vacío
+      {width:9},   // B – CAMA
+      {width:13},  // C – EXPEDIENTE
+      {width:32},  // D – NOMBRE
+      {width:6},   // E – EDAD
+      {width:70},  // F – DIAGNÓSTICO
+      {width:12},  // G – ESPECIALIDAD
+      {width:14},  // H – ADSCRITO
+      {width:14},  // I – RESIDENTE
+      {width:11},  // J – INGRESO
+      {width:6},   // K – DIAS
+      {width:11},  // L – ESTADO
+    ];
 
-        setCellValuePreserveStyle(wsCenso, "A1", "CIRUGIA GENERAL");
-        const fechaGuardia = parseDmy(gi.fecha);
-        setCellValuePreserveStyle(wsCenso, "A2", fechaGuardia ? toExcelSerial(fechaGuardia) : (gi.fecha||""));
-        header.forEach((h,i)=>setCellValuePreserveStyle(wsCenso, `${cols[i]}3`, h));
+    const NAVY  = "FF0A1628";
+    const WHITE = "FFFFFFFF";
+    const GRAY1 = "FFF9FAFB";  // odd rows
+    const GRAY2 = "FFFFFFFF";  // even rows
 
-        const ref = wsCenso["!ref"]||"A1:L200";
-        const rng = XLSX.utils.decode_range(ref);
-        const firstDataRow = 4;
-        const templateLastRow = Math.max(rng.e.r+1, firstDataRow);
-        const rowsToWrite = Math.max(patients.length, templateLastRow-firstDataRow+1);
+    const estadoBg = {
+      "ESTABLE":   "FFD1FAE5",
+      "DELICADO":  "FFFEF3C7",
+      "GRAVE":     "FFFEE2E2",
+      "ALTA":      "FFDBEAFE",
+      "DEFUNCIÓN": "FFE5E7EB",
+    };
+    const estadoFg = {
+      "ESTABLE":  "FF065F46",
+      "DELICADO": "FF92400E",
+      "GRAVE":    "FF991B1B",
+      "ALTA":     "FF1E40AF",
+      "DEFUNCIÓN":"FF374151",
+    };
 
-        for(let i=0;i<rowsToWrite;i++){
-          const rowNum = firstDataRow + i;
-          let rowVals = Array(12).fill("");
-          if(i<patients.length){
-            const p = patients[i];
-            const days = p.ingreso ? Math.floor((new Date()-parseDate(p.ingreso))/86400000) : "";
-            const ingresoDate = parseDmy(p.ingreso);
-            rowVals = [
-              "",
-              p.cama||"",
-              p.exp||"",
-              p.nombre||"",
-              p.edad||"",
-              p.dx||"",
-              p.esp||"",
-              p.adscrito||"",
-              p.residente||"",
-              ingresoDate ? toExcelSerial(ingresoDate) : (p.ingreso||""),
-              Number.isFinite(days)?days:"",
-              p.estado||""
-            ];
-          }
-          cols.forEach((c,idx)=>setCellValuePreserveStyle(wsCenso, `${c}${rowNum}`, rowVals[idx]));
-        }
-      }else{
-        wb = null;
-      }
-    }catch(err){
-      console.warn("No se pudo usar la plantilla para exportar:", err?.message||err);
-      wb = null;
+    function applyBorder(cell){
+      cell.border = {
+        top:{style:"thin",color:{argb:"FFD1D5DB"}},
+        left:{style:"thin",color:{argb:"FFD1D5DB"}},
+        bottom:{style:"thin",color:{argb:"FFD1D5DB"}},
+        right:{style:"thin",color:{argb:"FFD1D5DB"}}
+      };
     }
-  }
 
-  // Respaldo: exportación estándar si no hay plantilla cargada.
-  if(!wb){
-    wb = XLSX.utils.book_new();
-    const censoRows = [["CIRUGIA GENERAL"],[],[null,"CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"]];
-    patients.forEach(p=>{
-      const days = p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"—";
-      censoRows.push([null,p.cama,p.exp,p.nombre,p.edad,p.dx,p.esp,p.adscrito,p.residente,p.ingreso,days,p.estado]);
+    // Row 1 – CIRUGIA GENERAL
+    const r1 = ws.getRow(1);
+    r1.height = 24;
+    const c1 = ws.getCell("A1");
+    c1.value = "CIRUGIA GENERAL";
+    c1.font   = {name:"Helvetica Neue",size:14,bold:true,color:{argb:WHITE}};
+    c1.fill   = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
+    c1.alignment = {horizontal:"center",vertical:"middle"};
+    ws.mergeCells("A1:L1");
+
+    // Row 2 – Fecha
+    const r2 = ws.getRow(2);
+    r2.height = 16;
+    const c2 = ws.getCell("A2");
+    // Parse date from gi.fecha (DD/MM/YY or DD/MM/YYYY)
+    const fp = gi.fecha ? gi.fecha.split("/") : [];
+    const fechaStr = fp.length===3 ? fp[0]+"/"+fp[1]+"/"+(fp[2].length===4?fp[2].slice(2):fp[2]) : (gi.fecha||"");
+    c2.value = fechaStr;
+    c2.font  = {name:"Helvetica Neue",size:11,bold:true,color:{argb:WHITE}};
+    c2.fill  = {type:"pattern",pattern:"solid",fgColor:{argb:"FF1A3A6B"}};
+    c2.alignment = {horizontal:"center",vertical:"middle"};
+    ws.mergeCells("A2:L2");
+
+    // Row 3 – Headers
+    const headers = ["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"];
+    const r3 = ws.getRow(3);
+    r3.height = 18;
+    headers.forEach((h,i)=>{
+      const cell = r3.getCell(i+1);
+      cell.value = h;
+      cell.font  = {name:"Helvetica Neue",size:10,bold:true,color:{argb:WHITE}};
+      cell.fill  = {type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
+      cell.alignment = {horizontal:"center",vertical:"middle"};
+      applyBorder(cell);
     });
-    const wsCenso = XLSX.utils.aoa_to_sheet(censoRows);
-    wsCenso["!cols"] = [{wch:4},{wch:8},{wch:12},{wch:32},{wch:6},{wch:80},{wch:10},{wch:12},{wch:12},{wch:10},{wch:6},{wch:10}];
-    XLSX.utils.book_append_sheet(wb,wsCenso,"Hoja1");
+
+    // Data rows
+    const sorted = [...patients].sort((a,b)=>{
+      const am = String(a.cama||"").match(/^(\d+)-(\d+)$/);
+      const bm = String(b.cama||"").match(/^(\d+)-(\d+)$/);
+      if(am&&bm) return (parseInt(am[1])*1000+parseInt(am[2])) - (parseInt(bm[1])*1000+parseInt(bm[2]));
+      return String(a.cama||"").localeCompare(String(b.cama||""));
+    });
+
+    sorted.forEach((p,idx)=>{
+      const rowNum = 4 + idx;
+      const row = ws.getRow(rowNum);
+      row.height = 40;
+
+      const days = p.ingreso ? Math.floor((new Date()-parseDate(p.ingreso))/86400000) : "";
+      const estado = (p.estado||"").toUpperCase().trim();
+      const rowIsColored = !!estadoBg[estado];
+      const rowBgArgb = rowIsColored ? estadoBg[estado] : (idx%2===0 ? GRAY2 : GRAY1);
+
+      const vals = ["", p.cama||"", p.exp||"", p.nombre||"", p.edad||"", p.dx||"",
+                    p.esp||"", p.adscrito||"", p.residente||"", p.ingreso||"",
+                    Number.isFinite(days)?days:"", p.estado||""];
+
+      vals.forEach((v,ci)=>{
+        const cell = row.getCell(ci+1);
+        cell.value = v;
+        const isEstado = ci===11;
+        const bgArgb = isEstado ? (estadoBg[estado]||rowBgArgb) : rowBgArgb;
+        cell.fill = {type:"pattern",pattern:"solid",fgColor:{argb:bgArgb}};
+        cell.font = {
+          name:"Helvetica Neue", size:10,
+          bold: isEstado,
+          color:{argb: isEstado ? (estadoFg[estado]||"FF374151") : "FF111827"}
+        };
+        cell.alignment = {
+          horizontal: (ci===0||ci===10||ci===4||ci===11)?"center":"left",
+          vertical:"top",
+          wrapText: ci===5  // wrap DX column
+        };
+        applyBorder(cell);
+      });
+    });
+
+    // Write and download
+    wb.xlsx.writeBuffer().then(function(buffer){
+      const blob = new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url;
+      a.download = "Censo_HGL_"+( gi.fecha||"").replace(/\//g,"-")+".xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    return;
   }
 
-  // Labs
-  const labRows = [[`📊 RESUMEN LABS — GUARDIA · HGL · ${gi.fecha}`],[],["CAMA","PACIENTE","HB","LEUCOS","PLAQ","CR","GLU","NA","K","ALB","PCR","PCT","INR","UREA","FECHA"]];
+  // ── Fallback: SheetJS without styles ─────────────────────────────────
+  if(!window.XLSX){alert("Librería cargando, intenta en segundos");return;}
+  const wb2 = XLSX.utils.book_new();
+  const rows = [["CIRUGIA GENERAL"],[gi.fecha||""],[],["","CAMA","EXPEDIENTE","NOMBRE","EDAD","DIAGNÓSTICO","ESPECIALIDAD","ADSCRITO","RESIDENTE","INGRESO","DIAS","ESTADO"]];
   patients.forEach(p=>{
-    const nd=noteData[pid(p)]; if(!nd?.labs)return;
-    const l=nd.labs; if(!l.hb&&!l.leucos&&!l.cr)return;
-    labRows.push([p.cama,p.nombre,l.hb,l.leucos,l.plaq,l.cr,l.glu,l.na,l.k,l.alb,l.pcr,l.pct,l.inr,l.urea,l.fecha_labs]);
+    const days = p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
+    rows.push(["",p.cama,p.exp,p.nombre,p.edad,p.dx,p.esp,p.adscrito,p.residente,p.ingreso,Number.isFinite(days)?days:"",p.estado]);
   });
-  const wsLabs = XLSX.utils.aoa_to_sheet(labRows);
-  wsLabs["!cols"] = [{wch:8},{wch:30},...Array(13).fill({wch:9})];
-  XLSX.utils.book_append_sheet(wb,wsLabs,"RESUMEN LABS");
-  // Entrega
-  const egRows = [[`🏥 HGL — ENTREGA DE GUARDIA`],[`Fecha: ${gi.fecha} | Turno: ${gi.turno} | Entrega: Dr. ${gi.entrega} | Recibe: Dr. ${gi.recibe}`],[],["▌ CG — TARJETAS COMPLETAS"],["CAMA","ESP","NOMBRE","EDAD","EXP","INGRESO","DX","APP","PA","QX","MANEJO","DRENAJES","SANGRADO","IMAGEN","SV","BALANCE","PENDIENTES","MISC","HB","LEUCOS","PLAQ","CR","K","NA","ALB","PCR","PCT","INR","ESTADO"]];
-  patients.filter(p=>FULL_CARD_ESP.has(p.esp)).forEach(p=>{
-    const nd=noteData[pid(p)]||{}; const l=nd.labs||{};
-    egRows.push([p.cama,p.esp,p.nombre,p.edad,p.exp,p.ingreso,nd.dx||p.dx,nd.app,nd.pa,nd.qx,nd.manejo,nd.drenajes,nd.sangrado,nd.imagen,nd.sv,nd.balance,nd.pendientes,nd.misc,l.hb,l.leucos,l.plaq,l.cr,l.k,l.na,l.alb,l.pcr,l.pct,l.inr,p.estado]);
-  });
-  egRows.push([],["▌ URO/NCX/COLUMNA"],["CAMA","ESP","NOMBRE","EDAD","DX","ESTADO","PENDIENTE"]);
-  patients.filter(p=>SIMPLE_ESP.has(p.esp)).forEach(p=>{
-    const nd=noteData[pid(p)]||{};
-    egRows.push([p.cama,p.esp,p.nombre,p.edad,p.dx,p.estado,nd.pendientes]);
-  });
-  const wsEG = XLSX.utils.aoa_to_sheet(egRows);
-  wsEG["!cols"] = [{wch:8},{wch:8},{wch:28},{wch:5},{wch:12},{wch:10},{wch:60},{wch:25},{wch:25},{wch:30},{wch:30},{wch:20},{wch:12},{wch:20},{wch:15},{wch:12},{wch:30},{wch:20},...Array(11).fill({wch:7})];
-  XLSX.utils.book_append_sheet(wb,wsEG,"ENTREGA GUARDIA");
-  XLSX.writeFile(wb,`Censo_HGL_${gi.fecha.replace(/\//g,"-")}.xlsx`);
+  const ws2 = XLSX.utils.aoa_to_sheet(rows);
+  ws2["!cols"]=[{wch:4},{wch:9},{wch:13},{wch:32},{wch:6},{wch:70},{wch:12},{wch:14},{wch:14},{wch:11},{wch:6},{wch:11}];
+  XLSX.utils.book_append_sheet(wb2,ws2,"Hoja1");
+  // Labs sheet
+  const labRows=[["RESUMEN LABS"],[],["CAMA","PACIENTE","HB","LEUCOS","PLAQ","CR","GLU","NA","K","ALB","PCR","PCT","INR","UREA","FECHA"]];
+  patients.forEach(p=>{const nd=noteData[pid(p)];if(!nd?.labs)return;const l=nd.labs;if(!l.hb&&!l.leucos&&!l.cr)return;labRows.push([p.cama,p.nombre,l.hb,l.leucos,l.plaq,l.cr,l.glu,l.na,l.k,l.alb,l.pcr,l.pct,l.inr,l.urea,l.fecha_labs]);});
+  const ws3=XLSX.utils.aoa_to_sheet(labRows);
+  XLSX.utils.book_append_sheet(wb2,ws3,"RESUMEN LABS");
+  XLSX.writeFile(wb2,"Censo_HGL_"+( gi.fecha||"").replace(/\//g,"-")+".xlsx");
 }
 
 
