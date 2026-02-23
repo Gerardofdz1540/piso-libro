@@ -118,6 +118,11 @@ body{font-family:var(--font);background:var(--bg);min-height:100vh;color:#1e293b
 .lab-date-chip.active{background:#0e7490;border-color:#0e7490;color:#fff}
 .lab-date-chip.new-btn{background:transparent;border-style:dashed;border-color:#94a3b8;color:#64748b}
 .lab-date-chip.new-btn:hover{border-color:#0e7490;color:#0e7490}
+.lab-date-chip-wrap{display:inline-flex;align-items:center;gap:1px}
+.lab-date-del{display:none;border:none;background:rgba(220,38,38,.15);color:#dc2626;border-radius:0 8px 8px 0;padding:0 5px;cursor:pointer;font-size:10px;line-height:1;height:22px}
+.lab-date-chip-wrap:hover .lab-date-del{display:flex;align-items:center}
+.lab-date-chip-wrap .lab-date-chip{border-radius:12px 0 0 12px}
+.lab-date-chip-wrap:hover .lab-date-chip{border-radius:12px 0 0 12px}
 .lab-extra-row{display:flex;gap:6px;align-items:center;margin-bottom:4px}
 .lab-extra-name{flex:1;border:1px solid #e2e8f0;border-radius:5px;padding:4px 7px;font-size:12px;font-family:var(--font);background:#fafbfc;outline:none}
 .lab-extra-val{width:90px;border:1px solid #e2e8f0;border-radius:5px;padding:4px 7px;font-size:12px;font-family:var(--font);background:#fafbfc;outline:none;font-weight:700}
@@ -658,6 +663,8 @@ let labAnalysisLoading = new Set();
 let activeImagenDate = {}; // k -> "YYYY-MM-DD"
 let currentView = "piso";
 let selectedEsp = "ALL";
+let selectedResidente = "ALL";
+let selectedAdscrito = "ALL";
 let modalMode = "add";
 let modalOrigKey = null;
 let pendingImport = null;
@@ -1027,8 +1034,10 @@ function renderView(){
   const search = document.getElementById("search").value.toLowerCase();
   const filtered = patients.filter(p=>{
     const em = selectedEsp==="ALL"||p.esp===selectedEsp;
+    const rm = selectedResidente==="ALL"||(p.residente||"")===selectedResidente;
+    const am = selectedAdscrito==="ALL"||(p.adscrito||"")===selectedAdscrito;
     const sm = !search||p.nombre.toLowerCase().includes(search)||String(p.cama).toLowerCase().includes(search)||(p.exp||"").toLowerCase().includes(search);
-    return em&&sm;
+    return em&&sm&&rm&&am;
   });
   document.getElementById("count-badge").textContent = filtered.length+" pacientes";
   ["piso","census","print"].forEach(v=>{
@@ -1056,6 +1065,8 @@ function setEsp(v, btn){
   if(btn) btn.classList.add("active");
   renderView();
 }
+function setCensusResidente(v){ selectedResidente=v; renderView(); }
+function setCensusAdscrito(v){ selectedAdscrito=v; renderView(); }
 
 // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
 function renderPiso(pts){
@@ -1118,7 +1129,7 @@ function renderFullCard(p,nd,k){
       </div>
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
-      <div id="labs-wrap-${k.replace(/[^a-zA-Z0-9]/g,'_')}">${renderLabSection(nd, k)}</div>
+      ${renderLabSection(nd, k)}
     </div>` : ""}
   </div>`;
 }
@@ -1457,17 +1468,17 @@ const LAB_QUICK = {
     return null;
   },
   na:(v)=>{
-    if(v<120)return {sev:"crit",title:"Hiponatremia severa",rec:"Corrección urgente con salino hipertónico (NaCl 3%) si síntomas neurológicos. Velocidad máx 8-10 mEq/L/día. Nefrología."};
-    if(v<135)return {sev:"abn", title:"Hiponatremia",rec:"Clasificar por osmolaridad y volemia. Tratar causa subyacente. Si SIADH: restricción hídrica. Corrección lenta."};
-    if(v>155)return {sev:"crit",title:"Hipernatremia severa",rec:"Reponer agua libre gradualmente (≤10 mEq/L/24h). Calcular déficit hídrico. Evaluar causa (DI, deshidratación hipertónica)."};
-    if(v>145)return {sev:"abn", title:"Hipernatremia",rec:"Reponer déficit de agua libre. Identificar causa. Monitorizar Na cada 4-6h durante corrección."};
+    if(v<120)return {sev:"crit",title:"Hiponatremia severa",rec:"Tx: NaCl 3% IV — infundir 100-150 mL en 20 min si síntomas (convulsión, coma). Meta: subir Na 5 mEq/L en 1h, luego no más de 8-10 mEq/L en 24h. Restricción hídrica estricta. Nefrología urgente."};
+    if(v<135)return {sev:"abn", title:"Hiponatremia",rec:"Clasificar: hipovolémica→ SF 0.9% + corregir causa; euvolémica (SIADH)→ restricción hídrica 1 L/día ± vaptanes; hipervolémica→ restricción hídrica + furosemida. Corrección máx 8 mEq/L/24h."};
+    if(v>155)return {sev:"crit",title:"Hipernatremia severa",rec:"Tx: Calcular déficit hídrico = 0.6×Peso×(Na/140-1). Reponer con agua libre (SG5% IV o VO). Velocidad máx 10 mEq/L/24h. Si DI: desmopresina. Monitorizar Na c/4-6h."};
+    if(v>145)return {sev:"abn", title:"Hipernatremia",rec:"Tx: Aumentar ingesta de agua libre VO o SG5% IV. Calcular déficit hídrico=(0.6×Peso)×(Na/140-1). Corregir en 48-72h. Evaluar causa: insípida, sudoración, diarrea osmótica."};
     return null;
   },
   k:(v)=>{
-    if(v<=2.8)return {sev:"crit",title:"Hipokalemia severa",rec:"Riesgo arritmia. Reposición IV (KCl ≤20 mEq/h en via central). Monitoreo cardiaco continuo. Corregir Mg simultáneamente."};
-    if(v<3.5) return {sev:"abn", title:"Hipokalemia",rec:"Reposición oral o IV según tolerancia. 40-60 mEq/día. Asociar corrección de Mg si < 0.8 mmol/L."};
-    if(v>=6)  return {sev:"crit",title:"Hiperkalemia severa",rec:"ECG urgente. Si cambios: gluconato de calcio IV 1g. Insulina regular 10U + 50g glucosa. Kayexalato o diálisis si persiste."};
-    if(v>5.1) return {sev:"abn", title:"Hiperkalemia",rec:"Restricción dietética de K. Identificar causa: LRA, acidosis, fármacos (IECA, ARA2, heparina). ECG basal."};
+    if(v<=2.8)return {sev:"crit",title:"Hipokalemia severa",rec:"Tx: KCl IV 20-40 mEq/h por vía central con monitoreo cardiaco continuo. Dosis total: 3-4 mEq/kg de déficit estimado. Corregir Mg simultáneamente (si <0.8 mmol/L: MgSO4 2g IV). Control K c/2-4h."};
+    if(v<3.5) return {sev:"abn", title:"Hipokalemia",rec:"Tx: KCl oral 40-80 mEq/día en dosis divididas (preferir si tolera VO). IV: KCl en SF a 10 mEq/h por vía periférica. Verificar Mg (corregirlo primero si bajo). Repetir K en 4-6h."};
+    if(v>=6)  return {sev:"crit",title:"Hiperkalemia severa",rec:"Tx: 1) Gluconato Ca 10% 10mL IV en 2-5 min (estabiliza membrana). 2) Insulina regular 10U + Dextrosa 50g IV (baja K en 15 min). 3) Bicarbonato 50 mEq IV si acidosis. 4) Kayexalato 15-30g VO o diálisis si refractario. ECG continuo."};
+    if(v>5.1) return {sev:"abn", title:"Hiperkalemia",rec:"Tx: Restricción de K en dieta (<2g/día). Suspender IECA/ARA2/heparina si posible. Furosemida si función renal tolera. Kayexalato 15g c/6h VO. ECG basal y control de K en 6h."};
     return null;
   },
   alb:(v)=>{
@@ -1491,21 +1502,21 @@ const LAB_QUICK = {
     return null;
   },
   mg:(v)=>{
-    if(v<0.5)return {sev:"crit",title:"Hipomagnesemia severa",rec:"Reposición IV: MgSO4 2g en 30 min. Monitorizar reflejos y función respiratoria. Debe corregirse para que la hipokalemia responda al tratamiento."};
-    if(v<0.7)return {sev:"abn", title:"Hipomagnesemia",rec:"Suplementación oral o IV. Imprescindible corregir Mg para eficacia de reposición de K. Causa común: diuréticos, diarrea, alcoholismo."};
+    if(v<0.5)return {sev:"crit",title:"Hipomagnesemia severa",rec:"Tx: MgSO4 4-8g IV en 4-8h, luego mantenimiento 1-2g/h. Monitorizar: reflejos rotulianos (suspender si ausentes), FR y diuresis. Condición para que el K responda a la reposición. Vigilar ECG."};
+    if(v<0.7)return {sev:"abn", title:"Hipomagnesemia",rec:"Tx: Oral — óxido de Mg 400mg c/8h o cloruro de Mg. IV — MgSO4 2g en 1h c/6h. Corregir siempre antes/junto con reposición de K (hipoK refractaria si Mg bajo). Causa: diuréticos, IBP crónicos, diarrea, alcohol."};
     if(v>1.05)return {sev:"abn",title:"Hipermagnesemia",rec:"Evaluar función renal. Suspender suplementos de Mg. Si severa (>2 mmol/L): gluconato de Ca IV como antagonista."};
     return null;
   },
   ca:(v)=>{
-    if(v<1.75)return {sev:"crit",title:"Hipocalcemia severa",rec:"Gluconato de Ca 10% IV 10 mL en 10 min. Monitoreo ECG. Repetir según respuesta. Investigar: hipoparatiroidismo, déficit Vit D, pancreatitis."};
+    if(v<1.75)return {sev:"crit",title:"Hipocalcemia severa",rec:"Tx: Gluconato Ca 10% 10-20 mL IV lento en 10 min, luego infusión 0.5-2 mg/kg/h de Ca elemental. Corregir Mg simultáneamente. Monitoreo ECG. Meta: Ca iónico >1.1. Repetir nivel c/4h."};
     if(v<2.1) return {sev:"abn", title:"Hipocalcemia",rec:"Suplementación de Ca oral/IV según severidad. Corregir déficit de Mg y Vit D. Evaluar PTH."};
-    if(v>2.75)return {sev:"crit",title:"Hipercalcemia severa",rec:"Hidratación IV agresiva (SF 200-300 mL/h). Furosemida tras hidratación. Bisfosfonatos. Buscar causa (PTHrP, Vit D tóxica, metástasis óseas)."};
+    if(v>2.75)return {sev:"crit",title:"Hipercalcemia severa",rec:"Tx: 1) SF 0.9% 200-500 mL/h IV (expansión de volumen). 2) Furosemida 20-40mg IV tras adecuada hidratación. 3) Pamidronato 60-90mg IV en 2-4h o zoledrónico 4mg en 15 min. 4) Calcitonina 4 UI/kg IM c/12h (efecto rápido). Diálisis si refractario."};
     if(v>2.6) return {sev:"abn", title:"Hipercalcemia",rec:"Hidratación adecuada. Evaluar causa: hiperparatiroidismo primario, neoplasia, sarcoidosis, exceso Vit D."};
     return null;
   },
   p:(v)=>{
-    if(v<0.5) return {sev:"crit",title:"Hipofosfatemia severa",rec:"Reposición IV urgente. Riesgo de miopatía, disfunción cardiaca y respiratoria. Monitorizar durante realimentación (síndrome de realimentación)."};
-    if(v<0.81)return {sev:"abn", title:"Hipofosfatemia",rec:"Suplementación oral/IV según severidad. Evaluar causa: malnutrición, diarrea, antiácidos, hiperparatiroidismo."};
+    if(v<0.5) return {sev:"crit",title:"Hipofosfatemia severa",rec:"Tx: Fosfato potásico o sódico IV 0.08-0.16 mmol/kg en 6h. Monitorizar Ca durante reposición IV (riesgo hipocalcemia). Si sínd. realimentación: corregir lentamente, restringir glucosa. Control de P c/6h."};
+    if(v<0.81)return {sev:"abn", title:"Hipofosfatemia",rec:"Tx: Fosfato oral — Neutraphos 250-500 mg c/6-8h. Si no tolera VO: fosfato IV 0.08 mmol/kg en 6h. Suspender antiácidos con Al/Mg. Corregir vitamina D si deficiente. Control en 24-48h."};
     if(v>1.45)return {sev:"abn", title:"Hiperfosfatemia",rec:"Restricción dietética de fósforo. Quelantes intestinales (carbonato de Ca). Evaluar función renal."};
     return null;
   },
@@ -1879,18 +1890,27 @@ function updateLab(k, labKey, value){
 
 function setActiveLabDate(k, fecha){
   activeLabDate[k] = fecha;
-  const wrapperId = "labs-wrap-"+k.replace(/[^a-zA-Z0-9]/g,"_");
-  const wrapper = document.getElementById(wrapperId);
-  if(wrapper){
-    const nd = noteData[k] || defaultData();
-    wrapper.innerHTML = renderLabSection(nd, k);
-    wrapper.scrollIntoView({block:"nearest", behavior:"smooth"});
-  } else {
-    const p = patients.find(p=>pid(p)===k);
-    if(p && !SIMPLE_ESP.has(p.esp)){
-      const cardEl = document.getElementById("card-"+k);
-      if(cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
-    }
+  const p = patients.find(p=>pid(p)===k);
+  if(p && !SIMPLE_ESP.has(p.esp)){
+    const cardEl = document.getElementById("card-"+k);
+    if(cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
+  }
+}
+
+function deleteLabDate(k, fecha){
+  if(!confirm("¿Eliminar los laboratorios del "+fmtDateChip(fecha)+"? Esta acción no se puede deshacer.")) return;
+  const nd = getNote(k);
+  nd.labHistory = (nd.labHistory||[]).filter(s=>s.fecha!==fecha);
+  if(activeLabDate[k]===fecha){
+    const remaining = nd.labHistory.map(s=>s.fecha).sort((a,b)=>b.localeCompare(a));
+    activeLabDate[k] = remaining[0]||null;
+  }
+  noteData[k]=nd;
+  saveNote(k,nd);
+  const p = patients.find(p=>pid(p)===k);
+  if(p && !SIMPLE_ESP.has(p.esp)){
+    const cardEl = document.getElementById("card-"+k);
+    if(cardEl) cardEl.outerHTML = renderFullCard(p,nd,k);
   }
 }
 
@@ -2029,7 +2049,12 @@ function censusRow(p, showEsp){
   const espBadge = showEsp
     ? "<td><span style='background:"+col+";color:#fff;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700'>"+esc(p.esp)+"</span></td>"
     : "";
-  return "<tr style='"+(noEnCenso?"background:#fffbeb":"")+"'>" +
+  const ingresoDate3 = parseDate(p.ingreso);
+  const today3 = new Date(); today3.setHours(0,0,0,0);
+  const yday3 = new Date(today3); yday3.setDate(today3.getDate()-1);
+  const isNew = ingresoDate3 && ingresoDate3 >= yday3;
+  const rowBg = noEnCenso ? "background:#fffbeb" : isNew ? "background:#f0fdf4" : "";
+  return "<tr style='"+(rowBg)+"'>" +
     "<td style='font-weight:700;color:"+col+"'>"+esc(p.cama)+(noEnCenso?" <span style='font-size:9px;background:#f59e0b;color:#fff;padding:1px 4px;border-radius:3px'>⚠️</span>":"")+"</td>" +
     espBadge +
     "<td style='color:#64748b'>"+esc(p.exp)+"</td>" +
@@ -2139,7 +2164,35 @@ function renderCensus(pts){
     });
   }
 
-  document.getElementById("view-census").innerHTML = html;
+  // Build residente/adscrito filter UI above table
+  const residentes = [...new Set(patients.map(p=>p.residente||"").filter(Boolean))].sort();
+  const adscritos  = [...new Set(patients.map(p=>p.adscrito||"").filter(Boolean))].sort();
+
+  // Count patients per residente and adscrito
+  const cntRes = {}; patients.forEach(p=>{ const r=p.residente||"Sin residente"; cntRes[r]=(cntRes[r]||0)+1; });
+  const cntAds = {}; patients.forEach(p=>{ const a=p.adscrito||"Sin adscrito"; cntAds[a]=(cntAds[a]||0)+1; });
+
+  const mkBtn = (val, cur, fn, label, cnt) =>
+    `<button onclick="${fn}('${val.replace(/'/g,"\'")}')" style="padding:3px 10px;border-radius:12px;border:1px solid ${cur===val?'#0e7490':'#cbd5e1'};background:${cur===val?'#0e7490':'#f8fafc'};color:${cur===val?'#fff':'#475569'};font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">${label}${cnt!=null?` <span style="opacity:.7">(${cnt})</span>`:''}</button>`;
+
+  let filterHtml = `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:10px">`;
+
+  filterHtml += `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:11px;font-weight:700;color:#475569;min-width:80px">👨‍⚕️ Residente:</span>`;
+  filterHtml += mkBtn("ALL", selectedResidente, "setCensusResidente", "Todos", null);
+  residentes.forEach(r => { filterHtml += mkBtn(r, selectedResidente, "setCensusResidente", r, cntRes[r]||0); });
+  filterHtml += `</div>`;
+
+  filterHtml += `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:11px;font-weight:700;color:#475569;min-width:80px">🏥 Adscrito:</span>`;
+  filterHtml += mkBtn("ALL", selectedAdscrito, "setCensusAdscrito", "Todos", null);
+  adscritos.forEach(a => { filterHtml += mkBtn(a, selectedAdscrito, "setCensusAdscrito", a, cntAds[a]||0); });
+  filterHtml += `</div>`;
+
+  // Summary counts
+  const resTotal = selectedResidente==="ALL" ? "" : ` — ${filtered.length} pacientes`;
+  const adsTotal = selectedAdscrito==="ALL"  ? "" : ` — ${filtered.length} pacientes`;
+  filterHtml += `</div>`;
+
+  document.getElementById("view-census").innerHTML = filterHtml + html;
 }
 
 // ─── PRINT / ENTREGA VIEW ─────────────────────────────────────────────────────────
