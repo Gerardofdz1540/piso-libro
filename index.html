@@ -123,7 +123,6 @@ body{font-family:var(--font);background:var(--bg);min-height:100vh;color:#1e293b
 .cnb-preqx{border-color:#3b82f6;color:#3b82f6}.cnb-preqx:hover{background:#eff6ff}
 .cnb-postqx{border-color:#8b5cf6;color:#8b5cf6}.cnb-postqx:hover{background:#f5f3ff}
 .cnb-med{border-color:#0ea5e9;color:#0ea5e9}.cnb-med:hover{background:#f0f9ff}
-.cnb-indic{border-color:#f59e0b;color:#f59e0b}.cnb-indic:hover{background:#fffbeb}
 .lab-date-bar{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
 .lab-date-chip{padding:3px 10px;border-radius:12px;border:1px solid #cbd5e1;background:#f8fafc;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);color:#475569;transition:all .15s}
 .lab-date-chip.active{background:#0e7490;border-color:#0e7490;color:#fff}
@@ -1201,7 +1200,7 @@ function renderFullCard(p,nd,k){
         <button class="card-note-btn cnb-preqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'prequirurgica')">PreQx</button>
         <button class="card-note-btn cnb-postqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'postquirurgica')">PostQx</button>
         <button class="card-note-btn cnb-med" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'medica')">Evolución</button>
-        <button class="card-note-btn cnb-indic" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'indicaciones')">Indicaciones</button>
+
       </div>
     </div>` : ""}
   </div>`;
@@ -1775,7 +1774,8 @@ function renderLabSection(nd, k){
   // AI analysis panel
   const cached = labAnalysisCache[k];
   const showPanel = cached && cached.fecha===activeFecha;
-  const analysisPanel = showPanel ? `<div class="lab-analysis-panel">
+  const _lapId = "lap-panel-"+k.replace(/[^a-zA-Z0-9]/g,"_");
+  const analysisPanel = showPanel ? `<div class="lab-analysis-panel" id="${_lapId}">
     <div class="lap-header">🧠 Análisis IA · ${fmtDateChip(cached.fecha)}
       <button onclick="clearLabAnalysis('${k}')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer">✕ Cerrar</button>
     </div>
@@ -1828,9 +1828,10 @@ async function analyzeLabsAI(k, fecha){
   if(!snap){ return; }
 
   labAnalysisLoading.add(k);
-  // Re-render just the lab section (don't re-render whole card to avoid losing focus)
-  const cardEl = document.getElementById("card-"+k);
-  if(cardEl){ cardEl.outerHTML = renderFullCard(p, nd, k); }
+  // Solo actualizar el botón localmente (evitar re-render completo que pierde la referencia)
+  const aiBtn = document.querySelector(\`.lab-ai-btn[onclick*="'${k}'"\], .lab-ai-btn[onclick*='"${k}"']}\`);
+  const aiBtnAlt = document.querySelector(`[onclick="analyzeLabsAI('${k}','${fecha}')"]`);
+  if(aiBtnAlt){ aiBtnAlt.disabled=true; aiBtnAlt.textContent="⏳ Analizando..."; }
 
   // Build lab summary string
   const labLines = [];
@@ -1938,8 +1939,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
   }
 
   labAnalysisLoading.delete(k);
-  const p2 = patients.find(p=>pid(p)===k);
-  if(p2){ const c=document.getElementById("card-"+k); if(c) c.outerHTML=renderFullCard(p2, getNote(k), k); }
+  // Re-render la tarjeta solo al final cuando ya tenemos el resultado
+  const p2 = patients.find(pt=>pid(pt)===k);
+  if(p2){
+    const c = document.getElementById("card-"+k);
+    if(c) c.outerHTML = renderFullCard(p2, getNote(k), k);
+    else renderView(); // fallback si la tarjeta fue re-renderizada por otro motivo
+  }
 }
 
 function clearLabAnalysis(k){
@@ -2191,14 +2197,16 @@ function renderCensus(pts){
 
   // ── Secciones y cómo clasificar cada cama ──
   const SECTIONS = [
-    {id:"piso3",   label:"🏥 PISO 3",              color:"#1a3a6b", sortBase:0},
-    {id:"uci",     label:"🚨 UCI",                  color:"#7b0000", sortBase:1},
-    {id:"otro_piso",label:"🏨 OTRO PISO",           color:"#2d6a4f", sortBase:2},
-    {id:"pediatria",label:"👶 PEDIATRÍA",           color:"#0077b6", sortBase:3},
-    {id:"procedimientos",label:"🔬 PROCEDIMIENTOS / RECUPERACIÓN", color:"#4a3580", sortBase:4},
-    {id:"altas",   label:"✅ ALTAS",                color:"#27ae60", sortBase:5},
-    {id:"defunciones",label:"🕊 DEFUNCIONES",       color:"#555",    sortBase:6},
-    {id:"otros",   label:"📋 OTROS",                color:"#888",    sortBase:7},
+    {id:"piso3",      label:"🏥 PISO 3",                    color:"#1a3a6b", sortBase:0},
+    {id:"uci",        label:"🚨 UCI",                        color:"#7b0000", sortBase:1},
+    {id:"med_interna",label:"🏨 MEDICINA INTERNA",          color:"#1a5276", sortBase:2},
+    {id:"gyo_onco",   label:"🏨 GYO / ONCOLOGÍA",          color:"#6b006b", sortBase:3},
+    {id:"tyo",        label:"🏨 TYO / NCX",                color:"#1a5c3a", sortBase:4},
+    {id:"pediatria",  label:"👶 PEDIATRÍA",                 color:"#0077b6", sortBase:5},
+    {id:"procedimientos",label:"🔬 PROCEDIMIENTOS / RECUPERACIÓN", color:"#4a3580", sortBase:6},
+    {id:"altas",      label:"✅ ALTAS",                     color:"#27ae60", sortBase:7},
+    {id:"defunciones",label:"🕊 DEFUNCIONES",               color:"#555",    sortBase:8},
+    {id:"otros",      label:"📋 OTROS",                     color:"#888",    sortBase:9},
   ];
 
   function getBedSection(p){
@@ -2206,14 +2214,21 @@ function renderCensus(pts){
     if(estado === "ALTA")       return "altas";
     if(estado === "DEFUNCIÓN" || estado === "DEFUNCION") return "defunciones";
 
-    const s = String(p.cama||"").trim().toUpperCase();
-    if(/^3-\d+$/.test(s))                   return "piso3";
-    if(/^UCI/i.test(s))                      return "uci";
+    const s   = String(p.cama||"").trim().toUpperCase();
+    const esp = String(p.esp||"").trim().toUpperCase();
+    if(/^3-\d+$/.test(s))                               return "piso3";
+    if(/^UCI/i.test(s))                                   return "uci";
     if(/^(RECU|RECUP|ENDOS|PROC|CIRUG|ENDOSC)/i.test(s)) return "procedimientos";
-    if(/^(ALTA|EGRESO)/i.test(s))            return "altas";
-    if(/^(DEF|FALLEC|OBITO)/i.test(s))       return "defunciones";
-    if(/^PEDI/i.test(s))                     return "pediatria";
-    if(/^\d+-\d+$/.test(s))                  return "otro_piso";
+    if(/^(ALTA|EGRESO)/i.test(s))                         return "altas";
+    if(/^(DEF|FALLEC|OBITO)/i.test(s))                    return "defunciones";
+    if(/^PEDI/i.test(s))                                  return "pediatria";
+    if(/^\d+-\d+$/.test(s)){
+      // Subdividir otro piso por especialidad
+      if(/GYO|ONCO/i.test(esp))   return "gyo_onco";
+      if(/TYO|NCX|COLUMNA/i.test(esp)) return "tyo";
+      if(/PEDI/i.test(esp))       return "pediatria";
+      return "med_interna";
+    }
     return "otros";
   }
 
@@ -2312,7 +2327,7 @@ function renderPrint(pts){
   const gi = getGuardInfo();
   const PR_SECTIONS = [
     {id:"piso3",label:"🏥 PISO 3",color:"#0a1628"},{id:"uci",label:"🚨 UCI",color:"#7b0000"},
-    {id:"otro_piso",label:"🏨 OTRO PISO",color:"#2d6a4f"},{id:"pediatria",label:"👶 PEDIATRÍA",color:"#0077b6"},
+    {id:"med_interna",label:"🏨 MEDICINA INTERNA",color:"#1a5276"},{id:"gyo_onco",label:"🏨 GYO / ONCOLOGÍA",color:"#6b006b"},{id:"tyo",label:"🏨 TYO / NCX",color:"#1a5c3a"},{id:"pediatria",label:"👶 PEDIATRÍA",color:"#0077b6"},
     {id:"procedimientos",label:"🔬 PROCEDIMIENTOS",color:"#4a3580"},{id:"altas",label:"✅ ALTAS",color:"#27ae60"},
     {id:"defunciones",label:"🕊 DEFUNCIONES",color:"#555"},{id:"otros",label:"📋 OTROS",color:"#888"},
   ];
@@ -2321,7 +2336,15 @@ function renderPrint(pts){
     if(e==="ALTA")return"altas";if(e==="DEFUNCIÓN"||e==="DEFUNCION")return"defunciones";
     if(/^3-\d+$/.test(s))return"piso3";if(/^UCI/i.test(s))return"uci";
     if(/^(RECU|RECUP|ENDOS|PROC)/i.test(s))return"procedimientos";
-    if(/^PEDI/i.test(s))return"pediatria";if(/^\d+-\d+$/.test(s))return"otro_piso";return"otros";
+    if(/^PEDI/i.test(s))return"pediatria";
+    if(/^\d+-\d+$/.test(s)){
+      const esp2=String(p.esp||"").toUpperCase();
+      if(/GYO|ONCO/i.test(esp2))return"gyo_onco";
+      if(/TYO|NCX|COLUMNA/i.test(esp2))return"tyo";
+      if(/PEDI/i.test(esp2))return"pediatria";
+      return"med_interna";
+    }
+    return"otros";
   }
   function prSort(c){const s=String(c||""),m=s.match(/^(\d+)-(\d+)$/);if(m)return parseInt(m[1])*10000+parseInt(m[2]);const u=s.match(/^UCI\s*(\d+)$/i);if(u)return parseInt(u[1]);return 9999;}
   const bySec={};pts.forEach(p=>{const s=prSec(p);if(!bySec[s])bySec[s]=[];bySec[s].push(p);});
@@ -2450,11 +2473,13 @@ function renderAltas(pts){
         <div class="alta-row"><span class="alta-lbl">Expediente</span><span class="alta-val">${esc(p.exp||"")}</span></div>
         <div class="alta-row"><span class="alta-lbl">Dx Ingreso</span><span class="alta-val">${esc(p.dx||"")}</span></div>
         <div class="alta-row"><span class="alta-lbl">Dx Egreso</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="dx_egreso" data-altakey="${pk}">${esc(p.dx||"")}</span></div>
-        <div class="alta-row"><span class="alta-lbl">Evolución y estado</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="evolucion" data-altakey="${pk}">Hemodinámicamente estable, tolerando vía oral, sin datos de respuesta inflamatoria.</span></div>
+        <div class="alta-row"><span class="alta-lbl">Antecedentes</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="antecedentes" data-altakey="${pk}">${esc(nd.app||"")}</span></div>
+        <div class="alta-row"><span class="alta-lbl">Evolución y estado</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="evolucion" data-altakey="${pk}">Hemodinámicamente estable, tolerando vía oral, sin datos de respuesta inflamatoria sistémica.</span></div>
         <div class="alta-row"><span class="alta-lbl">Problemas pendientes</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="pendientes" data-altakey="${pk}">${esc(nd.pendientes||"")}</span></div>
         <div class="alta-row"><span class="alta-lbl">Plan y tratamiento</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="tratamiento" data-altakey="${pk}"></span></div>
         <div class="alta-row"><span class="alta-lbl">Recomendaciones</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="recomendaciones" data-altakey="${pk}">Datos de alarma: dolor que no ceda, fiebre, sangrado, secreción fétida por herida.</span></div>
         <div class="alta-row"><span class="alta-lbl">Pronóstico</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="pronostico" data-altakey="${pk}">Reservado</span></div>
+        <div class="alta-row"><span class="alta-lbl">Signos vitales al egreso</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="sv" data-altakey="${pk}">${esc(nd.sv||"FC:   FR:   TA: /   Temp:   SatO2: % aire ambiente")}</span></div>
         <div class="alta-row"><span class="alta-lbl">Motivo egreso</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="motivo" data-altakey="${pk}">Mejoría</span></div>
       </div>
       <div class="alta-actions">
@@ -2540,11 +2565,11 @@ function renderFormatos(pts){
       <div><label>Paciente</label><br><select id="fmt-pat-select" onchange="fmtSelectedPatKey=this.value">${patOpts?`<option value="">— Seleccionar —</option>${patOpts}`:'<option>Sin pacientes</option>'}</select></div>
       <div><label>Formato</label><br><select id="fmt-form-select" onchange="fmtSelectedForm=this.value">
         <option value="">— Seleccionar —</option>
-        <option value="prepostqx">FT-HGL-Qx-234 · Estado Pre y Post Qx</option>
+
         <option value="consentimiento_qx">FT-HGL-AM-542 · Consentimiento Quirúrgico</option>
         <option value="consentimiento_gral">FT-HGL-AM-50 · Consentimiento General</option>
         <option value="consentimiento_tx">FT-HGL-LAB-236 · Consentimiento Transfusión</option>
-        <option value="nota_medica">FT-HGL-AM-51 · Nota Médica</option>
+
       </select></div>
       <div style="align-self:flex-end"><button class="fmt-gen" onclick="generateFormat()">⚡ Generar</button></div>
     </div>
@@ -2571,11 +2596,9 @@ function generateFormat(){
   const labs=snap?snap.labs||{}:{};
   const container = document.getElementById("fmt-form-container");
 
-  if(ft==="prepostqx") container.innerHTML = fmtPrePostQx(p,nd,gi,fechaStr,horaStr,labs,adsOpts);
   else if(ft==="consentimiento_qx") container.innerHTML = fmtConsentimientoQx(p,nd,gi,fechaStr,horaStr,adsOpts);
   else if(ft==="consentimiento_gral") container.innerHTML = fmtConsentimientoGral(p,nd,gi,fechaStr,horaStr,adsOpts);
   else if(ft==="consentimiento_tx") container.innerHTML = fmtConsentimientoTx(p,nd,gi,fechaStr,horaStr,adsOpts);
-  else if(ft==="nota_medica") container.innerHTML = fmtNotaMedica(p,nd,gi,fechaStr,horaStr,labs,adsOpts);
 }
 
 // ── Helpers for institutional formats ──
@@ -3249,7 +3272,18 @@ function openNoteModal(patKey, noteType){
   // Auto-fill labs
   const snap=(nd.labHistory||[]).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
   const labs=snap?snap.labs||{}:{};
-  const labStr=["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","inr","urea"].filter(x=>labs[x]).map(x=>x.toUpperCase()+": "+labs[x]).join(", ");
+  // Transcribir TODOS los labs registrados (todos los grupos)
+  const labLines=[];
+  (typeof LAB_GROUPS!=="undefined"?LAB_GROUPS:[]).forEach(grp=>{
+    const vals=grp.fields.filter(lf=>labs[lf.key]).map(lf=>lf.label+": "+labs[lf.key]+(lf.unit?" "+lf.unit:""));
+    if(vals.length) labLines.push(vals.join(" | "));
+  });
+  // Agregar extras/cultivos si existen
+  if(snap&&snap.extra&&snap.extra.length){
+    const exv=snap.extra.filter(e=>e.nombre&&e.valor).map(e=>e.nombre+": "+e.valor);
+    if(exv.length) labLines.push(exv.join(" | "));
+  }
+  const labStr=labLines.join("\n")||["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","inr","urea"].filter(x=>labs[x]).map(x=>x.toUpperCase()+": "+labs[x]).join(", ");
 
   let fieldsHtml="";
   tmpl.fields.forEach(f=>{
@@ -3472,16 +3506,94 @@ function printAlta(pk){
   const ad=_getAltaData(pk);
   const gi=getGuardInfo();
   const days=daysSince(p.ingreso);
-  function r(l,v){return`<tr><td style="font-weight:700;color:#001746;font-size:11px;padding:5px 8px;vertical-align:top;width:180px;border:1px solid #ccc;font-family:Calibri">${l}</td><td style="font-size:11px;padding:5px 8px;border:1px solid #ccc;font-family:Calibri">${(v||"").replace(/\n/g,"<br>")}</td></tr>`;}
+  const now=new Date();
+  const fechaStr=gi.fecha||now.toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"numeric"});
+  const horaStr=now.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"})+" HRS";
+
+  function tr(lbl,val,bold){
+    const v=(val||"").replace(/\n/g,"<br>");
+    return `<tr>
+      <td style="font-weight:700;font-size:10.5pt;padding:5px 8px;vertical-align:top;border:1px solid #999;width:175px;font-family:Calibri,sans-serif;background:#f4f6fb;color:#001746">${lbl}</td>
+      <td style="font-size:10.5pt;padding:5px 8px;border:1px solid #999;font-family:Calibri,sans-serif;${bold?'font-weight:700;':''}color:#000">${v}</td>
+    </tr>`;
+  }
+
+  // Calcular fecha de egreso
+  const fechaEgresoStr = gi.fecha || fechaStr;
+
   const rows=[
-    r("FECHA",gi.fecha||""),r("PACIENTE",p.nombre),r("EDAD",(p.edad||"")+" AÑOS"),r("EXPEDIENTE",p.exp),
-    r("SERVICIO",p.esp||"CG"),r("CAMA",p.cama),r("FECHA INGRESO",p.ingreso),r("DÍAS",days+""),
-    r("DX INGRESO",p.dx),r("DX EGRESO",ad.dx_egreso||p.dx),r("EVOLUCIÓN",ad.evolucion),
-    r("PENDIENTES",ad.pendientes||nd.pendientes),r("TRATAMIENTO",ad.tratamiento),
-    r("RECOMENDACIONES",ad.recomendaciones),r("PRONÓSTICO",ad.pronostico||"RESERVADO"),r("MOTIVO",ad.motivo||"MEJORÍA")
+    tr("FECHA DE ELABORACIÓN",fechaStr+"&nbsp;&nbsp;&nbsp;&nbsp;HORA: "+horaStr),
+    tr("NOMBRE DEL PACIENTE",p.nombre,true),
+    tr("EDAD / SEXO / EXPEDIENTE",(p.edad||"")+" AÑOS / "+esc(p.sexo||"")+" / "+esc(p.exp||"")),
+    tr("SERVICIO / CAMA","CIRUGÍA GENERAL / CAMA: "+esc(p.cama)+"&nbsp;&nbsp;&nbsp;AFILIACIÓN AL SEGURO POPULAR: NO"),
+    tr("FECHA DE INGRESO / EGRESO",p.ingreso+"&nbsp;&nbsp;&nbsp;&nbsp;EGRESO: "+fechaEgresoStr+"&nbsp;&nbsp;&nbsp;DÍAS: "+days),
+    `<tr><td colspan="2" style="padding:4px 8px;background:#001746;color:#fff;font-weight:700;font-size:10pt;font-family:Calibri,sans-serif">DIAGNÓSTICO DE INGRESO</td></tr>`,
+    `<tr><td colspan="2" style="padding:5px 8px;font-size:10.5pt;font-family:Calibri,sans-serif;border:1px solid #999;font-weight:700">${esc(p.dx||"")}</td></tr>`,
+    `<tr><td colspan="2" style="padding:4px 8px;background:#001746;color:#fff;font-weight:700;font-size:10pt;font-family:Calibri,sans-serif">DIAGNÓSTICO DE EGRESO</td></tr>`,
+    `<tr><td colspan="2" style="padding:5px 8px;font-size:10.5pt;font-family:Calibri,sans-serif;border:1px solid #999;font-weight:700">${esc(ad.dx_egreso||p.dx||"")}</td></tr>`,
+    `<tr><td colspan="2" style="padding:4px 8px;background:#e8f0fb;color:#001746;font-weight:700;font-size:10pt;font-family:Calibri,sans-serif;border:1px solid #999">RESUMEN CLÍNICO</td></tr>`,
+    tr("ANTECEDENTES DE IMPORTANCIA", esc(ad.antecedentes||nd.app||"")),
+    tr("EVOLUCIÓN, MANEJO Y ESTADO ACTUAL", esc(ad.evolucion||"")),
+    tr("PROBLEMAS CLÍNICOS PENDIENTES", esc(ad.pendientes||nd.pendientes||"")),
+    tr("PLAN DE MANEJO Y TRATAMIENTO", esc(ad.tratamiento||"")),
+    tr("RECOMENDACIONES PARA VIGILANCIA AMBULATORIA", esc(ad.recomendaciones||"")),
+    tr("PRONÓSTICO", esc(ad.pronostico||"RESERVADO")),
+    tr("SIGNOS VITALES AL EGRESO", esc(ad.sv||nd.sv||"FC:   FR:   TA: /   Temp:   SatO2:   AIRE AMBIENTE")),
+    tr("MOTIVO DEL EGRESO", "MEJORÍA: ✓"),
   ].join("");
-  const w=window.open("","_blank","width=800,height=700");
-  w.document.write(`<!DOCTYPE html><html><head><title>ALTA</title><style>body{font-family:Calibri,sans-serif;padding:30px}table{width:100%;border-collapse:collapse}h2,h3{color:#001746;text-align:center;margin:4px 0}</style></head><body><h2>HOSPITAL GENERAL DE LEÓN</h2><h3>NOTA DE ALTA O EGRESO HOSPITALARIO</h3><hr style="border:1px solid #001746"><table>${rows}</table><br><br><div style="display:flex;justify-content:space-between;margin-top:40px"><div style="text-align:center;border-top:1px solid #000;width:200px;padding-top:4px;font-size:11px">MÉDICO DE BASE</div><div style="text-align:center;border-top:1px solid #000;width:200px;padding-top:4px;font-size:11px">RESIDENTE</div></div><script>window.print();<\/script></body></html>`);
+
+  // Logo HGL SVG (simplificado) + Logo SaludGTO texto
+  const logoHGL = `<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="30" cy="30" r="28" fill="#001746" stroke="#c8a96e" stroke-width="2"/>
+    <text x="30" y="22" text-anchor="middle" font-size="8" fill="#c8a96e" font-family="serif" font-weight="bold">HOSPITAL</text>
+    <text x="30" y="32" text-anchor="middle" font-size="7" fill="#fff" font-family="serif">GENERAL</text>
+    <text x="30" y="42" text-anchor="middle" font-size="10" fill="#c8a96e" font-family="serif" font-weight="bold">LEÓN</text>
+  </svg>`;
+  const logoSalud = `<div style="border:2px solid #006633;border-radius:6px;padding:4px 8px;text-align:center;font-family:Arial,sans-serif">
+    <div style="color:#006633;font-size:9pt;font-weight:700">Sistema de</div>
+    <div style="color:#006633;font-size:14pt;font-weight:900;line-height:1">SaludGTO</div>
+    <div style="color:#006633;font-size:7pt">El mejor de todo el país</div>
+  </div>`;
+
+  const w=window.open("","_blank","width=850,height=900");
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>NOTA DE ALTA — ${p.nombre}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:Calibri,sans-serif;padding:20px 28px;color:#000;font-size:10.5pt;max-width:800px;margin:0 auto}
+    table{width:100%;border-collapse:collapse}
+    @media print{body{padding:10px 16px}@page{margin:10mm 12mm}}
+  </style></head><body>
+  <!-- ENCABEZADO -->
+  <table style="margin-bottom:8px">
+    <tr>
+      <td style="width:70px;vertical-align:middle">${logoHGL}</td>
+      <td style="text-align:center;vertical-align:middle;padding:0 10px">
+        <div style="font-size:16pt;font-weight:900;color:#001746;font-family:Calibri,sans-serif">HOSPITAL GENERAL LEÓN</div>
+        <div style="font-size:12pt;font-weight:700;color:#001746;margin-top:2px">NOTA DE EVOLUCIÓN Y ALTA O EGRESO HOSPITALARIO</div>
+      </td>
+      <td style="width:90px;vertical-align:middle;text-align:right">${logoSalud}</td>
+    </tr>
+  </table>
+  <hr style="border:2px solid #001746;margin:6px 0 12px"/>
+  <!-- TABLA DATOS -->
+  <table style="border-collapse:collapse;width:100%">${rows}</table>
+  <!-- FIRMAS -->
+  <br>
+  <table style="width:100%;margin-top:30px">
+    <tr>
+      <td style="width:50%;text-align:center;padding-top:40px;border-top:1px solid #000;font-size:9pt;font-family:Calibri">
+        <div style="font-weight:700">DR. ${esc((p.adscrito||"RODRÍGUEZ").toUpperCase())} MBCG</div>
+        <div>SELLO Y FIRMA DE MÉDICO ADSCRITO</div>
+      </td>
+      <td style="width:10%"></td>
+      <td style="width:50%;text-align:center;padding-top:40px;border-top:1px solid #000;font-size:9pt;font-family:Calibri">
+        <div style="font-weight:700">DR ${esc((p.residente||"").toUpperCase())} R1CG</div>
+        <div>NOMBRE CÉDULA Y FIRMA DE MÉDICO RESIDENTE</div>
+      </td>
+    </tr>
+  </table>
+  <script>setTimeout(()=>window.print(),400);<\/script>
+  </body></html>`);
   w.document.close();
 }
 
@@ -3913,8 +4025,10 @@ function exportToExcel(){
   const EX_SECTIONS = [
     {id:"piso3",   label:"PISO 3 — CIRUGÍA GENERAL",   color:"FF001746"},
     {id:"uci",     label:"UCI",                          color:"FF7B0000"},
-    {id:"otro_piso",label:"OTRO PISO",                   color:"FF2D6A4F"},
-    {id:"pediatria",label:"PEDIATRÍA",                   color:"FF0077B6"},
+    {id:"med_interna",label:"MEDICINA INTERNA",          color:"FF1A5276"},
+    {id:"gyo_onco",   label:"GYO / ONCOLOGÍA",           color:"FF6B006B"},
+    {id:"tyo",        label:"TYO / NCX",                 color:"FF1A5C3A"},
+    {id:"pediatria",  label:"PEDIATRÍA",                 color:"FF0077B6"},
     {id:"procedimientos",label:"PROCEDIMIENTOS / RECUPERACIÓN", color:"FF4A3580"},
     {id:"altas",   label:"ALTAS",                        color:"FF27AE60"},
     {id:"defunciones",label:"DEFUNCIONES",               color:"FF555555"},
@@ -3931,7 +4045,13 @@ function exportToExcel(){
     if(/^(ALTA|EGRESO)/i.test(s)) return "altas";
     if(/^(DEF|FALLEC|OBITO)/i.test(s)) return "defunciones";
     if(/^PEDI/i.test(s)) return "pediatria";
-    if(/^\d+-\d+$/.test(s)) return "otro_piso";
+    if(/^\d+-\d+$/.test(s)){
+      const esp3=String(p.esp||"").toUpperCase();
+      if(/GYO|ONCO/i.test(esp3)) return "gyo_onco";
+      if(/TYO|NCX|COLUMNA/i.test(esp3)) return "tyo";
+      if(/PEDI/i.test(esp3)) return "pediatria";
+      return "med_interna";
+    }
     return "otros";
   }
   function exBedSort(cama){
