@@ -360,6 +360,7 @@ select.modal-input{background:#fff}
       <button class="tab" onclick="setView('census',this)">📊 Censo</button>
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
       <button class="tab" onclick="setView('altas',this)">🏠 Altas</button>
+      <button class="tab" onclick="setView('formatos',this)">📋 Formatos</button>
     </div>
   </div>
 </div>
@@ -389,6 +390,7 @@ select.modal-input{background:#fff}
   <div id="view-census" style="display:none"></div>
   <div id="view-print" style="display:none"></div>
   <div id="view-altas" style="display:none"></div>
+  <div id="view-formatos" style="display:none"></div>
 </div>
 
 <!-- PATIENT MODAL -->
@@ -1100,13 +1102,14 @@ function renderView(){
     return em&&sm&&rm&&am&&im;
   });
   document.getElementById("count-badge").textContent = filtered.length+" pacientes";
-  ["piso","census","print","altas"].forEach(v=>{
+  ["piso","census","print","altas","formatos"].forEach(v=>{
     document.getElementById("view-"+v).style.display = currentView===v?"":"none";
   });
   if(currentView==="piso") renderPiso(filtered);
   if(currentView==="census") renderCensus(filtered);
   if(currentView==="print") renderPrint(filtered);
   if(currentView==="altas") renderAltas(filtered);
+  if(currentView==="formatos") renderFormatos(filtered);
 }
 
 // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -2489,6 +2492,656 @@ function renderAltas(pts){
     ${html}
   </div>`;
 }
+
+// ─── FORMATOS INSTITUCIONALES ──────────────────────────────────────────────────
+var fmtSelectedPatKey = "";
+var fmtSelectedForm = "";
+
+function renderFormatos(pts){
+  const patOpts = pts.map(p=>`<option value="${pid(p)}"${pid(p)===fmtSelectedPatKey?" selected":""}>${esc(p.cama)} — ${esc(p.nombre)} (${p.edad||"?"}a)</option>`).join("");
+  // Get unique adscritos from patients
+  const adscritos = [...new Set(patients.map(p=>p.adscrito).filter(Boolean))].sort();
+  const adsOpts = adscritos.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join("");
+
+  document.getElementById("view-formatos").innerHTML=`
+  <div class="fmt-wrap">
+    <style>
+      .fmt-wrap{max-width:1100px;margin:0 auto;padding:16px}
+      .fmt-title{text-align:center;font-size:16px;font-weight:800;color:#0a1628;margin-bottom:6px}
+      .fmt-hint{text-align:center;font-size:11px;color:#64748b;margin-bottom:16px}
+      .fmt-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0}
+      .fmt-bar label{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase}
+      .fmt-bar select{padding:6px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;min-width:200px}
+      .fmt-bar button{padding:7px 18px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;font-family:inherit}
+      .fmt-gen{background:#0a1628;color:#fff}.fmt-gen:hover{background:#1a3a6b}
+      .fmt-form-area{background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.06);border:1px solid #e2e8f0;overflow:hidden}
+      .fmt-form-header{background:linear-gradient(135deg,#0a1628,#1a3a6b);color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+      .fmt-form-header h3{font-size:13px;margin:0}
+      .fmt-form-body{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+      .fmt-full{grid-column:span 2}
+      .fmt-field{display:flex;flex-direction:column}
+      .fmt-field label{font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
+      .fmt-field input,.fmt-field select,.fmt-field textarea{border:1px solid #d1d5db;border-radius:5px;padding:5px 9px;font-size:11px;font-family:inherit;color:#1e293b}
+      .fmt-field input:focus,.fmt-field select:focus,.fmt-field textarea:focus{border-color:#4fc3f7;outline:none}
+      .fmt-field textarea{resize:vertical;min-height:50px;line-height:1.4}
+      .fmt-section-title{grid-column:span 2;background:#f1f5f9;border-radius:6px;padding:6px 10px;text-align:center;font-weight:800;font-size:12px;color:#0a1628;margin:4px 0;border-left:4px solid #1a3a6b}
+      .fmt-checks{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+      .fmt-check-item{display:flex;gap:4px;align-items:center;font-size:11px}
+      .fmt-check-item input[type=checkbox]{width:14px;height:14px}
+      .fmt-actions{padding:10px 16px;border-top:1px solid #e2e8f0;display:flex;gap:6px;justify-content:flex-end;background:#f8fafc}
+      .fmt-btn{padding:7px 16px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
+      .fmt-btn-print{background:#7c3aed;color:#fff}
+      .fmt-btn-word{background:#2b579a;color:#fff}
+      @media(max-width:640px){.fmt-form-body{grid-template-columns:1fr}.fmt-full,.fmt-section-title{grid-column:span 1}}
+    </style>
+    <div class="fmt-title">📋 FORMATOS INSTITUCIONALES HGL</div>
+    <div class="fmt-hint">Selecciona paciente y formato → se auto-llenan los datos → edita lo que falte → imprime con formato institucional exacto.</div>
+    <div class="fmt-bar">
+      <div><label>Paciente</label><br><select id="fmt-pat-select" onchange="fmtSelectedPatKey=this.value">${patOpts?`<option value="">— Seleccionar —</option>${patOpts}`:'<option>Sin pacientes</option>'}</select></div>
+      <div><label>Formato</label><br><select id="fmt-form-select" onchange="fmtSelectedForm=this.value">
+        <option value="">— Seleccionar —</option>
+        <option value="prepostqx">FT-HGL-Qx-234 · Estado Pre y Post Qx</option>
+        <option value="consentimiento_qx">FT-HGL-AM-542 · Consentimiento Quirúrgico</option>
+        <option value="consentimiento_gral">FT-HGL-AM-50 · Consentimiento General</option>
+        <option value="consentimiento_tx">FT-HGL-LAB-236 · Consentimiento Transfusión</option>
+        <option value="nota_medica">FT-HGL-AM-51 · Nota Médica</option>
+      </select></div>
+      <div style="align-self:flex-end"><button class="fmt-gen" onclick="generateFormat()">⚡ Generar</button></div>
+    </div>
+    <div id="fmt-form-container"></div>
+  </div>`;
+}
+
+function generateFormat(){
+  const pk = fmtSelectedPatKey || document.getElementById("fmt-pat-select").value;
+  const ft = fmtSelectedForm || document.getElementById("fmt-form-select").value;
+  if(!pk||!ft){alert("Selecciona paciente y formato.");return;}
+  const p = patients.find(x=>pid(x)===pk);
+  if(!p){alert("Paciente no encontrado.");return;}
+  const nd = noteData[pk]||defaultData();
+  const gi = getGuardInfo();
+  const now = new Date();
+  const fechaStr = now.toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"numeric"});
+  const horaStr = now.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+  const days = daysSince(p.ingreso);
+  const adscritos = [...new Set(patients.map(x=>x.adscrito).filter(Boolean))].sort();
+  const adsOpts = adscritos.map(a=>`<option value="${esc(a)}"${a===p.adscrito?" selected":""}>${esc(a)}</option>`).join("");
+  // Last labs
+  const snap=(nd.labHistory||[]).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+  const labs=snap?snap.labs||{}:{};
+  const container = document.getElementById("fmt-form-container");
+
+  if(ft==="prepostqx") container.innerHTML = fmtPrePostQx(p,nd,gi,fechaStr,horaStr,labs,adsOpts);
+  else if(ft==="consentimiento_qx") container.innerHTML = fmtConsentimientoQx(p,nd,gi,fechaStr,horaStr,adsOpts);
+  else if(ft==="consentimiento_gral") container.innerHTML = fmtConsentimientoGral(p,nd,gi,fechaStr,horaStr,adsOpts);
+  else if(ft==="consentimiento_tx") container.innerHTML = fmtConsentimientoTx(p,nd,gi,fechaStr,horaStr,adsOpts);
+  else if(ft==="nota_medica") container.innerHTML = fmtNotaMedica(p,nd,gi,fechaStr,horaStr,labs,adsOpts);
+}
+
+// ── Helpers for institutional formats ──
+function fmtF(id,lbl,val,full,type){
+  const cls = full ? "fmt-field fmt-full" : "fmt-field";
+  if(type==="textarea") return `<div class="${cls}"><label>${lbl}</label><textarea id="${id}" rows="3">${esc(val||"")}</textarea></div>`;
+  if(type==="select") return `<div class="${cls}"><label>${lbl}</label><select id="${id}">${val}</select></div>`;
+  return `<div class="${cls}"><label>${lbl}</label><input id="${id}" value="${esc(val||"")}"/></div>`;
+}
+function fmtV(id){const el=document.getElementById(id);return el?(el.value||el.textContent||"").trim():"";}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORMAT 1: FT-HGL-Qx-234 ESTADO PRE Y POST QX
+// ═══════════════════════════════════════════════════════════════════════════════
+function fmtPrePostQx(p,nd,gi,fecha,hora,labs,adsOpts){
+  return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-Qx-234 · ESTADO PRE Y POST QUIRÚRGICO</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printPrePostQx()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      <div class="fmt-section-title">📋 DATOS GENERALES</div>
+      ${fmtF("fqx_fecha","Fecha",fecha)}
+      ${fmtF("fqx_hora","Hora",hora)}
+      ${fmtF("fqx_servicio","Servicio",p.esp||"CIRUGÍA GENERAL")}
+      ${fmtF("fqx_nombre","Nombre completo",p.nombre)}
+      ${fmtF("fqx_exp","N° Expediente",p.exp)}
+      ${fmtF("fqx_edad","Edad",(p.edad||"")+" AÑOS")}
+      ${fmtF("fqx_sexo","Sexo","","false","select").replace("</select>",`<option value="">—</option><option>MASCULINO</option><option>FEMENINO</option></select>`)}
+      ${fmtF("fqx_cama","Cama",p.cama)}
+      ${fmtF("fqx_fn","Fecha nacimiento","")}
+      <div class="fmt-field"><label>SV: TA</label><input id="fqx_ta" value=""/></div>
+      <div class="fmt-field"><label>SV: FC</label><input id="fqx_fc" value=""/></div>
+      <div class="fmt-field"><label>SV: FR</label><input id="fqx_fr" value=""/></div>
+      <div class="fmt-field"><label>SV: Temp</label><input id="fqx_temp" value=""/></div>
+      <div class="fmt-field"><label>SV: Peso</label><input id="fqx_peso" value=""/></div>
+      <div class="fmt-field"><label>SV: Talla</label><input id="fqx_talla" value=""/></div>
+
+      <div class="fmt-section-title">🔪 NOTA PREQUIRÚRGICA</div>
+      ${fmtF("fqx_fecha_cx","Fecha cirugía",fecha)}
+      ${fmtF("fqx_tipo_interv","Tipo intervención","","false","select").replace("</select>",`<option>URGENCIA</option><option>ELECTIVA</option><option>PROGRAMADA</option></select>`)}
+      ${fmtF("fqx_plan_qx","Plan quirúrgico",nd.qx||"",true,"textarea")}
+
+      <div class="fmt-section-title">⚠️ FACTORES DE RIESGO</div>
+      <div class="fmt-field fmt-full"><div class="fmt-checks">
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_nefro"/>NEFROPATÍA</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_coag"/>COAGULOPATÍA</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_cardio"/>CARDIOPATÍA</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_dm"/>DIABETES</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_has"/>HAS</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_alcohol"/>ALCOHOLISMO</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_tabaco"/>TABAQUISMO</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_adicc"/>ADICCIONES</label>
+      </div></div>
+      ${fmtF("fqx_otros_riesgo","Otros factores",nd.app||"",true,"textarea")}
+      ${fmtF("fqx_interrogatorio","Resumen interrogatorio","",true,"textarea")}
+      ${fmtF("fqx_ef","Exploración física","",true,"textarea")}
+
+      <div class="fmt-section-title">🧪 ESTUDIOS AUXILIARES</div>
+      ${fmtF("fqx_tipo_sangre","Tipo sangre / Grupo","")}
+      ${fmtF("fqx_tp","TP",labs.inr||"")}
+      ${fmtF("fqx_tpt","TPT","")}
+      ${fmtF("fqx_hb","HB",labs.hb||"")}
+      ${fmtF("fqx_hto","HTO","")}
+      ${fmtF("fqx_otros_labs","Otros estudios","",true,"textarea")}
+
+      ${fmtF("fqx_dx_pre","Diagnósticos prequirúrgicos",p.dx||nd.dx||"",true,"textarea")}
+      ${fmtF("fqx_cuidados_pre","Cuidados y plan terapéutico preoperatorio","AYUNO, SOLUCIONES ISOTÓNICAS, CRUCE DE HEMODERIVADOS, ANALGESIA",true,"textarea")}
+      ${fmtF("fqx_pronostico_pre","Pronóstico","RESERVADO PARA LA VIDA Y LA FUNCIÓN",false,"select").replace("</select>",`<option>RESERVADO PARA LA VIDA Y LA FUNCIÓN</option><option>BUENO PARA LA VIDA Y LA FUNCIÓN</option><option>MALO PARA LA VIDA Y LA FUNCIÓN</option></select>`)}
+      ${fmtF("fqx_adscrito","Médico adscrito",p.adscrito||"",false,"select").replace("</select>",`<option value="">—</option>${adsOpts}</select>`)}
+      ${fmtF("fqx_residente","Médico que elabora nota",p.residente||"")}
+
+      <div class="fmt-section-title">📝 NOTA POSTQUIRÚRGICA</div>
+      ${fmtF("fqx_dx_post","Diagnóstico postoperatorio","",true,"textarea")}
+      ${fmtF("fqx_cx_realizada","Cirugía realizada","",true,"textarea")}
+      ${fmtF("fqx_fecha_cx_real","Fecha cirugía realizada",fecha)}
+      ${fmtF("fqx_hora_inicio","Hora inicio","")}
+      ${fmtF("fqx_hora_fin","Hora término","")}
+      ${fmtF("fqx_duracion","Duración","")}
+      ${fmtF("fqx_anestesia","Tipo anestesia","",false,"select").replace("</select>",`<option>GENERAL</option><option>REGIONAL (BLOQUEO EPIDURAL)</option><option>REGIONAL (BLOQUEO SUBARACNOIDEO)</option><option>LOCAL</option><option>SEDACIÓN</option></select>`)}
+      ${fmtF("fqx_cirujano","Médico cirujano",p.adscrito||"")}
+      ${fmtF("fqx_anestesiologo","Anestesiólogo","")}
+      ${fmtF("fqx_ayud1","1er Ayudante",p.residente||"")}
+      ${fmtF("fqx_ayud2","2do Ayudante","")}
+      ${fmtF("fqx_instrumentista","Instrumentista","")}
+      ${fmtF("fqx_circulante","Circulante","")}
+      ${fmtF("fqx_hallazgos","Hallazgos transoperatorios",nd.drenajes?"Drenajes: "+nd.drenajes:"",true,"textarea")}
+      ${fmtF("fqx_tecnica","Descripción técnica quirúrgica","",true,"textarea")}
+      ${fmtF("fqx_sangrado","Sangrado",nd.sangrado||"")}
+      ${fmtF("fqx_gasas","Cuenta textil","COMPLETA",false,"select").replace("</select>",`<option>COMPLETA</option><option>INCOMPLETA</option></select>`)}
+      ${fmtF("fqx_pieza","Estudio histopatológico / Pieza","")}
+      ${fmtF("fqx_incidentes","Incidentes / Accidentes","NINGUNO")}
+      ${fmtF("fqx_estado_post","Estado postqx inmediato","ESTABLE",false,"select").replace("</select>",`<option>ESTABLE</option><option>INESTABLE</option><option>GRAVE</option></select>`)}
+      ${fmtF("fqx_pronostico_post","Pronóstico postqx","RESERVADO PARA LA VIDA Y LA FUNCIÓN",false,"select").replace("</select>",`<option>RESERVADO PARA LA VIDA Y LA FUNCIÓN</option><option>BUENO PARA LA VIDA Y LA FUNCIÓN</option><option>MALO PARA LA VIDA Y LA FUNCIÓN</option></select>`)}
+      ${fmtF("fqx_plan_post","Plan y tratamiento inmediato",nd.pendientes||"",true,"textarea")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printPrePostQx()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
+}
+
+function printPrePostQx(){
+  const v=fmtV,c=id=>document.getElementById(id)&&document.getElementById(id).checked?"X":"";
+  const riesgos = [
+    "NEFROPATÍA ("+c("fqx_nefro")+") ",
+    "COAGULOPATÍA ("+c("fqx_coag")+") ",
+    "CARDIOPATÍA ("+c("fqx_cardio")+") ",
+    "DIABETES ("+c("fqx_dm")+") ",
+    "HAS ("+c("fqx_has")+") ",
+    "ALCOHOLISMO ("+c("fqx_alcohol")+") ",
+    "TABAQUISMO ("+c("fqx_tabaco")+") ",
+    "ADICCIONES ("+c("fqx_adicc")+")"
+  ].join("&emsp;");
+  const w=window.open("","_blank","width=900,height=1100");
+  w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-Qx-234</title>
+  <style>
+    @page{size:letter;margin:5mm}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:5mm;line-height:1.35}
+    .hdr{text-align:right;font-size:8pt;color:#666;margin-bottom:2mm}
+    h2{text-align:center;font-size:11pt;font-weight:bold;margin:3mm 0 2mm}
+    .sec{font-weight:bold;font-size:10pt;margin:2mm 0 1mm}
+    .line{border-bottom:1px solid #000;min-height:5mm;padding:1px 2px;font-size:10pt;margin-bottom:1px}
+    .line b{font-weight:bold}
+    .row{display:flex;gap:2mm}
+    .row .line{flex:1}
+    .sv-table{width:100%;border-collapse:collapse;margin:2mm 0}
+    .sv-table td{border:1px solid #000;padding:2px 4px;font-size:9pt;text-align:center}
+    .sv-table td.lbl{font-weight:bold;background:#f0f0f0}
+    .sig-row{display:flex;justify-content:space-between;margin-top:8mm}
+    .sig-box{text-align:center;width:30%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;margin-top:15mm}
+    .checks{font-size:9pt;margin:1mm 0}
+    .pagebreak{page-break-before:always}
+    .fill{display:inline;font-weight:normal}
+  </style></head><body>
+    <div class="hdr">FT-HGL-Qx-234</div>
+    <div class="sec">DATOS GENERALES DEL PACIENTE:</div>
+    <div class="row">
+      <div class="line" style="flex:2">Fecha de elaboración: <span class="fill">${v("fqx_fecha")}</span></div>
+      <div class="line">Hora: <span class="fill">${v("fqx_hora")}</span></div>
+      <div class="line" style="flex:2">Servicio: <span class="fill">${v("fqx_servicio")}</span></div>
+    </div>
+    <div class="row">
+      <div class="line" style="flex:3"><b>Nombre Completo del Paciente</b>: <span class="fill">${v("fqx_nombre")}</span></div>
+      <div class="line">N° Expediente: <span class="fill">${v("fqx_exp")}</span></div>
+    </div>
+    <div class="row">
+      <div class="line"><b>Fecha de Nacimiento</b>: <span class="fill">${v("fqx_fn")}</span></div>
+      <div class="line">Edad: <span class="fill">${v("fqx_edad")}</span></div>
+      <div class="line">Sexo: <span class="fill">${v("fqx_sexo")}</span></div>
+      <div class="line">Cama: <span class="fill">${v("fqx_cama")}</span></div>
+    </div>
+    <table class="sv-table"><tr><td class="lbl" colspan="7">SIGNOS VITALES:</td></tr>
+    <tr><td>TA: ${v("fqx_ta")}</td><td>FC: ${v("fqx_fc")} X'</td><td>FR: ${v("fqx_fr")} X'</td><td>T: ${v("fqx_temp")} °C</td><td>Peso: ${v("fqx_peso")} Kg</td><td>Talla: ${v("fqx_talla")} Cm</td><td>IMC: </td></tr></table>
+
+    <h2>NOTA PREQUIRÚRGICA</h2>
+    <div class="row">
+      <div class="line" style="flex:2">FECHA DE LA CIRUGÍA A REALIZAR: <span class="fill">${v("fqx_fecha_cx")}</span></div>
+      <div class="line" style="flex:2">TIPO DE INTERVENCIÓN QUIRÚRGICA: <span class="fill">${v("fqx_tipo_interv")}</span></div>
+    </div>
+    <div class="line">PLAN QUIRÚRGICO: <span class="fill">${v("fqx_plan_qx")}</span></div>
+    <div class="sec">FACTORES DE RIESGO QUIRÚRGICO:</div>
+    <div class="checks">${riesgos}</div>
+    <div class="line">OTROS: <span class="fill">${v("fqx_otros_riesgo")}</span></div>
+    <div class="sec">RESUMEN DE INTERROGATORIO:</div>
+    <div class="line" style="min-height:20mm"><span class="fill">${v("fqx_interrogatorio").replace(/\n/g,"<br>")}</span></div>
+    <div class="sec">EXPLORACIÓN FÍSICA:</div>
+    <div class="line" style="min-height:20mm"><span class="fill">${v("fqx_ef").replace(/\n/g,"<br>")}</span></div>
+    <div class="sec">RESULTADOS DE ESTUDIOS AUXILIARES DIAGNÓSTICOS:</div>
+    <div class="row">
+      <div class="line">Sangre Tipo: ${v("fqx_tipo_sangre")}</div>
+      <div class="line">TP: ${v("fqx_tp")}</div>
+      <div class="line">TPT: ${v("fqx_tpt")}</div>
+      <div class="line">HB: ${v("fqx_hb")}</div>
+      <div class="line">HTO: ${v("fqx_hto")}</div>
+    </div>
+    <div class="line">OTROS: <span class="fill">${v("fqx_otros_labs").replace(/\n/g,"<br>")}</span></div>
+    <div class="line" style="min-height:6mm"><b>DIAGNÓSTICOS PREQUIRÚRGICOS:</b> <span class="fill">${v("fqx_dx_pre").replace(/\n/g,"<br>")}</span></div>
+    <div class="sec">CUIDADOS Y PLAN TERAPÉUTICO PREOPERATORIO:</div>
+    <div class="line" style="min-height:12mm"><span class="fill">${v("fqx_cuidados_pre").replace(/\n/g,"<br>")}</span></div>
+    <div class="line"><b>PRONÓSTICO PARA LA VIDA Y LA FUNCIÓN:</b> <span class="fill">${v("fqx_pronostico_pre")}</span></div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Médico Adscrito: ${v("fqx_adscrito")}</div></div>
+      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Médico que realiza: ${v("fqx_residente")}</div></div>
+      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Anestesiólogo</div></div>
+    </div>
+
+    <div class="pagebreak"></div>
+    <div class="hdr">FT-HGL-Qx-234 (continuación)</div>
+    <h2>NOTA POST-QUIRÚRGICA</h2>
+    <div class="line"><b>Diagnóstico Post-operatorio:</b> <span class="fill">${v("fqx_dx_post").replace(/\n/g,"<br>")}</span></div>
+    <div class="line"><b>Cirugía Realizada:</b> <span class="fill">${v("fqx_cx_realizada").replace(/\n/g,"<br>")}</span></div>
+    <div class="row">
+      <div class="line">Fecha: ${v("fqx_fecha_cx_real")}</div>
+      <div class="line">Hora inicio: ${v("fqx_hora_inicio")}</div>
+      <div class="line">Hora término: ${v("fqx_hora_fin")}</div>
+      <div class="line">Duración: ${v("fqx_duracion")}</div>
+    </div>
+    <div class="line">Tipo de Anestesia: <span class="fill">${v("fqx_anestesia")}</span></div>
+    <div class="row">
+      <div class="line" style="flex:2">Médico Cirujano: ${v("fqx_cirujano")}</div>
+      <div class="line" style="flex:2">Médico Anestesiólogo: ${v("fqx_anestesiologo")}</div>
+    </div>
+    <div class="row">
+      <div class="line" style="flex:2">1er Ayudante: ${v("fqx_ayud1")}</div>
+      <div class="line" style="flex:2">2do Ayudante: ${v("fqx_ayud2")}</div>
+    </div>
+    <div class="row">
+      <div class="line" style="flex:2">Enfermera Instrumentista: ${v("fqx_instrumentista")}</div>
+      <div class="line" style="flex:2">Enfermera Circulante: ${v("fqx_circulante")}</div>
+    </div>
+    <table class="sv-table"><tr><td class="lbl" colspan="7">SIGNOS VITALES:</td></tr>
+    <tr><td>TA: ${v("fqx_ta")}</td><td>FC: ${v("fqx_fc")} X'</td><td>FR: ${v("fqx_fr")} X'</td><td>T: ${v("fqx_temp")} °C</td><td>Peso: ${v("fqx_peso")} Kg</td><td>Talla: ${v("fqx_talla")} Cm</td><td>IMC: </td></tr></table>
+    <div class="sec">HALLAZGOS TRANS-OPERATORIOS Y DE IMPORTANCIA:</div>
+    <div class="line" style="min-height:15mm"><span class="fill">${v("fqx_hallazgos").replace(/\n/g,"<br>")}</span></div>
+    <div class="sec">DESCRIPCIÓN DE LA TÉCNICA QUIRÚRGICA:</div>
+    <div class="line" style="min-height:35mm"><span class="fill">${v("fqx_tecnica").replace(/\n/g,"<br>")}</span></div>
+    <table class="sv-table">
+    <tr><td>Reporte de Gasas y compresas: ${v("fqx_gasas")}</td><td>CUANTIFICACIÓN DE SANGRADO: ${v("fqx_sangrado")} CC</td></tr>
+    <tr><td>Estudio Histopatológico: ${v("fqx_pieza")||"NO"}</td><td>INCIDENTES Y/O ACCIDENTES: ${v("fqx_incidentes")}</td></tr>
+    <tr><td><b>PRONÓSTICO:</b> ${v("fqx_pronostico_post")}</td><td><b>ESTADO POSTQX INMEDIATO:</b> ${v("fqx_estado_post")}</td></tr>
+    </table>
+    <div class="sec">PLAN Y TRATAMIENTO INMEDIATO:</div>
+    <div class="line" style="min-height:15mm"><span class="fill">${v("fqx_plan_post").replace(/\n/g,"<br>")}</span></div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Médico Tratante</div></div>
+      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Becario / Residente</div></div>
+    </div>
+    <script>window.print();<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORMAT 2: FT-HGL-AM-542 CONSENTIMIENTO QUIRURGICO
+// ═══════════════════════════════════════════════════════════════════════════════
+function fmtConsentimientoQx(p,nd,gi,fecha,hora,adsOpts){
+  return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-AM-542 · Consentimiento Procedimiento Médico y Quirúrgico</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printConsentimientoQx()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      ${fmtF("fcq_nombre","Nombre paciente",p.nombre,true)}
+      <div class="fmt-field"><label>Sexo</label><select id="fcq_sexo"><option>MASCULINO</option><option>FEMENINO</option></select></div>
+      ${fmtF("fcq_edad","Edad",(p.edad||"")+" AÑOS")}
+      ${fmtF("fcq_domicilio","Domicilio","",true)}
+      ${fmtF("fcq_curp","CURP","")}
+      ${fmtF("fcq_fecha","Fecha elaboración",fecha)}
+      ${fmtF("fcq_exp","N° Expediente",p.exp)}
+      ${fmtF("fcq_responsable","Nombre acompañante responsable","",true)}
+      ${fmtF("fcq_medico","Nombre médico tratante",p.adscrito||"",false,"select").replace("</select>",`<option value="">—</option>${adsOpts}</select>`)}
+      ${fmtF("fcq_procedimiento","Procedimiento médico/quirúrgico a realizar",nd.qx||p.dx||"",true,"textarea")}
+      ${fmtF("fcq_consiste","Que consiste en",nd.qx||"",true,"textarea")}
+      ${fmtF("fcq_beneficios","Beneficios","",true,"textarea")}
+      ${fmtF("fcq_complicaciones","Complicaciones más frecuentes","HEMORRAGIA, INFECCIÓN DE HERIDA QUIRÚRGICA, LESIÓN DE ÓRGANOS ADYACENTES, DEHISCENCIA, FORMACIÓN DE ABSCESO, HERNIA POSTINCISIONAL, NECESIDAD DE REINTERVENCIÓN, CHOQUE, MUERTE.",true,"textarea")}
+      ${fmtF("fcq_alternativas","Alternativas disponibles","",true,"textarea")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printConsentimientoQx()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
+}
+
+function printConsentimientoQx(){
+  const v=fmtV;
+  const w=window.open("","_blank","width=900,height=1100");
+  w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-542</title>
+  <style>
+    @page{size:letter;margin:12mm}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:8mm;line-height:1.4}
+    .hdr{text-align:center;font-size:10pt;margin-bottom:2mm}
+    h2{text-align:center;font-size:12pt;font-weight:bold;margin:2mm 0 3mm}
+    .tbl{width:100%;border-collapse:collapse;margin:3mm 0}
+    .tbl td{border:1px solid #000;padding:3px 5px;font-size:10pt}
+    .tbl td.lbl{font-weight:bold}
+    .body-text{font-size:10pt;text-align:justify;margin:3mm 0;line-height:1.5}
+    .body-text b{font-weight:bold}
+    .sig-row{display:flex;justify-content:space-between;margin-top:10mm}
+    .sig-box{text-align:center;width:45%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:20mm}
+    .ft{text-align:right;font-size:7pt;color:#666;margin-top:5mm}
+  </style></head><body>
+    <div class="hdr">Instituto de Salud Pública del Estado de Guanajuato<br><b>Hospital General León</b></div>
+    <h2>CARTA DE CONSENTIMIENTO BAJO INFORMACIÓN<br>PARA PROCEDIMIENTOS MÉDICOS Y QUIRÚRGICOS</h2>
+    <table class="tbl">
+      <tr><td class="lbl" colspan="4">NOMBRE DEL PACIENTE: ${v("fcq_nombre")}</td></tr>
+      <tr><td class="lbl">SEXO: ${v("fcq_sexo")}</td><td>EDAD: ${v("fcq_edad")}</td><td colspan="2"></td></tr>
+      <tr><td class="lbl" colspan="4">DOMICILIO: ${v("fcq_domicilio")}</td></tr>
+      <tr><td class="lbl" colspan="2">CURP: ${v("fcq_curp")}</td><td colspan="2">FECHA DE ELABORACIÓN: ${v("fcq_fecha")}</td></tr>
+      <tr><td class="lbl" colspan="4">N° EXPEDIENTE CLÍNICO: ${v("fcq_exp")}</td></tr>
+      <tr><td class="lbl" colspan="4">NOMBRE DEL ACOMPAÑANTE RESPONSABLE: ${v("fcq_responsable")}</td></tr>
+      <tr><td class="lbl" colspan="4">NOMBRE DEL MÉDICO TRATANTE: ${v("fcq_medico")}</td></tr>
+    </table>
+    <p class="body-text">Manifiesto que el médico ha respondido a cada una de las preguntas que le he planteado y me ha explicado con lenguaje simple el procedimiento médico y/o quirúrgico de diagnóstico y/o terapéutico de:</p>
+    <p class="body-text" style="border-bottom:1px solid #000;min-height:8mm">${v("fcq_procedimiento")}</p>
+    <p class="body-text">Que consiste en:</p>
+    <p class="body-text" style="border-bottom:1px solid #000;min-height:8mm">${v("fcq_consiste")}</p>
+    <p class="body-text">Con objeto de (Beneficios):</p>
+    <p class="body-text" style="border-bottom:1px solid #000;min-height:8mm">${v("fcq_beneficios")}</p>
+    <table class="tbl">
+      <tr><td class="lbl">LAS COMPLICACIONES MÁS FRECUENTES QUE PUEDEN SURGIR SON:</td></tr>
+      <tr><td style="min-height:15mm">${v("fcq_complicaciones").replace(/\n/g,"<br>")}</td></tr>
+    </table>
+    <table class="tbl">
+      <tr><td class="lbl">OTRAS ALTERNATIVAS DISPONIBLES PARA MI CASO:</td></tr>
+      <tr><td style="min-height:8mm">${v("fcq_alternativas")}</td></tr>
+    </table>
+    <p class="body-text">Declaro que he comprendido las explicaciones que se me han dado y el médico me realizó todas las observaciones y aclaró todas mis dudas. También comprendo que en cualquier momento puedo revocar mi consentimiento.</p>
+    <p class="body-text">Por lo antes descrito <b>ACEPTO</b> que se realicen los procedimientos quirúrgicos de diagnóstico y/o tratamiento que me fueron explicados previamente.</p>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">Nombre completo y firma del paciente</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre completo, parentesco y firma del Testigo 1</div></div>
+    </div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">Nombre completo, Cédula profesional (sello)<br>y firma de médico tratante</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre completo, parentesco y/o cargo y firma del Testigo 2</div></div>
+    </div>
+    <div class="ft">FT-HGL-AM-542 · Blvd. Puente Milenio N° 1001 A Predio San Carlos C.P. 37544</div>
+    <script>window.print();<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORMAT 3: FT-HGL-AM-50 CONSENTIMIENTO GENERAL
+// ═══════════════════════════════════════════════════════════════════════════════
+function fmtConsentimientoGral(p,nd,gi,fecha,hora,adsOpts){
+  const meses=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const now=new Date();
+  return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-AM-50 · Carta de Consentimiento Bajo Información General</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printConsentimientoGral()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      ${fmtF("fcg_dia","Día",String(now.getDate()))}
+      ${fmtF("fcg_mes","Mes",meses[now.getMonth()])}
+      ${fmtF("fcg_anio","Año",String(now.getFullYear()))}
+      ${fmtF("fcg_nombre","Nombre paciente",p.nombre,true)}
+      ${fmtF("fcg_edad","Edad",(p.edad||"")+" AÑOS")}
+      ${fmtF("fcg_servicio","Servicio",p.esp||"CIRUGÍA GENERAL")}
+      ${fmtF("fcg_curp","CURP","")}
+      ${fmtF("fcg_cama","Cama",p.cama)}
+      ${fmtF("fcg_exp","N° Expediente",p.exp)}
+      ${fmtF("fcg_dx","Diagnósticos",p.dx||nd.dx||"",true,"textarea")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printConsentimientoGral()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
+}
+
+function printConsentimientoGral(){
+  const v=fmtV;
+  const w=window.open("","_blank","width=900,height=1100");
+  w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-50</title>
+  <style>
+    @page{size:letter;margin:12mm}
+    body{font-family:Arial,sans-serif;font-size:9.5pt;color:#000;padding:8mm;line-height:1.35}
+    .motivo{font-size:9pt;margin-bottom:4mm}
+    .line{border-bottom:1px solid #000;min-height:5mm;padding:1px 2px;font-size:9.5pt;margin-bottom:2px}
+    .row{display:flex;gap:2mm}.row .line{flex:1}
+    h3{text-align:center;font-size:12pt;margin:4mm 0 2mm}
+    .body-text{font-size:9.5pt;text-align:justify;margin:2mm 0}
+    .sig-row{display:flex;justify-content:space-between;margin-top:6mm}
+    .sig-box{text-align:center;width:40%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:12mm}
+    .ft{font-size:7pt;color:#666;margin-top:4mm;font-style:italic}
+  </style></head><body>
+    <div class="motivo">MOTIVO POR EL QUE FIRMA ALGUIEN DIFERENTE AL PACIENTE: MENOR DE EDAD_____ ESTADO DEL PACIENTE: ____ N/A: ____</div>
+    <div class="line">León, Gto. A <b>${v("fcg_dia")}</b> del mes de <b>${v("fcg_mes")}</b> del año <b>${v("fcg_anio")}</b>. Hora de Revocación: _______________</div>
+    <div class="row">
+      <div class="line" style="flex:3">Nombre del Paciente: <b>${v("fcg_nombre")}</b></div>
+      <div class="line">Edad: <b>${v("fcg_edad")}</b></div>
+    </div>
+    <div class="row">
+      <div class="line">Servicio: <b>${v("fcg_servicio")}</b></div>
+      <div class="line">CURP: ${v("fcg_curp")}</div>
+      <div class="line">Cama: <b>${v("fcg_cama")}</b></div>
+      <div class="line">Número de Expediente: <b>${v("fcg_exp")}</b></div>
+    </div>
+    <div class="line">Diagnósticos: <b>${v("fcg_dx")}</b></div>
+    <h3>REVOCACIÓN/NEGACIÓN</h3>
+    <div class="line"><b>Procedimiento NO autorizado o revocado:</b> ________________________________________</div>
+    <div class="line"><b>Motivo de la revocación o negación:</b> ________________________________________________</div>
+    <div class="body-text">Se explican los riesgos de no recibir el procedimiento revocado o no autorizado al paciente y familiar responsable: SI _______ NO _______.</div>
+    <div class="body-text">Riesgos o Factores Negativos en la atención médica por NO recibir el Procedimiento revocado o no autorizado por paciente y/o Responsable:</div>
+    <div class="line" style="min-height:12mm"></div>
+    <div class="line">FIRMA Y SELLO DEL MEDICO TRATANTE: ________________________________________________________</div>
+    <div class="body-text"><b>PACIENTE Y/O FAMILIAR RESPONSABLE:</b></div>
+    <div class="row">
+      <div class="line" style="flex:2">Nombre: ______________________________</div>
+      <div class="line" style="flex:2">Firma: ______________________________</div>
+    </div>
+    <div class="row">
+      <div class="line" style="flex:2">Dirección: ______________________________</div>
+      <div class="line">Teléfono: ______________</div>
+    </div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">TESTIGO 1<br>NOMBRE, IDENTIFICACIÓN, TELÉFONO</div></div>
+      <div class="sig-box"><div class="sig-line">TESTIGO 2<br>NOMBRE, IDENTIFICACIÓN, TELÉFONO</div></div>
+    </div>
+    <div class="ft">*Las firmas deben aparecer como en la credencial de identificación oficial con fotografía.</div>
+    <script>window.print();<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORMAT 4: FT-HGL-LAB-236 CONSENTIMIENTO TRANSFUSIÓN
+// ═══════════════════════════════════════════════════════════════════════════════
+function fmtConsentimientoTx(p,nd,gi,fecha,hora,adsOpts){
+  return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-LAB-236 · Consentimiento Transfusión</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printConsentimientoTx()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      ${fmtF("ftx_nombre","Nombre paciente",p.nombre,true)}
+      ${fmtF("ftx_curp","CURP","")}
+      ${fmtF("ftx_dx","Diagnóstico",p.dx||nd.dx||"",true,"textarea")}
+      ${fmtF("ftx_medico","Médico tratante",p.adscrito||"",false,"select").replace("</select>",`<option value="">—</option>${adsOpts}</select>`)}
+      ${fmtF("ftx_alternativas","Alternativas de tratamiento","",true,"textarea")}
+      ${fmtF("ftx_familiar","Nombre familiar responsable","",true)}
+      ${fmtF("ftx_parentesco","Parentesco","")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printConsentimientoTx()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
+}
+
+function printConsentimientoTx(){
+  const v=fmtV;
+  const w=window.open("","_blank","width=900,height=1100");
+  w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-LAB-236</title>
+  <style>
+    @page{size:letter;margin:5mm}
+    body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:5mm;line-height:1.4}
+    .hdr{text-align:right;font-size:8pt;color:#666}
+    .tbl{width:100%;border-collapse:collapse;margin:3mm 0}
+    .tbl td{border:1px solid #000;padding:3px 5px;font-size:10pt}
+    .tbl td b{font-weight:bold}
+    .body-text{font-size:10pt;text-align:justify;margin:3mm 0;line-height:1.5}
+    .line{border-bottom:1px solid #000;min-height:5mm;padding:1px 2px;font-size:10pt;margin-bottom:2px}
+    .row{display:flex;gap:2mm}.row .line{flex:1}
+    .risk-tbl{width:100%;border-collapse:collapse;margin:3mm 0}
+    .risk-tbl td{border:1px solid #000;padding:3px 8px;font-size:10pt;width:50%}
+    .sig-row{display:flex;justify-content:space-between;margin-top:6mm}
+    .sig-box{text-align:center;width:30%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:15mm}
+    h3{text-align:center;font-size:11pt;margin:3mm 0}
+  </style></head><body>
+    <div class="hdr">FT-HGL-LAB-236</div>
+    <table class="tbl">
+      <tr><td><b>NOMBRE DEL PACIENTE:</b> ${v("ftx_nombre")}</td></tr>
+      <tr><td><b>CURP:</b> ${v("ftx_curp")}</td></tr>
+      <tr><td><b>DIAGNÓSTICO:</b> ${v("ftx_dx")}</td></tr>
+      <tr><td><b>NOMBRE DEL MÉDICO TRATANTE:</b> ${v("ftx_medico")}</td></tr>
+    </table>
+    <p class="body-text">La transfusión es considerada un acto de humanismo y su función es brindar un apoyo terapéutico a los pacientes que requieren de algún componente sanguíneo. La administración de los componentes sanguíneos se realizará bajo estricta prescripción y vigilancia del equipo médico.</p>
+    <table class="risk-tbl">
+      <tr><td>URTICARIA, SALPULLIDO O RONCHAS</td><td>PARO CARDIACO</td></tr>
+      <tr><td>ESCALOFRÍOS O FIEBRE</td><td>SUDORACIÓN O DIAFORESIS</td></tr>
+      <tr><td>CHOQUE ANAFILÁCTICO</td><td>DOLOR LUMBAR O TORÁCICO</td></tr>
+      <tr><td>DESMAYO O SÍNCOPE</td><td>ANSIEDAD</td></tr>
+      <tr><td>ATAQUES O CONVULSIONES</td><td>DIFICULTAD RESPIRATORIA</td></tr>
+    </table>
+    <p class="body-text">Declaro que estoy consciente de los <b>riesgos</b> que implica la administración de un componente sanguíneo, por lo cual me comprometo a firmar el presente consentimiento informado.</p>
+    <div class="line"><b>Alternativas de tratamiento:</b> ${v("ftx_alternativas")}</div>
+    <div class="line"><b>Nombre del paciente o familiar responsable (tutor):</b> ${v("ftx_familiar")}</div>
+    <div class="row">
+      <div class="line">Firma: _________________________</div>
+      <div class="line">Parentesco: ${v("ftx_parentesco")}</div>
+    </div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">Nombre completo, Cédula profesional (sello)<br>y Firma del médico</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre y firma del TESTIGO 1</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre y firma del TESTIGO 2</div></div>
+    </div>
+    <script>window.print();<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORMAT 5: FT-HGL-AM-51 NOTA MÉDICA 2023 (table-based)
+// ═══════════════════════════════════════════════════════════════════════════════
+function fmtNotaMedica(p,nd,gi,fecha,hora,labs,adsOpts){
+  const labStr = ["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","inr","urea","bt","bd"].filter(x=>labs[x]).map(x=>x.toUpperCase()+": "+labs[x]).join(", ");
+  return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-AM-51 · Nota Médica 2023</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printNotaMedica()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      ${fmtF("fnm_nombre","Nombre paciente",p.nombre,true)}
+      ${fmtF("fnm_edad","Edad",(p.edad||""))}
+      <div class="fmt-field"><label>Sexo</label><select id="fnm_sexo"><option>MASCULINO</option><option>FEMENINO</option></select></div>
+      ${fmtF("fnm_exp","N° Expediente",p.exp)}
+      ${fmtF("fnm_servicio","Servicio/Área",p.esp||"CIRUGÍA GENERAL")}
+      ${fmtF("fnm_fn","Fecha nacimiento","")}
+      ${fmtF("fnm_cama","Cama",p.cama)}
+      ${fmtF("fnm_fecha","Fecha/Hora",fecha+" "+hora)}
+      ${fmtF("fnm_ta","SV: TA","")}
+      ${fmtF("fnm_fc","SV: FC","")}
+      ${fmtF("fnm_fr","SV: FR","")}
+      ${fmtF("fnm_temp","SV: Temp","")}
+      ${fmtF("fnm_spo2","SV: SpO2","")}
+      ${fmtF("fnm_titulo","Título de nota (encabezado libre)","NOTA DE EVOLUCIÓN",true)}
+      ${fmtF("fnm_contenido","Contenido de la nota (NOM-004: estado mental, interrogatorio, exploración física, resultados, diagnósticos, tratamiento, pronóstico)","",true,"textarea")}
+      ${fmtF("fnm_labs","Laboratorios",labStr,true,"textarea")}
+      ${fmtF("fnm_medico","Médico que elabora",p.residente||gi.entrega||"")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printNotaMedica()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
+}
+
+function printNotaMedica(){
+  const v=fmtV;
+  const w=window.open("","_blank","width=900,height=1100");
+  w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-51</title>
+  <style>
+    @page{size:letter;margin:12mm}
+    body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:8mm}
+    .tbl{width:100%;border-collapse:collapse}
+    .tbl td{border:1px solid #000;padding:3px 5px;font-size:9pt;vertical-align:top}
+    .tbl td.lbl{font-weight:bold;background:#f5f5f5;font-size:8pt;color:#333}
+    .tbl td.hdr{font-weight:bold;text-align:center;background:#e0e0e0;font-size:10pt}
+    .nota-area{min-height:180mm;white-space:pre-wrap;line-height:1.5;font-size:10pt}
+    .ft{text-align:right;font-size:7pt;color:#666;margin-top:3mm}
+  </style></head><body>
+    <table class="tbl">
+      <tr>
+        <td colspan="3" class="lbl">Nombre del Paciente: <b>${v("fnm_nombre")}</b></td>
+        <td class="lbl">Edad: <b>${v("fnm_edad")}</b></td>
+        <td class="lbl">Sexo: <b>${v("fnm_sexo")}</b></td>
+        <td class="lbl">N° de Expediente: <b>${v("fnm_exp")}</b></td>
+      </tr>
+      <tr>
+        <td colspan="2" class="lbl">Servicio/Área: <b>${v("fnm_servicio")}</b></td>
+        <td colspan="2" class="lbl">Fecha de Nacimiento: ${v("fnm_fn")}</td>
+        <td class="lbl">N° de Cama: <b>${v("fnm_cama")}</b></td>
+        <td class="lbl">Hoja Número: </td>
+      </tr>
+      <tr>
+        <td class="lbl" rowspan="2" style="width:80px">${v("fnm_fecha")}<br><br><b>Signos Vitales</b><br>TA: ${v("fnm_ta")}<br>FC: ${v("fnm_fc")}<br>FR: ${v("fnm_fr")}<br>T°: ${v("fnm_temp")}<br>SpO2: ${v("fnm_spo2")}</td>
+        <td colspan="5" class="lbl" style="text-align:center;font-size:8pt;color:#666">NOM-004-SSA3-2012: Estado mental, interrogatorio, exploración física, resultados de estudios, diagnósticos, tratamiento, pronóstico</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="min-height:200mm">
+          <div style="text-align:center;font-weight:bold;margin-bottom:3mm">${v("fnm_nombre")} / ${v("fnm_edad")} AÑOS / ${v("fnm_fecha")}</div>
+          <div style="text-align:center;font-weight:bold;margin-bottom:3mm;font-size:11pt">${v("fnm_titulo")}</div>
+          <div class="nota-area">${v("fnm_contenido").replace(/\n/g,"<br>")}</div>
+          ${v("fnm_labs")?`<div style="margin-top:3mm;padding-top:2mm;border-top:1px solid #ccc"><b>LABORATORIOS:</b><br>${v("fnm_labs").replace(/\n/g,"<br>")}</div>`:""}
+          <div style="margin-top:10mm;text-align:right"><b>${v("fnm_medico")}</b></div>
+        </td>
+      </tr>
+    </table>
+    <div class="ft">FT-HGL-AM-51</div>
+    <script>window.print();<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
 
 // ─── NOTAS MÉDICAS (PLANTILLAS) — Piso Libro ─────────────────────────────────────
 const NOTE_TEMPLATES = {
