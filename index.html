@@ -1828,10 +1828,10 @@ async function analyzeLabsAI(k, fecha){
   if(!snap){ return; }
 
   labAnalysisLoading.add(k);
-  // Solo actualizar el botón localmente (evitar re-render completo que pierde la referencia)
-  const aiBtn = document.querySelector(\`.lab-ai-btn[onclick*="'${k}'"\], .lab-ai-btn[onclick*='"${k}"']}\`);
-  const aiBtnAlt = document.querySelector(`[onclick="analyzeLabsAI('${k}','${fecha}')"]`);
-  if(aiBtnAlt){ aiBtnAlt.disabled=true; aiBtnAlt.textContent="⏳ Analizando..."; }
+  // Actualizar botón localmente para mostrar carga
+  const _aBtnSel = '[onclick="analyzeLabsAI(\'' + k + '\',\'' + fecha + '\')"]';
+  const _aBtn = document.querySelector(_aBtnSel);
+  if(_aBtn){ _aBtn.disabled=true; _aBtn.textContent="\u23f3 Analizando..."; }
 
   // Build lab summary string
   const labLines = [];
@@ -2201,11 +2201,11 @@ function renderCensus(pts){
     {id:"uci",        label:"🚨 UCI",                        color:"#7b0000", sortBase:1},
     {id:"med_interna",label:"🏨 MEDICINA INTERNA",          color:"#1a5276", sortBase:2},
     {id:"gyo_onco",   label:"🏨 GYO / ONCOLOGÍA",          color:"#6b006b", sortBase:3},
-    {id:"tyo",        label:"🏨 TYO / NCX",                color:"#1a5c3a", sortBase:4},
+    {id:"tyo_ncx",    label:"🏨 TYO / NCX",                color:"#0f766e", sortBase:4},
     {id:"pediatria",  label:"👶 PEDIATRÍA",                 color:"#0077b6", sortBase:5},
-    {id:"procedimientos",label:"🔬 PROCEDIMIENTOS / RECUPERACIÓN", color:"#4a3580", sortBase:6},
-    {id:"altas",      label:"✅ ALTAS",                     color:"#27ae60", sortBase:7},
-    {id:"defunciones",label:"🕊 DEFUNCIONES",               color:"#555",    sortBase:8},
+    {id:"defunciones",   label:"🕊 DEFUNCIONES",               color:"#555",    sortBase:6},
+    {id:"procedimientos",label:"🔪 QUIRÓFANO / PROCEDIMIENTOS", color:"#4a3580", sortBase:7},
+    {id:"altas",      label:"✅ ALTAS",                     color:"#27ae60", sortBase:8},
     {id:"otros",      label:"📋 OTROS",                     color:"#888",    sortBase:9},
   ];
 
@@ -2225,7 +2225,7 @@ function renderCensus(pts){
     if(/^\d+-\d+$/.test(s)){
       // Subdividir otro piso por especialidad
       if(/GYO|ONCO/i.test(esp))   return "gyo_onco";
-      if(/TYO|NCX|COLUMNA/i.test(esp)) return "tyo";
+      if(/TYO|NCX|COLUMNA/i.test(esp)) return "tyo_ncx";
       if(/PEDI/i.test(esp))       return "pediatria";
       return "med_interna";
     }
@@ -2454,7 +2454,6 @@ function renderPrint(pts){
 // ─── ALTAS VIEW ─────────────────────────────────────────────────────────────────
 function renderAltas(pts){
   const gi = getGuardInfo();
-  // Solo mostrar pacientes con estado ALTA o todos si quieres hacer alta
   let html = "";
   const sorted = [...pts].sort((a,b)=>String(a.cama||"").localeCompare(String(b.cama||"")));
 
@@ -2463,28 +2462,57 @@ function renderAltas(pts){
     const days = daysSince(p.ingreso);
     const ec = ESP_COLORS[p.esp]||"#1a3a6b";
     const pk = pid(p);
-    html += `<div class="alta-card">
+    const now = new Date();
+    const fechaElab = gi.fecha || now.toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"numeric"});
+    const horaElab  = now.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"})+" HRS";
+    html += `<div class="alta-card" id="alta-card-${pk}">
       <div class="alta-hdr" style="background:${ec}">
         <span class="alta-cama">${esc(p.cama)}</span>
         <span class="alta-nom">${esc(p.nombre)}</span>
         <span class="alta-meta">${p.edad||"—"}a · ${esc(p.esp)} · Día ${days}</span>
       </div>
       <div class="alta-body">
-        <div class="alta-row"><span class="alta-lbl">Expediente</span><span class="alta-val">${esc(p.exp||"")}</span></div>
-        <div class="alta-row"><span class="alta-lbl">Dx Ingreso</span><span class="alta-val">${esc(p.dx||"")}</span></div>
-        <div class="alta-row"><span class="alta-lbl">Dx Egreso</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="dx_egreso" data-altakey="${pk}">${esc(p.dx||"")}</span></div>
-        <div class="alta-row"><span class="alta-lbl">Antecedentes</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="antecedentes" data-altakey="${pk}">${esc(nd.app||"")}</span></div>
-        <div class="alta-row"><span class="alta-lbl">Evolución y estado</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="evolucion" data-altakey="${pk}">Hemodinámicamente estable, tolerando vía oral, sin datos de respuesta inflamatoria sistémica.</span></div>
-        <div class="alta-row"><span class="alta-lbl">Problemas pendientes</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="pendientes" data-altakey="${pk}">${esc(nd.pendientes||"")}</span></div>
-        <div class="alta-row"><span class="alta-lbl">Plan y tratamiento</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="tratamiento" data-altakey="${pk}"></span></div>
-        <div class="alta-row"><span class="alta-lbl">Recomendaciones</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="recomendaciones" data-altakey="${pk}">Datos de alarma: dolor que no ceda, fiebre, sangrado, secreción fétida por herida.</span></div>
-        <div class="alta-row"><span class="alta-lbl">Pronóstico</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="pronostico" data-altakey="${pk}">Reservado</span></div>
-        <div class="alta-row"><span class="alta-lbl">Signos vitales al egreso</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="sv" data-altakey="${pk}">${esc(nd.sv||"FC:   FR:   TA: /   Temp:   SatO2: % aire ambiente")}</span></div>
-        <div class="alta-row"><span class="alta-lbl">Motivo egreso</span><span class="alta-val alta-editable" contenteditable="true" data-altafield="motivo" data-altakey="${pk}">Mejoría</span></div>
+        <div class="alta-form-grid">
+          <div class="alta-inline-row"><span class="alta-lbl2">Fecha elaboración</span><span class="alta-editable" contenteditable="true" data-altafield="fecha_elab" data-altakey="${pk}">${esc(fechaElab)}</span><span class="alta-lbl2" style="margin-left:16px">Hora</span><span class="alta-editable" contenteditable="true" data-altafield="hora_elab" data-altakey="${pk}">${esc(horaElab)}</span></div>
+          <div class="alta-row2"><span class="alta-lbl2">Nombre del paciente</span><span class="alta-editable" contenteditable="true" data-altafield="nombre" data-altakey="${pk}">${esc(p.nombre||"")}</span></div>
+          <div class="alta-inline-row"><span class="alta-lbl2">Edad</span><span class="alta-editable" style="width:60px" contenteditable="true" data-altafield="edad" data-altakey="${pk}">${esc(String(p.edad||""))}</span><span class="alta-lbl2" style="margin-left:12px">Sexo</span><span class="alta-editable" style="width:90px" contenteditable="true" data-altafield="sexo" data-altakey="${pk}">—</span><span class="alta-lbl2" style="margin-left:12px">Expediente</span><span class="alta-editable" contenteditable="true" data-altafield="exp" data-altakey="${pk}">${esc(p.exp||"")}</span></div>
+          <div class="alta-inline-row"><span class="alta-lbl2">Servicio</span><span class="alta-editable" contenteditable="true" data-altafield="servicio" data-altakey="${pk}">${esc(p.esp||"CIRUGÍA GENERAL")}</span><span class="alta-lbl2" style="margin-left:12px">Cama</span><span class="alta-editable" style="width:80px" contenteditable="true" data-altafield="cama" data-altakey="${pk}">${esc(p.cama||"")}</span></div>
+          <div class="alta-inline-row"><span class="alta-lbl2">Fecha ingreso</span><span class="alta-editable" contenteditable="true" data-altafield="f_ingreso" data-altakey="${pk}">${esc(p.ingreso||"")}</span><span class="alta-lbl2" style="margin-left:12px">Días hosp.</span><span class="alta-editable" style="width:70px" contenteditable="true" data-altafield="dias" data-altakey="${pk}">${days} DÍAS</span><span class="alta-lbl2" style="margin-left:12px">Fecha egreso</span><span class="alta-editable" contenteditable="true" data-altafield="f_egreso" data-altakey="${pk}">${esc(fechaElab)}</span></div>
+        </div>
+        <div class="alta-section-title">RESUMEN CLÍNICO</div>
+        <div class="alta-table">
+          <div class="alta-trow"><div class="alta-tlbl">DIAGNÓSTICO DE INGRESO</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="dx_ingreso" data-altakey="${pk}">${esc(p.dx||"")}</div></div>
+          <div class="alta-trow"><div class="alta-tlbl">DIAGNÓSTICO DE EGRESO</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="dx_egreso" data-altakey="${pk}">${esc(p.dx||"")}</div></div>
+          <div class="alta-trow"><div class="alta-tlbl">ANTECEDENTES DE IMPORTANCIA</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="antecedentes" data-altakey="${pk}">${esc(nd.app||nd.pa||"")}</div></div>
+          <div class="alta-trow"><div class="alta-tlbl">EVOLUCIÓN, MANEJO Y ESTADO ACTUAL</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="evolucion" data-altakey="${pk}">Hemodinámicamente estable, sin necesidad de apoyo vasopresor, sin uso de oxígeno suplementario, sin datos de respuesta inflamatoria sistémica, tolerando la vía oral, uresis y evacuaciones presentes por lo que se decide su egreso hospitalario.</div></div>
+          <div class="alta-trow"><div class="alta-tlbl">PROBLEMAS CLÍNICOS PENDIENTES</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="pendientes" data-altakey="${pk}">${esc(nd.pendientes||"")}</div></div>
+          <div class="alta-trow"><div class="alta-tlbl">PLAN DE MANEJO Y TRATAMIENTO</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="tratamiento" data-altakey="${pk}"></div></div>
+          <div class="alta-trow"><div class="alta-tlbl">RECOMENDACIONES PARA VIGILANCIA AMBULATORIA</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="recomendaciones" data-altakey="${pk}">- TOMA DE MEDICAMENTOS.
+- CITA ABIERTA EN URGENCIAS EN CASO DE DATOS DE ALARMA (DOLOR QUE NO CEDA A LA ANALGESIA, FIEBRE, SALIDA DE SECRECIÓN PURULENTA POR HERIDA, NÁUSEA O VÓMITO).
+- ACUDIR A CITA DE SEGUIMIENTO EN LA CONSULTA.</div></div>
+          <div class="alta-trow"><div class="alta-tlbl">ATENCIÓN DE FACTORES DE RIESGO DETECTADOS</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="factores" data-altakey="${pk}">ATENCIÓN MÉDICO HOSPITALARIA</div></div>
+          <div class="alta-trow"><div class="alta-tlbl">PRONÓSTICO</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="pronostico" data-altakey="${pk}">RESERVADO</div></div>
+        </div>
+        <div class="alta-sv-row">
+          <span class="alta-lbl2"><b>SIGNOS VITALES AL EGRESO:</b></span>
+          <span class="alta-lbl2">FC:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_fc" data-altakey="${pk}"></span>
+          <span class="alta-lbl2">FR:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_fr" data-altakey="${pk}"></span>
+          <span class="alta-lbl2">TA:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_ta" data-altakey="${pk}"></span>
+          <span class="alta-lbl2">Temp:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_temp" data-altakey="${pk}"></span>°C
+          <span class="alta-lbl2">SatO₂:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_sat" data-altakey="${pk}"></span>
+        </div>
+        <div class="alta-motivo-row">
+          <span class="alta-lbl2"><b>MOTIVO DEL EGRESO:</b></span>
+          <span class="alta-editable" contenteditable="true" data-altafield="motivo" data-altakey="${pk}">MEJORÍA ☑  MÁXIMO BENEFICIO ☐  PASE A OTRO HOSPITAL ☐</span>
+        </div>
+        <div class="alta-firmas">
+          <div class="alta-firma-box"><div class="alta-firma-line"></div><div class="alta-firma-lbl">DR. ${esc(p.adscrito||"_______________________")}<br><span style="font-weight:400;font-size:10px">SELLO Y FIRMA DE MÉDICO ADSCRITO</span></div></div>
+          <div class="alta-firma-box"><div class="alta-firma-line"></div><div class="alta-firma-lbl">DR. ${esc(p.residente||"_______________________")}<br><span style="font-weight:400;font-size:10px">NOMBRE, CÉDULA Y FIRMA DE MÉDICO RESIDENTE</span></div></div>
+        </div>
       </div>
       <div class="alta-actions">
         <button class="alta-btn alta-btn-word" onclick="downloadAltaWord('${pk}')">📄 Descargar Word</button>
-        <button class="alta-btn alta-btn-print" onclick="printAlta('${pk}')">🖨 Imprimir</button>
+        <button class="alta-btn alta-btn-print" onclick="printAlta('${pk}')">🖨 Imprimir formato oficial</button>
       </div>
     </div>`;
   });
@@ -2492,32 +2520,43 @@ function renderAltas(pts){
   document.getElementById("view-altas").innerHTML=`
   <div class="altas-wrap">
     <style>
-      .altas-wrap{max-width:1000px;margin:0 auto;padding:16px}
-      .altas-title{text-align:center;font-size:16px;font-weight:800;color:#0a1628;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #1a3a6b}
-      .altas-hint{text-align:center;font-size:11px;color:#64748b;margin-bottom:16px}
-      .alta-card{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:14px;overflow:hidden;border:1px solid #e2e8f0}
+      .altas-wrap{max-width:1020px;margin:0 auto;padding:16px}
+      .alta-card{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:20px;overflow:hidden;border:1px solid #e2e8f0}
       .alta-hdr{color:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px}
       .alta-cama{background:rgba(255,255,255,.2);padding:2px 8px;border-radius:5px;font-weight:800;font-size:13px}
-      .alta-nom{font-weight:700;font-size:13px;flex:1}
-      .alta-meta{font-size:10px;opacity:.8}
-      .alta-body{padding:12px 16px}
-      .alta-row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9;align-items:start}
-      .alta-lbl{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;padding-top:2px}
-      .alta-val{font-size:11px;color:#1e293b;line-height:1.5}
-      .alta-editable{border:1px dashed #d1d5db;border-radius:4px;padding:4px 8px;min-height:24px;outline:none;transition:border-color .15s}
-      .alta-editable:focus{border-color:#4fc3f7;background:#fafffe}
+      .alta-nom{font-weight:700;font-size:13px;flex:1}.alta-meta{font-size:10px;opacity:.8}
+      .alta-body{padding:14px 18px}
+      .alta-form-grid{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+      .alta-row2{display:flex;align-items:center;gap:6px;font-size:12px}
+      .alta-inline-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px}
+      .alta-lbl2{font-size:11px;font-weight:700;color:#0f172a;white-space:nowrap}
+      .alta-editable{border-bottom:1px solid #94a3b8;padding:1px 4px;min-height:18px;outline:none;font-size:11.5px;color:#0f172a;font-family:inherit;flex:1;min-width:40px;white-space:pre-wrap}
+      .alta-editable:focus{border-bottom-color:#0ea5e9;background:#f0f9ff;border-radius:2px}
+      .alta-section-title{font-size:11px;font-weight:800;color:#fff;background:#001746;padding:4px 10px;margin:10px 0 0;letter-spacing:.3px}
+      .alta-table{border:1px solid #94a3b8;width:100%;margin-bottom:10px}
+      .alta-trow{display:grid;grid-template-columns:210px 1fr;border-bottom:1px solid #cbd5e1}
+      .alta-trow:last-child{border-bottom:none}
+      .alta-tlbl{font-size:10px;font-weight:700;color:#001746;padding:6px 8px;background:#f0f4f8;border-right:1px solid #cbd5e1;display:flex;align-items:flex-start;text-transform:uppercase}
+      .alta-tval{font-size:11px;padding:4px 8px;color:#1e293b;line-height:1.5;min-height:28px}
+      .alta-tval.alta-editable{border-bottom:none;border-radius:0;width:100%;box-sizing:border-box}
+      .alta-sv-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11.5px;margin:8px 0;padding:6px 0;border-top:1px solid #e2e8f0}
+      .alta-sv{width:55px!important;flex:none!important;text-align:center}
+      .alta-motivo-row{font-size:11.5px;margin:4px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+      .alta-motivo-row .alta-editable{flex:1}
+      .alta-firmas{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:20px;padding-top:8px}
+      .alta-firma-box{text-align:center}
+      .alta-firma-line{border-top:1px solid #000;padding-top:5px;margin-top:60px;font-size:10px;font-weight:700;color:#001746;line-height:1.6}
       .alta-actions{padding:8px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end}
       .alta-btn{padding:6px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
       .alta-btn-word{background:#2b579a;color:#fff}
-      .alta-btn-print{background:#7c3aed;color:#fff}
-      @media(max-width:640px){.alta-row{grid-template-columns:1fr}}
+      .alta-btn-print{background:#001746;color:#fff}
+      @media(max-width:640px){.alta-trow{grid-template-columns:1fr}.alta-tlbl{border-right:none;border-bottom:1px solid #e2e8f0}}
     </style>
-    <div class="altas-title">🏠 NOTA DE ALTA / EGRESO HOSPITALARIO</div>
-    <div class="altas-hint">Edita los campos directamente haciendo clic. Luego descarga en Word o imprime.</div>
-    ${html}
+    <div style="text-align:center;font-size:16px;font-weight:800;color:#0a1628;margin-bottom:4px;padding-bottom:10px;border-bottom:2px solid #001746">🏠 NOTA DE ALTA / EGRESO HOSPITALARIO</div>
+    <p style="text-align:center;font-size:11px;color:#64748b;margin-bottom:16px">Edita los campos haciendo clic · El formato de impresión incluye logos oficiales del HGL</p>
+    ${html||'<div style="text-align:center;color:#94a3b8;padding:40px">No hay pacientes en la lista.</div>'}
   </div>`;
 }
-
 // ─── FORMATOS INSTITUCIONALES ──────────────────────────────────────────────────
 var fmtSelectedPatKey = "";
 var fmtSelectedForm = "";
@@ -2596,6 +2635,8 @@ function generateFormat(){
   const labs=snap?snap.labs||{}:{};
   const container = document.getElementById("fmt-form-container");
 
+  if(ft==="prepostqx") container.innerHTML = fmtPrePostQx(p,nd,gi,fechaStr,horaStr,labs,adsOpts);
+  else if(ft==="nota_medica") container.innerHTML = fmtNotaMedica(p,nd,gi,fechaStr,horaStr,labs,adsOpts);
   else if(ft==="consentimiento_qx") container.innerHTML = fmtConsentimientoQx(p,nd,gi,fechaStr,horaStr,adsOpts);
   else if(ft==="consentimiento_gral") container.innerHTML = fmtConsentimientoGral(p,nd,gi,fechaStr,horaStr,adsOpts);
   else if(ft==="consentimiento_tx") container.innerHTML = fmtConsentimientoTx(p,nd,gi,fechaStr,horaStr,adsOpts);
@@ -3283,7 +3324,7 @@ function openNoteModal(patKey, noteType){
     const exv=snap.extra.filter(e=>e.nombre&&e.valor).map(e=>e.nombre+": "+e.valor);
     if(exv.length) labLines.push(exv.join(" | "));
   }
-  const labStr=labLines.join("\n")||["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","inr","urea"].filter(x=>labs[x]).map(x=>x.toUpperCase()+": "+labs[x]).join(", ");
+  const _labParts2=[];if(typeof LAB_GROUPS!=="undefined"){LAB_GROUPS.forEach(grp=>{const v=grp.fields.filter(lf=>labs[lf.key]).map(lf=>lf.label+": "+labs[lf.key]+" "+lf.unit);if(v.length)_labParts2.push(v.join(", "));});}else{["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","inr","urea"].filter(x=>labs[x]).forEach(x=>_labParts2.push(x.toUpperCase()+": "+labs[x]));}const _snap3=(nd.labHistory||[]).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];if(_snap3&&_snap3.extra){const _ex=_snap3.extra.filter(e=>e.nombre&&e.valor).map(e=>e.nombre+": "+e.valor);if(_ex.length)_labParts2.push(_ex.join(", "));}const labStr=_labParts2.join(" | ");
 
   let fieldsHtml="";
   tmpl.fields.forEach(f=>{
@@ -4048,7 +4089,7 @@ function exportToExcel(){
     if(/^\d+-\d+$/.test(s)){
       const esp3=String(p.esp||"").toUpperCase();
       if(/GYO|ONCO/i.test(esp3)) return "gyo_onco";
-      if(/TYO|NCX|COLUMNA/i.test(esp3)) return "tyo";
+      if(/TYO|NCX|COLUMNA/i.test(esp3)) return "tyo_ncx";
       if(/PEDI/i.test(esp3)) return "pediatria";
       return "med_interna";
     }
