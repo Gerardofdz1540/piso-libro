@@ -350,7 +350,7 @@ select.modal-input{background:#fff}
           <button class="qa-btn qa-img" onclick="openSystem('img')" title="Abrir Imagen">🩻 Imagen</button>
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
         </div>
-        <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
+        <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div><span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700"></span>
         <button class="config-pill disconnected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config</button>
       </div>
     </div>
@@ -565,6 +565,14 @@ select.modal-input{background:#fff}
       </ol>
     </div>
 
+    <!-- DEBUG PANEL -->
+    <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12px;font-weight:600;color:#64748b">🐛 Diagnóstico</span>
+        <button class="btn-cancel" style="padding:3px 10px;font-size:11px" onclick="refreshDebugPanel()">↺ Refrescar</button>
+      </div>
+      <div id="debug-panel" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;color:#334155;line-height:1.8">Cargando…</div>
+    </div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="document.getElementById('config-modal').style.display='none'">Cerrar</button>
       <button class="btn-save" onclick="testConnection()">🔍 Probar conexión</button>
@@ -756,6 +764,47 @@ function openConfigModal(){
   document.getElementById("proxy-token-input").value = cfg.token||"";
   updateProxyStatusBox(cfg.url?"saved":"empty");
   document.getElementById("config-modal").style.display = "flex";
+  refreshDebugPanel();
+}
+
+function refreshDebugPanel(){
+  const panel = document.getElementById("debug-panel");
+  if(!panel) return;
+
+  // localStorage
+  let lsBytes = 0;
+  const noteKeys = [];
+  for(let i=0; i<localStorage.length; i++){
+    const key = localStorage.key(i);
+    const val = localStorage.getItem(key)||"";
+    lsBytes += key.length + val.length;
+    if(key.startsWith("pl_note_")) noteKeys.push(key);
+  }
+  const lsKB = (lsBytes*2/1024).toFixed(1); // UTF-16: ~2 bytes/char
+
+  // Outbox
+  const outbox = outboxLoad ? outboxLoad() : [];
+
+  // Patients
+  const nPts = patients ? patients.length : "?";
+
+  // Last sync
+  const lastSync = lastMeta
+    ? (lastMeta.patients_ts ? new Date(lastMeta.patients_ts).toLocaleTimeString() : "–")
+    : "–";
+
+  // Online
+  const onlineStr = navigator.onLine ? "✅ Online" : "🔴 Offline";
+
+  panel.innerHTML = [
+    `📦 localStorage: <b>${lsKB} KB</b> usados`,
+    `📋 Pacientes en memoria: <b>${nPts}</b>`,
+    `📝 Notas en localStorage: <b>${noteKeys.length}</b>`,
+    `📤 Outbox pendiente: <b>${outbox.length}</b> item(s)`,
+    `🔄 Último sync: <b>${lastSync}</b>`,
+    `🌐 Estado de red: <b>${onlineStr}</b>`,
+    `🔌 Worker: <b>${getProxyUrl() ? "Configurado ✓" : "Sin configurar"}</b>`,
+  ].join("<br>");
 }
 
 function updateProxyPill(){
@@ -907,28 +956,85 @@ function getExportTemplateBuffer(){
   }
 }
 
-// ─── STORAGE — ESCRITURA (con sync a KV) ─────────────────────────────────────────
-async function savePts(){
-  lsSavePatients(patients);
-  if(!getProxyUrl()) return;
-  pendingSyncs++;
-  setSyncStatus("syncing","Guardando...");
-  const res = await apiFetch("/api/patients",{method:"PUT",body:JSON.stringify({patients})});
-  pendingSyncs--;
-  if(res){ lastMeta.patients_ts = res.ts||Date.now(); }
-  if(pendingSyncs===0) setSyncStatus(res?"synced":"error", res?"Sincronizado":"Error de sync");
+// ─── DEBOUNCE UTILITY ───────────────────────────────────────────────────────────
+function debounce(fn, delay){
+  let timer;
+  return function(...args){
+    clearTimeout(timer);
+    timer = setTimeout(()=>fn.apply(this, args), delay);
+  };
 }
 
-async function saveNote(key, data){
-  lsSaveNote(key, data);
+// Versiones debounced para evitar thrash en KV
+// Notas: 500ms · Pacientes: 1200ms
+// ─── OUTBOX (offline/retry) ───────────────────────────────────────────────────────
+const OUTBOX_KEY = "pl_outbox_v1";
+function outboxLoad(){ try{ return JSON.parse(localStorage.getItem(OUTBOX_KEY)||"[]"); }catch(e){ return []; } }
+function outboxSave(q){ localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); }
+function outboxEnqueue(item){ const q=outboxLoad(); q.push({...item, ts:Date.now()}); outboxSave(q); updateOutboxBadge(); }
+function updateOutboxBadge(){
+  const q=outboxLoad();
+  const badge=document.getElementById("outbox-badge");
+  if(badge) badge.textContent = q.length ? `📤 ${q.length} pendientes` : "";
+  const pill = document.getElementById("proxy-pill");
+  if(pill) pill.title = q.length ? `${q.length} cambios pendientes de sync` : "";
+}
+async function flushOutbox(){
   if(!getProxyUrl()) return;
+  const q=outboxLoad(); if(!q.length) return;
+  const failed=[];
+  for(const item of q){
+    let res=null;
+    if(item.type==="note" && item.key && item.data){
+      res = await apiFetch("/api/notes/"+encodeURIComponent(item.key),{method:"PUT",body:JSON.stringify({note:item.data})});
+    } else if(item.type==="patients" && item.snapshot){
+      res = await apiFetch("/api/patients",{method:"PUT",body:JSON.stringify({patients:item.snapshot})});
+    }
+    if(!res) failed.push(item);
+  }
+  outboxSave(failed);
+  updateOutboxBadge();
+  if(!failed.length) setSyncStatus("synced","Sincronizado (outbox)");
+}
+// Al recuperar conexión, intentar flush automáticamente
+window.addEventListener("online", ()=>{ setSyncStatus("syncing","Reconectando..."); flushOutbox(); syncFromServer(false); });
+window.addEventListener("offline", ()=>{ setSyncStatus("error","Sin conexión"); });
+
+const _saveNoteImmediate = async (key, data) => {
+  lsSaveNote(key, data);
+  if(!getProxyUrl()){ outboxEnqueue({type:"note", key, data}); return; }
   pendingSyncs++;
   setSyncStatus("syncing","Guardando...");
   const res = await apiFetch("/api/notes/"+encodeURIComponent(key),{method:"PUT",body:JSON.stringify({note:data})});
   pendingSyncs--;
   if(res){ lastMeta.notes_ts = res.ts||Date.now(); }
-  if(pendingSyncs===0) setSyncStatus(res?"synced":"error", res?"Sincronizado":"Error de sync");
+  else { outboxEnqueue({type:"note", key, data}); }
+  if(pendingSyncs===0) setSyncStatus(res?"synced":"error", res?"Sincronizado":`Error — ${outboxLoad().length} en cola`);
+};
+const _savePtsImmediate = async () => {
+  lsSavePatients(patients);
+  if(!getProxyUrl()){ outboxEnqueue({type:"patients", snapshot:[...patients]}); return; }
+  pendingSyncs++;
+  setSyncStatus("syncing","Guardando...");
+  const res = await apiFetch("/api/patients",{method:"PUT",body:JSON.stringify({patients})});
+  pendingSyncs--;
+  if(res){ lastMeta.patients_ts = res.ts||Date.now(); }
+  else { outboxEnqueue({type:"patients", snapshot:[...patients]}); }
+  if(pendingSyncs===0) setSyncStatus(res?"synced":"error", res?"Sincronizado":`Error — ${outboxLoad().length} en cola`);
+};
+
+// Tabla de debouncers por key (una instancia por nota para no mezclar datos)
+const _noteDebounceMap = {};
+function saveNote(key, data){
+  // Guardar en local inmediatamente; diferir envío remoto
+  lsSaveNote(key, data);
+  noteData[key] = data;
+  if(!_noteDebounceMap[key]){
+    _noteDebounceMap[key] = debounce((k,d)=>_saveNoteImmediate(k,d), 500);
+  }
+  _noteDebounceMap[key](key, data);
 }
+const savePts = debounce(_savePtsImmediate, 1200);
 
 async function deleteNoteRemote(key){
   if(!getProxyUrl()) return;
@@ -984,9 +1090,39 @@ async function syncFromServer(force=false){
   setSyncStatus("synced","Sync "+hm);
 }
 
+// ─── SYNC POLLING — con jitter y backoff ─────────────────────────────────────────
+const SYNC_BASE_MS  = 28000;  // ~28s base
+const SYNC_MAX_MS   = 120000; // 2 min máximo backoff
+let _syncFailCount  = 0;
+let _syncTimer      = null;
+
 function startSyncPolling(){
-  if(syncInterval) clearInterval(syncInterval);
-  syncInterval = setInterval(()=>syncFromServer(false), 30000);
+  if(syncInterval) clearInterval(syncInterval); // limpiar setInterval legacy si existía
+  syncInterval = null;
+  scheduleSyncPoll();
+}
+
+function scheduleSyncPoll(){
+  if(_syncTimer) clearTimeout(_syncTimer);
+  if(!navigator.onLine){ return; } // pausa cuando offline
+  // Jitter: ±15% del intervalo base / backoff para evitar thundering herd
+  const backoffFactor = Math.min(Math.pow(1.6, _syncFailCount), SYNC_MAX_MS / SYNC_BASE_MS);
+  const interval = Math.min(SYNC_BASE_MS * backoffFactor, SYNC_MAX_MS);
+  const jitter = (Math.random() * 0.3 - 0.15) * interval; // ±15%
+  const delay = Math.round(interval + jitter);
+  _syncTimer = setTimeout(async () => {
+    const ok = await syncFromServerWithResult();
+    _syncFailCount = ok ? 0 : Math.min(_syncFailCount + 1, 6);
+    scheduleSyncPoll();
+  }, delay);
+}
+
+async function syncFromServerWithResult(){
+  if(!getProxyUrl() || !navigator.onLine) return false;
+  setSyncStatus("syncing","Actualizando...");
+  const meta = await apiFetch("/api/meta");
+  if(!meta){ setSyncStatus("error","Sin conexión"); return false; }
+  return true; // la función syncFromServer maneja el resto
 }
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────────
@@ -1031,7 +1167,7 @@ function setCellValuePreserveStyle(ws, addr, value){
   ws[addr] = cell;
 }
 function daysSince(ing){ return ing?Math.floor((new Date()-parseDate(ing))/86400000):"?"; }
-function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────────
 async function init(){
@@ -1092,12 +1228,20 @@ function setView(v, btn){
 }
 function renderView(){
   const search = document.getElementById("search").value.toLowerCase();
+  // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
+  function normSearch(s){ return (s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[\s\-]/g,""); }
+  const searchNorm = normSearch(search);
+  const searchTokens = searchNorm ? searchNorm.split(/\s+/).filter(Boolean) : [];
   const filtered = patients.filter(p=>{
     const em = selectedEsp==="ALL"||p.esp===selectedEsp;
     const rm = selectedResidente==="ALL"||(p.residente||"")===selectedResidente;
     const am = selectedAdscrito==="ALL"||(p.adscrito||"")===selectedAdscrito;
     const im = !showSoloIngresos||(function(){if(!p.ingreso)return false;var d=parseDate(p.ingreso),t=new Date();t.setHours(0,0,0,0);var y=new Date(t);y.setDate(t.getDate()-1);return d>=y;})();
-    const sm = !search||p.nombre.toLowerCase().includes(search)||String(p.cama).toLowerCase().includes(search)||(p.exp||"").toLowerCase().includes(search);
+    let sm = true;
+    if(searchTokens.length > 0){
+      const haystack = normSearch(p.nombre) + normSearch(p.cama) + normSearch(p.exp||"") + normSearch(p.adscrito||"") + normSearch(p.residente||"");
+      sm = searchTokens.every(tok => haystack.includes(tok));
+    }
     return em&&sm&&rm&&am&&im;
   });
   document.getElementById("count-badge").textContent = filtered.length+" pacientes";
@@ -2100,6 +2244,18 @@ function toggleExpand(k){
   if(expandedCards[k]===undefined) expandedCards[k] = false;
   else expandedCards[k] = !expandedCards[k];
   renderView();
+  // Autofocus: si se abre, enfocar el campo más relevante
+  if(expandedCards[k] !== false){
+    setTimeout(()=>{
+      const card = document.getElementById("card-"+k);
+      if(!card) return;
+      const nd = noteData[k]||{};
+      // Si pendientes vacío → foco en pendientes; si no → signos vitales
+      const targetField = (!nd.pendientes || !nd.pendientes.trim()) ? "pendientes" : "sv";
+      const ta = card.querySelector(`textarea[data-field="${targetField}"]`);
+      if(ta){ ta.focus(); ta.scrollIntoView({block:"nearest", behavior:"smooth"}); }
+    }, 80);
+  }
 }
 
 // ─── PDF / IMAGE LABS ─────────────────────────────────────────────────────────
@@ -2120,16 +2276,52 @@ async function handleLabPDF(k, input){
 
   labLoadingSet.add(k); renderView();
 
-  try{
-    const base64 = await new Promise((res,rej)=>{
-      const r=new FileReader();
-      r.onload=()=>res(r.result.split(",")[1]);
-      r.onerror=rej; r.readAsDataURL(file);
-    });
+  // ── Validar tamaño ──────────────────────────────────────────────────
+  const MAX_PDF_MB  = 15;
+  const MAX_IMG_MB  = 8;
+  const isImage = file.type.startsWith("image/");
+  const fileMB = file.size / 1024 / 1024;
+  if(!isImage && fileMB > MAX_PDF_MB){
+    labLoadingSet.delete(k);
+    alert(`⚠️ El PDF pesa ${fileMB.toFixed(1)} MB (máx ${MAX_PDF_MB} MB). Comprime el PDF primero (ilovepdf.com) e inténtalo de nuevo.`);
+    return;
+  }
 
-    const isImage = file.type.startsWith("image/");
-    const mediaType = isImage ? (file.type||"image/jpeg") : "application/pdf";
-    const contentBlock = isImage
+  try{
+    // ── Leer y opcionalmente comprimir imagen ──────────────────────────
+    let base64;
+    if(isImage && fileMB > 1.5){
+      // Comprimir: redimensionar a máx 1400px y JPEG 0.72
+      base64 = await new Promise((res, rej) => {
+        const img = new Image();
+        const objUrl = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(objUrl);
+          const MAX_DIM = 1400;
+          let w = img.naturalWidth, h = img.naturalHeight;
+          if(w > MAX_DIM || h > MAX_DIM){
+            const ratio = Math.min(MAX_DIM/w, MAX_DIM/h);
+            w = Math.round(w*ratio); h = Math.round(h*ratio);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+          res(dataUrl.split(",")[1]);
+        };
+        img.onerror = rej;
+        img.src = objUrl;
+      });
+    } else {
+      base64 = await new Promise((res,rej)=>{
+        const r=new FileReader();
+        r.onload=()=>res(r.result.split(",")[1]);
+        r.onerror=rej; r.readAsDataURL(file);
+      });
+    }
+
+    const mediaType = isImage ? "image/jpeg" : "application/pdf";
+    const contentBlock = isImage2
       ? {type:"image",source:{type:"base64",media_type:mediaType,data:base64}}
       : {type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}};
 
@@ -2141,7 +2333,7 @@ async function handleLabPDF(k, input){
         max_tokens:1000,
         messages:[{role:"user",content:[
           contentBlock,
-          {type:"text",text:"Extrae los valores de laboratorio de este "+(isImage?"resultado (imagen)":"PDF")+". Responde SOLO con JSON válido sin markdown ni texto adicional:\n{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\",\"paciente\":\"\",\"fecha_labs\":\"\"}\nReglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\"."}
+          {type:"text",text:"Extrae los valores de laboratorio de este "+(isImage2?"resultado (imagen)":"PDF")+". Responde SOLO con JSON válido sin markdown ni texto adicional:\n{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\",\"paciente\":\"\",\"fecha_labs\":\"\"}\nReglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\"."}
         ]}]
       })
     });
@@ -3739,6 +3931,9 @@ function saveModal(){
     if(modalOrigKey!==newKey){
       noteData[newKey] = noteData[modalOrigKey]||defaultData();
       delete noteData[modalOrigKey];
+      // Limpiar oldKey en localStorage y en KV remoto para evitar "ghost notes"
+      localStorage.removeItem(NOTES_PREFIX+modalOrigKey);
+      deleteNoteRemote(modalOrigKey);
       saveNote(newKey, noteData[newKey]);
     }
   }
@@ -4076,7 +4271,7 @@ function exportToExcel(){
     {id:"uci",     label:"UCI",                          color:"FF7B0000"},
     {id:"med_interna",label:"MEDICINA INTERNA",          color:"FF1A5276"},
     {id:"gyo_onco",   label:"GYO / ONCOLOGÍA",           color:"FF6B006B"},
-    {id:"tyo",        label:"TYO / NCX",                 color:"FF1A5C3A"},
+    {id:"tyo_ncx",    label:"TYO / NCX",                 color:"FF1A5C3A"},
     {id:"pediatria",  label:"PEDIATRÍA",                 color:"FF0077B6"},
     {id:"procedimientos",label:"PROCEDIMIENTOS / RECUPERACIÓN", color:"FF4A3580"},
     {id:"altas",   label:"ALTAS",                        color:"FF27AE60"},
@@ -4418,6 +4613,74 @@ function renderDupBanner(duplicates){
 
 // ─── START ───────────────────────────────────────────────────────────────────────
 init();
+
+// ─── KEYBOARD SHORTCUTS ─────────────────────────────────────────────────────────
+document.addEventListener("keydown", function(e){
+  // No activar atajos si el foco está en un input, textarea o select
+  const tag = document.activeElement ? document.activeElement.tagName : "";
+  const inInput = ["INPUT","TEXTAREA","SELECT"].includes(tag) ||
+    document.activeElement?.isContentEditable;
+
+  // Escape — cerrar modales abiertos
+  if(e.key === "Escape"){
+    const modals = ["patient-modal","confirm-modal","import-modal","config-modal","syscfg-modal","note-modal-overlay"];
+    modals.forEach(id=>{
+      const el=document.getElementById(id);
+      if(el&&el.style.display!=="none"&&el.style.display!==""){
+        el.style.display="none";
+      }
+    });
+    closeNoteModal && closeNoteModal();
+    closeCredHud && closeCredHud();
+    return;
+  }
+
+  if(inInput) return; // El resto de atajos no se disparan dentro de inputs
+
+  // / — enfocar búsqueda
+  if(e.key === "/" || e.key === "f" || e.key === "F"){
+    e.preventDefault();
+    const s = document.getElementById("search");
+    if(s){ s.focus(); s.select(); }
+    return;
+  }
+
+  // n — nuevo paciente
+  if(e.key === "n" || e.key === "N"){
+    e.preventDefault();
+    openAddModal && openAddModal();
+    return;
+  }
+
+  // 1–5 — cambiar de tab
+  const tabMap = {"1":"piso","2":"census","3":"print","4":"altas","5":"formatos"};
+  if(tabMap[e.key]){
+    e.preventDefault();
+    const tabs = document.querySelectorAll(".tab");
+    const idx = parseInt(e.key)-1;
+    if(tabs[idx]){ setView(tabMap[e.key], tabs[idx]); }
+    return;
+  }
+
+  // p — imprimir
+  if(e.key === "p" || e.key === "P"){
+    e.preventDefault();
+    window.print();
+    return;
+  }
+});
+
+// Mostrar hint de atajos en el header (tooltip discreto)
+(function(){
+  const pill = document.getElementById("proxy-pill");
+  if(!pill) return;
+  const hint = document.createElement("span");
+  hint.title = "Atajos: / Buscar · N Nuevo · 1-5 Tabs · Esc Cerrar · P Imprimir";
+  hint.textContent = "⌨";
+  hint.style.cssText = "margin-left:4px;cursor:help;opacity:.6;font-size:13px";
+  pill.parentNode.insertBefore(hint, pill.nextSibling);
+})();
+
 
 </script>
 </body>
