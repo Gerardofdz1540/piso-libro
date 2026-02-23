@@ -1359,7 +1359,8 @@ function renderFullCard(p,nd,k){
           <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
           <span class="badge-esp">${esc(p.esp)}</span>
           <span class="badge-day">Día ${days}</span>
-          <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
+          <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️</button>
+          <button class="icon-btn" style="background:rgba(251,146,60,.35);font-size:11px" data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)" title="Cambiar cama rápido">🛏</button>
           <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
           <span class="expand-btn" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${exp?"▾":"▸"}</span>
         </div>
@@ -1403,7 +1404,7 @@ function renderFullCard(p,nd,k){
           <button class="card-note-btn" style="background:#7c3aed;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'imagen')" title="Crea entrada de imagen para hoy">🖼 Imagen hoy</button>
           <button class="card-note-btn" style="background:#059669;color:#fff" data-hk="${k}" onclick="openNoteModal(this.dataset.hk,'medica')" title="Abrir modal de evolución">📋 Evol hoy</button>
         </span>
-        <button class="card-note-btn" style="background:#334155;color:#fff;margin-left:auto" data-cpk="${k}" onclick="copiarPase(this.dataset.cpk)" title="Copiar pase completo al portapapeles">📋 Copiar pase</button>
+
       </div>
     </div>` : ""}
   </div>`;
@@ -2454,21 +2455,84 @@ function censusRow(p, showEsp){
   const espBadge = showEsp
     ? "<td><span style='background:"+col+";color:#fff;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700'>"+esc(p.esp)+"</span></td>"
     : "";
+  const estadoColor = ESTADO_COLORS[p.estado]||"#ccc";
+  const estadoOpts = ["ESTABLE","DELICADO","GRAVE","ALTA","DEFUNCIÓN"]
+    .map(s=>`<option value="${s}"${s===p.estado?" selected":""}>${s}</option>`).join("");
+
   return "<tr style='"+(noEnCenso?"background:#fffbeb":"")+"'>" +
-    "<td style='font-weight:700;color:"+col+"'>"+esc(p.cama)+(noEnCenso?" <span style='font-size:9px;background:#f59e0b;color:#fff;padding:1px 4px;border-radius:3px'>⚠️</span>":"")+"</td>" +
+    // Cama — click to edit inline
+    `<td style='font-weight:700;color:${col}'>
+      <span class='cr-cama' title='Clic para cambiar cama' onclick='inlineCama(this,"${pk}")' style='cursor:pointer;border-bottom:1.5px dashed ${col};padding:1px 2px'>${esc(p.cama)}</span>
+      ${noEnCenso?"<span style='font-size:9px;background:#f59e0b;color:#fff;padding:1px 4px;border-radius:3px'>⚠️</span>":""}
+    </td>` +
     espBadge +
-    "<td style='color:#64748b'>"+esc(p.exp)+"</td>" +
+    "<td style='color:#64748b;font-size:11px'>"+esc(p.exp)+"</td>" +
     "<td style='font-weight:600'>"+esc(p.nombre)+"</td>" +
     "<td style='text-align:center'>"+p.edad+"</td>" +
     "<td>"+esc(p.ingreso)+"</td>" +
     "<td style='text-align:center;font-weight:700'>"+days+"</td>" +
-    "<td><span style='background:"+(ESTADO_COLORS[p.estado]||"#ccc")+";color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700'>"+esc(p.estado||"—")+"</span></td>" +
-    "<td style='color:#64748b'>"+esc(p.adscrito)+" / "+esc(p.residente)+"</td>" +
+    // Estado — inline select dropdown
+    `<td><select data-pk="${pk}" onchange="inlineEstado(this)" style='border:none;background:${estadoColor};color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:2px 6px;cursor:pointer;font-family:var(--font);outline:none'>
+      ${estadoOpts}
+    </select></td>` +
+    // Adscrito / Residente — click to edit
+    `<td style='color:#64748b;font-size:11px'>
+      <span onclick='openEditModal("${pk}")' title='Clic para editar' style='cursor:pointer;border-bottom:1px dashed #94a3b8;padding:1px 0'>${esc(p.adscrito)}</span> /
+      <span onclick='openEditModal("${pk}")' title='Clic para editar' style='cursor:pointer;border-bottom:1px dashed #94a3b8;padding:1px 0'>${esc(p.residente)}</span>
+    </td>` +
     "<td style='white-space:nowrap'>" +
-      "<button data-editkey='"+pk+"' onclick='openEditModal(this.dataset.editkey)' style='background:none;border:1px solid #94a3b8;border-radius:5px;padding:2px 8px;cursor:pointer;font-size:11px;margin-right:4px'>✏️ Editar</button>" +
-      "<button data-confirmkey='"+pk+"' onclick='openConfirm(this.dataset.confirmkey)' style='background:none;border:1px solid #fca5a5;border-radius:5px;padding:2px 8px;cursor:pointer;font-size:11px;color:#dc2626'>🚪 Alta</button>" +
+      `<button data-editkey='${pk}' onclick='openEditModal(this.dataset.editkey)' style='background:#2563eb;color:#fff;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:11px;font-weight:700;margin-right:3px'>✏️ Editar</button>` +
+      `<button data-confirmkey='${pk}' onclick='openConfirm(this.dataset.confirmkey)' style='background:#dc2626;color:#fff;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;font-size:11px;font-weight:700'>🚪 Alta</button>` +
     "</td>" +
     "</tr>";
+}
+
+function inlineEstado(sel){
+  const pk = sel.dataset.pk;
+  const p = patients.find(pt=>pid(pt)===pk);
+  if(!p) return;
+  p.estado = sel.value;
+  const col = ESTADO_COLORS[p.estado]||"#ccc";
+  sel.style.background = col;
+  savePts();
+  // Actualizar solo el piso si la tarjeta está visible
+  const cardEl = document.getElementById("card-"+pk);
+  if(cardEl) renderView();
+}
+
+function inlineCama(span, pk){
+  const p = patients.find(pt=>pid(pt)===pk);
+  if(!p) return;
+  const td = span.parentElement;
+  const prev = span.textContent;
+  const input = document.createElement("input");
+  input.value = p.cama;
+  input.style.cssText = "font-weight:700;border:1.5px solid #2563eb;border-radius:4px;padding:2px 5px;width:80px;font-size:12px;font-family:inherit";
+  td.innerHTML = "";
+  td.appendChild(input);
+  input.focus(); input.select();
+  function commit(){
+    const newCama = input.value.trim().toUpperCase();
+    if(newCama && newCama !== p.cama){
+      const oldKey = pid(p);
+      p.cama = newCama;
+      const newKey = pid(p);
+      if(oldKey !== newKey){
+        noteData[newKey] = noteData[oldKey]||defaultData();
+        delete noteData[oldKey];
+        localStorage.removeItem(NOTES_PREFIX+oldKey);
+        deleteNoteRemote(oldKey);
+        saveNote(newKey, noteData[newKey]);
+      }
+      savePts();
+      buildEspFilters();
+      renderView();
+    } else {
+      renderView(); // restaurar si no cambió
+    }
+  }
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); input.blur(); } if(e.key==="Escape"){ input.value=prev; input.blur(); } });
 }
 
 function renderCensus(pts){
@@ -4684,15 +4748,87 @@ function renderDupBanner(duplicates){
   const existing = document.getElementById("dup-bed-banner");
   if(existing) existing.remove();
   if(!duplicates || duplicates.length === 0) return;
-  const names = duplicates.map(d =>
-    `<b>${d.cama}</b>: ${d.patients.map(p => p.nombre).join(" / ")}`
-  ).join(" &nbsp;·&nbsp; ");
+
   const banner = document.createElement("div");
   banner.id = "dup-bed-banner";
-  banner.style.cssText = "background:#dc2626;color:#fff;padding:8px 16px;border-radius:8px;margin-bottom:10px;font-size:12px;display:flex;align-items:center;gap:10px;font-weight:600;";
-  banner.innerHTML = `<span style="font-size:18px">🔴</span><div><strong>CAMAS DUPLICADAS DETECTADAS</strong> &mdash; Verificar urgente: ${names}</div>`;
+  banner.style.cssText = "background:#fff;border:2px solid #dc2626;border-radius:10px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 12px rgba(220,38,38,.15)";
+
+  // Header
+  const headerHtml = `
+    <div style="background:#dc2626;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleDupPanel()">
+      <span style="font-size:18px">🔴</span>
+      <div style="flex:1">
+        <strong style="font-size:13px">CAMAS DUPLICADAS — ${duplicates.length} conflicto${duplicates.length!==1?"s":""} detectado${duplicates.length!==1?"s":""}</strong>
+        <div style="font-size:11px;opacity:.85;margin-top:2px">Haz clic para ver y resolver cada conflicto ↓</div>
+      </div>
+      <span id="dup-panel-arrow" style="font-size:16px">▾</span>
+    </div>`;
+
+  // Cards por cada cama duplicada
+  let cardsHtml = '<div id="dup-panel-body" style="padding:12px 14px;display:grid;gap:10px">';
+  duplicates.forEach(d => {
+    cardsHtml += `<div style="border:1px solid #fca5a5;border-radius:8px;overflow:hidden;background:#fff8f8">
+      <div style="background:#fee2e2;padding:6px 12px;font-size:12px;font-weight:700;color:#991b1b;display:flex;align-items:center;gap:6px">
+        🛏️ Cama <span style="background:#dc2626;color:#fff;padding:1px 8px;border-radius:5px">${esc(d.cama)}</span>
+        <span style="font-weight:400;color:#7f1d1d;margin-left:4px">— ${d.patients.length} pacientes asignados a esta cama</span>
+      </div>
+      <div style="padding:8px 12px;display:grid;gap:7px">`;
+    d.patients.forEach((p, i) => {
+      const k = pid(p);
+      const bgColor = i===0 ? '#f0fdf4' : '#fff7ed';
+      const borderColor = i===0 ? '#86efac' : '#fdba74';
+      cardsHtml += `
+        <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:12px;font-weight:700;color:#1e293b">${esc(p.nombre)}</div>
+            <div style="font-size:11px;color:#64748b">Exp: ${esc(p.exp)} · ${esc(p.esp)} · Ing: ${esc(p.ingreso||"—")}</div>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <button onclick="openEditModal('${k}')"
+              style="background:#2563eb;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">✏️ Editar</button>
+            <button onclick="promptChangeBed('${k}')"
+              style="background:#d97706;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🛏 Cambiar cama</button>
+            <button onclick="openConfirm('${k}')"
+              style="background:#dc2626;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🚪 Dar de alta</button>
+          </div>
+        </div>`;
+    });
+    cardsHtml += '</div></div>';
+  });
+  cardsHtml += '</div>';
+
+  banner.innerHTML = headerHtml + cardsHtml;
   const filterbar = document.getElementById("filterbar");
   if(filterbar) filterbar.parentNode.insertBefore(banner, filterbar);
+}
+
+function toggleDupPanel(){
+  const body = document.getElementById("dup-panel-body");
+  const arrow = document.getElementById("dup-panel-arrow");
+  if(!body) return;
+  const open = body.style.display !== "none";
+  body.style.display = open ? "none" : "grid";
+  if(arrow) arrow.textContent = open ? "▸" : "▾";
+}
+
+function promptChangeBed(k){
+  const p = patients.find(pt => pid(pt) === k);
+  if(!p) return;
+  const newCama = prompt(`Cambiar cama para:\n${p.nombre}\nCama actual: ${p.cama}\n\nNueva cama:`, p.cama);
+  if(!newCama || newCama.trim() === "" || newCama.trim().toUpperCase() === p.cama.toUpperCase()) return;
+  const oldKey = pid(p);
+  p.cama = newCama.trim().toUpperCase();
+  const newKey = pid(p);
+  if(oldKey !== newKey){
+    noteData[newKey] = noteData[oldKey] || defaultData();
+    delete noteData[oldKey];
+    localStorage.removeItem(NOTES_PREFIX + oldKey);
+    deleteNoteRemote(oldKey);
+    saveNote(newKey, noteData[newKey]);
+  }
+  savePts();
+  buildEspFilters();
+  renderView();
 }
 
 // ─── START ───────────────────────────────────────────────────────────────────────
