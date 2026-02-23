@@ -1066,6 +1066,7 @@ function setEsp(v,btn){
 }
 function setCensusResidente(v){selectedResidente=v;renderView();}
 function setCensusAdscrito(v){selectedAdscrito=v;renderView();}
+function quitarFiltrosCenso(){selectedResidente="ALL";selectedAdscrito="ALL";renderView();}
 
 // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
 function renderPiso(pts){
@@ -2192,8 +2193,7 @@ function renderCensus(pts){
     +_ads.map(function(a){return _opt(a,a,_cA[a]||0,selectedAdscrito);}).join("")
     +"</select>"
     +(selectedResidente!=="ALL"||selectedAdscrito!=="ALL"
-      ?"<button onclick='setCensusResidente("ALL");setCensusAdscrito("ALL")' "
-       +"style='background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;color:#475569'>✕ Quitar filtros</button>"
+      ?"<button onclick=\"quitarFiltrosCenso()\" style=\"background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;color:#475569\">✕ Quitar filtros</button>"
       :"")
     +"</div>";
   document.getElementById("view-census").innerHTML = _fb+html;
