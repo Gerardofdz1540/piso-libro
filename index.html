@@ -5036,39 +5036,78 @@ function detectDuplicateBeds(pts){
 }
 
 function detectDuplicatePatients(pts){
-  // Detecta pacientes duplicados por: mismo expediente, o nombre muy similar
-  const groups = {};
+  // Two-pass: 1) same expediente, 2) same normalized name (catches cross-exp dupes)
   function normName(s){ return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z ]/g,"").replace(/\s+/g," ").trim(); }
-  pts.forEach(p => {
-    const exp = (p.exp||"").trim();
+  function normExp(s){ return (s||"").replace(/[\s\-]/g,"").toUpperCase(); }
+  const results = [];
+  const alreadyGrouped = new Set(); // track patient indices already in a group
+
+  // Pass 1: Same expediente (normalized — strips dashes/spaces)
+  const byExp = {};
+  pts.forEach((p,i) => {
+    const exp = normExp(p.exp);
+    if(!exp) return;
+    if(!byExp[exp]) byExp[exp] = [];
+    byExp[exp].push({patient:p, idx:i});
+  });
+  Object.entries(byExp).filter(([,list])=>list.length>1).forEach(([exp,list])=>{
+    results.push({ key:"EXP:"+exp, patients:list.map(l=>l.patient), indices:list.map(l=>l.idx), type:"expediente" });
+    list.forEach(l=>alreadyGrouped.add(l.idx));
+  });
+
+  // Pass 2: Same normalized name (only patients NOT already in an exp group)
+  const byName = {};
+  pts.forEach((p,i) => {
+    if(alreadyGrouped.has(i)) return; // skip if already caught by exp
     const name = normName(p.nombre);
-    // Primary key: expediente (si existe y no es vacío)
-    let key = exp ? "EXP:"+exp : null;
-    if(key){
-      if(!groups[key]) groups[key] = [];
-      groups[key].push(p);
-      return;
-    }
-    // Fallback: nombre normalizado
-    if(name){
-      const nameKey = "NAME:"+name;
-      if(!groups[nameKey]) groups[nameKey] = [];
-      groups[nameKey].push(p);
+    if(!name || name.length < 5) return; // skip too-short names
+    if(!byName[name]) byName[name] = [];
+    byName[name].push({patient:p, idx:i});
+  });
+  Object.entries(byName).filter(([,list])=>list.length>1).forEach(([name,list])=>{
+    results.push({ key:"NAME:"+name, patients:list.map(l=>l.patient), indices:list.map(l=>l.idx), type:"nombre" });
+  });
+
+  // Pass 3: Cross-check — patients in exp groups might ALSO match names with patients NOT in exp groups
+  // (e.g., same name but one has exp "26-03178" and the other has exp "26-04178" — typo)
+  const expGroupNames = new Map(); // normName -> expGroup result index
+  results.forEach((r,ri) => {
+    if(r.type !== "expediente") return;
+    r.patients.forEach(p => {
+      const n = normName(p.nombre);
+      if(n) expGroupNames.set(n, ri);
+    });
+  });
+  pts.forEach((p,i) => {
+    if(alreadyGrouped.has(i)) return;
+    const n = normName(p.nombre);
+    if(expGroupNames.has(n)){
+      // This patient has same name as someone in an exp group but different exp!
+      const ri = expGroupNames.get(n);
+      // Add to that group or create a new cross-ref group
+      results.push({ key:"CROSS:"+n, patients:[results[ri].patients[0], p], indices:[results[ri].indices[0], i], type:"nombre (posible mismo paciente)" });
     }
   });
-  // Also cross-check: same exp but different entries
-  // Return only groups with 2+ patients (real duplicates)
-  return Object.entries(groups)
-    .filter(([,list]) => list.length > 1)
-    .map(([key, list]) => ({ key, patients: list, type: key.startsWith("EXP:")?"expediente":"nombre" }));
+
+  return results;
 }
 
-function mergePatients(keepKey, removeKey){
-  const keep = patients.find(p=>pid(p)===keepKey);
-  const remove = patients.find(p=>pid(p)===removeKey);
+function mergePatients(keepIdx, removeIdx){
+  // Use array indices directly to avoid pid collision
+  keepIdx = parseInt(keepIdx);
+  removeIdx = parseInt(removeIdx);
+  if(isNaN(keepIdx)||isNaN(removeIdx)||keepIdx===removeIdx) return;
+  if(keepIdx<0||keepIdx>=patients.length||removeIdx<0||removeIdx>=patients.length) return;
+
+  const keep = patients[keepIdx];
+  const remove = patients[removeIdx];
   if(!keep||!remove) return;
+
+  const keepKey = pid(keep);
+  const removeKey = pid(remove);
+
   // Merge: fill empty fields from remove into keep
-  const fields = ["nombre","exp","dx","edad","esp","adscrito","residente","ingreso","estado","cama"];
+  const fields = ["nombre","exp","dx","edad","esp","adscrito","residente","ingreso","estado"];
   fields.forEach(f=>{
     if(!keep[f] && remove[f]) keep[f] = remove[f];
   });
@@ -5076,6 +5115,9 @@ function mergePatients(keepKey, removeKey){
   if(remove.dx && remove.dx.length > (keep.dx||"").length) keep.dx = remove.dx;
   // Special: prefer non-empty ingreso
   if(!keep.ingreso && remove.ingreso) keep.ingreso = remove.ingreso;
+  // Special: prefer non-empty edad
+  if(!keep.edad && remove.edad) keep.edad = remove.edad;
+
   // Merge noteData
   const keepNd = noteData[keepKey] || defaultData();
   const removeNd = noteData[removeKey] || defaultData();
@@ -5092,12 +5134,16 @@ function mergePatients(keepKey, removeKey){
     });
   }
   noteData[keepKey] = keepNd;
-  // Remove the duplicate
-  const idx = patients.indexOf(remove);
-  if(idx>=0) patients.splice(idx,1);
-  delete noteData[removeKey];
-  localStorage.removeItem(NOTES_PREFIX + removeKey);
-  deleteNoteRemote(removeKey);
+
+  // Remove the duplicate by index (MUST remove higher index first to avoid shift)
+  patients.splice(removeIdx, 1);
+
+  // Clean up removed patient's noteData
+  if(removeKey !== keepKey){
+    delete noteData[removeKey];
+    localStorage.removeItem(NOTES_PREFIX + removeKey);
+    deleteNoteRemote(removeKey);
+  }
   saveNote(keepKey, keepNd);
   savePts();
   buildEspFilters();
@@ -5121,23 +5167,25 @@ function renderDupPatientBanner(duplicates){
       <span id="dup-pat-arrow" style="font-size:16px">▾</span>
     </div>`;
   let cardsHtml = '<div id="dup-pat-body" style="padding:12px 14px;display:grid;gap:10px">';
-  duplicates.forEach((d,gi) => {
-    const typeLabel = d.type==="expediente" ? "Mismo expediente" : "Mismo nombre";
+  duplicates.forEach((d) => {
+    const typeLabel = d.type==="expediente" ? "Mismo expediente" : d.type;
     const typeBg = d.type==="expediente" ? "#fef3c7" : "#fef9c3";
     cardsHtml += `<div style="border:1px solid #fbbf24;border-radius:8px;overflow:hidden;background:${typeBg}">
       <div style="background:#fde68a;padding:6px 12px;font-size:12px;font-weight:700;color:#92400e;display:flex;align-items:center;gap:6px">
-        🔀 <span style="background:#d97706;color:#fff;padding:1px 8px;border-radius:5px">${typeLabel}</span>
+        🔀 <span style="background:#d97706;color:#fff;padding:1px 8px;border-radius:5px">${esc(typeLabel)}</span>
         <span style="font-weight:400;color:#78350f;margin-left:4px">— ${d.patients.length} registros</span>
       </div>
       <div style="padding:8px 12px;display:grid;gap:7px">`;
     d.patients.forEach((p,i) => {
       const k = pid(p);
+      const pIdx = d.indices[i]; // actual index in patients[] array
       const bgColor = i===0 ? '#f0fdf4' : '#fff7ed';
       const borderColor = i===0 ? '#86efac' : '#fdba74';
       const dataBadge = [
-        p.ingreso ? "✅Ingreso" : "❌Ingreso",
+        p.ingreso ? "✅Ing" : "❌Ing",
         p.dx ? "✅Dx" : "❌Dx",
         p.adscrito ? "✅Ads" : "❌Ads",
+        p.edad ? "✅Edad" : "❌Edad",
         (noteData[k]&&noteData[k].labHistory&&noteData[k].labHistory.length) ? "✅Labs" : "❌Labs"
       ].join(" · ");
       cardsHtml += `
@@ -5148,17 +5196,17 @@ function renderDupPatientBanner(duplicates){
             <div style="font-size:10px;color:#94a3b8;margin-top:2px">${dataBadge}</div>
           </div>
           <div style="display:flex;gap:5px;flex-wrap:wrap">`;
-      // Show merge buttons for non-first entries
       if(i > 0){
-        const keepK = pid(d.patients[0]);
+        const keepIdx = d.indices[0];
+        const keepP = d.patients[0];
         cardsHtml += `
-            <button onclick="if(confirm('¿Fusionar ${esc(p.nombre)} con ${esc(d.patients[0].nombre)}?\\nSe conserva el primer registro y se complementa con datos del segundo.'))mergePatients('${keepK}','${k}')"
-              style="background:#059669;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🔀 Fusionar → ${esc(d.patients[0].cama)}</button>`;
+            <button onclick="if(confirm('¿Fusionar registros?\\n\\nCONSERVAR: ${esc(keepP.nombre)} (Cama ${esc(keepP.cama)})\\nELIMINAR: ${esc(p.nombre)} (Cama ${esc(p.cama)})\\n\\nSe complementan datos faltantes del registro eliminado.'))mergePatients(${keepIdx},${pIdx})"
+              style="background:#059669;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🔀 Fusionar → ${esc(keepP.cama)}</button>`;
       } else {
         cardsHtml += `<span style="background:#059669;color:#fff;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600">📌 Registro principal</span>`;
       }
       cardsHtml += `
-            <button onclick="openConfirm('${k}')"
+            <button onclick="if(confirm('¿Eliminar registro de ${esc(p.nombre)} (Cama ${esc(p.cama)})?'))removeDupByIndex(${pIdx})"
               style="background:#dc2626;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🗑 Eliminar</button>
           </div>
         </div>`;
@@ -5171,6 +5219,20 @@ function renderDupPatientBanner(duplicates){
   const filterbar = document.getElementById("filterbar");
   if(dupBed) dupBed.parentNode.insertBefore(banner, dupBed.nextSibling);
   else if(filterbar) filterbar.parentNode.insertBefore(banner, filterbar);
+}
+
+function removeDupByIndex(idx){
+  idx = parseInt(idx);
+  if(isNaN(idx)||idx<0||idx>=patients.length) return;
+  const p = patients[idx];
+  const k = pid(p);
+  patients.splice(idx,1);
+  delete noteData[k];
+  localStorage.removeItem(NOTES_PREFIX + k);
+  deleteNoteRemote(k);
+  savePts();
+  buildEspFilters();
+  renderView();
 }
 
 function toggleDupPatPanel(){
