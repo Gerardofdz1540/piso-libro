@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -547,7 +548,13 @@ select.modal-input{background:#fff}
     <div class="config-section">
       <h3>🔗 URL del Cloudflare Worker</h3>
       <p style="font-size:12px;color:#64748b;margin-bottom:8px">Esta URL habilita tanto la sincronización en tiempo real como la extracción de labs con IA.</p>
-      <div class="proxy-input-wrap">
+      <div style="padding:8px 12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;margin-bottom:12px">
+        <div style="font-weight:700;color:#166534;font-size:13px">☁️ Supabase Conectado</div>
+        <div style="font-size:11px;color:#15803d;margin-top:2px">${SUPA_URL}</div>
+      </div>
+      <button onclick="migrateToSupabase()" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);width:100%;margin-bottom:12px">⬆️ Migrar datos locales a Supabase</button>
+      <details style="margin-bottom:12px"><summary style="cursor:pointer;font-size:12px;color:#475569;font-weight:600">🔧 Worker proxy (legacy / opcional)</summary>
+      <div class="proxy-input-wrap" style="margin-top:8px">
         <input id="proxy-url-input" placeholder="https://mi-worker.tuusuario.workers.dev" type="url" autocomplete="off" autocorrect="off" spellcheck="false"/>
       </div>
     </div>
@@ -560,6 +567,7 @@ select.modal-input{background:#fff}
         <button class="btn-save" onclick="saveConfig()">Guardar</button>
       </div>
       <div class="proxy-status warn" id="proxy-status-box">Sin configurar.</div>
+      </details>
     </div>
 
     <div class="config-section" style="background:#f0fdf4;border-radius:8px;padding:14px;border:1px solid #bbf7d0">
@@ -655,7 +663,13 @@ const ESP_COLORS = {
 const ESTADO_COLORS = {ESTABLE:"#27ae60",DELICADO:"#e67e22",GRAVE:"#e74c3c",ALTA:"#0ea5e9","DEFUNCIÓN":"#374151","":"#95a5a6"};
 const STORAGE_KEY   = "censo-pacientes-v3";
 const NOTES_PREFIX  = "note-";
-const CONFIG_KEY    = "hgl-worker-config";   // {url, token}
+const CONFIG_KEY    = "hgl-worker-config";   // {url, token} (legacy)
+
+// ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────────
+const SUPA_URL = "https://vkxplmrzyqlamxpbtmes.supabase.co";
+const SUPA_KEY = "sb_publishable_ue016AylIEGunRngiedPJA_Ah05Sxx2";
+const _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+let _realtimeSubs = [];  // active Realtime subscriptions
 const EXCEL_TEMPLATE_KEY = "hgl-export-template-b64";
 const ARCHIVE_KEY   = "pl_archive_v1";    // pacientes egresados/archivados
 const SNAPSHOT_KEY  = "pl_snapshots_v1";  // cortes de guardia
@@ -686,10 +700,7 @@ const DEFAULT_BEDS_OTROS = ["RECU","2-102"];
 let ALL_BEDS = [...DEFAULT_BEDS_PISO3, ...DEFAULT_BEDS_UCI, ...DEFAULT_BEDS_OTROS];
 
 // ─── DEFAULT CENSO ──────────────────────────────────────────────────────────────
-// NOTA DE SEGURIDAD: No se guardan datos reales de pacientes en el código fuente.
-// El censo debe cargarse desde Excel (botón "Importar Excel") o desde el servidor
-// de sincronización. Los datos de pacientes son PHI y no deben quedar expuestos
-// en código público.
+// ─── DEFAULT CENSO (vacío — datos viven en Supabase) ──────────────────────────
 const DEFAULT_CENSO = [];
 
 // ─── STATE ──────────────────────────────────────────────────────────────────────
@@ -804,7 +815,7 @@ function refreshDebugPanel(){
     const key = localStorage.key(i);
     const val = localStorage.getItem(key)||"";
     lsBytes += key.length + val.length;
-    if(key.startsWith(NOTES_PREFIX)) noteKeys.push(key);
+    if(key.startsWith("note-")) noteKeys.push(key);
   }
   const lsKB = (lsBytes*2/1024).toFixed(1); // UTF-16: ~2 bytes/char
 
@@ -950,52 +961,9 @@ function getNote(k){ return migrateNote(noteData[k]||defaultData()); }
 
 // localStorage fallbacks
 function lsGetPatients(){ try{ const s=localStorage.getItem(STORAGE_KEY); return s?JSON.parse(s):null; }catch{ return null; } }
-function lsSavePatients(pts){
-  try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(pts)); }
-  catch(e){
-    if(e && (e.name==="QuotaExceededError"||e.code===22||e.code===1014)){
-      console.error("localStorage lleno al guardar pacientes:", e);
-      // Mostrar advertencia no bloqueante
-      const badge = document.getElementById("outbox-badge");
-      if(badge){ badge.textContent="⚠️ Almacenamiento lleno"; badge.style.color="#dc2626"; }
-      setSyncStatus && setSyncStatus("error","⚠️ Almacenamiento lleno — libera espacio");
-    }
-  }
-}
+function lsSavePatients(pts){ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(pts)); }catch{} }
 function lsGetNote(key){ try{ const s=localStorage.getItem(NOTES_PREFIX+key); return s?migrateNote({...defaultData(),...JSON.parse(s)}):defaultData(); }catch{ return defaultData(); } }
-function lsSaveNote(key,data){
-  try{ localStorage.setItem(NOTES_PREFIX+key,JSON.stringify(data)); }
-  catch(e){
-    if(e && (e.name==="QuotaExceededError"||e.code===22||e.code===1014)){
-      console.error("localStorage lleno al guardar nota:", key, e);
-      setSyncStatus && setSyncStatus("error","⚠️ Almacenamiento lleno — no se pudo guardar nota");
-      // Intentar liberar espacio eliminando imágenes de notas antiguas
-      try{
-        const noteKeys = [];
-        for(let i=0;i<localStorage.length;i++){
-          const k=localStorage.key(i);
-          if(k && k.startsWith(NOTES_PREFIX)) noteKeys.push(k);
-        }
-        // Ordenar por tamaño desc y eliminar la más grande que no sea la que fallamos
-        noteKeys.sort((a,b)=>(localStorage.getItem(b)||"").length-(localStorage.getItem(a)||"").length);
-        for(const nk of noteKeys){
-          if(nk===NOTES_PREFIX+key) continue;
-          const nd = JSON.parse(localStorage.getItem(nk)||"{}");
-          let freed=false;
-          if(nd.imagenHistory){
-            nd.imagenHistory.forEach(e=>{ if(e.estudios) e.estudios.forEach(s=>{ if(s.file){ s.file=""; freed=true; } }); });
-          }
-          if(freed){
-            localStorage.setItem(nk, JSON.stringify(nd));
-            // Reintentar guardar la nota original
-            try{ localStorage.setItem(NOTES_PREFIX+key, JSON.stringify(data)); console.warn("Nota guardada tras liberar adjuntos de",nk); return; }catch(e2){}
-          }
-        }
-        alert("⚠️ Almacenamiento local lleno. No se pudo guardar la nota. Considera eliminar adjuntos o usar el sync remoto.");
-      }catch(e2){ console.error("Error al intentar liberar espacio:", e2); }
-    }
-  }
-}
+function lsSaveNote(key,data){ try{ localStorage.setItem(NOTES_PREFIX+key,JSON.stringify(data)); }catch{} }
 function lsGetAllNotes(pts){ const obj={}; pts.forEach(p=>{ const k=pid(p); obj[k]=lsGetNote(k); }); return obj; }
 function arrayBufferToBase64(buffer){
   const bytes = new Uint8Array(buffer);
@@ -1044,9 +1012,9 @@ function debounce(fn, delay){
   };
 }
 
-// Versiones debounced para evitar thrash en KV
-// Notas: 500ms · Pacientes: 1200ms
-// ─── OUTBOX (offline/retry) ───────────────────────────────────────────────────────
+// ─── SUPABASE CRUD LAYER ──────────────────────────────────────────────────────────
+
+// Outbox for offline writes
 const OUTBOX_KEY = "pl_outbox_v1";
 function outboxLoad(){ try{ return JSON.parse(localStorage.getItem(OUTBOX_KEY)||"[]"); }catch(e){ return []; } }
 function outboxSave(q){ localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); }
@@ -1054,152 +1022,343 @@ function outboxEnqueue(item){ const q=outboxLoad(); q.push({...item, ts:Date.now
 function updateOutboxBadge(){
   const q=outboxLoad();
   const badge=document.getElementById("outbox-badge");
-  if(badge) badge.textContent = q.length ? `📤 ${q.length} pendientes` : "";
-  const pill = document.getElementById("proxy-pill");
-  if(pill) pill.title = q.length ? `${q.length} cambios pendientes de sync` : "";
+  if(badge) badge.textContent = q.length ? "📤 "+q.length+" pendientes" : "";
 }
-async function flushOutbox(){
-  if(!getProxyUrl()) return;
-  const q=outboxLoad(); if(!q.length) return;
-  const failed=[];
-  for(const item of q){
-    let res=null;
-    if(item.type==="note" && item.key && item.data){
-      res = await apiFetch("/api/notes/"+encodeURIComponent(item.key),{method:"PUT",body:JSON.stringify({note:item.data})});
-    } else if(item.type==="patients" && item.snapshot){
-      res = await apiFetch("/api/patients",{method:"PUT",body:JSON.stringify({patients:item.snapshot})});
-    }
-    if(!res) failed.push(item);
+
+// ─── SUPABASE: SAVE PATIENT ─────────────────────────────────────────────────────
+async function supaUpsertPatient(p){
+  const row = {
+    cama: p.cama||"", nombre: p.nombre||"", exp: p.exp||"", dx: p.dx||"",
+    edad: p.edad?String(p.edad):"", esp: p.esp||"", adscrito: p.adscrito||"",
+    residente: p.residente||"", estado: p.estado||"",
+    ingreso: ingresoToISO(p.ingreso),
+    updated_by: localStorage.getItem("pl_user_name")||""
+  };
+  if(p._supa_id){
+    // UPDATE existing
+    const {data, error} = await _supa.from("patients").update(row).eq("id", p._supa_id).select().single();
+    if(error){ console.error("supaUpsertPatient UPDATE error:", error); return null; }
+    return data;
+  } else {
+    // INSERT new
+    const {data, error} = await _supa.from("patients").insert(row).select().single();
+    if(error){ console.error("supaUpsertPatient INSERT error:", error); return null; }
+    p._supa_id = data.id; // store UUID locally
+    return data;
   }
-  outboxSave(failed);
-  updateOutboxBadge();
-  if(!failed.length) setSyncStatus("synced","Sincronizado (outbox)");
 }
-// Al recuperar conexión, intentar flush automáticamente
-window.addEventListener("online", ()=>{ setSyncStatus("syncing","Reconectando..."); flushOutbox(); syncFromServer(false); startSyncPolling(); });
-window.addEventListener("offline", ()=>{ setSyncStatus("error","Sin conexión"); });
 
-const _saveNoteImmediate = async (key, data) => {
-  lsSaveNote(key, data);
-  if(!getProxyUrl()){ outboxEnqueue({type:"note", key, data}); return; }
-  pendingSyncs++;
-  setSyncStatus("syncing","Guardando...");
-  const res = await apiFetch("/api/notes/"+encodeURIComponent(key),{method:"PUT",body:JSON.stringify({note:data})});
-  pendingSyncs--;
-  if(res){ lastMeta.notes_ts = res.ts||Date.now(); }
-  else { outboxEnqueue({type:"note", key, data}); }
-  if(pendingSyncs===0) setSyncStatus(res?"synced":"error", res?"Sincronizado":`Error — ${outboxLoad().length} en cola`);
-};
-const _savePtsImmediate = async () => {
-  lsSavePatients(patients);
-  if(!getProxyUrl()){ outboxEnqueue({type:"patients", snapshot:[...patients]}); return; }
-  pendingSyncs++;
-  setSyncStatus("syncing","Guardando...");
-  const res = await apiFetch("/api/patients",{method:"PUT",body:JSON.stringify({patients})});
-  pendingSyncs--;
-  if(res){ lastMeta.patients_ts = res.ts||Date.now(); }
-  else { outboxEnqueue({type:"patients", snapshot:[...patients]}); }
-  if(pendingSyncs===0) setSyncStatus(res?"synced":"error", res?"Sincronizado":`Error — ${outboxLoad().length} en cola`);
-};
+async function supaDeletePatient(supaId){
+  if(!supaId) return;
+  const {error} = await _supa.from("patients").delete().eq("id", supaId);
+  if(error) console.error("supaDeletePatient error:", error);
+}
 
-// Tabla de debouncers por key (una instancia por nota para no mezclar datos)
+// ─── SUPABASE: SAVE NOTE ────────────────────────────────────────────────────────
+async function supaUpsertNote(patientId, nd){
+  if(!patientId) return null;
+  const row = {
+    patient_id: patientId,
+    app: nd.app||"", pa: nd.pa||"", drenajes: nd.drenajes||"", qx: nd.qx||"",
+    manejo: nd.manejo||"", sangrado: nd.sangrado||"", sv: nd.sv||"",
+    balance: nd.balance||"", pendientes: nd.pendientes||"", misc: nd.misc||"",
+    checklist: nd.checklist || {},
+    lab_history: nd.labHistory || [],
+    imagen_history: nd.imagenHistory || [],
+    updated_by: localStorage.getItem("pl_user_name")||""
+  };
+  const {data, error} = await _supa.from("notes").upsert(row, {onConflict:"patient_id"}).select().single();
+  if(error) console.error("supaUpsertNote error:", error);
+  return data;
+}
+
+// ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
+async function supaLoadAll(){
+  setSyncStatus("syncing","Descargando...");
+  const {data: pts, error: pErr} = await _supa.from("patients").select("*").order("cama");
+  if(pErr){ console.error("supaLoadAll patients error:", pErr); return null; }
+
+  const {data: nts, error: nErr} = await _supa.from("notes").select("*");
+  if(nErr){ console.error("supaLoadAll notes error:", nErr); return null; }
+
+  // Map notes by patient_id for fast lookup
+  const noteMap = {};
+  (nts||[]).forEach(n => { noteMap[n.patient_id] = n; });
+
+  // Convert Supabase rows to PisoLibro format
+  const loadedPatients = [];
+  const loadedNotes = {};
+
+  (pts||[]).forEach(row => {
+    const p = {
+      _supa_id: row.id,
+      cama: row.cama||"", nombre: row.nombre||"", exp: row.exp||"",
+      dx: row.dx||"", edad: row.edad||"", esp: row.esp||"",
+      adscrito: row.adscrito||"", residente: row.residente||"",
+      estado: row.estado||"",
+      ingreso: row.ingreso ? fmtDateFromISO(row.ingreso) : ""
+    };
+    loadedPatients.push(p);
+
+    const k = pid(p);
+    const sn = noteMap[row.id];
+    if(sn){
+      const nd = defaultData();
+      nd.app = sn.app||""; nd.pa = sn.pa||""; nd.drenajes = sn.drenajes||"";
+      nd.qx = sn.qx||""; nd.manejo = sn.manejo||""; nd.sangrado = sn.sangrado||"";
+      nd.sv = sn.sv||""; nd.balance = sn.balance||""; nd.pendientes = sn.pendientes||"";
+      nd.misc = sn.misc||""; nd.checklist = sn.checklist||nd.checklist;
+      nd.labHistory = sn.lab_history||[];
+      nd.imagenHistory = sn.imagen_history||[];
+      loadedNotes[k] = migrateNote(nd);
+    } else {
+      loadedNotes[k] = defaultData();
+    }
+  });
+
+  return {patients: loadedPatients, notes: loadedNotes};
+}
+
+// Format ISO date (YYYY-MM-DD) to DD/MM/YY for display
+function fmtDateFromISO(iso){
+  if(!iso) return "";
+  const d = new Date(iso+"T12:00:00");
+  if(isNaN(d)) return iso;
+  return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getFullYear()).toString().slice(-2);
+}
+// Convert DD/MM/YY ingreso string to YYYY-MM-DD for Supabase DATE column
+function ingresoToISO(str){
+  if(!str) return null;
+  const p = String(str).trim().split("/");
+  if(p.length!==3) return null;
+  const yr = p[2].length===2 ? "20"+p[2] : p[2];
+  const iso = yr+"-"+p[1].padStart(2,"0")+"-"+p[0].padStart(2,"0");
+  if(isNaN(new Date(iso+"T12:00:00"))) return null;
+  return iso;
+}
+
+// ─── DEBOUNCED SAVE WRAPPERS ────────────────────────────────────────────────────
 const _noteDebounceMap = {};
+
 function saveNote(key, data){
-  // Guardar en local inmediatamente; diferir envío remoto
+  // Always save to localStorage immediately
   lsSaveNote(key, data);
   noteData[key] = data;
+  // Debounced push to Supabase
   if(!_noteDebounceMap[key]){
-    _noteDebounceMap[key] = debounce((k,d)=>_saveNoteImmediate(k,d), 500);
+    _noteDebounceMap[key] = debounce(async (k, d)=>{
+      // Find patient with this pid
+      const p = patients.find(x=>pid(x)===k);
+      if(!p || !p._supa_id){ outboxEnqueue({type:"note", key:k, data:d}); return; }
+      pendingSyncs++;
+      setSyncStatus("syncing","Guardando...");
+      const res = await supaUpsertNote(p._supa_id, d);
+      pendingSyncs--;
+      if(!res) outboxEnqueue({type:"note", key:k, data:d});
+      if(pendingSyncs===0) setSyncStatus(res?"synced":"error", res?"Sincronizado":"Error en sync");
+    }, 600);
   }
   _noteDebounceMap[key](key, data);
+}
+
+async function _savePtsImmediate(){
+  lsSavePatients(patients);
+  pendingSyncs++;
+  setSyncStatus("syncing","Guardando pacientes...");
+  let allOk = true;
+  for(const p of patients){
+    const res = await supaUpsertPatient(p);
+    if(!res) allOk = false;
+  }
+  lsSavePatients(patients); // re-save with updated _supa_ids
+  pendingSyncs--;
+  if(pendingSyncs===0) setSyncStatus(allOk?"synced":"error", allOk?"Sincronizado":"Error parcial");
 }
 const savePts = debounce(_savePtsImmediate, 1200);
 
 async function deleteNoteRemote(key){
-  if(!getProxyUrl()) return;
-  await apiFetch("/api/notes/"+encodeURIComponent(key),{method:"DELETE"});
+  // Notes cascade-delete with patient in Supabase, no separate action needed
 }
 
-// ─── SYNC POLLING ────────────────────────────────────────────────────────────────
-async function syncFromServer(force=false){
-  if(!getProxyUrl()) return false;
-  setSyncStatus("syncing","Actualizando...");
+// ─── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────────
+function startRealtime(){
+  // Clean up old subscriptions
+  _realtimeSubs.forEach(s => s.unsubscribe());
+  _realtimeSubs = [];
 
-  const meta = await apiFetch("/api/meta");
-  if(!meta){ setSyncStatus("error","Sin conexión"); return false; }
+  // Subscribe to patients changes
+  const patSub = _supa.channel("patients-changes")
+    .on("postgres_changes", {event:"*", schema:"public", table:"patients"}, (payload)=>{
+      handlePatientChange(payload);
+    })
+    .subscribe();
+  _realtimeSubs.push(patSub);
 
-  const ptsChanged   = force || meta.patients_ts > lastMeta.patients_ts;
-  const notesChanged = force || meta.notes_ts    > lastMeta.notes_ts;
+  // Subscribe to notes changes
+  const noteSub = _supa.channel("notes-changes")
+    .on("postgres_changes", {event:"*", schema:"public", table:"notes"}, (payload)=>{
+      handleNoteChange(payload);
+    })
+    .subscribe();
+  _realtimeSubs.push(noteSub);
+}
 
-  let didUpdate = false;
+function handlePatientChange(payload){
+  const {eventType, new: newRow, old: oldRow} = payload;
 
-  if(ptsChanged){
-    const data = await apiFetch("/api/patients");
-    if(data && data.patients){
-      patients = data.patients;
-      lsSavePatients(patients);
-      lastMeta.patients_ts = data.ts||meta.patients_ts;
-      didUpdate = true;
+  if(eventType === "INSERT"){
+    // Check if we already have this patient (we just inserted it ourselves)
+    if(patients.some(p=>p._supa_id===newRow.id)) return;
+    const p = supaRowToPatient(newRow);
+    patients.push(p);
+    noteData[pid(p)] = defaultData();
+    lsSavePatients(patients);
+    buildEspFilters(); renderView();
+    console.log("[RT] Patient inserted:", p.nombre);
+  }
+  else if(eventType === "UPDATE"){
+    const idx = patients.findIndex(p=>p._supa_id===newRow.id);
+    if(idx===-1) return;
+    const oldKey = pid(patients[idx]);
+    const updated = supaRowToPatient(newRow);
+    updated._supa_id = newRow.id;
+    const newKey = pid(updated);
+    // Transfer noteData if key changed
+    if(oldKey !== newKey && noteData[oldKey]){
+      noteData[newKey] = noteData[oldKey];
+      delete noteData[oldKey];
+      lsSaveNote(newKey, noteData[newKey]);
+    }
+    patients[idx] = updated;
+    lsSavePatients(patients);
+    buildEspFilters(); renderView();
+    console.log("[RT] Patient updated:", updated.nombre);
+  }
+  else if(eventType === "DELETE"){
+    const id = oldRow?.id || newRow?.id;
+    const idx = patients.findIndex(p=>p._supa_id===id);
+    if(idx===-1) return;
+    const k = pid(patients[idx]);
+    patients.splice(idx, 1);
+    delete noteData[k];
+    lsSavePatients(patients);
+    buildEspFilters(); renderView();
+    console.log("[RT] Patient deleted:", k);
+  }
+}
+
+function handleNoteChange(payload){
+  const {eventType, new: newRow} = payload;
+  if(eventType === "DELETE") return;
+  // Find patient by _supa_id matching note's patient_id
+  const p = patients.find(x=>x._supa_id===newRow.patient_id);
+  if(!p) return;
+  const k = pid(p);
+  const nd = defaultData();
+  nd.app=newRow.app||""; nd.pa=newRow.pa||""; nd.drenajes=newRow.drenajes||"";
+  nd.qx=newRow.qx||""; nd.manejo=newRow.manejo||""; nd.sangrado=newRow.sangrado||"";
+  nd.sv=newRow.sv||""; nd.balance=newRow.balance||""; nd.pendientes=newRow.pendientes||"";
+  nd.misc=newRow.misc||""; nd.checklist=newRow.checklist||nd.checklist;
+  nd.labHistory=newRow.lab_history||[];
+  nd.imagenHistory=newRow.imagen_history||[];
+  noteData[k] = migrateNote(nd);
+  lsSaveNote(k, noteData[k]);
+  renderView();
+  console.log("[RT] Note updated:", k);
+}
+
+function supaRowToPatient(row){
+  return {
+    _supa_id: row.id,
+    cama: row.cama||"", nombre: row.nombre||"", exp: row.exp||"",
+    dx: row.dx||"", edad: row.edad||"", esp: row.esp||"",
+    adscrito: row.adscrito||"", residente: row.residente||"",
+    estado: row.estado||"", ingreso: fmtDateFromISO(row.ingreso)
+  };
+}
+
+// ─── OFFLINE: flush outbox when back online ─────────────────────────────────────
+window.addEventListener("online", async ()=>{
+  setSyncStatus("syncing","Reconectando...");
+  await flushOutbox();
+  const loaded = await supaLoadAll();
+  if(loaded){
+    patients = loaded.patients; noteData = loaded.notes;
+    lsSavePatients(patients);
+    buildEspFilters(); renderView();
+  }
+  setSyncStatus("synced","Reconectado");
+});
+window.addEventListener("offline", ()=>{ setSyncStatus("error","Sin conexión"); });
+
+async function flushOutbox(){
+  const q = outboxLoad(); if(!q.length) return;
+  const failed = [];
+  for(const item of q){
+    if(item.type==="note" && item.key && item.data){
+      const p = patients.find(x=>pid(x)===item.key);
+      if(p && p._supa_id){
+        const res = await supaUpsertNote(p._supa_id, item.data);
+        if(!res) failed.push(item);
+      } else failed.push(item);
+    } else if(item.type==="patient" && item.patient){
+      const res = await supaUpsertPatient(item.patient);
+      if(!res) failed.push(item);
     }
   }
+  outboxSave(failed);
+  updateOutboxBadge();
+}
 
-  if(notesChanged){
-    const data = await apiFetch("/api/notes");
-    if(data && data.notes){
-      // Merge: server wins, but preserve anything local that server doesn't have
-      patients.forEach(p=>{
-        const k = pid(p);
-        const serverNote = data.notes[k];
-        if(serverNote) noteData[k] = {...defaultData(),...serverNote};
-        else if(!noteData[k]) noteData[k] = defaultData();
-        lsSaveNote(k, noteData[k]);
-      });
-      lastMeta.notes_ts = data.ts||meta.notes_ts;
-      didUpdate = true;
-    }
+// ─── MIGRATION: localStorage → Supabase (one-time) ─────────────────────────────
+async function migrateToSupabase(){
+  if(!confirm("⬆️ MIGRACIÓN A SUPABASE\n\nEsto subirá todos los pacientes y notas de tu navegador a Supabase.\n\nSolo necesitas hacerlo UNA VEZ desde el navegador que tiene los datos más actualizados.\n\n¿Continuar?")) return;
+
+  setSyncStatus("syncing","Migrando...");
+  const localPts = lsGetPatients();
+  if(!localPts || !localPts.length){
+    alert("No hay datos locales para migrar."); return;
   }
 
-  if(didUpdate){
-    buildEspFilters();
-    renderView();
+  let migrated = 0, errors = 0;
+  for(const p of localPts){
+    // Insert patient
+    const row = {
+      cama: p.cama||"", nombre: p.nombre||"", exp: p.exp||"", dx: p.dx||"",
+      edad: p.edad?String(p.edad):"", esp: p.esp||"", adscrito: p.adscrito||"",
+      residente: p.residente||"", estado: p.estado||"",
+      ingreso: ingresoToISO(p.ingreso)
+    };
+    const {data: inserted, error: pErr} = await _supa.from("patients").insert(row).select().single();
+    if(pErr){ console.error("Migration patient error:", pErr, p.nombre); errors++; continue; }
+
+    // Insert note
+    const k = "pt-"+(p.exp||"")+"-"+(p.cama||"");
+    const nd = migrateNote(lsGetNote(k));
+    const noteRow = {
+      patient_id: inserted.id,
+      app: nd.app||"", pa: nd.pa||"", drenajes: nd.drenajes||"",
+      qx: nd.qx||"", manejo: nd.manejo||"", sangrado: nd.sangrado||"",
+      sv: nd.sv||"", balance: nd.balance||"", pendientes: nd.pendientes||"",
+      misc: nd.misc||"", checklist: nd.checklist||{},
+      lab_history: nd.labHistory||[], imagen_history: nd.imagenHistory||[]
+    };
+    const {error: nErr} = await _supa.from("notes").upsert(noteRow, {onConflict:"patient_id"});
+    if(nErr) console.error("Migration note error:", nErr, p.nombre);
+
+    migrated++;
   }
 
-  const now = new Date();
-  const hm = now.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
-  setSyncStatus("synced","Sync "+hm);
-  return true;
-}
-
-// ─── SYNC POLLING — con jitter y backoff ─────────────────────────────────────────
-const SYNC_BASE_MS  = 28000;  // ~28s base
-const SYNC_MAX_MS   = 120000; // 2 min máximo backoff
-let _syncFailCount  = 0;
-let _syncTimer      = null;
-
-function startSyncPolling(){
-  if(syncInterval) clearInterval(syncInterval); // limpiar setInterval legacy si existía
-  syncInterval = null;
-  scheduleSyncPoll();
-}
-
-function scheduleSyncPoll(){
-  if(_syncTimer) clearTimeout(_syncTimer);
-  if(!navigator.onLine){ return; } // pausa cuando offline
-  // Jitter: ±15% del intervalo base / backoff para evitar thundering herd
-  const backoffFactor = Math.min(Math.pow(1.6, _syncFailCount), SYNC_MAX_MS / SYNC_BASE_MS);
-  const interval = Math.min(SYNC_BASE_MS * backoffFactor, SYNC_MAX_MS);
-  const jitter = (Math.random() * 0.3 - 0.15) * interval; // ±15%
-  const delay = Math.round(interval + jitter);
-  _syncTimer = setTimeout(async () => {
-    const ok = await syncFromServerWithResult();
-    _syncFailCount = ok ? 0 : Math.min(_syncFailCount + 1, 6);
-    scheduleSyncPoll();
-  }, delay);
-}
-
-async function syncFromServerWithResult(){
-  if(!getProxyUrl() || !navigator.onLine) return false;
-  return await syncFromServer(false);
+  // Reload from Supabase
+  const loaded = await supaLoadAll();
+  if(loaded){
+    patients = loaded.patients; noteData = loaded.notes;
+    lsSavePatients(patients);
+    buildEspFilters(); renderView();
+  }
+  startRealtime();
+  setSyncStatus("synced","Migración completa");
+  alert("✅ Migración completada\n\n"+migrated+" pacientes subidos"+(errors?" ("+errors+" errores)":"")+"\n\nAhora todos los dispositivos verán los mismos datos.");
 }
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────────
@@ -1261,44 +1420,36 @@ async function init(){
   const today = new Date();
   document.getElementById("gi-fecha").value = today.toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"numeric"});
 
-  setSyncStatus("offline","Cargando...");
+  setSyncStatus("syncing","Conectando a Supabase...");
 
-  if(getProxyUrl()){
-    // Intenta cargar desde el server primero
-    setSyncStatus("syncing","Conectando...");
-    const [ptsData, notesData] = await Promise.all([
-      apiFetch("/api/patients"),
-      apiFetch("/api/notes")
-    ]);
+  // Try loading from Supabase first
+  let loaded = null;
+  if(navigator.onLine){
+    try{ loaded = await supaLoadAll(); }catch(e){ console.error("Supabase load error:", e); }
+  }
 
-    if(ptsData && ptsData.patients && ptsData.patients.length > 0){
-      patients = ptsData.patients;
-      lsSavePatients(patients);
-      lastMeta.patients_ts = ptsData.ts||0;
-    } else {
-      // Server vacío o error — carga local
-      patients = lsGetPatients() || [...DEFAULT_CENSO];
-    }
-
-    noteData = {};
-    patients.forEach(p=>{
-      const k = pid(p);
-      const serverNote = notesData?.notes?.[k];
-      noteData[k] = serverNote ? {...defaultData(),...serverNote} : lsGetNote(k);
-    });
-
-    if(notesData) lastMeta.notes_ts = notesData.ts||0;
-
-    startSyncPolling();
-    const hm = today.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+  if(loaded && loaded.patients.length > 0){
+    patients = loaded.patients;
+    noteData = loaded.notes;
+    lsSavePatients(patients);
+    // Cache notes locally
+    patients.forEach(p=>{ lsSaveNote(pid(p), noteData[pid(p)]||defaultData()); });
+    startRealtime();
+    const hm = new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
     setSyncStatus("synced","Sync "+hm);
-
   } else {
-    // Modo offline — solo localStorage
-    patients = lsGetPatients() || [...DEFAULT_CENSO];
+    // Supabase empty or offline — load from localStorage
+    patients = lsGetPatients() || [];
     noteData = {};
     patients.forEach(p=>{ noteData[pid(p)] = lsGetNote(pid(p)); });
-    setSyncStatus("offline","Modo local");
+    if(patients.length && navigator.onLine){
+      // Local data exists but Supabase is empty → show migration prompt
+      setSyncStatus("offline","Datos locales — migra a Supabase ⬆️");
+    } else if(!patients.length){
+      setSyncStatus("synced","Sin pacientes — agrega el primero");
+    } else {
+      setSyncStatus("offline","Modo local (sin conexión)");
+    }
   }
 
   buildEspFilters();
@@ -1314,17 +1465,12 @@ function setView(v, btn){
   if(btn) btn.classList.add("active");
   renderView();
 }
-// ─── SEARCH NORMALIZATION HELPERS (definidos fuera de renderView para evitar re-creación) ────
-function normBase(s){ return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase(); }
-function normCompact(s){ return normBase(s).replace(/[\s\-]/g,""); }
-
 function renderView(){
   const search = document.getElementById("search").value.toLowerCase();
   // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
-  const searchNorm = normBase(search).trim();
-  const searchTokens = searchNorm
-    ? searchNorm.split(/\s+/).filter(Boolean).map(tok=>tok.replace(/-/g,"")).filter(Boolean)
-    : [];
+  function normSearch(s){ return (s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[\s\-]/g,""); }
+  const searchNorm = normSearch(search);
+  const searchTokens = searchNorm ? searchNorm.split(/\s+/).filter(Boolean) : [];
   const filtered = patients.filter(p=>{
     const em = selectedEsp==="ALL"||p.esp===selectedEsp;
     const rm = selectedResidente==="ALL"||(p.residente||"")===selectedResidente;
@@ -1332,13 +1478,7 @@ function renderView(){
     const im = !showSoloIngresos||(function(){if(!p.ingreso)return false;var d=parseDate(p.ingreso),t=new Date();t.setHours(0,0,0,0);var y=new Date(t);y.setDate(t.getDate()-1);return d>=y;})();
     let sm = true;
     if(searchTokens.length > 0){
-      const haystack = [
-        normCompact(p.nombre),
-        normCompact(p.cama),
-        normCompact(p.exp||""),
-        normCompact(p.adscrito||""),
-        normCompact(p.residente||"")
-      ].join(" ");
+      const haystack = normSearch(p.nombre) + normSearch(p.cama) + normSearch(p.exp||"") + normSearch(p.adscrito||"") + normSearch(p.residente||"");
       sm = searchTokens.every(tok => haystack.includes(tok));
     }
     return em&&sm&&rm&&am&&im;
@@ -1455,7 +1595,7 @@ function toggleFreeBeds(){
 function scrollToFreeBeds(){
   // Switch to piso view if not already
   if(currentView !== "piso"){
-    setView("piso", document.querySelector('.tab[onclick*="piso"]') || document.querySelector('.tab'));
+    setView("piso", document.querySelector('.tab'));
   }
   const panel = document.getElementById("free-beds-panel");
   if(!panel) return;
@@ -1882,7 +2022,7 @@ function openEstudioFile(k, fecha, idx){
   if(!est.file) return;
   if(est.file_type && est.file_type.startsWith('image/')){
     const w = window.open('','_blank');
-    w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${esc(est.file_type)};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
+    w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${est.file_type};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
     w.document.close();
   } else {
     const bytes=atob(est.file); const arr=new Uint8Array(bytes.length);
@@ -2562,14 +2702,11 @@ function toggleEl(id){
   if(arrow) arrow.textContent = open?"▶":"▼";
 }
 function toggleExpand(k){
-  // Si undefined → estaba abierto por defecto; primer clic = colapsar (false)
-  // Si false → estaba cerrado; clic = abrir (true)
-  // Si true → estaba abierto; clic = colapsar (false)
-  if(expandedCards[k]===undefined) expandedCards[k] = false;      // primer clic: colapsar
-  else expandedCards[k] = !expandedCards[k];                       // sucesivos: toggle
+  if(expandedCards[k]===undefined) expandedCards[k] = false;
+  else expandedCards[k] = !expandedCards[k];
   renderView();
-  // Autofocus: si se abre (true), enfocar el campo más relevante
-  if(expandedCards[k] === true){
+  // Autofocus: si se abre, enfocar el campo más relevante
+  if(expandedCards[k] !== false){
     setTimeout(()=>{
       const card = document.getElementById("card-"+k);
       if(!card) return;
@@ -2608,11 +2745,6 @@ async function handleLabPDF(k, input){
   if(!isImage && fileMB > MAX_PDF_MB){
     labLoadingSet.delete(k);
     alert(`⚠️ El PDF pesa ${fileMB.toFixed(1)} MB (máx ${MAX_PDF_MB} MB). Comprime el PDF primero (ilovepdf.com) e inténtalo de nuevo.`);
-    return;
-  }
-  if(isImage && fileMB > MAX_IMG_MB){
-    labLoadingSet.delete(k);
-    alert(`⚠️ La imagen pesa ${fileMB.toFixed(1)} MB (máx ${MAX_IMG_MB} MB). Reduce la resolución o usa una captura de pantalla e inténtalo de nuevo.`);
     return;
   }
 
@@ -3231,7 +3363,7 @@ function renderFormatos(pts){
     <div class="fmt-title">📋 FORMATOS INSTITUCIONALES HGL</div>
     <div class="fmt-hint">Selecciona paciente y formato → se auto-llenan los datos → edita lo que falte → imprime con formato institucional exacto.</div>
     <div class="fmt-bar">
-      <div><label>Paciente</label><br><select id="fmt-pat-select" onchange="fmtSelectedPatKey=this.value;fmtSelectedForm='';document.getElementById('fmt-form-container').innerHTML='';document.getElementById('fmt-form-select').value='';">${patOpts?`<option value="">— Seleccionar —</option>${patOpts}`:'<option>Sin pacientes</option>'}</select></div>
+      <div><label>Paciente</label><br><select id="fmt-pat-select" onchange="fmtSelectedPatKey=this.value">${patOpts?`<option value="">— Seleccionar —</option>${patOpts}`:'<option>Sin pacientes</option>'}</select></div>
       <div><label>Formato</label><br><select id="fmt-form-select" onchange="fmtSelectedForm=this.value">
         <option value="">— Seleccionar —</option>
 
@@ -3280,7 +3412,6 @@ function fmtF(id,lbl,val,full,type){
   return `<div class="${cls}"><label>${lbl}</label><input id="${id}" value="${esc(val||"")}"/></div>`;
 }
 function fmtV(id){const el=document.getElementById(id);return el?(el.value||el.textContent||"").trim():"";}
-function escV(id){return esc(fmtV(id));} // XSS-safe fmtV para usar en document.write
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // FORMAT 1: FT-HGL-Qx-234 ESTADO PRE Y POST QX
@@ -3373,7 +3504,7 @@ function fmtPrePostQx(p,nd,gi,fecha,hora,labs,adsOpts){
 }
 
 function printPrePostQx(){
-  const v=escV,c=id=>document.getElementById(id)&&document.getElementById(id).checked?"X":"";
+  const v=fmtV,c=id=>document.getElementById(id)&&document.getElementById(id).checked?"X":"";
   const riesgos = [
     "NEFROPATÍA ("+c("fqx_nefro")+") ",
     "COAGULOPATÍA ("+c("fqx_coag")+") ",
@@ -3536,7 +3667,7 @@ function fmtConsentimientoQx(p,nd,gi,fecha,hora,adsOpts){
 }
 
 function printConsentimientoQx(){
-  const v=escV;
+  const v=fmtV;
   const w=window.open("","_blank","width=900,height=1100");
   w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-542</title>
   <style>
@@ -3625,7 +3756,7 @@ function fmtConsentimientoGral(p,nd,gi,fecha,hora,adsOpts){
 }
 
 function printConsentimientoGral(){
-  const v=escV;
+  const v=fmtV;
   const w=window.open("","_blank","width=900,height=1100");
   w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-50</title>
   <style>
@@ -3704,7 +3835,7 @@ function fmtConsentimientoTx(p,nd,gi,fecha,hora,adsOpts){
 }
 
 function printConsentimientoTx(){
-  const v=escV;
+  const v=fmtV;
   const w=window.open("","_blank","width=900,height=1100");
   w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-LAB-236</title>
   <style>
@@ -3791,7 +3922,7 @@ function fmtNotaMedica(p,nd,gi,fecha,hora,labs,adsOpts){
 }
 
 function printNotaMedica(){
-  const v=escV;
+  const v=fmtV;
   const w=window.open("","_blank","width=900,height=1100");
   w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-51</title>
   <style>
@@ -4404,8 +4535,13 @@ function dischargePatient(k){
   patients = patients.filter(pt=>pid(pt)!==k);
   delete noteData[k];
   localStorage.removeItem(NOTES_PREFIX+k);
+  // Delete from Supabase (cascade deletes note too)
+  if(p._supa_id){
+    supaDeletePatient(p._supa_id);
+    // Also archive to Supabase
+    _supa.from("archive").insert({patient_data:p, note_data:nd, archived_by:localStorage.getItem("pl_user_name")||""}).then(()=>{});
+  }
   savePts();
-  deleteNoteRemote(k);
   document.getElementById("confirm-modal").style.display="none";
   buildEspFilters();
   renderView();
@@ -4417,7 +4553,8 @@ function dischargePatient(k){
 function restorePatient(archiveIdx){
   const arc = archivados[archiveIdx]; if(!arc) return;
   if(!confirm(`¿Restaurar a ${arc.nombre} al censo activo?`)) return;
-  const { _archivedAt, _archiveKey, _note, ...p } = arc;
+  const { _archivedAt, _archiveKey, _note, _supa_id, ...p } = arc;
+  delete p._supa_id; // Force new Supabase row on save
   patients.push(p);
   noteData[pid(p)] = _note||defaultData();
   archivados.splice(archiveIdx, 1);
@@ -4441,25 +4578,12 @@ function saveGuardSnapshot(){
   const gi = getGuardInfo();
   const label = prompt("Nombre del corte (ej: Guardia Lunes 23 Feb - HERNÁNDEZ):", `Corte ${new Date().toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit"})}`);
   if(!label) return;
-  // Capturar notas básicas (sin adjuntos base64 para no saturar storage)
-  const notesSnapshot = {};
-  patients.forEach(p=>{
-    const k = pid(p);
-    const nd = noteData[k]||{};
-    // Excluir archivos base64 para reducir tamaño del snapshot
-    const ndClean = JSON.parse(JSON.stringify(nd));
-    if(ndClean.imagenHistory) ndClean.imagenHistory.forEach(e=>{
-      if(e.estudios) e.estudios.forEach(s=>{ s.file=""; s.file_type=""; });
-    });
-    notesSnapshot[k] = ndClean;
-  });
   const snap = {
     id: Date.now(),
     label: label.trim(),
     fecha: new Date().toISOString(),
     guardia: gi,
     patients: JSON.parse(JSON.stringify(patients)),
-    notes: notesSnapshot,
     total: patients.length
   };
   snapshots.unshift(snap);
@@ -4747,21 +4871,15 @@ function confirmImport(){
 }
 
 function resetCenso(){
-  if(!confirm("⚠️ ¿Seguro que quieres reiniciar?\n\nEsto borrará TODOS los datos del censo local (pacientes, notas, labs, historial de altas, cortes de guardia y cola de sincronización).\n\nEsta acción no se puede deshacer.")) return;
-  // Limpiar localStorage — incluyendo archivo, snapshots y outbox
+  if(!confirm("⚠️ ¿Seguro que quieres reiniciar?\n\nEsto borrará TODOS los datos del censo local (pacientes, notas y labs) y cargará el censo base del archivo.\n\nEsta acción no se puede deshacer.")) return;
+  // Limpiar localStorage
   try{
     Object.keys(localStorage).forEach(k=>{
-      if((k===STORAGE_KEY || k.startsWith("censo-")) || k.startsWith(NOTES_PREFIX) || k===EXCEL_TEMPLATE_KEY
-         || k===ARCHIVE_KEY || k===SNAPSHOT_KEY || k===OUTBOX_KEY) localStorage.removeItem(k);
+      if(k.startsWith("censo-") || k.startsWith("note-") || k===EXCEL_TEMPLATE_KEY || k===ARCHIVE_KEY || k===SNAPSHOT_KEY || k===OUTBOX_KEY) localStorage.removeItem(k);
     });
   }catch(e){}
-  pendingImport = null;
   patients = [...DEFAULT_CENSO];
   noteData = {};
-  archivados = [];
-  snapshots = [];
-  outboxSave([]);
-  updateOutboxBadge();
   patients.forEach(p=>{ noteData[pid(p)] = defaultData(); });
   lsSavePatients(patients);
   buildEspFilters();
@@ -5215,13 +5333,14 @@ function mergePatients(keepIdx, removeIdx){
   noteData[keepKey] = keepNd;
 
   // Remove the duplicate by index (MUST remove higher index first to avoid shift)
+  const removedPatient = patients[removeIdx];
+  if(removedPatient && removedPatient._supa_id) supaDeletePatient(removedPatient._supa_id);
   patients.splice(removeIdx, 1);
 
   // Clean up removed patient's noteData
   if(removeKey !== keepKey){
     delete noteData[removeKey];
     localStorage.removeItem(NOTES_PREFIX + removeKey);
-    deleteNoteRemote(removeKey);
   }
   saveNote(keepKey, keepNd);
   savePts();
@@ -5305,10 +5424,10 @@ function removeDupByIndex(idx){
   if(isNaN(idx)||idx<0||idx>=patients.length) return;
   const p = patients[idx];
   const k = pid(p);
+  if(p._supa_id) supaDeletePatient(p._supa_id);
   patients.splice(idx,1);
   delete noteData[k];
   localStorage.removeItem(NOTES_PREFIX + k);
-  deleteNoteRemote(k);
   savePts();
   buildEspFilters();
   renderView();
