@@ -686,55 +686,11 @@ const DEFAULT_BEDS_OTROS = ["RECU","2-102"];
 let ALL_BEDS = [...DEFAULT_BEDS_PISO3, ...DEFAULT_BEDS_UCI, ...DEFAULT_BEDS_OTROS];
 
 // ─── DEFAULT CENSO ──────────────────────────────────────────────────────────────
-const DEFAULT_CENSO = [
-  {cama:"3-150",exp:"26-03589",nombre:"ARCELIA MARTINEZ GARCIA",edad:81,dx:"CHOQUE SEPTICO DE ORIGEN ABDOMINAL SEC. A PERFORACION DE VISCERA HUECA REMITIDO + ULCERA GASTRICA PERFORADA JOHNSON III + PO LAPE + RAFIA GASTRICA CON PARCHE DE EPIPLON + COLOCACION DE DRENAJES + FUGA GASTRICA TIPO I INTERMEDIA + PO LAPE + ASEO DE CAVIDAD + COLOCACION DE DRENAJES + ANEMIA GII OMS + LRA AKIN II",esp:"CG",adscrito:"HERNANDEZ",residente:"MERCADO",ingreso:"14/02/26",estado:"ESTABLE"},
-  {cama:"3-151",exp:"25-030652",nombre:"YARET TORRES GAMA",edad:27,dx:"INFECCION DE TEJIDOS BLANDOS DE REGION POPLITEA IZQUIERDA + PO ASEO QUIRURGICO + COLOCACION DE TPN (04.02.26, 11.02.26, 18.02.26)",esp:"CG",adscrito:"BAÑOS",residente:"SALDAÑA",ingreso:"03/02/26",estado:"ESTABLE"},
-  {cama:"3-152",exp:"24-25947",nombre:"FABIAN ROCHA BALDERAS",edad:43,dx:"ESTATUS DE COLOSTOMIA TERMINAL + PO LAPE + COLO-COLO ANASTOMOSIS TERMINO-LATERAL MANUAL EN DOS PLANOS + COLOCACION DE DRENAJES",esp:"CG",adscrito:"AVILA",residente:"CASTAÑEDA",ingreso:"16/02/26",estado:"ESTABLE"},
-  {cama:"3-153",exp:"26-01737",nombre:"JUAN ARMANDO AMBRIZ HERNANDEZ",edad:33,dx:"TRAUMA DOBLE PENETRANTE DE TORAX Y ABDOMEN + HEMOTORAX DERECHO RESUELTO POR SEP + RESECCION DE 30 CM DE YEYUNO + YEYUNOSTOMIA EN ESCOPETA + PO LAPE + DEHISCENCIA DE HERIDA + BILIOPERITONEO + LESION DIAFRAGMATICA GII AAST + RAFIA DIAFRAGMATICA + RAFIA SEROSA DUODENAL + CIERRE DE PARED RTL + PO TRAQUEOSTOMIA ABIERTA (04.02.26) + FRACTURA SUPRACONDILEA HUMERO DER + FRACTURA LAMINA L4 NOPAL 12PTS + ATELECTASIA DERECHA + DERRAME PLEURAL POSTEROBASAL DER + DEHISCENCIA APONEUROSIS + PO LAPE (12.02.26) + NEUMOTORAX IZQ POSTPUNCION REMITIDO + ANEMIA GII OMS",esp:"CG",adscrito:"ZAMACONA",residente:"RIVERA",ingreso:"25/01/26",estado:"DELICADO"},
-  {cama:"3-154",exp:"17-0981",nombre:"ANA CLAUDIA SALMERON URRUTIA",edad:35,dx:"COLANGITIS AGUDA LEVE RESUELTA POR CPRE + COLEDOCOLITIASIS RESUELTA + ESFINTEROTOMIA + COLOCACION DE ENDOPROTESIS + PANCREATITIS POST CPRE LEVE + COLELITIASIS CRONICA",esp:"CG",adscrito:"ESTRADA",residente:"MERCADO",ingreso:"19/02/26",estado:"ESTABLE"},
-  {cama:"3-155",exp:"25-30796",nombre:"JOSÉ MANUEL ROSALES MIRELES",edad:31,dx:"TCE SEVERO GLASGOW, MARSHALL III, ROTTERDAM 4 + EDEMA CEREBRAL SEVERO + HEMATOMA SUBDURAL LAMINAR BILATERAL + PO CRANIECTOMÍA DESCOMPRESIVA IZQ (02/01/26) + HEMONEUMOTÓRAX DER RESUELTO + PO TRAQUEOSTOMIA PERCUTANEA + PO GASTROSTOMIA ENDOSCOPICA",esp:"NCX",adscrito:"UGALDE",residente:"RESIDENTES",ingreso:"09/01/26",estado:"ESTABLE"},
-  {cama:"3-156",exp:"24-11264",nombre:"MARIA TERESA RODRIGUEZ ESTRADA",edad:32,dx:"HIDRONEFROSIS DERECHA SECUNDARIO A UROPATIA OBSTRUCTIVA POR LITIASIS URETERAL DERECHA + PO CISTOSCOPIA + COLOCACION DE CATETER DOBLE J",esp:"URO",adscrito:"QUIROZ",residente:"RESIDENTES",ingreso:"19/02/26",estado:"ESTABLE"},
-  {cama:"3-157",exp:"25-24771",nombre:"GABRIELA PIO HERNANDEZ",edad:49,dx:"ENFERMEDAD DIVERTICULAR NO COMPLICADA + HERNIA VENTRAL POSTINCISIONAL CHEVREL M5R0W1 + PO SIGMOIDECTOMIA LAPAROSCOPICA MANUALMENTE ASISTIDA + COLORECTOANASTOMOSIS TERMINO-ANTERIOR MECANICA + PLASTIA VENTRAL CON TENSION + COLOCACION DE DRENAJES + HAS",esp:"CCR",adscrito:"MARTIN JAIME",residente:"ZALDO",ingreso:"18/02/26",estado:"ESTABLE"},
-  {cama:"3-158",exp:"26-01646",nombre:"VIRGINIA DE LA CRUZ NAVARRO",edad:52,dx:"TUMOR EN CABEZA DE PANCREAS EN ESTUDIO + ESTATUS DE CATETER MULTIPROPOSITO",esp:"CG",adscrito:"BOTELLO",residente:"ESTRADA",ingreso:"18/02/26",estado:"ESTABLE"},
-  {cama:"3-159",exp:"26-03178",nombre:"DAVID SALINAS MARTINEZ",edad:73,dx:"TUMOR RENAL DERECHO (T3A N0 M0) + PO NEFRECTOMIA RADICAL DERECHA ABIERTA + COLOCACION DE DRENAJES",esp:"URO",adscrito:"ALMEIDA",residente:"RESIDENTES",ingreso:"16/02/26",estado:"ESTABLE"},
-  {cama:"3-160",exp:"24-06827",nombre:"JULIAN PEREZ VELAZQUEZ",edad:39,dx:"ABSCESO PENIANO + HAS / PO DEBRIDACION + ASEO QUIRURGICO",esp:"URO",adscrito:"QUIROZ",residente:"RESIDENTES",ingreso:"17/02/26",estado:"ESTABLE"},
-  {cama:"3-161",exp:"24-02070",nombre:"LUIS GERARDO SOLIS JUAREZ",edad:18,dx:"TUMOR QUISTICO FRONTOPARIETAL IZQ (PBE ASTROCITOMA PILOCITICO) + PO CRANEOTOMIA PARIETAL Y RESECCION TUMORAL + HEMATOMA EPIDURAL + PO REAPERTURA + DRENAJE DE HEMATOMA",esp:"NCX",adscrito:"GOMEZ CANO",residente:"RESIDENTES",ingreso:"18/02/26",estado:"ESTABLE"},
-  {cama:"3-162",exp:"26-04060",nombre:"JOSE FERNANDO CORTEZ RAMIREZ",edad:18,dx:"APENDICITIS AGUDA FASE II + PO APENDICECTOMIA ABIERTA",esp:"CG",adscrito:"AVILA",residente:"COLIN",ingreso:"20/02/26",estado:"ESTABLE"},
-  {cama:"3-163",exp:"26-03867",nombre:"VICENTE TORRES CAUDILLO",edad:58,dx:"ABSCESO PULMONAR IZQUIERDO COMPLEJO + DM2",esp:"CT",adscrito:"RAMIREZ",residente:"ESTRADA",ingreso:"19/02/26",estado:"ESTABLE"},
-  {cama:"3-164",exp:"25-009310",nombre:"LAURA OLIVA MORENO",edad:33,dx:"AVULSION DE TEJIDOS BLANDOS DE MPE IZQ + OBESIDAD GII + PO ASEO QUIRURGICO + TPN + ESCARECTOMIA + ANEMIA GII OMS",esp:"CG",adscrito:"ESTRADA",residente:"PLASCENCIA",ingreso:"20/01/26",estado:"ESTABLE"},
-  {cama:"3-165",exp:"26-03157",nombre:"SERGIO PABLO REYES MUÑOZ",edad:44,dx:"HSA FISHER II MOD HYH I WFNS II VASOGRADE GREEN + ANEURISMA ROTO DE ACA A1 DER + PO CLIPAJE DE ANEURISMA DE ACA",esp:"NCX",adscrito:"UGALDE",residente:"RESIDENTES",ingreso:"12/02/26",estado:"ESTABLE"},
-  {cama:"3-166",exp:"26-03483",nombre:"JUAN CARLOS URQUIETA",edad:53,dx:"PIE DIABETICO DER TEXAS IIID WIFI 3-X-3, SAN ELIAN 19PTS + PO FASCIOTOMIA DORSAL Y PLANTAR + PO AMPUTACION 1ER ORTEJO DER (13.02.26) + PO ASEO Y DEBRIDACION (17.02.26) + INSUFICIENCIA ARTERIAL MODERADA MPD + DM2",esp:"CG",adscrito:"BAÑOS",residente:"SALDAÑA",ingreso:"15/02/26",estado:"ESTABLE"},
-  {cama:"3-167",exp:"24-26602",nombre:"ELVIRA MATA FUENTES",edad:46,dx:"HERNIA VENTRAL CHEVREL M3W4R0 + PO PLASTIA VENTRAL SIN TENSION + COLOCACION DE DRENAJES + HAS",esp:"CG",adscrito:"ESTRADA",residente:"MERCADO",ingreso:"19/02/26",estado:"ESTABLE"},
-  {cama:"3-168",exp:"26-02127",nombre:"JORGE ELEAZAR MENA ROJAS",edad:43,dx:"PIE DIABETICO DER TEXAS IIIB WIFI 3-X-3 + PIE DIABETICO IZQ TEXAS IIIB WIFI 3-X-1 + PO ASEO Y DEBRIDACION (05.02/11.02) + PO FASCIOTOMIA LATERAL INTERNA DER + FASCIOTOMIA PLANTAR DER + DM2 + RETINOPATIA DIABETICA + DHE (HIPONATREMIA MODERADA)",esp:"CG",adscrito:"BAÑOS",residente:"SALDAÑA",ingreso:"30/01/26",estado:"ESTABLE"},
-  {cama:"3-169",exp:"16-36916",nombre:"PASCUAL RAMIREZ LIRA",edad:62,dx:"CRECIMIENTO PROSTATICO OBSTRUCTIVO + PO HOLEP",esp:"URO",adscrito:"QUIROZ",residente:"RESIDENTES",ingreso:"19/02/26",estado:"ESTABLE"},
-  {cama:"3-170",exp:"19-20260",nombre:"ALBERTA NAVA ESCOBEDO",edad:71,dx:"CONDUCTO LUMBAR ESTRECHO + PO TLIF",esp:"COLUMNA",adscrito:"JIMENEZ",residente:"RESIDENTES",ingreso:"19/02/26",estado:"ESTABLE"},
-  {cama:"3-171",exp:"22-22375",nombre:"PATRICIA BUENO CORDOVA",edad:60,dx:"HERNIA VENTRAL POSTINCISIONAL INCARCELADA M2L2W3R1 + HERNIA DE SPIEGEL + PO LAPE + ADHERENCIOLISIS + PLASTIA VENTRAL RTL + MALLA PROFILACTICA SUPRAPONEUROTICA + COLOCACION DE DRENAJES + OBESIDAD GIII",esp:"CG",adscrito:"ZAMACONA",residente:"MUÑOZ",ingreso:"18/02/26",estado:"ESTABLE"},
-  {cama:"3-172",exp:"25-28549",nombre:"MARIA GUADALUPE HERNANDEZ HERNANDEZ",edad:44,dx:"COLANGITIS AGUDA SEVERA + ESTATUS DE CMP BILATERAL + PO DERIVACION BILIODIGESTIVA LAPAROSCOPICA (2022 EXT) + DHE (HIPONATREMIA LEVE) + ANEMIA GII OMS",esp:"CG",adscrito:"BOTELLO",residente:"COLIN",ingreso:"09/02/26",estado:"DELICADO"},
-  {cama:"3-173",exp:"26-03494",nombre:"IRMA BERBER BERBER",edad:77,dx:"SX OCLUSION INTESTINAL SECUNDARIO A TUMOR DE SIGMOIDES + PO LAPE + PROCEDIMIENTO DE HARTMANN + ADHERENCIOLISIS + REMODELACION DE ESTOMA (19.02.26) + COLOCACION DE DRENAJES + HAS",esp:"CCR",adscrito:"MARTIN JAIME",residente:"GONZALEZ",ingreso:"16/02/26",estado:"ESTABLE"},
-  {cama:"3-174",exp:"26-02940",nombre:"MARIA VICTORIA GUERRERO HERNANDEZ",edad:40,dx:"SEPSIS DE ORIGEN ABDOMINAL + PO LAPE + BILIOPERITONEO + DISRUPCION DE LA VIA BILIAR STRASSBERG E2 + DERIVACION ABIERTA DE LA VIA BILIAR + COLOCACION DE DRENAJES",esp:"CG",adscrito:"AVILA",residente:"ESTRADA",ingreso:"08/02/26",estado:"DELICADO"},
-  {cama:"3-175",exp:"25-19818",nombre:"JOSE DE LA LUZ AGUILAR",edad:57,dx:"PIE DIABETICO DER TEXAS IIID WIFI 3-X-3 SAN ELIAN 15PTS + INSUFICIENCIA ARTERIAL MODERADA MPD + PO FASCIOTOMIA PLANTAR (09.02.26) + DM2",esp:"CG",adscrito:"BAÑOS",residente:"SALDAÑA",ingreso:"09/02/26",estado:"ESTABLE"},
-  {cama:"3-176",exp:"26-03307",nombre:"ANA GABRIELA OLMOS RODRIGUEZ",edad:34,dx:"TUMOR PULMONAR LOBULO INFERIOR DERECHO EN ESTUDIO",esp:"CT",adscrito:"PLIEGO",residente:"CHAVEZ",ingreso:"12/02/26",estado:"ESTABLE"},
-  {cama:"3-177",exp:"26-03984",nombre:"OSCAR URIEL OLIVA SANCHEZ",edad:19,dx:"CHOQUE HIPOVOLEMICO GII REMITIDO + TRAUMA CONTUSO DE ABDOMEN + TRAUMA ESPLENICO GV AAST + PO LAPE + ESPLENECTOMIA + COLOCACION DE DRENAJES",esp:"CG",adscrito:"LANDEROS",residente:"MORA",ingreso:"19/02/26",estado:"ESTABLE"},
-  {cama:"3-178",exp:"26-02442",nombre:"ANTONIO MURILLO ORTIZ",edad:58,dx:"SEPSIS DE ORIGEN ABDOMINAL REMITIDO SEC A ULCERA GASTRICA PERFORADA JOHNSON GIII + PO LAPE + RAFIA GASTRICA + FUGA DE RAFIA + PO LAPE + RAFIA EN 2 PLANOS + GASTROSTOMIA ABIERTA + YEYUNOSTOMIA TIPO WITZEL + COLOCACION DE DRENAJES + DERRAME PLEURAL BILATERAL + PO CMP HEMITORAX IZQ",esp:"CG",adscrito:"LANDEROS",residente:"ALTAMIRANO",ingreso:"12/02/26",estado:"ESTABLE"},
-  {cama:"3-179",exp:"26-01577",nombre:"MELESIA RODRIGUEZ CASTRO",edad:39,dx:"TCE SEVERO + HEMORRAGIA INTRAPARENQUIMATOSA SUBARACNOIDEO E INTERVENTRICULAR + EXPOSICION DE MASA ENCEFALICA FRONTAL + HERNIA AMIGDALINA + PO ESQUIRLECTOMIA + PO GASTROSTOMIA PERCUTANEA (11.01.26) + ANEMIA GIII OMS + DHE (HIPOKALEMIA + HIPERNATREMIA) + PO TRAQUEOSTOMIA PERCUTANEA (19.02.26)",esp:"NCX",adscrito:"REYES",residente:"RESIDENTES",ingreso:"23/01/26",estado:"GRAVE"},
-  {cama:"3-180",exp:"26-03145",nombre:"LUIS CINTORA JIMENEZ",edad:58,dx:"CHOQUE SEPTICO DE ORIGEN PULMONAR + DERRAME PLEURAL IZQ + PO VATS IZQ + ESTATUS DE FAVI BRAQUICEFALICA IZQ + ERC KDIGO V EN TSR CON HD + HIPERTIROIDISMO + HAS + ANEMIA GII OMS + DHE (HIPONATREMIA) + TROMBOCITOPENIA MODERADA",esp:"CT",adscrito:"RAMIREZ",residente:"CHAVEZ",ingreso:"12/02/26",estado:"GRAVE"},
-  {cama:"3-181",exp:"26-02506",nombre:"MA GUADALUPE ZAMUDIO BEDOLLA",edad:52,dx:"HSA FISHER I MOD WFNS 1 HYH I VASOGRADE GREEN + ANEURISMA ROTO ACM DER M2 + PO CRANEOTOMIA PTERIONAL Y CLIPAJE + HEMORRAGIA INTRAPARENQUIMATOSA DER ICH 3PTS + PO TRAQUEOSTOMIA PERCUTANEA (19.02.26)",esp:"NCX",adscrito:"LOPEZ BERUMEN",residente:"RESIDENTES",ingreso:"15/02/26",estado:"GRAVE"},
-  {cama:"3-182",exp:"26-02106",nombre:"ANDRES DE JESUS RANGEL GUZMAN",edad:32,dx:"TCE SEVERO + HERIDA POR PAF EN CRANEO + PO CRANIECTOMIA DESCOMPRESIVA (29.01.26) + PO TRAQUEOSTOMIA ABIERTA + GASTROSTOMIA ABIERTA (04.02.26)",esp:"NCX",adscrito:"LOPEZ BERUMEN",residente:"RESIDENTES",ingreso:"29/01/26",estado:"GRAVE"},
-  {cama:"3-183",exp:"22-16256",nombre:"JUAN FONSECA RAMIREZ",edad:68,dx:"CHOQUE SEPTICO DE ORIGEN ABDOMINAL + VOLVULO DE SIGMOIDES + PO LAPE + PROCEDIMIENTO DE HARTMANN + DM2 + HAS + PORTADOR DE MARCAPASOS + SINDROME MEDULAR ASIA C",esp:"CG",adscrito:"HERNANDEZ",residente:"DAVALOS",ingreso:"19/02/26",estado:"GRAVE"},
-  {cama:"3-184",exp:"26-03822",nombre:"JUAN MANUEL VELAZQUEZ RODRIGUEZ",edad:33,dx:"CHOQUE SEPTICO DE ORIGEN TORACICO + MEDIASTINITIS + ABSCESO SUBMANDIBULAR + PO ASEO QUIRURGICO + DRENAJE + COLOCACION DE DRENAJES + DHE (HIPOCLOREMIA + HIPONATREMIA)",esp:"CTV",adscrito:"GARCIA",residente:"XACUR",ingreso:"18/02/26",estado:"GRAVE"},
-  {cama:"3-185",exp:"26-03430",nombre:"ELENA DE LA CRUZ ALDANA ROCHA",edad:57,dx:"SEPSIS DE ORIGEN ABDOMINAL + ESTATUS DE COLOSTOMIA DISFUNCIONAL + FASCITIS DE PARED + ASEO DE CAVIDAD + COLOCACION DE DRENAJES + ADENOCARCINOMA DE COLON + TEP DE ARTERIAS SEGMENTARIAS + ANEMIA GIII OMS",esp:"CG",adscrito:"ESTRADA",residente:"MATEOS",ingreso:"13/02/26",estado:"ESTABLE"},
-  {cama:"3-186",exp:"22-5162",nombre:"MARIA DEL CARMEN BARRANCO SALDIVAR",edad:72,dx:"ULCERAS EN AMBOS MIEMBROS PELVICOS SECUNDARIAS A TRAUMA + PO ASEO Y DEBRIDACION (11.02/18.02) + DM2 + HTA + FA PAROXISTICA + INSUFICIENCIA MITRAL + INSUFICIENCIA AORTICA",esp:"CG",adscrito:"BAÑOS",residente:"SALDAÑA",ingreso:"05/02/26",estado:"ESTABLE"},
-  {cama:"3-187",exp:"25-300472",nombre:"ERNESTO CAMARENA ALVARADO",edad:67,dx:"CRECIMIENTO PROSTATICO OBSTRUCTIVO + PROSTATECTOMIA SUPRAPUBICA",esp:"URO",adscrito:"JIMENEZ",residente:"RESIDENTES",ingreso:"18/02/26",estado:"ESTABLE"},
-  {cama:"3-188",exp:"25-22271",nombre:"JUAN ORDAZ GASCON",edad:41,dx:"FRACTURA L3 L4 + PO ABORDAJE LATERAL CON CORPECTOMIA Y EXPANSOR VERTEBRAL + ABORDAJE LUMBAR POSTERIOR CON INSTRUMENTACION L1 A L5 (18.02.26)",esp:"COLUMNA",adscrito:"REYES",residente:"RESIDENTES",ingreso:"18/02/26",estado:"ESTABLE"},
-  {cama:"3-189",exp:"22-24311",nombre:"JULIAN ALEJANDRO CRUZ",edad:21,dx:"TRAUMA PENETRANTE DE ABDOMEN POR HPAF + TRAUMA DE COLON DER GII AAST + HEMATOMA EN RETROPERITONEO ZONA II DER + PO LAPE + RAFIA COLONICA EN 2 PLANOS + COLOCACION DE DRENAJES + FRACTURA DE HUMERO DER MULTIFRAGMENTADO + ANEMIA GII",esp:"CG",adscrito:"RODRIGUEZ",residente:"MORENO",ingreso:"15/02/26",estado:"ESTABLE"},
-  {cama:"3-190",exp:"26-02146",nombre:"JUAN CORTES MUÑOZ",edad:51,dx:"LESION PINEAL + HIDROCEFALIA OBSTRUCTIVA + PORTADOR DE VALVULA DISFUNCIONAL + PO RETIRO DE VALVULA Y VENTRICULOSTOMIA (05.02.26) + PO ENDOSCOPIA VENTRICULAR + BIOPSIA (06.02.26) + PO RECAMBIO DE DVE + GASTROSTOMIA ABIERTA + TRAQUEOSTOMIA ABIERTA (17.02.26)",esp:"NCX",adscrito:"LOPEZ BERUMEN",residente:"RESIDENTES",ingreso:"05/02/26",estado:"DELICADO"},
-  {cama:"UCI 1",exp:"26-03112",nombre:"LEONARDO MIGUEL NAVARRO ANGUIANO",edad:34,dx:"SEPSIS DE ORIGEN PULMONAR + PBE NAV TEMPRANA + TCE SEVERO MARSHALL V ROTTERDAM 3PTS + TRAUMA CERRADO DE TORAX + NEUMOTORAX BILATERAL REMITIDO + HEMATOMA EPIDURAL FRONTAL IZQ + FRACTURA FRONTOTEMPOROPARIETAL IZQ + CONTUSIONES PULMONARES BILATERALES + PO DRENAJE POR CRANIECTOMIA + ESTATUS DE SEP BILATERAL",esp:"NCX",adscrito:"LOPEZ BERUMEN",residente:"RESIDENTES",ingreso:"09/02/26",estado:"GRAVE"},
-  {cama:"UCI 2",exp:"26-03673",nombre:"BRAULIO AGUILAR ALMANZA",edad:19,dx:"CHOQUE HIPOVOLEMICO GIII + POLITRAUMATISMO + TRAUMA CERRADO DE ABDOMEN + PO LAPE + LESION HEPATICA GV SEGMENTOS V VI VII + PO CCD CON EMPAQUETAMIENTO HEPATICO + RODILLA FLOTANTE IZQ EXPUESTA GA IIIC + SX COMPARTIMENTAL MPE IZQ + RABDOMIOLISIS AGUDA + LRA KDIGO 2 OLIGURIA + HEPATOPATIA HIPOXICO ISQUEMICA + PO LAPE SECOND LOOK + REEMPAQUETAMIENTO",esp:"CG",adscrito:"JORDAN",residente:"MARTINEZ",ingreso:"16/02/26",estado:"GRAVE"},
-  {cama:"UCI 3",exp:"26-03775",nombre:"JOSE EDUARDO PEREZ SAUCEDO",edad:30,dx:"CHOQUE HIPOVOLEMICO GIV SEC A TRAUMA PENETRANTE DE TORAX POR PAF + HEMONEUMOTORAX IZQ + PO LAPE + TRAUMA HEPATICO GIV SEGMENTOS IV V VI + TRAUMA DE COLON ASCENDENTE V AAST + EMPAQUETAMIENTO HEPATICO + HEMICOLECTOMIA DERECHA + NECROSIS DE ILEOSTOMIA DISFUNCIONAL + PO DESEMPAQUETAMIENTO + REMODELACION DE ILEOSTOMIA TERMINAL",esp:"CG",adscrito:"AVILA",residente:"MUÑOZ",ingreso:"16/02/26",estado:"GRAVE"},
-  {cama:"2-102",exp:"22-02269",nombre:"ODALIS DARINKA TORRES RAMIREZ",edad:23,dx:"SEPSIS SEC A INFECCION DE TEJIDOS BLANDOS + FASCITIS NECROTIZANTE DE PARED EN REMISION + ABDOMEN ABIERTO BJORK IB + PO ASEO QUIRURGICO (01/02) + FASCIOTOMIA + BOLSA DE BOGOTA + PO LAPE (10.02.26) + ADHERENCIOLISIS + RAFIA PRIMARIA DE ILEON TERMINAL + COLOCACION DE TPN ABDOMINAL (19.02.26) + PUERPERIO QUIRURGICO COMPLICADO + POST PARADA CARDIACA EN RECUPERACION + ANEMIA GII OMS",esp:"CG/GYO",adscrito:"HERNANDEZ",residente:"MORENO",ingreso:"01/02/26",estado:"ESTABLE"},
-  {cama:"RECU",exp:"26-02999",nombre:"FELICIANO HERNANDEZ ALVAREZ",edad:66,dx:"CANCER DE PROSTATA + PO TUNEL PROSTATICO + ORQUIECTOMIA BILATERAL + RTUP",esp:"URO",adscrito:"JIMENEZ",residente:"RESIDENTES",ingreso:"19/02/26",estado:"ESTABLE"},
-  {cama:"3-175",exp:"25-00208",nombre:"EDGAR URIEL ROCHA TREJO",edad:19,dx:"ENFERMEDAD BULLOSA + NEUMOTÓRAX ESPONTÁNEO BILATERAL + PO BULECTOMÍA POR VATS DERECHA",esp:"CX DE TÓRAX",adscrito:"RAMÍREZ",residente:"",ingreso:"",estado:"ESTABLE"}
-];
+// NOTA DE SEGURIDAD: No se guardan datos reales de pacientes en el código fuente.
+// El censo debe cargarse desde Excel (botón "Importar Excel") o desde el servidor
+// de sincronización. Los datos de pacientes son PHI y no deben quedar expuestos
+// en código público.
+const DEFAULT_CENSO = [];
 
 // ─── STATE ──────────────────────────────────────────────────────────────────────
 let patients = [];
@@ -848,7 +804,7 @@ function refreshDebugPanel(){
     const key = localStorage.key(i);
     const val = localStorage.getItem(key)||"";
     lsBytes += key.length + val.length;
-    if(key.startsWith("pl_note_")) noteKeys.push(key);
+    if(key.startsWith(NOTES_PREFIX)) noteKeys.push(key);
   }
   const lsKB = (lsBytes*2/1024).toFixed(1); // UTF-16: ~2 bytes/char
 
@@ -1199,10 +1155,13 @@ function scheduleSyncPoll(){
 
 async function syncFromServerWithResult(){
   if(!getProxyUrl() || !navigator.onLine) return false;
-  setSyncStatus("syncing","Actualizando...");
-  const meta = await apiFetch("/api/meta");
-  if(!meta){ setSyncStatus("error","Sin conexión"); return false; }
-  return true; // la función syncFromServer maneja el resto
+  try {
+    await syncFromServer(false);
+    return true;
+  } catch(e) {
+    setSyncStatus("error","Error de sync");
+    return false;
+  }
 }
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────────
@@ -2634,7 +2593,7 @@ async function handleLabPDF(k, input){
     }
 
     const mediaType = isImage ? "image/jpeg" : "application/pdf";
-    const contentBlock = isImage2
+    const contentBlock = isImage
       ? {type:"image",source:{type:"base64",media_type:mediaType,data:base64}}
       : {type:"document",source:{type:"base64",media_type:"application/pdf",data:base64}};
 
@@ -2646,7 +2605,7 @@ async function handleLabPDF(k, input){
         max_tokens:1000,
         messages:[{role:"user",content:[
           contentBlock,
-          {type:"text",text:"Extrae los valores de laboratorio de este "+(isImage2?"resultado (imagen)":"PDF")+". Responde SOLO con JSON válido sin markdown ni texto adicional:\n{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\",\"paciente\":\"\",\"fecha_labs\":\"\"}\nReglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\"."}
+          {type:"text",text:"Extrae los valores de laboratorio de este "+(isImage?"resultado (imagen)":"PDF")+". Responde SOLO con JSON válido sin markdown ni texto adicional:\n{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\",\"paciente\":\"\",\"fecha_labs\":\"\"}\nReglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\"."}
         ]}]
       })
     });
@@ -4717,15 +4676,18 @@ function confirmImport(){
 }
 
 function resetCenso(){
-  if(!confirm("⚠️ ¿Seguro que quieres reiniciar?\n\nEsto borrará TODOS los datos del censo local (pacientes, notas y labs) y cargará el censo base del archivo.\n\nEsta acción no se puede deshacer.")) return;
-  // Limpiar localStorage
+  if(!confirm("⚠️ ¿Seguro que quieres reiniciar?\n\nEsto borrará TODOS los datos del censo local (pacientes, notas, labs, historial de altas, cortes de guardia y cola de sincronización).\n\nEsta acción no se puede deshacer.")) return;
+  // Limpiar localStorage — incluyendo archivo, snapshots y outbox
   try{
     Object.keys(localStorage).forEach(k=>{
-      if(k.startsWith("censo-") || k.startsWith("note-") || k===EXCEL_TEMPLATE_KEY) localStorage.removeItem(k);
+      if(k.startsWith("censo-") || k.startsWith(NOTES_PREFIX) || k===EXCEL_TEMPLATE_KEY
+         || k===ARCHIVE_KEY || k===SNAPSHOT_KEY || k===OUTBOX_KEY) localStorage.removeItem(k);
     });
   }catch(e){}
   patients = [...DEFAULT_CENSO];
   noteData = {};
+  archivados = [];
+  snapshots = [];
   patients.forEach(p=>{ noteData[pid(p)] = defaultData(); });
   lsSavePatients(patients);
   buildEspFilters();
