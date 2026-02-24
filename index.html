@@ -299,7 +299,13 @@ select.modal-input{background:#fff}
 .imagen-link-chip a{color:#0369a1;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
 .link-del-btn{background:none;border:none;color:#0369a1;cursor:pointer;font-size:14px;padding:0;margin-left:2px;font-weight:700;line-height:1}
 .card-critica { box-shadow: 0 0 0 2px #dc2626, 0 4px 16px rgba(220,38,38,.2) !important; }
-.checklist-row{display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:6px 10px;background:#f0f9ff;border-radius:6px;margin-bottom:6px;border:1px solid #bae6fd}
+.checklist-wrap{display:flex;flex-direction:column;gap:4px}
+.checklist-row{display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:6px 10px;background:#f0f9ff;border-radius:6px;margin-bottom:0;border:1px solid #bae6fd}
+.ck-item.ck-wound-need{background:#fecaca;color:#991b1b;border-color:#f87171}
+.ck-item.ck-wound-need.ck-on{background:#dc2626;color:#fff;border-color:#b91c1c}
+.ck-item.ck-wound-done{background:#d1fae5;color:#065f46;border-color:#6ee7b7}
+.ck-item.ck-wound-done.ck-on{background:#059669;color:#fff;border-color:#047857}
+.ck-item.ck-npt-on{background:#7c3aed;color:#fff;border-color:#6d28d9}
 .ck-title{font-size:10px;font-weight:700;color:#475569;white-space:nowrap}
 .ck-sep{color:#cbd5e1;font-size:12px}
 .ck-item{font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;cursor:pointer;background:#e2e8f0;color:#475569;border:1px solid #cbd5e1;user-select:none;transition:.15s}
@@ -941,7 +947,7 @@ function defaultData(){
     sv:"",balance:"",pendientes:"",misc:"",
     labs:{hb:"",leucos:"",plaq:"",cr:"",glu:"",na:"",k:"",alb:"",pcr:"",pct:"",inr:"",urea:"",fecha_labs:""},
     labHistory:[], imagenHistory:[],
-    checklist:{npo:false, atb:false, tvp:false, dieta:"", dren:false}};
+    checklist:{npo:false, atb:false, tvp:false, dieta:"", dren:false, cur_necesita:false, cur_realizada:false, npt:false, npt_pct:"", npt_fecha:""}};
 }
 
 // ─── DATE HELPERS ────────────────────────────────────────────────────────────────
@@ -963,8 +969,14 @@ function migrateNote(nd){
     }
   }
   if(!nd.checklist || typeof nd.checklist !== "object"){
-    nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false};
+    nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false, cur_necesita:false, cur_realizada:false, npt:false, npt_pct:"", npt_fecha:""};
   }
+  // Migrate: add wound care + NPT fields if missing
+  if(nd.checklist.cur_necesita === undefined) nd.checklist.cur_necesita = false;
+  if(nd.checklist.cur_realizada === undefined) nd.checklist.cur_realizada = false;
+  if(nd.checklist.npt === undefined) nd.checklist.npt = false;
+  if(nd.checklist.npt_pct === undefined) nd.checklist.npt_pct = "";
+  if(nd.checklist.npt_fecha === undefined) nd.checklist.npt_fecha = "";
   if(!Array.isArray(nd.imagenHistory)){
     nd.imagenHistory = [];
     if(nd.imagen_file||nd.imagen_link||nd.imagen){
@@ -1323,7 +1335,7 @@ function renderView(){
     }
     return em&&sm&&rm&&am&&im;
   });
-  document.getElementById("count-badge").textContent = filtered.length+" pacientes" + (ALL_BEDS.length ? " · "+getFreeBeds().length+" camas libres" : "");
+  document.getElementById("count-badge").innerHTML = filtered.length+" pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
   ["piso","census","print","altas","formatos"].forEach(v=>{
     document.getElementById("view-"+v).style.display = currentView===v?"":"none";
   });
@@ -1430,6 +1442,24 @@ function toggleFreeBeds(){
   const open = body.style.display !== "none";
   body.style.display = open ? "none" : "block";
   if(arrow) arrow.textContent = open ? "▾" : "▴";
+}
+
+function scrollToFreeBeds(){
+  // Switch to piso view if not already
+  if(currentView !== "piso"){
+    setView("piso", document.querySelector('.tab'));
+  }
+  const panel = document.getElementById("free-beds-panel");
+  if(!panel) return;
+  // Open the panel if collapsed
+  const body = document.getElementById("free-beds-body");
+  if(body && body.style.display === "none") toggleFreeBeds();
+  // Scroll to it
+  panel.scrollIntoView({behavior:"smooth", block:"center"});
+  // Flash highlight
+  panel.style.transition = "box-shadow .3s";
+  panel.style.boxShadow = "0 0 0 3px #059669, 0 0 20px rgba(5,150,105,.3)";
+  setTimeout(()=>{ panel.style.boxShadow = "0 1px 6px rgba(0,0,0,.06)"; }, 2000);
 }
 
 function openAddModalWithBed(bed){
@@ -2932,6 +2962,19 @@ function renderPrint(pts){
           <div class="eg-r3">${ef("🩸Sangr",nd.sangrado)}${ef("💧Dren",nd.drenajes)}${ef("⚖️Bal",nd.balance)}</div>
           ${efh("📌 PLAN/PEND",nd.pendientes)}
           ${labHtml}
+          ${(function(){
+            const cl=nd.checklist||{};
+            const tags=[];
+            if(cl.npo) tags.push('<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">NPO</span>');
+            if(cl.atb) tags.push('<span style="background:#0369a1;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">ATB</span>');
+            if(cl.tvp) tags.push('<span style="background:#7c3aed;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">TVP</span>');
+            if(cl.dren) tags.push('<span style="background:#b45309;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">DREN</span>');
+            if(cl.npt) tags.push('<span style="background:#7c3aed;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">NPT'+(cl.npt_pct?' '+esc(cl.npt_pct):'')+'</span>');
+            if(cl.dieta) tags.push('<span style="background:#059669;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">🍽 '+esc(cl.dieta)+'</span>');
+            if(cl.cur_necesita && !cl.cur_realizada) tags.push('<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;animation:pulse .8s infinite">🩹 CURACIÓN PEND</span>');
+            if(cl.cur_realizada) tags.push('<span style="background:#059669;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">🩹 CURADA'+(cl.cur_realizada_hora?' '+cl.cur_realizada_hora:'')+'</span>');
+            return tags.length ? '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">'+tags.join('')+'</div>' : '';
+          })()}
         </div>
       </div>`;
     });
@@ -5342,24 +5385,48 @@ const CHECKLIST_ITEMS = [
   {key:"dren", label:"Dren",  title:"Drenaje activo en sitio"},
 ];
 
+const WOUND_ITEMS = [
+  {key:"cur_necesita", label:"Necesita curación", title:"El paciente requiere curación de herida quirúrgica"},
+  {key:"cur_realizada", label:"Curación realizada", title:"Curación de herida quirúrgica realizada hoy"},
+];
+
 function toggleChecklist(k, item){
   const nd = getNote(k);
-  if(!nd.checklist) nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false};
+  if(!nd.checklist) nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false, cur_necesita:false, cur_realizada:false, npt:false, npt_pct:"", npt_fecha:""};
   nd.checklist[item] = !nd.checklist[item];
+  // If "curación realizada" toggled ON, auto-set timestamp
+  if(item === "cur_realizada" && nd.checklist[item]){
+    nd.checklist.cur_realizada_hora = new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+  }
+  if(item === "cur_realizada" && !nd.checklist[item]){
+    nd.checklist.cur_realizada_hora = "";
+  }
   noteData[k] = nd;
   saveNote(k, nd);
-  // Actualizar solo el badge del ítem sin re-render completo
-  const el = document.getElementById("ck-"+k.replace(/[^a-zA-Z0-9]/g,"_")+"-"+item);
-  if(el){
-    el.className = "ck-item" + (nd.checklist[item] ? " ck-on" : "");
-    el.querySelector(".ck-label") && (el.querySelector(".ck-label").textContent = nd.checklist[item] ? "✓ "+CHECKLIST_ITEMS.find(x=>x.key===item).label : CHECKLIST_ITEMS.find(x=>x.key===item).label);
+  // Re-render the checklist row for immediate feedback
+  const ek = k.replace(/[^a-zA-Z0-9]/g,"_");
+  const container = document.getElementById("ck-row-"+ek);
+  if(container){
+    container.outerHTML = renderChecklist(nd, k);
   }
 }
 
 function updateDieta(k, val){
   const nd = getNote(k);
-  if(!nd.checklist) nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false};
+  if(!nd.checklist) nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false, cur_necesita:false, cur_realizada:false, npt:false, npt_pct:"", npt_fecha:""};
   nd.checklist.dieta = val;
+  noteData[k] = nd;
+  saveNote(k, nd);
+}
+
+function updateNptField(k, field, val){
+  const nd = getNote(k);
+  if(!nd.checklist) nd.checklist = {npo:false, atb:false, tvp:false, dieta:"", dren:false, cur_necesita:false, cur_realizada:false, npt:false, npt_pct:"", npt_fecha:""};
+  nd.checklist[field] = val;
+  // Auto-set fecha when percentage changes
+  if(field === "npt_pct" && val){
+    nd.checklist.npt_fecha = new Date().toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"2-digit"}) + " " + new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+  }
   noteData[k] = nd;
   saveNote(k, nd);
 }
@@ -5368,21 +5435,57 @@ function renderChecklist(nd, k){
   nd = migrateNote(nd);
   const cl = nd.checklist||{};
   const ek = k.replace(/[^a-zA-Z0-9]/g,"_");
+
+  // Row 1: Standard checklist items
   const items = CHECKLIST_ITEMS.map(item=>{
     const on = !!cl[item.key];
     return `<span id="ck-${ek}-${item.key}" class="ck-item${on?" ck-on":""}"
       data-ck="${k}" data-item="${item.key}"
       onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
-      title="${item.title}"><span class="ck-label">${on?"✓ ":""} ${item.label}</span></span>`;
+      title="${item.title}"><span class="ck-label">${on?"✓ ":""}${item.label}</span></span>`;
   }).join("");
   const dieta = esc(cl.dieta||"");
-  return `<div class="checklist-row">
-    <span class="ck-title">✅ Checklist:</span>
-    ${items}
-    <span class="ck-sep">|</span>
-    <span class="ck-title">🍽 Dieta:</span>
-    <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..."
-      data-ck="${k}" oninput="updateDieta(this.dataset.ck, this.value)" style="width:140px"/>
+
+  // Row 2: Wound care
+  const woundItems = WOUND_ITEMS.map(item=>{
+    const on = !!cl[item.key];
+    const extraClass = item.key==="cur_necesita" ? (on?" ck-wound-need":"") : (on?" ck-wound-done":"");
+    const timeLabel = item.key==="cur_realizada" && on && cl.cur_realizada_hora ? ` (${cl.cur_realizada_hora})` : "";
+    return `<span id="ck-${ek}-${item.key}" class="ck-item${on?" ck-on":""}${extraClass}"
+      data-ck="${k}" data-item="${item.key}"
+      onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
+      title="${item.title}"><span class="ck-label">${on?"✓ ":""}${item.label}${timeLabel}</span></span>`;
+  }).join("");
+
+  // Row 3: NPT with percentage and date
+  const nptOn = !!cl.npt;
+  const nptPct = esc(cl.npt_pct||"");
+  const nptFecha = esc(cl.npt_fecha||"");
+  const nptHtml = `<span id="ck-${ek}-npt" class="ck-item${nptOn?" ck-on ck-npt-on":""}"
+    data-ck="${k}" data-item="npt"
+    onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
+    title="Nutrición Parenteral Total"><span class="ck-label">${nptOn?"✓ ":""}NPT</span></span>` +
+    (nptOn ? `<input class="ck-dieta" value="${nptPct}" placeholder="% (ej: 80%)"
+      data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)"
+      style="width:80px;font-weight:700;${nptPct?"color:#7c3aed":""}"/>` +
+      (nptFecha ? `<span style="font-size:9px;color:#94a3b8;white-space:nowrap" title="Última actualización del %">🕐 ${nptFecha}</span>` : "") : "");
+
+  return `<div id="ck-row-${ek}" class="checklist-wrap">
+    <div class="checklist-row">
+      <span class="ck-title">✅ Checklist:</span>
+      ${items}
+      <span class="ck-sep">|</span>
+      <span class="ck-title">🍽 Dieta:</span>
+      <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..."
+        data-ck="${k}" oninput="updateDieta(this.dataset.ck, this.value)" style="width:140px"/>
+    </div>
+    <div class="checklist-row" style="background:#fff7ed;border-color:#fdba74">
+      <span class="ck-title">🩹 Herida Qx:</span>
+      ${woundItems}
+      <span class="ck-sep">|</span>
+      <span class="ck-title">💉 NPT:</span>
+      ${nptHtml}
+    </div>
   </div>`;
 }
 
