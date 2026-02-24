@@ -335,9 +335,10 @@ select.modal-input{background:#fff}
 
 <!-- HEADER -->
 <div id="header">
-  <div id="quote-bar">“El cuidado del paciente es la única razón por la que estamos aquí.”
+  <div id="quote-bar">
+    <span id="quote-text">“El cuidado del paciente es la única razón por la que estamos aquí.”</span>
+    <span id="course-countdown" style="margin-left:16px;background:rgba(255,255,255,.12);padding:2px 10px;border-radius:10px;font-style:normal;font-weight:600;font-size:10px;color:#fcd34d;letter-spacing:.5px"></span>
   </div>
-  <div id="header-inner">
     <div id="header-top">
       <div class="header-title">
         <div class="sub">Hospital General de León — Cirugía General</div>
@@ -654,8 +655,17 @@ const ARCHIVE_KEY   = "pl_archive_v1";    // pacientes egresados/archivados
 const SNAPSHOT_KEY  = "pl_snapshots_v1";  // cortes de guardia
 
 // Camas que admiten múltiples pacientes sin considerarse "duplicado"
-// (pacientes externos, pasillos, espera, etc.)
-const MULTI_BED = new Set(["EXT","EXTERNO","EXTERNO1","EXTERNO2","PASILLO","ESPERA","URGENCIAS","URG","CORR","CORREDOR"]);
+// (pacientes externos, ambulatorios, pasillos, espera, etc.)
+const MULTI_BED = new Set(["EXT","EXTERNO","EXTERNO1","EXTERNO2","PASILLO","ESPERA","URGENCIAS","URG","CORR","CORREDOR","AMB","AMBULATORIO","AMBULATORIO1","AMBULATORIO2","CONSULTA","CONS","PREQUX","PREQX","RECUPERACION","RECU","CORTA ESTANCIA","CE"]);
+// Detecta si una cama es "no censable" (no tiene formato numérico tipo 3-150 o UCI 2)
+function isNonCensableBed(cama){
+  const c = (cama||"").trim().toUpperCase();
+  if(!c) return true;
+  if(MULTI_BED.has(c)) return true;
+  // Si NO contiene al menos un dígito, es no censable (ej: "AMB", "EXTERNO", etc.)
+  if(!/\d/.test(c)) return true;
+  return false;
+}
 
 // Listado completo de camas físicas del servicio
 // (para calcular camas libres; editable en Config)
@@ -764,11 +774,35 @@ const QUOTES=[
   "Un cirujano que opera bien y juzga mal no merece ninguna confianza.",
 ];
 function rotateQuote(){
-  var el=document.getElementById("quote-bar");
+  var el=document.getElementById("quote-text");
   if(!el)return;
   var h=new Date().getHours();
   var idx=(new Date().getDate()*4+Math.floor(h/6))%QUOTES.length;
   el.textContent="“"+QUOTES[idx]+"”";
+}
+
+function updateCourseCountdown(){
+  var el=document.getElementById("course-countdown");
+  if(!el)return;
+  var start=new Date(2026,2,1); // Mar 1, 2026
+  var end=new Date(2027,1,28);  // Feb 28, 2027
+  var now=new Date();
+  now.setHours(0,0,0,0);
+  if(now < start){
+    var daysToStart = Math.ceil((start-now)/(1000*60*60*24));
+    el.textContent = "⏳ "+daysToStart+" días para inicio de curso";
+    el.style.color = "#93c5fd";
+  } else if(now > end){
+    el.textContent = "🎓 Curso completado";
+    el.style.color = "#86efac";
+  } else {
+    var daysLeft = Math.ceil((end-now)/(1000*60*60*24));
+    var totalDays = Math.ceil((end-start)/(1000*60*60*24));
+    var elapsed = totalDays - daysLeft;
+    var pct = Math.round((elapsed/totalDays)*100);
+    el.textContent = "📅 "+daysLeft+" días restantes de curso ("+pct+"%)";
+    el.style.color = daysLeft <= 60 ? "#fca5a5" : daysLeft <= 120 ? "#fcd34d" : "#86efac";
+  }
 }
 
 function getConfig(){
@@ -1262,6 +1296,7 @@ async function init(){
   renderView();
   updateProxyPill();
   rotateQuote();
+  updateCourseCountdown();
 }
 // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
 function setView(v, btn){
@@ -1324,6 +1359,7 @@ function quitarFiltrosCenso(){selectedResidente="ALL";selectedAdscrito="ALL";ren
 // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
 function renderPiso(pts){
   renderDupBanner(detectDuplicateBeds(patients));
+  renderDupPatientBanner(detectDuplicatePatients(patients));
   let html = "";
   pts.forEach(p=>{
     const k = pid(p);
@@ -4989,14 +5025,161 @@ function detectDuplicateBeds(pts){
   const bedCount = {};
   pts.forEach(p => {
     const c = (p.cama||"").trim().toUpperCase();
-    // No marcar como duplicado camas que admiten múltiples pacientes
-    if(MULTI_BED.has(c)) return;
+    // No marcar como duplicado camas no censables (AMB, EXT, sin número, etc.)
+    if(isNonCensableBed(c)) return;
     if(!bedCount[c]) bedCount[c] = [];
     bedCount[c].push(p);
   });
   return Object.entries(bedCount)
     .filter(([,list]) => list.length > 1)
     .map(([cama, list]) => ({ cama, patients: list }));
+}
+
+function detectDuplicatePatients(pts){
+  // Detecta pacientes duplicados por: mismo expediente, o nombre muy similar
+  const groups = {};
+  function normName(s){ return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z ]/g,"").replace(/\s+/g," ").trim(); }
+  pts.forEach(p => {
+    const exp = (p.exp||"").trim();
+    const name = normName(p.nombre);
+    // Primary key: expediente (si existe y no es vacío)
+    let key = exp ? "EXP:"+exp : null;
+    if(key){
+      if(!groups[key]) groups[key] = [];
+      groups[key].push(p);
+      return;
+    }
+    // Fallback: nombre normalizado
+    if(name){
+      const nameKey = "NAME:"+name;
+      if(!groups[nameKey]) groups[nameKey] = [];
+      groups[nameKey].push(p);
+    }
+  });
+  // Also cross-check: same exp but different entries
+  // Return only groups with 2+ patients (real duplicates)
+  return Object.entries(groups)
+    .filter(([,list]) => list.length > 1)
+    .map(([key, list]) => ({ key, patients: list, type: key.startsWith("EXP:")?"expediente":"nombre" }));
+}
+
+function mergePatients(keepKey, removeKey){
+  const keep = patients.find(p=>pid(p)===keepKey);
+  const remove = patients.find(p=>pid(p)===removeKey);
+  if(!keep||!remove) return;
+  // Merge: fill empty fields from remove into keep
+  const fields = ["nombre","exp","dx","edad","esp","adscrito","residente","ingreso","estado","cama"];
+  fields.forEach(f=>{
+    if(!keep[f] && remove[f]) keep[f] = remove[f];
+  });
+  // Special: prefer longer dx
+  if(remove.dx && remove.dx.length > (keep.dx||"").length) keep.dx = remove.dx;
+  // Special: prefer non-empty ingreso
+  if(!keep.ingreso && remove.ingreso) keep.ingreso = remove.ingreso;
+  // Merge noteData
+  const keepNd = noteData[keepKey] || defaultData();
+  const removeNd = noteData[removeKey] || defaultData();
+  const ndFields = ["qx","alergias","app","sangrado","drenajes","pendientes","imagen","cultivos"];
+  ndFields.forEach(f=>{
+    if(!keepNd[f] && removeNd[f]) keepNd[f] = removeNd[f];
+  });
+  // Merge lab history
+  if(removeNd.labHistory && removeNd.labHistory.length){
+    if(!keepNd.labHistory) keepNd.labHistory = [];
+    const existingDates = new Set(keepNd.labHistory.map(l=>l.fecha));
+    removeNd.labHistory.forEach(l=>{
+      if(!existingDates.has(l.fecha)) keepNd.labHistory.push(l);
+    });
+  }
+  noteData[keepKey] = keepNd;
+  // Remove the duplicate
+  const idx = patients.indexOf(remove);
+  if(idx>=0) patients.splice(idx,1);
+  delete noteData[removeKey];
+  localStorage.removeItem(NOTES_PREFIX + removeKey);
+  deleteNoteRemote(removeKey);
+  saveNote(keepKey, keepNd);
+  savePts();
+  buildEspFilters();
+  renderView();
+}
+
+function renderDupPatientBanner(duplicates){
+  const existing = document.getElementById("dup-pat-banner");
+  if(existing) existing.remove();
+  if(!duplicates || duplicates.length === 0) return;
+  const banner = document.createElement("div");
+  banner.id = "dup-pat-banner";
+  banner.style.cssText = "background:#fff;border:2px solid #d97706;border-radius:10px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 12px rgba(217,119,6,.15)";
+  let headerHtml = `
+    <div style="background:#d97706;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleDupPatPanel()">
+      <span style="font-size:18px">🔀</span>
+      <div style="flex:1">
+        <strong style="font-size:13px">PACIENTES DUPLICADOS — ${duplicates.length} posible${duplicates.length!==1?"s":""} duplicado${duplicates.length!==1?"s":""}</strong>
+        <div style="font-size:11px;opacity:.85;margin-top:2px">Mismo expediente o nombre detectado. Clic para fusionar ↓</div>
+      </div>
+      <span id="dup-pat-arrow" style="font-size:16px">▾</span>
+    </div>`;
+  let cardsHtml = '<div id="dup-pat-body" style="padding:12px 14px;display:grid;gap:10px">';
+  duplicates.forEach((d,gi) => {
+    const typeLabel = d.type==="expediente" ? "Mismo expediente" : "Mismo nombre";
+    const typeBg = d.type==="expediente" ? "#fef3c7" : "#fef9c3";
+    cardsHtml += `<div style="border:1px solid #fbbf24;border-radius:8px;overflow:hidden;background:${typeBg}">
+      <div style="background:#fde68a;padding:6px 12px;font-size:12px;font-weight:700;color:#92400e;display:flex;align-items:center;gap:6px">
+        🔀 <span style="background:#d97706;color:#fff;padding:1px 8px;border-radius:5px">${typeLabel}</span>
+        <span style="font-weight:400;color:#78350f;margin-left:4px">— ${d.patients.length} registros</span>
+      </div>
+      <div style="padding:8px 12px;display:grid;gap:7px">`;
+    d.patients.forEach((p,i) => {
+      const k = pid(p);
+      const bgColor = i===0 ? '#f0fdf4' : '#fff7ed';
+      const borderColor = i===0 ? '#86efac' : '#fdba74';
+      const dataBadge = [
+        p.ingreso ? "✅Ingreso" : "❌Ingreso",
+        p.dx ? "✅Dx" : "❌Dx",
+        p.adscrito ? "✅Ads" : "❌Ads",
+        (noteData[k]&&noteData[k].labHistory&&noteData[k].labHistory.length) ? "✅Labs" : "❌Labs"
+      ].join(" · ");
+      cardsHtml += `
+        <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px">
+            <div style="font-size:12px;font-weight:700;color:#1e293b">${esc(p.nombre)}</div>
+            <div style="font-size:11px;color:#64748b">Exp: ${esc(p.exp)} · ${esc(p.esp)} · Cama: ${esc(p.cama)} · Ing: ${esc(p.ingreso||"—")}</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px">${dataBadge}</div>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">`;
+      // Show merge buttons for non-first entries
+      if(i > 0){
+        const keepK = pid(d.patients[0]);
+        cardsHtml += `
+            <button onclick="if(confirm('¿Fusionar ${esc(p.nombre)} con ${esc(d.patients[0].nombre)}?\\nSe conserva el primer registro y se complementa con datos del segundo.'))mergePatients('${keepK}','${k}')"
+              style="background:#059669;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🔀 Fusionar → ${esc(d.patients[0].cama)}</button>`;
+      } else {
+        cardsHtml += `<span style="background:#059669;color:#fff;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600">📌 Registro principal</span>`;
+      }
+      cardsHtml += `
+            <button onclick="openConfirm('${k}')"
+              style="background:#dc2626;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🗑 Eliminar</button>
+          </div>
+        </div>`;
+    });
+    cardsHtml += '</div></div>';
+  });
+  cardsHtml += '</div>';
+  banner.innerHTML = headerHtml + cardsHtml;
+  const dupBed = document.getElementById("dup-bed-banner");
+  const filterbar = document.getElementById("filterbar");
+  if(dupBed) dupBed.parentNode.insertBefore(banner, dupBed.nextSibling);
+  else if(filterbar) filterbar.parentNode.insertBefore(banner, filterbar);
+}
+
+function toggleDupPatPanel(){
+  const body = document.getElementById("dup-pat-body");
+  const arrow = document.getElementById("dup-pat-arrow");
+  if(!body) return;
+  const open = body.style.display !== "none";
+  body.style.display = open ? "none" : "grid";
+  if(arrow) arrow.textContent = open ? "▸" : "▾";
 }
 
 function renderDupBanner(duplicates){
