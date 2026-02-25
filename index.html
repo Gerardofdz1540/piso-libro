@@ -3743,11 +3743,25 @@
     function quitarFiltrosCenso() { selectedResidente = "ALL"; selectedAdscrito = "ALL"; renderView(); }
 
     // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
+    function bedSortKey(cama) {
+      const c = (cama || "").toUpperCase().trim();
+      const m = c.match(/(\d+)[^\d]+(\d+)/);
+      if (m) return parseInt(m[1]) * 1000 + parseInt(m[2]);
+      const n = c.match(/(\d+)/);
+      return n ? parseInt(n[1]) : 9999;
+    }
     function renderPiso(pts) {
       renderDupBanner(detectDuplicateBeds(patients));
       renderDupPatientBanner(detectDuplicatePatients(patients));
+      // Ordenar: primero CG/full cards por cama, luego otros servicios (simple) por cama
+      const sorted = [...pts].sort((a, b) => {
+        const aS = isSimpleEsp(a.esp) ? 1 : 0;
+        const bS = isSimpleEsp(b.esp) ? 1 : 0;
+        if (aS !== bS) return aS - bS;
+        return bedSortKey(a.cama) - bedSortKey(b.cama);
+      });
       let html = "";
-      pts.forEach(p => {
+      sorted.forEach(p => {
         const k = pid(p);
         const nd = noteData[k] || defaultData();
         const isSimple = isSimpleEsp(p.esp);
