@@ -696,8 +696,12 @@ const CONFIG_KEY    = "hgl-worker-config";   // {url, token} (legacy)
 
 // ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────────
 const SUPA_URL = "https://vkxplmrzyqlamxpbtmes.supabase.co";
-const SUPA_KEY = "sb_publishable_ue016AylIEGunRngiedPJA_Ah05Sxx2";
-const _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreHBsbXJ6eXFsYW14cGJ0bWVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NTg1MjcsImV4cCI6MjA4NzUzNDUyN30.zChMOiKnxNv3pLyt2Fqi7zUh0ET5rn1a5L6S3RV1Q98";
+// _supa solo se usa para Realtime (WebSocket). Todas las operaciones HTTP
+// usan fetch() directo a la REST API para evitar el DataCloneError de supabase-js.
+const _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
+  auth: { persistSession:false, autoRefreshToken:false, detectSessionInUrl:false }
+});
 let _realtimeSubs = [];  // active Realtime subscriptions
 let _suppressRealtime = false;  // flag to prevent Realtime from fighting local changes
 const EXCEL_TEMPLATE_KEY = "hgl-export-template-b64";
@@ -1070,161 +1074,186 @@ function updateOutboxBadge(){
   if(badge) badge.textContent = q.length ? "📤 "+q.length+" pendientes" : "";
 }
 
+// ─── SUPABASE REST API — SIN supabase-js (evita DataCloneError de Headers) ───────
+// fetch() directo a PostgREST — _supa solo se usa para Realtime (WebSocket).
+
+function _sHeaders(extra){
+  return Object.assign({
+    "apikey": SUPA_KEY,
+    "Authorization": "Bearer "+SUPA_KEY,
+    "Content-Type": "application/json"
+  }, extra||{});
+}
+async function _sGet(table, qs){
+  const r = await fetch(SUPA_URL+"/rest/v1/"+table+(qs?"?"+qs:""), {headers:_sHeaders()});
+  if(!r.ok) throw new Error("GET "+table+" HTTP "+r.status+" "+r.statusText);
+  return r.json();
+}
+async function _sPost(table, body, extra){
+  const r = await fetch(SUPA_URL+"/rest/v1/"+table, {
+    method:"POST", headers:_sHeaders(Object.assign({"Prefer":"return=representation"},extra||{})),
+    body:JSON.stringify(body)
+  });
+  if(!r.ok){ const t=await r.text().catch(()=>""); throw new Error("POST "+table+" HTTP "+r.status+" "+t.slice(0,200)); }
+  const ct=r.headers.get("content-type")||"";
+  return ct.includes("json") ? r.json() : null;
+}
+async function _sPatch(table, match, body){
+  const r = await fetch(SUPA_URL+"/rest/v1/"+table+"?"+match, {
+    method:"PATCH", headers:_sHeaders({"Prefer":"return=representation"}),
+    body:JSON.stringify(body)
+  });
+  if(!r.ok){ const t=await r.text().catch(()=>""); throw new Error("PATCH "+table+" HTTP "+r.status+" "+t.slice(0,200)); }
+  const ct=r.headers.get("content-type")||"";
+  if(ct.includes("json")){ const d=await r.json(); return Array.isArray(d)?d[0]:d; }
+  return null;
+}
+async function _sDelete(table, match){
+  const r = await fetch(SUPA_URL+"/rest/v1/"+table+"?"+match, {method:"DELETE", headers:_sHeaders()});
+  if(!r.ok){ const t=await r.text().catch(()=>""); throw new Error("DELETE "+table+" HTTP "+r.status+" "+t.slice(0,200)); }
+}
+
+function safeLog(label, e){
+  try{
+    const msg = e ? (typeof e==="string" ? e : (e.message||e.details||e.hint||String(e))) : "sin detalle";
+    console.error(label, msg);
+  }catch(_){ console.error(label,"(no loggeable)"); }
+}
+function safeWarn(label, e){
+  try{
+    const msg = e ? (typeof e==="string" ? e : (e.message||e.details||e.hint||String(e))) : "sin detalle";
+    console.warn(label, msg);
+  }catch(_){ console.warn(label,"(no loggeable)"); }
+}
+function isLikelyNetworkError(e){
+  const msg = String((e&&e.message)||e||"").toLowerCase();
+  const name = String((e&&e.name)||"").toLowerCase();
+  return (
+    name === "typeerror" ||
+    msg.includes("networkerror") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("load failed") ||
+    msg.includes("fetch resource") ||
+    msg.includes("network request failed") ||
+    msg.includes("internet disconnected")
+  );
+}
+async function retryNetwork(fn, retries=1, baseDelayMs=350){
+  let lastErr = null;
+  for(let attempt=0; attempt<=retries; attempt++){
+    try{
+      return await fn();
+    }catch(e){
+      lastErr = e;
+      if(attempt===retries || !isLikelyNetworkError(e)) throw e;
+      await new Promise(r=>setTimeout(r, baseDelayMs*(attempt+1)));
+    }
+  }
+  throw lastErr;
+}
+
 // ─── SUPABASE: SAVE PATIENT ─────────────────────────────────────────────────────
 async function supaUpsertPatient(p){
   const row = {
-    cama: p.cama||"", nombre: p.nombre||"", exp: p.exp||"", dx: p.dx||"",
-    edad: p.edad?String(p.edad):"", esp: p.esp||"", adscrito: p.adscrito||"",
-    residente: p.residente||"", estado: p.estado||"",
-    ingreso: ingresoToISO(p.ingreso),
-    updated_by: localStorage.getItem("pl_user_name")||""
+    cama:p.cama||"", nombre:p.nombre||"", exp:p.exp||"", dx:p.dx||"",
+    edad:p.edad?String(p.edad):"", esp:p.esp||"", adscrito:p.adscrito||"",
+    residente:p.residente||"", estado:p.estado||"",
+    ingreso:ingresoToISO(p.ingreso),
+    updated_by:localStorage.getItem("pl_user_name")||""
   };
-  if(p._supa_id){
-    // UPDATE existing
-    const {data, error} = await _supa.from("patients").update(row).eq("id", p._supa_id).select().single();
-    if(error){ safeLog("supaUpsertPatient UPDATE error:", error); return null; }
-    return data;
-  } else {
-    // INSERT new
-    const {data, error} = await _supa.from("patients").insert(row).select().single();
-    if(error){ safeLog("supaUpsertPatient INSERT error:", error); return null; }
-    p._supa_id = data.id; // store UUID locally
-    return data;
-  }
+  try{
+    if(p._supa_id){
+      const data = await _sPatch("patients","id=eq."+p._supa_id, row);
+      return data || row;
+    } else {
+      const data = await _sPost("patients", row);
+      const ins = Array.isArray(data)?data[0]:data;
+      if(ins && ins.id) p._supa_id = ins.id;
+      return ins || row;
+    }
+  }catch(e){ safeLog("supaUpsertPatient error:", e); return null; }
 }
 
 async function supaDeletePatient(supaId){
   if(!supaId) return;
-  const {error} = await _supa.from("patients").delete().eq("id", supaId);
-  if(error) safeLog("supaDeletePatient error:", error);
+  try{ await _sDelete("patients","id=eq."+supaId); }
+  catch(e){ safeLog("supaDeletePatient error:", e); }
 }
 
 // ─── SUPABASE: SAVE NOTE ────────────────────────────────────────────────────────
 async function supaUpsertNote(patientId, nd){
   if(!patientId) return null;
   const row = {
-    patient_id: patientId,
-    app: nd.app||"", pa: nd.pa||"", drenajes: nd.drenajes||"", qx: nd.qx||"",
-    manejo: nd.manejo||"", sangrado: nd.sangrado||"", sv: nd.sv||"",
-    balance: nd.balance||"", pendientes: nd.pendientes||"", misc: nd.misc||"",
-    checklist: nd.checklist || {},
-    lab_history: nd.labHistory || [],
-    imagen_history: nd.imagenHistory || [],
-    updated_by: localStorage.getItem("pl_user_name")||""
+    patient_id:patientId,
+    app:nd.app||"", pa:nd.pa||"", drenajes:nd.drenajes||"", qx:nd.qx||"",
+    manejo:nd.manejo||"", sangrado:nd.sangrado||"", sv:nd.sv||"",
+    balance:nd.balance||"", pendientes:nd.pendientes||"", misc:nd.misc||"",
+    checklist:nd.checklist||{},
+    lab_history:nd.labHistory||[],
+    imagen_history:nd.imagenHistory||[],
+    updated_by:localStorage.getItem("pl_user_name")||""
   };
-  const {data, error} = await _supa.from("notes").upsert(row, {onConflict:"patient_id"}).select().single();
-  if(error) safeLog("supaUpsertNote error:", error);
-  return data;
+  try{
+    const data = await _sPost("notes", row, {"Prefer":"resolution=merge-duplicates,return=representation"});
+    return Array.isArray(data)?data[0]:data;
+  }catch(e){ safeLog("supaUpsertNote error:", e); return null; }
 }
 
 // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
-function supaErrMsg(e){
-  if(!e) return "error desconocido";
-  if(typeof e === "string") return e;
-  // Safely extract known string fields — never JSON.stringify (Headers objects cause DataCloneError)
-  try{
-    const parts = [];
-    if(e.message && typeof e.message === "string") parts.push(e.message);
-    if(e.details && typeof e.details === "string") parts.push(e.details);
-    if(e.hint   && typeof e.hint   === "string") parts.push(e.hint);
-    if(e.code   && typeof e.code   === "string") parts.push("code:"+e.code);
-    if(e.status && typeof e.status === "number") parts.push("HTTP "+e.status);
-    if(e.statusText && typeof e.statusText === "string") parts.push(e.statusText);
-    if(e.name   && typeof e.name   === "string" && !parts.length) parts.push(e.name);
-    return parts.length ? parts.join(" | ") : "error sin mensaje";
-  }catch(_){ return "error (no serializable)"; }
-}
-function safeLog(label, e){
-  // console.error with raw Supabase error objects throws DataCloneError in some browsers
-  try{ console.error(label, supaErrMsg(e)); }catch(_){ console.error(label, "(error no loggeable)"); }
-}
-
 async function supaLoadAll(){
   setSyncStatus("syncing","Descargando...");
   try{
-  const {data: pts, error: pErr} = await _supa.from("patients").select("*").order("cama");
-  if(pErr){
-    const msg = supaErrMsg(pErr);
-    safeLog("supaLoadAll patients error:", pErr);
-    setSyncStatus("error","Error Supabase: "+msg.slice(0,60));
-    return null;
-  }
+    const [pts, nts] = await Promise.all([
+      retryNetwork(()=>_sGet("patients","order=cama"), 2, 400),
+      retryNetwork(()=>_sGet("notes",""), 2, 400)
+    ]);
 
-  const {data: nts, error: nErr} = await _supa.from("notes").select("*");
-  if(nErr){
-    const msg = supaErrMsg(nErr);
-    safeLog("supaLoadAll notes error:", nErr);
-    // Notes failed but patients loaded — return patients with empty notes rather than null
-    const loadedPatients2 = [];
-    const loadedNotes2 = {};
-    (pts||[]).forEach(row => {
-      const p = supaRowToPatient(row);
-      loadedPatients2.push(p);
-      loadedNotes2[pid(p)] = defaultData();
+    if(!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
+
+    const noteMap = {};
+    (nts||[]).forEach(n => { noteMap[n.patient_id] = n; });
+
+    const loadedPatients = [];
+    const loadedNotes = {};
+
+    pts.forEach(row => {
+      const p = {
+        _supa_id:row.id,
+        cama:row.cama||"", nombre:row.nombre||"", exp:row.exp||"",
+        dx:row.dx||"", edad:row.edad||"", esp:row.esp||"",
+        adscrito:row.adscrito||"", residente:row.residente||"",
+        estado:row.estado||"",
+        ingreso:row.ingreso ? fmtDateFromISO(row.ingreso) : ""
+      };
+      loadedPatients.push(p);
+      const k = pid(p);
+      const sn = noteMap[row.id];
+      if(sn){
+        const nd = defaultData();
+        nd.app=sn.app||""; nd.pa=sn.pa||""; nd.drenajes=sn.drenajes||"";
+        nd.qx=sn.qx||""; nd.manejo=sn.manejo||""; nd.sangrado=sn.sangrado||"";
+        nd.sv=sn.sv||""; nd.balance=sn.balance||""; nd.pendientes=sn.pendientes||"";
+        nd.misc=sn.misc||""; nd.checklist=sn.checklist||nd.checklist;
+        nd.labHistory=sn.lab_history||[];
+        nd.imagenHistory=sn.imagen_history||[];
+        loadedNotes[k] = migrateNote(nd);
+      } else {
+        loadedNotes[k] = defaultData();
+      }
     });
-    return {patients: loadedPatients2, notes: loadedNotes2};
-  }
 
-  // Map notes by patient_id for fast lookup
-  const noteMap = {};
-  (nts||[]).forEach(n => { noteMap[n.patient_id] = n; });
-
-  // Convert Supabase rows to PisoLibro format
-  const loadedPatients = [];
-  const loadedNotes = {};
-
-  (pts||[]).forEach(row => {
-    const p = {
-      _supa_id: row.id,
-      cama: row.cama||"", nombre: row.nombre||"", exp: row.exp||"",
-      dx: row.dx||"", edad: row.edad||"", esp: row.esp||"",
-      adscrito: row.adscrito||"", residente: row.residente||"",
-      estado: row.estado||"",
-      ingreso: row.ingreso ? fmtDateFromISO(row.ingreso) : ""
-    };
-    loadedPatients.push(p);
-
-    const k = pid(p);
-    const sn = noteMap[row.id];
-    if(sn){
-      const nd = defaultData();
-      nd.app = sn.app||""; nd.pa = sn.pa||""; nd.drenajes = sn.drenajes||"";
-      nd.qx = sn.qx||""; nd.manejo = sn.manejo||""; nd.sangrado = sn.sangrado||"";
-      nd.sv = sn.sv||""; nd.balance = sn.balance||""; nd.pendientes = sn.pendientes||"";
-      nd.misc = sn.misc||""; nd.checklist = sn.checklist||nd.checklist;
-      nd.labHistory = sn.lab_history||[];
-      nd.imagenHistory = sn.imagen_history||[];
-      loadedNotes[k] = migrateNote(nd);
-    } else {
-      loadedNotes[k] = defaultData();
-    }
-  });
-
-  return {patients: loadedPatients, notes: loadedNotes};
+    return {patients:loadedPatients, notes:loadedNotes};
   }catch(e){
-    const msg = supaErrMsg(e);
-    safeLog("supaLoadAll unexpected error:", e);
-    setSyncStatus("error","Error Supabase: "+msg.slice(0,60));
+    if(isLikelyNetworkError(e)){
+      safeWarn("supaLoadAll warn:", e);
+      setSyncProblemStatus();
+      return null;
+    }
+    const msg = e && e.message ? e.message : String(e||"error");
+    safeLog("supaLoadAll error:", e);
+    setSyncStatus("error","Error Supabase: "+msg.slice(0,48));
     return null;
   }
-}
-
-// Format ISO date (YYYY-MM-DD) to DD/MM/YY for display
-function fmtDateFromISO(iso){
-  if(!iso) return "";
-  const d = new Date(iso+"T12:00:00");
-  if(isNaN(d)) return iso;
-  return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getFullYear()).toString().slice(-2);
-}
-// Convert DD/MM/YY ingreso string to YYYY-MM-DD for Supabase DATE column
-function ingresoToISO(str){
-  if(!str) return null;
-  const p = String(str).trim().split("/");
-  if(p.length!==3) return null;
-  const yr = p[2].length===2 ? "20"+p[2] : p[2];
-  const iso = yr+"-"+p[1].padStart(2,"0")+"-"+p[0].padStart(2,"0");
-  if(isNaN(new Date(iso+"T12:00:00"))) return null;
-  return iso;
 }
 
 // ─── DEBOUNCED SAVE WRAPPERS ────────────────────────────────────────────────────
@@ -1413,20 +1442,24 @@ function supaRowToPatient(row){
 window.addEventListener("online", async ()=>{
   setSyncStatus("syncing","Reconectando...");
   await flushOutbox();
+  let syncOk = false;
   const lastSaveTs2     = parseInt(localStorage.getItem("pl_last_save_ts")||"0", 10);
   const lastSupabaseTs2 = parseInt(localStorage.getItem("pl_last_supabase_sync_ts")||"0", 10);
   if(lastSaveTs2 > lastSupabaseTs2 && patients.length){
     // Local data is newer — push to Supabase
     await _savePtsImmediate();
+    syncOk = outboxLoad().length===0;
   } else {
     const loaded = await supaLoadAll();
     if(loaded){
       patients = loaded.patients; noteData = loaded.notes;
       lsSavePatients(patients);
       buildEspFilters(); renderView();
+      syncOk = true;
     }
   }
-  setSyncStatus("synced","Reconectado");
+  if(syncOk) setSyncStatus("synced","Reconectado");
+  else setSyncProblemStatus();
 });
 window.addEventListener("offline", ()=>{ setSyncStatus("offline","Sin conexión"); });
 
@@ -1457,9 +1490,10 @@ async function flushOutbox(){
 // ─── MIGRATION: localStorage → Supabase (one-time) ─────────────────────────────
 async function migrateToSupabase(){
   // Check if Supabase already has data
-  const {count} = await _supa.from("patients").select("*", {count:"exact", head:true});
-  if(count > 0){
-    alert("⚠️ Supabase ya tiene "+count+" pacientes.\n\nLa migración ya se realizó anteriormente. No es necesario volver a ejecutarla.\n\nSi necesitas re-sincronizar, recarga la página.");
+  let countCheck = 0;
+  try{ const d = await _sGet("patients","select=id"); countCheck = Array.isArray(d)?d.length:0; }catch(e){}
+  if(countCheck > 0){
+    alert("⚠️ Supabase ya tiene "+countCheck+" pacientes.\n\nLa migración ya se realizó anteriormente. No es necesario volver a ejecutarla.\n\nSi necesitas re-sincronizar, recarga la página.");
     return;
   }
 
@@ -1479,8 +1513,10 @@ async function migrateToSupabase(){
       residente: p.residente||"", estado: p.estado||"",
       ingreso: ingresoToISO(p.ingreso)
     };
-    const {data: inserted, error: pErr} = await _supa.from("patients").insert(row).select().single();
-    if(pErr){ safeLog("Migration patient error ["+p.nombre+"]:", pErr); errors++; continue; }
+    let inserted = null;
+    try{ const d = await _sPost("patients", row); inserted = Array.isArray(d)?d[0]:d; }
+    catch(e){ safeLog("Migration patient error ["+p.nombre+"]:", e); errors++; continue; }
+    if(!inserted || !inserted.id){ errors++; continue; }
 
     const k = "pt-"+(p.exp||"")+"-"+(p.cama||"");
     const nd = migrateNote(lsGetNote(k));
@@ -1492,8 +1528,8 @@ async function migrateToSupabase(){
       misc: nd.misc||"", checklist: nd.checklist||{},
       lab_history: nd.labHistory||[], imagen_history: nd.imagenHistory||[]
     };
-    const {error: nErr} = await _supa.from("notes").upsert(noteRow, {onConflict:"patient_id"});
-    if(nErr) safeLog("Migration note error ["+p.nombre+"]:", nErr);
+    try{ await _sPost("notes", noteRow, {"Prefer":"resolution=merge-duplicates,return=representation"}); }
+    catch(e){ safeLog("Migration note error ["+p.nombre+"]:", e); }
 
     migrated++;
   }
@@ -4899,7 +4935,7 @@ function dischargePatient(k){
   if(p._supa_id){
     supaDeletePatient(p._supa_id);
     // Also archive to Supabase
-    _supa.from("archive").insert({patient_data:p, note_data:nd, archived_by:localStorage.getItem("pl_user_name")||""}).then(()=>{});
+    _sPost("archive", {patient_data:p, note_data:nd, archived_by:localStorage.getItem("pl_user_name")||""}).catch(()=>{});
   }
   savePts();
   document.getElementById("confirm-modal").style.display="none";
