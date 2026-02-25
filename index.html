@@ -2195,8 +2195,8 @@
         <input class="header-input" id="gi-recibe" placeholder="Recibe Dr." style="width:115px" />
         <button class="btn-green" onclick="exportToExcel()">📊 Exportar Excel</button>
         <button class="btn-blue" onclick="window.print()">🖨 Imprimir</button>
-        <button class="btn-orange" onclick="resetCenso()" title="Borra todos los datos y carga el censo base">🗑
-          Reiniciar</button>
+        <button class="btn-orange" onclick="resetCensoTotal()"
+          title="Borra TODO (local + Supabase) y empieza de cero">🔥 Borrar Todo</button>
         <button
           style="background:#7c3aed;border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)"
           onclick="saveGuardSnapshot()" title="Guardar corte/snapshot del censo actual">📸 Corte</button>
@@ -7472,21 +7472,57 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
   </div>`;
     }
 
-    function resetCenso() {
-      if (!confirm("⚠️ ¿Seguro que quieres reiniciar?\n\nEsto borrará TODOS los datos del censo local (pacientes, notas y labs) y cargará el censo base del archivo.\n\nEsta acción no se puede deshacer.")) return;
-      // Limpiar localStorage
+    async function resetCensoTotal() {
+      if (!confirm("🔥 BORRAR TODO\n\nEsto eliminará TODOS los pacientes, notas, labs, archivados, snapshots y procedimientos.\n\nTambién se borrarán los datos en Supabase (nube).\n\n¿Continuar?")) return;
+      if (!confirm("⚠️ SEGUNDA CONFIRMACIÓN\n\nEscribiste que quieres borrar TODO.\nEsta acción NO se puede deshacer.\n\n¿Estás completamente seguro?")) return;
+
+      _suppressRealtime = true;
+      setSyncStatus("syncing", "Borrando todo...");
+
+      // 1) Borrar TODO de Supabase (notes se borran en cascada con patients)
       try {
-        Object.keys(localStorage).forEach(k => {
-          if (k.startsWith("censo-") || k.startsWith("note-") || k === EXCEL_TEMPLATE_KEY || k === ARCHIVE_KEY || k === SNAPSHOT_KEY || k === OUTBOX_KEY || k === PROCS_KEY) localStorage.removeItem(k);
-        });
+        // Delete ALL notes first (by matching all)
+        await _sDelete("notes", "patient_id=not.is.null").catch(() => { });
+        // Delete ALL patients
+        await _sDelete("patients", "id=not.is.null").catch(() => { });
+      } catch (e) { safeLog("resetCensoTotal supabase delete error:", e); }
+
+      // 2) Borrar TODO del localStorage
+      try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith("censo-") || k.startsWith("note-") || k.startsWith("pl_")
+            || k === EXCEL_TEMPLATE_KEY || k === ARCHIVE_KEY || k === SNAPSHOT_KEY
+            || k === OUTBOX_KEY || k === PROCS_KEY || k === STORAGE_KEY)) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
       } catch (e) { }
-      patients = [...DEFAULT_CENSO];
+
+      // 3) Resetear estado en memoria
+      patients = [];
       noteData = {};
-      patients.forEach(p => { noteData[pid(p)] = defaultData(); });
+      archivados = [];
+      snapshots = [];
+      procedimientos = [];
+      pendingImport = null;
+
+      // 4) Limpiar timestamps de sync
+      localStorage.removeItem("pl_last_save_ts");
+      localStorage.removeItem("pl_last_supabase_sync_ts");
+
+      // 5) Guardar estado vacío
       lsSavePatients(patients);
+
+      // 6) Re-render
       buildEspFilters();
       renderView();
-      alert("✅ Censo reiniciado. Ahora puedes importar un Excel nuevo desde cero.");
+      setSyncStatus("synced", "Censo vacío — importa Excel");
+
+      setTimeout(() => { _suppressRealtime = false; }, 3000);
+      alert("✅ Todo borrado (local + nube).\n\nAhora importa tu Excel nuevo con el botón de la esquina superior derecha.");
     }
 
     // ─── EXPORT TO EXCEL ──────────────────────────────────────────────────────────────
