@@ -670,6 +670,7 @@ const SUPA_URL = "https://vkxplmrzyqlamxpbtmes.supabase.co";
 const SUPA_KEY = "sb_publishable_ue016AylIEGunRngiedPJA_Ah05Sxx2";
 const _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
 let _realtimeSubs = [];  // active Realtime subscriptions
+let _suppressRealtime = false;  // flag to prevent Realtime from fighting local changes
 const EXCEL_TEMPLATE_KEY = "hgl-export-template-b64";
 const ARCHIVE_KEY   = "pl_archive_v1";    // pacientes egresados/archivados
 const SNAPSHOT_KEY  = "pl_snapshots_v1";  // cortes de guardia
@@ -1204,6 +1205,7 @@ function startRealtime(){
 }
 
 function handlePatientChange(payload){
+  if(_suppressRealtime) return;
   const {eventType, new: newRow, old: oldRow} = payload;
 
   if(eventType === "INSERT"){
@@ -1248,6 +1250,7 @@ function handlePatientChange(payload){
 }
 
 function handleNoteChange(payload){
+  if(_suppressRealtime) return;
   const {eventType, new: newRow} = payload;
   if(eventType === "DELETE") return;
   // Find patient by _supa_id matching note's patient_id
@@ -1312,6 +1315,13 @@ async function flushOutbox(){
 
 // ─── MIGRATION: localStorage → Supabase (one-time) ─────────────────────────────
 async function migrateToSupabase(){
+  // Check if Supabase already has data
+  const {count} = await _supa.from("patients").select("*", {count:"exact", head:true});
+  if(count > 0){
+    alert("⚠️ Supabase ya tiene "+count+" pacientes.\n\nLa migración ya se realizó anteriormente. No es necesario volver a ejecutarla.\n\nSi necesitas re-sincronizar, recarga la página.");
+    return;
+  }
+
   if(!confirm("⬆️ MIGRACIÓN A SUPABASE\n\nEsto subirá todos los pacientes y notas de tu navegador a Supabase.\n\nSolo necesitas hacerlo UNA VEZ desde el navegador que tiene los datos más actualizados.\n\n¿Continuar?")) return;
 
   setSyncStatus("syncing","Migrando...");
@@ -1322,7 +1332,6 @@ async function migrateToSupabase(){
 
   let migrated = 0, errors = 0;
   for(const p of localPts){
-    // Insert patient
     const row = {
       cama: p.cama||"", nombre: p.nombre||"", exp: p.exp||"", dx: p.dx||"",
       edad: p.edad?String(p.edad):"", esp: p.esp||"", adscrito: p.adscrito||"",
@@ -1332,7 +1341,6 @@ async function migrateToSupabase(){
     const {data: inserted, error: pErr} = await _supa.from("patients").insert(row).select().single();
     if(pErr){ console.error("Migration patient error:", pErr, p.nombre); errors++; continue; }
 
-    // Insert note
     const k = "pt-"+(p.exp||"")+"-"+(p.cama||"");
     const nd = migrateNote(lsGetNote(k));
     const noteRow = {
@@ -4521,6 +4529,7 @@ function openConfirm(k){
 function dischargePatient(k){
   const p = patients.find(pt=>pid(pt)===k);
   if(!p){ document.getElementById("confirm-modal").style.display="none"; return; }
+  _suppressRealtime = true;
   // Archivar: guardar paciente + sus notas antes de quitarlo del censo activo
   const nd = noteData[k]||defaultData();
   const archived = {
@@ -4548,6 +4557,7 @@ function dischargePatient(k){
   // Feedback
   const badge = document.getElementById("count-badge");
   if(badge){ const prev=badge.textContent; badge.style.color="#27ae60"; badge.textContent="✅ Paciente archivado"; setTimeout(()=>{ badge.style.color=""; badge.textContent=prev; },2200); }
+  setTimeout(()=>{ _suppressRealtime = false; }, 3000);
 }
 
 function restorePatient(archiveIdx){
@@ -5296,6 +5306,8 @@ function mergePatients(keepIdx, removeIdx){
   if(isNaN(keepIdx)||isNaN(removeIdx)||keepIdx===removeIdx) return;
   if(keepIdx<0||keepIdx>=patients.length||removeIdx<0||removeIdx>=patients.length) return;
 
+  _suppressRealtime = true; // Prevent Realtime from fighting local changes
+
   const keep = patients[keepIdx];
   const remove = patients[removeIdx];
   if(!keep||!remove) return;
@@ -5346,6 +5358,7 @@ function mergePatients(keepIdx, removeIdx){
   savePts();
   buildEspFilters();
   renderView();
+  setTimeout(()=>{ _suppressRealtime = false; }, 3000);
 }
 
 function renderDupPatientBanner(duplicates){
@@ -5424,6 +5437,7 @@ function removeDupByIndex(idx){
   if(isNaN(idx)||idx<0||idx>=patients.length) return;
   const p = patients[idx];
   const k = pid(p);
+  _suppressRealtime = true;
   if(p._supa_id) supaDeletePatient(p._supa_id);
   patients.splice(idx,1);
   delete noteData[k];
@@ -5431,6 +5445,7 @@ function removeDupByIndex(idx){
   savePts();
   buildEspFilters();
   renderView();
+  setTimeout(()=>{ _suppressRealtime = false; }, 3000);
 }
 
 function toggleDupPatPanel(){
