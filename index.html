@@ -1161,12 +1161,37 @@ async function _savePtsImmediate(){
   setSyncStatus("syncing","Guardando pacientes...");
   let allOk = true;
   for(const p of patients){
-    const res = await supaUpsertPatient(p);
+    let res = await supaUpsertPatient(p);
+    // Retry once on failure
+    if(!res){
+      await new Promise(r=>setTimeout(r,500));
+      res = await supaUpsertPatient(p);
+    }
     if(!res) allOk = false;
   }
   lsSavePatients(patients); // re-save with updated _supa_ids
   pendingSyncs--;
-  if(pendingSyncs===0) setSyncStatus(allOk?"synced":"error", allOk?"Sincronizado":"Error parcial");
+  if(pendingSyncs===0){
+    if(allOk){
+      setSyncStatus("synced","Sincronizado");
+    } else {
+      setSyncStatus("error","Error parcial — reintentando...");
+      // Auto-retry full sync after 3s
+      setTimeout(async ()=>{
+        if(pendingSyncs>0) return;
+        pendingSyncs++;
+        setSyncStatus("syncing","Reintentando sync...");
+        let ok2 = true;
+        for(const p of patients){
+          const r = await supaUpsertPatient(p);
+          if(!r) ok2 = false;
+        }
+        lsSavePatients(patients);
+        pendingSyncs--;
+        if(pendingSyncs===0) setSyncStatus(ok2?"synced":"error", ok2?"Sincronizado":"Error — verifica conexión");
+      }, 3000);
+    }
+  }
 }
 const savePts = debounce(_savePtsImmediate, 1200);
 
@@ -2795,7 +2820,18 @@ async function handleLabPDF(k, input){
         max_tokens:1000,
         messages:[{role:"user",content:[
           contentBlock,
-          {type:"text",text:"Extrae los valores de laboratorio de este "+(isImage?"resultado (imagen)":"PDF")+". Responde SOLO con JSON válido sin markdown ni texto adicional:\n{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\",\"paciente\":\"\",\"fecha_labs\":\"\"}\nReglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\"."}
+          {type:"text",text:"Extrae TODOS los valores de laboratorio de este "+(isImage?"resultado (imagen)":"PDF")+". Responde SOLO con JSON válido sin markdown ni texto adicional:\n"+
+"{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\","+
+"\"mg\":\"\",\"ca\":\"\",\"p\":\"\",\"cl\":\"\","+
+"\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\","+
+"\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\","+
+"\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\","+
+"\"paciente\":\"\",\"fecha_labs\":\"\"}\n"+
+"Reglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". "+
+"Mapeo: Hb=hemoglobina, leucos=leucocitos/WBC, plaq=plaquetas, cr=creatinina, glu=glucosa, na=sodio, k=potasio, alb=albumina, pcr=proteína C reactiva, pct=procalcitonina, inr=INR, urea=BUN/urea, "+
+"mg=magnesio, ca=calcio, p=fósforo, cl=cloro, tp=tiempo de protrombina, ttp=tiempo de tromboplastina parcial, fibrinogeno=fibrinógeno, "+
+"ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, "+
+"ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2."}
         ]}]
       })
     });
@@ -4612,6 +4648,9 @@ function handleXlsxImport(input){
       const ws = wb.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
       const imported = [];
+      const altasFromExcel = [];      // patients listed under ALTAS header
+      const defuncionesFromExcel = []; // patients listed under DEFUNCIONES header
+      const procedimientosFromExcel = []; // patients under PROCEDIMIENTOS header
       let headerRow = -1;
       for(let i=0;i<rows.length;i++){
         const r = rows[i].map(c=>String(c||"").trim().toUpperCase());
@@ -4623,8 +4662,39 @@ function handleXlsxImport(input){
       const iCama=ci("CAMA"), iExp=ci("EXPEDIENTE"), iNombre=ci("NOMBRE"), iEdad=ci("EDAD");
       const iDx=ci("DIAGNÓS"), iEsp=ci("ESPECIALIDAD"), iAds=ci("ADSCRITO"), iRes=ci("RESIDENTE");
       const iIng=ci("INGRESO"), iEst=ci("ESTADO");
+
+      // ─── DETECT SECTION HEADERS ─────────────────────────────────────
+      // Scan for section dividers: ALTAS, DEFUNCIONES, PROCEDIMIENTOS
+      let currentSection = "censo"; // default = active census
+      const SECTION_KEYWORDS = {
+        "ALTAS": "altas",
+        "DEFUNCIONES": "defunciones",
+        "DEFUNCIÓN": "defunciones",
+        "PROCEDIMIENTOS": "procedimientos",
+      };
+
       for(let i=headerRow+1;i<rows.length;i++){
         const r = rows[i];
+        // Check if this row is a section header
+        const allCells = r.map(c=>String(c||"").trim().toUpperCase());
+        const possibleHeader = allCells.find(c => SECTION_KEYWORDS[c]);
+        if(possibleHeader){
+          currentSection = SECTION_KEYWORDS[possibleHeader];
+          continue;
+        }
+        // Also check column 5 (DIAGNÓSTICO) which sometimes has section labels
+        const dxCell = String(r[iDx>=0?iDx:5]||"").trim().toUpperCase();
+        if(SECTION_KEYWORDS[dxCell]){
+          currentSection = SECTION_KEYWORDS[dxCell];
+          continue;
+        }
+        // Skip non-patient rows (section dividers like RECUPERACION, TYO, UCIA, etc.)
+        if(dxCell && !r[iCama>=0?iCama:1] && !r[iNombre>=0?iNombre:3]){
+          // Sub-section label (RECUPERACION, UCIA, ONCOCIRUGIA, PEDIATRIA, TYO)
+          // Don't change main section, these are sub-areas within censo
+          continue;
+        }
+
         const cama = String(r[iCama]||"").trim();
         const nombre = String(r[iNombre]||"").trim().toUpperCase();
         const exp = String(r[iExp]||"").trim();
@@ -4639,14 +4709,19 @@ function handleXlsxImport(input){
         const estado = ["ESTABLE","DELICADO","GRAVE"].includes(rawEst)?rawEst:"ESTABLE";
         const rawEsp = String(r[iEsp]||"").trim().toUpperCase().replace(/\s+/g," ");
         const esp = rawEsp||"CG";
-        imported.push({
+        const pt = {
           cama, exp, nombre,
           edad: parseInt(r[iEdad])||"",
           dx: iDx>=0?String(r[iDx]||"").trim().toUpperCase():"",
           esp, adscrito: iAds>=0?String(r[iAds]||"").trim().toUpperCase():"",
           residente: iRes>=0?String(r[iRes]||"").trim().toUpperCase():"",
           ingreso, estado
-        });
+        };
+
+        if(currentSection === "altas") altasFromExcel.push(pt);
+        else if(currentSection === "defunciones") defuncionesFromExcel.push(pt);
+        else if(currentSection === "procedimientos") procedimientosFromExcel.push(pt);
+        else imported.push(pt);
       }
       if(imported.length===0){ alert("No se encontraron pacientes en el archivo."); return; }
 
@@ -4675,23 +4750,44 @@ function handleXlsxImport(input){
       });
 
       // Pacientes en censo anterior que no están en el nuevo (ni por pid ni por cama)
+      // Cross-reference with ALTAS and DEFUNCIONES sections from Excel
+      const altasExpSet = new Set(altasFromExcel.map(p=>p.exp));
+      const defExpSet = new Set(defuncionesFromExcel.map(p=>p.exp));
+      const autoDetected = {}; // pid → 'alta_excel' | 'defuncion_excel'
+
       patients.forEach(p=>{
         if(!newByPid.has(pid(p)) && !newByCama.has(p.cama)){
           missingPts.push(p);
-          dispositions[pid(p)] = 'alta'; // default: se fue de alta
+          // Auto-detect: was this patient listed in ALTAS or DEFUNCIONES?
+          if(defExpSet.has(p.exp)){
+            dispositions[pid(p)] = 'defuncion';
+            autoDetected[pid(p)] = 'defuncion_excel';
+          } else if(altasExpSet.has(p.exp)){
+            dispositions[pid(p)] = 'alta';
+            autoDetected[pid(p)] = 'alta_excel';
+          } else {
+            dispositions[pid(p)] = 'alta'; // default
+          }
         }
       });
 
-      pendingImport = { samePts, changedPts, newPts, missingPts, dispositions };
+      pendingImport = { samePts, changedPts, newPts, missingPts, dispositions, autoDetected, altasFromExcel, defuncionesFromExcel, procedimientosFromExcel };
 
       // ─── RESUMEN ──────────────────────────────────────────────────────
       const totalNuevo = imported.length;
+      const autoAltas = Object.values(autoDetected).filter(v=>v==='alta_excel').length;
+      const autoDef = Object.values(autoDetected).filter(v=>v==='defuncion_excel').length;
+      const manualMissing = missingPts.length - autoAltas - autoDef;
+      let summaryExtra = "";
+      if(autoAltas > 0) summaryExtra += ` · <span style="color:#15803d;font-weight:600">✅ ${autoAltas} alta${autoAltas>1?"s":""} (detectadas del Excel)</span>`;
+      if(autoDef > 0) summaryExtra += ` · <span style="color:#7f1d1d;font-weight:600">💔 ${autoDef} defunción${autoDef>1?"es":""} (detectadas del Excel)</span>`;
       document.getElementById("import-summary").innerHTML =
         `<strong>Nuevo censo: ${totalNuevo} pacientes</strong> &nbsp;·&nbsp; ` +
         `<span style="color:#166534;font-weight:600">➕ ${newPts.length} nuevos</span> &nbsp;·&nbsp; ` +
         `<span style="color:#854d0e;font-weight:600">🔁 ${samePts.length} actualizados</span> &nbsp;·&nbsp; ` +
-        `<span style="color:#991b1b;font-weight:600">🔄 ${changedPts.length} camas con cambio</span> &nbsp;·&nbsp; ` +
-        `<span style="color:#78350f;font-weight:600">⚠️ ${missingPts.length} no encontrados</span>`;
+        `<span style="color:#991b1b;font-weight:600">🔄 ${changedPts.length} camas con cambio</span>` +
+        summaryExtra +
+        (manualMissing>0 ? ` &nbsp;·&nbsp; <span style="color:#78350f;font-weight:600">⚠️ ${manualMissing} sin clasificar</span>` : "");
 
       // ─── SECCIÓN: CAMAS CON CAMBIO ────────────────────────────────────
       const secChanged = document.getElementById("import-sec-changed");
@@ -4717,19 +4813,38 @@ function handleXlsxImport(input){
       const secMissing = document.getElementById("import-sec-missing");
       if(missingPts.length>0){
         secMissing.style.display="";
-        document.getElementById("import-missing-lbl").textContent = missingPts.length+" paciente"+(missingPts.length>1?"s":"")+" sin cama en nuevo censo";
+        const autoCount = autoAltas + autoDef;
+        const label = autoCount > 0
+          ? `${missingPts.length} paciente${missingPts.length>1?"s":""} no encontrados (${autoCount} detectados automáticamente del Excel)`
+          : `${missingPts.length} paciente${missingPts.length>1?"s":""} sin cama en nuevo censo`;
+        document.getElementById("import-missing-lbl").textContent = label;
         let h="";
-        missingPts.forEach(p=>{
+        // Show auto-detected first, then manual
+        const sorted = [...missingPts].sort((a,b)=>{
+          const aAuto = autoDetected[pid(a)] ? 0 : 1;
+          const bAuto = autoDetected[pid(b)] ? 0 : 1;
+          return aAuto - bAuto;
+        });
+        sorted.forEach(p=>{
           const col=ESP_COLORS[p.esp]||"#333";
           const k=pid(p);
-          h+=`<div class="import-row">` +
+          const det = autoDetected[k];
+          const isAutoAlta = det === 'alta_excel';
+          const isAutoDef = det === 'defuncion_excel';
+          const autoTag = isAutoAlta
+            ? `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">✅ ALTA (del Excel)</span>`
+            : isAutoDef
+            ? `<span style="background:#fef2f2;color:#991b1b;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">💔 DEFUNCIÓN (del Excel)</span>`
+            : `<span class="missing-tag">NO ENCONTRADO</span>`;
+          const selDefault = isAutoDef ? 'defuncion' : 'alta';
+          h+=`<div class="import-row" style="${(isAutoAlta||isAutoDef)?'opacity:0.75;':''}">` +
             `<span style="font-weight:700;color:${col};min-width:60px">${esc(p.cama)}</span>` +
             `<span style="flex:1;font-weight:600">${esc(p.nombre)}</span>` +
             `<span style="font-size:11px;color:#64748b">${esc(p.esp)}</span>` +
-            `<span class="missing-tag">NO ENCONTRADO</span>` +
-            `<select class="disposition-sel alta" id="disp-${k}" onchange="setDisposition('${k}',this)">` +
-            `<option value="alta">✅ Alta médica</option>` +
-            `<option value="defuncion">💔 Defunción</option>` +
+            autoTag +
+            `<select class="disposition-sel ${selDefault}" id="disp-${k}" onchange="setDisposition('${k}',this)">` +
+            `<option value="alta" ${selDefault==='alta'?'selected':''}>✅ Alta médica</option>` +
+            `<option value="defuncion" ${selDefault==='defuncion'?'selected':''}>💔 Defunción</option>` +
             `<option value="traslado">🚐 Traslado</option>` +
             `<option value="mantener">🔒 Mantener en censo</option>` +
             `</select>` +
@@ -4775,8 +4890,8 @@ function handleXlsxImport(input){
       } else { secNew.style.display="none"; }
 
       document.getElementById("import-note").textContent =
-        "El nuevo censo es la fuente de verdad. Datos clínicos y labs de pacientes existentes se conservan. " +
-        "Para los pacientes 'No encontrados', elige qué pasó con ellos o mantenlos en el censo.";
+        "El nuevo censo es la fuente de verdad. Las altas y defunciones detectadas del Excel se aplican automáticamente. " +
+        "Puedes cambiar la disposición de cualquier paciente antes de confirmar. Datos clínicos y labs se conservan.";
       document.getElementById("import-confirm-btn").onclick = ()=>{ confirmImport(); };
       document.getElementById("import-modal").style.display = "flex";
     }catch(err){ alert("Error al leer el archivo Excel: "+err.message); }
