@@ -369,7 +369,7 @@ select.modal-input{background:#fff}
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
         </div>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div><span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700"></span>
-        <button class="config-pill disconnected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config</button>
+        <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
       </div>
     </div>
     <div id="tabs">
@@ -541,54 +541,46 @@ select.modal-input{background:#fff}
 <div class="modal-bg" id="config-modal" style="display:none">
   <div class="modal-box" style="max-width:580px">
     <div class="modal-header">
-      <div class="modal-title">⚙️ Configuración — Sync + IA</div>
+      <div class="modal-title">⚙️ Configuración — Sync</div>
       <button class="modal-close" onclick="document.getElementById('config-modal').style.display='none'">✕</button>
     </div>
 
     <div class="config-section">
-      <h3>🔗 URL del Cloudflare Worker</h3>
-      <p style="font-size:12px;color:#64748b;margin-bottom:8px">Esta URL habilita tanto la sincronización en tiempo real como la extracción de labs con IA.</p>
-      <div style="padding:8px 12px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;margin-bottom:12px">
-        <div style="font-weight:700;color:#166534;font-size:13px">☁️ Supabase Conectado</div>
-        <div style="font-size:11px;color:#15803d;margin-top:2px">vkxplmrzyqlamxpbtmes.supabase.co</div>
+      <div style="padding:10px 14px;background:#dcfce7;border:1px solid #86efac;border-radius:8px;margin-bottom:12px">
+        <div style="font-weight:700;color:#166534;font-size:14px">☁️ Supabase Conectado</div>
+        <div style="font-size:11px;color:#15803d;margin-top:3px">Servidor: vkxplmrzyqlamxpbtmes.supabase.co</div>
+        <div style="font-size:11px;color:#15803d;margin-top:1px">Sync: Realtime (WebSocket) — cambios instantáneos entre dispositivos</div>
       </div>
       <button onclick="migrateToSupabase()" style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);width:100%;margin-bottom:12px">⬆️ Migrar datos locales a Supabase</button>
-      <details style="margin-bottom:12px"><summary style="cursor:pointer;font-size:12px;color:#475569;font-weight:600">🔧 Worker proxy (legacy / opcional)</summary>
-      <div class="proxy-input-wrap" style="margin-top:8px">
-        <input id="proxy-url-input" placeholder="https://mi-worker.tuusuario.workers.dev" type="url" autocomplete="off" autocorrect="off" spellcheck="false"/>
-      </div>
-    </div>
-
-    <div class="config-section">
-      <h3>🔑 Token de Acceso</h3>
-      <p style="font-size:12px;color:#64748b;margin-bottom:8px">La contraseña configurada en el Worker (<code style="background:#f1f5f9;padding:1px 5px;border-radius:3px">ACCESS_TOKEN</code>). Todos los usuarios deben usar la misma.</p>
-      <div class="proxy-input-wrap">
-        <input id="proxy-token-input" placeholder="ej: hgl2026" type="password" autocomplete="off"/>
-        <button class="btn-save" onclick="saveConfig()">Guardar</button>
-      </div>
-      <div class="proxy-status warn" id="proxy-status-box">Sin configurar.</div>
-      </details>
+      <p style="font-size:11px;color:#94a3b8;text-align:center;margin:0">Solo necesario la primera vez. Si ya migraste, no lo vuelvas a presionar.</p>
     </div>
 
     <div class="config-section" style="background:#f0fdf4;border-radius:8px;padding:14px;border:1px solid #bbf7d0">
       <h3>🔄 Cómo funciona la sincronización</h3>
       <p style="font-size:12px;color:#374151;line-height:1.8">
-        Cuando guardas cualquier dato (nota, lab, nuevo paciente), se sube al Worker inmediatamente.<br>
-        Cada 30 segundos, el app consulta al Worker si hubo cambios de otro usuario y actualiza automáticamente.<br>
-        Si no hay internet, trabaja en modo offline con caché local hasta recuperar conexión.
+        Todos los datos se guardan en Supabase (PostgreSQL en la nube).<br>
+        Los cambios se sincronizan en <strong>tiempo real</strong> entre todos los dispositivos conectados.<br>
+        Si pierdes internet, trabaja en modo offline — al reconectar, los cambios se suben automáticamente.
       </p>
     </div>
 
-    <div class="config-section" style="background:#f8fafc;border-radius:8px;padding:14px;border:1px solid #e2e8f0">
-      <h3>📋 Setup del Worker v2 (si no lo has hecho)</h3>
-      <ol style="font-size:12px;color:#374151;line-height:2.2;padding-left:18px">
-        <li>Cloudflare Dashboard → Workers & Pages → Create Worker → pega <strong>cloudflare-worker-v2.js</strong></li>
-        <li>Workers & Pages → <strong>KV</strong> → Create namespace → Nombre: <code>PISOLIBRO_KV</code></li>
-        <li>Tu Worker → Settings → Bindings → Add: Variable <code>KV</code> → namespace <code>PISOLIBRO_KV</code></li>
-        <li>Settings → Variables → Add: <code>ANTHROPIC_API_KEY</code> (Encrypt ✓) y <code>ACCESS_TOKEN</code> (Encrypt ✓)</li>
-        <li>Deploy → copia URL → pega arriba</li>
-      </ol>
+    <details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:#94a3b8;font-weight:600">🔧 Worker proxy (legacy / avanzado)</summary>
+    <div class="config-section" style="margin-top:8px">
+      <h3>🔗 URL del Cloudflare Worker</h3>
+      <p style="font-size:12px;color:#64748b;margin-bottom:8px">Solo necesario si usas extracción de labs con IA.</p>
+      <div class="proxy-input-wrap">
+        <input id="proxy-url-input" placeholder="https://mi-worker.tuusuario.workers.dev" type="url" autocomplete="off" autocorrect="off" spellcheck="false"/>
+      </div>
+      <div class="config-section" style="margin-top:8px">
+        <h3>🔑 Token de Acceso</h3>
+        <div class="proxy-input-wrap">
+          <input id="proxy-token-input" placeholder="ej: hgl2026" type="password" autocomplete="off"/>
+          <button class="btn-save" onclick="saveConfig()">Guardar</button>
+        </div>
+        <div class="proxy-status warn" id="proxy-status-box" style="display:none">Sin configurar.</div>
+      </div>
     </div>
+    </details>
 
     <!-- DEBUG PANEL -->
     <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:12px">
@@ -600,7 +592,6 @@ select.modal-input{background:#fff}
     </div>
     <div class="modal-footer">
       <button class="btn-cancel" onclick="document.getElementById('config-modal').style.display='none'">Cerrar</button>
-      <button class="btn-save" onclick="testConnection()">🔍 Probar conexión</button>
     </div>
   </div>
 </div>
@@ -839,18 +830,20 @@ function refreshDebugPanel(){
     `📋 Pacientes en memoria: <b>${nPts}</b>`,
     `📝 Notas en localStorage: <b>${noteKeys.length}</b>`,
     `📤 Outbox pendiente: <b>${outbox.length}</b> item(s)`,
-    `🔄 Último sync: <b>${lastSync}</b>`,
     `🌐 Estado de red: <b>${onlineStr}</b>`,
-    `🔌 Worker: <b>${getProxyUrl() ? "Configurado ✓" : "Sin configurar"}</b>`,
+    `☁️ Supabase: <b>Conectado ✓</b>`,
+    `🔌 Worker legacy: <b>${getProxyUrl() ? "Configurado ✓" : "No configurado"}</b>`,
   ].join("<br>");
 }
 
 function updateProxyPill(){
   const pill = document.getElementById("proxy-pill");
   if(!pill) return;
-  const url = getProxyUrl();
-  pill.className = url ? "config-pill connected" : "config-pill disconnected";
-  pill.textContent = url ? "⚙️ Config ✓" : "⚙️ Config";
+  // Supabase is always configured → always connected
+  const hasSupabase = !!SUPA_URL;
+  const hasProxy = !!getProxyUrl();
+  pill.className = (hasSupabase||hasProxy) ? "config-pill connected" : "config-pill disconnected";
+  pill.textContent = (hasSupabase||hasProxy) ? "⚙️ Config ✓" : "⚙️ Config";
 }
 
 function updateProxyStatusBox(state){
