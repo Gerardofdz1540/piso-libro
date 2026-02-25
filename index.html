@@ -5,6 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Piso Libro — HGL Cirugía General</title>
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a1628'/%3E%3Ctext x='32' y='41' font-size='26' text-anchor='middle' fill='white' font-family='Arial'%3EPL%3C/text%3E%3C/svg%3E" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
@@ -2663,7 +2665,7 @@
     const MULTI_BED = new Set(["EXT", "EXTERNO", "EXTERNO1", "EXTERNO2", "PASILLO", "ESPERA", "URGENCIAS", "URG", "CORR", "CORREDOR", "AMB", "AMBULATORIO", "AMBULATORIO1", "AMBULATORIO2", "CONSULTA", "CONS", "PREQUX", "PREQX", "RECUPERACION", "RECU", "CORTA ESTANCIA", "CE"]);
     // Detecta si una cama es "no censable" (no tiene formato numérico tipo 3-150 o UCI 2)
     function isNonCensableBed(cama) {
-      const c = (cama || "").trim().toUpperCase();
+      const c = toSafeString(cama).trim().toUpperCase();
       if (!c) return true;
       if (MULTI_BED.has(c)) return true;
       // Si NO contiene al menos un dígito, es no censable (ej: "AMB", "EXTERNO", etc.)
@@ -2921,21 +2923,78 @@
     function todayStr() { return new Date().toISOString().slice(0, 10); }
     function fmtDateChip(d) {
       if (!d) return "?";
-      const p = d.split("-");
+      const p = toSafeString(d).split("-");
       const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
       return p[2] + " " + months[parseInt(p[1]) - 1];
     }
+    const LAB_KEYS_FALLBACK = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea",
+      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt",
+      "ph", "pco2", "po2", "hco3", "be", "sato2"];
+    const LAB_META_KEYS = new Set(["paciente", "fecha_labs"]);
+    function toSafeString(v) {
+      if (v === null || v === undefined) return "";
+      return typeof v === "string" ? v : String(v);
+    }
+    function isPlainObject(v) {
+      return !!v && typeof v === "object" && !Array.isArray(v);
+    }
+    function getLabKeys() {
+      if (typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS) && LAB_FIELDS.length) {
+        return LAB_FIELDS.map(lf => lf.key);
+      }
+      return LAB_KEYS_FALLBACK;
+    }
+    function sanitizeLabsMap(rawLabs) {
+      const src = isPlainObject(rawLabs) ? rawLabs : {};
+      const out = {};
+      Object.keys(src).forEach(k => {
+        const key = toSafeString(k).trim();
+        if (!key) return;
+        out[key] = toSafeString(src[k]).trim();
+      });
+      return out;
+    }
+    function sanitizeExtractedLabs(raw) {
+      const src = isPlainObject(raw) ? raw : {};
+      const allowedLabs = new Set(getLabKeys());
+      const out = {};
+      Object.keys(src).forEach(k => {
+        const key = toSafeString(k).trim();
+        if (!key) return;
+        if (!allowedLabs.has(key) && !LAB_META_KEYS.has(key)) return;
+        out[key] = toSafeString(src[k]).trim();
+      });
+      return out;
+    }
     // ─── MIGRATION: old flat labs/imagen → history arrays ────────────────────────────
     function migrateNote(nd) {
-      if (!nd) nd = defaultData();
+      if (!nd || !isPlainObject(nd)) nd = defaultData();
       if (!Array.isArray(nd.labHistory)) {
         nd.labHistory = [];
-        const ol = nd.labs || {};
-        if (LAB_FIELDS.some(lf => ol[lf.key])) {
-          nd.labHistory.push({ fecha: ol.fecha_labs || todayStr(), labs: { ...ol }, extra: [] });
+        const ol = sanitizeLabsMap(nd.labs);
+        if (getLabKeys().some(lk => ol[lk])) {
+          nd.labHistory.push({
+            fecha: ol.fecha_labs || todayStr(),
+            labs: ol,
+            extra: []
+          });
         }
       }
-      if (!nd.checklist || typeof nd.checklist !== "object") {
+      nd.labHistory = nd.labHistory
+        .filter(s => isPlainObject(s))
+        .map(s => {
+          const extraRaw = Array.isArray(s.extra) ? s.extra : [];
+          return {
+            fecha: toSafeString(s.fecha).trim() || todayStr(),
+            labs: sanitizeLabsMap(s.labs),
+            extra: extraRaw
+              .filter(e => isPlainObject(e))
+              .map(e => ({ nombre: toSafeString(e.nombre).trim(), valor: toSafeString(e.valor).trim() })),
+            incidencia: !!s.incidencia
+          };
+        });
+      nd.labs = sanitizeLabsMap(nd.labs);
+      if (!isPlainObject(nd.checklist)) {
         nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" };
       }
       // Migrate: add wound care + NPT fields if missing
@@ -3213,9 +3272,10 @@
     const _noteDebounceMap = {};
 
     function saveNote(key, data) {
+      const safeData = migrateNote(data);
       // Always save to localStorage immediately
-      lsSaveNote(key, data);
-      noteData[key] = data;
+      lsSaveNote(key, safeData);
+      noteData[key] = safeData;
       // Debounced push to Supabase
       if (!_noteDebounceMap[key]) {
         _noteDebounceMap[key] = debounce(async (k, d) => {
@@ -3233,7 +3293,7 @@
           }
         }, 600);
       }
-      _noteDebounceMap[key](key, data);
+      _noteDebounceMap[key](key, safeData);
     }
 
     async function _savePtsImmediate() {
@@ -3585,7 +3645,14 @@
       ws[addr] = cell;
     }
     function daysSince(ing) { return ing ? Math.floor((new Date() - parseDate(ing)) / 86400000) : "?"; }
-    function esc(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+    function esc(s) {
+      return toSafeString(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
 
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
@@ -3690,7 +3757,7 @@
     function renderView() {
       const search = document.getElementById("search").value.toLowerCase();
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
-      function normSearch(s) { return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
+      function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
       const searchNorm = normSearch(search);
       const searchTokens = searchNorm ? searchNorm.split(/\s+/).filter(Boolean) : [];
       const filtered = patients.filter(p => {
@@ -3743,7 +3810,7 @@
       // Devuelve [grupo, numero] para ordenar camas de CG:
       // grupo 0 = piso 3 (3-XXX)  → primero, orden numerico
       // grupo 1 = resto de CG (UCI, 2-XXX, RECU, etc.) → al final de CG
-      const c = (cama || "").toUpperCase().trim();
+      const c = toSafeString(cama).toUpperCase().trim();
       const m3 = c.match(/^3[^\d]*(\d+)/);   // empieza con 3-
       if (m3) return [0, parseInt(m3[1])];
       const mn = c.match(/(\d+)/);
@@ -3767,8 +3834,20 @@
         const k = pid(p);
         const nd = noteData[k] || defaultData();
         const isSimple = isSimpleEsp(p.esp);
-        if (isSimple) html += renderSimpleCard(p, nd, k);
-        else html += renderFullCard(p, nd, k);
+        try {
+          if (isSimple) html += renderSimpleCard(p, nd, k);
+          else html += renderFullCard(p, nd, k);
+        } catch (e) {
+          safeLog("[renderPiso] Error renderizando " + k + ":", e);
+          html += `<div class="simple-card" style="border:1px solid #fecaca;background:#fff1f2">
+            <div class="simple-header">
+              <div><span class="cama">${esc(p.cama || "SIN CAMA")}</span> <span class="pill-esp">${esc(p.esp || "N/A")}</span></div>
+              <span class="days" style="color:#b91c1c">⚠️ Error de render</span>
+            </div>
+            <div class="simple-name">${esc(p.nombre || "Paciente")}</div>
+            <div style="font-size:11px;color:#7f1d1d;margin-top:4px">Los demás pacientes siguen visibles. Revisa datos de labs de este registro.</div>
+          </div>`;
+        }
       });
       const specialAlertsHtml = renderSpecialAlertsPanel();
       document.getElementById("view-piso").innerHTML =
@@ -3777,7 +3856,7 @@
 
     // ─── CAMAS LIBRES ────────────────────────────────────────────────────────────────
     function getFreeBeds() {
-      const occupied = new Set(patients.map(p => (p.cama || "").trim().toUpperCase()));
+      const occupied = new Set(patients.map(p => toSafeString(p.cama).trim().toUpperCase()));
       return ALL_BEDS.filter(b => !occupied.has(b.toUpperCase()));
     }
     function renderFreeBeds() {
@@ -5314,17 +5393,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           }
         }
 
+        const sanitizedExtracted = sanitizeExtractedLabs(extracted);
         // Save to active date (or create new snapshot with extracted date)
         const nd = getNote(k);
-        const targetFecha = extracted.fecha_labs || activeLabDate[k] || todayStr();
+        const targetFecha = sanitizedExtracted.fecha_labs || activeLabDate[k] || todayStr();
         let snap = nd.labHistory.find(s => s.fecha === targetFecha);
         if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
-        // Filter out empty strings and meta fields before saving
-        const labFields = ["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","inr","urea",
-          "mg","ca","p","cl","tp","ttp","fibrinogeno","ast","alt","bt","bd","ggt",
-          "ph","pco2","po2","hco3","be","sato2"];
-        const hasValues = labFields.some(f => extracted[f] && String(extracted[f]).trim() !== "");
-        snap.labs = { ...(snap.labs || {}), ...extracted };
+        const hasValues = getLabKeys().some(f => sanitizedExtracted[f] && sanitizedExtracted[f].trim() !== "");
+        snap.labs = { ...sanitizeLabsMap(snap.labs), ...sanitizedExtracted };
         activeLabDate[k] = targetFecha;
         noteData[k] = nd;
         saveNote(k, nd);
@@ -6723,7 +6799,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       let rows = "";
       c.querySelectorAll("[data-nf]").forEach(el => {
         const lbl = el.closest(".nm-field").querySelector(".nm-label");
-        const v = (el.value || "").replace(/\n/g, "<br>");
+        const v = toSafeString(el.value).replace(/\n/g, "<br>");
         if (v.trim()) rows += `<tr><td style="font-weight:700;color:#001746;font-size:11px;padding:4px 8px;vertical-align:top;width:180px;border-bottom:1px solid #e2e8f0;font-family:Calibri">${lbl ? lbl.textContent : ""}</td><td style="font-size:11px;color:#000;padding:4px 8px;border-bottom:1px solid #e2e8f0;font-family:Calibri">${v}</td></tr>`;
       });
       const w = window.open("", "_blank", "width=800,height=700");
@@ -6837,7 +6913,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const doc = new Document({ sections: [{ children }] });
       Packer.toBlob(doc).then(blob => {
         const url = URL.createObjectURL(blob); const a = document.createElement("a");
-        a.href = url; a.download = "ALTA_" + (p.nombre || "").replace(/\s+/g, "_") + ".docx";
+        a.href = url; a.download = "ALTA_" + toSafeString(p.nombre).replace(/\s+/g, "_") + ".docx";
         a.click(); URL.revokeObjectURL(url);
       });
     }
@@ -6853,7 +6929,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const horaStr = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + " HRS";
 
       function tr(lbl, val, bold) {
-        const v = (val || "").replace(/\n/g, "<br>");
+        const v = toSafeString(val).replace(/\n/g, "<br>");
         return `<tr>
       <td style="font-weight:700;font-size:10.5pt;padding:5px 8px;vertical-align:top;border:1px solid #999;width:175px;font-family:Calibri,sans-serif;background:#f4f6fb;color:#001746">${lbl}</td>
       <td style="font-size:10.5pt;padding:5px 8px;border:1px solid #999;font-family:Calibri,sans-serif;${bold ? 'font-weight:700;' : ''}color:#000">${v}</td>
@@ -6929,7 +7005,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       </td>
       <td style="width:10%"></td>
       <td style="width:50%;text-align:center;padding-top:40px;border-top:1px solid #000;font-size:9pt;font-family:Calibri">
-        <div style="font-weight:700">DR ${esc((p.residente || "").toUpperCase())} R1CG</div>
+        <div style="font-weight:700">DR ${esc(toSafeString(p.residente).toUpperCase())} R1CG</div>
         <div>NOMBRE CÉDULA Y FIRMA DE MÉDICO RESIDENTE</div>
       </td>
     </tr>
@@ -7842,7 +7918,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           sorted.forEach(function (p) {
             var row = ws.getRow(rowNum); row.height = 30;
             var days = p.ingreso ? Math.floor((new Date() - parseDate(p.ingreso)) / 86400000) : "";
-            var estado = (p.estado || "").trim().toUpperCase();
+            var estado = toSafeString(p.estado).trim().toUpperCase();
             var rowBg = isRecentIngreso(p.ingreso) ? INGRESO_BG : "FFFFFFFF";
             var vals = ["", p.cama || "", p.exp || "", p.nombre || "", p.edad || "", p.dx || "", p.esp || "", p.adscrito || "", p.residente || "", p.ingreso || "", Number.isFinite(days) ? days : "", p.estado || ""];
             var aligns = ["center", "center", "center", "left", "center", "left", "center", "left", "left", "center", "center", "center"];
@@ -7909,7 +7985,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function openWinLabForPatient(k) {
       var p = patients.find(function(pt){ return pid(pt) === k; });
       if (!p) return;
-      var parts = (p.nombre || "").trim().split(/\s+/);
+      var parts = toSafeString(p.nombre).trim().split(/\s+/);
       // Siempre tomar las ULTIMAS 2 palabras = apellidos (independiente de cuantos nombres haya)
       var apellido = parts.slice(-2).join(" ");
       navigator.clipboard.writeText(apellido).catch(function(){});
@@ -7964,7 +8040,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
 
       function normName(s) {
-        return (s || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9]/g," ").replace(/\s+/g," ").trim();
+        return toSafeString(s).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, " ").replace(/\s+/g, " ").trim();
       }
 
       function matchPatient(extractedName) {
@@ -8033,7 +8109,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             rows += "<div style='padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px'><b style='color:#991b1b'>Error:</b> " + esc(r.file) + " — " + esc(r.error) + "</div>";
             return;
           }
-          var ex = r.extracted;
+          var ex = sanitizeExtractedLabs(r.extracted);
           var matched = matchPatient(ex.paciente || "");
           if (matched) {
             var k = pid(matched);
@@ -8041,7 +8117,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             var fecha = ex.fecha_labs || todayStr();
             var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
             if (!snap) { snap = { fecha: fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
-            snap.labs = Object.assign({}, snap.labs, ex);
+            snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), ex);
             activeLabDate[k] = fecha;
             noteData[k] = nd;
             saveNote(k, nd);
@@ -8183,7 +8259,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function detectDuplicateBeds(pts) {
       const bedCount = {};
       pts.forEach(p => {
-        const c = (p.cama || "").trim().toUpperCase();
+        const c = toSafeString(p.cama).trim().toUpperCase();
         // No marcar como duplicado camas no censables (AMB, EXT, sin número, etc.)
         if (isNonCensableBed(c)) return;
         if (!bedCount[c]) bedCount[c] = [];
@@ -8196,8 +8272,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     function detectDuplicatePatients(pts) {
       // Two-pass: 1) same expediente, 2) same normalized name (catches cross-exp dupes)
-      function normName(s) { return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z ]/g, "").replace(/\s+/g, " ").trim(); }
-      function normExp(s) { return (s || "").replace(/[\s\-]/g, "").toUpperCase(); }
+      function normName(s) { return toSafeString(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z ]/g, "").replace(/\s+/g, " ").trim(); }
+      function normExp(s) { return toSafeString(s).replace(/[\s\-]/g, "").toUpperCase(); }
       const results = [];
       const alreadyGrouped = new Set(); // track patient indices already in a group
 
