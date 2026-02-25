@@ -162,7 +162,7 @@ body{font-family:var(--font);background:var(--bg);min-height:100vh;color:#1e293b
 /* SIMPLE CARD */
 .simple-card{background:var(--card);border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.07);border:1px solid var(--border);overflow:hidden}
 .simple-header{color:#fff;padding:8px 14px;display:flex;align-items:center;justify-content:space-between}
-.simple-body{padding:10px 14px}
+.simple-body{padding:8px 14px 10px}
 .dx-preview{font-size:11px;color:#666;margin-bottom:6px}
 /* CENSUS TABLE */
 .census-section{margin-bottom:20px}
@@ -683,7 +683,7 @@ select.modal-input{background:#fff}
 <script>
 // ─── CONSTANTS ─────────────────────────────────────────────────────────────────
 const FULL_CARD_ESP = new Set(["CG","CCR","CTV","CT","CX DE TÓRAX","ONCOCIRUGÍA","CG/GYO","ENDOS"]);
-const SIMPLE_ESP = new Set(["URO","NCX","COLUMNA","TYO/NCX"]);
+const SIMPLE_ESP = new Set(["URO","NCX","NEUROCX","COLUMNA","TYO/NCX"]);
 const ESP_COLORS = {
   CG:"#0f4c75",CCR:"#1b6644",CT:"#7b3f00",CTV:"#7b0000",
   URO:"#4a3580",NCX:"#1a3a5c",COLUMNA:"#3d5a3e",
@@ -912,6 +912,7 @@ async function testConnection(){
 }
 
 // ─── SYNC STATUS UI ─────────────────────────────────────────────────────────────
+let _lastSyncError = "";
 function setSyncStatus(state, label){
   const el  = document.getElementById("sync-status");
   const lbl = document.getElementById("sync-label");
@@ -919,6 +920,16 @@ function setSyncStatus(state, label){
   el.className = ""+state;   // synced | syncing | error | offline
   el.querySelector(".sync-dot").className = "sync-dot"+(state==="syncing"?" spin":"");
   lbl.textContent = label;
+  if(state === "error"){
+    _lastSyncError = label;
+    el.title = label + " — clic para más detalles";
+    el.style.cursor = "pointer";
+    el.onclick = ()=> alert("⚠️ Error de Supabase:\n\n" + _lastSyncError + "\n\nVerifica:\n1) Conexión a internet activa\n2) Credenciales correctas en ⚙️ Config\n3) Las tablas 'patients' y 'notes' existen en Supabase\n\nMientras tanto, tus datos están seguros en localStorage y se sincronizarán cuando se resuelva el error.");
+  } else {
+    el.title = "";
+    el.style.cursor = "";
+    el.onclick = null;
+  }
 }
 
 // ─── API HELPERS ─────────────────────────────────────────────────────────────────
@@ -1071,12 +1082,12 @@ async function supaUpsertPatient(p){
   if(p._supa_id){
     // UPDATE existing
     const {data, error} = await _supa.from("patients").update(row).eq("id", p._supa_id).select().single();
-    if(error){ console.error("supaUpsertPatient UPDATE error:", error); return null; }
+    if(error){ safeLog("supaUpsertPatient UPDATE error:", error); return null; }
     return data;
   } else {
     // INSERT new
     const {data, error} = await _supa.from("patients").insert(row).select().single();
-    if(error){ console.error("supaUpsertPatient INSERT error:", error); return null; }
+    if(error){ safeLog("supaUpsertPatient INSERT error:", error); return null; }
     p._supa_id = data.id; // store UUID locally
     return data;
   }
@@ -1085,7 +1096,7 @@ async function supaUpsertPatient(p){
 async function supaDeletePatient(supaId){
   if(!supaId) return;
   const {error} = await _supa.from("patients").delete().eq("id", supaId);
-  if(error) console.error("supaDeletePatient error:", error);
+  if(error) safeLog("supaDeletePatient error:", error);
 }
 
 // ─── SUPABASE: SAVE NOTE ────────────────────────────────────────────────────────
@@ -1102,18 +1113,57 @@ async function supaUpsertNote(patientId, nd){
     updated_by: localStorage.getItem("pl_user_name")||""
   };
   const {data, error} = await _supa.from("notes").upsert(row, {onConflict:"patient_id"}).select().single();
-  if(error) console.error("supaUpsertNote error:", error);
+  if(error) safeLog("supaUpsertNote error:", error);
   return data;
 }
 
 // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
+function supaErrMsg(e){
+  if(!e) return "error desconocido";
+  if(typeof e === "string") return e;
+  // Safely extract known string fields — never JSON.stringify (Headers objects cause DataCloneError)
+  try{
+    const parts = [];
+    if(e.message && typeof e.message === "string") parts.push(e.message);
+    if(e.details && typeof e.details === "string") parts.push(e.details);
+    if(e.hint   && typeof e.hint   === "string") parts.push(e.hint);
+    if(e.code   && typeof e.code   === "string") parts.push("code:"+e.code);
+    if(e.status && typeof e.status === "number") parts.push("HTTP "+e.status);
+    if(e.statusText && typeof e.statusText === "string") parts.push(e.statusText);
+    if(e.name   && typeof e.name   === "string" && !parts.length) parts.push(e.name);
+    return parts.length ? parts.join(" | ") : "error sin mensaje";
+  }catch(_){ return "error (no serializable)"; }
+}
+function safeLog(label, e){
+  // console.error with raw Supabase error objects throws DataCloneError in some browsers
+  try{ console.error(label, supaErrMsg(e)); }catch(_){ console.error(label, "(error no loggeable)"); }
+}
+
 async function supaLoadAll(){
   setSyncStatus("syncing","Descargando...");
+  try{
   const {data: pts, error: pErr} = await _supa.from("patients").select("*").order("cama");
-  if(pErr){ console.error("supaLoadAll patients error:", pErr); return null; }
+  if(pErr){
+    const msg = supaErrMsg(pErr);
+    safeLog("supaLoadAll patients error:", pErr);
+    setSyncStatus("error","Error Supabase: "+msg.slice(0,60));
+    return null;
+  }
 
   const {data: nts, error: nErr} = await _supa.from("notes").select("*");
-  if(nErr){ console.error("supaLoadAll notes error:", nErr); return null; }
+  if(nErr){
+    const msg = supaErrMsg(nErr);
+    safeLog("supaLoadAll notes error:", nErr);
+    // Notes failed but patients loaded — return patients with empty notes rather than null
+    const loadedPatients2 = [];
+    const loadedNotes2 = {};
+    (pts||[]).forEach(row => {
+      const p = supaRowToPatient(row);
+      loadedPatients2.push(p);
+      loadedNotes2[pid(p)] = defaultData();
+    });
+    return {patients: loadedPatients2, notes: loadedNotes2};
+  }
 
   // Map notes by patient_id for fast lookup
   const noteMap = {};
@@ -1151,6 +1201,12 @@ async function supaLoadAll(){
   });
 
   return {patients: loadedPatients, notes: loadedNotes};
+  }catch(e){
+    const msg = supaErrMsg(e);
+    safeLog("supaLoadAll unexpected error:", e);
+    setSyncStatus("error","Error Supabase: "+msg.slice(0,60));
+    return null;
+  }
 }
 
 // Format ISO date (YYYY-MM-DD) to DD/MM/YY for display
@@ -1200,42 +1256,51 @@ function saveNote(key, data){
 
 async function _savePtsImmediate(){
   lsSavePatients(patients);
+  localStorage.setItem("pl_last_save_ts", Date.now().toString());
   pendingSyncs++;
   setSyncStatus("syncing","Guardando pacientes...");
   let allOk = true;
+  const failedPts = [];
   for(const p of patients){
     let res = await supaUpsertPatient(p);
     // Retry once on failure
     if(!res){
-      await new Promise(r=>setTimeout(r,500));
+      await new Promise(r=>setTimeout(r,600));
       res = await supaUpsertPatient(p);
     }
-    if(!res) allOk = false;
+    if(!res){ allOk = false; failedPts.push(p); }
   }
   lsSavePatients(patients); // re-save with updated _supa_ids
+  if(allOk){
+    localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+  } else {
+    // Enqueue failed patients to outbox so they sync on next opportunity
+    failedPts.forEach(p => outboxEnqueue({type:"patient", patient: p}));
+  }
   pendingSyncs--;
   if(pendingSyncs===0){
     if(allOk){
       setSyncStatus("synced","Sincronizado");
     } else {
-      setSyncStatus("error","Error parcial — reintentando...");
-      // Auto-retry full sync after 3s
+      // Silently retry after 4s without showing alarming error
+      setSyncStatus("syncing","Sincronizando...");
       setTimeout(async ()=>{
         if(pendingSyncs>0) return;
         pendingSyncs++;
-        setSyncStatus("syncing","Reintentando sync...");
+        setSyncStatus("syncing","Reintentando...");
         let ok2 = true;
         for(const p of patients){
           const r = await supaUpsertPatient(p);
           if(!r) ok2 = false;
         }
         lsSavePatients(patients);
+        if(ok2) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         pendingSyncs--;
         if(pendingSyncs===0){
           if(ok2) setSyncStatus("synced","Sincronizado");
           else setSyncProblemStatus();
         }
-      }, 3000);
+      }, 4000);
     }
   }
 }
@@ -1348,11 +1413,18 @@ function supaRowToPatient(row){
 window.addEventListener("online", async ()=>{
   setSyncStatus("syncing","Reconectando...");
   await flushOutbox();
-  const loaded = await supaLoadAll();
-  if(loaded){
-    patients = loaded.patients; noteData = loaded.notes;
-    lsSavePatients(patients);
-    buildEspFilters(); renderView();
+  const lastSaveTs2     = parseInt(localStorage.getItem("pl_last_save_ts")||"0", 10);
+  const lastSupabaseTs2 = parseInt(localStorage.getItem("pl_last_supabase_sync_ts")||"0", 10);
+  if(lastSaveTs2 > lastSupabaseTs2 && patients.length){
+    // Local data is newer — push to Supabase
+    await _savePtsImmediate();
+  } else {
+    const loaded = await supaLoadAll();
+    if(loaded){
+      patients = loaded.patients; noteData = loaded.notes;
+      lsSavePatients(patients);
+      buildEspFilters(); renderView();
+    }
   }
   setSyncStatus("synced","Reconectado");
 });
@@ -1369,12 +1441,17 @@ async function flushOutbox(){
         if(!res) failed.push(item);
       } else failed.push(item);
     } else if(item.type==="patient" && item.patient){
-      const res = await supaUpsertPatient(item.patient);
+      // Find the current version of this patient in memory (may have been updated)
+      const k = pid(item.patient);
+      const current = patients.find(x=>pid(x)===k) || item.patient;
+      const res = await supaUpsertPatient(current);
       if(!res) failed.push(item);
+      else lsSavePatients(patients); // update with new _supa_id if assigned
     }
   }
   outboxSave(failed);
   updateOutboxBadge();
+  if(!failed.length) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
 }
 
 // ─── MIGRATION: localStorage → Supabase (one-time) ─────────────────────────────
@@ -1403,7 +1480,7 @@ async function migrateToSupabase(){
       ingreso: ingresoToISO(p.ingreso)
     };
     const {data: inserted, error: pErr} = await _supa.from("patients").insert(row).select().single();
-    if(pErr){ console.error("Migration patient error:", pErr, p.nombre); errors++; continue; }
+    if(pErr){ safeLog("Migration patient error ["+p.nombre+"]:", pErr); errors++; continue; }
 
     const k = "pt-"+(p.exp||"")+"-"+(p.cama||"");
     const nd = migrateNote(lsGetNote(k));
@@ -1416,7 +1493,7 @@ async function migrateToSupabase(){
       lab_history: nd.labHistory||[], imagen_history: nd.imagenHistory||[]
     };
     const {error: nErr} = await _supa.from("notes").upsert(noteRow, {onConflict:"patient_id"});
-    if(nErr) console.error("Migration note error:", nErr, p.nombre);
+    if(nErr) safeLog("Migration note error ["+p.nombre+"]:", nErr);
 
     migrated++;
   }
@@ -1520,10 +1597,15 @@ async function init(){
 
   setSyncStatus("syncing","Conectando a Supabase...");
 
+  // Check if localStorage has data that was saved more recently than the last confirmed Supabase sync
+  const lastSaveTs     = parseInt(localStorage.getItem("pl_last_save_ts")||"0", 10);
+  const lastSupabaseTs = parseInt(localStorage.getItem("pl_last_supabase_sync_ts")||"0", 10);
+  const localHasNewerData = lastSaveTs > lastSupabaseTs && lastSaveTs > 0;
+
   // Try loading from Supabase first
   let loaded = null;
-  if(navigator.onLine){
-    try{ loaded = await supaLoadAll(); }catch(e){ console.error("Supabase load error:", e); }
+  if(navigator.onLine && !localHasNewerData){
+    try{ loaded = await supaLoadAll(); }catch(e){ safeLog("Supabase load error:", e); loaded = null; }
   }
 
   if(loaded && loaded.patients.length > 0){
@@ -1532,17 +1614,34 @@ async function init(){
     lsSavePatients(patients);
     // Cache notes locally
     patients.forEach(p=>{ lsSaveNote(pid(p), noteData[pid(p)]||defaultData()); });
+    localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+    localStorage.setItem("pl_last_save_ts", Date.now().toString());
     startRealtime();
     const hm = new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
     setSyncStatus("synced","Sync "+hm);
   } else {
-    // Supabase empty or offline — load from localStorage
+    // Supabase empty, failed, offline, or localStorage is newer → load from localStorage
     patients = lsGetPatients() || [];
     noteData = {};
     patients.forEach(p=>{ noteData[pid(p)] = lsGetNote(pid(p)); });
     if(patients.length && navigator.onLine){
-      // Local data exists but Supabase is empty → show migration prompt
-      setSyncStatus("offline","Datos locales — migra a Supabase ⬆️");
+      if(localHasNewerData){
+        // Re-sync newer local data to Supabase in background
+        setSyncStatus("syncing","Recuperando datos locales...");
+        startRealtime();
+        _savePtsImmediate().then(()=>{
+          const hm2 = new Date().toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});
+          setSyncStatus("synced","Recuperado "+hm2);
+        });
+      } else if(loaded === null){
+        // supaLoadAll returned null = real Supabase error — show local data with warning
+        // Status already set to "error" inside supaLoadAll
+        // Start realtime anyway so changes sync when connection recovers
+        startRealtime();
+      } else {
+        // loaded.patients was empty — local data exists but Supabase is empty → migration prompt
+        setSyncStatus("offline","Datos locales — migra a Supabase ⬆️");
+      }
     } else if(!patients.length){
       setSyncStatus("synced","Sin pacientes — agrega el primero");
     } else {
@@ -2035,8 +2134,10 @@ function renderSimpleCard(p,nd,k){
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
       <div style="display:flex;align-items:center;gap:8px;flex:1">
         <span style="background:rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;font-size:13px;font-weight:700">${esc(p.cama)}</span>
-        <span style="font-size:12px;font-weight:600">${esc(p.nombre)}</span>
-        <span style="font-size:11px;opacity:.8">· ${p.edad}a</span>
+        <div style="display:flex;flex-direction:column;gap:1px;flex:1">
+          <span style="font-size:12px;font-weight:600">${esc(p.nombre)}<span style="font-size:11px;opacity:.8"> · ${p.edad}a</span></span>
+          ${dx ? `<span style="font-size:10px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px">${esc(dx)}</span>` : ''}
+        </div>
       </div>
       <div style="display:flex;gap:5px;align-items:center">
         ${noEnCenso?`<span class="badge-fuera">⚠️ Sin censo</span>`:''}
@@ -2047,7 +2148,6 @@ function renderSimpleCard(p,nd,k){
       </div>
     </div>
     <div class="simple-body">
-      <div class="dx-preview">${esc(dx)}</div>
       ${fieldRow("⚠️ Pendiente", nd.pendientes, k, "pendientes", 2)}
     </div>
   </div>`;
@@ -5193,6 +5293,15 @@ function confirmImport(){
   // Reemplazar el array global completamente
   patients = nextPatients;
 
+  // Suprimir Realtime para que los INSERT/UPDATE de Supabase no sobreescriban el import
+  _suppressRealtime = true;
+
+  // Guardar localmente de inmediato (fuente de verdad hasta que Supabase confirme)
+  lsSavePatients(patients);
+  localStorage.setItem("pl_last_save_ts", Date.now().toString());
+  // Guardar notas actualizadas en localStorage también
+  patients.forEach(p => { const k=pid(p); lsSaveNote(k, noteData[k]||defaultData()); });
+
   // Import procedimientos from Excel if present
   if(procedimientosFromExcel && procedimientosFromExcel.length){
     const existingNames = new Set(procedimientos.map(p=>p.nombre));
@@ -5212,6 +5321,14 @@ function confirmImport(){
   document.getElementById("import-modal").style.display = "none";
   buildEspFilters();
   renderView();
+
+  // Lanzar sync a Supabase de forma directa (no debounced) para que no se pierda en refresh
+  _savePtsImmediate().then(()=>{
+    // Restaurar Realtime después de que el sync haya terminado
+    setTimeout(()=>{ _suppressRealtime = false; }, 2000);
+  }).catch(()=>{
+    setTimeout(()=>{ _suppressRealtime = false; }, 2000);
+  });
 
   // Banner de éxito
   const banner = document.getElementById("import-banner");
