@@ -7823,48 +7823,39 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
 
 
+
     // ─── WINLAB POR PACIENTE ──────────────────────────────────────────────────────────
     const WINLAB_SEARCH_URL = "http://hgleon.ddns.net/winlabweb/WW/ElencoRefertiLite.aspx";
 
     function openWinLabForPatient(k) {
-      const p = patients.find(pt => pid(pt) === k);
+      var p = patients.find(function(pt){ return pid(pt) === k; });
       if (!p) return;
-      // Extraer apellido (primera palabra del nombre en formato "APELLIDO APELLIDO NOMBRE")
-      const parts = (p.nombre || "").trim().split(/\s+/);
-      const apellido = parts[0] || "";
-      const nombre = parts.slice(2).join(" ") || parts[1] || "";
-      // Copiar apellido al portapapeles
-      const clipText = apellido + (nombre ? "\t" + nombre : "");
-      navigator.clipboard.writeText(apellido).catch(() => {});
-      // Abrir WinLab en búsqueda (si ya están logueados, va directo)
+      var parts = (p.nombre || "").trim().split(/\s+/);
+      var apellido = parts[0] || "";
+      navigator.clipboard.writeText(apellido).catch(function(){});
       window.open(WINLAB_SEARCH_URL, "winlabweb");
-      // Toast informativo
-      showWinLabToast(p.nombre, apellido);
+      showWinLabToast(apellido);
     }
 
-    function showWinLabToast(nombre, apellido) {
-      let t = document.getElementById("winlab-toast");
+    function showWinLabToast(apellido) {
+      var t = document.getElementById("winlab-toast");
       if (!t) {
         t = document.createElement("div");
         t.id = "winlab-toast";
-        t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f4c75;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:opacity .3s;pointer-events:none";
+        t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f4c75;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:opacity .3s;pointer-events:none;text-align:center";
         document.body.appendChild(t);
       }
-      t.innerHTML = \`🧪 Abriendo WinLab &nbsp;·&nbsp; <span style="background:rgba(255,255,255,.2);padding:2px 10px;border-radius:6px">Apellido copiado: <b>\${esc(apellido)}</b></span><br><span style="font-size:11px;opacity:.8">Pégalo en el campo "Apellido" de WinLab</span>\`;
+      t.innerHTML = "🧪 WinLab abierto &nbsp;&middot;&nbsp; Apellido copiado: <b>" + esc(apellido) + "</b><br><span style='font-size:11px;opacity:.8'>P&eacute;galo en el campo Apellido de WinLab</span>";
       t.style.opacity = "1";
       clearTimeout(t._timer);
-      t._timer = setTimeout(() => { t.style.opacity = "0"; }, 4000);
+      t._timer = setTimeout(function(){ t.style.opacity = "0"; }, 4000);
     }
 
     // ─── BULK LABS MODAL ──────────────────────────────────────────────────────────────
-    let bulkLabsQueue = [];
-    let bulkLabsRunning = false;
-
     function openBulkLabsModal() {
       document.getElementById("bulk-labs-modal").style.display = "flex";
       document.getElementById("bulk-labs-progress").style.display = "none";
       document.getElementById("bulk-labs-results").innerHTML = "";
-      bulkLabsQueue = [];
     }
     function closeBulkLabsModal() {
       document.getElementById("bulk-labs-modal").style.display = "none";
@@ -7872,158 +7863,115 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function handleBulkDrop(files) { handleBulkLabsFiles(files); }
 
     function handleBulkLabsFiles(files) {
-      const proxyUrl = getProxyUrl();
-      if (!proxyUrl) {
-        alert("⚙️ Primero configura la URL del Worker en el botón «Config».");
-        return;
-      }
-      if (!files || !files.length) return;
-      const arr = Array.from(files).filter(f => f.type === "application/pdf" || f.name.endsWith(".pdf"));
-      if (!arr.length) { alert("No se encontraron PDFs válidos."); return; }
+      var proxyUrl = getProxyUrl();
+      if (!proxyUrl) { alert("Primero configura la URL del Worker en Config."); return; }
+      var arr = Array.from(files).filter(function(f){ return f.type === "application/pdf" || f.name.endsWith(".pdf"); });
+      if (!arr.length) { alert("No se encontraron PDFs."); return; }
 
-      // Mostrar progress panel
-      const prog = document.getElementById("bulk-labs-progress");
-      const res  = document.getElementById("bulk-labs-results");
+      var prog = document.getElementById("bulk-labs-progress");
+      var res  = document.getElementById("bulk-labs-results");
       prog.style.display = "block";
-      prog.innerHTML = \`<div style="font-size:13px;font-weight:700;color:#0e7490;margin-bottom:8px">⏳ Procesando \${arr.length} PDF\${arr.length>1?"s":""}...</div>\`;
+      prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#0e7490'>Procesando " + arr.length + " PDF(s)...</div>";
       res.innerHTML = "";
 
-      let done = 0;
-      const results = [];
+      var done = 0;
+      var results = [];
 
       function updateProgress() {
-        prog.innerHTML = \`<div style="font-size:13px;font-weight:700;color:#0e7490;margin-bottom:6px">
-          ⏳ Procesando... \${done} / \${arr.length}</div>
-          <div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">
-            <div style="background:#0e7490;height:100%;width:\${Math.round(done/arr.length*100)}%;transition:width .3s"></div>
-          </div>\`;
+        var pct = Math.round(done / arr.length * 100);
+        prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#0e7490;margin-bottom:6px'>Procesando... " + done + " / " + arr.length + "</div>" +
+          "<div style='background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden'><div style='background:#0e7490;height:100%;width:" + pct + "%;transition:width .3s'></div></div>";
       }
 
-      // Procesar en paralelo (máx 3 a la vez para no saturar)
-      function processFile(file) {
-        return new Promise(async (resolve) => {
-          try {
-            const base64 = await new Promise((res2, rej2) => {
-              const r = new FileReader();
-              r.onload = () => res2(r.result.split(",")[1]);
-              r.onerror = rej2;
-              r.readAsDataURL(file);
-            });
-
-            const resp = await fetch(proxyUrl + "/api/ai", {
-              method: "POST",
-              headers: { ...apiHeaders() },
-              body: JSON.stringify({
-                model: "claude-sonnet-4-20250514",
-                max_tokens: 1000,
-                messages: [{
-                  role: "user", content: [
-                    { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
-                    { type: "text", text: "Extrae TODOS los valores de laboratorio de este PDF. Responde SOLO con JSON válido sin markdown:\n" +
-                      "{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\"," +
-                      "\"mg\":\"\",\"ca\":\"\",\"p\":\"\",\"cl\":\"\"," +
-                      "\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\"," +
-                      "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\"," +
-                      "\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\"," +
-                      "\"paciente\":\"\",\"fecha_labs\":\"\"}" +
-                      "\nReglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE (tal como aparece en el reporte). Si un valor no existe, dejar \"\"." +
-                      "\nMapeo: Hb=hemoglobina,leucos=leucocitos/WBC,plaq=plaquetas,cr=creatinina,glu=glucosa,na=sodio,k=potasio,alb=albumina,pcr=proteína C reactiva,pct=procalcitonina,inr=INR,urea=BUN/urea,mg=magnesio,ca=calcio,p=fósforo,cl=cloro,tp=tiempo protrombina,ttp=tromboplastina parcial,fibrinogeno=fibrinógeno,ast=TGO/AST,alt=TGP/ALT,bt=bilirrubina total,bd=bilirrubina directa,ggt=gamma GT,ph=pH,pco2=pCO2,po2=pO2,hco3=bicarbonato,be=exceso base,sato2=SatO2."
-                    }
-                  ]
-                }]
-              })
-            });
-
-            const data = await resp.json();
-            const txt = (data.content?.[0]?.text || "{}");
-            const extracted = JSON.parse(txt.replace(/```[a-z]*/g,"").replace(/```/g,"").trim());
-            resolve({ file: file.name, extracted, error: null });
-          } catch(e) {
-            resolve({ file: file.name, extracted: null, error: e.message || String(e) });
-          }
-        });
-      }
-
-      // Match extracted paciente name to our patients list
       function normName(s) {
-        return (s||"").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9]/g," ").replace(/\s+/g," ").trim();
+        return (s || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9]/g," ").replace(/\s+/g," ").trim();
       }
+
       function matchPatient(extractedName) {
         if (!extractedName) return null;
-        const en = normName(extractedName);
-        const enTokens = en.split(" ").filter(Boolean);
-        let best = null, bestScore = 0;
-        for (const p of patients) {
-          const pn = normName(p.nombre);
-          const pTokens = pn.split(" ").filter(Boolean);
-          // Count matching tokens
-          const common = enTokens.filter(t => t.length > 2 && pTokens.includes(t));
-          const score = common.length;
-          if (score > bestScore) { bestScore = score; best = p; }
-        }
+        var en = normName(extractedName);
+        var enTokens = en.split(" ").filter(function(t){ return t.length > 2; });
+        var best = null, bestScore = 0;
+        patients.forEach(function(p) {
+          var pTokens = normName(p.nombre).split(" ");
+          var common = enTokens.filter(function(t){ return pTokens.indexOf(t) >= 0; });
+          if (common.length > bestScore) { bestScore = common.length; best = p; }
+        });
         return bestScore >= 2 ? best : null;
       }
 
-      // Run with concurrency 3
-      async function runAll() {
-        const chunks = [];
-        for (let i = 0; i < arr.length; i += 3) chunks.push(arr.slice(i, i+3));
-        for (const chunk of chunks) {
-          const chunkResults = await Promise.all(chunk.map(processFile));
-          chunkResults.forEach(r => { done++; results.push(r); updateProgress(); });
-        }
+      function processFile(file) {
+        return new Promise(function(resolve) {
+          var r = new FileReader();
+          r.onerror = function(){ resolve({ file: file.name, extracted: null, error: "Error leyendo archivo" }); };
+          r.onload = function() {
+            var base64 = r.result.split(",")[1];
+            var prompt = 'Extrae TODOS los valores de laboratorio de este PDF. Responde SOLO con JSON valido sin markdown:\n{"hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","paciente":"","fecha_labs":""}\nReglas: valores numericos sin unidades, fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece. Si no existe dejar "".';
+            fetch(proxyUrl + "/api/ai", {
+              method: "POST",
+              headers: apiHeaders(),
+              body: JSON.stringify({
+                model: "claude-sonnet-4-20250514",
+                max_tokens: 1000,
+                messages: [{ role: "user", content: [
+                  { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+                  { type: "text", text: prompt }
+                ]}]
+              })
+            })
+            .then(function(resp){ return resp.json(); })
+            .then(function(data) {
+              var txt = (data.content && data.content[0] && data.content[0].text) || "{}";
+              var extracted = JSON.parse(txt.replace(/```[a-z]*/g,"").replace(/```/g,"").trim());
+              resolve({ file: file.name, extracted: extracted, error: null });
+            })
+            .catch(function(e){ resolve({ file: file.name, extracted: null, error: String(e) }); });
+          };
+          r.readAsDataURL(file);
+        });
+      }
 
-        // Now assign labs to patients
-        let successCount = 0;
-        let rows = "";
-        results.forEach(r => {
+      function finish() {
+        var successCount = 0;
+        var rows = "";
+        results.forEach(function(r) {
           if (r.error) {
-            rows += \`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px">
-              <span style="font-size:18px">❌</span>
-              <div><div style="font-weight:600;color:#991b1b">\${esc(r.file)}</div><div style="color:#b91c1c">\${esc(r.error)}</div></div>
-            </div>\`;
+            rows += "<div style='padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px'><b style='color:#991b1b'>Error:</b> " + esc(r.file) + " — " + esc(r.error) + "</div>";
             return;
           }
-          const ex = r.extracted;
-          const pName = ex.paciente || "";
-          const matched = matchPatient(pName);
+          var ex = r.extracted;
+          var matched = matchPatient(ex.paciente || "");
           if (matched) {
-            const k = pid(matched);
-            const nd = getNote(k);
-            const fecha = ex.fecha_labs || todayStr();
-            let snap = nd.labHistory.find(s => s.fecha === fecha);
-            if (!snap) { snap = { fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
-            snap.labs = { ...(snap.labs||{}), ...ex };
+            var k = pid(matched);
+            var nd = getNote(k);
+            var fecha = ex.fecha_labs || todayStr();
+            var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
+            if (!snap) { snap = { fecha: fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+            snap.labs = Object.assign({}, snap.labs, ex);
             activeLabDate[k] = fecha;
             noteData[k] = nd;
             saveNote(k, nd);
             successCount++;
-            rows += \`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac;margin-bottom:6px;font-size:12px">
-              <span style="font-size:18px">✅</span>
-              <div style="flex:1">
-                <div style="font-weight:700;color:#166534">\${esc(matched.cama)} · \${esc(matched.nombre)}</div>
-                <div style="color:#15803d">\${pName ? "Identificado como: " + esc(pName) : ""} · \${esc(fecha)}</div>
-              </div>
-            </div>\`;
+            rows += "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac;margin-bottom:6px;font-size:12px'><span style='font-size:18px'>✅</span><div><div style='font-weight:700;color:#166534'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div><div style='color:#15803d'>" + (ex.paciente ? "Detectado: " + esc(ex.paciente) : "") + (ex.fecha_labs ? " &middot; " + esc(ex.fecha_labs) : "") + "</div></div></div>";
           } else {
-            rows += \`<div style="display:flex;align-items:start;gap:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px">
-              <span style="font-size:18px">⚠️</span>
-              <div style="flex:1">
-                <div style="font-weight:600;color:#92400e">No encontrado en censo</div>
-                <div style="color:#b45309">PDF: \${esc(r.file)}</div>
-                <div style="color:#78350f">Paciente en PDF: <b>\${esc(pName||"(no detectado)")}</b></div>
-              </div>
-            </div>\`;
+            rows += "<div style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px'><b style='color:#92400e'>No encontrado en censo:</b> <b>" + esc((ex && ex.paciente) || "(no detectado)") + "</b><br><span style='color:#78350f;font-size:11px'>Archivo: " + esc(r.file) + "</span></div>";
           }
         });
-
-        prog.innerHTML = \`<div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:8px">
-          ✅ Listo: \${successCount} asignados · \${results.length - successCount} sin asignar</div>\`;
+        prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#166534;padding:8px 0'>Listo: " + successCount + " asignados &middot; " + (results.length - successCount) + " sin asignar.</div>";
         res.innerHTML = rows;
         if (successCount > 0) renderView();
       }
 
-      runAll();
+      function runBatch(i) {
+        if (i >= arr.length) { finish(); return; }
+        var batch = arr.slice(i, i + 3);
+        Promise.all(batch.map(processFile)).then(function(batchResults) {
+          batchResults.forEach(function(r){ done++; results.push(r); });
+          updateProgress();
+          runBatch(i + 3);
+        });
+      }
+      runBatch(0);
     }
 
 
