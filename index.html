@@ -488,6 +488,44 @@ select.modal-input{background:#fff}
   </div>
 </div>
 
+<!-- PROCEDURE MODAL -->
+<div class="modal-bg" id="proc-modal" style="display:none">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-header">
+      <div class="modal-title" id="proc-modal-title">🔬 Agregar Procedimiento</div>
+      <button class="modal-close" onclick="closeProcModal()">✕</button>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+      <div style="display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center">
+        <label style="font-size:12px;font-weight:700;color:#374151">Cama</label>
+        <input id="pf-cama" placeholder="EXT, RECU, 3-155..." style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:var(--font)"/>
+        <label style="font-size:12px;font-weight:700;color:#374151">Expediente</label>
+        <input id="pf-exp" placeholder="22-12345" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:var(--font)"/>
+        <label style="font-size:12px;font-weight:700;color:#374151">Nombre</label>
+        <input id="pf-nombre" placeholder="APELLIDO1 APELLIDO2 NOMBRE" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:var(--font);text-transform:uppercase"/>
+        <label style="font-size:12px;font-weight:700;color:#374151">Edad</label>
+        <input id="pf-edad" type="number" placeholder="45" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:var(--font);width:80px"/>
+        <label style="font-size:12px;font-weight:700;color:#374151">Diagnóstico</label>
+        <textarea id="pf-dx" rows="3" placeholder="DIAGNÓSTICO + PO PROCEDIMIENTO" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:var(--font);resize:vertical;text-transform:uppercase"></textarea>
+        <label style="font-size:12px;font-weight:700;color:#374151">Especialidad</label>
+        <select id="pf-esp" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:var(--font)">
+          <option value="CG">CG</option><option value="CCR">CCR</option><option value="URO">URO</option><option value="CT">CT</option><option value="CTV">CTV</option><option value="NCX">NCX</option><option value="CMF">CMF</option><option value="CPR">CPR</option><option value="ONCOCX">ONCOCX</option><option value="GYO">GYO</option><option value="CV">CV</option><option value="ENDOS">ENDOS</option><option value="OTRO">OTRO</option>
+        </select>
+        <label style="font-size:12px;font-weight:700;color:#374151">Adscrito</label>
+        <input id="pf-adscrito" list="dl-ads-proc" placeholder="APELLIDO" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:var(--font);text-transform:uppercase"/>
+        <datalist id="dl-ads-proc"></datalist>
+        <label style="font-size:12px;font-weight:700;color:#374151">Residente</label>
+        <input id="pf-residente" list="dl-res-proc" placeholder="APELLIDO" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:var(--font);text-transform:uppercase"/>
+        <datalist id="dl-res-proc"></datalist>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeProcModal()">Cancelar</button>
+      <button class="btn-save" id="proc-save-btn" onclick="saveProcModal()">✓ Agregar procedimiento</button>
+    </div>
+  </div>
+</div>
+
 <!-- IMPORT MODAL -->
 <div class="modal-bg" id="import-modal" style="display:none">
   <div class="modal-box" style="max-width:760px">
@@ -665,6 +703,7 @@ let _suppressRealtime = false;  // flag to prevent Realtime from fighting local 
 const EXCEL_TEMPLATE_KEY = "hgl-export-template-b64";
 const ARCHIVE_KEY   = "pl_archive_v1";    // pacientes egresados/archivados
 const SNAPSHOT_KEY  = "pl_snapshots_v1";  // cortes de guardia
+const PROCS_KEY     = "pl_procedimientos_v1"; // procedimientos del día
 
 // Camas que admiten múltiples pacientes sin considerarse "duplicado"
 // (pacientes externos, ambulatorios, pasillos, espera, etc.)
@@ -718,6 +757,7 @@ let pendingSyncs = 0;   // contador de operaciones en curso
 let exportTemplateBuffer = null;
 let archivados = [];    // pacientes egresados (no se borran, se archivan)
 let snapshots  = [];    // cortes de guardia guardados
+let procedimientos = []; // procedimientos del día (no necesitan notas clínicas)
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────────
 // ── Motivational Quotes ──────────────────────────────────────────────────
@@ -1442,6 +1482,7 @@ async function init(){
   // Cargar archivados y snapshots
   try{ archivados = JSON.parse(localStorage.getItem(ARCHIVE_KEY)||"[]"); }catch(e){ archivados=[]; }
   try{ snapshots  = JSON.parse(localStorage.getItem(SNAPSHOT_KEY)||"[]"); }catch(e){ snapshots=[]; }
+  try{ procedimientos = JSON.parse(localStorage.getItem(PROCS_KEY)||"[]"); }catch(e){ procedimientos=[]; }
 
   const today = new Date();
   document.getElementById("gi-fecha").value = today.toLocaleDateString("es-MX",{day:"2-digit",month:"2-digit",year:"numeric"});
@@ -3074,8 +3115,9 @@ function renderCensus(pts){
     +(selectedResidente!=="ALL"||selectedAdscrito!=="ALL"
       ?"<button onclick=\"quitarFiltrosCenso()\" style=\"background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;color:#475569\">✕ Quitar filtros</button>"
       :"")
+    +"<button onclick=\"openProcModal()\" style=\"background:#7c3aed;color:#fff;border:none;border-radius:7px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);margin-left:auto\">🔬 Agregar procedimiento</button>"
     +"</div>";
-  document.getElementById("view-census").innerHTML = _fb+html;
+  document.getElementById("view-census").innerHTML = _fb+html+renderProcSection();
 }
 
 // ─── PRINT / ENTREGA VIEW ─────────────────────────────────────────────────────────
@@ -3104,6 +3146,14 @@ function renderPrint(pts){
   }
   function prSort(c){const s=String(c||""),m=s.match(/^(\d+)-(\d+)$/);if(m)return parseInt(m[1])*10000+parseInt(m[2]);const u=s.match(/^UCI\s*(\d+)$/i);if(u)return parseInt(u[1]);return 9999;}
   const bySec={};pts.forEach(p=>{const s=prSec(p);if(!bySec[s])bySec[s]=[];bySec[s].push(p);});
+  // Inject procedimientos del día
+  if(procedimientos.length){
+    if(!bySec["procedimientos"])bySec["procedimientos"]=[];
+    procedimientos.forEach(pr=>{
+      const isDup=bySec["procedimientos"].some(x=>x.exp&&pr.exp&&x.exp===pr.exp&&x.nombre===pr.nombre);
+      if(!isDup) bySec["procedimientos"].push({...pr, estado:"ESTABLE", ingreso:""});
+    });
+  }
 
   let totalPx=0,sectionsHtml="";
   PR_SECTIONS.forEach(sec=>{
@@ -4781,12 +4831,15 @@ function handleXlsxImport(input){
       let summaryExtra = "";
       if(autoAltas > 0) summaryExtra += ` · <span style="color:#15803d;font-weight:600">✅ ${autoAltas} alta${autoAltas>1?"s":""} (detectadas del Excel)</span>`;
       if(autoDef > 0) summaryExtra += ` · <span style="color:#7f1d1d;font-weight:600">💔 ${autoDef} defunción${autoDef>1?"es":""} (detectadas del Excel)</span>`;
+      const procInfo = procedimientosFromExcel.length > 0
+        ? ` &nbsp;·&nbsp; <span style="color:#4a3580;font-weight:600">🔬 ${procedimientosFromExcel.length} procedimientos</span>`
+        : "";
       document.getElementById("import-summary").innerHTML =
         `<strong>Nuevo censo: ${totalNuevo} pacientes</strong> &nbsp;·&nbsp; ` +
         `<span style="color:#166534;font-weight:600">➕ ${newPts.length} nuevos</span> &nbsp;·&nbsp; ` +
         `<span style="color:#854d0e;font-weight:600">🔁 ${samePts.length} actualizados</span> &nbsp;·&nbsp; ` +
         `<span style="color:#991b1b;font-weight:600">🔄 ${changedPts.length} camas con cambio</span>` +
-        summaryExtra +
+        summaryExtra + procInfo +
         (manualMissing>0 ? ` &nbsp;·&nbsp; <span style="color:#78350f;font-weight:600">⚠️ ${manualMissing} sin clasificar</span>` : "");
 
       // ─── SECCIÓN: CAMAS CON CAMBIO ────────────────────────────────────
@@ -4908,7 +4961,7 @@ function setDisposition(k, sel){
 
 function confirmImport(){
   if(!pendingImport) return;
-  const {samePts, changedPts, newPts, missingPts, dispositions} = pendingImport;
+  const {samePts, changedPts, newPts, missingPts, dispositions, procedimientosFromExcel} = pendingImport;
 
   // El nuevo censo Excel ES la fuente de verdad.
   // Construimos el nuevo array de patients desde cero.
@@ -4968,6 +5021,20 @@ function confirmImport(){
   // Reemplazar el array global completamente
   patients = nextPatients;
 
+  // Import procedimientos from Excel if present
+  if(procedimientosFromExcel && procedimientosFromExcel.length){
+    const existingNames = new Set(procedimientos.map(p=>p.nombre));
+    let added = 0;
+    procedimientosFromExcel.forEach(pr=>{
+      if(!existingNames.has(pr.nombre)){
+        procedimientos.push({...pr, _addedAt: new Date().toISOString()});
+        existingNames.add(pr.nombre);
+        added++;
+      }
+    });
+    if(added) saveProcs();
+  }
+
   savePts();
   pendingImport = null;
   document.getElementById("import-modal").style.display = "none";
@@ -4979,8 +5046,9 @@ function confirmImport(){
   const origHTML = banner.innerHTML;
   const total = patients.length;
   const sinCenso = patients.filter(p=>p._noEnCenso).length;
+  const procCount = procedimientosFromExcel ? procedimientosFromExcel.length : 0;
   banner.innerHTML = `<div class="icon">✅</div><div class="text">
-    <strong>¡Nuevo censo aplicado! ${total} pacientes cargados${sinCenso?` · ⚠️ ${sinCenso} sin censo`:""}</strong>
+    <strong>¡Nuevo censo aplicado! ${total} pacientes cargados${sinCenso?` · ⚠️ ${sinCenso} sin censo`:""}${procCount?` · 🔬 ${procCount} procedimientos`:""}</strong>
     <span>Plantilla actualizada. Haz clic para cargar otro archivo.</span>
   </div>`;
   banner.style.borderColor = "#27ae60";
@@ -4988,12 +5056,109 @@ function confirmImport(){
   setTimeout(()=>{ banner.innerHTML = origHTML; banner.style.borderColor=""; banner.style.background=""; }, 4000);
 }
 
+// ─── PROCEDIMIENTOS DEL DÍA ─────────────────────────────────────────────────
+function saveProcs(){
+  try{ localStorage.setItem(PROCS_KEY, JSON.stringify(procedimientos)); }catch(e){}
+}
+let _procEditIdx = -1;
+function openProcModal(editIdx){
+  _procEditIdx = typeof editIdx === "number" ? editIdx : -1;
+  const isEdit = _procEditIdx >= 0;
+  document.getElementById("proc-modal-title").textContent = isEdit ? "✏️ Editar Procedimiento" : "🔬 Agregar Procedimiento";
+  document.getElementById("proc-save-btn").textContent = isEdit ? "✓ Guardar cambios" : "✓ Agregar procedimiento";
+  // Fill datalists
+  const a=[...new Set(patients.map(p=>p.adscrito||"").filter(Boolean))].sort();
+  const r=[...new Set(patients.map(p=>p.residente||"").filter(Boolean))].sort();
+  const dA=document.getElementById("dl-ads-proc"); if(dA) dA.innerHTML=a.map(x=>"<option value='"+esc(x)+"'>").join("");
+  const dR=document.getElementById("dl-res-proc"); if(dR) dR.innerHTML=r.map(x=>"<option value='"+esc(x)+"'>").join("");
+  if(isEdit){
+    const pr = procedimientos[_procEditIdx];
+    document.getElementById("pf-cama").value = pr.cama||"";
+    document.getElementById("pf-exp").value = pr.exp||"";
+    document.getElementById("pf-nombre").value = pr.nombre||"";
+    document.getElementById("pf-edad").value = pr.edad||"";
+    document.getElementById("pf-dx").value = pr.dx||"";
+    document.getElementById("pf-esp").value = pr.esp||"CG";
+    document.getElementById("pf-adscrito").value = pr.adscrito||"";
+    document.getElementById("pf-residente").value = pr.residente||"";
+  } else {
+    ["pf-cama","pf-exp","pf-nombre","pf-edad","pf-dx","pf-adscrito","pf-residente"].forEach(id=>{
+      document.getElementById(id).value="";
+    });
+    document.getElementById("pf-esp").value = "CG";
+  }
+  document.getElementById("proc-modal").style.display = "flex";
+}
+function closeProcModal(){ document.getElementById("proc-modal").style.display = "none"; _procEditIdx = -1; }
+function saveProcModal(){
+  const cama = document.getElementById("pf-cama").value.trim().toUpperCase()||"EXT";
+  const exp = document.getElementById("pf-exp").value.trim();
+  const nombre = document.getElementById("pf-nombre").value.trim().toUpperCase();
+  if(!nombre){ alert("El nombre es obligatorio."); return; }
+  const proc = {
+    cama, exp, nombre,
+    edad: parseInt(document.getElementById("pf-edad").value)||"",
+    dx: document.getElementById("pf-dx").value.trim().toUpperCase(),
+    esp: document.getElementById("pf-esp").value,
+    adscrito: document.getElementById("pf-adscrito").value.trim().toUpperCase(),
+    residente: document.getElementById("pf-residente").value.trim().toUpperCase(),
+    _addedAt: new Date().toISOString()
+  };
+  if(_procEditIdx >= 0){
+    procedimientos[_procEditIdx] = {...procedimientos[_procEditIdx], ...proc};
+  } else {
+    procedimientos.push(proc);
+  }
+  saveProcs();
+  closeProcModal();
+  renderView();
+}
+function deleteProc(idx){
+  if(!confirm("¿Eliminar este procedimiento?")) return;
+  procedimientos.splice(idx, 1);
+  saveProcs();
+  renderView();
+}
+function clearAllProcs(){
+  if(!confirm(`¿Eliminar los ${procedimientos.length} procedimientos del día? Esta acción no se puede deshacer.`)) return;
+  procedimientos = [];
+  saveProcs();
+  renderView();
+}
+function renderProcSection(){
+  let rows = "";
+  if(procedimientos.length){
+    procedimientos.forEach((pr, idx)=>{
+      const col = ESP_COLORS[pr.esp]||"#333";
+      rows += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-weight:700;color:${col};min-width:55px;font-size:13px">${esc(pr.cama)}</span>
+        <span style="flex:1;font-weight:600;font-size:13px;min-width:140px">${esc(pr.nombre)}</span>
+        <span style="font-size:11px;color:#64748b">${pr.edad?pr.edad+"a":""} · ${esc(pr.esp)}</span>
+        <span style="font-size:11px;color:#475569;flex:2;min-width:200px">${esc((pr.dx||"").slice(0,80))}${(pr.dx||"").length>80?"…":""}</span>
+        <span style="font-size:10px;color:#94a3b8">${esc(pr.adscrito||"")}${pr.residente?" / "+esc(pr.residente):""}</span>
+        <button onclick="openProcModal(${idx})" style="background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">✏️</button>
+        <button onclick="deleteProc(${idx})" style="background:#dc2626;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">✕</button>
+      </div>`;
+    });
+  } else {
+    rows = `<div style="text-align:center;color:#94a3b8;padding:12px 0;font-size:12px">Sin procedimientos registrados — usa el botón para agregar</div>`;
+  }
+  return `<div style="margin-top:16px;border-top:2px solid #7c3aed;padding-top:12px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="font-size:14px;font-weight:800;color:#4a3580">🔬 Procedimientos del día — ${procedimientos.length}</span>
+      <button onclick="openProcModal()" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">+ Agregar</button>
+      ${procedimientos.length ? `<button onclick="clearAllProcs()" style="margin-left:auto;background:none;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:2px 10px;font-size:11px;cursor:pointer;font-family:var(--font)">🗑 Vaciar</button>` : ""}
+    </div>
+    ${rows}
+  </div>`;
+}
+
 function resetCenso(){
   if(!confirm("⚠️ ¿Seguro que quieres reiniciar?\n\nEsto borrará TODOS los datos del censo local (pacientes, notas y labs) y cargará el censo base del archivo.\n\nEsta acción no se puede deshacer.")) return;
   // Limpiar localStorage
   try{
     Object.keys(localStorage).forEach(k=>{
-      if(k.startsWith("censo-") || k.startsWith("note-") || k===EXCEL_TEMPLATE_KEY || k===ARCHIVE_KEY || k===SNAPSHOT_KEY || k===OUTBOX_KEY) localStorage.removeItem(k);
+      if(k.startsWith("censo-") || k.startsWith("note-") || k===EXCEL_TEMPLATE_KEY || k===ARCHIVE_KEY || k===SNAPSHOT_KEY || k===OUTBOX_KEY || k===PROCS_KEY) localStorage.removeItem(k);
     });
   }catch(e){}
   patients = [...DEFAULT_CENSO];
@@ -5058,6 +5223,15 @@ function exportToExcel(){
   }
   const bySection = {};
   patients.forEach(p=>{ const sid = exGetSection(p); if(!bySection[sid]) bySection[sid]=[]; bySection[sid].push(p); });
+  // Inject procedimientos del día into the procedimientos section
+  if(procedimientos.length){
+    if(!bySection["procedimientos"]) bySection["procedimientos"]=[];
+    procedimientos.forEach(pr=>{
+      // Avoid duplicates: don't add if same exp already in procedimientos section
+      const isDup = bySection["procedimientos"].some(x=>x.exp && pr.exp && x.exp===pr.exp && x.nombre===pr.nombre);
+      if(!isDup) bySection["procedimientos"].push({...pr, estado:"ESTABLE", ingreso:""});
+    });
+  }
 
   // ── Colores según spec ──
   const NAVY = "FF001746";
@@ -5881,7 +6055,7 @@ document.addEventListener("keydown", function(e){
 
   // Escape — cerrar modales abiertos
   if(e.key === "Escape"){
-    const modals = ["patient-modal","confirm-modal","import-modal","config-modal","syscfg-modal","note-modal-overlay"];
+    const modals = ["patient-modal","confirm-modal","import-modal","config-modal","syscfg-modal","note-modal-overlay","proc-modal"];
     modals.forEach(id=>{
       const el=document.getElementById(id);
       if(el&&el.style.display!=="none"&&el.style.display!==""){
