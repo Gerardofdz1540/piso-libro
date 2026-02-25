@@ -7831,7 +7831,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       var p = patients.find(function(pt){ return pid(pt) === k; });
       if (!p) return;
       var parts = (p.nombre || "").trim().split(/\s+/);
-      var apellido = parts[0] || "";
+      // Formato real: NOMBRE APELLIDO1 APELLIDO2 → copiar ambos apellidos
+      var apellido = [parts[1], parts[2]].filter(Boolean).join(" ");
       navigator.clipboard.writeText(apellido).catch(function(){});
       window.open(WINLAB_SEARCH_URL, "winlabweb");
       showWinLabToast(apellido);
