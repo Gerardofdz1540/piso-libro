@@ -5190,7 +5190,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           headers: { ...apiHeaders() },
           body: JSON.stringify({
             model: "claude-sonnet-4-20250514",
-            max_tokens: 1000,
+            max_tokens: 4000,
             messages: [{
               role: "user", content: [
                 contentBlock,
@@ -5244,10 +5244,18 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const targetFecha = extracted.fecha_labs || activeLabDate[k] || todayStr();
         let snap = nd.labHistory.find(s => s.fecha === targetFecha);
         if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+        // Filter out empty strings and meta fields before saving
+        const labFields = ["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","inr","urea",
+          "mg","ca","p","cl","tp","ttp","fibrinogeno","ast","alt","bt","bd","ggt",
+          "ph","pco2","po2","hco3","be","sato2"];
+        const hasValues = labFields.some(f => extracted[f] && String(extracted[f]).trim() !== "");
         snap.labs = { ...(snap.labs || {}), ...extracted };
         activeLabDate[k] = targetFecha;
         noteData[k] = nd;
         saveNote(k, nd);
+        if (!hasValues) {
+          alert("⚠️ El PDF se procesó pero no se encontraron valores de laboratorio.\n\nVerifica que el PDF sea un reporte de WinLab con resultados y no una solicitud vacía.");
+        }
 
       } catch (e) { alert("Error al procesar: " + (e.message || e)); }
       labLoadingSet.delete(k); renderView();
@@ -7900,7 +7908,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               headers: apiHeaders(),
               body: JSON.stringify({
                 model: "claude-sonnet-4-20250514",
-                max_tokens: 1000,
+                max_tokens: 4000,
                 messages: [{ role: "user", content: [
                   { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
                   { type: "text", text: prompt }
