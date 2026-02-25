@@ -4408,37 +4408,7 @@
       if (!est.file) return;
       if (est.file_type && est.file_type.startsWith('image/')) {
         const w = window.open('', '_blank');
-        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${est.file_type};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/>
-  <!-- BULK LABS MODAL -->
-  <div class="modal-bg" id="bulk-labs-modal" style="display:none" onclick="if(event.target===this)closeBulkLabsModal()">
-    <div class="modal-box" style="max-width:700px;max-height:90vh;overflow-y:auto">
-      <div class="modal-header">
-        <div class="modal-title">📦 Carga Masiva de Labs — WinLab</div>
-        <button class="modal-close" onclick="closeBulkLabsModal()">✕</button>
-      </div>
-      <p style="font-size:12px;color:#64748b;margin:0 0 12px">
-        Selecciona <strong>todos los PDFs</strong> descargados de WinLab. La IA leerá cada uno, identificará al paciente y llenará sus labs automáticamente.
-      </p>
-      <!-- Drop zone -->
-      <div id="bulk-drop-zone" style="border:2px dashed #94a3b8;border-radius:10px;padding:28px;text-align:center;cursor:pointer;background:#f8fafc;transition:all .2s"
-        onclick="document.getElementById('bulk-pdf-input').click()"
-        ondragover="event.preventDefault();this.style.borderColor='#0e7490';this.style.background='#ecfeff'"
-        ondragleave="this.style.borderColor='#94a3b8';this.style.background='#f8fafc'"
-        ondrop="event.preventDefault();this.style.borderColor='#94a3b8';this.style.background='#f8fafc';handleBulkDrop(event.dataTransfer.files)">
-        <div style="font-size:36px;margin-bottom:8px">📄</div>
-        <div style="font-weight:700;font-size:14px;color:#334155">Clic o arrastra los PDFs aquí</div>
-        <div style="font-size:12px;color:#64748b;margin-top:4px">Puedes seleccionar múltiples archivos a la vez</div>
-      </div>
-      <input type="file" id="bulk-pdf-input" accept="application/pdf" multiple style="display:none"
-        onchange="handleBulkLabsFiles(this.files)"/>
-      <!-- Progress -->
-      <div id="bulk-labs-progress" style="margin-top:14px;display:none"></div>
-      <!-- Results -->
-      <div id="bulk-labs-results" style="margin-top:10px"></div>
-    </div>
-  </div>
-
-</body></html>`);
+        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${est.file_type};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
         w.document.close();
       } else {
         const bytes = atob(est.file); const arr = new Uint8Array(bytes.length);
@@ -7831,8 +7801,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       var p = patients.find(function(pt){ return pid(pt) === k; });
       if (!p) return;
       var parts = (p.nombre || "").trim().split(/\s+/);
-      // Formato real: NOMBRE APELLIDO1 APELLIDO2 → copiar ambos apellidos
-      var apellido = [parts[1], parts[2]].filter(Boolean).join(" ");
+      // Siempre tomar las ULTIMAS 2 palabras = apellidos (independiente de cuantos nombres haya)
+      var apellido = parts.slice(-2).join(" ");
       navigator.clipboard.writeText(apellido).catch(function(){});
       window.open(WINLAB_SEARCH_URL, "winlabweb");
       showWinLabToast(apellido);
@@ -8692,6 +8662,29 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
 
 
   </script>
+
+  <!-- BULK LABS MODAL -->
+  <div class="modal-bg" id="bulk-labs-modal" style="display:none" onclick="if(event.target===this)closeBulkLabsModal()">
+    <div class="modal-box" style="max-width:700px;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <div class="modal-title">📦 Carga Masiva de Labs</div>
+        <button class="modal-close" onclick="closeBulkLabsModal()">✕</button>
+      </div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 12px">Selecciona todos los PDFs descargados de WinLab. La IA leera cada uno, identificara al paciente y llenara sus labs automaticamente.</p>
+      <div id="bulk-drop-zone" style="border:2px dashed #94a3b8;border-radius:10px;padding:28px;text-align:center;cursor:pointer;background:#f8fafc;transition:all .2s"
+        onclick="document.getElementById('bulk-pdf-input').click()"
+        ondragover="event.preventDefault();this.style.borderColor='#0e7490';this.style.background='#ecfeff'"
+        ondragleave="this.style.borderColor='#94a3b8';this.style.background='#f8fafc'"
+        ondrop="event.preventDefault();this.style.borderColor='#94a3b8';this.style.background='#f8fafc';handleBulkDrop(event.dataTransfer.files)">
+        <div style="font-size:36px;margin-bottom:8px">📄</div>
+        <div style="font-weight:700;font-size:14px;color:#334155">Clic o arrastra los PDFs aqui</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">Puedes seleccionar multiples archivos a la vez</div>
+      </div>
+      <input type="file" id="bulk-pdf-input" accept="application/pdf" multiple style="display:none" onchange="handleBulkLabsFiles(this.files)"/>
+      <div id="bulk-labs-progress" style="margin-top:14px;display:none"></div>
+      <div id="bulk-labs-results" style="margin-top:10px"></div>
+    </div>
+  </div>
 </body>
 
 </html>
