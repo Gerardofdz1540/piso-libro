@@ -1189,7 +1189,10 @@ function saveNote(key, data){
       const res = await supaUpsertNote(p._supa_id, d);
       pendingSyncs--;
       if(!res) outboxEnqueue({type:"note", key:k, data:d});
-      if(pendingSyncs===0) setSyncStatus(res?"synced":"error", res?"Sincronizado":"Error en sync");
+      if(pendingSyncs===0){
+        if(res) setSyncStatus("synced","Sincronizado");
+        else setSyncProblemStatus();
+      }
     }, 600);
   }
   _noteDebounceMap[key](key, data);
@@ -1228,7 +1231,10 @@ async function _savePtsImmediate(){
         }
         lsSavePatients(patients);
         pendingSyncs--;
-        if(pendingSyncs===0) setSyncStatus(ok2?"synced":"error", ok2?"Sincronizado":"Error — verifica conexión");
+        if(pendingSyncs===0){
+          if(ok2) setSyncStatus("synced","Sincronizado");
+          else setSyncProblemStatus();
+        }
       }, 3000);
     }
   }
@@ -1350,7 +1356,7 @@ window.addEventListener("online", async ()=>{
   }
   setSyncStatus("synced","Reconectado");
 });
-window.addEventListener("offline", ()=>{ setSyncStatus("error","Sin conexión"); });
+window.addEventListener("offline", ()=>{ setSyncStatus("offline","Sin conexión"); });
 
 async function flushOutbox(){
   const q = outboxLoad(); if(!q.length) return;
@@ -1435,6 +1441,31 @@ function parseDate(str){
   if(p.length!==3) return new Date(0);
   const yr = p[2].length===2?"20"+p[2]:p[2];
   return new Date(`${yr}-${p[1]}-${p[0]}`);
+}
+function isRecentIngreso(ing, daysBack=1){
+  if(!ing) return false;
+  const d = parseDate(ing);
+  if(!(d instanceof Date) || isNaN(d)) return false;
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const from = new Date(today);
+  from.setDate(today.getDate()-daysBack);
+  return d >= from;
+}
+function parseLabNumber(v){
+  if(v===null || v===undefined) return NaN;
+  const s = String(v).trim().replace(",",".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+function setSyncProblemStatus(){
+  if(!navigator.onLine){
+    setSyncStatus("offline","Sin conexión");
+    return;
+  }
+  const pending = outboxLoad().length;
+  const suffix = pending ? " · "+pending+" pendiente"+(pending===1?"":"s") : "";
+  setSyncStatus("offline","Sync pendiente"+suffix);
 }
 function parseDmy(str){
   if(!str) return null;
@@ -1542,7 +1573,7 @@ function renderView(){
     const em = selectedEsp==="ALL"||p.esp===selectedEsp;
     const rm = selectedResidente==="ALL"||(p.residente||"")===selectedResidente;
     const am = selectedAdscrito==="ALL"||(p.adscrito||"")===selectedAdscrito;
-    const im = !showSoloIngresos||(function(){if(!p.ingreso)return false;var d=parseDate(p.ingreso),t=new Date();t.setHours(0,0,0,0);var y=new Date(t);y.setDate(t.getDate()-1);return d>=y;})();
+    const im = !showSoloIngresos || isRecentIngreso(p.ingreso);
     let sm = true;
     if(searchTokens.length > 0){
       const haystack = normSearch(p.nombre) + normSearch(p.cama) + normSearch(p.exp||"") + normSearch(p.adscrito||"") + normSearch(p.residente||"");
@@ -1595,8 +1626,9 @@ function renderPiso(pts){
     if(isSimple) html += renderSimpleCard(p,nd,k);
     else html += renderFullCard(p,nd,k);
   });
+  const specialAlertsHtml = renderSpecialAlertsPanel();
   document.getElementById("view-piso").innerHTML =
-    `<div id="piso-grid">${html}</div>` + renderFreeBeds();
+    specialAlertsHtml + `<div id="piso-grid">${html}</div>` + renderFreeBeds();
 }
 
 // ─── CAMAS LIBRES ────────────────────────────────────────────────────────────────
@@ -1748,15 +1780,156 @@ function bedMgrReset(){
 }
 
 // ─── ALERTAS OPERATIVAS ───────────────────────────────────────────────────────────
+function hasAnyLabValues(snap){
+  return !!snap && Object.values(snap.labs||{}).some(v => v && String(v).trim() !== "");
+}
+function hasLabsOnDate(nd, fecha){
+  return (nd.labHistory||[]).some(s => s.fecha === fecha && hasAnyLabValues(s));
+}
+function getLatestLabSnapshot(nd){
+  const history = (nd.labHistory||[]).filter(s => s && s.fecha);
+  if(!history.length) return null;
+  return [...history].sort((a,b)=>String(b.fecha||"").localeCompare(String(a.fecha||"")))[0];
+}
+function getCriticalLabItemsFromSnapshot(snap){
+  const critical = [];
+  if(!snap || !snap.labs || !Array.isArray(LAB_FIELDS)) return critical;
+  LAB_FIELDS.forEach(lf=>{
+    const raw = snap.labs[lf.key];
+    if(raw===undefined || raw===null || String(raw).trim()==="") return;
+    const num = parseLabNumber(raw);
+    if(!Number.isFinite(num)) return;
+    const quick = LAB_QUICK && LAB_QUICK[lf.key] ? LAB_QUICK[lf.key](num) : null;
+    const byThreshold = (lf.cl!=null && num<=lf.cl) || (lf.ch!=null && num>=lf.ch);
+    if((quick && quick.sev==="crit") || byThreshold){
+      critical.push({
+        key: lf.key,
+        label: lf.label,
+        value: String(raw).trim(),
+        unit: lf.unit||"",
+        title: quick && quick.title ? quick.title : "Valor crítico"
+      });
+    }
+  });
+  return critical;
+}
+function isNptReminderDay(dateObj){
+  const d = dateObj || new Date();
+  const day = d.getDay();
+  return day===2 || day===4; // martes / jueves
+}
+function nptReminderDayLabel(dateObj){
+  const d = dateObj || new Date();
+  const day = d.getDay();
+  if(day===2) return "martes";
+  if(day===4) return "jueves";
+  return "";
+}
+function collectSpecialAlertsData(list){
+  const today = todayStr();
+  const nptDay = isNptReminderDay();
+  const nptPending = [];
+  const criticalCases = [];
+  let nptActive = 0;
+
+  list.forEach(p=>{
+    const k = pid(p);
+    const nd = migrateNote(noteData[k]||defaultData());
+
+    if(nd.checklist?.npt){
+      nptActive++;
+      if(nptDay && !hasLabsOnDate(nd, today)) nptPending.push({k, p});
+    }
+
+    const latestSnap = getLatestLabSnapshot(nd);
+    const critLabs = getCriticalLabItemsFromSnapshot(latestSnap);
+    if(critLabs.length){
+      criticalCases.push({k, p, fecha:latestSnap ? latestSnap.fecha : "", labs:critLabs});
+    }
+  });
+
+  criticalCases.sort((a,b)=>{
+    const rank = s => s==="GRAVE" ? 0 : s==="DELICADO" ? 1 : 2;
+    const byState = rank(a.p.estado||"") - rank(b.p.estado||"");
+    if(byState!==0) return byState;
+    if(b.labs.length!==a.labs.length) return b.labs.length-a.labs.length;
+    return String(a.p.cama||"").localeCompare(String(b.p.cama||""), undefined, {numeric:true, sensitivity:"base"});
+  });
+
+  return {today, nptDay, nptActive, nptPending, criticalCases};
+}
+function renderSpecialAlertsPanel(){
+  const data = collectSpecialAlertsData(patients);
+  const nptRows = data.nptPending.slice(0,8).map(x =>
+    `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px dashed #e9d5ff">
+      <span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(x.p.cama||"—")}</span>
+      <span style="font-size:11px;font-weight:600;color:#4c1d95">${esc(x.p.nombre||"")}</span>
+    </div>`
+  ).join("");
+
+  const criticalRows = data.criticalCases.slice(0,12).map(c=>{
+    const preview = c.labs.slice(0,3).map(l =>
+      `${esc(l.label)} ${esc(l.value)}${l.unit?" "+esc(l.unit):""}`
+    ).join(" · ");
+    const extra = c.labs.length>3 ? ` +${c.labs.length-3} más` : "";
+    const fecha = c.fecha ? fmtDateChip(c.fecha) : "s/f";
+    return `<div style="padding:8px 10px;border:1px solid #fecaca;border-radius:8px;background:#fff7f7;margin-top:6px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(c.p.cama||"—")}</span>
+        <span style="font-size:12px;font-weight:700;color:#7f1d1d">${esc(c.p.nombre||"")}</span>
+        <span style="font-size:10px;color:#991b1b;background:#fee2e2;border-radius:10px;padding:1px 8px">${esc(c.p.estado||"")}</span>
+        <span style="font-size:10px;color:#6b7280">Labs ${esc(fecha)}</span>
+      </div>
+      <div style="font-size:11px;color:#7f1d1d;margin-top:4px;line-height:1.45">🔴 ${preview}${extra}</div>
+    </div>`;
+  }).join("");
+
+  let nptBlock = `<div style="padding:8px 10px;border:1px solid #ddd6fe;border-radius:8px;background:#faf5ff">
+    <div style="font-size:12px;font-weight:700;color:#5b21b6">💉 Recordatorio NPT</div>
+    <div style="font-size:11px;color:#6d28d9;margin-top:3px">Los laboratorios de NPT se solicitan martes y jueves.</div>
+  </div>`;
+  if(data.nptDay){
+    nptBlock = `<div style="padding:8px 10px;border:1px solid #c4b5fd;border-radius:8px;background:#f5f3ff">
+      <div style="font-size:12px;font-weight:700;color:#5b21b6">📅 Hoy es ${esc(nptReminderDayLabel())}: solicitar laboratorios de NPT.</div>
+      <div style="font-size:11px;color:#6d28d9;margin-top:3px">Pacientes con NPT activo: <b>${data.nptActive}</b> · Pendientes de labs hoy: <b>${data.nptPending.length}</b></div>
+      ${data.nptPending.length ? `<div style="margin-top:6px">${nptRows}</div>` : `<div style="font-size:11px;color:#166534;margin-top:6px">✅ Todos los pacientes con NPT ya tienen labs de hoy.</div>`}
+    </div>`;
+  }
+
+  const criticalBlock = data.criticalCases.length
+    ? `<div style="padding:8px 10px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2;margin-top:8px">
+        <div style="font-size:12px;font-weight:700;color:#991b1b">🚨 Alertas críticas de laboratorios: ${data.criticalCases.length}</div>
+        <div style="font-size:11px;color:#7f1d1d;margin-top:3px">Valores críticos detectados en la última fecha de labs de cada paciente.</div>
+        ${criticalRows}
+      </div>`
+    : `<div style="padding:8px 10px;border:1px solid #86efac;border-radius:8px;background:#f0fdf4;margin-top:8px">
+        <div style="font-size:12px;font-weight:700;color:#166534">✅ Sin valores críticos detectados en labs recientes.</div>
+      </div>`;
+
+  return `<div style="margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px">
+    <div style="font-size:12px;font-weight:800;color:#334155;letter-spacing:.3px;margin-bottom:8px">🔔 Apartado especial de alertas</div>
+    ${nptBlock}
+    ${criticalBlock}
+  </div>`;
+}
 function computeAlerts(p, nd){
   const alerts = [];
   nd = migrateNote(nd);
   const today = todayStr();
 
   // Sin labs hoy
-  const hasLabsToday = (nd.labHistory||[]).some(s => s.fecha === today &&
-    Object.values(s.labs||{}).some(v => v && String(v).trim() !== ""));
+  const hasLabsToday = hasLabsOnDate(nd, today);
   if(!hasLabsToday) alerts.push({type:"labs", label:"Sin labs hoy", color:"#f59e0b"});
+
+  if(nd.checklist?.npt && isNptReminderDay() && !hasLabsToday){
+    alerts.push({type:"npt", label:"💉 NPT: pedir labs", color:"#7c3aed"});
+  }
+
+  const latestSnap = getLatestLabSnapshot(nd);
+  const critLabs = getCriticalLabItemsFromSnapshot(latestSnap);
+  if(critLabs.length){
+    alerts.push({type:"labs_crit", label:"🚨 Labs críticos ("+critLabs.length+")", color:"#b91c1c"});
+  }
 
   // Sin plan / pendientes
   if(!nd.pendientes || !nd.pendientes.trim())
@@ -1791,7 +1964,7 @@ function renderFullCard(p,nd,k){
   const exp = expandedCards[k]!==false;
   const noEnCenso = p._noEnCenso || nd._noEnCenso;
   const alerts = computeAlerts(p, nd);
-  return `<div class="full-card${noEnCenso?' flag-noencenso':''}${alerts.some(a=>a.type==='critico')?' card-critica':''}" id="card-${k}">
+  return `<div class="full-card${noEnCenso?' flag-noencenso':''}${alerts.some(a=>a.type==='critico'||a.type==='labs_crit')?' card-critica':''}" id="card-${k}">
     <div class="card-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}cc 100%)">
       <div class="card-header-row1">
         <span class="card-bed" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.cama)}</span>
@@ -3097,8 +3270,7 @@ function renderCensus(pts){
   var _cA={};patients.forEach(function(p){if(p.adscrito)_cA[p.adscrito]=(_cA[p.adscrito]||0)+1;});
   function _opt(v,lbl,cnt,cur){return "<option value='"+esc(v)+"'"+( cur===v?" selected":"")+">"+lbl+(cnt?" ("+cnt+")":"")+"</option>";}
   var _sel="border:1px solid #d1d5db;border-radius:6px;padding:5px 10px;font-size:12px;font-family:inherit;background:#fff;cursor:pointer";
-  var _hoy=new Date();_hoy.setHours(0,0,0,0);var _ayer=new Date(_hoy);_ayer.setDate(_hoy.getDate()-1);
-  var _nIngresos=patients.filter(function(p){if(!p.ingreso)return false;var d=parseDate(p.ingreso);return d>=_ayer;}).length;
+  var _nIngresos=patients.filter(function(p){ return isRecentIngreso(p.ingreso); }).length;
   var _fb="<div style='background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;gap:18px;flex-wrap:wrap;align-items:center'>"
     +(showSoloIngresos?"":" <button onclick='toggleSoloIngresos()' style='background:#dcfce7;border:1.5px solid #86efac;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;color:#166534'>🏥 Ingresos ("+_nIngresos+")</button>")
     +(showSoloIngresos?"<button onclick='toggleSoloIngresos()' style='background:#16a34a;border:none;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;color:#fff'>✓ Ingresos · "+_nIngresos+" pac — quitar</button>":"")
@@ -5239,7 +5411,7 @@ function exportToExcel(){
   const BORDER_BLACK = "FF000000";
   const BORDER_GRAY = "FFAAAAAA";
   const STATUS_BG = {"ESTABLE":"FFA8D08D","DELICADO":"FFFFC000","GRAVE":"FFFF0000"};
-  const ROW_ALT = "FFDDCEE4";
+  const INGRESO_BG = "FFDDCEE4";
 
   function brdData(cell){
     cell.border={
@@ -5318,7 +5490,6 @@ function exportToExcel(){
     });
 
     var rowNum = 4;
-    var altIdx = 0;
     EX_SECTIONS.forEach(function(sec){
       var grp = bySection[sec.id];
       if(!grp || grp.length === 0) return;
@@ -5334,13 +5505,12 @@ function exportToExcel(){
       secCell.fill = {type:"pattern", pattern:"solid", fgColor:{argb:sec.color}};
       for(var ci=1;ci<=12;ci++) brdSection(ws.getRow(rowNum).getCell(ci));
       rowNum++;
-      altIdx = 0;
 
       sorted.forEach(function(p){
         var row=ws.getRow(rowNum); row.height=30;
         var days=p.ingreso?Math.floor((new Date()-parseDate(p.ingreso))/86400000):"";
         var estado=(p.estado||"").trim().toUpperCase();
-        var rowBg = altIdx%2===0 ? "FFFFFFFF" : ROW_ALT;
+        var rowBg = isRecentIngreso(p.ingreso) ? INGRESO_BG : "FFFFFFFF";
         var vals=["",p.cama||"",p.exp||"",p.nombre||"",p.edad||"",p.dx||"",p.esp||"",p.adscrito||"",p.residente||"",p.ingreso||"",Number.isFinite(days)?days:"",p.estado||""];
         var aligns=["center","center","center","left","center","left","center","left","left","center","center","center"];
         vals.forEach(function(v,ci){
@@ -5356,7 +5526,6 @@ function exportToExcel(){
           brdData(cell);
         });
         rowNum++;
-        altIdx++;
       });
     });
     return wb.xlsx.writeBuffer();
