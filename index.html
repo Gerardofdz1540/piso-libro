@@ -2206,6 +2206,8 @@
           <button class="qa-btn qa-lab" onclick="openSystem('lab')" title="Abrir Laboratorio">🧪 Labs</button>
           <button class="qa-cfg" onclick="openSystemConfig('lab')" title="Configurar credenciales">⚙</button>
         </div>
+        <button style="background:#0e7490;border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)"
+          onclick="openBulkLabsModal()" title="Subir varios PDFs de labs y auto-asignar a pacientes">📦 Labs Masivo</button>
         <div class="quick-access-group">
           <button class="qa-btn qa-img" onclick="openSystem('img')" title="Abrir Imagen">🩻 Imagen</button>
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
@@ -4117,6 +4119,7 @@
           <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
           <span class="badge-esp">${esc(p.esp)}</span>
           <span class="badge-day">Día ${days}</span>
+          <button class="icon-btn" style="background:rgba(14,116,144,.5);font-size:11px" data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)" title="Buscar en WinLab (copia apellido)">🧪</button>
           <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️</button>
           <button class="icon-btn" style="background:rgba(251,146,60,.35);font-size:11px" data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)" title="Cambiar cama rápido">🛏</button>
           <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
@@ -4405,7 +4408,37 @@
       if (!est.file) return;
       if (est.file_type && est.file_type.startsWith('image/')) {
         const w = window.open('', '_blank');
-        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${est.file_type};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
+        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${est.file_type};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/>
+  <!-- BULK LABS MODAL -->
+  <div class="modal-bg" id="bulk-labs-modal" style="display:none" onclick="if(event.target===this)closeBulkLabsModal()">
+    <div class="modal-box" style="max-width:700px;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <div class="modal-title">📦 Carga Masiva de Labs — WinLab</div>
+        <button class="modal-close" onclick="closeBulkLabsModal()">✕</button>
+      </div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 12px">
+        Selecciona <strong>todos los PDFs</strong> descargados de WinLab. La IA leerá cada uno, identificará al paciente y llenará sus labs automáticamente.
+      </p>
+      <!-- Drop zone -->
+      <div id="bulk-drop-zone" style="border:2px dashed #94a3b8;border-radius:10px;padding:28px;text-align:center;cursor:pointer;background:#f8fafc;transition:all .2s"
+        onclick="document.getElementById('bulk-pdf-input').click()"
+        ondragover="event.preventDefault();this.style.borderColor='#0e7490';this.style.background='#ecfeff'"
+        ondragleave="this.style.borderColor='#94a3b8';this.style.background='#f8fafc'"
+        ondrop="event.preventDefault();this.style.borderColor='#94a3b8';this.style.background='#f8fafc';handleBulkDrop(event.dataTransfer.files)">
+        <div style="font-size:36px;margin-bottom:8px">📄</div>
+        <div style="font-weight:700;font-size:14px;color:#334155">Clic o arrastra los PDFs aquí</div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">Puedes seleccionar múltiples archivos a la vez</div>
+      </div>
+      <input type="file" id="bulk-pdf-input" accept="application/pdf" multiple style="display:none"
+        onchange="handleBulkLabsFiles(this.files)"/>
+      <!-- Progress -->
+      <div id="bulk-labs-progress" style="margin-top:14px;display:none"></div>
+      <!-- Results -->
+      <div id="bulk-labs-results" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+</body></html>`);
         w.document.close();
       } else {
         const bytes = atob(est.file); const arr = new Uint8Array(bytes.length);
@@ -7786,6 +7819,211 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       } else {
         doSheetJS();
       }
+    }
+
+
+
+    // ─── WINLAB POR PACIENTE ──────────────────────────────────────────────────────────
+    const WINLAB_SEARCH_URL = "http://hgleon.ddns.net/winlabweb/WW/ElencoRefertiLite.aspx";
+
+    function openWinLabForPatient(k) {
+      const p = patients.find(pt => pid(pt) === k);
+      if (!p) return;
+      // Extraer apellido (primera palabra del nombre en formato "APELLIDO APELLIDO NOMBRE")
+      const parts = (p.nombre || "").trim().split(/\s+/);
+      const apellido = parts[0] || "";
+      const nombre = parts.slice(2).join(" ") || parts[1] || "";
+      // Copiar apellido al portapapeles
+      const clipText = apellido + (nombre ? "\t" + nombre : "");
+      navigator.clipboard.writeText(apellido).catch(() => {});
+      // Abrir WinLab en búsqueda (si ya están logueados, va directo)
+      window.open(WINLAB_SEARCH_URL, "winlabweb");
+      // Toast informativo
+      showWinLabToast(p.nombre, apellido);
+    }
+
+    function showWinLabToast(nombre, apellido) {
+      let t = document.getElementById("winlab-toast");
+      if (!t) {
+        t = document.createElement("div");
+        t.id = "winlab-toast";
+        t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#0f4c75;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:opacity .3s;pointer-events:none";
+        document.body.appendChild(t);
+      }
+      t.innerHTML = \`🧪 Abriendo WinLab &nbsp;·&nbsp; <span style="background:rgba(255,255,255,.2);padding:2px 10px;border-radius:6px">Apellido copiado: <b>\${esc(apellido)}</b></span><br><span style="font-size:11px;opacity:.8">Pégalo en el campo "Apellido" de WinLab</span>\`;
+      t.style.opacity = "1";
+      clearTimeout(t._timer);
+      t._timer = setTimeout(() => { t.style.opacity = "0"; }, 4000);
+    }
+
+    // ─── BULK LABS MODAL ──────────────────────────────────────────────────────────────
+    let bulkLabsQueue = [];
+    let bulkLabsRunning = false;
+
+    function openBulkLabsModal() {
+      document.getElementById("bulk-labs-modal").style.display = "flex";
+      document.getElementById("bulk-labs-progress").style.display = "none";
+      document.getElementById("bulk-labs-results").innerHTML = "";
+      bulkLabsQueue = [];
+    }
+    function closeBulkLabsModal() {
+      document.getElementById("bulk-labs-modal").style.display = "none";
+    }
+    function handleBulkDrop(files) { handleBulkLabsFiles(files); }
+
+    function handleBulkLabsFiles(files) {
+      const proxyUrl = getProxyUrl();
+      if (!proxyUrl) {
+        alert("⚙️ Primero configura la URL del Worker en el botón «Config».");
+        return;
+      }
+      if (!files || !files.length) return;
+      const arr = Array.from(files).filter(f => f.type === "application/pdf" || f.name.endsWith(".pdf"));
+      if (!arr.length) { alert("No se encontraron PDFs válidos."); return; }
+
+      // Mostrar progress panel
+      const prog = document.getElementById("bulk-labs-progress");
+      const res  = document.getElementById("bulk-labs-results");
+      prog.style.display = "block";
+      prog.innerHTML = \`<div style="font-size:13px;font-weight:700;color:#0e7490;margin-bottom:8px">⏳ Procesando \${arr.length} PDF\${arr.length>1?"s":""}...</div>\`;
+      res.innerHTML = "";
+
+      let done = 0;
+      const results = [];
+
+      function updateProgress() {
+        prog.innerHTML = \`<div style="font-size:13px;font-weight:700;color:#0e7490;margin-bottom:6px">
+          ⏳ Procesando... \${done} / \${arr.length}</div>
+          <div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">
+            <div style="background:#0e7490;height:100%;width:\${Math.round(done/arr.length*100)}%;transition:width .3s"></div>
+          </div>\`;
+      }
+
+      // Procesar en paralelo (máx 3 a la vez para no saturar)
+      function processFile(file) {
+        return new Promise(async (resolve) => {
+          try {
+            const base64 = await new Promise((res2, rej2) => {
+              const r = new FileReader();
+              r.onload = () => res2(r.result.split(",")[1]);
+              r.onerror = rej2;
+              r.readAsDataURL(file);
+            });
+
+            const resp = await fetch(proxyUrl + "/api/ai", {
+              method: "POST",
+              headers: { ...apiHeaders() },
+              body: JSON.stringify({
+                model: "claude-sonnet-4-20250514",
+                max_tokens: 1000,
+                messages: [{
+                  role: "user", content: [
+                    { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+                    { type: "text", text: "Extrae TODOS los valores de laboratorio de este PDF. Responde SOLO con JSON válido sin markdown:\n" +
+                      "{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\"," +
+                      "\"mg\":\"\",\"ca\":\"\",\"p\":\"\",\"cl\":\"\"," +
+                      "\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\"," +
+                      "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\"," +
+                      "\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\"," +
+                      "\"paciente\":\"\",\"fecha_labs\":\"\"}" +
+                      "\nReglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE (tal como aparece en el reporte). Si un valor no existe, dejar \"\"." +
+                      "\nMapeo: Hb=hemoglobina,leucos=leucocitos/WBC,plaq=plaquetas,cr=creatinina,glu=glucosa,na=sodio,k=potasio,alb=albumina,pcr=proteína C reactiva,pct=procalcitonina,inr=INR,urea=BUN/urea,mg=magnesio,ca=calcio,p=fósforo,cl=cloro,tp=tiempo protrombina,ttp=tromboplastina parcial,fibrinogeno=fibrinógeno,ast=TGO/AST,alt=TGP/ALT,bt=bilirrubina total,bd=bilirrubina directa,ggt=gamma GT,ph=pH,pco2=pCO2,po2=pO2,hco3=bicarbonato,be=exceso base,sato2=SatO2."
+                    }
+                  ]
+                }]
+              })
+            });
+
+            const data = await resp.json();
+            const txt = (data.content?.[0]?.text || "{}");
+            const extracted = JSON.parse(txt.replace(/```[a-z]*/g,"").replace(/```/g,"").trim());
+            resolve({ file: file.name, extracted, error: null });
+          } catch(e) {
+            resolve({ file: file.name, extracted: null, error: e.message || String(e) });
+          }
+        });
+      }
+
+      // Match extracted paciente name to our patients list
+      function normName(s) {
+        return (s||"").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9]/g," ").replace(/\s+/g," ").trim();
+      }
+      function matchPatient(extractedName) {
+        if (!extractedName) return null;
+        const en = normName(extractedName);
+        const enTokens = en.split(" ").filter(Boolean);
+        let best = null, bestScore = 0;
+        for (const p of patients) {
+          const pn = normName(p.nombre);
+          const pTokens = pn.split(" ").filter(Boolean);
+          // Count matching tokens
+          const common = enTokens.filter(t => t.length > 2 && pTokens.includes(t));
+          const score = common.length;
+          if (score > bestScore) { bestScore = score; best = p; }
+        }
+        return bestScore >= 2 ? best : null;
+      }
+
+      // Run with concurrency 3
+      async function runAll() {
+        const chunks = [];
+        for (let i = 0; i < arr.length; i += 3) chunks.push(arr.slice(i, i+3));
+        for (const chunk of chunks) {
+          const chunkResults = await Promise.all(chunk.map(processFile));
+          chunkResults.forEach(r => { done++; results.push(r); updateProgress(); });
+        }
+
+        // Now assign labs to patients
+        let successCount = 0;
+        let rows = "";
+        results.forEach(r => {
+          if (r.error) {
+            rows += \`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px">
+              <span style="font-size:18px">❌</span>
+              <div><div style="font-weight:600;color:#991b1b">\${esc(r.file)}</div><div style="color:#b91c1c">\${esc(r.error)}</div></div>
+            </div>\`;
+            return;
+          }
+          const ex = r.extracted;
+          const pName = ex.paciente || "";
+          const matched = matchPatient(pName);
+          if (matched) {
+            const k = pid(matched);
+            const nd = getNote(k);
+            const fecha = ex.fecha_labs || todayStr();
+            let snap = nd.labHistory.find(s => s.fecha === fecha);
+            if (!snap) { snap = { fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+            snap.labs = { ...(snap.labs||{}), ...ex };
+            activeLabDate[k] = fecha;
+            noteData[k] = nd;
+            saveNote(k, nd);
+            successCount++;
+            rows += \`<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac;margin-bottom:6px;font-size:12px">
+              <span style="font-size:18px">✅</span>
+              <div style="flex:1">
+                <div style="font-weight:700;color:#166534">\${esc(matched.cama)} · \${esc(matched.nombre)}</div>
+                <div style="color:#15803d">\${pName ? "Identificado como: " + esc(pName) : ""} · \${esc(fecha)}</div>
+              </div>
+            </div>\`;
+          } else {
+            rows += \`<div style="display:flex;align-items:start;gap:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px">
+              <span style="font-size:18px">⚠️</span>
+              <div style="flex:1">
+                <div style="font-weight:600;color:#92400e">No encontrado en censo</div>
+                <div style="color:#b45309">PDF: \${esc(r.file)}</div>
+                <div style="color:#78350f">Paciente en PDF: <b>\${esc(pName||"(no detectado)")}</b></div>
+              </div>
+            </div>\`;
+          }
+        });
+
+        prog.innerHTML = \`<div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:8px">
+          ✅ Listo: \${successCount} asignados · \${results.length - successCount} sin asignar</div>\`;
+        res.innerHTML = rows;
+        if (successCount > 0) renderView();
+      }
+
+      runAll();
     }
 
 
