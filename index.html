@@ -3251,12 +3251,18 @@
             pendingSyncs++;
             setSyncStatus("syncing", "Reintentando...");
             let ok2 = true;
+            let retryFailed = [];
             for (const p of patients) {
               const r = await supaUpsertPatient(p);
-              if (!r) ok2 = false;
+              if (!r) { ok2 = false; retryFailed.push(p); }
             }
             lsSavePatients(patients);
-            if (ok2) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+            if (ok2) {
+              localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+            } else {
+              // DO NOT update supabase_sync_ts — data is incomplete
+              retryFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p }));
+            }
             pendingSyncs--;
             if (pendingSyncs === 0) {
               if (ok2) setSyncStatus("synced", "Sincronizado");
@@ -3590,7 +3596,12 @@
         try { loaded = await supaLoadAll(); } catch (e) { safeLog("Supabase load error:", e); loaded = null; }
       }
 
-      if (loaded && loaded.patients.length > 0) {
+      // ── Safety guard: compare Supabase vs localStorage patient counts ──
+      const localPts = lsGetPatients() || [];
+      const localHasMore = localPts.length > 0 && loaded && loaded.patients.length > 0
+        && localPts.length >= loaded.patients.length + 3;
+
+      if (loaded && loaded.patients.length > 0 && !localHasMore) {
         patients = loaded.patients;
         noteData = loaded.notes;
         lsSavePatients(patients);
@@ -3601,6 +3612,18 @@
         startRealtime();
         const hm = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
         setSyncStatus("synced", "Sync " + hm);
+      } else if (localHasMore) {
+        // Supabase has fewer patients than local — likely incomplete sync, prefer local
+        safeLog("[GUARD] Local tiene " + localPts.length + " pacientes vs Supabase " + (loaded ? loaded.patients.length : 0) + ". Usando datos locales.");
+        patients = localPts;
+        noteData = {};
+        patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
+        setSyncStatus("syncing", "Recuperando datos locales...");
+        startRealtime();
+        _savePtsImmediate().then(() => {
+          const hm2 = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+          setSyncStatus("synced", "Recuperado " + hm2);
+        });
       } else {
         // Supabase empty, failed, offline, or localStorage is newer → load from localStorage
         patients = lsGetPatients() || [];
