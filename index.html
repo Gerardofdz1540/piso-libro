@@ -3743,22 +3743,28 @@
     function quitarFiltrosCenso() { selectedResidente = "ALL"; selectedAdscrito = "ALL"; renderView(); }
 
     // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
-    function bedSortKey(cama) {
+    function pisoBedPriority(cama) {
+      // Devuelve [grupo, numero] para ordenar camas de CG:
+      // grupo 0 = piso 3 (3-XXX)  → primero, orden numerico
+      // grupo 1 = resto de CG (UCI, 2-XXX, RECU, etc.) → al final de CG
       const c = (cama || "").toUpperCase().trim();
-      const m = c.match(/(\d+)[^\d]+(\d+)/);
-      if (m) return parseInt(m[1]) * 1000 + parseInt(m[2]);
-      const n = c.match(/(\d+)/);
-      return n ? parseInt(n[1]) : 9999;
+      const m3 = c.match(/^3[^\d]*(\d+)/);   // empieza con 3-
+      if (m3) return [0, parseInt(m3[1])];
+      const mn = c.match(/(\d+)/);
+      return [1, mn ? parseInt(mn[1]) : 9999];
     }
     function renderPiso(pts) {
       renderDupBanner(detectDuplicateBeds(patients));
       renderDupPatientBanner(detectDuplicatePatients(patients));
-      // Ordenar: primero CG/full cards por cama, luego otros servicios (simple) por cama
+      // Orden: 1) piso 3 (CG) por numero  2) otras camas CG  3) otros servicios
       const sorted = [...pts].sort((a, b) => {
         const aS = isSimpleEsp(a.esp) ? 1 : 0;
         const bS = isSimpleEsp(b.esp) ? 1 : 0;
-        if (aS !== bS) return aS - bS;
-        return bedSortKey(a.cama) - bedSortKey(b.cama);
+        if (aS !== bS) return aS - bS;          // simple siempre al final
+        const [ag, an] = pisoBedPriority(a.cama);
+        const [bg, bn] = pisoBedPriority(b.cama);
+        if (ag !== bg) return ag - bg;           // piso 3 antes que otros
+        return an - bn;                          // mismo grupo: orden numerico
       });
       let html = "";
       sorted.forEach(p => {
