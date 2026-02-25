@@ -291,7 +291,8 @@
     #piso-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(640px, 1fr));
-      gap: 14px
+      gap: 14px;
+      align-items: start
     }
 
     /* FULL CARD */
@@ -2612,7 +2613,24 @@
   <script>
     // ─── CONSTANTS ─────────────────────────────────────────────────────────────────
     const FULL_CARD_ESP = new Set(["CG", "CCR", "CTV", "CT", "CX DE TÓRAX", "ONCOCIRUGÍA", "CG/GYO", "ENDOS"]);
-    const SIMPLE_ESP = new Set(["URO", "NCX", "NEUROCX", "COLUMNA", "TYO/NCX"]);
+    const SIMPLE_ESP = new Set(["URO", "CMF", "NCX", "NEUROCX", "COLUMNA", "TYO/NCX"]);
+    function normalizeEsp(esp) {
+      return String(esp || "")
+        .toUpperCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+    function isSimpleEsp(esp) {
+      const e = normalizeEsp(esp);
+      if (!e) return false;
+      if (SIMPLE_ESP.has(e)) return true;
+      if (/^URO($|[\/\s-]|LOGIA)/.test(e)) return true;
+      if (/^CMF($|[\/\s-])|MAXILOFAC/.test(e)) return true;
+      if (/^NCX($|[\/\s-])|NEURO ?CX|NEUROCIR|TYO\/NCX|COLUMNA/.test(e)) return true;
+      return false;
+    }
     const ESP_COLORS = {
       CG: "#0f4c75", CCR: "#1b6644", CT: "#7b3f00", CTV: "#7b0000",
       URO: "#4a3580", NCX: "#1a3a5c", COLUMNA: "#3d5a3e",
@@ -3726,7 +3744,7 @@
       pts.forEach(p => {
         const k = pid(p);
         const nd = noteData[k] || defaultData();
-        const isSimple = SIMPLE_ESP.has(p.esp);
+        const isSimple = isSimpleEsp(p.esp);
         if (isSimple) html += renderSimpleCard(p, nd, k);
         else html += renderFullCard(p, nd, k);
       });
@@ -4241,7 +4259,7 @@
     function setActiveImagenDate(k, fecha) {
       activeImagenDate[k] = fecha;
       const p = patients.find(p => pid(p) === k);
-      if (p && !SIMPLE_ESP.has(p.esp)) {
+      if (p && !isSimpleEsp(p.esp)) {
         const cardEl = document.getElementById("card-" + k);
         if (cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
       }
@@ -4258,7 +4276,7 @@
       activeImagenDate[k] = fecha;
       saveNote(k, nd);
       const p = patients.find(p => pid(p) === k);
-      if (p && !SIMPLE_ESP.has(p.esp)) {
+      if (p && !isSimpleEsp(p.esp)) {
         const cardEl = document.getElementById("card-" + k);
         if (cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
       }
@@ -4947,7 +4965,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       noteData[k] = nd;
       saveNote(k, nd);
       const p = patients.find(p => pid(p) === k);
-      if (p && !SIMPLE_ESP.has(p.esp)) {
+      if (p && !isSimpleEsp(p.esp)) {
         const cardEl = document.getElementById("card-" + k);
         if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k);
       }
@@ -5002,7 +5020,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
       noteData[k] = nd; saveNote(k, nd);
       var p = patients.find(function (p) { return pid(p) === k; });
-      if (p && !SIMPLE_ESP.has(p.esp)) { var ce = document.getElementById("card-" + k); if (ce) ce.outerHTML = renderFullCard(p, nd, k); }
+      if (p && !isSimpleEsp(p.esp)) { var ce = document.getElementById("card-" + k); if (ce) ce.outerHTML = renderFullCard(p, nd, k); }
     }
     function addLabDate(k) {
       const fecha = prompt("Fecha de los laboratorios (YYYY-MM-DD):", todayStr());
@@ -5015,7 +5033,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       activeLabDate[k] = fecha;
       saveNote(k, nd);
       const p = patients.find(p => pid(p) === k);
-      if (p && !SIMPLE_ESP.has(p.esp)) {
+      if (p && !isSimpleEsp(p.esp)) {
         const cardEl = document.getElementById("card-" + k);
         if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k);
       }
