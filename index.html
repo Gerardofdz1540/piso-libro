@@ -4002,14 +4002,49 @@
 
       return { today, nptDay, nptActive, nptPending, criticalCases };
     }
+    let alertsPanelCollapsed = false;
+    function toggleAlertsPanel() {
+      alertsPanelCollapsed = !alertsPanelCollapsed;
+      const body = document.getElementById("alerts-panel-body");
+      const arrow = document.getElementById("alerts-panel-arrow");
+      if (body) body.style.display = alertsPanelCollapsed ? "none" : "";
+      if (arrow) arrow.textContent = alertsPanelCollapsed ? "▸" : "▾";
+    }
+    function scrollToPatient(k) {
+      // Expand card if collapsed
+      if (expandedCards[k] === false) { expandedCards[k] = true; }
+      // Re-render to make sure it's expanded
+      const p = patients.find(function(pt){ return pid(pt) === k; });
+      const nd = getNote(k);
+      if (p && !isSimpleEsp(p.esp)) {
+        const ce = document.getElementById("card-" + k);
+        if (ce) ce.outerHTML = renderFullCard(p, nd, k);
+      }
+      // Scroll to card
+      setTimeout(function() {
+        const el = document.getElementById("card-" + k);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    }
     function renderSpecialAlertsPanel() {
       const data = collectSpecialAlertsData(patients);
-      const nptRows = data.nptPending.slice(0, 8).map(x =>
-        `<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px dashed #e9d5ff">
-      <span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(x.p.cama || "—")}</span>
-      <span style="font-size:11px;font-weight:600;color:#4c1d95">${esc(x.p.nombre || "")}</span>
-    </div>`
-      ).join("");
+
+      // NPT: only show on Tue/Thu
+      let nptBlock = "";
+      if (data.nptDay) {
+        const nptRows = data.nptPending.slice(0, 8).map(x =>
+          `<div onclick="scrollToPatient('${x.k}')" style="display:flex;gap:8px;align-items:center;padding:5px 6px;border-top:1px dashed #e9d5ff;cursor:pointer;border-radius:5px;transition:background .15s" onmouseover="this.style.background='#ede9fe'" onmouseout="this.style.background=''">
+            <span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(x.p.cama || "—")}</span>
+            <span style="font-size:11px;font-weight:600;color:#4c1d95;flex:1">${esc(x.p.nombre || "")}</span>
+            <span style="font-size:10px;color:#7c3aed">→ ver</span>
+          </div>`
+        ).join("");
+        nptBlock = `<div style="padding:8px 10px;border:1px solid #c4b5fd;border-radius:8px;background:#f5f3ff;margin-bottom:8px">
+          <div style="font-size:12px;font-weight:700;color:#5b21b6">📅 Hoy es ${esc(nptReminderDayLabel())}: pedir labs de NPT</div>
+          <div style="font-size:11px;color:#6d28d9;margin-top:3px">Pacientes con NPT: <b>${data.nptActive}</b> · Sin labs hoy: <b>${data.nptPending.length}</b></div>
+          ${data.nptPending.length ? `<div style="margin-top:6px">${nptRows}</div>` : `<div style="font-size:11px;color:#166534;margin-top:4px">✅ Todos los pacientes con NPT ya tienen labs de hoy.</div>`}
+        </div>`;
+      }
 
       const criticalRows = data.criticalCases.slice(0, 12).map(c => {
         const preview = c.labs.slice(0, 3).map(l =>
@@ -4017,50 +4052,49 @@
         ).join(" · ");
         const extra = c.labs.length > 3 ? ` +${c.labs.length - 3} más` : "";
         const fecha = c.fecha ? fmtDateChip(c.fecha) : "s/f";
-        return `<div style="padding:8px 10px;border:1px solid #fecaca;border-radius:8px;background:#fff7f7;margin-top:6px">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(c.p.cama || "—")}</span>
-        <span style="font-size:12px;font-weight:700;color:#7f1d1d">${esc(c.p.nombre || "")}</span>
-        <span style="font-size:10px;color:#991b1b;background:#fee2e2;border-radius:10px;padding:1px 8px">${esc(c.p.estado || "")}</span>
-        <span style="font-size:10px;color:#6b7280">Labs ${esc(fecha)}</span>
-      </div>
-      <div style="font-size:11px;color:#7f1d1d;margin-top:4px;line-height:1.45">🔴 ${preview}${extra}</div>
-    </div>`;
+        return `<div onclick="scrollToPatient('${c.k}')" style="padding:7px 10px;border:1px solid #fecaca;border-radius:8px;background:#fff7f7;margin-top:5px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff7f7'">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(c.p.cama || "—")}</span>
+            <span style="font-size:12px;font-weight:700;color:#7f1d1d;flex:1">${esc(c.p.nombre || "")}</span>
+            <span style="font-size:10px;color:#991b1b;background:#fee2e2;border-radius:10px;padding:1px 8px">${esc(c.p.estado || "")}</span>
+            <span style="font-size:10px;color:#6b7280">Labs ${esc(fecha)}</span>
+            <span style="font-size:10px;color:#991b1b;font-weight:600">→ ver</span>
+          </div>
+          <div style="font-size:11px;color:#7f1d1d;margin-top:3px;line-height:1.45">🔴 ${preview}${extra}</div>
+        </div>`;
       }).join("");
 
-      let nptBlock = `<div style="padding:8px 10px;border:1px solid #ddd6fe;border-radius:8px;background:#faf5ff">
-    <div style="font-size:12px;font-weight:700;color:#5b21b6">💉 Recordatorio NPT</div>
-    <div style="font-size:11px;color:#6d28d9;margin-top:3px">Los laboratorios de NPT se solicitan martes y jueves.</div>
-  </div>`;
-      if (data.nptDay) {
-        nptBlock = `<div style="padding:8px 10px;border:1px solid #c4b5fd;border-radius:8px;background:#f5f3ff">
-      <div style="font-size:12px;font-weight:700;color:#5b21b6">📅 Hoy es ${esc(nptReminderDayLabel())}: solicitar laboratorios de NPT.</div>
-      <div style="font-size:11px;color:#6d28d9;margin-top:3px">Pacientes con NPT activo: <b>${data.nptActive}</b> · Pendientes de labs hoy: <b>${data.nptPending.length}</b></div>
-      ${data.nptPending.length ? `<div style="margin-top:6px">${nptRows}</div>` : `<div style="font-size:11px;color:#166534;margin-top:6px">✅ Todos los pacientes con NPT ya tienen labs de hoy.</div>`}
-    </div>`;
-      }
-
       const criticalBlock = data.criticalCases.length
-        ? `<div style="padding:8px 10px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2;margin-top:8px">
-        <div style="font-size:12px;font-weight:700;color:#991b1b">🚨 Alertas críticas de laboratorios: ${data.criticalCases.length}</div>
-        <div style="font-size:11px;color:#7f1d1d;margin-top:3px">Valores críticos detectados en la última fecha de labs de cada paciente.</div>
-        ${criticalRows}
-      </div>`
-        : `<div style="padding:8px 10px;border:1px solid #86efac;border-radius:8px;background:#f0fdf4;margin-top:8px">
-        <div style="font-size:12px;font-weight:700;color:#166534">✅ Sin valores críticos detectados en labs recientes.</div>
-      </div>`;
+        ? `<div style="padding:8px 10px;border:1px solid #fca5a5;border-radius:8px;background:#fef2f2">
+            <div style="font-size:12px;font-weight:700;color:#991b1b">🚨 Alertas críticas: ${data.criticalCases.length} paciente${data.criticalCases.length !== 1 ? "s" : ""} — clic para ir</div>
+            ${criticalRows}
+          </div>`
+        : `<div style="padding:7px 10px;border:1px solid #86efac;border-radius:8px;background:#f0fdf4">
+            <div style="font-size:12px;font-weight:700;color:#166534">✅ Sin valores críticos en labs recientes.</div>
+          </div>`;
 
-      return `<div style="margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px">
-    <div style="font-size:12px;font-weight:800;color:#334155;letter-spacing:.3px;margin-bottom:8px">🔔 Apartado especial de alertas</div>
-    ${nptBlock}
-    ${criticalBlock}
-  </div>`;
+      const hasAlerts = data.criticalCases.length > 0 || data.nptDay;
+      return `<div style="margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <div onclick="toggleAlertsPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;background:${hasAlerts ? "#fff9f0" : "#f8fafc"};border-bottom:1px solid #e2e8f0;user-select:none">
+          <span style="font-size:12px;font-weight:800;color:#334155;letter-spacing:.3px">🔔 Alertas${data.criticalCases.length ? " · <span style='color:#dc2626'>" + data.criticalCases.length + " críticas</span>" : ""}${data.nptDay && data.nptPending.length ? " · <span style='color:#7c3aed'>" + data.nptPending.length + " NPT</span>" : ""}</span>
+          <span id="alerts-panel-arrow" style="font-size:16px;color:#94a3b8">${alertsPanelCollapsed ? "▸" : "▾"}</span>
+        </div>
+        <div id="alerts-panel-body" style="padding:10px 12px;display:${alertsPanelCollapsed ? "none" : ""}">
+          ${nptBlock}
+          ${criticalBlock}
+        </div>
+      </div>`;
     }
     function computeAlerts(p, nd) {
       const alerts = [];
       nd = migrateNote(nd);
       const today = todayStr();
 
+      // Incidencia de laboratorio hoy
+      const todayLabSnap = (nd.labHistory || []).find(s => s.fecha === todayStr());
+      if (todayLabSnap && todayLabSnap.incidencia) {
+        alerts.push({ type: "incidencia", label: "⚠️ Incidencia Lab", color: "#dc2626" });
+      }
       // Sin labs hoy
       const hasLabsToday = hasLabsOnDate(nd, today);
       if (!hasLabsToday) alerts.push({ type: "labs", label: "Sin labs hoy", color: "#f59e0b" });
@@ -4731,7 +4765,11 @@
       const extra = snap ? (snap.extra || []) : [];
 
       // Date chips
-      let dateChips = dates.map(d => `<span class="lab-chip-wrap"><button class="lab-date-chip ${d === activeFecha ? 'active' : ''}" onclick="setActiveLabDate('${k}','${d}')">${fmtDateChip(d)}</button><button class="lab-chip-del" onclick="deleteLabDate('${k}','${d}')" title="Eliminar fecha">✕</button></span>`).join("");
+      let dateChips = dates.map(d => {
+        const snapD = history.find(s => s.fecha === d);
+        const hasInc = snapD && snapD.incidencia;
+        return `<span class="lab-chip-wrap"><button class="lab-date-chip ${d === activeFecha ? 'active' : ''}" onclick="setActiveLabDate('${k}','${d}')">${hasInc ? "⚠️ " : ""}${fmtDateChip(d)}</button><button class="lab-chip-del" onclick="deleteLabDate('${k}','${d}')" title="Eliminar fecha">✕</button></span>`;
+      }).join("");
       dateChips += `<button class="lab-date-chip new-btn" onclick="addLabDate('${k}')">+ Nueva fecha</button>`;
 
       // Lab groups
@@ -4803,6 +4841,15 @@
     </div>
     <div class="lab-date-bar">${dateChips}</div>
     ${activeFecha ? `
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0 8px;border-bottom:1px dashed #e2e8f0;margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:600;color:${snap && snap.incidencia ? '#dc2626' : '#64748b'}">
+        <input type="checkbox" ${snap && snap.incidencia ? 'checked' : ''}
+          onchange="toggleLabIncidencia('${k}','${activeFecha}',this.checked)"
+          style="width:15px;height:15px;accent-color:#dc2626;cursor:pointer"/>
+        ⚠️ Incidencia — no fue posible tomar laboratorios
+      </label>
+      ${snap && snap.incidencia ? `<span style="font-size:11px;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:2px 8px">Pendiente solicitar</span>` : ""}
+    </div>
     ${groupsHtml}
     <div class="lab-extras-section">
       <button class="lab-extras-toggle" onclick="toggleEl('${extrasId}')">
@@ -5045,6 +5092,21 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       var p = patients.find(function (p) { return pid(p) === k; });
       if (p && !isSimpleEsp(p.esp)) { var ce = document.getElementById("card-" + k); if (ce) ce.outerHTML = renderFullCard(p, nd, k); }
     }
+    function toggleLabIncidencia(k, fecha, checked) {
+      var nd = getNote(k);
+      var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
+      if (!snap) return;
+      snap.incidencia = checked;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      // Re-render just this card
+      var p = patients.find(function(pt){ return pid(pt) === k; });
+      var nd2 = getNote(k);
+      if (p && !isSimpleEsp(p.esp)) {
+        var ce = document.getElementById("card-" + k);
+        if (ce) ce.outerHTML = renderFullCard(p, nd2, k);
+      }
+    }
     function addLabDate(k) {
       const fecha = prompt("Fecha de los laboratorios (YYYY-MM-DD):", todayStr());
       if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { if (fecha !== null) alert("Formato inválido. Usa YYYY-MM-DD"); return; }
@@ -5121,8 +5183,18 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     // ─── PDF / IMAGE LABS ─────────────────────────────────────────────────────────
     function triggerPdfInput(btn) {
       var k = btn.getAttribute("data-pdfkey");
+      // Try direct element first; if not found (after re-render) create a temp input
       var el = document.getElementById("pdf-input-" + k);
-      if (el) el.click();
+      if (!el) {
+        el = document.createElement("input");
+        el.type = "file";
+        el.accept = "application/pdf,image/jpeg,image/png,image/heic,image/webp";
+        el.style.display = "none";
+        el.onchange = function(){ handleLabPDF(k, el); };
+        document.body.appendChild(el);
+        setTimeout(function(){ document.body.removeChild(el); }, 30000);
+      }
+      el.click();
     }
     async function handleLabPDF(k, input) {
       const file = input.files[0]; if (!file) return;
@@ -5134,7 +5206,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         return;
       }
 
-      labLoadingSet.add(k); renderView();
+      // Update button visually without full re-render (avoids destroying the input)
+      labLoadingSet.add(k);
+      const pdfBtn = document.querySelector('[data-pdfkey="' + k + '"]');
+      if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.textContent = "⏳ Extrayendo..."; pdfBtn.style.background = "#94a3b8"; }
 
       // ── Validar tamaño ──────────────────────────────────────────────────
       const MAX_PDF_MB = 15;
@@ -5258,7 +5333,16 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         }
 
       } catch (e) { alert("Error al procesar: " + (e.message || e)); }
-      labLoadingSet.delete(k); renderView();
+      labLoadingSet.delete(k);
+      // Re-render only this card (not entire view) to avoid disrupting other cards
+      const p2 = patients.find(function(pt){ return pid(pt) === k; });
+      const nd2 = getNote(k);
+      if (p2 && nd2 && !isSimpleEsp(p2.esp)) {
+        const ce = document.getElementById("card-" + k);
+        if (ce) ce.outerHTML = renderFullCard(p2, nd2, k);
+      } else {
+        renderView();
+      }
     }
     // ─── CENSUS VIEW ─────────────────────────────────────────────────────────────────
     function censusRow(p, showEsp) {
