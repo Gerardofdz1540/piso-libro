@@ -5220,7 +5220,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
         const data = await resp.json();
         const txt = data.content?.[0]?.text || "{}";
-        const extracted = JSON.parse(txt.replace(/```[a-z]*/g, "").replace(/```/g, "").trim());
+        // Robust JSON extraction with multiple fallback strategies
+        let extracted = {};
+        try {
+          const clean = txt.replace(/```[a-z]*/gi, "").replace(/```/g, "").trim();
+          extracted = JSON.parse(clean);
+        } catch (_e1) {
+          try {
+            const start = txt.indexOf("{");
+            const end = txt.lastIndexOf("}");
+            if (start !== -1 && end > start) extracted = JSON.parse(txt.slice(start, end + 1));
+          } catch (_e2) {
+            try {
+              const fallback = {};
+              for (const [, fk, fv] of txt.matchAll(/"([a-z_]+)"\s*:\s*"([^"]*)"/g)) fallback[fk] = fv;
+              if (Object.keys(fallback).length > 0) extracted = fallback;
+            } catch (_e3) { /* leave as {} */ }
+          }
+        }
 
         // Save to active date (or create new snapshot with extracted date)
         const nd = getNote(k);
@@ -7893,7 +7910,21 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             .then(function(resp){ return resp.json(); })
             .then(function(data) {
               var txt = (data.content && data.content[0] && data.content[0].text) || "{}";
-              var extracted = JSON.parse(txt.replace(/```[a-z]*/g,"").replace(/```/g,"").trim());
+              var extracted = {};
+              try {
+                var clean2 = txt.replace(/```[a-z]*/gi,"").replace(/```/g,"").trim();
+                extracted = JSON.parse(clean2);
+              } catch(_p1) {
+                try {
+                  var s2 = txt.indexOf("{"), e2 = txt.lastIndexOf("}");
+                  if (s2 !== -1 && e2 > s2) extracted = JSON.parse(txt.slice(s2, e2+1));
+                } catch(_p2) {
+                  var fb = {};
+                  var rx = /"([a-z_]+)"\s*:\s*"([^"]*)"/g, m2;
+                  while ((m2 = rx.exec(txt)) !== null) fb[m2[1]] = m2[2];
+                  if (Object.keys(fb).length > 0) extracted = fb;
+                }
+              }
               resolve({ file: file.name, extracted: extracted, error: null });
             })
             .catch(function(e){ resolve({ file: file.name, extracted: null, error: String(e) }); });
