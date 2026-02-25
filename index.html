@@ -5,11 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Piso Libro — HGL Cirugía General</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='41' font-size='26' text-anchor='middle' fill='white' font-family='Inter,Arial'%3EPL%3C/text%3E%3C/svg%3E" />
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a1628'/%3E%3Ctext x='32' y='41' font-size='26' text-anchor='middle' fill='white' font-family='Arial'%3EPL%3C/text%3E%3C/svg%3E" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
@@ -22,53 +19,47 @@
     }
 
     :root {
-      --navy: #0f172a;
-      --blue: #1e3a5f;
-      --accent: #0d9488;
-      --green: #059669;
-      --orange: #d97706;
-      --red: #dc2626;
-      --gray: #94a3b8;
-      --bg: #f8f9fb;
-      --card: #ffffff;
-      --border: #e2e8f0;
-      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      --mono: "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
-      --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
-      --shadow-md: 0 2px 8px rgba(0,0,0,.06);
-      --shadow-lg: 0 4px 16px rgba(0,0,0,.08);
-      --radius: 10px;
+      --navy: #0a1628;
+      --blue: #1a3a6b;
+      --accent: #4fc3f7;
+      --green: #27ae60;
+      --orange: #e67e22;
+      --red: #e74c3c;
+      --gray: #95a5a6;
+      --bg: #eef1f6;
+      --card: #fff;
+      --border: #dde3ed;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --mono: "Courier New", Courier, monospace;
     }
 
     body {
       font-family: var(--font);
       background: var(--bg);
       min-height: 100vh;
-      color: #1e293b;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale
+      color: #1e293b
     }
 
     /* HEADER */
     #header {
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      background: linear-gradient(135deg, #0a1628 0%, #0f2d52 50%, #0d4a7a 100%);
       color: #fff;
       padding: 0;
-      box-shadow: 0 1px 0 rgba(255,255,255,.05), 0 4px 20px rgba(0, 0, 0, .25);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, .4);
       position: sticky;
       top: 0;
       z-index: 100
     }
 
     #quote-bar {
-      background: rgba(255, 255, 255, .03);
-      border-bottom: 1px solid rgba(255, 255, 255, .06);
-      padding: 4px 20px;
-      font-size: 10px;
-      color: rgba(148, 197, 240, .7);
+      background: linear-gradient(90deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .02));
+      border-bottom: 1px solid rgba(255, 255, 255, .08);
+      padding: 5px 20px;
+      font-size: 11px;
+      color: #94c5f0;
       font-style: italic;
       text-align: center;
-      letter-spacing: .4px
+      letter-spacing: .3px
     }
 
     #header-inner {
@@ -86,18 +77,17 @@
     }
 
     .header-title .sub {
-      font-size: 10px;
-      letter-spacing: 4px;
-      color: rgba(148, 197, 240, .6);
-      font-weight: 500;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: #7eb8e8;
+      font-weight: 600;
       text-transform: uppercase
     }
 
     .header-title h1 {
-      font-size: 19px;
-      font-weight: 600;
-      letter-spacing: -.2px;
-      color: #f1f5f9
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: .5px
     }
 
     .header-controls {
@@ -108,85 +98,66 @@
     }
 
     .header-input {
-      background: rgba(255, 255, 255, .07);
-      border: 1px solid rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .1);
+      border: 1px solid rgba(255, 255, 255, .2);
       color: #fff;
-      padding: 5px 10px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-family: var(--font);
-      transition: border-color .2s, background .2s
-    }
-
-    .header-input:focus {
-      background: rgba(255, 255, 255, .12);
-      border-color: var(--accent);
-      outline: none
+      padding: 5px 9px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-family: var(--font)
     }
 
     .header-input::placeholder {
-      color: rgba(255, 255, 255, .35)
+      color: rgba(255, 255, 255, .5)
     }
 
     .btn-green {
-      background: #059669;
+      background: #217346;
       border: none;
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
-      font-family: var(--font);
-      transition: filter .15s
+      font-family: var(--font)
     }
-
-    .btn-green:hover { filter: brightness(1.1) }
 
     .btn-blue {
-      background: #3b82f6;
+      background: #2196f3;
       border: none;
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
-      font-family: var(--font);
-      transition: filter .15s
+      font-family: var(--font)
     }
-
-    .btn-blue:hover { filter: brightness(1.1) }
 
     .btn-teal {
-      background: #0d9488;
+      background: #00897b;
       border: none;
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
-      font-family: var(--font);
-      transition: filter .15s
+      font-family: var(--font)
     }
-
-    .btn-teal:hover { filter: brightness(1.1) }
 
     .btn-orange {
-      background: #dc2626;
+      background: #e65100;
       border: none;
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
-      font-family: var(--font);
-      transition: filter .15s
+      font-family: var(--font)
     }
-
-    .btn-orange:hover { filter: brightness(1.1) }
 
     /* TABS */
     #tabs {
@@ -197,27 +168,21 @@
     .tab {
       background: transparent;
       border: none;
-      color: rgba(255,255,255,.55);
-      padding: 9px 18px;
+      color: #fff;
+      padding: 8px 18px;
       cursor: pointer;
-      font-size: 12px;
-      font-weight: 500;
-      border-bottom: 2px solid transparent;
-      border-radius: 0;
+      font-size: 13px;
+      font-weight: 400;
+      border-bottom: 3px solid transparent;
+      border-radius: 4px 4px 0 0;
       font-family: var(--font);
-      transition: all .2s ease;
-      letter-spacing: .2px
-    }
-
-    .tab:hover {
-      color: rgba(255,255,255,.85)
+      transition: background .15s
     }
 
     .tab.active {
-      background: transparent;
-      font-weight: 600;
-      color: #fff;
-      border-bottom-color: var(--accent)
+      background: rgba(255, 255, 255, .15);
+      font-weight: 700;
+      border-bottom-color: #4fc3f7
     }
 
     /* MAIN */
@@ -237,20 +202,13 @@
     }
 
     #search {
-      padding: 8px 14px;
+      padding: 7px 13px;
       border-radius: 8px;
       border: 1px solid var(--border);
       font-size: 13px;
-      width: 260px;
+      width: 230px;
       outline: none;
-      font-family: var(--font);
-      background: #fff;
-      transition: border-color .2s, box-shadow .2s
-    }
-
-    #search:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(13,148,136,.1)
+      font-family: var(--font)
     }
 
     .esp-filters {
@@ -286,42 +244,33 @@
     }
 
     .btn-pink {
-      background: var(--accent);
+      background: #e91e63;
       border: none;
       color: #fff;
-      padding: 8px 18px;
+      padding: 7px 16px;
       border-radius: 8px;
       cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      font-family: var(--font);
-      transition: filter .15s, transform .1s;
-      letter-spacing: .2px
-    }
-
-    .btn-pink:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px)
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font)
     }
 
     /* IMPORT BANNER */
     #import-banner {
       background: #fff;
-      border: 1.5px dashed #cbd5e1;
-      border-radius: var(--radius);
+      border: 2px dashed var(--accent);
+      border-radius: 10px;
       padding: 14px 18px;
       margin-bottom: 14px;
       display: flex;
       align-items: center;
       gap: 12px;
       cursor: pointer;
-      transition: all .2s ease
+      transition: border-color .2s
     }
 
     #import-banner:hover {
-      border-color: var(--accent);
-      background: #f0fdfa;
-      box-shadow: var(--shadow-sm)
+      border-color: #0288d1
     }
 
     #import-banner .icon {
@@ -344,22 +293,17 @@
     #piso-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(640px, 1fr));
-      gap: 4px;
+      gap: 14px;
       align-items: start;
     }
 
     /* FULL CARD */
     .full-card {
       background: var(--card);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-sm);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
       border: 1px solid var(--border);
-      overflow: hidden;
-      transition: box-shadow .2s ease
-    }
-
-    .full-card:hover {
-      box-shadow: var(--shadow-md)
+      overflow: hidden
     }
 
     .card-header {
@@ -405,51 +349,39 @@
     .badge-estado {
       padding: 2px 10px;
       border-radius: 10px;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: .3px
+      font-size: 11px;
+      font-weight: 700
     }
 
     .badge-esp {
-      background: rgba(255, 255, 255, .15);
+      background: rgba(255, 255, 255, .2);
       padding: 2px 8px;
       border-radius: 6px;
-      font-size: 10px;
-      font-weight: 500
+      font-size: 11px
     }
 
     .badge-day {
-      font-size: 10px;
-      opacity: .7;
-      font-weight: 500
+      font-size: 11px;
+      opacity: .8
     }
 
     .icon-btn {
-      background: rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .2);
       border: none;
       color: #fff;
       width: 26px;
       height: 26px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-family: inherit;
-      transition: background .15s
-    }
-
-    .icon-btn:hover {
-      background: rgba(255, 255, 255, .25)
+      font-family: inherit
     }
 
     .icon-btn.danger {
-      background: rgba(220, 38, 38, .35)
-    }
-
-    .icon-btn.danger:hover {
-      background: rgba(220, 38, 38, .55)
+      background: rgba(220, 38, 38, .45)
     }
 
     .expand-btn {
@@ -470,33 +402,30 @@
 
     /* FIELD */
     .field-label {
-      font-size: 10px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 700;
       color: #64748b;
       margin-bottom: 3px;
       text-transform: uppercase;
-      letter-spacing: .6px
+      letter-spacing: .5px
     }
 
     .field-ta {
       width: 100%;
       border: 1px solid #e2e8f0;
       border-radius: 6px;
-      padding: 7px 9px;
+      padding: 6px 8px;
       font-size: 12px;
-      line-height: 1.55;
+      line-height: 1.5;
       background: #fafbfc;
       resize: vertical;
       font-family: var(--font);
-      color: #1e293b;
-      transition: border-color .2s, box-shadow .2s
+      color: #1e293b
     }
 
     .field-ta:focus {
       outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(13,148,136,.08);
-      background: #fff
+      border-color: #4fc3f7
     }
 
     .grid-2 {
@@ -537,19 +466,18 @@
     .lab-cell {
       border-radius: 6px;
       padding: 4px 6px;
-      border: 1px solid #e8ecf1;
-      background: #fff;
-      transition: border-color .15s
+      border: 1px solid #e2e8f0;
+      background: #fff
     }
 
     .lab-cell.abn {
-      background: #fffbeb;
-      border-color: #fbbf24
+      background: #fef3c7;
+      border-color: #fcd34d
     }
 
     .lab-cell.crit {
-      background: #fef2f2;
-      border-color: #f87171
+      background: #fee2e2;
+      border-color: #fca5a5
     }
 
     .lab-key {
@@ -679,47 +607,44 @@
 
     /* LAB AI PANEL */
     .lab-ai-btn {
-      background: #0f172a;
+      background: linear-gradient(90deg, #7c3aed, #4f46e5);
       color: #fff;
       border: none;
-      padding: 6px 14px;
+      padding: 6px 13px;
       border-radius: 6px;
       cursor: pointer;
       font-size: 11px;
-      font-weight: 600;
+      font-weight: 700;
       font-family: var(--font);
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      transition: all .2s ease;
-      letter-spacing: .2px
+      transition: filter .15s
     }
 
     .lab-ai-btn:hover {
-      background: #1e293b;
-      transform: translateY(-1px)
+      filter: brightness(1.1)
     }
 
     .lab-ai-btn:disabled {
       background: #94a3b8;
-      cursor: not-allowed;
-      transform: none
+      cursor: not-allowed
     }
 
     .lab-analysis-panel {
       margin-top: 10px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      background: #faf5ff;
+      border: 1px solid #e9d5ff;
       border-radius: 8px;
       overflow: hidden
     }
 
     .lap-header {
-      background: #0f172a;
+      background: linear-gradient(90deg, #7c3aed, #4f46e5);
       color: #fff;
       padding: 8px 14px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       display: flex;
       justify-content: space-between;
       align-items: center
@@ -799,20 +724,19 @@
 
     .card-note-btn {
       background: #fff;
-      border: 1px solid #d1d5db;
+      border: 1.5px solid #d1d5db;
       border-radius: 6px;
       padding: 4px 12px;
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 600;
       cursor: pointer;
       font-family: var(--font);
-      transition: all .15s;
-      letter-spacing: .2px
+      transition: all .15s
     }
 
     .card-note-btn:hover {
       transform: translateY(-1px);
-      box-shadow: var(--shadow-sm)
+      box-shadow: 0 2px 6px rgba(0, 0, 0, .1)
     }
 
     .cnb-preqx {
@@ -864,8 +788,8 @@
     }
 
     .lab-date-chip.active {
-      background: #0f172a;
-      border-color: #0f172a;
+      background: #0e7490;
+      border-color: #0e7490;
       color: #fff
     }
 
@@ -1127,15 +1051,10 @@
     /* SIMPLE CARD */
     .simple-card {
       background: var(--card);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-sm);
+      border-radius: 10px;
+      box-shadow: 0 1px 6px rgba(0, 0, 0, .07);
       border: 1px solid var(--border);
-      overflow: hidden;
-      transition: box-shadow .2s ease
-    }
-
-    .simple-card:hover {
-      box-shadow: var(--shadow-md)
+      overflow: hidden
     }
 
     .simple-header {
@@ -2120,36 +2039,36 @@
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      font-size: 10px;
-      padding: 3px 10px;
-      border-radius: 20px;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 12px;
       border: 1px solid transparent;
       transition: all .3s;
-      font-weight: 500
+      font-weight: 600
     }
 
     #sync-status.synced {
-      background: rgba(5, 150, 105, .15);
-      border-color: rgba(5, 150, 105, .3);
-      color: #6ee7b7
+      background: rgba(39, 174, 96, .2);
+      border-color: rgba(39, 174, 96, .4);
+      color: #a8f0c6
     }
 
     #sync-status.syncing {
-      background: rgba(13, 148, 136, .15);
-      border-color: rgba(13, 148, 136, .3);
-      color: #99f6e4
+      background: rgba(79, 195, 247, .15);
+      border-color: rgba(79, 195, 247, .3);
+      color: #b3e5fc
     }
 
     #sync-status.error {
-      background: rgba(220, 38, 38, .15);
-      border-color: rgba(220, 38, 38, .3);
+      background: rgba(231, 76, 60, .2);
+      border-color: rgba(231, 76, 60, .4);
       color: #fca5a5
     }
 
     #sync-status.offline {
-      background: rgba(148, 163, 184, .1);
-      border-color: rgba(148, 163, 184, .2);
-      color: #94a3b8
+      background: rgba(149, 165, 166, .15);
+      border-color: rgba(149, 165, 166, .3);
+      color: #cbd5e1
     }
 
     @keyframes pulse {
@@ -2177,36 +2096,28 @@
 
     /* CONFIG MODAL */
     .config-pill {
-      background: rgba(255, 255, 255, .07);
-      border: 1px solid rgba(255, 255, 255, .15);
-      color: rgba(255,255,255,.7);
-      padding: 4px 12px;
+      background: rgba(255, 255, 255, .12);
+      border: 1px solid rgba(255, 255, 255, .25);
+      color: #fff;
+      padding: 5px 12px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 11px;
-      font-weight: 500;
+      font-size: 12px;
+      font-weight: 600;
       font-family: var(--font);
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      transition: all .2s
-    }
-
-    .config-pill:hover {
-      background: rgba(255, 255, 255, .12);
-      color: #fff
+      gap: 5px
     }
 
     .config-pill.connected {
-      background: rgba(5, 150, 105, .2);
-      border-color: rgba(5, 150, 105, .4);
-      color: #6ee7b7
+      background: rgba(39, 174, 96, .25);
+      border-color: rgba(39, 174, 96, .5)
     }
 
     .config-pill.disconnected {
-      background: rgba(220, 38, 38, .15);
-      border-color: rgba(220, 38, 38, .3);
-      color: #fca5a5
+      background: rgba(231, 76, 60, .2);
+      border-color: rgba(231, 76, 60, .4)
     }
 
     .proxy-input-wrap {
@@ -2278,8 +2189,8 @@
     </div>
     <div id="header-top">
       <div class="header-title">
-        <div class="sub">Hospital General de León &mdash; Cirugía General</div>
-        <h1>Piso Libro</h1>
+        <div class="sub">Hospital General de León — Cirugía General</div>
+        <h1>📋 Piso Libro</h1>
       </div>
       <div class="header-controls">
         <input class="header-input" id="gi-fecha" placeholder="Fecha" style="width:105px" />
@@ -4092,8 +4003,6 @@
     }
 
     // ─── ALERTAS OPERATIVAS ───────────────────────────────────────────────────────────
-    // Solo alertar de valores que comprometan la vida: electrolitos, Hb crítica, coagulación (TP, TTP, INR)
-    const LIFE_THREATENING_ALERT_KEYS = new Set(["hb", "na", "k", "ca", "mg", "p", "cl", "tp", "ttp", "inr"]);
     function hasAnyLabValues(snap) {
       return !!snap && Object.values(snap.labs || {}).some(v => v && String(v).trim() !== "");
     }
@@ -4109,8 +4018,6 @@
       const critical = [];
       if (!snap || !snap.labs || !Array.isArray(LAB_FIELDS)) return critical;
       LAB_FIELDS.forEach(lf => {
-        // Solo alertar de labs que comprometan la vida del paciente
-        if (!LIFE_THREATENING_ALERT_KEYS.has(lf.key)) return;
         const raw = snap.labs[lf.key];
         if (raw === undefined || raw === null || String(raw).trim() === "") return;
         const num = parseLabNumber(raw);
@@ -4339,37 +4246,37 @@
       ${noEnCenso ? `<div style="background:#fff3cd;border:1px solid #fcd34d;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:12px;color:#78350f">
         ⚠️ <strong>Este paciente no aparece en el último censo importado.</strong> Puede haber tenido alta, defunción o traslado. Usa el botón 🚪 para retirar del censo o edita para actualizar sus datos.
       </div>`: ''}
-      ${fieldRow("Diagnóstico", nd.dx || p.dx, k, "dx", 3)}
+      ${fieldRow("🔴 DX", nd.dx || p.dx, k, "dx", 3)}
       <div class="grid-2">
-        ${fieldRow("Antecedentes", nd.app, k, "app", 3)}
-        ${fieldRow("Padecimiento actual", nd.pa, k, "pa", 3)}
+        ${fieldRow("📋 APP", nd.app, k, "app", 3)}
+        ${fieldRow("🩺 PA", nd.pa, k, "pa", 3)}
       </div>
       <div class="grid-2">
-        ${fieldRow("Qx / Procedimiento", nd.qx, k, "qx", 3)}
-        ${fieldRow("Manejo médico", nd.manejo, k, "manejo", 3)}
+        ${fieldRow("🔧 Qx / Procedimiento", nd.qx, k, "qx", 3)}
+        ${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}
       </div>
       <div class="grid-3">
-        ${fieldRow("Drenajes", nd.drenajes, k, "drenajes", 3)}
-        ${fieldRow("Sangrado", nd.sangrado, k, "sangrado", 3)}
-        ${fieldRow("Balance", nd.balance, k, "balance", 3)}
+        ${fieldRow("🩸 Drenajes", nd.drenajes, k, "drenajes", 3)}
+        ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 3)}
+        ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
       </div>
       <div class="grid-2">
         ${renderImagenField(nd, k)}
-        ${fieldRow("Signos vitales", nd.sv, k, "sv", 3)}
+        ${fieldRow("📊 Signos vitales", nd.sv, k, "sv", 3)}
       </div>
       ${renderChecklist(nd, k)}
-      <div style="margin-top:10px">${fieldRow("Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
-      <div style="margin-top:10px">${fieldRow("Notas", nd.misc, k, "misc", 2)}</div>
+      <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
+      <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
       ${renderLabSection(nd, k)}
       <div class="card-notes-bar">
-        <span class="card-notes-label">Documentos:</span>
+        <span class="card-notes-label">📝 Notas:</span>
         <button class="card-note-btn cnb-preqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'prequirurgica')">PreQx</button>
         <button class="card-note-btn cnb-postqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'postquirurgica')">PostQx</button>
         <button class="card-note-btn cnb-med" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'medica')">Evolución</button>
-        <span style="margin-left:8px;border-left:1px solid #e2e8f0;padding-left:8px;display:inline-flex;gap:4px">
-          <button class="card-note-btn" style="background:#0f172a;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'labs')" title="Crea entrada de labs para hoy">Labs hoy</button>
-          <button class="card-note-btn" style="background:#0f172a;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'imagen')" title="Crea entrada de imagen para hoy">Imagen hoy</button>
-          <button class="card-note-btn" style="background:#0f172a;color:#fff" data-hk="${k}" onclick="openNoteModal(this.dataset.hk,'medica')" title="Abrir modal de evolución">Evol hoy</button>
+        <span style="margin-left:8px;border-left:1px solid rgba(255,255,255,.25);padding-left:8px;display:inline-flex;gap:4px">
+          <button class="card-note-btn" style="background:#0ea5e9;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'labs')" title="Crea entrada de labs para hoy">🧪 Labs hoy</button>
+          <button class="card-note-btn" style="background:#7c3aed;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'imagen')" title="Crea entrada de imagen para hoy">🖼 Imagen hoy</button>
+          <button class="card-note-btn" style="background:#059669;color:#fff" data-hk="${k}" onclick="openNoteModal(this.dataset.hk,'medica')" title="Abrir modal de evolución">📋 Evol hoy</button>
         </span>
 
       </div>
@@ -4400,7 +4307,7 @@
       </div>
     </div>
     <div class="simple-body">
-      ${fieldRow("Pendiente", nd.pendientes, k, "pendientes", 2)}
+      ${fieldRow("⚠️ Pendiente", nd.pendientes, k, "pendientes", 2)}
     </div>
   </div>`;
     }
@@ -4631,18 +4538,17 @@
     const LAB_GROUPS = [
       {
         id: "basico", label: "🩸 Biometría / Función renal", fields: [
-          { key: "hb", label: "Hb", unit: "g/dL", low: 7, high: 16, cl: 7 },
+          { key: "hb", label: "Hb", unit: "g/dL", low: 12, high: 17, cl: 7 },
           { key: "leucos", label: "Leuc", unit: "k/µL", low: 4, high: 10, ch: 15 },
           { key: "plaq", label: "Plaq", unit: "k/µL", low: 100, high: 400, cl: 50 },
           { key: "cr", label: "Cr", unit: "mg/dL", low: 0, high: 1.25, ch: 3 },
           { key: "urea", label: "Urea", unit: "mg/dL", low: 0, high: 43 },
-          { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110, cl: 60, ch: 200 },
-          { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145, cl: 120, ch: 155 },
+          { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110 },
+          { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145 },
           { key: "k", label: "K", unit: "mmol/L", low: 3.5, high: 5.1, cl: 2.8, ch: 6.0 },
           { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0, cl: 2.0 },
           { key: "pcr", label: "PCR", unit: "mg/L", low: 0, high: 10 },
-          { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 },
-          { key: "inr", label: "INR", unit: "", low: 0, high: 1.2, ch: 3 }
+          { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 }
         ]
       },
       {
@@ -4657,6 +4563,7 @@
         id: "coagulacion", label: "🩺 Coagulación", fields: [
           { key: "tp", label: "TP", unit: "seg", low: 11, high: 14, ch: 20 },
           { key: "ttp", label: "TTP", unit: "seg", low: 25, high: 35, ch: 60 },
+          { key: "inr", label: "INR", unit: "", low: 0, high: 1.2, ch: 3 },
           { key: "fibrinogeno", label: "Fibri", unit: "g/L", low: 2, high: 4, cl: 1 }
         ]
       },
@@ -4686,9 +4593,10 @@
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
     const LAB_QUICK = {
       hb: (v) => {
-        if (v < 7) return { sev: "crit", title: "Anemia severa", rec: "Considerar transfusión (umbral 7 g/dL). Investigar causa. Solicitar reticulocitos, frotis." };
-        if (v < 10) return { sev: "abn", title: "Anemia moderada", rec: "Investigar causa (ferropénica, deficiencia B12/folato, hemolítica, inflamatoria). Suplementación según etiología." };
-        if (v > 17) return { sev: "abn", title: "Policitemia", rec: "Descartar causa secundaria: hipoxia crónica, tabaquismo, neoplasia (policitemia vera)." };
+        if (v < 7) return { sev: "crit", title: "Anemia severa — Umbral transfusional", rec: "Transfusión CE (umbral 7 g/dL en estable, 8 g/dL en Qx cardio/SCA). Investigar causa. Solicitar reticulocitos, frotis, ferritina, B12, folato." };
+        if (v < 10) return { sev: "abn", title: "Anemia moderada (OMS)", rec: "Investigar causa (ferropénica, inflamatoria, hemolítica, B12/folato). Suplementación según etiología. Considerar transfusión si sintomático o preQx." };
+        if (v < 12) return { sev: "abn", title: "Anemia leve (OMS <12 g/dL)", rec: "Clasificar por VCM: microcítica (ferropénica, talasemia), normocítica (inflamatoria, ERC), macrocítica (B12/folato). Optimizar antes de Qx electiva." };
+        if (v > 17) return { sev: "abn", title: "Policitemia", rec: "Descartar causa secundaria: hipoxia crónica, tabaquismo, neoplasia (policitemia vera). BH completa + EPO sérica." };
         return null;
       },
       leucos: (v) => {
@@ -5115,42 +5023,22 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const resp = await fetch(proxyUrl + "/api/ai", {
           method: "POST",
           headers: { ...apiHeaders() },
-          body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4096, messages: [{ role: "user", content: prompt }] })
+          body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] })
         });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
-        var _raw = (data.content?.[0]?.text || data.text || data.choices?.[0]?.message?.content || "{}");
-        _raw = _raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-
-        // Robust JSON extraction: balanced brace matching
-        var result = null;
-        function _extractBalancedJSON(text) {
-          var depth = 0, start = -1;
-          for (var i = 0; i < text.length; i++) {
-            if (text[i] === '"') { i++; while (i < text.length && text[i] !== '"') { if (text[i] === '\\') i++; i++; } continue; }
-            if (text[i] === '{') { if (depth === 0) start = i; depth++; }
-            else if (text[i] === '}') { depth--; if (depth === 0 && start >= 0) return text.slice(start, i + 1); }
-          }
-          if (start >= 0) { var partial = text.slice(start); while (depth-- > 0) partial += '}'; return partial; }
-          return null;
-        }
-        var _jsonStr = _extractBalancedJSON(_raw);
-        if (_jsonStr) {
-          try { result = JSON.parse(_jsonStr); } catch(e2) {
-            // Fix trailing commas and retry
-            var _fixed = _jsonStr.replace(/,\s*([}\]])/g, '$1');
-            try { result = JSON.parse(_fixed); } catch(e3) {
-              // Truncate last incomplete property and retry
-              var _trimmed = _fixed.replace(/,\s*"[^"]*"\s*:?\s*(?:"(?:[^"\\]|\\.)*)?$/, "").replace(/,\s*$/, "");
-              var opens = (_trimmed.match(/{/g)||[]).length, closes = (_trimmed.match(/}/g)||[]).length;
-              while (closes < opens) { _trimmed += '}'; closes++; }
-              try { result = JSON.parse(_trimmed); } catch(e4) { result = null; }
-            }
-          }
-        }
-        if (!result || typeof result !== "object") {
-          result = { alteraciones: [], resumen: "No se pudo interpretar la respuesta. Verifica la conexión al API e intenta de nuevo.", prioridad: "baja" };
-          safeLog("[AI Parse] Raw response:", _raw.slice(0, 500));
+        var _raw = (data.content?.[0]?.text || "{}").replace(/```json/g, "").replace(/```/g, "").trim();
+        // Extract JSON object robustly — find outermost { }
+        var _jstart = _raw.indexOf("{"); var _jend = _raw.lastIndexOf("}");
+        var _jsonStr = (_jstart >= 0 && _jend > _jstart) ? _raw.slice(_jstart, _jend + 1) : "{}";
+        // Truncate any incomplete trailing content that breaks JSON
+        var result;
+        try { result = JSON.parse(_jsonStr); }
+        catch (e2) {
+          // Attempt to salvage by trimming at last complete property
+          var _trimmed = _jsonStr.replace(/,\s*"[^"]*"\s*:\s*[^}]*$/, "") + "}";
+          try { result = JSON.parse(_trimmed); }
+          catch (e3) { result = { alteraciones: [], resumen: "Error al parsear respuesta IA. Intenta de nuevo.", prioridad: "baja" }; }
         }
 
         // Build HTML panel
@@ -5804,10 +5692,22 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const labs = snap ? snap.labs || {} : {};
           const labDate = snap ? fmtDateChip(snap.fecha) : "";
           let labHtml = "";
-          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr"].filter(x => labs[x]);
+          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno"].filter(x => labs[x]);
           if (labItems.length) {
             labHtml = `<div class="eg-labs-compact"><span class="eg-lc-date">🧪 ${labDate}</span><div class="eg-lc-grid">` +
-              labItems.map(x => `<span class="eg-lc-item"><b>${x.toUpperCase()}</b> ${labs[x]}</span>`).join("") +
+              labItems.map(x => {
+                const lf = LAB_FIELDS.find(f => f.key === x);
+                const num = parseFloat(labs[x]);
+                let cls = "";
+                if (lf && !isNaN(num)) {
+                  const isCrit = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
+                  const isAbn = !isCrit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
+                  if (isCrit) cls = " eg-lc-crit";
+                  else if (isAbn) cls = " eg-lc-abn";
+                }
+                const lbl = lf ? lf.label : x.toUpperCase();
+                return `<span class="eg-lc-item${cls}"><b>${lbl}</b> ${labs[x]}</span>`;
+              }).join("") +
               `</div></div>`;
           }
           // Fields helper
@@ -5886,6 +5786,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       .eg-lc-grid{display:flex;gap:3px;flex-wrap:wrap}
       .eg-lc-item{background:#f0f9ff;border:1px solid #bae6fd;border-radius:3px;padding:0 4px;font-size:9px;color:#0369a1}
       .eg-lc-item b{color:#0c4a6e;margin-right:2px}
+      .eg-lc-item.eg-lc-abn{background:#fef3c7;border-color:#fcd34d;color:#92400e}
+      .eg-lc-item.eg-lc-abn b{color:#78350f}
+      .eg-lc-item.eg-lc-crit{background:#fee2e2;border-color:#fca5a5;color:#b91c1c;font-weight:700}
+      .eg-lc-item.eg-lc-crit b{color:#991b1b}
       @media print{.eg-c{break-inside:avoid;box-shadow:none}}
       @media(max-width:640px){.eg-sg{grid-template-columns:1fr}.eg-r2,.eg-r3{grid-template-columns:1fr}}
     </style>
@@ -6611,7 +6515,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     // FORMAT 5: FT-HGL-AM-51 NOTA MÉDICA 2023 (table-based)
     // ═══════════════════════════════════════════════════════════════════════════════
     function fmtNotaMedica(p, nd, gi, fecha, hora, labs, adsOpts) {
-      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea", "bt", "bd"].filter(x => labs[x]).map(x => x.toUpperCase() + ": " + labs[x]).join(", ");
+      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "urea", "bt", "bd"].filter(x => labs[x]).map(x => {
+        const lf = LAB_FIELDS.find(f => f.key === x);
+        return (lf ? lf.label : x.toUpperCase()) + ": " + labs[x];
+      }).join(", ");
       return `<div class="fmt-form-area">
     <div class="fmt-form-header"><h3>FT-HGL-AM-51 · Nota Médica 2023</h3>
       <div><button class="fmt-btn fmt-btn-print" onclick="printNotaMedica()">🖨 Imprimir</button></div>
@@ -8855,8 +8762,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const snap = sortedLabs[0];
         const vals = snap.labs || {};
         const partes = [];
-        const claves = ["hb", "leucos", "plaq", "cr", "urea", "glu", "na", "k", "alb", "pcr", "pct", "inr"];
-        const labels = { hb: "Hb", leucos: "Leuc", plaq: "Plaq", cr: "Cr", urea: "Ur", glu: "Glu", na: "Na", k: "K", alb: "Alb", pcr: "PCR", pct: "PCT", inr: "INR" };
+        const claves = ["hb", "leucos", "plaq", "cr", "urea", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno"];
+        const labels = { hb: "Hb", leucos: "Leuc", plaq: "Plaq", cr: "Cr", urea: "Ur", glu: "Glu", na: "Na", k: "K", alb: "Alb", pcr: "PCR", pct: "PCT", tp: "TP", ttp: "TTP", inr: "INR", fibrinogeno: "Fibri" };
         claves.forEach(c => { if (vals[c]) partes.push(`${labels[c]} ${vals[c]}`); });
         if (partes.length) labsTexto = `📊 Labs (${snap.fecha}): ${partes.join(" | ")}`;
       }
