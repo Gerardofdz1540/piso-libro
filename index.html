@@ -5,8 +5,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Piso Libro — HGL Cirugía General</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a1628'/%3E%3Ctext x='32' y='41' font-size='26' text-anchor='middle' fill='white' font-family='Arial'%3EPL%3C/text%3E%3C/svg%3E" />
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230f172a'/%3E%3Ctext x='32' y='41' font-size='26' text-anchor='middle' fill='white' font-family='Inter,Arial'%3EPL%3C/text%3E%3C/svg%3E" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
@@ -19,47 +22,53 @@
     }
 
     :root {
-      --navy: #0a1628;
-      --blue: #1a3a6b;
-      --accent: #4fc3f7;
-      --green: #27ae60;
-      --orange: #e67e22;
-      --red: #e74c3c;
-      --gray: #95a5a6;
-      --bg: #eef1f6;
-      --card: #fff;
-      --border: #dde3ed;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      --mono: "Courier New", Courier, monospace;
+      --navy: #0f172a;
+      --blue: #1e3a5f;
+      --accent: #0d9488;
+      --green: #059669;
+      --orange: #d97706;
+      --red: #dc2626;
+      --gray: #94a3b8;
+      --bg: #f8f9fb;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --mono: "SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+      --shadow-md: 0 2px 8px rgba(0,0,0,.06);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,.08);
+      --radius: 10px;
     }
 
     body {
       font-family: var(--font);
       background: var(--bg);
       min-height: 100vh;
-      color: #1e293b
+      color: #1e293b;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale
     }
 
     /* HEADER */
     #header {
-      background: linear-gradient(135deg, #0a1628 0%, #0f2d52 50%, #0d4a7a 100%);
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
       color: #fff;
       padding: 0;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, .4);
+      box-shadow: 0 1px 0 rgba(255,255,255,.05), 0 4px 20px rgba(0, 0, 0, .25);
       position: sticky;
       top: 0;
       z-index: 100
     }
 
     #quote-bar {
-      background: linear-gradient(90deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .02));
-      border-bottom: 1px solid rgba(255, 255, 255, .08);
-      padding: 5px 20px;
-      font-size: 11px;
-      color: #94c5f0;
+      background: rgba(255, 255, 255, .03);
+      border-bottom: 1px solid rgba(255, 255, 255, .06);
+      padding: 4px 20px;
+      font-size: 10px;
+      color: rgba(148, 197, 240, .7);
       font-style: italic;
       text-align: center;
-      letter-spacing: .3px
+      letter-spacing: .4px
     }
 
     #header-inner {
@@ -77,17 +86,18 @@
     }
 
     .header-title .sub {
-      font-size: 11px;
-      letter-spacing: 3px;
-      color: #7eb8e8;
-      font-weight: 600;
+      font-size: 10px;
+      letter-spacing: 4px;
+      color: rgba(148, 197, 240, .6);
+      font-weight: 500;
       text-transform: uppercase
     }
 
     .header-title h1 {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: .5px
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -.2px;
+      color: #f1f5f9
     }
 
     .header-controls {
@@ -98,66 +108,85 @@
     }
 
     .header-input {
-      background: rgba(255, 255, 255, .1);
-      border: 1px solid rgba(255, 255, 255, .2);
+      background: rgba(255, 255, 255, .07);
+      border: 1px solid rgba(255, 255, 255, .12);
       color: #fff;
-      padding: 5px 9px;
-      border-radius: 5px;
-      font-size: 12px;
-      font-family: var(--font)
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: var(--font);
+      transition: border-color .2s, background .2s
+    }
+
+    .header-input:focus {
+      background: rgba(255, 255, 255, .12);
+      border-color: var(--accent);
+      outline: none
     }
 
     .header-input::placeholder {
-      color: rgba(255, 255, 255, .5)
+      color: rgba(255, 255, 255, .35)
     }
 
     .btn-green {
-      background: #217346;
+      background: #059669;
       border: none;
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
-      font-family: var(--font)
+      font-family: var(--font);
+      transition: filter .15s
     }
+
+    .btn-green:hover { filter: brightness(1.1) }
 
     .btn-blue {
-      background: #2196f3;
+      background: #3b82f6;
       border: none;
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
-      font-family: var(--font)
+      font-family: var(--font);
+      transition: filter .15s
     }
+
+    .btn-blue:hover { filter: brightness(1.1) }
 
     .btn-teal {
-      background: #00897b;
+      background: #0d9488;
       border: none;
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
-      font-family: var(--font)
+      font-family: var(--font);
+      transition: filter .15s
     }
 
+    .btn-teal:hover { filter: brightness(1.1) }
+
     .btn-orange {
-      background: #e65100;
+      background: #dc2626;
       border: none;
       color: #fff;
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
-      font-family: var(--font)
+      font-family: var(--font);
+      transition: filter .15s
     }
+
+    .btn-orange:hover { filter: brightness(1.1) }
 
     /* TABS */
     #tabs {
@@ -168,21 +197,27 @@
     .tab {
       background: transparent;
       border: none;
-      color: #fff;
-      padding: 8px 18px;
+      color: rgba(255,255,255,.55);
+      padding: 9px 18px;
       cursor: pointer;
-      font-size: 13px;
-      font-weight: 400;
-      border-bottom: 3px solid transparent;
-      border-radius: 4px 4px 0 0;
+      font-size: 12px;
+      font-weight: 500;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
       font-family: var(--font);
-      transition: background .15s
+      transition: all .2s ease;
+      letter-spacing: .2px
+    }
+
+    .tab:hover {
+      color: rgba(255,255,255,.85)
     }
 
     .tab.active {
-      background: rgba(255, 255, 255, .15);
-      font-weight: 700;
-      border-bottom-color: #4fc3f7
+      background: transparent;
+      font-weight: 600;
+      color: #fff;
+      border-bottom-color: var(--accent)
     }
 
     /* MAIN */
@@ -202,13 +237,20 @@
     }
 
     #search {
-      padding: 7px 13px;
+      padding: 8px 14px;
       border-radius: 8px;
       border: 1px solid var(--border);
       font-size: 13px;
-      width: 230px;
+      width: 260px;
       outline: none;
-      font-family: var(--font)
+      font-family: var(--font);
+      background: #fff;
+      transition: border-color .2s, box-shadow .2s
+    }
+
+    #search:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(13,148,136,.1)
     }
 
     .esp-filters {
@@ -244,33 +286,42 @@
     }
 
     .btn-pink {
-      background: #e91e63;
+      background: var(--accent);
       border: none;
       color: #fff;
-      padding: 7px 16px;
+      padding: 8px 18px;
       border-radius: 8px;
       cursor: pointer;
-      font-size: 13px;
-      font-weight: 700;
-      font-family: var(--font)
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font);
+      transition: filter .15s, transform .1s;
+      letter-spacing: .2px
+    }
+
+    .btn-pink:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px)
     }
 
     /* IMPORT BANNER */
     #import-banner {
       background: #fff;
-      border: 2px dashed var(--accent);
-      border-radius: 10px;
+      border: 1.5px dashed #cbd5e1;
+      border-radius: var(--radius);
       padding: 14px 18px;
       margin-bottom: 14px;
       display: flex;
       align-items: center;
       gap: 12px;
       cursor: pointer;
-      transition: border-color .2s
+      transition: all .2s ease
     }
 
     #import-banner:hover {
-      border-color: #0288d1
+      border-color: var(--accent);
+      background: #f0fdfa;
+      box-shadow: var(--shadow-sm)
     }
 
     #import-banner .icon {
@@ -300,10 +351,15 @@
     /* FULL CARD */
     .full-card {
       background: var(--card);
-      border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
       border: 1px solid var(--border);
-      overflow: hidden
+      overflow: hidden;
+      transition: box-shadow .2s ease
+    }
+
+    .full-card:hover {
+      box-shadow: var(--shadow-md)
     }
 
     .card-header {
@@ -349,39 +405,51 @@
     .badge-estado {
       padding: 2px 10px;
       border-radius: 10px;
-      font-size: 11px;
-      font-weight: 700
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .3px
     }
 
     .badge-esp {
-      background: rgba(255, 255, 255, .2);
+      background: rgba(255, 255, 255, .15);
       padding: 2px 8px;
       border-radius: 6px;
-      font-size: 11px
+      font-size: 10px;
+      font-weight: 500
     }
 
     .badge-day {
-      font-size: 11px;
-      opacity: .8
+      font-size: 10px;
+      opacity: .7;
+      font-weight: 500
     }
 
     .icon-btn {
-      background: rgba(255, 255, 255, .2);
+      background: rgba(255, 255, 255, .12);
       border: none;
       color: #fff;
       width: 26px;
       height: 26px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 13px;
+      font-size: 12px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-family: inherit
+      font-family: inherit;
+      transition: background .15s
+    }
+
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, .25)
     }
 
     .icon-btn.danger {
-      background: rgba(220, 38, 38, .45)
+      background: rgba(220, 38, 38, .35)
+    }
+
+    .icon-btn.danger:hover {
+      background: rgba(220, 38, 38, .55)
     }
 
     .expand-btn {
@@ -402,30 +470,33 @@
 
     /* FIELD */
     .field-label {
-      font-size: 11px;
-      font-weight: 700;
+      font-size: 10px;
+      font-weight: 600;
       color: #64748b;
       margin-bottom: 3px;
       text-transform: uppercase;
-      letter-spacing: .5px
+      letter-spacing: .6px
     }
 
     .field-ta {
       width: 100%;
       border: 1px solid #e2e8f0;
       border-radius: 6px;
-      padding: 6px 8px;
+      padding: 7px 9px;
       font-size: 12px;
-      line-height: 1.5;
+      line-height: 1.55;
       background: #fafbfc;
       resize: vertical;
       font-family: var(--font);
-      color: #1e293b
+      color: #1e293b;
+      transition: border-color .2s, box-shadow .2s
     }
 
     .field-ta:focus {
       outline: none;
-      border-color: #4fc3f7
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(13,148,136,.08);
+      background: #fff
     }
 
     .grid-2 {
@@ -466,18 +537,19 @@
     .lab-cell {
       border-radius: 6px;
       padding: 4px 6px;
-      border: 1px solid #e2e8f0;
-      background: #fff
+      border: 1px solid #e8ecf1;
+      background: #fff;
+      transition: border-color .15s
     }
 
     .lab-cell.abn {
-      background: #fef3c7;
-      border-color: #fcd34d
+      background: #fffbeb;
+      border-color: #fbbf24
     }
 
     .lab-cell.crit {
-      background: #fee2e2;
-      border-color: #fca5a5
+      background: #fef2f2;
+      border-color: #f87171
     }
 
     .lab-key {
@@ -607,44 +679,47 @@
 
     /* LAB AI PANEL */
     .lab-ai-btn {
-      background: linear-gradient(90deg, #7c3aed, #4f46e5);
+      background: #0f172a;
       color: #fff;
       border: none;
-      padding: 6px 13px;
+      padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 600;
       font-family: var(--font);
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      transition: filter .15s
+      transition: all .2s ease;
+      letter-spacing: .2px
     }
 
     .lab-ai-btn:hover {
-      filter: brightness(1.1)
+      background: #1e293b;
+      transform: translateY(-1px)
     }
 
     .lab-ai-btn:disabled {
       background: #94a3b8;
-      cursor: not-allowed
+      cursor: not-allowed;
+      transform: none
     }
 
     .lab-analysis-panel {
       margin-top: 10px;
-      background: #faf5ff;
-      border: 1px solid #e9d5ff;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
       border-radius: 8px;
       overflow: hidden
     }
 
     .lap-header {
-      background: linear-gradient(90deg, #7c3aed, #4f46e5);
+      background: #0f172a;
       color: #fff;
       padding: 8px 14px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 600;
       display: flex;
       justify-content: space-between;
       align-items: center
@@ -724,19 +799,20 @@
 
     .card-note-btn {
       background: #fff;
-      border: 1.5px solid #d1d5db;
+      border: 1px solid #d1d5db;
       border-radius: 6px;
       padding: 4px 12px;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       cursor: pointer;
       font-family: var(--font);
-      transition: all .15s
+      transition: all .15s;
+      letter-spacing: .2px
     }
 
     .card-note-btn:hover {
       transform: translateY(-1px);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, .1)
+      box-shadow: var(--shadow-sm)
     }
 
     .cnb-preqx {
@@ -788,8 +864,8 @@
     }
 
     .lab-date-chip.active {
-      background: #0e7490;
-      border-color: #0e7490;
+      background: #0f172a;
+      border-color: #0f172a;
       color: #fff
     }
 
@@ -1051,10 +1127,15 @@
     /* SIMPLE CARD */
     .simple-card {
       background: var(--card);
-      border-radius: 10px;
-      box-shadow: 0 1px 6px rgba(0, 0, 0, .07);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
       border: 1px solid var(--border);
-      overflow: hidden
+      overflow: hidden;
+      transition: box-shadow .2s ease
+    }
+
+    .simple-card:hover {
+      box-shadow: var(--shadow-md)
     }
 
     .simple-header {
@@ -2039,36 +2120,36 @@
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 12px;
+      font-size: 10px;
+      padding: 3px 10px;
+      border-radius: 20px;
       border: 1px solid transparent;
       transition: all .3s;
-      font-weight: 600
+      font-weight: 500
     }
 
     #sync-status.synced {
-      background: rgba(39, 174, 96, .2);
-      border-color: rgba(39, 174, 96, .4);
-      color: #a8f0c6
+      background: rgba(5, 150, 105, .15);
+      border-color: rgba(5, 150, 105, .3);
+      color: #6ee7b7
     }
 
     #sync-status.syncing {
-      background: rgba(79, 195, 247, .15);
-      border-color: rgba(79, 195, 247, .3);
-      color: #b3e5fc
+      background: rgba(13, 148, 136, .15);
+      border-color: rgba(13, 148, 136, .3);
+      color: #99f6e4
     }
 
     #sync-status.error {
-      background: rgba(231, 76, 60, .2);
-      border-color: rgba(231, 76, 60, .4);
+      background: rgba(220, 38, 38, .15);
+      border-color: rgba(220, 38, 38, .3);
       color: #fca5a5
     }
 
     #sync-status.offline {
-      background: rgba(149, 165, 166, .15);
-      border-color: rgba(149, 165, 166, .3);
-      color: #cbd5e1
+      background: rgba(148, 163, 184, .1);
+      border-color: rgba(148, 163, 184, .2);
+      color: #94a3b8
     }
 
     @keyframes pulse {
@@ -2096,28 +2177,36 @@
 
     /* CONFIG MODAL */
     .config-pill {
-      background: rgba(255, 255, 255, .12);
-      border: 1px solid rgba(255, 255, 255, .25);
-      color: #fff;
-      padding: 5px 12px;
+      background: rgba(255, 255, 255, .07);
+      border: 1px solid rgba(255, 255, 255, .15);
+      color: rgba(255,255,255,.7);
+      padding: 4px 12px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 500;
       font-family: var(--font);
       display: inline-flex;
       align-items: center;
-      gap: 5px
+      gap: 5px;
+      transition: all .2s
+    }
+
+    .config-pill:hover {
+      background: rgba(255, 255, 255, .12);
+      color: #fff
     }
 
     .config-pill.connected {
-      background: rgba(39, 174, 96, .25);
-      border-color: rgba(39, 174, 96, .5)
+      background: rgba(5, 150, 105, .2);
+      border-color: rgba(5, 150, 105, .4);
+      color: #6ee7b7
     }
 
     .config-pill.disconnected {
-      background: rgba(231, 76, 60, .2);
-      border-color: rgba(231, 76, 60, .4)
+      background: rgba(220, 38, 38, .15);
+      border-color: rgba(220, 38, 38, .3);
+      color: #fca5a5
     }
 
     .proxy-input-wrap {
@@ -2189,8 +2278,8 @@
     </div>
     <div id="header-top">
       <div class="header-title">
-        <div class="sub">Hospital General de León — Cirugía General</div>
-        <h1>📋 Piso Libro</h1>
+        <div class="sub">Hospital General de León &mdash; Cirugía General</div>
+        <h1>Piso Libro</h1>
       </div>
       <div class="header-controls">
         <input class="header-input" id="gi-fecha" placeholder="Fecha" style="width:105px" />
@@ -4003,8 +4092,8 @@
     }
 
     // ─── ALERTAS OPERATIVAS ───────────────────────────────────────────────────────────
-    // Solo alertar de valores que comprometan la vida: electrolitos, Hb crítica, INR
-    const LIFE_THREATENING_ALERT_KEYS = new Set(["hb", "na", "k", "ca", "mg", "p", "cl", "inr"]);
+    // Solo alertar de valores que comprometan la vida: electrolitos, Hb crítica, coagulación (TP, TTP, INR)
+    const LIFE_THREATENING_ALERT_KEYS = new Set(["hb", "na", "k", "ca", "mg", "p", "cl", "tp", "ttp", "inr"]);
     function hasAnyLabValues(snap) {
       return !!snap && Object.values(snap.labs || {}).some(v => v && String(v).trim() !== "");
     }
@@ -4250,37 +4339,37 @@
       ${noEnCenso ? `<div style="background:#fff3cd;border:1px solid #fcd34d;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:12px;color:#78350f">
         ⚠️ <strong>Este paciente no aparece en el último censo importado.</strong> Puede haber tenido alta, defunción o traslado. Usa el botón 🚪 para retirar del censo o edita para actualizar sus datos.
       </div>`: ''}
-      ${fieldRow("🔴 DX", nd.dx || p.dx, k, "dx", 3)}
+      ${fieldRow("Diagnóstico", nd.dx || p.dx, k, "dx", 3)}
       <div class="grid-2">
-        ${fieldRow("📋 APP", nd.app, k, "app", 3)}
-        ${fieldRow("🩺 PA", nd.pa, k, "pa", 3)}
+        ${fieldRow("Antecedentes", nd.app, k, "app", 3)}
+        ${fieldRow("Padecimiento actual", nd.pa, k, "pa", 3)}
       </div>
       <div class="grid-2">
-        ${fieldRow("🔧 Qx / Procedimiento", nd.qx, k, "qx", 3)}
-        ${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}
+        ${fieldRow("Qx / Procedimiento", nd.qx, k, "qx", 3)}
+        ${fieldRow("Manejo médico", nd.manejo, k, "manejo", 3)}
       </div>
       <div class="grid-3">
-        ${fieldRow("🩸 Drenajes", nd.drenajes, k, "drenajes", 3)}
-        ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 3)}
-        ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
+        ${fieldRow("Drenajes", nd.drenajes, k, "drenajes", 3)}
+        ${fieldRow("Sangrado", nd.sangrado, k, "sangrado", 3)}
+        ${fieldRow("Balance", nd.balance, k, "balance", 3)}
       </div>
       <div class="grid-2">
         ${renderImagenField(nd, k)}
-        ${fieldRow("📊 Signos vitales", nd.sv, k, "sv", 3)}
+        ${fieldRow("Signos vitales", nd.sv, k, "sv", 3)}
       </div>
       ${renderChecklist(nd, k)}
-      <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
-      <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
+      <div style="margin-top:10px">${fieldRow("Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
+      <div style="margin-top:10px">${fieldRow("Notas", nd.misc, k, "misc", 2)}</div>
       ${renderLabSection(nd, k)}
       <div class="card-notes-bar">
-        <span class="card-notes-label">📝 Notas:</span>
+        <span class="card-notes-label">Documentos:</span>
         <button class="card-note-btn cnb-preqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'prequirurgica')">PreQx</button>
         <button class="card-note-btn cnb-postqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'postquirurgica')">PostQx</button>
         <button class="card-note-btn cnb-med" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'medica')">Evolución</button>
-        <span style="margin-left:8px;border-left:1px solid rgba(255,255,255,.25);padding-left:8px;display:inline-flex;gap:4px">
-          <button class="card-note-btn" style="background:#0ea5e9;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'labs')" title="Crea entrada de labs para hoy">🧪 Labs hoy</button>
-          <button class="card-note-btn" style="background:#7c3aed;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'imagen')" title="Crea entrada de imagen para hoy">🖼 Imagen hoy</button>
-          <button class="card-note-btn" style="background:#059669;color:#fff" data-hk="${k}" onclick="openNoteModal(this.dataset.hk,'medica')" title="Abrir modal de evolución">📋 Evol hoy</button>
+        <span style="margin-left:8px;border-left:1px solid #e2e8f0;padding-left:8px;display:inline-flex;gap:4px">
+          <button class="card-note-btn" style="background:#0f172a;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'labs')" title="Crea entrada de labs para hoy">Labs hoy</button>
+          <button class="card-note-btn" style="background:#0f172a;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'imagen')" title="Crea entrada de imagen para hoy">Imagen hoy</button>
+          <button class="card-note-btn" style="background:#0f172a;color:#fff" data-hk="${k}" onclick="openNoteModal(this.dataset.hk,'medica')" title="Abrir modal de evolución">Evol hoy</button>
         </span>
 
       </div>
@@ -4311,7 +4400,7 @@
       </div>
     </div>
     <div class="simple-body">
-      ${fieldRow("⚠️ Pendiente", nd.pendientes, k, "pendientes", 2)}
+      ${fieldRow("Pendiente", nd.pendientes, k, "pendientes", 2)}
     </div>
   </div>`;
     }
@@ -5026,22 +5115,42 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const resp = await fetch(proxyUrl + "/api/ai", {
           method: "POST",
           headers: { ...apiHeaders() },
-          body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] })
+          body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4096, messages: [{ role: "user", content: prompt }] })
         });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
-        var _raw = (data.content?.[0]?.text || "{}").replace(/```json/g, "").replace(/```/g, "").trim();
-        // Extract JSON object robustly — find outermost { }
-        var _jstart = _raw.indexOf("{"); var _jend = _raw.lastIndexOf("}");
-        var _jsonStr = (_jstart >= 0 && _jend > _jstart) ? _raw.slice(_jstart, _jend + 1) : "{}";
-        // Truncate any incomplete trailing content that breaks JSON
-        var result;
-        try { result = JSON.parse(_jsonStr); }
-        catch (e2) {
-          // Attempt to salvage by trimming at last complete property
-          var _trimmed = _jsonStr.replace(/,\s*"[^"]*"\s*:\s*[^}]*$/, "") + "}";
-          try { result = JSON.parse(_trimmed); }
-          catch (e3) { result = { alteraciones: [], resumen: "Error al parsear respuesta IA. Intenta de nuevo.", prioridad: "baja" }; }
+        var _raw = (data.content?.[0]?.text || data.text || data.choices?.[0]?.message?.content || "{}");
+        _raw = _raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
+
+        // Robust JSON extraction: balanced brace matching
+        var result = null;
+        function _extractBalancedJSON(text) {
+          var depth = 0, start = -1;
+          for (var i = 0; i < text.length; i++) {
+            if (text[i] === '"') { i++; while (i < text.length && text[i] !== '"') { if (text[i] === '\\') i++; i++; } continue; }
+            if (text[i] === '{') { if (depth === 0) start = i; depth++; }
+            else if (text[i] === '}') { depth--; if (depth === 0 && start >= 0) return text.slice(start, i + 1); }
+          }
+          if (start >= 0) { var partial = text.slice(start); while (depth-- > 0) partial += '}'; return partial; }
+          return null;
+        }
+        var _jsonStr = _extractBalancedJSON(_raw);
+        if (_jsonStr) {
+          try { result = JSON.parse(_jsonStr); } catch(e2) {
+            // Fix trailing commas and retry
+            var _fixed = _jsonStr.replace(/,\s*([}\]])/g, '$1');
+            try { result = JSON.parse(_fixed); } catch(e3) {
+              // Truncate last incomplete property and retry
+              var _trimmed = _fixed.replace(/,\s*"[^"]*"\s*:?\s*(?:"(?:[^"\\]|\\.)*)?$/, "").replace(/,\s*$/, "");
+              var opens = (_trimmed.match(/{/g)||[]).length, closes = (_trimmed.match(/}/g)||[]).length;
+              while (closes < opens) { _trimmed += '}'; closes++; }
+              try { result = JSON.parse(_trimmed); } catch(e4) { result = null; }
+            }
+          }
+        }
+        if (!result || typeof result !== "object") {
+          result = { alteraciones: [], resumen: "No se pudo interpretar la respuesta. Verifica la conexión al API e intenta de nuevo.", prioridad: "baja" };
+          safeLog("[AI Parse] Raw response:", _raw.slice(0, 500));
         }
 
         // Build HTML panel
