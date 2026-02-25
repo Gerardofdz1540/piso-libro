@@ -293,7 +293,7 @@
     #piso-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(640px, 1fr));
-      gap: 14px;
+      gap: 4px;
       align-items: start;
     }
 
@@ -4003,6 +4003,8 @@
     }
 
     // ─── ALERTAS OPERATIVAS ───────────────────────────────────────────────────────────
+    // Solo alertar de valores que comprometan la vida: electrolitos, Hb crítica, INR
+    const LIFE_THREATENING_ALERT_KEYS = new Set(["hb", "na", "k", "ca", "mg", "p", "cl", "inr"]);
     function hasAnyLabValues(snap) {
       return !!snap && Object.values(snap.labs || {}).some(v => v && String(v).trim() !== "");
     }
@@ -4018,6 +4020,8 @@
       const critical = [];
       if (!snap || !snap.labs || !Array.isArray(LAB_FIELDS)) return critical;
       LAB_FIELDS.forEach(lf => {
+        // Solo alertar de labs que comprometan la vida del paciente
+        if (!LIFE_THREATENING_ALERT_KEYS.has(lf.key)) return;
         const raw = snap.labs[lf.key];
         if (raw === undefined || raw === null || String(raw).trim() === "") return;
         const num = parseLabNumber(raw);
@@ -4543,8 +4547,8 @@
           { key: "plaq", label: "Plaq", unit: "k/µL", low: 100, high: 400, cl: 50 },
           { key: "cr", label: "Cr", unit: "mg/dL", low: 0, high: 1.25, ch: 3 },
           { key: "urea", label: "Urea", unit: "mg/dL", low: 0, high: 43 },
-          { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110 },
-          { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145 },
+          { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110, cl: 60, ch: 200 },
+          { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145, cl: 120, ch: 155 },
           { key: "k", label: "K", unit: "mmol/L", low: 3.5, high: 5.1, cl: 2.8, ch: 6.0 },
           { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0, cl: 2.0 },
           { key: "pcr", label: "PCR", unit: "mg/L", low: 0, high: 10 },
