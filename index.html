@@ -2216,6 +2216,7 @@
         </div>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
         <span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700"></span>
+        <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
       </div>
     </div>
@@ -2654,7 +2655,8 @@
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
     let _realtimeSubs = [];  // active Realtime subscriptions
-    let _suppressRealtime = false;  // flag to prevent Realtime from fighting local changes
+    let _suppressRealtimeKeys = new Set(); // per-patient suppression (use "__all__" for global)
+    function suppressKey(k, ms) { _suppressRealtimeKeys.add(k); setTimeout(function(){ _suppressRealtimeKeys.delete(k); }, ms || 3000); }
     const EXCEL_TEMPLATE_KEY = "hgl-export-template-b64";
     const ARCHIVE_KEY = "pl_archive_v1";    // pacientes egresados/archivados
     const SNAPSHOT_KEY = "pl_snapshots_v1";  // cortes de guardia
@@ -2710,6 +2712,7 @@
     let syncInterval = null;
     let pendingSyncs = 0;   // contador de operaciones en curso
     let exportTemplateBuffer = null;
+    let _dirtyFields = {};  // patientKey → Set<fieldName> — campos editados localmente sin guardar
     let archivados = [];    // pacientes egresados (no se borran, se archivan)
     let snapshots = [];    // cortes de guardia guardados
     let procedimientos = []; // procedimientos del día (no necesitan notas clínicas)
@@ -2770,6 +2773,18 @@
       catch { return {}; }
     }
     function getProxyUrl() { return getConfig().url || ""; }
+    function renderUserChip() {
+      const name = localStorage.getItem("pl_user_name") || "";
+      const chip = document.getElementById("user-chip");
+      if (chip) chip.textContent = name ? "👤 " + name : "👤 (sin nombre)";
+    }
+    function changeUserName() {
+      const current = localStorage.getItem("pl_user_name") || "";
+      const asked = prompt("👤 Cambiar nombre de usuario:", current);
+      if (asked === null) return;
+      const trimmed = asked.trim();
+      if (trimmed) { localStorage.setItem("pl_user_name", trimmed); renderUserChip(); }
+    }
     function getToken() { return getConfig().token || ""; }
 
     function saveConfig() {
@@ -3079,7 +3094,20 @@
     const OUTBOX_KEY = "pl_outbox_v1";
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
     function outboxSave(q) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); }
-    function outboxEnqueue(item) { const q = outboxLoad(); q.push({ ...item, ts: Date.now() }); outboxSave(q); updateOutboxBadge(); }
+    function outboxEnqueue(item) {
+      const q = outboxLoad();
+      const newItem = { ...item, ts: Date.now() };
+      // Deduplicar: reemplazar entrada existente del mismo tipo/clave
+      const idx = q.findIndex(x => {
+        if (x.type !== newItem.type) return false;
+        if (newItem.type === "note") return x.key === newItem.key;
+        if (newItem.type === "patient") return x.patient && newItem.patient && x.patient._supa_id && x.patient._supa_id === newItem.patient._supa_id;
+        return false;
+      });
+      if (idx !== -1) q[idx] = newItem; else q.push(newItem);
+      outboxSave(q);
+      updateOutboxBadge();
+    }
     function updateOutboxBadge() {
       const q = outboxLoad();
       const badge = document.getElementById("outbox-badge");
@@ -3382,7 +3410,9 @@
     }
 
     function handlePatientChange(payload) {
-      if (_suppressRealtime) return;
+      const { new: _chkNew, old: _chkOld } = payload;
+      const _chkId = (_chkNew && _chkNew.id) || (_chkOld && _chkOld.id);
+      if (_suppressRealtimeKeys.has("__all__") || (_chkId && _suppressRealtimeKeys.has(_chkId))) return;
       const { eventType, new: newRow, old: oldRow } = payload;
 
       if (eventType === "INSERT") {
@@ -3427,23 +3457,42 @@
     }
 
     function handleNoteChange(payload) {
-      if (_suppressRealtime) return;
+      const { new: _ncNew } = payload;
+      if (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id))) return;
       const { eventType, new: newRow } = payload;
       if (eventType === "DELETE") return;
       // Find patient by _supa_id matching note's patient_id
       const p = patients.find(x => x._supa_id === newRow.patient_id);
       if (!p) return;
       const k = pid(p);
+      const existing = noteData[k] || defaultData();
+      const dirty = _dirtyFields[k] || new Set();
+      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "misc"];
       const nd = defaultData();
-      nd.app = newRow.app || ""; nd.pa = newRow.pa || ""; nd.drenajes = newRow.drenajes || "";
-      nd.qx = newRow.qx || ""; nd.manejo = newRow.manejo || ""; nd.sangrado = newRow.sangrado || "";
-      nd.sv = newRow.sv || ""; nd.balance = newRow.balance || ""; nd.pendientes = newRow.pendientes || "";
-      nd.misc = newRow.misc || ""; nd.checklist = newRow.checklist || nd.checklist;
+      // Aplicar campos remotos solo si NO están siendo editados localmente
+      textFields.forEach(function(f) {
+        nd[f] = dirty.has(f) ? existing[f] : (newRow[f] || "");
+      });
+      nd.checklist = newRow.checklist || existing.checklist || nd.checklist;
       nd.labHistory = newRow.lab_history || [];
-      nd.imagenHistory = newRow.imagen_history || [];
+      nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
+        ? newRow.imagen_history
+        : (existing.imagenHistory || []);
       noteData[k] = migrateNote(nd);
       lsSaveNote(k, noteData[k]);
       renderView();
+      // Toast no intrusivo
+      var _toastEl = document.getElementById("rt-toast");
+      if (!_toastEl) {
+        _toastEl = document.createElement("div");
+        _toastEl.id = "rt-toast";
+        _toastEl.style.cssText = "position:fixed;bottom:16px;right:16px;background:#1e293b;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none";
+        document.body.appendChild(_toastEl);
+      }
+      _toastEl.textContent = "📡 Actualización recibida: " + (p.nombre || k);
+      _toastEl.style.opacity = "1";
+      clearTimeout(_toastEl._tid);
+      _toastEl._tid = setTimeout(function(){ _toastEl.style.opacity = "0"; }, 3000);
       console.log("[RT] Note updated:", k);
     }
 
@@ -3670,6 +3719,15 @@
       const today = new Date();
       document.getElementById("gi-fecha").value = today.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
 
+      // Identificación de usuario
+      let _userName = localStorage.getItem("pl_user_name") || "";
+      if (!_userName) {
+        const asked = prompt("👤 ¿Cuál es tu nombre? (se usa para identificar cambios en equipo)");
+        _userName = (asked || "").trim();
+        if (_userName) localStorage.setItem("pl_user_name", _userName);
+      }
+      renderUserChip();
+
       setSyncStatus("syncing", "Conectando a Supabase...");
 
       // Check if localStorage has data that was saved more recently than the last confirmed Supabase sync
@@ -3686,7 +3744,7 @@
       // ── Safety guard: compare Supabase vs localStorage patient counts ──
       const localPts = lsGetPatients() || [];
       const localHasMore = localPts.length > 0 && loaded && loaded.patients.length > 0
-        && localPts.length >= loaded.patients.length + 3;
+        && localPts.length > loaded.patients.length;
 
       if (loaded && loaded.patients.length > 0 && !localHasMore) {
         patients = loaded.patients;
@@ -4910,7 +4968,6 @@
       <div class="labs-title">${labTitle}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${activeFecha ? `
-        <input type="file" accept="application/pdf,image/jpeg,image/png,image/heic,image/webp" id="pdf-input-${k}" style="display:none" onchange="handleLabPDF('${k}',this)"/>
         <button data-pdfkey="${k}" onclick="triggerPdfInput(this)" ${loading ? "disabled" : ""}
           style="background:${loading ? "#94a3b8" : "#2196f3"};color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">
           ${loading ? "⏳ Extrayendo..." : "📄 PDF / 📷 Foto"}</button>
@@ -5088,6 +5145,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       var k = el.dataset.key, f = el.dataset.field;
       if (!noteData[k]) noteData[k] = defaultData();
       noteData[k][f] = el.value;
+      // Marcar campo como dirty (editado localmente, pendiente de guardar)
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add(f);
     }
     function liveLabUpdate(el) {
       var k = el.dataset.key, lk = el.dataset.labkey, fecha = el.dataset.fecha;
@@ -5102,6 +5162,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!noteData[k]) noteData[k] = defaultData();
       noteData[k][field] = value;
       saveNote(k, noteData[k]);
+      // Campo guardado: ya no está dirty
+      if (_dirtyFields[k]) _dirtyFields[k].delete(field);
     }
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
@@ -5263,17 +5325,21 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     // ─── PDF / IMAGE LABS ─────────────────────────────────────────────────────────
     function triggerPdfInput(btn) {
       var k = btn.getAttribute("data-pdfkey");
-      // Try direct element first; if not found (after re-render) create a temp input
-      var el = document.getElementById("pdf-input-" + k);
+      // Usar siempre el input global persistente (compatible Safari/iOS)
+      var el = document.getElementById("pl-global-pdf-input");
       if (!el) {
+        // Fallback: crear si todavía no existe en el DOM (edge case)
         el = document.createElement("input");
         el.type = "file";
         el.accept = "application/pdf,image/jpeg,image/png,image/heic,image/webp";
+        el.id = "pl-global-pdf-input";
         el.style.display = "none";
-        el.onchange = function(){ handleLabPDF(k, el); };
         document.body.appendChild(el);
-        setTimeout(function(){ document.body.removeChild(el); }, 30000);
       }
+      // Limpiar handler anterior y asignar handler de un solo uso para este paciente
+      el.onchange = null;
+      el.value = "";
+      el.onchange = function(){ handleLabPDF(k, el); };
       el.click();
     }
     async function handleLabPDF(k, input) {
@@ -7156,7 +7222,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function dischargePatient(k) {
       const p = patients.find(pt => pid(pt) === k);
       if (!p) { document.getElementById("confirm-modal").style.display = "none"; return; }
-      _suppressRealtime = true;
+      suppressKey(p._supa_id || "__all__");
       // Archivar: guardar paciente + sus notas antes de quitarlo del censo activo
       const nd = noteData[k] || defaultData();
       const archived = {
@@ -7184,7 +7250,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // Feedback
       const badge = document.getElementById("count-badge");
       if (badge) { const prev = badge.textContent; badge.style.color = "#27ae60"; badge.textContent = "✅ Paciente archivado"; setTimeout(() => { badge.style.color = ""; badge.textContent = prev; }, 2200); }
-      setTimeout(() => { _suppressRealtime = false; }, 3000);
     }
 
     function restorePatient(archiveIdx) {
@@ -7570,7 +7635,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       patients = nextPatients;
 
       // Suprimir Realtime para que los INSERT/UPDATE de Supabase no sobreescriban el import
-      _suppressRealtime = true;
+      suppressKey("__all__", 5000);
 
       // Guardar localmente de inmediato (fuente de verdad hasta que Supabase confirme)
       lsSavePatients(patients);
@@ -7599,12 +7664,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       renderView();
 
       // Lanzar sync a Supabase de forma directa (no debounced) para que no se pierda en refresh
-      _savePtsImmediate().then(() => {
-        // Restaurar Realtime después de que el sync haya terminado
-        setTimeout(() => { _suppressRealtime = false; }, 2000);
-      }).catch(() => {
-        setTimeout(() => { _suppressRealtime = false; }, 2000);
-      });
+      _savePtsImmediate();
 
       // Banner de éxito
       const banner = document.getElementById("import-banner");
@@ -7722,7 +7782,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!confirm("🔥 BORRAR TODO\n\nEsto eliminará TODOS los pacientes, notas, labs, archivados, snapshots y procedimientos.\n\nTambién se borrarán los datos en Supabase (nube).\n\n¿Continuar?")) return;
       if (!confirm("⚠️ SEGUNDA CONFIRMACIÓN\n\nEscribiste que quieres borrar TODO.\nEsta acción NO se puede deshacer.\n\n¿Estás completamente seguro?")) return;
 
-      _suppressRealtime = true;
+      suppressKey("__all__", 5000);
       setSyncStatus("syncing", "Borrando todo...");
 
       // 1) Borrar TODO de Supabase (notes se borran en cascada con patients)
@@ -7767,7 +7827,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       renderView();
       setSyncStatus("synced", "Censo vacío — importa Excel");
 
-      setTimeout(() => { _suppressRealtime = false; }, 3000);
       alert("✅ Todo borrado (local + nube).\n\nAhora importa tu Excel nuevo con el botón de la esquina superior derecha.");
     }
 
@@ -8354,8 +8413,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (isNaN(keepIdx) || isNaN(removeIdx) || keepIdx === removeIdx) return;
       if (keepIdx < 0 || keepIdx >= patients.length || removeIdx < 0 || removeIdx >= patients.length) return;
 
-      _suppressRealtime = true; // Prevent Realtime from fighting local changes
-
       const keep = patients[keepIdx];
       const remove = patients[removeIdx];
       if (!keep || !remove) return;
@@ -8378,7 +8435,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // Merge noteData
       const keepNd = noteData[keepKey] || defaultData();
       const removeNd = noteData[removeKey] || defaultData();
-      const ndFields = ["qx", "alergias", "app", "sangrado", "drenajes", "pendientes", "imagen", "cultivos"];
+      const ndFields = ["qx", "manejo", "app", "pa", "sangrado", "drenajes", "sv", "balance", "pendientes", "misc"];
       ndFields.forEach(f => {
         if (!keepNd[f] && removeNd[f]) keepNd[f] = removeNd[f];
       });
@@ -8402,11 +8459,75 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         delete noteData[removeKey];
         localStorage.removeItem(NOTES_PREFIX + removeKey);
       }
+      if (keep._supa_id) suppressKey(keep._supa_id);
       saveNote(keepKey, keepNd);
       savePts();
       buildEspFilters();
       renderView();
-      setTimeout(() => { _suppressRealtime = false; }, 3000);
+    }
+
+    function openManualMergeModal(keepIdx, removeIdx) {
+      keepIdx = parseInt(keepIdx); removeIdx = parseInt(removeIdx);
+      if (isNaN(keepIdx) || isNaN(removeIdx) || keepIdx === removeIdx) return;
+      const keep = patients[keepIdx];
+      const remove = patients[removeIdx];
+      if (!keep || !remove) return;
+      const FIELDS = [
+        { key: "nombre", label: "Nombre" },
+        { key: "exp", label: "Expediente" },
+        { key: "cama", label: "Cama" },
+        { key: "dx", label: "DX" },
+        { key: "edad", label: "Edad" },
+        { key: "esp", label: "Especialidad" },
+        { key: "adscrito", label: "Adscrito" },
+        { key: "residente", label: "Residente" },
+        { key: "ingreso", label: "Ingreso" },
+        { key: "estado", label: "Estado" }
+      ];
+      let rows = "";
+      FIELDS.forEach(function(f) {
+        const va = esc(keep[f.key] || "—");
+        const vb = esc(remove[f.key] || "—");
+        const same = (keep[f.key] || "") === (remove[f.key] || "");
+        if (same) {
+          rows += `<tr><td style="padding:6px 8px;font-size:11px;color:#64748b;white-space:nowrap">${f.label}</td>
+            <td colspan="2" style="padding:6px 8px;font-size:12px;color:#1e293b;background:#f8fafc">${va}</td></tr>`;
+        } else {
+          rows += `<tr><td style="padding:6px 8px;font-size:11px;color:#64748b;white-space:nowrap">${f.label}</td>
+            <td style="padding:4px 6px;background:#f0fdf4"><label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
+              <input type="radio" name="mmf_${f.key}" value="keep" checked style="accent-color:#059669"> ${va}</label></td>
+            <td style="padding:4px 6px;background:#fff7ed"><label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
+              <input type="radio" name="mmf_${f.key}" value="remove"> ${vb}</label></td></tr>`;
+        }
+      });
+      const body = document.getElementById("manual-merge-body");
+      body.innerHTML = `<div style="font-size:12px;color:#64748b;margin-bottom:10px">
+        Selecciona qué valor conservar para cada campo diferente.<br>
+        <span style="background:#f0fdf4;padding:1px 6px;border-radius:4px;color:#166534;font-weight:600">Verde = ${esc(keep.nombre)} (Cama ${esc(keep.cama)})</span> ·
+        <span style="background:#fff7ed;padding:1px 6px;border-radius:4px;color:#92400e;font-weight:600">Naranja = ${esc(remove.nombre)} (Cama ${esc(remove.cama)})</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-family:var(--font)">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#94a3b8;border-bottom:2px solid #e2e8f0">Campo</th>
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#059669;border-bottom:2px solid #e2e8f0">Registro A (principal)</th>
+          <th style="text-align:left;padding:6px 8px;font-size:11px;color:#d97706;border-bottom:2px solid #e2e8f0">Registro B (duplicado)</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+      const confirmBtn = document.getElementById("manual-merge-confirm");
+      confirmBtn.onclick = function() {
+        // Aplicar selecciones del usuario a keep
+        FIELDS.forEach(function(f) {
+          const radios = document.querySelectorAll('input[name="mmf_' + f.key + '"]');
+          if (!radios.length) return; // campos iguales: sin radio
+          let chosen = "keep";
+          radios.forEach(function(r) { if (r.checked) chosen = r.value; });
+          if (chosen === "remove") keep[f.key] = remove[f.key];
+        });
+        document.getElementById("manual-merge-modal").style.display = "none";
+        mergePatients(keepIdx, removeIdx);
+      };
+      document.getElementById("manual-merge-modal").style.display = "";
     }
 
     function renderDupPatientBanner(duplicates) {
@@ -8460,7 +8581,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             const keepP = d.patients[0];
             cardsHtml += `
             <button onclick="if(confirm('¿Fusionar registros?\\n\\nCONSERVAR: ${esc(keepP.nombre)} (Cama ${esc(keepP.cama)})\\nELIMINAR: ${esc(p.nombre)} (Cama ${esc(p.cama)})\\n\\nSe complementan datos faltantes del registro eliminado.'))mergePatients(${keepIdx},${pIdx})"
-              style="background:#059669;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🔀 Fusionar → ${esc(keepP.cama)}</button>`;
+              style="background:#059669;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🔀 Fusionar → ${esc(keepP.cama)}</button>
+            <button onclick="openManualMergeModal(${keepIdx},${pIdx})"
+              style="background:#0ea5e9;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">✏️ Campo a campo</button>`;
           } else {
             cardsHtml += `<span style="background:#059669;color:#fff;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600">📌 Registro principal</span>`;
           }
@@ -8485,7 +8608,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (isNaN(idx) || idx < 0 || idx >= patients.length) return;
       const p = patients[idx];
       const k = pid(p);
-      _suppressRealtime = true;
+      if (p._supa_id) suppressKey(p._supa_id);
       if (p._supa_id) supaDeletePatient(p._supa_id);
       patients.splice(idx, 1);
       delete noteData[k];
@@ -8493,7 +8616,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       savePts();
       buildEspFilters();
       renderView();
-      setTimeout(() => { _suppressRealtime = false; }, 3000);
     }
 
     function toggleDupPatPanel() {
@@ -8902,6 +9024,22 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       <input type="file" id="bulk-pdf-input" accept="application/pdf" multiple style="display:none" onchange="handleBulkLabsFiles(this.files)"/>
       <div id="bulk-labs-progress" style="margin-top:14px;display:none"></div>
       <div id="bulk-labs-results" style="margin-top:10px"></div>
+    </div>
+  </div>
+  <!-- Input de archivo global para PDF/Foto de labs (único, persistente, compatible Safari/iOS) -->
+  <input type="file" id="pl-global-pdf-input" accept="application/pdf,image/jpeg,image/png,image/heic,image/webp" style="display:none">
+  <!-- Modal fusión campo a campo -->
+  <div id="manual-merge-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;overflow-y:auto;padding:20px">
+    <div style="background:#fff;border-radius:12px;max-width:700px;margin:0 auto;padding:0;box-shadow:0 8px 40px rgba(0,0,0,.35);overflow:hidden">
+      <div style="background:linear-gradient(135deg,#0a1628,#0f2d52);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:14px;font-weight:700">✏️ Fusión campo a campo</span>
+        <button onclick="document.getElementById('manual-merge-modal').style.display='none'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:13px">✕</button>
+      </div>
+      <div id="manual-merge-body" style="padding:16px 20px;overflow-y:auto;max-height:70vh"></div>
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="document.getElementById('manual-merge-modal').style.display='none'" style="background:#e2e8f0;border:none;padding:7px 18px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600">Cancelar</button>
+        <button id="manual-merge-confirm" style="background:#059669;color:#fff;border:none;padding:7px 18px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700">✅ Confirmar fusión</button>
+      </div>
     </div>
   </div>
 </body>
