@@ -8530,6 +8530,36 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("manual-merge-modal").style.display = "";
     }
 
+    function toggleDupInlineEdit(uid) {
+      const form = document.getElementById('dup-edit-' + uid);
+      if (!form) return;
+      const isHidden = form.style.display === 'none';
+      form.style.display = isHidden ? 'block' : 'none';
+    }
+
+    function saveDupInlineEdit(uid, idx) {
+      idx = parseInt(idx);
+      const p = patients[idx];
+      if (!p) return;
+      const fields = ['nombre', 'exp', 'cama', 'dx', 'ingreso', 'edad', 'adscrito', 'residente'];
+      const oldKey = pid(p);
+      fields.forEach(function(f) {
+        const el = document.getElementById('dup-fld-' + uid + '-' + f);
+        if (el) p[f] = el.value.trim();
+      });
+      const newKey = pid(p);
+      if (oldKey !== newKey && noteData[oldKey]) {
+        noteData[newKey] = noteData[oldKey];
+        delete noteData[oldKey];
+        localStorage.removeItem(NOTES_PREFIX + oldKey);
+        deleteNoteRemote(oldKey);
+        saveNote(newKey, noteData[newKey]);
+      }
+      savePts();
+      buildEspFilters();
+      renderView();
+    }
+
     function renderDupPatientBanner(duplicates) {
       const existing = document.getElementById("dup-pat-banner");
       if (existing) existing.remove();
@@ -8542,25 +8572,38 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       <span style="font-size:18px">🔀</span>
       <div style="flex:1">
         <strong style="font-size:13px">PACIENTES DUPLICADOS — ${duplicates.length} posible${duplicates.length !== 1 ? "s" : ""} duplicado${duplicates.length !== 1 ? "s" : ""}</strong>
-        <div style="font-size:11px;opacity:.85;margin-top:2px">Mismo expediente o nombre detectado. Clic para fusionar ↓</div>
+        <div style="font-size:11px;opacity:.85;margin-top:2px">Mismo expediente o nombre detectado. Edita los datos directamente ↓</div>
       </div>
       <span id="dup-pat-arrow" style="font-size:16px">▾</span>
     </div>`;
       let cardsHtml = '<div id="dup-pat-body" style="padding:12px 14px;display:grid;gap:10px">';
-      duplicates.forEach((d) => {
+      duplicates.forEach((d, groupIdx) => {
         const typeLabel = d.type === "expediente" ? "Mismo expediente" : d.type;
         const typeBg = d.type === "expediente" ? "#fef3c7" : "#fef9c3";
+
+        // Sort patients: cama censable válida primero (prioridad cama)
+        const combined = d.patients.map((p, i) => ({ p, idx: d.indices[i] }));
+        combined.sort((a, b) => {
+          const aValid = !isNonCensableBed(a.p.cama);
+          const bValid = !isNonCensableBed(b.p.cama);
+          if (aValid && !bValid) return -1;
+          if (!aValid && bValid) return 1;
+          return 0;
+        });
+
         cardsHtml += `<div style="border:1px solid #fbbf24;border-radius:8px;overflow:hidden;background:${typeBg}">
       <div style="background:#fde68a;padding:6px 12px;font-size:12px;font-weight:700;color:#92400e;display:flex;align-items:center;gap:6px">
         🔀 <span style="background:#d97706;color:#fff;padding:1px 8px;border-radius:5px">${esc(typeLabel)}</span>
-        <span style="font-weight:400;color:#78350f;margin-left:4px">— ${d.patients.length} registros</span>
+        <span style="font-weight:400;color:#78350f;margin-left:4px">— ${combined.length} registros · cama prioritaria marcada con 📌</span>
       </div>
       <div style="padding:8px 12px;display:grid;gap:7px">`;
-        d.patients.forEach((p, i) => {
+
+        combined.forEach(({ p, idx: pIdx }, i) => {
           const k = pid(p);
-          const pIdx = d.indices[i]; // actual index in patients[] array
-          const bgColor = i === 0 ? '#f0fdf4' : '#fff7ed';
-          const borderColor = i === 0 ? '#86efac' : '#fdba74';
+          const uid = groupIdx + '_' + i;
+          const isPrincipal = i === 0;
+          const bgColor = isPrincipal ? '#f0fdf4' : '#fff7ed';
+          const borderColor = isPrincipal ? '#86efac' : '#fdba74';
           const dataBadge = [
             p.ingreso ? "✅Ing" : "❌Ing",
             p.dx ? "✅Dx" : "❌Dx",
@@ -8568,29 +8611,44 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             p.edad ? "✅Edad" : "❌Edad",
             (noteData[k] && noteData[k].labHistory && noteData[k].labHistory.length) ? "✅Labs" : "❌Labs"
           ].join(" · ");
+
+          const inlineEditForm = `
+          <div id="dup-edit-${uid}" style="display:none;margin-top:8px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+              <label style="font-size:10px;color:#64748b;display:flex;flex-direction:column;gap:2px">Nombre<input id="dup-fld-${uid}-nombre" value="${esc(p.nombre || '')}" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;font-family:var(--font)"></label>
+              <label style="font-size:10px;color:#64748b;display:flex;flex-direction:column;gap:2px">Expediente<input id="dup-fld-${uid}-exp" value="${esc(p.exp || '')}" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;font-family:var(--font)"></label>
+              <label style="font-size:10px;color:#64748b;display:flex;flex-direction:column;gap:2px">Cama<input id="dup-fld-${uid}-cama" value="${esc(p.cama || '')}" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;font-family:var(--font)"></label>
+              <label style="font-size:10px;color:#64748b;display:flex;flex-direction:column;gap:2px">Ingreso<input id="dup-fld-${uid}-ingreso" value="${esc(p.ingreso || '')}" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;font-family:var(--font)"></label>
+              <label style="font-size:10px;color:#64748b;display:flex;flex-direction:column;gap:2px">Edad<input id="dup-fld-${uid}-edad" value="${esc(p.edad || '')}" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;font-family:var(--font)"></label>
+              <label style="font-size:10px;color:#64748b;display:flex;flex-direction:column;gap:2px">Adscrito<input id="dup-fld-${uid}-adscrito" value="${esc(p.adscrito || '')}" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;font-family:var(--font)"></label>
+              <label style="font-size:10px;color:#64748b;display:flex;flex-direction:column;gap:2px;grid-column:span 2">Diagnóstico<input id="dup-fld-${uid}-dx" value="${esc(p.dx || '')}" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;font-family:var(--font);width:100%;box-sizing:border-box"></label>
+              <label style="font-size:10px;color:#64748b;display:flex;flex-direction:column;gap:2px">Residente<input id="dup-fld-${uid}-residente" value="${esc(p.residente || '')}" style="padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;font-family:var(--font)"></label>
+            </div>
+            <div style="display:flex;gap:5px">
+              <button onclick="saveDupInlineEdit('${uid}',${pIdx})"
+                style="background:#059669;color:#fff;border:none;padding:4px 14px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">💾 Guardar</button>
+              <button onclick="toggleDupInlineEdit('${uid}')"
+                style="background:#64748b;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-family:var(--font)">Cancelar</button>
+            </div>
+          </div>`;
+
           cardsHtml += `
-        <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <div style="flex:1;min-width:220px">
-            <div style="font-size:12px;font-weight:700;color:#1e293b">${esc(p.nombre)}</div>
-            <div style="font-size:11px;color:#64748b">Exp: ${esc(p.exp)} · ${esc(p.esp)} · Cama: ${esc(p.cama)} · Ing: ${esc(p.ingreso || "—")}</div>
-            <div style="font-size:10px;color:#94a3b8;margin-top:2px">${dataBadge}</div>
+        <div style="background:${bgColor};border:1px solid ${borderColor};border-radius:6px;padding:7px 10px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div style="flex:1;min-width:220px">
+              <div style="font-size:12px;font-weight:700;color:#1e293b">${esc(p.nombre)}</div>
+              <div style="font-size:11px;color:#64748b">Exp: ${esc(p.exp)} · ${esc(p.esp)} · Cama: ${esc(p.cama)} · Ing: ${esc(p.ingreso || "—")}</div>
+              <div style="font-size:10px;color:#94a3b8;margin-top:2px">${dataBadge}</div>
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+              ${isPrincipal ? '<span style="background:#059669;color:#fff;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600">📌 Cama prioritaria</span>' : ''}
+              <button onclick="toggleDupInlineEdit('${uid}')"
+                style="background:#2563eb;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">✏️ Editar</button>
+              <button onclick="if(confirm('¿Eliminar registro de ${esc(p.nombre)} (Cama ${esc(p.cama)})?'))removeDupByIndex(${pIdx})"
+                style="background:#dc2626;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🗑 Eliminar</button>
+            </div>
           </div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap">`;
-          if (i > 0) {
-            const keepIdx = d.indices[0];
-            const keepP = d.patients[0];
-            cardsHtml += `
-            <button onclick="if(confirm('¿Fusionar registros?\\n\\nCONSERVAR: ${esc(keepP.nombre)} (Cama ${esc(keepP.cama)})\\nELIMINAR: ${esc(p.nombre)} (Cama ${esc(p.cama)})\\n\\nSe complementan datos faltantes del registro eliminado.'))mergePatients(${keepIdx},${pIdx})"
-              style="background:#059669;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🔀 Fusionar → ${esc(keepP.cama)}</button>
-            <button onclick="openManualMergeModal(${keepIdx},${pIdx})"
-              style="background:#0ea5e9;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">✏️ Campo a campo</button>`;
-          } else {
-            cardsHtml += `<span style="background:#059669;color:#fff;padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600">📌 Registro principal</span>`;
-          }
-          cardsHtml += `
-            <button onclick="if(confirm('¿Eliminar registro de ${esc(p.nombre)} (Cama ${esc(p.cama)})?'))removeDupByIndex(${pIdx})"
-              style="background:#dc2626;color:#fff;border:none;padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">🗑 Eliminar</button>
-          </div>
+          ${inlineEditForm}
         </div>`;
         });
         cardsHtml += '</div></div>';
