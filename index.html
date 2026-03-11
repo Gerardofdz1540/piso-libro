@@ -3243,10 +3243,13 @@
     async function supaLoadAll() {
       setSyncStatus("syncing", "Descargando...");
       try {
-        const [pts, nts] = await Promise.all([
-          retryNetwork(() => _sGet("patients", "order=cama"), 2, 400),
-          retryNetwork(() => _sGet("notes", ""), 2, 400)
-        ]);
+        // Primero pacientes, luego notas filtradas por sus IDs (menor payload)
+        const pts = await retryNetwork(() => _sGet("patients", "order=cama"), 2, 200);
+        let nts = [];
+        if (Array.isArray(pts) && pts.length) {
+          const ids = pts.map(r => r.id).join(",");
+          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history"), 2, 200);
+        }
 
         if (!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
 
@@ -3328,52 +3331,53 @@
       lsSavePatients(patients);
       localStorage.setItem("pl_last_save_ts", Date.now().toString());
       pendingSyncs++;
-      setSyncStatus("syncing", "Guardando pacientes...");
-      let allOk = true;
+      setSyncStatus("syncing", "Guardando...");
+
+      // Guardar en paralelo por lotes de 6 para acelerar sync
+      const BATCH = 6;
       const failedPts = [];
-      for (const p of patients) {
-        let res = await supaUpsertPatient(p);
-        // Retry once on failure
-        if (!res) {
-          await new Promise(r => setTimeout(r, 600));
-          res = await supaUpsertPatient(p);
-        }
-        if (!res) { allOk = false; failedPts.push(p); }
+      for (let i = 0; i < patients.length; i += BATCH) {
+        const batch = patients.slice(i, i + BATCH);
+        const results = await Promise.all(batch.map(p => supaUpsertPatient(p)));
+        results.forEach((res, j) => { if (!res) failedPts.push(batch[j]); });
       }
+
+      // Un reintento rápido (300ms) para los que fallaron
+      let stillFailed = [];
+      if (failedPts.length) {
+        await new Promise(r => setTimeout(r, 300));
+        const retried = await Promise.all(failedPts.map(p => supaUpsertPatient(p)));
+        failedPts.forEach((p, i) => { if (!retried[i]) stillFailed.push(p); });
+      }
+
+      const allOk = stillFailed.length === 0;
       lsSavePatients(patients); // re-save with updated _supa_ids
       if (allOk) {
         localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
       } else {
-        // Enqueue failed patients to outbox so they sync on next opportunity
-        failedPts.forEach(p => outboxEnqueue({ type: "patient", patient: p }));
+        stillFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p }));
       }
       pendingSyncs--;
       if (pendingSyncs === 0) {
         if (allOk) {
           setSyncStatus("synced", "Sincronizado");
         } else {
-          // Silently retry after 4s without showing alarming error
           setSyncStatus("syncing", "Sincronizando...");
           setTimeout(async () => {
             if (pendingSyncs > 0) return;
             pendingSyncs++;
             setSyncStatus("syncing", "Reintentando...");
-            let ok2 = true;
-            let retryFailed = [];
-            for (const p of patients) {
-              const r = await supaUpsertPatient(p);
-              if (!r) { ok2 = false; retryFailed.push(p); }
-            }
+            const retried2 = await Promise.all(patients.map(p => supaUpsertPatient(p)));
+            const retryFailed = patients.filter((_, i) => !retried2[i]);
             lsSavePatients(patients);
-            if (ok2) {
+            if (!retryFailed.length) {
               localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
             } else {
-              // DO NOT update supabase_sync_ts — data is incomplete
               retryFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p }));
             }
             pendingSyncs--;
             if (pendingSyncs === 0) {
-              if (ok2) setSyncStatus("synced", "Sincronizado");
+              if (!retryFailed.length) setSyncStatus("synced", "Sincronizado");
               else setSyncProblemStatus();
             }
           }, 4000);
@@ -3728,7 +3732,16 @@
       }
       renderUserChip();
 
-      setSyncStatus("syncing", "Conectando a Supabase...");
+      // ── Render inmediato desde localStorage: pacientes visibles antes de esperar red ──
+      const _earlyPts = lsGetPatients() || [];
+      if (_earlyPts.length) {
+        patients = _earlyPts;
+        patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
+        buildEspFilters();
+        renderView();
+      }
+
+      setSyncStatus("syncing", "Sincronizando...");
 
       // Check if localStorage has data that was saved more recently than the last confirmed Supabase sync
       const lastSaveTs = parseInt(localStorage.getItem("pl_last_save_ts") || "0", 10);
@@ -3784,9 +3797,8 @@
               setSyncStatus("synced", "Recuperado " + hm2);
             });
           } else if (loaded === null) {
-            // supaLoadAll returned null = real Supabase error — show local data with warning
-            // Status already set to "error" inside supaLoadAll
-            // Start realtime anyway so changes sync when connection recovers
+            // Supabase error pero hay datos locales disponibles — no mostrar error alarmante
+            setSyncStatus("offline", "Datos locales · BD sin conexión");
             startRealtime();
           } else {
             // loaded.patients was empty — local data exists but Supabase is empty → migration prompt
