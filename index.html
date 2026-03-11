@@ -3733,12 +3733,13 @@
       renderUserChip();
 
       // ── Render inmediato desde localStorage: pacientes visibles antes de esperar red ──
+      // Usamos setTimeout(0) para diferir hasta que el script termine de definir
+      // CHECKLIST_ITEMS, WOUND_ITEMS y demás constantes declaradas tras init().
       const _earlyPts = lsGetPatients() || [];
       if (_earlyPts.length) {
         patients = _earlyPts;
         patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
-        buildEspFilters();
-        renderView();
+        setTimeout(() => { buildEspFilters(); renderView(); }, 0);
       }
 
       setSyncStatus("syncing", "Sincronizando...");
