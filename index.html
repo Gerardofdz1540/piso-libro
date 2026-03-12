@@ -2645,6 +2645,7 @@
     const STORAGE_KEY = "censo-pacientes-v3";
     const NOTES_PREFIX = "note-";
     const GUARD_INFO_KEY = "pl_guard_info_v1";
+    const LAB_STORAGE_BUCKET = "lab-sources";
     const CONFIG_KEY = "hgl-worker-config";   // {url, token} (legacy)
 
     // ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────────
@@ -3001,7 +3002,9 @@
             extra: [],
             source_file: "",
             source_file_type: "",
-            source_file_name: ""
+            source_file_name: "",
+            source_storage_bucket: "",
+            source_storage_path: ""
           });
         }
       }
@@ -3018,7 +3021,9 @@
             incidencia: !!s.incidencia,
             source_file: toSafeString(s.source_file).trim(),
             source_file_type: toSafeString(s.source_file_type).trim(),
-            source_file_name: toSafeString(s.source_file_name).trim()
+            source_file_name: toSafeString(s.source_file_name).trim(),
+            source_storage_bucket: toSafeString(s.source_storage_bucket).trim(),
+            source_storage_path: toSafeString(s.source_storage_path).trim()
           };
         });
       nd.labs = sanitizeLabsMap(nd.labs);
@@ -3216,6 +3221,87 @@
         }
       }
       throw lastErr;
+    }
+    function sanitizeStoragePathSegment(v) {
+      return toSafeString(v)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80) || "item";
+    }
+    async function deleteLabSourceFromStorage(bucket, path) {
+      if (!bucket || !path || !_supa || !_supa.storage) return;
+      try {
+        await _supa.storage.from(bucket).remove([path]);
+      } catch (e) {
+        safeWarn("No se pudo borrar archivo de labs en Storage:", e);
+      }
+    }
+    async function uploadLabSourceToStorage(k, fecha, file) {
+      if (!file || !_supa || !_supa.storage) return null;
+      const p = patients.find(function(pt){ return pid(pt) === k; });
+      const patientPart = sanitizeStoragePathSegment((p && (p._supa_id || p.exp || p.nombre)) || k);
+      const fechaPart = sanitizeStoragePathSegment(fecha || todayStr());
+      const extMatch = toSafeString(file.name).match(/(\.[A-Za-z0-9]+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : (file.type === "application/pdf" ? ".pdf" : ".bin");
+      const baseName = sanitizeStoragePathSegment(toSafeString(file.name).replace(/\.[^.]+$/, "") || "labs");
+      const objectPath = patientPart + "/" + fechaPart + "/" + Date.now() + "-" + baseName + ext;
+      try {
+        const resp = await _supa.storage.from(LAB_STORAGE_BUCKET).upload(objectPath, file, {
+          upsert: true,
+          contentType: file.type || "application/octet-stream",
+          cacheControl: "3600"
+        });
+        if (resp.error) throw resp.error;
+        return { bucket: LAB_STORAGE_BUCKET, path: (resp.data && resp.data.path) || objectPath };
+      } catch (e) {
+        safeWarn("Storage labs fallback a inline:", e);
+        return null;
+      }
+    }
+    async function resolveLabSourceUrl(bucket, path) {
+      if (!bucket || !path || !_supa || !_supa.storage) return null;
+      try {
+        const signed = await _supa.storage.from(bucket).createSignedUrl(path, 60);
+        if (!signed.error && signed.data && signed.data.signedUrl) return signed.data.signedUrl;
+      } catch (e) {
+        safeWarn("No se pudo firmar URL de labs:", e);
+      }
+      try {
+        const pub = _supa.storage.from(bucket).getPublicUrl(path);
+        if (pub && pub.data && pub.data.publicUrl) return pub.data.publicUrl;
+      } catch (e) {
+        safeWarn("No se pudo obtener URL publica de labs:", e);
+      }
+      return null;
+    }
+    async function attachLabSourceToSnap(k, fecha, snap, file, base64Fallback) {
+      const prevBucket = snap.source_storage_bucket || "";
+      const prevPath = snap.source_storage_path || "";
+      const uploaded = await uploadLabSourceToStorage(k, fecha, file);
+      snap.source_file_type = file.type || snap.source_file_type || "application/pdf";
+      snap.source_file_name = file.name || snap.source_file_name || "labs.pdf";
+      if (uploaded) {
+        snap.source_storage_bucket = uploaded.bucket;
+        snap.source_storage_path = uploaded.path;
+        snap.source_file = "";
+        if (prevPath && (prevBucket !== uploaded.bucket || prevPath !== uploaded.path)) {
+          deleteLabSourceFromStorage(prevBucket, prevPath);
+        }
+        return;
+      }
+      snap.source_storage_bucket = "";
+      snap.source_storage_path = "";
+      snap.source_file = base64Fallback || snap.source_file || "";
+    }
+    function getEntregaNptText(checklist) {
+      const cl = checklist || {};
+      if (!cl.npt) return "";
+      const parts = ["Activa"];
+      if (cl.npt_pct) parts.push(cl.npt_pct);
+      if (cl.npt_fecha) parts.push(cl.npt_fecha);
+      return parts.join(" · ");
     }
 
     // ─── SUPABASE: SAVE PATIENT ─────────────────────────────────────────────────────
@@ -5087,7 +5173,7 @@
       let dateChips = dates.map(d => {
         const snapD = history.find(s => s.fecha === d);
         const hasInc = snapD && snapD.incidencia;
-        const hasFile = snapD && snapD.source_file;
+        const hasFile = snapD && (snapD.source_storage_path || snapD.source_file);
         return `<span class="lab-chip-wrap"><button class="lab-date-chip ${d === activeFecha ? 'active' : ''}" onclick="setActiveLabDate('${k}','${d}')">${hasInc ? "⚠️ " : ""}${fmtDateChip(d)}${hasFile ? " 📎" : ""}</button><button class="lab-chip-del" onclick="deleteLabDate('${k}','${d}')" title="Eliminar fecha">✕</button></span>`;
       }).join("");
       dateChips += `<button class="lab-date-chip new-btn" onclick="addLabDate('${k}')">+ Nueva fecha</button>`;
@@ -5144,7 +5230,7 @@
 
       const labTitle = activeFecha ? `🧪 LABS · ${fmtDateChip(activeFecha)} ${snap && snap.labs && snap.labs.paciente ? "· " + esc(snap.labs.paciente) : ""}` : "🧪 LABS";
       const hasAnyLab = activeFecha && LAB_FIELDS.some(lf => labs[lf.key]);
-      const hasSourceFile = activeFecha && snap && snap.source_file;
+      const hasSourceFile = activeFecha && snap && (snap.source_storage_path || snap.source_file);
 
       return `<div style="margin-top:12px">
     <div class="labs-header">
@@ -5351,7 +5437,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       var k = el.dataset.key, lk = el.dataset.labkey, fecha = el.dataset.fecha;
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
-      if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" }; nd.labHistory.push(snap); }
+      if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[lk] = el.value;
       noteData[k] = nd;
@@ -5367,7 +5453,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
-      if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" }; nd.labHistory.push(snap); }
+      if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[labKey] = value;
       // keep nd.labs in sync with latest snapshot for export
@@ -5424,6 +5510,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function deleteLabDate(k, fecha) {
       if (!confirm("Eliminar labs del " + fmtDateChip(fecha) + "?\nNo se puede deshacer.")) return;
       var nd = getNote(k);
+      var snapToDelete = (nd.labHistory || []).find(function (s) { return s.fecha === fecha; });
+      if (snapToDelete && snapToDelete.source_storage_path) {
+        deleteLabSourceFromStorage(snapToDelete.source_storage_bucket || LAB_STORAGE_BUCKET, snapToDelete.source_storage_path);
+      }
       nd.labHistory = (nd.labHistory || []).filter(function (s) { return s.fecha !== fecha; });
       if (activeLabDate[k] === fecha) {
         var rem = (nd.labHistory || []).map(function (s) { return s.fecha; }).sort(function (a, b) { return b.localeCompare(a); });
@@ -5453,7 +5543,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { if (fecha !== null) alert("Formato inválido. Usa YYYY-MM-DD"); return; }
       const nd = getNote(k);
       if (!nd.labHistory.find(s => s.fecha === fecha)) {
-        nd.labHistory.push({ fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" });
+        nd.labHistory.push({ fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" });
       }
       noteData[k] = nd;
       activeLabDate[k] = fecha;
@@ -5522,10 +5612,21 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     // ─── PDF / IMAGE LABS ─────────────────────────────────────────────────────────
-    function openLabSourceFile(k, fecha) {
+    async function openLabSourceFile(k, fecha) {
       const nd = getNote(k);
       const snap = (nd.labHistory || []).find(s => s.fecha === fecha);
-      if (!snap || !snap.source_file) {
+      if (!snap) {
+        alert("No hay archivo fuente guardado para esta fecha.");
+        return;
+      }
+      if (snap.source_storage_path) {
+        const urlFromStorage = await resolveLabSourceUrl(snap.source_storage_bucket || LAB_STORAGE_BUCKET, snap.source_storage_path);
+        if (urlFromStorage) {
+          window.open(urlFromStorage, "_blank");
+          return;
+        }
+      }
+      if (!snap.source_file) {
         alert("No hay archivo fuente guardado para esta fecha.");
         return;
       }
@@ -5690,7 +5791,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const nd = getNote(k);
         const targetFecha = sanitizedExtracted.fecha_labs || activeLabDate[k] || todayStr();
         let snap = nd.labHistory.find(s => s.fecha === targetFecha);
-        if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" }; nd.labHistory.push(snap); }
+        if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
         const labsFromExtract = { ...sanitizedExtracted };
         if (labsFromExtract.tipo_cultivo || labsFromExtract.cultivo_organismo || labsFromExtract.cultivo_sensibilidades || labsFromExtract.cultivo_resistencias) {
           labsFromExtract.micro_tipo_cultivo = labsFromExtract.micro_tipo_cultivo || labsFromExtract.tipo_cultivo || "";
@@ -5704,9 +5805,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         delete labsFromExtract.cultivo_sensibilidades;
         delete labsFromExtract.cultivo_resistencias;
         const hasValues = getLabKeys().some(f => sanitizedExtracted[f] && sanitizedExtracted[f].trim() !== "");
-        snap.source_file = base64;
-        snap.source_file_type = file.type || (isImage ? "image/jpeg" : "application/pdf");
-        snap.source_file_name = file.name || (isImage ? "labs.jpg" : "labs.pdf");
+        await attachLabSourceToSnap(k, targetFecha, snap, file, base64);
         snap.labs = { ...sanitizeLabsMap(snap.labs), ...labsFromExtract };
         activeLabDate[k] = targetFecha;
         noteData[k] = nd;
@@ -5990,6 +6089,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         let cards = "";
         sorted.forEach(p => {
           const nd = noteData[pid(p)] || defaultData();
+          const cl = nd.checklist || {};
+          const nptEntrega = getEntregaNptText(cl);
           const days = daysSince(p.ingreso);
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
           const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
@@ -6033,11 +6134,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           ${ef("DX", p.dx || nd.dx)}
           <div class="eg-r2">${ef("APP", nd.app)}${ef("PA", nd.pa)}</div>
           ${ef("QX", nd.qx || nd.manejo)}
-          <div class="eg-r3">${ef("🩸Sangr", nd.sangrado)}${ef("💧Dren", nd.drenajes)}${ef("⚖️Bal", nd.balance)}</div>
+          <div class="eg-r2">${ef("💧 Drenajes", nd.drenajes)}${ef("💉 NPT", nptEntrega)}</div>
+          <div class="eg-r3">${ef("🩸Sangr", nd.sangrado)}${ef("⚖️Bal", nd.balance)}${ef("🍽 Dieta", cl.dieta || "")}</div>
           ${efh("📌 PLAN/PEND", nd.pendientes)}
           ${labHtml}
           ${(function () {
-              const cl = nd.checklist || {};
               const tags = [];
               if (cl.npo) tags.push('<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">NPO</span>');
               if (cl.atb) tags.push('<span style="background:#0369a1;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">ATB</span>');
@@ -8415,7 +8516,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
                   if (Object.keys(fb).length > 0) extracted = fb;
                 }
               }
-              resolve({ file: file.name, extracted: extracted, error: null });
+              resolve({ file: file.name, fileObj: file, fileBase64: base64, extracted: extracted, error: null });
             })
             .catch(function(e){ resolve({ file: file.name, extracted: null, error: String(e) }); });
           };
@@ -8423,13 +8524,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         });
       }
 
-      function finish() {
+      async function finish() {
         var successCount = 0;
         var rows = "";
-        results.forEach(function(r) {
+        for (const r of results) {
           if (r.error) {
             rows += "<div style='padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px'><b style='color:#991b1b'>Error:</b> " + esc(r.file) + " — " + esc(r.error) + "</div>";
-            return;
+            continue;
           }
           var ex = sanitizeExtractedLabs(r.extracted);
           var matched = matchPatient(ex.paciente || "");
@@ -8438,7 +8539,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             var nd = getNote(k);
             var fecha = ex.fecha_labs || todayStr();
             var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
-            if (!snap) { snap = { fecha: fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" }; nd.labHistory.push(snap); }
+            if (!snap) { snap = { fecha: fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
             if (!snap.extra) snap.extra = [];
 
             var isCultivo = ex.tipo_lab === "cultivo" || (ex.tipo_cultivo && ex.tipo_cultivo.trim() !== "");
@@ -8476,6 +8577,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               });
               snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), labsToMerge);
             }
+            if (r.fileObj) {
+              await attachLabSourceToSnap(k, fecha, snap, r.fileObj, r.fileBase64 || "");
+            }
 
             activeLabDate[k] = fecha;
             noteData[k] = nd;
@@ -8494,7 +8598,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           } else {
             rows += "<div style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px'><b style='color:#92400e'>No encontrado en censo:</b> <b>" + esc((ex && ex.paciente) || "(no detectado)") + "</b><br><span style='color:#78350f;font-size:11px'>Archivo: " + esc(r.file) + "</span></div>";
           }
-        });
+        }
         prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#166534;padding:8px 0'>Listo: " + successCount + " asignados &middot; " + (results.length - successCount) + " sin asignar.</div>";
         res.innerHTML = rows;
         if (successCount > 0) renderView();
@@ -9183,7 +9287,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       if (type === "labs") {
         if (!nd.labHistory.find(s => s.fecha === today)) {
-          nd.labHistory.push({ fecha: today, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" });
+          nd.labHistory.push({ fecha: today, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" });
         }
         noteData[k] = nd;
         activeLabDate[k] = today;
