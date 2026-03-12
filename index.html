@@ -4042,7 +4042,19 @@
             setSyncStatus("offline", "Datos locales — migra a Supabase ⬆️");
           }
         } else if (!patients.length) {
-          setSyncStatus("synced", "Sin pacientes — agrega el primero");
+          if (!navigator.onLine) {
+            setSyncStatus("offline", "Sin conexión y sin datos locales");
+          } else if (loaded === null) {
+            setSyncStatus("error", "No se pudo descargar Supabase");
+          } else {
+            setSyncStatus("offline", "Supabase vacío — abre Config");
+            const syncEl = document.getElementById("sync-status");
+            if (syncEl) {
+              syncEl.title = "Supabase no devolvió pacientes. Toca para abrir Config y reparar sync.";
+              syncEl.style.cursor = "pointer";
+              syncEl.onclick = openConfigModal;
+            }
+          }
         } else {
           setSyncStatus("offline", "Modo local (sin conexión)");
         }
