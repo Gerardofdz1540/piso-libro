@@ -3258,6 +3258,9 @@
 
         const loadedPatients = [];
         const loadedNotes = {};
+        const localPts = lsGetPatients() || [];
+        const localById = {};
+        localPts.forEach(lp => { if (lp._supa_id) localById[lp._supa_id] = lp; });
 
         pts.forEach(row => {
           const p = {
@@ -3268,6 +3271,26 @@
             estado: row.estado || "",
             ingreso: row.ingreso ? fmtDateFromISO(row.ingreso) : ""
           };
+          // Si los campos de identidad llegaron vacíos desde Supabase, intentar
+          // restaurarlos desde el caché local (mismo _supa_id)
+          if (!p.nombre && !p.cama && !p.exp) {
+            const local = localById[row.id];
+            if (local && (local.nombre || local.cama || local.exp)) {
+              p.nombre   = local.nombre   || "";
+              p.cama     = local.cama     || "";
+              p.exp      = local.exp      || "";
+              p.dx       = p.dx       || local.dx       || "";
+              p.edad     = p.edad     || local.edad     || "";
+              p.esp      = p.esp      || local.esp      || "";
+              p.adscrito = p.adscrito || local.adscrito || "";
+              p.residente= p.residente|| local.residente|| "";
+              p.estado   = p.estado   || local.estado   || "";
+              p.ingreso  = p.ingreso  || local.ingreso  || "";
+            } else {
+              // Sin identidad y sin respaldo local → registro corrupto, omitir
+              return;
+            }
+          }
           loadedPatients.push(p);
           const k = pid(p);
           const sn = noteMap[row.id];
