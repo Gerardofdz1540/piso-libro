@@ -4295,9 +4295,9 @@
       return `<div class="full-card${noEnCenso ? ' flag-noencenso' : ''}${alerts.some(a => a.type === 'critico' || a.type === 'labs_crit') ? ' card-critica' : ''}" id="card-${k}">
     <div class="card-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}cc 100%)">
       <div class="card-header-row1">
-        <span class="card-bed" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.cama)}</span>
-        <span class="card-name" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.nombre)}</span>
-        <span class="card-age" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">· ${p.edad}a</span>
+        <span class="card-bed" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
+        <span class="card-name" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.nombre) || '<em style="opacity:.6;font-style:italic">SIN NOMBRE</em>'}</span>
+        <span class="card-age" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">· ${p.edad ? p.edad + 'a' : '?'}</span>
         <div class="card-badges">
           ${noEnCenso ? `<span class="badge-fuera">⚠️ Sin censo</span>` : ''}
           <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
@@ -4363,9 +4363,9 @@
       return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}">
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
       <div style="display:flex;align-items:center;gap:8px;flex:1">
-        <span style="background:rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;font-size:13px;font-weight:700">${esc(p.cama)}</span>
+        <span style="background:rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;font-size:13px;font-weight:700">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
         <div style="display:flex;flex-direction:column;gap:1px;flex:1">
-          <span style="font-size:12px;font-weight:600">${esc(p.nombre)}<span style="font-size:11px;opacity:.8"> · ${p.edad}a</span></span>
+          <span style="font-size:12px;font-weight:600">${esc(p.nombre) || '<em style="opacity:.6;font-style:italic">SIN NOMBRE</em>'}<span style="font-size:11px;opacity:.8"> · ${p.edad ? p.edad + 'a' : '?'}</span></span>
           ${dx ? `<span style="font-size:10px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px">${esc(dx)}</span>` : ''}
         </div>
       </div>
