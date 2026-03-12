@@ -2246,7 +2246,7 @@
 
     <!-- FILTER BAR -->
     <div id="filterbar">
-      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="renderView()" />
+      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="handleSearchInput()" />
       <div class="esp-filters" id="esp-filters"></div>
       <span class="count-badge" id="count-badge">0 pacientes</span>
       <button class="btn-pink" onclick="openAddModal()">➕ Nuevo paciente</button>
@@ -2644,6 +2644,7 @@
     const ESTADO_COLORS = { ESTABLE: "#27ae60", DELICADO: "#e67e22", GRAVE: "#e74c3c", ALTA: "#0ea5e9", "DEFUNCIÓN": "#374151", "": "#95a5a6" };
     const STORAGE_KEY = "censo-pacientes-v3";
     const NOTES_PREFIX = "note-";
+    const GUARD_INFO_KEY = "pl_guard_info_v1";
     const CONFIG_KEY = "hgl-worker-config";   // {url, token} (legacy)
 
     // ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────────
@@ -2713,6 +2714,7 @@
     let pendingSyncs = 0;   // contador de operaciones en curso
     let exportTemplateBuffer = null;
     let _dirtyFields = {};  // patientKey → Set<fieldName> — campos editados localmente sin guardar
+    let _pendingNoteAutosave = {}; // patientKey -> debounced autosave fn
     let archivados = [];    // pacientes egresados (no se borran, se archivan)
     let snapshots = [];    // cortes de guardia guardados
     let procedimientos = []; // procedimientos del día (no necesitan notas clínicas)
@@ -2943,9 +2945,14 @@
       return p[2] + " " + months[parseInt(p[1]) - 1];
     }
     const LAB_KEYS_FALLBACK = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea",
-      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt",
-      "ph", "pco2", "po2", "hco3", "be", "sato2"];
-    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
+      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt", "fa",
+      "ph", "pco2", "po2", "hco3", "be", "sato2",
+      "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "ego_leucos", "ego_hematies", "ego_proteinas", "ego_glucosa",
+      "micro_tipo_cultivo", "micro_muestra", "micro_organismo", "micro_sensibilidades", "micro_resistencias", "micro_comentarios"];
+    const LAB_META_KEYS = new Set([
+      "paciente", "fecha_labs", "tipo_lab",
+      "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"
+    ]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
@@ -2991,7 +2998,10 @@
           nd.labHistory.push({
             fecha: ol.fecha_labs || todayStr(),
             labs: ol,
-            extra: []
+            extra: [],
+            source_file: "",
+            source_file_type: "",
+            source_file_name: ""
           });
         }
       }
@@ -3005,7 +3015,10 @@
             extra: extraRaw
               .filter(e => isPlainObject(e))
               .map(e => ({ nombre: toSafeString(e.nombre).trim(), valor: toSafeString(e.valor).trim() })),
-            incidencia: !!s.incidencia
+            incidencia: !!s.incidencia,
+            source_file: toSafeString(s.source_file).trim(),
+            source_file_type: toSafeString(s.source_file_type).trim(),
+            source_file_name: toSafeString(s.source_file_name).trim()
           };
         });
       nd.labs = sanitizeLabsMap(nd.labs);
@@ -3700,11 +3713,12 @@
     // ─── HELPERS ────────────────────────────────────────────────────────────────────
     function pid(p) { return "pt-" + p.exp + "-" + p.cama; }
     function parseDate(str) {
-      if (!str) return new Date(0);
-      const p = str.split("/");
-      if (p.length !== 3) return new Date(0);
-      const yr = p[2].length === 2 ? "20" + p[2] : p[2];
-      return new Date(`${yr}-${p[1]}-${p[0]}`);
+      if (!str) return new Date(NaN);
+      const dmy = parseDmy(str);
+      if (dmy) return dmy;
+      const parsed = new Date(String(str).trim());
+      if (Number.isNaN(parsed.getTime())) return new Date(NaN);
+      return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
     }
     function isRecentIngreso(ing, daysBack = 1) {
       if (!ing) return false;
@@ -3776,7 +3790,52 @@
       }
       ws[addr] = cell;
     }
-    function daysSince(ing) { return ing ? Math.floor((new Date() - parseDate(ing)) / 86400000) : "?"; }
+    function daysSince(ing) {
+      if (!ing) return "?";
+      const d = parseDate(ing);
+      if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "?";
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      d.setHours(0, 0, 0, 0);
+      const diff = Math.floor((today - d) / 86400000);
+      if (!Number.isFinite(diff)) return "?";
+      return diff < 0 ? 0 : diff;
+    }
+    function readGuardInfoFromUI() {
+      var _el = function (id) { var e = document.getElementById(id); return e ? e.value : ""; };
+      return {
+        fecha: _el("gi-fecha"),
+        entrega: _el("gi-entrega"),
+        recibe: _el("gi-recibe")
+      };
+    }
+    function persistGuardInfo() {
+      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { }
+    }
+    const persistGuardInfoDebounced = debounce(persistGuardInfo, 250);
+    function restoreGuardInfo() {
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(GUARD_INFO_KEY) || "{}"); } catch (e) { saved = {}; }
+      const fechaEl = document.getElementById("gi-fecha");
+      const entregaEl = document.getElementById("gi-entrega");
+      const recibeEl = document.getElementById("gi-recibe");
+      if (fechaEl) fechaEl.value = saved.fecha || "";
+      if (entregaEl) entregaEl.value = saved.entrega || "";
+      if (recibeEl) recibeEl.value = saved.recibe || "";
+      if (fechaEl && !fechaEl.value) {
+        const today = new Date();
+        fechaEl.value = today.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+      }
+      persistGuardInfo();
+    }
+    function wireGuardInfoPersistence() {
+      ["gi-fecha", "gi-entrega", "gi-recibe"].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", persistGuardInfoDebounced);
+        el.addEventListener("change", persistGuardInfo);
+      });
+    }
     function esc(s) {
       return toSafeString(s)
         .replace(/&/g, "&amp;")
@@ -3799,8 +3858,8 @@
       try { snapshots = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || "[]"); } catch (e) { snapshots = []; }
       try { procedimientos = JSON.parse(localStorage.getItem(PROCS_KEY) || "[]"); } catch (e) { procedimientos = []; }
 
-      const today = new Date();
-      document.getElementById("gi-fecha").value = today.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+      restoreGuardInfo();
+      wireGuardInfoPersistence();
 
       // Identificación de usuario
       let _userName = localStorage.getItem("pl_user_name") || "";
@@ -3904,6 +3963,8 @@
       if (btn) btn.classList.add("active");
       renderView();
     }
+    const renderViewFromSearch = debounce(function () { renderView(); }, 120);
+    function handleSearchInput() { renderViewFromSearch(); }
     function renderView() {
       const search = document.getElementById("search").value.toLowerCase();
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
@@ -4723,7 +4784,8 @@
           { key: "alt", label: "ALT", unit: "U/L", low: 0, high: 40, ch: 200 },
           { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 5 },
           { key: "bd", label: "BD", unit: "mg/dL", low: 0, high: 0.3, ch: 3 },
-          { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 }
+          { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 },
+          { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147, ch: 400 }
         ]
       },
       {
@@ -4734,6 +4796,28 @@
           { key: "hco3", label: "HCO₃", unit: "mEq/L", low: 22, high: 26, cl: 10 },
           { key: "be", label: "BE", unit: "mEq/L", low: -2, high: 2, cl: -8, ch: 8 },
           { key: "sato2", label: "SatO₂", unit: "%", low: 95, high: 100, cl: 85 }
+        ]
+      },
+      {
+        id: "ego", label: "🧫 Examen general de orina (EGO)", fields: [
+          { key: "ego_esterasa", label: "Est. Leuco", unit: "" },
+          { key: "ego_ph", label: "EGO pH", unit: "" },
+          { key: "ego_nitritos", label: "Nitritos", unit: "" },
+          { key: "ego_bacterias", label: "Bacterias", unit: "" },
+          { key: "ego_leucos", label: "Leucos EGO", unit: "x campo" },
+          { key: "ego_hematies", label: "Hematíes", unit: "x campo" },
+          { key: "ego_proteinas", label: "Proteínas", unit: "" },
+          { key: "ego_glucosa", label: "Glucosa EGO", unit: "" }
+        ]
+      },
+      {
+        id: "micro", label: "🦠 Microbiología / Cultivos", fields: [
+          { key: "micro_tipo_cultivo", label: "Tipo cultivo", unit: "" },
+          { key: "micro_muestra", label: "Muestra", unit: "" },
+          { key: "micro_organismo", label: "Organismo", unit: "" },
+          { key: "micro_sensibilidades", label: "Sensibles", unit: "" },
+          { key: "micro_resistencias", label: "Resistencias", unit: "" },
+          { key: "micro_comentarios", label: "Comentarios", unit: "" }
         ]
       }
     ];
@@ -4880,6 +4964,11 @@
         if (v > 61) return { sev: "abn", title: "GGT elevada", rec: "Sensible para hepatopatía alcohólica y colestasis. Verificar consumo de alcohol, fármacos inductores (anticonvulsivantes)." };
         return null;
       },
+      fa: (v) => {
+        if (v >= 400) return { sev: "crit", title: "Fosfatasa alcalina muy elevada", rec: "Patrón colestásico marcado u origen óseo activo. Correlacionar con GGT/BT/BD. Solicitar US hepatobiliar urgente." };
+        if (v > 147) return { sev: "abn", title: "Fosfatasa alcalina elevada", rec: "Sugerente de colestasis o patología ósea. Diferenciar con GGT (hepático) y clínica." };
+        return null;
+      },
       ph: (v) => {
         if (v < 7.2) return { sev: "crit", title: "Acidemia severa", rec: "Identificar tipo: metabólica (HCO3 bajo), respiratoria (pCO2 alto) o mixta. Si metabólica severa: bicarbonato si pH<7.1. Tratar causa." };
         if (v < 7.35) return { sev: "abn", title: "Acidosis", rec: "Calcular anion gap. Si AG elevado: MUDPILES (metanol, uremia, DKA, propilen, isoniazida, lactato, etilenglicol, salicilatos). Tratar causa." };
@@ -4998,7 +5087,8 @@
       let dateChips = dates.map(d => {
         const snapD = history.find(s => s.fecha === d);
         const hasInc = snapD && snapD.incidencia;
-        return `<span class="lab-chip-wrap"><button class="lab-date-chip ${d === activeFecha ? 'active' : ''}" onclick="setActiveLabDate('${k}','${d}')">${hasInc ? "⚠️ " : ""}${fmtDateChip(d)}</button><button class="lab-chip-del" onclick="deleteLabDate('${k}','${d}')" title="Eliminar fecha">✕</button></span>`;
+        const hasFile = snapD && snapD.source_file;
+        return `<span class="lab-chip-wrap"><button class="lab-date-chip ${d === activeFecha ? 'active' : ''}" onclick="setActiveLabDate('${k}','${d}')">${hasInc ? "⚠️ " : ""}${fmtDateChip(d)}${hasFile ? " 📎" : ""}</button><button class="lab-chip-del" onclick="deleteLabDate('${k}','${d}')" title="Eliminar fecha">✕</button></span>`;
       }).join("");
       dateChips += `<button class="lab-date-chip new-btn" onclick="addLabDate('${k}')">+ Nueva fecha</button>`;
 
@@ -5054,12 +5144,17 @@
 
       const labTitle = activeFecha ? `🧪 LABS · ${fmtDateChip(activeFecha)} ${snap && snap.labs && snap.labs.paciente ? "· " + esc(snap.labs.paciente) : ""}` : "🧪 LABS";
       const hasAnyLab = activeFecha && LAB_FIELDS.some(lf => labs[lf.key]);
+      const hasSourceFile = activeFecha && snap && snap.source_file;
 
       return `<div style="margin-top:12px">
     <div class="labs-header">
       <div class="labs-title">${labTitle}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${activeFecha ? `
+        ${hasSourceFile ? `<button onclick="openLabSourceFile('${k}','${activeFecha}')" title="Abrir PDF/imagen fuente de estos laboratorios"
+          style="background:#0f766e;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">
+          📎 Abrir ${snap && snap.source_file_type && snap.source_file_type.startsWith("image/") ? "imagen" : "PDF"}
+        </button>` : ""}
         <button data-pdfkey="${k}" onclick="triggerPdfInput(this)" ${loading ? "disabled" : ""}
           style="background:${loading ? "#94a3b8" : "#2196f3"};color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">
           ${loading ? "⏳ Extrayendo..." : "📄 PDF / 📷 Foto"}</button>
@@ -5233,6 +5328,16 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     // ─── FIELD / LAB UPDATE ──────────────────────────────────────────────────────────
+    function scheduleNoteAutosave(k) {
+      if (!_pendingNoteAutosave[k]) {
+        _pendingNoteAutosave[k] = debounce(function (key) {
+          if (!noteData[key]) return;
+          saveNote(key, noteData[key]);
+          if (_dirtyFields[key]) _dirtyFields[key].clear();
+        }, 900);
+      }
+      _pendingNoteAutosave[k](k);
+    }
     function liveUpdate(el) {
       var k = el.dataset.key, f = el.dataset.field;
       if (!noteData[k]) noteData[k] = defaultData();
@@ -5240,15 +5345,17 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // Marcar campo como dirty (editado localmente, pendiente de guardar)
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add(f);
+      scheduleNoteAutosave(k);
     }
     function liveLabUpdate(el) {
       var k = el.dataset.key, lk = el.dataset.labkey, fecha = el.dataset.fecha;
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
-      if (!snap) { snap = { fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+      if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[lk] = el.value;
       noteData[k] = nd;
+      scheduleNoteAutosave(k);
     }
     function updateField(k, field, value) {
       if (!noteData[k]) noteData[k] = defaultData();
@@ -5260,7 +5367,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
-      if (!snap) { snap = { fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+      if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[labKey] = value;
       // keep nd.labs in sync with latest snapshot for export
@@ -5346,7 +5453,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { if (fecha !== null) alert("Formato inválido. Usa YYYY-MM-DD"); return; }
       const nd = getNote(k);
       if (!nd.labHistory.find(s => s.fecha === fecha)) {
-        nd.labHistory.push({ fecha, labs: {}, extra: [] });
+        nd.labHistory.push({ fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" });
       }
       noteData[k] = nd;
       activeLabDate[k] = fecha;
@@ -5415,6 +5522,28 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     // ─── PDF / IMAGE LABS ─────────────────────────────────────────────────────────
+    function openLabSourceFile(k, fecha) {
+      const nd = getNote(k);
+      const snap = (nd.labHistory || []).find(s => s.fecha === fecha);
+      if (!snap || !snap.source_file) {
+        alert("No hay archivo fuente guardado para esta fecha.");
+        return;
+      }
+      const fileType = snap.source_file_type || "application/pdf";
+      if (fileType.startsWith("image/")) {
+        const w = window.open("", "_blank");
+        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${fileType};base64,${snap.source_file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
+        w.document.close();
+        return;
+      }
+      const bytes = atob(snap.source_file);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const blob = new Blob([arr], { type: fileType });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    }
     function triggerPdfInput(btn) {
       var k = btn.getAttribute("data-pdfkey");
       // Usar siempre el input global persistente (compatible Safari/iOS)
@@ -5512,14 +5641,18 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
                     "{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\"," +
                     "\"mg\":\"\",\"ca\":\"\",\"p\":\"\",\"cl\":\"\"," +
                     "\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\"," +
-                    "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\"," +
+                    "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\",\"fa\":\"\"," +
                     "\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\"," +
+                    "\"ego_esterasa\":\"\",\"ego_ph\":\"\",\"ego_nitritos\":\"\",\"ego_bacterias\":\"\",\"ego_leucos\":\"\",\"ego_hematies\":\"\",\"ego_proteinas\":\"\",\"ego_glucosa\":\"\"," +
+                    "\"micro_tipo_cultivo\":\"\",\"micro_muestra\":\"\",\"micro_organismo\":\"\",\"micro_sensibilidades\":\"\",\"micro_resistencias\":\"\",\"micro_comentarios\":\"\"," +
                     "\"paciente\":\"\",\"fecha_labs\":\"\"}\n" +
-                    "Reglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
+                    "Reglas: en química/biometría/gasometría usa solo valores numéricos (sin unidades). En EGO y microbiología puedes usar texto (ej. Negativo, Escasas, E. coli BLEE). Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
                     "Mapeo: Hb=hemoglobina, leucos=leucocitos/WBC, plaq=plaquetas, cr=creatinina, glu=glucosa, na=sodio, k=potasio, alb=albumina, pcr=proteína C reactiva, pct=procalcitonina, inr=INR, urea=BUN/urea, " +
                     "mg=magnesio, ca=calcio, p=fósforo, cl=cloro, tp=tiempo de protrombina, ttp=tiempo de tromboplastina parcial, fibrinogeno=fibrinógeno, " +
-                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, " +
-                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2."
+                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, fa=fosfatasa alcalina, " +
+                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2. " +
+                    "EGO: ego_esterasa (esterasa leucocitaria), ego_ph, ego_nitritos, ego_bacterias, ego_leucos, ego_hematies, ego_proteinas, ego_glucosa. " +
+                    "Microbiología: micro_tipo_cultivo, micro_muestra, micro_organismo, micro_sensibilidades, micro_resistencias, micro_comentarios."
                 }
               ]
             }]
@@ -5557,9 +5690,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const nd = getNote(k);
         const targetFecha = sanitizedExtracted.fecha_labs || activeLabDate[k] || todayStr();
         let snap = nd.labHistory.find(s => s.fecha === targetFecha);
-        if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+        if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" }; nd.labHistory.push(snap); }
+        const labsFromExtract = { ...sanitizedExtracted };
+        if (labsFromExtract.tipo_cultivo || labsFromExtract.cultivo_organismo || labsFromExtract.cultivo_sensibilidades || labsFromExtract.cultivo_resistencias) {
+          labsFromExtract.micro_tipo_cultivo = labsFromExtract.micro_tipo_cultivo || labsFromExtract.tipo_cultivo || "";
+          labsFromExtract.micro_organismo = labsFromExtract.micro_organismo || labsFromExtract.cultivo_organismo || "";
+          labsFromExtract.micro_sensibilidades = labsFromExtract.micro_sensibilidades || labsFromExtract.cultivo_sensibilidades || "";
+          labsFromExtract.micro_resistencias = labsFromExtract.micro_resistencias || labsFromExtract.cultivo_resistencias || "";
+        }
+        delete labsFromExtract.tipo_lab;
+        delete labsFromExtract.tipo_cultivo;
+        delete labsFromExtract.cultivo_organismo;
+        delete labsFromExtract.cultivo_sensibilidades;
+        delete labsFromExtract.cultivo_resistencias;
         const hasValues = getLabKeys().some(f => sanitizedExtracted[f] && sanitizedExtracted[f].trim() !== "");
-        snap.labs = { ...sanitizeLabsMap(snap.labs), ...sanitizedExtracted };
+        snap.source_file = base64;
+        snap.source_file_type = file.type || (isImage ? "image/jpeg" : "application/pdf");
+        snap.source_file_name = file.name || (isImage ? "labs.jpg" : "labs.pdf");
+        snap.labs = { ...sanitizeLabsMap(snap.labs), ...labsFromExtract };
         activeLabDate[k] = targetFecha;
         noteData[k] = nd;
         saveNote(k, nd);
@@ -5850,7 +5998,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const labs = snap ? snap.labs || {} : {};
           const labDate = snap ? fmtDateChip(snap.fecha) : "";
           let labHtml = "";
-          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno"].filter(x => labs[x]);
+          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "fa", "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "micro_organismo"].filter(x => labs[x]);
           if (labItems.length) {
             labHtml = `<div class="eg-labs-compact"><span class="eg-lc-date">🧪 ${labDate}</span><div class="eg-lc-grid">` +
               labItems.map(x => {
@@ -6673,7 +6821,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     // FORMAT 5: FT-HGL-AM-51 NOTA MÉDICA 2023 (table-based)
     // ═══════════════════════════════════════════════════════════════════════════════
     function fmtNotaMedica(p, nd, gi, fecha, hora, labs, adsOpts) {
-      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "urea", "bt", "bd"].filter(x => labs[x]).map(x => {
+      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "urea", "bt", "bd", "fa", "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "micro_organismo"].filter(x => labs[x]).map(x => {
         const lf = LAB_FIELDS.find(f => f.key === x);
         return (lf ? lf.label : x.toUpperCase()) + ": " + labs[x];
       }).join(", ");
@@ -8236,7 +8384,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           r.onerror = function(){ resolve({ file: file.name, extracted: null, error: "Error leyendo archivo" }); };
           r.onload = function() {
             var base64 = r.result.split(",")[1];
-            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades, fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
+            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","fa":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","ego_esterasa":"","ego_ph":"","ego_nitritos":"","ego_bacterias":"","ego_leucos":"","ego_hematies":"","ego_proteinas":"","ego_glucosa":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","micro_muestra":"","micro_comentarios":"","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades para química/biometría/gasometría; en EGO y microbiología se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
             fetch(proxyUrl + "/api/ai", {
               method: "POST",
               headers: apiHeaders(),
@@ -8290,7 +8438,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             var nd = getNote(k);
             var fecha = ex.fecha_labs || todayStr();
             var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
-            if (!snap) { snap = { fecha: fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+            if (!snap) { snap = { fecha: fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" }; nd.labHistory.push(snap); }
             if (!snap.extra) snap.extra = [];
 
             var isCultivo = ex.tipo_lab === "cultivo" || (ex.tipo_cultivo && ex.tipo_cultivo.trim() !== "");
@@ -8311,6 +8459,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               });
               if (existIdx >= 0) { snap.extra[existIdx].valor = cultivoValor; }
               else { snap.extra.push({ nombre: cultivoNombre, valor: cultivoValor }); }
+              // También guardar en campos dedicados de microbiología (visibles en tarjeta)
+              snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), {
+                micro_tipo_cultivo: ex.tipo_cultivo || "",
+                micro_muestra: ex.micro_muestra || "",
+                micro_organismo: ex.cultivo_organismo || "",
+                micro_sensibilidades: ex.cultivo_sensibilidades || "",
+                micro_resistencias: ex.cultivo_resistencias || "",
+                micro_comentarios: ex.micro_comentarios || ""
+              });
             } else {
               // Labs normales: no guardar campos de cultivo en snap.labs
               var labsToMerge = {};
@@ -9026,7 +9183,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       if (type === "labs") {
         if (!nd.labHistory.find(s => s.fecha === today)) {
-          nd.labHistory.push({ fecha: today, labs: {}, extra: [] });
+          nd.labHistory.push({ fecha: today, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "" });
         }
         noteData[k] = nd;
         activeLabDate[k] = today;
@@ -9074,9 +9231,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const snap = sortedLabs[0];
         const vals = snap.labs || {};
         const partes = [];
-        const claves = ["hb", "leucos", "plaq", "cr", "urea", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno"];
-        const labels = { hb: "Hb", leucos: "Leuc", plaq: "Plaq", cr: "Cr", urea: "Ur", glu: "Glu", na: "Na", k: "K", alb: "Alb", pcr: "PCR", pct: "PCT", tp: "TP", ttp: "TTP", inr: "INR", fibrinogeno: "Fibri" };
-        claves.forEach(c => { if (vals[c]) partes.push(`${labels[c]} ${vals[c]}`); });
+        const campos = (typeof LAB_GROUPS !== "undefined" && Array.isArray(LAB_GROUPS))
+          ? LAB_GROUPS.flatMap(grp => grp.fields.map(f => ({ key: f.key, label: f.label })))
+          : [
+              { key: "hb", label: "Hb" }, { key: "leucos", label: "Leuc" }, { key: "plaq", label: "Plaq" },
+              { key: "cr", label: "Cr" }, { key: "urea", label: "Ur" }, { key: "glu", label: "Glu" },
+              { key: "na", label: "Na" }, { key: "k", label: "K" }, { key: "alb", label: "Alb" },
+              { key: "pcr", label: "PCR" }, { key: "pct", label: "PCT" }, { key: "inr", label: "INR" }
+            ];
+        campos.forEach(c => { if (vals[c.key]) partes.push(`${c.label} ${vals[c.key]}`); });
         if (partes.length) labsTexto = `📊 Labs (${snap.fecha}): ${partes.join(" | ")}`;
       }
 
