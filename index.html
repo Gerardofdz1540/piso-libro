@@ -2509,9 +2509,8 @@
         </div>
         <button onclick="migrateToSupabase()"
           style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);width:100%;margin-bottom:12px">⬆️
-          Migrar datos locales a Supabase</button>
-        <p style="font-size:11px;color:#94a3b8;text-align:center;margin:0">Solo necesario la primera vez. Si ya
-          migraste, no lo vuelvas a presionar.</p>
+          Migrar / reparar sync en Supabase</button>
+        <p style="font-size:11px;color:#94a3b8;text-align:center;margin:0">Úsalo la primera vez o si otro dispositivo aparece vacío.</p>
       </div>
 
       <div class="config-section" style="background:#f0fdf4;border-radius:8px;padding:14px;border:1px solid #bbf7d0">
@@ -3739,24 +3738,36 @@
 
     // ─── MIGRATION: localStorage → Supabase (one-time) ─────────────────────────────
     async function migrateToSupabase() {
-      // Check if Supabase already has data
-      let countCheck = 0;
-      try { const d = await _sGet("patients", "select=id"); countCheck = Array.isArray(d) ? d.length : 0; } catch (e) { }
-      if (countCheck > 0) {
-        alert("⚠️ Supabase ya tiene " + countCheck + " pacientes.\n\nLa migración ya se realizó anteriormente. No es necesario volver a ejecutarla.\n\nSi necesitas re-sincronizar, recarga la página.");
-        return;
-      }
-
-      if (!confirm("⬆️ MIGRACIÓN A SUPABASE\n\nEsto subirá todos los pacientes y notas de tu navegador a Supabase.\n\nSolo necesitas hacerlo UNA VEZ desde el navegador que tiene los datos más actualizados.\n\n¿Continuar?")) return;
-
-      setSyncStatus("syncing", "Migrando...");
-      const localPts = lsGetPatients();
-      if (!localPts || !localPts.length) {
+      const localPts = sanitizePatients(lsGetPatients() || []);
+      if (!localPts.length) {
         alert("No hay datos locales para migrar."); return;
       }
 
+      let remoteRows = [];
+      try {
+        const d = await _sGet("patients", "select=id,cama,nombre,exp");
+        remoteRows = Array.isArray(d) ? d : [];
+      } catch (e) { remoteRows = []; }
+      const remoteUseful = remoteRows.filter(hasMeaningfulPatientIdentity);
+
+      const msg = remoteUseful.length
+        ? "⬆️ REPARAR / RESINCRONIZAR SUPABASE\n\nEste dispositivo tiene " + localPts.length + " pacientes locales.\nSupabase tiene " + remoteUseful.length + " pacientes visibles.\n\nSe intentará subir o actualizar el censo de este dispositivo para que los demás equipos lo descarguen.\n\n¿Continuar?"
+        : "⬆️ MIGRACIÓN A SUPABASE\n\nEsto subirá todos los pacientes y notas de este navegador a Supabase.\n\nHazlo desde el dispositivo que tiene el censo más actualizado.\n\n¿Continuar?";
+      if (!confirm(msg)) return;
+
+      setSyncStatus("syncing", remoteUseful.length ? "Reparando sync..." : "Migrando...");
+
+      const remoteByKey = {};
+      remoteUseful.forEach(function (row) {
+        remoteByKey[patientIdentityKey(row)] = row.id;
+      });
+
       let migrated = 0, errors = 0;
       for (const p of localPts) {
+        if (!p._supa_id) {
+          const remoteId = remoteByKey[patientIdentityKey(p)];
+          if (remoteId) p._supa_id = remoteId;
+        }
         const row = {
           cama: p.cama || "", nombre: p.nombre || "", exp: p.exp || "", dx: p.dx || "",
           edad: p.edad ? String(p.edad) : "", esp: p.esp || "", adscrito: p.adscrito || "",
@@ -3764,25 +3775,20 @@
           ingreso: ingresoToISO(p.ingreso)
         };
         let inserted = null;
-        try { const d = await _sPost("patients", row); inserted = Array.isArray(d) ? d[0] : d; }
+        try { inserted = await supaUpsertPatient(p); }
         catch (e) { safeLog("Migration patient error [" + p.nombre + "]:", e); errors++; continue; }
         if (!inserted || !inserted.id) { errors++; continue; }
 
-        const k = "pt-" + (p.exp || "") + "-" + (p.cama || "");
+        const k = pid(p);
         const nd = migrateNote(lsGetNote(k));
-        const noteRow = {
-          patient_id: inserted.id,
-          app: nd.app || "", pa: nd.pa || "", drenajes: nd.drenajes || "",
-          qx: nd.qx || "", manejo: nd.manejo || "", sangrado: nd.sangrado || "",
-          sv: nd.sv || "", balance: nd.balance || "", pendientes: nd.pendientes || "",
-          misc: nd.misc || "", checklist: nd.checklist || {},
-          lab_history: nd.labHistory || [], imagen_history: nd.imagenHistory || []
-        };
-        try { await _sPost("notes", noteRow, { "Prefer": "resolution=merge-duplicates,return=representation" }); }
+        try { await supaUpsertNote(inserted.id, nd); }
         catch (e) { safeLog("Migration note error [" + p.nombre + "]:", e); }
 
         migrated++;
       }
+      lsSavePatients(localPts);
+      localStorage.setItem("pl_last_save_ts", Date.now().toString());
+      localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
 
       // Reload from Supabase
       const loaded = await supaLoadAll();
@@ -3792,12 +3798,18 @@
         buildEspFilters(); renderView();
       }
       startRealtime();
-      setSyncStatus("synced", "Migración completa");
-      alert("✅ Migración completada\n\n" + migrated + " pacientes subidos" + (errors ? " (" + errors + " errores)" : "") + "\n\nAhora todos los dispositivos verán los mismos datos.");
+      setSyncStatus("synced", remoteUseful.length ? "Sync reparado" : "Migración completa");
+      alert("✅ " + (remoteUseful.length ? "Resincronización completa" : "Migración completa") + "\n\n" + migrated + " pacientes subidos/actualizados" + (errors ? " (" + errors + " errores)" : "") + "\n\nAhora recarga el iPad para descargar el censo.");
     }
 
     // ─── HELPERS ────────────────────────────────────────────────────────────────────
     function pid(p) { return "pt-" + p.exp + "-" + p.cama; }
+    function patientIdentityKey(p) {
+      return "pt-" + toSafeString(p && p.exp).trim() + "-" + toSafeString(p && p.cama).trim();
+    }
+    function hasMeaningfulPatientIdentity(p) {
+      return !!(toSafeString(p && p.nombre).trim() || toSafeString(p && p.cama).trim() || toSafeString(p && p.exp).trim());
+    }
     function parseDate(str) {
       if (!str) return new Date(NaN);
       const dmy = parseDmy(str);
