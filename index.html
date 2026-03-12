@@ -2215,7 +2215,7 @@
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
         </div>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
-        <span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700"></span>
+        <span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700;text-decoration:underline dotted"></span>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
       </div>
@@ -3092,6 +3092,7 @@
 
     // Outbox for offline writes
     const OUTBOX_KEY = "pl_outbox_v1";
+    const OUTBOX_MAX = 200; // máximo de operaciones pendientes en cola
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
     function outboxSave(q) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); }
     function outboxEnqueue(item) {
@@ -3105,13 +3106,25 @@
         return false;
       });
       if (idx !== -1) q[idx] = newItem; else q.push(newItem);
+      // Cap: si excede el máximo, descartar los más antiguos (los datos ya están en Supabase)
+      if (q.length > OUTBOX_MAX) q.splice(0, q.length - OUTBOX_MAX);
       outboxSave(q);
+      updateOutboxBadge();
+    }
+    function outboxClear() {
+      if (!confirm("¿Limpiar la cola de sincronización pendiente?\n\nLos datos ya guardados en Supabase no se perderán. Solo se eliminan las operaciones en espera que ya fueron procesadas o son obsoletas.")) return;
+      outboxSave([]);
       updateOutboxBadge();
     }
     function updateOutboxBadge() {
       const q = outboxLoad();
       const badge = document.getElementById("outbox-badge");
-      if (badge) badge.textContent = q.length ? "📤 " + q.length + " pendientes" : "";
+      if (!badge) return;
+      if (!q.length) { badge.textContent = ""; badge.onclick = null; badge.style.cursor = ""; return; }
+      badge.textContent = "📤 " + q.length + " pendientes";
+      badge.title = "Clic para limpiar la cola de sync";
+      badge.style.cursor = "pointer";
+      badge.onclick = outboxClear;
     }
 
     // ─── SUPABASE REST API — SIN supabase-js (evita DataCloneError de Headers) ───────
@@ -3446,6 +3459,8 @@
         // Check if we already have this patient (we just inserted it ourselves)
         if (patients.some(p => p._supa_id === newRow.id)) return;
         const p = supaRowToPatient(newRow);
+        // No agregar registros ghost sin identidad
+        if (!p.nombre && !p.cama && !p.exp) return;
         patients.push(p);
         noteData[pid(p)] = defaultData();
         lsSavePatients(patients);
@@ -3458,6 +3473,14 @@
         const oldKey = pid(patients[idx]);
         const updated = supaRowToPatient(newRow);
         updated._supa_id = newRow.id;
+        // Si Supabase envía campos de identidad vacíos pero el registro local
+        // los tiene, conservar los locales (protege contra updates parciales)
+        const existing = patients[idx];
+        if (!updated.nombre && existing.nombre) updated.nombre = existing.nombre;
+        if (!updated.cama   && existing.cama)   updated.cama   = existing.cama;
+        if (!updated.exp    && existing.exp)    updated.exp    = existing.exp;
+        if (!updated.esp    && existing.esp)    updated.esp    = existing.esp;
+        if (!updated.ingreso && existing.ingreso) updated.ingreso = existing.ingreso;
         const newKey = pid(updated);
         // Transfer noteData if key changed
         if (oldKey !== newKey && noteData[oldKey]) {
@@ -3533,6 +3556,35 @@
       };
     }
 
+    // Elimina registros ghost: sin nombre, cama NI expediente.
+    // Intenta rescatar usando caché local por _supa_id antes de descartar.
+    function sanitizePatients(arr) {
+      const localById = {};
+      try {
+        const lp = lsGetPatients() || [];
+        lp.forEach(p => { if (p._supa_id) localById[p._supa_id] = p; });
+      } catch (e) {}
+      return arr.filter(p => {
+        if (p.nombre || p.cama || p.exp) return true; // tiene al menos un campo → ok
+        // ghost: intentar rescatar desde caché local
+        const local = localById[p._supa_id];
+        if (local && (local.nombre || local.cama || local.exp)) {
+          p.nombre    = local.nombre    || "";
+          p.cama      = local.cama      || "";
+          p.exp       = local.exp       || "";
+          p.dx        = p.dx        || local.dx        || "";
+          p.edad      = p.edad      || local.edad      || "";
+          p.esp       = p.esp       || local.esp       || "";
+          p.adscrito  = p.adscrito  || local.adscrito  || "";
+          p.residente = p.residente || local.residente || "";
+          p.estado    = p.estado    || local.estado    || "";
+          p.ingreso   = p.ingreso   || local.ingreso   || "";
+          return true;
+        }
+        return false; // fantasma irrecuperable → descartar
+      });
+    }
+
     // ─── OFFLINE: flush outbox when back online ─────────────────────────────────────
     window.addEventListener("online", async () => {
       setSyncStatus("syncing", "Reconectando...");
@@ -3560,23 +3612,27 @@
 
     async function flushOutbox() {
       const q = outboxLoad(); if (!q.length) return;
-      const failed = [];
-      for (const item of q) {
-        if (item.type === "note" && item.key && item.data) {
-          const p = patients.find(x => pid(x) === item.key);
-          if (p && p._supa_id) {
-            const res = await supaUpsertNote(p._supa_id, item.data);
-            if (!res) failed.push(item);
-          } else failed.push(item);
-        } else if (item.type === "patient" && item.patient) {
-          // Find the current version of this patient in memory (may have been updated)
-          const k = pid(item.patient);
-          const current = patients.find(x => pid(x) === k) || item.patient;
-          const res = await supaUpsertPatient(current);
-          if (!res) failed.push(item);
-          else lsSavePatients(patients); // update with new _supa_id if assigned
-        }
+      const BATCH = 10; // peticiones simultáneas
+      const results = new Array(q.length).fill(null);
+      for (let i = 0; i < q.length; i += BATCH) {
+        const slice = q.slice(i, i + BATCH);
+        await Promise.all(slice.map(async (item, j) => {
+          const absIdx = i + j;
+          if (item.type === "note" && item.key && item.data) {
+            const p = patients.find(x => pid(x) === item.key);
+            if (p && p._supa_id) {
+              results[absIdx] = await supaUpsertNote(p._supa_id, item.data);
+            } else results[absIdx] = false;
+          } else if (item.type === "patient" && item.patient) {
+            const k = pid(item.patient);
+            const current = patients.find(x => pid(x) === k) || item.patient;
+            const res = await supaUpsertPatient(current);
+            results[absIdx] = res;
+            if (res) lsSavePatients(patients);
+          } else results[absIdx] = true; // tipo desconocido → descartar
+        }));
       }
+      const failed = q.filter((_, i) => results[i] === false);
       outboxSave(failed);
       updateOutboxBadge();
       if (!failed.length) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
@@ -3758,7 +3814,7 @@
       // ── Render inmediato desde localStorage: pacientes visibles antes de esperar red ──
       // Usamos setTimeout(0) para diferir hasta que el script termine de definir
       // CHECKLIST_ITEMS, WOUND_ITEMS y demás constantes declaradas tras init().
-      const _earlyPts = lsGetPatients() || [];
+      const _earlyPts = sanitizePatients(lsGetPatients() || []);
       if (_earlyPts.length) {
         patients = _earlyPts;
         patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
@@ -3784,7 +3840,7 @@
         && localPts.length > loaded.patients.length;
 
       if (loaded && loaded.patients.length > 0 && !localHasMore) {
-        patients = loaded.patients;
+        patients = sanitizePatients(loaded.patients);
         noteData = loaded.notes;
         lsSavePatients(patients);
         // Cache notes locally
@@ -3797,7 +3853,7 @@
       } else if (localHasMore) {
         // Supabase has fewer patients than local — likely incomplete sync, prefer local
         safeLog("[GUARD] Local tiene " + localPts.length + " pacientes vs Supabase " + (loaded ? loaded.patients.length : 0) + ". Usando datos locales.");
-        patients = localPts;
+        patients = sanitizePatients(localPts);
         noteData = {};
         patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
         setSyncStatus("syncing", "Recuperando datos locales...");
@@ -3808,7 +3864,7 @@
         });
       } else {
         // Supabase empty, failed, offline, or localStorage is newer → load from localStorage
-        patients = lsGetPatients() || [];
+        patients = sanitizePatients(lsGetPatients() || []);
         noteData = {};
         patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
         if (patients.length && navigator.onLine) {
