@@ -2215,7 +2215,7 @@
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
         </div>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
-        <span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700"></span>
+        <span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700;text-decoration:underline dotted"></span>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
       </div>
@@ -3092,6 +3092,7 @@
 
     // Outbox for offline writes
     const OUTBOX_KEY = "pl_outbox_v1";
+    const OUTBOX_MAX = 200; // máximo de operaciones pendientes en cola
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
     function outboxSave(q) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); }
     function outboxEnqueue(item) {
@@ -3105,13 +3106,25 @@
         return false;
       });
       if (idx !== -1) q[idx] = newItem; else q.push(newItem);
+      // Cap: si excede el máximo, descartar los más antiguos (los datos ya están en Supabase)
+      if (q.length > OUTBOX_MAX) q.splice(0, q.length - OUTBOX_MAX);
       outboxSave(q);
+      updateOutboxBadge();
+    }
+    function outboxClear() {
+      if (!confirm("¿Limpiar la cola de sincronización pendiente?\n\nLos datos ya guardados en Supabase no se perderán. Solo se eliminan las operaciones en espera que ya fueron procesadas o son obsoletas.")) return;
+      outboxSave([]);
       updateOutboxBadge();
     }
     function updateOutboxBadge() {
       const q = outboxLoad();
       const badge = document.getElementById("outbox-badge");
-      if (badge) badge.textContent = q.length ? "📤 " + q.length + " pendientes" : "";
+      if (!badge) return;
+      if (!q.length) { badge.textContent = ""; badge.onclick = null; badge.style.cursor = ""; return; }
+      badge.textContent = "📤 " + q.length + " pendientes";
+      badge.title = "Clic para limpiar la cola de sync";
+      badge.style.cursor = "pointer";
+      badge.onclick = outboxClear;
     }
 
     // ─── SUPABASE REST API — SIN supabase-js (evita DataCloneError de Headers) ───────
@@ -3560,23 +3573,27 @@
 
     async function flushOutbox() {
       const q = outboxLoad(); if (!q.length) return;
-      const failed = [];
-      for (const item of q) {
-        if (item.type === "note" && item.key && item.data) {
-          const p = patients.find(x => pid(x) === item.key);
-          if (p && p._supa_id) {
-            const res = await supaUpsertNote(p._supa_id, item.data);
-            if (!res) failed.push(item);
-          } else failed.push(item);
-        } else if (item.type === "patient" && item.patient) {
-          // Find the current version of this patient in memory (may have been updated)
-          const k = pid(item.patient);
-          const current = patients.find(x => pid(x) === k) || item.patient;
-          const res = await supaUpsertPatient(current);
-          if (!res) failed.push(item);
-          else lsSavePatients(patients); // update with new _supa_id if assigned
-        }
+      const BATCH = 10; // peticiones simultáneas
+      const results = new Array(q.length).fill(null);
+      for (let i = 0; i < q.length; i += BATCH) {
+        const slice = q.slice(i, i + BATCH);
+        await Promise.all(slice.map(async (item, j) => {
+          const absIdx = i + j;
+          if (item.type === "note" && item.key && item.data) {
+            const p = patients.find(x => pid(x) === item.key);
+            if (p && p._supa_id) {
+              results[absIdx] = await supaUpsertNote(p._supa_id, item.data);
+            } else results[absIdx] = false;
+          } else if (item.type === "patient" && item.patient) {
+            const k = pid(item.patient);
+            const current = patients.find(x => pid(x) === k) || item.patient;
+            const res = await supaUpsertPatient(current);
+            results[absIdx] = res;
+            if (res) lsSavePatients(patients);
+          } else results[absIdx] = true; // tipo desconocido → descartar
+        }));
       }
+      const failed = q.filter((_, i) => results[i] === false);
       outboxSave(failed);
       updateOutboxBadge();
       if (!failed.length) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
