@@ -2945,7 +2945,7 @@
     const LAB_KEYS_FALLBACK = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea",
       "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt",
       "ph", "pco2", "po2", "hco3", "be", "sato2"];
-    const LAB_META_KEYS = new Set(["paciente", "fecha_labs"]);
+    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
@@ -8214,10 +8214,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         return toSafeString(s).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/g, " ").replace(/\s+/g, " ").trim();
       }
 
+      // Palabras que aparecen en el PDF pero NO son parte del nombre del paciente
+      var NON_NAME_TOKENS = new Set(["HEMOCULTIVO", "UROCULTIVO", "COPROCULTIVO", "MICROCULTIVO", "LABORATORIO"]);
+
       function matchPatient(extractedName) {
         if (!extractedName) return null;
         var en = normName(extractedName);
-        var enTokens = en.split(" ").filter(function(t){ return t.length > 2; });
+        var enTokens = en.split(" ").filter(function(t){ return t.length > 2 && !NON_NAME_TOKENS.has(t); });
         var best = null, bestScore = 0;
         patients.forEach(function(p) {
           var pTokens = normName(p.nombre).split(" ");
@@ -8233,7 +8236,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           r.onerror = function(){ resolve({ file: file.name, extracted: null, error: "Error leyendo archivo" }); };
           r.onload = function() {
             var base64 = r.result.split(",")[1];
-            var prompt = 'Extrae TODOS los valores de laboratorio de este PDF. Responde SOLO con JSON valido sin markdown:\n{"hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","paciente":"","fecha_labs":""}\nReglas: valores numericos sin unidades, fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece. Si no existe dejar "".';
+            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades, fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
             fetch(proxyUrl + "/api/ai", {
               method: "POST",
               headers: apiHeaders(),
@@ -8288,12 +8291,49 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             var fecha = ex.fecha_labs || todayStr();
             var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
             if (!snap) { snap = { fecha: fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
-            snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), ex);
+            if (!snap.extra) snap.extra = [];
+
+            var isCultivo = ex.tipo_lab === "cultivo" || (ex.tipo_cultivo && ex.tipo_cultivo.trim() !== "");
+            var CULTIVO_ONLY_KEYS = new Set(["tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
+
+            if (isCultivo) {
+              // Construir valor del cultivo: organismo + sensibilidades + resistencias
+              var cultivoNombre = (ex.tipo_cultivo || "Cultivo").trim();
+              cultivoNombre = cultivoNombre.charAt(0).toUpperCase() + cultivoNombre.slice(1);
+              var cultivoValor = (ex.cultivo_organismo || "").trim();
+              if (ex.cultivo_sensibilidades && ex.cultivo_sensibilidades.trim())
+                cultivoValor += (cultivoValor ? " · S: " : "S: ") + ex.cultivo_sensibilidades.trim();
+              if (ex.cultivo_resistencias && ex.cultivo_resistencias.trim())
+                cultivoValor += (cultivoValor ? " · R: " : "R: ") + ex.cultivo_resistencias.trim();
+              // Reemplazar entrada existente del mismo tipo o agregar nueva
+              var existIdx = snap.extra.findIndex(function(e){
+                return normName(e.nombre) === normName(cultivoNombre);
+              });
+              if (existIdx >= 0) { snap.extra[existIdx].valor = cultivoValor; }
+              else { snap.extra.push({ nombre: cultivoNombre, valor: cultivoValor }); }
+            } else {
+              // Labs normales: no guardar campos de cultivo en snap.labs
+              var labsToMerge = {};
+              Object.keys(ex).forEach(function(ek) {
+                if (!CULTIVO_ONLY_KEYS.has(ek)) labsToMerge[ek] = ex[ek];
+              });
+              snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), labsToMerge);
+            }
+
             activeLabDate[k] = fecha;
             noteData[k] = nd;
             saveNote(k, nd);
             successCount++;
-            rows += "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#f0fdf4;border:1px solid #86efac;margin-bottom:6px;font-size:12px'><span style='font-size:18px'>✅</span><div><div style='font-weight:700;color:#166534'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div><div style='color:#15803d'>" + (ex.paciente ? "Detectado: " + esc(ex.paciente) : "") + (ex.fecha_labs ? " &middot; " + esc(ex.fecha_labs) : "") + "</div></div></div>";
+            var rowBg    = isCultivo ? "#f0f9ff" : "#f0fdf4";
+            var rowBdr   = isCultivo ? "#7dd3fc" : "#86efac";
+            var rowClr   = isCultivo ? "#0c4a6e" : "#166534";
+            var rowClr2  = isCultivo ? "#0369a1" : "#15803d";
+            var rowIcon  = isCultivo ? "🔬" : "✅";
+            var rowExtra = isCultivo ? "Cultivo: " + esc(ex.tipo_cultivo || "") + (ex.cultivo_organismo ? " → " + esc(ex.cultivo_organismo) : "") : "";
+            rows += "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:" + rowBg + ";border:1px solid " + rowBdr + ";margin-bottom:6px;font-size:12px'>" +
+              "<span style='font-size:18px'>" + rowIcon + "</span>" +
+              "<div><div style='font-weight:700;color:" + rowClr + "'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div>" +
+              "<div style='color:" + rowClr2 + "'>" + (ex.paciente ? "Detectado: " + esc(ex.paciente) : "") + (ex.fecha_labs ? " &middot; " + esc(ex.fecha_labs) : "") + (rowExtra ? "<br>" + rowExtra : "") + "</div></div></div>";
           } else {
             rows += "<div style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px'><b style='color:#92400e'>No encontrado en censo:</b> <b>" + esc((ex && ex.paciente) || "(no detectado)") + "</b><br><span style='color:#78350f;font-size:11px'>Archivo: " + esc(r.file) + "</span></div>";
           }
