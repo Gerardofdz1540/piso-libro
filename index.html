@@ -2235,7 +2235,6 @@
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
         </div>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
-        <span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700;text-decoration:underline dotted"></span>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
       </div>
@@ -2906,22 +2905,29 @@
 
     // ─── SYNC STATUS UI ─────────────────────────────────────────────────────────────
     let _lastSyncError = "";
+    let _syncFadeTimer = null;
     function setSyncStatus(state, label) {
       const el = document.getElementById("sync-status");
       const lbl = document.getElementById("sync-label");
       if (!el || !lbl) return;
-      el.className = "" + state;   // synced | syncing | error | offline
+      clearTimeout(_syncFadeTimer);
+      el.className = "" + state;
       el.querySelector(".sync-dot").className = "sync-dot" + (state === "syncing" ? " spin" : "");
       lbl.textContent = label;
+      el.title = "";
+      el.style.cursor = "";
+      el.onclick = null;
       if (state === "error") {
         _lastSyncError = label;
-        el.title = label + " — clic para más detalles";
+        el.title = "Toca para ver detalles";
         el.style.cursor = "pointer";
-        el.onclick = () => alert("⚠️ Error de Supabase:\n\n" + _lastSyncError + "\n\nVerifica:\n1) Conexión a internet activa\n2) Credenciales correctas en ⚙️ Config\n3) Las tablas 'patients' y 'notes' existen en Supabase\n\nMientras tanto, tus datos están seguros en localStorage y se sincronizarán cuando se resuelva el error.");
-      } else {
-        el.title = "";
-        el.style.cursor = "";
-        el.onclick = null;
+        el.onclick = () => alert("⚠️ Error al sincronizar:\n\n" + _lastSyncError + "\n\nVerifica:\n1) Conexión a internet activa\n2) Credenciales correctas en ⚙️ Config\n3) Las tablas 'patients' y 'notes' existen en Supabase");
+      } else if (state === "synced") {
+        // Después de 3s mostrar solo el dot verde sin texto
+        _syncFadeTimer = setTimeout(() => {
+          if (lbl) lbl.textContent = "";
+          el.title = "Todo guardado ✅";
+        }, 3000);
       }
     }
 
@@ -3151,7 +3157,7 @@
       if (!confirm("¿Limpiar la cola de sync?\n\nSi ya abriste la app y los datos se ven correctos, es seguro limpiar. Los datos en Supabase no se borran.")) return;
       outboxSave([]);
       updateOutboxBadge();
-      setSyncStatus("synced", "Cola limpiada");
+      setSyncStatus("synced", "✅ Guardado");
     }
     function updateOutboxBadge() {
       const q = outboxLoad();
@@ -3372,7 +3378,7 @@
 
     // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
     async function supaLoadAll() {
-      setSyncStatus("syncing", "Descargando...");
+      setSyncStatus("syncing", "Cargando...");
       try {
         // Primero pacientes, luego notas filtradas por sus IDs (menor payload)
         const pts = await retryNetwork(() => _sGet("patients", "order=cama"), 2, 200);
@@ -3448,7 +3454,7 @@
         }
         const msg = e && e.message ? e.message : String(e || "error");
         safeLog("supaLoadAll error:", e);
-        setSyncStatus("error", "Error Supabase: " + msg.slice(0, 48));
+        setSyncStatus("error", "Error al conectar");
         return null;
       }
     }
@@ -3473,7 +3479,7 @@
           pendingSyncs--;
           if (!res) outboxEnqueue({ type: "note", key: k, data: d });
           if (pendingSyncs === 0) {
-            if (res) setSyncStatus("synced", "Sincronizado");
+            if (res) setSyncStatus("synced", "✅ Guardado");
             else setSyncProblemStatus();
           }
         }, 600);
@@ -3514,9 +3520,9 @@
       pendingSyncs--;
       if (pendingSyncs === 0) {
         if (allOk) {
-          setSyncStatus("synced", "Sincronizado");
+          setSyncStatus("synced", "✅ Guardado");
         } else {
-          setSyncStatus("syncing", "Sincronizando...");
+          setSyncStatus("syncing", "Guardando...");
           setTimeout(async () => {
             if (pendingSyncs > 0) return;
             pendingSyncs++;
@@ -3531,7 +3537,7 @@
             }
             pendingSyncs--;
             if (pendingSyncs === 0) {
-              if (!retryFailed.length) setSyncStatus("synced", "Sincronizado");
+              if (!retryFailed.length) setSyncStatus("synced", "✅ Guardado");
               else setSyncProblemStatus();
             }
           }, 4000);
@@ -3738,7 +3744,7 @@
           syncOk = true;
         }
       }
-      if (syncOk) setSyncStatus("synced", "Reconectado");
+      if (syncOk) setSyncStatus("synced", "✅ Guardado");
       else setSyncProblemStatus();
     });
     window.addEventListener("offline", () => { setSyncStatus("offline", "Sin conexión"); });
@@ -3790,7 +3796,7 @@
         : "⬆️ MIGRACIÓN A SUPABASE\n\nEsto subirá todos los pacientes y notas de este navegador a Supabase.\n\nHazlo desde el dispositivo que tiene el censo más actualizado.\n\n¿Continuar?";
       if (!confirm(msg)) return;
 
-      setSyncStatus("syncing", remoteUseful.length ? "Reparando sync..." : "Migrando...");
+      setSyncStatus("syncing", "Sincronizando...");
 
       const remoteByKey = {};
       remoteUseful.forEach(function (row) {
@@ -3833,7 +3839,7 @@
         buildEspFilters(); renderView();
       }
       startRealtime();
-      setSyncStatus("synced", remoteUseful.length ? "Sync reparado" : "Migración completa");
+      setSyncStatus("synced", "✅ Guardado");
       alert("✅ " + (remoteUseful.length ? "Resincronización completa" : "Migración completa") + "\n\n" + migrated + " pacientes subidos/actualizados" + (errors ? " (" + errors + " errores)" : "") + "\n\nAhora recarga el iPad para descargar el censo.");
     }
 
@@ -3874,9 +3880,7 @@
         setSyncStatus("offline", "Sin conexión");
         return;
       }
-      const pending = outboxLoad().length;
-      const suffix = pending ? " · " + pending + " pendiente" + (pending === 1 ? "" : "s") : "";
-      setSyncStatus("offline", "Sync pendiente" + suffix);
+      setSyncStatus("error", "Error al guardar — reintentando");
     }
     function parseDmy(str) {
       if (!str) return null;
@@ -4013,7 +4017,7 @@
         setTimeout(() => { buildEspFilters(); renderView(); }, 0);
       }
 
-      setSyncStatus("syncing", "Sincronizando...");
+      setSyncStatus("syncing", "Guardando...");
 
       // Check if localStorage has data that was saved more recently than the last confirmed Supabase sync
       const lastSaveTs = parseInt(localStorage.getItem("pl_last_save_ts") || "0", 10);
@@ -4044,18 +4048,18 @@
         outboxSave([]); updateOutboxBadge();
         startRealtime();
         const hm = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-        setSyncStatus("synced", "Sync " + hm);
+        setSyncStatus("synced", "✅ Guardado");
       } else if (localHasMore) {
         // Supabase has fewer patients than local — likely incomplete sync, prefer local
         safeLog("[GUARD] Local tiene " + localPts.length + " pacientes vs Supabase " + (loaded ? loaded.patients.length : 0) + ". Usando datos locales.");
         patients = sanitizePatients(localPts);
         noteData = {};
         patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
-        setSyncStatus("syncing", "Recuperando datos locales...");
+        setSyncStatus("syncing", "Guardando...");
         startRealtime();
         _savePtsImmediate().then(() => {
           const hm2 = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-          setSyncStatus("synced", "Recuperado " + hm2);
+          setSyncStatus("synced", "✅ Guardado");
         });
       } else {
         // Supabase empty, failed, offline, or localStorage is newer → load from localStorage
@@ -4065,27 +4069,27 @@
         if (patients.length && navigator.onLine) {
           if (localHasNewerData) {
             // Re-sync newer local data to Supabase in background
-            setSyncStatus("syncing", "Recuperando datos locales...");
+            setSyncStatus("syncing", "Guardando...");
             startRealtime();
             _savePtsImmediate().then(() => {
               const hm2 = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-              setSyncStatus("synced", "Recuperado " + hm2);
+              setSyncStatus("synced", "✅ Guardado");
             });
           } else if (loaded === null) {
             // Supabase error pero hay datos locales disponibles — no mostrar error alarmante
-            setSyncStatus("offline", "Datos locales · BD sin conexión");
+            setSyncStatus("offline", "Sin conexión");
             startRealtime();
           } else {
             // loaded.patients was empty — local data exists but Supabase is empty → migration prompt
-            setSyncStatus("offline", "Datos locales — migra a Supabase ⬆️");
+            setSyncStatus("offline", "Sin conexión · Config");
           }
         } else if (!patients.length) {
           if (!navigator.onLine) {
-            setSyncStatus("offline", "Sin conexión y sin datos locales");
+            setSyncStatus("offline", "Sin conexión");
           } else if (loaded === null) {
-            setSyncStatus("error", "No se pudo descargar Supabase");
+            setSyncStatus("error", "Error al conectar");
           } else {
-            setSyncStatus("offline", "Supabase vacío — abre Config");
+            setSyncStatus("error", "Sin datos — abre Config");
             const syncEl = document.getElementById("sync-status");
             if (syncEl) {
               syncEl.title = "Supabase no devolvió pacientes. Toca para abrir Config y reparar sync.";
@@ -4094,7 +4098,7 @@
             }
           }
         } else {
-          setSyncStatus("offline", "Modo local (sin conexión)");
+          setSyncStatus("offline", "Sin conexión");
         }
       }
 
@@ -7142,7 +7146,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!confirm("⚠️ SEGUNDA CONFIRMACIÓN\n\nEscribiste que quieres borrar TODO.\nEsta acción NO se puede deshacer.\n\n¿Estás completamente seguro?")) return;
 
       suppressKey("__all__", 5000);
-      setSyncStatus("syncing", "Borrando todo...");
+      setSyncStatus("syncing", "Borrando...");
 
       // 1) Borrar TODO de Supabase (notes se borran en cascada con patients)
       try {
@@ -7184,7 +7188,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // 6) Re-render
       buildEspFilters();
       renderView();
-      setSyncStatus("synced", "Censo vacío — importa Excel");
+      setSyncStatus("synced", "✅ Listo");
 
       alert("✅ Todo borrado (local + nube).\n\nAhora importa tu Excel nuevo con el botón de la esquina superior derecha.");
     }
