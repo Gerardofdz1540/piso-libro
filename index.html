@@ -3561,7 +3561,13 @@
         : (existing.imagenHistory || []);
       noteData[k] = migrateNote(nd);
       lsSaveNote(k, noteData[k]);
-      renderView();
+      // Re-render SOLO la tarjeta afectada — renderView() destruiría texto en edición en TODOS los demás cards
+      // Además, si el usuario tiene foco dentro de esta misma tarjeta, no re-renderizar para no perder su texto
+      const _rtCardEl = document.getElementById("card-" + k);
+      const _rtHasFocus = _rtCardEl && _rtCardEl.contains(document.activeElement);
+      if (_rtCardEl && !_rtHasFocus) {
+        _rtCardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
+      }
       // Toast no intrusivo
       var _toastEl = document.getElementById("rt-toast");
       if (!_toastEl) {
@@ -5303,13 +5309,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
 
       labAnalysisLoading.delete(k);
-      // Re-render la tarjeta solo al final cuando ya tenemos el resultado
-      const p2 = patients.find(pt => pid(pt) === k);
-      if (p2) {
-        const c = document.getElementById("card-" + k);
-        if (c) c.outerHTML = renderFullCard(p2, getNote(k), k);
-        else renderView(); // fallback si la tarjeta fue re-renderizada por otro motivo
-      }
+      // Actualizar solo la sección de labs — NO re-render completo para no destruir texto en edición
+      const _laLabsEl = document.getElementById("labs-sec-" + k);
+      if (_laLabsEl) _laLabsEl.outerHTML = renderLabSection(getNote(k), k);
     }
 
     function clearLabAnalysis(k) {
@@ -5769,9 +5771,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const col = ESTADO_COLORS[p.estado] || "#ccc";
       sel.style.background = col;
       savePts();
-      // Actualizar solo el piso si la tarjeta está visible
+      // Actualizar solo la tarjeta de piso afectada (si está visible) — sin destruir las demás
       const cardEl = document.getElementById("card-" + pk);
-      if (cardEl) renderView();
+      if (cardEl) {
+        const nd2 = noteData[pk] || defaultData();
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd2, pk) : renderFullCard(p, nd2, pk);
+      }
     }
 
     function inlineCama(span, pk) {
