@@ -2905,6 +2905,7 @@
 
     // ─── SYNC STATUS UI ─────────────────────────────────────────────────────────────
     let _lastSyncError = "";
+    let _lastSyncErrorDetail = "";
     let _syncFadeTimer = null;
     function setSyncStatus(state, label) {
       const el = document.getElementById("sync-status");
@@ -2921,7 +2922,7 @@
         _lastSyncError = label;
         el.title = "Toca para ver detalles";
         el.style.cursor = "pointer";
-        el.onclick = () => alert("⚠️ Error al sincronizar:\n\n" + _lastSyncError + "\n\nVerifica:\n1) Conexión a internet activa\n2) Credenciales correctas en ⚙️ Config\n3) Las tablas 'patients' y 'notes' existen en Supabase");
+        el.onclick = () => alert("⚠️ Error al sincronizar:\n\n" + _lastSyncError + (_lastSyncErrorDetail ? "\n\nDetalle: " + _lastSyncErrorDetail : "") + "\n\nVerifica:\n1) Conexión a internet activa\n2) Credenciales correctas en ⚙️ Config\n3) Las tablas 'patients' y 'notes' existen en Supabase");
       } else if (state === "synced") {
         // Después de 3s mostrar solo el dot verde sin texto
         _syncFadeTimer = setTimeout(() => {
@@ -3349,7 +3350,7 @@
           if (ins && ins.id) p._supa_id = ins.id;
           return ins || row;
         }
-      } catch (e) { safeLog("supaUpsertPatient error:", e); return null; }
+      } catch (e) { safeLog("supaUpsertPatient error:", e); _lastSyncErrorDetail = e && e.message ? e.message : String(e || ""); return null; }
     }
 
     async function supaDeletePatient(supaId) {
@@ -3374,7 +3375,7 @@
       try {
         const data = await _sPost("notes", row, { "Prefer": "resolution=merge-duplicates,return=representation" });
         return Array.isArray(data) ? data[0] : data;
-      } catch (e) { safeLog("supaUpsertNote error:", e); return null; }
+      } catch (e) { safeLog("supaUpsertNote error:", e); _lastSyncErrorDetail = e && e.message ? e.message : String(e || ""); return null; }
     }
 
     // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
@@ -3455,6 +3456,7 @@
         }
         const msg = e && e.message ? e.message : String(e || "error");
         safeLog("supaLoadAll error:", e);
+        _lastSyncErrorDetail = msg;
         setSyncStatus("error", "Error al conectar");
         return null;
       }
@@ -3480,7 +3482,7 @@
           pendingSyncs--;
           if (!res) outboxEnqueue({ type: "note", key: k, data: d });
           if (pendingSyncs === 0) {
-            if (res) setSyncStatus("synced", "✅ Guardado");
+            if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); }
             else setSyncProblemStatus();
           }
         }, 600);
