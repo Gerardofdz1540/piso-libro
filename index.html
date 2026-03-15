@@ -5347,7 +5347,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // dx vive en el objeto paciente (no en notas) — sincronizar también allá
       if (field === "dx") {
         const p = patients.find(function(pt){ return pid(pt) === k; });
-        if (p) { p.dx = value; savePts(); }
+        if (p) { p.dx = value; _savePtsImmediate(); } // inmediato: dx puede cambiar justo antes de cerrar la app
       }
     }
     // Handlers para campos de texto dentro del checklist (pendientes_mips, pendientes_r1)
@@ -6161,6 +6161,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     var _noOlvidarChannel = null;
     function initNoOlvidarSync() {
       if (!window._supaClient) return;
+      // Limpiar suscripción anterior para evitar duplicados y fugas de memoria
+      if (_noOlvidarChannel) {
+        try { _noOlvidarChannel.unsubscribe(); } catch (_) {}
+        _noOlvidarChannel = null;
+      }
       try {
         _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
           .on("broadcast", { event: "update" }, function(payload) {
@@ -8837,7 +8842,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const removeKey = pid(remove);
 
       // Merge: fill empty fields from remove into keep
-      const fields = ["nombre", "exp", "dx", "edad", "esp", "adscrito", "residente", "ingreso", "estado"];
+      const fields = ["cama", "nombre", "exp", "dx", "edad", "esp", "adscrito", "residente", "ingreso", "estado"];
       fields.forEach(f => {
         if (!keep[f] && remove[f]) keep[f] = remove[f];
       });
