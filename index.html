@@ -3846,12 +3846,6 @@
           const remoteId = remoteByKey[patientIdentityKey(p)];
           if (remoteId) p._supa_id = remoteId;
         }
-        const row = {
-          cama: p.cama || "", nombre: p.nombre || "", exp: p.exp || "", dx: p.dx || "",
-          edad: p.edad ? String(p.edad) : "", esp: p.esp || "", adscrito: p.adscrito || "",
-          residente: p.residente || "", estado: p.estado || "",
-          ingreso: ingresoToISO(p.ingreso)
-        };
         let inserted = null;
         try { inserted = await supaUpsertPatient(p); }
         catch (e) { safeLog("Migration patient error [" + p.nombre + "]:", e); errors++; continue; }
@@ -5218,7 +5212,7 @@
     };
 
     function labCellHtml(lf, val, k, fecha, prevVal) {
-      const num = parseFloat(val);
+      const num = parseLabNumber(val);
       const crit = val && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch));
       const abn = val && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
       const cls = crit ? "crit" : abn ? "abn" : "";
@@ -5671,7 +5665,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       activeLabDate[k] = fecha;
       var nd = noteData[k] || defaultData();
       var snap = (nd.labHistory || []).find(function (s) { return s.fecha === fecha; });
-      var labs = snap ? (snap.labs || {}) : {}
+      var labs = snap ? (snap.labs || {}) : {};
       var cardEl = document.getElementById("card-" + k);
       if (!cardEl) return;
       cardEl.querySelectorAll(".lab-date-chip:not(.new-btn)").forEach(function (btn) {
@@ -8230,7 +8224,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         document.getElementById("manual-merge-modal").style.display = "none";
         mergePatients(keepIdx, removeIdx);
       };
-      document.getElementById("manual-merge-modal").style.display = "";
+      document.getElementById("manual-merge-modal").style.display = "flex";
     }
 
     function toggleDupInlineEdit(uid) {
