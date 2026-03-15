@@ -2799,7 +2799,7 @@
 
     function getConfig() {
       try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}"); }
-      catch { return {}; }
+      catch (e) { safeLog("getConfig parse:", e); return {}; }
     }
     function getProxyUrl() { return getConfig().url || ""; }
     function renderUserChip() {
@@ -3624,7 +3624,7 @@
         noteData[pid(p)] = defaultData();
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        console.log("[RT] Patient inserted:", p.nombre);
+        safeLog("[RT] Patient inserted:", p.nombre);
       }
       else if (eventType === "UPDATE") {
         const idx = patients.findIndex(p => p._supa_id === newRow.id);
@@ -3652,7 +3652,7 @@
         patients[idx] = updated;
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        console.log("[RT] Patient updated:", updated.nombre);
+        safeLog("[RT] Patient updated:", updated.nombre);
       }
       else if (eventType === "DELETE") {
         const id = oldRow?.id || newRow?.id;
@@ -3665,7 +3665,7 @@
         _cleanupPatientCache(k);
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        console.log("[RT] Patient deleted:", k);
+        safeLog("[RT] Patient deleted:", k);
       }
     }
 
@@ -3696,7 +3696,7 @@
       nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
         ? newRow.imagen_history
         : (existing.imagenHistory || []);
-      try { noteData[k] = migrateNote(nd); } catch (e) { console.error("[RT] migrateNote error for", k, e); noteData[k] = defaultData(); }
+      try { noteData[k] = migrateNote(nd); } catch (e) { safeLog("[RT] migrateNote error for " + k + ":", e); noteData[k] = defaultData(); }
       lsSaveNote(k, noteData[k]);
       // Re-render SOLO la tarjeta afectada — renderView() destruiría texto en edición en TODOS los demás cards
       // Además, si el usuario tiene foco dentro de esta misma tarjeta, no re-renderizar para no perder su texto
@@ -3717,7 +3717,7 @@
       _toastEl.style.opacity = "1";
       clearTimeout(_toastEl._tid);
       _toastEl._tid = setTimeout(function(){ _toastEl.style.opacity = "0"; }, 3000);
-      console.log("[RT] Note updated:", k);
+      safeLog("[RT] Note updated:", k);
     }
 
     function supaRowToPatient(row) {
@@ -3737,7 +3737,7 @@
       try {
         const lp = lsGetPatients() || [];
         lp.forEach(p => { if (p._supa_id) localById[p._supa_id] = p; });
-      } catch (e) {}
+      } catch (e) { safeLog("sanitizePatients lsGetPatients:", e); }
       return arr.filter(p => {
         if (p.nombre || p.cama || p.exp) return true; // tiene al menos un campo → ok
         // ghost: intentar rescatar desde caché local
@@ -3846,12 +3846,6 @@
           const remoteId = remoteByKey[patientIdentityKey(p)];
           if (remoteId) p._supa_id = remoteId;
         }
-        const row = {
-          cama: p.cama || "", nombre: p.nombre || "", exp: p.exp || "", dx: p.dx || "",
-          edad: p.edad ? String(p.edad) : "", esp: p.esp || "", adscrito: p.adscrito || "",
-          residente: p.residente || "", estado: p.estado || "",
-          ingreso: ingresoToISO(p.ingreso)
-        };
         let inserted = null;
         try { inserted = await supaUpsertPatient(p); }
         catch (e) { safeLog("Migration patient error [" + p.nombre + "]:", e); errors++; continue; }
@@ -4025,7 +4019,7 @@
       try {
         const saved = localStorage.getItem("pl_all_beds_v1");
         if (saved) { const arr = JSON.parse(saved); if (Array.isArray(arr) && arr.length) ALL_BEDS = arr; }
-      } catch (e) { }
+      } catch (e) { safeLog("init load ALL_BEDS:", e); }
 
       // Cargar archivados y snapshots
       try { archivados = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]"); } catch (e) { archivados = []; }
@@ -4712,11 +4706,12 @@
     function renderSimpleCard(p, nd, k) {
       const ec = ESP_COLORS[p.esp] || "#555";
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
-      const dx = (p.dx || "").length > 120 ? p.dx.slice(0, 120) + "..." : p.dx;
+      const _dx = p.dx || "";
+      const dx = _dx.length > 120 ? _dx.slice(0, 120) + "..." : _dx;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
       const esIngreso = isRecentIngreso(p.ingreso, 1);
       const dias = daysSince(p.ingreso);
-      const simpleCk = nd && nd.checklist || {};
+      const simpleCk = (nd && nd.checklist) || {};
       const curPendiente = simpleCk.cur_necesita && !simpleCk.cur_realizada;
       return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}${esIngreso ? ' card-ingreso' : ''}">
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
@@ -5217,7 +5212,7 @@
     };
 
     function labCellHtml(lf, val, k, fecha, prevVal) {
-      const num = parseFloat(val);
+      const num = parseLabNumber(val);
       const crit = val && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch));
       const abn = val && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
       const cls = crit ? "crit" : abn ? "abn" : "";
@@ -5670,7 +5665,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       activeLabDate[k] = fecha;
       var nd = noteData[k] || defaultData();
       var snap = (nd.labHistory || []).find(function (s) { return s.fecha === fecha; });
-      var labs = snap ? (snap.labs || {}) : {}
+      var labs = snap ? (snap.labs || {}) : {};
       var cardEl = document.getElementById("card-" + k);
       if (!cardEl) return;
       cardEl.querySelectorAll(".lab-date-chip:not(.new-btn)").forEach(function (btn) {
@@ -7931,7 +7926,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     function getSyscfg(id) {
       try { return JSON.parse(localStorage.getItem(SYSTEMS[id].key) || "{}"); }
-      catch { return {}; }
+      catch (e) { safeLog("getSyscfg parse:", e); return {}; }
     }
 
     let _currentSyscfg = null;
@@ -7979,7 +7974,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function hudCopy(type) {
-      const sys_cfg = {}; // just clipboard util
       if (type === "user") {
         const val = document.getElementById("hud-user").textContent;
         navigator.clipboard.writeText(val).catch(() => { });
@@ -8106,7 +8100,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const remove = patients[removeIdx];
       if (!keep || !remove) return;
 
-      const keepKey = pid(keep);
+      let keepKey = pid(keep);
       const removeKey = pid(remove);
 
       // Merge: fill empty fields from remove into keep
@@ -8120,6 +8114,17 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!keep.ingreso && remove.ingreso) keep.ingreso = remove.ingreso;
       // Special: prefer non-empty edad
       if (!keep.edad && remove.edad) keep.edad = remove.edad;
+
+      // Si el auto-fill cambió exp o cama, el pid cambió — migrar noteData al nuevo key
+      const newKeepKey = pid(keep);
+      if (newKeepKey !== keepKey) {
+        if (noteData[keepKey]) {
+          noteData[newKeepKey] = noteData[keepKey];
+          delete noteData[keepKey];
+          localStorage.removeItem(NOTES_PREFIX + keepKey);
+        }
+        keepKey = newKeepKey;
+      }
 
       // Merge noteData
       const keepNd = noteData[keepKey] || defaultData();
@@ -8218,7 +8223,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         document.getElementById("manual-merge-modal").style.display = "none";
         mergePatients(keepIdx, removeIdx);
       };
-      document.getElementById("manual-merge-modal").style.display = "";
+      document.getElementById("manual-merge-modal").style.display = "block";
     }
 
     function toggleDupInlineEdit(uid) {
