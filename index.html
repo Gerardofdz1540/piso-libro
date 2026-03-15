@@ -3196,6 +3196,16 @@
       const ct = r.headers.get("content-type") || "";
       return ct.includes("json") ? r.json() : null;
     }
+    async function _sUpsert(table, body, conflictCols) {
+      const qs = conflictCols ? "?on_conflict=" + conflictCols : "";
+      const r = await fetch(SUPA_URL + "/rest/v1/" + table + qs, {
+        method: "POST", headers: _sHeaders({ "Prefer": "resolution=merge-duplicates,return=representation" }),
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("POST " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
+      const ct = r.headers.get("content-type") || "";
+      return ct.includes("json") ? r.json() : null;
+    }
     async function _sPatch(table, match, body) {
       const r = await fetch(SUPA_URL + "/rest/v1/" + table + "?" + match, {
         method: "PATCH", headers: _sHeaders({ "Prefer": "return=representation" }),
@@ -3345,7 +3355,7 @@
           const data = await _sPatch("patients", "id=eq." + p._supa_id, row);
           return data || row;
         } else {
-          const data = await _sPost("patients", row);
+          const data = await _sUpsert("patients", row, "exp,cama");
           const ins = Array.isArray(data) ? data[0] : data;
           if (ins && ins.id) p._supa_id = ins.id;
           return ins || row;
