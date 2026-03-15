@@ -3034,7 +3034,7 @@
         });
       nd.labs = sanitizeLabsMap(nd.labs);
       if (!isPlainObject(nd.checklist)) {
-        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" };
+        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", pendientes_mips: "", pendientes_r1: "" };
       }
       // Migrate: add wound care + NPT fields if missing
       if (nd.checklist.cur_necesita === undefined) nd.checklist.cur_necesita = false;
