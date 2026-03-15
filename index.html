@@ -2226,6 +2226,7 @@
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
       <button class="tab" onclick="setView('altas',this)">🏠 Altas</button>
       <button class="tab" onclick="setView('formatos',this)">📋 Formatos</button>
+      <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
     </div>
   </div>
   </div>
@@ -2258,6 +2259,7 @@
     <div id="view-print" style="display:none"></div>
     <div id="view-altas" style="display:none"></div>
     <div id="view-formatos" style="display:none"></div>
+    <div id="view-noOlvidar" style="display:none"></div>
   </div>
 
   <!-- PATIENT MODAL -->
@@ -2654,6 +2656,7 @@
     const _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
+    window._supaClient = _supa; // expuesto para que initNoOlvidarSync() lo use
     let _realtimeSubs = [];  // active Realtime subscriptions
     let _suppressRealtimeKeys = new Set(); // per-patient suppression (use "__all__" for global)
     function suppressKey(k, ms) { _suppressRealtimeKeys.add(k); setTimeout(function(){ _suppressRealtimeKeys.delete(k); }, ms || 3000); }
@@ -2930,7 +2933,7 @@
         sv: "", balance: "", pendientes: "", misc: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" }
+        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", pendientes_mips: "", pendientes_r1: "" }
       };
     }
 
@@ -3019,6 +3022,8 @@
       if (nd.checklist.npt === undefined) nd.checklist.npt = false;
       if (nd.checklist.npt_pct === undefined) nd.checklist.npt_pct = "";
       if (nd.checklist.npt_fecha === undefined) nd.checklist.npt_fecha = "";
+      if (nd.checklist.pendientes_mips === undefined) nd.checklist.pendientes_mips = "";
+      if (nd.checklist.pendientes_r1 === undefined) nd.checklist.pendientes_r1 = "";
       if (!Array.isArray(nd.imagenHistory)) {
         nd.imagenHistory = [];
         if (nd.imagen_file || nd.imagen_link || nd.imagen) {
@@ -3524,7 +3529,12 @@
       textFields.forEach(function(f) {
         nd[f] = dirty.has(f) ? existing[f] : (newRow[f] || "");
       });
-      nd.checklist = newRow.checklist || existing.checklist || nd.checklist;
+      // Fusionar checklist: preservar pendientes_mips y pendientes_r1 si están siendo editados
+      const remoteChecklist = newRow.checklist || {};
+      const localChecklist = existing.checklist || {};
+      nd.checklist = { ...remoteChecklist };
+      if (dirty.has("ck_pendientes_mips")) nd.checklist.pendientes_mips = localChecklist.pendientes_mips || "";
+      if (dirty.has("ck_pendientes_r1")) nd.checklist.pendientes_r1 = localChecklist.pendientes_r1 || "";
       nd.labHistory = newRow.lab_history || [];
       nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
         ? newRow.imagen_history
@@ -3897,6 +3907,7 @@
       updateProxyPill();
       rotateQuote();
       updateCourseCountdown();
+      initNoOlvidarSync();
     }
     // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
     function setView(v, btn) {
@@ -3924,7 +3935,7 @@
         return em && sm && rm && am && im;
       });
       document.getElementById("count-badge").innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
-      ["piso", "census", "print", "altas", "formatos"].forEach(v => {
+      ["piso", "census", "print", "altas", "formatos", "noOlvidar"].forEach(v => {
         document.getElementById("view-" + v).style.display = currentView === v ? "" : "none";
       });
       if (currentView === "piso") renderPiso(filtered);
@@ -3932,6 +3943,7 @@
       if (currentView === "print") renderPrint(filtered);
       if (currentView === "altas") renderAltas(filtered);
       if (currentView === "formatos") renderFormatos(filtered);
+      if (currentView === "noOlvidar") renderNoOlvidar();
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -4417,6 +4429,24 @@
       </div>
       ${renderChecklist(nd, k)}
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
+      <div class="grid-2" style="margin-top:10px">
+        <div>
+          <div class="field-label">📋 Pendientes MIPs</div>
+          <textarea class="field-ta" rows="3"
+            data-key="${k}" data-ckfield="pendientes_mips"
+            oninput="liveCkText(this)"
+            onchange="updateCkText(this.dataset.key,'pendientes_mips',this.value)"
+            placeholder="Tareas pendientes para MIPs...">${esc((nd.checklist && nd.checklist.pendientes_mips) || "")}</textarea>
+        </div>
+        <div>
+          <div class="field-label">📋 Pendientes R1</div>
+          <textarea class="field-ta" rows="3"
+            data-key="${k}" data-ckfield="pendientes_r1"
+            oninput="liveCkText(this)"
+            onchange="updateCkText(this.dataset.key,'pendientes_r1',this.value)"
+            placeholder="Tareas pendientes para R1...">${esc((nd.checklist && nd.checklist.pendientes_r1) || "")}</textarea>
+        </div>
+      </div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
       ${renderLabSection(nd, k)}
       <div class="card-notes-bar">
@@ -5261,8 +5291,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     function clearLabAnalysis(k) {
       delete labAnalysisCache[k];
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, getNote(k), k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(getNote(k), k);
     }
 
     // ─── FIELD / LAB UPDATE ──────────────────────────────────────────────────────────
@@ -5289,6 +5319,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(k, noteData[k]);
       // Campo guardado: ya no está dirty
       if (_dirtyFields[k]) _dirtyFields[k].delete(field);
+    }
+    // Handlers para campos de texto dentro del checklist (pendientes_mips, pendientes_r1)
+    function liveCkText(el) {
+      var k = el.dataset.key, f = el.dataset.ckfield;
+      var nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[f] = el.value;
+      noteData[k] = nd;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("ck_" + f);
+    }
+    function updateCkText(k, field, value) {
+      var nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[field] = value;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      if (_dirtyFields[k]) _dirtyFields[k].delete("ck_" + field);
     }
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
@@ -5390,8 +5438,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         activeLabDate[k] = rem[0] || null;
       }
       noteData[k] = nd; saveNote(k, nd);
-      var p = patients.find(function (p) { return pid(p) === k; });
-      if (p && !isSimpleEsp(p.esp)) { var ce = document.getElementById("card-" + k); if (ce) ce.outerHTML = renderFullCard(p, nd, k); }
+      var labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
     function toggleLabIncidencia(k, fecha, checked) {
       var nd = getNote(k);
@@ -5400,13 +5448,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       snap.incidencia = checked;
       noteData[k] = nd;
       saveNote(k, nd);
-      // Re-render just this card
-      var p = patients.find(function(pt){ return pid(pt) === k; });
-      var nd2 = getNote(k);
-      if (p && !isSimpleEsp(p.esp)) {
-        var ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p, nd2, k);
-      }
+      var labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
     function addLabDate(k) {
       const fecha = prompt("Fecha de los laboratorios (YYYY-MM-DD):", todayStr());
@@ -5418,11 +5461,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       noteData[k] = nd;
       activeLabDate[k] = fecha;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k);
-      }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function addExtraLab(k, fecha) {
@@ -5432,8 +5472,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap.extra) snap.extra = [];
       snap.extra.push({ nombre: "", valor: "" });
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, nd, k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function removeExtraLab(k, fecha, idx) {
@@ -5442,8 +5482,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap || !snap.extra) return;
       snap.extra.splice(idx, 1);
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, nd, k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function updateExtraLab(k, fecha, idx, field, value) {
@@ -5638,15 +5678,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       } catch (e) { alert("Error al procesar: " + (e.message || e)); }
       labLoadingSet.delete(k);
-      // Re-render only this card (not entire view) to avoid disrupting other cards
-      const p2 = patients.find(function(pt){ return pid(pt) === k; });
-      const nd2 = getNote(k);
-      if (p2 && nd2 && !isSimpleEsp(p2.esp)) {
-        const ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p2, nd2, k);
-      } else {
-        renderView();
-      }
+      // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición
+      const labsEl2 = document.getElementById("labs-sec-" + k);
+      if (labsEl2) labsEl2.outerHTML = renderLabSection(getNote(k), k);
+      else renderView();
     }
     // ─── CENSUS VIEW ─────────────────────────────────────────────────────────────────
     function censusRow(p, showEsp) {
@@ -6032,6 +6067,138 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     </div>
     ${sectionsHtml}
   </div>`;
+    }
+
+    // ─── NO OLVIDAR VIEW ─────────────────────────────────────────────────────────────
+    const NO_OLVIDAR_KEY = "pl_no_olvidar_v1";
+
+    function lsGetNoOlvidar() {
+      try { return JSON.parse(localStorage.getItem(NO_OLVIDAR_KEY) || "[]"); }
+      catch (_) { return []; }
+    }
+    function lsSaveNoOlvidar(items) {
+      localStorage.setItem(NO_OLVIDAR_KEY, JSON.stringify(items));
+    }
+    function noOlvidarNextId(items) {
+      return items.length ? Math.max(...items.map(i => i.id || 0)) + 1 : 1;
+    }
+
+    function addNoOlvidar() {
+      const text = document.getElementById("no-olvidar-input").value.trim();
+      if (!text) return;
+      const author = localStorage.getItem("pl_user_name") || "Anónimo";
+      const items = lsGetNoOlvidar();
+      items.unshift({ id: noOlvidarNextId(items), texto: text, author, fecha: todayStr(), done: false });
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      document.getElementById("no-olvidar-input").value = "";
+      renderNoOlvidar();
+    }
+    function toggleNoOlvidar(id) {
+      const items = lsGetNoOlvidar();
+      const it = items.find(i => i.id === id);
+      if (it) it.done = !it.done;
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+    function deleteNoOlvidar(id) {
+      if (!confirm("¿Eliminar este recordatorio?")) return;
+      const items = lsGetNoOlvidar().filter(i => i.id !== id);
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+    function clearDoneNoOlvidar() {
+      const items = lsGetNoOlvidar().filter(i => !i.done);
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+
+    // Broadcast via Supabase Realtime para sincronizar entre usuarios conectados
+    var _noOlvidarChannel = null;
+    function initNoOlvidarSync() {
+      if (!window._supaClient) return;
+      try {
+        _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
+          .on("broadcast", { event: "update" }, function(payload) {
+            if (payload.payload && Array.isArray(payload.payload.items)) {
+              lsSaveNoOlvidar(payload.payload.items);
+              if (currentView === "noOlvidar") renderNoOlvidar();
+            }
+          })
+          .subscribe();
+      } catch (_) { /* Realtime opcional — funciona sin él */ }
+    }
+    function syncNoOlvidarBroadcast(items) {
+      if (_noOlvidarChannel) {
+        try { _noOlvidarChannel.send({ type: "broadcast", event: "update", payload: { items } }); }
+        catch (_) {}
+      }
+    }
+
+    function renderNoOlvidar() {
+      const el = document.getElementById("view-noOlvidar");
+      if (!el) return;
+      const items = lsGetNoOlvidar();
+      const pending = items.filter(i => !i.done);
+      const done    = items.filter(i => i.done);
+      const author  = localStorage.getItem("pl_user_name") || "Anónimo";
+
+      const itemHtml = (i) => `
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:${i.done ? "#f8fafc" : "#fff"};border:1.5px solid ${i.done ? "#e2e8f0" : "#cbd5e1"};border-radius:10px;margin-bottom:8px;opacity:${i.done ? ".6" : "1"}">
+          <button onclick="toggleNoOlvidar(${i.id})"
+            style="flex-shrink:0;width:22px;height:22px;border-radius:50%;border:2px solid ${i.done ? "#10b981" : "#94a3b8"};background:${i.done ? "#10b981" : "#fff"};cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;color:#fff;padding:0">
+            ${i.done ? "✓" : ""}
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;color:${i.done ? "#94a3b8" : "#1e293b"};${i.done ? "text-decoration:line-through" : ""};word-break:break-word">${esc(i.texto)}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:3px">👤 ${esc(i.author)} · ${fmtDateChip(i.fecha)}</div>
+          </div>
+          <button onclick="deleteNoOlvidar(${i.id})"
+            style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;padding:0;line-height:1" title="Eliminar">✕</button>
+        </div>`;
+
+      el.innerHTML = `
+      <div style="max-width:700px;margin:0 auto;padding:20px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px">
+          <h2 style="margin:0;font-size:20px;color:#1e293b;font-weight:700">📌 No olvidar</h2>
+          <span style="font-size:12px;color:#64748b;background:#f1f5f9;padding:4px 10px;border-radius:20px">👤 ${esc(author)}</span>
+        </div>
+
+        <!-- Input nuevo recordatorio -->
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <input id="no-olvidar-input" type="text" placeholder="Agregar recordatorio para el equipo..."
+            style="flex:1;padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:var(--font);outline:none"
+            onkeydown="if(event.key==='Enter')addNoOlvidar()"
+            onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"/>
+          <button onclick="addNoOlvidar()"
+            style="background:#6366f1;color:#fff;border:none;padding:10px 18px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap">
+            ➕ Agregar
+          </button>
+        </div>
+
+        <!-- Pendientes -->
+        ${pending.length === 0
+          ? `<div style="text-align:center;padding:32px 0;color:#94a3b8;font-size:14px">No hay recordatorios pendientes 🎉</div>`
+          : `<div style="margin-bottom:6px">
+              <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Pendientes (${pending.length})</span>
+             </div>
+             ${pending.map(itemHtml).join("")}`
+        }
+
+        <!-- Completados -->
+        ${done.length > 0 ? `
+        <div style="margin-top:20px;border-top:1px dashed #e2e8f0;padding-top:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">Completados (${done.length})</span>
+            <button onclick="clearDoneNoOlvidar()"
+              style="font-size:11px;color:#ef4444;background:none;border:none;cursor:pointer;padding:0">Limpiar completados</button>
+          </div>
+          ${done.map(itemHtml).join("")}
+        </div>` : ""}
+      </div>`;
     }
 
     // ─── ALTAS VIEW ─────────────────────────────────────────────────────────────────
