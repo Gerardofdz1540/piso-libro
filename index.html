@@ -3355,10 +3355,25 @@
           const data = await _sPatch("patients", "id=eq." + p._supa_id, row);
           return data || row;
         } else {
-          const data = await _sUpsert("patients", row, "exp,cama");
-          const ins = Array.isArray(data) ? data[0] : data;
-          if (ins && ins.id) p._supa_id = ins.id;
-          return ins || row;
+          try {
+            const data = await _sUpsert("patients", row, "exp,cama");
+            const ins = Array.isArray(data) ? data[0] : data;
+            if (ins && ins.id) p._supa_id = ins.id;
+            return ins || row;
+          } catch (upsertErr) {
+            // Fallback: si el upsert falla por conflicto, buscar el registro existente y hacer PATCH
+            const msg = upsertErr && upsertErr.message ? upsertErr.message : "";
+            if (msg.includes("409") || msg.includes("23505")) {
+              const qs = "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id&limit=1";
+              const existing = await _sGet("patients", qs);
+              if (existing && existing.length && existing[0].id) {
+                p._supa_id = existing[0].id;
+                const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
+                return patched || row;
+              }
+            }
+            throw upsertErr;
+          }
         }
       } catch (e) { safeLog("supaUpsertPatient error:", e); _lastSyncErrorDetail = e && e.message ? e.message : String(e || ""); return null; }
     }
