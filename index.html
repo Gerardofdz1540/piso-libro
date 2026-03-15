@@ -4827,6 +4827,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].tipo = val;
       noteData[k] = nd; saveNote(k, nd);
+      _refreshImgSec(k);
     }
     function updateEstudioDesc(k, fecha, idx, val) {
       const nd = getNote(k);
@@ -4834,6 +4835,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].descripcion = val;
       noteData[k] = nd; saveNote(k, nd);
+      _refreshImgSec(k);
     }
 
     function triggerEstudioFile(k, fecha, idx, eid) {
