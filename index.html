@@ -6568,7 +6568,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printPrePostQx() {
-      const v = fmtV, c = id => document.getElementById(id) && document.getElementById(id).checked ? "X" : "";
+      const v = (id) => esc(fmtV(id)), c = id => document.getElementById(id) && document.getElementById(id).checked ? "X" : "";
       const riesgos = [
         "NEFROPATÍA (" + c("fqx_nefro") + ") ",
         "COAGULOPATÍA (" + c("fqx_coag") + ") ",
@@ -6731,7 +6731,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printConsentimientoQx() {
-      const v = fmtV;
+      const v = (id) => esc(fmtV(id));
       const w = window.open("", "_blank", "width=900,height=1100");
       w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-542</title>
   <style>
@@ -6820,7 +6820,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printConsentimientoGral() {
-      const v = fmtV;
+      const v = (id) => esc(fmtV(id));
       const w = window.open("", "_blank", "width=900,height=1100");
       w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-50</title>
   <style>
@@ -6899,7 +6899,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printConsentimientoTx() {
-      const v = fmtV;
+      const v = (id) => esc(fmtV(id));
       const w = window.open("", "_blank", "width=900,height=1100");
       w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-LAB-236</title>
   <style>
@@ -6996,7 +6996,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printNotaMedica() {
-      const v = fmtV;
+      const v = (id) => esc(fmtV(id));
       const w = window.open("", "_blank", "width=900,height=1100");
       w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-51</title>
   <style>
