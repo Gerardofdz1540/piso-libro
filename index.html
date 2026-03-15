@@ -4712,11 +4712,12 @@
     function renderSimpleCard(p, nd, k) {
       const ec = ESP_COLORS[p.esp] || "#555";
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
-      const dx = (p.dx || "").length > 120 ? p.dx.slice(0, 120) + "..." : p.dx;
+      const _dx = p.dx || "";
+      const dx = _dx.length > 120 ? _dx.slice(0, 120) + "..." : _dx;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
       const esIngreso = isRecentIngreso(p.ingreso, 1);
       const dias = daysSince(p.ingreso);
-      const simpleCk = nd && nd.checklist || {};
+      const simpleCk = (nd && nd.checklist) || {};
       const curPendiente = simpleCk.cur_necesita && !simpleCk.cur_realizada;
       return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}${esIngreso ? ' card-ingreso' : ''}">
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
