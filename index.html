@@ -1938,6 +1938,26 @@
       box-shadow: 0 0 0 2px #dc2626, 0 4px 16px rgba(220, 38, 38, .2) !important;
     }
 
+    .card-ingreso {
+      box-shadow: 0 0 0 2px #16a34a, 0 4px 16px rgba(22, 163, 74, .18) !important;
+    }
+
+    .badge-ingreso {
+      background: #16a34a;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 5px;
+      letter-spacing: .4px;
+      animation: pulse-ingreso 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-ingreso {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .6; }
+    }
+
     .checklist-wrap {
       display: flex;
       flex-direction: column;
@@ -4391,7 +4411,8 @@
       const exp = expandedCards[k] !== false;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
       const alerts = computeAlerts(p, nd);
-      return `<div class="full-card${noEnCenso ? ' flag-noencenso' : ''}${alerts.some(a => a.type === 'critico' || a.type === 'labs_crit') ? ' card-critica' : ''}" id="card-${k}">
+      const esIngreso = isRecentIngreso(p.ingreso, 1);
+      return `<div class="full-card${noEnCenso ? ' flag-noencenso' : ''}${alerts.some(a => a.type === 'critico' || a.type === 'labs_crit') ? ' card-critica' : ''}${esIngreso ? ' card-ingreso' : ''}" id="card-${k}">
     <div class="card-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}cc 100%)">
       <div class="card-header-row1">
         <span class="card-bed" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
@@ -4399,6 +4420,7 @@
         <span class="card-age" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">· ${p.edad ? p.edad + 'a' : '?'}</span>
         <div class="card-badges">
           ${noEnCenso ? `<span class="badge-fuera">⚠️ Sin censo</span>` : ''}
+          ${esIngreso ? `<span class="badge-ingreso">🆕 INGRESO</span>` : ''}
           <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
           <span class="badge-esp">${esc(p.esp)}</span>
           <span class="badge-day">Día ${days}</span>
@@ -4477,7 +4499,8 @@
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
       const dx = (p.dx || "").length > 120 ? p.dx.slice(0, 120) + "..." : p.dx;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
-      return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}">
+      const esIngreso = isRecentIngreso(p.ingreso, 1);
+      return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}${esIngreso ? ' card-ingreso' : ''}">
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
       <div style="display:flex;align-items:center;gap:8px;flex:1">
         <span style="background:rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;font-size:13px;font-weight:700">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
@@ -4488,6 +4511,7 @@
       </div>
       <div style="display:flex;gap:5px;align-items:center">
         ${noEnCenso ? `<span class="badge-fuera">⚠️ Sin censo</span>` : ''}
+        ${esIngreso ? `<span class="badge-ingreso">🆕 INGRESO</span>` : ''}
         <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
         <span class="badge-esp">${esc(p.esp)}</span>
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
