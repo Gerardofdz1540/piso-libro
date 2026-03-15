@@ -4262,12 +4262,12 @@
     function scrollToPatient(k) {
       // Expand card if collapsed
       if (expandedCards[k] === false) { expandedCards[k] = true; }
-      // Re-render to make sure it's expanded
+      // Re-render solo esta tarjeta para reflejar estado expandido
       const p = patients.find(function(pt){ return pid(pt) === k; });
-      const nd = getNote(k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p, nd, k);
+      const nd = noteData[k] || defaultData();
+      const cardEl = document.getElementById("card-" + k);
+      if (p && cardEl) {
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
       }
       // Scroll to card
       setTimeout(function() {
@@ -4570,7 +4570,7 @@
       const canAdd = activeFecha && estudios.length < 3;
       const noDate = !activeFecha;
 
-      return `<div>
+      return `<div id="img-sec-${k}">
     <div class="field-label">🖼 Imagen y hallazgos</div>
     <div class="img-date-bar">${dateChips}</div>
     ${noDate ? `<div style="font-size:12px;color:#94a3b8;padding:8px 0">Presiona «+ Nueva fecha» para agregar estudios de hoy.</div>` : `
@@ -4580,13 +4580,15 @@
   </div>`;
     }
 
+    function _refreshImgSec(k) {
+      const nd = getNote(k);
+      const el = document.getElementById("img-sec-" + k);
+      if (el) el.outerHTML = renderImagenField(nd, k);
+    }
+
     function setActiveImagenDate(k, fecha) {
       activeImagenDate[k] = fecha;
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
-      }
+      _refreshImgSec(k);
     }
 
     function addImagenDate(k) {
@@ -4599,11 +4601,7 @@
       noteData[k] = nd;
       activeImagenDate[k] = fecha;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
-      }
+      _refreshImgSec(k);
     }
 
     function addEstudio(k, fecha) {
@@ -4613,8 +4611,7 @@
       entry.estudios.push({ tipo: "RX", descripcion: "", file: "", file_type: "", file_name: "", link: "" });
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudio(k, fecha, idx) {
@@ -4628,8 +4625,7 @@
       }
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function updateEstudioTipo(k, fecha, idx, val) {
@@ -4664,8 +4660,7 @@
       entry.estudios[idx].file_type = file.type || "application/octet-stream";
       entry.estudios[idx].file_name = file.name;
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function promptEstudioLink(k, fecha, idx) {
@@ -4677,8 +4672,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].link = url;
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudioFile(k, fecha, idx) {
@@ -4687,8 +4681,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].file = ""; entry.estudios[idx].file_type = ""; entry.estudios[idx].file_name = "";
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudioLink(k, fecha, idx) {
@@ -4697,8 +4690,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].link = "";
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function openEstudioFile(k, fecha, idx) {
@@ -5326,6 +5318,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(k, noteData[k]);
       // Campo guardado: ya no está dirty
       if (_dirtyFields[k]) _dirtyFields[k].delete(field);
+      // dx vive en el objeto paciente (no en notas) — sincronizar también allá
+      if (field === "dx") {
+        const p = patients.find(function(pt){ return pid(pt) === k; });
+        if (p) { p.dx = value; savePts(); }
+      }
     }
     // Handlers para campos de texto dentro del checklist (pendientes_mips, pendientes_r1)
     function liveCkText(el) {
@@ -9289,8 +9286,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         noteData[k] = nd;
         activeLabDate[k] = today;
         saveNote(k, nd);
-        renderView();
-        // Enfocar el primer input de lab visible
+        // Actualizar solo la sección de labs sin destruir el resto de la tarjeta
+        const labsEl = document.getElementById("labs-sec-" + k);
+        if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
+        else renderView();
         setTimeout(() => {
           const card = document.getElementById("card-" + k);
           if (card) {
@@ -9307,7 +9306,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         noteData[k] = nd;
         activeImagenDate[k] = today;
         saveNote(k, nd);
-        renderView();
+        // Actualizar solo la sección de imagen sin destruir el resto de la tarjeta
+        const imgEl = document.getElementById("img-sec-" + k);
+        if (imgEl) imgEl.outerHTML = renderImagenField(nd, k);
+        else renderView();
         setTimeout(() => {
           const card = document.getElementById("card-" + k);
           if (card) {
