@@ -2735,6 +2735,13 @@
     let exportTemplateBuffer = null;
     let _dirtyFields = {};  // patientKey → Set<fieldName> — campos editados localmente sin guardar
     let _pendingNoteAutosave = {}; // patientKey -> debounced autosave fn
+    function _cleanupPatientCache(k) {
+      delete _pendingNoteAutosave[k];
+      delete labAnalysisCache[k];
+      delete _dirtyFields[k];
+      delete activeLabDate[k];
+      delete activeImagenDate[k];
+    }
     let archivados = [];    // pacientes egresados (no se borran, se archivan)
     let snapshots = [];    // cortes de guardia guardados
     let procedimientos = []; // procedimientos del día (no necesitan notas clínicas)
@@ -3639,7 +3646,8 @@
           noteData[newKey] = noteData[oldKey];
           delete noteData[oldKey];
           lsSaveNote(newKey, noteData[newKey]);
-          localStorage.removeItem(NOTES_PREFIX + oldKey); // limpiar ghost note en localStorage
+          localStorage.removeItem(NOTES_PREFIX + oldKey);
+          _cleanupPatientCache(oldKey);
         }
         patients[idx] = updated;
         lsSavePatients(patients);
@@ -3653,7 +3661,8 @@
         const k = pid(patients[idx]);
         patients.splice(idx, 1);
         delete noteData[k];
-        localStorage.removeItem(NOTES_PREFIX + k); // limpiar nota en localStorage
+        localStorage.removeItem(NOTES_PREFIX + k);
+        _cleanupPatientCache(k);
         lsSavePatients(patients);
         buildEspFilters(); renderView();
         console.log("[RT] Patient deleted:", k);
@@ -3799,7 +3808,7 @@
           } else results[absIdx] = true; // tipo desconocido → descartar
         }));
       }
-      const failed = q.filter((_, i) => results[i] === false);
+      const failed = q.filter((_, i) => !results[i]);
       outboxSave(failed);
       updateOutboxBadge();
       if (!failed.length) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
@@ -4066,7 +4075,7 @@
 
       if (supaClean.length > 0 && !localHasMore) {
         patients = supaClean;
-        noteData = loaded.notes;
+        noteData = loaded.notes || {};
         lsSavePatients(patients);
         // Cache notes locally
         patients.forEach(p => { lsSaveNote(pid(p), noteData[pid(p)] || defaultData()); });
@@ -4086,9 +4095,8 @@
         setSyncStatus("syncing", "Guardando...");
         startRealtime();
         _savePtsImmediate().then(() => {
-          const hm2 = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
           setSyncStatus("synced", "✅ Guardado");
-        });
+        }).catch(e => { safeLog("_savePtsImmediate (localHasMore):", e); setSyncProblemStatus(); });
       } else {
         // Supabase empty, failed, offline, or localStorage is newer → load from localStorage
         patients = sanitizePatients(lsGetPatients() || []);
@@ -4100,9 +4108,8 @@
             setSyncStatus("syncing", "Guardando...");
             startRealtime();
             _savePtsImmediate().then(() => {
-              const hm2 = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
               setSyncStatus("synced", "✅ Guardado");
-            });
+            }).catch(e => { safeLog("_savePtsImmediate (localNewer):", e); setSyncProblemStatus(); });
           } else if (loaded === null) {
             // Supabase error pero hay datos locales disponibles — no mostrar error alarmante
             setSyncStatus("offline", "Sin conexión");
@@ -4590,6 +4597,18 @@
       if (p.estado === "GRAVE" && !nd.pendientes?.trim())
         alerts.push({ type: "critico", label: "⚠️ GRAVE sin plan", color: "#dc2626" });
 
+      // Estancia prolongada
+      const dias = daysSince(p.ingreso);
+      if (typeof dias === "number") {
+        if (dias >= 14) alerts.push({ type: "estancia", label: "🏨 " + dias + " días", color: "#b91c1c" });
+        else if (dias >= 7) alerts.push({ type: "estancia", label: "🏨 " + dias + " días", color: "#d97706" });
+      }
+
+      // Curación pendiente: necesita pero no realizada hoy
+      const ck = nd.checklist || {};
+      if (ck.cur_necesita && !ck.cur_realizada)
+        alerts.push({ type: "cur", label: "🩹 Curación pendiente", color: "#0369a1" });
+
       return alerts;
     }
 
@@ -4696,6 +4715,9 @@
       const dx = (p.dx || "").length > 120 ? p.dx.slice(0, 120) + "..." : p.dx;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
       const esIngreso = isRecentIngreso(p.ingreso, 1);
+      const dias = daysSince(p.ingreso);
+      const simpleCk = nd && nd.checklist || {};
+      const curPendiente = simpleCk.cur_necesita && !simpleCk.cur_realizada;
       return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}${esIngreso ? ' card-ingreso' : ''}">
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
       <div style="display:flex;align-items:center;gap:8px;flex:1">
@@ -4710,6 +4732,8 @@
         ${esIngreso ? `<span class="badge-ingreso">🆕 INGRESO</span>` : ''}
         <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
         <span class="badge-esp">${esc(p.esp)}</span>
+        <span class="badge-day">Día ${dias}</span>
+        ${curPendiente ? `<span style="background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap">🩹 Cur</span>` : ''}
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
         <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
       </div>
@@ -5551,6 +5575,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap.labs) snap.labs = {};
       snap.labs[lk] = el.value;
       noteData[k] = nd;
+      delete labAnalysisCache[k]; // labs cambiaron → invalidar análisis IA
       scheduleNoteAutosave(k);
     }
     function updateField(k, field, value) {
@@ -5574,6 +5599,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       noteData[k] = nd;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add("ck_" + f);
+      scheduleNoteAutosave(k);
     }
     function updateCkText(k, field, value) {
       var nd = getNote(k);
@@ -6066,6 +6092,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             delete noteData[oldKey];
             localStorage.removeItem(NOTES_PREFIX + oldKey);
             deleteNoteRemote(oldKey);
+            _cleanupPatientCache(oldKey);
             saveNote(newKey, noteData[newKey]);
           }
           savePts();
@@ -6618,6 +6645,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           // Limpiar oldKey en localStorage y en KV remoto para evitar "ghost notes"
           localStorage.removeItem(NOTES_PREFIX + modalOrigKey);
           deleteNoteRemote(modalOrigKey);
+          _cleanupPatientCache(modalOrigKey);
           saveNote(newKey, noteData[newKey]);
         }
       }
@@ -6653,9 +6681,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       patients = patients.filter(pt => pid(pt) !== k);
       delete noteData[k];
       localStorage.removeItem(NOTES_PREFIX + k);
+      _cleanupPatientCache(k);
       // Delete from Supabase (cascade deletes note too)
       if (p._supa_id) {
-        supaDeletePatient(p._supa_id);
+        supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (discharge):", e));
         // Also archive to Supabase
         _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" }).catch(() => { });
       }
@@ -8111,13 +8140,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       // Remove the duplicate by index (MUST remove higher index first to avoid shift)
       const removedPatient = patients[removeIdx];
-      if (removedPatient && removedPatient._supa_id) supaDeletePatient(removedPatient._supa_id);
+      if (removedPatient && removedPatient._supa_id)
+        supaDeletePatient(removedPatient._supa_id).catch(e => safeLog("supaDeletePatient (merge):", e));
       patients.splice(removeIdx, 1);
 
       // Clean up removed patient's noteData
       if (removeKey !== keepKey) {
         delete noteData[removeKey];
         localStorage.removeItem(NOTES_PREFIX + removeKey);
+        _cleanupPatientCache(removeKey);
       }
       if (keep._supa_id) suppressKey(keep._supa_id);
       saveNote(keepKey, keepNd);
@@ -8213,6 +8244,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         delete noteData[oldKey];
         localStorage.removeItem(NOTES_PREFIX + oldKey);
         deleteNoteRemote(oldKey);
+        _cleanupPatientCache(oldKey);
         saveNote(newKey, noteData[newKey]);
       }
       savePts();
@@ -8327,10 +8359,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const p = patients[idx];
       const k = pid(p);
       if (p._supa_id) suppressKey(p._supa_id);
-      if (p._supa_id) supaDeletePatient(p._supa_id);
+      if (p._supa_id) supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (removeDup):", e));
       patients.splice(idx, 1);
       delete noteData[k];
       localStorage.removeItem(NOTES_PREFIX + k);
+      _cleanupPatientCache(k);
       savePts();
       buildEspFilters();
       renderView();
@@ -8425,6 +8458,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         delete noteData[oldKey];
         localStorage.removeItem(NOTES_PREFIX + oldKey);
         deleteNoteRemote(oldKey);
+        _cleanupPatientCache(oldKey);
         saveNote(newKey, noteData[newKey]);
       }
       savePts();
