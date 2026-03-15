@@ -1938,6 +1938,26 @@
       box-shadow: 0 0 0 2px #dc2626, 0 4px 16px rgba(220, 38, 38, .2) !important;
     }
 
+    .card-ingreso {
+      box-shadow: 0 0 0 2px #16a34a, 0 4px 16px rgba(22, 163, 74, .18) !important;
+    }
+
+    .badge-ingreso {
+      background: #16a34a;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 5px;
+      letter-spacing: .4px;
+      animation: pulse-ingreso 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-ingreso {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .6; }
+    }
+
     .checklist-wrap {
       display: flex;
       flex-direction: column;
@@ -2226,6 +2246,7 @@
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
       <button class="tab" onclick="setView('altas',this)">🏠 Altas</button>
       <button class="tab" onclick="setView('formatos',this)">📋 Formatos</button>
+      <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
     </div>
   </div>
   </div>
@@ -2246,7 +2267,7 @@
 
     <!-- FILTER BAR -->
     <div id="filterbar">
-      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="handleSearchInput()" />
+      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="debouncedSearch()" />
       <div class="esp-filters" id="esp-filters"></div>
       <span class="count-badge" id="count-badge">0 pacientes</span>
       <button class="btn-pink" onclick="openAddModal()">➕ Nuevo paciente</button>
@@ -2258,6 +2279,7 @@
     <div id="view-print" style="display:none"></div>
     <div id="view-altas" style="display:none"></div>
     <div id="view-formatos" style="display:none"></div>
+    <div id="view-noOlvidar" style="display:none"></div>
   </div>
 
   <!-- PATIENT MODAL -->
@@ -2655,6 +2677,7 @@
     const _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
+    window._supaClient = _supa; // expuesto para que initNoOlvidarSync() lo use
     let _realtimeSubs = [];  // active Realtime subscriptions
     let _suppressRealtimeKeys = new Set(); // per-patient suppression (use "__all__" for global)
     function suppressKey(k, ms) { _suppressRealtimeKeys.add(k); setTimeout(function(){ _suppressRealtimeKeys.delete(k); }, ms || 3000); }
@@ -2932,7 +2955,7 @@
         sv: "", balance: "", pendientes: "", misc: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" }
+        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", pendientes_mips: "", pendientes_r1: "" }
       };
     }
 
@@ -2947,12 +2970,8 @@
     const LAB_KEYS_FALLBACK = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea",
       "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt", "fa",
       "ph", "pco2", "po2", "hco3", "be", "sato2",
-      "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "ego_leucos", "ego_hematies", "ego_proteinas", "ego_glucosa",
-      "micro_tipo_cultivo", "micro_muestra", "micro_organismo", "micro_sensibilidades", "micro_resistencias", "micro_comentarios"];
-    const LAB_META_KEYS = new Set([
-      "paciente", "fecha_labs", "tipo_lab",
-      "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"
-    ]);
+      "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
+    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
@@ -3027,7 +3046,7 @@
         });
       nd.labs = sanitizeLabsMap(nd.labs);
       if (!isPlainObject(nd.checklist)) {
-        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" };
+        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", pendientes_mips: "", pendientes_r1: "" };
       }
       // Migrate: add wound care + NPT fields if missing
       if (nd.checklist.cur_necesita === undefined) nd.checklist.cur_necesita = false;
@@ -3035,6 +3054,8 @@
       if (nd.checklist.npt === undefined) nd.checklist.npt = false;
       if (nd.checklist.npt_pct === undefined) nd.checklist.npt_pct = "";
       if (nd.checklist.npt_fecha === undefined) nd.checklist.npt_fecha = "";
+      if (nd.checklist.pendientes_mips === undefined) nd.checklist.pendientes_mips = "";
+      if (nd.checklist.pendientes_r1 === undefined) nd.checklist.pendientes_r1 = "";
       if (!Array.isArray(nd.imagenHistory)) {
         nd.imagenHistory = [];
         if (nd.imagen_file || nd.imagen_link || nd.imagen) {
@@ -3054,9 +3075,9 @@
 
     // localStorage fallbacks
     function lsGetPatients() { try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } }
-    function lsSavePatients(pts) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pts)); } catch { } }
+    function lsSavePatients(pts) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pts)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
     function lsGetNote(key) { try { const s = localStorage.getItem(NOTES_PREFIX + key); return s ? migrateNote({ ...defaultData(), ...JSON.parse(s) }) : defaultData(); } catch { return defaultData(); } }
-    function lsSaveNote(key, data) { try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data)); } catch { } }
+    function lsSaveNote(key, data) { try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
     function lsGetAllNotes(pts) { const obj = {}; pts.forEach(p => { const k = pid(p); obj[k] = lsGetNote(k); }); return obj; }
     function arrayBufferToBase64(buffer) {
       const bytes = new Uint8Array(buffer);
@@ -3111,7 +3132,7 @@
     const OUTBOX_KEY = "pl_outbox_v1";
     const OUTBOX_MAX = 200; // máximo de operaciones pendientes en cola
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
-    function outboxSave(q) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); }
+    function outboxSave(q) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
     function outboxEnqueue(item) {
       const q = outboxLoad();
       const newItem = { ...item, ts: Date.now() };
@@ -3585,6 +3606,7 @@
           noteData[newKey] = noteData[oldKey];
           delete noteData[oldKey];
           lsSaveNote(newKey, noteData[newKey]);
+          localStorage.removeItem(NOTES_PREFIX + oldKey); // limpiar ghost note en localStorage
         }
         patients[idx] = updated;
         lsSavePatients(patients);
@@ -3598,6 +3620,7 @@
         const k = pid(patients[idx]);
         patients.splice(idx, 1);
         delete noteData[k];
+        localStorage.removeItem(NOTES_PREFIX + k); // limpiar nota en localStorage
         lsSavePatients(patients);
         buildEspFilters(); renderView();
         console.log("[RT] Patient deleted:", k);
@@ -3621,14 +3644,25 @@
       textFields.forEach(function(f) {
         nd[f] = dirty.has(f) ? existing[f] : (newRow[f] || "");
       });
-      nd.checklist = newRow.checklist || existing.checklist || nd.checklist;
+      // Fusionar checklist: preservar pendientes_mips y pendientes_r1 si están siendo editados
+      const remoteChecklist = newRow.checklist || {};
+      const localChecklist = existing.checklist || {};
+      nd.checklist = { ...remoteChecklist };
+      if (dirty.has("ck_pendientes_mips")) nd.checklist.pendientes_mips = localChecklist.pendientes_mips || "";
+      if (dirty.has("ck_pendientes_r1")) nd.checklist.pendientes_r1 = localChecklist.pendientes_r1 || "";
       nd.labHistory = newRow.lab_history || [];
       nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
         ? newRow.imagen_history
         : (existing.imagenHistory || []);
-      noteData[k] = migrateNote(nd);
+      try { noteData[k] = migrateNote(nd); } catch (e) { console.error("[RT] migrateNote error for", k, e); noteData[k] = defaultData(); }
       lsSaveNote(k, noteData[k]);
-      renderView();
+      // Re-render SOLO la tarjeta afectada — renderView() destruiría texto en edición en TODOS los demás cards
+      // Además, si el usuario tiene foco dentro de esta misma tarjeta, no re-renderizar para no perder su texto
+      const _rtCardEl = document.getElementById("card-" + k);
+      const _rtHasFocus = _rtCardEl && _rtCardEl.contains(document.activeElement);
+      if (_rtCardEl && !_rtHasFocus) {
+        _rtCardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
+      }
       // Toast no intrusivo
       var _toastEl = document.getElementById("rt-toast");
       if (!_toastEl) {
@@ -3993,11 +4027,12 @@
 
       // ── Safety guard: compare Supabase vs localStorage patient counts ──
       const localPts = lsGetPatients() || [];
-      const localHasMore = localPts.length > 0 && loaded && loaded.patients.length > 0
-        && localPts.length > loaded.patients.length;
+      const supaClean = loaded ? sanitizePatients(loaded.patients) : [];
+      const localHasMore = localPts.length > 0 && supaClean.length > 0
+        && localPts.length > supaClean.length;
 
-      if (loaded && loaded.patients.length > 0 && !localHasMore) {
-        patients = sanitizePatients(loaded.patients);
+      if (supaClean.length > 0 && !localHasMore) {
+        patients = supaClean;
         noteData = loaded.notes;
         lsSavePatients(patients);
         // Cache notes locally
@@ -4065,6 +4100,7 @@
       updateProxyPill();
       rotateQuote();
       updateCourseCountdown();
+      initNoOlvidarSync();
     }
     // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
     function setView(v, btn) {
@@ -4076,7 +4112,8 @@
     const renderViewFromSearch = debounce(function () { renderView(); }, 120);
     function handleSearchInput() { renderViewFromSearch(); }
     function renderView() {
-      const search = document.getElementById("search").value.toLowerCase();
+      const _searchEl = document.getElementById("search");
+      const search = _searchEl ? _searchEl.value.toLowerCase() : "";
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
       function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
       const searchNorm = normSearch(search);
@@ -4093,15 +4130,18 @@
         }
         return em && sm && rm && am && im;
       });
-      document.getElementById("count-badge").innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
-      ["piso", "census", "print", "altas", "formatos"].forEach(v => {
-        document.getElementById("view-" + v).style.display = currentView === v ? "" : "none";
+      const _cb = document.getElementById("count-badge");
+      if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
+      ["piso", "census", "print", "altas", "formatos", "noOlvidar"].forEach(v => {
+        const _ve = document.getElementById("view-" + v);
+        if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
       if (currentView === "piso") renderPiso(filtered);
       if (currentView === "census") renderCensus(filtered);
       if (currentView === "print") renderPrint(filtered);
       if (currentView === "altas") renderAltas(filtered);
       if (currentView === "formatos") renderFormatos(filtered);
+      if (currentView === "noOlvidar") renderNoOlvidar();
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -4115,6 +4155,13 @@
       });
       c.innerHTML = html;
     }
+    // Búsqueda con debounce: evita re-render en cada tecla que destruiría tarjetas en edición
+    var _searchTimer = null;
+    function debouncedSearch() {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(renderView, 280);
+    }
+
     function setEsp(v, btn) {
       selectedEsp = v;
       document.querySelectorAll(".esp-btn").forEach(b => b.classList.remove("active"));
@@ -4413,12 +4460,12 @@
     function scrollToPatient(k) {
       // Expand card if collapsed
       if (expandedCards[k] === false) { expandedCards[k] = true; }
-      // Re-render to make sure it's expanded
+      // Re-render solo esta tarjeta para reflejar estado expandido
       const p = patients.find(function(pt){ return pid(pt) === k; });
-      const nd = getNote(k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p, nd, k);
+      const nd = noteData[k] || defaultData();
+      const cardEl = document.getElementById("card-" + k);
+      if (p && cardEl) {
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
       }
       // Scroll to card
       setTimeout(function() {
@@ -4542,7 +4589,8 @@
       const exp = expandedCards[k] !== false;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
       const alerts = computeAlerts(p, nd);
-      return `<div class="full-card${noEnCenso ? ' flag-noencenso' : ''}${alerts.some(a => a.type === 'critico' || a.type === 'labs_crit') ? ' card-critica' : ''}" id="card-${k}">
+      const esIngreso = isRecentIngreso(p.ingreso, 1);
+      return `<div class="full-card${noEnCenso ? ' flag-noencenso' : ''}${alerts.some(a => a.type === 'critico' || a.type === 'labs_crit') ? ' card-critica' : ''}${esIngreso ? ' card-ingreso' : ''}" id="card-${k}">
     <div class="card-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}cc 100%)">
       <div class="card-header-row1">
         <span class="card-bed" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
@@ -4550,6 +4598,7 @@
         <span class="card-age" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">· ${p.edad ? p.edad + 'a' : '?'}</span>
         <div class="card-badges">
           ${noEnCenso ? `<span class="badge-fuera">⚠️ Sin censo</span>` : ''}
+          ${esIngreso ? `<span class="badge-ingreso">🆕 INGRESO</span>` : ''}
           <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
           <span class="badge-esp">${esc(p.esp)}</span>
           <span class="badge-day">Día ${days}</span>
@@ -4587,6 +4636,24 @@
       </div>
       ${renderChecklist(nd, k)}
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
+      <div class="grid-2" style="margin-top:10px">
+        <div>
+          <div class="field-label">📋 Pendientes MIPs</div>
+          <textarea class="field-ta" rows="3"
+            data-key="${k}" data-ckfield="pendientes_mips"
+            oninput="liveCkText(this)"
+            onchange="updateCkText(this.dataset.key,'pendientes_mips',this.value)"
+            placeholder="Tareas pendientes para MIPs...">${esc((nd.checklist && nd.checklist.pendientes_mips) || "")}</textarea>
+        </div>
+        <div>
+          <div class="field-label">📋 Pendientes R1</div>
+          <textarea class="field-ta" rows="3"
+            data-key="${k}" data-ckfield="pendientes_r1"
+            oninput="liveCkText(this)"
+            onchange="updateCkText(this.dataset.key,'pendientes_r1',this.value)"
+            placeholder="Tareas pendientes para R1...">${esc((nd.checklist && nd.checklist.pendientes_r1) || "")}</textarea>
+        </div>
+      </div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
       ${renderLabSection(nd, k)}
       <div class="card-notes-bar">
@@ -4610,7 +4677,8 @@
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
       const dx = (p.dx || "").length > 120 ? p.dx.slice(0, 120) + "..." : p.dx;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
-      return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}">
+      const esIngreso = isRecentIngreso(p.ingreso, 1);
+      return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}${esIngreso ? ' card-ingreso' : ''}">
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
       <div style="display:flex;align-items:center;gap:8px;flex:1">
         <span style="background:rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;font-size:13px;font-weight:700">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
@@ -4621,6 +4689,7 @@
       </div>
       <div style="display:flex;gap:5px;align-items:center">
         ${noEnCenso ? `<span class="badge-fuera">⚠️ Sin censo</span>` : ''}
+        ${esIngreso ? `<span class="badge-ingreso">🆕 INGRESO</span>` : ''}
         <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
         <span class="badge-esp">${esc(p.esp)}</span>
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
@@ -4703,7 +4772,7 @@
       const canAdd = activeFecha && estudios.length < 3;
       const noDate = !activeFecha;
 
-      return `<div>
+      return `<div id="img-sec-${k}">
     <div class="field-label">🖼 Imagen y hallazgos</div>
     <div class="img-date-bar">${dateChips}</div>
     ${noDate ? `<div style="font-size:12px;color:#94a3b8;padding:8px 0">Presiona «+ Nueva fecha» para agregar estudios de hoy.</div>` : `
@@ -4713,13 +4782,15 @@
   </div>`;
     }
 
+    function _refreshImgSec(k) {
+      const nd = getNote(k);
+      const el = document.getElementById("img-sec-" + k);
+      if (el) el.outerHTML = renderImagenField(nd, k);
+    }
+
     function setActiveImagenDate(k, fecha) {
       activeImagenDate[k] = fecha;
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
-      }
+      _refreshImgSec(k);
     }
 
     function addImagenDate(k) {
@@ -4732,11 +4803,7 @@
       noteData[k] = nd;
       activeImagenDate[k] = fecha;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
-      }
+      _refreshImgSec(k);
     }
 
     function addEstudio(k, fecha) {
@@ -4746,8 +4813,7 @@
       entry.estudios.push({ tipo: "RX", descripcion: "", file: "", file_type: "", file_name: "", link: "" });
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudio(k, fecha, idx) {
@@ -4761,8 +4827,7 @@
       }
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function updateEstudioTipo(k, fecha, idx, val) {
@@ -4797,8 +4862,7 @@
       entry.estudios[idx].file_type = file.type || "application/octet-stream";
       entry.estudios[idx].file_name = file.name;
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function promptEstudioLink(k, fecha, idx) {
@@ -4810,8 +4874,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].link = url;
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudioFile(k, fecha, idx) {
@@ -4820,8 +4883,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].file = ""; entry.estudios[idx].file_type = ""; entry.estudios[idx].file_name = "";
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudioLink(k, fecha, idx) {
@@ -4830,8 +4892,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].link = "";
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function openEstudioFile(k, fecha, idx) {
@@ -4909,25 +4970,17 @@
         ]
       },
       {
-        id: "ego", label: "🧫 Examen general de orina (EGO)", fields: [
-          { key: "ego_esterasa", label: "Est. Leuco", unit: "" },
-          { key: "ego_ph", label: "EGO pH", unit: "" },
-          { key: "ego_nitritos", label: "Nitritos", unit: "" },
-          { key: "ego_bacterias", label: "Bacterias", unit: "" },
-          { key: "ego_leucos", label: "Leucos EGO", unit: "x campo" },
-          { key: "ego_hematies", label: "Hematíes", unit: "x campo" },
-          { key: "ego_proteinas", label: "Proteínas", unit: "" },
-          { key: "ego_glucosa", label: "Glucosa EGO", unit: "" }
-        ]
-      },
-      {
-        id: "micro", label: "🦠 Microbiología / Cultivos", fields: [
-          { key: "micro_tipo_cultivo", label: "Tipo cultivo", unit: "" },
-          { key: "micro_muestra", label: "Muestra", unit: "" },
-          { key: "micro_organismo", label: "Organismo", unit: "" },
-          { key: "micro_sensibilidades", label: "Sensibles", unit: "" },
-          { key: "micro_resistencias", label: "Resistencias", unit: "" },
-          { key: "micro_comentarios", label: "Comentarios", unit: "" }
+        id: "ego", label: "🧪 Examen General de Orina", fields: [
+          { key: "ego_color",  label: "Color",     unit: "",      low: null, high: null },
+          { key: "ego_asp",    label: "Aspecto",   unit: "",      low: null, high: null },
+          { key: "ego_dens",   label: "Densidad",  unit: "",      low: 1.005, high: 1.030 },
+          { key: "ego_ph",     label: "pH orina",  unit: "",      low: 5, high: 8 },
+          { key: "ego_leuco",  label: "Est.Leuc",  unit: "u/µL",  low: 0, high: 10 },
+          { key: "ego_nitri",  label: "Nitritos",  unit: "",      low: null, high: null },
+          { key: "ego_bact",   label: "Bacterias", unit: "",      low: null, high: null },
+          { key: "ego_prot",   label: "Proteínas", unit: "",      low: null, high: null },
+          { key: "ego_glu",    label: "Glucosuria",unit: "",      low: null, high: null },
+          { key: "ego_hem",    label: "Hematíes",  unit: "u/µL",  low: 0, high: 5 }
         ]
       }
     ];
@@ -5256,7 +5309,7 @@
       const hasAnyLab = activeFecha && LAB_FIELDS.some(lf => labs[lf.key]);
       const hasSourceFile = activeFecha && snap && (snap.source_storage_path || snap.source_file);
 
-      return `<div style="margin-top:12px">
+      return `<div id="labs-sec-${k}" style="margin-top:12px">
     <div class="labs-header">
       <div class="labs-title">${labTitle}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -5268,6 +5321,15 @@
         <button data-pdfkey="${k}" onclick="triggerPdfInput(this)" ${loading ? "disabled" : ""}
           style="background:${loading ? "#94a3b8" : "#2196f3"};color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">
           ${loading ? "⏳ Extrayendo..." : "📄 PDF / 📷 Foto"}</button>
+        ${snap && snap.pdfUrl
+          ? `<a href="${esc(snap.pdfUrl)}" target="_blank" rel="noopener"
+               style="background:#0f766e;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px;display:inline-flex;align-items:center;text-decoration:none"
+               title="Ver PDF de laboratorios">📋 Ver PDF</a>`
+          : ""
+        }
+        <button onclick="setLabPdfUrl('${k}','${activeFecha}')"
+          style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;min-height:32px"
+          title="${snap && snap.pdfUrl ? 'Cambiar enlace PDF de labs' : 'Enlazar PDF de laboratorios'}">🔗${snap && snap.pdfUrl ? "" : " Enlazar PDF"}</button>
         ${hasAnyLab ? `<button class="lab-ai-btn" onclick="analyzeLabsAI('${k}','${activeFecha}')" ${aiLoading ? "disabled" : ""}>
           ${aiLoading ? "⏳ Analizando..." : "🧠 Análisis IA"}</button>` : ""}
         `: ""}
@@ -5345,13 +5407,21 @@
         "P: <0.81 hipofosfatemia, <0.5 SEVERA",
         "BT/BD/BI: >2 mg/dL hiperbilirrubinemia",
         "TGO/TGP: >40 U/L elevadas",
-        "FA: >120 U/L elevada",
+        "FA (fosfatasa alcalina): >120 U/L elevada, >400 CRITICA",
         "GGT: >50 U/L elevada",
         "LDH: >250 U/L elevada",
         "CPK: >200 U/L elevada",
         "pH: <7.35 acidosis, >7.45 alcalosis",
         "pCO2: <35 hipocapnia, >45 hipercapnia",
         "Lactato: >2 mmol/L elevado, >4 CRITICO",
+        "EGO pH: normal 5-8",
+        "EGO densidad: normal 1.005-1.030",
+        "EGO esterasa leucocitaria: >10 u/µL anormal (ITU probable)",
+        "EGO nitritos: positivo = infección bacteriana",
+        "EGO bacterias: negativo=normal, +/++/+++ = infección",
+        "EGO proteínas: negativo=normal, presencia = proteinuria",
+        "EGO glucosuria: negativo=normal, positivo = hiperglucemia o tubulopatía",
+        "EGO hematíes: <5 u/µL normal, >5 hematuria",
       ].join("\n");
 
       const prompt = `Eres un médico clínico experto en cirugía general. Analiza los laboratorios de un paciente hospitalizado usando los rangos de referencia EXACTOS provistos. Debes detectar CUALQUIER valor fuera del rango normal, aunque sea levemente anormal.
@@ -5422,19 +5492,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
 
       labAnalysisLoading.delete(k);
-      // Re-render la tarjeta solo al final cuando ya tenemos el resultado
-      const p2 = patients.find(pt => pid(pt) === k);
-      if (p2) {
-        const c = document.getElementById("card-" + k);
-        if (c) c.outerHTML = renderFullCard(p2, getNote(k), k);
-        else renderView(); // fallback si la tarjeta fue re-renderizada por otro motivo
-      }
+      // Actualizar solo la sección de labs — NO re-render completo para no destruir texto en edición
+      const _laLabsEl = document.getElementById("labs-sec-" + k);
+      if (_laLabsEl) _laLabsEl.outerHTML = renderLabSection(getNote(k), k);
     }
 
     function clearLabAnalysis(k) {
       delete labAnalysisCache[k];
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, getNote(k), k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(getNote(k), k);
     }
 
     // ─── FIELD / LAB UPDATE ──────────────────────────────────────────────────────────
@@ -5473,6 +5539,29 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(k, noteData[k]);
       // Campo guardado: ya no está dirty
       if (_dirtyFields[k]) _dirtyFields[k].delete(field);
+      // dx vive en el objeto paciente (no en notas) — sincronizar también allá
+      if (field === "dx") {
+        const p = patients.find(function(pt){ return pid(pt) === k; });
+        if (p) { p.dx = value; _savePtsImmediate(); } // inmediato: dx puede cambiar justo antes de cerrar la app
+      }
+    }
+    // Handlers para campos de texto dentro del checklist (pendientes_mips, pendientes_r1)
+    function liveCkText(el) {
+      var k = el.dataset.key, f = el.dataset.ckfield;
+      var nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[f] = el.value;
+      noteData[k] = nd;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("ck_" + f);
+    }
+    function updateCkText(k, field, value) {
+      var nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[field] = value;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      if (_dirtyFields[k]) _dirtyFields[k].delete("ck_" + field);
     }
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
@@ -5485,16 +5574,50 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (fecha === dates[0]) nd.labs = { ...snap.labs };
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k);
+      // Actualizar solo la clase visual del cell afectado — sin destruir el DOM completo
+      // (un outerHTML = renderFullCard() destruiría cualquier campo que el usuario esté editando en ese momento)
+      const inputEl = document.querySelector('.lab-input[data-key="' + k + '"][data-labkey="' + labKey + '"]');
+      if (inputEl) {
+        const cell = inputEl.closest('.lab-cell');
+        if (cell) {
+          const lf = LAB_FIELDS.find(function(f){ return f.key === labKey; });
+          if (lf) {
+            const num = parseFloat(value);
+            let cls = 'lab-cell';
+            if (value && !isNaN(num)) {
+              const crit = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
+              const abn  = !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
+              if (crit) cls += ' crit';
+              else if (abn) cls += ' abn';
+            }
+            cell.className = cls;
+            // Sincronizar clase del input también
+            inputEl.className = 'lab-input' + (cls.includes('crit') ? ' crit' : cls.includes('abn') ? ' abn' : '');
+          }
+        }
       }
     }
     // Legacy alias (used by PDF extractor)
     function updateLab(k, labKey, value) {
       const activeFecha = activeLabDate[k] || todayStr();
       updateLabHistory(k, activeFecha, labKey, value);
+    }
+
+    function setLabPdfUrl(k, fecha) {
+      const nd = getNote(k);
+      const snap = (nd.labHistory || []).find(function(s){ return s.fecha === fecha; });
+      if (!snap) return;
+      const current = snap.pdfUrl || "";
+      const url = prompt("Pega la URL del PDF de laboratorios (dejar vacío para quitar el enlace):", current);
+      if (url === null) return; // usuario canceló
+      snap.pdfUrl = url.trim();
+      noteData[k] = nd;
+      saveNote(k, nd);
+      // Actualizar solo la sección de labs (tiene id="labs-sec-{k}") sin re-render completo
+      const labsSecEl = document.getElementById("labs-sec-" + k);
+      if (labsSecEl) {
+        labsSecEl.outerHTML = renderLabSection(nd, k);
+      }
     }
 
     function setActiveLabDate(k, fecha) {
@@ -5544,8 +5667,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         activeLabDate[k] = rem[0] || null;
       }
       noteData[k] = nd; saveNote(k, nd);
-      var p = patients.find(function (p) { return pid(p) === k; });
-      if (p && !isSimpleEsp(p.esp)) { var ce = document.getElementById("card-" + k); if (ce) ce.outerHTML = renderFullCard(p, nd, k); }
+      var labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
     function toggleLabIncidencia(k, fecha, checked) {
       var nd = getNote(k);
@@ -5554,13 +5677,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       snap.incidencia = checked;
       noteData[k] = nd;
       saveNote(k, nd);
-      // Re-render just this card
-      var p = patients.find(function(pt){ return pid(pt) === k; });
-      var nd2 = getNote(k);
-      if (p && !isSimpleEsp(p.esp)) {
-        var ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p, nd2, k);
-      }
+      var labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
     function addLabDate(k) {
       const fecha = prompt("Fecha de los laboratorios (YYYY-MM-DD):", todayStr());
@@ -5572,11 +5690,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       noteData[k] = nd;
       activeLabDate[k] = fecha;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k);
-      }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function addExtraLab(k, fecha) {
@@ -5586,8 +5701,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap.extra) snap.extra = [];
       snap.extra.push({ nombre: "", valor: "" });
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, nd, k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function removeExtraLab(k, fecha, idx) {
@@ -5596,8 +5711,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap || !snap.extra) return;
       snap.extra.splice(idx, 1);
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, nd, k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function updateExtraLab(k, fecha, idx, field, value) {
@@ -5620,16 +5735,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function toggleExpand(k) {
       if (expandedCards[k] === undefined) expandedCards[k] = false;
       else expandedCards[k] = !expandedCards[k];
-      renderView();
+      // Re-render solo ESTA tarjeta — evitar renderView() que destruye todas las demás
+      // (incluyendo las que otro médico podría estar editando en otra ventana o tab)
+      const p = patients.find(function(pt){ return pid(pt) === k; });
+      const nd = noteData[k] || defaultData();
+      const cardEl = document.getElementById("card-" + k);
+      if (p && cardEl) {
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
+      } else {
+        renderView(); // fallback: tarjeta no en DOM
+      }
       // Autofocus: si se abre, enfocar el campo más relevante
       if (expandedCards[k] !== false) {
-        setTimeout(() => {
+        setTimeout(function() {
           const card = document.getElementById("card-" + k);
           if (!card) return;
-          const nd = noteData[k] || {};
-          // Si pendientes vacío → foco en pendientes; si no → signos vitales
-          const targetField = (!nd.pendientes || !nd.pendientes.trim()) ? "pendientes" : "sv";
-          const ta = card.querySelector(`textarea[data-field="${targetField}"]`);
+          const ndNow = noteData[k] || {};
+          const targetField = (!ndNow.pendientes || !ndNow.pendientes.trim()) ? "pendientes" : "sv";
+          const ta = card.querySelector('textarea[data-field="' + targetField + '"]');
           if (ta) { ta.focus(); ta.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
         }, 80);
       }
@@ -5768,16 +5891,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
                     "\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\"," +
                     "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\",\"fa\":\"\"," +
                     "\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\"," +
-                    "\"ego_esterasa\":\"\",\"ego_ph\":\"\",\"ego_nitritos\":\"\",\"ego_bacterias\":\"\",\"ego_leucos\":\"\",\"ego_hematies\":\"\",\"ego_proteinas\":\"\",\"ego_glucosa\":\"\"," +
-                    "\"micro_tipo_cultivo\":\"\",\"micro_muestra\":\"\",\"micro_organismo\":\"\",\"micro_sensibilidades\":\"\",\"micro_resistencias\":\"\",\"micro_comentarios\":\"\"," +
+                    "\"ego_color\":\"\",\"ego_asp\":\"\",\"ego_dens\":\"\",\"ego_ph\":\"\",\"ego_leuco\":\"\",\"ego_nitri\":\"\",\"ego_bact\":\"\",\"ego_prot\":\"\",\"ego_glu\":\"\",\"ego_hem\":\"\"," +
                     "\"paciente\":\"\",\"fecha_labs\":\"\"}\n" +
-                    "Reglas: en química/biometría/gasometría usa solo valores numéricos (sin unidades). En EGO y microbiología puedes usar texto (ej. Negativo, Escasas, E. coli BLEE). Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
+                    "Reglas: valores numéricos sin unidades, texto tal como aparece para EGO. Fecha en YYYY-MM-DD. Paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
                     "Mapeo: Hb=hemoglobina, leucos=leucocitos/WBC, plaq=plaquetas, cr=creatinina, glu=glucosa, na=sodio, k=potasio, alb=albumina, pcr=proteína C reactiva, pct=procalcitonina, inr=INR, urea=BUN/urea, " +
                     "mg=magnesio, ca=calcio, p=fósforo, cl=cloro, tp=tiempo de protrombina, ttp=tiempo de tromboplastina parcial, fibrinogeno=fibrinógeno, " +
-                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, fa=fosfatasa alcalina, " +
-                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2. " +
-                    "EGO: ego_esterasa (esterasa leucocitaria), ego_ph, ego_nitritos, ego_bacterias, ego_leucos, ego_hematies, ego_proteinas, ego_glucosa. " +
-                    "Microbiología: micro_tipo_cultivo, micro_muestra, micro_organismo, micro_sensibilidades, micro_resistencias, micro_comentarios."
+                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, fa=fosfatasa alcalina/ALP/FAL, " +
+                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2, " +
+                    "ego_color=color orina, ego_asp=aspecto/turbidez orina, ego_dens=densidad orina, ego_ph=pH urinario, ego_leuco=esterasa leucocitaria/leucocitos orina, ego_nitri=nitritos, ego_bact=bacterias, ego_prot=proteínas/proteinuria, ego_glu=glucosuria, ego_hem=hematíes/eritrocitos orina."
                 }
               ]
             }]
@@ -5840,15 +5961,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       } catch (e) { alert("Error al procesar: " + (e.message || e)); }
       labLoadingSet.delete(k);
-      // Re-render only this card (not entire view) to avoid disrupting other cards
-      const p2 = patients.find(function(pt){ return pid(pt) === k; });
-      const nd2 = getNote(k);
-      if (p2 && nd2 && !isSimpleEsp(p2.esp)) {
-        const ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p2, nd2, k);
-      } else {
-        renderView();
-      }
+      // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición
+      const labsEl2 = document.getElementById("labs-sec-" + k);
+      if (labsEl2) labsEl2.outerHTML = renderLabSection(getNote(k), k);
+      else renderView();
     }
     // ─── CENSUS VIEW ─────────────────────────────────────────────────────────────────
     function censusRow(p, showEsp) {
@@ -5900,9 +6016,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const col = ESTADO_COLORS[p.estado] || "#ccc";
       sel.style.background = col;
       savePts();
-      // Actualizar solo el piso si la tarjeta está visible
+      // Actualizar solo la tarjeta de piso afectada (si está visible) — sin destruir las demás
       const cardEl = document.getElementById("card-" + pk);
-      if (cardEl) renderView();
+      if (cardEl) {
+        const nd2 = noteData[pk] || defaultData();
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd2, pk) : renderFullCard(p, nd2, pk);
+      }
     }
 
     function inlineCama(span, pk) {
@@ -6238,6 +6357,147 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
   </div>`;
     }
 
+    // ─── NO OLVIDAR VIEW ─────────────────────────────────────────────────────────────
+    const NO_OLVIDAR_KEY = "pl_no_olvidar_v1";
+
+    function lsGetNoOlvidar() {
+      try { return JSON.parse(localStorage.getItem(NO_OLVIDAR_KEY) || "[]"); }
+      catch (_) { return []; }
+    }
+    function lsSaveNoOlvidar(items) {
+      localStorage.setItem(NO_OLVIDAR_KEY, JSON.stringify(items));
+    }
+    function noOlvidarNextId(items) {
+      return items.length ? Math.max(...items.map(i => i.id || 0)) + 1 : 1;
+    }
+
+    function addNoOlvidar() {
+      const text = document.getElementById("no-olvidar-input").value.trim();
+      if (!text) return;
+      const author = localStorage.getItem("pl_user_name") || "Anónimo";
+      const items = lsGetNoOlvidar();
+      items.unshift({ id: noOlvidarNextId(items), texto: text, author, fecha: todayStr(), done: false });
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      document.getElementById("no-olvidar-input").value = "";
+      renderNoOlvidar();
+    }
+    function toggleNoOlvidar(id) {
+      const items = lsGetNoOlvidar();
+      const it = items.find(i => i.id === id);
+      if (it) it.done = !it.done;
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+    function deleteNoOlvidar(id) {
+      if (!confirm("¿Eliminar este recordatorio?")) return;
+      const items = lsGetNoOlvidar().filter(i => i.id !== id);
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+    function clearDoneNoOlvidar() {
+      const items = lsGetNoOlvidar().filter(i => !i.done);
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+
+    // Broadcast via Supabase Realtime para sincronizar entre usuarios conectados
+    var _noOlvidarChannel = null;
+    function initNoOlvidarSync() {
+      if (!window._supaClient) return;
+      // Limpiar suscripción anterior para evitar duplicados y fugas de memoria
+      if (_noOlvidarChannel) {
+        try { _noOlvidarChannel.unsubscribe(); } catch (_) {}
+        _noOlvidarChannel = null;
+      }
+      try {
+        _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
+          .on("broadcast", { event: "update" }, function(payload) {
+            if (payload.payload && Array.isArray(payload.payload.items)) {
+              // Evitar reprocesar si los datos son idénticos a los locales
+              const incoming = JSON.stringify(payload.payload.items);
+              if (incoming !== JSON.stringify(lsGetNoOlvidar())) {
+                lsSaveNoOlvidar(payload.payload.items);
+                if (currentView === "noOlvidar") renderNoOlvidar();
+              }
+            }
+          })
+          .subscribe();
+      } catch (_) { /* Realtime opcional — funciona sin él */ }
+    }
+    function syncNoOlvidarBroadcast(items) {
+      if (_noOlvidarChannel) {
+        try { _noOlvidarChannel.send({ type: "broadcast", event: "update", payload: { items } }); }
+        catch (_) {}
+      }
+    }
+
+    function renderNoOlvidar() {
+      const el = document.getElementById("view-noOlvidar");
+      if (!el) return;
+      const items = lsGetNoOlvidar();
+      const pending = items.filter(i => !i.done);
+      const done    = items.filter(i => i.done);
+      const author  = localStorage.getItem("pl_user_name") || "Anónimo";
+
+      const itemHtml = (i) => `
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:${i.done ? "#f8fafc" : "#fff"};border:1.5px solid ${i.done ? "#e2e8f0" : "#cbd5e1"};border-radius:10px;margin-bottom:8px;opacity:${i.done ? ".6" : "1"}">
+          <button onclick="toggleNoOlvidar(${i.id})"
+            style="flex-shrink:0;width:22px;height:22px;border-radius:50%;border:2px solid ${i.done ? "#10b981" : "#94a3b8"};background:${i.done ? "#10b981" : "#fff"};cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;color:#fff;padding:0">
+            ${i.done ? "✓" : ""}
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;color:${i.done ? "#94a3b8" : "#1e293b"};${i.done ? "text-decoration:line-through" : ""};word-break:break-word">${esc(i.texto)}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:3px">👤 ${esc(i.author)} · ${fmtDateChip(i.fecha)}</div>
+          </div>
+          <button onclick="deleteNoOlvidar(${i.id})"
+            style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;padding:0;line-height:1" title="Eliminar">✕</button>
+        </div>`;
+
+      el.innerHTML = `
+      <div style="max-width:700px;margin:0 auto;padding:20px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px">
+          <h2 style="margin:0;font-size:20px;color:#1e293b;font-weight:700">📌 No olvidar</h2>
+          <span style="font-size:12px;color:#64748b;background:#f1f5f9;padding:4px 10px;border-radius:20px">👤 ${esc(author)}</span>
+        </div>
+
+        <!-- Input nuevo recordatorio -->
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <input id="no-olvidar-input" type="text" placeholder="Agregar recordatorio para el equipo..."
+            style="flex:1;padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:var(--font);outline:none"
+            onkeydown="if(event.key==='Enter')addNoOlvidar()"
+            onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"/>
+          <button onclick="addNoOlvidar()"
+            style="background:#6366f1;color:#fff;border:none;padding:10px 18px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap">
+            ➕ Agregar
+          </button>
+        </div>
+
+        <!-- Pendientes -->
+        ${pending.length === 0
+          ? `<div style="text-align:center;padding:32px 0;color:#94a3b8;font-size:14px">No hay recordatorios pendientes 🎉</div>`
+          : `<div style="margin-bottom:6px">
+              <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Pendientes (${pending.length})</span>
+             </div>
+             ${pending.map(itemHtml).join("")}`
+        }
+
+        <!-- Completados -->
+        ${done.length > 0 ? `
+        <div style="margin-top:20px;border-top:1px dashed #e2e8f0;padding-top:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">Completados (${done.length})</span>
+            <button onclick="clearDoneNoOlvidar()"
+              style="font-size:11px;color:#ef4444;background:none;border:none;cursor:pointer;padding:0">Limpiar completados</button>
+          </div>
+          ${done.map(itemHtml).join("")}
+        </div>` : ""}
+      </div>`;
+    }
+
     // ─── ALTAS VIEW ─────────────────────────────────────────────────────────────────
     function renderAltas(pts) {
       const gi = getGuardInfo();
@@ -6559,7 +6819,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printPrePostQx() {
-      const v = fmtV, c = id => document.getElementById(id) && document.getElementById(id).checked ? "X" : "";
+      const v = (id) => esc(fmtV(id)), c = id => document.getElementById(id) && document.getElementById(id).checked ? "X" : "";
       const riesgos = [
         "NEFROPATÍA (" + c("fqx_nefro") + ") ",
         "COAGULOPATÍA (" + c("fqx_coag") + ") ",
@@ -6722,7 +6982,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printConsentimientoQx() {
-      const v = fmtV;
+      const v = (id) => esc(fmtV(id));
       const w = window.open("", "_blank", "width=900,height=1100");
       w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-542</title>
   <style>
@@ -6811,7 +7071,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printConsentimientoGral() {
-      const v = fmtV;
+      const v = (id) => esc(fmtV(id));
       const w = window.open("", "_blank", "width=900,height=1100");
       w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-50</title>
   <style>
@@ -6890,7 +7150,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printConsentimientoTx() {
-      const v = fmtV;
+      const v = (id) => esc(fmtV(id));
       const w = window.open("", "_blank", "width=900,height=1100");
       w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-LAB-236</title>
   <style>
@@ -6946,7 +7206,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     // FORMAT 5: FT-HGL-AM-51 NOTA MÉDICA 2023 (table-based)
     // ═══════════════════════════════════════════════════════════════════════════════
     function fmtNotaMedica(p, nd, gi, fecha, hora, labs, adsOpts) {
-      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "urea", "bt", "bd", "fa", "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "micro_organismo"].filter(x => labs[x]).map(x => {
+      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct",
+        "tp", "ttp", "inr", "fibrinogeno", "urea",
+        "mg", "ca", "p", "cl",
+        "ast", "alt", "bt", "bd", "ggt", "fa",
+        "ph", "pco2", "po2", "hco3", "be", "sato2",
+        "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem",
+        "ego_ph", "ego_dens", "ego_color", "ego_asp"
+      ].filter(x => labs[x]).map(x => {
         const lf = LAB_FIELDS.find(f => f.key === x);
         return (lf ? lf.label : x.toUpperCase()) + ": " + labs[x];
       }).join(", ");
@@ -6980,7 +7247,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function printNotaMedica() {
-      const v = fmtV;
+      const v = (id) => esc(fmtV(id));
       const w = window.open("", "_blank", "width=900,height=1100");
       w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-51</title>
   <style>
@@ -7570,7 +7837,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           saveNote(newKey, noteData[newKey]);
         }
       }
-      savePts();
+      _savePtsImmediate(); // inmediato: asigna _supa_id antes de que llegue el Realtime INSERT
       buildEspFilters();
       closeModal();
       renderView();
@@ -8838,7 +9105,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const removeKey = pid(remove);
 
       // Merge: fill empty fields from remove into keep
-      const fields = ["nombre", "exp", "dx", "edad", "esp", "adscrito", "residente", "ingreso", "estado"];
+      const fields = ["cama", "nombre", "exp", "dx", "edad", "esp", "adscrito", "residente", "ingreso", "estado"];
       fields.forEach(f => {
         if (!keep[f] && remove[f]) keep[f] = remove[f];
       });
@@ -9316,8 +9583,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         noteData[k] = nd;
         activeLabDate[k] = today;
         saveNote(k, nd);
-        renderView();
-        // Enfocar el primer input de lab visible
+        // Actualizar solo la sección de labs sin destruir el resto de la tarjeta
+        const labsEl = document.getElementById("labs-sec-" + k);
+        if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
+        else renderView();
         setTimeout(() => {
           const card = document.getElementById("card-" + k);
           if (card) {
@@ -9334,7 +9603,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         noteData[k] = nd;
         activeImagenDate[k] = today;
         saveNote(k, nd);
-        renderView();
+        // Actualizar solo la sección de imagen sin destruir el resto de la tarjeta
+        const imgEl = document.getElementById("img-sec-" + k);
+        if (imgEl) imgEl.outerHTML = renderImagenField(nd, k);
+        else renderView();
         setTimeout(() => {
           const card = document.getElementById("card-" + k);
           if (card) {
