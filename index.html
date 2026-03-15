@@ -2531,9 +2531,8 @@
         </div>
         <button onclick="migrateToSupabase()"
           style="background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);width:100%;margin-bottom:12px">⬆️
-          Migrar datos locales a Supabase</button>
-        <p style="font-size:11px;color:#94a3b8;text-align:center;margin:0">Solo necesario la primera vez. Si ya
-          migraste, no lo vuelvas a presionar.</p>
+          Migrar / reparar sync en Supabase</button>
+        <p style="font-size:11px;color:#94a3b8;text-align:center;margin:0">Úsalo la primera vez o si otro dispositivo aparece vacío.</p>
       </div>
 
       <div class="config-section" style="background:#f0fdf4;border-radius:8px;padding:14px;border:1px solid #bbf7d0">
@@ -2666,6 +2665,8 @@
     const ESTADO_COLORS = { ESTABLE: "#27ae60", DELICADO: "#e67e22", GRAVE: "#e74c3c", ALTA: "#0ea5e9", "DEFUNCIÓN": "#374151", "": "#95a5a6" };
     const STORAGE_KEY = "censo-pacientes-v3";
     const NOTES_PREFIX = "note-";
+    const GUARD_INFO_KEY = "pl_guard_info_v1";
+    const LAB_STORAGE_BUCKET = "lab-sources";
     const CONFIG_KEY = "hgl-worker-config";   // {url, token} (legacy)
 
     // ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────────
@@ -2736,6 +2737,7 @@
     let pendingSyncs = 0;   // contador de operaciones en curso
     let exportTemplateBuffer = null;
     let _dirtyFields = {};  // patientKey → Set<fieldName> — campos editados localmente sin guardar
+    let _pendingNoteAutosave = {}; // patientKey -> debounced autosave fn
     let archivados = [];    // pacientes egresados (no se borran, se archivan)
     let snapshots = [];    // cortes de guardia guardados
     let procedimientos = []; // procedimientos del día (no necesitan notas clínicas)
@@ -3015,7 +3017,12 @@
           nd.labHistory.push({
             fecha: ol.fecha_labs || todayStr(),
             labs: ol,
-            extra: []
+            extra: [],
+            source_file: "",
+            source_file_type: "",
+            source_file_name: "",
+            source_storage_bucket: "",
+            source_storage_path: ""
           });
         }
       }
@@ -3029,7 +3036,12 @@
             extra: extraRaw
               .filter(e => isPlainObject(e))
               .map(e => ({ nombre: toSafeString(e.nombre).trim(), valor: toSafeString(e.valor).trim() })),
-            incidencia: !!s.incidencia
+            incidencia: !!s.incidencia,
+            source_file: toSafeString(s.source_file).trim(),
+            source_file_type: toSafeString(s.source_file_type).trim(),
+            source_file_name: toSafeString(s.source_file_name).trim(),
+            source_storage_bucket: toSafeString(s.source_storage_bucket).trim(),
+            source_storage_path: toSafeString(s.source_storage_path).trim()
           };
         });
       nd.labs = sanitizeLabsMap(nd.labs);
@@ -3229,6 +3241,87 @@
         }
       }
       throw lastErr;
+    }
+    function sanitizeStoragePathSegment(v) {
+      return toSafeString(v)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80) || "item";
+    }
+    async function deleteLabSourceFromStorage(bucket, path) {
+      if (!bucket || !path || !_supa || !_supa.storage) return;
+      try {
+        await _supa.storage.from(bucket).remove([path]);
+      } catch (e) {
+        safeWarn("No se pudo borrar archivo de labs en Storage:", e);
+      }
+    }
+    async function uploadLabSourceToStorage(k, fecha, file) {
+      if (!file || !_supa || !_supa.storage) return null;
+      const p = patients.find(function(pt){ return pid(pt) === k; });
+      const patientPart = sanitizeStoragePathSegment((p && (p._supa_id || p.exp || p.nombre)) || k);
+      const fechaPart = sanitizeStoragePathSegment(fecha || todayStr());
+      const extMatch = toSafeString(file.name).match(/(\.[A-Za-z0-9]+)$/);
+      const ext = extMatch ? extMatch[1].toLowerCase() : (file.type === "application/pdf" ? ".pdf" : ".bin");
+      const baseName = sanitizeStoragePathSegment(toSafeString(file.name).replace(/\.[^.]+$/, "") || "labs");
+      const objectPath = patientPart + "/" + fechaPart + "/" + Date.now() + "-" + baseName + ext;
+      try {
+        const resp = await _supa.storage.from(LAB_STORAGE_BUCKET).upload(objectPath, file, {
+          upsert: true,
+          contentType: file.type || "application/octet-stream",
+          cacheControl: "3600"
+        });
+        if (resp.error) throw resp.error;
+        return { bucket: LAB_STORAGE_BUCKET, path: (resp.data && resp.data.path) || objectPath };
+      } catch (e) {
+        safeWarn("Storage labs fallback a inline:", e);
+        return null;
+      }
+    }
+    async function resolveLabSourceUrl(bucket, path) {
+      if (!bucket || !path || !_supa || !_supa.storage) return null;
+      try {
+        const signed = await _supa.storage.from(bucket).createSignedUrl(path, 60);
+        if (!signed.error && signed.data && signed.data.signedUrl) return signed.data.signedUrl;
+      } catch (e) {
+        safeWarn("No se pudo firmar URL de labs:", e);
+      }
+      try {
+        const pub = _supa.storage.from(bucket).getPublicUrl(path);
+        if (pub && pub.data && pub.data.publicUrl) return pub.data.publicUrl;
+      } catch (e) {
+        safeWarn("No se pudo obtener URL publica de labs:", e);
+      }
+      return null;
+    }
+    async function attachLabSourceToSnap(k, fecha, snap, file, base64Fallback) {
+      const prevBucket = snap.source_storage_bucket || "";
+      const prevPath = snap.source_storage_path || "";
+      const uploaded = await uploadLabSourceToStorage(k, fecha, file);
+      snap.source_file_type = file.type || snap.source_file_type || "application/pdf";
+      snap.source_file_name = file.name || snap.source_file_name || "labs.pdf";
+      if (uploaded) {
+        snap.source_storage_bucket = uploaded.bucket;
+        snap.source_storage_path = uploaded.path;
+        snap.source_file = "";
+        if (prevPath && (prevBucket !== uploaded.bucket || prevPath !== uploaded.path)) {
+          deleteLabSourceFromStorage(prevBucket, prevPath);
+        }
+        return;
+      }
+      snap.source_storage_bucket = "";
+      snap.source_storage_path = "";
+      snap.source_file = base64Fallback || snap.source_file || "";
+    }
+    function getEntregaNptText(checklist) {
+      const cl = checklist || {};
+      if (!cl.npt) return "";
+      const parts = ["Activa"];
+      if (cl.npt_pct) parts.push(cl.npt_pct);
+      if (cl.npt_fecha) parts.push(cl.npt_fecha);
+      return parts.join(" · ");
     }
 
     // ─── SUPABASE: SAVE PATIENT ─────────────────────────────────────────────────────
@@ -3679,24 +3772,36 @@
 
     // ─── MIGRATION: localStorage → Supabase (one-time) ─────────────────────────────
     async function migrateToSupabase() {
-      // Check if Supabase already has data
-      let countCheck = 0;
-      try { const d = await _sGet("patients", "select=id"); countCheck = Array.isArray(d) ? d.length : 0; } catch (e) { }
-      if (countCheck > 0) {
-        alert("⚠️ Supabase ya tiene " + countCheck + " pacientes.\n\nLa migración ya se realizó anteriormente. No es necesario volver a ejecutarla.\n\nSi necesitas re-sincronizar, recarga la página.");
-        return;
-      }
-
-      if (!confirm("⬆️ MIGRACIÓN A SUPABASE\n\nEsto subirá todos los pacientes y notas de tu navegador a Supabase.\n\nSolo necesitas hacerlo UNA VEZ desde el navegador que tiene los datos más actualizados.\n\n¿Continuar?")) return;
-
-      setSyncStatus("syncing", "Migrando...");
-      const localPts = lsGetPatients();
-      if (!localPts || !localPts.length) {
+      const localPts = sanitizePatients(lsGetPatients() || []);
+      if (!localPts.length) {
         alert("No hay datos locales para migrar."); return;
       }
 
+      let remoteRows = [];
+      try {
+        const d = await _sGet("patients", "select=id,cama,nombre,exp");
+        remoteRows = Array.isArray(d) ? d : [];
+      } catch (e) { remoteRows = []; }
+      const remoteUseful = remoteRows.filter(hasMeaningfulPatientIdentity);
+
+      const msg = remoteUseful.length
+        ? "⬆️ REPARAR / RESINCRONIZAR SUPABASE\n\nEste dispositivo tiene " + localPts.length + " pacientes locales.\nSupabase tiene " + remoteUseful.length + " pacientes visibles.\n\nSe intentará subir o actualizar el censo de este dispositivo para que los demás equipos lo descarguen.\n\n¿Continuar?"
+        : "⬆️ MIGRACIÓN A SUPABASE\n\nEsto subirá todos los pacientes y notas de este navegador a Supabase.\n\nHazlo desde el dispositivo que tiene el censo más actualizado.\n\n¿Continuar?";
+      if (!confirm(msg)) return;
+
+      setSyncStatus("syncing", remoteUseful.length ? "Reparando sync..." : "Migrando...");
+
+      const remoteByKey = {};
+      remoteUseful.forEach(function (row) {
+        remoteByKey[patientIdentityKey(row)] = row.id;
+      });
+
       let migrated = 0, errors = 0;
       for (const p of localPts) {
+        if (!p._supa_id) {
+          const remoteId = remoteByKey[patientIdentityKey(p)];
+          if (remoteId) p._supa_id = remoteId;
+        }
         const row = {
           cama: p.cama || "", nombre: p.nombre || "", exp: p.exp || "", dx: p.dx || "",
           edad: p.edad ? String(p.edad) : "", esp: p.esp || "", adscrito: p.adscrito || "",
@@ -3704,25 +3809,20 @@
           ingreso: ingresoToISO(p.ingreso)
         };
         let inserted = null;
-        try { const d = await _sPost("patients", row); inserted = Array.isArray(d) ? d[0] : d; }
+        try { inserted = await supaUpsertPatient(p); }
         catch (e) { safeLog("Migration patient error [" + p.nombre + "]:", e); errors++; continue; }
         if (!inserted || !inserted.id) { errors++; continue; }
 
-        const k = "pt-" + (p.exp || "") + "-" + (p.cama || "");
+        const k = pid(p);
         const nd = migrateNote(lsGetNote(k));
-        const noteRow = {
-          patient_id: inserted.id,
-          app: nd.app || "", pa: nd.pa || "", drenajes: nd.drenajes || "",
-          qx: nd.qx || "", manejo: nd.manejo || "", sangrado: nd.sangrado || "",
-          sv: nd.sv || "", balance: nd.balance || "", pendientes: nd.pendientes || "",
-          misc: nd.misc || "", checklist: nd.checklist || {},
-          lab_history: nd.labHistory || [], imagen_history: nd.imagenHistory || []
-        };
-        try { await _sPost("notes", noteRow, { "Prefer": "resolution=merge-duplicates,return=representation" }); }
+        try { await supaUpsertNote(inserted.id, nd); }
         catch (e) { safeLog("Migration note error [" + p.nombre + "]:", e); }
 
         migrated++;
       }
+      lsSavePatients(localPts);
+      localStorage.setItem("pl_last_save_ts", Date.now().toString());
+      localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
 
       // Reload from Supabase
       const loaded = await supaLoadAll();
@@ -3732,18 +3832,25 @@
         buildEspFilters(); renderView();
       }
       startRealtime();
-      setSyncStatus("synced", "Migración completa");
-      alert("✅ Migración completada\n\n" + migrated + " pacientes subidos" + (errors ? " (" + errors + " errores)" : "") + "\n\nAhora todos los dispositivos verán los mismos datos.");
+      setSyncStatus("synced", remoteUseful.length ? "Sync reparado" : "Migración completa");
+      alert("✅ " + (remoteUseful.length ? "Resincronización completa" : "Migración completa") + "\n\n" + migrated + " pacientes subidos/actualizados" + (errors ? " (" + errors + " errores)" : "") + "\n\nAhora recarga el iPad para descargar el censo.");
     }
 
     // ─── HELPERS ────────────────────────────────────────────────────────────────────
     function pid(p) { return "pt-" + p.exp + "-" + p.cama; }
+    function patientIdentityKey(p) {
+      return "pt-" + toSafeString(p && p.exp).trim() + "-" + toSafeString(p && p.cama).trim();
+    }
+    function hasMeaningfulPatientIdentity(p) {
+      return !!(toSafeString(p && p.nombre).trim() || toSafeString(p && p.cama).trim() || toSafeString(p && p.exp).trim());
+    }
     function parseDate(str) {
-      if (!str) return new Date(0);
-      const p = str.split("/");
-      if (p.length !== 3) return new Date(0);
-      const yr = p[2].length === 2 ? "20" + p[2] : p[2];
-      return new Date(`${yr}-${p[1]}-${p[0]}`);
+      if (!str) return new Date(NaN);
+      const dmy = parseDmy(str);
+      if (dmy) return dmy;
+      const parsed = new Date(String(str).trim());
+      if (Number.isNaN(parsed.getTime())) return new Date(NaN);
+      return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
     }
     function isRecentIngreso(ing, daysBack = 1) {
       if (!ing) return false;
@@ -3815,7 +3922,52 @@
       }
       ws[addr] = cell;
     }
-    function daysSince(ing) { return ing ? Math.floor((new Date() - parseDate(ing)) / 86400000) : "?"; }
+    function daysSince(ing) {
+      if (!ing) return "?";
+      const d = parseDate(ing);
+      if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "?";
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      d.setHours(0, 0, 0, 0);
+      const diff = Math.floor((today - d) / 86400000);
+      if (!Number.isFinite(diff)) return "?";
+      return diff < 0 ? 0 : diff;
+    }
+    function readGuardInfoFromUI() {
+      var _el = function (id) { var e = document.getElementById(id); return e ? e.value : ""; };
+      return {
+        fecha: _el("gi-fecha"),
+        entrega: _el("gi-entrega"),
+        recibe: _el("gi-recibe")
+      };
+    }
+    function persistGuardInfo() {
+      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { }
+    }
+    const persistGuardInfoDebounced = debounce(persistGuardInfo, 250);
+    function restoreGuardInfo() {
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem(GUARD_INFO_KEY) || "{}"); } catch (e) { saved = {}; }
+      const fechaEl = document.getElementById("gi-fecha");
+      const entregaEl = document.getElementById("gi-entrega");
+      const recibeEl = document.getElementById("gi-recibe");
+      if (fechaEl) fechaEl.value = saved.fecha || "";
+      if (entregaEl) entregaEl.value = saved.entrega || "";
+      if (recibeEl) recibeEl.value = saved.recibe || "";
+      if (fechaEl && !fechaEl.value) {
+        const today = new Date();
+        fechaEl.value = today.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+      }
+      persistGuardInfo();
+    }
+    function wireGuardInfoPersistence() {
+      ["gi-fecha", "gi-entrega", "gi-recibe"].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("input", persistGuardInfoDebounced);
+        el.addEventListener("change", persistGuardInfo);
+      });
+    }
     function esc(s) {
       return toSafeString(s)
         .replace(/&/g, "&amp;")
@@ -3838,8 +3990,8 @@
       try { snapshots = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || "[]"); } catch (e) { snapshots = []; }
       try { procedimientos = JSON.parse(localStorage.getItem(PROCS_KEY) || "[]"); } catch (e) { procedimientos = []; }
 
-      const today = new Date();
-      document.getElementById("gi-fecha").value = today.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+      restoreGuardInfo();
+      wireGuardInfoPersistence();
 
       // Identificación de usuario
       let _userName = localStorage.getItem("pl_user_name") || "";
@@ -3925,7 +4077,19 @@
             setSyncStatus("offline", "Datos locales — migra a Supabase ⬆️");
           }
         } else if (!patients.length) {
-          setSyncStatus("synced", "Sin pacientes — agrega el primero");
+          if (!navigator.onLine) {
+            setSyncStatus("offline", "Sin conexión y sin datos locales");
+          } else if (loaded === null) {
+            setSyncStatus("error", "No se pudo descargar Supabase");
+          } else {
+            setSyncStatus("offline", "Supabase vacío — abre Config");
+            const syncEl = document.getElementById("sync-status");
+            if (syncEl) {
+              syncEl.title = "Supabase no devolvió pacientes. Toca para abrir Config y reparar sync.";
+              syncEl.style.cursor = "pointer";
+              syncEl.onclick = openConfigModal;
+            }
+          }
         } else {
           setSyncStatus("offline", "Modo local (sin conexión)");
         }
@@ -3945,6 +4109,8 @@
       if (btn) btn.classList.add("active");
       renderView();
     }
+    const renderViewFromSearch = debounce(function () { renderView(); }, 120);
+    function handleSearchInput() { renderViewFromSearch(); }
     function renderView() {
       const _searchEl = document.getElementById("search");
       const search = _searchEl ? _searchEl.value.toLowerCase() : "";
@@ -4790,7 +4956,7 @@
           { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 5 },
           { key: "bd", label: "BD", unit: "mg/dL", low: 0, high: 0.3, ch: 3 },
           { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 },
-          { key: "fa", label: "FA", unit: "U/L", low: 40, high: 120, ch: 400 }
+          { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147, ch: 400 }
         ]
       },
       {
@@ -4961,6 +5127,11 @@
         if (v > 61) return { sev: "abn", title: "GGT elevada", rec: "Sensible para hepatopatía alcohólica y colestasis. Verificar consumo de alcohol, fármacos inductores (anticonvulsivantes)." };
         return null;
       },
+      fa: (v) => {
+        if (v >= 400) return { sev: "crit", title: "Fosfatasa alcalina muy elevada", rec: "Patrón colestásico marcado u origen óseo activo. Correlacionar con GGT/BT/BD. Solicitar US hepatobiliar urgente." };
+        if (v > 147) return { sev: "abn", title: "Fosfatasa alcalina elevada", rec: "Sugerente de colestasis o patología ósea. Diferenciar con GGT (hepático) y clínica." };
+        return null;
+      },
       ph: (v) => {
         if (v < 7.2) return { sev: "crit", title: "Acidemia severa", rec: "Identificar tipo: metabólica (HCO3 bajo), respiratoria (pCO2 alto) o mixta. Si metabólica severa: bicarbonato si pH<7.1. Tratar causa." };
         if (v < 7.35) return { sev: "abn", title: "Acidosis", rec: "Calcular anion gap. Si AG elevado: MUDPILES (metanol, uremia, DKA, propilen, isoniazida, lactato, etilenglicol, salicilatos). Tratar causa." };
@@ -5079,7 +5250,8 @@
       let dateChips = dates.map(d => {
         const snapD = history.find(s => s.fecha === d);
         const hasInc = snapD && snapD.incidencia;
-        return `<span class="lab-chip-wrap"><button class="lab-date-chip ${d === activeFecha ? 'active' : ''}" onclick="setActiveLabDate('${k}','${d}')">${hasInc ? "⚠️ " : ""}${fmtDateChip(d)}</button><button class="lab-chip-del" onclick="deleteLabDate('${k}','${d}')" title="Eliminar fecha">✕</button></span>`;
+        const hasFile = snapD && (snapD.source_storage_path || snapD.source_file);
+        return `<span class="lab-chip-wrap"><button class="lab-date-chip ${d === activeFecha ? 'active' : ''}" onclick="setActiveLabDate('${k}','${d}')">${hasInc ? "⚠️ " : ""}${fmtDateChip(d)}${hasFile ? " 📎" : ""}</button><button class="lab-chip-del" onclick="deleteLabDate('${k}','${d}')" title="Eliminar fecha">✕</button></span>`;
       }).join("");
       dateChips += `<button class="lab-date-chip new-btn" onclick="addLabDate('${k}')">+ Nueva fecha</button>`;
 
@@ -5135,12 +5307,17 @@
 
       const labTitle = activeFecha ? `🧪 LABS · ${fmtDateChip(activeFecha)} ${snap && snap.labs && snap.labs.paciente ? "· " + esc(snap.labs.paciente) : ""}` : "🧪 LABS";
       const hasAnyLab = activeFecha && LAB_FIELDS.some(lf => labs[lf.key]);
+      const hasSourceFile = activeFecha && snap && (snap.source_storage_path || snap.source_file);
 
       return `<div id="labs-sec-${k}" style="margin-top:12px">
     <div class="labs-header">
       <div class="labs-title">${labTitle}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${activeFecha ? `
+        ${hasSourceFile ? `<button onclick="openLabSourceFile('${k}','${activeFecha}')" title="Abrir PDF/imagen fuente de estos laboratorios"
+          style="background:#0f766e;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">
+          📎 Abrir ${snap && snap.source_file_type && snap.source_file_type.startsWith("image/") ? "imagen" : "PDF"}
+        </button>` : ""}
         <button data-pdfkey="${k}" onclick="triggerPdfInput(this)" ${loading ? "disabled" : ""}
           style="background:${loading ? "#94a3b8" : "#2196f3"};color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">
           ${loading ? "⏳ Extrayendo..." : "📄 PDF / 📷 Foto"}</button>
@@ -5327,6 +5504,16 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     // ─── FIELD / LAB UPDATE ──────────────────────────────────────────────────────────
+    function scheduleNoteAutosave(k) {
+      if (!_pendingNoteAutosave[k]) {
+        _pendingNoteAutosave[k] = debounce(function (key) {
+          if (!noteData[key]) return;
+          saveNote(key, noteData[key]);
+          if (_dirtyFields[key]) _dirtyFields[key].clear();
+        }, 900);
+      }
+      _pendingNoteAutosave[k](k);
+    }
     function liveUpdate(el) {
       var k = el.dataset.key, f = el.dataset.field;
       if (!noteData[k]) noteData[k] = defaultData();
@@ -5334,15 +5521,17 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // Marcar campo como dirty (editado localmente, pendiente de guardar)
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add(f);
+      scheduleNoteAutosave(k);
     }
     function liveLabUpdate(el) {
       var k = el.dataset.key, lk = el.dataset.labkey, fecha = el.dataset.fecha;
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
-      if (!snap) { snap = { fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+      if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[lk] = el.value;
       noteData[k] = nd;
+      scheduleNoteAutosave(k);
     }
     function updateField(k, field, value) {
       if (!noteData[k]) noteData[k] = defaultData();
@@ -5377,7 +5566,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
-      if (!snap) { snap = { fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+      if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[labKey] = value;
       // keep nd.labs in sync with latest snapshot for export
@@ -5468,6 +5657,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function deleteLabDate(k, fecha) {
       if (!confirm("Eliminar labs del " + fmtDateChip(fecha) + "?\nNo se puede deshacer.")) return;
       var nd = getNote(k);
+      var snapToDelete = (nd.labHistory || []).find(function (s) { return s.fecha === fecha; });
+      if (snapToDelete && snapToDelete.source_storage_path) {
+        deleteLabSourceFromStorage(snapToDelete.source_storage_bucket || LAB_STORAGE_BUCKET, snapToDelete.source_storage_path);
+      }
       nd.labHistory = (nd.labHistory || []).filter(function (s) { return s.fecha !== fecha; });
       if (activeLabDate[k] === fecha) {
         var rem = (nd.labHistory || []).map(function (s) { return s.fecha; }).sort(function (a, b) { return b.localeCompare(a); });
@@ -5492,7 +5685,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { if (fecha !== null) alert("Formato inválido. Usa YYYY-MM-DD"); return; }
       const nd = getNote(k);
       if (!nd.labHistory.find(s => s.fecha === fecha)) {
-        nd.labHistory.push({ fecha, labs: {}, extra: [] });
+        nd.labHistory.push({ fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" });
       }
       noteData[k] = nd;
       activeLabDate[k] = fecha;
@@ -5566,6 +5759,39 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     // ─── PDF / IMAGE LABS ─────────────────────────────────────────────────────────
+    async function openLabSourceFile(k, fecha) {
+      const nd = getNote(k);
+      const snap = (nd.labHistory || []).find(s => s.fecha === fecha);
+      if (!snap) {
+        alert("No hay archivo fuente guardado para esta fecha.");
+        return;
+      }
+      if (snap.source_storage_path) {
+        const urlFromStorage = await resolveLabSourceUrl(snap.source_storage_bucket || LAB_STORAGE_BUCKET, snap.source_storage_path);
+        if (urlFromStorage) {
+          window.open(urlFromStorage, "_blank");
+          return;
+        }
+      }
+      if (!snap.source_file) {
+        alert("No hay archivo fuente guardado para esta fecha.");
+        return;
+      }
+      const fileType = snap.source_file_type || "application/pdf";
+      if (fileType.startsWith("image/")) {
+        const w = window.open("", "_blank");
+        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${fileType};base64,${snap.source_file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
+        w.document.close();
+        return;
+      }
+      const bytes = atob(snap.source_file);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const blob = new Blob([arr], { type: fileType });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    }
     function triggerPdfInput(btn) {
       var k = btn.getAttribute("data-pdfkey");
       // Usar siempre el input global persistente (compatible Safari/iOS)
@@ -5710,9 +5936,22 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const nd = getNote(k);
         const targetFecha = sanitizedExtracted.fecha_labs || activeLabDate[k] || todayStr();
         let snap = nd.labHistory.find(s => s.fecha === targetFecha);
-        if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+        if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
+        const labsFromExtract = { ...sanitizedExtracted };
+        if (labsFromExtract.tipo_cultivo || labsFromExtract.cultivo_organismo || labsFromExtract.cultivo_sensibilidades || labsFromExtract.cultivo_resistencias) {
+          labsFromExtract.micro_tipo_cultivo = labsFromExtract.micro_tipo_cultivo || labsFromExtract.tipo_cultivo || "";
+          labsFromExtract.micro_organismo = labsFromExtract.micro_organismo || labsFromExtract.cultivo_organismo || "";
+          labsFromExtract.micro_sensibilidades = labsFromExtract.micro_sensibilidades || labsFromExtract.cultivo_sensibilidades || "";
+          labsFromExtract.micro_resistencias = labsFromExtract.micro_resistencias || labsFromExtract.cultivo_resistencias || "";
+        }
+        delete labsFromExtract.tipo_lab;
+        delete labsFromExtract.tipo_cultivo;
+        delete labsFromExtract.cultivo_organismo;
+        delete labsFromExtract.cultivo_sensibilidades;
+        delete labsFromExtract.cultivo_resistencias;
         const hasValues = getLabKeys().some(f => sanitizedExtracted[f] && sanitizedExtracted[f].trim() !== "");
-        snap.labs = { ...sanitizeLabsMap(snap.labs), ...sanitizedExtracted };
+        await attachLabSourceToSnap(k, targetFecha, snap, file, base64);
+        snap.labs = { ...sanitizeLabsMap(snap.labs), ...labsFromExtract };
         activeLabDate[k] = targetFecha;
         noteData[k] = nd;
         saveNote(k, nd);
@@ -5993,6 +6232,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         let cards = "";
         sorted.forEach(p => {
           const nd = noteData[pid(p)] || defaultData();
+          const cl = nd.checklist || {};
+          const nptEntrega = getEntregaNptText(cl);
           const days = daysSince(p.ingreso);
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
           const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
@@ -6001,7 +6242,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const labs = snap ? snap.labs || {} : {};
           const labDate = snap ? fmtDateChip(snap.fecha) : "";
           let labHtml = "";
-          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno"].filter(x => labs[x]);
+          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "fa", "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "micro_organismo"].filter(x => labs[x]);
           if (labItems.length) {
             labHtml = `<div class="eg-labs-compact"><span class="eg-lc-date">🧪 ${labDate}</span><div class="eg-lc-grid">` +
               labItems.map(x => {
@@ -6036,11 +6277,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           ${ef("DX", p.dx || nd.dx)}
           <div class="eg-r2">${ef("APP", nd.app)}${ef("PA", nd.pa)}</div>
           ${ef("QX", nd.qx || nd.manejo)}
-          <div class="eg-r3">${ef("🩸Sangr", nd.sangrado)}${ef("💧Dren", nd.drenajes)}${ef("⚖️Bal", nd.balance)}</div>
+          <div class="eg-r2">${ef("💧 Drenajes", nd.drenajes)}${ef("💉 NPT", nptEntrega)}</div>
+          <div class="eg-r3">${ef("🩸Sangr", nd.sangrado)}${ef("⚖️Bal", nd.balance)}${ef("🍽 Dieta", cl.dieta || "")}</div>
           ${efh("📌 PLAN/PEND", nd.pendientes)}
           ${labHtml}
           ${(function () {
-              const cl = nd.checklist || {};
               const tags = [];
               if (cl.npo) tags.push('<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">NPO</span>');
               if (cl.atb) tags.push('<span style="background:#0369a1;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">ATB</span>');
@@ -8535,7 +8776,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           r.onerror = function(){ resolve({ file: file.name, extracted: null, error: "Error leyendo archivo" }); };
           r.onload = function() {
             var base64 = r.result.split(",")[1];
-            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades, fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
+            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","fa":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","ego_esterasa":"","ego_ph":"","ego_nitritos":"","ego_bacterias":"","ego_leucos":"","ego_hematies":"","ego_proteinas":"","ego_glucosa":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","micro_muestra":"","micro_comentarios":"","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades para química/biometría/gasometría; en EGO y microbiología se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
             fetch(proxyUrl + "/api/ai", {
               method: "POST",
               headers: apiHeaders(),
@@ -8566,7 +8807,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
                   if (Object.keys(fb).length > 0) extracted = fb;
                 }
               }
-              resolve({ file: file.name, extracted: extracted, error: null });
+              resolve({ file: file.name, fileObj: file, fileBase64: base64, extracted: extracted, error: null });
             })
             .catch(function(e){ resolve({ file: file.name, extracted: null, error: String(e) }); });
           };
@@ -8574,13 +8815,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         });
       }
 
-      function finish() {
+      async function finish() {
         var successCount = 0;
         var rows = "";
-        results.forEach(function(r) {
+        for (const r of results) {
           if (r.error) {
             rows += "<div style='padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px'><b style='color:#991b1b'>Error:</b> " + esc(r.file) + " — " + esc(r.error) + "</div>";
-            return;
+            continue;
           }
           var ex = sanitizeExtractedLabs(r.extracted);
           var matched = matchPatient(ex.paciente || "");
@@ -8589,7 +8830,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             var nd = getNote(k);
             var fecha = ex.fecha_labs || todayStr();
             var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
-            if (!snap) { snap = { fecha: fecha, labs: {}, extra: [] }; nd.labHistory.push(snap); }
+            if (!snap) { snap = { fecha: fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
             if (!snap.extra) snap.extra = [];
 
             var isCultivo = ex.tipo_lab === "cultivo" || (ex.tipo_cultivo && ex.tipo_cultivo.trim() !== "");
@@ -8610,6 +8851,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               });
               if (existIdx >= 0) { snap.extra[existIdx].valor = cultivoValor; }
               else { snap.extra.push({ nombre: cultivoNombre, valor: cultivoValor }); }
+              // También guardar en campos dedicados de microbiología (visibles en tarjeta)
+              snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), {
+                micro_tipo_cultivo: ex.tipo_cultivo || "",
+                micro_muestra: ex.micro_muestra || "",
+                micro_organismo: ex.cultivo_organismo || "",
+                micro_sensibilidades: ex.cultivo_sensibilidades || "",
+                micro_resistencias: ex.cultivo_resistencias || "",
+                micro_comentarios: ex.micro_comentarios || ""
+              });
             } else {
               // Labs normales: no guardar campos de cultivo en snap.labs
               var labsToMerge = {};
@@ -8617,6 +8867,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
                 if (!CULTIVO_ONLY_KEYS.has(ek)) labsToMerge[ek] = ex[ek];
               });
               snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), labsToMerge);
+            }
+            if (r.fileObj) {
+              await attachLabSourceToSnap(k, fecha, snap, r.fileObj, r.fileBase64 || "");
             }
 
             activeLabDate[k] = fecha;
@@ -8636,7 +8889,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           } else {
             rows += "<div style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px'><b style='color:#92400e'>No encontrado en censo:</b> <b>" + esc((ex && ex.paciente) || "(no detectado)") + "</b><br><span style='color:#78350f;font-size:11px'>Archivo: " + esc(r.file) + "</span></div>";
           }
-        });
+        }
         prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#166534;padding:8px 0'>Listo: " + successCount + " asignados &middot; " + (results.length - successCount) + " sin asignar.</div>";
         res.innerHTML = rows;
         if (successCount > 0) renderView();
@@ -9325,7 +9578,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       if (type === "labs") {
         if (!nd.labHistory.find(s => s.fecha === today)) {
-          nd.labHistory.push({ fecha: today, labs: {}, extra: [] });
+          nd.labHistory.push({ fecha: today, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" });
         }
         noteData[k] = nd;
         activeLabDate[k] = today;
@@ -9378,9 +9631,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const snap = sortedLabs[0];
         const vals = snap.labs || {};
         const partes = [];
-        const claves = ["hb", "leucos", "plaq", "cr", "urea", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno"];
-        const labels = { hb: "Hb", leucos: "Leuc", plaq: "Plaq", cr: "Cr", urea: "Ur", glu: "Glu", na: "Na", k: "K", alb: "Alb", pcr: "PCR", pct: "PCT", tp: "TP", ttp: "TTP", inr: "INR", fibrinogeno: "Fibri" };
-        claves.forEach(c => { if (vals[c]) partes.push(`${labels[c]} ${vals[c]}`); });
+        const campos = (typeof LAB_GROUPS !== "undefined" && Array.isArray(LAB_GROUPS))
+          ? LAB_GROUPS.flatMap(grp => grp.fields.map(f => ({ key: f.key, label: f.label })))
+          : [
+              { key: "hb", label: "Hb" }, { key: "leucos", label: "Leuc" }, { key: "plaq", label: "Plaq" },
+              { key: "cr", label: "Cr" }, { key: "urea", label: "Ur" }, { key: "glu", label: "Glu" },
+              { key: "na", label: "Na" }, { key: "k", label: "K" }, { key: "alb", label: "Alb" },
+              { key: "pcr", label: "PCR" }, { key: "pct", label: "PCT" }, { key: "inr", label: "INR" }
+            ];
+        campos.forEach(c => { if (vals[c.key]) partes.push(`${c.label} ${vals[c.key]}`); });
         if (partes.length) labsTexto = `📊 Labs (${snap.fecha}): ${partes.join(" | ")}`;
       }
 
