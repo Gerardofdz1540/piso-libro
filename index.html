@@ -3946,7 +3946,8 @@
       renderView();
     }
     function renderView() {
-      const search = document.getElementById("search").value.toLowerCase();
+      const _searchEl = document.getElementById("search");
+      const search = _searchEl ? _searchEl.value.toLowerCase() : "";
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
       function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
       const searchNorm = normSearch(search);
@@ -3963,9 +3964,11 @@
         }
         return em && sm && rm && am && im;
       });
-      document.getElementById("count-badge").innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
+      const _cb = document.getElementById("count-badge");
+      if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
       ["piso", "census", "print", "altas", "formatos", "noOlvidar"].forEach(v => {
-        document.getElementById("view-" + v).style.display = currentView === v ? "" : "none";
+        const _ve = document.getElementById("view-" + v);
+        if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
       if (currentView === "piso") renderPiso(filtered);
       if (currentView === "census") renderCensus(filtered);
