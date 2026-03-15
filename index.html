@@ -2247,7 +2247,7 @@
 
     <!-- FILTER BAR -->
     <div id="filterbar">
-      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="renderView()" />
+      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="debouncedSearch()" />
       <div class="esp-filters" id="esp-filters"></div>
       <span class="count-badge" id="count-badge">0 pacientes</span>
       <button class="btn-pink" onclick="openAddModal()">➕ Nuevo paciente</button>
@@ -3957,6 +3957,13 @@
       });
       c.innerHTML = html;
     }
+    // Búsqueda con debounce: evita re-render en cada tecla que destruiría tarjetas en edición
+    var _searchTimer = null;
+    function debouncedSearch() {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(renderView, 280);
+    }
+
     function setEsp(v, btn) {
       selectedEsp = v;
       document.querySelectorAll(".esp-btn").forEach(b => b.classList.remove("active"));
@@ -5506,16 +5513,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function toggleExpand(k) {
       if (expandedCards[k] === undefined) expandedCards[k] = false;
       else expandedCards[k] = !expandedCards[k];
-      renderView();
+      // Re-render solo ESTA tarjeta — evitar renderView() que destruye todas las demás
+      // (incluyendo las que otro médico podría estar editando en otra ventana o tab)
+      const p = patients.find(function(pt){ return pid(pt) === k; });
+      const nd = noteData[k] || defaultData();
+      const cardEl = document.getElementById("card-" + k);
+      if (p && cardEl) {
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
+      } else {
+        renderView(); // fallback: tarjeta no en DOM
+      }
       // Autofocus: si se abre, enfocar el campo más relevante
       if (expandedCards[k] !== false) {
-        setTimeout(() => {
+        setTimeout(function() {
           const card = document.getElementById("card-" + k);
           if (!card) return;
-          const nd = noteData[k] || {};
-          // Si pendientes vacío → foco en pendientes; si no → signos vitales
-          const targetField = (!nd.pendientes || !nd.pendientes.trim()) ? "pendientes" : "sv";
-          const ta = card.querySelector(`textarea[data-field="${targetField}"]`);
+          const ndNow = noteData[k] || {};
+          const targetField = (!ndNow.pendientes || !ndNow.pendientes.trim()) ? "pendientes" : "sv";
+          const ta = card.querySelector('textarea[data-field="' + targetField + '"]');
           if (ta) { ta.focus(); ta.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
         }, 80);
       }
@@ -6909,7 +6924,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     // FORMAT 5: FT-HGL-AM-51 NOTA MÉDICA 2023 (table-based)
     // ═══════════════════════════════════════════════════════════════════════════════
     function fmtNotaMedica(p, nd, gi, fecha, hora, labs, adsOpts) {
-      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "urea", "bt", "bd"].filter(x => labs[x]).map(x => {
+      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct",
+        "tp", "ttp", "inr", "fibrinogeno", "urea",
+        "mg", "ca", "p", "cl",
+        "ast", "alt", "bt", "bd", "ggt", "fa",
+        "ph", "pco2", "po2", "hco3", "be", "sato2",
+        "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem",
+        "ego_ph", "ego_dens", "ego_color", "ego_asp"
+      ].filter(x => labs[x]).map(x => {
         const lf = LAB_FIELDS.find(f => f.key === x);
         return (lf ? lf.label : x.toUpperCase()) + ": " + labs[x];
       }).join(", ");
