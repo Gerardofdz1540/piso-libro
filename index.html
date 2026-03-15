@@ -7974,7 +7974,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function hudCopy(type) {
-      const sys_cfg = {}; // just clipboard util
       if (type === "user") {
         const val = document.getElementById("hud-user").textContent;
         navigator.clipboard.writeText(val).catch(() => { });
@@ -8224,7 +8223,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         document.getElementById("manual-merge-modal").style.display = "none";
         mergePatients(keepIdx, removeIdx);
       };
-      document.getElementById("manual-merge-modal").style.display = "flex";
+      document.getElementById("manual-merge-modal").style.display = "block";
     }
 
     function toggleDupInlineEdit(uid) {
