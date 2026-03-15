@@ -2943,8 +2943,9 @@
       return p[2] + " " + months[parseInt(p[1]) - 1];
     }
     const LAB_KEYS_FALLBACK = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea",
-      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt",
-      "ph", "pco2", "po2", "hco3", "be", "sato2"];
+      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt", "fa",
+      "ph", "pco2", "po2", "hco3", "be", "sato2",
+      "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
     const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
@@ -4723,7 +4724,8 @@
           { key: "alt", label: "ALT", unit: "U/L", low: 0, high: 40, ch: 200 },
           { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 5 },
           { key: "bd", label: "BD", unit: "mg/dL", low: 0, high: 0.3, ch: 3 },
-          { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 }
+          { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 },
+          { key: "fa", label: "FA", unit: "U/L", low: 40, high: 120, ch: 400 }
         ]
       },
       {
@@ -4734,6 +4736,20 @@
           { key: "hco3", label: "HCO₃", unit: "mEq/L", low: 22, high: 26, cl: 10 },
           { key: "be", label: "BE", unit: "mEq/L", low: -2, high: 2, cl: -8, ch: 8 },
           { key: "sato2", label: "SatO₂", unit: "%", low: 95, high: 100, cl: 85 }
+        ]
+      },
+      {
+        id: "ego", label: "🧪 Examen General de Orina", fields: [
+          { key: "ego_color",  label: "Color",     unit: "",      low: null, high: null },
+          { key: "ego_asp",    label: "Aspecto",   unit: "",      low: null, high: null },
+          { key: "ego_dens",   label: "Densidad",  unit: "",      low: 1.005, high: 1.030 },
+          { key: "ego_ph",     label: "pH orina",  unit: "",      low: 5, high: 8 },
+          { key: "ego_leuco",  label: "Est.Leuc",  unit: "u/µL",  low: 0, high: 10 },
+          { key: "ego_nitri",  label: "Nitritos",  unit: "",      low: null, high: null },
+          { key: "ego_bact",   label: "Bacterias", unit: "",      low: null, high: null },
+          { key: "ego_prot",   label: "Proteínas", unit: "",      low: null, high: null },
+          { key: "ego_glu",    label: "Glucosuria",unit: "",      low: null, high: null },
+          { key: "ego_hem",    label: "Hematíes",  unit: "u/µL",  low: 0, high: 5 }
         ]
       }
     ];
@@ -5055,7 +5071,7 @@
       const labTitle = activeFecha ? `🧪 LABS · ${fmtDateChip(activeFecha)} ${snap && snap.labs && snap.labs.paciente ? "· " + esc(snap.labs.paciente) : ""}` : "🧪 LABS";
       const hasAnyLab = activeFecha && LAB_FIELDS.some(lf => labs[lf.key]);
 
-      return `<div style="margin-top:12px">
+      return `<div id="labs-sec-${k}" style="margin-top:12px">
     <div class="labs-header">
       <div class="labs-title">${labTitle}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -5063,6 +5079,15 @@
         <button data-pdfkey="${k}" onclick="triggerPdfInput(this)" ${loading ? "disabled" : ""}
           style="background:${loading ? "#94a3b8" : "#2196f3"};color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">
           ${loading ? "⏳ Extrayendo..." : "📄 PDF / 📷 Foto"}</button>
+        ${snap && snap.pdfUrl
+          ? `<a href="${esc(snap.pdfUrl)}" target="_blank" rel="noopener"
+               style="background:#0f766e;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px;display:inline-flex;align-items:center;text-decoration:none"
+               title="Ver PDF de laboratorios">📋 Ver PDF</a>`
+          : ""
+        }
+        <button onclick="setLabPdfUrl('${k}','${activeFecha}')"
+          style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;min-height:32px"
+          title="${snap && snap.pdfUrl ? 'Cambiar enlace PDF de labs' : 'Enlazar PDF de laboratorios'}">🔗${snap && snap.pdfUrl ? "" : " Enlazar PDF"}</button>
         ${hasAnyLab ? `<button class="lab-ai-btn" onclick="analyzeLabsAI('${k}','${activeFecha}')" ${aiLoading ? "disabled" : ""}>
           ${aiLoading ? "⏳ Analizando..." : "🧠 Análisis IA"}</button>` : ""}
         `: ""}
@@ -5140,13 +5165,21 @@
         "P: <0.81 hipofosfatemia, <0.5 SEVERA",
         "BT/BD/BI: >2 mg/dL hiperbilirrubinemia",
         "TGO/TGP: >40 U/L elevadas",
-        "FA: >120 U/L elevada",
+        "FA (fosfatasa alcalina): >120 U/L elevada, >400 CRITICA",
         "GGT: >50 U/L elevada",
         "LDH: >250 U/L elevada",
         "CPK: >200 U/L elevada",
         "pH: <7.35 acidosis, >7.45 alcalosis",
         "pCO2: <35 hipocapnia, >45 hipercapnia",
         "Lactato: >2 mmol/L elevado, >4 CRITICO",
+        "EGO pH: normal 5-8",
+        "EGO densidad: normal 1.005-1.030",
+        "EGO esterasa leucocitaria: >10 u/µL anormal (ITU probable)",
+        "EGO nitritos: positivo = infección bacteriana",
+        "EGO bacterias: negativo=normal, +/++/+++ = infección",
+        "EGO proteínas: negativo=normal, presencia = proteinuria",
+        "EGO glucosuria: negativo=normal, positivo = hiperglucemia o tubulopatía",
+        "EGO hematíes: <5 u/µL normal, >5 hematuria",
       ].join("\n");
 
       const prompt = `Eres un médico clínico experto en cirugía general. Analiza los laboratorios de un paciente hospitalizado usando los rangos de referencia EXACTOS provistos. Debes detectar CUALQUIER valor fuera del rango normal, aunque sea levemente anormal.
@@ -5268,16 +5301,50 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (fecha === dates[0]) nd.labs = { ...snap.labs };
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k);
+      // Actualizar solo la clase visual del cell afectado — sin destruir el DOM completo
+      // (un outerHTML = renderFullCard() destruiría cualquier campo que el usuario esté editando en ese momento)
+      const inputEl = document.querySelector('.lab-input[data-key="' + k + '"][data-labkey="' + labKey + '"]');
+      if (inputEl) {
+        const cell = inputEl.closest('.lab-cell');
+        if (cell) {
+          const lf = LAB_FIELDS.find(function(f){ return f.key === labKey; });
+          if (lf) {
+            const num = parseFloat(value);
+            let cls = 'lab-cell';
+            if (value && !isNaN(num)) {
+              const crit = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
+              const abn  = !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
+              if (crit) cls += ' crit';
+              else if (abn) cls += ' abn';
+            }
+            cell.className = cls;
+            // Sincronizar clase del input también
+            inputEl.className = 'lab-input' + (cls.includes('crit') ? ' crit' : cls.includes('abn') ? ' abn' : '');
+          }
+        }
       }
     }
     // Legacy alias (used by PDF extractor)
     function updateLab(k, labKey, value) {
       const activeFecha = activeLabDate[k] || todayStr();
       updateLabHistory(k, activeFecha, labKey, value);
+    }
+
+    function setLabPdfUrl(k, fecha) {
+      const nd = getNote(k);
+      const snap = (nd.labHistory || []).find(function(s){ return s.fecha === fecha; });
+      if (!snap) return;
+      const current = snap.pdfUrl || "";
+      const url = prompt("Pega la URL del PDF de laboratorios (dejar vacío para quitar el enlace):", current);
+      if (url === null) return; // usuario canceló
+      snap.pdfUrl = url.trim();
+      noteData[k] = nd;
+      saveNote(k, nd);
+      // Actualizar solo la sección de labs (tiene id="labs-sec-{k}") sin re-render completo
+      const labsSecEl = document.getElementById("labs-sec-" + k);
+      if (labsSecEl) {
+        labsSecEl.outerHTML = renderLabSection(nd, k);
+      }
     }
 
     function setActiveLabDate(k, fecha) {
@@ -5512,14 +5579,16 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
                     "{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\"," +
                     "\"mg\":\"\",\"ca\":\"\",\"p\":\"\",\"cl\":\"\"," +
                     "\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\"," +
-                    "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\"," +
+                    "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\",\"fa\":\"\"," +
                     "\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\"," +
+                    "\"ego_color\":\"\",\"ego_asp\":\"\",\"ego_dens\":\"\",\"ego_ph\":\"\",\"ego_leuco\":\"\",\"ego_nitri\":\"\",\"ego_bact\":\"\",\"ego_prot\":\"\",\"ego_glu\":\"\",\"ego_hem\":\"\"," +
                     "\"paciente\":\"\",\"fecha_labs\":\"\"}\n" +
-                    "Reglas: solo valores numéricos (sin unidades), fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
+                    "Reglas: valores numéricos sin unidades, texto tal como aparece para EGO. Fecha en YYYY-MM-DD. Paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
                     "Mapeo: Hb=hemoglobina, leucos=leucocitos/WBC, plaq=plaquetas, cr=creatinina, glu=glucosa, na=sodio, k=potasio, alb=albumina, pcr=proteína C reactiva, pct=procalcitonina, inr=INR, urea=BUN/urea, " +
                     "mg=magnesio, ca=calcio, p=fósforo, cl=cloro, tp=tiempo de protrombina, ttp=tiempo de tromboplastina parcial, fibrinogeno=fibrinógeno, " +
-                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, " +
-                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2."
+                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, fa=fosfatasa alcalina/ALP/FAL, " +
+                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2, " +
+                    "ego_color=color orina, ego_asp=aspecto/turbidez orina, ego_dens=densidad orina, ego_ph=pH urinario, ego_leuco=esterasa leucocitaria/leucocitos orina, ego_nitri=nitritos, ego_bact=bacterias, ego_prot=proteínas/proteinuria, ego_glu=glucosuria, ego_hem=hematíes/eritrocitos orina."
                 }
               ]
             }]
