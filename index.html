@@ -3588,24 +3588,28 @@
     // ─── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────────
     function startRealtime() {
       // Clean up old subscriptions
-      _realtimeSubs.forEach(s => s.unsubscribe());
+      _realtimeSubs.forEach(s => { try { s.unsubscribe(); } catch (e) { safeLog("[RT] unsubscribe error:", e); } });
       _realtimeSubs = [];
 
       // Subscribe to patients changes
-      const patSub = _supa.channel("patients-changes")
-        .on("postgres_changes", { event: "*", schema: "public", table: "patients" }, (payload) => {
-          handlePatientChange(payload);
-        })
-        .subscribe();
-      _realtimeSubs.push(patSub);
+      try {
+        const patSub = _supa.channel("patients-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "patients" }, (payload) => {
+            handlePatientChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(patSub);
+      } catch (e) { safeLog("[RT] patients subscription failed:", e); }
 
       // Subscribe to notes changes
-      const noteSub = _supa.channel("notes-changes")
-        .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, (payload) => {
-          handleNoteChange(payload);
-        })
-        .subscribe();
-      _realtimeSubs.push(noteSub);
+      try {
+        const noteSub = _supa.channel("notes-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, (payload) => {
+            handleNoteChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(noteSub);
+      } catch (e) { safeLog("[RT] notes subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -3615,6 +3619,7 @@
       const { eventType, new: newRow, old: oldRow } = payload;
 
       if (eventType === "INSERT") {
+        if (!newRow) return;
         // Check if we already have this patient (we just inserted it ourselves)
         if (patients.some(p => p._supa_id === newRow.id)) return;
         const p = supaRowToPatient(newRow);
@@ -3627,6 +3632,7 @@
         safeLog("[RT] Patient inserted:", p.nombre);
       }
       else if (eventType === "UPDATE") {
+        if (!newRow) return;
         const idx = patients.findIndex(p => p._supa_id === newRow.id);
         if (idx === -1) return;
         const oldKey = pid(patients[idx]);
@@ -3656,6 +3662,7 @@
       }
       else if (eventType === "DELETE") {
         const id = oldRow?.id || newRow?.id;
+        if (!id) { safeLog("[RT] DELETE patient: payload sin id"); return; }
         const idx = patients.findIndex(p => p._supa_id === id);
         if (idx === -1) return;
         const k = pid(patients[idx]);
@@ -3674,6 +3681,7 @@
       if (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id))) return;
       const { eventType, new: newRow } = payload;
       if (eventType === "DELETE") return;
+      if (!newRow || !newRow.patient_id) return;
       // Find patient by _supa_id matching note's patient_id
       const p = patients.find(x => x._supa_id === newRow.patient_id);
       if (!p) return;
@@ -3978,7 +3986,7 @@
       };
     }
     function persistGuardInfo() {
-      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { }
+      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { safeLog("persistGuardInfo:", e); }
     }
     const persistGuardInfoDebounced = debounce(persistGuardInfo, 250);
     function restoreGuardInfo() {
@@ -4379,13 +4387,13 @@
         .split("\n").map(l => l.trim().toUpperCase()).filter(Boolean);
       if (!lines.length) { alert("Ingresa al menos una cama"); return; }
       ALL_BEDS = [...new Set(lines)];
-      try { localStorage.setItem("pl_all_beds_v1", JSON.stringify(ALL_BEDS)); } catch (e) { }
+      try { localStorage.setItem("pl_all_beds_v1", JSON.stringify(ALL_BEDS)); } catch (e) { safeLog("bedMgrSave:", e); }
       document.getElementById("bed-mgr-modal").style.display = "none";
       renderView();
     }
     function bedMgrReset() {
       ALL_BEDS = [...DEFAULT_BEDS_PISO3, ...DEFAULT_BEDS_UCI, ...DEFAULT_BEDS_OTROS];
-      try { localStorage.removeItem("pl_all_beds_v1"); } catch (e) { }
+      try { localStorage.removeItem("pl_all_beds_v1"); } catch (e) { safeLog("bedMgrReset:", e); }
       document.getElementById("bed-mgr-ta").value = ALL_BEDS.join("\n");
     }
 
