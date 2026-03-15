@@ -3063,9 +3063,9 @@
 
     // localStorage fallbacks
     function lsGetPatients() { try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } }
-    function lsSavePatients(pts) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pts)); } catch { } }
+    function lsSavePatients(pts) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pts)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
     function lsGetNote(key) { try { const s = localStorage.getItem(NOTES_PREFIX + key); return s ? migrateNote({ ...defaultData(), ...JSON.parse(s) }) : defaultData(); } catch { return defaultData(); } }
-    function lsSaveNote(key, data) { try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data)); } catch { } }
+    function lsSaveNote(key, data) { try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
     function lsGetAllNotes(pts) { const obj = {}; pts.forEach(p => { const k = pid(p); obj[k] = lsGetNote(k); }); return obj; }
     function arrayBufferToBase64(buffer) {
       const bytes = new Uint8Array(buffer);
@@ -3120,7 +3120,7 @@
     const OUTBOX_KEY = "pl_outbox_v1";
     const OUTBOX_MAX = 200; // máximo de operaciones pendientes en cola
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
-    function outboxSave(q) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); }
+    function outboxSave(q) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
     function outboxEnqueue(item) {
       const q = outboxLoad();
       const newItem = { ...item, ts: Date.now() };
@@ -3513,6 +3513,7 @@
           noteData[newKey] = noteData[oldKey];
           delete noteData[oldKey];
           lsSaveNote(newKey, noteData[newKey]);
+          localStorage.removeItem(NOTES_PREFIX + oldKey); // limpiar ghost note en localStorage
         }
         patients[idx] = updated;
         lsSavePatients(patients);
@@ -3526,6 +3527,7 @@
         const k = pid(patients[idx]);
         patients.splice(idx, 1);
         delete noteData[k];
+        localStorage.removeItem(NOTES_PREFIX + k); // limpiar nota en localStorage
         lsSavePatients(patients);
         buildEspFilters(); renderView();
         console.log("[RT] Patient deleted:", k);
@@ -3559,7 +3561,7 @@
       nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
         ? newRow.imagen_history
         : (existing.imagenHistory || []);
-      noteData[k] = migrateNote(nd);
+      try { noteData[k] = migrateNote(nd); } catch (e) { console.error("[RT] migrateNote error for", k, e); noteData[k] = defaultData(); }
       lsSaveNote(k, noteData[k]);
       // Re-render SOLO la tarjeta afectada — renderView() destruiría texto en edición en TODOS los demás cards
       // Además, si el usuario tiene foco dentro de esta misma tarjeta, no re-renderizar para no perder su texto
@@ -3873,11 +3875,12 @@
 
       // ── Safety guard: compare Supabase vs localStorage patient counts ──
       const localPts = lsGetPatients() || [];
-      const localHasMore = localPts.length > 0 && loaded && loaded.patients.length > 0
-        && localPts.length > loaded.patients.length;
+      const supaClean = loaded ? sanitizePatients(loaded.patients) : [];
+      const localHasMore = localPts.length > 0 && supaClean.length > 0
+        && localPts.length > supaClean.length;
 
-      if (loaded && loaded.patients.length > 0 && !localHasMore) {
-        patients = sanitizePatients(loaded.patients);
+      if (supaClean.length > 0 && !localHasMore) {
+        patients = supaClean;
         noteData = loaded.notes;
         lsSavePatients(patients);
         // Cache notes locally
@@ -6170,8 +6173,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
           .on("broadcast", { event: "update" }, function(payload) {
             if (payload.payload && Array.isArray(payload.payload.items)) {
-              lsSaveNoOlvidar(payload.payload.items);
-              if (currentView === "noOlvidar") renderNoOlvidar();
+              // Evitar reprocesar si los datos son idénticos a los locales
+              const incoming = JSON.stringify(payload.payload.items);
+              if (incoming !== JSON.stringify(lsGetNoOlvidar())) {
+                lsSaveNoOlvidar(payload.payload.items);
+                if (currentView === "noOlvidar") renderNoOlvidar();
+              }
             }
           })
           .subscribe();
@@ -7586,7 +7593,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           saveNote(newKey, noteData[newKey]);
         }
       }
-      savePts();
+      _savePtsImmediate(); // inmediato: asigna _supa_id antes de que llegue el Realtime INSERT
       buildEspFilters();
       closeModal();
       renderView();
