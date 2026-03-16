@@ -3767,6 +3767,18 @@
       });
     }
 
+    // ─── BEFOREUNLOAD: flush pending in-memory edits to localStorage before page closes ──
+    // Protege contra pérdida de datos si el usuario cierra el tab mientras hay un debounce
+    // pendiente (ventana de ~900ms entre que escribe y que el autosave dispara).
+    window.addEventListener("beforeunload", function () {
+      try {
+        Object.keys(noteData).forEach(function (k) {
+          try { lsSaveNote(k, noteData[k]); } catch (_) {}
+        });
+      } catch (_) {}
+      try { lsSavePatients(patients); } catch (_) {}
+    });
+
     // ─── OFFLINE: flush outbox when back online ─────────────────────────────────────
     window.addEventListener("online", async () => {
       setSyncStatus("syncing", "Reconectando...");
@@ -5008,6 +5020,12 @@
         ]
       },
       {
+        id: "pancreatico", label: "🫁 Enzimas pancreáticas", fields: [
+          { key: "amilasa", label: "Amilasa", unit: "U/L", low: 0, high: 100, ch: 300 },
+          { key: "lipasa",  label: "Lipasa",  unit: "U/L", low: 0, high: 60,  ch: 180 }
+        ]
+      },
+      {
         id: "gasometria", label: "💨 Gasometría", fields: [
           { key: "ph", label: "pH", unit: "", low: 7.35, high: 7.45, cl: 7.2, ch: 7.55 },
           { key: "pco2", label: "pCO₂", unit: "mmHg", low: 35, high: 45, cl: 20, ch: 70 },
@@ -5178,6 +5196,16 @@
       fa: (v) => {
         if (v >= 400) return { sev: "crit", title: "Fosfatasa alcalina muy elevada", rec: "Patrón colestásico marcado u origen óseo activo. Correlacionar con GGT/BT/BD. Solicitar US hepatobiliar urgente." };
         if (v > 147) return { sev: "abn", title: "Fosfatasa alcalina elevada", rec: "Sugerente de colestasis o patología ósea. Diferenciar con GGT (hepático) y clínica." };
+        return null;
+      },
+      amilasa: (v) => {
+        if (v >= 300) return { sev: "crit", title: "Amilasa muy elevada — Pancreatitis aguda grave", rec: "≥3× VN: altamente sugestivo de pancreatitis aguda. Completar con lipasa (más específica). Monitorizar por criterios de Ranson/BISAP. NPO, hidratación agresiva IV, analgesia, monitoreo de complicaciones." };
+        if (v > 100) return { sev: "abn", title: "Amilasa elevada", rec: "Evaluar en contexto clínico: pancreatitis aguda, parotiditis, obstrucción biliar, macroamilasemia. Correlacionar con lipasa para mayor especificidad." };
+        return null;
+      },
+      lipasa: (v) => {
+        if (v >= 180) return { sev: "crit", title: "Lipasa muy elevada — Pancreatitis aguda grave", rec: "≥3× VN: criterio diagnóstico de pancreatitis aguda (mayor especificidad que amilasa). Clasificar severidad (leve/moderada/grave). NPO estricto, hidratación IV agresiva (Ringer lactato preferible), analgesia, considerar CPRE si etiología biliar." };
+        if (v > 60) return { sev: "abn", title: "Lipasa elevada", rec: "Sugerente de pancreatitis aguda o patología pancreática. Más específica que amilasa. Correlacionar con clínica, amilasa y US/TAC." };
         return null;
       },
       ph: (v) => {
