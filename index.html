@@ -4421,10 +4421,12 @@
       if (!history.length) return null;
       return [...history].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")))[0];
     }
-    function getCriticalLabItemsFromSnapshot(snap) {
+    // allowedKeys: si se pasa, solo evalúa esos keys (útil para filtrar el panel de alertas)
+    function getCriticalLabItemsFromSnapshot(snap, allowedKeys) {
       const critical = [];
       if (!snap || !snap.labs || !Array.isArray(LAB_FIELDS)) return critical;
-      LAB_FIELDS.forEach(lf => {
+      const fields = allowedKeys ? LAB_FIELDS.filter(lf => allowedKeys.includes(lf.key)) : LAB_FIELDS;
+      fields.forEach(lf => {
         const raw = snap.labs[lf.key];
         if (raw === undefined || raw === null || String(raw).trim() === "") return;
         const num = parseLabNumber(raw);
@@ -4443,6 +4445,8 @@
       });
       return critical;
     }
+    // Keys usados en el panel de alertas inicial: solo Hb, plaquetas y electrolitos
+    const CRITICAL_ALERT_KEYS = ["hb", "plaq", "na", "k", "mg", "ca", "p", "cl"];
     function isNptReminderDay(dateObj) {
       const d = dateObj || new Date();
       const day = d.getDay();
@@ -4472,7 +4476,7 @@
         }
 
         const latestSnap = getLatestLabSnapshot(nd);
-        const critLabs = getCriticalLabItemsFromSnapshot(latestSnap);
+        const critLabs = getCriticalLabItemsFromSnapshot(latestSnap, CRITICAL_ALERT_KEYS);
         if (critLabs.length) {
           criticalCases.push({ k, p, fecha: latestSnap ? latestSnap.fecha : "", labs: critLabs });
         }
