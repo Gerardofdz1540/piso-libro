@@ -3588,24 +3588,28 @@
     // ─── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────────
     function startRealtime() {
       // Clean up old subscriptions
-      _realtimeSubs.forEach(s => s.unsubscribe());
+      _realtimeSubs.forEach(s => { try { s.unsubscribe(); } catch (e) { safeLog("[RT] unsubscribe error:", e); } });
       _realtimeSubs = [];
 
       // Subscribe to patients changes
-      const patSub = _supa.channel("patients-changes")
-        .on("postgres_changes", { event: "*", schema: "public", table: "patients" }, (payload) => {
-          handlePatientChange(payload);
-        })
-        .subscribe();
-      _realtimeSubs.push(patSub);
+      try {
+        const patSub = _supa.channel("patients-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "patients" }, (payload) => {
+            handlePatientChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(patSub);
+      } catch (e) { safeLog("[RT] patients subscription failed:", e); }
 
       // Subscribe to notes changes
-      const noteSub = _supa.channel("notes-changes")
-        .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, (payload) => {
-          handleNoteChange(payload);
-        })
-        .subscribe();
-      _realtimeSubs.push(noteSub);
+      try {
+        const noteSub = _supa.channel("notes-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, (payload) => {
+            handleNoteChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(noteSub);
+      } catch (e) { safeLog("[RT] notes subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -3615,6 +3619,7 @@
       const { eventType, new: newRow, old: oldRow } = payload;
 
       if (eventType === "INSERT") {
+        if (!newRow) return;
         // Check if we already have this patient (we just inserted it ourselves)
         if (patients.some(p => p._supa_id === newRow.id)) return;
         const p = supaRowToPatient(newRow);
@@ -3627,6 +3632,7 @@
         safeLog("[RT] Patient inserted:", p.nombre);
       }
       else if (eventType === "UPDATE") {
+        if (!newRow) return;
         const idx = patients.findIndex(p => p._supa_id === newRow.id);
         if (idx === -1) return;
         const oldKey = pid(patients[idx]);
@@ -3656,6 +3662,7 @@
       }
       else if (eventType === "DELETE") {
         const id = oldRow?.id || newRow?.id;
+        if (!id) { safeLog("[RT] DELETE patient: payload sin id"); return; }
         const idx = patients.findIndex(p => p._supa_id === id);
         if (idx === -1) return;
         const k = pid(patients[idx]);
@@ -3674,6 +3681,7 @@
       if (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id))) return;
       const { eventType, new: newRow } = payload;
       if (eventType === "DELETE") return;
+      if (!newRow || !newRow.patient_id) return;
       // Find patient by _supa_id matching note's patient_id
       const p = patients.find(x => x._supa_id === newRow.patient_id);
       if (!p) return;
@@ -3978,7 +3986,7 @@
       };
     }
     function persistGuardInfo() {
-      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { }
+      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { safeLog("persistGuardInfo:", e); }
     }
     const persistGuardInfoDebounced = debounce(persistGuardInfo, 250);
     function restoreGuardInfo() {
@@ -4379,13 +4387,13 @@
         .split("\n").map(l => l.trim().toUpperCase()).filter(Boolean);
       if (!lines.length) { alert("Ingresa al menos una cama"); return; }
       ALL_BEDS = [...new Set(lines)];
-      try { localStorage.setItem("pl_all_beds_v1", JSON.stringify(ALL_BEDS)); } catch (e) { }
+      try { localStorage.setItem("pl_all_beds_v1", JSON.stringify(ALL_BEDS)); } catch (e) { safeLog("bedMgrSave:", e); }
       document.getElementById("bed-mgr-modal").style.display = "none";
       renderView();
     }
     function bedMgrReset() {
       ALL_BEDS = [...DEFAULT_BEDS_PISO3, ...DEFAULT_BEDS_UCI, ...DEFAULT_BEDS_OTROS];
-      try { localStorage.removeItem("pl_all_beds_v1"); } catch (e) { }
+      try { localStorage.removeItem("pl_all_beds_v1"); } catch (e) { safeLog("bedMgrReset:", e); }
       document.getElementById("bed-mgr-ta").value = ALL_BEDS.join("\n");
     }
 
@@ -4942,6 +4950,7 @@
       if (!est.file) return;
       if (est.file_type && est.file_type.startsWith('image/')) {
         const w = window.open('', '_blank');
+        if (!w) { alert("El navegador bloqueó la ventana emergente. Permite popups para ver el archivo."); return; }
         w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${est.file_type};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
         w.document.close();
       } else {
@@ -5821,6 +5830,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const fileType = snap.source_file_type || "application/pdf";
       if (fileType.startsWith("image/")) {
         const w = window.open("", "_blank");
+        if (!w) { alert("El navegador bloqueó la ventana emergente. Permite popups para ver el archivo."); return; }
         w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${fileType};base64,${snap.source_file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
         w.document.close();
         return;
@@ -6874,6 +6884,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         if (v.trim()) rows += `<tr><td style="font-weight:700;color:#001746;font-size:11px;padding:4px 8px;vertical-align:top;width:180px;border-bottom:1px solid #e2e8f0;font-family:Calibri">${lbl ? lbl.textContent : ""}</td><td style="font-size:11px;color:#000;padding:4px 8px;border-bottom:1px solid #e2e8f0;font-family:Calibri">${v}</td></tr>`;
       });
       const w = window.open("", "_blank", "width=800,height=700");
+      if (!w) { alert("El navegador bloqueó la ventana emergente. Permite popups para imprimir."); return; }
       w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>body{font-family:Calibri,sans-serif;padding:30px;color:#000}h2{color:#001746;margin:0 0 2px;font-size:14px}h3{color:#001746;margin:0 0 12px;font-size:16px}p{color:#333;font-size:11px;margin:0 0 12px}table{width:100%;border-collapse:collapse}hr{border:1px solid #001746;margin:8px 0}</style></head><body><h2>HOSPITAL GENERAL DE LEÓN — CIRUGÍA GENERAL</h2><hr><p>${headerText}</p><h3>${title}</h3><table>${rows}</table><br><br><div style="display:flex;justify-content:space-between;margin-top:40px"><div style="text-align:center;border-top:1px solid #000;width:200px;padding-top:4px;font-size:11px">MÉDICO DE BASE</div><div style="text-align:center;border-top:1px solid #000;width:200px;padding-top:4px;font-size:11px">RESIDENTE</div></div><script>window.print();<\/script></body></html>`);
       w.document.close();
     }
@@ -7192,7 +7203,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             "Puedes cambiar la disposición de cualquier paciente antes de confirmar. Datos clínicos y labs se conservan.";
           document.getElementById("import-confirm-btn").onclick = () => { confirmImport(); };
           document.getElementById("import-modal").style.display = "flex";
-        } catch (err) { alert("Error al leer el archivo Excel: " + err.message); }
+        } catch (err) { alert("Error al leer el archivo Excel: " + (err && err.message ? err.message : String(err))); }
       };
       reader.readAsArrayBuffer(file);
     }
