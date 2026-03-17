@@ -2297,7 +2297,7 @@
             class="modal-input" id="mf-pendientes-modal" rows="2"
             placeholder="Pendientes, estudios, interconsultas..."></textarea></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
         <div class="modal-field"><label>Especialidad *</label>
           <select class="modal-input" id="mf-esp">
             <option>CG</option>
@@ -2332,6 +2332,13 @@
           <input class="modal-input" id="mf-residente" list="dl-res" placeholder="o escribe..." autocomplete="off"
             style="margin-top:4px;font-size:11px" />
           <datalist id="dl-res"></datalist>
+        </div>
+        <div class="modal-field"><label>Sexo</label>
+          <select class="modal-input" id="mf-sexo">
+            <option value="">—</option>
+            <option value="MASCULINO">MASCULINO</option>
+            <option value="FEMENINO">FEMENINO</option>
+          </select>
         </div>
         <div class="modal-field"><label>Fecha de ingreso</label><input class="modal-input" id="mf-ingreso"
             placeholder="DD/MM/AA" /></div>
@@ -2932,7 +2939,7 @@
         sv: "", balance: "", pendientes: "", misc: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" }
+        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "" }
       };
     }
 
@@ -2956,6 +2963,17 @@
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
+    }
+    function normalizeSexValue(v) {
+      const s = toSafeString(v).trim().toUpperCase();
+      if (!s || s === "—" || s === "-" || s === "N/A" || s === "NA") return "";
+      if (["M", "MASC", "MASCULINO", "H", "HOMBRE", "VARON", "VARÓN"].includes(s)) return "MASCULINO";
+      if (["F", "FEM", "FEMENINO", "MUJER"].includes(s)) return "FEMENINO";
+      return s;
+    }
+    function getPatientSex(p, nd) {
+      const note = nd || (p ? noteData[pid(p)] : null) || defaultData();
+      return normalizeSexValue((p && p.sexo) || (note && note.checklist && note.checklist.sexo) || "");
     }
     function isPlainObject(v) {
       return !!v && typeof v === "object" && !Array.isArray(v);
@@ -3027,7 +3045,7 @@
         });
       nd.labs = sanitizeLabsMap(nd.labs);
       if (!isPlainObject(nd.checklist)) {
-        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" };
+        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "" };
       }
       // Migrate: add wound care + NPT fields if missing
       if (nd.checklist.cur_necesita === undefined) nd.checklist.cur_necesita = false;
@@ -3035,6 +3053,7 @@
       if (nd.checklist.npt === undefined) nd.checklist.npt = false;
       if (nd.checklist.npt_pct === undefined) nd.checklist.npt_pct = "";
       if (nd.checklist.npt_fecha === undefined) nd.checklist.npt_fecha = "";
+      if (nd.checklist.sexo === undefined) nd.checklist.sexo = "";
       if (!Array.isArray(nd.imagenHistory)) {
         nd.imagenHistory = [];
         if (nd.imagen_file || nd.imagen_link || nd.imagen) {
@@ -3051,6 +3070,18 @@
       return nd;
     }
     function getNote(k) { return migrateNote(noteData[k] || defaultData()); }
+    function applyModalExtraToNote(nd, extra) {
+      const next = migrateNote(nd || defaultData());
+      const src = extra || {};
+      next.app = toSafeString(src.app).trim();
+      next.pa = toSafeString(src.pa).trim();
+      next.manejo = toSafeString(src.manejo).trim();
+      next.sangrado = toSafeString(src.sangrado).trim();
+      next.drenajes = toSafeString(src.drenajes).trim();
+      next.pendientes = toSafeString(src.pendientes).trim();
+      next.checklist.sexo = normalizeSexValue(src.sexo);
+      return next;
+    }
 
     // localStorage fallbacks
     function lsGetPatients() { try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } }
@@ -6249,6 +6280,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const days = daysSince(p.ingreso);
         const ec = ESP_COLORS[p.esp] || "#1a3a6b";
         const pk = pid(p);
+        const sexo = getPatientSex(p, nd);
         const now = new Date();
         const fechaElab = gi.fecha || now.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
         const horaElab = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + " HRS";
@@ -6262,7 +6294,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         <div class="alta-form-grid">
           <div class="alta-inline-row"><span class="alta-lbl2">Fecha elaboración</span><span class="alta-editable" contenteditable="true" data-altafield="fecha_elab" data-altakey="${pk}">${esc(fechaElab)}</span><span class="alta-lbl2" style="margin-left:16px">Hora</span><span class="alta-editable" contenteditable="true" data-altafield="hora_elab" data-altakey="${pk}">${esc(horaElab)}</span></div>
           <div class="alta-row2"><span class="alta-lbl2">Nombre del paciente</span><span class="alta-editable" contenteditable="true" data-altafield="nombre" data-altakey="${pk}">${esc(p.nombre || "")}</span></div>
-          <div class="alta-inline-row"><span class="alta-lbl2">Edad</span><span class="alta-editable" style="width:60px" contenteditable="true" data-altafield="edad" data-altakey="${pk}">${esc(String(p.edad || ""))}</span><span class="alta-lbl2" style="margin-left:12px">Sexo</span><span class="alta-editable" style="width:90px" contenteditable="true" data-altafield="sexo" data-altakey="${pk}">—</span><span class="alta-lbl2" style="margin-left:12px">Expediente</span><span class="alta-editable" contenteditable="true" data-altafield="exp" data-altakey="${pk}">${esc(p.exp || "")}</span></div>
+          <div class="alta-inline-row"><span class="alta-lbl2">Edad</span><span class="alta-editable" style="width:60px" contenteditable="true" data-altafield="edad" data-altakey="${pk}">${esc(String(p.edad || ""))}</span><span class="alta-lbl2" style="margin-left:12px">Sexo</span><span class="alta-editable" style="width:90px" contenteditable="true" data-altafield="sexo" data-altakey="${pk}">${esc(sexo)}</span><span class="alta-lbl2" style="margin-left:12px">Expediente</span><span class="alta-editable" contenteditable="true" data-altafield="exp" data-altakey="${pk}">${esc(p.exp || "")}</span></div>
           <div class="alta-inline-row"><span class="alta-lbl2">Servicio</span><span class="alta-editable" contenteditable="true" data-altafield="servicio" data-altakey="${pk}">${esc(p.esp || "CIRUGÍA GENERAL")}</span><span class="alta-lbl2" style="margin-left:12px">Cama</span><span class="alta-editable" style="width:80px" contenteditable="true" data-altafield="cama" data-altakey="${pk}">${esc(p.cama || "")}</span></div>
           <div class="alta-inline-row"><span class="alta-lbl2">Fecha ingreso</span><span class="alta-editable" contenteditable="true" data-altafield="f_ingreso" data-altakey="${pk}">${esc(p.ingreso || "")}</span><span class="alta-lbl2" style="margin-left:12px">Días hosp.</span><span class="alta-editable" style="width:70px" contenteditable="true" data-altafield="dias" data-altakey="${pk}">${days} DÍAS</span><span class="alta-lbl2" style="margin-left:12px">Fecha egreso</span><span class="alta-editable" contenteditable="true" data-altafield="f_egreso" data-altakey="${pk}">${esc(fechaElab)}</span></div>
         </div>
@@ -6467,6 +6499,17 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       return `<div class="${cls}"><label>${lbl}</label><input id="${id}" value="${esc(val || "")}"/></div>`;
     }
     function fmtV(id) { const el = document.getElementById(id); return el ? (el.value || el.textContent || "").trim() : ""; }
+    function sexOptionsHtml(selected, includeBlank) {
+      const sexo = normalizeSexValue(selected);
+      const blank = includeBlank ? `<option value=""${!sexo ? " selected" : ""}>—</option>` : "";
+      return blank
+        + `<option value="MASCULINO"${sexo === "MASCULINO" ? " selected" : ""}>MASCULINO</option>`
+        + `<option value="FEMENINO"${sexo === "FEMENINO" ? " selected" : ""}>FEMENINO</option>`;
+    }
+    function sexSelectField(id, label, selected, full, includeBlank) {
+      const cls = full ? "fmt-field fmt-full" : "fmt-field";
+      return `<div class="${cls}"><label>${label}</label><select id="${id}">${sexOptionsHtml(selected, includeBlank !== false)}</select></div>`;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════════
     // FORMAT 1: FT-HGL-Qx-234 ESTADO PRE Y POST QX
@@ -6484,7 +6527,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       ${fmtF("fqx_nombre", "Nombre completo", p.nombre)}
       ${fmtF("fqx_exp", "N° Expediente", p.exp)}
       ${fmtF("fqx_edad", "Edad", (p.edad || "") + " AÑOS")}
-      ${fmtF("fqx_sexo", "Sexo", "", "false", "select").replace("</select>", `<option value="">—</option><option>MASCULINO</option><option>FEMENINO</option></select>`)}
+      ${sexSelectField("fqx_sexo", "Sexo", getPatientSex(p, nd), false, true)}
       ${fmtF("fqx_cama", "Cama", p.cama)}
       ${fmtF("fqx_fn", "Fecha nacimiento", "")}
       <div class="fmt-field"><label>SV: TA</label><input id="fqx_ta" value=""/></div>
@@ -6701,7 +6744,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     </div>
     <div class="fmt-form-body">
       ${fmtF("fcq_nombre", "Nombre paciente", p.nombre, true)}
-      <div class="fmt-field"><label>Sexo</label><select id="fcq_sexo"><option>MASCULINO</option><option>FEMENINO</option></select></div>
+      ${sexSelectField("fcq_sexo", "Sexo", getPatientSex(p, nd), false, true)}
       ${fmtF("fcq_edad", "Edad", (p.edad || "") + " AÑOS")}
       ${fmtF("fcq_domicilio", "Domicilio", "", true)}
       ${fmtF("fcq_curp", "CURP", "")}
@@ -6957,7 +7000,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     <div class="fmt-form-body">
       ${fmtF("fnm_nombre", "Nombre paciente", p.nombre, true)}
       ${fmtF("fnm_edad", "Edad", (p.edad || ""))}
-      <div class="fmt-field"><label>Sexo</label><select id="fnm_sexo"><option>MASCULINO</option><option>FEMENINO</option></select></div>
+      ${sexSelectField("fnm_sexo", "Sexo", getPatientSex(p, nd), false, true)}
       ${fmtF("fnm_exp", "N° Expediente", p.exp)}
       ${fmtF("fnm_servicio", "Servicio/Área", p.esp || "CIRUGÍA GENERAL")}
       ${fmtF("fnm_fn", "Fecha nacimiento", "")}
@@ -7324,6 +7367,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const ad = _getAltaData(pk);
       const gi = getGuardInfo();
       const days = daysSince(p.ingreso);
+      const sexoAlta = normalizeSexValue(ad.sexo || getPatientSex(p, nd));
+      const edadAlta = toSafeString(ad.edad || p.edad);
 
       function mkRow(label, value) {
         return new TableRow({
@@ -7341,7 +7386,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const rows = [
         mkRow("FECHA", gi.fecha || ""),
         mkRow("PACIENTE", p.nombre || ""),
-        mkRow("EDAD", (p.edad || "") + " AÑOS"),
+        mkRow("EDAD", (edadAlta || "") + " AÑOS"),
+        mkRow("SEXO", sexoAlta || ""),
         mkRow("EXPEDIENTE", p.exp || ""),
         mkRow("SERVICIO", p.esp || "CIRUGÍA GENERAL"),
         mkRow("CAMA", p.cama || ""),
@@ -7378,6 +7424,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const now = new Date();
       const fechaStr = gi.fecha || now.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
       const horaStr = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + " HRS";
+      const sexoAlta = normalizeSexValue(ad.sexo || getPatientSex(p, nd));
+      const edadAlta = toSafeString(ad.edad || p.edad);
 
       function tr(lbl, val, bold) {
         const v = toSafeString(val).replace(/\n/g, "<br>");
@@ -7393,7 +7441,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const rows = [
         tr("FECHA DE ELABORACIÓN", fechaStr + "&nbsp;&nbsp;&nbsp;&nbsp;HORA: " + horaStr),
         tr("NOMBRE DEL PACIENTE", p.nombre, true),
-        tr("EDAD / SEXO / EXPEDIENTE", (p.edad || "") + " AÑOS / " + esc(p.sexo || "") + " / " + esc(p.exp || "")),
+        tr("EDAD / SEXO / EXPEDIENTE", (edadAlta || "") + " AÑOS / " + esc(sexoAlta || "") + " / " + esc(p.exp || "")),
         tr("SERVICIO / CAMA", "CIRUGÍA GENERAL / CAMA: " + esc(p.cama) + "&nbsp;&nbsp;&nbsp;AFILIACIÓN AL SEGURO POPULAR: NO"),
         tr("FECHA DE INGRESO / EGRESO", p.ingreso + "&nbsp;&nbsp;&nbsp;&nbsp;EGRESO: " + fechaEgresoStr + "&nbsp;&nbsp;&nbsp;DÍAS: " + days),
         `<tr><td colspan="2" style="padding:4px 8px;background:#001746;color:#fff;font-weight:700;font-size:10pt;font-family:Calibri,sans-serif">DIAGNÓSTICO DE INGRESO</td></tr>`,
@@ -7476,6 +7524,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       ["mf-app-modal", "mf-pa-modal", "mf-manejo-modal", "mf-sangrado-modal", "mf-drenajes-modal", "mf-pendientes-modal"].forEach(function (id) { var el = document.getElementById(id); if (el) el.value = ""; });
       document.getElementById("mf-esp").value = "CG";
       document.getElementById("mf-estado").value = "ESTABLE";
+      document.getElementById("mf-sexo").value = "";
       _fillDL();
       document.getElementById("patient-modal").style.display = "flex";
     }
@@ -7508,6 +7557,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("mf-estado").value = p.estado || "ESTABLE";
       document.getElementById("mf-dx").value = p.dx || "";
       var _nd_e = noteData[k] || defaultData();
+      document.getElementById("mf-sexo").value = getPatientSex(p, _nd_e);
       var _ae = document.getElementById("mf-app-modal"); if (_ae) _ae.value = _nd_e.app || "";
       var _pe = document.getElementById("mf-pa-modal"); if (_pe) _pe.value = _nd_e.pa || "";
       var _me = document.getElementById("mf-manejo-modal"); if (_me) _me.value = _nd_e.manejo || "";
@@ -7530,7 +7580,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
       var _ads_val = document.getElementById("mf-adscrito").value.trim() || document.getElementById("mf-adscrito-sel").value;
       var _res_val = document.getElementById("mf-residente").value.trim() || document.getElementById("mf-residente-sel").value;
+      const existingPatient = modalMode === "edit" ? patients.find(pt => pid(pt) === modalOrigKey) : null;
+      const sexo = normalizeSexValue(document.getElementById("mf-sexo").value);
       const p = {
+        ...(existingPatient || {}),
         cama, exp, nombre,
         edad: parseInt(document.getElementById("mf-edad").value) || "",
         esp: document.getElementById("mf-esp").value,
@@ -7538,7 +7591,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         residente: _res_val.toUpperCase(),
         ingreso: document.getElementById("mf-ingreso").value.trim(),
         estado: document.getElementById("mf-estado").value,
-        dx: document.getElementById("mf-dx").value.trim().toUpperCase()
+        dx: document.getElementById("mf-dx").value.trim().toUpperCase(),
+        sexo
       };
       var _modalExtra = {
         app: (document.getElementById("mf-app-modal") || {}).value || "",
@@ -7546,18 +7600,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         manejo: (document.getElementById("mf-manejo-modal") || {}).value || "",
         sangrado: (document.getElementById("mf-sangrado-modal") || {}).value || "",
         drenajes: (document.getElementById("mf-drenajes-modal") || {}).value || "",
-        pendientes: (document.getElementById("mf-pendientes-modal") || {}).value || ""
+        pendientes: (document.getElementById("mf-pendientes-modal") || {}).value || "",
+        sexo
       };
       if (modalMode === "add") {
         patients.push(p);
-        var _nd0 = defaultData();
-        if (_modalExtra.app) _nd0.app = _modalExtra.app;
-        if (_modalExtra.pa) _nd0.pa = _modalExtra.pa;
-        if (_modalExtra.manejo) _nd0.manejo = _modalExtra.manejo;
-        if (_modalExtra.sangrado) _nd0.sangrado = _modalExtra.sangrado;
-        if (_modalExtra.drenajes) _nd0.drenajes = _modalExtra.drenajes;
-        if (_modalExtra.pendientes) _nd0.pendientes = _modalExtra.pendientes;
-        noteData[pid(p)] = _nd0;
+        const newKey = pid(p);
+        noteData[newKey] = applyModalExtraToNote(defaultData(), _modalExtra);
+        saveNote(newKey, noteData[newKey]);
       } else {
         const newKey = pid(p);
         patients = patients.map(pt => pid(pt) === modalOrigKey ? p : pt);
@@ -7567,8 +7617,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           // Limpiar oldKey en localStorage y en KV remoto para evitar "ghost notes"
           localStorage.removeItem(NOTES_PREFIX + modalOrigKey);
           deleteNoteRemote(modalOrigKey);
-          saveNote(newKey, noteData[newKey]);
         }
+        noteData[newKey] = applyModalExtraToNote(noteData[newKey] || defaultData(), _modalExtra);
+        saveNote(newKey, noteData[newKey]);
       }
       savePts();
       buildEspFilters();
@@ -7689,7 +7740,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const ci = (n) => header.findIndex(h => h.includes(n));
           const iCama = ci("CAMA"), iExp = ci("EXPEDIENTE"), iNombre = ci("NOMBRE"), iEdad = ci("EDAD");
           const iDx = ci("DIAGNÓS"), iEsp = ci("ESPECIALIDAD"), iAds = ci("ADSCRITO"), iRes = ci("RESIDENTE");
-          const iIng = ci("INGRESO"), iEst = ci("ESTADO");
+          const iIng = ci("INGRESO"), iEst = ci("ESTADO"), iSexo = ci("SEXO");
 
           // ─── DETECT SECTION HEADERS ─────────────────────────────────────
           // Scan for section dividers: ALTAS, DEFUNCIONES, PROCEDIMIENTOS
@@ -7743,7 +7794,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               dx: iDx >= 0 ? String(r[iDx] || "").trim().toUpperCase() : "",
               esp, adscrito: iAds >= 0 ? String(r[iAds] || "").trim().toUpperCase() : "",
               residente: iRes >= 0 ? String(r[iRes] || "").trim().toUpperCase() : "",
-              ingreso, estado
+              ingreso, estado,
+              sexo: iSexo >= 0 ? normalizeSexValue(r[iSexo]) : ""
             };
 
             if (currentSection === "altas") altasFromExcel.push(pt);
@@ -7940,6 +7992,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function confirmImport() {
       if (!pendingImport) return;
       const { samePts, changedPts, newPts, missingPts, dispositions, procedimientosFromExcel } = pendingImport;
+      const existingByPid = new Map(patients.map(p => [pid(p), p]));
 
       // El nuevo censo Excel ES la fuente de verdad.
       // Construimos el nuevo array de patients desde cero.
@@ -7949,7 +8002,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // 1) Pacientes que siguen en la misma cama con el mismo expediente → actualizar datos censo, conservar notas
       samePts.forEach(p => {
         const k = pid(p);
-        nextPatients.push({ ...p });
+        const prev = existingByPid.get(k) || {};
+        nextPatients.push({
+          ...prev,
+          ...p,
+          sexo: normalizeSexValue(p.sexo || prev.sexo || ""),
+          _noEnCenso: false
+        });
         processedOldPids.add(k);
         // Limpiar bandera si la tenían
         if (noteData[k]) noteData[k]._noEnCenso = false;
