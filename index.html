@@ -4,6 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>Piso Libro — HGL Cirugía General</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a1628'/%3E%3Ctext x='32' y='41' font-size='26' text-anchor='middle' fill='white' font-family='Arial'%3EPL%3C/text%3E%3C/svg%3E" />
@@ -104,7 +106,10 @@
       padding: 5px 9px;
       border-radius: 5px;
       font-size: 12px;
-      font-family: var(--font)
+      font-family: var(--font);
+      touch-action: manipulation;
+      -webkit-user-select: text;
+      user-select: text
     }
 
     .header-input::placeholder {
@@ -420,7 +425,10 @@
       background: #fafbfc;
       resize: vertical;
       font-family: var(--font);
-      color: #1e293b
+      color: #1e293b;
+      touch-action: manipulation;
+      -webkit-user-select: text;
+      user-select: text
     }
 
     .field-ta:focus {
@@ -1244,7 +1252,10 @@
       font-size: 13px;
       font-family: var(--font);
       box-sizing: border-box;
-      outline: none
+      outline: none;
+      touch-action: manipulation;
+      -webkit-user-select: text;
+      user-select: text
     }
 
     .modal-input:focus {
@@ -2479,9 +2490,9 @@
         <h1>📋 Piso Libro</h1>
       </div>
       <div class="header-controls">
-        <input class="header-input" id="gi-fecha" placeholder="Fecha" style="width:105px" />
-        <input class="header-input" id="gi-entrega" placeholder="Entrega Dr." style="width:115px" />
-        <input class="header-input" id="gi-recibe" placeholder="Recibe Dr." style="width:115px" />
+        <input class="header-input" id="gi-fecha" placeholder="Fecha" inputmode="text" autocorrect="off" style="width:105px" />
+        <input class="header-input" id="gi-entrega" placeholder="Entrega Dr." inputmode="text" autocorrect="off" autocapitalize="words" style="width:115px" />
+        <input class="header-input" id="gi-recibe" placeholder="Recibe Dr." inputmode="text" autocorrect="off" autocapitalize="words" style="width:115px" />
         <button class="btn-green" onclick="exportToExcel()">📊 Exportar Excel</button>
         <button class="btn-blue" onclick="window.print()">🖨 Imprimir</button>
         <button class="btn-orange" onclick="resetCensoTotal()"
@@ -2557,31 +2568,43 @@
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:6px">
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Nombre completo *</label><input
             class="modal-input" id="mf-nombre" placeholder="APELLIDO APELLIDO NOMBRE"
+            inputmode="text" autocorrect="off" autocapitalize="characters"
             style="text-transform:uppercase" /></div>
         <div class="modal-field"><label>Edad</label><input class="modal-input" id="mf-edad" type="number"
+            inputmode="numeric"
             placeholder="Años" /></div>
         <div class="modal-field"><label>Expediente *</label><input class="modal-input" id="mf-exp"
+            inputmode="text" autocorrect="off" autocapitalize="none"
             placeholder="Ej: 26-03589" /></div>
         <div class="modal-field"><label>Cama *</label><input class="modal-input" id="mf-cama"
+            inputmode="text" autocorrect="off" autocapitalize="none"
             placeholder="Ej: 3-153, UCI 1" /></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Diagnóstico *</label><textarea
             class="modal-input" id="mf-dx" rows="3"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="DX principal + procedimientos + comorbilidades..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>APP (antecedentes
             patológicos)</label><textarea class="modal-input" id="mf-app-modal" rows="2"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="HTA, DM2, cardiopatía..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>PA (procedimiento actual /
             QX)</label><textarea class="modal-input" id="mf-pa-modal" rows="2"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="Procedimiento quirúrgico realizado..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Procedimiento / Manejo</label><textarea
             class="modal-input" id="mf-manejo-modal" rows="2"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="Plan de manejo, antibióticos, soluciones..."></textarea></div>
         <div class="modal-field"><label>Sangrado estimado</label><input class="modal-input" id="mf-sangrado-modal"
+            inputmode="text" autocorrect="off"
             placeholder="Ej: 200 mL" /></div>
         <div class="modal-field modal-span2" style="grid-column:span 2"><label>Drenajes</label><input
-            class="modal-input" id="mf-drenajes-modal" placeholder="Ej: Blake HD 100cc serosanguinolento" /></div>
+            class="modal-input" id="mf-drenajes-modal"
+            inputmode="text" autocorrect="off" autocapitalize="sentences"
+            placeholder="Ej: Blake HD 100cc serosanguinolento" /></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Pendientes / Plan</label><textarea
             class="modal-input" id="mf-pendientes-modal" rows="2"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="Pendientes, estudios, interconsultas..."></textarea></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
@@ -5066,6 +5089,7 @@
           <div class="field-label">📋 Pendientes MIPs</div>
           <textarea class="field-ta" rows="3"
             data-key="${k}" data-ckfield="pendientes_mips"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             oninput="liveCkText(this)"
             onchange="updateCkText(this.dataset.key,'pendientes_mips',this.value)"
             placeholder="Tareas pendientes para MIPs...">${esc((nd.checklist && nd.checklist.pendientes_mips) || "")}</textarea>
@@ -5074,6 +5098,7 @@
           <div class="field-label">📋 Pendientes R1</div>
           <textarea class="field-ta" rows="3"
             data-key="${k}" data-ckfield="pendientes_r1"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             oninput="liveCkText(this)"
             onchange="updateCkText(this.dataset.key,'pendientes_r1',this.value)"
             placeholder="Tareas pendientes para R1...">${esc((nd.checklist && nd.checklist.pendientes_r1) || "")}</textarea>
@@ -5142,6 +5167,7 @@
         "<div class='field-label'>" + label + "</div>" +
         "<textarea class='field-ta' rows='" + rows + "' " +
         "data-key='" + k + "' data-field='" + field + "' " +
+        "inputmode='text' autocorrect='off' autocapitalize='sentences' spellcheck='false' " +
         "oninput=\"liveUpdate(this)\" onchange=\"updateField(this.dataset.key,this.dataset.field,this.value)\">" + safe + "</textarea>" +
         "</div>";
     }
@@ -6087,6 +6113,23 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(k, nd);
       if (_dirtyFields[k]) _dirtyFields[k].delete("ck_" + field);
     }
+
+    // ─── APPLE PENCIL / SCRIBBLE: compositionend handler ──────────────────────
+    // iOS Scribble usa la API de composición para insertar texto reconocido.
+    // El evento 'input' normalmente se dispara después, pero este handler
+    // garantiza que el guardado se active incluso en edge cases de iPadOS.
+    document.addEventListener('compositionend', function(e) {
+      var el = e.target;
+      if (!el) return;
+      if (el.matches && el.matches('.field-ta[data-key][data-field]')) {
+        liveUpdate(el);
+      } else if (el.matches && el.matches('.field-ta[data-key][data-ckfield]')) {
+        liveCkText(el);
+      } else if (el.matches && el.matches('.field-ta[data-key][data-labkey]')) {
+        liveLabUpdate(el);
+      }
+    });
+
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
