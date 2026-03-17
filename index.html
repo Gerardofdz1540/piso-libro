@@ -3285,7 +3285,7 @@
       "amilasa", "lipasa",
       "ph", "pco2", "po2", "hco3", "be", "sato2",
       "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
-    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
+    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias", "micro_muestra", "micro_comentarios"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
@@ -5557,6 +5557,90 @@
     ];
     // Flat list for export / compat
     const LAB_FIELDS = LAB_GROUPS.flatMap(g => g.fields);
+    const LAB_EXTRACTION_HINTS = {
+      hb: "hemoglobina",
+      leucos: "leucocitos/WBC",
+      plaq: "plaquetas",
+      cr: "creatinina",
+      urea: "BUN/urea",
+      glu: "glucosa",
+      na: "sodio",
+      k: "potasio",
+      alb: "albumina",
+      pcr: "proteina C reactiva",
+      pct: "procalcitonina",
+      mg: "magnesio",
+      ca: "calcio",
+      p: "fosforo",
+      cl: "cloro",
+      tp: "tiempo de protrombina",
+      ttp: "tiempo de tromboplastina parcial",
+      inr: "INR",
+      fibrinogeno: "fibrinogeno",
+      dimero_d: "dimero D/D-dimer",
+      ast: "TGO/AST",
+      alt: "TGP/ALT",
+      bt: "bilirrubina total",
+      bd: "bilirrubina directa",
+      ggt: "gamma GT",
+      fa: "fosfatasa alcalina/ALP/FAL",
+      amilasa: "amilasa",
+      lipasa: "lipasa",
+      ph: "pH arterial/venoso",
+      pco2: "presion CO2",
+      po2: "presion O2",
+      hco3: "bicarbonato",
+      be: "exceso de base",
+      sato2: "saturacion O2",
+      ego_color: "color de orina",
+      ego_asp: "aspecto/turbidez de orina",
+      ego_dens: "densidad de orina",
+      ego_ph: "pH urinario",
+      ego_leuco: "esterasa leucocitaria/leucocitos en orina",
+      ego_nitri: "nitritos",
+      ego_bact: "bacterias",
+      ego_prot: "proteinas/proteinuria",
+      ego_glu: "glucosuria",
+      ego_hem: "hematies/eritrocitos en orina"
+    };
+    const CULTIVO_EXTRACTION_TEMPLATE = JSON.stringify({
+      tipo_lab: "cultivo",
+      tipo_cultivo: "hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo",
+      cultivo_organismo: "organismo encontrado o Negativo o Sin crecimiento",
+      cultivo_sensibilidades: "antibioticos sensibles separados por coma o vacio si no aplica",
+      cultivo_resistencias: "antibioticos resistentes separados por coma o vacio si no aplica",
+      micro_muestra: "",
+      micro_comentarios: "",
+      paciente: "",
+      fecha_labs: ""
+    });
+    function buildClinicalLabsExtractionTemplate(includeTipoLab) {
+      const tmpl = {};
+      if (includeTipoLab) tmpl.tipo_lab = "labs";
+      getLabKeys().forEach(k => { tmpl[k] = ""; });
+      tmpl.paciente = "";
+      tmpl.fecha_labs = "";
+      return JSON.stringify(tmpl);
+    }
+    function buildClinicalLabsMappingText() {
+      return getLabKeys().map(k => {
+        const fallback = (LAB_FIELDS.find(lf => lf.key === k)?.label || k).toLowerCase();
+        return k + "=" + (LAB_EXTRACTION_HINTS[k] || fallback);
+      }).join(", ");
+    }
+    function buildSingleLabExtractionPrompt(isImage) {
+      return "Extrae TODOS los valores de laboratorio de este " + (isImage ? "resultado (imagen)" : "PDF") + ". Responde SOLO con JSON valido sin markdown ni texto adicional:\n" +
+        buildClinicalLabsExtractionTemplate(false) + "\n" +
+        "Reglas: valores numericos sin unidades, texto tal como aparece para EGO. Fecha en YYYY-MM-DD. Paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
+        "Mapeo: " + buildClinicalLabsMappingText() + ".";
+    }
+    function buildBulkLabExtractionPrompt() {
+      return 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\n' +
+        "Si es (A) labs clinicos, responde SOLO con este JSON:\n" + buildClinicalLabsExtractionTemplate(true) + "\n\n" +
+        "Si es (B) cultivo microbiologico, responde SOLO con este JSON:\n" + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
+        'Reglas: valores numericos sin unidades para quimica/biometria/gasometria; en EGO y microbiologia se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "". ' +
+        "Mapeo: " + buildClinicalLabsMappingText() + ".";
+    }
 
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
     const LAB_QUICK = {
@@ -6491,20 +6575,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               role: "user", content: [
                 contentBlock,
                 {
-                  type: "text", text: "Extrae TODOS los valores de laboratorio de este " + (isImage ? "resultado (imagen)" : "PDF") + ". Responde SOLO con JSON válido sin markdown ni texto adicional:\n" +
-                    "{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\"," +
-                    "\"mg\":\"\",\"ca\":\"\",\"p\":\"\",\"cl\":\"\"," +
-                    "\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\"," +
-                    "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\",\"fa\":\"\"," +
-                    "\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\"," +
-                    "\"ego_color\":\"\",\"ego_asp\":\"\",\"ego_dens\":\"\",\"ego_ph\":\"\",\"ego_leuco\":\"\",\"ego_nitri\":\"\",\"ego_bact\":\"\",\"ego_prot\":\"\",\"ego_glu\":\"\",\"ego_hem\":\"\"," +
-                    "\"paciente\":\"\",\"fecha_labs\":\"\"}\n" +
-                    "Reglas: valores numéricos sin unidades, texto tal como aparece para EGO. Fecha en YYYY-MM-DD. Paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
-                    "Mapeo: Hb=hemoglobina, leucos=leucocitos/WBC, plaq=plaquetas, cr=creatinina, glu=glucosa, na=sodio, k=potasio, alb=albumina, pcr=proteína C reactiva, pct=procalcitonina, inr=INR, urea=BUN/urea, " +
-                    "mg=magnesio, ca=calcio, p=fósforo, cl=cloro, tp=tiempo de protrombina, ttp=tiempo de tromboplastina parcial, fibrinogeno=fibrinógeno, " +
-                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, fa=fosfatasa alcalina/ALP/FAL, " +
-                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2, " +
-                    "ego_color=color orina, ego_asp=aspecto/turbidez orina, ego_dens=densidad orina, ego_ph=pH urinario, ego_leuco=esterasa leucocitaria/leucocitos orina, ego_nitri=nitritos, ego_bact=bacterias, ego_prot=proteínas/proteinuria, ego_glu=glucosuria, ego_hem=hematíes/eritrocitos orina."
+                  type: "text", text: buildSingleLabExtractionPrompt(isImage)
                 }
               ]
             }]
@@ -9006,7 +9077,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           r.onerror = function(){ resolve({ file: file.name, extracted: null, error: "Error leyendo archivo" }); };
           r.onload = function() {
             var base64 = r.result.split(",")[1];
-            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","fa":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","ego_color":"","ego_asp":"","ego_dens":"","ego_ph":"","ego_leuco":"","ego_nitri":"","ego_bact":"","ego_prot":"","ego_glu":"","ego_hem":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","micro_muestra":"","micro_comentarios":"","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades para química/biometría/gasometría; en EGO y microbiología se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
+            var prompt = buildBulkLabExtractionPrompt();
             fetch(proxyUrl + "/api/ai", {
               method: "POST",
               headers: apiHeaders(),
