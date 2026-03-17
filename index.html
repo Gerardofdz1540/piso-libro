@@ -2195,6 +2195,272 @@
       text-transform: uppercase;
       letter-spacing: .5px
     }
+    /* ── BODY DIAGRAM ─────────────────────────────────────────────────────── */
+    .bd-section {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px
+    }
+
+    .bd-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center
+    }
+
+    .bd-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: #64748b;
+      text-align: center;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: .5px
+    }
+
+    .bd-container {
+      position: relative;
+      width: 140px;
+      height: 220px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden
+    }
+
+    .bd-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none
+    }
+
+    .bd-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      touch-action: none;
+      cursor: crosshair;
+      width: 140px;
+      height: 220px
+    }
+
+    .bd-tools {
+      display: flex;
+      gap: 4px;
+      margin-top: 5px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center
+    }
+
+    .bd-color-btn {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      cursor: pointer;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.2)
+    }
+
+    .bd-clear-btn {
+      background: rgba(0,0,0,.08);
+      border: 1px solid #e2e8f0;
+      color: #64748b;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer
+    }
+
+    .bd-size-slider {
+      width: 50px;
+      accent-color: #64748b
+    }
+
+    /* ── ALTAS TAB ────────────────────────────────────────────────────────── */
+    .altas-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 16px
+    }
+
+    .altas-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 8px
+    }
+
+    .altas-header h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0a1628
+    }
+
+    .alta-form {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06)
+    }
+
+    .alta-form-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1a3a6b;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: .5px
+    }
+
+    .alta-form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px
+    }
+
+    .alta-form-grid .span2 {
+      grid-column: span 2
+    }
+
+    .alta-form-grid .span3 {
+      grid-column: span 3
+    }
+
+    .alta-input {
+      width: 100%;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: var(--font);
+      color: #1e293b;
+      background: #f8fafc
+    }
+
+    .alta-input:focus {
+      outline: none;
+      border-color: #4fc3f7
+    }
+
+    .alta-input-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      margin-bottom: 3px
+    }
+
+    .alta-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #27ae60;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.04)
+    }
+
+    .alta-card.completado {
+      opacity: .55;
+      border-left-color: #94a3b8
+    }
+
+    .alta-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 6px
+    }
+
+    .alta-cama-badge {
+      background: #27ae60;
+      color: #fff;
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 800
+    }
+
+    .alta-nombre {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0f172a;
+      flex: 1
+    }
+
+    .alta-fecha {
+      font-size: 10px;
+      color: #94a3b8
+    }
+
+    .alta-indicaciones {
+      font-size: 12px;
+      color: #1e293b;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      white-space: pre-wrap;
+      margin-bottom: 6px
+    }
+
+    .alta-notas {
+      font-size: 11px;
+      color: #64748b;
+      white-space: pre-wrap
+    }
+
+    .alta-actions {
+      display: flex;
+      gap: 5px;
+      margin-top: 6px
+    }
+
+    .alta-btn {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 5px;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      background: #f8fafc;
+      color: #334155;
+      font-family: var(--font)
+    }
+
+    .alta-btn.done {
+      background: #dcfce7;
+      border-color: #86efac;
+      color: #166534
+    }
+
+    .alta-btn.del {
+      background: #fef2f2;
+      border-color: #fca5a5;
+      color: #991b1b
+    }
+
+    /* ── ENTREGA FIELD HIGHLIGHT ─────────────────────────────────────────── */
+    .entrega-row .field-ta {
+      background: #fffbeb;
+      border-color: #fcd34d
+    }
+
+    .entrega-row .field-label {
+      color: #b45309
+    }
+
   </style>
 </head>
 
@@ -2245,6 +2511,7 @@
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
 
       <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
+      <button class="tab" onclick="setView('altas',this)">✅ Altas</button>
     </div>
   </div>
   </div>
@@ -2277,6 +2544,7 @@
     <div id="view-print" style="display:none"></div>
 
     <div id="view-noOlvidar" style="display:none"></div>
+    <div id="view-altas" style="display:none"></div>
   </div>
 
   <!-- PATIENT MODAL -->
@@ -2964,7 +3232,8 @@
       return {
         app: "", pa: "", drenajes: "", qx: "", manejo: "", sangrado: "",
         imagen: "", imagen_file: "", imagen_file_type: "", imagen_file_name: "", imagen_link: "",
-        sv: "", balance: "", pendientes: "", misc: "",
+        sv: "", balance: "", pendientes: "", misc: "", entrega: "",
+        body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
         checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", pendientes_mips: "", pendientes_r1: "" }
@@ -3068,6 +3337,9 @@
       if (nd.checklist.npt_fecha === undefined) nd.checklist.npt_fecha = "";
       if (nd.checklist.pendientes_mips === undefined) nd.checklist.pendientes_mips = "";
       if (nd.checklist.pendientes_r1 === undefined) nd.checklist.pendientes_r1 = "";
+      if (nd.entrega === undefined) nd.entrega = "";
+      if (nd.body_diagram_ant === undefined) nd.body_diagram_ant = "";
+      if (nd.body_diagram_post === undefined) nd.body_diagram_post = "";
       if (!Array.isArray(nd.imagenHistory)) {
         nd.imagenHistory = [];
         if (nd.imagen_file || nd.imagen_link || nd.imagen) {
@@ -4188,15 +4460,15 @@
       });
       const _cb = document.getElementById("count-badge");
       if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
-      ["piso", "census", "print", "noOlvidar"].forEach(v => {
+      ["piso", "census", "print", "noOlvidar", "altas"].forEach(v => {
         const _ve = document.getElementById("view-" + v);
         if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
       if (currentView === "piso") renderPiso(filtered);
       if (currentView === "census") renderCensus(filtered);
       if (currentView === "print") renderPrint(filtered);
-
       if (currentView === "noOlvidar") renderNoOlvidar();
+      if (currentView === "altas") renderAltas();
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -4709,7 +4981,9 @@
             placeholder="Tareas pendientes para R1...">${esc((nd.checklist && nd.checklist.pendientes_r1) || "")}</textarea>
         </div>
       </div>
+      <div class="entrega-row" style="margin-top:10px">${fieldRow("📋 Entrega de guardia", nd.entrega, k, "entrega", 3)}</div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
+      ${renderBodyDiagram(nd, k)}
       ${renderLabSection(nd, k)}
       <div class="card-notes-bar">
         <span class="card-notes-label">📝 Notas:</span>
@@ -4759,6 +5033,7 @@
     </div>
     <div class="simple-body">
       ${fieldRow("⚠️ Pendiente", nd.pendientes, k, "pendientes", 2)}
+      <div class="entrega-row">${fieldRow("📋 Entrega", nd.entrega, k, "entrega", 2)}</div>
     </div>
   </div>`;
     }
@@ -4771,6 +5046,75 @@
         "data-key='" + k + "' data-field='" + field + "' " +
         "oninput=\"liveUpdate(this)\" onchange=\"updateField(this.dataset.key,this.dataset.field,this.value)\">" + safe + "</textarea>" +
         "</div>";
+    }
+
+    // ─── BODY DIAGRAM ──────────────────────────────────────────────────────────────
+    function renderBodyDiagram(nd, k) {
+      const ek = k.replace(/[^a-zA-Z0-9_-]/g, '_');
+      // Anterior SVG: torso view (thorax → pelvis)
+      const antSvg = `<svg class="bd-svg" viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 35,18 C 22,10 12,22 10,38 L 9,85 C 7,108 9,145 14,175 L 22,200 Q 70,215 118,200 L 126,175 C 131,145 133,108 131,85 L 130,38 C 128,22 118,10 105,18 C 95,6 80,2 70,2 C 60,2 45,6 35,18 Z" fill="none" stroke="#94a3b8" stroke-width="1.8"/>
+        <path d="M 32,78 Q 51,93 70,97 Q 89,93 108,78" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="70" y1="2" x2="70" y2="215" stroke="#e2e8f0" stroke-width="0.8" stroke-dasharray="5,3"/>
+        <polygon points="70,74 75,80 70,85 65,80" fill="#94a3b8"/>
+        <circle cx="70" cy="128" r="4.5" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <line x1="14" y1="128" x2="126" y2="128" stroke="#e2e8f0" stroke-width="0.7" stroke-dasharray="4,3"/>
+        <path d="M 46,194 Q 70,205 94,194" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2"/>
+        <text x="38" y="114" font-size="7" fill="#cbd5e1" text-anchor="middle">CSD</text>
+        <text x="102" y="114" font-size="7" fill="#cbd5e1" text-anchor="middle">CSI</text>
+        <text x="38" y="150" font-size="7" fill="#cbd5e1" text-anchor="middle">CID</text>
+        <text x="102" y="150" font-size="7" fill="#cbd5e1" text-anchor="middle">CII</text>
+      </svg>`;
+      // Posterior SVG: back view
+      const postSvg = `<svg class="bd-svg" viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 35,18 C 22,10 12,22 10,38 L 9,85 C 7,108 9,145 14,175 L 22,200 Q 70,215 118,200 L 126,175 C 131,145 133,108 131,85 L 130,38 C 128,22 118,10 105,18 C 95,6 80,2 70,2 C 60,2 45,6 35,18 Z" fill="none" stroke="#94a3b8" stroke-width="1.8"/>
+        <line x1="70" y1="2" x2="70" y2="215" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,2"/>
+        <ellipse cx="44" cy="52" rx="19" ry="23" fill="none" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,2"/>
+        <ellipse cx="96" cy="52" rx="19" ry="23" fill="none" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,2"/>
+        <ellipse cx="38" cy="115" rx="13" ry="19" fill="none" stroke="#dbeafe" stroke-width="1" stroke-dasharray="3,2"/>
+        <ellipse cx="102" cy="115" rx="13" ry="19" fill="none" stroke="#dbeafe" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="14" y1="128" x2="126" y2="128" stroke="#e2e8f0" stroke-width="0.7" stroke-dasharray="4,3"/>
+        <text x="38" y="101" font-size="7" fill="#cbd5e1" text-anchor="middle">Rñ D</text>
+        <text x="102" y="101" font-size="7" fill="#cbd5e1" text-anchor="middle">Rñ I</text>
+        <text x="44" y="33" font-size="7" fill="#cbd5e1" text-anchor="middle">Esc D</text>
+        <text x="96" y="33" font-size="7" fill="#cbd5e1" text-anchor="middle">Esc I</text>
+      </svg>`;
+
+      function sideHtml(side, svgHtml) {
+        const id = (side === 'ant' ? 'bdca-' : 'bdcp-') + ek;
+        const label = side === 'ant' ? 'ANTERIOR' : 'POSTERIOR';
+        return `<div class="bd-wrap">
+          <div class="bd-label">${label}</div>
+          <div class="bd-container">
+            ${svgHtml}
+            <canvas id="${id}" class="bd-canvas" width="140" height="220"
+              data-patient-key="${k}" data-side="${side}"
+              onpointerdown="bdStartDraw(event,'${k}','${side}')"
+              onpointermove="bdDraw(event,'${k}','${side}')"
+              onpointerup="bdEndDraw(event,'${k}','${side}')"
+              onpointerleave="bdEndDraw(event,'${k}','${side}')"></canvas>
+          </div>
+          <div class="bd-tools">
+            <button class="bd-color-btn" style="background:#e74c3c" onclick="bdSetColor('${k}','${side}','#e74c3c')" title="Rojo"></button>
+            <button class="bd-color-btn" style="background:#3b82f6" onclick="bdSetColor('${k}','${side}','#3b82f6')" title="Azul"></button>
+            <button class="bd-color-btn" style="background:#22c55e" onclick="bdSetColor('${k}','${side}','#22c55e')" title="Verde"></button>
+            <button class="bd-color-btn" style="background:#f59e0b" onclick="bdSetColor('${k}','${side}','#f59e0b')" title="Amarillo"></button>
+            <button class="bd-color-btn" style="background:#1e293b" onclick="bdSetColor('${k}','${side}','#1e293b')" title="Negro"></button>
+            <button class="bd-color-btn" style="background:#fff;box-shadow:0 0 0 1px #94a3b8" onclick="bdSetEraser('${k}','${side}')" title="Borrador">◌</button>
+            <input class="bd-size-slider" type="range" min="1" max="10" value="3" step="0.5"
+              onchange="bdSetSize('${k}','${side}',this.value)" title="Grosor">
+            <button class="bd-clear-btn" onclick="bdClear('${k}','${side}')">🗑</button>
+          </div>
+        </div>`;
+      }
+
+      return `<div class="bd-section">
+        <div class="field-label">🫁 Diagrama de drenajes / localización</div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px">
+          ${sideHtml('ant', antSvg)}
+          ${sideHtml('post', postSvg)}
+        </div>
+      </div>`;
     }
 
     // ─── IMAGEN FIELD (history) ──────────────────────────────────────────────────────
@@ -6364,6 +6708,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           <div class="eg-r2">${ef("💧 Drenajes", nd.drenajes)}${ef("💉 NPT", nptEntrega)}</div>
           <div class="eg-r3">${ef("🩸Sangr", nd.sangrado)}${ef("⚖️Bal", nd.balance)}${ef("🍽 Dieta", cl.dieta || "")}</div>
           ${efh("📌 PLAN/PEND", nd.pendientes)}
+          ${nd.entrega ? `<div class="eg-f" style="background:#fffbeb;border-left:3px solid #f59e0b;padding:3px 6px;border-radius:0 4px 4px 0;margin:4px 0"><span class="eg-fl" style="color:#b45309">📋 ENTREGA</span><span class="eg-fv" style="color:#92400e;font-weight:600">${esc(String(nd.entrega))}</span></div>` : ''}
           ${labHtml}
           ${(function () {
               const tags = [];
@@ -6438,6 +6783,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       </div>
     </div>
     ${sectionsHtml}
+    ${(function() {
+      const altasPendientes = lsGetAltas().filter(function(a){ return !a.completado; });
+      if (!altasPendientes.length) return '';
+      const altasCards = altasPendientes.map(function(a) {
+        return `<div class="eg-c" style="border-left:4px solid #27ae60">
+          <div class="eg-ct"><div class="eg-ci">
+            <span class="eg-cama" style="background:#27ae60">🛏 ${esc(a.cama || '—')}</span>
+          </div><div class="eg-cp">
+            <b class="eg-nom">${esc(a.nombre || 'Sin nombre')}</b>
+          </div></div>
+          <div class="eg-cb">
+            ${a.indicaciones ? `<div class="eg-f"><span class="eg-fl">Indicaciones</span><span class="eg-fv" style="white-space:pre-wrap">${esc(a.indicaciones)}</span></div>` : ''}
+            ${a.notas ? `<div class="eg-f"><span class="eg-fl">Notas</span><span class="eg-fv">${esc(a.notas)}</span></div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+      return `<div class="eg-sec"><div class="eg-sh" style="background:#166534"><span>✅ ALTAS PROGRAMADAS</span><span class="eg-sc">${altasPendientes.length}</span></div><div class="eg-sg">${altasCards}</div></div>`;
+    })()}
   </div>`;
     }
 
@@ -8784,7 +9147,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       }
 
       // 1–5 — cambiar de tab
-      const tabMap = { "1": "piso", "2": "census", "3": "print", "4": "noOlvidar" };
+      const tabMap = { "1": "piso", "2": "census", "3": "print", "4": "noOlvidar", "5": "altas" };
       if (tabMap[e.key]) {
         e.preventDefault();
         const tabs = document.querySelectorAll(".tab");
@@ -8806,12 +9169,304 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       const pill = document.getElementById("proxy-pill");
       if (!pill) return;
       const hint = document.createElement("span");
-      hint.title = "Atajos: / Buscar · N Nuevo · 1-5 Tabs · Esc Cerrar · P Imprimir";
+      hint.title = "Atajos: / Buscar · N Nuevo · 1-5 Tabs · Esc Cerrar · P Imprimir · 5=Altas";
       hint.textContent = "⌨";
       hint.style.cssText = "margin-left:4px;cursor:help;opacity:.6;font-size:13px";
       pill.parentNode.insertBefore(hint, pill.nextSibling);
     })();
 
+    // ─── BODY DIAGRAM DRAWING ENGINE ─────────────────────────────────────────────────
+    const _bdPen = {};   // { [k|side]: { drawing, color, size, eraser } }
+    const _bdLast = {};  // { [k|side]: { x, y } }
+
+    function _bdKey(k, side) { return k + '|' + side; }
+
+    function bdGetCanvas(k, side) {
+      const ek = k.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const id = (side === 'ant' ? 'bdca-' : 'bdcp-') + ek;
+      return document.getElementById(id);
+    }
+
+    function bdInitCanvas(k) {
+      ['ant', 'post'].forEach(function(side) {
+        const canvas = bdGetCanvas(k, side);
+        if (!canvas) return;
+        const bk = _bdKey(k, side);
+        if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: 3, eraser: false };
+        const nd = noteData[k] || defaultData();
+        const savedData = side === 'ant' ? nd.body_diagram_ant : nd.body_diagram_post;
+        if (savedData) {
+          const img = new Image();
+          img.onload = function() {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+          };
+          img.src = savedData;
+        }
+      });
+    }
+
+    function bdStartDraw(event, k, side) {
+      event.preventDefault();
+      const canvas = bdGetCanvas(k, side);
+      if (!canvas) return;
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: 3, eraser: false };
+      _bdPen[bk].drawing = true;
+      try { canvas.setPointerCapture(event.pointerId); } catch(e) {}
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (event.clientX - rect.left) * scaleX;
+      const y = (event.clientY - rect.top) * scaleY;
+      _bdLast[bk] = { x, y };
+      const ctx = canvas.getContext('2d');
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+
+    function bdDraw(event, k, side) {
+      event.preventDefault();
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk] || !_bdPen[bk].drawing) return;
+      const canvas = bdGetCanvas(k, side);
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (event.clientX - rect.left) * scaleX;
+      const y = (event.clientY - rect.top) * scaleY;
+      const ctx = canvas.getContext('2d');
+      const pen = _bdPen[bk];
+      if (pen.eraser) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(x, y, pen.size * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(_bdLast[bk].x, _bdLast[bk].y);
+        ctx.lineTo(x, y);
+        const pressure = (event.pressure && event.pressure > 0) ? event.pressure : 0.6;
+        ctx.lineWidth = pen.size * (0.4 + pressure * 0.8);
+        ctx.strokeStyle = pen.color;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
+      _bdLast[bk] = { x, y };
+    }
+
+    function bdEndDraw(event, k, side) {
+      event.preventDefault();
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk] || !_bdPen[bk].drawing) return;
+      _bdPen[bk].drawing = false;
+      const canvas = bdGetCanvas(k, side);
+      if (!canvas) return;
+      // Save drawing to noteData
+      const dataUrl = canvas.toDataURL('image/png');
+      const nd = noteData[k] || defaultData();
+      if (side === 'ant') nd.body_diagram_ant = dataUrl;
+      else nd.body_diagram_post = dataUrl;
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
+    function bdClear(k, side) {
+      const canvas = bdGetCanvas(k, side);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const nd = noteData[k] || defaultData();
+      if (side === 'ant') nd.body_diagram_ant = '';
+      else nd.body_diagram_post = '';
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
+    function bdSetColor(k, side, color) {
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: color, size: 3, eraser: false };
+      else { _bdPen[bk].color = color; _bdPen[bk].eraser = false; }
+    }
+
+    function bdSetEraser(k, side) {
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: 3, eraser: true };
+      else _bdPen[bk].eraser = true;
+    }
+
+    function bdSetSize(k, side, size) {
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: parseFloat(size), eraser: false };
+      else _bdPen[bk].size = parseFloat(size);
+    }
+
+    // Auto-init canvases when they appear in DOM (MutationObserver)
+    (function() {
+      const mainEl = document.getElementById('main');
+      if (!mainEl) return;
+      const obs = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          m.addedNodes.forEach(function(node) {
+            if (!node.querySelectorAll) return;
+            node.querySelectorAll('canvas.bd-canvas').forEach(function(canvas) {
+              const k = canvas.dataset.patientKey;
+              const side = canvas.dataset.side;
+              if (!k || !side) return;
+              const bk = _bdKey(k, side);
+              if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: 3, eraser: false };
+              const nd = noteData[k] || defaultData();
+              const savedData = side === 'ant' ? nd.body_diagram_ant : nd.body_diagram_post;
+              if (savedData) {
+                const img = new Image();
+                img.onload = function() {
+                  const ctx = canvas.getContext('2d');
+                  ctx.clearRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(img, 0, 0);
+                };
+                img.src = savedData;
+              }
+            });
+          });
+        });
+      });
+      obs.observe(mainEl, { childList: true, subtree: true });
+    })();
+
+    // ─── ALTAS ───────────────────────────────────────────────────────────────────────
+    const ALTAS_KEY = 'pl_altas_v2';
+
+    function lsGetAltas() {
+      try { return JSON.parse(localStorage.getItem(ALTAS_KEY) || '[]'); }
+      catch(_) { return []; }
+    }
+
+    function lsSaveAltas(altas) {
+      try { localStorage.setItem(ALTAS_KEY, JSON.stringify(altas)); } catch(e) { safeLog('lsSaveAltas:', e); }
+    }
+
+    function altasNextId(altas) {
+      return altas.length ? Math.max(...altas.map(function(a){ return a.id || 0; })) + 1 : 1;
+    }
+
+    function addAlta() {
+      const cama = (document.getElementById('af-cama') || {}).value || '';
+      const nombre = (document.getElementById('af-nombre') || {}).value || '';
+      const indicaciones = (document.getElementById('af-indicaciones') || {}).value || '';
+      const notas = (document.getElementById('af-notas') || {}).value || '';
+      if (!cama.trim() && !nombre.trim()) { alert('Ingresa al menos la cama o el nombre del paciente.'); return; }
+      const altas = lsGetAltas();
+      altas.unshift({ id: altasNextId(altas), cama: cama.trim(), nombre: nombre.trim().toUpperCase(), indicaciones: indicaciones.trim(), notas: notas.trim(), fecha: todayStr(), completado: false });
+      lsSaveAltas(altas);
+      ['af-cama','af-nombre','af-indicaciones','af-notas'].forEach(function(id) {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
+      renderAltas();
+    }
+
+    function toggleAltaCompleto(id) {
+      const altas = lsGetAltas();
+      const a = altas.find(function(x){ return x.id === id; });
+      if (a) a.completado = !a.completado;
+      lsSaveAltas(altas);
+      renderAltas();
+    }
+
+    function deleteAlta(id) {
+      if (!confirm('¿Eliminar esta alta?')) return;
+      const altas = lsGetAltas().filter(function(a){ return a.id !== id; });
+      lsSaveAltas(altas);
+      renderAltas();
+    }
+
+    function saveAltaField(id, field, value) {
+      const altas = lsGetAltas();
+      const a = altas.find(function(x){ return x.id === id; });
+      if (a) a[field] = value;
+      lsSaveAltas(altas);
+    }
+
+    function renderAltas() {
+      const altas = lsGetAltas();
+      const pending = altas.filter(function(a){ return !a.completado; });
+      const done = altas.filter(function(a){ return a.completado; });
+
+      function altaCard(a) {
+        return `<div class="alta-card${a.completado ? ' completado' : ''}" id="alta-card-${a.id}">
+          <div class="alta-card-header">
+            <span class="alta-cama-badge" style="${a.completado ? 'background:#94a3b8' : ''}">🛏 ${esc(a.cama || '—')}</span>
+            <span class="alta-nombre">${esc(a.nombre || 'Sin nombre')}</span>
+            <span class="alta-fecha">${esc(a.fecha)}</span>
+          </div>
+          ${a.indicaciones ? `<div class="alta-indicaciones"><b>📋 Indicaciones:</b>\n${esc(a.indicaciones)}</div>` : ''}
+          ${a.notas ? `<div class="alta-notas">💬 ${esc(a.notas)}</div>` : ''}
+          <div class="alta-actions">
+            <button class="alta-btn done" onclick="toggleAltaCompleto(${a.id})">${a.completado ? '↩ Reactivar' : '✅ Alta dada'}</button>
+            <button class="alta-btn" onclick="openEditAltaModal(${a.id})">✏️ Editar</button>
+            <button class="alta-btn del" onclick="deleteAlta(${a.id})">🗑 Eliminar</button>
+          </div>
+        </div>`;
+      }
+
+      const container = document.getElementById('view-altas');
+      if (!container) return;
+      container.innerHTML = `<div class="altas-wrap">
+        <div class="altas-header">
+          <h2>✅ ALTAS — Pacientes a dar de alta</h2>
+          <span style="font-size:12px;color:#64748b">${pending.length} pendiente${pending.length !== 1 ? 's' : ''} · ${done.length} completada${done.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="alta-form">
+          <div class="alta-form-title">➕ Agregar alta programada</div>
+          <div class="alta-form-grid">
+            <div>
+              <div class="alta-input-label">Cama *</div>
+              <input class="alta-input" id="af-cama" placeholder="Ej: 3-153" />
+            </div>
+            <div class="span2">
+              <div class="alta-input-label">Nombre del paciente</div>
+              <input class="alta-input" id="af-nombre" placeholder="Apellido Apellido Nombre" style="text-transform:uppercase" />
+            </div>
+            <div class="span3">
+              <div class="alta-input-label">Indicaciones para el alta</div>
+              <textarea class="alta-input" id="af-indicaciones" rows="4" placeholder="Medicamentos, reposo, dieta, citas, restricciones..."></textarea>
+            </div>
+            <div class="span3">
+              <div class="alta-input-label">Notas adicionales</div>
+              <input class="alta-input" id="af-notas" placeholder="Información extra (familiar responsable, transporte, etc.)" />
+            </div>
+          </div>
+          <button class="btn-green" style="width:100%;padding:10px;font-size:13px" onclick="addAlta()">➕ Agregar alta</button>
+        </div>
+        ${pending.length === 0 && done.length === 0 ? `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No hay altas registradas. Agrega la primera arriba.</div>` : ''}
+        ${pending.length > 0 ? `<div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⏳ Pendientes (${pending.length})</div>${pending.map(altaCard).join('')}` : ''}
+        ${done.length > 0 ? `<div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">✓ Completadas (${done.length})</div>${done.map(altaCard).join('')}` : ''}
+      </div>`;
+    }
+
+    function openEditAltaModal(id) {
+      const altas = lsGetAltas();
+      const a = altas.find(function(x){ return x.id === id; });
+      if (!a) return;
+      const cama = prompt('Cama:', a.cama || '');
+      if (cama === null) return;
+      const nombre = prompt('Nombre del paciente:', a.nombre || '');
+      if (nombre === null) return;
+      const indicaciones = prompt('Indicaciones para el alta:', a.indicaciones || '');
+      if (indicaciones === null) return;
+      const notas = prompt('Notas adicionales:', a.notas || '');
+      if (notas === null) return;
+      a.cama = cama.trim();
+      a.nombre = nombre.trim().toUpperCase();
+      a.indicaciones = indicaciones.trim();
+      a.notas = notas.trim();
+      lsSaveAltas(altas);
+      renderAltas();
+    }
 
   </script>
 
