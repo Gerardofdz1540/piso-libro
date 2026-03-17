@@ -3371,24 +3371,24 @@
         exportTemplateBuffer = null;
         freed = true;
       }
-      // 2) Recortar cortes de guardia a los 5 más recientes
+      // 2) Recortar cortes de guardia a los 20 más recientes
       try {
         const snaps = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || "[]");
-        if (snaps.length > 5) {
-          localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snaps.slice(0, 5)));
-          if (typeof snapshots !== "undefined") snapshots = snaps.slice(0, 5);
+        if (snaps.length > 20) {
+          localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snaps.slice(0, 20)));
+          if (typeof snapshots !== "undefined") snapshots = snaps.slice(0, 20);
           freed = true;
         }
       } catch (e) {
         localStorage.removeItem(SNAPSHOT_KEY);
         freed = true;
       }
-      // 3) Recortar archivo de pacientes a los 30 más recientes
+      // 3) Recortar archivo de pacientes a los 60 más recientes
       try {
         const arch = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]");
-        if (arch.length > 30) {
-          localStorage.setItem(ARCHIVE_KEY, JSON.stringify(arch.slice(0, 30)));
-          if (typeof archivados !== "undefined") archivados = arch.slice(0, 30);
+        if (arch.length > 60) {
+          localStorage.setItem(ARCHIVE_KEY, JSON.stringify(arch.slice(0, 60)));
+          if (typeof archivados !== "undefined") archivados = arch.slice(0, 60);
           freed = true;
         }
       } catch (e) {
@@ -3415,14 +3415,14 @@
     // Prepara una copia ligera de los datos de nota para guardar en localStorage:
     // - Elimina source_file (puede ser un PDF/imagen en base64 de varios MB; la copia canónica
     //   está en Supabase Storage o en el campo lab_history de la base de datos).
-    // - Limita labHistory a las 14 entradas más recientes para evitar desbordamiento.
+    // - Limita labHistory a las 30 entradas más recientes para evitar desbordamiento.
     function _lsNoteCopy(data) {
       const d = Object.assign({}, data);
       if (Array.isArray(d.labHistory)) {
         d.labHistory = d.labHistory
           .slice()
           .sort(function(a, b) { return (b.fecha || "").localeCompare(a.fecha || ""); })
-          .slice(0, 14)
+          .slice(0, 30)
           .map(function(s) {
             if (!s.source_file) return s;
             const sc = Object.assign({}, s);
@@ -3488,7 +3488,7 @@
 
     // Outbox for offline writes
     const OUTBOX_KEY = "pl_outbox_v1";
-    const OUTBOX_MAX = 200; // máximo de operaciones pendientes en cola
+    const OUTBOX_MAX = 500; // máximo de operaciones pendientes en cola
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
     function outboxSave(q) {
       try {
@@ -7425,7 +7425,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         total: patients.length
       };
       snapshots.unshift(snap);
-      if (snapshots.length > 30) snapshots = snapshots.slice(0, 30); // max 30 cortes
+      if (snapshots.length > 60) snapshots = snapshots.slice(0, 60); // max 60 cortes
       try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots)); } catch (e) {
         alert("No hay espacio para guardar el corte. Elimina cortes anteriores.");
         return;
