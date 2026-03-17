@@ -3003,12 +3003,14 @@
     let exportTemplateBuffer = null;
     let _dirtyFields = {};  // patientKey → Set<fieldName> — campos editados localmente sin guardar
     let _pendingNoteAutosave = {}; // patientKey -> debounced autosave fn
+    let _noteDebounceMap = {}; // patientKey -> debounced Supabase push fn
     function _cleanupPatientCache(k) {
       delete _pendingNoteAutosave[k];
       delete labAnalysisCache[k];
       delete _dirtyFields[k];
       delete activeLabDate[k];
       delete activeImagenDate[k];
+      delete _noteDebounceMap[k];
     }
     let archivados = [];    // pacientes egresados (no se borran, se archivan)
     let snapshots = [];    // cortes de guardia guardados
@@ -3410,13 +3412,34 @@
       }
     }
     function lsGetNote(key) { try { const s = localStorage.getItem(NOTES_PREFIX + key); return s ? migrateNote({ ...defaultData(), ...JSON.parse(s) }) : defaultData(); } catch { return defaultData(); } }
+    // Prepara una copia ligera de los datos de nota para guardar en localStorage:
+    // - Elimina source_file (puede ser un PDF/imagen en base64 de varios MB; la copia canónica
+    //   está en Supabase Storage o en el campo lab_history de la base de datos).
+    // - Limita labHistory a las 14 entradas más recientes para evitar desbordamiento.
+    function _lsNoteCopy(data) {
+      const d = Object.assign({}, data);
+      if (Array.isArray(d.labHistory)) {
+        d.labHistory = d.labHistory
+          .slice()
+          .sort(function(a, b) { return (b.fecha || "").localeCompare(a.fecha || ""); })
+          .slice(0, 14)
+          .map(function(s) {
+            if (!s.source_file) return s;
+            const sc = Object.assign({}, s);
+            sc.source_file = "";
+            return sc;
+          });
+      }
+      return d;
+    }
     function lsSaveNote(key, data) {
+      const copy = _lsNoteCopy(data);
       try {
-        localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data));
+        localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(copy));
       } catch (e) {
         if (e && e.name === "QuotaExceededError") {
           if (lsFreeSpace()) {
-            try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data)); return; } catch (e2) { }
+            try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(copy)); return; } catch (e2) { }
           }
           setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
         }
@@ -3442,23 +3465,14 @@
     function saveExportTemplateBuffer(buffer) {
       if (!(buffer instanceof ArrayBuffer)) return;
       exportTemplateBuffer = buffer.slice(0);
-      try {
-        localStorage.setItem(EXCEL_TEMPLATE_KEY, arrayBufferToBase64(exportTemplateBuffer));
-      } catch (err) {
-        console.warn("No se pudo guardar la plantilla de exportación:", err?.message || err);
-      }
+      // No se guarda en localStorage: puede ocupar hasta 2 MB en base64 y agotar la cuota.
+      // Se mantiene solo en memoria; el usuario vuelve a importar su plantilla si recarga la página.
+      localStorage.removeItem(EXCEL_TEMPLATE_KEY);
     }
     function getExportTemplateBuffer() {
       if (exportTemplateBuffer) return exportTemplateBuffer.slice(0);
-      try {
-        const b64 = localStorage.getItem(EXCEL_TEMPLATE_KEY);
-        if (!b64) return null;
-        exportTemplateBuffer = base64ToArrayBuffer(b64);
-        return exportTemplateBuffer.slice(0);
-      } catch (err) {
-        console.warn("No se pudo leer la plantilla de exportación:", err?.message || err);
-        return null;
-      }
+      // Ya no se lee de localStorage — la plantilla se mantiene solo en memoria.
+      return null;
     }
 
     // ─── DEBOUNCE UTILITY ───────────────────────────────────────────────────────────
@@ -3838,7 +3852,7 @@
     }
 
     // ─── DEBOUNCED SAVE WRAPPERS ────────────────────────────────────────────────────
-    const _noteDebounceMap = {};
+    // _noteDebounceMap declarado arriba junto a los demás estado de sesión
 
     function saveNote(key, data) {
       const safeData = migrateNote(data);
@@ -3848,17 +3862,23 @@
       // Debounced push to Supabase
       if (!_noteDebounceMap[key]) {
         _noteDebounceMap[key] = debounce(async (k, d) => {
-          // Find patient with this pid
-          const p = patients.find(x => pid(x) === k);
-          if (!p || !p._supa_id) { outboxEnqueue({ type: "note", key: k, data: d }); return; }
-          pendingSyncs++;
-          setSyncStatus("syncing", "Guardando...");
-          const res = await supaUpsertNote(p._supa_id, d);
-          pendingSyncs--;
-          if (!res) outboxEnqueue({ type: "note", key: k, data: d });
-          if (pendingSyncs === 0) {
-            if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); }
-            else setSyncProblemStatus();
+          try {
+            const p = patients.find(x => pid(x) === k);
+            if (!p || !p._supa_id) { outboxEnqueue({ type: "note", key: k, data: d }); return; }
+            pendingSyncs++;
+            setSyncStatus("syncing", "Guardando...");
+            const res = await supaUpsertNote(p._supa_id, d);
+            pendingSyncs--;
+            if (!res) outboxEnqueue({ type: "note", key: k, data: d });
+            if (pendingSyncs === 0) {
+              if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); }
+              else setSyncProblemStatus();
+            }
+          } catch (e) {
+            safeLog("saveNote async error:", e);
+            if (pendingSyncs > 0) pendingSyncs--;
+            outboxEnqueue({ type: "note", key: k, data: d });
+            if (pendingSyncs === 0) setSyncProblemStatus();
           }
         }, 600);
       }
@@ -4067,7 +4087,10 @@
       _toastEl.textContent = "📡 Actualización recibida: " + (p.nombre || k);
       _toastEl.style.opacity = "1";
       clearTimeout(_toastEl._tid);
-      _toastEl._tid = setTimeout(function(){ _toastEl.style.opacity = "0"; }, 3000);
+      _toastEl._tid = setTimeout(function(){
+        _toastEl.style.opacity = "0";
+        setTimeout(function(){ if (_toastEl.parentNode) _toastEl.parentNode.removeChild(_toastEl); }, 350);
+      }, 3000);
       safeLog("[RT] Note updated:", k);
     }
 
@@ -4378,6 +4401,10 @@
 
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
+      // Limpiar plantilla Excel de versiones anteriores que sí la guardaban en localStorage
+      // (puede ocupar hasta 2 MB en base64; ahora se mantiene solo en memoria)
+      try { localStorage.removeItem(EXCEL_TEMPLATE_KEY); } catch (_) {}
+
       // Cargar lista de camas guardada (si el usuario la personalizó)
       try {
         const saved = localStorage.getItem("pl_all_beds_v1");
@@ -8620,11 +8647,19 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
       noteData[keepKey] = keepNd;
 
-      // Remove the duplicate by index (MUST remove higher index first to avoid shift)
+      // Remove the duplicate — re-resolve by _supa_id to guard against concurrent mutations
+      let actualRemoveIdx = removeIdx;
       const removedPatient = patients[removeIdx];
-      if (removedPatient && removedPatient._supa_id)
+      if (removedPatient && removedPatient._supa_id) {
+        const fresh = patients.findIndex(pt => pt._supa_id === removedPatient._supa_id);
+        if (fresh !== -1) actualRemoveIdx = fresh;
         supaDeletePatient(removedPatient._supa_id).catch(e => safeLog("supaDeletePatient (merge):", e));
-      patients.splice(removeIdx, 1);
+      }
+      if (actualRemoveIdx < 0 || actualRemoveIdx >= patients.length) {
+        safeLog("mergePatients: removeIdx out of bounds", actualRemoveIdx);
+        return;
+      }
+      patients.splice(actualRemoveIdx, 1);
 
       // Clean up removed patient's noteData
       if (removeKey !== keepKey) {
@@ -8689,6 +8724,16 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       </table>`;
       const confirmBtn = document.getElementById("manual-merge-confirm");
       confirmBtn.onclick = function() {
+        // Re-validar que los índices aún apuntan a los mismos pacientes
+        const currentKeep = patients[keepIdx];
+        const currentRemove = patients[removeIdx];
+        if (!currentKeep || !currentRemove ||
+            (keep._supa_id && currentKeep._supa_id !== keep._supa_id) ||
+            (remove._supa_id && currentRemove._supa_id !== remove._supa_id)) {
+          document.getElementById("manual-merge-modal").style.display = "none";
+          alert("Los datos de los pacientes cambiaron mientras se mostraba este modal. Intenta de nuevo.");
+          return;
+        }
         // Aplicar selecciones del usuario a keep
         FIELDS.forEach(function(f) {
           const radios = document.querySelectorAll('input[name="mmf_' + f.key + '"]');
@@ -8714,6 +8759,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       idx = parseInt(idx);
       const p = patients[idx];
       if (!p) return;
+      // Verificar que el índice aún apunta al mismo paciente antes de modificar
+      const expectedSupaId = p._supa_id;
+      if (expectedSupaId) {
+        const fresh = patients.findIndex(pt => pt._supa_id === expectedSupaId);
+        if (fresh !== -1 && fresh !== idx) {
+          safeLog("saveDupInlineEdit: índice desplazado, corrigiendo", idx, "→", fresh);
+          idx = fresh;
+        }
+      }
       const fields = ['nombre', 'exp', 'cama', 'dx', 'ingreso', 'edad', 'adscrito', 'residente'];
       const oldKey = pid(p);
       fields.forEach(function(f) {
