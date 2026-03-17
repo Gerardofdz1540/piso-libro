@@ -3358,10 +3358,70 @@
     function getNote(k) { return migrateNote(noteData[k] || defaultData()); }
 
     // localStorage fallbacks
+
+    // Intenta liberar espacio eliminando datos no críticos (plantilla Excel, cortes de guardia antiguos, archivo antiguo).
+    // Devuelve true si logró liberar algo.
+    function lsFreeSpace() {
+      let freed = false;
+      // 1) Eliminar plantilla Excel (puede ser varios MB en base64)
+      if (localStorage.getItem(EXCEL_TEMPLATE_KEY)) {
+        localStorage.removeItem(EXCEL_TEMPLATE_KEY);
+        exportTemplateBuffer = null;
+        freed = true;
+      }
+      // 2) Recortar cortes de guardia a los 5 más recientes
+      try {
+        const snaps = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || "[]");
+        if (snaps.length > 5) {
+          localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snaps.slice(0, 5)));
+          if (typeof snapshots !== "undefined") snapshots = snaps.slice(0, 5);
+          freed = true;
+        }
+      } catch (e) {
+        localStorage.removeItem(SNAPSHOT_KEY);
+        freed = true;
+      }
+      // 3) Recortar archivo de pacientes a los 30 más recientes
+      try {
+        const arch = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]");
+        if (arch.length > 30) {
+          localStorage.setItem(ARCHIVE_KEY, JSON.stringify(arch.slice(0, 30)));
+          if (typeof archivados !== "undefined") archivados = arch.slice(0, 30);
+          freed = true;
+        }
+      } catch (e) {
+        localStorage.removeItem(ARCHIVE_KEY);
+        freed = true;
+      }
+      return freed;
+    }
+
     function lsGetPatients() { try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } }
-    function lsSavePatients(pts) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pts)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
+    function lsSavePatients(pts) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(pts));
+      } catch (e) {
+        if (e && e.name === "QuotaExceededError") {
+          if (lsFreeSpace()) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pts)); return; } catch (e2) { }
+          }
+          setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
+        }
+      }
+    }
     function lsGetNote(key) { try { const s = localStorage.getItem(NOTES_PREFIX + key); return s ? migrateNote({ ...defaultData(), ...JSON.parse(s) }) : defaultData(); } catch { return defaultData(); } }
-    function lsSaveNote(key, data) { try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
+    function lsSaveNote(key, data) {
+      try {
+        localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data));
+      } catch (e) {
+        if (e && e.name === "QuotaExceededError") {
+          if (lsFreeSpace()) {
+            try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data)); return; } catch (e2) { }
+          }
+          setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
+        }
+      }
+    }
     function lsGetAllNotes(pts) { const obj = {}; pts.forEach(p => { const k = pid(p); obj[k] = lsGetNote(k); }); return obj; }
     function arrayBufferToBase64(buffer) {
       const bytes = new Uint8Array(buffer);
@@ -3416,7 +3476,18 @@
     const OUTBOX_KEY = "pl_outbox_v1";
     const OUTBOX_MAX = 200; // máximo de operaciones pendientes en cola
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
-    function outboxSave(q) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); } catch (e) { if (e && e.name === "QuotaExceededError") setSyncStatus("error", "⚠️ Almacenamiento lleno"); } }
+    function outboxSave(q) {
+      try {
+        localStorage.setItem(OUTBOX_KEY, JSON.stringify(q));
+      } catch (e) {
+        if (e && e.name === "QuotaExceededError") {
+          if (lsFreeSpace()) {
+            try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); return; } catch (e2) { }
+          }
+          setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
+        }
+      }
+    }
     function outboxEnqueue(item) {
       const q = outboxLoad();
       const newItem = { ...item, ts: Date.now() };
