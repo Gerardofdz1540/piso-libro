@@ -3274,7 +3274,8 @@
       return p[2] + " " + months[parseInt(p[1]) - 1];
     }
     const LAB_KEYS_FALLBACK = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea",
-      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt", "fa",
+      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "dimero_d", "ast", "alt", "bt", "bd", "ggt", "fa",
+      "amilasa", "lipasa",
       "ph", "pco2", "po2", "hco3", "be", "sato2",
       "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
     const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
@@ -4839,7 +4840,7 @@
       return critical;
     }
     // Keys usados en el panel de alertas inicial: solo Hb, plaquetas y electrolitos
-    const CRITICAL_ALERT_KEYS = ["hb", "plaq", "na", "k", "mg", "ca", "p", "cl"];
+    const CRITICAL_ALERT_KEYS = ["hb", "plaq", "na", "k", "mg", "ca", "p", "cl", "alb", "bt", "fa", "amilasa", "lipasa", "dimero_d"];
     function isNptReminderDay(dateObj) {
       const d = dateObj || new Date();
       const day = d.getDay();
@@ -5452,7 +5453,7 @@
     const LAB_GROUPS = [
       {
         id: "basico", label: "🩸 Biometría / Función renal", fields: [
-          { key: "hb", label: "Hb", unit: "g/dL", low: 12, high: 17, cl: 7 },
+          { key: "hb", label: "Hb", unit: "g/dL", low: 12, high: 17, cl: 8 },
           { key: "leucos", label: "Leuc", unit: "k/µL", low: 4, high: 10, ch: 15 },
           { key: "plaq", label: "Plaq", unit: "k/µL", low: 100, high: 400, cl: 50 },
           { key: "cr", label: "Cr", unit: "mg/dL", low: 0, high: 1.25, ch: 3 },
@@ -5460,7 +5461,7 @@
           { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110 },
           { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145 },
           { key: "k", label: "K", unit: "mmol/L", low: 3.5, high: 5.1, cl: 2.8, ch: 6.0 },
-          { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0, cl: 2.0 },
+          { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0, cl: 2.5 },
           { key: "pcr", label: "PCR", unit: "mg/L", low: 0, high: 10 },
           { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 }
         ]
@@ -5478,17 +5479,18 @@
           { key: "tp", label: "TP", unit: "seg", low: 11, high: 14, ch: 20 },
           { key: "ttp", label: "TTP", unit: "seg", low: 25, high: 35, ch: 60 },
           { key: "inr", label: "INR", unit: "", low: 0, high: 1.2, ch: 3 },
-          { key: "fibrinogeno", label: "Fibri", unit: "g/L", low: 2, high: 4, cl: 1 }
+          { key: "fibrinogeno", label: "Fibri", unit: "g/L", low: 2, high: 4, cl: 1 },
+          { key: "dimero_d", label: "Dím-D", unit: "µg/mL", low: 0, high: 0.5, ch: 1 }
         ]
       },
       {
         id: "hepatico", label: "🫀 Función hepática", fields: [
           { key: "ast", label: "AST", unit: "U/L", low: 0, high: 40, ch: 200 },
           { key: "alt", label: "ALT", unit: "U/L", low: 0, high: 40, ch: 200 },
-          { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 5 },
+          { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 2 },
           { key: "bd", label: "BD", unit: "mg/dL", low: 0, high: 0.3, ch: 3 },
           { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 },
-          { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147, ch: 400 }
+          { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147, ch: 500 }
         ]
       },
       {
@@ -5528,7 +5530,7 @@
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
     const LAB_QUICK = {
       hb: (v) => {
-        if (v < 7) return { sev: "crit", title: "Anemia severa — Umbral transfusional", rec: "Transfusión CE (umbral 7 g/dL en estable, 8 g/dL en Qx cardio/SCA). Investigar causa. Solicitar reticulocitos, frotis, ferritina, B12, folato." };
+        if (v < 8) return { sev: "crit", title: "Anemia severa — Umbral transfusional", rec: "Transfusión CE indicada (umbral <8 g/dL en quirúrgico). Investigar causa. Solicitar reticulocitos, frotis, ferritina, B12, folato." };
         if (v < 10) return { sev: "abn", title: "Anemia moderada (OMS)", rec: "Investigar causa (ferropénica, inflamatoria, hemolítica, B12/folato). Suplementación según etiología. Considerar transfusión si sintomático o preQx." };
         if (v < 12) return { sev: "abn", title: "Anemia leve (OMS <12 g/dL)", rec: "Clasificar por VCM: microcítica (ferropénica, talasemia), normocítica (inflamatoria, ERC), macrocítica (B12/folato). Optimizar antes de Qx electiva." };
         if (v > 17) return { sev: "abn", title: "Policitemia", rec: "Descartar causa secundaria: hipoxia crónica, tabaquismo, neoplasia (policitemia vera). BH completa + EPO sérica." };
@@ -5579,7 +5581,7 @@
         return null;
       },
       alb: (v) => {
-        if (v < 2) return { sev: "crit", title: "Hipoalbuminemia severa", rec: "Marcador de desnutrición severa e inflamación. Evaluar soporte nutricional intensivo. Corrección no indicada de rutina (sólo en PBE o cirrosis con criterios)." };
+        if (v < 2.5) return { sev: "crit", title: "Hipoalbuminemia severa", rec: "Marcador de desnutrición severa e inflamación. Evaluar soporte nutricional intensivo (NPT/NE). Riesgo aumentado de complicaciones postoperatorias. Corrección con albúmina IV solo en PBE o cirrosis con criterios específicos." };
         if (v < 3.5) return { sev: "abn", title: "Hipoalbuminemia", rec: "Evaluar estado nutricional. Optimizar ingesta proteica. Considerar nutrición enteral/parenteral. Investigar causa inflamatoria." };
         return null;
       },
@@ -5651,7 +5653,7 @@
         return null;
       },
       bt: (v) => {
-        if (v >= 5) return { sev: "crit", title: "Hiperbilirrubinemia severa", rec: "Riesgo de insuficiencia hepática aguda. Evaluar fracción directa/indirecta. Ecografía hepática. Hepatología urgente." };
+        if (v >= 2) return { sev: "crit", title: "Hiperbilirrubinemia — Ictericia clínica", rec: "BT ≥2 mg/dL: ictericia clínicamente significativa. Evaluar fracción directa/indirecta. Ecografía hepatobiliar urgente. Descartar obstrucción, hepatitis, hemólisis. Hepatología si no hay causa evidente." };
         if (v > 1.2) return { sev: "abn", title: "Bilirrubina total elevada", rec: "Si BI predomina: hemólisis, Gilbert, transfusión. Si BD predomina: colestasis (obstructiva o hepática). Ecografía abdominal." };
         return null;
       },
@@ -5666,7 +5668,7 @@
         return null;
       },
       fa: (v) => {
-        if (v >= 400) return { sev: "crit", title: "Fosfatasa alcalina muy elevada", rec: "Patrón colestásico marcado u origen óseo activo. Correlacionar con GGT/BT/BD. Solicitar US hepatobiliar urgente." };
+        if (v >= 500) return { sev: "crit", title: "Fosfatasa alcalina muy elevada (>500 U/L)", rec: "Patrón colestásico marcado u origen óseo activo. Correlacionar con GGT/BT/BD. Solicitar US hepatobiliar urgente. Descartar obstrucción biliar, metástasis óseas o hepáticas." };
         if (v > 147) return { sev: "abn", title: "Fosfatasa alcalina elevada", rec: "Sugerente de colestasis o patología ósea. Diferenciar con GGT (hepático) y clínica." };
         return null;
       },
@@ -5716,6 +5718,11 @@
       sato2: (v) => {
         if (v < 85) return { sev: "crit", title: "Desaturación severa", rec: "Emergencia respiratoria. O2 de alto flujo o VMI inmediato. Evaluar vía aérea. Correlacionar con pO2 y curva de disociación." };
         if (v < 95) return { sev: "abn", title: "Desaturación", rec: "Titular O2 para meta SatO2 92-96% (88-92% en EPOC). Evaluar causa de hipoxemia. Evaluar pO2 para confirmar." };
+        return null;
+      },
+      dimero_d: (v) => {
+        if (v >= 1) return { sev: "crit", title: "Dímero D muy elevado — TEP/TVP probable", rec: "Dímero D ≥1 µg/mL: alta probabilidad de evento tromboembólico (TEP, TVP) o CID activa. Solicitar angioTAC de tórax o US Doppler según sospecha clínica. Evaluar anticoagulación. Correlacionar con TP, TTP, fibrinógeno y plaquetas para descartar CID." };
+        if (v > 0.5) return { sev: "abn", title: "Dímero D elevado", rec: "Dímero D >0.5 µg/mL: marcador sensible pero no específico. Evaluar probabilidad pretest (Wells score). Puede elevarse por cirugía reciente, inflamación, neoplasia, embarazo. Si sospecha de TEP/TVP: imagen urgente." };
         return null;
       }
     };
