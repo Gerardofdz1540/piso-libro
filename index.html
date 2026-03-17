@@ -4,6 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>Piso Libro — HGL Cirugía General</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a1628'/%3E%3Ctext x='32' y='41' font-size='26' text-anchor='middle' fill='white' font-family='Arial'%3EPL%3C/text%3E%3C/svg%3E" />
@@ -104,7 +106,10 @@
       padding: 5px 9px;
       border-radius: 5px;
       font-size: 12px;
-      font-family: var(--font)
+      font-family: var(--font);
+      touch-action: manipulation;
+      -webkit-user-select: text;
+      user-select: text
     }
 
     .header-input::placeholder {
@@ -420,7 +425,10 @@
       background: #fafbfc;
       resize: vertical;
       font-family: var(--font);
-      color: #1e293b
+      color: #1e293b;
+      touch-action: manipulation;
+      -webkit-user-select: text;
+      user-select: text
     }
 
     .field-ta:focus {
@@ -1244,7 +1252,10 @@
       font-size: 13px;
       font-family: var(--font);
       box-sizing: border-box;
-      outline: none
+      outline: none;
+      touch-action: manipulation;
+      -webkit-user-select: text;
+      user-select: text
     }
 
     .modal-input:focus {
@@ -1938,6 +1949,26 @@
       box-shadow: 0 0 0 2px #dc2626, 0 4px 16px rgba(220, 38, 38, .2) !important;
     }
 
+    .card-ingreso {
+      box-shadow: 0 0 0 2px #16a34a, 0 4px 16px rgba(22, 163, 74, .18) !important;
+    }
+
+    .badge-ingreso {
+      background: #16a34a;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 5px;
+      letter-spacing: .4px;
+      animation: pulse-ingreso 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-ingreso {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .6; }
+    }
+
     .checklist-wrap {
       display: flex;
       flex-direction: column;
@@ -2175,6 +2206,272 @@
       text-transform: uppercase;
       letter-spacing: .5px
     }
+    /* ── BODY DIAGRAM ─────────────────────────────────────────────────────── */
+    .bd-section {
+      margin-top: 10px;
+      padding: 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px
+    }
+
+    .bd-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center
+    }
+
+    .bd-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: #64748b;
+      text-align: center;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: .5px
+    }
+
+    .bd-container {
+      position: relative;
+      width: 140px;
+      height: 220px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden
+    }
+
+    .bd-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none
+    }
+
+    .bd-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      touch-action: none;
+      cursor: crosshair;
+      width: 140px;
+      height: 220px
+    }
+
+    .bd-tools {
+      display: flex;
+      gap: 4px;
+      margin-top: 5px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center
+    }
+
+    .bd-color-btn {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      cursor: pointer;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.2)
+    }
+
+    .bd-clear-btn {
+      background: rgba(0,0,0,.08);
+      border: 1px solid #e2e8f0;
+      color: #64748b;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer
+    }
+
+    .bd-size-slider {
+      width: 50px;
+      accent-color: #64748b
+    }
+
+    /* ── ALTAS TAB ────────────────────────────────────────────────────────── */
+    .altas-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 16px
+    }
+
+    .altas-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 8px
+    }
+
+    .altas-header h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #0a1628
+    }
+
+    .alta-form {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06)
+    }
+
+    .alta-form-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1a3a6b;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: .5px
+    }
+
+    .alta-form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px
+    }
+
+    .alta-form-grid .span2 {
+      grid-column: span 2
+    }
+
+    .alta-form-grid .span3 {
+      grid-column: span 3
+    }
+
+    .alta-input {
+      width: 100%;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-family: var(--font);
+      color: #1e293b;
+      background: #f8fafc
+    }
+
+    .alta-input:focus {
+      outline: none;
+      border-color: #4fc3f7
+    }
+
+    .alta-input-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      margin-bottom: 3px
+    }
+
+    .alta-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #27ae60;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.04)
+    }
+
+    .alta-card.completado {
+      opacity: .55;
+      border-left-color: #94a3b8
+    }
+
+    .alta-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 6px
+    }
+
+    .alta-cama-badge {
+      background: #27ae60;
+      color: #fff;
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 800
+    }
+
+    .alta-nombre {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0f172a;
+      flex: 1
+    }
+
+    .alta-fecha {
+      font-size: 10px;
+      color: #94a3b8
+    }
+
+    .alta-indicaciones {
+      font-size: 12px;
+      color: #1e293b;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      padding: 7px 10px;
+      white-space: pre-wrap;
+      margin-bottom: 6px
+    }
+
+    .alta-notas {
+      font-size: 11px;
+      color: #64748b;
+      white-space: pre-wrap
+    }
+
+    .alta-actions {
+      display: flex;
+      gap: 5px;
+      margin-top: 6px
+    }
+
+    .alta-btn {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 5px;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      background: #f8fafc;
+      color: #334155;
+      font-family: var(--font)
+    }
+
+    .alta-btn.done {
+      background: #dcfce7;
+      border-color: #86efac;
+      color: #166534
+    }
+
+    .alta-btn.del {
+      background: #fef2f2;
+      border-color: #fca5a5;
+      color: #991b1b
+    }
+
+    /* ── ENTREGA FIELD HIGHLIGHT ─────────────────────────────────────────── */
+    .entrega-row .field-ta {
+      background: #fffbeb;
+      border-color: #fcd34d
+    }
+
+    .entrega-row .field-label {
+      color: #b45309
+    }
+
   </style>
 </head>
 
@@ -2193,9 +2490,9 @@
         <h1>📋 Piso Libro</h1>
       </div>
       <div class="header-controls">
-        <input class="header-input" id="gi-fecha" placeholder="Fecha" style="width:105px" />
-        <input class="header-input" id="gi-entrega" placeholder="Entrega Dr." style="width:115px" />
-        <input class="header-input" id="gi-recibe" placeholder="Recibe Dr." style="width:115px" />
+        <input class="header-input" id="gi-fecha" placeholder="Fecha" inputmode="text" autocorrect="off" style="width:105px" />
+        <input class="header-input" id="gi-entrega" placeholder="Entrega Dr." inputmode="text" autocorrect="off" autocapitalize="words" style="width:115px" />
+        <input class="header-input" id="gi-recibe" placeholder="Recibe Dr." inputmode="text" autocorrect="off" autocapitalize="words" style="width:115px" />
         <button class="btn-green" onclick="exportToExcel()">📊 Exportar Excel</button>
         <button class="btn-blue" onclick="window.print()">🖨 Imprimir</button>
         <button class="btn-orange" onclick="resetCensoTotal()"
@@ -2215,7 +2512,6 @@
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
         </div>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
-        <span id="outbox-badge" style="font-size:10px;color:#f59e0b;margin-left:6px;font-weight:700;text-decoration:underline dotted"></span>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
       </div>
@@ -2224,8 +2520,9 @@
       <button class="tab active" onclick="setView('piso',this)">🏥 Piso Libro</button>
       <button class="tab" onclick="setView('census',this)">📊 Censo</button>
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
-      <button class="tab" onclick="setView('altas',this)">🏠 Altas</button>
-      <button class="tab" onclick="setView('formatos',this)">📋 Formatos</button>
+
+      <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
+      <button class="tab" onclick="setView('altas',this)">✅ Altas</button>
     </div>
   </div>
   </div>
@@ -2246,7 +2543,7 @@
 
     <!-- FILTER BAR -->
     <div id="filterbar">
-      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="handleSearchInput()" />
+      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="debouncedSearch()" />
       <div class="esp-filters" id="esp-filters"></div>
       <span class="count-badge" id="count-badge">0 pacientes</span>
       <button class="btn-pink" onclick="openAddModal()">➕ Nuevo paciente</button>
@@ -2256,8 +2553,9 @@
     <div id="view-piso"></div>
     <div id="view-census" style="display:none"></div>
     <div id="view-print" style="display:none"></div>
+
+    <div id="view-noOlvidar" style="display:none"></div>
     <div id="view-altas" style="display:none"></div>
-    <div id="view-formatos" style="display:none"></div>
   </div>
 
   <!-- PATIENT MODAL -->
@@ -2270,31 +2568,43 @@
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:6px">
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Nombre completo *</label><input
             class="modal-input" id="mf-nombre" placeholder="APELLIDO APELLIDO NOMBRE"
+            inputmode="text" autocorrect="off" autocapitalize="characters"
             style="text-transform:uppercase" /></div>
         <div class="modal-field"><label>Edad</label><input class="modal-input" id="mf-edad" type="number"
+            inputmode="numeric"
             placeholder="Años" /></div>
         <div class="modal-field"><label>Expediente *</label><input class="modal-input" id="mf-exp"
+            inputmode="text" autocorrect="off" autocapitalize="none"
             placeholder="Ej: 26-03589" /></div>
         <div class="modal-field"><label>Cama *</label><input class="modal-input" id="mf-cama"
+            inputmode="text" autocorrect="off" autocapitalize="none"
             placeholder="Ej: 3-153, UCI 1" /></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Diagnóstico *</label><textarea
             class="modal-input" id="mf-dx" rows="3"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="DX principal + procedimientos + comorbilidades..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>APP (antecedentes
             patológicos)</label><textarea class="modal-input" id="mf-app-modal" rows="2"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="HTA, DM2, cardiopatía..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>PA (procedimiento actual /
             QX)</label><textarea class="modal-input" id="mf-pa-modal" rows="2"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="Procedimiento quirúrgico realizado..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Procedimiento / Manejo</label><textarea
             class="modal-input" id="mf-manejo-modal" rows="2"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="Plan de manejo, antibióticos, soluciones..."></textarea></div>
         <div class="modal-field"><label>Sangrado estimado</label><input class="modal-input" id="mf-sangrado-modal"
+            inputmode="text" autocorrect="off"
             placeholder="Ej: 200 mL" /></div>
         <div class="modal-field modal-span2" style="grid-column:span 2"><label>Drenajes</label><input
-            class="modal-input" id="mf-drenajes-modal" placeholder="Ej: Blake HD 100cc serosanguinolento" /></div>
+            class="modal-input" id="mf-drenajes-modal"
+            inputmode="text" autocorrect="off" autocapitalize="sentences"
+            placeholder="Ej: Blake HD 100cc serosanguinolento" /></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Pendientes / Plan</label><textarea
             class="modal-input" id="mf-pendientes-modal" rows="2"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="Pendientes, estudios, interconsultas..."></textarea></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
@@ -2373,7 +2683,7 @@
       <div
         style="font-size:12px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:20px">
         ⚠️ El paciente se <strong>archivará</strong> — saldrá del censo activo pero sus notas, labs e imágenes quedan
-        guardados y consultables en la sección <em>Historial</em> de la pestaña Altas.
+        guardados y consultables en el historial de laboratorios del paciente.
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn-cancel"
@@ -2662,6 +2972,7 @@
     const _supa = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
+    window._supaClient = _supa; // expuesto para que initNoOlvidarSync() lo use
     let _realtimeSubs = [];  // active Realtime subscriptions
     let _suppressRealtimeKeys = new Set(); // per-patient suppression (use "__all__" for global)
     function suppressKey(k, ms) { _suppressRealtimeKeys.add(k); setTimeout(function(){ _suppressRealtimeKeys.delete(k); }, ms || 3000); }
@@ -2722,6 +3033,15 @@
     let exportTemplateBuffer = null;
     let _dirtyFields = {};  // patientKey → Set<fieldName> — campos editados localmente sin guardar
     let _pendingNoteAutosave = {}; // patientKey -> debounced autosave fn
+    let _noteDebounceMap = {}; // patientKey -> debounced Supabase push fn
+    function _cleanupPatientCache(k) {
+      delete _pendingNoteAutosave[k];
+      delete labAnalysisCache[k];
+      delete _dirtyFields[k];
+      delete activeLabDate[k];
+      delete activeImagenDate[k];
+      delete _noteDebounceMap[k];
+    }
     let archivados = [];    // pacientes egresados (no se borran, se archivan)
     let snapshots = [];    // cortes de guardia guardados
     let procedimientos = []; // procedimientos del día (no necesitan notas clínicas)
@@ -2779,7 +3099,7 @@
 
     function getConfig() {
       try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}"); }
-      catch { return {}; }
+      catch (e) { safeLog("getConfig parse:", e); return {}; }
     }
     function getProxyUrl() { return getConfig().url || ""; }
     function renderUserChip() {
@@ -2892,22 +3212,30 @@
 
     // ─── SYNC STATUS UI ─────────────────────────────────────────────────────────────
     let _lastSyncError = "";
+    let _lastSyncErrorDetail = "";
+    let _syncFadeTimer = null;
     function setSyncStatus(state, label) {
       const el = document.getElementById("sync-status");
       const lbl = document.getElementById("sync-label");
       if (!el || !lbl) return;
-      el.className = "" + state;   // synced | syncing | error | offline
-      el.querySelector(".sync-dot").className = "sync-dot" + (state === "syncing" ? " spin" : "");
+      clearTimeout(_syncFadeTimer);
+      el.className = "" + state;
+      const dot = el.querySelector(".sync-dot"); if (dot) dot.className = "sync-dot" + (state === "syncing" ? " spin" : "");
       lbl.textContent = label;
+      el.title = "";
+      el.style.cursor = "";
+      el.onclick = null;
       if (state === "error") {
         _lastSyncError = label;
-        el.title = label + " — clic para más detalles";
+        el.title = "Toca para ver detalles";
         el.style.cursor = "pointer";
-        el.onclick = () => alert("⚠️ Error de Supabase:\n\n" + _lastSyncError + "\n\nVerifica:\n1) Conexión a internet activa\n2) Credenciales correctas en ⚙️ Config\n3) Las tablas 'patients' y 'notes' existen en Supabase\n\nMientras tanto, tus datos están seguros en localStorage y se sincronizarán cuando se resuelva el error.");
-      } else {
-        el.title = "";
-        el.style.cursor = "";
-        el.onclick = null;
+        el.onclick = () => alert("⚠️ Error al sincronizar:\n\n" + _lastSyncError + (_lastSyncErrorDetail ? "\n\nDetalle: " + _lastSyncErrorDetail : "") + "\n\nVerifica:\n1) Conexión a internet activa\n2) Credenciales correctas en ⚙️ Config\n3) Las tablas 'patients' y 'notes' existen en Supabase");
+      } else if (state === "synced") {
+        // Después de 3s mostrar solo el dot verde sin texto
+        _syncFadeTimer = setTimeout(() => {
+          if (lbl) lbl.textContent = "";
+          el.title = "Todo guardado ✅";
+        }, 3000);
       }
     }
 
@@ -2936,10 +3264,11 @@
       return {
         app: "", pa: "", drenajes: "", qx: "", manejo: "", sangrado: "",
         imagen: "", imagen_file: "", imagen_file_type: "", imagen_file_name: "", imagen_link: "",
-        sv: "", balance: "", pendientes: "", misc: "",
+        sv: "", balance: "", pendientes: "", misc: "", entrega: "",
+        body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "" }
+        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "" }
       };
     }
 
@@ -2952,14 +3281,11 @@
       return p[2] + " " + months[parseInt(p[1]) - 1];
     }
     const LAB_KEYS_FALLBACK = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea",
-      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "ast", "alt", "bt", "bd", "ggt", "fa",
+      "mg", "ca", "p", "cl", "tp", "ttp", "fibrinogeno", "dimero_d", "ast", "alt", "bt", "bd", "ggt", "fa",
+      "amilasa", "lipasa",
       "ph", "pco2", "po2", "hco3", "be", "sato2",
-      "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "ego_leucos", "ego_hematies", "ego_proteinas", "ego_glucosa",
-      "micro_tipo_cultivo", "micro_muestra", "micro_organismo", "micro_sensibilidades", "micro_resistencias", "micro_comentarios"];
-    const LAB_META_KEYS = new Set([
-      "paciente", "fecha_labs", "tipo_lab",
-      "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"
-    ]);
+      "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
+    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
@@ -3045,7 +3371,7 @@
         });
       nd.labs = sanitizeLabsMap(nd.labs);
       if (!isPlainObject(nd.checklist)) {
-        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "" };
+        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "" };
       }
       // Migrate: add wound care + NPT fields if missing
       if (nd.checklist.cur_necesita === undefined) nd.checklist.cur_necesita = false;
@@ -3054,6 +3380,11 @@
       if (nd.checklist.npt_pct === undefined) nd.checklist.npt_pct = "";
       if (nd.checklist.npt_fecha === undefined) nd.checklist.npt_fecha = "";
       if (nd.checklist.sexo === undefined) nd.checklist.sexo = "";
+      if (nd.checklist.pendientes_mips === undefined) nd.checklist.pendientes_mips = "";
+      if (nd.checklist.pendientes_r1 === undefined) nd.checklist.pendientes_r1 = "";
+      if (nd.entrega === undefined) nd.entrega = "";
+      if (nd.body_diagram_ant === undefined) nd.body_diagram_ant = "";
+      if (nd.body_diagram_post === undefined) nd.body_diagram_post = "";
       if (!Array.isArray(nd.imagenHistory)) {
         nd.imagenHistory = [];
         if (nd.imagen_file || nd.imagen_link || nd.imagen) {
@@ -3084,10 +3415,91 @@
     }
 
     // localStorage fallbacks
+
+    // Intenta liberar espacio eliminando datos no críticos (plantilla Excel, cortes de guardia antiguos, archivo antiguo).
+    // Devuelve true si logró liberar algo.
+    function lsFreeSpace() {
+      let freed = false;
+      // 1) Eliminar plantilla Excel (puede ser varios MB en base64)
+      if (localStorage.getItem(EXCEL_TEMPLATE_KEY)) {
+        localStorage.removeItem(EXCEL_TEMPLATE_KEY);
+        exportTemplateBuffer = null;
+        freed = true;
+      }
+      // 2) Recortar cortes de guardia a los 20 más recientes
+      try {
+        const snaps = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || "[]");
+        if (snaps.length > 20) {
+          localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snaps.slice(0, 20)));
+          if (typeof snapshots !== "undefined") snapshots = snaps.slice(0, 20);
+          freed = true;
+        }
+      } catch (e) {
+        localStorage.removeItem(SNAPSHOT_KEY);
+        freed = true;
+      }
+      // 3) Recortar archivo de pacientes a los 60 más recientes
+      try {
+        const arch = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]");
+        if (arch.length > 60) {
+          localStorage.setItem(ARCHIVE_KEY, JSON.stringify(arch.slice(0, 60)));
+          if (typeof archivados !== "undefined") archivados = arch.slice(0, 60);
+          freed = true;
+        }
+      } catch (e) {
+        localStorage.removeItem(ARCHIVE_KEY);
+        freed = true;
+      }
+      return freed;
+    }
+
     function lsGetPatients() { try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } }
-    function lsSavePatients(pts) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pts)); } catch { } }
+    function lsSavePatients(pts) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(pts));
+      } catch (e) {
+        if (e && e.name === "QuotaExceededError") {
+          if (lsFreeSpace()) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pts)); return; } catch (e2) { }
+          }
+          setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
+        }
+      }
+    }
     function lsGetNote(key) { try { const s = localStorage.getItem(NOTES_PREFIX + key); return s ? migrateNote({ ...defaultData(), ...JSON.parse(s) }) : defaultData(); } catch { return defaultData(); } }
-    function lsSaveNote(key, data) { try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(data)); } catch { } }
+    // Prepara una copia ligera de los datos de nota para guardar en localStorage:
+    // - Elimina source_file (puede ser un PDF/imagen en base64 de varios MB; la copia canónica
+    //   está en Supabase Storage o en el campo lab_history de la base de datos).
+    // - Limita labHistory a las 30 entradas más recientes para evitar desbordamiento.
+    function _lsNoteCopy(data) {
+      const d = Object.assign({}, data);
+      if (Array.isArray(d.labHistory)) {
+        d.labHistory = d.labHistory
+          .slice()
+          .sort(function(a, b) { return (b.fecha || "").localeCompare(a.fecha || ""); })
+          .slice(0, 30)
+          .map(function(s) {
+            if (!s.source_file) return s;
+            const sc = Object.assign({}, s);
+            sc.source_file = "";
+            return sc;
+          });
+      }
+      return d;
+    }
+    function lsSaveNote(key, data) {
+      const copy = _lsNoteCopy(data);
+      try {
+        localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(copy));
+      } catch (e) {
+        if (e && e.name === "QuotaExceededError") {
+          if (lsFreeSpace()) {
+            try { localStorage.setItem(NOTES_PREFIX + key, JSON.stringify(copy)); return; } catch (e2) { }
+          }
+          setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
+        }
+      }
+    }
     function lsGetAllNotes(pts) { const obj = {}; pts.forEach(p => { const k = pid(p); obj[k] = lsGetNote(k); }); return obj; }
     function arrayBufferToBase64(buffer) {
       const bytes = new Uint8Array(buffer);
@@ -3108,23 +3520,14 @@
     function saveExportTemplateBuffer(buffer) {
       if (!(buffer instanceof ArrayBuffer)) return;
       exportTemplateBuffer = buffer.slice(0);
-      try {
-        localStorage.setItem(EXCEL_TEMPLATE_KEY, arrayBufferToBase64(exportTemplateBuffer));
-      } catch (err) {
-        console.warn("No se pudo guardar la plantilla de exportación:", err?.message || err);
-      }
+      // No se guarda en localStorage: puede ocupar hasta 2 MB en base64 y agotar la cuota.
+      // Se mantiene solo en memoria; el usuario vuelve a importar su plantilla si recarga la página.
+      localStorage.removeItem(EXCEL_TEMPLATE_KEY);
     }
     function getExportTemplateBuffer() {
       if (exportTemplateBuffer) return exportTemplateBuffer.slice(0);
-      try {
-        const b64 = localStorage.getItem(EXCEL_TEMPLATE_KEY);
-        if (!b64) return null;
-        exportTemplateBuffer = base64ToArrayBuffer(b64);
-        return exportTemplateBuffer.slice(0);
-      } catch (err) {
-        console.warn("No se pudo leer la plantilla de exportación:", err?.message || err);
-        return null;
-      }
+      // Ya no se lee de localStorage — la plantilla se mantiene solo en memoria.
+      return null;
     }
 
     // ─── DEBOUNCE UTILITY ───────────────────────────────────────────────────────────
@@ -3140,9 +3543,20 @@
 
     // Outbox for offline writes
     const OUTBOX_KEY = "pl_outbox_v1";
-    const OUTBOX_MAX = 200; // máximo de operaciones pendientes en cola
+    const OUTBOX_MAX = 500; // máximo de operaciones pendientes en cola
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
-    function outboxSave(q) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); }
+    function outboxSave(q) {
+      try {
+        localStorage.setItem(OUTBOX_KEY, JSON.stringify(q));
+      } catch (e) {
+        if (e && e.name === "QuotaExceededError") {
+          if (lsFreeSpace()) {
+            try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); return; } catch (e2) { }
+          }
+          setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
+        }
+      }
+    }
     function outboxEnqueue(item) {
       const q = outboxLoad();
       const newItem = { ...item, ts: Date.now() };
@@ -3160,17 +3574,19 @@
       updateOutboxBadge();
     }
     function outboxClear() {
-      if (!confirm("¿Limpiar la cola de sincronización pendiente?\n\nLos datos ya guardados en Supabase no se perderán. Solo se eliminan las operaciones en espera que ya fueron procesadas o son obsoletas.")) return;
+      if (!confirm("¿Limpiar la cola de sync?\n\nSi ya abriste la app y los datos se ven correctos, es seguro limpiar. Los datos en Supabase no se borran.")) return;
       outboxSave([]);
       updateOutboxBadge();
+      if (navigator.onLine) setSyncStatus("synced", "✅ Guardado");
+      else setSyncStatus("offline", "Sin conexión");
     }
     function updateOutboxBadge() {
       const q = outboxLoad();
       const badge = document.getElementById("outbox-badge");
       if (!badge) return;
       if (!q.length) { badge.textContent = ""; badge.onclick = null; badge.style.cursor = ""; return; }
-      badge.textContent = "📤 " + q.length + " pendientes";
-      badge.title = "Clic para limpiar la cola de sync";
+      badge.textContent = "📤 " + q.length + " pendientes · Limpiar";
+      badge.title = "Hay " + q.length + " operaciones en cola. Si los datos ya están guardados en Supabase, puedes limpiar sin perder nada.";
       badge.style.cursor = "pointer";
       badge.onclick = outboxClear;
     }
@@ -3193,6 +3609,16 @@
     async function _sPost(table, body, extra) {
       const r = await fetch(SUPA_URL + "/rest/v1/" + table, {
         method: "POST", headers: _sHeaders(Object.assign({ "Prefer": "return=representation" }, extra || {})),
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("POST " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
+      const ct = r.headers.get("content-type") || "";
+      return ct.includes("json") ? r.json() : null;
+    }
+    async function _sUpsert(table, body, conflictCols) {
+      const qs = conflictCols ? "?on_conflict=" + conflictCols : "";
+      const r = await fetch(SUPA_URL + "/rest/v1/" + table + qs, {
+        method: "POST", headers: _sHeaders({ "Prefer": "resolution=merge-duplicates,return=representation" }),
         body: JSON.stringify(body)
       });
       if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("POST " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
@@ -3348,12 +3774,27 @@
           const data = await _sPatch("patients", "id=eq." + p._supa_id, row);
           return data || row;
         } else {
-          const data = await _sPost("patients", row);
-          const ins = Array.isArray(data) ? data[0] : data;
-          if (ins && ins.id) p._supa_id = ins.id;
-          return ins || row;
+          try {
+            const data = await _sUpsert("patients", row, "exp,cama");
+            const ins = Array.isArray(data) ? data[0] : data;
+            if (ins && ins.id) p._supa_id = ins.id;
+            return ins || row;
+          } catch (upsertErr) {
+            // Fallback: si el upsert falla por conflicto, buscar el registro existente y hacer PATCH
+            const msg = upsertErr && upsertErr.message ? upsertErr.message : "";
+            if (msg.includes("409") || msg.includes("23505")) {
+              const qs = "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id&limit=1";
+              const existing = await _sGet("patients", qs);
+              if (existing && existing.length && existing[0].id) {
+                p._supa_id = existing[0].id;
+                const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
+                return patched || row;
+              }
+            }
+            throw upsertErr;
+          }
         }
-      } catch (e) { safeLog("supaUpsertPatient error:", e); return null; }
+      } catch (e) { safeLog("supaUpsertPatient error:", e); _lastSyncErrorDetail = e && e.message ? e.message : String(e || ""); return null; }
     }
 
     async function supaDeletePatient(supaId) {
@@ -3378,12 +3819,12 @@
       try {
         const data = await _sPost("notes", row, { "Prefer": "resolution=merge-duplicates,return=representation" });
         return Array.isArray(data) ? data[0] : data;
-      } catch (e) { safeLog("supaUpsertNote error:", e); return null; }
+      } catch (e) { safeLog("supaUpsertNote error:", e); _lastSyncErrorDetail = e && e.message ? e.message : String(e || ""); return null; }
     }
 
     // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
     async function supaLoadAll() {
-      setSyncStatus("syncing", "Descargando...");
+      setSyncStatus("syncing", "Cargando...");
       try {
         // Primero pacientes, luego notas filtradas por sus IDs (menor payload)
         const pts = await retryNetwork(() => _sGet("patients", "order=cama"), 2, 200);
@@ -3459,13 +3900,14 @@
         }
         const msg = e && e.message ? e.message : String(e || "error");
         safeLog("supaLoadAll error:", e);
-        setSyncStatus("error", "Error Supabase: " + msg.slice(0, 48));
+        _lastSyncErrorDetail = msg;
+        setSyncStatus("error", "Error al conectar");
         return null;
       }
     }
 
     // ─── DEBOUNCED SAVE WRAPPERS ────────────────────────────────────────────────────
-    const _noteDebounceMap = {};
+    // _noteDebounceMap declarado arriba junto a los demás estado de sesión
 
     function saveNote(key, data) {
       const safeData = migrateNote(data);
@@ -3475,17 +3917,23 @@
       // Debounced push to Supabase
       if (!_noteDebounceMap[key]) {
         _noteDebounceMap[key] = debounce(async (k, d) => {
-          // Find patient with this pid
-          const p = patients.find(x => pid(x) === k);
-          if (!p || !p._supa_id) { outboxEnqueue({ type: "note", key: k, data: d }); return; }
-          pendingSyncs++;
-          setSyncStatus("syncing", "Guardando...");
-          const res = await supaUpsertNote(p._supa_id, d);
-          pendingSyncs--;
-          if (!res) outboxEnqueue({ type: "note", key: k, data: d });
-          if (pendingSyncs === 0) {
-            if (res) setSyncStatus("synced", "Sincronizado");
-            else setSyncProblemStatus();
+          try {
+            const p = patients.find(x => pid(x) === k);
+            if (!p || !p._supa_id) { outboxEnqueue({ type: "note", key: k, data: d }); return; }
+            pendingSyncs++;
+            setSyncStatus("syncing", "Guardando...");
+            const res = await supaUpsertNote(p._supa_id, d);
+            pendingSyncs--;
+            if (!res) outboxEnqueue({ type: "note", key: k, data: d });
+            if (pendingSyncs === 0) {
+              if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); }
+              else setSyncProblemStatus();
+            }
+          } catch (e) {
+            safeLog("saveNote async error:", e);
+            if (pendingSyncs > 0) pendingSyncs--;
+            outboxEnqueue({ type: "note", key: k, data: d });
+            if (pendingSyncs === 0) setSyncProblemStatus();
           }
         }, 600);
       }
@@ -3525,9 +3973,9 @@
       pendingSyncs--;
       if (pendingSyncs === 0) {
         if (allOk) {
-          setSyncStatus("synced", "Sincronizado");
+          setSyncStatus("synced", "✅ Guardado");
         } else {
-          setSyncStatus("syncing", "Sincronizando...");
+          setSyncStatus("syncing", "Guardando...");
           setTimeout(async () => {
             if (pendingSyncs > 0) return;
             pendingSyncs++;
@@ -3542,7 +3990,7 @@
             }
             pendingSyncs--;
             if (pendingSyncs === 0) {
-              if (!retryFailed.length) setSyncStatus("synced", "Sincronizado");
+              if (!retryFailed.length) setSyncStatus("synced", "✅ Guardado");
               else setSyncProblemStatus();
             }
           }, 4000);
@@ -3558,24 +4006,28 @@
     // ─── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────────
     function startRealtime() {
       // Clean up old subscriptions
-      _realtimeSubs.forEach(s => s.unsubscribe());
+      _realtimeSubs.forEach(s => { try { s.unsubscribe(); } catch (e) { safeLog("[RT] unsubscribe error:", e); } });
       _realtimeSubs = [];
 
       // Subscribe to patients changes
-      const patSub = _supa.channel("patients-changes")
-        .on("postgres_changes", { event: "*", schema: "public", table: "patients" }, (payload) => {
-          handlePatientChange(payload);
-        })
-        .subscribe();
-      _realtimeSubs.push(patSub);
+      try {
+        const patSub = _supa.channel("patients-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "patients" }, (payload) => {
+            handlePatientChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(patSub);
+      } catch (e) { safeLog("[RT] patients subscription failed:", e); }
 
       // Subscribe to notes changes
-      const noteSub = _supa.channel("notes-changes")
-        .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, (payload) => {
-          handleNoteChange(payload);
-        })
-        .subscribe();
-      _realtimeSubs.push(noteSub);
+      try {
+        const noteSub = _supa.channel("notes-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, (payload) => {
+            handleNoteChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(noteSub);
+      } catch (e) { safeLog("[RT] notes subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -3585,6 +4037,7 @@
       const { eventType, new: newRow, old: oldRow } = payload;
 
       if (eventType === "INSERT") {
+        if (!newRow) return;
         // Check if we already have this patient (we just inserted it ourselves)
         if (patients.some(p => p._supa_id === newRow.id)) return;
         const p = supaRowToPatient(newRow);
@@ -3594,9 +4047,10 @@
         noteData[pid(p)] = defaultData();
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        console.log("[RT] Patient inserted:", p.nombre);
+        safeLog("[RT] Patient inserted:", p.nombre);
       }
       else if (eventType === "UPDATE") {
+        if (!newRow) return;
         const idx = patients.findIndex(p => p._supa_id === newRow.id);
         if (idx === -1) return;
         const oldKey = pid(patients[idx]);
@@ -3616,22 +4070,27 @@
           noteData[newKey] = noteData[oldKey];
           delete noteData[oldKey];
           lsSaveNote(newKey, noteData[newKey]);
+          localStorage.removeItem(NOTES_PREFIX + oldKey);
+          _cleanupPatientCache(oldKey);
         }
         patients[idx] = updated;
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        console.log("[RT] Patient updated:", updated.nombre);
+        safeLog("[RT] Patient updated:", updated.nombre);
       }
       else if (eventType === "DELETE") {
         const id = oldRow?.id || newRow?.id;
+        if (!id) { safeLog("[RT] DELETE patient: payload sin id"); return; }
         const idx = patients.findIndex(p => p._supa_id === id);
         if (idx === -1) return;
         const k = pid(patients[idx]);
         patients.splice(idx, 1);
         delete noteData[k];
+        localStorage.removeItem(NOTES_PREFIX + k);
+        _cleanupPatientCache(k);
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        console.log("[RT] Patient deleted:", k);
+        safeLog("[RT] Patient deleted:", k);
       }
     }
 
@@ -3640,6 +4099,7 @@
       if (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id))) return;
       const { eventType, new: newRow } = payload;
       if (eventType === "DELETE") return;
+      if (!newRow || !newRow.patient_id) return;
       // Find patient by _supa_id matching note's patient_id
       const p = patients.find(x => x._supa_id === newRow.patient_id);
       if (!p) return;
@@ -3652,14 +4112,25 @@
       textFields.forEach(function(f) {
         nd[f] = dirty.has(f) ? existing[f] : (newRow[f] || "");
       });
-      nd.checklist = newRow.checklist || existing.checklist || nd.checklist;
+      // Fusionar checklist: preservar pendientes_mips y pendientes_r1 si están siendo editados
+      const remoteChecklist = newRow.checklist || {};
+      const localChecklist = existing.checklist || {};
+      nd.checklist = { ...remoteChecklist };
+      if (dirty.has("ck_pendientes_mips")) nd.checklist.pendientes_mips = localChecklist.pendientes_mips || "";
+      if (dirty.has("ck_pendientes_r1")) nd.checklist.pendientes_r1 = localChecklist.pendientes_r1 || "";
       nd.labHistory = newRow.lab_history || [];
       nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
         ? newRow.imagen_history
         : (existing.imagenHistory || []);
-      noteData[k] = migrateNote(nd);
+      try { noteData[k] = migrateNote(nd); } catch (e) { safeLog("[RT] migrateNote error for " + k + ":", e); noteData[k] = defaultData(); }
       lsSaveNote(k, noteData[k]);
-      renderView();
+      // Re-render SOLO la tarjeta afectada — renderView() destruiría texto en edición en TODOS los demás cards
+      // Además, si el usuario tiene foco dentro de esta misma tarjeta, no re-renderizar para no perder su texto
+      const _rtCardEl = document.getElementById("card-" + k);
+      const _rtHasFocus = _rtCardEl && _rtCardEl.contains(document.activeElement);
+      if (_rtCardEl && !_rtHasFocus) {
+        _rtCardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
+      }
       // Toast no intrusivo
       var _toastEl = document.getElementById("rt-toast");
       if (!_toastEl) {
@@ -3671,8 +4142,11 @@
       _toastEl.textContent = "📡 Actualización recibida: " + (p.nombre || k);
       _toastEl.style.opacity = "1";
       clearTimeout(_toastEl._tid);
-      _toastEl._tid = setTimeout(function(){ _toastEl.style.opacity = "0"; }, 3000);
-      console.log("[RT] Note updated:", k);
+      _toastEl._tid = setTimeout(function(){
+        _toastEl.style.opacity = "0";
+        setTimeout(function(){ if (_toastEl.parentNode) _toastEl.parentNode.removeChild(_toastEl); }, 350);
+      }, 3000);
+      safeLog("[RT] Note updated:", k);
     }
 
     function supaRowToPatient(row) {
@@ -3692,7 +4166,7 @@
       try {
         const lp = lsGetPatients() || [];
         lp.forEach(p => { if (p._supa_id) localById[p._supa_id] = p; });
-      } catch (e) {}
+      } catch (e) { safeLog("sanitizePatients lsGetPatients:", e); }
       return arr.filter(p => {
         if (p.nombre || p.cama || p.exp) return true; // tiene al menos un campo → ok
         // ghost: intentar rescatar desde caché local
@@ -3714,6 +4188,18 @@
       });
     }
 
+    // ─── BEFOREUNLOAD: flush pending in-memory edits to localStorage before page closes ──
+    // Protege contra pérdida de datos si el usuario cierra el tab mientras hay un debounce
+    // pendiente (ventana de ~900ms entre que escribe y que el autosave dispara).
+    window.addEventListener("beforeunload", function () {
+      try {
+        Object.keys(noteData).forEach(function (k) {
+          try { lsSaveNote(k, noteData[k]); } catch (_) {}
+        });
+      } catch (_) {}
+      try { lsSavePatients(patients); } catch (_) {}
+    });
+
     // ─── OFFLINE: flush outbox when back online ─────────────────────────────────────
     window.addEventListener("online", async () => {
       setSyncStatus("syncing", "Reconectando...");
@@ -3730,11 +4216,13 @@
         if (loaded) {
           patients = loaded.patients; noteData = loaded.notes;
           lsSavePatients(patients);
+          // Supabase cargó exitosamente → limpiar outbox obsoleto
+          outboxSave([]); updateOutboxBadge();
           buildEspFilters(); renderView();
           syncOk = true;
         }
       }
-      if (syncOk) setSyncStatus("synced", "Reconectado");
+      if (syncOk) setSyncStatus("synced", "✅ Guardado");
       else setSyncProblemStatus();
     });
     window.addEventListener("offline", () => { setSyncStatus("offline", "Sin conexión"); });
@@ -3761,7 +4249,7 @@
           } else results[absIdx] = true; // tipo desconocido → descartar
         }));
       }
-      const failed = q.filter((_, i) => results[i] === false);
+      const failed = q.filter((_, i) => !results[i]);
       outboxSave(failed);
       updateOutboxBadge();
       if (!failed.length) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
@@ -3786,7 +4274,7 @@
         : "⬆️ MIGRACIÓN A SUPABASE\n\nEsto subirá todos los pacientes y notas de este navegador a Supabase.\n\nHazlo desde el dispositivo que tiene el censo más actualizado.\n\n¿Continuar?";
       if (!confirm(msg)) return;
 
-      setSyncStatus("syncing", remoteUseful.length ? "Reparando sync..." : "Migrando...");
+      setSyncStatus("syncing", "Sincronizando...");
 
       const remoteByKey = {};
       remoteUseful.forEach(function (row) {
@@ -3799,12 +4287,6 @@
           const remoteId = remoteByKey[patientIdentityKey(p)];
           if (remoteId) p._supa_id = remoteId;
         }
-        const row = {
-          cama: p.cama || "", nombre: p.nombre || "", exp: p.exp || "", dx: p.dx || "",
-          edad: p.edad ? String(p.edad) : "", esp: p.esp || "", adscrito: p.adscrito || "",
-          residente: p.residente || "", estado: p.estado || "",
-          ingreso: ingresoToISO(p.ingreso)
-        };
         let inserted = null;
         try { inserted = await supaUpsertPatient(p); }
         catch (e) { safeLog("Migration patient error [" + p.nombre + "]:", e); errors++; continue; }
@@ -3829,7 +4311,7 @@
         buildEspFilters(); renderView();
       }
       startRealtime();
-      setSyncStatus("synced", remoteUseful.length ? "Sync reparado" : "Migración completa");
+      setSyncStatus("synced", "✅ Guardado");
       alert("✅ " + (remoteUseful.length ? "Resincronización completa" : "Migración completa") + "\n\n" + migrated + " pacientes subidos/actualizados" + (errors ? " (" + errors + " errores)" : "") + "\n\nAhora recarga el iPad para descargar el censo.");
     }
 
@@ -3870,9 +4352,7 @@
         setSyncStatus("offline", "Sin conexión");
         return;
       }
-      const pending = outboxLoad().length;
-      const suffix = pending ? " · " + pending + " pendiente" + (pending === 1 ? "" : "s") : "";
-      setSyncStatus("offline", "Sync pendiente" + suffix);
+      setSyncStatus("error", "Error al guardar — reintentando");
     }
     function parseDmy(str) {
       if (!str) return null;
@@ -3939,7 +4419,7 @@
       };
     }
     function persistGuardInfo() {
-      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { }
+      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { safeLog("persistGuardInfo:", e); }
     }
     const persistGuardInfoDebounced = debounce(persistGuardInfo, 250);
     function restoreGuardInfo() {
@@ -3976,11 +4456,15 @@
 
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
+      // Limpiar plantilla Excel de versiones anteriores que sí la guardaban en localStorage
+      // (puede ocupar hasta 2 MB en base64; ahora se mantiene solo en memoria)
+      try { localStorage.removeItem(EXCEL_TEMPLATE_KEY); } catch (_) {}
+
       // Cargar lista de camas guardada (si el usuario la personalizó)
       try {
         const saved = localStorage.getItem("pl_all_beds_v1");
         if (saved) { const arr = JSON.parse(saved); if (Array.isArray(arr) && arr.length) ALL_BEDS = arr; }
-      } catch (e) { }
+      } catch (e) { safeLog("init load ALL_BEDS:", e); }
 
       // Cargar archivados y snapshots
       try { archivados = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || "[]"); } catch (e) { archivados = []; }
@@ -4009,7 +4493,7 @@
         setTimeout(() => { buildEspFilters(); renderView(); }, 0);
       }
 
-      setSyncStatus("syncing", "Sincronizando...");
+      setSyncStatus("syncing", "Guardando...");
 
       // Check if localStorage has data that was saved more recently than the last confirmed Supabase sync
       const lastSaveTs = parseInt(localStorage.getItem("pl_last_save_ts") || "0", 10);
@@ -4024,32 +4508,34 @@
 
       // ── Safety guard: compare Supabase vs localStorage patient counts ──
       const localPts = lsGetPatients() || [];
-      const localHasMore = localPts.length > 0 && loaded && loaded.patients.length > 0
-        && localPts.length > loaded.patients.length;
+      const supaClean = loaded ? sanitizePatients(loaded.patients) : [];
+      const localHasMore = localPts.length > 0 && supaClean.length > 0
+        && localPts.length > supaClean.length;
 
-      if (loaded && loaded.patients.length > 0 && !localHasMore) {
-        patients = sanitizePatients(loaded.patients);
-        noteData = loaded.notes;
+      if (supaClean.length > 0 && !localHasMore) {
+        patients = supaClean;
+        noteData = loaded.notes || {};
         lsSavePatients(patients);
         // Cache notes locally
         patients.forEach(p => { lsSaveNote(pid(p), noteData[pid(p)] || defaultData()); });
         localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         localStorage.setItem("pl_last_save_ts", Date.now().toString());
+        // Supabase cargó exitosamente → limpiar outbox obsoleto (datos ya están en Supabase)
+        outboxSave([]); updateOutboxBadge();
         startRealtime();
         const hm = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-        setSyncStatus("synced", "Sync " + hm);
+        setSyncStatus("synced", "✅ Guardado");
       } else if (localHasMore) {
         // Supabase has fewer patients than local — likely incomplete sync, prefer local
         safeLog("[GUARD] Local tiene " + localPts.length + " pacientes vs Supabase " + (loaded ? loaded.patients.length : 0) + ". Usando datos locales.");
         patients = sanitizePatients(localPts);
         noteData = {};
         patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
-        setSyncStatus("syncing", "Recuperando datos locales...");
+        setSyncStatus("syncing", "Guardando...");
         startRealtime();
         _savePtsImmediate().then(() => {
-          const hm2 = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-          setSyncStatus("synced", "Recuperado " + hm2);
-        });
+          setSyncStatus("synced", "✅ Guardado");
+        }).catch(e => { safeLog("_savePtsImmediate (localHasMore):", e); setSyncProblemStatus(); });
       } else {
         // Supabase empty, failed, offline, or localStorage is newer → load from localStorage
         patients = sanitizePatients(lsGetPatients() || []);
@@ -4058,27 +4544,26 @@
         if (patients.length && navigator.onLine) {
           if (localHasNewerData) {
             // Re-sync newer local data to Supabase in background
-            setSyncStatus("syncing", "Recuperando datos locales...");
+            setSyncStatus("syncing", "Guardando...");
             startRealtime();
             _savePtsImmediate().then(() => {
-              const hm2 = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-              setSyncStatus("synced", "Recuperado " + hm2);
-            });
+              setSyncStatus("synced", "✅ Guardado");
+            }).catch(e => { safeLog("_savePtsImmediate (localNewer):", e); setSyncProblemStatus(); });
           } else if (loaded === null) {
             // Supabase error pero hay datos locales disponibles — no mostrar error alarmante
-            setSyncStatus("offline", "Datos locales · BD sin conexión");
+            setSyncStatus("offline", "Sin conexión");
             startRealtime();
           } else {
             // loaded.patients was empty — local data exists but Supabase is empty → migration prompt
-            setSyncStatus("offline", "Datos locales — migra a Supabase ⬆️");
+            setSyncStatus("offline", "Sin conexión · Config");
           }
         } else if (!patients.length) {
           if (!navigator.onLine) {
-            setSyncStatus("offline", "Sin conexión y sin datos locales");
+            setSyncStatus("offline", "Sin conexión");
           } else if (loaded === null) {
-            setSyncStatus("error", "No se pudo descargar Supabase");
+            setSyncStatus("error", "Error al conectar");
           } else {
-            setSyncStatus("offline", "Supabase vacío — abre Config");
+            setSyncStatus("error", "Sin datos — abre Config");
             const syncEl = document.getElementById("sync-status");
             if (syncEl) {
               syncEl.title = "Supabase no devolvió pacientes. Toca para abrir Config y reparar sync.";
@@ -4087,7 +4572,7 @@
             }
           }
         } else {
-          setSyncStatus("offline", "Modo local (sin conexión)");
+          setSyncStatus("offline", "Sin conexión");
         }
       }
 
@@ -4096,6 +4581,7 @@
       updateProxyPill();
       rotateQuote();
       updateCourseCountdown();
+      initNoOlvidarSync();
     }
     // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
     function setView(v, btn) {
@@ -4107,7 +4593,8 @@
     const renderViewFromSearch = debounce(function () { renderView(); }, 120);
     function handleSearchInput() { renderViewFromSearch(); }
     function renderView() {
-      const search = document.getElementById("search").value.toLowerCase();
+      const _searchEl = document.getElementById("search");
+      const search = _searchEl ? _searchEl.value.toLowerCase() : "";
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
       function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
       const searchNorm = normSearch(search);
@@ -4124,15 +4611,17 @@
         }
         return em && sm && rm && am && im;
       });
-      document.getElementById("count-badge").innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
-      ["piso", "census", "print", "altas", "formatos"].forEach(v => {
-        document.getElementById("view-" + v).style.display = currentView === v ? "" : "none";
+      const _cb = document.getElementById("count-badge");
+      if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
+      ["piso", "census", "print", "noOlvidar", "altas"].forEach(v => {
+        const _ve = document.getElementById("view-" + v);
+        if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
       if (currentView === "piso") renderPiso(filtered);
       if (currentView === "census") renderCensus(filtered);
       if (currentView === "print") renderPrint(filtered);
-      if (currentView === "altas") renderAltas(filtered);
-      if (currentView === "formatos") renderFormatos(filtered);
+      if (currentView === "noOlvidar") renderNoOlvidar();
+      if (currentView === "altas") renderAltas();
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -4146,6 +4635,13 @@
       });
       c.innerHTML = html;
     }
+    // Búsqueda con debounce: evita re-render en cada tecla que destruiría tarjetas en edición
+    var _searchTimer = null;
+    function debouncedSearch() {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(renderView, 280);
+    }
+
     function setEsp(v, btn) {
       selectedEsp = v;
       document.querySelectorAll(".esp-btn").forEach(b => b.classList.remove("active"));
@@ -4292,22 +4788,6 @@
       }, 80);
     }
 
-    function toggleArchivados() {
-      const body = document.getElementById("arch-body");
-      const arrow = document.getElementById("arch-arrow");
-      if (!body) return;
-      const open = body.style.display !== "none";
-      body.style.display = open ? "none" : "grid";
-      if (arrow) arrow.textContent = open ? "▸" : "▾";
-    }
-
-    function clearAllArchivados() {
-      if (!archivados.length) return;
-      if (!confirm(`¿Eliminar permanentemente los ${archivados.length} pacientes del historial? Esta acción no se puede deshacer.`)) return;
-      archivados = [];
-      try { localStorage.removeItem(ARCHIVE_KEY); } catch (e) { }
-      renderView();
-    }
 
     // ─── BED MANAGER MODAL ───────────────────────────────────────────────────────────
     function openBedManager() {
@@ -4344,13 +4824,13 @@
         .split("\n").map(l => l.trim().toUpperCase()).filter(Boolean);
       if (!lines.length) { alert("Ingresa al menos una cama"); return; }
       ALL_BEDS = [...new Set(lines)];
-      try { localStorage.setItem("pl_all_beds_v1", JSON.stringify(ALL_BEDS)); } catch (e) { }
+      try { localStorage.setItem("pl_all_beds_v1", JSON.stringify(ALL_BEDS)); } catch (e) { safeLog("bedMgrSave:", e); }
       document.getElementById("bed-mgr-modal").style.display = "none";
       renderView();
     }
     function bedMgrReset() {
       ALL_BEDS = [...DEFAULT_BEDS_PISO3, ...DEFAULT_BEDS_UCI, ...DEFAULT_BEDS_OTROS];
-      try { localStorage.removeItem("pl_all_beds_v1"); } catch (e) { }
+      try { localStorage.removeItem("pl_all_beds_v1"); } catch (e) { safeLog("bedMgrReset:", e); }
       document.getElementById("bed-mgr-ta").value = ALL_BEDS.join("\n");
     }
 
@@ -4366,10 +4846,12 @@
       if (!history.length) return null;
       return [...history].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")))[0];
     }
-    function getCriticalLabItemsFromSnapshot(snap) {
+    // allowedKeys: si se pasa, solo evalúa esos keys (útil para filtrar el panel de alertas)
+    function getCriticalLabItemsFromSnapshot(snap, allowedKeys) {
       const critical = [];
       if (!snap || !snap.labs || !Array.isArray(LAB_FIELDS)) return critical;
-      LAB_FIELDS.forEach(lf => {
+      const fields = allowedKeys ? LAB_FIELDS.filter(lf => allowedKeys.includes(lf.key)) : LAB_FIELDS;
+      fields.forEach(lf => {
         const raw = snap.labs[lf.key];
         if (raw === undefined || raw === null || String(raw).trim() === "") return;
         const num = parseLabNumber(raw);
@@ -4388,6 +4870,8 @@
       });
       return critical;
     }
+    // Keys usados en el panel de alertas inicial: solo Hb, plaquetas y electrolitos
+    const CRITICAL_ALERT_KEYS = ["hb", "plaq", "na", "k", "mg", "ca", "p", "cl", "alb", "bt", "fa", "amilasa", "lipasa", "dimero_d"];
     function isNptReminderDay(dateObj) {
       const d = dateObj || new Date();
       const day = d.getDay();
@@ -4417,7 +4901,7 @@
         }
 
         const latestSnap = getLatestLabSnapshot(nd);
-        const critLabs = getCriticalLabItemsFromSnapshot(latestSnap);
+        const critLabs = getCriticalLabItemsFromSnapshot(latestSnap, CRITICAL_ALERT_KEYS);
         if (critLabs.length) {
           criticalCases.push({ k, p, fecha: latestSnap ? latestSnap.fecha : "", labs: critLabs });
         }
@@ -4444,12 +4928,12 @@
     function scrollToPatient(k) {
       // Expand card if collapsed
       if (expandedCards[k] === false) { expandedCards[k] = true; }
-      // Re-render to make sure it's expanded
+      // Re-render solo esta tarjeta para reflejar estado expandido
       const p = patients.find(function(pt){ return pid(pt) === k; });
-      const nd = getNote(k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p, nd, k);
+      const nd = noteData[k] || defaultData();
+      const cardEl = document.getElementById("card-" + k);
+      if (p && cardEl) {
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
       }
       // Scroll to card
       setTimeout(function() {
@@ -4556,6 +5040,18 @@
       if (p.estado === "GRAVE" && !nd.pendientes?.trim())
         alerts.push({ type: "critico", label: "⚠️ GRAVE sin plan", color: "#dc2626" });
 
+      // Estancia prolongada
+      const dias = daysSince(p.ingreso);
+      if (typeof dias === "number") {
+        if (dias >= 14) alerts.push({ type: "estancia", label: "🏨 " + dias + " días", color: "#b91c1c" });
+        else if (dias >= 7) alerts.push({ type: "estancia", label: "🏨 " + dias + " días", color: "#d97706" });
+      }
+
+      // Curación pendiente: necesita pero no realizada hoy
+      const ck = nd.checklist || {};
+      if (ck.cur_necesita && !ck.cur_realizada)
+        alerts.push({ type: "cur", label: "🩹 Curación pendiente", color: "#0369a1" });
+
       return alerts;
     }
 
@@ -4573,7 +5069,8 @@
       const exp = expandedCards[k] !== false;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
       const alerts = computeAlerts(p, nd);
-      return `<div class="full-card${noEnCenso ? ' flag-noencenso' : ''}${alerts.some(a => a.type === 'critico' || a.type === 'labs_crit') ? ' card-critica' : ''}" id="card-${k}">
+      const esIngreso = isRecentIngreso(p.ingreso, 1);
+      return `<div class="full-card${noEnCenso ? ' flag-noencenso' : ''}${alerts.some(a => a.type === 'critico' || a.type === 'labs_crit') ? ' card-critica' : ''}${esIngreso ? ' card-ingreso' : ''}" id="card-${k}">
     <div class="card-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}cc 100%)">
       <div class="card-header-row1">
         <span class="card-bed" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
@@ -4581,6 +5078,7 @@
         <span class="card-age" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">· ${p.edad ? p.edad + 'a' : '?'}</span>
         <div class="card-badges">
           ${noEnCenso ? `<span class="badge-fuera">⚠️ Sin censo</span>` : ''}
+          ${esIngreso ? `<span class="badge-ingreso">🆕 INGRESO</span>` : ''}
           <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
           <span class="badge-esp">${esc(p.esp)}</span>
           <span class="badge-day">Día ${days}</span>
@@ -4618,7 +5116,29 @@
       </div>
       ${renderChecklist(nd, k)}
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
+      <div class="grid-2" style="margin-top:10px">
+        <div>
+          <div class="field-label">📋 Pendientes MIPs</div>
+          <textarea class="field-ta" rows="3"
+            data-key="${k}" data-ckfield="pendientes_mips"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveCkText(this)"
+            onchange="updateCkText(this.dataset.key,'pendientes_mips',this.value)"
+            placeholder="Tareas pendientes para MIPs...">${esc((nd.checklist && nd.checklist.pendientes_mips) || "")}</textarea>
+        </div>
+        <div>
+          <div class="field-label">📋 Pendientes R1</div>
+          <textarea class="field-ta" rows="3"
+            data-key="${k}" data-ckfield="pendientes_r1"
+            inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveCkText(this)"
+            onchange="updateCkText(this.dataset.key,'pendientes_r1',this.value)"
+            placeholder="Tareas pendientes para R1...">${esc((nd.checklist && nd.checklist.pendientes_r1) || "")}</textarea>
+        </div>
+      </div>
+      <div class="entrega-row" style="margin-top:10px">${fieldRow("📋 Entrega de guardia", nd.entrega, k, "entrega", 3)}</div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
+      ${renderBodyDiagram(nd, k)}
       ${renderLabSection(nd, k)}
       <div class="card-notes-bar">
         <span class="card-notes-label">📝 Notas:</span>
@@ -4639,9 +5159,14 @@
     function renderSimpleCard(p, nd, k) {
       const ec = ESP_COLORS[p.esp] || "#555";
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
-      const dx = (p.dx || "").length > 120 ? p.dx.slice(0, 120) + "..." : p.dx;
+      const _dx = p.dx || "";
+      const dx = _dx.length > 120 ? _dx.slice(0, 120) + "..." : _dx;
       const noEnCenso = p._noEnCenso || nd._noEnCenso;
-      return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}">
+      const esIngreso = isRecentIngreso(p.ingreso, 1);
+      const dias = daysSince(p.ingreso);
+      const simpleCk = (nd && nd.checklist) || {};
+      const curPendiente = simpleCk.cur_necesita && !simpleCk.cur_realizada;
+      return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}${esIngreso ? ' card-ingreso' : ''}">
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
       <div style="display:flex;align-items:center;gap:8px;flex:1">
         <span style="background:rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;font-size:13px;font-weight:700">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
@@ -4652,14 +5177,18 @@
       </div>
       <div style="display:flex;gap:5px;align-items:center">
         ${noEnCenso ? `<span class="badge-fuera">⚠️ Sin censo</span>` : ''}
+        ${esIngreso ? `<span class="badge-ingreso">🆕 INGRESO</span>` : ''}
         <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
         <span class="badge-esp">${esc(p.esp)}</span>
+        <span class="badge-day">Día ${dias}</span>
+        ${curPendiente ? `<span style="background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap">🩹 Cur</span>` : ''}
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
         <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
       </div>
     </div>
     <div class="simple-body">
       ${fieldRow("⚠️ Pendiente", nd.pendientes, k, "pendientes", 2)}
+      <div class="entrega-row">${fieldRow("📋 Entrega", nd.entrega, k, "entrega", 2)}</div>
     </div>
   </div>`;
     }
@@ -4670,8 +5199,78 @@
         "<div class='field-label'>" + label + "</div>" +
         "<textarea class='field-ta' rows='" + rows + "' " +
         "data-key='" + k + "' data-field='" + field + "' " +
+        "inputmode='text' autocorrect='off' autocapitalize='sentences' spellcheck='false' " +
         "oninput=\"liveUpdate(this)\" onchange=\"updateField(this.dataset.key,this.dataset.field,this.value)\">" + safe + "</textarea>" +
         "</div>";
+    }
+
+    // ─── BODY DIAGRAM ──────────────────────────────────────────────────────────────
+    function renderBodyDiagram(nd, k) {
+      const ek = k.replace(/[^a-zA-Z0-9_-]/g, '_');
+      // Anterior SVG: torso view (thorax → pelvis)
+      const antSvg = `<svg class="bd-svg" viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 35,18 C 22,10 12,22 10,38 L 9,85 C 7,108 9,145 14,175 L 22,200 Q 70,215 118,200 L 126,175 C 131,145 133,108 131,85 L 130,38 C 128,22 118,10 105,18 C 95,6 80,2 70,2 C 60,2 45,6 35,18 Z" fill="none" stroke="#94a3b8" stroke-width="1.8"/>
+        <path d="M 32,78 Q 51,93 70,97 Q 89,93 108,78" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="70" y1="2" x2="70" y2="215" stroke="#e2e8f0" stroke-width="0.8" stroke-dasharray="5,3"/>
+        <polygon points="70,74 75,80 70,85 65,80" fill="#94a3b8"/>
+        <circle cx="70" cy="128" r="4.5" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+        <line x1="14" y1="128" x2="126" y2="128" stroke="#e2e8f0" stroke-width="0.7" stroke-dasharray="4,3"/>
+        <path d="M 46,194 Q 70,205 94,194" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3,2"/>
+        <text x="38" y="114" font-size="7" fill="#cbd5e1" text-anchor="middle">CSD</text>
+        <text x="102" y="114" font-size="7" fill="#cbd5e1" text-anchor="middle">CSI</text>
+        <text x="38" y="150" font-size="7" fill="#cbd5e1" text-anchor="middle">CID</text>
+        <text x="102" y="150" font-size="7" fill="#cbd5e1" text-anchor="middle">CII</text>
+      </svg>`;
+      // Posterior SVG: back view
+      const postSvg = `<svg class="bd-svg" viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 35,18 C 22,10 12,22 10,38 L 9,85 C 7,108 9,145 14,175 L 22,200 Q 70,215 118,200 L 126,175 C 131,145 133,108 131,85 L 130,38 C 128,22 118,10 105,18 C 95,6 80,2 70,2 C 60,2 45,6 35,18 Z" fill="none" stroke="#94a3b8" stroke-width="1.8"/>
+        <line x1="70" y1="2" x2="70" y2="215" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4,2"/>
+        <ellipse cx="44" cy="52" rx="19" ry="23" fill="none" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,2"/>
+        <ellipse cx="96" cy="52" rx="19" ry="23" fill="none" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,2"/>
+        <ellipse cx="38" cy="115" rx="13" ry="19" fill="none" stroke="#dbeafe" stroke-width="1" stroke-dasharray="3,2"/>
+        <ellipse cx="102" cy="115" rx="13" ry="19" fill="none" stroke="#dbeafe" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="14" y1="128" x2="126" y2="128" stroke="#e2e8f0" stroke-width="0.7" stroke-dasharray="4,3"/>
+        <text x="38" y="101" font-size="7" fill="#cbd5e1" text-anchor="middle">Rñ D</text>
+        <text x="102" y="101" font-size="7" fill="#cbd5e1" text-anchor="middle">Rñ I</text>
+        <text x="44" y="33" font-size="7" fill="#cbd5e1" text-anchor="middle">Esc D</text>
+        <text x="96" y="33" font-size="7" fill="#cbd5e1" text-anchor="middle">Esc I</text>
+      </svg>`;
+
+      function sideHtml(side, svgHtml) {
+        const id = (side === 'ant' ? 'bdca-' : 'bdcp-') + ek;
+        const label = side === 'ant' ? 'ANTERIOR' : 'POSTERIOR';
+        return `<div class="bd-wrap">
+          <div class="bd-label">${label}</div>
+          <div class="bd-container">
+            ${svgHtml}
+            <canvas id="${id}" class="bd-canvas" width="140" height="220"
+              data-patient-key="${k}" data-side="${side}"
+              onpointerdown="bdStartDraw(event,'${k}','${side}')"
+              onpointermove="bdDraw(event,'${k}','${side}')"
+              onpointerup="bdEndDraw(event,'${k}','${side}')"
+              onpointerleave="bdEndDraw(event,'${k}','${side}')"></canvas>
+          </div>
+          <div class="bd-tools">
+            <button class="bd-color-btn" style="background:#e74c3c" onclick="bdSetColor('${k}','${side}','#e74c3c')" title="Rojo"></button>
+            <button class="bd-color-btn" style="background:#3b82f6" onclick="bdSetColor('${k}','${side}','#3b82f6')" title="Azul"></button>
+            <button class="bd-color-btn" style="background:#22c55e" onclick="bdSetColor('${k}','${side}','#22c55e')" title="Verde"></button>
+            <button class="bd-color-btn" style="background:#f59e0b" onclick="bdSetColor('${k}','${side}','#f59e0b')" title="Amarillo"></button>
+            <button class="bd-color-btn" style="background:#1e293b" onclick="bdSetColor('${k}','${side}','#1e293b')" title="Negro"></button>
+            <button class="bd-color-btn" style="background:#fff;box-shadow:0 0 0 1px #94a3b8" onclick="bdSetEraser('${k}','${side}')" title="Borrador">◌</button>
+            <input class="bd-size-slider" type="range" min="1" max="10" value="3" step="0.5"
+              onchange="bdSetSize('${k}','${side}',this.value)" title="Grosor">
+            <button class="bd-clear-btn" onclick="bdClear('${k}','${side}')">🗑</button>
+          </div>
+        </div>`;
+      }
+
+      return `<div class="bd-section">
+        <div class="field-label">🫁 Diagrama de drenajes / localización</div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px">
+          ${sideHtml('ant', antSvg)}
+          ${sideHtml('post', postSvg)}
+        </div>
+      </div>`;
     }
 
     // ─── IMAGEN FIELD (history) ──────────────────────────────────────────────────────
@@ -4734,7 +5333,7 @@
       const canAdd = activeFecha && estudios.length < 3;
       const noDate = !activeFecha;
 
-      return `<div>
+      return `<div id="img-sec-${k}">
     <div class="field-label">🖼 Imagen y hallazgos</div>
     <div class="img-date-bar">${dateChips}</div>
     ${noDate ? `<div style="font-size:12px;color:#94a3b8;padding:8px 0">Presiona «+ Nueva fecha» para agregar estudios de hoy.</div>` : `
@@ -4744,13 +5343,15 @@
   </div>`;
     }
 
+    function _refreshImgSec(k) {
+      const nd = getNote(k);
+      const el = document.getElementById("img-sec-" + k);
+      if (el) el.outerHTML = renderImagenField(nd, k);
+    }
+
     function setActiveImagenDate(k, fecha) {
       activeImagenDate[k] = fecha;
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
-      }
+      _refreshImgSec(k);
     }
 
     function addImagenDate(k) {
@@ -4763,11 +5364,7 @@
       noteData[k] = nd;
       activeImagenDate[k] = fecha;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, noteData[k], k);
-      }
+      _refreshImgSec(k);
     }
 
     function addEstudio(k, fecha) {
@@ -4777,8 +5374,7 @@
       entry.estudios.push({ tipo: "RX", descripcion: "", file: "", file_type: "", file_name: "", link: "" });
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudio(k, fecha, idx) {
@@ -4792,8 +5388,7 @@
       }
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function updateEstudioTipo(k, fecha, idx, val) {
@@ -4802,6 +5397,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].tipo = val;
       noteData[k] = nd; saveNote(k, nd);
+      _refreshImgSec(k);
     }
     function updateEstudioDesc(k, fecha, idx, val) {
       const nd = getNote(k);
@@ -4809,6 +5405,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].descripcion = val;
       noteData[k] = nd; saveNote(k, nd);
+      _refreshImgSec(k);
     }
 
     function triggerEstudioFile(k, fecha, idx, eid) {
@@ -4828,8 +5425,7 @@
       entry.estudios[idx].file_type = file.type || "application/octet-stream";
       entry.estudios[idx].file_name = file.name;
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function promptEstudioLink(k, fecha, idx) {
@@ -4841,8 +5437,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].link = url;
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudioFile(k, fecha, idx) {
@@ -4851,8 +5446,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].file = ""; entry.estudios[idx].file_type = ""; entry.estudios[idx].file_name = "";
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function removeEstudioLink(k, fecha, idx) {
@@ -4861,8 +5455,7 @@
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].link = "";
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const cardEl = document.getElementById("card-" + k); if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k); }
+      _refreshImgSec(k);
     }
 
     function openEstudioFile(k, fecha, idx) {
@@ -4873,6 +5466,7 @@
       if (!est.file) return;
       if (est.file_type && est.file_type.startsWith('image/')) {
         const w = window.open('', '_blank');
+        if (!w) { alert("El navegador bloqueó la ventana emergente. Permite popups para ver el archivo."); return; }
         w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${est.file_type};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
         w.document.close();
       } else {
@@ -4890,7 +5484,7 @@
     const LAB_GROUPS = [
       {
         id: "basico", label: "🩸 Biometría / Función renal", fields: [
-          { key: "hb", label: "Hb", unit: "g/dL", low: 12, high: 17, cl: 7 },
+          { key: "hb", label: "Hb", unit: "g/dL", low: 12, high: 17, cl: 8 },
           { key: "leucos", label: "Leuc", unit: "k/µL", low: 4, high: 10, ch: 15 },
           { key: "plaq", label: "Plaq", unit: "k/µL", low: 100, high: 400, cl: 50 },
           { key: "cr", label: "Cr", unit: "mg/dL", low: 0, high: 1.25, ch: 3 },
@@ -4898,7 +5492,7 @@
           { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110 },
           { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145 },
           { key: "k", label: "K", unit: "mmol/L", low: 3.5, high: 5.1, cl: 2.8, ch: 6.0 },
-          { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0, cl: 2.0 },
+          { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0, cl: 2.5 },
           { key: "pcr", label: "PCR", unit: "mg/L", low: 0, high: 10 },
           { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 }
         ]
@@ -4916,17 +5510,24 @@
           { key: "tp", label: "TP", unit: "seg", low: 11, high: 14, ch: 20 },
           { key: "ttp", label: "TTP", unit: "seg", low: 25, high: 35, ch: 60 },
           { key: "inr", label: "INR", unit: "", low: 0, high: 1.2, ch: 3 },
-          { key: "fibrinogeno", label: "Fibri", unit: "g/L", low: 2, high: 4, cl: 1 }
+          { key: "fibrinogeno", label: "Fibri", unit: "g/L", low: 2, high: 4, cl: 1 },
+          { key: "dimero_d", label: "Dím-D", unit: "µg/mL", low: 0, high: 0.5, ch: 1 }
         ]
       },
       {
         id: "hepatico", label: "🫀 Función hepática", fields: [
           { key: "ast", label: "AST", unit: "U/L", low: 0, high: 40, ch: 200 },
           { key: "alt", label: "ALT", unit: "U/L", low: 0, high: 40, ch: 200 },
-          { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 5 },
+          { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 2 },
           { key: "bd", label: "BD", unit: "mg/dL", low: 0, high: 0.3, ch: 3 },
           { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 },
-          { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147, ch: 400 }
+          { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147, ch: 500 }
+        ]
+      },
+      {
+        id: "pancreatico", label: "🫁 Enzimas pancreáticas", fields: [
+          { key: "amilasa", label: "Amilasa", unit: "U/L", low: 0, high: 100, ch: 300 },
+          { key: "lipasa",  label: "Lipasa",  unit: "U/L", low: 0, high: 60,  ch: 180 }
         ]
       },
       {
@@ -4940,25 +5541,17 @@
         ]
       },
       {
-        id: "ego", label: "🧫 Examen general de orina (EGO)", fields: [
-          { key: "ego_esterasa", label: "Est. Leuco", unit: "" },
-          { key: "ego_ph", label: "EGO pH", unit: "" },
-          { key: "ego_nitritos", label: "Nitritos", unit: "" },
-          { key: "ego_bacterias", label: "Bacterias", unit: "" },
-          { key: "ego_leucos", label: "Leucos EGO", unit: "x campo" },
-          { key: "ego_hematies", label: "Hematíes", unit: "x campo" },
-          { key: "ego_proteinas", label: "Proteínas", unit: "" },
-          { key: "ego_glucosa", label: "Glucosa EGO", unit: "" }
-        ]
-      },
-      {
-        id: "micro", label: "🦠 Microbiología / Cultivos", fields: [
-          { key: "micro_tipo_cultivo", label: "Tipo cultivo", unit: "" },
-          { key: "micro_muestra", label: "Muestra", unit: "" },
-          { key: "micro_organismo", label: "Organismo", unit: "" },
-          { key: "micro_sensibilidades", label: "Sensibles", unit: "" },
-          { key: "micro_resistencias", label: "Resistencias", unit: "" },
-          { key: "micro_comentarios", label: "Comentarios", unit: "" }
+        id: "ego", label: "🧪 Examen General de Orina", fields: [
+          { key: "ego_color",  label: "Color",     unit: "",      low: null, high: null },
+          { key: "ego_asp",    label: "Aspecto",   unit: "",      low: null, high: null },
+          { key: "ego_dens",   label: "Densidad",  unit: "",      low: 1.005, high: 1.030 },
+          { key: "ego_ph",     label: "pH orina",  unit: "",      low: 5, high: 8 },
+          { key: "ego_leuco",  label: "Est.Leuc",  unit: "u/µL",  low: 0, high: 10 },
+          { key: "ego_nitri",  label: "Nitritos",  unit: "",      low: null, high: null },
+          { key: "ego_bact",   label: "Bacterias", unit: "",      low: null, high: null },
+          { key: "ego_prot",   label: "Proteínas", unit: "",      low: null, high: null },
+          { key: "ego_glu",    label: "Glucosuria",unit: "",      low: null, high: null },
+          { key: "ego_hem",    label: "Hematíes",  unit: "u/µL",  low: 0, high: 5 }
         ]
       }
     ];
@@ -4968,7 +5561,7 @@
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
     const LAB_QUICK = {
       hb: (v) => {
-        if (v < 7) return { sev: "crit", title: "Anemia severa — Umbral transfusional", rec: "Transfusión CE (umbral 7 g/dL en estable, 8 g/dL en Qx cardio/SCA). Investigar causa. Solicitar reticulocitos, frotis, ferritina, B12, folato." };
+        if (v < 8) return { sev: "crit", title: "Anemia severa — Umbral transfusional", rec: "Transfusión CE indicada (umbral <8 g/dL en quirúrgico). Investigar causa. Solicitar reticulocitos, frotis, ferritina, B12, folato." };
         if (v < 10) return { sev: "abn", title: "Anemia moderada (OMS)", rec: "Investigar causa (ferropénica, inflamatoria, hemolítica, B12/folato). Suplementación según etiología. Considerar transfusión si sintomático o preQx." };
         if (v < 12) return { sev: "abn", title: "Anemia leve (OMS <12 g/dL)", rec: "Clasificar por VCM: microcítica (ferropénica, talasemia), normocítica (inflamatoria, ERC), macrocítica (B12/folato). Optimizar antes de Qx electiva." };
         if (v > 17) return { sev: "abn", title: "Policitemia", rec: "Descartar causa secundaria: hipoxia crónica, tabaquismo, neoplasia (policitemia vera). BH completa + EPO sérica." };
@@ -5019,7 +5612,7 @@
         return null;
       },
       alb: (v) => {
-        if (v < 2) return { sev: "crit", title: "Hipoalbuminemia severa", rec: "Marcador de desnutrición severa e inflamación. Evaluar soporte nutricional intensivo. Corrección no indicada de rutina (sólo en PBE o cirrosis con criterios)." };
+        if (v < 2.5) return { sev: "crit", title: "Hipoalbuminemia severa", rec: "Marcador de desnutrición severa e inflamación. Evaluar soporte nutricional intensivo (NPT/NE). Riesgo aumentado de complicaciones postoperatorias. Corrección con albúmina IV solo en PBE o cirrosis con criterios específicos." };
         if (v < 3.5) return { sev: "abn", title: "Hipoalbuminemia", rec: "Evaluar estado nutricional. Optimizar ingesta proteica. Considerar nutrición enteral/parenteral. Investigar causa inflamatoria." };
         return null;
       },
@@ -5091,7 +5684,7 @@
         return null;
       },
       bt: (v) => {
-        if (v >= 5) return { sev: "crit", title: "Hiperbilirrubinemia severa", rec: "Riesgo de insuficiencia hepática aguda. Evaluar fracción directa/indirecta. Ecografía hepática. Hepatología urgente." };
+        if (v >= 2) return { sev: "crit", title: "Hiperbilirrubinemia — Ictericia clínica", rec: "BT ≥2 mg/dL: ictericia clínicamente significativa. Evaluar fracción directa/indirecta. Ecografía hepatobiliar urgente. Descartar obstrucción, hepatitis, hemólisis. Hepatología si no hay causa evidente." };
         if (v > 1.2) return { sev: "abn", title: "Bilirrubina total elevada", rec: "Si BI predomina: hemólisis, Gilbert, transfusión. Si BD predomina: colestasis (obstructiva o hepática). Ecografía abdominal." };
         return null;
       },
@@ -5106,8 +5699,18 @@
         return null;
       },
       fa: (v) => {
-        if (v >= 400) return { sev: "crit", title: "Fosfatasa alcalina muy elevada", rec: "Patrón colestásico marcado u origen óseo activo. Correlacionar con GGT/BT/BD. Solicitar US hepatobiliar urgente." };
+        if (v >= 500) return { sev: "crit", title: "Fosfatasa alcalina muy elevada (>500 U/L)", rec: "Patrón colestásico marcado u origen óseo activo. Correlacionar con GGT/BT/BD. Solicitar US hepatobiliar urgente. Descartar obstrucción biliar, metástasis óseas o hepáticas." };
         if (v > 147) return { sev: "abn", title: "Fosfatasa alcalina elevada", rec: "Sugerente de colestasis o patología ósea. Diferenciar con GGT (hepático) y clínica." };
+        return null;
+      },
+      amilasa: (v) => {
+        if (v >= 300) return { sev: "crit", title: "Amilasa muy elevada — Pancreatitis aguda grave", rec: "≥3× VN: altamente sugestivo de pancreatitis aguda. Completar con lipasa (más específica). Monitorizar por criterios de Ranson/BISAP. NPO, hidratación agresiva IV, analgesia, monitoreo de complicaciones." };
+        if (v > 100) return { sev: "abn", title: "Amilasa elevada", rec: "Evaluar en contexto clínico: pancreatitis aguda, parotiditis, obstrucción biliar, macroamilasemia. Correlacionar con lipasa para mayor especificidad." };
+        return null;
+      },
+      lipasa: (v) => {
+        if (v >= 180) return { sev: "crit", title: "Lipasa muy elevada — Pancreatitis aguda grave", rec: "≥3× VN: criterio diagnóstico de pancreatitis aguda (mayor especificidad que amilasa). Clasificar severidad (leve/moderada/grave). NPO estricto, hidratación IV agresiva (Ringer lactato preferible), analgesia, considerar CPRE si etiología biliar." };
+        if (v > 60) return { sev: "abn", title: "Lipasa elevada", rec: "Sugerente de pancreatitis aguda o patología pancreática. Más específica que amilasa. Correlacionar con clínica, amilasa y US/TAC." };
         return null;
       },
       ph: (v) => {
@@ -5147,11 +5750,16 @@
         if (v < 85) return { sev: "crit", title: "Desaturación severa", rec: "Emergencia respiratoria. O2 de alto flujo o VMI inmediato. Evaluar vía aérea. Correlacionar con pO2 y curva de disociación." };
         if (v < 95) return { sev: "abn", title: "Desaturación", rec: "Titular O2 para meta SatO2 92-96% (88-92% en EPOC). Evaluar causa de hipoxemia. Evaluar pO2 para confirmar." };
         return null;
+      },
+      dimero_d: (v) => {
+        if (v >= 1) return { sev: "crit", title: "Dímero D muy elevado — TEP/TVP probable", rec: "Dímero D ≥1 µg/mL: alta probabilidad de evento tromboembólico (TEP, TVP) o CID activa. Solicitar angioTAC de tórax o US Doppler según sospecha clínica. Evaluar anticoagulación. Correlacionar con TP, TTP, fibrinógeno y plaquetas para descartar CID." };
+        if (v > 0.5) return { sev: "abn", title: "Dímero D elevado", rec: "Dímero D >0.5 µg/mL: marcador sensible pero no específico. Evaluar probabilidad pretest (Wells score). Puede elevarse por cirugía reciente, inflamación, neoplasia, embarazo. Si sospecha de TEP/TVP: imagen urgente." };
+        return null;
       }
     };
 
     function labCellHtml(lf, val, k, fecha, prevVal) {
-      const num = parseFloat(val);
+      const num = parseLabNumber(val);
       const crit = val && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch));
       const abn = val && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
       const cls = crit ? "crit" : abn ? "abn" : "";
@@ -5287,7 +5895,7 @@
       const hasAnyLab = activeFecha && LAB_FIELDS.some(lf => labs[lf.key]);
       const hasSourceFile = activeFecha && snap && (snap.source_storage_path || snap.source_file);
 
-      return `<div style="margin-top:12px">
+      return `<div id="labs-sec-${k}" style="margin-top:12px">
     <div class="labs-header">
       <div class="labs-title">${labTitle}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -5299,6 +5907,15 @@
         <button data-pdfkey="${k}" onclick="triggerPdfInput(this)" ${loading ? "disabled" : ""}
           style="background:${loading ? "#94a3b8" : "#2196f3"};color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">
           ${loading ? "⏳ Extrayendo..." : "📄 PDF / 📷 Foto"}</button>
+        ${snap && snap.pdfUrl
+          ? `<a href="${esc(snap.pdfUrl)}" target="_blank" rel="noopener"
+               style="background:#0f766e;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px;display:inline-flex;align-items:center;text-decoration:none"
+               title="Ver PDF de laboratorios">📋 Ver PDF</a>`
+          : ""
+        }
+        <button onclick="setLabPdfUrl('${k}','${activeFecha}')"
+          style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;min-height:32px"
+          title="${snap && snap.pdfUrl ? 'Cambiar enlace PDF de labs' : 'Enlazar PDF de laboratorios'}">🔗${snap && snap.pdfUrl ? "" : " Enlazar PDF"}</button>
         ${hasAnyLab ? `<button class="lab-ai-btn" onclick="analyzeLabsAI('${k}','${activeFecha}')" ${aiLoading ? "disabled" : ""}>
           ${aiLoading ? "⏳ Analizando..." : "🧠 Análisis IA"}</button>` : ""}
         `: ""}
@@ -5376,13 +5993,21 @@
         "P: <0.81 hipofosfatemia, <0.5 SEVERA",
         "BT/BD/BI: >2 mg/dL hiperbilirrubinemia",
         "TGO/TGP: >40 U/L elevadas",
-        "FA: >120 U/L elevada",
+        "FA (fosfatasa alcalina): >120 U/L elevada, >400 CRITICA",
         "GGT: >50 U/L elevada",
         "LDH: >250 U/L elevada",
         "CPK: >200 U/L elevada",
         "pH: <7.35 acidosis, >7.45 alcalosis",
         "pCO2: <35 hipocapnia, >45 hipercapnia",
         "Lactato: >2 mmol/L elevado, >4 CRITICO",
+        "EGO pH: normal 5-8",
+        "EGO densidad: normal 1.005-1.030",
+        "EGO esterasa leucocitaria: >10 u/µL anormal (ITU probable)",
+        "EGO nitritos: positivo = infección bacteriana",
+        "EGO bacterias: negativo=normal, +/++/+++ = infección",
+        "EGO proteínas: negativo=normal, presencia = proteinuria",
+        "EGO glucosuria: negativo=normal, positivo = hiperglucemia o tubulopatía",
+        "EGO hematíes: <5 u/µL normal, >5 hematuria",
       ].join("\n");
 
       const prompt = `Eres un médico clínico experto en cirugía general. Analiza los laboratorios de un paciente hospitalizado usando los rangos de referencia EXACTOS provistos. Debes detectar CUALQUIER valor fuera del rango normal, aunque sea levemente anormal.
@@ -5453,19 +6078,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
 
       labAnalysisLoading.delete(k);
-      // Re-render la tarjeta solo al final cuando ya tenemos el resultado
-      const p2 = patients.find(pt => pid(pt) === k);
-      if (p2) {
-        const c = document.getElementById("card-" + k);
-        if (c) c.outerHTML = renderFullCard(p2, getNote(k), k);
-        else renderView(); // fallback si la tarjeta fue re-renderizada por otro motivo
-      }
+      // Actualizar solo la sección de labs — NO re-render completo para no destruir texto en edición
+      const _laLabsEl = document.getElementById("labs-sec-" + k);
+      if (_laLabsEl) _laLabsEl.outerHTML = renderLabSection(getNote(k), k);
     }
 
     function clearLabAnalysis(k) {
       delete labAnalysisCache[k];
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, getNote(k), k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(getNote(k), k);
     }
 
     // ─── FIELD / LAB UPDATE ──────────────────────────────────────────────────────────
@@ -5496,6 +6117,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap.labs) snap.labs = {};
       snap.labs[lk] = el.value;
       noteData[k] = nd;
+      delete labAnalysisCache[k]; // labs cambiaron → invalidar análisis IA
       scheduleNoteAutosave(k);
     }
     function updateField(k, field, value) {
@@ -5504,7 +6126,48 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(k, noteData[k]);
       // Campo guardado: ya no está dirty
       if (_dirtyFields[k]) _dirtyFields[k].delete(field);
+      // dx vive en el objeto paciente (no en notas) — sincronizar también allá
+      if (field === "dx") {
+        const p = patients.find(function(pt){ return pid(pt) === k; });
+        if (p) { p.dx = value; _savePtsImmediate(); } // inmediato: dx puede cambiar justo antes de cerrar la app
+      }
     }
+    // Handlers para campos de texto dentro del checklist (pendientes_mips, pendientes_r1)
+    function liveCkText(el) {
+      var k = el.dataset.key, f = el.dataset.ckfield;
+      var nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[f] = el.value;
+      noteData[k] = nd;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("ck_" + f);
+      scheduleNoteAutosave(k);
+    }
+    function updateCkText(k, field, value) {
+      var nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[field] = value;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      if (_dirtyFields[k]) _dirtyFields[k].delete("ck_" + field);
+    }
+
+    // ─── APPLE PENCIL / SCRIBBLE: compositionend handler ──────────────────────
+    // iOS Scribble usa la API de composición para insertar texto reconocido.
+    // El evento 'input' normalmente se dispara después, pero este handler
+    // garantiza que el guardado se active incluso en edge cases de iPadOS.
+    document.addEventListener('compositionend', function(e) {
+      var el = e.target;
+      if (!el) return;
+      if (el.matches && el.matches('.field-ta[data-key][data-field]')) {
+        liveUpdate(el);
+      } else if (el.matches && el.matches('.field-ta[data-key][data-ckfield]')) {
+        liveCkText(el);
+      } else if (el.matches && el.matches('.field-ta[data-key][data-labkey]')) {
+        liveLabUpdate(el);
+      }
+    });
+
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
@@ -5516,10 +6179,27 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (fecha === dates[0]) nd.labs = { ...snap.labs };
       noteData[k] = nd;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k);
+      // Actualizar solo la clase visual del cell afectado — sin destruir el DOM completo
+      // (un outerHTML = renderFullCard() destruiría cualquier campo que el usuario esté editando en ese momento)
+      const inputEl = document.querySelector('.lab-input[data-key="' + k + '"][data-labkey="' + labKey + '"]');
+      if (inputEl) {
+        const cell = inputEl.closest('.lab-cell');
+        if (cell) {
+          const lf = LAB_FIELDS.find(function(f){ return f.key === labKey; });
+          if (lf) {
+            const num = parseFloat(value);
+            let cls = 'lab-cell';
+            if (value && !isNaN(num)) {
+              const crit = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
+              const abn  = !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
+              if (crit) cls += ' crit';
+              else if (abn) cls += ' abn';
+            }
+            cell.className = cls;
+            // Sincronizar clase del input también
+            inputEl.className = 'lab-input' + (cls.includes('crit') ? ' crit' : cls.includes('abn') ? ' abn' : '');
+          }
+        }
       }
     }
     // Legacy alias (used by PDF extractor)
@@ -5528,11 +6208,28 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       updateLabHistory(k, activeFecha, labKey, value);
     }
 
+    function setLabPdfUrl(k, fecha) {
+      const nd = getNote(k);
+      const snap = (nd.labHistory || []).find(function(s){ return s.fecha === fecha; });
+      if (!snap) return;
+      const current = snap.pdfUrl || "";
+      const url = prompt("Pega la URL del PDF de laboratorios (dejar vacío para quitar el enlace):", current);
+      if (url === null) return; // usuario canceló
+      snap.pdfUrl = url.trim();
+      noteData[k] = nd;
+      saveNote(k, nd);
+      // Actualizar solo la sección de labs (tiene id="labs-sec-{k}") sin re-render completo
+      const labsSecEl = document.getElementById("labs-sec-" + k);
+      if (labsSecEl) {
+        labsSecEl.outerHTML = renderLabSection(nd, k);
+      }
+    }
+
     function setActiveLabDate(k, fecha) {
       activeLabDate[k] = fecha;
       var nd = noteData[k] || defaultData();
       var snap = (nd.labHistory || []).find(function (s) { return s.fecha === fecha; });
-      var labs = snap ? (snap.labs || {}) : {}
+      var labs = snap ? (snap.labs || {}) : {};
       var cardEl = document.getElementById("card-" + k);
       if (!cardEl) return;
       cardEl.querySelectorAll(".lab-date-chip:not(.new-btn)").forEach(function (btn) {
@@ -5575,8 +6272,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         activeLabDate[k] = rem[0] || null;
       }
       noteData[k] = nd; saveNote(k, nd);
-      var p = patients.find(function (p) { return pid(p) === k; });
-      if (p && !isSimpleEsp(p.esp)) { var ce = document.getElementById("card-" + k); if (ce) ce.outerHTML = renderFullCard(p, nd, k); }
+      var labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
     function toggleLabIncidencia(k, fecha, checked) {
       var nd = getNote(k);
@@ -5585,13 +6282,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       snap.incidencia = checked;
       noteData[k] = nd;
       saveNote(k, nd);
-      // Re-render just this card
-      var p = patients.find(function(pt){ return pid(pt) === k; });
-      var nd2 = getNote(k);
-      if (p && !isSimpleEsp(p.esp)) {
-        var ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p, nd2, k);
-      }
+      var labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
     function addLabDate(k) {
       const fecha = prompt("Fecha de los laboratorios (YYYY-MM-DD):", todayStr());
@@ -5603,11 +6295,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       noteData[k] = nd;
       activeLabDate[k] = fecha;
       saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p && !isSimpleEsp(p.esp)) {
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl) cardEl.outerHTML = renderFullCard(p, nd, k);
-      }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function addExtraLab(k, fecha) {
@@ -5617,8 +6306,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap.extra) snap.extra = [];
       snap.extra.push({ nombre: "", valor: "" });
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, nd, k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function removeExtraLab(k, fecha, idx) {
@@ -5627,8 +6316,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap || !snap.extra) return;
       snap.extra.splice(idx, 1);
       noteData[k] = nd; saveNote(k, nd);
-      const p = patients.find(p => pid(p) === k);
-      if (p) { const c = document.getElementById("card-" + k); if (c) c.outerHTML = renderFullCard(p, nd, k); }
+      const labsEl = document.getElementById("labs-sec-" + k);
+      if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
 
     function updateExtraLab(k, fecha, idx, field, value) {
@@ -5651,16 +6340,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function toggleExpand(k) {
       if (expandedCards[k] === undefined) expandedCards[k] = false;
       else expandedCards[k] = !expandedCards[k];
-      renderView();
+      // Re-render solo ESTA tarjeta — evitar renderView() que destruye todas las demás
+      // (incluyendo las que otro médico podría estar editando en otra ventana o tab)
+      const p = patients.find(function(pt){ return pid(pt) === k; });
+      const nd = noteData[k] || defaultData();
+      const cardEl = document.getElementById("card-" + k);
+      if (p && cardEl) {
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
+      } else {
+        renderView(); // fallback: tarjeta no en DOM
+      }
       // Autofocus: si se abre, enfocar el campo más relevante
       if (expandedCards[k] !== false) {
-        setTimeout(() => {
+        setTimeout(function() {
           const card = document.getElementById("card-" + k);
           if (!card) return;
-          const nd = noteData[k] || {};
-          // Si pendientes vacío → foco en pendientes; si no → signos vitales
-          const targetField = (!nd.pendientes || !nd.pendientes.trim()) ? "pendientes" : "sv";
-          const ta = card.querySelector(`textarea[data-field="${targetField}"]`);
+          const ndNow = noteData[k] || {};
+          const targetField = (!ndNow.pendientes || !ndNow.pendientes.trim()) ? "pendientes" : "sv";
+          const ta = card.querySelector('textarea[data-field="' + targetField + '"]');
           if (ta) { ta.focus(); ta.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
         }, 80);
       }
@@ -5688,6 +6385,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const fileType = snap.source_file_type || "application/pdf";
       if (fileType.startsWith("image/")) {
         const w = window.open("", "_blank");
+        if (!w) { alert("El navegador bloqueó la ventana emergente. Permite popups para ver el archivo."); return; }
         w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${fileType};base64,${snap.source_file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
         w.document.close();
         return;
@@ -5799,16 +6497,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
                     "\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\"," +
                     "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\",\"fa\":\"\"," +
                     "\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\"," +
-                    "\"ego_esterasa\":\"\",\"ego_ph\":\"\",\"ego_nitritos\":\"\",\"ego_bacterias\":\"\",\"ego_leucos\":\"\",\"ego_hematies\":\"\",\"ego_proteinas\":\"\",\"ego_glucosa\":\"\"," +
-                    "\"micro_tipo_cultivo\":\"\",\"micro_muestra\":\"\",\"micro_organismo\":\"\",\"micro_sensibilidades\":\"\",\"micro_resistencias\":\"\",\"micro_comentarios\":\"\"," +
+                    "\"ego_color\":\"\",\"ego_asp\":\"\",\"ego_dens\":\"\",\"ego_ph\":\"\",\"ego_leuco\":\"\",\"ego_nitri\":\"\",\"ego_bact\":\"\",\"ego_prot\":\"\",\"ego_glu\":\"\",\"ego_hem\":\"\"," +
                     "\"paciente\":\"\",\"fecha_labs\":\"\"}\n" +
-                    "Reglas: en química/biometría/gasometría usa solo valores numéricos (sin unidades). En EGO y microbiología puedes usar texto (ej. Negativo, Escasas, E. coli BLEE). Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
+                    "Reglas: valores numéricos sin unidades, texto tal como aparece para EGO. Fecha en YYYY-MM-DD. Paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
                     "Mapeo: Hb=hemoglobina, leucos=leucocitos/WBC, plaq=plaquetas, cr=creatinina, glu=glucosa, na=sodio, k=potasio, alb=albumina, pcr=proteína C reactiva, pct=procalcitonina, inr=INR, urea=BUN/urea, " +
                     "mg=magnesio, ca=calcio, p=fósforo, cl=cloro, tp=tiempo de protrombina, ttp=tiempo de tromboplastina parcial, fibrinogeno=fibrinógeno, " +
-                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, fa=fosfatasa alcalina, " +
-                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2. " +
-                    "EGO: ego_esterasa (esterasa leucocitaria), ego_ph, ego_nitritos, ego_bacterias, ego_leucos, ego_hematies, ego_proteinas, ego_glucosa. " +
-                    "Microbiología: micro_tipo_cultivo, micro_muestra, micro_organismo, micro_sensibilidades, micro_resistencias, micro_comentarios."
+                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, fa=fosfatasa alcalina/ALP/FAL, " +
+                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2, " +
+                    "ego_color=color orina, ego_asp=aspecto/turbidez orina, ego_dens=densidad orina, ego_ph=pH urinario, ego_leuco=esterasa leucocitaria/leucocitos orina, ego_nitri=nitritos, ego_bact=bacterias, ego_prot=proteínas/proteinuria, ego_glu=glucosuria, ego_hem=hematíes/eritrocitos orina."
                 }
               ]
             }]
@@ -5871,15 +6567,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       } catch (e) { alert("Error al procesar: " + (e.message || e)); }
       labLoadingSet.delete(k);
-      // Re-render only this card (not entire view) to avoid disrupting other cards
-      const p2 = patients.find(function(pt){ return pid(pt) === k; });
-      const nd2 = getNote(k);
-      if (p2 && nd2 && !isSimpleEsp(p2.esp)) {
-        const ce = document.getElementById("card-" + k);
-        if (ce) ce.outerHTML = renderFullCard(p2, nd2, k);
-      } else {
-        renderView();
-      }
+      // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición
+      const labsEl2 = document.getElementById("labs-sec-" + k);
+      if (labsEl2) labsEl2.outerHTML = renderLabSection(getNote(k), k);
+      else renderView();
     }
     // ─── CENSUS VIEW ─────────────────────────────────────────────────────────────────
     function censusRow(p, showEsp) {
@@ -5931,9 +6622,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const col = ESTADO_COLORS[p.estado] || "#ccc";
       sel.style.background = col;
       savePts();
-      // Actualizar solo el piso si la tarjeta está visible
+      // Actualizar solo la tarjeta de piso afectada (si está visible) — sin destruir las demás
       const cardEl = document.getElementById("card-" + pk);
-      if (cardEl) renderView();
+      if (cardEl) {
+        const nd2 = noteData[pk] || defaultData();
+        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd2, pk) : renderFullCard(p, nd2, pk);
+      }
     }
 
     function inlineCama(span, pk) {
@@ -5958,6 +6652,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             delete noteData[oldKey];
             localStorage.removeItem(NOTES_PREFIX + oldKey);
             deleteNoteRemote(oldKey);
+            _cleanupPatientCache(oldKey);
             saveNote(newKey, noteData[newKey]);
           }
           savePts();
@@ -6154,7 +6849,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const labs = snap ? snap.labs || {} : {};
           const labDate = snap ? fmtDateChip(snap.fecha) : "";
           let labHtml = "";
-          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "fa", "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "micro_organismo"].filter(x => labs[x]);
+          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "fa", "ego_leuco", "ego_ph", "ego_nitri", "ego_bact", "ego_hem"].filter(x => labs[x]);
           if (labItems.length) {
             labHtml = `<div class="eg-labs-compact"><span class="eg-lc-date">🧪 ${labDate}</span><div class="eg-lc-grid">` +
               labItems.map(x => {
@@ -6192,6 +6887,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           <div class="eg-r2">${ef("💧 Drenajes", nd.drenajes)}${ef("💉 NPT", nptEntrega)}</div>
           <div class="eg-r3">${ef("🩸Sangr", nd.sangrado)}${ef("⚖️Bal", nd.balance)}${ef("🍽 Dieta", cl.dieta || "")}</div>
           ${efh("📌 PLAN/PEND", nd.pendientes)}
+          ${nd.entrega ? `<div class="eg-f" style="background:#fffbeb;border-left:3px solid #f59e0b;padding:3px 6px;border-radius:0 4px 4px 0;margin:4px 0"><span class="eg-fl" style="color:#b45309">📋 ENTREGA</span><span class="eg-fv" style="color:#92400e;font-weight:600">${esc(String(nd.entrega))}</span></div>` : ''}
           ${labHtml}
           ${(function () {
               const tags = [];
@@ -6266,238 +6962,168 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       </div>
     </div>
     ${sectionsHtml}
+    ${(function() {
+      const altasPendientes = lsGetAltas().filter(function(a){ return !a.completado; });
+      if (!altasPendientes.length) return '';
+      const altasCards = altasPendientes.map(function(a) {
+        return `<div class="eg-c" style="border-left:4px solid #27ae60">
+          <div class="eg-ct"><div class="eg-ci">
+            <span class="eg-cama" style="background:#27ae60">🛏 ${esc(a.cama || '—')}</span>
+          </div><div class="eg-cp">
+            <b class="eg-nom">${esc(a.nombre || 'Sin nombre')}</b>
+          </div></div>
+          <div class="eg-cb">
+            ${a.indicaciones ? `<div class="eg-f"><span class="eg-fl">Indicaciones</span><span class="eg-fv" style="white-space:pre-wrap">${esc(a.indicaciones)}</span></div>` : ''}
+            ${a.notas ? `<div class="eg-f"><span class="eg-fl">Notas</span><span class="eg-fv">${esc(a.notas)}</span></div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+      return `<div class="eg-sec"><div class="eg-sh" style="background:#166534"><span>✅ ALTAS PROGRAMADAS</span><span class="eg-sc">${altasPendientes.length}</span></div><div class="eg-sg">${altasCards}</div></div>`;
+    })()}
   </div>`;
     }
 
-    // ─── ALTAS VIEW ─────────────────────────────────────────────────────────────────
-    function renderAltas(pts) {
-      const gi = getGuardInfo();
-      let html = "";
-      const sorted = [...pts].sort((a, b) => String(a.cama || "").localeCompare(String(b.cama || "")));
+    // ─── NO OLVIDAR VIEW ─────────────────────────────────────────────────────────────
+    const NO_OLVIDAR_KEY = "pl_no_olvidar_v1";
 
-      sorted.forEach(p => {
-        const nd = noteData[pid(p)] || defaultData();
-        const days = daysSince(p.ingreso);
-        const ec = ESP_COLORS[p.esp] || "#1a3a6b";
-        const pk = pid(p);
-        const sexo = getPatientSex(p, nd);
-        const now = new Date();
-        const fechaElab = gi.fecha || now.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
-        const horaElab = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + " HRS";
-        html += `<div class="alta-card" id="alta-card-${pk}">
-      <div class="alta-hdr" style="background:${ec}">
-        <span class="alta-cama">${esc(p.cama)}</span>
-        <span class="alta-nom">${esc(p.nombre)}</span>
-        <span class="alta-meta">${p.edad || "—"}a · ${esc(p.esp)} · Día ${days}</span>
-      </div>
-      <div class="alta-body">
-        <div class="alta-form-grid">
-          <div class="alta-inline-row"><span class="alta-lbl2">Fecha elaboración</span><span class="alta-editable" contenteditable="true" data-altafield="fecha_elab" data-altakey="${pk}">${esc(fechaElab)}</span><span class="alta-lbl2" style="margin-left:16px">Hora</span><span class="alta-editable" contenteditable="true" data-altafield="hora_elab" data-altakey="${pk}">${esc(horaElab)}</span></div>
-          <div class="alta-row2"><span class="alta-lbl2">Nombre del paciente</span><span class="alta-editable" contenteditable="true" data-altafield="nombre" data-altakey="${pk}">${esc(p.nombre || "")}</span></div>
-          <div class="alta-inline-row"><span class="alta-lbl2">Edad</span><span class="alta-editable" style="width:60px" contenteditable="true" data-altafield="edad" data-altakey="${pk}">${esc(String(p.edad || ""))}</span><span class="alta-lbl2" style="margin-left:12px">Sexo</span><span class="alta-editable" style="width:90px" contenteditable="true" data-altafield="sexo" data-altakey="${pk}">${esc(sexo)}</span><span class="alta-lbl2" style="margin-left:12px">Expediente</span><span class="alta-editable" contenteditable="true" data-altafield="exp" data-altakey="${pk}">${esc(p.exp || "")}</span></div>
-          <div class="alta-inline-row"><span class="alta-lbl2">Servicio</span><span class="alta-editable" contenteditable="true" data-altafield="servicio" data-altakey="${pk}">${esc(p.esp || "CIRUGÍA GENERAL")}</span><span class="alta-lbl2" style="margin-left:12px">Cama</span><span class="alta-editable" style="width:80px" contenteditable="true" data-altafield="cama" data-altakey="${pk}">${esc(p.cama || "")}</span></div>
-          <div class="alta-inline-row"><span class="alta-lbl2">Fecha ingreso</span><span class="alta-editable" contenteditable="true" data-altafield="f_ingreso" data-altakey="${pk}">${esc(p.ingreso || "")}</span><span class="alta-lbl2" style="margin-left:12px">Días hosp.</span><span class="alta-editable" style="width:70px" contenteditable="true" data-altafield="dias" data-altakey="${pk}">${days} DÍAS</span><span class="alta-lbl2" style="margin-left:12px">Fecha egreso</span><span class="alta-editable" contenteditable="true" data-altafield="f_egreso" data-altakey="${pk}">${esc(fechaElab)}</span></div>
-        </div>
-        <div class="alta-section-title">RESUMEN CLÍNICO</div>
-        <div class="alta-table">
-          <div class="alta-trow"><div class="alta-tlbl">DIAGNÓSTICO DE INGRESO</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="dx_ingreso" data-altakey="${pk}">${esc(p.dx || "")}</div></div>
-          <div class="alta-trow"><div class="alta-tlbl">DIAGNÓSTICO DE EGRESO</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="dx_egreso" data-altakey="${pk}">${esc(p.dx || "")}</div></div>
-          <div class="alta-trow"><div class="alta-tlbl">ANTECEDENTES DE IMPORTANCIA</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="antecedentes" data-altakey="${pk}">${esc(nd.app || nd.pa || "")}</div></div>
-          <div class="alta-trow"><div class="alta-tlbl">EVOLUCIÓN, MANEJO Y ESTADO ACTUAL</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="evolucion" data-altakey="${pk}">Hemodinámicamente estable, sin necesidad de apoyo vasopresor, sin uso de oxígeno suplementario, sin datos de respuesta inflamatoria sistémica, tolerando la vía oral, uresis y evacuaciones presentes por lo que se decide su egreso hospitalario.</div></div>
-          <div class="alta-trow"><div class="alta-tlbl">PROBLEMAS CLÍNICOS PENDIENTES</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="pendientes" data-altakey="${pk}">${esc(nd.pendientes || "")}</div></div>
-          <div class="alta-trow"><div class="alta-tlbl">PLAN DE MANEJO Y TRATAMIENTO</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="tratamiento" data-altakey="${pk}"></div></div>
-          <div class="alta-trow"><div class="alta-tlbl">RECOMENDACIONES PARA VIGILANCIA AMBULATORIA</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="recomendaciones" data-altakey="${pk}">- TOMA DE MEDICAMENTOS.
-- CITA ABIERTA EN URGENCIAS EN CASO DE DATOS DE ALARMA (DOLOR QUE NO CEDA A LA ANALGESIA, FIEBRE, SALIDA DE SECRECIÓN PURULENTA POR HERIDA, NÁUSEA O VÓMITO).
-- ACUDIR A CITA DE SEGUIMIENTO EN LA CONSULTA.</div></div>
-          <div class="alta-trow"><div class="alta-tlbl">ATENCIÓN DE FACTORES DE RIESGO DETECTADOS</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="factores" data-altakey="${pk}">ATENCIÓN MÉDICO HOSPITALARIA</div></div>
-          <div class="alta-trow"><div class="alta-tlbl">PRONÓSTICO</div><div class="alta-tval alta-editable" contenteditable="true" data-altafield="pronostico" data-altakey="${pk}">RESERVADO</div></div>
-        </div>
-        <div class="alta-sv-row">
-          <span class="alta-lbl2"><b>SIGNOS VITALES AL EGRESO:</b></span>
-          <span class="alta-lbl2">FC:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_fc" data-altakey="${pk}"></span>
-          <span class="alta-lbl2">FR:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_fr" data-altakey="${pk}"></span>
-          <span class="alta-lbl2">TA:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_ta" data-altakey="${pk}"></span>
-          <span class="alta-lbl2">Temp:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_temp" data-altakey="${pk}"></span>°C
-          <span class="alta-lbl2">SatO₂:</span><span class="alta-editable alta-sv" contenteditable="true" data-altafield="sv_sat" data-altakey="${pk}"></span>
-        </div>
-        <div class="alta-motivo-row">
-          <span class="alta-lbl2"><b>MOTIVO DEL EGRESO:</b></span>
-          <span class="alta-editable" contenteditable="true" data-altafield="motivo" data-altakey="${pk}">MEJORÍA ☑  MÁXIMO BENEFICIO ☐  PASE A OTRO HOSPITAL ☐</span>
-        </div>
-        <div class="alta-firmas">
-          <div class="alta-firma-box"><div class="alta-firma-line"></div><div class="alta-firma-lbl">DR. ${esc(p.adscrito || "_______________________")}<br><span style="font-weight:400;font-size:10px">SELLO Y FIRMA DE MÉDICO ADSCRITO</span></div></div>
-          <div class="alta-firma-box"><div class="alta-firma-line"></div><div class="alta-firma-lbl">DR. ${esc(p.residente || "_______________________")}<br><span style="font-weight:400;font-size:10px">NOMBRE, CÉDULA Y FIRMA DE MÉDICO RESIDENTE</span></div></div>
-        </div>
-      </div>
-      <div class="alta-actions">
-        <button class="alta-btn alta-btn-word" onclick="downloadAltaWord('${pk}')">📄 Descargar Word</button>
-        <button class="alta-btn alta-btn-print" onclick="printAlta('${pk}')">🖨 Imprimir formato oficial</button>
-      </div>
-    </div>`;
-      });
+    function lsGetNoOlvidar() {
+      try { return JSON.parse(localStorage.getItem(NO_OLVIDAR_KEY) || "[]"); }
+      catch (_) { return []; }
+    }
+    function lsSaveNoOlvidar(items) {
+      localStorage.setItem(NO_OLVIDAR_KEY, JSON.stringify(items));
+    }
+    function noOlvidarNextId(items) {
+      return items.length ? Math.max(...items.map(i => i.id || 0)) + 1 : 1;
+    }
 
-      // ── Historial de egresados archivados ───────────────────────────────────────
-      let archHtml = "";
-      if (archivados.length) {
-        archivados.forEach((arc, idx) => {
-          const fechaArc = arc._archivedAt ? new Date(arc._archivedAt).toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
-          const col = ESTADO_COLORS[arc.estado] || "#95a5a6";
-          archHtml += `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <div style="font-size:13px;font-weight:700;color:#1e293b">${esc(arc.nombre)}</div>
-          <div style="font-size:11px;color:#64748b">Cama: ${esc(arc.cama)} · Exp: ${esc(arc.exp)} · ${esc(arc.esp)} · Ing: ${esc(arc.ingreso || "—")}</div>
-          <div style="font-size:10px;color:#94a3b8;margin-top:2px">Archivado: ${fechaArc}</div>
-        </div>
-        <span style="background:${col};color:#fff;padding:2px 10px;border-radius:10px;font-size:10px;font-weight:700">${esc(arc.estado || "—")}</span>
-        <button onclick="restorePatient(${idx})"
-          style="background:#059669;color:#fff;border:none;border-radius:5px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)">↩ Restaurar al censo</button>
-        <button onclick="deleteArchivedPermanently(${idx})"
-          style="background:#dc2626;color:#fff;border:none;border-radius:5px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑 Eliminar</button>
-      </div>`;
-        });
+    function addNoOlvidar() {
+      const text = document.getElementById("no-olvidar-input").value.trim();
+      if (!text) return;
+      const author = localStorage.getItem("pl_user_name") || "Anónimo";
+      const items = lsGetNoOlvidar();
+      items.unshift({ id: noOlvidarNextId(items), texto: text, author, fecha: todayStr(), done: false });
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      document.getElementById("no-olvidar-input").value = "";
+      renderNoOlvidar();
+    }
+    function toggleNoOlvidar(id) {
+      const items = lsGetNoOlvidar();
+      const it = items.find(i => i.id === id);
+      if (it) it.done = !it.done;
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+    function deleteNoOlvidar(id) {
+      if (!confirm("¿Eliminar este recordatorio?")) return;
+      const items = lsGetNoOlvidar().filter(i => i.id !== id);
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+    function clearDoneNoOlvidar() {
+      const items = lsGetNoOlvidar().filter(i => !i.done);
+      lsSaveNoOlvidar(items);
+      syncNoOlvidarBroadcast(items);
+      renderNoOlvidar();
+    }
+
+    // Broadcast via Supabase Realtime para sincronizar entre usuarios conectados
+    var _noOlvidarChannel = null;
+    function initNoOlvidarSync() {
+      if (!window._supaClient) return;
+      // Limpiar suscripción anterior para evitar duplicados y fugas de memoria
+      if (_noOlvidarChannel) {
+        try { _noOlvidarChannel.unsubscribe(); } catch (_) {}
+        _noOlvidarChannel = null;
       }
-
-      document.getElementById("view-altas").innerHTML = `
-  <div class="altas-wrap">
-    <style>
-      .altas-wrap{max-width:1020px;margin:0 auto;padding:16px}
-      .alta-card{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:20px;overflow:hidden;border:1px solid #e2e8f0}
-      .alta-hdr{color:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px}
-      .alta-cama{background:rgba(255,255,255,.2);padding:2px 8px;border-radius:5px;font-weight:800;font-size:13px}
-      .alta-nom{font-weight:700;font-size:13px;flex:1}.alta-meta{font-size:10px;opacity:.8}
-      .alta-body{padding:14px 18px}
-      .alta-form-grid{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
-      .alta-row2{display:flex;align-items:center;gap:6px;font-size:12px}
-      .alta-inline-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px}
-      .alta-lbl2{font-size:11px;font-weight:700;color:#0f172a;white-space:nowrap}
-      .alta-editable{border-bottom:1px solid #94a3b8;padding:1px 4px;min-height:18px;outline:none;font-size:11.5px;color:#0f172a;font-family:inherit;flex:1;min-width:40px;white-space:pre-wrap}
-      .alta-editable:focus{border-bottom-color:#0ea5e9;background:#f0f9ff;border-radius:2px}
-      .alta-section-title{font-size:11px;font-weight:800;color:#fff;background:#001746;padding:4px 10px;margin:10px 0 0;letter-spacing:.3px}
-      .alta-table{border:1px solid #94a3b8;width:100%;margin-bottom:10px}
-      .alta-trow{display:grid;grid-template-columns:210px 1fr;border-bottom:1px solid #cbd5e1}
-      .alta-trow:last-child{border-bottom:none}
-      .alta-tlbl{font-size:10px;font-weight:700;color:#001746;padding:6px 8px;background:#f0f4f8;border-right:1px solid #cbd5e1;display:flex;align-items:flex-start;text-transform:uppercase}
-      .alta-tval{font-size:11px;padding:4px 8px;color:#1e293b;line-height:1.5;min-height:28px}
-      .alta-tval.alta-editable{border-bottom:none;border-radius:0;width:100%;box-sizing:border-box}
-      .alta-sv-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:11.5px;margin:8px 0;padding:6px 0;border-top:1px solid #e2e8f0}
-      .alta-sv{width:55px!important;flex:none!important;text-align:center}
-      .alta-motivo-row{font-size:11.5px;margin:4px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-      .alta-motivo-row .alta-editable{flex:1}
-      .alta-firmas{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:20px;padding-top:8px}
-      .alta-firma-box{text-align:center}
-      .alta-firma-line{border-top:1px solid #000;padding-top:5px;margin-top:60px;font-size:10px;font-weight:700;color:#001746;line-height:1.6}
-      .alta-actions{padding:8px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end}
-      .alta-btn{padding:6px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
-      .alta-btn-word{background:#2b579a;color:#fff}
-      .alta-btn-print{background:#001746;color:#fff}
-      @media(max-width:640px){.alta-trow{grid-template-columns:1fr}.alta-tlbl{border-right:none;border-bottom:1px solid #e2e8f0}}
-    </style>
-    <div style="text-align:center;font-size:16px;font-weight:800;color:#0a1628;margin-bottom:4px;padding-bottom:10px;border-bottom:2px solid #001746">🏠 NOTA DE ALTA / EGRESO HOSPITALARIO</div>
-    <p style="text-align:center;font-size:11px;color:#64748b;margin-bottom:16px">Edita los campos haciendo clic · El formato de impresión incluye logos oficiales del HGL</p>
-    ${html || '<div style="text-align:center;color:#94a3b8;padding:20px 0">No hay pacientes marcados como ALTA en el censo activo.</div>'}
-    ${archivados.length ? `
-    <div style="margin-top:24px;border-top:2px solid #e2e8f0;padding-top:16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;cursor:pointer" onclick="toggleArchivados()">
-        <span style="font-size:14px;font-weight:800;color:#0a1628">🗃 Historial de egresados — ${archivados.length} paciente${archivados.length !== 1 ? "s" : ""} archivado${archivados.length !== 1 ? "s" : ""}</span>
-        <span id="arch-arrow" style="font-size:13px;color:#64748b">▾</span>
-        <button onclick="event.stopPropagation();clearAllArchivados()" style="margin-left:auto;background:none;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:2px 10px;font-size:11px;cursor:pointer;font-family:var(--font)">🗑 Vaciar historial</button>
-      </div>
-      <div id="arch-body" style="display:grid;gap:0">${archHtml}</div>
-    </div>` : ""}
-  </div>`;
+      try {
+        _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
+          .on("broadcast", { event: "update" }, function(payload) {
+            if (payload.payload && Array.isArray(payload.payload.items)) {
+              // Evitar reprocesar si los datos son idénticos a los locales
+              const incoming = JSON.stringify(payload.payload.items);
+              if (incoming !== JSON.stringify(lsGetNoOlvidar())) {
+                lsSaveNoOlvidar(payload.payload.items);
+                if (currentView === "noOlvidar") renderNoOlvidar();
+              }
+            }
+          })
+          .subscribe();
+      } catch (_) { /* Realtime opcional — funciona sin él */ }
     }
-    // ─── FORMATOS INSTITUCIONALES ──────────────────────────────────────────────────
-    var fmtSelectedPatKey = "";
-    var fmtSelectedForm = "";
-
-    function renderFormatos(pts) {
-      const patOpts = pts.map(p => `<option value="${pid(p)}"${pid(p) === fmtSelectedPatKey ? " selected" : ""}>${esc(p.cama)} — ${esc(p.nombre)} (${p.edad || "?"}a)</option>`).join("");
-      // Get unique adscritos from patients
-      const adscritos = [...new Set(patients.map(p => p.adscrito).filter(Boolean))].sort();
-      const adsOpts = adscritos.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join("");
-
-      document.getElementById("view-formatos").innerHTML = `
-  <div class="fmt-wrap">
-    <style>
-      .fmt-wrap{max-width:1100px;margin:0 auto;padding:16px}
-      .fmt-title{text-align:center;font-size:16px;font-weight:800;color:#0a1628;margin-bottom:6px}
-      .fmt-hint{text-align:center;font-size:11px;color:#64748b;margin-bottom:16px}
-      .fmt-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0}
-      .fmt-bar label{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase}
-      .fmt-bar select{padding:6px 10px;border-radius:6px;border:1px solid #d1d5db;font-size:12px;font-family:inherit;min-width:200px}
-      .fmt-bar button{padding:7px 18px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;font-family:inherit}
-      .fmt-gen{background:#0a1628;color:#fff}.fmt-gen:hover{background:#1a3a6b}
-      .fmt-form-area{background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.06);border:1px solid #e2e8f0;overflow:hidden}
-      .fmt-form-header{background:linear-gradient(135deg,#0a1628,#1a3a6b);color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
-      .fmt-form-header h3{font-size:13px;margin:0}
-      .fmt-form-body{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-      .fmt-full{grid-column:span 2}
-      .fmt-field{display:flex;flex-direction:column}
-      .fmt-field label{font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
-      .fmt-field input,.fmt-field select,.fmt-field textarea{border:1px solid #d1d5db;border-radius:5px;padding:5px 9px;font-size:11px;font-family:inherit;color:#1e293b}
-      .fmt-field input:focus,.fmt-field select:focus,.fmt-field textarea:focus{border-color:#4fc3f7;outline:none}
-      .fmt-field textarea{resize:vertical;min-height:50px;line-height:1.4}
-      .fmt-section-title{grid-column:span 2;background:#f1f5f9;border-radius:6px;padding:6px 10px;text-align:center;font-weight:800;font-size:12px;color:#0a1628;margin:4px 0;border-left:4px solid #1a3a6b}
-      .fmt-checks{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-      .fmt-check-item{display:flex;gap:4px;align-items:center;font-size:11px}
-      .fmt-check-item input[type=checkbox]{width:14px;height:14px}
-      .fmt-actions{padding:10px 16px;border-top:1px solid #e2e8f0;display:flex;gap:6px;justify-content:flex-end;background:#f8fafc}
-      .fmt-btn{padding:7px 16px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
-      .fmt-btn-print{background:#7c3aed;color:#fff}
-      .fmt-btn-word{background:#2b579a;color:#fff}
-      @media(max-width:640px){.fmt-form-body{grid-template-columns:1fr}.fmt-full,.fmt-section-title{grid-column:span 1}}
-    </style>
-    <div class="fmt-title">📋 FORMATOS INSTITUCIONALES HGL</div>
-    <div class="fmt-hint">Selecciona paciente y formato → se auto-llenan los datos → edita lo que falte → imprime con formato institucional exacto.</div>
-    <div class="fmt-bar">
-      <div><label>Paciente</label><br><select id="fmt-pat-select" onchange="fmtSelectedPatKey=this.value">${patOpts ? `<option value="">— Seleccionar —</option>${patOpts}` : '<option>Sin pacientes</option>'}</select></div>
-      <div><label>Formato</label><br><select id="fmt-form-select" onchange="fmtSelectedForm=this.value">
-        <option value="">— Seleccionar —</option>
-
-        <option value="consentimiento_qx">FT-HGL-AM-542 · Consentimiento Quirúrgico</option>
-        <option value="consentimiento_gral">FT-HGL-AM-50 · Consentimiento General</option>
-        <option value="consentimiento_tx">FT-HGL-LAB-236 · Consentimiento Transfusión</option>
-
-      </select></div>
-      <div style="align-self:flex-end"><button class="fmt-gen" onclick="generateFormat()">⚡ Generar</button></div>
-    </div>
-    <div id="fmt-form-container"></div>
-  </div>`;
+    function syncNoOlvidarBroadcast(items) {
+      if (_noOlvidarChannel) {
+        try { _noOlvidarChannel.send({ type: "broadcast", event: "update", payload: { items } }); }
+        catch (_) {}
+      }
     }
 
-    function generateFormat() {
-      const pk = fmtSelectedPatKey || document.getElementById("fmt-pat-select").value;
-      const ft = fmtSelectedForm || document.getElementById("fmt-form-select").value;
-      if (!pk || !ft) { alert("Selecciona paciente y formato."); return; }
-      const p = patients.find(x => pid(x) === pk);
-      if (!p) { alert("Paciente no encontrado."); return; }
-      const nd = noteData[pk] || defaultData();
-      const gi = getGuardInfo();
-      const now = new Date();
-      const fechaStr = now.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
-      const horaStr = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-      const days = daysSince(p.ingreso);
-      const adscritos = [...new Set(patients.map(x => x.adscrito).filter(Boolean))].sort();
-      const adsOpts = adscritos.map(a => `<option value="${esc(a)}"${a === p.adscrito ? " selected" : ""}>${esc(a)}</option>`).join("");
-      // Last labs
-      const snap = (nd.labHistory || []).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
-      const labs = snap ? snap.labs || {} : {};
-      const container = document.getElementById("fmt-form-container");
+    function renderNoOlvidar() {
+      const el = document.getElementById("view-noOlvidar");
+      if (!el) return;
+      const items = lsGetNoOlvidar();
+      const pending = items.filter(i => !i.done);
+      const done    = items.filter(i => i.done);
+      const author  = localStorage.getItem("pl_user_name") || "Anónimo";
 
-      if (ft === "prepostqx") container.innerHTML = fmtPrePostQx(p, nd, gi, fechaStr, horaStr, labs, adsOpts);
-      else if (ft === "nota_medica") container.innerHTML = fmtNotaMedica(p, nd, gi, fechaStr, horaStr, labs, adsOpts);
-      else if (ft === "consentimiento_qx") container.innerHTML = fmtConsentimientoQx(p, nd, gi, fechaStr, horaStr, adsOpts);
-      else if (ft === "consentimiento_gral") container.innerHTML = fmtConsentimientoGral(p, nd, gi, fechaStr, horaStr, adsOpts);
-      else if (ft === "consentimiento_tx") container.innerHTML = fmtConsentimientoTx(p, nd, gi, fechaStr, horaStr, adsOpts);
+      const itemHtml = (i) => `
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:${i.done ? "#f8fafc" : "#fff"};border:1.5px solid ${i.done ? "#e2e8f0" : "#cbd5e1"};border-radius:10px;margin-bottom:8px;opacity:${i.done ? ".6" : "1"}">
+          <button onclick="toggleNoOlvidar(${i.id})"
+            style="flex-shrink:0;width:22px;height:22px;border-radius:50%;border:2px solid ${i.done ? "#10b981" : "#94a3b8"};background:${i.done ? "#10b981" : "#fff"};cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;color:#fff;padding:0">
+            ${i.done ? "✓" : ""}
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;color:${i.done ? "#94a3b8" : "#1e293b"};${i.done ? "text-decoration:line-through" : ""};word-break:break-word">${esc(i.texto)}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:3px">👤 ${esc(i.author)} · ${fmtDateChip(i.fecha)}</div>
+          </div>
+          <button onclick="deleteNoOlvidar(${i.id})"
+            style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:16px;color:#94a3b8;padding:0;line-height:1" title="Eliminar">✕</button>
+        </div>`;
+
+      el.innerHTML = `
+      <div style="max-width:700px;margin:0 auto;padding:20px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px">
+          <h2 style="margin:0;font-size:20px;color:#1e293b;font-weight:700">📌 No olvidar</h2>
+          <span style="font-size:12px;color:#64748b;background:#f1f5f9;padding:4px 10px;border-radius:20px">👤 ${esc(author)}</span>
+        </div>
+
+        <!-- Input nuevo recordatorio -->
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <input id="no-olvidar-input" type="text" placeholder="Agregar recordatorio para el equipo..."
+            style="flex:1;padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:var(--font);outline:none"
+            onkeydown="if(event.key==='Enter')addNoOlvidar()"
+            onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"/>
+          <button onclick="addNoOlvidar()"
+            style="background:#6366f1;color:#fff;border:none;padding:10px 18px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;white-space:nowrap">
+            ➕ Agregar
+          </button>
+        </div>
+
+        <!-- Pendientes -->
+        ${pending.length === 0
+          ? `<div style="text-align:center;padding:32px 0;color:#94a3b8;font-size:14px">No hay recordatorios pendientes 🎉</div>`
+          : `<div style="margin-bottom:6px">
+              <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Pendientes (${pending.length})</span>
+             </div>
+             ${pending.map(itemHtml).join("")}`
+        }
+
+        <!-- Completados -->
+        ${done.length > 0 ? `
+        <div style="margin-top:20px;border-top:1px dashed #e2e8f0;padding-top:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px">Completados (${done.length})</span>
+            <button onclick="clearDoneNoOlvidar()"
+              style="font-size:11px;color:#ef4444;background:none;border:none;cursor:pointer;padding:0">Limpiar completados</button>
+          </div>
+          ${done.map(itemHtml).join("")}
+        </div>` : ""}
+      </div>`;
     }
 
-    // ── Helpers for institutional formats ──
-    function fmtF(id, lbl, val, full, type) {
-      const cls = full ? "fmt-field fmt-full" : "fmt-field";
-      if (type === "textarea") return `<div class="${cls}"><label>${lbl}</label><textarea id="${id}" rows="3">${esc(val || "")}</textarea></div>`;
-      if (type === "select") return `<div class="${cls}"><label>${lbl}</label><select id="${id}">${val}</select></div>`;
-      return `<div class="${cls}"><label>${lbl}</label><input id="${id}" value="${esc(val || "")}"/></div>`;
-    }
     function fmtV(id) { const el = document.getElementById(id); return el ? (el.value || el.textContent || "").trim() : ""; }
     function sexOptionsHtml(selected, includeBlank) {
       const sexo = normalizeSexValue(selected);
@@ -6599,139 +7225,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       <button class="fmt-btn fmt-btn-print" onclick="printPrePostQx()">🖨 Imprimir formato institucional</button>
     </div>
   </div>`;
-    }
-
-    function printPrePostQx() {
-      const v = fmtV, c = id => document.getElementById(id) && document.getElementById(id).checked ? "X" : "";
-      const riesgos = [
-        "NEFROPATÍA (" + c("fqx_nefro") + ") ",
-        "COAGULOPATÍA (" + c("fqx_coag") + ") ",
-        "CARDIOPATÍA (" + c("fqx_cardio") + ") ",
-        "DIABETES (" + c("fqx_dm") + ") ",
-        "HAS (" + c("fqx_has") + ") ",
-        "ALCOHOLISMO (" + c("fqx_alcohol") + ") ",
-        "TABAQUISMO (" + c("fqx_tabaco") + ") ",
-        "ADICCIONES (" + c("fqx_adicc") + ")"
-      ].join("&emsp;");
-      const w = window.open("", "_blank", "width=900,height=1100");
-      w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-Qx-234</title>
-  <style>
-    @page{size:letter;margin:5mm}
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:5mm;line-height:1.35}
-    .hdr{text-align:right;font-size:8pt;color:#666;margin-bottom:2mm}
-    h2{text-align:center;font-size:11pt;font-weight:bold;margin:3mm 0 2mm}
-    .sec{font-weight:bold;font-size:10pt;margin:2mm 0 1mm}
-    .line{border-bottom:1px solid #000;min-height:5mm;padding:1px 2px;font-size:10pt;margin-bottom:1px}
-    .line b{font-weight:bold}
-    .row{display:flex;gap:2mm}
-    .row .line{flex:1}
-    .sv-table{width:100%;border-collapse:collapse;margin:2mm 0}
-    .sv-table td{border:1px solid #000;padding:2px 4px;font-size:9pt;text-align:center}
-    .sv-table td.lbl{font-weight:bold;background:#f0f0f0}
-    .sig-row{display:flex;justify-content:space-between;margin-top:8mm}
-    .sig-box{text-align:center;width:30%}
-    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;margin-top:15mm}
-    .checks{font-size:9pt;margin:1mm 0}
-    .pagebreak{page-break-before:always}
-    .fill{display:inline;font-weight:normal}
-  </style></head><body>
-    <div class="hdr">FT-HGL-Qx-234</div>
-    <div class="sec">DATOS GENERALES DEL PACIENTE:</div>
-    <div class="row">
-      <div class="line" style="flex:2">Fecha de elaboración: <span class="fill">${v("fqx_fecha")}</span></div>
-      <div class="line">Hora: <span class="fill">${v("fqx_hora")}</span></div>
-      <div class="line" style="flex:2">Servicio: <span class="fill">${v("fqx_servicio")}</span></div>
-    </div>
-    <div class="row">
-      <div class="line" style="flex:3"><b>Nombre Completo del Paciente</b>: <span class="fill">${v("fqx_nombre")}</span></div>
-      <div class="line">N° Expediente: <span class="fill">${v("fqx_exp")}</span></div>
-    </div>
-    <div class="row">
-      <div class="line"><b>Fecha de Nacimiento</b>: <span class="fill">${v("fqx_fn")}</span></div>
-      <div class="line">Edad: <span class="fill">${v("fqx_edad")}</span></div>
-      <div class="line">Sexo: <span class="fill">${v("fqx_sexo")}</span></div>
-      <div class="line">Cama: <span class="fill">${v("fqx_cama")}</span></div>
-    </div>
-    <table class="sv-table"><tr><td class="lbl" colspan="7">SIGNOS VITALES:</td></tr>
-    <tr><td>TA: ${v("fqx_ta")}</td><td>FC: ${v("fqx_fc")} X'</td><td>FR: ${v("fqx_fr")} X'</td><td>T: ${v("fqx_temp")} °C</td><td>Peso: ${v("fqx_peso")} Kg</td><td>Talla: ${v("fqx_talla")} Cm</td><td>IMC: </td></tr></table>
-
-    <h2>NOTA PREQUIRÚRGICA</h2>
-    <div class="row">
-      <div class="line" style="flex:2">FECHA DE LA CIRUGÍA A REALIZAR: <span class="fill">${v("fqx_fecha_cx")}</span></div>
-      <div class="line" style="flex:2">TIPO DE INTERVENCIÓN QUIRÚRGICA: <span class="fill">${v("fqx_tipo_interv")}</span></div>
-    </div>
-    <div class="line">PLAN QUIRÚRGICO: <span class="fill">${v("fqx_plan_qx")}</span></div>
-    <div class="sec">FACTORES DE RIESGO QUIRÚRGICO:</div>
-    <div class="checks">${riesgos}</div>
-    <div class="line">OTROS: <span class="fill">${v("fqx_otros_riesgo")}</span></div>
-    <div class="sec">RESUMEN DE INTERROGATORIO:</div>
-    <div class="line" style="min-height:20mm"><span class="fill">${v("fqx_interrogatorio").replace(/\n/g, "<br>")}</span></div>
-    <div class="sec">EXPLORACIÓN FÍSICA:</div>
-    <div class="line" style="min-height:20mm"><span class="fill">${v("fqx_ef").replace(/\n/g, "<br>")}</span></div>
-    <div class="sec">RESULTADOS DE ESTUDIOS AUXILIARES DIAGNÓSTICOS:</div>
-    <div class="row">
-      <div class="line">Sangre Tipo: ${v("fqx_tipo_sangre")}</div>
-      <div class="line">TP: ${v("fqx_tp")}</div>
-      <div class="line">TPT: ${v("fqx_tpt")}</div>
-      <div class="line">HB: ${v("fqx_hb")}</div>
-      <div class="line">HTO: ${v("fqx_hto")}</div>
-    </div>
-    <div class="line">OTROS: <span class="fill">${v("fqx_otros_labs").replace(/\n/g, "<br>")}</span></div>
-    <div class="line" style="min-height:6mm"><b>DIAGNÓSTICOS PREQUIRÚRGICOS:</b> <span class="fill">${v("fqx_dx_pre").replace(/\n/g, "<br>")}</span></div>
-    <div class="sec">CUIDADOS Y PLAN TERAPÉUTICO PREOPERATORIO:</div>
-    <div class="line" style="min-height:12mm"><span class="fill">${v("fqx_cuidados_pre").replace(/\n/g, "<br>")}</span></div>
-    <div class="line"><b>PRONÓSTICO PARA LA VIDA Y LA FUNCIÓN:</b> <span class="fill">${v("fqx_pronostico_pre")}</span></div>
-    <div class="sig-row">
-      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Médico Adscrito: ${v("fqx_adscrito")}</div></div>
-      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Médico que realiza: ${v("fqx_residente")}</div></div>
-      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Anestesiólogo</div></div>
-    </div>
-
-    <div class="pagebreak"></div>
-    <div class="hdr">FT-HGL-Qx-234 (continuación)</div>
-    <h2>NOTA POST-QUIRÚRGICA</h2>
-    <div class="line"><b>Diagnóstico Post-operatorio:</b> <span class="fill">${v("fqx_dx_post").replace(/\n/g, "<br>")}</span></div>
-    <div class="line"><b>Cirugía Realizada:</b> <span class="fill">${v("fqx_cx_realizada").replace(/\n/g, "<br>")}</span></div>
-    <div class="row">
-      <div class="line">Fecha: ${v("fqx_fecha_cx_real")}</div>
-      <div class="line">Hora inicio: ${v("fqx_hora_inicio")}</div>
-      <div class="line">Hora término: ${v("fqx_hora_fin")}</div>
-      <div class="line">Duración: ${v("fqx_duracion")}</div>
-    </div>
-    <div class="line">Tipo de Anestesia: <span class="fill">${v("fqx_anestesia")}</span></div>
-    <div class="row">
-      <div class="line" style="flex:2">Médico Cirujano: ${v("fqx_cirujano")}</div>
-      <div class="line" style="flex:2">Médico Anestesiólogo: ${v("fqx_anestesiologo")}</div>
-    </div>
-    <div class="row">
-      <div class="line" style="flex:2">1er Ayudante: ${v("fqx_ayud1")}</div>
-      <div class="line" style="flex:2">2do Ayudante: ${v("fqx_ayud2")}</div>
-    </div>
-    <div class="row">
-      <div class="line" style="flex:2">Enfermera Instrumentista: ${v("fqx_instrumentista")}</div>
-      <div class="line" style="flex:2">Enfermera Circulante: ${v("fqx_circulante")}</div>
-    </div>
-    <table class="sv-table"><tr><td class="lbl" colspan="7">SIGNOS VITALES:</td></tr>
-    <tr><td>TA: ${v("fqx_ta")}</td><td>FC: ${v("fqx_fc")} X'</td><td>FR: ${v("fqx_fr")} X'</td><td>T: ${v("fqx_temp")} °C</td><td>Peso: ${v("fqx_peso")} Kg</td><td>Talla: ${v("fqx_talla")} Cm</td><td>IMC: </td></tr></table>
-    <div class="sec">HALLAZGOS TRANS-OPERATORIOS Y DE IMPORTANCIA:</div>
-    <div class="line" style="min-height:15mm"><span class="fill">${v("fqx_hallazgos").replace(/\n/g, "<br>")}</span></div>
-    <div class="sec">DESCRIPCIÓN DE LA TÉCNICA QUIRÚRGICA:</div>
-    <div class="line" style="min-height:35mm"><span class="fill">${v("fqx_tecnica").replace(/\n/g, "<br>")}</span></div>
-    <table class="sv-table">
-    <tr><td>Reporte de Gasas y compresas: ${v("fqx_gasas")}</td><td>CUANTIFICACIÓN DE SANGRADO: ${v("fqx_sangrado")} CC</td></tr>
-    <tr><td>Estudio Histopatológico: ${v("fqx_pieza") || "NO"}</td><td>INCIDENTES Y/O ACCIDENTES: ${v("fqx_incidentes")}</td></tr>
-    <tr><td><b>PRONÓSTICO:</b> ${v("fqx_pronostico_post")}</td><td><b>ESTADO POSTQX INMEDIATO:</b> ${v("fqx_estado_post")}</td></tr>
-    </table>
-    <div class="sec">PLAN Y TRATAMIENTO INMEDIATO:</div>
-    <div class="line" style="min-height:15mm"><span class="fill">${v("fqx_plan_post").replace(/\n/g, "<br>")}</span></div>
-    <div class="sig-row">
-      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Médico Tratante</div></div>
-      <div class="sig-box"><div class="sig-line">FIRMA Y SELLO<br>Becario / Residente</div></div>
-    </div>
-    <script>window.print();<\/script>
-  </body></html>`);
-      w.document.close();
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -7070,7 +7563,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
 
-    // ─── NOTAS MÉDICAS (PLANTILLAS) — Piso Libro ─────────────────────────────────────
+    // ─── NOTAS MÉDICAS (PLANTILLAS) ────────────────────────────────────────────────
     const NOTE_TEMPLATES = {
       prequirurgica: {
         title: "NOTA PREQUIRÚRGICA",
@@ -7173,21 +7666,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const now = new Date();
       const fechaStr = now.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
       const horaStr = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + " HRS";
-      // Auto-fill labs
       const snap = (nd.labHistory || []).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
       const labs = snap ? snap.labs || {} : {};
-      // Transcribir TODOS los labs registrados (todos los grupos)
-      const labLines = [];
-      (typeof LAB_GROUPS !== "undefined" ? LAB_GROUPS : []).forEach(grp => {
-        const vals = grp.fields.filter(lf => labs[lf.key]).map(lf => lf.label + ": " + labs[lf.key] + (lf.unit ? " " + lf.unit : ""));
-        if (vals.length) labLines.push(vals.join(" | "));
-      });
-      // Agregar extras/cultivos si existen
-      if (snap && snap.extra && snap.extra.length) {
-        const exv = snap.extra.filter(e => e.nombre && e.valor).map(e => e.nombre + ": " + e.valor);
-        if (exv.length) labLines.push(exv.join(" | "));
-      }
-      const _labParts2 = []; if (typeof LAB_GROUPS !== "undefined") { LAB_GROUPS.forEach(grp => { const v = grp.fields.filter(lf => labs[lf.key]).map(lf => lf.label + ": " + labs[lf.key] + " " + lf.unit); if (v.length) _labParts2.push(v.join(", ")); }); } else { ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "inr", "urea"].filter(x => labs[x]).forEach(x => _labParts2.push(x.toUpperCase() + ": " + labs[x])); } const _snap3 = (nd.labHistory || []).sort((a, b) => b.fecha.localeCompare(a.fecha))[0]; if (_snap3 && _snap3.extra) { const _ex = _snap3.extra.filter(e => e.nombre && e.valor).map(e => e.nombre + ": " + e.valor); if (_ex.length) _labParts2.push(_ex.join(", ")); } const labStr = _labParts2.join(" | ");
+      const _labParts2 = [];
+      LAB_GROUPS.forEach(grp => { const v = grp.fields.filter(lf => labs[lf.key]).map(lf => lf.label + ": " + labs[lf.key] + (lf.unit ? " " + lf.unit : "")); if (v.length) _labParts2.push(v.join(", ")); });
+      if (snap && snap.extra) { const _ex = snap.extra.filter(e => e.nombre && e.valor).map(e => e.nombre + ": " + e.valor); if (_ex.length) _labParts2.push(_ex.join(", ")); }
+      const labStr = _labParts2.join(" | ");
 
       let fieldsHtml = "";
       tmpl.fields.forEach(f => {
@@ -7205,10 +7689,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         if (f.id.endsWith("_labs") && labStr) val = labStr;
         if (f.id.endsWith("_plan") && nd.pendientes) val = nd.pendientes;
         if (f.type === "header") {
-          fieldsHtml += `<div class="nm-field nm-field-full" style="grid-column:span 2;background:#f1f5f9;border-radius:6px;padding:6px 10px;text-align:center">
-        <b style="font-size:13px;color:#0a1628">${esc(p.nombre)} ${p.edad || ""}A | EXP: ${esc(p.exp || "")} | CAMA: ${esc(p.cama)}</b><br>
-        <span style="font-size:12px;font-weight:700;color:#1a3a6b">${tmpl.title}</span>
-      </div>`;
+          fieldsHtml += `<div class="nm-field nm-field-full" style="grid-column:span 2;background:#f1f5f9;border-radius:6px;padding:6px 10px;text-align:center"><b style="font-size:13px;color:#0a1628">${esc(p.nombre)} ${p.edad || ""}A | EXP: ${esc(p.exp || "")} | CAMA: ${esc(p.cama)}</b><br><span style="font-size:12px;font-weight:700;color:#1a3a6b">${tmpl.title}</span></div>`;
           return;
         }
         if (f.type === "select") {
@@ -7221,43 +7702,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         }
       });
 
-      const modalHtml = `
-  <div class="nm-overlay" id="note-modal-overlay" onclick="if(event.target===this)closeNoteModal()">
-    <div class="nm-modal">
-      <div class="nm-header">
-        <div><div class="nm-title">${tmpl.title}</div><div class="nm-subtitle">${esc(p.nombre)} · Cama ${esc(p.cama)}</div></div>
-        <button class="nm-close" onclick="closeNoteModal()">✕</button>
-      </div>
-      <div class="nm-body" id="nm-fields-container" data-notetype="${noteType}" data-patkey="${patKey}">${fieldsHtml}</div>
-      <div class="nm-footer">
-        <button class="nm-btn nm-btn-word" onclick="downloadNoteWord()">📄 Word</button>
-        <button class="nm-btn nm-btn-copy" onclick="copyNoteToClipboard()">📋 Copiar</button>
-        <button class="nm-btn nm-btn-print" onclick="printNote()">🖨 Imprimir</button>
-        <button class="nm-btn nm-btn-close" onclick="closeNoteModal()">Cerrar</button>
-      </div>
-    </div>
-  </div>`;
+      const modalHtml = `<div class="nm-overlay" id="note-modal-overlay" onclick="if(event.target===this)closeNoteModal()"><div class="nm-modal"><div class="nm-header"><div><div class="nm-title">${tmpl.title}</div><div class="nm-subtitle">${esc(p.nombre)} · Cama ${esc(p.cama)}</div></div><button class="nm-close" onclick="closeNoteModal()">✕</button></div><div class="nm-body" id="nm-fields-container" data-notetype="${noteType}" data-patkey="${patKey}">${fieldsHtml}</div><div class="nm-footer"><button class="nm-btn nm-btn-word" onclick="downloadNoteWord()">📄 Word</button><button class="nm-btn nm-btn-copy" onclick="copyNoteToClipboard()">📋 Copiar</button><button class="nm-btn nm-btn-print" onclick="printNote()">🖨 Imprimir</button><button class="nm-btn nm-btn-close" onclick="closeNoteModal()">Cerrar</button></div></div></div>`;
 
       if (!document.getElementById("nm-styles")) {
         const styleEl = document.createElement("style"); styleEl.id = "nm-styles";
-        styleEl.textContent = `
-      .nm-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
-      .nm-modal{background:#fff;border-radius:12px;width:100%;max-width:820px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-      .nm-header{background:linear-gradient(135deg,#0a1628,#1a3a6b);color:#fff;padding:12px 18px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center}
-      .nm-title{font-size:15px;font-weight:800}.nm-subtitle{font-size:10px;opacity:.8;margin-top:2px}
-      .nm-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:15px}
-      .nm-body{padding:14px 18px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-      .nm-field{display:flex;flex-direction:column}.nm-field-full{grid-column:span 2}
-      .nm-label{font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
-      .nm-input{border:1px solid #d1d5db;border-radius:5px;padding:5px 9px;font-size:11px;font-family:inherit;color:#1e293b;outline:none}
-      .nm-input:focus{border-color:#4fc3f7}.nm-ta{resize:vertical;min-height:50px;line-height:1.4}
-      .nm-select{background:#fff;cursor:pointer}
-      .nm-footer{padding:10px 18px;border-top:1px solid #e2e8f0;display:flex;gap:6px;justify-content:flex-end}
-      .nm-btn{padding:6px 14px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
-      .nm-btn-word{background:#2b579a;color:#fff}.nm-btn-copy{background:#0e7490;color:#fff}
-      .nm-btn-print{background:#7c3aed;color:#fff}.nm-btn-close{background:#f1f5f9;color:#475569;border:1px solid #d1d5db}
-      @media(max-width:640px){.nm-body{grid-template-columns:1fr}.nm-field-full{grid-column:span 1}}
-    `;
+        styleEl.textContent = `.nm-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}.nm-modal{background:#fff;border-radius:12px;width:100%;max-width:820px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)}.nm-header{background:linear-gradient(135deg,#0a1628,#1a3a6b);color:#fff;padding:12px 18px;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center}.nm-title{font-size:15px;font-weight:800}.nm-subtitle{font-size:10px;opacity:.8;margin-top:2px}.nm-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:15px}.nm-body{padding:14px 18px;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}.nm-field{display:flex;flex-direction:column}.nm-field-full{grid-column:span 2}.nm-label{font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}.nm-input{border:1px solid #d1d5db;border-radius:5px;padding:5px 9px;font-size:11px;font-family:inherit;color:#1e293b;outline:none}.nm-input:focus{border-color:#4fc3f7}.nm-ta{resize:vertical;min-height:50px;line-height:1.4}.nm-select{background:#fff;cursor:pointer}.nm-footer{padding:10px 18px;border-top:1px solid #e2e8f0;display:flex;gap:6px;justify-content:flex-end}.nm-btn{padding:6px 14px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit}.nm-btn-word{background:#2b579a;color:#fff}.nm-btn-copy{background:#0e7490;color:#fff}.nm-btn-print{background:#7c3aed;color:#fff}.nm-btn-close{background:#f1f5f9;color:#475569;border:1px solid #d1d5db}@media(max-width:640px){.nm-body{grid-template-columns:1fr}.nm-field-full{grid-column:span 1}}`;
         document.head.appendChild(styleEl);
       }
       const existing = document.getElementById("note-modal-overlay"); if (existing) existing.remove();
@@ -7278,7 +7727,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     function copyNoteToClipboard() {
       const items = _getNoteData();
-      let text = items.filter(i => i.value.trim()).map(i => i.label.toUpperCase() + ": " + i.value.trim()).join("\n");
+      const text = items.filter(i => i.value.trim()).map(i => i.label.toUpperCase() + ": " + i.value.trim()).join("\n");
       navigator.clipboard.writeText(text).then(() => {
         const btn = document.querySelector(".nm-btn-copy"); if (btn) { const o = btn.textContent; btn.textContent = "✅ Copiado!"; setTimeout(() => btn.textContent = o, 1200); }
       });
@@ -7287,7 +7736,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function printNote() {
       const c = document.getElementById("nm-fields-container"); if (!c) return;
       const title = c.closest(".nm-modal").querySelector(".nm-title").textContent;
-      // Get header info
       const headerEl = c.querySelector(".nm-field-full b");
       const headerText = headerEl ? headerEl.textContent : "";
       let rows = "";
@@ -7297,39 +7745,29 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         if (v.trim()) rows += `<tr><td style="font-weight:700;color:#001746;font-size:11px;padding:4px 8px;vertical-align:top;width:180px;border-bottom:1px solid #e2e8f0;font-family:Calibri">${lbl ? lbl.textContent : ""}</td><td style="font-size:11px;color:#000;padding:4px 8px;border-bottom:1px solid #e2e8f0;font-family:Calibri">${v}</td></tr>`;
       });
       const w = window.open("", "_blank", "width=800,height=700");
+      if (!w) { alert("El navegador bloqueó la ventana emergente. Permite popups para imprimir."); return; }
       w.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>body{font-family:Calibri,sans-serif;padding:30px;color:#000}h2{color:#001746;margin:0 0 2px;font-size:14px}h3{color:#001746;margin:0 0 12px;font-size:16px}p{color:#333;font-size:11px;margin:0 0 12px}table{width:100%;border-collapse:collapse}hr{border:1px solid #001746;margin:8px 0}</style></head><body><h2>HOSPITAL GENERAL DE LEÓN — CIRUGÍA GENERAL</h2><hr><p>${headerText}</p><h3>${title}</h3><table>${rows}</table><br><br><div style="display:flex;justify-content:space-between;margin-top:40px"><div style="text-align:center;border-top:1px solid #000;width:200px;padding-top:4px;font-size:11px">MÉDICO DE BASE</div><div style="text-align:center;border-top:1px solid #000;width:200px;padding-top:4px;font-size:11px">RESIDENTE</div></div><script>window.print();<\/script></body></html>`);
       w.document.close();
     }
 
     function downloadNoteWord() {
       if (!window.docx) { alert("Librería docx cargando, espera un momento."); return; }
-      const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType, HeadingLevel } = window.docx;
+      const { Document, Packer, Paragraph, TextRun, AlignmentType } = window.docx;
       const c = document.getElementById("nm-fields-container"); if (!c) return;
       const noteType = c.dataset.notetype;
       const patKey = c.dataset.patkey;
       const p = patients.find(x => pid(x) === patKey);
       const tmpl = NOTE_TEMPLATES[noteType];
       const items = _getNoteData();
-
       const children = [];
-      // Header
-      children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: (p ? p.nombre : "") + " " + ((p ? p.edad : "") + "") + " AÑOS | EXP: " + (p ? p.exp : "") + " | CAMA: " + (p ? p.cama : ""), bold: true, size: 24, font: "Calibri" })] }));
-      children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: tmpl.title, bold: true, size: 28, font: "Calibri", color: "001746" })] }));
-
+      children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: (p ? p.nombre : "") + " " + (p ? p.edad : "") + " AÑOS | EXP: " + (p ? p.exp : "") + " | CAMA: " + (p ? p.cama : ""), bold: true, size: 24, font: "Calibri" })] }));
+      children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: tmpl ? tmpl.title : "", bold: true, size: 28, font: "Calibri", color: "001746" })] }));
       items.forEach(item => {
         if (!item.value.trim()) return;
         const lines = item.value.split("\n");
-        children.push(new Paragraph({
-          spacing: { before: 100 }, children: [
-            new TextRun({ text: item.label.toUpperCase() + ": ", bold: true, size: 18, font: "Calibri" }),
-            new TextRun({ text: lines[0], size: 18, font: "Calibri" })
-          ]
-        }));
-        lines.slice(1).forEach(line => {
-          children.push(new Paragraph({ children: [new TextRun({ text: line, size: 18, font: "Calibri" })] }));
-        });
+        children.push(new Paragraph({ spacing: { before: 100 }, children: [new TextRun({ text: item.label.toUpperCase() + ": ", bold: true, size: 18, font: "Calibri" }), new TextRun({ text: lines[0], size: 18, font: "Calibri" })] }));
+        lines.slice(1).forEach(line => children.push(new Paragraph({ children: [new TextRun({ text: line, size: 18, font: "Calibri" })] })));
       });
-
       // Signature lines
       children.push(new Paragraph({ spacing: { before: 600 }, children: [] }));
       children.push(new Paragraph({
@@ -7405,12 +7843,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       children.push(new Table({ rows, width: { size: 10000, type: WidthType.DXA } }));
       children.push(new Paragraph({ spacing: { before: 600 }, children: [] }));
       children.push(new Paragraph({ children: [new TextRun({ text: "________________________________                    ________________________________", size: 18, font: "Calibri" })] }));
-      children.push(new Paragraph({ children: [new TextRun({ text: "MÉDICO DE BASE A CARGO                                    RESIDENTE QUE ENTREGA", size: 16, font: "Calibri", color: "666666" })] }));
-
+      children.push(new Paragraph({ children: [new TextRun({ text: "MÉDICO DE BASE A CARGO                                    RESIDENTE", size: 16, font: "Calibri", color: "666666" })] }));
       const doc = new Document({ sections: [{ children }] });
       Packer.toBlob(doc).then(blob => {
         const url = URL.createObjectURL(blob); const a = document.createElement("a");
-        a.href = url; a.download = "ALTA_" + toSafeString(p.nombre).replace(/\s+/g, "_") + ".docx";
+        a.href = url; a.download = (tmpl ? tmpl.title.replace(/\s+/g, "_") : "nota") + "_" + (p ? p.nombre : "").replace(/\s+/g, "_") + ".docx";
         a.click(); URL.revokeObjectURL(url);
       });
     }
@@ -7617,11 +8054,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           // Limpiar oldKey en localStorage y en KV remoto para evitar "ghost notes"
           localStorage.removeItem(NOTES_PREFIX + modalOrigKey);
           deleteNoteRemote(modalOrigKey);
+          _cleanupPatientCache(modalOrigKey);
         }
         noteData[newKey] = applyModalExtraToNote(noteData[newKey] || defaultData(), _modalExtra);
         saveNote(newKey, noteData[newKey]);
       }
-      savePts();
+      _savePtsImmediate(); // inmediato: asigna _supa_id antes de que llegue el Realtime INSERT
       buildEspFilters();
       closeModal();
       renderView();
@@ -7653,9 +8091,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       patients = patients.filter(pt => pid(pt) !== k);
       delete noteData[k];
       localStorage.removeItem(NOTES_PREFIX + k);
+      _cleanupPatientCache(k);
       // Delete from Supabase (cascade deletes note too)
       if (p._supa_id) {
-        supaDeletePatient(p._supa_id);
+        supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (discharge):", e));
         // Also archive to Supabase
         _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" }).catch(() => { });
       }
@@ -7690,7 +8129,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
       renderView();
     }
-
     // ─── SNAPSHOTS DE GUARDIA ──────────────────────────────────────────────────────
     function saveGuardSnapshot() {
       const gi = getGuardInfo();
@@ -7705,7 +8143,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         total: patients.length
       };
       snapshots.unshift(snap);
-      if (snapshots.length > 30) snapshots = snapshots.slice(0, 30); // max 30 cortes
+      if (snapshots.length > 60) snapshots = snapshots.slice(0, 60); // max 60 cortes
       try { localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshots)); } catch (e) {
         alert("No hay espacio para guardar el corte. Elimina cortes anteriores.");
         return;
@@ -7977,7 +8415,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             "Puedes cambiar la disposición de cualquier paciente antes de confirmar. Datos clínicos y labs se conservan.";
           document.getElementById("import-confirm-btn").onclick = () => { confirmImport(); };
           document.getElementById("import-modal").style.display = "flex";
-        } catch (err) { alert("Error al leer el archivo Excel: " + err.message); }
+        } catch (err) { alert("Error al leer el archivo Excel: " + (err && err.message ? err.message : String(err))); }
       };
       reader.readAsArrayBuffer(file);
     }
@@ -8207,7 +8645,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!confirm("⚠️ SEGUNDA CONFIRMACIÓN\n\nEscribiste que quieres borrar TODO.\nEsta acción NO se puede deshacer.\n\n¿Estás completamente seguro?")) return;
 
       suppressKey("__all__", 5000);
-      setSyncStatus("syncing", "Borrando todo...");
+      setSyncStatus("syncing", "Borrando...");
 
       // 1) Borrar TODO de Supabase (notes se borran en cascada con patients)
       try {
@@ -8249,7 +8687,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // 6) Re-render
       buildEspFilters();
       renderView();
-      setSyncStatus("synced", "Censo vacío — importa Excel");
+      setSyncStatus("synced", "✅ Listo");
 
       alert("✅ Todo borrado (local + nube).\n\nAhora importa tu Excel nuevo con el botón de la esquina superior derecha.");
     }
@@ -8568,7 +9006,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           r.onerror = function(){ resolve({ file: file.name, extracted: null, error: "Error leyendo archivo" }); };
           r.onload = function() {
             var base64 = r.result.split(",")[1];
-            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","fa":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","ego_esterasa":"","ego_ph":"","ego_nitritos":"","ego_bacterias":"","ego_leucos":"","ego_hematies":"","ego_proteinas":"","ego_glucosa":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","micro_muestra":"","micro_comentarios":"","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades para química/biometría/gasometría; en EGO y microbiología se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
+            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","fa":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","ego_color":"","ego_asp":"","ego_dens":"","ego_ph":"","ego_leuco":"","ego_nitri":"","ego_bact":"","ego_prot":"","ego_glu":"","ego_hem":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","micro_muestra":"","micro_comentarios":"","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades para química/biometría/gasometría; en EGO y microbiología se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
             fetch(proxyUrl + "/api/ai", {
               method: "POST",
               headers: apiHeaders(),
@@ -8718,7 +9156,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     function getSyscfg(id) {
       try { return JSON.parse(localStorage.getItem(SYSTEMS[id].key) || "{}"); }
-      catch { return {}; }
+      catch (e) { safeLog("getSyscfg parse:", e); return {}; }
     }
 
     let _currentSyscfg = null;
@@ -8766,7 +9204,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
 
     function hudCopy(type) {
-      const sys_cfg = {}; // just clipboard util
       if (type === "user") {
         const val = document.getElementById("hud-user").textContent;
         navigator.clipboard.writeText(val).catch(() => { });
@@ -8893,11 +9330,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const remove = patients[removeIdx];
       if (!keep || !remove) return;
 
-      const keepKey = pid(keep);
+      let keepKey = pid(keep);
       const removeKey = pid(remove);
 
       // Merge: fill empty fields from remove into keep
-      const fields = ["nombre", "exp", "dx", "edad", "esp", "adscrito", "residente", "ingreso", "estado"];
+      const fields = ["cama", "nombre", "exp", "dx", "edad", "esp", "adscrito", "residente", "ingreso", "estado"];
       fields.forEach(f => {
         if (!keep[f] && remove[f]) keep[f] = remove[f];
       });
@@ -8907,6 +9344,17 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!keep.ingreso && remove.ingreso) keep.ingreso = remove.ingreso;
       // Special: prefer non-empty edad
       if (!keep.edad && remove.edad) keep.edad = remove.edad;
+
+      // Si el auto-fill cambió exp o cama, el pid cambió — migrar noteData al nuevo key
+      const newKeepKey = pid(keep);
+      if (newKeepKey !== keepKey) {
+        if (noteData[keepKey]) {
+          noteData[newKeepKey] = noteData[keepKey];
+          delete noteData[keepKey];
+          localStorage.removeItem(NOTES_PREFIX + keepKey);
+        }
+        keepKey = newKeepKey;
+      }
 
       // Merge noteData
       const keepNd = noteData[keepKey] || defaultData();
@@ -8925,15 +9373,25 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
       noteData[keepKey] = keepNd;
 
-      // Remove the duplicate by index (MUST remove higher index first to avoid shift)
+      // Remove the duplicate — re-resolve by _supa_id to guard against concurrent mutations
+      let actualRemoveIdx = removeIdx;
       const removedPatient = patients[removeIdx];
-      if (removedPatient && removedPatient._supa_id) supaDeletePatient(removedPatient._supa_id);
-      patients.splice(removeIdx, 1);
+      if (removedPatient && removedPatient._supa_id) {
+        const fresh = patients.findIndex(pt => pt._supa_id === removedPatient._supa_id);
+        if (fresh !== -1) actualRemoveIdx = fresh;
+        supaDeletePatient(removedPatient._supa_id).catch(e => safeLog("supaDeletePatient (merge):", e));
+      }
+      if (actualRemoveIdx < 0 || actualRemoveIdx >= patients.length) {
+        safeLog("mergePatients: removeIdx out of bounds", actualRemoveIdx);
+        return;
+      }
+      patients.splice(actualRemoveIdx, 1);
 
       // Clean up removed patient's noteData
       if (removeKey !== keepKey) {
         delete noteData[removeKey];
         localStorage.removeItem(NOTES_PREFIX + removeKey);
+        _cleanupPatientCache(removeKey);
       }
       if (keep._supa_id) suppressKey(keep._supa_id);
       saveNote(keepKey, keepNd);
@@ -8992,6 +9450,16 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       </table>`;
       const confirmBtn = document.getElementById("manual-merge-confirm");
       confirmBtn.onclick = function() {
+        // Re-validar que los índices aún apuntan a los mismos pacientes
+        const currentKeep = patients[keepIdx];
+        const currentRemove = patients[removeIdx];
+        if (!currentKeep || !currentRemove ||
+            (keep._supa_id && currentKeep._supa_id !== keep._supa_id) ||
+            (remove._supa_id && currentRemove._supa_id !== remove._supa_id)) {
+          document.getElementById("manual-merge-modal").style.display = "none";
+          alert("Los datos de los pacientes cambiaron mientras se mostraba este modal. Intenta de nuevo.");
+          return;
+        }
         // Aplicar selecciones del usuario a keep
         FIELDS.forEach(function(f) {
           const radios = document.querySelectorAll('input[name="mmf_' + f.key + '"]');
@@ -9003,7 +9471,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         document.getElementById("manual-merge-modal").style.display = "none";
         mergePatients(keepIdx, removeIdx);
       };
-      document.getElementById("manual-merge-modal").style.display = "";
+      document.getElementById("manual-merge-modal").style.display = "block";
     }
 
     function toggleDupInlineEdit(uid) {
@@ -9017,6 +9485,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       idx = parseInt(idx);
       const p = patients[idx];
       if (!p) return;
+      // Verificar que el índice aún apunta al mismo paciente antes de modificar
+      const expectedSupaId = p._supa_id;
+      if (expectedSupaId) {
+        const fresh = patients.findIndex(pt => pt._supa_id === expectedSupaId);
+        if (fresh !== -1 && fresh !== idx) {
+          safeLog("saveDupInlineEdit: índice desplazado, corrigiendo", idx, "→", fresh);
+          idx = fresh;
+        }
+      }
       const fields = ['nombre', 'exp', 'cama', 'dx', 'ingreso', 'edad', 'adscrito', 'residente'];
       const oldKey = pid(p);
       fields.forEach(function(f) {
@@ -9029,6 +9506,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         delete noteData[oldKey];
         localStorage.removeItem(NOTES_PREFIX + oldKey);
         deleteNoteRemote(oldKey);
+        _cleanupPatientCache(oldKey);
         saveNote(newKey, noteData[newKey]);
       }
       savePts();
@@ -9143,10 +9621,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const p = patients[idx];
       const k = pid(p);
       if (p._supa_id) suppressKey(p._supa_id);
-      if (p._supa_id) supaDeletePatient(p._supa_id);
+      if (p._supa_id) supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (removeDup):", e));
       patients.splice(idx, 1);
       delete noteData[k];
       localStorage.removeItem(NOTES_PREFIX + k);
+      _cleanupPatientCache(k);
       savePts();
       buildEspFilters();
       renderView();
@@ -9241,6 +9720,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         delete noteData[oldKey];
         localStorage.removeItem(NOTES_PREFIX + oldKey);
         deleteNoteRemote(oldKey);
+        _cleanupPatientCache(oldKey);
         saveNote(newKey, noteData[newKey]);
       }
       savePts();
@@ -9375,8 +9855,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         noteData[k] = nd;
         activeLabDate[k] = today;
         saveNote(k, nd);
-        renderView();
-        // Enfocar el primer input de lab visible
+        // Actualizar solo la sección de labs sin destruir el resto de la tarjeta
+        const labsEl = document.getElementById("labs-sec-" + k);
+        if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
+        else renderView();
         setTimeout(() => {
           const card = document.getElementById("card-" + k);
           if (card) {
@@ -9393,7 +9875,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         noteData[k] = nd;
         activeImagenDate[k] = today;
         saveNote(k, nd);
-        renderView();
+        // Actualizar solo la sección de imagen sin destruir el resto de la tarjeta
+        const imgEl = document.getElementById("img-sec-" + k);
+        if (imgEl) imgEl.outerHTML = renderImagenField(nd, k);
+        else renderView();
         setTimeout(() => {
           const card = document.getElementById("card-" + k);
           if (card) {
@@ -9513,7 +9998,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       }
 
       // 1–5 — cambiar de tab
-      const tabMap = { "1": "piso", "2": "census", "3": "print", "4": "altas", "5": "formatos" };
+      const tabMap = { "1": "piso", "2": "census", "3": "print", "4": "noOlvidar", "5": "altas" };
       if (tabMap[e.key]) {
         e.preventDefault();
         const tabs = document.querySelectorAll(".tab");
@@ -9535,12 +10020,304 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       const pill = document.getElementById("proxy-pill");
       if (!pill) return;
       const hint = document.createElement("span");
-      hint.title = "Atajos: / Buscar · N Nuevo · 1-5 Tabs · Esc Cerrar · P Imprimir";
+      hint.title = "Atajos: / Buscar · N Nuevo · 1-5 Tabs · Esc Cerrar · P Imprimir · 5=Altas";
       hint.textContent = "⌨";
       hint.style.cssText = "margin-left:4px;cursor:help;opacity:.6;font-size:13px";
       pill.parentNode.insertBefore(hint, pill.nextSibling);
     })();
 
+    // ─── BODY DIAGRAM DRAWING ENGINE ─────────────────────────────────────────────────
+    const _bdPen = {};   // { [k|side]: { drawing, color, size, eraser } }
+    const _bdLast = {};  // { [k|side]: { x, y } }
+
+    function _bdKey(k, side) { return k + '|' + side; }
+
+    function bdGetCanvas(k, side) {
+      const ek = k.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const id = (side === 'ant' ? 'bdca-' : 'bdcp-') + ek;
+      return document.getElementById(id);
+    }
+
+    function bdInitCanvas(k) {
+      ['ant', 'post'].forEach(function(side) {
+        const canvas = bdGetCanvas(k, side);
+        if (!canvas) return;
+        const bk = _bdKey(k, side);
+        if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: 3, eraser: false };
+        const nd = noteData[k] || defaultData();
+        const savedData = side === 'ant' ? nd.body_diagram_ant : nd.body_diagram_post;
+        if (savedData) {
+          const img = new Image();
+          img.onload = function() {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+          };
+          img.src = savedData;
+        }
+      });
+    }
+
+    function bdStartDraw(event, k, side) {
+      event.preventDefault();
+      const canvas = bdGetCanvas(k, side);
+      if (!canvas) return;
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: 3, eraser: false };
+      _bdPen[bk].drawing = true;
+      try { canvas.setPointerCapture(event.pointerId); } catch(e) {}
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (event.clientX - rect.left) * scaleX;
+      const y = (event.clientY - rect.top) * scaleY;
+      _bdLast[bk] = { x, y };
+      const ctx = canvas.getContext('2d');
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+
+    function bdDraw(event, k, side) {
+      event.preventDefault();
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk] || !_bdPen[bk].drawing) return;
+      const canvas = bdGetCanvas(k, side);
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (event.clientX - rect.left) * scaleX;
+      const y = (event.clientY - rect.top) * scaleY;
+      const ctx = canvas.getContext('2d');
+      const pen = _bdPen[bk];
+      if (pen.eraser) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(x, y, pen.size * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(_bdLast[bk].x, _bdLast[bk].y);
+        ctx.lineTo(x, y);
+        const pressure = (event.pressure && event.pressure > 0) ? event.pressure : 0.6;
+        ctx.lineWidth = pen.size * (0.4 + pressure * 0.8);
+        ctx.strokeStyle = pen.color;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
+      _bdLast[bk] = { x, y };
+    }
+
+    function bdEndDraw(event, k, side) {
+      event.preventDefault();
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk] || !_bdPen[bk].drawing) return;
+      _bdPen[bk].drawing = false;
+      const canvas = bdGetCanvas(k, side);
+      if (!canvas) return;
+      // Save drawing to noteData
+      const dataUrl = canvas.toDataURL('image/png');
+      const nd = noteData[k] || defaultData();
+      if (side === 'ant') nd.body_diagram_ant = dataUrl;
+      else nd.body_diagram_post = dataUrl;
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
+    function bdClear(k, side) {
+      const canvas = bdGetCanvas(k, side);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const nd = noteData[k] || defaultData();
+      if (side === 'ant') nd.body_diagram_ant = '';
+      else nd.body_diagram_post = '';
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
+    function bdSetColor(k, side, color) {
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: color, size: 3, eraser: false };
+      else { _bdPen[bk].color = color; _bdPen[bk].eraser = false; }
+    }
+
+    function bdSetEraser(k, side) {
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: 3, eraser: true };
+      else _bdPen[bk].eraser = true;
+    }
+
+    function bdSetSize(k, side, size) {
+      const bk = _bdKey(k, side);
+      if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: parseFloat(size), eraser: false };
+      else _bdPen[bk].size = parseFloat(size);
+    }
+
+    // Auto-init canvases when they appear in DOM (MutationObserver)
+    (function() {
+      const mainEl = document.getElementById('main');
+      if (!mainEl) return;
+      const obs = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          m.addedNodes.forEach(function(node) {
+            if (!node.querySelectorAll) return;
+            node.querySelectorAll('canvas.bd-canvas').forEach(function(canvas) {
+              const k = canvas.dataset.patientKey;
+              const side = canvas.dataset.side;
+              if (!k || !side) return;
+              const bk = _bdKey(k, side);
+              if (!_bdPen[bk]) _bdPen[bk] = { drawing: false, color: '#e74c3c', size: 3, eraser: false };
+              const nd = noteData[k] || defaultData();
+              const savedData = side === 'ant' ? nd.body_diagram_ant : nd.body_diagram_post;
+              if (savedData) {
+                const img = new Image();
+                img.onload = function() {
+                  const ctx = canvas.getContext('2d');
+                  ctx.clearRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(img, 0, 0);
+                };
+                img.src = savedData;
+              }
+            });
+          });
+        });
+      });
+      obs.observe(mainEl, { childList: true, subtree: true });
+    })();
+
+    // ─── ALTAS ───────────────────────────────────────────────────────────────────────
+    const ALTAS_KEY = 'pl_altas_v2';
+
+    function lsGetAltas() {
+      try { return JSON.parse(localStorage.getItem(ALTAS_KEY) || '[]'); }
+      catch(_) { return []; }
+    }
+
+    function lsSaveAltas(altas) {
+      try { localStorage.setItem(ALTAS_KEY, JSON.stringify(altas)); } catch(e) { safeLog('lsSaveAltas:', e); }
+    }
+
+    function altasNextId(altas) {
+      return altas.length ? Math.max(...altas.map(function(a){ return a.id || 0; })) + 1 : 1;
+    }
+
+    function addAlta() {
+      const cama = (document.getElementById('af-cama') || {}).value || '';
+      const nombre = (document.getElementById('af-nombre') || {}).value || '';
+      const indicaciones = (document.getElementById('af-indicaciones') || {}).value || '';
+      const notas = (document.getElementById('af-notas') || {}).value || '';
+      if (!cama.trim() && !nombre.trim()) { alert('Ingresa al menos la cama o el nombre del paciente.'); return; }
+      const altas = lsGetAltas();
+      altas.unshift({ id: altasNextId(altas), cama: cama.trim(), nombre: nombre.trim().toUpperCase(), indicaciones: indicaciones.trim(), notas: notas.trim(), fecha: todayStr(), completado: false });
+      lsSaveAltas(altas);
+      ['af-cama','af-nombre','af-indicaciones','af-notas'].forEach(function(id) {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
+      renderAltas();
+    }
+
+    function toggleAltaCompleto(id) {
+      const altas = lsGetAltas();
+      const a = altas.find(function(x){ return x.id === id; });
+      if (a) a.completado = !a.completado;
+      lsSaveAltas(altas);
+      renderAltas();
+    }
+
+    function deleteAlta(id) {
+      if (!confirm('¿Eliminar esta alta?')) return;
+      const altas = lsGetAltas().filter(function(a){ return a.id !== id; });
+      lsSaveAltas(altas);
+      renderAltas();
+    }
+
+    function saveAltaField(id, field, value) {
+      const altas = lsGetAltas();
+      const a = altas.find(function(x){ return x.id === id; });
+      if (a) a[field] = value;
+      lsSaveAltas(altas);
+    }
+
+    function renderAltas() {
+      const altas = lsGetAltas();
+      const pending = altas.filter(function(a){ return !a.completado; });
+      const done = altas.filter(function(a){ return a.completado; });
+
+      function altaCard(a) {
+        return `<div class="alta-card${a.completado ? ' completado' : ''}" id="alta-card-${a.id}">
+          <div class="alta-card-header">
+            <span class="alta-cama-badge" style="${a.completado ? 'background:#94a3b8' : ''}">🛏 ${esc(a.cama || '—')}</span>
+            <span class="alta-nombre">${esc(a.nombre || 'Sin nombre')}</span>
+            <span class="alta-fecha">${esc(a.fecha)}</span>
+          </div>
+          ${a.indicaciones ? `<div class="alta-indicaciones"><b>📋 Indicaciones:</b>\n${esc(a.indicaciones)}</div>` : ''}
+          ${a.notas ? `<div class="alta-notas">💬 ${esc(a.notas)}</div>` : ''}
+          <div class="alta-actions">
+            <button class="alta-btn done" onclick="toggleAltaCompleto(${a.id})">${a.completado ? '↩ Reactivar' : '✅ Alta dada'}</button>
+            <button class="alta-btn" onclick="openEditAltaModal(${a.id})">✏️ Editar</button>
+            <button class="alta-btn del" onclick="deleteAlta(${a.id})">🗑 Eliminar</button>
+          </div>
+        </div>`;
+      }
+
+      const container = document.getElementById('view-altas');
+      if (!container) return;
+      container.innerHTML = `<div class="altas-wrap">
+        <div class="altas-header">
+          <h2>✅ ALTAS — Pacientes a dar de alta</h2>
+          <span style="font-size:12px;color:#64748b">${pending.length} pendiente${pending.length !== 1 ? 's' : ''} · ${done.length} completada${done.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="alta-form">
+          <div class="alta-form-title">➕ Agregar alta programada</div>
+          <div class="alta-form-grid">
+            <div>
+              <div class="alta-input-label">Cama *</div>
+              <input class="alta-input" id="af-cama" placeholder="Ej: 3-153" />
+            </div>
+            <div class="span2">
+              <div class="alta-input-label">Nombre del paciente</div>
+              <input class="alta-input" id="af-nombre" placeholder="Apellido Apellido Nombre" style="text-transform:uppercase" />
+            </div>
+            <div class="span3">
+              <div class="alta-input-label">Indicaciones para el alta</div>
+              <textarea class="alta-input" id="af-indicaciones" rows="4" placeholder="Medicamentos, reposo, dieta, citas, restricciones..."></textarea>
+            </div>
+            <div class="span3">
+              <div class="alta-input-label">Notas adicionales</div>
+              <input class="alta-input" id="af-notas" placeholder="Información extra (familiar responsable, transporte, etc.)" />
+            </div>
+          </div>
+          <button class="btn-green" style="width:100%;padding:10px;font-size:13px" onclick="addAlta()">➕ Agregar alta</button>
+        </div>
+        ${pending.length === 0 && done.length === 0 ? `<div style="text-align:center;padding:40px;color:#94a3b8;font-size:14px">No hay altas registradas. Agrega la primera arriba.</div>` : ''}
+        ${pending.length > 0 ? `<div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⏳ Pendientes (${pending.length})</div>${pending.map(altaCard).join('')}` : ''}
+        ${done.length > 0 ? `<div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">✓ Completadas (${done.length})</div>${done.map(altaCard).join('')}` : ''}
+      </div>`;
+    }
+
+    function openEditAltaModal(id) {
+      const altas = lsGetAltas();
+      const a = altas.find(function(x){ return x.id === id; });
+      if (!a) return;
+      const cama = prompt('Cama:', a.cama || '');
+      if (cama === null) return;
+      const nombre = prompt('Nombre del paciente:', a.nombre || '');
+      if (nombre === null) return;
+      const indicaciones = prompt('Indicaciones para el alta:', a.indicaciones || '');
+      if (indicaciones === null) return;
+      const notas = prompt('Notas adicionales:', a.notas || '');
+      if (notas === null) return;
+      a.cama = cama.trim();
+      a.nombre = nombre.trim().toUpperCase();
+      a.indicaciones = indicaciones.trim();
+      a.notas = notas.trim();
+      lsSaveAltas(altas);
+      renderAltas();
+    }
 
   </script>
 
