@@ -4191,6 +4191,25 @@
           .subscribe();
         _realtimeSubs.push(procSub);
       } catch (e) { safeLog("[RT] procedimientos_dia subscription failed:", e); }
+
+      // Subscribe to guard_info changes (postgres_changes — persiste aunque el dispositivo estuvo offline)
+      try {
+        const giSub = _supa.channel("guard-info-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "guard_info" }, function(payload) {
+            const row = payload.new;
+            if (!row) return;
+            const fechaEl = document.getElementById("gi-fecha");
+            const entregaEl = document.getElementById("gi-entrega");
+            const recibeEl = document.getElementById("gi-recibe");
+            if (fechaEl && row.fecha !== undefined && document.activeElement !== fechaEl) fechaEl.value = row.fecha;
+            if (entregaEl && row.entrega !== undefined && document.activeElement !== entregaEl) entregaEl.value = row.entrega;
+            if (recibeEl && row.recibe !== undefined && document.activeElement !== recibeEl) recibeEl.value = row.recibe;
+            try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify({ fecha: row.fecha, entrega: row.entrega, recibe: row.recibe })); } catch (_) {}
+            safeLog("[RT] guard_info updated:", row);
+          })
+          .subscribe();
+        _realtimeSubs.push(giSub);
+      } catch (e) { safeLog("[RT] guard_info subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -4596,12 +4615,31 @@
     var _guardInfoChannel = null;
 
     // Emite la guard info actual a todos los dispositivos conectados vía Supabase Broadcast.
-    // No requiere cambio de schema: usa el canal efímero de WebSocket.
+    // Complementa la persistencia en tabla guard_info (baja latencia cuando ambos están online).
     function _broadcastGuardInfo(gi) {
       if (_guardInfoChannel) {
         try { _guardInfoChannel.send({ type: "broadcast", event: "update", payload: gi }); } catch (_) {}
       }
     }
+
+    // Carga guard info desde la tabla Supabase guard_info (llamado al iniciar la app).
+    async function _supaLoadGuardInfo() {
+      try {
+        const res = await _sGet("guard_info", "id=eq.current&select=fecha,entrega,recibe");
+        if (!res || !res.ok) return null;
+        const rows = await res.json();
+        if (!rows || !rows.length) return null;
+        return rows[0];
+      } catch (e) { safeLog("_supaLoadGuardInfo:", e); return null; }
+    }
+
+    // Upsert guard info en la tabla Supabase guard_info (debounced desde persistGuardInfo).
+    const _supaUpsertGuardInfoDebounced = debounce(async function(gi) {
+      try {
+        await _sPatch("guard_info", "id=eq.current",
+          { fecha: gi.fecha, entrega: gi.entrega, recibe: gi.recibe, updated_at: new Date().toISOString() });
+      } catch (e) { safeLog("_supaUpsertGuardInfo:", e); }
+    }, 600);
 
     // Inicia (o reinicia) la suscripción al canal broadcast de guard info.
     // Llamado desde startRealtime() para que comparta el mismo ciclo de vida.
@@ -4634,6 +4672,8 @@
       const gi = readGuardInfoFromUI();
       try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(gi)); } catch (e) { safeLog("persistGuardInfo:", e); }
       _broadcastGuardInfo(gi);
+      // Persistir en Supabase para que dispositivos que cargan después obtengan el valor actual
+      _supaUpsertGuardInfoDebounced(gi);
     }
     const persistGuardInfoDebounced = debounce(persistGuardInfo, 250);
     function restoreGuardInfo() {
@@ -4649,6 +4689,26 @@
         const today = new Date();
         fechaEl.value = today.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
       }
+      // Intentar cargar desde Supabase para obtener el valor más reciente (otro dispositivo pudo haberlo actualizado)
+      _supaLoadGuardInfo().then(function(remote) {
+        if (!remote) return;
+        // Solo aplicar si el valor remoto es más informativo que el local
+        const localFecha = document.getElementById("gi-fecha") ? document.getElementById("gi-fecha").value : "";
+        const localEntrega = document.getElementById("gi-entrega") ? document.getElementById("gi-entrega").value : "";
+        const localRecibe = document.getElementById("gi-recibe") ? document.getElementById("gi-recibe").value : "";
+        const remoteHasData = (remote.fecha || remote.entrega || remote.recibe);
+        const localHasData = (localFecha || localEntrega || localRecibe);
+        // Preferir remoto si tiene datos y el local está vacío, o si remoto tiene más contenido
+        if (remoteHasData && (!localHasData || (remote.entrega && !localEntrega) || (remote.recibe && !localRecibe))) {
+          if (document.getElementById("gi-fecha") && document.activeElement !== document.getElementById("gi-fecha"))
+            document.getElementById("gi-fecha").value = remote.fecha || localFecha;
+          if (document.getElementById("gi-entrega") && document.activeElement !== document.getElementById("gi-entrega"))
+            document.getElementById("gi-entrega").value = remote.entrega || localEntrega;
+          if (document.getElementById("gi-recibe") && document.activeElement !== document.getElementById("gi-recibe"))
+            document.getElementById("gi-recibe").value = remote.recibe || localRecibe;
+          try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(remote)); } catch (_) {}
+        }
+      });
       persistGuardInfo();
     }
     function wireGuardInfoPersistence() {
