@@ -8321,6 +8321,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           localStorage.removeItem(NOTES_PREFIX + modalOrigKey);
           deleteNoteRemote(modalOrigKey);
           _cleanupPatientCache(modalOrigKey);
+          // Cancelar debounces pendientes con la clave vieja para evitar guardados
+          // tardíos que buscan un paciente que ya no existe con ese key
+          delete _noteDebounceMap[modalOrigKey];
+          delete _pendingNoteAutosave[modalOrigKey];
+          if (_dirtyFields[modalOrigKey]) delete _dirtyFields[modalOrigKey];
         }
         noteData[newKey] = applyModalExtraToNote(noteData[newKey] || defaultData(), _modalExtra);
         saveNote(newKey, noteData[newKey]);
