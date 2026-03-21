@@ -2585,6 +2585,7 @@
 
       <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
       <button class="tab" onclick="setView('altas',this)">✅ Altas</button>
+      <button class="tab" onclick="setView('pendientes',this)">📋 Pendientes</button>
     </div>
   </div>
   </div>
@@ -2618,6 +2619,7 @@
 
     <div id="view-noOlvidar" style="display:none"></div>
     <div id="view-altas" style="display:none"></div>
+    <div id="view-pendientes" style="display:none"></div>
   </div>
 
   <!-- PATIENT MODAL -->
@@ -3330,7 +3332,7 @@
         body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, atb: false, atb_nombre: "", atb_dias: "", tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "",
+        checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "",
           pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_balance: "", pm_sep: false, pm_hxqx: "",
@@ -4713,7 +4715,7 @@
       });
       const _cb = document.getElementById("count-badge");
       if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
-      ["piso", "census", "print", "noOlvidar", "altas"].forEach(v => {
+      ["piso", "census", "print", "noOlvidar", "altas", "pendientes"].forEach(v => {
         const _ve = document.getElementById("view-" + v);
         if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
@@ -4722,6 +4724,7 @@
       if (currentView === "print") renderPrint(filtered);
       if (currentView === "noOlvidar") renderNoOlvidar();
       if (currentView === "altas") renderAltas();
+      if (currentView === "pendientes") renderPendientes(filtered);
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -9947,10 +9950,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     // ─── CHECKLIST OPERATIVO ─────────────────────────────────────────────────────────
     const CHECKLIST_ITEMS = [
-      { key: "npo", label: "NPO", title: "Ayuno / nada por vía oral" },
+      { key: "npo", label: "Ayuno", title: "Ayuno / nada por vía oral" },
       { key: "atb", label: "ATB", title: "Antibioticoterapia activa" },
       { key: "tvp", label: "TVP", title: "Profilaxis TVP (HBPM/compresión)" },
-      { key: "dren", label: "Dren", title: "Drenaje activo en sitio" },
     ];
 
     const WOUND_ITEMS = [
@@ -10006,6 +10008,26 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(k, nd);
     }
 
+    function updateTvpField(k, field, val) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[field] = val;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      // Re-render checklist to show/hide sub-fields
+      const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
+      const container = document.getElementById("ck-row-" + ek);
+      if (container) container.outerHTML = renderChecklist(nd, k);
+    }
+
+    function updateNpoField(k, field, val) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[field] = val;
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
     function updatePmField(k, field, val) {
       const nd = getNote(k);
       nd.checklist[field] = val;
@@ -10022,18 +10044,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const npoOn = !!cl.npo;
       const atbOn = !!cl.atb;
       const tvpOn = !!cl.tvp;
-      const drenOn = !!cl.dren;
       const dieta = esc(cl.dieta || "");
 
-      const npoHtml = `<span id="ck-${ek}-npo" class="ck-item${npoOn ? " ck-on" : ""}" data-ck="${k}" data-item="npo" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ayuno / Nada Por vía Oral"><span class="ck-label">${npoOn ? "✓ " : ""}NPO</span></span>`;
+      const npoHtml = `<span id="ck-${ek}-npo" class="ck-item${npoOn ? " ck-on" : ""}" data-ck="${k}" data-item="npo" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ayuno / Nada Por vía Oral"><span class="ck-label">${npoOn ? "✓ " : ""}Ayuno</span></span>` +
+        (npoOn ? `<input class="ck-dieta" value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
 
       const atbHtml = `<span id="ck-${ek}-atb" class="ck-item${atbOn ? " ck-on" : ""}" data-ck="${k}" data-item="atb" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Antibioticoterapia activa"><span class="ck-label">${atbOn ? "✓ " : ""}ATB</span></span>` +
         (atbOn ? `<input class="ck-dieta" value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
           `<input class="ck-dieta" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
 
-      const tvpHtml = `<span id="ck-${ek}-tvp" class="ck-item${tvpOn ? " ck-on" : ""}" data-ck="${k}" data-item="tvp" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Profilaxis TVP (HBPM/compresión)"><span class="ck-label">${tvpOn ? "✓ " : ""}TVP</span></span>`;
-
-      const drenHtml = `<span id="ck-${ek}-dren" class="ck-item${drenOn ? " ck-on" : ""}" data-ck="${k}" data-item="dren" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Drenaje activo en sitio"><span class="ck-label">${drenOn ? "✓ " : ""}Dren</span></span>`;
+      const tvpTipo = cl.tvp_tipo || "";
+      const tvpHtml = `<span id="ck-${ek}-tvp" class="ck-item${tvpOn ? " ck-on" : ""}" data-ck="${k}" data-item="tvp" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Profilaxis TVP (HBPM/compresión)"><span class="ck-label">${tvpOn ? "✓ " : ""}TVP</span></span>` +
+        (tvpOn ? `<select class="ck-dieta" data-ck="${k}" data-field="tvp_tipo" onchange="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px" title="Tipo de profilaxis TVP">` +
+          `<option value="">-- tipo --</option>` +
+          `<option value="enoxaparina"${tvpTipo === "enoxaparina" ? " selected" : ""}>Enoxaparina</option>` +
+          `<option value="otro"${tvpTipo === "otro" ? " selected" : ""}>Otro</option>` +
+          `</select>` +
+          (tvpTipo === "enoxaparina" ? `<input class="ck-dieta" value="${esc(cl.tvp_dosis || "")}" placeholder="Dosis (ej: 40mg)" data-ck="${k}" data-field="tvp_dosis" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Dosis de Enoxaparina" style="width:100px"/>` : "") +
+          (tvpTipo === "otro" ? `<input class="ck-dieta" value="${esc(cl.tvp_otro || "")}" placeholder="Especificar..." data-ck="${k}" data-field="tvp_otro" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Otra profilaxis TVP" style="width:140px"/>` : "") : "");
 
       // ── Row 2: Herida Qx + NPT ──
       const woundNecOn = !!cl.cur_necesita;
@@ -10117,7 +10145,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       return `<div id="ck-row-${ek}" class="checklist-wrap">
     <div class="checklist-row">
       <span class="ck-title">✅ Checklist:</span>
-      ${npoHtml} ${atbHtml} ${tvpHtml} ${drenHtml}
+      ${npoHtml} ${atbHtml} ${tvpHtml}
       <span class="ck-sep">|</span>
       <span class="ck-title">🍽 Dieta:</span>
       <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
@@ -10628,6 +10656,73 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       a.notas = notas.trim();
       lsSaveAltas(altas);
       renderAltas();
+    }
+
+    // ─── PENDIENTES VIEW ─────────────────────────────────────────────────────────────
+    function renderPendientes(filtered) {
+      const el = document.getElementById("view-pendientes");
+      if (!el) return;
+      const pts = (filtered || patients).slice().sort((a, b) => {
+        const [ga, na] = pisoBedPriority(a.cama);
+        const [gb, nb] = pisoBedPriority(b.cama);
+        return ga !== gb ? ga - gb : na - nb;
+      });
+      const hasPending = pts.filter(p => {
+        const k = pid(p);
+        const nd = migrateNote(noteData[k] || defaultData());
+        return (nd.pendientes && nd.pendientes.trim()) ||
+               (nd.checklist && nd.checklist.pendientes_mips && nd.checklist.pendientes_mips.trim()) ||
+               (nd.checklist && nd.checklist.pendientes_r1 && nd.checklist.pendientes_r1.trim());
+      });
+      if (!pts.length) {
+        el.innerHTML = `<div style="padding:40px;text-align:center;color:#94a3b8;font-size:15px">Sin pacientes</div>`;
+        return;
+      }
+      let html = `<div style="padding:12px 16px">
+        <div style="font-size:13px;color:#64748b;margin-bottom:12px">
+          ${pts.length} pacientes · ${hasPending.length} con pendientes
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">`;
+      pts.forEach(p => {
+        const k = pid(p);
+        const nd = migrateNote(noteData[k] || defaultData());
+        const ec = ESP_COLORS[p.esp] || "#334155";
+        const pendientes = (nd.pendientes || "").trim();
+        const mips = (nd.checklist && nd.checklist.pendientes_mips || "").trim();
+        const r1 = (nd.checklist && nd.checklist.pendientes_r1 || "").trim();
+        const hasAny = pendientes || mips || r1;
+        html += `<div style="border:1px solid ${hasAny ? ec : "#e2e8f0"};border-radius:10px;overflow:hidden;background:#fff;${!hasAny ? "opacity:0.55" : ""}">
+          <div style="background:linear-gradient(90deg,${ec} 0%,${ec}cc 100%);color:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px">
+            <span style="font-weight:700;font-size:14px">${esc(p.cama)}</span>
+            <span style="font-weight:600;font-size:13px;flex:1">${esc(p.nombre)}</span>
+            <span style="font-size:11px;opacity:.85">${esc(p.esp)} · ${esc(p.adscrito || "")}</span>
+          </div>
+          <div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px">`;
+        if (pendientes) {
+          html += `<div>
+            <div style="font-size:11px;font-weight:700;color:#0f172a;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">⚠️ Pendientes / Plan</div>
+            <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;background:#fefce8;border:1px solid #fde047;border-radius:6px;padding:6px 10px">${esc(pendientes)}</div>
+          </div>`;
+        }
+        if (mips) {
+          html += `<div>
+            <div style="font-size:11px;font-weight:700;color:#0f172a;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">📋 Pendientes MIPs</div>
+            <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:6px 10px">${esc(mips)}</div>
+          </div>`;
+        }
+        if (r1) {
+          html += `<div>
+            <div style="font-size:11px;font-weight:700;color:#0f172a;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">📋 Pendientes R1</div>
+            <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:6px 10px">${esc(r1)}</div>
+          </div>`;
+        }
+        if (!hasAny) {
+          html += `<div style="font-size:12px;color:#94a3b8;font-style:italic">Sin pendientes registrados</div>`;
+        }
+        html += `</div></div>`;
+      });
+      html += `</div></div>`;
+      el.innerHTML = html;
     }
 
   </script>
