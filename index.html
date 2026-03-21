@@ -5213,10 +5213,7 @@
         ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 3)}
         ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
       </div>
-      <div class="grid-2">
-        ${renderImagenField(nd, k)}
-        ${fieldRow("📊 Signos vitales", nd.sv, k, "sv", 3)}
-      </div>
+      ${renderImagenField(nd, k)}
       ${renderChecklist(nd, k)}
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
       <div class="grid-2" style="margin-top:10px">
