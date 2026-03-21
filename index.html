@@ -10065,10 +10065,19 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       nd.checklist[field] = val;
       noteData[k] = nd;
       saveNote(k, nd);
+      // Solo re-render al cambiar el tipo; re-renderizar en cada tecla rompe el foco
+      // y hace que las siguientes teclas caigan en los atajos globales.
+      if (field !== "tvp_tipo") return;
       // Re-render checklist to show/hide sub-fields
       const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
       const container = document.getElementById("ck-row-" + ek);
-      if (container) container.outerHTML = renderChecklist(nd, k);
+      if (container) {
+        container.outerHTML = renderChecklist(nd, k);
+        setTimeout(function () {
+          const next = document.querySelector('#ck-row-' + ek + ' [data-field="' + (val === "enoxaparina" ? "tvp_dosis" : val === "otro" ? "tvp_otro" : "tvp_tipo") + '"]');
+          if (next && typeof next.focus === "function") next.focus();
+        }, 0);
+      }
     }
 
     function updateNpoField(k, field, val) {
