@@ -2159,9 +2159,10 @@
     }
 
     #sync-status.offline {
-      background: rgba(149, 165, 166, .15);
-      border-color: rgba(149, 165, 166, .3);
-      color: #cbd5e1
+      background: rgba(231, 152, 60, .25);
+      border-color: rgba(231, 152, 60, .5);
+      color: #fbbf24;
+      animation: pulse 1.5s ease-in-out infinite
     }
 
     @keyframes pulse {
@@ -4065,7 +4066,7 @@
             outboxEnqueue({ type: "note", key: k, data: d });
             if (pendingSyncs === 0) setSyncProblemStatus();
           }
-        }, 600);
+        }, 500);
       }
       _noteDebounceMap[key](key, safeData);
     }
@@ -4243,7 +4244,7 @@
         }
       }
     }
-    const savePts = debounce(_savePtsImmediate, 1200);
+    const savePts = debounce(_savePtsImmediate, 500);
 
     async function deleteNoteRemote(key) {
       // Notes cascade-delete with patient in Supabase, no separate action needed
@@ -4759,7 +4760,7 @@
           { id: "current", fecha: gi.fecha, entrega: gi.entrega, recibe: gi.recibe, updated_at: new Date().toISOString() },
           "id");
       } catch (e) { safeLog("_supaUpsertGuardInfo:", e); }
-    }, 600);
+    }, 500);
 
     // Inicia (o reinicia) la suscripción al canal broadcast de guard info.
     // Llamado desde startRealtime() para que comparta el mismo ciclo de vida.
