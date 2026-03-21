@@ -10094,8 +10094,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // ── Row 5: Pase Matutino — SEP / HxQx / Ventilador ──
       const sepOn = !!cl.pm_sep;
       const ventOn = !!cl.pm_vent;
+      const sepFugaOn = !!cl.pm_sep_fuga;
 
-      const sepHtml = `<span class="ck-item${sepOn ? " ck-on ck-sep-on" : ""}" data-ck="${k}" data-item="pm_sep" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sepsis / cuadro séptico activo"><span class="ck-label">${sepOn ? "✓ " : ""}SEP</span></span>`;
+      const sepHtml = `<span class="ck-item${sepOn ? " ck-on ck-sep-on" : ""}" data-ck="${k}" data-item="pm_sep" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sepsis / cuadro séptico activo"><span class="ck-label">${sepOn ? "✓ " : ""}SEP</span></span>` +
+        (sepOn ? `<span class="pm-label">Gasto:</span><input class="pm-input" value="${esc(cl.pm_sep_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_sep_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto séptico en mL/24h"/>` +
+          `<span class="ck-item${sepFugaOn ? " ck-on" : ""}" data-ck="${k}" data-item="pm_sep_fuga" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Fuga activa"><span class="ck-label">${sepFugaOn ? "✓ " : ""}Fuga</span></span>` +
+          (sepFugaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_sep_fuga_grado" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Grado de fuga">` +
+            `<option value="">-- grado --</option>` +
+            ["A","B","C"].map(g => `<option value="${g}"${cl.pm_sep_fuga_grado === g ? " selected" : ""}>${g}</option>`).join("") +
+            `</select>` : "") : "");
 
       const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
 
