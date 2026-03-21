@@ -4181,6 +4181,16 @@
           .subscribe();
         _realtimeSubs.push(noSub);
       } catch (e) { safeLog("[RT] no_olvidar subscription failed:", e); }
+
+      // Subscribe to procedimientos_dia changes
+      try {
+        const procSub = _supa.channel("procedimientos-dia-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "procedimientos_dia" }, function(payload) {
+            handleProcChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(procSub);
+      } catch (e) { safeLog("[RT] procedimientos_dia subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -4800,12 +4810,18 @@
       updateCourseCountdown();
       initNoOlvidarSync();
 
-      // Cargar no_olvidar desde DB en segundo plano (no bloquea el render inicial)
+      // Cargar no_olvidar y procedimientos desde DB en segundo plano (no bloquea el render inicial)
       if (navigator.onLine) {
         supaLoadNoOlvidar().then(function(items) {
           if (!items) return;
           lsSaveNoOlvidar(items);
           if (currentView === "noOlvidar") renderNoOlvidar();
+        });
+        supaLoadProcedimientos().then(function(procs) {
+          if (!procs) return;
+          procedimientos = procs;
+          saveProcs();
+          renderView();
         });
       }
     }
@@ -8961,6 +8977,87 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function saveProcs() {
       try { localStorage.setItem(PROCS_KEY, JSON.stringify(procedimientos)); } catch (e) { }
     }
+
+    // ── Supabase CRUD para procedimientos_dia ─────────────────────────────────────
+    function _procToRow(proc) {
+      return {
+        cama:      proc.cama      || "",
+        exp:       proc.exp       || "",
+        nombre:    proc.nombre    || "",
+        edad:      proc.edad      ? String(proc.edad) : "",
+        dx:        proc.dx        || "",
+        esp:       proc.esp       || "CG",
+        adscrito:  proc.adscrito  || "",
+        residente: proc.residente || "",
+        fecha_dia: todayStr(),
+        added_by:  localStorage.getItem("pl_user_name") || ""
+      };
+    }
+    async function supaLoadProcedimientos() {
+      try {
+        const rows = await _sGet("procedimientos_dia", "fecha_dia=eq." + todayStr() + "&order=added_at.asc");
+        if (!Array.isArray(rows)) return null;
+        return rows.map(function(r) {
+          return { _id: r.id, cama: r.cama || "", exp: r.exp || "", nombre: r.nombre || "",
+            edad: r.edad || "", dx: r.dx || "", esp: r.esp || "CG",
+            adscrito: r.adscrito || "", residente: r.residente || "",
+            _addedAt: r.added_at || new Date().toISOString() };
+        });
+      } catch (e) { safeLog("[PROC] supaLoadProcedimientos:", e); return null; }
+    }
+    async function supaInsertProc(proc) {
+      try {
+        const data = await _sPost("procedimientos_dia", _procToRow(proc), { "Prefer": "return=representation" });
+        const ins = Array.isArray(data) ? data[0] : data;
+        return ins ? ins.id : null;
+      } catch (e) { safeLog("[PROC] supaInsertProc:", e); return null; }
+    }
+    async function supaUpdateProc(id, proc) {
+      try { await _sPatch("procedimientos_dia", "id=eq." + id, _procToRow(proc)); }
+      catch (e) { safeLog("[PROC] supaUpdateProc:", e); }
+    }
+    async function supaDeleteProc(id) {
+      try { await _sDelete("procedimientos_dia", "id=eq." + id); }
+      catch (e) { safeLog("[PROC] supaDeleteProc:", e); }
+    }
+    async function supaDeleteAllProcs() {
+      try { await _sDelete("procedimientos_dia", "fecha_dia=eq." + todayStr()); }
+      catch (e) { safeLog("[PROC] supaDeleteAllProcs:", e); }
+    }
+
+    // ── Realtime handler para procedimientos_dia ──────────────────────────────────
+    function handleProcChange(payload) {
+      const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType === "INSERT" && newRow) {
+        if (procedimientos.some(function(p) { return p._id === newRow.id; })) return;
+        // Puede ser el proc que acabamos de insertar nosotros (aún sin _id asignado)
+        var tempIdx = procedimientos.findIndex(function(p) { return !p._id && p.nombre === (newRow.nombre || "") && p.exp === (newRow.exp || ""); });
+        if (tempIdx >= 0) {
+          procedimientos[tempIdx]._id = newRow.id;
+        } else {
+          procedimientos.push({ _id: newRow.id, cama: newRow.cama || "", exp: newRow.exp || "",
+            nombre: newRow.nombre || "", edad: newRow.edad || "", dx: newRow.dx || "",
+            esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "",
+            _addedAt: newRow.added_at || new Date().toISOString() });
+        }
+        saveProcs(); renderView();
+      } else if (eventType === "UPDATE" && newRow) {
+        var idx = procedimientos.findIndex(function(p) { return p._id === newRow.id; });
+        if (idx >= 0) {
+          procedimientos[idx] = { ...procedimientos[idx], cama: newRow.cama || "", exp: newRow.exp || "",
+            nombre: newRow.nombre || "", edad: newRow.edad || "", dx: newRow.dx || "",
+            esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "" };
+          saveProcs(); renderView();
+        }
+      } else if (eventType === "DELETE") {
+        var delId = (oldRow && oldRow.id) || (newRow && newRow.id);
+        if (!delId) return;
+        var before = procedimientos.length;
+        procedimientos = procedimientos.filter(function(p) { return p._id !== delId; });
+        if (procedimientos.length !== before) { saveProcs(); renderView(); }
+      }
+    }
+
     let _procEditIdx = -1;
     function openProcModal(editIdx) {
       _procEditIdx = typeof editIdx === "number" ? editIdx : -1;
@@ -9006,25 +9103,36 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         _addedAt: new Date().toISOString()
       };
       if (_procEditIdx >= 0) {
+        const existingId = procedimientos[_procEditIdx]._id;
         procedimientos[_procEditIdx] = { ...procedimientos[_procEditIdx], ...proc };
+        saveProcs();
+        if (existingId) supaUpdateProc(existingId, proc);
       } else {
         procedimientos.push(proc);
+        saveProcs();
+        // Persistir en DB; al obtener el uuid real, asignarlo al proc local
+        const insertedProc = procedimientos[procedimientos.length - 1];
+        supaInsertProc(proc).then(function(dbId) {
+          if (dbId && insertedProc) { insertedProc._id = dbId; saveProcs(); }
+        });
       }
-      saveProcs();
       closeProcModal();
       renderView();
     }
     function deleteProc(idx) {
       if (!confirm("¿Eliminar este procedimiento?")) return;
+      const pr = procedimientos[idx];
       procedimientos.splice(idx, 1);
       saveProcs();
       renderView();
+      if (pr && pr._id) supaDeleteProc(pr._id);
     }
     function clearAllProcs() {
       if (!confirm(`¿Eliminar los ${procedimientos.length} procedimientos del día? Esta acción no se puede deshacer.`)) return;
       procedimientos = [];
       saveProcs();
       renderView();
+      supaDeleteAllProcs();
     }
     function renderProcSection() {
       let rows = "";
@@ -9063,10 +9171,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       // 1) Borrar TODO de Supabase (notes se borran en cascada con patients)
       try {
-        // Delete ALL notes first (by matching all)
         await _sDelete("notes", "patient_id=not.is.null").catch(() => { });
-        // Delete ALL patients
         await _sDelete("patients", "id=not.is.null").catch(() => { });
+        await _sDelete("no_olvidar", "id=not.is.null").catch(() => { });
+        await _sDelete("procedimientos_dia", "id=not.is.null").catch(() => { });
       } catch (e) { safeLog("resetCensoTotal supabase delete error:", e); }
 
       // 2) Borrar TODO del localStorage
@@ -9089,6 +9197,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       archivados = [];
       snapshots = [];
       procedimientos = [];
+      lsSaveNoOlvidar([]);
       pendingImport = null;
 
       // 4) Limpiar timestamps de sync
