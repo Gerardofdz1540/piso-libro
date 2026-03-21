@@ -8611,6 +8611,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function confirmImport() {
       if (!pendingImport) return;
       const { samePts, changedPts, newPts, missingPts, dispositions, procedimientosFromExcel } = pendingImport;
+      const prevPatients = [...patients]; // snapshot del censo anterior para limpiar fantasmas al final
       const existingByPid = new Map(patients.map(p => [pid(p), p]));
 
       // El nuevo censo Excel ES la fuente de verdad.
@@ -8684,6 +8685,26 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           }
         }
         processedOldPids.add(k);
+      });
+
+      // Borrar de Supabase cualquier paciente "fantasma": estaba en el censo anterior
+      // pero no quedó en nextPatients NI fue procesado explícitamente por changedPts/missingPts.
+      // Esto ocurre cuando ya había camas duplicadas: el Map solo capturaba el ÚLTIMO paciente
+      // por cama, dejando al primero sin procesar y sin borrar de Supabase.
+      const nextPidSet = new Set(nextPatients.map(p => pid(p)));
+      const explicitlyHandledPids = new Set([
+        ...changedPts.map(({ oldPt }) => pid(oldPt)),
+        ...missingPts.filter(p => dispositions[pid(p)] !== 'mantener').map(p => pid(p))
+      ]);
+      prevPatients.forEach(p => {
+        const k = pid(p);
+        if (!nextPidSet.has(k) && !explicitlyHandledPids.has(k)) {
+          if (p._supa_id) {
+            supaDeletePatient(p._supa_id).catch(() => {});
+          } else {
+            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(() => {});
+          }
+        }
       });
 
       // Reemplazar el array global completamente
