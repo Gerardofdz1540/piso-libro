@@ -2736,6 +2736,9 @@
         💡 Si cambias <strong>cama o expediente</strong>, los datos clínicos y labs se migran automáticamente al nuevo
         identificador.
       </div>
+      <div id="modal-realtime-warn" style="display:none;background:#fef3c7;border:1.5px solid #f59e0b;border-radius:7px;padding:7px 13px;font-size:12px;color:#92400e;margin-bottom:6px">
+        📡 <strong>Actualización recibida de otro dispositivo.</strong> Los campos que editaste aquí se conservarán al guardar. Revisa antes de confirmar.
+      </div>
       <div class="modal-footer">
         <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
         <button class="btn-save" id="modal-save-btn" onclick="saveModal()">✓ Agregar al censo</button>
@@ -4269,11 +4272,18 @@
         : (existing.imagenHistory || []);
       try { noteData[k] = migrateNote(nd); } catch (e) { safeLog("[RT] migrateNote error for " + k + ":", e); noteData[k] = defaultData(); }
       lsSaveNote(k, noteData[k]);
+      // Si el modal está abierto para este paciente: mostrar aviso y NO re-renderizar la tarjeta
+      // detrás del modal (evita destruir el DOM de la tarjeta mientras el usuario edita en el modal).
+      const _modalIsOpenForThis = (_modalCurrentEditKey === k);
+      if (_modalIsOpenForThis) {
+        var _rtModalWarn = document.getElementById("modal-realtime-warn");
+        if (_rtModalWarn) _rtModalWarn.style.display = "block";
+      }
       // Re-render SOLO la tarjeta afectada — renderView() destruiría texto en edición en TODOS los demás cards
-      // Además, si el usuario tiene foco dentro de esta misma tarjeta, no re-renderizar para no perder su texto
+      // Además, si el usuario tiene foco dentro de esta misma tarjeta o el modal está abierto, no re-renderizar
       const _rtCardEl = document.getElementById("card-" + k);
       const _rtHasFocus = _rtCardEl && _rtCardEl.contains(document.activeElement);
-      if (_rtCardEl && !_rtHasFocus) {
+      if (_rtCardEl && !_rtHasFocus && !_modalIsOpenForThis) {
         _rtCardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
       }
       // Toast no intrusivo
@@ -8249,6 +8259,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("modal-title").textContent = "✏️ Editar datos del paciente";
       document.getElementById("modal-save-btn").textContent = "✓ Guardar cambios";
       document.getElementById("modal-warn-edit").style.display = "block";
+      var _rtWarn = document.getElementById("modal-realtime-warn"); if (_rtWarn) _rtWarn.style.display = "none";
       document.getElementById("mf-cama").value = p.cama || "";
       document.getElementById("mf-exp").value = p.exp || "";
       document.getElementById("mf-edad").value = p.edad || "";
