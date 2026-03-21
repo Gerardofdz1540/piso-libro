@@ -298,7 +298,7 @@
     #piso-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(640px, 1fr));
-      gap: 14px;
+      gap: 6px;
       align-items: start;
     }
 
@@ -2065,6 +2065,68 @@
       border-color: #0ea5e9
     }
 
+    /* PASE MATUTINO */
+    .pm-input {
+      font-size: 11px;
+      padding: 1px 5px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      outline: none;
+      width: 52px;
+      background: #fff;
+      font-family: var(--font);
+      text-align: center
+    }
+
+    .pm-input:focus {
+      border-color: #0ea5e9
+    }
+
+    .pm-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: #64748b;
+      white-space: nowrap;
+      text-align: center
+    }
+
+    .pm-field {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px
+    }
+
+    .ck-item.ck-sep-on {
+      background: #dc2626;
+      color: #fff;
+      border-color: #b91c1c
+    }
+
+    .ck-item.ck-vent-on {
+      background: #0369a1;
+      color: #fff;
+      border-color: #075985
+    }
+
+    .ck-item.ck-sng-on {
+      background: #d97706;
+      color: #fff;
+      border-color: #b45309
+    }
+
+    .ck-item.ck-prs-on {
+      background: #7c3aed;
+      color: #fff;
+      border-color: #6d28d9
+    }
+
+    .ck-item.ck-estoma-on {
+      background: #0891b2;
+      color: #fff;
+      border-color: #0e7490
+    }
+
     /* SYNC STATUS */
     #sync-status {
       display: inline-flex;
@@ -2523,6 +2585,7 @@
 
       <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
       <button class="tab" onclick="setView('altas',this)">✅ Altas</button>
+      <button class="tab" onclick="setView('pendientes',this)">📋 Pendientes</button>
     </div>
   </div>
   </div>
@@ -2556,6 +2619,7 @@
 
     <div id="view-noOlvidar" style="display:none"></div>
     <div id="view-altas" style="display:none"></div>
+    <div id="view-pendientes" style="display:none"></div>
   </div>
 
   <!-- PATIENT MODAL -->
@@ -3268,7 +3332,11 @@
         body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "" }
+        checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "",
+          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
+          pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
+          pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_hxqx: "",
+          pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "" }
       };
     }
     const NOTE_SYNC_META_KEY = "__pl_note_meta";
@@ -3397,18 +3465,13 @@
           };
         });
       nd.labs = sanitizeLabsMap(nd.labs);
+      const checklistDefaults = defaultData().checklist;
       if (!isPlainObject(nd.checklist)) {
-        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "" };
+        nd.checklist = { ...checklistDefaults };
       }
-      // Migrate: add wound care + NPT fields if missing
-      if (nd.checklist.cur_necesita === undefined) nd.checklist.cur_necesita = false;
-      if (nd.checklist.cur_realizada === undefined) nd.checklist.cur_realizada = false;
-      if (nd.checklist.npt === undefined) nd.checklist.npt = false;
-      if (nd.checklist.npt_pct === undefined) nd.checklist.npt_pct = "";
-      if (nd.checklist.npt_fecha === undefined) nd.checklist.npt_fecha = "";
-      if (nd.checklist.sexo === undefined) nd.checklist.sexo = "";
-      if (nd.checklist.pendientes_mips === undefined) nd.checklist.pendientes_mips = "";
-      if (nd.checklist.pendientes_r1 === undefined) nd.checklist.pendientes_r1 = "";
+      Object.keys(checklistDefaults).forEach(function(ckKey) {
+        if (nd.checklist[ckKey] === undefined) nd.checklist[ckKey] = checklistDefaults[ckKey];
+      });
       const noteSyncMeta = readNoteSyncMeta(nd.checklist);
       if (noteSyncMeta.exists) {
         nd.checklist[NOTE_SYNC_META_KEY] = {
@@ -3643,7 +3706,7 @@
     }
     async function _sGet(table, qs) {
       const r = await fetch(SUPA_URL + "/rest/v1/" + table + (qs ? "?" + qs : ""), { headers: _sHeaders() });
-      if (!r.ok) throw new Error("GET " + table + " HTTP " + r.status + " " + r.statusText);
+      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("GET " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
       return r.json();
     }
     async function _sPost(table, body, extra) {
@@ -3685,6 +3748,13 @@
         const msg = e ? (typeof e === "string" ? e : (e.message || e.details || e.hint || String(e))) : "sin detalle";
         console.error(label, msg);
       } catch (_) { console.error(label, "(no loggeable)"); }
+    }
+    function safeInfo(label, detail) {
+      try {
+        const msg = detail ? (typeof detail === "string" ? detail : (detail.message || detail.details || detail.hint || String(detail))) : "";
+        if (msg) console.info(label, msg);
+        else console.info(label);
+      } catch (_) { console.info(label); }
     }
     function safeWarn(label, e) {
       try {
@@ -3859,7 +3929,11 @@
       try {
         const data = await _sPost("notes", row, { "Prefer": "resolution=merge-duplicates,return=representation" });
         return Array.isArray(data) ? data[0] : data;
-      } catch (e) { safeLog("supaUpsertNote error:", e); _lastSyncErrorDetail = e && e.message ? e.message : String(e || ""); return null; }
+      } catch (e) {
+        safeLog("supaUpsertNote error:", e);
+        _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
+        return null;
+      }
     }
 
     // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
@@ -3871,7 +3945,8 @@
         let nts = [];
         if (Array.isArray(pts) && pts.length) {
           const ids = pts.map(r => r.id).join(",");
-          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history"), 2, 200);
+          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history";
+          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect), 2, 200);
         }
 
         if (!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
@@ -3924,6 +3999,7 @@
             nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
             nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
             nd.misc = sn.misc || "";
+            if (sn.entrega !== undefined) nd.entrega = sn.entrega || nd.entrega || "";
             nd.checklist = { ...(nd.checklist || {}), ...(isPlainObject(sn.checklist) ? sn.checklist : {}) };
             nd.labHistory = Array.isArray(sn.lab_history) ? sn.lab_history : (nd.labHistory || []);
             nd.imagenHistory = Array.isArray(sn.imagen_history) ? sn.imagen_history : (nd.imagenHistory || []);
@@ -3956,6 +4032,8 @@
       // Always save to localStorage immediately
       lsSaveNote(key, safeData);
       noteData[key] = safeData;
+      // Mark that local data is newer than last confirmed Supabase sync
+      try { localStorage.setItem("pl_last_save_ts", Date.now().toString()); } catch (_) {}
       // Debounced push to Supabase
       if (!_noteDebounceMap[key]) {
         _noteDebounceMap[key] = debounce(async (k, d) => {
@@ -3968,7 +4046,7 @@
             pendingSyncs--;
             if (!res) outboxEnqueue({ type: "note", key: k, data: d });
             if (pendingSyncs === 0) {
-              if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); }
+              if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
               else setSyncProblemStatus();
             }
           } catch (e) {
@@ -3980,6 +4058,30 @@
         }, 600);
       }
       _noteDebounceMap[key](key, safeData);
+    }
+
+    // Aplica datos de notas de Supabase sin perder ediciones dirty en memoria.
+    // Úsalo en lugar de `noteData = loadedNotes` para evitar race conditions.
+    function _applyLoadedNotes(loadedNotes) {
+      const prev = noteData;
+      noteData = loadedNotes || {};
+      // Preservar campos que el usuario está editando ahora mismo (_dirtyFields)
+      Object.keys(_dirtyFields).forEach(function(k) {
+        const dirty = _dirtyFields[k];
+        if (!dirty || !dirty.size) return;
+        const prevNd = prev[k];
+        if (!prevNd) return;
+        if (!noteData[k]) noteData[k] = defaultData();
+        dirty.forEach(function(field) {
+          if (field.startsWith("ck_")) {
+            const ckField = field.slice(3);
+            if (!noteData[k].checklist) noteData[k].checklist = {};
+            noteData[k].checklist[ckField] = (prevNd.checklist || {})[ckField];
+          } else {
+            noteData[k][field] = prevNd[field];
+          }
+        });
+      });
     }
 
     async function _savePtsImmediate() {
@@ -4089,7 +4191,7 @@
         noteData[pid(p)] = defaultData();
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        safeLog("[RT] Patient inserted:", p.nombre);
+        safeInfo("[RT] Patient inserted:", p.nombre);
       }
       else if (eventType === "UPDATE") {
         if (!newRow) return;
@@ -4118,7 +4220,7 @@
         patients[idx] = updated;
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        safeLog("[RT] Patient updated:", updated.nombre);
+        safeInfo("[RT] Patient updated:", updated.nombre);
       }
       else if (eventType === "DELETE") {
         const id = oldRow?.id || newRow?.id;
@@ -4132,7 +4234,7 @@
         _cleanupPatientCache(k);
         lsSavePatients(patients);
         buildEspFilters(); renderView();
-        safeLog("[RT] Patient deleted:", k);
+        safeInfo("[RT] Patient deleted:", k);
       }
     }
 
@@ -4154,6 +4256,11 @@
       textFields.forEach(function(f) {
         nd[f] = dirty.has(f) ? existing[f] : (newRow[f] || "");
       });
+      // entrega: si el valor remoto es undefined (columna no existe en DB o aún no se sincronizó),
+      // conservar siempre el valor local para no perder datos del usuario
+      nd.entrega = newRow.entrega !== undefined
+        ? (dirty.has("entrega") ? existing.entrega : (newRow.entrega || existing.entrega || ""))
+        : existing.entrega;
       // Fusionar checklist: preservar pendientes_mips y pendientes_r1 si están siendo editados.
       // También conservar metadatos locales si la fila remota todavía no los trae.
       const remoteChecklist = isPlainObject(newRow.checklist) ? newRow.checklist : {};
@@ -4195,7 +4302,7 @@
         _toastEl.style.opacity = "0";
         setTimeout(function(){ if (_toastEl.parentNode) _toastEl.parentNode.removeChild(_toastEl); }, 350);
       }, 3000);
-      safeLog("[RT] Note updated:", k);
+      safeInfo("[RT] Note updated:", k);
     }
 
     function supaRowToPatient(row) {
@@ -4263,7 +4370,7 @@
       } else {
         const loaded = await supaLoadAll();
         if (loaded) {
-          patients = loaded.patients; noteData = loaded.notes;
+          patients = loaded.patients; _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
           // Supabase cargó exitosamente → limpiar outbox obsoleto
           outboxSave([]); updateOutboxBadge();
@@ -4355,7 +4462,7 @@
       // Reload from Supabase
       const loaded = await supaLoadAll();
       if (loaded) {
-        patients = loaded.patients; noteData = loaded.notes;
+        patients = loaded.patients; _applyLoadedNotes(loaded.notes);
         lsSavePatients(patients);
         buildEspFilters(); renderView();
       }
@@ -4563,7 +4670,7 @@
 
       if (supaClean.length > 0 && !localHasMore) {
         patients = supaClean;
-        noteData = loaded.notes || {};
+        _applyLoadedNotes(loaded.notes || {});
         lsSavePatients(patients);
         // Cache notes locally
         patients.forEach(p => { lsSaveNote(pid(p), noteData[pid(p)] || defaultData()); });
@@ -4645,7 +4752,7 @@
       const _searchEl = document.getElementById("search");
       const search = _searchEl ? _searchEl.value.toLowerCase() : "";
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
-      function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
+      function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
       const searchNorm = normSearch(search);
       const searchTokens = searchNorm ? searchNorm.split(/\s+/).filter(Boolean) : [];
       const filtered = patients.filter(p => {
@@ -4662,7 +4769,7 @@
       });
       const _cb = document.getElementById("count-badge");
       if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
-      ["piso", "census", "print", "noOlvidar", "altas"].forEach(v => {
+      ["piso", "census", "print", "noOlvidar", "altas", "pendientes"].forEach(v => {
         const _ve = document.getElementById("view-" + v);
         if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
@@ -4671,6 +4778,7 @@
       if (currentView === "print") renderPrint(filtered);
       if (currentView === "noOlvidar") renderNoOlvidar();
       if (currentView === "altas") renderAltas();
+      if (currentView === "pendientes") renderPendientes(filtered);
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -5159,10 +5267,7 @@
         ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 3)}
         ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
       </div>
-      <div class="grid-2">
-        ${renderImagenField(nd, k)}
-        ${fieldRow("📊 Signos vitales", nd.sv, k, "sv", 3)}
-      </div>
+      ${renderImagenField(nd, k)}
       ${renderChecklist(nd, k)}
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
       <div class="grid-2" style="margin-top:10px">
@@ -8436,15 +8541,20 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             secChanged.style.display = "";
             document.getElementById("import-changed-lbl").textContent = changedPts.length + " cama" + (changedPts.length > 1 ? "s" : "") + " con cambio de paciente";
             let h = "";
-            changedPts.forEach(({ newPt, oldPt }) => {
+            changedPts.forEach(({ newPt, oldPt }, idx) => {
               const col = ESP_COLORS[newPt.esp] || "#333";
-              h += `<div class="import-row" style="background:#fff8f8;flex-direction:column;align-items:flex-start;gap:4px">` +
-                `<div style="display:flex;gap:8px;align-items:center;width:100%">` +
-                `<span style="font-weight:700;color:${col};min-width:60px">${esc(newPt.cama)}</span>` +
+              h += `<div style="background:#fff8f8;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;flex-direction:column;gap:8px">` +
+                `<div style="display:flex;gap:8px;align-items:center">` +
+                `<span style="font-weight:700;color:${col};min-width:60px;font-size:13px">${esc(newPt.cama)}</span>` +
                 `<span class="changed">REEMPLAZA</span>` +
-                `<span style="flex:1;font-size:11px"><b>NUEVO:</b> ${esc(newPt.nombre)} · ${newPt.exp}</span>` +
+                `<span style="font-size:10px;color:#991b1b;flex:1">sustituye a: <b>${esc(oldPt.nombre)}</b> (Exp: ${esc(oldPt.exp)})</span>` +
                 `</div>` +
-                `<div style="font-size:10px;color:#991b1b;padding-left:68px">⬆️ sustituye a: <b>${esc(oldPt.nombre)}</b> (Exp: ${esc(oldPt.exp)}) — el paciente anterior se eliminará del censo</div>` +
+                `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">` +
+                `<input value="${esc(newPt.nombre)}" oninput="updateChangedPt(${idx},'nombre',this.value)" placeholder="Nombre" style="flex:2;min-width:140px;padding:5px 8px;border:1px solid #fca5a5;border-radius:5px;font-size:12px;font-family:var(--font)">` +
+                `<input value="${esc(newPt.exp)}" oninput="updateChangedPt(${idx},'exp',this.value)" placeholder="Exp" style="width:90px;padding:5px 8px;border:1px solid #fca5a5;border-radius:5px;font-size:12px;font-family:var(--font)">` +
+                `<input value="${esc(newPt.dx)}" oninput="updateChangedPt(${idx},'dx',this.value)" placeholder="Diagnóstico" style="flex:3;min-width:140px;padding:5px 8px;border:1px solid #fca5a5;border-radius:5px;font-size:12px;font-family:var(--font)">` +
+                `<input value="${esc(newPt.esp)}" oninput="updateChangedPt(${idx},'esp',this.value)" placeholder="Esp" style="width:70px;padding:5px 8px;border:1px solid #fca5a5;border-radius:5px;font-size:12px;font-family:var(--font)">` +
+                `</div>` +
                 `</div>`;
             });
             document.getElementById("import-changed-list").innerHTML = h;
@@ -8540,6 +8650,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       reader.readAsArrayBuffer(file);
     }
 
+    function updateChangedPt(idx, field, value) {
+      if (!pendingImport || !pendingImport.changedPts[idx]) return;
+      pendingImport.changedPts[idx].newPt[field] = field === 'exp' ? value.trim() : value.trim().toUpperCase();
+    }
+
     function setDisposition(k, sel) {
       if (!pendingImport) return;
       pendingImport.dispositions[k] = sel.value;
@@ -8550,6 +8665,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function confirmImport() {
       if (!pendingImport) return;
       const { samePts, changedPts, newPts, missingPts, dispositions, procedimientosFromExcel } = pendingImport;
+      const prevPatients = [...patients]; // snapshot del censo anterior para limpiar fantasmas al final
       const existingByPid = new Map(patients.map(p => [pid(p), p]));
 
       // El nuevo censo Excel ES la fuente de verdad.
@@ -8583,6 +8699,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         nextPatients.push({ ...newPt });
         // Conservar notes del nuevo si ya existían; si no, inicializar
         if (!noteData[newKey]) noteData[newKey] = defaultData();
+        // Eliminar paciente anterior de Supabase para evitar duplicados de cama al refrescar
+        if (oldPt._supa_id) {
+          supaDeletePatient(oldPt._supa_id).catch(() => {});
+        } else {
+          _sDelete("patients", "exp=eq." + encodeURIComponent(oldPt.exp) + "&cama=eq." + encodeURIComponent(oldPt.cama)).catch(() => {});
+        }
       });
 
       // 3) Completamente nuevos → agregar directamente
@@ -8609,8 +8731,34 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           noteData[k]._egreso = etiqueta;
           noteData[k]._egresoFecha = new Date().toLocaleDateString("es-MX");
           lsSaveNote(k, noteData[k]);
+          // Eliminar de Supabase para que no reaparezcan al refrescar
+          if (p._supa_id) {
+            supaDeletePatient(p._supa_id).catch(() => {});
+          } else {
+            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(() => {});
+          }
         }
         processedOldPids.add(k);
+      });
+
+      // Borrar de Supabase cualquier paciente "fantasma": estaba en el censo anterior
+      // pero no quedó en nextPatients NI fue procesado explícitamente por changedPts/missingPts.
+      // Esto ocurre cuando ya había camas duplicadas: el Map solo capturaba el ÚLTIMO paciente
+      // por cama, dejando al primero sin procesar y sin borrar de Supabase.
+      const nextPidSet = new Set(nextPatients.map(p => pid(p)));
+      const explicitlyHandledPids = new Set([
+        ...changedPts.map(({ oldPt }) => pid(oldPt)),
+        ...missingPts.filter(p => dispositions[pid(p)] !== 'mantener').map(p => pid(p))
+      ]);
+      prevPatients.forEach(p => {
+        const k = pid(p);
+        if (!nextPidSet.has(k) && !explicitlyHandledPids.has(k)) {
+          if (p._supa_id) {
+            supaDeletePatient(p._supa_id).catch(() => {});
+          } else {
+            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(() => {});
+          }
+        }
       });
 
       // Reemplazar el array global completamente
@@ -9853,10 +10001,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     // ─── CHECKLIST OPERATIVO ─────────────────────────────────────────────────────────
     const CHECKLIST_ITEMS = [
-      { key: "npo", label: "NPO", title: "Ayuno / nada por vía oral" },
+      { key: "npo", label: "Ayuno", title: "Ayuno / nada por vía oral" },
       { key: "atb", label: "ATB", title: "Antibioticoterapia activa" },
       { key: "tvp", label: "TVP", title: "Profilaxis TVP (HBPM/compresión)" },
-      { key: "dren", label: "Dren", title: "Drenaje activo en sitio" },
     ];
 
     const WOUND_ITEMS = [
@@ -9905,53 +10052,158 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(k, nd);
     }
 
+    function updateAtbField(k, field, val) {
+      const nd = getNote(k);
+      nd.checklist[field] = val;
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
+    function updateTvpField(k, field, val) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[field] = val;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      // Re-render checklist to show/hide sub-fields
+      const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
+      const container = document.getElementById("ck-row-" + ek);
+      if (container) container.outerHTML = renderChecklist(nd, k);
+    }
+
+    function updateNpoField(k, field, val) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[field] = val;
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
+    function updatePmField(k, field, val) {
+      const nd = getNote(k);
+      nd.checklist[field] = val;
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
     function renderChecklist(nd, k) {
       nd = migrateNote(nd);
       const cl = nd.checklist || {};
       const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
 
-      // Row 1: Standard checklist items
-      const items = CHECKLIST_ITEMS.map(item => {
-        const on = !!cl[item.key];
-        return `<span id="ck-${ek}-${item.key}" class="ck-item${on ? " ck-on" : ""}"
-      data-ck="${k}" data-item="${item.key}"
-      onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
-      title="${item.title}"><span class="ck-label">${on ? "✓ " : ""}${item.label}</span></span>`;
-      }).join("");
+      // ── Row 1: Checklist estándar + ATB inline + Dieta ──
+      const npoOn = !!cl.npo;
+      const atbOn = !!cl.atb;
+      const tvpOn = !!cl.tvp;
       const dieta = esc(cl.dieta || "");
 
-      // Row 2: Wound care
+      const npoHtml = `<span id="ck-${ek}-npo" class="ck-item${npoOn ? " ck-on" : ""}" data-ck="${k}" data-item="npo" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ayuno / Nada Por vía Oral"><span class="ck-label">${npoOn ? "✓ " : ""}Ayuno</span></span>` +
+        (npoOn ? `<input class="ck-dieta" value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
+
+      const atbHtml = `<span id="ck-${ek}-atb" class="ck-item${atbOn ? " ck-on" : ""}" data-ck="${k}" data-item="atb" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Antibioticoterapia activa"><span class="ck-label">${atbOn ? "✓ " : ""}ATB</span></span>` +
+        (atbOn ? `<input class="ck-dieta" value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
+          `<input class="ck-dieta" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
+
+      const tvpTipo = cl.tvp_tipo || "";
+      const tvpHtml = `<span id="ck-${ek}-tvp" class="ck-item${tvpOn ? " ck-on" : ""}" data-ck="${k}" data-item="tvp" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Profilaxis TVP (HBPM/compresión)"><span class="ck-label">${tvpOn ? "✓ " : ""}TVP</span></span>` +
+        (tvpOn ? `<select class="ck-dieta" data-ck="${k}" data-field="tvp_tipo" onchange="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px" title="Tipo de profilaxis TVP">` +
+          `<option value="">-- tipo --</option>` +
+          `<option value="enoxaparina"${tvpTipo === "enoxaparina" ? " selected" : ""}>Enoxaparina</option>` +
+          `<option value="otro"${tvpTipo === "otro" ? " selected" : ""}>Otro</option>` +
+          `</select>` +
+          (tvpTipo === "enoxaparina" ? `<input class="ck-dieta" value="${esc(cl.tvp_dosis || "")}" placeholder="Dosis (ej: 40mg)" data-ck="${k}" data-field="tvp_dosis" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Dosis de Enoxaparina" style="width:100px"/>` : "") +
+          (tvpTipo === "otro" ? `<input class="ck-dieta" value="${esc(cl.tvp_otro || "")}" placeholder="Especificar..." data-ck="${k}" data-field="tvp_otro" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Otra profilaxis TVP" style="width:140px"/>` : "") : "");
+
+      // ── Row 2: Herida Qx + NPT ──
+      const woundNecOn = !!cl.cur_necesita;
+      const woundDoneOn = !!cl.cur_realizada;
       const woundItems = WOUND_ITEMS.map(item => {
         const on = !!cl[item.key];
         const extraClass = item.key === "cur_necesita" ? (on ? " ck-wound-need" : "") : (on ? " ck-wound-done" : "");
         const timeLabel = item.key === "cur_realizada" && on && cl.cur_realizada_hora ? ` (${cl.cur_realizada_hora})` : "";
-        return `<span id="ck-${ek}-${item.key}" class="ck-item${on ? " ck-on" : ""}${extraClass}"
-      data-ck="${k}" data-item="${item.key}"
-      onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
-      title="${item.title}"><span class="ck-label">${on ? "✓ " : ""}${item.label}${timeLabel}</span></span>`;
+        return `<span id="ck-${ek}-${item.key}" class="ck-item${on ? " ck-on" : ""}${extraClass}" data-ck="${k}" data-item="${item.key}" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="${item.title}"><span class="ck-label">${on ? "✓ " : ""}${item.label}${timeLabel}</span></span>`;
       }).join("");
 
-      // Row 3: NPT with percentage and date
       const nptOn = !!cl.npt;
       const nptPct = esc(cl.npt_pct || "");
       const nptFecha = esc(cl.npt_fecha || "");
-      const nptHtml = `<span id="ck-${ek}-npt" class="ck-item${nptOn ? " ck-on ck-npt-on" : ""}"
-    data-ck="${k}" data-item="npt"
-    onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
-    title="Nutrición Parenteral Total"><span class="ck-label">${nptOn ? "✓ " : ""}NPT</span></span>` +
-        (nptOn ? `<input class="ck-dieta" value="${nptPct}" placeholder="% (ej: 80%)"
-      data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)"
-      style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
+      const nptHtml = `<span id="ck-${ek}-npt" class="ck-item${nptOn ? " ck-on ck-npt-on" : ""}" data-ck="${k}" data-item="npt" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Nutrición Parenteral Total"><span class="ck-label">${nptOn ? "✓ " : ""}NPT</span></span>` +
+        (nptOn ? `<input class="ck-dieta" value="${nptPct}" placeholder="% (ej: 80%)" data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)" style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
           (nptFecha ? `<span style="font-size:9px;color:#94a3b8;white-space:nowrap" title="Última actualización del %">🕐 ${nptFecha}</span>` : "") : "");
+
+      // ── Row 3: Pase Matutino — Signos Vitales ──
+      function pmInp(field, w) {
+        const val = esc(cl["pm_" + field] || "");
+        return `<input class="pm-input" value="${val}" placeholder="—" data-ck="${k}" data-field="pm_${field}" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)"${w ? ` style="width:${w}"` : ""}/>`;
+      }
+      const vitalesHtml =
+        `<div class="pm-field"><span class="pm-label">FC</span>${pmInp("fc")}</div>` +
+        `<div class="pm-field"><span class="pm-label">FR</span>${pmInp("fr")}</div>` +
+        `<div class="pm-field"><span class="pm-label">T°</span>${pmInp("temp")}</div>` +
+        `<div class="pm-field"><span class="pm-label">SaO₂%</span>${pmInp("sao2")}</div>` +
+        `<div class="pm-field"><span class="pm-label">c/L O₂</span>${pmInp("o2l")}</div>` +
+        `<div class="pm-field"><span class="pm-label">TA</span>${pmInp("ta", "70px")}</div>` +
+        `<div class="pm-field"><span class="pm-label">Uresis</span>${pmInp("uresis", "70px")}</div>` +
+        `<div class="pm-field"><span class="pm-label">DxTx</span>${pmInp("dxtx")}</div>`;
+
+      // ── Row 4: Pase Matutino — Drenajes / Tubos / Balance ──
+      const sngOn = !!cl.pm_sng;
+      const prs1On = !!cl.pm_prs1;
+      const prs2On = !!cl.pm_prs2;
+      const prs3On = !!cl.pm_prs3;
+      const estomaOn = !!cl.pm_estoma;
+
+      const sngHtml = `<span class="ck-item${sngOn ? " ck-on ck-sng-on" : ""}" data-ck="${k}" data-item="pm_sng" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sonda Nasogástrica activa"><span class="ck-label">${sngOn ? "✓ " : ""}SNG</span></span>` +
+        (sngOn ? `<input class="pm-input" value="${esc(cl.pm_sng_desc || "")}" placeholder="desc..." data-ck="${k}" data-field="pm_sng_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>` : "");
+
+      const prs1Html = `<span class="ck-item${prs1On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs1" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 1"><span class="ck-label">${prs1On ? "✓ " : ""}PRS 1</span></span>` +
+        (prs1On ? `<input class="pm-input" value="${esc(cl.pm_prs1_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs1_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+
+      const prs2Html = `<span class="ck-item${prs2On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs2" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 2"><span class="ck-label">${prs2On ? "✓ " : ""}PRS 2</span></span>` +
+        (prs2On ? `<input class="pm-input" value="${esc(cl.pm_prs2_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs2_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+
+      const prs3Html = `<span class="ck-item${prs3On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs3" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 3"><span class="ck-label">${prs3On ? "✓ " : ""}PRS 3</span></span>` +
+        (prs3On ? `<input class="pm-input" value="${esc(cl.pm_prs3_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs3_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+
+      const estomaHtml = `<span class="ck-item${estomaOn ? " ck-on ck-estoma-on" : ""}" data-ck="${k}" data-item="pm_estoma" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Estoma activo"><span class="ck-label">${estomaOn ? "✓ " : ""}Estoma</span></span>` +
+        (estomaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_estoma_tipo" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Origen del estoma">` +
+          `<option value="">-- origen --</option>` +
+          ["Colon","Yeyuno","Ileon"].map(t => `<option value="${t}"${cl.pm_estoma_tipo === t ? " selected" : ""}>${t}</option>`).join("") +
+          `</select>` +
+          `<span class="pm-label">Gasto:</span><input class="pm-input" value="${esc(cl.pm_estoma_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_estoma_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto del estoma en mL/24h"/>` : "");
+
+      const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
+
+      // ── Row 5: Pase Matutino — SEP / HxQx / Ventilador ──
+      const sepOn = !!cl.pm_sep;
+      const ventOn = !!cl.pm_vent;
+      const sepFugaOn = !!cl.pm_sep_fuga;
+
+      const sepHtml = `<span class="ck-item${sepOn ? " ck-on ck-sep-on" : ""}" data-ck="${k}" data-item="pm_sep" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sepsis / cuadro séptico activo"><span class="ck-label">${sepOn ? "✓ " : ""}SEP</span></span>` +
+        (sepOn ? `<span class="pm-label">Gasto:</span><input class="pm-input" value="${esc(cl.pm_sep_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_sep_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto séptico en mL/24h"/>` +
+          `<span class="ck-item${sepFugaOn ? " ck-on" : ""}" data-ck="${k}" data-item="pm_sep_fuga" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Fuga activa"><span class="ck-label">${sepFugaOn ? "✓ " : ""}Fuga</span></span>` +
+          (sepFugaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_sep_fuga_grado" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Grado de fuga">` +
+            `<option value="">-- grado --</option>` +
+            ["A","B","C"].map(g => `<option value="${g}"${cl.pm_sep_fuga_grado === g ? " selected" : ""}>${g}</option>`).join("") +
+            `</select>` : "") : "");
+
+      const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
+
+      const ventHtml = `<span class="ck-item${ventOn ? " ck-on ck-vent-on" : ""}" data-ck="${k}" data-item="pm_vent" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ventilación mecánica activa"><span class="ck-label">${ventOn ? "✓ " : ""}🫁 VM</span></span>` +
+        (ventOn ? `<input class="pm-input" value="${esc(cl.pm_vent_modo || "")}" placeholder="Modo" data-ck="${k}" data-field="pm_vent_modo" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:60px;text-align:left" title="Modo (AC, PS, SIMV...)"/>` +
+          `<span class="pm-label">FiO₂%</span><input class="pm-input" value="${esc(cl.pm_vent_fio2 || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fio2" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">PEEP</span><input class="pm-input" value="${esc(cl.pm_vent_peep || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_peep" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">VT mL</span><input class="pm-input" value="${esc(cl.pm_vent_vt || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_vt" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">FR</span><input class="pm-input" value="${esc(cl.pm_vent_fr || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fr" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:40px"/>` +
+          `<span class="pm-label">PIP</span><input class="pm-input" value="${esc(cl.pm_vent_pip || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_pip" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` : "");
 
       return `<div id="ck-row-${ek}" class="checklist-wrap">
     <div class="checklist-row">
       <span class="ck-title">✅ Checklist:</span>
-      ${items}
+      ${npoHtml} ${atbHtml} ${tvpHtml}
       <span class="ck-sep">|</span>
       <span class="ck-title">🍽 Dieta:</span>
-      <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..."
-        data-ck="${k}" oninput="updateDieta(this.dataset.ck, this.value)" style="width:140px"/>
+      <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
     </div>
     <div class="checklist-row" style="background:#fff7ed;border-color:#fdba74">
       <span class="ck-title">🩹 Herida Qx:</span>
@@ -9959,6 +10211,28 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       <span class="ck-sep">|</span>
       <span class="ck-title">💉 NPT:</span>
       ${nptHtml}
+    </div>
+    <div class="checklist-row" style="background:#f0fdfa;border-color:#5eead4;gap:8px">
+      <span class="ck-title" style="color:#0f766e;margin-right:2px">🫀 Pase Matutino:</span>
+      ${vitalesHtml}
+    </div>
+    <div class="checklist-row" style="background:#fdf4ff;border-color:#d8b4fe">
+      <span class="ck-title" style="color:#7c3aed">🩺 Drenajes:</span>
+      ${sngHtml}
+      <span class="ck-sep">|</span>
+      ${prs1Html} ${prs2Html} ${prs3Html}
+      <span class="ck-sep">|</span>
+      ${estomaHtml}
+      <span class="ck-sep">|</span>
+      ${balRow4Html}
+    </div>
+    <div class="checklist-row" style="background:#fef2f2;border-color:#fca5a5">
+      <span class="ck-title" style="color:#991b1b">⚕️ Clínico:</span>
+      ${sepHtml}
+      <span class="ck-sep">|</span>
+      ${hxqxHtml}
+      <span class="ck-sep">|</span>
+      ${ventHtml}
     </div>
   </div>`;
     }
@@ -10437,6 +10711,73 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       a.notas = notas.trim();
       lsSaveAltas(altas);
       renderAltas();
+    }
+
+    // ─── PENDIENTES VIEW ─────────────────────────────────────────────────────────────
+    function renderPendientes(filtered) {
+      const el = document.getElementById("view-pendientes");
+      if (!el) return;
+      const pts = (filtered || patients).slice().sort((a, b) => {
+        const [ga, na] = pisoBedPriority(a.cama);
+        const [gb, nb] = pisoBedPriority(b.cama);
+        return ga !== gb ? ga - gb : na - nb;
+      });
+      const hasPending = pts.filter(p => {
+        const k = pid(p);
+        const nd = migrateNote(noteData[k] || defaultData());
+        return (nd.pendientes && nd.pendientes.trim()) ||
+               (nd.checklist && nd.checklist.pendientes_mips && nd.checklist.pendientes_mips.trim()) ||
+               (nd.checklist && nd.checklist.pendientes_r1 && nd.checklist.pendientes_r1.trim());
+      });
+      if (!pts.length) {
+        el.innerHTML = `<div style="padding:40px;text-align:center;color:#94a3b8;font-size:15px">Sin pacientes</div>`;
+        return;
+      }
+      let html = `<div style="padding:12px 16px">
+        <div style="font-size:13px;color:#64748b;margin-bottom:12px">
+          ${pts.length} pacientes · ${hasPending.length} con pendientes
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">`;
+      pts.forEach(p => {
+        const k = pid(p);
+        const nd = migrateNote(noteData[k] || defaultData());
+        const ec = ESP_COLORS[p.esp] || "#334155";
+        const pendientes = (nd.pendientes || "").trim();
+        const mips = (nd.checklist && nd.checklist.pendientes_mips || "").trim();
+        const r1 = (nd.checklist && nd.checklist.pendientes_r1 || "").trim();
+        const hasAny = pendientes || mips || r1;
+        html += `<div style="border:1px solid ${hasAny ? ec : "#e2e8f0"};border-radius:10px;overflow:hidden;background:#fff;${!hasAny ? "opacity:0.55" : ""}">
+          <div style="background:linear-gradient(90deg,${ec} 0%,${ec}cc 100%);color:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px">
+            <span style="font-weight:700;font-size:14px">${esc(p.cama)}</span>
+            <span style="font-weight:600;font-size:13px;flex:1">${esc(p.nombre)}</span>
+            <span style="font-size:11px;opacity:.85">${esc(p.esp)} · ${esc(p.adscrito || "")}</span>
+          </div>
+          <div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px">`;
+        if (pendientes) {
+          html += `<div>
+            <div style="font-size:11px;font-weight:700;color:#0f172a;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">⚠️ Pendientes / Plan</div>
+            <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;background:#fefce8;border:1px solid #fde047;border-radius:6px;padding:6px 10px">${esc(pendientes)}</div>
+          </div>`;
+        }
+        if (mips) {
+          html += `<div>
+            <div style="font-size:11px;font-weight:700;color:#0f172a;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">📋 Pendientes MIPs</div>
+            <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;background:#f0f9ff;border:1px solid #7dd3fc;border-radius:6px;padding:6px 10px">${esc(mips)}</div>
+          </div>`;
+        }
+        if (r1) {
+          html += `<div>
+            <div style="font-size:11px;font-weight:700;color:#0f172a;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">📋 Pendientes R1</div>
+            <div style="font-size:13px;color:#1e293b;white-space:pre-wrap;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:6px 10px">${esc(r1)}</div>
+          </div>`;
+        }
+        if (!hasAny) {
+          html += `<div style="font-size:12px;color:#94a3b8;font-style:italic">Sin pendientes registrados</div>`;
+        }
+        html += `</div></div>`;
+      });
+      html += `</div></div>`;
+      el.innerHTML = html;
     }
 
   </script>
