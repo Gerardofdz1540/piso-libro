@@ -4009,7 +4009,7 @@
           }
         });
 
-        return { patients: loadedPatients, notes: loadedNotes };
+        return { patients: loadedPatients, notes: loadedNotes, remoteNotePatientIds: Object.keys(noteMap) };
       } catch (e) {
         if (isLikelyNetworkError(e)) {
           safeWarn("supaLoadAll warn:", e);
@@ -4082,6 +4082,98 @@
           }
         });
       });
+    }
+
+    function getLocalNoteSnapshot(k) {
+      return migrateNote(noteData[k] || lsGetNote(k) || defaultData());
+    }
+
+    function noteHasMeaningfulContent(nd) {
+      const d = migrateNote(nd);
+      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "misc", "entrega"];
+      if (textFields.some(function (f) { return toSafeString(d[f]).trim(); })) return true;
+      if (toSafeString(d.body_diagram_ant).trim() || toSafeString(d.body_diagram_post).trim()) return true;
+      if (Array.isArray(d.labHistory) && d.labHistory.length) return true;
+      if (Array.isArray(d.imagenHistory) && d.imagenHistory.length) return true;
+      const cl = isPlainObject(d.checklist) ? d.checklist : {};
+      const clDefaults = defaultData().checklist;
+      return Object.keys(cl).some(function (key) {
+        if (key === NOTE_SYNC_META_KEY) return readNoteSyncMeta(cl).exists;
+        const val = cl[key];
+        if (typeof val === "boolean") return val;
+        return toSafeString(val).trim() && toSafeString(val) !== toSafeString(clDefaults[key]);
+      });
+    }
+
+    function collectLocalNoteKeysForSync(remoteNotePatientIds) {
+      const remoteSet = new Set(Array.isArray(remoteNotePatientIds) ? remoteNotePatientIds : []);
+      return patients.map(function (p) {
+        const k = pid(p);
+        const nd = getLocalNoteSnapshot(k);
+        if (!noteHasMeaningfulContent(nd)) return "";
+        if (remoteSet.size && p._supa_id && remoteSet.has(p._supa_id)) return "";
+        return k;
+      }).filter(Boolean);
+    }
+
+    function outboxDropNoteKeys(keys) {
+      const keySet = new Set((keys || []).filter(Boolean));
+      if (!keySet.size) return;
+      const filtered = outboxLoad().filter(function (item) {
+        return !(item && item.type === "note" && keySet.has(item.key));
+      });
+      outboxSave(filtered);
+      updateOutboxBadge();
+    }
+
+    async function syncLocalNotesImmediate(keys) {
+      const uniqueKeys = Array.from(new Set((keys || []).filter(Boolean)));
+      if (!uniqueKeys.length) return { synced: 0, failed: [] };
+      const byKey = {};
+      patients.forEach(function (p) { byKey[pid(p)] = p; });
+      const failed = [];
+      const succeeded = [];
+      let synced = 0;
+      const BATCH = 6;
+      for (let i = 0; i < uniqueKeys.length; i += BATCH) {
+        const slice = uniqueKeys.slice(i, i + BATCH);
+        const results = await Promise.all(slice.map(async function (k) {
+          const p = byKey[k];
+          const nd = getLocalNoteSnapshot(k);
+          if (!p || !p._supa_id) return { key: k, ok: false, data: nd };
+          const res = await supaUpsertNote(p._supa_id, nd);
+          return { key: k, ok: !!res, data: nd };
+        }));
+        results.forEach(function (r) {
+          if (r.ok) {
+            synced++;
+            succeeded.push(r.key);
+          }
+          else {
+            failed.push(r.key);
+            outboxEnqueue({ type: "note", key: r.key, data: r.data });
+          }
+        });
+      }
+      outboxDropNoteKeys(succeeded);
+      updateOutboxBadge();
+      if (!failed.length) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+      return { synced, failed };
+    }
+
+    async function recoverPendingNoteSync(remoteNotePatientIds) {
+      if (outboxLoad().length) await flushOutbox();
+      const queuedNoteKeys = outboxLoad()
+        .filter(function (item) { return item && item.type === "note" && item.key; })
+        .map(function (item) { return item.key; });
+      const repairKeys = collectLocalNoteKeysForSync(remoteNotePatientIds);
+      const keys = Array.from(new Set([].concat(queuedNoteKeys, repairKeys)));
+      if (!keys.length) return { synced: 0, failed: [] };
+      const result = await syncLocalNotesImmediate(keys);
+      return {
+        synced: result.synced,
+        failed: result.failed.concat(outboxLoad().filter(function (item) { return item && item.type === "note" && item.key; }).map(function (item) { return item.key; }))
+      };
     }
 
     async function _savePtsImmediate() {
@@ -4344,17 +4436,25 @@
       });
     }
 
-    // ─── BEFOREUNLOAD: flush pending in-memory edits to localStorage before page closes ──
-    // Protege contra pérdida de datos si el usuario cierra el tab mientras hay un debounce
-    // pendiente (ventana de ~900ms entre que escribe y que el autosave dispara).
-    window.addEventListener("beforeunload", function () {
+    // ─── EXIT GUARD: persistir y encolar notas pendientes antes de cerrar/suspender ──
+    function persistBeforeExit() {
       try {
         Object.keys(noteData).forEach(function (k) {
           try { lsSaveNote(k, noteData[k]); } catch (_) {}
         });
       } catch (_) {}
+      try {
+        Object.keys(_dirtyFields).forEach(function (k) {
+          const dirty = _dirtyFields[k];
+          if (!dirty || !dirty.size || !noteData[k]) return;
+          outboxEnqueue({ type: "note", key: k, data: migrateNote(noteData[k]) });
+        });
+      } catch (_) {}
       try { lsSavePatients(patients); } catch (_) {}
-    });
+    }
+    // Safari/iPad puede suspender pestañas sin disparar de forma confiable beforeunload.
+    window.addEventListener("beforeunload", persistBeforeExit);
+    window.addEventListener("pagehide", persistBeforeExit);
 
     // ─── OFFLINE: flush outbox when back online ─────────────────────────────────────
     window.addEventListener("online", async () => {
@@ -4366,16 +4466,16 @@
       if (lastSaveTs2 > lastSupabaseTs2 && patients.length) {
         // Local data is newer — push to Supabase
         await _savePtsImmediate();
-        syncOk = outboxLoad().length === 0;
+        const repair = await recoverPendingNoteSync();
+        syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
       } else {
         const loaded = await supaLoadAll();
         if (loaded) {
           patients = loaded.patients; _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
-          // Supabase cargó exitosamente → limpiar outbox obsoleto
-          outboxSave([]); updateOutboxBadge();
+          const repair = await recoverPendingNoteSync(loaded.remoteNotePatientIds || []);
           buildEspFilters(); renderView();
-          syncOk = true;
+          syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
         }
       }
       if (syncOk) setSyncStatus("synced", "✅ Guardado");
@@ -4676,11 +4776,10 @@
         patients.forEach(p => { lsSaveNote(pid(p), noteData[pid(p)] || defaultData()); });
         localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         localStorage.setItem("pl_last_save_ts", Date.now().toString());
-        // Supabase cargó exitosamente → limpiar outbox obsoleto (datos ya están en Supabase)
-        outboxSave([]); updateOutboxBadge();
+        const repair = await recoverPendingNoteSync(loaded.remoteNotePatientIds || []);
         startRealtime();
-        const hm = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-        setSyncStatus("synced", "✅ Guardado");
+        if (repair.failed.length || outboxLoad().length) setSyncProblemStatus();
+        else setSyncStatus("synced", "✅ Guardado");
       } else if (localHasMore) {
         // Supabase has fewer patients than local — likely incomplete sync, prefer local
         safeLog("[GUARD] Local tiene " + localPts.length + " pacientes vs Supabase " + (loaded ? loaded.patients.length : 0) + ". Usando datos locales.");
@@ -4689,8 +4788,10 @@
         patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
         setSyncStatus("syncing", "Guardando...");
         startRealtime();
-        _savePtsImmediate().then(() => {
-          setSyncStatus("synced", "✅ Guardado");
+        _savePtsImmediate().then(async () => {
+          const repair = await recoverPendingNoteSync();
+          if (repair.failed.length || outboxLoad().length) setSyncProblemStatus();
+          else setSyncStatus("synced", "✅ Guardado");
         }).catch(e => { safeLog("_savePtsImmediate (localHasMore):", e); setSyncProblemStatus(); });
       } else {
         // Supabase empty, failed, offline, or localStorage is newer → load from localStorage
@@ -4702,8 +4803,10 @@
             // Re-sync newer local data to Supabase in background
             setSyncStatus("syncing", "Guardando...");
             startRealtime();
-            _savePtsImmediate().then(() => {
-              setSyncStatus("synced", "✅ Guardado");
+            _savePtsImmediate().then(async () => {
+              const repair = await recoverPendingNoteSync();
+              if (repair.failed.length || outboxLoad().length) setSyncProblemStatus();
+              else setSyncStatus("synced", "✅ Guardado");
             }).catch(e => { safeLog("_savePtsImmediate (localNewer):", e); setSyncProblemStatus(); });
           } else if (loaded === null) {
             // Supabase error pero hay datos locales disponibles — no mostrar error alarmante
