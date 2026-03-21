@@ -4017,6 +4017,8 @@
       // Always save to localStorage immediately
       lsSaveNote(key, safeData);
       noteData[key] = safeData;
+      // Mark that local data is newer than last confirmed Supabase sync
+      try { localStorage.setItem("pl_last_save_ts", Date.now().toString()); } catch (_) {}
       // Debounced push to Supabase
       if (!_noteDebounceMap[key]) {
         _noteDebounceMap[key] = debounce(async (k, d) => {
@@ -4029,7 +4031,7 @@
             pendingSyncs--;
             if (!res) outboxEnqueue({ type: "note", key: k, data: d });
             if (pendingSyncs === 0) {
-              if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); }
+              if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
               else setSyncProblemStatus();
             }
           } catch (e) {
@@ -4041,6 +4043,30 @@
         }, 600);
       }
       _noteDebounceMap[key](key, safeData);
+    }
+
+    // Aplica datos de notas de Supabase sin perder ediciones dirty en memoria.
+    // Úsalo en lugar de `noteData = loadedNotes` para evitar race conditions.
+    function _applyLoadedNotes(loadedNotes) {
+      const prev = noteData;
+      noteData = loadedNotes || {};
+      // Preservar campos que el usuario está editando ahora mismo (_dirtyFields)
+      Object.keys(_dirtyFields).forEach(function(k) {
+        const dirty = _dirtyFields[k];
+        if (!dirty || !dirty.size) return;
+        const prevNd = prev[k];
+        if (!prevNd) return;
+        if (!noteData[k]) noteData[k] = defaultData();
+        dirty.forEach(function(field) {
+          if (field.startsWith("ck_")) {
+            const ckField = field.slice(3);
+            if (!noteData[k].checklist) noteData[k].checklist = {};
+            noteData[k].checklist[ckField] = (prevNd.checklist || {})[ckField];
+          } else {
+            noteData[k][field] = prevNd[field];
+          }
+        });
+      });
     }
 
     async function _savePtsImmediate() {
@@ -4317,7 +4343,7 @@
       } else {
         const loaded = await supaLoadAll();
         if (loaded) {
-          patients = loaded.patients; noteData = loaded.notes;
+          patients = loaded.patients; _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
           // Supabase cargó exitosamente → limpiar outbox obsoleto
           outboxSave([]); updateOutboxBadge();
@@ -4409,7 +4435,7 @@
       // Reload from Supabase
       const loaded = await supaLoadAll();
       if (loaded) {
-        patients = loaded.patients; noteData = loaded.notes;
+        patients = loaded.patients; _applyLoadedNotes(loaded.notes);
         lsSavePatients(patients);
         buildEspFilters(); renderView();
       }
@@ -4617,7 +4643,7 @@
 
       if (supaClean.length > 0 && !localHasMore) {
         patients = supaClean;
-        noteData = loaded.notes || {};
+        _applyLoadedNotes(loaded.notes || {});
         lsSavePatients(patients);
         // Cache notes locally
         patients.forEach(p => { lsSaveNote(pid(p), noteData[pid(p)] || defaultData()); });
