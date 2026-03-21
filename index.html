@@ -3472,7 +3472,8 @@
       if (nd.checklist.pm_prs3 === undefined) nd.checklist.pm_prs3 = false;
       if (nd.checklist.pm_prs3_desc === undefined) nd.checklist.pm_prs3_desc = "";
       if (nd.checklist.pm_estoma === undefined) nd.checklist.pm_estoma = false;
-      if (nd.checklist.pm_estoma_desc === undefined) nd.checklist.pm_estoma_desc = "";
+      if (nd.checklist.pm_estoma_tipo === undefined) nd.checklist.pm_estoma_tipo = "";
+      if (nd.checklist.pm_estoma_gasto === undefined) nd.checklist.pm_estoma_gasto = "";
       if (nd.checklist.pm_balance === undefined) nd.checklist.pm_balance = "";
       // Pase Matutino - clínico/vent
       if (nd.checklist.pm_sep === undefined) nd.checklist.pm_sep = false;
@@ -10112,7 +10113,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         (prs3On ? `<input class="pm-input" value="${esc(cl.pm_prs3_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs3_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
 
       const estomaHtml = `<span class="ck-item${estomaOn ? " ck-on ck-estoma-on" : ""}" data-ck="${k}" data-item="pm_estoma" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Estoma activo"><span class="ck-label">${estomaOn ? "✓ " : ""}Estoma</span></span>` +
-        (estomaOn ? `<input class="pm-input" value="${esc(cl.pm_estoma_desc || "")}" placeholder="tipo/desc..." data-ck="${k}" data-field="pm_estoma_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px;text-align:left"/>` : "");
+        (estomaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_estoma_tipo" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Origen del estoma">` +
+          `<option value="">-- origen --</option>` +
+          ["Colon","Yeyuno","Ileon"].map(t => `<option value="${t}"${cl.pm_estoma_tipo === t ? " selected" : ""}>${t}</option>`).join("") +
+          `</select>` +
+          `<span class="pm-label">Gasto:</span><input class="pm-input" value="${esc(cl.pm_estoma_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_estoma_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto del estoma en mL/24h"/>` : "");
 
       const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
 
