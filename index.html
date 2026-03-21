@@ -4171,6 +4171,16 @@
           .subscribe();
         _realtimeSubs.push(noteSub);
       } catch (e) { safeLog("[RT] notes subscription failed:", e); }
+
+      // Subscribe to no_olvidar changes (postgres_changes, persiste aunque el dispositivo estuvo offline)
+      try {
+        const noSub = _supa.channel("no-olvidar-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "no_olvidar" }, function(payload) {
+            handleNoOlvidarChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(noSub);
+      } catch (e) { safeLog("[RT] no_olvidar subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -4789,6 +4799,15 @@
       rotateQuote();
       updateCourseCountdown();
       initNoOlvidarSync();
+
+      // Cargar no_olvidar desde DB en segundo plano (no bloquea el render inicial)
+      if (navigator.onLine) {
+        supaLoadNoOlvidar().then(function(items) {
+          if (!items) return;
+          lsSaveNoOlvidar(items);
+          if (currentView === "noOlvidar") renderNoOlvidar();
+        });
+      }
     }
     // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
     function setView(v, btn) {
@@ -7267,50 +7286,121 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       catch (_) { return []; }
     }
     function lsSaveNoOlvidar(items) {
-      localStorage.setItem(NO_OLVIDAR_KEY, JSON.stringify(items));
-    }
-    function noOlvidarNextId(items) {
-      return items.length ? Math.max(...items.map(i => i.id || 0)) + 1 : 1;
+      try { localStorage.setItem(NO_OLVIDAR_KEY, JSON.stringify(items)); } catch (_) {}
     }
 
+    // ── Supabase CRUD para no_olvidar ─────────────────────────────────────────────
+    async function supaLoadNoOlvidar() {
+      try {
+        const rows = await _sGet("no_olvidar", "order=created_at.desc");
+        if (!Array.isArray(rows)) return null;
+        return rows.map(function(r) {
+          return { id: r.id, texto: r.texto || "", author: r.author || "", fecha: r.fecha || todayStr(), done: !!r.done };
+        });
+      } catch (e) { safeLog("[NO] supaLoadNoOlvidar:", e); return null; }
+    }
+    async function supaInsertNoOlvidar(item) {
+      try {
+        const data = await _sPost("no_olvidar",
+          { texto: item.texto, author: item.author, fecha: item.fecha, done: !!item.done },
+          { "Prefer": "return=representation" });
+        const ins = Array.isArray(data) ? data[0] : data;
+        return ins ? ins.id : null;
+      } catch (e) { safeLog("[NO] supaInsertNoOlvidar:", e); return null; }
+    }
+    async function supaToggleNoOlvidar(id, done) {
+      try { await _sPatch("no_olvidar", "id=eq." + id, { done }); }
+      catch (e) { safeLog("[NO] supaToggleNoOlvidar:", e); }
+    }
+    async function supaRemoveNoOlvidar(id) {
+      try { await _sDelete("no_olvidar", "id=eq." + id); }
+      catch (e) { safeLog("[NO] supaRemoveNoOlvidar:", e); }
+    }
+    async function supaRemoveDoneNoOlvidar() {
+      try { await _sDelete("no_olvidar", "done=eq.true"); }
+      catch (e) { safeLog("[NO] supaRemoveDoneNoOlvidar:", e); }
+    }
+
+    // ── Realtime handler para no_olvidar ──────────────────────────────────────────
+    function handleNoOlvidarChange(payload) {
+      const { eventType, new: newRow, old: oldRow } = payload;
+      const items = lsGetNoOlvidar();
+      if (eventType === "INSERT" && newRow) {
+        // Si ya existe el id real (insertamos nosotros y el RT llegó tarde) → ignorar
+        if (items.some(function(i) { return i.id === newRow.id; })) return;
+        // Puede haber un item con id temporal negativo (lo insertamos nosotros):
+        // buscarlo por contenido para actualizar su id en vez de duplicarlo
+        var tempIdx = items.findIndex(function(i) { return i._tempId && i.texto === newRow.texto && i.author === (newRow.author || ""); });
+        if (tempIdx >= 0) {
+          items[tempIdx].id = newRow.id;
+          delete items[tempIdx]._tempId;
+        } else {
+          items.unshift({ id: newRow.id, texto: newRow.texto || "", author: newRow.author || "", fecha: newRow.fecha || todayStr(), done: !!newRow.done });
+        }
+        lsSaveNoOlvidar(items);
+        if (currentView === "noOlvidar") renderNoOlvidar();
+      } else if (eventType === "UPDATE" && newRow) {
+        var it = items.find(function(i) { return i.id === newRow.id; });
+        if (it) { it.done = !!newRow.done; lsSaveNoOlvidar(items); if (currentView === "noOlvidar") renderNoOlvidar(); }
+      } else if (eventType === "DELETE") {
+        var delId = (oldRow && oldRow.id) || (newRow && newRow.id);
+        if (!delId) return;
+        var filtered = items.filter(function(i) { return i.id !== delId; });
+        if (filtered.length !== items.length) { lsSaveNoOlvidar(filtered); if (currentView === "noOlvidar") renderNoOlvidar(); }
+      }
+    }
+
+    // ── CRUD con persistencia inmediata en localStorage + DB async ─────────────────
     function addNoOlvidar() {
       const text = document.getElementById("no-olvidar-input").value.trim();
       if (!text) return;
       const author = localStorage.getItem("pl_user_name") || "Anónimo";
+      // Id temporal negativo: no choca con los bigint positivos que devuelve la DB
+      const tempId = -(Date.now());
+      const newItem = { id: tempId, _tempId: true, texto: text, author, fecha: todayStr(), done: false };
       const items = lsGetNoOlvidar();
-      items.unshift({ id: noOlvidarNextId(items), texto: text, author, fecha: todayStr(), done: false });
+      items.unshift(newItem);
       lsSaveNoOlvidar(items);
       syncNoOlvidarBroadcast(items);
       document.getElementById("no-olvidar-input").value = "";
       renderNoOlvidar();
+      // Persistir en DB; al obtener el id real, sustituir el id temporal
+      supaInsertNoOlvidar(newItem).then(function(dbId) {
+        if (dbId == null) return;
+        const stored = lsGetNoOlvidar();
+        const it = stored.find(function(i) { return i.id === tempId; });
+        if (it) { it.id = dbId; delete it._tempId; lsSaveNoOlvidar(stored); }
+      });
     }
     function toggleNoOlvidar(id) {
       const items = lsGetNoOlvidar();
-      const it = items.find(i => i.id === id);
+      const it = items.find(function(i) { return i.id === id; });
       if (it) it.done = !it.done;
       lsSaveNoOlvidar(items);
       syncNoOlvidarBroadcast(items);
       renderNoOlvidar();
+      if (id > 0) supaToggleNoOlvidar(id, it ? it.done : false); // omitir si aún es id temporal
     }
     function deleteNoOlvidar(id) {
       if (!confirm("¿Eliminar este recordatorio?")) return;
-      const items = lsGetNoOlvidar().filter(i => i.id !== id);
+      const items = lsGetNoOlvidar().filter(function(i) { return i.id !== id; });
       lsSaveNoOlvidar(items);
       syncNoOlvidarBroadcast(items);
       renderNoOlvidar();
+      if (id > 0) supaRemoveNoOlvidar(id);
     }
     function clearDoneNoOlvidar() {
-      const items = lsGetNoOlvidar().filter(i => !i.done);
+      const items = lsGetNoOlvidar().filter(function(i) { return !i.done; });
       lsSaveNoOlvidar(items);
       syncNoOlvidarBroadcast(items);
       renderNoOlvidar();
+      supaRemoveDoneNoOlvidar();
     }
 
-    // Broadcast via Supabase Realtime para sincronizar entre usuarios conectados
+    // Broadcast via Supabase Realtime — conservado como fallback para peers offline
     var _noOlvidarChannel = null;
     function initNoOlvidarSync() {
       if (!window._supaClient) return;
-      // Limpiar suscripción anterior para evitar duplicados y fugas de memoria
       if (_noOlvidarChannel) {
         try { _noOlvidarChannel.unsubscribe(); } catch (_) {}
         _noOlvidarChannel = null;
@@ -7319,7 +7409,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
           .on("broadcast", { event: "update" }, function(payload) {
             if (payload.payload && Array.isArray(payload.payload.items)) {
-              // Evitar reprocesar si los datos son idénticos a los locales
               const incoming = JSON.stringify(payload.payload.items);
               if (incoming !== JSON.stringify(lsGetNoOlvidar())) {
                 lsSaveNoOlvidar(payload.payload.items);
@@ -7328,7 +7417,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             }
           })
           .subscribe();
-      } catch (_) { /* Realtime opcional — funciona sin él */ }
+      } catch (_) {}
     }
     function syncNoOlvidarBroadcast(items) {
       if (_noOlvidarChannel) {
