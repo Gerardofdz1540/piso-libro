@@ -2650,25 +2650,31 @@
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>APP (antecedentes
             patológicos)</label><textarea class="modal-input" id="mf-app-modal" rows="2"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveModalNote('app',this.value)"
             placeholder="HTA, DM2, cardiopatía..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>PA (procedimiento actual /
             QX)</label><textarea class="modal-input" id="mf-pa-modal" rows="2"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveModalNote('pa',this.value)"
             placeholder="Procedimiento quirúrgico realizado..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Procedimiento / Manejo</label><textarea
             class="modal-input" id="mf-manejo-modal" rows="2"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveModalNote('manejo',this.value)"
             placeholder="Plan de manejo, antibióticos, soluciones..."></textarea></div>
         <div class="modal-field"><label>Sangrado estimado</label><input class="modal-input" id="mf-sangrado-modal"
             inputmode="text" autocorrect="off"
+            oninput="liveModalNote('sangrado',this.value)"
             placeholder="Ej: 200 mL" /></div>
         <div class="modal-field modal-span2" style="grid-column:span 2"><label>Drenajes</label><input
             class="modal-input" id="mf-drenajes-modal"
             inputmode="text" autocorrect="off" autocapitalize="sentences"
+            oninput="liveModalNote('drenajes',this.value)"
             placeholder="Ej: Blake HD 100cc serosanguinolento" /></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Pendientes / Plan</label><textarea
             class="modal-input" id="mf-pendientes-modal" rows="2"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveModalNote('pendientes',this.value)"
             placeholder="Pendientes, estudios, interconsultas..."></textarea></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
@@ -3090,6 +3096,7 @@
     let showSoloIngresos = false;
     let modalMode = "add";
     let modalOrigKey = null;
+    let _modalCurrentEditKey = null; // clave del paciente que se edita actualmente en el modal (null si add o modal cerrado)
     let pendingImport = null;
     let lastMeta = { patients_ts: 0, notes_ts: 0 };
     let syncInterval = null;
@@ -4579,6 +4586,19 @@
         el.addEventListener("input", persistGuardInfoDebounced);
         el.addEventListener("change", persistGuardInfo);
       });
+    }
+
+    // ─── MODAL AUTOSAVE: guarda campos de nota del modal en noteData+localStorage al vuelo ──
+    // Protege contra pérdida si el tab se cierra mientras el modal está abierto.
+    // Solo actúa en modo edición (cuando _modalCurrentEditKey está seteado).
+    function liveModalNote(field, value) {
+      if (!_modalCurrentEditKey) return;
+      if (!noteData[_modalCurrentEditKey]) noteData[_modalCurrentEditKey] = defaultData();
+      noteData[_modalCurrentEditKey][field] = value;
+      // Marcar dirty para que handleNoteChange no sobreescriba mientras el modal está abierto
+      if (!_dirtyFields[_modalCurrentEditKey]) _dirtyFields[_modalCurrentEditKey] = new Set();
+      _dirtyFields[_modalCurrentEditKey].add(field);
+      try { lsSaveNote(_modalCurrentEditKey, noteData[_modalCurrentEditKey]); } catch (_) {}
     }
     function esc(s) {
       return toSafeString(s)
@@ -8157,7 +8177,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     // ─── MODAL ADD/EDIT ──────────────────────────────────────────────────────────────
     function openAddModal() {
-      modalMode = "add"; modalOrigKey = null;
+      modalMode = "add"; modalOrigKey = null; _modalCurrentEditKey = null;
       document.getElementById("modal-title").textContent = "➕ Agregar nuevo paciente";
       document.getElementById("modal-save-btn").textContent = "✓ Agregar al censo";
       document.getElementById("modal-warn-edit").style.display = "none";
@@ -8183,7 +8203,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
     function openEditModal(k) {
       const p = patients.find(p => pid(p) === k); if (!p) return;
-      modalMode = "edit"; modalOrigKey = k;
+      modalMode = "edit"; modalOrigKey = k; _modalCurrentEditKey = k;
       document.getElementById("modal-title").textContent = "✏️ Editar datos del paciente";
       document.getElementById("modal-save-btn").textContent = "✓ Guardar cambios";
       document.getElementById("modal-warn-edit").style.display = "block";
@@ -8208,7 +8228,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       _fillDL();
       document.getElementById("patient-modal").style.display = "flex";
     }
-    function closeModal() { document.getElementById("patient-modal").style.display = "none"; }
+    function closeModal() { _modalCurrentEditKey = null; document.getElementById("patient-modal").style.display = "none"; }
     function saveModal() {
       const cama = document.getElementById("mf-cama").value.trim().toUpperCase();
       const exp = document.getElementById("mf-exp").value.trim();
