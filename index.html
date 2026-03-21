@@ -7647,15 +7647,20 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             secChanged.style.display = "";
             document.getElementById("import-changed-lbl").textContent = changedPts.length + " cama" + (changedPts.length > 1 ? "s" : "") + " con cambio de paciente";
             let h = "";
-            changedPts.forEach(({ newPt, oldPt }) => {
+            changedPts.forEach(({ newPt, oldPt }, idx) => {
               const col = ESP_COLORS[newPt.esp] || "#333";
-              h += `<div class="import-row" style="background:#fff8f8;flex-direction:column;align-items:flex-start;gap:4px">` +
-                `<div style="display:flex;gap:8px;align-items:center;width:100%">` +
-                `<span style="font-weight:700;color:${col};min-width:60px">${esc(newPt.cama)}</span>` +
+              h += `<div style="background:#fff8f8;border:1px solid #fecaca;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;flex-direction:column;gap:8px">` +
+                `<div style="display:flex;gap:8px;align-items:center">` +
+                `<span style="font-weight:700;color:${col};min-width:60px;font-size:13px">${esc(newPt.cama)}</span>` +
                 `<span class="changed">REEMPLAZA</span>` +
-                `<span style="flex:1;font-size:11px"><b>NUEVO:</b> ${esc(newPt.nombre)} · ${newPt.exp}</span>` +
+                `<span style="font-size:10px;color:#991b1b;flex:1">sustituye a: <b>${esc(oldPt.nombre)}</b> (Exp: ${esc(oldPt.exp)})</span>` +
                 `</div>` +
-                `<div style="font-size:10px;color:#991b1b;padding-left:68px">⬆️ sustituye a: <b>${esc(oldPt.nombre)}</b> (Exp: ${esc(oldPt.exp)}) — el paciente anterior se eliminará del censo</div>` +
+                `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">` +
+                `<input value="${esc(newPt.nombre)}" oninput="updateChangedPt(${idx},'nombre',this.value)" placeholder="Nombre" style="flex:2;min-width:140px;padding:5px 8px;border:1px solid #fca5a5;border-radius:5px;font-size:12px;font-family:var(--font)">` +
+                `<input value="${esc(newPt.exp)}" oninput="updateChangedPt(${idx},'exp',this.value)" placeholder="Exp" style="width:90px;padding:5px 8px;border:1px solid #fca5a5;border-radius:5px;font-size:12px;font-family:var(--font)">` +
+                `<input value="${esc(newPt.dx)}" oninput="updateChangedPt(${idx},'dx',this.value)" placeholder="Diagnóstico" style="flex:3;min-width:140px;padding:5px 8px;border:1px solid #fca5a5;border-radius:5px;font-size:12px;font-family:var(--font)">` +
+                `<input value="${esc(newPt.esp)}" oninput="updateChangedPt(${idx},'esp',this.value)" placeholder="Esp" style="width:70px;padding:5px 8px;border:1px solid #fca5a5;border-radius:5px;font-size:12px;font-family:var(--font)">` +
+                `</div>` +
                 `</div>`;
             });
             document.getElementById("import-changed-list").innerHTML = h;
@@ -7751,6 +7756,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       reader.readAsArrayBuffer(file);
     }
 
+    function updateChangedPt(idx, field, value) {
+      if (!pendingImport || !pendingImport.changedPts[idx]) return;
+      pendingImport.changedPts[idx].newPt[field] = field === 'exp' ? value.trim() : value.trim().toUpperCase();
+    }
+
     function setDisposition(k, sel) {
       if (!pendingImport) return;
       pendingImport.dispositions[k] = sel.value;
@@ -7787,6 +7797,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         nextPatients.push({ ...newPt });
         // Conservar notes del nuevo si ya existían; si no, inicializar
         if (!noteData[newKey]) noteData[newKey] = defaultData();
+        // Eliminar paciente anterior de Supabase para evitar duplicados de cama al refrescar
+        if (oldPt._supa_id) {
+          supaDeletePatient(oldPt._supa_id).catch(() => {});
+        } else {
+          _sDelete("patients", "exp=eq." + encodeURIComponent(oldPt.exp) + "&cama=eq." + encodeURIComponent(oldPt.cama)).catch(() => {});
+        }
       });
 
       // 3) Completamente nuevos → agregar directamente
@@ -7813,6 +7829,12 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           noteData[k]._egreso = etiqueta;
           noteData[k]._egresoFecha = new Date().toLocaleDateString("es-MX");
           lsSaveNote(k, noteData[k]);
+          // Eliminar de Supabase para que no reaparezcan al refrescar
+          if (p._supa_id) {
+            supaDeletePatient(p._supa_id).catch(() => {});
+          } else {
+            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(() => {});
+          }
         }
         processedOldPids.add(k);
       });
