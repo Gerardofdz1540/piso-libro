@@ -2650,25 +2650,31 @@
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>APP (antecedentes
             patológicos)</label><textarea class="modal-input" id="mf-app-modal" rows="2"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveModalNote('app',this.value)"
             placeholder="HTA, DM2, cardiopatía..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>PA (procedimiento actual /
             QX)</label><textarea class="modal-input" id="mf-pa-modal" rows="2"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveModalNote('pa',this.value)"
             placeholder="Procedimiento quirúrgico realizado..."></textarea></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Procedimiento / Manejo</label><textarea
             class="modal-input" id="mf-manejo-modal" rows="2"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveModalNote('manejo',this.value)"
             placeholder="Plan de manejo, antibióticos, soluciones..."></textarea></div>
         <div class="modal-field"><label>Sangrado estimado</label><input class="modal-input" id="mf-sangrado-modal"
             inputmode="text" autocorrect="off"
+            oninput="liveModalNote('sangrado',this.value)"
             placeholder="Ej: 200 mL" /></div>
         <div class="modal-field modal-span2" style="grid-column:span 2"><label>Drenajes</label><input
             class="modal-input" id="mf-drenajes-modal"
             inputmode="text" autocorrect="off" autocapitalize="sentences"
+            oninput="liveModalNote('drenajes',this.value)"
             placeholder="Ej: Blake HD 100cc serosanguinolento" /></div>
         <div class="modal-field modal-span3" style="grid-column:span 3"><label>Pendientes / Plan</label><textarea
             class="modal-input" id="mf-pendientes-modal" rows="2"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+            oninput="liveModalNote('pendientes',this.value)"
             placeholder="Pendientes, estudios, interconsultas..."></textarea></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
@@ -2729,6 +2735,9 @@
       <div class="modal-warn" id="modal-warn-edit" style="display:none">
         💡 Si cambias <strong>cama o expediente</strong>, los datos clínicos y labs se migran automáticamente al nuevo
         identificador.
+      </div>
+      <div id="modal-realtime-warn" style="display:none;background:#fef3c7;border:1.5px solid #f59e0b;border-radius:7px;padding:7px 13px;font-size:12px;color:#92400e;margin-bottom:6px">
+        📡 <strong>Actualización recibida de otro dispositivo.</strong> Los campos que editaste aquí se conservarán al guardar. Revisa antes de confirmar.
       </div>
       <div class="modal-footer">
         <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
@@ -3090,6 +3099,7 @@
     let showSoloIngresos = false;
     let modalMode = "add";
     let modalOrigKey = null;
+    let _modalCurrentEditKey = null; // clave del paciente que se edita actualmente en el modal (null si add o modal cerrado)
     let pendingImport = null;
     let lastMeta = { patients_ts: 0, notes_ts: 0 };
     let syncInterval = null;
@@ -4245,6 +4255,9 @@
       _realtimeSubs.forEach(s => { try { s.unsubscribe(); } catch (e) { safeLog("[RT] unsubscribe error:", e); } });
       _realtimeSubs = [];
 
+      // Guard info broadcast (sin cambio de schema, canal efímero)
+      initGuardInfoSync();
+
       // Subscribe to patients changes
       try {
         const patSub = _supa.channel("patients-changes")
@@ -4264,6 +4277,26 @@
           .subscribe();
         _realtimeSubs.push(noteSub);
       } catch (e) { safeLog("[RT] notes subscription failed:", e); }
+
+      // Subscribe to no_olvidar changes (postgres_changes, persiste aunque el dispositivo estuvo offline)
+      try {
+        const noSub = _supa.channel("no-olvidar-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "no_olvidar" }, function(payload) {
+            handleNoOlvidarChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(noSub);
+      } catch (e) { safeLog("[RT] no_olvidar subscription failed:", e); }
+
+      // Subscribe to procedimientos_dia changes
+      try {
+        const procSub = _supa.channel("procedimientos-dia-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "procedimientos_dia" }, function(payload) {
+            handleProcChange(payload);
+          })
+          .subscribe();
+        _realtimeSubs.push(procSub);
+      } catch (e) { safeLog("[RT] procedimientos_dia subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -4372,11 +4405,18 @@
         : (existing.imagenHistory || []);
       try { noteData[k] = migrateNote(nd); } catch (e) { safeLog("[RT] migrateNote error for " + k + ":", e); noteData[k] = defaultData(); }
       lsSaveNote(k, noteData[k]);
+      // Si el modal está abierto para este paciente: mostrar aviso y NO re-renderizar la tarjeta
+      // detrás del modal (evita destruir el DOM de la tarjeta mientras el usuario edita en el modal).
+      const _modalIsOpenForThis = (_modalCurrentEditKey === k);
+      if (_modalIsOpenForThis) {
+        var _rtModalWarn = document.getElementById("modal-realtime-warn");
+        if (_rtModalWarn) _rtModalWarn.style.display = "block";
+      }
       // Re-render SOLO la tarjeta afectada — renderView() destruiría texto en edición en TODOS los demás cards
-      // Además, si el usuario tiene foco dentro de esta misma tarjeta, no re-renderizar para no perder su texto
+      // Además, si el usuario tiene foco dentro de esta misma tarjeta o el modal está abierto, no re-renderizar
       const _rtCardEl = document.getElementById("card-" + k);
       const _rtHasFocus = _rtCardEl && _rtCardEl.contains(document.activeElement);
-      if (_rtCardEl && !_rtHasFocus) {
+      if (_rtCardEl && !_rtHasFocus && !_modalIsOpenForThis) {
         _rtCardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
       }
       // Toast no intrusivo
@@ -4674,8 +4714,47 @@
         recibe: _el("gi-recibe")
       };
     }
+    var _guardInfoChannel = null;
+
+    // Emite la guard info actual a todos los dispositivos conectados vía Supabase Broadcast.
+    // No requiere cambio de schema: usa el canal efímero de WebSocket.
+    function _broadcastGuardInfo(gi) {
+      if (_guardInfoChannel) {
+        try { _guardInfoChannel.send({ type: "broadcast", event: "update", payload: gi }); } catch (_) {}
+      }
+    }
+
+    // Inicia (o reinicia) la suscripción al canal broadcast de guard info.
+    // Llamado desde startRealtime() para que comparta el mismo ciclo de vida.
+    function initGuardInfoSync() {
+      if (!window._supaClient) return;
+      if (_guardInfoChannel) {
+        try { _guardInfoChannel.unsubscribe(); } catch (_) {}
+        _guardInfoChannel = null;
+      }
+      try {
+        _guardInfoChannel = window._supaClient.channel("pl-guard-info")
+          .on("broadcast", { event: "update" }, function (payload) {
+            if (!payload || !payload.payload) return;
+            const gi = payload.payload;
+            const fechaEl = document.getElementById("gi-fecha");
+            const entregaEl = document.getElementById("gi-entrega");
+            const recibeEl = document.getElementById("gi-recibe");
+            // Solo actualizar campos que no tienen el foco (no interrumpir al usuario que está escribiendo)
+            if (fechaEl && gi.fecha !== undefined && document.activeElement !== fechaEl) fechaEl.value = gi.fecha;
+            if (entregaEl && gi.entrega !== undefined && document.activeElement !== entregaEl) entregaEl.value = gi.entrega;
+            if (recibeEl && gi.recibe !== undefined && document.activeElement !== recibeEl) recibeEl.value = gi.recibe;
+            // Persistir localmente sin re-emitir (evita eco)
+            try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(gi)); } catch (_) {}
+          })
+          .subscribe();
+      } catch (_) { /* Broadcast opcional — funciona sin él */ }
+    }
+
     function persistGuardInfo() {
-      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { safeLog("persistGuardInfo:", e); }
+      const gi = readGuardInfoFromUI();
+      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(gi)); } catch (e) { safeLog("persistGuardInfo:", e); }
+      _broadcastGuardInfo(gi);
     }
     const persistGuardInfoDebounced = debounce(persistGuardInfo, 250);
     function restoreGuardInfo() {
@@ -4700,6 +4779,19 @@
         el.addEventListener("input", persistGuardInfoDebounced);
         el.addEventListener("change", persistGuardInfo);
       });
+    }
+
+    // ─── MODAL AUTOSAVE: guarda campos de nota del modal en noteData+localStorage al vuelo ──
+    // Protege contra pérdida si el tab se cierra mientras el modal está abierto.
+    // Solo actúa en modo edición (cuando _modalCurrentEditKey está seteado).
+    function liveModalNote(field, value) {
+      if (!_modalCurrentEditKey) return;
+      if (!noteData[_modalCurrentEditKey]) noteData[_modalCurrentEditKey] = defaultData();
+      noteData[_modalCurrentEditKey][field] = value;
+      // Marcar dirty para que handleNoteChange no sobreescriba mientras el modal está abierto
+      if (!_dirtyFields[_modalCurrentEditKey]) _dirtyFields[_modalCurrentEditKey] = new Set();
+      _dirtyFields[_modalCurrentEditKey].add(field);
+      try { lsSaveNote(_modalCurrentEditKey, noteData[_modalCurrentEditKey]); } catch (_) {}
     }
     function esc(s) {
       return toSafeString(s)
@@ -4841,6 +4933,21 @@
       rotateQuote();
       updateCourseCountdown();
       initNoOlvidarSync();
+
+      // Cargar no_olvidar y procedimientos desde DB en segundo plano (no bloquea el render inicial)
+      if (navigator.onLine) {
+        supaLoadNoOlvidar().then(function(items) {
+          if (!items) return;
+          lsSaveNoOlvidar(items);
+          if (currentView === "noOlvidar") renderNoOlvidar();
+        });
+        supaLoadProcedimientos().then(function(procs) {
+          if (!procs) return;
+          procedimientos = procs;
+          saveProcs();
+          renderView();
+        });
+      }
     }
     // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
     function setView(v, btn) {
@@ -7319,50 +7426,121 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       catch (_) { return []; }
     }
     function lsSaveNoOlvidar(items) {
-      localStorage.setItem(NO_OLVIDAR_KEY, JSON.stringify(items));
-    }
-    function noOlvidarNextId(items) {
-      return items.length ? Math.max(...items.map(i => i.id || 0)) + 1 : 1;
+      try { localStorage.setItem(NO_OLVIDAR_KEY, JSON.stringify(items)); } catch (_) {}
     }
 
+    // ── Supabase CRUD para no_olvidar ─────────────────────────────────────────────
+    async function supaLoadNoOlvidar() {
+      try {
+        const rows = await _sGet("no_olvidar", "order=created_at.desc");
+        if (!Array.isArray(rows)) return null;
+        return rows.map(function(r) {
+          return { id: r.id, texto: r.texto || "", author: r.author || "", fecha: r.fecha || todayStr(), done: !!r.done };
+        });
+      } catch (e) { safeLog("[NO] supaLoadNoOlvidar:", e); return null; }
+    }
+    async function supaInsertNoOlvidar(item) {
+      try {
+        const data = await _sPost("no_olvidar",
+          { texto: item.texto, author: item.author, fecha: item.fecha, done: !!item.done },
+          { "Prefer": "return=representation" });
+        const ins = Array.isArray(data) ? data[0] : data;
+        return ins ? ins.id : null;
+      } catch (e) { safeLog("[NO] supaInsertNoOlvidar:", e); return null; }
+    }
+    async function supaToggleNoOlvidar(id, done) {
+      try { await _sPatch("no_olvidar", "id=eq." + id, { done }); }
+      catch (e) { safeLog("[NO] supaToggleNoOlvidar:", e); }
+    }
+    async function supaRemoveNoOlvidar(id) {
+      try { await _sDelete("no_olvidar", "id=eq." + id); }
+      catch (e) { safeLog("[NO] supaRemoveNoOlvidar:", e); }
+    }
+    async function supaRemoveDoneNoOlvidar() {
+      try { await _sDelete("no_olvidar", "done=eq.true"); }
+      catch (e) { safeLog("[NO] supaRemoveDoneNoOlvidar:", e); }
+    }
+
+    // ── Realtime handler para no_olvidar ──────────────────────────────────────────
+    function handleNoOlvidarChange(payload) {
+      const { eventType, new: newRow, old: oldRow } = payload;
+      const items = lsGetNoOlvidar();
+      if (eventType === "INSERT" && newRow) {
+        // Si ya existe el id real (insertamos nosotros y el RT llegó tarde) → ignorar
+        if (items.some(function(i) { return i.id === newRow.id; })) return;
+        // Puede haber un item con id temporal negativo (lo insertamos nosotros):
+        // buscarlo por contenido para actualizar su id en vez de duplicarlo
+        var tempIdx = items.findIndex(function(i) { return i._tempId && i.texto === newRow.texto && i.author === (newRow.author || ""); });
+        if (tempIdx >= 0) {
+          items[tempIdx].id = newRow.id;
+          delete items[tempIdx]._tempId;
+        } else {
+          items.unshift({ id: newRow.id, texto: newRow.texto || "", author: newRow.author || "", fecha: newRow.fecha || todayStr(), done: !!newRow.done });
+        }
+        lsSaveNoOlvidar(items);
+        if (currentView === "noOlvidar") renderNoOlvidar();
+      } else if (eventType === "UPDATE" && newRow) {
+        var it = items.find(function(i) { return i.id === newRow.id; });
+        if (it) { it.done = !!newRow.done; lsSaveNoOlvidar(items); if (currentView === "noOlvidar") renderNoOlvidar(); }
+      } else if (eventType === "DELETE") {
+        var delId = (oldRow && oldRow.id) || (newRow && newRow.id);
+        if (!delId) return;
+        var filtered = items.filter(function(i) { return i.id !== delId; });
+        if (filtered.length !== items.length) { lsSaveNoOlvidar(filtered); if (currentView === "noOlvidar") renderNoOlvidar(); }
+      }
+    }
+
+    // ── CRUD con persistencia inmediata en localStorage + DB async ─────────────────
     function addNoOlvidar() {
       const text = document.getElementById("no-olvidar-input").value.trim();
       if (!text) return;
       const author = localStorage.getItem("pl_user_name") || "Anónimo";
+      // Id temporal negativo: no choca con los bigint positivos que devuelve la DB
+      const tempId = -(Date.now());
+      const newItem = { id: tempId, _tempId: true, texto: text, author, fecha: todayStr(), done: false };
       const items = lsGetNoOlvidar();
-      items.unshift({ id: noOlvidarNextId(items), texto: text, author, fecha: todayStr(), done: false });
+      items.unshift(newItem);
       lsSaveNoOlvidar(items);
       syncNoOlvidarBroadcast(items);
       document.getElementById("no-olvidar-input").value = "";
       renderNoOlvidar();
+      // Persistir en DB; al obtener el id real, sustituir el id temporal
+      supaInsertNoOlvidar(newItem).then(function(dbId) {
+        if (dbId == null) return;
+        const stored = lsGetNoOlvidar();
+        const it = stored.find(function(i) { return i.id === tempId; });
+        if (it) { it.id = dbId; delete it._tempId; lsSaveNoOlvidar(stored); }
+      });
     }
     function toggleNoOlvidar(id) {
       const items = lsGetNoOlvidar();
-      const it = items.find(i => i.id === id);
+      const it = items.find(function(i) { return i.id === id; });
       if (it) it.done = !it.done;
       lsSaveNoOlvidar(items);
       syncNoOlvidarBroadcast(items);
       renderNoOlvidar();
+      if (id > 0) supaToggleNoOlvidar(id, it ? it.done : false); // omitir si aún es id temporal
     }
     function deleteNoOlvidar(id) {
       if (!confirm("¿Eliminar este recordatorio?")) return;
-      const items = lsGetNoOlvidar().filter(i => i.id !== id);
+      const items = lsGetNoOlvidar().filter(function(i) { return i.id !== id; });
       lsSaveNoOlvidar(items);
       syncNoOlvidarBroadcast(items);
       renderNoOlvidar();
+      if (id > 0) supaRemoveNoOlvidar(id);
     }
     function clearDoneNoOlvidar() {
-      const items = lsGetNoOlvidar().filter(i => !i.done);
+      const items = lsGetNoOlvidar().filter(function(i) { return !i.done; });
       lsSaveNoOlvidar(items);
       syncNoOlvidarBroadcast(items);
       renderNoOlvidar();
+      supaRemoveDoneNoOlvidar();
     }
 
-    // Broadcast via Supabase Realtime para sincronizar entre usuarios conectados
+    // Broadcast via Supabase Realtime — conservado como fallback para peers offline
     var _noOlvidarChannel = null;
     function initNoOlvidarSync() {
       if (!window._supaClient) return;
-      // Limpiar suscripción anterior para evitar duplicados y fugas de memoria
       if (_noOlvidarChannel) {
         try { _noOlvidarChannel.unsubscribe(); } catch (_) {}
         _noOlvidarChannel = null;
@@ -7371,7 +7549,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
           .on("broadcast", { event: "update" }, function(payload) {
             if (payload.payload && Array.isArray(payload.payload.items)) {
-              // Evitar reprocesar si los datos son idénticos a los locales
               const incoming = JSON.stringify(payload.payload.items);
               if (incoming !== JSON.stringify(lsGetNoOlvidar())) {
                 lsSaveNoOlvidar(payload.payload.items);
@@ -7380,7 +7557,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             }
           })
           .subscribe();
-      } catch (_) { /* Realtime opcional — funciona sin él */ }
+      } catch (_) {}
     }
     function syncNoOlvidarBroadcast(items) {
       if (_noOlvidarChannel) {
@@ -8281,7 +8458,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     // ─── MODAL ADD/EDIT ──────────────────────────────────────────────────────────────
     function openAddModal() {
-      modalMode = "add"; modalOrigKey = null;
+      modalMode = "add"; modalOrigKey = null; _modalCurrentEditKey = null;
       document.getElementById("modal-title").textContent = "➕ Agregar nuevo paciente";
       document.getElementById("modal-save-btn").textContent = "✓ Agregar al censo";
       document.getElementById("modal-warn-edit").style.display = "none";
@@ -8307,10 +8484,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     }
     function openEditModal(k) {
       const p = patients.find(p => pid(p) === k); if (!p) return;
-      modalMode = "edit"; modalOrigKey = k;
+      modalMode = "edit"; modalOrigKey = k; _modalCurrentEditKey = k;
       document.getElementById("modal-title").textContent = "✏️ Editar datos del paciente";
       document.getElementById("modal-save-btn").textContent = "✓ Guardar cambios";
       document.getElementById("modal-warn-edit").style.display = "block";
+      var _rtWarn = document.getElementById("modal-realtime-warn"); if (_rtWarn) _rtWarn.style.display = "none";
       document.getElementById("mf-cama").value = p.cama || "";
       document.getElementById("mf-exp").value = p.exp || "";
       document.getElementById("mf-edad").value = p.edad || "";
@@ -8332,7 +8510,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       _fillDL();
       document.getElementById("patient-modal").style.display = "flex";
     }
-    function closeModal() { document.getElementById("patient-modal").style.display = "none"; }
+    function closeModal() { _modalCurrentEditKey = null; document.getElementById("patient-modal").style.display = "none"; }
     function saveModal() {
       const cama = document.getElementById("mf-cama").value.trim().toUpperCase();
       const exp = document.getElementById("mf-exp").value.trim();
@@ -8383,6 +8561,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           localStorage.removeItem(NOTES_PREFIX + modalOrigKey);
           deleteNoteRemote(modalOrigKey);
           _cleanupPatientCache(modalOrigKey);
+          // Cancelar debounces pendientes con la clave vieja para evitar guardados
+          // tardíos que buscan un paciente que ya no existe con ese key
+          delete _noteDebounceMap[modalOrigKey];
+          delete _pendingNoteAutosave[modalOrigKey];
+          if (_dirtyFields[modalOrigKey]) delete _dirtyFields[modalOrigKey];
         }
         noteData[newKey] = applyModalExtraToNote(noteData[newKey] || defaultData(), _modalExtra);
         saveNote(newKey, noteData[newKey]);
@@ -8918,6 +9101,87 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function saveProcs() {
       try { localStorage.setItem(PROCS_KEY, JSON.stringify(procedimientos)); } catch (e) { }
     }
+
+    // ── Supabase CRUD para procedimientos_dia ─────────────────────────────────────
+    function _procToRow(proc) {
+      return {
+        cama:      proc.cama      || "",
+        exp:       proc.exp       || "",
+        nombre:    proc.nombre    || "",
+        edad:      proc.edad      ? String(proc.edad) : "",
+        dx:        proc.dx        || "",
+        esp:       proc.esp       || "CG",
+        adscrito:  proc.adscrito  || "",
+        residente: proc.residente || "",
+        fecha_dia: todayStr(),
+        added_by:  localStorage.getItem("pl_user_name") || ""
+      };
+    }
+    async function supaLoadProcedimientos() {
+      try {
+        const rows = await _sGet("procedimientos_dia", "fecha_dia=eq." + todayStr() + "&order=added_at.asc");
+        if (!Array.isArray(rows)) return null;
+        return rows.map(function(r) {
+          return { _id: r.id, cama: r.cama || "", exp: r.exp || "", nombre: r.nombre || "",
+            edad: r.edad || "", dx: r.dx || "", esp: r.esp || "CG",
+            adscrito: r.adscrito || "", residente: r.residente || "",
+            _addedAt: r.added_at || new Date().toISOString() };
+        });
+      } catch (e) { safeLog("[PROC] supaLoadProcedimientos:", e); return null; }
+    }
+    async function supaInsertProc(proc) {
+      try {
+        const data = await _sPost("procedimientos_dia", _procToRow(proc), { "Prefer": "return=representation" });
+        const ins = Array.isArray(data) ? data[0] : data;
+        return ins ? ins.id : null;
+      } catch (e) { safeLog("[PROC] supaInsertProc:", e); return null; }
+    }
+    async function supaUpdateProc(id, proc) {
+      try { await _sPatch("procedimientos_dia", "id=eq." + id, _procToRow(proc)); }
+      catch (e) { safeLog("[PROC] supaUpdateProc:", e); }
+    }
+    async function supaDeleteProc(id) {
+      try { await _sDelete("procedimientos_dia", "id=eq." + id); }
+      catch (e) { safeLog("[PROC] supaDeleteProc:", e); }
+    }
+    async function supaDeleteAllProcs() {
+      try { await _sDelete("procedimientos_dia", "fecha_dia=eq." + todayStr()); }
+      catch (e) { safeLog("[PROC] supaDeleteAllProcs:", e); }
+    }
+
+    // ── Realtime handler para procedimientos_dia ──────────────────────────────────
+    function handleProcChange(payload) {
+      const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType === "INSERT" && newRow) {
+        if (procedimientos.some(function(p) { return p._id === newRow.id; })) return;
+        // Puede ser el proc que acabamos de insertar nosotros (aún sin _id asignado)
+        var tempIdx = procedimientos.findIndex(function(p) { return !p._id && p.nombre === (newRow.nombre || "") && p.exp === (newRow.exp || ""); });
+        if (tempIdx >= 0) {
+          procedimientos[tempIdx]._id = newRow.id;
+        } else {
+          procedimientos.push({ _id: newRow.id, cama: newRow.cama || "", exp: newRow.exp || "",
+            nombre: newRow.nombre || "", edad: newRow.edad || "", dx: newRow.dx || "",
+            esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "",
+            _addedAt: newRow.added_at || new Date().toISOString() });
+        }
+        saveProcs(); renderView();
+      } else if (eventType === "UPDATE" && newRow) {
+        var idx = procedimientos.findIndex(function(p) { return p._id === newRow.id; });
+        if (idx >= 0) {
+          procedimientos[idx] = { ...procedimientos[idx], cama: newRow.cama || "", exp: newRow.exp || "",
+            nombre: newRow.nombre || "", edad: newRow.edad || "", dx: newRow.dx || "",
+            esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "" };
+          saveProcs(); renderView();
+        }
+      } else if (eventType === "DELETE") {
+        var delId = (oldRow && oldRow.id) || (newRow && newRow.id);
+        if (!delId) return;
+        var before = procedimientos.length;
+        procedimientos = procedimientos.filter(function(p) { return p._id !== delId; });
+        if (procedimientos.length !== before) { saveProcs(); renderView(); }
+      }
+    }
+
     let _procEditIdx = -1;
     function openProcModal(editIdx) {
       _procEditIdx = typeof editIdx === "number" ? editIdx : -1;
@@ -8963,25 +9227,36 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         _addedAt: new Date().toISOString()
       };
       if (_procEditIdx >= 0) {
+        const existingId = procedimientos[_procEditIdx]._id;
         procedimientos[_procEditIdx] = { ...procedimientos[_procEditIdx], ...proc };
+        saveProcs();
+        if (existingId) supaUpdateProc(existingId, proc);
       } else {
         procedimientos.push(proc);
+        saveProcs();
+        // Persistir en DB; al obtener el uuid real, asignarlo al proc local
+        const insertedProc = procedimientos[procedimientos.length - 1];
+        supaInsertProc(proc).then(function(dbId) {
+          if (dbId && insertedProc) { insertedProc._id = dbId; saveProcs(); }
+        });
       }
-      saveProcs();
       closeProcModal();
       renderView();
     }
     function deleteProc(idx) {
       if (!confirm("¿Eliminar este procedimiento?")) return;
+      const pr = procedimientos[idx];
       procedimientos.splice(idx, 1);
       saveProcs();
       renderView();
+      if (pr && pr._id) supaDeleteProc(pr._id);
     }
     function clearAllProcs() {
       if (!confirm(`¿Eliminar los ${procedimientos.length} procedimientos del día? Esta acción no se puede deshacer.`)) return;
       procedimientos = [];
       saveProcs();
       renderView();
+      supaDeleteAllProcs();
     }
     function renderProcSection() {
       let rows = "";
@@ -9020,10 +9295,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       // 1) Borrar TODO de Supabase (notes se borran en cascada con patients)
       try {
-        // Delete ALL notes first (by matching all)
         await _sDelete("notes", "patient_id=not.is.null").catch(() => { });
-        // Delete ALL patients
         await _sDelete("patients", "id=not.is.null").catch(() => { });
+        await _sDelete("no_olvidar", "id=not.is.null").catch(() => { });
+        await _sDelete("procedimientos_dia", "id=not.is.null").catch(() => { });
       } catch (e) { safeLog("resetCensoTotal supabase delete error:", e); }
 
       // 2) Borrar TODO del localStorage
@@ -9046,6 +9321,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       archivados = [];
       snapshots = [];
       procedimientos = [];
+      lsSaveNoOlvidar([]);
       pendingImport = null;
 
       // 4) Limpiar timestamps de sync
