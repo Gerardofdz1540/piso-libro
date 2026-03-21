@@ -3914,6 +3914,7 @@
         app: nd.app || "", pa: nd.pa || "", drenajes: nd.drenajes || "", qx: nd.qx || "",
         manejo: nd.manejo || "", sangrado: nd.sangrado || "", sv: nd.sv || "",
         balance: nd.balance || "", pendientes: nd.pendientes || "", misc: nd.misc || "",
+        entrega: nd.entrega || "",
         checklist: nd.checklist || {},
         lab_history: nd.labHistory || [],
         imagen_history: nd.imagenHistory || [],
@@ -3934,7 +3935,7 @@
         let nts = [];
         if (Array.isArray(pts) && pts.length) {
           const ids = pts.map(r => r.id).join(",");
-          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history"), 2, 200);
+          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,entrega,checklist,lab_history,imagen_history"), 2, 200);
         }
 
         if (!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
@@ -3985,7 +3986,7 @@
             nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
             nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
             nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
-            nd.misc = sn.misc || ""; nd.checklist = sn.checklist || nd.checklist;
+            nd.misc = sn.misc || ""; nd.entrega = sn.entrega || ""; nd.checklist = sn.checklist || nd.checklist;
             nd.labHistory = sn.lab_history || [];
             nd.imagenHistory = sn.imagen_history || [];
             loadedNotes[k] = migrateNote(nd);
@@ -4241,6 +4242,11 @@
       textFields.forEach(function(f) {
         nd[f] = dirty.has(f) ? existing[f] : (newRow[f] || "");
       });
+      // entrega: si el valor remoto es undefined (columna no existe en DB o aún no se sincronizó),
+      // conservar siempre el valor local para no perder datos del usuario
+      nd.entrega = newRow.entrega !== undefined
+        ? (dirty.has("entrega") ? existing.entrega : (newRow.entrega || ""))
+        : existing.entrega;
       // Fusionar checklist: preservar pendientes_mips y pendientes_r1 si están siendo editados
       const remoteChecklist = newRow.checklist || {};
       const localChecklist = existing.checklist || {};
