@@ -3271,6 +3271,7 @@
         checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "" }
       };
     }
+    const NOTE_SYNC_META_KEY = "__pl_note_meta";
 
     // ─── DATE HELPERS ────────────────────────────────────────────────────────────────
     function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -3303,6 +3304,32 @@
     }
     function isPlainObject(v) {
       return !!v && typeof v === "object" && !Array.isArray(v);
+    }
+    function readNoteSyncMeta(checklist) {
+      const raw = isPlainObject(checklist) ? checklist[NOTE_SYNC_META_KEY] : null;
+      if (!isPlainObject(raw)) {
+        return { exists: false, entrega: "", body_diagram_ant: "", body_diagram_post: "" };
+      }
+      return {
+        exists: true,
+        entrega: toSafeString(raw.entrega).trim(),
+        body_diagram_ant: toSafeString(raw.body_diagram_ant).trim(),
+        body_diagram_post: toSafeString(raw.body_diagram_post).trim()
+      };
+    }
+    function buildChecklistForSync(nd) {
+      const checklist = isPlainObject(nd && nd.checklist) ? { ...nd.checklist } : {};
+      const meta = {
+        entrega: toSafeString(nd && nd.entrega).trim(),
+        body_diagram_ant: toSafeString(nd && nd.body_diagram_ant).trim(),
+        body_diagram_post: toSafeString(nd && nd.body_diagram_post).trim()
+      };
+      if (meta.entrega || meta.body_diagram_ant || meta.body_diagram_post) {
+        checklist[NOTE_SYNC_META_KEY] = meta;
+      } else {
+        delete checklist[NOTE_SYNC_META_KEY];
+      }
+      return checklist;
     }
     function getLabKeys() {
       if (typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS) && LAB_FIELDS.length) {
@@ -3382,6 +3409,19 @@
       if (nd.checklist.sexo === undefined) nd.checklist.sexo = "";
       if (nd.checklist.pendientes_mips === undefined) nd.checklist.pendientes_mips = "";
       if (nd.checklist.pendientes_r1 === undefined) nd.checklist.pendientes_r1 = "";
+      const noteSyncMeta = readNoteSyncMeta(nd.checklist);
+      if (noteSyncMeta.exists) {
+        nd.checklist[NOTE_SYNC_META_KEY] = {
+          entrega: noteSyncMeta.entrega,
+          body_diagram_ant: noteSyncMeta.body_diagram_ant,
+          body_diagram_post: noteSyncMeta.body_diagram_post
+        };
+        if (!nd.entrega) nd.entrega = noteSyncMeta.entrega;
+        if (!nd.body_diagram_ant) nd.body_diagram_ant = noteSyncMeta.body_diagram_ant;
+        if (!nd.body_diagram_post) nd.body_diagram_post = noteSyncMeta.body_diagram_post;
+      } else if (nd.checklist[NOTE_SYNC_META_KEY] !== undefined) {
+        delete nd.checklist[NOTE_SYNC_META_KEY];
+      }
       if (nd.entrega === undefined) nd.entrega = "";
       if (nd.body_diagram_ant === undefined) nd.body_diagram_ant = "";
       if (nd.body_diagram_post === undefined) nd.body_diagram_post = "";
@@ -3811,7 +3851,7 @@
         app: nd.app || "", pa: nd.pa || "", drenajes: nd.drenajes || "", qx: nd.qx || "",
         manejo: nd.manejo || "", sangrado: nd.sangrado || "", sv: nd.sv || "",
         balance: nd.balance || "", pendientes: nd.pendientes || "", misc: nd.misc || "",
-        checklist: nd.checklist || {},
+        checklist: buildChecklistForSync(nd),
         lab_history: nd.labHistory || [],
         imagen_history: nd.imagenHistory || [],
         updated_by: localStorage.getItem("pl_user_name") || ""
@@ -3877,17 +3917,19 @@
           loadedPatients.push(p);
           const k = pid(p);
           const sn = noteMap[row.id];
+          const localNote = lsGetNote(k);
           if (sn) {
-            const nd = defaultData();
+            const nd = migrateNote(localNote);
             nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
             nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
             nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
-            nd.misc = sn.misc || ""; nd.checklist = sn.checklist || nd.checklist;
-            nd.labHistory = sn.lab_history || [];
-            nd.imagenHistory = sn.imagen_history || [];
+            nd.misc = sn.misc || "";
+            nd.checklist = { ...(nd.checklist || {}), ...(isPlainObject(sn.checklist) ? sn.checklist : {}) };
+            nd.labHistory = Array.isArray(sn.lab_history) ? sn.lab_history : (nd.labHistory || []);
+            nd.imagenHistory = Array.isArray(sn.imagen_history) ? sn.imagen_history : (nd.imagenHistory || []);
             loadedNotes[k] = migrateNote(nd);
           } else {
-            loadedNotes[k] = defaultData();
+            loadedNotes[k] = localNote;
           }
         });
 
@@ -4104,21 +4146,28 @@
       const p = patients.find(x => x._supa_id === newRow.patient_id);
       if (!p) return;
       const k = pid(p);
-      const existing = noteData[k] || defaultData();
+      const existing = noteData[k] || lsGetNote(k) || defaultData();
       const dirty = _dirtyFields[k] || new Set();
       const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "misc"];
-      const nd = defaultData();
+      const nd = migrateNote(existing);
       // Aplicar campos remotos solo si NO están siendo editados localmente
       textFields.forEach(function(f) {
         nd[f] = dirty.has(f) ? existing[f] : (newRow[f] || "");
       });
-      // Fusionar checklist: preservar pendientes_mips y pendientes_r1 si están siendo editados
-      const remoteChecklist = newRow.checklist || {};
+      // Fusionar checklist: preservar pendientes_mips y pendientes_r1 si están siendo editados.
+      // También conservar metadatos locales si la fila remota todavía no los trae.
+      const remoteChecklist = isPlainObject(newRow.checklist) ? newRow.checklist : {};
       const localChecklist = existing.checklist || {};
-      nd.checklist = { ...remoteChecklist };
+      const remoteMeta = readNoteSyncMeta(remoteChecklist);
+      nd.checklist = { ...localChecklist, ...remoteChecklist };
       if (dirty.has("ck_pendientes_mips")) nd.checklist.pendientes_mips = localChecklist.pendientes_mips || "";
       if (dirty.has("ck_pendientes_r1")) nd.checklist.pendientes_r1 = localChecklist.pendientes_r1 || "";
-      nd.labHistory = newRow.lab_history || [];
+      if (remoteMeta.exists && !dirty.has("entrega")) nd.entrega = remoteMeta.entrega;
+      if (remoteMeta.exists) {
+        nd.body_diagram_ant = remoteMeta.body_diagram_ant;
+        nd.body_diagram_post = remoteMeta.body_diagram_post;
+      }
+      nd.labHistory = Array.isArray(newRow.lab_history) ? newRow.lab_history : [];
       nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
         ? newRow.imagen_history
         : (existing.imagenHistory || []);
