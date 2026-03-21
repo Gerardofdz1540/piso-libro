@@ -4665,7 +4665,7 @@
       const _searchEl = document.getElementById("search");
       const search = _searchEl ? _searchEl.value.toLowerCase() : "";
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
-      function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
+      function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
       const searchNorm = normSearch(search);
       const searchTokens = searchNorm ? searchNorm.split(/\s+/).filter(Boolean) : [];
       const filtered = patients.filter(p => {
