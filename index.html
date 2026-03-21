@@ -2669,7 +2669,7 @@
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             placeholder="Pendientes, estudios, interconsultas..."></textarea></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-bottom:6px">
         <div class="modal-field"><label>Especialidad *</label>
           <select class="modal-input" id="mf-esp">
             <option>CG</option>
@@ -2704,6 +2704,13 @@
           <input class="modal-input" id="mf-residente" list="dl-res" placeholder="o escribe..." autocomplete="off"
             style="margin-top:4px;font-size:11px" />
           <datalist id="dl-res"></datalist>
+        </div>
+        <div class="modal-field"><label>Sexo</label>
+          <select class="modal-input" id="mf-sexo">
+            <option value="">—</option>
+            <option value="MASCULINO">MASCULINO</option>
+            <option value="FEMENINO">FEMENINO</option>
+          </select>
         </div>
         <div class="modal-field"><label>Fecha de ingreso</label><input class="modal-input" id="mf-ingreso"
             placeholder="DD/MM/AA" /></div>
@@ -3323,7 +3330,7 @@
         body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, atb: false, atb_nombre: "", atb_dias: "", tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", pendientes_mips: "", pendientes_r1: "",
+        checklist: { npo: false, atb: false, atb_nombre: "", atb_dias: "", tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "",
           pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_balance: "", pm_sep: false, pm_hxqx: "",
@@ -3344,10 +3351,21 @@
       "amilasa", "lipasa",
       "ph", "pco2", "po2", "hco3", "be", "sato2",
       "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
-    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
+    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias", "micro_muestra", "micro_comentarios"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
+    }
+    function normalizeSexValue(v) {
+      const s = toSafeString(v).trim().toUpperCase();
+      if (!s || s === "—" || s === "-" || s === "N/A" || s === "NA") return "";
+      if (["M", "MASC", "MASCULINO", "H", "HOMBRE", "VARON", "VARÓN"].includes(s)) return "MASCULINO";
+      if (["F", "FEM", "FEMENINO", "MUJER"].includes(s)) return "FEMENINO";
+      return s;
+    }
+    function getPatientSex(p, nd) {
+      const note = nd || (p ? noteData[pid(p)] : null) || defaultData();
+      return normalizeSexValue((p && p.sexo) || (note && note.checklist && note.checklist.sexo) || "");
     }
     function isPlainObject(v) {
       return !!v && typeof v === "object" && !Array.isArray(v);
@@ -3419,7 +3437,7 @@
         });
       nd.labs = sanitizeLabsMap(nd.labs);
       if (!isPlainObject(nd.checklist)) {
-        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", pendientes_mips: "", pendientes_r1: "" };
+        nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "" };
       }
       // Migrate: add wound care + NPT fields if missing
       if (nd.checklist.cur_necesita === undefined) nd.checklist.cur_necesita = false;
@@ -3427,6 +3445,7 @@
       if (nd.checklist.npt === undefined) nd.checklist.npt = false;
       if (nd.checklist.npt_pct === undefined) nd.checklist.npt_pct = "";
       if (nd.checklist.npt_fecha === undefined) nd.checklist.npt_fecha = "";
+      if (nd.checklist.sexo === undefined) nd.checklist.sexo = "";
       if (nd.checklist.pendientes_mips === undefined) nd.checklist.pendientes_mips = "";
       if (nd.checklist.pendientes_r1 === undefined) nd.checklist.pendientes_r1 = "";
       // ATB detail fields
@@ -3482,6 +3501,18 @@
       return nd;
     }
     function getNote(k) { return migrateNote(noteData[k] || defaultData()); }
+    function applyModalExtraToNote(nd, extra) {
+      const next = migrateNote(nd || defaultData());
+      const src = extra || {};
+      next.app = toSafeString(src.app).trim();
+      next.pa = toSafeString(src.pa).trim();
+      next.manejo = toSafeString(src.manejo).trim();
+      next.sangrado = toSafeString(src.sangrado).trim();
+      next.drenajes = toSafeString(src.drenajes).trim();
+      next.pendientes = toSafeString(src.pendientes).trim();
+      next.checklist.sexo = normalizeSexValue(src.sexo);
+      return next;
+    }
 
     // localStorage fallbacks
 
@@ -5626,6 +5657,90 @@
     ];
     // Flat list for export / compat
     const LAB_FIELDS = LAB_GROUPS.flatMap(g => g.fields);
+    const LAB_EXTRACTION_HINTS = {
+      hb: "hemoglobina",
+      leucos: "leucocitos/WBC",
+      plaq: "plaquetas",
+      cr: "creatinina",
+      urea: "BUN/urea",
+      glu: "glucosa",
+      na: "sodio",
+      k: "potasio",
+      alb: "albumina",
+      pcr: "proteina C reactiva",
+      pct: "procalcitonina",
+      mg: "magnesio",
+      ca: "calcio",
+      p: "fosforo",
+      cl: "cloro",
+      tp: "tiempo de protrombina",
+      ttp: "tiempo de tromboplastina parcial",
+      inr: "INR",
+      fibrinogeno: "fibrinogeno",
+      dimero_d: "dimero D/D-dimer",
+      ast: "TGO/AST",
+      alt: "TGP/ALT",
+      bt: "bilirrubina total",
+      bd: "bilirrubina directa",
+      ggt: "gamma GT",
+      fa: "fosfatasa alcalina/ALP/FAL",
+      amilasa: "amilasa",
+      lipasa: "lipasa",
+      ph: "pH arterial/venoso",
+      pco2: "presion CO2",
+      po2: "presion O2",
+      hco3: "bicarbonato",
+      be: "exceso de base",
+      sato2: "saturacion O2",
+      ego_color: "color de orina",
+      ego_asp: "aspecto/turbidez de orina",
+      ego_dens: "densidad de orina",
+      ego_ph: "pH urinario",
+      ego_leuco: "esterasa leucocitaria/leucocitos en orina",
+      ego_nitri: "nitritos",
+      ego_bact: "bacterias",
+      ego_prot: "proteinas/proteinuria",
+      ego_glu: "glucosuria",
+      ego_hem: "hematies/eritrocitos en orina"
+    };
+    const CULTIVO_EXTRACTION_TEMPLATE = JSON.stringify({
+      tipo_lab: "cultivo",
+      tipo_cultivo: "hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo",
+      cultivo_organismo: "organismo encontrado o Negativo o Sin crecimiento",
+      cultivo_sensibilidades: "antibioticos sensibles separados por coma o vacio si no aplica",
+      cultivo_resistencias: "antibioticos resistentes separados por coma o vacio si no aplica",
+      micro_muestra: "",
+      micro_comentarios: "",
+      paciente: "",
+      fecha_labs: ""
+    });
+    function buildClinicalLabsExtractionTemplate(includeTipoLab) {
+      const tmpl = {};
+      if (includeTipoLab) tmpl.tipo_lab = "labs";
+      getLabKeys().forEach(k => { tmpl[k] = ""; });
+      tmpl.paciente = "";
+      tmpl.fecha_labs = "";
+      return JSON.stringify(tmpl);
+    }
+    function buildClinicalLabsMappingText() {
+      return getLabKeys().map(k => {
+        const fallback = (LAB_FIELDS.find(lf => lf.key === k)?.label || k).toLowerCase();
+        return k + "=" + (LAB_EXTRACTION_HINTS[k] || fallback);
+      }).join(", ");
+    }
+    function buildSingleLabExtractionPrompt(isImage) {
+      return "Extrae TODOS los valores de laboratorio de este " + (isImage ? "resultado (imagen)" : "PDF") + ". Responde SOLO con JSON valido sin markdown ni texto adicional:\n" +
+        buildClinicalLabsExtractionTemplate(false) + "\n" +
+        "Reglas: valores numericos sin unidades, texto tal como aparece para EGO. Fecha en YYYY-MM-DD. Paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
+        "Mapeo: " + buildClinicalLabsMappingText() + ".";
+    }
+    function buildBulkLabExtractionPrompt() {
+      return 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\n' +
+        "Si es (A) labs clinicos, responde SOLO con este JSON:\n" + buildClinicalLabsExtractionTemplate(true) + "\n\n" +
+        "Si es (B) cultivo microbiologico, responde SOLO con este JSON:\n" + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
+        'Reglas: valores numericos sin unidades para quimica/biometria/gasometria; en EGO y microbiologia se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "". ' +
+        "Mapeo: " + buildClinicalLabsMappingText() + ".";
+    }
 
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
     const LAB_QUICK = {
@@ -6560,20 +6675,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               role: "user", content: [
                 contentBlock,
                 {
-                  type: "text", text: "Extrae TODOS los valores de laboratorio de este " + (isImage ? "resultado (imagen)" : "PDF") + ". Responde SOLO con JSON válido sin markdown ni texto adicional:\n" +
-                    "{\"hb\":\"\",\"leucos\":\"\",\"plaq\":\"\",\"cr\":\"\",\"glu\":\"\",\"na\":\"\",\"k\":\"\",\"alb\":\"\",\"pcr\":\"\",\"pct\":\"\",\"inr\":\"\",\"urea\":\"\"," +
-                    "\"mg\":\"\",\"ca\":\"\",\"p\":\"\",\"cl\":\"\"," +
-                    "\"tp\":\"\",\"ttp\":\"\",\"fibrinogeno\":\"\"," +
-                    "\"ast\":\"\",\"alt\":\"\",\"bt\":\"\",\"bd\":\"\",\"ggt\":\"\",\"fa\":\"\"," +
-                    "\"ph\":\"\",\"pco2\":\"\",\"po2\":\"\",\"hco3\":\"\",\"be\":\"\",\"sato2\":\"\"," +
-                    "\"ego_color\":\"\",\"ego_asp\":\"\",\"ego_dens\":\"\",\"ego_ph\":\"\",\"ego_leuco\":\"\",\"ego_nitri\":\"\",\"ego_bact\":\"\",\"ego_prot\":\"\",\"ego_glu\":\"\",\"ego_hem\":\"\"," +
-                    "\"paciente\":\"\",\"fecha_labs\":\"\"}\n" +
-                    "Reglas: valores numéricos sin unidades, texto tal como aparece para EGO. Fecha en YYYY-MM-DD. Paciente en APELLIDOS NOMBRE. Si un valor no existe, dejar \"\". " +
-                    "Mapeo: Hb=hemoglobina, leucos=leucocitos/WBC, plaq=plaquetas, cr=creatinina, glu=glucosa, na=sodio, k=potasio, alb=albumina, pcr=proteína C reactiva, pct=procalcitonina, inr=INR, urea=BUN/urea, " +
-                    "mg=magnesio, ca=calcio, p=fósforo, cl=cloro, tp=tiempo de protrombina, ttp=tiempo de tromboplastina parcial, fibrinogeno=fibrinógeno, " +
-                    "ast=TGO/AST, alt=TGP/ALT, bt=bilirrubina total, bd=bilirrubina directa, ggt=gamma GT, fa=fosfatasa alcalina/ALP/FAL, " +
-                    "ph=pH arterial/venoso, pco2=presión CO2, po2=presión O2, hco3=bicarbonato, be=exceso de base, sato2=saturación O2, " +
-                    "ego_color=color orina, ego_asp=aspecto/turbidez orina, ego_dens=densidad orina, ego_ph=pH urinario, ego_leuco=esterasa leucocitaria/leucocitos orina, ego_nitri=nitritos, ego_bact=bacterias, ego_prot=proteínas/proteinuria, ego_glu=glucosuria, ego_hem=hematíes/eritrocitos orina."
+                  type: "text", text: buildSingleLabExtractionPrompt(isImage)
                 }
               ]
             }]
@@ -7193,157 +7295,444 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       </div>`;
     }
 
-    function openAddModal() {
-      modalMode = "add"; modalOrigKey = null;
-      document.getElementById("modal-title").textContent = "➕ Agregar nuevo paciente";
-      document.getElementById("modal-save-btn").textContent = "✓ Agregar al censo";
-      document.getElementById("modal-warn-edit").style.display = "none";
-      ["cama", "exp", "edad", "nombre", "adscrito", "residente", "ingreso", "dx"].forEach(f => { var el = document.getElementById("mf-" + f); if (el) el.value = ""; });
-      ["mf-app-modal", "mf-pa-modal", "mf-manejo-modal", "mf-sangrado-modal", "mf-drenajes-modal", "mf-pendientes-modal"].forEach(function (id) { var el = document.getElementById(id); if (el) el.value = ""; });
-      document.getElementById("mf-esp").value = "CG";
-      document.getElementById("mf-estado").value = "ESTABLE";
-      _fillDL();
-      document.getElementById("patient-modal").style.display = "flex";
+    function fmtV(id) { const el = document.getElementById(id); return el ? (el.value || el.textContent || "").trim() : ""; }
+    function sexOptionsHtml(selected, includeBlank) {
+      const sexo = normalizeSexValue(selected);
+      const blank = includeBlank ? `<option value=""${!sexo ? " selected" : ""}>—</option>` : "";
+      return blank
+        + `<option value="MASCULINO"${sexo === "MASCULINO" ? " selected" : ""}>MASCULINO</option>`
+        + `<option value="FEMENINO"${sexo === "FEMENINO" ? " selected" : ""}>FEMENINO</option>`;
     }
-    function _fillDL() {
-      var a = [...new Set(patients.map(function (p) { return p.adscrito || ""; }).filter(Boolean))].sort();
-      var r = [...new Set(patients.map(function (p) { return p.residente || ""; }).filter(Boolean))].sort();
-      var dA = document.getElementById("dl-ads"), dR = document.getElementById("dl-res");
-      if (dA) dA.innerHTML = a.map(function (x) { return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
-      if (dR) dR.innerHTML = r.map(function (x) { return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
-      var sA = document.getElementById("mf-adscrito-sel"), sR = document.getElementById("mf-residente-sel");
-      var aOpts = "<option value=''>-- Seleccionar --</option>" + a.map(function (x) { return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
-      var rOpts = "<option value=''>-- Seleccionar --</option>" + r.map(function (x) { return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
-      if (sA) sA.innerHTML = aOpts;
-      if (sR) sR.innerHTML = rOpts;
-    }
-    function openEditModal(k) {
-      const p = patients.find(p => pid(p) === k); if (!p) return;
-      modalMode = "edit"; modalOrigKey = k;
-      document.getElementById("modal-title").textContent = "✏️ Editar datos del paciente";
-      document.getElementById("modal-save-btn").textContent = "✓ Guardar cambios";
-      document.getElementById("modal-warn-edit").style.display = "block";
-      document.getElementById("mf-cama").value = p.cama || "";
-      document.getElementById("mf-exp").value = p.exp || "";
-      document.getElementById("mf-edad").value = p.edad || "";
-      document.getElementById("mf-nombre").value = p.nombre || "";
-      document.getElementById("mf-esp").value = p.esp || "CG";
-      document.getElementById("mf-adscrito").value = p.adscrito || "";
-      document.getElementById("mf-residente").value = p.residente || "";
-      document.getElementById("mf-ingreso").value = p.ingreso || "";
-      document.getElementById("mf-estado").value = p.estado || "ESTABLE";
-      document.getElementById("mf-dx").value = p.dx || "";
-      var _nd_e = noteData[k] || defaultData();
-      var _ae = document.getElementById("mf-app-modal"); if (_ae) _ae.value = _nd_e.app || "";
-      var _pe = document.getElementById("mf-pa-modal"); if (_pe) _pe.value = _nd_e.pa || "";
-      var _me = document.getElementById("mf-manejo-modal"); if (_me) _me.value = _nd_e.manejo || "";
-      var _se = document.getElementById("mf-sangrado-modal"); if (_se) _se.value = _nd_e.sangrado || "";
-      var _de = document.getElementById("mf-drenajes-modal"); if (_de) _de.value = _nd_e.drenajes || "";
-      var _pde = document.getElementById("mf-pendientes-modal"); if (_pde) _pde.value = _nd_e.pendientes || "";
-      _fillDL();
-      document.getElementById("patient-modal").style.display = "flex";
-    }
-    function closeModal() { document.getElementById("patient-modal").style.display = "none"; }
-    function saveModal() {
-      const cama = document.getElementById("mf-cama").value.trim().toUpperCase();
-      const exp = document.getElementById("mf-exp").value.trim();
-      const nombre = document.getElementById("mf-nombre").value.trim().toUpperCase();
-      if (!cama || !exp || !nombre) { alert("Cama, nombre y expediente son obligatorios"); return; }
-      // Validar formato fecha de ingreso (DD/MM/AA o DD/MM/AAAA)
-      const ingresoVal = document.getElementById("mf-ingreso").value.trim();
-      if (ingresoVal && !parseDmy(ingresoVal)) {
-        if (!confirm(`⚠️ La fecha de ingreso "${ingresoVal}" no parece válida (usa DD/MM/AA).\n\n¿Continuar de todas formas?`)) return;
-      }
-      var _ads_val = document.getElementById("mf-adscrito").value.trim() || document.getElementById("mf-adscrito-sel").value;
-      var _res_val = document.getElementById("mf-residente").value.trim() || document.getElementById("mf-residente-sel").value;
-      const p = {
-        cama, exp, nombre,
-        edad: parseInt(document.getElementById("mf-edad").value) || "",
-        esp: document.getElementById("mf-esp").value,
-        adscrito: _ads_val.toUpperCase(),
-        residente: _res_val.toUpperCase(),
-        ingreso: document.getElementById("mf-ingreso").value.trim(),
-        estado: document.getElementById("mf-estado").value,
-        dx: document.getElementById("mf-dx").value.trim().toUpperCase()
-      };
-      var _modalExtra = {
-        app: (document.getElementById("mf-app-modal") || {}).value || "",
-        pa: (document.getElementById("mf-pa-modal") || {}).value || "",
-        manejo: (document.getElementById("mf-manejo-modal") || {}).value || "",
-        sangrado: (document.getElementById("mf-sangrado-modal") || {}).value || "",
-        drenajes: (document.getElementById("mf-drenajes-modal") || {}).value || "",
-        pendientes: (document.getElementById("mf-pendientes-modal") || {}).value || ""
-      };
-      if (modalMode === "add") {
-        patients.push(p);
-        var _nd0 = defaultData();
-        if (_modalExtra.app) _nd0.app = _modalExtra.app;
-        if (_modalExtra.pa) _nd0.pa = _modalExtra.pa;
-        if (_modalExtra.manejo) _nd0.manejo = _modalExtra.manejo;
-        if (_modalExtra.sangrado) _nd0.sangrado = _modalExtra.sangrado;
-        if (_modalExtra.drenajes) _nd0.drenajes = _modalExtra.drenajes;
-        if (_modalExtra.pendientes) _nd0.pendientes = _modalExtra.pendientes;
-        noteData[pid(p)] = _nd0;
-      } else {
-        const newKey = pid(p);
-        patients = patients.map(pt => pid(pt) === modalOrigKey ? p : pt);
-        if (modalOrigKey !== newKey) {
-          noteData[newKey] = noteData[modalOrigKey] || defaultData();
-          delete noteData[modalOrigKey];
-          // Limpiar oldKey en localStorage y en KV remoto para evitar "ghost notes"
-          localStorage.removeItem(NOTES_PREFIX + modalOrigKey);
-          deleteNoteRemote(modalOrigKey);
-          _cleanupPatientCache(modalOrigKey);
-          saveNote(newKey, noteData[newKey]);
-        }
-      }
-      _savePtsImmediate(); // inmediato: asigna _supa_id antes de que llegue el Realtime INSERT
-      buildEspFilters();
-      closeModal();
-      renderView();
+    function sexSelectField(id, label, selected, full, includeBlank) {
+      const cls = full ? "fmt-field fmt-full" : "fmt-field";
+      return `<div class="${cls}"><label>${label}</label><select id="${id}">${sexOptionsHtml(selected, includeBlank !== false)}</select></div>`;
     }
 
-    // ─── CONFIRM DISCHARGE ───────────────────────────────────────────────────────────
-    function openConfirm(k) {
-      const p = patients.find(p => pid(p) === k); if (!p) return;
-      document.getElementById("confirm-name").textContent = p.nombre;
-      document.getElementById("confirm-sub").textContent = `Cama ${p.cama} · ${p.esp} · Exp: ${p.exp}`;
-      document.getElementById("confirm-btn").onclick = () => { dischargePatient(k); };
-      document.getElementById("confirm-modal").style.display = "flex";
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // FORMAT 1: FT-HGL-Qx-234 ESTADO PRE Y POST QX
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function fmtPrePostQx(p, nd, gi, fecha, hora, labs, adsOpts) {
+      return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-Qx-234 · ESTADO PRE Y POST QUIRÚRGICO</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printPrePostQx()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      <div class="fmt-section-title">📋 DATOS GENERALES</div>
+      ${fmtF("fqx_fecha", "Fecha", fecha)}
+      ${fmtF("fqx_hora", "Hora", hora)}
+      ${fmtF("fqx_servicio", "Servicio", p.esp || "CIRUGÍA GENERAL")}
+      ${fmtF("fqx_nombre", "Nombre completo", p.nombre)}
+      ${fmtF("fqx_exp", "N° Expediente", p.exp)}
+      ${fmtF("fqx_edad", "Edad", (p.edad || "") + " AÑOS")}
+      ${sexSelectField("fqx_sexo", "Sexo", getPatientSex(p, nd), false, true)}
+      ${fmtF("fqx_cama", "Cama", p.cama)}
+      ${fmtF("fqx_fn", "Fecha nacimiento", "")}
+      <div class="fmt-field"><label>SV: TA</label><input id="fqx_ta" value=""/></div>
+      <div class="fmt-field"><label>SV: FC</label><input id="fqx_fc" value=""/></div>
+      <div class="fmt-field"><label>SV: FR</label><input id="fqx_fr" value=""/></div>
+      <div class="fmt-field"><label>SV: Temp</label><input id="fqx_temp" value=""/></div>
+      <div class="fmt-field"><label>SV: Peso</label><input id="fqx_peso" value=""/></div>
+      <div class="fmt-field"><label>SV: Talla</label><input id="fqx_talla" value=""/></div>
+
+      <div class="fmt-section-title">🔪 NOTA PREQUIRÚRGICA</div>
+      ${fmtF("fqx_fecha_cx", "Fecha cirugía", fecha)}
+      ${fmtF("fqx_tipo_interv", "Tipo intervención", "", "false", "select").replace("</select>", `<option>URGENCIA</option><option>ELECTIVA</option><option>PROGRAMADA</option></select>`)}
+      ${fmtF("fqx_plan_qx", "Plan quirúrgico", nd.qx || "", true, "textarea")}
+
+      <div class="fmt-section-title">⚠️ FACTORES DE RIESGO</div>
+      <div class="fmt-field fmt-full"><div class="fmt-checks">
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_nefro"/>NEFROPATÍA</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_coag"/>COAGULOPATÍA</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_cardio"/>CARDIOPATÍA</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_dm"/>DIABETES</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_has"/>HAS</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_alcohol"/>ALCOHOLISMO</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_tabaco"/>TABAQUISMO</label>
+        <label class="fmt-check-item"><input type="checkbox" id="fqx_adicc"/>ADICCIONES</label>
+      </div></div>
+      ${fmtF("fqx_otros_riesgo", "Otros factores", nd.app || "", true, "textarea")}
+      ${fmtF("fqx_interrogatorio", "Resumen interrogatorio", "", true, "textarea")}
+      ${fmtF("fqx_ef", "Exploración física", "", true, "textarea")}
+
+      <div class="fmt-section-title">🧪 ESTUDIOS AUXILIARES</div>
+      ${fmtF("fqx_tipo_sangre", "Tipo sangre / Grupo", "")}
+      ${fmtF("fqx_tp", "TP", labs.inr || "")}
+      ${fmtF("fqx_tpt", "TPT", "")}
+      ${fmtF("fqx_hb", "HB", labs.hb || "")}
+      ${fmtF("fqx_hto", "HTO", "")}
+      ${fmtF("fqx_otros_labs", "Otros estudios", "", true, "textarea")}
+
+      ${fmtF("fqx_dx_pre", "Diagnósticos prequirúrgicos", p.dx || nd.dx || "", true, "textarea")}
+      ${fmtF("fqx_cuidados_pre", "Cuidados y plan terapéutico preoperatorio", "AYUNO, SOLUCIONES ISOTÓNICAS, CRUCE DE HEMODERIVADOS, ANALGESIA", true, "textarea")}
+      ${fmtF("fqx_pronostico_pre", "Pronóstico", "RESERVADO PARA LA VIDA Y LA FUNCIÓN", false, "select").replace("</select>", `<option>RESERVADO PARA LA VIDA Y LA FUNCIÓN</option><option>BUENO PARA LA VIDA Y LA FUNCIÓN</option><option>MALO PARA LA VIDA Y LA FUNCIÓN</option></select>`)}
+      ${fmtF("fqx_adscrito", "Médico adscrito", p.adscrito || "", false, "select").replace("</select>", `<option value="">—</option>${adsOpts}</select>`)}
+      ${fmtF("fqx_residente", "Médico que elabora nota", p.residente || "")}
+
+      <div class="fmt-section-title">📝 NOTA POSTQUIRÚRGICA</div>
+      ${fmtF("fqx_dx_post", "Diagnóstico postoperatorio", "", true, "textarea")}
+      ${fmtF("fqx_cx_realizada", "Cirugía realizada", "", true, "textarea")}
+      ${fmtF("fqx_fecha_cx_real", "Fecha cirugía realizada", fecha)}
+      ${fmtF("fqx_hora_inicio", "Hora inicio", "")}
+      ${fmtF("fqx_hora_fin", "Hora término", "")}
+      ${fmtF("fqx_duracion", "Duración", "")}
+      ${fmtF("fqx_anestesia", "Tipo anestesia", "", false, "select").replace("</select>", `<option>GENERAL</option><option>REGIONAL (BLOQUEO EPIDURAL)</option><option>REGIONAL (BLOQUEO SUBARACNOIDEO)</option><option>LOCAL</option><option>SEDACIÓN</option></select>`)}
+      ${fmtF("fqx_cirujano", "Médico cirujano", p.adscrito || "")}
+      ${fmtF("fqx_anestesiologo", "Anestesiólogo", "")}
+      ${fmtF("fqx_ayud1", "1er Ayudante", p.residente || "")}
+      ${fmtF("fqx_ayud2", "2do Ayudante", "")}
+      ${fmtF("fqx_instrumentista", "Instrumentista", "")}
+      ${fmtF("fqx_circulante", "Circulante", "")}
+      ${fmtF("fqx_hallazgos", "Hallazgos transoperatorios", nd.drenajes ? "Drenajes: " + nd.drenajes : "", true, "textarea")}
+      ${fmtF("fqx_tecnica", "Descripción técnica quirúrgica", "", true, "textarea")}
+      ${fmtF("fqx_sangrado", "Sangrado", nd.sangrado || "")}
+      ${fmtF("fqx_gasas", "Cuenta textil", "COMPLETA", false, "select").replace("</select>", `<option>COMPLETA</option><option>INCOMPLETA</option></select>`)}
+      ${fmtF("fqx_pieza", "Estudio histopatológico / Pieza", "")}
+      ${fmtF("fqx_incidentes", "Incidentes / Accidentes", "NINGUNO")}
+      ${fmtF("fqx_estado_post", "Estado postqx inmediato", "ESTABLE", false, "select").replace("</select>", `<option>ESTABLE</option><option>INESTABLE</option><option>GRAVE</option></select>`)}
+      ${fmtF("fqx_pronostico_post", "Pronóstico postqx", "RESERVADO PARA LA VIDA Y LA FUNCIÓN", false, "select").replace("</select>", `<option>RESERVADO PARA LA VIDA Y LA FUNCIÓN</option><option>BUENO PARA LA VIDA Y LA FUNCIÓN</option><option>MALO PARA LA VIDA Y LA FUNCIÓN</option></select>`)}
+      ${fmtF("fqx_plan_post", "Plan y tratamiento inmediato", nd.pendientes || "", true, "textarea")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printPrePostQx()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
     }
-    function dischargePatient(k) {
-      const p = patients.find(pt => pid(pt) === k);
-      if (!p) { document.getElementById("confirm-modal").style.display = "none"; return; }
-      suppressKey(p._supa_id || "__all__");
-      // Archivar: guardar paciente + sus notas antes de quitarlo del censo activo
-      const nd = noteData[k] || defaultData();
-      const archived = {
-        ...p,
-        _archivedAt: new Date().toISOString(),
-        _archiveKey: k,
-        _note: nd
-      };
-      archivados.unshift(archived);
-      try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
-      // Quitar del censo activo
-      patients = patients.filter(pt => pid(pt) !== k);
-      delete noteData[k];
-      localStorage.removeItem(NOTES_PREFIX + k);
-      _cleanupPatientCache(k);
-      // Delete from Supabase (cascade deletes note too)
-      if (p._supa_id) {
-        supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (discharge):", e));
-        // Also archive to Supabase
-        _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" }).catch(() => { });
-      }
-      savePts();
-      document.getElementById("confirm-modal").style.display = "none";
-      buildEspFilters();
-      renderView();
-      // Feedback
-      const badge = document.getElementById("count-badge");
-      if (badge) { const prev = badge.textContent; badge.style.color = "#27ae60"; badge.textContent = "✅ Paciente archivado"; setTimeout(() => { badge.style.color = ""; badge.textContent = prev; }, 2200); }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // FORMAT 2: FT-HGL-AM-542 CONSENTIMIENTO QUIRURGICO
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function fmtConsentimientoQx(p, nd, gi, fecha, hora, adsOpts) {
+      return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-AM-542 · Consentimiento Procedimiento Médico y Quirúrgico</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printConsentimientoQx()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      ${fmtF("fcq_nombre", "Nombre paciente", p.nombre, true)}
+      ${sexSelectField("fcq_sexo", "Sexo", getPatientSex(p, nd), false, true)}
+      ${fmtF("fcq_edad", "Edad", (p.edad || "") + " AÑOS")}
+      ${fmtF("fcq_domicilio", "Domicilio", "", true)}
+      ${fmtF("fcq_curp", "CURP", "")}
+      ${fmtF("fcq_fecha", "Fecha elaboración", fecha)}
+      ${fmtF("fcq_exp", "N° Expediente", p.exp)}
+      ${fmtF("fcq_responsable", "Nombre acompañante responsable", "", true)}
+      ${fmtF("fcq_medico", "Nombre médico tratante", p.adscrito || "", false, "select").replace("</select>", `<option value="">—</option>${adsOpts}</select>`)}
+      ${fmtF("fcq_procedimiento", "Procedimiento médico/quirúrgico a realizar", nd.qx || p.dx || "", true, "textarea")}
+      ${fmtF("fcq_consiste", "Que consiste en", nd.qx || "", true, "textarea")}
+      ${fmtF("fcq_beneficios", "Beneficios", "", true, "textarea")}
+      ${fmtF("fcq_complicaciones", "Complicaciones más frecuentes", "HEMORRAGIA, INFECCIÓN DE HERIDA QUIRÚRGICA, LESIÓN DE ÓRGANOS ADYACENTES, DEHISCENCIA, FORMACIÓN DE ABSCESO, HERNIA POSTINCISIONAL, NECESIDAD DE REINTERVENCIÓN, CHOQUE, MUERTE.", true, "textarea")}
+      ${fmtF("fcq_alternativas", "Alternativas disponibles", "", true, "textarea")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printConsentimientoQx()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
     }
+
+    function printConsentimientoQx() {
+      const v = fmtV;
+      const w = window.open("", "_blank", "width=900,height=1100");
+      w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-542</title>
+  <style>
+    @page{size:letter;margin:12mm}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:8mm;line-height:1.4}
+    .hdr{text-align:center;font-size:10pt;margin-bottom:2mm}
+    h2{text-align:center;font-size:12pt;font-weight:bold;margin:2mm 0 3mm}
+    .tbl{width:100%;border-collapse:collapse;margin:3mm 0}
+    .tbl td{border:1px solid #000;padding:3px 5px;font-size:10pt}
+    .tbl td.lbl{font-weight:bold}
+    .body-text{font-size:10pt;text-align:justify;margin:3mm 0;line-height:1.5}
+    .body-text b{font-weight:bold}
+    .sig-row{display:flex;justify-content:space-between;margin-top:10mm}
+    .sig-box{text-align:center;width:45%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:20mm}
+    .ft{text-align:right;font-size:7pt;color:#666;margin-top:5mm}
+  </style></head><body>
+    <div class="hdr">Instituto de Salud Pública del Estado de Guanajuato<br><b>Hospital General León</b></div>
+    <h2>CARTA DE CONSENTIMIENTO BAJO INFORMACIÓN<br>PARA PROCEDIMIENTOS MÉDICOS Y QUIRÚRGICOS</h2>
+    <table class="tbl">
+      <tr><td class="lbl" colspan="4">NOMBRE DEL PACIENTE: ${v("fcq_nombre")}</td></tr>
+      <tr><td class="lbl">SEXO: ${v("fcq_sexo")}</td><td>EDAD: ${v("fcq_edad")}</td><td colspan="2"></td></tr>
+      <tr><td class="lbl" colspan="4">DOMICILIO: ${v("fcq_domicilio")}</td></tr>
+      <tr><td class="lbl" colspan="2">CURP: ${v("fcq_curp")}</td><td colspan="2">FECHA DE ELABORACIÓN: ${v("fcq_fecha")}</td></tr>
+      <tr><td class="lbl" colspan="4">N° EXPEDIENTE CLÍNICO: ${v("fcq_exp")}</td></tr>
+      <tr><td class="lbl" colspan="4">NOMBRE DEL ACOMPAÑANTE RESPONSABLE: ${v("fcq_responsable")}</td></tr>
+      <tr><td class="lbl" colspan="4">NOMBRE DEL MÉDICO TRATANTE: ${v("fcq_medico")}</td></tr>
+    </table>
+    <p class="body-text">Manifiesto que el médico ha respondido a cada una de las preguntas que le he planteado y me ha explicado con lenguaje simple el procedimiento médico y/o quirúrgico de diagnóstico y/o terapéutico de:</p>
+    <p class="body-text" style="border-bottom:1px solid #000;min-height:8mm">${v("fcq_procedimiento")}</p>
+    <p class="body-text">Que consiste en:</p>
+    <p class="body-text" style="border-bottom:1px solid #000;min-height:8mm">${v("fcq_consiste")}</p>
+    <p class="body-text">Con objeto de (Beneficios):</p>
+    <p class="body-text" style="border-bottom:1px solid #000;min-height:8mm">${v("fcq_beneficios")}</p>
+    <table class="tbl">
+      <tr><td class="lbl">LAS COMPLICACIONES MÁS FRECUENTES QUE PUEDEN SURGIR SON:</td></tr>
+      <tr><td style="min-height:15mm">${v("fcq_complicaciones").replace(/\n/g, "<br>")}</td></tr>
+    </table>
+    <table class="tbl">
+      <tr><td class="lbl">OTRAS ALTERNATIVAS DISPONIBLES PARA MI CASO:</td></tr>
+      <tr><td style="min-height:8mm">${v("fcq_alternativas")}</td></tr>
+    </table>
+    <p class="body-text">Declaro que he comprendido las explicaciones que se me han dado y el médico me realizó todas las observaciones y aclaró todas mis dudas. También comprendo que en cualquier momento puedo revocar mi consentimiento.</p>
+    <p class="body-text">Por lo antes descrito <b>ACEPTO</b> que se realicen los procedimientos quirúrgicos de diagnóstico y/o tratamiento que me fueron explicados previamente.</p>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">Nombre completo y firma del paciente</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre completo, parentesco y firma del Testigo 1</div></div>
+    </div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">Nombre completo, Cédula profesional (sello)<br>y firma de médico tratante</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre completo, parentesco y/o cargo y firma del Testigo 2</div></div>
+    </div>
+    <div class="ft">FT-HGL-AM-542 · Blvd. Puente Milenio N° 1001 A Predio San Carlos C.P. 37544</div>
+    <script>window.print();<\/script>
+  </body></html>`);
+      w.document.close();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // FORMAT 3: FT-HGL-AM-50 CONSENTIMIENTO GENERAL
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function fmtConsentimientoGral(p, nd, gi, fecha, hora, adsOpts) {
+      const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      const now = new Date();
+      return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-AM-50 · Carta de Consentimiento Bajo Información General</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printConsentimientoGral()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      ${fmtF("fcg_dia", "Día", String(now.getDate()))}
+      ${fmtF("fcg_mes", "Mes", meses[now.getMonth()])}
+      ${fmtF("fcg_anio", "Año", String(now.getFullYear()))}
+      ${fmtF("fcg_nombre", "Nombre paciente", p.nombre, true)}
+      ${fmtF("fcg_edad", "Edad", (p.edad || "") + " AÑOS")}
+      ${fmtF("fcg_servicio", "Servicio", p.esp || "CIRUGÍA GENERAL")}
+      ${fmtF("fcg_curp", "CURP", "")}
+      ${fmtF("fcg_cama", "Cama", p.cama)}
+      ${fmtF("fcg_exp", "N° Expediente", p.exp)}
+      ${fmtF("fcg_dx", "Diagnósticos", p.dx || nd.dx || "", true, "textarea")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printConsentimientoGral()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
+    }
+
+    function printConsentimientoGral() {
+      const v = fmtV;
+      const w = window.open("", "_blank", "width=900,height=1100");
+      w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-50</title>
+  <style>
+    @page{size:letter;margin:12mm}
+    body{font-family:Arial,sans-serif;font-size:9.5pt;color:#000;padding:8mm;line-height:1.35}
+    .motivo{font-size:9pt;margin-bottom:4mm}
+    .line{border-bottom:1px solid #000;min-height:5mm;padding:1px 2px;font-size:9.5pt;margin-bottom:2px}
+    .row{display:flex;gap:2mm}.row .line{flex:1}
+    h3{text-align:center;font-size:12pt;margin:4mm 0 2mm}
+    .body-text{font-size:9.5pt;text-align:justify;margin:2mm 0}
+    .sig-row{display:flex;justify-content:space-between;margin-top:6mm}
+    .sig-box{text-align:center;width:40%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:12mm}
+    .ft{font-size:7pt;color:#666;margin-top:4mm;font-style:italic}
+  </style></head><body>
+    <div class="motivo">MOTIVO POR EL QUE FIRMA ALGUIEN DIFERENTE AL PACIENTE: MENOR DE EDAD_____ ESTADO DEL PACIENTE: ____ N/A: ____</div>
+    <div class="line">León, Gto. A <b>${v("fcg_dia")}</b> del mes de <b>${v("fcg_mes")}</b> del año <b>${v("fcg_anio")}</b>. Hora de Revocación: _______________</div>
+    <div class="row">
+      <div class="line" style="flex:3">Nombre del Paciente: <b>${v("fcg_nombre")}</b></div>
+      <div class="line">Edad: <b>${v("fcg_edad")}</b></div>
+    </div>
+    <div class="row">
+      <div class="line">Servicio: <b>${v("fcg_servicio")}</b></div>
+      <div class="line">CURP: ${v("fcg_curp")}</div>
+      <div class="line">Cama: <b>${v("fcg_cama")}</b></div>
+      <div class="line">Número de Expediente: <b>${v("fcg_exp")}</b></div>
+    </div>
+    <div class="line">Diagnósticos: <b>${v("fcg_dx")}</b></div>
+    <h3>REVOCACIÓN/NEGACIÓN</h3>
+    <div class="line"><b>Procedimiento NO autorizado o revocado:</b> ________________________________________</div>
+    <div class="line"><b>Motivo de la revocación o negación:</b> ________________________________________________</div>
+    <div class="body-text">Se explican los riesgos de no recibir el procedimiento revocado o no autorizado al paciente y familiar responsable: SI _______ NO _______.</div>
+    <div class="body-text">Riesgos o Factores Negativos en la atención médica por NO recibir el Procedimiento revocado o no autorizado por paciente y/o Responsable:</div>
+    <div class="line" style="min-height:12mm"></div>
+    <div class="line">FIRMA Y SELLO DEL MEDICO TRATANTE: ________________________________________________________</div>
+    <div class="body-text"><b>PACIENTE Y/O FAMILIAR RESPONSABLE:</b></div>
+    <div class="row">
+      <div class="line" style="flex:2">Nombre: ______________________________</div>
+      <div class="line" style="flex:2">Firma: ______________________________</div>
+    </div>
+    <div class="row">
+      <div class="line" style="flex:2">Dirección: ______________________________</div>
+      <div class="line">Teléfono: ______________</div>
+    </div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">TESTIGO 1<br>NOMBRE, IDENTIFICACIÓN, TELÉFONO</div></div>
+      <div class="sig-box"><div class="sig-line">TESTIGO 2<br>NOMBRE, IDENTIFICACIÓN, TELÉFONO</div></div>
+    </div>
+    <div class="ft">*Las firmas deben aparecer como en la credencial de identificación oficial con fotografía.</div>
+    <script>window.print();<\/script>
+  </body></html>`);
+      w.document.close();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // FORMAT 4: FT-HGL-LAB-236 CONSENTIMIENTO TRANSFUSIÓN
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function fmtConsentimientoTx(p, nd, gi, fecha, hora, adsOpts) {
+      return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-LAB-236 · Consentimiento Transfusión</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printConsentimientoTx()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      ${fmtF("ftx_nombre", "Nombre paciente", p.nombre, true)}
+      ${fmtF("ftx_curp", "CURP", "")}
+      ${fmtF("ftx_dx", "Diagnóstico", p.dx || nd.dx || "", true, "textarea")}
+      ${fmtF("ftx_medico", "Médico tratante", p.adscrito || "", false, "select").replace("</select>", `<option value="">—</option>${adsOpts}</select>`)}
+      ${fmtF("ftx_alternativas", "Alternativas de tratamiento", "", true, "textarea")}
+      ${fmtF("ftx_familiar", "Nombre familiar responsable", "", true)}
+      ${fmtF("ftx_parentesco", "Parentesco", "")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printConsentimientoTx()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
+    }
+
+    function printConsentimientoTx() {
+      const v = fmtV;
+      const w = window.open("", "_blank", "width=900,height=1100");
+      w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-LAB-236</title>
+  <style>
+    @page{size:letter;margin:5mm}
+    body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:5mm;line-height:1.4}
+    .hdr{text-align:right;font-size:8pt;color:#666}
+    .tbl{width:100%;border-collapse:collapse;margin:3mm 0}
+    .tbl td{border:1px solid #000;padding:3px 5px;font-size:10pt}
+    .tbl td b{font-weight:bold}
+    .body-text{font-size:10pt;text-align:justify;margin:3mm 0;line-height:1.5}
+    .line{border-bottom:1px solid #000;min-height:5mm;padding:1px 2px;font-size:10pt;margin-bottom:2px}
+    .row{display:flex;gap:2mm}.row .line{flex:1}
+    .risk-tbl{width:100%;border-collapse:collapse;margin:3mm 0}
+    .risk-tbl td{border:1px solid #000;padding:3px 8px;font-size:10pt;width:50%}
+    .sig-row{display:flex;justify-content:space-between;margin-top:6mm}
+    .sig-box{text-align:center;width:30%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:15mm}
+    h3{text-align:center;font-size:11pt;margin:3mm 0}
+  </style></head><body>
+    <div class="hdr">FT-HGL-LAB-236</div>
+    <table class="tbl">
+      <tr><td><b>NOMBRE DEL PACIENTE:</b> ${v("ftx_nombre")}</td></tr>
+      <tr><td><b>CURP:</b> ${v("ftx_curp")}</td></tr>
+      <tr><td><b>DIAGNÓSTICO:</b> ${v("ftx_dx")}</td></tr>
+      <tr><td><b>NOMBRE DEL MÉDICO TRATANTE:</b> ${v("ftx_medico")}</td></tr>
+    </table>
+    <p class="body-text">La transfusión es considerada un acto de humanismo y su función es brindar un apoyo terapéutico a los pacientes que requieren de algún componente sanguíneo. La administración de los componentes sanguíneos se realizará bajo estricta prescripción y vigilancia del equipo médico.</p>
+    <table class="risk-tbl">
+      <tr><td>URTICARIA, SALPULLIDO O RONCHAS</td><td>PARO CARDIACO</td></tr>
+      <tr><td>ESCALOFRÍOS O FIEBRE</td><td>SUDORACIÓN O DIAFORESIS</td></tr>
+      <tr><td>CHOQUE ANAFILÁCTICO</td><td>DOLOR LUMBAR O TORÁCICO</td></tr>
+      <tr><td>DESMAYO O SÍNCOPE</td><td>ANSIEDAD</td></tr>
+      <tr><td>ATAQUES O CONVULSIONES</td><td>DIFICULTAD RESPIRATORIA</td></tr>
+    </table>
+    <p class="body-text">Declaro que estoy consciente de los <b>riesgos</b> que implica la administración de un componente sanguíneo, por lo cual me comprometo a firmar el presente consentimiento informado.</p>
+    <div class="line"><b>Alternativas de tratamiento:</b> ${v("ftx_alternativas")}</div>
+    <div class="line"><b>Nombre del paciente o familiar responsable (tutor):</b> ${v("ftx_familiar")}</div>
+    <div class="row">
+      <div class="line">Firma: _________________________</div>
+      <div class="line">Parentesco: ${v("ftx_parentesco")}</div>
+    </div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">Nombre completo, Cédula profesional (sello)<br>y Firma del médico</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre y firma del TESTIGO 1</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre y firma del TESTIGO 2</div></div>
+    </div>
+    <script>window.print();<\/script>
+  </body></html>`);
+      w.document.close();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // FORMAT 5: FT-HGL-AM-51 NOTA MÉDICA 2023 (table-based)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    function fmtNotaMedica(p, nd, gi, fecha, hora, labs, adsOpts) {
+      const labStr = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "urea", "bt", "bd", "fa", "ego_esterasa", "ego_ph", "ego_nitritos", "ego_bacterias", "micro_organismo"].filter(x => labs[x]).map(x => {
+        const lf = LAB_FIELDS.find(f => f.key === x);
+        return (lf ? lf.label : x.toUpperCase()) + ": " + labs[x];
+      }).join(", ");
+      return `<div class="fmt-form-area">
+    <div class="fmt-form-header"><h3>FT-HGL-AM-51 · Nota Médica 2023</h3>
+      <div><button class="fmt-btn fmt-btn-print" onclick="printNotaMedica()">🖨 Imprimir</button></div>
+    </div>
+    <div class="fmt-form-body">
+      ${fmtF("fnm_nombre", "Nombre paciente", p.nombre, true)}
+      ${fmtF("fnm_edad", "Edad", (p.edad || ""))}
+      ${sexSelectField("fnm_sexo", "Sexo", getPatientSex(p, nd), false, true)}
+      ${fmtF("fnm_exp", "N° Expediente", p.exp)}
+      ${fmtF("fnm_servicio", "Servicio/Área", p.esp || "CIRUGÍA GENERAL")}
+      ${fmtF("fnm_fn", "Fecha nacimiento", "")}
+      ${fmtF("fnm_cama", "Cama", p.cama)}
+      ${fmtF("fnm_fecha", "Fecha/Hora", fecha + " " + hora)}
+      ${fmtF("fnm_ta", "SV: TA", "")}
+      ${fmtF("fnm_fc", "SV: FC", "")}
+      ${fmtF("fnm_fr", "SV: FR", "")}
+      ${fmtF("fnm_temp", "SV: Temp", "")}
+      ${fmtF("fnm_spo2", "SV: SpO2", "")}
+      ${fmtF("fnm_titulo", "Título de nota (encabezado libre)", "NOTA DE EVOLUCIÓN", true)}
+      ${fmtF("fnm_contenido", "Contenido de la nota (NOM-004: estado mental, interrogatorio, exploración física, resultados, diagnósticos, tratamiento, pronóstico)", "", true, "textarea")}
+      ${fmtF("fnm_labs", "Laboratorios", labStr, true, "textarea")}
+      ${fmtF("fnm_medico", "Médico que elabora", p.residente || gi.entrega || "")}
+    </div>
+    <div class="fmt-actions">
+      <button class="fmt-btn fmt-btn-print" onclick="printNotaMedica()">🖨 Imprimir formato institucional</button>
+    </div>
+  </div>`;
+    }
+
+    function printNotaMedica() {
+      const v = fmtV;
+      const w = window.open("", "_blank", "width=900,height=1100");
+      w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-AM-51</title>
+  <style>
+    @page{size:letter;margin:12mm}
+    body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:8mm}
+    .tbl{width:100%;border-collapse:collapse}
+    .tbl td{border:1px solid #000;padding:3px 5px;font-size:9pt;vertical-align:top}
+    .tbl td.lbl{font-weight:bold;background:#f5f5f5;font-size:8pt;color:#333}
+    .tbl td.hdr{font-weight:bold;text-align:center;background:#e0e0e0;font-size:10pt}
+    .nota-area{min-height:180mm;white-space:pre-wrap;line-height:1.5;font-size:10pt}
+    .ft{text-align:right;font-size:7pt;color:#666;margin-top:3mm}
+  </style></head><body>
+    <table class="tbl">
+      <tr>
+        <td colspan="3" class="lbl">Nombre del Paciente: <b>${v("fnm_nombre")}</b></td>
+        <td class="lbl">Edad: <b>${v("fnm_edad")}</b></td>
+        <td class="lbl">Sexo: <b>${v("fnm_sexo")}</b></td>
+        <td class="lbl">N° de Expediente: <b>${v("fnm_exp")}</b></td>
+      </tr>
+      <tr>
+        <td colspan="2" class="lbl">Servicio/Área: <b>${v("fnm_servicio")}</b></td>
+        <td colspan="2" class="lbl">Fecha de Nacimiento: ${v("fnm_fn")}</td>
+        <td class="lbl">N° de Cama: <b>${v("fnm_cama")}</b></td>
+        <td class="lbl">Hoja Número: </td>
+      </tr>
+      <tr>
+        <td class="lbl" rowspan="2" style="width:80px">${v("fnm_fecha")}<br><br><b>Signos Vitales</b><br>TA: ${v("fnm_ta")}<br>FC: ${v("fnm_fc")}<br>FR: ${v("fnm_fr")}<br>T°: ${v("fnm_temp")}<br>SpO2: ${v("fnm_spo2")}</td>
+        <td colspan="5" class="lbl" style="text-align:center;font-size:8pt;color:#666">NOM-004-SSA3-2012: Estado mental, interrogatorio, exploración física, resultados de estudios, diagnósticos, tratamiento, pronóstico</td>
+      </tr>
+      <tr>
+        <td colspan="5" style="min-height:200mm">
+          <div style="text-align:center;font-weight:bold;margin-bottom:3mm">${v("fnm_nombre")} / ${v("fnm_edad")} AÑOS / ${v("fnm_fecha")}</div>
+          <div style="text-align:center;font-weight:bold;margin-bottom:3mm;font-size:11pt">${v("fnm_titulo")}</div>
+          <div class="nota-area">${v("fnm_contenido").replace(/\n/g, "<br>")}</div>
+          ${v("fnm_labs") ? `<div style="margin-top:3mm;padding-top:2mm;border-top:1px solid #ccc"><b>LABORATORIOS:</b><br>${v("fnm_labs").replace(/\n/g, "<br>")}</div>` : ""}
+          <div style="margin-top:10mm;text-align:right"><b>${v("fnm_medico")}</b></div>
+        </td>
+      </tr>
+    </table>
+    <div class="ft">FT-HGL-AM-51</div>
+    <script>window.print();<\/script>
+  </body></html>`);
+      w.document.close();
+    }
+
 
     // ─── NOTAS MÉDICAS (PLANTILLAS) ────────────────────────────────────────────────
     const NOTE_TEMPLATES = {
@@ -7550,6 +7939,79 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         children.push(new Paragraph({ spacing: { before: 100 }, children: [new TextRun({ text: item.label.toUpperCase() + ": ", bold: true, size: 18, font: "Calibri" }), new TextRun({ text: lines[0], size: 18, font: "Calibri" })] }));
         lines.slice(1).forEach(line => children.push(new Paragraph({ children: [new TextRun({ text: line, size: 18, font: "Calibri" })] })));
       });
+      // Signature lines
+      children.push(new Paragraph({ spacing: { before: 600 }, children: [] }));
+      children.push(new Paragraph({
+        alignment: AlignmentType.LEFT, children: [
+          new TextRun({ text: "________________________________                    ________________________________", size: 18, font: "Calibri" })
+        ]
+      }));
+      children.push(new Paragraph({
+        alignment: AlignmentType.LEFT, children: [
+          new TextRun({ text: "MÉDICO DE BASE A CARGO                                    RESIDENTE", size: 16, font: "Calibri", color: "666666" })
+        ]
+      }));
+
+      const doc = new Document({ sections: [{ children }] });
+      Packer.toBlob(doc).then(blob => {
+        const url = URL.createObjectURL(blob); const a = document.createElement("a");
+        a.href = url; a.download = tmpl.title.replace(/\s+/g, "_") + "_" + (p ? p.nombre : "").replace(/\s+/g, "_") + ".docx";
+        a.click(); URL.revokeObjectURL(url);
+      });
+    }
+
+    // ─── ALTA WORD DOWNLOAD ─────────────────────────────────────────────────────────
+    function _getAltaData(pk) {
+      const fields = document.querySelectorAll(`[data-altakey="${pk}"]`);
+      const data = {};
+      fields.forEach(el => { data[el.dataset.altafield] = el.textContent || ""; });
+      return data;
+    }
+
+    function downloadAltaWord(pk) {
+      if (!window.docx) { alert("Librería cargando."); return; }
+      const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType } = window.docx;
+      const p = patients.find(x => pid(x) === pk); if (!p) return;
+      const nd = noteData[pk] || defaultData();
+      const ad = _getAltaData(pk);
+      const gi = getGuardInfo();
+      const days = daysSince(p.ingreso);
+      const sexoAlta = normalizeSexValue(ad.sexo || getPatientSex(p, nd));
+      const edadAlta = toSafeString(ad.edad || p.edad);
+
+      function mkRow(label, value) {
+        return new TableRow({
+          children: [
+            new TableCell({ width: { size: 2500, type: WidthType.DXA }, children: [new Paragraph({ children: [new TextRun({ text: label, bold: true, size: 18, font: "Calibri" })] })] }),
+            new TableCell({ width: { size: 7500, type: WidthType.DXA }, children: [new Paragraph({ children: [new TextRun({ text: value || "", size: 18, font: "Calibri" })] })] })
+          ]
+        });
+      }
+
+      const children = [];
+      children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 }, children: [new TextRun({ text: "HOSPITAL GENERAL DE LEÓN", bold: true, size: 28, font: "Calibri", color: "001746" })] }));
+      children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: "NOTA DE EVOLUCIÓN Y ALTA O EGRESO HOSPITALARIO", bold: true, size: 22, font: "Calibri", color: "001746" })] }));
+
+      const rows = [
+        mkRow("FECHA", gi.fecha || ""),
+        mkRow("PACIENTE", p.nombre || ""),
+        mkRow("EDAD", (edadAlta || "") + " AÑOS"),
+        mkRow("SEXO", sexoAlta || ""),
+        mkRow("EXPEDIENTE", p.exp || ""),
+        mkRow("SERVICIO", p.esp || "CIRUGÍA GENERAL"),
+        mkRow("CAMA", p.cama || ""),
+        mkRow("FECHA INGRESO", p.ingreso || ""),
+        mkRow("DÍAS HOSPITALIZACIÓN", days + ""),
+        mkRow("DX INGRESO", p.dx || ""),
+        mkRow("DX EGRESO", ad.dx_egreso || p.dx || ""),
+        mkRow("EVOLUCIÓN Y ESTADO", ad.evolucion || ""),
+        mkRow("PROBLEMAS PENDIENTES", ad.pendientes || nd.pendientes || ""),
+        mkRow("PLAN Y TRATAMIENTO", ad.tratamiento || ""),
+        mkRow("RECOMENDACIONES", ad.recomendaciones || ""),
+        mkRow("PRONÓSTICO", ad.pronostico || "RESERVADO"),
+        mkRow("MOTIVO EGRESO", ad.motivo || "MEJORÍA"),
+      ];
+      children.push(new Table({ rows, width: { size: 10000, type: WidthType.DXA } }));
       children.push(new Paragraph({ spacing: { before: 600 }, children: [] }));
       children.push(new Paragraph({ children: [new TextRun({ text: "________________________________                    ________________________________", size: 18, font: "Calibri" })] }));
       children.push(new Paragraph({ children: [new TextRun({ text: "MÉDICO DE BASE A CARGO                                    RESIDENTE", size: 16, font: "Calibri", color: "666666" })] }));
@@ -7561,6 +8023,283 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       });
     }
 
+    function printAlta(pk) {
+      const p = patients.find(x => pid(x) === pk); if (!p) return;
+      const nd = noteData[pk] || defaultData();
+      const ad = _getAltaData(pk);
+      const gi = getGuardInfo();
+      const days = daysSince(p.ingreso);
+      const now = new Date();
+      const fechaStr = gi.fecha || now.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+      const horaStr = now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) + " HRS";
+      const sexoAlta = normalizeSexValue(ad.sexo || getPatientSex(p, nd));
+      const edadAlta = toSafeString(ad.edad || p.edad);
+
+      function tr(lbl, val, bold) {
+        const v = toSafeString(val).replace(/\n/g, "<br>");
+        return `<tr>
+      <td style="font-weight:700;font-size:10.5pt;padding:5px 8px;vertical-align:top;border:1px solid #999;width:175px;font-family:Calibri,sans-serif;background:#f4f6fb;color:#001746">${lbl}</td>
+      <td style="font-size:10.5pt;padding:5px 8px;border:1px solid #999;font-family:Calibri,sans-serif;${bold ? 'font-weight:700;' : ''}color:#000">${v}</td>
+    </tr>`;
+      }
+
+      // Calcular fecha de egreso
+      const fechaEgresoStr = gi.fecha || fechaStr;
+
+      const rows = [
+        tr("FECHA DE ELABORACIÓN", fechaStr + "&nbsp;&nbsp;&nbsp;&nbsp;HORA: " + horaStr),
+        tr("NOMBRE DEL PACIENTE", p.nombre, true),
+        tr("EDAD / SEXO / EXPEDIENTE", (edadAlta || "") + " AÑOS / " + esc(sexoAlta || "") + " / " + esc(p.exp || "")),
+        tr("SERVICIO / CAMA", "CIRUGÍA GENERAL / CAMA: " + esc(p.cama) + "&nbsp;&nbsp;&nbsp;AFILIACIÓN AL SEGURO POPULAR: NO"),
+        tr("FECHA DE INGRESO / EGRESO", p.ingreso + "&nbsp;&nbsp;&nbsp;&nbsp;EGRESO: " + fechaEgresoStr + "&nbsp;&nbsp;&nbsp;DÍAS: " + days),
+        `<tr><td colspan="2" style="padding:4px 8px;background:#001746;color:#fff;font-weight:700;font-size:10pt;font-family:Calibri,sans-serif">DIAGNÓSTICO DE INGRESO</td></tr>`,
+        `<tr><td colspan="2" style="padding:5px 8px;font-size:10.5pt;font-family:Calibri,sans-serif;border:1px solid #999;font-weight:700">${esc(p.dx || "")}</td></tr>`,
+        `<tr><td colspan="2" style="padding:4px 8px;background:#001746;color:#fff;font-weight:700;font-size:10pt;font-family:Calibri,sans-serif">DIAGNÓSTICO DE EGRESO</td></tr>`,
+        `<tr><td colspan="2" style="padding:5px 8px;font-size:10.5pt;font-family:Calibri,sans-serif;border:1px solid #999;font-weight:700">${esc(ad.dx_egreso || p.dx || "")}</td></tr>`,
+        `<tr><td colspan="2" style="padding:4px 8px;background:#e8f0fb;color:#001746;font-weight:700;font-size:10pt;font-family:Calibri,sans-serif;border:1px solid #999">RESUMEN CLÍNICO</td></tr>`,
+        tr("ANTECEDENTES DE IMPORTANCIA", esc(ad.antecedentes || nd.app || "")),
+        tr("EVOLUCIÓN, MANEJO Y ESTADO ACTUAL", esc(ad.evolucion || "")),
+        tr("PROBLEMAS CLÍNICOS PENDIENTES", esc(ad.pendientes || nd.pendientes || "")),
+        tr("PLAN DE MANEJO Y TRATAMIENTO", esc(ad.tratamiento || "")),
+        tr("RECOMENDACIONES PARA VIGILANCIA AMBULATORIA", esc(ad.recomendaciones || "")),
+        tr("PRONÓSTICO", esc(ad.pronostico || "RESERVADO")),
+        tr("SIGNOS VITALES AL EGRESO", esc(ad.sv || nd.sv || "FC:   FR:   TA: /   Temp:   SatO2:   AIRE AMBIENTE")),
+        tr("MOTIVO DEL EGRESO", "MEJORÍA: ✓"),
+      ].join("");
+
+      // Logo HGL SVG (simplificado) + Logo SaludGTO texto
+      const logoHGL = `<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="30" cy="30" r="28" fill="#001746" stroke="#c8a96e" stroke-width="2"/>
+    <text x="30" y="22" text-anchor="middle" font-size="8" fill="#c8a96e" font-family="serif" font-weight="bold">HOSPITAL</text>
+    <text x="30" y="32" text-anchor="middle" font-size="7" fill="#fff" font-family="serif">GENERAL</text>
+    <text x="30" y="42" text-anchor="middle" font-size="10" fill="#c8a96e" font-family="serif" font-weight="bold">LEÓN</text>
+  </svg>`;
+      const logoSalud = `<div style="border:2px solid #006633;border-radius:6px;padding:4px 8px;text-align:center;font-family:Arial,sans-serif">
+    <div style="color:#006633;font-size:9pt;font-weight:700">Sistema de</div>
+    <div style="color:#006633;font-size:14pt;font-weight:900;line-height:1">SaludGTO</div>
+    <div style="color:#006633;font-size:7pt">El mejor de todo el país</div>
+  </div>`;
+
+      const w = window.open("", "_blank", "width=850,height=900");
+      w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>NOTA DE ALTA — ${p.nombre}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:Calibri,sans-serif;padding:20px 28px;color:#000;font-size:10.5pt;max-width:800px;margin:0 auto}
+    table{width:100%;border-collapse:collapse}
+    @media print{body{padding:10px 16px}@page{margin:10mm 12mm}}
+  </style></head><body>
+  <!-- ENCABEZADO -->
+  <table style="margin-bottom:8px">
+    <tr>
+      <td style="width:70px;vertical-align:middle">${logoHGL}</td>
+      <td style="text-align:center;vertical-align:middle;padding:0 10px">
+        <div style="font-size:16pt;font-weight:900;color:#001746;font-family:Calibri,sans-serif">HOSPITAL GENERAL LEÓN</div>
+        <div style="font-size:12pt;font-weight:700;color:#001746;margin-top:2px">NOTA DE EVOLUCIÓN Y ALTA O EGRESO HOSPITALARIO</div>
+      </td>
+      <td style="width:90px;vertical-align:middle;text-align:right">${logoSalud}</td>
+    </tr>
+  </table>
+  <hr style="border:2px solid #001746;margin:6px 0 12px"/>
+  <!-- TABLA DATOS -->
+  <table style="border-collapse:collapse;width:100%">${rows}</table>
+  <!-- FIRMAS -->
+  <br>
+  <table style="width:100%;margin-top:30px">
+    <tr>
+      <td style="width:50%;text-align:center;padding-top:40px;border-top:1px solid #000;font-size:9pt;font-family:Calibri">
+        <div style="font-weight:700">DR. ${esc((p.adscrito || "RODRÍGUEZ").toUpperCase())} MBCG</div>
+        <div>SELLO Y FIRMA DE MÉDICO ADSCRITO</div>
+      </td>
+      <td style="width:10%"></td>
+      <td style="width:50%;text-align:center;padding-top:40px;border-top:1px solid #000;font-size:9pt;font-family:Calibri">
+        <div style="font-weight:700">DR ${esc(toSafeString(p.residente).toUpperCase())} R1CG</div>
+        <div>NOMBRE CÉDULA Y FIRMA DE MÉDICO RESIDENTE</div>
+      </td>
+    </tr>
+  </table>
+  <script>setTimeout(()=>window.print(),400);<\/script>
+  </body></html>`);
+      w.document.close();
+    }
+
+    // ─── MODAL ADD/EDIT ──────────────────────────────────────────────────────────────
+    function openAddModal() {
+      modalMode = "add"; modalOrigKey = null;
+      document.getElementById("modal-title").textContent = "➕ Agregar nuevo paciente";
+      document.getElementById("modal-save-btn").textContent = "✓ Agregar al censo";
+      document.getElementById("modal-warn-edit").style.display = "none";
+      ["cama", "exp", "edad", "nombre", "adscrito", "residente", "ingreso", "dx"].forEach(f => { var el = document.getElementById("mf-" + f); if (el) el.value = ""; });
+      ["mf-app-modal", "mf-pa-modal", "mf-manejo-modal", "mf-sangrado-modal", "mf-drenajes-modal", "mf-pendientes-modal"].forEach(function (id) { var el = document.getElementById(id); if (el) el.value = ""; });
+      document.getElementById("mf-esp").value = "CG";
+      document.getElementById("mf-estado").value = "ESTABLE";
+      document.getElementById("mf-sexo").value = "";
+      _fillDL();
+      document.getElementById("patient-modal").style.display = "flex";
+    }
+    function _fillDL() {
+      var a = [...new Set(patients.map(function (p) { return p.adscrito || ""; }).filter(Boolean))].sort();
+      var r = [...new Set(patients.map(function (p) { return p.residente || ""; }).filter(Boolean))].sort();
+      var dA = document.getElementById("dl-ads"), dR = document.getElementById("dl-res");
+      if (dA) dA.innerHTML = a.map(function (x) { return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
+      if (dR) dR.innerHTML = r.map(function (x) { return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
+      var sA = document.getElementById("mf-adscrito-sel"), sR = document.getElementById("mf-residente-sel");
+      var aOpts = "<option value=''>-- Seleccionar --</option>" + a.map(function (x) { return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
+      var rOpts = "<option value=''>-- Seleccionar --</option>" + r.map(function (x) { return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
+      if (sA) sA.innerHTML = aOpts;
+      if (sR) sR.innerHTML = rOpts;
+    }
+    function openEditModal(k) {
+      const p = patients.find(p => pid(p) === k); if (!p) return;
+      modalMode = "edit"; modalOrigKey = k;
+      document.getElementById("modal-title").textContent = "✏️ Editar datos del paciente";
+      document.getElementById("modal-save-btn").textContent = "✓ Guardar cambios";
+      document.getElementById("modal-warn-edit").style.display = "block";
+      document.getElementById("mf-cama").value = p.cama || "";
+      document.getElementById("mf-exp").value = p.exp || "";
+      document.getElementById("mf-edad").value = p.edad || "";
+      document.getElementById("mf-nombre").value = p.nombre || "";
+      document.getElementById("mf-esp").value = p.esp || "CG";
+      document.getElementById("mf-adscrito").value = p.adscrito || "";
+      document.getElementById("mf-residente").value = p.residente || "";
+      document.getElementById("mf-ingreso").value = p.ingreso || "";
+      document.getElementById("mf-estado").value = p.estado || "ESTABLE";
+      document.getElementById("mf-dx").value = p.dx || "";
+      var _nd_e = noteData[k] || defaultData();
+      document.getElementById("mf-sexo").value = getPatientSex(p, _nd_e);
+      var _ae = document.getElementById("mf-app-modal"); if (_ae) _ae.value = _nd_e.app || "";
+      var _pe = document.getElementById("mf-pa-modal"); if (_pe) _pe.value = _nd_e.pa || "";
+      var _me = document.getElementById("mf-manejo-modal"); if (_me) _me.value = _nd_e.manejo || "";
+      var _se = document.getElementById("mf-sangrado-modal"); if (_se) _se.value = _nd_e.sangrado || "";
+      var _de = document.getElementById("mf-drenajes-modal"); if (_de) _de.value = _nd_e.drenajes || "";
+      var _pde = document.getElementById("mf-pendientes-modal"); if (_pde) _pde.value = _nd_e.pendientes || "";
+      _fillDL();
+      document.getElementById("patient-modal").style.display = "flex";
+    }
+    function closeModal() { document.getElementById("patient-modal").style.display = "none"; }
+    function saveModal() {
+      const cama = document.getElementById("mf-cama").value.trim().toUpperCase();
+      const exp = document.getElementById("mf-exp").value.trim();
+      const nombre = document.getElementById("mf-nombre").value.trim().toUpperCase();
+      if (!cama || !exp || !nombre) { alert("Cama, nombre y expediente son obligatorios"); return; }
+      // Validar formato fecha de ingreso (DD/MM/AA o DD/MM/AAAA)
+      const ingresoVal = document.getElementById("mf-ingreso").value.trim();
+      if (ingresoVal && !parseDmy(ingresoVal)) {
+        if (!confirm(`⚠️ La fecha de ingreso "${ingresoVal}" no parece válida (usa DD/MM/AA).\n\n¿Continuar de todas formas?`)) return;
+      }
+      var _ads_val = document.getElementById("mf-adscrito").value.trim() || document.getElementById("mf-adscrito-sel").value;
+      var _res_val = document.getElementById("mf-residente").value.trim() || document.getElementById("mf-residente-sel").value;
+      const existingPatient = modalMode === "edit" ? patients.find(pt => pid(pt) === modalOrigKey) : null;
+      const sexo = normalizeSexValue(document.getElementById("mf-sexo").value);
+      const p = {
+        ...(existingPatient || {}),
+        cama, exp, nombre,
+        edad: parseInt(document.getElementById("mf-edad").value) || "",
+        esp: document.getElementById("mf-esp").value,
+        adscrito: _ads_val.toUpperCase(),
+        residente: _res_val.toUpperCase(),
+        ingreso: document.getElementById("mf-ingreso").value.trim(),
+        estado: document.getElementById("mf-estado").value,
+        dx: document.getElementById("mf-dx").value.trim().toUpperCase(),
+        sexo
+      };
+      var _modalExtra = {
+        app: (document.getElementById("mf-app-modal") || {}).value || "",
+        pa: (document.getElementById("mf-pa-modal") || {}).value || "",
+        manejo: (document.getElementById("mf-manejo-modal") || {}).value || "",
+        sangrado: (document.getElementById("mf-sangrado-modal") || {}).value || "",
+        drenajes: (document.getElementById("mf-drenajes-modal") || {}).value || "",
+        pendientes: (document.getElementById("mf-pendientes-modal") || {}).value || "",
+        sexo
+      };
+      if (modalMode === "add") {
+        patients.push(p);
+        const newKey = pid(p);
+        noteData[newKey] = applyModalExtraToNote(defaultData(), _modalExtra);
+        saveNote(newKey, noteData[newKey]);
+      } else {
+        const newKey = pid(p);
+        patients = patients.map(pt => pid(pt) === modalOrigKey ? p : pt);
+        if (modalOrigKey !== newKey) {
+          noteData[newKey] = noteData[modalOrigKey] || defaultData();
+          delete noteData[modalOrigKey];
+          // Limpiar oldKey en localStorage y en KV remoto para evitar "ghost notes"
+          localStorage.removeItem(NOTES_PREFIX + modalOrigKey);
+          deleteNoteRemote(modalOrigKey);
+          _cleanupPatientCache(modalOrigKey);
+        }
+        noteData[newKey] = applyModalExtraToNote(noteData[newKey] || defaultData(), _modalExtra);
+        saveNote(newKey, noteData[newKey]);
+      }
+      _savePtsImmediate(); // inmediato: asigna _supa_id antes de que llegue el Realtime INSERT
+      buildEspFilters();
+      closeModal();
+      renderView();
+    }
+
+    // ─── CONFIRM DISCHARGE ───────────────────────────────────────────────────────────
+    function openConfirm(k) {
+      const p = patients.find(p => pid(p) === k); if (!p) return;
+      document.getElementById("confirm-name").textContent = p.nombre;
+      document.getElementById("confirm-sub").textContent = `Cama ${p.cama} · ${p.esp} · Exp: ${p.exp}`;
+      document.getElementById("confirm-btn").onclick = () => { dischargePatient(k); };
+      document.getElementById("confirm-modal").style.display = "flex";
+    }
+    function dischargePatient(k) {
+      const p = patients.find(pt => pid(pt) === k);
+      if (!p) { document.getElementById("confirm-modal").style.display = "none"; return; }
+      suppressKey(p._supa_id || "__all__");
+      // Archivar: guardar paciente + sus notas antes de quitarlo del censo activo
+      const nd = noteData[k] || defaultData();
+      const archived = {
+        ...p,
+        _archivedAt: new Date().toISOString(),
+        _archiveKey: k,
+        _note: nd
+      };
+      archivados.unshift(archived);
+      try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+      // Quitar del censo activo
+      patients = patients.filter(pt => pid(pt) !== k);
+      delete noteData[k];
+      localStorage.removeItem(NOTES_PREFIX + k);
+      _cleanupPatientCache(k);
+      // Delete from Supabase (cascade deletes note too)
+      if (p._supa_id) {
+        supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (discharge):", e));
+        // Also archive to Supabase
+        _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" }).catch(() => { });
+      }
+      savePts();
+      document.getElementById("confirm-modal").style.display = "none";
+      buildEspFilters();
+      renderView();
+      // Feedback
+      const badge = document.getElementById("count-badge");
+      if (badge) { const prev = badge.textContent; badge.style.color = "#27ae60"; badge.textContent = "✅ Paciente archivado"; setTimeout(() => { badge.style.color = ""; badge.textContent = prev; }, 2200); }
+    }
+
+    function restorePatient(archiveIdx) {
+      const arc = archivados[archiveIdx]; if (!arc) return;
+      if (!confirm(`¿Restaurar a ${arc.nombre} al censo activo?`)) return;
+      const { _archivedAt, _archiveKey, _note, _supa_id, ...p } = arc;
+      delete p._supa_id; // Force new Supabase row on save
+      patients.push(p);
+      noteData[pid(p)] = _note || defaultData();
+      archivados.splice(archiveIdx, 1);
+      try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+      savePts();
+      saveNote(pid(p), noteData[pid(p)]);
+      buildEspFilters();
+      renderView();
+    }
+
+    function deleteArchivedPermanently(archiveIdx) {
+      const arc = archivados[archiveIdx]; if (!arc) return;
+      if (!confirm(`¿Eliminar permanentemente a ${arc.nombre}? Esta acción no se puede deshacer.`)) return;
+      archivados.splice(archiveIdx, 1);
+      try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+      renderView();
+    }
     // ─── SNAPSHOTS DE GUARDIA ──────────────────────────────────────────────────────
     function saveGuardSnapshot() {
       const gi = getGuardInfo();
@@ -7610,7 +8349,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const ci = (n) => header.findIndex(h => h.includes(n));
           const iCama = ci("CAMA"), iExp = ci("EXPEDIENTE"), iNombre = ci("NOMBRE"), iEdad = ci("EDAD");
           const iDx = ci("DIAGNÓS"), iEsp = ci("ESPECIALIDAD"), iAds = ci("ADSCRITO"), iRes = ci("RESIDENTE");
-          const iIng = ci("INGRESO"), iEst = ci("ESTADO");
+          const iIng = ci("INGRESO"), iEst = ci("ESTADO"), iSexo = ci("SEXO");
 
           // ─── DETECT SECTION HEADERS ─────────────────────────────────────
           // Scan for section dividers: ALTAS, DEFUNCIONES, PROCEDIMIENTOS
@@ -7664,7 +8403,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               dx: iDx >= 0 ? String(r[iDx] || "").trim().toUpperCase() : "",
               esp, adscrito: iAds >= 0 ? String(r[iAds] || "").trim().toUpperCase() : "",
               residente: iRes >= 0 ? String(r[iRes] || "").trim().toUpperCase() : "",
-              ingreso, estado
+              ingreso, estado,
+              sexo: iSexo >= 0 ? normalizeSexValue(r[iSexo]) : ""
             };
 
             if (currentSection === "altas") altasFromExcel.push(pt);
@@ -7871,6 +8611,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function confirmImport() {
       if (!pendingImport) return;
       const { samePts, changedPts, newPts, missingPts, dispositions, procedimientosFromExcel } = pendingImport;
+      const existingByPid = new Map(patients.map(p => [pid(p), p]));
 
       // El nuevo censo Excel ES la fuente de verdad.
       // Construimos el nuevo array de patients desde cero.
@@ -7880,7 +8621,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // 1) Pacientes que siguen en la misma cama con el mismo expediente → actualizar datos censo, conservar notas
       samePts.forEach(p => {
         const k = pid(p);
-        nextPatients.push({ ...p });
+        const prev = existingByPid.get(k) || {};
+        nextPatients.push({
+          ...prev,
+          ...p,
+          sexo: normalizeSexValue(p.sexo || prev.sexo || ""),
+          _noEnCenso: false
+        });
         processedOldPids.add(k);
         // Limpiar bandera si la tenían
         if (noteData[k]) noteData[k]._noEnCenso = false;
@@ -8452,7 +9199,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           r.onerror = function(){ resolve({ file: file.name, extracted: null, error: "Error leyendo archivo" }); };
           r.onload = function() {
             var base64 = r.result.split(",")[1];
-            var prompt = 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\nSi es (A) labs clinicos, responde SOLO con este JSON:\n{"tipo_lab":"labs","hb":"","leucos":"","plaq":"","cr":"","glu":"","na":"","k":"","alb":"","pcr":"","pct":"","inr":"","urea":"","mg":"","ca":"","p":"","cl":"","tp":"","ttp":"","fibrinogeno":"","ast":"","alt":"","bt":"","bd":"","ggt":"","fa":"","ph":"","pco2":"","po2":"","hco3":"","be":"","sato2":"","ego_color":"","ego_asp":"","ego_dens":"","ego_ph":"","ego_leuco":"","ego_nitri":"","ego_bact":"","ego_prot":"","ego_glu":"","ego_hem":"","paciente":"","fecha_labs":""}\n\nSi es (B) cultivo microbiologico, responde SOLO con este JSON:\n{"tipo_lab":"cultivo","tipo_cultivo":"hemocultivo|urocultivo|coprocultivo|cultivo herida|cultivo esputo|cultivo secrecion|otro cultivo","cultivo_organismo":"organismo encontrado o Negativo o Sin crecimiento","cultivo_sensibilidades":"antibioticos sensibles separados por coma o vacio si no aplica","cultivo_resistencias":"antibioticos resistentes separados por coma o vacio si no aplica","micro_muestra":"","micro_comentarios":"","paciente":"","fecha_labs":""}\n\nReglas: valores numericos sin unidades para química/biometría/gasometría; en EGO y microbiología se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "".';
+            var prompt = buildBulkLabExtractionPrompt();
             fetch(proxyUrl + "/api/ai", {
               method: "POST",
               headers: apiHeaders(),
