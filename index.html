@@ -4146,6 +4146,9 @@
       _realtimeSubs.forEach(s => { try { s.unsubscribe(); } catch (e) { safeLog("[RT] unsubscribe error:", e); } });
       _realtimeSubs = [];
 
+      // Guard info broadcast (sin cambio de schema, canal efímero)
+      initGuardInfoSync();
+
       // Subscribe to patients changes
       try {
         const patSub = _supa.channel("patients-changes")
@@ -4560,8 +4563,47 @@
         recibe: _el("gi-recibe")
       };
     }
+    var _guardInfoChannel = null;
+
+    // Emite la guard info actual a todos los dispositivos conectados vía Supabase Broadcast.
+    // No requiere cambio de schema: usa el canal efímero de WebSocket.
+    function _broadcastGuardInfo(gi) {
+      if (_guardInfoChannel) {
+        try { _guardInfoChannel.send({ type: "broadcast", event: "update", payload: gi }); } catch (_) {}
+      }
+    }
+
+    // Inicia (o reinicia) la suscripción al canal broadcast de guard info.
+    // Llamado desde startRealtime() para que comparta el mismo ciclo de vida.
+    function initGuardInfoSync() {
+      if (!window._supaClient) return;
+      if (_guardInfoChannel) {
+        try { _guardInfoChannel.unsubscribe(); } catch (_) {}
+        _guardInfoChannel = null;
+      }
+      try {
+        _guardInfoChannel = window._supaClient.channel("pl-guard-info")
+          .on("broadcast", { event: "update" }, function (payload) {
+            if (!payload || !payload.payload) return;
+            const gi = payload.payload;
+            const fechaEl = document.getElementById("gi-fecha");
+            const entregaEl = document.getElementById("gi-entrega");
+            const recibeEl = document.getElementById("gi-recibe");
+            // Solo actualizar campos que no tienen el foco (no interrumpir al usuario que está escribiendo)
+            if (fechaEl && gi.fecha !== undefined && document.activeElement !== fechaEl) fechaEl.value = gi.fecha;
+            if (entregaEl && gi.entrega !== undefined && document.activeElement !== entregaEl) entregaEl.value = gi.entrega;
+            if (recibeEl && gi.recibe !== undefined && document.activeElement !== recibeEl) recibeEl.value = gi.recibe;
+            // Persistir localmente sin re-emitir (evita eco)
+            try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(gi)); } catch (_) {}
+          })
+          .subscribe();
+      } catch (_) { /* Broadcast opcional — funciona sin él */ }
+    }
+
     function persistGuardInfo() {
-      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(readGuardInfoFromUI())); } catch (e) { safeLog("persistGuardInfo:", e); }
+      const gi = readGuardInfoFromUI();
+      try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(gi)); } catch (e) { safeLog("persistGuardInfo:", e); }
+      _broadcastGuardInfo(gi);
     }
     const persistGuardInfoDebounced = debounce(persistGuardInfo, 250);
     function restoreGuardInfo() {
