@@ -298,7 +298,7 @@
     #piso-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(640px, 1fr));
-      gap: 14px;
+      gap: 6px;
       align-items: start;
     }
 
@@ -2065,6 +2065,68 @@
       border-color: #0ea5e9
     }
 
+    /* PASE MATUTINO */
+    .pm-input {
+      font-size: 11px;
+      padding: 1px 5px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      outline: none;
+      width: 52px;
+      background: #fff;
+      font-family: var(--font);
+      text-align: center
+    }
+
+    .pm-input:focus {
+      border-color: #0ea5e9
+    }
+
+    .pm-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: #64748b;
+      white-space: nowrap;
+      text-align: center
+    }
+
+    .pm-field {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px
+    }
+
+    .ck-item.ck-sep-on {
+      background: #dc2626;
+      color: #fff;
+      border-color: #b91c1c
+    }
+
+    .ck-item.ck-vent-on {
+      background: #0369a1;
+      color: #fff;
+      border-color: #075985
+    }
+
+    .ck-item.ck-sng-on {
+      background: #d97706;
+      color: #fff;
+      border-color: #b45309
+    }
+
+    .ck-item.ck-prs-on {
+      background: #7c3aed;
+      color: #fff;
+      border-color: #6d28d9
+    }
+
+    .ck-item.ck-estoma-on {
+      background: #0891b2;
+      color: #fff;
+      border-color: #0e7490
+    }
+
     /* SYNC STATUS */
     #sync-status {
       display: inline-flex;
@@ -3268,7 +3330,11 @@
         body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "" }
+        checklist: { npo: false, atb: false, atb_nombre: "", atb_dias: "", tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "",
+          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
+          pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
+          pm_estoma: false, pm_estoma_desc: "", pm_balance: "", pm_sep: false, pm_hxqx: "",
+          pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "" }
       };
     }
 
@@ -3382,6 +3448,40 @@
       if (nd.checklist.sexo === undefined) nd.checklist.sexo = "";
       if (nd.checklist.pendientes_mips === undefined) nd.checklist.pendientes_mips = "";
       if (nd.checklist.pendientes_r1 === undefined) nd.checklist.pendientes_r1 = "";
+      // ATB detail fields
+      if (nd.checklist.atb_nombre === undefined) nd.checklist.atb_nombre = "";
+      if (nd.checklist.atb_dias === undefined) nd.checklist.atb_dias = "";
+      // Pase Matutino - vitales
+      if (nd.checklist.pm_fc === undefined) nd.checklist.pm_fc = "";
+      if (nd.checklist.pm_fr === undefined) nd.checklist.pm_fr = "";
+      if (nd.checklist.pm_temp === undefined) nd.checklist.pm_temp = "";
+      if (nd.checklist.pm_sao2 === undefined) nd.checklist.pm_sao2 = "";
+      if (nd.checklist.pm_o2l === undefined) nd.checklist.pm_o2l = "";
+      if (nd.checklist.pm_ta === undefined) nd.checklist.pm_ta = "";
+      if (nd.checklist.pm_uresis === undefined) nd.checklist.pm_uresis = "";
+      if (nd.checklist.pm_dxtx === undefined) nd.checklist.pm_dxtx = "";
+      // Pase Matutino - drenajes
+      if (nd.checklist.pm_sng === undefined) nd.checklist.pm_sng = false;
+      if (nd.checklist.pm_sng_desc === undefined) nd.checklist.pm_sng_desc = "";
+      if (nd.checklist.pm_prs1 === undefined) nd.checklist.pm_prs1 = false;
+      if (nd.checklist.pm_prs1_desc === undefined) nd.checklist.pm_prs1_desc = "";
+      if (nd.checklist.pm_prs2 === undefined) nd.checklist.pm_prs2 = false;
+      if (nd.checklist.pm_prs2_desc === undefined) nd.checklist.pm_prs2_desc = "";
+      if (nd.checklist.pm_prs3 === undefined) nd.checklist.pm_prs3 = false;
+      if (nd.checklist.pm_prs3_desc === undefined) nd.checklist.pm_prs3_desc = "";
+      if (nd.checklist.pm_estoma === undefined) nd.checklist.pm_estoma = false;
+      if (nd.checklist.pm_estoma_desc === undefined) nd.checklist.pm_estoma_desc = "";
+      if (nd.checklist.pm_balance === undefined) nd.checklist.pm_balance = "";
+      // Pase Matutino - clínico/vent
+      if (nd.checklist.pm_sep === undefined) nd.checklist.pm_sep = false;
+      if (nd.checklist.pm_hxqx === undefined) nd.checklist.pm_hxqx = "";
+      if (nd.checklist.pm_vent === undefined) nd.checklist.pm_vent = false;
+      if (nd.checklist.pm_vent_modo === undefined) nd.checklist.pm_vent_modo = "";
+      if (nd.checklist.pm_vent_fio2 === undefined) nd.checklist.pm_vent_fio2 = "";
+      if (nd.checklist.pm_vent_peep === undefined) nd.checklist.pm_vent_peep = "";
+      if (nd.checklist.pm_vent_vt === undefined) nd.checklist.pm_vent_vt = "";
+      if (nd.checklist.pm_vent_fr === undefined) nd.checklist.pm_vent_fr = "";
+      if (nd.checklist.pm_vent_pip === undefined) nd.checklist.pm_vent_pip = "";
       if (nd.entrega === undefined) nd.entrega = "";
       if (nd.body_diagram_ant === undefined) nd.body_diagram_ant = "";
       if (nd.body_diagram_post === undefined) nd.body_diagram_post = "";
@@ -4596,7 +4696,7 @@
       const _searchEl = document.getElementById("search");
       const search = _searchEl ? _searchEl.value.toLowerCase() : "";
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
-      function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
+      function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
       const searchNorm = normSearch(search);
       const searchTokens = searchNorm ? searchNorm.split(/\s+/).filter(Boolean) : [];
       const filtered = patients.filter(p => {
@@ -9878,53 +9978,121 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(k, nd);
     }
 
+    function updateAtbField(k, field, val) {
+      const nd = getNote(k);
+      nd.checklist[field] = val;
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
+    function updatePmField(k, field, val) {
+      const nd = getNote(k);
+      nd.checklist[field] = val;
+      noteData[k] = nd;
+      saveNote(k, nd);
+    }
+
     function renderChecklist(nd, k) {
       nd = migrateNote(nd);
       const cl = nd.checklist || {};
       const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
 
-      // Row 1: Standard checklist items
-      const items = CHECKLIST_ITEMS.map(item => {
-        const on = !!cl[item.key];
-        return `<span id="ck-${ek}-${item.key}" class="ck-item${on ? " ck-on" : ""}"
-      data-ck="${k}" data-item="${item.key}"
-      onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
-      title="${item.title}"><span class="ck-label">${on ? "✓ " : ""}${item.label}</span></span>`;
-      }).join("");
+      // ── Row 1: Checklist estándar + ATB inline + Dieta ──
+      const npoOn = !!cl.npo;
+      const atbOn = !!cl.atb;
+      const tvpOn = !!cl.tvp;
+      const drenOn = !!cl.dren;
       const dieta = esc(cl.dieta || "");
 
-      // Row 2: Wound care
+      const npoHtml = `<span id="ck-${ek}-npo" class="ck-item${npoOn ? " ck-on" : ""}" data-ck="${k}" data-item="npo" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ayuno / Nada Por vía Oral"><span class="ck-label">${npoOn ? "✓ " : ""}NPO</span></span>`;
+
+      const atbHtml = `<span id="ck-${ek}-atb" class="ck-item${atbOn ? " ck-on" : ""}" data-ck="${k}" data-item="atb" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Antibioticoterapia activa"><span class="ck-label">${atbOn ? "✓ " : ""}ATB</span></span>` +
+        (atbOn ? `<input class="ck-dieta" value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
+          `<input class="ck-dieta" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
+
+      const tvpHtml = `<span id="ck-${ek}-tvp" class="ck-item${tvpOn ? " ck-on" : ""}" data-ck="${k}" data-item="tvp" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Profilaxis TVP (HBPM/compresión)"><span class="ck-label">${tvpOn ? "✓ " : ""}TVP</span></span>`;
+
+      const drenHtml = `<span id="ck-${ek}-dren" class="ck-item${drenOn ? " ck-on" : ""}" data-ck="${k}" data-item="dren" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Drenaje activo en sitio"><span class="ck-label">${drenOn ? "✓ " : ""}Dren</span></span>`;
+
+      // ── Row 2: Herida Qx + NPT ──
+      const woundNecOn = !!cl.cur_necesita;
+      const woundDoneOn = !!cl.cur_realizada;
       const woundItems = WOUND_ITEMS.map(item => {
         const on = !!cl[item.key];
         const extraClass = item.key === "cur_necesita" ? (on ? " ck-wound-need" : "") : (on ? " ck-wound-done" : "");
         const timeLabel = item.key === "cur_realizada" && on && cl.cur_realizada_hora ? ` (${cl.cur_realizada_hora})` : "";
-        return `<span id="ck-${ek}-${item.key}" class="ck-item${on ? " ck-on" : ""}${extraClass}"
-      data-ck="${k}" data-item="${item.key}"
-      onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
-      title="${item.title}"><span class="ck-label">${on ? "✓ " : ""}${item.label}${timeLabel}</span></span>`;
+        return `<span id="ck-${ek}-${item.key}" class="ck-item${on ? " ck-on" : ""}${extraClass}" data-ck="${k}" data-item="${item.key}" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="${item.title}"><span class="ck-label">${on ? "✓ " : ""}${item.label}${timeLabel}</span></span>`;
       }).join("");
 
-      // Row 3: NPT with percentage and date
       const nptOn = !!cl.npt;
       const nptPct = esc(cl.npt_pct || "");
       const nptFecha = esc(cl.npt_fecha || "");
-      const nptHtml = `<span id="ck-${ek}-npt" class="ck-item${nptOn ? " ck-on ck-npt-on" : ""}"
-    data-ck="${k}" data-item="npt"
-    onclick="toggleChecklist(this.dataset.ck, this.dataset.item)"
-    title="Nutrición Parenteral Total"><span class="ck-label">${nptOn ? "✓ " : ""}NPT</span></span>` +
-        (nptOn ? `<input class="ck-dieta" value="${nptPct}" placeholder="% (ej: 80%)"
-      data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)"
-      style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
+      const nptHtml = `<span id="ck-${ek}-npt" class="ck-item${nptOn ? " ck-on ck-npt-on" : ""}" data-ck="${k}" data-item="npt" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Nutrición Parenteral Total"><span class="ck-label">${nptOn ? "✓ " : ""}NPT</span></span>` +
+        (nptOn ? `<input class="ck-dieta" value="${nptPct}" placeholder="% (ej: 80%)" data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)" style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
           (nptFecha ? `<span style="font-size:9px;color:#94a3b8;white-space:nowrap" title="Última actualización del %">🕐 ${nptFecha}</span>` : "") : "");
+
+      // ── Row 3: Pase Matutino — Signos Vitales ──
+      function pmInp(field, w) {
+        const val = esc(cl["pm_" + field] || "");
+        return `<input class="pm-input" value="${val}" placeholder="—" data-ck="${k}" data-field="pm_${field}" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)"${w ? ` style="width:${w}"` : ""}/>`;
+      }
+      const vitalesHtml =
+        `<div class="pm-field"><span class="pm-label">FC</span>${pmInp("fc")}</div>` +
+        `<div class="pm-field"><span class="pm-label">FR</span>${pmInp("fr")}</div>` +
+        `<div class="pm-field"><span class="pm-label">T°</span>${pmInp("temp")}</div>` +
+        `<div class="pm-field"><span class="pm-label">SaO₂%</span>${pmInp("sao2")}</div>` +
+        `<div class="pm-field"><span class="pm-label">c/L O₂</span>${pmInp("o2l")}</div>` +
+        `<div class="pm-field"><span class="pm-label">TA</span>${pmInp("ta", "70px")}</div>` +
+        `<div class="pm-field"><span class="pm-label">Uresis</span>${pmInp("uresis", "70px")}</div>` +
+        `<div class="pm-field"><span class="pm-label">DxTx</span>${pmInp("dxtx")}</div>`;
+
+      // ── Row 4: Pase Matutino — Drenajes / Tubos / Balance ──
+      const sngOn = !!cl.pm_sng;
+      const prs1On = !!cl.pm_prs1;
+      const prs2On = !!cl.pm_prs2;
+      const prs3On = !!cl.pm_prs3;
+      const estomaOn = !!cl.pm_estoma;
+
+      const sngHtml = `<span class="ck-item${sngOn ? " ck-on ck-sng-on" : ""}" data-ck="${k}" data-item="pm_sng" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sonda Nasogástrica activa"><span class="ck-label">${sngOn ? "✓ " : ""}SNG</span></span>` +
+        (sngOn ? `<input class="pm-input" value="${esc(cl.pm_sng_desc || "")}" placeholder="desc..." data-ck="${k}" data-field="pm_sng_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>` : "");
+
+      const prs1Html = `<span class="ck-item${prs1On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs1" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 1"><span class="ck-label">${prs1On ? "✓ " : ""}PRS 1</span></span>` +
+        (prs1On ? `<input class="pm-input" value="${esc(cl.pm_prs1_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs1_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+
+      const prs2Html = `<span class="ck-item${prs2On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs2" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 2"><span class="ck-label">${prs2On ? "✓ " : ""}PRS 2</span></span>` +
+        (prs2On ? `<input class="pm-input" value="${esc(cl.pm_prs2_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs2_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+
+      const prs3Html = `<span class="ck-item${prs3On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs3" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 3"><span class="ck-label">${prs3On ? "✓ " : ""}PRS 3</span></span>` +
+        (prs3On ? `<input class="pm-input" value="${esc(cl.pm_prs3_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs3_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+
+      const estomaHtml = `<span class="ck-item${estomaOn ? " ck-on ck-estoma-on" : ""}" data-ck="${k}" data-item="pm_estoma" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Estoma activo"><span class="ck-label">${estomaOn ? "✓ " : ""}Estoma</span></span>` +
+        (estomaOn ? `<input class="pm-input" value="${esc(cl.pm_estoma_desc || "")}" placeholder="tipo/desc..." data-ck="${k}" data-field="pm_estoma_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px;text-align:left"/>` : "");
+
+      const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
+
+      // ── Row 5: Pase Matutino — SEP / HxQx / Ventilador ──
+      const sepOn = !!cl.pm_sep;
+      const ventOn = !!cl.pm_vent;
+
+      const sepHtml = `<span class="ck-item${sepOn ? " ck-on ck-sep-on" : ""}" data-ck="${k}" data-item="pm_sep" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sepsis / cuadro séptico activo"><span class="ck-label">${sepOn ? "✓ " : ""}SEP</span></span>`;
+
+      const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
+
+      const ventHtml = `<span class="ck-item${ventOn ? " ck-on ck-vent-on" : ""}" data-ck="${k}" data-item="pm_vent" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ventilación mecánica activa"><span class="ck-label">${ventOn ? "✓ " : ""}🫁 VM</span></span>` +
+        (ventOn ? `<input class="pm-input" value="${esc(cl.pm_vent_modo || "")}" placeholder="Modo" data-ck="${k}" data-field="pm_vent_modo" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:60px;text-align:left" title="Modo (AC, PS, SIMV...)"/>` +
+          `<span class="pm-label">FiO₂%</span><input class="pm-input" value="${esc(cl.pm_vent_fio2 || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fio2" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">PEEP</span><input class="pm-input" value="${esc(cl.pm_vent_peep || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_peep" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">VT mL</span><input class="pm-input" value="${esc(cl.pm_vent_vt || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_vt" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">FR</span><input class="pm-input" value="${esc(cl.pm_vent_fr || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fr" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:40px"/>` +
+          `<span class="pm-label">PIP</span><input class="pm-input" value="${esc(cl.pm_vent_pip || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_pip" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` : "");
 
       return `<div id="ck-row-${ek}" class="checklist-wrap">
     <div class="checklist-row">
       <span class="ck-title">✅ Checklist:</span>
-      ${items}
+      ${npoHtml} ${atbHtml} ${tvpHtml} ${drenHtml}
       <span class="ck-sep">|</span>
       <span class="ck-title">🍽 Dieta:</span>
-      <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..."
-        data-ck="${k}" oninput="updateDieta(this.dataset.ck, this.value)" style="width:140px"/>
+      <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
     </div>
     <div class="checklist-row" style="background:#fff7ed;border-color:#fdba74">
       <span class="ck-title">🩹 Herida Qx:</span>
@@ -9932,6 +10100,28 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       <span class="ck-sep">|</span>
       <span class="ck-title">💉 NPT:</span>
       ${nptHtml}
+    </div>
+    <div class="checklist-row" style="background:#f0fdfa;border-color:#5eead4;gap:8px">
+      <span class="ck-title" style="color:#0f766e;margin-right:2px">🫀 Pase Matutino:</span>
+      ${vitalesHtml}
+    </div>
+    <div class="checklist-row" style="background:#fdf4ff;border-color:#d8b4fe">
+      <span class="ck-title" style="color:#7c3aed">🩺 Drenajes:</span>
+      ${sngHtml}
+      <span class="ck-sep">|</span>
+      ${prs1Html} ${prs2Html} ${prs3Html}
+      <span class="ck-sep">|</span>
+      ${estomaHtml}
+      <span class="ck-sep">|</span>
+      ${balRow4Html}
+    </div>
+    <div class="checklist-row" style="background:#fef2f2;border-color:#fca5a5">
+      <span class="ck-title" style="color:#991b1b">⚕️ Clínico:</span>
+      ${sepHtml}
+      <span class="ck-sep">|</span>
+      ${hxqxHtml}
+      <span class="ck-sep">|</span>
+      ${ventHtml}
     </div>
   </div>`;
     }
