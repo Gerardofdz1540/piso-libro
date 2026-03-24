@@ -4236,6 +4236,11 @@
       noteData[key] = safeData;
       // Mark that local data is newer than last confirmed Supabase sync
       try { localStorage.setItem("pl_last_save_ts", Date.now().toString()); } catch (_) {}
+      // BUG-C1 FIX: Suppress Realtime for this patient for 5 s so that incoming
+      // events don't overwrite the data we're about to push (race condition window:
+      // 500 ms debounce + network round-trip + Supabase Realtime propagation).
+      const _p4suppress = patients.find(x => pid(x) === key);
+      if (_p4suppress && _p4suppress._supa_id) suppressKey(_p4suppress._supa_id, 5000);
       // Debounced push to Supabase
       if (!_noteDebounceMap[key]) {
         _noteDebounceMap[key] = debounce(async (k, d) => {
@@ -4610,10 +4615,20 @@
         nd.body_diagram_ant = remoteMeta.body_diagram_ant;
         nd.body_diagram_post = remoteMeta.body_diagram_post;
       }
-      nd.labHistory = Array.isArray(newRow.lab_history) ? newRow.lab_history : [];
-      nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
-        ? newRow.imagen_history
-        : (existing.imagenHistory || []);
+      // BUG-C2/C3 FIX: preserve local labHistory / imagenHistory if the user is
+      // actively editing them (dirty flag set by liveLabUpdate / imagen updates).
+      if (!dirty.has("labHistory")) {
+        nd.labHistory = Array.isArray(newRow.lab_history) ? newRow.lab_history : [];
+      } else {
+        nd.labHistory = existing.labHistory || [];
+      }
+      if (!dirty.has("imagenHistory")) {
+        nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
+          ? newRow.imagen_history
+          : (existing.imagenHistory || []);
+      } else {
+        nd.imagenHistory = existing.imagenHistory || [];
+      }
       try { noteData[k] = migrateNote(nd); } catch (e) { safeLog("[RT] migrateNote error for " + k + ":", e); noteData[k] = defaultData(); }
       lsSaveNote(k, noteData[k]);
       // Si el modal está abierto para este paciente: mostrar aviso y NO re-renderizar la tarjeta
@@ -5225,6 +5240,27 @@
           await flushOutbox();
         }
       }, 30000);
+
+      // BUG-M4 FIX: Auto-refresh cruce badge every 60 s so the countdown timer
+      // stays accurate without a full card re-render. Only touches the badge button
+      // elements to avoid destroying user input in other fields.
+      setInterval(function() {
+        patients.forEach(function(p) {
+          var k = pid(p);
+          var nd = noteData[k];
+          if (!nd) return;
+          var ck = (nd.checklist) || {};
+          if (!ck.cruce_activo || !ck.cruce_ts) return; // only active cruces
+          var badgeEl = document.querySelector('.badge-cruce[onclick*="' + k.replace(/['"]/g, '') + '"]');
+          if (!badgeEl) return;
+          var newBadge = renderCruceBadge(nd, k);
+          if (!newBadge) return;
+          var tmp = document.createElement("div");
+          tmp.innerHTML = newBadge;
+          var newEl = tmp.firstChild;
+          if (newEl) badgeEl.parentNode.replaceChild(newEl, badgeEl);
+        });
+      }, 60000);
     }
     // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
     function setView(v, btn) {
@@ -6756,11 +6792,22 @@
         "EGO hematíes: <5 u/µL normal, >5 hematuria",
       ].join("\n");
 
+      // BUG-I1 FIX: Build rich clinical context for AI analysis
+      const ck_ai = (nd && nd.checklist) || {};
+      const clinCtx = [];
+      if (nd.manejo && nd.manejo.trim()) clinCtx.push("Manejo médico: " + nd.manejo.trim());
+      if (ck_ai.atb && ck_ai.atb_nombre) clinCtx.push("ATB activo: " + ck_ai.atb_nombre + (ck_ai.atb_dias ? " (día " + ck_ai.atb_dias + ")" : ""));
+      if (ck_ai.npt) clinCtx.push("NPT activa" + (ck_ai.npt_pct ? " (" + ck_ai.npt_pct + "%)" : "") + (ck_ai.npt_inicio ? " desde " + ck_ai.npt_inicio : ""));
+      if (ck_ai.tvp && ck_ai.tvp_tipo) clinCtx.push("TVP: " + ck_ai.tvp_tipo + (ck_ai.tvp_dosis ? " " + ck_ai.tvp_dosis : ""));
+      if (nd.qx && nd.qx.trim()) clinCtx.push("Qx/Procedimiento: " + nd.qx.trim());
+      const clinCtxStr = clinCtx.length ? clinCtx.join(" | ") : "No especificado";
+
       const prompt = `Eres un médico clínico experto en cirugía general. Analiza los laboratorios de un paciente hospitalizado usando los rangos de referencia EXACTOS provistos. Debes detectar CUALQUIER valor fuera del rango normal, aunque sea levemente anormal.
 
 DIAGNÓSTICO / CONTEXTO CLÍNICO: ${p?.dx || nd.dx || "No especificado"}
 ESPECIALIDAD: ${p?.esp || "Cirugía General"}
 FECHA DE LABS: ${fecha}
+CONTEXTO CLÍNICO ADICIONAL: ${clinCtxStr}
 
 RANGOS DE REFERENCIA (usa EXACTAMENTE estos para clasificar):
 ${labRefRanges}
@@ -6863,6 +6910,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!snap.labs) snap.labs = {};
       snap.labs[lk] = el.value;
       noteData[k] = nd;
+      // BUG-C2 FIX: mark labHistory as dirty so handleNoteChange (Realtime) won't
+      // overwrite these manual edits before autosave fires.
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("labHistory");
       delete labAnalysisCache[k]; // labs cambiaron → invalidar análisis IA
       scheduleNoteAutosave(k);
     }
