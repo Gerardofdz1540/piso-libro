@@ -3938,7 +3938,10 @@
         updated_by: localStorage.getItem("pl_user_name") || ""
       };
       try {
-        const data = await _sPost("notes", row, { "Prefer": "resolution=merge-duplicates,return=representation" });
+        // Upsert correcto: on_conflict=patient_id necesario para que PostgREST
+        // genere ON CONFLICT (patient_id) DO UPDATE en lugar de INSERT puro.
+        // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
+        const data = await _sUpsert("notes", row, "patient_id");
         return Array.isArray(data) ? data[0] : data;
       } catch (e) {
         safeLog("supaUpsertNote error:", e);
@@ -3956,8 +3959,12 @@
         let nts = [];
         if (Array.isArray(pts) && pts.length) {
           const ids = pts.map(r => r.id).join(",");
-          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history";
-          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect), 2, 200);
+          // order=updated_at.desc garantiza que si existen duplicados históricos
+          // (bug de INSERT sin on_conflict ya corregido), el noteMap[patient_id]
+          // siempre termine con la nota MÁS RECIENTE. limit=500 evita timeout.
+          // entrega incluido para mostrar el campo en todos los dispositivos.
+          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,entrega,checklist,lab_history,imagen_history";
+          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect + "&order=updated_at.desc&limit=500"), 2, 200);
         }
 
         if (!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
@@ -4543,6 +4550,28 @@
     });
     window.addEventListener("offline", () => { setSyncStatus("offline", "Sin conexión"); });
 
+    // ── Refresh al volver a la pestaña / app (crítico en iPad con multitarea) ──
+    // Sin esto, el residente que cambia de app en iOS puede volver y ver datos
+    // desactualizados sin ninguna indicación. Solo refresca si pasaron >60s
+    // desde el último sync para evitar recargas innecesarias al tabear rápido.
+    let _lastVisibleRefreshTs = 0;
+    document.addEventListener("visibilitychange", async function() {
+      if (document.visibilityState !== "visible") return;
+      if (!navigator.onLine) return;
+      const now = Date.now();
+      if (now - _lastVisibleRefreshTs < 60000) return; // throttle: máx 1 vez por minuto
+      _lastVisibleRefreshTs = now;
+      try {
+        const loaded = await supaLoadAll();
+        if (loaded) {
+          patients = loaded.patients;
+          _applyLoadedNotes(loaded.notes);
+          lsSavePatients(patients);
+          buildEspFilters(); renderView();
+        }
+      } catch (e) { safeLog("visibilitychange refresh error:", e); }
+    });
+
     async function flushOutbox() {
       const q = outboxLoad(); if (!q.length) return;
       const BATCH = 10; // peticiones simultáneas
@@ -5001,6 +5030,17 @@
           renderView();
         });
       }
+
+      // ── Sync periódico del outbox ────────────────────────────────────────────
+      // El evento 'online' solo cubre reconexiones. Si Supabase cae y se recupera
+      // mientras el dispositivo sigue con WiFi, el outbox quedaría atascado sin
+      // este interval. Cada 30s intenta drenar si hay operaciones pendientes.
+      if (syncInterval) clearInterval(syncInterval);
+      syncInterval = setInterval(async function() {
+        if (navigator.onLine && outboxLoad().length > 0) {
+          await flushOutbox();
+        }
+      }, 30000);
     }
     // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
     function setView(v, btn) {
@@ -8569,6 +8609,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const exp = document.getElementById("mf-exp").value.trim();
       const nombre = document.getElementById("mf-nombre").value.trim().toUpperCase();
       if (!cama || !exp || !nombre) { alert("Cama, nombre y expediente son obligatorios"); return; }
+      // Validar cama duplicada al agregar (no al editar el mismo paciente)
+      // Camas no censables (EXT, AMB, PASILLO, etc.) se permiten duplicar por diseño
+      if (modalMode === "add" && !isNonCensableBed(cama)) {
+        const camaOcupada = patients.find(pt => pt.cama && pt.cama.toUpperCase() === cama);
+        if (camaOcupada) {
+          if (!confirm(`⚠️ CAMA DUPLICADA\n\nLa cama ${cama} ya tiene paciente:\n${camaOcupada.nombre} (Exp: ${camaOcupada.exp})\n\n¿Agregar de todas formas?`)) return;
+        }
+      }
       // Validar formato fecha de ingreso (DD/MM/AA o DD/MM/AAAA)
       const ingresoVal = document.getElementById("mf-ingreso").value.trim();
       if (ingresoVal && !parseDmy(ingresoVal)) {
@@ -8658,9 +8706,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       _cleanupPatientCache(k);
       // Delete from Supabase (cascade deletes note too)
       if (p._supa_id) {
-        supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (discharge):", e));
-        // Also archive to Supabase
-        _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" }).catch(() => { });
+        // Reintenta el DELETE hasta 3 veces con backoff. Si falla, el paciente
+        // seguiría en Supabase y reaparecería en otros dispositivos al recargar.
+        const _supaIdToDelete = p._supa_id;
+        (async function _attemptDelete(attemptsLeft) {
+          try {
+            await supaDeletePatient(_supaIdToDelete);
+          } catch (e) {
+            safeLog("supaDeletePatient (discharge) intento fallido:", e);
+            if (attemptsLeft > 0 && navigator.onLine) {
+              setTimeout(() => _attemptDelete(attemptsLeft - 1), 5000);
+            } else {
+              safeLog("supaDeletePatient (discharge) sin más reintentos para id:", _supaIdToDelete);
+            }
+          }
+        })(2);
+        // Archive to Supabase — loguear si falla (antes se silenciaba completamente)
+        _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" })
+          .catch(e => safeLog("archive supabase error (egreso):", e));
       }
       savePts();
       document.getElementById("confirm-modal").style.display = "none";
