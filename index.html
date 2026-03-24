@@ -1500,6 +1500,15 @@
       }
     }
 
+    /* iOS Safari: evitar auto-zoom en inputs con font-size < 16px */
+    @media screen and (-webkit-min-device-pixel-ratio:0) {
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+      select,
+      textarea {
+        font-size: 16px !important;
+      }
+    }
+
     /* RESPONSIVE MOBILE */
     @media(max-width:700px) {
       #header {
@@ -4146,7 +4155,7 @@
           // order=updated_at.desc garantiza que si existen duplicados históricos
           // (bug de INSERT sin on_conflict ya corregido), el noteMap[patient_id]
           // siempre termine con la nota MÁS RECIENTE. limit=500 evita timeout.
-          // entrega incluido para mostrar el campo en todos los dispositivos.
+          // Nota: entrega se sincroniza vía checklist.__pl_note_meta, no como columna separada.
           const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history";
           nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect + "&order=updated_at.desc&limit=500"), 2, 200);
         }
@@ -4560,7 +4569,16 @@
         }
         patients[idx] = updated;
         lsSavePatients(patients);
-        buildEspFilters(); renderView();
+        buildEspFilters();
+        // Re-render solo la tarjeta afectada para no destruir texto en edición en otros cards
+        const _ptCardEl = document.getElementById("card-" + newKey);
+        const _ptHasFocus = _ptCardEl && _ptCardEl.contains(document.activeElement);
+        if (_ptCardEl && !_ptHasFocus && newKey !== _modalCurrentEditKey) {
+          _ptCardEl.outerHTML = isSimpleEsp(updated.esp) ? renderSimpleCard(updated, noteData[newKey] || defaultData(), newKey) : renderFullCard(updated, noteData[newKey] || defaultData(), newKey);
+        } else if (!_ptCardEl) {
+          // Key cambió o tarjeta no existe en DOM — renderizar vista completa
+          renderView();
+        }
         safeInfo("[RT] Patient updated:", updated.nombre);
       }
       else if (eventType === "DELETE") {
@@ -4569,6 +4587,15 @@
         const idx = patients.findIndex(p => p._supa_id === id);
         if (idx === -1) return;
         const k = pid(patients[idx]);
+        // Si el modal está abierto para este paciente, cerrarlo con aviso
+        if (_modalCurrentEditKey === k || modalOrigKey === k) {
+          closeModal();
+          var _ghostWarn = document.createElement("div");
+          _ghostWarn.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#dc2626;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+          _ghostWarn.textContent = "⚠️ Este paciente fue dado de alta desde otro dispositivo.";
+          document.body.appendChild(_ghostWarn);
+          setTimeout(function(){ if (_ghostWarn.parentNode) _ghostWarn.parentNode.removeChild(_ghostWarn); }, 4000);
+        }
         patients.splice(idx, 1);
         delete noteData[k];
         localStorage.removeItem(NOTES_PREFIX + k);
@@ -6823,11 +6850,17 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
 
       try {
-        const resp = await fetch(proxyUrl + "/api/ai", {
-          method: "POST",
-          headers: { ...apiHeaders() },
-          body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] })
-        });
+        const _aiAbort = new AbortController();
+        const _aiTimeout = setTimeout(() => _aiAbort.abort(), 45000);
+        let resp;
+        try {
+          resp = await fetch(proxyUrl + "/api/ai", {
+            method: "POST",
+            headers: { ...apiHeaders() },
+            body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+            signal: _aiAbort.signal
+          });
+        } finally { clearTimeout(_aiTimeout); }
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         const data = await resp.json();
         var _raw = (data.content?.[0]?.text || "{}").replace(/```json/g, "").replace(/```/g, "").trim();
