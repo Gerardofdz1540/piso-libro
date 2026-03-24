@@ -389,6 +389,19 @@
       background: rgba(220, 38, 38, .45)
     }
 
+    /* ── Cruce Quirúrgico ──────────────────────────────────────────────────── */
+    .badge-cruce {
+      border: none; cursor: pointer; font-size: 9px; font-weight: 700;
+      padding: 2px 6px; border-radius: 4px; white-space: nowrap;
+      color: #fff; font-family: inherit; line-height: 1.4;
+    }
+    .cruce-pendiente { background: #d97706; }
+    .cruce-active    { background: #16a34a; }
+    .cruce-warning   { background: #dc2626; animation: cruce-blink 1s ease-in-out infinite; }
+    @keyframes cruce-blink {
+      0%, 100% { opacity: 1; } 50% { opacity: .55; }
+    }
+
     .expand-btn {
       font-size: 16px;
       cursor: pointer;
@@ -3347,7 +3360,8 @@
           pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_hxqx: "",
-          pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "" }
+          pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
+          cruce_activo: false, cruce_ts: "", cruce_unidades: "", cruce_banco: "" }
       };
     }
     const NOTE_SYNC_META_KEY = "__pl_note_meta";
@@ -3426,6 +3440,22 @@
       });
       return out;
     }
+    // Merge de labs por analito: solo sobreescribe un campo si el nuevo archivo
+    // trae un valor no vacío para ese campo. Los campos que el nuevo archivo omite
+    // (valor vacío) conservan el valor previo en lugar de borrarse.
+    // Regla: NUNCA borrar un analito porque el nuevo PDF simplemente no lo mencione.
+    function mergeLabsPerAnalyte(existingLabs, newLabs) {
+      const merged = Object.assign({}, sanitizeLabsMap(existingLabs));
+      Object.keys(newLabs).forEach(function(key) {
+        const newVal = toSafeString(newLabs[key]).trim();
+        if (newVal !== "") {
+          merged[key] = newVal; // Solo sobreescribir si el nuevo archivo tiene valor
+        }
+        // Si newVal está vacío → conservar el valor existente (no borrar)
+      });
+      return merged;
+    }
+
     function sanitizeExtractedLabs(raw) {
       const src = isPlainObject(raw) ? raw : {};
       const allowedLabs = new Set(getLabKeys());
@@ -3881,6 +3911,160 @@
       return parts.join(" · ");
     }
 
+    // ─── CRUCE QUIRÚRGICO ────────────────────────────────────────────────────────────
+    const CRUCE_VALIDITY_MS = 72 * 3600 * 1000; // 72 horas en milisegundos
+
+    // Devuelve "pendiente" | "activo" | "vencido"
+    function getCruceStatus(nd) {
+      const ck = (nd && nd.checklist) || {};
+      if (!ck.cruce_activo || !ck.cruce_ts) return "pendiente";
+      const ts = new Date(ck.cruce_ts).getTime();
+      if (isNaN(ts)) return "pendiente";
+      return (Date.now() - ts) > CRUCE_VALIDITY_MS ? "vencido" : "activo";
+    }
+
+    // Ms restantes hasta que venza (null si no hay cruce activo)
+    function getCruceRemainingMs(nd) {
+      const ck = (nd && nd.checklist) || {};
+      if (!ck.cruce_activo || !ck.cruce_ts) return null;
+      const ts = new Date(ck.cruce_ts).getTime();
+      if (isNaN(ts)) return null;
+      return Math.max(0, ts + CRUCE_VALIDITY_MS - Date.now());
+    }
+
+    function formatCruceTime(ms) {
+      const h = Math.floor(ms / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      return h > 0 ? h + "h " + m + "m" : m + "m";
+    }
+
+    // Genera el badge de cruce para insertar en el header de la tarjeta
+    function renderCruceBadge(nd, k) {
+      const ck = (nd && nd.checklist) || {};
+      const hasQx = nd && nd.qx && nd.qx.trim();
+      if (!hasQx && !ck.cruce_activo) return ""; // Oculto si no hay qx ni cruce iniciado
+
+      const status = getCruceStatus(nd);
+
+      if (status === "vencido") {
+        return `<button class="badge-cruce cruce-warning" onclick="openCruceModal('${k}')" title="⚠️ Cruce vencido: han pasado más de 72h sin registrar transfusión">🩸 Cruce vencido</button>`;
+      }
+      if (status === "activo") {
+        const rem = getCruceRemainingMs(nd);
+        const lowTime = rem < 12 * 3600 * 1000; // <12h → blink rojo
+        const timeStr = formatCruceTime(rem);
+        const units = ck.cruce_unidades ? " · " + esc(ck.cruce_unidades) : "";
+        const bancoTip = ck.cruce_banco ? "\nBanco: " + ck.cruce_banco : "";
+        return `<button class="badge-cruce ${lowTime ? 'cruce-warning' : 'cruce-active'}" onclick="openCruceModal('${k}')" title="Cruce confirmado${bancoTip}\n${lowTime ? '⚠️ ' : ''}Vigencia: ${timeStr} restantes">✅ Cruzado${units} · ${timeStr}</button>`;
+      }
+      // pendiente
+      return `<button class="badge-cruce cruce-pendiente" onclick="openCruceModal('${k}')" title="Registrar cruce de sangre para este paciente">🩸 Cruce</button>`;
+    }
+
+    // Texto de cruce para incluir en entrega de guardia
+    function getCruceEntregaText(checklist) {
+      const ck = checklist || {};
+      if (!ck.cruce_activo || !ck.cruce_ts) return "";
+      const status = getCruceStatus({ checklist: ck });
+      const rem = getCruceRemainingMs({ checklist: ck });
+      const parts = ["🩸 Cruce: " + (status === "vencido" ? "VENCIDO" : "activo")];
+      if (ck.cruce_unidades) parts.push(ck.cruce_unidades);
+      if (ck.cruce_banco) parts.push(ck.cruce_banco);
+      if (rem !== null && status === "activo") parts.push("vence en " + formatCruceTime(rem));
+      return parts.join(" · ");
+    }
+
+    // Abre el modal de cruce (pendiente → formulario; activo/vencido → detalles)
+    function openCruceModal(k) {
+      const nd = getNote(k);
+      const ck = nd.checklist || {};
+      const status = getCruceStatus(nd);
+      const existing = document.getElementById("cruce-modal-overlay");
+      if (existing) existing.remove();
+
+      let inner;
+      if (status === "activo" || status === "vencido") {
+        const ts = ck.cruce_ts ? new Date(ck.cruce_ts).toLocaleString("es-MX", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+        const rem = getCruceRemainingMs(nd);
+        const remTxt = (status === "activo" && rem !== null) ? formatCruceTime(rem) + " restantes" : "";
+        const statusColor = status === "vencido" ? "#dc2626" : "#16a34a";
+        const statusLabel = status === "vencido" ? "⚠️ VENCIDO (>72 h)" : "✅ ACTIVO";
+        inner = `
+          <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:12px">🩸 Cruce Quirúrgico</div>
+          <div style="font-size:12px;margin-bottom:6px">Estado: <strong style="color:${statusColor}">${statusLabel}</strong>${remTxt ? " · " + remTxt : ""}</div>
+          ${ts ? `<div style="font-size:11px;color:#64748b;margin-bottom:3px">Confirmado: ${ts}</div>` : ""}
+          ${ck.cruce_unidades ? `<div style="font-size:11px;color:#64748b;margin-bottom:3px">Unidades: <strong>${esc(ck.cruce_unidades)}</strong></div>` : ""}
+          ${ck.cruce_banco ? `<div style="font-size:11px;color:#64748b;margin-bottom:12px">Banco: <strong>${esc(ck.cruce_banco)}</strong></div>` : ""}
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button onclick="clearCruce('${k}')" style="flex:1;padding:9px;border-radius:8px;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;font-size:12px;font-weight:600;cursor:pointer">🔄 Reiniciar</button>
+            <button onclick="document.getElementById('cruce-modal-overlay').remove()" style="flex:1;padding:9px;border-radius:8px;border:none;background:#0e7490;color:#fff;font-size:12px;font-weight:600;cursor:pointer">Cerrar</button>
+          </div>`;
+      } else {
+        inner = `
+          <div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:10px">🩸 Registrar Cruce</div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:12px">Vigencia: <strong>72 horas</strong>. Se mostrará alerta si vence sin registrar la transfusión.</div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Unidades cruzadas</label>
+          <input id="cruce-unidades-inp" type="text" placeholder="ej. 2 CE, 1 PFC" value="${esc(ck.cruce_unidades || "")}" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;margin-bottom:10px">
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:4px">Banco de sangre / ID</label>
+          <input id="cruce-banco-inp" type="text" placeholder="ej. Banco HGL · ID: 2456" value="${esc(ck.cruce_banco || "")}" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;margin-bottom:14px">
+          <div style="display:flex;gap:8px">
+            <button onclick="document.getElementById('cruce-modal-overlay').remove()" style="flex:1;padding:9px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-size:12px;cursor:pointer">Cancelar</button>
+            <button onclick="confirmCruce('${k}')" style="flex:1;padding:9px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ Confirmar cruce</button>
+          </div>`;
+      }
+
+      const overlay = document.createElement("div");
+      overlay.id = "cruce-modal-overlay";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px";
+      overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+      overlay.innerHTML = `<div style="background:#fff;border-radius:14px;padding:22px;width:100%;max-width:340px;box-shadow:0 12px 48px rgba(0,0,0,.35)">${inner}</div>`;
+      document.body.appendChild(overlay);
+      const firstInp = document.getElementById("cruce-unidades-inp");
+      if (firstInp) setTimeout(function() { firstInp.focus(); firstInp.select(); }, 60);
+    }
+
+    function confirmCruce(k) {
+      const unidades = ((document.getElementById("cruce-unidades-inp") || {}).value || "").trim();
+      const banco = ((document.getElementById("cruce-banco-inp") || {}).value || "").trim();
+      const nd = getNote(k);
+      nd.checklist = nd.checklist || {};
+      nd.checklist.cruce_activo = true;
+      nd.checklist.cruce_ts = new Date().toISOString();
+      nd.checklist.cruce_unidades = unidades;
+      nd.checklist.cruce_banco = banco;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      const overlay = document.getElementById("cruce-modal-overlay");
+      if (overlay) overlay.remove();
+      _rerenderCard(k);
+    }
+
+    function clearCruce(k) {
+      if (!confirm("¿Reiniciar el cruce? El badge volverá a estado pendiente.")) return;
+      const nd = getNote(k);
+      nd.checklist = nd.checklist || {};
+      nd.checklist.cruce_activo = false;
+      nd.checklist.cruce_ts = "";
+      nd.checklist.cruce_unidades = "";
+      nd.checklist.cruce_banco = "";
+      noteData[k] = nd;
+      saveNote(k, nd);
+      const overlay = document.getElementById("cruce-modal-overlay");
+      if (overlay) overlay.remove();
+      _rerenderCard(k);
+    }
+
+    // Helper: re-renderizar tarjeta por clave sin tocar el resto del DOM
+    function _rerenderCard(k) {
+      const p = patients.find(function(pt) { return pid(pt) === k; });
+      const cardEl = document.getElementById("card-" + k);
+      if (cardEl && p) {
+        cardEl.outerHTML = isSimpleEsp(p.esp)
+          ? renderSimpleCard(p, noteData[k], k)
+          : renderFullCard(p, noteData[k], k);
+      }
+    }
+
     // ─── SUPABASE: SAVE PATIENT ─────────────────────────────────────────────────────
     async function supaUpsertPatient(p) {
       const row = {
@@ -3938,7 +4122,10 @@
         updated_by: localStorage.getItem("pl_user_name") || ""
       };
       try {
-        const data = await _sPost("notes", row, { "Prefer": "resolution=merge-duplicates,return=representation" });
+        // Upsert correcto: on_conflict=patient_id necesario para que PostgREST
+        // genere ON CONFLICT (patient_id) DO UPDATE en lugar de INSERT puro.
+        // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
+        const data = await _sUpsert("notes", row, "patient_id");
         return Array.isArray(data) ? data[0] : data;
       } catch (e) {
         safeLog("supaUpsertNote error:", e);
@@ -3956,8 +4143,12 @@
         let nts = [];
         if (Array.isArray(pts) && pts.length) {
           const ids = pts.map(r => r.id).join(",");
-          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history";
-          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect), 2, 200);
+          // order=updated_at.desc garantiza que si existen duplicados históricos
+          // (bug de INSERT sin on_conflict ya corregido), el noteMap[patient_id]
+          // siempre termine con la nota MÁS RECIENTE. limit=500 evita timeout.
+          // entrega incluido para mostrar el campo en todos los dispositivos.
+          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,entrega,checklist,lab_history,imagen_history";
+          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect + "&order=updated_at.desc&limit=500"), 2, 200);
         }
 
         if (!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
@@ -4543,6 +4734,28 @@
     });
     window.addEventListener("offline", () => { setSyncStatus("offline", "Sin conexión"); });
 
+    // ── Refresh al volver a la pestaña / app (crítico en iPad con multitarea) ──
+    // Sin esto, el residente que cambia de app en iOS puede volver y ver datos
+    // desactualizados sin ninguna indicación. Solo refresca si pasaron >60s
+    // desde el último sync para evitar recargas innecesarias al tabear rápido.
+    let _lastVisibleRefreshTs = 0;
+    document.addEventListener("visibilitychange", async function() {
+      if (document.visibilityState !== "visible") return;
+      if (!navigator.onLine) return;
+      const now = Date.now();
+      if (now - _lastVisibleRefreshTs < 60000) return; // throttle: máx 1 vez por minuto
+      _lastVisibleRefreshTs = now;
+      try {
+        const loaded = await supaLoadAll();
+        if (loaded) {
+          patients = loaded.patients;
+          _applyLoadedNotes(loaded.notes);
+          lsSavePatients(patients);
+          buildEspFilters(); renderView();
+        }
+      } catch (e) { safeLog("visibilitychange refresh error:", e); }
+    });
+
     async function flushOutbox() {
       const q = outboxLoad(); if (!q.length) return;
       const BATCH = 10; // peticiones simultáneas
@@ -5001,6 +5214,17 @@
           renderView();
         });
       }
+
+      // ── Sync periódico del outbox ────────────────────────────────────────────
+      // El evento 'online' solo cubre reconexiones. Si Supabase cae y se recupera
+      // mientras el dispositivo sigue con WiFi, el outbox quedaría atascado sin
+      // este interval. Cada 30s intenta drenar si hay operaciones pendientes.
+      if (syncInterval) clearInterval(syncInterval);
+      syncInterval = setInterval(async function() {
+        if (navigator.onLine && outboxLoad().length > 0) {
+          await flushOutbox();
+        }
+      }, 30000);
     }
     // ─── VIEW SWITCHING ──────────────────────────────────────────────────────────────
     function setView(v, btn) {
@@ -5472,6 +5696,19 @@
       if (ck.cur_necesita && !ck.cur_realizada)
         alerts.push({ type: "cur", label: "🩹 Curación pendiente", color: "#0369a1" });
 
+      // Cruce vencido / próximo a vencer
+      if (ck.cruce_activo && ck.cruce_ts) {
+        const cruceStatus = getCruceStatus(nd);
+        if (cruceStatus === "vencido") {
+          alerts.push({ type: "cruce_vencido", label: "⚠️ Cruce vencido", color: "#dc2626" });
+        } else if (cruceStatus === "activo") {
+          const rem = getCruceRemainingMs(nd);
+          if (rem !== null && rem < 12 * 3600 * 1000) {
+            alerts.push({ type: "cruce_proximo", label: "⏳ Cruce expira: " + formatCruceTime(rem), color: "#d97706" });
+          }
+        }
+      }
+
       return alerts;
     }
 
@@ -5502,6 +5739,7 @@
           <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
           <span class="badge-esp">${esc(p.esp)}</span>
           <span class="badge-day">Día ${days}</span>
+          ${renderCruceBadge(nd, k)}
           <button class="icon-btn" style="background:rgba(14,116,144,.5);font-size:11px" data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)" title="Buscar en WinLab (copia apellido)">🧪</button>
           <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️</button>
           <button class="icon-btn" style="background:rgba(251,146,60,.35);font-size:11px" data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)" title="Cambiar cama rápido">🛏</button>
@@ -5553,7 +5791,13 @@
             placeholder="Tareas pendientes para R1...">${esc((nd.checklist && nd.checklist.pendientes_r1) || "")}</textarea>
         </div>
       </div>
-      <div class="entrega-row" style="margin-top:10px">${fieldRow("📋 Entrega de guardia", nd.entrega, k, "entrega", 3)}</div>
+      <div class="entrega-row" style="margin-top:10px">
+        ${fieldRow("📋 Entrega de guardia", nd.entrega, k, "entrega", 3)}
+        ${(function() {
+          const cruceText = getCruceEntregaText(nd.checklist);
+          return cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : "";
+        })()}
+      </div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
       ${renderBodyDiagram(nd, k)}
       ${renderLabSection(nd, k)}
@@ -5599,6 +5843,7 @@
         <span class="badge-esp">${esc(p.esp)}</span>
         <span class="badge-day">Día ${dias}</span>
         ${curPendiente ? `<span style="background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap">🩹 Cur</span>` : ''}
+        ${renderCruceBadge(nd, k)}
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
         <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
       </div>
@@ -7045,7 +7290,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         delete labsFromExtract.cultivo_resistencias;
         const hasValues = getLabKeys().some(f => sanitizedExtracted[f] && sanitizedExtracted[f].trim() !== "");
         await attachLabSourceToSnap(k, targetFecha, snap, file, base64);
-        snap.labs = { ...sanitizeLabsMap(snap.labs), ...labsFromExtract };
+        snap.labs = mergeLabsPerAnalyte(snap.labs, labsFromExtract);
         activeLabDate[k] = targetFecha;
         noteData[k] = nd;
         saveNote(k, nd);
@@ -8569,6 +8814,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const exp = document.getElementById("mf-exp").value.trim();
       const nombre = document.getElementById("mf-nombre").value.trim().toUpperCase();
       if (!cama || !exp || !nombre) { alert("Cama, nombre y expediente son obligatorios"); return; }
+      // Validar cama duplicada al agregar (no al editar el mismo paciente)
+      // Camas no censables (EXT, AMB, PASILLO, etc.) se permiten duplicar por diseño
+      if (modalMode === "add" && !isNonCensableBed(cama)) {
+        const camaOcupada = patients.find(pt => pt.cama && pt.cama.toUpperCase() === cama);
+        if (camaOcupada) {
+          if (!confirm(`⚠️ CAMA DUPLICADA\n\nLa cama ${cama} ya tiene paciente:\n${camaOcupada.nombre} (Exp: ${camaOcupada.exp})\n\n¿Agregar de todas formas?`)) return;
+        }
+      }
       // Validar formato fecha de ingreso (DD/MM/AA o DD/MM/AAAA)
       const ingresoVal = document.getElementById("mf-ingreso").value.trim();
       if (ingresoVal && !parseDmy(ingresoVal)) {
@@ -8658,9 +8911,24 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       _cleanupPatientCache(k);
       // Delete from Supabase (cascade deletes note too)
       if (p._supa_id) {
-        supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (discharge):", e));
-        // Also archive to Supabase
-        _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" }).catch(() => { });
+        // Reintenta el DELETE hasta 3 veces con backoff. Si falla, el paciente
+        // seguiría en Supabase y reaparecería en otros dispositivos al recargar.
+        const _supaIdToDelete = p._supa_id;
+        (async function _attemptDelete(attemptsLeft) {
+          try {
+            await supaDeletePatient(_supaIdToDelete);
+          } catch (e) {
+            safeLog("supaDeletePatient (discharge) intento fallido:", e);
+            if (attemptsLeft > 0 && navigator.onLine) {
+              setTimeout(() => _attemptDelete(attemptsLeft - 1), 5000);
+            } else {
+              safeLog("supaDeletePatient (discharge) sin más reintentos para id:", _supaIdToDelete);
+            }
+          }
+        })(2);
+        // Archive to Supabase — loguear si falla (antes se silenciaba completamente)
+        _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" })
+          .catch(e => safeLog("archive supabase error (egreso):", e));
       }
       savePts();
       document.getElementById("confirm-modal").style.display = "none";
@@ -9691,13 +9959,47 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         if (!extractedName) return null;
         var en = normName(extractedName);
         var enTokens = en.split(" ").filter(function(t){ return t.length > 2 && !NON_NAME_TOKENS.has(t); });
-        var best = null, bestScore = 0;
+        if (!enTokens.length) return null;
+
+        // Scoring: fracción de tokens del PDF que coinciden con el nombre en censo
+        var best = null, bestScore = 0, bestCommonCount = 0;
+        var second = null, secondScore = 0;
         patients.forEach(function(p) {
-          var pTokens = normName(p.nombre).split(" ");
+          var pTokens = normName(p.nombre).split(" ").filter(function(t){ return t.length > 1; });
           var common = enTokens.filter(function(t){ return pTokens.indexOf(t) >= 0; });
-          if (common.length > bestScore) { bestScore = common.length; best = p; }
+          var score = common.length / Math.max(enTokens.length, 1);
+          if (score > bestScore) {
+            second = best; secondScore = bestScore;
+            best = p; bestScore = score; bestCommonCount = common.length;
+          } else if (score > secondScore) {
+            second = p; secondScore = score;
+          }
         });
-        return bestScore >= 2 ? best : null;
+
+        // Mínimo: 2 tokens y 40% de coincidencia
+        if (bestCommonCount < 2 || bestScore < 0.4) return null;
+
+        // Si hay dos candidatos con scores muy cercanos (diferencia ≤0.2), preguntar al usuario
+        if (second && secondScore >= bestScore - 0.2) {
+          var bestCommonCheck = enTokens.filter(function(t){
+            return best && normName(best.nombre).split(" ").indexOf(t) >= 0;
+          });
+          var secondCommonCheck = second ? enTokens.filter(function(t){
+            return normName(second.nombre).split(" ").indexOf(t) >= 0;
+          }) : [];
+          if (secondCommonCheck.length >= 2) {
+            // Ambigüedad real — mostrar diálogo
+            var useFirst = confirm(
+              "Paciente ambiguo para: «" + extractedName + "»\n\n" +
+              "Opción A: " + best.nombre + " · Cama " + best.cama + " · Exp " + best.exp + "\n" +
+              "Opción B: " + second.nombre + " · Cama " + second.cama + " · Exp " + second.exp + "\n\n" +
+              "¿Asignar a Opción A? (Cancelar → Opción B)"
+            );
+            return useFirst ? best : second;
+          }
+        }
+
+        return best;
       }
 
       function processFile(file) {
@@ -9796,7 +10098,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               Object.keys(ex).forEach(function(ek) {
                 if (!CULTIVO_ONLY_KEYS.has(ek)) labsToMerge[ek] = ex[ek];
               });
-              snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), labsToMerge);
+              snap.labs = mergeLabsPerAnalyte(snap.labs, labsToMerge);
             }
             if (r.fileObj) {
               await attachLabSourceToSnap(k, fecha, snap, r.fileObj, r.fileBase64 || "");
