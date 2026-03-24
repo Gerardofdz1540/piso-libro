@@ -4147,7 +4147,7 @@
           // (bug de INSERT sin on_conflict ya corregido), el noteMap[patient_id]
           // siempre termine con la nota MÁS RECIENTE. limit=500 evita timeout.
           // entrega incluido para mostrar el campo en todos los dispositivos.
-          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,entrega,checklist,lab_history,imagen_history";
+          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history";
           nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect + "&order=updated_at.desc&limit=500"), 2, 200);
         }
 
