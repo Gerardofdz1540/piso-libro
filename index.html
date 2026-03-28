@@ -4135,7 +4135,10 @@
         // genere ON CONFLICT (patient_id) DO UPDATE en lugar de INSERT puro.
         // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
         const data = await _sUpsert("notes", buildRow(patientId), "patient_id");
-        return Array.isArray(data) ? data[0] : data;
+        // Nunca retornar undefined: si Supabase responde con [] (edge case),
+        // data[0] sería undefined (falsy), lo que haría creer al caller que falló.
+        if (Array.isArray(data)) return data.length > 0 ? data[0] : true;
+        return data !== undefined ? data : null;
       } catch (e) {
         const msg = e && e.message ? e.message : String(e || "");
         // FK violation (23503): el paciente no existe en Supabase con ese UUID.
@@ -4283,9 +4286,11 @@
             setSyncStatus("syncing", "Guardando...");
             const res = await supaUpsertNote(p._supa_id, d);
             pendingSyncs--;
-            if (!res) outboxEnqueue({ type: "note", key: k, data: d });
+            // res === null indica error explícito; cualquier otro valor truthy (incluso {}) es éxito
+            const ok = res !== null && res !== undefined;
+            if (!ok) outboxEnqueue({ type: "note", key: k, data: d });
             if (pendingSyncs === 0) {
-              if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
+              if (ok) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
               else setSyncProblemStatus();
             }
           } catch (e) {
@@ -4381,7 +4386,7 @@
           const nd = getLocalNoteSnapshot(k);
           if (!p || !p._supa_id) return { key: k, ok: false, data: nd };
           const res = await supaUpsertNote(p._supa_id, nd);
-          return { key: k, ok: !!res, data: nd };
+          return { key: k, ok: res !== null && res !== undefined, data: nd };
         }));
         results.forEach(function (r) {
           if (r.ok) {
@@ -4463,7 +4468,7 @@
             } else {
               retryFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p }));
             }
-            pendingSyncs--;
+            if (pendingSyncs > 0) pendingSyncs--;
             if (pendingSyncs === 0) {
               if (!retryFailed.length) setSyncStatus("synced", "✅ Guardado");
               else setSyncProblemStatus();
@@ -4832,7 +4837,9 @@
           if (item.type === "note" && item.key && item.data) {
             const p = patients.find(x => pid(x) === item.key);
             if (p && p._supa_id) {
-              results[absIdx] = await supaUpsertNote(p._supa_id, item.data);
+              const noteRes = await supaUpsertNote(p._supa_id, item.data);
+              // Considerar éxito cualquier valor no-null (incluso {} o true)
+              results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
             } else results[absIdx] = false;
           } else if (item.type === "patient" && item.patient) {
             const k = pid(item.patient);
@@ -8915,7 +8922,16 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       _fillDL();
       document.getElementById("patient-modal").style.display = "flex";
     }
-    function closeModal() { _modalCurrentEditKey = null; document.getElementById("patient-modal").style.display = "none"; }
+    function closeModal() {
+      // Limpiar dirty fields del modal: los campos editados via liveModalNote ya
+      // fueron guardados en saveModal(), así que ya no deben bloquear actualizaciones
+      // Realtime de otros dispositivos.
+      if (_modalCurrentEditKey && _dirtyFields[_modalCurrentEditKey]) {
+        delete _dirtyFields[_modalCurrentEditKey];
+      }
+      _modalCurrentEditKey = null;
+      document.getElementById("patient-modal").style.display = "none";
+    }
     function saveModal() {
       const cama = document.getElementById("mf-cama").value.trim().toUpperCase();
       const exp = document.getElementById("mf-exp").value.trim();
@@ -9773,8 +9789,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       return {
         fecha: _el("gi-fecha"),
         turno: "",
-        entrega: document.getElementById("gi-entrega").value || "",
-        recibe: document.getElementById("gi-recibe").value || ""
+        entrega: _el("gi-entrega"),
+        recibe: _el("gi-recibe")
       };
     }
     function exportToExcel() {
