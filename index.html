@@ -6791,6 +6791,8 @@
     async function analyzeLabsAI(k, fecha) {
       const proxyUrl = getProxyUrl();
       if (!proxyUrl) { alert("⚙️ Configura la URL del Worker primero (botón Config API)."); return; }
+      // Evitar múltiples solicitudes concurrentes para el mismo paciente
+      if (labAnalysisLoading.has(k)) return;
 
       const nd = getNote(k);
       const p = patients.find(p => pid(p) === k);
@@ -7414,10 +7416,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       } catch (e) { alert("Error al procesar: " + (e.message || e)); }
       labLoadingSet.delete(k);
-      // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición
+      // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición.
+      // Solo re-renderizar si el usuario NO está editando labs manualmente (_dirtyFields labHistory),
+      // para evitar sobreescribir ediciones manuales mientras el PDF se procesaba en background.
       const labsEl2 = document.getElementById("labs-sec-" + k);
-      if (labsEl2) labsEl2.outerHTML = renderLabSection(getNote(k), k);
-      else renderView();
+      const _labsDirty = _dirtyFields[k] && _dirtyFields[k].has("labHistory");
+      if (labsEl2 && !_labsDirty) labsEl2.outerHTML = renderLabSection(getNote(k), k);
+      else if (!labsEl2 && !_labsDirty) renderView();
     }
     // ─── CENSUS VIEW ─────────────────────────────────────────────────────────────────
     function censusRow(p, showEsp) {
