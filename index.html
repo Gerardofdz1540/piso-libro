@@ -4135,7 +4135,10 @@
         // genere ON CONFLICT (patient_id) DO UPDATE en lugar de INSERT puro.
         // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
         const data = await _sUpsert("notes", buildRow(patientId), "patient_id");
-        return Array.isArray(data) ? data[0] : data;
+        // Nunca retornar undefined: si Supabase responde con [] (edge case),
+        // data[0] sería undefined (falsy), lo que haría creer al caller que falló.
+        if (Array.isArray(data)) return data.length > 0 ? data[0] : true;
+        return data !== undefined ? data : null;
       } catch (e) {
         const msg = e && e.message ? e.message : String(e || "");
         // FK violation (23503): el paciente no existe en Supabase con ese UUID.
@@ -4283,9 +4286,11 @@
             setSyncStatus("syncing", "Guardando...");
             const res = await supaUpsertNote(p._supa_id, d);
             pendingSyncs--;
-            if (!res) outboxEnqueue({ type: "note", key: k, data: d });
+            // res === null indica error explícito; cualquier otro valor truthy (incluso {}) es éxito
+            const ok = res !== null && res !== undefined;
+            if (!ok) outboxEnqueue({ type: "note", key: k, data: d });
             if (pendingSyncs === 0) {
-              if (res) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
+              if (ok) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
               else setSyncProblemStatus();
             }
           } catch (e) {
@@ -4381,7 +4386,7 @@
           const nd = getLocalNoteSnapshot(k);
           if (!p || !p._supa_id) return { key: k, ok: false, data: nd };
           const res = await supaUpsertNote(p._supa_id, nd);
-          return { key: k, ok: !!res, data: nd };
+          return { key: k, ok: res !== null && res !== undefined, data: nd };
         }));
         results.forEach(function (r) {
           if (r.ok) {
@@ -4463,7 +4468,7 @@
             } else {
               retryFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p }));
             }
-            pendingSyncs--;
+            if (pendingSyncs > 0) pendingSyncs--;
             if (pendingSyncs === 0) {
               if (!retryFailed.length) setSyncStatus("synced", "✅ Guardado");
               else setSyncProblemStatus();
@@ -4832,7 +4837,9 @@
           if (item.type === "note" && item.key && item.data) {
             const p = patients.find(x => pid(x) === item.key);
             if (p && p._supa_id) {
-              results[absIdx] = await supaUpsertNote(p._supa_id, item.data);
+              const noteRes = await supaUpsertNote(p._supa_id, item.data);
+              // Considerar éxito cualquier valor no-null (incluso {} o true)
+              results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
             } else results[absIdx] = false;
           } else if (item.type === "patient" && item.patient) {
             const k = pid(item.patient);
@@ -6784,6 +6791,8 @@
     async function analyzeLabsAI(k, fecha) {
       const proxyUrl = getProxyUrl();
       if (!proxyUrl) { alert("⚙️ Configura la URL del Worker primero (botón Config API)."); return; }
+      // Evitar múltiples solicitudes concurrentes para el mismo paciente
+      if (labAnalysisLoading.has(k)) return;
 
       const nd = getNote(k);
       const p = patients.find(p => pid(p) === k);
@@ -7407,10 +7416,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       } catch (e) { alert("Error al procesar: " + (e.message || e)); }
       labLoadingSet.delete(k);
-      // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición
+      // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición.
+      // Solo re-renderizar si el usuario NO está editando labs manualmente (_dirtyFields labHistory),
+      // para evitar sobreescribir ediciones manuales mientras el PDF se procesaba en background.
       const labsEl2 = document.getElementById("labs-sec-" + k);
-      if (labsEl2) labsEl2.outerHTML = renderLabSection(getNote(k), k);
-      else renderView();
+      const _labsDirty = _dirtyFields[k] && _dirtyFields[k].has("labHistory");
+      if (labsEl2 && !_labsDirty) labsEl2.outerHTML = renderLabSection(getNote(k), k);
+      else if (!labsEl2 && !_labsDirty) renderView();
     }
     // ─── CENSUS VIEW ─────────────────────────────────────────────────────────────────
     function censusRow(p, showEsp) {
@@ -8629,7 +8641,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const c = document.getElementById("nm-fields-container"); if (!c) return [];
       const items = [];
       c.querySelectorAll("[data-nf]").forEach(el => {
-        const lbl = el.closest(".nm-field").querySelector(".nm-label");
+        const field = el.closest(".nm-field");
+        const lbl = field ? field.querySelector(".nm-label") : null;
         items.push({ label: lbl ? lbl.textContent : "", value: el.value || "", id: el.dataset.nf });
       });
       return items;
@@ -8645,12 +8658,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     function printNote() {
       const c = document.getElementById("nm-fields-container"); if (!c) return;
-      const title = c.closest(".nm-modal").querySelector(".nm-title").textContent;
+      const modal = c.closest(".nm-modal");
+      const title = modal ? modal.querySelector(".nm-title").textContent : "";
       const headerEl = c.querySelector(".nm-field-full b");
       const headerText = headerEl ? headerEl.textContent : "";
       let rows = "";
       c.querySelectorAll("[data-nf]").forEach(el => {
-        const lbl = el.closest(".nm-field").querySelector(".nm-label");
+        const _nf = el.closest(".nm-field");
+        const lbl = _nf ? _nf.querySelector(".nm-label") : null;
         const v = toSafeString(el.value).replace(/\n/g, "<br>");
         if (v.trim()) rows += `<tr><td style="font-weight:700;color:#001746;font-size:11px;padding:4px 8px;vertical-align:top;width:180px;border-bottom:1px solid #e2e8f0;font-family:Calibri">${lbl ? lbl.textContent : ""}</td><td style="font-size:11px;color:#000;padding:4px 8px;border-bottom:1px solid #e2e8f0;font-family:Calibri">${v}</td></tr>`;
       });
@@ -8915,7 +8930,16 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       _fillDL();
       document.getElementById("patient-modal").style.display = "flex";
     }
-    function closeModal() { _modalCurrentEditKey = null; document.getElementById("patient-modal").style.display = "none"; }
+    function closeModal() {
+      // Limpiar dirty fields del modal: los campos editados via liveModalNote ya
+      // fueron guardados en saveModal(), así que ya no deben bloquear actualizaciones
+      // Realtime de otros dispositivos.
+      if (_modalCurrentEditKey && _dirtyFields[_modalCurrentEditKey]) {
+        delete _dirtyFields[_modalCurrentEditKey];
+      }
+      _modalCurrentEditKey = null;
+      document.getElementById("patient-modal").style.display = "none";
+    }
     function saveModal() {
       const cama = document.getElementById("mf-cama").value.trim().toUpperCase();
       const exp = document.getElementById("mf-exp").value.trim();
@@ -9773,8 +9797,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       return {
         fecha: _el("gi-fecha"),
         turno: "",
-        entrega: document.getElementById("gi-entrega").value || "",
-        recibe: document.getElementById("gi-recibe").value || ""
+        entrega: _el("gi-entrega"),
+        recibe: _el("gi-recibe")
       };
     }
     function exportToExcel() {
