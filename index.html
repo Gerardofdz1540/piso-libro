@@ -4120,8 +4120,8 @@
     // ─── SUPABASE: SAVE NOTE ────────────────────────────────────────────────────────
     async function supaUpsertNote(patientId, nd) {
       if (!patientId) return null;
-      const row = {
-        patient_id: patientId,
+      const buildRow = (pid) => ({
+        patient_id: pid,
         app: nd.app || "", pa: nd.pa || "", drenajes: nd.drenajes || "", qx: nd.qx || "",
         manejo: nd.manejo || "", sangrado: nd.sangrado || "", sv: nd.sv || "",
         balance: nd.balance || "", pendientes: nd.pendientes || "", misc: nd.misc || "",
@@ -4129,16 +4129,39 @@
         lab_history: nd.labHistory || [],
         imagen_history: nd.imagenHistory || [],
         updated_by: localStorage.getItem("pl_user_name") || ""
-      };
+      });
       try {
         // Upsert correcto: on_conflict=patient_id necesario para que PostgREST
         // genere ON CONFLICT (patient_id) DO UPDATE en lugar de INSERT puro.
         // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
-        const data = await _sUpsert("notes", row, "patient_id");
+        const data = await _sUpsert("notes", buildRow(patientId), "patient_id");
         return Array.isArray(data) ? data[0] : data;
       } catch (e) {
+        const msg = e && e.message ? e.message : String(e || "");
+        // FK violation (23503): el paciente no existe en Supabase con ese UUID.
+        // Puede ocurrir si fue borrado/recreado desde otro dispositivo.
+        // Solución: resetear _supa_id, re-sincronizar el paciente y reintentar.
+        if (msg.includes("23503") || msg.includes("notes_patient_id_fkey")) {
+          const p = patients.find(x => x._supa_id === patientId);
+          if (p) {
+            safeWarn("supaUpsertNote: FK violation, re-sync patient first", p.nombre || p.cama);
+            p._supa_id = null;
+            await supaUpsertPatient(p);
+            if (p._supa_id) {
+              try {
+                const data2 = await _sUpsert("notes", buildRow(p._supa_id), "patient_id");
+                lsSavePatients(patients);
+                return Array.isArray(data2) ? data2[0] : data2;
+              } catch (e2) {
+                safeLog("supaUpsertNote retry error:", e2);
+                _lastSyncErrorDetail = e2 && e2.message ? e2.message : String(e2 || "");
+                return null;
+              }
+            }
+          }
+        }
         safeLog("supaUpsertNote error:", e);
-        _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
+        _lastSyncErrorDetail = msg;
         return null;
       }
     }
