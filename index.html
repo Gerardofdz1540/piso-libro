@@ -2605,6 +2605,7 @@
       <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
       <button class="tab" onclick="setView('altas',this)">✅ Altas</button>
       <button class="tab" onclick="setView('pendientes',this)">📋 Pendientes</button>
+      <button class="tab" onclick="setView('papelera',this)">📦 Egresados</button>
     </div>
   </div>
   </div>
@@ -2639,6 +2640,7 @@
     <div id="view-noOlvidar" style="display:none"></div>
     <div id="view-altas" style="display:none"></div>
     <div id="view-pendientes" style="display:none"></div>
+    <div id="view-papelera" style="display:none"></div>
   </div>
 
   <!-- PATIENT MODAL -->
@@ -5349,7 +5351,7 @@
       });
       const _cb = document.getElementById("count-badge");
       if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
-      ["piso", "census", "print", "noOlvidar", "altas", "pendientes"].forEach(v => {
+      ["piso", "census", "print", "noOlvidar", "altas", "pendientes", "papelera"].forEach(v => {
         const _ve = document.getElementById("view-" + v);
         if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
@@ -5359,6 +5361,7 @@
       if (currentView === "noOlvidar") renderNoOlvidar();
       if (currentView === "altas") renderAltas();
       if (currentView === "pendientes") renderPendientes(filtered);
+      if (currentView === "papelera") renderPapelera();
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -9057,8 +9060,18 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             }
           }
         })(2);
-        // Archive to Supabase — loguear si falla (antes se silenciaba completamente)
+        // Archive to Supabase — guardar ID de vuelta para poder recuperar desde la nube
         _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" })
+          .then(function (rows) {
+            const supaArchiveId = rows && rows[0] && rows[0].id;
+            if (supaArchiveId) {
+              const idx = archivados.findIndex(a => a._archiveKey === archived._archiveKey && a._archivedAt === archived._archivedAt);
+              if (idx !== -1) {
+                archivados[idx]._supaArchiveId = supaArchiveId;
+                try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+              }
+            }
+          })
           .catch(e => safeLog("archive supabase error (egreso):", e));
       }
       savePts();
@@ -9070,15 +9083,105 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (badge) { const prev = badge.textContent; badge.style.color = "#27ae60"; badge.textContent = "✅ Paciente archivado"; setTimeout(() => { badge.style.color = ""; badge.textContent = prev; }, 2200); }
     }
 
+    // ─── PAPELERA DE EGRESADOS ────────────────────────────────────────────────────────
+    async function loadArchiveFromSupabase() {
+      try {
+        const rows = await _sGet("archive", "order=created_at.desc&limit=100");
+        if (!rows || !rows.length) return 0;
+        const localSupaIds = new Set(archivados.filter(a => a._supaArchiveId).map(a => a._supaArchiveId));
+        let added = 0;
+        for (const row of rows) {
+          if (!row.id || localSupaIds.has(row.id)) continue;
+          const p = row.patient_data || {};
+          const archived = {
+            ...p,
+            _archivedAt: row.created_at || new Date().toISOString(),
+            _archiveKey: pid(p) || ("arch-" + row.id),
+            _note: row.note_data || null,
+            _supaArchiveId: row.id
+          };
+          archivados.push(archived);
+          added++;
+        }
+        if (added > 0) {
+          archivados.sort((a, b) => new Date(b._archivedAt) - new Date(a._archivedAt));
+          if (archivados.length > 100) archivados = archivados.slice(0, 100);
+          try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+        }
+        return added;
+      } catch (e) {
+        safeLog("loadArchiveFromSupabase:", e);
+        return 0;
+      }
+    }
+
+    async function syncArchiveFromCloud() {
+      const btn = event && event.target;
+      if (btn) { btn.textContent = "⏳ Buscando..."; btn.disabled = true; }
+      const added = await loadArchiveFromSupabase();
+      if (btn) { btn.textContent = "☁️ Cargar desde nube"; btn.disabled = false; }
+      renderPapelera();
+      if (added > 0) alert(`Se cargaron ${added} paciente${added !== 1 ? "s" : ""} adicional${added !== 1 ? "es" : ""} desde la nube.`);
+      else alert("No se encontraron registros adicionales en la nube.");
+    }
+
+    function renderPapelera() {
+      const el = document.getElementById("view-papelera");
+      if (!el) return;
+      if (!archivados.length) {
+        el.innerHTML = `<div style="padding:40px;text-align:center;color:#94a3b8;font-size:14px">
+          <div style="font-size:36px;margin-bottom:12px">📦</div>
+          <div style="font-weight:700;color:#64748b;font-size:15px;margin-bottom:6px">No hay pacientes archivados</div>
+          <div style="font-size:12px">Los pacientes que egreses se guardarán aquí para que los puedas recuperar.</div>
+          <button onclick="syncArchiveFromCloud()" style="margin-top:16px;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">☁️ Buscar en la nube</button>
+        </div>`;
+        return;
+      }
+      let html = `<div style="padding:12px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <div>
+            <span style="font-size:14px;font-weight:700;color:#0f172a">📦 Pacientes egresados</span>
+            <span style="font-size:12px;color:#64748b;margin-left:8px">${archivados.length} registro${archivados.length !== 1 ? "s" : ""}</span>
+          </div>
+          <button onclick="syncArchiveFromCloud()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">☁️ Cargar desde nube</button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">Puedes restaurar cualquier paciente al censo activo con el botón "↩ Restaurar".</div>
+        <div style="display:flex;flex-direction:column;gap:8px">`;
+      archivados.forEach(function (arc, idx) {
+        const fecha = arc._archivedAt ? new Date(arc._archivedAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
+        html += `<div style="border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden">
+          <div style="background:linear-gradient(90deg,#475569 0%,#64748b 100%);color:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-weight:700;font-size:14px">🛏 ${esc(arc.cama || "—")}</span>
+            <span style="flex:1;font-weight:600;font-size:13px;min-width:120px">${esc(arc.nombre || "Sin nombre")}</span>
+            <span style="font-size:11px;opacity:.8">Egreso: ${fecha}</span>
+          </div>
+          <div style="padding:8px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:12px;color:#64748b">Exp: ${esc(arc.exp || "—")}</span>
+            <span style="font-size:12px;color:#64748b">· ${esc(arc.esp || "—")}</span>
+            ${arc.dx ? `<span style="font-size:12px;color:#64748b">· ${esc(arc.dx.slice(0, 60))}</span>` : ""}
+            <div style="margin-left:auto;display:flex;gap:6px">
+              <button onclick="restorePatient(${idx})" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">↩ Restaurar</button>
+              <button onclick="deleteArchivedPermanently(${idx})" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑 Eliminar</button>
+            </div>
+          </div>
+        </div>`;
+      });
+      html += `</div></div>`;
+      el.innerHTML = html;
+    }
+
     function restorePatient(archiveIdx) {
       const arc = archivados[archiveIdx]; if (!arc) return;
       if (!confirm(`¿Restaurar a ${arc.nombre} al censo activo?`)) return;
-      const { _archivedAt, _archiveKey, _note, _supa_id, ...p } = arc;
+      const { _archivedAt, _archiveKey, _note, _supa_id, _supaArchiveId, ...p } = arc;
       delete p._supa_id; // Force new Supabase row on save
+      delete p._supaArchiveId;
       patients.push(p);
       noteData[pid(p)] = _note || defaultData();
       archivados.splice(archiveIdx, 1);
       try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+      // Limpiar el registro en la tabla archive de Supabase
+      if (_supaArchiveId) _sDelete("archive", "id=eq." + _supaArchiveId).catch(e => safeLog("archive restore delete:", e));
       savePts();
       saveNote(pid(p), noteData[pid(p)]);
       buildEspFilters();
@@ -9088,8 +9191,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function deleteArchivedPermanently(archiveIdx) {
       const arc = archivados[archiveIdx]; if (!arc) return;
       if (!confirm(`¿Eliminar permanentemente a ${arc.nombre}? Esta acción no se puede deshacer.`)) return;
+      const _supaArchiveId = arc._supaArchiveId;
       archivados.splice(archiveIdx, 1);
       try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+      // Limpiar el registro en la tabla archive de Supabase
+      if (_supaArchiveId) _sDelete("archive", "id=eq." + _supaArchiveId).catch(e => safeLog("archive permanent delete:", e));
       renderView();
     }
     // ─── SNAPSHOTS DE GUARDIA ──────────────────────────────────────────────────────
