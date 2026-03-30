@@ -2955,6 +2955,16 @@
         </div>
       </details>
 
+      <!-- LIMPIEZA POR ESPECIALIDAD -->
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;font-size:12px;color:#dc2626;font-weight:600">🗑 Limpiar pacientes por especialidad (Admin)</summary>
+        <div style="margin-top:10px;background:#fff5f5;border:1px solid #fecaca;border-radius:8px;padding:14px">
+          <p style="font-size:12px;color:#7f1d1d;margin:0 0 10px">Usa esto si se mezclaron pacientes de otro servicio. Puedes ver cuántos hay por especialidad y eliminarlos.</p>
+          <button onclick="showEspBreakdown()" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);width:100%">📊 Ver pacientes por especialidad en la nube</button>
+          <div id="esp-breakdown" style="margin-top:10px"></div>
+        </div>
+      </details>
+
       <!-- DEBUG PANEL -->
       <div style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -3232,6 +3242,55 @@
       updateProxyStatusBox(cfg.url ? "saved" : "empty");
       document.getElementById("config-modal").style.display = "flex";
       refreshDebugPanel();
+    }
+
+    // ─── LIMPIEZA POR ESPECIALIDAD ─────────────────────────────────────────────────
+    async function showEspBreakdown() {
+      const el = document.getElementById("esp-breakdown");
+      if (!el) return;
+      el.innerHTML = `<div style="font-size:12px;color:#64748b">⏳ Consultando la nube...</div>`;
+      try {
+        const rows = await _sGet("patients", "select=id,nombre,esp,cama,exp");
+        if (!rows || !rows.length) { el.innerHTML = `<div style="font-size:12px;color:#64748b">No hay pacientes en la nube.</div>`; return; }
+        // Agrupar por esp
+        const byEsp = {};
+        rows.forEach(r => {
+          const e = r.esp || "(sin esp)";
+          if (!byEsp[e]) byEsp[e] = [];
+          byEsp[e].push(r);
+        });
+        let html = `<div style="font-size:11px;color:#64748b;margin-bottom:8px">Total: <b>${rows.length}</b> pacientes en Supabase agrupados por especialidad:</div>`;
+        Object.keys(byEsp).sort().forEach(esp => {
+          const pts = byEsp[esp];
+          const isNeuro = ["NCX","COLUMNA","TYO/NCX","NEUROCX","NEUROCIRUGÍA"].includes(esp);
+          html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:${isNeuro ? "#fee2e2" : "#f0fdf4"};border-radius:6px;margin-bottom:4px">
+            <span style="font-weight:700;font-size:12px;min-width:80px;color:${isNeuro ? "#dc2626" : "#166534"}">${esc(esp)}</span>
+            <span style="font-size:11px;color:#64748b;flex:1">${pts.length} paciente${pts.length !== 1 ? "s" : ""}</span>
+            <button onclick="deleteByEsp('${esc(esp)}', ${pts.length})" style="background:#dc2626;color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑 Eliminar todos</button>
+          </div>`;
+        });
+        el.innerHTML = html;
+      } catch (e) {
+        el.innerHTML = `<div style="font-size:12px;color:#dc2626">Error: ${esc(String(e))}</div>`;
+      }
+    }
+
+    async function deleteByEsp(esp, count) {
+      if (!confirm(`¿Eliminar TODOS los ${count} pacientes de especialidad "${esp}" de la base de datos?\n\nEsta acción NO se puede deshacer.`)) return;
+      if (!confirm(`⚠️ SEGUNDA CONFIRMACIÓN\n\nSe borrarán ${count} pacientes de "${esp}" y sus notas de Supabase.\n\n¿Continuar?`)) return;
+      try {
+        await _sDelete("patients", "esp=eq." + encodeURIComponent(esp));
+        // Limpiar también del estado local
+        patients = patients.filter(p => p.esp !== esp);
+        Object.keys(noteData).forEach(k => { if ((patients.find(p => pid(p) === k) || {}).esp === esp) delete noteData[k]; });
+        savePts();
+        buildEspFilters();
+        renderView();
+        await showEspBreakdown(); // Refrescar
+        alert(`✅ Se eliminaron los pacientes de "${esp}".`);
+      } catch (e) {
+        alert(`Error al eliminar: ${e && e.message ? e.message : String(e)}`);
+      }
     }
 
     function refreshDebugPanel() {
@@ -4115,8 +4174,8 @@
 
     async function supaDeletePatient(supaId) {
       if (!supaId) return;
-      try { await _sDelete("patients", "id=eq." + supaId); }
-      catch (e) { safeLog("supaDeletePatient error:", e); }
+      // No silenciar el error: _attemptDelete necesita atraparlo para reintentar
+      await _sDelete("patients", "id=eq." + supaId);
     }
 
     // ─── SUPABASE: SAVE NOTE ────────────────────────────────────────────────────────
@@ -9024,22 +9083,29 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         noteData[newKey] = applyModalExtraToNote(noteData[newKey] || defaultData(), _modalExtra);
         saveNote(newKey, noteData[newKey]);
       }
-      _savePtsImmediate(); // inmediato: asigna _supa_id antes de que llegue el Realtime INSERT
-      buildEspFilters();
-      closeModal();
-      renderView();
-      // Si el estado guardado es ALTA o DEFUNCIÓN → auto-egreso
+      // Si el estado es ALTA o DEFUNCIÓN (edición) → confirmar egreso ANTES de guardar
+      // a Supabase, para evitar el race condition save→delete.
       if (modalMode === "edit" && (p.estado === "ALTA" || p.estado === "DEFUNCIÓN")) {
         const savedKey = pid(p);
         const etiqueta = p.estado === "ALTA" ? "alta médica" : "defunción";
         if (confirm(`¿Registrar ${etiqueta} de ${p.nombre}?\n\nSe moverá al archivo de Egresados y saldrá del censo activo.`)) {
+          // Anotar egreso en la nota antes de archivar
           if (noteData[savedKey]) {
             noteData[savedKey]._egreso = p.estado;
             noteData[savedKey]._egresoFecha = new Date().toLocaleDateString("es-MX");
           }
+          buildEspFilters();
+          closeModal();
+          // dischargePatient maneja su propio guardado y renderView
           dischargePatient(savedKey);
+          return;
         }
+        // Usuario canceló → guardar normalmente sin egresar
       }
+      _savePtsImmediate(); // inmediato: asigna _supa_id antes de que llegue el Realtime INSERT
+      buildEspFilters();
+      closeModal();
+      renderView();
     }
 
     // ─── CONFIRM DISCHARGE ───────────────────────────────────────────────────────────
