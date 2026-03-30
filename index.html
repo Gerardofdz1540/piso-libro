@@ -7473,6 +7473,20 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const pk = sel.dataset.pk;
       const p = patients.find(pt => pid(pt) === pk);
       if (!p) return;
+      // Si el nuevo estado es ALTA o DEFUNCIÓN → auto-egreso con confirmación
+      if ((sel.value === "ALTA" || sel.value === "DEFUNCIÓN") && p.estado !== sel.value) {
+        const etiqueta = sel.value === "ALTA" ? "alta médica" : "defunción";
+        if (!confirm(`¿Registrar ${etiqueta} de ${p.nombre}?\n\nSe moverá al archivo de Egresados y saldrá del censo activo.`)) {
+          sel.value = p.estado; // revertir
+          return;
+        }
+        if (noteData[pk]) {
+          noteData[pk]._egreso = sel.value;
+          noteData[pk]._egresoFecha = new Date().toLocaleDateString("es-MX");
+        }
+        dischargePatient(pk);
+        return;
+      }
       p.estado = sel.value;
       const col = ESTADO_COLORS[p.estado] || "#ccc";
       sel.style.background = col;
@@ -9014,6 +9028,18 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       buildEspFilters();
       closeModal();
       renderView();
+      // Si el estado guardado es ALTA o DEFUNCIÓN → auto-egreso
+      if (modalMode === "edit" && (p.estado === "ALTA" || p.estado === "DEFUNCIÓN")) {
+        const savedKey = pid(p);
+        const etiqueta = p.estado === "ALTA" ? "alta médica" : "defunción";
+        if (confirm(`¿Registrar ${etiqueta} de ${p.nombre}?\n\nSe moverá al archivo de Egresados y saldrá del censo activo.`)) {
+          if (noteData[savedKey]) {
+            noteData[savedKey]._egreso = p.estado;
+            noteData[savedKey]._egresoFecha = new Date().toLocaleDateString("es-MX");
+          }
+          dischargePatient(savedKey);
+        }
+      }
     }
 
     // ─── CONFIRM DISCHARGE ───────────────────────────────────────────────────────────
@@ -9326,7 +9352,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const missingPts = [];  // en censo anterior, no aparecen en nuevo censo
           const dispositions = {}; // pid → 'alta' | 'defuncion' | 'traslado' | 'mantener'
 
+          // Expedientes ya archivados/egresados → no se re-añaden al censo
+          const archivedExpSet = new Set(archivados.map(a => a.exp).filter(Boolean));
+          let skippedArchived = 0;
+
           imported.forEach(p => {
+            // Si ya fue dado de alta anteriormente, ignorar
+            if (archivedExpSet.has(p.exp)) { skippedArchived++; return; }
             if (oldByPid.has(pid(p))) {
               samePts.push(p);
             } else if (oldByCama.has(p.cama)) {
@@ -9377,7 +9409,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             `<span style="color:#854d0e;font-weight:600">🔁 ${samePts.length} actualizados</span> &nbsp;·&nbsp; ` +
             `<span style="color:#991b1b;font-weight:600">🔄 ${changedPts.length} camas con cambio</span>` +
             summaryExtra + procInfo +
-            (manualMissing > 0 ? ` &nbsp;·&nbsp; <span style="color:#78350f;font-weight:600">⚠️ ${manualMissing} sin clasificar</span>` : "");
+            (manualMissing > 0 ? ` &nbsp;·&nbsp; <span style="color:#78350f;font-weight:600">⚠️ ${manualMissing} sin clasificar</span>` : "") +
+            (skippedArchived > 0 ? ` &nbsp;·&nbsp; <span style="color:#64748b;font-weight:600">📦 ${skippedArchived} ya egresado${skippedArchived !== 1 ? "s" : ""} (omitidos)</span>` : "");
 
           // ─── SECCIÓN: CAMAS CON CAMBIO ────────────────────────────────────
           const secChanged = document.getElementById("import-sec-changed");
