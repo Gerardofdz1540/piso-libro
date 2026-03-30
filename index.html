@@ -9157,11 +9157,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           .then(function (rows) {
             const supaArchiveId = rows && rows[0] && rows[0].id;
             if (supaArchiveId) {
-              const idx = archivados.findIndex(a => a._archiveKey === archived._archiveKey && a._archivedAt === archived._archivedAt);
-              if (idx !== -1) {
-                archivados[idx]._supaArchiveId = supaArchiveId;
-                try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
-              }
+              // Modificar la referencia directa al objeto (evita buscar por propiedades)
+              archived._supaArchiveId = supaArchiveId;
+              try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
             }
           })
           .catch(e => safeLog("archive supabase error (egreso):", e));
@@ -9644,9 +9642,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         if (!noteData[newKey]) noteData[newKey] = defaultData();
         // Eliminar paciente anterior de Supabase para evitar duplicados de cama al refrescar
         if (oldPt._supa_id) {
-          supaDeletePatient(oldPt._supa_id).catch(() => {});
+          supaDeletePatient(oldPt._supa_id).catch(e => safeLog("import delete patient:", e));
         } else {
-          _sDelete("patients", "exp=eq." + encodeURIComponent(oldPt.exp) + "&cama=eq." + encodeURIComponent(oldPt.cama)).catch(() => {});
+          _sDelete("patients", "exp=eq." + encodeURIComponent(oldPt.exp) + "&cama=eq." + encodeURIComponent(oldPt.cama)).catch(e => safeLog("import delete patient (exp/cama):", e));
         }
       });
 
@@ -9676,9 +9674,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           lsSaveNote(k, noteData[k]);
           // Eliminar de Supabase para que no reaparezcan al refrescar
           if (p._supa_id) {
-            supaDeletePatient(p._supa_id).catch(() => {});
+            supaDeletePatient(p._supa_id).catch(e => safeLog("import delete patient:", e));
           } else {
-            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(() => {});
+            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(e => safeLog("import delete patient (exp/cama):", e));
           }
         }
         processedOldPids.add(k);
@@ -9697,9 +9695,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const k = pid(p);
         if (!nextPidSet.has(k) && !explicitlyHandledPids.has(k)) {
           if (p._supa_id) {
-            supaDeletePatient(p._supa_id).catch(() => {});
+            supaDeletePatient(p._supa_id).catch(e => safeLog("import delete patient:", e));
           } else {
-            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(() => {});
+            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(e => safeLog("import delete patient (exp/cama):", e));
           }
         }
       });
