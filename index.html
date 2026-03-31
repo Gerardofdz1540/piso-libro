@@ -8735,7 +8735,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function printNote() {
       const c = document.getElementById("nm-fields-container"); if (!c) return;
       const modal = c.closest(".nm-modal");
-      const title = modal ? modal.querySelector(".nm-title").textContent : "";
+      const title = modal ? (modal.querySelector(".nm-title") || {}).textContent || "" : "";
       const headerEl = c.querySelector(".nm-field-full b");
       const headerText = headerEl ? headerEl.textContent : "";
       let rows = "";
@@ -9850,6 +9850,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       const dR = document.getElementById("dl-res-proc"); if (dR) dR.innerHTML = r.map(x => "<option value='" + esc(x) + "'>").join("");
       if (isEdit) {
         const pr = procedimientos[_procEditIdx];
+        if (!pr) { document.getElementById("proc-modal").style.display = "none"; return; }
         document.getElementById("pf-cama").value = pr.cama || "";
         document.getElementById("pf-exp").value = pr.exp || "";
         document.getElementById("pf-nombre").value = pr.nombre || "";
@@ -9904,14 +9905,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       procedimientos.splice(idx, 1);
       saveProcs();
       renderView();
-      if (pr && pr._id) supaDeleteProc(pr._id);
+      if (pr && pr._id) supaDeleteProc(pr._id).catch(e => safeLog("deleteProc:", e));
     }
     function clearAllProcs() {
       if (!confirm(`¿Eliminar los ${procedimientos.length} procedimientos del día? Esta acción no se puede deshacer.`)) return;
       procedimientos = [];
       saveProcs();
       renderView();
-      supaDeleteAllProcs();
+      supaDeleteAllProcs().catch(e => safeLog("clearAllProcs:", e));
     }
     function renderProcSection() {
       let rows = "";
