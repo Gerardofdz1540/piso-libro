@@ -4528,7 +4528,12 @@
             if (pendingSyncs > 0) return;
             pendingSyncs++;
             setSyncStatus("syncing", "Reintentando...");
-            const retried2 = await Promise.all(patients.map(p => supaUpsertPatient(p)));
+            // Reintentar en lotes de 6 para no saturar Supabase con un censo grande
+            const retried2 = [];
+            for (let ri = 0; ri < patients.length; ri += BATCH) {
+              const rb = await Promise.all(patients.slice(ri, ri + BATCH).map(p => supaUpsertPatient(p)));
+              retried2.push(...rb);
+            }
             const retryFailed = patients.filter((_, i) => !retried2[i]);
             lsSavePatients(patients);
             if (!retryFailed.length) {
@@ -9712,8 +9717,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       // Reemplazar el array global completamente
       patients = nextPatients;
 
-      // Suprimir Realtime para que los INSERT/UPDATE de Supabase no sobreescriban el import
-      suppressKey("__all__", 5000);
+      // Suprimir Realtime para que los INSERT/UPDATE de Supabase no sobreescriban el import.
+      // El tiempo de supresión cubre el tiempo estimado de sync: lotes de 6 × ~400ms por lote.
+      // Con censuses de hasta 120 pacientes: 20 lotes × 400ms = 8s + margen = 15s.
+      const suppressMs = Math.max(15000, Math.ceil(nextPatients.length / 6) * 400 + 5000);
+      suppressKey("__all__", suppressMs);
 
       // Guardar localmente de inmediato (fuente de verdad hasta que Supabase confirme)
       lsSavePatients(patients);
@@ -9735,7 +9743,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         if (added) saveProcs();
       }
 
-      savePts();
       pendingImport = null;
       document.getElementById("import-modal").style.display = "none";
       buildEspFilters();
