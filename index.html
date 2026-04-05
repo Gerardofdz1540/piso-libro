@@ -3893,6 +3893,10 @@
         msg.includes("internet disconnected")
       );
     }
+    function isRateLimited(e) {
+      const msg = String((e && e.message) || e || "").toLowerCase();
+      return msg.includes("429") || msg.includes("rate limit") || msg.includes("too many");
+    }
     async function retryNetwork(fn, retries = 1, baseDelayMs = 350) {
       let lastErr = null;
       for (let attempt = 0; attempt <= retries; attempt++) {
@@ -3900,8 +3904,15 @@
           return await fn();
         } catch (e) {
           lastErr = e;
-          if (attempt === retries || !isLikelyNetworkError(e)) throw e;
-          await new Promise(r => setTimeout(r, baseDelayMs * (attempt + 1)));
+          if (attempt === retries) throw e;
+          if (isRateLimited(e)) {
+            // Backoff exponencial agresivo para 429: 2s, 4s, 8s...
+            await new Promise(r => setTimeout(r, Math.min(30000, 2000 * Math.pow(2, attempt))));
+          } else if (!isLikelyNetworkError(e)) {
+            throw e;
+          } else {
+            await new Promise(r => setTimeout(r, baseDelayMs * (attempt + 1)));
+          }
         }
       }
       throw lastErr;
@@ -4186,9 +4197,13 @@
     }
 
     // ─── SUPABASE: SAVE NOTE ────────────────────────────────────────────────────────
-    async function supaUpsertNote(patientId, nd) {
+    // dirtyFieldNames: Set de nombres de campo que cambiaron en esta sesión de edición.
+    // Si se pasa, solo se envían esos campos a Supabase (merge por campo, no LWW completo).
+    // Esto previene que el Dispositivo B sobreescriba campos del Dispositivo A cuando
+    // ambos editan el mismo paciente con 200ms de diferencia y el Realtime está lento.
+    async function supaUpsertNote(patientId, nd, dirtyFieldNames) {
       if (!patientId) return null;
-      const buildRow = (pid) => ({
+      const buildFullRow = (pid) => ({
         patient_id: pid,
         app: nd.app || "", pa: nd.pa || "", drenajes: nd.drenajes || "", qx: nd.qx || "",
         manejo: nd.manejo || "", sangrado: nd.sangrado || "", sv: nd.sv || "",
@@ -4198,6 +4213,31 @@
         imagen_history: nd.imagenHistory || [],
         updated_by: localStorage.getItem("pl_user_name") || ""
       });
+      // Mapa de campo-nota → columna Supabase
+      const FIELD_TO_COL = {
+        app: "app", pa: "pa", drenajes: "drenajes", qx: "qx",
+        manejo: "manejo", sangrado: "sangrado", sv: "sv",
+        balance: "balance", pendientes: "pendientes", misc: "misc",
+        labHistory: "lab_history", imagenHistory: "imagen_history"
+      };
+      const buildRow = (pid) => {
+        const fullRow = buildFullRow(pid);
+        // Si no hay dirty fields o es un guardado completo (outbox/migración), enviar todo
+        if (!dirtyFieldNames || dirtyFieldNames.size === 0) return fullRow;
+        // Construir row parcial con solo los campos editados → merge por campo
+        const partial = { patient_id: pid, updated_by: fullRow.updated_by };
+        let hasChecklistDirty = false;
+        dirtyFieldNames.forEach(function(f) {
+          if (FIELD_TO_COL[f]) partial[FIELD_TO_COL[f]] = fullRow[FIELD_TO_COL[f]];
+          // Cualquier campo ck_* o campos de metadatos requieren actualizar checklist completo
+          if (f.startsWith("ck_") || f === "entrega" || f === "body_diagram_ant" || f === "body_diagram_post") hasChecklistDirty = true;
+        });
+        if (hasChecklistDirty) partial.checklist = fullRow.checklist;
+        // Si el partial solo tiene patient_id y updated_by (nada útil), enviar full para
+        // garantizar que la nota existe en Supabase (primer guardado)
+        if (Object.keys(partial).length <= 2) return fullRow;
+        return partial;
+      };
       try {
         // Upsert correcto: on_conflict=patient_id necesario para que PostgREST
         // genere ON CONFLICT (patient_id) DO UPDATE en lugar de INSERT puro.
@@ -4220,7 +4260,7 @@
             await supaUpsertPatient(p);
             if (p._supa_id) {
               try {
-                const data2 = await _sUpsert("notes", buildRow(p._supa_id), "patient_id");
+                const data2 = await _sUpsert("notes", buildFullRow(p._supa_id), "patient_id");
                 lsSavePatients(patients);
                 return Array.isArray(data2) ? data2[0] : data2;
               } catch (e2) {
@@ -4352,7 +4392,9 @@
             if (!p || !p._supa_id) { outboxEnqueue({ type: "note", key: k, data: d }); return; }
             pendingSyncs++;
             setSyncStatus("syncing", "Guardando...");
-            const res = await supaUpsertNote(p._supa_id, d);
+            // Pasar snapshot de dirty fields al upsert para merge por campo (evita LWW)
+            const dirtySnapshot = _dirtyFields[k] ? new Set(_dirtyFields[k]) : null;
+            const res = await supaUpsertNote(p._supa_id, d, dirtySnapshot);
             pendingSyncs--;
             // res === null indica error explícito; cualquier otro valor truthy (incluso {}) es éxito
             const ok = res !== null && res !== undefined;
@@ -4557,10 +4599,33 @@
     }
 
     // ─── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────────
+    // Track si ya hay un restart de Realtime programado (evita múltiples reintentos)
+    let _realtimeRestartTimer = null;
+    function _scheduleRealtimeRestart(reason) {
+      if (_realtimeRestartTimer) return; // ya hay uno pendiente
+      safeWarn("[RT] Canal en estado " + reason + " — reiniciando Realtime en 5s");
+      _realtimeRestartTimer = setTimeout(function() {
+        _realtimeRestartTimer = null;
+        if (!document.hidden && navigator.onLine) {
+          safeInfo("[RT] Reiniciando Realtime por " + reason);
+          startRealtime();
+        }
+      }, 5000);
+    }
+    // Genera callback de estado para cada canal: detecta CHANNEL_ERROR y TIMED_OUT
+    function _makeSubCallback(name) {
+      return function(status) {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          _scheduleRealtimeRestart(name + ":" + status);
+        }
+      };
+    }
+
     function startRealtime() {
       // Clean up old subscriptions
       _realtimeSubs.forEach(s => { try { s.unsubscribe(); } catch (e) { safeLog("[RT] unsubscribe error:", e); } });
       _realtimeSubs = [];
+      if (_realtimeRestartTimer) { clearTimeout(_realtimeRestartTimer); _realtimeRestartTimer = null; }
 
       // Guard info broadcast (sin cambio de schema, canal efímero)
       initGuardInfoSync();
@@ -4571,7 +4636,7 @@
           .on("postgres_changes", { event: "*", schema: "public", table: "patients" }, (payload) => {
             handlePatientChange(payload);
           })
-          .subscribe();
+          .subscribe(_makeSubCallback("patients"));
         _realtimeSubs.push(patSub);
       } catch (e) { safeLog("[RT] patients subscription failed:", e); }
 
@@ -4581,7 +4646,7 @@
           .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, (payload) => {
             handleNoteChange(payload);
           })
-          .subscribe();
+          .subscribe(_makeSubCallback("notes"));
         _realtimeSubs.push(noteSub);
       } catch (e) { safeLog("[RT] notes subscription failed:", e); }
 
@@ -4591,7 +4656,7 @@
           .on("postgres_changes", { event: "*", schema: "public", table: "no_olvidar" }, function(payload) {
             handleNoOlvidarChange(payload);
           })
-          .subscribe();
+          .subscribe(_makeSubCallback("no_olvidar"));
         _realtimeSubs.push(noSub);
       } catch (e) { safeLog("[RT] no_olvidar subscription failed:", e); }
 
@@ -4601,7 +4666,7 @@
           .on("postgres_changes", { event: "*", schema: "public", table: "procedimientos_dia" }, function(payload) {
             handleProcChange(payload);
           })
-          .subscribe();
+          .subscribe(_makeSubCallback("procedimientos_dia"));
         _realtimeSubs.push(procSub);
       } catch (e) { safeLog("[RT] procedimientos_dia subscription failed:", e); }
 
@@ -4620,7 +4685,7 @@
             try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify({ fecha: row.fecha, entrega: row.entrega, recibe: row.recibe })); } catch (_) {}
             safeLog("[RT] guard_info updated:", row);
           })
-          .subscribe();
+          .subscribe(_makeSubCallback("guard_info"));
         _realtimeSubs.push(giSub);
       } catch (e) { safeLog("[RT] guard_info subscription failed:", e); }
     }
@@ -9141,7 +9206,19 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         _note: nd
       };
       archivados.unshift(archived);
-      try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+      try {
+        localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados));
+      } catch (e) {
+        if (e && e.name === "QuotaExceededError") {
+          if (lsFreeSpace()) {
+            try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e2) {
+              setSyncStatus("error", "⚠️ Almacenamiento lleno — paciente egresado en nube, ve a Papelera para confirmar");
+            }
+          } else {
+            setSyncStatus("error", "⚠️ Almacenamiento lleno — paciente egresado en nube, ve a Papelera para confirmar");
+          }
+        }
+      }
       // Quitar del censo activo
       patients = patients.filter(pt => pid(pt) !== k);
       delete noteData[k];
