@@ -459,6 +459,51 @@
       margin-top: 10px
     }
 
+    /* INTERCONSULTAS & CULTIVOS */
+    .interconsultas-box {
+      background: #f0f9ff;
+      border: 1px solid #7dd3fc;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-top: 10px
+    }
+    .interconsultas-box .field-label {
+      color: #0369a1
+    }
+    .interconsultas-box .field-ta {
+      background: #fff;
+      border-color: #bae6fd
+    }
+    .interconsultas-box .field-ta:focus {
+      border-color: #0ea5e9
+    }
+    .cultivos-box {
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-top: 10px
+    }
+    .cultivos-box .field-label {
+      color: #166534
+    }
+    .cultivos-box .field-ta {
+      background: #fff;
+      border-color: #bbf7d0
+    }
+    .cultivos-box .field-ta:focus {
+      border-color: #22c55e
+    }
+    .cultivo-chip {
+      font-size: 11px;
+      padding: 4px 7px;
+      background: #fff;
+      border: 1px solid #bbf7d0;
+      border-radius: 5px;
+      margin-bottom: 4px;
+      line-height: 1.5
+    }
+
     /* LABS */
     .labs-header {
       display: flex;
@@ -3433,7 +3478,7 @@
         body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
-        checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "",
+        checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "", interconsultas: "", cultivos: "",
           pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_hxqx: "",
@@ -4803,6 +4848,8 @@
       nd.checklist = { ...localChecklist, ...remoteChecklist };
       if (dirty.has("ck_pendientes_mips")) nd.checklist.pendientes_mips = localChecklist.pendientes_mips || "";
       if (dirty.has("ck_pendientes_r1")) nd.checklist.pendientes_r1 = localChecklist.pendientes_r1 || "";
+      if (dirty.has("ck_interconsultas")) nd.checklist.interconsultas = localChecklist.interconsultas || "";
+      if (dirty.has("ck_cultivos")) nd.checklist.cultivos = localChecklist.cultivos || "";
       if (remoteMeta.exists && !dirty.has("entrega")) nd.entrega = remoteMeta.entrega;
       if (remoteMeta.exists) {
         nd.body_diagram_ant = remoteMeta.body_diagram_ant;
@@ -5951,6 +5998,68 @@
       ).join("");
     }
 
+    // ─── INTERCONSULTAS ────────────────────────────────────────────────────────────
+    function renderInterconsultasSection(nd, k) {
+      const val = esc((nd.checklist && nd.checklist.interconsultas) || "");
+      return `<div class="interconsultas-box">
+        <div class="field-label">🩺 Interconsultas</div>
+        <textarea class="field-ta" rows="2"
+          data-key="${k}" data-ckfield="interconsultas"
+          inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+          oninput="liveCkText(this)"
+          onchange="updateCkText(this.dataset.key,'interconsultas',this.value)"
+          placeholder="Esp: motivo, fecha solicitud, estado / respuesta...">${val}</textarea>
+      </div>`;
+    }
+
+    // ─── CULTIVOS ──────────────────────────────────────────────────────────────────
+    function renderCultivosSection(nd, k) {
+      // Recolectar cultivos extraídos de labHistory
+      const history = (nd && nd.labHistory) || [];
+      const cultivosExtraidos = [];
+      history.forEach(function(snap) {
+        if (!snap || !snap.labs) return;
+        const labs = snap.labs;
+        if (labs.micro_tipo_cultivo || labs.micro_organismo) {
+          cultivosExtraidos.push({
+            fecha: snap.fecha || "",
+            tipo: labs.micro_tipo_cultivo || "Cultivo",
+            organismo: labs.micro_organismo || "",
+            sensibilidades: labs.micro_sensibilidades || "",
+            resistencias: labs.micro_resistencias || "",
+            muestra: labs.micro_muestra || "",
+            comentarios: labs.micro_comentarios || ""
+          });
+        }
+      });
+      // Ordenar por fecha descendente
+      cultivosExtraidos.sort(function(a, b) { return b.fecha.localeCompare(a.fecha); });
+
+      let chipsHtml = "";
+      cultivosExtraidos.forEach(function(c) {
+        let text = `<span style="font-weight:700;color:#166534">${esc(c.tipo)}</span>`;
+        if (c.fecha) text += ` <span style="color:#64748b;font-size:10px">${esc(c.fecha)}</span>`;
+        if (c.muestra) text += ` · <span style="color:#475569">🧫 ${esc(c.muestra)}</span>`;
+        if (c.organismo) text += `<br>🦠 <span style="color:#15803d">${esc(c.organismo)}</span>`;
+        if (c.sensibilidades) text += ` · <span style="color:#16a34a;font-size:10px">S: ${esc(c.sensibilidades)}</span>`;
+        if (c.resistencias) text += ` · <span style="color:#dc2626;font-size:10px">R: ${esc(c.resistencias)}</span>`;
+        if (c.comentarios) text += `<br><span style="color:#64748b;font-size:10px">${esc(c.comentarios)}</span>`;
+        chipsHtml += `<div class="cultivo-chip">${text}</div>`;
+      });
+
+      const manualVal = esc((nd.checklist && nd.checklist.cultivos) || "");
+      return `<div class="cultivos-box">
+        <div class="field-label">🦠 Cultivos${cultivosExtraidos.length ? ` · <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length} reporte(s)</span>` : ""}</div>
+        ${chipsHtml ? `<div style="margin-bottom:6px">${chipsHtml}</div>` : ""}
+        <textarea class="field-ta" rows="2"
+          data-key="${k}" data-ckfield="cultivos"
+          inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
+          oninput="liveCkText(this)"
+          onchange="updateCkText(this.dataset.key,'cultivos',this.value)"
+          placeholder="Cultivos solicitados, pendientes, resultados preliminares...">${manualVal}</textarea>
+      </div>`;
+    }
+
     function renderFullCard(p, nd, k) {
       const ec = ESP_COLORS[p.esp] || "#333333";
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
@@ -6003,6 +6112,10 @@
       ${renderImagenField(nd, k)}
       ${renderChecklist(nd, k)}
       <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
+      <div class="grid-2">
+        ${renderInterconsultasSection(nd, k)}
+        ${renderCultivosSection(nd, k)}
+      </div>
       <div class="grid-2" style="margin-top:10px">
         <div>
           <div class="field-label">📋 Pendientes MIPs</div>
@@ -6082,6 +6195,10 @@
     </div>
     <div class="simple-body">
       ${fieldRow("⚠️ Pendiente", nd.pendientes, k, "pendientes", 2)}
+      <div class="grid-2">
+        ${renderInterconsultasSection(nd, k)}
+        ${renderCultivosSection(nd, k)}
+      </div>
       <div class="entrega-row">${fieldRow("📋 Entrega", nd.entrega, k, "entrega", 2)}</div>
     </div>
   </div>`;
