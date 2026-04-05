@@ -1,0 +1,27 @@
+name: Supabase Keepalive
+
+# Previene que el proyecto Supabase free tier entre en pausa automática
+# (se pausa después de 7 días sin tráfico).
+# Se ejecuta cada 3 días a las 06:00 UTC (01:00 CST / hora México central).
+
+on:
+  schedule:
+    - cron: '0 6 */3 * *'
+  workflow_dispatch:   # permite ejecutarlo manualmente desde GitHub Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://vkxplmrzyqlamxpbtmes.supabase.co/rest/v1/patients?limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreHBsbXJ6eXFsYW14cGJ0bWVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NTg1MjcsImV4cCI6MjA4NzUzNDUyN30.zChMOiKnxNv3pLyt2Fqi7zUh0ET5rn1a5L6S3RV1Q98" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreHBsbXJ6eXFsYW14cGJ0bWVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NTg1MjcsImV4cCI6MjA4NzUzNDUyN30.zChMOiKnxNv3pLyt2Fqi7zUh0ET5rn1a5L6S3RV1Q98")
+          echo "Supabase keepalive ping → HTTP $STATUS"
+          if [ "$STATUS" = "200" ] || [ "$STATUS" = "206" ]; then
+            echo "OK — Supabase activo"
+          else
+            echo "::warning::Supabase respondió $STATUS — puede estar pausado o con errores"
+          fi
