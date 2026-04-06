@@ -4542,7 +4542,11 @@
         const results = await Promise.all(slice.map(async function (k) {
           const p = byKey[k];
           const nd = getLocalNoteSnapshot(k);
-          if (!p || !p._supa_id) return { key: k, ok: false, data: nd };
+          if (!p) return { key: k, ok: true }; // paciente no encontrado → descartar silenciosamente
+          if (!p._supa_id) {
+            await supaUpsertPatient(p); // intentar crear el paciente primero
+            if (!p._supa_id) return { key: k, ok: false, data: nd };
+          }
           const res = await supaUpsertNote(p._supa_id, nd);
           return { key: k, ok: res !== null && res !== undefined, data: nd };
         }));
@@ -5024,10 +5028,13 @@
           const absIdx = i + j;
           if (item.type === "note" && item.key && item.data) {
             const p = patients.find(x => pid(x) === item.key);
+            // Paciente ya no existe localmente (borrado/reemplazado por Supabase) →
+            // descartar nota huérfana para que no quede atascada indefinidamente.
+            if (!p) { results[absIdx] = true; return; }
             // Si el paciente no tiene _supa_id, intentar sincronizarlo primero antes
             // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
-            if (p && !p._supa_id) await supaUpsertPatient(p);
-            if (p && p._supa_id) {
+            if (!p._supa_id) await supaUpsertPatient(p);
+            if (p._supa_id) {
               const noteRes = await supaUpsertNote(p._supa_id, item.data);
               // Considerar éxito cualquier valor no-null (incluso {} o true)
               results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
@@ -5486,6 +5493,11 @@
       syncInterval = setInterval(async function() {
         if (navigator.onLine && outboxLoad().length > 0) {
           await flushOutbox();
+          // Si el outbox se drenó y no hay guardados activos, actualizar UI a "guardado"
+          if (outboxLoad().length === 0 && pendingSyncs === 0) {
+            setSyncStatus("synced", "✅ Guardado");
+            localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+          }
         }
       }, 30000);
 
