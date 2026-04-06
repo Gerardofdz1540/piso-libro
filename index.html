@@ -4288,10 +4288,11 @@
         // genere ON CONFLICT (patient_id) DO UPDATE en lugar de INSERT puro.
         // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
         const data = await _sUpsert("notes", buildRow(patientId), "patient_id");
-        // Nunca retornar undefined: si Supabase responde con [] (edge case),
-        // data[0] sería undefined (falsy), lo que haría creer al caller que falló.
+        // Nunca retornar null/undefined en caso de éxito HTTP:
+        // • [] → data[0] sería undefined (falso negativo)
+        // • null → _sUpsert sin body JSON (e.g. Content-Type no es JSON) también es éxito
         if (Array.isArray(data)) return data.length > 0 ? data[0] : true;
-        return data !== undefined ? data : null;
+        return data ?? true;
       } catch (e) {
         const msg = e && e.message ? e.message : String(e || "");
         // FK violation (23503): el paciente no existe en Supabase con ese UUID.
@@ -4307,7 +4308,7 @@
               try {
                 const data2 = await _sUpsert("notes", buildFullRow(p._supa_id), "patient_id");
                 lsSavePatients(patients);
-                return Array.isArray(data2) ? data2[0] : data2;
+                return Array.isArray(data2) ? (data2.length > 0 ? data2[0] : true) : (data2 ?? true);
               } catch (e2) {
                 safeLog("supaUpsertNote retry error:", e2);
                 _lastSyncErrorDetail = e2 && e2.message ? e2.message : String(e2 || "");
@@ -4403,6 +4404,7 @@
       } catch (e) {
         if (isLikelyNetworkError(e)) {
           safeWarn("supaLoadAll warn:", e);
+          _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
           setSyncProblemStatus();
           return null;
         }
@@ -4450,6 +4452,7 @@
             }
           } catch (e) {
             safeLog("saveNote async error:", e);
+            _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
             if (pendingSyncs > 0) pendingSyncs--;
             outboxEnqueue({ type: "note", key: k, data: d });
             if (pendingSyncs === 0) setSyncProblemStatus();
@@ -5021,6 +5024,9 @@
           const absIdx = i + j;
           if (item.type === "note" && item.key && item.data) {
             const p = patients.find(x => pid(x) === item.key);
+            // Si el paciente no tiene _supa_id, intentar sincronizarlo primero antes
+            // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
+            if (p && !p._supa_id) await supaUpsertPatient(p);
             if (p && p._supa_id) {
               const noteRes = await supaUpsertNote(p._supa_id, item.data);
               // Considerar éxito cualquier valor no-null (incluso {} o true)
