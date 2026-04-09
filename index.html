@@ -503,6 +503,23 @@
       margin-bottom: 4px;
       line-height: 1.5
     }
+    .cultivo-tipos-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 6px
+    }
+    .cultivo-tipo-btn {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1.5px solid currentColor;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: opacity .15s
+    }
+    .cultivo-tipo-btn:hover { opacity: .75 }
 
     /* LABS */
     .labs-header {
@@ -6031,6 +6048,15 @@
     }
 
     // ─── CULTIVOS ──────────────────────────────────────────────────────────────────
+    const CULTIVO_TIPOS = [
+      { key: "hemo", label: "Hemocultivo", color: "#dc2626", bg: "#fef2f2" },
+      { key: "uro",  label: "Urocultivo",  color: "#d97706", bg: "#fffbeb" },
+      { key: "herida", label: "Herida",    color: "#7c3aed", bg: "#f5f3ff" },
+      { key: "esputo", label: "Esputo",    color: "#0369a1", bg: "#f0f9ff" },
+      { key: "liq",  label: "Líq. perit", color: "#166534", bg: "#f0fdf4" },
+      { key: "otro", label: "+ Otro",      color: "#475569", bg: "#f8fafc" }
+    ];
+
     function renderCultivosSection(nd, k) {
       // Recolectar cultivos extraídos de labHistory
       const history = (nd && nd.labHistory) || [];
@@ -6050,7 +6076,6 @@
           });
         }
       });
-      // Ordenar por fecha descendente
       cultivosExtraidos.sort(function(a, b) { return b.fecha.localeCompare(a.fecha); });
 
       let chipsHtml = "";
@@ -6065,17 +6090,47 @@
         chipsHtml += `<div class="cultivo-chip">${text}</div>`;
       });
 
+      // Quick-add tipo buttons
+      const tiposBtns = CULTIVO_TIPOS.map(t =>
+        `<button class="cultivo-tipo-btn" style="background:${t.bg};color:${t.color};border-color:${t.color}"
+          data-ck="${k}" data-tipo="${esc(t.label)}"
+          onclick="cultivoQuickAdd(this.dataset.ck,this.dataset.tipo)">${esc(t.label)}</button>`
+      ).join("");
+
       const manualVal = esc((nd.checklist && nd.checklist.cultivos) || "");
       return `<div class="cultivos-box">
-        <div class="field-label">🦠 Cultivos${cultivosExtraidos.length ? ` · <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length} reporte(s)</span>` : ""}</div>
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between">
+          <span>🦠 Cultivos / Labs especiales${cultivosExtraidos.length ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length} extraído(s)</span>` : ""}</span>
+        </div>
+        <div class="cultivo-tipos-row">${tiposBtns}</div>
         ${chipsHtml ? `<div style="margin-bottom:6px">${chipsHtml}</div>` : ""}
-        <textarea class="field-ta" rows="2"
+        <textarea class="field-ta" rows="3"
           data-key="${k}" data-ckfield="cultivos"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
           oninput="liveCkText(this)"
           onchange="updateCkText(this.dataset.key,'cultivos',this.value)"
-          placeholder="Cultivos solicitados, pendientes, resultados preliminares...">${manualVal}</textarea>
+          placeholder="Ej: Hemocultivo x2 18/04 — pendiente resultado&#10;Urocultivo 17/04 — E. coli BLEE, sensible a imipenem&#10;Cultivo herida — flora mixta">${manualVal}</textarea>
       </div>`;
+    }
+
+    function cultivoQuickAdd(k, tipo) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      const prev = nd.checklist.cultivos || "";
+      const date = todayStr();
+      const line = (prev ? "\n" : "") + tipo + " " + date + " — ";
+      nd.checklist.cultivos = prev + line;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      // Refresh solo la sección de cultivos
+      const card = document.getElementById("card-" + k);
+      if (card) {
+        const boxes = card.querySelectorAll(".cultivos-box");
+        boxes.forEach(function(box) {
+          const ta = box.querySelector("textarea[data-ckfield='cultivos']");
+          if (ta) { ta.value = nd.checklist.cultivos; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+        });
+      }
     }
 
     function renderFullCard(p, nd, k) {
@@ -6113,27 +6168,38 @@
       ${noEnCenso ? `<div style="background:#fff3cd;border:1px solid #fcd34d;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:12px;color:#78350f">
         ⚠️ <strong>Este paciente no aparece en el último censo importado.</strong> Puede haber tenido alta, defunción o traslado. Usa el botón 🚪 para retirar del censo o edita para actualizar sus datos.
       </div>`: ''}
-      ${fieldRow("🔴 DX", nd.dx || p.dx, k, "dx", 3)}
-      <div class="grid-2">
-        ${fieldRow("📋 APP", nd.app, k, "app", 3)}
-        ${fieldRow("🩺 PA", nd.pa, k, "pa", 3)}
-      </div>
-      <div class="grid-2">
+
+      ${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 3)}
+
+      ${renderLabSection(nd, k)}
+
+      ${renderChecklist(nd, k)}
+
+      <div class="grid-2" style="margin-top:10px">
+        ${fieldRow("📋 APP / Antecedentes", nd.app, k, "app", 3)}
         ${fieldRow("🔧 Qx / Procedimiento", nd.qx, k, "qx", 3)}
-        ${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}
       </div>
-      <div class="grid-3">
+      <div class="grid-2" style="margin-top:10px">
+        ${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}
+        ${fieldRow("🩺 PA / Padecimiento actual", nd.pa, k, "pa", 3)}
+      </div>
+      <div class="grid-3" style="margin-top:10px">
         ${fieldRow("🩸 Drenajes", nd.drenajes, k, "drenajes", 3)}
         ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 3)}
         ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
       </div>
+
       ${renderImagenField(nd, k)}
-      ${renderChecklist(nd, k)}
-      <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
-      <div class="grid-2">
-        ${renderInterconsultasSection(nd, k)}
-        ${renderCultivosSection(nd, k)}
+
+      <div style="margin-top:10px">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #e2e8f0">🩺 Interconsultas · 🦠 Cultivos y labs especiales</div>
+        <div class="grid-2">
+          ${renderInterconsultasSection(nd, k)}
+          ${renderCultivosSection(nd, k)}
+        </div>
       </div>
+
+      <div style="margin-top:10px">${fieldRow("⚠️ Pendientes / Plan", nd.pendientes, k, "pendientes", 3)}</div>
       <div class="grid-2" style="margin-top:10px">
         <div>
           <div class="field-label">📋 Pendientes MIPs</div>
@@ -6163,7 +6229,6 @@
       </div>
       <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
       ${renderBodyDiagram(nd, k)}
-      ${renderLabSection(nd, k)}
       <div class="card-notes-bar">
         <span class="card-notes-label">📝 Notas:</span>
         <button class="card-note-btn cnb-preqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'prequirurgica')">PreQx</button>
@@ -6523,7 +6588,8 @@
           { key: "k", label: "K", unit: "mmol/L", low: 3.5, high: 5.1, cl: 2.8, ch: 6.0 },
           { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0, cl: 2.5 },
           { key: "pcr", label: "PCR", unit: "mg/L", low: 0, high: 10 },
-          { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 }
+          { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 },
+          { key: "lac", label: "Lac", unit: "mmol/L", low: 0, high: 2, ch: 4 }
         ]
       },
       {
@@ -6598,6 +6664,7 @@
       alb: "albumina",
       pcr: "proteina C reactiva",
       pct: "procalcitonina",
+      lac: "lactato/lactate/acido lactico",
       mg: "magnesio",
       ca: "calcio",
       p: "fosforo",
@@ -6868,6 +6935,11 @@
         if (v >= 1) return { sev: "crit", title: "Dímero D muy elevado — TEP/TVP probable", rec: "Dímero D ≥1 µg/mL: alta probabilidad de evento tromboembólico (TEP, TVP) o CID activa. Solicitar angioTAC de tórax o US Doppler según sospecha clínica. Evaluar anticoagulación. Correlacionar con TP, TTP, fibrinógeno y plaquetas para descartar CID." };
         if (v > 0.5) return { sev: "abn", title: "Dímero D elevado", rec: "Dímero D >0.5 µg/mL: marcador sensible pero no específico. Evaluar probabilidad pretest (Wells score). Puede elevarse por cirugía reciente, inflamación, neoplasia, embarazo. Si sospecha de TEP/TVP: imagen urgente." };
         return null;
+      },
+      lac: (v) => {
+        if (v >= 4) return { sev: "crit", title: "Lactato crítico — Hipoperfusión severa / Shock", rec: "Lactato ≥4 mmol/L: criterio de shock metabólico. Resucitación agresiva con cristaloides (30 mL/kg). Evaluar necesidad de vasopresores. Identificar causa (séptico, cardiogénico, hemorrágico, isquémico). Medir lactato de control en 2h. UCI." };
+        if (v > 2) return { sev: "abn", title: "Hiperlactatemia — Perfusión tisular comprometida", rec: "Lactato 2-4 mmol/L: hiperlactatemia moderada. Evaluar causa: sepsis, hipoperfusión, isquemia mesentérica, hepatopatía, fármacos (metformina, epinefrina). Hidratación y control en 2-4h. Tratar causa subyacente." };
+        return null;
       }
     };
 
@@ -7008,7 +7080,7 @@
       const hasAnyLab = activeFecha && LAB_FIELDS.some(lf => labs[lf.key]);
       const hasSourceFile = activeFecha && snap && (snap.source_storage_path || snap.source_file);
 
-      return `<div id="labs-sec-${k}" style="margin-top:12px">
+      return `<div id="labs-sec-${k}" style="margin-top:10px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
     <div class="labs-header">
       <div class="labs-title">${labTitle}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -7114,7 +7186,7 @@
         "CPK: >200 U/L elevada",
         "pH: <7.35 acidosis, >7.45 alcalosis",
         "pCO2: <35 hipocapnia, >45 hipercapnia",
-        "Lactato: >2 mmol/L elevado, >4 CRITICO",
+        "Lac (Lactato): >2 mmol/L elevado, >4 CRITICO (shock/hipoperfusión severa)",
         "EGO pH: normal 5-8",
         "EGO densidad: normal 1.005-1.030",
         "EGO esterasa leucocitaria: >10 u/µL anormal (ITU probable)",
