@@ -3350,8 +3350,9 @@
       try {
         await _sDelete("patients", "esp=eq." + encodeURIComponent(esp));
         // Limpiar también del estado local
+        const deletedKeys = new Set(patients.filter(p => p.esp === esp).map(p => pid(p)));
         patients = patients.filter(p => p.esp !== esp);
-        Object.keys(noteData).forEach(k => { if ((patients.find(p => pid(p) === k) || {}).esp === esp) delete noteData[k]; });
+        Object.keys(noteData).forEach(k => { if (deletedKeys.has(k)) delete noteData[k]; });
         savePts();
         buildEspFilters();
         renderView();
@@ -4183,6 +4184,10 @@
       nd.checklist.cruce_unidades = unidades;
       nd.checklist.cruce_banco = banco;
       noteData[k] = nd;
+      // Marcar campo de checklist como dirty para que el partial-update incluya el checklist
+      // aunque haya otros campos de texto en edición simultánea (evita que cruce se pierda).
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("ck_cruce_activo");
       saveNote(k, nd);
       const overlay = document.getElementById("cruce-modal-overlay");
       if (overlay) overlay.remove();
@@ -4198,6 +4203,8 @@
       nd.checklist.cruce_unidades = "";
       nd.checklist.cruce_banco = "";
       noteData[k] = nd;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("ck_cruce_activo");
       saveNote(k, nd);
       const overlay = document.getElementById("cruce-modal-overlay");
       if (overlay) overlay.remove();
@@ -6121,6 +6128,8 @@
       const line = (prev ? "\n" : "") + tipo + " " + date + " — ";
       nd.checklist.cultivos = prev + line;
       noteData[k] = nd;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("ck_cultivos");
       saveNote(k, nd);
       // Refresh solo la sección de cultivos
       const card = document.getElementById("card-" + k);
