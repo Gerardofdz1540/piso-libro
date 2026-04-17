@@ -3758,7 +3758,7 @@
         checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "", interconsultas: "", cultivos: "",
           pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
-          pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_hxqx: "",
+          pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_sep_gasto: "", pm_sep_fuga: false, pm_sep_fuga_grado: "", pm_hxqx: "",
           pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
           cruce_activo: false, cruce_ts: "", cruce_unidades: "", cruce_banco: "" }
       };
@@ -6737,7 +6737,7 @@
       if (dias !== null && dias >= 2) parts.push(`⚠️ Sin labs recientes (${dias}d)`);
       if (nd.pendientes && nd.pendientes.trim()) parts.push("📋 Pendientes: " + nd.pendientes.trim());
       const ck = (nd.checklist) || {};
-      if (ck.ck_cruce_activo) parts.push("🔪 CRUCE QUIRÚRGICO ACTIVO");
+      if (ck.cruce_activo) parts.push("🔪 CRUCE QUIRÚRGICO ACTIVO");
       if (ck.npt) parts.push("💉 NPT activa");
       if (nd.balance && nd.balance.trim()) parts.push("⚖️ Balance: " + nd.balance.trim());
       if (nd.drenajes && nd.drenajes.trim()) parts.push("🩸 Drenajes: " + nd.drenajes.trim());
@@ -12347,6 +12347,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     function updatePmField(k, field, val) {
       const nd = getNote(k);
       nd.checklist[field] = val;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("checklist");
       noteData[k] = nd;
       saveNote(k, nd);
     }
