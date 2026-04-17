@@ -6783,6 +6783,11 @@
       _rondasList = Array.isArray(patients) ? patients.slice() : [];
       if (!_rondasList.length) { alert("No hay pacientes en piso."); return; }
       _rondasIdx = 0;
+      // Clear main piso view to avoid duplicate card/checklist IDs in the DOM.
+      // This ensures _rerenderCard, toggleChecklist, etc. operate on the Rondas
+      // card instead of the hidden main-view card.
+      const pisov = document.getElementById("view-piso");
+      if (pisov) pisov.innerHTML = "";
       document.getElementById("rondas-overlay").classList.add("open");
       document.body.style.overflow = "hidden";
       renderRonda();
@@ -6791,6 +6796,8 @@
     function exitRondas() {
       document.getElementById("rondas-overlay").classList.remove("open");
       document.body.style.overflow = "";
+      // Re-render the main view so all cards reflect noteData edits made in Rondas.
+      renderView();
     }
 
     function renderRonda() {
