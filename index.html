@@ -3319,8 +3319,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.1/dist/umd/supabase.min.js"></script>
   <script>
     // ─── CONSTANTS ─────────────────────────────────────────────────────────────────
-    const FULL_CARD_ESP = new Set(["CG", "CCR", "CTV", "CT", "CX DE TÓRAX", "ONCOCIRUGÍA", "CG/GYO", "ENDOS"]);
-    const SIMPLE_ESP = new Set(["URO", "CMF", "NCX", "NEUROCX", "COLUMNA", "TYO/NCX"]);
+    const FULL_CARD_ESP = new Set(["CG", "CCR", "CTV", "CT", "CX DE TÓRAX", "ONCOCIRUGÍA", "CG/GYO", "ENDOS", "CPR", "CV"]);
+    const SIMPLE_ESP = new Set(["URO", "CMF", "NCX", "NEUROCX", "COLUMNA", "TYO/NCX", "TYO", "GYO"]);
     function normalizeEsp(esp) {
       return String(esp || "")
         .toUpperCase()
@@ -3336,11 +3336,54 @@
       if (/^URO($|[\/\s-]|LOGIA)/.test(e)) return true;
       if (/^CMF($|[\/\s-])|MAXILOFAC/.test(e)) return true;
       if (/^NCX($|[\/\s-])|NEURO ?CX|NEUROCIR|TYO\/NCX|COLUMNA/.test(e)) return true;
+      if (/^TYO($|[\/\s-])/.test(e)) return true;
+      if (/^GYO($|[\/\s-])|GINECO/.test(e)) return true;
       return false;
+    }
+
+    // Normalize specialty name from Excel to canonical code.
+    // Returns "" for non-specialty labels (floor/unit names like RECUPERACION, UCIA).
+    function normalizeEspImport(raw) {
+      if (!raw) return "";
+      const v = String(raw).toUpperCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
+      if (!v) return "";
+      const NON_ESP = new Set(["RECUPERACION", "UCIA", "UCIP", "UCIPE", "UCI",
+        "TERAPIA", "TERAPIA INTENSIVA", "PISO", "PISO 3", "PISO 4",
+        "PEDIATRIA", "MEDICINA INTERNA", "OBSTETRICIA", "CARDIOLOGIA",
+        "TRAUMA", "URGENCIAS"]);
+      if (NON_ESP.has(v)) return "";
+      const MAP = {
+        "CIRUGIA GENERAL": "CG", "CIR GENERAL": "CG", "CIR GRAL": "CG",
+        "CIRUGIA GRAL": "CG", "CIRUGIA GEN": "CG", "CG": "CG",
+        "COLOPROCTOLOGIA": "CCR", "CIRUGIA COLORRECTAL": "CCR",
+        "COLORRECTAL": "CCR", "COLOPROCTO": "CCR", "PROCTO": "CCR", "CCR": "CCR",
+        "CIRUGIA VASCULAR": "CV", "CX VASCULAR": "CV", "VASCULAR": "CV", "CV": "CV",
+        "CIRUGIA PLASTICA": "CPR", "PLASTICA": "CPR",
+        "CIRUGIA PLASTICA Y RECONSTRUCTIVA": "CPR", "CX PLASTICA": "CPR", "CPR": "CPR",
+        "CIRUGIA DE TORAX": "CT", "CX DE TORAX": "CT", "CX TORAX": "CT",
+        "CIRUGIA TORACICA": "CT", "TORACICA": "CT", "CT": "CT",
+        "CIRUGIA TORACOVASCULAR": "CTV", "TORACOVASCULAR": "CTV",
+        "CARDIOTORAX": "CTV", "CTV": "CTV",
+        "CIRUGIA MAXILOFACIAL": "CMF", "MAXILOFACIAL": "CMF", "CMF": "CMF",
+        "UROLOGIA": "URO", "URO": "URO",
+        "NEUROCIRUGIA": "NCX", "NEURO CX": "NCX", "NEUROCX": "NCX", "NCX": "NCX",
+        "ONCOCIRUGIA": "ONCOCIRUGÍA", "ONCOCIRUGÍA": "ONCOCIRUGÍA",
+        "ENDOSCOPIA": "ENDOS", "ENDOS": "ENDOS",
+        "GINECOLOGIA Y OBSTETRICIA": "GYO", "GINECO OBSTETRICIA": "GYO",
+        "GINECOLOGIA": "GYO", "GYO": "GYO",
+        "GYO/CG": "CG/GYO", "CG/GYO": "CG/GYO",
+        "TRASPLANTE Y ONCOLOGIA": "TYO", "TRASPLANTE": "TYO", "TYO": "TYO",
+        "TYO/NCX": "TYO/NCX",
+        "COLUMNA VERTEBRAL": "COLUMNA", "COLUMNA": "COLUMNA",
+      };
+      return MAP[v] !== undefined ? MAP[v] : v;
     }
     const ESP_COLORS = {
       CG: "#0f4c75", CCR: "#1b6644", CT: "#7b3f00", CTV: "#7b0000",
-      URO: "#4a3580", NCX: "#1a3a5c", COLUMNA: "#3d5a3e",
+      CPR: "#6d28d9", CV: "#0369a1", TYO: "#064e3b", GYO: "#701a75",
+      URO: "#4a3580", NCX: "#1a3a5c", CMF: "#92400e", COLUMNA: "#3d5a3e",
       "CX DE TÓRAX": "#6b3a1f", "ONCOCIRUGÍA": "#8b3a0f", "CG/GYO": "#6b006b", ENDOS: "#2a5f6b", OTRO: "#555"
     };
     const ESTADO_COLORS = { ESTABLE: "#27ae60", DELICADO: "#e67e22", GRAVE: "#e74c3c", ALTA: "#0ea5e9", "DEFUNCIÓN": "#374151", "": "#95a5a6" };
@@ -5294,12 +5337,12 @@
       if (document.visibilityState !== "visible") return;
       if (!navigator.onLine) return;
       const now = Date.now();
-      // Throttle reducido a 10 s: el usuario espera ver cambios casi instantáneamente
-      // al volver a la pestaña desde otro dispositivo. Realtime cubre cambios en vivo,
-      // pero un refresh es necesario si el socket estuvo dormido con la pestaña oculta.
       if (now - _lastVisibleRefreshTs < 10000) return;
       _lastVisibleRefreshTs = now;
       try {
+        // Push any pending local changes BEFORE loading from Supabase so they
+        // are not overwritten by stale server data.
+        if (outboxLoad().length > 0) await flushOutbox();
         const loaded = await supaLoadAll();
         if (loaded) {
           patients = sanitizePatients(loaded.patients);
@@ -5307,6 +5350,8 @@
           lsSavePatients(patients);
           buildEspFilters(); renderView();
           localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+          // Flush again in case the outbox grew while we were loading
+          if (outboxLoad().length > 0) flushOutbox().catch(e => safeLog("visibilitychange outbox:", e));
         }
       } catch (e) { safeLog("visibilitychange refresh error:", e); }
     });
@@ -10462,38 +10507,51 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const header = rows[headerRow].map(c => String(c || "").trim().toUpperCase());
           const ci = (n) => header.findIndex(h => h.includes(n));
           const iCama = ci("CAMA"), iExp = ci("EXPEDIENTE"), iNombre = ci("NOMBRE"), iEdad = ci("EDAD");
-          const iDx = ci("DIAGNÓS"), iEsp = ci("ESPECIALIDAD"), iAds = ci("ADSCRITO"), iRes = ci("RESIDENTE");
+          const iDx = ci("DIAGNÓS"), iAds = ci("ADSCRITO"), iRes = ci("RESIDENTE");
           const iIng = ci("INGRESO"), iEst = ci("ESTADO"), iSexo = ci("SEXO");
+          // Specialty column: try "ESPECIALIDAD", then "SERVICIO", then exact "ESP"
+          let iEsp = ci("ESPECIALIDAD");
+          if (iEsp < 0) iEsp = ci("SERVICIO");
+          if (iEsp < 0) { const ex = header.findIndex(h => h === "ESP"); if (ex >= 0) iEsp = ex; }
 
           // ─── DETECT SECTION HEADERS ─────────────────────────────────────
-          // Scan for section dividers: ALTAS, DEFUNCIONES, PROCEDIMIENTOS
-          let currentSection = "censo"; // default = active census
+          let currentSection = "censo";
+          let currentSubEsp = ""; // Specialty inferred from sub-section labels (TYO, CPR, etc.)
           const SECTION_KEYWORDS = {
-            "ALTAS": "altas",
-            "DEFUNCIONES": "defunciones",
-            "DEFUNCIÓN": "defunciones",
-            "PROCEDIMIENTOS": "procedimientos",
+            "ALTAS": "altas", "DEFUNCIONES": "defunciones",
+            "DEFUNCIÓN": "defunciones", "PROCEDIMIENTOS": "procedimientos",
           };
 
           for (let i = headerRow + 1; i < rows.length; i++) {
             const r = rows[i];
-            // Check if this row is a section header
             const allCells = r.map(c => String(c || "").trim().toUpperCase());
+
+            // Main section header (ALTAS, DEFUNCIONES, PROCEDIMIENTOS)
             const possibleHeader = allCells.find(c => SECTION_KEYWORDS[c]);
             if (possibleHeader) {
               currentSection = SECTION_KEYWORDS[possibleHeader];
+              currentSubEsp = "";
               continue;
             }
-            // Also check column 5 (DIAGNÓSTICO) which sometimes has section labels
             const dxCell = String(r[iDx >= 0 ? iDx : 5] || "").trim().toUpperCase();
             if (SECTION_KEYWORDS[dxCell]) {
               currentSection = SECTION_KEYWORDS[dxCell];
+              currentSubEsp = "";
               continue;
             }
-            // Skip non-patient rows (section dividers like RECUPERACION, TYO, UCIA, etc.)
-            if (dxCell && !r[iCama >= 0 ? iCama : 1] && !r[iNombre >= 0 ? iNombre : 3]) {
-              // Sub-section label (RECUPERACION, UCIA, ONCOCIRUGIA, PEDIATRIA, TYO)
-              // Don't change main section, these are sub-areas within censo
+
+            // Detect sub-section specialty labels (TYO, CMF, CPR, RECUPERACION, etc.)
+            // A label row has no valid cama (≥2 chars) and no valid nombre (≥2 chars).
+            const camaRaw = String(r[iCama >= 0 ? iCama : 0] || "").trim();
+            const nombreRaw = String(r[iNombre >= 0 ? iNombre : 2] || "").trim();
+            const isLabelRow = camaRaw.length < 2 && nombreRaw.length < 2;
+            if (isLabelRow) {
+              // Find first non-empty cell to use as potential specialty label
+              const nonEmpty = allCells.filter(c => c.length > 0);
+              if (nonEmpty.length > 0 && nonEmpty.length <= 3 && !/^\d{2,}$/.test(nonEmpty[0])) {
+                const normalized = normalizeEspImport(nonEmpty[0]);
+                if (normalized) currentSubEsp = normalized; // "" = non-specialty label (don't override)
+              }
               continue;
             }
 
@@ -10509,8 +10567,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             }
             const rawEst = String(r[iEst] || "").trim().toUpperCase();
             const estado = ["ESTABLE", "DELICADO", "GRAVE"].includes(rawEst) ? rawEst : "ESTABLE";
-            const rawEsp = String(r[iEsp] || "").trim().toUpperCase().replace(/\s+/g, " ");
-            const esp = rawEsp || "CG";
+            const rawEsp = iEsp >= 0 ? String(r[iEsp] || "").trim().toUpperCase().replace(/\s+/g, " ") : "";
+            // Normalize esp: explicit column → sub-section label → fallback CG
+            const esp = normalizeEspImport(rawEsp) || currentSubEsp || "CG";
             const pt = {
               cama, exp, nombre,
               edad: parseInt(r[iEdad]) || "",
