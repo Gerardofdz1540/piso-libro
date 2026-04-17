@@ -4234,8 +4234,16 @@
       try {
         if (p._supa_id) {
           const data = await _sPatch("patients", "id=eq." + p._supa_id, row);
-          return data || row;
-        } else {
+          // FIX: Si el PATCH afectó 0 filas (data undefined/null), el _supa_id está "stale"
+          // — la fila fue borrada en Supabase. Resetear _supa_id y caer al upsert por
+          // exp+cama para no dejar al paciente huérfano (reaparecería como duplicado
+          // al abrir en otro dispositivo).
+          if (data && typeof data === "object") return data;
+          safeWarn("supaUpsertPatient: PATCH 0 rows (stale _supa_id), re-upsert by exp+cama:", p.nombre || p.cama);
+          p._supa_id = null;
+          // caer al upsert de abajo
+        }
+        {
           try {
             const data = await _sUpsert("patients", row, "exp,cama");
             const ins = Array.isArray(data) ? data[0] : data;
@@ -4424,7 +4432,34 @@
           }
         });
 
-        return { patients: loadedPatients, notes: loadedNotes, remoteNotePatientIds: Object.keys(noteMap) };
+        // DEDUPE: si Supabase tiene filas fantasma con el mismo exp+cama (restos de un
+        // DELETE+INSERT mal sincronizado), conservar solo la última para evitar tarjetas
+        // duplicadas al abrir en otro dispositivo. `pts` ya viene ordenado por cama, así
+        // que iteramos en orden y la última siempre gana.
+        const dedupedPatients = [];
+        const seenPids = new Map(); // pid → index en dedupedPatients
+        const ghostSupaIds = [];
+        loadedPatients.forEach(p => {
+          const k = pid(p);
+          if (seenPids.has(k)) {
+            const prevIdx = seenPids.get(k);
+            const prev = dedupedPatients[prevIdx];
+            if (prev && prev._supa_id && prev._supa_id !== p._supa_id) ghostSupaIds.push(prev._supa_id);
+            dedupedPatients[prevIdx] = p; // sobreescribir con el más reciente
+          } else {
+            seenPids.set(k, dedupedPatients.length);
+            dedupedPatients.push(p);
+          }
+        });
+        // Borrar filas fantasma de Supabase en background para que no reaparezcan
+        if (ghostSupaIds.length) {
+          safeWarn("supaLoadAll: removiendo " + ghostSupaIds.length + " filas fantasma por exp+cama duplicado");
+          ghostSupaIds.forEach(gid => {
+            _sDelete("patients", "id=eq." + gid).catch(e => safeLog("ghost delete:", e));
+          });
+        }
+
+        return { patients: dedupedPatients, notes: loadedNotes, remoteNotePatientIds: Object.keys(noteMap) };
       } catch (e) {
         if (isLikelyNetworkError(e)) {
           safeWarn("supaLoadAll warn:", e);
@@ -4779,9 +4814,23 @@
         const p = supaRowToPatient(newRow);
         // No agregar registros ghost sin identidad
         if (!p.nombre && !p.cama && !p.exp) return;
-        patients.push(p);
-        noteData[pid(p)] = defaultData();
-        lsSavePatients(patients);
+        // DEDUPE: si ya existe un paciente con el mismo pid (exp+cama) pero distinto _supa_id,
+        // es un "reemplazo" por otro dispositivo (DELETE+INSERT desde import). Sustituir
+        // el paciente existente en lugar de crear una tarjeta duplicada.
+        const newK = pid(p);
+        const dupIdx = patients.findIndex(x => pid(x) === newK);
+        if (dupIdx !== -1) {
+          const oldSupaId = patients[dupIdx]._supa_id;
+          patients[dupIdx] = { ...patients[dupIdx], ...p };
+          lsSavePatients(patients);
+          if (oldSupaId && oldSupaId !== newRow.id) {
+            safeInfo("[RT] Patient replaced (dedup by pid):", p.nombre, oldSupaId, "→", newRow.id);
+          }
+        } else {
+          patients.push(p);
+          noteData[newK] = noteData[newK] || defaultData();
+          lsSavePatients(patients);
+        }
         buildEspFilters(); renderView();
         safeInfo("[RT] Patient inserted:", p.nombre);
       }
@@ -5029,15 +5078,19 @@
       if (document.visibilityState !== "visible") return;
       if (!navigator.onLine) return;
       const now = Date.now();
-      if (now - _lastVisibleRefreshTs < 60000) return; // throttle: máx 1 vez por minuto
+      // Throttle reducido a 10 s: el usuario espera ver cambios casi instantáneamente
+      // al volver a la pestaña desde otro dispositivo. Realtime cubre cambios en vivo,
+      // pero un refresh es necesario si el socket estuvo dormido con la pestaña oculta.
+      if (now - _lastVisibleRefreshTs < 10000) return;
       _lastVisibleRefreshTs = now;
       try {
         const loaded = await supaLoadAll();
         if (loaded) {
-          patients = loaded.patients;
+          patients = sanitizePatients(loaded.patients);
           _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
           buildEspFilters(); renderView();
+          localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         }
       } catch (e) { safeLog("visibilitychange refresh error:", e); }
     });
@@ -5403,24 +5456,31 @@
 
       setSyncStatus("syncing", "Guardando...");
 
-      // Check if localStorage has data that was saved more recently than the last confirmed Supabase sync
-      const lastSaveTs = parseInt(localStorage.getItem("pl_last_save_ts") || "0", 10);
-      const lastSupabaseTs = parseInt(localStorage.getItem("pl_last_supabase_sync_ts") || "0", 10);
-      const localHasNewerData = lastSaveTs > lastSupabaseTs && lastSaveTs > 0;
+      // Determinar si hay datos locales que REALMENTE necesitan subirse (no solo timestamps).
+      // FIX: antes usábamos `lastSaveTs > lastSupabaseTs` lo que causaba que este dispositivo
+      // saltara la carga de Supabase cuando en realidad Supabase estaba actualizado. La única
+      // razón válida para priorizar local es que haya ítems pendientes en el outbox (saves
+      // que fallaron y quedaron encolados para reintento).
+      const pendingOutbox = outboxLoad();
+      const localHasUnsyncedChanges = pendingOutbox.length > 0;
 
-      // Try loading from Supabase first
+      // Siempre intentar cargar desde Supabase cuando haya red. Si local tiene cambios
+      // pendientes, los aplicamos DESPUÉS de cargar Supabase (merge, no reemplazo bruto).
       let loaded = null;
-      if (navigator.onLine && !localHasNewerData) {
+      if (navigator.onLine) {
         try { loaded = await supaLoadAll(); } catch (e) { safeLog("Supabase load error:", e); loaded = null; }
       }
 
-      // ── Safety guard: compare Supabase vs localStorage patient counts ──
-      const localPts = lsGetPatients() || [];
       const supaClean = loaded ? sanitizePatients(loaded.patients) : [];
-      const localHasMore = localPts.length > 0 && supaClean.length > 0
-        && localPts.length > supaClean.length;
 
-      if (supaClean.length > 0 && !localHasMore) {
+      // Supabase es la fuente de verdad SIEMPRE que devuelva pacientes. Si devuelve 0,
+      // puede ser Supabase vacío legítimamente O una respuesta transitoria; en ese caso
+      // preferimos conservar datos locales si existen (el usuario puede reparar con
+      // "Migrar a Supabase" desde Config si corresponde).
+      if (loaded && supaClean.length > 0) {
+        // FIX: removido el guard `localHasMore` que causaba resurrecciones de pacientes
+        // dados de alta en otro dispositivo (porque Device B conservaba el paciente en local
+        // y lo empujaba de vuelta a Supabase, creando duplicados).
         patients = supaClean;
         _applyLoadedNotes(loaded.notes || {});
         lsSavePatients(patients);
@@ -5430,36 +5490,30 @@
         localStorage.setItem("pl_last_save_ts", Date.now().toString());
         const repair = await recoverPendingNoteSync(loaded.remoteNotePatientIds || []);
         startRealtime();
+        // Si había outbox pendiente, empujar esos cambios ahora sobre los datos frescos
+        if (localHasUnsyncedChanges) {
+          flushOutbox().catch(e => safeLog("init flushOutbox:", e));
+        }
         if (repair.failed.length || outboxLoad().length) setSyncProblemStatus();
         else setSyncStatus("synced", "✅ Guardado");
-      } else if (localHasMore) {
-        // Supabase has fewer patients than local — likely incomplete sync, prefer local
-        safeLog("[GUARD] Local tiene " + localPts.length + " pacientes vs Supabase " + (loaded ? loaded.patients.length : 0) + ". Usando datos locales.");
-        patients = sanitizePatients(localPts);
-        noteData = {};
-        patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
-        setSyncStatus("syncing", "Guardando...");
-        startRealtime();
-        _savePtsImmediate().then(async () => {
-          const repair = await recoverPendingNoteSync();
-          if (repair.failed.length || outboxLoad().length) setSyncProblemStatus();
-          else setSyncStatus("synced", "✅ Guardado");
-        }).catch(e => { safeLog("_savePtsImmediate (localHasMore):", e); setSyncProblemStatus(); });
       } else {
-        // Supabase empty, failed, offline, or localStorage is newer → load from localStorage
+        // Supabase falló u offline → usar localStorage como fallback
         patients = sanitizePatients(lsGetPatients() || []);
         noteData = {};
         patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
+        // Dedup local por pid() para evitar tarjetas duplicadas aunque Supabase esté caído
+        const _seenLocal = new Set();
+        patients = patients.filter(p => { const k = pid(p); if (_seenLocal.has(k)) return false; _seenLocal.add(k); return true; });
         if (patients.length && navigator.onLine) {
-          if (localHasNewerData) {
-            // Re-sync newer local data to Supabase in background
+          if (localHasUnsyncedChanges) {
+            // Hay cambios en outbox: re-intentar flush sobre datos locales existentes
             setSyncStatus("syncing", "Guardando...");
             startRealtime();
-            _savePtsImmediate().then(async () => {
+            flushOutbox().then(async () => {
               const repair = await recoverPendingNoteSync();
               if (repair.failed.length || outboxLoad().length) setSyncProblemStatus();
               else setSyncStatus("synced", "✅ Guardado");
-            }).catch(e => { safeLog("_savePtsImmediate (localNewer):", e); setSyncProblemStatus(); });
+            }).catch(e => { safeLog("init flushOutbox error:", e); setSyncProblemStatus(); });
           } else if (loaded === null) {
             // Supabase error pero hay datos locales disponibles — no mostrar error alarmante
             setSyncStatus("offline", "Sin conexión");
