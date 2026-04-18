@@ -29,6 +29,7 @@
       --border: #dde3ed;
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --mono: "Courier New", Courier, monospace;
+      --ta-fs: 13px;
     }
 
     body {
@@ -429,7 +430,7 @@
       border: 1px solid #e2e8f0;
       border-radius: 6px;
       padding: 6px 8px;
-      font-size: 12px;
+      font-size: var(--ta-fs, 13px);
       line-height: 1.5;
       background: #fafbfc;
       resize: vertical;
@@ -2807,6 +2808,35 @@
 
 <body>
 
+  <!-- LOGIN OVERLAY -->
+  <div id="login-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#0a1628 0%,#1a3a6b 100%);align-items:center;justify-content:center;flex-direction:column;gap:0">
+    <div style="background:#fff;border-radius:20px;padding:40px 36px;width:min(380px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center">
+      <div style="font-size:40px;margin-bottom:8px">🔒</div>
+      <h2 style="font-size:22px;font-weight:800;color:#0a1628;margin-bottom:4px">Piso Libro</h2>
+      <p style="font-size:13px;color:#64748b;margin-bottom:28px">Acceso restringido al personal autorizado</p>
+      <div id="login-msg" style="display:none;background:#fef2f2;color:#dc2626;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:14px"></div>
+      <input id="login-pwd" type="password" placeholder="Contraseña"
+        style="width:100%;padding:12px 16px;border:2px solid #e2e8f0;border-radius:10px;font-size:16px;font-family:inherit;outline:none;margin-bottom:12px;box-sizing:border-box"
+        onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"
+        onkeydown="if(event.key==='Enter')loginSubmit()" />
+      <button onclick="loginSubmit()"
+        style="width:100%;background:#6366f1;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
+        Entrar
+      </button>
+      <div id="login-setup-section" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0">
+        <p style="font-size:12px;color:#94a3b8;margin-bottom:10px">Primera vez — establece una contraseña</p>
+        <input id="login-pwd2" type="password" placeholder="Confirmar contraseña"
+          style="width:100%;padding:11px 14px;border:2px solid #e2e8f0;border-radius:9px;font-size:15px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box"
+          onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"
+          onkeydown="if(event.key==='Enter')loginSetup()" />
+        <button onclick="loginSetup()"
+          style="width:100%;background:#059669;color:#fff;border:none;padding:12px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
+          Establecer contraseña
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- HEADER -->
   <div id="header">
     <div id="quote-bar">
@@ -2840,6 +2870,15 @@
         <div class="quick-access-group">
           <button class="qa-btn qa-img" onclick="openSystem('img')" title="Abrir Imagen">🩻 Imagen</button>
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:2px;background:rgba(255,255,255,.1);border-radius:6px;padding:2px">
+          <span style="font-size:10px;color:#cbd5e1;padding:0 4px">Aa</span>
+          <button onclick="setFontSize('S')" id="fs-btn-S" title="Texto pequeño"
+            style="background:none;border:none;color:#e2e8f0;font-size:11px;cursor:pointer;padding:3px 6px;border-radius:4px;font-family:var(--font)">S</button>
+          <button onclick="setFontSize('M')" id="fs-btn-M" title="Texto mediano"
+            style="background:none;border:none;color:#e2e8f0;font-size:11px;cursor:pointer;padding:3px 6px;border-radius:4px;font-family:var(--font)">M</button>
+          <button onclick="setFontSize('L')" id="fs-btn-L" title="Texto grande"
+            style="background:none;border:none;color:#e2e8f0;font-size:11px;cursor:pointer;padding:3px 6px;border-radius:4px;font-family:var(--font)">L</button>
         </div>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
@@ -3226,9 +3265,13 @@
           style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;color:#334155;line-height:1.8">
           Cargando…</div>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer" style="gap:8px">
         <button class="btn-cancel"
           onclick="document.getElementById('config-modal').style.display='none'">Cerrar</button>
+        <button onclick="authChangePassword()"
+          style="background:#6366f1;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)">
+          🔑 Cambiar contraseña
+        </button>
       </div>
     </div>
   </div>
@@ -3550,6 +3593,130 @@
       if (asked === null) return;
       const trimmed = asked.trim();
       if (trimmed) { localStorage.setItem("pl_user_name", trimmed); renderUserChip(); }
+    }
+    // ── AUTH ──────────────────────────────────────────────────────────────────────
+    const _AUTH_SESSION_KEY = "pl_auth_session";
+    const _AUTH_LS_HASH_KEY = "pl_auth_hash";
+    const _AUTH_SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
+
+    async function _sha256(str) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+    }
+
+    async function _authGetStoredHash() {
+      // Try Supabase pl_config first, fallback to localStorage
+      if (window._supaClient) {
+        try {
+          const { data } = await window._supaClient.from("pl_config").select("value").eq("key","auth_hash").single();
+          if (data && data.value) return data.value;
+        } catch (_) {}
+      }
+      return localStorage.getItem(_AUTH_LS_HASH_KEY) || null;
+    }
+
+    async function _authSaveHash(hash) {
+      localStorage.setItem(_AUTH_LS_HASH_KEY, hash);
+      if (window._supaClient) {
+        try {
+          await window._supaClient.from("pl_config").upsert({ key: "auth_hash", value: hash });
+        } catch (_) {}
+      }
+    }
+
+    function _authSessionValid() {
+      try {
+        const s = JSON.parse(sessionStorage.getItem(_AUTH_SESSION_KEY) || "null");
+        return s && (Date.now() - s.ts < _AUTH_SESSION_TTL);
+      } catch (_) { return false; }
+    }
+
+    function _authStartSession() {
+      sessionStorage.setItem(_AUTH_SESSION_KEY, JSON.stringify({ ts: Date.now() }));
+    }
+
+    function _showLoginOverlay(setupMode) {
+      const ov = document.getElementById("login-overlay");
+      if (ov) ov.style.display = "flex";
+      const setup = document.getElementById("login-setup-section");
+      if (setup) setup.style.display = setupMode ? "block" : "none";
+      setTimeout(function() {
+        const f = document.getElementById("login-pwd");
+        if (f) f.focus();
+      }, 100);
+    }
+
+    function _hideLoginOverlay() {
+      const ov = document.getElementById("login-overlay");
+      if (ov) ov.style.display = "none";
+    }
+
+    async function initAuth() {
+      if (_authSessionValid()) { _hideLoginOverlay(); return; }
+      const hash = await _authGetStoredHash();
+      _showLoginOverlay(!hash);
+    }
+
+    async function loginSubmit() {
+      const pwd = (document.getElementById("login-pwd") || {}).value || "";
+      const msg = document.getElementById("login-msg");
+      if (!pwd) { if (msg) { msg.textContent = "Ingresa la contraseña."; msg.style.display = "block"; } return; }
+      const storedHash = await _authGetStoredHash();
+      if (!storedHash) {
+        // No password set yet — show setup section
+        const setup = document.getElementById("login-setup-section");
+        if (setup) setup.style.display = "block";
+        if (msg) { msg.textContent = "Aún no hay contraseña. Establece una debajo."; msg.style.display = "block"; }
+        return;
+      }
+      const h = await _sha256(pwd);
+      if (h === storedHash) {
+        _authStartSession();
+        _hideLoginOverlay();
+        if (msg) msg.style.display = "none";
+      } else {
+        if (msg) { msg.textContent = "Contraseña incorrecta."; msg.style.display = "block"; }
+        const f = document.getElementById("login-pwd");
+        if (f) { f.value = ""; f.focus(); }
+      }
+    }
+
+    async function loginSetup() {
+      const p1 = (document.getElementById("login-pwd") || {}).value || "";
+      const p2 = (document.getElementById("login-pwd2") || {}).value || "";
+      const msg = document.getElementById("login-msg");
+      if (!p1 || p1.length < 4) { if (msg) { msg.textContent = "La contraseña debe tener al menos 4 caracteres."; msg.style.display = "block"; } return; }
+      if (p1 !== p2) { if (msg) { msg.textContent = "Las contraseñas no coinciden."; msg.style.display = "block"; } return; }
+      const h = await _sha256(p1);
+      await _authSaveHash(h);
+      _authStartSession();
+      _hideLoginOverlay();
+    }
+
+    async function authChangePassword() {
+      const p1 = prompt("Nueva contraseña (mín. 4 caracteres):");
+      if (p1 === null) return;
+      if (!p1 || p1.length < 4) { alert("Contraseña muy corta."); return; }
+      const p2 = prompt("Confirmar nueva contraseña:");
+      if (p1 !== p2) { alert("Las contraseñas no coinciden."); return; }
+      const h = await _sha256(p1);
+      await _authSaveHash(h);
+      alert("Contraseña actualizada.");
+    }
+    // ── END AUTH ──────────────────────────────────────────────────────────────────
+
+    const _FS_SIZES = { S: "11px", M: "13px", L: "16px" };
+    function setFontSize(size) {
+      document.documentElement.style.setProperty("--ta-fs", _FS_SIZES[size] || "13px");
+      localStorage.setItem("pl_font_size", size);
+      ["S","M","L"].forEach(s => {
+        const btn = document.getElementById("fs-btn-" + s);
+        if (btn) btn.style.background = s === size ? "rgba(255,255,255,.25)" : "none";
+      });
+    }
+    function initFontSize() {
+      const saved = localStorage.getItem("pl_font_size") || "M";
+      setFontSize(saved);
     }
     function getToken() { return getConfig().token || ""; }
 
@@ -5678,6 +5845,8 @@
 
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
+      await initAuth();
+
       // Limpiar plantilla Excel de versiones anteriores que sí la guardaban en localStorage
       // (puede ocupar hasta 2 MB en base64; ahora se mantiene solo en memoria)
       try { localStorage.removeItem(EXCEL_TEMPLATE_KEY); } catch (_) {}
@@ -5704,6 +5873,7 @@
         if (_userName) localStorage.setItem("pl_user_name", _userName);
       }
       renderUserChip();
+      initFontSize();
 
       // ── Render inmediato desde localStorage: pacientes visibles antes de esperar red ──
       // Usamos setTimeout(0) para diferir hasta que el script termine de definir
@@ -7169,7 +7339,8 @@
         "<textarea class='field-ta' rows='" + rows + "' " +
         "data-key='" + k + "' data-field='" + field + "' " +
         "inputmode='text' autocorrect='off' autocapitalize='sentences' spellcheck='false' " +
-        "oninput=\"liveUpdate(this)\" onchange=\"updateField(this.dataset.key,this.dataset.field,this.value)\">" + safe + "</textarea>" +
+        "onfocus=\"this.dataset.beforeValue=this.value\" " +
+        "oninput=\"liveUpdate(this)\" onchange=\"updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)\">" + safe + "</textarea>" +
         "</div>";
     }
 
@@ -7523,6 +7694,19 @@
           { key: "ego_glu",    label: "Glucosuria",unit: "",      low: null, high: null },
           { key: "ego_hem",    label: "Hematíes",  unit: "u/µL",  low: 0, high: 5 }
         ]
+      },
+      {
+        id: "cardiaco", label: "🫀 Cardíaco / Enzimas", fields: [
+          { key: "tropI",     label: "TropI",      unit: "ng/mL", low: 0,   high: 0.04,  ch: 0.1 },
+          { key: "tropT",     label: "TropT",      unit: "ng/mL", low: 0,   high: 0.014, ch: 0.05 },
+          { key: "ck",        label: "CK",         unit: "U/L",   low: 0,   high: 170,   ch: 500 },
+          { key: "ck_mb",     label: "CK-MB",      unit: "U/L",   low: 0,   high: 25,    ch: 75 },
+          { key: "ldh",       label: "LDH",        unit: "U/L",   low: 140, high: 280,   ch: 800 },
+          { key: "bnp",       label: "BNP",        unit: "pg/mL", low: 0,   high: 100,   ch: 400 },
+          { key: "nt_probnp", label: "NT-proBNP",  unit: "pg/mL", low: 0,   high: 125,   ch: 900 },
+          { key: "mioglobina",label: "Mioglob",    unit: "ng/mL", low: 0,   high: 90,    ch: 300 },
+          { key: "ferritina", label: "Ferritina",  unit: "ng/mL", low: 30,  high: 300 }
+        ]
       }
     ];
     // Flat list for export / compat
@@ -7572,7 +7756,16 @@
       ego_bact: "bacterias",
       ego_prot: "proteinas/proteinuria",
       ego_glu: "glucosuria",
-      ego_hem: "hematies/eritrocitos en orina"
+      ego_hem: "hematies/eritrocitos en orina",
+      tropI: "troponina I/troponin I",
+      tropT: "troponina T/troponin T/troponina de alta sensibilidad",
+      ck: "creatinkinasa/creatine kinase/CK total",
+      ck_mb: "CK-MB/creatinkinasa MB",
+      ldh: "LDH/deshidrogenasa lactica",
+      bnp: "BNP/peptido natriuretico B",
+      nt_probnp: "NT-proBNP/pro-BNP",
+      mioglobina: "mioglobina/myoglobin",
+      ferritina: "ferritina/ferritin"
     };
     const CULTIVO_EXTRACTION_TEMPLATE = JSON.stringify({
       tipo_lab: "cultivo",
@@ -8110,7 +8303,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           resp = await fetch(proxyUrl + "/api/ai", {
             method: "POST",
             headers: { ...apiHeaders() },
-            body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: prompt }] }),
             signal: _aiAbort.signal
           });
         } finally { clearTimeout(_aiTimeout); }
@@ -8203,8 +8396,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       delete labAnalysisCache[k]; // labs cambiaron → invalidar análisis IA
       scheduleNoteAutosave(k);
     }
-    function updateField(k, field, value) {
+    var _fieldHistory = [];
+    function updateField(k, field, value, prevValue) {
       if (!noteData[k]) noteData[k] = defaultData();
+      const prev = prevValue !== undefined ? prevValue : (noteData[k][field] || "");
+      if (prev !== value && prev !== undefined) {
+        _fieldHistory.push({ k, field, prev, current: value, ts: Date.now() });
+        if (_fieldHistory.length > 30) _fieldHistory.shift();
+        _showUndoToast();
+      }
       noteData[k][field] = value;
       saveNote(k, noteData[k]);
       // Campo guardado: ya no está dirty
@@ -8213,6 +8413,33 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (field === "dx") {
         const p = patients.find(function(pt){ return pid(pt) === k; });
         if (p) { p.dx = value; _savePtsImmediate(); } // inmediato: dx puede cambiar justo antes de cerrar la app
+      }
+    }
+    var _undoToastTimer = null;
+    function _showUndoToast() {
+      var toast = document.getElementById("undo-toast");
+      if (!toast) return;
+      toast.style.display = "flex";
+      clearTimeout(_undoToastTimer);
+      _undoToastTimer = setTimeout(function() {
+        if (toast) toast.style.display = "none";
+      }, 5000);
+    }
+    function undoLastField() {
+      if (_fieldHistory.length === 0) return;
+      const last = _fieldHistory.pop();
+      if (!noteData[last.k]) noteData[last.k] = defaultData();
+      noteData[last.k][last.field] = last.prev;
+      saveNote(last.k, noteData[last.k]);
+      // Update textarea in DOM if visible
+      const ta = document.querySelector("textarea[data-key='" + last.k + "'][data-field='" + last.field + "']");
+      if (ta) { ta.value = last.prev; liveUpdate(ta); }
+      if (_fieldHistory.length === 0) {
+        const toast = document.getElementById("undo-toast");
+        if (toast) toast.style.display = "none";
+        clearTimeout(_undoToastTimer);
+      } else {
+        _showUndoToast();
       }
     }
     // Handlers para campos de texto dentro del checklist (pendientes_mips, pendientes_r1)
@@ -8568,7 +8795,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           method: "POST",
           headers: { ...apiHeaders() },
           body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
+            model: "claude-sonnet-4-6",
             max_tokens: 4000,
             messages: [{
               role: "user", content: [
@@ -9188,6 +9415,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       renderNoOlvidar();
       supaRemoveDoneNoOlvidar();
     }
+    function togglePtReminder(k, idx) {
+      const nd = getNote(k);
+      if (!nd || !nd.checklist || !Array.isArray(nd.checklist._ptReminders)) return;
+      nd.checklist._ptReminders[idx].done = !nd.checklist._ptReminders[idx].done;
+      noteData[k] = nd;
+      saveNote(k, nd);
+      renderNoOlvidar();
+    }
 
     // Broadcast via Supabase Realtime — conservado como fallback para peers offline
     var _noOlvidarChannel = null;
@@ -9278,6 +9513,44 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           </div>
           ${done.map(itemHtml).join("")}
         </div>` : ""}
+
+        <!-- Recordatorios por paciente -->
+        ${(() => {
+          const ptBlocks = [];
+          const keys = Object.keys(noteData || {});
+          for (const k of keys) {
+            const nd = noteData[k];
+            if (!nd || !nd.checklist) continue;
+            const reminders = nd.checklist._ptReminders;
+            if (!Array.isArray(reminders) || reminders.length === 0) continue;
+            const ptName = nd.nombre || nd.name || k;
+            const cama = nd.cama || nd.room || "";
+            const pendPt = reminders.filter(r => !r.done);
+            if (pendPt.length === 0) continue;
+            const rows = pendPt.map((r, idx) => `
+              <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px">
+                <button onclick="togglePtReminder(${JSON.stringify(k)},${idx})"
+                  style="flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid #94a3b8;background:#fff;cursor:pointer;font-size:12px;padding:0">
+                </button>
+                <span style="font-size:13px;color:#1e293b;word-break:break-word;flex:1">${esc(r.text)}</span>
+              </div>`).join("");
+            ptBlocks.push(`
+              <div style="margin-bottom:14px">
+                <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:6px">
+                  🛏 ${cama ? esc(cama) + " · " : ""}${esc(ptName)}
+                </div>
+                ${rows}
+              </div>`);
+          }
+          if (ptBlocks.length === 0) return "";
+          return `
+            <div style="margin-top:24px;border-top:2px solid #e0e7ff;padding-top:16px">
+              <div style="font-size:12px;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">
+                🏥 Por paciente (${ptBlocks.length})
+              </div>
+              ${ptBlocks.join("")}
+            </div>`;
+        })()}
       </div>`;
     }
 
@@ -11535,7 +11808,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               method: "POST",
               headers: apiHeaders(),
               body: JSON.stringify({
-                model: "claude-sonnet-4-20250514",
+                model: "claude-sonnet-4-6",
                 max_tokens: 4000,
                 messages: [{ role: "user", content: [
                   { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
@@ -13086,6 +13359,13 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         <button id="manual-merge-confirm" style="background:#059669;color:#fff;border:none;padding:7px 18px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700">✅ Confirmar fusión</button>
       </div>
     </div>
+  </div>
+
+  <!-- Undo toast -->
+  <div id="undo-toast" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;background:#1e293b;color:#fff;border-radius:12px;padding:10px 20px;gap:14px;align-items:center;box-shadow:0 4px 24px rgba(0,0,0,.3);font-size:13px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;white-space:nowrap">
+    <span>Cambio guardado</span>
+    <button onclick="undoLastField()" style="background:#6366f1;border:none;color:#fff;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700">↩ Deshacer</button>
+    <button onclick="document.getElementById('undo-toast').style.display='none'" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">✕</button>
   </div>
 </body>
 
