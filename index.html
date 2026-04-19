@@ -2810,28 +2810,42 @@
 
   <!-- LOGIN OVERLAY -->
   <div id="login-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#0a1628 0%,#1a3a6b 100%);align-items:center;justify-content:center;flex-direction:column;gap:0">
-    <div style="background:#fff;border-radius:20px;padding:40px 36px;width:min(380px,90vw);box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center">
+    <div style="background:#fff;border-radius:20px;padding:40px 36px;width:min(400px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center">
       <div style="font-size:40px;margin-bottom:8px">🔒</div>
       <h2 style="font-size:22px;font-weight:800;color:#0a1628;margin-bottom:4px">Piso Libro</h2>
-      <p style="font-size:13px;color:#64748b;margin-bottom:28px">Acceso restringido al personal autorizado</p>
+      <p style="font-size:13px;color:#64748b;margin-bottom:24px">Acceso restringido al personal autorizado</p>
       <div id="login-msg" style="display:none;background:#fef2f2;color:#dc2626;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:14px"></div>
-      <input id="login-pwd" type="password" placeholder="Contraseña"
-        style="width:100%;padding:12px 16px;border:2px solid #e2e8f0;border-radius:10px;font-size:16px;font-family:inherit;outline:none;margin-bottom:12px;box-sizing:border-box"
-        onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"
-        onkeydown="if(event.key==='Enter')loginSubmit()" />
-      <button onclick="loginSubmit()"
-        style="width:100%;background:#6366f1;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
-        Entrar
-      </button>
-      <div id="login-setup-section" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0">
-        <p style="font-size:12px;color:#94a3b8;margin-bottom:10px">Primera vez — establece una contraseña</p>
-        <input id="login-pwd2" type="password" placeholder="Confirmar contraseña"
-          style="width:100%;padding:11px 14px;border:2px solid #e2e8f0;border-radius:9px;font-size:15px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box"
+      <!-- Normal login -->
+      <div id="login-form-normal">
+        <input id="login-user" type="text" placeholder="Usuario" autocomplete="username"
+          style="width:100%;padding:12px 16px;border:2px solid #e2e8f0;border-radius:10px;font-size:15px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box"
           onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"
+          onkeydown="if(event.key==='Enter')document.getElementById('login-pwd').focus()" />
+        <input id="login-pwd" type="password" placeholder="Contraseña" autocomplete="current-password"
+          style="width:100%;padding:12px 16px;border:2px solid #e2e8f0;border-radius:10px;font-size:15px;font-family:inherit;outline:none;margin-bottom:12px;box-sizing:border-box"
+          onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"
+          onkeydown="if(event.key==='Enter')loginSubmit()" />
+        <button onclick="loginSubmit()"
+          style="width:100%;background:#6366f1;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
+          Entrar
+        </button>
+      </div>
+      <!-- First-time setup -->
+      <div id="login-setup-section" style="display:none">
+        <p style="font-size:13px;color:#64748b;margin-bottom:16px">Primera configuración — crea la cuenta administrador</p>
+        <input id="setup-user" type="text" placeholder="Nombre de usuario (admin)" autocomplete="username"
+          style="width:100%;padding:11px 14px;border:2px solid #e2e8f0;border-radius:9px;font-size:15px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box"
+          onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#e2e8f0'" />
+        <input id="setup-pwd" type="password" placeholder="Contraseña" autocomplete="new-password"
+          style="width:100%;padding:11px 14px;border:2px solid #e2e8f0;border-radius:9px;font-size:15px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box"
+          onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#e2e8f0'" />
+        <input id="setup-pwd2" type="password" placeholder="Confirmar contraseña" autocomplete="new-password"
+          style="width:100%;padding:11px 14px;border:2px solid #e2e8f0;border-radius:9px;font-size:15px;font-family:inherit;outline:none;margin-bottom:12px;box-sizing:border-box"
+          onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#e2e8f0'"
           onkeydown="if(event.key==='Enter')loginSetup()" />
         <button onclick="loginSetup()"
-          style="width:100%;background:#059669;color:#fff;border:none;padding:12px;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">
-          Establecer contraseña
+          style="width:100%;background:#059669;color:#fff;border:none;padding:12px;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
+          Crear cuenta administrador
         </button>
       </div>
     </div>
@@ -3265,12 +3279,36 @@
           style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;color:#334155;line-height:1.8">
           Cargando…</div>
       </div>
-      <div class="modal-footer" style="gap:8px">
+      <!-- USER MANAGEMENT -->
+      <div id="user-mgmt-panel" style="display:none;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:14px">
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px">👥 Gestión de usuarios</div>
+        <div id="user-mgmt-list"></div>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+          <input id="new-user-name" type="text" placeholder="Nuevo usuario"
+            style="flex:1;min-width:110px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;font-family:var(--font);outline:none" />
+          <input id="new-user-pwd" type="password" placeholder="Contraseña"
+            style="flex:1;min-width:110px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;font-family:var(--font);outline:none" />
+          <select id="new-user-role"
+            style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;font-family:var(--font);outline:none">
+            <option value="user">Usuario</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button onclick="addNewUser()"
+            style="background:#059669;color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;font-family:var(--font)">
+            ➕ Agregar
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer" style="gap:8px;flex-wrap:wrap">
         <button class="btn-cancel"
           onclick="document.getElementById('config-modal').style.display='none'">Cerrar</button>
         <button onclick="authChangePassword()"
           style="background:#6366f1;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)">
-          🔑 Cambiar contraseña
+          🔑 Mi contraseña
+        </button>
+        <button onclick="openUserManagement()"
+          style="background:#0a1628;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)">
+          👥 Usuarios
         </button>
       </div>
     </div>
@@ -3594,54 +3632,65 @@
       const trimmed = asked.trim();
       if (trimmed) { localStorage.setItem("pl_user_name", trimmed); renderUserChip(); }
     }
-    // ── AUTH ──────────────────────────────────────────────────────────────────────
+    // ── AUTH ─────────────────────────────────────────────────────────────────────
     const _AUTH_SESSION_KEY = "pl_auth_session";
-    const _AUTH_LS_HASH_KEY = "pl_auth_hash";
-    const _AUTH_SESSION_TTL = 12 * 60 * 60 * 1000; // 12 hours
+    const _AUTH_SESSION_TTL = 12 * 60 * 60 * 1000; // 12 h
 
     async function _sha256(str) {
       const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
       return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
     }
 
-    async function _authGetStoredHash() {
-      // Try Supabase pl_config first, fallback to localStorage
+    // ── user list stored in Supabase pl_users + localStorage fallback ─────────
+    async function _usersGetAll() {
       if (window._supaClient) {
         try {
-          const { data } = await window._supaClient.from("pl_config").select("value").eq("key","auth_hash").single();
-          if (data && data.value) return data.value;
+          const { data } = await window._supaClient.from("pl_users").select("username,pwd_hash,role,active");
+          if (data) return data;
         } catch (_) {}
       }
-      return localStorage.getItem(_AUTH_LS_HASH_KEY) || null;
+      try { return JSON.parse(localStorage.getItem("pl_users_local") || "[]"); } catch (_) { return []; }
     }
 
-    async function _authSaveHash(hash) {
-      localStorage.setItem(_AUTH_LS_HASH_KEY, hash);
+    async function _usersSave(users) {
+      localStorage.setItem("pl_users_local", JSON.stringify(users));
       if (window._supaClient) {
-        try {
-          await window._supaClient.from("pl_config").upsert({ key: "auth_hash", value: hash });
-        } catch (_) {}
+        try { await window._supaClient.from("pl_users").upsert(users); } catch (_) {}
       }
+    }
+
+    async function _usersGetOne(username) {
+      const all = await _usersGetAll();
+      return all.find(u => u.username.toLowerCase() === username.toLowerCase()) || null;
     }
 
     function _authSessionValid() {
       try {
         const s = JSON.parse(sessionStorage.getItem(_AUTH_SESSION_KEY) || "null");
-        return s && (Date.now() - s.ts < _AUTH_SESSION_TTL);
+        return s && (Date.now() - s.ts < _AUTH_SESSION_TTL) && s.username;
       } catch (_) { return false; }
     }
 
-    function _authStartSession() {
-      sessionStorage.setItem(_AUTH_SESSION_KEY, JSON.stringify({ ts: Date.now() }));
+    function _authSessionUser() {
+      try {
+        const s = JSON.parse(sessionStorage.getItem(_AUTH_SESSION_KEY) || "null");
+        return (s && s.username) ? s.username : null;
+      } catch (_) { return null; }
+    }
+
+    function _authStartSession(username, role) {
+      sessionStorage.setItem(_AUTH_SESSION_KEY, JSON.stringify({ ts: Date.now(), username, role }));
     }
 
     function _showLoginOverlay(setupMode) {
       const ov = document.getElementById("login-overlay");
       if (ov) ov.style.display = "flex";
+      const normal = document.getElementById("login-form-normal");
       const setup = document.getElementById("login-setup-section");
+      if (normal) normal.style.display = setupMode ? "none" : "block";
       if (setup) setup.style.display = setupMode ? "block" : "none";
       setTimeout(function() {
-        const f = document.getElementById("login-pwd");
+        const f = setupMode ? document.getElementById("setup-user") : document.getElementById("login-user");
         if (f) f.focus();
       }, 100);
     }
@@ -3653,43 +3702,55 @@
 
     async function initAuth() {
       if (_authSessionValid()) { _hideLoginOverlay(); return; }
-      const hash = await _authGetStoredHash();
-      _showLoginOverlay(!hash);
+      const users = await _usersGetAll();
+      _showLoginOverlay(users.length === 0);
     }
 
     async function loginSubmit() {
+      const username = ((document.getElementById("login-user") || {}).value || "").trim();
       const pwd = (document.getElementById("login-pwd") || {}).value || "";
       const msg = document.getElementById("login-msg");
-      if (!pwd) { if (msg) { msg.textContent = "Ingresa la contraseña."; msg.style.display = "block"; } return; }
-      const storedHash = await _authGetStoredHash();
-      if (!storedHash) {
-        // No password set yet — show setup section
-        const setup = document.getElementById("login-setup-section");
-        if (setup) setup.style.display = "block";
-        if (msg) { msg.textContent = "Aún no hay contraseña. Establece una debajo."; msg.style.display = "block"; }
+      if (!username || !pwd) {
+        if (msg) { msg.textContent = "Ingresa usuario y contraseña."; msg.style.display = "block"; }
+        return;
+      }
+      const user = await _usersGetOne(username);
+      if (!user || !user.active) {
+        if (msg) { msg.textContent = "Usuario no encontrado o sin acceso."; msg.style.display = "block"; }
         return;
       }
       const h = await _sha256(pwd);
-      if (h === storedHash) {
-        _authStartSession();
+      if (h === user.pwd_hash) {
+        _authStartSession(user.username, user.role);
         _hideLoginOverlay();
         if (msg) msg.style.display = "none";
       } else {
         if (msg) { msg.textContent = "Contraseña incorrecta."; msg.style.display = "block"; }
-        const f = document.getElementById("login-pwd");
-        if (f) { f.value = ""; f.focus(); }
+        const pf = document.getElementById("login-pwd");
+        if (pf) { pf.value = ""; pf.focus(); }
       }
     }
 
     async function loginSetup() {
-      const p1 = (document.getElementById("login-pwd") || {}).value || "";
-      const p2 = (document.getElementById("login-pwd2") || {}).value || "";
+      const username = ((document.getElementById("setup-user") || {}).value || "").trim();
+      const p1 = (document.getElementById("setup-pwd") || {}).value || "";
+      const p2 = (document.getElementById("setup-pwd2") || {}).value || "";
       const msg = document.getElementById("login-msg");
-      if (!p1 || p1.length < 4) { if (msg) { msg.textContent = "La contraseña debe tener al menos 4 caracteres."; msg.style.display = "block"; } return; }
-      if (p1 !== p2) { if (msg) { msg.textContent = "Las contraseñas no coinciden."; msg.style.display = "block"; } return; }
+      if (!username || username.length < 2) {
+        if (msg) { msg.textContent = "El nombre de usuario debe tener al menos 2 caracteres."; msg.style.display = "block"; }
+        return;
+      }
+      if (!p1 || p1.length < 4) {
+        if (msg) { msg.textContent = "La contraseña debe tener al menos 4 caracteres."; msg.style.display = "block"; }
+        return;
+      }
+      if (p1 !== p2) {
+        if (msg) { msg.textContent = "Las contraseñas no coinciden."; msg.style.display = "block"; }
+        return;
+      }
       const h = await _sha256(p1);
-      await _authSaveHash(h);
-      _authStartSession();
+      await _usersSave([{ username, pwd_hash: h, role: "admin", active: true }]);
+      _authStartSession(username, "admin");
       _hideLoginOverlay();
     }
 
@@ -3699,11 +3760,75 @@
       if (!p1 || p1.length < 4) { alert("Contraseña muy corta."); return; }
       const p2 = prompt("Confirmar nueva contraseña:");
       if (p1 !== p2) { alert("Las contraseñas no coinciden."); return; }
-      const h = await _sha256(p1);
-      await _authSaveHash(h);
+      const me = _authSessionUser();
+      if (!me) { alert("No hay sesión activa."); return; }
+      const all = await _usersGetAll();
+      const idx = all.findIndex(u => u.username.toLowerCase() === me.toLowerCase());
+      if (idx < 0) { alert("Usuario no encontrado."); return; }
+      all[idx].pwd_hash = await _sha256(p1);
+      await _usersSave(all);
       alert("Contraseña actualizada.");
     }
-    // ── END AUTH ──────────────────────────────────────────────────────────────────
+
+    async function openUserManagement() {
+      const me = _authSessionUser();
+      const all = await _usersGetAll();
+      const myRole = all.find(u => u.username.toLowerCase() === (me || "").toLowerCase())?.role;
+      if (myRole !== "admin") { alert("Solo el administrador puede gestionar usuarios."); return; }
+      const el = document.getElementById("user-mgmt-panel");
+      if (!el) return;
+      el.style.display = "block";
+      renderUserMgmtPanel(all);
+    }
+
+    function renderUserMgmtPanel(users) {
+      const el = document.getElementById("user-mgmt-list");
+      if (!el) return;
+      if (!users.length) { el.innerHTML = "<div style='color:#94a3b8;font-size:13px'>No hay usuarios.</div>"; return; }
+      el.innerHTML = users.map(u => `
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px">
+          <span style="font-size:16px">${u.role === "admin" ? "👑" : "👤"}</span>
+          <span style="flex:1;font-size:13px;font-weight:600;color:#1e293b">${esc(u.username)}</span>
+          <span style="font-size:10px;background:${u.active ? "#dcfce7" : "#fee2e2"};color:${u.active ? "#166534" : "#dc2626"};padding:2px 7px;border-radius:10px;font-weight:700">${u.active ? "ACTIVO" : "INACTIVO"}</span>
+          <button onclick="toggleUserActive(${JSON.stringify(u.username)})"
+            style="background:${u.active ? "#fee2e2" : "#dcfce7"};border:none;color:${u.active ? "#dc2626" : "#059669"};padding:3px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">
+            ${u.active ? "Revocar" : "Reactivar"}
+          </button>
+        </div>`).join("");
+    }
+
+    async function addNewUser() {
+      const uEl = document.getElementById("new-user-name");
+      const pEl = document.getElementById("new-user-pwd");
+      const rEl = document.getElementById("new-user-role");
+      const username = (uEl ? uEl.value : "").trim();
+      const pwd = pEl ? pEl.value : "";
+      const role = rEl ? rEl.value : "user";
+      if (!username || !pwd || pwd.length < 4) { alert("Usuario (≥1 car) y contraseña (≥4 car) son obligatorios."); return; }
+      const all = await _usersGetAll();
+      if (all.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+        alert("Ya existe un usuario con ese nombre."); return;
+      }
+      const h = await _sha256(pwd);
+      all.push({ username, pwd_hash: h, role, active: true });
+      await _usersSave(all);
+      if (uEl) uEl.value = "";
+      if (pEl) pEl.value = "";
+      renderUserMgmtPanel(all);
+      alert("Usuario '" + username + "' creado.");
+    }
+
+    async function toggleUserActive(username) {
+      const me = _authSessionUser();
+      if (me && me.toLowerCase() === username.toLowerCase()) { alert("No puedes revocar tu propia sesión."); return; }
+      const all = await _usersGetAll();
+      const idx = all.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
+      if (idx < 0) return;
+      all[idx].active = !all[idx].active;
+      await _usersSave(all);
+      renderUserMgmtPanel(all);
+    }
+    // ── END AUTH ─────────────────────────────────────────────────────────────────
 
     const _FS_SIZES = { S: "11px", M: "13px", L: "16px" };
     function setFontSize(size) {
@@ -8894,7 +9019,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     </td>` +
         espBadge +
         "<td style='color:#64748b;font-size:11px'>" + esc(p.exp) + "</td>" +
-        "<td style='font-weight:600'>" + esc(p.nombre) + "</td>" +
+        "<td><div style='font-weight:600'>" + esc(p.nombre) + "</div>" +
+        (p.dx ? "<div style='font-size:10px;color:#64748b;margin-top:1px;line-height:1.3'>" + esc(p.dx) + "</div>" : "") +
+        "</td>" +
         "<td style='text-align:center'>" + p.edad + "</td>" +
         "<td>" + esc(p.ingreso) + "</td>" +
         "<td style='text-align:center;font-weight:700'>" + days + "</td>" +
@@ -9110,6 +9237,128 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("view-census").innerHTML = _fb + html + renderProcSection();
     }
 
+    // ─── PROYECTOR ─────────────────────────────────────────────────────────────────────
+    var _projPatients = [], _projIdx = 0;
+    function openProyector() {
+      // Collect patients in the same order as the entrega view
+      const prSortFn = (a, b) => {
+        const k = c => { const m = String(c || "").match(/^(\d+)-(\d+)$/); return m ? parseInt(m[1])*10000+parseInt(m[2]) : 9999; };
+        return k(a.cama) - k(b.cama);
+      };
+      _projPatients = [...patients].sort(prSortFn).filter(p => {
+        const e = String(p.estado || "").toUpperCase();
+        return e !== "ALTA" && e !== "DEFUNCIÓN" && e !== "DEFUNCION";
+      });
+      if (!_projPatients.length) { alert("No hay pacientes para proyectar."); return; }
+      _projIdx = 0;
+      const ov = document.getElementById("proj-overlay");
+      if (ov) ov.style.display = "flex";
+      document.addEventListener("keydown", _projKeyHandler);
+      _renderProjCard();
+    }
+    function closeProyector() {
+      const ov = document.getElementById("proj-overlay");
+      if (ov) ov.style.display = "none";
+      document.removeEventListener("keydown", _projKeyHandler);
+    }
+    function _projKeyHandler(e) {
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") proyectorNext();
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") proyectorPrev();
+      else if (e.key === "Escape") closeProyector();
+    }
+    function proyectorNext() { if (_projIdx < _projPatients.length - 1) { _projIdx++; _renderProjCard(); } }
+    function proyectorPrev() { if (_projIdx > 0) { _projIdx--; _renderProjCard(); } }
+    function _renderProjCard() {
+      const cEl = document.getElementById("proj-counter");
+      if (cEl) cEl.textContent = (_projIdx + 1) + " / " + _projPatients.length;
+      const area = document.getElementById("proj-card-area");
+      if (!area) return;
+      const p = _projPatients[_projIdx];
+      const nd = noteData[pid(p)] || defaultData();
+      const cl = nd.checklist || {};
+      const days = daysSince(p.ingreso);
+      const ec = ESP_COLORS[p.esp] || "#1a3a6b";
+      const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
+      const nptTxt = getEntregaNptText(cl);
+      // Drain text
+      const drainParts = [];
+      if (nd.drenajes) drainParts.push(nd.drenajes);
+      if (cl.pm_sep) {
+        let sep = "SEP";
+        if (cl.pm_sep_gasto) sep += " " + cl.pm_sep_gasto + " mL/24h";
+        if (cl.pm_sep_fuga) sep += " · Fuga Gr." + (cl.pm_sep_fuga_grado || "?");
+        drainParts.push(sep);
+      }
+      const drainTxt = drainParts.join(" | ");
+      // Labs
+      const snap = (nd.labHistory || []).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+      const labs = snap ? snap.labs || {} : {};
+      const labDate = snap ? fmtDateChip(snap.fecha) : "";
+      const labKeys = ["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","tp","inr","ph","lac","tropI","tropT","bnp"].filter(x => labs[x]);
+      const labHtml = labKeys.length ? `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(255,255,255,.2)">
+        <div style="font-size:12px;font-weight:700;color:#7dd3fc;margin-bottom:6px">🧪 ${labDate}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">` +
+        labKeys.map(x => {
+          const lf = LAB_FIELDS.find(f => f.key === x);
+          const num = parseFloat(labs[x]);
+          let bg = "rgba(255,255,255,.1)", col = "#e2e8f0";
+          if (lf && !isNaN(num)) {
+            const isCrit = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
+            const isAbn = !isCrit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
+            if (isCrit) { bg = "#fee2e2"; col = "#b91c1c"; }
+            else if (isAbn) { bg = "#fef3c7"; col = "#92400e"; }
+          }
+          return `<span style="background:${bg};color:${col};padding:3px 8px;border-radius:5px;font-size:14px;font-weight:600"><b style="margin-right:3px">${lf ? lf.label : x}</b>${labs[x]}</span>`;
+        }).join("") + `</div></div>` : "";
+
+      function pf(lbl, v, big) {
+        if (!v || !String(v).trim()) return "";
+        return `<div style="margin-bottom:${big ? "12" : "8"}px">
+          <div style="font-size:12px;font-weight:700;color:#7dd3fc;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${lbl}</div>
+          <div style="font-size:${big ? "18" : "16"}px;color:#f1f5f9;line-height:1.4">${esc(String(v))}</div>
+        </div>`;
+      }
+      const tags = [];
+      if (cl.npo) tags.push('<span style="background:#dc2626;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">NPO</span>');
+      if (cl.atb) tags.push('<span style="background:#0369a1;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">ATB</span>');
+      if (cl.tvp) tags.push('<span style="background:#7c3aed;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">TVP</span>');
+      if (cl.dren) tags.push('<span style="background:#b45309;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">DREN</span>');
+      if (cl.npt) tags.push('<span style="background:#6d28d9;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">NPT</span>');
+      if (cl.dieta) tags.push(`<span style="background:#059669;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">🍽 ${esc(cl.dieta)}</span>`);
+
+      area.innerHTML = `<div style="width:min(900px,98vw);background:linear-gradient(135deg,#0f2238 0%,#1a3a6b 100%);border-radius:16px;padding:32px 36px;box-shadow:0 12px 48px rgba(0,0,0,.6);border:1px solid rgba(79,195,247,.3)">
+        <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap">
+          <div>
+            <span style="background:${ec};color:#fff;padding:6px 16px;border-radius:8px;font-size:22px;font-weight:800;display:inline-block;margin-bottom:6px">${esc(p.cama)}</span>
+            <span style="background:${sc};color:#fff;padding:3px 10px;border-radius:8px;font-size:13px;font-weight:700;margin-left:8px">${esc(p.estado || "")}</span>
+            <span style="background:rgba(255,255,255,.1);color:#e2e8f0;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700;margin-left:6px">${esc(p.esp)}</span>
+            <span style="color:#94a3b8;font-size:13px;margin-left:8px">D${days}</span>
+          </div>
+        </div>
+        <div style="font-size:28px;font-weight:800;color:#fff;margin-bottom:4px">${esc(p.nombre)}</div>
+        <div style="font-size:15px;color:#94a3b8;margin-bottom:20px">${p.edad || "—"}a · ${esc(p.exp || "")} · ${esc(p.adscrito || "")} / ${esc(p.residente || "")}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            ${pf("DX", p.dx || nd.dx, true)}
+            ${pf("APP", nd.app)}
+            ${pf("PA", nd.pa)}
+          </div>
+          <div>
+            ${pf("QX / Plan", nd.qx || nd.manejo)}
+            ${drainTxt ? pf("💧 Drenajes", drainTxt) : ""}
+            ${nptTxt ? pf("💉 NPT", nptTxt) : ""}
+            ${pf("📌 Pendientes", nd.pendientes)}
+          </div>
+        </div>
+        ${nd.entrega ? `<div style="margin-top:14px;background:rgba(245,158,11,.15);border-left:4px solid #f59e0b;padding:10px 14px;border-radius:0 8px 8px 0">
+          <div style="font-size:12px;font-weight:700;color:#fbbf24;margin-bottom:4px">📋 ENTREGA</div>
+          <div style="font-size:17px;color:#fef3c7;font-weight:600">${esc(String(nd.entrega))}</div>
+        </div>` : ""}
+        ${labHtml}
+        ${tags.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">${tags.join("")}</div>` : ""}
+      </div>`;
+    }
+
     // ─── PRINT / ENTREGA VIEW ─────────────────────────────────────────────────────────
     function renderPrint(pts) {
       const gi = getGuardInfo();
@@ -9198,7 +9447,18 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           ${ef("DX", p.dx || nd.dx)}
           <div class="eg-r2">${ef("APP", nd.app)}${ef("PA", nd.pa)}</div>
           ${ef("QX", nd.qx || nd.manejo)}
-          <div class="eg-r2">${ef("💧 Drenajes", nd.drenajes)}${ef("💉 NPT", nptEntrega)}</div>
+          <div class="eg-r2">${(function(){
+            const parts = [];
+            if (nd.drenajes) parts.push(nd.drenajes);
+            if (cl.pm_sep) {
+              let sep = "SEP";
+              if (cl.pm_sep_gasto) sep += " " + cl.pm_sep_gasto + " mL/24h";
+              if (cl.pm_sep_fuga) sep += " · Fuga Gr." + (cl.pm_sep_fuga_grado || "?");
+              parts.push(sep);
+            }
+            const txt = parts.join(" | ");
+            return txt ? ef("💧 Drenajes", txt) : "";
+          })()}${ef("💉 NPT", nptEntrega)}</div>
           <div class="eg-r3">${ef("🩸Sangr", nd.sangrado)}${ef("⚖️Bal", nd.balance)}${ef("🍽 Dieta", cl.dieta || "")}</div>
           ${efh("📌 PLAN/PEND", nd.pendientes)}
           ${nd.entrega ? `<div class="eg-f" style="background:#fffbeb;border-left:3px solid #f59e0b;padding:3px 6px;border-radius:0 4px 4px 0;margin:4px 0"><span class="eg-fl" style="color:#b45309">📋 ENTREGA</span><span class="eg-fv" style="color:#92400e;font-weight:600">${esc(String(nd.entrega))}</span></div>` : ''}
@@ -9274,6 +9534,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         <span>🟢 Recibe: <b>Dr. ${esc(gi.recibe)}</b></span>
         <span>👥 <b>${totalPx} pacientes</b></span>
       </div>
+      <button onclick="openProyector()" style="margin-top:10px;background:#0a1628;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;font-family:var(--font)">
+        📽 Modo Proyector
+      </button>
     </div>
     ${sectionsHtml}
     ${(function() {
@@ -10828,7 +11091,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               continue;
             }
 
-            const cama = String(r[iCama] || "").trim();
+            // Use formatted cell text (.w) for cama — prevents Excel interpreting "3-157" as formula -154
+            const camaCell = iCama >= 0 ? ws[XLSX.utils.encode_cell({ r: i, c: iCama })] : null;
+            const cama = camaCell ? (camaCell.w !== undefined ? camaCell.w.trim() : String(camaCell.v || "").trim()) : String(r[iCama] || "").trim();
             const nombre = String(r[iNombre] || "").trim().toUpperCase();
             const exp = String(r[iExp] || "").trim();
             if (!cama || !nombre || cama.length < 2) continue;
@@ -11561,37 +11826,38 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           { width: 11 },  // C - expediente
           { width: 28 },  // D - nombre
           { width: 6 },   // E - edad
-          { width: 55 },  // F - diagnóstico
-          { width: 9 },   // G - especialidad
-          { width: 12 },  // H - adscrito
-          { width: 12 },  // I - residente
-          { width: 10 },  // J - ingreso
-          { width: 6 },   // K - dias
-          { width: 10 }   // L - estado
+          { width: 10 },  // F - sexo
+          { width: 55 },  // G - diagnóstico
+          { width: 9 },   // H - especialidad
+          { width: 12 },  // I - adscrito
+          { width: 12 },  // J - residente
+          { width: 10 },  // K - ingreso
+          { width: 6 },   // L - dias
+          { width: 10 }   // M - estado
         ];
 
         // Row 1: Title
-        ws.mergeCells("A1:L1");
+        ws.mergeCells("A1:M1");
         var r1 = ws.getRow(1); r1.height = 24;
         var c1 = ws.getCell("A1");
         c1.value = "CIRUGIA GENERAL";
         c1.font = { name: "Calibri", size: 20, bold: true, color: { argb: "FFFFFFFF" } };
         c1.alignment = { horizontal: "center", vertical: "middle" };
         c1.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
-        for (var ci = 1; ci <= 12; ci++) brdSection(ws.getRow(1).getCell(ci));
+        for (var ci = 1; ci <= 13; ci++) brdSection(ws.getRow(1).getCell(ci));
 
         // Row 2: Date
-        ws.mergeCells("A2:L2");
+        ws.mergeCells("A2:M2");
         var r2 = ws.getRow(2); r2.height = 18;
         var c2 = ws.getCell("A2");
         c2.value = gi.fecha || "";
         c2.font = { name: "Calibri", size: 11, color: { argb: "FFFFFFFF" } };
         c2.alignment = { horizontal: "center", vertical: "middle" };
         c2.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
-        for (var ci = 1; ci <= 12; ci++) brdSection(ws.getRow(2).getCell(ci));
+        for (var ci = 1; ci <= 13; ci++) brdSection(ws.getRow(2).getCell(ci));
 
         // Row 3: Headers
-        var hdr = ["", "CAMA", "EXPEDIENTE", "NOMBRE", "EDAD", "DIAGNÓSTICO", "ESPECIALIDAD", "ADSCRITO", "RESIDENTE", "INGRESO", "DIAS", "ESTADO"];
+        var hdr = ["", "CAMA", "EXPEDIENTE", "NOMBRE", "EDAD", "SEXO", "DIAGNÓSTICO", "ESPECIALIDAD", "ADSCRITO", "RESIDENTE", "INGRESO", "DIAS", "ESTADO"];
         var r3 = ws.getRow(3); r3.height = 16;
         hdr.forEach(function (h, i) {
           var cell = r3.getCell(i + 1);
@@ -11609,14 +11875,14 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           var sorted = [...grp].sort(function (a, b) { return exBedSort(a.cama) - exBedSort(b.cama); });
 
           // Section divider row
-          ws.mergeCells("A" + rowNum + ":L" + rowNum);
+          ws.mergeCells("A" + rowNum + ":M" + rowNum);
           var secRow = ws.getRow(rowNum); secRow.height = 18;
           var secCell = ws.getCell("A" + rowNum);
           secCell.value = sec.label + " (" + sorted.length + " pacientes)";
           secCell.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
           secCell.alignment = { horizontal: "center", vertical: "middle" };
           secCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: sec.color } };
-          for (var ci = 1; ci <= 12; ci++) brdSection(ws.getRow(rowNum).getCell(ci));
+          for (var ci = 1; ci <= 13; ci++) brdSection(ws.getRow(rowNum).getCell(ci));
           rowNum++;
 
           sorted.forEach(function (p) {
@@ -11624,18 +11890,17 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             var days = p.ingreso ? Math.floor((new Date() - parseDate(p.ingreso)) / 86400000) : "";
             var estado = toSafeString(p.estado).trim().toUpperCase();
             var rowBg = isRecentIngreso(p.ingreso) ? INGRESO_BG : "FFFFFFFF";
-            var vals = ["", p.cama || "", p.exp || "", p.nombre || "", p.edad || "", p.dx || "", p.esp || "", p.adscrito || "", p.residente || "", p.ingreso || "", Number.isFinite(days) ? days : "", p.estado || ""];
-            var aligns = ["center", "center", "center", "left", "center", "left", "center", "left", "left", "center", "center", "center"];
+            var vals = ["", p.cama || "", p.exp || "", p.nombre || "", p.edad || "", p.sexo || "", p.dx || "", p.esp || "", p.adscrito || "", p.residente || "", p.ingreso || "", Number.isFinite(days) ? days : "", p.estado || ""];
+            var aligns = ["center", "center", "center", "left", "center", "center", "left", "center", "left", "left", "center", "center", "center"];
             vals.forEach(function (v, ci) {
               var cell = row.getCell(ci + 1); cell.value = v;
-              // Estado cell gets special color
-              if (ci === 11 && STATUS_BG[estado]) {
+              if (ci === 12 && STATUS_BG[estado]) {
                 cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: STATUS_BG[estado] } };
               } else {
                 cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
               }
-              cell.font = { name: "Calibri", size: 9, bold: ci === 11, color: { argb: "FF000000" } };
-              cell.alignment = { horizontal: aligns[ci], vertical: "top", wrapText: ci === 5 };
+              cell.font = { name: "Calibri", size: 9, bold: ci === 12, color: { argb: "FF000000" } };
+              cell.alignment = { horizontal: aligns[ci], vertical: "top", wrapText: ci === 6 };
               brdData(cell);
             });
             rowNum++;
@@ -11647,20 +11912,20 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       function doSheetJS() {
         if (!window.XLSX) { alert("Librería cargando, espera un momento."); return; }
         const wb2 = XLSX.utils.book_new();
-        const rows = [["CIRUGIA GENERAL"], [gi.fecha || ""], ["", "CAMA", "EXPEDIENTE", "NOMBRE", "EDAD", "DIAGNÓSTICO", "ESPECIALIDAD", "ADSCRITO", "RESIDENTE", "INGRESO", "DIAS", "ESTADO"]];
-        const merges = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 11 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 11 } }];
+        const rows = [["CIRUGIA GENERAL"], [gi.fecha || ""], ["", "CAMA", "EXPEDIENTE", "NOMBRE", "EDAD", "SEXO", "DIAGNÓSTICO", "ESPECIALIDAD", "ADSCRITO", "RESIDENTE", "INGRESO", "DIAS", "ESTADO"]];
+        const merges = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 12 } }];
         EX_SECTIONS.forEach(function (sec) {
           var grp = bySection[sec.id]; if (!grp || grp.length === 0) return;
           var sorted = [...grp].sort(function (a, b) { return exBedSort(a.cama) - exBedSort(b.cama); });
-          merges.push({ s: { r: rows.length, c: 0 }, e: { r: rows.length, c: 11 } });
+          merges.push({ s: { r: rows.length, c: 0 }, e: { r: rows.length, c: 12 } });
           rows.push([sec.label + " (" + sorted.length + " pacientes)"]);
           sorted.forEach(function (p) {
             var d = p.ingreso ? Math.floor((new Date() - parseDate(p.ingreso)) / 86400000) : "";
-            rows.push(["", p.cama || "", p.exp || "", p.nombre || "", p.edad || "", p.dx || "", p.esp || "", p.adscrito || "", p.residente || "", p.ingreso || "", Number.isFinite(d) ? d : "", p.estado || ""]);
+            rows.push(["", p.cama || "", p.exp || "", p.nombre || "", p.edad || "", p.sexo || "", p.dx || "", p.esp || "", p.adscrito || "", p.residente || "", p.ingreso || "", Number.isFinite(d) ? d : "", p.estado || ""]);
           });
         });
         const ws2 = XLSX.utils.aoa_to_sheet(rows);
-        ws2["!cols"] = [{ wch: 4 }, { wch: 8 }, { wch: 11 }, { wch: 28 }, { wch: 6 }, { wch: 55 }, { wch: 9 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 10 }];
+        ws2["!cols"] = [{ wch: 4 }, { wch: 8 }, { wch: 11 }, { wch: 28 }, { wch: 6 }, { wch: 10 }, { wch: 55 }, { wch: 9 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 10 }];
         ws2["!merges"] = merges;
         XLSX.utils.book_append_sheet(wb2, ws2, "Hoja1");
         XLSX.writeFile(wb2, "Censo_HGL_" + (gi.fecha || "hoy").replace(/\//g, "-") + ".xlsx");
@@ -13359,6 +13624,21 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         <button id="manual-merge-confirm" style="background:#059669;color:#fff;border:none;padding:7px 18px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700">✅ Confirmar fusión</button>
       </div>
     </div>
+  </div>
+
+  <!-- PROJECTOR OVERLAY -->
+  <div id="proj-overlay" style="display:none;position:fixed;inset:0;z-index:99990;background:#0a1628;flex-direction:column;align-items:stretch">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#061020;flex-shrink:0">
+      <div style="color:#fff;font-size:13px;font-weight:700;letter-spacing:1px">
+        📽 MODO PROYECTOR — <span id="proj-counter"></span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button onclick="proyectorPrev()" style="background:#1a3a6b;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700">◀ Anterior</button>
+        <button onclick="proyectorNext()" style="background:#1a3a6b;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700">Siguiente ▶</button>
+        <button onclick="closeProyector()" style="background:#dc2626;border:none;color:#fff;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">✕ Salir</button>
+      </div>
+    </div>
+    <div id="proj-card-area" style="flex:1;overflow-y:auto;display:flex;align-items:center;justify-content:center;padding:20px"></div>
   </div>
 
   <!-- Undo toast -->
