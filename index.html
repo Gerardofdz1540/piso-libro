@@ -3217,6 +3217,14 @@
         </div>
       </div>
 
+      <!-- Sección: Posibles pacientes de CG -->
+      <div id="import-sec-candidates-cg" style="display:none">
+        <div class="import-section-wrap">
+          <div class="import-section-hdr" style="background:#fef3c7;color:#92400e;border-color:#fcd34d">🔍 <span id="import-cg-lbl"></span> — Diagnóstico sugiere Cirugía General · ¿Agregar al piso libro?</div>
+          <div class="import-results" id="import-cg-list"></div>
+        </div>
+      </div>
+
       <div style="font-size:11px;color:#64748b;margin-top:8px;padding:6px 10px;background:#f8fafc;border-radius:5px"
         id="import-note"></div>
       <div class="modal-footer">
@@ -3482,6 +3490,10 @@
       };
       return MAP[v] !== undefined ? MAP[v] : v;
     }
+
+    // Surgical diagnosis keywords that suggest CG relevance
+    const CG_DX_PATTERN = /colecist|apend|hernia|laparotom|laparoscop|colostom|ileostom|anastom|gastrectom|colectom|reseccion|obstruccion intestinal|oclusión intestinal|oclucion intestinal|peritonit|apendicitis|diverticulit|pancreatit|fistula|eventrac|eventracion|plastia|fundoplast|esplenectom|hepat|biliar|coledoco|piloplast|gastroyeyun|bypass gastric|manga gastric|manga gástric|esofag|colon|recto|estomago|estómago|intestin|absceso abdominal|hemoperitoneo|volvulo|vólvulo|torsion intestinal|colangit|colangioitis|cirrosis|trasplante hepat|trasplante de higado|colitis|íleo|ileo|complic.*postquirurg/i;
+
     const ESP_COLORS = {
       CG: "#0f4c75", CCR: "#1b6644", CT: "#7b3f00", CTV: "#7b0000",
       CPR: "#6d28d9", CV: "#0369a1", TYO: "#064e3b", GYO: "#701a75",
@@ -11288,7 +11300,23 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             }
           });
 
-          pendingImport = { samePts, changedPts, newPts, missingPts, dispositions, autoDetected, altasFromExcel, defuncionesFromExcel, procedimientosFromExcel };
+          // ─── CANDIDATOS CG ───────────────────────────────────────────────────
+          // Patients whose specialty is NOT CG/surgical but whose DX or adscrito
+          // suggests General Surgery involvement. We'll prompt the user to add them.
+          const CG_ESP_SET = new Set(["CG","CCR","CV","CT","CTV","CMF","CPR","TYO","NCX","URO","COLUMNA","GYO","CG/GYO"]);
+          const knownCgAdscritos = new Set([
+            ...patients.filter(p => CG_ESP_SET.has(p.esp)).map(p => (p.adscrito||"").trim().toUpperCase()),
+            ...imported.filter(p => CG_ESP_SET.has(p.esp)).map(p => (p.adscrito||"").trim().toUpperCase())
+          ].filter(Boolean));
+          const candidatesCG = imported.filter(p => {
+            if (CG_ESP_SET.has(p.esp)) return false; // already surgical
+            const dxMatch = CG_DX_PATTERN.test(p.dx || "");
+            const adsMatch = p.adscrito && knownCgAdscritos.has(p.adscrito.trim().toUpperCase());
+            return dxMatch || adsMatch;
+          });
+          const candidatesCgChecked = candidatesCG.map(() => true); // default: all checked
+
+          pendingImport = { samePts, changedPts, newPts, missingPts, dispositions, autoDetected, altasFromExcel, defuncionesFromExcel, procedimientosFromExcel, candidatesCG, candidatesCgChecked };
 
           // ─── RESUMEN ──────────────────────────────────────────────────────
           const totalNuevo = imported.length;
@@ -11415,6 +11443,32 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             document.getElementById("import-new-list").innerHTML = h;
           } else { secNew.style.display = "none"; }
 
+          // ─── SECCIÓN: CANDIDATOS CG ──────────────────────────────────────────
+          const secCandCG = document.getElementById("import-sec-candidates-cg");
+          if (candidatesCG.length > 0) {
+            secCandCG.style.display = "";
+            document.getElementById("import-cg-lbl").textContent =
+              candidatesCG.length + " paciente" + (candidatesCG.length > 1 ? "s" : "") + " con diagnóstico quirúrgico";
+            let h = "";
+            candidatesCG.forEach((p, idx) => {
+              const reason = CG_DX_PATTERN.test(p.dx || "")
+                ? "DX: " + p.dx
+                : "Adscrito: " + p.adscrito;
+              h += `<div class="import-row" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;margin-bottom:5px;gap:8px">` +
+                `<input type="checkbox" id="cg-cand-${idx}" onchange="pendingImport.candidatesCgChecked[${idx}]=this.checked" ` +
+                (candidatesCgChecked[idx] ? "checked" : "") + ` style="width:16px;height:16px;cursor:pointer">` +
+                `<label for="cg-cand-${idx}" style="cursor:pointer;flex:1">` +
+                `<span style="font-weight:700;color:#92400e;margin-right:8px">${esc(p.cama)}</span>` +
+                `<span style="font-weight:600">${esc(p.nombre)}</span>` +
+                `<span style="font-size:10px;color:#78350f;margin-left:8px">${esc(p.esp || "Sin esp.")}</span>` +
+                `<div style="font-size:10px;color:#92400e;margin-top:2px">${esc(reason)}</div>` +
+                `</label>` +
+                `<span style="font-size:10px;color:#78350f;background:#fef3c7;padding:2px 6px;border-radius:4px;white-space:nowrap">Agregar como CG</span>` +
+                `</div>`;
+            });
+            document.getElementById("import-cg-list").innerHTML = h;
+          } else { secCandCG.style.display = "none"; }
+
           document.getElementById("import-note").textContent =
             "El nuevo censo es la fuente de verdad. Las altas y defunciones detectadas del Excel se aplican automáticamente. " +
             "Puedes cambiar la disposición de cualquier paciente antes de confirmar. Datos clínicos y labs se conservan.";
@@ -11439,7 +11493,19 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
     function confirmImport() {
       if (!pendingImport) return;
-      const { samePts, changedPts, newPts, missingPts, dispositions, procedimientosFromExcel } = pendingImport;
+      const { samePts, changedPts, newPts, missingPts, dispositions, procedimientosFromExcel, candidatesCG, candidatesCgChecked } = pendingImport;
+
+      // Apply CG specialty to checked candidates before processing lists
+      if (candidatesCG && candidatesCG.length) {
+        candidatesCG.forEach((cand, idx) => {
+          if (!candidatesCgChecked[idx]) return;
+          const matchPid = pid(cand);
+          const applyEsp = (arr) => arr.forEach(p => { if (pid(p) === matchPid) p.esp = "CG"; });
+          applyEsp(samePts);
+          applyEsp(newPts);
+          changedPts.forEach(({ newPt }) => { if (pid(newPt) === matchPid) newPt.esp = "CG"; });
+        });
+      }
       const prevPatients = [...patients]; // snapshot del censo anterior para limpiar fantasmas al final
       const existingByPid = new Map(patients.map(p => [pid(p), p]));
 
