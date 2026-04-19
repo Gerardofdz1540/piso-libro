@@ -294,9 +294,32 @@
     /* PISO GRID */
     #piso-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(640px, 1fr));
-      gap: 6px;
+      grid-template-columns: 1fr;
+      gap: 10px;
       align-items: start;
+    }
+    #piso-view-wrap {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    #bed-nav {
+      position: sticky;
+      top: 62px;
+      width: 72px;
+      flex-shrink: 0;
+      max-height: calc(100vh - 78px);
+      overflow-y: auto;
+      background: var(--card);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 4px 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      scrollbar-width: thin;
+    }
+    #piso-main {
+      flex: 1;
+      min-width: 0;
     }
 
     /* FULL CARD */
@@ -1829,9 +1852,7 @@
         padding: 10px
       }
 
-      #piso-grid {
-        grid-template-columns: 1fr
-      }
+      #bed-nav { width: 56px; }
 
       .grid-2,
       .grid-3 {
@@ -5029,7 +5050,83 @@
     // ─── DEBOUNCED SAVE WRAPPERS ────────────────────────────────────────────────────
     // _noteDebounceMap declarado arriba junto a los demás estado de sesión
 
+    // ── NOTE HISTORY (snapshots for recovery) ────────────────────────────────────
+    var _noteSnapLastTs = {};
+    function _saveNoteSnapshot(key) {
+      if (!key) return;
+      const now = Date.now();
+      if (_noteSnapLastTs[key] && (now - _noteSnapLastTs[key]) < 90000) return; // max once/90s
+      const current = noteData[key];
+      if (!current) return;
+      _noteSnapLastTs[key] = now;
+      try {
+        const lsKey = "pl_snap_" + key;
+        const snaps = JSON.parse(localStorage.getItem(lsKey) || "[]");
+        snaps.unshift({ ts: now, data: JSON.parse(JSON.stringify(current)) });
+        if (snaps.length > 6) snaps.pop();
+        localStorage.setItem(lsKey, JSON.stringify(snaps));
+      } catch (_) {}
+    }
+    function openNoteHistory(k) {
+      const snaps = (() => {
+        try { return JSON.parse(localStorage.getItem("pl_snap_" + k) || "[]"); } catch (_) { return []; }
+      })();
+      const p = patients.find(pt => pid(pt) === k);
+      const name = p ? esc(p.nombre) : esc(k);
+      const items = snaps.map((s, idx) => {
+        const d = new Date(s.ts);
+        const label = d.toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) + " " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+        const preview = [s.data.dx, s.data.qx, s.data.pendientes, s.data.entrega].filter(Boolean).map(v => v.slice(0, 80)).join(" · ").slice(0, 150) || "(sin vista previa)";
+        return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <span style="font-size:12px;font-weight:700;color:#1e293b">🕐 ${esc(label)}</span>
+            <button data-k="${esc(k)}" data-idx="${idx}" onclick="restoreNoteSnapshot(this.dataset.k,+this.dataset.idx)"
+              style="background:#6366f1;color:#fff;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">
+              Restaurar esta versión
+            </button>
+          </div>
+          <div style="font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(preview)}</div>
+        </div>`;
+      }).join("");
+      const html = `<div style="max-width:540px;margin:0 auto">
+        <h3 style="margin:0 0 4px;font-size:16px;color:#0a1628">📜 Historial de versiones</h3>
+        <p style="font-size:12px;color:#64748b;margin:0 0 16px">${name}</p>
+        ${items || '<div style="color:#94a3b8;text-align:center;padding:24px">No hay versiones guardadas aún.<br><small>Se generan automáticamente mientras trabajas.</small></div>'}
+      </div>`;
+      let m = document.getElementById("note-hist-modal");
+      if (!m) {
+        m = document.createElement("div");
+        m.id = "note-hist-modal";
+        m.style.cssText = "display:none;position:fixed;inset:0;z-index:9990;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px";
+        m.innerHTML = `<div style="background:#fff;border-radius:16px;padding:28px;width:min(580px,95vw);max-height:80vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.3)">
+          <div id="note-hist-content"></div>
+          <div style="margin-top:16px;text-align:right">
+            <button onclick="document.getElementById('note-hist-modal').style.display='none'"
+              style="background:#f1f5f9;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-family:var(--font)">Cerrar</button>
+          </div>
+        </div>`;
+        document.body.appendChild(m);
+      }
+      m.style.display = "flex";
+      document.getElementById("note-hist-content").innerHTML = html;
+    }
+    function restoreNoteSnapshot(k, idx) {
+      if (!confirm("¿Restaurar esta versión? Los datos actuales serán reemplazados.")) return;
+      try {
+        const snaps = JSON.parse(localStorage.getItem("pl_snap_" + k) || "[]");
+        if (!snaps[idx]) { alert("Versión no encontrada."); return; }
+        const restored = snaps[idx].data;
+        noteData[k] = restored;
+        saveNote(k, restored);
+        document.getElementById("note-hist-modal").style.display = "none";
+        renderView();
+        alert("Versión restaurada.");
+      } catch (e) { alert("Error al restaurar: " + e.message); }
+    }
+    // ── END NOTE HISTORY ─────────────────────────────────────────────────────────
+
     function saveNote(key, data) {
+      _saveNoteSnapshot(key);
       const safeData = migrateNote(data);
       // Always save to localStorage immediately
       lsSaveNote(key, safeData);
@@ -6273,8 +6370,24 @@
         }
       });
       const specialAlertsHtml = renderSpecialAlertsPanel();
+      const bedNavHtml = `<div id="bed-nav">
+        <div style="font-size:9px;font-weight:700;color:#94a3b8;text-align:center;padding:6px 2px 4px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #f1f5f9">Camas</div>
+        ${sorted.map(p => {
+          const ec = ESP_COLORS[p.esp] || "#1a3a6b";
+          const ek = "card-" + pid(p);
+          return `<button data-target="${esc(ek)}" onclick="scrollToCard(this.dataset.target)"
+            style="width:100%;text-align:center;background:none;border:none;border-bottom:1px solid #f8fafc;padding:6px 4px;cursor:pointer;font-size:11px;font-weight:700;color:${ec};font-family:var(--font);line-height:1.2;word-break:break-all">
+            ${esc(p.cama)}
+          </button>`;
+        }).join("")}
+      </div>`;
       document.getElementById("view-piso").innerHTML =
-        specialAlertsHtml + `<div id="piso-grid">${html}</div>` + renderFreeBeds();
+        specialAlertsHtml + `<div id="piso-view-wrap">${bedNavHtml}<div id="piso-main"><div id="piso-grid">${html}</div>${renderFreeBeds()}</div></div>`;
+    }
+
+    function scrollToCard(cardId) {
+      const el = document.getElementById(cardId);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     // ─── CAMAS LIBRES ────────────────────────────────────────────────────────────────
@@ -7310,6 +7423,7 @@
           <button class="icon-btn" style="background:rgba(14,165,233,.55);font-size:11px" data-corkey="${k}" onclick="openCorreccionModal(this.dataset.corkey)" title="Corrección guiada de electrolitos">⚡</button>
           <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️</button>
           <button class="icon-btn" style="background:rgba(251,146,60,.35);font-size:11px" data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)" title="Cambiar cama rápido">🛏</button>
+          <button class="icon-btn" style="background:rgba(99,102,241,.4);font-size:11px" data-histkey="${k}" onclick="openNoteHistory(this.dataset.histkey)" title="Historial de versiones / recuperar datos">📜</button>
           <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
           <span class="expand-btn" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${exp ? "▾" : "▸"}</span>
         </div>
@@ -7423,7 +7537,7 @@
       const dias = daysSince(p.ingreso);
       const simpleCk = (nd && nd.checklist) || {};
       const curPendiente = simpleCk.cur_necesita && !simpleCk.cur_realizada;
-      return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}${esIngreso ? ' card-ingreso' : ''}">
+      return `<div class="simple-card${noEnCenso ? ' flag-noencenso' : ''}${esIngreso ? ' card-ingreso' : ''}" id="card-${k}">
     <div class="simple-header" style="background:linear-gradient(90deg,${ec} 0%,${ec}99 100%)">
       <div style="display:flex;align-items:center;gap:8px;flex:1">
         <span style="background:rgba(255,255,255,.2);padding:2px 8px;border-radius:6px;font-size:13px;font-weight:700">${esc(p.cama) || '<em style="opacity:.6;font-style:italic">S/C</em>'}</span>
@@ -9340,8 +9454,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div>
             ${pf("DX", p.dx || nd.dx, true)}
-            ${pf("APP", nd.app)}
-            ${pf("PA", nd.pa)}
           </div>
           <div>
             ${pf("QX / Plan", nd.qx || nd.manejo)}
@@ -9445,7 +9557,6 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         </div></div>
         <div class="eg-cb">
           ${ef("DX", p.dx || nd.dx)}
-          <div class="eg-r2">${ef("APP", nd.app)}${ef("PA", nd.pa)}</div>
           ${ef("QX", nd.qx || nd.manejo)}
           <div class="eg-r2">${(function(){
             const parts = [];
