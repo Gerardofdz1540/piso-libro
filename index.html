@@ -404,10 +404,39 @@
       justify-content: center;
       font-family: inherit
     }
-
+    .icon-btn.has-lbl {
+      width: auto; min-width: 34px; height: auto; min-height: 34px;
+      flex-direction: column; gap: 0; padding: 3px 5px; font-size: 14px;
+    }
+    .icon-lbl {
+      font-size: 7.5px; font-weight: 700; line-height: 1;
+      display: block; margin-top: 1px; white-space: nowrap; opacity: .9;
+    }
     .icon-btn.danger {
       background: rgba(220, 38, 38, .45)
     }
+    /* ── Doc Intake Modal ──────────────────────────────────────────────────── */
+    #doc-intake-modal .modal-box { max-width: 720px; }
+    .di-drop-zone {
+      border: 2px dashed #94a3b8; border-radius: 10px; padding: 32px 20px;
+      text-align: center; cursor: pointer; background: #f8fafc; transition: all .2s;
+    }
+    .di-drop-zone:hover, .di-drop-zone.drag-over {
+      border-color: #6366f1; background: #eef2ff;
+    }
+    .di-field-row {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 8px 0; border-bottom: 1px solid #f1f5f9;
+    }
+    .di-field-row:last-child { border-bottom: none; }
+    .di-field-check { margin-top: 4px; width: 16px; height: 16px; cursor: pointer; accent-color: #6366f1; flex-shrink: 0; }
+    .di-field-label { font-size: 11px; font-weight: 700; color: #64748b; min-width: 140px; flex-shrink: 0; padding-top: 4px; }
+    .di-field-val { flex: 1; font-size: 12px; color: #1e293b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 5px 8px; resize: vertical; min-height: 36px; font-family: var(--font); }
+    .di-type-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 6px; margin-bottom: 10px; }
+    .di-type-ingreso { background: #dcfce7; color: #166534; }
+    .di-type-postqx { background: #ede9fe; color: #5b21b6; }
+    .di-type-evolucion { background: #dbeafe; color: #1d4ed8; }
+    .di-type-otro { background: #f1f5f9; color: #475569; }
 
     /* ── Cruce Quirúrgico ──────────────────────────────────────────────────── */
     .badge-cruce {
@@ -3883,9 +3912,26 @@
       const token = document.getElementById("proxy-token-input").value.trim();
       if (url && !url.startsWith("http")) { alert("La URL debe empezar con https://"); return; }
       localStorage.setItem(CONFIG_KEY, JSON.stringify({ url, token }));
+      // Sync to Supabase so ALL users on any device get the proxy URL automatically
+      _sUpsert("pl_config", { key: "worker_config", value: { url, token } }, "key").catch(e => safeLog("saveConfig sync:", e));
       updateProxyPill();
       updateProxyStatusBox(url ? "saved" : "empty");
       if (url) { startSyncPolling(); }
+    }
+
+    async function loadSharedConfig() {
+      try {
+        const rows = await _sGet("pl_config", "key=eq.worker_config&select=value");
+        if (rows && rows.length && rows[0].value) {
+          const remote = rows[0].value;
+          const local = getConfig();
+          // Only write remote to local if local has no URL (don't overwrite admin's own config)
+          if (!local.url && remote.url) {
+            localStorage.setItem(CONFIG_KEY, JSON.stringify({ url: remote.url || "", token: remote.token || "" }));
+            updateProxyPill();
+          }
+        }
+      } catch (e) { safeLog("loadSharedConfig:", e); }
     }
 
     function openConfigModal() {
@@ -6080,6 +6126,7 @@
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
       await initAuth();
+      loadSharedConfig().catch(() => {}); // Non-blocking: pull proxy URL from Supabase for other devices
 
       // Limpiar plantilla Excel de versiones anteriores que sí la guardaban en localStorage
       // (puede ocupar hasta 2 MB en base64; ahora se mantiene solo en memoria)
@@ -7431,12 +7478,13 @@
           <span class="badge-day">Día ${days}</span>
           ${renderDiasSinLabsBadge(nd)}
           ${renderCruceBadge(nd, k)}
-          <button class="icon-btn" style="background:rgba(14,116,144,.5);font-size:11px" data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)" title="Buscar en WinLab (copia apellido)">🧪</button>
-          <button class="icon-btn" style="background:rgba(14,165,233,.55);font-size:11px" data-corkey="${k}" onclick="openCorreccionModal(this.dataset.corkey)" title="Corrección guiada de electrolitos">⚡</button>
-          <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️</button>
-          <button class="icon-btn" style="background:rgba(251,146,60,.35);font-size:11px" data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)" title="Cambiar cama rápido">🛏</button>
-          <button class="icon-btn" style="background:rgba(99,102,241,.4);font-size:11px" data-histkey="${k}" onclick="openNoteHistory(this.dataset.histkey)" title="Historial de versiones / recuperar datos">📜</button>
-          <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
+          <button class="icon-btn has-lbl" style="background:rgba(14,116,144,.5)" data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)" title="Buscar en WinLab (copia apellido)">🧪<span class="icon-lbl">WinLab</span></button>
+          <button class="icon-btn has-lbl" style="background:rgba(14,165,233,.55)" data-corkey="${k}" onclick="openCorreccionModal(this.dataset.corkey)" title="Corrección guiada de electrolitos">⚡<span class="icon-lbl">Electrol.</span></button>
+          <button class="icon-btn has-lbl" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️<span class="icon-lbl">Editar</span></button>
+          <button class="icon-btn has-lbl" style="background:rgba(251,146,60,.35)" data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)" title="Cambiar cama rápido">🛏<span class="icon-lbl">Cama</span></button>
+          <button class="icon-btn has-lbl" style="background:rgba(99,102,241,.4)" data-histkey="${k}" onclick="openNoteHistory(this.dataset.histkey)" title="Historial de versiones / recuperar datos">📜<span class="icon-lbl">Historial</span></button>
+          <button class="icon-btn has-lbl" style="background:rgba(16,185,129,.45)" data-dikey="${k}" onclick="openDocIntake(this.dataset.dikey)" title="Leer documento con IA (nota de ingreso, postQx, evolución)">📄<span class="icon-lbl">Leer Doc</span></button>
+          <button class="icon-btn has-lbl danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪<span class="icon-lbl">Alta</span></button>
           <span class="expand-btn" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${exp ? "▾" : "▸"}</span>
         </div>
       </div>
@@ -7524,7 +7572,6 @@
       ${renderBodyDiagram(nd, k)}
       ${renderPtReminders(nd, k)}
       <div class="card-notes-bar">
-        <span class="card-notes-label">📝 Notas:</span>
         <button class="card-note-btn cnb-preqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'prequirurgica')">PreQx</button>
         <button class="card-note-btn cnb-postqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'postquirurgica')">PostQx</button>
         <button class="card-note-btn cnb-med" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'medica')">Evolución</button>
@@ -8610,6 +8657,239 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       delete labAnalysisCache[k];
       const labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(getNote(k), k);
+    }
+
+    // ─── SMART DOCUMENT INTAKE ───────────────────────────────────────────────────────
+    var _diCurrentKey = null;   // patient key for the open intake
+    var _diExtracted  = null;   // last parsed AI result
+
+    function openDocIntake(k) {
+      const proxyUrl = getProxyUrl();
+      if (!proxyUrl) {
+        alert("⚙️ Configura la URL del Worker en «Config API» primero. Una vez configurada, todos los usuarios la comparten automáticamente.");
+        return;
+      }
+      _diCurrentKey = k;
+      _diExtracted  = null;
+      document.getElementById("di-file-input").value = "";
+      diShowStep("upload");
+      document.getElementById("doc-intake-modal").style.display = "flex";
+    }
+
+    function closeDocIntake() {
+      document.getElementById("doc-intake-modal").style.display = "none";
+      _diCurrentKey = null;
+      _diExtracted  = null;
+    }
+
+    function diShowStep(step) {
+      ["upload","processing","preview","error"].forEach(s =>
+        document.getElementById("di-step-" + s).style.display = (s === step ? "" : "none")
+      );
+    }
+
+    async function handleDocIntakeFile(file) {
+      if (!file) return;
+      const proxyUrl = getProxyUrl();
+      if (!proxyUrl) return;
+
+      diShowStep("processing");
+
+      const isImage = file.type.startsWith("image/");
+      const fileMB  = file.size / 1024 / 1024;
+
+      try {
+        // ── Base64 encode (compress image if large) ──────────────────────────
+        let base64;
+        if (isImage && fileMB > 1.5) {
+          base64 = await new Promise((res, rej) => {
+            const img = new Image();
+            const objUrl = URL.createObjectURL(file);
+            img.onload = () => {
+              URL.revokeObjectURL(objUrl);
+              const MAX = 1400;
+              let w = img.naturalWidth, h = img.naturalHeight;
+              if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
+              const cv = document.createElement("canvas");
+              cv.width = w; cv.height = h;
+              cv.getContext("2d").drawImage(img, 0, 0, w, h);
+              res(cv.toDataURL("image/jpeg", 0.75).split(",")[1]);
+            };
+            img.onerror = rej; img.src = objUrl;
+          });
+        } else {
+          base64 = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload  = () => res(r.result.split(",")[1]);
+            r.onerror = rej; r.readAsDataURL(file);
+          });
+        }
+
+        const mediaType = isImage ? "image/jpeg" : "application/pdf";
+        const contentBlock = isImage
+          ? { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } }
+          : { type: "document", source: { type: "base64", media_type: mediaType, data: base64 } };
+
+        const prompt = `Eres un asistente médico quirúrgico. Analiza este documento clínico y extrae la información. Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional.
+
+Esquema exacto a devolver (deja "" si el campo no está en el documento, false para booleanos ausentes):
+{
+  "tipo_doc": "ingreso|postqx|evolucion|laboratorio|imagen|otro",
+  "nombre_paciente": "APELLIDOS NOMBRE del paciente si aparece",
+  "dx": "diagnóstico principal o motivo de ingreso",
+  "pa": "padecimiento actual completo tal como aparece, conserva redacción",
+  "app": "CRÓNICO-DEGENERATIVOS: lista\\nPATOLÓGICOS PERSONALES: otros antecedentes médicos\\nQUIRÚRGICOS: cirugías previas con año si disponible\\nTOXICOMANÍAS: tabaco/alcohol/drogas con cantidad\\nFAMILIARES: historia familiar relevante\\nALERGIAS: lista de alergias\\nGINECO-OBSTÉTRICOS: si aplica (FUM, G/P/C/A)",
+  "qx": "CIRUGÍA: nombre del procedimiento\\nHALLAZGOS: hallazgos transoperatorios relevantes\\nPROCEDIMIENTO: descripción de lo realizado paso a paso resumido\\nRESECCIÓN: órgano o tejido resecado si aplica\\nANASTOMOSIS: tipo y técnica si se realizó\\nDISPOSITIVOS: stents, mallas, prótesis, clips u otros dispositivos colocados\\nCOMPLICACIONES: complicaciones intraoperatorias si las hubo",
+  "sangrado": "volumen de sangrado ejemplo: 200 mL",
+  "drenajes": "drenajes colocados: tipo y ubicación",
+  "manejo": "plan de manejo, tratamiento, indicaciones médicas actuales",
+  "sv": "signos vitales si están presentes",
+  "balance": "balance hídrico si está presente",
+  "pendientes": "estudios pendientes, interconsultas o procedimientos por realizar",
+  "checklist": {
+    "atb": false,
+    "atb_nombre": "nombre del antibiótico si se menciona",
+    "atb_dias": "días de tratamiento",
+    "npt": false,
+    "npt_pct": "porcentaje de NPT si se menciona",
+    "tvp": false,
+    "tvp_tipo": "tipo de profilaxis TVP si se menciona",
+    "dieta": "tipo de dieta indicada"
+  }
+}`;
+
+        const resp = await fetch(proxyUrl + "/api/ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(getToken() ? { "Authorization": "Bearer " + getToken() } : {}) },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 4000,
+            messages: [{ role: "user", content: [contentBlock, { type: "text", text: prompt }] }]
+          })
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        const raw = (data.content?.[0]?.text || "{}").replace(/```json/g,"").replace(/```/g,"").trim();
+        const js  = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+        let result;
+        try { result = JSON.parse(js); }
+        catch (_) { throw new Error("No se pudo parsear la respuesta de la IA. Intenta de nuevo."); }
+
+        _diExtracted = result;
+        _renderDocIntakePreview(result);
+        diShowStep("preview");
+
+      } catch (err) {
+        document.getElementById("di-error-msg").textContent = err.message || String(err);
+        diShowStep("error");
+      }
+    }
+
+    // Map from AI result field → { label, noteKey, isChecklist, checklistKey }
+    const _DI_FIELDS = [
+      { key: "nombre_paciente", label: "👤 Nombre paciente",   noteKey: null,        pField: "nombre" },
+      { key: "dx",              label: "🔴 DX / Motivo ingreso", noteKey: "dx",       pField: "dx"     },
+      { key: "pa",              label: "🩺 Padecimiento actual", noteKey: "pa"                         },
+      { key: "app",             label: "📋 Antecedentes (APP)",  noteKey: "app"                        },
+      { key: "qx",              label: "🔧 Qx / Procedimiento",  noteKey: "qx"                        },
+      { key: "sangrado",        label: "🩸 Sangrado",            noteKey: "sangrado"                   },
+      { key: "drenajes",        label: "💧 Drenajes",            noteKey: "drenajes"                   },
+      { key: "manejo",          label: "💉 Manejo médico",       noteKey: "manejo"                     },
+      { key: "sv",              label: "📊 Signos vitales",      noteKey: "sv"                         },
+      { key: "balance",         label: "⚖️ Balance hídrico",     noteKey: "balance"                    },
+      { key: "pendientes",      label: "⚠️ Pendientes",          noteKey: "pendientes"                 },
+      // Checklist sub-fields
+      { key: "cl_atb_nombre",   label: "💊 Antibiótico nombre",  isCl: true, clKey: "atb_nombre"      },
+      { key: "cl_atb_dias",     label: "💊 ATB días",            isCl: true, clKey: "atb_dias"         },
+      { key: "cl_npt_pct",      label: "🧪 NPT porcentaje",      isCl: true, clKey: "npt_pct"          },
+      { key: "cl_tvp_tipo",     label: "💉 TVP tipo profilaxis",  isCl: true, clKey: "tvp_tipo"        },
+      { key: "cl_dieta",        label: "🍽 Dieta indicada",       isCl: true, clKey: "dieta"            },
+    ];
+    const _DI_BOOL_FIELDS = [
+      { key: "atb",  label: "Antibioticoterapia", clKey: "atb"  },
+      { key: "npt",  label: "NPT",                clKey: "npt"  },
+      { key: "tvp",  label: "TVP profilaxis",     clKey: "tvp"  },
+    ];
+
+    function _renderDocIntakePreview(result) {
+      const typeLabels = { ingreso:"📋 NOTA DE INGRESO", postqx:"🔧 NOTA POSTQX", evolucion:"📊 NOTA DE EVOLUCIÓN", laboratorio:"🧪 LABORATORIO", imagen:"🖼 IMAGEN/ESTUDIO", otro:"📄 DOCUMENTO" };
+      const typeClasses = { ingreso:"ingreso", postqx:"postqx", evolucion:"evolucion" };
+      const tipo = result.tipo_doc || "otro";
+      const bannerEl = document.getElementById("di-type-banner");
+      bannerEl.innerHTML = `<span class="di-type-badge di-type-${typeClasses[tipo]||'otro'}">${typeLabels[tipo]||"📄 DOCUMENTO"}</span>`;
+
+      const cl = result.checklist || {};
+      // Flatten checklist sub-fields into result for rendering
+      const flat = { ...result, cl_atb_nombre: cl.atb_nombre, cl_atb_dias: cl.atb_dias, cl_npt_pct: cl.npt_pct, cl_tvp_tipo: cl.tvp_tipo, cl_dieta: cl.dieta };
+
+      let html = "";
+      // Boolean checklist flags first if true
+      const boolHtml = _DI_BOOL_FIELDS
+        .filter(b => cl[b.key] === true)
+        .map(b => `<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;margin-right:5px">✅ ${b.label}</span>`)
+        .join("");
+      if (boolHtml) html += `<div style="margin-bottom:10px">${boolHtml}</div>`;
+
+      _DI_FIELDS.forEach((fd, idx) => {
+        const val = flat[fd.key];
+        if (!val || (typeof val === "string" && !val.trim())) return;
+        html += `<div class="di-field-row">
+          <input type="checkbox" class="di-field-check" id="di-chk-${idx}" checked>
+          <label class="di-field-label" for="di-chk-${idx}">${fd.label}</label>
+          <textarea class="di-field-val" id="di-fval-${idx}" rows="${val.includes("\\n") || val.length > 80 ? 4 : 2}">${esc(val)}</textarea>
+        </div>`;
+      });
+
+      if (!html && !boolHtml) {
+        html = `<div style="color:#dc2626;font-size:13px;padding:10px">No se detectaron campos relevantes en este documento.</div>`;
+      }
+      document.getElementById("di-fields-list").innerHTML = html;
+    }
+
+    function applyDocIntake() {
+      if (!_diExtracted || !_diCurrentKey) return;
+      const k  = _diCurrentKey;
+      const nd = getNote(k);
+      const p  = patients.find(pt => pid(pt) === k);
+      const cl = result => result.checklist || {};
+
+      // Apply boolean flags
+      const clResult = _diExtracted.checklist || {};
+      _DI_BOOL_FIELDS.forEach(b => {
+        if (clResult[b.key] === true) {
+          nd.checklist[b.clKey] = true;
+        }
+      });
+
+      // Apply text fields per checkbox state
+      _DI_FIELDS.forEach((fd, idx) => {
+        const chk = document.getElementById("di-chk-" + idx);
+        const val = document.getElementById("di-fval-" + idx);
+        if (!chk || !val) return; // field wasn't rendered (was empty)
+        if (!chk.checked) return;
+        const text = val.value.trim();
+        if (!text) return;
+        if (fd.noteKey) {
+          nd[fd.noteKey] = text;
+          if (fd.noteKey === "dx" && p) { p.dx = text; }
+        } else if (fd.pField === "nombre" && p) {
+          // only apply name if patient currently has no name or it's a placeholder
+          if (!p.nombre || p.nombre.trim() === "") p.nombre = text;
+        } else if (fd.isCl) {
+          nd.checklist[fd.clKey] = text;
+        }
+      });
+
+      saveNote(k, nd);
+      if (p) _savePtsImmediate();
+      closeDocIntake();
+      // Re-render the card so new field values are visible
+      const cardEl = document.getElementById("card-" + k);
+      if (cardEl) {
+        const newHtml = renderFullCard(p, nd, k);
+        cardEl.outerHTML = newHtml;
+        document.getElementById("card-" + k)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
     }
 
     // ─── FIELD / LAB UPDATE ──────────────────────────────────────────────────────────
@@ -13816,6 +14096,62 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       </div>
     </div>
     <div id="proj-card-area" style="flex:1;overflow-y:auto;display:flex;align-items:center;justify-content:center;padding:20px"></div>
+  </div>
+
+  <!-- ═══ DOCUMENT INTAKE MODAL ══════════════════════════════════════════════ -->
+  <div id="doc-intake-modal" class="modal-bg" style="display:none">
+    <div class="modal-box" style="max-width:720px;max-height:90vh;overflow-y:auto">
+      <div class="modal-header">
+        <div class="modal-title">📄 Lectura inteligente de documento</div>
+        <button class="modal-close" onclick="closeDocIntake()">✕</button>
+      </div>
+
+      <!-- Step 1: Upload -->
+      <div id="di-step-upload">
+        <p style="font-size:12px;color:#64748b;margin:0 0 12px">
+          Sube una nota de ingreso, nota postQx, nota de evolución o cualquier documento médico.<br>
+          La IA extraerá la información y te mostrará los campos detectados para que los revises antes de aplicar.
+        </p>
+        <div class="di-drop-zone" id="di-drop-zone"
+          onclick="document.getElementById('di-file-input').click()"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="event.preventDefault();this.classList.remove('drag-over');handleDocIntakeFile(event.dataTransfer.files[0])">
+          <div style="font-size:36px;margin-bottom:8px">📄</div>
+          <div style="font-weight:700;font-size:14px;color:#334155">Clic aquí o arrastra el documento</div>
+          <div style="font-size:12px;color:#64748b;margin-top:4px">PDF, foto (JPG/PNG/HEIC) o imagen escaneada</div>
+        </div>
+        <input type="file" id="di-file-input" accept="application/pdf,image/jpeg,image/png,image/heic,image/webp" style="display:none"
+          onchange="handleDocIntakeFile(this.files[0])">
+      </div>
+
+      <!-- Step 2: Processing -->
+      <div id="di-step-processing" style="display:none;text-align:center;padding:40px 20px">
+        <div style="font-size:40px;margin-bottom:12px">🧠</div>
+        <div style="font-weight:700;font-size:15px;color:#1e293b">Analizando documento con IA…</div>
+        <div style="font-size:12px;color:#64748b;margin-top:6px">Extrayendo información clínica relevante</div>
+      </div>
+
+      <!-- Step 3: Preview & Apply -->
+      <div id="di-step-preview" style="display:none">
+        <div id="di-type-banner" style="margin-bottom:10px"></div>
+        <p style="font-size:12px;color:#64748b;margin:0 0 8px">
+          Revisa los campos detectados. Desmarca los que <strong>no</strong> quieres aplicar. Puedes editar el texto antes de confirmar.
+        </p>
+        <div id="di-fields-list"></div>
+        <div class="modal-footer" style="margin-top:12px">
+          <button class="btn-cancel" onclick="closeDocIntake()">Cancelar</button>
+          <button class="btn-save" id="di-apply-btn" onclick="applyDocIntake()">✓ Aplicar campos seleccionados</button>
+        </div>
+      </div>
+
+      <!-- Step 4: Error -->
+      <div id="di-step-error" style="display:none;padding:20px;text-align:center">
+        <div style="font-size:36px;margin-bottom:8px">⚠️</div>
+        <div id="di-error-msg" style="font-size:13px;color:#dc2626;font-weight:600"></div>
+        <button onclick="diShowStep('upload')" style="margin-top:12px;background:#6366f1;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px">Intentar de nuevo</button>
+      </div>
+    </div>
   </div>
 
   <!-- Undo toast -->
