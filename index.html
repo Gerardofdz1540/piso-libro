@@ -3246,11 +3246,28 @@
         </div>
       </div>
 
+      <!-- Sección: Cambio de cama (mismo paciente, nueva cama) -->
+      <div id="import-sec-moved" style="display:none">
+        <div class="import-section-wrap">
+          <div class="import-section-hdr" style="background:#ede9fe;color:#5b21b6;border-color:#c4b5fd">🛏 <span id="import-moved-lbl"></span> — Mismo paciente detectado en nueva cama · Se conservan todos sus datos</div>
+          <div class="import-results" id="import-moved-list"></div>
+        </div>
+      </div>
+
       <!-- Sección: Posibles pacientes de CG -->
       <div id="import-sec-candidates-cg" style="display:none">
         <div class="import-section-wrap">
           <div class="import-section-hdr" style="background:#fef3c7;color:#92400e;border-color:#fcd34d">🔍 <span id="import-cg-lbl"></span> — Diagnóstico sugiere Cirugía General · ¿Agregar al piso libro?</div>
           <div class="import-results" id="import-cg-list"></div>
+        </div>
+      </div>
+
+      <!-- Sección: Otros pacientes del censo (otras especialidades) -->
+      <div id="import-sec-others" style="display:none">
+        <div class="import-section-wrap">
+          <div class="import-section-hdr" style="background:#f1f5f9;color:#475569;border-color:#cbd5e1">👥 <span id="import-others-lbl"></span> — Otros pacientes del censo (otras especialidades) · ¿Agregar alguno?</div>
+          <div style="font-size:11px;color:#64748b;padding:4px 10px 6px">Estos pacientes son nuevos y pertenecen a otras especialidades. Marca los que quieras incorporar.</div>
+          <div class="import-results" id="import-others-list"></div>
         </div>
       </div>
 
@@ -11530,33 +11547,48 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
           // ─── CATEGORIZACIÓN INTELIGENTE ─────────────────────────────────
           // Mapas del censo actual
-          const oldByPid = new Map(patients.map(p => [pid(p), p]));
+          const oldByPid  = new Map(patients.map(p => [pid(p), p]));
           const oldByCama = new Map(patients.map(p => [p.cama, p]));
+          const oldByExp  = new Map(patients.map(p => [p.exp, p])); // para detectar cambios de cama
           // Mapas del censo nuevo
           const newByCama = new Map(imported.map(p => [p.cama, p]));
-          const newByPid = new Map(imported.map(p => [pid(p), p]));
+          const newByPid  = new Map(imported.map(p => [pid(p), p]));
 
-          const samePts = [];  // mismo exp+cama → actualizar datos
-          const changedPts = []; // misma cama, diferente exp → paciente nuevo en esa cama
-          const newPts = [];  // cama y exp nuevos → ingreso nuevo
-          const missingPts = [];  // en censo anterior, no aparecen en nuevo censo
+          const samePts     = [];  // mismo exp+cama → actualizar datos
+          const movedPts    = [];  // mismo exp, diferente cama → cambio de cama
+          const changedPts  = [];  // misma cama, diferente exp → otro paciente en esa cama
+          const newPts      = [];  // paciente nuevo de especialidad CG/quirúrgica
+          const otherPts    = [];  // paciente nuevo de otra especialidad → preguntar
+          const missingPts  = [];  // en censo anterior, no aparecen en nuevo censo
           const dispositions = {}; // pid → 'alta' | 'defuncion' | 'traslado' | 'mantener'
+
+          const IMPORT_CG_ESP = new Set(["CG","CCR","CV","CT","CTV","CMF","CPR","TYO","NCX","URO","COLUMNA","GYO","CG/GYO"]);
 
           // Expedientes ya archivados/egresados → no se re-añaden al censo
           const archivedExpSet = new Set(archivados.map(a => a.exp).filter(Boolean));
           let skippedArchived = 0;
 
           imported.forEach(p => {
-            // Si ya fue dado de alta anteriormente, ignorar
             if (archivedExpSet.has(p.exp)) { skippedArchived++; return; }
+
             if (oldByPid.has(pid(p))) {
+              // Exact match: same exp + same cama
               samePts.push(p);
+            } else if (p.exp && oldByExp.has(p.exp) && oldByExp.get(p.exp).cama !== p.cama) {
+              // Same expediente, different cama → patient moved beds
+              movedPts.push({ newPt: p, oldPt: oldByExp.get(p.exp) });
             } else if (oldByCama.has(p.cama)) {
+              // Different patient in same bed → replacement
               changedPts.push({ newPt: p, oldPt: oldByCama.get(p.cama) });
-            } else {
+            } else if (IMPORT_CG_ESP.has(p.esp)) {
+              // Brand-new CG/surgical patient → auto-add
               newPts.push(p);
+            } else {
+              // Brand-new patient of another specialty → ask user
+              otherPts.push(p);
             }
           });
+          const otherPtsChecked = otherPts.map(() => false); // default: NOT checked
 
           // Pacientes en censo anterior que no están en el nuevo (ni por pid ni por cama)
           // Cross-reference with ALTAS and DEFUNCIONES sections from Excel
@@ -11596,7 +11628,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           });
           const candidatesCgChecked = candidatesCG.map(() => true); // default: all checked
 
-          pendingImport = { samePts, changedPts, newPts, missingPts, dispositions, autoDetected, altasFromExcel, defuncionesFromExcel, procedimientosFromExcel, candidatesCG, candidatesCgChecked };
+          pendingImport = { samePts, movedPts, changedPts, newPts, otherPts, otherPtsChecked, missingPts, dispositions, autoDetected, altasFromExcel, defuncionesFromExcel, procedimientosFromExcel, candidatesCG, candidatesCgChecked };
 
           // ─── RESUMEN ──────────────────────────────────────────────────────
           const totalNuevo = imported.length;
@@ -11614,6 +11646,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             `<span style="color:#166534;font-weight:600">➕ ${newPts.length} nuevos</span> &nbsp;·&nbsp; ` +
             `<span style="color:#854d0e;font-weight:600">🔁 ${samePts.length} actualizados</span> &nbsp;·&nbsp; ` +
             `<span style="color:#991b1b;font-weight:600">🔄 ${changedPts.length} camas con cambio</span>` +
+            (movedPts.length > 0 ? ` &nbsp;·&nbsp; <span style="color:#5b21b6;font-weight:600">🛏 ${movedPts.length} cambio${movedPts.length>1?"s":""} de cama</span>` : "") +
+            (otherPts.length > 0 ? ` &nbsp;·&nbsp; <span style="color:#475569;font-weight:600">👥 ${otherPts.length} otras esp.</span>` : "") +
             summaryExtra + procInfo +
             (manualMissing > 0 ? ` &nbsp;·&nbsp; <span style="color:#78350f;font-weight:600">⚠️ ${manualMissing} sin clasificar</span>` : "") +
             (skippedArchived > 0 ? ` &nbsp;·&nbsp; <span style="color:#64748b;font-weight:600">📦 ${skippedArchived} ya egresado${skippedArchived !== 1 ? "s" : ""} (omitidos)</span>` : "");
@@ -11723,6 +11757,47 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             document.getElementById("import-new-list").innerHTML = h;
           } else { secNew.style.display = "none"; }
 
+          // ─── SECCIÓN: CAMBIO DE CAMA ─────────────────────────────────────────
+          const secMoved = document.getElementById("import-sec-moved");
+          if (movedPts.length > 0) {
+            secMoved.style.display = "";
+            document.getElementById("import-moved-lbl").textContent =
+              movedPts.length + " paciente" + (movedPts.length > 1 ? "s" : "") + " cambiaron de cama";
+            let h = "";
+            movedPts.forEach(({ newPt, oldPt }) => {
+              const col = ESP_COLORS[newPt.esp] || "#5b21b6";
+              h += `<div class="import-row" style="background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;padding:8px 12px;margin-bottom:5px">` +
+                `<span style="font-weight:700;color:${col};min-width:60px">${esc(newPt.cama)}</span>` +
+                `<span style="flex:1;font-weight:600">${esc(newPt.nombre)}</span>` +
+                `<span style="font-size:11px;color:#64748b">${esc(newPt.esp)}</span>` +
+                `<span style="font-size:10px;color:#7c3aed;background:#ede9fe;padding:2px 8px;border-radius:4px">` +
+                  `🛏 ${esc(oldPt.cama)} → ${esc(newPt.cama)}</span>` +
+                `</div>`;
+            });
+            document.getElementById("import-moved-list").innerHTML = h;
+          } else { secMoved.style.display = "none"; }
+
+          // ─── SECCIÓN: OTROS PACIENTES (otras especialidades) ──────────────────
+          const secOthers = document.getElementById("import-sec-others");
+          if (otherPts.length > 0) {
+            secOthers.style.display = "";
+            document.getElementById("import-others-lbl").textContent =
+              otherPts.length + " paciente" + (otherPts.length > 1 ? "s" : "") + " de otras especialidades";
+            let h = "";
+            otherPts.forEach((p, idx) => {
+              const col = ESP_COLORS[p.esp] || "#555";
+              h += `<div class="import-row" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;margin-bottom:5px;gap:8px">` +
+                `<input type="checkbox" id="oth-${idx}" onchange="pendingImport.otherPtsChecked[${idx}]=this.checked" style="width:16px;height:16px;cursor:pointer;flex-shrink:0">` +
+                `<label for="oth-${idx}" style="cursor:pointer;flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">` +
+                `<span style="font-weight:700;color:${col};min-width:60px">${esc(p.cama)}</span>` +
+                `<span style="font-weight:600;flex:1">${esc(p.nombre)}</span>` +
+                `<span style="font-size:10px;color:#64748b;background:#f1f5f9;padding:2px 6px;border-radius:4px">${esc(p.esp||"Sin esp.")}</span>` +
+                (p.dx ? `<span style="font-size:10px;color:#475569;flex-basis:100%">${esc(p.dx)}</span>` : "") +
+                `</label></div>`;
+            });
+            document.getElementById("import-others-list").innerHTML = h;
+          } else { secOthers.style.display = "none"; }
+
           // ─── SECCIÓN: CANDIDATOS CG ──────────────────────────────────────────
           const secCandCG = document.getElementById("import-sec-candidates-cg");
           if (candidatesCG.length > 0) {
@@ -11773,7 +11848,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
     function confirmImport() {
       if (!pendingImport) return;
-      const { samePts, changedPts, newPts, missingPts, dispositions, procedimientosFromExcel, candidatesCG, candidatesCgChecked } = pendingImport;
+      const { samePts, movedPts, changedPts, newPts, otherPts, otherPtsChecked, missingPts, dispositions, procedimientosFromExcel, candidatesCG, candidatesCgChecked } = pendingImport;
 
       // Apply CG specialty to checked candidates before processing lists
       if (candidatesCG && candidatesCG.length) {
@@ -11810,6 +11885,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (!noteData[k]) noteData[k] = defaultData();
       });
 
+      // 1b) Pacientes que cambiaron de cama → mover preservando todas las notas
+      if (movedPts) movedPts.forEach(({ newPt, oldPt }) => {
+        const oldKey = pid(oldPt);
+        const newKey = pid(newPt);
+        // Copy all existing notes/data from old key to new key
+        if (noteData[oldKey]) {
+          noteData[newKey] = { ...noteData[oldKey] };
+          // Don't delete oldKey noteData in case we need it; Supabase will handle dedup
+        }
+        if (!noteData[newKey]) noteData[newKey] = defaultData();
+        // Build merged patient object: use census data from new (which has new cama) but keep _supa_id
+        const prev = existingByPid.get(oldKey) || {};
+        nextPatients.push({ ...prev, ...newPt, _supa_id: prev._supa_id || newPt._supa_id, _noEnCenso: false });
+        processedOldPids.add(oldKey);
+        processedOldPids.add(newKey);
+        // Delete old bed entry from Supabase so it doesn't ghost
+        if (prev._supa_id) {
+          supaDeletePatient(prev._supa_id).catch(e => safeLog("import moved delete old:", e));
+        } else if (oldPt.cama) {
+          _sDelete("patients", "exp=eq." + encodeURIComponent(oldPt.exp) + "&cama=eq." + encodeURIComponent(oldPt.cama)).catch(e => safeLog("import moved delete old (exp/cama):", e));
+        }
+      });
+
       // 2) Camas con cambio de paciente → entra el nuevo, el anterior queda fuera
       changedPts.forEach(({ newPt, oldPt }) => {
         const oldKey = pid(oldPt);
@@ -11835,6 +11933,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         nextPatients.push({ ...p });
         if (!noteData[k]) noteData[k] = defaultData();
       });
+
+      // 3b) Otros pacientes de otras especialidades que el usuario marcó como "Agregar"
+      if (otherPts && otherPtsChecked) {
+        otherPts.forEach((p, idx) => {
+          if (!otherPtsChecked[idx]) return;
+          const k = pid(p);
+          processedOldPids.add(k);
+          nextPatients.push({ ...p });
+          if (!noteData[k]) noteData[k] = defaultData();
+        });
+      }
 
       // 4) Desaparecidos del nuevo censo → según disposición del usuario
       missingPts.forEach(p => {
@@ -14112,16 +14221,39 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
           Sube una nota de ingreso, nota postQx, nota de evolución o cualquier documento médico.<br>
           La IA extraerá la información y te mostrará los campos detectados para que los revises antes de aplicar.
         </p>
-        <div class="di-drop-zone" id="di-drop-zone"
-          onclick="document.getElementById('di-file-input').click()"
+        <!-- Two large buttons: file picker OR camera -->
+        <div style="display:flex;gap:10px;margin-bottom:10px">
+          <button onclick="document.getElementById('di-file-input').click()"
+            style="flex:1;background:#f1f5f9;border:2px dashed #94a3b8;border-radius:10px;padding:20px 10px;cursor:pointer;font-family:var(--font);display:flex;flex-direction:column;align-items:center;gap:6px;transition:all .2s"
+            onmouseover="this.style.borderColor='#6366f1';this.style.background='#eef2ff'"
+            onmouseout="this.style.borderColor='#94a3b8';this.style.background='#f1f5f9'">
+            <span style="font-size:30px">📄</span>
+            <span style="font-weight:700;font-size:13px;color:#334155">Subir archivo</span>
+            <span style="font-size:11px;color:#64748b">PDF, JPG, PNG, HEIC</span>
+          </button>
+          <button onclick="document.getElementById('di-camera-input').click()"
+            style="flex:1;background:#f0fdf4;border:2px dashed #86efac;border-radius:10px;padding:20px 10px;cursor:pointer;font-family:var(--font);display:flex;flex-direction:column;align-items:center;gap:6px;transition:all .2s"
+            onmouseover="this.style.borderColor='#16a34a';this.style.background='#dcfce7'"
+            onmouseout="this.style.borderColor='#86efac';this.style.background='#f0fdf4'">
+            <span style="font-size:30px">📷</span>
+            <span style="font-weight:700;font-size:13px;color:#166534">Tomar foto</span>
+            <span style="font-size:11px;color:#16a34a">Cámara del dispositivo</span>
+          </button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;text-align:center;margin-bottom:4px">
+          También puedes arrastrar y soltar un archivo aquí
+        </div>
+        <div id="di-drop-zone" class="di-drop-zone" style="padding:14px;font-size:12px;color:#94a3b8"
           ondragover="event.preventDefault();this.classList.add('drag-over')"
           ondragleave="this.classList.remove('drag-over')"
           ondrop="event.preventDefault();this.classList.remove('drag-over');handleDocIntakeFile(event.dataTransfer.files[0])">
-          <div style="font-size:36px;margin-bottom:8px">📄</div>
-          <div style="font-weight:700;font-size:14px;color:#334155">Clic aquí o arrastra el documento</div>
-          <div style="font-size:12px;color:#64748b;margin-top:4px">PDF, foto (JPG/PNG/HEIC) o imagen escaneada</div>
+          Soltar aquí
         </div>
+        <!-- File input (library/gallery) -->
         <input type="file" id="di-file-input" accept="application/pdf,image/jpeg,image/png,image/heic,image/webp" style="display:none"
+          onchange="handleDocIntakeFile(this.files[0])">
+        <!-- Camera input: capture="environment" forces rear camera on mobile -->
+        <input type="file" id="di-camera-input" accept="image/*" capture="environment" style="display:none"
           onchange="handleDocIntakeFile(this.files[0])">
       </div>
 
