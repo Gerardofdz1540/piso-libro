@@ -8386,28 +8386,29 @@
         "Mapeo: " + buildClinicalLabsMappingText() + ".";
     }
     function buildBulkLabExtractionPrompt() {
-      return 'Eres un extractor de laboratorios hospitalarios (WinLab). Vas a recibir texto extraído de un PDF que contiene los reportes de laboratorio de UNO O VARIOS pacientes (cada paciente va separado por "=== PACIENTE N ===").\n\n' +
-        'TAREA: Por CADA paciente presente en el texto, extrae sus laboratorios.\n\n' +
-        'FORMATO DE RESPUESTA: SOLO un JSON array. Sin markdown, sin explicación, sin texto antes o después.\n' +
-        'Empieza con [ y termina con ]. Si hay N pacientes en el lote, tu array DEBE tener al menos N objetos (o más si un paciente tiene labs y cultivo, en cuyo caso fusiónalos en UN solo objeto).\n\n' +
-        'ESTRUCTURA DE CADA PACIENTE:\n' +
+      return 'EXTRACTOR DE LABORATORIOS HOSPITALARIOS. Responde SOLO con JSON, nada más.\n\n' +
+        'INPUT: texto extraído de un PDF de WinLab con reportes de 1 o varios pacientes. Cada paciente viene marcado como "=== PACIENTE N (nombre detectado: ...) ===".\n\n' +
+        'OUTPUT: un JSON array. Nada antes, nada después. Sin markdown, sin ```json, sin explicación, sin preámbulo. SOLO el array.\n' +
+        'IMPORTANTE: tu primer carácter debe ser "[" y el último debe ser "]".\n\n' +
+        'REGLAS DE EXTRACCIÓN:\n' +
+        '1. Procesa TODOS los pacientes del lote. Si hay N pacientes marcados, devuelve AL MENOS N objetos en el array.\n' +
+        '2. Un paciente solo se OMITE si TODOS sus valores están preliminares. Si tiene cualquier valor finalizado, inclúyelo con esos valores y "" en los preliminares.\n' +
+        '3. Los valores con "*A" o "*B" al lado son resultados FINALES (alto/bajo). Extráelos como el número que sigue. Ej: "*A 219.0 mg/dL" → "219.0".\n' +
+        '4. NUNCA escribas "in corso", "pendiente", "preliminar", "en proceso" como valor. Usa "" en su lugar.\n' +
+        '5. Valores numéricos SIN unidades (ej: "13.5" no "13.5 g/dL").\n' +
+        '6. En "paciente" pon apellidos+nombre tal como aparece tras "PACIENTE:". NO incluyas "hemocultivo"/"urocultivo".\n' +
+        '7. Si un paciente tiene varios reportes (BH + QS + gaso + EGO + cultivo), fusiona TODO en UN solo objeto.\n\n' +
+        'ESTRUCTURA DE CADA OBJETO:\n' +
         '{\n' +
-        '  "paciente": "APELLIDOS NOMBRE tal cual aparece",\n' +
+        '  "paciente": "APELLIDOS NOMBRE",\n' +
         '  "fecha_labs": "YYYY-MM-DD",\n' +
-        '  "tipo": "labs" si es química/biometría/gasometría/EGO, "cultivo" si es microbiología,\n' +
-        '  ...los demás campos del template apropiado...\n' +
+        '  "tipo": "labs" | "cultivo",\n' +
+        '  ...campos del template...\n' +
         '}\n\n' +
-        'Template para "labs":\n' + buildClinicalLabsExtractionTemplate(true) + '\n\n' +
-        'Template para "cultivo":\n' + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
-        'REGLAS:\n' +
-        '1. PROCESA TODOS LOS PACIENTES DEL LOTE. Si el lote tiene 3 pacientes, tu array tendrá ≥3 objetos. NUNCA omitas pacientes.\n' +
-        '2. Un paciente solo se OMITE si TODOS sus valores están preliminares/in corso. Si tiene algunos valores finalizados, inclúyelo con esos valores y deja "" los preliminares.\n' +
-        '3. NUNCA escribas "in corso", "pendiente", "preliminar", "en proceso" como valor — si no hay valor final, pon "".\n' +
-        '4. Valores numéricos SIN unidades (ej: "13.5" no "13.5 g/dL") para química, biometría y gasometría.\n' +
-        '5. En EGO y cultivos se permite texto descriptivo.\n' +
-        '6. Si el mismo paciente tiene varios reportes (biometría + gasometría + EGO + cultivo), fusiónalos en UN SOLO objeto del array.\n' +
-        '7. En "paciente" NO incluyas palabras como "hemocultivo"/"urocultivo" — solo los apellidos y nombre.\n\n' +
-        'Mapeo de nombres: ' + buildClinicalLabsMappingText() + '.';
+        'Template "labs":\n' + buildClinicalLabsExtractionTemplate(true) + '\n\n' +
+        'Template "cultivo":\n' + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
+        'Mapeo de nombres de campos: ' + buildClinicalLabsMappingText() + '.\n\n' +
+        'RECORDATORIO FINAL: SOLO el JSON array. Empieza con [ y termina con ]. Nada más.';
     }
 
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
@@ -13887,8 +13888,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               return;
             }
 
-            // Agrupar en lotes de máx 3 pacientes por llamada a Claude, enviar en paralelo (máx 3 llamadas concurrentes)
-            var BATCH_SIZE = 3;
+            // Agrupar en lotes de máx 2 pacientes por llamada a Claude, enviar en paralelo (máx 3 llamadas concurrentes)
+            var BATCH_SIZE = 2;
             var CONCURRENCY = 3;
             var batches = [];
             for (var b = 0; b < patientBlocks.length; b += BATCH_SIZE) {
@@ -13912,7 +13913,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
                   headers: apiHeaders(),
                   body: JSON.stringify({
                     model: "claude-sonnet-4-6",
-                    max_tokens: 8000,
+                    max_tokens: 16000,
                     messages: [{ role: "user", content: [{ type: "text", text: userContent }] }]
                   })
                 });
@@ -13997,14 +13998,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         var unmatchedCount = 0;
         var totalEntries = 0;
         var rows = "";
-        for (const r of results) {
+        window.__bulkAllResults = results; // expose for debugging
+        for (var rIdx = 0; rIdx < results.length; rIdx++) {
+          var r = results[rIdx];
           if (r.error) {
-            rows += "<div style='padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px'><b style='color:#991b1b'>Error:</b> " + esc(r.file) + " — " + esc(r.error) + "</div>";
+            rows += "<div style='padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px'><b style='color:#991b1b'>Error:</b> " + esc(r.file) + " — " + esc(r.error) + " <button onclick='showBulkDebug(" + rIdx + ")' style=\"background:#991b1b;color:#fff;border:none;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:8px\">🔍 Ver respuesta cruda</button></div>";
             continue;
           }
           var list = r.extractedList || (r.extracted ? [r.extracted] : []);
           if (!list.length) {
-            rows += "<div style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px'><b style='color:#92400e'>Sin datos útiles:</b> " + esc(r.file) + "<br><span style='color:#78350f;font-size:11px'>Todos los reportes parecen preliminares o vacíos.</span></div>";
+            rows += "<div style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px'><b style='color:#92400e'>Sin datos útiles:</b> " + esc(r.file) + "<br><span style='color:#78350f;font-size:11px'>El AI no devolvió datos parseables. Haz clic para diagnosticar:</span> <button onclick='showBulkDebug(" + rIdx + ")' style=\"background:#92400e;color:#fff;border:none;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:8px\">🔍 Ver respuesta cruda</button></div>";
             continue;
           }
           totalEntries += list.length;
@@ -14089,6 +14092,28 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       runBatch(0);
     }
+
+    // Debug: mostrar qué devolvió la IA para un archivo específico
+    window.showBulkDebug = function(idx) {
+      var results = window.__bulkAllResults || [];
+      var r = results[idx];
+      if (!r) { alert("No hay datos de debug para ese archivo."); return; }
+      var w = window.open("", "_blank");
+      var parts = [];
+      parts.push("<h2 style='font-family:system-ui'>Diagnóstico: " + (r.file || "?") + "</h2>");
+      parts.push("<p><b>Error:</b> " + (r.error || "(ninguno)") + "</p>");
+      parts.push("<p><b>extractedList.length:</b> " + ((r.extractedList || []).length) + "</p>");
+      parts.push("<p><b>rawList.length:</b> " + ((r.rawList || []).length) + "</p>");
+      parts.push("<h3>Respuesta cruda de Gemini/Claude (por lote):</h3>");
+      var raw = r.rawResponse || "(vacío)";
+      parts.push("<pre style='white-space:pre-wrap;background:#f5f5f5;padding:16px;border-radius:6px;font-size:11px;max-height:400px;overflow:auto'>" +
+        raw.replace(/</g, "&lt;").slice(0, 20000) + "</pre>");
+      parts.push("<h3>rawList completo (lo que el parser logró extraer):</h3>");
+      parts.push("<pre style='white-space:pre-wrap;background:#fef3c7;padding:16px;border-radius:6px;font-size:11px;max-height:400px;overflow:auto'>" +
+        JSON.stringify(r.rawList || [], null, 2).replace(/</g, "&lt;").slice(0, 20000) + "</pre>");
+      w.document.write("<div style='font-family:system-ui;padding:20px;max-width:1100px;margin:0 auto'>" + parts.join("") + "</div>");
+      w.document.close();
+    };
 
 
     // ─── QUICK SYSTEM ACCESS ─────────────────────────────────────────────────────────
