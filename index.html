@@ -7622,6 +7622,7 @@
           <button class="icon-btn has-lbl" style="background:rgba(99,102,241,.4)" data-histkey="${k}" onclick="openNoteHistory(this.dataset.histkey)" title="Historial de versiones / recuperar datos">📜<span class="icon-lbl">Historial</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(16,185,129,.45)" data-dikey="${k}" onclick="openDocIntake(this.dataset.dikey)" title="Leer documento con IA (nota de ingreso, postQx, evolución)">📄<span class="icon-lbl">Leer Doc</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(139,92,246,.45)" data-inkkey="${k}" onclick="openInkpad(this.dataset.inkkey)" title="Escribir a mano con stylus (Apple Pencil, S Pen, etc.) y transcribir con IA">✍️<span class="icon-lbl">Escribir</span></button>
+          <button class="icon-btn has-lbl" style="background:rgba(245,158,11,.5)" data-remkey="${k}" onclick="openReminderModal(this.dataset.remkey)" title="Programar recordatorio (reposición K, gasometría a las 18h, etc.)">🔔<span class="icon-lbl">Recordar</span></button>
           <button class="icon-btn has-lbl danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪<span class="icon-lbl">Alta</span></button>
           <span class="expand-btn" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${exp ? "▾" : "▸"}</span>
         </div>
@@ -8238,11 +8239,25 @@
         "Mapeo: " + buildClinicalLabsMappingText() + ".";
     }
     function buildBulkLabExtractionPrompt() {
-      return 'Analiza este PDF de laboratorio hospitalario. Determina si es (A) laboratorio de quimica clinica/biometria/gasometria/EGO o (B) cultivo microbiologico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secrecion, etc.).\n\n' +
-        "Si es (A) labs clinicos, responde SOLO con este JSON:\n" + buildClinicalLabsExtractionTemplate(true) + "\n\n" +
-        "Si es (B) cultivo microbiologico, responde SOLO con este JSON:\n" + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
-        'Reglas: valores numericos sin unidades para quimica/biometria/gasometria; en EGO y microbiologia se permite texto. Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece en el documento (SIN incluir el tipo de cultivo ni palabras como hemocultivo/urocultivo). Si un campo no existe dejar "". ' +
-        "Mapeo: " + buildClinicalLabsMappingText() + ".";
+      return 'Analiza este PDF de laboratorio hospitalario. **IMPORTANTE: El PDF puede contener reportes de MÚLTIPLES PACIENTES juntos** (WinLab combina los reportes de todo un censo en un solo PDF). Procesa TODOS los pacientes que encuentres.\n\n' +
+        'Para cada paciente identifica si su reporte es (A) química clínica/biometría/gasometría/EGO o (B) cultivo microbiológico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secreción, etc.).\n\n' +
+        'Responde SOLO con un arreglo JSON así (sin markdown, sin explicación):\n' +
+        '[\n' +
+        '  { "tipo": "labs",      ...campos del template de labs clínicos... },\n' +
+        '  { "tipo": "cultivo",   ...campos del template de cultivo... },\n' +
+        '  ...un objeto por paciente...\n' +
+        ']\n\n' +
+        'Template para tipo "labs":\n' + buildClinicalLabsExtractionTemplate(true) + '\n\n' +
+        'Template para tipo "cultivo":\n' + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
+        'Reglas CRÍTICAS:\n' +
+        '• Si un reporte está PRELIMINAR / INCOMPLETO / "IN CORSO" / "EN PROCESO" / "PENDIENTE" (sin resultado numérico final), OMÍTELO del arreglo — no lo incluyas.\n' +
+        '• NO transcribas literalmente valores como "in corso", "pendiente", "en proceso" — si el dato no tiene un valor numérico o cualitativo final, deja ese campo como "".\n' +
+        '• Valores numéricos sin unidades para química/biometría/gasometría; en EGO y microbiología se permite texto.\n' +
+        '• Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece (SIN incluir "hemocultivo"/"urocultivo"/etc).\n' +
+        '• Si un campo no existe o es preliminar, deja "".\n' +
+        '• Si dos o más reportes son del MISMO paciente, combínalos en un solo objeto (toma los valores más recientes y completos).\n\n' +
+        'Mapeo: ' + buildClinicalLabsMappingText() + '.\n\n' +
+        'Empieza el JSON con "[" y termínalo con "]". Sin texto antes o después.';
     }
 
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
@@ -8811,6 +8826,187 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     let _inkTool = "pen", _inkColor = "#0f172a";
     let _inkTranscription = null;
     let _inkFieldMode = null;  // When set to "{fieldKey}", transcription fills only that field
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // REMINDERS — local time-based alarms per patient + global center
+    // ═══════════════════════════════════════════════════════════════════════
+    const REM_KEY = "pl_reminders_v1";
+    let _currentReminderKey = null;
+    let _activeAlarm = null; // currently firing reminder
+
+    function _remLoad() {
+      try { return JSON.parse(localStorage.getItem(REM_KEY) || "[]"); }
+      catch (_) { return []; }
+    }
+    function _remSave(list) {
+      try { localStorage.setItem(REM_KEY, JSON.stringify(list)); } catch (_) { }
+    }
+    function _remFor(patientKey) {
+      return _remLoad().filter(r => r.patientKey === patientKey);
+    }
+
+    function openReminderModal(k) {
+      _currentReminderKey = k;
+      const p = patients.find(pp => pid(pp) === k);
+      document.getElementById("reminder-modal-title").textContent =
+        p ? `Recordatorios: ${p.nombre.split(" ").slice(0, 3).join(" ")} (${p.cama})` : "Recordatorios";
+      document.getElementById("reminder-label").value = "";
+      // Default time: now + 30 min
+      const d = new Date(Date.now() + 30 * 60000);
+      document.getElementById("reminder-time").value =
+        String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+      _renderReminderList();
+      document.getElementById("reminder-modal").style.display = "flex";
+      // Request notification permission if not yet granted
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => { });
+      }
+    }
+
+    function _renderReminderList() {
+      if (!_currentReminderKey) return;
+      const all = _remLoad();
+      const mine = all.filter(r => r.patientKey === _currentReminderKey)
+        .sort((a, b) => a.timestamp - b.timestamp);
+      const host = document.getElementById("reminder-list");
+      if (!mine.length) {
+        host.innerHTML = '<div style="text-align:center;color:#94a3b8;font-size:12px;padding:20px">No hay recordatorios para este paciente.</div>';
+        return;
+      }
+      const now = Date.now();
+      host.innerHTML = mine.map(r => {
+        const t = new Date(r.timestamp);
+        const tLabel = String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+        const fired = r.timestamp <= now && !r.done;
+        const klass = r.done ? "done" : (fired ? "fired" : "");
+        return `<div class="rem-row ${klass}" data-testid="rem-row-${r.id}">
+          <span class="rem-time">${tLabel}</span>
+          <span class="rem-label">${esc(r.label)}</span>
+          ${r.done ? "" : `<button onclick="markReminderDone('${r.id}')" class="rem-del" title="Marcar como hecho" data-testid="rem-done-${r.id}" style="color:#15803d">✓</button>`}
+          <button onclick="deleteReminder('${r.id}')" class="rem-del" title="Eliminar" data-testid="rem-del-${r.id}">🗑</button>
+        </div>`;
+      }).join("");
+    }
+
+    function addReminder() {
+      if (!_currentReminderKey) return;
+      const label = document.getElementById("reminder-label").value.trim();
+      const time = document.getElementById("reminder-time").value;
+      if (!label) { alert("Escribe qué recordar."); return; }
+      if (!time) { alert("Pon la hora."); return; }
+      const [h, m] = time.split(":").map(Number);
+      const t = new Date();
+      t.setHours(h, m, 0, 0);
+      if (t.getTime() < Date.now() - 60000) t.setDate(t.getDate() + 1); // past → tomorrow
+      const all = _remLoad();
+      const p = patients.find(pp => pid(pp) === _currentReminderKey);
+      all.push({
+        id: "r_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+        patientKey: _currentReminderKey,
+        patientLabel: p ? `${p.cama} · ${p.nombre.split(" ").slice(0, 3).join(" ")}` : "",
+        label,
+        timestamp: t.getTime(),
+        created: Date.now(),
+        done: false,
+        fired: false
+      });
+      _remSave(all);
+      document.getElementById("reminder-label").value = "";
+      _renderReminderList();
+    }
+
+    function addQuickReminder(minutes) {
+      const label = document.getElementById("reminder-label").value.trim();
+      if (!label) { alert("Primero escribe qué recordar."); return; }
+      const t = new Date(Date.now() + minutes * 60000);
+      document.getElementById("reminder-time").value =
+        String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+      addReminder();
+    }
+
+    function deleteReminder(id) {
+      const all = _remLoad().filter(r => r.id !== id);
+      _remSave(all);
+      _renderReminderList();
+    }
+    function markReminderDone(id) {
+      const all = _remLoad();
+      const r = all.find(x => x.id === id);
+      if (r) { r.done = true; _remSave(all); _renderReminderList(); }
+    }
+
+    // ── ALARM ENGINE — checks every 30s for due reminders ─────────────────
+    function _checkReminders() {
+      if (_activeAlarm) return; // one at a time
+      const now = Date.now();
+      const all = _remLoad();
+      const due = all.find(r => !r.done && !r.fired && r.timestamp <= now);
+      if (!due) return;
+      due.fired = true;
+      _remSave(all);
+      _fireAlarm(due);
+    }
+
+    function _fireAlarm(r) {
+      _activeAlarm = r;
+      document.getElementById("alarm-banner-pt").textContent = r.patientLabel || "";
+      document.getElementById("alarm-banner-label").textContent = r.label;
+      const t = new Date(r.timestamp);
+      document.getElementById("alarm-banner-time").textContent = "Programado para " +
+        String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
+      document.getElementById("alarm-banner").style.display = "block";
+      // Beep sound (Web Audio)
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        o.frequency.value = 880; g.gain.value = 0.08;
+        o.start(); setTimeout(() => { o.frequency.value = 1100; }, 150);
+        setTimeout(() => { o.stop(); ac.close(); }, 400);
+      } catch (_) { }
+      // Browser notification (if permission granted)
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification("🔔 " + r.label, {
+            body: r.patientLabel || "",
+            icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.35em' font-size='20'%3E%F0%9F%94%94%3C/text%3E%3C/svg%3E",
+            tag: r.id,
+            requireInteraction: true
+          });
+        } catch (_) { }
+      }
+      // Vibration on mobile
+      try { navigator.vibrate && navigator.vibrate([200, 100, 200, 100, 400]); } catch (_) { }
+    }
+
+    function dismissAlarm() {
+      if (!_activeAlarm) return;
+      const all = _remLoad();
+      const r = all.find(x => x.id === _activeAlarm.id);
+      if (r) { r.done = true; _remSave(all); }
+      document.getElementById("alarm-banner").style.display = "none";
+      _activeAlarm = null;
+      if (_currentReminderKey) _renderReminderList();
+    }
+    function snoozeAlarm(minutes) {
+      if (!_activeAlarm) return;
+      const all = _remLoad();
+      const r = all.find(x => x.id === _activeAlarm.id);
+      if (r) {
+        r.timestamp = Date.now() + minutes * 60000;
+        r.fired = false;
+        _remSave(all);
+      }
+      document.getElementById("alarm-banner").style.display = "none";
+      _activeAlarm = null;
+      if (_currentReminderKey) _renderReminderList();
+    }
+
+    // Auto-start check every 30s (at load time)
+    try {
+      setInterval(_checkReminders, 30000);
+      setTimeout(_checkReminders, 2000);
+    } catch (_) { }
 
     function openInkpad(k) {
       _inkKey = k;
@@ -13457,7 +13653,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       function processFile(file) {
         return new Promise(function(resolve) {
           var r = new FileReader();
-          r.onerror = function(){ resolve({ file: file.name, extracted: null, error: "Error leyendo archivo" }); };
+          r.onerror = function(){ resolve({ file: file.name, extractedList: [], error: "Error leyendo archivo" }); };
           r.onload = function() {
             var base64 = r.result.split(",")[1];
             var prompt = buildBulkLabExtractionPrompt();
@@ -13466,7 +13662,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               headers: apiHeaders(),
               body: JSON.stringify({
                 model: "claude-sonnet-4-6",
-                max_tokens: 4000,
+                max_tokens: 8000,
                 messages: [{ role: "user", content: [
                   { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
                   { type: "text", text: prompt }
@@ -13475,25 +13671,54 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             })
             .then(function(resp){ return resp.json(); })
             .then(function(data) {
-              var txt = (data.content && data.content[0] && data.content[0].text) || "{}";
-              var extracted = {};
+              var txt = (data.content && data.content[0] && data.content[0].text) || "[]";
+              var cleaned = txt.replace(/```[a-z]*/gi, "").replace(/```/g, "").trim();
+              var list = [];
+              // First: try as JSON array (new multi-patient format)
               try {
-                var clean2 = txt.replace(/```[a-z]*/gi,"").replace(/```/g,"").trim();
-                extracted = JSON.parse(clean2);
-              } catch(_p1) {
-                try {
-                  var s2 = txt.indexOf("{"), e2 = txt.lastIndexOf("}");
-                  if (s2 !== -1 && e2 > s2) extracted = JSON.parse(txt.slice(s2, e2+1));
-                } catch(_p2) {
-                  var fb = {};
-                  var rx = /"([a-z_]+)"\s*:\s*"([^"]*)"/g, m2;
-                  while ((m2 = rx.exec(txt)) !== null) fb[m2[1]] = m2[2];
-                  if (Object.keys(fb).length > 0) extracted = fb;
+                var arrStart = cleaned.indexOf("["), arrEnd = cleaned.lastIndexOf("]");
+                if (arrStart !== -1 && arrEnd > arrStart) {
+                  var parsed = JSON.parse(cleaned.slice(arrStart, arrEnd + 1));
+                  if (Array.isArray(parsed)) list = parsed;
                 }
+              } catch (_p1) { }
+              // Fallback: try as single JSON object (old single-patient format)
+              if (!list.length) {
+                try {
+                  var s2 = cleaned.indexOf("{"), e2 = cleaned.lastIndexOf("}");
+                  if (s2 !== -1 && e2 > s2) {
+                    var obj = JSON.parse(cleaned.slice(s2, e2 + 1));
+                    if (obj && typeof obj === "object") list = [obj];
+                  }
+                } catch (_p2) { }
               }
-              resolve({ file: file.name, fileObj: file, fileBase64: base64, extracted: extracted, error: null });
+              // Filter: drop any entry with no usable data OR where fecha/paciente are empty
+              var filtered = list.filter(function(e) {
+                if (!e || typeof e !== "object") return false;
+                var hasPt = e.paciente || e.nombre || e.name;
+                if (!hasPt) return false;
+                // Count non-empty lab fields
+                var nonEmptyFields = Object.keys(e).filter(function(k) {
+                  if (k === "paciente" || k === "fecha" || k === "tipo" || k === "nombre") return false;
+                  var v = e[k];
+                  if (v === "" || v == null) return false;
+                  if (typeof v === "string" && /in\s*corso|pendiente|en\s*proceso|preliminar|incompleto/i.test(v)) return false;
+                  return true;
+                });
+                return nonEmptyFields.length >= 1;
+              });
+              // Also sanitize each entry: blank out any 'in corso'-like strings
+              filtered.forEach(function(e) {
+                Object.keys(e).forEach(function(k) {
+                  var v = e[k];
+                  if (typeof v === "string" && /^(in\s*corso|pendiente|en\s*proceso|preliminar|incompleto|-|n\/a|na)$/i.test(v.trim())) {
+                    e[k] = "";
+                  }
+                });
+              });
+              resolve({ file: file.name, fileObj: file, fileBase64: base64, extractedList: filtered, error: null });
             })
-            .catch(function(e){ resolve({ file: file.name, extracted: null, error: String(e) }); });
+            .catch(function(e){ resolve({ file: file.name, extractedList: [], error: String(e) }); });
           };
           r.readAsDataURL(file);
         });
@@ -13501,80 +13726,84 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       async function finish() {
         var successCount = 0;
+        var unmatchedCount = 0;
+        var totalEntries = 0;
         var rows = "";
         for (const r of results) {
           if (r.error) {
             rows += "<div style='padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;margin-bottom:6px;font-size:12px'><b style='color:#991b1b'>Error:</b> " + esc(r.file) + " — " + esc(r.error) + "</div>";
             continue;
           }
-          var ex = sanitizeExtractedLabs(r.extracted);
-          var matched = matchPatient(ex.paciente || "");
-          if (matched) {
-            var k = pid(matched);
-            var nd = getNote(k);
-            var fecha = ex.fecha_labs || todayStr();
-            var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
-            if (!snap) { snap = { fecha: fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
-            if (!snap.extra) snap.extra = [];
+          var list = r.extractedList || (r.extracted ? [r.extracted] : []);
+          if (!list.length) {
+            rows += "<div style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px'><b style='color:#92400e'>Sin datos útiles:</b> " + esc(r.file) + "<br><span style='color:#78350f;font-size:11px'>Todos los reportes parecen preliminares o vacíos.</span></div>";
+            continue;
+          }
+          totalEntries += list.length;
+          // Add a header showing file + count
+          rows += "<div style='font-size:11px;color:#0e7490;font-weight:700;margin:10px 0 4px 0;padding:4px 8px;background:#ecfeff;border-radius:4px'>📄 " + esc(r.file) + " — " + list.length + " paciente" + (list.length !== 1 ? "s" : "") + " extraído" + (list.length !== 1 ? "s" : "") + "</div>";
+          for (const ex_raw of list) {
+            var ex = sanitizeExtractedLabs(ex_raw);
+            var matched = matchPatient(ex.paciente || ex.nombre || "");
+            if (matched) {
+              var k = pid(matched);
+              var nd = getNote(k);
+              var fecha = ex.fecha_labs || todayStr();
+              var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
+              if (!snap) { snap = { fecha: fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
+              if (!snap.extra) snap.extra = [];
 
-            var isCultivo = ex.tipo_lab === "cultivo" || (ex.tipo_cultivo && ex.tipo_cultivo.trim() !== "");
-            var CULTIVO_ONLY_KEYS = new Set(["tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
+              var isCultivo = ex.tipo_lab === "cultivo" || ex.tipo === "cultivo" || (ex.tipo_cultivo && ex.tipo_cultivo.trim() !== "");
+              var CULTIVO_ONLY_KEYS = new Set(["tipo_lab", "tipo", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias"]);
 
-            if (isCultivo) {
-              // Construir valor del cultivo: organismo + sensibilidades + resistencias
-              var cultivoNombre = (ex.tipo_cultivo || "Cultivo").trim();
-              cultivoNombre = cultivoNombre.charAt(0).toUpperCase() + cultivoNombre.slice(1);
-              var cultivoValor = (ex.cultivo_organismo || "").trim();
-              if (ex.cultivo_sensibilidades && ex.cultivo_sensibilidades.trim())
-                cultivoValor += (cultivoValor ? " · S: " : "S: ") + ex.cultivo_sensibilidades.trim();
-              if (ex.cultivo_resistencias && ex.cultivo_resistencias.trim())
-                cultivoValor += (cultivoValor ? " · R: " : "R: ") + ex.cultivo_resistencias.trim();
-              // Reemplazar entrada existente del mismo tipo o agregar nueva
-              var existIdx = snap.extra.findIndex(function(e){
-                return normName(e.nombre) === normName(cultivoNombre);
-              });
-              if (existIdx >= 0) { snap.extra[existIdx].valor = cultivoValor; }
-              else { snap.extra.push({ nombre: cultivoNombre, valor: cultivoValor }); }
-              // También guardar en campos dedicados de microbiología (visibles en tarjeta)
-              snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), {
-                micro_tipo_cultivo: ex.tipo_cultivo || "",
-                micro_muestra: ex.micro_muestra || "",
-                micro_organismo: ex.cultivo_organismo || "",
-                micro_sensibilidades: ex.cultivo_sensibilidades || "",
-                micro_resistencias: ex.cultivo_resistencias || "",
-                micro_comentarios: ex.micro_comentarios || ""
-              });
+              if (isCultivo) {
+                var cultivoNombre = (ex.tipo_cultivo || "Cultivo").trim();
+                cultivoNombre = cultivoNombre.charAt(0).toUpperCase() + cultivoNombre.slice(1);
+                var cultivoValor = (ex.cultivo_organismo || "").trim();
+                if (ex.cultivo_sensibilidades && ex.cultivo_sensibilidades.trim())
+                  cultivoValor += (cultivoValor ? " · S: " : "S: ") + ex.cultivo_sensibilidades.trim();
+                if (ex.cultivo_resistencias && ex.cultivo_resistencias.trim())
+                  cultivoValor += (cultivoValor ? " · R: " : "R: ") + ex.cultivo_resistencias.trim();
+                var existIdx = snap.extra.findIndex(function(e){ return normName(e.nombre) === normName(cultivoNombre); });
+                if (existIdx >= 0) { snap.extra[existIdx].valor = cultivoValor; }
+                else { snap.extra.push({ nombre: cultivoNombre, valor: cultivoValor }); }
+                snap.labs = Object.assign({}, sanitizeLabsMap(snap.labs), {
+                  micro_tipo_cultivo: ex.tipo_cultivo || "", micro_muestra: ex.micro_muestra || "",
+                  micro_organismo: ex.cultivo_organismo || "", micro_sensibilidades: ex.cultivo_sensibilidades || "",
+                  micro_resistencias: ex.cultivo_resistencias || "", micro_comentarios: ex.micro_comentarios || ""
+                });
+              } else {
+                var labsToMerge = {};
+                Object.keys(ex).forEach(function(ek) {
+                  if (!CULTIVO_ONLY_KEYS.has(ek) && ek !== "paciente" && ek !== "nombre" && ek !== "fecha_labs" && ek !== "fecha") labsToMerge[ek] = ex[ek];
+                });
+                snap.labs = mergeLabsPerAnalyte(snap.labs, labsToMerge);
+              }
+              // Attach PDF source once per snap date (first successful patient from this file)
+              if (r.fileObj && !snap.source_file_name) {
+                try { await attachLabSourceToSnap(k, fecha, snap, r.fileObj, r.fileBase64 || ""); } catch (_a) { }
+              }
+              activeLabDate[k] = fecha;
+              noteData[k] = nd;
+              saveNote(k, nd);
+              successCount++;
+              var rowBg = isCultivo ? "#f0f9ff" : "#f0fdf4";
+              var rowBdr = isCultivo ? "#7dd3fc" : "#86efac";
+              var rowClr = isCultivo ? "#0c4a6e" : "#166534";
+              var rowClr2 = isCultivo ? "#0369a1" : "#15803d";
+              var rowIcon = isCultivo ? "🔬" : "✅";
+              var rowExtra = isCultivo ? "Cultivo: " + esc(ex.tipo_cultivo || "") + (ex.cultivo_organismo ? " → " + esc(ex.cultivo_organismo) : "") : "";
+              rows += "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:" + rowBg + ";border:1px solid " + rowBdr + ";margin-bottom:4px;margin-left:8px;font-size:12px'>" +
+                "<span style='font-size:16px'>" + rowIcon + "</span>" +
+                "<div><div style='font-weight:700;color:" + rowClr + "'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div>" +
+                "<div style='color:" + rowClr2 + ";font-size:11px'>" + (ex.paciente ? "PDF: " + esc(ex.paciente) : "") + (ex.fecha_labs ? " &middot; " + esc(ex.fecha_labs) : "") + (rowExtra ? "<br>" + rowExtra : "") + "</div></div></div>";
             } else {
-              // Labs normales: no guardar campos de cultivo en snap.labs
-              var labsToMerge = {};
-              Object.keys(ex).forEach(function(ek) {
-                if (!CULTIVO_ONLY_KEYS.has(ek)) labsToMerge[ek] = ex[ek];
-              });
-              snap.labs = mergeLabsPerAnalyte(snap.labs, labsToMerge);
+              unmatchedCount++;
+              rows += "<div style='padding:6px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:4px;margin-left:8px;font-size:11px'><b style='color:#92400e'>⚠️ No encontrado en censo:</b> " + esc((ex && (ex.paciente || ex.nombre)) || "(sin nombre)") + "</div>";
             }
-            if (r.fileObj) {
-              await attachLabSourceToSnap(k, fecha, snap, r.fileObj, r.fileBase64 || "");
-            }
-
-            activeLabDate[k] = fecha;
-            noteData[k] = nd;
-            saveNote(k, nd);
-            successCount++;
-            var rowBg    = isCultivo ? "#f0f9ff" : "#f0fdf4";
-            var rowBdr   = isCultivo ? "#7dd3fc" : "#86efac";
-            var rowClr   = isCultivo ? "#0c4a6e" : "#166534";
-            var rowClr2  = isCultivo ? "#0369a1" : "#15803d";
-            var rowIcon  = isCultivo ? "🔬" : "✅";
-            var rowExtra = isCultivo ? "Cultivo: " + esc(ex.tipo_cultivo || "") + (ex.cultivo_organismo ? " → " + esc(ex.cultivo_organismo) : "") : "";
-            rows += "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:" + rowBg + ";border:1px solid " + rowBdr + ";margin-bottom:6px;font-size:12px'>" +
-              "<span style='font-size:18px'>" + rowIcon + "</span>" +
-              "<div><div style='font-weight:700;color:" + rowClr + "'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div>" +
-              "<div style='color:" + rowClr2 + "'>" + (ex.paciente ? "Detectado: " + esc(ex.paciente) : "") + (ex.fecha_labs ? " &middot; " + esc(ex.fecha_labs) : "") + (rowExtra ? "<br>" + rowExtra : "") + "</div></div></div>";
-          } else {
-            rows += "<div style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:6px;font-size:12px'><b style='color:#92400e'>No encontrado en censo:</b> <b>" + esc((ex && ex.paciente) || "(no detectado)") + "</b><br><span style='color:#78350f;font-size:11px'>Archivo: " + esc(r.file) + "</span></div>";
           }
         }
-        prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#166534;padding:8px 0'>Listo: " + successCount + " asignados &middot; " + (results.length - successCount) + " sin asignar.</div>";
+        prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#166534;padding:8px 0'>✅ " + successCount + " asignados &middot; ⚠️ " + unmatchedCount + " sin coincidencia &middot; 📄 " + totalEntries + " pacientes extraídos en total</div>";
         res.innerHTML = rows;
         if (successCount > 0) renderView();
       }
@@ -15031,6 +15260,59 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       </div>
     </div>
     <div id="proj-card-area" style="flex:1;overflow-y:auto;display:flex;align-items:center;justify-content:center;padding:20px"></div>
+  </div>
+
+  <!-- ═══ REMINDERS MODAL + GLOBAL CENTER ═════════════════════════════════════ -->
+  <div class="modal-bg" id="reminder-modal" style="display:none">
+    <div class="modal" style="max-width:560px;width:96%">
+      <div class="modal-header">
+        <div class="modal-title">🔔 <span id="reminder-modal-title">Recordatorios del paciente</span></div>
+        <button class="modal-close" onclick="document.getElementById('reminder-modal').style.display='none'" data-testid="reminder-close">✕</button>
+      </div>
+      <div style="padding:14px 18px">
+        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#78350f">
+          💡 Ejemplos: "Reposición KCl 2 ámp" a las 14:00 · "Tomar gasometría" a las 18:00 · "Revisar herida" en 3h
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <input id="reminder-label" placeholder="Qué hay que hacer…" style="flex:1;min-width:240px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px" data-testid="reminder-label-input" />
+          <input id="reminder-time" type="time" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px" data-testid="reminder-time-input" />
+          <button onclick="addReminder()" style="background:#f59e0b;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:700" data-testid="reminder-add-btn">+ Agregar</button>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="addQuickReminder(30)" class="qrem-btn">en 30 min</button>
+          <button onclick="addQuickReminder(60)" class="qrem-btn">en 1 h</button>
+          <button onclick="addQuickReminder(120)" class="qrem-btn">en 2 h</button>
+          <button onclick="addQuickReminder(240)" class="qrem-btn">en 4 h</button>
+          <button onclick="addQuickReminder(480)" class="qrem-btn">en 8 h</button>
+        </div>
+        <div id="reminder-list" data-testid="reminder-list"></div>
+      </div>
+    </div>
+  </div>
+  <style>
+    .qrem-btn { background: #e2e8f0; color: #334155; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 11px; }
+    .qrem-btn:hover { background: #cbd5e1; }
+    .rem-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: #f8fafc; border: 1px solid #e2e8f0; margin-bottom: 6px; }
+    .rem-row.fired { background: #fef2f2; border-color: #fca5a5; }
+    .rem-row.done { background: #f0fdf4; border-color: #86efac; opacity: 0.6; text-decoration: line-through; }
+    .rem-time { font-weight: 700; color: #92400e; font-size: 13px; min-width: 54px; }
+    .rem-label { flex: 1; font-size: 13px; color: #0f172a; }
+    .rem-del { background: none; border: none; color: #64748b; cursor: pointer; font-size: 16px; padding: 2px 6px; }
+    .rem-del:hover { color: #dc2626; }
+    @keyframes alarmPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); box-shadow: 0 0 0 12px rgba(245,158,11,0); } }
+    #alarm-banner { animation: alarmPulse 1.2s infinite; }
+  </style>
+  <div id="alarm-banner" style="display:none;position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:10000;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;padding:14px 24px;border-radius:14px;box-shadow:0 10px 36px rgba(0,0,0,.35);max-width:90vw;min-width:320px;font-family:var(--font,-apple-system,sans-serif)">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font-size:30px">🔔</div>
+      <div style="flex:1;min-width:0">
+        <div id="alarm-banner-pt" style="font-size:11px;opacity:.9;font-weight:600"></div>
+        <div id="alarm-banner-label" style="font-size:15px;font-weight:700;margin-top:2px;line-height:1.3"></div>
+        <div id="alarm-banner-time" style="font-size:11px;opacity:.85;margin-top:2px"></div>
+      </div>
+      <button onclick="snoozeAlarm(10)" data-testid="alarm-snooze-btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">+10 min</button>
+      <button onclick="dismissAlarm()" data-testid="alarm-dismiss-btn" style="background:#fff;color:#92400e;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">✓ Listo</button>
+    </div>
   </div>
 
   <!-- ═══ INKPAD MODAL (stylus handwriting + AI OCR) ═════════════════════════ -->
