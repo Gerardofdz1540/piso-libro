@@ -1,0 +1,134 @@
+{
+  "project_context": {
+    "domain": "Medical SaaS / Clinical Dashboard",
+    "target_audience": "General Surgery Residents",
+    "theme_preference": "Dark Mode Only",
+    "design_archetype": "Archetype 5 (Jewel & Luxury) x Archetype 4 (Swiss & High-Contrast) Hybrid",
+    "emotional_tone": "Professional, Calm, Precise, Super Elegant",
+    "visual_reference": "Notion (minimalism, typography-driven, command palette, muted surfaces)"
+  },
+  "typography": {
+    "rules": {
+      "anti_default_rule": "Inter, Roboto, Open Sans are STRICTLY BANNED.",
+      "hierarchy_gap": "Do not exceed 2 Tailwind steps between heading and subheading."
+    },
+    "fonts": {
+      "headings": {
+        "family": "Cabinet Grotesk, sans-serif",
+        "weight_strategy": "Radical weight contrast (Light for elegance, Black for critical numbers)",
+        "letter_spacing": "tracking-tight"
+      },
+      "body": {
+        "family": "Satoshi, sans-serif",
+        "weight_strategy": "Regular for reading, Medium for labels",
+        "line_height": "leading-relaxed"
+      },
+      "data_and_vitals": {
+        "family": "JetBrains Mono, monospace",
+        "weight_strategy": "Regular",
+        "letter_spacing": "tracking-widest (for labels like 'PA', 'FC')"
+      }
+    },
+    "scale": {
+      "h1_patient_name": "text-4xl sm:text-5xl font-light",
+      "h2_section": "text-2xl font-medium text-text-primary",
+      "h3_card": "text-lg font-medium text-text-secondary",
+      "body_text": "text-base text-text-primary",
+      "labels_overlines": "text-xs font-bold tracking-[0.2em] uppercase text-text-muted",
+      "data_numbers": "text-xl font-mono text-accent-gold"
+    }
+  },
+  "color_system": {
+    "theme": "Dark",
+    "palette": {
+      "background": {
+        "base": "#0A0A0B",
+        "surface": "#121214",
+        "surface_hover": "#1A1A1D",
+        "panel": "#171719"
+      },
+      "border": {
+        "default": "#27272A",
+        "focus": "#D4A373",
+        "grid": "#1F1F22"
+      },
+      "text": {
+        "primary": "#F4F4F5",
+        "secondary": "#A1A1AA",
+        "muted": "#71717A",
+        "inverse": "#0A0A0B"
+      },
+      "accent": {
+        "primary": "#D4A373",
+        "primary_hover": "#E6B981",
+        "brand_muted": "#D4A37320"
+      },
+      "clinical_alerts": {
+        "critical_red": "#FF453A",
+        "warning_amber": "#FF9F0A",
+        "stable_green": "#32D74B",
+        "info_blue": "#0A84FF"
+      }
+    },
+    "surface_strategies": {
+      "headers": "Solid Background (#0A0A0B) with hard bottom border (#27272A). No muddy glassmorphism for medical data.",
+      "cards": "Neumorphic flat: Background matches parent or +1 elevation (#121214). Sharp 1px border (#27272A). No shadow in dark mode.",
+      "grid_borders": "For the census table, expose the grid. border-collapse with subtle #1F1F22 borders."
+    }
+  },
+  "layout_and_views": {
+    "spacing_system": {
+      "philosophy": "Generous spacing. p-6 or p-8 inside cards to prevent text collision.",
+      "density": "Laptop view uses tight density (gap-2, p-3) for census. Tablet view uses generous density (gap-6, p-8) for focus."
+    },
+    "view_1_laptop_census": {
+      "description": "The command center. High-density data grid for all 46 patients.",
+      "structure": [
+        "Left Sidebar (Notion-style): 240px width, collapses on tablet. Links to Censo, Laboratorios, Configuracion, Usuarios.",
+        "Top Header: Global Search (Cmd+K), Filters (Especialidad, Adscrito), 'Sincronizar' status, 'Corte de Guardia' button.",
+        "Main Content: Full-width CSS Grid/Table. Exposes the skeleton (Grid Borders pattern).",
+        "Interactions: Keyboard navigation (arrows). Hovering a row reveals quick-action icons (✍️, 🔔, 📄)."
+      ]
+    },
+    "view_2_tablet_rounds": {
+      "description": "Focus mode for the surgical rounds. One patient at a time, optimized for Apple Pencil/S-Pen.",
+      "structure": [
+        "Header: Collapsed sidebar (hamburger). Top shows current patient index (e.g., 'Paciente 4 de 46') + Swipe indicators.",
+        "Main Content: A single, massive 'Bento Grid' Card taking 90% of screen.",
+        "Bento Layout (Mode B - Control Room):",
+        "- Top Row (col-span-full): Patient Name, Cama, Edad, Expediente.",
+        "- Left Col (col-span-2): DX, PA, APP, Qx.",
+        "- Right Col (col-span-1): Signos Vitales, Balance, Drenajes, Sangrado.",
+        "- Bottom (col-span-full): Manejo, Pendientes, Notas (Large touch targets for stylus)."
+      ],
+      "interactions": [
+        "Swipe left/right anywhere on the card to change patient.",
+        "Mini ✍️ buttons are permanently visible next to each field in Tablet mode (target size min 44x44px for stylus/finger)."
+      ]
+    },
+    "components": {
+      "button_primary": "bg-accent-primary text-text-inverse hover:bg-accent-primary_hover rounded-sm px-6 py-2 font-medium transition-colors",
+      "button_ghost": "hover:bg-surface_hover text-text-secondary hover:text-text-primary rounded-sm px-4 py-2 transition-colors",
+      "mini_stylus_btn": "w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center text-text-secondary hover:text-accent-primary hover:border-accent-primary transition-all",
+      "inputs": "bg-background border border-border rounded-sm px-3 py-2 text-text-primary focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary",
+      "status_badge": "px-2 py-1 rounded-sm text-xs font-mono uppercase tracking-wider"
+    }
+  },
+  "motion_and_interactions": {
+    "hover_states": "All interactive elements MUST explicitly change text color and border on hover. (e.g. hover:border-accent-primary).",
+    "transitions": "Use 'transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'.",
+    "swipe_animation": "When swiping patients in Rounds mode, use a subtle slide + fade (Framer Motion style, or simple CSS transform/opacity transition)."
+  },
+  "implementation_instructions_for_main_agent": {
+    "scope": "Apply these styles WITHIN the existing 14,500-line index.html. DO NOT split into React/frameworks.",
+    "css_variables": "Inject the color system as CSS :root variables (e.g., --bg-base: #0A0A0B).",
+    "testing_preservation": "CRITICAL: You MUST NOT remove or alter ANY 'data-testid' attributes. The entire test suite depends on them.",
+    "fonts_injection": "Import Cabinet Grotesk, Satoshi, and JetBrains Mono via Google Fonts or Fontshare CDN in the <head>.",
+    "icons": "Use Phosphor Icons (via CDN) for elegant, duotone, or regular weight clinical icons.",
+    "dark_mode_enforcement": "Hardcode the dark mode colors into the primary CSS classes, or apply a forced '.dark' class to the body."
+  },
+  "media_and_assets": {
+    "icons_library": "Phosphor Icons (CDN: https://unpkg.com/@phosphor-icons/web)",
+    "images": "No external images required. The UI is completely typography and data-driven for clinical focus."
+  }
+}
