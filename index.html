@@ -476,6 +476,22 @@
       text-transform: uppercase;
       letter-spacing: .5px
     }
+    .field-ink-btn {
+      background: rgba(139, 92, 246, 0.14);
+      border: 1px solid rgba(139, 92, 246, 0.30);
+      color: #7c3aed;
+      cursor: pointer;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1;
+      opacity: 0.55;
+      transition: opacity 0.15s, background 0.15s;
+      flex-shrink: 0;
+    }
+    .field-ink-btn:hover, .field-ink-btn:focus { opacity: 1; background: rgba(139, 92, 246, 0.25); }
+    /* Hide on very small screens unless touch device */
+    @media (hover: none) and (pointer: coarse) { .field-ink-btn { opacity: 1; } }
 
     .field-ta {
       width: 100%;
@@ -4038,7 +4054,7 @@
     // WinLab Bookmarklet installer — provides draggable link so users don't
     // have to copy-paste the javascript: URI (Firefox strips/escapes it).
     // ═══════════════════════════════════════════════════════════════════════
-    const WINLAB_BOOKMARKLET = `javascript:(async()=>{const S="${SUPA_URL}",K="${SUPA_KEY}";const toast=(m,c)=>{let t=document.getElementById("__plt");if(!t){t=document.createElement("div");t.id="__plt";t.style.cssText="position:fixed;top:20px;right:20px;z-index:99999;padding:14px 20px;border-radius:10px;font:600 14px -apple-system,sans-serif;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,.25);max-width:420px;line-height:1.4;white-space:pre-line";document.body.appendChild(t)}t.style.background=c||"#0369a1";t.textContent=m;t.style.display="block";clearTimeout(t._to);t._to=setTimeout(()=>t.style.display="none",15000)};toast("Leyendo censo...","#0369a1");let pts;try{const r=await fetch(S+"/rest/v1/patients?select=cama,exp,nombre,esp",{headers:{apikey:K,Authorization:"Bearer "+K}});if(!r.ok)throw new Error("HTTP "+r.status);pts=await r.json()}catch(e){toast("Error leyendo censo: "+e.message,"#dc2626");return}if(!pts||!pts.length){toast("Censo vacio. Importa primero el Excel.","#d97706");return}const N=s=>String(s||"").toUpperCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/\\s+/g," ").trim();const censoNorm=pts.map(p=>({pt:p,norm:N(p.nombre),tokens:new Set(N(p.nombre).split(" ").filter(x=>x.length>=3))}));const rows=Array.from(document.querySelectorAll("table tr"));let matched=0,boxes=0,foreignCount=0;const seen=new Set;for(let i=0;i<rows.length;i++){const cells=Array.from(rows[i].cells||[]).map(x=>N(x.innerText));if(cells.length<2)continue;const sxIdx=cells.findIndex(x=>x==="FEMENINO"||x==="MASCULINO");if(sxIdx<0)continue;let ap="",no="";if(sxIdx>=2){ap=cells[sxIdx-2]||"";no=cells[sxIdx-1]||""}if(!ap)continue;const apParts=ap.split(" ").filter(x=>x.length>=3);const noParts=no.split(" ").filter(x=>x.length>=3);let best=null,bestScore=0;for(const c of censoNorm){let score=0;for(const t of apParts)if(c.tokens.has(t))score+=3;for(const t of noParts)if(c.tokens.has(t))score+=1;if(c.norm.includes(ap))score+=5;if(score>bestScore){bestScore=score;best=c}}if(!best||bestScore<4){foreignCount++;continue}matched++;seen.add(best.pt.exp||best.pt.nombre);for(let j=i+1;j<rows.length;j++){const nc=Array.from(rows[j].cells||[]).map(x=>N(x.innerText));if(nc.some(x=>x==="FEMENINO"||x==="MASCULINO"))break;const cb=rows[j].querySelector('input[type="checkbox"]');if(cb&&!cb.checked){cb.click();boxes++}}}const miss=pts.filter(p=>!seen.has(p.exp||p.nombre));const missPreview=miss.slice(0,8).map(p=>"  - "+p.nombre.split(" ").slice(0,3).join(" "));let msg="OK "+matched+" del censo encontrados ("+pts.length+" en censo, "+foreignCount+" filas de otros servicios)\\n"+boxes+" reportes palomeados";if(miss.length){msg+="\\n\\nSin labs hoy ("+miss.length+"):\\n"+missPreview.join("\\n");if(miss.length>8)msg+="\\n  ... y "+(miss.length-8)+" mas"}msg+="\\n\\nAhora clic en Imprime Reportes";toast(msg,matched?"#15803d":"#d97706")})();`;
+    const WINLAB_BOOKMARKLET = `javascript:(async()=>{const S="${SUPA_URL}",K="${SUPA_KEY}",V="v3";const toast=(m,c)=>{let t=document.getElementById("__plt");if(!t){t=document.createElement("div");t.id="__plt";t.style.cssText="position:fixed;top:20px;right:20px;z-index:99999;padding:14px 20px;border-radius:10px;font:600 13px -apple-system,sans-serif;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,.25);max-width:460px;line-height:1.45;white-space:pre-line";document.body.appendChild(t)}t.style.background=c||"#0369a1";t.textContent=m;t.style.display="block";clearTimeout(t._to);t._to=setTimeout(()=>t.style.display="none",25000)};toast("[piso-libro "+V+"] Leyendo censo...","#0369a1");let pts;try{const r=await fetch(S+"/rest/v1/patients?select=cama,exp,nombre,esp",{headers:{apikey:K,Authorization:"Bearer "+K}});if(!r.ok)throw new Error("HTTP "+r.status);pts=await r.json()}catch(e){toast("Error leyendo censo: "+e.message,"#dc2626");return}if(!pts||!pts.length){toast("Censo vacio. Importa primero el Excel.","#d97706");return}const N=s=>String(s||"").toUpperCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/\\s+/g," ").trim();const censoNorm=pts.map(p=>({pt:p,norm:N(p.nombre),tokens:new Set(N(p.nombre).split(" ").filter(x=>x.length>=4))}));console.log("[piso-libro] Censo cargado:",pts.length,"pacientes");console.log("[piso-libro] Ejemplo de tokens:",Array.from(censoNorm[0]?.tokens||[]));const rows=Array.from(document.querySelectorAll("table tr"));console.log("[piso-libro] Filas totales en pagina:",rows.length);let matched=0,boxes=0,foreignCount=0,headerCount=0;const seen=new Set,debugHits=[];for(let i=0;i<rows.length;i++){const cells=Array.from(rows[i].cells||[]).map(x=>N(x.innerText));if(cells.length<2)continue;const sxIdx=cells.findIndex(x=>x==="FEMENINO"||x==="MASCULINO");if(sxIdx<0)continue;headerCount++;let ap="",no="";if(sxIdx>=2){ap=cells[sxIdx-2]||"";no=cells[sxIdx-1]||""}if(!ap)continue;const apTokens=ap.split(" ").filter(x=>x.length>=4);const noTokens=no.split(" ").filter(x=>x.length>=4);let best=null,bestScore=0;for(const c of censoNorm){const apMatch=apTokens.filter(t=>c.tokens.has(t)).length;const noMatch=noTokens.filter(t=>c.tokens.has(t)).length;let score=0;if(apTokens.length>=2&&apMatch>=2)score=10+noMatch;else if(apMatch>=1&&noMatch>=1)score=5+apMatch+noMatch;else if(apMatch>=1&&apTokens.length===1)score=4+noMatch;if(score>bestScore){bestScore=score;best=c}}if(best&&bestScore>=5){debugHits.push({ap,no,matched:best.pt.nombre,score:bestScore})}else{debugHits.push({ap,no,matched:null,score:bestScore});foreignCount++;continue}matched++;seen.add(best.pt.exp||best.pt.nombre);for(let j=i+1;j<rows.length;j++){const nc=Array.from(rows[j].cells||[]).map(x=>N(x.innerText));if(nc.some(x=>x==="FEMENINO"||x==="MASCULINO"))break;const cb=rows[j].querySelector('input[type="checkbox"]');if(cb&&!cb.checked){cb.click();boxes++}}}console.table(debugHits);const pagMatch=document.body.innerText.match(/P[aá]gina\\s+(\\d+)\\s+de\\s+(\\d+)/i);const paginationNote=pagMatch?"\\n\\n!! Pagina "+pagMatch[1]+" de "+pagMatch[2]+" - solo escaneo esta pagina.\\nUsa las flechas para cambiar pagina y vuelve a picar el bookmark (las casillas ya palomeadas se conservan en WinLab).":"";const miss=pts.filter(p=>!seen.has(p.exp||p.nombre));const missPreview=miss.slice(0,6).map(p=>"  - "+p.nombre.split(" ").slice(0,3).join(" "));let msg="[piso-libro "+V+"]\\nOK "+matched+" pacientes del censo en esta pagina ("+headerCount+" filas de pacientes, "+foreignCount+" no son del censo)\\n"+boxes+" reportes palomeados";if(pagMatch&&matched>0)msg+="\\n(total censo: "+pts.length+")";else if(miss.length){msg+="\\n\\nSin labs hoy ("+miss.length+"):\\n"+missPreview.join("\\n");if(miss.length>6)msg+="\\n  ... y "+(miss.length-6)+" mas"}msg+=paginationNote+"\\n\\nTip: F12 > Consola para ver log detallado";toast(msg,matched?"#15803d":"#d97706")})();`;
 
     function openWinLabTool() {
       const a = document.getElementById("winlab-draggable-bookmark");
@@ -7755,7 +7771,10 @@
     function fieldRow(label, val, k, field, rows) {
       const safe = esc(val || "");
       return "<div>" +
-        "<div class='field-label'>" + label + "</div>" +
+        "<div class='field-label' style='display:flex;align-items:center;justify-content:space-between;gap:6px'>" +
+          "<span>" + label + "</span>" +
+          "<button class='field-ink-btn' onclick=\"openInkpadForField('" + k + "','" + field + "','" + label.replace(/'/g, "\\'") + "')\" title='Escribir a mano con stylus' data-testid='field-ink-" + field + "'>✍️</button>" +
+        "</div>" +
         "<textarea class='field-ta' rows='" + rows + "' " +
         "data-key='" + k + "' data-field='" + field + "' " +
         "inputmode='text' autocorrect='off' autocapitalize='sentences' spellcheck='false' " +
@@ -8791,9 +8810,11 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     let _inkKey = null, _inkStrokes = [], _inkCurrentStroke = null;
     let _inkTool = "pen", _inkColor = "#0f172a";
     let _inkTranscription = null;
+    let _inkFieldMode = null;  // When set to "{fieldKey}", transcription fills only that field
 
     function openInkpad(k) {
       _inkKey = k;
+      _inkFieldMode = null;
       _inkStrokes = [];
       _inkCurrentStroke = null;
       _inkTool = "pen";
@@ -8815,6 +8836,34 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       }
 
       // Setup canvas sizing + event handlers (after modal is visible)
+      requestAnimationFrame(_inkSetupCanvas);
+    }
+
+    // Field-scoped inkpad: user writes for a specific card field. Transcription
+    // fills ONLY that field, replacing (or appending to) the existing value.
+    function openInkpadForField(k, fieldKey, fieldLabel) {
+      _inkKey = k;
+      _inkFieldMode = fieldKey;
+      _inkStrokes = [];
+      _inkCurrentStroke = null;
+      _inkTool = "pen";
+      _inkColor = "#0f172a";
+      _inkTranscription = null;
+      document.getElementById("inkpad-preview").style.display = "none";
+      document.getElementById("inkpad-busy").style.display = "none";
+
+      const p = patients.find(pp => pid(pp) === k);
+      document.getElementById("inkpad-patient-name").textContent = (p ? p.nombre : "") + "  ·  ✍️ " + fieldLabel;
+      document.getElementById("inkpad-patient-bed").textContent = (p ? `Cama ${p.cama} · Exp ${p.exp}` : "") + "  ·  Solo llena el campo «" + fieldLabel + "»";
+
+      document.getElementById("inkpad-modal").style.display = "flex";
+
+      // Per-field ink strokes are stored under a dedicated key (not shared with big canvas)
+      const nd = noteData[k];
+      const perField = nd && nd._inkFields && nd._inkFields[fieldKey];
+      if (perField && Array.isArray(perField)) {
+        _inkStrokes = JSON.parse(JSON.stringify(perField));
+      }
       requestAnimationFrame(_inkSetupCanvas);
     }
 
@@ -8975,7 +9024,21 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         const dataUrl = cv.toDataURL("image/png");
         const base64 = dataUrl.split(",")[1];
 
-        const prompt = `Eres un asistente médico quirúrgico. Esta es una foto del lienzo donde un residente de cirugía general escribió a mano notas sobre un paciente durante el pase de visita. Transcribe TODO el texto manuscrito que veas, interpretando con sentido clínico las abreviaturas (DM2=Diabetes tipo 2, HAS=Hipertensión, POP=postoperatorio, LAPE=laparotomía exploradora, ATB=antibiótico, TVP=trombosis venosa profunda, NPT=nutrición parenteral, etc.).
+        // Different prompt depending on mode
+        let prompt;
+        if (_inkFieldMode) {
+          const labels = {
+            pa: "padecimiento actual", app: "antecedentes personales patológicos",
+            qx: "cirugía realizada y hallazgos", sangrado: "sangrado transoperatorio",
+            drenajes: "drenajes y sus gastos", manejo: "manejo/tratamiento/indicaciones médicas",
+            sv: "signos vitales", balance: "balance hídrico",
+            pendientes: "pendientes / estudios por hacer"
+          };
+          const fieldDescr = labels[_inkFieldMode] || _inkFieldMode;
+          prompt = `Eres un asistente médico quirúrgico. Esta imagen contiene texto manuscrito escrito por un residente de cirugía general sobre el apartado "${fieldDescr}" de un paciente. Transcribe TODO el texto que veas interpretando abreviaturas médicas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, etc.) y devuelve SOLO un JSON con este esquema exacto:
+{"texto":"el texto transcrito completo, bien puntuado, respetando saltos de línea si los hay"}`;
+        } else {
+          prompt = `Eres un asistente médico quirúrgico. Esta es una foto del lienzo donde un residente de cirugía general escribió a mano notas sobre un paciente durante el pase de visita. Transcribe TODO el texto manuscrito que veas, interpretando con sentido clínico las abreviaturas (DM2=Diabetes tipo 2, HAS=Hipertensión, POP=postoperatorio, LAPE=laparotomía exploradora, ATB=antibiótico, TVP=trombosis venosa profunda, NPT=nutrición parenteral, etc.).
 
 Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
 {
@@ -8991,6 +9054,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
   "balance": "balance hídrico si aparece",
   "pendientes": "pendientes, estudios por hacer, interconsultas"
 }`;
+        }
 
         const resp = await fetch(proxyUrl + "/api/ai", {
           method: "POST",
@@ -9013,13 +9077,38 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         const js = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
         const result = JSON.parse(js);
         _inkTranscription = result;
-        _renderInkpadFields(result);
+        if (_inkFieldMode) {
+          _renderInkpadFieldSingle(result, _inkFieldMode);
+        } else {
+          _renderInkpadFields(result);
+        }
         document.getElementById("inkpad-preview").style.display = "block";
       } catch (err) {
         alert("❌ Error transcribiendo: " + (err.message || err));
       } finally {
         document.getElementById("inkpad-busy").style.display = "none";
       }
+    }
+
+    // Preview for field mode — a single textarea with the transcribed text
+    function _renderInkpadFieldSingle(result, fieldKey) {
+      const txt = (result.texto || result.transcripcion_completa || "").trim();
+      const currentVal = (noteData[_inkKey] && noteData[_inkKey][fieldKey]) || "";
+      let html = `<div style="font-size:12px;color:#334155;margin-bottom:8px">
+        <b>Texto detectado</b> para el campo ${esc(fieldKey.toUpperCase())}.
+        Edítalo si hace falta y elige cómo aplicarlo.
+      </div>`;
+      html += `<textarea id="ink-field-single" rows="5" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:var(--font,inherit)" data-testid="ink-field-single">${esc(txt)}</textarea>`;
+      if (currentVal.trim()) {
+        html += `<div style="margin-top:10px;padding:8px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:11px;color:#78350f">
+          <b>⚠️ El campo ya tiene contenido.</b> Elige cómo combinarlo:
+        </div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <label style="font-size:12px;flex:1;padding:6px;background:#f8fafc;border-radius:5px;border:1px solid #e2e8f0;cursor:pointer"><input type="radio" name="ink-mode" value="append" checked> Agregar al final</label>
+          <label style="font-size:12px;flex:1;padding:6px;background:#f8fafc;border-radius:5px;border:1px solid #e2e8f0;cursor:pointer"><input type="radio" name="ink-mode" value="replace"> Reemplazar</label>
+        </div>`;
+      }
+      document.getElementById("inkpad-fields-list").innerHTML = html;
     }
 
     function _renderInkpadFields(result) {
@@ -9060,6 +9149,33 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
       if (!_inkTranscription || !_inkKey) return;
       if (!noteData[_inkKey]) noteData[_inkKey] = defaultData();
       const nd = noteData[_inkKey];
+
+      // ── FIELD MODE: fill ONLY the chosen field ──
+      if (_inkFieldMode) {
+        const single = document.getElementById("ink-field-single");
+        const newVal = (single ? single.value : "").trim();
+        if (!newVal) { alert("No hay texto para aplicar."); return; }
+        const modeRadio = document.querySelector('input[name="ink-mode"]:checked');
+        const mode = modeRadio ? modeRadio.value : "replace";
+        const currentVal = (nd[_inkFieldMode] || "").trim();
+        if (_inkFieldMode === "dx") {
+          // dx lives on the patient object
+          const pt = patients.find(pp => pid(pp) === _inkKey);
+          if (pt) pt.dx = newVal.toUpperCase();
+        } else {
+          nd[_inkFieldMode] = (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal;
+        }
+        // Persist per-field strokes
+        if (!nd._inkFields) nd._inkFields = {};
+        nd._inkFields[_inkFieldMode] = JSON.parse(JSON.stringify(_inkStrokes));
+        lsSaveNote(_inkKey, nd);
+        try { renderView(); } catch (_) { }
+        try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) { }
+        closeInkpad();
+        return;
+      }
+
+      // ── GLOBAL MODE: fill all detected fields ──
       const fields = ["dx","pa","app","qx","sangrado","drenajes","manejo","sv","balance","pendientes"];
       let applied = 0;
       fields.forEach((f, i) => {
@@ -9069,21 +9185,17 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         const v = val.value.trim();
         if (!v) return;
         if (f === "dx") {
-          // dx lives on patient, not noteData
           const pt = patients.find(pp => pid(pp) === _inkKey);
           if (pt) pt.dx = v.toUpperCase();
         } else {
-          // Append instead of overwrite so we don't lose prior manual text
           nd[f] = (nd[f] ? nd[f].trim() + "\n" : "") + v;
         }
         applied++;
       });
-      // Also save the strokes as-is
       nd._inkStrokes = JSON.parse(JSON.stringify(_inkStrokes));
       lsSaveNote(_inkKey, nd);
-      // Re-render patient card to show new data
-      try { renderView(); } catch (_) {}
-      try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) {}
+      try { renderView(); } catch (_) { }
+      try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) { }
       alert(`✅ ${applied} campo${applied !== 1 ? "s" : ""} aplicado${applied !== 1 ? "s" : ""} a la ficha.`);
       closeInkpad();
     }
