@@ -13749,6 +13749,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       var done = 0;
       var results = [];
+      window.__bulkAmbiguities = []; // reset al iniciar cada carga
 
       function updateProgress() {
         var pct = Math.round(done / arr.length * 100);
@@ -13761,53 +13762,80 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
 
       // Palabras que aparecen en el PDF pero NO son parte del nombre del paciente
-      var NON_NAME_TOKENS = new Set(["HEMOCULTIVO", "UROCULTIVO", "COPROCULTIVO", "MICROCULTIVO", "LABORATORIO"]);
+      var NON_NAME_TOKENS = new Set(["HEMOCULTIVO", "UROCULTIVO", "COPROCULTIVO", "MICROCULTIVO", "LABORATORIO", "CULTIVO"]);
+
+      // Whitelist de especialidades de Cirugía General y subespecialidades
+      var CG_ESPS = new Set(["CG", "CCR", "CV", "CPR", "CT", "CTV", "CMF", "URO", "CG/GYO", "CG/CV", "GYO/CG", "CV/CG"]);
+      function isCGEsp(esp) {
+        var e = String(esp || "").toUpperCase().trim();
+        if (!e) return false;
+        if (CG_ESPS.has(e)) return true;
+        if (/(^|[\/\s])CG([\/\s]|$)/.test(e)) return true;
+        return false;
+      }
+
+      // Lista global de ambigüedades para mostrar en un cuadro al final
+      window.__bulkAmbiguities = [];
 
       function matchPatient(extractedName) {
         if (!extractedName) return null;
         var en = normName(extractedName);
         var enTokens = en.split(" ").filter(function(t){ return t.length > 2 && !NON_NAME_TOKENS.has(t); });
-        if (!enTokens.length) return null;
+        if (enTokens.length < 2) return null; // Necesitamos al menos 2 tokens (apellido + nombre o 2 apellidos)
 
-        // Scoring: fracción de tokens del PDF que coinciden con el nombre en censo
-        var best = null, bestScore = 0, bestCommonCount = 0;
-        var second = null, secondScore = 0;
-        patients.forEach(function(p) {
+        // Solo considerar pacientes de Cirugía General
+        var cgPatients = patients.filter(function(p) { return isCGEsp(p.esp); });
+        if (!cgPatients.length) return null;
+
+        // Matching con score estricto por posición de apellidos
+        var candidates = [];
+        cgPatients.forEach(function(p) {
           var pTokens = normName(p.nombre).split(" ").filter(function(t){ return t.length > 1; });
+          if (pTokens.length < 2) return;
           var common = enTokens.filter(function(t){ return pTokens.indexOf(t) >= 0; });
-          var score = common.length / Math.max(enTokens.length, 1);
-          if (score > bestScore) {
-            second = best; secondScore = bestScore;
-            best = p; bestScore = score; bestCommonCount = common.length;
-          } else if (score > secondScore) {
-            second = p; secondScore = score;
-          }
+
+          // Bonus grande si el primer apellido coincide (primer token)
+          var firstApOk = pTokens[0] === enTokens[0] ? 1 : 0;
+          var secondApOk = pTokens.length > 1 && enTokens.length > 1 && pTokens[1] === enTokens[1] ? 1 : 0;
+
+          // Score base: fracción de tokens del PDF que están en el paciente
+          var baseScore = common.length / Math.max(enTokens.length, 1);
+          // Score compuesto: prioriza primer apellido
+          var compositeScore = baseScore + (firstApOk * 0.5) + (secondApOk * 0.3);
+          candidates.push({ p: p, score: compositeScore, baseScore: baseScore, commonCount: common.length, firstApOk: firstApOk, common: common });
         });
 
-        // Mínimo: 2 tokens y 40% de coincidencia
-        if (bestCommonCount < 2 || bestScore < 0.4) return null;
+        candidates.sort(function(a, b){ return b.score - a.score; });
+        if (!candidates.length) return null;
+        var best = candidates[0];
+        var second = candidates[1] || null;
 
-        // Si hay dos candidatos con scores muy cercanos (diferencia ≤0.2), preguntar al usuario
-        if (second && secondScore >= bestScore - 0.2) {
-          var bestCommonCheck = enTokens.filter(function(t){
-            return best && normName(best.nombre).split(" ").indexOf(t) >= 0;
+        // ── Reglas estrictas ──────────────────────────────────────────
+        // 1. Mínimo 2 tokens en común
+        // 2. El primer apellido del PDF DEBE coincidir con el primer apellido del censo
+        if (best.commonCount < 2) return null;
+        if (!best.firstApOk) return null;
+
+        // ── Detección de ambigüedad ───────────────────────────────────
+        // Si hay un segundo candidato con score similar y también con primer apellido OK → ambiguo
+        if (second && second.firstApOk && (best.score - second.score) < 0.4 && second.commonCount >= 2) {
+          // Guardar para que el usuario decida en el cuadro final
+          window.__bulkAmbiguities.push({
+            extractedName: extractedName,
+            enTokens: enTokens,
+            best: best.p,
+            bestScore: best.baseScore,
+            bestCommon: best.common,
+            second: second.p,
+            secondScore: second.baseScore,
+            secondCommon: second.common
           });
-          var secondCommonCheck = second ? enTokens.filter(function(t){
-            return normName(second.nombre).split(" ").indexOf(t) >= 0;
-          }) : [];
-          if (secondCommonCheck.length >= 2) {
-            // Ambigüedad real — mostrar diálogo
-            var useFirst = confirm(
-              "Paciente ambiguo para: «" + extractedName + "»\n\n" +
-              "Opción A: " + best.nombre + " · Cama " + best.cama + " · Exp " + best.exp + "\n" +
-              "Opción B: " + second.nombre + " · Cama " + second.cama + " · Exp " + second.exp + "\n\n" +
-              "¿Asignar a Opción A? (Cancelar → Opción B)"
-            );
-            return useFirst ? best : second;
-          }
+          // Devolver el best por defecto pero marcar como ambiguo
+          best.p.__ambiguous = true;
+          return best.p;
         }
 
-        return best;
+        return best.p;
       }
 
       function processFile(file) {
@@ -14077,6 +14105,41 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#166534;padding:8px 0'>✅ " + successCount + " asignados &middot; ⚠️ " + unmatchedCount + " sin coincidencia &middot; 📄 " + totalEntries + " pacientes extraídos en total" +
           (totalEntries === 0 ? "<br><button onclick=\"var r=window.__lastBulkResponse||'(nada)';var w=window.open();w.document.write('<pre style=\\'white-space:pre-wrap;font-family:monospace;font-size:11px;padding:20px\\'>'+r.replace(/</g,'&lt;')+'</pre>');\" style='margin-top:8px;background:#6366f1;color:#fff;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:11px'>🔍 Ver respuesta cruda de la IA</button>" : "") +
           "</div>";
+
+        // Si hay ambigüedades, mostrar un cuadro para revisar
+        var ambig = window.__bulkAmbiguities || [];
+        if (ambig.length > 0) {
+          var ambigHtml = "<div style='margin-top:14px;padding:12px;border:2px solid #f59e0b;border-radius:10px;background:#fffbeb'>" +
+            "<div style='font-size:14px;font-weight:800;color:#92400e;margin-bottom:8px'>⚠️ " + ambig.length + " asignaci" + (ambig.length === 1 ? "ón" : "ones") + " con duda — revisa antes de continuar</div>" +
+            "<div style='font-size:11px;color:#78350f;margin-bottom:10px'>El matching automático no está 100% seguro. Confirma cada uno:</div>";
+          ambig.forEach(function(a, idx) {
+            ambigHtml += "<div style='padding:10px;margin-bottom:8px;background:#fff;border:1px solid #fcd34d;border-radius:6px'>" +
+              "<div style='font-size:12px;font-weight:700;color:#78350f;margin-bottom:6px'>📄 PDF: <span style='font-family:monospace'>" + esc(a.extractedName) + "</span></div>" +
+              "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>" +
+              "<div style='padding:8px;background:" + (a.best.__ambiguous ? "#dbeafe" : "#f3f4f6") + ";border-radius:4px;border:2px solid #3b82f6'>" +
+                "<div style='font-size:10px;color:#1e40af;font-weight:700;margin-bottom:3px'>OPCIÓN A (seleccionada)</div>" +
+                "<div style='font-size:12px;font-weight:700'>" + esc(a.best.nombre) + "</div>" +
+                "<div style='font-size:10px;color:#64748b'>Cama " + esc(a.best.cama || "?") + " · Exp " + esc(a.best.exp || "?") + " · " + esc(a.best.esp || "?") + "</div>" +
+                "<div style='font-size:10px;color:#15803d;margin-top:3px'>Tokens: " + a.bestCommon.join(", ") + "</div>" +
+              "</div>" +
+              "<div style='padding:8px;background:#f3f4f6;border-radius:4px;border:1px solid #d1d5db'>" +
+                "<div style='font-size:10px;color:#64748b;font-weight:700;margin-bottom:3px'>OPCIÓN B</div>" +
+                "<div style='font-size:12px;font-weight:700'>" + esc(a.second.nombre) + "</div>" +
+                "<div style='font-size:10px;color:#64748b'>Cama " + esc(a.second.cama || "?") + " · Exp " + esc(a.second.exp || "?") + " · " + esc(a.second.esp || "?") + "</div>" +
+                "<div style='font-size:10px;color:#15803d;margin-top:3px'>Tokens: " + a.secondCommon.join(", ") + "</div>" +
+              "</div>" +
+              "</div>" +
+              "<div style='margin-top:6px;display:flex;gap:6px'>" +
+                "<button onclick='resolveBulkAmbiguity(" + idx + ",\"keep\")' style='flex:1;background:#2563eb;color:#fff;border:none;padding:6px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600'>✓ Mantener Opción A</button>" +
+                "<button onclick='resolveBulkAmbiguity(" + idx + ",\"swap\")' style='flex:1;background:#f59e0b;color:#fff;border:none;padding:6px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600'>↔ Cambiar a Opción B</button>" +
+                "<button onclick='resolveBulkAmbiguity(" + idx + ",\"none\")' style='flex:1;background:#6b7280;color:#fff;border:none;padding:6px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-weight:600'>✗ Ninguno</button>" +
+              "</div>" +
+            "</div>";
+          });
+          ambigHtml += "</div>";
+          rows = ambigHtml + rows;
+        }
+
         res.innerHTML = rows;
         if (successCount > 0) renderView();
       }
@@ -14092,6 +14155,56 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       runBatch(0);
     }
+
+    // Resolver ambigüedad de matching: mantener, cambiar a B, o quitar asignación
+    window.resolveBulkAmbiguity = function(idx, action) {
+      var ambig = (window.__bulkAmbiguities || [])[idx];
+      if (!ambig) { alert("Ambigüedad no encontrada."); return; }
+      var btnGroup = event.target.parentElement;
+      var card = btnGroup.parentElement;
+
+      if (action === "keep") {
+        card.style.background = "#dcfce7";
+        card.style.borderColor = "#16a34a";
+        btnGroup.innerHTML = "<div style='flex:1;color:#15803d;font-weight:700;font-size:11px;text-align:center'>✓ Mantenido: " + esc(ambig.best.nombre) + "</div>";
+        return;
+      }
+      if (action === "none") {
+        // Quitar los labs que se le asignaron al paciente "best"
+        var k = pid(ambig.best);
+        var nd = getNote(k);
+        if (nd && nd.labHistory && nd.labHistory.length) {
+          // Quitar el último snapshot (el que acabamos de añadir)
+          nd.labHistory.pop();
+          saveNote(k, nd);
+        }
+        card.style.background = "#fee2e2";
+        card.style.borderColor = "#dc2626";
+        btnGroup.innerHTML = "<div style='flex:1;color:#991b1b;font-weight:700;font-size:11px;text-align:center'>✗ Labs removidos de " + esc(ambig.best.nombre) + "</div>";
+        renderView();
+        return;
+      }
+      if (action === "swap") {
+        // Mover del paciente best al paciente second
+        var kA = pid(ambig.best);
+        var ndA = getNote(kA);
+        if (ndA && ndA.labHistory && ndA.labHistory.length) {
+          var snap = ndA.labHistory.pop(); // Quitar del best
+          saveNote(kA, ndA);
+          // Añadir al second
+          var kB = pid(ambig.second);
+          var ndB = getNote(kB);
+          if (!ndB.labHistory) ndB.labHistory = [];
+          ndB.labHistory.push(snap);
+          saveNote(kB, ndB);
+          card.style.background = "#fef3c7";
+          card.style.borderColor = "#f59e0b";
+          btnGroup.innerHTML = "<div style='flex:1;color:#92400e;font-weight:700;font-size:11px;text-align:center'>↔ Movido a: " + esc(ambig.second.nombre) + "</div>";
+          renderView();
+        }
+        return;
+      }
+    };
 
     // Debug: mostrar qué devolvió la IA para un archivo específico
     window.showBulkDebug = function(idx) {
