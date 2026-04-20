@@ -8775,16 +8775,25 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
   }
 }`;
 
-        const resp = await fetch(proxyUrl + "/api/ai", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(getToken() ? { "Authorization": "Bearer " + getToken() } : {}) },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 4000,
-            messages: [{ role: "user", content: [contentBlock, { type: "text", text: prompt }] }]
-          })
-        });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const _diAbort = new AbortController();
+        const _diTimeout = setTimeout(() => _diAbort.abort(), 60000);
+        let resp;
+        try {
+          resp = await fetch(proxyUrl + "/api/ai", {
+            method: "POST",
+            headers: { ...apiHeaders() },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6",
+              max_tokens: 4000,
+              messages: [{ role: "user", content: [contentBlock, { type: "text", text: prompt }] }]
+            }),
+            signal: _diAbort.signal
+          });
+        } finally { clearTimeout(_diTimeout); }
+        if (!resp.ok) {
+          const errTxt = await resp.text().catch(() => "");
+          throw new Error("HTTP " + resp.status + (errTxt ? " — " + errTxt.slice(0, 200) : ""));
+        }
         const data = await resp.json();
         const raw = (data.content?.[0]?.text || "{}").replace(/```json/g,"").replace(/```/g,"").trim();
         const js  = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
@@ -11511,9 +11520,23 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               continue;
             }
 
-            // Use formatted cell text (.w) for cama — prevents Excel interpreting "3-157" as formula -154
+            // Read cama cell carefully: "3-157" can be stored as formula =3-157 (value=-154).
+            // Priority: (1) text cell → raw value, (2) formula string like "3-157", (3) formatted display (.w), (4) raw value.
             const camaCell = iCama >= 0 ? ws[XLSX.utils.encode_cell({ r: i, c: iCama })] : null;
-            const cama = camaCell ? (camaCell.w !== undefined ? camaCell.w.trim() : String(camaCell.v || "").trim()) : String(r[iCama] || "").trim();
+            let cama = "";
+            if (camaCell) {
+              if (camaCell.t === "s") {
+                cama = String(camaCell.v || "").trim();                       // Text cell
+              } else if (camaCell.f && /^\d/.test(String(camaCell.f).trim())) {
+                cama = String(camaCell.f).trim();                             // Formula like "3-157"
+              } else if (camaCell.w !== undefined && camaCell.w !== "") {
+                cama = camaCell.w.trim();                                     // Formatted display
+              } else {
+                cama = String(camaCell.v !== undefined ? camaCell.v : "").trim();
+              }
+            } else {
+              cama = String(r[iCama] || "").trim();
+            }
             const nombre = String(r[iNombre] || "").trim().toUpperCase();
             const exp = String(r[iExp] || "").trim();
             if (!cama || !nombre || cama.length < 2) continue;
@@ -11562,7 +11585,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const missingPts  = [];  // en censo anterior, no aparecen en nuevo censo
           const dispositions = {}; // pid → 'alta' | 'defuncion' | 'traslado' | 'mantener'
 
+          // Specialties considered surgical (auto-add as new)
           const IMPORT_CG_ESP = new Set(["CG","CCR","CV","CT","CTV","CMF","CPR","TYO","NCX","URO","COLUMNA","GYO","CG/GYO"]);
+          // Floor/unit labels that are NEVER a specialty (patients under these labels should still be added)
+          const NON_ESP_FLOORS = new Set(["RECUPERACION","UCIA","UCIP","UCIPE","UCI","TERAPIA","TERAPIA INTENSIVA","PISO","PISO 3","PISO 4"]);
+          // Hospital specialties that are explicitly NOT surgical — only these go to "ask" section
+          const DEFINITELY_NON_SURGICAL = new Set(["MEDICINA INTERNA","PEDIATRIA","OBSTETRICIA","CARDIOLOGIA","URGENCIAS","TRAUMA","PSIQUIATRIA","DERMATOLOGIA","OFTALMOLOGIA","OTORRINO","NEUMOLOGIA","GASTRO","REUMATOLOGIA","ENDOCRINOLOGIA","INFECTOLOGIA","ONCOLOGIA","HEMATOLOGIA","NEFROLOGIA","GERIATRIA"]);
 
           // Expedientes ya archivados/egresados → no se re-añaden al censo
           const archivedExpSet = new Set(archivados.map(a => a.exp).filter(Boolean));
@@ -11580,15 +11608,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             } else if (oldByCama.has(p.cama)) {
               // Different patient in same bed → replacement
               changedPts.push({ newPt: p, oldPt: oldByCama.get(p.cama) });
-            } else if (IMPORT_CG_ESP.has(p.esp)) {
-              // Brand-new CG/surgical patient → auto-add
-              newPts.push(p);
             } else {
-              // Brand-new patient of another specialty → ask user
-              otherPts.push(p);
+              // New patient: surgical/unknown → newPts (auto-add), explicitly non-surgical → otherPts (ask)
+              const espUp = (p.esp || "").toUpperCase().trim();
+              if (DEFINITELY_NON_SURGICAL.has(espUp)) {
+                otherPts.push(p);
+              } else {
+                newPts.push(p);  // CG, surgical, unknown specialty or empty → auto-add
+              }
             }
           });
-          const otherPtsChecked = otherPts.map(() => false); // default: NOT checked
+          const otherPtsChecked = otherPts.map(() => false); // non-surgical: unchecked by default
 
           // Pacientes en censo anterior que no están en el nuevo (ni por pid ni por cama)
           // Cross-reference with ALTAS and DEFUNCIONES sections from Excel
@@ -11777,13 +11807,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             document.getElementById("import-moved-list").innerHTML = h;
           } else { secMoved.style.display = "none"; }
 
-          // ─── SECCIÓN: OTROS PACIENTES (otras especialidades) ──────────────────
+          // ─── SECCIÓN: OTROS PACIENTES (especialidades no quirúrgicas) ──────────────
           const secOthers = document.getElementById("import-sec-others");
           if (otherPts.length > 0) {
             secOthers.style.display = "";
             document.getElementById("import-others-lbl").textContent =
-              otherPts.length + " paciente" + (otherPts.length > 1 ? "s" : "") + " de otras especialidades";
-            let h = "";
+              otherPts.length + " paciente" + (otherPts.length > 1 ? "s" : "") + " de especialidades no quirúrgicas";
+            let h = `<div style="font-size:11px;color:#64748b;margin-bottom:6px;padding:0 4px">Marca los que quieras incorporar al piso-libro (por defecto no se agregan).</div>`;
             otherPts.forEach((p, idx) => {
               const col = ESP_COLORS[p.esp] || "#555";
               h += `<div class="import-row" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;margin-bottom:5px;gap:8px">` +
