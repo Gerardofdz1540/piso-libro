@@ -8239,25 +8239,29 @@
         "Mapeo: " + buildClinicalLabsMappingText() + ".";
     }
     function buildBulkLabExtractionPrompt() {
-      return 'Analiza este PDF de laboratorio hospitalario. **IMPORTANTE: El PDF puede contener reportes de MÚLTIPLES PACIENTES juntos** (WinLab combina los reportes de todo un censo en un solo PDF). Procesa TODOS los pacientes que encuentres.\n\n' +
-        'Para cada paciente identifica si su reporte es (A) química clínica/biometría/gasometría/EGO o (B) cultivo microbiológico (hemocultivo, urocultivo, coprocultivo, cultivo de herida, esputo, secreción, etc.).\n\n' +
-        'Responde SOLO con un arreglo JSON así (sin markdown, sin explicación):\n' +
-        '[\n' +
-        '  { "tipo": "labs",      ...campos del template de labs clínicos... },\n' +
-        '  { "tipo": "cultivo",   ...campos del template de cultivo... },\n' +
-        '  ...un objeto por paciente...\n' +
-        ']\n\n' +
-        'Template para tipo "labs":\n' + buildClinicalLabsExtractionTemplate(true) + '\n\n' +
-        'Template para tipo "cultivo":\n' + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
-        'Reglas CRÍTICAS:\n' +
-        '• Si un reporte está PRELIMINAR / INCOMPLETO / "IN CORSO" / "EN PROCESO" / "PENDIENTE" (sin resultado numérico final), OMÍTELO del arreglo — no lo incluyas.\n' +
-        '• NO transcribas literalmente valores como "in corso", "pendiente", "en proceso" — si el dato no tiene un valor numérico o cualitativo final, deja ese campo como "".\n' +
-        '• Valores numéricos sin unidades para química/biometría/gasometría; en EGO y microbiología se permite texto.\n' +
-        '• Fecha en YYYY-MM-DD, paciente en APELLIDOS NOMBRE tal como aparece (SIN incluir "hemocultivo"/"urocultivo"/etc).\n' +
-        '• Si un campo no existe o es preliminar, deja "".\n' +
-        '• Si dos o más reportes son del MISMO paciente, combínalos en un solo objeto (toma los valores más recientes y completos).\n\n' +
-        'Mapeo: ' + buildClinicalLabsMappingText() + '.\n\n' +
-        'Empieza el JSON con "[" y termínalo con "]". Sin texto antes o después.';
+      return 'Este PDF contiene reportes de laboratorio hospitalario de UNO O MÁS pacientes (WinLab combina los reportes del censo completo).\n\n' +
+        'TAREA: extraer los laboratorios de CADA paciente que encuentres.\n\n' +
+        'FORMATO DE RESPUESTA: SOLO un JSON array. Sin markdown, sin explicación, sin texto antes o después.\n' +
+        'Empieza con [ y termina con ]. Cada elemento del array = un paciente.\n\n' +
+        'ESTRUCTURA DE CADA PACIENTE:\n' +
+        '{\n' +
+        '  "paciente": "APELLIDOS NOMBRE tal cual aparece",\n' +
+        '  "fecha_labs": "YYYY-MM-DD",\n' +
+        '  "tipo": "labs" si es química/biometría/gasometría/EGO, "cultivo" si es microbiología,\n' +
+        '  ...los demás campos del template apropiado...\n' +
+        '}\n\n' +
+        'Template para "labs":\n' + buildClinicalLabsExtractionTemplate(true) + '\n\n' +
+        'Template para "cultivo":\n' + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
+        'REGLAS:\n' +
+        '1. Si el PDF tiene 5 pacientes con labs finalizados, tu array DEBE tener 5 objetos.\n' +
+        '2. Un paciente solo se OMITE si TODOS sus valores están preliminares/in corso. Si tiene algunos valores finalizados, inclúyelo con esos valores y deja "" los preliminares.\n' +
+        '3. NUNCA escribas "in corso", "pendiente", "preliminar", "en proceso" como valor — si no hay valor final, pon "".\n' +
+        '4. Valores numéricos SIN unidades (ej: "13.5" no "13.5 g/dL") para química, biometría y gasometría.\n' +
+        '5. En EGO y cultivos se permite texto descriptivo.\n' +
+        '6. Si el mismo paciente tiene varios reportes (ej: biometría + gasometría + EGO), combínalos en UN SOLO objeto del array.\n' +
+        '7. En "paciente" NO incluyas palabras como "hemocultivo"/"urocultivo" — solo los apellidos y nombre.\n\n' +
+        'Mapeo de nombres: ' + buildClinicalLabsMappingText() + '.\n\n' +
+        'Si ves UN solo paciente en el PDF, devuelve un array con UN solo objeto. Si ves cero pacientes válidos, devuelve [].';
     }
 
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
@@ -13671,7 +13675,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               headers: apiHeaders(),
               body: JSON.stringify({
                 model: "claude-sonnet-4-6",
-                max_tokens: 8000,
+                max_tokens: 16000,
                 messages: [{ role: "user", content: [
                   { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
                   { type: "text", text: prompt }
@@ -13680,18 +13684,23 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             })
             .then(function(resp){ return resp.json(); })
             .then(function(data) {
-              var txt = (data.content && data.content[0] && data.content[0].text) || "[]";
+              var txt = (data.content && data.content[0] && data.content[0].text) || "";
+              console.log("[bulk-labs] Claude raw response (primeros 2000 chars):", txt.slice(0, 2000));
+              console.log("[bulk-labs] Claude raw response length:", txt.length);
+              window.__lastBulkResponse = txt;
               var cleaned = txt.replace(/```[a-z]*/gi, "").replace(/```/g, "").trim();
               var list = [];
-              // First: try as JSON array (new multi-patient format)
+              // Try as JSON array
               try {
                 var arrStart = cleaned.indexOf("["), arrEnd = cleaned.lastIndexOf("]");
                 if (arrStart !== -1 && arrEnd > arrStart) {
                   var parsed = JSON.parse(cleaned.slice(arrStart, arrEnd + 1));
                   if (Array.isArray(parsed)) list = parsed;
                 }
-              } catch (_p1) { }
-              // Fallback: try as single JSON object (old single-patient format)
+              } catch (_p1) {
+                console.warn("[bulk-labs] JSON array parse failed:", _p1.message);
+              }
+              // Fallback: try as single JSON object
               if (!list.length) {
                 try {
                   var s2 = cleaned.indexOf("{"), e2 = cleaned.lastIndexOf("}");
@@ -13701,31 +13710,34 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
                   }
                 } catch (_p2) { }
               }
-              // Filter: drop any entry with no usable data OR where fecha/paciente are empty
-              var filtered = list.filter(function(e) {
-                if (!e || typeof e !== "object") return false;
-                var hasPt = e.paciente || e.nombre || e.name;
-                if (!hasPt) return false;
-                // Count non-empty lab fields
-                var nonEmptyFields = Object.keys(e).filter(function(k) {
-                  if (k === "paciente" || k === "fecha" || k === "tipo" || k === "nombre") return false;
-                  var v = e[k];
-                  if (v === "" || v == null) return false;
-                  if (typeof v === "string" && /in\s*corso|pendiente|en\s*proceso|preliminar|incompleto/i.test(v)) return false;
-                  return true;
-                });
-                return nonEmptyFields.length >= 1;
-              });
-              // Also sanitize each entry: blank out any 'in corso'-like strings
-              filtered.forEach(function(e) {
+              console.log("[bulk-labs] Parsed " + list.length + " entries from response");
+              console.log("[bulk-labs] Sample entry:", list[0]);
+
+              // Sanitize: blank out sentinel strings (in corso, pendiente, etc.)
+              list.forEach(function(e) {
+                if (!e || typeof e !== "object") return;
                 Object.keys(e).forEach(function(k) {
                   var v = e[k];
-                  if (typeof v === "string" && /^(in\s*corso|pendiente|en\s*proceso|preliminar|incompleto|-|n\/a|na)$/i.test(v.trim())) {
+                  if (typeof v === "string" && /^(in\s*corso|pendiente|en\s*proceso|preliminar|incompleto|-+|n\/a|na|sin\s*resultado|\.{3}|results?\s*pending)$/i.test(v.trim())) {
                     e[k] = "";
                   }
                 });
               });
-              resolve({ file: file.name, fileObj: file, fileBase64: base64, extractedList: filtered, error: null });
+
+              // Filter: keep entries that have ANY non-empty field (besides metadata)
+              var filtered = list.filter(function(e) {
+                if (!e || typeof e !== "object") return false;
+                var hasPt = e.paciente || e.nombre || e.name;
+                if (!hasPt) return false;
+                var hasAnyValue = Object.keys(e).some(function(k) {
+                  if (["paciente","nombre","name","fecha","fecha_labs","tipo","tipo_lab"].indexOf(k) >= 0) return false;
+                  var v = e[k];
+                  return v != null && String(v).trim().length > 0;
+                });
+                return hasAnyValue;
+              });
+              console.log("[bulk-labs] Filtered down to " + filtered.length + " usable entries");
+              resolve({ file: file.name, fileObj: file, fileBase64: base64, extractedList: filtered, rawList: list, rawResponse: txt, error: null });
             })
             .catch(function(e){ resolve({ file: file.name, extractedList: [], error: String(e) }); });
           };
@@ -13812,7 +13824,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             }
           }
         }
-        prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#166534;padding:8px 0'>✅ " + successCount + " asignados &middot; ⚠️ " + unmatchedCount + " sin coincidencia &middot; 📄 " + totalEntries + " pacientes extraídos en total</div>";
+        prog.innerHTML = "<div style='font-size:13px;font-weight:700;color:#166534;padding:8px 0'>✅ " + successCount + " asignados &middot; ⚠️ " + unmatchedCount + " sin coincidencia &middot; 📄 " + totalEntries + " pacientes extraídos en total" +
+          (totalEntries === 0 ? "<br><button onclick=\"var r=window.__lastBulkResponse||'(nada)';var w=window.open();w.document.write('<pre style=\\'white-space:pre-wrap;font-family:monospace;font-size:11px;padding:20px\\'>'+r.replace(/</g,'&lt;')+'</pre>');\" style='margin-top:8px;background:#6366f1;color:#fff;border:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:11px'>🔍 Ver respuesta cruda de la IA</button>" : "") +
+          "</div>";
         res.innerHTML = rows;
         if (successCount > 0) renderView();
       }
