@@ -8736,13 +8736,37 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
       diShowStep("processing");
 
-      const isImage = file.type.startsWith("image/");
-      const fileMB  = file.size / 1024 / 1024;
+      // Determine MIME type properly. Anthropic accepts: image/jpeg, image/png, image/gif, image/webp (for images)
+      // and application/pdf (for documents). Normalize HEIC→JPEG (convert via canvas) since Claude doesn't accept HEIC.
+      let detectedMime = (file.type || "").toLowerCase();
+      const fileName = (file.name || "").toLowerCase();
+      if (!detectedMime) {
+        if (fileName.endsWith(".pdf")) detectedMime = "application/pdf";
+        else if (fileName.endsWith(".png")) detectedMime = "image/png";
+        else if (fileName.endsWith(".webp")) detectedMime = "image/webp";
+        else if (fileName.endsWith(".gif")) detectedMime = "image/gif";
+        else if (fileName.endsWith(".heic") || fileName.endsWith(".heif")) detectedMime = "image/heic";
+        else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) detectedMime = "image/jpeg";
+      }
+      const isHeic = /heic|heif/.test(detectedMime) || /\.hei[cf]$/i.test(fileName);
+      const isImage = detectedMime.startsWith("image/") || isHeic;
+      const isPdf = detectedMime === "application/pdf" || fileName.endsWith(".pdf");
+      const fileMB = file.size / 1024 / 1024;
+
+      // Supported image MIME types for Anthropic API
+      const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
       try {
-        // ── Base64 encode (compress image if large) ──────────────────────────
+        if (!isImage && !isPdf) {
+          throw new Error("Formato no soportado. Usa PDF, JPG, PNG, WebP o HEIC (foto del teléfono).");
+        }
+
+        // ── Base64 encode ──────────────────────────────────────────────────
         let base64;
-        if (isImage && fileMB > 1.5) {
+        let finalMime;
+        // Re-encode images when: (a) too large, (b) HEIC format (not accepted by Claude), or (c) unknown image type
+        const needsReencode = isImage && (fileMB > 1.5 || isHeic || !SUPPORTED_IMAGE_MIMES.has(detectedMime));
+        if (needsReencode) {
           base64 = await new Promise((res, rej) => {
             const img = new Image();
             const objUrl = URL.createObjectURL(file);
@@ -8750,26 +8774,43 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
               URL.revokeObjectURL(objUrl);
               const MAX = 1400;
               let w = img.naturalWidth, h = img.naturalHeight;
+              if (!w || !h) { rej(new Error("No se pudo leer la imagen (quizá HEIC sin soporte del navegador). Intenta convertirla a JPG o PNG.")); return; }
               if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
               const cv = document.createElement("canvas");
               cv.width = w; cv.height = h;
               cv.getContext("2d").drawImage(img, 0, 0, w, h);
-              res(cv.toDataURL("image/jpeg", 0.75).split(",")[1]);
+              res(cv.toDataURL("image/jpeg", 0.82).split(",")[1]);
             };
-            img.onerror = rej; img.src = objUrl;
+            img.onerror = () => { URL.revokeObjectURL(objUrl); rej(new Error("Tu navegador no pudo abrir este formato de imagen (probablemente HEIC). Conviértela a JPG desde el teléfono o la galería.")); };
+            img.src = objUrl;
           });
+          finalMime = "image/jpeg";
         } else {
           base64 = await new Promise((res, rej) => {
             const r = new FileReader();
-            r.onload  = () => res(r.result.split(",")[1]);
-            r.onerror = rej; r.readAsDataURL(file);
+            r.onload  = () => {
+              const out = (r.result || "").toString();
+              const comma = out.indexOf(",");
+              res(comma >= 0 ? out.slice(comma + 1) : out);
+            };
+            r.onerror = () => rej(new Error("No se pudo leer el archivo."));
+            r.readAsDataURL(file);
           });
+          finalMime = isPdf ? "application/pdf" : detectedMime;
         }
 
-        const mediaType = isImage ? "image/jpeg" : "application/pdf";
-        const contentBlock = isImage
-          ? { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } }
-          : { type: "document", source: { type: "base64", media_type: mediaType, data: base64 } };
+        if (!base64 || base64.length < 100) {
+          throw new Error("El archivo quedó vacío al leerlo. Intenta con otro archivo.");
+        }
+
+        const contentBlock = isPdf
+          ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+          : { type: "image",    source: { type: "base64", media_type: finalMime,         data: base64 } };
+
+        console.log("[doc-intake] Enviando:", {
+          fileName: file.name, fileMB: fileMB.toFixed(2),
+          detectedMime, finalMime, isPdf, isImage, base64_len: base64.length
+        });
 
         const prompt = `Eres un asistente médico quirúrgico. Analiza este documento clínico y extrae la información. Responde ÚNICAMENTE con JSON válido, sin markdown ni texto adicional.
 
@@ -8800,7 +8841,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 }`;
 
         const _diAbort = new AbortController();
-        const _diTimeout = setTimeout(() => _diAbort.abort(), 60000);
+        const _diTimeout = setTimeout(() => _diAbort.abort(), 90000);
         let resp;
         try {
           resp = await fetch(proxyUrl + "/api/ai", {
@@ -8813,23 +8854,43 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             }),
             signal: _diAbort.signal
           });
+        } catch (netErr) {
+          if (netErr.name === "AbortError") throw new Error("Se agotó el tiempo (90s). El archivo podría ser muy grande o el Worker está lento.");
+          throw new Error("Error de red al contactar el Worker: " + (netErr.message || netErr));
         } finally { clearTimeout(_diTimeout); }
         if (!resp.ok) {
           const errTxt = await resp.text().catch(() => "");
-          throw new Error("HTTP " + resp.status + (errTxt ? " — " + errTxt.slice(0, 200) : ""));
+          console.error("[doc-intake] Worker response error:", resp.status, errTxt);
+          let hint = "";
+          if (resp.status === 401 || resp.status === 403) hint = " (⚠️ Token del Worker inválido o API key de Anthropic expirada)";
+          else if (resp.status === 404) hint = " (⚠️ La URL del Worker es incorrecta o la ruta /api/ai no existe)";
+          else if (resp.status === 413) hint = " (⚠️ Archivo muy grande — intenta con PDF más pequeño o foto comprimida)";
+          else if (resp.status === 429) hint = " (⚠️ Límite de requests alcanzado — espera unos minutos)";
+          else if (resp.status >= 500) hint = " (⚠️ El Worker o la API de Anthropic tuvo un problema interno)";
+          throw new Error("HTTP " + resp.status + hint + (errTxt ? " — " + errTxt.slice(0, 300) : ""));
         }
         const data = await resp.json();
-        const raw = (data.content?.[0]?.text || "{}").replace(/```json/g,"").replace(/```/g,"").trim();
-        const js  = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+        console.log("[doc-intake] Respuesta IA recibida:", data);
+        const raw = (data.content?.[0]?.text || "").replace(/```json/g,"").replace(/```/g,"").trim();
+        if (!raw) throw new Error("La IA devolvió una respuesta vacía. Revisa la consola (F12) para ver el payload.");
+        const jstart = raw.indexOf("{"), jend = raw.lastIndexOf("}");
+        const js = (jstart >= 0 && jend > jstart) ? raw.slice(jstart, jend + 1) : "";
+        if (!js) throw new Error("La IA no devolvió JSON. Texto recibido: " + raw.slice(0, 200));
         let result;
         try { result = JSON.parse(js); }
-        catch (_) { throw new Error("No se pudo parsear la respuesta de la IA. Intenta de nuevo."); }
+        catch (_) {
+          // Retry with trailing incomplete prop stripped
+          const trimmed = js.replace(/,\s*"[^"]*"\s*:\s*[^}]*$/, "") + "}";
+          try { result = JSON.parse(trimmed); }
+          catch (e2) { throw new Error("JSON malformado de la IA. Primeros 200 chars: " + js.slice(0, 200)); }
+        }
 
         _diExtracted = result;
         _renderDocIntakePreview(result);
         diShowStep("preview");
 
       } catch (err) {
+        console.error("[doc-intake] ERROR:", err);
         document.getElementById("di-error-msg").textContent = err.message || String(err);
         diShowStep("error");
       }
@@ -14546,8 +14607,14 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       <!-- Step 4: Error -->
       <div id="di-step-error" style="display:none;padding:20px;text-align:center">
         <div style="font-size:36px;margin-bottom:8px">⚠️</div>
-        <div id="di-error-msg" style="font-size:13px;color:#dc2626;font-weight:600"></div>
-        <button onclick="diShowStep('upload')" style="margin-top:12px;background:#6366f1;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px">Intentar de nuevo</button>
+        <div id="di-error-msg" style="font-size:13px;color:#dc2626;font-weight:600;max-width:100%;word-wrap:break-word;white-space:pre-wrap;text-align:left;background:#fef2f2;padding:10px 12px;border-radius:8px;border:1px solid #fecaca"></div>
+        <div style="font-size:11px;color:#64748b;margin-top:10px;text-align:left;background:#f8fafc;padding:8px 12px;border-radius:6px">
+          💡 <b>Tip para diagnóstico:</b> abre la consola (F12 → Console) y vuelve a intentar. Verás el payload enviado y la respuesta del Worker. Copia el error completo si necesitas ayuda.
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+          <button onclick="diShowStep('upload')" style="background:#6366f1;color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px" data-testid="di-retry-btn">Intentar de nuevo</button>
+          <button onclick="navigator.clipboard.writeText(document.getElementById('di-error-msg').textContent).then(()=>alert('Error copiado al portapapeles'))" style="background:#e2e8f0;color:#334155;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px" data-testid="di-copy-err-btn">📋 Copiar error</button>
+        </div>
       </div>
     </div>
   </div>
