@@ -7525,6 +7525,7 @@
           <button class="icon-btn has-lbl" style="background:rgba(251,146,60,.35)" data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)" title="Cambiar cama rápido">🛏<span class="icon-lbl">Cama</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(99,102,241,.4)" data-histkey="${k}" onclick="openNoteHistory(this.dataset.histkey)" title="Historial de versiones / recuperar datos">📜<span class="icon-lbl">Historial</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(16,185,129,.45)" data-dikey="${k}" onclick="openDocIntake(this.dataset.dikey)" title="Leer documento con IA (nota de ingreso, postQx, evolución)">📄<span class="icon-lbl">Leer Doc</span></button>
+          <button class="icon-btn has-lbl" style="background:rgba(139,92,246,.45)" data-inkkey="${k}" onclick="openInkpad(this.dataset.inkkey)" title="Escribir a mano con stylus (Apple Pencil, S Pen, etc.) y transcribir con IA">✍️<span class="icon-lbl">Escribir</span></button>
           <button class="icon-btn has-lbl danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪<span class="icon-lbl">Alta</span></button>
           <span class="expand-btn" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${exp ? "▾" : "▸"}</span>
         </div>
@@ -8703,6 +8704,312 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     // ─── SMART DOCUMENT INTAKE ───────────────────────────────────────────────────────
     var _diCurrentKey = null;   // patient key for the open intake
     var _diExtracted  = null;   // last parsed AI result
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // INKPAD — Stylus handwriting + AI transcription
+    // ═══════════════════════════════════════════════════════════════════════
+    let _inkKey = null, _inkStrokes = [], _inkCurrentStroke = null;
+    let _inkTool = "pen", _inkColor = "#0f172a";
+    let _inkTranscription = null;
+
+    function openInkpad(k) {
+      _inkKey = k;
+      _inkStrokes = [];
+      _inkCurrentStroke = null;
+      _inkTool = "pen";
+      _inkColor = "#0f172a";
+      _inkTranscription = null;
+      document.getElementById("inkpad-preview").style.display = "none";
+      document.getElementById("inkpad-busy").style.display = "none";
+
+      const p = patients.find(pp => pid(pp) === k);
+      document.getElementById("inkpad-patient-name").textContent = p ? p.nombre : "";
+      document.getElementById("inkpad-patient-bed").textContent = p ? `Cama ${p.cama} · Exp ${p.exp}` : "";
+
+      document.getElementById("inkpad-modal").style.display = "flex";
+
+      // Load persisted strokes (if any)
+      const nd = noteData[k];
+      if (nd && nd._inkStrokes && Array.isArray(nd._inkStrokes)) {
+        _inkStrokes = JSON.parse(JSON.stringify(nd._inkStrokes));
+      }
+
+      // Setup canvas sizing + event handlers (after modal is visible)
+      requestAnimationFrame(_inkSetupCanvas);
+    }
+
+    function closeInkpad() {
+      document.getElementById("inkpad-modal").style.display = "none";
+      _inkKey = null;
+    }
+
+    function _inkSetupCanvas() {
+      const cv = document.getElementById("inkpad-canvas");
+      const wrap = cv.parentElement;
+      // Use device pixel ratio for crisp strokes on retina/high-dpi
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      // Logical size — large enough to feel like a page
+      const W = Math.max(wrap.clientWidth, 1200);
+      const H = Math.max(wrap.clientHeight, 1000);
+      cv.width = W * dpr;
+      cv.height = H * dpr;
+      cv.style.width = W + "px";
+      cv.style.height = H + "px";
+      const ctx = cv.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      _inkRedraw();
+
+      // Remove prior handlers if any (in case openInkpad was called multiple times)
+      cv.onpointerdown = _inkPointerDown;
+      cv.onpointermove = _inkPointerMove;
+      cv.onpointerup   = _inkPointerUp;
+      cv.onpointercancel = _inkPointerUp;
+      cv.onpointerleave = _inkPointerUp;
+    }
+
+    function _inkPointerDown(e) {
+      e.preventDefault();
+      const cv = e.currentTarget;
+      cv.setPointerCapture(e.pointerId);
+      const pt = _inkGetPoint(e, cv);
+      _inkCurrentStroke = {
+        tool: _inkTool,
+        color: _inkTool === "eraser" ? "#ffffff" : _inkColor,
+        // marker is semi-transparent for highlighter effect
+        alpha: _inkTool === "marker" ? 0.35 : 1,
+        points: [pt]
+      };
+      _inkStrokes.push(_inkCurrentStroke);
+    }
+    function _inkPointerMove(e) {
+      if (!_inkCurrentStroke) return;
+      e.preventDefault();
+      const cv = e.currentTarget;
+      const pt = _inkGetPoint(e, cv);
+      _inkCurrentStroke.points.push(pt);
+      _inkDrawSegment(cv.getContext("2d"), _inkCurrentStroke);
+    }
+    function _inkPointerUp(e) {
+      if (!_inkCurrentStroke) return;
+      // Drop strokes with only 1 point (accidental taps)
+      if (_inkCurrentStroke.points.length < 2) _inkStrokes.pop();
+      _inkCurrentStroke = null;
+    }
+
+    function _inkGetPoint(e, cv) {
+      const r = cv.getBoundingClientRect();
+      // Pressure: stylus gives 0-1; mouse always 0.5
+      const pressure = (e.pressure && e.pressure > 0) ? e.pressure : (e.pointerType === "mouse" ? 0.5 : 0.7);
+      return {
+        x: e.clientX - r.left,
+        y: e.clientY - r.top,
+        p: pressure
+      };
+    }
+
+    function _inkRedraw() {
+      const cv = document.getElementById("inkpad-canvas");
+      const ctx = cv.getContext("2d");
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      ctx.restore();
+      _inkStrokes.forEach(s => _inkDrawFullStroke(ctx, s));
+    }
+    function _inkDrawFullStroke(ctx, s) {
+      if (!s.points.length) return;
+      ctx.globalAlpha = s.alpha || 1;
+      ctx.strokeStyle = s.color;
+      ctx.globalCompositeOperation = s.tool === "eraser" ? "destination-out" : "source-over";
+      for (let i = 1; i < s.points.length; i++) {
+        const p0 = s.points[i - 1], p1 = s.points[i];
+        const w = _inkStrokeWidth(s.tool, p1.p);
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+    }
+    function _inkDrawSegment(ctx, s) {
+      // Draws just the last segment (efficient during live drawing)
+      if (s.points.length < 2) return;
+      const p0 = s.points[s.points.length - 2];
+      const p1 = s.points[s.points.length - 1];
+      ctx.globalAlpha = s.alpha || 1;
+      ctx.strokeStyle = s.color;
+      ctx.globalCompositeOperation = s.tool === "eraser" ? "destination-out" : "source-over";
+      ctx.lineWidth = _inkStrokeWidth(s.tool, p1.p);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+    }
+    function _inkStrokeWidth(tool, pressure) {
+      if (tool === "eraser") return 22;
+      if (tool === "marker") return 14 + (pressure * 10);
+      // pen — pressure-sensitive
+      return 1.3 + (pressure * 3.5);
+    }
+
+    function inkSetTool(t) {
+      _inkTool = t;
+      document.querySelectorAll("#inkpad-modal .ink-tool-btn").forEach(b => b.classList.remove("ink-tool-active"));
+      const el = document.getElementById("ink-tool-" + t);
+      if (el) el.classList.add("ink-tool-active");
+    }
+    function inkSetColor(c) { _inkColor = c; if (_inkTool === "eraser") inkSetTool("pen"); }
+    function inkUndo() { _inkStrokes.pop(); _inkRedraw(); }
+    function inkClear() {
+      if (!_inkStrokes.length) return;
+      if (!confirm("¿Borrar todo el trazo?")) return;
+      _inkStrokes = []; _inkRedraw();
+    }
+
+    async function inkSaveImage() {
+      if (!_inkKey || !_inkStrokes.length) { alert("No hay nada que guardar."); return; }
+      if (!noteData[_inkKey]) noteData[_inkKey] = defaultData();
+      noteData[_inkKey]._inkStrokes = JSON.parse(JSON.stringify(_inkStrokes));
+      lsSaveNote(_inkKey, noteData[_inkKey]);
+      alert("✅ Trazo guardado. La próxima vez que abras ✍️ aparecerá tal cual.");
+    }
+
+    async function inkTranscribe() {
+      if (!_inkStrokes.length) { alert("Dibuja algo primero."); return; }
+      const proxyUrl = getProxyUrl();
+      if (!proxyUrl) { alert("⚙️ Configura la URL del Worker primero en «Config API»."); return; }
+
+      document.getElementById("inkpad-busy").style.display = "flex";
+      try {
+        // Export canvas to PNG base64
+        const cv = document.getElementById("inkpad-canvas");
+        const dataUrl = cv.toDataURL("image/png");
+        const base64 = dataUrl.split(",")[1];
+
+        const prompt = `Eres un asistente médico quirúrgico. Esta es una foto del lienzo donde un residente de cirugía general escribió a mano notas sobre un paciente durante el pase de visita. Transcribe TODO el texto manuscrito que veas, interpretando con sentido clínico las abreviaturas (DM2=Diabetes tipo 2, HAS=Hipertensión, POP=postoperatorio, LAPE=laparotomía exploradora, ATB=antibiótico, TVP=trombosis venosa profunda, NPT=nutrición parenteral, etc.).
+
+Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
+{
+  "transcripcion_completa": "texto manuscrito completo transcrito",
+  "dx": "diagnóstico principal si aparece",
+  "pa": "padecimiento actual si aparece",
+  "app": "antecedentes personales patológicos si aparecen",
+  "qx": "cirugía realizada y hallazgos si aparecen",
+  "sangrado": "volumen de sangrado si aparece",
+  "drenajes": "drenajes si se mencionan",
+  "manejo": "indicaciones médicas, tratamiento, plan",
+  "sv": "signos vitales si aparecen",
+  "balance": "balance hídrico si aparece",
+  "pendientes": "pendientes, estudios por hacer, interconsultas"
+}`;
+
+        const resp = await fetch(proxyUrl + "/api/ai", {
+          method: "POST",
+          headers: { ...apiHeaders() },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 3000,
+            messages: [{ role: "user", content: [
+              { type: "image", source: { type: "base64", media_type: "image/png", data: base64 } },
+              { type: "text", text: prompt }
+            ]}]
+          })
+        });
+        if (!resp.ok) {
+          const t = await resp.text().catch(() => "");
+          throw new Error("HTTP " + resp.status + (t ? ": " + t.slice(0, 200) : ""));
+        }
+        const data = await resp.json();
+        const raw = (data.content?.[0]?.text || "").replace(/```json/g, "").replace(/```/g, "").trim();
+        const js = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
+        const result = JSON.parse(js);
+        _inkTranscription = result;
+        _renderInkpadFields(result);
+        document.getElementById("inkpad-preview").style.display = "block";
+      } catch (err) {
+        alert("❌ Error transcribiendo: " + (err.message || err));
+      } finally {
+        document.getElementById("inkpad-busy").style.display = "none";
+      }
+    }
+
+    function _renderInkpadFields(result) {
+      const fields = [
+        { key: "dx",          label: "🔴 DX" },
+        { key: "pa",          label: "🩺 Padecimiento actual" },
+        { key: "app",         label: "📋 APP" },
+        { key: "qx",          label: "🔧 Qx / Procedimiento" },
+        { key: "sangrado",    label: "🩸 Sangrado" },
+        { key: "drenajes",    label: "💧 Drenajes" },
+        { key: "manejo",      label: "💉 Manejo" },
+        { key: "sv",          label: "📊 SV" },
+        { key: "balance",     label: "⚖️ Balance" },
+        { key: "pendientes",  label: "⚠️ Pendientes" },
+      ];
+      let html = "";
+      // Show full transcription at top (read-only)
+      if (result.transcripcion_completa) {
+        html += `<div style="background:#f1f5f9;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#334155">
+          <div style="font-weight:700;margin-bottom:4px;color:#0f172a">📄 Transcripción completa</div>
+          <div style="white-space:pre-wrap">${esc(result.transcripcion_completa)}</div>
+        </div>`;
+      }
+      fields.forEach((f, i) => {
+        const v = result[f.key] || "";
+        if (!v.trim()) return;
+        html += `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;padding:6px 8px;background:#f8fafc;border-radius:6px">
+          <input type="checkbox" id="ink-chk-${i}" checked style="margin-top:4px;width:16px;height:16px" data-testid="ink-field-check-${f.key}">
+          <label for="ink-chk-${i}" style="font-weight:700;font-size:11px;color:#334155;min-width:90px;cursor:pointer">${f.label}</label>
+          <textarea id="ink-val-${f.key}" rows="${v.length > 80 ? 3 : 1}" style="flex:1;padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px;font-family:var(--font,inherit)" data-testid="ink-field-val-${f.key}">${esc(v)}</textarea>
+        </div>`;
+      });
+      if (!html) html = `<div style="color:#dc2626;font-size:13px;padding:10px">La IA no detectó texto clínico estructurado. Puedes guardar como imagen con "💾 Guardar".</div>`;
+      document.getElementById("inkpad-fields-list").innerHTML = html;
+    }
+
+    function inkApplyTranscription() {
+      if (!_inkTranscription || !_inkKey) return;
+      if (!noteData[_inkKey]) noteData[_inkKey] = defaultData();
+      const nd = noteData[_inkKey];
+      const fields = ["dx","pa","app","qx","sangrado","drenajes","manejo","sv","balance","pendientes"];
+      let applied = 0;
+      fields.forEach((f, i) => {
+        const chk = document.getElementById("ink-chk-" + i);
+        const val = document.getElementById("ink-val-" + f);
+        if (!chk || !val || !chk.checked) return;
+        const v = val.value.trim();
+        if (!v) return;
+        if (f === "dx") {
+          // dx lives on patient, not noteData
+          const pt = patients.find(pp => pid(pp) === _inkKey);
+          if (pt) pt.dx = v.toUpperCase();
+        } else {
+          // Append instead of overwrite so we don't lose prior manual text
+          nd[f] = (nd[f] ? nd[f].trim() + "\n" : "") + v;
+        }
+        applied++;
+      });
+      // Also save the strokes as-is
+      nd._inkStrokes = JSON.parse(JSON.stringify(_inkStrokes));
+      lsSaveNote(_inkKey, nd);
+      // Re-render patient card to show new data
+      try { renderView(); } catch (_) {}
+      try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) {}
+      alert(`✅ ${applied} campo${applied !== 1 ? "s" : ""} aplicado${applied !== 1 ? "s" : ""} a la ficha.`);
+      closeInkpad();
+    }
+
+    // Expose for debugging
+    window.__inkpad = { get strokes() { return _inkStrokes; } };
 
     function openDocIntake(k) {
       const proxyUrl = getProxyUrl();
@@ -14533,6 +14840,78 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     </div>
     <div id="proj-card-area" style="flex:1;overflow-y:auto;display:flex;align-items:center;justify-content:center;padding:20px"></div>
   </div>
+
+  <!-- ═══ INKPAD MODAL (stylus handwriting + AI OCR) ═════════════════════════ -->
+  <div id="inkpad-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:#0f172a;flex-direction:column">
+    <div style="flex-shrink:0;background:#1e293b;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">
+        <span style="font-size:18px">✍️</span>
+        <div style="min-width:0">
+          <div id="inkpad-patient-name" style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px" data-testid="inkpad-patient-name"></div>
+          <div id="inkpad-patient-bed" style="font-size:11px;color:#94a3b8"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <!-- Pen / Marker / Eraser -->
+        <button id="ink-tool-pen" onclick="inkSetTool('pen')" class="ink-tool-btn ink-tool-active" data-testid="ink-tool-pen" title="Pluma">🖊</button>
+        <button id="ink-tool-marker" onclick="inkSetTool('marker')" class="ink-tool-btn" data-testid="ink-tool-marker" title="Marcador resaltador">🖍</button>
+        <button id="ink-tool-eraser" onclick="inkSetTool('eraser')" class="ink-tool-btn" data-testid="ink-tool-eraser" title="Borrador">🧽</button>
+        <!-- Colors -->
+        <span style="width:1px;background:#475569;height:28px;margin:0 4px"></span>
+        <button onclick="inkSetColor('#0f172a')" class="ink-color-btn" style="background:#0f172a;border-color:#64748b" data-testid="ink-color-black"></button>
+        <button onclick="inkSetColor('#1d4ed8')" class="ink-color-btn" style="background:#1d4ed8" data-testid="ink-color-blue"></button>
+        <button onclick="inkSetColor('#dc2626')" class="ink-color-btn" style="background:#dc2626" data-testid="ink-color-red"></button>
+        <button onclick="inkSetColor('#059669')" class="ink-color-btn" style="background:#059669" data-testid="ink-color-green"></button>
+        <!-- Undo / Clear -->
+        <span style="width:1px;background:#475569;height:28px;margin:0 4px"></span>
+        <button onclick="inkUndo()" class="ink-tool-btn" data-testid="ink-undo-btn" title="Deshacer último trazo">↶</button>
+        <button onclick="inkClear()" class="ink-tool-btn" data-testid="ink-clear-btn" title="Borrar todo">🗑</button>
+        <!-- Actions -->
+        <span style="width:1px;background:#475569;height:28px;margin:0 4px"></span>
+        <button onclick="inkTranscribe()" class="ink-primary-btn" data-testid="ink-transcribe-btn" title="Transcribir con IA y llenar campos del paciente">🤖 Transcribir</button>
+        <button onclick="inkSaveImage()" class="ink-secondary-btn" data-testid="ink-save-img-btn" title="Guardar solo como imagen sin transcribir">💾 Guardar</button>
+        <button onclick="closeInkpad()" class="ink-close-btn" data-testid="ink-close-btn">✕</button>
+      </div>
+    </div>
+    <div style="flex:1;position:relative;overflow:auto;background:#f8fafc">
+      <!-- The canvas itself; width/height set dynamically -->
+      <canvas id="inkpad-canvas" style="background:#fff;display:block;touch-action:none;cursor:crosshair"></canvas>
+      <!-- Overlay for processing/status -->
+      <div id="inkpad-busy" style="display:none;position:absolute;inset:0;background:rgba(15,23,42,.6);align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#fff;z-index:2">
+        <div style="width:50px;height:50px;border:4px solid #6366f1;border-top-color:transparent;border-radius:50%;animation:inkspin 1s linear infinite"></div>
+        <div id="inkpad-busy-msg" style="font-size:14px;font-weight:600">Transcribiendo con IA…</div>
+      </div>
+    </div>
+    <div id="inkpad-preview" style="display:none;flex-shrink:0;background:#fff;border-top:2px solid #e2e8f0;padding:14px 18px;max-height:42vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-weight:700;color:#0f172a">📝 Texto detectado — revisa y aplica</div>
+        <button onclick="document.getElementById('inkpad-preview').style.display='none'" style="background:none;border:none;cursor:pointer;font-size:18px;color:#64748b">✕</button>
+      </div>
+      <div id="inkpad-fields-list"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button onclick="document.getElementById('inkpad-preview').style.display='none'" style="background:#e2e8f0;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px">Cancelar</button>
+        <button onclick="inkApplyTranscription()" class="ink-primary-btn" data-testid="ink-apply-transcription-btn">✓ Aplicar a ficha</button>
+      </div>
+    </div>
+  </div>
+  <style>
+    @keyframes inkspin{to{transform:rotate(360deg)}}
+    .ink-tool-btn{background:#334155;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:16px;min-width:36px;transition:all .15s}
+    .ink-tool-btn:hover{background:#475569}
+    .ink-tool-btn.ink-tool-active{background:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.4)}
+    .ink-color-btn{width:28px;height:28px;border:2px solid #fff;border-radius:50%;cursor:pointer;padding:0;transition:transform .15s}
+    .ink-color-btn:hover{transform:scale(1.15)}
+    .ink-primary-btn{background:#6366f1;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;transition:background .15s}
+    .ink-primary-btn:hover{background:#4f46e5}
+    .ink-secondary-btn{background:#475569;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
+    .ink-close-btn{background:#dc2626;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700}
+    .ink-close-btn:hover{background:#b91c1c}
+    @media(max-width:680px){
+      .ink-tool-btn{min-width:32px;padding:5px 8px;font-size:14px}
+      .ink-color-btn{width:24px;height:24px}
+      .ink-primary-btn,.ink-secondary-btn{padding:6px 10px;font-size:12px}
+    }
+  </style>
 
   <!-- ═══ DOCUMENT INTAKE MODAL ══════════════════════════════════════════════ -->
   <div id="doc-intake-modal" class="modal-bg" style="display:none">
