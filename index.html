@@ -4029,7 +4029,7 @@
       if (url && !url.startsWith("http")) { alert("La URL debe empezar con https://"); return; }
       localStorage.setItem(CONFIG_KEY, JSON.stringify({ url, token }));
       // Sync to Supabase so ALL users on any device get the proxy URL automatically
-      _sUpsert("pl_config", { key: "worker_config", value: { url, token } }, "key").catch(e => safeLog("saveConfig sync:", e));
+      _sUpsert("config", { key: "worker_config", value: { url, token } }, "key").catch(e => safeLog("saveConfig sync:", e));
       updateProxyPill();
       updateProxyStatusBox(url ? "saved" : "empty");
       if (url) { startSyncPolling(); }
@@ -4037,7 +4037,7 @@
 
     async function loadSharedConfig() {
       try {
-        const rows = await _sGet("pl_config", "key=eq.worker_config&select=value");
+        const rows = await _sGet("config", "key=eq.worker_config&select=value");
         if (rows && rows.length && rows[0].value) {
           const remote = rows[0].value;
           const local = getConfig();
@@ -8922,6 +8922,15 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("reminder-time").value =
         String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0");
       addReminder();
+    }
+
+    function addCustomMinutesReminder() {
+      const label = document.getElementById("reminder-label").value.trim();
+      if (!label) { alert("Primero escribe qué recordar."); return; }
+      const min = parseInt(document.getElementById("reminder-custom-min").value, 10);
+      if (!min || min < 1 || min > 1440) { alert("Pon un número entre 1 y 1440 minutos."); return; }
+      addQuickReminder(min);
+      document.getElementById("reminder-custom-min").value = "";
     }
 
     function deleteReminder(id) {
@@ -15278,12 +15287,20 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
           <input id="reminder-time" type="time" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px" data-testid="reminder-time-input" />
           <button onclick="addReminder()" style="background:#f59e0b;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:700" data-testid="reminder-add-btn">+ Agregar</button>
         </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px dashed #cbd5e1">
+          <span style="font-size:11px;color:#64748b;font-weight:600">⏱️ En</span>
+          <input id="reminder-custom-min" type="number" min="1" max="1440" placeholder="ej. 17" style="width:70px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px;text-align:center" data-testid="reminder-custom-min" />
+          <span style="font-size:11px;color:#64748b">minutos desde ahora</span>
+          <button onclick="addCustomMinutesReminder()" style="background:#6366f1;color:#fff;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;margin-left:auto" data-testid="reminder-custom-add-btn">+ Usar</button>
+        </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px">
-          <button onclick="addQuickReminder(30)" class="qrem-btn">en 30 min</button>
-          <button onclick="addQuickReminder(60)" class="qrem-btn">en 1 h</button>
-          <button onclick="addQuickReminder(120)" class="qrem-btn">en 2 h</button>
-          <button onclick="addQuickReminder(240)" class="qrem-btn">en 4 h</button>
-          <button onclick="addQuickReminder(480)" class="qrem-btn">en 8 h</button>
+          <span style="font-size:11px;color:#64748b;align-self:center;margin-right:4px">Rápidos:</span>
+          <button onclick="addQuickReminder(15)" class="qrem-btn">15 min</button>
+          <button onclick="addQuickReminder(30)" class="qrem-btn">30 min</button>
+          <button onclick="addQuickReminder(60)" class="qrem-btn">1 h</button>
+          <button onclick="addQuickReminder(120)" class="qrem-btn">2 h</button>
+          <button onclick="addQuickReminder(240)" class="qrem-btn">4 h</button>
+          <button onclick="addQuickReminder(480)" class="qrem-btn">8 h</button>
         </div>
         <div id="reminder-list" data-testid="reminder-list"></div>
       </div>
