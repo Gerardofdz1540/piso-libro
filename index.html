@@ -3377,6 +3377,11 @@
       <div class="modal-footer" style="gap:8px;flex-wrap:wrap">
         <button class="btn-cancel"
           onclick="document.getElementById('config-modal').style.display='none'">Cerrar</button>
+        <button onclick="openWinLabTool()"
+          style="background:#0891b2;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)"
+          data-testid="winlab-tool-btn">
+          🧪 Bookmarklet WinLab
+        </button>
         <button onclick="authChangePassword()"
           style="background:#6366f1;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)">
           🔑 Mi contraseña
@@ -3385,6 +3390,60 @@
           style="background:#0a1628;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)">
           👥 Usuarios
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ WINLAB BOOKMARKLET INSTALL MODAL ═════════════════════════════════ -->
+  <div class="modal-bg" id="winlab-tool-modal" style="display:none">
+    <div class="modal" style="max-width:640px;width:96%">
+      <div class="modal-header">
+        <div class="modal-title">🧪 Sync rápido con WinLab</div>
+        <button class="modal-close" onclick="document.getElementById('winlab-tool-modal').style.display='none'" data-testid="winlab-tool-close">✕</button>
+      </div>
+      <div style="padding:14px 18px;font-size:13px;color:#334155;line-height:1.55">
+        <p style="margin:0 0 12px"><b>¿Qué hace?</b> Te ahorra palomear paciente por paciente en WinLab. Al picarlo estando en la lista de reportes, selecciona automáticamente los pacientes de tu censo.</p>
+
+        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px;color:#78350f">
+          <b>⚠️ Importante:</b> NO copies ni pegues el código manualmente — Firefox escapa las comillas y rompe el bookmark.
+          En lugar de eso, <b>arrastra el botón de abajo directo a tu barra de marcadores</b> (la franja con los favoritos arriba).
+        </div>
+
+        <div style="text-align:center;padding:20px;background:#f8fafc;border-radius:10px;border:2px dashed #94a3b8;margin-bottom:14px">
+          <div style="font-size:11px;color:#64748b;margin-bottom:10px">⬇️ Arrastra este botón a tu barra de marcadores ⬇️</div>
+          <a id="winlab-draggable-bookmark"
+             href="#"
+             draggable="true"
+             style="display:inline-block;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;cursor:grab;box-shadow:0 4px 12px rgba(8,145,178,.3);user-select:none"
+             data-testid="winlab-draggable-bookmark">
+            📋 Sync censo WinLab
+          </a>
+          <div style="font-size:10px;color:#94a3b8;margin-top:10px">Si no ves la barra de marcadores: Firefox → Menú → Ver → Barras de herramientas → Barra de marcadores</div>
+        </div>
+
+        <div style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:8px;padding:10px 14px;font-size:12px;color:#075985">
+          <b style="font-size:13px">Cómo usarlo:</b>
+          <ol style="margin:6px 0 0 18px;padding:0">
+            <li>Abre WinLab en otra pestaña y loguéate.</li>
+            <li>Ve a <b>Reportes</b> y dale "Ir" para ver los reportes de HOY.</li>
+            <li>Clic en tu nuevo favorito <b>"📋 Sync censo WinLab"</b> (arriba).</li>
+            <li>Aparece un toast verde arriba a la derecha con los pacientes encontrados.</li>
+            <li>Clic en <b>"Imprime Reportes"</b> → descargas el PDF combinado.</li>
+            <li>Regresa a piso-libro → <b>📦 Carga Masiva de Labs</b> → suelta el PDF.</li>
+          </ol>
+        </div>
+
+        <details style="margin-top:14px">
+          <summary style="cursor:pointer;font-size:12px;color:#64748b">¿No puedes arrastrar? (móvil/tablet, instalación manual)</summary>
+          <div style="margin-top:8px;padding:10px;background:#f1f5f9;border-radius:6px;font-size:11px;color:#475569">
+            <p>1. Copia todo el código de abajo (clic en el cuadro → Cmd+A → Cmd+C):</p>
+            <textarea id="winlab-code-raw" readonly rows="4" style="width:100%;font-family:monospace;font-size:9px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;margin-top:6px" data-testid="winlab-code-raw"></textarea>
+            <p style="margin-top:8px">2. Crea un nuevo marcador manualmente y pega el código en el campo URL. Si Firefox te quita la parte <code>javascript:</code>, ponla de vuelta al inicio a mano.</p>
+          </div>
+        </details>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="document.getElementById('winlab-tool-modal').style.display='none'">Entendido</button>
       </div>
     </div>
   </div>
@@ -3973,6 +4032,27 @@
           }
         }
       } catch (e) { safeLog("loadSharedConfig:", e); }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // WinLab Bookmarklet installer — provides draggable link so users don't
+    // have to copy-paste the javascript: URI (Firefox strips/escapes it).
+    // ═══════════════════════════════════════════════════════════════════════
+    const WINLAB_BOOKMARKLET = `javascript:(async()=>{const S="${SUPA_URL}",K="${SUPA_KEY}";const toast=(m,c)=>{let t=document.getElementById("__plt");if(!t){t=document.createElement("div");t.id="__plt";t.style.cssText="position:fixed;top:20px;right:20px;z-index:99999;padding:14px 20px;border-radius:10px;font:600 14px -apple-system,sans-serif;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,.25);max-width:420px;line-height:1.4;white-space:pre-line";document.body.appendChild(t)}t.style.background=c||"#0369a1";t.textContent=m;t.style.display="block";clearTimeout(t._to);t._to=setTimeout(()=>t.style.display="none",10000)};toast("Leyendo censo...","#0369a1");let pts;try{const r=await fetch(S+"/rest/v1/patients?select=cama,exp,nombre,esp",{headers:{apikey:K,Authorization:"Bearer "+K}});if(!r.ok)throw new Error("HTTP "+r.status);pts=await r.json()}catch(e){toast("Error leyendo censo: "+e.message,"#dc2626");return}if(!pts||!pts.length){toast("Censo vacio. Importa primero el Excel.","#d97706");return}const N=s=>String(s||"").toUpperCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/\\s+/g," ").trim();const M=new Map;pts.forEach(p=>{const pa=N(p.nombre).split(" ").filter(Boolean);if(pa.length<2)return;M.set(pa[0]+" "+pa[1],p);if(!M.has(pa[0]))M.set(pa[0],p)});const rows=Array.from(document.querySelectorAll("table tr"));let matched=0,missed=[],boxes=0;const seen=new Set;for(let i=0;i<rows.length;i++){const c=Array.from(rows[i].cells||[]).map(x=>N(x.innerText));if(c.length<2)continue;if(!c.some(x=>x==="FEMENINO"||x==="MASCULINO"))continue;let ap="",no="";for(let j=0;j<c.length;j++){if(c[j]==="FEMENINO"||c[j]==="MASCULINO"){ap=c[j-2]||"";no=c[j-1]||"";break}}if(!ap)continue;const aP=ap.split(" ").filter(Boolean);let mp=null;if(aP.length>=2)mp=M.get(aP[0]+" "+aP[1]);if(!mp&&aP.length>=1){const nP=no.split(" ").filter(Boolean);mp=M.get(aP[0]+" "+(nP[0]||""))||M.get(aP[0])}if(!mp){missed.push(ap+" "+no);continue}matched++;seen.add(mp.exp||mp.nombre);for(let j=i+1;j<rows.length;j++){const nc=Array.from(rows[j].cells||[]).map(x=>N(x.innerText));if(nc.some(x=>x==="FEMENINO"||x==="MASCULINO"))break;const cb=rows[j].querySelector('input[type="checkbox"]');if(cb&&!cb.checked){cb.click();boxes++}}}const miss=pts.filter(p=>!seen.has(p.exp||p.nombre)).map(p=>p.nombre).slice(0,6);let msg="OK "+matched+" pacientes del censo encontrados\\n"+boxes+" reportes palomeados\\n";if(miss.length){msg+="\\nSin labs hoy: "+(pts.length-matched)+" pac.\\n"+miss.map(n=>"  - "+n.split(" ").slice(0,3).join(" ")).join("\\n")}msg+="\\n\\nAhora clic en Imprime Reportes";toast(msg,matched?"#15803d":"#d97706")})();`;
+
+    function openWinLabTool() {
+      const a = document.getElementById("winlab-draggable-bookmark");
+      if (a) {
+        a.href = WINLAB_BOOKMARKLET;
+        // Prevent accidental navigation when user just clicks instead of drags
+        a.onclick = (e) => {
+          e.preventDefault();
+          alert("👉 No le des clic, arrástralo a la barra de marcadores de Firefox (arriba).");
+        };
+      }
+      const ta = document.getElementById("winlab-code-raw");
+      if (ta) ta.value = WINLAB_BOOKMARKLET;
+      document.getElementById("winlab-tool-modal").style.display = "flex";
     }
 
     function openConfigModal() {
