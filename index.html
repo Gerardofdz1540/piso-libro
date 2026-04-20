@@ -11691,12 +11691,25 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           // Hospital specialties that are explicitly NOT surgical — only these go to "ask" section
           const DEFINITELY_NON_SURGICAL = new Set(["MEDICINA INTERNA","PEDIATRIA","OBSTETRICIA","CARDIOLOGIA","URGENCIAS","TRAUMA","PSIQUIATRIA","DERMATOLOGIA","OFTALMOLOGIA","OTORRINO","NEUMOLOGIA","GASTRO","REUMATOLOGIA","ENDOCRINOLOGIA","INFECTOLOGIA","ONCOLOGIA","HEMATOLOGIA","NEFROLOGIA","GERIATRIA"]);
 
-          // Expedientes ya archivados/egresados → no se re-añaden al censo
-          const archivedExpSet = new Set(archivados.map(a => a.exp).filter(Boolean));
+          // Expedientes ya archivados/egresados → se detectan como posibles reingresos
+          // y se le pregunta al usuario si quiere reactivarlos, en lugar de ignorarlos silenciosamente.
+          const archivedByExp = new Map(archivados.filter(a => a.exp).map(a => [a.exp, a]));
+          const reingresoPts = [];  // {newPt, archived} — expedientes que reaparecen
+          const skippedArchivedSilent = []; // (no se usan; se mantiene por compat.)
           let skippedArchived = 0;
 
           imported.forEach(p => {
-            if (archivedExpSet.has(p.exp)) { skippedArchived++; return; }
+            // Si el expediente fue archivado antes, no lo ignoramos: lo mostramos como posible reingreso
+            if (p.exp && archivedByExp.has(p.exp)) {
+              const arch = archivedByExp.get(p.exp);
+              reingresoPts.push({ newPt: p, archived: arch });
+              importLog.push({
+                row: "-", action: "reingreso-detectado",
+                reason: "Exp " + p.exp + " ya estaba archivado (antes: " + (arch.nombre || "?") + ")",
+                data: p.cama + " · " + p.nombre
+              });
+              return;
+            }
 
             if (oldByPid.has(pid(p))) {
               // Exact match: same exp + same cama
@@ -11765,8 +11778,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             return dxMatch || adsMatch;
           });
           const candidatesCgChecked = candidatesCG.map(() => true); // default: all checked
+          const reingresoPtsChecked = reingresoPts.map(() => true); // default: activate reingresos
 
-          pendingImport = { samePts, movedPts, changedPts, newPts, otherPts, otherPtsChecked, missingPts, dispositions, autoDetected, altasFromExcel, defuncionesFromExcel, procedimientosFromExcel, candidatesCG, candidatesCgChecked, importLog };
+          pendingImport = { samePts, movedPts, changedPts, newPts, otherPts, otherPtsChecked, missingPts, dispositions, autoDetected, altasFromExcel, defuncionesFromExcel, procedimientosFromExcel, candidatesCG, candidatesCgChecked, reingresoPts, reingresoPtsChecked, importLog };
           window.__lastImportLog = importLog;
           console.log("[piso-libro] Import log:", importLog);
 
@@ -11791,10 +11805,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             `<span style="color:#854d0e;font-weight:600">🔁 ${samePts.length} actualizados</span> &nbsp;·&nbsp; ` +
             `<span style="color:#991b1b;font-weight:600">🔄 ${changedPts.length} camas con cambio</span>` +
             (movedPts.length > 0 ? ` &nbsp;·&nbsp; <span style="color:#5b21b6;font-weight:600">🛏 ${movedPts.length} cambio${movedPts.length>1?"s":""} de cama</span>` : "") +
+            (reingresoPts.length > 0 ? ` &nbsp;·&nbsp; <span style="color:#0369a1;font-weight:600">↩️ ${reingresoPts.length} reingreso${reingresoPts.length>1?"s":""}</span>` : "") +
             (otherPts.length > 0 ? ` &nbsp;·&nbsp; <span style="color:#475569;font-weight:600">👥 ${otherPts.length} otras esp.</span>` : "") +
             summaryExtra + procInfo +
             (manualMissing > 0 ? ` &nbsp;·&nbsp; <span style="color:#78350f;font-weight:600">⚠️ ${manualMissing} sin clasificar</span>` : "") +
-            (skippedArchived > 0 ? ` &nbsp;·&nbsp; <span style="color:#64748b;font-weight:600">📦 ${skippedArchived} ya egresado${skippedArchived !== 1 ? "s" : ""} (omitidos)</span>` : "") +
             skippedInfo;
 
           // ─── SECCIÓN: CAMAS CON CAMBIO ────────────────────────────────────
@@ -11943,6 +11957,51 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             document.getElementById("import-others-list").innerHTML = h;
           } else { secOthers.style.display = "none"; }
 
+          // ─── SECCIÓN: REINGRESOS (expedientes previamente archivados) ──────────────
+          const reingresoContainerId = "import-sec-reingreso";
+          let secRein = document.getElementById(reingresoContainerId);
+          if (!secRein) {
+            // Dynamically inject the section above the candidates-CG section so it's always present
+            const parent = document.getElementById("import-sec-candidates-cg").parentElement;
+            secRein = document.createElement("div");
+            secRein.id = reingresoContainerId;
+            secRein.style.display = "none";
+            secRein.innerHTML = `
+              <div class="import-section-wrap">
+                <div class="import-section-hdr" style="background:#e0f2fe;color:#075985;border-color:#7dd3fc">
+                  ↩️ <span id="import-reingreso-lbl"></span> — Expediente previamente archivado · ¿reactivar paciente?
+                </div>
+                <div class="import-results" id="import-reingreso-list"></div>
+              </div>`;
+            parent.insertBefore(secRein, document.getElementById("import-sec-candidates-cg"));
+          }
+          if (reingresoPts.length > 0) {
+            secRein.style.display = "";
+            document.getElementById("import-reingreso-lbl").textContent =
+              reingresoPts.length + " reingreso" + (reingresoPts.length > 1 ? "s" : "") + " detectado" + (reingresoPts.length > 1 ? "s" : "");
+            let h = `<div style="font-size:11px;color:#075985;margin-bottom:6px;padding:0 4px">El expediente del Excel ya había sido dado de alta/archivado antes. Marca para reactivar al paciente en el censo activo.</div>`;
+            reingresoPts.forEach(({ newPt, archived }, idx) => {
+              const col = ESP_COLORS[newPt.esp] || "#0369a1";
+              const differentName = (archived.nombre || "").trim().toUpperCase() !== (newPt.nombre || "").trim().toUpperCase();
+              h += `<div class="import-row" style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:8px;padding:8px 12px;margin-bottom:5px;gap:8px;display:flex;align-items:flex-start" data-testid="reingreso-row-${idx}">` +
+                `<input type="checkbox" id="rein-${idx}" onchange="pendingImport.reingresoPtsChecked[${idx}]=this.checked" checked style="width:16px;height:16px;cursor:pointer;flex-shrink:0;margin-top:4px" data-testid="reingreso-check-${idx}">` +
+                `<label for="rein-${idx}" style="cursor:pointer;flex:1">` +
+                `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">` +
+                `<span style="font-weight:700;color:${col};min-width:60px">${esc(newPt.cama)}</span>` +
+                `<span style="font-weight:600">${esc(newPt.nombre)}</span>` +
+                `<span style="font-size:10px;color:#0369a1;background:#e0f2fe;padding:2px 6px;border-radius:4px">${esc(newPt.esp || "Sin esp.")}</span>` +
+                `<span style="font-size:10px;color:#075985;background:#dbeafe;padding:2px 6px;border-radius:4px">Exp: ${esc(newPt.exp)}</span>` +
+                `</div>` +
+                `<div style="font-size:10px;color:#475569;margin-top:4px">Antes archivado como: <b>${esc(archived.nombre || "?")}</b> (cama ${esc(archived.cama || "?")})` +
+                (differentName ? ` · <span style="color:#b91c1c;font-weight:600">⚠️ nombre distinto — revisa si el expediente está bien capturado</span>` : "") +
+                `</div>` +
+                (newPt.dx ? `<div style="font-size:10px;color:#075985;margin-top:2px">DX: ${esc(newPt.dx)}</div>` : "") +
+                `</label>` +
+                `</div>`;
+            });
+            document.getElementById("import-reingreso-list").innerHTML = h;
+          } else { secRein.style.display = "none"; }
+
           // ─── SECCIÓN: CANDIDATOS CG ──────────────────────────────────────────
           const secCandCG = document.getElementById("import-sec-candidates-cg");
           if (candidatesCG.length > 0) {
@@ -11993,7 +12052,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         "censo": "#15803d", "alta": "#0ea5e9", "defunción": "#7f1d1d",
         "procedimiento": "#6d28d9", "sección": "#1e40af",
         "etiqueta-ubicación": "#64748b", "etiqueta-especialidad": "#92400e",
-        "omitida": "#b45309"
+        "omitida": "#b45309", "reingreso-detectado": "#0369a1"
       };
       let html = '<div style="max-height:70vh;overflow:auto;font-family:var(--font)">';
       html += '<div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:2">';
@@ -12032,7 +12091,30 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
     function confirmImport() {
       if (!pendingImport) return;
-      const { samePts, movedPts, changedPts, newPts, otherPts, otherPtsChecked, missingPts, dispositions, procedimientosFromExcel, candidatesCG, candidatesCgChecked } = pendingImport;
+      const { samePts, movedPts, changedPts, newPts, otherPts, otherPtsChecked, missingPts, dispositions, procedimientosFromExcel, candidatesCG, candidatesCgChecked, reingresoPts, reingresoPtsChecked } = pendingImport;
+
+      // ─── REINGRESOS ─────────────────────────────────────────────────────
+      // Procesar reingresos marcados: promoverlos como newPts y removerlos de archivados
+      if (reingresoPts && reingresoPts.length) {
+        const toRemoveFromArchive = [];
+        reingresoPts.forEach(({ newPt, archived }, idx) => {
+          if (!reingresoPtsChecked[idx]) return; // usuario decidió no reactivar
+          newPts.push(newPt);
+          toRemoveFromArchive.push(archived);
+        });
+        if (toRemoveFromArchive.length) {
+          const removeKeys = new Set(toRemoveFromArchive.map(a => a._archiveKey || (a.exp + "|" + a.cama)));
+          archivados = archivados.filter(a => !removeKeys.has(a._archiveKey || (a.exp + "|" + a.cama)));
+          try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+          // Borrar del archive en Supabase también
+          toRemoveFromArchive.forEach(a => {
+            if (a._supaArchiveId) {
+              _sDelete("archive", "id=eq." + encodeURIComponent(a._supaArchiveId))
+                .catch(e => safeLog("reingreso: archive delete error:", e));
+            }
+          });
+        }
+      }
 
       // Apply CG specialty to checked candidates before processing lists
       if (candidatesCG && candidatesCG.length) {
