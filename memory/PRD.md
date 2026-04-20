@@ -35,6 +35,37 @@ Validated with user's real `CENSO 20_04_2026 VAZQUEZ.xlsx`: 46 active patients c
 
 Commit: `c8a96ef` — pushed to `main`.
 
+## Session 2026-02 — Bulk Lab PDF Fix + Dark Mode (COMPLETED)
+
+### 🔴 P0 Fix: Carga Masiva de Labs (PDF multi-paciente)
+**Root cause**: el PDF se enviaba completo como binario (`type: "document"`) a Claude Sonnet. Con 71 páginas y ~28 pacientes, Claude se saturaba y solo devolvía el primer paciente (confirmado por usuario: `✅ 1 asignados · 📄 1 pacientes extraídos en total`).
+
+**Solución implementada** (`index.html`, `processFile` + `buildBulkLabExtractionPrompt`):
+1. Agregado `pdf.js@3.11.174` al `<head>` vía CDN
+2. Extracción de texto **local** página por página con `pdfjsLib.getDocument().getPage().getTextContent()`
+3. Split por marker `HOJA DE RESULTADOS` + regex `/PACIENTE\s*:\s*NOMBRE/`
+4. Consolidación por nombre (multi-reportes del mismo paciente se fusionan)
+5. Batches de **3 pacientes/lote** enviados a Claude con **concurrencia 3**
+6. `max_tokens=8000` por lote, `content = text` (no documento binario)
+7. Prompt refactorizado: deja claro "PROCESA TODOS LOS PACIENTES DEL LOTE"
+
+**Validación** con PDF real del usuario (`prueba.pdf`, 71 páginas):
+- Páginas totales: **71**
+- Splits detectados: **71** (cada HOJA DE RESULTADOS)
+- Nombres detectados: **67 / 71**
+- **Pacientes únicos detectados: 28** (vs 1 antes)
+- Primeros ejemplos OK: ROMERO JUAREZ PEDRO, PIÑON SERVIN OFELIA, RODRIGUEZ RUIZ, SALAS MARTINEZ, MENDOZA GONZALEZ, GARCIA GONZALEZ, etc.
+
+### 🟡 P1: Dark Mode Toggle (Notion-style)
+**Implementado** según `/app/design_guidelines.json`:
+- Tokens semánticos (`--text`, `--surface`, `--border-soft`, etc.) definidos en `:root`
+- Tema oscuro override vía `body.dark { ... }` con paleta `#0A0A0B / #121214 / #D4A373`
+- Botón toggle `data-testid="theme-toggle-btn"` en header (🌙/☀️)
+- `localStorage.pl_theme` para persistir preferencia
+- `applyTheme()` + `toggleTheme()` + `initTheme()` llamado en arranque
+- Overrides para: header, inputs, cards, modales, tablas, tabs, scrollbar, selection, code blocks
+- Validado: `body bg = rgb(10,10,11)` exacto = #0A0A0B
+
 ## Prioritized backlog (not yet done)
 
 ### P0 — Security

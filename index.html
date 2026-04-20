@@ -30,7 +30,113 @@
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --mono: "Courier New", Courier, monospace;
       --ta-fs: 13px;
+
+      /* Semantic tokens (default = light) */
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --surface: #fff;
+      --surface-2: #f8fafc;
+      --surface-3: #f1f5f9;
+      --border-soft: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --input-bg: #fff;
+      --input-border: #cbd5e1;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
+      --shadow-md: 0 4px 12px rgba(0,0,0,.12);
+      --link: #0e7490;
     }
+
+    /* DARK THEME — Notion-inspired */
+    body.dark {
+      --navy: #0a0a0b;
+      --blue: #1a1a1d;
+      --accent: #d4a373;
+      --green: #32d74b;
+      --orange: #ff9f0a;
+      --red: #ff453a;
+      --gray: #a1a1aa;
+      --bg: #0a0a0b;
+      --card: #121214;
+      --border: #27272a;
+
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --surface: #121214;
+      --surface-2: #171719;
+      --surface-3: #1a1a1d;
+      --border-soft: #1f1f22;
+      --border-strong: #27272a;
+      --input-bg: #171719;
+      --input-border: #27272a;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.4);
+      --shadow-md: 0 4px 14px rgba(0,0,0,.5);
+      --link: #d4a373;
+      color-scheme: dark;
+    }
+
+    body.dark #header {
+      background: linear-gradient(135deg, #0a0a0b 0%, #121214 50%, #1a1a1d 100%) !important;
+      border-bottom: 1px solid #27272a;
+      box-shadow: 0 1px 0 #27272a;
+    }
+    body.dark input,
+    body.dark textarea,
+    body.dark select {
+      background: var(--input-bg) !important;
+      color: var(--text) !important;
+      border-color: var(--input-border) !important;
+      caret-color: var(--accent);
+    }
+    body.dark input::placeholder,
+    body.dark textarea::placeholder { color: #52525b !important; }
+    body.dark .card,
+    body.dark .lap-card,
+    body.dark .simple-card,
+    body.dark .pat-card,
+    body.dark .entrega-card,
+    body.dark .patient-card,
+    body.dark .modal,
+    body.dark .modal-content,
+    body.dark [class*="card"]:not(.qa-card):not(.btn-card),
+    body.dark #main > div,
+    body.dark .panel {
+      background: var(--card) !important;
+      border-color: var(--border-soft) !important;
+      color: var(--text);
+    }
+    body.dark,
+    body.dark .census-view,
+    body.dark #main { background: var(--bg) !important; color: var(--text) !important; }
+    body.dark table { background: transparent; color: var(--text); }
+    body.dark th { background: var(--surface-2) !important; color: var(--text) !important; border-color: var(--border-soft) !important; }
+    body.dark td { border-color: var(--border-soft) !important; color: var(--text); }
+    body.dark tr:nth-child(odd) td { background: transparent; }
+    body.dark tr:hover td { background: var(--surface-3) !important; }
+    body.dark h1, body.dark h2, body.dark h3, body.dark h4, body.dark h5 { color: var(--text); }
+    body.dark label { color: var(--text-muted); }
+    body.dark hr { border-color: var(--border-soft); }
+    body.dark .badge,
+    body.dark .chip,
+    body.dark .tag { background: var(--surface-3) !important; color: var(--text) !important; border-color: var(--border-soft) !important; }
+    body.dark .btn,
+    body.dark button.tab,
+    body.dark .btn-secondary { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+    body.dark button.tab.active { background: rgba(212,163,115,.15) !important; color: #d4a373 !important; border-color: rgba(212,163,115,.5) !important; }
+    body.dark .btn-green { background: #1d7a3f !important; }
+    body.dark .btn-blue { background: #1e5fa8 !important; }
+    body.dark .btn-orange { background: #b05413 !important; }
+    body.dark #import-banner { background: var(--surface-2) !important; color: var(--text) !important; border-color: var(--border-strong) !important; }
+    body.dark .config-pill { background: rgba(212,163,115,.15) !important; color: #d4a373 !important; border-color: rgba(212,163,115,.4) !important; }
+    body.dark .modal-bg { background: rgba(0,0,0,.75) !important; }
+    body.dark .sync-dot { filter: brightness(1.3); }
+    body.dark #sync-status { background: rgba(255,255,255,.05) !important; color: var(--text) !important; }
+    body.dark ::selection { background: rgba(212,163,115,.35); color: #fff; }
+    body.dark ::-webkit-scrollbar { width: 10px; height: 10px; }
+    body.dark ::-webkit-scrollbar-track { background: #0a0a0b; }
+    body.dark ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 6px; }
+    body.dark ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    body.dark a { color: var(--link); }
+    body.dark code, body.dark pre { background: var(--surface-2) !important; color: #d4a373 !important; border-color: var(--border-soft) !important; }
 
     body {
       font-family: var(--font);
@@ -2960,6 +3066,10 @@
           <button onclick="setFontSize('L')" id="fs-btn-L" title="Texto grande"
             style="background:none;border:none;color:#e2e8f0;font-size:11px;cursor:pointer;padding:3px 6px;border-radius:4px;font-family:var(--font)">L</button>
         </div>
+        <button id="theme-toggle-btn" onclick="toggleTheme()" title="Cambiar tema claro/oscuro" data-testid="theme-toggle-btn"
+          style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#e2e8f0;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-family:var(--font);display:flex;align-items:center;gap:4px">
+          <span id="theme-icon">🌙</span>
+        </button>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
@@ -3548,6 +3658,12 @@
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.1/dist/umd/supabase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+  </script>
   <script>
     // ─── CONSTANTS ─────────────────────────────────────────────────────────────────
     const FULL_CARD_ESP = new Set(["CG", "CCR", "CTV", "CT", "CX DE TÓRAX", "ONCOCIRUGÍA", "CG/GYO", "ENDOS", "CPR", "CV"]);
@@ -4021,6 +4137,36 @@
       const saved = localStorage.getItem("pl_font_size") || "M";
       setFontSize(saved);
     }
+
+    // ── THEME TOGGLE (Light/Dark) ─────────────────────────────────────────────
+    function applyTheme(theme) {
+      if (theme === "dark") {
+        document.body.classList.add("dark");
+      } else {
+        document.body.classList.remove("dark");
+      }
+      const icon = document.getElementById("theme-icon");
+      if (icon) icon.textContent = theme === "dark" ? "☀️" : "🌙";
+      const btn = document.getElementById("theme-toggle-btn");
+      if (btn) btn.title = theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
+    }
+    function toggleTheme() {
+      const current = localStorage.getItem("pl_theme") || "light";
+      const next = current === "dark" ? "light" : "dark";
+      localStorage.setItem("pl_theme", next);
+      applyTheme(next);
+    }
+    function initTheme() {
+      const saved = localStorage.getItem("pl_theme") || "light";
+      applyTheme(saved);
+    }
+    // Apply theme as early as possible to avoid flash
+    (function() {
+      try {
+        const saved = localStorage.getItem("pl_theme") || "light";
+        if (saved === "dark") document.documentElement.classList.add("_pretheme-dark");
+      } catch (e) {}
+    })();
     function getToken() { return getConfig().token || ""; }
 
     function saveConfig() {
@@ -6292,6 +6438,7 @@
       }
       renderUserChip();
       initFontSize();
+      initTheme();
 
       // ── Render inmediato desde localStorage: pacientes visibles antes de esperar red ──
       // Usamos setTimeout(0) para diferir hasta que el script termine de definir
@@ -8239,10 +8386,10 @@
         "Mapeo: " + buildClinicalLabsMappingText() + ".";
     }
     function buildBulkLabExtractionPrompt() {
-      return 'Este PDF contiene reportes de laboratorio hospitalario de UNO O MÁS pacientes (WinLab combina los reportes del censo completo).\n\n' +
-        'TAREA: extraer los laboratorios de CADA paciente que encuentres.\n\n' +
+      return 'Eres un extractor de laboratorios hospitalarios (WinLab). Vas a recibir texto extraído de un PDF que contiene los reportes de laboratorio de UNO O VARIOS pacientes (cada paciente va separado por "=== PACIENTE N ===").\n\n' +
+        'TAREA: Por CADA paciente presente en el texto, extrae sus laboratorios.\n\n' +
         'FORMATO DE RESPUESTA: SOLO un JSON array. Sin markdown, sin explicación, sin texto antes o después.\n' +
-        'Empieza con [ y termina con ]. Cada elemento del array = un paciente.\n\n' +
+        'Empieza con [ y termina con ]. Si hay N pacientes en el lote, tu array DEBE tener al menos N objetos (o más si un paciente tiene labs y cultivo, en cuyo caso fusiónalos en UN solo objeto).\n\n' +
         'ESTRUCTURA DE CADA PACIENTE:\n' +
         '{\n' +
         '  "paciente": "APELLIDOS NOMBRE tal cual aparece",\n' +
@@ -8253,15 +8400,14 @@
         'Template para "labs":\n' + buildClinicalLabsExtractionTemplate(true) + '\n\n' +
         'Template para "cultivo":\n' + CULTIVO_EXTRACTION_TEMPLATE + '\n\n' +
         'REGLAS:\n' +
-        '1. Si el PDF tiene 5 pacientes con labs finalizados, tu array DEBE tener 5 objetos.\n' +
+        '1. PROCESA TODOS LOS PACIENTES DEL LOTE. Si el lote tiene 3 pacientes, tu array tendrá ≥3 objetos. NUNCA omitas pacientes.\n' +
         '2. Un paciente solo se OMITE si TODOS sus valores están preliminares/in corso. Si tiene algunos valores finalizados, inclúyelo con esos valores y deja "" los preliminares.\n' +
         '3. NUNCA escribas "in corso", "pendiente", "preliminar", "en proceso" como valor — si no hay valor final, pon "".\n' +
         '4. Valores numéricos SIN unidades (ej: "13.5" no "13.5 g/dL") para química, biometría y gasometría.\n' +
         '5. En EGO y cultivos se permite texto descriptivo.\n' +
-        '6. Si el mismo paciente tiene varios reportes (ej: biometría + gasometría + EGO), combínalos en UN SOLO objeto del array.\n' +
+        '6. Si el mismo paciente tiene varios reportes (biometría + gasometría + EGO + cultivo), fusiónalos en UN SOLO objeto del array.\n' +
         '7. En "paciente" NO incluyas palabras como "hemocultivo"/"urocultivo" — solo los apellidos y nombre.\n\n' +
-        'Mapeo de nombres: ' + buildClinicalLabsMappingText() + '.\n\n' +
-        'Si ves UN solo paciente en el PDF, devuelve un array con UN solo objeto. Si ves cero pacientes válidos, devuelve [].';
+        'Mapeo de nombres: ' + buildClinicalLabsMappingText() + '.';
     }
 
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
@@ -13664,84 +13810,185 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
 
       function processFile(file) {
-        return new Promise(function(resolve) {
-          var r = new FileReader();
-          r.onerror = function(){ resolve({ file: file.name, extractedList: [], error: "Error leyendo archivo" }); };
-          r.onload = function() {
-            var base64 = r.result.split(",")[1];
-            var prompt = buildBulkLabExtractionPrompt();
-            fetch(proxyUrl + "/api/ai", {
-              method: "POST",
-              headers: apiHeaders(),
-              body: JSON.stringify({
-                model: "claude-sonnet-4-6",
-                max_tokens: 16000,
-                messages: [{ role: "user", content: [
-                  { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
-                  { type: "text", text: prompt }
-                ]}]
-              })
-            })
-            .then(function(resp){ return resp.json(); })
-            .then(function(data) {
-              var txt = (data.content && data.content[0] && data.content[0].text) || "";
-              console.log("[bulk-labs] Claude raw response (primeros 2000 chars):", txt.slice(0, 2000));
-              console.log("[bulk-labs] Claude raw response length:", txt.length);
-              window.__lastBulkResponse = txt;
-              var cleaned = txt.replace(/```[a-z]*/gi, "").replace(/```/g, "").trim();
-              var list = [];
-              // Try as JSON array
-              try {
-                var arrStart = cleaned.indexOf("["), arrEnd = cleaned.lastIndexOf("]");
-                if (arrStart !== -1 && arrEnd > arrStart) {
-                  var parsed = JSON.parse(cleaned.slice(arrStart, arrEnd + 1));
-                  if (Array.isArray(parsed)) list = parsed;
+        return new Promise(async function(resolve) {
+          try {
+            var base64 = await new Promise(function(rs, rj) {
+              var r = new FileReader();
+              r.onerror = function(){ rj(new Error("Error leyendo archivo")); };
+              r.onload = function() { rs(r.result.split(",")[1]); };
+              r.readAsDataURL(file);
+            });
+
+            // Extraer texto del PDF con pdf.js y agrupar por paciente (HOJA DE RESULTADOS)
+            var pagesText = [];
+            try {
+              if (!window.pdfjsLib) throw new Error("pdf.js no cargado");
+              var buf = Uint8Array.from(atob(base64), function(c){ return c.charCodeAt(0); });
+              var pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
+              for (var p = 1; p <= pdfDoc.numPages; p++) {
+                var page = await pdfDoc.getPage(p);
+                var content = await page.getTextContent();
+                var txt = content.items.map(function(it){ return it.str; }).join(" ");
+                pagesText.push(txt);
+              }
+              console.log("[bulk-labs] PDF páginas:", pagesText.length, "archivo:", file.name);
+            } catch (pdfErr) {
+              console.error("[bulk-labs] pdf.js error:", pdfErr);
+              resolve({ file: file.name, extractedList: [], error: "No se pudo leer el PDF: " + pdfErr.message });
+              return;
+            }
+
+            // Detectar inicio de cada paciente: buscar "HOJA DE RESULTADOS" + nombre o "NOMBRE:"
+            var patientPages = []; // [{ startPage, endPage, name }]
+            var currentStart = 0;
+            function detectNameInPage(text) {
+              // El PDF de WinLab usa "PACIENTE:" seguido del nombre, luego "CURP" o "FECHA"
+              var m = text.match(/PACIENTE\s*:\s*([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]{5,80}?)\s+(?:CURP|FECHA|EDAD|GÉNERO|GENERO|CÓDIGO|CODIGO|TOMA|TURNO|MÉDICO|MEDICO|PROCEDENCIA|SERVICIO|DIAGN)/i);
+              if (m) return m[1].trim().replace(/\s+/g, " ");
+              // Fallback: buscar "NOMBRE:"
+              var m2 = text.match(/NOMBRE(?:\s+DEL\s+PACIENTE)?\s*:\s*([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]{5,80}?)\s+(?:CURP|FECHA|EDAD|SEXO)/i);
+              if (m2) return m2[1].trim().replace(/\s+/g, " ");
+              return null;
+            }
+            var splitMarker = /HOJA\s+DE\s+RESULTADOS/i;
+            for (var i = 0; i < pagesText.length; i++) {
+              if (splitMarker.test(pagesText[i])) {
+                if (currentStart < i) {
+                  patientPages.push({ startPage: currentStart, endPage: i - 1 });
                 }
-              } catch (_p1) {
-                console.warn("[bulk-labs] JSON array parse failed:", _p1.message);
+                currentStart = i;
               }
-              // Fallback: try as single JSON object
-              if (!list.length) {
+            }
+            patientPages.push({ startPage: currentStart, endPage: pagesText.length - 1 });
+
+            // Asignar nombre detectado a cada grupo (para logging)
+            patientPages.forEach(function(grp) {
+              for (var j = grp.startPage; j <= grp.endPage; j++) {
+                var nm = detectNameInPage(pagesText[j]);
+                if (nm) { grp.name = nm; break; }
+              }
+            });
+
+            // Consolidar grupos por nombre (mismo paciente puede aparecer en varias secciones)
+            var byName = {};
+            patientPages.forEach(function(grp) {
+              var key = grp.name ? grp.name.toUpperCase() : ("__grp_" + grp.startPage);
+              if (!byName[key]) byName[key] = { name: grp.name, texts: [] };
+              var joined = pagesText.slice(grp.startPage, grp.endPage + 1).join("\n\n--- PAGE BREAK ---\n\n");
+              byName[key].texts.push(joined);
+            });
+            var patientBlocks = Object.keys(byName).map(function(k) {
+              return { name: byName[k].name || "(desconocido)", text: byName[k].texts.join("\n\n=== SIGUIENTE REPORTE DEL MISMO PACIENTE ===\n\n") };
+            });
+            console.log("[bulk-labs] Pacientes detectados en el PDF:", patientBlocks.length, patientBlocks.map(function(b){return b.name;}));
+
+            if (!patientBlocks.length) {
+              resolve({ file: file.name, extractedList: [], error: "No se detectaron pacientes en el PDF." });
+              return;
+            }
+
+            // Agrupar en lotes de máx 3 pacientes por llamada a Claude, enviar en paralelo (máx 3 llamadas concurrentes)
+            var BATCH_SIZE = 3;
+            var CONCURRENCY = 3;
+            var batches = [];
+            for (var b = 0; b < patientBlocks.length; b += BATCH_SIZE) {
+              batches.push(patientBlocks.slice(b, b + BATCH_SIZE));
+            }
+            console.log("[bulk-labs] Total lotes a enviar a Claude:", batches.length);
+
+            var allResults = [];
+            var rawResponses = [];
+
+            async function processBatch(batch, idx) {
+              var prompt = buildBulkLabExtractionPrompt();
+              var batchText = batch.map(function(pb, i) {
+                return "=== PACIENTE " + (i + 1) + " (nombre detectado: " + pb.name + ") ===\n" + pb.text;
+              }).join("\n\n====================================\n\n");
+              var userContent = prompt + "\n\nCONTENIDO EXTRAÍDO DEL PDF (" + batch.length + " paciente(s) en este lote):\n\n" + batchText;
+
+              try {
+                var resp = await fetch(proxyUrl + "/api/ai", {
+                  method: "POST",
+                  headers: apiHeaders(),
+                  body: JSON.stringify({
+                    model: "claude-sonnet-4-6",
+                    max_tokens: 8000,
+                    messages: [{ role: "user", content: [{ type: "text", text: userContent }] }]
+                  })
+                });
+                var data = await resp.json();
+                var txt = (data.content && data.content[0] && data.content[0].text) || "";
+                console.log("[bulk-labs] Lote " + (idx + 1) + "/" + batches.length + " respuesta length:", txt.length);
+                rawResponses.push({ batch: idx + 1, text: txt });
+                var cleaned = txt.replace(/```[a-z]*/gi, "").replace(/```/g, "").trim();
+                var list = [];
                 try {
-                  var s2 = cleaned.indexOf("{"), e2 = cleaned.lastIndexOf("}");
-                  if (s2 !== -1 && e2 > s2) {
-                    var obj = JSON.parse(cleaned.slice(s2, e2 + 1));
-                    if (obj && typeof obj === "object") list = [obj];
+                  var arrStart = cleaned.indexOf("["), arrEnd = cleaned.lastIndexOf("]");
+                  if (arrStart !== -1 && arrEnd > arrStart) {
+                    var parsed = JSON.parse(cleaned.slice(arrStart, arrEnd + 1));
+                    if (Array.isArray(parsed)) list = parsed;
                   }
-                } catch (_p2) { }
+                } catch (_p1) {
+                  console.warn("[bulk-labs] Lote " + (idx + 1) + " JSON array parse failed:", _p1.message);
+                }
+                if (!list.length) {
+                  try {
+                    var s2 = cleaned.indexOf("{"), e2 = cleaned.lastIndexOf("}");
+                    if (s2 !== -1 && e2 > s2) {
+                      var obj = JSON.parse(cleaned.slice(s2, e2 + 1));
+                      if (obj && typeof obj === "object") list = [obj];
+                    }
+                  } catch (_p2) { }
+                }
+                console.log("[bulk-labs] Lote " + (idx + 1) + " parseados:", list.length);
+                return list;
+              } catch (e) {
+                console.error("[bulk-labs] Lote " + (idx + 1) + " error:", e);
+                return [];
               }
-              console.log("[bulk-labs] Parsed " + list.length + " entries from response");
-              console.log("[bulk-labs] Sample entry:", list[0]);
+            }
 
-              // Sanitize: blank out sentinel strings (in corso, pendiente, etc.)
-              list.forEach(function(e) {
-                if (!e || typeof e !== "object") return;
-                Object.keys(e).forEach(function(k) {
-                  var v = e[k];
-                  if (typeof v === "string" && /^(in\s*corso|pendiente|en\s*proceso|preliminar|incompleto|-+|n\/a|na|sin\s*resultado|\.{3}|results?\s*pending)$/i.test(v.trim())) {
-                    e[k] = "";
-                  }
-                });
-              });
+            // Concurrencia controlada
+            var batchIdx = 0;
+            async function worker() {
+              while (batchIdx < batches.length) {
+                var myIdx = batchIdx++;
+                var r = await processBatch(batches[myIdx], myIdx);
+                allResults = allResults.concat(r);
+              }
+            }
+            var workers = [];
+            for (var w = 0; w < Math.min(CONCURRENCY, batches.length); w++) workers.push(worker());
+            await Promise.all(workers);
 
-              // Filter: keep entries that have ANY non-empty field (besides metadata)
-              var filtered = list.filter(function(e) {
-                if (!e || typeof e !== "object") return false;
-                var hasPt = e.paciente || e.nombre || e.name;
-                if (!hasPt) return false;
-                var hasAnyValue = Object.keys(e).some(function(k) {
-                  if (["paciente","nombre","name","fecha","fecha_labs","tipo","tipo_lab"].indexOf(k) >= 0) return false;
-                  var v = e[k];
-                  return v != null && String(v).trim().length > 0;
-                });
-                return hasAnyValue;
+            // Sanitizar y filtrar resultados
+            allResults.forEach(function(e) {
+              if (!e || typeof e !== "object") return;
+              Object.keys(e).forEach(function(k) {
+                var v = e[k];
+                if (typeof v === "string" && /^(in\s*corso|pendiente|en\s*proceso|preliminar|incompleto|-+|n\/a|na|sin\s*resultado|\.{3}|results?\s*pending)$/i.test(v.trim())) {
+                  e[k] = "";
+                }
               });
-              console.log("[bulk-labs] Filtered down to " + filtered.length + " usable entries");
-              resolve({ file: file.name, fileObj: file, fileBase64: base64, extractedList: filtered, rawList: list, rawResponse: txt, error: null });
-            })
-            .catch(function(e){ resolve({ file: file.name, extractedList: [], error: String(e) }); });
-          };
-          r.readAsDataURL(file);
+            });
+            var filtered = allResults.filter(function(e) {
+              if (!e || typeof e !== "object") return false;
+              var hasPt = e.paciente || e.nombre || e.name;
+              if (!hasPt) return false;
+              var hasAnyValue = Object.keys(e).some(function(k) {
+                if (["paciente","nombre","name","fecha","fecha_labs","tipo","tipo_lab"].indexOf(k) >= 0) return false;
+                var v = e[k];
+                return v != null && String(v).trim().length > 0;
+              });
+              return hasAnyValue;
+            });
+            console.log("[bulk-labs] Total de pacientes extraídos del archivo " + file.name + ":", filtered.length);
+            window.__lastBulkResponse = rawResponses;
+            resolve({ file: file.name, fileObj: file, fileBase64: base64, extractedList: filtered, rawList: allResults, rawResponse: JSON.stringify(rawResponses).slice(0, 5000), error: null });
+          } catch (err) {
+            console.error("[bulk-labs] processFile fatal:", err);
+            resolve({ file: file.name, extractedList: [], error: String(err) });
+          }
         });
       }
 
