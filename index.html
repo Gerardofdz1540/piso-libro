@@ -3074,6 +3074,11 @@
           <span id="theme-icon">🌙</span>
         </button>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
+        <button id="winlab-refresh-pill" onclick="refreshWinlabLabs()" title="Recargar labs de WinLab desde Supabase. El scraper corre solo todos los dias 13:15. Si necesitas forzar un scraping ahora, click derecho aqui."
+          oncontextmenu="event.preventDefault(); openWinlabScrape();"
+          style="background:rgba(14,165,233,.18);border:1px solid rgba(14,165,233,.4);color:#0369a1;padding:4px 9px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
+          <span id="winlab-pill-icon">🧪</span> <span id="winlab-pill-lbl">Labs</span>
+        </button>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
       </div>
@@ -4379,6 +4384,63 @@
     let _lastSyncError = "";
     let _lastSyncErrorDetail = "";
     let _syncFadeTimer = null;
+
+    // ─── WINLAB: refresh manual + abrir GH Action ─────────────────────────────────
+    // El scraper corre solo todos los dias 13:15 CST (cron). Estos handlers
+    // permiten al usuario:
+    //   - click izq:    recargar winlab_labs desde Supabase (rapido, sin esperar cron)
+    //   - click derecho: abrir el workflow en GitHub para forzar scraping ahora
+    async function refreshWinlabLabs() {
+      const lbl = document.getElementById("winlab-pill-lbl");
+      const icon = document.getElementById("winlab-pill-icon");
+      const prevLbl = lbl ? lbl.textContent : "";
+      const prevIcon = icon ? icon.textContent : "";
+      if (lbl) lbl.textContent = "...";
+      if (icon) icon.textContent = "⏳";
+      try {
+        const wlRows = await retryNetwork(
+          () => _sGet("winlab_labs", "select=exp,fecha,scraped_at,data&order=scraped_at.desc&limit=500"),
+          2, 200
+        );
+        const next = {};
+        (wlRows || []).forEach(r => {
+          const e = String(r.exp || "").trim();
+          if (!e) return;
+          if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
+        });
+        winlabByExp = next;
+        // Re-render con la nueva data.
+        if (typeof renderView === "function") renderView();
+        if (icon) icon.textContent = "✅";
+        if (lbl) lbl.textContent = `Labs (${Object.keys(next).length})`;
+        setTimeout(() => {
+          if (icon) icon.textContent = prevIcon || "🧪";
+          if (lbl) lbl.textContent = prevLbl || "Labs";
+        }, 2500);
+      } catch (e) {
+        console.warn("refreshWinlabLabs:", e);
+        if (icon) icon.textContent = "⚠️";
+        if (lbl) lbl.textContent = "Error";
+        setTimeout(() => {
+          if (icon) icon.textContent = prevIcon || "🧪";
+          if (lbl) lbl.textContent = prevLbl || "Labs";
+        }, 3000);
+      }
+    }
+    function openWinlabScrape() {
+      const url = "https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml";
+      const ok = confirm(
+        "Abrir GitHub Actions para forzar scraping ahora?\n\n" +
+        "El scraper corre solo todos los dias a las 13:15 CST.\n" +
+        "Si necesitas datos AHORA:\n" +
+        "  1. Click OK (se abre GitHub).\n" +
+        "  2. Click 'Run workflow' (boton verde arriba a la derecha).\n" +
+        "  3. Espera 2-3 min y vuelve aqui.\n" +
+        "  4. Click izq en el pill 'Labs' para refrescar."
+      );
+      if (ok) window.open(url, "_blank", "noopener,noreferrer");
+    }
+
     function setSyncStatus(state, label) {
       const el = document.getElementById("sync-status");
       const lbl = document.getElementById("sync-label");
