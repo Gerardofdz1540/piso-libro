@@ -127,6 +127,29 @@ async function pickVisible(page, selector) {
   return { el: all.first(), idx: -1, total };
 }
 
+// WinLab usa ASP.NET AJAX UpdatePanel: el click "Busca" NO navega, solo
+// hace un partial postback (XMLHttpRequest). domcontentloaded resuelve
+// inmediatamente porque la URL no cambia.
+//
+// Esperar correctamente requiere:
+//   1) networkidle (500ms sin trafico XHR)
+//   2) Sys.WebForms.PageRequestManager.get_isInAsyncPostBack() === false
+async function waitForAspNetReady(page, timeout = 15000) {
+  try {
+    await page.waitForLoadState("networkidle", { timeout });
+  } catch (_) { /* networkidle puede colgarse en SPAs ruidosas */ }
+  try {
+    await page.waitForFunction(
+      () => {
+        if (typeof window.Sys === "undefined" || !window.Sys.WebForms) return true;
+        const prm = window.Sys.WebForms.PageRequestManager.getInstance();
+        return !prm || !prm.get_isInAsyncPostBack();
+      },
+      { timeout: 5000 }
+    );
+  } catch (_) { /* si Sys no existe tras 5s, asumimos que ya termino */ }
+}
+
 // Fill robusto: 1) prefiere visible, 2) fill force, 3) fallback JS via descriptor.
 async function setField(page, selector, value, label) {
   const { el, idx, total } = await pickVisible(page, selector);
@@ -273,23 +296,20 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
     }
   }
 
-  // Click "Busca" + esperar respuesta.
+  // Click "Busca". Es un postback AJAX (UpdatePanel), no navegacion: por eso
+  // NO usamos waitForLoadState('domcontentloaded'). Esperamos que ASP.NET
+  // AJAX termine via waitForAspNetReady.
   const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
   await btn.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
   try {
-    await Promise.all([
-      page.waitForLoadState("domcontentloaded", { timeout: WL_PER_PATIENT_TIMEOUT }),
-      btn.click({ force: true, timeout: 5000 }),
-    ]);
+    await btn.click({ force: true, timeout: 5000 });
   } catch {
-    await Promise.all([
-      page.waitForLoadState("domcontentloaded", { timeout: WL_PER_PATIENT_TIMEOUT }),
-      page.evaluate((sel) => {
-        const el = document.querySelector(sel);
-        if (el) el.click();
-      }, WL_SEARCH_BTN_SEL),
-    ]);
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el) el.click();
+    }, WL_SEARCH_BTN_SEL);
   }
+  await waitForAspNetReady(page, WL_PER_PATIENT_TIMEOUT);
 
   // Scrapear la(s) tabla(s) de resultados con mapeo dinamico.
   const result = await page.evaluate(() => {
@@ -384,17 +404,20 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
   const linkCount = await link.count();
   if (!linkCount) return null;
 
-  await Promise.all([
-    page.waitForLoadState("domcontentloaded", { timeout: WL_DRILLDOWN_TIMEOUT }),
-    link.click({ force: true, timeout: 5000 }).catch(async () => {
-      await page.evaluate((args) => {
-        const el = document.querySelectorAll("table")[args.t]
-          ?.querySelectorAll("tr")[args.r]
-          ?.querySelector('a, input[type="image"], input[type="button"], input[type="submit"]');
-        if (el) el.click();
-      }, { t: tableIdx, r: rowIdxInTable });
-    }),
-  ]);
+  // Click del link de detalle. Tambien es postback AJAX (o nueva navegacion
+  // si abre otra .aspx). Probamos waitForAspNetReady; si fue navegacion
+  // completa, networkidle igual la cubre.
+  try {
+    await link.click({ force: true, timeout: 5000 });
+  } catch {
+    await page.evaluate((args) => {
+      const el = document.querySelectorAll("table")[args.t]
+        ?.querySelectorAll("tr")[args.r]
+        ?.querySelector('a, input[type="image"], input[type="button"], input[type="submit"]');
+      if (el) el.click();
+    }, { t: tableIdx, r: rowIdxInTable });
+  }
+  await waitForAspNetReady(page, WL_DRILLDOWN_TIMEOUT);
 
   // Scrapear cualquier tabla en la pantalla de detalle que parezca tener
   // estudios/valores. Heuristica: buscar tablas con >= 3 columnas donde
@@ -491,10 +514,8 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     }
   }
   const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
-  await Promise.all([
-    page.waitForLoadState("domcontentloaded", { timeout: WL_PER_PATIENT_TIMEOUT }),
-    btn.click({ force: true, timeout: 5000 }).catch(() => {}),
-  ]);
+  await btn.click({ force: true, timeout: 5000 }).catch(() => {});
+  await waitForAspNetReady(page, WL_PER_PATIENT_TIMEOUT);
 
   return detail.valores || [];
 }
