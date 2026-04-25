@@ -29,9 +29,9 @@ const WINLAB_URL             = ENV("WINLAB_URL");
 const WINLAB_USER            = ENV("WINLAB_USER");
 const WINLAB_PASS            = ENV("WINLAB_PASS");
 const WINLAB_RESULTS_URL     = ENV("WINLAB_RESULTS_URL", "");
-const WINLAB_USER_SELECTOR   = ENV("WINLAB_USER_SELECTOR", 'input[type="text"], input[name*="user" i], input[name*="usuario" i]');
-const WINLAB_PASS_SELECTOR   = ENV("WINLAB_PASS_SELECTOR", 'input[type="password"]');
-const WINLAB_SUBMIT_SELECTOR = ENV("WINLAB_SUBMIT_SELECTOR", 'button[type="submit"], input[type="submit"], input[type="image"]');
+const WINLAB_USER_SELECTOR   = ENV("WINLAB_USER_SELECTOR", '#Intestazione_TextBox1, input[name="Intestazione$TextBox1"], input[type="text"]:not([type="hidden"])');
+const WINLAB_PASS_SELECTOR   = ENV("WINLAB_PASS_SELECTOR", '#Intestazione_TextBox2, input[name="Intestazione$TextBox2"], input[type="password"]');
+const WINLAB_SUBMIT_SELECTOR = ENV("WINLAB_SUBMIT_SELECTOR", '#Intestazione_ImageButton1, input[name="Intestazione$ImageButton1"], #Intestazione_Button1, input[name="Intestazione$Button1"], button[type="submit"], input[type="submit"], input[type="image"]');
 const WINLAB_TABLE_SELECTOR  = ENV("WINLAB_TABLE_SELECTOR", "table");
 const WINLAB_LOGGED_SELECTOR = ENV("WINLAB_LOGGED_SELECTOR", "");
 const WINLAB_NEXT_SELECTOR   = ENV("WINLAB_NEXT_SELECTOR", "");
@@ -59,30 +59,80 @@ const todayISO = () => {
   return new Date(d - off).toISOString().slice(0, 10);
 };
 
+// Fill robusto: funciona con campos visibles, hidden, o detras de overlays.
+// Estrategia: 1) waitFor attached (el nodo existe en DOM, sin importar visibilidad)
+//             2) intenta fill con force
+//             3) fallback: setea value + dispara input/change events via JS
+async function setField(page, selector, value, label) {
+  const loc = page.locator(selector).first();
+  await loc.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
+  try {
+    await loc.fill(value, { force: true, timeout: 5000 });
+    return;
+  } catch (e) {
+    console.log(`       (fill normal fallo en ${label}: ${e.message.split("\n")[0]} -> JS fallback)`);
+  }
+  await page.evaluate(([sel, val]) => {
+    const el = document.querySelector(sel);
+    if (!el) throw new Error("No element for " + sel);
+    const proto = window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
+    setter.call(el, val);
+    el.dispatchEvent(new Event("input",  { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }, [selector, value]);
+}
+
 // ── 1. LOGIN ───────────────────────────────────────────────────────────
 async function login(page) {
   console.log(`[1/4] Login -> ${WINLAB_URL}`);
   await page.goto(WINLAB_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
 
-  const userField = page.locator(WINLAB_USER_SELECTOR).first();
-  const passField = page.locator(WINLAB_PASS_SELECTOR).first();
-  await userField.waitFor({ state: "visible", timeout: SEL_TIMEOUT_MS });
-  await passField.waitFor({ state: "visible", timeout: SEL_TIMEOUT_MS });
+  // Diagnostico: mapear todos los inputs presentes en la pagina (visibles u ocultos).
+  const inputs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("input")).map((i) => ({
+      id: i.id || null,
+      name: i.name || null,
+      type: i.type || null,
+      visible: !!(i.offsetParent || i.getClientRects().length),
+    }))
+  );
+  console.log(`       Inputs en pagina (${inputs.length}):`, JSON.stringify(inputs).slice(0, 800));
 
-  await userField.fill(WINLAB_USER);
-  await passField.fill(WINLAB_PASS);
+  await setField(page, WINLAB_USER_SELECTOR, WINLAB_USER, "user");
+  await setField(page, WINLAB_PASS_SELECTOR, WINLAB_PASS, "pass");
 
   const submit = page.locator(WINLAB_SUBMIT_SELECTOR).first();
-  // Submit + esperar la respuesta del POST de login en el mismo step.
-  await Promise.all([
-    page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }),
-    submit.click(),
-  ]);
+  await submit.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
 
-  // Verificacion determinista: el campo password ya no debe existir.
+  // Click + esperar navegacion. Si el boton esta hidden, dispatchEvent(click) tambien funciona.
+  let clicked = false;
+  try {
+    await Promise.all([
+      page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }),
+      submit.click({ force: true, timeout: 5000 }),
+    ]);
+    clicked = true;
+  } catch (e) {
+    console.log(`       (click normal fallo: ${e.message.split("\n")[0]} -> JS fallback)`);
+  }
+  if (!clicked) {
+    await Promise.all([
+      page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }),
+      page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        if (!el) throw new Error("No submit element for " + sel);
+        // Para ASP.NET con __doPostBack, simular click es la forma correcta.
+        if (typeof el.click === "function") el.click();
+        else el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      }, WINLAB_SUBMIT_SELECTOR),
+    ]);
+  }
+
+  // Verificacion determinista: el campo password ya no debe estar attached.
   const stillOnLogin = await page.locator(WINLAB_PASS_SELECTOR).count();
   if (stillOnLogin > 0) {
-    throw new Error("Login fallido: el formulario de password sigue presente. Revisa WINLAB_USER/WINLAB_PASS o cambios de DOM.");
+    throw new Error("Login fallido: el campo password sigue presente tras submit. Revisa credenciales o WINLAB_LOGGED_SELECTOR.");
   }
   if (WINLAB_LOGGED_SELECTOR) {
     await page.locator(WINLAB_LOGGED_SELECTOR).first().waitFor({ state: "visible", timeout: SEL_TIMEOUT_MS });
