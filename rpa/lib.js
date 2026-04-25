@@ -87,3 +87,44 @@ export function dedupRecords(records, conflictCols = "exp,fecha") {
   }
   return Array.from(map.values());
 }
+
+// ── Discriminadores de tablas WinLab (funciones puras testeables) ─────
+// La pagina ElencoRefertiLite tiene 6+ tablas; debemos elegir solo la de
+// resultados, excluyendo el menu superior, el formulario de busqueda, y
+// los layouts de spacing que ASP.NET WebForms genera.
+
+// Texto del menu superior global de WinLab.
+export function isMenuTableText(rawText) {
+  return N(rawText).includes("INICIO REPORTES AYUDA");
+}
+
+// Texto del formulario de busqueda (varios labels juntos).
+export function isFormTableText(rawText) {
+  const txt = N(rawText).slice(0, 1500);
+  const FORM_MARKERS = [
+    "BUSCA REPORTES",
+    "TODAS LAS UNIDADES ORGANIZATIVAS",
+    "PACIENTE APELLIDO NOMBRE",
+    "FECHA REPORTE DE A",
+    "CON RESULTADOS",
+    "UNIDAD SOLICITANTE",
+    "CODIGO PACIENTE",
+    "REPORTES IMPRESOS",
+    "FECHA DE TOMA",
+    "CODIGO TOMA",
+  ];
+  let hits = 0;
+  for (const m of FORM_MARKERS) if (txt.includes(m)) hits++;
+  return hits >= 2;
+}
+
+// Texto que indica "no hay reportes para este paciente en el rango".
+export function isNoResultsText(rawText) {
+  const txt = N(rawText);
+  return /NING(U|Ú)N REGISTRO ENCONTRADO/.test(txt) || /NESSUN/.test(txt);
+}
+
+// Combinacion: ¿es esta tabla irrelevante para resultados?
+export function isIrrelevantTable(rawText) {
+  return isMenuTableText(rawText) || isFormTableText(rawText);
+}

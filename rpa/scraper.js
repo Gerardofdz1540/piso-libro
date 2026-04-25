@@ -11,7 +11,8 @@
 
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
-import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords } from "./lib.js";
+import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
+         isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable } from "./lib.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -60,7 +61,7 @@ const WL_SEARCH_CLEAR_SEL     = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBTool
 const WL_LOOKBACK_DAYS        = parseInt(ENV("WL_LOOKBACK_DAYS", "1"), 10);
 const WL_DATE_FORMAT          = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 const WL_PER_PATIENT_TIMEOUT  = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
-const WL_DRILLDOWN            = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte para sacar valores
+const WL_DRILLDOWN            = parseInt(ENV("WL_DRILLDOWN", "0"), 10);          // 0 hasta que tengamos la tabla de resultados real (siguiente PR)
 const WL_DRILLDOWN_MAX        = parseInt(ENV("WL_DRILLDOWN_MAX", "3"), 10);      // max reportes por paciente
 const WL_DRILLDOWN_TIMEOUT    = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
 
@@ -276,15 +277,42 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
         .replace(/\s+/g, " ")
         .trim();
 
+    const FORM_MARKERS = [
+      "BUSCA REPORTES", "TODAS LAS UNIDADES ORGANIZATIVAS",
+      "PACIENTE APELLIDO NOMBRE", "FECHA REPORTE DE A",
+      "CON RESULTADOS", "UNIDAD SOLICITANTE", "CODIGO PACIENTE",
+      "REPORTES IMPRESOS", "FECHA DE TOMA", "CODIGO TOMA",
+    ];
+    const isMenu = (txt) => txt.includes("INICIO REPORTES AYUDA");
+    const isForm = (txt) => {
+      const head = txt.slice(0, 1500);
+      let hits = 0;
+      for (const m of FORM_MARKERS) if (head.includes(m)) hits++;
+      return hits >= 2;
+    };
+    const isNoResults = (txt) =>
+      /NING(U|Ú)N REGISTRO ENCONTRADO/.test(txt) || /NESSUN REGISTRO/.test(txt);
+
     const tables = Array.from(document.querySelectorAll("table"));
+
+    // Si en CUALQUIER lugar de la pagina sale "Ningún Registro", el paciente
+    // no tiene labs en el rango. Devolvemos 0 reportes (no falsos positivos).
+    const fullText = norm(document.body?.innerText || "");
+    if (isNoResults(fullText)) {
+      return { headers: [], rows: [], tableCount: tables.length, bestTableIdx: -1, noResults: true };
+    }
+
+    // Elegir la tabla MAS GRANDE que NO sea menu ni formulario.
     let best = null, bestRows = 0, bestTableIdx = -1;
     for (let ti = 0; ti < tables.length; ti++) {
       const t = tables[ti];
+      const txt = norm(t.innerText);
+      if (isMenu(txt)) continue;
+      if (isForm(txt)) continue;
       const trs = t.querySelectorAll("tr").length;
       const ths = t.querySelectorAll("th").length;
+      if (trs < 1) continue;
       const score = trs * (1 + (ths > 0 ? 1 : 0));
-      const txt = norm(t.innerText).slice(0, 200);
-      if (txt.includes("INICIO REPORTES AYUDA")) continue;
       if (score > bestRows) { best = t; bestRows = score; bestTableIdx = ti; }
     }
     if (!best) return { headers: [], rows: [], tableCount: tables.length, bestTableIdx: -1 };
@@ -503,7 +531,8 @@ async function scrapeForCenso(page, searchUrl, censo) {
     try {
       const res = await searchAndScrapeOne(page, searchUrl, p);
       const matched = res.rows.length;
-      console.log(`       ${tag}: ${matched} reportes (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
+      const tag2 = res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
+      console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
 
       // Diagnostico: la primera vez que tengamos rows pero headers raros,
       // dumpea las primeras 5 tablas para ver el DOM real.
