@@ -411,13 +411,25 @@ async function explorePage(page) {
   });
 
   console.log(`[EXPLORADOR] Inputs visibles (${map.inputs.length}):`);
-  console.log(JSON.stringify(map.inputs, null, 2));
+  map.inputs.forEach((i, k) => console.log(`<<<EXPL input:${k}>>> ${JSON.stringify(i)}`));
   console.log(`[EXPLORADOR] Selects visibles (${map.selects.length}):`);
-  console.log(JSON.stringify(map.selects, null, 2));
+  map.selects.forEach((s, k) => console.log(`<<<EXPL select:${k}>>> ${JSON.stringify(s)}`));
   console.log(`[EXPLORADOR] Botones visibles (${map.buttons.length}):`);
-  console.log(JSON.stringify(map.buttons, null, 2));
+  map.buttons.forEach((b, k) => console.log(`<<<EXPL button:${k}>>> ${JSON.stringify(b)}`));
   console.log(`[EXPLORADOR] Links visibles (${map.links.length}, primeros 50):`);
-  console.log(JSON.stringify(map.links.slice(0, 50), null, 2));
+  map.links.slice(0, 50).forEach((l, k) => console.log(`<<<EXPL link:${k}>>> ${JSON.stringify(l)}`));
+
+  // Tambien escribir archivo JSON completo: se sube como artifact por
+  // el workflow. Asi el usuario tiene 2 caminos: copiar las lineas <<<EXPL>>>
+  // del log, o bajar el zip del artifact y mandar el archivo.
+  try {
+    const fs = await import("node:fs");
+    const fname = `explorer-${Date.now()}.json`;
+    fs.writeFileSync(fname, JSON.stringify({ url, title: await page.title(), ...map }, null, 2));
+    console.log(`[EXPLORADOR] Dump completo guardado en artifact: ${fname}`);
+  } catch (e) {
+    console.log(`[EXPLORADOR] No pude escribir archivo: ${e.message}`);
+  }
 }
 
 // ── MAIN ───────────────────────────────────────────────────────────────

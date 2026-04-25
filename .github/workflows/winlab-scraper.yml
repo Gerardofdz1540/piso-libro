@@ -72,12 +72,14 @@ jobs:
           SUPABASE_TABLE:         ${{ secrets.SUPABASE_TABLE }}
           SUPABASE_ON_CONFLICT:   ${{ secrets.SUPABASE_ON_CONFLICT }}
 
-      - name: Upload screenshot on failure
+      - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: failure-screenshot
-          path: rpa/failure-*.png
+          path: |
+            rpa/failure-*.png
+            rpa/explorer-*.json
           if-no-files-found: ignore
           retention-days: 7
 
