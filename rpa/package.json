@@ -1,0 +1,18 @@
+{
+  "name": "piso-libro-winlab-rpa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RPA serverless: scraping diario de WinLab y upsert masivo a Supabase para visita medica 14:00.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "scrape": "node scraper.js",
+    "postinstall": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "playwright": "^1.48.0"
+  }
+}
