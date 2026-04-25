@@ -1,12 +1,12 @@
 name: WinLab Scraper (Visita Medica 14:00)
 
 # WinLab publica labs ~13:00 CST (UTC-6).
-# Disparo a las 13:15 CST = 19:15 UTC, todos los dias.
+# Disparo a las 13:15 CST = 19:15 UTC, lunes a viernes.
 # Mexico ya no observa DST en la mayoria del pais; si tu zona si lo hace,
 # duplica el cron una hora antes/despues segun la temporada.
 on:
   schedule:
-    - cron: "15 19 * * *"
+    - cron: "15 19 * * 1-5"
   workflow_dispatch:
 
 concurrency:
