@@ -29,9 +29,11 @@ const WINLAB_URL             = ENV("WINLAB_URL");
 const WINLAB_USER            = ENV("WINLAB_USER");
 const WINLAB_PASS            = ENV("WINLAB_PASS");
 const WINLAB_RESULTS_URL     = ENV("WINLAB_RESULTS_URL", "");
-const WINLAB_USER_SELECTOR   = ENV("WINLAB_USER_SELECTOR", '#Intestazione_TextBox1, input[name="Intestazione$TextBox1"], input[type="text"]:not([type="hidden"])');
-const WINLAB_PASS_SELECTOR   = ENV("WINLAB_PASS_SELECTOR", '#Intestazione_TextBox2, input[name="Intestazione$TextBox2"], input[type="password"]');
-const WINLAB_SUBMIT_SELECTOR = ENV("WINLAB_SUBMIT_SELECTOR", '#Intestazione_ImageButton1, input[name="Intestazione$ImageButton1"], #Intestazione_Button1, input[name="Intestazione$Button1"], button[type="submit"], input[type="submit"], input[type="image"]');
+// Selectores que cubren los 2 forms tipicos de WinLab (header oculto + body visible).
+// setField() resuelve el match VISIBLE entre los candidatos, asi nunca se llena el oculto.
+const WINLAB_USER_SELECTOR   = ENV("WINLAB_USER_SELECTOR", '#txtUserName, #txtUsuario, #txtUser, input[name="txtUserName"], #Intestazione_TextBox1, input[name="Intestazione$TextBox1"], input[type="text"]:not([type="hidden"])');
+const WINLAB_PASS_SELECTOR   = ENV("WINLAB_PASS_SELECTOR", '#txtPassword, #txtContrasena, #txtPass, input[name="txtPassword"], #Intestazione_TextBox2, input[name="Intestazione$TextBox2"], input[type="password"]');
+const WINLAB_SUBMIT_SELECTOR = ENV("WINLAB_SUBMIT_SELECTOR", '#btnLogin, #btnEntrar, #btnAcceder, #btnAceptar, input[name="btnLogin"], #Intestazione_ImageButton1, input[name="Intestazione$ImageButton1"], #Intestazione_Button1, input[name="Intestazione$Button1"], button[type="submit"], input[type="submit"], input[type="image"]');
 const WINLAB_TABLE_SELECTOR  = ENV("WINLAB_TABLE_SELECTOR", "table");
 const WINLAB_LOGGED_SELECTOR = ENV("WINLAB_LOGGED_SELECTOR", "");
 const WINLAB_NEXT_SELECTOR   = ENV("WINLAB_NEXT_SELECTOR", "");
@@ -59,28 +61,42 @@ const todayISO = () => {
   return new Date(d - off).toISOString().slice(0, 10);
 };
 
-// Fill robusto: funciona con campos visibles, hidden, o detras de overlays.
-// Estrategia: 1) waitFor attached (el nodo existe en DOM, sin importar visibilidad)
-//             2) intenta fill con force
-//             3) fallback: setea value + dispara input/change events via JS
+// Resuelve el primer match VISIBLE entre todos los candidatos del selector.
+// Si ninguno es visible, regresa el primero attached. Esto es CRITICO en WinLab
+// porque la pagina tiene 2 forms de login (header oculto + body visible) y
+// con .first() llenabamos el oculto.
+async function pickVisible(page, selector) {
+  const all = page.locator(selector);
+  const total = await all.count();
+  for (let i = 0; i < total; i++) {
+    const el = all.nth(i);
+    if (await el.isVisible().catch(() => false)) return { el, idx: i, total };
+  }
+  return { el: all.first(), idx: -1, total };
+}
+
+// Fill robusto: 1) prefiere visible, 2) fill force, 3) fallback JS via descriptor.
 async function setField(page, selector, value, label) {
-  const loc = page.locator(selector).first();
-  await loc.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
+  const { el, idx, total } = await pickVisible(page, selector);
+  console.log(`       ${label}: ${total} matches, usando indice ${idx >= 0 ? idx + " (visible)" : "0 (ninguno visible)"}`);
+  await el.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
   try {
-    await loc.fill(value, { force: true, timeout: 5000 });
+    await el.fill(value, { force: true, timeout: 5000 });
     return;
   } catch (e) {
     console.log(`       (fill normal fallo en ${label}: ${e.message.split("\n")[0]} -> JS fallback)`);
   }
-  await page.evaluate(([sel, val]) => {
-    const el = document.querySelector(sel);
-    if (!el) throw new Error("No element for " + sel);
+  // Fallback JS: ubica el mismo elemento por indice y setea via descriptor.
+  await page.evaluate(([sel, val, i]) => {
+    const list = document.querySelectorAll(sel);
+    const target = i >= 0 && list[i] ? list[i] : list[0];
+    if (!target) throw new Error("No element for " + sel);
     const proto = window.HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
-    setter.call(el, val);
-    el.dispatchEvent(new Event("input",  { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  }, [selector, value]);
+    setter.call(target, val);
+    target.dispatchEvent(new Event("input",  { bubbles: true }));
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+  }, [selector, value, idx]);
 }
 
 // ── 1. LOGIN ───────────────────────────────────────────────────────────
@@ -97,15 +113,30 @@ async function login(page) {
       visible: !!(i.offsetParent || i.getClientRects().length),
     }))
   );
-  console.log(`       Inputs en pagina (${inputs.length}):`, JSON.stringify(inputs).slice(0, 800));
+  // Sin truncar para no perder ningun campo en logs.
+  console.log(`       Inputs en pagina (${inputs.length}):`, JSON.stringify(inputs));
+
+  // Tambien volcamos botones/submit visibles para diagnostico.
+  const buttons = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('button, input[type="submit"], input[type="image"], input[type="button"]')).map((b) => ({
+      id: b.id || null,
+      name: b.name || null,
+      type: b.type || b.tagName.toLowerCase(),
+      value: b.value || null,
+      text: (b.innerText || "").trim().slice(0, 40) || null,
+      visible: !!(b.offsetParent || b.getClientRects().length),
+    }))
+  );
+  console.log(`       Botones en pagina (${buttons.length}):`, JSON.stringify(buttons));
 
   await setField(page, WINLAB_USER_SELECTOR, WINLAB_USER, "user");
   await setField(page, WINLAB_PASS_SELECTOR, WINLAB_PASS, "pass");
 
-  const submit = page.locator(WINLAB_SUBMIT_SELECTOR).first();
+  const { el: submit, idx: subIdx, total: subTotal } = await pickVisible(page, WINLAB_SUBMIT_SELECTOR);
+  console.log(`       submit: ${subTotal} matches, usando indice ${subIdx >= 0 ? subIdx + " (visible)" : "0 (ninguno visible)"}`);
   await submit.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
 
-  // Click + esperar navegacion. Si el boton esta hidden, dispatchEvent(click) tambien funciona.
+  // Click + esperar navegacion. Fallback JS si force falla.
   let clicked = false;
   try {
     await Promise.all([
@@ -119,13 +150,13 @@ async function login(page) {
   if (!clicked) {
     await Promise.all([
       page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }),
-      page.evaluate((sel) => {
-        const el = document.querySelector(sel);
-        if (!el) throw new Error("No submit element for " + sel);
-        // Para ASP.NET con __doPostBack, simular click es la forma correcta.
-        if (typeof el.click === "function") el.click();
-        else el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      }, WINLAB_SUBMIT_SELECTOR),
+      page.evaluate(([sel, i]) => {
+        const list = document.querySelectorAll(sel);
+        const target = i >= 0 && list[i] ? list[i] : list[0];
+        if (!target) throw new Error("No submit for " + sel);
+        if (typeof target.click === "function") target.click();
+        else target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      }, [WINLAB_SUBMIT_SELECTOR, subIdx]),
     ]);
   }
 
