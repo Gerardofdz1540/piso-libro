@@ -348,6 +348,78 @@ async function upsert(records) {
   console.log(`       OK upsert. Filas afectadas: ${count ?? payload.length}`);
 }
 
+// ── MODO EXPLORADOR ────────────────────────────────────────────────────
+// Cuando no hay pacientes: vuelca el mapa completo de la pantalla actual
+// para que podamos descubrir los IDs reales de los campos de busqueda.
+async function explorePage(page) {
+  const url = page.url();
+  console.log(`[EXPLORADOR] URL actual: ${url}`);
+  console.log(`[EXPLORADOR] Titulo: ${await page.title()}`);
+
+  const map = await page.evaluate(() => {
+    const isVisible = (el) => !!(el.offsetParent || el.getClientRects().length);
+    const labelOf = (el) => {
+      if (el.id) {
+        const lbl = document.querySelector(`label[for="${el.id}"]`);
+        if (lbl) return (lbl.innerText || "").trim().slice(0, 60);
+      }
+      const wrap = el.closest("label");
+      if (wrap) return (wrap.innerText || "").trim().slice(0, 60);
+      const prev = el.previousElementSibling;
+      if (prev && prev.tagName === "LABEL") return (prev.innerText || "").trim().slice(0, 60);
+      return null;
+    };
+
+    const inputs = Array.from(document.querySelectorAll("input"))
+      .filter(isVisible)
+      .map((i) => ({
+        id: i.id || null, name: i.name || null, type: i.type || null,
+        value: (i.value || "").slice(0, 40) || null,
+        placeholder: i.placeholder || null,
+        label: labelOf(i),
+      }));
+
+    const selects = Array.from(document.querySelectorAll("select"))
+      .filter(isVisible)
+      .map((s) => ({
+        id: s.id || null, name: s.name || null,
+        label: labelOf(s),
+        selected: s.value || null,
+        options: Array.from(s.options).slice(0, 80).map((o) => ({
+          value: o.value, text: (o.text || "").trim().slice(0, 60),
+        })),
+      }));
+
+    const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], input[type="image"], a[onclick], a[href*="javascript"]'))
+      .filter(isVisible)
+      .map((b) => ({
+        tag: b.tagName.toLowerCase(),
+        id: b.id || null, name: b.name || null, type: b.type || null,
+        value: b.value || null,
+        text: (b.innerText || b.alt || "").trim().slice(0, 60) || null,
+      }));
+
+    const links = Array.from(document.querySelectorAll("a[href]"))
+      .filter(isVisible)
+      .map((a) => ({
+        text: (a.innerText || a.title || "").trim().slice(0, 60) || null,
+        href: (a.getAttribute("href") || "").slice(0, 120),
+      }))
+      .filter((l) => l.text);
+
+    return { inputs, selects, buttons, links };
+  });
+
+  console.log(`[EXPLORADOR] Inputs visibles (${map.inputs.length}):`);
+  console.log(JSON.stringify(map.inputs, null, 2));
+  console.log(`[EXPLORADOR] Selects visibles (${map.selects.length}):`);
+  console.log(JSON.stringify(map.selects, null, 2));
+  console.log(`[EXPLORADOR] Botones visibles (${map.buttons.length}):`);
+  console.log(JSON.stringify(map.buttons, null, 2));
+  console.log(`[EXPLORADOR] Links visibles (${map.links.length}, primeros 50):`);
+  console.log(JSON.stringify(map.links.slice(0, 50), null, 2));
+}
+
 // ── MAIN ───────────────────────────────────────────────────────────────
 (async () => {
   const t0 = Date.now();
@@ -368,7 +440,9 @@ async function upsert(records) {
     const records = await scrapeAllPages(page);
 
     if (!records.length) {
-      throw new Error("Scraping completo pero 0 pacientes extraidos. Probable cambio de DOM en WinLab.");
+      console.log("[!] 0 pacientes extraidos. Activando modo EXPLORADOR para mapear la pantalla...");
+      await explorePage(page);
+      throw new Error("0 pacientes extraidos. Probable: la pantalla post-login es de busqueda y requiere llenar campos antes. Revisa el dump del modo explorador arriba.");
     }
 
     await upsert(records);
