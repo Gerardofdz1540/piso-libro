@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Piso Libro — WinLab Scan Automático
 // @namespace    https://pisocirugiahgl.netlify.app
-// @version      1.0
+// @version      1.1
 // @description  Un clic en "▶ Scan" y el script recorre TODAS las páginas de WinLab solo, sin intervención.
 // @author       piso-libro
 // @match        *://*/*
@@ -15,12 +15,30 @@
   const SUPA_URL = "https://vkxplmrzyqlamxpbtmes.supabase.co";
   const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreHBsbXJ6eXFsYW14cGJ0bWVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NTg1MjcsImV4cCI6MjA4NzUzNDUyN30.zChMOiKnxNv3pLyt2Fqi7zUh0ET5rn1a5L6S3RV1Q98";
   const SS  = "__pl_winlab_tm_state";
-  const V   = "tm-v1";
+  const V   = "tm-v1.1";
 
   // ── Normalize helper ──────────────────────────────────────────────────
   const N = s => String(s || "").toUpperCase()
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/\s+/g, " ").trim();
+
+  // ── Specialty filter ──────────────────────────────────────────────────
+  const ALLOWED_ESPS = new Set([
+    "CG", "CCR", "CT", "CTV", "CPR", "CV", "CMF",
+    "CG/GYO", "CG/CV", "GYO/CG", "CV/CG", "URG", "URGENCIAS"
+  ]);
+  const EXCLUDED_ESPS = new Set([
+    "NCX", "URO", "GYO", "TYO", "ONCOCIRUGÍA", "ONCO",
+    "COLUMNA", "ENDOS", "NEUROCX", "ORTOPEDIA", "TRAUMA"
+  ]);
+  function isAllowed(esp) {
+    const e = String(esp || "").toUpperCase().trim();
+    if (!e) return false;
+    if (EXCLUDED_ESPS.has(e)) return false;
+    if (ALLOWED_ESPS.has(e)) return true;
+    if (/(^|[\/\s])CG([\/\s]|$)/.test(e)) return true;
+    return false;
+  }
 
   // ── State ─────────────────────────────────────────────────────────────
   const loadState = () => { try { return JSON.parse(sessionStorage.getItem(SS) || "null"); } catch { return null; } };
@@ -300,6 +318,19 @@
       btn.remove();
       return;
     }
+
+    // Filter to allowed specialties only
+    const ptsAll = pts;
+    pts = ptsAll.filter(p => isAllowed(p.esp));
+    const excluded = ptsAll.length - pts.length;
+
+    if (!pts.length) {
+      toast("⚠️ No hay pacientes de Cirugía General en el censo.\nTodos son de otras especialidades (" + ptsAll.length + " pac). Revisa la columna ESP.", "#d97706", 15000);
+      btn.remove();
+      return;
+    }
+
+    toast(`[piso-libro] ✅ ${pts.length} pac CG/CT/CV/CPR · 🚫 ${excluded} ignorados\n⏳ Escaneando WinLab…`, "#0369a1", 6000);
 
     btn.remove();
 
