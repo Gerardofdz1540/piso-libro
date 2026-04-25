@@ -1,0 +1,88 @@
+name: WinLab Scraper (Visita Medica 14:00)
+
+# WinLab publica labs ~13:00 CST (UTC-6).
+# Disparo a las 13:15 CST = 19:15 UTC, lunes a viernes.
+# Mexico ya no observa DST en la mayoria del pais; si tu zona si lo hace,
+# duplica el cron una hora antes/despues segun la temporada.
+on:
+  schedule:
+    - cron: "15 19 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: winlab-scraper
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: rpa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: rpa/package.json
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${{ steps.pw-cache.outputs.cache-hit == 'true' && '1' || '0' }}
+        run: npm install --no-audit --no-fund
+
+      - name: Ensure Chromium present
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Run scraper (con reintentos)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 30
+          retry_on: error
+          command: cd rpa && npm run scrape
+        env:
+          WINLAB_URL:             ${{ secrets.WINLAB_URL }}
+          WINLAB_USER:            ${{ secrets.WINLAB_USER }}
+          WINLAB_PASS:            ${{ secrets.WINLAB_PASS }}
+          WINLAB_RESULTS_URL:     ${{ secrets.WINLAB_RESULTS_URL }}
+          WINLAB_USER_SELECTOR:   ${{ secrets.WINLAB_USER_SELECTOR }}
+          WINLAB_PASS_SELECTOR:   ${{ secrets.WINLAB_PASS_SELECTOR }}
+          WINLAB_SUBMIT_SELECTOR: ${{ secrets.WINLAB_SUBMIT_SELECTOR }}
+          WINLAB_TABLE_SELECTOR:  ${{ secrets.WINLAB_TABLE_SELECTOR }}
+          WINLAB_LOGGED_SELECTOR: ${{ secrets.WINLAB_LOGGED_SELECTOR }}
+          WINLAB_NEXT_SELECTOR:   ${{ secrets.WINLAB_NEXT_SELECTOR }}
+          SUPABASE_URL:           ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY:   ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_TABLE:         ${{ secrets.SUPABASE_TABLE }}
+          SUPABASE_ON_CONFLICT:   ${{ secrets.SUPABASE_ON_CONFLICT }}
+
+      - name: Upload screenshot on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshot
+          path: rpa/failure-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Notify failure (GitHub envia email automaticamente)
+        if: failure()
+        run: |
+          echo "::error title=WinLab Scraper FAIL::El scraping fallo tras 3 intentos. Revisa el log y el artifact de screenshot."
+          exit 1
