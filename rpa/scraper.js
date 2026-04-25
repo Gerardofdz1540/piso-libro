@@ -41,10 +41,24 @@ const WINLAB_MAX_PAGES       = parseInt(ENV("WINLAB_MAX_PAGES", "30"), 10);
 const NAV_TIMEOUT_MS         = parseInt(ENV("NAV_TIMEOUT_MS", "45000"), 10);
 const SEL_TIMEOUT_MS         = parseInt(ENV("SEL_TIMEOUT_MS", "20000"), 10);
 
-const SUPABASE_URL           = ENV("SUPABASE_URL");
-const SUPABASE_SERVICE_KEY   = ENV("SUPABASE_SERVICE_KEY");
-const SUPABASE_TABLE         = ENV("SUPABASE_TABLE", "winlab_labs");
-const SUPABASE_CONFLICT      = ENV("SUPABASE_ON_CONFLICT", "exp,fecha");
+const SUPABASE_URL            = ENV("SUPABASE_URL");
+const SUPABASE_SERVICE_KEY    = ENV("SUPABASE_SERVICE_KEY");
+const SUPABASE_TABLE          = ENV("SUPABASE_TABLE", "winlab_labs");
+const SUPABASE_CONFLICT       = ENV("SUPABASE_ON_CONFLICT", "exp,fecha");
+const SUPABASE_CENSO_TABLE    = ENV("SUPABASE_CENSO_TABLE", "patients");
+const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp");
+
+// Selectores del formulario de busqueda WinLab (descubiertos via explorador).
+const WL_SEARCH_EXP_SEL       = ENV("WL_SEARCH_EXP_SEL", "#pnlMain_pnlPaziente_txtCodicePaziente");
+const WL_SEARCH_COGNOME_SEL   = ENV("WL_SEARCH_COGNOME_SEL", "#pnlMain_pnlPaziente_txtCognome");
+const WL_SEARCH_NOME_SEL      = ENV("WL_SEARCH_NOME_SEL", "#pnlMain_pnlPaziente_txtNome");
+const WL_SEARCH_FECHA_DE_SEL  = ENV("WL_SEARCH_FECHA_DE_SEL", "#pnlMain_pnlReferti_txtDataRefertoDa");
+const WL_SEARCH_FECHA_A_SEL   = ENV("WL_SEARCH_FECHA_A_SEL", "#pnlMain_pnlReferti_txtDataRefertoA");
+const WL_SEARCH_BTN_SEL       = ENV("WL_SEARCH_BTN_SEL", "#Intestazione_DBToolbar_pnlCerca_btnCerca");
+const WL_SEARCH_CLEAR_SEL     = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBToolbar_pnlPulisci_btnPulisci");
+const WL_LOOKBACK_DAYS        = parseInt(ENV("WL_LOOKBACK_DAYS", "1"), 10);
+const WL_DATE_FORMAT          = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
+const WL_PER_PATIENT_TIMEOUT  = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const N = (s) =>
@@ -60,6 +74,41 @@ const todayISO = () => {
   const off = d.getTimezoneOffset() * 60000;
   return new Date(d - off).toISOString().slice(0, 10);
 };
+
+// Filtro de especialidad copiado del tampermonkey existente.
+// Mantiene CG, CT, CV, CCR, CPR, CMF, URG y combinaciones; excluye GYO/URO/etc.
+const ALLOWED_ESPS = new Set([
+  "CG", "CCR", "CT", "CTV", "CPR", "CV", "CMF",
+  "CG/GYO", "CG/CV", "GYO/CG", "CV/CG", "URG", "URGENCIAS",
+]);
+const EXCLUDED_ESPS = new Set([
+  "NCX", "URO", "GYO", "TYO", "ONCOCIRUGIA", "ONCO",
+  "COLUMNA", "ENDOS", "NEUROCX", "ORTOPEDIA", "TRAUMA",
+]);
+function isAllowedEsp(esp) {
+  const e = N(esp);
+  if (!e) return false;
+  if (EXCLUDED_ESPS.has(e)) return false;
+  if (ALLOWED_ESPS.has(e)) return true;
+  if (/(^|[\/\s])CG([\/\s]|$)/.test(e)) return true;
+  return false;
+}
+
+// Formatea fecha segun WL_DATE_FORMAT (default "dd/MM/yyyy").
+function formatDate(date) {
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(date.getFullYear());
+  return WL_DATE_FORMAT
+    .replace("dd", dd)
+    .replace("MM", mm)
+    .replace("yyyy", yyyy);
+}
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d;
+}
 
 // Resuelve el primer match VISIBLE entre todos los candidatos del selector.
 // Si ninguno es visible, regresa el primero attached. Esto es CRITICO en WinLab
@@ -101,7 +150,7 @@ async function setField(page, selector, value, label) {
 
 // ── 1. LOGIN ───────────────────────────────────────────────────────────
 async function login(page) {
-  console.log(`[1/4] Login -> ${WINLAB_URL}`);
+  console.log(`[1/5] Login -> ${WINLAB_URL}`);
   await page.goto(WINLAB_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
 
   // Diagnostico: mapear todos los inputs presentes en la pagina (visibles u ocultos).
@@ -171,181 +220,198 @@ async function login(page) {
   console.log("       OK login.");
 }
 
-// ── 2. NAVEGAR A RESULTADOS ────────────────────────────────────────────
-async function gotoResults(page) {
-  if (!WINLAB_RESULTS_URL) {
-    console.log("[2/4] WINLAB_RESULTS_URL vacio: asumo que el post-login YA esta en la lista de resultados.");
-  } else {
-    console.log(`[2/4] Navegando a resultados -> ${WINLAB_RESULTS_URL}`);
-    await page.goto(WINLAB_RESULTS_URL, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+// ── 2. CARGAR CENSO DESDE SUPABASE ─────────────────────────────────────
+// Lee la tabla `patients` (mismo Supabase que la PWA) y filtra por especialidad
+// quirurgica con la misma logica que el tampermonkey existente.
+async function loadCenso(supa) {
+  console.log(`[2/5] Leyendo censo de Supabase tabla="${SUPABASE_CENSO_TABLE}" select="${SUPABASE_CENSO_SELECT}"...`);
+  const { data, error } = await supa
+    .from(SUPABASE_CENSO_TABLE)
+    .select(SUPABASE_CENSO_SELECT);
+  if (error) throw new Error(`Lectura de censo fallo: ${error.message}`);
+
+  const total = data?.length || 0;
+  const filtrados = (data || []).filter((p) => isAllowedEsp(p.esp));
+  console.log(`       Censo total=${total}, despues de filtro especialidad=${filtrados.length}`);
+  if (!filtrados.length) {
+    throw new Error(`Censo vacio o sin pacientes de las especialidades permitidas (CG/CT/CV/CCR/CPR/CMF/URG). Revisa la columna 'esp' en ${SUPABASE_CENSO_TABLE}.`);
   }
-  await page.locator(WINLAB_TABLE_SELECTOR).first().waitFor({ state: "visible", timeout: SEL_TIMEOUT_MS });
-  // Esperar a que la tabla tenga >=1 fila (deterministico, sin sleeps).
-  await page.waitForFunction(
-    (sel) => {
-      const t = document.querySelector(sel);
-      return !!t && t.querySelectorAll("tr").length > 1;
-    },
-    WINLAB_TABLE_SELECTOR,
-    { timeout: SEL_TIMEOUT_MS }
-  );
+  return filtrados;
 }
 
-// ── 3. SCRAPE (mapeo dinamico + paginacion) ────────────────────────────
-async function scrapeAllPages(page) {
-  const all = [];
-  let pageIdx = 0;
+// ── 3. UBICAR LA PANTALLA DE BUSQUEDA ─────────────────────────────────
+// Captura la URL post-login (que es la pantalla de busqueda) para volver
+// a ella entre paciente y paciente sin perder sesion.
+async function captureSearchUrl(page) {
+  const explicit = WINLAB_RESULTS_URL || "";
+  const url = explicit || page.url();
+  console.log(`[3/5] Pantalla de busqueda: ${url}`);
+  return url;
+}
 
-  while (pageIdx < WINLAB_MAX_PAGES) {
-    pageIdx++;
-    console.log(`[3/4] Scraping pagina ${pageIdx}...`);
+// ── 4. BUSQUEDA + SCRAPE POR PACIENTE ─────────────────────────────────
+async function searchAndScrapeOne(page, searchUrl, paciente) {
+  // Volver a la pantalla de busqueda fresca (limpia el form previo).
+  await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+  await page.locator(WL_SEARCH_EXP_SEL).waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
 
-    const rows = await page.evaluate((tableSel) => {
-      const norm = (s) =>
-        String(s || "")
-          .toUpperCase()
-          .normalize("NFD")
-          .replace(/\p{Diacritic}/gu, "")
-          .replace(/\s+/g, " ")
-          .trim();
+  // Llenar codigo paciente (= exp del censo).
+  await setField(page, WL_SEARCH_EXP_SEL, String(paciente.exp || ""), `exp=${paciente.exp}`);
 
-      const table = document.querySelector(tableSel);
-      if (!table) return { headers: [], data: [] };
-
-      const trs = Array.from(table.querySelectorAll("tr"));
-
-      // Mapeo dinamico de columnas: primera fila con TH, o primera con
-      // tokens reconocibles (APELLIDO/NOMBRE/PACIENTE/EXP/FECHA).
-      let headers = [];
-      let headerRowIdx = -1;
-      const isHeaderToken = (t) =>
-        /^(APELLIDO|APELLIDOS|NOMBRE|NOMBRES|PACIENTE|EXP|EXPEDIENTE|FECHA|EDAD|SEXO|ESP|ESPECIALIDAD|CAMA|HABITACION|ESTUDIO|EXAMEN|RESULTADO|VALOR|UNIDADES|REFERENCIA)$/;
-
-      for (let i = 0; i < trs.length; i++) {
-        const ths = Array.from(trs[i].querySelectorAll("th"));
-        if (ths.length >= 2) {
-          headers = ths.map((c) => norm(c.innerText));
-          headerRowIdx = i;
-          break;
-        }
-        const tds = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
-        if (tds.length >= 2 && tds.filter((t) => isHeaderToken(t)).length >= 2) {
-          headers = tds;
-          headerRowIdx = i;
-          break;
-        }
-      }
-
-      const idx = (re) => headers.findIndex((h) => re.test(h));
-      const cExp = idx(/^(EXP|EXPEDIENTE)$/);
-      const cAp  = idx(/^APELLIDO(S)?$/);
-      const cNo  = idx(/^NOMBRE(S)?$/);
-      const cPac = idx(/^PACIENTE(S)?$/);
-      const cFec = idx(/^FECHA$/);
-      const cEst = idx(/^(ESTUDIO|EXAMEN)$/);
-      const cVal = idx(/^(RESULTADO|VALOR)$/);
-
-      const data = [];
-      let current = null;
-
-      for (let i = headerRowIdx + 1; i < trs.length; i++) {
-        const cells = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
-        if (!cells.length) continue;
-
-        const isPatientHeader =
-          cells.some((t) => t === "FEMENINO" || t === "MASCULINO") ||
-          (cExp >= 0 && cells[cExp] && /^\d{3,}$/.test(cells[cExp]));
-
-        if (isPatientHeader) {
-          if (current) data.push(current);
-          const exp =
-            (cExp >= 0 && cells[cExp]) ||
-            cells.find((t) => /^\d{6,}$/.test(t)) ||
-            "";
-          let paciente = "";
-          if (cPac >= 0 && cells[cPac]) paciente = cells[cPac];
-          else if (cAp >= 0) paciente = [cells[cAp], cNo >= 0 ? cells[cNo] : ""].filter(Boolean).join(" ");
-          else {
-            const sx = cells.findIndex((c) => c === "FEMENINO" || c === "MASCULINO");
-            if (sx >= 2) paciente = [cells[sx - 2], cells[sx - 1]].filter(Boolean).join(" ");
-          }
-          const fecha = cFec >= 0 ? cells[cFec] : "";
-          const cols = {};
-          headers.forEach((h, k) => {
-            if (h && cells[k] !== undefined) cols[h] = cells[k];
-          });
-          current = {
-            exp: exp || paciente,
-            paciente: paciente || null,
-            fecha: fecha || null,
-            data: { columnas: cols, estudios: [] },
-          };
-        } else if (current) {
-          // Fila hija = un estudio/examen.
-          const estudio = cEst >= 0 ? cells[cEst] : cells[0] || "";
-          const valor   = cVal >= 0 ? cells[cVal] : cells[1] || "";
-          if (estudio || valor) {
-            const row = {};
-            headers.forEach((h, k) => {
-              if (h && cells[k] !== undefined) row[h] = cells[k];
-            });
-            current.data.estudios.push(row);
-          }
-        }
-      }
-      if (current) data.push(current);
-
-      return { headers, data };
-    }, WINLAB_TABLE_SELECTOR);
-
-    console.log(`       Headers detectados: [${rows.headers.join(", ")}]`);
-    console.log(`       Pacientes en pagina ${pageIdx}: ${rows.data.length}`);
-    all.push(...rows.data);
-
-    // Paginacion: si no hay selector configurado, una sola pagina.
-    if (!WINLAB_NEXT_SELECTOR) break;
-    const next = page.locator(WINLAB_NEXT_SELECTOR).first();
-    const visible = await next.isVisible().catch(() => false);
-    const enabled = visible ? await next.isEnabled().catch(() => false) : false;
-    if (!visible || !enabled) {
-      console.log("       Sin pagina siguiente.");
-      break;
+  // Llenar rango de fechas (default: ultimos N dias hasta hoy).
+  if (WL_LOOKBACK_DAYS >= 0) {
+    const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
+    const fechaA  = formatDate(new Date());
+    if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {
+      await setField(page, WL_SEARCH_FECHA_DE_SEL, fechaDe, "fechaDe");
     }
-    await Promise.all([
-      page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT_MS }),
-      next.click(),
-    ]);
-    await page.locator(WINLAB_TABLE_SELECTOR).first().waitFor({ state: "visible", timeout: SEL_TIMEOUT_MS });
+    if (await page.locator(WL_SEARCH_FECHA_A_SEL).count()) {
+      await setField(page, WL_SEARCH_FECHA_A_SEL, fechaA, "fechaA");
+    }
   }
 
-  return all;
-}
+  // Click "Busca" + esperar respuesta.
+  const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
+  await btn.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
+  try {
+    await Promise.all([
+      page.waitForLoadState("domcontentloaded", { timeout: WL_PER_PATIENT_TIMEOUT }),
+      btn.click({ force: true, timeout: 5000 }),
+    ]);
+  } catch {
+    await Promise.all([
+      page.waitForLoadState("domcontentloaded", { timeout: WL_PER_PATIENT_TIMEOUT }),
+      page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        if (el) el.click();
+      }, WL_SEARCH_BTN_SEL),
+    ]);
+  }
 
-// ── 4. UPSERT MASIVO ───────────────────────────────────────────────────
-async function upsert(records) {
-  console.log(`[4/4] Upsert -> Supabase tabla="${SUPABASE_TABLE}" onConflict="${SUPABASE_CONFLICT}" (${records.length} filas)`);
-  const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
+  // Scrapear la(s) tabla(s) de resultados con mapeo dinamico.
+  const result = await page.evaluate(() => {
+    const norm = (s) =>
+      String(s || "")
+        .toUpperCase()
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    // Buscar la tabla mas grande con headers — heuristica: la que tiene
+    // mas filas distintas a la del menu/encabezado.
+    const tables = Array.from(document.querySelectorAll("table"));
+    let best = null, bestRows = 0;
+    for (const t of tables) {
+      const trs = t.querySelectorAll("tr").length;
+      const ths = t.querySelectorAll("th").length;
+      const score = trs * (1 + (ths > 0 ? 1 : 0));
+      // Excluir tablas de menu (header global con muchas opciones)
+      const txt = norm(t.innerText).slice(0, 200);
+      if (txt.includes("INICIO REPORTES AYUDA")) continue;
+      if (score > bestRows) { best = t; bestRows = score; }
+    }
+    if (!best) return { headers: [], rows: [], tableCount: tables.length };
+
+    const trs = Array.from(best.querySelectorAll("tr"));
+    let headers = [];
+    let headerIdx = -1;
+    for (let i = 0; i < trs.length; i++) {
+      const ths = Array.from(trs[i].querySelectorAll("th"));
+      if (ths.length >= 2) {
+        headers = ths.map((c) => norm(c.innerText));
+        headerIdx = i;
+        break;
+      }
+    }
+    if (headerIdx < 0) {
+      // Si no hay TH, intentar primera fila con varias TDs como header
+      for (let i = 0; i < Math.min(3, trs.length); i++) {
+        const tds = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
+        if (tds.length >= 3 && tds.every((t) => t.length > 0 && t.length < 30)) {
+          headers = tds;
+          headerIdx = i;
+          break;
+        }
+      }
+    }
+
+    const rows = [];
+    for (let i = headerIdx + 1; i < trs.length; i++) {
+      const cells = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
+      if (!cells.length) continue;
+      const row = {};
+      headers.forEach((h, k) => {
+        if (h && cells[k] !== undefined) row[h] = cells[k];
+      });
+      // Tambien guardamos celdas crudas por indice por si los headers son raros.
+      row.__cells = cells;
+      rows.push(row);
+    }
+    return { headers, rows, tableCount: tables.length };
   });
 
-  const fecha = todayISO();
-  const scraped_at = new Date().toISOString();
-  const payload = records.map((r) => ({
-    exp: String(r.exp).slice(0, 64),
-    paciente: r.paciente,
-    fecha: r.fecha && /^\d{4}-\d{2}-\d{2}$/.test(r.fecha) ? r.fecha : fecha,
-    data: r.data,
-    scraped_at,
-  }));
+  return result;
+}
 
+// Procesa todo el censo en serie. Si hay >1 fallo seguido, aborta.
+async function scrapeForCenso(page, searchUrl, censo) {
+  console.log(`[4/5] Buscando labs paciente por paciente (${censo.length} pacientes)...`);
+  const records = [];
+  let consecutiveErrors = 0;
+  const fechaToday = todayISO();
+  const scraped_at = new Date().toISOString();
+
+  for (let i = 0; i < censo.length; i++) {
+    const p = censo[i];
+    const tag = `[${i + 1}/${censo.length}] exp=${p.exp} ${String(p.nombre || "").slice(0, 40)}`;
+    try {
+      const res = await searchAndScrapeOne(page, searchUrl, p);
+      const matched = res.rows.length;
+      console.log(`       ${tag}: ${matched} reportes (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
+
+      if (matched > 0) {
+        records.push({
+          exp: String(p.exp).slice(0, 64),
+          paciente: p.nombre || null,
+          fecha: fechaToday,
+          data: {
+            esp: p.esp || null,
+            cama: p.cama || null,
+            headers: res.headers,
+            reportes: res.rows,
+          },
+          scraped_at,
+        });
+      }
+      consecutiveErrors = 0;
+    } catch (err) {
+      consecutiveErrors++;
+      console.log(`       ${tag}: ERROR ${err.message.split("\n")[0]}`);
+      if (consecutiveErrors >= 3) {
+        throw new Error(`3 fallos seguidos buscando pacientes. Ultimo: ${err.message}`);
+      }
+    }
+  }
+  console.log(`       OK busqueda. Pacientes con labs: ${records.length}/${censo.length}`);
+  return records;
+}
+
+// ── 5. UPSERT MASIVO ───────────────────────────────────────────────────
+async function upsert(supa, records) {
+  console.log(`[5/5] Upsert -> Supabase tabla="${SUPABASE_TABLE}" onConflict="${SUPABASE_CONFLICT}" (${records.length} filas)`);
+  if (!records.length) {
+    console.log("       0 filas para upsertear (ningun paciente con labs en el rango). Saliendo OK.");
+    return;
+  }
   const { error, count } = await supa
     .from(SUPABASE_TABLE)
-    .upsert(payload, { onConflict: SUPABASE_CONFLICT, count: "exact" });
+    .upsert(records, { onConflict: SUPABASE_CONFLICT, count: "exact" });
 
   if (error) {
     throw new Error(`Supabase upsert fallo: ${error.message} (code=${error.code})`);
   }
-  console.log(`       OK upsert. Filas afectadas: ${count ?? payload.length}`);
+  console.log(`       OK upsert. Filas afectadas: ${count ?? records.length}`);
 }
 
 // ── MODO EXPLORADOR ────────────────────────────────────────────────────
@@ -447,18 +513,25 @@ async function explorePage(page) {
   page.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
 
   try {
+    const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
     await login(page);
-    await gotoResults(page);
-    const records = await scrapeAllPages(page);
+    const censo = await loadCenso(supa);
+    const searchUrl = await captureSearchUrl(page);
+    const records = await scrapeForCenso(page, searchUrl, censo);
 
     if (!records.length) {
-      console.log("[!] 0 pacientes extraidos. Activando modo EXPLORADOR para mapear la pantalla...");
+      // No es necesariamente un fallo: puede que ningun paciente tenga
+      // labs en el rango. Activamos explorador y salimos en exit(0) tras
+      // upsert vacio para no spammear el correo de "fail" todos los dias.
+      console.log("[!] 0 pacientes con labs. Dump de la ultima pantalla para diagnostico...");
       await explorePage(page);
-      throw new Error("0 pacientes extraidos. Probable: la pantalla post-login es de busqueda y requiere llenar campos antes. Revisa el dump del modo explorador arriba.");
     }
 
-    await upsert(records);
-    console.log(`DONE en ${((Date.now() - t0) / 1000).toFixed(1)}s. Total pacientes: ${records.length}`);
+    await upsert(supa, records);
+    console.log(`DONE en ${((Date.now() - t0) / 1000).toFixed(1)}s. Pacientes con labs: ${records.length}/${censo.length}.`);
     await browser.close();
     process.exit(0);
   } catch (err) {
