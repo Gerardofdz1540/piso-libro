@@ -59,6 +59,9 @@ const WL_SEARCH_CLEAR_SEL     = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBTool
 const WL_LOOKBACK_DAYS        = parseInt(ENV("WL_LOOKBACK_DAYS", "1"), 10);
 const WL_DATE_FORMAT          = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 const WL_PER_PATIENT_TIMEOUT  = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
+const WL_DRILLDOWN            = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte para sacar valores
+const WL_DRILLDOWN_MAX        = parseInt(ENV("WL_DRILLDOWN_MAX", "3"), 10);      // max reportes por paciente
+const WL_DRILLDOWN_TIMEOUT    = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const N = (s) =>
@@ -298,20 +301,18 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
         .replace(/\s+/g, " ")
         .trim();
 
-    // Buscar la tabla mas grande con headers — heuristica: la que tiene
-    // mas filas distintas a la del menu/encabezado.
     const tables = Array.from(document.querySelectorAll("table"));
-    let best = null, bestRows = 0;
-    for (const t of tables) {
+    let best = null, bestRows = 0, bestTableIdx = -1;
+    for (let ti = 0; ti < tables.length; ti++) {
+      const t = tables[ti];
       const trs = t.querySelectorAll("tr").length;
       const ths = t.querySelectorAll("th").length;
       const score = trs * (1 + (ths > 0 ? 1 : 0));
-      // Excluir tablas de menu (header global con muchas opciones)
       const txt = norm(t.innerText).slice(0, 200);
       if (txt.includes("INICIO REPORTES AYUDA")) continue;
-      if (score > bestRows) { best = t; bestRows = score; }
+      if (score > bestRows) { best = t; bestRows = score; bestTableIdx = ti; }
     }
-    if (!best) return { headers: [], rows: [], tableCount: tables.length };
+    if (!best) return { headers: [], rows: [], tableCount: tables.length, bestTableIdx: -1 };
 
     const trs = Array.from(best.querySelectorAll("tr"));
     let headers = [];
@@ -325,7 +326,6 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
       }
     }
     if (headerIdx < 0) {
-      // Si no hay TH, intentar primera fila con varias TDs como header
       for (let i = 0; i < Math.min(3, trs.length); i++) {
         const tds = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
         if (tds.length >= 3 && tds.every((t) => t.length > 0 && t.length < 30)) {
@@ -344,14 +344,159 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
       headers.forEach((h, k) => {
         if (h && cells[k] !== undefined) row[h] = cells[k];
       });
-      // Tambien guardamos celdas crudas por indice por si los headers son raros.
       row.__cells = cells;
+      // Detectar si la fila tiene un link/boton clickable para drill-down.
+      const link = trs[i].querySelector('a, input[type="image"], input[type="button"], input[type="submit"]');
+      row.__hasLink = !!link;
+      row.__rowIdxInTable = i;
       rows.push(row);
     }
-    return { headers, rows, tableCount: tables.length };
+    return { headers, rows, tableCount: tables.length, bestTableIdx, headerIdx };
   });
 
+  // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──
+  if (WL_DRILLDOWN === 1 && result.rows.length > 0 && result.bestTableIdx >= 0) {
+    const max = Math.min(result.rows.length, WL_DRILLDOWN_MAX);
+    for (let i = 0; i < max; i++) {
+      const row = result.rows[i];
+      if (!row.__hasLink) continue;
+      try {
+        const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, i === 0);
+        if (valores && valores.length) {
+          row.valores = valores;
+        }
+      } catch (e) {
+        console.log(`       drill-down [${i}]: ${e.message.split("\n")[0]}`);
+      }
+    }
+  }
+
   return result;
+}
+
+// Click en una fila especifica de la tabla de resultados, scrapea la
+// pantalla de detalle (lab values) y vuelve a la lista para la siguiente.
+// Si dumpFirst=true, vuelca el DOM del detalle para diagnostico (1ra vez).
+async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst) {
+  const link = page.locator("table").nth(tableIdx)
+    .locator("tr").nth(rowIdxInTable)
+    .locator('a, input[type="image"], input[type="button"], input[type="submit"]').first();
+  const linkCount = await link.count();
+  if (!linkCount) return null;
+
+  await Promise.all([
+    page.waitForLoadState("domcontentloaded", { timeout: WL_DRILLDOWN_TIMEOUT }),
+    link.click({ force: true, timeout: 5000 }).catch(async () => {
+      await page.evaluate((args) => {
+        const el = document.querySelectorAll("table")[args.t]
+          ?.querySelectorAll("tr")[args.r]
+          ?.querySelector('a, input[type="image"], input[type="button"], input[type="submit"]');
+        if (el) el.click();
+      }, { t: tableIdx, r: rowIdxInTable });
+    }),
+  ]);
+
+  // Scrapear cualquier tabla en la pantalla de detalle que parezca tener
+  // estudios/valores. Heuristica: buscar tablas con >= 3 columnas donde
+  // la primera columna tiene texto y al menos otra columna parece numero/valor.
+  const detail = await page.evaluate(() => {
+    const norm = (s) =>
+      String(s || "")
+        .toUpperCase()
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const out = { url: location.href, valores: [], headers: [] };
+    const tables = Array.from(document.querySelectorAll("table"));
+    for (const t of tables) {
+      const txt = norm(t.innerText).slice(0, 200);
+      if (txt.includes("INICIO REPORTES AYUDA")) continue;
+      const trs = Array.from(t.querySelectorAll("tr"));
+      if (trs.length < 2) continue;
+
+      // Detectar header: TH primero, o primera fila con tokens reconocibles.
+      let headers = [];
+      let headerIdx = -1;
+      for (let i = 0; i < Math.min(5, trs.length); i++) {
+        const ths = Array.from(trs[i].querySelectorAll("th"));
+        if (ths.length >= 2) {
+          headers = ths.map((c) => norm(c.innerText));
+          headerIdx = i;
+          break;
+        }
+        const tds = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
+        if (tds.some((c) => /^(ESTUDIO|EXAMEN|ANALISIS|PRUEBA|TEST|RESULTADO|VALOR|UNIDADES|UNIDAD|REFERENCIA|RANGO|VR)$/.test(c))) {
+          headers = tds;
+          headerIdx = i;
+          break;
+        }
+      }
+      if (headerIdx < 0) continue;
+
+      const idx = (re) => headers.findIndex((h) => re.test(h));
+      const cE = idx(/^(ESTUDIO|EXAMEN|ANALISIS|PRUEBA|TEST|NOMBRE|DESCRIPCION)$/);
+      const cV = idx(/^(RESULTADO|VALOR|VAL)$/);
+      const cU = idx(/^(UNIDADES|UNIDAD|U\.M\.|UM)$/);
+      const cR = idx(/^(REFERENCIA|RANGO|V\.R\.|VR|RANGO REFERENCIAL)$/);
+      if (cE < 0 || cV < 0) continue;
+
+      for (let i = headerIdx + 1; i < trs.length; i++) {
+        const cells = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
+        if (!cells.length) continue;
+        const estudio = cells[cE];
+        const valor = cells[cV];
+        if (!estudio && !valor) continue;
+        out.valores.push({
+          estudio,
+          valor,
+          unidad: cU >= 0 ? (cells[cU] || "") : "",
+          referencia: cR >= 0 ? (cells[cR] || "") : "",
+        });
+      }
+      out.headers = headers;
+      if (out.valores.length) break; // Ya encontramos la tabla buena.
+    }
+    return out;
+  });
+
+  if (dumpFirst && (!detail.valores || !detail.valores.length)) {
+    console.log(`       <<<DETAIL>>> URL=${detail.url}`);
+    const allTables = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll("table")).slice(0, 5).map((t, i) => ({
+        idx: i,
+        rows: t.querySelectorAll("tr").length,
+        ths: t.querySelectorAll("th").length,
+        firstRow: Array.from(t.querySelectorAll("tr")[0]?.querySelectorAll("th, td") || [])
+          .map((c) => (c.innerText || "").trim().slice(0, 40)),
+        sample: (t.innerText || "").slice(0, 200),
+      }));
+    });
+    allTables.forEach((tb) => console.log(`       <<<DETAIL TABLE ${tb.idx}>>> ${JSON.stringify(tb)}`));
+  }
+
+  // Volver a la pantalla de busqueda y re-ejecutar la busqueda para que
+  // la siguiente fila siga teniendo indices validos.
+  await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+  await setField(page, WL_SEARCH_EXP_SEL, String(paciente.exp || ""), `re-exp=${paciente.exp}`);
+  if (WL_LOOKBACK_DAYS >= 0) {
+    const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
+    const fechaA  = formatDate(new Date());
+    if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {
+      await setField(page, WL_SEARCH_FECHA_DE_SEL, fechaDe, "re-fechaDe");
+    }
+    if (await page.locator(WL_SEARCH_FECHA_A_SEL).count()) {
+      await setField(page, WL_SEARCH_FECHA_A_SEL, fechaA, "re-fechaA");
+    }
+  }
+  const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
+  await Promise.all([
+    page.waitForLoadState("domcontentloaded", { timeout: WL_PER_PATIENT_TIMEOUT }),
+    btn.click({ force: true, timeout: 5000 }).catch(() => {}),
+  ]);
+
+  return detail.valores || [];
 }
 
 // Procesa todo el censo en serie. Si hay >1 fallo seguido, aborta.

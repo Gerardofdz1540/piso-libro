@@ -3847,6 +3847,7 @@
     // ─── STATE ──────────────────────────────────────────────────────────────────────
     let patients = [];
     let noteData = {};
+    let winlabByExp = {};     // exp -> { fecha, scraped_at, data: { headers, reportes, ... } }
     let expandedCards = {};
     let labLoadingSet = new Set();
     let activeLabDate = {};   // k -> "YYYY-MM-DD"
@@ -5309,6 +5310,23 @@
         }
 
         if (!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
+
+        // Labs WinLab scrapeados por GitHub Action (tabla winlab_labs).
+        // Indexa por exp; para cada paciente conserva el scraped_at mas reciente.
+        try {
+          const wlRows = await retryNetwork(() => _sGet("winlab_labs", "select=exp,fecha,scraped_at,data&order=scraped_at.desc&limit=500"), 2, 200);
+          const next = {};
+          (wlRows || []).forEach(r => {
+            const e = String(r.exp || "").trim();
+            if (!e) return;
+            if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
+          });
+          winlabByExp = next;
+        } catch (e) {
+          // Si la tabla no existe o no hay permisos, continuamos sin labs WinLab.
+          console.warn("winlab_labs no disponible:", e?.message || e);
+          winlabByExp = {};
+        }
 
         const noteMap = {};
         (nts || []).forEach(n => { noteMap[n.patient_id] = n; });
@@ -7811,6 +7829,8 @@
 
       ${renderLabSection(nd, k)}
 
+      ${renderWinlabSection(p, k)}
+
       ${renderChecklist(nd, k)}
 
       <div class="grid-2" style="margin-top:10px">
@@ -8701,6 +8721,58 @@
         document.querySelectorAll(".lab-tip.visible").forEach(t => { t._pinned = false; t.classList.remove("visible"); });
       }
     });
+
+    // Sección de labs scrapeados de WinLab (read-only, colapsable).
+    // Se llena con datos de la tabla winlab_labs (poblada por GitHub Action).
+    function renderWinlabSection(p, k) {
+      const exp = String(p?.exp || "").trim();
+      if (!exp) return "";
+      const lab = winlabByExp[exp];
+      if (!lab || !lab.data) return "";
+      const reportes = Array.isArray(lab.data.reportes) ? lab.data.reportes : [];
+      if (!reportes.length) return "";
+
+      const sid = "winlab-" + k.replace(/[^a-zA-Z0-9]/g, "_");
+      let scrapedTxt = "";
+      if (lab.scraped_at) {
+        try {
+          scrapedTxt = new Date(lab.scraped_at).toLocaleString("es-MX", {
+            day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"
+          });
+        } catch (_) { scrapedTxt = String(lab.scraped_at).slice(0, 16); }
+      }
+
+      const items = reportes.map(r => {
+        // Cada reporte: si tiene `valores` (drill-down), mostrarlos formateados;
+        // sino, mostrar las celdas crudas en formato KEY: VAL.
+        const valores = Array.isArray(r.valores) ? r.valores : null;
+        if (valores && valores.length) {
+          const rows = valores.map(v =>
+            `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:2px 0">
+              <span>${esc(v.estudio || v.nombre || "")}</span>
+              <span style="font-weight:600">${esc(v.valor || "")}${v.unidad ? " " + esc(v.unidad) : ""}</span>
+              ${v.referencia ? `<span style="color:#64748b;font-size:10px">[${esc(v.referencia)}]</span>` : ""}
+            </div>`).join("");
+          return `<li style="padding:6px 10px;border-bottom:1px solid var(--border)">${rows}</li>`;
+        }
+        // Fallback: render de celdas/headers
+        const fields = Object.keys(r)
+          .filter(f => f !== "__cells" && f !== "valores" && r[f])
+          .map(f => `<b>${esc(f)}:</b> ${esc(r[f])}`)
+          .join(" · ");
+        const fallback = fields || (Array.isArray(r.__cells) ? r.__cells.filter(Boolean).join(" · ") : "");
+        return `<li style="padding:5px 10px;border-bottom:1px solid var(--border);font-size:11px;line-height:1.45">${esc(fallback) || "—"}</li>`;
+      }).join("");
+
+      return `
+      <details id="${sid}" style="margin:10px 0;border:1px solid var(--border);border-radius:6px;background:#f0f9ff" open>
+        <summary style="padding:7px 11px;cursor:pointer;font-weight:600;font-size:12px;color:#0369a1;display:flex;justify-content:space-between;align-items:center">
+          <span>🧪 Labs WinLab (${reportes.length})</span>
+          <span style="font-weight:400;color:#64748b;font-size:10px">${scrapedTxt ? "scan " + scrapedTxt : ""}</span>
+        </summary>
+        <ul style="list-style:none;padding:0;margin:0">${items}</ul>
+      </details>`;
+    }
 
     function renderLabSection(nd, k) {
       nd = migrateNote(nd);
