@@ -11,6 +11,7 @@
 
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
+import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords } from "./lib.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -64,54 +65,8 @@ const WL_DRILLDOWN_MAX        = parseInt(ENV("WL_DRILLDOWN_MAX", "3"), 10);     
 const WL_DRILLDOWN_TIMEOUT    = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
 
 // ── Helpers ────────────────────────────────────────────────────────────
-const N = (s) =>
-  String(s || "")
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const todayISO = () => {
-  const d = new Date();
-  const off = d.getTimezoneOffset() * 60000;
-  return new Date(d - off).toISOString().slice(0, 10);
-};
-
-// Filtro de especialidad copiado del tampermonkey existente.
-// Mantiene CG, CT, CV, CCR, CPR, CMF, URG y combinaciones; excluye GYO/URO/etc.
-const ALLOWED_ESPS = new Set([
-  "CG", "CCR", "CT", "CTV", "CPR", "CV", "CMF",
-  "CG/GYO", "CG/CV", "GYO/CG", "CV/CG", "URG", "URGENCIAS",
-]);
-const EXCLUDED_ESPS = new Set([
-  "NCX", "URO", "GYO", "TYO", "ONCOCIRUGIA", "ONCO",
-  "COLUMNA", "ENDOS", "NEUROCX", "ORTOPEDIA", "TRAUMA",
-]);
-function isAllowedEsp(esp) {
-  const e = N(esp);
-  if (!e) return false;
-  if (EXCLUDED_ESPS.has(e)) return false;
-  if (ALLOWED_ESPS.has(e)) return true;
-  if (/(^|[\/\s])CG([\/\s]|$)/.test(e)) return true;
-  return false;
-}
-
-// Formatea fecha segun WL_DATE_FORMAT (default "dd/MM/yyyy").
-function formatDate(date) {
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(date.getFullYear());
-  return WL_DATE_FORMAT
-    .replace("dd", dd)
-    .replace("MM", mm)
-    .replace("yyyy", yyyy);
-}
-function daysAgo(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
-}
+// Wrapper local para fechas con el formato configurado por env.
+const formatDate = (date) => _formatDate(date, WL_DATE_FORMAT);
 
 // Resuelve el primer match VISIBLE entre todos los candidatos del selector.
 // Si ninguno es visible, regresa el primero attached. Esto es CRITICO en WinLab
@@ -337,6 +292,8 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
     const trs = Array.from(best.querySelectorAll("tr"));
     let headers = [];
     let headerIdx = -1;
+
+    // 1) Buscar fila con TH (estandar HTML).
     for (let i = 0; i < trs.length; i++) {
       const ths = Array.from(trs[i].querySelectorAll("th"));
       if (ths.length >= 2) {
@@ -345,14 +302,25 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
         break;
       }
     }
+    // 2) Si no, primera fila con TDs cortos y no vacios.
     if (headerIdx < 0) {
       for (let i = 0; i < Math.min(3, trs.length); i++) {
         const tds = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
-        if (tds.length >= 3 && tds.every((t) => t.length > 0 && t.length < 30)) {
+        if (tds.length >= 3 && tds.filter((t) => t.length > 0 && t.length < 30).length >= 2) {
           headers = tds;
           headerIdx = i;
           break;
         }
+      }
+    }
+    // 3) Fallback: tomar SIEMPRE la primera fila como headers (aunque
+    //    esten vacios o raros) para no perder el mapeo posicional.
+    if (headerIdx < 0 && trs.length > 0) {
+      const firstCells = Array.from(trs[0].querySelectorAll("th, td"))
+        .map((c) => norm(c.innerText));
+      if (firstCells.length > 0) {
+        headers = firstCells.map((c, idx) => c || `COL_${idx}`);
+        headerIdx = 0;
       }
     }
 
@@ -528,6 +496,7 @@ async function scrapeForCenso(page, searchUrl, censo) {
   const fechaToday = todayISO();
   const scraped_at = new Date().toISOString();
 
+  let firstDiagDumped = false;
   for (let i = 0; i < censo.length; i++) {
     const p = censo[i];
     const tag = `[${i + 1}/${censo.length}] exp=${p.exp} ${String(p.nombre || "").slice(0, 40)}`;
@@ -535,6 +504,26 @@ async function scrapeForCenso(page, searchUrl, censo) {
       const res = await searchAndScrapeOne(page, searchUrl, p);
       const matched = res.rows.length;
       console.log(`       ${tag}: ${matched} reportes (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
+
+      // Diagnostico: la primera vez que tengamos rows pero headers raros,
+      // dumpea las primeras 5 tablas para ver el DOM real.
+      if (!firstDiagDumped && matched > 0 && (!res.headers.length || res.headers.every((h) => /^COL_\d+$/.test(h)))) {
+        firstDiagDumped = true;
+        console.log("       <<<DIAG>>> headers vacios o genericos. Dump de tablas:");
+        const tablesDump = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll("table")).slice(0, 8).map((t, i) => ({
+            idx: i,
+            rows: t.querySelectorAll("tr").length,
+            ths: t.querySelectorAll("th").length,
+            firstRowTags: Array.from(t.querySelectorAll("tr")[0]?.children || []).map((c) => c.tagName).join(","),
+            firstRowText: Array.from(t.querySelectorAll("tr")[0]?.children || [])
+              .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
+            secondRowText: Array.from(t.querySelectorAll("tr")[1]?.children || [])
+              .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
+          }));
+        });
+        tablesDump.forEach((tb) => console.log(`       <<<DIAG TABLE ${tb.idx}>>> ${JSON.stringify(tb)}`));
+      }
 
       if (matched > 0) {
         records.push({
@@ -565,19 +554,23 @@ async function scrapeForCenso(page, searchUrl, censo) {
 
 // ── 5. UPSERT MASIVO ───────────────────────────────────────────────────
 async function upsert(supa, records) {
-  console.log(`[5/5] Upsert -> Supabase tabla="${SUPABASE_TABLE}" onConflict="${SUPABASE_CONFLICT}" (${records.length} filas)`);
-  if (!records.length) {
+  const deduped = dedupRecords(records, SUPABASE_CONFLICT);
+  if (deduped.length !== records.length) {
+    console.log(`[5/5] Dedup: ${records.length} -> ${deduped.length} filas (claves duplicadas en censo: ${records.length - deduped.length})`);
+  }
+  console.log(`[5/5] Upsert -> Supabase tabla="${SUPABASE_TABLE}" onConflict="${SUPABASE_CONFLICT}" (${deduped.length} filas)`);
+  if (!deduped.length) {
     console.log("       0 filas para upsertear (ningun paciente con labs en el rango). Saliendo OK.");
     return;
   }
   const { error, count } = await supa
     .from(SUPABASE_TABLE)
-    .upsert(records, { onConflict: SUPABASE_CONFLICT, count: "exact" });
+    .upsert(deduped, { onConflict: SUPABASE_CONFLICT, count: "exact" });
 
   if (error) {
     throw new Error(`Supabase upsert fallo: ${error.message} (code=${error.code})`);
   }
-  console.log(`       OK upsert. Filas afectadas: ${count ?? records.length}`);
+  console.log(`       OK upsert. Filas afectadas: ${count ?? deduped.length}`);
 }
 
 // ── MODO EXPLORADOR ────────────────────────────────────────────────────

@@ -44,6 +44,9 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${{ steps.pw-cache.outputs.cache-hit == 'true' && '1' || '0' }}
         run: npm install --no-audit --no-fund
 
+      - name: Tests offline (dedup, filtros, fechas)
+        run: node scraper.test.js
+
       - name: Ensure Chromium present
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install --with-deps chromium
