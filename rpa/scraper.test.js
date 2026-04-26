@@ -4,7 +4,7 @@
 import {
   dedupRecords, isAllowedEsp, formatDate,
   isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-  isMeaningfulReportRow,
+  isMeaningfulReportRow, extractApellidos, expVariants,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -164,6 +164,47 @@ assert(isMeaningfulReportRow({
 
 assert(isMeaningfulReportRow(null) === false, "meaningful: null -> false");
 assert(isMeaningfulReportRow({}) === false,    "meaningful: objeto vacio -> false");
+
+// ── 15. extractApellidos ──────────────────────────────────────────────
+{
+  const a1 = extractApellidos("AGUSTIN JAIME MENDOZA GONZALEZ");
+  assert(a1.includes("MENDOZA GONZALEZ"), "apellidos: 2 ultimas palabras");
+  assert(a1.includes("MENDOZA"),          "apellidos: solo penultima (paterno)");
+}
+{
+  const a2 = extractApellidos("ALEJANDRO RAMIREZ HERNANDEZ");
+  assert(a2.includes("RAMIREZ HERNANDEZ"), "apellidos: nombre simple + 2 apellidos");
+  assert(a2.includes("RAMIREZ"),           "apellidos: paterno");
+}
+{
+  const a3 = extractApellidos("MARIA");
+  assert(a3.length === 0, "apellidos: una sola palabra -> []");
+}
+assert(extractApellidos(null).length === 0,  "apellidos: null -> []");
+assert(extractApellidos("").length === 0,    "apellidos: vacio -> []");
+{
+  const a5 = extractApellidos("  Pedro  Romero  Juarez  ");
+  assert(a5[0] === "ROMERO JUAREZ", "apellidos: trim + uppercase");
+}
+
+// ── 16. expVariants ───────────────────────────────────────────────────
+{
+  const v = expVariants("26-06437");
+  assert(v.includes("26-06437"), "expVariants: original con dash");
+  assert(v.includes("2606437"),  "expVariants: sin dash");
+  assert(v.includes("06437"),    "expVariants: parte despues del ultimo dash");
+}
+{
+  const v = expVariants("12345");
+  assert(v.length === 1 && v[0] === "12345", "expVariants: sin dash -> 1 variante");
+}
+{
+  const v = expVariants("25-023804");
+  assert(v.includes("25-023804") && v.includes("25023804") && v.includes("023804"),
+    "expVariants: 3 variantes con dash");
+}
+assert(expVariants(null).length === 0, "expVariants: null -> []");
+assert(expVariants("").length === 0,   "expVariants: vacio -> []");
 
 console.log(`\n${pass} pass · ${fail} fail`);
 process.exit(fail ? 1 : 0);

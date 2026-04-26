@@ -138,6 +138,39 @@ export function isMeaningfulReportRow(row) {
   return false;
 }
 
+// Extrae candidatos de "apellido" de un nombre completo.
+// Convencion mexicana: "NOMBRE(s) APELLIDO_PATERNO APELLIDO_MATERNO"
+// Devuelve array de candidatos en orden de preferencia:
+//   1) "APELLIDO_PATERNO APELLIDO_MATERNO" (las 2 ultimas palabras)
+//   2) "APELLIDO_PATERNO" (solo penultima)
+// Util para fallback cuando codigo paciente no matchea.
+export function extractApellidos(nombre) {
+  if (!nombre) return [];
+  const parts = String(nombre).trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return [];
+  const out = [];
+  if (parts.length >= 2) out.push(parts.slice(-2).join(" "));
+  if (parts.length >= 3 && parts[parts.length - 2]) out.push(parts[parts.length - 2]);
+  return Array.from(new Set(out));
+}
+
+// Genera variantes del codigo paciente para probar en WinLab. El censo
+// guarda formatos como "26-06437" (con guion). WinLab puede esperar
+// el numero sin guion ("2606437") o solo la parte numerica final.
+export function expVariants(exp) {
+  if (!exp) return [];
+  const e = String(exp).trim();
+  const variants = [e];
+  if (e.includes("-")) {
+    const noDash = e.replace(/-/g, "");
+    if (noDash !== e) variants.push(noDash);
+    // Tambien la parte despues del ultimo guion (ej. "06437" de "26-06437")
+    const tail = e.split("-").pop();
+    if (tail && tail !== e) variants.push(tail);
+  }
+  return Array.from(new Set(variants));
+}
+
 // Texto que indica "no hay reportes para este paciente en el rango".
 export function isNoResultsText(rawText) {
   const txt = N(rawText);
