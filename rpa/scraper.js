@@ -12,7 +12,8 @@
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
-         isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable } from "./lib.js";
+         isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
+         isMeaningfulReportRow } from "./lib.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -61,8 +62,8 @@ const WL_SEARCH_CLEAR_SEL     = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBTool
 const WL_LOOKBACK_DAYS        = parseInt(ENV("WL_LOOKBACK_DAYS", "1"), 10);
 const WL_DATE_FORMAT          = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 const WL_PER_PATIENT_TIMEOUT  = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
-const WL_DRILLDOWN            = parseInt(ENV("WL_DRILLDOWN", "0"), 10);          // 0 hasta que tengamos la tabla de resultados real (siguiente PR)
-const WL_DRILLDOWN_MAX        = parseInt(ENV("WL_DRILLDOWN_MAX", "3"), 10);      // max reportes por paciente
+const WL_DRILLDOWN            = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte
+const WL_DRILLDOWN_MAX        = parseInt(ENV("WL_DRILLDOWN_MAX", "2"), 10);      // max reportes/paciente
 const WL_DRILLDOWN_TIMEOUT    = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -369,6 +370,17 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
     }
     return { headers, rows, tableCount: tables.length, bestTableIdx, headerIdx };
   });
+
+  // Filtrar reportes basura: filas que solo tengan COL_X/__hasLink/etc
+  // (= la heuristica capto el menu/form, no datos reales). Se descartan
+  // ANTES del drill-down para no clickear cosas que no son reportes.
+  if (Array.isArray(result.rows) && result.rows.length > 0) {
+    const before = result.rows.length;
+    result.rows = result.rows.filter(isMeaningfulReportRow);
+    if (before !== result.rows.length) {
+      console.log(`       (filtradas ${before - result.rows.length} filas basura: solo COL_X o markers de menu)`);
+    }
+  }
 
   // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──
   if (WL_DRILLDOWN === 1 && result.rows.length > 0 && result.bestTableIdx >= 0) {

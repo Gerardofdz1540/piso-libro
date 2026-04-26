@@ -98,11 +98,14 @@ export function isMenuTableText(rawText) {
   return N(rawText).includes("INICIO REPORTES AYUDA");
 }
 
-// Texto del formulario de busqueda (varios labels juntos).
+// Texto del formulario de busqueda Y de la "lista vacia" post-search
+// (varios labels juntos). WinLab cambia "BUSCA REPORTES" -> "LISTA REPORTES"
+// despues de aplicar filtro, ambos son menu/header, no datos.
 export function isFormTableText(rawText) {
   const txt = N(rawText).slice(0, 1500);
   const FORM_MARKERS = [
     "BUSCA REPORTES",
+    "LISTA REPORTES",
     "TODAS LAS UNIDADES ORGANIZATIVAS",
     "PACIENTE APELLIDO NOMBRE",
     "FECHA REPORTE DE A",
@@ -116,6 +119,23 @@ export function isFormTableText(rawText) {
   let hits = 0;
   for (const m of FORM_MARKERS) if (txt.includes(m)) hits++;
   return hits >= 2;
+}
+
+// Verifica si una "fila" extraida es realmente data o solo metadata
+// tecnica (COL_X / __hasLink / __rowIdxInTable). Lo usamos para no
+// guardar basura en winlab_labs.
+export function isMeaningfulReportRow(row) {
+  if (!row || typeof row !== "object") return false;
+  const technicalKeys = new Set(["__cells", "__hasLink", "__rowIdxInTable"]);
+  for (const [key, val] of Object.entries(row)) {
+    if (technicalKeys.has(key)) continue;
+    if (/^COL_\d+$/.test(key)) continue;          // header generico = no real
+    if (val === null || val === undefined || val === "") continue;
+    if (typeof val === "string" && /^(LISTA|BUSCA) REPORTES/.test(val)) continue;
+    if (typeof val === "string" && val.includes("TODAS LAS UNIDADES")) continue;
+    return true; // hay al menos 1 campo con data real
+  }
+  return false;
 }
 
 // Texto que indica "no hay reportes para este paciente en el rango".

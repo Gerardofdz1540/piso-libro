@@ -4,6 +4,7 @@
 import {
   dedupRecords, isAllowedEsp, formatDate,
   isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
+  isMeaningfulReportRow,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -122,6 +123,47 @@ assert(isNoResultsText("3 reportes encontrados") === false,     "no-results: tab
 assert(isIrrelevantTable("Inicio Reportes Ayuda") === true,       "irrelevant: menu");
 assert(isIrrelevantTable("Busca Reportes Codigo Paciente Fecha Reporte De A") === true, "irrelevant: form");
 assert(isIrrelevantTable("Hb 10.3 Glucosa 120 Creatinina 0.8") === false, "irrelevant: tabla de labs reales");
+
+// ── 13. isFormTableText: post-search 'LISTA REPORTES' ─────────────────
+{
+  // Texto exacto del bug reportado por el usuario en la captura.
+  const postSearchText = "LISTA REPORTES TODAS LAS UNIDADES ORGANIZATIVAS ACCESIBLES AL USUARIO";
+  assert(isFormTableText(postSearchText) === true, "form: 'LISTA REPORTES TODAS LAS UNIDADES' -> true (post-search header)");
+}
+assert(isFormTableText("LISTA REPORTES") === false, "form: solo 'LISTA REPORTES' (1 marker) -> false");
+
+// ── 14. isMeaningfulReportRow ─────────────────────────────────────────
+// Reporte basura del bug: solo COL_X y markers tecnicos.
+assert(isMeaningfulReportRow({
+  COL_0: "LISTA REPORTES TODAS LAS UNIDADES ORGANIZATIVAS ACCESIBLES AL USUARIO",
+  __hasLink: true,
+  __rowIdxInTable: 1,
+}) === false, "meaningful: fila basura COL_0+LISTA REPORTES -> false");
+
+assert(isMeaningfulReportRow({
+  COL_0: "TODAS LAS UNIDADES ORGANIZATIVAS ACCESIBLES AL USUARIO",
+  __rowIdxInTable: 3,
+}) === false, "meaningful: solo TODAS LAS UNIDADES -> false");
+
+assert(isMeaningfulReportRow({
+  __hasLink: true,
+  __rowIdxInTable: 4,
+}) === false, "meaningful: solo metadata tecnica -> false");
+
+assert(isMeaningfulReportRow({
+  FECHA: "25/04/2026",
+  ESTUDIO: "BIOMETRIA HEMATICA",
+  ESTADO: "COMPLETO",
+  __cells: ["..."],
+}) === true, "meaningful: fila con FECHA/ESTUDIO -> true (data real)");
+
+assert(isMeaningfulReportRow({
+  COL_0: "BIOMETRIA HEMATICA",
+  COL_1: "25/04/2026",
+}) === false, "meaningful: solo COL_X (no semantico) -> false");
+
+assert(isMeaningfulReportRow(null) === false, "meaningful: null -> false");
+assert(isMeaningfulReportRow({}) === false,    "meaningful: objeto vacio -> false");
 
 console.log(`\n${pass} pass · ${fail} fail`);
 process.exit(fail ? 1 : 0);
