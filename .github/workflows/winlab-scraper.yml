@@ -16,7 +16,7 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: rpa
@@ -54,8 +54,8 @@ jobs:
       - name: Run scraper (con reintentos)
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 5
-          max_attempts: 3
+          timeout_minutes: 12
+          max_attempts: 2
           retry_wait_seconds: 30
           retry_on: error
           command: cd rpa && npm run scrape

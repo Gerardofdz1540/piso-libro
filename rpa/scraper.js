@@ -13,7 +13,7 @@ import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-         isMeaningfulReportRow } from "./lib.js";
+         isMeaningfulReportRow, extractApellidos, expVariants } from "./lib.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -59,7 +59,7 @@ const WL_SEARCH_FECHA_DE_SEL  = ENV("WL_SEARCH_FECHA_DE_SEL", "#pnlMain_pnlRefer
 const WL_SEARCH_FECHA_A_SEL   = ENV("WL_SEARCH_FECHA_A_SEL", "#pnlMain_pnlReferti_txtDataRefertoA");
 const WL_SEARCH_BTN_SEL       = ENV("WL_SEARCH_BTN_SEL", "#Intestazione_DBToolbar_pnlCerca_btnCerca");
 const WL_SEARCH_CLEAR_SEL     = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBToolbar_pnlPulisci_btnPulisci");
-const WL_LOOKBACK_DAYS        = parseInt(ENV("WL_LOOKBACK_DAYS", "1"), 10);
+const WL_LOOKBACK_DAYS        = parseInt(ENV("WL_LOOKBACK_DAYS", "7"), 10);  // 7 dias para capturar labs rezagados
 const WL_DATE_FORMAT          = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 const WL_PER_PATIENT_TIMEOUT  = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
 const WL_DRILLDOWN            = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte
@@ -234,12 +234,47 @@ async function captureSearchUrl(page) {
 
 // ── 4. BUSQUEDA + SCRAPE POR PACIENTE ─────────────────────────────────
 async function searchAndScrapeOne(page, searchUrl, paciente) {
+  // Estrategia en cascada: codigo con dash -> codigo sin dash ->
+  // ultima parte numerica -> apellidos. Devuelve apenas alguna de
+  // ellas traiga reportes con datos reales.
+  const expCandidates = expVariants(paciente.exp);
+  const apellidoCandidates = extractApellidos(paciente.nombre);
+
+  for (let i = 0; i < expCandidates.length; i++) {
+    const codice = expCandidates[i];
+    const isFirst = i === 0;
+    const tag = isFirst ? `codigo=${codice}` : `codigo[v${i + 1}]=${codice}`;
+    const res = await doSingleSearch(page, searchUrl, paciente, { codice, cognome: null, tag });
+    if (res.rows.length > 0) return res;
+  }
+
+  for (let i = 0; i < apellidoCandidates.length; i++) {
+    const cognome = apellidoCandidates[i];
+    const tag = `apellido[${i + 1}]=${cognome}`;
+    const res = await doSingleSearch(page, searchUrl, paciente, { codice: null, cognome, tag });
+    if (res.rows.length > 0) return res;
+  }
+
+  // Sin matches: devolver el ultimo (que tendra noResults: true).
+  return await doSingleSearch(page, searchUrl, paciente, {
+    codice: paciente.exp, cognome: null, tag: `codigo=${paciente.exp} (final)`,
+  });
+}
+
+// Una sola tentativa de busqueda con parametros explicitos.
+async function doSingleSearch(page, searchUrl, paciente, params) {
   // Volver a la pantalla de busqueda fresca (limpia el form previo).
   await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
   await page.locator(WL_SEARCH_EXP_SEL).waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
 
-  // Llenar codigo paciente (= exp del censo).
-  await setField(page, WL_SEARCH_EXP_SEL, String(paciente.exp || ""), `exp=${paciente.exp}`);
+  if (params.codice) {
+    await setField(page, WL_SEARCH_EXP_SEL, String(params.codice), `[${params.tag}]`);
+  }
+  if (params.cognome) {
+    if (await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
+      await setField(page, WL_SEARCH_COGNOME_SEL, String(params.cognome), `[${params.tag}]`);
+    }
+  }
 
   // Llenar rango de fechas (default: ultimos N dias hasta hoy).
   if (WL_LOOKBACK_DAYS >= 0) {
@@ -253,9 +288,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
     }
   }
 
-  // Click "Busca". Es un postback AJAX (UpdatePanel), no navegacion: por eso
-  // NO usamos waitForLoadState('domcontentloaded'). Esperamos que ASP.NET
-  // AJAX termine via waitForAspNetReady.
+  // Click "Busca" (postback AJAX, esperamos via waitForAspNetReady).
   const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
   await btn.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
   try {
