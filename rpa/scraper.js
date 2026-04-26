@@ -262,9 +262,35 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
 }
 
 // Una sola tentativa de busqueda con parametros explicitos.
+// Wrap con retry interno para "Execution context was destroyed" — error
+// transitorio cuando la pagina navega justo durante un page.evaluate
+// (frecuente en cascada de busquedas seguidas).
 async function doSingleSearch(page, searchUrl, paciente, params) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await doSingleSearchInner(page, searchUrl, paciente, params);
+    } catch (e) {
+      lastErr = e;
+      const msg = e?.message || "";
+      if (attempt === 0 && /Execution context was destroyed|Target closed|Navigation failed/.test(msg)) {
+        console.log(`       (retry tras: ${msg.split("\n")[0]})`);
+        // Pequena pausa explicita para dejar que la navegacion termine.
+        await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+async function doSingleSearchInner(page, searchUrl, paciente, params) {
   // Volver a la pantalla de busqueda fresca (limpia el form previo).
   await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+  // Esperar a que TODA la red descanse para evitar "context destroyed"
+  // en operaciones siguientes (typical de ASP.NET con AJAX in-flight).
+  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
   await page.locator(WL_SEARCH_EXP_SEL).waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
 
   if (params.codice) {
@@ -617,8 +643,10 @@ async function scrapeForCenso(page, searchUrl, censo) {
     } catch (err) {
       consecutiveErrors++;
       console.log(`       ${tag}: ERROR ${err.message.split("\n")[0]}`);
-      if (consecutiveErrors >= 3) {
-        throw new Error(`3 fallos seguidos buscando pacientes. Ultimo: ${err.message}`);
+      // Tolerancia a errores transientes: solo abortamos si 10 pacientes
+      // SEGUIDOS revientan. Un error en 1 paciente NO debe abortar el run.
+      if (consecutiveErrors >= 10) {
+        throw new Error(`10 fallos seguidos buscando pacientes. Probable error sistemico. Ultimo: ${err.message}`);
       }
     }
   }
