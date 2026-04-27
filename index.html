@@ -4519,7 +4519,7 @@
       "amilasa", "lipasa",
       "ph", "pco2", "po2", "hco3", "be", "sato2",
       "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
-    const LAB_META_KEYS = new Set(["paciente", "fecha_labs", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias", "micro_muestra", "micro_comentarios"]);
+    const LAB_META_KEYS = new Set(["paciente", "nombre", "fecha_labs", "hora_labs", "tipo", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias", "micro_muestra", "micro_comentarios"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
@@ -8599,6 +8599,99 @@
         'Mapeo de nombres de campos: ' + buildClinicalLabsMappingText() + '.\n\n' +
         'RECORDATORIO FINAL: SOLO el JSON array. Empieza con [ y termina con ]. Nada más.';
     }
+    function buildHglLabsWorkerPrompt() {
+      return [
+        "Eres extractor clínico de laboratorios hospitalarios del HGL (Hospital General de León).",
+        "Recibirás un PDF de laboratorio con uno o varios pacientes.",
+        "Debes devolver SOLO JSON válido (sin markdown).",
+        "",
+        "Formato de salida OBLIGATORIO:",
+        "{",
+        '  "patients": [',
+        "    {",
+        '      "paciente": "APELLIDOS NOMBRE",',
+        '      "cama": "",',
+        '      "expediente": "",',
+        '      "fecha_labs": "YYYY-MM-DD",',
+        '      "hora_labs": "HH:MM",',
+        '      "tipo": "labs|cultivo",',
+        '      "values": { /* campos de labs */ },',
+        '      "confidence": 0.0,',
+        '      "source_excerpt": "fragmento breve literal del PDF"',
+        "    }",
+        "  ],",
+        '  "warnings": ["..."],',
+        '  "unmatched_sections": ["..."]',
+        "}",
+        "",
+        "Reglas críticas:",
+        "1) Incluye TODOS los pacientes detectables con resultados finales.",
+        "2) Si un valor no existe o está preliminar (pendiente/in corso), usa cadena vacía.",
+        "3) Valores numéricos SIN unidades.",
+        "4) No inventes valores. Si no estás seguro, deja vacío y agrega warning.",
+        "5) Confidence por paciente entre 0 y 1.",
+        "6) Mapea analitos a llaves normalizadas: " + buildClinicalLabsMappingText(),
+        "7) Cultivos: usa tipo='cultivo' y permite tipo_cultivo/cultivo_organismo/cultivo_sensibilidades/cultivo_resistencias.",
+        "8) El primer carácter de salida debe ser { y el último }."
+      ].join("\n");
+    }
+    function buildDxLabsSuffix(values, fecha, hora) {
+      const selected = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "inr"];
+      const pieces = [];
+      selected.forEach(function(key) {
+        const raw = values && values[key];
+        if (!raw && raw !== 0) return;
+        const val = String(raw).trim();
+        if (!val) return;
+        const label = (LAB_FIELDS.find(function(lf){ return lf.key === key; }) || {}).label || key.toUpperCase();
+        pieces.push(label + ": " + val);
+      });
+      if (!pieces.length) return "";
+      const stamp = [fecha || todayStr(), hora || ""].filter(Boolean).join(" ");
+      return "[LABS " + stamp + "] " + pieces.join(" · ");
+    }
+    function mergeLabsIntoDx(patientObj, values, fecha, hora) {
+      if (!patientObj) return;
+      const suffix = buildDxLabsSuffix(values, fecha, hora);
+      if (!suffix) return;
+      const baseDx = toSafeString(patientObj.dx || "");
+      const cleanedDx = baseDx
+        .split("\n")
+        .filter(function(line){ return !/^\[LABS\s+/i.test(line.trim()); })
+        .join("\n")
+        .trim();
+      patientObj.dx = (cleanedDx ? (cleanedDx + "\n") : "") + suffix;
+      savePts();
+    }
+    async function callLabsExtractionWorker(file, modeHint) {
+      const proxyUrl = getProxyUrl();
+      if (!proxyUrl) throw new Error("Configura la URL del Worker en Config.");
+      const base64 = await new Promise(function(rs, rj) {
+        const r = new FileReader();
+        r.onerror = function(){ rj(new Error("Error leyendo archivo")); };
+        r.onload = function() { rs(String(r.result || "").split(",")[1] || ""); };
+        r.readAsDataURL(file);
+      });
+      if (!base64 || base64.length < 100) throw new Error("Archivo vacío o no legible.");
+      const resp = await fetch(proxyUrl + "/api/labs/extract", {
+        method: "POST",
+        headers: { ...apiHeaders() },
+        body: JSON.stringify({
+          file_base64: base64,
+          file_name: file.name || "labs.pdf",
+          mime_type: "application/pdf",
+          mode_hint: modeHint || "bulk",
+          prompt: buildHglLabsWorkerPrompt()
+        })
+      });
+      if (!resp.ok) {
+        const errTxt = await resp.text().catch(function(){ return ""; });
+        throw new Error("Worker HTTP " + resp.status + ": " + errTxt.slice(0, 250));
+      }
+      const data = await resp.json();
+      const list = Array.isArray(data.patients) ? data.patients : [];
+      return { patients: list, warnings: Array.isArray(data.warnings) ? data.warnings : [], raw: data, base64: base64 };
+    }
 
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
     const LAB_QUICK = {
@@ -10490,90 +10583,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
 
       try {
-        // ── Leer y opcionalmente comprimir imagen ──────────────────────────
-        let base64;
-        if (isImage && fileMB > 1.5) {
-          // Comprimir: redimensionar a máx 1400px y JPEG 0.72
-          base64 = await new Promise((res, rej) => {
-            const img = new Image();
-            const objUrl = URL.createObjectURL(file);
-            img.onload = () => {
-              URL.revokeObjectURL(objUrl);
-              const MAX_DIM = 1400;
-              let w = img.naturalWidth, h = img.naturalHeight;
-              if (w > MAX_DIM || h > MAX_DIM) {
-                const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
-                w = Math.round(w * ratio); h = Math.round(h * ratio);
-              }
-              const canvas = document.createElement("canvas");
-              canvas.width = w; canvas.height = h;
-              canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-              const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-              res(dataUrl.split(",")[1]);
-            };
-            img.onerror = rej;
-            img.src = objUrl;
-          });
-        } else {
-          base64 = await new Promise((res, rej) => {
-            const r = new FileReader();
-            r.onload = () => res(r.result.split(",")[1]);
-            r.onerror = rej; r.readAsDataURL(file);
-          });
-        }
-
-        const mediaType = isImage ? "image/jpeg" : "application/pdf";
-        const contentBlock = isImage
-          ? { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } }
-          : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
-
-        const resp = await fetch(proxyUrl + "/api/ai", {
-          method: "POST",
-          headers: { ...apiHeaders() },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 4000,
-            messages: [{
-              role: "user", content: [
-                contentBlock,
-                {
-                  type: "text", text: buildSingleLabExtractionPrompt(isImage)
-                }
-              ]
-            }]
-          })
-        });
-
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error("Worker respondió " + resp.status + ": " + errText.slice(0, 200));
-        }
-
-        const data = await resp.json();
-        const txt = data.content?.[0]?.text || "{}";
-        // Robust JSON extraction with multiple fallback strategies
-        let extracted = {};
-        try {
-          const clean = txt.replace(/```[a-z]*/gi, "").replace(/```/g, "").trim();
-          extracted = JSON.parse(clean);
-        } catch (_e1) {
-          try {
-            const start = txt.indexOf("{");
-            const end = txt.lastIndexOf("}");
-            if (start !== -1 && end > start) extracted = JSON.parse(txt.slice(start, end + 1));
-          } catch (_e2) {
-            try {
-              const fallback = {};
-              for (const [, fk, fv] of txt.matchAll(/"([a-z_]+)"\s*:\s*"([^"]*)"/g)) fallback[fk] = fv;
-              if (Object.keys(fallback).length > 0) extracted = fallback;
-            } catch (_e3) { /* leave as {} */ }
-          }
-        }
-
-        const sanitizedExtracted = sanitizeExtractedLabs(extracted);
+        const parsed = await callLabsExtractionWorker(file, "single");
+        const first = (parsed.patients || [])[0] || {};
+        const valuesRaw = first.values && typeof first.values === "object" ? first.values : first;
+        const sanitizedExtracted = sanitizeExtractedLabs(valuesRaw);
         // Save to active date (or create new snapshot with extracted date)
         const nd = getNote(k);
-        const targetFecha = sanitizedExtracted.fecha_labs || activeLabDate[k] || todayStr();
+        const targetFecha = first.fecha_labs || sanitizedExtracted.fecha_labs || activeLabDate[k] || todayStr();
+        const targetHora = first.hora_labs || "";
         let snap = nd.labHistory.find(s => s.fecha === targetFecha);
         if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
         const labsFromExtract = { ...sanitizedExtracted };
@@ -10589,13 +10606,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         delete labsFromExtract.cultivo_sensibilidades;
         delete labsFromExtract.cultivo_resistencias;
         const hasValues = getLabKeys().some(f => sanitizedExtracted[f] && sanitizedExtracted[f].trim() !== "");
-        await attachLabSourceToSnap(k, targetFecha, snap, file, base64);
+        await attachLabSourceToSnap(k, targetFecha, snap, file, parsed.base64 || "");
         snap.labs = mergeLabsPerAnalyte(snap.labs, labsFromExtract);
         activeLabDate[k] = targetFecha;
         noteData[k] = nd;
         saveNote(k, nd);
+        const currentPatient = patients.find(function(pt){ return pid(pt) === k; });
+        mergeLabsIntoDx(currentPatient, labsFromExtract, targetFecha, targetHora);
         if (!hasValues) {
           alert("⚠️ El PDF se procesó pero no se encontraron valores de laboratorio.\n\nVerifica que el PDF sea un reporte de WinLab con resultados y no una solicitud vacía.");
+        }
+        if (parsed.warnings && parsed.warnings.length) {
+          console.warn("[labs/single] warnings:", parsed.warnings);
         }
 
       } catch (e) { alert("Error al procesar: " + (e.message || e)); }
@@ -14080,179 +14102,38 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       function processFile(file) {
         return new Promise(async function(resolve) {
           try {
-            var base64 = await new Promise(function(rs, rj) {
-              var r = new FileReader();
-              r.onerror = function(){ rj(new Error("Error leyendo archivo")); };
-              r.onload = function() { rs(r.result.split(",")[1]); };
-              r.readAsDataURL(file);
-            });
-
-            // Extraer texto del PDF con pdf.js y agrupar por paciente (HOJA DE RESULTADOS)
-            var pagesText = [];
-            try {
-              if (!window.pdfjsLib) throw new Error("pdf.js no cargado");
-              var buf = Uint8Array.from(atob(base64), function(c){ return c.charCodeAt(0); });
-              var pdfDoc = await window.pdfjsLib.getDocument({ data: buf }).promise;
-              for (var p = 1; p <= pdfDoc.numPages; p++) {
-                var page = await pdfDoc.getPage(p);
-                var content = await page.getTextContent();
-                var txt = content.items.map(function(it){ return it.str; }).join(" ");
-                pagesText.push(txt);
-              }
-              console.log("[bulk-labs] PDF páginas:", pagesText.length, "archivo:", file.name);
-            } catch (pdfErr) {
-              console.error("[bulk-labs] pdf.js error:", pdfErr);
-              resolve({ file: file.name, extractedList: [], error: "No se pudo leer el PDF: " + pdfErr.message });
-              return;
-            }
-
-            // Detectar inicio de cada paciente: buscar "HOJA DE RESULTADOS" + nombre o "NOMBRE:"
-            var patientPages = []; // [{ startPage, endPage, name }]
-            var currentStart = 0;
-            function detectNameInPage(text) {
-              // El PDF de WinLab usa "PACIENTE:" seguido del nombre, luego "CURP" o "FECHA"
-              var m = text.match(/PACIENTE\s*:\s*([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]{5,80}?)\s+(?:CURP|FECHA|EDAD|GÉNERO|GENERO|CÓDIGO|CODIGO|TOMA|TURNO|MÉDICO|MEDICO|PROCEDENCIA|SERVICIO|DIAGN)/i);
-              if (m) return m[1].trim().replace(/\s+/g, " ");
-              // Fallback: buscar "NOMBRE:"
-              var m2 = text.match(/NOMBRE(?:\s+DEL\s+PACIENTE)?\s*:\s*([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]{5,80}?)\s+(?:CURP|FECHA|EDAD|SEXO)/i);
-              if (m2) return m2[1].trim().replace(/\s+/g, " ");
-              return null;
-            }
-            var splitMarker = /HOJA\s+DE\s+RESULTADOS/i;
-            for (var i = 0; i < pagesText.length; i++) {
-              if (splitMarker.test(pagesText[i])) {
-                if (currentStart < i) {
-                  patientPages.push({ startPage: currentStart, endPage: i - 1 });
-                }
-                currentStart = i;
-              }
-            }
-            patientPages.push({ startPage: currentStart, endPage: pagesText.length - 1 });
-
-            // Asignar nombre detectado a cada grupo (para logging)
-            patientPages.forEach(function(grp) {
-              for (var j = grp.startPage; j <= grp.endPage; j++) {
-                var nm = detectNameInPage(pagesText[j]);
-                if (nm) { grp.name = nm; break; }
-              }
-            });
-
-            // Consolidar grupos por nombre (mismo paciente puede aparecer en varias secciones)
-            var byName = {};
-            patientPages.forEach(function(grp) {
-              var key = grp.name ? grp.name.toUpperCase() : ("__grp_" + grp.startPage);
-              if (!byName[key]) byName[key] = { name: grp.name, texts: [] };
-              var joined = pagesText.slice(grp.startPage, grp.endPage + 1).join("\n\n--- PAGE BREAK ---\n\n");
-              byName[key].texts.push(joined);
-            });
-            var patientBlocks = Object.keys(byName).map(function(k) {
-              return { name: byName[k].name || "(desconocido)", text: byName[k].texts.join("\n\n=== SIGUIENTE REPORTE DEL MISMO PACIENTE ===\n\n") };
-            });
-            console.log("[bulk-labs] Pacientes detectados en el PDF:", patientBlocks.length, patientBlocks.map(function(b){return b.name;}));
-
-            if (!patientBlocks.length) {
-              resolve({ file: file.name, extractedList: [], error: "No se detectaron pacientes en el PDF." });
-              return;
-            }
-
-            // Agrupar en lotes de máx 2 pacientes por llamada a Claude, enviar en paralelo (máx 3 llamadas concurrentes)
-            var BATCH_SIZE = 2;
-            var CONCURRENCY = 3;
-            var batches = [];
-            for (var b = 0; b < patientBlocks.length; b += BATCH_SIZE) {
-              batches.push(patientBlocks.slice(b, b + BATCH_SIZE));
-            }
-            console.log("[bulk-labs] Total lotes a enviar a Claude:", batches.length);
-
-            var allResults = [];
-            var rawResponses = [];
-
-            async function processBatch(batch, idx) {
-              var prompt = buildBulkLabExtractionPrompt();
-              var batchText = batch.map(function(pb, i) {
-                return "=== PACIENTE " + (i + 1) + " (nombre detectado: " + pb.name + ") ===\n" + pb.text;
-              }).join("\n\n====================================\n\n");
-              var userContent = prompt + "\n\nCONTENIDO EXTRAÍDO DEL PDF (" + batch.length + " paciente(s) en este lote):\n\n" + batchText;
-
-              try {
-                var resp = await fetch(proxyUrl + "/api/ai", {
-                  method: "POST",
-                  headers: apiHeaders(),
-                  body: JSON.stringify({
-                    model: "claude-sonnet-4-6",
-                    max_tokens: 16000,
-                    messages: [{ role: "user", content: [{ type: "text", text: userContent }] }]
-                  })
-                });
-                var data = await resp.json();
-                var txt = (data.content && data.content[0] && data.content[0].text) || "";
-                console.log("[bulk-labs] Lote " + (idx + 1) + "/" + batches.length + " respuesta length:", txt.length);
-                rawResponses.push({ batch: idx + 1, text: txt });
-                var cleaned = txt.replace(/```[a-z]*/gi, "").replace(/```/g, "").trim();
-                var list = [];
-                try {
-                  var arrStart = cleaned.indexOf("["), arrEnd = cleaned.lastIndexOf("]");
-                  if (arrStart !== -1 && arrEnd > arrStart) {
-                    var parsed = JSON.parse(cleaned.slice(arrStart, arrEnd + 1));
-                    if (Array.isArray(parsed)) list = parsed;
-                  }
-                } catch (_p1) {
-                  console.warn("[bulk-labs] Lote " + (idx + 1) + " JSON array parse failed:", _p1.message);
-                }
-                if (!list.length) {
-                  try {
-                    var s2 = cleaned.indexOf("{"), e2 = cleaned.lastIndexOf("}");
-                    if (s2 !== -1 && e2 > s2) {
-                      var obj = JSON.parse(cleaned.slice(s2, e2 + 1));
-                      if (obj && typeof obj === "object") list = [obj];
-                    }
-                  } catch (_p2) { }
-                }
-                console.log("[bulk-labs] Lote " + (idx + 1) + " parseados:", list.length);
-                return list;
-              } catch (e) {
-                console.error("[bulk-labs] Lote " + (idx + 1) + " error:", e);
-                return [];
-              }
-            }
-
-            // Concurrencia controlada
-            var batchIdx = 0;
-            async function worker() {
-              while (batchIdx < batches.length) {
-                var myIdx = batchIdx++;
-                var r = await processBatch(batches[myIdx], myIdx);
-                allResults = allResults.concat(r);
-              }
-            }
-            var workers = [];
-            for (var w = 0; w < Math.min(CONCURRENCY, batches.length); w++) workers.push(worker());
-            await Promise.all(workers);
-
-            // Sanitizar y filtrar resultados
-            allResults.forEach(function(e) {
-              if (!e || typeof e !== "object") return;
-              Object.keys(e).forEach(function(k) {
-                var v = e[k];
-                if (typeof v === "string" && /^(in\s*corso|pendiente|en\s*proceso|preliminar|incompleto|-+|n\/a|na|sin\s*resultado|\.{3}|results?\s*pending)$/i.test(v.trim())) {
-                  e[k] = "";
-                }
-              });
-            });
-            var filtered = allResults.filter(function(e) {
-              if (!e || typeof e !== "object") return false;
-              var hasPt = e.paciente || e.nombre || e.name;
-              if (!hasPt) return false;
+            var parsed = await callLabsExtractionWorker(file, "bulk");
+            var normalized = (parsed.patients || []).map(function(entry) {
+              var values = (entry && entry.values && typeof entry.values === "object") ? entry.values : entry;
+              return {
+                paciente: entry.paciente || entry.nombre || "",
+                nombre: entry.paciente || entry.nombre || "",
+                fecha_labs: entry.fecha_labs || "",
+                hora_labs: entry.hora_labs || "",
+                tipo: entry.tipo || "labs",
+                confidence: entry.confidence || 0,
+                source_excerpt: entry.source_excerpt || "",
+                ...values
+              };
+            }).filter(function(e) {
+              if (!e.paciente && !e.nombre) return false;
               var hasAnyValue = Object.keys(e).some(function(k) {
-                if (["paciente","nombre","name","fecha","fecha_labs","tipo","tipo_lab"].indexOf(k) >= 0) return false;
+                if (["paciente","nombre","fecha_labs","hora_labs","tipo","confidence","source_excerpt"].indexOf(k) >= 0) return false;
                 var v = e[k];
                 return v != null && String(v).trim().length > 0;
               });
               return hasAnyValue;
             });
-            console.log("[bulk-labs] Total de pacientes extraídos del archivo " + file.name + ":", filtered.length);
-            window.__lastBulkResponse = rawResponses;
-            resolve({ file: file.name, fileObj: file, fileBase64: base64, extractedList: filtered, rawList: allResults, rawResponse: JSON.stringify(rawResponses).slice(0, 5000), error: null });
+            window.__lastBulkResponse = parsed.raw;
+            resolve({
+              file: file.name,
+              fileObj: file,
+              fileBase64: parsed.base64 || "",
+              extractedList: normalized,
+              rawList: normalized,
+              rawResponse: JSON.stringify(parsed.raw || {}).slice(0, 5000),
+              error: null
+            });
           } catch (err) {
             console.error("[bulk-labs] processFile fatal:", err);
             resolve({ file: file.name, extractedList: [], error: String(err) });
@@ -14324,6 +14205,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               activeLabDate[k] = fecha;
               noteData[k] = nd;
               saveNote(k, nd);
+              mergeLabsIntoDx(matched, snap.labs || {}, fecha, ex.hora_labs || "");
               successCount++;
               var rowBg = isCultivo ? "#f0f9ff" : "#f0fdf4";
               var rowBdr = isCultivo ? "#7dd3fc" : "#86efac";
