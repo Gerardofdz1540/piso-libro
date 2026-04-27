@@ -235,17 +235,21 @@ async function captureSearchUrl(page) {
 // ── 4. BUSQUEDA + SCRAPE POR PACIENTE ─────────────────────────────────
 async function searchAndScrapeOne(page, searchUrl, paciente) {
   // Estrategia en cascada: codigo con dash -> codigo sin dash ->
-  // ultima parte numerica -> apellidos. Devuelve apenas alguna de
-  // ellas traiga reportes con datos reales.
+  // ultima parte numerica -> apellidos. La cascada se detiene cuando
+  // alguna tentativa retorna:
+  //   - rows con datos reales (return inmediato)
+  //   - noResults explicito (la busqueda funciono y dijo "ningun
+  //     registro", asi que las otras variantes tampoco encontraran).
+  // Solo si falla con ERROR tecnico se prueba la siguiente.
   const expCandidates = expVariants(paciente.exp);
   const apellidoCandidates = extractApellidos(paciente.nombre);
 
   for (let i = 0; i < expCandidates.length; i++) {
     const codice = expCandidates[i];
-    const isFirst = i === 0;
-    const tag = isFirst ? `codigo=${codice}` : `codigo[v${i + 1}]=${codice}`;
+    const tag = i === 0 ? `codigo=${codice}` : `codigo[v${i + 1}]=${codice}`;
     const res = await doSingleSearch(page, searchUrl, paciente, { codice, cognome: null, tag });
     if (res.rows.length > 0) return res;
+    if (res.noResults) return res;  // busqueda valida, sin matches: parar cascada
   }
 
   for (let i = 0; i < apellidoCandidates.length; i++) {
@@ -253,6 +257,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
     const tag = `apellido[${i + 1}]=${cognome}`;
     const res = await doSingleSearch(page, searchUrl, paciente, { codice: null, cognome, tag });
     if (res.rows.length > 0) return res;
+    if (res.noResults) return res;
   }
 
   // Sin matches: devolver el ultimo (que tendra noResults: true).
@@ -587,42 +592,62 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
   return detail.valores || [];
 }
 
-// Procesa todo el censo en serie. Si hay >1 fallo seguido, aborta.
+// Procesa todo el censo en serie con aislamiento por paciente.
+// Cada paciente recibe su propia Page (creada del mismo BrowserContext
+// para preservar la sesion de WinLab) y se destruye en finally para
+// evitar fuga de memoria. Circuit breaker: 45s por paciente. Si el
+// browser entero colapsa, abortamos el bucle (el contexto/proceso de
+// Chrome esta muerto y no se va a recuperar).
 async function scrapeForCenso(page, searchUrl, censo) {
   console.log(`[4/5] Buscando labs paciente por paciente (${censo.length} pacientes)...`);
   const records = [];
-  let consecutiveErrors = 0;
   const fechaToday = todayISO();
   const scraped_at = new Date().toISOString();
-
+  const ctx = page.context();
+  const PER_PATIENT_BUDGET_MS = 45000;
+  let consecutiveErrors = 0;
   let firstDiagDumped = false;
+
   for (let i = 0; i < censo.length; i++) {
     const p = censo[i];
     const tag = `[${i + 1}/${censo.length}] exp=${p.exp} ${String(p.nombre || "").slice(0, 40)}`;
+    let subPage = null;
     try {
-      const res = await searchAndScrapeOne(page, searchUrl, p);
+      // Aislamiento: nueva Page por paciente, hereda cookies/sesion del contexto.
+      subPage = await ctx.newPage();
+      subPage.setDefaultNavigationTimeout(PER_PATIENT_BUDGET_MS);
+      subPage.setDefaultTimeout(SEL_TIMEOUT_MS);
+
+      // Circuit breaker: 45s estrictos por paciente via Promise.race.
+      const work = searchAndScrapeOne(subPage, searchUrl, p);
+      const timeout = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error(`timeout ${PER_PATIENT_BUDGET_MS}ms`)), PER_PATIENT_BUDGET_MS)
+      );
+      const res = await Promise.race([work, timeout]);
+
       const matched = res.rows.length;
       const tag2 = res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
       console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
 
-      // Diagnostico: la primera vez que tengamos rows pero headers raros,
-      // dumpea las primeras 5 tablas para ver el DOM real.
+      // Diagnostico unica vez si hay rows con headers raros.
       if (!firstDiagDumped && matched > 0 && (!res.headers.length || res.headers.every((h) => /^COL_\d+$/.test(h)))) {
         firstDiagDumped = true;
         console.log("       <<<DIAG>>> headers vacios o genericos. Dump de tablas:");
-        const tablesDump = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll("table")).slice(0, 8).map((t, i) => ({
-            idx: i,
-            rows: t.querySelectorAll("tr").length,
-            ths: t.querySelectorAll("th").length,
-            firstRowTags: Array.from(t.querySelectorAll("tr")[0]?.children || []).map((c) => c.tagName).join(","),
-            firstRowText: Array.from(t.querySelectorAll("tr")[0]?.children || [])
-              .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
-            secondRowText: Array.from(t.querySelectorAll("tr")[1]?.children || [])
-              .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
-          }));
-        });
-        tablesDump.forEach((tb) => console.log(`       <<<DIAG TABLE ${tb.idx}>>> ${JSON.stringify(tb)}`));
+        try {
+          const tablesDump = await subPage.evaluate(() => {
+            return Array.from(document.querySelectorAll("table")).slice(0, 8).map((t, idx) => ({
+              idx,
+              rows: t.querySelectorAll("tr").length,
+              ths: t.querySelectorAll("th").length,
+              firstRowTags: Array.from(t.querySelectorAll("tr")[0]?.children || []).map((c) => c.tagName).join(","),
+              firstRowText: Array.from(t.querySelectorAll("tr")[0]?.children || [])
+                .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
+              secondRowText: Array.from(t.querySelectorAll("tr")[1]?.children || [])
+                .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
+            }));
+          });
+          tablesDump.forEach((tb) => console.log(`       <<<DIAG TABLE ${tb.idx}>>> ${JSON.stringify(tb)}`));
+        } catch (_) { /* dump best-effort */ }
       }
 
       if (matched > 0) {
@@ -642,11 +667,25 @@ async function scrapeForCenso(page, searchUrl, censo) {
       consecutiveErrors = 0;
     } catch (err) {
       consecutiveErrors++;
-      console.log(`       ${tag}: ERROR ${err.message.split("\n")[0]}`);
-      // Tolerancia a errores transientes: solo abortamos si 10 pacientes
-      // SEGUIDOS revientan. Un error en 1 paciente NO debe abortar el run.
+      const msg = err?.message?.split("\n")[0] || String(err);
+      console.error(`       ${tag}: ERROR ${msg}`);
+
+      // Manejo de fallo CRITICO: el navegador o contexto colapso. No tiene
+      // sentido seguir intentando con los demas pacientes; hay que abortar
+      // y dejar que el outer retry del workflow re-lance todo.
+      if (/browser has been closed|context.*has been closed|Target page.*has been closed|Browser.*disconnected/i.test(msg)) {
+        console.error(`       [CRITICO] Navegador colapsado. Abortando bucle (${i + 1}/${censo.length}).`);
+        break;
+      }
+      // Tolerancia a errores transientes: 10 seguidos -> abort.
       if (consecutiveErrors >= 10) {
-        throw new Error(`10 fallos seguidos buscando pacientes. Probable error sistemico. Ultimo: ${err.message}`);
+        console.error(`       [CRITICO] 10 fallos seguidos. Abortando bucle.`);
+        break;
+      }
+    } finally {
+      // SIEMPRE destruir la subPage para liberar memoria, exitosa o no.
+      if (subPage) {
+        try { await subPage.close(); } catch (_) { /* ignore */ }
       }
     }
   }
