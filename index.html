@@ -3870,6 +3870,7 @@
     let pendingImport = null;
     let lastMeta = { patients_ts: 0, notes_ts: 0 };
     let syncInterval = null;
+    let keepaliveInterval = null;
     let pendingSyncs = 0;   // contador de operaciones en curso
     let exportTemplateBuffer = null;
     let _dirtyFields = {};  // patientKey → Set<fieldName> — campos editados localmente sin guardar
@@ -4827,6 +4828,7 @@
     // Outbox for offline writes
     const OUTBOX_KEY = "pl_outbox_v1";
     const OUTBOX_MAX = 500; // máximo de operaciones pendientes en cola
+    let _outboxOverflowLatched = false; // evita spam de alerts cuando la cola ya está llena
     function outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
     function outboxSave(q) {
       try {
@@ -4847,14 +4849,29 @@
       const idx = q.findIndex(x => {
         if (x.type !== newItem.type) return false;
         if (newItem.type === "note") return x.key === newItem.key;
-        if (newItem.type === "patient") return x.patient && newItem.patient && x.patient._supa_id && x.patient._supa_id === newItem.patient._supa_id;
+        if (newItem.type === "patient") {
+          if (x.patient && newItem.patient && x.patient._supa_id && x.patient._supa_id === newItem.patient._supa_id) return true;
+          // Si aún no hay _supa_id (paciente recién creado offline), deduplicar por pid()
+          return x.patient && newItem.patient && pid(x.patient) === pid(newItem.patient);
+        }
         return false;
       });
       if (idx !== -1) q[idx] = newItem; else q.push(newItem);
-      // Cap: si excede el máximo, descartar los más antiguos (los datos ya están en Supabase)
-      if (q.length > OUTBOX_MAX) q.splice(0, q.length - OUTBOX_MAX);
+      // CRÍTICO: nunca descartar operaciones. Si la cola se llena, frenar nuevos enqueue.
+      if (q.length > OUTBOX_MAX) {
+        if (!_outboxOverflowLatched) {
+          _outboxOverflowLatched = true;
+          _lastSyncErrorDetail = "Outbox llena (" + q.length + " ops). Se bloquean nuevas operaciones para evitar pérdida silenciosa.";
+          setSyncStatus("error", "🚨 Cola de sync llena");
+        }
+        return false;
+      }
+      if (_outboxOverflowLatched && q.length < Math.max(50, Math.floor(OUTBOX_MAX * 0.8))) {
+        _outboxOverflowLatched = false;
+      }
       outboxSave(q);
       updateOutboxBadge();
+      return true;
     }
     function outboxClear() {
       if (!confirm("¿Limpiar la cola de sync?\n\nSi ya abriste la app y los datos se ven correctos, es seguro limpiar. Los datos en Supabase no se borran.")) return;
@@ -4922,6 +4939,19 @@
       const r = await fetch(SUPA_URL + "/rest/v1/" + table + "?" + match, { method: "DELETE", headers: _sHeaders() });
       if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("DELETE " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
     }
+    async function supaKeepAlive() {
+      if (!navigator.onLine) return true;
+      try {
+        await _sGet("guard_info", "select=id&limit=1");
+        return true;
+      } catch (e) {
+        if (isSupabasePausedError(e)) {
+          setSupabasePausedStatus(e && e.message ? e.message : "");
+          return false;
+        }
+        return !isLikelyNetworkError(e);
+      }
+    }
 
     function safeLog(label, e) {
       try {
@@ -4959,6 +4989,16 @@
       const msg = String((e && e.message) || e || "").toLowerCase();
       return msg.includes("429") || msg.includes("rate limit") || msg.includes("too many");
     }
+    function isSupabasePausedError(e) {
+      const msg = String((e && e.message) || e || "").toLowerCase();
+      return (
+        msg.includes("project is paused") ||
+        msg.includes("database is paused") ||
+        msg.includes("restoring your project") ||
+        msg.includes("http 540") ||
+        msg.includes("http 503")
+      );
+    }
     async function retryNetwork(fn, retries = 1, baseDelayMs = 350) {
       let lastErr = null;
       for (let attempt = 0; attempt <= retries; attempt++) {
@@ -4966,6 +5006,7 @@
           return await fn();
         } catch (e) {
           lastErr = e;
+          if (isSupabasePausedError(e)) throw e;
           if (attempt === retries) throw e;
           if (isRateLimited(e)) {
             // Backoff exponencial agresivo para 429: 2s, 4s, 8s...
@@ -5825,6 +5866,10 @@
     }
 
     function startRealtime() {
+      if (!_supa || typeof _supa.channel !== "function") {
+        setSyncStatus("error", "Realtime no disponible");
+        return;
+      }
       // Clean up old subscriptions
       _realtimeSubs.forEach(s => { try { s.unsubscribe(); } catch (e) { safeLog("[RT] unsubscribe error:", e); } });
       _realtimeSubs = [];
@@ -6193,30 +6238,53 @@
       const q = outboxLoad(); if (!q.length) return;
       const BATCH = 10; // peticiones simultáneas
       const results = new Array(q.length).fill(null);
+      async function withOutboxRetry(taskFn) {
+        let last = null;
+        const maxAttempts = 4;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          try {
+            return await taskFn();
+          } catch (e) {
+            last = e;
+            if (isSupabasePausedError(e)) throw e;
+            if (attempt === maxAttempts - 1) throw e;
+            const delay = Math.min(12000, 500 * Math.pow(2, attempt)); // 500ms,1s,2s,4s...
+            await new Promise(r => setTimeout(r, delay));
+          }
+        }
+        throw last;
+      }
       for (let i = 0; i < q.length; i += BATCH) {
         const slice = q.slice(i, i + BATCH);
         await Promise.all(slice.map(async (item, j) => {
           const absIdx = i + j;
-          if (item.type === "note" && item.key && item.data) {
-            const p = patients.find(x => pid(x) === item.key);
-            // Paciente ya no existe localmente (borrado/reemplazado por Supabase) →
-            // descartar nota huérfana para que no quede atascada indefinidamente.
-            if (!p) { results[absIdx] = true; return; }
-            // Si el paciente no tiene _supa_id, intentar sincronizarlo primero antes
-            // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
-            if (!p._supa_id) await supaUpsertPatient(p);
-            if (p._supa_id) {
-              const noteRes = await supaUpsertNote(p._supa_id, item.data);
-              // Considerar éxito cualquier valor no-null (incluso {} o true)
-              results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
-            } else results[absIdx] = false;
-          } else if (item.type === "patient" && item.patient) {
-            const k = pid(item.patient);
-            const current = patients.find(x => pid(x) === k) || item.patient;
-            const res = await supaUpsertPatient(current);
-            results[absIdx] = res;
-            if (res) lsSavePatients(patients);
-          } else results[absIdx] = true; // tipo desconocido → descartar
+          try {
+            if (item.type === "note" && item.key && item.data) {
+              const p = patients.find(x => pid(x) === item.key);
+              // Paciente ya no existe localmente (borrado/reemplazado por Supabase) →
+              // descartar nota huérfana para que no quede atascada indefinidamente.
+              if (!p) { results[absIdx] = true; return; }
+              // Si el paciente no tiene _supa_id, intentar sincronizarlo primero antes
+              // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
+              if (!p._supa_id) await withOutboxRetry(async function(){ return await supaUpsertPatient(p); });
+              if (p._supa_id) {
+                const noteRes = await withOutboxRetry(async function(){ return await supaUpsertNote(p._supa_id, item.data); });
+                // Considerar éxito cualquier valor no-null (incluso {} o true)
+                results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
+              } else results[absIdx] = false;
+            } else if (item.type === "patient" && item.patient) {
+              const k = pid(item.patient);
+              const current = patients.find(x => pid(x) === k) || item.patient;
+              const res = await withOutboxRetry(async function(){ return await supaUpsertPatient(current); });
+              results[absIdx] = res;
+              if (res) lsSavePatients(patients);
+            } else results[absIdx] = true; // tipo desconocido → descartar
+          } catch (e) {
+            if (isSupabasePausedError(e)) {
+              setSupabasePausedStatus(e && e.message ? e.message : "");
+            }
+            results[absIdx] = false;
+          }
         }));
       }
       const failed = q.filter((_, i) => !results[i]);
@@ -6323,6 +6391,10 @@
         return;
       }
       setSyncStatus("error", "Error al guardar — reintentando");
+    }
+    function setSupabasePausedStatus(detail) {
+      _lastSyncErrorDetail = detail || "Supabase en pausa o restaurando";
+      setSyncStatus("error", "⏸ Supabase en pausa");
     }
     function parseDmy(str) {
       if (!str) return null;
@@ -6567,7 +6639,13 @@
       // pendientes, los aplicamos DESPUÉS de cargar Supabase (merge, no reemplazo bruto).
       let loaded = null;
       if (navigator.onLine) {
-        try { loaded = await supaLoadAll(); } catch (e) { safeLog("Supabase load error:", e); loaded = null; }
+        await supaKeepAlive();
+        try { loaded = await supaLoadAll(); }
+        catch (e) {
+          safeLog("Supabase load error:", e);
+          if (isSupabasePausedError(e)) setSupabasePausedStatus(e && e.message ? e.message : "");
+          loaded = null;
+        }
       }
 
       const supaClean = loaded ? sanitizePatients(loaded.patients) : [];
@@ -6615,7 +6693,8 @@
             }).catch(e => { safeLog("init flushOutbox error:", e); setSyncProblemStatus(); });
           } else if (loaded === null) {
             // Supabase error pero hay datos locales disponibles — no mostrar error alarmante
-            setSyncStatus("offline", "Sin conexión");
+            if (isLikelyNetworkError(_lastSyncErrorDetail || "")) setSyncStatus("offline", "Sin conexión");
+            else if (!_lastSyncErrorDetail) setSyncStatus("offline", "Sin conexión");
             startRealtime();
           } else {
             // loaded.patients was empty — local data exists but Supabase is empty → migration prompt
@@ -6677,6 +6756,11 @@
           }
         }
       }, 30000);
+      // Keepalive cada 4 min para reducir auto-pause en proyectos Supabase free-tier.
+      if (keepaliveInterval) clearInterval(keepaliveInterval);
+      keepaliveInterval = setInterval(async function() {
+        await supaKeepAlive();
+      }, 240000);
 
       // BUG-M4 FIX: Auto-refresh cruce badge every 60 s so the countdown timer
       // stays accurate without a full card re-render. Only touches the badge button
