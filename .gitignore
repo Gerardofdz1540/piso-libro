@@ -88,3 +88,7 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# v2 React app — build artefacts (node_modules only, dist is committed)
+piso-libro-v2/node_modules/
+piso-libro-v2/dist/
