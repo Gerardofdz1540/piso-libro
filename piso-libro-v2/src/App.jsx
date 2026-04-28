@@ -32,7 +32,20 @@ export default function App() {
     async (patient, field, value) => {
       if (!patient?.id) return
       const existingNote = notes[patient.id] ?? {}
-      await saveNote(patient.id, { ...existingNote, [field]: value }, new Set([field]))
+
+      let updatedNote
+      if (field.startsWith('ck_')) {
+        // Checklist subfield: merge into checklist JSON
+        const ckKey = field.slice(3)
+        updatedNote = {
+          ...existingNote,
+          checklist: { ...(existingNote.checklist ?? {}), [ckKey]: value },
+        }
+      } else {
+        updatedNote = { ...existingNote, [field]: value }
+      }
+
+      await saveNote(patient.id, updatedNote, new Set([field]))
     },
     [notes, saveNote],
   )
