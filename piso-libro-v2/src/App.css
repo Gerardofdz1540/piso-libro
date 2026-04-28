@@ -100,3 +100,58 @@ html, body, #root {
 
 /* ─── Phosphor icon spin class (used in Header) ─────────────────────────────── */
 .ph-spin { animation: spin 1s linear infinite; }
+
+/* ─── Bed Navigator ─────────────────────────────────────────────────────────── */
+.bed-navigator {
+  position: sticky;
+  top: 56px;
+  z-index: 50;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-default);
+  overflow-x: auto;
+  scrollbar-width: none;         /* Firefox */
+}
+.bed-navigator::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+.bed-navigator__inner {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 1.5rem;
+  min-width: max-content;
+}
+
+/* ─── Scroll-margin so sticky bars don't cover card on jump ─────────────────── */
+.patient-card-anchor {
+  scroll-margin-top: 106px; /* 56px header + 50px bed-navigator */
+}
+
+/* ─── Intervention list ─────────────────────────────────────────────────────── */
+.intervention-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  cursor: text;
+}
+.intervention-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--bg-base);
+  border-radius: 4px;
+  border-left: 2px solid var(--accent-primary);
+}
+.intervention-num {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--accent-primary);
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+  min-width: 1.4rem;
+}
+.intervention-text {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
