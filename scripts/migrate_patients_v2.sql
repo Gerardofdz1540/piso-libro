@@ -49,6 +49,10 @@ ALTER TABLE patients ADD COLUMN IF NOT EXISTS guardia_entrega text;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS r_cargo  text;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS adscrito text;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS estado   text DEFAULT 'activo';
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS seccion  text DEFAULT 'PISO';
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS ingreso  text;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS dias     integer;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS edad     integer;
 
 -- ── Index for common query patterns ───────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS patients_cama_idx ON patients (cama);

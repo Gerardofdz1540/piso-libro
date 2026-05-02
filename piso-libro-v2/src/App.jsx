@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './config/supabase'
 import { PatientCard } from './components/PatientCard'
+import { ImportModal } from './components/ImportModal'
 
 // ─── Transform a winlab_labs row into a flat {labKey: value} object ──────────
 // winlab stores rows as { __cells: [labName, value, range, unit], __hasLink }
@@ -82,7 +83,7 @@ function BedNavigator({ patients }) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ patients, isWeekendMode, onToggleWeekend, onSync, syncStatus, search, onSearch }) {
+function Sidebar({ patients, isWeekendMode, onToggleWeekend, onSync, syncStatus, search, onSearch, onImport }) {
   const owned      = patients.filter(p => PRIMARY_SERVICES.includes(p.esp ?? ''))
   const doneCount  = owned.filter(p => p.nota_hecha).length
   const totalCount = owned.length
@@ -145,6 +146,14 @@ function Sidebar({ patients, isWeekendMode, onToggleWeekend, onSync, syncStatus,
       </div>
 
       <div className="mt-auto flex flex-col gap-2">
+        {/* Import census */}
+        <button
+          onClick={onImport}
+          className="w-full text-xs font-mono py-1.5 rounded border border-[#1f1f22] text-[#6B7280] hover:border-[#D4A37360] hover:text-[#D4A373] transition-all"
+        >
+          ↑ Importar censo
+        </button>
+
         {/* Weekend toggle */}
         <button
           onClick={onToggleWeekend}
@@ -170,9 +179,9 @@ function Sidebar({ patients, isWeekendMode, onToggleWeekend, onSync, syncStatus,
 }
 
 // ─── Mobile Header ─────────────────────────────────────────────────────────────
-function MobileHeader({ syncStatus, onSync, search, onSearch }) {
+function MobileHeader({ syncStatus, onSync, search, onSearch, onImport }) {
   return (
-    <header className="md:hidden sticky top-0 z-50 bg-[#050505] border-b border-[#1f1f22] px-4 py-2 flex items-center gap-3">
+    <header className="md:hidden sticky top-0 z-50 bg-[#050505] border-b border-[#1f1f22] px-4 py-2 flex items-center gap-2">
       <span className="text-[#D4A373] font-mono text-xs font-bold tracking-widest flex-shrink-0">PISO·LIBRO</span>
       <input
         value={search}
@@ -180,8 +189,10 @@ function MobileHeader({ syncStatus, onSync, search, onSearch }) {
         placeholder="Buscar paciente…"
         className="flex-1 bg-[#151516] border border-[#1f1f22] rounded text-xs text-[#F4F4F5] placeholder-[#6B7280] px-2 py-1 focus:outline-none focus:border-[#D4A373]"
       />
+      <button onClick={onImport}
+              className="text-[#6B7280] text-xs font-mono flex-shrink-0">↑</button>
       <button onClick={onSync} disabled={syncStatus === 'syncing'}
-              className="text-[#6B7280] text-xs font-mono disabled:opacity-40">
+              className="text-[#6B7280] text-xs font-mono disabled:opacity-40 flex-shrink-0">
         {syncStatus === 'syncing' ? '↻' : '↺'}
       </button>
     </header>
@@ -199,6 +210,7 @@ export default function App() {
   const [isWeekendMode, setWeekendMode]  = useState(() =>
     localStorage.getItem('pl_weekend_mode') === '1'
   )
+  const [showImport, setShowImport] = useState(false)
   const channelRef = useRef(null)
 
   // ── Load all patients ──────────────────────────────────────────────────────
@@ -325,6 +337,14 @@ export default function App() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen bg-[#050505] text-[#F4F4F5]">
+      {showImport && (
+        <ImportModal
+          currentPatients={patients}
+          onClose={() => setShowImport(false)}
+          onImported={() => { setShowImport(false); loadAll() }}
+        />
+      )}
+
       <Sidebar
         patients={occupiedPatients}
         isWeekendMode={isWeekendMode}
@@ -333,6 +353,7 @@ export default function App() {
         syncStatus={syncStatus}
         search={search}
         onSearch={setSearch}
+        onImport={() => setShowImport(true)}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -341,6 +362,7 @@ export default function App() {
           onSync={loadAll}
           search={search}
           onSearch={setSearch}
+          onImport={() => setShowImport(true)}
         />
 
         <BedNavigator patients={occupiedPatients} />
