@@ -2,6 +2,30 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './config/supabase'
 import { PatientCard } from './components/PatientCard'
 
+// ─── Transform a winlab_labs row into a flat {labKey: value} object ──────────
+// winlab stores rows as { __cells: [labName, value, range, unit], __hasLink }
+// We find the column indices from the headers array and build a flat map
+function transformWinlabRow(wlRow) {
+  const data    = wlRow.data ?? {}
+  const headers = (data.headers ?? []).map(h => String(h ?? '').toLowerCase()
+    .replace(/[áéíóú]/g, c => ({á:'a',é:'e',í:'i',ó:'o',ú:'u'})[c] ?? c))
+  const ni = Math.max(0, headers.findIndex(h => h.includes('analisis') || h.includes('prueba') || h.includes('examen')))
+  const vi = headers.findIndex(h => h.includes('resultado') || h.includes('result') || h === 'valor')
+  const valueIdx = vi >= 0 ? vi : 1
+
+  const labValues = {}
+  ;(data.reportes ?? []).forEach(row => {
+    const cells  = row.__cells ?? []
+    const nameRaw = cells[ni]
+    const valRaw  = cells[valueIdx]
+    if (!nameRaw) return
+    const val = parseFloat(String(valRaw ?? '').replace(',', '.'))
+    if (!isNaN(val)) labValues[String(nameRaw).trim()] = val
+  })
+
+  return { fecha: wlRow.fecha ?? null, scraped_at: wlRow.scraped_at ?? null, ...labValues }
+}
+
 // ─── Ward bed list (bed numbers that always show, even if empty) ──────────────
 const WARD_BEDS = [
   '3-150','3-151','3-152','3-153','3-154','3-155',
@@ -167,6 +191,7 @@ function MobileHeader({ syncStatus, onSync, search, onSearch }) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [patients,      setPatients]     = useState([])
+  const [winlab,        setWinlab]       = useState({})  // exp → [transformed row]
   const [loading,       setLoading]      = useState(true)
   const [error,         setError]        = useState(null)
   const [syncStatus,    setSyncStatus]   = useState('idle')
@@ -186,6 +211,22 @@ export default function App() {
         .order('cama')
       if (err) throw err
       setPatients(data ?? [])
+
+      // Fetch winlab_labs and build exp→[rows] map (bridge until scraper writes to patients.labs_history)
+      const { data: wl } = await supabase
+        .from('winlab_labs')
+        .select('exp,fecha,scraped_at,data')
+        .order('scraped_at', { ascending: false })
+        .limit(500)
+      const wlByExp = {}
+      ;(wl ?? []).forEach(row => {
+        const exp = String(row.exp ?? '').trim()
+        if (!exp) return
+        if (!wlByExp[exp]) wlByExp[exp] = []
+        if (wlByExp[exp].length < 5) wlByExp[exp].push(transformWinlabRow(row))
+      })
+      setWinlab(wlByExp)
+
       setSyncStatus('ok')
       setError(null)
     } catch (e) {
@@ -216,6 +257,16 @@ export default function App() {
           return [...prev, row].sort((a, b) =>
             String(a.cama).localeCompare(String(b.cama), 'es', { numeric: true }))
         })
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'winlab_labs' }, (p) => {
+        const row = p.new
+        const exp = String(row.exp ?? '').trim()
+        if (!exp) return
+        const transformed = transformWinlabRow(row)
+        setWinlab(prev => ({
+          ...prev,
+          [exp]: [transformed, ...(prev[exp] ?? [])].slice(0, 5),
+        }))
       })
       .subscribe()
 
@@ -314,14 +365,23 @@ export default function App() {
 
           {!loading && !error && (
             <div className="flex flex-col gap-2">
-              {displayList.map(pt => (
+              {displayList.map(pt => {
+              // Merge winlab data: prefer patients.labs_history (DB) over winlab_labs bridge
+              const merged = pt._empty ? pt : {
+                ...pt,
+                labs_history: (pt.labs_history?.length > 0)
+                  ? pt.labs_history
+                  : (winlab[String(pt.exp ?? '').trim()] ?? []),
+              }
+              return (
                 <PatientCard
                   key={pt.cama}
-                  patient={pt}
+                  patient={merged}
                   isWeekendMode={isWeekendMode}
                   onSave={(field, value) => handleSaveField(pt.cama, field, value)}
                 />
-              ))}
+              )
+            })}
             </div>
           )}
         </main>
