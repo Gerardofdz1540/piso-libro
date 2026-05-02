@@ -22,15 +22,26 @@ const LAB_PANELS = [
 ]
 
 const ALIAS = {
-  leucocitos:'leu', globulos_blancos:'leu', wbc:'leu',
-  hemoglobina:'hb', hgb:'hb',
-  plaquetas:'plaq', plt:'plaq',
-  glucosa:'glu', glucose:'glu',
-  urea:'urea', bun:'urea',
-  creatinina:'cr', creatinine:'cr',
-  sodio:'na', sodium:'na',
-  potasio:'k', potassium:'k',
-  lactato:'lac', lactate:'lac', lactico:'lac',
+  // Leucocitos (WBC)
+  leucocitos:'leu', leucos:'leu', globulos_blancos:'leu', gb:'leu', wbc:'leu',
+  cuenta_de_leucocitos:'leu', cel_blancas:'leu',
+  // Hemoglobina (Hb)
+  hemoglobina:'hb', hgb:'hb', hb:'hb',
+  // Plaquetas (Plt)
+  plaquetas:'plaq', plt:'plaq', trombocitos:'plaq', cuenta_plaquetaria:'plaq',
+  // Glucosa
+  glucosa:'glu', glucose:'glu', glucosa_en_suero:'glu', glucosa_serica:'glu',
+  // Urea / BUN
+  urea:'urea', bun:'urea', urea_serica:'urea', nitrogeno_ureico:'urea',
+  // Creatinina
+  creatinina:'cr', creatinine:'cr', creatinina_serica:'cr',
+  // Sodio
+  sodio:'na', sodium:'na', sodio_serico:'na', na:'na',
+  // Potasio
+  potasio:'k', potassium:'k', potasio_serico:'k',
+  // Lactato
+  lactato:'lac', lactate:'lac', lactico:'lac', lactato_serico:'lac',
+  acido_lactico:'lac', acido_lactico_lactato:'lac',
 }
 
 function normalizeKey(raw) {
@@ -40,6 +51,9 @@ function normalizeKey(raw) {
   return ALIAS[k] ?? k
 }
 
+// Keys that are metadata, not lab values — skip numeric parsing on these
+const META_KEYS = new Set(['fecha','scraped_at','date','exp','paciente','nombre','cama','esp','id'])
+
 function parseLabReport(report) {
   if (!report) return {}
   const result = {}
@@ -47,6 +61,7 @@ function parseLabReport(report) {
     if (!obj || typeof obj !== 'object') return
     if (Array.isArray(obj)) { obj.forEach(walk); return }
     for (const [k, v] of Object.entries(obj)) {
+      if (META_KEYS.has(k.toLowerCase())) continue
       const nk = normalizeKey(k)
       if (typeof v === 'number') result[nk] = v
       else if (typeof v === 'string') {
