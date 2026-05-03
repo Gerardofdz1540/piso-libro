@@ -59,7 +59,22 @@ function parseLabReport(report) {
   const result = {}
   const walk = (obj) => {
     if (!obj || typeof obj !== 'object') return
-    if (Array.isArray(obj)) { obj.forEach(walk); return }
+    if (Array.isArray(obj)) {
+      for (const item of obj) {
+        // Drill-down format: {estudio/nombre, valor/resultado} pairs
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          const nameRaw = item.estudio ?? item.nombre ?? item.analisis ?? item.examen
+          const valRaw  = item.valor   ?? item.resultado
+          if (nameRaw != null && valRaw != null) {
+            const name = String(nameRaw).trim()
+            const n    = parseFloat(String(valRaw).replace(',', '.'))
+            if (name && !isNaN(n)) { result[normalizeKey(name)] = n; continue }
+          }
+        }
+        walk(item)
+      }
+      return
+    }
     for (const [k, v] of Object.entries(obj)) {
       if (META_KEYS.has(k.toLowerCase())) continue
       const nk = normalizeKey(k)

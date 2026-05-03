@@ -16,6 +16,17 @@ function transformWinlabRow(wlRow) {
 
   const labValues = {}
   ;(data.reportes ?? []).forEach(row => {
+    // Path 1: drill-down produced {estudio, valor} pairs
+    if (Array.isArray(row.valores) && row.valores.length > 0) {
+      row.valores.forEach(v => {
+        const name = String(v.estudio ?? v.nombre ?? '').trim()
+        if (!name) return
+        const val = parseFloat(String(v.valor ?? v.resultado ?? '').replace(',', '.'))
+        if (!isNaN(val)) labValues[name] = val
+      })
+      return
+    }
+    // Path 2: list-page __cells fallback
     const cells  = row.__cells ?? []
     const nameRaw = cells[ni]
     const valRaw  = cells[valueIdx]

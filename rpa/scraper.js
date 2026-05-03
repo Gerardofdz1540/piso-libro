@@ -342,11 +342,15 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
         .replace(/\s+/g, " ")
         .trim();
 
+    // Safe markers: only present in the search/title area, NOT in the results table.
+    // "CODIGO TOMA", "FECHA DE TOMA", "REPORTES IMPRESOS", "UNIDAD SOLICITANTE", "CODIGO PACIENTE"
+    // were removed because they are also column headers in the actual results table and caused it
+    // to be falsely excluded. "LISTA REPORTES" added (WinLab changes the title after search runs).
     const FORM_MARKERS = [
-      "BUSCA REPORTES", "TODAS LAS UNIDADES ORGANIZATIVAS",
+      "BUSCA REPORTES", "LISTA REPORTES",
+      "TODAS LAS UNIDADES ORGANIZATIVAS",
       "PACIENTE APELLIDO NOMBRE", "FECHA REPORTE DE A",
-      "CON RESULTADOS", "UNIDAD SOLICITANTE", "CODIGO PACIENTE",
-      "REPORTES IMPRESOS", "FECHA DE TOMA", "CODIGO TOMA",
+      "CON RESULTADOS",
     ];
     const isMenu = (txt) => txt.includes("INICIO REPORTES AYUDA");
     const isForm = (txt) => {
@@ -522,19 +526,38 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
           break;
         }
         const tds = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
-        if (tds.some((c) => /^(ESTUDIO|EXAMEN|ANALISIS|PRUEBA|TEST|RESULTADO|VALOR|UNIDADES|UNIDAD|REFERENCIA|RANGO|VR)$/.test(c))) {
+        if (tds.some((c) => /\b(ESTUDIO|EXAMEN|ANALISIS|PRUEBA|TEST|RESULTADO|RESULTADOS|VALOR|VALORES|UNIDADES|UNIDAD|REFERENCIA|RANGO|VR)\b/.test(c))) {
           headers = tds;
           headerIdx = i;
           break;
         }
       }
+
+      // Fallback: no header found, but if most rows have numeric 2nd column, treat as lab table
+      if (headerIdx < 0 && trs.length >= 4) {
+        let numericRows = 0;
+        for (let i = 1; i < Math.min(trs.length, 12); i++) {
+          const cs = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
+          if (cs.length >= 2 && cs[0] && !isNaN(parseFloat(cs[1].replace(",", ".")))) numericRows++;
+        }
+        if (numericRows >= 3) {
+          for (let i = 1; i < trs.length; i++) {
+            const cs = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
+            if (cs.length < 2 || !cs[0]) continue;
+            const n = parseFloat(cs[1].replace(",", "."));
+            if (!isNaN(n)) out.valores.push({ estudio: cs[0], valor: cs[1], unidad: cs[2] ?? "", referencia: cs[3] ?? "" });
+          }
+          if (out.valores.length) { out.headers = ["(auto-detect)"]; break; }
+        }
+      }
+
       if (headerIdx < 0) continue;
 
       const idx = (re) => headers.findIndex((h) => re.test(h));
-      const cE = idx(/^(ESTUDIO|EXAMEN|ANALISIS|PRUEBA|TEST|NOMBRE|DESCRIPCION)$/);
-      const cV = idx(/^(RESULTADO|VALOR|VAL)$/);
-      const cU = idx(/^(UNIDADES|UNIDAD|U\.M\.|UM)$/);
-      const cR = idx(/^(REFERENCIA|RANGO|V\.R\.|VR|RANGO REFERENCIAL)$/);
+      const cE = idx(/\b(ESTUDIO|EXAMEN|ANALISIS|PRUEBA|TEST|NOMBRE|DESCRIPCION)\b/);
+      const cV = idx(/\b(RESULTADO|RESULTADOS|VALOR|VALORES|VAL)\b/);
+      const cU = idx(/\b(UNIDADES|UNIDAD|U\.M\.|UM)\b/);
+      const cR = idx(/\b(REFERENCIA|RANGO|V\.R\.|VR|RANGO REFERENCIAL|VALOR REFERENCIAL)\b/);
       if (cE < 0 || cV < 0) continue;
 
       for (let i = headerIdx + 1; i < trs.length; i++) {
