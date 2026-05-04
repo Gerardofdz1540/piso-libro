@@ -442,7 +442,41 @@ function GuardiaTab({ pt, onSave }) {
   )
 }
 
-// ─── PatientCard ──────────────────────────────────────────────────────────────
+// ─── ManualLabCell ────────────────────────────────────────────────────────────
+function ManualLabCell({ panel, value, onSave }) {
+  const [local, setLocal] = useState(value != null ? String(value) : '')
+  const dirty = useRef(false)
+
+  useEffect(() => { if (!dirty.current) setLocal(value != null ? String(value) : '') }, [value])
+
+  function commit() {
+    if (!dirty.current) return
+    dirty.current = false
+    const n = parseFloat(local.replace(',', '.'))
+    onSave(panel.key, isNaN(n) ? null : n)
+  }
+
+  const [lo, hi] = panel.ref
+  const n = parseFloat(local)
+  const color = !local || isNaN(n) ? '#3f3f46'
+    : (n < lo || n > hi) ? '#EF4444' : '#34D399'
+
+  return (
+    <div className="flex flex-col items-center py-1 px-1.5">
+      <span className="text-[10px] font-mono text-[#6B7280]">{panel.label}</span>
+      <input
+        value={local}
+        placeholder="—"
+        onChange={e => { setLocal(e.target.value); dirty.current = true }}
+        onBlur={commit}
+        className="w-10 text-center bg-transparent border-0 border-b border-[#2a2a2e] text-[11px] font-mono placeholder-[#3f3f46] focus:outline-none focus:border-[#D4A373]"
+        style={{ color }}
+      />
+    </div>
+  )
+}
+
+
 export function PatientCard({ patient: pt, isWeekendMode, onSave }) {
   const [expanded,  setExpanded]  = useState(false)
   const [activeTab, setActiveTab] = useState('evolucion')
@@ -456,13 +490,22 @@ export function PatientCard({ patient: pt, isWeekendMode, onSave }) {
 
   const color = ESP_COLOR[pt.esp] ?? '#D4A373'
 
-  const labHistory  = Array.isArray(pt.labs_history) ? pt.labs_history : []
-  const currentLab  = parseLabReport(labHistory[labIndex]     ?? null)
-  const previousLab = parseLabReport(labHistory[labIndex + 1] ?? null)
-  const labDates    = labHistory.map((r, i) => {
+  const labHistory   = Array.isArray(pt.labs_history) ? pt.labs_history : []
+  const manualLabs   = (pt.labs_manual && typeof pt.labs_manual === 'object') ? pt.labs_manual : {}
+  const hasScraped   = labHistory.length > 0
+  const currentLab   = hasScraped ? parseLabReport(labHistory[labIndex] ?? null) : manualLabs
+  const previousLab  = parseLabReport(labHistory[labIndex + 1] ?? null)
+  const labDates     = labHistory.map((r, i) => {
     const d = r?.fecha ?? r?.date ?? r?.scraped_at ?? `#${i}`
     return typeof d === 'string' ? d.slice(0, 10) : `#${i}`
   })
+
+  function saveManualLab(key, val) {
+    const next = { ...manualLabs }
+    if (val === null) delete next[key]
+    else next[key] = val
+    onSave('labs_manual', next)
+  }
 
   const tabs = [
     { id:'evolucion', label:'Evolución' },
@@ -524,34 +567,37 @@ export function PatientCard({ patient: pt, isWeekendMode, onSave }) {
         {/* Expanded content */}
         {expanded && (
           <>
-            {/* Labs strip */}
-            {labHistory.length > 0 && (
-              <div className="border-b border-[#1f1f22]">
-                <div className="flex items-center gap-2 px-3 pt-1.5 pb-1">
-                  <span className="text-[9px] font-mono text-[#6B7280] uppercase tracking-widest">Labs</span>
-                  {labDates.length > 1 && (
-                    <div className="flex gap-1">
-                      {labDates.slice(0, 4).map((d, i) => (
-                        <button key={i} onClick={() => setLabIndex(i)}
-                                className="text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all"
-                                style={{
-                                  borderColor: labIndex===i ? `${color}60` : '#1f1f22',
-                                  color: labIndex===i ? color : '#6B7280',
-                                  background: labIndex===i ? `${color}10` : 'transparent',
-                                }}>
-                          {d}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-wrap divide-x divide-[#1f1f22] border-t border-[#1f1f22]">
-                  {LAB_PANELS.map(panel => (
-                    <LabCell key={panel.key} panel={panel} current={currentLab} previous={previousLab} />
-                  ))}
-                </div>
+            {/* Labs strip — always visible; manual entry when no scraper data */}
+            <div className="border-b border-[#1f1f22]">
+              <div className="flex items-center gap-2 px-3 pt-1.5 pb-1">
+                <span className="text-[9px] font-mono text-[#6B7280] uppercase tracking-widest">Labs</span>
+                {hasScraped && labDates.length > 1 && (
+                  <div className="flex gap-1">
+                    {labDates.slice(0, 4).map((d, i) => (
+                      <button key={i} onClick={() => setLabIndex(i)}
+                              className="text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all"
+                              style={{
+                                borderColor: labIndex===i ? `${color}60` : '#1f1f22',
+                                color: labIndex===i ? color : '#6B7280',
+                                background: labIndex===i ? `${color}10` : 'transparent',
+                              }}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!hasScraped && (
+                  <span className="text-[9px] font-mono text-[#3f3f46]">manual</span>
+                )}
               </div>
-            )}
+              <div className="flex flex-wrap divide-x divide-[#1f1f22] border-t border-[#1f1f22]">
+                {LAB_PANELS.map(panel => (
+                  hasScraped
+                    ? <LabCell key={panel.key} panel={panel} current={currentLab} previous={previousLab} />
+                    : <ManualLabCell key={panel.key} panel={panel} value={manualLabs[panel.key]} onSave={saveManualLab} />
+                ))}
+              </div>
+            </div>
 
             {/* Tabs */}
             <div>
