@@ -9,7 +9,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          xlsx: ['xlsx'],
+          xlsx:  ['xlsx'],
+          pdfjs: ['pdfjs-dist'],
         },
       },
     },

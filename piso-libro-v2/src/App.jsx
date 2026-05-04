@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './config/supabase'
 import { PatientCard } from './components/PatientCard'
 import { ImportModal } from './components/ImportModal'
+import { LabPdfModal } from './components/LabPdfModal'
 
 // ─── Transform a winlab_labs row into a flat {labKey: value} object ──────────
 // winlab stores rows as { __cells: [labName, value, range, unit], __hasLink }
@@ -94,7 +95,7 @@ function BedNavigator({ patients }) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ patients, isWeekendMode, onToggleWeekend, onSync, syncStatus, search, onSearch, onImport }) {
+function Sidebar({ patients, isWeekendMode, onToggleWeekend, onSync, syncStatus, search, onSearch, onImport, onImportLabs }) {
   const owned      = patients.filter(p => PRIMARY_SERVICES.includes(p.esp ?? ''))
   const doneCount  = owned.filter(p => p.nota_hecha).length
   const totalCount = owned.length
@@ -157,6 +158,14 @@ function Sidebar({ patients, isWeekendMode, onToggleWeekend, onSync, syncStatus,
       </div>
 
       <div className="mt-auto flex flex-col gap-2">
+        {/* Import labs PDF */}
+        <button
+          onClick={onImportLabs}
+          className="w-full text-xs font-mono py-1.5 rounded border border-[#1f1f22] text-[#6B7280] hover:border-[#34D39960] hover:text-[#34D399] transition-all"
+        >
+          ⊕ Labs PDF
+        </button>
+
         {/* Import census */}
         <button
           onClick={onImport}
@@ -221,7 +230,8 @@ export default function App() {
   const [isWeekendMode, setWeekendMode]  = useState(() =>
     localStorage.getItem('pl_weekend_mode') === '1'
   )
-  const [showImport, setShowImport] = useState(false)
+  const [showImport,    setShowImport]    = useState(false)
+  const [showLabPdf,   setShowLabPdf]    = useState(false)
   const channelRef = useRef(null)
 
   // ── Load all patients ──────────────────────────────────────────────────────
@@ -348,6 +358,14 @@ export default function App() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen bg-[#050505] text-[#F4F4F5]">
+      {showLabPdf && (
+        <LabPdfModal
+          currentPatients={patients}
+          onClose={() => setShowLabPdf(false)}
+          onImported={() => { setShowLabPdf(false); loadAll() }}
+        />
+      )}
+
       {showImport && (
         <ImportModal
           currentPatients={patients}
@@ -365,6 +383,7 @@ export default function App() {
         search={search}
         onSearch={setSearch}
         onImport={() => setShowImport(true)}
+        onImportLabs={() => setShowLabPdf(true)}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
