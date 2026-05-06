@@ -4637,6 +4637,7 @@
               .filter(e => isPlainObject(e))
               .map(e => ({ nombre: toSafeString(e.nombre).trim(), valor: toSafeString(e.valor).trim() })),
             incidencia: !!s.incidencia,
+            client_updated_at: typeof s.client_updated_at === "number" ? s.client_updated_at : 0,
             source_file: toSafeString(s.source_file).trim(),
             source_file_type: toSafeString(s.source_file_type).trim(),
             source_file_name: toSafeString(s.source_file_name).trim(),
@@ -5935,6 +5936,17 @@
           .subscribe(_makeSubCallback("guard_info"));
         _realtimeSubs.push(giSub);
       } catch (e) { safeLog("[RT] guard_info subscription failed:", e); }
+
+      // Subscribe to winlab_labs changes (RPA scraper results pushed by GitHub Actions cron).
+      // Needed so connected residents see new WinLab results instantly without a full page reload.
+      try {
+        const wlSub = _supa.channel("winlab-labs-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "winlab_labs" }, function(payload) {
+            handleWinlabChange(payload);
+          })
+          .subscribe(_makeSubCallback("winlab_labs"));
+        _realtimeSubs.push(wlSub);
+      } catch (e) { safeLog("[RT] winlab_labs subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -6033,6 +6045,76 @@
       }
     }
 
+    // ── Realtime helpers ─────────────────────────────────────────────────────────
+
+    function _showRTToast(msg) {
+      var el = document.getElementById("rt-toast");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "rt-toast";
+        el.style.cssText = "position:fixed;bottom:16px;right:16px;background:#1e293b;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none";
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      el.style.opacity = "1";
+      clearTimeout(el._tid);
+      el._tid = setTimeout(function() {
+        el.style.opacity = "0";
+        setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 350);
+      }, 3000);
+    }
+
+    // Merge de labHistory por fecha con resolución LWW (last-write-wins por client_updated_at).
+    // Si hasLocalDirty=false el usuario no tiene ediciones pendientes → usar remote directamente.
+    // Si hasLocalDirty=true: unión de fechas; para la misma fecha gana el timestamp más reciente.
+    function _mergeLabHistory(local, remote, hasLocalDirty) {
+      if (!hasLocalDirty) return Array.isArray(remote) ? remote : [];
+      const localArr = Array.isArray(local) ? local : [];
+      const remoteArr = Array.isArray(remote) ? remote : [];
+      const localMap = Object.create(null);
+      localArr.forEach(function(s) { if (s && s.fecha) localMap[s.fecha] = s; });
+      const remoteMap = Object.create(null);
+      remoteArr.forEach(function(s) { if (s && s.fecha) remoteMap[s.fecha] = s; });
+      const allDates = new Set(Object.keys(localMap).concat(Object.keys(remoteMap)));
+      const merged = [];
+      allDates.forEach(function(fecha) {
+        const loc = localMap[fecha];
+        const rem = remoteMap[fecha];
+        if (loc && !rem) { merged.push(loc); return; }
+        if (!loc && rem) { merged.push(rem); return; }
+        // Ambos tienen la misma fecha: gana el más reciente por client_updated_at
+        merged.push((loc.client_updated_at || 0) >= (rem.client_updated_at || 0) ? loc : rem);
+      });
+      return merged.sort(function(a, b) { return b.fecha.localeCompare(a.fecha); });
+    }
+
+    // Handler para cambios en winlab_labs (RPA scraper vía GitHub Actions).
+    // Actualiza winlabByExp y re-renderiza las tarjetas de los pacientes afectados.
+    function handleWinlabChange(payload) {
+      const { eventType, new: newRow } = payload;
+      if (eventType === "DELETE" || !newRow || !newRow.exp) return;
+      const exp = String(newRow.exp).trim();
+      if (!exp) return;
+      const prev = winlabByExp[exp];
+      if (prev && prev.scraped_at && newRow.scraped_at && newRow.scraped_at <= prev.scraped_at) return;
+      winlabByExp[exp] = newRow;
+      const affected = patients.filter(function(p) { return String(p.exp || "").trim() === exp; });
+      affected.forEach(function(p) {
+        const k = pid(p);
+        const cardEl = document.getElementById("card-" + k);
+        if (cardEl && !cardEl.contains(document.activeElement)) {
+          cardEl.outerHTML = isSimpleEsp(p.esp)
+            ? renderSimpleCard(p, noteData[k] || defaultData(), k)
+            : renderFullCard(p, noteData[k] || defaultData(), k);
+        }
+      });
+      if (affected.length) {
+        const nombres = affected.map(function(p) { return p.nombre || p.exp; }).join(", ");
+        _showRTToast("🧪 Labs WinLab actualizados: " + nombres);
+        safeInfo("[RT] winlab_labs updated for exp=" + exp);
+      }
+    }
+
     function handleNoteChange(payload) {
       const { new: _ncNew } = payload;
       if (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id))) return;
@@ -6071,13 +6153,14 @@
         nd.body_diagram_ant = remoteMeta.body_diagram_ant;
         nd.body_diagram_post = remoteMeta.body_diagram_post;
       }
-      // BUG-C2/C3 FIX: preserve local labHistory / imagenHistory if the user is
-      // actively editing them (dirty flag set by liveLabUpdate / imagen updates).
-      if (!dirty.has("labHistory")) {
-        nd.labHistory = Array.isArray(newRow.lab_history) ? newRow.lab_history : [];
-      } else {
-        nd.labHistory = existing.labHistory || [];
-      }
+      // BUG-C2/C3 FIX: merge labHistory por fecha (LWW por client_updated_at).
+      // Si no hay dirty local → usar remote directamente.
+      // Si hay dirty → unión de fechas; para la misma fecha gana el client_updated_at más alto.
+      nd.labHistory = _mergeLabHistory(
+        existing.labHistory,
+        newRow.lab_history,
+        dirty.has("labHistory")
+      );
       if (!dirty.has("imagenHistory")) {
         nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
           ? newRow.imagen_history
@@ -6101,21 +6184,7 @@
       if (_rtCardEl && !_rtHasFocus && !_modalIsOpenForThis) {
         _rtCardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
       }
-      // Toast no intrusivo
-      var _toastEl = document.getElementById("rt-toast");
-      if (!_toastEl) {
-        _toastEl = document.createElement("div");
-        _toastEl.id = "rt-toast";
-        _toastEl.style.cssText = "position:fixed;bottom:16px;right:16px;background:#1e293b;color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none";
-        document.body.appendChild(_toastEl);
-      }
-      _toastEl.textContent = "📡 Actualización recibida: " + (p.nombre || k);
-      _toastEl.style.opacity = "1";
-      clearTimeout(_toastEl._tid);
-      _toastEl._tid = setTimeout(function(){
-        _toastEl.style.opacity = "0";
-        setTimeout(function(){ if (_toastEl.parentNode) _toastEl.parentNode.removeChild(_toastEl); }, 350);
-      }, 3000);
+      _showRTToast("📡 Actualización recibida: " + (p.nombre || k));
       safeInfo("[RT] Note updated:", k);
     }
 
@@ -10216,6 +10285,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[lk] = el.value;
+      snap.client_updated_at = Date.now();
       noteData[k] = nd;
       // BUG-C2 FIX: mark labHistory as dirty so handleNoteChange (Realtime) won't
       // overwrite these manual edits before autosave fires.
@@ -10428,7 +10498,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { if (fecha !== null) alert("Formato inválido. Usa YYYY-MM-DD"); return; }
       const nd = getNote(k);
       if (!nd.labHistory.find(s => s.fecha === fecha)) {
-        nd.labHistory.push({ fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" });
+        nd.labHistory.push({ fecha, labs: {}, extra: [], client_updated_at: Date.now(), source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" });
       }
       noteData[k] = nd;
       activeLabDate[k] = fecha;
@@ -10443,6 +10513,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!snap) return;
       if (!snap.extra) snap.extra = [];
       snap.extra.push({ nombre: "", valor: "" });
+      snap.client_updated_at = Date.now();
       noteData[k] = nd; saveNote(k, nd);
       const labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
@@ -10453,6 +10524,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       let snap = nd.labHistory.find(s => s.fecha === fecha);
       if (!snap || !snap.extra) return;
       snap.extra.splice(idx, 1);
+      snap.client_updated_at = Date.now();
       noteData[k] = nd; saveNote(k, nd);
       const labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
@@ -10463,6 +10535,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       let snap = nd.labHistory.find(s => s.fecha === fecha);
       if (!snap || !snap.extra || !snap.extra[idx]) return;
       snap.extra[idx][field] = value;
+      snap.client_updated_at = Date.now();
       noteData[k] = nd; saveNote(k, nd);
     }
 
