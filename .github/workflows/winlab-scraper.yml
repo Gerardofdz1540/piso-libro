@@ -8,11 +8,6 @@ on:
   schedule:
     - cron: "15 19 * * *"
   workflow_dispatch:
-    inputs:
-      lookback_days:
-        description: 'Dias hacia atras para buscar labs (default 14)'
-        required: false
-        default: '14'
 
 concurrency:
   group: winlab-scraper
@@ -65,7 +60,6 @@ jobs:
           retry_on: error
           command: cd rpa && npm run scrape
         env:
-          WL_LOOKBACK_DAYS:       ${{ github.event.inputs.lookback_days || '14' }}
           WINLAB_URL:             ${{ secrets.WINLAB_URL }}
           WINLAB_USER:            ${{ secrets.WINLAB_USER }}
           WINLAB_PASS:            ${{ secrets.WINLAB_PASS }}
