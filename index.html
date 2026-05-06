@@ -4025,9 +4025,8 @@
     }
 
     async function initAuth() {
-      if (_authSessionValid()) { _hideLoginOverlay(); return; }
-      const users = await _usersGetAll();
-      _showLoginOverlay(users.length === 0);
+      // Auth gate deshabilitado a petición del usuario: la app abre sin login.
+      _hideLoginOverlay();
     }
 
     async function loginSubmit() {
