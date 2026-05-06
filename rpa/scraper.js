@@ -13,7 +13,7 @@ import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-         isMeaningfulReportRow, extractApellidos, expVariants } from "./lib.js";
+         isMeaningfulReportRow, extractApellidos } from "./lib.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -59,15 +59,12 @@ const WL_SEARCH_FECHA_DE_SEL    = ENV("WL_SEARCH_FECHA_DE_SEL", "#pnlMain_pnlRef
 const WL_SEARCH_FECHA_A_SEL     = ENV("WL_SEARCH_FECHA_A_SEL", "#pnlMain_pnlReferti_txtDataRefertoA");
 const WL_SEARCH_BTN_SEL         = ENV("WL_SEARCH_BTN_SEL", "#Intestazione_DBToolbar_pnlCerca_btnCerca");
 const WL_SEARCH_CLEAR_SEL       = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBToolbar_pnlPulisci_btnPulisci");
-// Selector de la pestaña "Por Temporalidad" de WinLab. Cuando está configurado
-// el scraper hace clic en ella antes de llenar el formulario de fechas+apellido.
-// Ejemplo: "#TabTemporalidad a, .tab-temporalidad, li[data-tab='fecha'] a"
+// Selector de la pestaña "Por Temporalidad" de WinLab (opcional).
 const WL_TEMPORALIDAD_TAB_SEL   = ENV("WL_TEMPORALIDAD_TAB_SEL", "");
-// Modo de búsqueda por paciente:
-//   "apellido_first" (recomendado): busca por apellidos primero, código exp como fallback.
-//   "exp_first" (legado): busca por código expediente primero, apellidos como fallback.
-const WL_SEARCH_MODE            = ENV("WL_SEARCH_MODE", "apellido_first");
-const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "2"), 10);  // HOY + AYER
+// Selector del dropdown de perfil temporal (ej. "AYER Y HOY").
+// El scraper busca la opción cuyo texto contenga "AYER", "HOY", "IERI" u "OGGI".
+const WL_TEMPORAL_DROPDOWN_SEL  = ENV("WL_TEMPORAL_DROPDOWN_SEL", "#pnlMain_cboProfiloConsultazioneRichiesteRicerca");
+const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "2"), 10);  // HOY + AYER (respaldo textual)
 const WL_DATE_FORMAT            = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 const WL_PER_PATIENT_TIMEOUT    = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
 const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte
@@ -241,35 +238,18 @@ async function captureSearchUrl(page) {
 }
 
 // ── 4. BUSQUEDA + SCRAPE POR PACIENTE ─────────────────────────────────
+// Un solo intento por paciente: primer + segundo apellido en txtCognome.
+// Sin fallbacks (exp no está registrado en WinLab; un solo apellido genera
+// demasiados homónimos y timeouts). Si no hay resultados → sin labs.
 async function searchAndScrapeOne(page, searchUrl, paciente) {
-  // La cascada se detiene cuando alguna tentativa retorna rows reales o
-  // noResults explicito ("ningún registro encontrado").
-  //
-  // WL_SEARCH_MODE controla el orden de las estrategias:
-  //   "apellido_first" (default): apellidos → código exp. Funciona mejor
-  //     en WinLab cuando se usa la pestaña de temporalidad + HOY/AYER.
-  //   "exp_first" (legado): código exp → apellidos.
-  const expCandidates     = expVariants(paciente.exp);
-  const apellidoCandidates = extractApellidos(paciente.nombre);
-
-  const buildApellidoCandidates = () =>
-    apellidoCandidates.map((a, i) => ({ codice: null, cognome: a, tag: `apellido[${i + 1}]=${a}` }));
-  const buildExpCandidates = () =>
-    expCandidates.map((c, i) => ({ codice: c, cognome: null, tag: i === 0 ? `codigo=${c}` : `codigo[v${i + 1}]=${c}` }));
-
-  const cascade = WL_SEARCH_MODE === "exp_first"
-    ? [...buildExpCandidates(), ...buildApellidoCandidates()]
-    : [...buildApellidoCandidates(), ...buildExpCandidates()];
-
-  for (const params of cascade) {
-    const res = await doSingleSearch(page, searchUrl, paciente, params);
-    if (res.rows.length > 0) return res;
-    if (res.noResults) return res;  // busqueda valida, sin matches: parar cascada
+  const apellidos = extractApellidos(paciente.nombre);
+  const cognome   = apellidos[0] || "";   // ej. "MARTINEZ ROLDAN"
+  if (!cognome) {
+    console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
+    return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
-
-  // Sin matches en ninguna estrategia: devolver ultimo intento vacío.
   return await doSingleSearch(page, searchUrl, paciente, {
-    codice: paciente.exp, cognome: null, tag: `codigo=${paciente.exp} (final)`,
+    codice: null, cognome, tag: `apellidos="${cognome}"`,
   });
 }
 
@@ -300,42 +280,65 @@ async function doSingleSearch(page, searchUrl, paciente, params) {
 async function doSingleSearchInner(page, searchUrl, paciente, params) {
   // Volver a la pantalla de busqueda fresca (limpia el form previo).
   await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-  // Esperar a que TODA la red descanse para evitar "context destroyed"
-  // en operaciones siguientes (typical de ASP.NET con AJAX in-flight).
   await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
 
-  // Si hay una pestaña de temporalidad configurada, hacer clic en ella
-  // antes de llenar el formulario (el formulario de esa pestaña tiene los
-  // campos de fecha y apellido que el médico usa manualmente: HOY+AYER + apellidos).
+  // ── Paso 1: pestaña de temporalidad (opcional) ──────────────────────
   if (WL_TEMPORALIDAD_TAB_SEL) {
     const tabEl = page.locator(WL_TEMPORALIDAD_TAB_SEL);
-    const tabCount = await tabEl.count();
-    if (tabCount > 0) {
-      console.log(`       [tab] Haciendo clic en pestaña temporalidad (${tabCount} matches)`);
+    if (await tabEl.count()) {
       await tabEl.first().click({ force: true, timeout: 5000 }).catch(async () => {
-        await page.evaluate((sel) => {
-          const el = document.querySelector(sel);
-          if (el) el.click();
-        }, WL_TEMPORALIDAD_TAB_SEL).catch(() => {});
+        await page.evaluate((s) => { const el = document.querySelector(s); if (el) el.click(); }, WL_TEMPORALIDAD_TAB_SEL).catch(() => {});
       });
       await waitForAspNetReady(page, 8000);
+      console.log(`       [tab] Pestaña temporalidad activada`);
     } else {
-      console.log(`       [tab] WL_TEMPORALIDAD_TAB_SEL="${WL_TEMPORALIDAD_TAB_SEL}" no encontrado — continuando sin cambiar pestaña`);
+      console.log(`       [tab] "${WL_TEMPORALIDAD_TAB_SEL}" no encontrado — sin cambio de pestaña`);
     }
   }
 
-  await page.locator(WL_SEARCH_EXP_SEL).waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
+  // ── Paso 2: dropdown "AYER Y HOY" ────────────────────────────────────
+  // El dropdown dispara un partial postback AJAX (AutoPostBack=True) que
+  // actualiza el filtro temporal. Debe seleccionarse ANTES de llenar apellido
+  // para que el postback no resetee el campo de búsqueda.
+  if (WL_TEMPORAL_DROPDOWN_SEL) {
+    const selectedText = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (!el || el.tagName !== "SELECT") return null;
+      const norm = (s) => String(s || "").toUpperCase()
+        .normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
+      // Buscar opción que contenga "AYER" o "HOY" o equivalentes en italiano
+      for (const opt of el.options) {
+        const t = norm(opt.text);
+        if (t.includes("AYER") || t.includes("HOY") || t.includes("IERI") || t.includes("OGGI")) {
+          el.value = opt.value;
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          return opt.text;
+        }
+      }
+      // No encontrado: loguear opciones disponibles para diagnóstico
+      return { notFound: true, options: Array.from(el.options).map(o => ({ value: o.value, text: o.text })) };
+    }, WL_TEMPORAL_DROPDOWN_SEL);
 
-  if (params.codice) {
-    await setField(page, WL_SEARCH_EXP_SEL, String(params.codice), `[${params.tag}]`);
+    if (selectedText && typeof selectedText === "string") {
+      console.log(`       [dropdown] Seleccionado: "${selectedText}"`);
+      // Esperar el postback AJAX provocado por el cambio del dropdown
+      await waitForAspNetReady(page, 8000);
+    } else if (selectedText && selectedText.notFound) {
+      console.log(`       [dropdown] "AYER Y HOY" no encontrado. Opciones: ${JSON.stringify(selectedText.options)}`);
+    } else {
+      console.log(`       [dropdown] "${WL_TEMPORAL_DROPDOWN_SEL}" no encontrado en página`);
+    }
   }
+
+  // ── Paso 3: llenar apellidos en txtCognome ────────────────────────────
+  await page.locator(WL_SEARCH_COGNOME_SEL).waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
   if (params.cognome) {
     if (await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
       await setField(page, WL_SEARCH_COGNOME_SEL, String(params.cognome), `[${params.tag}]`);
     }
   }
 
-  // Llenar rango de fechas (default: ultimos N dias hasta hoy).
+  // ── Paso 4: fechas textuales como respaldo (si los campos existen) ────
   if (WL_LOOKBACK_DAYS >= 0) {
     const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
     const fechaA  = formatDate(new Date());
