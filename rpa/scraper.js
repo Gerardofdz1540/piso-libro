@@ -52,19 +52,27 @@ const SUPABASE_CENSO_TABLE    = ENV("SUPABASE_CENSO_TABLE", "patients");
 const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp");
 
 // Selectores del formulario de busqueda WinLab (descubiertos via explorador).
-const WL_SEARCH_EXP_SEL       = ENV("WL_SEARCH_EXP_SEL", "#pnlMain_pnlPaziente_txtCodicePaziente");
-const WL_SEARCH_COGNOME_SEL   = ENV("WL_SEARCH_COGNOME_SEL", "#pnlMain_pnlPaziente_txtCognome");
-const WL_SEARCH_NOME_SEL      = ENV("WL_SEARCH_NOME_SEL", "#pnlMain_pnlPaziente_txtNome");
-const WL_SEARCH_FECHA_DE_SEL  = ENV("WL_SEARCH_FECHA_DE_SEL", "#pnlMain_pnlReferti_txtDataRefertoDa");
-const WL_SEARCH_FECHA_A_SEL   = ENV("WL_SEARCH_FECHA_A_SEL", "#pnlMain_pnlReferti_txtDataRefertoA");
-const WL_SEARCH_BTN_SEL       = ENV("WL_SEARCH_BTN_SEL", "#Intestazione_DBToolbar_pnlCerca_btnCerca");
-const WL_SEARCH_CLEAR_SEL     = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBToolbar_pnlPulisci_btnPulisci");
-const WL_LOOKBACK_DAYS        = parseInt(ENV("WL_LOOKBACK_DAYS", "7"), 10);  // 7 dias para capturar labs rezagados
-const WL_DATE_FORMAT          = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
-const WL_PER_PATIENT_TIMEOUT  = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
-const WL_DRILLDOWN            = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte
-const WL_DRILLDOWN_MAX        = parseInt(ENV("WL_DRILLDOWN_MAX", "2"), 10);      // max reportes/paciente
-const WL_DRILLDOWN_TIMEOUT    = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
+const WL_SEARCH_EXP_SEL         = ENV("WL_SEARCH_EXP_SEL", "#pnlMain_pnlPaziente_txtCodicePaziente");
+const WL_SEARCH_COGNOME_SEL     = ENV("WL_SEARCH_COGNOME_SEL", "#pnlMain_pnlPaziente_txtCognome");
+const WL_SEARCH_NOME_SEL        = ENV("WL_SEARCH_NOME_SEL", "#pnlMain_pnlPaziente_txtNome");
+const WL_SEARCH_FECHA_DE_SEL    = ENV("WL_SEARCH_FECHA_DE_SEL", "#pnlMain_pnlReferti_txtDataRefertoDa");
+const WL_SEARCH_FECHA_A_SEL     = ENV("WL_SEARCH_FECHA_A_SEL", "#pnlMain_pnlReferti_txtDataRefertoA");
+const WL_SEARCH_BTN_SEL         = ENV("WL_SEARCH_BTN_SEL", "#Intestazione_DBToolbar_pnlCerca_btnCerca");
+const WL_SEARCH_CLEAR_SEL       = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBToolbar_pnlPulisci_btnPulisci");
+// Selector de la pestaña "Por Temporalidad" de WinLab. Cuando está configurado
+// el scraper hace clic en ella antes de llenar el formulario de fechas+apellido.
+// Ejemplo: "#TabTemporalidad a, .tab-temporalidad, li[data-tab='fecha'] a"
+const WL_TEMPORALIDAD_TAB_SEL   = ENV("WL_TEMPORALIDAD_TAB_SEL", "");
+// Modo de búsqueda por paciente:
+//   "apellido_first" (recomendado): busca por apellidos primero, código exp como fallback.
+//   "exp_first" (legado): busca por código expediente primero, apellidos como fallback.
+const WL_SEARCH_MODE            = ENV("WL_SEARCH_MODE", "apellido_first");
+const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "2"), 10);  // HOY + AYER
+const WL_DATE_FORMAT            = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
+const WL_PER_PATIENT_TIMEOUT    = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
+const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte
+const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "2"), 10);      // max reportes/paciente
+const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
 
 // ── Helpers ────────────────────────────────────────────────────────────
 // Wrapper local para fechas con el formato configurado por env.
@@ -234,33 +242,32 @@ async function captureSearchUrl(page) {
 
 // ── 4. BUSQUEDA + SCRAPE POR PACIENTE ─────────────────────────────────
 async function searchAndScrapeOne(page, searchUrl, paciente) {
-  // Estrategia en cascada: codigo con dash -> codigo sin dash ->
-  // ultima parte numerica -> apellidos. La cascada se detiene cuando
-  // alguna tentativa retorna:
-  //   - rows con datos reales (return inmediato)
-  //   - noResults explicito (la busqueda funciono y dijo "ningun
-  //     registro", asi que las otras variantes tampoco encontraran).
-  // Solo si falla con ERROR tecnico se prueba la siguiente.
-  const expCandidates = expVariants(paciente.exp);
+  // La cascada se detiene cuando alguna tentativa retorna rows reales o
+  // noResults explicito ("ningún registro encontrado").
+  //
+  // WL_SEARCH_MODE controla el orden de las estrategias:
+  //   "apellido_first" (default): apellidos → código exp. Funciona mejor
+  //     en WinLab cuando se usa la pestaña de temporalidad + HOY/AYER.
+  //   "exp_first" (legado): código exp → apellidos.
+  const expCandidates     = expVariants(paciente.exp);
   const apellidoCandidates = extractApellidos(paciente.nombre);
 
-  for (let i = 0; i < expCandidates.length; i++) {
-    const codice = expCandidates[i];
-    const tag = i === 0 ? `codigo=${codice}` : `codigo[v${i + 1}]=${codice}`;
-    const res = await doSingleSearch(page, searchUrl, paciente, { codice, cognome: null, tag });
+  const buildApellidoCandidates = () =>
+    apellidoCandidates.map((a, i) => ({ codice: null, cognome: a, tag: `apellido[${i + 1}]=${a}` }));
+  const buildExpCandidates = () =>
+    expCandidates.map((c, i) => ({ codice: c, cognome: null, tag: i === 0 ? `codigo=${c}` : `codigo[v${i + 1}]=${c}` }));
+
+  const cascade = WL_SEARCH_MODE === "exp_first"
+    ? [...buildExpCandidates(), ...buildApellidoCandidates()]
+    : [...buildApellidoCandidates(), ...buildExpCandidates()];
+
+  for (const params of cascade) {
+    const res = await doSingleSearch(page, searchUrl, paciente, params);
     if (res.rows.length > 0) return res;
     if (res.noResults) return res;  // busqueda valida, sin matches: parar cascada
   }
 
-  for (let i = 0; i < apellidoCandidates.length; i++) {
-    const cognome = apellidoCandidates[i];
-    const tag = `apellido[${i + 1}]=${cognome}`;
-    const res = await doSingleSearch(page, searchUrl, paciente, { codice: null, cognome, tag });
-    if (res.rows.length > 0) return res;
-    if (res.noResults) return res;
-  }
-
-  // Sin matches: devolver el ultimo (que tendra noResults: true).
+  // Sin matches en ninguna estrategia: devolver ultimo intento vacío.
   return await doSingleSearch(page, searchUrl, paciente, {
     codice: paciente.exp, cognome: null, tag: `codigo=${paciente.exp} (final)`,
   });
@@ -296,6 +303,27 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
   // Esperar a que TODA la red descanse para evitar "context destroyed"
   // en operaciones siguientes (typical de ASP.NET con AJAX in-flight).
   await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+
+  // Si hay una pestaña de temporalidad configurada, hacer clic en ella
+  // antes de llenar el formulario (el formulario de esa pestaña tiene los
+  // campos de fecha y apellido que el médico usa manualmente: HOY+AYER + apellidos).
+  if (WL_TEMPORALIDAD_TAB_SEL) {
+    const tabEl = page.locator(WL_TEMPORALIDAD_TAB_SEL);
+    const tabCount = await tabEl.count();
+    if (tabCount > 0) {
+      console.log(`       [tab] Haciendo clic en pestaña temporalidad (${tabCount} matches)`);
+      await tabEl.first().click({ force: true, timeout: 5000 }).catch(async () => {
+        await page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (el) el.click();
+        }, WL_TEMPORALIDAD_TAB_SEL).catch(() => {});
+      });
+      await waitForAspNetReady(page, 8000);
+    } else {
+      console.log(`       [tab] WL_TEMPORALIDAD_TAB_SEL="${WL_TEMPORALIDAD_TAB_SEL}" no encontrado — continuando sin cambiar pestaña`);
+    }
+  }
+
   await page.locator(WL_SEARCH_EXP_SEL).waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
 
   if (params.codice) {

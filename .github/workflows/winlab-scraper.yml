@@ -60,20 +60,28 @@ jobs:
           retry_on: error
           command: cd rpa && npm run scrape
         env:
-          WINLAB_URL:             ${{ secrets.WINLAB_URL }}
-          WINLAB_USER:            ${{ secrets.WINLAB_USER }}
-          WINLAB_PASS:            ${{ secrets.WINLAB_PASS }}
-          WINLAB_RESULTS_URL:     ${{ secrets.WINLAB_RESULTS_URL }}
-          WINLAB_USER_SELECTOR:   ${{ secrets.WINLAB_USER_SELECTOR }}
-          WINLAB_PASS_SELECTOR:   ${{ secrets.WINLAB_PASS_SELECTOR }}
-          WINLAB_SUBMIT_SELECTOR: ${{ secrets.WINLAB_SUBMIT_SELECTOR }}
-          WINLAB_TABLE_SELECTOR:  ${{ secrets.WINLAB_TABLE_SELECTOR }}
-          WINLAB_LOGGED_SELECTOR: ${{ secrets.WINLAB_LOGGED_SELECTOR }}
-          WINLAB_NEXT_SELECTOR:   ${{ secrets.WINLAB_NEXT_SELECTOR }}
-          SUPABASE_URL:           ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY:   ${{ secrets.SUPABASE_SERVICE_KEY }}
-          SUPABASE_TABLE:         ${{ secrets.SUPABASE_TABLE }}
-          SUPABASE_ON_CONFLICT:   ${{ secrets.SUPABASE_ON_CONFLICT }}
+          WINLAB_URL:               ${{ secrets.WINLAB_URL }}
+          WINLAB_USER:              ${{ secrets.WINLAB_USER }}
+          WINLAB_PASS:              ${{ secrets.WINLAB_PASS }}
+          WINLAB_RESULTS_URL:       ${{ secrets.WINLAB_RESULTS_URL }}
+          WINLAB_USER_SELECTOR:     ${{ secrets.WINLAB_USER_SELECTOR }}
+          WINLAB_PASS_SELECTOR:     ${{ secrets.WINLAB_PASS_SELECTOR }}
+          WINLAB_SUBMIT_SELECTOR:   ${{ secrets.WINLAB_SUBMIT_SELECTOR }}
+          WINLAB_TABLE_SELECTOR:    ${{ secrets.WINLAB_TABLE_SELECTOR }}
+          WINLAB_LOGGED_SELECTOR:   ${{ secrets.WINLAB_LOGGED_SELECTOR }}
+          WINLAB_NEXT_SELECTOR:     ${{ secrets.WINLAB_NEXT_SELECTOR }}
+          # Pestaña de temporalidad: selector del tab "Por Temporalidad" de WinLab.
+          # Si se configura, el scraper hace clic en él antes de buscar por fecha+apellido.
+          # Ejemplo: "a[href*='temporalidad'], .tab-fecha a, li#tabFecha a"
+          WL_TEMPORALIDAD_TAB_SEL:  ${{ secrets.WL_TEMPORALIDAD_TAB_SEL }}
+          # Modo de búsqueda: "apellido_first" (default) o "exp_first" (legado).
+          WL_SEARCH_MODE:           ${{ secrets.WL_SEARCH_MODE }}
+          # Días de lookback para el rango de fechas (default: 2 = HOY + AYER).
+          WL_LOOKBACK_DAYS:         ${{ secrets.WL_LOOKBACK_DAYS }}
+          SUPABASE_URL:             ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY:     ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_TABLE:           ${{ secrets.SUPABASE_TABLE }}
+          SUPABASE_ON_CONFLICT:     ${{ secrets.SUPABASE_ON_CONFLICT }}
 
       - name: Upload diagnostics on failure
         if: failure()
