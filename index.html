@@ -3797,6 +3797,12 @@
     const CONFIG_KEY = "hgl-worker-config";   // {url, token} (legacy)
 
     // ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────────
+    // SEGURIDAD: La anon key de Supabase es visible en el fuente del cliente.
+    // Esto es aceptable SOLO si las Row Level Security (RLS) policies de Supabase
+    // están correctamente configuradas para restringir el acceso por usuario/rol.
+    // Las políticas actuales son permissivas (PERMIT ALL para anon) — revisar y
+    // ajustar en el dashboard de Supabase antes de exponer esta app a internet.
+    // Si la key se compromete, rotarla en: Supabase Dashboard → Settings → API → Regenerate.
     const SUPA_URL = "https://vkxplmrzyqlamxpbtmes.supabase.co";
     const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZreHBsbXJ6eXFsYW14cGJ0bWVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NTg1MjcsImV4cCI6MjA4NzUzNDUyN30.zChMOiKnxNv3pLyt2Fqi7zUh0ET5rn1a5L6S3RV1Q98";
     // _supa solo se usa para Realtime (WebSocket). Todas las operaciones HTTP
@@ -5472,6 +5478,24 @@
           loadedPatients.push(p);
           const k = pid(p);
           const sn = noteMap[row.id];
+          // Migrar datos guardados bajo el formato antiguo "pt-exp-cama" al nuevo "su-id"
+          if (p._supa_id) {
+            const _oldK = "pt-" + toSafeString(p.exp).trim() + "-" + toSafeString(p.cama).trim();
+            if (_oldK !== k) {
+              try {
+                const _on = localStorage.getItem(NOTES_PREFIX + _oldK);
+                if (_on && !localStorage.getItem(NOTES_PREFIX + k)) {
+                  localStorage.setItem(NOTES_PREFIX + k, _on);
+                  localStorage.removeItem(NOTES_PREFIX + _oldK);
+                }
+                const _os = localStorage.getItem("pl_snap_" + _oldK);
+                if (_os && !localStorage.getItem("pl_snap_" + k)) {
+                  localStorage.setItem("pl_snap_" + k, _os);
+                  localStorage.removeItem("pl_snap_" + _oldK);
+                }
+              } catch (_) {}
+            }
+          }
           const localNote = lsGetNote(k);
           if (sn) {
             const nd = migrateNote(localNote);
@@ -5494,17 +5518,24 @@
         // duplicadas al abrir en otro dispositivo. `pts` ya viene ordenado por cama, así
         // que iteramos en orden y la última siempre gana.
         const dedupedPatients = [];
-        const seenPids = new Map(); // pid → index en dedupedPatients
+        const seenPids = new Map();    // pid (formato su-/pt-) → index
+        const seenExpCama = new Map(); // "exp||cama" → index (detecta colisiones aunque _supa_id sea distinto)
         const ghostSupaIds = [];
         loadedPatients.forEach(p => {
           const k = pid(p);
-          if (seenPids.has(k)) {
-            const prevIdx = seenPids.get(k);
+          const ecKey = toSafeString(p.exp).trim() + "||" + toSafeString(p.cama).trim();
+          const prevIdx = seenPids.has(k) ? seenPids.get(k)
+                        : seenExpCama.has(ecKey) ? seenExpCama.get(ecKey)
+                        : -1;
+          if (prevIdx >= 0) {
             const prev = dedupedPatients[prevIdx];
             if (prev && prev._supa_id && prev._supa_id !== p._supa_id) ghostSupaIds.push(prev._supa_id);
             dedupedPatients[prevIdx] = p; // sobreescribir con el más reciente
+            seenPids.set(k, prevIdx);
+            seenExpCama.set(ecKey, prevIdx);
           } else {
             seenPids.set(k, dedupedPatients.length);
+            seenExpCama.set(ecKey, dedupedPatients.length);
             dedupedPatients.push(p);
           }
         });
@@ -5593,6 +5624,7 @@
         document.body.appendChild(m);
       }
       m.style.display = "flex";
+      // Seguridad: todo valor de usuario en `html` pasa por esc() — ver usos arriba.
       document.getElementById("note-hist-content").innerHTML = html;
     }
     function restoreNoteSnapshot(k, idx) {
@@ -5927,9 +5959,12 @@
             const fechaEl = document.getElementById("gi-fecha");
             const entregaEl = document.getElementById("gi-entrega");
             const recibeEl = document.getElementById("gi-recibe");
-            if (fechaEl && row.fecha !== undefined && document.activeElement !== fechaEl) fechaEl.value = row.fecha;
-            if (entregaEl && row.entrega !== undefined && document.activeElement !== entregaEl) entregaEl.value = row.entrega;
-            if (recibeEl && row.recibe !== undefined && document.activeElement !== recibeEl) recibeEl.value = row.recibe;
+            // Guard ampliado: si CUALQUIER campo de guarda tiene foco no actualizar NINGUNO,
+            // evitando sobreescrituras parciales mientras el usuario navega entre los tres campos.
+            const _anyGiFocus = [fechaEl, entregaEl, recibeEl].some(function(el) { return el && el === document.activeElement; });
+            if (fechaEl && row.fecha !== undefined && !_anyGiFocus) fechaEl.value = row.fecha;
+            if (entregaEl && row.entrega !== undefined && !_anyGiFocus) entregaEl.value = row.entrega;
+            if (recibeEl && row.recibe !== undefined && !_anyGiFocus) recibeEl.value = row.recibe;
             try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify({ fecha: row.fecha, entrega: row.entrega, recibe: row.recibe })); } catch (_) {}
             safeLog("[RT] guard_info updated:", row);
           })
@@ -6422,7 +6457,12 @@
     }
 
     // ─── HELPERS ────────────────────────────────────────────────────────────────────
-    function pid(p) { return "pt-" + p.exp + "-" + p.cama; }
+    function pid(p) {
+      // Usa _supa_id como clave primaria cuando existe para evitar colisiones entre
+      // pacientes con el mismo exp+cama (ej: reingreso, error de captura).
+      // Formato legacy "pt-exp-cama" se mantiene solo para pacientes sin _supa_id.
+      return p._supa_id ? "su-" + p._supa_id : "pt-" + p.exp + "-" + p.cama;
+    }
     function patientIdentityKey(p) {
       return "pt-" + toSafeString(p && p.exp).trim() + "-" + toSafeString(p && p.cama).trim();
     }
@@ -6572,10 +6612,12 @@
             const fechaEl = document.getElementById("gi-fecha");
             const entregaEl = document.getElementById("gi-entrega");
             const recibeEl = document.getElementById("gi-recibe");
-            // Solo actualizar campos que no tienen el foco (no interrumpir al usuario que está escribiendo)
-            if (fechaEl && gi.fecha !== undefined && document.activeElement !== fechaEl) fechaEl.value = gi.fecha;
-            if (entregaEl && gi.entrega !== undefined && document.activeElement !== entregaEl) entregaEl.value = gi.entrega;
-            if (recibeEl && gi.recibe !== undefined && document.activeElement !== recibeEl) recibeEl.value = gi.recibe;
+            // Guard ampliado: si CUALQUIER campo de guarda tiene foco no actualizar NINGUNO,
+            // evitando sobreescrituras parciales mientras el usuario navega entre los tres campos.
+            const _anyGiFocus = [fechaEl, entregaEl, recibeEl].some(function(el) { return el && el === document.activeElement; });
+            if (fechaEl && gi.fecha !== undefined && !_anyGiFocus) fechaEl.value = gi.fecha;
+            if (entregaEl && gi.entrega !== undefined && !_anyGiFocus) entregaEl.value = gi.entrega;
+            if (recibeEl && gi.recibe !== undefined && !_anyGiFocus) recibeEl.value = gi.recibe;
             // Persistir localmente sin re-emitir (evita eco)
             try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(gi)); } catch (_) {}
           })
@@ -6616,7 +6658,7 @@
         if (entregaEl && document.activeElement !== entregaEl) entregaEl.value = remote.entrega || entregaEl.value;
         if (recibeEl && document.activeElement !== recibeEl) recibeEl.value = remote.recibe || recibeEl.value;
         try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify({ fecha: remote.fecha, entrega: remote.entrega, recibe: remote.recibe })); } catch (_) {}
-      });
+      }).catch(function(e) { safeLog("[GI] restoreGuardInfo remoto falló:", e); });
       persistGuardInfo();
     }
     function wireGuardInfoPersistence() {
@@ -6800,13 +6842,13 @@
           if (!items) return;
           lsSaveNoOlvidar(items);
           if (currentView === "noOlvidar") renderNoOlvidar();
-        });
+        }).catch(function(e) { safeLog("[NO] carga en segundo plano falló:", e); });
         supaLoadProcedimientos().then(function(procs) {
           if (!procs) return;
           procedimientos = procs;
           saveProcs();
           renderView();
-        });
+        }).catch(function(e) { safeLog("[PROC] carga en segundo plano falló:", e); });
       }
 
       // ── Sync periódico del outbox ────────────────────────────────────────────
@@ -7106,18 +7148,21 @@
       modal.style.display = "flex";
     }
     function bedMgrSave() {
-      const lines = document.getElementById("bed-mgr-ta").value
-        .split("\n").map(l => l.trim().toUpperCase()).filter(Boolean);
+      const taEl = document.getElementById("bed-mgr-ta");
+      if (!taEl) { safeLog("bedMgrSave: textarea no encontrado"); return; }
+      const lines = taEl.value.split("\n").map(l => l.trim().toUpperCase()).filter(Boolean);
       if (!lines.length) { alert("Ingresa al menos una cama"); return; }
       ALL_BEDS = [...new Set(lines)];
       try { localStorage.setItem("pl_all_beds_v1", JSON.stringify(ALL_BEDS)); } catch (e) { safeLog("bedMgrSave:", e); }
-      document.getElementById("bed-mgr-modal").style.display = "none";
+      const modalEl = document.getElementById("bed-mgr-modal");
+      if (modalEl) modalEl.style.display = "none";
       renderView();
     }
     function bedMgrReset() {
       ALL_BEDS = [...DEFAULT_BEDS_PISO3, ...DEFAULT_BEDS_UCI, ...DEFAULT_BEDS_OTROS];
       try { localStorage.removeItem("pl_all_beds_v1"); } catch (e) { safeLog("bedMgrReset:", e); }
-      document.getElementById("bed-mgr-ta").value = ALL_BEDS.join("\n");
+      const taEl = document.getElementById("bed-mgr-ta");
+      if (taEl) taEl.value = ALL_BEDS.join("\n");
     }
 
     // ─── ALERTAS OPERATIVAS ───────────────────────────────────────────────────────────
