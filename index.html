@@ -5625,7 +5625,8 @@
       }
       m.style.display = "flex";
       // Seguridad: todo valor de usuario en `html` pasa por esc() — ver usos arriba.
-      document.getElementById("note-hist-content").innerHTML = html;
+      const _nhc = m.querySelector("#note-hist-content") || document.getElementById("note-hist-content");
+      if (_nhc) _nhc.innerHTML = html;
     }
     function restoreNoteSnapshot(k, idx) {
       if (!confirm("¿Restaurar esta versión? Los datos actuales serán reemplazados.")) return;
@@ -5635,7 +5636,8 @@
         const restored = snaps[idx].data;
         noteData[k] = restored;
         saveNote(k, restored);
-        document.getElementById("note-hist-modal").style.display = "none";
+        const _nhm = document.getElementById("note-hist-modal");
+        if (_nhm) _nhm.style.display = "none";
         renderView();
         alert("Versión restaurada.");
       } catch (e) { alert("Error al restaurar: " + e.message); }
