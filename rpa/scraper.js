@@ -51,6 +51,13 @@ const SUPABASE_CONFLICT       = ENV("SUPABASE_ON_CONFLICT", "exp,fecha");
 const SUPABASE_CENSO_TABLE    = ENV("SUPABASE_CENSO_TABLE", "patients");
 const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp");
 
+// Dry-run: recorre todo el flujo de WinLab (login → búsqueda → drill-down)
+// pero NO escribe en Supabase. Actívalo con DRY_RUN=1 o el argumento --dry-run.
+// Útil para verificar que el scraper encuentra los labs antes de escribir datos reales.
+const DRY_RUN = ENV("DRY_RUN", "0") === "1"
+  || ENV("DRY_RUN", "").toLowerCase() === "true"
+  || process.argv.includes("--dry-run");
+
 // Selectores del formulario de busqueda WinLab (descubiertos via explorador).
 const WL_SEARCH_EXP_SEL         = ENV("WL_SEARCH_EXP_SEL", "#pnlMain_pnlPaziente_txtCodicePaziente");
 const WL_SEARCH_COGNOME_SEL     = ENV("WL_SEARCH_COGNOME_SEL", "#pnlMain_pnlPaziente_txtCognome");
@@ -248,6 +255,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
+  console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"`);
   return await doSingleSearch(page, searchUrl, paciente, {
     codice: null, cognome, tag: `apellidos="${cognome}"`,
   });
@@ -730,6 +738,30 @@ async function upsert(supa, records) {
   if (deduped.length !== records.length) {
     console.log(`[5/5] Dedup: ${records.length} -> ${deduped.length} filas (claves duplicadas en censo: ${records.length - deduped.length})`);
   }
+
+  if (DRY_RUN) {
+    console.log(`\n${"─".repeat(60)}`);
+    console.log(`[DRY-RUN] ✅  Simulación completa — NADA escrito en Supabase.`);
+    console.log(`[DRY-RUN] Filas que se enviarían: ${deduped.length}`);
+    console.log(`${"─".repeat(60)}`);
+    for (const r of deduped) {
+      const reportes = r.data?.reportes || [];
+      const conValores = reportes.filter(rep => rep.valores?.length);
+      const totalValores = reportes.reduce((n, rep) => n + (rep.valores?.length || 0), 0);
+      const estado = reportes.length > 0
+        ? `✓ ${reportes.length} reporte(s) | ${totalValores} valor(es) drill-down`
+        : `✗ 0 reportes`;
+      console.log(`[DRY-RUN]  exp=${String(r.exp).padEnd(12)} "${r.paciente || ""}"  →  ${estado}`);
+      for (const rep of conValores.slice(0, 3)) {
+        const muestra = rep.valores.slice(0, 4).map(v => `${v.estudio}=${v.valor}${v.unidad ? " " + v.unidad : ""}`).join("  |  ");
+        const extra = rep.valores.length > 4 ? ` (+${rep.valores.length - 4} más)` : "";
+        console.log(`[DRY-RUN]      └ ${muestra}${extra}`);
+      }
+    }
+    console.log(`${"─".repeat(60)}\n`);
+    return;
+  }
+
   console.log(`[5/5] Upsert -> Supabase tabla="${SUPABASE_TABLE}" onConflict="${SUPABASE_CONFLICT}" (${deduped.length} filas)`);
   if (!deduped.length) {
     console.log("       0 filas para upsertear (ningun paciente con labs en el rango). Saliendo OK.");
@@ -832,6 +864,15 @@ async function explorePage(page) {
 // ── MAIN ───────────────────────────────────────────────────────────────
 (async () => {
   const t0 = Date.now();
+
+  if (DRY_RUN) {
+    console.log(`\n${"═".repeat(60)}`);
+    console.log("  MODO DRY-RUN ACTIVADO");
+    console.log("  El scraper recorrerá todo el flujo de WinLab pero NO");
+    console.log("  escribirá ningún dato en Supabase.");
+    console.log(`${"═".repeat(60)}\n`);
+  }
+
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({
     locale: "es-MX",
