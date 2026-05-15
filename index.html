@@ -6978,6 +6978,7 @@
       return [1, mn ? parseInt(mn[1]) : 9999];
     }
     function renderPiso(pts) {
+      renderStaleLabsBanner();
       renderDupBanner(detectDuplicateBeds(patients));
       renderDupPatientBanner(detectDuplicatePatients(patients));
       // Orden: 1) piso 3 (CG) por numero  2) otras camas CG  3) otros servicios
@@ -15036,6 +15037,60 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const filterbar = document.getElementById("filterbar");
       if (dupBed) dupBed.parentNode.insertBefore(banner, dupBed.nextSibling);
       else if (filterbar) filterbar.parentNode.insertBefore(banner, filterbar);
+    }
+
+    // Banner de advertencia cuando el scraper RPA de WinLab dejó de actualizar.
+    // Si winlab_labs no recibe inserts en >24h es probable que el GitHub Action
+    // de scrape esté fallando — el residente debe enterarse en el momento,
+    // no descubrirlo días después.
+    function renderStaleLabsBanner() {
+      const existing = document.getElementById("stale-labs-banner");
+      if (existing) existing.remove();
+      const entries = Object.values(winlabByExp || {});
+      let mostRecent = null;
+      entries.forEach(r => {
+        if (r && r.scraped_at && (!mostRecent || r.scraped_at > mostRecent)) mostRecent = r.scraped_at;
+      });
+      const filterbar = document.getElementById("filterbar");
+      if (!filterbar) return;
+      const now = Date.now();
+      let hoursOld = null;
+      if (mostRecent) {
+        const ts = new Date(mostRecent).getTime();
+        if (Number.isFinite(ts)) hoursOld = (now - ts) / 3_600_000;
+      }
+      // Todo bien: <24h desde último scrape — no mostrar banner
+      if (hoursOld !== null && hoursOld < 24) return;
+      const banner = document.createElement("div");
+      banner.id = "stale-labs-banner";
+      // 3 niveles de alarma: sin datos, viejo (24h–7d), roto (>7d)
+      let bg, border, icon, title, subtitle;
+      if (!mostRecent) {
+        bg = "#fef2f2"; border = "#dc2626"; icon = "⛔";
+        title = "Sin datos de WinLab";
+        subtitle = "El scraper automático no ha cargado labs aún. Revisa la configuración del workflow.";
+      } else if (hoursOld < 24 * 7) {
+        const days = Math.floor(hoursOld / 24);
+        bg = "#fffbeb"; border = "#d97706"; icon = "⚠️";
+        title = "Labs WinLab desactualizados — última carga hace " + (days >= 1 ? days + " día" + (days !== 1 ? "s" : "") : Math.floor(hoursOld) + "h");
+        subtitle = "El scraper automático no corre desde entonces. Probable falla del GitHub Action diario.";
+      } else {
+        const days = Math.floor(hoursOld / 24);
+        bg = "#fef2f2"; border = "#dc2626"; icon = "⛔";
+        title = "Scraper de labs ROTO — sin actualizar hace " + days + " días";
+        subtitle = "El cron de GitHub Actions probablemente está detenido. Hay que dispararlo manualmente o revisar credenciales WinLab.";
+      }
+      banner.style.cssText = "background:" + bg + ";border:2px solid " + border + ";border-radius:10px;margin-bottom:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;font-family:var(--font)";
+      banner.innerHTML =
+        '<span style="font-size:22px">' + icon + '</span>' +
+        '<div style="flex:1">' +
+          '<strong style="font-size:13px;color:' + border + ';display:block">' + esc(title) + '</strong>' +
+          '<span style="font-size:11px;color:#475569">' + esc(subtitle) + '</span>' +
+        '</div>' +
+        '<a href="https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml" target="_blank" ' +
+        'style="background:' + border + ';color:#fff;padding:6px 12px;border-radius:6px;text-decoration:none;font-size:11px;font-weight:700;white-space:nowrap">' +
+        '▶ Ver / Disparar workflow</a>';
+      filterbar.parentNode.insertBefore(banner, filterbar);
     }
 
     function removeDupByIndex(idx) {
