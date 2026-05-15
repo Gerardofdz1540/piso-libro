@@ -5,10 +5,11 @@
  * - ANTHROPIC_API_KEY      (secret)
  * - WORKER_TOKEN           (secret, same value configured in PisoLibro "Config")
  * - ALLOWED_ORIGIN         (optional, e.g. https://gerardofdz1540.github.io)
+ * - ANTHROPIC_MODEL        (optional, default haiku 4.5 - 75% más barato que sonnet)
  */
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODEL = "claude-sonnet-4-5";
+const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST,OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type,X-Piso-Token",
@@ -109,9 +110,9 @@ function normalizeOutput(parsed) {
   };
 }
 
-async function callAnthropic({ apiKey, prompt, fileBase64, mimeType }) {
+async function callAnthropic({ apiKey, model, prompt, fileBase64, mimeType }) {
   const body = {
-    model: ANTHROPIC_MODEL,
+    model: model || DEFAULT_MODEL,
     max_tokens: 8192,
     temperature: 0,
     messages: [
@@ -203,6 +204,7 @@ export default {
     try {
       const { llmText } = await callAnthropic({
         apiKey: env.ANTHROPIC_API_KEY,
+        model: env.ANTHROPIC_MODEL || DEFAULT_MODEL,
         prompt,
         fileBase64,
         mimeType,

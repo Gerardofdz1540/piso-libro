@@ -4497,12 +4497,12 @@
       return {
         app: "", pa: "", drenajes: "", qx: "", manejo: "", sangrado: "",
         imagen: "", imagen_file: "", imagen_file_type: "", imagen_file_name: "", imagen_link: "",
-        sv: "", balance: "", pendientes: "", misc: "", entrega: "",
+        sv: "", balance: "", pendientes: "", entrega: "",
         body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
         checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "", interconsultas: "", cultivos: "",
-          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
+          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "",
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_sep_gasto: "", pm_sep_fuga: false, pm_sep_fuga_grado: "", pm_hxqx: "",
           pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
@@ -5330,7 +5330,7 @@
         patient_id: pid,
         app: nd.app || "", pa: nd.pa || "", drenajes: nd.drenajes || "", qx: nd.qx || "",
         manejo: nd.manejo || "", sangrado: nd.sangrado || "", sv: nd.sv || "",
-        balance: nd.balance || "", pendientes: nd.pendientes || "", misc: nd.misc || "",
+        balance: nd.balance || "", pendientes: nd.pendientes || "",
         checklist: buildChecklistForSync(nd),
         lab_history: nd.labHistory || [],
         imagen_history: nd.imagenHistory || [],
@@ -5340,7 +5340,7 @@
       const FIELD_TO_COL = {
         app: "app", pa: "pa", drenajes: "drenajes", qx: "qx",
         manejo: "manejo", sangrado: "sangrado", sv: "sv",
-        balance: "balance", pendientes: "pendientes", misc: "misc",
+        balance: "balance", pendientes: "pendientes",
         labHistory: "lab_history", imagenHistory: "imagen_history"
       };
       const buildRow = (pid) => {
@@ -5414,7 +5414,7 @@
           // (bug de INSERT sin on_conflict ya corregido), el noteMap[patient_id]
           // siempre termine con la nota MÁS RECIENTE. limit=500 evita timeout.
           // Nota: entrega se sincroniza vía checklist.__pl_note_meta, no como columna separada.
-          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history";
+          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history,entrega";
           nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect + "&order=updated_at.desc&limit=500"), 2, 200);
         }
 
@@ -5502,7 +5502,11 @@
             nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
             nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
             nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
-            nd.misc = sn.misc || "";
+            // Legacy: si la nota remota aún tiene 'misc', fusionar a 'pendientes' (consolidado)
+            if (sn.misc && toSafeString(sn.misc).trim()) {
+              const miscClean = toSafeString(sn.misc).trim();
+              nd.pendientes = nd.pendientes ? (nd.pendientes + "\n\n" + miscClean) : miscClean;
+            }
             if (sn.entrega !== undefined) nd.entrega = sn.entrega || nd.entrega || "";
             nd.checklist = { ...(nd.checklist || {}), ...(isPlainObject(sn.checklist) ? sn.checklist : {}) };
             nd.labHistory = Array.isArray(sn.lab_history) ? sn.lab_history : (nd.labHistory || []);
@@ -5718,7 +5722,7 @@
 
     function noteHasMeaningfulContent(nd) {
       const d = migrateNote(nd);
-      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "misc", "entrega"];
+      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega"];
       if (textFields.some(function (f) { return toSafeString(d[f]).trim(); })) return true;
       if (toSafeString(d.body_diagram_ant).trim() || toSafeString(d.body_diagram_post).trim()) return true;
       if (Array.isArray(d.labHistory) && d.labHistory.length) return true;
@@ -6164,7 +6168,7 @@
       const k = pid(p);
       const existing = noteData[k] || lsGetNote(k) || defaultData();
       const dirty = _dirtyFields[k] || new Set();
-      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "misc"];
+      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes"];
       const nd = migrateNote(existing);
       // Aplicar campos remotos solo si NO están siendo editados localmente
       textFields.forEach(function(f) {
@@ -8158,7 +8162,6 @@
           return cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : "";
         })()}
       </div>
-      <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
       ${renderBodyDiagram(nd, k)}
       ${renderPtReminders(nd, k)}
       <div class="card-notes-bar">
@@ -13584,6 +13587,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       pendingImport = null;
       document.getElementById("import-modal").style.display = "none";
+
+      // Auto-fusionar duplicados claramente idénticos (mismo exp + nombre) tras importar
+      // — evita que residentes tengan que hacer click manual cuando es obvio.
+      try {
+        const autoMergeRes = autoMergeIdenticalPatients();
+        if (autoMergeRes.merged > 0) _showAutomergeToast(autoMergeRes);
+      } catch (e) { safeLog("autoMergeIdenticalPatients (post-import):", e); }
+
       buildEspFilters();
       renderView();
 
@@ -14690,7 +14701,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Merge noteData
       const keepNd = noteData[keepKey] || defaultData();
       const removeNd = noteData[removeKey] || defaultData();
-      const ndFields = ["qx", "manejo", "app", "pa", "sangrado", "drenajes", "sv", "balance", "pendientes", "misc"];
+      const ndFields = ["qx", "manejo", "app", "pa", "sangrado", "drenajes", "sv", "balance", "pendientes"];
       ndFields.forEach(f => {
         if (!keepNd[f] && removeNd[f]) keepNd[f] = removeNd[f];
       });
@@ -14729,6 +14740,88 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       savePts();
       buildEspFilters();
       renderView();
+    }
+
+    // Auto-fusionar pacientes claramente idénticos: mismo expediente normalizado
+    // Y mismo nombre normalizado. Solo casos sin ambigüedad — para el resto,
+    // sigue mostrándose el banner para revisión manual.
+    // Retorna { merged: N, groups: G } donde N es pacientes eliminados y G grupos procesados.
+    function autoMergeIdenticalPatients() {
+      function normName(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z ]/g, "").replace(/\s+/g, " ").trim(); }
+      function normExp(s) { return toSafeString(s).replace(/[\s\-]/g, "").toUpperCase(); }
+      function dataScore(p) {
+        const k = pid(p);
+        const nd = noteData[k];
+        let s = 0;
+        if (p.ingreso) s += 2;
+        if (p.dx) s += 1;
+        if (p.adscrito) s += 1;
+        if (p.edad) s += 1;
+        if (p.residente) s += 1;
+        if (nd && Array.isArray(nd.labHistory) && nd.labHistory.length) s += 5;
+        if (!isNonCensableBed(p.cama)) s += 10; // cama válida tiene fuerte prioridad
+        return s;
+      }
+      const groups = {};
+      patients.forEach((p, i) => {
+        const exp = normExp(p.exp);
+        const name = normName(p.nombre);
+        if (!exp || !name || name.length < 5) return;
+        const key = exp + "|" + name;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(i);
+      });
+      const dupGroups = Object.values(groups).filter(g => g.length > 1);
+      if (!dupGroups.length) return { merged: 0, groups: 0 };
+      // Procesar de mayor a menor índice para que los splice no desplacen los índices restantes
+      let mergedCount = 0;
+      // Marcamos por _supa_id (estable) en lugar de índices que cambian con splice
+      const opsByKeepId = [];
+      dupGroups.forEach(idxs => {
+        const sorted = idxs.slice().sort((a, b) => dataScore(patients[b]) - dataScore(patients[a]));
+        const keepIdx = sorted[0];
+        const keep = patients[keepIdx];
+        if (!keep || !keep._supa_id) return; // sin _supa_id no podemos resolver tras splices
+        const removeIds = sorted.slice(1)
+          .map(i => patients[i] && patients[i]._supa_id)
+          .filter(Boolean);
+        if (removeIds.length) opsByKeepId.push({ keepSupaId: keep._supa_id, removeSupaIds: removeIds });
+      });
+      opsByKeepId.forEach(op => {
+        op.removeSupaIds.forEach(removeId => {
+          const keepIdx = patients.findIndex(p => p._supa_id === op.keepSupaId);
+          const removeIdx = patients.findIndex(p => p._supa_id === removeId);
+          if (keepIdx === -1 || removeIdx === -1 || keepIdx === removeIdx) return;
+          mergePatients(keepIdx, removeIdx);
+          mergedCount++;
+        });
+      });
+      return { merged: mergedCount, groups: opsByKeepId.length };
+    }
+
+    function autoMergeAndNotify() {
+      const r = autoMergeIdenticalPatients();
+      _showAutomergeToast(r);
+    }
+
+    function _showAutomergeToast(r) {
+      let t = document.getElementById("automerge-toast");
+      if (!t) {
+        t = document.createElement("div");
+        t.id = "automerge-toast";
+        t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:opacity .3s;pointer-events:none;text-align:center;max-width:520px;line-height:1.4";
+        document.body.appendChild(t);
+      }
+      if (r.merged > 0) {
+        t.style.background = "#15803d";
+        t.innerHTML = "🔄 Auto-fusionados: <b>" + r.merged + "</b> duplicado" + (r.merged !== 1 ? "s" : "") + " en " + r.groups + " grupo" + (r.groups !== 1 ? "s" : "");
+      } else {
+        t.style.background = "#0369a1";
+        t.innerHTML = "ℹ️ Sin duplicados claramente idénticos (mismo expediente + nombre).";
+      }
+      t.style.opacity = "1";
+      clearTimeout(t._timer);
+      t._timer = setTimeout(function(){ t.style.opacity = "0"; }, 5000);
     }
 
     function openManualMergeModal(keepIdx, removeIdx) {
@@ -14853,13 +14946,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       banner.id = "dup-pat-banner";
       banner.style.cssText = "background:#fff;border:2px solid #d97706;border-radius:10px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 12px rgba(217,119,6,.15)";
       let headerHtml = `
-    <div style="background:#d97706;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleDupPatPanel()">
-      <span style="font-size:18px">🔀</span>
-      <div style="flex:1">
+    <div style="background:#d97706;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px;cursor:pointer" onclick="toggleDupPatPanel()">🔀</span>
+      <div style="flex:1;cursor:pointer" onclick="toggleDupPatPanel()">
         <strong style="font-size:13px">PACIENTES DUPLICADOS — ${duplicates.length} posible${duplicates.length !== 1 ? "s" : ""} duplicado${duplicates.length !== 1 ? "s" : ""}</strong>
         <div style="font-size:11px;opacity:.85;margin-top:2px">Mismo expediente o nombre detectado. Edita los datos directamente ↓</div>
       </div>
-      <span id="dup-pat-arrow" style="font-size:16px">▾</span>
+      <button onclick="autoMergeAndNotify()" title="Fusiona automáticamente solo los que tienen mismo expediente Y nombre"
+        style="background:rgba(255,255,255,.95);color:#92400e;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font);white-space:nowrap">
+        🔄 Auto-fusionar idénticos
+      </button>
+      <span id="dup-pat-arrow" style="font-size:16px;cursor:pointer" onclick="toggleDupPatPanel()">▾</span>
     </div>`;
       let cardsHtml = '<div id="dup-pat-body" style="padding:12px 14px;display:grid;gap:10px">';
       duplicates.forEach((d, groupIdx) => {
@@ -15409,7 +15506,6 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         "",
         nd.pendientes?.trim() ? `⚠️ Plan / Pendientes:
 ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
-        nd.misc?.trim() ? `📝 Misc: ${nd.misc.trim()}` : null,
         `╚${"═".repeat(40)}`,
       ].filter(l => l !== null).join("\n");
 
