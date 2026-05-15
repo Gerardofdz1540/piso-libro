@@ -4491,12 +4491,12 @@
       return {
         app: "", pa: "", drenajes: "", qx: "", manejo: "", sangrado: "",
         imagen: "", imagen_file: "", imagen_file_type: "", imagen_file_name: "", imagen_link: "",
-        sv: "", balance: "", pendientes: "", misc: "", entrega: "",
+        sv: "", balance: "", pendientes: "", entrega: "",
         body_diagram_ant: "", body_diagram_post: "",
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
         checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "", interconsultas: "", cultivos: "",
-          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "",
+          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "",
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_sep_gasto: "", pm_sep_fuga: false, pm_sep_fuga_grado: "", pm_hxqx: "",
           pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
@@ -5324,7 +5324,7 @@
         patient_id: pid,
         app: nd.app || "", pa: nd.pa || "", drenajes: nd.drenajes || "", qx: nd.qx || "",
         manejo: nd.manejo || "", sangrado: nd.sangrado || "", sv: nd.sv || "",
-        balance: nd.balance || "", pendientes: nd.pendientes || "", misc: nd.misc || "",
+        balance: nd.balance || "", pendientes: nd.pendientes || "",
         checklist: buildChecklistForSync(nd),
         lab_history: nd.labHistory || [],
         imagen_history: nd.imagenHistory || [],
@@ -5334,7 +5334,7 @@
       const FIELD_TO_COL = {
         app: "app", pa: "pa", drenajes: "drenajes", qx: "qx",
         manejo: "manejo", sangrado: "sangrado", sv: "sv",
-        balance: "balance", pendientes: "pendientes", misc: "misc",
+        balance: "balance", pendientes: "pendientes",
         labHistory: "lab_history", imagenHistory: "imagen_history"
       };
       const buildRow = (pid) => {
@@ -5408,7 +5408,7 @@
           // (bug de INSERT sin on_conflict ya corregido), el noteMap[patient_id]
           // siempre termine con la nota MÁS RECIENTE. limit=500 evita timeout.
           // Nota: entrega se sincroniza vía checklist.__pl_note_meta, no como columna separada.
-          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history";
+          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,misc,checklist,lab_history,imagen_history,entrega";
           nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect + "&order=updated_at.desc&limit=500"), 2, 200);
         }
 
@@ -5478,7 +5478,11 @@
             nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
             nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
             nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
-            nd.misc = sn.misc || "";
+            // Legacy: si la nota remota aún tiene 'misc', fusionar a 'pendientes' (consolidado)
+            if (sn.misc && toSafeString(sn.misc).trim()) {
+              const miscClean = toSafeString(sn.misc).trim();
+              nd.pendientes = nd.pendientes ? (nd.pendientes + "\n\n" + miscClean) : miscClean;
+            }
             if (sn.entrega !== undefined) nd.entrega = sn.entrega || nd.entrega || "";
             nd.checklist = { ...(nd.checklist || {}), ...(isPlainObject(sn.checklist) ? sn.checklist : {}) };
             nd.labHistory = Array.isArray(sn.lab_history) ? sn.lab_history : (nd.labHistory || []);
@@ -5684,7 +5688,7 @@
 
     function noteHasMeaningfulContent(nd) {
       const d = migrateNote(nd);
-      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "misc", "entrega"];
+      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega"];
       if (textFields.some(function (f) { return toSafeString(d[f]).trim(); })) return true;
       if (toSafeString(d.body_diagram_ant).trim() || toSafeString(d.body_diagram_post).trim()) return true;
       if (Array.isArray(d.labHistory) && d.labHistory.length) return true;
@@ -6127,7 +6131,7 @@
       const k = pid(p);
       const existing = noteData[k] || lsGetNote(k) || defaultData();
       const dirty = _dirtyFields[k] || new Set();
-      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "misc"];
+      const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes"];
       const nd = migrateNote(existing);
       // Aplicar campos remotos solo si NO están siendo editados localmente
       textFields.forEach(function(f) {
@@ -8111,7 +8115,6 @@
           return cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : "";
         })()}
       </div>
-      <div style="margin-top:10px">${fieldRow("📝 Misceláneos", nd.misc, k, "misc", 2)}</div>
       ${renderBodyDiagram(nd, k)}
       ${renderPtReminders(nd, k)}
       <div class="card-notes-bar">
@@ -14643,7 +14646,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Merge noteData
       const keepNd = noteData[keepKey] || defaultData();
       const removeNd = noteData[removeKey] || defaultData();
-      const ndFields = ["qx", "manejo", "app", "pa", "sangrado", "drenajes", "sv", "balance", "pendientes", "misc"];
+      const ndFields = ["qx", "manejo", "app", "pa", "sangrado", "drenajes", "sv", "balance", "pendientes"];
       ndFields.forEach(f => {
         if (!keepNd[f] && removeNd[f]) keepNd[f] = removeNd[f];
       });
@@ -15362,7 +15365,6 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         "",
         nd.pendientes?.trim() ? `⚠️ Plan / Pendientes:
 ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
-        nd.misc?.trim() ? `📝 Misc: ${nd.misc.trim()}` : null,
         `╚${"═".repeat(40)}`,
       ].filter(l => l !== null).join("\n");
 
