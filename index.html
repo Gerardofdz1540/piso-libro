@@ -5502,11 +5502,6 @@
             nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
             nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
             nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
-            // Legacy: si la nota remota aún tiene 'misc', fusionar a 'pendientes' (consolidado)
-            if (sn.misc && toSafeString(sn.misc).trim()) {
-              const miscClean = toSafeString(sn.misc).trim();
-              nd.pendientes = nd.pendientes ? (nd.pendientes + "\n\n" + miscClean) : miscClean;
-            }
             if (sn.entrega !== undefined) nd.entrega = sn.entrega || nd.entrega || "";
             nd.checklist = { ...(nd.checklist || {}), ...(isPlainObject(sn.checklist) ? sn.checklist : {}) };
             nd.labHistory = Array.isArray(sn.lab_history) ? sn.lab_history : (nd.labHistory || []);
