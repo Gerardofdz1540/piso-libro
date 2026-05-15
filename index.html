@@ -13540,6 +13540,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       pendingImport = null;
       document.getElementById("import-modal").style.display = "none";
+
+      // Auto-fusionar duplicados claramente idénticos (mismo exp + nombre) tras importar
+      // — evita que residentes tengan que hacer click manual cuando es obvio.
+      try {
+        const autoMergeRes = autoMergeIdenticalPatients();
+        if (autoMergeRes.merged > 0) _showAutomergeToast(autoMergeRes);
+      } catch (e) { safeLog("autoMergeIdenticalPatients (post-import):", e); }
+
       buildEspFilters();
       renderView();
 
@@ -14687,6 +14695,88 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       renderView();
     }
 
+    // Auto-fusionar pacientes claramente idénticos: mismo expediente normalizado
+    // Y mismo nombre normalizado. Solo casos sin ambigüedad — para el resto,
+    // sigue mostrándose el banner para revisión manual.
+    // Retorna { merged: N, groups: G } donde N es pacientes eliminados y G grupos procesados.
+    function autoMergeIdenticalPatients() {
+      function normName(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z ]/g, "").replace(/\s+/g, " ").trim(); }
+      function normExp(s) { return toSafeString(s).replace(/[\s\-]/g, "").toUpperCase(); }
+      function dataScore(p) {
+        const k = pid(p);
+        const nd = noteData[k];
+        let s = 0;
+        if (p.ingreso) s += 2;
+        if (p.dx) s += 1;
+        if (p.adscrito) s += 1;
+        if (p.edad) s += 1;
+        if (p.residente) s += 1;
+        if (nd && Array.isArray(nd.labHistory) && nd.labHistory.length) s += 5;
+        if (!isNonCensableBed(p.cama)) s += 10; // cama válida tiene fuerte prioridad
+        return s;
+      }
+      const groups = {};
+      patients.forEach((p, i) => {
+        const exp = normExp(p.exp);
+        const name = normName(p.nombre);
+        if (!exp || !name || name.length < 5) return;
+        const key = exp + "|" + name;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(i);
+      });
+      const dupGroups = Object.values(groups).filter(g => g.length > 1);
+      if (!dupGroups.length) return { merged: 0, groups: 0 };
+      // Procesar de mayor a menor índice para que los splice no desplacen los índices restantes
+      let mergedCount = 0;
+      // Marcamos por _supa_id (estable) en lugar de índices que cambian con splice
+      const opsByKeepId = [];
+      dupGroups.forEach(idxs => {
+        const sorted = idxs.slice().sort((a, b) => dataScore(patients[b]) - dataScore(patients[a]));
+        const keepIdx = sorted[0];
+        const keep = patients[keepIdx];
+        if (!keep || !keep._supa_id) return; // sin _supa_id no podemos resolver tras splices
+        const removeIds = sorted.slice(1)
+          .map(i => patients[i] && patients[i]._supa_id)
+          .filter(Boolean);
+        if (removeIds.length) opsByKeepId.push({ keepSupaId: keep._supa_id, removeSupaIds: removeIds });
+      });
+      opsByKeepId.forEach(op => {
+        op.removeSupaIds.forEach(removeId => {
+          const keepIdx = patients.findIndex(p => p._supa_id === op.keepSupaId);
+          const removeIdx = patients.findIndex(p => p._supa_id === removeId);
+          if (keepIdx === -1 || removeIdx === -1 || keepIdx === removeIdx) return;
+          mergePatients(keepIdx, removeIdx);
+          mergedCount++;
+        });
+      });
+      return { merged: mergedCount, groups: opsByKeepId.length };
+    }
+
+    function autoMergeAndNotify() {
+      const r = autoMergeIdenticalPatients();
+      _showAutomergeToast(r);
+    }
+
+    function _showAutomergeToast(r) {
+      let t = document.getElementById("automerge-toast");
+      if (!t) {
+        t = document.createElement("div");
+        t.id = "automerge-toast";
+        t.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:opacity .3s;pointer-events:none;text-align:center;max-width:520px;line-height:1.4";
+        document.body.appendChild(t);
+      }
+      if (r.merged > 0) {
+        t.style.background = "#15803d";
+        t.innerHTML = "🔄 Auto-fusionados: <b>" + r.merged + "</b> duplicado" + (r.merged !== 1 ? "s" : "") + " en " + r.groups + " grupo" + (r.groups !== 1 ? "s" : "");
+      } else {
+        t.style.background = "#0369a1";
+        t.innerHTML = "ℹ️ Sin duplicados claramente idénticos (mismo expediente + nombre).";
+      }
+      t.style.opacity = "1";
+      clearTimeout(t._timer);
+      t._timer = setTimeout(function(){ t.style.opacity = "0"; }, 5000);
+    }
+
     function openManualMergeModal(keepIdx, removeIdx) {
       keepIdx = parseInt(keepIdx); removeIdx = parseInt(removeIdx);
       if (isNaN(keepIdx) || isNaN(removeIdx) || keepIdx === removeIdx) return;
@@ -14809,13 +14899,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       banner.id = "dup-pat-banner";
       banner.style.cssText = "background:#fff;border:2px solid #d97706;border-radius:10px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 12px rgba(217,119,6,.15)";
       let headerHtml = `
-    <div style="background:#d97706;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="toggleDupPatPanel()">
-      <span style="font-size:18px">🔀</span>
-      <div style="flex:1">
+    <div style="background:#d97706;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px;cursor:pointer" onclick="toggleDupPatPanel()">🔀</span>
+      <div style="flex:1;cursor:pointer" onclick="toggleDupPatPanel()">
         <strong style="font-size:13px">PACIENTES DUPLICADOS — ${duplicates.length} posible${duplicates.length !== 1 ? "s" : ""} duplicado${duplicates.length !== 1 ? "s" : ""}</strong>
         <div style="font-size:11px;opacity:.85;margin-top:2px">Mismo expediente o nombre detectado. Edita los datos directamente ↓</div>
       </div>
-      <span id="dup-pat-arrow" style="font-size:16px">▾</span>
+      <button onclick="autoMergeAndNotify()" title="Fusiona automáticamente solo los que tienen mismo expediente Y nombre"
+        style="background:rgba(255,255,255,.95);color:#92400e;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font);white-space:nowrap">
+        🔄 Auto-fusionar idénticos
+      </button>
+      <span id="dup-pat-arrow" style="font-size:16px;cursor:pointer" onclick="toggleDupPatPanel()">▾</span>
     </div>`;
       let cardsHtml = '<div id="dup-pat-body" style="padding:12px 14px;display:grid;gap:10px">';
       duplicates.forEach((d, groupIdx) => {
