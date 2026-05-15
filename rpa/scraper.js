@@ -70,6 +70,11 @@ const WL_TEMPORALIDAD_TAB_SEL   = ENV("WL_TEMPORALIDAD_TAB_SEL", "");
 const WL_SEARCH_MODE            = ENV("WL_SEARCH_MODE", "apellido_first");
 const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "2"), 10);  // HOY + AYER
 const WL_DATE_FORMAT            = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
+// Dropdown "Profilo Consultazione" — WinLab requiere seleccionarlo para que
+// los filtros de fecha apliquen. Valores: "AYER Y HOY" | "HOY" | "SEMANA" | "MES".
+// Si está vacío, se omite (compatible con instalaciones de WinLab que no lo tengan).
+const WL_PROFILO_SEL            = ENV("WL_PROFILO_SEL", "#pnlMain_cboProfiloConsultazioneRichiesteRicerca");
+const WL_PROFILO_VALUE          = ENV("WL_PROFILO_VALUE", "AYER Y HOY");
 const WL_PER_PATIENT_TIMEOUT    = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
 const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte
 const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "2"), 10);      // max reportes/paciente
@@ -348,6 +353,29 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
     }
   }
 
+  // Seleccionar dropdown "Profilo Consultazione" — sin esto, WinLab ignora
+  // los inputs de fecha y devuelve "NINGUN REGISTRO" para todos los pacientes.
+  // Descubierto via diagnóstico 2026-05-15 después de 20 días de scraper devolviendo 0 labs.
+  if (WL_PROFILO_SEL && WL_PROFILO_VALUE) {
+    const profiloEl = page.locator(WL_PROFILO_SEL);
+    if (await profiloEl.count()) {
+      try {
+        await profiloEl.first().selectOption({ label: WL_PROFILO_VALUE });
+        console.log(`       profilo: seleccionado "${WL_PROFILO_VALUE}"`);
+        await waitForAspNetReady(page, 5000);
+      } catch (e) {
+        // Fallback: intentar por valor en vez de label
+        try {
+          await profiloEl.first().selectOption({ value: WL_PROFILO_VALUE });
+          console.log(`       profilo: seleccionado por value "${WL_PROFILO_VALUE}"`);
+          await waitForAspNetReady(page, 5000);
+        } catch (e2) {
+          console.log(`       profilo: NO se pudo seleccionar "${WL_PROFILO_VALUE}" (${e2?.message?.slice(0, 100) || e2})`);
+        }
+      }
+    }
+  }
+
   // Click "Busca" (postback AJAX, esperamos via waitForAspNetReady).
   const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
   await btn.waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
@@ -612,6 +640,16 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     }
     if (await page.locator(WL_SEARCH_FECHA_A_SEL).count()) {
       await setField(page, WL_SEARCH_FECHA_A_SEL, fechaA, "re-fechaA");
+    }
+  }
+  // Re-seleccionar dropdown PROFILO (mismo fix que en doSingleSearchInner).
+  if (WL_PROFILO_SEL && WL_PROFILO_VALUE) {
+    const profiloEl = page.locator(WL_PROFILO_SEL);
+    if (await profiloEl.count()) {
+      await profiloEl.first().selectOption({ label: WL_PROFILO_VALUE })
+        .catch(() => profiloEl.first().selectOption({ value: WL_PROFILO_VALUE }))
+        .catch(() => {});
+      await waitForAspNetReady(page, 5000);
     }
   }
   const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
