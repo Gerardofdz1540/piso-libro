@@ -487,7 +487,26 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       row.__rowIdxInTable = i;
       rows.push(row);
     }
-    return { headers, rows, tableCount: tables.length, bestTableIdx, headerIdx };
+
+    // Diagnóstico: cuando la tabla "best" existe pero no produce filas,
+    // volcar su estructura para entender si los datos están en otro lugar.
+    let zeroRowsDiag = null;
+    if (rows.length === 0 && best && headerIdx >= 0) {
+      zeroRowsDiag = {
+        totalTrs: trs.length,
+        headerIdx,
+        firstRowTags: Array.from(trs[0]?.children || []).map((c) => c.tagName).join(","),
+        firstRowText: Array.from(trs[0]?.querySelectorAll("th,td") || [])
+          .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 8),
+        dataRowSample: trs[headerIdx + 1]
+          ? Array.from(trs[headerIdx + 1].querySelectorAll("td,th,span,div"))
+              .slice(0, 8).map((c) => [(c.tagName || ""), (c.innerText || "").trim().slice(0, 40)])
+          : null,
+        bestScore: bestRows,
+      };
+    }
+
+    return { headers, rows, tableCount: tables.length, bestTableIdx, headerIdx, zeroRowsDiag };
   });
 
   // Filtrar reportes basura: filas que solo tengan COL_X/__hasLink/etc
@@ -709,6 +728,15 @@ async function scrapeForCenso(page, searchUrl, censo) {
       const matched = res.rows.length;
       const tag2 = res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
       console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
+
+      // Diagnóstico: tabla encontrada pero 0 filas de datos (nueva tabla seleccionada tras fix LISTA REPORTES).
+      if (!firstDiagDumped && matched === 0 && !res.noResults && res.zeroRowsDiag) {
+        firstDiagDumped = true;
+        console.log(`       <<<ZERO-ROWS>>> best-table trs=${res.zeroRowsDiag.totalTrs} headerIdx=${res.zeroRowsDiag.headerIdx} score=${res.zeroRowsDiag.bestScore}`);
+        console.log(`       <<<ZERO-ROWS>>> firstRowTags=${res.zeroRowsDiag.firstRowTags}`);
+        console.log(`       <<<ZERO-ROWS>>> firstRowText=${JSON.stringify(res.zeroRowsDiag.firstRowText)}`);
+        console.log(`       <<<ZERO-ROWS>>> dataRowSample=${JSON.stringify(res.zeroRowsDiag.dataRowSample)}`);
+      }
 
       // Diagnostico unica vez si hay rows con headers raros.
       if (!firstDiagDumped && matched > 0 && (!res.headers.length || res.headers.every((h) => /^COL_\d+$/.test(h)))) {
