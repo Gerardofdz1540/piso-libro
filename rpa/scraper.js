@@ -422,20 +422,47 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       return { headers: [], rows: [], tableCount: tables.length, bestTableIdx: -1, noResults: true };
     }
 
-    // Elegir la tabla MAS GRANDE que NO sea menu ni formulario.
+    // Elegir la tabla con más filas de datos reales.
+    // NO usamos isForm() aquí porque la tabla de resultados de WinLab contiene
+    // los mismos marcadores que el formulario ("LISTA REPORTES", "PACIENTE APELLIDO
+    // NOMBRE", "CODIGO PACIENTE") — son también headers de columna en los resultados.
+    // En cambio, contamos filas con >= 3 celdas no-vacías:
+    //   - Tabla de resultados: fecha + paciente + examen + estado + ... = 5-6 celdas → cuenta
+    //   - Tabla de formulario: label + input-vacío = 1-2 celdas → NO cuenta
+    //   - Tabla de layout/spacer: todas vacías → NO cuenta
     let best = null, bestRows = 0, bestTableIdx = -1;
+    const tableScores = [];
     for (let ti = 0; ti < tables.length; ti++) {
       const t = tables[ti];
       const txt = norm(t.innerText);
-      if (isMenu(txt)) continue;
-      if (isForm(txt)) continue;
-      const trs = t.querySelectorAll("tr").length;
+      if (isMenu(txt)) { tableScores.push({ ti, score: 0, reason: "menu" }); continue; }
+      const allTrs = Array.from(t.querySelectorAll("tr"));
+      if (allTrs.length < 2) { tableScores.push({ ti, score: 0, reason: "single-row" }); continue; }
+      let contentRows = 0;
+      for (const tr of allTrs) {
+        const cells = Array.from(tr.querySelectorAll("td,th"))
+          .map((c) => norm(c.innerText)).filter((c) => c.length > 0);
+        if (cells.length >= 3) contentRows++;
+      }
       const ths = t.querySelectorAll("th").length;
-      if (trs < 1) continue;
-      const score = trs * (1 + (ths > 0 ? 1 : 0));
+      const score = contentRows * (1 + (ths > 0 ? 1 : 0));
+      tableScores.push({ ti, score, contentRows, trs: allTrs.length });
       if (score > bestRows) { best = t; bestRows = score; bestTableIdx = ti; }
     }
-    if (!best) return { headers: [], rows: [], tableCount: tables.length, bestTableIdx: -1 };
+    // Fallback: si ninguna tabla tiene filas de contenido denso, elegir la mas
+    // grande excluyendo solo menu (comportamiento anterior).
+    if (!best) {
+      for (let ti = 0; ti < tables.length; ti++) {
+        const t = tables[ti];
+        if (isMenu(norm(t.innerText))) continue;
+        const trs = t.querySelectorAll("tr").length;
+        const ths = t.querySelectorAll("th").length;
+        if (trs < 1) continue;
+        const score = trs * (1 + (ths > 0 ? 1 : 0));
+        if (score > bestRows) { best = t; bestRows = score; bestTableIdx = ti; }
+      }
+    }
+    if (!best) return { headers: [], rows: [], tableCount: tables.length, bestTableIdx: -1, tableScores };
 
     const trs = Array.from(best.querySelectorAll("tr"));
     let headers = [];
@@ -503,6 +530,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
               .slice(0, 8).map((c) => [(c.tagName || ""), (c.innerText || "").trim().slice(0, 40)])
           : null,
         bestScore: bestRows,
+        tableScores,
       };
     }
 
@@ -729,13 +757,16 @@ async function scrapeForCenso(page, searchUrl, censo) {
       const tag2 = res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
       console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
 
-      // Diagnóstico: tabla encontrada pero 0 filas de datos (nueva tabla seleccionada tras fix LISTA REPORTES).
+      // Diagnóstico: tabla encontrada pero 0 filas de datos.
       if (!firstDiagDumped && matched === 0 && !res.noResults && res.zeroRowsDiag) {
         firstDiagDumped = true;
         console.log(`       <<<ZERO-ROWS>>> best-table trs=${res.zeroRowsDiag.totalTrs} headerIdx=${res.zeroRowsDiag.headerIdx} score=${res.zeroRowsDiag.bestScore}`);
         console.log(`       <<<ZERO-ROWS>>> firstRowTags=${res.zeroRowsDiag.firstRowTags}`);
         console.log(`       <<<ZERO-ROWS>>> firstRowText=${JSON.stringify(res.zeroRowsDiag.firstRowText)}`);
         console.log(`       <<<ZERO-ROWS>>> dataRowSample=${JSON.stringify(res.zeroRowsDiag.dataRowSample)}`);
+        if (res.zeroRowsDiag.tableScores) {
+          console.log(`       <<<ZERO-ROWS>>> tableScores=${JSON.stringify(res.zeroRowsDiag.tableScores)}`);
+        }
       }
 
       // Diagnostico unica vez si hay rows con headers raros.
