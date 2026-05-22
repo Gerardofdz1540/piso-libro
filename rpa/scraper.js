@@ -689,13 +689,16 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
             const bestNum  = numScores.indexOf(Math.max(...numScores));
             if (numScores[bestNum] >= 2) cV = bestNum;
           }
-          if (headerIdx < 0 && cE >= 0 && cV >= 0) headerIdx = sampleStart - 1;
+          // headerIdx remains -1 when positional: loop will start from row 0
         }
       }
 
-      if (headerIdx < 0 || cE < 0 || cV < 0) continue;
+      // Solo continuar si tenemos al menos columna de estudio y valor.
+      // headerIdx=-1 es valido cuando el fallback posicional encontro cE/cV.
+      if (cE < 0 || cV < 0) continue;
 
-      for (let i = (headerIdx >= 0 ? headerIdx + 1 : 0); i < trs.length; i++) {
+      const dataStart = headerIdx >= 0 ? headerIdx + 1 : 0;
+      for (let i = dataStart; i < trs.length; i++) {
         const cells = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
         if (!cells.length) continue;
         const estudio = cells[cE];
