@@ -78,12 +78,12 @@ const WL_DATE_FORMAT            = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 const WL_PROFILO_SEL            = ENV("WL_PROFILO_SEL", "#pnlMain_cboProfiloConsultazioneRichiesteRicerca");
 const WL_PROFILO_VALUE          = ENV("WL_PROFILO_VALUE", "AYER Y HOY");
 const WL_PER_PATIENT_TIMEOUT    = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
-const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "0"), 10);          // 0 = solo lista, 1 = clickear cada reporte
+const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 0 = solo lista, 1 = clickear cada reporte
 const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "2"), 10);      // max reportes/paciente
-const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
+const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "20000"), 10);
 // Pausa entre pacientes (ms) para no saturar WinLab con requests rapidos.
 // WinLab throttlea/resetea la conexion si recibe demasiadas busquedas seguidas.
-const WL_INTER_PATIENT_DELAY_MS = parseInt(ENV("WL_INTER_PATIENT_DELAY_MS", "3000"), 10);
+const WL_INTER_PATIENT_DELAY_MS = parseInt(ENV("WL_INTER_PATIENT_DELAY_MS", "5000"), 10);
 
 // Flag para mostrar diagnóstico __cells solo una vez por ejecución.
 let _firstCellsDumped = false;
@@ -439,7 +439,10 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       const t = tables[ti];
       const txt = norm(t.innerText);
       if (isMenu(txt)) { tableScores.push({ ti, score: 0, reason: "menu" }); continue; }
-      const allTrs = Array.from(t.querySelectorAll("tr"));
+      // Usar t.rows en lugar de querySelectorAll("tr") para NO contar filas
+      // de tablas anidadas. Sin esto, un contenedor exterior hereda el score
+      // de la tabla interior de resultados y gana el ranking erroneamente.
+      const allTrs = Array.from(t.rows);
       if (allTrs.length < 2) { tableScores.push({ ti, score: 0, reason: "single-row" }); continue; }
       let contentRows = 0;
       for (const tr of allTrs) {
@@ -458,7 +461,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       for (let ti = 0; ti < tables.length; ti++) {
         const t = tables[ti];
         if (isMenu(norm(t.innerText))) continue;
-        const trs = t.querySelectorAll("tr").length;
+        const trs = t.rows.length;
         const ths = t.querySelectorAll("th").length;
         if (trs < 1) continue;
         const score = trs * (1 + (ths > 0 ? 1 : 0));
@@ -780,12 +783,13 @@ async function scrapeForCenso(page, searchUrl, censo) {
           const tablesDump = await subPage.evaluate(() => {
             return Array.from(document.querySelectorAll("table")).slice(0, 8).map((t, idx) => ({
               idx,
-              rows: t.querySelectorAll("tr").length,
+              rows: t.rows.length,
+              rowsNested: t.querySelectorAll("tr").length,
               ths: t.querySelectorAll("th").length,
-              firstRowTags: Array.from(t.querySelectorAll("tr")[0]?.children || []).map((c) => c.tagName).join(","),
-              firstRowText: Array.from(t.querySelectorAll("tr")[0]?.children || [])
+              firstRowTags: Array.from(t.rows[0]?.children || []).map((c) => c.tagName).join(","),
+              firstRowText: Array.from(t.rows[0]?.children || [])
                 .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
-              secondRowText: Array.from(t.querySelectorAll("tr")[1]?.children || [])
+              secondRowText: Array.from(t.rows[1]?.children || [])
                 .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
             }));
           });
