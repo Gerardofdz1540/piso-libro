@@ -165,6 +165,30 @@ assert(isMeaningfulReportRow({
 assert(isMeaningfulReportRow(null) === false, "meaningful: null -> false");
 assert(isMeaningfulReportRow({}) === false,    "meaningful: objeto vacio -> false");
 
+// ── 14b. isMeaningfulReportRow: COL_X + __cells (caso real WinLab con headers genericos)
+// Cuando WinLab usa headers COL_X pero __cells tiene data real, la fila ES valida.
+assert(isMeaningfulReportRow({
+  COL_0: "BIOMETRIA HEMATICA",
+  COL_1: "25/04/2026",
+  COL_2: "COMPLETO",
+  __cells: ["BIOMETRIA HEMATICA", "25/04/2026", "COMPLETO"],
+  __hasLink: true,
+  __rowIdxInTable: 2,
+}) === true, "meaningful: COL_X + __cells con data real -> true (fix headers genericos WinLab)");
+
+assert(isMeaningfulReportRow({
+  COL_0: "LISTA REPORTES TODAS LAS UNIDADES ORGANIZATIVAS ACCESIBLES AL USUARIO",
+  __cells: ["LISTA REPORTES TODAS LAS UNIDADES ORGANIZATIVAS ACCESIBLES AL USUARIO"],
+  __hasLink: false,
+  __rowIdxInTable: 0,
+}) === false, "meaningful: COL_X + __cells con 1 celda basura -> false (no >= 2 celdas reales)");
+
+assert(isMeaningfulReportRow({
+  COL_0: "BIOMETRIA HEMATICA",
+  COL_1: "25/04/2026",
+  __cells: ["BIOMETRIA HEMATICA", "25/04/2026"],
+}) === true, "meaningful: exactamente 2 celdas reales en __cells -> true");
+
 // ── 15. extractApellidos ──────────────────────────────────────────────
 {
   const a1 = extractApellidos("AGUSTIN JAIME MENDOZA GONZALEZ");

@@ -127,6 +127,18 @@ export function isFormTableText(rawText) {
 export function isMeaningfulReportRow(row) {
   if (!row || typeof row !== "object") return false;
   const technicalKeys = new Set(["__cells", "__hasLink", "__rowIdxInTable"]);
+
+  // Si __cells tiene >= 2 celdas con contenido real, la fila tiene datos
+  // aunque los headers hayan caido en fallback COL_X. __cells contiene el
+  // texto crudo de cada <td> — es la fuente mas confiable de si hay data.
+  if (Array.isArray(row.__cells) && row.__cells.length > 0) {
+    const GARBAGE = /^(LISTA|BUSCA) REPORTES|TODAS LAS UNIDADES|^(INICIO|REPORTES|AYUDA|CIERRA)$/;
+    const realCells = row.__cells.filter(
+      (c) => c && typeof c === "string" && c.trim() && !GARBAGE.test(c)
+    );
+    if (realCells.length >= 2) return true;
+  }
+
   for (const [key, val] of Object.entries(row)) {
     if (technicalKeys.has(key)) continue;
     if (/^COL_\d+$/.test(key)) continue;          // header generico = no real
