@@ -397,7 +397,8 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
         .trim();
 
     const FORM_MARKERS = [
-      "BUSCA REPORTES", "TODAS LAS UNIDADES ORGANIZATIVAS",
+      // Pre-search header y post-search header (AJAX cambia BUSCA→LISTA tras click Busca)
+      "BUSCA REPORTES", "LISTA REPORTES", "TODAS LAS UNIDADES ORGANIZATIVAS",
       "PACIENTE APELLIDO NOMBRE", "FECHA REPORTE DE A",
       "CON RESULTADOS", "UNIDAD SOLICITANTE", "CODIGO PACIENTE",
       "REPORTES IMPRESOS", "FECHA DE TOMA", "CODIGO TOMA",
