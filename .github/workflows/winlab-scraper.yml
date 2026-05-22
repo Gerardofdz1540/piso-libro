@@ -8,6 +8,12 @@ on:
   schedule:
     - cron: "15 19 * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run — recorre WinLab completo pero NO escribe en Supabase. Úsalo para verificar que el scraper encuentra los labs correctamente."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: winlab-scraper
@@ -70,18 +76,18 @@ jobs:
           WINLAB_TABLE_SELECTOR:    ${{ secrets.WINLAB_TABLE_SELECTOR }}
           WINLAB_LOGGED_SELECTOR:   ${{ secrets.WINLAB_LOGGED_SELECTOR }}
           WINLAB_NEXT_SELECTOR:     ${{ secrets.WINLAB_NEXT_SELECTOR }}
-          # Pestaña de temporalidad: selector del tab "Por Temporalidad" de WinLab.
-          # Si se configura, el scraper hace clic en él antes de buscar por fecha+apellido.
-          # Ejemplo: "a[href*='temporalidad'], .tab-fecha a, li#tabFecha a"
+          # Pestaña de temporalidad: selector del tab "Por Temporalidad" (opcional).
           WL_TEMPORALIDAD_TAB_SEL:  ${{ secrets.WL_TEMPORALIDAD_TAB_SEL }}
-          # Modo de búsqueda: "apellido_first" (default) o "exp_first" (legado).
-          WL_SEARCH_MODE:           ${{ secrets.WL_SEARCH_MODE }}
+          # Dropdown "Profilo Consultazione" (default: AYER Y HOY) — fix validado PR #116.
+          WL_PROFILO_SEL:           ${{ secrets.WL_PROFILO_SEL }}
+          WL_PROFILO_VALUE:         ${{ secrets.WL_PROFILO_VALUE }}
           # Días de lookback para el rango de fechas (default: 2 = HOY + AYER).
           WL_LOOKBACK_DAYS:         ${{ secrets.WL_LOOKBACK_DAYS }}
           SUPABASE_URL:             ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY:     ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_TABLE:           ${{ secrets.SUPABASE_TABLE }}
           SUPABASE_ON_CONFLICT:     ${{ secrets.SUPABASE_ON_CONFLICT }}
+          DRY_RUN:                  ${{ inputs.dry_run || 'false' }}
 
       - name: Upload diagnostics on failure
         if: failure()

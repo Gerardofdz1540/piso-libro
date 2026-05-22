@@ -14,7 +14,7 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-         isMeaningfulReportRow, extractApellidos, expVariants } from "./lib.js";
+         isMeaningfulReportRow, extractApellidos } from "./lib.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -52,6 +52,12 @@ const SUPABASE_CONFLICT       = ENV("SUPABASE_ON_CONFLICT", "exp,fecha");
 const SUPABASE_CENSO_TABLE    = ENV("SUPABASE_CENSO_TABLE", "patients");
 const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp");
 
+// Dry-run: recorre todo el flujo de WinLab (login → búsqueda → drill-down)
+// pero NO escribe en Supabase. Actívalo con DRY_RUN=1 o el argumento --dry-run.
+const DRY_RUN = ENV("DRY_RUN", "0") === "1"
+  || ENV("DRY_RUN", "").toLowerCase() === "true"
+  || process.argv.includes("--dry-run");
+
 // Selectores del formulario de busqueda WinLab (descubiertos via explorador).
 const WL_SEARCH_EXP_SEL         = ENV("WL_SEARCH_EXP_SEL", "#pnlMain_pnlPaziente_txtCodicePaziente");
 const WL_SEARCH_COGNOME_SEL     = ENV("WL_SEARCH_COGNOME_SEL", "#pnlMain_pnlPaziente_txtCognome");
@@ -64,10 +70,6 @@ const WL_SEARCH_CLEAR_SEL       = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBTo
 // el scraper hace clic en ella antes de llenar el formulario de fechas+apellido.
 // Ejemplo: "#TabTemporalidad a, .tab-temporalidad, li[data-tab='fecha'] a"
 const WL_TEMPORALIDAD_TAB_SEL   = ENV("WL_TEMPORALIDAD_TAB_SEL", "");
-// Modo de búsqueda por paciente:
-//   "apellido_first" (recomendado): busca por apellidos primero, código exp como fallback.
-//   "exp_first" (legado): busca por código expediente primero, apellidos como fallback.
-const WL_SEARCH_MODE            = ENV("WL_SEARCH_MODE", "apellido_first");
 const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "2"), 10);  // HOY + AYER
 const WL_DATE_FORMAT            = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 // Dropdown "Profilo Consultazione" — WinLab requiere seleccionarlo para que
@@ -247,35 +249,20 @@ async function captureSearchUrl(page) {
 }
 
 // ── 4. BUSQUEDA + SCRAPE POR PACIENTE ─────────────────────────────────
+// Un solo intento por paciente: primer + segundo apellido concatenados en
+// txtCognome (ej. "MARTINEZ ROLDAN"). Sin fallbacks — los pacientes no están
+// registrados por expediente en WinLab, y buscar por un solo apellido genera
+// timeouts por exceso de homónimos. Si no hay resultados → sin labs en el rango.
 async function searchAndScrapeOne(page, searchUrl, paciente) {
-  // La cascada se detiene cuando alguna tentativa retorna rows reales o
-  // noResults explicito ("ningún registro encontrado").
-  //
-  // WL_SEARCH_MODE controla el orden de las estrategias:
-  //   "apellido_first" (default): apellidos → código exp. Funciona mejor
-  //     en WinLab cuando se usa la pestaña de temporalidad + HOY/AYER.
-  //   "exp_first" (legado): código exp → apellidos.
-  const expCandidates     = expVariants(paciente.exp);
-  const apellidoCandidates = extractApellidos(paciente.nombre);
-
-  const buildApellidoCandidates = () =>
-    apellidoCandidates.map((a, i) => ({ codice: null, cognome: a, tag: `apellido[${i + 1}]=${a}` }));
-  const buildExpCandidates = () =>
-    expCandidates.map((c, i) => ({ codice: c, cognome: null, tag: i === 0 ? `codigo=${c}` : `codigo[v${i + 1}]=${c}` }));
-
-  const cascade = WL_SEARCH_MODE === "exp_first"
-    ? [...buildExpCandidates(), ...buildApellidoCandidates()]
-    : [...buildApellidoCandidates(), ...buildExpCandidates()];
-
-  for (const params of cascade) {
-    const res = await doSingleSearch(page, searchUrl, paciente, params);
-    if (res.rows.length > 0) return res;
-    if (res.noResults) return res;  // busqueda valida, sin matches: parar cascada
+  const apellidos = extractApellidos(paciente.nombre);
+  const cognome   = apellidos[0] || "";   // ej. "MARTINEZ ROLDAN"
+  if (!cognome) {
+    console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
+    return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
-
-  // Sin matches en ninguna estrategia: devolver ultimo intento vacío.
+  console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"`);
   return await doSingleSearch(page, searchUrl, paciente, {
-    codice: paciente.exp, cognome: null, tag: `codigo=${paciente.exp} (final)`,
+    codice: null, cognome, tag: `apellidos="${cognome}"`,
   });
 }
 
@@ -766,6 +753,30 @@ async function upsert(supa, records) {
   if (deduped.length !== records.length) {
     console.log(`[5/5] Dedup: ${records.length} -> ${deduped.length} filas (claves duplicadas en censo: ${records.length - deduped.length})`);
   }
+
+  if (DRY_RUN) {
+    console.log(`\n${"─".repeat(60)}`);
+    console.log(`[DRY-RUN] ✅  Simulación completa — NADA escrito en Supabase.`);
+    console.log(`[DRY-RUN] Filas que se enviarían: ${deduped.length}`);
+    console.log(`${"─".repeat(60)}`);
+    for (const r of deduped) {
+      const reportes = r.data?.reportes || [];
+      const conValores = reportes.filter(rep => rep.valores?.length);
+      const totalValores = reportes.reduce((n, rep) => n + (rep.valores?.length || 0), 0);
+      const estado = reportes.length > 0
+        ? `✓ ${reportes.length} reporte(s) | ${totalValores} valor(es) drill-down`
+        : `✗ 0 reportes`;
+      console.log(`[DRY-RUN]  exp=${String(r.exp).padEnd(12)} "${r.paciente || ""}"  →  ${estado}`);
+      for (const rep of conValores.slice(0, 3)) {
+        const muestra = rep.valores.slice(0, 4).map(v => `${v.estudio}=${v.valor}${v.unidad ? " " + v.unidad : ""}`).join("  |  ");
+        const extra = rep.valores.length > 4 ? ` (+${rep.valores.length - 4} más)` : "";
+        console.log(`[DRY-RUN]      └ ${muestra}${extra}`);
+      }
+    }
+    console.log(`${"─".repeat(60)}\n`);
+    return;
+  }
+
   console.log(`[5/5] Upsert -> Supabase tabla="${SUPABASE_TABLE}" onConflict="${SUPABASE_CONFLICT}" (${deduped.length} filas)`);
   if (!deduped.length) {
     console.log("       0 filas para upsertear (ningun paciente con labs en el rango). Saliendo OK.");
@@ -868,6 +879,14 @@ async function explorePage(page) {
 // ── MAIN ───────────────────────────────────────────────────────────────
 (async () => {
   const t0 = Date.now();
+
+  if (DRY_RUN) {
+    console.log(`\n${"═".repeat(60)}`);
+    console.log("  MODO DRY-RUN ACTIVADO");
+    console.log("  Recorre todo el flujo de WinLab pero NO escribe en Supabase.");
+    console.log(`${"═".repeat(60)}\n`);
+  }
+
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({
     locale: "es-MX",
