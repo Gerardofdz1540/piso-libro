@@ -319,31 +319,12 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
 
   await page.locator(WL_SEARCH_EXP_SEL).waitFor({ state: "attached", timeout: SEL_TIMEOUT_MS });
 
-  if (params.codice) {
-    await setField(page, WL_SEARCH_EXP_SEL, String(params.codice), `[${params.tag}]`);
-  }
-  if (params.cognome) {
-    if (await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
-      await setField(page, WL_SEARCH_COGNOME_SEL, String(params.cognome), `[${params.tag}]`);
-    }
-  }
-
-  // Llenar rango de fechas (default: ultimos N dias hasta hoy).
-  if (WL_LOOKBACK_DAYS >= 0) {
-    const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
-    const fechaA  = formatDate(new Date());
-    if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {
-      await setField(page, WL_SEARCH_FECHA_DE_SEL, fechaDe, "fechaDe");
-    }
-    if (await page.locator(WL_SEARCH_FECHA_A_SEL).count()) {
-      await setField(page, WL_SEARCH_FECHA_A_SEL, fechaA, "fechaA");
-    }
-  }
-
-  // Seleccionar dropdown "Profilo Consultazione" — sin esto, WinLab ignora
-  // los inputs de fecha y devuelve "NINGUN REGISTRO" para todos los pacientes.
-  // Descubierto via diagnóstico 2026-05-15 después de 20 días de scraper devolviendo 0 labs.
-  if (WL_PROFILO_SEL && WL_PROFILO_VALUE) {
+  // PASO 1: seleccionar el perfil temporal ("AYER Y HOY") ANTES de escribir los
+  // apellidos. Replica el flujo manual del médico (elegir el perfil y luego
+  // teclear apellidos) y evita que el postback AJAX del dropdown borre el campo
+  // de apellido si se llenara antes.
+  const usandoProfilo = !!(WL_PROFILO_SEL && WL_PROFILO_VALUE);
+  if (usandoProfilo) {
     const profiloEl = page.locator(WL_PROFILO_SEL);
     if (await profiloEl.count()) {
       try {
@@ -360,6 +341,32 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
           console.log(`       profilo: NO se pudo seleccionar "${WL_PROFILO_VALUE}" (${e2?.message?.slice(0, 100) || e2})`);
         }
       }
+    }
+  }
+
+  // PASO 2: escribir el filtro de paciente (apellidos, o código si se pasó).
+  if (params.codice) {
+    await setField(page, WL_SEARCH_EXP_SEL, String(params.codice), `[${params.tag}]`);
+  }
+  if (params.cognome) {
+    if (await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
+      await setField(page, WL_SEARCH_COGNOME_SEL, String(params.cognome), `[${params.tag}]`);
+    }
+  }
+
+  // PASO 3: rango de fechas manual SOLO si NO hay perfil temporal configurado.
+  // CRÍTICO: el perfil "AYER Y HOY" ya define el rango server-side. Rellenar
+  // además los campos de fecha (como hacía antes) entra en conflicto con el
+  // perfil y deja el rango vacío → WinLab devuelve "NINGUN REGISTRO" para todos.
+  // El flujo manual del médico que sí funciona es: perfil + apellidos, sin fechas.
+  if (!usandoProfilo && WL_LOOKBACK_DAYS >= 0) {
+    const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
+    const fechaA  = formatDate(new Date());
+    if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {
+      await setField(page, WL_SEARCH_FECHA_DE_SEL, fechaDe, "fechaDe");
+    }
+    if (await page.locator(WL_SEARCH_FECHA_A_SEL).count()) {
+      await setField(page, WL_SEARCH_FECHA_A_SEL, fechaA, "fechaA");
     }
   }
 
@@ -615,11 +622,28 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     allTables.forEach((tb) => console.log(`       <<<DETAIL TABLE ${tb.idx}>>> ${JSON.stringify(tb)}`));
   }
 
-  // Volver a la pantalla de busqueda y re-ejecutar la busqueda para que
-  // la siguiente fila siga teniendo indices validos.
+  // Volver a la pantalla de busqueda y re-ejecutar la busqueda con el MISMO
+  // flujo que doSingleSearchInner (perfil primero → apellidos → sin fechas
+  // manuales) para que la siguiente fila siga teniendo indices validos.
   await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-  await setField(page, WL_SEARCH_EXP_SEL, String(paciente.exp || ""), `re-exp=${paciente.exp}`);
-  if (WL_LOOKBACK_DAYS >= 0) {
+  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+  const reUsandoProfilo = !!(WL_PROFILO_SEL && WL_PROFILO_VALUE);
+  if (reUsandoProfilo) {
+    const profiloEl = page.locator(WL_PROFILO_SEL);
+    if (await profiloEl.count()) {
+      await profiloEl.first().selectOption({ label: WL_PROFILO_VALUE })
+        .catch(() => profiloEl.first().selectOption({ value: WL_PROFILO_VALUE }))
+        .catch(() => {});
+      await waitForAspNetReady(page, 5000);
+    }
+  }
+  // Re-buscar por apellidos (igual que la busqueda principal; el expediente no
+  // esta registrado en WinLab).
+  const reCognome = extractApellidos(paciente.nombre)[0] || "";
+  if (reCognome && await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
+    await setField(page, WL_SEARCH_COGNOME_SEL, reCognome, `re-apellidos="${reCognome}"`);
+  }
+  if (!reUsandoProfilo && WL_LOOKBACK_DAYS >= 0) {
     const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
     const fechaA  = formatDate(new Date());
     if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {
@@ -627,16 +651,6 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     }
     if (await page.locator(WL_SEARCH_FECHA_A_SEL).count()) {
       await setField(page, WL_SEARCH_FECHA_A_SEL, fechaA, "re-fechaA");
-    }
-  }
-  // Re-seleccionar dropdown PROFILO (mismo fix que en doSingleSearchInner).
-  if (WL_PROFILO_SEL && WL_PROFILO_VALUE) {
-    const profiloEl = page.locator(WL_PROFILO_SEL);
-    if (await profiloEl.count()) {
-      await profiloEl.first().selectOption({ label: WL_PROFILO_VALUE })
-        .catch(() => profiloEl.first().selectOption({ value: WL_PROFILO_VALUE }))
-        .catch(() => {});
-      await waitForAspNetReady(page, 5000);
     }
   }
   const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
