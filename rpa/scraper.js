@@ -78,9 +78,12 @@ const WL_DATE_FORMAT            = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 const WL_PROFILO_SEL            = ENV("WL_PROFILO_SEL", "#pnlMain_cboProfiloConsultazioneRichiesteRicerca");
 const WL_PROFILO_VALUE          = ENV("WL_PROFILO_VALUE", "AYER Y HOY");
 const WL_PER_PATIENT_TIMEOUT    = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
-const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 1 = clickear cada reporte
+const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "0"), 10);          // 0 = solo lista, 1 = clickear cada reporte
 const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "2"), 10);      // max reportes/paciente
 const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
+// Pausa entre pacientes (ms) para no saturar WinLab con requests rapidos.
+// WinLab throttlea/resetea la conexion si recibe demasiadas busquedas seguidas.
+const WL_INTER_PATIENT_DELAY_MS = parseInt(ENV("WL_INTER_PATIENT_DELAY_MS", "3000"), 10);
 
 // Flag para mostrar diagnóstico __cells solo una vez por ejecución.
 let _firstCellsDumped = false;
@@ -826,6 +829,10 @@ async function scrapeForCenso(page, searchUrl, censo) {
       // SIEMPRE destruir la subPage para liberar memoria, exitosa o no.
       if (subPage) {
         try { await subPage.close(); } catch (_) { /* ignore */ }
+      }
+      // Pausa entre pacientes para no saturar WinLab (throttle prevention).
+      if (i < censo.length - 1 && WL_INTER_PATIENT_DELAY_MS > 0) {
+        await new Promise((r) => setTimeout(r, WL_INTER_PATIENT_DELAY_MS));
       }
     }
   }
