@@ -5403,6 +5403,7 @@
 
     // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
     async function supaLoadAll() {
+      _lastSyncErrorDetail = "";
       setSyncStatus("syncing", "Cargando...");
       try {
         // Primero pacientes, luego notas filtradas por sus IDs (menor payload)

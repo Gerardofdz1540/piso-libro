@@ -439,10 +439,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       const t = tables[ti];
       const txt = norm(t.innerText);
       if (isMenu(txt)) { tableScores.push({ ti, score: 0, reason: "menu" }); continue; }
-      // Usar t.rows en lugar de querySelectorAll("tr") para NO contar filas
-      // de tablas anidadas. Sin esto, un contenedor exterior hereda el score
-      // de la tabla interior de resultados y gana el ranking erroneamente.
-      const allTrs = Array.from(t.rows);
+      const allTrs = Array.from(t.querySelectorAll("tr"));
       if (allTrs.length < 2) { tableScores.push({ ti, score: 0, reason: "single-row" }); continue; }
       let contentRows = 0;
       for (const tr of allTrs) {
@@ -461,7 +458,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       for (let ti = 0; ti < tables.length; ti++) {
         const t = tables[ti];
         if (isMenu(norm(t.innerText))) continue;
-        const trs = t.rows.length;
+        const trs = t.querySelectorAll("tr").length;
         const ths = t.querySelectorAll("th").length;
         if (trs < 1) continue;
         const score = trs * (1 + (ths > 0 ? 1 : 0));
