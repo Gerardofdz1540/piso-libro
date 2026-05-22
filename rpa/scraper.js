@@ -439,10 +439,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       const t = tables[ti];
       const txt = norm(t.innerText);
       if (isMenu(txt)) { tableScores.push({ ti, score: 0, reason: "menu" }); continue; }
-      // Usar t.rows en lugar de querySelectorAll("tr") para NO contar filas
-      // de tablas anidadas. Sin esto, un contenedor exterior hereda el score
-      // de la tabla interior de resultados y gana el ranking erroneamente.
-      const allTrs = Array.from(t.rows);
+      const allTrs = Array.from(t.querySelectorAll("tr"));
       if (allTrs.length < 2) { tableScores.push({ ti, score: 0, reason: "single-row" }); continue; }
       let contentRows = 0;
       for (const tr of allTrs) {
@@ -461,7 +458,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       for (let ti = 0; ti < tables.length; ti++) {
         const t = tables[ti];
         if (isMenu(norm(t.innerText))) continue;
-        const trs = t.rows.length;
+        const trs = t.querySelectorAll("tr").length;
         const ths = t.querySelectorAll("th").length;
         if (trs < 1) continue;
         const score = trs * (1 + (ths > 0 ? 1 : 0));
@@ -566,11 +563,16 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
   // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──
   if (WL_DRILLDOWN === 1 && result.rows.length > 0 && result.bestTableIdx >= 0) {
     const max = Math.min(result.rows.length, WL_DRILLDOWN_MAX);
+    // dumpFirst = true solo en la PRIMERA llamada real a drillDownReport.
+    // No usar i===0 porque la fila 0 puede no tener link y saltarse con continue.
+    let firstDrilldownDone = false;
     for (let i = 0; i < max; i++) {
       const row = result.rows[i];
       if (!row.__hasLink) continue;
+      const dumpFirst = !firstDrilldownDone;
+      firstDrilldownDone = true;
       try {
-        const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, i === 0);
+        const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, dumpFirst);
         if (valores && valores.length) {
           row.valores = valores;
         }
@@ -629,6 +631,8 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
       if (trs.length < 2) continue;
 
       // Detectar header: TH primero, o primera fila con tokens reconocibles.
+      // WinLab es italiano — soportar ES + EN + IT en todos los términos.
+      const HDR_RE = /^(ESTUDIO|EXAMEN|ANALISIS|ANALISI|ANALITA|ESAME|PRUEBA|TEST|NOMBRE|DESCRIPCION|PARAMETRO|COMPONENTE|DETERMINAZIONE|RESULTADO|VALOR|VAL|RISULTATO|VALORE|REFERTO|ESITO|UNIDADES|UNIDAD|U\.M\.|UM|UNITA|UNITA'|REFERENCIA|RANGO|V\.R\.|VR|RANGO REFERENCIAL|VALORI DI RIFERIMENTO|RANGE|INTERVALLO|VALORI NORMALI)$/;
       let headers = [];
       let headerIdx = -1;
       for (let i = 0; i < Math.min(5, trs.length); i++) {
@@ -639,22 +643,59 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
           break;
         }
         const tds = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
-        if (tds.some((c) => /^(ESTUDIO|EXAMEN|ANALISIS|PRUEBA|TEST|RESULTADO|VALOR|UNIDADES|UNIDAD|REFERENCIA|RANGO|VR)$/.test(c))) {
+        if (tds.some((c) => HDR_RE.test(c))) {
           headers = tds;
           headerIdx = i;
           break;
         }
       }
-      if (headerIdx < 0) continue;
 
       const idx = (re) => headers.findIndex((h) => re.test(h));
-      const cE = idx(/^(ESTUDIO|EXAMEN|ANALISIS|PRUEBA|TEST|NOMBRE|DESCRIPCION)$/);
-      const cV = idx(/^(RESULTADO|VALOR|VAL)$/);
-      const cU = idx(/^(UNIDADES|UNIDAD|U\.M\.|UM)$/);
-      const cR = idx(/^(REFERENCIA|RANGO|V\.R\.|VR|RANGO REFERENCIAL)$/);
+      let cE = idx(/^(ESTUDIO|EXAMEN|ANALISIS|ANALISI|ANALITA|ESAME|PRUEBA|TEST|NOMBRE|DESCRIPCION|PARAMETRO|COMPONENTE|DETERMINAZIONE)$/);
+      let cV = idx(/^(RESULTADO|VALOR|VAL|RISULTATO|VALORE|REFERTO|ESITO)$/);
+      let cU = idx(/^(UNIDADES|UNIDAD|U\.M\.|UM|UNITA|UNITA')$/);
+      let cR = idx(/^(REFERENCIA|RANGO|V\.R\.|VR|RANGO REFERENCIAL|VALORI DI RIFERIMENTO|RANGE|INTERVALLO|VALORI NORMALI)$/);
+
+      // Fallback: si no hay header reconocible, intentar deteccion posicional:
+      // escanear filas de datos buscando col con texto largo (estudio)
+      // y col con valor numerico. Aplica si hay >= 3 cols y >= 3 filas de datos.
+      if ((headerIdx < 0 || cE < 0 || cV < 0) && trs.length >= 3) {
+        const isNum = (s) => s.length > 0 && /^[<>≤≥]?\s*[\d]+[\d.,\s]*$/.test(s);
+        const isText = (s) => s.length >= 2 && s.length <= 60 && /[A-Z]/.test(s) && !/^\d/.test(s);
+        const sampleStart = headerIdx >= 0 ? headerIdx + 1 : 0;
+        const sample = [];
+        for (let i = sampleStart; i < Math.min(sampleStart + 6, trs.length); i++) {
+          const cells = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
+          if (cells.length >= 2) sample.push(cells);
+        }
+        if (sample.length >= 2) {
+          const colCount = Math.max(...sample.map((r) => r.length));
+          let textScores = new Array(colCount).fill(0);
+          let numScores  = new Array(colCount).fill(0);
+          for (const row of sample) {
+            for (let ci = 0; ci < row.length; ci++) {
+              if (isText(row[ci])) textScores[ci]++;
+              if (isNum(row[ci]))  numScores[ci]++;
+            }
+          }
+          if (cE < 0) {
+            const bestText = textScores.indexOf(Math.max(...textScores));
+            if (textScores[bestText] >= 2) cE = bestText;
+          }
+          if (cV < 0) {
+            const bestNum  = numScores.indexOf(Math.max(...numScores));
+            if (numScores[bestNum] >= 2) cV = bestNum;
+          }
+          // headerIdx remains -1 when positional: loop will start from row 0
+        }
+      }
+
+      // Solo continuar si tenemos al menos columna de estudio y valor.
+      // headerIdx=-1 es valido cuando el fallback posicional encontro cE/cV.
       if (cE < 0 || cV < 0) continue;
 
-      for (let i = headerIdx + 1; i < trs.length; i++) {
+      const dataStart = headerIdx >= 0 ? headerIdx + 1 : 0;
+      for (let i = dataStart; i < trs.length; i++) {
         const cells = Array.from(trs[i].querySelectorAll("td")).map((c) => norm(c.innerText));
         if (!cells.length) continue;
         const estudio = cells[cE];
