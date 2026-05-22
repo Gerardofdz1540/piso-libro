@@ -82,6 +82,9 @@ const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);       
 const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "2"), 10);      // max reportes/paciente
 const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "15000"), 10);
 
+// Flag para mostrar diagnóstico __cells solo una vez por ejecución.
+let _firstCellsDumped = false;
+
 // ── Helpers ────────────────────────────────────────────────────────────
 // Wrapper local para fechas con el formato configurado por env.
 const formatDate = (date) => _formatDate(date, WL_DATE_FORMAT);
@@ -491,9 +494,18 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
   // ANTES del drill-down para no clickear cosas que no son reportes.
   if (Array.isArray(result.rows) && result.rows.length > 0) {
     const before = result.rows.length;
+    const firstRowSample = result.rows[0];
     result.rows = result.rows.filter(isMeaningfulReportRow);
-    if (before !== result.rows.length) {
-      console.log(`       (filtradas ${before - result.rows.length} filas basura: solo COL_X o markers de menu)`);
+    const filtered = before - result.rows.length;
+    if (filtered > 0) {
+      console.log(`       (filtradas ${filtered} filas basura: solo COL_X o markers de menu)`);
+      // Diagnóstico una vez: muestra __cells y keys de la primera fila filtrada
+      // para entender qué estructura tiene la tabla de resultados real en WinLab.
+      if (!_firstCellsDumped && result.rows.length === 0) {
+        _firstCellsDumped = true;
+        console.log(`       <<<CELLS>>> __cells=${JSON.stringify(firstRowSample.__cells)}`);
+        console.log(`       <<<CELLS>>> keys=${JSON.stringify(Object.keys(firstRowSample))}`);
+      }
     }
   }
 
