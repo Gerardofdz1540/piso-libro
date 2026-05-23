@@ -42,16 +42,16 @@ function assert(cond, name) {
     "vía PDF: scraper busca frame con PDF antes de DOM scrape"
   );
   assert(
-    /ctx\.request\.get\(pdfInfo\.pdfUrl/.test(scraperSource),
-    "vía PDF: descarga PDF con ctx.request.get (hereda cookies/auth)"
+    /detailPage\.on\("response"/.test(scraperSource),
+    "vía PDF: intercepta response del browser al cargar el frame (hereda sesión completa)"
   );
   assert(
-    /parsePdfToLabValues\(pdfBuffer\)/.test(scraperSource),
-    "vía PDF: parseo del buffer descargado"
+    /parsePdfToLabValues\(capturedPdfBuffer/.test(scraperSource),
+    "vía PDF: parseo del buffer capturado"
   );
   assert(
-    /response\.body\(\)/.test(scraperSource),
-    "vía PDF: extracción correcta del body de respuesta como Buffer"
+    /body\.slice\(0, 4\)\.toString\(\) === '%PDF'/.test(scraperSource),
+    "vía PDF: valida magic bytes %PDF antes de aceptar buffer"
   );
 }
 

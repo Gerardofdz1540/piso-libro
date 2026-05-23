@@ -637,51 +637,79 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     popupOpened = true;
     detailPage = popup;
     if (dumpFirst) console.log(`       [drilldown] POPUP detectado: ${detailPage.url()}`);
+
+    // ────────────────────────────────────────────────────────────────────────
+    // VÍA PRINCIPAL: interceptar la respuesta del browser al cargar EditPDF.aspx
+    //
+    // DESCUBRIMIENTO (May 2026 iter 2): ctx.request.get() no funciona porque
+    // WinLab es ASP.NET WebForms que valida Referer + ViewState. Una request
+    // "fría" desde otro contexto recibe 3640 bytes idénticos (HTML de error,
+    // no el PDF). pdf-parse confirma: 'Invalid PDF structure'.
+    //
+    // SOLUCIÓN: suscribirse a popup.on("response") ANTES del waitForLoadState
+    // y capturar el body cuando el browser carga naturalmente el frame del PDF.
+    // El browser hereda toda la sesión (cookies + referer + viewstate) por sí
+    // mismo, igual que cuando el usuario hace click manualmente.
+    // ────────────────────────────────────────────────────────────────────────
+    let capturedPdfBuffer = null;
+    let capturedContentType = null;
+    const responseListener = async (response) => {
+      const url = response.url();
+      if (!/EditPDF\.aspx[^"]*FileName=[^"&]+\.pdf/i.test(url)) return;
+      try {
+        const ct = (response.headers()['content-type'] || '').toLowerCase();
+        const body = await response.body();
+        // Solo capturar si parece PDF real (>1KB y header indica PDF, o magic bytes %PDF)
+        const looksPdf = ct.includes('pdf') || (body.length >= 4 && body.slice(0, 4).toString() === '%PDF');
+        if (looksPdf && body.length > 1000) {
+          capturedPdfBuffer = body;
+          capturedContentType = ct;
+        } else if (dumpFirst) {
+          // Logging diagnóstico SOLO la primera vez
+          const sample = body.toString('utf-8', 0, Math.min(200, body.length)).replace(/\s+/g, ' ');
+          console.log(`       [drilldown] Response no parece PDF: ${body.length}b, ct="${ct}", sample="${sample.slice(0, 150)}"`);
+        }
+      } catch (_) { /* response.body() puede fallar si la página cerró */ }
+    };
+    detailPage.on("response", responseListener);
+
+    // AHORA esperar la carga del popup — el frame del PDF se cargará durante esto,
+    // disparando el response listener.
     await detailPage.waitForLoadState("domcontentloaded", { timeout: WL_DRILLDOWN_TIMEOUT }).catch(() => {});
     await detailPage.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+    // Pequeño buffer adicional para que el response listener termine si está en vuelo
+    await detailPage.waitForTimeout(500).catch(() => {});
 
-    // ────────────────────────────────────────────────────────────────────────
-    // VÍA PRINCIPAL: descargar PDF del frame "main" (EditPDF.aspx?FileName=...pdf)
-    //
-    // Diagnóstico real (May 2026): WinLab usa frameset HTML clásico con 2 frames:
-    //   - "header"  → RefertiSelHeader.aspx (toolbar, no nos sirve)
-    //   - "main"    → EditPDF.aspx?FileName=../Temp/<hash>/<uuid>.pdf&OffuscaPDF=False
-    //
-    // El frame "main" carga un PDF generado server-side. Descargarlo con la
-    // sesión autenticada de Playwright (cookies del contexto) y parsearlo con
-    // pdf-parse es mucho más confiable que intentar scrape DOM (el documento
-    // principal del frameset está vacío y los frames apuntan a otros docs).
-    //
-    // Si esto falla (PDF protegido, frame no carga, etc.), caemos al DOM
-    // scraping de abajo como fallback diagnóstico.
-    // ────────────────────────────────────────────────────────────────────────
-    const pdfInfo = await findPdfFrameUrl(detailPage, 10);
+    // Verificar también el frame (para logging)
+    const pdfInfo = await findPdfFrameUrl(detailPage, 4);
+
     if (pdfInfo) {
-      if (dumpFirst) console.log(`       [drilldown] PDF detectado en frame: FileName=${pdfInfo.fileName}`);
-      try {
-        const response = await ctx.request.get(pdfInfo.pdfUrl, { timeout: 15000 });
-        if (response.ok()) {
-          const pdfBuffer = await response.body();
-          if (dumpFirst) console.log(`       [drilldown] PDF descargado: ${pdfBuffer.length} bytes`);
-          const valoresPDF = await parsePdfToLabValues(pdfBuffer);
-          if (dumpFirst) console.log(`       [drilldown] PDF parseado: ${valoresPDF.length} valores`);
-
-          // Cleanup popup antes de retornar (evita acumulación de pestañas)
-          try {
-            if (detailPage && !detailPage.isClosed()) await detailPage.close();
-          } catch (_) { /* best-effort cleanup */ }
-
-          return valoresPDF;
-        } else {
-          if (dumpFirst) console.log(`       [drilldown] PDF HTTP ${response.status()} — fallback a DOM scrape`);
-        }
-      } catch (e) {
-        if (dumpFirst) console.log(`       [drilldown] PDF error: ${e.message.split("\n")[0]} — fallback a DOM scrape`);
-      }
-    } else {
-      if (dumpFirst) console.log(`       [drilldown] No se encontró frame con PDF — intentando DOM scrape`);
+      console.log(`       [drilldown] PDF frame detectado: FileName=${pdfInfo.fileName}`);
     }
-    // Si llegamos aquí, PDF falló o no aplica: continuar con DOM scrape (fallback)
+
+    if (capturedPdfBuffer) {
+      console.log(`       [drilldown] PDF capturado del browser: ${capturedPdfBuffer.length} bytes (ct=${capturedContentType})`);
+      const valoresPDF = await parsePdfToLabValues(capturedPdfBuffer, 10000);
+      console.log(`       [drilldown] PDF parseado: ${valoresPDF.length} valores`);
+
+      // Cleanup popup antes de retornar
+      detailPage.off("response", responseListener);
+      try {
+        if (detailPage && !detailPage.isClosed()) await detailPage.close();
+      } catch (_) { /* best-effort cleanup */ }
+
+      return valoresPDF;
+    }
+
+    detailPage.off("response", responseListener);
+    if (dumpFirst) {
+      if (pdfInfo) {
+        console.log(`       [drilldown] PDF frame detectado pero browser no entregó body — fallback DOM`);
+      } else {
+        console.log(`       [drilldown] No se detectó frame con PDF — intentando DOM scrape`);
+      }
+    }
+    // Si llegamos aquí, no capturamos PDF utilizable: continuar con DOM scrape (fallback)
   } else {
     detailPage = page;
     if (dumpFirst) console.log(`       [drilldown] No hubo popup; usando página actual (postback AJAX)`);
