@@ -3080,6 +3080,12 @@
           style="background:rgba(14,165,233,.18);border:1px solid rgba(14,165,233,.4);color:#0369a1;padding:4px 9px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
           <span id="winlab-pill-icon">🧪</span> <span id="winlab-pill-lbl">Labs</span>
         </button>
+        <button id="winlab-autosync-btn" onclick="runWinlabSyncNow()"
+          oncontextmenu="event.preventDefault(); toggleWinlabAutoSync();"
+          title="💧 Auto-llenar labs desde WinLab. Click izq: sync ahora. Click der: toggle auto-sync ON/OFF al refrescar."
+          style="background:rgba(100,116,139,.25);border:1px solid rgba(100,116,139,.45);color:#e0f2fe;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
+          💧 Auto OFF
+        </button>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
         <button id="logout-btn" onclick="logout()" title="Cerrar sesión"
@@ -4428,12 +4434,281 @@
     let _lastSyncErrorDetail = "";
     let _syncFadeTimer = null;
 
+    // ─── WINLAB → LAB-SNAPSHOT MAPPER ────────────────────────────────────────────
+    // Resuelve el "puente faltante": toma el JSON crudo del scraper
+    // (winlab_labs.data.reportes[].valores[]) y lo transforma en un snapshot
+    // tipado para nd.labHistory que renderLabSection sabe pintar.
+    //
+    // Diseño:
+    //   - Aliases regex por cada clave de LAB_GROUPS (hb, leucos, plaq, etc.)
+    //   - Conservador: solo escribe si encuentra match claro
+    //   - Preserva ediciones manuales (manual gana)
+    //   - Feature flag: WINLAB_AUTO_SYNC en localStorage (default false)
+    //   - source='winlab' marca el snapshot para distinguir de manual
+    // ──────────────────────────────────────────────────────────────────────────────
+    const WINLAB_ALIASES = {
+      // Biometría / función renal
+      hb:        [/^hb$/i, /hemoglobi/i, /^hgb$/i],
+      leucos:    [/^leu$/i, /leucocit/i, /^wbc$/i, /gl[oó]bulos blancos/i],
+      plaq:      [/plaq/i, /^plt$/i, /trombocit/i],
+      cr:        [/creatinin/i, /^cr$/i, /^crea$/i],
+      urea:      [/^urea$/i, /^bun$/i, /nitr[oó]geno ureic/i],
+      glu:       [/glucos/i, /^glu$/i, /glicem/i, /glyc/i],
+      na:        [/^sodio$/i, /^na$/i, /^na\+/i],
+      k:         [/^potasio$/i, /^k$/i, /^k\+/i],
+      alb:       [/alb[uú]min/i, /^alb$/i],
+      pcr:       [/prote[ií]na c reactiv/i, /^pcr$/i, /c-reactive/i],
+      pct:       [/procalcitonin/i, /^pct$/i],
+      lac:       [/^lactato$/i, /^lac$/i, /[áa]cido l[áa]ctic/i],
+      // Función hepática — DEBE IR ANTES de electrolitos para que "FOSFATASA ALCALINA"
+      // capture en `fa` y no en `p` (fósforo).
+      ast:       [/(^|\W)ast(\W|$)/i, /(^|\W)tgo(\W|$)/i, /aspartat/i, /transaminas.*glut[áa]mic.*oxal/i],
+      alt:       [/(^|\W)alt(\W|$)/i, /(^|\W)tgp(\W|$)/i, /alaninoamin/i, /alanin.*transam/i],
+      bt:        [/bilirrubin.*total/i, /^bt$/i, /total bilirrubin/i],
+      bd:        [/bilirrubin.*direct/i, /^bd$/i, /direct bilirrubin/i],
+      ggt:       [/gamma.*gt/i, /^ggt$/i, /gama.*gt/i, /transpeptidas/i],
+      fa:        [/fosfatasa.*alcalin/i, /^fa$/i, /^alp$/i, /^fal$/i, /alkaline phos/i],
+      // Electrolitos extendidos — `p` (fósforo) AHORA con regex específico que no captura "FOSFATASA"
+      mg:        [/^magnesio$/i, /^mg$/i, /^mg\+/i],
+      ca:        [/^calcio$/i, /^ca$/i, /^ca\+/i],
+      p:         [/^f[oó]sforo$/i, /^p$/i, /^phos$/i, /^phosphor/i],
+      cl:        [/^cloro$/i, /^cl$/i, /^cl-/i, /chlorid/i],
+      // Coagulación
+      tp:        [/tiempo de protromb/i, /^tp$/i, /^pt$/i, /prothromb/i],
+      ttp:       [/tromboplastin/i, /^ttp$/i, /^aptt$/i, /^ptt$/i],
+      inr:       [/^inr$/i, /raz[oó]n.*normalizad/i],
+      fibrinogeno: [/fibrin[oó]gen/i, /^fib$/i],
+      dimero_d:  [/d[ií]mero.*d/i, /d-dimer/i],
+      // Pancreáticas
+      amilasa:   [/amilas/i, /^amy$/i],
+      lipasa:    [/^lipas/i, /^lip$/i],
+      // Gasometría
+      ph:        [/^ph$/i, /^ph arter/i, /^ph venos/i],
+      pco2:      [/pco2/i, /pco₂/i, /pco 2/i, /carbon diox/i],
+      po2:       [/^po2$/i, /^po₂$/i, /^po 2$/i, /pres.*o2/i],
+      hco3:      [/hco3/i, /hco₃/i, /bicarbonat/i],
+      be:        [/exceso de base/i, /^be$/i, /^eb$/i, /base excess/i],
+      sato2:     [/sato2/i, /sato₂/i, /satur.*o2/i, /^so2$/i],
+      // EGO
+      ego_color: [/color.*orina/i, /^color$/i],
+      ego_asp:   [/aspecto/i, /turbidez/i],
+      ego_dens:  [/densidad/i, /specific gravity/i],
+      ego_ph:    [/ph.*orina/i, /ph.*urin/i],
+      ego_leuco: [/leucocit.*orina/i, /esterasa.*leucoc/i, /leuc.*est/i],
+      ego_nitri: [/nitrit/i],
+      ego_bact:  [/bacter[ií]a/i],
+      ego_prot:  [/prote[ií]n.*orin/i, /proteinur/i],
+      ego_glu:   [/glucos.*orin/i, /glucosuri/i],
+      ego_hem:   [/hemat[ií]e/i, /eritroc.*orin/i, /sangre.*orin/i],
+      // Cardíaco
+      tropI:     [/troponin.*i/i, /^trop\s*i$/i],
+      tropT:     [/troponin.*t/i, /^trop\s*t$/i, /troponin.*alta sensib/i],
+      ck:        [/^ck$/i, /^cpk$/i, /creatin.*kinas/i, /creatin.*quinas/i],
+      ck_mb:     [/ck.*mb/i, /cpk.*mb/i],
+      ldh:       [/^ldh$/i, /deshidrog.*l[áa]ct/i, /lactate dehy/i],
+      bnp:       [/^bnp$/i, /p[eé]ptido.*natriur.*b/i],
+      nt_probnp: [/nt.*probnp/i, /pro.*bnp/i],
+      mioglobina:[/mioglobin/i, /myoglobin/i],
+      ferritina: [/ferritin/i],
+    };
+
+    function normalizeWinlabName(s) {
+      return String(s || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function mapWinlabReportesToLabs(reportes) {
+      const labs = {};
+      if (!Array.isArray(reportes)) return labs;
+      for (const rep of reportes) {
+        const valores = Array.isArray(rep?.valores) ? rep.valores : [];
+        for (const v of valores) {
+          const rawName = v?.estudio || v?.nombre || "";
+          const rawVal = v?.valor;
+          if (!rawName || rawVal === null || rawVal === undefined || rawVal === "") continue;
+          const name = normalizeWinlabName(rawName);
+          if (!name) continue;
+          // Probar contra cada alias en orden de definición; primer match gana.
+          for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) {
+            if (key in labs) continue; // ya mapeado, no sobreescribir
+            if (patterns.some(rx => rx.test(name))) {
+              labs[key] = String(rawVal).trim();
+              break;
+            }
+          }
+        }
+      }
+      return labs;
+    }
+
+    function buildWinlabLabSnapshot(winlabRow) {
+      if (!winlabRow || !winlabRow.data) return null;
+      const fecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : null);
+      if (!fecha) return null;
+      const labs = mapWinlabReportesToLabs(winlabRow.data.reportes);
+      if (!Object.keys(labs).length) return null;
+      return {
+        fecha,
+        labs,
+        extra: [],
+        source: "winlab",
+        synced_at: new Date().toISOString(),
+        scraped_at: winlabRow.scraped_at || null,
+      };
+    }
+
+    // Aplica el sync WinLab → nd.labHistory para TODOS los pacientes con `exp` que
+    // matchee. Reglas de merge:
+    //   1) Si NO existe snapshot para esa fecha → inserta el de WinLab
+    //   2) Si existe snapshot con source='winlab' → actualiza valores
+    //   3) Si existe snapshot manual (source != 'winlab') → MERGE conservador:
+    //      solo llena campos vacíos. Nunca pisa valor manual no vacío.
+    //   4) Si labHistory tiene > 1 snapshot mismo día (manual + winlab) → unifica
+    async function applyWinlabSyncToPatients(opts) {
+      opts = opts || {};
+      const verbose = !!opts.verbose;
+      const stats = { matched: 0, inserted: 0, merged: 0, skipped: 0, errors: 0 };
+      try {
+        if (!patients || !patients.length) return stats;
+        if (!winlabByExp || !Object.keys(winlabByExp).length) return stats;
+        for (const p of patients) {
+          const exp = String(p?.exp || "").trim();
+          if (!exp) { stats.skipped++; continue; }
+          const wl = winlabByExp[exp];
+          if (!wl || !wl.data) { stats.skipped++; continue; }
+          const snap = buildWinlabLabSnapshot(wl);
+          if (!snap || !Object.keys(snap.labs).length) { stats.skipped++; continue; }
+          stats.matched++;
+          const k = pid(p);
+          const nd = migrateNote(noteData[k] || defaultData());
+          const hist = Array.isArray(nd.labHistory) ? nd.labHistory.slice() : [];
+          const existingIdx = hist.findIndex(s => s && s.fecha === snap.fecha);
+          if (existingIdx === -1) {
+            hist.push(snap);
+            stats.inserted++;
+          } else {
+            const ex = hist[existingIdx];
+            const exLabs = ex.labs || {};
+            const isManual = ex.source && ex.source !== "winlab";
+            const newLabs = { ...exLabs };
+            for (const [labKey, labVal] of Object.entries(snap.labs)) {
+              if (isManual) {
+                // Solo llena campos VACÍOS — nunca pisa edición manual no vacía
+                const curVal = exLabs[labKey];
+                if (curVal === undefined || curVal === null || String(curVal).trim() === "") {
+                  newLabs[labKey] = labVal;
+                }
+              } else {
+                // Snapshot WinLab previo: actualiza todo
+                newLabs[labKey] = labVal;
+              }
+            }
+            hist[existingIdx] = {
+              ...ex,
+              labs: newLabs,
+              synced_at: snap.synced_at,
+              scraped_at: snap.scraped_at,
+              // si era manual lo dejamos como manual; el dato simplemente se enriqueció
+              source: isManual ? (ex.source || "manual") : "winlab",
+            };
+            stats.merged++;
+          }
+          nd.labHistory = hist;
+          noteData[k] = nd;
+          try { saveNote(k, nd); } catch (e) { stats.errors++; if (verbose) console.warn("[winlab-sync] saveNote fallo", k, e); }
+        }
+        if (verbose) console.log("[winlab-sync] stats:", stats);
+        return stats;
+      } catch (e) {
+        console.warn("[winlab-sync] error:", e);
+        stats.errors++;
+        return stats;
+      }
+    }
+
+    // Feature flag — default OFF. Para activar:
+    //   localStorage.setItem("pl_winlab_auto_sync", "1") y recargar
+    function isWinlabAutoSyncEnabled() {
+      try { return localStorage.getItem("pl_winlab_auto_sync") === "1"; } catch (_) { return false; }
+    }
+    function setWinlabAutoSync(enabled) {
+      try {
+        if (enabled) localStorage.setItem("pl_winlab_auto_sync", "1");
+        else localStorage.removeItem("pl_winlab_auto_sync");
+      } catch (_) {}
+    }
+
+    // Toast simple reutilizable (no depende de funciones externas)
+    function _wlShowToast(msg, color, ms) {
+      let t = document.getElementById("__wl_sync_toast");
+      if (!t) {
+        t = document.createElement("div");
+        t.id = "__wl_sync_toast";
+        t.style.cssText = "position:fixed;top:80px;right:20px;z-index:99999;padding:14px 20px;border-radius:10px;font:600 13px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,.3);max-width:380px;line-height:1.5;white-space:pre-line;pointer-events:none;transition:opacity .2s";
+        document.body.appendChild(t);
+      }
+      t.style.background = color || "#0369a1";
+      t.textContent = msg;
+      t.style.opacity = "1";
+      t.style.display = "block";
+      clearTimeout(t._to);
+      t._to = setTimeout(() => { t.style.opacity = "0"; setTimeout(() => t.style.display = "none", 250); }, ms || 5000);
+    }
+
+    // Botón manual: corre el sync ahora, muestra toast con stats.
+    async function runWinlabSyncNow() {
+      const btn = document.getElementById("winlab-autosync-btn");
+      const prevHtml = btn ? btn.innerHTML : "";
+      try {
+        if (btn) { btn.innerHTML = "⏳ Sync..."; btn.disabled = true; }
+        // Refresca data desde Supabase primero (skip auto-apply para hacerlo explícito aquí)
+        await refreshWinlabLabs({ skipAutoSync: true });
+        const stats = await applyWinlabSyncToPatients({ verbose: true });
+        const totalLabs = Object.keys(winlabByExp || {}).length;
+        const msg = `💧 WinLab sync completo\n` +
+          `${totalLabs} labs en BD · ${stats.matched} matchearon con censo\n` +
+          `${stats.inserted} insertados · ${stats.merged} actualizados`;
+        _wlShowToast(msg, "#15803d", 6000);
+        if (typeof renderView === "function") renderView();
+      } catch (e) {
+        _wlShowToast("⚠️ Error: " + (e?.message || e), "#dc2626", 6000);
+      } finally {
+        if (btn) { btn.innerHTML = prevHtml; btn.disabled = false; }
+      }
+    }
+
+    // Toggle de feature flag con feedback visual
+    function toggleWinlabAutoSync() {
+      const wasOn = isWinlabAutoSyncEnabled();
+      setWinlabAutoSync(!wasOn);
+      const nowOn = isWinlabAutoSyncEnabled();
+      _wlShowToast(
+        nowOn
+          ? "✅ Auto-sync WinLab ACTIVADO\nLos labs se llenarán solos al refrescar."
+          : "⏸️ Auto-sync WinLab DESACTIVADO\nVuelve a edición manual.",
+        nowOn ? "#15803d" : "#64748b",
+        4500
+      );
+      // Actualizar UI del botón si existe
+      const btn = document.getElementById("winlab-autosync-btn");
+      if (btn) {
+        btn.innerHTML = nowOn ? "💧 Auto ON" : "💧 Auto OFF";
+        btn.style.background = nowOn ? "rgba(16,185,129,.25)" : "rgba(100,116,139,.25)";
+        btn.style.borderColor = nowOn ? "rgba(16,185,129,.6)" : "rgba(100,116,139,.45)";
+      }
+      // Si lo encendieron, correr sync una vez ya
+      if (nowOn) runWinlabSyncNow();
+    }
+
     // ─── WINLAB: refresh manual + abrir GH Action ─────────────────────────────────
     // El scraper corre solo todos los dias 13:15 CST (cron). Estos handlers
     // permiten al usuario:
     //   - click izq:    recargar winlab_labs desde Supabase (rapido, sin esperar cron)
     //   - click derecho: abrir el workflow en GitHub para forzar scraping ahora
-    async function refreshWinlabLabs() {
+    async function refreshWinlabLabs(opts) {
       const lbl = document.getElementById("winlab-pill-lbl");
       const icon = document.getElementById("winlab-pill-icon");
       const prevLbl = lbl ? lbl.textContent : "";
@@ -4452,6 +4727,14 @@
           if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
         });
         winlabByExp = next;
+        // Auto-sync WinLab → labHistory si feature flag está ON y no se pidió skip
+        if (!opts || !opts.skipAutoSync) {
+          try {
+            if (isWinlabAutoSyncEnabled()) {
+              await applyWinlabSyncToPatients({ verbose: false });
+            }
+          } catch (_e) { /* no fatal: sigue mostrando UI */ }
+        }
         // Re-render con la nueva data.
         if (typeof renderView === "function") renderView();
         if (icon) icon.textContent = "✅";
@@ -6764,6 +7047,16 @@
       renderUserChip();
       initFontSize();
       initTheme();
+      // Init del botón WinLab Auto-sync (refleja estado del feature flag)
+      try {
+        const btn = document.getElementById("winlab-autosync-btn");
+        if (btn) {
+          const on = isWinlabAutoSyncEnabled();
+          btn.innerHTML = on ? "💧 Auto ON" : "💧 Auto OFF";
+          btn.style.background = on ? "rgba(16,185,129,.25)" : "rgba(100,116,139,.25)";
+          btn.style.borderColor = on ? "rgba(16,185,129,.6)" : "rgba(100,116,139,.45)";
+        }
+      } catch (_) {}
 
       // ── Render inmediato desde localStorage: pacientes visibles antes de esperar red ──
       // Usamos setTimeout(0) para diferir hasta que el script termine de definir
@@ -6875,6 +7168,22 @@
       rotateQuote();
       updateCourseCountdown();
       initNoOlvidarSync();
+
+      // ── WinLab Auto-sync inicial ──────────────────────────────────────────
+      // Si el feature flag está activo, en cuanto patients + winlabByExp estén
+      // cargados, aplicamos sync para que las tarjetas aparezcan ya con labs
+      // poblados sin que el usuario haga nada.
+      if (isWinlabAutoSyncEnabled() && patients && patients.length && winlabByExp && Object.keys(winlabByExp).length) {
+        applyWinlabSyncToPatients({ verbose: false }).then(stats => {
+          if (stats.inserted + stats.merged > 0) {
+            renderView();
+            _wlShowToast(
+              `💧 WinLab: ${stats.matched} pacientes con labs auto-llenados`,
+              "#0e7490", 3500
+            );
+          }
+        }).catch(e => safeLog("[winlab-autosync init]", e));
+      }
 
       // Cargar no_olvidar y procedimientos desde DB en segundo plano (no bloquea el render inicial)
       if (navigator.onLine) {
