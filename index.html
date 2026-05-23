@@ -4567,20 +4567,79 @@
     //   3) Si existe snapshot manual (source != 'winlab') → MERGE conservador:
     //      solo llena campos vacíos. Nunca pisa valor manual no vacío.
     //   4) Si labHistory tiene > 1 snapshot mismo día (manual + winlab) → unifica
+    // Genera variantes del expediente para hacer match resilient.
+    // Replica la lógica de rpa/lib.js::expVariants que el scraper usa al consultar.
+    // Casos típicos:
+    //   "25-27280"  → ["25-27280", "2527280", "27280"]
+    //   "2527280"   → ["2527280"]
+    //   "27280"     → ["27280"]
+    function getExpVariants(exp) {
+      if (!exp) return [];
+      const e = String(exp).trim();
+      const variants = new Set();
+      if (e) variants.add(e);
+      if (e.includes("-")) {
+        const noDash = e.replace(/-/g, "");
+        if (noDash) variants.add(noDash);
+        const tail = e.split("-").pop();
+        if (tail && tail !== e) variants.add(tail);
+      }
+      // Si es solo dígitos, también probar con guión típico "AA-NNNNN" (no agresivo)
+      return Array.from(variants);
+    }
+
+    // Resuelve un winlab row buscando el exp del paciente y sus variantes.
+    // Construye un índice de winlabByExp expandido por variantes para búsqueda O(1).
+    let _winlabExpIndex = null;
+    let _winlabExpIndexBuiltFor = null;
+    function findWinlabRowForPatient(p) {
+      if (!p || !p.exp || !winlabByExp) return null;
+      // Reconstruir índice solo si winlabByExp cambió (cheap detection: ref id)
+      if (_winlabExpIndex === null || _winlabExpIndexBuiltFor !== winlabByExp) {
+        _winlabExpIndex = {};
+        for (const [key, row] of Object.entries(winlabByExp)) {
+          // Indexar el exp tal cual viene + sus variantes
+          for (const v of getExpVariants(key)) _winlabExpIndex[v] = row;
+          // También indexar por el campo row.exp por si difiere de la clave
+          if (row && row.exp) {
+            for (const v of getExpVariants(row.exp)) {
+              if (!_winlabExpIndex[v]) _winlabExpIndex[v] = row;
+            }
+          }
+        }
+        _winlabExpIndexBuiltFor = winlabByExp;
+      }
+      // Buscar por cualquier variante del exp del paciente
+      for (const v of getExpVariants(p.exp)) {
+        if (_winlabExpIndex[v]) return _winlabExpIndex[v];
+      }
+      return null;
+    }
+
     async function applyWinlabSyncToPatients(opts) {
       opts = opts || {};
       const verbose = !!opts.verbose;
-      const stats = { matched: 0, inserted: 0, merged: 0, skipped: 0, errors: 0 };
+      const stats = { matched: 0, inserted: 0, merged: 0, skipped: 0, errors: 0, no_exp: 0, no_winlab: 0, no_labs_parsed: 0 };
+      // Diagnostics: muestra de mismatches para debugging
+      const sample_mismatches = [];
       try {
         if (!patients || !patients.length) return stats;
         if (!winlabByExp || !Object.keys(winlabByExp).length) return stats;
+        // Invalidar índice por si cambió winlabByExp
+        _winlabExpIndex = null;
         for (const p of patients) {
           const exp = String(p?.exp || "").trim();
-          if (!exp) { stats.skipped++; continue; }
-          const wl = winlabByExp[exp];
-          if (!wl || !wl.data) { stats.skipped++; continue; }
+          if (!exp) { stats.skipped++; stats.no_exp++; continue; }
+          const wl = findWinlabRowForPatient(p);
+          if (!wl || !wl.data) {
+            stats.skipped++; stats.no_winlab++;
+            if (verbose && sample_mismatches.length < 5) {
+              sample_mismatches.push({ cama: p.cama, exp: exp, variants: getExpVariants(exp) });
+            }
+            continue;
+          }
           const snap = buildWinlabLabSnapshot(wl);
-          if (!snap || !Object.keys(snap.labs).length) { stats.skipped++; continue; }
+          if (!snap || !Object.keys(snap.labs).length) { stats.skipped++; stats.no_labs_parsed++; continue; }
           stats.matched++;
           const k = pid(p);
           const nd = migrateNote(noteData[k] || defaultData());
@@ -4620,7 +4679,24 @@
           noteData[k] = nd;
           try { saveNote(k, nd); } catch (e) { stats.errors++; if (verbose) console.warn("[winlab-sync] saveNote fallo", k, e); }
         }
-        if (verbose) console.log("[winlab-sync] stats:", stats);
+        if (verbose) {
+          console.log("[winlab-sync] stats:", stats);
+          if (stats.no_winlab > 0 && sample_mismatches.length) {
+            console.log("[winlab-sync] Pacientes SIN match en winlab_labs (muestra de 5):");
+            console.table(sample_mismatches);
+            const wlSample = Object.keys(winlabByExp).slice(0, 10);
+            console.log("[winlab-sync] Sample de exp en winlab_labs:", wlSample);
+            console.log("[winlab-sync] Para debug: window._wl_diag = { patients_exp: patients.map(p=>p.exp), winlab_exp: Object.keys(winlabByExp) }");
+            // Exponer para inspección interactiva
+            try {
+              window._wl_diag = {
+                patients_exp: patients.map(p => ({ cama: p.cama, exp: p.exp })),
+                winlab_exp: Object.keys(winlabByExp),
+                first_winlab_row: winlabByExp[Object.keys(winlabByExp)[0]],
+              };
+            } catch (_) {}
+          }
+        }
         return stats;
       } catch (e) {
         console.warn("[winlab-sync] error:", e);
@@ -4668,10 +4744,25 @@
         await refreshWinlabLabs({ skipAutoSync: true });
         const stats = await applyWinlabSyncToPatients({ verbose: true });
         const totalLabs = Object.keys(winlabByExp || {}).length;
-        const msg = `💧 WinLab sync completo\n` +
-          `${totalLabs} labs en BD · ${stats.matched} matchearon con censo\n` +
-          `${stats.inserted} insertados · ${stats.merged} actualizados`;
-        _wlShowToast(msg, "#15803d", 6000);
+        const totalPts = (patients || []).length;
+        let msg, color;
+        if (stats.matched === 0 && totalLabs > 0 && totalPts > 0) {
+          // Caso patológico: hay labs y pacientes pero ningún match
+          msg = `⚠️ WinLab: 0 matches\n` +
+            `${totalLabs} labs en BD · ${totalPts} pacientes en censo\n` +
+            `${stats.no_exp} pts sin exp · ${stats.no_winlab} pts sin row WinLab\n` +
+            `Abre consola (F12): inspecciona window._wl_diag`;
+          color = "#d97706";
+        } else if (stats.matched > 0) {
+          msg = `💧 WinLab sync OK\n` +
+            `${stats.matched}/${totalPts} pacientes con labs\n` +
+            `${stats.inserted} insertados · ${stats.merged} actualizados`;
+          color = "#15803d";
+        } else {
+          msg = `💧 WinLab sync\n${totalLabs} labs en BD · ${totalPts} pacientes\nSin cambios`;
+          color = "#64748b";
+        }
+        _wlShowToast(msg, color, 8000);
         if (typeof renderView === "function") renderView();
       } catch (e) {
         _wlShowToast("⚠️ Error: " + (e?.message || e), "#dc2626", 6000);
