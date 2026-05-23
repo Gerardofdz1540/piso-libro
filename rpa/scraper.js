@@ -710,6 +710,66 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
       return valoresPDF;
     }
 
+    // ────────────────────────────────────────────────────────────────────────
+    // V5: FETCH DIRECTO DEL PDF ESTÁTICO
+    //
+    // DESCUBRIMIENTO (May 2026 iter 5): EditPDF.aspx retorna HTML wrapper que
+    // ejecuta `showPdfTimeOut('../Temp/.../UUID.pdf')` para crear un <embed>.
+    // En Chromium headless NO hay plugin de PDF → el <embed> falla silenciosamente,
+    // el browser NO descarga el PDF, mi listener nunca lo ve.
+    //
+    // SOLUCIÓN: extraer la ruta del PDF del wrapper y hacer ctx.request.get()
+    // directo. A diferencia de EditPDF.aspx (ASP.NET WebForms con ViewState),
+    // /Temp/.../UUID.pdf es un ARCHIVO ESTÁTICO servido por IIS directamente,
+    // sin pipeline ASP.NET. Las cookies de sesión bastan para autorizar.
+    // ────────────────────────────────────────────────────────────────────────
+    if (!capturedPdfBuffer && capturedHtmlWrapper) {
+      // Extraer la ruta relativa del PDF del onload script
+      const pdfPathMatch = capturedHtmlWrapper.match(
+        /showPdfTimeOut\(\s*['"]([^'"]+\.pdf)['"]/i
+      );
+      if (pdfPathMatch) {
+        const relPath = pdfPathMatch[1]; // p.ej. "../Temp/hash/uuid.pdf"
+        try {
+          // Construir URL absoluta resolviendo relativo a la URL del popup
+          const popupUrl = detailPage.url();
+          const pdfUrl = new URL(relPath, popupUrl).toString();
+          if (dumpFirst) {
+            console.log(`       [drilldown] v5: descargando PDF directo: ${pdfUrl}`);
+          }
+          // ctx.request.get() hereda cookies del browser context (sesión WinLab)
+          const apiResp = await ctx.request.get(pdfUrl, { timeout: 15000 });
+          if (apiResp.ok()) {
+            const body = await apiResp.body();
+            const isPdf = body.length >= 4 && body.slice(0, 4).toString() === '%PDF';
+            if (isPdf && body.length > 500) {
+              console.log(`       [drilldown] v5: PDF descargado directo: ${body.length} bytes`);
+              const valoresPDF = await parsePdfToLabValues(body, 10000);
+              console.log(`       [drilldown] v5: PDF parseado: ${valoresPDF.length} valores`);
+
+              // Cleanup popup antes de retornar
+              detailPage.off("response", responseListener);
+              try {
+                if (detailPage && !detailPage.isClosed()) await detailPage.close();
+              } catch (_) { /* best-effort cleanup */ }
+
+              return valoresPDF;
+            } else if (dumpFirst) {
+              console.log(`       [drilldown] v5: response no es PDF válido (${body.length} bytes, magic=${body.slice(0, 8).toString('hex')})`);
+            }
+          } else if (dumpFirst) {
+            console.log(`       [drilldown] v5: HTTP ${apiResp.status()} ${apiResp.statusText()}`);
+          }
+        } catch (err) {
+          if (dumpFirst) {
+            console.log(`       [drilldown] v5: error en fetch directo: ${err.message}`);
+          }
+        }
+      } else if (dumpFirst) {
+        console.log(`       [drilldown] v5: no se encontró showPdfTimeOut(...) en HTML wrapper`);
+      }
+    }
+
     // Diagnóstico: si capturamos el HTML wrapper pero no el PDF, loggear
     // los primeros 3000 chars del HTML para entender su estructura.
     if (capturedHtmlWrapper && dumpFirst) {
