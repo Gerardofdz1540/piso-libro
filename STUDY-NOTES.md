@@ -22,21 +22,6 @@ adicionales con policies permisivas `USING (true)` para rol anon.
 - ALTER DEFAULT PRIVILEGES para futuros objetos
 - Snapshots forenses pre/post con verificación SHA-256
 
-### Hallazgo publicable #1: "Advisor-as-todo loop"
-
-Re-creación sistemática de policies permisivas en tres iteraciones
-independientes por agentes LLM. Mecanismo:
-
-1. Estado correcto post-cierre: RLS habilitada sin policies = deny-by-default
-2. Supabase Advisor flagea como INFO `rls_enabled_no_policy`
-3. Agente interpreta INFO como "warning que silenciar"
-4. Agente genera policy mínima que silencia: `USING (true)`
-5. Policy funcionalmente equivalente a no tener RLS — silencia advisor
-   pero reabre brecha
-
-**Mitigación**: prompts con lista negativa explícita que codifica
-"INFO rls_enabled_no_policy es estado intencional, no to-do".
-
 ---
 
 ## Bloque B — Implementación Supabase Auth (22 mayo 2026)
@@ -55,7 +40,64 @@ independientes por agentes LLM. Mecanismo:
 - Helpers casero (loginSetup, _usersGetAll, _sha256, _usersSave) intactos
   por dependencias detectadas en tiempo de implementación
 
-### Hallazgo publicable #2: "Honest-commit-message rejection"
+---
+
+## Auditoría de cierre (22 mayo 2026, 23:10 hrs)
+
+Auditoría completa vía Supabase MCP + SQL directo confirma:
+
+### Estado de seguridad
+- 0 ERRORs en Security Advisor
+- 0 WARNs de acceso anon (brecha cerrada)
+- 11 WARNs `rls_policy_always_true` para rol authenticated (INTENCIONAL)
+- 1 WARN `auth_leaked_password_protection` (Pro-only, diferida)
+
+### Estado de performance (hallazgos secundarios)
+- 1 WARN `duplicate_index` en `public.notes` (`notes_patient_id_key`
+  y `notes_pkey` idénticos)
+- 2 INFO `unused_index`: `idx_patients_esp`, `idx_lab_entries_fecha`
+
+### Verificación forense de archive
+
+- `list_tables` MCP reportó 0 rows para `public.archive`
+- `SELECT count(*)` directo confirmó 53 rows reales
+- Tamaño físico: 1.4 MB (vs 4.4 MB pre-remediation; reducción atribuible
+  a VACUUM/compactación, NO a pérdida de datos)
+
+### Migration orfana detectada
+
+La migration `20260522141341 grant_anon_all_tables` aparece registrada
+en el historial **POSTERIOR** a la remediation final del Bloque A
+(`20260522134408 remediation_2026_05_21_drop_recreated_templates`).
+
+Análisis funcional: el GRANT a rol Postgres sin policies que permitan
+acceso es INERTE — RLS sigue bloqueando. Advisor confirma 0 WARNs anon.
+
+Análisis de gobernanza: probablemente aplicada por una sesión paralela
+de agente fuera de la ventana de contexto del operador principal.
+Constituye ejemplo concreto del patrón "advisor-as-todo loop"
+documentado abajo. Pendiente de limpieza explícita en Bloque C.
+
+---
+
+## Hallazgos publicables
+
+### Hallazgo #1 — "Advisor-as-todo loop"
+
+Re-creación sistemática de policies permisivas en tres iteraciones
+independientes por agentes LLM. Mecanismo:
+
+1. Estado correcto post-cierre: RLS habilitada sin policies = deny-by-default
+2. Supabase Advisor flagea como INFO `rls_enabled_no_policy`
+3. Agente interpreta INFO como "warning que silenciar"
+4. Agente genera policy mínima que silencia: `USING (true)`
+5. Policy funcionalmente equivalente a no tener RLS — silencia advisor
+   pero reabre brecha
+
+**Mitigación**: prompts con lista negativa explícita que codifica
+"INFO rls_enabled_no_policy es estado intencional, no to-do".
+
+### Hallazgo #2 — "Honest-commit-message rejection"
 
 Agente codificador detectó que el commit message prescrito contenía
 afirmaciones no respaldadas por su implementación final ("remove legacy
@@ -63,57 +105,54 @@ pl_users" cuando pl_users no fue removido). Sustituyó por mensaje veraz.
 Opuesto al "rubber-stamp commit". Replicable con prompts que dan licencia
 explícita al agente para reescribir mensajes que detecte como falsos.
 
-### Hallazgo publicable #3: "Surgical-edit-by-investigator pattern"
+### Hallazgo #3 — "Surgical-edit-by-investigator pattern"
 
 Para edits <20 líneas, ejecución directa por el investigador de scripts
 Python con verificación inline (`count()` pre-replace, abort si patrón
 no único) demostró mejor ratio costo/seguridad que delegación a agente.
 Particularmente útil para edits con identificadores únicos contextuales.
 
-### Hallazgo publicable #4: "Agent assumption drift"
+### Hallazgo #4 — "Agent assumption drift"
 
-Durante el cierre de Bloque B, el agente conversacional (operando en chat
-web con MCP) arrastró durante múltiples turnos un supuesto no verificado
-("GitHub Pages está apagado") originado en una conversación previa
-parcialmente recordada. Este supuesto se propagó a través de planeación,
-documentación intermedia y recomendaciones, sin ser challenged hasta que
-una screenshot del investigador reveló la discrepancia: Pages había
-permanecido público durante toda la sesión, re-deployándose
-automáticamente con cada merge a main.
+El agente conversacional arrastró durante múltiples turnos un supuesto
+no verificado ("GitHub Pages está apagado") originado en una conversación
+previa parcialmente recordada. Se propagó a planeación, documentación
+intermedia y recomendaciones, hasta que una screenshot del investigador
+reveló la discrepancia: Pages había permanecido público durante toda la
+sesión, re-deployándose automáticamente con cada merge a main.
 
-**Mecanismo**: el agente no tiene mecanismo nativo de "verify before
-assume" para estados infraestructurales fuera de sus MCPs activos
-(en este caso, MCP de Supabase estaba disponible pero MCP de GitHub
-Pages no, generando un punto ciego).
+**Mitigación operativa**: incluir verificación explícita de TODAS las
+superficies de exposición conocidas (hosting, CDN, mirrors, archives) en
+auditorías de seguridad. Documentar supuestos como "verified" o "assumed".
 
-**Mitigación operativa**: incluir en el inventario inicial de cualquier
-auditoría de seguridad una verificación explícita de TODAS las superficies
-de exposición conocidas (hosting, CDN, mirrors, archives), no solo la
-base de datos. Documentar supuestos al planear y marcarlos como
-"verified" o "assumed" para auditoría posterior.
+### Hallazgo #5 — "Planner-stats unreliability for forensic auditing"
 
-**Riesgo concreto durante la sesión**: aunque la brecha de datos quedó
-cerrada por RLS en Bloque A, el bundle público de la app con anon key
-embebida permaneció accesible durante toda la sesión. El riesgo real
-fue bajo (policies anon cerradas, login obligatorio post-PR #128) pero
-no cero (brute-force del login sin rate limiting custom, archivado en
-Wayback Machine).
+APIs administrativas (incluyendo Supabase MCP `list_tables`) consultan
+metadatos del planner Postgres (`pg_class.reltuples`) que se actualizan
+asíncronamente vía VACUUM y pueden divergir significativamente de los
+counts reales. Confirmado en dos auditorías independientes:
+
+1. Bloque A: tabla `archive` con 4.4 MB y 53 rows reales reportaba 0 rows
+2. Bloque B: tabla `archive` con 1.4 MB (post-VACUUM) y 53 rows reales
+   reportaba 0 rows desde MCP
+
+**Implicación operativa**: auditorías que dependen exclusivamente de
+APIs administrativas pueden subestimar tanto exposición como persistencia
+de datos. Forensics requiere `SELECT count(*)` directo además de queries
+a metadata.
 
 ---
 
 ## Estado final del sistema (22 mayo 2026, post-cierre)
 
 ### Supabase (vkxplmrzyqlamxpbtmes, free tier)
-
-- 0 ERRORs en Security Advisor
-- 0 WARNs de acceso anon
-- 11 WARNs `rls_policy_always_true` para rol authenticated (INTENCIONAL,
-  un solo usuario admin)
-- 1 WARN `auth_leaked_password_protection` (Pro-only, decisión
-  costo-beneficio: no upgrade)
+- Postgres 17.6.1.063, region us-west-2
+- Status: ACTIVE_HEALTHY
+- 11 tablas en public, todas con RLS habilitada
+- 9 migrations registradas (4 originales + 5 del 22 mayo)
+- 0 Edge Functions deployed
 
 ### Cliente (index.html, 16,286 líneas)
-
 - Login funcional vía Supabase Auth con email + password
 - Sesión persistente con localStorage
 - Token routing manual a wrappers fetch() existentes
@@ -121,11 +160,10 @@ Wayback Machine).
 - Servida exclusivamente local con `python3 -m http.server 8000`
 
 ### GitHub
-
-- main al día (commit `9f3dd9b`)
-- **GitHub Pages: UNPUBLISHED** (al cierre de sesión 22 mayo)
-- 2 PRs mergeados (#128, #129)
-- ~20 branches remotas obsoletas pendientes de cleanup (no crítico)
+- main al día (commit final con tag v0.1-auth-implemented)
+- GitHub Pages: UNPUBLISHED (al cierre de sesión 22 mayo)
+- 2 PRs mergeados en sesión (#128, #129) + 1 docs PR (#130 si aplica)
+- ~20 branches remotas obsoletas pendientes de cleanup
 
 ---
 
@@ -145,4 +183,8 @@ Wayback Machine).
     leaked password protection, PITR, o custom domains
 11. Auditoría de presencia en archivos públicos (Wayback Machine,
     archive.today) del estado pre-cierre
+12. Cleanup de migration orfana `grant_anon_all_tables` (drop migration
+    record o agregar revoke explícito como nueva migration)
+13. Drop de duplicate index `notes_patient_id_key` (mantener `notes_pkey`)
+14. Drop o uso de unused indexes `idx_patients_esp`, `idx_lab_entries_fecha`
 
