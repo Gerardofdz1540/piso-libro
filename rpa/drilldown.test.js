@@ -147,5 +147,32 @@ function assert(cond, name) {
     "package.json: requiere Node 20+ (compatible con pdf-parse@2)");
 }
 
+// ── 10. V4 REGRESSION GUARDS: captura por content + diagnóstico HTML wrapper ─
+{
+  // v4 captura PDF de CUALQUIER URL (no solo EditPDF.aspx con FileName=)
+  // porque EditPDF.aspx es un wrapper HTML, el PDF binario viene en otra request
+  assert(
+    /capturedHtmlWrapper/.test(scraperSource),
+    "v4: variable capturedHtmlWrapper presente (diagnóstico del wrapper)"
+  );
+  assert(
+    /HTML wrapper de EditPDF \(3000 chars\)/.test(scraperSource),
+    "v4: dump del HTML wrapper para diagnóstico cuando no captura PDF"
+  );
+  assert(
+    /URLs \.pdf encontradas en HTML wrapper/.test(scraperSource),
+    "v4: regex busca URLs .pdf dentro del HTML wrapper"
+  );
+  // v4 tiene espera activa (no solo networkidle fijo)
+  assert(
+    /while \(!capturedPdfBuffer && \(Date\.now\(\) - startedWaiting\)/.test(scraperSource),
+    "v4: espera activa hasta capturar PDF o timeout"
+  );
+  assert(
+    /WAIT_PDF_MS = 8000/.test(scraperSource),
+    "v4: timeout de 8s para captura del PDF binario"
+  );
+}
+
 console.log(`\n${pass} pass · ${fail} fail`);
 if (fail > 0) process.exit(1);
