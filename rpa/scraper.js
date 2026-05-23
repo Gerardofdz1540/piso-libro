@@ -15,6 +15,7 @@ import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
          isMeaningfulReportRow, extractApellidos } from "./lib.js";
+import { parsePdfToLabValues, findPdfFrameUrl } from "./pdf-extract.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -588,6 +589,13 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
 // Click en una fila especifica de la tabla de resultados, scrapea la
 // pantalla de detalle (lab values) y vuelve a la lista para la siguiente.
 // Si dumpFirst=true, vuelca el DOM del detalle para diagnostico (1ra vez).
+// ════════════════════════════════════════════════════════════════════════
+// PDF EXTRACTION — la lógica vive en pdf-extract.js (testeable sin Playwright)
+// Aquí solo se usan: parsePdfToLabValues(buffer), findPdfFrameUrl(popupPage)
+// ════════════════════════════════════════════════════════════════════════
+
+// ── DRILL-DOWN: para cada reporte, click → popup → frame PDF → descargar → parsear ──
+
 async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst) {
   const link = page.locator("table").nth(tableIdx)
     .locator("tr").nth(rowIdxInTable)
@@ -595,9 +603,21 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
   const linkCount = await link.count();
   if (!linkCount) return null;
 
-  // Click del link de detalle. Tambien es postback AJAX (o nueva navegacion
-  // si abre otra .aspx). Probamos waitForAspNetReady; si fue navegacion
-  // completa, networkidle igual la cubre.
+  // ────────────────────────────────────────────────────────────────────────────
+  // FIX RAÍZ (May 2026): WinLab abre el detalle del reporte (WinReferral.htm)
+  // en una NUEVA VENTANA/PESTAÑA emergente, no como postback AJAX en la misma
+  // página. El código anterior nunca cambiaba de contexto y terminaba parseando
+  // la página de búsqueda (lista de reportes) como si fuera detalle, lo que
+  // producía "valores" con estudio="22/05/2026 14:11" y valor="2605221486"
+  // (códigos de reporte) en vez de Hb/Leu/Plaq/etc.
+  //
+  // Solución: suscribirse al evento "page" del contexto ANTES del click;
+  // si abre popup trabajamos con él, si no abre (fallback) usamos page como antes.
+  // ────────────────────────────────────────────────────────────────────────────
+  const ctx = page.context();
+  const popupPromise = ctx.waitForEvent("page", { timeout: 4000 }).catch(() => null);
+
+  // Click del link de detalle.
   try {
     await link.click({ force: true, timeout: 5000 });
   } catch {
@@ -608,12 +628,72 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
       if (el) el.click();
     }, { t: tableIdx, r: rowIdxInTable });
   }
-  await waitForAspNetReady(page, WL_DRILLDOWN_TIMEOUT);
+
+  // Race: popup vs postback. Resolver cuál tipo de instalación es.
+  const popup = await popupPromise;
+  let detailPage;
+  let popupOpened = false;
+  if (popup) {
+    popupOpened = true;
+    detailPage = popup;
+    if (dumpFirst) console.log(`       [drilldown] POPUP detectado: ${detailPage.url()}`);
+    await detailPage.waitForLoadState("domcontentloaded", { timeout: WL_DRILLDOWN_TIMEOUT }).catch(() => {});
+    await detailPage.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+
+    // ────────────────────────────────────────────────────────────────────────
+    // VÍA PRINCIPAL: descargar PDF del frame "main" (EditPDF.aspx?FileName=...pdf)
+    //
+    // Diagnóstico real (May 2026): WinLab usa frameset HTML clásico con 2 frames:
+    //   - "header"  → RefertiSelHeader.aspx (toolbar, no nos sirve)
+    //   - "main"    → EditPDF.aspx?FileName=../Temp/<hash>/<uuid>.pdf&OffuscaPDF=False
+    //
+    // El frame "main" carga un PDF generado server-side. Descargarlo con la
+    // sesión autenticada de Playwright (cookies del contexto) y parsearlo con
+    // pdf-parse es mucho más confiable que intentar scrape DOM (el documento
+    // principal del frameset está vacío y los frames apuntan a otros docs).
+    //
+    // Si esto falla (PDF protegido, frame no carga, etc.), caemos al DOM
+    // scraping de abajo como fallback diagnóstico.
+    // ────────────────────────────────────────────────────────────────────────
+    const pdfInfo = await findPdfFrameUrl(detailPage, 10);
+    if (pdfInfo) {
+      if (dumpFirst) console.log(`       [drilldown] PDF detectado en frame: FileName=${pdfInfo.fileName}`);
+      try {
+        const response = await ctx.request.get(pdfInfo.pdfUrl, { timeout: 15000 });
+        if (response.ok()) {
+          const pdfBuffer = await response.body();
+          if (dumpFirst) console.log(`       [drilldown] PDF descargado: ${pdfBuffer.length} bytes`);
+          const valoresPDF = await parsePdfToLabValues(pdfBuffer);
+          if (dumpFirst) console.log(`       [drilldown] PDF parseado: ${valoresPDF.length} valores`);
+
+          // Cleanup popup antes de retornar (evita acumulación de pestañas)
+          try {
+            if (detailPage && !detailPage.isClosed()) await detailPage.close();
+          } catch (_) { /* best-effort cleanup */ }
+
+          return valoresPDF;
+        } else {
+          if (dumpFirst) console.log(`       [drilldown] PDF HTTP ${response.status()} — fallback a DOM scrape`);
+        }
+      } catch (e) {
+        if (dumpFirst) console.log(`       [drilldown] PDF error: ${e.message.split("\n")[0]} — fallback a DOM scrape`);
+      }
+    } else {
+      if (dumpFirst) console.log(`       [drilldown] No se encontró frame con PDF — intentando DOM scrape`);
+    }
+    // Si llegamos aquí, PDF falló o no aplica: continuar con DOM scrape (fallback)
+  } else {
+    detailPage = page;
+    if (dumpFirst) console.log(`       [drilldown] No hubo popup; usando página actual (postback AJAX)`);
+    await waitForAspNetReady(page, WL_DRILLDOWN_TIMEOUT);
+  }
 
   // Scrapear cualquier tabla en la pantalla de detalle que parezca tener
   // estudios/valores. Heuristica: buscar tablas con >= 3 columnas donde
   // la primera columna tiene texto y al menos otra columna parece numero/valor.
-  const detail = await page.evaluate(() => {
+  // NOTA: usamos detailPage (popup si abrió, page si no) para no parsear la
+  // página de búsqueda por accidente.
+  const detail = await detailPage.evaluate(() => {
     const norm = (s) =>
       String(s || "")
         .toUpperCase()
@@ -714,9 +794,26 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     return out;
   });
 
+  // ────────────────────────────────────────────────────────────────────────────
+  // VALIDACIÓN ANTI-CONFUSIÓN: si los headers extraídos son de la pantalla de
+  // búsqueda (no de detalle), descartar valores. Esto sucede si el click no
+  // navegó a detalle real (link muerto, popup bloqueado, etc.) y terminamos
+  // parseando la lista de reportes como si fuera tabla de valores.
+  // ────────────────────────────────────────────────────────────────────────────
+  if (detail && Array.isArray(detail.headers)) {
+    const SEARCH_PAGE_HEADERS_RE = /CODIGO PACIENTE|APELLIDOS COMPLETOS|FECHA DE NAC|UNIDAD SOLICITANTE|REPORTES IMPRESOS/i;
+    const matchesSearchHeaders = detail.headers.some(h => SEARCH_PAGE_HEADERS_RE.test(String(h || "")));
+    if (matchesSearchHeaders) {
+      if (dumpFirst) {
+        console.log(`       [drilldown] DESCARTADO — headers parecen ser de búsqueda, no detalle: ${JSON.stringify(detail.headers)}`);
+      }
+      detail.valores = [];
+    }
+  }
+
   if (dumpFirst && (!detail.valores || !detail.valores.length)) {
     console.log(`       <<<DETAIL>>> URL=${detail.url}`);
-    const allTables = await page.evaluate(() => {
+    const allTables = await detailPage.evaluate(() => {
       return Array.from(document.querySelectorAll("table")).slice(0, 5).map((t, i) => ({
         idx: i,
         rows: t.querySelectorAll("tr").length,
@@ -729,40 +826,58 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     allTables.forEach((tb) => console.log(`       <<<DETAIL TABLE ${tb.idx}>>> ${JSON.stringify(tb)}`));
   }
 
-  // Volver a la pantalla de busqueda y re-ejecutar la busqueda con el MISMO
-  // flujo que doSingleSearchInner (perfil primero → apellidos → sin fechas
-  // manuales) para que la siguiente fila siga teniendo indices validos.
-  await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
-  const reUsandoProfilo = !!(WL_PROFILO_SEL && WL_PROFILO_VALUE);
-  if (reUsandoProfilo) {
-    const profiloEl = page.locator(WL_PROFILO_SEL);
-    if (await profiloEl.count()) {
-      await profiloEl.first().selectOption({ label: WL_PROFILO_VALUE })
-        .catch(() => profiloEl.first().selectOption({ value: WL_PROFILO_VALUE }))
-        .catch(() => {});
-      await waitForAspNetReady(page, 5000);
+  // ────────────────────────────────────────────────────────────────────────────
+  // CLEANUP — distinto según si abrió popup o no:
+  //
+  //   Si abrió popup → cerrar el popup. La página original (lista de reportes)
+  //                    sigue intacta; la siguiente iteración del drill-down
+  //                    encuentra los mismos índices de fila sin tener que
+  //                    re-ejecutar la búsqueda.
+  //
+  //   Si NO abrió popup → flujo viejo: volver a la pantalla de búsqueda y
+  //                       re-ejecutar la query con perfil + apellido para
+  //                       que los índices de tabla sean válidos otra vez.
+  // ────────────────────────────────────────────────────────────────────────────
+  if (popupOpened) {
+    try {
+      if (detailPage && !detailPage.isClosed()) await detailPage.close();
+    } catch (_) { /* best-effort cleanup */ }
+  } else {
+    // Volver a la pantalla de busqueda y re-ejecutar la busqueda con el MISMO
+    // flujo que doSingleSearchInner (perfil primero → apellidos → sin fechas
+    // manuales) para que la siguiente fila siga teniendo indices validos.
+    await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    const reUsandoProfilo = !!(WL_PROFILO_SEL && WL_PROFILO_VALUE);
+    if (reUsandoProfilo) {
+      const profiloEl = page.locator(WL_PROFILO_SEL);
+      if (await profiloEl.count()) {
+        await profiloEl.first().selectOption({ label: WL_PROFILO_VALUE })
+          .catch(() => profiloEl.first().selectOption({ value: WL_PROFILO_VALUE }))
+          .catch(() => {});
+        await waitForAspNetReady(page, 5000);
+      }
     }
-  }
-  // Re-buscar por apellidos (igual que la busqueda principal; el expediente no
-  // esta registrado en WinLab).
-  const reCognome = extractApellidos(paciente.nombre)[0] || "";
-  if (reCognome && await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
-    await setField(page, WL_SEARCH_COGNOME_SEL, reCognome, `re-apellidos="${reCognome}"`);
-  }
-  if (!reUsandoProfilo && WL_LOOKBACK_DAYS >= 0) {
-    const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
-    const fechaA  = formatDate(new Date());
-    if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {
-      await setField(page, WL_SEARCH_FECHA_DE_SEL, fechaDe, "re-fechaDe");
+    // Re-buscar por apellidos (igual que la busqueda principal; el expediente no
+    // esta registrado en WinLab).
+    const reCognome = extractApellidos(paciente.nombre)[0] || "";
+    if (reCognome && await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
+      await setField(page, WL_SEARCH_COGNOME_SEL, reCognome, `re-apellidos="${reCognome}"`);
     }
-    if (await page.locator(WL_SEARCH_FECHA_A_SEL).count()) {
-      await setField(page, WL_SEARCH_FECHA_A_SEL, fechaA, "re-fechaA");
+    if (!reUsandoProfilo && WL_LOOKBACK_DAYS >= 0) {
+      const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
+      const fechaA  = formatDate(new Date());
+      if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {
+        await setField(page, WL_SEARCH_FECHA_DE_SEL, fechaDe, "re-fechaDe");
+      }
+      if (await page.locator(WL_SEARCH_FECHA_A_SEL).count()) {
+        await setField(page, WL_SEARCH_FECHA_A_SEL, fechaA, "re-fechaA");
+      }
     }
+    const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
+    await btn.click({ force: true, timeout: 5000 }).catch(() => {});
+    await waitForAspNetReady(page, WL_PER_PATIENT_TIMEOUT);
   }
-  const { el: btn } = await pickVisible(page, WL_SEARCH_BTN_SEL);
-  await btn.click({ force: true, timeout: 5000 }).catch(() => {});
-  await waitForAspNetReady(page, WL_PER_PATIENT_TIMEOUT);
 
   return detail.valores || [];
 }
