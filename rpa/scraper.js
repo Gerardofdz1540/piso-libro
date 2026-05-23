@@ -641,33 +641,33 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     // ────────────────────────────────────────────────────────────────────────
     // VÍA PRINCIPAL: interceptar la respuesta del browser al cargar EditPDF.aspx
     //
-    // DESCUBRIMIENTO (May 2026 iter 2): ctx.request.get() no funciona porque
-    // WinLab es ASP.NET WebForms que valida Referer + ViewState. Una request
-    // "fría" desde otro contexto recibe 3640 bytes idénticos (HTML de error,
-    // no el PDF). pdf-parse confirma: 'Invalid PDF structure'.
+    // DESCUBRIMIENTO (May 2026 iter 3): EditPDF.aspx?FileName=...pdf retorna
+    // un HTML wrapper de Microsoft Visual Studio, NO el PDF directo. El PDF
+    // binario real viene en una request SEPARADA que hace ese HTML wrapper
+    // (vía <embed>, <iframe>, o JavaScript).
     //
-    // SOLUCIÓN: suscribirse a popup.on("response") ANTES del waitForLoadState
-    // y capturar el body cuando el browser carga naturalmente el frame del PDF.
-    // El browser hereda toda la sesión (cookies + referer + viewstate) por sí
-    // mismo, igual que cuando el usuario hace click manualmente.
+    // SOLUCIÓN v4:
+    //   - Escuchar TODAS las responses del popup (no solo EditPDF)
+    //   - Capturar la que tenga magic bytes %PDF o content-type application/pdf
+    //   - Loggear el HTML wrapper completo para diagnosticar si no captura PDF
     // ────────────────────────────────────────────────────────────────────────
     let capturedPdfBuffer = null;
-    let capturedContentType = null;
+    let capturedPdfUrl = null;
+    let capturedHtmlWrapper = null;
     const responseListener = async (response) => {
       const url = response.url();
-      if (!/EditPDF\.aspx[^"]*FileName=[^"&]+\.pdf/i.test(url)) return;
+      const ct = (response.headers()['content-type'] || '').toLowerCase();
       try {
-        const ct = (response.headers()['content-type'] || '').toLowerCase();
         const body = await response.body();
-        // Solo capturar si parece PDF real (>1KB y header indica PDF, o magic bytes %PDF)
-        const looksPdf = ct.includes('pdf') || (body.length >= 4 && body.slice(0, 4).toString() === '%PDF');
-        if (looksPdf && body.length > 1000) {
+        // 1) Capturar cualquier PDF binario (de cualquier URL del popup)
+        const isPdfBinary = body.length >= 4 && body.slice(0, 4).toString() === '%PDF';
+        if (isPdfBinary || (ct.includes('pdf') && body.length > 1000)) {
           capturedPdfBuffer = body;
-          capturedContentType = ct;
-        } else if (dumpFirst) {
-          // Logging diagnóstico SOLO la primera vez
-          const sample = body.toString('utf-8', 0, Math.min(200, body.length)).replace(/\s+/g, ' ');
-          console.log(`       [drilldown] Response no parece PDF: ${body.length}b, ct="${ct}", sample="${sample.slice(0, 150)}"`);
+          capturedPdfUrl = url;
+        }
+        // 2) Capturar el HTML wrapper de EditPDF para diagnosticar si falla
+        else if (/EditPDF\.aspx/i.test(url) && ct.includes('html')) {
+          capturedHtmlWrapper = body.toString('utf-8');
         }
       } catch (_) { /* response.body() puede fallar si la página cerró */ }
     };
@@ -677,8 +677,17 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     // disparando el response listener.
     await detailPage.waitForLoadState("domcontentloaded", { timeout: WL_DRILLDOWN_TIMEOUT }).catch(() => {});
     await detailPage.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
-    // Pequeño buffer adicional para que el response listener termine si está en vuelo
-    await detailPage.waitForTimeout(500).catch(() => {});
+
+    // Espera ACTIVA: si el HTML wrapper carga el PDF binario en una request posterior
+    // (vía <iframe>, <embed> lazy, o JS), darle tiempo para que llegue.
+    // Salimos en cuanto capturemos PDF, o tras 8s si no hay más actividad.
+    const WAIT_PDF_MS = 8000;
+    const CHECK_INTERVAL = 250;
+    const startedWaiting = Date.now();
+    while (!capturedPdfBuffer && (Date.now() - startedWaiting) < WAIT_PDF_MS) {
+      if (detailPage.isClosed()) break;
+      await detailPage.waitForTimeout(CHECK_INTERVAL).catch(() => {});
+    }
 
     // Verificar también el frame (para logging)
     const pdfInfo = await findPdfFrameUrl(detailPage, 4);
@@ -688,7 +697,7 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
     }
 
     if (capturedPdfBuffer) {
-      console.log(`       [drilldown] PDF capturado del browser: ${capturedPdfBuffer.length} bytes (ct=${capturedContentType})`);
+      console.log(`       [drilldown] PDF capturado del browser: ${capturedPdfBuffer.length} bytes (url=${capturedPdfUrl})`);
       const valoresPDF = await parsePdfToLabValues(capturedPdfBuffer, 10000);
       console.log(`       [drilldown] PDF parseado: ${valoresPDF.length} valores`);
 
@@ -699,6 +708,18 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
       } catch (_) { /* best-effort cleanup */ }
 
       return valoresPDF;
+    }
+
+    // Diagnóstico: si capturamos el HTML wrapper pero no el PDF, loggear
+    // los primeros 3000 chars del HTML para entender su estructura.
+    if (capturedHtmlWrapper && dumpFirst) {
+      console.log(`       [drilldown] HTML wrapper de EditPDF (3000 chars):`);
+      console.log(`==========================================`);
+      console.log(capturedHtmlWrapper.substring(0, 3000));
+      console.log(`==========================================`);
+      // Buscar referencias a otras URLs .pdf dentro del HTML
+      const pdfRefs = capturedHtmlWrapper.match(/[\w\/\.\?=&-]+\.pdf[\w\?=&-]*/gi) || [];
+      console.log(`       [drilldown] URLs .pdf encontradas en HTML wrapper: ${JSON.stringify(pdfRefs.slice(0, 5))}`);
     }
 
     detailPage.off("response", responseListener);
