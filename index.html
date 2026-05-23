@@ -2989,7 +2989,7 @@
       <div id="login-msg" style="display:none;background:#fef2f2;color:#dc2626;padding:8px 12px;border-radius:8px;font-size:13px;margin-bottom:14px"></div>
       <!-- Normal login -->
       <div id="login-form-normal">
-        <input id="login-user" type="text" placeholder="Usuario" autocomplete="username"
+        <input id="login-user" type="email" placeholder="Email" autocomplete="email"
           style="width:100%;padding:12px 16px;border:2px solid #e2e8f0;border-radius:10px;font-size:15px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box"
           onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"
           onkeydown="if(event.key==='Enter')document.getElementById('login-pwd').focus()" />
@@ -3001,6 +3001,7 @@
           style="width:100%;background:#6366f1;color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
           Entrar
         </button>
+        <div id="login-error" role="alert" style="color:#c00;margin-top:8px;min-height:1.2em;font-size:0.9em;"></div>
       </div>
       <!-- First-time setup -->
       <div id="login-setup-section" style="display:none">
@@ -3081,6 +3082,8 @@
         </button>
         <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
+        <button id="logout-btn" onclick="logout()" title="Cerrar sesión"
+          style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);color:#fecaca;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">🚪 Salir</button>
       </div>
     </div>
     <div id="tabs">
@@ -3811,13 +3814,14 @@
     try {
       _supa = (window.supabase || window.supabaseJs || {}).createClient
         ? window.supabase.createClient(SUPA_URL, SUPA_KEY, {
-            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
           })
         : null;
     } catch (_supaInitErr) {
       console.warn("[piso-libro] supabase-js CDN no cargó — modo sin Realtime:", _supaInitErr);
     }
     window._supaClient = _supa; // expuesto para que initNoOlvidarSync() lo use
+    let _userAccessToken = null; // access_token del usuario autenticado (Supabase Auth); null ⇒ usar anon key
     let _realtimeSubs = [];  // active Realtime subscriptions
     let _suppressRealtimeKeys = new Set(); // per-patient suppression (use "__all__" for global)
     function suppressKey(k, ms) { _suppressRealtimeKeys.add(k); setTimeout(function(){ _suppressRealtimeKeys.delete(k); }, ms || 3000); }
@@ -4030,34 +4034,67 @@
       if (ov) ov.style.display = "none";
     }
 
+    let _hadSessionAtLoad = false; // ¿había sesión al cargar la página? (evita reload-loop)
     async function initAuth() {
-      // Auth gate deshabilitado a petición del usuario: la app abre sin login.
-      _hideLoginOverlay();
+      const { data: { session }, error } = await _supa.auth.getSession();
+      if (error) console.error("Error obteniendo sesión:", error);
+
+      if (session && session.access_token) {
+        _userAccessToken = session.access_token;
+        _hadSessionAtLoad = true;
+        _hideLoginOverlay();
+      } else {
+        _showLoginOverlay();
+      }
+
+      _supa.auth.onAuthStateChange((event, session) => {
+        switch (event) {
+          case "SIGNED_IN":
+            if (session) _userAccessToken = session.access_token;
+            _hideLoginOverlay();
+            // init() dispara la carga de datos de Supabase DESPUÉS de initAuth(); si la
+            // página cargó sin sesión, recargamos para que esa carga corra ya autenticada
+            // (mismo patrón que logout()). El flag evita un loop al restaurar sesión.
+            if (!_hadSessionAtLoad) location.reload();
+            break;
+          case "TOKEN_REFRESHED":
+            if (session) _userAccessToken = session.access_token;
+            break;
+          case "SIGNED_OUT":
+            _userAccessToken = null;
+            _showLoginOverlay();
+            break;
+        }
+      });
     }
 
-    async function loginSubmit() {
-      const username = ((document.getElementById("login-user") || {}).value || "").trim();
-      const pwd = (document.getElementById("login-pwd") || {}).value || "";
-      const msg = document.getElementById("login-msg");
-      if (!username || !pwd) {
-        if (msg) { msg.textContent = "Ingresa usuario y contraseña."; msg.style.display = "block"; }
+    async function loginSubmit(event) {
+      if (event && event.preventDefault) event.preventDefault();
+      const emailEl = document.getElementById("login-user");
+      const passEl  = document.getElementById("login-pwd");
+      const errorEl = document.getElementById("login-error");
+      const email = (emailEl ? emailEl.value : "").trim();
+      const password = passEl ? passEl.value : "";
+      if (!email || !password) {
+        if (errorEl) errorEl.textContent = "Ingresa email y contraseña.";
         return;
       }
-      const user = await _usersGetOne(username);
-      if (!user || !user.active) {
-        if (msg) { msg.textContent = "Usuario no encontrado o sin acceso."; msg.style.display = "block"; }
-        return;
-      }
-      const h = await _sha256(pwd);
-      if (h === user.pwd_hash) {
-        _authStartSession(user.username, user.role);
-        _hideLoginOverlay();
-        if (msg) msg.style.display = "none";
-      } else {
-        if (msg) { msg.textContent = "Contraseña incorrecta."; msg.style.display = "block"; }
+      if (errorEl) errorEl.textContent = "";
+      const { error } = await _supa.auth.signInWithPassword({ email: email, password: password });
+      if (error) {
+        if (errorEl) errorEl.textContent = "Error: " + error.message;
+        console.error("Login error:", error);
         const pf = document.getElementById("login-pwd");
         if (pf) { pf.value = ""; pf.focus(); }
+        return;
       }
+      // onAuthStateChange (SIGNED_IN) asigna _userAccessToken, oculta overlay y arranca la app.
+    }
+
+    async function logout() {
+      await _supa.auth.signOut();
+      // onAuthStateChange (SIGNED_OUT) muestra el overlay; recargamos para limpiar estado in-memory de la SPA.
+      location.reload();
     }
 
     async function loginSetup() {
@@ -4901,9 +4938,10 @@
     // fetch() directo a PostgREST — _supa solo se usa para Realtime (WebSocket).
 
     function _sHeaders(extra) {
+      const token = _userAccessToken || SUPA_KEY;
       return Object.assign({
         "apikey": SUPA_KEY,
-        "Authorization": "Bearer " + SUPA_KEY,
+        "Authorization": "Bearer " + token,
         "Content-Type": "application/json"
       }, extra || {});
     }
