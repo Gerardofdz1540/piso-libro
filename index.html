@@ -4724,10 +4724,17 @@
       }
     }
 
-    // Feature flag — default OFF. Para activar:
-    //   localStorage.setItem("pl_winlab_auto_sync", "1") y recargar
+    // Feature flag — default ON (cambio mayo 2026: tras v5 scraper, ya hay datos
+    // reales en winlab_labs; queremos que el sync corra automáticamente y los
+    // labs aparezcan en las tarjetas sin que el usuario haga nada).
+    // Para desactivar:
+    //   localStorage.setItem("pl_winlab_auto_sync", "0") y recargar
     function isWinlabAutoSyncEnabled() {
-      try { return localStorage.getItem("pl_winlab_auto_sync") === "1"; } catch (_) { return false; }
+      try {
+        const v = localStorage.getItem("pl_winlab_auto_sync");
+        // Default ON: solo está OFF si está explícitamente seteado a "0"
+        return v !== "0";
+      } catch (_) { return true; }
     }
     function setWinlabAutoSync(enabled) {
       try {
@@ -4837,12 +4844,13 @@
           if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
         });
         winlabByExp = next;
-        // Auto-sync WinLab → labHistory si feature flag está ON y no se pidió skip
+        // Auto-sync WinLab → labHistory.
+        // Cambio mayo 2026: el refresh manual (botón pill) SIEMPRE aplica sync,
+        // independiente del flag. Si el usuario clickeó el pill es porque quiere
+        // ver los labs ahora. El flag solo controla el sync automático al boot.
         if (!opts || !opts.skipAutoSync) {
           try {
-            if (isWinlabAutoSyncEnabled()) {
-              await applyWinlabSyncToPatients({ verbose: false });
-            }
+            await applyWinlabSyncToPatients({ verbose: false });
           } catch (_e) { /* no fatal: sigue mostrando UI */ }
         }
         // Re-render con la nueva data.
