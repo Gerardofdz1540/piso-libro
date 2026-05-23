@@ -174,5 +174,34 @@ function assert(cond, name) {
   );
 }
 
+// ── 11. V5 REGRESSION GUARDS: fetch directo PDF estático (bypass embed) ─────
+{
+  // v5: extraer URL del PDF del onload script showPdfTimeOut('../Temp/...pdf')
+  assert(
+    /showPdfTimeOut\\\(\\s\*\['"]\(\[\^'"]\+\\\.pdf\)\['"]/.test(scraperSource),
+    "v5: regex extrae URL del PDF de showPdfTimeOut() en HTML wrapper"
+  );
+  // v5: ctx.request.get del PDF estático directo (no de EditPDF.aspx)
+  assert(
+    /ctx\.request\.get\(pdfUrl/.test(scraperSource),
+    "v5: ctx.request.get del PDF estático (no del wrapper ASP.NET)"
+  );
+  // v5: valida magic bytes %PDF antes de parsear
+  assert(
+    /v5: PDF descargado directo/.test(scraperSource),
+    "v5: log de PDF descargado directo presente"
+  );
+  // v5: integración con parsePdfToLabValues
+  assert(
+    /v5: PDF parseado:/.test(scraperSource),
+    "v5: integración con parsePdfToLabValues"
+  );
+  // v5: URL absoluta resolvida con base popup URL
+  assert(
+    /new URL\(relPath, popupUrl\)/.test(scraperSource),
+    "v5: resuelve URL absoluta a partir del path relativo y URL del popup"
+  );
+}
+
 console.log(`\n${pass} pass · ${fail} fail`);
 if (fail > 0) process.exit(1);
