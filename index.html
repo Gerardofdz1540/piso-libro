@@ -4448,9 +4448,30 @@
     // ──────────────────────────────────────────────────────────────────────────────
     const WINLAB_ALIASES = {
       // Biometría / función renal
-      hb:        [/^hb$/i, /hemoglobi/i, /^hgb$/i],
-      leucos:    [/^leu$/i, /leucocit/i, /^wbc$/i, /gl[oó]bulos blancos/i],
-      plaq:      [/plaq/i, /^plt$/i, /trombocit/i],
+      hb:        [/^hb$/i, /^hemoglobi/i, /^hgb$/i],
+      leucos:    [/^leucocitos$/i, /^leu$/i, /^wbc$/i, /^gl[oó]bulos blancos$/i],
+      plaq:      [/^plaqueta(s)?$/i, /^plt$/i, /^trombocitos$/i],
+      // Biometría hemática extendida — IMPORTANTE: los _abs DEBEN ir antes que _pct
+      // porque "NEUTROFILOS ABSOLUTOS" contiene "NEUTROFILOS". Primer match gana.
+      hct:       [/^hematocrit/i, /^hto$/i, /^hct$/i, /^htc$/i],
+      mcv:       [/vol.*corp.*medio/i, /^mcv$/i, /^vcm$/i, /volumen corpuscular medio/i],
+      mch:       [/^hb\.?\s*corp.*media/i, /^hemoglobina corp/i, /^mch$/i, /^hcm$/i],
+      mchc:      [/conc.*hb.*corp/i, /^mchc$/i, /^chcm$/i, /concentracion.*hemoglobin/i],
+      rdw:       [/^rdw/i, /amplitud.*distribuc.*eritroc/i],
+      mpv:       [/vol.*plaq.*medio/i, /^mpv$/i, /^vpm$/i, /volumen plaquetario medio/i],
+      // Diferencial absoluto (debe ir antes de los % porque "NEUTROFILOS ABSOLUTOS" contiene "NEUTROFILOS")
+      neu_abs:   [/neutr[oó]filos.*absolut/i, /^neutr.*abs/i],
+      lin_abs:   [/linfocitos.*absolut/i, /^linf.*abs/i],
+      mon_abs:   [/monocitos.*absolut/i, /^mon.*abs/i],
+      eos_abs:   [/eosin[oó]filos.*absolut/i, /^eos.*abs/i],
+      bas_abs:   [/bas[oó]filos.*absolut/i, /^bas.*abs/i],
+      // Diferencial porcentual
+      neu_pct:   [/^neutr[oó]filos$/i, /^neu$/i, /^neut$/i],
+      lin_pct:   [/^linfocitos$/i, /^linf$/i, /^lin$/i],
+      mon_pct:   [/^monocitos$/i, /^mon$/i],
+      eos_pct:   [/^eosin[oó]filos$/i, /^eos$/i],
+      bas_pct:   [/^bas[oó]filos$/i, /^bas$/i],
+      // Resto del panel
       cr:        [/creatinin/i, /^cr$/i, /^crea$/i],
       urea:      [/^urea$/i, /^bun$/i, /nitr[oó]geno ureic/i],
       glu:       [/glucos/i, /^glu$/i, /glicem/i, /glyc/i],
@@ -4534,6 +4555,14 @@
       if (/^[\d\s:.,\/\-]+$/.test(n)) return true;
       // Sospechosos: contiene "PACIENTE", "REPORTE", "CIRUGIA", servicios
       if (/^(CIRUGIA|MEDICINA|GINECO|PEDIATRIA|URGENCIA|TRAUMA|UCI|UTI|UNIDAD)/i.test(n)) return true;
+      // Metadata del PDF de WinLab: TESTIGO y RANGO DE REFERENCIA aparecen
+      // como falsos "estudios" cuando el PDF tiene tiempos de coagulación
+      if (/^TESTIGO$/i.test(n)) return true;
+      if (/^RANGO DE REFERENCIA$/i.test(n)) return true;
+      // Unidades sueltas que el parser confundió con nombres de estudio
+      if (/^U\/L$/i.test(n)) return true;
+      if (/^MG\/DL$/i.test(n)) return true;
+      if (/^G\/DL$/i.test(n)) return true;
       return false;
     }
 
@@ -4563,20 +4592,82 @@
       return labs;
     }
 
+    // Extrae la fecha (YYYY-MM-DD) de un reporte basándose en su __cells.
+    // Los cells típicamente contienen "DD/MM/YYYY HH:MM" en la posición 3 o 4.
+    function extractReportDate(rep) {
+      if (!rep) return null;
+      const candidates = [];
+      if (Array.isArray(rep.__cells)) candidates.push(...rep.__cells);
+      if (rep.NOMBRE) candidates.push(rep.NOMBRE);
+      if (rep["APELLIDOS COMPLETOS"]) candidates.push(rep["APELLIDOS COMPLETOS"]);
+      // Tomar la fecha MÁS TEMPRANA del set (suele ser fecha de toma)
+      let earliest = null;
+      for (const c of candidates) {
+        const m = String(c || "").match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})/);
+        if (m) {
+          const dd = m[1].padStart(2, '0');
+          const mm = m[2].padStart(2, '0');
+          const iso = `${m[3]}-${mm}-${dd}`;
+          if (!earliest || iso < earliest) earliest = iso;
+        }
+      }
+      return earliest;
+    }
+
+    // Mapea UN SOLO reporte (con .valores) a un objeto labs.
+    // Reutiliza la lógica de mapWinlabReportesToLabs pero sobre un solo reporte.
+    function mapSingleReportToLabs(rep) {
+      if (!rep || !Array.isArray(rep.valores)) return {};
+      return mapWinlabReportesToLabs([rep]);
+    }
+
+    // Genera UN ARRAY de snapshots, uno por cada reporte con valores parseados.
+    // Cambio mayo 2026: antes solo había 1 snapshot por fila de winlab_labs.
+    // Ahora, si el scraper drilleó N reportes (con WL_DRILLDOWN_MAX > 1), generamos
+    // N snapshots con sus respectivas fechas para que aparezcan como chips de
+    // fecha separados en la UI.
+    function buildWinlabLabSnapshots(winlabRow) {
+      if (!winlabRow || !winlabRow.data) return [];
+      const reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
+      const fallbackFecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : null);
+      const result = [];
+      const seen = new Set(); // evita duplicar mismo día
+      for (const rep of reportes) {
+        if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
+        const labs = mapSingleReportToLabs(rep);
+        if (!Object.keys(labs).length) continue;
+        const fecha = extractReportDate(rep) || fallbackFecha;
+        if (!fecha) continue;
+        if (seen.has(fecha)) {
+          // Mismo día con valores adicionales: mergea al snapshot ya creado
+          const prev = result.find(s => s.fecha === fecha);
+          if (prev) {
+            for (const [k, v] of Object.entries(labs)) {
+              if (!(k in prev.labs)) prev.labs[k] = v;
+            }
+          }
+          continue;
+        }
+        seen.add(fecha);
+        result.push({
+          fecha,
+          labs,
+          extra: [],
+          source: "winlab",
+          synced_at: new Date().toISOString(),
+          scraped_at: winlabRow.scraped_at || null,
+        });
+      }
+      return result;
+    }
+
+    // Wrapper de compatibilidad: retorna el snapshot MÁS RECIENTE si existe.
     function buildWinlabLabSnapshot(winlabRow) {
-      if (!winlabRow || !winlabRow.data) return null;
-      const fecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : null);
-      if (!fecha) return null;
-      const labs = mapWinlabReportesToLabs(winlabRow.data.reportes);
-      if (!Object.keys(labs).length) return null;
-      return {
-        fecha,
-        labs,
-        extra: [],
-        source: "winlab",
-        synced_at: new Date().toISOString(),
-        scraped_at: winlabRow.scraped_at || null,
-      };
+      const snapshots = buildWinlabLabSnapshots(winlabRow);
+      if (!snapshots.length) return null;
+      // Más reciente primero
+      snapshots.sort((a, b) => b.fecha.localeCompare(a.fecha));
+      return snapshots[0];
     }
 
     // Aplica el sync WinLab → nd.labHistory para TODOS los pacientes con `exp` que
@@ -4657,42 +4748,47 @@
             }
             continue;
           }
-          const snap = buildWinlabLabSnapshot(wl);
-          if (!snap || !Object.keys(snap.labs).length) { stats.skipped++; stats.no_labs_parsed++; continue; }
+          // Cambio mayo 2026: ahora procesamos MÚLTIPLES snapshots (uno por fecha)
+          // para soportar 3 días previos del scraper.
+          const snapshots = buildWinlabLabSnapshots(wl);
+          if (!snapshots.length) { stats.skipped++; stats.no_labs_parsed++; continue; }
           stats.matched++;
           const k = pid(p);
           const nd = migrateNote(noteData[k] || defaultData());
-          const hist = Array.isArray(nd.labHistory) ? nd.labHistory.slice() : [];
-          const existingIdx = hist.findIndex(s => s && s.fecha === snap.fecha);
-          if (existingIdx === -1) {
-            hist.push(snap);
-            stats.inserted++;
-          } else {
-            const ex = hist[existingIdx];
-            const exLabs = ex.labs || {};
-            const isManual = ex.source && ex.source !== "winlab";
-            const newLabs = { ...exLabs };
-            for (const [labKey, labVal] of Object.entries(snap.labs)) {
-              if (isManual) {
-                // Solo llena campos VACÍOS — nunca pisa edición manual no vacía
-                const curVal = exLabs[labKey];
-                if (curVal === undefined || curVal === null || String(curVal).trim() === "") {
+          let hist = Array.isArray(nd.labHistory) ? nd.labHistory.slice() : [];
+          // Iterar cada snapshot (un por fecha) y mergear/insertar
+          for (const snap of snapshots) {
+            const existingIdx = hist.findIndex(s => s && s.fecha === snap.fecha);
+            if (existingIdx === -1) {
+              hist.push(snap);
+              stats.inserted++;
+            } else {
+              const ex = hist[existingIdx];
+              const exLabs = ex.labs || {};
+              const isManual = ex.source && ex.source !== "winlab";
+              const newLabs = { ...exLabs };
+              for (const [labKey, labVal] of Object.entries(snap.labs)) {
+                if (isManual) {
+                  // Solo llena campos VACÍOS — nunca pisa edición manual no vacía
+                  const curVal = exLabs[labKey];
+                  if (curVal === undefined || curVal === null || String(curVal).trim() === "") {
+                    newLabs[labKey] = labVal;
+                  }
+                } else {
+                  // Snapshot WinLab previo: actualiza todo
                   newLabs[labKey] = labVal;
                 }
-              } else {
-                // Snapshot WinLab previo: actualiza todo
-                newLabs[labKey] = labVal;
               }
+              hist[existingIdx] = {
+                ...ex,
+                labs: newLabs,
+                synced_at: snap.synced_at,
+                scraped_at: snap.scraped_at,
+                // si era manual lo dejamos como manual; el dato simplemente se enriqueció
+                source: isManual ? (ex.source || "manual") : "winlab",
+              };
+              stats.merged++;
             }
-            hist[existingIdx] = {
-              ...ex,
-              labs: newLabs,
-              synced_at: snap.synced_at,
-              scraped_at: snap.scraped_at,
-              // si era manual lo dejamos como manual; el dato simplemente se enriqueció
-              source: isManual ? (ex.source || "manual") : "winlab",
-            };
-            stats.merged++;
           }
           nd.labHistory = hist;
           noteData[k] = nd;
@@ -8556,7 +8652,9 @@
 
       ${renderLabSection(nd, k)}
 
-      ${renderWinlabSection(p, k)}
+      ${/* renderWinlabSection: deshabilitada mayo 2026. Los labs ahora aparecen
+            integrados en los recuadros estándar de renderLabSection vía el nuevo
+            grupo "Biometría hemática completa". */ ""}
 
       ${renderChecklist(nd, k)}
 
@@ -8992,6 +9090,26 @@
           { key: "pcr", label: "PCR", unit: "mg/L", low: 0, high: 10 },
           { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 },
           { key: "lac", label: "Lac", unit: "mmol/L", low: 0, high: 2, ch: 4 }
+        ]
+      },
+      {
+        id: "bh_ext", label: "🔬 Biometría hemática completa", fields: [
+          { key: "hct",     label: "Hto",   unit: "%",     low: 36,   high: 48,  cl: 25 },
+          { key: "mcv",     label: "VCM",   unit: "fL",    low: 80,   high: 95 },
+          { key: "mch",     label: "HCM",   unit: "pg",    low: 27,   high: 31 },
+          { key: "mchc",    label: "CHCM",  unit: "g/dL",  low: 32,   high: 36 },
+          { key: "rdw",     label: "RDW",   unit: "%",     low: 12,   high: 16 },
+          { key: "mpv",     label: "VPM",   unit: "fL",    low: 9,    high: 13 },
+          { key: "neu_pct", label: "Neu",   unit: "%",     low: 40,   high: 75,  ch: 90 },
+          { key: "lin_pct", label: "Linf",  unit: "%",     low: 20,   high: 45,  cl: 10 },
+          { key: "mon_pct", label: "Mono",  unit: "%",     low: 2,    high: 12 },
+          { key: "eos_pct", label: "Eos",   unit: "%",     low: 0,    high: 6 },
+          { key: "bas_pct", label: "Bas",   unit: "%",     low: 0,    high: 2 },
+          { key: "neu_abs", label: "Neu#",  unit: "k/µL",  low: 1.5,  high: 6.6, ch: 15 },
+          { key: "lin_abs", label: "Lin#",  unit: "k/µL",  low: 1.0,  high: 3.5, cl: 0.5 },
+          { key: "mon_abs", label: "Mon#",  unit: "k/µL",  low: 0.1,  high: 1.0 },
+          { key: "eos_abs", label: "Eos#",  unit: "k/µL",  low: 0,    high: 0.7 },
+          { key: "bas_abs", label: "Bas#",  unit: "k/µL",  low: 0,    high: 0.2 }
         ]
       },
       {
