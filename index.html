@@ -2977,7 +2977,7 @@
 
   
 
-/* ════ V17 INJECTION ════ */
+/* ════ V18 INJECTION ════ */
 /* CSS v17: vaso compacto + modal con tabs + estilos heredados */
 
 /* ─── CDS Section ─── */
@@ -3908,7 +3908,7 @@
   </script>
   
 
-  <!-- ════════ V17: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
+  <!-- ════════ V18: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
   <script>
 /* Codigo nuevo en su PROPIO bloque dedicado. */
 
@@ -4195,34 +4195,92 @@ const PLVaso = (function() {
 })();
 
 /* ════════════════════════════════════════════════════════════════════════════
- * PLIndicaciones v17 — match por EXPEDIENTE (no por cama)
- * Soporta paste manual + bookmarklet (lee Google Doc DOM)
+ * PLIndicaciones v18 — match doble: CAMA + APELLIDO (fallback: exp + nombre solo)
+ * Storage: array de bloques, match dinámico al render.
  * ════════════════════════════════════════════════════════════════════════════ */
 const PLIndicaciones = (function() {
   "use strict";
-  const KEY_PREFIX = "pl_indicaciones_v2_";  // v2: por exp en vez de cama
-  const KEY_META = "pl_indicaciones_meta_v2";
+  const KEY_BLOCKS = "pl_indicaciones_v3_blocks";
+  const KEY_META = "pl_indicaciones_v3_meta";
 
+  // ─── NORMALIZADORES ─────────────────────────────────────────────────────────
   function normalizeExp(s) {
     return String(s || "").replace(/[^0-9]/g, "");
   }
-  function setForExp(exp, data) {
-    const norm = normalizeExp(exp);
-    if (!norm) return;
-    try { localStorage.setItem(KEY_PREFIX + norm, JSON.stringify(data)); } catch (e) {}
+  function normalizeCama(s) {
+    // De "3-150", "CAMA 150", "150" → "150"
+    if (s === null || s === undefined) return null;
+    const m = String(s).match(/(\d{2,4})\s*$/);
+    return m ? m[1] : null;
   }
-  function getForExp(exp) {
-    const norm = normalizeExp(exp);
-    if (!norm) return null;
+  function normalizeName(name) {
+    // Devuelve array de palabras significativas (≥3 chars) sin acentos ni caracteres especiales
+    if (!name) return [];
+    return String(name)
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z\s]/g, " ")
+      .split(/\s+/)
+      .filter(function(w) {
+        if (w.length < 3) return false;
+        // Filtrar palabras comunes que no aportan match
+        if (["DE","LA","EL","DEL","LAS","LOS","ANO","ANOS","DEL","CON","SIN"].indexOf(w) >= 0) return false;
+        return true;
+      });
+  }
+  function nameMatchScore(n1, n2) {
+    const w1 = new Set(normalizeName(n1));
+    const w2 = new Set(normalizeName(n2));
+    if (!w1.size || !w2.size) return 0;
+    let common = 0;
+    w1.forEach(function(w) { if (w2.has(w)) common++; });
+    return common;
+  }
+
+  // ─── MATCH PATIENT vs BLOCK ─────────────────────────────────────────────────
+  // Devuelve { matched, score, method } donde score más alto = más confianza
+  function matchPatient(patient, block) {
+    if (!patient || !block) return { matched: false, score: 0, method: null };
+    // Estrategia 1: EXP (más confiable cuando existe)
+    if (block.exp && patient.exp) {
+      const e1 = normalizeExp(patient.exp);
+      const e2 = normalizeExp(block.exp);
+      if (e1 && e2 && (e1 === e2 || (e1.length >= 5 && e2.length >= 5 && (e1.endsWith(e2) || e2.endsWith(e1))))) {
+        return { matched: true, score: 100, method: "exp" };
+      }
+    }
+    // Estrategia 2 (PRINCIPAL): cama + apellido
+    const c1 = normalizeCama(patient.cama);
+    const c2 = normalizeCama(block.cama);
+    const camaMatch = (c1 && c2 && c1 === c2);
+    const nScore = nameMatchScore(patient.nombre, block.nombre);
+    if (camaMatch && nScore >= 1) {
+      return { matched: true, score: 90 + nScore, method: "cama+nombre" };
+    }
+    // Estrategia 3: cama sola (cuando el bloque no tiene nombre detectable)
+    if (camaMatch && !block.nombre) {
+      return { matched: true, score: 70, method: "cama-solo" };
+    }
+    // Estrategia 4: nombre fuerte (≥3 palabras coinciden) sin cama
+    if (nScore >= 3) {
+      return { matched: true, score: 60 + nScore, method: "nombre" };
+    }
+    return { matched: false, score: 0, method: null };
+  }
+
+  // ─── STORAGE ────────────────────────────────────────────────────────────────
+  function loadBlocks() {
     try {
-      const raw = localStorage.getItem(KEY_PREFIX + norm);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
+      const raw = localStorage.getItem(KEY_BLOCKS);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function saveBlocks(blocks) {
+    try { localStorage.setItem(KEY_BLOCKS, JSON.stringify(blocks)); } catch (e) {}
   }
   function setMeta(ts, stats) {
-    try {
-      localStorage.setItem(KEY_META, JSON.stringify({ importedAt: ts, stats: stats || {} }));
-    } catch (e) {}
+    try { localStorage.setItem(KEY_META, JSON.stringify({ importedAt: ts, stats: stats || {} })); } catch (e) {}
   }
   function getMeta() {
     try {
@@ -4243,70 +4301,137 @@ const PLIndicaciones = (function() {
     return { state: "old", label: "Hace " + Math.round(h) + "h ⚠️" };
   }
 
-  // ─── PARSER ROBUSTO ─────────────────────────────────────────────────────────
-  // Estrategia: detecta bloques de "INDICACIONES" + extrae exp del header.
-  // Tolerante a múltiples formatos.
+  // ─── PARSER ─────────────────────────────────────────────────────────────────
   function parsePasted(text) {
     if (!text) return { blocks: [], debug: { reason: "empty" } };
-    const debug = { totalLines: 0, headersFound: 0, expsFound: [], blocksDetected: 0 };
     const fullText = String(text);
-    debug.totalLines = fullText.split(/\r?\n/).length;
+    const debug = { totalLines: fullText.split(/\r?\n/).length, headersFound: 0, blocksDetected: 0, blocksWithCama: 0, blocksWithName: 0, blocksWithExp: 0 };
 
-    // Splitear por "INDICACIONES" — cada bloque empieza con ese header
-    // Tolerante: "INDICACIONES DE CIRUGÍA GENERAL", "INDICACIONES HOSPITALIZACIÓN", etc.
+    // Splitear por header "INDICACIONES"
     const HEADER_RE = /INDICACIONES\s+(DE\s+)?(CIRUG[IÍ]A|HOSPITALIZ|CIRUGIA|HOSPITAL)[A-ZÁÉÍÓÚÑ\s]*\b/i;
-    // Encontrar todas las posiciones de header
     const positions = [];
     let m;
     const globalRe = new RegExp(HEADER_RE.source, "gi");
-    while ((m = globalRe.exec(fullText)) !== null) {
-      positions.push(m.index);
-    }
+    while ((m = globalRe.exec(fullText)) !== null) positions.push(m.index);
     debug.headersFound = positions.length;
 
     if (!positions.length) {
-      // Fallback: si NO hay headers de INDICACIONES, asumir UN solo bloque y buscar exp
-      return parseSingleBlock(fullText, debug);
+      const parsed = parseSegment("", fullText);
+      if (parsed) {
+        if (parsed.cama) debug.blocksWithCama++;
+        if (parsed.nombre) debug.blocksWithName++;
+        if (parsed.exp) debug.blocksWithExp++;
+        return { blocks: [parsed], debug: Object.assign(debug, { blocksDetected: 1 }) };
+      }
+      return { blocks: [], debug };
     }
 
     const blocks = [];
     for (let i = 0; i < positions.length; i++) {
       const start = positions[i];
       const end = i + 1 < positions.length ? positions[i + 1] : fullText.length;
+      // PRELUDE: texto desde el header anterior (o inicio del doc) hasta el header actual.
+      // extractCamaFromPrelude solo mira las últimas 5 líneas no vacías, así que aunque
+      // incluya el bloque anterior, la cama del bloque actual (justo antes del header)
+      // será la primera línea no vacía encontrada de atrás hacia adelante.
+      const preludeStart = i > 0 ? positions[i - 1] : 0;
+      const prelude = fullText.substring(preludeStart, start);
       const segment = fullText.substring(start, end);
-      const parsed = parseSegment(segment, debug);
-      if (parsed) blocks.push(parsed);
+      const parsed = parseSegment(prelude, segment);
+      if (parsed) {
+        blocks.push(parsed);
+        if (parsed.cama) debug.blocksWithCama++;
+        if (parsed.nombre) debug.blocksWithName++;
+        if (parsed.exp) debug.blocksWithExp++;
+      }
     }
     debug.blocksDetected = blocks.length;
     return { blocks, debug };
   }
 
-  function parseSingleBlock(text, debug) {
-    const parsed = parseSegment(text, debug);
-    return { blocks: parsed ? [parsed] : [], debug };
+  // ─── EXTRACTORES ────────────────────────────────────────────────────────────
+  function extractCamaFromPrelude(prelude) {
+    if (!prelude) return null;
+    const lines = prelude.split(/\r?\n/).filter(function(l) { return l.trim() !== ""; });
+    // Tomar solo las últimas 5 líneas no vacías
+    const lastFew = lines.slice(-5);
+    // Iterar de atrás hacia adelante
+    for (let i = lastFew.length - 1; i >= 0; i--) {
+      const t = lastFew[i].trim();
+      // Patrón 1: línea con solo un número (pestaña copiada de Google Docs)
+      if (/^\d{2,4}$/.test(t)) return t;
+      // Patrón 2: "CAMA 150" o "Cama: 150"
+      const m1 = t.match(/CAMA[\s:#-]*(\d{2,4})\b/i);
+      if (m1) return m1[1];
+      // Patrón 3: "3-150" (formato piso-cama)
+      const m2 = t.match(/\b\d+-(\d{2,4})\b/);
+      if (m2) return m2[1];
+    }
+    return null;
   }
 
-  function parseSegment(segment, debug) {
-    // Buscar EXP en el segmento (varios formatos: "EXP: 25-027280", "EXP 25027280", etc.)
-    const expMatch = segment.match(/EXP[\s:#-]*([\d\-]{4,15})/i);
-    const exp = expMatch ? expMatch[1].replace(/[^0-9]/g, "") : null;
-    if (!exp) return null;
-    debug.expsFound.push(exp);
-
-    // Buscar nombre (línea entre header y EXP, o antes de "AÑOS")
-    let nombre = "";
-    const lineWithExp = segment.split(/\r?\n/).find(function(l) { return /EXP/i.test(l); });
-    if (lineWithExp) {
-      // formato típico: "APELLIDOS NOMBRES | EDAD AÑOS || EXP: 25-027280"
-      const beforeBar = lineWithExp.split(/[\|]/)[0];
-      nombre = beforeBar.replace(/[•·●▪◆◊○]/g, "").trim();
-    }
-
-    // Buscar secciones
-    const sections = { DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "MEDIDAS GENERALES": [] };
+  function extractCamaFromSegmentStart(segment) {
+    // Si la cama está al inicio del segment (raro, pero por si acaso)
     const lines = segment.split(/\r?\n/);
+    // Buscar antes del header "INDICACIONES"
+    for (let i = 0; i < Math.min(5, lines.length); i++) {
+      const t = lines[i].trim();
+      if (/INDICACIONES/i.test(t)) break;
+      if (/^\d{2,4}$/.test(t)) return t;
+      const m1 = t.match(/CAMA[\s:#-]*(\d{2,4})\b/i);
+      if (m1) return m1[1];
+    }
+    return null;
+  }
+
+  function extractNombre(segment) {
+    const lines = segment.split(/\r?\n/);
+    // Estrategia 1: línea con "AÑOS"
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].replace(/\u00A0/g, " ");
+      if (/A[ÑN]OS?/i.test(line)) {
+        let candidate = line.split(/[\|]/)[0];
+        candidate = candidate.replace(/[\u2022\u25E6·●▪◆◊○]/g, "").trim();
+        candidate = candidate.replace(/^\d+\s+/, "").trim();
+        if (candidate && candidate.length >= 4) return candidate;
+      }
+    }
+    // Estrategia 2: línea entre header y la siguiente sección
+    const headerIdx = lines.findIndex(function(l) { return /INDICACIONES/i.test(l); });
+    if (headerIdx >= 0) {
+      for (let i = headerIdx + 1; i < Math.min(lines.length, headerIdx + 6); i++) {
+        const t = lines[i].replace(/[\u2022\u25E6·●▪◆◊○]/g, "").trim();
+        if (!t) continue;
+        if (/EXP|FECHA|DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS/i.test(t)) break;
+        const words = t.split(/\s+/).filter(function(w) { return w.length >= 3; });
+        if (words.length >= 2) {
+          return t.replace(/^\d+\s+/, "").trim();
+        }
+      }
+    }
+    return "";
+  }
+
+  function extractExp(segment) {
+    const expMatch = segment.match(/EXP[\s:#-]*([\d\-]{4,15})/i);
+    return expMatch ? (expMatch[1].replace(/[^0-9]/g, "") || null) : null;
+  }
+
+  function parseSegment(prelude, segment) {
+    // CAMA: primero buscar en prelude (estándar), luego al inicio del segment como fallback
+    let cama = extractCamaFromPrelude(prelude) || extractCamaFromSegmentStart(segment);
+    // NOMBRE
+    const nombre = extractNombre(segment);
+    // EXP opcional
+    const exp = extractExp(segment);
+
+    if (!cama && !nombre && !exp) return null;
+
+    // Secciones
+    const sections = { DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "MEDIDAS GENERALES": [] };
     let currentSection = null;
     const SECTION_RE = /^[\s\u00A0\u2022\u25E6·●▪◆◊○\-\*]*(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES)\s*[:：]?\s*$/i;
+    const lines = segment.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i];
       const line = raw.replace(/\u00A0/g, " ").replace(/[\u2022\u25E6·●▪◆◊○]/g, "").trim();
@@ -4317,23 +4442,19 @@ const PLIndicaciones = (function() {
         if (!sections[currentSection]) sections[currentSection] = [];
         continue;
       }
-      // Sub-items o líneas de contenido
       if (currentSection && sections[currentSection]) {
-        // Quitar prefijos de bullet/numero
         const cleaned = line.replace(/^[\s\-\*\d\.]+/, "").trim();
-        // Skip footers tipo "GRACIAS", "DRA. XXX / DR YYY", "FECHA..."
         if (/^(gracias|fecha\s)/i.test(cleaned)) continue;
-        if (/^(dra?\.|dr\.|mip\b)/i.test(cleaned) && /\//.test(cleaned)) continue; // footer
+        if (/^(dra?\.|dr\.|mip\b)/i.test(cleaned) && /\//.test(cleaned)) continue;
         if (cleaned.length < 2) continue;
         sections[currentSection].push(cleaned);
       }
     }
 
-    const hasAny = Object.keys(sections).some(function(k) { return sections[k].length > 0; });
-    if (!hasAny) return null;
     return {
-      exp: exp,
+      cama: cama,
       nombre: nombre,
+      exp: exp,
       DIETA: sections.DIETA,
       SOLUCIONES: sections.SOLUCIONES,
       MEDICAMENTOS: sections.MEDICAMENTOS,
@@ -4341,53 +4462,74 @@ const PLIndicaciones = (function() {
     };
   }
 
-  // Match exp con tolerancia (variantes con/sin guión)
-  function matchPatientExp(patientExp, indicacionesExp) {
-    if (!patientExp || !indicacionesExp) return false;
-    const a = normalizeExp(patientExp);
-    const b = normalizeExp(indicacionesExp);
-    if (a === b) return true;
-    // Tolerancia: si uno está contenido en el otro (caso 25-27280 vs 2527280)
-    if (a.length >= 5 && b.length >= 5) {
-      if (a.endsWith(b) || b.endsWith(a)) return true;
-    }
-    return false;
-  }
-
+  // ─── IMPORT ─────────────────────────────────────────────────────────────────
   function importPasted(text) {
-    const result = parsePasted(text);
-    const stats = { totalParsed: result.blocks.length, expsImported: [] };
-    result.blocks.forEach(function(b) {
-      setForExp(b.exp, b);
-      stats.expsImported.push(b.exp);
-    });
+    const r = parsePasted(text);
+    const blocks = r.blocks;
+    saveBlocks(blocks);
+    const stats = {
+      totalParsed: blocks.length,
+      withCama: blocks.filter(function(b){return !!b.cama}).length,
+      withNombre: blocks.filter(function(b){return !!b.nombre}).length,
+      withExp: blocks.filter(function(b){return !!b.exp}).length
+    };
     setMeta(Date.now(), stats);
-    return { blocks: result.blocks, debug: result.debug, stats: stats };
+    return { blocks: blocks, debug: r.debug, stats: stats };
   }
 
+  // ─── GET FOR PATIENT (match dinámico) ───────────────────────────────────────
   function getForPatient(p) {
     if (!p) return null;
-    // Buscar por exp (con tolerancia)
-    const pExp = normalizeExp(p.exp);
-    if (!pExp) return null;
-    // Buscar en todos los keys de localStorage por match tolerante
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key || !key.startsWith(KEY_PREFIX)) continue;
-        const storedExp = key.substring(KEY_PREFIX.length);
-        if (matchPatientExp(pExp, storedExp)) {
-          const raw = localStorage.getItem(key);
-          return raw ? JSON.parse(raw) : null;
-        }
+    const blocks = loadBlocks();
+    if (!blocks.length) return null;
+    // Buscar el bloque con MEJOR score
+    let bestMatch = null;
+    let bestScore = 0;
+    for (let i = 0; i < blocks.length; i++) {
+      const r = matchPatient(p, blocks[i]);
+      if (r.matched && r.score > bestScore) {
+        bestMatch = blocks[i];
+        bestScore = r.score;
+        bestMatch._matchMethod = r.method;
+        bestMatch._matchScore = r.score;
       }
-    } catch (e) {}
-    return null;
+    }
+    return bestMatch;
+  }
+
+  // ─── DIAGNÓSTICO COMPLETO ───────────────────────────────────────────────────
+  function diagnose(text, patients) {
+    const r = parsePasted(text);
+    const diag = {
+      blocks: r.blocks,
+      debug: r.debug,
+      matchTable: []
+    };
+    if (patients && patients.length) {
+      diag.matchTable = r.blocks.map(function(b) {
+        // Encontrar el mejor patient match
+        let bestP = null;
+        let bestRes = { matched: false, score: 0, method: null };
+        patients.forEach(function(p) {
+          const m = matchPatient(p, b);
+          if (m.matched && m.score > bestRes.score) {
+            bestP = p;
+            bestRes = m;
+          }
+        });
+        return {
+          block: { cama: b.cama, nombre: b.nombre, exp: b.exp },
+          match: bestP ? { cama: bestP.cama, nombre: bestP.nombre, exp: bestP.exp, method: bestRes.method, score: bestRes.score } : null
+        };
+      });
+    }
+    return diag;
   }
 
   return {
-    setForExp, getForExp, getForPatient, importPasted, parsePasted, freshness,
-    hoursSinceImport, getMeta, matchPatientExp, normalizeExp
+    parsePasted, importPasted, getForPatient, matchPatient, diagnose,
+    normalizeExp, normalizeCama, normalizeName, nameMatchScore,
+    freshness, hoursSinceImport, getMeta, loadBlocks
   };
 })();
 
@@ -4636,7 +4778,7 @@ function renderIndicacionesSection(p, nd, k) {
     return '<div class="ind-section ind-empty" id="ind-' + escCDS(k) + '">' +
       '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
       '<button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button></div>' +
-      '<div class="ind-empty-msg">Sin indicaciones importadas para exp ' + escCDS(p.exp || '?') + '.</div>' +
+      '<div class="ind-empty-msg">Sin indicaciones para ' + escCDS(p.nombre || '?') + ' (cama ' + escCDS(p.cama || '?') + ').</div>' +
       '</div>';
   }
   const sectionBlocks = [
@@ -4651,9 +4793,10 @@ function renderIndicacionesSection(p, nd, k) {
     return '<div class="ind-block"><div class="ind-block-title">' + b.icon + ' ' + b.key + '</div><ul class="ind-list">' + items + '</ul></div>';
   }).join("");
   const freshClass = "ind-fresh-" + fresh.state;
+  const matchInfo = data._matchMethod ? ' · match:' + escCDS(data._matchMethod) : '';
   return '<div class="ind-section ' + freshClass + '" id="ind-' + escCDS(k) + '">' +
     '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
-    '<span class="ind-fresh">⏱ ' + escCDS(fresh.label) + '</span>' +
+    '<span class="ind-fresh">⏱ ' + escCDS(fresh.label) + matchInfo + '</span>' +
     '<button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button></div>' +
     '<div class="ind-content">' + (content || '<div class="ind-empty-msg">Bloque presente pero sin contenido parseado.</div>') + '</div></div>';
 }
@@ -4772,19 +4915,32 @@ function indicacionesDoImport() {
   try {
     const r = PLIndicaciones.importPasted(ta.value);
     if (!r.blocks.length) {
-      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectó ninguna sección con EXP. ' +
-        'Verifica que el texto incluya líneas tipo "EXP: 25-XXXXXX". ' +
-        '<br>Usa "🔍 Diagnóstico" para ver qué se detectó.</span>';
+      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectó ningún bloque "INDICACIONES". ' +
+        'Verifica que el texto incluya los headers tipo "INDICACIONES DE CIRUGÍA GENERAL".<br>' +
+        'Usa "🔍 Diagnóstico" para ver qué se detectó.</span>';
       return;
     }
-    const exps = r.blocks.map(function(b) { return b.exp; }).join(", ");
-    result.innerHTML = '<span style="color:#16a34a">✅ Importadas ' + r.blocks.length + ' indicaciones. ' +
-      '<br>Expedientes: ' + escCDS(exps) + '</span>';
+    // Calcular match con censo (preview rápido)
+    let matched = 0;
+    if (typeof patients !== "undefined" && Array.isArray(patients)) {
+      patients.forEach(function(p) {
+        const data = PLIndicaciones.getForPatient(p);
+        if (data) matched++;
+      });
+    }
+    const totalP = (typeof patients !== "undefined") ? patients.length : 0;
+    result.innerHTML = '<span style="color:#16a34a">✅ Importados ' + r.blocks.length + ' bloques.<br>' +
+      'Stats: ' + r.stats.withCama + ' con cama · ' + r.stats.withNombre + ' con nombre · ' + r.stats.withExp + ' con exp.<br>' +
+      '<b>Match con tu censo: ' + matched + '/' + totalP + ' pacientes.</b><br>' +
+      (matched < totalP * 0.7 && totalP > 0 ?
+        '<span style="color:#f59e0b">⚠️ Bajo % de match. Click "🔍 Diagnóstico" para ver detalle.</span>' :
+        '') +
+      '</span>';
     if (typeof patients !== "undefined" && Array.isArray(patients)) {
       patients.forEach(function(pt) { if (typeof _rerenderCard === "function") _rerenderCard(pid(pt)); });
     }
     updateIndicacionesBanner();
-    setTimeout(closeIndicacionesModal, 2000);
+    setTimeout(closeIndicacionesModal, 3000);
   } catch (e) {
     result.innerHTML = '<span style="color:#dc2626">❌ Error: ' + escCDS(e.message || e) + '</span>';
   }
@@ -4797,36 +4953,29 @@ function indicacionesDiagnose() {
     result.innerHTML = '<span style="color:#dc2626">⚠️ Pega contenido primero.</span>';
     return;
   }
-  const r = PLIndicaciones.parsePasted(ta.value);
-  let html = '<div style="background:#f1f5f9;padding:10px;border-radius:6px;font-size:11px;font-family:monospace">';
-  html += '<b>Diagnóstico:</b><br>';
-  html += '• Total líneas: ' + r.debug.totalLines + '<br>';
-  html += '• Headers "INDICACIONES" encontrados: ' + r.debug.headersFound + '<br>';
-  html += '• EXPs detectados: ' + r.debug.expsFound.length + ' (' + r.debug.expsFound.slice(0, 10).join(", ") + (r.debug.expsFound.length > 10 ? '...' : '') + ')<br>';
-  html += '• Bloques completos parseados: ' + r.blocks.length + '<br>';
-  if (r.blocks.length) {
-    html += '<br><b>Primer bloque parseado:</b><br>';
-    const b = r.blocks[0];
-    html += '• exp: ' + escCDS(b.exp) + '<br>';
-    html += '• nombre: ' + escCDS(b.nombre) + '<br>';
-    html += '• DIETA: ' + (b.DIETA || []).length + ' items<br>';
-    html += '• SOLUCIONES: ' + (b.SOLUCIONES || []).length + ' items<br>';
-    html += '• MEDICAMENTOS: ' + (b.MEDICAMENTOS || []).length + ' items<br>';
-    html += '• MEDIDAS GENERALES: ' + (b["MEDIDAS GENERALES"] || []).length + ' items<br>';
-  }
-  if (typeof patients !== "undefined" && r.blocks.length) {
-    html += '<br><b>Match con tu censo:</b><br>';
-    let matched = 0;
-    r.blocks.forEach(function(b) {
-      const pMatch = patients.find(function(p) { return PLIndicaciones.matchPatientExp(p.exp, b.exp); });
-      if (pMatch) {
-        matched++;
-        html += '• exp ' + b.exp + ' → ' + escCDS(pMatch.nombre || "(sin nombre)") + ' (cama ' + escCDS(pMatch.cama || "?") + ') ✅<br>';
-      } else {
-        html += '• exp ' + b.exp + ' → <span style="color:#dc2626">SIN MATCH en censo</span><br>';
-      }
+  const diag = PLIndicaciones.diagnose(ta.value, typeof patients !== "undefined" ? patients : []);
+  let html = '<div style="background:#f1f5f9;padding:10px;border-radius:6px;font-size:11px;font-family:monospace;max-height:340px;overflow-y:auto">';
+  html += '<b>Diagnóstico parser:</b><br>';
+  html += '• Total líneas: ' + diag.debug.totalLines + '<br>';
+  html += '• Headers "INDICACIONES" encontrados: ' + diag.debug.headersFound + '<br>';
+  html += '• Bloques parseados: ' + diag.debug.blocksDetected + '<br>';
+  html += '• Bloques con CAMA detectada: ' + diag.debug.blocksWithCama + '<br>';
+  html += '• Bloques con NOMBRE detectado: ' + diag.debug.blocksWithName + '<br>';
+  html += '• Bloques con EXP detectado: ' + diag.debug.blocksWithExp + '<br>';
+
+  if (diag.matchTable && diag.matchTable.length) {
+    const totalMatched = diag.matchTable.filter(function(r){return r.match}).length;
+    html += '<br><b>Match con censo: ' + totalMatched + '/' + diag.matchTable.length + '</b><br>';
+    html += '<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:10px">';
+    html += '<tr style="background:#cbd5e1"><th style="text-align:left;padding:3px">Bloque (cama/nombre/exp)</th><th style="text-align:left;padding:3px">Match</th><th style="text-align:left;padding:3px">Método</th></tr>';
+    diag.matchTable.forEach(function(r) {
+      const blkInfo = (r.block.cama || '?') + ' / ' + (r.block.nombre ? r.block.nombre.substring(0, 30) : '(sin nombre)') + (r.block.exp ? ' / EXP ' + r.block.exp : '');
+      const matchInfo = r.match ? ('cama ' + (r.match.cama || '?') + ' · ' + (r.match.nombre || '?').substring(0, 30)) : '<span style="color:#dc2626">SIN MATCH</span>';
+      const methodInfo = r.match ? r.match.method + ' (' + r.match.score + ')' : '-';
+      const rowStyle = r.match ? 'background:#dcfce7' : 'background:#fee2e2';
+      html += '<tr style="' + rowStyle + '"><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + escCDS(blkInfo) + '</td><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + matchInfo + '</td><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + escCDS(methodInfo) + '</td></tr>';
     });
-    html += '<br>Total matched: ' + matched + '/' + r.blocks.length + '<br>';
+    html += '</table>';
   }
   html += '</div>';
   result.innerHTML = html;
