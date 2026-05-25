@@ -77,6 +77,10 @@ export const PDF_NOISE_PATTERNS = [
   /^B = Bajo/i,
   /^Nota[:\s]/i,
   /^OBSERVACIONES?[:\s]/i,
+  // Fragmentos de palabras truncadas por layout multi-columna (bug LUIS REY)
+  /^COAGULO\.?$/i,                   // fragmento de "COAGULOMETRIA"
+  /^METRIA\.?$/i,                    // segundo fragmento de "COAGULOMETRIA"
+  /^OMETR[ÍI]A\.?$/i,                // posibles otros cortes
   /^\s*$/,
 ];
 
@@ -92,7 +96,15 @@ export const PDF_NAME_ONLY_RE =
 export const PDF_VALUE_ONLY_RE =
   /^(?:\*[BA]\s+)?([<>≤≥]?\s*\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
 
+// Headers de sección. Si una línea coincide con uno de estos (case-insensitive),
+// NO es un valor sino el encabezado de la sección que sigue. El parser trackea
+// la SECCIÓN ACTIVA y la agrega a cada valor extraído como `seccion`.
+//
+// Esto permite distinguir LEUCOCITOS de sangre vs LEUCOCITOS de urocultivo,
+// HEMOGLOBINA en sangre vs HEMOGLOBINA en EGO (tira), AMILASA en sangre vs
+// AMILASA en líquido de drenaje (caso de Whipple), etc.
 export const SECTION_HEADERS = new Set([
+  // Sangre / química / coagulación
   "BIOMETRIA HEMATICA COMPLETA",
   "BIOMETRÍA HEMÁTICA COMPLETA",
   "QUIMICA SANGUINEA",
@@ -101,8 +113,63 @@ export const SECTION_HEADERS = new Set([
   "ELECTROLITOS SÉRICOS",
   "PERFIL HEPATICO",
   "PERFIL HEPÁTICO",
+  "TIEMPO DE PROTROMBINA",
+  "TIEMPO DE TROMBOPLASTINA PARCIAL",
+  "PROCALCITONINA",
+  // Fluidos no sanguíneos / cultivos
   "EXAMEN GENERAL DE ORINA",
+  "EXAMEN GENERAL DE ORINA (EGO)",
+  "UROCULTIVO",
+  "HEMOCULTIVO",
+  "COPROCULTIVO",
+  "CULTIVO DE EXPECTORACION",
+  "CULTIVO DE EXPECTORACIÓN",
+  "CULTIVO DE LIQUIDO PERITONEAL",
+  "CULTIVO DE LÍQUIDO PERITONEAL",
+  "CULTIVO DE LIQUIDO DE DRENAJE",
+  "CULTIVO DE LÍQUIDO DE DRENAJE",
+  "CULTIVO DE PUNTA DE CATETER",
+  "CULTIVO DE PUNTA DE CATÉTER",
+  "ANTIBIOGRAMA",
+  // Líquidos especiales (drenajes Whipple, ascitis, etc.)
+  "LIQUIDO DE DRENAJE",
+  "LÍQUIDO DE DRENAJE",
+  "AMILASA EN LIQUIDO DE DRENAJE",
+  "AMILASA EN LÍQUIDO DE DRENAJE",
+  "LIQUIDO PERITONEAL",
+  "LÍQUIDO PERITONEAL",
+  "LIQUIDO PLEURAL",
+  "LÍQUIDO PLEURAL",
+  "LIQUIDO CEFALORRAQUIDEO",
+  "LÍQUIDO CEFALORRAQUÍDEO",
+  // Gasometría
+  "GASOMETRIA ARTERIAL",
+  "GASOMETRÍA ARTERIAL",
+  "GASOMETRIA VENOSA",
+  "GASOMETRÍA VENOSA",
 ]);
+
+// Mapeo a categoría general para el frontend.
+// Cada sección detectada se clasifica en uno de estos buckets:
+//   "blood"     → BH, química, coagulación, electrolitos sangre, hepáticas
+//   "urine"     → EGO, urocultivo
+//   "culture"   → hemocultivo, coprocultivo, cultivos de fluidos, antibiograma
+//   "fluid"     → líquido de drenaje, ascitis, pleural, LCR, amilasa de drenaje
+//   "gas"       → gasometrías
+//   "other"     → no clasificado
+export function classifySection(seccion) {
+  // Si NO hay sección activa, asumir "blood" por default (la química clínica
+  // del HGL no tiene header explícito — empieza directo con GLUCOSA, UREA, etc.
+  // El frontend tiene un filtro non-blood adicional como segunda capa).
+  if (!seccion) return "blood";
+  const s = String(seccion).toUpperCase();
+  if (/BIOMETR|QUIMIC|QUÍMIC|HEPAT|HEPÁT|ELECTROL|COAGULAC|PROTROMBINA|TROMBOPLASTINA|PROCALCITONINA/.test(s)) return "blood";
+  if (/UROCULTIVO|EXAMEN GENERAL DE ORINA|\bEGO\b/.test(s)) return "urine";
+  if (/CULTIVO|ANTIBIOGRAMA|HEMOCULTIVO|COPROCULTIVO/.test(s)) return "culture";
+  if (/L[IÍ]QUIDO|DRENAJE|ASCITIS|PLEURAL|CEFALORRAQU/.test(s)) return "fluid";
+  if (/GASOMETR|GASOMETRÍ/.test(s)) return "gas";
+  return "other";
+}
 
 export function extractLabValuesFromText(text) {
   if (!text || typeof text !== "string") return [];
@@ -112,9 +179,21 @@ export function extractLabValuesFromText(text) {
     .split(/\r?\n/)
     .map(l => l.replace(/\t/g, " ").trim().replace(/\s+/g, " "));
 
+  // Sección activa: cuando encontramos un header conocido, lo guardamos.
+  // Persiste para todos los valores siguientes hasta que se encuentre otro header.
+  // Esto permite saber el contexto clínico de cada valor (sangre, orina, cultivo, etc.)
+  let currentSection = null;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
+
+    // ¿Es un header de sección? → actualizar contexto y NO extraer como valor
+    if (SECTION_HEADERS.has(line.toUpperCase())) {
+      currentSection = line.toUpperCase();
+      continue;
+    }
+
     if (PDF_NOISE_PATTERNS.some(rx => rx.test(line))) continue;
 
     // ── Caso A/B: línea inline ────────────────────────────────────────
@@ -122,7 +201,11 @@ export function extractLabValuesFromText(text) {
     if (inlineMatch) {
       const [, nombre, valor, unidad, referencia] = inlineMatch;
       const cleanNombre = (nombre || "").trim();
-      if (SECTION_HEADERS.has(cleanNombre.toUpperCase())) continue;
+      if (SECTION_HEADERS.has(cleanNombre.toUpperCase())) {
+        // Header inline (raro): actualizar sección y skip
+        currentSection = cleanNombre.toUpperCase();
+        continue;
+      }
       if (cleanNombre.length < 2 || cleanNombre.length > 80) continue;
       if (/^\d/.test(cleanNombre)) continue;
       const numStr = valor.replace(/[<>≤≥\s]/g, "");
@@ -132,6 +215,8 @@ export function extractLabValuesFromText(text) {
         valor: valor.trim(),
         unidad: (unidad || "").trim(),
         referencia: (referencia || "").trim(),
+        seccion: currentSection,
+        bucket: classifySection(currentSection),
       });
       continue;
     }
@@ -139,7 +224,18 @@ export function extractLabValuesFromText(text) {
     // ── Caso C/D: NOMBRE solo, valor en líneas siguientes ─────────────
     if (!PDF_NAME_ONLY_RE.test(line)) continue;
     if (line.length < 2 || line.length > 80) continue;
-    if (SECTION_HEADERS.has(line.toUpperCase())) continue;
+    if (SECTION_HEADERS.has(line.toUpperCase())) {
+      currentSection = line.toUpperCase();
+      continue;
+    }
+
+    // Si termina en punto, debe ser ACRÓNIMO válido (I.N.R., A.B.) — no palabra
+    // completa (COAGULO., METRIA., etc.). Acrónimo: letras individuales separadas
+    // por puntos.
+    if (/\.$/.test(line)) {
+      const isAcronym = /^[A-ZÁÉÍÓÚÑ]\.([A-ZÁÉÍÓÚÑ]\.)*$/.test(line);
+      if (!isAcronym) continue;
+    }
 
     for (let j = i + 1; j <= Math.min(i + 4, lines.length - 1); j++) {
       const next = lines[j];
@@ -156,6 +252,8 @@ export function extractLabValuesFromText(text) {
           valor: (valor || "").trim(),
           unidad: (unidad || "").trim(),
           referencia: (referencia || "").trim(),
+          seccion: currentSection,
+          bucket: classifySection(currentSection),
         });
         i = j;
         break;
