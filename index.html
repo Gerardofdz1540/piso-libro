@@ -2977,143 +2977,98 @@
 
   
 
-/* ════ V16 INJECTION: CDS + Vasopresores + Indicaciones ════ */
-/* ═══════════════════════════════════════════════════════════════════════════
- * CSS v14 — CDS, Vasopresores, Indicaciones
- * ═══════════════════════════════════════════════════════════════════════════ */
+/* ════ V17 INJECTION ════ */
+/* CSS v17: vaso compacto + modal con tabs + estilos heredados */
 
 /* ─── CDS Section ─── */
-.cds-section {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border: 1.5px solid #f59e0b;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 10px;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
-}
-.cds-section.cds-empty {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-  border-color: #10b981;
-  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.1);
-}
-.cds-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.cds-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #78350f;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.cds-section.cds-empty .cds-title {
-  color: #064e3b;
-}
-.cds-count {
-  font-size: 11px;
-  color: #92400e;
-  font-weight: 600;
-}
-.cds-status-ok {
-  font-size: 11px;
-  color: #047857;
-  font-weight: 600;
-}
-.cds-crit-count {
-  background: #dc2626;
-  color: white;
-  padding: 2px 8px;
-  border-radius: 10px;
+.cds-section { background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%); border:1.5px solid #f59e0b; border-radius:10px; padding:10px 12px; margin-top:10px; box-shadow:0 2px 8px rgba(245,158,11,.15); }
+.cds-section.cds-empty { background:linear-gradient(135deg,#ecfdf5 0%,#d1fae5 100%); border-color:#10b981; box-shadow:0 1px 4px rgba(16,185,129,.1); }
+.cds-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+.cds-title { font-size:12px; font-weight:700; color:#78350f; text-transform:uppercase; letter-spacing:.5px; }
+.cds-section.cds-empty .cds-title { color:#064e3b; }
+.cds-count { font-size:11px; color:#92400e; font-weight:600; }
+.cds-status-ok { font-size:11px; color:#047857; font-weight:600; }
+.cds-crit-count { background:#dc2626; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; animation:cds-pulse 1.5s ease-in-out 3; }
+@keyframes cds-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.5)} 50%{box-shadow:0 0 0 6px rgba(220,38,38,0)} }
+.cds-items { display:flex; flex-direction:column; gap:6px; }
+.cds-item { background:white; border:1px solid #fcd34d; border-radius:7px; padding:7px 9px; }
+.cds-item.cds-critical { border-left:4px solid #dc2626; background:#fef2f2; }
+.cds-item-row { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+.cds-badge { font-size:9px; font-weight:700; padding:2px 7px; border-radius:8px; color:white; letter-spacing:.5px; }
+.cds-badge-stage { background:#b91c1c; }
+.cds-badge-severa { background:#dc2626; }
+.cds-badge-moderada { background:#f97316; }
+.cds-badge-leve { background:#eab308; color:#422006; }
+.cds-badge-info { background:#3b82f6; }
+.cds-rule-name { font-size:11px; font-weight:600; color:#1e293b; }
+.cds-suggestion { font-size:12px; color:#334155; margin:3px 0 5px; line-height:1.35; }
+.cds-actions { display:flex; gap:6px; }
+.cds-btn { font-size:10px; padding:3px 8px; border-radius:5px; border:none; cursor:pointer; font-weight:600; }
+.cds-btn-apply { background:#1e3a5f; color:white; }
+.cds-btn-apply:hover { background:#0a1628; }
+.cds-btn-ignore { background:#e2e8f0; color:#475569; }
+.cds-btn-ignore:hover { background:#cbd5e1; }
+.cds-more { margin-top:5px; font-size:11px; color:#92400e; cursor:pointer; text-decoration:underline; font-weight:600; }
+
+/* ─── VASOPRESORES COMPACTOS ─── */
+/* Mini-button cuando NO hay actividad — discreto, inline */
+.vaso-mini { margin-top:6px; }
+.vaso-mini-btn {
+  background: transparent;
+  border: 1.5px dashed #cbd5e1;
+  color: #64748b;
   font-size: 10px;
-  font-weight: 700;
-  animation: cds-pulse 1.5s ease-in-out 3;
+  padding: 3px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 500;
 }
-@keyframes cds-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
-  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+.vaso-mini-btn:hover { background:#fee2e2; color:#dc2626; border-color:#ef4444; }
+
+/* Compact: una sola línea horizontal con pills cuando hay actividad */
+.vaso-section-compact {
+  background: linear-gradient(90deg, #fee2e2 0%, #fef2f2 100%);
+  border-left: 3px solid #dc2626;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 8px;
 }
-.cds-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.cds-item {
-  background: white;
-  border: 1px solid #fcd34d;
-  border-radius: 7px;
-  padding: 7px 9px;
-}
-.cds-item.cds-critical {
-  border-left: 4px solid #dc2626;
-  background: #fef2f2;
-}
-.cds-item-row {
+.vaso-compact-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 3px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.cds-badge {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 8px;
-  color: white;
-  letter-spacing: 0.5px;
-}
-.cds-badge-stage { background: #b91c1c; }
-.cds-badge-severa { background: #dc2626; }
-.cds-badge-moderada { background: #f97316; }
-.cds-badge-leve { background: #eab308; color: #422006; }
-.cds-badge-info { background: #3b82f6; }
-.cds-rule-name {
+.vaso-compact-label {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
+  color: #7f1d1d;
+  text-transform: uppercase;
+}
+.vaso-pill {
+  background: white;
+  border: 1px solid #fca5a5;
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-family: 'SF Mono', Menlo, monospace;
   color: #1e293b;
 }
-.cds-suggestion {
+.vaso-pill b { color: #7f1d1d; margin-right: 3px; }
+.vaso-pill.vaso-pill-high { border-color: #dc2626; background: #fee2e2; }
+.vaso-edit-btn {
+  background: rgba(255,255,255,.7);
+  border: 1px solid #fca5a5;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
   font-size: 12px;
-  color: #334155;
-  margin: 3px 0 5px;
-  line-height: 1.35;
+  margin-left: auto;
 }
-.cds-actions {
-  display: flex;
-  gap: 6px;
-}
-.cds-btn {
-  font-size: 10px;
-  padding: 3px 8px;
-  border-radius: 5px;
-  border: none;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.15s;
-}
-.cds-btn-apply {
-  background: #1e3a5f;
-  color: white;
-}
-.cds-btn-apply:hover { background: #0a1628; }
-.cds-btn-ignore {
-  background: #e2e8f0;
-  color: #475569;
-}
-.cds-btn-ignore:hover { background: #cbd5e1; }
-.cds-more {
-  margin-top: 5px;
-  font-size: 11px;
-  color: #92400e;
-  cursor: pointer;
-  text-decoration: underline;
-  font-weight: 600;
-}
+.vaso-edit-btn:hover { background: white; }
 
-/* ─── Vasopresores Section ─── */
+/* Expanded: el panel completo (solo cuando se edita activamente) */
 .vaso-section {
   background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
   border: 1.5px solid #ef4444;
@@ -3121,307 +3076,90 @@
   padding: 10px 12px;
   margin-top: 10px;
 }
-.vaso-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 9px;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.vaso-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #7f1d1d;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.vaso-active {
-  background: #dc2626;
-  color: white;
-  font-size: 9px;
-  padding: 2px 7px;
-  border-radius: 8px;
-  margin-left: 6px;
-  font-weight: 700;
-}
-.vaso-weight-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: #7f1d1d;
-}
-.vaso-input-weight {
-  width: 50px;
-  padding: 3px 5px;
+.vaso-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; gap:10px; flex-wrap:wrap; }
+.vaso-title { font-size:12px; font-weight:700; color:#7f1d1d; text-transform:uppercase; letter-spacing:.5px; }
+.vaso-collapse-btn {
+  background: rgba(255,255,255,.7);
   border: 1px solid #fca5a5;
-  border-radius: 5px;
-  font-size: 11px;
-  text-align: center;
-}
-.vaso-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.vaso-row {
-  display: grid;
-  grid-template-columns: 110px 75px 70px 1fr;
-  align-items: center;
-  gap: 6px;
-  background: white;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid #fca5a5;
-  font-size: 11px;
-}
-.vaso-row.vaso-high {
-  border-color: #dc2626;
-  background: #fef2f2;
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
-}
-.vaso-label {
-  font-weight: 600;
-  color: #1e293b;
-}
-.vaso-input {
-  width: 100%;
-  padding: 3px 5px;
-  border: 1px solid #cbd5e1;
+  width: 28px; height: 24px;
   border-radius: 4px;
-  font-size: 11px;
-  text-align: center;
-  font-family: 'SF Mono', Menlo, monospace;
-}
-.vaso-unit {
-  font-size: 10px;
-  color: #64748b;
-  font-family: 'SF Mono', Menlo, monospace;
-}
-.vaso-calc {
-  font-size: 11px;
-  font-weight: 600;
-  color: #16a34a;
-  font-family: 'SF Mono', Menlo, monospace;
-}
-.vaso-row.vaso-high .vaso-calc { color: #dc2626; }
-.vaso-note {
-  font-size: 9px;
-  color: #94a3b8;
-  font-style: italic;
-  grid-column: 2 / -1;
-  margin-top: -2px;
-}
-.vaso-footer {
-  margin-top: 8px;
-  font-size: 10px;
-  color: #7f1d1d;
-}
-.vaso-disclaimer {
-  background: rgba(255, 255, 255, 0.6);
-  padding: 4px 8px;
-  border-radius: 5px;
-  display: inline-block;
-}
-
-/* ─── Indicaciones Section ─── */
-.ind-section {
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  border: 1.5px solid #3b82f6;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 10px;
-}
-.ind-section.ind-empty {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-}
-.ind-section.ind-fresh-stale {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border-color: #f59e0b;
-}
-.ind-section.ind-fresh-old {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-  border-color: #dc2626;
-}
-.ind-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-.ind-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #1e3a8a;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.ind-section.ind-empty .ind-title { color: #475569; }
-.ind-fresh {
-  font-size: 10px;
-  color: #64748b;
-  font-family: 'SF Mono', Menlo, monospace;
-}
-.ind-import-btn {
-  background: #1e3a5f;
-  color: white;
-  font-size: 10px;
-  padding: 4px 10px;
-  border-radius: 5px;
-  border: none;
   cursor: pointer;
-  font-weight: 600;
+  font-size: 12px;
+  margin-left: auto;
 }
-.ind-import-btn:hover { background: #0a1628; }
-.ind-empty-msg {
-  font-size: 11px;
-  color: #64748b;
-  font-style: italic;
-}
-.ind-content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ind-block {
-  background: white;
-  border-radius: 6px;
-  padding: 6px 10px;
-  border: 1px solid #93c5fd;
-}
-.ind-block-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: #1e40af;
-  margin-bottom: 3px;
-}
-.ind-list {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 11px;
-  color: #1e293b;
-  line-height: 1.45;
-}
-.ind-list li {
-  margin: 2px 0;
-}
+.vaso-collapse-btn:hover { background: white; }
+.vaso-weight-row { display:flex; align-items:center; gap:5px; font-size:11px; color:#7f1d1d; }
+.vaso-input-weight { width:50px; padding:3px 5px; border:1px solid #fca5a5; border-radius:5px; font-size:11px; text-align:center; }
+.vaso-rows { display:flex; flex-direction:column; gap:4px; }
+.vaso-row { display:grid; grid-template-columns:110px 75px 70px 1fr; align-items:center; gap:6px; background:white; padding:4px 8px; border-radius:6px; border:1px solid #fca5a5; font-size:11px; }
+.vaso-row.vaso-high { border-color:#dc2626; background:#fef2f2; box-shadow:0 0 0 2px rgba(220,38,38,.1); }
+.vaso-label { font-weight:600; color:#1e293b; }
+.vaso-input { width:100%; padding:3px 5px; border:1px solid #cbd5e1; border-radius:4px; font-size:11px; text-align:center; font-family:'SF Mono',Menlo,monospace; }
+.vaso-unit { font-size:10px; color:#64748b; font-family:'SF Mono',Menlo,monospace; }
+.vaso-calc { font-size:11px; font-weight:600; color:#16a34a; font-family:'SF Mono',Menlo,monospace; }
+.vaso-row.vaso-high .vaso-calc { color:#dc2626; }
+.vaso-note { font-size:9px; color:#94a3b8; font-style:italic; grid-column:2/-1; margin-top:-2px; }
+.vaso-footer { margin-top:8px; font-size:10px; color:#7f1d1d; }
+.vaso-disclaimer { background:rgba(255,255,255,.6); padding:4px 8px; border-radius:5px; display:inline-block; }
 
-/* ─── Banner stale indicaciones ─── */
-.ind-banner {
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-  padding: 10px 16px;
+/* ─── INDICACIONES ─── */
+.ind-section { background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%); border:1.5px solid #3b82f6; border-radius:10px; padding:10px 12px; margin-top:10px; }
+.ind-section.ind-empty { background:#f1f5f9; border-color:#94a3b8; }
+.ind-section.ind-fresh-stale { background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%); border-color:#f59e0b; }
+.ind-section.ind-fresh-old { background:linear-gradient(135deg,#fee2e2 0%,#fecaca 100%); border-color:#dc2626; }
+.ind-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+.ind-title { font-size:12px; font-weight:700; color:#1e3a8a; text-transform:uppercase; letter-spacing:.5px; }
+.ind-section.ind-empty .ind-title { color:#475569; }
+.ind-fresh { font-size:10px; color:#64748b; font-family:'SF Mono',Menlo,monospace; }
+.ind-import-btn { background:#1e3a5f; color:white; font-size:10px; padding:4px 10px; border-radius:5px; border:none; cursor:pointer; font-weight:600; }
+.ind-import-btn:hover { background:#0a1628; }
+.ind-empty-msg { font-size:11px; color:#64748b; font-style:italic; }
+.ind-content { display:flex; flex-direction:column; gap:6px; }
+.ind-block { background:white; border-radius:6px; padding:6px 10px; border:1px solid #93c5fd; }
+.ind-block-title { font-size:11px; font-weight:700; color:#1e40af; margin-bottom:3px; }
+.ind-list { margin:0; padding-left:18px; font-size:11px; color:#1e293b; line-height:1.45; }
+.ind-list li { margin:2px 0; }
+
+/* Banner stale */
+.ind-banner { position:sticky; top:0; z-index:1000; background:linear-gradient(90deg,#f59e0b 0%,#d97706 100%); color:white; padding:10px 16px; display:flex; align-items:center; gap:12px; box-shadow:0 2px 8px rgba(0,0,0,.15); font-size:13px; font-weight:500; }
+.ind-banner-icon { font-size:18px; }
+.ind-banner-text { flex:1; }
+.ind-banner-btn { background:white; color:#d97706; border:none; padding:5px 14px; border-radius:6px; font-weight:700; cursor:pointer; font-size:12px; }
+.ind-banner-dismiss { background:rgba(255,255,255,.2); color:white; border:none; width:26px; height:26px; border-radius:50%; cursor:pointer; font-size:14px; }
+
+/* Tabs en modal */
+.ind-tabs {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  gap: 4px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 12px;
+}
+.ind-tab {
+  background: transparent;
+  border: none;
+  padding: 8px 16px;
   font-size: 13px;
-  font-weight: 500;
-}
-.ind-banner-icon {
-  font-size: 18px;
-}
-.ind-banner-text {
-  flex: 1;
-}
-.ind-banner-btn {
-  background: white;
-  color: #d97706;
-  border: none;
-  padding: 5px 14px;
-  border-radius: 6px;
-  font-weight: 700;
+  font-weight: 600;
+  color: #64748b;
   cursor: pointer;
-  font-size: 12px;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
 }
-.ind-banner-dismiss {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.ind-tab:hover { color: #1e293b; }
+.ind-tab-active {
+  color: #1e3a5f;
+  border-bottom-color: #1e3a5f;
 }
 
-/* ─── Toast ─── */
-.cds-toast {
-  position: fixed;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%) translateY(20px);
-  background: #1e293b;
-  color: white;
-  padding: 12px 22px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  z-index: 10000;
-  opacity: 0;
-  transition: opacity 0.3s, transform 0.3s;
-  pointer-events: none;
-}
-.cds-toast-show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
+/* Toast */
+.cds-toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%) translateY(20px); background:#1e293b; color:white; padding:12px 22px; border-radius:10px; font-size:13px; font-weight:500; box-shadow:0 4px 20px rgba(0,0,0,.25); z-index:10000; opacity:0; transition:opacity .3s,transform .3s; pointer-events:none; }
+.cds-toast-show { opacity:1; transform:translateX(-50%) translateY(0); }
 
-/* ─── Botón toolbar Sugerencias ─── */
-.btn-cds-toolbar {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.btn-cds-toolbar:hover { filter: brightness(0.95); }
-.btn-cds-toolbar.has-critical {
-  animation: cds-critical-pulse 1.5s ease-in-out infinite;
-}
-@keyframes cds-critical-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
-  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
-}
-
-/* ─── Modal estándar (si no existe) ─── */
-.btn-primary {
-  background: #1e3a5f;
-  color: white;
-  border: none;
-  padding: 8px 18px;
-  border-radius: 7px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-primary:hover { background: #0a1628; }
-.btn-secondary {
-  background: #e2e8f0;
-  color: #475569;
-  border: none;
-  padding: 8px 18px;
-  border-radius: 7px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-secondary:hover { background: #cbd5e1; }
+/* Botones genéricos */
+.btn-primary { background:#1e3a5f; color:white; border:none; padding:8px 18px; border-radius:7px; font-weight:600; cursor:pointer; }
+.btn-primary:hover { background:#0a1628; }
+.btn-secondary { background:#e2e8f0; color:#475569; border:none; padding:8px 18px; border-radius:7px; font-weight:600; cursor:pointer; }
+.btn-secondary:hover { background:#cbd5e1; }
 
   </style>
 </head>
@@ -4170,20 +3908,11 @@
   </script>
   
 
-  <!-- ════════ V16: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
+  <!-- ════════ V17: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
   <script>
-/* Código nuevo en su PROPIO bloque dedicado, NO dentro de tag con atributo src=. */
-/* Ver seccion 14 del PROJECT_BRIEFING.md para el postmortem del bug v14. */
+/* Codigo nuevo en su PROPIO bloque dedicado. */
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PISO LIBRO v14 — Módulos: CDS · Vasopresores · Indicaciones read-only
-// Inyectado antes del cierre del script principal en index-CDS-v14.html
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/* ════════════════════════════════════════════════════════════════════════════
- * 1. CDS — Clinical Decision Support
- * Reglas verificadas: KDIGO 2012, OMS anemia, Tokyo 2018, electrolitos
- * ════════════════════════════════════════════════════════════════════════════ */
+/* Modulos PLCDS, PLVaso, PLIndicaciones — v17 */
 const PLCDS = (function() {
   "use strict";
   function num(v) {
@@ -4252,11 +3981,11 @@ const PLCDS = (function() {
         else if(ratio>=1.5||delta>=0.3) stage=1;
         if(!stage) return null;
         return {stage,sev:"stage"+stage,value:cr,basal,ratio:ratio.toFixed(2),
-          display:"Cr "+cr+" (basal "+basal+", ×"+ratio.toFixed(2)+")"};}},
+          display:"Cr "+cr+" (basal "+basal+", x"+ratio.toFixed(2)+")"};}},
     { id:"trombo", name:"Trombocitopenia", keywords:/trombocitopen|plaquetopen/i,
       check(labs){ const p=num(labs.plaq); if(!isFinite(p)||p>=150) return null;
         const sev=p<50?"severa":(p<100?"moderada":"leve");
-        return {sev,value:p,unit:"×10³/μL",display:"Plaq "+p+"k"};}},
+        return {sev,value:p,unit:"x10^3/uL",display:"Plaq "+p+"k"};}},
     { id:"hipoalb", name:"Hipoalbuminemia", keywords:/hipoalbumin/i,
       check(labs){ const a=num(labs.alb); if(!isFinite(a)||a>=3.5) return null;
         const sev=a<2.5?"severa":(a<3.0?"moderada":"leve");
@@ -4266,7 +3995,7 @@ const PLCDS = (function() {
         if(!isFinite(hco3)||hco3>=22) return null;
         if(isFinite(ph)&&ph>=7.45) return null;
         const sev=hco3<15?"severa":(hco3<18?"moderada":"leve");
-        return {sev,value:hco3,unit:"mEq/L",display:"HCO₃ "+hco3};}},
+        return {sev,value:hco3,unit:"mEq/L",display:"HCO3 "+hco3};}},
     { id:"hiperbil", name:"Hiperbilirrubinemia", keywords:/(hiperbilirrubin|ict[eé]ric)/i,
       check(labs){ const bt=num(labs.bt); if(!isFinite(bt)||bt<=1.2) return null;
         const sev=bt>5?"severa":(bt>3?"moderada":"leve");
@@ -4349,7 +4078,7 @@ const PLCDS = (function() {
       const cur=norm(currentGrade); const tgt=norm(result.sev);
       if(cur&&tgt&&cur!==tgt){
         return {type:"reclasify",
-          text:"Reclasificar "+rule.name.toLowerCase()+" "+cur+" → "+tgt+" ("+(result.display||result.value)+")",
+          text:"Reclasificar "+rule.name.toLowerCase()+" "+cur+" -> "+tgt+" ("+(result.display||result.value)+")",
           from:cur,to:tgt};
       }
       if(!cur&&tgt){
@@ -4360,7 +4089,7 @@ const PLCDS = (function() {
       return null;
     }
     return {type:"add",
-      text:"Agregar al dx: \""+rule.name+" "+result.sev+"\" ("+(result.display||result.value)+")",
+      text:"Agregar al dx: "+rule.name+" "+result.sev+" ("+(result.display||result.value)+")",
       to:result.sev};
   }
   function valueHash(result){
@@ -4393,7 +4122,7 @@ const PLCDS = (function() {
       if(cur&&cur!==col.sev){
         out.push({ruleId:"colangitis",ruleName:"Colangitis (Tokyo 2018)",severity:col.sev,
           critical:col.sev==="severa",result:col,
-          suggestion:{type:"reclasify",text:"Colangitis: reclasificar "+cur+" → "+col.sev+" ("+col.criteria+" criterios Grado II)"},
+          suggestion:{type:"reclasify",text:"Colangitis: reclasificar "+cur+" -> "+col.sev+" ("+col.criteria+" criterios Grado II)"},
           valueHash:"tk:"+col.sev+":"+col.criteria});
       }
     }
@@ -4420,35 +4149,27 @@ const PLCDS = (function() {
 })();
 
 /* ════════════════════════════════════════════════════════════════════════════
- * 2. VASOPRESORES — Calculadora por paciente
- * Unidades correctas: Nore/Epi/Dobu/Dopa = mcg/kg/min ; Vaso = U/min FIJA
+ * PLVaso v17 — COMPACTO. Solo expande si activo. Mini-pill cuando vacío.
  * ════════════════════════════════════════════════════════════════════════════ */
 const PLVaso = (function() {
   "use strict";
-  const VAso_LIMITS = {
-    nore: { unit: "mcg/kg/min", min: 0, max: 3.0, typical: "0.01–0.5", warn: 0.5 },
-    epi:  { unit: "mcg/kg/min", min: 0, max: 1.0, typical: "0.01–0.3", warn: 0.3 },
-    dobu: { unit: "mcg/kg/min", min: 0, max: 20,  typical: "2–20",     warn: 20 },
-    dopa: { unit: "mcg/kg/min", min: 0, max: 20,  typical: "2–20",     warn: 20 },
-    vaso: { unit: "U/min",      min: 0, max: 0.04, typical: "0.01–0.04", warn: 0.04 }
+  const LIMITS = {
+    nore: { unit: "mcg/kg/min", warn: 0.5, label: "Nore" },
+    epi:  { unit: "mcg/kg/min", warn: 0.3, label: "Epi" },
+    dobu: { unit: "mcg/kg/min", warn: 20,  label: "Dobu" },
+    dopa: { unit: "mcg/kg/min", warn: 20,  label: "Dopa" },
+    vaso: { unit: "U/min",      warn: 0.04, label: "Vaso" }
   };
   function num(v) { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : NaN; }
-
   function computeAbsoluteDose(drug, dose, weight) {
-    // Devuelve { perMin, perHour, units, mlh }
     const d = num(dose);
     const w = num(weight);
     if (!isFinite(d) || d <= 0) return null;
-    if (drug === "vaso") {
-      // Vaso: U/min × 60 = U/h (NO depende del peso)
-      return { perMin: d, perHour: d * 60, units: "U" };
-    }
-    // Nore/Epi/Dobu/Dopa: mcg/kg/min × peso = mcg/min
+    if (drug === "vaso") return { perMin: d, perHour: d * 60, units: "U" };
     if (!isFinite(w) || w <= 0) return null;
     const mcgMin = d * w;
-    return { perMin: mcgMin, perHour: mcgMin * 60 / 1000, units: "mcg→mg" };
+    return { perMin: mcgMin, perHour: mcgMin * 60 / 1000, units: "mcg" };
   }
-
   function fmtAbsolute(drug, dose, weight) {
     const c = computeAbsoluteDose(drug, dose, weight);
     if (!c) return "";
@@ -4457,37 +4178,51 @@ const PLVaso = (function() {
     }
     return c.perMin.toFixed(2) + " mcg/min · " + c.perHour.toFixed(2) + " mg/h";
   }
-
   function isHighDose(drug, dose) {
     const d = num(dose);
     if (!isFinite(d)) return false;
-    const lim = VAso_LIMITS[drug];
+    const lim = LIMITS[drug];
     return lim ? (d > lim.warn) : false;
   }
-
-  return { LIMITS: VAso_LIMITS, computeAbsoluteDose, fmtAbsolute, isHighDose };
+  function hasAnyActive(vasopresores) {
+    if (!vasopresores) return false;
+    return Object.keys(LIMITS).some(function(k) {
+      const v = num(vasopresores[k]);
+      return isFinite(v) && v > 0;
+    });
+  }
+  return { LIMITS, computeAbsoluteDose, fmtAbsolute, isHighDose, hasAnyActive };
 })();
 
 /* ════════════════════════════════════════════════════════════════════════════
- * 3. INDICACIONES — Visor read-only de indicaciones (Google Docs paste / .docx)
+ * PLIndicaciones v17 — match por EXPEDIENTE (no por cama)
+ * Soporta paste manual + bookmarklet (lee Google Doc DOM)
  * ════════════════════════════════════════════════════════════════════════════ */
 const PLIndicaciones = (function() {
   "use strict";
-  const KEY_PREFIX = "pl_indicaciones_v1_";
-  const KEY_META = "pl_indicaciones_meta_v1";
+  const KEY_PREFIX = "pl_indicaciones_v2_";  // v2: por exp en vez de cama
+  const KEY_META = "pl_indicaciones_meta_v2";
 
-  function setForBed(bed, data) {
-    try { localStorage.setItem(KEY_PREFIX + String(bed), JSON.stringify(data)); }
-    catch (e) { console.warn("PLIndicaciones.setForBed:", e); }
+  function normalizeExp(s) {
+    return String(s || "").replace(/[^0-9]/g, "");
   }
-  function getForBed(bed) {
+  function setForExp(exp, data) {
+    const norm = normalizeExp(exp);
+    if (!norm) return;
+    try { localStorage.setItem(KEY_PREFIX + norm, JSON.stringify(data)); } catch (e) {}
+  }
+  function getForExp(exp) {
+    const norm = normalizeExp(exp);
+    if (!norm) return null;
     try {
-      const raw = localStorage.getItem(KEY_PREFIX + String(bed));
+      const raw = localStorage.getItem(KEY_PREFIX + norm);
       return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
   }
-  function setMeta(ts) {
-    try { localStorage.setItem(KEY_META, JSON.stringify({ importedAt: ts })); } catch (e) {}
+  function setMeta(ts, stats) {
+    try {
+      localStorage.setItem(KEY_META, JSON.stringify({ importedAt: ts, stats: stats || {} }));
+    } catch (e) {}
   }
   function getMeta() {
     try {
@@ -4508,101 +4243,167 @@ const PLIndicaciones = (function() {
     return { state: "old", label: "Hace " + Math.round(h) + "h ⚠️" };
   }
 
-  // Parser de texto pegado de Google Docs (asumiendo formato del briefing)
-  // Detecta pestañas/secciones por NÚMERO DE CAMA y luego parsea DIETA/SOLUCIONES/MEDICAMENTOS/MEDIDAS GENERALES
+  // ─── PARSER ROBUSTO ─────────────────────────────────────────────────────────
+  // Estrategia: detecta bloques de "INDICACIONES" + extrae exp del header.
+  // Tolerante a múltiples formatos.
   function parsePasted(text) {
-    if (!text) return [];
-    const lines = String(text).split(/\r?\n/);
-    const beds = [];
-    let current = null;
-    const SECTION_RE = /^(\s*[•·●▪◆◊○]\s*|\s*-\s*|\s*\*\s*)?(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES|INDICACIONES)\s*[:：]?\s*$/i;
-    const BED_HEADER_RE = /^(INDICACIONES\s+(DE\s+)?(CIRUG[IÍ]A\s+)?GENERAL)/i;
-    const BED_TAB_RE = /^\s*(\d{2,4})\s*$/; // pestaña con solo número
-    // Buscar líneas tipo "EXP: 25-12345" o "CAMA 150" o número solo
-    function detectBedFromLine(l) {
-      const m = l.match(/(?:cama|bed|HABITACI[OÓ]N)[\s:#-]*(\d{1,4})/i);
-      if (m) return m[1];
-      const m2 = l.match(/\b3-(\d{2,4})\b/);
-      if (m2) return m2[1];
-      const m3 = l.match(BED_TAB_RE);
-      if (m3) return m3[1];
-      return null;
+    if (!text) return { blocks: [], debug: { reason: "empty" } };
+    const debug = { totalLines: 0, headersFound: 0, expsFound: [], blocksDetected: 0 };
+    const fullText = String(text);
+    debug.totalLines = fullText.split(/\r?\n/).length;
+
+    // Splitear por "INDICACIONES" — cada bloque empieza con ese header
+    // Tolerante: "INDICACIONES DE CIRUGÍA GENERAL", "INDICACIONES HOSPITALIZACIÓN", etc.
+    const HEADER_RE = /INDICACIONES\s+(DE\s+)?(CIRUG[IÍ]A|HOSPITALIZ|CIRUGIA|HOSPITAL)[A-ZÁÉÍÓÚÑ\s]*\b/i;
+    // Encontrar todas las posiciones de header
+    const positions = [];
+    let m;
+    const globalRe = new RegExp(HEADER_RE.source, "gi");
+    while ((m = globalRe.exec(fullText)) !== null) {
+      positions.push(m.index);
+    }
+    debug.headersFound = positions.length;
+
+    if (!positions.length) {
+      // Fallback: si NO hay headers de INDICACIONES, asumir UN solo bloque y buscar exp
+      return parseSingleBlock(fullText, debug);
     }
 
+    const blocks = [];
+    for (let i = 0; i < positions.length; i++) {
+      const start = positions[i];
+      const end = i + 1 < positions.length ? positions[i + 1] : fullText.length;
+      const segment = fullText.substring(start, end);
+      const parsed = parseSegment(segment, debug);
+      if (parsed) blocks.push(parsed);
+    }
+    debug.blocksDetected = blocks.length;
+    return { blocks, debug };
+  }
+
+  function parseSingleBlock(text, debug) {
+    const parsed = parseSegment(text, debug);
+    return { blocks: parsed ? [parsed] : [], debug };
+  }
+
+  function parseSegment(segment, debug) {
+    // Buscar EXP en el segmento (varios formatos: "EXP: 25-027280", "EXP 25027280", etc.)
+    const expMatch = segment.match(/EXP[\s:#-]*([\d\-]{4,15})/i);
+    const exp = expMatch ? expMatch[1].replace(/[^0-9]/g, "") : null;
+    if (!exp) return null;
+    debug.expsFound.push(exp);
+
+    // Buscar nombre (línea entre header y EXP, o antes de "AÑOS")
+    let nombre = "";
+    const lineWithExp = segment.split(/\r?\n/).find(function(l) { return /EXP/i.test(l); });
+    if (lineWithExp) {
+      // formato típico: "APELLIDOS NOMBRES | EDAD AÑOS || EXP: 25-027280"
+      const beforeBar = lineWithExp.split(/[\|]/)[0];
+      nombre = beforeBar.replace(/[•·●▪◆◊○]/g, "").trim();
+    }
+
+    // Buscar secciones
+    const sections = { DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "MEDIDAS GENERALES": [] };
+    const lines = segment.split(/\r?\n/);
     let currentSection = null;
+    const SECTION_RE = /^[\s\u00A0\u2022\u25E6·●▪◆◊○\-\*]*(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES)\s*[:：]?\s*$/i;
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i];
-      const line = raw.replace(/\u00A0/g, " ").trim();
+      const line = raw.replace(/\u00A0/g, " ").replace(/[\u2022\u25E6·●▪◆◊○]/g, "").trim();
       if (!line) continue;
-
-      // Header tipo "INDICACIONES DE CIRUGÍA GENERAL"
-      if (BED_HEADER_RE.test(line)) {
-        // siguiente línea suele contener nombre/edad/exp
-        // No requerimos bed aquí, esperamos el bloque siguiente
-        continue;
-      }
-
-      // Detectar cambio de cama por línea con cama explícita o pestaña-solo-número
-      const bedDetected = detectBedFromLine(line);
-      if (bedDetected && (current === null || current.bed !== bedDetected)) {
-        // Validar que es un número plausible de cama (NO pasamos pestañas vacías)
-        if (/^\d{2,4}$/.test(bedDetected)) {
-          current = { bed: bedDetected, header: "", DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "MEDIDAS GENERALES": [], _raw: [] };
-          beds.push(current);
-          currentSection = null;
-          continue;
-        }
-      }
-
-      // Sección
       const sm = line.match(SECTION_RE);
       if (sm) {
-        currentSection = sm[2].toUpperCase().replace(/\s+/g, " ");
-        if (currentSection === "MEDIDAS GENERALES" || currentSection === "MEDICAMENTOS" ||
-            currentSection === "DIETA" || currentSection === "SOLUCIONES") {
-          if (current) { /* ya está */ }
-        }
+        currentSection = sm[1].toUpperCase().replace(/\s+/g, " ");
+        if (!sections[currentSection]) sections[currentSection] = [];
         continue;
       }
-
-      // Línea de contenido
-      if (current && currentSection && current[currentSection]) {
-        const cleaned = line.replace(/^[•·●▪◆◊○\s\-\*]+/, "").trim();
-        if (cleaned) current[currentSection].push(cleaned);
+      // Sub-items o líneas de contenido
+      if (currentSection && sections[currentSection]) {
+        // Quitar prefijos de bullet/numero
+        const cleaned = line.replace(/^[\s\-\*\d\.]+/, "").trim();
+        // Skip footers tipo "GRACIAS", "DRA. XXX / DR YYY", "FECHA..."
+        if (/^(gracias|fecha\s)/i.test(cleaned)) continue;
+        if (/^(dra?\.|dr\.|mip\b)/i.test(cleaned) && /\//.test(cleaned)) continue; // footer
+        if (cleaned.length < 2) continue;
+        sections[currentSection].push(cleaned);
       }
-      if (current) current._raw.push(line);
     }
-    // Filtrar pestañas/bloques vacíos (sin ninguna sección poblada)
-    return beds.filter(b => b.DIETA.length || b.SOLUCIONES.length || b.MEDICAMENTOS.length || b["MEDIDAS GENERALES"].length);
+
+    const hasAny = Object.keys(sections).some(function(k) { return sections[k].length > 0; });
+    if (!hasAny) return null;
+    return {
+      exp: exp,
+      nombre: nombre,
+      DIETA: sections.DIETA,
+      SOLUCIONES: sections.SOLUCIONES,
+      MEDICAMENTOS: sections.MEDICAMENTOS,
+      "MEDIDAS GENERALES": sections["MEDIDAS GENERALES"]
+    };
   }
 
-  // Importa: parsea texto, guarda por cama
+  // Match exp con tolerancia (variantes con/sin guión)
+  function matchPatientExp(patientExp, indicacionesExp) {
+    if (!patientExp || !indicacionesExp) return false;
+    const a = normalizeExp(patientExp);
+    const b = normalizeExp(indicacionesExp);
+    if (a === b) return true;
+    // Tolerancia: si uno está contenido en el otro (caso 25-27280 vs 2527280)
+    if (a.length >= 5 && b.length >= 5) {
+      if (a.endsWith(b) || b.endsWith(a)) return true;
+    }
+    return false;
+  }
+
   function importPasted(text) {
-    const blocks = parsePasted(text);
-    blocks.forEach(b => setForBed(b.bed, b));
-    setMeta(Date.now());
-    return blocks;
+    const result = parsePasted(text);
+    const stats = { totalParsed: result.blocks.length, expsImported: [] };
+    result.blocks.forEach(function(b) {
+      setForExp(b.exp, b);
+      stats.expsImported.push(b.exp);
+    });
+    setMeta(Date.now(), stats);
+    return { blocks: result.blocks, debug: result.debug, stats: stats };
   }
 
-  return { setForBed, getForBed, importPasted, parsePasted, freshness, hoursSinceImport, getMeta };
+  function getForPatient(p) {
+    if (!p) return null;
+    // Buscar por exp (con tolerancia)
+    const pExp = normalizeExp(p.exp);
+    if (!pExp) return null;
+    // Buscar en todos los keys de localStorage por match tolerante
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith(KEY_PREFIX)) continue;
+        const storedExp = key.substring(KEY_PREFIX.length);
+        if (matchPatientExp(pExp, storedExp)) {
+          const raw = localStorage.getItem(key);
+          return raw ? JSON.parse(raw) : null;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  return {
+    setForExp, getForExp, getForPatient, importPasted, parsePasted, freshness,
+    hoursSinceImport, getMeta, matchPatientExp, normalizeExp
+  };
 })();
 
 /* ════════════════════════════════════════════════════════════════════════════
- * 4. CDS PERSISTENCE — Ignored suggestions tracking
+ * PLCDSStore — Persistencia de sugerencias ignoradas, disclaimer, alertas críticas
  * ════════════════════════════════════════════════════════════════════════════ */
 const PLCDSStore = (function() {
   "use strict";
   const KEY_IGN = "pl_cds_ignored_v1";
   const KEY_DISC = "pl_cds_disclaimer_accepted_v1";
   const KEY_CRIT = "pl_cds_critical_alerted_v1";
-
   function loadIgn() { try { return JSON.parse(localStorage.getItem(KEY_IGN) || "{}"); } catch (e) { return {}; } }
   function saveIgn(o) { try { localStorage.setItem(KEY_IGN, JSON.stringify(o)); } catch (e) {} }
-
   function isIgnored(patientKey, ruleId, valueHash) {
     const o = loadIgn();
-    const key = patientKey + ":" + ruleId;
-    return o[key] === valueHash;
+    return o[patientKey + ":" + ruleId] === valueHash;
   }
   function ignore(patientKey, ruleId, valueHash) {
     const o = loadIgn();
@@ -4614,10 +4415,8 @@ const PLCDSStore = (function() {
     delete o[patientKey + ":" + ruleId];
     saveIgn(o);
   }
-
   function disclaimerAccepted() { return localStorage.getItem(KEY_DISC) === "1"; }
   function acceptDisclaimer() { try { localStorage.setItem(KEY_DISC, "1"); } catch (e) {} }
-
   function alreadyAlerted(patientKey, ruleId, valueHash) {
     try {
       const o = JSON.parse(localStorage.getItem(KEY_CRIT) || "{}");
@@ -4631,99 +4430,71 @@ const PLCDSStore = (function() {
       localStorage.setItem(KEY_CRIT, JSON.stringify(o));
     } catch (e) {}
   }
-
   return { isIgnored, ignore, unignore, disclaimerAccepted, acceptDisclaimer, alreadyAlerted, markAlerted };
 })();
 
 
-/* ════════════════════════════════════════════════════════════════════════════
- * 5. RENDER — Sección CDS por paciente
- * ════════════════════════════════════════════════════════════════════════════ */
+/* UI v17: vaso compacto, indicaciones por exp, modal con bookmarklet */
 function escCDS(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+/* ─── CDS: como antes (ya funcionaba) ─── */
 function renderCDSSection(p, nd, k) {
   if (!nd || !nd.labs) nd = nd || { labs: {} };
   const suggestions = PLCDS.evaluate(p, nd);
   const sorted = PLCDS.sortBySeverity(suggestions);
-  const filtered = sorted.filter(s => !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash));
-
+  const filtered = sorted.filter(function(s) { return !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash); });
   if (!filtered.length) {
-    return `<div class="cds-section cds-empty" id="cds-${k}">
-      <div class="cds-header">
-        <span class="cds-title">💡 Sugerencias clínicas</span>
-        <span class="cds-status-ok">✓ Sin pendientes</span>
-      </div>
-    </div>`;
+    return '<div class="cds-section cds-empty" id="cds-' + escCDS(k) + '"><div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas</span><span class="cds-status-ok">✓ Sin pendientes</span></div></div>';
   }
-
-  // Mostrar las primeras 3 más severas + contador
   const visible = filtered.slice(0, 3);
   const hidden = filtered.length - visible.length;
-
-  const items = visible.map(s => {
-    const sevClass = "cds-sev-" + (s.severity || "info").replace(/\d/g, "");
-    const critClass = s.critical ? " cds-critical" : "";
+  const items = visible.map(function(s) {
+    const sevSimple = (s.severity || "info").replace(/\d/g, "");
     const sevLabel = (s.severity || "").replace("stage", "KDIGO ").toUpperCase();
     const valHash = escCDS(s.valueHash);
-    return `<div class="cds-item${critClass} ${sevClass}" data-rule="${escCDS(s.ruleId)}" data-vhash="${valHash}">
-      <div class="cds-item-row">
-        <span class="cds-badge cds-badge-${(s.severity || "info").replace(/\d/g, "")}">${escCDS(sevLabel)}</span>
-        <span class="cds-rule-name">${escCDS(s.ruleName)}</span>
-      </div>
-      <div class="cds-suggestion">${escCDS(s.suggestion.text)}</div>
-      <div class="cds-actions">
-        <button class="cds-btn cds-btn-apply" onclick="cdsApplySuggestion('${escCDS(k)}','${escCDS(s.ruleId)}')">✏️ Aplicar al dx</button>
-        <button class="cds-btn cds-btn-ignore" onclick="cdsIgnoreSuggestion('${escCDS(k)}','${escCDS(s.ruleId)}','${valHash}')">🔇 Ignorar</button>
-      </div>
-    </div>`;
+    return '<div class="cds-item' + (s.critical ? ' cds-critical' : '') + ' cds-sev-' + sevSimple + '" data-rule="' + escCDS(s.ruleId) + '" data-vhash="' + valHash + '">' +
+      '<div class="cds-item-row"><span class="cds-badge cds-badge-' + sevSimple + '">' + escCDS(sevLabel) + '</span><span class="cds-rule-name">' + escCDS(s.ruleName) + '</span></div>' +
+      '<div class="cds-suggestion">' + escCDS(s.suggestion.text) + '</div>' +
+      '<div class="cds-actions">' +
+        '<button class="cds-btn cds-btn-apply" onclick="cdsApplySuggestion(\'' + escCDS(k) + '\',\'' + escCDS(s.ruleId) + '\')">✏️ Aplicar al dx</button>' +
+        '<button class="cds-btn cds-btn-ignore" onclick="cdsIgnoreSuggestion(\'' + escCDS(k) + '\',\'' + escCDS(s.ruleId) + '\',\'' + valHash + '\')">🔇 Ignorar</button>' +
+      '</div></div>';
   }).join("");
-
-  const moreLabel = hidden > 0 ? `<div class="cds-more" onclick="cdsToggleMore('${escCDS(k)}')">+${hidden} más</div>` : "";
-  const critCount = filtered.filter(s => s.critical).length;
-  const critBadge = critCount ? `<span class="cds-crit-count">⚠️ ${critCount} crítica${critCount > 1 ? "s" : ""}</span>` : "";
-
-  return `<div class="cds-section" id="cds-${k}">
-    <div class="cds-header">
-      <span class="cds-title">💡 Sugerencias clínicas <span class="cds-count">(${filtered.length})</span></span>
-      ${critBadge}
-    </div>
-    <div class="cds-items">${items}</div>
-    ${moreLabel}
-  </div>`;
+  const moreLabel = hidden > 0 ? '<div class="cds-more" onclick="cdsToggleMore(\'' + escCDS(k) + '\')">+' + hidden + ' más</div>' : "";
+  const critCount = filtered.filter(function(s) { return s.critical; }).length;
+  const critBadge = critCount ? '<span class="cds-crit-count">⚠️ ' + critCount + ' crítica' + (critCount > 1 ? 's' : '') + '</span>' : "";
+  return '<div class="cds-section" id="cds-' + escCDS(k) + '">' +
+    '<div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas <span class="cds-count">(' + filtered.length + ')</span></span>' + critBadge + '</div>' +
+    '<div class="cds-items">' + items + '</div>' + moreLabel + '</div>';
 }
 
-// Aplicar sugerencia: abre el dx en modo edición con el texto sugerido como pre-fill comentario
 function cdsApplySuggestion(patientKey, ruleId) {
-  const p = (typeof patients !== "undefined" ? patients : []).find(pt => pid(pt) === patientKey);
+  const p = (typeof patients !== "undefined" ? patients : []).find(function(pt) { return pid(pt) === patientKey; });
   const nd = getNote(patientKey);
   if (!p) return;
   const suggestions = PLCDS.evaluate(p, nd);
-  const s = suggestions.find(x => x.ruleId === ruleId);
+  const s = suggestions.find(function(x) { return x.ruleId === ruleId; });
   if (!s) return;
-  // Estrategia simple: agregar comentario clínico al dx en modo no-destructivo
   const currentDx = (nd.dx || p.dx || "").toString();
-  const tag = `\n📋 Sugerencia CDS: ${s.suggestion.text}`;
-  // Si la sugerencia es "reclasify" y el dx contiene el grado anterior, ofrecer reemplazo directo
   if (s.suggestion.type === "reclasify" && s.suggestion.from && s.suggestion.to) {
     const reGrade = new RegExp("(" + s.ruleName + ".*?)" + s.suggestion.from, "i");
     if (reGrade.test(currentDx)) {
       const newDx = currentDx.replace(reGrade, "$1" + s.suggestion.to);
       if (confirm("Reemplazar en dx:\n\n" + currentDx + "\n\n→\n\n" + newDx + "\n\n¿Confirmar?")) {
         nd.dx = newDx; saveNote(patientKey, nd);
-        if (p) { p.dx = newDx; /* save patient updated */ }
+        if (p) { p.dx = newDx; }
         if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
         return;
       }
       return;
     }
   }
-  // Default: agregar como comentario sin pisar
   if (confirm("Agregar al dx la nota:\n\n" + s.suggestion.text + "\n\n¿Confirmar?")) {
-    nd.dx = currentDx + tag;
+    nd.dx = currentDx + "\n📋 " + s.suggestion.text;
     saveNote(patientKey, nd);
     if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
   }
@@ -4735,146 +4506,159 @@ function cdsIgnoreSuggestion(patientKey, ruleId, vhash) {
 }
 
 function cdsToggleMore(patientKey) {
-  // Expandir las "más" — simple: alternar clase
   const el = document.getElementById("cds-" + patientKey);
   if (el) el.classList.toggle("cds-expanded");
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * 6. RENDER — Sección Vasopresores por paciente
- * ════════════════════════════════════════════════════════════════════════════ */
+/* ─── VASOPRESORES COMPACTOS ─── */
+/* Render: si NO hay actividad → mini-pill "💊+". Si hay → línea compacta + boton expandir */
 function renderVasoSection(p, nd, k) {
   const v = (nd && nd.vasopresores) || {};
   const peso = v.peso || (p && p.peso) || "";
+  const expanded = v._expanded === true;
+  const hasActive = PLVaso.hasAnyActive(v);
+
+  if (!hasActive && !expanded) {
+    return '<div class="vaso-mini" id="vaso-' + escCDS(k) + '">' +
+      '<button class="vaso-mini-btn" onclick="vasoExpand(\'' + escCDS(k) + '\')" title="Agregar vasopresor">💊 + Vasopresor</button>' +
+      '</div>';
+  }
+
+  if (hasActive && !expanded) {
+    // Mostrar resumen compacto inline
+    const drugs = ["nore", "vaso", "epi", "dobu", "dopa"];
+    const lines = drugs.filter(function(d) {
+      const x = parseFloat(v[d]);
+      return isFinite(x) && x > 0;
+    }).map(function(d) {
+      const dose = v[d];
+      const lim = PLVaso.LIMITS[d];
+      const calc = PLVaso.fmtAbsolute(d, dose, peso);
+      const high = PLVaso.isHighDose(d, dose);
+      const needsW = d !== "vaso" && !peso;
+      return '<span class="vaso-pill' + (high ? ' vaso-pill-high' : '') + '">' +
+        '<b>' + escCDS(lim.label) + '</b> ' + escCDS(dose) + ' ' + escCDS(lim.unit) +
+        (needsW ? ' <i style="color:#dc2626">⚠️ peso?</i>' : (calc ? ' = ' + escCDS(calc.split(' · ')[0]) : '')) +
+      '</span>';
+    }).join("");
+    return '<div class="vaso-section-compact" id="vaso-' + escCDS(k) + '">' +
+      '<div class="vaso-compact-row">' +
+        '<span class="vaso-compact-label">💊 Vasopresores:</span>' +
+        lines +
+        '<button class="vaso-edit-btn" onclick="vasoExpand(\'' + escCDS(k) + '\')" title="Editar">✏️</button>' +
+      '</div>' +
+      '</div>';
+  }
+
+  // Expandido: panel completo de edición
   const drugs = [
-    { id: "nore", label: "Norepinefrina", placeholder: "0.05", lim: PLVaso.LIMITS.nore },
-    { id: "vaso", label: "Vasopresina",   placeholder: "0.03", lim: PLVaso.LIMITS.vaso, note: "dosis fija (no por peso)" },
-    { id: "epi",  label: "Epinefrina",    placeholder: "0.05", lim: PLVaso.LIMITS.epi },
-    { id: "dobu", label: "Dobutamina",    placeholder: "5",    lim: PLVaso.LIMITS.dobu },
-    { id: "dopa", label: "Dopamina",      placeholder: "5",    lim: PLVaso.LIMITS.dopa }
+    { id: "nore", label: "Norepinefrina", placeholder: "0.05" },
+    { id: "vaso", label: "Vasopresina",   placeholder: "0.03", note: "dosis fija (no por peso)" },
+    { id: "epi",  label: "Epinefrina",    placeholder: "0.05" },
+    { id: "dobu", label: "Dobutamina",    placeholder: "5" },
+    { id: "dopa", label: "Dopamina",      placeholder: "5" }
   ];
-  const rows = drugs.map(d => {
+  const rows = drugs.map(function(d) {
     const val = v[d.id] || "";
     const calc = PLVaso.fmtAbsolute(d.id, val, peso);
     const high = PLVaso.isHighDose(d.id, val);
     const needsWeight = d.id !== "vaso" && val && !peso;
-    return `<div class="vaso-row${high ? " vaso-high" : ""}">
-      <label class="vaso-label">${escCDS(d.label)}</label>
-      <input type="number" step="0.001" min="0" class="vaso-input"
-        data-key="${escCDS(k)}" data-drug="${escCDS(d.id)}"
-        value="${escCDS(val)}" placeholder="${d.placeholder}"
-        onchange="vasoUpdate(this.dataset.key,this.dataset.drug,this.value)">
-      <span class="vaso-unit">${escCDS(d.lim.unit)}</span>
-      <span class="vaso-calc">${needsWeight ? "⚠️ falta peso" : escCDS(calc) || "—"}</span>
-      ${d.note ? `<span class="vaso-note">${d.note}</span>` : ""}
-    </div>`;
+    const lim = PLVaso.LIMITS[d.id];
+    return '<div class="vaso-row' + (high ? ' vaso-high' : '') + '">' +
+      '<label class="vaso-label">' + escCDS(d.label) + '</label>' +
+      '<input type="number" step="0.001" min="0" class="vaso-input" data-key="' + escCDS(k) + '" data-drug="' + escCDS(d.id) + '" value="' + escCDS(val) + '" placeholder="' + d.placeholder + '" onchange="vasoUpdate(this.dataset.key,this.dataset.drug,this.value)">' +
+      '<span class="vaso-unit">' + escCDS(lim.unit) + '</span>' +
+      '<span class="vaso-calc">' + (needsWeight ? '⚠️ falta peso' : (escCDS(calc) || '—')) + '</span>' +
+      (d.note ? '<span class="vaso-note">' + d.note + '</span>' : '') +
+    '</div>';
   }).join("");
-
-  const hasAny = drugs.some(d => {
-    const x = parseFloat(v[d.id]);
-    return isFinite(x) && x > 0;
-  });
-
-  return `<div class="vaso-section" id="vaso-${k}">
-    <div class="vaso-header">
-      <span class="vaso-title">💊 Vasopresores ${hasAny ? '<span class="vaso-active">● activo</span>' : ''}</span>
-      <div class="vaso-weight-row">
-        <label>Peso (kg)</label>
-        <input type="number" step="0.5" min="1" max="300" class="vaso-input-weight"
-          value="${escCDS(peso)}" placeholder="70"
-          onchange="vasoUpdateWeight('${escCDS(k)}',this.value)">
-      </div>
-    </div>
-    <div class="vaso-rows">${rows}</div>
-    <div class="vaso-footer">
-      <span class="vaso-disclaimer">⚠️ Verifica todos los cálculos antes de prescribir. La app no reemplaza la bomba ni el criterio clínico.</span>
-    </div>
-  </div>`;
+  return '<div class="vaso-section" id="vaso-' + escCDS(k) + '">' +
+    '<div class="vaso-header">' +
+      '<span class="vaso-title">💊 Vasopresores</span>' +
+      '<div class="vaso-weight-row"><label>Peso (kg)</label>' +
+        '<input type="number" step="0.5" min="1" max="300" class="vaso-input-weight" value="' + escCDS(peso) + '" placeholder="70" onchange="vasoUpdateWeight(\'' + escCDS(k) + '\',this.value)">' +
+      '</div>' +
+      '<button class="vaso-collapse-btn" onclick="vasoCollapse(\'' + escCDS(k) + '\')" title="Cerrar">▴</button>' +
+    '</div>' +
+    '<div class="vaso-rows">' + rows + '</div>' +
+    '<div class="vaso-footer"><span class="vaso-disclaimer">⚠️ Verifica cálculos antes de prescribir. La app no reemplaza la bomba.</span></div>' +
+  '</div>';
 }
 
+function vasoExpand(patientKey) {
+  const nd = getNote(patientKey);
+  nd.vasopresores = nd.vasopresores || {};
+  nd.vasopresores._expanded = true;
+  saveNote(patientKey, nd);
+  _rerenderVasoOnly(patientKey, nd);
+}
+function vasoCollapse(patientKey) {
+  const nd = getNote(patientKey);
+  nd.vasopresores = nd.vasopresores || {};
+  nd.vasopresores._expanded = false;
+  saveNote(patientKey, nd);
+  _rerenderVasoOnly(patientKey, nd);
+}
+function _rerenderVasoOnly(patientKey, nd) {
+  const el = document.getElementById("vaso-" + patientKey);
+  if (el && typeof patients !== "undefined") {
+    const p = patients.find(function(pt) { return pid(pt) === patientKey; });
+    if (p) el.outerHTML = renderVasoSection(p, nd, patientKey);
+  }
+}
 function vasoUpdate(patientKey, drug, value) {
   const nd = getNote(patientKey);
   nd.vasopresores = nd.vasopresores || {};
   nd.vasopresores[drug] = String(value || "").trim();
   nd.vasopresores.ts = Date.now();
   saveNote(patientKey, nd);
-  // Re-render solo la sección de vaso para evitar parpadeo
-  const el = document.getElementById("vaso-" + patientKey);
-  if (el) {
-    const p = patients.find(pt => pid(pt) === patientKey);
-    el.outerHTML = renderVasoSection(p, nd, patientKey);
-  }
-  // Re-evaluar CDS (puede activar choque remitido)
+  _rerenderVasoOnly(patientKey, nd);
+  // re-eval CDS
   const cdsEl = document.getElementById("cds-" + patientKey);
   if (cdsEl) {
-    const p2 = patients.find(pt => pid(pt) === patientKey);
-    cdsEl.outerHTML = renderCDSSection(p2, nd, patientKey);
+    const p = patients.find(function(pt) { return pid(pt) === patientKey; });
+    if (p) cdsEl.outerHTML = renderCDSSection(p, nd, patientKey);
   }
 }
-
 function vasoUpdateWeight(patientKey, value) {
   const nd = getNote(patientKey);
   nd.vasopresores = nd.vasopresores || {};
   nd.vasopresores.peso = String(value || "").trim();
   saveNote(patientKey, nd);
-  const el = document.getElementById("vaso-" + patientKey);
-  if (el) {
-    const p = patients.find(pt => pid(pt) === patientKey);
-    el.outerHTML = renderVasoSection(p, nd, patientKey);
-  }
+  _rerenderVasoOnly(patientKey, nd);
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * 7. RENDER — Sección Indicaciones (read-only)
- * ════════════════════════════════════════════════════════════════════════════ */
+/* ─── INDICACIONES (read-only, match por exp) ─── */
 function renderIndicacionesSection(p, nd, k) {
-  const bed = (p && (p.cama || "")).toString();
-  // bed puede venir como "3-150" — extraer el número
-  const bedNum = (bed.match(/(\d{2,4})$/) || [null, bed])[1];
-  const data = bedNum ? PLIndicaciones.getForBed(bedNum) : null;
+  const data = PLIndicaciones.getForPatient(p);
   const fresh = PLIndicaciones.freshness();
-
   if (!data) {
-    return `<div class="ind-section ind-empty" id="ind-${k}">
-      <div class="ind-header">
-        <span class="ind-title">💊 Indicaciones (Drive)</span>
-        <button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button>
-      </div>
-      <div class="ind-empty-msg">Sin indicaciones importadas para cama ${escCDS(bedNum)}.</div>
-    </div>`;
+    return '<div class="ind-section ind-empty" id="ind-' + escCDS(k) + '">' +
+      '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
+      '<button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button></div>' +
+      '<div class="ind-empty-msg">Sin indicaciones importadas para exp ' + escCDS(p.exp || '?') + '.</div>' +
+      '</div>';
   }
-
   const sectionBlocks = [
     { key: "DIETA", icon: "🍴" },
     { key: "SOLUCIONES", icon: "💧" },
     { key: "MEDICAMENTOS", icon: "💊" },
     { key: "MEDIDAS GENERALES", icon: "📋" }
   ];
-
-  const content = sectionBlocks.map(b => {
-    const items = (data[b.key] || []).map(x => `<li>${escCDS(x)}</li>`).join("");
+  const content = sectionBlocks.map(function(b) {
+    const items = (data[b.key] || []).map(function(x) { return '<li>' + escCDS(x) + '</li>'; }).join("");
     if (!items) return "";
-    return `<div class="ind-block">
-      <div class="ind-block-title">${b.icon} ${b.key}</div>
-      <ul class="ind-list">${items}</ul>
-    </div>`;
+    return '<div class="ind-block"><div class="ind-block-title">' + b.icon + ' ' + b.key + '</div><ul class="ind-list">' + items + '</ul></div>';
   }).join("");
-
   const freshClass = "ind-fresh-" + fresh.state;
-
-  return `<div class="ind-section ${freshClass}" id="ind-${k}">
-    <div class="ind-header">
-      <span class="ind-title">💊 Indicaciones (Drive)</span>
-      <span class="ind-fresh">⏱ ${escCDS(fresh.label)}</span>
-      <button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button>
-    </div>
-    <div class="ind-content">${content || '<div class="ind-empty-msg">Cama presente pero sin contenido parseado.</div>'}</div>
-  </div>`;
+  return '<div class="ind-section ' + freshClass + '" id="ind-' + escCDS(k) + '">' +
+    '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
+    '<span class="ind-fresh">⏱ ' + escCDS(fresh.label) + '</span>' +
+    '<button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button></div>' +
+    '<div class="ind-content">' + (content || '<div class="ind-empty-msg">Bloque presente pero sin contenido parseado.</div>') + '</div></div>';
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * 8. MODAL — Importación de indicaciones
- * ════════════════════════════════════════════════════════════════════════════ */
+/* ─── MODAL DE IMPORTACIÓN — con bookmarklet y modo manual + diagnóstico ─── */
 function openIndicacionesModal() {
   let m = document.getElementById("indicaciones-modal");
   if (m) { m.style.display = "flex"; return; }
@@ -4882,30 +4666,102 @@ function openIndicacionesModal() {
   m.id = "indicaciones-modal";
   m.className = "modal-bg";
   m.style.display = "flex";
-  m.innerHTML = `<div class="modal-box" style="max-width:780px;max-height:90vh;overflow-y:auto">
-    <div class="modal-header">
-      <div class="modal-title">📥 Importar Indicaciones del Drive</div>
-      <button class="modal-close" onclick="closeIndicacionesModal()">✕</button>
-    </div>
-    <p style="font-size:12px;color:#64748b;margin:0 0 12px">
-      Pega aquí el contenido completo del Google Doc de indicaciones (todas las pestañas).
-      El parser ignorará pestañas sin número de cama (ej. "QUE TENGAS UNA BONITA...").
-    </p>
-    <textarea id="indicaciones-paste" rows="14"
-      style="width:100%;font-family:'SF Mono',Menlo,monospace;font-size:11px;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px"
-      placeholder="Pega aquí el texto completo del Google Doc..."></textarea>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-      <button class="btn-secondary" onclick="closeIndicacionesModal()">Cancelar</button>
-      <button class="btn-primary" onclick="indicacionesDoImport()">📥 Importar</button>
-    </div>
-    <div id="indicaciones-import-result" style="margin-top:12px;font-size:12px"></div>
-  </div>`;
+
+  // Construir bookmarklet inline (lee DOM del Google Doc actual)
+  const bookmarkletCode = buildIndicacionesBookmarklet();
+
+  m.innerHTML =
+    '<div class="modal-box" style="max-width:820px;max-height:92vh;overflow-y:auto">' +
+      '<div class="modal-header">' +
+        '<div class="modal-title">📥 Importar Indicaciones</div>' +
+        '<button class="modal-close" onclick="closeIndicacionesModal()">✕</button>' +
+      '</div>' +
+      '<div class="ind-tabs">' +
+        '<button class="ind-tab ind-tab-active" data-tab="manual" onclick="indTabSwitch(\'manual\')">📋 Pegar texto</button>' +
+        '<button class="ind-tab" data-tab="auto" onclick="indTabSwitch(\'auto\')">⚡ Bookmarklet (auto)</button>' +
+      '</div>' +
+
+      '<div id="ind-tab-manual" class="ind-tab-panel">' +
+        '<p style="font-size:12px;color:#64748b;margin:0 0 8px">' +
+          'Selecciona TODO el contenido de tu Google Doc (Cmd+A) y pégalo aquí. ' +
+          'Match se hace por <b>expediente</b> (no por cama) — más robusto.' +
+        '</p>' +
+        '<textarea id="indicaciones-paste" rows="12" style="width:100%;font-family:\'SF Mono\',Menlo,monospace;font-size:11px;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px" placeholder="Pega aquí el texto completo del Google Doc (todas las pestañas)..."></textarea>' +
+        '<div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px;align-items:center">' +
+          '<button class="btn-secondary" onclick="indicacionesDiagnose()">🔍 Diagnóstico</button>' +
+          '<div style="display:flex;gap:8px">' +
+            '<button class="btn-secondary" onclick="closeIndicacionesModal()">Cancelar</button>' +
+            '<button class="btn-primary" onclick="indicacionesDoImport()">📥 Importar</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="indicaciones-import-result" style="margin-top:12px;font-size:12px"></div>' +
+      '</div>' +
+
+      '<div id="ind-tab-auto" class="ind-tab-panel" style="display:none">' +
+        '<p style="font-size:13px;color:#1e293b;margin:0 0 10px;line-height:1.5">' +
+          '<b>Modo automático — estilo WinLab.</b> Arrastra este botón a tu barra de favoritos. ' +
+          'Cuando estés en tu Google Doc de indicaciones, haz click en el favorito y se importarán todas las pestañas a la vez.' +
+        '</p>' +
+        '<div style="background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:8px;padding:14px;text-align:center;margin-bottom:12px">' +
+          '<a id="ind-bookmarklet-link" href="' + bookmarkletCode.replace(/"/g, "&quot;") + '" ' +
+            'style="display:inline-block;background:#1e3a5f;color:white;padding:10px 24px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;cursor:grab;user-select:auto"' +
+            'onclick="event.preventDefault();alert(\'Arrastra este botón a tu barra de favoritos. NO le des click aquí.\')">' +
+            '📥 Sync Indicaciones → PisoLibro' +
+          '</a>' +
+        '</div>' +
+        '<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:10px 12px;border-radius:6px;font-size:12px;color:#78350f;margin-bottom:10px">' +
+          '<b>⚠️ Importante:</b> el bookmarklet lee el Google Doc EN LA PESTAÑA ACTUAL del browser y guarda en este mismo PisoLibro (localStorage de este dominio). ' +
+          'Como Drive y PisoLibro están en dominios diferentes, el bookmarklet abre PisoLibro automáticamente con los datos pre-cargados al terminar.' +
+        '</div>' +
+        '<details style="font-size:12px;color:#475569"><summary style="cursor:pointer;font-weight:600">¿Cómo se usa?</summary>' +
+          '<ol style="padding-left:20px;line-height:1.6">' +
+            '<li>Arrastra el botón azul de arriba a tu barra de favoritos del browser.</li>' +
+            '<li>Abre tu Google Doc de indicaciones.</li>' +
+            '<li>Asegúrate de tener TODAS las pestañas cargadas (scroll por las pestañas si es necesario).</li>' +
+            '<li>Haz click en el bookmarklet de tu barra.</li>' +
+            '<li>Se abrirá PisoLibro con los datos importados (o se importarán en este tab si está abierto).</li>' +
+          '</ol>' +
+        '</details>' +
+      '</div>' +
+    '</div>';
   document.body.appendChild(m);
 }
+
+function buildIndicacionesBookmarklet() {
+  // El bookmarklet: extrae todo el texto visible del Google Doc, lo URL-encodea,
+  // y abre piso-libro con un fragment #indPaste=... que el modal detecta y autocarga.
+  // Origen-cruzado: usa window.location.origin del propio piso-libro (asume mismo origen para que funcione).
+  const origin = (typeof location !== "undefined" && location.origin) ? location.origin : "https://piso-libro.pages.dev";
+  const code =
+    'javascript:(async()=>{' +
+      'try{' +
+        'const text=document.body.innerText||"";' +
+        'if(!text||text.length<100){alert("PisoLibro: no se detectó contenido. ¿Estás en el Google Doc?");return;}' +
+        'const enc=encodeURIComponent(text);' +
+        'if(enc.length>1500000){alert("Documento muy largo ("+(enc.length/1024).toFixed(0)+"KB). Considera dividirlo.");return;}' +
+        'const url="' + origin + '/#indPaste="+enc;' +
+        'window.open(url,"_blank");' +
+      '}catch(e){alert("Error: "+e.message);}' +
+    '})();';
+  return code;
+}
+
 function closeIndicacionesModal() {
   const m = document.getElementById("indicaciones-modal");
   if (m) m.style.display = "none";
 }
+
+function indTabSwitch(which) {
+  const panels = ["manual", "auto"];
+  panels.forEach(function(p) {
+    const panel = document.getElementById("ind-tab-" + p);
+    if (panel) panel.style.display = (p === which) ? "block" : "none";
+  });
+  document.querySelectorAll(".ind-tab").forEach(function(b) {
+    b.classList.toggle("ind-tab-active", b.dataset.tab === which);
+  });
+}
+
 function indicacionesDoImport() {
   const ta = document.getElementById("indicaciones-paste");
   const result = document.getElementById("indicaciones-import-result");
@@ -4914,28 +4770,91 @@ function indicacionesDoImport() {
     return;
   }
   try {
-    const blocks = PLIndicaciones.importPasted(ta.value);
-    if (!blocks.length) {
-      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectaron camas con secciones (DIETA/SOLUCIONES/MEDICAMENTOS/MEDIDAS). Verifica el formato.</span>';
+    const r = PLIndicaciones.importPasted(ta.value);
+    if (!r.blocks.length) {
+      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectó ninguna sección con EXP. ' +
+        'Verifica que el texto incluya líneas tipo "EXP: 25-XXXXXX". ' +
+        '<br>Usa "🔍 Diagnóstico" para ver qué se detectó.</span>';
       return;
     }
-    const beds = blocks.map(b => b.bed).join(", ");
-    result.innerHTML = `<span style="color:#16a34a">✅ Importadas ${blocks.length} camas: ${beds}</span>`;
-    // Re-render todas las cards
+    const exps = r.blocks.map(function(b) { return b.exp; }).join(", ");
+    result.innerHTML = '<span style="color:#16a34a">✅ Importadas ' + r.blocks.length + ' indicaciones. ' +
+      '<br>Expedientes: ' + escCDS(exps) + '</span>';
     if (typeof patients !== "undefined" && Array.isArray(patients)) {
-      patients.forEach(pt => { if (typeof _rerenderCard === "function") _rerenderCard(pid(pt)); });
+      patients.forEach(function(pt) { if (typeof _rerenderCard === "function") _rerenderCard(pid(pt)); });
     }
-    // Re-evaluar banner stale
     updateIndicacionesBanner();
-    setTimeout(closeIndicacionesModal, 1500);
+    setTimeout(closeIndicacionesModal, 2000);
   } catch (e) {
     result.innerHTML = '<span style="color:#dc2626">❌ Error: ' + escCDS(e.message || e) + '</span>';
   }
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * 9. BANNER — Stale indicaciones
- * ════════════════════════════════════════════════════════════════════════════ */
+function indicacionesDiagnose() {
+  const ta = document.getElementById("indicaciones-paste");
+  const result = document.getElementById("indicaciones-import-result");
+  if (!ta || !ta.value.trim()) {
+    result.innerHTML = '<span style="color:#dc2626">⚠️ Pega contenido primero.</span>';
+    return;
+  }
+  const r = PLIndicaciones.parsePasted(ta.value);
+  let html = '<div style="background:#f1f5f9;padding:10px;border-radius:6px;font-size:11px;font-family:monospace">';
+  html += '<b>Diagnóstico:</b><br>';
+  html += '• Total líneas: ' + r.debug.totalLines + '<br>';
+  html += '• Headers "INDICACIONES" encontrados: ' + r.debug.headersFound + '<br>';
+  html += '• EXPs detectados: ' + r.debug.expsFound.length + ' (' + r.debug.expsFound.slice(0, 10).join(", ") + (r.debug.expsFound.length > 10 ? '...' : '') + ')<br>';
+  html += '• Bloques completos parseados: ' + r.blocks.length + '<br>';
+  if (r.blocks.length) {
+    html += '<br><b>Primer bloque parseado:</b><br>';
+    const b = r.blocks[0];
+    html += '• exp: ' + escCDS(b.exp) + '<br>';
+    html += '• nombre: ' + escCDS(b.nombre) + '<br>';
+    html += '• DIETA: ' + (b.DIETA || []).length + ' items<br>';
+    html += '• SOLUCIONES: ' + (b.SOLUCIONES || []).length + ' items<br>';
+    html += '• MEDICAMENTOS: ' + (b.MEDICAMENTOS || []).length + ' items<br>';
+    html += '• MEDIDAS GENERALES: ' + (b["MEDIDAS GENERALES"] || []).length + ' items<br>';
+  }
+  if (typeof patients !== "undefined" && r.blocks.length) {
+    html += '<br><b>Match con tu censo:</b><br>';
+    let matched = 0;
+    r.blocks.forEach(function(b) {
+      const pMatch = patients.find(function(p) { return PLIndicaciones.matchPatientExp(p.exp, b.exp); });
+      if (pMatch) {
+        matched++;
+        html += '• exp ' + b.exp + ' → ' + escCDS(pMatch.nombre || "(sin nombre)") + ' (cama ' + escCDS(pMatch.cama || "?") + ') ✅<br>';
+      } else {
+        html += '• exp ' + b.exp + ' → <span style="color:#dc2626">SIN MATCH en censo</span><br>';
+      }
+    });
+    html += '<br>Total matched: ' + matched + '/' + r.blocks.length + '<br>';
+  }
+  html += '</div>';
+  result.innerHTML = html;
+}
+
+/* ─── Auto-import desde fragment URL ─── */
+function autoImportFromFragment() {
+  try {
+    const hash = location.hash || "";
+    const m = hash.match(/[#&]indPaste=([^&]+)/);
+    if (!m) return;
+    const text = decodeURIComponent(m[1]);
+    // limpiar fragment para no re-importar al recargar
+    history.replaceState(null, "", location.pathname + location.search);
+    const r = PLIndicaciones.importPasted(text);
+    if (r.blocks.length) {
+      cdsToast("✅ Indicaciones importadas: " + r.blocks.length + " pacientes desde bookmarklet");
+      if (typeof patients !== "undefined") {
+        patients.forEach(function(pt) { if (typeof _rerenderCard === "function") _rerenderCard(pid(pt)); });
+      }
+      updateIndicacionesBanner();
+    } else {
+      cdsToast("⚠️ Bookmarklet no detectó bloques de indicaciones. Usa 🔍 Diagnóstico en el modal manual.");
+    }
+  } catch (e) { console.warn("autoImportFromFragment:", e); }
+}
+
+/* ─── Banner stale ─── */
 function updateIndicacionesBanner() {
   let banner = document.getElementById("indicaciones-banner");
   const fresh = PLIndicaciones.freshness();
@@ -4944,21 +4863,19 @@ function updateIndicacionesBanner() {
     banner = document.createElement("div");
     banner.id = "indicaciones-banner";
     banner.className = "ind-banner";
-    document.body.insertBefore(banner, document.body.firstChild);
+    if (document.body.firstChild) document.body.insertBefore(banner, document.body.firstChild);
+    else document.body.appendChild(banner);
   }
   if (!banner) return;
   if (!shouldShow) { banner.style.display = "none"; return; }
   banner.style.display = "flex";
-  banner.innerHTML = `<span class="ind-banner-icon">📥</span>
-    <span class="ind-banner-text">${fresh.state === "none" ? "No has importado indicaciones todavía." : "Indicaciones desactualizadas (" + fresh.label + ")."}
-    Importa antes de continuar el pase.</span>
-    <button class="ind-banner-btn" onclick="openIndicacionesModal()">Importar ahora</button>
-    <button class="ind-banner-dismiss" onclick="document.getElementById('indicaciones-banner').style.display='none'">✕</button>`;
+  banner.innerHTML = '<span class="ind-banner-icon">📥</span>' +
+    '<span class="ind-banner-text">' + (fresh.state === "none" ? "No has importado indicaciones todavía." : "Indicaciones desactualizadas (" + fresh.label + ").") + ' Importa antes del pase.</span>' +
+    '<button class="ind-banner-btn" onclick="openIndicacionesModal()">Importar ahora</button>' +
+    '<button class="ind-banner-dismiss" onclick="document.getElementById(\'indicaciones-banner\').style.display=\'none\'">✕</button>';
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * 10. DISCLAIMER — Aviso médico-legal al activar CDS
- * ════════════════════════════════════════════════════════════════════════════ */
+/* ─── Disclaimer médico-legal ─── */
 function showCDSDisclaimerIfNeeded() {
   if (PLCDSStore.disclaimerAccepted()) return;
   let m = document.getElementById("cds-disclaimer-modal");
@@ -4967,27 +4884,13 @@ function showCDSDisclaimerIfNeeded() {
   m.id = "cds-disclaimer-modal";
   m.className = "modal-bg";
   m.style.display = "flex";
-  m.innerHTML = `<div class="modal-box" style="max-width:560px">
-    <div class="modal-header">
-      <div class="modal-title">⚠️ Aviso del módulo de Sugerencias Clínicas</div>
-    </div>
-    <p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 14px">
-      PisoLibro genera sugerencias automáticas de reclasificación basadas en criterios
-      estandarizados: <strong>KDIGO 2012</strong> (LRA), <strong>Tokyo 2018</strong> (colangitis),
-      <strong>OMS</strong> (anemia), y consensos de electrolitos.
-    </p>
-    <p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 14px">
-      Las sugerencias son <strong>orientativas</strong>. La app no diagnostica,
-      no prescribe, no sustituye juicio clínico. El criterio final es del médico tratante.
-    </p>
-    <p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 18px">
-      La <strong>calculadora de vasopresores</strong> realiza aritmética simple
-      (dosis × peso). Verifica siempre el resultado contra la bomba y la prescripción.
-    </p>
-    <div style="display:flex;justify-content:flex-end">
-      <button class="btn-primary" onclick="cdsAcceptDisclaimer()">Entendido, continuar</button>
-    </div>
-  </div>`;
+  m.innerHTML = '<div class="modal-box" style="max-width:560px">' +
+    '<div class="modal-header"><div class="modal-title">⚠️ Aviso del módulo de Sugerencias Clínicas</div></div>' +
+    '<p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 14px">PisoLibro genera sugerencias automáticas basadas en criterios estandarizados: <b>KDIGO 2012</b>, <b>Tokyo 2018</b>, <b>OMS</b>, y consensos de electrolitos.</p>' +
+    '<p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 14px">Las sugerencias son <b>orientativas</b>. El criterio final es del médico tratante. La app no diagnostica ni prescribe.</p>' +
+    '<p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 18px">La <b>calculadora de vasopresores</b> realiza aritmética simple (dosis × peso). Verifica siempre contra la bomba.</p>' +
+    '<div style="display:flex;justify-content:flex-end"><button class="btn-primary" onclick="cdsAcceptDisclaimer()">Entendido, continuar</button></div>' +
+  '</div>';
   document.body.appendChild(m);
 }
 function cdsAcceptDisclaimer() {
@@ -4996,30 +4899,20 @@ function cdsAcceptDisclaimer() {
   if (m) m.remove();
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * 11. BUTTON TOOLBAR — Botón "💡 Sugerencias" que dispara revisión global
- * ════════════════════════════════════════════════════════════════════════════ */
+/* ─── Refresh global de sugerencias ─── */
 function refreshAllCDS() {
   showCDSDisclaimerIfNeeded();
   if (typeof patients !== "undefined" && Array.isArray(patients)) {
     let total = 0, critical = 0;
-    patients.forEach(p => {
+    patients.forEach(function(p) {
       const k = pid(p);
       const nd = getNote(k);
-      const sugs = PLCDS.evaluate(p, nd).filter(s => !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash));
+      const sugs = PLCDS.evaluate(p, nd).filter(function(s) { return !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash); });
       total += sugs.length;
-      critical += sugs.filter(s => s.critical).length;
-      // Alertar críticos nuevos
-      sugs.filter(s => s.critical).forEach(s => {
-        if (!PLCDSStore.alreadyAlerted(k, s.ruleId, s.valueHash)) {
-          PLCDSStore.markAlerted(k, s.ruleId, s.valueHash);
-          // Flash visual de la tarjeta sería ideal aquí; por ahora notificación discreta
-          console.warn("[CDS CRÍTICA]", p.cama || "?", p.nombre || "?", "→", s.suggestion.text);
-        }
-      });
+      critical += sugs.filter(function(s) { return s.critical; }).length;
       if (typeof _rerenderCard === "function") _rerenderCard(k);
     });
-    cdsToast("💡 Revisión completa: " + total + " sugerencia(s) · " + critical + " crítica(s)");
+    cdsToast("💡 Revisión: " + total + " sugerencia(s) · " + critical + " crítica(s)");
   }
 }
 
@@ -5037,22 +4930,17 @@ function cdsToast(msg) {
   t._timeout = setTimeout(function() { t.classList.remove("cds-toast-show"); }, 3500);
 }
 
-/* ════════════════════════════════════════════════════════════════════════════
- * 12. AUTO-RUN al cargar la app + después de actualizar labs
- * ════════════════════════════════════════════════════════════════════════════ */
+/* ─── Bootstrap al cargar ─── */
 (function() {
-  // Hook para correr cuando la app cargue
-  function bootstrapCDS() {
+  function boot() {
     try {
       updateIndicacionesBanner();
-      // Disparar disclaimer la primera vez si hay sugerencias relevantes
-      // (no la primera vez que se abre la app, sino la primera vez que aplica sugerencia)
+      autoImportFromFragment();
     } catch (e) { console.warn("CDS bootstrap:", e); }
   }
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bootstrapCDS);
-  } else { setTimeout(bootstrapCDS, 200); }
-  // Re-evaluar banner cada hora
+    document.addEventListener("DOMContentLoaded", boot);
+  } else { setTimeout(boot, 200); }
   setInterval(updateIndicacionesBanner, 60 * 60 * 1000);
 })();
 
@@ -20405,7 +20293,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
   </style>
 
 <div id="cds-fab" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
-  <button onclick="refreshAllCDS()" title="Revisar sugerencias clínicas"
+  <button onclick="refreshAllCDS()" title="Revisar sugerencias clinicas"
     style="background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">💡</button>
   <button onclick="openIndicacionesModal()" title="Importar indicaciones"
     style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
