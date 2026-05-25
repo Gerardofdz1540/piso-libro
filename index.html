@@ -3033,47 +3033,56 @@
     </div>
     <div id="header-top">
       <div class="header-title">
-        <div class="sub">Hospital General de León — Cirugía General</div>
-        <h1>📋 Piso Libro</h1>
+        <svg class="pl-brand-logo" width="52" height="52" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="PisoLibro" role="img" style="width:52px;height:52px;flex-shrink:0;display:block">
+          <defs>
+            <linearGradient id="pl-brand-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+              <stop offset="100%" stop-color="#ffffff" stop-opacity="0.85"/>
+            </linearGradient>
+            <linearGradient id="pl-brand-accent" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#60a5fa"/>
+              <stop offset="100%" stop-color="#3b82f6"/>
+            </linearGradient>
+          </defs>
+          <!-- Libro abierto en 2 páginas -->
+          <path d="M 8 16 L 8 50 Q 8 52 10 52 L 30 52 Q 32 52 32 50 L 32 18 Q 32 16 30 16 Q 18 16 8 16 Z"
+                fill="none" stroke="url(#pl-brand-grad)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M 56 16 L 56 50 Q 56 52 54 52 L 34 52 Q 32 52 32 50 L 32 18 Q 32 16 34 16 Q 46 16 56 16 Z"
+                fill="none" stroke="url(#pl-brand-grad)" stroke-width="2.5" stroke-linejoin="round"/>
+          <!-- Cruz médica izquierda -->
+          <rect x="14" y="29" width="14" height="3.5" rx="0.5" fill="url(#pl-brand-accent)"/>
+          <rect x="19" y="24" width="4" height="13.5" rx="0.5" fill="url(#pl-brand-accent)"/>
+          <!-- Líneas de texto derecha -->
+          <line x1="37" y1="24" x2="52" y2="24" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+          <line x1="37" y1="29" x2="52" y2="29" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+          <line x1="37" y1="34" x2="48" y2="34" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+          <line x1="37" y1="39" x2="52" y2="39" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+          <line x1="37" y1="44" x2="46" y2="44" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+        </svg>
+        <div class="header-title-text">
+          <div class="sub">Hospital General de León — Cirugía General</div>
+          <h1>Piso Libro</h1>
+        </div>
       </div>
       <div class="header-controls">
         <input class="header-input" id="gi-fecha" placeholder="Fecha" inputmode="text" autocorrect="off" style="width:105px" />
         <input class="header-input" id="gi-entrega" placeholder="Entrega Dr." inputmode="text" autocorrect="off" autocapitalize="words" style="width:115px" />
         <input class="header-input" id="gi-recibe" placeholder="Recibe Dr." inputmode="text" autocorrect="off" autocapitalize="words" style="width:115px" />
-        <button class="btn-green" onclick="exportToExcel()">📊 Exportar Excel</button>
+        <button class="btn-green" onclick="exportCensoFormatoDrive()" title="Exportar censo con formato idéntico al Google Drive">📊 Exportar Censo</button>
         <button class="btn-blue" onclick="window.print()">🖨 Imprimir</button>
         <button class="btn-orange" onclick="resetCensoTotal()"
           title="Borra TODO (local + Supabase) y empieza de cero">🔥 Borrar Todo</button>
-        <button
-          style="background:#7c3aed;border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)"
-          onclick="saveGuardSnapshot()" title="Guardar corte/snapshot del censo actual">📸 Corte</button>
         <!-- ACCESOS RÁPIDOS -->
         <div class="quick-access-group">
           <button class="qa-btn qa-lab" onclick="openSystem('lab')" title="Abrir Laboratorio">🧪 Labs</button>
           <button class="qa-cfg" onclick="openSystemConfig('lab')" title="Configurar credenciales">⚙</button>
         </div>
-        <button onclick="openWinLabTool()"
-          style="background:#0e7490;border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)"
-          title="Sync automático de labs en WinLab — bookmark e instalador Tampermonkey">📋 WinLab Sync</button>
         <button style="background:#0e7490;border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)"
           onclick="openBulkLabsModal()" title="Subir varios PDFs de labs y auto-asignar a pacientes">📦 Labs Masivo</button>
         <div class="quick-access-group">
           <button class="qa-btn qa-img" onclick="openSystem('img')" title="Abrir Imagen">🩻 Imagen</button>
           <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
         </div>
-        <div style="display:flex;align-items:center;gap:2px;background:rgba(255,255,255,.1);border-radius:6px;padding:2px">
-          <span style="font-size:10px;color:#cbd5e1;padding:0 4px">Aa</span>
-          <button onclick="setFontSize('S')" id="fs-btn-S" title="Texto pequeño"
-            style="background:none;border:none;color:#e2e8f0;font-size:11px;cursor:pointer;padding:3px 6px;border-radius:4px;font-family:var(--font)">S</button>
-          <button onclick="setFontSize('M')" id="fs-btn-M" title="Texto mediano"
-            style="background:none;border:none;color:#e2e8f0;font-size:11px;cursor:pointer;padding:3px 6px;border-radius:4px;font-family:var(--font)">M</button>
-          <button onclick="setFontSize('L')" id="fs-btn-L" title="Texto grande"
-            style="background:none;border:none;color:#e2e8f0;font-size:11px;cursor:pointer;padding:3px 6px;border-radius:4px;font-family:var(--font)">L</button>
-        </div>
-        <button id="theme-toggle-btn" onclick="toggleTheme()" title="Cambiar tema claro/oscuro" data-testid="theme-toggle-btn"
-          style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#e2e8f0;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-family:var(--font);display:flex;align-items:center;gap:4px">
-          <span id="theme-icon">🌙</span>
-        </button>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
         <button id="winlab-refresh-pill" onclick="refreshWinlabLabs()" title="Recargar labs de WinLab desde Supabase. El scraper corre solo todos los dias 13:15. Si necesitas forzar un scraping ahora, click derecho aqui."
           oncontextmenu="event.preventDefault(); openWinlabScrape();"
@@ -3082,11 +3091,21 @@
         </button>
         <button id="winlab-autosync-btn" onclick="runWinlabSyncNow()"
           oncontextmenu="event.preventDefault(); toggleWinlabAutoSync();"
-          title="💧 Auto-llenar labs desde WinLab. Click izq: sync ahora. Click der: toggle auto-sync ON/OFF al refrescar."
-          style="background:rgba(100,116,139,.25);border:1px solid rgba(100,116,139,.45);color:#e0f2fe;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
-          💧 Auto OFF
+          title="💧 Sincronización automática de labs WinLab. Click izq: sync ahora. Click der: alternar ON/OFF."
+          style="background:rgba(100,116,139,.25);border:1px solid rgba(100,116,139,.45);color:#e0f2fe;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:6px">
+          <span id="scraper-status-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
+          <span id="scraper-status-text">💧 Scraper</span>
         </button>
-        <span id="user-chip" onclick="changeUserName()" title="Cambiar nombre" style="cursor:pointer;background:rgba(255,255,255,.15);color:#e2e8f0;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap"></span>
+        <button id="pizarra-toggle-btn" onclick="window.pizarra && window.pizarra.toggle()"
+          title="🖊️ Activar pizarra libre con Apple Pencil o ratón. Dibuja sobre cualquier vista. Persistente."
+          style="background:rgba(168,85,247,.18);border:1px solid rgba(168,85,247,.4);color:#e9d5ff;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
+          🖊️ Pizarra
+        </button>
+        <button id="cuaderno-toggle-btn" onclick="window.toggleModoCuaderno && window.toggleModoCuaderno()"
+          title="📓 Fondo cuadriculado tipo GoodNotes. Solo cosmético."
+          style="background:rgba(245,158,11,.18);border:1px solid rgba(245,158,11,.4);color:#fde68a;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
+          📓 Cuaderno
+        </button>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
         <button id="logout-btn" onclick="logout()" title="Cerrar sesión"
           style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);color:#fecaca;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">🚪 Salir</button>
@@ -3098,9 +3117,8 @@
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
 
       <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
-      <button class="tab" onclick="setView('altas',this)">✅ Altas</button>
       <button class="tab" onclick="setView('pendientes',this)">📋 Pendientes</button>
-      <button class="tab" onclick="setView('papelera',this)">📦 Egresados</button>
+      <button class="tab" onclick="setView('tablero',this)" style="background:rgba(168,85,247,.25);border-color:rgba(168,85,247,.6)">📌 Tablero</button>
       <button class="tab" onclick="startRondas()" style="background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.6)">🔄 Rondas</button>
     </div>
   </div>
@@ -3136,6 +3154,7 @@
     <div id="view-noOlvidar" style="display:none"></div>
     <div id="view-altas" style="display:none"></div>
     <div id="view-pendientes" style="display:none"></div>
+    <div id="view-tablero" style="display:none"></div>
     <div id="view-papelera" style="display:none"></div>
   </div>
 
@@ -3691,7 +3710,891 @@
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+
+/* ════ V14 INJECTION: CDS + Vasopresores + Indicaciones ════ */
+// ═══════════════════════════════════════════════════════════════════════════════
+// PISO LIBRO v14 — Módulos: CDS · Vasopresores · Indicaciones read-only
+// Inyectado antes de </script> en index-CDS-v14.html
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 1. CDS — Clinical Decision Support
+ * Reglas verificadas: KDIGO 2012, OMS anemia, Tokyo 2018, electrolitos
+ * ════════════════════════════════════════════════════════════════════════════ */
+const PLCDS = (function() {
+  "use strict";
+  function num(v) {
+    if (v === null || v === undefined || v === "") return NaN;
+    const s = String(v).replace(",", ".").trim();
+    const n = parseFloat(s);
+    return isFinite(n) ? n : NaN;
+  }
+  function getBaselineCr(labHistory) {
+    if (!Array.isArray(labHistory) || !labHistory.length) return null;
+    const sorted = labHistory.slice().sort(function(a, b) {
+      const da = a.fecha || a.fecha_labs || a.ts || "";
+      const db = b.fecha || b.fecha_labs || b.ts || "";
+      return String(da).localeCompare(String(db));
+    });
+    for (let i = 0; i < sorted.length; i++) {
+      const snap = sorted[i];
+      const v = num(snap.labs && (snap.labs.cr || snap.labs.creatinina));
+      if (isFinite(v) && v > 0) return v;
+    }
+    return null;
+  }
+  function getSex(p, nd) {
+    const raw = (p && p.sexo) || (nd && nd.checklist && nd.checklist.sexo) || "";
+    const s = String(raw).trim().toUpperCase();
+    if (["M","MASC","MASCULINO","H","HOMBRE","VARON","VARÓN"].includes(s)) return "M";
+    if (["F","FEM","FEMENINO","MUJER"].includes(s)) return "F";
+    return "";
+  }
+  const RULES = [
+    { id:"hipoNa", name:"Hiponatremia", keywords:/hipo[\s-]?natremia/i,
+      check(labs){ const na=num(labs.na); if(!isFinite(na)||na>=135) return null;
+        const sev=na<125?"severa":(na<130?"moderada":"leve");
+        return {sev,value:na,unit:"mEq/L",display:"Na "+na};}},
+    { id:"hiperNa", name:"Hipernatremia", keywords:/hiper[\s-]?natremia/i,
+      check(labs){ const na=num(labs.na); if(!isFinite(na)||na<145) return null;
+        const sev=na>=160?"severa":(na>=150?"moderada":"leve");
+        return {sev,value:na,unit:"mEq/L",display:"Na "+na};}},
+    { id:"hipoK", name:"Hipokalemia", keywords:/hipo[\s-]?kale?mia|hipo[\s-]?potasemia/i,
+      check(labs){ const k=num(labs.k); if(!isFinite(k)||k>=3.5) return null;
+        const sev=k<2.5?"severa":(k<3.0?"moderada":"leve");
+        return {sev,value:k,unit:"mEq/L",display:"K "+k};}},
+    { id:"hiperK", name:"Hiperkalemia", keywords:/hiper[\s-]?kale?mia|hiper[\s-]?potasemia/i,
+      critical:true, criticalIf:function(r){return r.value>=6.5;},
+      check(labs){ const k=num(labs.k); if(!isFinite(k)||k<5.5) return null;
+        const sev=k>=6.5?"severa":(k>=6.0?"moderada":"leve");
+        return {sev,value:k,unit:"mEq/L",display:"K "+k};}},
+    { id:"anemia", name:"Anemia", keywords:/anemia/i,
+      check(labs,_h,p,nd){ const hb=num(labs.hb); if(!isFinite(hb)) return null;
+        const sex=getSex(p,nd); const threshold=sex==="F"?12:13;
+        if(hb>=threshold) return null;
+        let sev; if(hb<8) sev="severa"; else if(hb<11) sev="moderada"; else sev="leve";
+        return {sev,value:hb,unit:"g/dL",display:"Hb "+hb};}},
+    { id:"aki", name:"Lesión renal aguda KDIGO", keywords:/(lesi[oó]n\s+renal\s+aguda|LRA|AKI|injuria\s+renal|kdigo)/i,
+      critical:true, criticalIf:function(r){return r.stage===3;},
+      check(labs,labHistory){ const cr=num(labs.cr); if(!isFinite(cr)) return null;
+        const basal=getBaselineCr(labHistory);
+        if(basal===null){
+          if(cr>=4.0) return {stage:3,sev:"stage3",value:cr,basal:null,ratio:null,display:"Cr "+cr+" mg/dL (sin basal)"};
+          return null;
+        }
+        const ratio=cr/basal; const delta=cr-basal;
+        let stage=null;
+        if(cr>=4.0||ratio>=3.0) stage=3;
+        else if(ratio>=2.0) stage=2;
+        else if(ratio>=1.5||delta>=0.3) stage=1;
+        if(!stage) return null;
+        return {stage,sev:"stage"+stage,value:cr,basal,ratio:ratio.toFixed(2),
+          display:"Cr "+cr+" (basal "+basal+", ×"+ratio.toFixed(2)+")"};}},
+    { id:"trombo", name:"Trombocitopenia", keywords:/trombocitopen|plaquetopen/i,
+      check(labs){ const p=num(labs.plaq); if(!isFinite(p)||p>=150) return null;
+        const sev=p<50?"severa":(p<100?"moderada":"leve");
+        return {sev,value:p,unit:"×10³/μL",display:"Plaq "+p+"k"};}},
+    { id:"hipoalb", name:"Hipoalbuminemia", keywords:/hipoalbumin/i,
+      check(labs){ const a=num(labs.alb); if(!isFinite(a)||a>=3.5) return null;
+        const sev=a<2.5?"severa":(a<3.0?"moderada":"leve");
+        return {sev,value:a,unit:"g/dL",display:"Alb "+a};}},
+    { id:"acidosis", name:"Acidosis metabólica", keywords:/acidosis\s+metab/i,
+      check(labs){ const hco3=num(labs.hco3); const ph=num(labs.ph);
+        if(!isFinite(hco3)||hco3>=22) return null;
+        if(isFinite(ph)&&ph>=7.45) return null;
+        const sev=hco3<15?"severa":(hco3<18?"moderada":"leve");
+        return {sev,value:hco3,unit:"mEq/L",display:"HCO₃ "+hco3};}},
+    { id:"hiperbil", name:"Hiperbilirrubinemia", keywords:/(hiperbilirrubin|ict[eé]ric)/i,
+      check(labs){ const bt=num(labs.bt); if(!isFinite(bt)||bt<=1.2) return null;
+        const sev=bt>5?"severa":(bt>3?"moderada":"leve");
+        return {sev,value:bt,unit:"mg/dL",display:"Bil total "+bt};}}
+  ];
+  function evalColangitis(labs,dx,p,nd){
+    if(!/colangitis/i.test(dx)) return null;
+    const leucos=num(labs.leucos); const bt=num(labs.bt); const alb=num(labs.alb);
+    const edad=num(p&&p.edad);
+    let gradoII_count=0;
+    if(isFinite(leucos)&&(leucos>12||leucos<4)) gradoII_count++;
+    if(isFinite(edad)&&edad>=75) gradoII_count++;
+    if(isFinite(bt)&&bt>=5) gradoII_count++;
+    if(isFinite(alb)&&alb<3.0) gradoII_count++;
+    const m=dx.match(/colangitis\s+(leve|moderada|severa|grave|grado\s+[IiV1-3]+)/i);
+    const dxGrade=m?m[1].toLowerCase():null;
+    let suggestedGrade="leve";
+    if(gradoII_count>=1) suggestedGrade="moderada";
+    return {sev:suggestedGrade,criteria:gradoII_count,
+      display:"Colangitis Tokyo 2018: "+suggestedGrade+" ("+gradoII_count+" criterios Grado II)",dxGrade};
+  }
+  function evalChoqueRemitido(dx,nd){
+    if(!/choque/i.test(dx)) return null;
+    if(/(remitido|en\s+remisi[oó]n|\(rem\)|controlado)/i.test(dx)) return null;
+    const v=nd.vasopresores||{};
+    const nore=num(v.nore); const vaso=num(v.vaso); const epi=num(v.epi);
+    const dobu=num(v.dobu); const dopa=num(v.dopa);
+    const anyActive=(isFinite(nore)&&nore>0)||(isFinite(vaso)&&vaso>0)||
+      (isFinite(epi)&&epi>0)||(isFinite(dobu)&&dobu>0)||(isFinite(dopa)&&dopa>0);
+    if(anyActive) return null;
+    return {sev:"info",display:"Choque sin vasopresores activos — considerar marcar como remitido"};
+  }
+  function extractLastSurgeryDate(dx){
+    if(!dx) return null;
+    const re=/\((\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\)/g;
+    let m,dates=[];
+    while((m=re.exec(dx))!==null){
+      const d=parseInt(m[1]),mo=parseInt(m[2]); let y=parseInt(m[3]);
+      if(y<100) y=2000+y;
+      const date=new Date(y,mo-1,d);
+      if(!isNaN(date.getTime())) dates.push(date);
+    }
+    if(!dates.length) return null;
+    dates.sort(function(a,b){return b-a;});
+    return dates[0];
+  }
+  function evalCirugiaReciente(dx,nd){
+    let last=null;
+    if(nd.ultimaCirugia){
+      const d=new Date(nd.ultimaCirugia);
+      if(!isNaN(d.getTime())) last=d;
+    } else { last=extractLastSurgeryDate(dx); }
+    if(!last) return null;
+    const now=new Date();
+    const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    const lastDay=new Date(last.getFullYear(),last.getMonth(),last.getDate());
+    const diffDays=Math.round((today-lastDay)/(1000*60*60*24));
+    if(diffDays<0||diffDays>30) return null;
+    if(diffDays<=1){
+      const fechaStr=lastDay.toISOString().slice(0,10);
+      return {sev:"info",display:"Cirugía "+(diffDays===0?"hoy":"ayer")+" ("+fechaStr+") — verificar PO actualizado"};
+    }
+    return null;
+  }
+  function buildSuggestion(rule,result,dx){
+    if(!rule.keywords) return null;
+    const dxStr=(dx||"").toString();
+    const grade_re=/(leve|moderada|moderado|severa|severo|grave)/i;
+    const matchKw=dxStr.match(rule.keywords);
+    if(matchKw){
+      const around=dxStr.slice(Math.max(0,matchKw.index-5),Math.min(dxStr.length,matchKw.index+matchKw[0].length+40));
+      const gm=around.match(grade_re);
+      const currentGrade=gm?gm[0].toLowerCase():null;
+      const norm=function(g){
+        if(!g) return null; g=g.toLowerCase();
+        if(g==="moderado") return "moderada";
+        if(g==="severo"||g==="grave") return "severa";
+        return g;
+      };
+      const cur=norm(currentGrade); const tgt=norm(result.sev);
+      if(cur&&tgt&&cur!==tgt){
+        return {type:"reclasify",
+          text:"Reclasificar "+rule.name.toLowerCase()+" "+cur+" → "+tgt+" ("+(result.display||result.value)+")",
+          from:cur,to:tgt};
+      }
+      if(!cur&&tgt){
+        return {type:"specify",
+          text:"Especificar grado: "+rule.name.toLowerCase()+" "+tgt+" ("+(result.display||result.value)+")",
+          to:tgt};
+      }
+      return null;
+    }
+    return {type:"add",
+      text:"Agregar al dx: \""+rule.name+" "+result.sev+"\" ("+(result.display||result.value)+")",
+      to:result.sev};
+  }
+  function valueHash(result){
+    if(!result) return "";
+    if(typeof result.value==="number") return String(Math.round(result.value*10)/10);
+    if(result.stage) return "stage"+result.stage+":"+result.ratio;
+    return JSON.stringify(result);
+  }
+  function evaluate(p,nd){
+    const out=[]; const labs=(nd&&nd.labs)||{};
+    const labHist=(nd&&nd.labHistory)||[];
+    const dx=((nd&&nd.dx)||(p&&p.dx)||"").toString();
+    RULES.forEach(function(rule){
+      const result=rule.check(labs,labHist,p,nd); if(!result) return;
+      const sug=buildSuggestion(rule,result,dx); if(!sug) return;
+      const isCritical=rule.critical&&rule.criticalIf&&rule.criticalIf(result);
+      out.push({ruleId:rule.id,ruleName:rule.name,severity:result.sev,
+        critical:!!isCritical,result,suggestion:sug,valueHash:valueHash(result)});
+    });
+    const col=evalColangitis(labs,dx,p,nd);
+    if(col&&col.dxGrade){
+      const norm=function(g){
+        if(!g) return null; g=g.toLowerCase();
+        if(g.includes("leve")||g==="i"||g==="1"||g.includes("grado i")||g.includes("grado 1")) return "leve";
+        if(g.includes("moderad")||g==="ii"||g==="2"||g.includes("grado ii")||g.includes("grado 2")) return "moderada";
+        if(g.includes("severa")||g.includes("grave")||g==="iii"||g==="3"||g.includes("grado iii")||g.includes("grado 3")) return "severa";
+        return g;
+      };
+      const cur=norm(col.dxGrade);
+      if(cur&&cur!==col.sev){
+        out.push({ruleId:"colangitis",ruleName:"Colangitis (Tokyo 2018)",severity:col.sev,
+          critical:col.sev==="severa",result:col,
+          suggestion:{type:"reclasify",text:"Colangitis: reclasificar "+cur+" → "+col.sev+" ("+col.criteria+" criterios Grado II)"},
+          valueHash:"tk:"+col.sev+":"+col.criteria});
+      }
+    }
+    const ch=evalChoqueRemitido(dx,nd||{});
+    if(ch){
+      out.push({ruleId:"choqueRem",ruleName:"Choque sin vasopresores",severity:"info",critical:false,
+        result:ch,suggestion:{type:"specify",text:ch.display},valueHash:"rem:v0"});
+    }
+    const cir=evalCirugiaReciente(dx,nd||{});
+    if(cir){
+      out.push({ruleId:"cirReciente",ruleName:"Cirugía reciente",severity:"info",critical:false,
+        result:cir,suggestion:{type:"verify",text:cir.display},valueHash:"cr:"+cir.display});
+    }
+    return out;
+  }
+  const SEV_ORDER={stage3:0,severa:1,stage2:2,moderada:3,stage1:4,leve:5,info:6};
+  function sortBySeverity(suggestions){
+    return suggestions.slice().sort(function(a,b){
+      const va=SEV_ORDER[a.severity]; const vb=SEV_ORDER[b.severity];
+      return (va===undefined?99:va)-(vb===undefined?99:vb);
+    });
+  }
+  return {evaluate,sortBySeverity,extractLastSurgeryDate};
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 2. VASOPRESORES — Calculadora por paciente
+ * Unidades correctas: Nore/Epi/Dobu/Dopa = mcg/kg/min ; Vaso = U/min FIJA
+ * ════════════════════════════════════════════════════════════════════════════ */
+const PLVaso = (function() {
+  "use strict";
+  const VAso_LIMITS = {
+    nore: { unit: "mcg/kg/min", min: 0, max: 3.0, typical: "0.01–0.5", warn: 0.5 },
+    epi:  { unit: "mcg/kg/min", min: 0, max: 1.0, typical: "0.01–0.3", warn: 0.3 },
+    dobu: { unit: "mcg/kg/min", min: 0, max: 20,  typical: "2–20",     warn: 20 },
+    dopa: { unit: "mcg/kg/min", min: 0, max: 20,  typical: "2–20",     warn: 20 },
+    vaso: { unit: "U/min",      min: 0, max: 0.04, typical: "0.01–0.04", warn: 0.04 }
+  };
+  function num(v) { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : NaN; }
+
+  function computeAbsoluteDose(drug, dose, weight) {
+    // Devuelve { perMin, perHour, units, mlh }
+    const d = num(dose);
+    const w = num(weight);
+    if (!isFinite(d) || d <= 0) return null;
+    if (drug === "vaso") {
+      // Vaso: U/min × 60 = U/h (NO depende del peso)
+      return { perMin: d, perHour: d * 60, units: "U" };
+    }
+    // Nore/Epi/Dobu/Dopa: mcg/kg/min × peso = mcg/min
+    if (!isFinite(w) || w <= 0) return null;
+    const mcgMin = d * w;
+    return { perMin: mcgMin, perHour: mcgMin * 60 / 1000, units: "mcg→mg" };
+  }
+
+  function fmtAbsolute(drug, dose, weight) {
+    const c = computeAbsoluteDose(drug, dose, weight);
+    if (!c) return "";
+    if (drug === "vaso") {
+      return c.perMin.toFixed(3).replace(/0+$/, "").replace(/\.$/, "") + " U/min · " + c.perHour.toFixed(2) + " U/h";
+    }
+    return c.perMin.toFixed(2) + " mcg/min · " + c.perHour.toFixed(2) + " mg/h";
+  }
+
+  function isHighDose(drug, dose) {
+    const d = num(dose);
+    if (!isFinite(d)) return false;
+    const lim = VAso_LIMITS[drug];
+    return lim ? (d > lim.warn) : false;
+  }
+
+  return { LIMITS: VAso_LIMITS, computeAbsoluteDose, fmtAbsolute, isHighDose };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 3. INDICACIONES — Visor read-only de indicaciones (Google Docs paste / .docx)
+ * ════════════════════════════════════════════════════════════════════════════ */
+const PLIndicaciones = (function() {
+  "use strict";
+  const KEY_PREFIX = "pl_indicaciones_v1_";
+  const KEY_META = "pl_indicaciones_meta_v1";
+
+  function setForBed(bed, data) {
+    try { localStorage.setItem(KEY_PREFIX + String(bed), JSON.stringify(data)); }
+    catch (e) { console.warn("PLIndicaciones.setForBed:", e); }
+  }
+  function getForBed(bed) {
+    try {
+      const raw = localStorage.getItem(KEY_PREFIX + String(bed));
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function setMeta(ts) {
+    try { localStorage.setItem(KEY_META, JSON.stringify({ importedAt: ts })); } catch (e) {}
+  }
+  function getMeta() {
+    try {
+      const raw = localStorage.getItem(KEY_META);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function hoursSinceImport() {
+    const m = getMeta();
+    if (!m || !m.importedAt) return Infinity;
+    return (Date.now() - m.importedAt) / (1000 * 60 * 60);
+  }
+  function freshness() {
+    const h = hoursSinceImport();
+    if (h === Infinity) return { state: "none", label: "Sin importar" };
+    if (h < 4) return { state: "fresh", label: "Hace " + Math.round(h * 10) / 10 + "h" };
+    if (h < 12) return { state: "stale", label: "Hace " + Math.round(h) + "h" };
+    return { state: "old", label: "Hace " + Math.round(h) + "h ⚠️" };
+  }
+
+  // Parser de texto pegado de Google Docs (asumiendo formato del briefing)
+  // Detecta pestañas/secciones por NÚMERO DE CAMA y luego parsea DIETA/SOLUCIONES/MEDICAMENTOS/MEDIDAS GENERALES
+  function parsePasted(text) {
+    if (!text) return [];
+    const lines = String(text).split(/\r?\n/);
+    const beds = [];
+    let current = null;
+    const SECTION_RE = /^(\s*[•·●▪◆◊○]\s*|\s*-\s*|\s*\*\s*)?(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES|INDICACIONES)\s*[:：]?\s*$/i;
+    const BED_HEADER_RE = /^(INDICACIONES\s+(DE\s+)?(CIRUG[IÍ]A\s+)?GENERAL)/i;
+    const BED_TAB_RE = /^\s*(\d{2,4})\s*$/; // pestaña con solo número
+    // Buscar líneas tipo "EXP: 25-12345" o "CAMA 150" o número solo
+    function detectBedFromLine(l) {
+      const m = l.match(/(?:cama|bed|HABITACI[OÓ]N)[\s:#-]*(\d{1,4})/i);
+      if (m) return m[1];
+      const m2 = l.match(/\b3-(\d{2,4})\b/);
+      if (m2) return m2[1];
+      const m3 = l.match(BED_TAB_RE);
+      if (m3) return m3[1];
+      return null;
+    }
+
+    let currentSection = null;
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      const line = raw.replace(/\u00A0/g, " ").trim();
+      if (!line) continue;
+
+      // Header tipo "INDICACIONES DE CIRUGÍA GENERAL"
+      if (BED_HEADER_RE.test(line)) {
+        // siguiente línea suele contener nombre/edad/exp
+        // No requerimos bed aquí, esperamos el bloque siguiente
+        continue;
+      }
+
+      // Detectar cambio de cama por línea con cama explícita o pestaña-solo-número
+      const bedDetected = detectBedFromLine(line);
+      if (bedDetected && (current === null || current.bed !== bedDetected)) {
+        // Validar que es un número plausible de cama (NO pasamos pestañas vacías)
+        if (/^\d{2,4}$/.test(bedDetected)) {
+          current = { bed: bedDetected, header: "", DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "MEDIDAS GENERALES": [], _raw: [] };
+          beds.push(current);
+          currentSection = null;
+          continue;
+        }
+      }
+
+      // Sección
+      const sm = line.match(SECTION_RE);
+      if (sm) {
+        currentSection = sm[2].toUpperCase().replace(/\s+/g, " ");
+        if (currentSection === "MEDIDAS GENERALES" || currentSection === "MEDICAMENTOS" ||
+            currentSection === "DIETA" || currentSection === "SOLUCIONES") {
+          if (current) { /* ya está */ }
+        }
+        continue;
+      }
+
+      // Línea de contenido
+      if (current && currentSection && current[currentSection]) {
+        const cleaned = line.replace(/^[•·●▪◆◊○\s\-\*]+/, "").trim();
+        if (cleaned) current[currentSection].push(cleaned);
+      }
+      if (current) current._raw.push(line);
+    }
+    // Filtrar pestañas/bloques vacíos (sin ninguna sección poblada)
+    return beds.filter(b => b.DIETA.length || b.SOLUCIONES.length || b.MEDICAMENTOS.length || b["MEDIDAS GENERALES"].length);
+  }
+
+  // Importa: parsea texto, guarda por cama
+  function importPasted(text) {
+    const blocks = parsePasted(text);
+    blocks.forEach(b => setForBed(b.bed, b));
+    setMeta(Date.now());
+    return blocks;
+  }
+
+  return { setForBed, getForBed, importPasted, parsePasted, freshness, hoursSinceImport, getMeta };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 4. CDS PERSISTENCE — Ignored suggestions tracking
+ * ════════════════════════════════════════════════════════════════════════════ */
+const PLCDSStore = (function() {
+  "use strict";
+  const KEY_IGN = "pl_cds_ignored_v1";
+  const KEY_DISC = "pl_cds_disclaimer_accepted_v1";
+  const KEY_CRIT = "pl_cds_critical_alerted_v1";
+
+  function loadIgn() { try { return JSON.parse(localStorage.getItem(KEY_IGN) || "{}"); } catch (e) { return {}; } }
+  function saveIgn(o) { try { localStorage.setItem(KEY_IGN, JSON.stringify(o)); } catch (e) {} }
+
+  function isIgnored(patientKey, ruleId, valueHash) {
+    const o = loadIgn();
+    const key = patientKey + ":" + ruleId;
+    return o[key] === valueHash;
+  }
+  function ignore(patientKey, ruleId, valueHash) {
+    const o = loadIgn();
+    o[patientKey + ":" + ruleId] = valueHash;
+    saveIgn(o);
+  }
+  function unignore(patientKey, ruleId) {
+    const o = loadIgn();
+    delete o[patientKey + ":" + ruleId];
+    saveIgn(o);
+  }
+
+  function disclaimerAccepted() { return localStorage.getItem(KEY_DISC) === "1"; }
+  function acceptDisclaimer() { try { localStorage.setItem(KEY_DISC, "1"); } catch (e) {} }
+
+  function alreadyAlerted(patientKey, ruleId, valueHash) {
+    try {
+      const o = JSON.parse(localStorage.getItem(KEY_CRIT) || "{}");
+      return o[patientKey + ":" + ruleId] === valueHash;
+    } catch (e) { return false; }
+  }
+  function markAlerted(patientKey, ruleId, valueHash) {
+    try {
+      const o = JSON.parse(localStorage.getItem(KEY_CRIT) || "{}");
+      o[patientKey + ":" + ruleId] = valueHash;
+      localStorage.setItem(KEY_CRIT, JSON.stringify(o));
+    } catch (e) {}
+  }
+
+  return { isIgnored, ignore, unignore, disclaimerAccepted, acceptDisclaimer, alreadyAlerted, markAlerted };
+})();
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 5. RENDER — Sección CDS por paciente
+ * ════════════════════════════════════════════════════════════════════════════ */
+function escCDS(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function renderCDSSection(p, nd, k) {
+  if (!nd || !nd.labs) nd = nd || { labs: {} };
+  const suggestions = PLCDS.evaluate(p, nd);
+  const sorted = PLCDS.sortBySeverity(suggestions);
+  const filtered = sorted.filter(s => !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash));
+
+  if (!filtered.length) {
+    return `<div class="cds-section cds-empty" id="cds-${k}">
+      <div class="cds-header">
+        <span class="cds-title">💡 Sugerencias clínicas</span>
+        <span class="cds-status-ok">✓ Sin pendientes</span>
+      </div>
+    </div>`;
+  }
+
+  // Mostrar las primeras 3 más severas + contador
+  const visible = filtered.slice(0, 3);
+  const hidden = filtered.length - visible.length;
+
+  const items = visible.map(s => {
+    const sevClass = "cds-sev-" + (s.severity || "info").replace(/\d/g, "");
+    const critClass = s.critical ? " cds-critical" : "";
+    const sevLabel = (s.severity || "").replace("stage", "KDIGO ").toUpperCase();
+    const valHash = escCDS(s.valueHash);
+    return `<div class="cds-item${critClass} ${sevClass}" data-rule="${escCDS(s.ruleId)}" data-vhash="${valHash}">
+      <div class="cds-item-row">
+        <span class="cds-badge cds-badge-${(s.severity || "info").replace(/\d/g, "")}">${escCDS(sevLabel)}</span>
+        <span class="cds-rule-name">${escCDS(s.ruleName)}</span>
+      </div>
+      <div class="cds-suggestion">${escCDS(s.suggestion.text)}</div>
+      <div class="cds-actions">
+        <button class="cds-btn cds-btn-apply" onclick="cdsApplySuggestion('${escCDS(k)}','${escCDS(s.ruleId)}')">✏️ Aplicar al dx</button>
+        <button class="cds-btn cds-btn-ignore" onclick="cdsIgnoreSuggestion('${escCDS(k)}','${escCDS(s.ruleId)}','${valHash}')">🔇 Ignorar</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  const moreLabel = hidden > 0 ? `<div class="cds-more" onclick="cdsToggleMore('${escCDS(k)}')">+${hidden} más</div>` : "";
+  const critCount = filtered.filter(s => s.critical).length;
+  const critBadge = critCount ? `<span class="cds-crit-count">⚠️ ${critCount} crítica${critCount > 1 ? "s" : ""}</span>` : "";
+
+  return `<div class="cds-section" id="cds-${k}">
+    <div class="cds-header">
+      <span class="cds-title">💡 Sugerencias clínicas <span class="cds-count">(${filtered.length})</span></span>
+      ${critBadge}
+    </div>
+    <div class="cds-items">${items}</div>
+    ${moreLabel}
+  </div>`;
+}
+
+// Aplicar sugerencia: abre el dx en modo edición con el texto sugerido como pre-fill comentario
+function cdsApplySuggestion(patientKey, ruleId) {
+  const p = (typeof patients !== "undefined" ? patients : []).find(pt => pid(pt) === patientKey);
+  const nd = getNote(patientKey);
+  if (!p) return;
+  const suggestions = PLCDS.evaluate(p, nd);
+  const s = suggestions.find(x => x.ruleId === ruleId);
+  if (!s) return;
+  // Estrategia simple: agregar comentario clínico al dx en modo no-destructivo
+  const currentDx = (nd.dx || p.dx || "").toString();
+  const tag = `\n📋 Sugerencia CDS: ${s.suggestion.text}`;
+  // Si la sugerencia es "reclasify" y el dx contiene el grado anterior, ofrecer reemplazo directo
+  if (s.suggestion.type === "reclasify" && s.suggestion.from && s.suggestion.to) {
+    const reGrade = new RegExp("(" + s.ruleName + ".*?)" + s.suggestion.from, "i");
+    if (reGrade.test(currentDx)) {
+      const newDx = currentDx.replace(reGrade, "$1" + s.suggestion.to);
+      if (confirm("Reemplazar en dx:\n\n" + currentDx + "\n\n→\n\n" + newDx + "\n\n¿Confirmar?")) {
+        nd.dx = newDx; saveNote(patientKey, nd);
+        if (p) { p.dx = newDx; /* save patient updated */ }
+        if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
+        return;
+      }
+      return;
+    }
+  }
+  // Default: agregar como comentario sin pisar
+  if (confirm("Agregar al dx la nota:\n\n" + s.suggestion.text + "\n\n¿Confirmar?")) {
+    nd.dx = currentDx + tag;
+    saveNote(patientKey, nd);
+    if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
+  }
+}
+
+function cdsIgnoreSuggestion(patientKey, ruleId, vhash) {
+  PLCDSStore.ignore(patientKey, ruleId, vhash);
+  if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
+}
+
+function cdsToggleMore(patientKey) {
+  // Expandir las "más" — simple: alternar clase
+  const el = document.getElementById("cds-" + patientKey);
+  if (el) el.classList.toggle("cds-expanded");
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 6. RENDER — Sección Vasopresores por paciente
+ * ════════════════════════════════════════════════════════════════════════════ */
+function renderVasoSection(p, nd, k) {
+  const v = (nd && nd.vasopresores) || {};
+  const peso = v.peso || (p && p.peso) || "";
+  const drugs = [
+    { id: "nore", label: "Norepinefrina", placeholder: "0.05", lim: PLVaso.LIMITS.nore },
+    { id: "vaso", label: "Vasopresina",   placeholder: "0.03", lim: PLVaso.LIMITS.vaso, note: "dosis fija (no por peso)" },
+    { id: "epi",  label: "Epinefrina",    placeholder: "0.05", lim: PLVaso.LIMITS.epi },
+    { id: "dobu", label: "Dobutamina",    placeholder: "5",    lim: PLVaso.LIMITS.dobu },
+    { id: "dopa", label: "Dopamina",      placeholder: "5",    lim: PLVaso.LIMITS.dopa }
+  ];
+  const rows = drugs.map(d => {
+    const val = v[d.id] || "";
+    const calc = PLVaso.fmtAbsolute(d.id, val, peso);
+    const high = PLVaso.isHighDose(d.id, val);
+    const needsWeight = d.id !== "vaso" && val && !peso;
+    return `<div class="vaso-row${high ? " vaso-high" : ""}">
+      <label class="vaso-label">${escCDS(d.label)}</label>
+      <input type="number" step="0.001" min="0" class="vaso-input"
+        data-key="${escCDS(k)}" data-drug="${escCDS(d.id)}"
+        value="${escCDS(val)}" placeholder="${d.placeholder}"
+        onchange="vasoUpdate(this.dataset.key,this.dataset.drug,this.value)">
+      <span class="vaso-unit">${escCDS(d.lim.unit)}</span>
+      <span class="vaso-calc">${needsWeight ? "⚠️ falta peso" : escCDS(calc) || "—"}</span>
+      ${d.note ? `<span class="vaso-note">${d.note}</span>` : ""}
+    </div>`;
+  }).join("");
+
+  const hasAny = drugs.some(d => {
+    const x = parseFloat(v[d.id]);
+    return isFinite(x) && x > 0;
+  });
+
+  return `<div class="vaso-section" id="vaso-${k}">
+    <div class="vaso-header">
+      <span class="vaso-title">💊 Vasopresores ${hasAny ? '<span class="vaso-active">● activo</span>' : ''}</span>
+      <div class="vaso-weight-row">
+        <label>Peso (kg)</label>
+        <input type="number" step="0.5" min="1" max="300" class="vaso-input-weight"
+          value="${escCDS(peso)}" placeholder="70"
+          onchange="vasoUpdateWeight('${escCDS(k)}',this.value)">
+      </div>
+    </div>
+    <div class="vaso-rows">${rows}</div>
+    <div class="vaso-footer">
+      <span class="vaso-disclaimer">⚠️ Verifica todos los cálculos antes de prescribir. La app no reemplaza la bomba ni el criterio clínico.</span>
+    </div>
+  </div>`;
+}
+
+function vasoUpdate(patientKey, drug, value) {
+  const nd = getNote(patientKey);
+  nd.vasopresores = nd.vasopresores || {};
+  nd.vasopresores[drug] = String(value || "").trim();
+  nd.vasopresores.ts = Date.now();
+  saveNote(patientKey, nd);
+  // Re-render solo la sección de vaso para evitar parpadeo
+  const el = document.getElementById("vaso-" + patientKey);
+  if (el) {
+    const p = patients.find(pt => pid(pt) === patientKey);
+    el.outerHTML = renderVasoSection(p, nd, patientKey);
+  }
+  // Re-evaluar CDS (puede activar choque remitido)
+  const cdsEl = document.getElementById("cds-" + patientKey);
+  if (cdsEl) {
+    const p2 = patients.find(pt => pid(pt) === patientKey);
+    cdsEl.outerHTML = renderCDSSection(p2, nd, patientKey);
+  }
+}
+
+function vasoUpdateWeight(patientKey, value) {
+  const nd = getNote(patientKey);
+  nd.vasopresores = nd.vasopresores || {};
+  nd.vasopresores.peso = String(value || "").trim();
+  saveNote(patientKey, nd);
+  const el = document.getElementById("vaso-" + patientKey);
+  if (el) {
+    const p = patients.find(pt => pid(pt) === patientKey);
+    el.outerHTML = renderVasoSection(p, nd, patientKey);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 7. RENDER — Sección Indicaciones (read-only)
+ * ════════════════════════════════════════════════════════════════════════════ */
+function renderIndicacionesSection(p, nd, k) {
+  const bed = (p && (p.cama || "")).toString();
+  // bed puede venir como "3-150" — extraer el número
+  const bedNum = (bed.match(/(\d{2,4})$/) || [null, bed])[1];
+  const data = bedNum ? PLIndicaciones.getForBed(bedNum) : null;
+  const fresh = PLIndicaciones.freshness();
+
+  if (!data) {
+    return `<div class="ind-section ind-empty" id="ind-${k}">
+      <div class="ind-header">
+        <span class="ind-title">💊 Indicaciones (Drive)</span>
+        <button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button>
+      </div>
+      <div class="ind-empty-msg">Sin indicaciones importadas para cama ${escCDS(bedNum)}.</div>
+    </div>`;
+  }
+
+  const sectionBlocks = [
+    { key: "DIETA", icon: "🍴" },
+    { key: "SOLUCIONES", icon: "💧" },
+    { key: "MEDICAMENTOS", icon: "💊" },
+    { key: "MEDIDAS GENERALES", icon: "📋" }
+  ];
+
+  const content = sectionBlocks.map(b => {
+    const items = (data[b.key] || []).map(x => `<li>${escCDS(x)}</li>`).join("");
+    if (!items) return "";
+    return `<div class="ind-block">
+      <div class="ind-block-title">${b.icon} ${b.key}</div>
+      <ul class="ind-list">${items}</ul>
+    </div>`;
+  }).join("");
+
+  const freshClass = "ind-fresh-" + fresh.state;
+
+  return `<div class="ind-section ${freshClass}" id="ind-${k}">
+    <div class="ind-header">
+      <span class="ind-title">💊 Indicaciones (Drive)</span>
+      <span class="ind-fresh">⏱ ${escCDS(fresh.label)}</span>
+      <button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button>
+    </div>
+    <div class="ind-content">${content || '<div class="ind-empty-msg">Cama presente pero sin contenido parseado.</div>'}</div>
+  </div>`;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 8. MODAL — Importación de indicaciones
+ * ════════════════════════════════════════════════════════════════════════════ */
+function openIndicacionesModal() {
+  let m = document.getElementById("indicaciones-modal");
+  if (m) { m.style.display = "flex"; return; }
+  m = document.createElement("div");
+  m.id = "indicaciones-modal";
+  m.className = "modal-bg";
+  m.style.display = "flex";
+  m.innerHTML = `<div class="modal-box" style="max-width:780px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <div class="modal-title">📥 Importar Indicaciones del Drive</div>
+      <button class="modal-close" onclick="closeIndicacionesModal()">✕</button>
+    </div>
+    <p style="font-size:12px;color:#64748b;margin:0 0 12px">
+      Pega aquí el contenido completo del Google Doc de indicaciones (todas las pestañas).
+      El parser ignorará pestañas sin número de cama (ej. "QUE TENGAS UNA BONITA...").
+    </p>
+    <textarea id="indicaciones-paste" rows="14"
+      style="width:100%;font-family:'SF Mono',Menlo,monospace;font-size:11px;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px"
+      placeholder="Pega aquí el texto completo del Google Doc..."></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button class="btn-secondary" onclick="closeIndicacionesModal()">Cancelar</button>
+      <button class="btn-primary" onclick="indicacionesDoImport()">📥 Importar</button>
+    </div>
+    <div id="indicaciones-import-result" style="margin-top:12px;font-size:12px"></div>
+  </div>`;
+  document.body.appendChild(m);
+}
+function closeIndicacionesModal() {
+  const m = document.getElementById("indicaciones-modal");
+  if (m) m.style.display = "none";
+}
+function indicacionesDoImport() {
+  const ta = document.getElementById("indicaciones-paste");
+  const result = document.getElementById("indicaciones-import-result");
+  if (!ta || !ta.value.trim()) {
+    result.innerHTML = '<span style="color:#dc2626">⚠️ Pega algún contenido primero.</span>';
+    return;
+  }
+  try {
+    const blocks = PLIndicaciones.importPasted(ta.value);
+    if (!blocks.length) {
+      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectaron camas con secciones (DIETA/SOLUCIONES/MEDICAMENTOS/MEDIDAS). Verifica el formato.</span>';
+      return;
+    }
+    const beds = blocks.map(b => b.bed).join(", ");
+    result.innerHTML = `<span style="color:#16a34a">✅ Importadas ${blocks.length} camas: ${beds}</span>`;
+    // Re-render todas las cards
+    if (typeof patients !== "undefined" && Array.isArray(patients)) {
+      patients.forEach(pt => { if (typeof _rerenderCard === "function") _rerenderCard(pid(pt)); });
+    }
+    // Re-evaluar banner stale
+    updateIndicacionesBanner();
+    setTimeout(closeIndicacionesModal, 1500);
+  } catch (e) {
+    result.innerHTML = '<span style="color:#dc2626">❌ Error: ' + escCDS(e.message || e) + '</span>';
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 9. BANNER — Stale indicaciones
+ * ════════════════════════════════════════════════════════════════════════════ */
+function updateIndicacionesBanner() {
+  let banner = document.getElementById("indicaciones-banner");
+  const fresh = PLIndicaciones.freshness();
+  const shouldShow = fresh.state === "none" || fresh.state === "old";
+  if (!banner && shouldShow) {
+    banner = document.createElement("div");
+    banner.id = "indicaciones-banner";
+    banner.className = "ind-banner";
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
+  if (!banner) return;
+  if (!shouldShow) { banner.style.display = "none"; return; }
+  banner.style.display = "flex";
+  banner.innerHTML = `<span class="ind-banner-icon">📥</span>
+    <span class="ind-banner-text">${fresh.state === "none" ? "No has importado indicaciones todavía." : "Indicaciones desactualizadas (" + fresh.label + ")."}
+    Importa antes de continuar el pase.</span>
+    <button class="ind-banner-btn" onclick="openIndicacionesModal()">Importar ahora</button>
+    <button class="ind-banner-dismiss" onclick="document.getElementById('indicaciones-banner').style.display='none'">✕</button>`;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 10. DISCLAIMER — Aviso médico-legal al activar CDS
+ * ════════════════════════════════════════════════════════════════════════════ */
+function showCDSDisclaimerIfNeeded() {
+  if (PLCDSStore.disclaimerAccepted()) return;
+  let m = document.getElementById("cds-disclaimer-modal");
+  if (m) { m.style.display = "flex"; return; }
+  m = document.createElement("div");
+  m.id = "cds-disclaimer-modal";
+  m.className = "modal-bg";
+  m.style.display = "flex";
+  m.innerHTML = `<div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <div class="modal-title">⚠️ Aviso del módulo de Sugerencias Clínicas</div>
+    </div>
+    <p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 14px">
+      PisoLibro genera sugerencias automáticas de reclasificación basadas en criterios
+      estandarizados: <strong>KDIGO 2012</strong> (LRA), <strong>Tokyo 2018</strong> (colangitis),
+      <strong>OMS</strong> (anemia), y consensos de electrolitos.
+    </p>
+    <p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 14px">
+      Las sugerencias son <strong>orientativas</strong>. La app no diagnostica,
+      no prescribe, no sustituye juicio clínico. El criterio final es del médico tratante.
+    </p>
+    <p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 18px">
+      La <strong>calculadora de vasopresores</strong> realiza aritmética simple
+      (dosis × peso). Verifica siempre el resultado contra la bomba y la prescripción.
+    </p>
+    <div style="display:flex;justify-content:flex-end">
+      <button class="btn-primary" onclick="cdsAcceptDisclaimer()">Entendido, continuar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+}
+function cdsAcceptDisclaimer() {
+  PLCDSStore.acceptDisclaimer();
+  const m = document.getElementById("cds-disclaimer-modal");
+  if (m) m.remove();
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 11. BUTTON TOOLBAR — Botón "💡 Sugerencias" que dispara revisión global
+ * ════════════════════════════════════════════════════════════════════════════ */
+function refreshAllCDS() {
+  showCDSDisclaimerIfNeeded();
+  if (typeof patients !== "undefined" && Array.isArray(patients)) {
+    let total = 0, critical = 0;
+    patients.forEach(p => {
+      const k = pid(p);
+      const nd = getNote(k);
+      const sugs = PLCDS.evaluate(p, nd).filter(s => !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash));
+      total += sugs.length;
+      critical += sugs.filter(s => s.critical).length;
+      // Alertar críticos nuevos
+      sugs.filter(s => s.critical).forEach(s => {
+        if (!PLCDSStore.alreadyAlerted(k, s.ruleId, s.valueHash)) {
+          PLCDSStore.markAlerted(k, s.ruleId, s.valueHash);
+          // Flash visual de la tarjeta sería ideal aquí; por ahora notificación discreta
+          console.warn("[CDS CRÍTICA]", p.cama || "?", p.nombre || "?", "→", s.suggestion.text);
+        }
+      });
+      if (typeof _rerenderCard === "function") _rerenderCard(k);
+    });
+    cdsToast("💡 Revisión completa: " + total + " sugerencia(s) · " + critical + " crítica(s)");
+  }
+}
+
+function cdsToast(msg) {
+  let t = document.getElementById("cds-toast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "cds-toast";
+    t.className = "cds-toast";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add("cds-toast-show");
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(function() { t.classList.remove("cds-toast-show"); }, 3500);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 12. AUTO-RUN al cargar la app + después de actualizar labs
+ * ════════════════════════════════════════════════════════════════════════════ */
+(function() {
+  // Hook para correr cuando la app cargue
+  function bootstrapCDS() {
+    try {
+      updateIndicacionesBanner();
+      // Disparar disclaimer la primera vez si hay sugerencias relevantes
+      // (no la primera vez que se abre la app, sino la primera vez que aplica sugerencia)
+    } catch (e) { console.warn("CDS bootstrap:", e); }
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootstrapCDS);
+  } else { setTimeout(bootstrapCDS, 200); }
+  // Re-evaluar banner cada hora
+  setInterval(updateIndicacionesBanner, 60 * 60 * 1000);
+})();
+
+</script>
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.1/dist/umd/supabase.min.js"></script>
@@ -4448,9 +5351,30 @@
     // ──────────────────────────────────────────────────────────────────────────────
     const WINLAB_ALIASES = {
       // Biometría / función renal
-      hb:        [/^hb$/i, /hemoglobi/i, /^hgb$/i],
-      leucos:    [/^leu$/i, /leucocit/i, /^wbc$/i, /gl[oó]bulos blancos/i],
-      plaq:      [/plaq/i, /^plt$/i, /trombocit/i],
+      hb:        [/^hb$/i, /^hemoglobi/i, /^hgb$/i],
+      leucos:    [/^leucocitos$/i, /^leu$/i, /^wbc$/i, /^gl[oó]bulos blancos$/i],
+      plaq:      [/^plaqueta(s)?$/i, /^plt$/i, /^trombocitos$/i],
+      // Biometría hemática extendida — IMPORTANTE: los _abs DEBEN ir antes que _pct
+      // porque "NEUTROFILOS ABSOLUTOS" contiene "NEUTROFILOS". Primer match gana.
+      hct:       [/^hematocrit/i, /^hto$/i, /^hct$/i, /^htc$/i],
+      mcv:       [/vol.*corp.*medio/i, /^mcv$/i, /^vcm$/i, /volumen corpuscular medio/i],
+      mch:       [/^hb\.?\s*corp.*media/i, /^hemoglobina corp/i, /^mch$/i, /^hcm$/i],
+      mchc:      [/conc.*hb.*corp/i, /^mchc$/i, /^chcm$/i, /concentracion.*hemoglobin/i],
+      rdw:       [/^rdw/i, /amplitud.*distribuc.*eritroc/i],
+      mpv:       [/vol.*plaq.*medio/i, /^mpv$/i, /^vpm$/i, /volumen plaquetario medio/i],
+      // Diferencial absoluto (debe ir antes de los % porque "NEUTROFILOS ABSOLUTOS" contiene "NEUTROFILOS")
+      neu_abs:   [/neutr[oó]filos.*absolut/i, /^neutr.*abs/i],
+      lin_abs:   [/linfocitos.*absolut/i, /^linf.*abs/i],
+      mon_abs:   [/monocitos.*absolut/i, /^mon.*abs/i],
+      eos_abs:   [/eosin[oó]filos.*absolut/i, /^eos.*abs/i],
+      bas_abs:   [/bas[oó]filos.*absolut/i, /^bas.*abs/i],
+      // Diferencial porcentual
+      neu_pct:   [/^neutr[oó]filos$/i, /^neu$/i, /^neut$/i],
+      lin_pct:   [/^linfocitos$/i, /^linf$/i, /^lin$/i],
+      mon_pct:   [/^monocitos$/i, /^mon$/i],
+      eos_pct:   [/^eosin[oó]filos$/i, /^eos$/i],
+      bas_pct:   [/^bas[oó]filos$/i, /^bas$/i],
+      // Resto del panel
       cr:        [/creatinin/i, /^cr$/i, /^crea$/i],
       urea:      [/^urea$/i, /^bun$/i, /nitr[oó]geno ureic/i],
       glu:       [/glucos/i, /^glu$/i, /glicem/i, /glyc/i],
@@ -4534,7 +5458,41 @@
       if (/^[\d\s:.,\/\-]+$/.test(n)) return true;
       // Sospechosos: contiene "PACIENTE", "REPORTE", "CIRUGIA", servicios
       if (/^(CIRUGIA|MEDICINA|GINECO|PEDIATRIA|URGENCIA|TRAUMA|UCI|UTI|UNIDAD)/i.test(n)) return true;
+      // Metadata del PDF de WinLab: TESTIGO y RANGO DE REFERENCIA aparecen
+      // como falsos "estudios" cuando el PDF tiene tiempos de coagulación
+      if (/^TESTIGO$/i.test(n)) return true;
+      if (/^RANGO DE REFERENCIA$/i.test(n)) return true;
+      // Unidades sueltas que el parser confundió con nombres de estudio
+      if (/^U\/L$/i.test(n)) return true;
+      if (/^MG\/DL$/i.test(n)) return true;
+      if (/^G\/DL$/i.test(n)) return true;
       return false;
+    }
+
+    // Patrones que indican que un valor NO es de sangre/química clínica.
+    // Si la unidad, referencia o valor contienen estos términos, el valor proviene
+    // de orina/cultivo/drenaje/tira reactiva y NO debe mapearse a aliases sanguíneos
+    // (que asumen Hb, Leucocitos, Plaquetas, etc. en sangre).
+    //
+    // Caso real (mayo 2026): EVANGELINA tenía LEUCOCITOS 2 con unidad "-4" y
+    // referencia "X CAMPO 0 - 5" (urocultivo). Sin esta guarda, el frontend
+    // pintaba "Leuc 2" en BH, que se interpreta como leucopenia severa cuando
+    // en realidad son leucos por campo en orina (normal).
+    const WINLAB_NON_BLOOD_PATTERNS = [
+      /\bCAMPO\b/i,            // "X CAMPO" = leucos/eritros en EGO/urocultivo
+      /TIRA\s*REACTIVA/i,      // EGO con tira
+      /\bDESARROLLO\b/i,       // "SIN DESARROLLO", "NO DESARROLLO" (cultivos)
+      /\bUFC\b/i,              // unidades formadoras de colonias (cultivos cuantitativos)
+      /\bCOLONIAS\b/i,
+      /CANDIDA|E\.?\s*COLI|KLEBSIELLA|PSEUDOMONAS|STAPHYLOCOCCUS|ENTEROCOCCUS/i, // microorganismos cultivados
+      /SENSIBLE|RESISTENTE|INTERMEDIO/i, // antibiogramas
+      /\bAEROBIO|ANAEROBIO\b/i,
+    ];
+
+    function isWinlabNonBloodValue(v) {
+      if (!v) return false;
+      const haystack = `${v.unidad || ""} ${v.referencia || ""} ${v.valor || ""}`;
+      return WINLAB_NON_BLOOD_PATTERNS.some(rx => rx.test(haystack));
     }
 
     function mapWinlabReportesToLabs(reportes) {
@@ -4546,6 +5504,10 @@
           const rawName = v?.estudio || v?.nombre || "";
           const rawVal = v?.valor;
           if (!rawName || rawVal === null || rawVal === undefined || rawVal === "") continue;
+          // Guarda CRÍTICA: si el valor proviene de orina/cultivo/drenaje, NO
+          // mapearlo a aliases sanguíneos. Esto previene que LEUCOCITOS de
+          // urocultivo (X CAMPO) se mapee al recuadro de leucos de BH.
+          if (isWinlabNonBloodValue(v)) continue;
           const name = normalizeWinlabName(rawName);
           if (!name) continue;
           // Defense in depth: rechazar si parece basura (fecha, código, servicio)
@@ -4563,20 +5525,82 @@
       return labs;
     }
 
+    // Extrae la fecha (YYYY-MM-DD) de un reporte basándose en su __cells.
+    // Los cells típicamente contienen "DD/MM/YYYY HH:MM" en la posición 3 o 4.
+    function extractReportDate(rep) {
+      if (!rep) return null;
+      const candidates = [];
+      if (Array.isArray(rep.__cells)) candidates.push(...rep.__cells);
+      if (rep.NOMBRE) candidates.push(rep.NOMBRE);
+      if (rep["APELLIDOS COMPLETOS"]) candidates.push(rep["APELLIDOS COMPLETOS"]);
+      // Tomar la fecha MÁS TEMPRANA del set (suele ser fecha de toma)
+      let earliest = null;
+      for (const c of candidates) {
+        const m = String(c || "").match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})/);
+        if (m) {
+          const dd = m[1].padStart(2, '0');
+          const mm = m[2].padStart(2, '0');
+          const iso = `${m[3]}-${mm}-${dd}`;
+          if (!earliest || iso < earliest) earliest = iso;
+        }
+      }
+      return earliest;
+    }
+
+    // Mapea UN SOLO reporte (con .valores) a un objeto labs.
+    // Reutiliza la lógica de mapWinlabReportesToLabs pero sobre un solo reporte.
+    function mapSingleReportToLabs(rep) {
+      if (!rep || !Array.isArray(rep.valores)) return {};
+      return mapWinlabReportesToLabs([rep]);
+    }
+
+    // Genera UN ARRAY de snapshots, uno por cada reporte con valores parseados.
+    // Cambio mayo 2026: antes solo había 1 snapshot por fila de winlab_labs.
+    // Ahora, si el scraper drilleó N reportes (con WL_DRILLDOWN_MAX > 1), generamos
+    // N snapshots con sus respectivas fechas para que aparezcan como chips de
+    // fecha separados en la UI.
+    function buildWinlabLabSnapshots(winlabRow) {
+      if (!winlabRow || !winlabRow.data) return [];
+      const reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
+      const fallbackFecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : null);
+      const result = [];
+      const seen = new Set(); // evita duplicar mismo día
+      for (const rep of reportes) {
+        if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
+        const labs = mapSingleReportToLabs(rep);
+        if (!Object.keys(labs).length) continue;
+        const fecha = extractReportDate(rep) || fallbackFecha;
+        if (!fecha) continue;
+        if (seen.has(fecha)) {
+          // Mismo día con valores adicionales: mergea al snapshot ya creado
+          const prev = result.find(s => s.fecha === fecha);
+          if (prev) {
+            for (const [k, v] of Object.entries(labs)) {
+              if (!(k in prev.labs)) prev.labs[k] = v;
+            }
+          }
+          continue;
+        }
+        seen.add(fecha);
+        result.push({
+          fecha,
+          labs,
+          extra: [],
+          source: "winlab",
+          synced_at: new Date().toISOString(),
+          scraped_at: winlabRow.scraped_at || null,
+        });
+      }
+      return result;
+    }
+
+    // Wrapper de compatibilidad: retorna el snapshot MÁS RECIENTE si existe.
     function buildWinlabLabSnapshot(winlabRow) {
-      if (!winlabRow || !winlabRow.data) return null;
-      const fecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : null);
-      if (!fecha) return null;
-      const labs = mapWinlabReportesToLabs(winlabRow.data.reportes);
-      if (!Object.keys(labs).length) return null;
-      return {
-        fecha,
-        labs,
-        extra: [],
-        source: "winlab",
-        synced_at: new Date().toISOString(),
-        scraped_at: winlabRow.scraped_at || null,
-      };
+      const snapshots = buildWinlabLabSnapshots(winlabRow);
+      if (!snapshots.length) return null;
+      // Más reciente primero
+      snapshots.sort((a, b) => b.fecha.localeCompare(a.fecha));
+      return snapshots[0];
     }
 
     // Aplica el sync WinLab → nd.labHistory para TODOS los pacientes con `exp` que
@@ -4657,42 +5681,57 @@
             }
             continue;
           }
-          const snap = buildWinlabLabSnapshot(wl);
-          if (!snap || !Object.keys(snap.labs).length) { stats.skipped++; stats.no_labs_parsed++; continue; }
+          // Cambio mayo 2026: ahora procesamos MÚLTIPLES snapshots (uno por fecha)
+          // para soportar 3 días previos del scraper.
+          const snapshots = buildWinlabLabSnapshots(wl);
+          if (!snapshots.length) { stats.skipped++; stats.no_labs_parsed++; continue; }
           stats.matched++;
           const k = pid(p);
           const nd = migrateNote(noteData[k] || defaultData());
-          const hist = Array.isArray(nd.labHistory) ? nd.labHistory.slice() : [];
-          const existingIdx = hist.findIndex(s => s && s.fecha === snap.fecha);
-          if (existingIdx === -1) {
-            hist.push(snap);
-            stats.inserted++;
-          } else {
-            const ex = hist[existingIdx];
-            const exLabs = ex.labs || {};
-            const isManual = ex.source && ex.source !== "winlab";
-            const newLabs = { ...exLabs };
-            for (const [labKey, labVal] of Object.entries(snap.labs)) {
+          let hist = Array.isArray(nd.labHistory) ? nd.labHistory.slice() : [];
+          // Iterar cada snapshot (un por fecha) y mergear/insertar
+          for (const snap of snapshots) {
+            const existingIdx = hist.findIndex(s => s && s.fecha === snap.fecha);
+            if (existingIdx === -1) {
+              hist.push(snap);
+              stats.inserted++;
+            } else {
+              const ex = hist[existingIdx];
+              const exLabs = ex.labs || {};
+              // FIX CRÍTICO mayo 2026: si el snapshot NO tiene source explícito,
+              // ASUMIR que es manual (más seguro). Antes: `ex.source && ex.source !== "winlab"`
+              // hacía que snapshots sin source (subidos con botón Labs antes del fix)
+              // se trataran como winlab → REEMPLAZO TOTAL → pérdida de datos clínicos.
+              const isManual = ex.source !== "winlab";
               if (isManual) {
-                // Solo llena campos VACÍOS — nunca pisa edición manual no vacía
-                const curVal = exLabs[labKey];
-                if (curVal === undefined || curVal === null || String(curVal).trim() === "") {
-                  newLabs[labKey] = labVal;
+                // Snapshot manual: hacer merge no destructivo (preserva edición manual).
+                // Solo rellena keys vacíos con el sync de winlab.
+                const newLabs = { ...exLabs };
+                for (const [labKey, labVal] of Object.entries(snap.labs)) {
+                  const curVal = exLabs[labKey];
+                  if (curVal === undefined || curVal === null || String(curVal).trim() === "") {
+                    newLabs[labKey] = labVal;
+                  }
                 }
+                hist[existingIdx] = {
+                  ...ex, labs: newLabs,
+                  synced_at: snap.synced_at, scraped_at: snap.scraped_at,
+                  source: ex.source || "manual",
+                };
               } else {
-                // Snapshot WinLab previo: actualiza todo
-                newLabs[labKey] = labVal;
+                // Snapshot winlab previo → winlab nuevo: REEMPLAZO TOTAL.
+                // Esto purga keys obsoletos que ya no aparecen en el snap nuevo
+                // (caso real mayo 2026: el filtro non-blood quitó leucos del
+                // urocultivo de EVANGELINA, pero el merge mantenía el valor
+                // viejo. El reemplazo total resuelve esto).
+                hist[existingIdx] = {
+                  ...ex, labs: snap.labs,
+                  synced_at: snap.synced_at, scraped_at: snap.scraped_at,
+                  source: "winlab",
+                };
               }
+              stats.merged++;
             }
-            hist[existingIdx] = {
-              ...ex,
-              labs: newLabs,
-              synced_at: snap.synced_at,
-              scraped_at: snap.scraped_at,
-              // si era manual lo dejamos como manual; el dato simplemente se enriqueció
-              source: isManual ? (ex.source || "manual") : "winlab",
-            };
-            stats.merged++;
           }
           nd.labHistory = hist;
           noteData[k] = nd;
@@ -4724,10 +5763,17 @@
       }
     }
 
-    // Feature flag — default OFF. Para activar:
-    //   localStorage.setItem("pl_winlab_auto_sync", "1") y recargar
+    // Feature flag — default ON (cambio mayo 2026: tras v5 scraper, ya hay datos
+    // reales en winlab_labs; queremos que el sync corra automáticamente y los
+    // labs aparezcan en las tarjetas sin que el usuario haga nada).
+    // Para desactivar:
+    //   localStorage.setItem("pl_winlab_auto_sync", "0") y recargar
     function isWinlabAutoSyncEnabled() {
-      try { return localStorage.getItem("pl_winlab_auto_sync") === "1"; } catch (_) { return false; }
+      try {
+        const v = localStorage.getItem("pl_winlab_auto_sync");
+        // Default ON: solo está OFF si está explícitamente seteado a "0"
+        return v !== "0";
+      } catch (_) { return true; }
     }
     function setWinlabAutoSync(enabled) {
       try {
@@ -4837,12 +5883,13 @@
           if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
         });
         winlabByExp = next;
-        // Auto-sync WinLab → labHistory si feature flag está ON y no se pidió skip
+        // Auto-sync WinLab → labHistory.
+        // Cambio mayo 2026: el refresh manual (botón pill) SIEMPRE aplica sync,
+        // independiente del flag. Si el usuario clickeó el pill es porque quiere
+        // ver los labs ahora. El flag solo controla el sync automático al boot.
         if (!opts || !opts.skipAutoSync) {
           try {
-            if (isWinlabAutoSyncEnabled()) {
-              await applyWinlabSyncToPatients({ verbose: false });
-            }
+            await applyWinlabSyncToPatients({ verbose: false });
           } catch (_e) { /* no fatal: sigue mostrando UI */ }
         }
         // Re-render con la nueva data.
@@ -7382,7 +8429,7 @@
       });
       const _cb = document.getElementById("count-badge");
       if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
-      ["piso", "census", "print", "noOlvidar", "altas", "pendientes", "papelera"].forEach(v => {
+      ["piso", "census", "print", "noOlvidar", "altas", "pendientes", "tablero", "papelera"].forEach(v => {
         const _ve = document.getElementById("view-" + v);
         if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
@@ -7392,6 +8439,7 @@
       if (currentView === "noOlvidar") renderNoOlvidar();
       if (currentView === "altas") renderAltas();
       if (currentView === "pendientes") renderPendientes(filtered);
+      if (currentView === "tablero") renderTablero();
       if (currentView === "papelera") renderPapelera();
     }
 
@@ -7471,12 +8519,13 @@
       });
       const specialAlertsHtml = renderSpecialAlertsPanel();
       const bedNavHtml = `<div id="bed-nav">
-        <div style="font-size:9px;font-weight:700;color:#94a3b8;text-align:center;padding:6px 2px 4px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #f1f5f9">Camas</div>
+        <div>Camas</div>
         ${sorted.map(p => {
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
           const ek = "card-" + pid(p);
-          return `<button data-target="${esc(ek)}" onclick="scrollToCard(this.dataset.target)"
-            style="width:100%;text-align:center;background:none;border:none;border-bottom:1px solid #f8fafc;padding:6px 4px;cursor:pointer;font-size:11px;font-weight:700;color:${ec};font-family:var(--font);line-height:1.2;word-break:break-all">
+          return `<button data-target="${esc(ek)}" data-bed="${esc(p.cama)}" onclick="scrollToCard(this.dataset.target, this)"
+            style="border-left:3px solid ${ec}"
+            title="${esc(p.nombre || '')} · ${esc(p.esp || '')}">
             ${esc(p.cama)}
           </button>`;
         }).join("")}
@@ -7485,9 +8534,18 @@
         specialAlertsHtml + `<div id="piso-view-wrap">${bedNavHtml}<div id="piso-main"><div id="piso-grid">${html}</div>${renderFreeBeds()}</div></div>`;
     }
 
-    function scrollToCard(cardId) {
+    function scrollToCard(cardId, btnEl) {
       const el = document.getElementById(cardId);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Highlight visual 2s
+      el.classList.add("bed-highlight");
+      setTimeout(() => el.classList.remove("bed-highlight"), 2000);
+      // Marcar cama activa en sidebar
+      if (btnEl) {
+        document.querySelectorAll("#bed-nav button.bed-active").forEach(b => b.classList.remove("bed-active"));
+        btnEl.classList.add("bed-active");
+      }
     }
 
     // ─── CAMAS LIBRES ────────────────────────────────────────────────────────────────
@@ -8548,7 +9606,13 @@
 
       ${renderLabSection(nd, k)}
 
-      ${renderWinlabSection(p, k)}
+      ${renderCDSSection(p, nd, k)}
+      ${renderVasoSection(p, nd, k)}
+      ${renderIndicacionesSection(p, nd, k)}
+
+      ${/* renderWinlabSection: deshabilitada mayo 2026. Los labs ahora aparecen
+            integrados en los recuadros estándar de renderLabSection vía el nuevo
+            grupo "Biometría hemática completa". */ ""}
 
       ${renderChecklist(nd, k)}
 
@@ -8618,17 +9682,6 @@
       </div>
       ${renderBodyDiagram(nd, k)}
       ${renderPtReminders(nd, k)}
-      <div class="card-notes-bar">
-        <button class="card-note-btn cnb-preqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'prequirurgica')">PreQx</button>
-        <button class="card-note-btn cnb-postqx" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'postquirurgica')">PostQx</button>
-        <button class="card-note-btn cnb-med" data-nk="${k}" onclick="openNoteModal(this.dataset.nk,'medica')">Evolución</button>
-        <span style="margin-left:8px;border-left:1px solid rgba(255,255,255,.25);padding-left:8px;display:inline-flex;gap:4px">
-          <button class="card-note-btn" style="background:#0ea5e9;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'labs')" title="Crea entrada de labs para hoy">🧪 Labs hoy</button>
-          <button class="card-note-btn" style="background:#7c3aed;color:#fff" data-hk="${k}" onclick="addHoy(this.dataset.hk,'imagen')" title="Crea entrada de imagen para hoy">🖼 Imagen hoy</button>
-          <button class="card-note-btn" style="background:#059669;color:#fff" data-hk="${k}" onclick="openNoteModal(this.dataset.hk,'medica')" title="Abrir modal de evolución">📋 Evol hoy</button>
-        </span>
-
-      </div>
     </div>` : ""}
   </div>`;
     }
@@ -8984,6 +10037,26 @@
           { key: "pcr", label: "PCR", unit: "mg/L", low: 0, high: 10 },
           { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 },
           { key: "lac", label: "Lac", unit: "mmol/L", low: 0, high: 2, ch: 4 }
+        ]
+      },
+      {
+        id: "bh_ext", label: "🔬 Biometría hemática completa", fields: [
+          { key: "hct",     label: "Hto",   unit: "%",     low: 36,   high: 48,  cl: 25 },
+          { key: "mcv",     label: "VCM",   unit: "fL",    low: 80,   high: 95 },
+          { key: "mch",     label: "HCM",   unit: "pg",    low: 27,   high: 31 },
+          { key: "mchc",    label: "CHCM",  unit: "g/dL",  low: 32,   high: 36 },
+          { key: "rdw",     label: "RDW",   unit: "%",     low: 12,   high: 16 },
+          { key: "mpv",     label: "VPM",   unit: "fL",    low: 9,    high: 13 },
+          { key: "neu_pct", label: "Neu",   unit: "%",     low: 40,   high: 75,  ch: 90 },
+          { key: "lin_pct", label: "Linf",  unit: "%",     low: 20,   high: 45,  cl: 10 },
+          { key: "mon_pct", label: "Mono",  unit: "%",     low: 2,    high: 12 },
+          { key: "eos_pct", label: "Eos",   unit: "%",     low: 0,    high: 6 },
+          { key: "bas_pct", label: "Bas",   unit: "%",     low: 0,    high: 2 },
+          { key: "neu_abs", label: "Neu#",  unit: "k/µL",  low: 1.5,  high: 6.6, ch: 15 },
+          { key: "lin_abs", label: "Lin#",  unit: "k/µL",  low: 1.0,  high: 3.5, cl: 0.5 },
+          { key: "mon_abs", label: "Mon#",  unit: "k/µL",  low: 0.1,  high: 1.0 },
+          { key: "eos_abs", label: "Eos#",  unit: "k/µL",  low: 0,    high: 0.7 },
+          { key: "bas_abs", label: "Bas#",  unit: "k/µL",  low: 0,    high: 0.2 }
         ]
       },
       {
@@ -9608,9 +10681,10 @@
       if (activeFecha) {
         LAB_GROUPS.forEach(grp => {
           const gid = "grp-" + k.replace(/[^a-zA-Z0-9]/g, "_") + "-" + grp.id;
-          // Only auto-expand basico; others collapsed unless have values
+          // Auto-expand basico y bh_ext (Biometría hemática completa) siempre;
+          // otros grupos colapsados a menos que tengan valores.
           const hasVals = grp.fields.some(lf => labs[lf.key]);
-          const isBase = grp.id === "basico";
+          const isBase = grp.id === "basico" || grp.id === "bh_ext";
           const expanded = isBase || hasVals;
           // Obtener labs de la fecha anterior para tendencia Δ
           const prevDates = dates.filter(d => d < activeFecha);
@@ -11168,7 +12242,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const targetFecha = first.fecha_labs || sanitizedExtracted.fecha_labs || activeLabDate[k] || todayStr();
         const targetHora = first.hora_labs || "";
         let snap = nd.labHistory.find(s => s.fecha === targetFecha);
-        if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
+        if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [], source: "manual", source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
+        // Defensa: si el snap ya existía sin source explícito, marcarlo manual
+        // (porque acaba de ser actualizado por subida manual de PDF)
+        if (!snap.source) snap.source = "manual";
         const labsFromExtract = { ...sanitizedExtracted };
         if (labsFromExtract.tipo_cultivo || labsFromExtract.cultivo_organismo || labsFromExtract.cultivo_sensibilidades || labsFromExtract.cultivo_resistencias) {
           labsFromExtract.micro_tipo_cultivo = labsFromExtract.micro_tipo_cultivo || labsFromExtract.tipo_cultivo || "";
@@ -14323,6 +15400,369 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         recibe: _el("gi-recibe")
       };
     }
+    // ═══════════════════════════════════════════════════════════════
+    // EXPORTADOR DEL CENSO — FORMATO EXACTO GOOGLE DRIVE
+    // Replica el CENSO_DD_MM_YYYY_APELLIDO.xlsx del workflow de Gera
+    // - Fila 1: navy bar vacía (A1:L1 merged)
+    // - Fila 2: =TODAY() con merge A2:L2 y fill navy
+    // - Fila 3: headers en B-L con fill navy + texto blanco
+    // - Filas 4+: pacientes ordenados por cama, col K con fórmula =IF(J="","",TODAY()-J)
+    // - Nombre: CENSO_{DD}_{MM}_{YYYY}_{APELLIDO}.xlsx
+    // ═══════════════════════════════════════════════════════════════
+
+    function exportCensoFormatoDrive() {
+      // Mostrar modal pre-export con configuración
+      const saved = (function() {
+        try { return JSON.parse(localStorage.getItem("pl_export_censo_cfg") || "{}"); }
+        catch(e) { return {}; }
+      })();
+      const apellidoDefault = saved.apellido ||
+        (document.getElementById("gi-recibe") || {}).value || "RESIDENTE";
+      const sepsDefault = !!saved.separadores;
+
+      // Crear modal inline (evita prompt feo)
+      const old = document.getElementById("pl-export-censo-modal");
+      if (old) old.remove();
+
+      const modal = document.createElement("div");
+      modal.id = "pl-export-censo-modal";
+      modal.style.cssText = "position:fixed;inset:0;background:rgba(10,22,40,.6);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif";
+      modal.innerHTML = `
+        <div style="background:#fff;border-radius:14px;padding:28px;width:480px;max-width:90vw;box-shadow:0 24px 64px rgba(10,22,40,.4)">
+          <h2 style="margin:0 0 6px;color:#0a1628;font-size:20px;font-weight:800">📊 Exportar Censo</h2>
+          <p style="margin:0 0 20px;color:#64748b;font-size:13px">Formato idéntico al de Google Drive — listo para subir</p>
+
+          <div style="margin-bottom:18px">
+            <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:6px">Apellido del residente firmante</label>
+            <input id="pl-ec-apellido" type="text" value="${(""+apellidoDefault).replace(/"/g,"&quot;")}"
+              style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box"
+              placeholder="Ej. SALDAÑA"/>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px">Se usará para el nombre del archivo: <code>CENSO_DD_MM_YYYY_APELLIDO.xlsx</code></div>
+          </div>
+
+          <div style="margin-bottom:24px;background:#f8fafc;border-radius:8px;padding:12px 14px;border:1px solid #e2e8f0">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <input id="pl-ec-seps" type="checkbox" ${sepsDefault ? "checked" : ""} style="width:16px;height:16px;cursor:pointer"/>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#0a1628">Incluir filas separadoras entre servicios</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px">Filas merged tipo "— UCI —" / "— GYO/ONCO —" agrupando por especialidad</div>
+              </div>
+            </label>
+          </div>
+
+          <div style="display:flex;gap:10px;justify-content:flex-end">
+            <button id="pl-ec-cancel" style="padding:10px 18px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;font-family:inherit">Cancelar</button>
+            <button id="pl-ec-go" style="padding:10px 22px;border:none;background:linear-gradient(135deg,#1e3a5f 0%,#3b82f6 100%);color:#fff;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit;box-shadow:0 4px 12px rgba(59,130,246,.3)">📥 Generar y descargar</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      const closeM = () => modal.remove();
+      modal.querySelector("#pl-ec-cancel").onclick = closeM;
+      modal.onclick = (e) => { if (e.target === modal) closeM(); };
+      setTimeout(() => modal.querySelector("#pl-ec-apellido").focus(), 80);
+      modal.querySelector("#pl-ec-go").onclick = async function() {
+        const apellido = (modal.querySelector("#pl-ec-apellido").value || "RESIDENTE")
+          .trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^A-Z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+        const separadores = modal.querySelector("#pl-ec-seps").checked;
+        // Persistir config
+        try { localStorage.setItem("pl_export_censo_cfg", JSON.stringify({ apellido, separadores })); }
+        catch(e) {}
+        closeM();
+        await _doExportCensoFormatoDrive(apellido, separadores);
+      };
+    }
+
+    async function _doExportCensoFormatoDrive(apellido, separadores) {
+      if (!window.ExcelJS) {
+        alert("⚠️ ExcelJS aún cargando. Espera 2 seg e inténtalo de nuevo.");
+        return;
+      }
+
+      // ── Color palette (idéntico al Excel original) ──
+      const NAVY = "FF001746";
+      const WHITE = "FFFFFFFF";
+      const BORDER = "FF000000";
+      const ESTADO_FILL = {
+        "ESTABLE": "FFA8D08D",
+        "DELICADO": "FFFFC000",
+        "GRAVE": "FFFF0000",
+        "ALTA": "FF60A5FA",
+        "DEFUNCION": "FF8E8E93",
+        "DEFUNCIÓN": "FF8E8E93"
+      };
+
+      // ── Ordenar pacientes ──
+      function bedSort(cama) {
+        const s = String(cama || "");
+        const m = s.match(/^(\d+)-(\d+)$/); if (m) return parseInt(m[1]) * 10000 + parseInt(m[2]);
+        const u = s.match(/^UCI\s*(\d+)$/i); if (u) return 100000 + parseInt(u[1]);
+        const n = s.match(/^(\d+)$/); if (n) return parseInt(n[1]);
+        return 999999;
+      }
+      const sorted = [...patients].sort(function(a, b) {
+        return bedSort(a.cama) - bedSort(b.cama);
+      });
+
+      // ── Si separadores: agrupar por servicio ──
+      function bucketOf(p) {
+        const cama = String(p.cama || "").toUpperCase().trim();
+        const esp = String(p.esp || "").toUpperCase().trim();
+        const estado = String(p.estado || "").toUpperCase().trim();
+        if (estado === "ALTA") return "ALTAS";
+        if (estado === "DEFUNCIÓN" || estado === "DEFUNCION") return "DEFUNCIONES";
+        if (/^UCI/i.test(cama)) return "UCI";
+        if (/^(RECU|PROC|ENDOS)/i.test(cama)) return "PROCEDIMIENTOS";
+        if (/^3-\d+$/.test(cama)) {
+          if (/GYO|ONCO/.test(esp)) return "GYO / ONCOLOGÍA";
+          if (/CT/.test(esp)) return "CIRUGÍA DE TÓRAX";
+          if (/NCX|TYO/.test(esp)) return "TYO / NCX";
+          if (/CMF/.test(esp)) return "CIRUGÍA MAXILOFACIAL";
+          if (/URO/.test(esp)) return "UROLOGÍA";
+          if (/CV|VASC/.test(esp)) return "CIRUGÍA VASCULAR";
+          if (/CCR/.test(esp)) return "CIRUGÍA COLORRECTAL";
+          return "CIRUGÍA GENERAL";
+        }
+        return "OTROS";
+      }
+
+      // ── Workbook ──
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "PisoLibro · HGL Cirugía General";
+      wb.created = new Date();
+      const ws = wb.addWorksheet("CENSO");
+
+      // ── Anchos EXACTOS del Excel original ──
+      ws.columns = [
+        { width: 3.83 },   // A - gutter
+        { width: 5.33 },   // B - CAMA
+        { width: 8.33 },   // C - EXPEDIENTE
+        { width: 32.5 },   // D - NOMBRE
+        { width: 4.66 },   // E - EDAD
+        { width: 75.16 },  // F - DIAGNÓSTICO
+        { width: 17.83 },  // G - ESPECIALIDAD
+        { width: 14.83 },  // H - ADSCRITO
+        { width: 10.83 },  // I - RESIDENTE
+        { width: 8.16 },   // J - INGRESO
+        { width: 5.16 },   // K - DIAS
+        { width: 14.5 },   // L - ESTADO
+        { width: 19.66 },  // M - extras
+        { width: 12.33 }   // N - extras
+      ];
+
+      // ── Fila 1: barra navy vacía (merged A1:L1) ──
+      ws.mergeCells("A1:L1");
+      const r1 = ws.getRow(1); r1.height = 15.75;
+      for (let c = 1; c <= 12; c++) {
+        ws.getCell(1, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+      }
+
+      // ── Fila 2: =TODAY() con merge A2:L2 ──
+      ws.mergeCells("A2:L2");
+      const r2 = ws.getRow(2); r2.height = 15.75;
+      const c2 = ws.getCell("A2");
+      c2.value = { formula: "TODAY()" };
+      c2.numFmt = "dd/mm/yyyy";
+      c2.font = { name: "Calibri", size: 11, bold: true, color: { argb: WHITE } };
+      c2.alignment = { horizontal: "center", vertical: "middle" };
+      for (let c = 1; c <= 12; c++) {
+        ws.getCell(2, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+      }
+
+      // ── Fila 3: headers ──
+      const HEADERS = ["", "CAMA", "EXPEDIENTE", "NOMBRE", "EDAD", "DIAGNÓSTICO",
+                       "ESPECIALIDAD", "ADSCRITO", "RESIDENTE", "INGRESO", "DIAS", "ESTADO"];
+      const r3 = ws.getRow(3); r3.height = 15.75;
+      HEADERS.forEach(function(h, i) {
+        const cell = ws.getCell(3, i + 1);
+        cell.value = h;
+        cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: WHITE } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+        cell.border = {
+          top: { style: "thin", color: { argb: BORDER } },
+          bottom: { style: "thin", color: { argb: BORDER } },
+          left: { style: "thin", color: { argb: BORDER } },
+          right: { style: "thin", color: { argb: BORDER } }
+        };
+      });
+
+      // ── Cálculo de altura de fila según largo de diagnóstico (fix v13) ──
+      // Empírico: col F width=75.16 + Calibri 9 ≈ 85 chars por línea visible (conservador)
+      // Línea visible ≈ 14pt; mínimo 15.75pt (default del original)
+      const COL_F_CHARS_PER_LINE = 85;
+      const ROW_BASE_HEIGHT = 15.75;
+      const LINE_HEIGHT = 14;
+      function calcRowHeight(dx) {
+        if (!dx) return ROW_BASE_HEIGHT;
+        const t = String(dx);
+        const parts = t.split(/\r?\n/);
+        let lines = 0;
+        parts.forEach(function(p) {
+          lines += Math.max(1, Math.ceil(p.length / COL_F_CHARS_PER_LINE));
+        });
+        return Math.max(ROW_BASE_HEIGHT, lines * LINE_HEIGHT);
+      }
+
+      // ── Helper para escribir una fila de paciente ──
+      function writePatient(r, p) {
+        const cells = [
+          { col: 2, val: p.cama || "" },
+          { col: 3, val: p.exp || "" },
+          { col: 4, val: (p.nombre || "").toUpperCase() },
+          { col: 5, val: p.edad ? parseInt(p.edad) || p.edad : "" },
+          { col: 6, val: (p.dx || "").toUpperCase() },
+          { col: 7, val: (p.esp || "").toUpperCase() },
+          { col: 8, val: (p.adscrito || "").toUpperCase() },
+          { col: 9, val: (p.residente || "").toUpperCase() }
+        ];
+        cells.forEach(function(c) {
+          const cell = ws.getCell(r, c.col);
+          cell.value = c.val;
+          cell.font = { name: "Calibri", size: 9 };
+          // Col 6 (DIAGNÓSTICO) → vertical top para que el wrap se vea desde arriba
+          // Otras → center vertical (igual que original)
+          cell.alignment = {
+            horizontal: c.col === 4 || c.col === 6 ? "left" : "center",
+            vertical: c.col === 6 ? "top" : "center",
+            wrapText: true
+          };
+          cell.border = {
+            top: { style: "thin", color: { argb: BORDER } },
+            bottom: { style: "thin", color: { argb: BORDER } },
+            left: { style: "thin", color: { argb: BORDER } },
+            right: { style: "thin", color: { argb: BORDER } }
+          };
+        });
+
+        // J - INGRESO como fecha real (no string)
+        const jCell = ws.getCell(r, 10);
+        if (p.ingreso) {
+          const m = String(p.ingreso).match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+          if (m) {
+            jCell.value = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+            jCell.numFmt = "dd/mm/yyyy";
+          } else {
+            const m2 = String(p.ingreso).match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+            if (m2) {
+              const yy = m2[3].length === 2 ? 2000 + parseInt(m2[3]) : parseInt(m2[3]);
+              jCell.value = new Date(yy, parseInt(m2[2]) - 1, parseInt(m2[1]));
+              jCell.numFmt = "dd/mm/yyyy";
+            } else {
+              jCell.value = p.ingreso;
+            }
+          }
+        }
+        jCell.font = { name: "Calibri", size: 9 };
+        jCell.alignment = { horizontal: "center", vertical: "center" };
+        jCell.border = {
+          top: { style: "thin", color: { argb: BORDER } },
+          bottom: { style: "thin", color: { argb: BORDER } },
+          left: { style: "thin", color: { argb: BORDER } },
+          right: { style: "thin", color: { argb: BORDER } }
+        };
+
+        // K - DIAS con fórmula viva =IF(Jn="","",TODAY()-Jn)
+        const kCell = ws.getCell(r, 11);
+        kCell.value = { formula: `IF(J${r}="","",TODAY()-J${r})` };
+        kCell.numFmt = "0";
+        kCell.font = { name: "Calibri", size: 9, bold: true };
+        kCell.alignment = { horizontal: "center", vertical: "center" };
+        kCell.border = {
+          top: { style: "thin", color: { argb: BORDER } },
+          bottom: { style: "thin", color: { argb: BORDER } },
+          left: { style: "thin", color: { argb: BORDER } },
+          right: { style: "thin", color: { argb: BORDER } }
+        };
+
+        // L - ESTADO con fill por color
+        const lCell = ws.getCell(r, 12);
+        const estado = String(p.estado || "").toUpperCase();
+        lCell.value = estado;
+        lCell.font = { name: "Calibri", size: 9, bold: true, color: { argb: estado === "GRAVE" ? "FFFFFFFF" : "FF000000" } };
+        lCell.alignment = { horizontal: "center", vertical: "center" };
+        if (ESTADO_FILL[estado]) {
+          lCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ESTADO_FILL[estado] } };
+        }
+        lCell.border = {
+          top: { style: "thin", color: { argb: BORDER } },
+          bottom: { style: "thin", color: { argb: BORDER } },
+          left: { style: "thin", color: { argb: BORDER } },
+          right: { style: "thin", color: { argb: BORDER } }
+        };
+      }
+
+      // ── Helper para escribir fila separadora ──
+      function writeSeparator(r, label) {
+        ws.mergeCells(`A${r}:L${r}`);
+        const cell = ws.getCell(r, 1);
+        cell.value = `— ${label} —`;
+        cell.font = { name: "Calibri", size: 11, bold: true, color: { argb: WHITE } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        for (let c = 1; c <= 12; c++) {
+          ws.getCell(r, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+        }
+        ws.getRow(r).height = 18;
+      }
+
+      // ── Escribir filas (con o sin separadores) ──
+      let row = 4;
+      if (separadores) {
+        const grouped = {};
+        const orderOfAppearance = [];
+        sorted.forEach(function(p) {
+          const b = bucketOf(p);
+          if (!grouped[b]) { grouped[b] = []; orderOfAppearance.push(b); }
+          grouped[b].push(p);
+        });
+        // Orden lógico: CG, CT, GYO, TYO/NCX, URO, CCR, CMF, CV, UCI, PROCEDIMIENTOS, ALTAS, DEFUNCIONES, OTROS
+        const desiredOrder = ["CIRUGÍA GENERAL", "CIRUGÍA DE TÓRAX", "GYO / ONCOLOGÍA", "TYO / NCX",
+                              "UROLOGÍA", "CIRUGÍA COLORRECTAL", "CIRUGÍA MAXILOFACIAL", "CIRUGÍA VASCULAR",
+                              "UCI", "PROCEDIMIENTOS", "ALTAS", "DEFUNCIONES", "OTROS"];
+        const finalOrder = desiredOrder.filter(function(b) { return grouped[b] && grouped[b].length; });
+        finalOrder.forEach(function(b) {
+          writeSeparator(row, b);
+          row++;
+          grouped[b].forEach(function(p) {
+            writePatient(row, p);
+            ws.getRow(row).height = calcRowHeight(p.dx);
+            row++;
+          });
+        });
+      } else {
+        sorted.forEach(function(p) {
+          writePatient(row, p);
+          ws.getRow(row).height = calcRowHeight(p.dx);
+          row++;
+        });
+      }
+
+      // ── Freeze panes (header siempre visible al scroll) ──
+      ws.views = [{ state: "frozen", ySplit: 3 }];
+
+      // ── Generar archivo ──
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, "0");
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const yyyy = today.getFullYear();
+      const fname = `CENSO_${dd}_${mm}_${yyyy}_${apellido}.xlsx`;
+
+      try {
+        const buffer = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+      } catch (e) {
+        console.error("[exportCenso] error:", e);
+        alert("⚠️ Error al generar Excel: " + (e.message || e));
+      }
+    }
+
     function exportToExcel() {
       const gi = getGuardInfo();
       const EX_SECTIONS = [
@@ -15878,9 +17318,6 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       return `<div id="ck-row-${ek}" class="checklist-wrap">
     <div class="checklist-row">
-      <span class="ck-title">✅ Checklist:</span>
-      ${npoHtml} ${atbHtml} ${tvpHtml}
-      <span class="ck-sep">|</span>
       <span class="ck-title">🍽 Dieta:</span>
       <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
     </div>
@@ -16738,6 +18175,2234 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     <button onclick="undoLastField()" style="background:#6366f1;border:none;color:#fff;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700">↩ Deshacer</button>
     <button onclick="document.getElementById('undo-toast').style.display='none'" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">✕</button>
   </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       PIZARRA LIBRE (Feature #1) + MODO CUADERNO (Feature #5)
+       Sprint 1 — Mayo 2026
+       
+       Overlay transparente sobre cualquier vista que captura input de mouse
+       + Apple Pencil (Pointer Events API). Persistencia por vista en
+       localStorage. Cada vista (piso/census/print/noOlvidar/altas/etc.)
+       tiene su propio canvas independiente.
+       
+       Herramientas: lápiz (4 colores) + marcador amarillo + borrador +
+       limpiar + exportar PNG + cerrar.
+       
+       Apple Pencil: pressure sensitivity activada (linewidth varía con
+       presión). Funciona en iPad/Safari, MacBook con trackpad o mouse.
+       ═══════════════════════════════════════════════════════════════════ -->
+  <style>
+    /* Modo cuaderno: fondo cuadriculado tipo GoodNotes */
+    body.modo-cuaderno #app,
+    body.modo-cuaderno .censo-tab,
+    body.modo-cuaderno [id^="view-"] {
+      background-image:
+        linear-gradient(to right, rgba(100,116,139,.10) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(100,116,139,.10) 1px, transparent 1px);
+      background-size: 22px 22px;
+      background-attachment: local;
+    }
+    [data-theme="dark"] body.modo-cuaderno #app,
+    body.modo-cuaderno[data-theme="dark"] #app {
+      background-image:
+        linear-gradient(to right, rgba(148,163,184,.07) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(148,163,184,.07) 1px, transparent 1px);
+    }
+
+    /* Botón activo */
+    #cuaderno-toggle-btn.activo { background: rgba(245,158,11,.6) !important; color: #fff !important; }
+    #pizarra-toggle-btn.activo  { background: rgba(168,85,247,.7) !important; color: #fff !important; }
+
+    /* Pizarra overlay */
+    .pizarra-overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 9990;
+      pointer-events: none;
+      display: none;
+    }
+    .pizarra-overlay.active { display: block; }
+    .pizarra-canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      touch-action: none;  /* importante para Pencil/touch */
+      pointer-events: auto;
+    }
+    .pizarra-canvas.eraser { cursor: cell; }
+
+    /* Toolbar flotante de la pizarra */
+    .pizarra-toolbar {
+      position: fixed;
+      top: 80px;
+      right: 16px;
+      background: rgba(15,20,25,.96);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(100,116,139,.3);
+      border-radius: 12px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 12px 32px rgba(0,0,0,.5);
+      z-index: 9991;
+      pointer-events: auto;
+      user-select: none;
+    }
+    .pizarra-toolbar .row {
+      display: flex;
+      gap: 4px;
+    }
+    .pizarra-toolbar .sep {
+      height: 1px;
+      background: rgba(255,255,255,.1);
+      margin: 4px 0;
+    }
+    .pz-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      background: rgba(255,255,255,.08);
+      color: #e6e9ef;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all .15s;
+      font-family: -apple-system, sans-serif;
+    }
+    .pz-btn:hover { background: rgba(255,255,255,.15); }
+    .pz-btn.active { border-color: #4cc9f0; background: rgba(76,201,240,.25); }
+    .pz-color {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 3px solid transparent;
+      transition: all .15s;
+    }
+    .pz-color.active { border-color: #fff; transform: scale(1.1); box-shadow: 0 0 0 2px rgba(76,201,240,.5); }
+    .pz-size-pill {
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(255,255,255,.08);
+      color: #e6e9ef;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      border: 2px solid transparent;
+    }
+    .pz-size-pill.active { border-color: #4cc9f0; background: rgba(76,201,240,.2); }
+    .pz-info {
+      font-size: 10px;
+      color: #8b95a7;
+      text-align: center;
+      padding: 4px 0;
+      font-family: -apple-system, sans-serif;
+    }
+  </style>
+
+  <script>
+    (function() {
+      "use strict";
+
+      // ═══════════════ MODO CUADERNO (Feature #5) ═══════════════
+      const CUADERNO_KEY = "pl_modo_cuaderno";
+
+      function applyCuadernoState() {
+        const on = localStorage.getItem(CUADERNO_KEY) === "1";
+        document.body.classList.toggle("modo-cuaderno", on);
+        const btn = document.getElementById("cuaderno-toggle-btn");
+        if (btn) btn.classList.toggle("activo", on);
+      }
+
+      window.toggleModoCuaderno = function() {
+        const cur = localStorage.getItem(CUADERNO_KEY) === "1";
+        localStorage.setItem(CUADERNO_KEY, cur ? "0" : "1");
+        applyCuadernoState();
+      };
+
+      // Aplicar al cargar
+      document.addEventListener("DOMContentLoaded", applyCuadernoState);
+      if (document.readyState !== "loading") applyCuadernoState();
+
+
+      // ═══════════════ PIZARRA LIBRE (Feature #1) ═══════════════
+      const COLORS = [
+        { name: "negro",     val: "#0f172a" },
+        { name: "rojo",      val: "#dc2626" },
+        { name: "azul",      val: "#2563eb" },
+        { name: "verde",     val: "#16a34a" },
+        { name: "marcador",  val: "#fde047cc" },  // amarillo translúcido
+      ];
+      const SIZES = [
+        { name: "S", val: 1.5 },
+        { name: "M", val: 3 },
+        { name: "L", val: 6 },
+      ];
+
+      class Pizarra {
+        constructor() {
+          this.activa = false;
+          this.overlay = null;
+          this.canvas = null;
+          this.ctx = null;
+          this.drawing = false;
+          this.tool = "pen";  // pen | eraser
+          this.colorIdx = 0;
+          this.sizeIdx = 1;
+          this.lastPoint = null;
+          this.currentVista = this.detectarVista();
+          this.observerVista = null;
+          this.snapshot = null;  // backup antes de erase para preview
+        }
+
+        detectarVista() {
+          // Detecta qué vista está activa actualmente (piso/census/print/etc.)
+          const tabActiva = document.querySelector("#tabs .tab.active");
+          if (tabActiva) {
+            const txt = (tabActiva.textContent || "").trim().toLowerCase();
+            if (txt.includes("piso"))       return "piso";
+            if (txt.includes("censo"))      return "censo";
+            if (txt.includes("entrega"))    return "entrega";
+            if (txt.includes("olvidar"))    return "noOlvidar";
+            if (txt.includes("altas"))      return "altas";
+            if (txt.includes("pendientes")) return "pendientes";
+            if (txt.includes("egresados"))  return "egresados";
+            if (txt.includes("rondas"))     return "rondas";
+          }
+          return "default";
+        }
+
+        storageKey() {
+          return `pl_pizarra_${this.currentVista}`;
+        }
+
+        toggle() {
+          if (this.activa) this.desactivar();
+          else this.activar();
+        }
+
+        activar() {
+          if (!this.overlay) this.crearOverlay();
+          this.currentVista = this.detectarVista();
+          this.activa = true;
+          this.overlay.classList.add("active");
+          const btn = document.getElementById("pizarra-toggle-btn");
+          if (btn) btn.classList.add("activo");
+          this.actualizarTamanio();
+          this.cargarTrazos();
+          this.observarCambiosVista();
+        }
+
+        desactivar() {
+          if (!this.overlay) return;
+          this.guardarTrazos();
+          this.activa = false;
+          this.overlay.classList.remove("active");
+          const btn = document.getElementById("pizarra-toggle-btn");
+          if (btn) btn.classList.remove("activo");
+          if (this.observerVista) {
+            this.observerVista.disconnect();
+            this.observerVista = null;
+          }
+        }
+
+        observarCambiosVista() {
+          // Cuando cambian de pestaña con la pizarra activa, guardar y recargar
+          const tabs = document.getElementById("tabs");
+          if (!tabs) return;
+          this.observerVista = new MutationObserver(() => {
+            const nueva = this.detectarVista();
+            if (nueva !== this.currentVista) {
+              this.guardarTrazos();
+              this.currentVista = nueva;
+              this.cargarTrazos();
+            }
+          });
+          this.observerVista.observe(tabs, { subtree: true, attributes: true, attributeFilter: ["class"] });
+        }
+
+        crearOverlay() {
+          this.overlay = document.createElement("div");
+          this.overlay.className = "pizarra-overlay";
+
+          // Canvas
+          this.canvas = document.createElement("canvas");
+          this.canvas.className = "pizarra-canvas";
+
+          // Toolbar
+          const toolbar = this.crearToolbar();
+
+          this.overlay.appendChild(this.canvas);
+          this.overlay.appendChild(toolbar);
+          document.body.appendChild(this.overlay);
+
+          this.ctx = this.canvas.getContext("2d");
+          this.ctx.lineCap = "round";
+          this.ctx.lineJoin = "round";
+
+          // Pointer events (mouse + Pencil + touch)
+          this.canvas.addEventListener("pointerdown", e => this.onDown(e));
+          this.canvas.addEventListener("pointermove", e => this.onMove(e));
+          this.canvas.addEventListener("pointerup",   e => this.onUp(e));
+          this.canvas.addEventListener("pointerleave",e => this.onUp(e));
+          this.canvas.addEventListener("pointercancel",e => this.onUp(e));
+
+          // Resize
+          window.addEventListener("resize", () => {
+            if (this.activa) this.actualizarTamanio();
+          });
+        }
+
+        crearToolbar() {
+          const tb = document.createElement("div");
+          tb.className = "pizarra-toolbar";
+
+          // Etiqueta vista activa
+          const lbl = document.createElement("div");
+          lbl.className = "pz-info";
+          lbl.id = "pz-vista-lbl";
+          lbl.textContent = "";
+          tb.appendChild(lbl);
+
+          // Herramientas: pen / eraser
+          const rowTools = document.createElement("div");
+          rowTools.className = "row";
+          const btnPen = document.createElement("button");
+          btnPen.className = "pz-btn active";
+          btnPen.textContent = "✏️";
+          btnPen.title = "Lápiz";
+          btnPen.onclick = () => this.setTool("pen", btnPen);
+          const btnEraser = document.createElement("button");
+          btnEraser.className = "pz-btn";
+          btnEraser.textContent = "🩹";
+          btnEraser.title = "Borrador";
+          btnEraser.onclick = () => this.setTool("eraser", btnEraser);
+          rowTools.appendChild(btnPen);
+          rowTools.appendChild(btnEraser);
+          tb.appendChild(rowTools);
+          this._btnsTools = [btnPen, btnEraser];
+
+          tb.appendChild(this.sep());
+
+          // Colores
+          const rowColors = document.createElement("div");
+          rowColors.className = "row";
+          rowColors.style.flexWrap = "wrap";
+          rowColors.style.width = "84px";
+          this._btnsColors = COLORS.map((c, idx) => {
+            const b = document.createElement("button");
+            b.className = "pz-color" + (idx === 0 ? " active" : "");
+            b.style.background = c.val;
+            b.title = c.name;
+            b.onclick = () => this.setColor(idx);
+            rowColors.appendChild(b);
+            return b;
+          });
+          tb.appendChild(rowColors);
+
+          tb.appendChild(this.sep());
+
+          // Tamaños
+          const rowSizes = document.createElement("div");
+          rowSizes.className = "row";
+          this._btnsSizes = SIZES.map((s, idx) => {
+            const b = document.createElement("button");
+            b.className = "pz-size-pill" + (idx === 1 ? " active" : "");
+            b.textContent = s.name;
+            b.title = `Grosor ${s.val}px`;
+            b.onclick = () => this.setSize(idx);
+            rowSizes.appendChild(b);
+            return b;
+          });
+          tb.appendChild(rowSizes);
+
+          tb.appendChild(this.sep());
+
+          // Acciones
+          const rowActions = document.createElement("div");
+          rowActions.className = "row";
+          const btnUndo = document.createElement("button");
+          btnUndo.className = "pz-btn";
+          btnUndo.textContent = "↶";
+          btnUndo.title = "Deshacer último trazo";
+          btnUndo.onclick = () => this.undo();
+          const btnClear = document.createElement("button");
+          btnClear.className = "pz-btn";
+          btnClear.textContent = "🗑️";
+          btnClear.title = "Limpiar pizarra";
+          btnClear.onclick = () => this.clear();
+          rowActions.appendChild(btnUndo);
+          rowActions.appendChild(btnClear);
+          tb.appendChild(rowActions);
+
+          const rowActions2 = document.createElement("div");
+          rowActions2.className = "row";
+          const btnExport = document.createElement("button");
+          btnExport.className = "pz-btn";
+          btnExport.textContent = "💾";
+          btnExport.title = "Exportar como PNG";
+          btnExport.onclick = () => this.exportPNG();
+          const btnClose = document.createElement("button");
+          btnClose.className = "pz-btn";
+          btnClose.textContent = "✕";
+          btnClose.title = "Cerrar pizarra (datos quedan guardados)";
+          btnClose.style.background = "rgba(220,38,38,.3)";
+          btnClose.onclick = () => this.desactivar();
+          rowActions2.appendChild(btnExport);
+          rowActions2.appendChild(btnClose);
+          tb.appendChild(rowActions2);
+
+          return tb;
+        }
+
+        sep() {
+          const s = document.createElement("div");
+          s.className = "sep";
+          return s;
+        }
+
+        setTool(t, btnEl) {
+          this.tool = t;
+          this._btnsTools.forEach(b => b.classList.remove("active"));
+          btnEl.classList.add("active");
+          this.canvas.classList.toggle("eraser", t === "eraser");
+        }
+
+        setColor(idx) {
+          this.colorIdx = idx;
+          this._btnsColors.forEach(b => b.classList.remove("active"));
+          this._btnsColors[idx].classList.add("active");
+          // Si estaba en borrador, vuelve a lápiz
+          if (this.tool === "eraser") this.setTool("pen", this._btnsTools[0]);
+        }
+
+        setSize(idx) {
+          this.sizeIdx = idx;
+          this._btnsSizes.forEach(b => b.classList.remove("active"));
+          this._btnsSizes[idx].classList.add("active");
+        }
+
+        actualizarTamanio() {
+          // Backup actual antes de redimensionar
+          let snap = null;
+          try { snap = this.canvas.toDataURL(); } catch(e) {}
+          const dpr = window.devicePixelRatio || 1;
+          this.canvas.width  = window.innerWidth  * dpr;
+          this.canvas.height = window.innerHeight * dpr;
+          this.canvas.style.width  = window.innerWidth  + "px";
+          this.canvas.style.height = window.innerHeight + "px";
+          this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          this.ctx.lineCap = "round";
+          this.ctx.lineJoin = "round";
+          // Restaurar
+          if (snap) {
+            const img = new Image();
+            img.onload = () => this.ctx.drawImage(img, 0, 0, window.innerWidth, window.innerHeight);
+            img.src = snap;
+          }
+        }
+
+        onDown(e) {
+          if (!this.activa) return;
+          e.preventDefault();
+          this.canvas.setPointerCapture(e.pointerId);
+          this.drawing = true;
+          const pt = this.getPoint(e);
+          this.lastPoint = pt;
+          // Iniciar trazo (pintar punto inicial)
+          this.ctx.save();
+          this.aplicarEstilo(pt.pressure);
+          this.ctx.beginPath();
+          this.ctx.arc(pt.x, pt.y, this.lineWidthActual(pt.pressure) / 2, 0, Math.PI * 2);
+          this.ctx.fill();
+          this.ctx.restore();
+        }
+
+        onMove(e) {
+          if (!this.activa || !this.drawing) return;
+          e.preventDefault();
+          const pt = this.getPoint(e);
+
+          this.ctx.save();
+          this.aplicarEstilo(pt.pressure);
+          this.ctx.beginPath();
+          this.ctx.moveTo(this.lastPoint.x, this.lastPoint.y);
+          // Curva suave (quadratic) para mejor handwriting feel
+          const mx = (this.lastPoint.x + pt.x) / 2;
+          const my = (this.lastPoint.y + pt.y) / 2;
+          this.ctx.quadraticCurveTo(this.lastPoint.x, this.lastPoint.y, mx, my);
+          this.ctx.lineTo(pt.x, pt.y);
+          this.ctx.stroke();
+          this.ctx.restore();
+
+          this.lastPoint = pt;
+        }
+
+        onUp(e) {
+          if (!this.drawing) return;
+          this.drawing = false;
+          this.lastPoint = null;
+          try { this.canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+          // Auto-guardar al terminar cada trazo
+          this.guardarTrazos();
+        }
+
+        getPoint(e) {
+          const rect = this.canvas.getBoundingClientRect();
+          let pressure = e.pressure;
+          // Pencil tiene pressure 0..1, mouse siempre 0.5, touch puede ser 0
+          if (e.pointerType === "mouse" || pressure === 0) pressure = 0.5;
+          return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            pressure: pressure,
+            pointerType: e.pointerType,
+          };
+        }
+
+        lineWidthActual(pressure) {
+          const base = SIZES[this.sizeIdx].val;
+          // Pencil: el grosor varía con presión (0.5..1.5 del base)
+          return base * (0.5 + pressure);
+        }
+
+        aplicarEstilo(pressure) {
+          const color = COLORS[this.colorIdx].val;
+          const lw = this.lineWidthActual(pressure);
+          if (this.tool === "eraser") {
+            this.ctx.globalCompositeOperation = "destination-out";
+            this.ctx.strokeStyle = "rgba(0,0,0,1)";
+            this.ctx.fillStyle = "rgba(0,0,0,1)";
+            this.ctx.lineWidth = lw * 4;  // borrador más grueso
+          } else {
+            this.ctx.globalCompositeOperation = "source-over";
+            this.ctx.strokeStyle = color;
+            this.ctx.fillStyle = color;
+            this.ctx.lineWidth = lw;
+            // marcador: mayor ancho, semi-transparente
+            if (COLORS[this.colorIdx].name === "marcador") {
+              this.ctx.lineWidth = lw * 3;
+            }
+          }
+        }
+
+        clear() {
+          if (!confirm(`¿Borrar TODA la pizarra de "${this.currentVista}"?`)) return;
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+          this.guardarTrazos();
+        }
+
+        // Undo simple: guarda snapshots cada trazo, deshace el último
+        // Para v1: snapshots simples (cada onUp guarda dataURL)
+        // Por simplicidad de v1, undo borra todo y recarga snapshot previo
+        undo() {
+          const histKey = this.storageKey() + "_history";
+          let hist = [];
+          try { hist = JSON.parse(localStorage.getItem(histKey) || "[]"); } catch(e) {}
+          if (hist.length < 2) {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            localStorage.removeItem(this.storageKey());
+            localStorage.removeItem(histKey);
+            return;
+          }
+          // Quitar el último, restaurar el anterior
+          hist.pop();
+          const prev = hist[hist.length - 1];
+          localStorage.setItem(histKey, JSON.stringify(hist));
+          localStorage.setItem(this.storageKey(), prev);
+          this.cargarTrazos();
+        }
+
+        guardarTrazos() {
+          try {
+            const data = this.canvas.toDataURL("image/png");
+            localStorage.setItem(this.storageKey(), data);
+            // Guardar historial (max 10 snapshots para undo)
+            const histKey = this.storageKey() + "_history";
+            let hist = [];
+            try { hist = JSON.parse(localStorage.getItem(histKey) || "[]"); } catch(e) {}
+            hist.push(data);
+            if (hist.length > 10) hist = hist.slice(-10);
+            localStorage.setItem(histKey, JSON.stringify(hist));
+          } catch (e) {
+            console.warn("[Pizarra] No se pudo guardar:", e);
+          }
+          this.actualizarLabel();
+        }
+
+        cargarTrazos() {
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+          const data = localStorage.getItem(this.storageKey());
+          if (!data) {
+            this.actualizarLabel();
+            return;
+          }
+          const img = new Image();
+          img.onload = () => {
+            this.ctx.drawImage(img, 0, 0, window.innerWidth, window.innerHeight);
+          };
+          img.src = data;
+          this.actualizarLabel();
+        }
+
+        actualizarLabel() {
+          const lbl = document.getElementById("pz-vista-lbl");
+          if (lbl) {
+            const hasTrazos = !!localStorage.getItem(this.storageKey());
+            lbl.textContent = `📄 ${this.currentVista}${hasTrazos ? " •" : ""}`;
+          }
+        }
+
+        exportPNG() {
+          try {
+            const link = document.createElement("a");
+            const fecha = new Date().toISOString().slice(0, 10);
+            link.download = `pisolibro-pizarra-${this.currentVista}-${fecha}.png`;
+            link.href = this.canvas.toDataURL("image/png");
+            link.click();
+          } catch (e) {
+            alert("No se pudo exportar: " + e.message);
+          }
+        }
+      }
+
+      // Inicializar Pizarra global cuando DOM esté listo
+      function initPizarra() {
+        if (window.pizarra) return;
+        window.pizarra = new Pizarra();
+        console.log("[Pizarra] Lista. Ctrl+P o botón 🖊️ Pizarra para activar.");
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initPizarra);
+      } else {
+        initPizarra();
+      }
+
+      // Atajo de teclado: Ctrl+Shift+P (no choca con print del navegador)
+      document.addEventListener("keydown", e => {
+        if (e.ctrlKey && e.shiftKey && (e.key === "P" || e.key === "p")) {
+          e.preventDefault();
+          if (window.pizarra) window.pizarra.toggle();
+        }
+        // Ctrl+Shift+C: toggle cuaderno
+        if (e.ctrlKey && e.shiftKey && (e.key === "C" || e.key === "c")) {
+          e.preventDefault();
+          window.toggleModoCuaderno();
+        }
+        // Ctrl+Shift+T: jump a tablero
+        if (e.ctrlKey && e.shiftKey && (e.key === "T" || e.key === "t")) {
+          e.preventDefault();
+          if (typeof setView === "function") {
+            const btn = document.querySelector('.tab[onclick*="tablero"]');
+            setView("tablero", btn);
+          }
+        }
+      });
+
+
+      // ═══════════════ TABLERO 6 CUADRANTES (Feature #2) ═══════════════
+      //
+      // Replica la pizarra RESÚMENES de GoodNotes pero editable, drag-drop,
+      // con auto-link a pacientes cuando mencionas una cama (ej. "157 alta"
+      // detecta "157" y enlaza al paciente de esa cama).
+      //
+      // Persistencia en localStorage. Cada item tiene:
+      //   { id, text, done, createdAt, doneAt?, camaRef? }
+      //
+      const TABLERO_KEY = "pl_tablero_v1";
+
+      const QUADRANTS = [
+        { id: "altas",     titulo: "🏠 Altas",            color: "#fbbf24", bg: "rgba(251,191,36,.08)",  borderTop: "#fbbf24" },
+        { id: "postqx",    titulo: "🩹 Postquirúrgicos",  color: "#ef4444", bg: "rgba(239,68,68,.08)",   borderTop: "#ef4444" },
+        { id: "imagen",    titulo: "🩻 Estudios Imagen",  color: "#3b82f6", bg: "rgba(59,130,246,.08)",  borderTop: "#3b82f6" },
+        { id: "r1",        titulo: "📝 Pendientes R1",    color: "#22c55e", bg: "rgba(34,197,94,.08)",   borderTop: "#22c55e" },
+        { id: "mip",       titulo: "💼 Pendientes MIPs",  color: "#a855f7", bg: "rgba(168,85,247,.08)",  borderTop: "#a855f7" },
+        { id: "noolvidar", titulo: "⚠️ No Olvidar",       color: "#f97316", bg: "rgba(249,115,22,.08)",  borderTop: "#f97316" },
+      ];
+
+      function tableroLoad() {
+        try {
+          const raw = localStorage.getItem(TABLERO_KEY);
+          if (!raw) return {};
+          return JSON.parse(raw);
+        } catch (e) {
+          console.warn("[Tablero] No se pudo cargar:", e);
+          return {};
+        }
+      }
+
+      function tableroSave(data) {
+        try {
+          localStorage.setItem(TABLERO_KEY, JSON.stringify(data));
+        } catch (e) {
+          console.warn("[Tablero] No se pudo guardar:", e);
+        }
+      }
+
+      // Detecta si un texto menciona una cama (ej. "157", "3-157", "157 alta")
+      // Retorna el paciente si la cama está en el censo activo, o null
+      function tableroDetectCama(text) {
+        if (!text) return null;
+        // Buscar primer número que parezca cama
+        const match = text.match(/\b(\d{1,2}-?\d{2,3}|\d{3})\b/);
+        if (!match) return null;
+        let camaCandidata = match[1];
+        // Normalizar: "157" -> buscar "3-157" o "157" en patients
+        if (typeof patients === "undefined" || !Array.isArray(patients)) return null;
+        const found = patients.find(p => {
+          const c = String(p.cama || "").toLowerCase();
+          const cn = c.replace(/-/g, "");
+          const q = camaCandidata.toLowerCase().replace(/-/g, "");
+          return c === camaCandidata.toLowerCase() || cn === q || c.endsWith(camaCandidata);
+        });
+        return found || null;
+      }
+
+      window.tableroAddItem = function(qId) {
+        const data = tableroLoad();
+        if (!data[qId]) data[qId] = [];
+        const item = {
+          id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          text: "",
+          done: false,
+          createdAt: new Date().toISOString(),
+        };
+        data[qId].push(item);
+        tableroSave(data);
+        renderTablero();
+        // Auto-focus en el item nuevo
+        setTimeout(() => {
+          const el = document.querySelector(`[data-item-id="${item.id}"] .tablero-text`);
+          if (el) {
+            el.focus();
+            // Cursor al final
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            range.collapse(false);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }, 50);
+      };
+
+      window.tableroDeleteItem = function(qId, itemId) {
+        const data = tableroLoad();
+        if (!data[qId]) return;
+        data[qId] = data[qId].filter(i => i.id !== itemId);
+        tableroSave(data);
+        renderTablero();
+      };
+
+      window.tableroToggleDone = function(qId, itemId) {
+        const data = tableroLoad();
+        if (!data[qId]) return;
+        const item = data[qId].find(i => i.id === itemId);
+        if (!item) return;
+        item.done = !item.done;
+        item.doneAt = item.done ? new Date().toISOString() : null;
+        tableroSave(data);
+        renderTablero();
+      };
+
+      window.tableroUpdateText = function(qId, itemId, newText) {
+        const data = tableroLoad();
+        if (!data[qId]) return;
+        const item = data[qId].find(i => i.id === itemId);
+        if (!item) return;
+        item.text = String(newText || "").trim();
+        // Detectar referencia a cama
+        const pac = tableroDetectCama(item.text);
+        item.camaRef = pac ? pac.cama : null;
+        item.pacienteRef = pac ? (pac.nombre || "").split(" ").slice(0, 2).join(" ") : null;
+        tableroSave(data);
+      };
+
+      window.tableroClearDone = function(qId) {
+        if (!confirm(`¿Borrar todos los completados de "${QUADRANTS.find(q => q.id === qId).titulo}"?`)) return;
+        const data = tableroLoad();
+        if (!data[qId]) return;
+        data[qId] = data[qId].filter(i => !i.done);
+        tableroSave(data);
+        renderTablero();
+      };
+
+      window.tableroMoveItem = function(fromQ, itemId, toQ) {
+        if (fromQ === toQ) return;
+        const data = tableroLoad();
+        if (!data[fromQ]) return;
+        const idx = data[fromQ].findIndex(i => i.id === itemId);
+        if (idx === -1) return;
+        const item = data[fromQ][idx];
+        data[fromQ].splice(idx, 1);
+        if (!data[toQ]) data[toQ] = [];
+        data[toQ].push(item);
+        tableroSave(data);
+        renderTablero();
+      };
+
+      window.tableroGotoPaciente = function(cama) {
+        if (!cama || typeof setView !== "function") return;
+        // Volver a Piso Libro y abrir esa cama
+        const pisoBtn = document.querySelector('.tab[onclick*="piso"]');
+        setView("piso", pisoBtn);
+        setTimeout(() => {
+          const card = document.querySelector(`[data-cama="${cama}"]`);
+          if (card) {
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
+            card.style.transition = "box-shadow 0.3s";
+            card.style.boxShadow = "0 0 0 3px #a855f7, 0 0 20px rgba(168,85,247,.5)";
+            setTimeout(() => { card.style.boxShadow = ""; }, 2000);
+          }
+        }, 300);
+      };
+
+
+      // ═══════════════ FEATURE B — REDIMENSIONAR SECCIONES ═══════════════
+      // Aplica `resize: vertical` a cada lab-group dentro de tarjetas de
+      // pacientes. Persiste altura por (paciente + grupo) en localStorage.
+      // Usa ResizeObserver para detectar el resize y guardar.
+      //
+      // No invasivo: detecta tarjetas con MutationObserver y enhancea.
+      //
+      const RESIZE_PREFIX = "pl_size_v1_";
+
+      function hacerResizableGrupo(grpEl) {
+        if (!grpEl || grpEl.hasAttribute("data-pl-resizable")) return;
+        grpEl.setAttribute("data-pl-resizable", "1");
+
+        const grpId = grpEl.id;
+        if (!grpId) return;
+
+        // Aplicar CSS resize. Solo si el grupo está display:grid (expandido),
+        // para no romper grupos colapsados (display:none).
+        grpEl.style.resize = "vertical";
+        grpEl.style.overflow = "auto";
+        grpEl.style.minHeight = "44px";
+        grpEl.style.maxHeight = "800px";
+        grpEl.style.position = "relative";
+
+        // Restaurar altura guardada
+        const saved = localStorage.getItem(RESIZE_PREFIX + grpId);
+        if (saved && Number(saved) > 44) {
+          grpEl.style.height = saved + "px";
+        }
+
+        // ResizeObserver para guardar cambios
+        let saveTimer = null;
+        const obs = new ResizeObserver(() => {
+          if (grpEl.style.display === "none") return;
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(() => {
+            const h = grpEl.offsetHeight;
+            if (h > 44) localStorage.setItem(RESIZE_PREFIX + grpId, String(h));
+          }, 400);
+        });
+        obs.observe(grpEl);
+      }
+
+      // Reset todo el sizing de un paciente
+      window.resetTamanosPaciente = function(k) {
+        if (!confirm("¿Restaurar tamaños default de todas las secciones de este paciente?")) return;
+        const safeK = k.replace(/[^a-zA-Z0-9]/g, "_");
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith(RESIZE_PREFIX + "grp-" + safeK + "-")) {
+            localStorage.removeItem(key);
+          }
+        });
+        location.reload();
+      };
+
+
+      // ═══════════════ FEATURE A1 — NOTAS POR PACIENTE (Scribble) ═══════════════
+      // Agrega una sección "📝 Notas" a cada tarjeta de paciente con un
+      // <textarea> nativo que soporta Apple Pencil Scribble en iPadOS Safari
+      // (NO requiere código: iPadOS lo activa automáticamente en cualquier
+      // input/textarea con touch-action no bloqueado).
+      //
+      // Persistencia en localStorage por paciente. Auto-guardado debounce 500ms.
+      //
+      const NOTAS_PREFIX = "pl_notas_v1_";
+
+      function inyectarNotasPaciente(card) {
+        // Buscar la sección labs-sec dentro de la tarjeta (la que tiene el patient key)
+        const labsSec = card.querySelector('[id^="labs-sec-"]');
+        if (!labsSec) return;
+        const m = labsSec.id.match(/^labs-sec-(.+)$/);
+        if (!m) return;
+        const k = m[1];
+
+        // ¿Ya inyectada en este render?
+        if (card.querySelector(`[data-notas-k="${k}"]`)) return;
+
+        // Crear sección de notas
+        const notesKey = NOTAS_PREFIX + k;
+        const saved = localStorage.getItem(notesKey) || "";
+        const savedAt = localStorage.getItem(notesKey + "_at");
+        const savedAtFmt = savedAt ? new Date(savedAt).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+
+        const notas = document.createElement("div");
+        notas.className = "pl-notas-section";
+        notas.setAttribute("data-notas-k", k);
+        notas.innerHTML = `
+          <div class="pl-notas-header">
+            <span class="pl-notas-title">📝 Notas del paciente</span>
+            <div class="pl-notas-actions">
+              <span class="pl-notas-meta" id="pl-notas-meta-${k}">${saved && savedAtFmt ? '✓ ' + savedAtFmt : ''}</span>
+              <button class="pl-notas-reset" onclick="resetTamanosPaciente('${k}')" title="Reset tamaños de todas las secciones de este paciente">📏 Reset tamaños</button>
+            </div>
+          </div>
+          <textarea
+            class="pl-notas-textarea"
+            data-paciente="${k}"
+            placeholder="Notas, pendientes, observaciones, recordatorios para el siguiente turno...&#10;&#10;💡 En iPad con Apple Pencil: escribe directamente con Pencil sobre este campo. Apple Scribble convierte tu escritura a texto automáticamente."
+            autocomplete="off"
+            spellcheck="false"
+            inputmode="text"
+            autocapitalize="sentences"
+          >${saved.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</textarea>
+        `;
+
+        // Insertar al final de la sección de labs (después del panel IA si existe)
+        const parent = labsSec.parentNode;
+        parent.insertBefore(notas, labsSec.nextSibling);
+
+        // Auto-guardar con debounce
+        const ta = notas.querySelector("textarea");
+        const meta = document.getElementById(`pl-notas-meta-${k}`);
+        let saveTimer = null;
+        ta.addEventListener("input", () => {
+          if (meta) meta.textContent = "✏️ Escribiendo...";
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(() => {
+            try {
+              localStorage.setItem(notesKey, ta.value);
+              localStorage.setItem(notesKey + "_at", new Date().toISOString());
+              if (meta) meta.textContent = "✓ Guardado";
+            } catch (e) {
+              if (meta) meta.textContent = "❌ Error guardando";
+            }
+          }, 500);
+        });
+
+        // Atajo: Ctrl+S guarda inmediato
+        ta.addEventListener("keydown", e => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+            e.preventDefault();
+            try {
+              localStorage.setItem(notesKey, ta.value);
+              localStorage.setItem(notesKey + "_at", new Date().toISOString());
+              if (meta) meta.textContent = "✓ Guardado (manual)";
+            } catch (err) {}
+          }
+        });
+
+        // Tamaño persistente del textarea
+        const sizeKey = NOTAS_PREFIX + k + "_size";
+        const savedSize = localStorage.getItem(sizeKey);
+        if (savedSize && Number(savedSize) > 60) {
+          ta.style.height = savedSize + "px";
+        }
+        let resizeT = null;
+        new ResizeObserver(() => {
+          clearTimeout(resizeT);
+          resizeT = setTimeout(() => {
+            const h = ta.offsetHeight;
+            if (h > 60) localStorage.setItem(sizeKey, String(h));
+          }, 400);
+        }).observe(ta);
+      }
+
+
+      // ═══════════════ TARJETAS ENHANCER (observador global) ═══════════════
+      function procesarTarjetasYGrupos() {
+        // Tarjetas de paciente
+        document.querySelectorAll(".patient-card").forEach(card => {
+          inyectarNotasPaciente(card);
+        });
+        // Lab groups (resize)
+        document.querySelectorAll('[id^="grp-"]').forEach(grp => {
+          hacerResizableGrupo(grp);
+        });
+      }
+
+      // Debounced para no martillar al observer
+      let _enhanceTimer = null;
+      function scheduleEnhance() {
+        clearTimeout(_enhanceTimer);
+        _enhanceTimer = setTimeout(procesarTarjetasYGrupos, 80);
+      }
+
+      // Observar cambios en views
+      function setupEnhancer() {
+        const targets = document.querySelectorAll('[id^="view-"]');
+        const observer = new MutationObserver(muts => {
+          // Solo si algún mutation añadió nodos relevantes
+          for (const m of muts) {
+            for (const n of m.addedNodes) {
+              if (n.nodeType !== 1) continue;
+              if (n.classList && n.classList.contains("patient-card")) { scheduleEnhance(); return; }
+              if (n.querySelector && (n.querySelector(".patient-card") || n.querySelector('[id^="grp-"]'))) {
+                scheduleEnhance();
+                return;
+              }
+            }
+          }
+        });
+        targets.forEach(t => observer.observe(t, { childList: true, subtree: true }));
+
+        // Procesar inicial (en caso de que ya haya tarjetas renderizadas)
+        scheduleEnhance();
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", setupEnhancer);
+      } else {
+        setupEnhancer();
+      }
+
+
+      // ═══════════════ INDICADOR DEL SCRAPER ═══════════════
+      // Consulta el último scrape en winlab_labs cada 60s y actualiza el
+      // botón del toolbar con estado: fresh (<24h) / stale (1-3d) / error (>3d).
+      //
+      async function checkScraperStatus() {
+        const btn = document.getElementById("winlab-autosync-btn");
+        const dot = document.getElementById("scraper-status-dot");
+        const txt = document.getElementById("scraper-status-text");
+        if (!btn || !dot || !txt) return;
+
+        try {
+          // Usar el cliente Supabase global ya inicializado
+          if (typeof supabase === "undefined" || !supabase) return;
+          const { data, error } = await supabase
+            .from("winlab_labs")
+            .select("scraped_at")
+            .order("scraped_at", { ascending: false })
+            .limit(1);
+          if (error) throw error;
+          if (!data || !data.length) {
+            btn.setAttribute("data-scraper-status", "error");
+            txt.textContent = "💧 Sin sync";
+            btn.title = "El scraper nunca ha corrido. Click izq: sync manual. Click der: toggle auto.";
+            return;
+          }
+          const last = new Date(data[0].scraped_at);
+          const ageH = (Date.now() - last.getTime()) / 3600000;
+          const fmt = (d) => {
+            const today = new Date();
+            const diffD = Math.floor((today - d) / 86400000);
+            if (diffD === 0) return "hoy " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+            if (diffD === 1) return "ayer " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+            return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
+          };
+          if (ageH < 24) {
+            btn.setAttribute("data-scraper-status", "fresh");
+            txt.textContent = "💧 " + fmt(last);
+            btn.title = `Scraper OK. Última corrida: ${last.toLocaleString("es-MX")}. Click: sync manual.`;
+          } else if (ageH < 72) {
+            btn.setAttribute("data-scraper-status", "stale");
+            txt.textContent = "💧 " + fmt(last);
+            btn.title = `Scraper algo viejo. Última corrida: ${last.toLocaleString("es-MX")}. Click: sync manual.`;
+          } else {
+            btn.setAttribute("data-scraper-status", "error");
+            txt.textContent = "💧 " + fmt(last) + " ⚠";
+            btn.title = `Scraper desactualizado >72h. Última corrida: ${last.toLocaleString("es-MX")}. Click: sync manual.`;
+          }
+        } catch (e) {
+          console.warn("[ScraperStatus]", e);
+          btn.setAttribute("data-scraper-status", "error");
+          txt.textContent = "💧 Sin conexión";
+        }
+      }
+
+      // Verificar al cargar (con delay para que supabase esté listo) + cada 60s
+      function startScraperWatcher() {
+        setTimeout(checkScraperStatus, 2000);
+        setInterval(checkScraperStatus, 60000);
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", startScraperWatcher);
+      } else {
+        startScraperWatcher();
+      }
+
+
+      window.renderTablero = function() {
+        const data = tableroLoad();
+        const container = document.getElementById("view-tablero");
+        if (!container) return;
+
+        const today = new Date().toLocaleDateString("es-MX", {
+          weekday: "long", year: "numeric", month: "long", day: "numeric"
+        });
+
+        let html = `
+          <div class="tablero-wrap">
+            <div class="tablero-header">
+              <div>
+                <h2 style="margin:0;font-size:18px;font-weight:700;color:var(--text)">📌 Tablero — Resúmenes del piso</h2>
+                <div style="font-size:12px;color:var(--text-2);margin-top:2px">${today} · Estilo GoodNotes editable · Drag-drop entre cuadrantes · Menciona una cama (ej. "157") para enlazar paciente</div>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-2)">
+                <kbd style="background:var(--bg-2);padding:2px 6px;border-radius:3px;font-family:ui-monospace,monospace">Ctrl+Shift+T</kbd> abrir
+                <span>·</span>
+                <kbd style="background:var(--bg-2);padding:2px 6px;border-radius:3px;font-family:ui-monospace,monospace">Ctrl+Shift+P</kbd> pizarra encima
+              </div>
+            </div>
+            <div class="tablero-grid">
+        `;
+
+        for (const q of QUADRANTS) {
+          const items = data[q.id] || [];
+          const pendientes = items.filter(i => !i.done).length;
+          const completados = items.filter(i => i.done).length;
+          html += `
+            <div class="tablero-quad" data-q-id="${q.id}"
+                 style="background:${q.bg};border-top:3px solid ${q.borderTop}"
+                 ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="event.preventDefault(); this.classList.remove('drag-over'); const id=event.dataTransfer.getData('itemId'); const from=event.dataTransfer.getData('fromQ'); tableroMoveItem(from, id, '${q.id}')">
+              <div class="tablero-quad-header">
+                <div class="tablero-quad-title" style="color:${q.color}">${q.titulo}</div>
+                <div class="tablero-quad-meta">
+                  <span class="t-count">${pendientes}${completados ? ` <span style="opacity:.5">/${pendientes+completados}</span>` : ''}</span>
+                  ${completados ? `<button class="t-clear-done" onclick="tableroClearDone('${q.id}')" title="Borrar completados">🗑️</button>` : ''}
+                </div>
+              </div>
+              <ul class="tablero-list">
+        `;
+          for (const item of items) {
+            const textShown = item.text || "";
+            const pacBadge = item.camaRef
+              ? `<button class="t-cama-badge" onclick="event.stopPropagation();tableroGotoPaciente('${item.camaRef}')" title="Ir al paciente">${item.camaRef}${item.pacienteRef ? ' · ' + item.pacienteRef : ''}</button>`
+              : "";
+            html += `
+              <li class="tablero-item ${item.done ? 'done' : ''}"
+                  data-item-id="${item.id}"
+                  draggable="true"
+                  ondragstart="event.dataTransfer.setData('itemId','${item.id}'); event.dataTransfer.setData('fromQ','${q.id}'); this.classList.add('dragging')"
+                  ondragend="this.classList.remove('dragging')">
+                <div class="t-check ${item.done ? 'checked' : ''}"
+                     onclick="tableroToggleDone('${q.id}','${item.id}')"
+                     title="${item.done ? 'Desmarcar' : 'Marcar completado'}"></div>
+                <div class="t-body">
+                  <div class="tablero-text"
+                       contenteditable="true"
+                       spellcheck="false"
+                       data-q-id="${q.id}"
+                       data-item-id="${item.id}"
+                       onblur="tableroUpdateText('${q.id}','${item.id}', this.innerText); renderTablero();"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();tableroAddItem('${q.id}');}"
+                       data-placeholder="Escribe aquí...">${textShown.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+                  ${pacBadge}
+                </div>
+                <button class="t-del" onclick="tableroDeleteItem('${q.id}','${item.id}')" title="Eliminar">✕</button>
+              </li>
+            `;
+          }
+          html += `
+              </ul>
+              <button class="tablero-add" onclick="tableroAddItem('${q.id}')">+ Agregar</button>
+            </div>
+          `;
+        }
+
+        html += `</div></div>`;
+        container.innerHTML = html;
+      };
+
+    })();
+  </script>
+
+  <style>
+    /* ── TABLERO (Feature #2) ────────────────────────────────────── */
+    .tablero-wrap {
+      padding: 14px 14px 24px;
+    }
+    .tablero-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .tablero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, minmax(280px, auto));
+      gap: 14px;
+    }
+    @media (max-width: 1100px) {
+      .tablero-grid { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(3, minmax(280px, auto)); }
+    }
+    @media (max-width: 700px) {
+      .tablero-grid { grid-template-columns: 1fr; grid-template-rows: none; }
+    }
+    .tablero-quad {
+      background: var(--bg-2, #1a2332);
+      border: 1px solid var(--border, rgba(100,116,139,.3));
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      min-height: 280px;
+      transition: all .15s;
+      position: relative;
+    }
+    .tablero-quad.drag-over {
+      box-shadow: 0 0 0 3px rgba(168,85,247,.6), 0 8px 24px rgba(0,0,0,.3);
+      transform: scale(1.02);
+    }
+    .tablero-quad-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .tablero-quad-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .tablero-quad-meta {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .t-count {
+      background: var(--bg-3, rgba(100,116,139,.2));
+      color: var(--text-2, #94a3b8);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .t-clear-done {
+      background: none;
+      border: 1px solid var(--border, rgba(100,116,139,.3));
+      color: var(--text-2, #94a3b8);
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .t-clear-done:hover { background: rgba(239,68,68,.2); color: #ef4444; border-color: #ef4444; }
+    .tablero-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      flex: 1;
+      overflow-y: auto;
+      max-height: calc(100vh - 320px);
+    }
+    .tablero-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 8px 8px 6px;
+      background: var(--bg, rgba(255,255,255,.55));
+      border-radius: 6px;
+      margin-bottom: 5px;
+      cursor: grab;
+      transition: all .15s;
+      border: 1px solid transparent;
+    }
+    [data-theme="dark"] .tablero-item {
+      background: rgba(255,255,255,.04);
+    }
+    .tablero-item:hover { border-color: rgba(168,85,247,.3); }
+    .tablero-item.dragging { opacity: 0.4; cursor: grabbing; }
+    .tablero-item.done .tablero-text { text-decoration: line-through; opacity: 0.5; }
+    .t-check {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border, rgba(100,116,139,.5));
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-top: 1px;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+    }
+    .t-check:hover { border-color: #22c55e; }
+    .t-check.checked {
+      background: #22c55e;
+      border-color: #22c55e;
+      color: white;
+    }
+    .t-check.checked:after {
+      content: "✓";
+      font-size: 12px;
+      font-weight: 900;
+      color: white;
+    }
+    .t-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .tablero-text {
+      outline: none;
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--text, #e2e8f0);
+      padding: 2px 4px;
+      border-radius: 3px;
+      min-height: 18px;
+      word-wrap: break-word;
+      cursor: text;
+    }
+    .tablero-text:focus {
+      background: rgba(168,85,247,.1);
+      box-shadow: 0 0 0 1px rgba(168,85,247,.3);
+    }
+    .tablero-text:empty:before {
+      content: attr(data-placeholder);
+      color: var(--text-3, #64748b);
+      font-style: italic;
+    }
+    .t-cama-badge {
+      display: inline-block;
+      margin-top: 4px;
+      background: rgba(168,85,247,.18);
+      border: 1px solid rgba(168,85,247,.4);
+      color: #a855f7;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      font-family: -apple-system, sans-serif;
+    }
+    .t-cama-badge:hover { background: rgba(168,85,247,.4); color: white; }
+    .t-del {
+      background: none;
+      border: none;
+      color: var(--text-3, #64748b);
+      cursor: pointer;
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      font-size: 14px;
+      padding: 0;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity .15s, all .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .tablero-item:hover .t-del { opacity: 1; }
+    .t-del:hover { background: rgba(239,68,68,.2); color: #ef4444; }
+    .tablero-add {
+      border: 1.5px dashed var(--border, rgba(100,116,139,.4));
+      background: transparent;
+      color: var(--text-2, #94a3b8);
+      padding: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-top: 4px;
+      transition: all .15s;
+      font-family: inherit;
+      font-weight: 500;
+    }
+    .tablero-add:hover {
+      border-color: #a855f7;
+      color: #a855f7;
+      background: rgba(168,85,247,.05);
+    }
+
+    /* ── NOTAS DEL PACIENTE (Feature A1 - Scribble en iPad) ────────── */
+    .pl-notas-section {
+      margin-top: 10px;
+      padding: 10px;
+      background: #fef3c7;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      position: relative;
+    }
+    [data-theme="dark"] .pl-notas-section,
+    body.dark .pl-notas-section {
+      background: rgba(254, 243, 199, 0.06);
+      border-color: rgba(253, 230, 138, 0.2);
+    }
+    .pl-notas-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      gap: 8px;
+    }
+    .pl-notas-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #92400e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    [data-theme="dark"] .pl-notas-title,
+    body.dark .pl-notas-title { color: #fde68a; }
+    .pl-notas-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pl-notas-meta {
+      font-size: 10px;
+      color: #a16207;
+      font-family: ui-monospace, monospace;
+    }
+    [data-theme="dark"] .pl-notas-meta,
+    body.dark .pl-notas-meta { color: #fde68aaa; }
+    .pl-notas-reset {
+      background: transparent;
+      border: 1px solid #d97706;
+      color: #92400e;
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: inherit;
+    }
+    .pl-notas-reset:hover { background: #d97706; color: white; }
+    [data-theme="dark"] .pl-notas-reset,
+    body.dark .pl-notas-reset {
+      border-color: #fde68a;
+      color: #fde68a;
+    }
+    .pl-notas-textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 8px 10px;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      background: white;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #1f2937;
+      resize: vertical;
+      box-sizing: border-box;
+      touch-action: manipulation;  /* CRÍTICO: permite Scribble en iPad */
+      -webkit-user-select: text;
+      user-select: text;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .pl-notas-textarea:focus {
+      border-color: #d97706;
+      box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.15);
+    }
+    .pl-notas-textarea::placeholder {
+      color: #a16207aa;
+      font-style: italic;
+    }
+    [data-theme="dark"] .pl-notas-textarea,
+    body.dark .pl-notas-textarea {
+      background: rgba(0, 0, 0, 0.3);
+      border-color: rgba(253, 230, 138, 0.3);
+      color: #fde68a;
+    }
+    [data-theme="dark"] .pl-notas-textarea::placeholder,
+    body.dark .pl-notas-textarea::placeholder {
+      color: rgba(253, 230, 138, 0.4);
+    }
+
+    /* ── HINT VISUAL DE RESIZE EN LAB GROUPS (Feature B) ────────── */
+    [data-pl-resizable]:hover {
+      box-shadow: inset 0 -1px 0 rgba(168, 85, 247, 0.3);
+    }
+
+    /* ════════════════════════════════════════════════════════════════════
+       PISOLIBRO DESIGN SYSTEM v1 — Navy / Negro / Blanco
+       Aplicado encima del estilo existente sin romperlo.
+       ════════════════════════════════════════════════════════════════════ */
+    :root {
+      --pl-navy-900: #0a1628;
+      --pl-navy-800: #122339;
+      --pl-navy-700: #1e3a5f;
+      --pl-navy-600: #2c4d77;
+      --pl-navy-500: #3b5d8a;
+      --pl-navy-100: #e8eef6;
+      --pl-white: #ffffff;
+      --pl-bone:  #fafbfc;
+      --pl-gray-700: #334155;
+      --pl-gray-500: #64748b;
+      --pl-gray-300: #cbd5e1;
+      --pl-gray-100: #f1f5f9;
+      --pl-border: #e2e8f0;
+      --pl-accent: #3b82f6;
+      --pl-success: #059669;
+      --pl-danger:  #dc2626;
+      --pl-shadow-sm: 0 1px 2px rgba(10,22,40,.06);
+      --pl-shadow-md: 0 4px 12px rgba(10,22,40,.08);
+      --pl-shadow-lg: 0 12px 32px rgba(10,22,40,.16);
+    }
+
+    /* ── HEADER navy elegante ───────────────────────────────── */
+    header.app-header,
+    .app-header,
+    body > #topbar,
+    .topbar {
+      background: linear-gradient(180deg, var(--pl-navy-900) 0%, var(--pl-navy-800) 100%) !important;
+      box-shadow: var(--pl-shadow-md);
+      border-bottom: 1px solid var(--pl-navy-700);
+    }
+
+    /* ── LOGO EN BANNER PRINCIPAL — alta especificidad ────── */
+    #header-top .header-title,
+    .header-title {
+      display: flex !important;
+      align-items: center !important;
+      gap: 14px !important;
+      flex-direction: row !important;
+    }
+    #header-top .header-title .pl-brand-logo,
+    .header-title .pl-brand-logo,
+    svg.pl-brand-logo {
+      width: 52px !important;
+      height: 52px !important;
+      min-width: 52px !important;
+      max-width: 52px !important;
+      flex-shrink: 0 !important;
+      display: block !important;
+      filter: drop-shadow(0 2px 6px rgba(0,0,0,.4));
+      transition: transform .3s ease;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }
+    svg.pl-brand-logo:hover {
+      transform: rotate(-3deg) scale(1.05);
+    }
+    .header-title-text {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 1px !important;
+    }
+    .header-title-text h1,
+    #header-top .header-title-text h1 {
+      font-size: 22px !important;
+      font-weight: 800 !important;
+      letter-spacing: -0.5px !important;
+      color: #ffffff !important;
+      margin: 0 !important;
+      line-height: 1.1 !important;
+    }
+    .header-title-text .sub,
+    #header-top .header-title-text .sub {
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      color: rgba(255,255,255,.65) !important;
+      letter-spacing: 0.3px !important;
+      text-transform: uppercase !important;
+      margin: 0 !important;
+    }
+    /* Ocultar las reglas viejas de .header-title h1 directo (ya no existe ese elemento ahí) */
+    .header-title > h1,
+    .header-title > .sub {
+      display: none !important;
+    }
+
+    /* ── Indicador del scraper (reemplazo del botón vacío) ── */
+    #winlab-autosync-btn[data-scraper-status="fresh"] {
+      background: rgba(34,197,94,.18) !important;
+      border-color: rgba(34,197,94,.45) !important;
+      color: #bbf7d0 !important;
+    }
+    #winlab-autosync-btn[data-scraper-status="fresh"] #scraper-status-dot {
+      background: #22c55e !important;
+      box-shadow: 0 0 8px #22c55e;
+    }
+    #winlab-autosync-btn[data-scraper-status="stale"] {
+      background: rgba(245,158,11,.18) !important;
+      border-color: rgba(245,158,11,.45) !important;
+      color: #fde68a !important;
+    }
+    #winlab-autosync-btn[data-scraper-status="stale"] #scraper-status-dot {
+      background: #f59e0b !important;
+    }
+    #winlab-autosync-btn[data-scraper-status="error"] {
+      background: rgba(239,68,68,.18) !important;
+      border-color: rgba(239,68,68,.45) !important;
+      color: #fecaca !important;
+    }
+    #winlab-autosync-btn[data-scraper-status="error"] #scraper-status-dot {
+      background: #ef4444 !important;
+      animation: scraperPulse 1s ease-in-out infinite;
+    }
+    @keyframes scraperPulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.4; }
+    }
+
+    /* ── TABS más elegantes ─────────────────────────────────── */
+    #tabs {
+      background: var(--pl-navy-800);
+      padding: 0 14px;
+      border-bottom: 1px solid var(--pl-navy-700);
+      box-shadow: var(--pl-shadow-sm);
+    }
+    #tabs .tab {
+      background: transparent !important;
+      border: none !important;
+      color: rgba(255,255,255,.65) !important;
+      padding: 12px 16px !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      border-radius: 0 !important;
+      border-bottom: 2px solid transparent !important;
+      transition: all .15s !important;
+      letter-spacing: 0.2px;
+    }
+    #tabs .tab:hover {
+      color: var(--pl-white) !important;
+      background: rgba(255,255,255,.05) !important;
+    }
+    #tabs .tab.active {
+      color: var(--pl-white) !important;
+      background: transparent !important;
+      border-bottom-color: var(--pl-accent) !important;
+      font-weight: 600 !important;
+    }
+    /* Tab destacada (Tablero y Rondas) - mantienen acento pero sutil */
+    #tabs .tab[onclick*="tablero"],
+    #tabs .tab[onclick*="Rondas"],
+    #tabs .tab[onclick*="rondas"] {
+      background: transparent !important;
+    }
+    #tabs .tab[onclick*="tablero"].active {
+      border-bottom-color: #a855f7 !important;
+    }
+    #tabs .tab[onclick*="Rondas"].active,
+    #tabs .tab[onclick*="rondas"].active {
+      border-bottom-color: #818cf8 !important;
+    }
+
+    /* ── SIDEBAR DE CAMAS — funcional y elegante ─────────── */
+    #piso-view-wrap {
+      display: grid !important;
+      grid-template-columns: 86px minmax(0, 1fr) !important;
+      gap: 14px !important;
+      align-items: flex-start !important;
+      padding: 14px 16px !important;
+    }
+    #bed-nav {
+      position: sticky !important;
+      top: 96px !important;
+      max-height: calc(100vh - 120px) !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      background: var(--pl-navy-900) !important;
+      border: 1px solid var(--pl-navy-700) !important;
+      border-radius: 12px !important;
+      padding: 0 !important;
+      z-index: 5 !important;
+      box-shadow: var(--pl-shadow-md);
+      scrollbar-width: thin;
+      scrollbar-color: var(--pl-navy-600) var(--pl-navy-900);
+    }
+    #bed-nav::-webkit-scrollbar { width: 6px; }
+    #bed-nav::-webkit-scrollbar-track { background: var(--pl-navy-900); }
+    #bed-nav::-webkit-scrollbar-thumb {
+      background: var(--pl-navy-600);
+      border-radius: 3px;
+    }
+    /* Logo en cabecera del sidebar */
+    #bed-nav-logo {
+      padding: 14px 8px 12px;
+      border-bottom: 1px solid var(--pl-navy-700);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      background: linear-gradient(180deg, var(--pl-navy-900) 0%, var(--pl-navy-800) 100%);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    #bed-nav-logo svg {
+      display: block;
+      width: 44px;
+      height: 44px;
+    }
+    #bed-nav-logo .logo-text {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      color: rgba(255,255,255,.55);
+      text-transform: uppercase;
+      text-align: center;
+      line-height: 1.1;
+    }
+    /* Header "Camas" debajo del logo */
+    #bed-nav > div:first-of-type:not(#bed-nav-logo) {
+      font-size: 9px !important;
+      font-weight: 700 !important;
+      color: rgba(255,255,255,.45) !important;
+      text-align: center !important;
+      padding: 8px 4px 6px !important;
+      text-transform: uppercase !important;
+      letter-spacing: 1.5px !important;
+      border-bottom: 1px solid var(--pl-navy-700) !important;
+      background: var(--pl-navy-900) !important;
+      position: sticky;
+      top: 78px;
+      z-index: 1;
+    }
+    /* Cada botón de cama */
+    #bed-nav button {
+      width: 100% !important;
+      text-align: center !important;
+      background: transparent !important;
+      border: none !important;
+      border-bottom: 1px solid rgba(255,255,255,.04) !important;
+      padding: 9px 6px !important;
+      cursor: pointer !important;
+      font-size: 12px !important;
+      font-weight: 700 !important;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace !important;
+      line-height: 1.2 !important;
+      color: rgba(255,255,255,.78) !important;
+      transition: all .12s !important;
+      position: relative;
+    }
+    #bed-nav button:hover {
+      background: var(--pl-navy-700) !important;
+      color: var(--pl-white) !important;
+      padding-left: 4px !important;
+    }
+    #bed-nav button.bed-active {
+      background: var(--pl-navy-700) !important;
+      color: var(--pl-white) !important;
+      box-shadow: inset 3px 0 0 var(--pl-accent);
+    }
+    /* Estado vacío */
+    #bed-nav:empty:after {
+      content: "Sin camas";
+      display: block;
+      padding: 12px;
+      font-size: 10px;
+      color: rgba(255,255,255,.4);
+      text-align: center;
+    }
+
+    /* ── Tarjeta de paciente highlight effect ────────────── */
+    .patient-card.bed-highlight {
+      animation: bedHighlightPulse 2s ease-out;
+      box-shadow: 0 0 0 3px var(--pl-accent), 0 16px 40px rgba(59,130,246,.25) !important;
+    }
+    @keyframes bedHighlightPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(59,130,246,.6), 0 16px 40px rgba(59,130,246,.5) !important; }
+      50%  { box-shadow: 0 0 0 5px rgba(59,130,246,.3), 0 16px 40px rgba(59,130,246,.35) !important; }
+      100% { box-shadow: 0 0 0 3px var(--pl-accent), 0 16px 40px rgba(59,130,246,.18) !important; }
+    }
+
+    /* ── Botones del toolbar más uniformes (mantienen sus colores propios) ─ */
+    .btn-green, .btn-blue, .btn-orange {
+      border-radius: 6px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.1px;
+      transition: all .15s;
+    }
+    .btn-green:hover, .btn-blue:hover, .btn-orange:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--pl-shadow-md);
+    }
+
+    /* ── Cards de paciente más limpias ─────────────────────── */
+    .patient-card {
+      border: 1px solid var(--pl-border) !important;
+      border-radius: 12px !important;
+      box-shadow: var(--pl-shadow-sm);
+      transition: box-shadow .15s, transform .15s;
+    }
+    .patient-card:hover {
+      box-shadow: var(--pl-shadow-md);
+    }
+
+    /* ── Dark theme ajustes ─────────────────────────────────── */
+    [data-theme="dark"] .patient-card,
+    body.dark .patient-card {
+      background: #1a2332 !important;
+      border-color: rgba(100,116,139,.25) !important;
+    }
+  
+
+/* ════ V14 INJECTION: CDS + Vasopresores + Indicaciones ════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+ * CSS v14 — CDS, Vasopresores, Indicaciones
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── CDS Section ─── */
+.cds-section {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1.5px solid #f59e0b;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+}
+.cds-section.cds-empty {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: #10b981;
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.1);
+}
+.cds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cds-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #78350f;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.cds-section.cds-empty .cds-title {
+  color: #064e3b;
+}
+.cds-count {
+  font-size: 11px;
+  color: #92400e;
+  font-weight: 600;
+}
+.cds-status-ok {
+  font-size: 11px;
+  color: #047857;
+  font-weight: 600;
+}
+.cds-crit-count {
+  background: #dc2626;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  animation: cds-pulse 1.5s ease-in-out 3;
+}
+@keyframes cds-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+.cds-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cds-item {
+  background: white;
+  border: 1px solid #fcd34d;
+  border-radius: 7px;
+  padding: 7px 9px;
+}
+.cds-item.cds-critical {
+  border-left: 4px solid #dc2626;
+  background: #fef2f2;
+}
+.cds-item-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.cds-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 8px;
+  color: white;
+  letter-spacing: 0.5px;
+}
+.cds-badge-stage { background: #b91c1c; }
+.cds-badge-severa { background: #dc2626; }
+.cds-badge-moderada { background: #f97316; }
+.cds-badge-leve { background: #eab308; color: #422006; }
+.cds-badge-info { background: #3b82f6; }
+.cds-rule-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.cds-suggestion {
+  font-size: 12px;
+  color: #334155;
+  margin: 3px 0 5px;
+  line-height: 1.35;
+}
+.cds-actions {
+  display: flex;
+  gap: 6px;
+}
+.cds-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.cds-btn-apply {
+  background: #1e3a5f;
+  color: white;
+}
+.cds-btn-apply:hover { background: #0a1628; }
+.cds-btn-ignore {
+  background: #e2e8f0;
+  color: #475569;
+}
+.cds-btn-ignore:hover { background: #cbd5e1; }
+.cds-more {
+  margin-top: 5px;
+  font-size: 11px;
+  color: #92400e;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+/* ─── Vasopresores Section ─── */
+.vaso-section {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border: 1.5px solid #ef4444;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+.vaso-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.vaso-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7f1d1d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.vaso-active {
+  background: #dc2626;
+  color: white;
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
+  font-weight: 700;
+}
+.vaso-weight-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #7f1d1d;
+}
+.vaso-input-weight {
+  width: 50px;
+  padding: 3px 5px;
+  border: 1px solid #fca5a5;
+  border-radius: 5px;
+  font-size: 11px;
+  text-align: center;
+}
+.vaso-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vaso-row {
+  display: grid;
+  grid-template-columns: 110px 75px 70px 1fr;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #fca5a5;
+  font-size: 11px;
+}
+.vaso-row.vaso-high {
+  border-color: #dc2626;
+  background: #fef2f2;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
+}
+.vaso-label {
+  font-weight: 600;
+  color: #1e293b;
+}
+.vaso-input {
+  width: 100%;
+  padding: 3px 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 11px;
+  text-align: center;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.vaso-unit {
+  font-size: 10px;
+  color: #64748b;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.vaso-calc {
+  font-size: 11px;
+  font-weight: 600;
+  color: #16a34a;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.vaso-row.vaso-high .vaso-calc { color: #dc2626; }
+.vaso-note {
+  font-size: 9px;
+  color: #94a3b8;
+  font-style: italic;
+  grid-column: 2 / -1;
+  margin-top: -2px;
+}
+.vaso-footer {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #7f1d1d;
+}
+.vaso-disclaimer {
+  background: rgba(255, 255, 255, 0.6);
+  padding: 4px 8px;
+  border-radius: 5px;
+  display: inline-block;
+}
+
+/* ─── Indicaciones Section ─── */
+.ind-section {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 1.5px solid #3b82f6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+.ind-section.ind-empty {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.ind-section.ind-fresh-stale {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+}
+.ind-section.ind-fresh-old {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border-color: #dc2626;
+}
+.ind-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.ind-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e3a8a;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ind-section.ind-empty .ind-title { color: #475569; }
+.ind-fresh {
+  font-size: 10px;
+  color: #64748b;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.ind-import-btn {
+  background: #1e3a5f;
+  color: white;
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+.ind-import-btn:hover { background: #0a1628; }
+.ind-empty-msg {
+  font-size: 11px;
+  color: #64748b;
+  font-style: italic;
+}
+.ind-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ind-block {
+  background: white;
+  border-radius: 6px;
+  padding: 6px 10px;
+  border: 1px solid #93c5fd;
+}
+.ind-block-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e40af;
+  margin-bottom: 3px;
+}
+.ind-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: #1e293b;
+  line-height: 1.45;
+}
+.ind-list li {
+  margin: 2px 0;
+}
+
+/* ─── Banner stale indicaciones ─── */
+.ind-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  font-weight: 500;
+}
+.ind-banner-icon {
+  font-size: 18px;
+}
+.ind-banner-text {
+  flex: 1;
+}
+.ind-banner-btn {
+  background: white;
+  color: #d97706;
+  border: none;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 12px;
+}
+.ind-banner-dismiss {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Toast ─── */
+.cds-toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1e293b;
+  color: white;
+  padding: 12px 22px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+}
+.cds-toast-show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ─── Botón toolbar Sugerencias ─── */
+.btn-cds-toolbar {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.btn-cds-toolbar:hover { filter: brightness(0.95); }
+.btn-cds-toolbar.has-critical {
+  animation: cds-critical-pulse 1.5s ease-in-out infinite;
+}
+@keyframes cds-critical-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+/* ─── Modal estándar (si no existe) ─── */
+.btn-primary {
+  background: #1e3a5f;
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 7px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { background: #0a1628; }
+.btn-secondary {
+  background: #e2e8f0;
+  color: #475569;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 7px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: #cbd5e1; }
+
+</style>
+
+<div id="cds-fab" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
+  <button onclick="refreshAllCDS()" title="Revisar sugerencias clínicas" style="background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">💡</button>
+  <button onclick="openIndicacionesModal()" title="Importar indicaciones" style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
+</div>
+
 </body>
 
 </html>
