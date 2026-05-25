@@ -2975,6 +2975,454 @@
       color: #b45309
     }
 
+  
+
+/* ════ V16 INJECTION: CDS + Vasopresores + Indicaciones ════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+ * CSS v14 — CDS, Vasopresores, Indicaciones
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── CDS Section ─── */
+.cds-section {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1.5px solid #f59e0b;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+}
+.cds-section.cds-empty {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: #10b981;
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.1);
+}
+.cds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cds-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #78350f;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.cds-section.cds-empty .cds-title {
+  color: #064e3b;
+}
+.cds-count {
+  font-size: 11px;
+  color: #92400e;
+  font-weight: 600;
+}
+.cds-status-ok {
+  font-size: 11px;
+  color: #047857;
+  font-weight: 600;
+}
+.cds-crit-count {
+  background: #dc2626;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  animation: cds-pulse 1.5s ease-in-out 3;
+}
+@keyframes cds-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+.cds-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cds-item {
+  background: white;
+  border: 1px solid #fcd34d;
+  border-radius: 7px;
+  padding: 7px 9px;
+}
+.cds-item.cds-critical {
+  border-left: 4px solid #dc2626;
+  background: #fef2f2;
+}
+.cds-item-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.cds-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 8px;
+  color: white;
+  letter-spacing: 0.5px;
+}
+.cds-badge-stage { background: #b91c1c; }
+.cds-badge-severa { background: #dc2626; }
+.cds-badge-moderada { background: #f97316; }
+.cds-badge-leve { background: #eab308; color: #422006; }
+.cds-badge-info { background: #3b82f6; }
+.cds-rule-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.cds-suggestion {
+  font-size: 12px;
+  color: #334155;
+  margin: 3px 0 5px;
+  line-height: 1.35;
+}
+.cds-actions {
+  display: flex;
+  gap: 6px;
+}
+.cds-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.cds-btn-apply {
+  background: #1e3a5f;
+  color: white;
+}
+.cds-btn-apply:hover { background: #0a1628; }
+.cds-btn-ignore {
+  background: #e2e8f0;
+  color: #475569;
+}
+.cds-btn-ignore:hover { background: #cbd5e1; }
+.cds-more {
+  margin-top: 5px;
+  font-size: 11px;
+  color: #92400e;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+/* ─── Vasopresores Section ─── */
+.vaso-section {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border: 1.5px solid #ef4444;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+.vaso-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.vaso-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7f1d1d;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.vaso-active {
+  background: #dc2626;
+  color: white;
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
+  font-weight: 700;
+}
+.vaso-weight-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #7f1d1d;
+}
+.vaso-input-weight {
+  width: 50px;
+  padding: 3px 5px;
+  border: 1px solid #fca5a5;
+  border-radius: 5px;
+  font-size: 11px;
+  text-align: center;
+}
+.vaso-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vaso-row {
+  display: grid;
+  grid-template-columns: 110px 75px 70px 1fr;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #fca5a5;
+  font-size: 11px;
+}
+.vaso-row.vaso-high {
+  border-color: #dc2626;
+  background: #fef2f2;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
+}
+.vaso-label {
+  font-weight: 600;
+  color: #1e293b;
+}
+.vaso-input {
+  width: 100%;
+  padding: 3px 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 11px;
+  text-align: center;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.vaso-unit {
+  font-size: 10px;
+  color: #64748b;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.vaso-calc {
+  font-size: 11px;
+  font-weight: 600;
+  color: #16a34a;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.vaso-row.vaso-high .vaso-calc { color: #dc2626; }
+.vaso-note {
+  font-size: 9px;
+  color: #94a3b8;
+  font-style: italic;
+  grid-column: 2 / -1;
+  margin-top: -2px;
+}
+.vaso-footer {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #7f1d1d;
+}
+.vaso-disclaimer {
+  background: rgba(255, 255, 255, 0.6);
+  padding: 4px 8px;
+  border-radius: 5px;
+  display: inline-block;
+}
+
+/* ─── Indicaciones Section ─── */
+.ind-section {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border: 1.5px solid #3b82f6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+.ind-section.ind-empty {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.ind-section.ind-fresh-stale {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+}
+.ind-section.ind-fresh-old {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  border-color: #dc2626;
+}
+.ind-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.ind-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e3a8a;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.ind-section.ind-empty .ind-title { color: #475569; }
+.ind-fresh {
+  font-size: 10px;
+  color: #64748b;
+  font-family: 'SF Mono', Menlo, monospace;
+}
+.ind-import-btn {
+  background: #1e3a5f;
+  color: white;
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+.ind-import-btn:hover { background: #0a1628; }
+.ind-empty-msg {
+  font-size: 11px;
+  color: #64748b;
+  font-style: italic;
+}
+.ind-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ind-block {
+  background: white;
+  border-radius: 6px;
+  padding: 6px 10px;
+  border: 1px solid #93c5fd;
+}
+.ind-block-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e40af;
+  margin-bottom: 3px;
+}
+.ind-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: #1e293b;
+  line-height: 1.45;
+}
+.ind-list li {
+  margin: 2px 0;
+}
+
+/* ─── Banner stale indicaciones ─── */
+.ind-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  font-weight: 500;
+}
+.ind-banner-icon {
+  font-size: 18px;
+}
+.ind-banner-text {
+  flex: 1;
+}
+.ind-banner-btn {
+  background: white;
+  color: #d97706;
+  border: none;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 12px;
+}
+.ind-banner-dismiss {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Toast ─── */
+.cds-toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1e293b;
+  color: white;
+  padding: 12px 22px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+}
+.cds-toast-show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ─── Botón toolbar Sugerencias ─── */
+.btn-cds-toolbar {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.btn-cds-toolbar:hover { filter: brightness(0.95); }
+.btn-cds-toolbar.has-critical {
+  animation: cds-critical-pulse 1.5s ease-in-out infinite;
+}
+@keyframes cds-critical-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+/* ─── Modal estándar (si no existe) ─── */
+.btn-primary {
+  background: #1e3a5f;
+  color: white;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 7px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { background: #0a1628; }
+.btn-secondary {
+  background: #e2e8f0;
+  color: #475569;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 7px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: #cbd5e1; }
+
   </style>
 </head>
 
@@ -3710,12 +4158,26 @@
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.1/dist/umd/supabase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+  </script>
+  
 
-/* ════ V14 INJECTION: CDS + Vasopresores + Indicaciones ════ */
+  <!-- ════════ V16: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
+  <script>
+/* Código nuevo en su PROPIO bloque dedicado, NO dentro de tag con atributo src=. */
+/* Ver seccion 14 del PROJECT_BRIEFING.md para el postmortem del bug v14. */
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PISO LIBRO v14 — Módulos: CDS · Vasopresores · Indicaciones read-only
-// Inyectado antes de </script> en index-CDS-v14.html
+// Inyectado antes del cierre del script principal en index-CDS-v14.html
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -4594,16 +5056,8 @@ function cdsToast(msg) {
   setInterval(updateIndicacionesBanner, 60 * 60 * 1000);
 })();
 
-</script>
-  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.1/dist/umd/supabase.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script>
-    if (window.pdfjsLib) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    }
   </script>
+
   <script>
     // ─── CONSTANTS ─────────────────────────────────────────────────────────────────
     const FULL_CARD_ESP = new Set(["CG", "CCR", "CTV", "CT", "CX DE TÓRAX", "ONCOCIRUGÍA", "CG/GYO", "ENDOS", "CPR", "CV"]);
@@ -19948,459 +20402,13 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       background: #1a2332 !important;
       border-color: rgba(100,116,139,.25) !important;
     }
-  
-
-/* ════ V14 INJECTION: CDS + Vasopresores + Indicaciones ════ */
-/* ═══════════════════════════════════════════════════════════════════════════
- * CSS v14 — CDS, Vasopresores, Indicaciones
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ─── CDS Section ─── */
-.cds-section {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border: 1.5px solid #f59e0b;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 10px;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
-}
-.cds-section.cds-empty {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-  border-color: #10b981;
-  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.1);
-}
-.cds-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.cds-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #78350f;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.cds-section.cds-empty .cds-title {
-  color: #064e3b;
-}
-.cds-count {
-  font-size: 11px;
-  color: #92400e;
-  font-weight: 600;
-}
-.cds-status-ok {
-  font-size: 11px;
-  color: #047857;
-  font-weight: 600;
-}
-.cds-crit-count {
-  background: #dc2626;
-  color: white;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 700;
-  animation: cds-pulse 1.5s ease-in-out 3;
-}
-@keyframes cds-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
-  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
-}
-.cds-items {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.cds-item {
-  background: white;
-  border: 1px solid #fcd34d;
-  border-radius: 7px;
-  padding: 7px 9px;
-}
-.cds-item.cds-critical {
-  border-left: 4px solid #dc2626;
-  background: #fef2f2;
-}
-.cds-item-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 3px;
-}
-.cds-badge {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 8px;
-  color: white;
-  letter-spacing: 0.5px;
-}
-.cds-badge-stage { background: #b91c1c; }
-.cds-badge-severa { background: #dc2626; }
-.cds-badge-moderada { background: #f97316; }
-.cds-badge-leve { background: #eab308; color: #422006; }
-.cds-badge-info { background: #3b82f6; }
-.cds-rule-name {
-  font-size: 11px;
-  font-weight: 600;
-  color: #1e293b;
-}
-.cds-suggestion {
-  font-size: 12px;
-  color: #334155;
-  margin: 3px 0 5px;
-  line-height: 1.35;
-}
-.cds-actions {
-  display: flex;
-  gap: 6px;
-}
-.cds-btn {
-  font-size: 10px;
-  padding: 3px 8px;
-  border-radius: 5px;
-  border: none;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.15s;
-}
-.cds-btn-apply {
-  background: #1e3a5f;
-  color: white;
-}
-.cds-btn-apply:hover { background: #0a1628; }
-.cds-btn-ignore {
-  background: #e2e8f0;
-  color: #475569;
-}
-.cds-btn-ignore:hover { background: #cbd5e1; }
-.cds-more {
-  margin-top: 5px;
-  font-size: 11px;
-  color: #92400e;
-  cursor: pointer;
-  text-decoration: underline;
-  font-weight: 600;
-}
-
-/* ─── Vasopresores Section ─── */
-.vaso-section {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-  border: 1.5px solid #ef4444;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 10px;
-}
-.vaso-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 9px;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.vaso-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #7f1d1d;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.vaso-active {
-  background: #dc2626;
-  color: white;
-  font-size: 9px;
-  padding: 2px 7px;
-  border-radius: 8px;
-  margin-left: 6px;
-  font-weight: 700;
-}
-.vaso-weight-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: #7f1d1d;
-}
-.vaso-input-weight {
-  width: 50px;
-  padding: 3px 5px;
-  border: 1px solid #fca5a5;
-  border-radius: 5px;
-  font-size: 11px;
-  text-align: center;
-}
-.vaso-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.vaso-row {
-  display: grid;
-  grid-template-columns: 110px 75px 70px 1fr;
-  align-items: center;
-  gap: 6px;
-  background: white;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid #fca5a5;
-  font-size: 11px;
-}
-.vaso-row.vaso-high {
-  border-color: #dc2626;
-  background: #fef2f2;
-  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
-}
-.vaso-label {
-  font-weight: 600;
-  color: #1e293b;
-}
-.vaso-input {
-  width: 100%;
-  padding: 3px 5px;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  font-size: 11px;
-  text-align: center;
-  font-family: 'SF Mono', Menlo, monospace;
-}
-.vaso-unit {
-  font-size: 10px;
-  color: #64748b;
-  font-family: 'SF Mono', Menlo, monospace;
-}
-.vaso-calc {
-  font-size: 11px;
-  font-weight: 600;
-  color: #16a34a;
-  font-family: 'SF Mono', Menlo, monospace;
-}
-.vaso-row.vaso-high .vaso-calc { color: #dc2626; }
-.vaso-note {
-  font-size: 9px;
-  color: #94a3b8;
-  font-style: italic;
-  grid-column: 2 / -1;
-  margin-top: -2px;
-}
-.vaso-footer {
-  margin-top: 8px;
-  font-size: 10px;
-  color: #7f1d1d;
-}
-.vaso-disclaimer {
-  background: rgba(255, 255, 255, 0.6);
-  padding: 4px 8px;
-  border-radius: 5px;
-  display: inline-block;
-}
-
-/* ─── Indicaciones Section ─── */
-.ind-section {
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  border: 1.5px solid #3b82f6;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 10px;
-}
-.ind-section.ind-empty {
-  background: #f1f5f9;
-  border-color: #94a3b8;
-}
-.ind-section.ind-fresh-stale {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border-color: #f59e0b;
-}
-.ind-section.ind-fresh-old {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-  border-color: #dc2626;
-}
-.ind-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
-}
-.ind-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #1e3a8a;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.ind-section.ind-empty .ind-title { color: #475569; }
-.ind-fresh {
-  font-size: 10px;
-  color: #64748b;
-  font-family: 'SF Mono', Menlo, monospace;
-}
-.ind-import-btn {
-  background: #1e3a5f;
-  color: white;
-  font-size: 10px;
-  padding: 4px 10px;
-  border-radius: 5px;
-  border: none;
-  cursor: pointer;
-  font-weight: 600;
-}
-.ind-import-btn:hover { background: #0a1628; }
-.ind-empty-msg {
-  font-size: 11px;
-  color: #64748b;
-  font-style: italic;
-}
-.ind-content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ind-block {
-  background: white;
-  border-radius: 6px;
-  padding: 6px 10px;
-  border: 1px solid #93c5fd;
-}
-.ind-block-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: #1e40af;
-  margin-bottom: 3px;
-}
-.ind-list {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 11px;
-  color: #1e293b;
-  line-height: 1.45;
-}
-.ind-list li {
-  margin: 2px 0;
-}
-
-/* ─── Banner stale indicaciones ─── */
-.ind-banner {
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-  padding: 10px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  font-size: 13px;
-  font-weight: 500;
-}
-.ind-banner-icon {
-  font-size: 18px;
-}
-.ind-banner-text {
-  flex: 1;
-}
-.ind-banner-btn {
-  background: white;
-  color: #d97706;
-  border: none;
-  padding: 5px 14px;
-  border-radius: 6px;
-  font-weight: 700;
-  cursor: pointer;
-  font-size: 12px;
-}
-.ind-banner-dismiss {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ─── Toast ─── */
-.cds-toast {
-  position: fixed;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%) translateY(20px);
-  background: #1e293b;
-  color: white;
-  padding: 12px 22px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  z-index: 10000;
-  opacity: 0;
-  transition: opacity 0.3s, transform 0.3s;
-  pointer-events: none;
-}
-.cds-toast-show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-/* ─── Botón toolbar Sugerencias ─── */
-.btn-cds-toolbar {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.btn-cds-toolbar:hover { filter: brightness(0.95); }
-.btn-cds-toolbar.has-critical {
-  animation: cds-critical-pulse 1.5s ease-in-out infinite;
-}
-@keyframes cds-critical-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
-  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
-}
-
-/* ─── Modal estándar (si no existe) ─── */
-.btn-primary {
-  background: #1e3a5f;
-  color: white;
-  border: none;
-  padding: 8px 18px;
-  border-radius: 7px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-primary:hover { background: #0a1628; }
-.btn-secondary {
-  background: #e2e8f0;
-  color: #475569;
-  border: none;
-  padding: 8px 18px;
-  border-radius: 7px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-secondary:hover { background: #cbd5e1; }
-
-</style>
+  </style>
 
 <div id="cds-fab" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
-  <button onclick="refreshAllCDS()" title="Revisar sugerencias clínicas" style="background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">💡</button>
-  <button onclick="openIndicacionesModal()" title="Importar indicaciones" style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
+  <button onclick="refreshAllCDS()" title="Revisar sugerencias clínicas"
+    style="background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">💡</button>
+  <button onclick="openIndicacionesModal()" title="Importar indicaciones"
+    style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
 </div>
 
 </body>
