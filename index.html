@@ -2977,7 +2977,7 @@
 
   
 
-/* ════ V19 INJECTION ════ */
+/* ════ V20 INJECTION ════ */
 /* CSS v17: vaso compacto + modal con tabs + estilos heredados */
 
 /* ─── CDS Section ─── */
@@ -3908,7 +3908,7 @@
   </script>
   
 
-  <!-- ════════ V19: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
+  <!-- ════════ V20: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
   <script>
 /* Codigo nuevo en su PROPIO bloque dedicado. */
 
@@ -4331,9 +4331,9 @@ const PLIndicaciones = (function() {
     const blocks = [];
     for (let i = 0; i < anchors.length; i++) {
       const anchor = anchors[i];
-      // El bloque empieza en la línea ANTERIOR al ancla (donde está el nombre)
-      // y termina antes del siguiente ancla
-      const blockStart = Math.max(0, anchor.lineIdx - 2); // -2 para incluir nombre y posible línea blanca
+      // Ventana de lookback: hasta 20 líneas atrás, pero NO más allá del ancla anterior
+      const prevAnchorIdx = (i > 0) ? anchors[i - 1].lineIdx : -1;
+      const blockStart = Math.max(0, prevAnchorIdx + 1, anchor.lineIdx - 20);
       const blockEnd = (i + 1 < anchors.length) ? anchors[i + 1].lineIdx - 1 : lines.length;
       const segmentLines = lines.slice(blockStart, blockEnd);
       const parsed = parseBlock(segmentLines, anchor.lineIdx - blockStart);
@@ -4351,26 +4351,41 @@ const PLIndicaciones = (function() {
   function parseBlock(segLines, anchorIdx) {
     const anchorLine = segLines[anchorIdx] || "";
 
-    // NOMBRE: línea no vacía inmediatamente anterior al ancla
+    // NOMBRE: línea no vacía inmediatamente anterior al ancla.
+    // Estrategia: ir hacia atrás SKIPEANDO líneas vacías, footers (GRACIAS, DRA./DR.), fechas,
+    // headers tipo INDICACIONES, hasta encontrar una línea que parezca nombre real.
+    // PARAR si encontramos un footer del paciente anterior o el límite del bloque.
     let nombre = "";
-    for (let i = anchorIdx - 1; i >= 0; i--) {
-      const t = (segLines[i] || "").replace(/\u00A0/g, " ").trim();
+    let linesScanned = 0;
+    for (let i = anchorIdx - 1; i >= 0 && linesScanned < 25; i--, linesScanned++) {
+      const raw = (segLines[i] || "").replace(/\u00A0/g, " ");
+      const t = raw.trim();
       if (!t) continue;
-      // Skip si parece header "INDICACIONES..." (tomar la línea anterior)
-      if (/INDICACIONES/i.test(t)) continue;
-      // Skip si parece otro header o fecha
+      // PARAR si llegamos a footer del paciente anterior (somos demasiado atrás)
+      if (/^(gracias|fecha)\b/i.test(t)) break;
+      if (/^(dra?\.|dr\.|mip\b)/i.test(t) && /\b(CG|R\d|MB)\b/i.test(t)) break;
+      // Skip si parece header viejo "INDICACIONES MÉDICAS..."
+      // Importante: regex tolerante a caracteres invisibles antes de "INDICACIONES"
+      if (/INDICACIONES/i.test(t) || /NDICACIONES/i.test(t)) continue;
+      // Skip si parece fecha
       if (/^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(t)) continue;
       // Skip si parece descripción tipo "FEMENINO DE XX AÑOS DE EDAD"
       if (/^(MASCULINO|FEMENINO)\s+DE\s+\d/i.test(t)) continue;
-      // Skip si tiene "AÑOS" Y "EXP" (es otro ancla)
-      if (/\b\d{1,3}\s*A[ÑN]OS?\b/i.test(t) && /(EXP|CURP)/i.test(t)) continue;
-      // Skip si empieza con simbolos especiales o bullets
-      const cleaned = t.replace(/^[\u2022\u25E6·●▪◆◊○\-\*\d\.]+/, "").trim();
-      // Validar que parece nombre: ≥2 palabras de ≥3 chars, MAYÚSCULAS o mixto
-      const words = cleaned.split(/\s+/).filter(function(w) { return w.length >= 3 && /[A-ZÁÉÍÓÚÑ]/.test(w); });
-      if (words.length >= 2 && cleaned.length >= 6 && !/[0-9]/.test(cleaned)) {
-        nombre = cleaned;
-        break;
+      // Skip si tiene "AÑOS" Y (EXP|CURP) — es OTRO ancla (paciente anterior)
+      if (/\b\d{1,3}\s*A[ÑN]OS?\b/i.test(t) && /(EXP|CURP)/i.test(t)) break;
+      // Cleanup: quitar bullets, números y puntos al inicio (regex SIN bug de rango)
+      const cleaned = t.replace(/^[\u2022\u25E6·●▪◆◊○*0-9.\s\-]+/, "").trim();
+      if (!cleaned || cleaned.length < 4) continue;
+      // Validar nombre: ≥2 palabras de ≥3 chars, sin dígitos, mayoría letras MAYÚSCULAS
+      const words = cleaned.split(/\s+/).filter(function(w) { return w.length >= 2 && /[A-ZÁÉÍÓÚÑa-záéíóúñ]/.test(w); });
+      if (words.length >= 2 && cleaned.length >= 6 && !/\d/.test(cleaned)) {
+        // Verificar que tiene predominantemente mayúsculas (los nombres en este Doc están en MAYÚSCULAS)
+        const upperCount = (cleaned.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length;
+        const letterCount = (cleaned.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
+        if (letterCount > 0 && upperCount / letterCount >= 0.7) {
+          nombre = cleaned;
+          break;
+        }
       }
     }
 
@@ -4379,7 +4394,7 @@ const PLIndicaciones = (function() {
     const expM = anchorLine.match(/EXP[\s:#-]*(\d[\d\-]{2,15})/i);
     if (expM) exp = normalizeExp(expM[1]) || null;
 
-    // CAMA: NO disponible en el texto de este formato (no hay pestañas en el copy/paste)
+    // CAMA: NO disponible en el texto de este formato
     let cama = null;
 
     if (!nombre && !exp) return null;
@@ -4387,7 +4402,7 @@ const PLIndicaciones = (function() {
     // SECCIONES
     const sections = { DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "MEDIDAS GENERALES": [] };
     let current = null;
-    const SECTION_RE = /^[\s\u00A0\u2022\u25E6·●▪◆◊○\-\*]*(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES)\s*[:：]?\s*$/i;
+    const SECTION_RE = /^[\s\u00A0\u2022\u25E6·●▪◆◊○*0-9.\s\-]*(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES)\s*[:：]?\s*$/i;
     for (let i = anchorIdx + 1; i < segLines.length; i++) {
       const raw = segLines[i];
       const line = raw.replace(/\u00A0/g, " ").replace(/[\u2022\u25E6·●▪◆◊○]/g, "").trim();
@@ -4399,7 +4414,7 @@ const PLIndicaciones = (function() {
         continue;
       }
       if (current && sections[current]) {
-        const cleaned = line.replace(/^[\s\-\*\d\.]+/, "").trim();
+        const cleaned = line.replace(/^[\s\d.\-*]+/, "").trim();
         if (/^(gracias|fecha\s)/i.test(cleaned)) continue;
         if (/^(dra?\.|dr\.|mip\b)/i.test(cleaned) && /\//.test(cleaned)) continue;
         if (cleaned.length < 2) continue;
