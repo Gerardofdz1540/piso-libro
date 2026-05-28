@@ -2977,132 +2977,8 @@
 
   
 
-/* ════ V21 INJECTION ════ */
-/* CSS v17: vaso compacto + modal con tabs + estilos heredados */
-
-/* ─── CDS Section ─── */
-.cds-section { background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%); border:1.5px solid #f59e0b; border-radius:10px; padding:10px 12px; margin-top:10px; box-shadow:0 2px 8px rgba(245,158,11,.15); }
-.cds-section.cds-empty { background:linear-gradient(135deg,#ecfdf5 0%,#d1fae5 100%); border-color:#10b981; box-shadow:0 1px 4px rgba(16,185,129,.1); }
-.cds-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
-.cds-title { font-size:12px; font-weight:700; color:#78350f; text-transform:uppercase; letter-spacing:.5px; }
-.cds-section.cds-empty .cds-title { color:#064e3b; }
-.cds-count { font-size:11px; color:#92400e; font-weight:600; }
-.cds-status-ok { font-size:11px; color:#047857; font-weight:600; }
-.cds-crit-count { background:#dc2626; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; animation:cds-pulse 1.5s ease-in-out 3; }
-@keyframes cds-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.5)} 50%{box-shadow:0 0 0 6px rgba(220,38,38,0)} }
-.cds-items { display:flex; flex-direction:column; gap:6px; }
-.cds-item { background:white; border:1px solid #fcd34d; border-radius:7px; padding:7px 9px; }
-.cds-item.cds-critical { border-left:4px solid #dc2626; background:#fef2f2; }
-.cds-item-row { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
-.cds-badge { font-size:9px; font-weight:700; padding:2px 7px; border-radius:8px; color:white; letter-spacing:.5px; }
-.cds-badge-stage { background:#b91c1c; }
-.cds-badge-severa { background:#dc2626; }
-.cds-badge-moderada { background:#f97316; }
-.cds-badge-leve { background:#eab308; color:#422006; }
-.cds-badge-info { background:#3b82f6; }
-.cds-rule-name { font-size:11px; font-weight:600; color:#1e293b; }
-.cds-suggestion { font-size:12px; color:#334155; margin:3px 0 5px; line-height:1.35; }
-.cds-actions { display:flex; gap:6px; }
-.cds-btn { font-size:10px; padding:3px 8px; border-radius:5px; border:none; cursor:pointer; font-weight:600; }
-.cds-btn-apply { background:#1e3a5f; color:white; }
-.cds-btn-apply:hover { background:#0a1628; }
-.cds-btn-ignore { background:#e2e8f0; color:#475569; }
-.cds-btn-ignore:hover { background:#cbd5e1; }
-.cds-more { margin-top:5px; font-size:11px; color:#92400e; cursor:pointer; text-decoration:underline; font-weight:600; }
-
-/* ─── VASOPRESORES COMPACTOS ─── */
-/* Mini-button cuando NO hay actividad — discreto, inline */
-.vaso-mini { margin-top:6px; }
-.vaso-mini-btn {
-  background: transparent;
-  border: 1.5px dashed #cbd5e1;
-  color: #64748b;
-  font-size: 10px;
-  padding: 3px 10px;
-  border-radius: 5px;
-  cursor: pointer;
-  font-weight: 500;
-}
-.vaso-mini-btn:hover { background:#fee2e2; color:#dc2626; border-color:#ef4444; }
-
-/* Compact: una sola línea horizontal con pills cuando hay actividad */
-.vaso-section-compact {
-  background: linear-gradient(90deg, #fee2e2 0%, #fef2f2 100%);
-  border-left: 3px solid #dc2626;
-  border-radius: 6px;
-  padding: 6px 10px;
-  margin-top: 8px;
-}
-.vaso-compact-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.vaso-compact-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #7f1d1d;
-  text-transform: uppercase;
-}
-.vaso-pill {
-  background: white;
-  border: 1px solid #fca5a5;
-  border-radius: 12px;
-  padding: 2px 10px;
-  font-size: 11px;
-  font-family: 'SF Mono', Menlo, monospace;
-  color: #1e293b;
-}
-.vaso-pill b { color: #7f1d1d; margin-right: 3px; }
-.vaso-pill.vaso-pill-high { border-color: #dc2626; background: #fee2e2; }
-.vaso-edit-btn {
-  background: rgba(255,255,255,.7);
-  border: 1px solid #fca5a5;
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  margin-left: auto;
-}
-.vaso-edit-btn:hover { background: white; }
-
-/* Expanded: el panel completo (solo cuando se edita activamente) */
-.vaso-section {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-  border: 1.5px solid #ef4444;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 10px;
-}
-.vaso-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; gap:10px; flex-wrap:wrap; }
-.vaso-title { font-size:12px; font-weight:700; color:#7f1d1d; text-transform:uppercase; letter-spacing:.5px; }
-.vaso-collapse-btn {
-  background: rgba(255,255,255,.7);
-  border: 1px solid #fca5a5;
-  width: 28px; height: 24px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  margin-left: auto;
-}
-.vaso-collapse-btn:hover { background: white; }
-.vaso-weight-row { display:flex; align-items:center; gap:5px; font-size:11px; color:#7f1d1d; }
-.vaso-input-weight { width:50px; padding:3px 5px; border:1px solid #fca5a5; border-radius:5px; font-size:11px; text-align:center; }
-.vaso-rows { display:flex; flex-direction:column; gap:4px; }
-.vaso-row { display:grid; grid-template-columns:110px 75px 70px 1fr; align-items:center; gap:6px; background:white; padding:4px 8px; border-radius:6px; border:1px solid #fca5a5; font-size:11px; }
-.vaso-row.vaso-high { border-color:#dc2626; background:#fef2f2; box-shadow:0 0 0 2px rgba(220,38,38,.1); }
-.vaso-label { font-weight:600; color:#1e293b; }
-.vaso-input { width:100%; padding:3px 5px; border:1px solid #cbd5e1; border-radius:4px; font-size:11px; text-align:center; font-family:'SF Mono',Menlo,monospace; }
-.vaso-unit { font-size:10px; color:#64748b; font-family:'SF Mono',Menlo,monospace; }
-.vaso-calc { font-size:11px; font-weight:600; color:#16a34a; font-family:'SF Mono',Menlo,monospace; }
-.vaso-row.vaso-high .vaso-calc { color:#dc2626; }
-.vaso-note { font-size:9px; color:#94a3b8; font-style:italic; grid-column:2/-1; margin-top:-2px; }
-.vaso-footer { margin-top:8px; font-size:10px; color:#7f1d1d; }
-.vaso-disclaimer { background:rgba(255,255,255,.6); padding:4px 8px; border-radius:5px; display:inline-block; }
-
-/* ─── INDICACIONES ─── */
+/* ════ V22 INJECTION ════ */
+/* CSS v22 — solo indicaciones */
 .ind-section { background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%); border:1.5px solid #3b82f6; border-radius:10px; padding:10px 12px; margin-top:10px; }
 .ind-section.ind-empty { background:#f1f5f9; border-color:#94a3b8; }
 .ind-section.ind-fresh-stale { background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%); border-color:#f59e0b; }
@@ -3119,47 +2995,6 @@
 .ind-block-title { font-size:11px; font-weight:700; color:#1e40af; margin-bottom:3px; }
 .ind-list { margin:0; padding-left:18px; font-size:11px; color:#1e293b; line-height:1.45; }
 .ind-list li { margin:2px 0; }
-
-/* Banner stale */
-.ind-banner { position:sticky; top:0; z-index:1000; background:linear-gradient(90deg,#f59e0b 0%,#d97706 100%); color:white; padding:10px 16px; display:flex; align-items:center; gap:12px; box-shadow:0 2px 8px rgba(0,0,0,.15); font-size:13px; font-weight:500; }
-.ind-banner-icon { font-size:18px; }
-.ind-banner-text { flex:1; }
-.ind-banner-btn { background:white; color:#d97706; border:none; padding:5px 14px; border-radius:6px; font-weight:700; cursor:pointer; font-size:12px; }
-.ind-banner-dismiss { background:rgba(255,255,255,.2); color:white; border:none; width:26px; height:26px; border-radius:50%; cursor:pointer; font-size:14px; }
-
-/* Tabs en modal */
-.ind-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 2px solid #e2e8f0;
-  margin-bottom: 12px;
-}
-.ind-tab {
-  background: transparent;
-  border: none;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #64748b;
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-}
-.ind-tab:hover { color: #1e293b; }
-.ind-tab-active {
-  color: #1e3a5f;
-  border-bottom-color: #1e3a5f;
-}
-
-/* Toast */
-.cds-toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%) translateY(20px); background:#1e293b; color:white; padding:12px 22px; border-radius:10px; font-size:13px; font-weight:500; box-shadow:0 4px 20px rgba(0,0,0,.25); z-index:10000; opacity:0; transition:opacity .3s,transform .3s; pointer-events:none; }
-.cds-toast-show { opacity:1; transform:translateX(-50%) translateY(0); }
-
-/* Botones genéricos */
-.btn-primary { background:#1e3a5f; color:white; border:none; padding:8px 18px; border-radius:7px; font-weight:600; cursor:pointer; }
-.btn-primary:hover { background:#0a1628; }
-.btn-secondary { background:#e2e8f0; color:#475569; border:none; padding:8px 18px; border-radius:7px; font-weight:600; cursor:pointer; }
-.btn-secondary:hover { background:#cbd5e1; }
 
   </style>
 </head>
@@ -3908,361 +3743,97 @@
   </script>
   
 
-  <!-- ════════ V21: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
+  <!-- ════════ V22: Indicaciones MÍNIMO ════════ -->
   <script>
-/* Codigo nuevo en su PROPIO bloque dedicado. */
-
-/* Modulos PLCDS, PLVaso, PLIndicaciones — v17 */
-const PLCDS = (function() {
-  "use strict";
-  function num(v) {
-    if (v === null || v === undefined || v === "") return NaN;
-    const s = String(v).replace(",", ".").trim();
-    const n = parseFloat(s);
-    return isFinite(n) ? n : NaN;
-  }
-  function getBaselineCr(labHistory) {
-    if (!Array.isArray(labHistory) || !labHistory.length) return null;
-    const sorted = labHistory.slice().sort(function(a, b) {
-      const da = a.fecha || a.fecha_labs || a.ts || "";
-      const db = b.fecha || b.fecha_labs || b.ts || "";
-      return String(da).localeCompare(String(db));
-    });
-    for (let i = 0; i < sorted.length; i++) {
-      const snap = sorted[i];
-      const v = num(snap.labs && (snap.labs.cr || snap.labs.creatinina));
-      if (isFinite(v) && v > 0) return v;
-    }
-    return null;
-  }
-  function getSex(p, nd) {
-    const raw = (p && p.sexo) || (nd && nd.checklist && nd.checklist.sexo) || "";
-    const s = String(raw).trim().toUpperCase();
-    if (["M","MASC","MASCULINO","H","HOMBRE","VARON","VARÓN"].includes(s)) return "M";
-    if (["F","FEM","FEMENINO","MUJER"].includes(s)) return "F";
-    return "";
-  }
-  const RULES = [
-    { id:"hipoNa", name:"Hiponatremia", keywords:/hipo[\s-]?natremia/i,
-      check(labs){ const na=num(labs.na); if(!isFinite(na)||na>=135) return null;
-        const sev=na<125?"severa":(na<130?"moderada":"leve");
-        return {sev,value:na,unit:"mEq/L",display:"Na "+na};}},
-    { id:"hiperNa", name:"Hipernatremia", keywords:/hiper[\s-]?natremia/i,
-      check(labs){ const na=num(labs.na); if(!isFinite(na)||na<145) return null;
-        const sev=na>=160?"severa":(na>=150?"moderada":"leve");
-        return {sev,value:na,unit:"mEq/L",display:"Na "+na};}},
-    { id:"hipoK", name:"Hipokalemia", keywords:/hipo[\s-]?kale?mia|hipo[\s-]?potasemia/i,
-      check(labs){ const k=num(labs.k); if(!isFinite(k)||k>=3.5) return null;
-        const sev=k<2.5?"severa":(k<3.0?"moderada":"leve");
-        return {sev,value:k,unit:"mEq/L",display:"K "+k};}},
-    { id:"hiperK", name:"Hiperkalemia", keywords:/hiper[\s-]?kale?mia|hiper[\s-]?potasemia/i,
-      critical:true, criticalIf:function(r){return r.value>=6.5;},
-      check(labs){ const k=num(labs.k); if(!isFinite(k)||k<5.5) return null;
-        const sev=k>=6.5?"severa":(k>=6.0?"moderada":"leve");
-        return {sev,value:k,unit:"mEq/L",display:"K "+k};}},
-    { id:"anemia", name:"Anemia", keywords:/anemia/i,
-      check(labs,_h,p,nd){ const hb=num(labs.hb); if(!isFinite(hb)) return null;
-        const sex=getSex(p,nd); const threshold=sex==="F"?12:13;
-        if(hb>=threshold) return null;
-        let sev; if(hb<8) sev="severa"; else if(hb<11) sev="moderada"; else sev="leve";
-        return {sev,value:hb,unit:"g/dL",display:"Hb "+hb};}},
-    { id:"aki", name:"Lesión renal aguda KDIGO", keywords:/(lesi[oó]n\s+renal\s+aguda|LRA|AKI|injuria\s+renal|kdigo)/i,
-      critical:true, criticalIf:function(r){return r.stage===3;},
-      check(labs,labHistory){ const cr=num(labs.cr); if(!isFinite(cr)) return null;
-        const basal=getBaselineCr(labHistory);
-        if(basal===null){
-          if(cr>=4.0) return {stage:3,sev:"stage3",value:cr,basal:null,ratio:null,display:"Cr "+cr+" mg/dL (sin basal)"};
-          return null;
-        }
-        const ratio=cr/basal; const delta=cr-basal;
-        let stage=null;
-        if(cr>=4.0||ratio>=3.0) stage=3;
-        else if(ratio>=2.0) stage=2;
-        else if(ratio>=1.5||delta>=0.3) stage=1;
-        if(!stage) return null;
-        return {stage,sev:"stage"+stage,value:cr,basal,ratio:ratio.toFixed(2),
-          display:"Cr "+cr+" (basal "+basal+", x"+ratio.toFixed(2)+")"};}},
-    { id:"trombo", name:"Trombocitopenia", keywords:/trombocitopen|plaquetopen/i,
-      check(labs){ const p=num(labs.plaq); if(!isFinite(p)||p>=150) return null;
-        const sev=p<50?"severa":(p<100?"moderada":"leve");
-        return {sev,value:p,unit:"x10^3/uL",display:"Plaq "+p+"k"};}},
-    { id:"hipoalb", name:"Hipoalbuminemia", keywords:/hipoalbumin/i,
-      check(labs){ const a=num(labs.alb); if(!isFinite(a)||a>=3.5) return null;
-        const sev=a<2.5?"severa":(a<3.0?"moderada":"leve");
-        return {sev,value:a,unit:"g/dL",display:"Alb "+a};}},
-    { id:"acidosis", name:"Acidosis metabólica", keywords:/acidosis\s+metab/i,
-      check(labs){ const hco3=num(labs.hco3); const ph=num(labs.ph);
-        if(!isFinite(hco3)||hco3>=22) return null;
-        if(isFinite(ph)&&ph>=7.45) return null;
-        const sev=hco3<15?"severa":(hco3<18?"moderada":"leve");
-        return {sev,value:hco3,unit:"mEq/L",display:"HCO3 "+hco3};}},
-    { id:"hiperbil", name:"Hiperbilirrubinemia", keywords:/(hiperbilirrubin|ict[eé]ric)/i,
-      check(labs){ const bt=num(labs.bt); if(!isFinite(bt)||bt<=1.2) return null;
-        const sev=bt>5?"severa":(bt>3?"moderada":"leve");
-        return {sev,value:bt,unit:"mg/dL",display:"Bil total "+bt};}}
-  ];
-  function evalColangitis(labs,dx,p,nd){
-    if(!/colangitis/i.test(dx)) return null;
-    const leucos=num(labs.leucos); const bt=num(labs.bt); const alb=num(labs.alb);
-    const edad=num(p&&p.edad);
-    let gradoII_count=0;
-    if(isFinite(leucos)&&(leucos>12||leucos<4)) gradoII_count++;
-    if(isFinite(edad)&&edad>=75) gradoII_count++;
-    if(isFinite(bt)&&bt>=5) gradoII_count++;
-    if(isFinite(alb)&&alb<3.0) gradoII_count++;
-    const m=dx.match(/colangitis\s+(leve|moderada|severa|grave|grado\s+[IiV1-3]+)/i);
-    const dxGrade=m?m[1].toLowerCase():null;
-    let suggestedGrade="leve";
-    if(gradoII_count>=1) suggestedGrade="moderada";
-    return {sev:suggestedGrade,criteria:gradoII_count,
-      display:"Colangitis Tokyo 2018: "+suggestedGrade+" ("+gradoII_count+" criterios Grado II)",dxGrade};
-  }
-  function evalChoqueRemitido(dx,nd){
-    if(!/choque/i.test(dx)) return null;
-    if(/(remitido|en\s+remisi[oó]n|\(rem\)|controlado)/i.test(dx)) return null;
-    const v=nd.vasopresores||{};
-    const nore=num(v.nore); const vaso=num(v.vaso); const epi=num(v.epi);
-    const dobu=num(v.dobu); const dopa=num(v.dopa);
-    const anyActive=(isFinite(nore)&&nore>0)||(isFinite(vaso)&&vaso>0)||
-      (isFinite(epi)&&epi>0)||(isFinite(dobu)&&dobu>0)||(isFinite(dopa)&&dopa>0);
-    if(anyActive) return null;
-    return {sev:"info",display:"Choque sin vasopresores activos — considerar marcar como remitido"};
-  }
-  function extractLastSurgeryDate(dx){
-    if(!dx) return null;
-    const re=/\((\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})\)/g;
-    let m,dates=[];
-    while((m=re.exec(dx))!==null){
-      const d=parseInt(m[1]),mo=parseInt(m[2]); let y=parseInt(m[3]);
-      if(y<100) y=2000+y;
-      const date=new Date(y,mo-1,d);
-      if(!isNaN(date.getTime())) dates.push(date);
-    }
-    if(!dates.length) return null;
-    dates.sort(function(a,b){return b-a;});
-    return dates[0];
-  }
-  function evalCirugiaReciente(dx,nd){
-    let last=null;
-    if(nd.ultimaCirugia){
-      const d=new Date(nd.ultimaCirugia);
-      if(!isNaN(d.getTime())) last=d;
-    } else { last=extractLastSurgeryDate(dx); }
-    if(!last) return null;
-    const now=new Date();
-    const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-    const lastDay=new Date(last.getFullYear(),last.getMonth(),last.getDate());
-    const diffDays=Math.round((today-lastDay)/(1000*60*60*24));
-    if(diffDays<0||diffDays>30) return null;
-    if(diffDays<=1){
-      const fechaStr=lastDay.toISOString().slice(0,10);
-      return {sev:"info",display:"Cirugía "+(diffDays===0?"hoy":"ayer")+" ("+fechaStr+") — verificar PO actualizado"};
-    }
-    return null;
-  }
-  function buildSuggestion(rule,result,dx){
-    if(!rule.keywords) return null;
-    const dxStr=(dx||"").toString();
-    const grade_re=/(leve|moderada|moderado|severa|severo|grave)/i;
-    const matchKw=dxStr.match(rule.keywords);
-    if(matchKw){
-      const around=dxStr.slice(Math.max(0,matchKw.index-5),Math.min(dxStr.length,matchKw.index+matchKw[0].length+40));
-      const gm=around.match(grade_re);
-      const currentGrade=gm?gm[0].toLowerCase():null;
-      const norm=function(g){
-        if(!g) return null; g=g.toLowerCase();
-        if(g==="moderado") return "moderada";
-        if(g==="severo"||g==="grave") return "severa";
-        return g;
-      };
-      const cur=norm(currentGrade); const tgt=norm(result.sev);
-      if(cur&&tgt&&cur!==tgt){
-        return {type:"reclasify",
-          text:"Reclasificar "+rule.name.toLowerCase()+" "+cur+" -> "+tgt+" ("+(result.display||result.value)+")",
-          from:cur,to:tgt};
-      }
-      if(!cur&&tgt){
-        return {type:"specify",
-          text:"Especificar grado: "+rule.name.toLowerCase()+" "+tgt+" ("+(result.display||result.value)+")",
-          to:tgt};
-      }
-      return null;
-    }
-    return {type:"add",
-      text:"Agregar al dx: "+rule.name+" "+result.sev+" ("+(result.display||result.value)+")",
-      to:result.sev};
-  }
-  function valueHash(result){
-    if(!result) return "";
-    if(typeof result.value==="number") return String(Math.round(result.value*10)/10);
-    if(result.stage) return "stage"+result.stage+":"+result.ratio;
-    return JSON.stringify(result);
-  }
-  function evaluate(p,nd){
-    const out=[]; const labs=(nd&&nd.labs)||{};
-    const labHist=(nd&&nd.labHistory)||[];
-    const dx=((nd&&nd.dx)||(p&&p.dx)||"").toString();
-    RULES.forEach(function(rule){
-      const result=rule.check(labs,labHist,p,nd); if(!result) return;
-      const sug=buildSuggestion(rule,result,dx); if(!sug) return;
-      const isCritical=rule.critical&&rule.criticalIf&&rule.criticalIf(result);
-      out.push({ruleId:rule.id,ruleName:rule.name,severity:result.sev,
-        critical:!!isCritical,result,suggestion:sug,valueHash:valueHash(result)});
-    });
-    const col=evalColangitis(labs,dx,p,nd);
-    if(col&&col.dxGrade){
-      const norm=function(g){
-        if(!g) return null; g=g.toLowerCase();
-        if(g.includes("leve")||g==="i"||g==="1"||g.includes("grado i")||g.includes("grado 1")) return "leve";
-        if(g.includes("moderad")||g==="ii"||g==="2"||g.includes("grado ii")||g.includes("grado 2")) return "moderada";
-        if(g.includes("severa")||g.includes("grave")||g==="iii"||g==="3"||g.includes("grado iii")||g.includes("grado 3")) return "severa";
-        return g;
-      };
-      const cur=norm(col.dxGrade);
-      if(cur&&cur!==col.sev){
-        out.push({ruleId:"colangitis",ruleName:"Colangitis (Tokyo 2018)",severity:col.sev,
-          critical:col.sev==="severa",result:col,
-          suggestion:{type:"reclasify",text:"Colangitis: reclasificar "+cur+" -> "+col.sev+" ("+col.criteria+" criterios Grado II)"},
-          valueHash:"tk:"+col.sev+":"+col.criteria});
-      }
-    }
-    const ch=evalChoqueRemitido(dx,nd||{});
-    if(ch){
-      out.push({ruleId:"choqueRem",ruleName:"Choque sin vasopresores",severity:"info",critical:false,
-        result:ch,suggestion:{type:"specify",text:ch.display},valueHash:"rem:v0"});
-    }
-    const cir=evalCirugiaReciente(dx,nd||{});
-    if(cir){
-      out.push({ruleId:"cirReciente",ruleName:"Cirugía reciente",severity:"info",critical:false,
-        result:cir,suggestion:{type:"verify",text:cir.display},valueHash:"cr:"+cir.display});
-    }
-    return out;
-  }
-  const SEV_ORDER={stage3:0,severa:1,stage2:2,moderada:3,stage1:4,leve:5,info:6};
-  function sortBySeverity(suggestions){
-    return suggestions.slice().sort(function(a,b){
-      const va=SEV_ORDER[a.severity]; const vb=SEV_ORDER[b.severity];
-      return (va===undefined?99:va)-(vb===undefined?99:vb);
-    });
-  }
-  return {evaluate,sortBySeverity,extractLastSurgeryDate};
-})();
-
 /* ════════════════════════════════════════════════════════════════════════════
- * PLVaso v17 — COMPACTO. Solo expande si activo. Mini-pill cuando vacío.
+ * PisoLibro v22 — INDICACIONES MÍNIMO
+ * Match prioritario: NOMBRE → CAMA (fallback). NO usa EXP.
+ * Sin CDS, sin Vaso. Sin bootstrap automático.
  * ════════════════════════════════════════════════════════════════════════════ */
-const PLVaso = (function() {
-  "use strict";
-  const LIMITS = {
-    nore: { unit: "mcg/kg/min", warn: 0.5, label: "Nore" },
-    epi:  { unit: "mcg/kg/min", warn: 0.3, label: "Epi" },
-    dobu: { unit: "mcg/kg/min", warn: 20,  label: "Dobu" },
-    dopa: { unit: "mcg/kg/min", warn: 20,  label: "Dopa" },
-    vaso: { unit: "U/min",      warn: 0.04, label: "Vaso" }
-  };
-  function num(v) { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : NaN; }
-  function computeAbsoluteDose(drug, dose, weight) {
-    const d = num(dose);
-    const w = num(weight);
-    if (!isFinite(d) || d <= 0) return null;
-    if (drug === "vaso") return { perMin: d, perHour: d * 60, units: "U" };
-    if (!isFinite(w) || w <= 0) return null;
-    const mcgMin = d * w;
-    return { perMin: mcgMin, perHour: mcgMin * 60 / 1000, units: "mcg" };
-  }
-  function fmtAbsolute(drug, dose, weight) {
-    const c = computeAbsoluteDose(drug, dose, weight);
-    if (!c) return "";
-    if (drug === "vaso") {
-      return c.perMin.toFixed(3).replace(/0+$/, "").replace(/\.$/, "") + " U/min · " + c.perHour.toFixed(2) + " U/h";
-    }
-    return c.perMin.toFixed(2) + " mcg/min · " + c.perHour.toFixed(2) + " mg/h";
-  }
-  function isHighDose(drug, dose) {
-    const d = num(dose);
-    if (!isFinite(d)) return false;
-    const lim = LIMITS[drug];
-    return lim ? (d > lim.warn) : false;
-  }
-  function hasAnyActive(vasopresores) {
-    if (!vasopresores) return false;
-    return Object.keys(LIMITS).some(function(k) {
-      const v = num(vasopresores[k]);
-      return isFinite(v) && v > 0;
-    });
-  }
-  return { LIMITS, computeAbsoluteDose, fmtAbsolute, isHighDose, hasAnyActive };
-})();
 
-/* ════════════════════════════════════════════════════════════════════════════
- * PLIndicaciones v18 — match doble: CAMA + APELLIDO (fallback: exp + nombre solo)
- * Storage: array de bloques, match dinámico al render.
- * ════════════════════════════════════════════════════════════════════════════ */
+function escInd(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 const PLIndicaciones = (function() {
   "use strict";
-  const KEY_BLOCKS = "pl_indicaciones_v4_blocks";
-  const KEY_META = "pl_indicaciones_v4_meta";
+  const KEY_BLOCKS = "pl_ind_v22_blocks";
+  const KEY_META = "pl_ind_v22_meta";
 
-  // ─── NORMALIZADORES ─────────────────────────────────────────────────────────
-  function normalizeExp(s) { return String(s || "").replace(/[^0-9]/g, ""); }
   function normalizeCama(s) {
     if (s === null || s === undefined) return null;
     const m = String(s).match(/(\d{2,4})\s*$/);
     return m ? m[1] : null;
   }
+
   function normalizeName(name) {
     if (!name) return [];
-    return String(name).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^A-Z\s]/g, " ").split(/\s+/)
+    return String(name).toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z\s]/g, " ")
+      .split(/\s+/)
       .filter(function(w) {
-        if (w.length < 3) return false;
-        if (["DE","LA","EL","DEL","LAS","LOS","ANO","ANOS","CON","SIN","POR"].indexOf(w) >= 0) return false;
+        if (w.length < 2) return false;
+        // Filtrar conectores y abreviaciones de edad
+        if (["DE", "LA", "EL", "DEL", "LAS", "LOS", "ANO", "ANOS",
+             "CON", "SIN", "POR", "PARA", "ANIOS", "Y", "O"].indexOf(w) >= 0) return false;
         return true;
       });
   }
+
   function nameMatchScore(n1, n2) {
-    const w1 = new Set(normalizeName(n1));
-    const w2 = new Set(normalizeName(n2));
-    if (!w1.size || !w2.size) return 0;
+    const w1 = normalizeName(n1);
+    const w2 = normalizeName(n2);
+    if (!w1.length || !w2.length) return 0;
+    const set2 = new Set(w2);
     let common = 0;
-    w1.forEach(function(w) { if (w2.has(w)) common++; });
+    w1.forEach(function(w) { if (set2.has(w)) common++; });
     return common;
   }
 
-  // ─── MATCH PATIENT vs BLOCK ─────────────────────────────────────────────────
+  // ─── MATCH ESTRATEGIA PEDIDA POR GERA ───────────────────────────────────────
+  // 1) NOMBRE: si ≥2 palabras del nombre coinciden, MATCH
+  // 2) CAMA: fallback si nombre no matchea
+  // NO usa EXP.
   function matchPatient(patient, block) {
     if (!patient || !block) return { matched: false, score: 0, method: null };
-    // 1) EXP exacto
-    if (block.exp && patient.exp) {
-      const e1 = normalizeExp(patient.exp);
-      const e2 = normalizeExp(block.exp);
-      if (e1 && e2 && (e1 === e2 || (e1.length >= 5 && e2.length >= 5 && (e1.endsWith(e2) || e2.endsWith(e1))))) {
-        return { matched: true, score: 100, method: "exp" };
-      }
-    }
-    // 2) Cama + nombre
-    const c1 = normalizeCama(patient.cama);
-    const c2 = normalizeCama(block.cama);
-    const camaMatch = (c1 && c2 && c1 === c2);
+
+    // 1) NOMBRE primero
     const nScore = nameMatchScore(patient.nombre, block.nombre);
-    if (camaMatch && nScore >= 1) {
-      return { matched: true, score: 90 + nScore, method: "cama+nombre" };
-    }
-    // 3) Cama sola
-    if (camaMatch && !block.nombre) {
-      return { matched: true, score: 70, method: "cama-solo" };
-    }
-    // 4) Nombre con ≥2 palabras (threshold bajado de 3 a 2 — la mayoría de nombres tienen al menos apellido paterno+materno o nombre+apellido en común)
     if (nScore >= 2) {
       return { matched: true, score: 50 + nScore * 10, method: "nombre" };
     }
+    // Aceptar 1 palabra si es muy larga (apellido único)
+    if (nScore === 1) {
+      const w1 = normalizeName(patient.nombre);
+      const w2 = normalizeName(block.nombre);
+      // Buscar la palabra común
+      const set2 = new Set(w2);
+      const common = w1.find(function(w) { return set2.has(w); });
+      if (common && common.length >= 6) {
+        return { matched: true, score: 30, method: "nombre-1palabra" };
+      }
+    }
+
+    // 2) CAMA como fallback
+    const c1 = normalizeCama(patient.cama);
+    const c2 = normalizeCama(block.cama);
+    if (c1 && c2 && c1 === c2) {
+      return { matched: true, score: 40, method: "cama" };
+    }
+
     return { matched: false, score: 0, method: null };
   }
 
   // ─── STORAGE ────────────────────────────────────────────────────────────────
   function loadBlocks() {
-    try { const r = localStorage.getItem(KEY_BLOCKS); return r ? JSON.parse(r) : []; }
-    catch (e) { return []; }
+    try {
+      const r = localStorage.getItem(KEY_BLOCKS);
+      return r ? JSON.parse(r) : [];
+    } catch (e) { return []; }
   }
   function saveBlocks(blocks) {
     try { localStorage.setItem(KEY_BLOCKS, JSON.stringify(blocks)); } catch (e) {}
@@ -4271,8 +3842,10 @@ const PLIndicaciones = (function() {
     try { localStorage.setItem(KEY_META, JSON.stringify({ importedAt: ts, stats: stats || {} })); } catch (e) {}
   }
   function getMeta() {
-    try { const r = localStorage.getItem(KEY_META); return r ? JSON.parse(r) : null; }
-    catch (e) { return null; }
+    try {
+      const r = localStorage.getItem(KEY_META);
+      return r ? JSON.parse(r) : null;
+    } catch (e) { return null; }
   }
   function hoursSinceImport() {
     const m = getMeta();
@@ -4284,15 +3857,14 @@ const PLIndicaciones = (function() {
     if (h === Infinity) return { state: "none", label: "Sin importar" };
     if (h < 4) return { state: "fresh", label: "Hace " + Math.round(h * 10) / 10 + "h" };
     if (h < 12) return { state: "stale", label: "Hace " + Math.round(h) + "h" };
-    return { state: "old", label: "Hace " + Math.round(h) + "h ⚠️" };
+    return { state: "old", label: "Hace " + Math.round(h) + "h" };
   }
 
-  // ─── PARSER v4 — ANCLA = línea con AÑOS + EXP (o CURP) ──────────────────────
-  // Detecta cada paciente buscando la línea que tiene "XX AÑOS" Y ("EXP" O "CURP")
-  // El nombre del paciente está en la línea ANTERIOR.
-  // Soporta también el header viejo "INDICACIONES DE CIRUGÍA GENERAL".
+  // ─── PARSER (formato real del Google Doc de Gera) ──────────────────────────
+  // Ancla: línea con "XX AÑOS" + alguno de (EXP, CURP, FOLIO)
+  // O header viejo "INDICACIONES DE CIRUGÍA GENERAL"
   function parsePasted(text) {
-    if (!text) return { blocks: [], debug: { reason: "empty" } };
+    if (!text) return { blocks: [], debug: { totalLines: 0, anchorLines: 0, headersInd: 0, blocksDetected: 0, blocksWithCama: 0, blocksWithName: 0 } };
     const fullText = String(text);
     const lines = fullText.split(/\r?\n/);
     const debug = {
@@ -4301,47 +3873,39 @@ const PLIndicaciones = (function() {
       headersInd: 0,
       blocksDetected: 0,
       blocksWithCama: 0,
-      blocksWithName: 0,
-      blocksWithExp: 0
+      blocksWithName: 0
     };
 
-    // Identificar todas las líneas ancla (donde empieza un nuevo paciente)
-    // Ancla: línea que contiene "XX AÑOS" Y al menos uno de (EXP, CURP, FOLIO, EDAD)
-    // O línea con header viejo "INDICACIONES"
     const ANCHOR_AGE_RE = /\b\d{1,3}\s*A[ÑN]OS?\b/i;
-    const ANCHOR_ID_RE = /(EXP|CURP|FOLIO|N[°ºo]\s*EXP)/i;
-    const INDICACIONES_RE = /INDICACIONES\s+(DE\s+)?(CIRUG[IÍ]A|HOSPITALIZ)/i;
+    const ANCHOR_ID_RE = /(EXP|CURP|FOLIO)/i;
+    const INDICACIONES_RE = /INDICACIONES\s+(DE\s+)?(CIRUG|HOSPITALIZ)/i;
 
-    const anchors = []; // {lineIdx, type: "id-line" | "header-ind"}
+    const anchors = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (INDICACIONES_RE.test(line)) {
-        anchors.push({ lineIdx: i, type: "header-ind" });
+        anchors.push({ lineIdx: i, type: "header" });
         debug.headersInd++;
       } else if (ANCHOR_AGE_RE.test(line) && ANCHOR_ID_RE.test(line)) {
-        // Es línea de identidad de paciente
-        anchors.push({ lineIdx: i, type: "id-line" });
+        anchors.push({ lineIdx: i, type: "id" });
         debug.anchorLines++;
       }
     }
 
-    if (!anchors.length) return { blocks: [], debug };
+    if (!anchors.length) return { blocks: [], debug: debug };
 
-    // Para cada ancla, parsear el bloque
     const blocks = [];
     for (let i = 0; i < anchors.length; i++) {
       const anchor = anchors[i];
-      // Ventana de lookback: hasta 20 líneas atrás, pero NO más allá del ancla anterior
-      const prevAnchorIdx = (i > 0) ? anchors[i - 1].lineIdx : -1;
+      const prevAnchorIdx = i > 0 ? anchors[i - 1].lineIdx : -1;
       const blockStart = Math.max(0, prevAnchorIdx + 1, anchor.lineIdx - 20);
-      const blockEnd = (i + 1 < anchors.length) ? anchors[i + 1].lineIdx - 1 : lines.length;
-      const segmentLines = lines.slice(blockStart, blockEnd);
-      const parsed = parseBlock(segmentLines, anchor.lineIdx - blockStart);
+      const blockEnd = i + 1 < anchors.length ? anchors[i + 1].lineIdx - 1 : lines.length;
+      const segLines = lines.slice(blockStart, blockEnd);
+      const parsed = parseBlock(segLines, anchor.lineIdx - blockStart);
       if (parsed) {
         blocks.push(parsed);
         if (parsed.cama) debug.blocksWithCama++;
         if (parsed.nombre) debug.blocksWithName++;
-        if (parsed.exp) debug.blocksWithExp++;
       }
     }
     debug.blocksDetected = blocks.length;
@@ -4349,63 +3913,69 @@ const PLIndicaciones = (function() {
   }
 
   function parseBlock(segLines, anchorIdx) {
-    const anchorLine = segLines[anchorIdx] || "";
-
-    // NOMBRE: línea no vacía inmediatamente anterior al ancla.
-    // Estrategia: ir hacia atrás SKIPEANDO líneas vacías, footers (GRACIAS, DRA./DR.), fechas,
-    // headers tipo INDICACIONES, hasta encontrar una línea que parezca nombre real.
-    // PARAR si encontramos un footer del paciente anterior o el límite del bloque.
+    // NOMBRE: buscar línea no vacía antes del ancla, sin "FEMENINO/MASCULINO DE X AÑOS"
     let nombre = "";
-    let linesScanned = 0;
-    for (let i = anchorIdx - 1; i >= 0 && linesScanned < 25; i--, linesScanned++) {
+    let scanned = 0;
+    for (let i = anchorIdx - 1; i >= 0 && scanned < 25; i--, scanned++) {
       const raw = (segLines[i] || "").replace(/\u00A0/g, " ");
       const t = raw.trim();
       if (!t) continue;
-      // PARAR si llegamos a footer del paciente anterior (somos demasiado atrás)
+      // Footer del paciente anterior → STOP
       if (/^(gracias|fecha)\b/i.test(t)) break;
-      if (/^(dra?\.|dr\.|mip\b)/i.test(t) && /\b(CG|R\d|MB)\b/i.test(t)) break;
-      // Skip si parece header viejo "INDICACIONES MÉDICAS..."
-      // Importante: regex tolerante a caracteres invisibles antes de "INDICACIONES"
+      if (/^(dra?\.?|dr\.?|mip)\b/i.test(t) && /\b(CG|R\d|MB|CIRUG)\b/i.test(t)) break;
+      // Header INDICACIONES → skip
       if (/INDICACIONES/i.test(t) || /NDICACIONES/i.test(t)) continue;
-      // Skip si parece fecha
-      if (/^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(t)) continue;
-      // Skip si parece descripción tipo "FEMENINO DE XX AÑOS DE EDAD"
+      // Fecha → skip
+      if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(t)) continue;
+      // "FEMENINO DE X AÑOS DE EDAD..." → skip
       if (/^(MASCULINO|FEMENINO)\s+DE\s+\d/i.test(t)) continue;
-      // Skip si tiene "AÑOS" Y (EXP|CURP) — es OTRO ancla (paciente anterior)
-      if (/\b\d{1,3}\s*A[ÑN]OS?\b/i.test(t) && /(EXP|CURP)/i.test(t)) break;
-      // Cleanup: quitar bullets, números y puntos al inicio (regex SIN bug de rango)
-      const cleaned = t.replace(/^[\u2022\u25E6·●▪◆◊○*0-9.\s\-]+/, "").trim();
+      // Otra ancla → STOP
+      if (/\b\d{1,3}\s*A[ÑN]OS?\b/i.test(t) && /(EXP|CURP|FOLIO)/i.test(t)) break;
+      // Cleanup: quitar bullets, dígitos, puntos al inicio
+      // IMPORTANTE: regex SIN bug de rango (dash al final)
+      const cleaned = t.replace(/^[\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*0-9.\s\-]+/, "").trim();
       if (!cleaned || cleaned.length < 4) continue;
-      // Validar nombre: ≥2 palabras de ≥3 chars, sin dígitos, mayoría letras MAYÚSCULAS
+      // Validar: ≥2 palabras de letras, sin dígitos, predominantemente mayúsculas
+      if (/\d/.test(cleaned)) continue;
       const words = cleaned.split(/\s+/).filter(function(w) { return w.length >= 2 && /[A-ZÁÉÍÓÚÑa-záéíóúñ]/.test(w); });
-      if (words.length >= 2 && cleaned.length >= 6 && !/\d/.test(cleaned)) {
-        // Verificar que tiene predominantemente mayúsculas (los nombres en este Doc están en MAYÚSCULAS)
-        const upperCount = (cleaned.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length;
-        const letterCount = (cleaned.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
-        if (letterCount > 0 && upperCount / letterCount >= 0.7) {
-          nombre = cleaned;
-          break;
-        }
+      if (words.length < 2) continue;
+      if (cleaned.length < 6) continue;
+      // Predominio de mayúsculas (los nombres en el Doc están MAYÚSCULAS)
+      const upperCount = (cleaned.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length;
+      const letterCount = (cleaned.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
+      if (letterCount > 0 && upperCount / letterCount >= 0.7) {
+        nombre = cleaned;
+        break;
       }
     }
 
-    // EXP: extraer del ancla
-    let exp = null;
-    const expM = anchorLine.match(/EXP[\s:#-]*(\d[\d\-]{2,15})/i);
-    if (expM) exp = normalizeExp(expM[1]) || null;
-
-    // CAMA: NO disponible en el texto de este formato
+    // CAMA: en este formato del Doc, casi nunca aparece en el texto (pestañas no se copian).
+    // Pero por si Gera escribe la cama manual ("CAMA: 3-150" o "150" antes del nombre), lo intentamos.
     let cama = null;
+    for (let i = anchorIdx - 1; i >= 0 && i >= anchorIdx - 25; i--) {
+      const t = (segLines[i] || "").trim();
+      if (!t) continue;
+      // Solo número
+      if (/^\d{2,4}$/.test(t)) { cama = t; break; }
+      // "CAMA 150" o "Cama: 150"
+      const m1 = t.match(/CAMA[\s:#-]*(\d{2,4})\b/i);
+      if (m1) { cama = m1[1]; break; }
+      // "3-150" formato piso-cama
+      const m2 = t.match(/\b\d+-(\d{2,4})\b/);
+      if (m2) { cama = m2[1]; break; }
+      if (/INDICACIONES/i.test(t)) continue;
+      if (/^(gracias|dra?\.?|dr\.?)/i.test(t)) break;
+    }
 
-    if (!nombre && !exp) return null;
+    if (!nombre && !cama) return null;
 
     // SECCIONES
     const sections = { DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "MEDIDAS GENERALES": [] };
     let current = null;
-    const SECTION_RE = /^[\s\u00A0\u2022\u25E6·●▪◆◊○*0-9.\s\-]*(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES)\s*[:：]?\s*$/i;
+    const SECTION_RE = /^[\s\u00A0\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*0-9.\-]*(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES)\s*[:：]?\s*$/i;
     for (let i = anchorIdx + 1; i < segLines.length; i++) {
       const raw = segLines[i];
-      const line = raw.replace(/\u00A0/g, " ").replace(/[\u2022\u25E6·●▪◆◊○]/g, "").trim();
+      const line = raw.replace(/\u00A0/g, " ").replace(/[\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB]/g, "").trim();
       if (!line) continue;
       const sm = line.match(SECTION_RE);
       if (sm) {
@@ -4414,18 +3984,17 @@ const PLIndicaciones = (function() {
         continue;
       }
       if (current && sections[current]) {
-        const cleaned = line.replace(/^[\s\d.\-*]+/, "").trim();
-        if (/^(gracias|fecha\s)/i.test(cleaned)) continue;
-        if (/^(dra?\.|dr\.|mip\b)/i.test(cleaned) && /\//.test(cleaned)) continue;
-        if (cleaned.length < 2) continue;
-        sections[current].push(cleaned);
+        const cleanedItem = line.replace(/^[\s\d.\-\*]+/, "").trim();
+        if (/^(gracias|fecha)/i.test(cleanedItem)) continue;
+        if (/^(dra?\.?|dr\.?|mip)/i.test(cleanedItem) && /\//.test(cleanedItem)) continue;
+        if (cleanedItem.length < 2) continue;
+        sections[current].push(cleanedItem);
       }
     }
 
     return {
       cama: cama,
       nombre: nombre,
-      exp: exp,
       DIETA: sections.DIETA,
       SOLUCIONES: sections.SOLUCIONES,
       MEDICAMENTOS: sections.MEDICAMENTOS,
@@ -4433,21 +4002,18 @@ const PLIndicaciones = (function() {
     };
   }
 
-  // ─── IMPORT ─────────────────────────────────────────────────────────────────
   function importPasted(text) {
     const r = parsePasted(text);
     saveBlocks(r.blocks);
     const stats = {
-      totalParsed: r.blocks.length,
-      withCama: r.blocks.filter(function(b){return !!b.cama}).length,
-      withNombre: r.blocks.filter(function(b){return !!b.nombre}).length,
-      withExp: r.blocks.filter(function(b){return !!b.exp}).length
+      total: r.blocks.length,
+      withName: r.blocks.filter(function(b){return !!b.nombre}).length,
+      withCama: r.blocks.filter(function(b){return !!b.cama}).length
     };
     setMeta(Date.now(), stats);
     return { blocks: r.blocks, debug: r.debug, stats: stats };
   }
 
-  // ─── GET FOR PATIENT ────────────────────────────────────────────────────────
   function getForPatient(p) {
     if (!p) return null;
     const blocks = loadBlocks();
@@ -4465,7 +4031,6 @@ const PLIndicaciones = (function() {
     return best;
   }
 
-  // ─── DIAGNÓSTICO ────────────────────────────────────────────────────────────
   function diagnose(text, patients) {
     const r = parsePasted(text);
     const diag = { blocks: r.blocks, debug: r.debug, matchTable: [] };
@@ -4480,8 +4045,8 @@ const PLIndicaciones = (function() {
           }
         });
         return {
-          block: { cama: b.cama, nombre: b.nombre, exp: b.exp },
-          match: bestP ? { cama: bestP.cama, nombre: bestP.nombre, exp: bestP.exp, method: bestRes.method, score: bestRes.score } : null
+          block: { cama: b.cama, nombre: b.nombre },
+          match: bestP ? { cama: bestP.cama, nombre: bestP.nombre, method: bestRes.method, score: bestRes.score } : null
         };
       });
     }
@@ -4489,593 +4054,175 @@ const PLIndicaciones = (function() {
   }
 
   return {
-    parsePasted, importPasted, getForPatient, matchPatient, diagnose,
-    normalizeExp, normalizeCama, normalizeName, nameMatchScore,
-    freshness, hoursSinceImport, getMeta, loadBlocks
+    parsePasted: parsePasted,
+    importPasted: importPasted,
+    getForPatient: getForPatient,
+    matchPatient: matchPatient,
+    diagnose: diagnose,
+    freshness: freshness,
+    getMeta: getMeta,
+    loadBlocks: loadBlocks,
+    normalizeName: normalizeName,
+    normalizeCama: normalizeCama,
+    nameMatchScore: nameMatchScore
   };
 })();
 
-const PLCDSStore = (function() {
-  "use strict";
-  const KEY_IGN = "pl_cds_ignored_v1";
-  const KEY_DISC = "pl_cds_disclaimer_accepted_v1";
-  const KEY_CRIT = "pl_cds_critical_alerted_v1";
-  function loadIgn() { try { return JSON.parse(localStorage.getItem(KEY_IGN) || "{}"); } catch (e) { return {}; } }
-  function saveIgn(o) { try { localStorage.setItem(KEY_IGN, JSON.stringify(o)); } catch (e) {} }
-  function isIgnored(patientKey, ruleId, valueHash) {
-    const o = loadIgn();
-    return o[patientKey + ":" + ruleId] === valueHash;
-  }
-  function ignore(patientKey, ruleId, valueHash) {
-    const o = loadIgn();
-    o[patientKey + ":" + ruleId] = valueHash;
-    saveIgn(o);
-  }
-  function unignore(patientKey, ruleId) {
-    const o = loadIgn();
-    delete o[patientKey + ":" + ruleId];
-    saveIgn(o);
-  }
-  function disclaimerAccepted() { return localStorage.getItem(KEY_DISC) === "1"; }
-  function acceptDisclaimer() { try { localStorage.setItem(KEY_DISC, "1"); } catch (e) {} }
-  function alreadyAlerted(patientKey, ruleId, valueHash) {
-    try {
-      const o = JSON.parse(localStorage.getItem(KEY_CRIT) || "{}");
-      return o[patientKey + ":" + ruleId] === valueHash;
-    } catch (e) { return false; }
-  }
-  function markAlerted(patientKey, ruleId, valueHash) {
-    try {
-      const o = JSON.parse(localStorage.getItem(KEY_CRIT) || "{}");
-      o[patientKey + ":" + ruleId] = valueHash;
-      localStorage.setItem(KEY_CRIT, JSON.stringify(o));
-    } catch (e) {}
-  }
-  return { isIgnored, ignore, unignore, disclaimerAccepted, acceptDisclaimer, alreadyAlerted, markAlerted };
-})();
-
-
-/* UI v17: vaso compacto, indicaciones por exp, modal con bookmarklet */
-function escCDS(s) {
-  return String(s == null ? "" : s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
-/* ─── CDS: como antes (ya funcionaba) ─── */
-function renderCDSSection(p, nd, k) {
-  try {
-  if (!nd || !nd.labs) nd = nd || { labs: {} };
-  const suggestions = PLCDS.evaluate(p, nd);
-  const sorted = PLCDS.sortBySeverity(suggestions);
-  const filtered = sorted.filter(function(s) { return !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash); });
-  if (!filtered.length) {
-    return '<div class="cds-section cds-empty" id="cds-' + escCDS(k) + '"><div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas</span><span class="cds-status-ok">✓ Sin pendientes</span></div></div>';
-  }
-  const visible = filtered.slice(0, 3);
-  const hidden = filtered.length - visible.length;
-  const items = visible.map(function(s) {
-    const sevSimple = (s.severity || "info").replace(/\d/g, "");
-    const sevLabel = (s.severity || "").replace("stage", "KDIGO ").toUpperCase();
-    const valHash = escCDS(s.valueHash);
-    return '<div class="cds-item' + (s.critical ? ' cds-critical' : '') + ' cds-sev-' + sevSimple + '" data-rule="' + escCDS(s.ruleId) + '" data-vhash="' + valHash + '">' +
-      '<div class="cds-item-row"><span class="cds-badge cds-badge-' + sevSimple + '">' + escCDS(sevLabel) + '</span><span class="cds-rule-name">' + escCDS(s.ruleName) + '</span></div>' +
-      '<div class="cds-suggestion">' + escCDS(s.suggestion.text) + '</div>' +
-      '<div class="cds-actions">' +
-        '<button class="cds-btn cds-btn-apply" onclick="cdsApplySuggestion(\'' + escCDS(k) + '\',\'' + escCDS(s.ruleId) + '\')">✏️ Aplicar al dx</button>' +
-        '<button class="cds-btn cds-btn-ignore" onclick="cdsIgnoreSuggestion(\'' + escCDS(k) + '\',\'' + escCDS(s.ruleId) + '\',\'' + valHash + '\')">🔇 Ignorar</button>' +
-      '</div></div>';
-  }).join("");
-  const moreLabel = hidden > 0 ? '<div class="cds-more" onclick="cdsToggleMore(\'' + escCDS(k) + '\')">+' + hidden + ' más</div>' : "";
-  const critCount = filtered.filter(function(s) { return s.critical; }).length;
-  const critBadge = critCount ? '<span class="cds-crit-count">⚠️ ' + critCount + ' crítica' + (critCount > 1 ? 's' : '') + '</span>' : "";
-  return '<div class="cds-section" id="cds-' + escCDS(k) + '">' +
-    '<div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas <span class="cds-count">(' + filtered.length + ')</span></span>' + critBadge + '</div>' +
-    '<div class="cds-items">' + items + '</div>' + moreLabel + '</div>';
-
-  } catch(e) {
-    console.warn("renderCDSSection error:", e);
-    return "";
-  }
-}
-
-function cdsApplySuggestion(patientKey, ruleId) {
-  const p = (typeof patients !== "undefined" ? patients : []).find(function(pt) { return pid(pt) === patientKey; });
-  const nd = getNote(patientKey);
-  if (!p) return;
-  const suggestions = PLCDS.evaluate(p, nd);
-  const s = suggestions.find(function(x) { return x.ruleId === ruleId; });
-  if (!s) return;
-  const currentDx = (nd.dx || p.dx || "").toString();
-  if (s.suggestion.type === "reclasify" && s.suggestion.from && s.suggestion.to) {
-    const reGrade = new RegExp("(" + s.ruleName + ".*?)" + s.suggestion.from, "i");
-    if (reGrade.test(currentDx)) {
-      const newDx = currentDx.replace(reGrade, "$1" + s.suggestion.to);
-      if (confirm("Reemplazar en dx:\n\n" + currentDx + "\n\n→\n\n" + newDx + "\n\n¿Confirmar?")) {
-        nd.dx = newDx; saveNote(patientKey, nd);
-        if (p) { p.dx = newDx; }
-        if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
-        return;
-      }
-      return;
-    }
-  }
-  if (confirm("Agregar al dx la nota:\n\n" + s.suggestion.text + "\n\n¿Confirmar?")) {
-    nd.dx = currentDx + "\n📋 " + s.suggestion.text;
-    saveNote(patientKey, nd);
-    if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
-  }
-}
-
-function cdsIgnoreSuggestion(patientKey, ruleId, vhash) {
-  PLCDSStore.ignore(patientKey, ruleId, vhash);
-  if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
-}
-
-function cdsToggleMore(patientKey) {
-  const el = document.getElementById("cds-" + patientKey);
-  if (el) el.classList.toggle("cds-expanded");
-}
-
-/* ─── VASOPRESORES COMPACTOS ─── */
-/* Render: si NO hay actividad → mini-pill "💊+". Si hay → línea compacta + boton expandir */
-function renderVasoSection(p, nd, k) {
-  try {
-  const v = (nd && nd.vasopresores) || {};
-  const peso = v.peso || (p && p.peso) || "";
-  const expanded = v._expanded === true;
-  const hasActive = PLVaso.hasAnyActive(v);
-
-  if (!hasActive && !expanded) {
-    return '<div class="vaso-mini" id="vaso-' + escCDS(k) + '">' +
-      '<button class="vaso-mini-btn" onclick="vasoExpand(\'' + escCDS(k) + '\')" title="Agregar vasopresor">💊 + Vasopresor</button>' +
-      '</div>';
-  }
-
-  if (hasActive && !expanded) {
-    // Mostrar resumen compacto inline
-    const drugs = ["nore", "vaso", "epi", "dobu", "dopa"];
-    const lines = drugs.filter(function(d) {
-      const x = parseFloat(v[d]);
-      return isFinite(x) && x > 0;
-    }).map(function(d) {
-      const dose = v[d];
-      const lim = PLVaso.LIMITS[d];
-      const calc = PLVaso.fmtAbsolute(d, dose, peso);
-      const high = PLVaso.isHighDose(d, dose);
-      const needsW = d !== "vaso" && !peso;
-      return '<span class="vaso-pill' + (high ? ' vaso-pill-high' : '') + '">' +
-        '<b>' + escCDS(lim.label) + '</b> ' + escCDS(dose) + ' ' + escCDS(lim.unit) +
-        (needsW ? ' <i style="color:#dc2626">⚠️ peso?</i>' : (calc ? ' = ' + escCDS(calc.split(' · ')[0]) : '')) +
-      '</span>';
-    }).join("");
-    return '<div class="vaso-section-compact" id="vaso-' + escCDS(k) + '">' +
-      '<div class="vaso-compact-row">' +
-        '<span class="vaso-compact-label">💊 Vasopresores:</span>' +
-        lines +
-        '<button class="vaso-edit-btn" onclick="vasoExpand(\'' + escCDS(k) + '\')" title="Editar">✏️</button>' +
-      '</div>' +
-      '</div>';
-  }
-
-  // Expandido: panel completo de edición
-  const drugs = [
-    { id: "nore", label: "Norepinefrina", placeholder: "0.05" },
-    { id: "vaso", label: "Vasopresina",   placeholder: "0.03", note: "dosis fija (no por peso)" },
-    { id: "epi",  label: "Epinefrina",    placeholder: "0.05" },
-    { id: "dobu", label: "Dobutamina",    placeholder: "5" },
-    { id: "dopa", label: "Dopamina",      placeholder: "5" }
-  ];
-  const rows = drugs.map(function(d) {
-    const val = v[d.id] || "";
-    const calc = PLVaso.fmtAbsolute(d.id, val, peso);
-    const high = PLVaso.isHighDose(d.id, val);
-    const needsWeight = d.id !== "vaso" && val && !peso;
-    const lim = PLVaso.LIMITS[d.id];
-    return '<div class="vaso-row' + (high ? ' vaso-high' : '') + '">' +
-      '<label class="vaso-label">' + escCDS(d.label) + '</label>' +
-      '<input type="number" step="0.001" min="0" class="vaso-input" data-key="' + escCDS(k) + '" data-drug="' + escCDS(d.id) + '" value="' + escCDS(val) + '" placeholder="' + d.placeholder + '" onchange="vasoUpdate(this.dataset.key,this.dataset.drug,this.value)">' +
-      '<span class="vaso-unit">' + escCDS(lim.unit) + '</span>' +
-      '<span class="vaso-calc">' + (needsWeight ? '⚠️ falta peso' : (escCDS(calc) || '—')) + '</span>' +
-      (d.note ? '<span class="vaso-note">' + d.note + '</span>' : '') +
-    '</div>';
-  }).join("");
-  return '<div class="vaso-section" id="vaso-' + escCDS(k) + '">' +
-    '<div class="vaso-header">' +
-      '<span class="vaso-title">💊 Vasopresores</span>' +
-      '<div class="vaso-weight-row"><label>Peso (kg)</label>' +
-        '<input type="number" step="0.5" min="1" max="300" class="vaso-input-weight" value="' + escCDS(peso) + '" placeholder="70" onchange="vasoUpdateWeight(\'' + escCDS(k) + '\',this.value)">' +
-      '</div>' +
-      '<button class="vaso-collapse-btn" onclick="vasoCollapse(\'' + escCDS(k) + '\')" title="Cerrar">▴</button>' +
-    '</div>' +
-    '<div class="vaso-rows">' + rows + '</div>' +
-    '<div class="vaso-footer"><span class="vaso-disclaimer">⚠️ Verifica cálculos antes de prescribir. La app no reemplaza la bomba.</span></div>' +
-  '</div>';
-
-  } catch(e) {
-    console.warn("renderVasoSection error:", e);
-    return "";
-  }
-}
-
-function vasoExpand(patientKey) {
-  const nd = getNote(patientKey);
-  nd.vasopresores = nd.vasopresores || {};
-  nd.vasopresores._expanded = true;
-  saveNote(patientKey, nd);
-  _rerenderVasoOnly(patientKey, nd);
-}
-function vasoCollapse(patientKey) {
-  const nd = getNote(patientKey);
-  nd.vasopresores = nd.vasopresores || {};
-  nd.vasopresores._expanded = false;
-  saveNote(patientKey, nd);
-  _rerenderVasoOnly(patientKey, nd);
-}
-function _rerenderVasoOnly(patientKey, nd) {
-  const el = document.getElementById("vaso-" + patientKey);
-  if (el && typeof patients !== "undefined") {
-    const p = patients.find(function(pt) { return pid(pt) === patientKey; });
-    if (p) el.outerHTML = renderVasoSection(p, nd, patientKey);
-  }
-}
-function vasoUpdate(patientKey, drug, value) {
-  const nd = getNote(patientKey);
-  nd.vasopresores = nd.vasopresores || {};
-  nd.vasopresores[drug] = String(value || "").trim();
-  nd.vasopresores.ts = Date.now();
-  saveNote(patientKey, nd);
-  _rerenderVasoOnly(patientKey, nd);
-  // re-eval CDS
-  const cdsEl = document.getElementById("cds-" + patientKey);
-  if (cdsEl) {
-    const p = patients.find(function(pt) { return pid(pt) === patientKey; });
-    if (p) cdsEl.outerHTML = renderCDSSection(p, nd, patientKey);
-  }
-}
-function vasoUpdateWeight(patientKey, value) {
-  const nd = getNote(patientKey);
-  nd.vasopresores = nd.vasopresores || {};
-  nd.vasopresores.peso = String(value || "").trim();
-  saveNote(patientKey, nd);
-  _rerenderVasoOnly(patientKey, nd);
-}
-
-/* ─── INDICACIONES (read-only, match por exp) ─── */
+// ─── RENDER (defensivo con try-catch) ──────────────────────────────────────
 function renderIndicacionesSection(p, nd, k) {
   try {
-  const data = PLIndicaciones.getForPatient(p);
-  const fresh = PLIndicaciones.freshness();
-  if (!data) {
-    return '<div class="ind-section ind-empty" id="ind-' + escCDS(k) + '">' +
+    const data = PLIndicaciones.getForPatient(p);
+    const fresh = PLIndicaciones.freshness();
+    if (!data) {
+      return '<div class="ind-section ind-empty" id="ind-' + escInd(k) + '">' +
+        '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
+        '<button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button></div>' +
+        '<div class="ind-empty-msg">Sin indicaciones para ' + escInd(p.nombre || '?') + ' (cama ' + escInd(p.cama || '?') + ').</div>' +
+        '</div>';
+    }
+    const sectionBlocks = [
+      { key: "DIETA", icon: "🍴" },
+      { key: "SOLUCIONES", icon: "💧" },
+      { key: "MEDICAMENTOS", icon: "💊" },
+      { key: "MEDIDAS GENERALES", icon: "📋" }
+    ];
+    const content = sectionBlocks.map(function(b) {
+      const items = (data[b.key] || []).map(function(x) { return '<li>' + escInd(x) + '</li>'; }).join("");
+      if (!items) return "";
+      return '<div class="ind-block"><div class="ind-block-title">' + b.icon + ' ' + b.key + '</div><ul class="ind-list">' + items + '</ul></div>';
+    }).join("");
+    const matchInfo = data._matchMethod ? ' · match:' + escInd(data._matchMethod) : '';
+    return '<div class="ind-section ind-fresh-' + fresh.state + '" id="ind-' + escInd(k) + '">' +
       '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
-      '<button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button></div>' +
-      '<div class="ind-empty-msg">Sin indicaciones para ' + escCDS(p.nombre || '?') + ' (cama ' + escCDS(p.cama || '?') + ').</div>' +
-      '</div>';
-  }
-  const sectionBlocks = [
-    { key: "DIETA", icon: "🍴" },
-    { key: "SOLUCIONES", icon: "💧" },
-    { key: "MEDICAMENTOS", icon: "💊" },
-    { key: "MEDIDAS GENERALES", icon: "📋" }
-  ];
-  const content = sectionBlocks.map(function(b) {
-    const items = (data[b.key] || []).map(function(x) { return '<li>' + escCDS(x) + '</li>'; }).join("");
-    if (!items) return "";
-    return '<div class="ind-block"><div class="ind-block-title">' + b.icon + ' ' + b.key + '</div><ul class="ind-list">' + items + '</ul></div>';
-  }).join("");
-  const freshClass = "ind-fresh-" + fresh.state;
-  const matchInfo = data._matchMethod ? ' · match:' + escCDS(data._matchMethod) : '';
-  return '<div class="ind-section ' + freshClass + '" id="ind-' + escCDS(k) + '">' +
-    '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
-    '<span class="ind-fresh">⏱ ' + escCDS(fresh.label) + matchInfo + '</span>' +
-    '<button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button></div>' +
-    '<div class="ind-content">' + (content || '<div class="ind-empty-msg">Bloque presente pero sin contenido parseado.</div>') + '</div></div>';
-
-  } catch(e) {
+      '<span class="ind-fresh">⏱ ' + escInd(fresh.label) + matchInfo + '</span>' +
+      '<button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button></div>' +
+      '<div class="ind-content">' + (content || '<div class="ind-empty-msg">Bloque sin secciones parseadas.</div>') + '</div></div>';
+  } catch (e) {
     console.warn("renderIndicacionesSection error:", e);
-    return "";
+    return '';
   }
 }
 
-/* ─── MODAL DE IMPORTACIÓN — con bookmarklet y modo manual + diagnóstico ─── */
+// ─── MODAL DE IMPORTACIÓN ──────────────────────────────────────────────────
 function openIndicacionesModal() {
-  let m = document.getElementById("indicaciones-modal");
-  if (m) { m.style.display = "flex"; return; }
-  m = document.createElement("div");
-  m.id = "indicaciones-modal";
-  m.className = "modal-bg";
-  m.style.display = "flex";
-
-  // Construir bookmarklet inline (lee DOM del Google Doc actual)
-  const bookmarkletCode = buildIndicacionesBookmarklet();
-
-  m.innerHTML =
-    '<div class="modal-box" style="max-width:820px;max-height:92vh;overflow-y:auto">' +
-      '<div class="modal-header">' +
-        '<div class="modal-title">📥 Importar Indicaciones</div>' +
-        '<button class="modal-close" onclick="closeIndicacionesModal()">✕</button>' +
-      '</div>' +
-      '<div class="ind-tabs">' +
-        '<button class="ind-tab ind-tab-active" data-tab="manual" onclick="indTabSwitch(\'manual\')">📋 Pegar texto</button>' +
-        '<button class="ind-tab" data-tab="auto" onclick="indTabSwitch(\'auto\')">⚡ Bookmarklet (auto)</button>' +
-      '</div>' +
-
-      '<div id="ind-tab-manual" class="ind-tab-panel">' +
-        '<p style="font-size:12px;color:#64748b;margin:0 0 8px">' +
-          'Selecciona TODO el contenido de tu Google Doc (Cmd+A) y pégalo aquí. ' +
-          'Match se hace por <b>expediente</b> (no por cama) — más robusto.' +
+  try {
+    let m = document.getElementById("indicaciones-modal-v22");
+    if (m) { m.style.display = "flex"; return; }
+    m = document.createElement("div");
+    m.id = "indicaciones-modal-v22";
+    m.className = "ind-modal-bg";
+    m.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px";
+    m.innerHTML =
+      '<div style="background:white;border-radius:12px;padding:18px;max-width:760px;width:100%;max-height:90vh;overflow-y:auto;font-family:-apple-system,sans-serif">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+          '<div style="font-size:16px;font-weight:700;color:#0a1628">📥 Importar Indicaciones</div>' +
+          '<button onclick="closeIndicacionesModal()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:#64748b">✕</button>' +
+        '</div>' +
+        '<p style="font-size:12px;color:#64748b;margin:0 0 8px;line-height:1.5">' +
+          'Pega aquí el contenido del Google Doc (Cmd+A en el Doc → Cmd+C → pega aquí).<br>' +
+          '<b>Match prioritario por NOMBRE</b>, fallback por cama. NO usa expediente.' +
         '</p>' +
-        '<textarea id="indicaciones-paste" rows="12" style="width:100%;font-family:\'SF Mono\',Menlo,monospace;font-size:11px;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px" placeholder="Pega aquí el texto completo del Google Doc (todas las pestañas)..."></textarea>' +
-        '<div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px;align-items:center">' +
-          '<button class="btn-secondary" onclick="indicacionesDiagnose()">🔍 Diagnóstico</button>' +
+        '<textarea id="indicaciones-paste-v22" rows="11" style="width:100%;font-family:\'SF Mono\',Menlo,monospace;font-size:11px;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px;box-sizing:border-box" placeholder="Pega aquí el contenido completo del Doc..."></textarea>' +
+        '<div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px;align-items:center;flex-wrap:wrap">' +
+          '<button onclick="indicacionesDiagnose()" style="background:#e2e8f0;color:#475569;border:none;padding:8px 16px;border-radius:7px;font-weight:600;cursor:pointer">🔍 Diagnóstico</button>' +
           '<div style="display:flex;gap:8px">' +
-            '<button class="btn-secondary" onclick="closeIndicacionesModal()">Cancelar</button>' +
-            '<button class="btn-primary" onclick="indicacionesDoImport()">📥 Importar</button>' +
+            '<button onclick="closeIndicacionesModal()" style="background:#e2e8f0;color:#475569;border:none;padding:8px 18px;border-radius:7px;font-weight:600;cursor:pointer">Cancelar</button>' +
+            '<button onclick="indicacionesDoImport()" style="background:#1e3a5f;color:white;border:none;padding:8px 18px;border-radius:7px;font-weight:600;cursor:pointer">📥 Importar</button>' +
           '</div>' +
         '</div>' +
-        '<div id="indicaciones-import-result" style="margin-top:12px;font-size:12px"></div>' +
-      '</div>' +
-
-      '<div id="ind-tab-auto" class="ind-tab-panel" style="display:none">' +
-        '<p style="font-size:13px;color:#1e293b;margin:0 0 10px;line-height:1.5">' +
-          '<b>Modo automático — estilo WinLab.</b> Arrastra este botón a tu barra de favoritos. ' +
-          'Cuando estés en tu Google Doc de indicaciones, haz click en el favorito y se importarán todas las pestañas a la vez.' +
-        '</p>' +
-        '<div style="background:#f1f5f9;border:1.5px solid #cbd5e1;border-radius:8px;padding:14px;text-align:center;margin-bottom:12px">' +
-          '<a id="ind-bookmarklet-link" href="' + bookmarkletCode.replace(/"/g, "&quot;") + '" ' +
-            'style="display:inline-block;background:#1e3a5f;color:white;padding:10px 24px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;cursor:grab;user-select:auto"' +
-            'onclick="event.preventDefault();alert(\'Arrastra este botón a tu barra de favoritos. NO le des click aquí.\')">' +
-            '📥 Sync Indicaciones → PisoLibro' +
-          '</a>' +
-        '</div>' +
-        '<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:10px 12px;border-radius:6px;font-size:12px;color:#78350f;margin-bottom:10px">' +
-          '<b>⚠️ Importante:</b> el bookmarklet lee el Google Doc EN LA PESTAÑA ACTUAL del browser y guarda en este mismo PisoLibro (localStorage de este dominio). ' +
-          'Como Drive y PisoLibro están en dominios diferentes, el bookmarklet abre PisoLibro automáticamente con los datos pre-cargados al terminar.' +
-        '</div>' +
-        '<details style="font-size:12px;color:#475569"><summary style="cursor:pointer;font-weight:600">¿Cómo se usa?</summary>' +
-          '<ol style="padding-left:20px;line-height:1.6">' +
-            '<li>Arrastra el botón azul de arriba a tu barra de favoritos del browser.</li>' +
-            '<li>Abre tu Google Doc de indicaciones.</li>' +
-            '<li>Asegúrate de tener TODAS las pestañas cargadas (scroll por las pestañas si es necesario).</li>' +
-            '<li>Haz click en el bookmarklet de tu barra.</li>' +
-            '<li>Se abrirá PisoLibro con los datos importados (o se importarán en este tab si está abierto).</li>' +
-          '</ol>' +
-        '</details>' +
-      '</div>' +
-    '</div>';
-  document.body.appendChild(m);
-}
-
-function buildIndicacionesBookmarklet() {
-  // El bookmarklet: extrae todo el texto visible del Google Doc, lo URL-encodea,
-  // y abre piso-libro con un fragment #indPaste=... que el modal detecta y autocarga.
-  // Origen-cruzado: usa window.location.origin del propio piso-libro (asume mismo origen para que funcione).
-  const origin = (typeof location !== "undefined" && location.origin) ? location.origin : "https://piso-libro.pages.dev";
-  const code =
-    'javascript:(async()=>{' +
-      'try{' +
-        'const text=document.body.innerText||"";' +
-        'if(!text||text.length<100){alert("PisoLibro: no se detectó contenido. ¿Estás en el Google Doc?");return;}' +
-        'const enc=encodeURIComponent(text);' +
-        'if(enc.length>1500000){alert("Documento muy largo ("+(enc.length/1024).toFixed(0)+"KB). Considera dividirlo.");return;}' +
-        'const url="' + origin + '/#indPaste="+enc;' +
-        'window.open(url,"_blank");' +
-      '}catch(e){alert("Error: "+e.message);}' +
-    '})();';
-  return code;
+        '<div id="indicaciones-result-v22" style="margin-top:12px;font-size:12px"></div>' +
+      '</div>';
+    document.body.appendChild(m);
+  } catch (e) {
+    console.warn("openIndicacionesModal error:", e);
+    alert("Error abriendo modal: " + e.message);
+  }
 }
 
 function closeIndicacionesModal() {
-  const m = document.getElementById("indicaciones-modal");
-  if (m) m.style.display = "none";
-}
-
-function indTabSwitch(which) {
-  const panels = ["manual", "auto"];
-  panels.forEach(function(p) {
-    const panel = document.getElementById("ind-tab-" + p);
-    if (panel) panel.style.display = (p === which) ? "block" : "none";
-  });
-  document.querySelectorAll(".ind-tab").forEach(function(b) {
-    b.classList.toggle("ind-tab-active", b.dataset.tab === which);
-  });
+  try {
+    const m = document.getElementById("indicaciones-modal-v22");
+    if (m) m.remove();
+  } catch (e) { console.warn("closeIndicacionesModal:", e); }
 }
 
 function indicacionesDoImport() {
-  const ta = document.getElementById("indicaciones-paste");
-  const result = document.getElementById("indicaciones-import-result");
-  if (!ta || !ta.value.trim()) {
-    result.innerHTML = '<span style="color:#dc2626">⚠️ Pega algún contenido primero.</span>';
-    return;
-  }
   try {
-    const r = PLIndicaciones.importPasted(ta.value);
-    if (!r.blocks.length) {
-      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectó ningún bloque "INDICACIONES". ' +
-        'Verifica que el texto incluya los headers tipo "INDICACIONES DE CIRUGÍA GENERAL".<br>' +
-        'Usa "🔍 Diagnóstico" para ver qué se detectó.</span>';
+    const ta = document.getElementById("indicaciones-paste-v22");
+    const result = document.getElementById("indicaciones-result-v22");
+    if (!ta || !ta.value.trim()) {
+      if (result) result.innerHTML = '<span style="color:#dc2626">⚠️ Pega contenido primero.</span>';
       return;
     }
-    // Calcular match con censo (preview rápido)
+    const r = PLIndicaciones.importPasted(ta.value);
+    if (!r.blocks.length) {
+      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectaron bloques. Click "🔍 Diagnóstico" para ver detalle.</span>';
+      return;
+    }
+    // Calcular match preview
     let matched = 0;
+    const totalP = (typeof patients !== "undefined") ? patients.length : 0;
     if (typeof patients !== "undefined" && Array.isArray(patients)) {
       patients.forEach(function(p) {
-        const data = PLIndicaciones.getForPatient(p);
-        if (data) matched++;
+        if (PLIndicaciones.getForPatient(p)) matched++;
       });
     }
-    const totalP = (typeof patients !== "undefined") ? patients.length : 0;
     result.innerHTML = '<span style="color:#16a34a">✅ Importados ' + r.blocks.length + ' bloques.<br>' +
-      'Stats: ' + r.stats.withCama + ' con cama · ' + r.stats.withNombre + ' con nombre · ' + r.stats.withExp + ' con exp.<br>' +
-      '<b>Match con tu censo: ' + matched + '/' + totalP + ' pacientes.</b><br>' +
-      (matched < totalP * 0.7 && totalP > 0 ?
-        '<span style="color:#f59e0b">⚠️ Bajo % de match. Click "🔍 Diagnóstico" para ver detalle.</span>' :
-        '') +
-      '</span>';
-    if (typeof patients !== "undefined" && Array.isArray(patients)) {
-      patients.forEach(function(pt) { if (typeof _rerenderCard === "function") _rerenderCard(pid(pt)); });
+      'Con nombre: ' + r.stats.withName + ' · Con cama: ' + r.stats.withCama + '<br>' +
+      '<b>Match con tu censo: ' + matched + '/' + totalP + '</b></span>';
+    // Re-renderizar cards (defensivo)
+    if (typeof patients !== "undefined" && Array.isArray(patients) && typeof _rerenderCard === "function") {
+      try {
+        patients.forEach(function(pt) {
+          if (typeof pid === "function") _rerenderCard(pid(pt));
+        });
+      } catch (e) { console.warn("re-render:", e); }
     }
-    updateIndicacionesBanner();
-    setTimeout(closeIndicacionesModal, 3000);
+    setTimeout(closeIndicacionesModal, 2500);
   } catch (e) {
-    result.innerHTML = '<span style="color:#dc2626">❌ Error: ' + escCDS(e.message || e) + '</span>';
+    const result = document.getElementById("indicaciones-result-v22");
+    if (result) result.innerHTML = '<span style="color:#dc2626">❌ Error: ' + escInd(e.message || e) + '</span>';
   }
 }
 
 function indicacionesDiagnose() {
-  const ta = document.getElementById("indicaciones-paste");
-  const result = document.getElementById("indicaciones-import-result");
-  if (!ta || !ta.value.trim()) {
-    result.innerHTML = '<span style="color:#dc2626">⚠️ Pega contenido primero.</span>';
-    return;
-  }
-  const diag = PLIndicaciones.diagnose(ta.value, typeof patients !== "undefined" ? patients : []);
-  let html = '<div style="background:#f1f5f9;padding:10px;border-radius:6px;font-size:11px;font-family:monospace;max-height:340px;overflow-y:auto">';
-  html += '<b>Diagnóstico parser:</b><br>';
-  html += '• Total líneas: ' + diag.debug.totalLines + '<br>';
-  html += '• Headers "INDICACIONES" encontrados: ' + diag.debug.headersFound + '<br>';
-  html += '• Bloques parseados: ' + diag.debug.blocksDetected + '<br>';
-  html += '• Bloques con CAMA detectada: ' + diag.debug.blocksWithCama + '<br>';
-  html += '• Bloques con NOMBRE detectado: ' + diag.debug.blocksWithName + '<br>';
-  html += '• Bloques con EXP detectado: ' + diag.debug.blocksWithExp + '<br>';
-
-  if (diag.matchTable && diag.matchTable.length) {
-    const totalMatched = diag.matchTable.filter(function(r){return r.match}).length;
-    html += '<br><b>Match con censo: ' + totalMatched + '/' + diag.matchTable.length + '</b><br>';
-    html += '<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:10px">';
-    html += '<tr style="background:#cbd5e1"><th style="text-align:left;padding:3px">Bloque (cama/nombre/exp)</th><th style="text-align:left;padding:3px">Match</th><th style="text-align:left;padding:3px">Método</th></tr>';
-    diag.matchTable.forEach(function(r) {
-      const blkInfo = (r.block.cama || '?') + ' / ' + (r.block.nombre ? r.block.nombre.substring(0, 30) : '(sin nombre)') + (r.block.exp ? ' / EXP ' + r.block.exp : '');
-      const matchInfo = r.match ? ('cama ' + (r.match.cama || '?') + ' · ' + (r.match.nombre || '?').substring(0, 30)) : '<span style="color:#dc2626">SIN MATCH</span>';
-      const methodInfo = r.match ? r.match.method + ' (' + r.match.score + ')' : '-';
-      const rowStyle = r.match ? 'background:#dcfce7' : 'background:#fee2e2';
-      html += '<tr style="' + rowStyle + '"><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + escCDS(blkInfo) + '</td><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + matchInfo + '</td><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + escCDS(methodInfo) + '</td></tr>';
-    });
-    html += '</table>';
-  }
-  html += '</div>';
-  result.innerHTML = html;
-}
-
-/* ─── Auto-import desde fragment URL ─── */
-function autoImportFromFragment() {
   try {
-    const hash = location.hash || "";
-    if (!hash || hash.length < 12) return;
-    const m = hash.match(/[#&]indPaste=([^&]+)/);
-    if (!m) return;
-    // Guard: limitar tamaño para no colgar el parser
-    if (m[1].length > 2000000) {
-      console.warn("autoImportFromFragment: hash demasiado grande, abortando");
-      history.replaceState(null, "", location.pathname + location.search);
+    const ta = document.getElementById("indicaciones-paste-v22");
+    const result = document.getElementById("indicaciones-result-v22");
+    if (!ta || !ta.value.trim()) {
+      result.innerHTML = '<span style="color:#dc2626">⚠️ Pega contenido primero.</span>';
       return;
     }
-    const text = decodeURIComponent(m[1]);
-    // limpiar fragment para no re-importar al recargar
-    history.replaceState(null, "", location.pathname + location.search);
-    const r = PLIndicaciones.importPasted(text);
-    if (r.blocks.length) {
-      cdsToast("✅ Indicaciones importadas: " + r.blocks.length + " pacientes desde bookmarklet");
-      if (typeof patients !== "undefined") {
-        patients.forEach(function(pt) { if (typeof _rerenderCard === "function") _rerenderCard(pid(pt)); });
-      }
-      updateIndicacionesBanner();
-    } else {
-      cdsToast("⚠️ Bookmarklet no detectó bloques de indicaciones. Usa 🔍 Diagnóstico en el modal manual.");
+    const pts = (typeof patients !== "undefined" && Array.isArray(patients)) ? patients : [];
+    const diag = PLIndicaciones.diagnose(ta.value, pts);
+    let html = '<div style="background:#f1f5f9;padding:10px;border-radius:6px;font-size:11px;font-family:monospace;max-height:340px;overflow-y:auto">';
+    html += '<b>Diagnóstico:</b><br>';
+    html += '• Total líneas: ' + diag.debug.totalLines + '<br>';
+    html += '• Anchors AÑOS+ID: ' + diag.debug.anchorLines + '<br>';
+    html += '• Headers INDICACIONES: ' + diag.debug.headersInd + '<br>';
+    html += '• Bloques parseados: ' + diag.debug.blocksDetected + '<br>';
+    html += '• Con CAMA: ' + diag.debug.blocksWithCama + ' · Con NOMBRE: ' + diag.debug.blocksWithName + '<br>';
+    if (diag.matchTable && diag.matchTable.length) {
+      const matched = diag.matchTable.filter(function(r){return r.match}).length;
+      html += '<br><b>Match: ' + matched + '/' + diag.matchTable.length + '</b><br>';
+      html += '<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:10px">';
+      html += '<tr style="background:#cbd5e1"><th style="text-align:left;padding:3px">Bloque (cama/nombre)</th><th style="text-align:left;padding:3px">Match</th><th style="text-align:left;padding:3px">Método</th></tr>';
+      diag.matchTable.forEach(function(row) {
+        const blkInfo = (row.block.cama || '?') + ' / ' + (row.block.nombre ? row.block.nombre.substring(0, 35) : '(sin nombre)');
+        const matchInfo = row.match ? ('cama ' + (row.match.cama || '?') + ' · ' + (row.match.nombre || '?').substring(0, 30)) : '<span style="color:#dc2626">SIN MATCH</span>';
+        const methodInfo = row.match ? row.match.method + ' (' + row.match.score + ')' : '-';
+        const rowStyle = row.match ? 'background:#dcfce7' : 'background:#fee2e2';
+        html += '<tr style="' + rowStyle + '"><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + escInd(blkInfo) + '</td><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + matchInfo + '</td><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + escInd(methodInfo) + '</td></tr>';
+      });
+      html += '</table>';
     }
-  } catch (e) { console.warn("autoImportFromFragment:", e); }
-}
-
-/* ─── Banner stale ─── */
-function updateIndicacionesBanner() {
-  let banner = document.getElementById("indicaciones-banner");
-  const fresh = PLIndicaciones.freshness();
-  const shouldShow = fresh.state === "none" || fresh.state === "old";
-  if (!banner && shouldShow) {
-    banner = document.createElement("div");
-    banner.id = "indicaciones-banner";
-    banner.className = "ind-banner";
-    if (document.body.firstChild) document.body.insertBefore(banner, document.body.firstChild);
-    else document.body.appendChild(banner);
-  }
-  if (!banner) return;
-  if (!shouldShow) { banner.style.display = "none"; return; }
-  banner.style.display = "flex";
-  banner.innerHTML = '<span class="ind-banner-icon">📥</span>' +
-    '<span class="ind-banner-text">' + (fresh.state === "none" ? "No has importado indicaciones todavía." : "Indicaciones desactualizadas (" + fresh.label + ").") + ' Importa antes del pase.</span>' +
-    '<button class="ind-banner-btn" onclick="openIndicacionesModal()">Importar ahora</button>' +
-    '<button class="ind-banner-dismiss" onclick="document.getElementById(\'indicaciones-banner\').style.display=\'none\'">✕</button>';
-}
-
-/* ─── Disclaimer médico-legal ─── */
-function showCDSDisclaimerIfNeeded() {
-  if (PLCDSStore.disclaimerAccepted()) return;
-  let m = document.getElementById("cds-disclaimer-modal");
-  if (m) { m.style.display = "flex"; return; }
-  m = document.createElement("div");
-  m.id = "cds-disclaimer-modal";
-  m.className = "modal-bg";
-  m.style.display = "flex";
-  m.innerHTML = '<div class="modal-box" style="max-width:560px">' +
-    '<div class="modal-header"><div class="modal-title">⚠️ Aviso del módulo de Sugerencias Clínicas</div></div>' +
-    '<p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 14px">PisoLibro genera sugerencias automáticas basadas en criterios estandarizados: <b>KDIGO 2012</b>, <b>Tokyo 2018</b>, <b>OMS</b>, y consensos de electrolitos.</p>' +
-    '<p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 14px">Las sugerencias son <b>orientativas</b>. El criterio final es del médico tratante. La app no diagnostica ni prescribe.</p>' +
-    '<p style="font-size:13px;color:#334155;line-height:1.55;margin:0 0 18px">La <b>calculadora de vasopresores</b> realiza aritmética simple (dosis × peso). Verifica siempre contra la bomba.</p>' +
-    '<div style="display:flex;justify-content:flex-end"><button class="btn-primary" onclick="cdsAcceptDisclaimer()">Entendido, continuar</button></div>' +
-  '</div>';
-  document.body.appendChild(m);
-}
-function cdsAcceptDisclaimer() {
-  PLCDSStore.acceptDisclaimer();
-  const m = document.getElementById("cds-disclaimer-modal");
-  if (m) m.remove();
-}
-
-/* ─── Refresh global de sugerencias ─── */
-function refreshAllCDS() {
-  showCDSDisclaimerIfNeeded();
-  if (typeof patients !== "undefined" && Array.isArray(patients)) {
-    let total = 0, critical = 0;
-    patients.forEach(function(p) {
-      const k = pid(p);
-      const nd = getNote(k);
-      const sugs = PLCDS.evaluate(p, nd).filter(function(s) { return !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash); });
-      total += sugs.length;
-      critical += sugs.filter(function(s) { return s.critical; }).length;
-      if (typeof _rerenderCard === "function") _rerenderCard(k);
-    });
-    cdsToast("💡 Revisión: " + total + " sugerencia(s) · " + critical + " crítica(s)");
+    html += '</div>';
+    result.innerHTML = html;
+  } catch (e) {
+    const result = document.getElementById("indicaciones-result-v22");
+    if (result) result.innerHTML = '<span style="color:#dc2626">❌ Diagnóstico falló: ' + escInd(e.message || e) + '</span>';
   }
 }
-
-function cdsToast(msg) {
-  let t = document.getElementById("cds-toast");
-  if (!t) {
-    t = document.createElement("div");
-    t.id = "cds-toast";
-    t.className = "cds-toast";
-    document.body.appendChild(t);
-  }
-  t.textContent = msg;
-  t.classList.add("cds-toast-show");
-  clearTimeout(t._timeout);
-  t._timeout = setTimeout(function() { t.classList.remove("cds-toast-show"); }, 3500);
-}
-
-/* ─── Bootstrap al cargar ─── */
-(function() {
-  function boot() {
-    try {
-      updateIndicacionesBanner();
-      autoImportFromFragment();
-    } catch (e) { console.warn("CDS bootstrap:", e); }
-  }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else { setTimeout(boot, 200); }
-  // setInterval removed in v21 — defensive: no auto-refresh
-})();
 
   </script>
 
@@ -10081,8 +9228,6 @@ function cdsToast(msg) {
 
       ${renderLabSection(nd, k)}
 
-      ${renderCDSSection(p, nd, k)}
-      ${renderVasoSection(p, nd, k)}
       ${renderIndicacionesSection(p, nd, k)}
 
       ${/* renderWinlabSection: deshabilitada mayo 2026. Los labs ahora aparecen
@@ -20425,12 +19570,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     }
   </style>
 
-<div id="cds-fab" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
-  <button onclick="refreshAllCDS()" title="Revisar sugerencias clinicas"
-    style="background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">💡</button>
-  <button onclick="openIndicacionesModal()" title="Importar indicaciones"
-    style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
-</div>
+<button id="ind-import-fab" onclick="openIndicacionesModal()" title="Importar indicaciones"
+  style="position:fixed;bottom:20px;right:20px;z-index:9999;background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
 
 </body>
 
