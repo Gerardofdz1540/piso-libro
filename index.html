@@ -2977,7 +2977,7 @@
 
   
 
-/* ════ V20 INJECTION ════ */
+/* ════ V21 INJECTION ════ */
 /* CSS v17: vaso compacto + modal con tabs + estilos heredados */
 
 /* ─── CDS Section ─── */
@@ -3908,7 +3908,7 @@
   </script>
   
 
-  <!-- ════════ V20: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
+  <!-- ════════ V21: CDS + VASOPRESORES + INDICACIONES — bloque dedicado ════════ -->
   <script>
 /* Codigo nuevo en su PROPIO bloque dedicado. */
 
@@ -4544,6 +4544,7 @@ function escCDS(s) {
 
 /* ─── CDS: como antes (ya funcionaba) ─── */
 function renderCDSSection(p, nd, k) {
+  try {
   if (!nd || !nd.labs) nd = nd || { labs: {} };
   const suggestions = PLCDS.evaluate(p, nd);
   const sorted = PLCDS.sortBySeverity(suggestions);
@@ -4571,6 +4572,11 @@ function renderCDSSection(p, nd, k) {
   return '<div class="cds-section" id="cds-' + escCDS(k) + '">' +
     '<div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas <span class="cds-count">(' + filtered.length + ')</span></span>' + critBadge + '</div>' +
     '<div class="cds-items">' + items + '</div>' + moreLabel + '</div>';
+
+  } catch(e) {
+    console.warn("renderCDSSection error:", e);
+    return "";
+  }
 }
 
 function cdsApplySuggestion(patientKey, ruleId) {
@@ -4614,6 +4620,7 @@ function cdsToggleMore(patientKey) {
 /* ─── VASOPRESORES COMPACTOS ─── */
 /* Render: si NO hay actividad → mini-pill "💊+". Si hay → línea compacta + boton expandir */
 function renderVasoSection(p, nd, k) {
+  try {
   const v = (nd && nd.vasopresores) || {};
   const peso = v.peso || (p && p.peso) || "";
   const expanded = v._expanded === true;
@@ -4684,6 +4691,11 @@ function renderVasoSection(p, nd, k) {
     '<div class="vaso-rows">' + rows + '</div>' +
     '<div class="vaso-footer"><span class="vaso-disclaimer">⚠️ Verifica cálculos antes de prescribir. La app no reemplaza la bomba.</span></div>' +
   '</div>';
+
+  } catch(e) {
+    console.warn("renderVasoSection error:", e);
+    return "";
+  }
 }
 
 function vasoExpand(patientKey) {
@@ -4731,6 +4743,7 @@ function vasoUpdateWeight(patientKey, value) {
 
 /* ─── INDICACIONES (read-only, match por exp) ─── */
 function renderIndicacionesSection(p, nd, k) {
+  try {
   const data = PLIndicaciones.getForPatient(p);
   const fresh = PLIndicaciones.freshness();
   if (!data) {
@@ -4758,6 +4771,11 @@ function renderIndicacionesSection(p, nd, k) {
     '<span class="ind-fresh">⏱ ' + escCDS(fresh.label) + matchInfo + '</span>' +
     '<button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button></div>' +
     '<div class="ind-content">' + (content || '<div class="ind-empty-msg">Bloque presente pero sin contenido parseado.</div>') + '</div></div>';
+
+  } catch(e) {
+    console.warn("renderIndicacionesSection error:", e);
+    return "";
+  }
 }
 
 /* ─── MODAL DE IMPORTACIÓN — con bookmarklet y modo manual + diagnóstico ─── */
@@ -4944,8 +4962,15 @@ function indicacionesDiagnose() {
 function autoImportFromFragment() {
   try {
     const hash = location.hash || "";
+    if (!hash || hash.length < 12) return;
     const m = hash.match(/[#&]indPaste=([^&]+)/);
     if (!m) return;
+    // Guard: limitar tamaño para no colgar el parser
+    if (m[1].length > 2000000) {
+      console.warn("autoImportFromFragment: hash demasiado grande, abortando");
+      history.replaceState(null, "", location.pathname + location.search);
+      return;
+    }
     const text = decodeURIComponent(m[1]);
     // limpiar fragment para no re-importar al recargar
     history.replaceState(null, "", location.pathname + location.search);
@@ -5049,7 +5074,7 @@ function cdsToast(msg) {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
   } else { setTimeout(boot, 200); }
-  setInterval(updateIndicacionesBanner, 60 * 60 * 1000);
+  // setInterval removed in v21 — defensive: no auto-refresh
 })();
 
   </script>
