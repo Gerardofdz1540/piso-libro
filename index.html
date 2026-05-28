@@ -2977,7 +2977,7 @@
 
   
 
-/* ════ V23 INJECTION ════ */
+/* ════ V24 INJECTION ════ */
 /* CSS v23 — CDS + Indicaciones */
 
 /* ─── CDS ─── */
@@ -3773,7 +3773,7 @@
   </script>
   
 
-  <!-- ════════ V23 ════════ -->
+  <!-- ════════ V24 ════════ -->
   <script>
 /* ════════════════════════════════════════════════════════════════════════════
  * PisoLibro v23 — CDS restaurado + Indicaciones mejorada
@@ -3800,12 +3800,27 @@ const PLCDS = (function() {
     const n = parseFloat(s);
     return isFinite(n) ? n : NaN;
   }
+  // ─── CRÍTICO: los labs reales viven en labHistory[reciente].labs, NO en nd.labs ──
+  // renderLabSection lee de ahí; CDS debe leer del MISMO lugar.
+  function getActiveLabs(nd) {
+    const history = (nd && nd.labHistory) || [];
+    if (Array.isArray(history) && history.length) {
+      const withLabs = history.filter(function(s) { return s && s.labs; });
+      if (withLabs.length) {
+        // Snapshot más reciente por fecha (desc)
+        const sorted = withLabs.slice().sort(function(a, b) {
+          return String(b.fecha || "").localeCompare(String(a.fecha || ""));
+        });
+        return sorted[0].labs || {};
+      }
+    }
+    return (nd && nd.labs) || {};  // fallback legacy
+  }
   function getBaselineCr(labHistory) {
     if (!Array.isArray(labHistory) || !labHistory.length) return null;
-    const sorted = labHistory.slice().sort(function(a, b) {
-      const da = a.fecha || a.fecha_labs || a.ts || "";
-      const db = b.fecha || b.fecha_labs || b.ts || "";
-      return String(da).localeCompare(String(db));
+    // Ordenar ascendente por fecha → el primer cr válido es el más antiguo (basal)
+    const sorted = labHistory.slice().filter(function(s){return s && s.labs;}).sort(function(a, b) {
+      return String(a.fecha || "").localeCompare(String(b.fecha || ""));
     });
     for (let i = 0; i < sorted.length; i++) {
       const snap = sorted[i];
@@ -3920,7 +3935,7 @@ const PLCDS = (function() {
   }
   function evaluate(p,nd){
     try {
-      const out=[]; const labs=(nd&&nd.labs)||{};
+      const out=[]; const labs=getActiveLabs(nd);
       const labHist=(nd&&nd.labHistory)||[];
       const dx=((nd&&nd.dx)||(p&&p.dx)||"").toString();
       RULES.forEach(function(rule){
@@ -4384,6 +4399,7 @@ function openIndicacionesModal() {
         '<textarea id="indicaciones-paste-v23" rows="11" style="width:100%;font-family:monospace;font-size:11px;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px;box-sizing:border-box" placeholder="Pega aquí..."></textarea>' +
         '<div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px;flex-wrap:wrap">' +
           '<button onclick="indicacionesDiagnose()" style="background:#e2e8f0;color:#475569;border:none;padding:8px 16px;border-radius:7px;font-weight:600;cursor:pointer">🔍 Diagnóstico</button>' +
+          '<button onclick="plMostrarDiagProd()" style="background:#fbbf24;color:#78350f;border:none;padding:8px 16px;border-radius:7px;font-weight:700;cursor:pointer">🩺 Diag. producción</button>' +
           '<div style="display:flex;gap:8px">' +
             '<button onclick="closeIndicacionesModal()" style="background:#e2e8f0;color:#475569;border:none;padding:8px 18px;border-radius:7px;font-weight:600;cursor:pointer">Cancelar</button>' +
             '<button onclick="indicacionesDoImport()" style="background:#1e3a5f;color:white;border:none;padding:8px 18px;border-radius:7px;font-weight:600;cursor:pointer">📥 Importar</button>' +
@@ -4397,6 +4413,35 @@ function openIndicacionesModal() {
 
 function closeIndicacionesModal() {
   try { const m = document.getElementById("indicaciones-modal-v23"); if (m) m.remove(); } catch (e) {}
+}
+
+function plMostrarDiagProd() {
+  try {
+    const reporte = plDiagProduccion();
+    const result = document.getElementById("indicaciones-result-v23");
+    if (result) {
+      result.innerHTML = '<div style="background:#1e293b;color:#e2e8f0;padding:12px;border-radius:8px;font-family:monospace;font-size:11px;white-space:pre-wrap;max-height:400px;overflow-y:auto;line-height:1.4">' +
+        escInd(reporte) + '</div>' +
+        '<button onclick="plCopiarDiag()" style="margin-top:8px;background:#1e3a5f;color:white;border:none;padding:8px 16px;border-radius:7px;font-weight:600;cursor:pointer">📋 Copiar reporte</button>';
+      window._plUltimoDiag = reporte;
+    }
+  } catch (e) {
+    alert("Error en diagnóstico: " + e.message);
+  }
+}
+
+function plCopiarDiag() {
+  try {
+    const txt = window._plUltimoDiag || "";
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(txt).then(function(){ alert("✅ Reporte copiado. Pégalo en el chat."); });
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = txt; document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); ta.remove();
+      alert("✅ Reporte copiado. Pégalo en el chat.");
+    }
+  } catch (e) { alert("Copia manual: " + (window._plUltimoDiag || "")); }
 }
 
 function indicacionesDoImport() {
@@ -4429,6 +4474,93 @@ function indicacionesDoImport() {
     const result = document.getElementById("indicaciones-result-v23");
     if (result) result.innerHTML = '<span style="color:#dc2626">❌ ' + escInd(e.message || e) + '</span>';
   }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * DIAGNÓSTICO DE PRODUCCIÓN — inspecciona datos VIVOS de la app
+ * Genera un reporte de texto copiable que dice exactamente qué está roto.
+ * ════════════════════════════════════════════════════════════════════════════ */
+function plDiagProduccion() {
+  const L = [];
+  L.push("═══ DIAGNÓSTICO PISOLIBRO v24 ═══");
+  L.push("Fecha: " + new Date().toISOString());
+  L.push("");
+
+  // 1. ¿Existe patients?
+  try {
+    if (typeof patients === "undefined") { L.push("❌ patients NO existe (undefined)"); }
+    else if (!Array.isArray(patients)) { L.push("❌ patients NO es array: " + typeof patients); }
+    else {
+      L.push("✅ patients: " + patients.length + " pacientes");
+      const p0 = patients[0];
+      if (p0) {
+        L.push("   Paciente[0] campos: " + Object.keys(p0).join(", "));
+        L.push("   nombre: '" + (p0.nombre || "(vacío)") + "'");
+        L.push("   cama:   '" + (p0.cama || "(vacío)") + "'");
+        L.push("   esp:    '" + (p0.esp || "(vacío)") + "'");
+        L.push("   dx:     '" + String(p0.dx || "(vacío)").substring(0, 60) + "...'");
+      }
+    }
+  } catch (e) { L.push("❌ Error leyendo patients: " + e.message); }
+  L.push("");
+
+  // 2. ¿noteData tiene labs reales?
+  try {
+    if (typeof noteData === "undefined") { L.push("❌ noteData NO existe"); }
+    else {
+      const keys = Object.keys(noteData);
+      L.push("✅ noteData: " + keys.length + " notas");
+      // Buscar la primera nota con labHistory poblado
+      let found = false;
+      for (let i = 0; i < keys.length && !found; i++) {
+        const nd = noteData[keys[i]];
+        if (nd && Array.isArray(nd.labHistory) && nd.labHistory.length) {
+          found = true;
+          const snap = nd.labHistory[nd.labHistory.length - 1];
+          L.push("   Nota '" + keys[i] + "' tiene labHistory (" + nd.labHistory.length + " snapshots)");
+          L.push("   Snapshot reciente fecha: " + (snap.fecha || "?"));
+          if (snap.labs) {
+            const nonEmpty = Object.keys(snap.labs).filter(function(lk){ return snap.labs[lk] && String(snap.labs[lk]).trim() !== ""; });
+            L.push("   Labs con valor: " + nonEmpty.map(function(lk){ return lk + "=" + snap.labs[lk]; }).join(", "));
+          }
+          // Probar CDS sobre este paciente
+          const pMatch = (typeof patients !== "undefined") ? patients.find(function(pt){ return pid(pt) === keys[i]; }) : null;
+          if (pMatch) {
+            const sugs = PLCDS.evaluate(pMatch, nd);
+            L.push("   → CDS evalúa: " + sugs.length + " sugerencias");
+            sugs.forEach(function(s){ L.push("      • " + s.ruleName + " " + s.severity + ": " + s.suggestion.text.substring(0, 50)); });
+          }
+        }
+      }
+      if (!found) L.push("   ⚠️ NINGUNA nota tiene labHistory poblado (¿no hay labs cargados?)");
+    }
+  } catch (e) { L.push("❌ Error leyendo noteData: " + e.message); }
+  L.push("");
+
+  // 3. Bloques de indicaciones importados
+  try {
+    const blocks = PLIndicaciones.loadBlocks();
+    L.push("✅ Bloques indicaciones guardados: " + blocks.length);
+    if (blocks.length) {
+      L.push("   Bloque[0] nombre: '" + (blocks[0].nombre || "(sin nombre)") + "'");
+      L.push("   Bloque[0] cama:   '" + (blocks[0].cama || "(sin cama)") + "'");
+      const conNombre = blocks.filter(function(b){ return b.nombre; }).length;
+      L.push("   Bloques con nombre: " + conNombre + "/" + blocks.length);
+    }
+    // Match real contra patients
+    if (typeof patients !== "undefined" && Array.isArray(patients) && blocks.length) {
+      let matched = 0;
+      const ejemplos = [];
+      patients.forEach(function(p) {
+        const m = PLIndicaciones.getForPatient(p);
+        if (m) { matched++; if (ejemplos.length < 3) ejemplos.push(p.nombre + " ↔ " + (m.nombre || "?") + " [" + m._matchMethod + "]"); }
+      });
+      L.push("   → MATCH REAL: " + matched + "/" + patients.length + " pacientes");
+      ejemplos.forEach(function(e){ L.push("      ✓ " + e); });
+    }
+  } catch (e) { L.push("❌ Error en bloques: " + e.message); }
+
+  return L.join("\n");
 }
 
 function indicacionesDiagnose() {
@@ -19813,7 +19945,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     }
   </style>
 
-<div id="pl-fab-v23" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
+<div id="pl-fab-v24" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
   <button onclick="openIndicacionesModal()" title="Importar indicaciones"
     style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
 </div>
