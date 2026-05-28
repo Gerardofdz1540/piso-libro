@@ -2977,8 +2977,38 @@
 
   
 
-/* ════ V22 INJECTION ════ */
-/* CSS v22 — solo indicaciones */
+/* ════ V23 INJECTION ════ */
+/* CSS v23 — CDS + Indicaciones */
+
+/* ─── CDS ─── */
+.cds-section { background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%); border:1.5px solid #f59e0b; border-radius:10px; padding:10px 12px; margin-top:10px; box-shadow:0 2px 8px rgba(245,158,11,.15); }
+.cds-section.cds-empty { background:linear-gradient(135deg,#ecfdf5 0%,#d1fae5 100%); border-color:#10b981; }
+.cds-header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+.cds-title { font-size:12px; font-weight:700; color:#78350f; text-transform:uppercase; letter-spacing:.5px; }
+.cds-section.cds-empty .cds-title { color:#064e3b; }
+.cds-count { font-size:11px; color:#92400e; font-weight:600; }
+.cds-status-ok { font-size:11px; color:#047857; font-weight:600; }
+.cds-crit-count { background:#dc2626; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; }
+.cds-items { display:flex; flex-direction:column; gap:6px; }
+.cds-item { background:white; border:1px solid #fcd34d; border-radius:7px; padding:7px 9px; }
+.cds-item.cds-critical { border-left:4px solid #dc2626; background:#fef2f2; }
+.cds-item-row { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+.cds-badge { font-size:9px; font-weight:700; padding:2px 7px; border-radius:8px; color:white; letter-spacing:.5px; }
+.cds-badge-stage { background:#b91c1c; }
+.cds-badge-severa { background:#dc2626; }
+.cds-badge-moderada { background:#f97316; }
+.cds-badge-leve { background:#eab308; color:#422006; }
+.cds-badge-info { background:#3b82f6; }
+.cds-rule-name { font-size:11px; font-weight:600; color:#1e293b; }
+.cds-suggestion { font-size:12px; color:#334155; margin:3px 0 5px; line-height:1.35; }
+.cds-actions { display:flex; gap:6px; }
+.cds-btn { font-size:10px; padding:3px 8px; border-radius:5px; border:none; cursor:pointer; font-weight:600; }
+.cds-btn-apply { background:#1e3a5f; color:white; }
+.cds-btn-apply:hover { background:#0a1628; }
+.cds-btn-ignore { background:#e2e8f0; color:#475569; }
+.cds-btn-ignore:hover { background:#cbd5e1; }
+
+/* ─── Indicaciones ─── */
 .ind-section { background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%); border:1.5px solid #3b82f6; border-radius:10px; padding:10px 12px; margin-top:10px; }
 .ind-section.ind-empty { background:#f1f5f9; border-color:#94a3b8; }
 .ind-section.ind-fresh-stale { background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%); border-color:#f59e0b; }
@@ -3743,12 +3773,14 @@
   </script>
   
 
-  <!-- ════════ V22: Indicaciones MÍNIMO ════════ -->
+  <!-- ════════ V23 ════════ -->
   <script>
 /* ════════════════════════════════════════════════════════════════════════════
- * PisoLibro v22 — INDICACIONES MÍNIMO
- * Match prioritario: NOMBRE → CAMA (fallback). NO usa EXP.
- * Sin CDS, sin Vaso. Sin bootstrap automático.
+ * PisoLibro v23 — CDS restaurado + Indicaciones mejorada
+ *
+ * Match prioritario: NOMBRE → CAMA. NO usa EXP.
+ * Sugerencias clínicas (CDS): por paciente, basadas en labs vs dx.
+ * Todo defensivo con try-catch.
  * ════════════════════════════════════════════════════════════════════════════ */
 
 function escInd(s) {
@@ -3757,10 +3789,186 @@ function escInd(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * PLCDS — Sugerencias clínicas (restaurado desde v17, refactor defensivo)
+ * ════════════════════════════════════════════════════════════════════════════ */
+const PLCDS = (function() {
+  "use strict";
+  function num(v) {
+    if (v === null || v === undefined || v === "") return NaN;
+    const s = String(v).replace(",", ".").trim();
+    const n = parseFloat(s);
+    return isFinite(n) ? n : NaN;
+  }
+  function getBaselineCr(labHistory) {
+    if (!Array.isArray(labHistory) || !labHistory.length) return null;
+    const sorted = labHistory.slice().sort(function(a, b) {
+      const da = a.fecha || a.fecha_labs || a.ts || "";
+      const db = b.fecha || b.fecha_labs || b.ts || "";
+      return String(da).localeCompare(String(db));
+    });
+    for (let i = 0; i < sorted.length; i++) {
+      const snap = sorted[i];
+      const v = num(snap.labs && (snap.labs.cr || snap.labs.creatinina));
+      if (isFinite(v) && v > 0) return v;
+    }
+    return null;
+  }
+  function getSex(p, nd) {
+    const raw = (p && p.sexo) || (nd && nd.checklist && nd.checklist.sexo) || "";
+    const s = String(raw).trim().toUpperCase();
+    if (["M","MASC","MASCULINO","H","HOMBRE","VARON","VARÓN"].indexOf(s) >= 0) return "M";
+    if (["F","FEM","FEMENINO","MUJER"].indexOf(s) >= 0) return "F";
+    return "";
+  }
+  const RULES = [
+    { id:"hipoNa", name:"Hiponatremia", keywords:/hipo[\s-]?natremia/i,
+      check:function(labs){ const na=num(labs.na); if(!isFinite(na)||na>=135) return null;
+        const sev=na<125?"severa":(na<130?"moderada":"leve");
+        return {sev:sev,value:na,unit:"mEq/L",display:"Na "+na};}},
+    { id:"hiperNa", name:"Hipernatremia", keywords:/hiper[\s-]?natremia/i,
+      check:function(labs){ const na=num(labs.na); if(!isFinite(na)||na<145) return null;
+        const sev=na>=160?"severa":(na>=150?"moderada":"leve");
+        return {sev:sev,value:na,unit:"mEq/L",display:"Na "+na};}},
+    { id:"hipoK", name:"Hipokalemia", keywords:/hipo[\s-]?kale?mia|hipo[\s-]?potasemia/i,
+      check:function(labs){ const k=num(labs.k); if(!isFinite(k)||k>=3.5) return null;
+        const sev=k<2.5?"severa":(k<3.0?"moderada":"leve");
+        return {sev:sev,value:k,unit:"mEq/L",display:"K "+k};}},
+    { id:"hiperK", name:"Hiperkalemia", keywords:/hiper[\s-]?kale?mia|hiper[\s-]?potasemia/i,
+      critical:true, criticalIf:function(r){return r.value>=6.5;},
+      check:function(labs){ const k=num(labs.k); if(!isFinite(k)||k<5.5) return null;
+        const sev=k>=6.5?"severa":(k>=6.0?"moderada":"leve");
+        return {sev:sev,value:k,unit:"mEq/L",display:"K "+k};}},
+    { id:"anemia", name:"Anemia", keywords:/anemia/i,
+      check:function(labs,_h,p,nd){ const hb=num(labs.hb); if(!isFinite(hb)) return null;
+        const sex=getSex(p,nd); const threshold=sex==="F"?12:13;
+        if(hb>=threshold) return null;
+        let sev; if(hb<8) sev="severa"; else if(hb<11) sev="moderada"; else sev="leve";
+        return {sev:sev,value:hb,unit:"g/dL",display:"Hb "+hb};}},
+    { id:"aki", name:"Lesión renal aguda KDIGO", keywords:/(lesi[oó]n\s+renal\s+aguda|LRA|AKI|injuria\s+renal|kdigo)/i,
+      critical:true, criticalIf:function(r){return r.stage===3;},
+      check:function(labs,labHistory){ const cr=num(labs.cr); if(!isFinite(cr)) return null;
+        const basal=getBaselineCr(labHistory);
+        if(basal===null){
+          if(cr>=4.0) return {stage:3,sev:"stage3",value:cr,basal:null,ratio:null,display:"Cr "+cr+" mg/dL (sin basal)"};
+          return null;
+        }
+        const ratio=cr/basal; const delta=cr-basal;
+        let stage=null;
+        if(cr>=4.0||ratio>=3.0) stage=3;
+        else if(ratio>=2.0) stage=2;
+        else if(ratio>=1.5||delta>=0.3) stage=1;
+        if(!stage) return null;
+        return {stage:stage,sev:"stage"+stage,value:cr,basal:basal,ratio:ratio.toFixed(2),
+          display:"Cr "+cr+" (basal "+basal+", x"+ratio.toFixed(2)+")"};}},
+    { id:"trombo", name:"Trombocitopenia", keywords:/trombocitopen|plaquetopen/i,
+      check:function(labs){ const p=num(labs.plaq); if(!isFinite(p)||p>=150) return null;
+        const sev=p<50?"severa":(p<100?"moderada":"leve");
+        return {sev:sev,value:p,unit:"x10^3/uL",display:"Plaq "+p+"k"};}},
+    { id:"hipoalb", name:"Hipoalbuminemia", keywords:/hipoalbumin/i,
+      check:function(labs){ const a=num(labs.alb); if(!isFinite(a)||a>=3.5) return null;
+        const sev=a<2.5?"severa":(a<3.0?"moderada":"leve");
+        return {sev:sev,value:a,unit:"g/dL",display:"Alb "+a};}},
+    { id:"acidosis", name:"Acidosis metabólica", keywords:/acidosis\s+metab/i,
+      check:function(labs){ const hco3=num(labs.hco3); const ph=num(labs.ph);
+        if(!isFinite(hco3)||hco3>=22) return null;
+        if(isFinite(ph)&&ph>=7.45) return null;
+        const sev=hco3<15?"severa":(hco3<18?"moderada":"leve");
+        return {sev:sev,value:hco3,unit:"mEq/L",display:"HCO3 "+hco3};}},
+    { id:"hiperbil", name:"Hiperbilirrubinemia", keywords:/(hiperbilirrubin|ict[eé]ric)/i,
+      check:function(labs){ const bt=num(labs.bt); if(!isFinite(bt)||bt<=1.2) return null;
+        const sev=bt>5?"severa":(bt>3?"moderada":"leve");
+        return {sev:sev,value:bt,unit:"mg/dL",display:"Bil total "+bt};}}
+  ];
+  function buildSuggestion(rule,result,dx){
+    if(!rule.keywords) return null;
+    const dxStr=(dx||"").toString();
+    const grade_re=/(leve|moderada|moderado|severa|severo|grave)/i;
+    const matchKw=dxStr.match(rule.keywords);
+    if(matchKw){
+      const around=dxStr.slice(Math.max(0,matchKw.index-5),Math.min(dxStr.length,matchKw.index+matchKw[0].length+40));
+      const gm=around.match(grade_re);
+      const currentGrade=gm?gm[0].toLowerCase():null;
+      const norm=function(g){
+        if(!g) return null; g=g.toLowerCase();
+        if(g==="moderado") return "moderada";
+        if(g==="severo"||g==="grave") return "severa";
+        return g;
+      };
+      const cur=norm(currentGrade); const tgt=norm(result.sev);
+      if(cur&&tgt&&cur!==tgt){
+        return {type:"reclasify",
+          text:"Reclasificar "+rule.name.toLowerCase()+" "+cur+" -> "+tgt+" ("+(result.display||result.value)+")",
+          from:cur,to:tgt};
+      }
+      if(!cur&&tgt){
+        return {type:"specify",
+          text:"Especificar grado: "+rule.name.toLowerCase()+" "+tgt+" ("+(result.display||result.value)+")",
+          to:tgt};
+      }
+      return null;
+    }
+    return {type:"add",
+      text:"Agregar al dx: "+rule.name+" "+result.sev+" ("+(result.display||result.value)+")",
+      to:result.sev};
+  }
+  function valueHash(result){
+    if(!result) return "";
+    if(typeof result.value==="number") return String(Math.round(result.value*10)/10);
+    if(result.stage) return "stage"+result.stage+":"+result.ratio;
+    return JSON.stringify(result);
+  }
+  function evaluate(p,nd){
+    try {
+      const out=[]; const labs=(nd&&nd.labs)||{};
+      const labHist=(nd&&nd.labHistory)||[];
+      const dx=((nd&&nd.dx)||(p&&p.dx)||"").toString();
+      RULES.forEach(function(rule){
+        try {
+          const result=rule.check(labs,labHist,p,nd); if(!result) return;
+          const sug=buildSuggestion(rule,result,dx); if(!sug) return;
+          const isCritical=rule.critical&&rule.criticalIf&&rule.criticalIf(result);
+          out.push({ruleId:rule.id,ruleName:rule.name,severity:result.sev,
+            critical:!!isCritical,result:result,suggestion:sug,valueHash:valueHash(result)});
+        } catch(e) { console.warn('PLCDS rule '+rule.id+' error:', e); }
+      });
+      return out;
+    } catch(e) { console.warn('PLCDS.evaluate error:', e); return []; }
+  }
+  const SEV_ORDER={stage3:0,severa:1,stage2:2,moderada:3,stage1:4,leve:5,info:6};
+  function sortBySeverity(suggestions){
+    return suggestions.slice().sort(function(a,b){
+      const va=SEV_ORDER[a.severity]; const vb=SEV_ORDER[b.severity];
+      return (va===undefined?99:va)-(vb===undefined?99:vb);
+    });
+  }
+  return {evaluate:evaluate, sortBySeverity:sortBySeverity};
+})();
+
+const PLCDSStore = (function() {
+  "use strict";
+  const KEY_IGN = "pl_cds_ignored_v1";
+  function loadIgn() { try { return JSON.parse(localStorage.getItem(KEY_IGN) || "{}"); } catch (e) { return {}; } }
+  function saveIgn(o) { try { localStorage.setItem(KEY_IGN, JSON.stringify(o)); } catch (e) {} }
+  function isIgnored(patientKey, ruleId, valueHash) {
+    const o = loadIgn();
+    return o[patientKey + ":" + ruleId] === valueHash;
+  }
+  function ignore(patientKey, ruleId, valueHash) {
+    const o = loadIgn();
+    o[patientKey + ":" + ruleId] = valueHash;
+    saveIgn(o);
+  }
+  return { isIgnored: isIgnored, ignore: ignore };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * PLIndicaciones v23 — MEJORADO
+ * ════════════════════════════════════════════════════════════════════════════ */
 const PLIndicaciones = (function() {
   "use strict";
-  const KEY_BLOCKS = "pl_ind_v22_blocks";
-  const KEY_META = "pl_ind_v22_meta";
+  const KEY_BLOCKS = "pl_ind_v23_blocks";
+  const KEY_META = "pl_ind_v23_meta";
 
   function normalizeCama(s) {
     if (s === null || s === undefined) return null;
@@ -3768,20 +3976,23 @@ const PLIndicaciones = (function() {
     return m ? m[1] : null;
   }
 
+  // Normalización MEJORADA: tolerante con "MA.", "J.", "Ma " (abreviaciones de María)
   function normalizeName(name) {
     if (!name) return [];
-    return String(name).toUpperCase()
+    let s = String(name).toUpperCase()
       .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^A-Z\s]/g, " ")
-      .split(/\s+/)
-      .filter(function(w) {
-        if (w.length < 2) return false;
-        // Filtrar conectores y abreviaciones de edad
-        if (["DE", "LA", "EL", "DEL", "LAS", "LOS", "ANO", "ANOS",
-             "CON", "SIN", "POR", "PARA", "ANIOS", "Y", "O"].indexOf(w) >= 0) return false;
-        return true;
-      });
+      .replace(/[\u0300-\u036f]/g, "")  // quitar acentos
+      .replace(/\./g, " ")               // "MA." → "MA "
+      .replace(/[^A-Z\s]/g, " ")         // quitar números y otros símbolos
+      .replace(/\bMA\b/g, "MARIA")        // expandir abreviatura MA → MARIA
+      .replace(/\bJ\b/g, "JOSE")          // expandir J → JOSE (común en J. JESUS)
+      .replace(/\bGPE\b/g, "GUADALUPE");
+    return s.split(/\s+/).filter(function(w) {
+      if (w.length < 3) return false;
+      // Stopwords que no aportan match
+      if (["DEL","LAS","LOS","CON","SIN","POR","PARA","Y","O"].indexOf(w) >= 0) return false;
+      return true;
+    });
   }
 
   function nameMatchScore(n1, n2) {
@@ -3790,50 +4001,41 @@ const PLIndicaciones = (function() {
     if (!w1.length || !w2.length) return 0;
     const set2 = new Set(w2);
     let common = 0;
-    w1.forEach(function(w) { if (set2.has(w)) common++; });
+    const matched = [];
+    w1.forEach(function(w) { if (set2.has(w)) { common++; matched.push(w); } });
     return common;
   }
 
-  // ─── MATCH ESTRATEGIA PEDIDA POR GERA ───────────────────────────────────────
-  // 1) NOMBRE: si ≥2 palabras del nombre coinciden, MATCH
-  // 2) CAMA: fallback si nombre no matchea
-  // NO usa EXP.
+  // ─── MATCH: NOMBRE prioridad, CAMA fallback. NO usa EXP. ────────────────────
   function matchPatient(patient, block) {
     if (!patient || !block) return { matched: false, score: 0, method: null };
-
-    // 1) NOMBRE primero
     const nScore = nameMatchScore(patient.nombre, block.nombre);
+    // ≥2 palabras significativas coinciden → match seguro
     if (nScore >= 2) {
-      return { matched: true, score: 50 + nScore * 10, method: "nombre" };
+      return { matched: true, score: 50 + nScore * 10, method: "nombre", words: nScore };
     }
-    // Aceptar 1 palabra si es muy larga (apellido único)
+    // 1 palabra única (apellido largo) → match débil
     if (nScore === 1) {
       const w1 = normalizeName(patient.nombre);
-      const w2 = normalizeName(block.nombre);
-      // Buscar la palabra común
-      const set2 = new Set(w2);
+      const set2 = new Set(normalizeName(block.nombre));
       const common = w1.find(function(w) { return set2.has(w); });
-      if (common && common.length >= 6) {
+      if (common && common.length >= 5) {
         return { matched: true, score: 30, method: "nombre-1palabra" };
       }
     }
-
-    // 2) CAMA como fallback
+    // Fallback CAMA
     const c1 = normalizeCama(patient.cama);
     const c2 = normalizeCama(block.cama);
     if (c1 && c2 && c1 === c2) {
       return { matched: true, score: 40, method: "cama" };
     }
-
     return { matched: false, score: 0, method: null };
   }
 
   // ─── STORAGE ────────────────────────────────────────────────────────────────
   function loadBlocks() {
-    try {
-      const r = localStorage.getItem(KEY_BLOCKS);
-      return r ? JSON.parse(r) : [];
-    } catch (e) { return []; }
+    try { const r = localStorage.getItem(KEY_BLOCKS); return r ? JSON.parse(r) : []; }
+    catch (e) { return []; }
   }
   function saveBlocks(blocks) {
     try { localStorage.setItem(KEY_BLOCKS, JSON.stringify(blocks)); } catch (e) {}
@@ -3842,10 +4044,8 @@ const PLIndicaciones = (function() {
     try { localStorage.setItem(KEY_META, JSON.stringify({ importedAt: ts, stats: stats || {} })); } catch (e) {}
   }
   function getMeta() {
-    try {
-      const r = localStorage.getItem(KEY_META);
-      return r ? JSON.parse(r) : null;
-    } catch (e) { return null; }
+    try { const r = localStorage.getItem(KEY_META); return r ? JSON.parse(r) : null; }
+    catch (e) { return null; }
   }
   function hoursSinceImport() {
     const m = getMeta();
@@ -3860,25 +4060,16 @@ const PLIndicaciones = (function() {
     return { state: "old", label: "Hace " + Math.round(h) + "h" };
   }
 
-  // ─── PARSER (formato real del Google Doc de Gera) ──────────────────────────
-  // Ancla: línea con "XX AÑOS" + alguno de (EXP, CURP, FOLIO)
-  // O header viejo "INDICACIONES DE CIRUGÍA GENERAL"
+  // ─── PARSER ─────────────────────────────────────────────────────────────────
   function parsePasted(text) {
     if (!text) return { blocks: [], debug: { totalLines: 0, anchorLines: 0, headersInd: 0, blocksDetected: 0, blocksWithCama: 0, blocksWithName: 0 } };
     const fullText = String(text);
     const lines = fullText.split(/\r?\n/);
-    const debug = {
-      totalLines: lines.length,
-      anchorLines: 0,
-      headersInd: 0,
-      blocksDetected: 0,
-      blocksWithCama: 0,
-      blocksWithName: 0
-    };
+    const debug = { totalLines: lines.length, anchorLines: 0, headersInd: 0, blocksDetected: 0, blocksWithCama: 0, blocksWithName: 0 };
 
     const ANCHOR_AGE_RE = /\b\d{1,3}\s*A[ÑN]OS?\b/i;
     const ANCHOR_ID_RE = /(EXP|CURP|FOLIO)/i;
-    const INDICACIONES_RE = /INDICACIONES\s+(DE\s+)?(CIRUG|HOSPITALIZ)/i;
+    const INDICACIONES_RE = /INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/i;
 
     const anchors = [];
     for (let i = 0; i < lines.length; i++) {
@@ -3898,69 +4089,74 @@ const PLIndicaciones = (function() {
     for (let i = 0; i < anchors.length; i++) {
       const anchor = anchors[i];
       const prevAnchorIdx = i > 0 ? anchors[i - 1].lineIdx : -1;
-      const blockStart = Math.max(0, prevAnchorIdx + 1, anchor.lineIdx - 20);
+      const blockStart = Math.max(0, prevAnchorIdx + 1, anchor.lineIdx - 25);
       const blockEnd = i + 1 < anchors.length ? anchors[i + 1].lineIdx - 1 : lines.length;
       const segLines = lines.slice(blockStart, blockEnd);
-      const parsed = parseBlock(segLines, anchor.lineIdx - blockStart);
-      if (parsed) {
-        blocks.push(parsed);
-        if (parsed.cama) debug.blocksWithCama++;
-        if (parsed.nombre) debug.blocksWithName++;
-      }
+      try {
+        const parsed = parseBlock(segLines, anchor.lineIdx - blockStart);
+        if (parsed) {
+          blocks.push(parsed);
+          if (parsed.cama) debug.blocksWithCama++;
+          if (parsed.nombre) debug.blocksWithName++;
+        }
+      } catch (e) { console.warn("parseBlock error en anchor", i, ":", e); }
     }
     debug.blocksDetected = blocks.length;
     return { blocks: blocks, debug: debug };
   }
 
   function parseBlock(segLines, anchorIdx) {
-    // NOMBRE: buscar línea no vacía antes del ancla, sin "FEMENINO/MASCULINO DE X AÑOS"
+    // EXTRACTOR DE NOMBRE PERMISIVO
+    // Buscar línea no vacía antes del ancla.
+    // Aceptar si tiene letras y NO es uno de: fecha, INDICACIONES, GRACIAS, DRA/DR, FEMENINO DE...
     let nombre = "";
     let scanned = 0;
-    for (let i = anchorIdx - 1; i >= 0 && scanned < 25; i--, scanned++) {
+    for (let i = anchorIdx - 1; i >= 0 && scanned < 30; i--, scanned++) {
       const raw = (segLines[i] || "").replace(/\u00A0/g, " ");
       const t = raw.trim();
       if (!t) continue;
-      // Footer del paciente anterior → STOP
+
+      // STOP: llegamos al footer del paciente anterior (vamos demasiado atrás)
       if (/^(gracias|fecha)\b/i.test(t)) break;
-      if (/^(dra?\.?|dr\.?|mip)\b/i.test(t) && /\b(CG|R\d|MB|CIRUG)\b/i.test(t)) break;
-      // Header INDICACIONES → skip
+      if (/^(dra?\.?|dr\.?|mip)\b/i.test(t) && /\b(CG|R\d|MB|CIRUG|RES)\b/i.test(t)) break;
+      // STOP: otro ancla atrás
+      if (ANCHOR_AGE_RE.test(t) && ANCHOR_ID_RE.test(t)) break;
+
+      // SKIP: header INDICACIONES
       if (/INDICACIONES/i.test(t) || /NDICACIONES/i.test(t)) continue;
-      // Fecha → skip
+      // SKIP: fecha
       if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(t)) continue;
-      // "FEMENINO DE X AÑOS DE EDAD..." → skip
+      // SKIP: descripción "FEMENINO DE X AÑOS DE EDAD..."
       if (/^(MASCULINO|FEMENINO)\s+DE\s+\d/i.test(t)) continue;
-      // Otra ancla → STOP
-      if (/\b\d{1,3}\s*A[ÑN]OS?\b/i.test(t) && /(EXP|CURP|FOLIO)/i.test(t)) break;
-      // Cleanup: quitar bullets, dígitos, puntos al inicio
-      // IMPORTANTE: regex SIN bug de rango (dash al final)
+      // SKIP: "FECHA 27/05/2026" etc
+      if (/^FECHA\b/i.test(t)) continue;
+
+      // Cleanup: quitar bullets/dígitos/puntos al inicio (regex con dash al final → sin bug de rango)
       const cleaned = t.replace(/^[\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*0-9.\s\-]+/, "").trim();
       if (!cleaned || cleaned.length < 4) continue;
-      // Validar: ≥2 palabras de letras, sin dígitos, predominantemente mayúsculas
+      // Si tiene dígitos en medio → probablemente NO es nombre
       if (/\d/.test(cleaned)) continue;
+      // Debe tener al menos UNA palabra de ≥3 letras
       const words = cleaned.split(/\s+/).filter(function(w) { return w.length >= 2 && /[A-ZÁÉÍÓÚÑa-záéíóúñ]/.test(w); });
       if (words.length < 2) continue;
-      if (cleaned.length < 6) continue;
-      // Predominio de mayúsculas (los nombres en el Doc están MAYÚSCULAS)
+
+      // Predominio de mayúsculas (relajado a 60%)
       const upperCount = (cleaned.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length;
       const letterCount = (cleaned.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
-      if (letterCount > 0 && upperCount / letterCount >= 0.7) {
+      if (letterCount > 0 && upperCount / letterCount >= 0.6) {
         nombre = cleaned;
         break;
       }
     }
 
-    // CAMA: en este formato del Doc, casi nunca aparece en el texto (pestañas no se copian).
-    // Pero por si Gera escribe la cama manual ("CAMA: 3-150" o "150" antes del nombre), lo intentamos.
+    // CAMA: opcional, suele no estar en el texto
     let cama = null;
     for (let i = anchorIdx - 1; i >= 0 && i >= anchorIdx - 25; i--) {
       const t = (segLines[i] || "").trim();
       if (!t) continue;
-      // Solo número
       if (/^\d{2,4}$/.test(t)) { cama = t; break; }
-      // "CAMA 150" o "Cama: 150"
-      const m1 = t.match(/CAMA[\s:#-]*(\d{2,4})\b/i);
+      const m1 = t.match(/CAMA[\s:#\-]*(\d{2,4})\b/i);
       if (m1) { cama = m1[1]; break; }
-      // "3-150" formato piso-cama
       const m2 = t.match(/\b\d+-(\d{2,4})\b/);
       if (m2) { cama = m2[1]; break; }
       if (/INDICACIONES/i.test(t)) continue;
@@ -4001,6 +4197,8 @@ const PLIndicaciones = (function() {
       "MEDIDAS GENERALES": sections["MEDIDAS GENERALES"]
     };
   }
+  const ANCHOR_AGE_RE = /\b\d{1,3}\s*A[ÑN]OS?\b/i;
+  const ANCHOR_ID_RE = /(EXP|CURP|FOLIO)/i;
 
   function importPasted(text) {
     const r = parsePasted(text);
@@ -4040,9 +4238,7 @@ const PLIndicaciones = (function() {
         let bestRes = { matched: false, score: 0, method: null };
         patients.forEach(function(p) {
           const m = matchPatient(p, b);
-          if (m.matched && m.score > bestRes.score) {
-            bestP = p; bestRes = m;
-          }
+          if (m.matched && m.score > bestRes.score) { bestP = p; bestRes = m; }
         });
         return {
           block: { cama: b.cama, nombre: b.nombre },
@@ -4054,21 +4250,89 @@ const PLIndicaciones = (function() {
   }
 
   return {
-    parsePasted: parsePasted,
-    importPasted: importPasted,
-    getForPatient: getForPatient,
-    matchPatient: matchPatient,
-    diagnose: diagnose,
-    freshness: freshness,
-    getMeta: getMeta,
-    loadBlocks: loadBlocks,
-    normalizeName: normalizeName,
-    normalizeCama: normalizeCama,
+    parsePasted: parsePasted, importPasted: importPasted, getForPatient: getForPatient,
+    matchPatient: matchPatient, diagnose: diagnose, freshness: freshness, getMeta: getMeta,
+    loadBlocks: loadBlocks, normalizeName: normalizeName, normalizeCama: normalizeCama,
     nameMatchScore: nameMatchScore
   };
 })();
 
-// ─── RENDER (defensivo con try-catch) ──────────────────────────────────────
+/* ════════════════════════════════════════════════════════════════════════════
+ * RENDERS — defensivos con try-catch
+ * ════════════════════════════════════════════════════════════════════════════ */
+function renderCDSSection(p, nd, k) {
+  try {
+    if (!nd) nd = { labs: {} };
+    if (!nd.labs) nd.labs = {};
+    const suggestions = PLCDS.evaluate(p, nd);
+    const sorted = PLCDS.sortBySeverity(suggestions);
+    const filtered = sorted.filter(function(s) { return !PLCDSStore.isIgnored(k, s.ruleId, s.valueHash); });
+    if (!filtered.length) {
+      return '<div class="cds-section cds-empty" id="cds-' + escInd(k) + '">' +
+        '<div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas</span>' +
+        '<span class="cds-status-ok">✓ Sin pendientes</span></div></div>';
+    }
+    const items = filtered.slice(0, 5).map(function(s) {
+      const sevSimple = (s.severity || "info").replace(/\d/g, "");
+      const sevLabel = (s.severity || "").replace("stage", "KDIGO ").toUpperCase();
+      const valHash = escInd(s.valueHash);
+      return '<div class="cds-item' + (s.critical ? ' cds-critical' : '') + ' cds-sev-' + sevSimple + '">' +
+        '<div class="cds-item-row"><span class="cds-badge cds-badge-' + sevSimple + '">' + escInd(sevLabel) + '</span>' +
+        '<span class="cds-rule-name">' + escInd(s.ruleName) + '</span></div>' +
+        '<div class="cds-suggestion">' + escInd(s.suggestion.text) + '</div>' +
+        '<div class="cds-actions">' +
+          '<button class="cds-btn cds-btn-apply" onclick="cdsApplySuggestion(\'' + escInd(k) + '\',\'' + escInd(s.ruleId) + '\')">✏️ Aplicar al dx</button>' +
+          '<button class="cds-btn cds-btn-ignore" onclick="cdsIgnoreSuggestion(\'' + escInd(k) + '\',\'' + escInd(s.ruleId) + '\',\'' + valHash + '\')">🔇 Ignorar</button>' +
+        '</div></div>';
+    }).join("");
+    const critCount = filtered.filter(function(s) { return s.critical; }).length;
+    const critBadge = critCount ? '<span class="cds-crit-count">⚠️ ' + critCount + ' crítica' + (critCount > 1 ? 's' : '') + '</span>' : "";
+    return '<div class="cds-section" id="cds-' + escInd(k) + '">' +
+      '<div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas <span class="cds-count">(' + filtered.length + ')</span></span>' + critBadge + '</div>' +
+      '<div class="cds-items">' + items + '</div></div>';
+  } catch (e) {
+    console.warn("renderCDSSection error:", e);
+    return '';
+  }
+}
+
+function cdsApplySuggestion(patientKey, ruleId) {
+  try {
+    if (typeof patients === "undefined" || typeof getNote !== "function") return;
+    const p = patients.find(function(pt) { return pid(pt) === patientKey; });
+    const nd = getNote(patientKey);
+    if (!p || !nd) return;
+    const suggestions = PLCDS.evaluate(p, nd);
+    const s = suggestions.find(function(x) { return x.ruleId === ruleId; });
+    if (!s) return;
+    const currentDx = (nd.dx || p.dx || "").toString();
+    if (s.suggestion.type === "reclasify" && s.suggestion.from && s.suggestion.to) {
+      const reGrade = new RegExp("(" + s.ruleName + ".*?)" + s.suggestion.from, "i");
+      if (reGrade.test(currentDx)) {
+        const newDx = currentDx.replace(reGrade, "$1" + s.suggestion.to);
+        if (confirm("Reemplazar en dx:\n\n" + currentDx + "\n\n→\n\n" + newDx + "\n\n¿Confirmar?")) {
+          nd.dx = newDx; saveNote(patientKey, nd);
+          if (p) p.dx = newDx;
+          if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
+        }
+        return;
+      }
+    }
+    if (confirm("Agregar al dx:\n\n" + s.suggestion.text + "\n\n¿Confirmar?")) {
+      nd.dx = currentDx + "\n📋 " + s.suggestion.text;
+      saveNote(patientKey, nd);
+      if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
+    }
+  } catch (e) { console.warn("cdsApplySuggestion:", e); }
+}
+
+function cdsIgnoreSuggestion(patientKey, ruleId, vhash) {
+  try {
+    PLCDSStore.ignore(patientKey, ruleId, vhash);
+    if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
+  } catch (e) { console.warn("cdsIgnore:", e); }
+}
+
 function renderIndicacionesSection(p, nd, k) {
   try {
     const data = PLIndicaciones.getForPatient(p);
@@ -4077,8 +4341,7 @@ function renderIndicacionesSection(p, nd, k) {
       return '<div class="ind-section ind-empty" id="ind-' + escInd(k) + '">' +
         '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
         '<button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button></div>' +
-        '<div class="ind-empty-msg">Sin indicaciones para ' + escInd(p.nombre || '?') + ' (cama ' + escInd(p.cama || '?') + ').</div>' +
-        '</div>';
+        '<div class="ind-empty-msg">Sin indicaciones para ' + escInd((p && p.nombre) || '?') + '.</div></div>';
     }
     const sectionBlocks = [
       { key: "DIETA", icon: "🍴" },
@@ -4091,26 +4354,25 @@ function renderIndicacionesSection(p, nd, k) {
       if (!items) return "";
       return '<div class="ind-block"><div class="ind-block-title">' + b.icon + ' ' + b.key + '</div><ul class="ind-list">' + items + '</ul></div>';
     }).join("");
-    const matchInfo = data._matchMethod ? ' · match:' + escInd(data._matchMethod) : '';
+    const matchInfo = data._matchMethod ? ' · ' + escInd(data._matchMethod) : '';
     return '<div class="ind-section ind-fresh-' + fresh.state + '" id="ind-' + escInd(k) + '">' +
       '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
       '<span class="ind-fresh">⏱ ' + escInd(fresh.label) + matchInfo + '</span>' +
       '<button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button></div>' +
-      '<div class="ind-content">' + (content || '<div class="ind-empty-msg">Bloque sin secciones parseadas.</div>') + '</div></div>';
+      '<div class="ind-content">' + (content || '<div class="ind-empty-msg">Bloque sin secciones.</div>') + '</div></div>';
   } catch (e) {
     console.warn("renderIndicacionesSection error:", e);
     return '';
   }
 }
 
-// ─── MODAL DE IMPORTACIÓN ──────────────────────────────────────────────────
+/* ─── MODAL ─── */
 function openIndicacionesModal() {
   try {
-    let m = document.getElementById("indicaciones-modal-v22");
+    let m = document.getElementById("indicaciones-modal-v23");
     if (m) { m.style.display = "flex"; return; }
     m = document.createElement("div");
-    m.id = "indicaciones-modal-v22";
-    m.className = "ind-modal-bg";
+    m.id = "indicaciones-modal-v23";
     m.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px";
     m.innerHTML =
       '<div style="background:white;border-radius:12px;padding:18px;max-width:760px;width:100%;max-height:90vh;overflow-y:auto;font-family:-apple-system,sans-serif">' +
@@ -4118,81 +4380,62 @@ function openIndicacionesModal() {
           '<div style="font-size:16px;font-weight:700;color:#0a1628">📥 Importar Indicaciones</div>' +
           '<button onclick="closeIndicacionesModal()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:#64748b">✕</button>' +
         '</div>' +
-        '<p style="font-size:12px;color:#64748b;margin:0 0 8px;line-height:1.5">' +
-          'Pega aquí el contenido del Google Doc (Cmd+A en el Doc → Cmd+C → pega aquí).<br>' +
-          '<b>Match prioritario por NOMBRE</b>, fallback por cama. NO usa expediente.' +
-        '</p>' +
-        '<textarea id="indicaciones-paste-v22" rows="11" style="width:100%;font-family:\'SF Mono\',Menlo,monospace;font-size:11px;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px;box-sizing:border-box" placeholder="Pega aquí el contenido completo del Doc..."></textarea>' +
-        '<div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px;align-items:center;flex-wrap:wrap">' +
+        '<p style="font-size:12px;color:#64748b;margin:0 0 8px">Pega el contenido del Doc. Match por <b>NOMBRE</b>, fallback cama.</p>' +
+        '<textarea id="indicaciones-paste-v23" rows="11" style="width:100%;font-family:monospace;font-size:11px;border:1.5px solid #cbd5e1;border-radius:8px;padding:10px;box-sizing:border-box" placeholder="Pega aquí..."></textarea>' +
+        '<div style="display:flex;gap:8px;justify-content:space-between;margin-top:10px;flex-wrap:wrap">' +
           '<button onclick="indicacionesDiagnose()" style="background:#e2e8f0;color:#475569;border:none;padding:8px 16px;border-radius:7px;font-weight:600;cursor:pointer">🔍 Diagnóstico</button>' +
           '<div style="display:flex;gap:8px">' +
             '<button onclick="closeIndicacionesModal()" style="background:#e2e8f0;color:#475569;border:none;padding:8px 18px;border-radius:7px;font-weight:600;cursor:pointer">Cancelar</button>' +
             '<button onclick="indicacionesDoImport()" style="background:#1e3a5f;color:white;border:none;padding:8px 18px;border-radius:7px;font-weight:600;cursor:pointer">📥 Importar</button>' +
           '</div>' +
         '</div>' +
-        '<div id="indicaciones-result-v22" style="margin-top:12px;font-size:12px"></div>' +
+        '<div id="indicaciones-result-v23" style="margin-top:12px;font-size:12px"></div>' +
       '</div>';
     document.body.appendChild(m);
-  } catch (e) {
-    console.warn("openIndicacionesModal error:", e);
-    alert("Error abriendo modal: " + e.message);
-  }
+  } catch (e) { console.warn("openIndicacionesModal:", e); alert("Error: " + e.message); }
 }
 
 function closeIndicacionesModal() {
-  try {
-    const m = document.getElementById("indicaciones-modal-v22");
-    if (m) m.remove();
-  } catch (e) { console.warn("closeIndicacionesModal:", e); }
+  try { const m = document.getElementById("indicaciones-modal-v23"); if (m) m.remove(); } catch (e) {}
 }
 
 function indicacionesDoImport() {
   try {
-    const ta = document.getElementById("indicaciones-paste-v22");
-    const result = document.getElementById("indicaciones-result-v22");
+    const ta = document.getElementById("indicaciones-paste-v23");
+    const result = document.getElementById("indicaciones-result-v23");
     if (!ta || !ta.value.trim()) {
       if (result) result.innerHTML = '<span style="color:#dc2626">⚠️ Pega contenido primero.</span>';
       return;
     }
     const r = PLIndicaciones.importPasted(ta.value);
     if (!r.blocks.length) {
-      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectaron bloques. Click "🔍 Diagnóstico" para ver detalle.</span>';
+      result.innerHTML = '<span style="color:#dc2626">⚠️ No se detectaron bloques.</span>';
       return;
     }
-    // Calcular match preview
     let matched = 0;
     const totalP = (typeof patients !== "undefined") ? patients.length : 0;
     if (typeof patients !== "undefined" && Array.isArray(patients)) {
-      patients.forEach(function(p) {
-        if (PLIndicaciones.getForPatient(p)) matched++;
-      });
+      patients.forEach(function(p) { if (PLIndicaciones.getForPatient(p)) matched++; });
     }
-    result.innerHTML = '<span style="color:#16a34a">✅ Importados ' + r.blocks.length + ' bloques.<br>' +
-      'Con nombre: ' + r.stats.withName + ' · Con cama: ' + r.stats.withCama + '<br>' +
-      '<b>Match con tu censo: ' + matched + '/' + totalP + '</b></span>';
-    // Re-renderizar cards (defensivo)
+    result.innerHTML = '<span style="color:#16a34a">✅ Importados ' + r.blocks.length + ' bloques. ' +
+      'Con nombre: ' + r.stats.withName + '/' + r.stats.total + '. ' +
+      '<b>Match: ' + matched + '/' + totalP + '</b></span>';
     if (typeof patients !== "undefined" && Array.isArray(patients) && typeof _rerenderCard === "function") {
-      try {
-        patients.forEach(function(pt) {
-          if (typeof pid === "function") _rerenderCard(pid(pt));
-        });
-      } catch (e) { console.warn("re-render:", e); }
+      try { patients.forEach(function(pt) { if (typeof pid === "function") _rerenderCard(pid(pt)); }); }
+      catch (e) { console.warn("re-render:", e); }
     }
     setTimeout(closeIndicacionesModal, 2500);
   } catch (e) {
-    const result = document.getElementById("indicaciones-result-v22");
-    if (result) result.innerHTML = '<span style="color:#dc2626">❌ Error: ' + escInd(e.message || e) + '</span>';
+    const result = document.getElementById("indicaciones-result-v23");
+    if (result) result.innerHTML = '<span style="color:#dc2626">❌ ' + escInd(e.message || e) + '</span>';
   }
 }
 
 function indicacionesDiagnose() {
   try {
-    const ta = document.getElementById("indicaciones-paste-v22");
-    const result = document.getElementById("indicaciones-result-v22");
-    if (!ta || !ta.value.trim()) {
-      result.innerHTML = '<span style="color:#dc2626">⚠️ Pega contenido primero.</span>';
-      return;
-    }
+    const ta = document.getElementById("indicaciones-paste-v23");
+    const result = document.getElementById("indicaciones-result-v23");
+    if (!ta || !ta.value.trim()) { result.innerHTML = '<span style="color:#dc2626">⚠️ Pega contenido primero.</span>'; return; }
     const pts = (typeof patients !== "undefined" && Array.isArray(patients)) ? patients : [];
     const diag = PLIndicaciones.diagnose(ta.value, pts);
     let html = '<div style="background:#f1f5f9;padding:10px;border-radius:6px;font-size:11px;font-family:monospace;max-height:340px;overflow-y:auto">';
@@ -4200,27 +4443,26 @@ function indicacionesDiagnose() {
     html += '• Total líneas: ' + diag.debug.totalLines + '<br>';
     html += '• Anchors AÑOS+ID: ' + diag.debug.anchorLines + '<br>';
     html += '• Headers INDICACIONES: ' + diag.debug.headersInd + '<br>';
-    html += '• Bloques parseados: ' + diag.debug.blocksDetected + '<br>';
-    html += '• Con CAMA: ' + diag.debug.blocksWithCama + ' · Con NOMBRE: ' + diag.debug.blocksWithName + '<br>';
+    html += '• Bloques: ' + diag.debug.blocksDetected + ' (con nombre: ' + diag.debug.blocksWithName + ')<br>';
     if (diag.matchTable && diag.matchTable.length) {
       const matched = diag.matchTable.filter(function(r){return r.match}).length;
       html += '<br><b>Match: ' + matched + '/' + diag.matchTable.length + '</b><br>';
       html += '<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:10px">';
-      html += '<tr style="background:#cbd5e1"><th style="text-align:left;padding:3px">Bloque (cama/nombre)</th><th style="text-align:left;padding:3px">Match</th><th style="text-align:left;padding:3px">Método</th></tr>';
+      html += '<tr style="background:#cbd5e1"><th style="text-align:left;padding:3px">Bloque</th><th style="text-align:left;padding:3px">Match</th><th style="padding:3px">Score</th></tr>';
       diag.matchTable.forEach(function(row) {
-        const blkInfo = (row.block.cama || '?') + ' / ' + (row.block.nombre ? row.block.nombre.substring(0, 35) : '(sin nombre)');
-        const matchInfo = row.match ? ('cama ' + (row.match.cama || '?') + ' · ' + (row.match.nombre || '?').substring(0, 30)) : '<span style="color:#dc2626">SIN MATCH</span>';
-        const methodInfo = row.match ? row.match.method + ' (' + row.match.score + ')' : '-';
+        const blkInfo = (row.block.nombre ? row.block.nombre.substring(0, 40) : '(sin nombre)');
+        const matchInfo = row.match ? (row.match.cama + ' · ' + row.match.nombre.substring(0, 30)) : '<span style="color:#dc2626">SIN MATCH</span>';
+        const methodInfo = row.match ? row.match.method + ' ' + row.match.score : '-';
         const rowStyle = row.match ? 'background:#dcfce7' : 'background:#fee2e2';
-        html += '<tr style="' + rowStyle + '"><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + escInd(blkInfo) + '</td><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + matchInfo + '</td><td style="padding:3px;border-bottom:1px solid #e2e8f0">' + escInd(methodInfo) + '</td></tr>';
+        html += '<tr style="' + rowStyle + '"><td style="padding:3px">' + escInd(blkInfo) + '</td><td style="padding:3px">' + matchInfo + '</td><td style="padding:3px">' + escInd(methodInfo) + '</td></tr>';
       });
       html += '</table>';
     }
     html += '</div>';
     result.innerHTML = html;
   } catch (e) {
-    const result = document.getElementById("indicaciones-result-v22");
-    if (result) result.innerHTML = '<span style="color:#dc2626">❌ Diagnóstico falló: ' + escInd(e.message || e) + '</span>';
+    const result = document.getElementById("indicaciones-result-v23");
+    if (result) result.innerHTML = '<span style="color:#dc2626">❌ ' + escInd(e.message || e) + '</span>';
   }
 }
 
@@ -9228,6 +9470,7 @@ function indicacionesDiagnose() {
 
       ${renderLabSection(nd, k)}
 
+      ${renderCDSSection(p, nd, k)}
       ${renderIndicacionesSection(p, nd, k)}
 
       ${/* renderWinlabSection: deshabilitada mayo 2026. Los labs ahora aparecen
@@ -19570,8 +19813,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     }
   </style>
 
-<button id="ind-import-fab" onclick="openIndicacionesModal()" title="Importar indicaciones"
-  style="position:fixed;bottom:20px;right:20px;z-index:9999;background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
+<div id="pl-fab-v23" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
+  <button onclick="openIndicacionesModal()" title="Importar indicaciones"
+    style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
+</div>
 
 </body>
 
