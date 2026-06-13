@@ -1,12 +1,5 @@
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
-.credentials
-
-# Node.js
+index.backup-*
+index.html.*
+*.ROTO*
+*.pre-v*
 node_modules/
-package-lock.json

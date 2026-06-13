@@ -2977,7 +2977,7 @@
 
   
 
-/* ════ V24 INJECTION ════ */
+/* ════ V28 INJECTION ════ */
 /* CSS v23 — CDS + Indicaciones */
 
 /* ─── CDS ─── */
@@ -3027,6 +3027,242 @@
 .ind-list li { margin:2px 0; }
 
   </style>
+  <style id="gn-focus-skin">
+    /* ═══ v34 · GoodNotes skin · SOLO modo foco + modo claro · no toca lista, ronda ni dark ═══ */
+    body.focus-on:not(.dark){
+      background-color:#fafbfc;
+      background-image:radial-gradient(#cbd5e1 .8px,transparent .8px);
+      background-size:22px 22px;
+    }
+    body.focus-on:not(.dark) .full-card{
+      max-width:1100px;margin:0 auto 16px;
+      border:1.5px solid #0a1628;border-radius:8px;
+      box-shadow:0 12px 32px rgba(10,22,40,.16);
+      background:#fff;overflow:hidden;
+    }
+    body.focus-on:not(.dark) .full-card .card-bed{
+      font-family:var(--mono);font-weight:800;letter-spacing:.5px;
+    }
+    body.focus-on:not(.dark) .full-card .field-label,
+    body.focus-on:not(.dark) .full-card .labs-title{
+      color:#0a1628 !important;font-weight:800 !important;
+      text-transform:uppercase;letter-spacing:.04em;
+      border-bottom:2px solid #1e3a5f;padding-bottom:2px;
+      display:inline-block;margin-bottom:5px !important;
+    }
+    body.focus-on:not(.dark) .full-card .pm-input{
+      font-family:var(--mono);text-align:center;
+    }
+    body.focus-on:not(.dark) .full-card .lab-extra-val{ font-family:var(--mono); }
+    body.focus-on:not(.dark) .full-card .badge-estado,
+    body.focus-on:not(.dark) .full-card .badge-esp,
+    body.focus-on:not(.dark) .full-card .badge-day{
+      border-radius:20px !important;letter-spacing:.02em;
+    }
+    /* tabla columnar de labs (solo aparece en foco) */
+    .ff-labs{margin:10px 0}
+    .ff-labs-h{font-size:11.5px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #1e3a5f;padding-bottom:2px;display:inline-block;margin-bottom:6px}
+    .ff-labs-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px}
+    .ff-labtable{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.5px}
+    .ff-labtable th,.ff-labtable td{padding:3px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid #eef2f7}
+    .ff-labtable thead th{font-size:11px;color:#1e3a5f;font-weight:800;background:#f8fafc;position:sticky;top:0}
+    .ff-labtable td.ff-an,.ff-labtable th.ff-an{text-align:left;font-family:var(--font);font-weight:700;color:#475569;position:sticky;left:0;background:#fff}
+    .ff-labtable thead th.ff-an{background:#f8fafc}
+    .ff-labtable tbody tr:nth-child(even) td{background:#fafbfc}
+    .ff-labtable tbody tr:nth-child(even) td.ff-an{background:#fafbfc}
+    .ff-labs-empty{padding:10px;color:#64748b;font-size:12px;font-style:italic}
+    .ff-labtable tr.ff-otros-h td{background:#eef2f7;font-family:var(--font);font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.04em;font-size:10.5px;text-align:left;border-top:2px solid #cbd5e1;padding:4px 10px}
+    body.dark .ff-labtable tr.ff-otros-h td{background:#16243a;color:#94a3b8}
+    body.dark .ff-labtable td.ff-an,body.dark .ff-labtable thead th{background:#0f1c2e;color:#cbd5e1}
+    body.dark .ff-labtable td,body.dark .ff-labtable th{border-color:#1e293b;color:#e2e8f0}
+    /* color de valores (reusa umbrales clínicos de LAB_GROUPS) */
+    .ff-labtable td.ff-lo{color:#1d4ed8;font-weight:800}
+    .ff-labtable td.ff-hi{color:#dc2626;font-weight:800}
+    .ff-labtable td.ff-crit{color:#fff !important;background:#dc2626;font-weight:800;border-radius:3px}
+    body.dark .ff-labtable td.ff-lo{color:#60a5fa}
+    body.dark .ff-labtable td.ff-hi{color:#f87171}
+    body.dark .ff-labtable td.ff-crit{color:#fff !important;background:#b91c1c}
+    /* PASE DE VISITA (rondas) hereda el look GoodNotes — modo claro */
+    body:not(.dark) #rondas-body{background-color:#fafbfc;background-image:radial-gradient(#cbd5e1 .8px,transparent .8px);background-size:22px 22px}
+    body:not(.dark) #rondas-body .full-card{border:1.5px solid #0a1628;border-radius:8px;box-shadow:0 12px 32px rgba(10,22,40,.16);background:#fff;overflow:hidden}
+    body:not(.dark) #rondas-body .full-card .card-bed{font-family:var(--mono);font-weight:800;letter-spacing:.5px}
+    body:not(.dark) #rondas-body .full-card .field-label,body:not(.dark) #rondas-body .full-card .labs-title{color:#0a1628 !important;font-weight:800 !important;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #1e3a5f;padding-bottom:2px;display:inline-block;margin-bottom:5px !important}
+    body:not(.dark) #rondas-body .full-card .pm-input{font-family:var(--mono);text-align:center}
+    body:not(.dark) #rondas-body .full-card .badge-estado,body:not(.dark) #rondas-body .full-card .badge-esp,body:not(.dark) #rondas-body .full-card .badge-day{border-radius:20px !important;letter-spacing:.02em}
+  </style>
+<style id="fb-styles">
+/* ═══ v41 · tablero GoodNotes (modo foco) — TODO scopeado a .focus-board ═══ */
+.focus-board{
+  max-width:1180px; margin:0 auto; background:#ffffff;
+  border:1.5px solid #0a1628; border-radius:8px;
+  box-shadow:0 12px 32px rgba(10,22,40,.16); overflow:hidden;
+  color:#334155;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.focus-board *{ box-sizing:border-box; }
+.focus-board .fb-err{ color:#b91c1c; font-size:11px; }
+.focus-board .fb-empty{ color:#94a3b8; font-size:11px; }
+
+/* header */
+.focus-board .fb-hd{ display:grid; grid-template-columns:128px 1fr auto; border-bottom:1.5px solid #0a1628; }
+.focus-board .fb-cama{ border-right:1.5px solid #0a1628; padding:8px 10px; display:flex; flex-direction:column; justify-content:center; }
+.focus-board .fb-lbl{ font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.06em; }
+.focus-board .fb-cama-v{ font-size:30px; font-weight:800; color:#dc2626; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; line-height:1; }
+.focus-board .fb-mid{ padding:8px 12px; display:flex; flex-direction:column; justify-content:center; gap:3px; border-right:1.5px solid #0a1628; min-width:0; }
+.focus-board .fb-name{ font-size:19px; font-weight:800; color:#0a1628; letter-spacing:-.01em; }
+.focus-board .fb-meta{ font-size:12px; color:#64748b; display:flex; gap:16px; flex-wrap:wrap; }
+.focus-board .fb-meta b{ color:#1e3a5f; }
+.focus-board .fb-badges{ padding:8px 12px; display:flex; flex-wrap:wrap; gap:5px; align-content:center; align-items:center; max-width:300px; }
+.focus-board .fb-badge{ font-size:10.5px; font-weight:700; padding:3px 8px; border-radius:20px; white-space:nowrap; }
+.focus-board .fb-b-day{ background:#e8eef6; color:#1e3a5f; border:1px solid #3b5d8a; }
+.focus-board .fb-b-atb{ background:#ecfdf5; color:#059669; border:1px solid #059669; }
+
+/* dx */
+.focus-board .fb-dx{ border-bottom:1.5px solid #0a1628; padding:8px 12px; display:flex; gap:8px; align-items:baseline; background:#f8fafc; }
+.focus-board .fb-dx-tag{ font-size:11px; font-weight:800; color:#0a1628; text-transform:uppercase; flex:0 0 auto; }
+.focus-board .fb-dx-txt{ font-size:12px; line-height:1.45; color:#334155; font-weight:600; }
+
+/* band + zone genéricos */
+.focus-board .fb-band{ border-bottom:1.5px solid #0a1628; padding:6px 10px; }
+.focus-board .fb-cds{ background:#fffbeb; }
+.focus-board .fb-zone{ padding:8px 12px; min-width:0; }
+.focus-board .fb-zh{ font-size:11.5px; font-weight:800; color:#0a1628; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; padding-bottom:3px; border-bottom:2px solid #1e3a5f; display:inline-block; }
+.focus-board .fb-zone > p{ font-size:11.5px; line-height:1.45; color:#334155; white-space:pre-wrap; }
+
+/* band main: labs | rail */
+.focus-board .fb-main{ display:grid; grid-template-columns:1.7fr 1fr; border-bottom:1.5px solid #0a1628; }
+.focus-board .fb-main .fb-rail{ border-left:1.5px solid #0a1628; }
+.focus-board .fb-sub{ margin-bottom:9px; }
+.focus-board .fb-sub:last-child{ margin-bottom:0; }
+
+/* band 3 */
+.focus-board .fb-band3{ display:grid; grid-template-columns:1fr 1fr 1fr; border-bottom:1.5px solid #0a1628; }
+.focus-board .fb-band3 .fb-zone + .fb-zone{ border-left:1.5px solid #0a1628; }
+
+/* band bottom */
+.focus-board .fb-bottom{ display:grid; grid-template-columns:1fr 1.1fr 1fr; }
+.focus-board .fb-bottom .fb-zone + .fb-zone{ border-left:1.5px solid #0a1628; }
+.focus-board .fb-ta{ width:100%; border:1px solid #e2e8f0; border-radius:6px; padding:6px 8px; font-size:12px; font-family:inherit; resize:vertical; color:#334155; background:#fff; }
+.focus-board .fb-vits{ display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:6px; }
+.focus-board .fb-vit{ font-size:11px; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:#334155; }
+.focus-board .fb-vit b{ color:#64748b; font-family:inherit; font-weight:600; }
+
+/* pase matutino editable */
+.focus-board .fb-pm-grid{ display:grid; grid-template-columns:1fr 1fr; gap:3px 12px; }
+.focus-board .fb-pm{ display:flex; align-items:center; gap:5px; min-width:0; } /* FIX-v47: sin esto el grid del pase desborda el card */
+.focus-board .fb-pm-k{ font-size:11px; font-weight:700; color:#1e3a5f; min-width:48px; }
+.focus-board .fb-pm-i{ flex:1; min-width:0; border:none; border-bottom:1.3px dotted #cbd5e1; background:transparent; font-size:12px; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:#0a1628; padding:2px; text-align:center; }
+.focus-board .fb-pm-i:focus{ outline:none; border-bottom-color:#3b82f6; border-bottom-style:solid; }
+.focus-board .fb-pase-note{ font-size:9.5px; color:#64748b; font-style:italic; margin-top:6px; }
+
+/* responsive: pantallas chicas apilan las bandas */
+@media (max-width: 820px){
+  .focus-board .fb-main, .focus-board .fb-band3, .focus-board .fb-bottom{ grid-template-columns:1fr; }
+  .focus-board .fb-main .fb-rail, .focus-board .fb-band3 .fb-zone + .fb-zone, .focus-board .fb-bottom .fb-zone + .fb-zone{ border-left:none; border-top:1.5px solid #0a1628; }
+  .focus-board .fb-hd{ grid-template-columns:96px 1fr; }
+  .focus-board .fb-badges{ grid-column:1 / -1; border-top:1px solid #e2e8f0; max-width:none; }
+}
+</style>
+
+<style id="fb3-styles">
+/* ═══ v43 · reorganización del tablero + drenajes editables ═══ */
+.focus-board .fb-row{ display:grid; grid-template-columns:1fr 1fr; border-bottom:1.5px solid #0a1628; }
+.focus-board .fb-row-1{ grid-template-columns:1.7fr 1fr; }
+/* FIX-v47 · geometría hoja GoodNotes */
+/* ═══ FIX-v48 · PIEL DE PAPEL: que se VEA como la hoja de GoodNotes ═══ */
+.focus-board{
+  background:#fcfcf7;
+  background-image:radial-gradient(#d9d9cd 1px, transparent 1.4px);
+  background-size:22px 22px;
+}
+.focus-board .fb-zone, .focus-board .fb-dxband, .focus-board .fb-cama,
+.focus-board .fb-mid, .focus-board .fb-badges{ background:transparent; }
+/* etiquetas de plantilla: planas, negras, como escritas en el formato impreso */
+.focus-board .fb-zh{
+  color:#111; border-bottom:none; text-transform:none; letter-spacing:0;
+  font-size:13px; font-weight:800; display:block; margin-bottom:4px;
+}
+.focus-board .ff-labs-h{
+  color:#111; border-bottom:none; text-transform:none; letter-spacing:0;
+  font-size:13px; font-weight:800;
+}
+/* escribir DIRECTO sobre el papel: sin cajas */
+.focus-board .fb-ta{
+  border:none; background:transparent; font-size:12.5px; color:#1a3aa8;
+  font-weight:600; padding:2px 0;
+}
+.focus-board .fb-ta:focus{ outline:none; box-shadow:inset 0 -2px 0 #6b9bd1; }
+.focus-board .fb-ta::placeholder{ color:#b9b9ac; font-weight:400; }
+/* cama en azul claro manuscrito, como la hoja */
+.focus-board .fb-cama-v{ color:#6b9bd1; font-size:34px; }
+.focus-board .fb-dx-tag{ color:#111; }
+/* tabla de labs sobre papel */
+.focus-board .ff-labs-wrap{ border:none; border-radius:0; background:transparent; }
+.focus-board .ff-labtable{ background:transparent; }
+.focus-board .ff-labtable td, .focus-board .ff-labtable th{ border-bottom:none; background:transparent !important; }
+.focus-board .ff-labtable td.ff-an, .focus-board .ff-labtable th.ff-an{ color:#111; background:transparent; }
+.focus-board .ff-labtable thead th{ color:#111; background:transparent; }
+.focus-board .ff-labtable tbody tr:nth-child(even) td{ background:transparent; }
+/* pase matutino: renglones punteados como formato para llenar */
+.focus-board .fb-pm-k{ color:#111; }
+.focus-board .fb-pm-i{ color:#1a3aa8; font-weight:600; }
+/* badges y CDS discretos sobre el papel */
+.focus-board .fb-cds{ background:#fffdf0; }
+.focus-board .fb-more-btn{ background:transparent; color:#555; font-weight:700; }
+.focus-board .fb-chips .fb-chip{ background:#fff; }
+
+.focus-board .fb-row-paper{ grid-template-columns:1.65fr 1fr; }
+.focus-board .fb-row-paper > .fb-stack{ border-left:1.5px solid #0a1628; display:flex; flex-direction:column; min-width:0; }
+.focus-board .fb-stack > .fb-zone + .fb-zone{ border-top:1.5px solid #0a1628; }
+.focus-board .fb-row-3{ grid-template-columns:1fr 1.15fr 1.05fr; }
+.focus-board .fb-pm-rows{ display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; margin-top:7px; padding-top:6px; border-top:1px dashed #cbd5e1; }
+@media (max-width:760px){
+  .focus-board .fb-row-paper, .focus-board .fb-row-3{ grid-template-columns:1fr; }
+  .focus-board .fb-row-paper > .fb-stack{ border-left:0; border-top:1.5px solid #0a1628; }
+  .focus-board .fb-row-3 > .fb-zone + .fb-zone{ border-left:0; border-top:1.5px solid #0a1628; }
+}
+.focus-board .fb-row > .fb-zone + .fb-zone{ border-left:1.5px solid #0a1628; }
+.focus-board .fb-dxband{ border-bottom:1.5px solid #0a1628; padding:8px 12px; background:#f8fafc; }
+.focus-board .fb-fld{ margin:0; }
+.focus-board .fb-fld + .fb-fld{ margin-top:8px; }
+.focus-board .fb-inline2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+.focus-board .fb-chips{ display:flex; flex-wrap:wrap; gap:4px; margin:0 0 6px; }
+.focus-board .fb-chip{ font-size:11px; font-weight:700; line-height:1.4; padding:3px 9px; border:1px solid #2c4d77; border-radius:14px; background:#e8eef6; color:#1e3a5f; cursor:pointer; white-space:nowrap; }
+.focus-board .fb-chip:hover{ background:#2c4d77; color:#fff; }
+.focus-board .fb-chip:active{ transform:translateY(1px); }
+.focus-board .fb-more{ border-bottom:1.5px solid #0a1628; }
+.focus-board .fb-more-btn{ width:100%; text-align:left; font-size:12px; font-weight:800; color:#0a1628; background:#f1f5f9; border:none; padding:9px 12px; cursor:pointer; display:flex; align-items:center; gap:6px; }
+.focus-board .fb-more-btn:hover{ background:#e8eef6; }
+.focus-board .fb-more-caret{ margin-left:auto; transition:transform .15s ease; }
+.focus-board .fb-more.open .fb-more-caret{ transform:rotate(90deg); }
+.focus-board .fb-more-body{ display:none; }
+.focus-board .fb-more.open .fb-more-body{ display:block; }
+</style>
+<style id="fbnav-styles">
+/* ═══ v42 · Modo Tablero (navegación tipo GoodNotes) ═══ */
+#board-wrap{ display:flex; gap:10px; align-items:flex-start; }
+#board-side{ flex:0 0 64px; position:sticky; top:8px; max-height:calc(100vh - 20px); overflow-y:auto;
+  display:flex; flex-direction:column; gap:3px; padding:6px 4px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; }
+#board-side .bs-h{ font-size:9px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:.06em; text-align:center; margin-bottom:2px; }
+#board-side .bs-btn{ font-size:12px; font-weight:700; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; padding:5px 4px; border:1px solid #e2e8f0; border-radius:5px; background:#fff; color:#334155; cursor:pointer; text-align:center; white-space:nowrap; }
+#board-side .bs-btn:hover{ background:#e8eef6; }
+#board-side .bs-btn.bs-cur{ background:#0a1628; color:#fff; border-color:#0a1628; }
+#board-main{ flex:1 1 auto; min-width:0; }
+#board-nav{ display:flex; align-items:center; gap:8px; margin-bottom:10px; padding:6px 10px; background:#0a1628; border-radius:8px; position:sticky; top:8px; z-index:5; }
+#board-nav .bn-btn{ font-size:18px; font-weight:800; line-height:1; min-width:44px; padding:6px 10px; border:none; border-radius:6px; background:#2c4d77; color:#fff; cursor:pointer; }
+#board-nav .bn-btn:hover:not([disabled]){ background:#3b5d8a; }
+#board-nav .bn-btn[disabled]{ opacity:.35; cursor:default; }
+#board-nav .bn-pos{ flex:1 1 auto; min-width:0; color:#fff; font-size:13px; font-weight:600; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#board-nav .bn-pos b{ color:#9fc3f0; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+#board-nav .bn-idx{ font-size:12px; font-weight:700; padding:6px 12px; border:1px solid #3b5d8a; border-radius:6px; background:transparent; color:#cfe0f5; cursor:pointer; white-space:nowrap; }
+#board-nav .bn-idx:hover{ background:#122339; }
+@media (max-width:820px){
+  #board-side{ flex-basis:52px; }
+  #board-nav .bn-pos{ font-size:12px; }
+  #board-nav .bn-btn{ min-width:38px; font-size:16px; }
+}
+</style>
+
 </head>
 
 <body>
@@ -3170,7 +3406,7 @@
       <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
       <button class="tab" onclick="setView('pendientes',this)">📋 Pendientes</button>
       <button class="tab" onclick="setView('tablero',this)" style="background:rgba(168,85,247,.25);border-color:rgba(168,85,247,.6)">📌 Tablero</button>
-      <button class="tab" onclick="startRondas()" style="background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.6)">🔄 Rondas</button>
+      <button class="tab" onclick="startRondas()" style="background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.6)">🔄 Pase de visita</button>
     </div>
   </div>
   </div>
@@ -3188,6 +3424,38 @@
           automáticamente</span>
       </div>
     </div>
+
+    <style id="v30-styles">
+      /* ═══ v30 ═══ buscador prominente + barra fija */
+      #filterbar { position: sticky; top: 62px; z-index: 90; background: var(--bg); padding: 8px 0; box-shadow: 0 8px 10px -10px rgba(0,0,0,.30); }
+      #search { padding: 11px 16px; font-size: 15px; font-weight: 600; width: 340px; max-width: 100%; flex: 1 1 300px; border-width: 1.5px; border-radius: 10px; }
+      #search:focus { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,.15); }
+      #bed-nav { top: 124px; }
+      /* v30 — barra de enfoque (paciente a pantalla completa) */
+      #focus-bar { position: sticky; top: 62px; z-index: 95; display: flex; align-items: center; gap: 12px; background: linear-gradient(90deg,#0a1628,#0d4a7a); color: #fff; padding: 12px 18px; border-radius: 12px; margin-bottom: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+      #focus-bar button { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.35); border-radius: 9px; padding: 9px 16px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: var(--font); transition: background .15s; white-space: nowrap; }
+      #focus-bar button:hover { background: rgba(255,255,255,.30); }
+      #focus-bar .fb-info { font-size: 13px; font-weight: 600; opacity: .92; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      body.focus-on #filterbar, body.focus-on #import-banner { display: none !important; }
+      /* v30 — camas libres intercaladas en su posición */
+      .free-slot { display: flex; align-items: center; gap: 10px; border: 2px dashed #cbd5e1; background: repeating-linear-gradient(45deg,#fbfcfe,#fbfcfe 10px,#f4f7fb 10px,#f4f7fb 20px); border-radius: 12px; padding: 12px 16px; color: #64748b; }
+      .free-slot .fs-bed { font-size: 16px; font-weight: 800; color: #475569; font-family: var(--mono); letter-spacing: .5px; }
+      .free-slot .fs-tag { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #94a3b8; }
+      .free-slot .fs-add { margin-left: auto; background: #059669; color: #fff; border: none; border-radius: 9px; padding: 8px 15px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font); transition: background .15s; }
+      .free-slot .fs-add:hover { background: #047857; }
+      body.dark .free-slot { background: #0f1c2e; border-color: #334155; color: #94a3b8; }
+      /* v30 — botón colapsable de drenajes */
+      .drains-toggle { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 12px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; cursor: pointer; font-family: var(--font); }
+      .drains-toggle:hover { background: #f1f5f9; border-color: #cbd5e1; }
+      body.dark .drains-toggle { background: #0f1c2e; border-color: #334155; color: #94a3b8; }
+      /* ═══ v32 ═══ compactar tarjeta: una completa por pantalla */
+      .card-body { padding: 8px 12px !important; }
+      .card-body > div[style*="margin-top:10px"] { margin-top: 6px !important; }
+      .card-body .grid-2, .card-body .grid-3 { gap: 6px !important; }
+      .card-body .field-label { margin-bottom: 2px !important; font-size: 10.5px !important; }
+      .card-body .field-ta, .simple-body .field-ta { line-height: 1.35 !important; padding: 4px 7px !important; min-height: 1.6em; }
+      .labs-grid { gap: 4px !important; }
+    </style>
 
     <!-- FILTER BAR -->
     <div id="filterbar">
@@ -3253,8 +3521,14 @@
             inputmode="text" autocorrect="off"
             oninput="liveModalNote('sangrado',this.value)"
             placeholder="Ej: 200 mL" /></div>
-        <div class="modal-field modal-span2" style="grid-column:span 2"><label>Drenajes</label><input
-            class="modal-input" id="mf-drenajes-modal"
+        <div class="modal-field modal-span2" style="grid-column:span 2"><label>Drenajes</label>
+          <div style="display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap">
+            <input class="modal-input" id="mf-dr-tipo" inputmode="text" autocorrect="off" placeholder="Tipo (Penrose, Blake, JP...)" style="flex:2;min-width:110px" onkeydown="if(event.key==='Enter'){event.preventDefault();appendDrain();}" />
+            <input class="modal-input" id="mf-dr-gasto" inputmode="text" autocorrect="off" placeholder="Gasto (30cc)" style="flex:1;min-width:70px" onkeydown="if(event.key==='Enter'){event.preventDefault();appendDrain();}" />
+            <input class="modal-input" id="mf-dr-carac" inputmode="text" autocorrect="off" placeholder="Características" style="flex:2;min-width:110px" onkeydown="if(event.key==='Enter'){event.preventDefault();appendDrain();}" />
+            <button type="button" onclick="appendDrain()" title="Agregar drenaje" style="background:#0369a1;color:#fff;border:none;border-radius:6px;padding:0 12px;font-weight:700;cursor:pointer">➕</button>
+          </div>
+          <input class="modal-input" id="mf-drenajes-modal"
             inputmode="text" autocorrect="off" autocapitalize="sentences"
             oninput="liveModalNote('drenajes',this.value)"
             placeholder="Ej: Blake HD 100cc serosanguinolento" /></div>
@@ -3736,7 +4010,7 @@
   <!-- RONDAS OVERLAY -->
   <div id="rondas-overlay">
     <div id="rondas-header">
-      <h2>🔄 Modo Rondas</h2>
+      <h2>🔄 Pase de visita</h2>
       <span id="rondas-counter"></span>
       <button id="rondas-close" onclick="exitRondas()">✕ Salir</button>
     </div>
@@ -3773,7 +4047,7 @@
   </script>
   
 
-  <!-- ════════ V24 ════════ -->
+  <!-- ════════ V28 ════════ -->
   <script>
 /* ════════════════════════════════════════════════════════════════════════════
  * PisoLibro v23 — CDS restaurado + Indicaciones mejorada
@@ -3807,11 +4081,35 @@ const PLCDS = (function() {
     if (Array.isArray(history) && history.length) {
       const withLabs = history.filter(function(s) { return s && s.labs; });
       if (withLabs.length) {
-        // Snapshot más reciente por fecha (desc)
+        // Orden por fecha DESC (más reciente primero)
         const sorted = withLabs.slice().sort(function(a, b) {
           return String(b.fecha || "").localeCompare(String(a.fecha || ""));
         });
-        return sorted[0].labs || {};
+        // CARRY-FORWARD por analito dentro de ventana de 14 días desde el snapshot
+        // más reciente. Evita que un control parcial reciente (p.ej. 5 analitos)
+        // oculte alteraciones del último panel completo (p.ej. Alb de hace 2 días).
+        // Para cada clave gana el valor NO vacío más reciente.
+        var WINDOW_DAYS = 14;
+        var newestT = Date.parse(String(sorted[0].fecha || ""));
+        var merged = {};
+        for (var i = 0; i < sorted.length; i++) {
+          var snap = sorted[i];
+          var snapT = Date.parse(String(snap.fecha || ""));
+          if (isFinite(newestT) && isFinite(snapT) &&
+              (newestT - snapT) / 86400000 > WINDOW_DAYS) break; // desc: el resto es más viejo
+          var labs = snap.labs || {};
+          for (var key in labs) {
+            if (!Object.prototype.hasOwnProperty.call(labs, key)) continue;
+            var cur = merged[key];
+            if (cur === undefined || cur === null || String(cur).trim() === "") {
+              var val = labs[key];
+              if (val !== undefined && val !== null && String(val).trim() !== "") {
+                merged[key] = val;
+              }
+            }
+          }
+        }
+        return merged;
       }
     }
     return (nd && nd.labs) || {};  // fallback legacy
@@ -3893,7 +4191,79 @@ const PLCDS = (function() {
     { id:"hiperbil", name:"Hiperbilirrubinemia", keywords:/(hiperbilirrubin|ict[eé]ric)/i,
       check:function(labs){ const bt=num(labs.bt); if(!isFinite(bt)||bt<=1.2) return null;
         const sev=bt>5?"severa":(bt>3?"moderada":"leve");
-        return {sev:sev,value:bt,unit:"mg/dL",display:"Bil total "+bt};}}
+        return {sev:sev,value:bt,unit:"mg/dL",display:"Bil total "+bt};}},
+
+    /* ════════ v27 — REGLAS AMPLIADAS ════════
+     * Claves tomadas del contrato WINLAB_ALIASES (no inventadas).
+     * Umbrales = guías estándar. UNIDADES asumidas del HGL: leucos x10³/µL,
+     * glu/ca/mg/p mg/dL, lactato mmol/L. ‹‹ VALIDAR clínicamente y por unidad. */
+    { id:"leucocitosis", name:"Leucocitosis", keywords:/leucocitosis/i,
+      critical:true, criticalIf:function(r){return r.value>=20;},
+      check:function(labs){ const x=num(labs.leucos); if(!isFinite(x)||x<11) return null;
+        const sev=x>=20?"severa":(x>=15?"moderada":"leve");
+        return {sev:sev,value:x,unit:"x10\u00B3/\u00B5L",display:"Leu "+x};}},
+    { id:"leucopenia", name:"Leucopenia", keywords:/leucopenia/i,
+      critical:true, criticalIf:function(r){return r.value<1;},
+      check:function(labs){ const x=num(labs.leucos); if(!isFinite(x)||x>=4) return null;
+        const sev=x<1?"severa":(x<2?"moderada":"leve");
+        return {sev:sev,value:x,unit:"x10\u00B3/\u00B5L",display:"Leu "+x};}},
+    { id:"hiperglucemia", name:"Hiperglucemia", keywords:/hiperglucemia/i,
+      check:function(labs){ const x=num(labs.glu); if(!isFinite(x)||x<=180) return null;
+        const sev=x>400?"severa":(x>250?"moderada":"leve");
+        return {sev:sev,value:x,unit:"mg/dL",display:"Glu "+x};}},
+    { id:"hipoglucemia", name:"Hipoglucemia", keywords:/hipoglucemia/i,
+      critical:true, criticalIf:function(r){return r.value<54;},
+      check:function(labs){ const x=num(labs.glu); if(!isFinite(x)||x>=70) return null;
+        const sev=x<40?"severa":(x<54?"moderada":"leve");
+        return {sev:sev,value:x,unit:"mg/dL",display:"Glu "+x};}},
+    { id:"hiperlactatemia", name:"Hiperlactatemia", keywords:/(hiperlactat|lactato\s+elevad|acidosis\s+l[\u00E1a]ctic)/i,
+      critical:true, criticalIf:function(r){return r.value>=4;},
+      check:function(labs){ const x=num(labs.lac); if(!isFinite(x)||x<2) return null;
+        const sev=x>=4?"severa":(x>=3?"moderada":"leve");
+        return {sev:sev,value:x,unit:"mmol/L",display:"Lactato "+x};}},
+    { id:"inrelev", name:"INR prolongado", keywords:/(inr\s+prolongad|coagulopat[\u00EDi]a)/i,
+      check:function(labs){ const x=num(labs.inr); if(!isFinite(x)||x<=1.5) return null;
+        const sev=x>3?"severa":(x>2?"moderada":"leve");
+        return {sev:sev,value:x,unit:"",display:"INR "+x};}},
+    { id:"hipocalcemia", name:"Hipocalcemia", keywords:/hipocalcemia/i,
+      critical:true, criticalIf:function(r){return r.value<7;},
+      check:function(labs){ const ca=num(labs.ca); if(!isFinite(ca)) return null;
+        const alb=num(labs.alb); let val=ca, disp="Ca "+ca;
+        if(isFinite(alb)){ val=Math.round((ca+0.8*(4.0-alb))*100)/100; disp="Ca corr "+val+" (Ca "+ca+", Alb "+alb+")"; }
+        if(val>=8.5) return null;
+        const sev=val<7?"severa":(val<7.5?"moderada":"leve");
+        return {sev:sev,value:val,unit:"mg/dL",display:disp};}},
+    { id:"hipercalcemia", name:"Hipercalcemia", keywords:/hipercalcemia/i,
+      critical:true, criticalIf:function(r){return r.value>=14;},
+      check:function(labs){ const ca=num(labs.ca); if(!isFinite(ca)||ca<=10.5) return null;
+        const sev=ca>=14?"severa":(ca>=12?"moderada":"leve");
+        return {sev:sev,value:ca,unit:"mg/dL",display:"Ca "+ca};}},
+    { id:"hipomagnesemia", name:"Hipomagnesemia", keywords:/hipomagnesemia/i,
+      check:function(labs){ const x=num(labs.mg); if(!isFinite(x)||x>=1.7) return null;
+        const sev=x<1?"severa":(x<1.4?"moderada":"leve");
+        return {sev:sev,value:x,unit:"mg/dL",display:"Mg "+x};}},
+    { id:"hipofosfatemia", name:"Hipofosfatemia", keywords:/hipofosfatemia/i,
+      check:function(labs){ const x=num(labs.p); if(!isFinite(x)||x>=2.5) return null;
+        const sev=x<1?"severa":(x<2?"moderada":"leve");
+        return {sev:sev,value:x,unit:"mg/dL",display:"P "+x};}},
+    { id:"hepatocelular", name:"Elevaci\u00F3n de transaminasas", keywords:/(hipertransaminas|lesi[\u00F3o]n\s+hepatocelular|elevaci[\u00F3o]n.*transaminas)/i,
+      check:function(labs){ const ast=num(labs.ast); const alt=num(labs.alt);
+        const v=Math.max(isFinite(ast)?ast:0, isFinite(alt)?alt:0); if(v<120) return null;
+        const sev=v>=400?"severa":(v>=200?"moderada":"leve");
+        const disp=(isFinite(alt)?"ALT "+alt:"")+(isFinite(ast)?((isFinite(alt)?" / ":"")+"AST "+ast):"");
+        return {sev:sev,value:v,unit:"U/L",display:disp};}},
+    { id:"hiperamilasemia", name:"Hiperamilasemia", keywords:/(hiperamilasemia|amilasa\s+elevad)/i,
+      check:function(labs){ const x=num(labs.amilasa); if(!isFinite(x)||x<=110) return null;
+        const sev=x>=550?"severa":(x>=330?"moderada":"leve");
+        return {sev:sev,value:x,unit:"U/L",display:"Amilasa "+x};}},
+    { id:"hiperlipasemia", name:"Hiperlipasemia", keywords:/(hiperlipasemia|lipasa\s+elevad|pancreatitis)/i,
+      check:function(labs){ const x=num(labs.lipasa); if(!isFinite(x)||x<=300) return null;
+        const sev=x>=1500?"severa":(x>=900?"moderada":"leve");
+        return {sev:sev,value:x,unit:"U/L",display:"Lipasa "+x};}},
+    { id:"pcrElevada", name:"PCR elevada", keywords:/(pcr\s+elevad|prote[\u00EDi]na\s+c\s+reactiva)/i,
+      check:function(labs){ const x=num(labs.pcr); if(!isFinite(x)||x<50) return null;
+        const sev=x>=100?"severa":"moderada";
+        return {sev:sev,value:x,unit:"mg/L",display:"PCR "+x};}}
   ];
   function buildSuggestion(rule,result,dx){
     if(!rule.keywords) return null;
@@ -4025,25 +4395,27 @@ const PLIndicaciones = (function() {
   function matchPatient(patient, block) {
     if (!patient || !block) return { matched: false, score: 0, method: null };
     const nScore = nameMatchScore(patient.nombre, block.nombre);
-    // ≥2 palabras significativas coinciden → match seguro
+    const c1 = normalizeCama(patient.cama);
+    const c2 = normalizeCama(block.cama);
+    const camaMatch = !!(c1 && c2 && c1 === c2);
+
+    // v26 — PRECISIÓN > RECALL (seguridad del paciente: nunca cruzar indicaciones)
+    // 1) Cama coincide + >=1 token de nombre → match más seguro (la cama desambigua)
+    if (camaMatch && nScore >= 1) {
+      return { matched: true, score: 70 + nScore * 5,
+               method: nScore >= 2 ? "cama+nombre" : "cama+1palabra", words: nScore };
+    }
+    // 2) Nombre >=2 tokens (sin cama que confirme) → match por nombre
     if (nScore >= 2) {
       return { matched: true, score: 50 + nScore * 10, method: "nombre", words: nScore };
     }
-    // 1 palabra única (apellido largo) → match débil
-    if (nScore === 1) {
-      const w1 = normalizeName(patient.nombre);
-      const set2 = new Set(normalizeName(block.nombre));
-      const common = w1.find(function(w) { return set2.has(w); });
-      if (common && common.length >= 5) {
-        return { matched: true, score: 30, method: "nombre-1palabra" };
-      }
+    // 3) Cama coincide sin nombre en común → posicional débil; marcar para verificar
+    //    (el Doc no trae piso → posible colisión X-NNN entre pisos)
+    if (camaMatch) {
+      return { matched: true, score: 35, method: "cama-sola", warn: true };
     }
-    // Fallback CAMA
-    const c1 = normalizeCama(patient.cama);
-    const c2 = normalizeCama(block.cama);
-    if (c1 && c2 && c1 === c2) {
-      return { matched: true, score: 40, method: "cama" };
-    }
+    // 4) RECHAZADO: 1 sola palabra sin cama. Era el falso positivo clínico
+    //    (Antonio RODRIGUEZ Hernandez ↔ Francisco LUEVANO Hernandez por "HERNANDEZ").
     return { matched: false, score: 0, method: null };
   }
 
@@ -4086,16 +4458,28 @@ const PLIndicaciones = (function() {
     const ANCHOR_ID_RE = /(EXP|CURP|FOLIO)/i;
     const INDICACIONES_RE = /INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/i;
 
-    const anchors = [];
+    const anchorsRaw = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (INDICACIONES_RE.test(line)) {
-        anchors.push({ lineIdx: i, type: "header" });
+        anchorsRaw.push({ lineIdx: i, type: "header" });
         debug.headersInd++;
       } else if (ANCHOR_AGE_RE.test(line) && ANCHOR_ID_RE.test(line)) {
-        anchors.push({ lineIdx: i, type: "id" });
+        anchorsRaw.push({ lineIdx: i, type: "id" });
         debug.anchorLines++;
       }
+    }
+
+    // DEDUPE v25: un ancla "id" (línea AÑOS+EXP) a <=3 renglones de un header
+    // NO es paciente nuevo: es la línea de nombre del bloque header. (bug RAMIREZ)
+    const anchors = [];
+    for (let i = 0; i < anchorsRaw.length; i++) {
+      const a = anchorsRaw[i];
+      if (a.type === "id" && anchors.length) {
+        const prev = anchors[anchors.length - 1];
+        if (prev.type === "header" && (a.lineIdx - prev.lineIdx) <= 3) continue;
+      }
+      anchors.push(a);
     }
 
     if (!anchors.length) return { blocks: [], debug: debug };
@@ -4121,61 +4505,85 @@ const PLIndicaciones = (function() {
   }
 
   function parseBlock(segLines, anchorIdx) {
-    // EXTRACTOR DE NOMBRE PERMISIVO
-    // Buscar línea no vacía antes del ancla.
-    // Aceptar si tiene letras y NO es uno de: fecha, INDICACIONES, GRACIAS, DRA/DR, FEMENINO DE...
+    // ════ EXTRACTOR DE NOMBRE v25 — adelante + corte en separador ════
+    // El nombre real va DEBAJO del header "INDICACIONES" y comparte renglón
+    // con EXP/AÑOS/FN tras un "|". Cortamos en el primer separador y validamos.
+    function cleanNameCandidate(rawLine) {
+      let s = (rawLine || "").replace(/\u00A0/g, " ");
+      s = s.split("|")[0];                                  // cortar en "|"
+      s = s.split(/\b(EXP|CURP|FOLIO|EDAD|FN)\b/i)[0];       // o en metadata
+      s = s.replace(/\b\d{1,3}\s*A[ÑN]OS?.*/i, "");          // "X AÑOS ..." sin "|"
+      s = s.replace(/^[\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*0-9.\s\-]+/, "").trim();
+      if (!s || s.length < 4) return "";
+      if (/\d/.test(s)) return "";                           // dígitos residuales → no es nombre
+      const words = s.split(/\s+/).filter(function(w) {
+        return w.length >= 2 && /[A-ZÁÉÍÓÚÑa-záéíóúñ]/.test(w);
+      });
+      if (words.length < 2) return "";
+      const upper = (s.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length;
+      const letters = (s.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
+      if (letters > 0 && upper / letters >= 0.6) return s;
+      return "";
+    }
+    function skipNameLine(t) {
+      if (/INDICACIONES/i.test(t) || /NDICACIONES/i.test(t)) return true;
+      if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(t)) return true;
+      if (/^(MASCULINO|FEMENINO)\s+DE\s+\d/i.test(t)) return true;
+      if (/^FECHA\b/i.test(t)) return true;
+      return false;
+    }
+
     let nombre = "";
-    let scanned = 0;
-    for (let i = anchorIdx - 1; i >= 0 && scanned < 30; i--, scanned++) {
-      const raw = (segLines[i] || "").replace(/\u00A0/g, " ");
-      const t = raw.trim();
-      if (!t) continue;
-
-      // STOP: llegamos al footer del paciente anterior (vamos demasiado atrás)
-      if (/^(gracias|fecha)\b/i.test(t)) break;
-      if (/^(dra?\.?|dr\.?|mip)\b/i.test(t) && /\b(CG|R\d|MB|CIRUG|RES)\b/i.test(t)) break;
-      // STOP: otro ancla atrás
-      if (ANCHOR_AGE_RE.test(t) && ANCHOR_ID_RE.test(t)) break;
-
-      // SKIP: header INDICACIONES
-      if (/INDICACIONES/i.test(t) || /NDICACIONES/i.test(t)) continue;
-      // SKIP: fecha
-      if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(t)) continue;
-      // SKIP: descripción "FEMENINO DE X AÑOS DE EDAD..."
-      if (/^(MASCULINO|FEMENINO)\s+DE\s+\d/i.test(t)) continue;
-      // SKIP: "FECHA 27/05/2026" etc
-      if (/^FECHA\b/i.test(t)) continue;
-
-      // Cleanup: quitar bullets/dígitos/puntos al inicio (regex con dash al final → sin bug de rango)
-      const cleaned = t.replace(/^[\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*0-9.\s\-]+/, "").trim();
-      if (!cleaned || cleaned.length < 4) continue;
-      // Si tiene dígitos en medio → probablemente NO es nombre
-      if (/\d/.test(cleaned)) continue;
-      // Debe tener al menos UNA palabra de ≥3 letras
-      const words = cleaned.split(/\s+/).filter(function(w) { return w.length >= 2 && /[A-ZÁÉÍÓÚÑa-záéíóúñ]/.test(w); });
-      if (words.length < 2) continue;
-
-      // Predominio de mayúsculas (relajado a 60%)
-      const upperCount = (cleaned.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length;
-      const letterCount = (cleaned.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
-      if (letterCount > 0 && upperCount / letterCount >= 0.6) {
-        nombre = cleaned;
-        break;
+    // 1) HACIA ADELANTE — layout real: nombre justo debajo del header
+    for (let i = anchorIdx; i <= anchorIdx + 5 && i < segLines.length && !nombre; i++) {
+      const t = (segLines[i] || "").replace(/\u00A0/g, " ").trim();
+      if (!t || skipNameLine(t)) continue;
+      const cand = cleanNameCandidate(t);
+      if (cand) nombre = cand;
+    }
+    // 2) FALLBACK HACIA ATRÁS — layouts donde el nombre va antes del ancla
+    if (!nombre) {
+      let scanned = 0;
+      for (let i = anchorIdx - 1; i >= 0 && scanned < 30 && !nombre; i--, scanned++) {
+        const t = (segLines[i] || "").replace(/\u00A0/g, " ").trim();
+        if (!t) continue;
+        if (/^(gracias|fecha)\b/i.test(t)) break;
+        if (/^(dra?\.?|dr\.?|mip)\b/i.test(t) && /\b(CG|R\d|MB|CIRUG|RES)\b/i.test(t)) break;
+        if (ANCHOR_AGE_RE.test(t) && ANCHOR_ID_RE.test(t)) break;
+        if (skipNameLine(t)) continue;
+        const cand = cleanNameCandidate(t);
+        if (cand) nombre = cand;
       }
     }
 
-    // CAMA: opcional, suele no estar en el texto
+    // ════ CAMA v25 — "🐒 151" (antes del header) / "CAMA 3-151" / "3-151" ════
+    // El "🐒 NNN" propio está SIEMPRE antes del ancla (inicio del bloque).
+    // Buscar hacia ATRÁS desde el ancla evita robar el "🐒" del paciente siguiente.
     let cama = null;
-    for (let i = anchorIdx - 1; i >= 0 && i >= anchorIdx - 25; i--) {
-      const t = (segLines[i] || "").trim();
+    const fwdHi = Math.min(segLines.length, anchorIdx + 5);
+    // Prioridad 1: "🐒 NNN" en [0, anchorIdx) — primer match hacia atrás = el propio
+    for (let i = anchorIdx - 1; i >= 0 && !cama; i--) {
+      const t = (segLines[i] || "").replace(/\u00A0/g, " ").trim();
       if (!t) continue;
-      if (/^\d{2,4}$/.test(t)) { cama = t; break; }
-      const m1 = t.match(/CAMA[\s:#\-]*(\d{2,4})\b/i);
-      if (m1) { cama = m1[1]; break; }
-      const m2 = t.match(/\b\d+-(\d{2,4})\b/);
-      if (m2) { cama = m2[1]; break; }
-      if (/INDICACIONES/i.test(t)) continue;
-      if (/^(gracias|dra?\.?|dr\.?)/i.test(t)) break;
+      if (/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(t)) continue;  // evitar fechas
+      const m = t.match(/^[^\d]{0,6}(\d{2,4})\s*$/);              // "🐒 151" → 151
+      if (m) { cama = m[1]; break; }
+    }
+    // Prioridad 2: "CAMA 3-151" / "CAMA: 151" tras el header (línea de fecha)
+    if (!cama) {
+      for (let i = anchorIdx; i < fwdHi && !cama; i++) {
+        const t = (segLines[i] || "").trim();
+        const m = t.match(/CAMA\s*[:#\-]?\s*(?:\d+-)?(\d{2,4})\b/i);
+        if (m) { cama = m[1]; break; }
+      }
+    }
+    // Prioridad 3: piso-cama "3-151" tras el header
+    if (!cama) {
+      for (let i = anchorIdx; i < fwdHi && !cama; i++) {
+        const t = (segLines[i] || "").trim();
+        const m = t.match(/\b\d+-(\d{2,4})\b/);
+        if (m) { cama = m[1]; break; }
+      }
     }
 
     if (!nombre && !cama) return null;
@@ -4598,6 +5006,26 @@ function indicacionesDiagnose() {
   }
 }
 
+/* ════════ v27 — Backup local (EXPORT-ONLY, solo lee y descarga) ════════ */
+function plExportBackup() {
+  try {
+    var dump = {}, n = 0;
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf("pl_") === 0) { dump[k] = localStorage.getItem(k); n++; }
+    }
+    var payload = { _backup: "piso-libro", _fecha: new Date().toISOString(), _keys: n, data: dump };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    var stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    a.href = url; a.download = "piso-libro-backup-" + stamp + ".json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+    alert("Backup descargado: " + n + " claves locales (indicaciones, snapshots, config).\nDatos de pacientes y labs viven en Supabase y no requieren backup local.");
+  } catch (e) { alert("Error al exportar backup: " + (e && e.message ? e.message : e)); }
+}
+
   </script>
 
   <script>
@@ -4612,16 +5040,28 @@ function indicacionesDiagnose() {
         .replace(/\s+/g, " ")
         .trim();
     }
-    function isSimpleEsp(esp) {
+    // v49 — Colapsa SOLO si TODOS los tokens del servicio son no-quirurgicos.
+    // Colapsan: NCX / COLUMNA / TYO / URO (y combos entre ellos, p.ej. TYO/NCX).
+    // Expanden: cualquier token quirurgico (CG/CCR/CV/CT/CTV/CMF/CPR/GYO...) o
+    // co-manejo (CT/NCX, CG/URO, CMF/CG...). GYO y CMF quedan EXPANDIDOS.
+    const COLLAPSE_ESP = new Set(["NCX","NEUROCX","NEUROCIRUGIA","COLUMNA","TYO","TRASPLANTE","URO","UROLOGIA"]);
+    function _espTokenIsCollapse(tok) {
+      const t = normalizeEsp(tok);
+      if (!t) return false;
+      if (COLLAPSE_ESP.has(t)) return true;
+      if (/^NCX($|[\/\s-])|NEURO ?CX|NEUROCIR/.test(t)) return true;
+      if (/^COLUMNA/.test(t)) return true;
+      if (/^TYO($|[\/\s-])|TRASPLANTE/.test(t)) return true;
+      if (/^URO($|[\/\s-]|LOGIA)/.test(t)) return true;
+      return false;
+    }
+    function isSimpleEsp(esp, nd) {
+      if (nd && nd.checklist && nd.checklist.svcMine) return false;
       const e = normalizeEsp(esp);
       if (!e) return false;
-      if (SIMPLE_ESP.has(e)) return true;
-      if (/^URO($|[\/\s-]|LOGIA)/.test(e)) return true;
-      if (/^CMF($|[\/\s-])|MAXILOFAC/.test(e)) return true;
-      if (/^NCX($|[\/\s-])|NEURO ?CX|NEUROCIR|TYO\/NCX|COLUMNA/.test(e)) return true;
-      if (/^TYO($|[\/\s-])/.test(e)) return true;
-      if (/^GYO($|[\/\s-])|GINECO/.test(e)) return true;
-      return false;
+      const toks = e.split(/[\/,+]+/).map(s => s.trim()).filter(Boolean);
+      if (!toks.length) return false;
+      return toks.every(_espTokenIsCollapse);
     }
 
     // Normalize specialty name from Excel to canonical code.
@@ -5372,7 +5812,9 @@ function indicacionesDiagnose() {
       bas_pct:   [/^bas[oó]filos$/i, /^bas$/i],
       // Resto del panel
       cr:        [/creatinin/i, /^cr$/i, /^crea$/i],
-      urea:      [/^urea$/i, /^bun$/i, /nitr[oó]geno ureic/i],
+      urea:      [/^urea$/i], /* FIX-v47: BUN ya NO cae en urea (son analitos distintos) */
+      bun:       [/^bun$/i, /nitr[oó]geno ureic/i], /* FIX-v47 */
+      urico:     [/[aá]c(\.|ido)?\s*[uú]rico/i, /^urico$/i], /* FIX-v47 */
       glu:       [/glucos/i, /^glu$/i, /glicem/i, /glyc/i],
       na:        [/^sodio$/i, /^na$/i, /^na\+/i],
       k:         [/^potasio$/i, /^k$/i, /^k\+/i],
@@ -5385,7 +5827,8 @@ function indicacionesDiagnose() {
       ast:       [/(^|\W)ast(\W|$)/i, /(^|\W)tgo(\W|$)/i, /aspartat/i, /transaminas.*glut[áa]mic.*oxal/i],
       alt:       [/(^|\W)alt(\W|$)/i, /(^|\W)tgp(\W|$)/i, /alaninoamin/i, /alanin.*transam/i],
       bt:        [/bilirrubin.*total/i, /^bt$/i, /total bilirrubin/i],
-      bd:        [/bilirrubin.*direct/i, /^bd$/i, /direct bilirrubin/i],
+      bi:        [/bilirrubin.*indirect/i, /indirect bilirrubin/i, /^bi$/i], /* FIX-v47: ANTES de bd */
+      bd:        [/bilirrubin.*\bdirect/i, /^bd$/i, /\bdirect bilirrubin/i], /* FIX-v47: \b evita matchear INdirecta */
       ggt:       [/gamma.*gt/i, /^ggt$/i, /gama.*gt/i, /transpeptidas/i],
       fa:        [/fosfatasa.*alcalin/i, /^fa$/i, /^alp$/i, /^fal$/i, /alkaline phos/i],
       // Electrolitos extendidos — `p` (fósforo) AHORA con regex específico que no captura "FOSFATASA"
@@ -5508,9 +5951,19 @@ function indicacionesDiagnose() {
           if (!name) continue;
           // Defense in depth: rechazar si parece basura (fecha, código, servicio)
           if (isWinlabGarbageEstudio(name)) continue;
+          // Guarda ORINA/EGO (jun 2026): un valor de orina (creatinina en orina,
+          // hemoglobina libre, micción, urocultivo, EGO, o bucket "urine") NUNCA
+          // debe llenar una llave de sangre/química. Solo puede llenar ego_*.
+          // Sin esto, "CREATININA EN ORINA" (116.10) caía en cr y "HEMOGLOBINA
+          // LIBRE" (200) en hb, pisando los valores reales de sangre.
+          const _sec = normalizeWinlabName(v?.seccion || "");
+          const _isUrine = (v?.bucket === "urine")
+            || /\bEN ORINA\b|\bORINA\b|MICCION|EXAMEN GENERAL DE ORINA|UROCULTIVO|\bEGO\b/i.test(name + " " + _sec)
+            || /HEMOGLOBINA\s+LIBRE/i.test(name);
           // Probar contra cada alias en orden de definición; primer match gana.
           for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) {
             if (key in labs) continue; // ya mapeado, no sobreescribir
+            if (_isUrine && key.indexOf("ego_") !== 0) continue; // orina solo → ego_*
             if (patterns.some(rx => rx.test(name))) {
               labs[key] = String(rawVal).trim();
               break;
@@ -5555,14 +6008,51 @@ function indicacionesDiagnose() {
     // Ahora, si el scraper drilleó N reportes (con WL_DRILLDOWN_MAX > 1), generamos
     // N snapshots con sus respectivas fechas para que aparezcan como chips de
     // fecha separados en la UI.
-    function buildWinlabLabSnapshots(winlabRow) {
+    function buildWinlabLabSnapshots(winlabRow, targetEspCanon) {
       if (!winlabRow || !winlabRow.data) return [];
       const reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
       const fallbackFecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : null);
       const result = [];
       const seen = new Set(); // evita duplicar mismo día
+
+      // ── FILTRO POR PACIENTE (jun 2026) ──────────────────────────────────────
+      // La búsqueda de WinLab por apellido trae VARIOS pacientes con el mismo
+      // apellido en un solo blob (p.ej. todos los "GARCIA RUIZ"). Atribuimos cada
+      // reporte a su fila-encabezado y SOLO usamos los del paciente objetivo,
+      // matcheando por NOMBRE COMPLETO (todos los tokens del objetivo presentes).
+      // Precisión > recall: ante la duda NO se incluye (seguridad del paciente —
+      // jamás mostrar labs de otro). Compat: si el blob no trae encabezados o no
+      // hay nombre objetivo, no se filtra (formato viejo de 1 solo paciente).
+      const _wlTargetTokens = (typeof normalizeName === "function") ? normalizeName(winlabRow.paciente || "") : [];
+      const _wlIsDate = function (s) { return /^\s*\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/.test(String(s || "")); };
+      const _wlIsHeader = function (rep) {
+        return rep && rep.__hasLink === false
+          && rep.NOMBRE && !_wlIsDate(rep.NOMBRE)
+          && rep["APELLIDOS COMPLETOS"] && !_wlIsDate(rep["APELLIDOS COMPLETOS"]);
+      };
+      const _wlHeaderMatches = function (rep) {
+        if (!_wlTargetTokens.length) return true;
+        const hName = ((rep["APELLIDOS COMPLETOS"] || "") + " " + (rep.NOMBRE || "")).trim();
+        // TODOS los tokens del objetivo deben estar en el encabezado (nombre completo)
+        return nameMatchScore(winlabRow.paciente, hName) >= _wlTargetTokens.length;
+      };
+      const _wlHasHeaders = reportes.some(_wlIsHeader);
+      let _wlCurMatches = !_wlHasHeaders || !_wlTargetTokens.length;
+
       for (const rep of reportes) {
+        if (_wlHasHeaders && _wlIsHeader(rep)) { _wlCurMatches = _wlHeaderMatches(rep); continue; }
         if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
+        if (!_wlCurMatches) continue; // reporte de OTRO paciente del mismo apellido → ignorar
+        // FIX-v49: GUARDIA DE SERVICIO (precisión > recall). Si el reporte declara un
+        // servicio reconocible (rep.SEXO o última celda de __cells) que NO coincide con el
+        // del paciente objetivo, RECHAZAR: es paciente de otro servicio con apellido igual.
+        // normalizeEspImport devuelve "" para sexo/desconocido → solo rechaza ante servicio
+        // reconocible en conflicto; nunca añade fuga, solo la evita.
+        if (targetEspCanon) {
+          var _repSvcRaw = rep.SEXO || (Array.isArray(rep.__cells) && rep.__cells.length ? rep.__cells[rep.__cells.length - 1] : "");
+          var _repEspCanon = normalizeEspImport(_repSvcRaw);
+          if (_repEspCanon && _repEspCanon !== targetEspCanon) continue;
+        }
         const labs = mapSingleReportToLabs(rep);
         if (!Object.keys(labs).length) continue;
         const fecha = extractReportDate(rep) || fallbackFecha;
@@ -5679,7 +6169,7 @@ function indicacionesDiagnose() {
           }
           // Cambio mayo 2026: ahora procesamos MÚLTIPLES snapshots (uno por fecha)
           // para soportar 3 días previos del scraper.
-          const snapshots = buildWinlabLabSnapshots(wl);
+          const snapshots = buildWinlabLabSnapshots(wl, normalizeEspImport(p.esp));
           if (!snapshots.length) { stats.skipped++; stats.no_labs_parsed++; continue; }
           stats.matched++;
           const k = pid(p);
@@ -5975,11 +6465,13 @@ function indicacionesDiagnose() {
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
         checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "", interconsultas: "", cultivos: "",
-          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "",
+          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "", pm_iu: "", /* FIX-v47 */
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_sep_gasto: "", pm_sep_fuga: false, pm_sep_fuga_grado: "", pm_hxqx: "",
           pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
-          cruce_activo: false, cruce_ts: "", cruce_unidades: "", cruce_banco: "" }
+          cruce_activo: false, cruce_ts: "", cruce_unidades: "", cruce_banco: "",
+          nota_fn: "", nota_dx: "", nota_s: "", nota_o: "", nota_plan: "", nota_prono: "", nota_adscrito: "", nota_residente: "",
+          nota_sis_neuro: "", nota_sis_hemo: "", nota_sis_vent: "", nota_sis_hema: "", nota_sis_hepato: "", nota_sis_gi: "", nota_sis_metab: "", nota_sis_renal: "", nota_sis_nutri: "", nota_sis_extra: "" }
       };
     }
     const NOTE_SYNC_META_KEY = "__pl_note_meta";
@@ -6164,6 +6656,294 @@ function indicacionesDiagnose() {
       return nd;
     }
     function getNote(k) { return migrateNote(noteData[k] || defaultData()); }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       PLNotaEvo · v33 · Genera la nota de evolución desde los datos de la app.
+       Lee paciente (p) + labs (getActiveLabs) + vitales (pm_*) y compone la nota
+       en el formato de CG. Campos propios viven en nd.checklist.nota_*  (ruta
+       probada, persiste vía saveNote con merge por campo). No toca el render.
+       ═══════════════════════════════════════════════════════════════════════ */
+    var _plneKey = null, _plneSaveT = null;
+    var PLNE_SIS = [
+      ["neuro","Neurológico","neurológico"],["hemo","Hemodinámico","hemodinámico"],
+      ["vent","Ventilatorio","ventilatorio"],["hema","Hematoinfeccioso","hematoinfeccioso"],
+      ["hepato","Hepatobiliar","hepatobiliar"],["gi","Gastrointestinal","gastrointestinal"],
+      ["metab","Metab./endocrino","metabólico y endocrino"],["renal","Renal","renal"],
+      ["nutri","Nutricional","nutricional"]
+    ];
+    var PLNE_LABS = [["Leu","leucos"],["Neu abs","neu_abs"],["Hb","hb"],["Hto","hct"],["Plaq","plaq"],["TP","tp"],["INR","inr"],["TTP","ttp"],["Glu","glu"],["Urea","urea"],["Cr","cr"],["Alb","alb"],["BT","bt"],["BD","bd"],["FA","fa"],["GGT","ggt"],["ALT","alt"],["AST","ast"],["Amilasa","amilasa"],["Lipasa","lipasa"],["Ca","ca"],["Na","na"],["K","k"],["Cl","cl"],["Mg","mg"],["P","p"],["PCR","pcr"],["PCT","pct"]];
+
+    function _plneInjectCSS(){
+      if (document.getElementById("plne-styles")) return;
+      var s = document.createElement("style"); s.id = "plne-styles";
+      s.textContent = ".plne-back{position:fixed;inset:0;background:rgba(10,22,40,.55);display:none;align-items:flex-start;justify-content:center;padding:18px;z-index:99999;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.plne-back.show{display:flex}.plne-modal{background:#fff;max-width:880px;width:100%;border-radius:10px;box-shadow:0 12px 32px rgba(10,22,40,.4);overflow:hidden;margin:auto}.plne-top{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:#0a1628;color:#fff}.plne-top h3{font-size:14px;font-weight:800;margin:0}.plne-x{background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px}.plne-body{padding:14px 16px;max-height:82vh;overflow:auto;color:#334155}.plne-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.plne-chip{font-size:11px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:20px;padding:2px 9px;color:#065f46}.plne-chip b{color:#047857;font-weight:800;margin-right:3px}.plne-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.plne-field{display:flex;flex-direction:column}.plne-field.plne-full{grid-column:1/-1}.plne-field label,.plne-vit label,.plne-sysrow label{font-size:10px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}.plne-back textarea,.plne-back input{width:100%;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12.5px;color:#334155;padding:5px 7px;resize:none;line-height:1.4;box-sizing:border-box}.plne-back textarea{overflow:hidden;min-height:30px}.plne-back textarea:focus,.plne-back input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.12)}.plne-sech{font-size:11.5px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 7px;padding-bottom:3px;border-bottom:2px solid #1e3a5f}.plne-sech span{font-size:9.5px;font-weight:600;color:#64748b;text-transform:none;letter-spacing:0}.plne-vit{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.plne-vit>div{display:flex;flex-direction:column}.plne-vit input{font-family:ui-monospace,Menlo,monospace;text-align:center}.plne-sysrow{display:grid;grid-template-columns:130px 1fr;gap:7px;align-items:start;margin-bottom:5px}.plne-sysrow.plne-extra{grid-template-columns:130px 1fr 28px}.plne-sysrow label{padding-top:6px}.plne-extra-lbl{font-weight:700}.plne-del{background:#fee2e2;border:none;color:#dc2626;border-radius:5px;cursor:pointer;font-size:12px;height:30px}.plne-addsys{margin-top:4px;background:#e8eef6;border:1px dashed #3b5d8a;color:#1e3a5f;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}.plne-actions{display:flex;gap:10px;margin:16px 0 0}.plne-gen{background:#059669;color:#fff;border:none;border-radius:6px;padding:10px 18px;font-size:13.5px;font-weight:800;cursor:pointer}.plne-close2{background:#f1f5f9;color:#334155;border:none;border-radius:6px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer}.plne-out{display:none;margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}.plne-out-top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0}.plne-copy{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer}.plne-out-text{padding:16px 18px;margin:0;white-space:pre-wrap;font-family:'Times New Roman',Georgia,serif;font-size:13.5px;line-height:1.55;color:#1a1a1a;max-height:50vh;overflow:auto}";
+      document.head.appendChild(s);
+    }
+    function _plneEl(){
+      var m = document.getElementById("plne-back");
+      if (m) return m;
+      _plneInjectCSS();
+      m = document.createElement("div"); m.id = "plne-back"; m.className = "plne-back";
+      m.innerHTML =
+        '<div class="plne-modal"><div class="plne-top"><h3 id="plne-title">Nota de evolución</h3><button class="plne-x" onclick="closeNotaEvo()">✕</button></div>'
+        + '<div class="plne-body"><div class="plne-chips" id="plne-chips"></div>'
+        + '<div class="plne-grid">'
+        + '<div class="plne-field"><label>FN (fecha de nacimiento)</label><input id="plne-fn" placeholder="dd/mm/aaaa — no está en la app"></div>'
+        + '<div class="plne-field"></div>'
+        + '<div class="plne-field plne-full"><label>Diagnósticos</label><textarea id="plne-dx" rows="2"></textarea></div>'
+        + '<div class="plne-field plne-full"><label>Subjetivo</label><textarea id="plne-s" placeholder="Al pase de visita refiere…"></textarea></div>'
+        + '<div class="plne-field plne-full"><label>Exploración física</label><textarea id="plne-o"></textarea></div>'
+        + '</div>'
+        + '<div class="plne-sech">Signos vitales <span>· se comparten con el pase matutino</span></div>'
+        + '<div class="plne-vit"><div><label>FC</label><input id="plne-fc"></div><div><label>FR</label><input id="plne-fr"></div><div><label>TA</label><input id="plne-ta"></div><div><label>T °C</label><input id="plne-t"></div><div><label>SaO₂ %</label><input id="plne-sat"></div><div><label>O₂ L</label><input id="plne-o2"></div><div><label>Uresis</label><input id="plne-uresis"></div></div>'
+        + '<div class="plne-sech">Análisis · por aparatos y sistemas</div>'
+        + '<div id="plne-sys"></div>'
+        + '<button class="plne-addsys" onclick="_plneAddSys()">➕ Agregar sistema</button>'
+        + '<div class="plne-sech">Plan y firma</div>'
+        + '<div class="plne-grid"><div class="plne-field plne-full"><label>Plan</label><textarea id="plne-plan"></textarea></div><div class="plne-field"><label>Pronóstico</label><input id="plne-prono"></div><div class="plne-field"></div><div class="plne-field"><label>Adscrito</label><input id="plne-adscrito"></div><div class="plne-field"><label>Residente</label><input id="plne-residente"></div></div>'
+        + '<div class="plne-actions"><button class="plne-gen" onclick="generarNotaEvo()">📝 Generar nota</button><button class="plne-close2" onclick="closeNotaEvo()">Cerrar</button></div>'
+        + '<div class="plne-out" id="plne-out"><div class="plne-out-top"><strong>Nota generada — revisa antes de pegar</strong><button id="plne-copybtn" class="plne-copy" onclick="copyNotaEvo()">Copiar</button></div><pre class="plne-out-text" id="plne-out-text"></pre></div>'
+        + '</div></div>';
+      document.body.appendChild(m);
+      m.addEventListener("click", function(e){ if (e.target.id === "plne-back") closeNotaEvo(); });
+      m.addEventListener("input", function(e){ if (e.target.tagName === "TEXTAREA") _plneAuto(e.target); _plneSchedule(); });
+      return m;
+    }
+    function _plneHoy(){ var d=new Date(); function z(n){return String(n).padStart(2,"0");} return z(d.getDate())+"."+z(d.getMonth()+1)+"."+d.getFullYear(); }
+    function _plneAhora(){ var d=new Date(); function z(n){return String(n).padStart(2,"0");} return z(d.getHours())+":"+z(d.getMinutes()); }
+    function _plneSex(p,nd){ var s=(typeof getSex==="function")?getSex(p,nd):""; return s==="F"?"Femenino":(s==="M"?"Masculino":""); }
+    function _plneLabFecha(nd){ var h=(nd&&nd.labHistory)||[]; if(!h.length) return ""; var s=h.filter(function(x){return x&&x.labs;}).slice().sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));}); return s.length?String(s[0].fecha||""):""; }
+    function _plneFmtFecha(iso){ if(!iso) return ""; var p=String(iso).split("-"); return p.length===3?(p[2]+"/"+p[1]+"/"+p[0]):iso; }
+    function _plneChip(l,v){ return '<span class="plne-chip"><b>'+l+'</b>'+esc(String(v))+'</span>'; }
+    function _plneSet(id,v){ var el=document.getElementById(id); if(el){ el.value=v; if(el.tagName==="TEXTAREA") _plneAuto(el); } }
+    function _plneVal(id){ var el=document.getElementById(id); return el?el.value:""; }
+    function _plneAuto(t){ t.style.height="auto"; t.style.height=t.scrollHeight+"px"; }
+
+    function openNotaEvo(k){
+      try{
+        var p = patients.find(function(x){return pid(x)===k;});
+        if(!p){ alert("Paciente no encontrado."); return; }
+        _plneKey = k;
+        var nd = getNote(k); var ck = nd.checklist || {};
+        _plneEl();
+        document.getElementById("plne-title").textContent = "Nota de evolución — " + (p.nombre||"S/N") + " (" + (p.cama||"S/C") + ")";
+        document.getElementById("plne-chips").innerHTML =
+          _plneChip("Nombre ", p.nombre||"—") + _plneChip("Edad ", p.edad?p.edad+"a":"—") +
+          _plneChip("Sexo ", _plneSex(p,nd)||"—") + _plneChip("EXP ", p.exp||"—") +
+          _plneChip("Cama ", p.cama||"—") + _plneChip("Fecha ", _plneHoy()+" "+_plneAhora()+" · auto");
+        _plneSet("plne-fn", ck.nota_fn||"");
+        _plneSet("plne-dx", ck.nota_dx||p.dx||"");
+        _plneSet("plne-s", ck.nota_s||"");
+        _plneSet("plne-o", ck.nota_o||"");
+        _plneSet("plne-fc", ck.pm_fc||""); _plneSet("plne-fr", ck.pm_fr||""); _plneSet("plne-ta", ck.pm_ta||"");
+        _plneSet("plne-t", ck.pm_temp||""); _plneSet("plne-sat", ck.pm_sao2||""); _plneSet("plne-o2", ck.pm_o2l||""); _plneSet("plne-uresis", ck.pm_uresis||"");
+        _plneSet("plne-plan", ck.nota_plan||""); _plneSet("plne-prono", ck.nota_prono||"");
+        _plneSet("plne-adscrito", ck.nota_adscrito||p.adscrito||""); _plneSet("plne-residente", ck.nota_residente||p.residente||"");
+        _plneBuildSys(ck);
+        document.getElementById("plne-out").style.display="none";
+        document.getElementById("plne-back").classList.add("show");
+      }catch(e){ alert("Error abriendo la nota: "+(e&&e.message||e)); }
+    }
+    function _plneBuildSys(ck){
+      var host=document.getElementById("plne-sys"); host.innerHTML="";
+      PLNE_SIS.forEach(function(s){
+        var row=document.createElement("div"); row.className="plne-sysrow";
+        row.innerHTML='<label>'+s[1]+'</label><textarea data-sis="'+s[0]+'" rows="1"></textarea>';
+        host.appendChild(row);
+        var ta=row.querySelector("textarea"); ta.value=ck["nota_sis_"+s[0]]||""; _plneAuto(ta);
+      });
+      var extra=[]; try{ extra=JSON.parse(ck.nota_sis_extra||"[]"); if(!Array.isArray(extra)) extra=[]; }catch(_){ extra=[]; }
+      extra.forEach(function(it){ _plneAddSysRow((it&&it.etq)||"", (it&&it.txt)||""); });
+    }
+    function _plneAddSys(){ _plneAddSysRow("",""); }
+    function _plneAddSysRow(etq,txt){
+      var host=document.getElementById("plne-sys"); if(!host) return;
+      var row=document.createElement("div"); row.className="plne-sysrow plne-extra";
+      row.innerHTML='<input class="plne-extra-lbl" placeholder="Sistema…"><textarea data-extra="1" rows="1"></textarea><button class="plne-del" title="Quitar">✕</button>';
+      host.appendChild(row);
+      row.querySelector(".plne-extra-lbl").value=etq;
+      var ta=row.querySelector("textarea"); ta.value=txt; _plneAuto(ta);
+      row.querySelector(".plne-del").onclick=function(){ row.remove(); _plneSchedule(); };
+    }
+    function _plneCollect(){
+      if(!_plneKey) return null;
+      var nd=getNote(_plneKey); nd.checklist=nd.checklist||{}; var ck=nd.checklist;
+      ck.nota_fn=_plneVal("plne-fn"); ck.nota_dx=_plneVal("plne-dx"); ck.nota_s=_plneVal("plne-s"); ck.nota_o=_plneVal("plne-o");
+      ck.pm_fc=_plneVal("plne-fc"); ck.pm_fr=_plneVal("plne-fr"); ck.pm_ta=_plneVal("plne-ta"); ck.pm_temp=_plneVal("plne-t");
+      ck.pm_sao2=_plneVal("plne-sat"); ck.pm_o2l=_plneVal("plne-o2"); ck.pm_uresis=_plneVal("plne-uresis");
+      ck.nota_plan=_plneVal("plne-plan"); ck.nota_prono=_plneVal("plne-prono");
+      ck.nota_adscrito=_plneVal("plne-adscrito"); ck.nota_residente=_plneVal("plne-residente");
+      var sysEls=document.querySelectorAll("#plne-sys [data-sis]");
+      sysEls.forEach(function(t){ ck["nota_sis_"+t.getAttribute("data-sis")]=t.value; });
+      var extra=[];
+      document.querySelectorAll("#plne-sys .plne-extra").forEach(function(r){
+        var lbl=r.querySelector(".plne-extra-lbl"); var ta=r.querySelector("textarea");
+        if(lbl && ta && (lbl.value.trim()||ta.value.trim())) extra.push({etq:lbl.value.trim(), txt:ta.value.trim()});
+      });
+      ck.nota_sis_extra=JSON.stringify(extra);
+      return nd;
+    }
+    function _plneSchedule(){
+      if(_plneSaveT) clearTimeout(_plneSaveT);
+      _plneSaveT=setTimeout(function(){ try{ var nd=_plneCollect(); if(nd && _plneKey) saveNote(_plneKey, nd); }catch(_){ } }, 500);
+    }
+    function _plneVitStr(ck){
+      var parts=[];
+      if((ck.pm_fc||"").toString().trim()) parts.push("FC "+ck.pm_fc.toString().trim());
+      if((ck.pm_fr||"").toString().trim()) parts.push("FR "+ck.pm_fr.toString().trim());
+      if((ck.pm_ta||"").toString().trim()) parts.push("TA "+ck.pm_ta.toString().trim());
+      if((ck.pm_temp||"").toString().trim()) parts.push("T "+ck.pm_temp.toString().trim()+"°C");
+      if((ck.pm_sao2||"").toString().trim()) parts.push("SaO₂ "+ck.pm_sao2.toString().trim()+"%");
+      if((ck.pm_o2l||"").toString().trim()) parts.push("O₂ "+ck.pm_o2l.toString().trim()+" L");
+      if((ck.pm_uresis||"").toString().trim()) parts.push("uresis "+ck.pm_uresis.toString().trim());
+      return parts.join(", ");
+    }
+    function generarNotaEvo(){
+      try{
+        var nd=_plneCollect(); if(!nd){ return; }
+        if(_plneKey) saveNote(_plneKey, nd);
+        var p=patients.find(function(x){return pid(x)===_plneKey;}); if(!p){ alert("Paciente no encontrado."); return; }
+        var ck=nd.checklist; var sexo=_plneSex(p,nd); var sexoL=sexo?sexo.toLowerCase():"";
+        var labs=(typeof getActiveLabs==="function")?getActiveLabs(nd):(nd.labs||{});
+        var L=[];
+        PLNE_LABS.forEach(function(pair){ var v=labs[pair[1]]; if(v!==undefined && v!==null && String(v).trim()!=="") L.push(pair[0]+": "+String(v).trim()); });
+        var out=[];
+        out.push("NOTA DE EVOLUCIÓN CIRUGÍA GENERAL");
+        out.push((p.nombre||"")+" | FN "+((ck.nota_fn||"").trim()||"—")+" | EXP "+(p.exp||"")+" | "+(p.cama||"")+" | FECHA "+_plneHoy()+" | "+_plneAhora()+"HRS");
+        out.push("");
+        var dx=(ck.nota_dx||p.dx||"").trim();
+        if(dx) out.push((sexo||"Paciente")+" de "+(p.edad||"")+" años de edad que cursa con los siguientes diagnósticos: "+dx.replace(/\s*,\s*/g,", más ")+".");
+        if((ck.nota_s||"").trim()) out.push("Al pase de visita "+(sexoL.charAt(0)==="f"?"la":"el")+" paciente "+ck.nota_s.trim()+".");
+        var o=(ck.nota_o||"").trim(); var vit=_plneVitStr(ck);
+        if(o||vit){ var par=o?(o.charAt(0).toUpperCase()+o.slice(1)):""; if(par&&vit) par+=". Signos vitales: "+vit; else if(vit) par="Signos vitales: "+vit; out.push(par+"."); }
+        if(L.length){ var lf=_plneFmtFecha(_plneLabFecha(nd)); out.push("Laboratorios del "+(lf||"fecha no disponible")+", los más recientes disponibles: "+L.join(", ")+"."); }
+        var sys=[];
+        PLNE_SIS.forEach(function(s){ var v=(ck["nota_sis_"+s[0]]||"").trim(); if(v) sys.push(s[2]+" "+v); });
+        try{ var ex=JSON.parse(ck.nota_sis_extra||"[]"); if(Array.isArray(ex)) ex.forEach(function(it){ if(it&&it.txt&&it.txt.trim()) sys.push(((it.etq||"").trim().toLowerCase())+" "+it.txt.trim()); }); }catch(_){ }
+        if(sys.length) out.push((sexo||"Paciente")+" de "+(p.edad||"")+" años con los diagnósticos ya mencionados. Por aparatos y sistemas: "+sys.join("; ")+".");
+        if((ck.nota_plan||"").trim()){ var pl="Plan: "+ck.nota_plan.trim()+"."; if((ck.nota_prono||"").trim()) pl+=" Paciente con pronóstico "+ck.nota_prono.trim()+"."; out.push(pl); }
+        var firma=[(ck.nota_adscrito||p.adscrito||"").trim(),(ck.nota_residente||p.residente||"").trim()].filter(Boolean).join(" | ");
+        if(firma){ out.push(""); out.push(firma); }
+        document.getElementById("plne-out-text").textContent=out.join("\n");
+        document.getElementById("plne-out").style.display="block";
+        document.getElementById("plne-out").scrollIntoView({behavior:"smooth",block:"nearest"});
+      }catch(e){ alert("Error generando la nota: "+(e&&e.message||e)); }
+    }
+    function copyNotaEvo(){
+      var t=document.getElementById("plne-out-text").textContent;
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ _plneCopied(); }).catch(function(){ _plneCopyFallback(t); }); }
+      else { _plneCopyFallback(t); }
+    }
+    function _plneCopyFallback(t){ try{ var ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); _plneCopied(); }catch(e){} }
+    function _plneCopied(){ var b=document.getElementById("plne-copybtn"); if(b){ var o=b.textContent; b.textContent="✓ Copiada"; setTimeout(function(){ b.textContent=o; }, 1500); } }
+    function closeNotaEvo(){ try{ var nd=_plneCollect(); if(nd && _plneKey) saveNote(_plneKey, nd); }catch(_){ } var m=document.getElementById("plne-back"); if(m) m.classList.remove("show"); }
+    /* ═══ fin PLNotaEvo ═══ */
+
+    /* ═══ v36 · renderFocusLabs · tabla columnar de labs en el ORDEN de GoodNotes ═══
+       Solo se usa en modo foco (window.__focusPid === k). La lista usa renderLabSection.
+       - FILAS PRINCIPALES: en TU orden (edita FOCUS_LAB_ORDER: [etiqueta, llave]).
+       - GRUPO "OTROS": auto-incluye cualquier lab con valor que NO esté en tu orden
+         (EGO, amilasa, lipasa, etc.) con su nombre real, + labs de texto libre. */
+    /* FIX-v47: orden EXACTO de la hoja GoodNotes de Gera (memoria muscular del pase).
+       Extras del app intercalados sin romper la secuencia: Hto tras Hb, Alb tras Mg. */
+    var FOCUS_LAB_ORDER = [
+      ["Leu","leucos"],["Hb","hb"],["Hto","hct"],["Plaq","plaq"],["Neutros","neu_abs"],
+      ["Glu","glu"],["Urea","urea"],["Cr","cr"],["Ác.Úrico","urico"],["BUN","bun"],
+      ["Ca","ca"],["P","p"],["Cl","cl"],["K","k"],["Na","na"],["Mg","mg"],["Alb","alb"],
+      ["BT","bt"],["BD","bd"],["BI","bi"],
+      ["Amilasa","amilasa"],["Lipasa","lipasa"],["ALT","alt"],["AST","ast"],["GGT","ggt"],["FA","fa"],
+      ["PCR","pcr"],["PCT","pct"],["INR","inr"],["TP","tp"],["TTP","ttp"]
+    ];
+    function renderFocusLabs(nd, k){
+      try{
+        nd = migrateNote(nd);
+        var history = (nd.labHistory || []).filter(function(s){ return s && s.labs; });
+        var dates = history.map(function(s){ return s.fecha; }).sort(function(a,b){ return String(b).localeCompare(String(a)); });
+        if(!dates.length){
+          return '<div class="ff-labs"><div class="ff-labs-h">Labs</div><div class="ff-labs-empty">Sin laboratorios (los trae el scraper de WinLab)</div></div>';
+        }
+        var shown = dates.slice(0, 5).reverse(); /* FIX-v48: como el papel — cronológico, la más reciente a la DERECHA */
+        var byDate = {};
+        history.forEach(function(s){ byDate[s.fecha] = s.labs || {}; });
+        // ── umbrales TUYOS (reusados de LAB_GROUPS): low/high + cl (crít bajo) / ch (crít alto) ──
+        var TH = {};
+        if(typeof LAB_GROUPS !== "undefined" && Array.isArray(LAB_GROUPS)){
+          LAB_GROUPS.forEach(function(g){ (g.fields || []).forEach(function(f){ if(f && f.key) TH[f.key] = f; }); });
+        }
+        function labClass(key, raw){
+          var f = TH[key];
+          if(!f) return "";
+          var n = parseFloat(String(raw).replace(/[<>]/g, "").replace(",", "."));
+          if(isNaN(n)) return "";               // texto (Positivo, +++, etc.) → sin color
+          if(f.ch != null && n > f.ch) return "ff-crit";
+          if(f.cl != null && n < f.cl) return "ff-crit";
+          if(f.high != null && n > f.high) return "ff-hi";
+          if(f.low  != null && n < f.low)  return "ff-lo";
+          return "";
+        }
+        function cellRow(label, key){
+          var tds = shown.map(function(d){
+            var raw = byDate[d][key];
+            var v = (raw === undefined || raw === null || String(raw).trim() === "") ? "—" : String(raw).trim();
+            var cls = (v === "—") ? "" : labClass(key, v);
+            return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(v) + '</td>';
+          }).join('');
+          return '<tr><td class="ff-an">' + esc(label) + '</td>' + tds + '</tr>';
+        }
+        var head = '<tr><th class="ff-an">Analito</th>' + shown.map(function(d){ return '<th>' + esc(fmtDateChip(d)) + '</th>'; }).join('') + '</tr>';
+        // ── filas principales en TU orden ──
+        var mainKeys = {};
+        FOCUS_LAB_ORDER.forEach(function(p){ mainKeys[p[1]] = 1; });
+        var mainRows = FOCUS_LAB_ORDER.map(function(p){ return cellRow(p[0], p[1]); }).join('');
+        // ── OTROS: labs estándar con valor que NO están en tu orden ──
+        var labelMap = {}, fieldOrder = {};
+        if(typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)){
+          LAB_FIELDS.forEach(function(f, i){ labelMap[f.key] = f.label; fieldOrder[f.key] = i; });
+        }
+        var metaSet = (typeof LAB_META_KEYS !== "undefined" && LAB_META_KEYS) ? LAB_META_KEYS : null;
+        var otherKeys = [], seen = {};
+        shown.forEach(function(d){
+          var labs = byDate[d];
+          for(var key in labs){
+            if(!Object.prototype.hasOwnProperty.call(labs, key)) continue;
+            if(mainKeys[key] || seen[key]) continue;
+            if(metaSet && metaSet.has && metaSet.has(key)) continue;
+            if(key.indexOf("micro_") === 0) continue;
+            var v = labs[key];
+            if(v !== undefined && v !== null && String(v).trim() !== ""){ seen[key] = 1; otherKeys.push(key); }
+          }
+        });
+        otherKeys.sort(function(a,b){ return (fieldOrder[a]==null?999:fieldOrder[a]) - (fieldOrder[b]==null?999:fieldOrder[b]); });
+        var otherRows = otherKeys.map(function(key){ return cellRow(labelMap[key] || key.toUpperCase(), key); }).join('');
+        // ── OTROS: labs de texto libre (extra) por nombre ──
+        var extraNames = [], extraByDate = {};
+        history.forEach(function(s){
+          var arr = Array.isArray(s.extra) ? s.extra : [];
+          extraByDate[s.fecha] = {};
+          arr.forEach(function(e){
+            var n = ((e && e.nombre) || "").trim();
+            if(!n) return;
+            extraByDate[s.fecha][n] = ((e.valor) || "").toString().trim();
+            if(extraNames.indexOf(n) < 0) extraNames.push(n);
+          });
+        });
+        var extraRows = extraNames.map(function(n){
+          var tds = shown.map(function(d){
+            var v = (extraByDate[d] || {})[n];
+            v = (v === undefined || v === null || String(v).trim() === "") ? "—" : String(v).trim();
+            return '<td>' + esc(v) + '</td>';
+          }).join('');
+          return '<tr><td class="ff-an">' + esc(n) + '</td>' + tds + '</tr>';
+        }).join('');
+        var otros = "";
+        if(otherRows || extraRows){
+          otros = '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '">Otros</td></tr>' + otherRows + extraRows;
+        }
+        return '<div class="ff-labs"><div class="ff-labs-h">Labs</div><div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + mainRows + otros + '</tbody></table></div></div>';
+      }catch(e){
+        return renderLabSection(nd, k); // si algo falla, caer al render normal — nunca romper el foco
+      }
+    }
     function applyModalExtraToNote(nd, extra) {
       const next = migrateNote(nd || defaultData());
       const src = extra || {};
@@ -6736,7 +7516,7 @@ function indicacionesDiagnose() {
       const p = patients.find(function(pt) { return pid(pt) === k; });
       const cardEl = document.getElementById("card-" + k);
       if (cardEl && p) {
-        cardEl.outerHTML = isSimpleEsp(p.esp)
+        cardEl.outerHTML = isSimpleEsp(p.esp, nd)
           ? renderSimpleCard(p, noteData[k], k)
           : renderFullCard(p, noteData[k], k);
       }
@@ -7524,7 +8304,7 @@ function indicacionesDiagnose() {
         const _ptCardEl = document.getElementById("card-" + newKey);
         const _ptHasFocus = _ptCardEl && _ptCardEl.contains(document.activeElement);
         if (_ptCardEl && !_ptHasFocus && newKey !== _modalCurrentEditKey) {
-          _ptCardEl.outerHTML = isSimpleEsp(updated.esp) ? renderSimpleCard(updated, noteData[newKey] || defaultData(), newKey) : renderFullCard(updated, noteData[newKey] || defaultData(), newKey);
+          _ptCardEl.outerHTML = isSimpleEsp(updated.esp, (noteData[newKey] || defaultData())) ? renderSimpleCard(updated, noteData[newKey] || defaultData(), newKey) : renderFullCard(updated, noteData[newKey] || defaultData(), newKey);
         } else if (!_ptCardEl) {
           // Key cambió o tarjeta no existe en DOM — renderizar vista completa
           renderView();
@@ -7614,7 +8394,7 @@ function indicacionesDiagnose() {
         const k = pid(p);
         const cardEl = document.getElementById("card-" + k);
         if (cardEl && !cardEl.contains(document.activeElement)) {
-          cardEl.outerHTML = isSimpleEsp(p.esp)
+          cardEl.outerHTML = isSimpleEsp(p.esp, nd)
             ? renderSimpleCard(p, noteData[k] || defaultData(), k)
             : renderFullCard(p, noteData[k] || defaultData(), k);
         }
@@ -7693,7 +8473,7 @@ function indicacionesDiagnose() {
       const _rtCardEl = document.getElementById("card-" + k);
       const _rtHasFocus = _rtCardEl && _rtCardEl.contains(document.activeElement);
       if (_rtCardEl && !_rtHasFocus && !_modalIsOpenForThis) {
-        _rtCardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
+        _rtCardEl.outerHTML = isSimpleEsp(p.esp, noteData[k]) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
       }
       _showRTToast("📡 Actualización recibida: " + (p.nombre || k));
       safeInfo("[RT] Note updated:", k);
@@ -8158,6 +8938,20 @@ function indicacionesDiagnose() {
       _dirtyFields[_modalCurrentEditKey].add(field);
       try { lsSaveNote(_modalCurrentEditKey, noteData[_modalCurrentEditKey]); } catch (_) {}
     }
+
+    function appendDrain() {
+      try {
+        var g = function (id) { var e = document.getElementById(id); return e && e.value ? e.value.trim() : ""; };
+        var line = [g("mf-dr-tipo"), g("mf-dr-gasto"), g("mf-dr-carac")].filter(Boolean).join(" ");
+        if (!line) return;
+        var inp = document.getElementById("mf-drenajes-modal");
+        if (!inp) return;
+        inp.value = (inp.value.trim() ? inp.value.trim() + "; " : "") + line;
+        liveModalNote("drenajes", inp.value);
+        ["mf-dr-tipo", "mf-dr-gasto", "mf-dr-carac"].forEach(function (id) { var e = document.getElementById(id); if (e) e.value = ""; });
+        var t = document.getElementById("mf-dr-tipo"); if (t) t.focus();
+      } catch (e) { console.warn("appendDrain", e); }
+    }
     function esc(s) {
       return toSafeString(s)
         .replace(/&/g, "&amp;")
@@ -8429,7 +9223,10 @@ function indicacionesDiagnose() {
         const _ve = document.getElementById("view-" + v);
         if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
-      if (currentView === "piso") renderPiso(filtered);
+      if (currentView === "piso") {
+        const _noFilter = searchTokens.length === 0 && selectedEsp === "ALL" && selectedResidente === "ALL" && selectedAdscrito === "ALL" && !showSoloIngresos;
+        renderPiso(filtered, _noFilter);
+      }
       if (currentView === "census") renderCensus(filtered);
       if (currentView === "print") renderPrint(filtered);
       if (currentView === "noOlvidar") renderNoOlvidar();
@@ -8454,7 +9251,7 @@ function indicacionesDiagnose() {
     var _searchTimer = null;
     function debouncedSearch() {
       clearTimeout(_searchTimer);
-      _searchTimer = setTimeout(renderView, 280);
+      _searchTimer = setTimeout(renderView, 150);
     }
 
     function setEsp(v, btn) {
@@ -8479,25 +9276,84 @@ function indicacionesDiagnose() {
       const mn = c.match(/(\d+)/);
       return [1, mn ? parseInt(mn[1]) : 9999];
     }
-    function renderPiso(pts) {
+    function renderPiso(pts, showFreeInline) {
+      // ═══ v30 ═══ Enfoque a pantalla completa de un solo paciente
+      // ═══ v42 · MODO TABLERO (GoodNotes): por defecto una página por paciente, se hojea ═══
+      if (typeof window.__viewMode === "undefined") window.__viewMode = "board";
+      if (window.__viewMode !== "list") {
+        const _ordered = orderPisoPatients(pts);
+        window.__boardOrder = _ordered.map(x => pid(x));
+        if (!window.__boardOrder.length) {
+          document.body.classList.remove("focus-on");
+          document.getElementById("view-piso").innerHTML =
+            `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">Sin pacientes en esta vista</span><button class="bn-idx" onclick="enterListMode()">≣ Índice</button></div><div style="padding:24px;color:#64748b;font-size:13px">No hay pacientes (¿búsqueda o filtro activos?). Toca «≣ Índice» para ver todo.</div></div></div>`;
+          return;
+        }
+        if (!window.__focusPid || window.__boardOrder.indexOf(window.__focusPid) < 0) {
+          window.__focusPid = window.__boardOrder[0];
+        }
+        const fp = _ordered.find(x => pid(x) === window.__focusPid);
+        if (fp) {
+          document.body.classList.add("focus-on");
+          const fk = pid(fp);
+          const fnd = noteData[fk] || defaultData();
+          const _idx = window.__boardOrder.indexOf(fk);
+          const _tot = window.__boardOrder.length;
+          let fcard;
+          try { fcard = isSimpleEsp(fp.esp, fnd) ? renderSimpleCard(fp, fnd, fk) : (typeof renderFocusBoard === "function" ? renderFocusBoard(fp, fnd, fk) : renderFullCard(fp, fnd, fk)); }
+          catch (e) { fcard = `<div class="full-card" style="padding:16px;color:#b91c1c">⚠️ Error al renderizar este paciente.</div>`; }
+          const _side = `<div id="board-side"><div class="bs-h">Camas</div>` + _ordered.map(pp => {
+            const kk = pid(pp);
+            const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
+            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${esc(pp.cama)}</button>`;
+          }).join("") + `</div>`;
+          const _nav = `<div id="board-nav">`
+            + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
+            + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
+            + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
+            + `<button class="bn-idx" onclick="enterListMode()" title="Ver el índice (lista completa con búsqueda y filtros)">≣ Índice</button>`
+            + `</div>`;
+          if (!window.__boardKeysBound) {
+            window.__boardKeysBound = true;
+            window.addEventListener("keydown", function (ev) {
+              if (window.__viewMode === "list" || !window.__focusPid) return;
+              const ae = document.activeElement;
+              if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT" || ae.isContentEditable)) return;
+              if (document.body.classList.contains("modal-open")) return;
+              if (ev.key === "ArrowRight") { ev.preventDefault(); focusNext(); }
+              else if (ev.key === "ArrowLeft") { ev.preventDefault(); focusPrev(); }
+            });
+          }
+          document.getElementById("view-piso").innerHTML =
+            `<div id="board-wrap">${_side}<div id="board-main">${_nav}<div id="piso-grid">${fcard}</div></div></div>`;
+          return;
+        }
+      }
+      document.body.classList.remove("focus-on");
       renderStaleLabsBanner();
       renderDupBanner(detectDuplicateBeds(patients));
       renderDupPatientBanner(detectDuplicatePatients(patients));
-      // Orden: 1) piso 3 (CG) por numero  2) otras camas CG  3) otros servicios
-      const sorted = [...pts].sort((a, b) => {
-        const aS = isSimpleEsp(a.esp) ? 1 : 0;
-        const bS = isSimpleEsp(b.esp) ? 1 : 0;
-        if (aS !== bS) return aS - bS;          // simple siempre al final
+      // Orden: 1) piso 3 (CG) por numero  2) otras camas CG  3) otros servicios.
+      // v30 — camas libres intercaladas en su posición (solo vista completa, sin filtros).
+      let items = pts.map(p => ({ _free: false, p: p, cama: p.cama }));
+      if (showFreeInline) {
+        getFreeBeds().forEach(b => items.push({ _free: true, cama: b }));
+      }
+      items.sort((a, b) => {
+        // v49 — orden consecutivo por cama (sin segregar otros servicios al final).
         const [ag, an] = pisoBedPriority(a.cama);
         const [bg, bn] = pisoBedPriority(b.cama);
         if (ag !== bg) return ag - bg;           // piso 3 antes que otros
-        return an - bn;                          // mismo grupo: orden numerico
+        if (an !== bn) return an - bn;           // mismo grupo: orden numerico
+        return toSafeString(a.cama).localeCompare(toSafeString(b.cama));
       });
       let html = "";
-      sorted.forEach(p => {
+      items.forEach(it => {
+        if (it._free) { html += renderFreeSlot(it.cama); return; }
+        const p = it.p;
         const k = pid(p);
         const nd = noteData[k] || defaultData();
-        const isSimple = isSimpleEsp(p.esp);
+        const isSimple = isSimpleEsp(p.esp, nd);
         try {
           if (isSimple) html += renderSimpleCard(p, nd, k);
           else html += renderFullCard(p, nd, k);
@@ -8514,9 +9370,10 @@ function indicacionesDiagnose() {
         }
       });
       const specialAlertsHtml = renderSpecialAlertsPanel();
+      const navPts = items.filter(it => !it._free).map(it => it.p);
       const bedNavHtml = `<div id="bed-nav">
         <div>Camas</div>
-        ${sorted.map(p => {
+        ${navPts.map(p => {
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
           const ek = "card-" + pid(p);
           return `<button data-target="${esc(ek)}" data-bed="${esc(p.cama)}" onclick="scrollToCard(this.dataset.target, this)"
@@ -8544,6 +9401,39 @@ function indicacionesDiagnose() {
       }
     }
 
+    // ─── v30: ENFOQUE A PANTALLA COMPLETA ─────────────────────────────────────────────
+    window.__drainsOpen = window.__drainsOpen || {};
+    function toggleDrains(k) {
+      window.__drainsOpen[k] = !window.__drainsOpen[k];
+      if (typeof _rerenderCard === "function") _rerenderCard(k);
+    }
+    function enterFocus(k) {
+      window.__viewMode = "board";
+      window.__focusPid = k;
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
+      renderView();
+    }
+    function exitFocus() {
+      const k = window.__focusPid;
+      window.__focusPid = null;
+      document.body.classList.remove("focus-on");
+      renderView();
+      if (k) setTimeout(() => {
+        const el = document.getElementById("card-" + k);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 60);
+    }
+    // ─── v30: SLOT DE CAMA LIBRE (intercalado en el piso) ─────────────────────────────
+    function renderFreeSlot(bed) {
+      const b = esc(bed);
+      const idb = toSafeString(bed).replace(/[^a-zA-Z0-9_-]/g, "_");
+      return `<div class="free-slot" id="free-slot-${idb}">
+      <span class="fs-bed">🛏 ${b}</span>
+      <span class="fs-tag">Libre</span>
+      <button class="fs-add" onclick="openAddModalWithBed('${b}')">+ Agregar paciente</button>
+    </div>`;
+    }
+
     // ─── CAMAS LIBRES ────────────────────────────────────────────────────────────────
     function getFreeBeds() {
       const occupied = new Set(patients.map(p => toSafeString(p.cama).trim().toUpperCase()));
@@ -8551,48 +9441,20 @@ function indicacionesDiagnose() {
     }
     function renderFreeBeds() {
       const free = getFreeBeds();
-      if (!free.length && ALL_BEDS.length > 0) {
-        return `<div id="free-beds-panel" style="margin-top:18px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:12px;color:#166534;font-weight:600;display:flex;align-items:center;gap:8px">
+      if (ALL_BEDS.length === 0) return "";
+      if (!free.length) {
+        return `<div id="free-beds-panel" style="margin-top:18px;padding:9px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;font-size:12px;color:#166534;font-weight:600;display:flex;align-items:center;gap:8px">
       ✅ <span>Todas las camas registradas están ocupadas</span>
       <button onclick="openBedManager()" style="margin-left:auto;background:none;border:1px solid #86efac;border-radius:5px;padding:2px 10px;font-size:11px;cursor:pointer;color:#166534;font-family:var(--font)">⚙️ Administrar camas</button>
     </div>`;
       }
-      if (!free.length) return "";
-
-      // Agrupar: piso 3, UCI, otros
-      const gr = { p3: [], uci: [], otros: [] };
-      free.forEach(b => {
-        const u = b.toUpperCase();
-        if (/^3-\d+$/.test(u)) gr.p3.push(b);
-        else if (/^UCI/i.test(u)) gr.uci.push(b);
-        else gr.otros.push(b);
-      });
-
-      function chips(arr, color) {
-        return arr.map(b =>
-          `<button onclick="openAddModalWithBed('${esc(b)}')"
-        title="Agregar paciente en ${b}"
-        style="background:#fff;border:1.5px solid ${color};color:${color};border-radius:8px;padding:4px 11px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:all .12s"
-        onmouseover="this.style.background='${color}';this.style.color='#fff'"
-        onmouseout="this.style.background='#fff';this.style.color='${color}'">${b}</button>`
-        ).join("");
-      }
-
-      let body = "";
-      if (gr.p3.length) body += `<div style="margin-bottom:8px"><span style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">🏥 Piso 3 — ${gr.p3.length} libre${gr.p3.length !== 1 ? "s" : ""}</span><div style="display:flex;flex-wrap:wrap;gap:6px">${chips(gr.p3, "#0f4c75")}</div></div>`;
-      if (gr.uci.length) body += `<div style="margin-bottom:8px"><span style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">🚨 UCI — ${gr.uci.length} libre${gr.uci.length !== 1 ? "s" : ""}</span><div style="display:flex;flex-wrap:wrap;gap:6px">${chips(gr.uci, "#7b0000")}</div></div>`;
-      if (gr.otros.length) body += `<div><span style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">📋 Otros — ${gr.otros.length} libre${gr.otros.length !== 1 ? "s" : ""}</span><div style="display:flex;flex-wrap:wrap;gap:6px">${chips(gr.otros, "#4a3580")}</div></div>`;
-
-      return `<div id="free-beds-panel" style="margin-top:18px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 1px 6px rgba(0,0,0,.06)">
-    <div style="background:#f1f5f9;border-bottom:1px solid #e2e8f0;padding:9px 14px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="toggleFreeBeds()">
+      // v30 — las camas libres ahora aparecen intercaladas en su posición dentro del piso.
+      // Esta barra-pie solo resume el total y da acceso a configurar camas.
+      return `<div id="free-beds-panel" style="margin-top:18px;padding:9px 14px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;display:flex;align-items:center;gap:8px;box-shadow:0 1px 6px rgba(0,0,0,.06)">
       <span style="font-size:15px">🛏</span>
-      <span style="font-size:12px;font-weight:700;color:#334155">${free.length} cama${free.length !== 1 ? "s" : ""} libre${free.length !== 1 ? "s" : ""} — clic para ver</span>
-      <span id="free-beds-arrow" style="margin-left:auto;font-size:13px;color:#64748b">▾</span>
-      <button onclick="event.stopPropagation();openBedManager()"
-        style="background:none;border:1px solid #cbd5e1;border-radius:5px;padding:2px 9px;font-size:11px;cursor:pointer;color:#475569;font-family:var(--font)">⚙️ Configurar</button>
-    </div>
-    <div id="free-beds-body" style="padding:12px 14px;display:none">${body}</div>
-  </div>`;
+      <span style="font-size:12px;font-weight:700;color:#334155">${free.length} cama${free.length !== 1 ? "s" : ""} libre${free.length !== 1 ? "s" : ""} — intercaladas arriba en su posición</span>
+      <button onclick="openBedManager()" style="margin-left:auto;background:none;border:1px solid #cbd5e1;border-radius:5px;padding:2px 10px;font-size:11px;cursor:pointer;color:#475569;font-family:var(--font)">⚙️ Configurar camas</button>
+    </div>`;
     }
 
     function toggleFreeBeds() {
@@ -8778,7 +9640,7 @@ function indicacionesDiagnose() {
       const nd = noteData[k] || defaultData();
       const cardEl = document.getElementById("card-" + k);
       if (p && cardEl) {
-        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
+        cardEl.outerHTML = isSimpleEsp(p.esp, nd) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
       }
       // Scroll to card
       setTimeout(function() {
@@ -9404,6 +10266,7 @@ function indicacionesDiagnose() {
     }
 
     function exitRondas() {
+      window.__rondaPid = null;
       document.getElementById("rondas-overlay").classList.remove("open");
       document.body.style.overflow = "";
       // Re-render the main view so all cards reflect noteData edits made in Rondas.
@@ -9422,7 +10285,8 @@ function indicacionesDiagnose() {
       document.getElementById("rondas-next").disabled = _rondasIdx === total - 1;
       const bodyEl = document.getElementById("rondas-body");
       expandedCards[k] = true;
-      bodyEl.innerHTML = `<div style="max-width:900px;margin:0 auto">${isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k)}</div>`;
+      window.__rondaPid = k;
+      bodyEl.innerHTML = `<div style="max-width:900px;margin:0 auto">${isSimpleEsp(p.esp, nd) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k)}</div>`;
       bodyEl.scrollTop = 0;
     }
 
@@ -9553,6 +10417,195 @@ function indicacionesDiagnose() {
       }
     }
 
+    // ═══ v41 · renderFocusBoard · tablero GoodNotes (SOLO modo foco) ═══════════
+    // Reúsa las funciones de sección reales (renderFocusLabs, renderCDSSection,
+    // renderImagenField, renderInterconsultasSection, renderCultivosSection) y las
+    // acomoda en el grid del prototipo. NO modifica renderFullCard: la LISTA queda
+    // intacta (no-regresión). Cada sección se aísla con _fbSafe: si una truena, el
+    // resto del tablero sigue vivo.
+    function _fbSafe(fn){ try { var r = fn(); return (r == null) ? "" : r; } catch (e) { return '<div class="fb-err">— error de sección —</div>'; } }
+    function _fbEsc(s){ try { return (typeof esc === "function") ? esc(s == null ? "" : s) : String(s == null ? "" : s); } catch (e) { return ""; } }
+    function _fbVal(v){ v = (v == null ? "" : String(v)).trim(); return v || "—"; }
+
+    // ═══ v43 · helpers del tablero: insertar drenaje + plegar narrativa ═══
+    function fbAddDrain(k, type){
+      try{
+        var ta = document.querySelector('textarea[data-key="' + k + '"][data-field="drenajes"]');
+        if (!ta) return;
+        var cur = (ta.value || "").replace(/\s+$/, "");
+        ta.value = (cur ? cur + "\n" : "") + type + ": ";
+        if (typeof liveUpdate === "function") liveUpdate(ta);
+        if (typeof updateField === "function") updateField(k, "drenajes", ta.value);
+        ta.focus();
+        try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
+      } catch (e) {}
+    }
+    function fbToggleMore(k, btn){
+      window.__fbMoreOpen = window.__fbMoreOpen || {};
+      window.__fbMoreOpen[k] = !window.__fbMoreOpen[k];
+      try { var m = btn.closest(".fb-more"); if (m) m.classList.toggle("open"); } catch (e) {}
+    }
+
+    function renderFocusBoard(p, nd, k){
+      try { nd = (typeof migrateNote === "function") ? migrateNote(nd) : nd; } catch (e) {}
+      if (!nd) nd = (typeof defaultData === "function") ? defaultData() : {};
+      var ck = nd.checklist || {};
+      var days = ""; try { days = (typeof daysSince === "function") ? daysSince(p.ingreso) : ""; } catch (e) {}
+      var alerts = []; try { alerts = (typeof computeAlerts === "function") ? computeAlerts(p, nd) : []; } catch (e) {}
+      var alertBadges = ""; try { alertBadges = (typeof renderAlertBadges === "function") ? renderAlertBadges(alerts) : ""; } catch (e) {}
+      var atbOn = !!ck.atb;
+      var atbTxt = atbOn ? ("ATB" + (ck.atb_nombre ? " · " + _fbEsc(ck.atb_nombre) : "") + (ck.atb_dias ? " · d" + _fbEsc(ck.atb_dias) : "")) : "";
+
+      // textarea editable ligada a un campo de nivel superior de nd (mismos handlers que la lista)
+      function fbField(label, field, value, rows){
+        return '<div class="fb-fld"><span class="fb-zh">' + label + '</span>'
+          + '<textarea class="fb-ta" rows="' + (rows || 3) + '" data-key="' + k + '" data-field="' + field + '" '
+          + 'inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" '
+          + 'oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value)" '
+          + 'placeholder="' + label + '...">' + _fbEsc(value || "") + '</textarea></div>';
+      }
+      function pmInput(label, field){
+        return '<div class="fb-pm"><span class="fb-pm-k">' + label + '</span>'
+          + '<input class="fb-pm-i" value="' + _fbEsc(ck[field] || "") + '" data-ck="' + k + '" data-field="' + field + '" '
+          + 'inputmode="text" autocorrect="off" autocapitalize="off" spellcheck="false" '
+          + 'oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)"></div>';
+      }
+
+      /* FIX-v47: plantilla COMPLETA del pase matutino, calcada de la hoja GoodNotes */
+      var PM = [["FC","pm_fc"],["T °C","pm_temp"],["TA","pm_ta"],["FR","pm_fr"],["SaO₂","pm_sao2"],["Dxtx","pm_dxtx"],["IU","pm_iu"],["O₂ L","pm_o2l"],["Uresis","pm_uresis"]];
+      var pmHtml = PM.map(function(f){ return pmInput(f[0], f[1]); }).join("");
+      var PM2 = [["SNG","pm_sng_desc"],["HxQx","pm_hxqx"],["PRS","pm_prs1_desc"],["PRS₂","pm_prs2_desc"],["Estoma","pm_estoma_desc"],["SEP","pm_sep_gasto"],["Balance","pm_balance"]];
+      var pm2Html = PM2.map(function(f){ return pmInput(f[0], f[1]); }).join("");
+
+      // drenajes y sondas: chips de inserción rápida + texto libre (datos como string, sin tocar el modelo)
+      var DRAINS = ["Penrose","JP","Blake","Hemovac","CMP","Foley","Torácico","SNG"];
+      var drainChips = DRAINS.map(function(d){
+        return '<button type="button" class="fb-chip" data-k="' + k + '" data-drain="' + d + '" onclick="fbAddDrain(this.dataset.k,this.dataset.drain)">+ ' + d + '</button>';
+      }).join("");
+
+      var labsHtml = _fbSafe(function(){ return renderFocusLabs(nd, k); });
+      var cdsHtml  = _fbSafe(function(){ return (typeof renderCDSSection === "function") ? renderCDSSection(p, nd, k) : ""; });
+      var indHtml  = _fbSafe(function(){ return (typeof renderIndicacionesSection === "function") ? renderIndicacionesSection(p, nd, k) : ""; });
+      var icHtml   = _fbSafe(function(){ return (typeof renderInterconsultasSection === "function") ? renderInterconsultasSection(nd, k) : ""; });
+      var imgHtml  = _fbSafe(function(){ return (typeof renderImagenField === "function") ? renderImagenField(nd, k) : ""; });
+      var cultHtml = _fbSafe(function(){ return (typeof renderCultivosSection === "function") ? renderCultivosSection(nd, k) : ""; });
+
+      window.__fbMoreOpen = window.__fbMoreOpen || {};
+      var moreOpen = !!window.__fbMoreOpen[k];
+
+      var out = '<div class="focus-board" id="card-' + k + '">';
+
+      // HEADER
+      out += '<div class="fb-hd">'
+        + '<div class="fb-cama"><span class="fb-lbl">Cama</span><span class="fb-cama-v">' + (_fbEsc(p.cama) || "S/C") + '</span></div>'
+        + '<div class="fb-mid">'
+        +   '<div class="fb-name">' + (_fbEsc(p.nombre) || "SIN NOMBRE") + '</div>'
+        +   '<div class="fb-meta"><span>Edad: <b>' + (p.edad ? _fbEsc(p.edad) : "?") + '</b></span><span>FI: <b>' + _fbEsc(_fbVal(p.ingreso)) + '</b></span><span>Exp: <b>' + _fbEsc(_fbVal(p.exp)) + '</b></span><span>Esp: <b>' + _fbEsc(_fbVal(p.esp)) + '</b></span></div>'
+        + '</div>'
+        + '<div class="fb-badges">'
+        +   '<span class="fb-badge fb-b-day">Día ' + _fbEsc(days) + '</span>'
+        +   (atbOn ? '<span class="fb-badge fb-b-atb">' + atbTxt + '</span>' : '')
+        +   alertBadges
+        + '</div>'
+        + '</div>';
+
+      // DX (editable, compacto)
+      out += '<div class="fb-dxband">' + fbField("Dx:", "dx", (nd.dx || p.dx), 2) + '</div>';
+
+      // CDS (seguridad — conservado del app)
+      if (cdsHtml && String(cdsHtml).trim()) out += '<div class="fb-band fb-cds">' + cdsHtml + '</div>';
+
+      /* FIX-v47 · geometría calcada de la hoja GoodNotes (papel = fuente de verdad):
+         ROW A: Labs multi-fecha | APP / PA / Qx apilados a la derecha
+         ROW B: Imagen | IC | Cultivos
+         ROW C: Pendientes | Entrega | Pase matutino (plantilla completa)
+         ROW D: plegable "Más del app" (Indicaciones · Drenajes+chips · Manejo · Sangrado) */
+
+      // ROW A — labs grandes + columna derecha del papel
+      out += '<div class="fb-row fb-row-paper">'
+        + '<div class="fb-zone fb-labs">' + labsHtml + '</div>'
+        + '<div class="fb-stack">'
+        +   '<div class="fb-zone">' + fbField("APP:", "app", nd.app, 3) + '</div>'
+        +   '<div class="fb-zone">' + fbField("PA:", "pa", nd.pa, 4) + '</div>'
+        +   '<div class="fb-zone">' + fbField("Qx:", "qx", nd.qx, 4) + '</div>'
+        + '</div>'
+        + '</div>';
+
+      // ROW B — fila media del papel
+      out += '<div class="fb-row fb-row-3">'
+        + '<div class="fb-zone fb-img">' + ((imgHtml && String(imgHtml).trim()) ? imgHtml : '<span class="fb-zh">Imagen:</span><p class="fb-empty">—</p>') + '</div>'
+        + '<div class="fb-zone fb-ic">' + ((icHtml && String(icHtml).trim()) ? icHtml : '<span class="fb-zh">IC:</span><p class="fb-empty">—</p>') + '</div>'
+        + '<div class="fb-zone fb-cult">' + ((cultHtml && String(cultHtml).trim()) ? cultHtml : '<span class="fb-zh">Cultivos:</span><p class="fb-empty">—</p>') + '</div>'
+        + '</div>';
+
+      // ROW C — fila baja del papel
+      out += '<div class="fb-row fb-row-3">'
+        + '<div class="fb-zone fb-pend">' + fbField("Pendientes:", "pendientes", nd.pendientes, 7) + '</div>'
+        + '<div class="fb-zone fb-ent">' + fbField("Entrega:", "entrega", nd.entrega, 7) + '</div>'
+        + '<div class="fb-zone fb-pase">'
+        +   '<span class="fb-zh">Pase matutino:</span>'
+        +   '<div class="fb-pm-grid">' + pmHtml + '</div>'
+        +   '<div class="fb-pm-rows">' + pm2Html + '</div>'
+        + '</div>'
+        + '</div>';
+
+      // ROW D — extras del app que el papel no tiene (plegados, no estorban)
+      out += '<div class="fb-more' + (moreOpen ? ' open' : '') + '">'
+        + '<button type="button" class="fb-more-btn" data-k="' + k + '" onclick="fbToggleMore(this.dataset.k,this)">➕ Más del app: Indicaciones · Drenajes · Manejo · Sangrado <span class="fb-more-caret">▸</span></button>'
+        + '<div class="fb-more-body">'
+        +   '<div class="fb-row">'
+        +     '<div class="fb-zone fb-ind">' + ((indHtml && String(indHtml).trim()) ? indHtml : '<span class="fb-zh">Indicaciones:</span><p class="fb-empty">—</p>') + '</div>'
+        +     '<div class="fb-zone fb-drains">'
+        +       '<span class="fb-zh">Drenajes y sondas:</span>'
+        +       '<div class="fb-chips">' + drainChips + '</div>'
+        +       '<textarea class="fb-ta" rows="4" data-key="' + k + '" data-field="drenajes" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value)" placeholder="Toca un drenaje arriba o escribe. Ej: Penrose FID: 30cc seroso">' + _fbEsc(nd.drenajes || "") + '</textarea>'
+        +     '</div>'
+        +   '</div>'
+        +   '<div class="fb-row">'
+        +     '<div class="fb-zone">' + fbField("Manejo:", "manejo", nd.manejo, 3) + '</div>'
+        +     '<div class="fb-zone">' + fbField("Sangrado:", "sangrado", nd.sangrado, 3) + '</div>'
+        +   '</div>'
+        + '</div>'
+        + '</div>';
+
+      out += '</div>'; // .focus-board
+      return out;
+    }
+
+    // ═══ v42 · navegación Modo Tablero (GoodNotes) ═══════════════════════════
+    // Hojear paciente-a-paciente reusando el MISMO orden que la lista
+    // (pisoBedPriority + isSimpleEsp). No toca el render de la lista.
+    function orderPisoPatients(pts){
+      var arr = (pts || []).slice();
+      arr.sort(function(a, b){
+        // v49 — orden consecutivo por cama (sin segregar otros servicios al final).
+        var pa = pisoBedPriority(a.cama), pb = pisoBedPriority(b.cama);
+        if (pa[0] !== pb[0]) return pa[0] - pb[0];
+        if (pa[1] !== pb[1]) return pa[1] - pb[1];
+        return toSafeString(a.cama).localeCompare(toSafeString(b.cama));
+      });
+      return arr;
+    }
+    function focusGoTo(k){
+      window.__viewMode = "board";
+      window.__focusPid = k;
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
+      renderView();
+    }
+    function focusStep(delta){
+      var order = window.__boardOrder || [];
+      if (!order.length) return;
+      var i = order.indexOf(window.__focusPid);
+      if (i < 0) i = 0; else i = Math.min(order.length - 1, Math.max(0, i + delta));
+      window.__focusPid = order[i];
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
+      renderView();
+    }
+    function focusNext(){ focusStep(1); }
+    function focusPrev(){ focusStep(-1); }
+    function enterBoardMode(){ window.__viewMode = "board"; window.__focusPid = null; renderView(); }
+    function enterListMode(){ window.__viewMode = "list"; window.__focusPid = null; document.body.classList.remove("focus-on"); renderView(); }
+
     function renderFullCard(p, nd, k) {
       const ec = ESP_COLORS[p.esp] || "#333333";
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
@@ -9576,6 +10629,7 @@ function indicacionesDiagnose() {
           <span class="badge-day">Día ${days}</span>
           ${renderDiasSinLabsBadge(nd)}
           ${renderCruceBadge(nd, k)}
+          ${(isSimpleEsp(p.esp) && nd && nd.checklist && nd.checklist.svcMine) ? `<button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Quitar de mi servicio">↩️</button>` : ''}
           <button class="icon-btn has-lbl" style="background:rgba(14,116,144,.5)" data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)" title="Buscar en WinLab (copia apellido)">🧪<span class="icon-lbl">WinLab</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(14,165,233,.55)" data-corkey="${k}" onclick="openCorreccionModal(this.dataset.corkey)" title="Corrección guiada de electrolitos">⚡<span class="icon-lbl">Electrol.</span></button>
           <button class="icon-btn has-lbl" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️<span class="icon-lbl">Editar</span></button>
@@ -9585,6 +10639,8 @@ function indicacionesDiagnose() {
           <button class="icon-btn has-lbl" style="background:rgba(139,92,246,.45)" data-inkkey="${k}" onclick="openInkpad(this.dataset.inkkey)" title="Escribir a mano con stylus (Apple Pencil, S Pen, etc.) y transcribir con IA">✍️<span class="icon-lbl">Escribir</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(245,158,11,.5)" data-remkey="${k}" onclick="openReminderModal(this.dataset.remkey)" title="Programar recordatorio (reposición K, gasometría a las 18h, etc.)">🔔<span class="icon-lbl">Recordar</span></button>
           <button class="icon-btn has-lbl danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪<span class="icon-lbl">Alta</span></button>
+          <button class="icon-btn has-lbl" style="background:rgba(5,150,105,.5)" data-nevokey="${k}" onclick="openNotaEvo(this.dataset.nevokey)" title="Generar nota de evolución desde los datos de la app">📝<span class="icon-lbl">Nota Evol.</span></button>
+          <button class="icon-btn has-lbl" style="background:rgba(2,132,199,.55)" data-fockey="${k}" onclick="enterFocus(this.dataset.fockey)" title="Ver este paciente a pantalla completa">⛶<span class="icon-lbl">Pantalla</span></button>
           <span class="expand-btn" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${exp ? "▾" : "▸"}</span>
         </div>
       </div>
@@ -9600,10 +10656,11 @@ function indicacionesDiagnose() {
 
       ${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 3)}
 
-      ${renderLabSection(nd, k)}
+      ${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}
 
       ${renderCDSSection(p, nd, k)}
       ${renderIndicacionesSection(p, nd, k)}
+      ${typeof renderCultivosLabSection === 'function' ? renderCultivosLabSection(p, nd, k) : ''}
 
       ${/* renderWinlabSection: deshabilitada mayo 2026. Los labs ahora aparecen
             integrados en los recuadros estándar de renderLabSection vía el nuevo
@@ -9675,7 +10732,16 @@ function indicacionesDiagnose() {
           return cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : "";
         })()}
       </div>
-      ${renderBodyDiagram(nd, k)}
+      ${(function () {
+        const _dOpen = !!(window.__drainsOpen && window.__drainsOpen[k]);
+        return `<div class="drains-collapse" style="margin-top:10px">
+        <button type="button" class="drains-toggle" data-dkey="${k}" onclick="toggleDrains(this.dataset.dkey)">
+          <span>🫁 Diagrama de drenajes / localización</span>
+          <span style="margin-left:auto">${_dOpen ? "▾ ocultar" : "▸ mostrar"}</span>
+        </button>
+        ${_dOpen ? renderBodyDiagram(nd, k, true) : ""}
+      </div>`;
+      })()}
       ${renderPtReminders(nd, k)}
     </div>` : ""}
   </div>`;
@@ -9710,6 +10776,8 @@ function indicacionesDiagnose() {
         ${renderDiasSinLabsBadge(nd)}
         ${curPendiente ? `<span style="background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap">🩹 Cur</span>` : ''}
         ${renderCruceBadge(nd, k)}
+        <button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Es de mi servicio (expandir + buscar labs)">🩺</button>
+        <button class="icon-btn" data-fockey="${k}" onclick="enterFocus(this.dataset.fockey)" title="Pantalla completa">⛶</button>
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
         <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
       </div>
@@ -9741,7 +10809,7 @@ function indicacionesDiagnose() {
     }
 
     // ─── BODY DIAGRAM ──────────────────────────────────────────────────────────────
-    function renderBodyDiagram(nd, k) {
+    function renderBodyDiagram(nd, k, hideHeader) {
       const ek = k.replace(/[^a-zA-Z0-9_-]/g, '_');
       // Anterior SVG: torso view (thorax → pelvis)
       const antSvg = `<svg class="bd-svg" viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg">
@@ -9801,7 +10869,7 @@ function indicacionesDiagnose() {
       }
 
       return `<div class="bd-section">
-        <div class="field-label">🫁 Diagrama de drenajes / localización</div>
+        ${hideHeader ? '' : '<div class="field-label">🫁 Diagrama de drenajes / localización</div>'}
         <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:8px">
           ${sideHtml('ant', antSvg)}
           ${sideHtml('post', postSvg)}
@@ -10025,6 +11093,8 @@ function indicacionesDiagnose() {
           { key: "plaq", label: "Plaq", unit: "k/µL", low: 100, high: 400, cl: 50 },
           { key: "cr", label: "Cr", unit: "mg/dL", low: 0, high: 1.25, ch: 3 },
           { key: "urea", label: "Urea", unit: "mg/dL", low: 0, high: 43 },
+          { key: "bun", label: "BUN", unit: "mg/dL", low: 7, high: 20 }, /* FIX-v47 */
+          { key: "urico", label: "Ác. úrico", unit: "mg/dL", low: 2.5, high: 7 }, /* FIX-v47 */
           { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110 },
           { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145 },
           { key: "k", label: "K", unit: "mmol/L", low: 3.5, high: 5.1, cl: 2.8, ch: 6.0 },
@@ -10077,6 +11147,7 @@ function indicacionesDiagnose() {
           { key: "alt", label: "ALT", unit: "U/L", low: 0, high: 40, ch: 200 },
           { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 2 },
           { key: "bd", label: "BD", unit: "mg/dL", low: 0, high: 0.3, ch: 3 },
+          { key: "bi", label: "BI", unit: "mg/dL", low: 0, high: 0.8 }, /* FIX-v47 */
           { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 },
           { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147, ch: 500 }
         ]
@@ -10671,31 +11742,44 @@ function indicacionesDiagnose() {
       }).join("");
       dateChips += `<button class="lab-date-chip new-btn" onclick="addLabDate('${k}')">+ Nueva fecha</button>`;
 
-      // Lab groups
+      // ── v44 · labs en el ORDEN de GoodNotes (FOCUS_LAB_ORDER) + diferencial + otros ──
       let groupsHtml = "";
       if (activeFecha) {
-        LAB_GROUPS.forEach(grp => {
-          const gid = "grp-" + k.replace(/[^a-zA-Z0-9]/g, "_") + "-" + grp.id;
-          // Auto-expand basico y bh_ext (Biometría hemática completa) siempre;
-          // otros grupos colapsados a menos que tengan valores.
-          const hasVals = grp.fields.some(lf => labs[lf.key]);
-          const isBase = grp.id === "basico" || grp.id === "bh_ext";
-          const expanded = isBase || hasVals;
-          // Obtener labs de la fecha anterior para tendencia Δ
-          const prevDates = dates.filter(d => d < activeFecha);
-          const prevFecha = prevDates.length ? prevDates[0] : null;
-          const prevSnap = prevFecha ? history.find(s => s.fecha === prevFecha) : null;
-          const prevLabs = prevSnap ? (prevSnap.labs || {}) : {};
-          let cells = grp.fields.map(lf => labCellHtml(lf, labs[lf.key] || "", k, activeFecha, prevFecha ? (prevLabs[lf.key] ?? undefined) : undefined)).join("");
-          groupsHtml += `<div style="margin-bottom:4px">
-        <div class="lab-group-label">${grp.label}
-          <button class="lab-group-toggle" onclick="toggleEl('${gid}')">${expanded ? "▼" : "▶ Ver"}</button>
+        const prevDates = dates.filter(d => d < activeFecha);
+        const prevFecha = prevDates.length ? prevDates[0] : null;
+        const prevSnap = prevFecha ? history.find(s => s.fecha === prevFecha) : null;
+        const prevLabs = prevSnap ? (prevSnap.labs || {}) : {};
+        const _cell = lf => labCellHtml(lf, labs[lf.key] || "", k, activeFecha, prevFecha ? (prevLabs[lf.key] ?? undefined) : undefined);
+        const _byKey = {}; LAB_FIELDS.forEach(f => { _byKey[f.key] = f; });
+        const _used = {};
+        const _mainFields = [];
+        (typeof FOCUS_LAB_ORDER !== "undefined" ? FOCUS_LAB_ORDER : []).forEach(pair => {
+          const key = pair[1];
+          if (_used[key]) return;
+          _used[key] = 1;
+          if (_byKey[key]) _mainFields.push(_byKey[key]);
+        });
+        const _bhExt = (LAB_GROUPS.find(g => g.id === "bh_ext") || { fields: [] }).fields;
+        const _difFields = _bhExt.filter(f => !_used[f.key]);
+        _difFields.forEach(f => { _used[f.key] = 1; });
+        const _otrosFields = LAB_FIELDS.filter(f => !_used[f.key]);
+        const _sec = (title, idp, fields, alwaysOpen) => {
+          if (!fields.length) return "";
+          const hasV = fields.some(lf => labs[lf.key]);
+          const open = alwaysOpen || hasV;
+          const gid = idp + "-" + k.replace(/[^a-zA-Z0-9]/g, "_");
+          return `<div style="margin-bottom:4px">
+        <div class="lab-group-label">${title}
+          <button class="lab-group-toggle" onclick="toggleEl('${gid}')">${open ? "▼" : "▶ Ver"}</button>
         </div>
-        <div id="${gid}" style="display:${expanded ? 'grid' : 'none'};grid-template-columns:repeat(6,1fr);gap:6px">
-          ${cells}
+        <div id="${gid}" style="display:${open ? 'grid' : 'none'};grid-template-columns:repeat(6,1fr);gap:6px">
+          ${fields.map(_cell).join("")}
         </div>
       </div>`;
-        });
+        };
+        groupsHtml += _sec("🧪 Orden de pase", "grp-pase", _mainFields, true);
+        groupsHtml += _sec("🔬 BH diferencial e índices", "grp-dif", _difFields, false);
+        groupsHtml += _sec("⚗️ Otros (gaso · EGO · coagulación · cardíaco · lactato)", "grp-otros", _otrosFields, false);
       }
 
       // Extra labs
@@ -11770,8 +12854,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (boolHtml) html += `<div style="margin-bottom:10px">${boolHtml}</div>`;
 
       _DI_FIELDS.forEach((fd, idx) => {
-        const val = flat[fd.key];
-        if (!val || (typeof val === "string" && !val.trim())) return;
+        let val = flat[fd.key];
+        if (val === null || val === undefined) return;
+        if (typeof val !== "string") {
+          val = Array.isArray(val) ? val.filter(x => x != null && String(x).trim() !== "").join(", ")
+              : (typeof val === "object" ? Object.values(val).filter(x => x != null && String(x).trim() !== "").join(", ")
+              : String(val));
+        }
+        if (!val.trim()) return;
         html += `<div class="di-field-row">
           <input type="checkbox" class="di-field-check" id="di-chk-${idx}" checked>
           <label class="di-field-label" for="di-chk-${idx}">${fd.label}</label>
@@ -12130,7 +13220,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const nd = noteData[k] || defaultData();
       const cardEl = document.getElementById("card-" + k);
       if (p && cardEl) {
-        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
+        cardEl.outerHTML = isSimpleEsp(p.esp, nd) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
       } else {
         renderView(); // fallback: tarjeta no en DOM
       }
@@ -12348,7 +13438,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const cardEl = document.getElementById("card-" + pk);
       if (cardEl) {
         const nd2 = noteData[pk] || defaultData();
-        cardEl.outerHTML = isSimpleEsp(p.esp) ? renderSimpleCard(p, nd2, pk) : renderFullCard(p, nd2, pk);
+        cardEl.outerHTML = isSimpleEsp(p.esp, nd2) ? renderSimpleCard(p, nd2, pk) : renderFullCard(p, nd2, pk);
       }
     }
 
@@ -13284,6 +14374,96 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       <div class="sig-box"><div class="sig-line">Nombre completo, parentesco y/o cargo y firma del Testigo 2</div></div>
     </div>
     <div class="ft">FT-HGL-AM-542 · Blvd. Puente Milenio N° 1001 A Predio San Carlos C.P. 37544</div>
+    <script>window.print();<\/script>
+  </body></html>`);
+      w.document.close();
+    }
+
+    function printPrePostQx() {
+      const v = fmtV;
+      const chk = (id) => { const el = document.getElementById(id); return el && el.checked; };
+      const riesgos = [
+        chk("fqx_nefro") && "NEFROPATÍA", chk("fqx_coag") && "COAGULOPATÍA",
+        chk("fqx_cardio") && "CARDIOPATÍA", chk("fqx_dm") && "DIABETES",
+        chk("fqx_has") && "HAS", chk("fqx_alcohol") && "ALCOHOLISMO",
+        chk("fqx_tabaco") && "TABAQUISMO", chk("fqx_adicc") && "ADICCIONES"
+      ].filter(Boolean).join(", ") || "NINGUNO";
+      const br = (s) => String(s || "").replace(/\n/g, "<br>");
+      const w = window.open("", "_blank", "width=900,height=1100");
+      w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-Qx-234</title>
+  <style>
+    @page{size:letter;margin:12mm}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,sans-serif;font-size:9.5pt;color:#000;padding:6mm;line-height:1.35}
+    .hdr{text-align:center;font-size:9.5pt;margin-bottom:2mm}
+    h2{text-align:center;font-size:11pt;font-weight:bold;margin:2mm 0 3mm}
+    .sec{font-weight:bold;font-size:10pt;background:#e8e8e8;padding:2px 5px;margin:3mm 0 1mm;border-left:3px solid #000}
+    .tbl{width:100%;border-collapse:collapse;margin:1mm 0}
+    .tbl td{border:1px solid #000;padding:2px 5px;font-size:9pt;vertical-align:top}
+    .tbl td.lbl{font-weight:bold;white-space:nowrap;background:#f5f5f5}
+    .blk{border:1px solid #000;padding:3px 5px;margin:1mm 0;min-height:7mm;font-size:9pt}
+    .blk .lbl{font-weight:bold;display:block;margin-bottom:1px}
+    .sig-row{display:flex;justify-content:space-between;margin-top:8mm}
+    .sig-box{text-align:center;width:45%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:16mm}
+    .ft{text-align:right;font-size:7pt;color:#666;margin-top:4mm}
+  </style></head><body>
+    <div class="hdr">Instituto de Salud Pública del Estado de Guanajuato<br><b>Hospital General León</b></div>
+    <h2>ESTADO PRE Y POST QUIRÚRGICO</h2>
+    <table class="tbl">
+      <tr><td class="lbl">FECHA</td><td>${v("fqx_fecha")}</td><td class="lbl">HORA</td><td>${v("fqx_hora")}</td><td class="lbl">SERVICIO</td><td>${v("fqx_servicio")}</td></tr>
+      <tr><td class="lbl">PACIENTE</td><td colspan="3">${v("fqx_nombre")}</td><td class="lbl">EXP</td><td>${v("fqx_exp")}</td></tr>
+      <tr><td class="lbl">EDAD</td><td>${v("fqx_edad")}</td><td class="lbl">SEXO</td><td>${v("fqx_sexo")}</td><td class="lbl">CAMA</td><td>${v("fqx_cama")}</td></tr>
+      <tr><td class="lbl">F. NAC.</td><td colspan="5">${v("fqx_fn")}</td></tr>
+      <tr><td class="lbl">SIGNOS VITALES</td><td colspan="5">TA ${v("fqx_ta")} · FC ${v("fqx_fc")} · FR ${v("fqx_fr")} · Temp ${v("fqx_temp")} · Peso ${v("fqx_peso")} · Talla ${v("fqx_talla")}</td></tr>
+    </table>
+
+    <div class="sec">NOTA PREQUIRÚRGICA</div>
+    <table class="tbl">
+      <tr><td class="lbl">FECHA CIRUGÍA</td><td>${v("fqx_fecha_cx")}</td><td class="lbl">TIPO</td><td>${v("fqx_tipo_interv")}</td></tr>
+    </table>
+    <div class="blk"><span class="lbl">PLAN QUIRÚRGICO</span>${br(v("fqx_plan_qx"))}</div>
+    <div class="blk"><span class="lbl">FACTORES DE RIESGO</span>${riesgos}</div>
+    <div class="blk"><span class="lbl">OTROS FACTORES</span>${br(v("fqx_otros_riesgo"))}</div>
+    <div class="blk"><span class="lbl">RESUMEN DEL INTERROGATORIO</span>${br(v("fqx_interrogatorio"))}</div>
+    <div class="blk"><span class="lbl">EXPLORACIÓN FÍSICA</span>${br(v("fqx_ef"))}</div>
+    <table class="tbl">
+      <tr><td class="lbl">GRUPO/RH</td><td>${v("fqx_tipo_sangre")}</td><td class="lbl">TP</td><td>${v("fqx_tp")}</td><td class="lbl">TPT</td><td>${v("fqx_tpt")}</td><td class="lbl">HB</td><td>${v("fqx_hb")}</td><td class="lbl">HTO</td><td>${v("fqx_hto")}</td></tr>
+    </table>
+    <div class="blk"><span class="lbl">OTROS ESTUDIOS</span>${br(v("fqx_otros_labs"))}</div>
+    <div class="blk"><span class="lbl">DIAGNÓSTICOS PREQUIRÚRGICOS</span>${br(v("fqx_dx_pre"))}</div>
+    <div class="blk"><span class="lbl">CUIDADOS Y PLAN TERAPÉUTICO PREOPERATORIO</span>${br(v("fqx_cuidados_pre"))}</div>
+    <table class="tbl">
+      <tr><td class="lbl">PRONÓSTICO</td><td>${v("fqx_pronostico_pre")}</td></tr>
+      <tr><td class="lbl">MÉDICO ADSCRITO</td><td>${v("fqx_adscrito")}</td></tr>
+      <tr><td class="lbl">MÉDICO QUE ELABORA</td><td>${v("fqx_residente")}</td></tr>
+    </table>
+
+    <div class="sec">NOTA POSTQUIRÚRGICA</div>
+    <div class="blk"><span class="lbl">DIAGNÓSTICO POSTOPERATORIO</span>${br(v("fqx_dx_post"))}</div>
+    <div class="blk"><span class="lbl">CIRUGÍA REALIZADA</span>${br(v("fqx_cx_realizada"))}</div>
+    <table class="tbl">
+      <tr><td class="lbl">FECHA</td><td>${v("fqx_fecha_cx_real")}</td><td class="lbl">INICIO</td><td>${v("fqx_hora_inicio")}</td><td class="lbl">TÉRMINO</td><td>${v("fqx_hora_fin")}</td><td class="lbl">DURACIÓN</td><td>${v("fqx_duracion")}</td></tr>
+      <tr><td class="lbl">ANESTESIA</td><td colspan="7">${v("fqx_anestesia")}</td></tr>
+      <tr><td class="lbl">CIRUJANO</td><td colspan="3">${v("fqx_cirujano")}</td><td class="lbl">ANESTESIÓLOGO</td><td colspan="3">${v("fqx_anestesiologo")}</td></tr>
+      <tr><td class="lbl">1ER AYUDANTE</td><td colspan="3">${v("fqx_ayud1")}</td><td class="lbl">2DO AYUDANTE</td><td colspan="3">${v("fqx_ayud2")}</td></tr>
+      <tr><td class="lbl">INSTRUMENTISTA</td><td colspan="3">${v("fqx_instrumentista")}</td><td class="lbl">CIRCULANTE</td><td colspan="3">${v("fqx_circulante")}</td></tr>
+    </table>
+    <div class="blk"><span class="lbl">HALLAZGOS TRANSOPERATORIOS</span>${br(v("fqx_hallazgos"))}</div>
+    <div class="blk"><span class="lbl">DESCRIPCIÓN DE TÉCNICA QUIRÚRGICA</span>${br(v("fqx_tecnica"))}</div>
+    <table class="tbl">
+      <tr><td class="lbl">SANGRADO</td><td>${v("fqx_sangrado")}</td><td class="lbl">CUENTA TEXTIL</td><td>${v("fqx_gasas")}</td></tr>
+      <tr><td class="lbl">PIEZA / HISTOPATOLÓGICO</td><td colspan="3">${v("fqx_pieza")}</td></tr>
+      <tr><td class="lbl">INCIDENTES/ACCIDENTES</td><td colspan="3">${v("fqx_incidentes")}</td></tr>
+      <tr><td class="lbl">ESTADO POSTQX INMEDIATO</td><td>${v("fqx_estado_post")}</td><td class="lbl">PRONÓSTICO</td><td>${v("fqx_pronostico_post")}</td></tr>
+    </table>
+    <div class="blk"><span class="lbl">PLAN Y TRATAMIENTO INMEDIATO</span>${br(v("fqx_plan_post"))}</div>
+
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">Nombre, cédula profesional (sello) y firma<br>del médico cirujano</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre, cédula profesional y firma<br>del médico que elabora</div></div>
+    </div>
+    <div class="ft">FT-HGL-Qx-234 · Blvd. Puente Milenio N° 1001 A Predio San Carlos C.P. 37544</div>
     <script>window.print();<\/script>
   </body></html>`);
       w.document.close();
@@ -14494,12 +15674,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
           // ─── CATEGORIZACIÓN INTELIGENTE ─────────────────────────────────
           // Mapas del censo actual
-          const oldByPid  = new Map(patients.map(p => [pid(p), p]));
+          /* FIX-v46: la clasificacion compara identidad clinica (exp+cama), NO pid().
+             pid() usa _supa_id ("su-...") en pacientes sincronizados; el Excel parseado
+             nunca trae _supa_id ("pt-...") -> oldByPid.has(pid(p)) era SIEMPRE false y
+             todos los pacientes identicos caian a changedPts (ruta destructiva:
+             tarjeta vaciada + DELETE en Supabase con CASCADE a notes). */
+          const oldByPid  = new Map(patients.map(p => [patientIdentityKey(p), p]));
           const oldByCama = new Map(patients.map(p => [p.cama, p]));
           const oldByExp  = new Map(patients.map(p => [p.exp, p])); // para detectar cambios de cama
           // Mapas del censo nuevo
           const newByCama = new Map(imported.map(p => [p.cama, p]));
-          const newByPid  = new Map(imported.map(p => [pid(p), p]));
+          const newByPid  = new Map(imported.map(p => [patientIdentityKey(p), p])); /* FIX-v46 */
 
           const samePts     = [];  // mismo exp+cama → actualizar datos
           const movedPts    = [];  // mismo exp, diferente cama → cambio de cama
@@ -14536,7 +15721,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               return;
             }
 
-            if (oldByPid.has(pid(p))) {
+            if (oldByPid.has(patientIdentityKey(p))) { /* FIX-v46 */
               // Exact match: same exp + same cama
               samePts.push(p);
             } else if (p.exp && oldByExp.has(p.exp) && oldByExp.get(p.exp).cama !== p.cama) {
@@ -14563,8 +15748,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const defExpSet = new Set(defuncionesFromExcel.map(p => p.exp));
           const autoDetected = {}; // pid → 'alta_excel' | 'defuncion_excel'
 
+          /* FIX-v46 (P4): pacientes ya reclamados por movedPts NO son "desaparecidos".
+             Sin esto, un cambio de cama caia tambien en missingPts con default 'alta'
+             -> archive + supaDeletePatient -> CASCADE borra la nota en la nube. */
+          const movedOldIdentities = new Set(movedPts.map(({oldPt}) => patientIdentityKey(oldPt)));
           patients.forEach(p => {
-            if (!newByPid.has(pid(p)) && !newByCama.has(p.cama)) {
+            if (movedOldIdentities.has(patientIdentityKey(p))) return; /* FIX-v46 (P4) */
+            if (!newByPid.has(patientIdentityKey(p)) && !newByCama.has(p.cama)) { /* FIX-v46 */
               missingPts.push(p);
               // Auto-detect: was this patient listed in ALTAS or DEFUNCIONES?
               if (defExpSet.has(p.exp)) {
@@ -14954,6 +16144,19 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       const prevPatients = [...patients]; // snapshot del censo anterior para limpiar fantasmas al final
       const existingByPid = new Map(patients.map(p => [pid(p), p]));
+      /* FIX-v46: lookup por identidad clinica (exp+cama) para reconectar con el
+         paciente previo aunque pid() difiera (su-... vs pt-...). */
+      const existingByIdentity = new Map(patients.map(p => [patientIdentityKey(p), p]));
+      /* FIX-v46: campos editables que NO deben vaciarse si la celda del Excel viene vacia */
+      const _IMP_KEEP = ["dx", "edad", "adscrito", "residente", "ingreso", "sexo"];
+      const _impMergeCenso = (prevP, np) => {
+        const out = { ...np };
+        _IMP_KEEP.forEach(f => {
+          const v = out[f];
+          if ((v === "" || v === undefined || v === null) && prevP && prevP[f]) out[f] = prevP[f];
+        });
+        return out;
+      };
 
       // El nuevo censo Excel ES la fuente de verdad.
       // Construimos el nuevo array de patients desde cero.
@@ -14962,16 +16165,19 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       // 1) Pacientes que siguen en la misma cama con el mismo expediente → actualizar datos censo, conservar notas
       samePts.forEach(p => {
-        const k = pid(p);
-        const prev = existingByPid.get(k) || {};
-        nextPatients.push({
+        /* FIX-v46: buscar al previo por identidad clinica; conservar _supa_id para
+           que pid(merged) siga siendo "su-..." y la tarjeta (noteData) no se huerfane. */
+        const prev = existingByIdentity.get(patientIdentityKey(p)) || existingByPid.get(pid(p)) || {};
+        const merged = {
           ...prev,
-          ...p,
+          ..._impMergeCenso(prev, p),
           sexo: normalizeSexValue(p.sexo || prev.sexo || ""),
           _noEnCenso: false
-        });
+        };
+        nextPatients.push(merged);
+        const k = pid(merged);
         processedOldPids.add(k);
-        // Limpiar bandera si la tenían
+        // Limpiar bandera si la tenian
         if (noteData[k]) noteData[k]._noEnCenso = false;
         if (!noteData[k]) noteData[k] = defaultData();
       });
@@ -14979,22 +16185,24 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // 1b) Pacientes que cambiaron de cama → mover preservando todas las notas
       if (movedPts) movedPts.forEach(({ newPt, oldPt }) => {
         const oldKey = pid(oldPt);
-        const newKey = pid(newPt);
+        /* FIX-v46: conservar _supa_id -> pid(merged) sigue siendo la MISMA llave "su-..."
+           y la tarjeta viaja con el paciente sin copias huerfanas. */
+        const prev = existingByPid.get(oldKey) || oldPt || {};
+        const merged = { ...prev, ..._impMergeCenso(prev, newPt), _supa_id: prev._supa_id || newPt._supa_id, _noEnCenso: false };
+        const newKey = pid(merged);
         // Copy all existing notes/data from old key to new key
-        if (noteData[oldKey]) {
+        if (newKey !== oldKey && noteData[oldKey]) {
           noteData[newKey] = { ...noteData[oldKey] };
           // Don't delete oldKey noteData in case we need it; Supabase will handle dedup
         }
         if (!noteData[newKey]) noteData[newKey] = defaultData();
-        // Build merged patient object: use census data from new (which has new cama) but keep _supa_id
-        const prev = existingByPid.get(oldKey) || {};
-        nextPatients.push({ ...prev, ...newPt, _supa_id: prev._supa_id || newPt._supa_id, _noEnCenso: false });
+        nextPatients.push(merged);
         processedOldPids.add(oldKey);
         processedOldPids.add(newKey);
-        // Delete old bed entry from Supabase so it doesn't ghost
-        if (prev._supa_id) {
-          supaDeletePatient(prev._supa_id).catch(e => safeLog("import moved delete old:", e));
-        } else if (oldPt.cama) {
+        /* FIX-v46: con _supa_id NO se borra la fila — el sync hace PATCH de la cama sobre
+           el mismo id. Borrarla cascadeaba (FK ON DELETE CASCADE) a notes -> nota perdida
+           en la nube y _supa_id stale. Solo limpiamos por exp+cama si nunca hubo sync. */
+        if (!prev._supa_id && oldPt.cama) {
           _sDelete("patients", "exp=eq." + encodeURIComponent(oldPt.exp) + "&cama=eq." + encodeURIComponent(oldPt.cama)).catch(e => safeLog("import moved delete old (exp/cama):", e));
         }
       });
@@ -16081,7 +17289,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           // Score base: fracción de tokens del PDF que están en el paciente
           var baseScore = common.length / Math.max(enTokens.length, 1);
           // Score compuesto: prioriza primer apellido
-          var compositeScore = baseScore + (firstApOk * 0.5) + (secondApOk * 0.3);
+          var compositeScore = common.length + baseScore + (firstApOk * 0.1) + (secondApOk * 0.05);
           candidates.push({ p: p, score: compositeScore, baseScore: baseScore, commonCount: common.length, firstApOk: firstApOk, common: common });
         });
 
@@ -16094,11 +17302,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         // 1. Mínimo 2 tokens en común
         // 2. El primer apellido del PDF DEBE coincidir con el primer apellido del censo
         if (best.commonCount < 2) return null;
-        if (!best.firstApOk) return null;
 
         // ── Detección de ambigüedad ───────────────────────────────────
         // Si hay un segundo candidato con score similar y también con primer apellido OK → ambiguo
-        if (second && second.firstApOk && (best.score - second.score) < 0.4 && second.commonCount >= 2) {
+        if (second && second.commonCount >= 2 && (best.commonCount - second.commonCount) <= 0) {
           // Guardar para que el usuario decida en el cuadro final
           window.__bulkAmbiguities.push({
             extractedName: extractedName,
@@ -17200,6 +18407,24 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       saveNote(k, nd);
     }
 
+    function toggleSvcMine(k) {
+      try {
+        const nd = getNote(k);
+        if (!nd.checklist) nd.checklist = {};
+        nd.checklist.svcMine = !nd.checklist.svcMine;
+        if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+        _dirtyFields[k].add("checklist");
+        noteData[k] = nd;
+        saveNote(k, nd);
+        const arr = (typeof patients !== "undefined" && Array.isArray(patients)) ? patients : [];
+        const p = arr.find(function (x) { return pid(x) === k; });
+        const el = document.getElementById("card-" + k);
+        if (p && el) {
+          el.outerHTML = isSimpleEsp(p.esp, nd) ? renderSimpleCard(p, nd, k) : renderFullCard(p, nd, k);
+        }
+      } catch (e) { console.warn("toggleSvcMine", e); }
+    }
+
     function renderChecklist(nd, k) {
       nd = migrateNote(nd);
       const cl = nd.checklist || {};
@@ -17689,6 +18914,43 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
             });
           });
         });
+      });
+      obs.observe(mainEl, { childList: true, subtree: true });
+    })();
+
+    // ─── v32: AUTO-AJUSTE DE ALTURA DE RECUADROS (compactar tarjeta) ───────────────────
+    function _autoResizeTA(el) {
+      if (!el || el.tagName !== 'TEXTAREA') return;
+      el.style.height = 'auto';
+      const h = el.scrollHeight;
+      el.style.height = (h > 0 ? h : 22) + 'px';
+    }
+    function autoResizeAll(root) {
+      (root || document).querySelectorAll('textarea.field-ta').forEach(_autoResizeTA);
+    }
+    // Al escribir, re-ajusta el recuadro enfocado
+    document.addEventListener('input', function (e) {
+      const t = e.target;
+      if (t && t.classList && t.classList.contains('field-ta')) _autoResizeTA(t);
+    }, true);
+    // Cuando aparezcan recuadros nuevos en el DOM (cualquier render), ajústalos (coalescido)
+    (function () {
+      const mainEl = document.getElementById('main');
+      if (!mainEl) return;
+      let _raf = null;
+      const obs = new MutationObserver(function (mutations) {
+        let need = false;
+        mutations.forEach(function (m) {
+          m.addedNodes.forEach(function (node) {
+            if (node.nodeType !== 1) return;
+            if (node.classList && node.classList.contains('field-ta')) need = true;
+            else if (node.querySelector && node.querySelector('textarea.field-ta')) need = true;
+          });
+        });
+        if (need) {
+          if (_raf) cancelAnimationFrame(_raf);
+          _raf = requestAnimationFrame(function () { autoResizeAll(mainEl); });
+        }
       });
       obs.observe(mainEl, { childList: true, subtree: true });
     })();
@@ -19945,10 +21207,464 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     }
   </style>
 
-<div id="pl-fab-v24" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
+<div id="pl-fab-v28" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
+  <button onclick="plExportBackup()" title="Descargar backup local (indicaciones, snapshots, config)"
+    style="background:linear-gradient(135deg,#64748b 0%,#475569 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">💾</button>
   <button onclick="openIndicacionesModal()" title="Importar indicaciones"
     style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
+  <button onclick="openPendientesImport()" title="Importar pendientes/plan desde Excel (censo)"
+    style="background:linear-gradient(135deg,#14b8a6 0%,#0f766e 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📊</button>
 </div>
+
+<!-- ═══ PisoLibro v29: Cultivos + Importador Pendientes ═══ -->
+<script>
+/* ════════════════════════════════════════════════════════════════════════════
+ * PisoLibro v29 — Cultivos (lab, read-only) + Importador de Pendientes/Plan (Excel)
+ * Módulo aislado. Script clásico posterior → ve los globales top-level del script
+ * principal (patients, noteData, saveNote, pid, defaultData, _sGet, renderView, XLSX).
+ * Todo envuelto en try/catch: si este módulo falla, la app NO se rompe.
+ * ════════════════════════════════════════════════════════════════════════════ */
+(function () {
+  "use strict";
+
+  /* ─── Helpers locales (autocontenidos, sin depender de internals) ─────────── */
+  function plEsc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function plNormExp(e) { return String(e == null ? "" : e).trim(); }
+
+  // Mirror de normalizeCama del app: 2-4 dígitos finales. "3-150"→"150", "184"→"184", "4-205"→"205".
+  function plNormCama(s) {
+    if (s === null || s === undefined) return null;
+    var m = String(s).match(/(\d{2,4})\s*$/);
+    return m ? m[1] : null;
+  }
+
+  var MES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  function plFmtFecha(d) {
+    try {
+      var s = String(d || "").slice(0, 10);
+      var p = s.split("-");
+      if (p.length < 3) return s;
+      return p[2] + " " + (MES[parseInt(p[1], 10) - 1] || p[1]);
+    } catch (e) { return String(d || ""); }
+  }
+
+  // Normalización agresiva para dedup (decisión Gera #1: tratar variantes triviales como iguales).
+  function plNormText(t) {
+    return String(t == null ? "" : t)
+      .toUpperCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")          // acentos
+      .replace(/^[\s\u00a0\u2060\u202f•‣◦*\-–—📋📝🔧]+/, "")        // bullets/emoji al inicio
+      .replace(/[^A-Z0-9]+/g, " ")                               // todo no alfanumérico → espacio
+      .replace(/\s+/g, " ").trim();
+  }
+  function plStripBullet(line) {
+    return String(line || "")
+      .replace(/^[\s\u00a0\u2060\u202f•‣◦*]+/, "")
+      .replace(/[\u2060\u00a0\u202f]/g, " ")
+      .trim();
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+   * SPEC (a) — CULTIVOS (read-only desde la vista winlab_cultivos)
+   * ════════════════════════════════════════════════════════════════════════ */
+  var cultivosByExp = {};
+  var cultivosLoaded = false;
+  var cultivosError = null;
+
+  async function loadCultivos(force) {
+    if (cultivosLoaded && !force) return;
+    try {
+      // _sGet(table, qs) → fetch a PostgREST con la anon key del app. Devuelve array.
+      var rows = await _sGet(
+        "winlab_cultivos",
+        "select=exp,cama,nombre,fecha,tipo,germen,resultado,texto_origen&order=fecha.desc"
+      );
+      var map = {};
+      (rows || []).forEach(function (r) {
+        var e = plNormExp(r.exp);
+        if (!e) return;
+        (map[e] = map[e] || []).push(r);
+      });
+      cultivosByExp = map;
+      cultivosLoaded = true;
+      cultivosError = null;
+      // Refrescar la vista UNA vez, sin clobberear edición activa ni modales abiertos.
+      try {
+        var modalOpen = !!document.querySelector(".modal[style*='flex'], .modal-overlay[style*='flex']");
+        var ae = document.activeElement;
+        var editing = ae && /TEXTAREA|INPUT/.test(ae.tagName);
+        if (!modalOpen && !editing && typeof renderView === "function") renderView();
+      } catch (e2) {}
+    } catch (e) {
+      cultivosError = (e && e.message) ? e.message : String(e || "");
+      cultivosLoaded = true; // no reintentar en loop; refresh manual disponible
+      try { console.warn("[v29] loadCultivos:", cultivosError); } catch (_) {}
+    }
+  }
+
+  // Se llama desde renderFullCard. Read-only. Si algo falla → "" (nunca rompe la card).
+  function renderCultivosLabSection(p, nd, k) {
+    try {
+      if (!p || !p.exp) return "";
+      var rows = cultivosByExp[plNormExp(p.exp)];
+      if (!rows || !rows.length) return "";
+      var hasPos = rows.some(function (r) { return String(r.resultado || "").toUpperCase() === "POSITIVO"; });
+
+      var items = rows.map(function (r) {
+        var pos = String(r.resultado || "").toUpperCase() === "POSITIVO";
+        var color = pos ? "#dc2626" : "#16a34a";
+        var bg = pos ? "#fef2f2" : "#f0fdf4";
+        var bd = pos ? "#fecaca" : "#bbf7d0";
+        var fecha = r.fecha ? plFmtFecha(r.fecha) : "";
+        var germ = r.germen ? plEsc(r.germen) : "";
+        return "<div style='display:flex;align-items:center;gap:6px;background:" + bg +
+          ";border:1px solid " + bd + ";border-radius:6px;padding:4px 8px;margin:3px 0;font-size:12px'>" +
+          "<span style='font-weight:700;color:" + color + "'>" + (pos ? "●" : "○") + "</span>" +
+          "<span style='color:#334155'>" + plEsc(r.tipo || "Cultivo") + "</span>" +
+          (fecha ? "<span style='color:#94a3b8;font-size:11px'>" + fecha + "</span>" : "") +
+          (germ ? "<span style='color:" + color + ";font-weight:600'>" + germ + "</span>" : "") +
+          "<span style='margin-left:auto;font-weight:700;color:" + color + ";font-size:11px'>" +
+          plEsc(r.resultado || "") + "</span>" +
+          "</div>";
+      }).join("");
+
+      var badge = hasPos
+        ? "<span style='background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:6px'>POSITIVO</span>"
+        : "";
+
+      return "<div class='cultivos-lab-box' style='background:#f8fafc;border:1px solid " +
+        (hasPos ? "#fca5a5" : "#cbd5e1") + ";border-left:4px solid " + (hasPos ? "#dc2626" : "#0ea5e9") +
+        ";border-radius:8px;padding:8px 10px;margin-top:10px'>" +
+        "<div style='font-size:12px;font-weight:700;color:#0f172a;margin-bottom:4px'>🧫 Cultivos (lab)" + badge +
+        "<span style='float:right;font-size:10px;font-weight:500;color:#94a3b8'>auto · WinLab</span></div>" +
+        items +
+        (hasPos ? "<div style='font-size:10px;color:#b91c1c;margin-top:4px'>⚠️ Antibiograma no capturado por el scraper — abrir reporte WinLab.</div>" : "") +
+        "</div>";
+    } catch (e) {
+      try { console.warn("[v29] renderCultivosLabSection:", e); } catch (_) {}
+      return "";
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════════
+   * SPEC (c) — IMPORTADOR DE PENDIENTES / PLAN desde Excel
+   * ════════════════════════════════════════════════════════════════════════ */
+
+  // Parseo del workbook: fuente (1) columnas PLAN/PENDIENTE + fuente (2) bloques sueltos.
+  function plParseWorkbook(ab) {
+    var wb = XLSX.read(ab, { type: "array" });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
+
+    var hdrIdx = -1, colCama = -1, colExp = -1, colPlan = -1, colPend = -1;
+    for (var i = 0; i < rows.length; i++) {
+      var up = (rows[i] || []).map(function (c) { return String(c == null ? "" : c).trim().toUpperCase(); });
+      if (up.indexOf("CAMA") >= 0 && up.indexOf("EXPEDIENTE") >= 0) {
+        hdrIdx = i;
+        colCama = up.indexOf("CAMA");
+        colExp = up.indexOf("EXPEDIENTE");
+        colPlan = up.indexOf("PLAN");
+        colPend = up.indexOf("PENDIENTE");
+        if (colPend < 0) colPend = up.indexOf("PENDIENTES");
+        break;
+      }
+    }
+    if (hdrIdx < 0) throw new Error("No encontré la cabecera (CAMA/EXPEDIENTE) en la hoja.");
+
+    // Fuente (1): filas con cama real → PLAN + PENDIENTE estructurados (con su exp).
+    var structured = [], lastDataRow = hdrIdx;
+    for (var r = hdrIdx + 1; r < rows.length; r++) {
+      var camaCell = colCama >= 0 ? String((rows[r] || [])[colCama] == null ? "" : rows[r][colCama]).trim() : "";
+      if (camaCell && plNormCama(camaCell)) {
+        lastDataRow = r;
+        var expCell = colExp >= 0 ? String((rows[r] || [])[colExp] == null ? "" : rows[r][colExp]).trim() : "";
+        var plan = colPlan >= 0 ? String((rows[r] || [])[colPlan] == null ? "" : rows[r][colPlan]).trim() : "";
+        var pend = colPend >= 0 ? String((rows[r] || [])[colPend] == null ? "" : rows[r][colPend]).trim() : "";
+        if (plan || pend) structured.push({ cama: camaCell, exp: expCell, plan: plan, pend: pend });
+      }
+    }
+
+    // Fuente (2): TODO lo que sigue tras la última fila-paciente → bloques de texto libre.
+    // Cada línea que empieza con cama (con/sin piso) es un pendiente; encabezados ("PLANES X") se ignoran.
+    var loose = [];
+    var reCama = /^(\d{1,2}-\d{2,4}|\d{2,4})\b[\s\-:.\)]*(.*)$/;
+    for (var r2 = lastDataRow + 1; r2 < rows.length; r2++) {
+      (rows[r2] || []).forEach(function (cell) {
+        var txt = String(cell == null ? "" : cell);
+        if (!txt) return;
+        txt.split(/\r?\n/).forEach(function (rawLine) {
+          var line = plStripBullet(rawLine);
+          if (!line) return;
+          var m = line.match(reCama);
+          // El texto debe tener AL MENOS una letra → descarta nº de expediente sueltos
+          // (p.ej. filas EXT "26-12067") que de otro modo se colarían como pendientes.
+          if (m && m[2] && m[2].trim().length > 2 && /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(m[2])) {
+            loose.push({ cama: m[1], text: m[2].trim() });
+          }
+        });
+      });
+    }
+    return { structured: structured, loose: loose, hasPlanCol: colPlan >= 0, hasPendCol: colPend >= 0 };
+  }
+
+  function plFindPatientsByCama(cama) {
+    var nc = plNormCama(cama);
+    if (!nc) return [];
+    return (patients || []).filter(function (p) { return plNormCama(p.cama) === nc; });
+  }
+  function plFindPatientsByExp(exp) {
+    var e = plNormExp(exp);
+    if (!e) return [];
+    return (patients || []).filter(function (p) { return plNormExp(p.exp) === e; });
+  }
+
+  // Construye el plan de aplicación: matched / ambiguous / orphans (nada se pierde).
+  function plBuildPlan(parsed) {
+    var byPatient = {};   // pid → { p, plan:[], pend:[] }
+    var ambiguous = [];   // { cama, text, kind, candidates:[nombres] }
+    var orphans = [];     // { cama, text, kind }
+
+    function place(cands, cama, text, field) {
+      if (cands.length === 1) {
+        var p = cands[0], key = pid(p);
+        if (!byPatient[key]) byPatient[key] = { p: p, plan: [], pend: [] };
+        byPatient[key][field].push(text);
+      } else if (cands.length > 1) {
+        ambiguous.push({ cama: cama, text: text, kind: field, candidates: cands.map(function (x) { return (x.cama || "") + " " + (x.nombre || ""); }) });
+      } else {
+        orphans.push({ cama: cama, text: text, kind: field });
+      }
+    }
+    // Estructuradas: casar por EXPEDIENTE (único; evita falsa ambigüedad cuando dos
+    // pacientes comparten cama por rotación). Fallback a cama si el exp no aparece.
+    function routeStructured(exp, cama, text, field) {
+      if (!text) return;
+      var cands = plFindPatientsByExp(exp);
+      if (!cands.length) cands = plFindPatientsByCama(cama);
+      place(cands, cama, text, field);
+    }
+    // Sueltas: solo hay cama → casar por cama (colisiones reales quedan ambiguas).
+    function routeLoose(cama, text, field) {
+      if (!text) return;
+      place(plFindPatientsByCama(cama), cama, text, field);
+    }
+
+    (parsed.structured || []).forEach(function (s) {
+      if (s.pend) routeStructured(s.exp, s.cama, s.pend, "pend");
+      if (s.plan) routeStructured(s.exp, s.cama, s.plan, "plan"); // col PLAN → pendiente con 📋
+    });
+    // Bloques sueltos = PLANES (encabezados así lo indican) → field "plan".
+    (parsed.loose || []).forEach(function (l) { routeLoose(l.cama, l.text, "plan"); });
+
+    return { byPatient: byPatient, ambiguous: ambiguous, orphans: orphans };
+  }
+
+  // Aplica: muta nd.pendientes con dedup y llama saveNote (hereda persistencia + sync + rerender).
+  function plApplyPlan(plan) {
+    var stats = { patients: 0, appended: 0, skippedDup: 0 };
+    Object.keys(plan.byPatient).forEach(function (key) {
+      try {
+        var entry = plan.byPatient[key];
+        var nd = noteData[key];
+        nd = nd ? JSON.parse(JSON.stringify(nd)) : (typeof defaultData === "function" ? defaultData() : { pendientes: "" });
+        var existing = String(nd.pendientes || "");
+        var seen = {};
+        existing.split(/\r?\n/).forEach(function (l) { var n = plNormText(l); if (n) seen[n] = true; });
+
+        var additions = [];
+        entry.pend.forEach(function (t) {
+          var n = plNormText(t);
+          if (!n) return;
+          if (seen[n]) { stats.skippedDup++; return; }
+          seen[n] = true; additions.push(t.trim());
+        });
+        entry.plan.forEach(function (t) {
+          var n = plNormText(t);
+          if (!n) return;
+          if (seen[n]) { stats.skippedDup++; return; }
+          seen[n] = true; additions.push("📋 " + t.trim());
+        });
+
+        if (additions.length) {
+          nd.pendientes = (existing.trim() ? existing.trim() + "\n" : "") + additions.join("\n");
+          saveNote(key, nd);
+          stats.patients++;
+          stats.appended += additions.length;
+        }
+      } catch (e) {
+        try { console.warn("[v29] plApplyPlan paciente:", key, e); } catch (_) {}
+      }
+    });
+    return stats;
+  }
+
+  /* ─── UI del importador (modal construido en JS, sin tocar el <body>) ──────── */
+  var _planCache = null;
+
+  function _modal() {
+    var m = document.getElementById("pl-pend-import-modal");
+    if (m) return m;
+    m = document.createElement("div");
+    m.id = "pl-pend-import-modal";
+    m.style.cssText = "display:none;position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto";
+    m.innerHTML =
+      "<div style='background:#fff;border-radius:14px;max-width:640px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden'>" +
+        "<div style='display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff'>" +
+          "<div style='font-size:15px;font-weight:700'>📊 Importar Pendientes / Plan (Excel)</div>" +
+          "<button onclick='closePendientesImport()' style='background:rgba(255,255,255,.2);color:#fff;border:none;width:30px;height:30px;border-radius:8px;font-size:16px;cursor:pointer'>✕</button>" +
+        "</div>" +
+        "<div style='padding:18px'>" +
+          "<div style='font-size:12px;color:#475569;margin-bottom:10px;line-height:1.5'>" +
+            "Sube el Excel del censo. Leo las columnas <b>PLAN</b> y <b>PENDIENTE</b> de cada paciente <b>y</b> los bloques sueltos del final (cada línea con su cama). " +
+            "Caso por cama; <b>sumo</b> a lo existente con <b>dedup</b>; lo que no casa se reporta aparte.</div>" +
+          "<input type='file' id='pl-pend-file' accept='.xlsx,.xls' " +
+            "onchange='plHandlePendientesFile(this)' " +
+            "style='display:block;width:100%;padding:10px;border:2px dashed #5eead4;border-radius:10px;background:#f0fdfa;cursor:pointer;font-size:13px'/>" +
+          "<div id='pl-pend-preview' style='margin-top:14px'></div>" +
+        "</div>" +
+      "</div>";
+    document.body.appendChild(m);
+    return m;
+  }
+
+  function openPendientesImport() {
+    try {
+      if (typeof XLSX === "undefined" || !XLSX || !XLSX.read) {
+        alert("La librería de Excel (SheetJS) no cargó. Revisa tu conexión y recarga con Cmd+Shift+R.");
+        return;
+      }
+      var m = _modal();
+      _planCache = null;
+      var f = document.getElementById("pl-pend-file"); if (f) f.value = "";
+      var pv = document.getElementById("pl-pend-preview"); if (pv) pv.innerHTML = "";
+      m.style.display = "flex";
+    } catch (e) { try { console.warn("[v29] openPendientesImport:", e); } catch (_) {} }
+  }
+  function closePendientesImport() {
+    var m = document.getElementById("pl-pend-import-modal");
+    if (m) m.style.display = "none";
+  }
+
+  function plHandlePendientesFile(input) {
+    try {
+      var file = input && input.files && input.files[0];
+      if (!file) return;
+      var pv = document.getElementById("pl-pend-preview");
+      pv.innerHTML = "<div style='font-size:13px;color:#0d9488;font-weight:600'>Leyendo " + plEsc(file.name) + "…</div>";
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        try {
+          var parsed = plParseWorkbook(new Uint8Array(ev.target.result));
+          var plan = plBuildPlan(parsed);
+          _planCache = plan;
+          pv.innerHTML = _renderPreview(parsed, plan);
+        } catch (err) {
+          pv.innerHTML = "<div style='font-size:13px;color:#b91c1c'>Error al leer el Excel: " + plEsc((err && err.message) || err) + "</div>";
+        }
+      };
+      reader.onerror = function () { pv.innerHTML = "<div style='font-size:13px;color:#b91c1c'>No se pudo leer el archivo.</div>"; };
+      reader.readAsArrayBuffer(file);
+    } catch (e) {
+      try { console.warn("[v29] plHandlePendientesFile:", e); } catch (_) {}
+    }
+  }
+
+  function _renderPreview(parsed, plan) {
+    var nPat = Object.keys(plan.byPatient).length;
+    var nItems = 0;
+    Object.keys(plan.byPatient).forEach(function (k) { nItems += plan.byPatient[k].plan.length + plan.byPatient[k].pend.length; });
+
+    var html = "";
+    html += "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px'>" +
+      "<div style='flex:1;min-width:90px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px;text-align:center'>" +
+        "<div style='font-size:20px;font-weight:800;color:#047857'>" + nPat + "</div><div style='font-size:10px;color:#065f46'>pacientes</div></div>" +
+      "<div style='flex:1;min-width:90px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px;text-align:center'>" +
+        "<div style='font-size:20px;font-weight:800;color:#1d4ed8'>" + nItems + "</div><div style='font-size:10px;color:#1e40af'>items a sumar</div></div>" +
+      "<div style='flex:1;min-width:90px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px;text-align:center'>" +
+        "<div style='font-size:20px;font-weight:800;color:#a16207'>" + plan.ambiguous.length + "</div><div style='font-size:10px;color:#854d0e'>ambiguos</div></div>" +
+      "<div style='flex:1;min-width:90px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px;text-align:center'>" +
+        "<div style='font-size:20px;font-weight:800;color:#b91c1c'>" + plan.orphans.length + "</div><div style='font-size:10px;color:#991b1b'>sin censo</div></div>" +
+      "</div>";
+
+    // Detalle por paciente (resumido)
+    if (nPat) {
+      html += "<div style='max-height:200px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:10px'>";
+      Object.keys(plan.byPatient).forEach(function (k) {
+        var e = plan.byPatient[k];
+        var items = e.pend.concat(e.plan.map(function (t) { return "📋 " + t; }));
+        html += "<div style='font-size:12px;margin-bottom:6px'><b style='color:#0f172a'>" +
+          plEsc(e.p.cama || "?") + " · " + plEsc(e.p.nombre || "") + "</b><br>" +
+          items.map(function (t) { return "<span style='color:#475569'>— " + plEsc(t) + "</span>"; }).join("<br>") + "</div>";
+      });
+      html += "</div>";
+    }
+
+    if (plan.ambiguous.length) {
+      html += "<details style='margin-bottom:8px'><summary style='cursor:pointer;font-size:12px;font-weight:700;color:#a16207'>⚠️ " +
+        plan.ambiguous.length + " ambiguos (cama matchea >1 paciente — NO se aplican)</summary>" +
+        "<div style='font-size:11px;color:#78350f;padding:6px 0'>" +
+        plan.ambiguous.map(function (a) { return "Cama " + plEsc(a.cama) + ": “" + plEsc(a.text) + "” → " + plEsc(a.candidates.join(" | ")); }).join("<br>") +
+        "</div></details>";
+    }
+    if (plan.orphans.length) {
+      html += "<details style='margin-bottom:8px'><summary style='cursor:pointer;font-size:12px;font-weight:700;color:#b91c1c'>🚫 " +
+        plan.orphans.length + " sin paciente en censo (NO se pierden, revisa manual)</summary>" +
+        "<div style='font-size:11px;color:#991b1b;padding:6px 0'>" +
+        plan.orphans.map(function (o) { return "Cama " + plEsc(o.cama) + ": “" + plEsc(o.text) + "”"; }).join("<br>") +
+        "</div></details>";
+    }
+
+    html += "<button onclick='plApplyPendientesImport()' " + (nPat ? "" : "disabled ") +
+      "style='width:100%;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:" +
+      (nPat ? "pointer" : "not-allowed") + ";background:" + (nPat ? "linear-gradient(135deg,#0d9488,#0f766e)" : "#cbd5e1") +
+      ";color:#fff;margin-top:4px'>✅ Aplicar a " + nPat + " paciente" + (nPat !== 1 ? "s" : "") + "</button>";
+    return html;
+  }
+
+  function plApplyPendientesImport() {
+    try {
+      if (!_planCache) return;
+      var stats = plApplyPlan(_planCache);
+      var pv = document.getElementById("pl-pend-preview");
+      if (pv) {
+        pv.innerHTML = "<div style='background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:14px;text-align:center'>" +
+          "<div style='font-size:15px;font-weight:800;color:#047857;margin-bottom:4px'>✅ Listo</div>" +
+          "<div style='font-size:13px;color:#065f46'>" + stats.patients + " pacientes actualizados · " +
+          stats.appended + " items sumados · " + stats.skippedDup + " duplicados omitidos</div>" +
+          "<button onclick='closePendientesImport()' style='margin-top:12px;padding:8px 20px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-weight:600;cursor:pointer'>Cerrar</button>" +
+          "</div>";
+      }
+      _planCache = null;
+    } catch (e) {
+      try { console.warn("[v29] plApplyPendientesImport:", e); } catch (_) {}
+      alert("Error al aplicar: " + ((e && e.message) || e));
+    }
+  }
+
+  /* ─── Exposición global (para onclick y para renderFullCard) ──────────────── */
+  window.renderCultivosLabSection = renderCultivosLabSection;
+  window.openPendientesImport = openPendientesImport;
+  window.closePendientesImport = closePendientesImport;
+  window.plHandlePendientesFile = plHandlePendientesFile;
+  window.plApplyPendientesImport = plApplyPendientesImport;
+  window.__plLoadCultivos = function () { return loadCultivos(true); };
+
+  /* ─── Init: cargar cultivos tras un delay (que Supabase esté listo) ───────── */
+  try {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () { setTimeout(function () { loadCultivos(false); }, 3500); });
+    } else {
+      setTimeout(function () { loadCultivos(false); }, 3500);
+    }
+  } catch (e) { try { console.warn("[v29] init:", e); } catch (_) {} }
+
+})();
+
+</script>
 
 </body>
 
