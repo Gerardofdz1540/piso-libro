@@ -3236,6 +3236,11 @@
 .focus-board .fb-drbuild .fb-dr-in-sm{ flex:1; min-width:64px; }
 .focus-board .fb-drbuild .fb-dr-add{ flex:0 0 auto; padding:0 12px; border:none; border-radius:6px; background:#0369a1; color:#fff; font-weight:700; cursor:pointer; }
 .focus-board .fb-drbuild .fb-dr-add:active{ transform:translateY(1px); }
+.focus-board .fb-dr-list{ display:flex; flex-wrap:wrap; gap:5px; margin:0 0 7px; }
+.focus-board .fb-dr-tag{ display:inline-flex; align-items:center; gap:6px; background:#e8eef6; border:1px solid #2c4d77; border-radius:14px; padding:3px 6px 3px 11px; max-width:100%; }
+.focus-board .fb-dr-tag-t{ font-size:13px; font-weight:600; color:#1a3aa8; white-space:normal; word-break:break-word; line-height:1.25; }
+.focus-board .fb-dr-x{ flex:0 0 auto; width:20px; height:20px; line-height:1; border:none; border-radius:50%; background:#cdd9ea; color:#1e3a5f; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.focus-board .fb-dr-x:active{ transform:translateY(1px); }
 .focus-board .fb-more{ border-bottom:1.5px solid #0a1628; }
 .focus-board .fb-more-btn{ width:100%; text-align:left; font-size:12px; font-weight:800; color:#0a1628; background:#f1f5f9; border:none; padding:9px 12px; cursor:pointer; display:flex; align-items:center; gap:6px; }
 .focus-board .fb-more-btn:hover{ background:#e8eef6; }
@@ -10602,10 +10607,38 @@ function plExportBackup() {
         ta.value = (cur ? cur + "\n" : "") + line;
         if (typeof liveUpdate === "function") liveUpdate(ta);
         if (typeof updateField === "function") updateField(k, "drenajes", ta.value);
-        ["tipo","gasto","carac"].forEach(function(name){
-          var e = scope.querySelector('[data-fbdr="' + name + '"]'); if (e) e.value = "";
-        });
-        var t = scope.querySelector('[data-fbdr="tipo"]'); if (t) t.focus();
+        // Re-render la tarjeta para que la etiqueta del nuevo drenaje aparezca de inmediato,
+        // luego devolver el foco al campo "tipo" del constructor recién dibujado (entrada rápida).
+        _fbRerenderCard(k);
+        var ns = document.querySelector('.fb-drbuild[data-fbk="' + k + '"]');
+        var t = ns && ns.querySelector('[data-fbdr="tipo"]'); if (t) t.focus();
+      } catch (e) {}
+    }
+    function _fbRerenderCard(k){
+      var cardEl = document.getElementById("card-" + k);
+      if (!cardEl) return;
+      var p = patients.find(function(x){ return pid(x) === k; });
+      if (!p) return;
+      var nd2 = noteData[k];
+      try {
+        cardEl.outerHTML = isSimpleEsp(p.esp, nd2)
+          ? renderSimpleCard(p, nd2, k)
+          : (typeof renderFocusBoard === "function" ? renderFocusBoard(p, nd2, k) : renderFullCard(p, nd2, k));
+      } catch (e2) {}
+      try { _applyPresenceBadges(); } catch (_) {}
+    }
+    function fbRemoveDrain(k, idx){
+      try{
+        var nd = noteData[k]; if (!nd) return;
+        var lines = String(nd.drenajes || "").split("\n");
+        var nonEmpty = [];
+        for (var i = 0; i < lines.length; i++){ if (lines[i].trim()) nonEmpty.push(i); }
+        if (idx < 0 || idx >= nonEmpty.length) return;
+        lines.splice(nonEmpty[idx], 1);
+        var newVal = lines.join("\n").replace(/\n{2,}/g, "\n").replace(/^\n+|\n+$/g, "");
+        if (typeof updateField === "function") updateField(k, "drenajes", newVal);
+        else { nd.drenajes = newVal; }
+        _fbRerenderCard(k);
       } catch (e) {}
     }
     function fbToggleMore(k, btn){
@@ -10650,6 +10683,14 @@ function plExportBackup() {
       var drainChips = DRAINS.map(function(d){
         return '<button type="button" class="fb-chip" data-k="' + k + '" data-drain="' + d + '" onclick="fbAddDrain(this.dataset.k,this.dataset.drain)">+ ' + d + '</button>';
       }).join("");
+      // Lista de drenajes ya puestos: cada línea del string nd.drenajes como etiqueta con ✕ para quitar.
+      var drainLines = String(nd.drenajes || "").split("\n").map(function(s){ return s.trim(); }).filter(Boolean);
+      var drainListHtml = drainLines.length
+        ? '<div class="fb-dr-list">' + drainLines.map(function(ln, i){
+            return '<span class="fb-dr-tag"><span class="fb-dr-tag-t">' + _fbEsc(ln) + '</span>'
+              + '<button type="button" class="fb-dr-x" data-k="' + k + '" data-i="' + i + '" onclick="fbRemoveDrain(this.dataset.k,+this.dataset.i)" title="Quitar drenaje" aria-label="Quitar">✕</button></span>';
+          }).join("") + '</div>'
+        : '';
 
       var labsHtml = _fbSafe(function(){ return renderFocusLabs(nd, k); });
       var cdsHtml  = _fbSafe(function(){ return (typeof renderCDSSection === "function") ? renderCDSSection(p, nd, k) : ""; });
@@ -10732,7 +10773,8 @@ function plExportBackup() {
         +         '<input class="fb-dr-in" data-fbdr="carac" inputmode="text" autocorrect="off" autocapitalize="sentences" placeholder="Características" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
         +         '<button type="button" class="fb-dr-add" data-k="' + k + '" title="Agregar drenaje" onclick="fbAddDrainBuilt(this.dataset.k)">➕</button>'
         +       '</div>'
-        +       '<textarea class="fb-ta" rows="4" data-key="' + k + '" data-field="drenajes" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value)" placeholder="Toca un drenaje arriba o escribe. Ej: Penrose FID: 30cc seroso">' + _fbEsc(nd.drenajes || "") + '</textarea>'
+        +       drainListHtml
+        +       '<textarea class="fb-ta" rows="3" data-key="' + k + '" data-field="drenajes" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value)" placeholder="Toca un drenaje arriba o escribe. Ej: Penrose FID: 30cc seroso">' + _fbEsc(nd.drenajes || "") + '</textarea>'
         +     '</div>'
         +   '</div>'
         +   '<div class="fb-row">'
