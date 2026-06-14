@@ -8476,7 +8476,19 @@ function plExportBackup() {
       const _rtCardEl = document.getElementById("card-" + k);
       const _rtHasFocus = _rtCardEl && _rtCardEl.contains(document.activeElement);
       if (_rtCardEl && !_rtHasFocus && !_modalIsOpenForThis) {
-        _rtCardEl.outerHTML = isSimpleEsp(p.esp, noteData[k]) ? renderSimpleCard(p, noteData[k], k) : renderFullCard(p, noteData[k], k);
+        // FIX: en modo TABLERO ("Pantalla") la tarjeta en foco se dibuja con renderFocusBoard.
+        // Reemplazarla con renderFullCard (rejilla) sacaba al otro dispositivo del board y
+        // parecía "saltar a Piso Libro". Usar el MISMO renderer que renderPiso según el modo.
+        const _ndk = noteData[k];
+        const _inBoard = (window.__viewMode === "board") && document.body.classList.contains("focus-on") && (k === window.__focusPid);
+        if (_inBoard) {
+          _rtCardEl.outerHTML = isSimpleEsp(p.esp, _ndk)
+            ? renderSimpleCard(p, _ndk, k)
+            : (typeof renderFocusBoard === "function" ? renderFocusBoard(p, _ndk, k) : renderFullCard(p, _ndk, k));
+        } else {
+          _rtCardEl.outerHTML = isSimpleEsp(p.esp, _ndk) ? renderSimpleCard(p, _ndk, k) : renderFullCard(p, _ndk, k);
+        }
+        try { _applyPresenceBadges(); } catch (_) {}   // re-pintar badge tras reconstruir la tarjeta
       }
       _showRTToast("📡 Actualización recibida: " + (p.nombre || k));
       safeInfo("[RT] Note updated:", k);
@@ -9004,8 +9016,35 @@ function plExportBackup() {
         }
       });
     }
+    // Presencia para edición INLINE (board "Pantalla" / rejilla / listas): cuando el
+    // foco entra a un textarea/input dentro de una tarjeta [data-key]/[data-k], avisar
+    // que edito ese paciente; al salir (y sin modal abierto) limpiar. Delegado en
+    // document → cubre cualquier render sin tocar cada tarjeta.
+    var _inlinePresenceWired = false;
+    function _wireInlinePresence() {
+      if (_inlinePresenceWired) return;
+      _inlinePresenceWired = true;
+      document.addEventListener("focusin", function (e) {
+        var t = e.target;
+        if (!t || (t.tagName !== "TEXTAREA" && t.tagName !== "INPUT" && !t.isContentEditable)) return;
+        var host = t.closest ? t.closest("[data-key],[data-k]") : null;
+        if (!host) return;
+        var k = host.getAttribute("data-key") || host.getAttribute("data-k");
+        if (k) _presenceSetEditing(k);
+      });
+      document.addEventListener("focusout", function () {
+        setTimeout(function () {
+          if (_modalCurrentEditKey) return;   // el modal maneja su propia presencia
+          var ae = document.activeElement;
+          var host = (ae && ae.closest) ? ae.closest("[data-key],[data-k]") : null;
+          var k = host ? (host.getAttribute("data-key") || host.getAttribute("data-k")) : null;
+          _presenceSetEditing(k || null);     // saltó a otro campo, o ya no edita nada
+        }, 60);
+      });
+    }
     function initPresence() {
       if (!window._supaClient || typeof window._supaClient.channel !== "function") return;
+      _wireInlinePresence();
       if (_presenceChannel) {
         try { _presenceChannel.unsubscribe(); } catch (_) {}
         _presenceChannel = null;
