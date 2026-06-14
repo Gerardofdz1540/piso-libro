@@ -6741,6 +6741,12 @@ function plExportBackup() {
               .map(e => ({ nombre: toSafeString(e.nombre).trim(), valor: toSafeString(e.valor).trim() })),
             incidencia: !!s.incidencia,
             client_updated_at: typeof s.client_updated_at === "number" ? s.client_updated_at : 0,
+            // Provenance (jun 2026): preservar source/synced_at/scraped_at — antes se
+            // BORRABAN en cada migrateNote, impidiendo distinguir winlab de manual y
+            // por tanto auto-purgar snapshots winlab obsoletos/fugados.
+            source: toSafeString(s.source).trim() || undefined,
+            synced_at: toSafeString(s.synced_at).trim() || undefined,
+            scraped_at: toSafeString(s.scraped_at).trim() || undefined,
             source_file: toSafeString(s.source_file).trim(),
             source_file_type: toSafeString(s.source_file_type).trim(),
             source_file_name: toSafeString(s.source_file_name).trim(),
@@ -13710,6 +13716,32 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       try {
         const parsed = await callLabsExtractionWorker(file, "single");
         const first = (parsed.patients || [])[0] || {};
+        // ── DEFENSA DE IDENTIDAD (jun 2026) ──────────────────────────────────────
+        // El worker devuelve TODOS los pacientes del PDF. Antes se tomaba patients[0]
+        // a ciegas y se escribía a esta cama → un PDF multi-paciente o de otro paciente
+        // metía labs ajenos. Verificar antes de escribir (CLAUDE.md §5: mejor sin labs
+        // que labs ajenos).
+        (function () {
+          var _targetP = patients.find(function (pt) { return pid(pt) === k; });
+          var _extractedName = String(first.paciente || "").trim();
+          var _all = parsed.patients || [];
+          var _block = false, _msg = "";
+          if (_all.length > 1) {
+            _block = true;
+            _msg = "El PDF trae VARIOS pacientes (" + _all.length + "). Por seguridad NO se asignó automáticamente. Sube un PDF de un solo paciente.";
+          } else if (_targetP && _extractedName && typeof _winlabNameMatchScore === "function") {
+            var _ctoks = _winlabNormalizeName(_targetP.nombre || "");
+            var _ok = _ctoks.length > 0 && _winlabNameMatchScore(_targetP.nombre || "", _extractedName) >= _ctoks.length;
+            if (!_ok) {
+              _block = true;
+              _msg = "El PDF parece ser de «" + _extractedName + "», no de «" + (_targetP.nombre || "") + "». No se guardó (seguridad: nunca labs de otro paciente).";
+            }
+          }
+          if (_block) {
+            alert("⚠️ " + _msg);
+            throw { __identityBlock: true };   // el cleanup post-try restaura el botón
+          }
+        })();
         const valuesRaw = first.values && typeof first.values === "object" ? first.values : first;
         const sanitizedExtracted = sanitizeExtractedLabs(valuesRaw);
         // Save to active date (or create new snapshot with extracted date)
@@ -13748,7 +13780,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           console.warn("[labs/single] warnings:", parsed.warnings);
         }
 
-      } catch (e) { alert("Error al procesar: " + (e.message || e)); }
+      } catch (e) { if (!(e && e.__identityBlock)) alert("Error al procesar: " + (e.message || e)); }
       labLoadingSet.delete(k);
       // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición.
       // Solo re-renderizar si el usuario NO está editando labs manualmente (_dirtyFields labHistory),
@@ -17663,8 +17695,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         var enTokens = en.split(" ").filter(function(t){ return t.length > 2 && !NON_NAME_TOKENS.has(t); });
         if (enTokens.length < 2) return null; // Necesitamos al menos 2 tokens (apellido + nombre o 2 apellidos)
 
-        // Solo considerar pacientes de Cirugía General
-        var cgPatients = patients.filter(function(p) { return isCGEsp(p.esp); });
+        // Considerar pacientes de CG + co-manejo reclamado (override de servicio v50, svcMine).
+        var cgPatients = patients.filter(function(p) {
+          if (isCGEsp(p.esp)) return true;
+          var _nd = noteData[pid(p)];
+          return !!(_nd && _nd.checklist && _nd.checklist.svcMine);
+        });
         if (!cgPatients.length) return null;
 
         // Matching con score estricto por posición de apellidos
@@ -17682,7 +17718,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           var baseScore = common.length / Math.max(enTokens.length, 1);
           // Score compuesto: prioriza primer apellido
           var compositeScore = common.length + baseScore + (firstApOk * 0.1) + (secondApOk * 0.05);
-          candidates.push({ p: p, score: compositeScore, baseScore: baseScore, commonCount: common.length, firstApOk: firstApOk, common: common });
+          candidates.push({ p: p, score: compositeScore, baseScore: baseScore, commonCount: common.length, firstApOk: firstApOk, common: common, pLen: pTokens.length });
         });
 
         candidates.sort(function(a, b){ return b.score - a.score; });
@@ -17690,10 +17726,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         var best = candidates[0];
         var second = candidates[1] || null;
 
-        // ── Reglas estrictas ──────────────────────────────────────────
-        // 1. Mínimo 2 tokens en común
-        // 2. El primer apellido del PDF DEBE coincidir con el primer apellido del censo
-        if (best.commonCount < 2) return null;
+        // ── Reglas estrictas (jun 2026: seguridad de paciente) ────────────────
+        // Exigir que TODOS los tokens del nombre MÁS CORTO coincidan (no solo 2). Antes,
+        // un match parcial (p.ej. solo nombre de pila + 2º apellido) asignaba labs al
+        // paciente equivocado. min(tokensPDF, tokensCenso) tolera 2º nombre/apellido
+        // extra en cualquiera, pero rechaza si difiere el nombre de pila.
+        var _need = Math.min(enTokens.length, best.pLen || enTokens.length);
+        if (best.commonCount < 2 || best.commonCount < _need) return null;
 
         // ── Detección de ambigüedad ───────────────────────────────────
         // Si hay un segundo candidato con score similar y también con primer apellido OK → ambiguo
