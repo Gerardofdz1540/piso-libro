@@ -6060,11 +6060,46 @@ function plExportBackup() {
         return true;
       });
     }
+    // Jaro-Winkler para tolerar typos de OCR (ESEQUIEL≈EZEQUIEL, FRANSICO≈FRANCISCO) en el
+    // match de identidad de WinLab, SIN aflojar entre personas distintas (nombre de pila
+    // diferente da JW bajo). Mismo algoritmo que usa el bookmarklet del scraper.
+    function _winlabJaro(a, b) {
+      if (a === b) return 1;
+      var la = a.length, lb = b.length;
+      if (!la || !lb) return 0;
+      var dist = Math.max(0, Math.floor(Math.max(la, lb) / 2) - 1);
+      var ma = new Array(la).fill(false), mb = new Array(lb).fill(false), matches = 0;
+      for (var i = 0; i < la; i++) {
+        var lo = Math.max(0, i - dist), hi = Math.min(i + dist + 1, lb);
+        for (var j = lo; j < hi; j++) { if (!mb[j] && a[i] === b[j]) { ma[i] = mb[j] = true; matches++; break; } }
+      }
+      if (!matches) return 0;
+      var t = 0, k = 0;
+      for (var x = 0; x < la; x++) { if (!ma[x]) continue; while (!mb[k]) k++; if (a[x] !== b[k]) t++; k++; }
+      return (matches / la + matches / lb + (matches - t / 2) / matches) / 3;
+    }
+    function _winlabJaroWinkler(a, b) {
+      var j = _winlabJaro(a, b); if (j < 0.7) return j;
+      var p = 0, l = Math.min(4, a.length, b.length);
+      while (p < l && a[p] === b[p]) p++;
+      return j + p * 0.1 * (1 - j);
+    }
+    // Dos tokens "coinciden" si son iguales, o (ambos ≥5 chars) muy similares por JW (typo OCR).
+    // Los tokens cortos exigen igualdad exacta (JW poco fiable en 3-4 letras).
+    function _winlabTokenMatch(t1, t2) {
+      if (t1 === t2) return true;
+      if (t1.length >= 5 && t2.length >= 5) return _winlabJaroWinkler(t1, t2) >= 0.88;
+      return false;
+    }
     function _winlabNameMatchScore(n1, n2) {
       var w1 = _winlabNormalizeName(n1), w2 = _winlabNormalizeName(n2);
       if (!w1.length || !w2.length) return 0;
-      var set2 = new Set(w2), common = 0;
-      w1.forEach(function (w) { if (set2.has(w)) common++; });
+      var used = new Array(w2.length).fill(false), common = 0;
+      for (var i = 0; i < w1.length; i++) {
+        for (var j = 0; j < w2.length; j++) {
+          if (!used[j] && _winlabTokenMatch(w1[i], w2[j])) { used[j] = true; common++; break; }
+        }
+      }
       return common;
     }
 
