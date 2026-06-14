@@ -10691,6 +10691,17 @@ function plExportBackup() {
               + '<button type="button" class="fb-dr-x" data-k="' + k + '" data-i="' + i + '" onclick="fbRemoveDrain(this.dataset.k,+this.dataset.i)" title="Quitar drenaje" aria-label="Quitar">✕</button></span>';
           }).join("") + '</div>'
         : '';
+      // Contenido de la zona de drenajes (se coloca en fila VISIBLE, fuera de "Más del app").
+      var drainsInner = '<span class="fb-zh">Drenajes y sondas:</span>'
+        + '<div class="fb-chips">' + drainChips + '</div>'
+        + '<div class="fb-drbuild" data-fbk="' + k + '">'
+        +   '<input class="fb-dr-in" data-fbdr="tipo" inputmode="text" autocorrect="off" autocapitalize="sentences" placeholder="Tipo (Penrose, JP, Blake...)" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
+        +   '<input class="fb-dr-in fb-dr-in-sm" data-fbdr="gasto" inputmode="text" autocorrect="off" placeholder="Gasto (30cc)" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
+        +   '<input class="fb-dr-in" data-fbdr="carac" inputmode="text" autocorrect="off" autocapitalize="sentences" placeholder="Características" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
+        +   '<button type="button" class="fb-dr-add" data-k="' + k + '" title="Agregar drenaje" onclick="fbAddDrainBuilt(this.dataset.k)">➕</button>'
+        + '</div>'
+        + drainListHtml
+        + '<textarea class="fb-ta" rows="3" data-key="' + k + '" data-field="drenajes" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value)" placeholder="Toca un drenaje arriba o escribe. Ej: Penrose FID: 30cc seroso">' + _fbEsc(nd.drenajes || "") + '</textarea>';
 
       var labsHtml = _fbSafe(function(){ return renderFocusLabs(nd, k); });
       var cdsHtml  = _fbSafe(function(){ return (typeof renderCDSSection === "function") ? renderCDSSection(p, nd, k) : ""; });
@@ -10758,24 +10769,15 @@ function plExportBackup() {
         + '</div>'
         + '</div>';
 
+      // ROW C2 — DRENAJES y sondas (VISIBLE, junto al Pase matutino; ya no plegado)
+      out += '<div class="fb-row"><div class="fb-zone fb-drains">' + drainsInner + '</div></div>';
+
       // ROW D — extras del app que el papel no tiene (plegados, no estorban)
       out += '<div class="fb-more' + (moreOpen ? ' open' : '') + '">'
-        + '<button type="button" class="fb-more-btn" data-k="' + k + '" onclick="fbToggleMore(this.dataset.k,this)">➕ Más del app: Indicaciones · Drenajes · Manejo · Sangrado <span class="fb-more-caret">▸</span></button>'
+        + '<button type="button" class="fb-more-btn" data-k="' + k + '" onclick="fbToggleMore(this.dataset.k,this)">➕ Más del app: Indicaciones · Manejo · Sangrado <span class="fb-more-caret">▸</span></button>'
         + '<div class="fb-more-body">'
         +   '<div class="fb-row">'
         +     '<div class="fb-zone fb-ind">' + ((indHtml && String(indHtml).trim()) ? indHtml : '<span class="fb-zh">Indicaciones:</span><p class="fb-empty">—</p>') + '</div>'
-        +     '<div class="fb-zone fb-drains">'
-        +       '<span class="fb-zh">Drenajes y sondas:</span>'
-        +       '<div class="fb-chips">' + drainChips + '</div>'
-        +       '<div class="fb-drbuild" data-fbk="' + k + '">'
-        +         '<input class="fb-dr-in" data-fbdr="tipo" inputmode="text" autocorrect="off" autocapitalize="sentences" placeholder="Tipo (Penrose, JP, Blake...)" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
-        +         '<input class="fb-dr-in fb-dr-in-sm" data-fbdr="gasto" inputmode="text" autocorrect="off" placeholder="Gasto (30cc)" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
-        +         '<input class="fb-dr-in" data-fbdr="carac" inputmode="text" autocorrect="off" autocapitalize="sentences" placeholder="Características" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
-        +         '<button type="button" class="fb-dr-add" data-k="' + k + '" title="Agregar drenaje" onclick="fbAddDrainBuilt(this.dataset.k)">➕</button>'
-        +       '</div>'
-        +       drainListHtml
-        +       '<textarea class="fb-ta" rows="3" data-key="' + k + '" data-field="drenajes" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value)" placeholder="Toca un drenaje arriba o escribe. Ej: Penrose FID: 30cc seroso">' + _fbEsc(nd.drenajes || "") + '</textarea>'
-        +     '</div>'
         +   '</div>'
         +   '<div class="fb-row">'
         +     '<div class="fb-zone">' + fbField("Manejo:", "manejo", nd.manejo, 3) + '</div>'
