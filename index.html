@@ -8930,7 +8930,11 @@ function plExportBackup() {
         if (recibeEl && document.activeElement !== recibeEl) recibeEl.value = remote.recibe || recibeEl.value;
         try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify({ fecha: remote.fecha, entrega: remote.entrega, recibe: remote.recibe })); } catch (_) {}
       }).catch(function(e) { safeLog("[GI] restoreGuardInfo remoto falló:", e); });
-      persistGuardInfo();
+      // FIX (seguridad de datos): NO persistir en la carga. Antes se llamaba
+      // persistGuardInfo() aquí, que subía los campos (vacíos en un login fresco)
+      // ANTES de que resolviera _supaLoadGuardInfo() → pisaba la entrega de guardia
+      // en la nube con valores por defecto. La carga ahora solo LEE (local + remoto);
+      // el guardado ocurre cuando el usuario edita (wireGuardInfoPersistence).
     }
     function wireGuardInfoPersistence() {
       ["gi-fecha", "gi-entrega", "gi-recibe"].forEach(function (id) {
