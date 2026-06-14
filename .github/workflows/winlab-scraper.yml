@@ -30,6 +30,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # El cron dispara desde main (rama por defecto), pero el codigo vivo del
+          # scraper (rpa/) y la app estan en feature/winlab-auto-sync. Checkout de
+          # feature -> una sola fuente de verdad, sin divergencia rpa entre ramas.
+          ref: feature/winlab-auto-sync
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
