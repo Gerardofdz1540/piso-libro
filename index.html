@@ -473,6 +473,7 @@
 
     .card-badges {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: 5px
     }
@@ -3151,7 +3152,7 @@
 .focus-board .fb-pm-grid{ display:grid; grid-template-columns:1fr 1fr; gap:3px 12px; }
 .focus-board .fb-pm{ display:flex; align-items:center; gap:5px; min-width:0; } /* FIX-v47: sin esto el grid del pase desborda el card */
 .focus-board .fb-pm-k{ font-size:11px; font-weight:700; color:#1e3a5f; min-width:48px; }
-.focus-board .fb-pm-i{ flex:1; min-width:0; border:none; border-bottom:1.3px dotted #cbd5e1; background:transparent; font-size:12px; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:#0a1628; padding:2px; text-align:center; }
+.focus-board .fb-pm-i{ flex:1; min-width:0; border:none; border-bottom:1.3px dotted #cbd5e1; background:transparent; font-size:16px; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:#0a1628; padding:2px 1px; text-align:left; }
 .focus-board .fb-pm-i:focus{ outline:none; border-bottom-color:#3b82f6; border-bottom-style:solid; }
 .focus-board .fb-pase-note{ font-size:9.5px; color:#64748b; font-style:italic; margin-top:6px; }
 
@@ -3230,6 +3231,11 @@
 .focus-board .fb-chip{ font-size:11px; font-weight:700; line-height:1.4; padding:3px 9px; border:1px solid #2c4d77; border-radius:14px; background:#e8eef6; color:#1e3a5f; cursor:pointer; white-space:nowrap; }
 .focus-board .fb-chip:hover{ background:#2c4d77; color:#fff; }
 .focus-board .fb-chip:active{ transform:translateY(1px); }
+.focus-board .fb-drbuild{ display:flex; flex-wrap:wrap; gap:4px; margin:0 0 6px; align-items:stretch; }
+.focus-board .fb-drbuild .fb-dr-in{ flex:2; min-width:96px; font-size:16px; line-height:1.2; padding:4px 7px; border:1px solid #2c4d77; border-radius:6px; background:#fff; color:#0a1628; }
+.focus-board .fb-drbuild .fb-dr-in-sm{ flex:1; min-width:64px; }
+.focus-board .fb-drbuild .fb-dr-add{ flex:0 0 auto; padding:0 12px; border:none; border-radius:6px; background:#0369a1; color:#fff; font-weight:700; cursor:pointer; }
+.focus-board .fb-drbuild .fb-dr-add:active{ transform:translateY(1px); }
 .focus-board .fb-more{ border-bottom:1.5px solid #0a1628; }
 .focus-board .fb-more-btn{ width:100%; text-align:left; font-size:12px; font-weight:800; color:#0a1628; background:#f1f5f9; border:none; padding:9px 12px; cursor:pointer; display:flex; align-items:center; gap:6px; }
 .focus-board .fb-more-btn:hover{ background:#e8eef6; }
@@ -3248,6 +3254,9 @@
 #board-side .bs-btn:hover{ background:#e8eef6; }
 #board-side .bs-btn.bs-cur{ background:#0a1628; color:#fff; border-color:#0a1628; }
 #board-main{ flex:1 1 auto; min-width:0; }
+/* FIX-FAB: reservar canalon inferior-derecho para que el FAB fijo (#pl-fab-v28) nunca tape datos del card (Pase matutino dcho / botones header). Scopeado a modo foco; inocuo en pantallas anchas donde el board va centrado. */
+body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
+@media (min-width:1340px){ body.focus-on #board-main{ padding-right:0; } }
 #board-nav{ display:flex; align-items:center; gap:8px; margin-bottom:10px; padding:6px 10px; background:#0a1628; border-radius:8px; position:sticky; top:8px; z-index:5; }
 #board-nav .bn-btn{ font-size:18px; font-weight:800; line-height:1; min-width:44px; padding:6px 10px; border:none; border-radius:6px; background:#2c4d77; color:#fff; cursor:pointer; }
 #board-nav .bn-btn:hover:not([disabled]){ background:#3b5d8a; }
@@ -10577,6 +10586,28 @@ function plExportBackup() {
         try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
       } catch (e) {}
     }
+    function fbAddDrainBuilt(k){
+      try{
+        var scope = document.querySelector('.fb-drbuild[data-fbk="' + k + '"]');
+        if (!scope) return;
+        var g = function(name){
+          var e = scope.querySelector('[data-fbdr="' + name + '"]');
+          return (e && e.value) ? e.value.trim() : "";
+        };
+        var line = [g("tipo"), g("gasto"), g("carac")].filter(Boolean).join(" ");
+        if (!line) return;
+        var ta = document.querySelector('textarea[data-key="' + k + '"][data-field="drenajes"]');
+        if (!ta) return;
+        var cur = (ta.value || "").replace(/\s+$/, "");
+        ta.value = (cur ? cur + "\n" : "") + line;
+        if (typeof liveUpdate === "function") liveUpdate(ta);
+        if (typeof updateField === "function") updateField(k, "drenajes", ta.value);
+        ["tipo","gasto","carac"].forEach(function(name){
+          var e = scope.querySelector('[data-fbdr="' + name + '"]'); if (e) e.value = "";
+        });
+        var t = scope.querySelector('[data-fbdr="tipo"]'); if (t) t.focus();
+      } catch (e) {}
+    }
     function fbToggleMore(k, btn){
       window.__fbMoreOpen = window.__fbMoreOpen || {};
       window.__fbMoreOpen[k] = !window.__fbMoreOpen[k];
@@ -10695,6 +10726,12 @@ function plExportBackup() {
         +     '<div class="fb-zone fb-drains">'
         +       '<span class="fb-zh">Drenajes y sondas:</span>'
         +       '<div class="fb-chips">' + drainChips + '</div>'
+        +       '<div class="fb-drbuild" data-fbk="' + k + '">'
+        +         '<input class="fb-dr-in" data-fbdr="tipo" inputmode="text" autocorrect="off" autocapitalize="sentences" placeholder="Tipo (Penrose, JP, Blake...)" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
+        +         '<input class="fb-dr-in fb-dr-in-sm" data-fbdr="gasto" inputmode="text" autocorrect="off" placeholder="Gasto (30cc)" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
+        +         '<input class="fb-dr-in" data-fbdr="carac" inputmode="text" autocorrect="off" autocapitalize="sentences" placeholder="Características" data-k="' + k + '" onkeydown="if(event.key===&#39;Enter&#39;){event.preventDefault();fbAddDrainBuilt(this.dataset.k);}">'
+        +         '<button type="button" class="fb-dr-add" data-k="' + k + '" title="Agregar drenaje" onclick="fbAddDrainBuilt(this.dataset.k)">➕</button>'
+        +       '</div>'
         +       '<textarea class="fb-ta" rows="4" data-key="' + k + '" data-field="drenajes" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value)" placeholder="Toca un drenaje arriba o escribe. Ej: Penrose FID: 30cc seroso">' + _fbEsc(nd.drenajes || "") + '</textarea>'
         +     '</div>'
         +   '</div>'
