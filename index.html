@@ -6174,6 +6174,10 @@ function plExportBackup() {
           labs,
           extra: [],
           source: "winlab",
+          // Nombre de ORIGEN del blob WinLab. Permite re-validar después que el
+          // snapshot pertenece al paciente (retracción autoritativa por nombre,
+          // inmune a colisiones de exp). NUNCA borrar sin actualizar migrateNote.
+          winlab_paciente: winlabRow.paciente || "",
           synced_at: new Date().toISOString(),
           scraped_at: winlabRow.scraped_at || null,
         });
@@ -6277,6 +6281,45 @@ function plExportBackup() {
         if (!winlabByExp || !Object.keys(winlabByExp).length) return stats;
         // Invalidar índice por si cambió winlabByExp
         _winlabExpIndex = null;
+
+        // ── RETRACCIÓN AUTORITATIVA POR NOMBRE (jun 2026) ─────────────────────────
+        // Re-valida CADA snapshot source:"winlab" contra el paciente usando el nombre
+        // de ORIGEN que buildWinlabLabSnapshots estampa (winlab_paciente). Si el origen
+        // NO coincide con el paciente → es una fuga (lab de otro) → se retira ANTES de
+        // sincronizar. Juzga por el origen del propio snapshot, NO por el match exp de
+        // hoy: inmune a colisiones de exp (jamás borra labs legítimos). Snapshots sin
+        // winlab_paciente (legacy, pre-estampa) se dejan intactos — no verificables, y
+        // la fuga conocida ya se purgó por SQL. Conservador y unidireccional: solo quita
+        // lo que se PUEDE probar ajeno. Regla de Gera: mejor sin labs que labs ajenos.
+        for (const p of patients) {
+          try {
+            const k0 = pid(p);
+            const raw0 = noteData[k0];
+            if (!raw0) continue;
+            const ctoks0 = _winlabNormalizeName(p?.nombre || "");
+            if (!ctoks0.length) continue; // sin nombre de censo no se puede juzgar → no tocar
+            const nd0 = migrateNote(raw0);
+            if (!Array.isArray(nd0.labHistory) || !nd0.labHistory.length) continue;
+            let changed0 = false;
+            const kept0 = [];
+            for (const s of nd0.labHistory) {
+              if (s && s.source === "winlab" && s.winlab_paciente &&
+                  _winlabNameMatchScore(p.nombre || "", s.winlab_paciente) < ctoks0.length) {
+                changed0 = true;
+                stats.retracted = (stats.retracted || 0) + 1;
+                if (verbose) console.warn("[winlab-sync] RETRACTADO snapshot winlab cama " + p.cama + " (" + p.nombre + " / " + s.fecha + "): origen «" + s.winlab_paciente + "» NO coincide con el paciente");
+                continue; // descartar (no se conserva)
+              }
+              kept0.push(s);
+            }
+            if (changed0) {
+              nd0.labHistory = kept0;
+              noteData[k0] = nd0;
+              try { saveNote(k0, nd0); } catch (e) { stats.errors++; }
+            }
+          } catch (e) { if (verbose) console.warn("[winlab-sync] retract loop fail", e); }
+        }
+
         for (const p of patients) {
           const exp = String(p?.exp || "").trim();
           if (!exp) { stats.skipped++; stats.no_exp++; continue; }
@@ -6346,6 +6389,7 @@ function plExportBackup() {
                   ...ex, labs: snap.labs,
                   synced_at: snap.synced_at, scraped_at: snap.scraped_at,
                   source: "winlab",
+                  winlab_paciente: snap.winlab_paciente || ex.winlab_paciente || "",
                 };
               }
               stats.merged++;
@@ -6745,6 +6789,7 @@ function plExportBackup() {
             // BORRABAN en cada migrateNote, impidiendo distinguir winlab de manual y
             // por tanto auto-purgar snapshots winlab obsoletos/fugados.
             source: toSafeString(s.source).trim() || undefined,
+            winlab_paciente: toSafeString(s.winlab_paciente).trim() || undefined,
             synced_at: toSafeString(s.synced_at).trim() || undefined,
             scraped_at: toSafeString(s.scraped_at).trim() || undefined,
             source_file: toSafeString(s.source_file).trim(),
