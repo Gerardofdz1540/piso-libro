@@ -6133,20 +6133,27 @@ function plExportBackup() {
       };
       const _wlHasHeaders = reportes.some(_wlIsHeader);
       let _wlCurMatches = !_wlHasHeaders || !_wlTargetTokens.length;
+      // ¿Hay match de identidad por NOMBRE de encabezado disponible? (blob con
+      // encabezados Y nombre objetivo normalizable). Si lo hay, el nombre es la
+      // identidad AUTORITATIVA y la guardia de servicio NO debe vetar nada encima.
+      const _wlNamePositive = _wlHasHeaders && _wlTargetTokens.length > 0;
 
       for (const rep of reportes) {
         if (_wlHasHeaders && _wlIsHeader(rep)) { _wlCurMatches = _wlHeaderMatches(rep); continue; }
         if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
         if (!_wlCurMatches) continue; // reporte de OTRO paciente del mismo apellido → ignorar
-        // FIX-v49: GUARDIA DE SERVICIO (precisión > recall). Si el reporte declara un
-        // servicio reconocible (rep.SEXO o última celda de __cells) que NO coincide con el
-        // del paciente objetivo, RECHAZAR: es paciente de otro servicio con apellido igual.
-        // normalizeEspImport devuelve "" para sexo/desconocido → solo rechaza ante servicio
-        // reconocible en conflicto; nunca añade fuga, solo la evita.
-        // FIX-v52 (MANEJO CONJUNTO): el esp del paciente puede ser MULTI-servicio
-        // ("CG/CT", "URO/CG", "CPR / CG"). Aceptar el reporte si su servicio coincide con
-        // CUALQUIER componente del esp del paciente (no exige igualdad con el string entero).
-        if (targetEspCanon) {
+        // GUARDIA DE SERVICIO — solo como señal de identidad de RESPALDO.
+        // FIX-v53 (jun 2026): el "servicio" del reporte WinLab (rep.SEXO / última celda)
+        // es el servicio de la ORDEN del panel, NO el servicio quirúrgico del paciente —
+        // un paciente de CT (cirugía de tórax) tiene labs ordenados por CG o MEDICINA
+        // INTERNA de rutina. Equipararlos DESCARTABA labs legítimos (caso real 3-151
+        // BRAYAN, esp "CT", labs propios taggeados "CIRUGIA GENERAL" → CG ≠ CT → se perdían).
+        // El match de NOMBRE por encabezado ya es la identidad autoritativa; cuando existe
+        // (_wlNamePositive), la guardia NO se aplica. Se conserva SOLO de respaldo cuando NO
+        // hubo match de nombre por encabezado (blob sin encabezados o sin nombre objetivo),
+        // como último filtro de identidad. NUNCA veta encima de un match de nombre positivo.
+        // (FIX-v49 original / FIX-v52 manejo conjunto multi-servicio preservados abajo.)
+        if (targetEspCanon && !_wlNamePositive) {
           var _repSvcRaw = rep.SEXO || (Array.isArray(rep.__cells) && rep.__cells.length ? rep.__cells[rep.__cells.length - 1] : "");
           var _repEspCanon = normalizeEspImport(_repSvcRaw);
           if (_repEspCanon) {
