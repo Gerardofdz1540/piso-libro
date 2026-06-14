@@ -8166,6 +8166,9 @@ function plExportBackup() {
       // Guard info broadcast (sin cambio de schema, canal efímero)
       initGuardInfoSync();
 
+      // Presencia: badge "quién edita" (presence nativo, canal efímero, sin schema)
+      initPresence();
+
       // Subscribe to patients changes
       try {
         const patSub = _supa.channel("patients-changes")
@@ -8926,6 +8929,96 @@ function plExportBackup() {
       });
     }
 
+    // ─── PRESENCIA REALTIME (v49c) ───────────────────────────────────────────────
+    // Badge efímero de "quién está editando la nota de un paciente". Usa el
+    // presence NATIVO de Supabase Realtime (canal pl-presence) — sin timers
+    // periódicos propios (el heartbeat lo maneja el WebSocket), sin cambio de
+    // schema, sin re-render: los badges se inyectan/quitan del DOM de forma
+    // quirúrgica (un <span> por tarjeta) para NO pisar textareas en edición.
+    var _presenceChannel = null;
+    var _presenceEditingKey = null;   // clave del paciente que ESTE usuario edita (o null)
+    var _presenceLastMap = {};        // { patientKey: [nombres de OTROS usuarios] }
+    var _presenceTabId = (function () {
+      try { return "t" + Math.random().toString(36).slice(2) + Date.now().toString(36); }
+      catch (_) { return "t" + Date.now(); }
+    })();
+    function _presenceLabel() {
+      try { var n = (localStorage.getItem("pl_user_name") || "").trim(); if (n) return n; } catch (_) {}
+      try { var u = _authSessionUser(); if (u) return u; } catch (_) {}
+      return "Alguien";
+    }
+    function _presenceTrack() {
+      if (!_presenceChannel) return;
+      try {
+        _presenceChannel.track({
+          name: _presenceLabel(),
+          editing: _presenceEditingKey || "",
+          tab: _presenceTabId,
+          ts: Date.now()
+        });
+      } catch (e) { safeLog("[PRESENCE] track:", e); }
+    }
+    function _presenceSetEditing(k) {
+      _presenceEditingKey = k || null;
+      _presenceTrack();
+    }
+    function _onPresenceSync() {
+      if (!_presenceChannel || typeof _presenceChannel.presenceState !== "function") return;
+      var map = {};
+      try {
+        var state = _presenceChannel.presenceState() || {};
+        Object.keys(state).forEach(function (pkey) {
+          (state[pkey] || []).forEach(function (m) {
+            if (!m || !m.editing) return;
+            if (m.tab === _presenceTabId) return;            // no mostrarme a mí mismo
+            if (!map[m.editing]) map[m.editing] = [];
+            var nm = m.name || "Alguien";
+            if (map[m.editing].indexOf(nm) === -1) map[m.editing].push(nm);
+          });
+        });
+      } catch (e) { safeLog("[PRESENCE] sync:", e); return; }
+      _presenceLastMap = map;
+      _applyPresenceBadges();
+    }
+    function _applyPresenceBadges() {
+      try {
+        var prev = document.querySelectorAll(".pl-presence-badge");
+        for (var i = 0; i < prev.length; i++) prev[i].remove();
+      } catch (_) {}
+      var map = _presenceLastMap || {};
+      Object.keys(map).forEach(function (k) {
+        var names = map[k];
+        if (!names || !names.length) return;
+        var esc1 = (window.CSS && CSS.escape) ? CSS.escape(k) : String(k).replace(/["\\]/g, "\\$&");
+        var els;
+        try { els = document.querySelectorAll('[data-k="' + esc1 + '"],[data-key="' + esc1 + '"]'); }
+        catch (_) { return; }
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].querySelector(".pl-presence-badge")) continue;
+          var b = document.createElement("span");
+          b.className = "pl-presence-badge";
+          b.textContent = "✏️ " + names.join(", ");
+          b.title = "Editando ahora: " + names.join(", ");
+          b.style.cssText = "display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap";
+          els[i].appendChild(b);
+        }
+      });
+    }
+    function initPresence() {
+      if (!window._supaClient || typeof window._supaClient.channel !== "function") return;
+      if (_presenceChannel) {
+        try { _presenceChannel.unsubscribe(); } catch (_) {}
+        _presenceChannel = null;
+      }
+      try {
+        _presenceChannel = window._supaClient.channel("pl-presence", { config: { presence: { key: _presenceTabId } } })
+          .on("presence", { event: "sync" }, _onPresenceSync)
+          .on("presence", { event: "join" }, _onPresenceSync)
+          .on("presence", { event: "leave" }, _onPresenceSync)
+          .subscribe(function (status) { if (status === "SUBSCRIBED") _presenceTrack(); });
+      } catch (e) { safeLog("[PRESENCE] init:", e); }
+    }
+
     // ─── MODAL AUTOSAVE: guarda campos de nota del modal en noteData+localStorage al vuelo ──
     // Protege contra pérdida si el tab se cierra mientras el modal está abierto.
     // Solo actúa en modo edición (cuando _modalCurrentEditKey está seteado).
@@ -9234,6 +9327,7 @@ function plExportBackup() {
       if (currentView === "pendientes") renderPendientes(filtered);
       if (currentView === "tablero") renderTablero();
       if (currentView === "papelera") renderPapelera();
+      try { _applyPresenceBadges(); } catch (_) {}   // reaplicar badges de presencia tras re-render
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -15134,6 +15228,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function openEditModal(k) {
       const p = patients.find(p => pid(p) === k); if (!p) return;
       modalMode = "edit"; modalOrigKey = k; _modalCurrentEditKey = k;
+      _presenceSetEditing(k);   // presencia: avisar a otros que edito este paciente
       document.getElementById("modal-title").textContent = "✏️ Editar datos del paciente";
       document.getElementById("modal-save-btn").textContent = "✓ Guardar cambios";
       document.getElementById("modal-warn-edit").style.display = "block";
@@ -15167,6 +15262,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         delete _dirtyFields[_modalCurrentEditKey];
       }
       _modalCurrentEditKey = null;
+      _presenceSetEditing(null);   // presencia: dejé de editar
       document.getElementById("patient-modal").style.display = "none";
     }
     function saveModal() {
