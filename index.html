@@ -5809,7 +5809,8 @@ function plExportBackup() {
     // ──────────────────────────────────────────────────────────────────────────────
     const WINLAB_ALIASES = {
       // Biometría / función renal
-      hb:        [/^hb$/i, /^hemoglobi/i, /^hgb$/i],
+      hba1c:     [/hemoglobina glicada/i, /glicosilad/i, /^hba1c$/i, /^a1c$/i],
+      hb:        [/^hb$/i, /^hgb$/i, /^hemoglobina$/i],
       leucos:    [/^leucocitos$/i, /^leu$/i, /^wbc$/i, /^gl[oó]bulos blancos$/i],
       plaq:      [/^plaqueta(s)?$/i, /^plt$/i, /^trombocitos$/i],
       // Biometría hemática extendida — IMPORTANTE: los _abs DEBEN ir antes que _pct
@@ -5847,7 +5848,7 @@ function plExportBackup() {
       // Función hepática — DEBE IR ANTES de electrolitos para que "FOSFATASA ALCALINA"
       // capture en `fa` y no en `p` (fósforo).
       ast:       [/(^|\W)ast(\W|$)/i, /(^|\W)tgo(\W|$)/i, /aspartat/i, /transaminas.*glut[áa]mic.*oxal/i],
-      alt:       [/(^|\W)alt(\W|$)/i, /(^|\W)tgp(\W|$)/i, /alaninoamin/i, /alanin.*transam/i],
+      alt:       [/(^|\W)alt(\W|$)/i, /(^|\W)tgp(\W|$)/i, /alaninoamin/i, /alanin.*transam/i, /alanin.*transferas/i],
       bt:        [/bilirrubin.*total/i, /^bt$/i, /total bilirrubin/i],
       bi:        [/bilirrubin.*indirect/i, /indirect bilirrubin/i, /^bi$/i], /* FIX-v47: ANTES de bd */
       bd:        [/bilirrubin.*\bdirect/i, /^bd$/i, /\bdirect bilirrubin/i], /* FIX-v47: \b evita matchear INdirecta */
@@ -5861,7 +5862,7 @@ function plExportBackup() {
       // Coagulación
       tp:        [/tiempo de protromb/i, /^tp$/i, /^pt$/i, /prothromb/i],
       ttp:       [/tromboplastin/i, /^ttp$/i, /^aptt$/i, /^ptt$/i],
-      inr:       [/^inr$/i, /raz[oó]n.*normalizad/i],
+      inr:       [/^i\.?n\.?r\.?$/i, /^inr$/i, /raz[oó]n.*normalizad/i],
       fibrinogeno: [/fibrin[oó]gen/i, /^fib$/i],
       dimero_d:  [/d[ií]mero.*d/i, /d-dimer/i],
       // Pancreáticas
@@ -5982,6 +5983,13 @@ function plExportBackup() {
           const _isUrine = (v?.bucket === "urine")
             || /\bEN ORINA\b|\bORINA\b|MICCION|EXAMEN GENERAL DE ORINA|UROCULTIVO|\bEGO\b/i.test(name + " " + _sec)
             || /HEMOGLOBINA\s+LIBRE/i.test(name);
+          // Guarda LÍQUIDOS (jun 2026): un valor de líquido pleural/peritoneal/ascítico/LCR
+          // NUNCA debe llenar una llave de SANGRE (ej. "ALBUMINA EN LIQUIDO PLEURAL" 1.8
+          // caía en alb sérico; "GLUCOSA EN LIQUIDO PLEURAL" en glu). No tienen llave destino
+          // → se descartan por completo (precisión > recall).
+          const _isFluid = (v?.bucket === "fluid")
+            || /\bLIQUIDO\s+(PLEURAL|PERITONEAL|ASCITIS|ASCITICO|CEFALORRAQUIDEO)\b|\bPLEURAL\b|\bPERITONEAL\b|\bASCITIC/i.test(name + " " + _sec);
+          if (_isFluid) continue;
           // Probar contra cada alias en orden de definición; primer match gana.
           for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) {
             if (key in labs) continue; // ya mapeado, no sobreescribir
@@ -6448,7 +6456,7 @@ function plExportBackup() {
       if (icon) icon.textContent = "⏳";
       try {
         const wlRows = await retryNetwork(
-          () => _sGet("winlab_labs", "select=exp,fecha,scraped_at,data&order=scraped_at.desc&limit=500"),
+          () => _sGet("winlab_labs", "select=exp,paciente,fecha,scraped_at,data&order=scraped_at.desc&limit=500"),
           2, 200
         );
         const next = {};
@@ -7605,9 +7613,10 @@ function plExportBackup() {
       const p = patients.find(function(pt) { return pid(pt) === k; });
       const cardEl = document.getElementById("card-" + k);
       if (cardEl && p) {
-        cardEl.outerHTML = isSimpleEsp(p.esp, nd)
-          ? renderSimpleCard(p, noteData[k], k)
-          : renderFullCard(p, noteData[k], k);
+        const _nd = noteData[k] || defaultData();
+        cardEl.outerHTML = isSimpleEsp(p.esp, _nd)
+          ? renderSimpleCard(p, _nd, k)
+          : renderFullCard(p, _nd, k);
       }
     }
 
@@ -7767,7 +7776,7 @@ function plExportBackup() {
         // Labs WinLab scrapeados por GitHub Action (tabla winlab_labs).
         // Indexa por exp; para cada paciente conserva el scraped_at mas reciente.
         try {
-          const wlRows = await retryNetwork(() => _sGet("winlab_labs", "select=exp,fecha,scraped_at,data&order=scraped_at.desc&limit=500"), 2, 200);
+          const wlRows = await retryNetwork(() => _sGet("winlab_labs", "select=exp,paciente,fecha,scraped_at,data&order=scraped_at.desc&limit=500"), 2, 200);
           const next = {};
           (wlRows || []).forEach(r => {
             const e = String(r.exp || "").trim();
@@ -8486,7 +8495,7 @@ function plExportBackup() {
         const k = pid(p);
         const cardEl = document.getElementById("card-" + k);
         if (cardEl && !cardEl.contains(document.activeElement)) {
-          cardEl.outerHTML = isSimpleEsp(p.esp, nd)
+          cardEl.outerHTML = isSimpleEsp(p.esp, noteData[k] || defaultData())
             ? renderSimpleCard(p, noteData[k] || defaultData(), k)
             : renderFullCard(p, noteData[k] || defaultData(), k);
         }
