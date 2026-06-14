@@ -1,236 +1,261 @@
-/**
- * Cloudflare Worker: Labs extraction proxy for PisoLibro
- *
- * Required env vars/secrets:
- * - ANTHROPIC_API_KEY      (secret)
- * - WORKER_TOKEN           (secret, same value configured in PisoLibro "Config")
- * - ALLOWED_ORIGIN         (optional, e.g. https://gerardofdz1540.github.io)
- * - ANTHROPIC_MODEL        (optional, default haiku 4.5 - 75% más barato que sonnet)
- */
+// piso-libro-ai Worker — v4 (jun 2026)
+// Cambios v4:
+//   ➕ CORS: agregado https://pisolibro.pages.dev (URL nueva de Cloudflare Pages)
+// Cambios v3 (mayo 2026):
+//   🔒 FIX CRÍTICO: fail-closed si ACCESS_TOKEN no está configurado
+//   🔒 FIX MEDIO: CORS restringido a orígenes conocidos
+//   🔒 FIX MEDIO: debug info NUNCA expuesta al cliente (solo console.log)
+//
+// IMPORTANTE: este archivo ES la fuente de verdad del worker DESPLEGADO
+// `piso-libro-ai` (no `piso-libro-labs-worker`). Usa Gemini, no Anthropic.
+//
+// Rutas:
+//   POST /api/ai            → endpoint existente (formato Anthropic Messages)
+//   POST /api/labs/extract  → para Labs Masivo (extrae pacientes+labs de PDF)
+//
+// Variables de entorno requeridas (Cloudflare Workers → Settings → Variables):
+//   ACCESS_TOKEN     (encrypted) — token compartido con el frontend
+//   GEMINI_API_KEY   (encrypted) — API key de Google AI Studio
 
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
-const CORS_HEADERS = {
-  "Access-Control-Allow-Methods": "POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type,X-Piso-Token",
-};
+const GEMINI_MODEL = "gemini-2.5-pro";
 
-const DEFAULT_LABS_PROMPT = `Eres extractor clínico de laboratorios hospitalarios del HGL (Hospital General de León).
-Recibirás un PDF de laboratorio con uno o varios pacientes.
-Devuelve SOLO JSON válido (sin markdown ni texto extra).
+// Orígenes permitidos para CORS. Agrega aquí cualquier URL adicional desde donde
+// llames al Worker (localhost para dev, Cloudflare Pages para prod, etc.)
+const ALLOWED_ORIGINS = new Set([
+  "http://localhost:8000",
+  "http://localhost:3000",
+  "http://127.0.0.1:8000",
+  "https://pisolibro.pages.dev",       // prod actual (Cloudflare Pages, proyecto pisolibro)
+  "https://piso-libro.pages.dev",      // URL vieja (transición)
+  "https://gerardofdz1540.github.io",  // si usas GitHub Pages
+]);
 
-Formato OBLIGATORIO:
-{
-  "patients": [
-    {
-      "paciente": "APELLIDOS NOMBRE",
-      "cama": "",
-      "expediente": "",
-      "fecha_labs": "YYYY-MM-DD",
-      "hora_labs": "HH:MM",
-      "tipo": "labs|cultivo",
-      "values": {
-        "hb": "", "leucos": "", "plaq": "", "cr": "", "glu": "", "na": "", "k": "",
-        "urea": "", "inr": "", "tp": "", "ttp": "", "fibrinogeno": "",
-        "ast": "", "alt": "", "bt": "", "bd": "", "ggt": "", "fa": "",
-        "mg": "", "ca": "", "p": "", "cl": "", "pcr": "", "pct": "",
-        "tipo_cultivo": "", "cultivo_organismo": "", "cultivo_sensibilidades": "", "cultivo_resistencias": "",
-        "micro_muestra": "", "micro_comentarios": ""
-      },
-      "confidence": 0.0,
-      "source_excerpt": "fragmento breve literal del PDF"
-    }
-  ],
-  "warnings": [],
-  "unmatched_sections": []
-}
-
-Reglas críticas:
-1) Incluye TODOS los pacientes detectables con resultados finales.
-2) Si un valor no existe o está preliminar (pendiente/in corso), usa "".
-3) Valores numéricos SIN unidades.
-4) No inventes valores; si dudas, deja vacío y agrega warning.
-5) Confidence por paciente entre 0 y 1.
-6) "tipo" = "cultivo" cuando el bloque sea microbiología/cultivo.
-7) Empieza con { y termina con }.`;
-
-function json(data, status = 200, extraHeaders = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      ...extraHeaders,
-    },
-  });
-}
-
-function cors(origin, allowedOrigin) {
-  const safeOrigin = allowedOrigin || origin || "*";
+function buildCorsHeaders(request) {
+  const origin = request.headers.get("origin") || "";
+  // Si el origen está en la whitelist, permitirlo. Si no, no devolver CORS
+  // (esto bloquea cross-origin requests del browser, no del backend).
+  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : "null";
   return {
-    ...CORS_HEADERS,
-    "Access-Control-Allow-Origin": safeOrigin,
-    Vary: "Origin",
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key, x-piso-token, anthropic-version",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin"
   };
-}
-
-function extractJsonObject(text) {
-  const clean = String(text || "").replace(/```json/gi, "").replace(/```/g, "").trim();
-  const first = clean.indexOf("{");
-  const last = clean.lastIndexOf("}");
-  if (first === -1 || last <= first) return null;
-  try {
-    return JSON.parse(clean.slice(first, last + 1));
-  } catch (_) {
-    return null;
-  }
-}
-
-function normalizeOutput(parsed) {
-  const out = parsed && typeof parsed === "object" ? parsed : {};
-  const arr = Array.isArray(out.patients) ? out.patients : [];
-  const normalizedPatients = arr.map((p) => {
-    const values = p && typeof p.values === "object" ? p.values : {};
-    return {
-      paciente: String(p?.paciente || "").trim(),
-      cama: String(p?.cama || "").trim(),
-      expediente: String(p?.expediente || "").trim(),
-      fecha_labs: String(p?.fecha_labs || "").trim(),
-      hora_labs: String(p?.hora_labs || "").trim(),
-      tipo: String(p?.tipo || "labs").trim() || "labs",
-      values,
-      confidence: Number.isFinite(Number(p?.confidence)) ? Number(p.confidence) : 0,
-      source_excerpt: String(p?.source_excerpt || "").trim(),
-    };
-  }).filter((p) => p.paciente || p.cama || p.expediente);
-
-  return {
-    patients: normalizedPatients,
-    warnings: Array.isArray(out.warnings) ? out.warnings.map((x) => String(x)) : [],
-    unmatched_sections: Array.isArray(out.unmatched_sections) ? out.unmatched_sections.map((x) => String(x)) : [],
-  };
-}
-
-async function callAnthropic({ apiKey, model, prompt, fileBase64, mimeType }) {
-  const body = {
-    model: model || DEFAULT_MODEL,
-    max_tokens: 8192,
-    temperature: 0,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: mimeType || "application/pdf",
-              data: fileBase64,
-            },
-          },
-          { type: "text", text: prompt || DEFAULT_LABS_PROMPT },
-        ],
-      },
-    ],
-  };
-
-  const resp = await fetch(ANTHROPIC_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify(body),
-  });
-
-  const rawText = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`Anthropic HTTP ${resp.status}: ${rawText.slice(0, 400)}`);
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(rawText);
-  } catch (_) {
-    throw new Error("Anthropic devolvió JSON inválido.");
-  }
-  const llmText = parsed?.content?.[0]?.text || "";
-  return { llmText, anthropicRaw: parsed };
 }
 
 export default {
   async fetch(request, env) {
-    const origin = request.headers.get("Origin") || "";
-    const allowedOrigin = env.ALLOWED_ORIGIN || "";
-    const corsHeaders = cors(origin, allowedOrigin);
+    const cors = buildCorsHeaders(request);
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: corsHeaders });
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+
+    // ─── FIX CRÍTICO: fail-closed si ACCESS_TOKEN no está configurado ──────
+    if (!env.ACCESS_TOKEN) {
+      console.error("[SECURITY] ACCESS_TOKEN no está configurado en Variables");
+      return json({ error: "Server misconfigured" }, 500, cors);
+    }
+    if (!env.GEMINI_API_KEY) {
+      console.error("[SECURITY] GEMINI_API_KEY no está configurado en Variables");
+      return json({ error: "Server misconfigured" }, 500, cors);
+    }
+
+    // Auth (token via Bearer o x-piso-token)
+    const auth = request.headers.get("authorization") || "";
+    const pisoToken = request.headers.get("x-piso-token") || "";
+    const bearerOK = auth === `Bearer ${env.ACCESS_TOKEN}`;
+    const pisoOK = pisoToken === env.ACCESS_TOKEN;
+    if (!bearerOK && !pisoOK) {
+      console.warn(`[AUTH] Unauthorized request from ${request.headers.get("cf-connecting-ip") || "unknown"}`);
+      return json({ error: "Unauthorized" }, 401, cors);
     }
 
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/ping") {
-      return json({ ok: true, service: "piso-labs-worker" }, 200, corsHeaders);
+
+    // ─── RUTA 1: /api/ai ─────────────────────────────────────────────────
+    if (url.pathname === "/api/ai") {
+      if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: cors });
+      return handleAiRoute(request, env, cors);
     }
 
-    if (request.method !== "POST" || url.pathname !== "/api/labs/extract") {
-      return json({ error: "Not found" }, 404, corsHeaders);
+    // ─── RUTA 2: /api/labs/extract ───────────────────────────────────────
+    if (url.pathname === "/api/labs/extract") {
+      if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: cors });
+      return handleLabsExtractRoute(request, env, cors);
     }
 
-    const providedToken = request.headers.get("X-Piso-Token") || "";
-    if (!env.WORKER_TOKEN || providedToken !== env.WORKER_TOKEN) {
-      return json({ error: "Unauthorized" }, 401, corsHeaders);
-    }
-    if (!env.ANTHROPIC_API_KEY) {
-      return json({ error: "Worker misconfigured: missing ANTHROPIC_API_KEY" }, 500, corsHeaders);
-    }
-
-    let payload;
-    try {
-      payload = await request.json();
-    } catch (_) {
-      return json({ error: "Invalid JSON payload" }, 400, corsHeaders);
-    }
-
-    const fileBase64 = String(payload?.file_base64 || "").trim();
-    const fileName = String(payload?.file_name || "labs.pdf");
-    const mimeType = String(payload?.mime_type || "application/pdf");
-    const prompt = String(payload?.prompt || DEFAULT_LABS_PROMPT);
-
-    if (!fileBase64 || fileBase64.length < 100) {
-      return json({ error: "Missing or invalid file_base64" }, 400, corsHeaders);
-    }
-
-    try {
-      const { llmText } = await callAnthropic({
-        apiKey: env.ANTHROPIC_API_KEY,
-        model: env.ANTHROPIC_MODEL || DEFAULT_MODEL,
-        prompt,
-        fileBase64,
-        mimeType,
-      });
-
-      const obj = extractJsonObject(llmText);
-      if (!obj) {
-        return json({
-          error: "No JSON object found in Claude response",
-          warnings: ["Claude response could not be parsed as JSON."],
-          raw_text_preview: llmText.slice(0, 700),
-        }, 422, corsHeaders);
-      }
-
-      const normalized = normalizeOutput(obj);
-      if (!normalized.patients.length) {
-        normalized.warnings.push(`No patient labs extracted from ${fileName}.`);
-      }
-      return json(normalized, 200, corsHeaders);
-    } catch (err) {
-      const msg = String(err?.message || err);
-      const status = msg.includes("Anthropic HTTP 5") ? 502 : 500;
-      return json({
-        error: "Extraction failed",
-        detail: msg.slice(0, 900),
-      }, status, corsHeaders);
-    }
-  },
+    return json({ error: "Not Found" }, 404, cors);
+  }
 };
+
+// ─── HANDLER: /api/ai (formato Anthropic Messages) ─────────────────────────
+async function handleAiRoute(request, env, cors) {
+  let payload;
+  try { payload = await request.json(); }
+  catch (e) { return json({ error: "Invalid JSON" }, 400, cors); }
+
+  const geminiContents = [];
+  for (const msg of (payload.messages || [])) {
+    const role = msg.role === "assistant" ? "model" : "user";
+    const parts = [];
+    const content = Array.isArray(msg.content) ? msg.content : [{ type: "text", text: String(msg.content || "") }];
+    for (const c of content) {
+      if (c.type === "text") parts.push({ text: c.text || "" });
+      else if (c.type === "document" && c.source?.type === "base64")
+        parts.push({ inline_data: { mime_type: c.source.media_type || "application/pdf", data: c.source.data } });
+      else if (c.type === "image" && c.source?.type === "base64")
+        parts.push({ inline_data: { mime_type: c.source.media_type || "image/png", data: c.source.data } });
+    }
+    if (parts.length) geminiContents.push({ role, parts });
+  }
+
+  const safetySettings = [
+    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+  ];
+
+  const geminiBody = {
+    contents: geminiContents,
+    safetySettings,
+    generationConfig: { maxOutputTokens: 8192, temperature: 0.1 }
+  };
+
+  let upstream;
+  try {
+    upstream = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody) }
+    );
+  } catch (e) {
+    console.error("[GEMINI] Upstream fetch failed:", e.message);
+    return json({ error: "Upstream fetch failed" }, 502, cors);
+  }
+
+  const upstreamData = await upstream.json().catch(() => ({}));
+  if (!upstream.ok) {
+    // 🔒 FIX MEDIO: NO devolver upstream data al cliente (puede tener info sensible)
+    console.error("[GEMINI] API error:", JSON.stringify(upstreamData).slice(0, 500));
+    return json({ error: "Gemini API error" }, upstream.status, cors);
+  }
+
+  const cand = upstreamData.candidates?.[0];
+  const outText = (cand?.content?.parts || []).map(p => p.text || "").join("");
+
+  // 🔒 FIX MEDIO: si la respuesta está vacía, log server-side, NO al cliente
+  if (!outText) {
+    console.warn(`[GEMINI] Empty response. finishReason=${cand?.finishReason} safetyRatings=${JSON.stringify(cand?.safetyRatings)}`);
+    return json({
+      id: "gemini-" + Date.now(),
+      type: "message",
+      role: "assistant",
+      model: GEMINI_MODEL,
+      content: [{ type: "text", text: "[Respuesta vacía del modelo. Revisa los logs del Worker para más detalle.]" }],
+      stop_reason: cand?.finishReason || "stop"
+    }, 200, cors);
+  }
+
+  return json({
+    id: "gemini-" + Date.now(),
+    type: "message",
+    role: "assistant",
+    model: GEMINI_MODEL,
+    content: [{ type: "text", text: outText }],
+    stop_reason: cand?.finishReason || "end_turn"
+  }, 200, cors);
+}
+
+// ─── HANDLER: /api/labs/extract (nuevo, para Labs Masivo) ──────────────────
+async function handleLabsExtractRoute(request, env, cors) {
+  let payload;
+  try { payload = await request.json(); }
+  catch (e) { return json({ error: "Invalid JSON" }, 400, cors); }
+
+  const { file_base64, file_name, mime_type, prompt } = payload || {};
+  if (!file_base64) return json({ error: "Missing file_base64" }, 400, cors);
+  if (!prompt) return json({ error: "Missing prompt" }, 400, cors);
+
+  // Validación opcional de tamaño (base64 ~33% mayor que binario)
+  // 10 MB binario ≈ 13.3 MB en base64
+  const MAX_BASE64_SIZE = 14 * 1024 * 1024;
+  if (file_base64.length > MAX_BASE64_SIZE) {
+    return json({ error: "PDF demasiado grande (>10MB)" }, 413, cors);
+  }
+
+  const geminiBody = {
+    contents: [{
+      role: "user",
+      parts: [
+        { inline_data: { mime_type: mime_type || "application/pdf", data: file_base64 } },
+        { text: prompt }
+      ]
+    }],
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ],
+    generationConfig: {
+      maxOutputTokens: 16384,
+      temperature: 0.0,
+      responseMimeType: "application/json"
+    }
+  };
+
+  let upstream;
+  try {
+    upstream = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody) }
+    );
+  } catch (e) {
+    console.error("[GEMINI/extract] Upstream fetch failed:", e.message);
+    return json({ error: "Upstream fetch failed" }, 502, cors);
+  }
+
+  const upstreamData = await upstream.json().catch(() => ({}));
+  if (!upstream.ok) {
+    // 🔒 FIX MEDIO: log server-side, no exponer upstream al cliente
+    console.error("[GEMINI/extract] API error:", JSON.stringify(upstreamData).slice(0, 500));
+    return json({
+      error: "Gemini API error",
+      patients: [],
+      warnings: ["Error del proveedor IA. Revisa logs del Worker."]
+    }, upstream.status, cors);
+  }
+
+  const cand = upstreamData.candidates?.[0];
+  const outText = (cand?.content?.parts || []).map(p => p.text || "").join("");
+
+  if (!outText) {
+    console.warn(`[GEMINI/extract] Empty response. finishReason=${cand?.finishReason}`);
+    return json({
+      patients: [],
+      warnings: [`Respuesta vacía del modelo (finishReason=${cand?.finishReason || "unknown"}).`]
+    }, 200, cors);
+  }
+
+  let parsed;
+  try {
+    const cleaned = outText.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+    parsed = JSON.parse(cleaned);
+  } catch (e) {
+    console.error("[GEMINI/extract] JSON parse failed:", e.message);
+    return json({
+      patients: [],
+      warnings: ["No se pudo parsear la respuesta del modelo como JSON."]
+    }, 200, cors);
+  }
+
+  return json({
+    patients: Array.isArray(parsed.patients) ? parsed.patients : [],
+    warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+    unmatched_sections: Array.isArray(parsed.unmatched_sections) ? parsed.unmatched_sections : []
+  }, 200, cors);
+}
+
+function json(obj, status, cors) {
+  return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...cors } });
+}
