@@ -9233,6 +9233,7 @@ function plExportBackup() {
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
       await initAuth();
+      try { _bindStickyResize(); _syncStickyOffsets(); } catch (_) {}
       loadSharedConfig().catch(() => {}); // Non-blocking: pull proxy URL from Supabase for other devices
 
       // Limpiar plantilla Excel de versiones anteriores que sí la guardaban en localStorage
@@ -9504,6 +9505,25 @@ function plExportBackup() {
       if (currentView === "tablero") renderTablero();
       if (currentView === "papelera") renderPapelera();
       try { _applyPresenceBadges(); } catch (_) {}   // reaplicar badges de presencia tras re-render
+      try { _syncStickyOffsets(); } catch (_) {}     // top del rail de camas = altura real del header
+    }
+
+    // Mide la altura real del #header (sticky) y la expone como --pl-header-h para que
+    // el rail de camas (#bed-nav) pegue JUSTO debajo, sin tapar las primeras camas.
+    function _syncStickyOffsets() {
+      var h = document.getElementById("header");
+      if (!h) return;
+      var hh = Math.round(h.getBoundingClientRect().height);
+      if (hh > 0) document.documentElement.style.setProperty("--pl-header-h", hh + "px");
+    }
+    var _stickyResizeBound = false;
+    function _bindStickyResize() {
+      if (_stickyResizeBound) return;
+      _stickyResizeBound = true;
+      var _t = null;
+      window.addEventListener("resize", function () {
+        clearTimeout(_t); _t = setTimeout(_syncStickyOffsets, 120);
+      });
     }
 
     // ─── ESP FILTERS ─────────────────────────────────────────────────────────────────
@@ -21439,8 +21459,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     }
     #bed-nav {
       position: sticky !important;
-      top: 96px !important;
-      max-height: calc(100vh - 120px) !important;
+      /* top dinámico = altura real del header (sticky) + 8px. Antes era 96px fijo →
+         en laptop el header es más alto y tapaba las primeras camas del rail. */
+      top: calc(var(--pl-header-h, 96px) + 8px) !important;
+      max-height: calc(100vh - var(--pl-header-h, 96px) - 28px) !important;
       overflow-y: auto !important;
       overflow-x: hidden !important;
       background: var(--pl-navy-900) !important;
