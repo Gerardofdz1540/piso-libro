@@ -9840,6 +9840,7 @@ function plExportBackup() {
       const nptDay = isNptReminderDay();
       const nptPending = [];
       const criticalCases = [];
+      const noRecentLabs = [];
       let nptActive = 0;
 
       list.forEach(p => {
@@ -9856,6 +9857,15 @@ function plExportBackup() {
         if (critLabs.length) {
           criticalCases.push({ k, p, fecha: latestSnap ? latestSnap.fecha : "", labs: critLabs });
         }
+        // Sin labs recientes: nunca (null) o >=2 días desde el último lab
+        const _dias = getDiasSinLabs(nd);
+        if (_dias === null || _dias >= 2) noRecentLabs.push({ k, p, dias: _dias });
+      });
+
+      noRecentLabs.sort((a, b) => {
+        const da = a.dias === null ? 9999 : a.dias, db = b.dias === null ? 9999 : b.dias;
+        if (da !== db) return db - da;
+        return String(a.p.cama || "").localeCompare(String(b.p.cama || ""), undefined, { numeric: true, sensitivity: "base" });
       });
 
       criticalCases.sort((a, b) => {
@@ -9866,9 +9876,9 @@ function plExportBackup() {
         return String(a.p.cama || "").localeCompare(String(b.p.cama || ""), undefined, { numeric: true, sensitivity: "base" });
       });
 
-      return { today, nptDay, nptActive, nptPending, criticalCases };
+      return { today, nptDay, nptActive, nptPending, criticalCases, noRecentLabs };
     }
-    let alertsPanelCollapsed = false;
+    let alertsPanelCollapsed = true;   // colapsado por defecto: el resumen (contadores) basta; clic para expandir
     function toggleAlertsPanel() {
       alertsPanelCollapsed = !alertsPanelCollapsed;
       const body = document.getElementById("alerts-panel-body");
@@ -9939,15 +9949,31 @@ function plExportBackup() {
             <div style="font-size:12px;font-weight:700;color:#166534">✅ Sin valores críticos en labs recientes.</div>
           </div>`;
 
-      const hasAlerts = data.criticalCases.length > 0 || data.nptDay;
+      const noLabsRows = data.noRecentLabs.slice(0, 20).map(x => {
+        const dlabel = x.dias === null ? "sin labs" : x.dias + "d";
+        return `<div onclick="scrollToPatient('${x.k}')" style="display:flex;gap:8px;align-items:center;padding:4px 6px;border-top:1px dashed #fde68a;cursor:pointer;border-radius:5px" onmouseover="this.style.background='#fffbeb'" onmouseout="this.style.background=''">
+          <span style="background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(x.p.cama || "—")}</span>
+          <span style="font-size:11px;font-weight:600;color:#78350f;flex:1">${esc(x.p.nombre || "")}</span>
+          <span style="font-size:10px;color:#b45309;font-weight:700">${esc(dlabel)}</span>
+        </div>`;
+      }).join("");
+      const noLabsBlock = data.noRecentLabs.length
+        ? `<div style="padding:8px 10px;border:1px solid #fcd34d;border-radius:8px;background:#fffbeb;margin-top:8px">
+            <div style="font-size:12px;font-weight:700;color:#92400e">🧪 Sin labs recientes: ${data.noRecentLabs.length} paciente${data.noRecentLabs.length !== 1 ? "s" : ""} — clic para ir</div>
+            ${noLabsRows}${data.noRecentLabs.length > 20 ? `<div style="font-size:10px;color:#92400e;margin-top:4px">…y ${data.noRecentLabs.length - 20} más</div>` : ""}
+          </div>`
+        : "";
+
+      const hasAlerts = data.criticalCases.length > 0 || data.nptDay || data.noRecentLabs.length > 0;
       return `<div style="margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
         <div onclick="toggleAlertsPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;background:${hasAlerts ? "#fff9f0" : "#f8fafc"};border-bottom:1px solid #e2e8f0;user-select:none">
-          <span style="font-size:12px;font-weight:800;color:#334155;letter-spacing:.3px">🔔 Alertas${data.criticalCases.length ? " · <span style='color:#dc2626'>" + data.criticalCases.length + " críticas</span>" : ""}${data.nptDay && data.nptPending.length ? " · <span style='color:#7c3aed'>" + data.nptPending.length + " NPT</span>" : ""}</span>
+          <span style="font-size:12px;font-weight:800;color:#334155;letter-spacing:.3px">🔔 Alertas${data.criticalCases.length ? " · <span style='color:#dc2626'>" + data.criticalCases.length + " críticas</span>" : ""}${data.noRecentLabs.length ? " · <span style='color:#b45309'>" + data.noRecentLabs.length + " sin labs</span>" : ""}${data.nptDay && data.nptPending.length ? " · <span style='color:#7c3aed'>" + data.nptPending.length + " NPT</span>" : ""}</span>
           <span id="alerts-panel-arrow" style="font-size:16px;color:#94a3b8">${alertsPanelCollapsed ? "▸" : "▾"}</span>
         </div>
         <div id="alerts-panel-body" style="padding:10px 12px;display:${alertsPanelCollapsed ? "none" : ""}">
           ${nptBlock}
           ${criticalBlock}
+          ${noLabsBlock}
         </div>
       </div>`;
     }
