@@ -6023,6 +6023,36 @@ function plExportBackup() {
     // Ahora, si el scraper drilleó N reportes (con WL_DRILLDOWN_MAX > 1), generamos
     // N snapshots con sus respectivas fechas para que aparezcan como chips de
     // fecha separados en la UI.
+    // ── NORMALIZACIÓN DE NOMBRE para el pipeline WinLab (jun 2026) ──────────────
+    // COPIA DELIBERADA de PLIndicaciones.normalizeName/nameMatchScore: esas viven
+    // dentro del IIFE PLIndicaciones y NO son visibles en el scope global donde
+    // corren las funciones de WinLab. Por eso el filtro interno de nombre llevaba
+    // INACTIVO desde siempre (typeof normalizeName === undefined → []), causando la
+    // fuga de labs entre pacientes con mismo apellido. Mantener SINCRONIZADAS las
+    // expansiones (MA→MARIA, J→JOSE, GPE→GUADALUPE) con PLIndicaciones.
+    function _winlabNormalizeName(name) {
+      if (!name) return [];
+      var s = String(name).toUpperCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/\./g, " ")
+        .replace(/[^A-Z\s]/g, " ")
+        .replace(/\bMA\b/g, "MARIA")
+        .replace(/\bJ\b/g, "JOSE")
+        .replace(/\bGPE\b/g, "GUADALUPE");
+      return s.split(/\s+/).filter(function (w) {
+        if (w.length < 3) return false;
+        if (["DEL", "LAS", "LOS", "CON", "SIN", "POR", "PARA", "Y", "O"].indexOf(w) >= 0) return false;
+        return true;
+      });
+    }
+    function _winlabNameMatchScore(n1, n2) {
+      var w1 = _winlabNormalizeName(n1), w2 = _winlabNormalizeName(n2);
+      if (!w1.length || !w2.length) return 0;
+      var set2 = new Set(w2), common = 0;
+      w1.forEach(function (w) { if (set2.has(w)) common++; });
+      return common;
+    }
+
     function buildWinlabLabSnapshots(winlabRow, targetEspCanon) {
       if (!winlabRow || !winlabRow.data) return [];
       const reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
@@ -6038,7 +6068,7 @@ function plExportBackup() {
       // Precisión > recall: ante la duda NO se incluye (seguridad del paciente —
       // jamás mostrar labs de otro). Compat: si el blob no trae encabezados o no
       // hay nombre objetivo, no se filtra (formato viejo de 1 solo paciente).
-      const _wlTargetTokens = (typeof normalizeName === "function") ? normalizeName(winlabRow.paciente || "") : [];
+      const _wlTargetTokens = _winlabNormalizeName(winlabRow.paciente || "");
       const _wlIsDate = function (s) { return /^\s*\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/.test(String(s || "")); };
       const _wlIsHeader = function (rep) {
         return rep && rep.__hasLink === false
@@ -6049,7 +6079,7 @@ function plExportBackup() {
         if (!_wlTargetTokens.length) return true;
         const hName = ((rep["APELLIDOS COMPLETOS"] || "") + " " + (rep.NOMBRE || "")).trim();
         // TODOS los tokens del objetivo deben estar en el encabezado (nombre completo)
-        return nameMatchScore(winlabRow.paciente, hName) >= _wlTargetTokens.length;
+        return _winlabNameMatchScore(winlabRow.paciente, hName) >= _wlTargetTokens.length;
       };
       const _wlHasHeaders = reportes.some(_wlIsHeader);
       let _wlCurMatches = !_wlHasHeaders || !_wlTargetTokens.length;
@@ -6136,6 +6166,26 @@ function plExportBackup() {
     // Construye un índice de winlabByExp expandido por variantes para búsqueda O(1).
     let _winlabExpIndex = null;
     let _winlabExpIndexBuiltFor = null;
+    // ── SEGURIDAD DE PACIENTE (jun 2026): red de seguridad por NOMBRE del censo ──
+    // El match censo↔WinLab es por EXP, y las variantes de exp (cola "27280") pueden
+    // COLISIONAR entre dos pacientes con el MISMO apellido → atribuir labs ajenos
+    // (incidente real: cama 151 recibió labs de otro paciente con apellidos iguales
+    // pero nombre distinto). Esta verificación exige que el nombre del CENSO coincida
+    // con el de la fila WinLab: TODOS los tokens del nombre MÁS CORTO deben estar en
+    // el otro. Tolera 2º nombre/apellido extra, pero RECHAZA si el nombre de pila
+    // difiere (JUAN vs MARIA). Precisión > recall: mejor SIN labs que labs de otro.
+    function _winlabCensoNameOk(p, wl) {
+      var censoTokens = _winlabNormalizeName((p && p.nombre) || "");
+      var wlTokens    = _winlabNormalizeName((wl && wl.paciente) || "");
+      // Si falta nombre normalizable en cualquiera, no se puede verificar por nombre.
+      // Conservador y compatible: dejar pasar (siguen aplicando exp + filtro interno por
+      // encabezado). El caso de fuga reportado SIEMPRE tiene nombre completo en ambos.
+      if (!censoTokens.length || !wlTokens.length) return true;
+      var common = _winlabNameMatchScore((p && p.nombre) || "", (wl && wl.paciente) || "");
+      var need = Math.min(censoTokens.length, wlTokens.length);
+      return common >= need;
+    }
+
     function findWinlabRowForPatient(p) {
       if (!p || !p.exp || !winlabByExp) return null;
       // Reconstruir índice solo si winlabByExp cambió (cheap detection: ref id)
@@ -6179,6 +6229,17 @@ function plExportBackup() {
             stats.skipped++; stats.no_winlab++;
             if (verbose && sample_mismatches.length < 5) {
               sample_mismatches.push({ cama: p.cama, exp: exp, variants: getExpVariants(exp) });
+            }
+            continue;
+          }
+          // ── RED DE SEGURIDAD POR NOMBRE (jun 2026) ──────────────────────────
+          // El match por exp puede colisionar (variantes de cola) entre pacientes
+          // con el mismo apellido. Verificar nombre censo↔WinLab antes de atribuir
+          // CUALQUIER lab. Si no coincide → NO incluir (jamás labs de otro).
+          if (!_winlabCensoNameOk(p, wl)) {
+            stats.skipped++; stats.name_mismatch = (stats.name_mismatch || 0) + 1;
+            if (verbose && sample_mismatches.length < 5) {
+              sample_mismatches.push({ cama: p.cama, exp: exp, censo: p.nombre, winlab: wl.paciente, reason: "name_mismatch" });
             }
             continue;
           }
@@ -9419,14 +9480,22 @@ function plExportBackup() {
 
     // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
     function pisoBedPriority(cama) {
-      // Devuelve [grupo, numero] para ordenar camas de CG:
-      // grupo 0 = piso 3 (3-XXX)  → primero, orden numerico
-      // grupo 1 = resto de CG (UCI, 2-XXX, RECU, etc.) → al final de CG
+      // Devuelve [grupo, numero] para ordenar camas en el orden del censo (jun 2026):
+      //   grupo 0 = piso 3 (3-XXX)   → SIEMPRE primero (orden numerico)
+      //   grupo 1 = UCI
+      //   grupo 2 = UTI
+      //   grupo 3 = piso 2 (2-XXX)
+      //   grupo 4 = MI / piso 4 (4-XXX)  → al final de los nombrados
+      //   grupo 5 = resto (EXT, pasillo, etc.)
       const c = toSafeString(cama).toUpperCase().trim();
-      const m3 = c.match(/^3[^\d]*(\d+)/);   // empieza con 3-
-      if (m3) return [0, parseInt(m3[1])];
-      const mn = c.match(/(\d+)/);
-      return [1, mn ? parseInt(mn[1]) : 9999];
+      const anyNum = function(){ const mn = c.match(/(\d+)/); return mn ? parseInt(mn[1]) : 9999; };
+      var m;
+      if ((m = c.match(/^3\D*(\d+)/))) return [0, parseInt(m[1])];   // piso 3
+      if (c.indexOf("UCI") !== -1)     return [1, anyNum()];          // UCI
+      if (c.indexOf("UTI") !== -1)     return [2, anyNum()];          // UTI
+      if ((m = c.match(/^2\D*(\d+)/))) return [3, parseInt(m[1])];   // piso 2
+      if ((m = c.match(/^4\D*(\d+)/))) return [4, parseInt(m[1])];   // MI (piso 4)
+      return [5, anyNum()];                                          // resto al final
     }
     function renderPiso(pts, showFreeInline) {
       // ═══ v30 ═══ Enfoque a pantalla completa de un solo paciente
