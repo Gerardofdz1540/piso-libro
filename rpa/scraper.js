@@ -14,7 +14,8 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-         isMeaningfulReportRow, extractApellidos } from "./lib.js";
+         isMeaningfulReportRow, extractApellidos,
+         patientHeaderMatches, extractHeaderName } from "./lib.js";
 import { parsePdfToLabValues, findPdfFrameUrl } from "./pdf-extract.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
@@ -563,13 +564,35 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
 
   // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──
   if (WL_DRILLDOWN === 1 && result.rows.length > 0 && result.bestTableIdx >= 0) {
-    const max = Math.min(result.rows.length, WL_DRILLDOWN_MAX);
-    // dumpFirst = true solo en la PRIMERA llamada real a drillDownReport.
-    // No usar i===0 porque la fila 0 puede no tener link y saltarse con continue.
-    let firstDrilldownDone = false;
-    for (let i = 0; i < max; i++) {
+    // TARGETING (jun 2026): WinLab busca por apellido y devuelve VARIOS homónimos.
+    // Drilleamos SOLO los reportes del paciente OBJETIVO (agrupando por fila-encabezado
+    // FEMENINO/MASCULINO y matcheando el nombre), no los primeros N a ciegas — eso
+    // causaba que el 4º de 5 "GONZALEZ GONZALEZ" nunca se capturara y el blob quedara
+    // con labs de otro paciente. FALLBACK SEGURO: si no se identifica al objetivo por
+    // encabezado (tabla COL_X / sin sexo), se usa el comportamiento legacy (primeros N).
+    const targetIdxs = [], linkIdxs = [];
+    let curMatches = false;
+    for (let i = 0; i < result.rows.length; i++) {
       const row = result.rows[i];
-      if (!row.__hasLink) continue;
+      const hdrName = extractHeaderName(row.__cells);
+      if (hdrName) curMatches = patientHeaderMatches(hdrName, paciente.nombre);
+      if (row.__hasLink) {
+        linkIdxs.push(i);
+        if (curMatches) targetIdxs.push(i);
+      }
+    }
+    let drillIdxs;
+    if (targetIdxs.length) {
+      drillIdxs = targetIdxs.slice(0, WL_DRILLDOWN_MAX);
+      console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; drilleando ${drillIdxs.length}`);
+    } else {
+      drillIdxs = linkIdxs.slice(0, WL_DRILLDOWN_MAX);
+      console.log(`       [targeting] objetivo no identificado por encabezado → fallback: primeros ${drillIdxs.length}`);
+    }
+    // dumpFirst = true solo en la PRIMERA llamada real a drillDownReport.
+    let firstDrilldownDone = false;
+    for (const i of drillIdxs) {
+      const row = result.rows[i];
       const dumpFirst = !firstDrilldownDone;
       firstDrilldownDone = true;
       try {

@@ -166,6 +166,68 @@ export function extractApellidos(nombre) {
   return Array.from(new Set(out));
 }
 
+// ── Match de identidad para targeting de drill-down (jun 2026) ──────────────
+// WinLab busca por apellido y devuelve VARIOS pacientes homónimos. El drill-down
+// debe clickear SOLO los reportes del paciente objetivo, no los primeros N a ciegas
+// (causaba que p.ej. el 4º de 5 "GONZALEZ GONZALEZ" nunca se capturara y el blob
+// quedara con labs de otro). Match difuso (Jaro-Winkler) tolera typos de OCR
+// (ESEQUIEL≈EZEQUIEL) sin confundir personas distintas (nombre de pila diferente).
+export function normNameTokens(name) {
+  if (!name) return [];
+  const s = String(name).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\./g, " ").replace(/[^A-Z\s]/g, " ")
+    .replace(/\bMA\b/g, "MARIA").replace(/\bJ\b/g, "JOSE").replace(/\bGPE\b/g, "GUADALUPE");
+  return s.split(/\s+/).filter((w) => w.length >= 3 &&
+    !["DEL", "LAS", "LOS", "CON", "SIN", "POR", "PARA", "Y", "O"].includes(w));
+}
+function _jaro(a, b) {
+  if (a === b) return 1;
+  const la = a.length, lb = b.length;
+  if (!la || !lb) return 0;
+  const dist = Math.max(0, Math.floor(Math.max(la, lb) / 2) - 1);
+  const ma = new Array(la).fill(false), mb = new Array(lb).fill(false);
+  let matches = 0;
+  for (let i = 0; i < la; i++) {
+    const lo = Math.max(0, i - dist), hi = Math.min(i + dist + 1, lb);
+    for (let j = lo; j < hi; j++) { if (!mb[j] && a[i] === b[j]) { ma[i] = mb[j] = true; matches++; break; } }
+  }
+  if (!matches) return 0;
+  let t = 0, k = 0;
+  for (let i = 0; i < la; i++) { if (!ma[i]) continue; while (!mb[k]) k++; if (a[i] !== b[k]) t++; k++; }
+  return (matches / la + matches / lb + (matches - t / 2) / matches) / 3;
+}
+export function jaroWinkler(a, b) {
+  const j = _jaro(a, b); if (j < 0.7) return j;
+  let p = 0; const l = Math.min(4, a.length, b.length);
+  while (p < l && a[p] === b[p]) p++;
+  return j + p * 0.1 * (1 - j);
+}
+function _tokenMatch(t1, t2) {
+  if (t1 === t2) return true;
+  if (t1.length >= 5 && t2.length >= 5) return jaroWinkler(t1, t2) >= 0.88;
+  return false;
+}
+// ¿el nombre del encabezado corresponde al paciente objetivo? (TODOS los tokens del
+// objetivo deben matchear, difuso). Precisión > recall.
+export function patientHeaderMatches(headerName, targetNombre) {
+  const t = normNameTokens(targetNombre), h = normNameTokens(headerName);
+  if (!t.length || !h.length) return false;
+  const used = new Array(h.length).fill(false);
+  let common = 0;
+  for (const tk of t) {
+    for (let j = 0; j < h.length; j++) { if (!used[j] && _tokenMatch(tk, h[j])) { used[j] = true; common++; break; } }
+  }
+  return common >= t.length;
+}
+// Extrae "APELLIDOS NOMBRE" de una fila-encabezado usando la posición de FEMENINO/MASCULINO
+// (mismo método que el bookmarklet): apellidos = cell[sx-2], nombre = cell[sx-1].
+export function extractHeaderName(cells) {
+  if (!Array.isArray(cells)) return "";
+  const sx = cells.findIndex((c) => { const u = String(c || "").toUpperCase().trim(); return u === "FEMENINO" || u === "MASCULINO"; });
+  if (sx >= 2 && cells[sx - 2]) return String(cells[sx - 2]) + " " + String(cells[sx - 1] || "");
+  return "";
+}
+
 // Genera variantes del codigo paciente para probar en WinLab. El censo
 // guarda formatos como "26-06437" (con guion). WinLab puede esperar
 // el numero sin guion ("2606437") o solo la parte numerica final.
