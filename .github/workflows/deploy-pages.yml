@@ -1,0 +1,44 @@
+name: Deploy a Cloudflare Pages
+
+# Auto-deploy continuo: cada push a la rama de produccion publica la app.
+# Solo se sube index.html + _headers (app de un solo archivo). El resto del
+# repo (rpa, scripts, docs) NO se publica.
+#
+# Requiere 2 secrets en GitHub (Settings -> Secrets -> Actions):
+#   CLOUDFLARE_API_TOKEN   (token con permiso "Cloudflare Pages: Edit")
+#   CLOUDFLARE_ACCOUNT_ID  (ID de la cuenta Cloudflare)
+
+on:
+  push:
+    branches:
+      - feature/winlab-auto-sync
+    paths:
+      - index.html
+      - _headers
+      - .github/workflows/deploy-pages.yml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Construir carpeta de publicacion (solo la app)
+        run: |
+          mkdir -p dist
+          cp index.html dist/index.html
+          cp _headers   dist/_headers
+          ls -la dist
+
+      - name: Publicar en Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=pisolibro --branch=feature/winlab-auto-sync

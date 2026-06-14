@@ -3,3 +3,4 @@ index.html.*
 *.ROTO*
 *.pre-v*
 node_modules/
+dist/
