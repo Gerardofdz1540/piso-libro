@@ -81,7 +81,15 @@ const WL_PROFILO_SEL            = ENV("WL_PROFILO_SEL", "#pnlMain_cboProfiloCons
 const WL_PROFILO_VALUE          = ENV("WL_PROFILO_VALUE", "AYER Y HOY");
 const WL_PER_PATIENT_TIMEOUT    = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
 const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 0 = solo lista, 1 = clickear cada reporte
-const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "2"), 10);      // max reportes/paciente
+// max reportes drilleados por paciente. SUBIDO 2→12 (14 jun 2026): WinLab guarda
+// CADA panel (BIOMETRIA, QUIMICA SANGUINEA, PRUEBAS DE FUNCION HEPATICA, coags,
+// gases...) como un REFERTO SEPARADO. Con tope 2 solo se drilleaban los 2 refertos
+// de BH más recientes → la QS y la hepática NUNCA se capturaban (el usuario las hacía
+// a mano). El targeting ya limita los drills a los reportes DEL OBJETIVO en el rango
+// AYER+HOY, así que 12 cubre BH+QS+hepática(+coags/gases) de 2 días sin drillear
+// homónimos. Costo: más drills = scraper más lento (completitud > velocidad, por
+// pedido explícito). Tuneable por env WL_DRILLDOWN_MAX si hace falta más/menos.
+const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "12"), 10);     // max reportes/paciente
 const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "20000"), 10);
 // Pausa entre pacientes (ms) para no saturar WinLab con requests rapidos.
 // WinLab throttlea/resetea la conexion si recibe demasiadas busquedas seguidas.
