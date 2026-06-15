@@ -1034,7 +1034,11 @@ async function scrapeForCenso(page, searchUrl, censo) {
   const fechaToday = todayISO();
   const scraped_at = new Date().toISOString();
   const ctx = page.context();
-  const PER_PATIENT_BUDGET_MS = 45000;
+  // Presupuesto estricto por paciente (search + TODO el drilling). SUBIDO 45s→90s
+  // (15 jun 2026): con WL_DRILLDOWN_MAX alto (drillear BH+QS+hepática+coags) un paciente
+  // con muchos refertos tardaba >45s y se ABANDONABA sin labs (caso 3-175 GARCIA NORIA:
+  // "ERROR timeout 45000ms"). 90s da margen para ~12 drills + búsqueda. Tuneable por env.
+  const PER_PATIENT_BUDGET_MS = parseInt(ENV("WL_PER_PATIENT_BUDGET_MS", "90000"), 10);
   let consecutiveErrors = 0;
   let firstDiagDumped = false;
 
