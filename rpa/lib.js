@@ -166,22 +166,6 @@ export function extractApellidos(nombre) {
   return Array.from(new Set(out));
 }
 
-// Extrae el/los NOMBRE(s) de pila de un nombre completo, asumiendo la convención
-// mexicana "NOMBRE(s) APELLIDO_PATERNO APELLIDO_MATERNO". Por simetría con
-// extractApellidos (que toma las 2 ÚLTIMAS palabras como apellidos), el nombre de
-// pila = TODOS los tokens EXCEPTO los 2 últimos. Se usa para estrechar la búsqueda
-// WinLab (llenar txtNome además de txtCognome) y cortar homónimos.
-//   "BRAYAN ESEQUIEL GONZALEZ GONZALEZ" -> "BRAYAN ESEQUIEL"
-//   "ALEJANDRO RAMIREZ HERNANDEZ"       -> "ALEJANDRO"
-//   "GONZALEZ GONZALEZ" (2 tokens)      -> ""  (no hay nombre separable)
-// Devuelve "" cuando no hay nombre extraíble; el caller NO debe llenar txtNome con "".
-export function extractNombre(nombre) {
-  if (!nombre) return "";
-  const parts = String(nombre).trim().toUpperCase().split(/\s+/).filter(Boolean);
-  if (parts.length < 3) return "";
-  return parts.slice(0, parts.length - 2).join(" ");
-}
-
 // ── Match de identidad para targeting de drill-down (jun 2026) ──────────────
 // WinLab busca por apellido y devuelve VARIOS pacientes homónimos. El drill-down
 // debe clickear SOLO los reportes del paciente objetivo, no los primeros N a ciegas

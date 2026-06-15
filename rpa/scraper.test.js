@@ -4,7 +4,7 @@
 import {
   dedupRecords, isAllowedEsp, formatDate,
   isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-  isMeaningfulReportRow, extractApellidos, extractNombre, expVariants,
+  isMeaningfulReportRow, extractApellidos, expVariants,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -229,34 +229,6 @@ assert(extractApellidos("").length === 0,    "apellidos: vacio -> []");
 }
 assert(expVariants(null).length === 0, "expVariants: null -> []");
 assert(expVariants("").length === 0,   "expVariants: vacio -> []");
-
-// ── 17. extractNombre (nombre de pila para estrechar búsqueda WinLab) ──
-{
-  assert(extractNombre("BRAYAN ESEQUIEL GONZALEZ GONZALEZ") === "BRAYAN ESEQUIEL",
-    "nombre: 2 nombres de pila + 2 apellidos -> 'BRAYAN ESEQUIEL'");
-  assert(extractNombre("ALEJANDRO RAMIREZ HERNANDEZ") === "ALEJANDRO",
-    "nombre: 1 nombre + 2 apellidos -> 'ALEJANDRO'");
-  assert(extractNombre("AGUSTIN JAIME MENDOZA GONZALEZ") === "AGUSTIN JAIME",
-    "nombre: 2 nombres + 2 apellidos");
-  assert(extractNombre("GONZALEZ GONZALEZ") === "",
-    "nombre: solo 2 apellidos (sin pila) -> '' (no llenar txtNome)");
-  assert(extractNombre("MARIA") === "", "nombre: 1 sola palabra -> ''");
-  assert(extractNombre(null) === "", "nombre: null -> ''");
-  assert(extractNombre("") === "", "nombre: vacio -> ''");
-  assert(extractNombre("  Pedro  Romero  Juarez  ") === "PEDRO",
-    "nombre: trim + uppercase + colapsa espacios");
-}
-
-// ── 18. extractNombre + extractApellidos son complementarios ──
-{
-  const full = "BRAYAN ESEQUIEL GONZALEZ GONZALEZ";
-  const nom = extractNombre(full);
-  const ape = extractApellidos(full)[0];
-  assert(nom === "BRAYAN ESEQUIEL" && ape === "GONZALEZ GONZALEZ",
-    "complementario: nombre+apellido del full name");
-  assert((nom + " " + ape) === full,
-    "complementario: concatenacion == nombre completo original");
-}
 
 console.log(`\n${pass} pass · ${fail} fail`);
 process.exit(fail ? 1 : 0);
