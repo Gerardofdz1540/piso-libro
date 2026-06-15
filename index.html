@@ -7876,12 +7876,8 @@ function plExportBackup() {
         let hasChecklistDirty = false;
         dirtyFieldNames.forEach(function(f) {
           if (FIELD_TO_COL[f]) partial[FIELD_TO_COL[f]] = fullRow[FIELD_TO_COL[f]];
-          // Cualquier campo ck_* o campos de metadatos requieren actualizar checklist completo.
-          // FIX-SYNC (jun 2026): el marcador dirty LITERAL "checklist" (ackCriticalLabs,
-          // toggleSvcMine, updatePmField, recordatorios de pendientes) NO está en FIELD_TO_COL
-          // y NO empieza con ck_ → antes solo se subía por la válvula de escape `<=2`. Tratarlo
-          // explícitamente como checklist-dirty para que el partial SIEMPRE incluya checklist.
-          if (f === "checklist" || f.startsWith("ck_") || f === "entrega" || f === "body_diagram_ant" || f === "body_diagram_post") hasChecklistDirty = true;
+          // Cualquier campo ck_* o campos de metadatos requieren actualizar checklist completo
+          if (f.startsWith("ck_") || f === "entrega" || f === "body_diagram_ant" || f === "body_diagram_post") hasChecklistDirty = true;
         });
         if (hasChecklistDirty) partial.checklist = fullRow.checklist;
         // Si el partial solo tiene patient_id y updated_by (nada útil), enviar full para
@@ -8188,28 +8184,18 @@ function plExportBackup() {
       // Debounced push to Supabase
       if (!_noteDebounceMap[key]) {
         _noteDebounceMap[key] = debounce(async (k, d) => {
-          // FIX-SYNC-B/D: capturar los campos dirty ANTES del push para (1) limpiarlos
-          // SOLO si el push confirma, (2) encolarlos al outbox para replay PARCIAL (no full).
-          const dirtyAtPush = _dirtyFields[k] ? Array.from(_dirtyFields[k]) : [];
           try {
             const p = patients.find(x => pid(x) === k);
-            if (!p || !p._supa_id) { outboxEnqueue({ type: "note", key: k, data: d, fields: dirtyAtPush }); return; }
+            if (!p || !p._supa_id) { outboxEnqueue({ type: "note", key: k, data: d }); return; }
             pendingSyncs++;
             setSyncStatus("syncing", "Guardando...");
             // Pasar snapshot de dirty fields al upsert para merge por campo (evita LWW)
-            const dirtySnapshot = dirtyAtPush.length ? new Set(dirtyAtPush) : null;
+            const dirtySnapshot = _dirtyFields[k] ? new Set(_dirtyFields[k]) : null;
             const res = await supaUpsertNote(p._supa_id, d, dirtySnapshot);
             pendingSyncs--;
             // res === null indica error explícito; cualquier otro valor truthy (incluso {}) es éxito
             const ok = res !== null && res !== undefined;
-            if (ok) {
-              // FIX-SYNC-B: limpiar SOLO los campos que efectivamente se subieron en este push.
-              // Campos marcados dirty DESPUÉS de capturar dirtyAtPush quedan intactos → el
-              // próximo autosave los sube (no se pierde una edición concurrente al push).
-              if (_dirtyFields[k]) dirtyAtPush.forEach(function(f){ _dirtyFields[k].delete(f); });
-            } else {
-              outboxEnqueue({ type: "note", key: k, data: d, fields: dirtyAtPush });
-            }
+            if (!ok) outboxEnqueue({ type: "note", key: k, data: d });
             if (pendingSyncs === 0) {
               if (ok) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
               else setSyncProblemStatus();
@@ -8218,7 +8204,7 @@ function plExportBackup() {
             safeLog("saveNote async error:", e);
             _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
             if (pendingSyncs > 0) pendingSyncs--;
-            outboxEnqueue({ type: "note", key: k, data: d, fields: dirtyAtPush });
+            outboxEnqueue({ type: "note", key: k, data: d });
             if (pendingSyncs === 0) setSyncProblemStatus();
           }
         }, 500);
@@ -8926,12 +8912,7 @@ function plExportBackup() {
               // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
               if (!p._supa_id) await withOutboxRetry(async function(){ return await supaUpsertPatient(p); });
               if (p._supa_id) {
-                // FIX-SYNC-D: replay PARCIAL. Si el item trae los campos que se editaron
-                // (item.fields), upsert SOLO esos campos para no pisar columnas que otro
-                // dispositivo cambió mientras este estuvo offline. Sin item.fields
-                // (items viejos / persistBeforeExit) cae al full-row como antes.
-                const _dirtySet = (Array.isArray(item.fields) && item.fields.length) ? new Set(item.fields) : null;
-                const noteRes = await withOutboxRetry(async function(){ return await supaUpsertNote(p._supa_id, item.data, _dirtySet); });
+                const noteRes = await withOutboxRetry(async function(){ return await supaUpsertNote(p._supa_id, item.data); });
                 // Considerar éxito cualquier valor no-null (incluso {} o true)
                 results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
               } else results[absIdx] = false;
@@ -13474,11 +13455,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!_pendingNoteAutosave[k]) {
         _pendingNoteAutosave[k] = debounce(function (key) {
           if (!noteData[key]) return;
-          // FIX-SYNC-B: NO limpiar _dirtyFields aquí. El push debounced de saveNote (500ms
-          // después) lee el snapshot dirty para armar el partial; si lo limpiamos ya, el push
-          // ve dirty vacío → manda full innecesario y, si falla, no quedan campos que
-          // reintentar. saveNote ahora limpia cada campo SOLO tras push exitoso.
           saveNote(key, noteData[key]);
+          if (_dirtyFields[key]) _dirtyFields[key].clear();
         }, 900);
       }
       _pendingNoteAutosave[k](k);
@@ -13491,15 +13469,6 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add(f);
       scheduleNoteAutosave(k);
-    }
-    // FIX-SYNC-A: marca labHistory como dirty para que el push parcial de supaUpsertNote
-    // (buildRow) SIEMPRE incluya lab_history. Sin esto, si otro campo de texto está dirty,
-    // buildRow arma un partial SIN lab_history → la edición de labs se dropea de ese push.
-    // Llamar ANTES de saveNote en todos los editores de labs que guardan directo.
-    // FIX-SYNC-B se encarga de limpiar el flag tras push exitoso (saveNote).
-    function _markLabHistoryDirty(k) {
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("labHistory");
     }
     function liveLabUpdate(el) {
       var k = el.dataset.key, lk = el.dataset.labkey, fecha = el.dataset.fecha;
@@ -13608,9 +13577,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // keep nd.labs in sync with latest snapshot for export
       const dates = nd.labHistory.map(s => s.fecha).sort((a, b) => b.localeCompare(a));
       if (fecha === dates[0]) nd.labs = { ...snap.labs };
-      snap.client_updated_at = Date.now();
       noteData[k] = nd;
-      _markLabHistoryDirty(k);   // FIX-SYNC-A
       saveNote(k, nd);
       // Actualizar solo la clase visual del cell afectado — sin destruir el DOM completo
       // (un outerHTML = renderFullCard() destruiría cualquier campo que el usuario esté editando en ese momento)
@@ -13704,7 +13671,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         var rem = (nd.labHistory || []).map(function (s) { return s.fecha; }).sort(function (a, b) { return b.localeCompare(a); });
         activeLabDate[k] = rem[0] || null;
       }
-      noteData[k] = nd; _markLabHistoryDirty(k); saveNote(k, nd);   // FIX-SYNC-A
+      noteData[k] = nd; saveNote(k, nd);
       var labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
@@ -13713,9 +13680,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       var snap = nd.labHistory.find(function(s){ return s.fecha === fecha; });
       if (!snap) return;
       snap.incidencia = checked;
-      snap.client_updated_at = Date.now();
       noteData[k] = nd;
-      _markLabHistoryDirty(k);   // FIX-SYNC-A
       saveNote(k, nd);
       var labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
@@ -13729,7 +13694,6 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       noteData[k] = nd;
       activeLabDate[k] = fecha;
-      _markLabHistoryDirty(k);   // FIX-SYNC-A
       saveNote(k, nd);
       const labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
@@ -13742,7 +13706,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!snap.extra) snap.extra = [];
       snap.extra.push({ nombre: "", valor: "" });
       snap.client_updated_at = Date.now();
-      noteData[k] = nd; _markLabHistoryDirty(k); saveNote(k, nd);   // FIX-SYNC-A
+      noteData[k] = nd; saveNote(k, nd);
       const labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
@@ -13753,7 +13717,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!snap || !snap.extra) return;
       snap.extra.splice(idx, 1);
       snap.client_updated_at = Date.now();
-      noteData[k] = nd; _markLabHistoryDirty(k); saveNote(k, nd);   // FIX-SYNC-A
+      noteData[k] = nd; saveNote(k, nd);
       const labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
@@ -13764,7 +13728,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!snap || !snap.extra || !snap.extra[idx]) return;
       snap.extra[idx][field] = value;
       snap.client_updated_at = Date.now();
-      noteData[k] = nd; _markLabHistoryDirty(k); saveNote(k, nd);   // FIX-SYNC-A
+      noteData[k] = nd; saveNote(k, nd);
     }
 
     function toggleEl(id) {
