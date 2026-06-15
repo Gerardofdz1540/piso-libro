@@ -22,7 +22,7 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: rpa
@@ -65,7 +65,7 @@ jobs:
       - name: Run scraper (con reintentos)
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 35
+          timeout_minutes: 55
           max_attempts: 2
           retry_wait_seconds: 30
           retry_on: error
@@ -88,8 +88,14 @@ jobs:
           WL_PROFILO_VALUE:         ${{ secrets.WL_PROFILO_VALUE }}
           # Días de lookback para el rango de fechas (default: 2 = HOY + AYER).
           WL_LOOKBACK_DAYS:         ${{ secrets.WL_LOOKBACK_DAYS }}
-          # Drilldown: descargar hasta N PDFs por paciente (default: 4 = 3 días reales + tolerancia)
-          WL_DRILLDOWN_MAX:         "4"
+          # Drilldown: descargar hasta N PDFs por paciente. SUBIDO 4→16 (15 jun 2026):
+          # WinLab guarda CADA panel como referto SEPARADO (BH, química sanguínea, función
+          # hepática, coags, gases...). Con 4 solo se bajaban ~4 refertos (BH+coags) y la
+          # QS/hepática quedaban identificadas pero SIN drillear → el usuario las hacía a
+          # mano. El targeting (rpa/scraper.js) ya limita a los reportes del OBJETIVO en el
+          # rango, así que 16 cubre todos los paneles de varios días. Costo: scraper más
+          # lento (timeouts subidos abajo). Esta env OVERRIDE pisa el default del código.
+          WL_DRILLDOWN_MAX:         "16"
           SUPABASE_URL:             ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY:     ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_TABLE:           ${{ secrets.SUPABASE_TABLE }}
