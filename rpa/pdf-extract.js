@@ -38,6 +38,25 @@ export const PDF_NOISE_PATTERNS = [
   /^DETERMINAZIONE\s+RISULTATO/i,    // header IT
   /^TEST\s+VALUE/i,                  // header EN
   /^EXAMEN\s+RESULTADO/i,
+  /^EX[AÁ]MENES?\s+RESULTADOS?/i,    // header "EXAMENES RESULTADOS UNIDADES..."
+  /^METODOLOG[IÍ]A/i,                // "METODOLOGIA: QUIMICA SECA" — entre nombre y valor (QS/hepática)
+  /^V[AÁ]LIDADO\s+POR/i,
+  /^Q\.?F\.?B\.?/i,                  // firma química
+  /^T\.?L\.?C\.?/i,
+  /^CED\.?\s*PROF/i,
+  /^REG\.?\s*SSG/i,
+  /^UNIVERSIDAD/i,
+  /^JEFE\s+DE\s+LAB/i,
+  /^NOTA[:\s]/i,
+  /^RESULTADOS?[:\s]/i,
+  /^T\.?\s*PACIENTE/i,
+  /^DIAGN[OÓ]STICO[:\s]/i,
+  /^PROCEDENCIA[:\s]/i,
+  /^C[OÓ]DIGO\s+DE\s+ADMISI[OÓ]N/i,
+  /^TOMA\s+DE\s+MUESTRA/i,
+  /^CURP[:\s]/i,
+  /^G[EÉ]NERO[:\s]/i,
+  /^TURNO[:\s]/i,
   /^[\-=_*]{3,}$/,                   // separadores
   /^\d+\s+of\s+\d+$/i,               // paginación "1 of 1"
   /^P[áa]gina\s+\d+/i,
@@ -57,6 +76,19 @@ export const PDF_NOISE_PATTERNS = [
 export const PDF_LAB_LINE_RE =
   /^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\s\/.,()'\-]*?[A-ZÁÉÍÓÚÑ\)])\s+([<>≤≥]?\s*\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
 
+// Formato MULTI-LÍNEA (química sanguínea / función hepática de WinLab HGL):
+//   GLUCOSA                          ← nombre del estudio, solo
+//   METODOLOGIA: QUIMICA SECA        ← línea de método (ruido, no pisa el pendiente)
+//   *B  53.0 mg/dL 74.0 - 106.0      ← línea de VALOR (prefijo opcional *A/*B = fuera de rango)
+// Sin este manejo el parser line-by-line dropea TODA la QS/hepática (sólo capturaba BH).
+//
+// Línea de VALOR: prefijo opcional *A/*B, número, luego (unidad? + rango?).
+export const PDF_VALUE_LINE_RE =
+  /^(?:\*[AB]\s+)?([<>≤≥]?\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
+// Línea de NOMBRE de estudio: TODO mayúsculas (sin dígitos), 3+ chars, sin ":" (eso es método/header).
+export const PDF_ESTUDIO_NAME_RE =
+  /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\/().'\-]{2,}$/;
+
 /**
  * Extrae valores de lab tipados desde texto plano de un PDF.
  * @param {string} text - Texto extraído del PDF
@@ -67,31 +99,56 @@ export function extractLabValuesFromText(text) {
 
   const valores = [];
   const lines = text.split(/\r?\n/);
+  // `pending` = nombre de estudio cuya línea de VALOR viene después (formato QS/hepática
+  // multi-línea). Las líneas de método (METODOLOGIA) son ruido y NO lo pisan.
+  let pending = null;
+
+  // Si la "unidad" capturada es en realidad un número (ej. analito sin unidad como
+  // "RELACION A/G  0.74  1.10 - 1.80"), muévela al rango.
+  const fixUnit = (unidad, ref) => {
+    const u = (unidad || "").trim(), r = (ref || "").trim();
+    if (/^[<>≤≥]?\d/.test(u)) return { unidad: "", referencia: (u + " " + r).trim() };
+    return { unidad: u, referencia: r };
+  };
 
   for (const rawLine of lines) {
     const line = rawLine.trim().replace(/\s+/g, " ");
     if (!line) continue;
 
-    // Filtrar ruido conocido
+    // Filtrar ruido conocido (METODOLOGIA, firmas, headers...) — NO toca `pending`.
     if (PDF_NOISE_PATTERNS.some(rx => rx.test(line))) continue;
 
-    // Match con heurística de línea de lab
+    // 1) Formato de UNA línea (BH): NOMBRE VALOR UNIDAD RANGO.
     const m = line.match(PDF_LAB_LINE_RE);
-    if (!m) continue;
+    if (m) {
+      const cleanNombre = (m[1] || "").trim();
+      if (cleanNombre.length >= 2 && !/^\d/.test(cleanNombre)) {
+        const f = fixUnit(m[3], m[4]);
+        valores.push({ estudio: cleanNombre, valor: (m[2] || "").trim(), unidad: f.unidad, referencia: f.referencia });
+        pending = null;
+        continue;
+      }
+    }
 
-    const [, nombre, valor, unidad, referencia] = m;
-    const cleanNombre = (nombre || "").trim();
+    // 2) Línea de VALOR de un estudio cuyo NOMBRE vino antes (formato QS/hepática).
+    if (pending) {
+      const vm = line.match(PDF_VALUE_LINE_RE);
+      if (vm) {
+        const f = fixUnit(vm[2], vm[3]);
+        valores.push({ estudio: pending, valor: (vm[1] || "").trim(), unidad: f.unidad, referencia: f.referencia });
+        pending = null;
+        continue;
+      }
+    }
 
-    // Sanity checks
-    if (cleanNombre.length < 2) continue;
-    if (/^\d/.test(cleanNombre)) continue;
+    // 3) Línea de NOMBRE de estudio (sin valor) → recordarla para la línea de valor siguiente.
+    if (PDF_ESTUDIO_NAME_RE.test(line)) {
+      pending = line;
+      continue;
+    }
 
-    valores.push({
-      estudio: cleanNombre,
-      valor: (valor || "").trim(),
-      unidad: (unidad || "").trim(),
-      referencia: (referencia || "").trim(),
-    });
+    // 4) Línea desconocida → limpiar pendiente (evita asociaciones erróneas).
+    pending = null;
   }
 
   return valores;

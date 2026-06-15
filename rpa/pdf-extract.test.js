@@ -150,5 +150,42 @@ DIMERO D >5000 ng/mL 0-500`;
   assert(!PDF_LAB_LINE_RE.test("12345 100 mg"), "regex no match línea que empieza con dígito");
 }
 
+// ── 11. Formato MULTI-LÍNEA química sanguínea / función hepática (HGL) ───────
+// Caso real (PDF 3-155): nombre del estudio, línea METODOLOGIA, luego valor con
+// prefijo *A/*B. El parser line-by-line viejo dropeaba TODOS estos valores.
+{
+  const txt = [
+    "EXAMENES RESULTADOS UNIDADES VALORES DE REFERENCIA",
+    "GLUCOSA",
+    "METODOLOGIA: QUIMICA SECA",
+    "*B\t53.0 mg/dL 74.0 - 106.0",
+    "UREA",
+    "METODOLOGIA: QUIMICA SECA",
+    "23.0 mg/dL 15.0 - 36.0",
+    "ALANINO AMINO TRANSFERASA",
+    "METODOLOGIA: QUIMICA SECA",
+    "27.0 U/L 4.0 - 35.0",
+    "FOSFATASA ALCALINA",
+    "METODOLOGIA: QUIMICA SECA",
+    "*A\t219.0 U/L 38.0 - 126.0",
+    "RELACION A/G",
+    "METODOLOGIA: ESPECTROFOTOMETRIA AUTOMATIZADA",
+    "*B\t0.74 1.10 - 1.80",
+    "Validado por : Reyes García",
+    "Página No: 1 de 2",
+  ].join("\n");
+  const v = extractLabValuesFromText(txt);
+  const byName = (n) => v.find(x => x.estudio === n);
+  assert(byName("GLUCOSA") && byName("GLUCOSA").valor === "53.0", "multi-línea: GLUCOSA=53.0 (con prefijo *B)");
+  assert(byName("GLUCOSA").unidad === "mg/dL", "multi-línea: GLUCOSA unidad=mg/dL");
+  assert(byName("UREA") && byName("UREA").valor === "23.0", "multi-línea: UREA=23.0 (sin prefijo)");
+  assert(byName("ALANINO AMINO TRANSFERASA") && byName("ALANINO AMINO TRANSFERASA").valor === "27.0", "multi-línea: ALT=27.0");
+  assert(byName("FOSFATASA ALCALINA") && byName("FOSFATASA ALCALINA").valor === "219.0", "multi-línea: FA=219.0 (prefijo *A)");
+  const rag = byName("RELACION A/G");
+  assert(rag && rag.valor === "0.74" && rag.unidad === "", "multi-línea: RELACION A/G=0.74 sin unidad (rango no se confunde con unidad)");
+  assert(!v.some(x => /METODOLOG/i.test(x.estudio)), "multi-línea: METODOLOGIA nunca se emite como estudio");
+  assert(!v.some(x => /VALIDADO|P[áa]gina/i.test(x.estudio)), "multi-línea: firmas/paginación filtradas");
+}
+
 console.log(`\n${pass} pass · ${fail} fail`);
 if (fail > 0) process.exit(1);
