@@ -119,7 +119,16 @@ async function handleAiRoute(request, env, cors) {
   const geminiBody = {
     contents: geminiContents,
     safetySettings,
-    generationConfig: { maxOutputTokens: 8192, temperature: 0.1 }
+    // FIX (jun 2026): gemini-2.5-pro es un modelo de RAZONAMIENTO; sus "thinking tokens"
+    // cuentan contra maxOutputTokens. Con 8192 y un documento, el thinking consumía TODO
+    // el presupuesto → salida VACÍA, finishReason=MAX_TOKENS → "La IA no devolvió JSON"
+    // (Leer Doc / lectura inteligente). Solución: subir maxOutputTokens y ACOTAR el
+    // thinking para que SIEMPRE quede espacio de salida.
+    generationConfig: {
+      maxOutputTokens: 65536,
+      temperature: 0.1,
+      thinkingConfig: { thinkingBudget: 8192 }
+    }
   };
 
   let upstream;
@@ -198,9 +207,12 @@ async function handleLabsExtractRoute(request, env, cors) {
       { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
     ],
     generationConfig: {
-      maxOutputTokens: 16384,
+      // FIX (jun 2026): mismo problema de thinking-tokens que /api/ai. Subir el techo y
+      // acotar el thinking para que la extracción de labs no quede vacía/truncada.
+      maxOutputTokens: 65536,
       temperature: 0.0,
-      responseMimeType: "application/json"
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 8192 }
     }
   };
 
