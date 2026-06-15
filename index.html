@@ -5845,6 +5845,21 @@ function plExportBackup() {
       pcr:       [/prote[ií]na c reactiv/i, /^pcr$/i, /c-reactive/i],
       pct:       [/procalcitonin/i, /^pct$/i],
       lac:       [/^lactato$/i, /^lac$/i, /[áa]cido l[áa]ctic/i],
+      // Perfil lipídico + proteínas séricas (jun 2026, ÁREA 1).
+      // Nombres REALES en winlab_labs: "COLESTEROL TOTAL", "HDL/LDL/VLDL COLESTEROL",
+      // "TRIGLICERIDOS", "PROTEINAS TOTALES", "GLOBULINA". OJO: las sub-fracciones
+      // (HDL/LDL/VLDL COLESTEROL) contienen "COLESTEROL" → DEBEN ir ANTES de `colest`,
+      // y `colest` se ancla a "COLESTEROL TOTAL" para no capturarlas (primer match gana).
+      // `ptot` se ancla a "...TOTALES": la "PROTEINAS" pelada es de EGO (bucket urine) y
+      // ya la veta el guard de orina; el ancla a TOTALES es defensa en profundidad.
+      // "PROTEINA C REACTIVA" ya cae en `pcr` (definido arriba) → no colisiona.
+      hdl:       [/hdl/i],
+      ldl:       [/(^|\W)ldl/i],
+      vldl:      [/vldl/i],
+      colest:    [/colesterol total/i, /^colesterol$/i, /^col total$/i],
+      trig:      [/triglic[eé]rid/i, /^tg$/i, /^trig$/i],
+      ptot:      [/prote[ií]nas?\s+totales/i, /prote[ií]nas?\s+s[eé]ricas/i],
+      glob:      [/^globulina/i, /globulinas/i],
       // Función hepática — DEBE IR ANTES de electrolitos para que "FOSFATASA ALCALINA"
       // capture en `fa` y no en `p` (fósforo).
       ast:       [/(^|\W)ast(\W|$)/i, /(^|\W)tgo(\W|$)/i, /aspartat/i, /transaminas.*glut[áa]mic.*oxal/i],
@@ -6026,6 +6041,30 @@ function plExportBackup() {
       return earliest;
     }
 
+    // Extrae el TIMESTAMP de TOMA de un reporte (epoch ms) para desempatar el colapso
+    // intra-día. En el blob WinLab, __cells[3] = fecha/hora de TOMA "DD/MM/YYYY HH:MM",
+    // __cells[4] = fecha/hora de RESULTADO. Caso real (jun 2026): un mismo día puede
+    // tener 2 tomas distintas; queremos conservar la MÁS RECIENTE (última toma), no la
+    // que se resultó primero. Devuelve -Infinity si no hay hora parseable (para que
+    // "sin hora" nunca gane sobre un reporte con hora real).
+    function extractReportTomaTs(rep) {
+      if (!rep) return -Infinity;
+      // Prioriza la hora de TOMA (extracción), NO la de resultado: queremos la última
+      // EXTRACCIÓN del día. En filas-reporte WinLab, __cells[3] y "APELLIDOS COMPLETOS"
+      // = fecha/hora de TOMA; __cells[4] y NOMBRE = fecha/hora de RESULTADO (fallback).
+      // Devuelve el PRIMER candidato parseable (toma-primero), -Infinity si ninguno.
+      const cand = [];
+      if (Array.isArray(rep.__cells) && rep.__cells[3]) cand.push(rep.__cells[3]);
+      if (rep["APELLIDOS COMPLETOS"]) cand.push(rep["APELLIDOS COMPLETOS"]);
+      if (Array.isArray(rep.__cells) && rep.__cells[4]) cand.push(rep.__cells[4]);
+      if (rep.NOMBRE) cand.push(rep.NOMBRE);
+      for (const c of cand) {
+        const m = String(c || "").match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+        if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0);
+      }
+      return -Infinity;
+    }
+
     // Mapea UN SOLO reporte (con .valores) a un objeto labs.
     // Reutiliza la lógica de mapWinlabReportesToLabs pero sobre un solo reporte.
     function mapSingleReportToLabs(rep) {
@@ -6165,13 +6204,22 @@ function plExportBackup() {
         if (!Object.keys(labs).length) continue;
         const fecha = extractReportDate(rep) || fallbackFecha;
         if (!fecha) continue;
+        const _tomaTs = extractReportTomaTs(rep);
         if (seen.has(fecha)) {
-          // Mismo día con valores adicionales: mergea al snapshot ya creado
+          // Mismo día con varias tomas: la TOMA MÁS RECIENTE gana cada analito
+          // (última toma del día — caso real: BH matutina vs vespertina post-sangrado).
+          // Verificado: el array viene en orden de RESULTADO desc, NO de TOMA, así que
+          // NO basta con "el primero gana"; hay que comparar el timestamp de toma.
+          // Tomas iguales o más viejas SOLO rellenan huecos (preserva completitud sin
+          // pisar un valor de una toma posterior). Empate exacto → primer-llegado gana.
           const prev = result.find(s => s.fecha === fecha);
           if (prev) {
+            const _newer = _tomaTs > (prev._tomaTs == null ? -Infinity : prev._tomaTs);
             for (const [k, v] of Object.entries(labs)) {
-              if (!(k in prev.labs)) prev.labs[k] = v;
+              if (!(k in prev.labs)) { prev.labs[k] = v; continue; }   // hueco → llenar siempre
+              if (_newer) prev.labs[k] = v;                              // toma más nueva → pisa
             }
+            if (_newer) prev._tomaTs = _tomaTs;
           }
           continue;
         }
@@ -6179,6 +6227,7 @@ function plExportBackup() {
         result.push({
           fecha,
           labs,
+          _tomaTs,
           extra: [],
           source: "winlab",
           // Nombre de ORIGEN del blob WinLab. Permite re-validar después que el
@@ -7042,7 +7091,7 @@ function plExportBackup() {
       ["Ca","ca"],["P","p"],["Cl","cl"],["K","k"],["Na","na"],["Mg","mg"],["Alb","alb"],
       ["BT","bt"],["BD","bd"],["BI","bi"],
       ["Amilasa","amilasa"],["Lipasa","lipasa"],["ALT","alt"],["AST","ast"],["GGT","ggt"],["FA","fa"],
-      ["PCR","pcr"],["PCT","pct"],["INR","inr"],["TP","tp"],["TTP","ttp"]
+      ["PCR","pcr"],["PCT","pct"],["Lac","lac"],["INR","inr"],["TP","tp"],["TTP","ttp"]
     ];
     function renderFocusLabs(nd, k){
       try{
