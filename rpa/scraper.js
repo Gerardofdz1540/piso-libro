@@ -14,7 +14,7 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-         isMeaningfulReportRow, extractApellidos,
+         isMeaningfulReportRow, extractApellidos, extractNombre,
          patientHeaderMatches, extractHeaderName } from "./lib.js";
 import { parsePdfToLabValues, findPdfFrameUrl } from "./pdf-extract.js";
 
@@ -268,6 +268,37 @@ async function searchAndScrapeOne(page, searchUrl, paciente) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
+  const nome = extractNombre(paciente.nombre);   // ej. "BRAYAN ESEQUIEL"
+
+  // INTENTO 1: apellido + nombre de pila → estrecha homónimos (caso real
+  // 'GONZALEZ GONZALEZ' con 4 personas distintas). Menos filas → más rápido.
+  if (nome) {
+    console.log(`       [busqueda] Apellido+Nombre → txtCognome="${cognome}" txtNome="${nome}"`);
+    const res = await doSingleSearch(page, searchUrl, paciente, {
+      codice: null, cognome, nome, tag: `apellido+nombre="${cognome} / ${nome}"`,
+    });
+    const hits = (res.rows && res.rows.length) || 0;
+    // VERIFICADOR (jun 2026): NO basta hits>0. La semántica del filtro txtNome de WinLab
+    // no está garantizada (substring/token); un homónimo que comparte el primer nombre de
+    // pila + typo en el objetivo (BRAYAN ESEQUIEL vs EZEQUIEL) podría dar hits>0 SIN el
+    // objetivo → quedaría con 0 labs que el fallback apellido-solo + match difuso SÍ trae.
+    // Solo aceptamos INTENT1 si el OBJETIVO está POSITIVAMENTE presente en los encabezados.
+    let targetPresent = false;
+    try {
+      targetPresent = (res.rows || []).some(function (r) {
+        const h = extractHeaderName(r.__cells);
+        return h && patientHeaderMatches(h, paciente.nombre);
+      });
+    } catch (_) { targetPresent = false; }
+    if (hits > 0 && !res.noResults && targetPresent) return res;
+    // FALLBACK OBLIGATORIO: cero resultados, O el objetivo no quedó confirmado en INTENT1.
+    // WinLab puede tener el nombre escrito distinto (BRAYAN ESEQUIEL vs EZEQUIEL, acentos,
+    // abreviaturas) → reintentar con SOLO apellido (legacy) para JAMÁS perder cobertura.
+    // El targeting de drill-down + el filtro de nombre en la app siguen protegiendo identidad.
+    console.log(`       [busqueda] INTENT1 ${hits} hits, objetivo presente=${targetPresent} → fallback a solo apellido "${cognome}"`);
+  }
+
+  // INTENTO 2 (o único, si no hay nombre): solo apellido (comportamiento legacy).
   console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"`);
   return await doSingleSearch(page, searchUrl, paciente, {
     codice: null, cognome, tag: `apellidos="${cognome}"`,
@@ -301,9 +332,13 @@ async function doSingleSearch(page, searchUrl, paciente, params) {
 async function doSingleSearchInner(page, searchUrl, paciente, params) {
   // Volver a la pantalla de busqueda fresca (limpia el form previo).
   await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
-  // Esperar a que TODA la red descanse para evitar "context destroyed"
-  // en operaciones siguientes (typical de ASP.NET con AJAX in-flight).
-  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+  // Esperar a que la red descanse para evitar "context destroyed" en operaciones
+  // siguientes (típico de ASP.NET con AJAX in-flight). VELOCIDAD (jun 2026): cap bajado
+  // de 10s→4s. Si la página de búsqueda NUNCA llega a networkidle (keepalive/long-poll),
+  // antes se pagaban 10s FIJOS por paciente (~8 min en 50 pacientes). El selector de
+  // búsqueda (waitFor SEL_TIMEOUT_MS=20s, abajo) + el retry anti-context-destroyed de
+  // doSingleSearch garantizan corrección si proceder a los 4s fue prematuro.
+  await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
 
   // Si hay una pestaña de temporalidad configurada, hacer clic en ella
   // antes de llenar el formulario (el formulario de esa pestaña tiene los
@@ -359,6 +394,16 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
   if (params.cognome) {
     if (await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
       await setField(page, WL_SEARCH_COGNOME_SEL, String(params.cognome), `[${params.tag}]`);
+    }
+  }
+  // txtNome (nombre de pila) — estrecha homónimos. Solo si el campo existe en esta
+  // instalación (defensivo: count()>0). WL_SEARCH_NOME_SEL ya estaba definido (env)
+  // pero nunca se llenaba; cae a comportamiento legacy si no está presente.
+  if (params.nome) {
+    if (await page.locator(WL_SEARCH_NOME_SEL).count()) {
+      await setField(page, WL_SEARCH_NOME_SEL, String(params.nome), `[${params.tag}] nome`);
+    } else {
+      console.log(`       (txtNome no presente en la página — se ignora el nombre)`);
     }
   }
 
