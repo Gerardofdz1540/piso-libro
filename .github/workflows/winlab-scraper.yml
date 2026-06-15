@@ -88,14 +88,13 @@ jobs:
           WL_PROFILO_VALUE:         ${{ secrets.WL_PROFILO_VALUE }}
           # Días de lookback para el rango de fechas (default: 2 = HOY + AYER).
           WL_LOOKBACK_DAYS:         ${{ secrets.WL_LOOKBACK_DAYS }}
-          # Drilldown: descargar hasta N PDFs por paciente. SUBIDO 4→16 (15 jun 2026):
-          # WinLab guarda CADA panel como referto SEPARADO (BH, química sanguínea, función
-          # hepática, coags, gases...). Con 4 solo se bajaban ~4 refertos (BH+coags) y la
-          # QS/hepática quedaban identificadas pero SIN drillear → el usuario las hacía a
-          # mano. El targeting (rpa/scraper.js) ya limita a los reportes del OBJETIVO en el
-          # rango, así que 16 cubre todos los paneles de varios días. Costo: scraper más
-          # lento (timeouts subidos abajo). Esta env OVERRIDE pisa el default del código.
-          WL_DRILLDOWN_MAX:         "16"
+          # Drilldown: descargar hasta N PDFs por paciente. 4→16→12 (15 jun 2026):
+          # WinLab guarda CADA panel como referto SEPARADO (BH, química, hepática, coags...).
+          # Con 4 la QS/hepática quedaba sin drillear. 16 fue demasiado: el presupuesto
+          # por-paciente (90s) no alcanzaba para 16 drills y abandonaba pacientes. 12 cubre
+          # BH+QS+hepática+coags de varios días y entra en 90s. El targeting limita a los
+          # reportes del OBJETIVO. Esta env OVERRIDE pisa el default del código.
+          WL_DRILLDOWN_MAX:         "12"
           SUPABASE_URL:             ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY:     ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_TABLE:           ${{ secrets.SUPABASE_TABLE }}
