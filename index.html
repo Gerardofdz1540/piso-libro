@@ -3083,6 +3083,15 @@
     body.dark .ff-labtable td.ff-lo{color:#60a5fa}
     body.dark .ff-labtable td.ff-hi{color:#f87171}
     body.dark .ff-labtable td.ff-crit{color:#fff !important;background:#b91c1c}
+    /* v52 · Δ tendencia: flecha sutil junto al valor (no pisa el color del valor) */
+    .ff-labtable td .ff-trend{font-size:9px;margin-left:3px;vertical-align:middle;opacity:.7;font-weight:700}
+    .ff-labtable td .ff-trend-up{color:#dc2626}
+    .ff-labtable td .ff-trend-dn{color:#1d4ed8}
+    .ff-labtable td.ff-crit .ff-trend{color:#fff;opacity:.9}
+    body.dark .ff-labtable td .ff-trend-up{color:#f87171}
+    body.dark .ff-labtable td .ff-trend-dn{color:#60a5fa}
+    .focus-board .ff-labtable td .ff-trend-up{color:#dc2626}
+    .focus-board .ff-labtable td .ff-trend-dn{color:#1a3aa8}
     /* PASE DE VISITA (rondas) hereda el look GoodNotes — modo claro */
     body:not(.dark) #rondas-body{background-color:#fafbfc;background-image:radial-gradient(#cbd5e1 .8px,transparent .8px);background-size:22px 22px}
     body:not(.dark) #rondas-body .full-card{border:1.5px solid #0a1628;border-radius:8px;box-shadow:0 12px 32px rgba(10,22,40,.16);background:#fff;overflow:hidden}
@@ -7120,12 +7129,33 @@ function plExportBackup() {
           if(f.low  != null && n < f.low)  return "ff-lo";
           return "";
         }
+        // v52 · Δ tendencia: parseo numérico robusto (ignora <,>,texto/rangos) para comparar contra la columna PREVIA (día anterior).
+        // Devuelve null si no es un número limpio (texto tipo "Positivo", "+++", "3.2-5.5" rango, etc.) → NO se marca tendencia.
+        function trendNum(raw){
+          if(raw === undefined || raw === null) return null;
+          var s = String(raw).trim();
+          if(s === "" || s === "—") return null;
+          if(/[a-zA-Z]/.test(s)) return null;          // texto (Positivo, NEG, mg/dL pegado…) → no numérico para tendencia
+          if(/\d\s*[-–]\s*\d/.test(s)) return null;      // rango (3.2-5.5) → ambiguo, no marcar
+          var n = parseFloat(s.replace(/[<>≤≥]/g, "").replace(",", "."));
+          return isNaN(n) ? null : n;
+        }
+        function trendMark(key, idx){
+          if(idx <= 0) return "";                      // primera columna: no hay previo
+          var cur  = trendNum(byDate[shown[idx]][key]);
+          var prev = trendNum(byDate[shown[idx-1]][key]);
+          if(cur === null || prev === null) return "";  // sin valor previo o no numérico → sin flecha
+          if(cur > prev) return '<span class="ff-trend ff-trend-up" title="Sube vs columna previa">▲</span>';
+          if(cur < prev) return '<span class="ff-trend ff-trend-dn" title="Baja vs columna previa">▼</span>';
+          return '';                                    // igual → sin flecha (evita ruido)
+        }
         function cellRow(label, key){
-          var tds = shown.map(function(d){
+          var tds = shown.map(function(d, idx){
             var raw = byDate[d][key];
             var v = (raw === undefined || raw === null || String(raw).trim() === "") ? "—" : String(raw).trim();
             var cls = (v === "—") ? "" : labClass(key, v);
-            return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(v) + '</td>';
+            var tr = (v === "—") ? "" : trendMark(key, idx);
+            return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(v) + tr + '</td>';
           }).join('');
           return '<tr><td class="ff-an">' + esc(label) + '</td>' + tds + '</tr>';
         }
@@ -9245,19 +9275,21 @@ function plExportBackup() {
       Object.keys(map).forEach(function (k) {
         var names = map[k];
         if (!names || !names.length) return;
-        var esc1 = (window.CSS && CSS.escape) ? CSS.escape(k) : String(k).replace(/["\\]/g, "\\$&");
-        var els;
-        try { els = document.querySelectorAll('[data-k="' + esc1 + '"],[data-key="' + esc1 + '"]'); }
-        catch (_) { return; }
-        for (var i = 0; i < els.length; i++) {
-          if (els[i].querySelector(".pl-presence-badge")) continue;
-          var b = document.createElement("span");
-          b.className = "pl-presence-badge";
-          b.textContent = "✏️ " + names.join(", ");
-          b.title = "Editando ahora: " + names.join(", ");
-          b.style.cssText = "display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap";
-          els[i].appendChild(b);
-        }
+        // v52 · anclar SOLO al contenedor de tarjeta (id="card-"+k), no a cualquier control con el key
+        // (en el board, [data-k] cae también en el botón de cama lateral .bs-btn y en chips/textareas → ruidoso).
+        // Las 3 tarjetas (full-card / focus-board / simple-card) usan id="card-"+k, así que un solo anclaje cubre todo.
+        var card = null;
+        try { card = document.getElementById("card-" + k); } catch (_) { card = null; }
+        if (!card) return;
+        if (card.querySelector(".pl-presence-badge")) return;
+        // host preferido: el header de la tarjeta (junto al nombre); fallback al contenedor.
+        var host = card.querySelector(".card-header-row1, .fb-mid, .simple-header") || card;
+        var b = document.createElement("span");
+        b.className = "pl-presence-badge";
+        b.textContent = "✏️ " + names.join(", ");
+        b.title = "Editando ahora: " + names.join(", ");
+        b.style.cssText = "display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap";
+        host.appendChild(b);
       });
     }
     // Presencia para edición INLINE (board "Pantalla" / rejilla / listas): cuando el
