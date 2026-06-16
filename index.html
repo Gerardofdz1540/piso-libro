@@ -14298,18 +14298,19 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         sorted.forEach(p => {
           const nd = noteData[pid(p)] || defaultData();
           const cl = nd.checklist || {};
-          const nptEntrega = getEntregaNptText(cl);
-          const days = daysSince(p.ingreso);
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
-          const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
-          // Labs compactos
-          const snap = (nd.labHistory || []).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
-          const labs = snap ? snap.labs || {} : {};
+          // ── ENTREGA SIMPLE EN GRANDE (jun 2026) ──────────────────────────────────
+          // Por pedido de Gera: la pestaña Entrega muestra SOLO nombre + laboratorios +
+          // gastos por drenajes, todo en grande (lectura rápida en cambio de guardia).
+          const snap = (nd.labHistory || []).slice().sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0];
+          const labs = snap ? (snap.labs || {}) : {};
           const labDate = snap ? fmtDateChip(snap.fecha) : "";
-          let labHtml = "";
-          const labItems = ["hb", "leucos", "plaq", "cr", "glu", "na", "k", "alb", "pcr", "pct", "tp", "ttp", "inr", "fibrinogeno", "fa", "ego_leuco", "ego_ph", "ego_nitri", "ego_bact", "ego_hem"].filter(x => labs[x]);
+          // Orden de entrega — incluye química/hepática ahora que el scraper las captura.
+          const LAB_ORDER_EG = ["hb","leucos","plaq","cr","bun","urea","glu","na","k","cl","ca","mg","alb","ptot","bt","bd","alt","ast","fa","ggt","ldh","pcr","pct","tp","ttp","inr","fibrinogeno","lac"];
+          const labItems = LAB_ORDER_EG.filter(x => labs[x] && String(labs[x]).trim() !== "");
+          let labsBig = "";
           if (labItems.length) {
-            labHtml = `<div class="eg-labs-compact"><span class="eg-lc-date">🧪 ${labDate}</span><div class="eg-lc-grid">` +
+            labsBig = `<div class="eg-bigrow"><span class="eg-biglbl">🧪 Laboratorios · ${labDate}</span><div class="eg-biglabs">` +
               labItems.map(x => {
                 const lf = LAB_FIELDS.find(f => f.key === x);
                 const num = parseFloat(labs[x]);
@@ -14317,59 +14318,32 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
                 if (lf && !isNaN(num)) {
                   const isCrit = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
                   const isAbn = !isCrit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
-                  if (isCrit) cls = " eg-lc-crit";
-                  else if (isAbn) cls = " eg-lc-abn";
+                  if (isCrit) cls = " crit"; else if (isAbn) cls = " abn";
                 }
                 const lbl = lf ? lf.label : x.toUpperCase();
-                return `<span class="eg-lc-item${cls}"><b>${lbl}</b> ${labs[x]}</span>`;
+                return `<span class="eg-biglab${cls}"><b>${lbl}</b>${esc(String(labs[x]))}</span>`;
               }).join("") +
               `</div></div>`;
           }
-          // Fields helper
-          function ef(lbl, v) { if (!v || !String(v).trim()) return ""; return `<div class="eg-f"><span class="eg-fl">${lbl}</span><span class="eg-fv">${esc(String(v))}</span></div>`; }
-          function efh(lbl, v) { if (!v || !String(v).trim()) return ""; return `<div class="eg-f eg-fhl"><span class="eg-fl">${lbl}</span><span class="eg-fv">${esc(String(v))}</span></div>`; }
+          // Gastos por drenajes (nd.drenajes + SEP si aplica).
+          const drenParts = [];
+          if (nd.drenajes && String(nd.drenajes).trim()) drenParts.push(String(nd.drenajes).trim());
+          if (cl.pm_sep) {
+            let sep = "SEP";
+            if (cl.pm_sep_gasto) sep += " " + cl.pm_sep_gasto + " mL/24h";
+            if (cl.pm_sep_fuga) sep += " · Fuga Gr." + (cl.pm_sep_fuga_grado || "?");
+            drenParts.push(sep);
+          }
+          const drenTxt = drenParts.join("  |  ");
+          const drenBig = drenTxt ? `<div class="eg-bigrow"><span class="eg-biglbl">💧 Gastos por drenajes</span><div class="eg-bigval">${esc(drenTxt)}</div></div>` : "";
 
-          cards += `<div class="eg-c" style="border-left:4px solid ${ec}">
-        <div class="eg-ct"><div class="eg-ci">
-          <span class="eg-cama" style="background:${ec}">${esc(p.cama)}</span>
-          <span class="eg-est" style="background:${sc}">${esc(p.estado || "")}</span>
-          <span class="eg-esp2">${esc(p.esp)}</span><span class="eg-dia2">D${days}</span>
-        </div><div class="eg-cp">
-          <b class="eg-nom">${esc(p.nombre)}</b>
-          <span class="eg-mt">${p.edad || "—"}a · ${esc(p.exp || "")} · ${esc(p.adscrito || "")}/${esc(p.residente || "")}</span>
-        </div></div>
-        <div class="eg-cb">
-          ${ef("DX", p.dx || nd.dx)}
-          ${ef("QX", nd.qx || nd.manejo)}
-          <div class="eg-r2">${(function(){
-            const parts = [];
-            if (nd.drenajes) parts.push(nd.drenajes);
-            if (cl.pm_sep) {
-              let sep = "SEP";
-              if (cl.pm_sep_gasto) sep += " " + cl.pm_sep_gasto + " mL/24h";
-              if (cl.pm_sep_fuga) sep += " · Fuga Gr." + (cl.pm_sep_fuga_grado || "?");
-              parts.push(sep);
-            }
-            const txt = parts.join(" | ");
-            return txt ? ef("💧 Drenajes", txt) : "";
-          })()}${ef("💉 NPT", nptEntrega)}</div>
-          <div class="eg-r3">${ef("🩸Sangr", nd.sangrado)}${ef("⚖️Bal", nd.balance)}${ef("🍽 Dieta", cl.dieta || "")}</div>
-          ${efh("📌 PLAN/PEND", nd.pendientes)}
-          ${nd.entrega ? `<div class="eg-f" style="background:#fffbeb;border-left:3px solid #f59e0b;padding:3px 6px;border-radius:0 4px 4px 0;margin:4px 0"><span class="eg-fl" style="color:#b45309">📋 ENTREGA</span><span class="eg-fv" style="color:#92400e;font-weight:600">${esc(String(nd.entrega))}</span></div>` : ''}
-          ${labHtml}
-          ${(function () {
-              const tags = [];
-              if (cl.npo) tags.push('<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">NPO</span>');
-              if (cl.atb) tags.push('<span style="background:#0369a1;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">ATB</span>');
-              if (cl.tvp) tags.push('<span style="background:#7c3aed;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">TVP</span>');
-              if (cl.dren) tags.push('<span style="background:#b45309;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">DREN</span>');
-              if (cl.npt) tags.push('<span style="background:#7c3aed;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">NPT' + (cl.npt_pct ? ' ' + esc(cl.npt_pct) : '') + '</span>');
-              if (cl.dieta) tags.push('<span style="background:#059669;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">🍽 ' + esc(cl.dieta) + '</span>');
-              if (cl.cur_necesita && !cl.cur_realizada) tags.push('<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;animation:pulse .8s infinite">🩹 CURACIÓN PEND</span>');
-              if (cl.cur_realizada) tags.push('<span style="background:#059669;color:#fff;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700">🩹 CURADA' + (cl.cur_realizada_hora ? ' ' + cl.cur_realizada_hora : '') + '</span>');
-              return tags.length ? '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">' + tags.join('') + '</div>' : '';
-            })()}
+          cards += `<div class="eg-c" style="border-left:7px solid ${ec}">
+        <div class="eg-bighdr">
+          <span class="eg-bigcama" style="background:${ec}">${esc(p.cama)}</span>
+          <span class="eg-bignom">${esc(p.nombre)}</span>
         </div>
+        ${labsBig}
+        ${drenBig}
       </div>`;
         });
         sectionsHtml += `<div class="eg-sec"><div class="eg-sh" style="background:${sec.color}"><span>${sec.label}</span><span class="eg-sc">${sorted.length}</span></div><div class="eg-sg">${cards}</div></div>`;
@@ -14416,6 +14390,21 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       .eg-lc-item.eg-lc-abn b{color:#78350f}
       .eg-lc-item.eg-lc-crit{background:#fee2e2;border-color:#fca5a5;color:#b91c1c;font-weight:700}
       .eg-lc-item.eg-lc-crit b{color:#991b1b}
+      /* Entrega SIMPLE en grande (jun 2026): solo cama+nombre, laboratorios y gastos por drenajes */
+      .eg-sg{grid-template-columns:repeat(auto-fill,minmax(540px,1fr))}
+      .eg-bighdr{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:2px solid #eef2f7;flex-wrap:wrap}
+      .eg-bigcama{color:#fff;padding:4px 14px;border-radius:8px;font-size:24px;font-weight:800;white-space:nowrap}
+      .eg-bignom{font-size:24px;font-weight:800;color:#0f172a;line-height:1.1}
+      .eg-bigrow{padding:10px 16px;border-top:1px solid #f4f7fb}
+      .eg-biglbl{font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px}
+      .eg-bigval{font-size:21px;font-weight:600;color:#1e293b;line-height:1.3;word-break:break-word}
+      .eg-biglabs{display:flex;flex-wrap:wrap;gap:8px}
+      .eg-biglab{font-size:19px;font-weight:600;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:7px;padding:3px 11px;color:#0369a1;white-space:nowrap}
+      .eg-biglab b{font-weight:800;color:#0c4a6e;margin-right:5px}
+      .eg-biglab.abn{background:#fef3c7;border-color:#fcd34d;color:#92400e}
+      .eg-biglab.abn b{color:#78350f}
+      .eg-biglab.crit{background:#fee2e2;border-color:#fca5a5;color:#b91c1c;font-weight:800}
+      .eg-biglab.crit b{color:#991b1b}
       @media print{.eg-c{break-inside:avoid;box-shadow:none}}
       @media(max-width:640px){.eg-sg{grid-template-columns:1fr}.eg-r2,.eg-r3{grid-template-columns:1fr}}
     </style>
@@ -14680,8 +14669,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             if (!nd || !nd.checklist) continue;
             const reminders = nd.checklist._ptReminders;
             if (!Array.isArray(reminders) || reminders.length === 0) continue;
-            const ptName = nd.nombre || nd.name || k;
-            const cama = nd.cama || nd.room || "";
+            // FIX (jun 2026): nombre/cama viven en el objeto PACIENTE, no en la nota.
+            // Antes leía nd.nombre/nd.cama (undefined) → ptName caía a `k` (el id/llave del
+            // paciente = el "número raro" donde va la cama) y cama quedaba vacía.
+            const _p = (typeof patients !== "undefined" ? patients.find(pt => pid(pt) === k) : null);
+            const ptName = (_p && _p.nombre) || nd.nombre || nd.name || k;
+            const cama = (_p && _p.cama) || nd.cama || nd.room || "";
             const pendPt = reminders.filter(r => !r.done);
             if (pendPt.length === 0) continue;
             const rows = pendPt.map((r, idx) => `
