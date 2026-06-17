@@ -14299,31 +14299,48 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const nd = noteData[pid(p)] || defaultData();
           const cl = nd.checklist || {};
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
-          // ── ENTREGA SIMPLE EN GRANDE (jun 2026) ──────────────────────────────────
-          // Por pedido de Gera: la pestaña Entrega muestra SOLO nombre + laboratorios +
-          // gastos por drenajes, todo en grande (lectura rápida en cambio de guardia).
-          const snap = (nd.labHistory || []).slice().sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))[0];
-          const labs = snap ? (snap.labs || {}) : {};
-          const labDate = snap ? fmtDateChip(snap.fecha) : "";
-          // Orden de entrega — incluye química/hepática ahora que el scraper las captura.
-          const LAB_ORDER_EG = ["hb","leucos","plaq","cr","bun","urea","glu","na","k","cl","ca","mg","alb","ptot","bt","bd","alt","ast","fa","ggt","ldh","pcr","pct","tp","ttp","inr","fibrinogeno","lac"];
-          const labItems = LAB_ORDER_EG.filter(x => labs[x] && String(labs[x]).trim() !== "");
-          let labsBig = "";
-          if (labItems.length) {
-            labsBig = `<div class="eg-bigrow"><span class="eg-biglbl">🧪 Laboratorios · ${labDate}</span><div class="eg-biglabs">` +
-              labItems.map(x => {
-                const lf = LAB_FIELDS.find(f => f.key === x);
-                const num = parseFloat(labs[x]);
-                let cls = "";
-                if (lf && !isNaN(num)) {
-                  const isCrit = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
-                  const isAbn = !isCrit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
-                  if (isCrit) cls = " crit"; else if (isAbn) cls = " abn";
-                }
-                const lbl = lf ? lf.label : x.toUpperCase();
-                return `<span class="eg-biglab${cls}"><b>${lbl}</b>${esc(String(labs[x]))}</span>`;
-              }).join("") +
-              `</div></div>`;
+          // ── ENTREGA: una ficha por paciente — id + diagnóstico + últimos 2 labs + drenajes ──
+          // Por pedido de Gera (jun 2026): ficha de identificación, Dx, los últimos
+          // laboratorios (al menos los 2 más recientes, comparados) y gastos de drenajes.
+          let days = ""; try { days = daysSince(p.ingreso); } catch (_) { days = ""; }
+          const idParts = [
+            p.edad ? p.edad + "a" : "",
+            p.exp ? "Exp " + esc(String(p.exp)) : "",
+            p.esp ? esc(String(p.esp)) : "",
+            (days !== "" && days != null) ? "D" + days : "",
+            [p.adscrito, p.residente].filter(Boolean).map(function (x) { return esc(String(x)); }).join("/")
+          ].filter(Boolean);
+          const idLine = idParts.join(" · ");
+          // Diagnóstico
+          const dxTxt = p.dx || nd.dx || "";
+          const dxRow = (dxTxt && String(dxTxt).trim())
+            ? `<div class="eg-bigrow"><span class="eg-biglbl">🩺 Diagnóstico</span><div class="eg-bigval">${esc(String(dxTxt))}</div></div>` : "";
+          // Últimos 2 laboratorios (comparados, cronológico viejo→nuevo).
+          const LAB_ORDER_EG = ["hb","hct","leucos","plaq","cr","bun","urea","glu","na","k","cl","ca","mg","alb","ptot","glob","bt","bd","bi","alt","ast","fa","ggt","ldh","pcr","pct","tp","ttp","inr","fibrinogeno","lac"];
+          const recent = (nd.labHistory || []).slice().filter(s => s && s.fecha)
+            .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 2);
+          const cols = recent.slice().reverse(); // [previo, más reciente]
+          const presentKeys = LAB_ORDER_EG.filter(x => cols.some(s => s.labs && s.labs[x] && String(s.labs[x]).trim() !== ""));
+          const cellCls = (key, val) => {
+            const lf = LAB_FIELDS.find(f => f.key === key); const num = parseFloat(val);
+            if (!lf || isNaN(num)) return "";
+            if ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)) return "crit";
+            if ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high)) return "abn";
+            return "";
+          };
+          let labsTbl = "";
+          if (presentKeys.length && cols.length) {
+            const header = `<tr><th></th>${cols.map(s => `<th>${fmtDateChip(s.fecha)}</th>`).join("")}</tr>`;
+            const rows = presentKeys.map(key => {
+              const lf = LAB_FIELDS.find(f => f.key === key);
+              const lbl = lf ? lf.label : key.toUpperCase();
+              return `<tr><td>${esc(lbl)}</td>${cols.map(s => {
+                const v = (s.labs && s.labs[key]) ? String(s.labs[key]) : "—";
+                const c = v === "—" ? "" : cellCls(key, v);
+                return `<td class="${c}">${esc(v)}</td>`;
+              }).join("")}</tr>`;
+            }).join("");
+            labsTbl = `<div class="eg-bigrow"><span class="eg-biglbl">🧪 Laboratorios (últimos ${cols.length})</span><table class="eg-labtbl">${header}${rows}</table></div>`;
           }
           // Gastos por drenajes (nd.drenajes + SEP si aplica).
           const drenParts = [];
@@ -14340,9 +14357,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           cards += `<div class="eg-c" style="border-left:7px solid ${ec}">
         <div class="eg-bighdr">
           <span class="eg-bigcama" style="background:${ec}">${esc(p.cama)}</span>
-          <span class="eg-bignom">${esc(p.nombre)}</span>
+          <div class="eg-bigidwrap">
+            <span class="eg-bignom">${esc(p.nombre)}</span>
+            ${idLine ? `<span class="eg-bigid">${idLine}</span>` : ""}
+          </div>
         </div>
-        ${labsBig}
+        ${dxRow}
+        ${labsTbl}
         ${drenBig}
       </div>`;
         });
@@ -14405,6 +14426,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       .eg-biglab.abn b{color:#78350f}
       .eg-biglab.crit{background:#fee2e2;border-color:#fca5a5;color:#b91c1c;font-weight:800}
       .eg-biglab.crit b{color:#991b1b}
+      /* Entrega v2 (jun 2026): ficha id + Dx + últimos 2 labs comparados + drenajes */
+      .eg-bigidwrap{display:flex;flex-direction:column;gap:2px;min-width:0}
+      .eg-bigid{font-size:13px;font-weight:600;color:#64748b;line-height:1.2}
+      .eg-labtbl{border-collapse:collapse;margin-top:2px}
+      .eg-labtbl th{font-size:12px;font-weight:700;color:#0e7490;text-align:right;padding:2px 14px 4px;border-bottom:2px solid #e2e8f0;white-space:nowrap}
+      .eg-labtbl th:first-child{text-align:left}
+      .eg-labtbl td{font-size:18px;font-weight:600;color:#1e293b;text-align:right;padding:2px 14px;white-space:nowrap}
+      .eg-labtbl td:first-child{font-size:14px;font-weight:700;color:#475569;text-align:left}
+      .eg-labtbl td.abn{color:#92400e}
+      .eg-labtbl td.crit{color:#b91c1c;font-weight:800}
       @media print{.eg-c{break-inside:avoid;box-shadow:none}}
       @media(max-width:640px){.eg-sg{grid-template-columns:1fr}.eg-r2,.eg-r3{grid-template-columns:1fr}}
     </style>
