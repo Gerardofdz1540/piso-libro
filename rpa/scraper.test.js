@@ -87,6 +87,15 @@ assert(isAllowedEsp("GYO") === false,      "isAllowedEsp: GYO -> false (excluida
 assert(isAllowedEsp("") === false,         "isAllowedEsp: vacio -> false");
 assert(isAllowedEsp(null) === false,       "isAllowedEsp: null -> false");
 assert(isAllowedEsp("URGENCIAS") === true, "isAllowedEsp: URGENCIAS -> true");
+// MANEJO CONJUNTO (jun 2026): co-manejo con un servicio nuestro DEBE entrar al scraper.
+assert(isAllowedEsp("CMF/CT") === true,    "isAllowedEsp: CMF/CT -> true (co-manejo, ambos permitidos) [FIX]");
+assert(isAllowedEsp("URO/CG") === true,    "isAllowedEsp: URO/CG -> true (co-maneja CG)");
+assert(isAllowedEsp("CT/URO") === true,    "isAllowedEsp: CT/URO -> true (co-maneja CT)");
+assert(isAllowedEsp("CG/CT") === true,     "isAllowedEsp: CG/CT -> true");
+assert(isAllowedEsp("NCX/CG") === true,    "isAllowedEsp: NCX/CG -> true (co-maneja CG)");
+// Co-manejo SIN ningún servicio nuestro sigue excluido (precisión).
+assert(isAllowedEsp("URO/GYO") === false,  "isAllowedEsp: URO/GYO -> false (ningún servicio nuestro)");
+assert(isAllowedEsp("NCX") === false,      "isAllowedEsp: NCX -> false (excluida, single)");
 
 // ── 8. formatDate ─────────────────────────────────────────────────────
 {

@@ -269,28 +269,45 @@ async function captureSearchUrl(page) {
 // txtCognome (ej. "MARTINEZ ROLDAN"). Sin fallbacks — los pacientes no están
 // registrados por expediente en WinLab, y buscar por un solo apellido genera
 // timeouts por exceso de homónimos. Si no hay resultados → sin labs en el rango.
-async function searchAndScrapeOne(page, searchUrl, paciente) {
+async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
   const apellidos = extractApellidos(paciente.nombre);
-  const cognome   = apellidos[0] || "";   // ej. "MARTINEZ ROLDAN"
+  const cognome   = apellidos[0] || "";   // ej. "MARTINEZ ROLDAN" (paterno+materno)
   if (!cognome) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
   console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"`);
-  return await doSingleSearch(page, searchUrl, paciente, {
+  let res = await doSingleSearch(page, searchUrl, paciente, {
     codice: null, cognome, tag: `apellidos="${cognome}"`,
-  });
+  }, deadlineTs);
+  // FALLBACK por NINGÚN REGISTRO (jun 2026): si "paterno+materno" no devuelve NADA,
+  // reintentar con SOLO el apellido paterno. WinLab a veces registra al paciente con
+  // un único apellido en el campo cognome → la cadena concatenada no matchea y se
+  // perdían pacientes que SÍ tienen labs (ej. 3-168 ANA PEREZ DOMINGUEZ, 3-183 LETICIA
+  // ALVARADO CÓRDOBA → "NINGUN REGISTRO"). GATE estricto: solo dispara en noResults
+  // (no toca a los que ya matchearon). El drill sigue 100% targeteado por nombre COMPLETO
+  // (patientHeaderMatches) → el apellido suelto NO afloja identidad: solo se drillean los
+  // refertos del objetivo, los homónimos se rechazan. Precisión > recall intactos.
+  const paterno = apellidos[1] || "";
+  if (res && res.noResults && paterno && paterno !== cognome) {
+    console.log(`       [fallback] NINGÚN REGISTRO con "${cognome}" → reintento con paterno solo: "${paterno}"`);
+    const res2 = await doSingleSearch(page, searchUrl, paciente, {
+      codice: null, cognome: paterno, tag: `paterno="${paterno}"`,
+    }, deadlineTs);
+    if (res2 && !res2.noResults) res = res2;
+  }
+  return res;
 }
 
 // Una sola tentativa de busqueda con parametros explicitos.
 // Wrap con retry interno para "Execution context was destroyed" — error
 // transitorio cuando la pagina navega justo durante un page.evaluate
 // (frecuente en cascada de busquedas seguidas).
-async function doSingleSearch(page, searchUrl, paciente, params) {
+async function doSingleSearch(page, searchUrl, paciente, params, deadlineTs) {
   let lastErr = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await doSingleSearchInner(page, searchUrl, paciente, params);
+      return await doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs);
     } catch (e) {
       lastErr = e;
       const msg = e?.message || "";
@@ -306,7 +323,7 @@ async function doSingleSearch(page, searchUrl, paciente, params) {
   throw lastErr;
 }
 
-async function doSingleSearchInner(page, searchUrl, paciente, params) {
+async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs) {
   // Volver a la pantalla de busqueda fresca (limpia el form previo).
   await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
   // Esperar a que TODA la red descanse para evitar "context destroyed"
@@ -599,7 +616,19 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
     }
     // dumpFirst = true solo en la PRIMERA llamada real a drillDownReport.
     let firstDrilldownDone = false;
+    let drilledOk = 0;
     for (const i of drillIdxs) {
+      // SOFT-DEADLINE (jun 2026): si nos acercamos al presupuesto por-paciente,
+      // PARAR de drillear y devolver lo que YA se capturó, en vez de dejar que el
+      // Promise.race externo (timeout duro 90s) RECHACE todo y el paciente se quede
+      // con CERO labs. Los refertos vienen más-reciente-primero, así que lo drilleado
+      // es lo de HOY/AYER (BH+QS+hepática), que es lo clínicamente importante. La
+      // historia profunda se acumula igual en corridas diarias. (Casos reales:
+      // GARCIA NORIA / CARRANCO / RANGEL — UCI/críticos, timeout 90s = 0 reportes.)
+      if (deadlineTs && Date.now() > deadlineTs) {
+        console.log(`       [soft-deadline] presupuesto agotado: drilleados ${drilledOk}/${drillIdxs.length}, devolviendo parcial`);
+        break;
+      }
       const row = result.rows[i];
       const dumpFirst = !firstDrilldownDone;
       firstDrilldownDone = true;
@@ -607,6 +636,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
         const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, dumpFirst);
         if (valores && valores.length) {
           row.valores = valores;
+          drilledOk++;
         }
       } catch (e) {
         console.log(`       drill-down [${i}]: ${e.message.split("\n")[0]}`);
@@ -1039,6 +1069,10 @@ async function scrapeForCenso(page, searchUrl, censo) {
   // con muchos refertos tardaba >45s y se ABANDONABA sin labs (caso 3-175 GARCIA NORIA:
   // "ERROR timeout 45000ms"). 90s da margen para ~12 drills + búsqueda. Tuneable por env.
   const PER_PATIENT_BUDGET_MS = parseInt(ENV("WL_PER_PATIENT_BUDGET_MS", "90000"), 10);
+  // Margen SOFT antes del timeout DURO: el drill se detiene a (budget - margen) para
+  // alcanzar a devolver lo capturado y que records.push corra ANTES de que el
+  // Promise.race rechace y se pierda todo. Debe cubrir 1 drill en vuelo (~10s) + return.
+  const DRILL_SOFT_MARGIN_MS = parseInt(ENV("WL_DRILL_SOFT_MARGIN_MS", "15000"), 10);
   let consecutiveErrors = 0;
   let firstDiagDumped = false;
 
@@ -1052,8 +1086,11 @@ async function scrapeForCenso(page, searchUrl, censo) {
       subPage.setDefaultNavigationTimeout(PER_PATIENT_BUDGET_MS);
       subPage.setDefaultTimeout(SEL_TIMEOUT_MS);
 
-      // Circuit breaker: 45s estrictos por paciente via Promise.race.
-      const work = searchAndScrapeOne(subPage, searchUrl, p);
+      // Circuit breaker: timeout DURO por paciente via Promise.race. El soft-deadline
+      // (deadlineTs) le dice al drill que pare ANTES (budget - margen) y devuelva parcial,
+      // así el timeout duro casi nunca debería dispararse y el paciente nunca queda en 0.
+      const deadlineTs = Date.now() + Math.max(20000, PER_PATIENT_BUDGET_MS - DRILL_SOFT_MARGIN_MS);
+      const work = searchAndScrapeOne(subPage, searchUrl, p, deadlineTs);
       const timeout = new Promise((_, rej) =>
         setTimeout(() => rej(new Error(`timeout ${PER_PATIENT_BUDGET_MS}ms`)), PER_PATIENT_BUDGET_MS)
       );
