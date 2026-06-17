@@ -277,26 +277,17 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
   console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"`);
-  let res = await doSingleSearch(page, searchUrl, paciente, {
+  // NOTA (jun 2026): se PROBÓ un fallback a paterno-solo cuando "paterno+materno" da
+  // NINGÚN REGISTRO. Se REVIRTIÓ: el search por apellido único devuelve una lista de
+  // homónimos cuyo ENCABEZADO el parser NO identifica (cae a "primeros N"), disparando
+  // drill ciego de ~12 PDFs de pacientes ajenos por objetivo. Eso (a) no recupera al
+  // objetivo por nombre y (b) saturó memoria → COLAPSO del navegador (corrida 27665440228,
+  // crash determinista en pac 15-16, 3 reintentos). Recuperar los NINGÚN REGISTRO requiere
+  // arreglar el PARSEO del encabezado de la lista multi-paciente (ver HTML real de WinLab),
+  // no un drill ciego. Diferido a propósito.
+  return await doSingleSearch(page, searchUrl, paciente, {
     codice: null, cognome, tag: `apellidos="${cognome}"`,
   }, deadlineTs);
-  // FALLBACK por NINGÚN REGISTRO (jun 2026): si "paterno+materno" no devuelve NADA,
-  // reintentar con SOLO el apellido paterno. WinLab a veces registra al paciente con
-  // un único apellido en el campo cognome → la cadena concatenada no matchea y se
-  // perdían pacientes que SÍ tienen labs (ej. 3-168 ANA PEREZ DOMINGUEZ, 3-183 LETICIA
-  // ALVARADO CÓRDOBA → "NINGUN REGISTRO"). GATE estricto: solo dispara en noResults
-  // (no toca a los que ya matchearon). El drill sigue 100% targeteado por nombre COMPLETO
-  // (patientHeaderMatches) → el apellido suelto NO afloja identidad: solo se drillean los
-  // refertos del objetivo, los homónimos se rechazan. Precisión > recall intactos.
-  const paterno = apellidos[1] || "";
-  if (res && res.noResults && paterno && paterno !== cognome) {
-    console.log(`       [fallback] NINGÚN REGISTRO con "${cognome}" → reintento con paterno solo: "${paterno}"`);
-    const res2 = await doSingleSearch(page, searchUrl, paciente, {
-      codice: null, cognome: paterno, tag: `paterno="${paterno}"`,
-    }, deadlineTs);
-    if (res2 && !res2.noResults) res = res2;
-  }
-  return res;
 }
 
 // Una sola tentativa de busqueda con parametros explicitos.
