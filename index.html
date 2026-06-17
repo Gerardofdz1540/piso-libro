@@ -3424,6 +3424,11 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
           style="background:rgba(245,158,11,.18);border:1px solid rgba(245,158,11,.4);color:#fde68a;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
           📓 Cuaderno
         </button>
+        <button id="proyectar-btn" onclick="openProjection()"
+          title="🖥️ Abre una 2ª ventana de proyección (un paciente a la vez, en grande) que SIGUE al paciente en foco. Llévala al proyector/TV o pantalla externa del iPad. Tú navegas aquí, el equipo ve la grande."
+          style="background:rgba(13,148,136,.20);border:1px solid rgba(13,148,136,.45);color:#99f6e4;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
+          🖥️ Proyectar
+        </button>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
         <button id="logout-btn" onclick="logout()" title="Cerrar sesión"
           style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);color:#fecaca;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">🚪 Salir</button>
@@ -7761,6 +7766,127 @@ function plExportBackup() {
           ? renderSimpleCard(p, _nd, k)
           : renderFullCard(p, _nd, k);
       }
+      // Si este paciente es el que está PROYECTADO, refresca la proyección en vivo
+      // (ej. editaste labs/plan/drenajes y se ven al instante en la pantalla grande).
+      if (window.__focusPid === k) broadcastProjection(k);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // MODO PROYECCIÓN (jun 2026) — ventana "presentador", UN paciente a la vez.
+    // La ventana de control (esta app) MANDA: abre una 2ª ventana y le escribe el
+    // DOM directamente (mismo origen → acceso permitido). La proyección SIGUE al
+    // paciente en foco. Sin postMessage, sin BroadcastChannel, SIN inyectar etiquetas
+    // de código (no altera el invariante 17/10 de tags), sin timers nuevos, sin tocar
+    // init/Supabase. 100% event-driven. Funciona en laptop (ventana al proyector/TV)
+    // y en iPad (Stage Manager / pantalla externa).
+    // ════════════════════════════════════════════════════════════════════════
+    var _projWin = null;
+    function _projCss() {
+      return [
+        '*{box-sizing:border-box;margin:0;padding:0}',
+        'html,body{height:100%}',
+        'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;color:#0f172a;padding:26px 34px}',
+        '.proj-wait{display:flex;height:90vh;align-items:center;justify-content:center;font-size:34px;color:#64748b;text-align:center;padding:0 40px;line-height:1.4}',
+        '.proj-hdr{display:flex;align-items:baseline;gap:22px;flex-wrap:wrap;border-bottom:5px solid #0e7490;padding-bottom:12px;margin-bottom:12px}',
+        '.proj-cama{font-size:56px;font-weight:900;color:#0e7490;line-height:1}',
+        '.proj-nom{font-size:50px;font-weight:800;line-height:1.05}',
+        '.proj-estado{display:inline-block;font-size:20px;font-weight:800;padding:3px 16px;border-radius:9px;margin-left:14px;vertical-align:middle}',
+        '.proj-id{font-size:25px;color:#475569;margin-bottom:14px;font-weight:600}',
+        '.proj-row{margin:14px 0}',
+        '.proj-lbl{font-size:23px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#0e7490;margin-bottom:5px}',
+        '.proj-val{font-size:33px;font-weight:700;line-height:1.25;white-space:pre-wrap}',
+        '.ff-labs-h{display:none}',
+        '.ff-labs-empty{font-size:28px;color:#64748b;padding:12px 0}',
+        '.ff-labtable{border-collapse:collapse;width:100%;font-size:30px}',
+        '.ff-labtable th{font-size:22px;color:#0e7490;border-bottom:3px solid #0e7490;padding:6px 16px;text-align:center;font-weight:800}',
+        '.ff-labtable th.ff-an,.ff-labtable td.ff-an{text-align:left;font-size:24px;color:#334155;font-weight:700}',
+        '.ff-labtable td{font-size:31px;font-weight:700;padding:5px 16px;text-align:center;border-bottom:1px solid #e2e8f0;color:#1e293b}',
+        '.ff-labtable td.ff-crit{background:#dc2626;color:#fff;font-weight:900}',
+        '.ff-labtable td.ff-hi{color:#dc2626;font-weight:900}',
+        '.ff-labtable td.ff-lo{color:#1d4ed8;font-weight:900}',
+        '.ff-otros-h td{font-size:20px;text-transform:uppercase;color:#64748b;background:#f1f5f9;text-align:left;font-weight:800;padding-top:10px}',
+        '.ff-trend{font-size:22px;margin-left:8px}',
+        '.ff-trend-up{color:#dc2626}',
+        '.ff-trend-dn{color:#1d4ed8}'
+      ].join('\n');
+    }
+    // Abre (o re-enfoca) la ventana de proyección y pinta al paciente actual.
+    function openProjection() {
+      try {
+        if (_projWin && !_projWin.closed) {
+          try { _projWin.focus(); } catch (_) {}
+          projectCurrent();
+          return;
+        }
+        _projWin = window.open("", "pisolibro_proyeccion", "width=1280,height=800");
+        if (!_projWin) {
+          alert("El navegador bloqueó la ventana de proyección.\n\nPermite ventanas emergentes para este sitio y vuelve a tocar 🖥️ Proyectar.");
+          return;
+        }
+        var doc = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
+          + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+          + '<title>Proyeccion — PisoLibro</title><style>' + _projCss() + '</style></head>'
+          + '<body><div id="proj-root"><div class="proj-wait">🖥️ Proyección lista — selecciona un paciente (entra al foco de una tarjeta) en la ventana de control</div></div></body></html>';
+        _projWin.document.open();
+        _projWin.document.write(doc);
+        _projWin.document.close();
+        projectCurrent();
+      } catch (e) { if (typeof safeWarn === "function") safeWarn("openProjection", e); }
+    }
+    // Empuja el paciente en foco (o el primero del board) a la proyección.
+    function projectCurrent() {
+      var k = window.__focusPid;
+      if (!k && Array.isArray(window.__boardOrder) && window.__boardOrder.length) k = window.__boardOrder[0];
+      broadcastProjection(k || null);
+    }
+    // Escribe el DOM de la proyección para el paciente `k`. No-op si no hay ventana.
+    // Nunca lanza: cualquier fallo NO debe romper el board (try-catch defensivo).
+    function broadcastProjection(k) {
+      try {
+        if (!_projWin || _projWin.closed) return;
+        var root = _projWin.document.getElementById("proj-root");
+        if (!root) return;
+        if (!k) {
+          root.innerHTML = '<div class="proj-wait">🖥️ Proyección lista — selecciona un paciente en la ventana de control</div>';
+          return;
+        }
+        var p = patients.find(function (pt) { return pid(pt) === k; });
+        if (!p) { root.innerHTML = '<div class="proj-wait">Paciente no encontrado</div>'; return; }
+        root.innerHTML = buildProjectionHTML(p, getNote(k), k);
+      } catch (e) { if (typeof safeWarn === "function") safeWarn("broadcastProjection", e); }
+    }
+    // Construye el fragmento HTML grande de un paciente. Reutiliza renderFocusLabs
+    // para la tabla de labs con tendencia/colores. Todo texto vía esc() (anti-XSS).
+    function buildProjectionHTML(p, nd, k) {
+      nd = nd || defaultData();
+      var cama = esc(toSafeString(p.cama) || "—");
+      var nom = esc(toSafeString(p.nombre) || "Sin nombre");
+      var idbits = [];
+      if (p.edad) idbits.push(esc(toSafeString(p.edad)) + " a");
+      if (p.exp) idbits.push("Exp " + esc(toSafeString(p.exp)));
+      if (p.esp) idbits.push(esc(toSafeString(p.esp)));
+      var dN = (typeof daysSince === "function") ? daysSince(p.ingreso) : "";
+      if (dN !== "" && dN !== "?" && dN != null) idbits.push("Día " + esc(String(dN)));
+      var medico = toSafeString(p.adscrito) || toSafeString(p.residente);
+      if (medico) idbits.push(esc(medico));
+      var est = toSafeString(p.estado).toUpperCase();
+      var estCol = est.indexOf("GRAVE") >= 0 ? "background:#dc2626;color:#fff"
+        : est.indexOf("DELICADO") >= 0 ? "background:#f59e0b;color:#1f2937"
+        : est ? "background:#16a34a;color:#fff" : "";
+      var estHtml = est ? '<span class="proj-estado" style="' + estCol + '">' + esc(est) + '</span>' : "";
+      var dx = toSafeString(p.dx) || toSafeString(nd.dx);
+      var plan = toSafeString(p.plan);
+      var pend = toSafeString(nd.pendientes);
+      var dren = toSafeString(nd.drenajes);
+      function row(lbl, val) { return val ? '<div class="proj-row"><div class="proj-lbl">' + lbl + '</div><div class="proj-val">' + esc(val) + '</div></div>' : ""; }
+      var labsHtml = (typeof renderFocusLabs === "function") ? renderFocusLabs(nd, k) : "";
+      return '<div class="proj-hdr"><span class="proj-cama">' + cama + '</span><span class="proj-nom">' + nom + estHtml + '</span></div>'
+        + (idbits.length ? '<div class="proj-id">' + idbits.join(" · ") + '</div>' : "")
+        + row("🩺 Diagnóstico", dx)
+        + '<div class="proj-row"><div class="proj-lbl">🧪 Laboratorios</div>' + labsHtml + '</div>'
+        + row("📋 Plan", plan)
+        + row("📌 Pendientes", pend)
+        + row("💧 Drenajes", dren);
     }
 
     // ─── SUPABASE: SAVE PATIENT ─────────────────────────────────────────────────────
@@ -9819,12 +9945,14 @@ function plExportBackup() {
     function enterFocus(k) {
       window.__viewMode = "board";
       window.__focusPid = k;
+      broadcastProjection(k);              // proyección sigue al paciente en foco
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
       renderView();
     }
     function exitFocus() {
       const k = window.__focusPid;
       window.__focusPid = null;
+      broadcastProjection(null);           // proyección vuelve a "esperando"
       document.body.classList.remove("focus-on");
       renderView();
       if (k) setTimeout(() => {
@@ -11089,6 +11217,7 @@ function plExportBackup() {
     function focusGoTo(k){
       window.__viewMode = "board";
       window.__focusPid = k;
+      broadcastProjection(k);              // proyección sigue al paciente seleccionado
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
       renderView();
     }
@@ -11098,6 +11227,7 @@ function plExportBackup() {
       var i = order.indexOf(window.__focusPid);
       if (i < 0) i = 0; else i = Math.min(order.length - 1, Math.max(0, i + delta));
       window.__focusPid = order[i];
+      broadcastProjection(order[i]);       // proyección sigue al navegar ◀ ▶
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
       renderView();
     }
