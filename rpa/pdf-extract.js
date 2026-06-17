@@ -68,13 +68,17 @@ export const PDF_NOISE_PATTERNS = [
   /^[\d\s\/:.,\-]+$/,                // sólo dígitos/separadores
 ];
 
-// Pattern principal para línea de lab: NOMBRE + VALOR + UNIDAD? + RANGO?
+// Pattern principal para línea de lab: NOMBRE + [*A/*B] + VALOR + UNIDAD? + RANGO?
 //   - Nombre: 2+ chars, empieza con MAYÚSCULA, puede tener espacios/slash/paréntesis
+//   - Flag opcional *A/*B entre nombre y valor (fuera de rango). FIX (jun 2026): la
+//     BIOMETRIA HEMATICA del HGL usa "LEUCOCITOS *A\t20.97 ..." / "HEMOGLOBINA *B\t10.10 ..."
+//     en UNA línea con el flag en medio; sin tolerar el flag, hb/hct/leucos/plaq (fuera de
+//     rango) se dropeaban y solo pasaban los analitos EN rango (el diferencial). 3-155.
 //   - Valor:  número (entero o decimal), opcionalmente prefijado con < > ≤ ≥
 //   - Unidad: opcional (g/dL, mg/dL, mmol/L, U/L, k/uL, %, ng/mL, μL, etc.)
 //   - Rango:  opcional ("N - N" o "N a N")
 export const PDF_LAB_LINE_RE =
-  /^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\s\/.,()'\-]*?[A-ZÁÉÍÓÚÑ\)])\s+([<>≤≥]?\s*\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
+  /^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\s\/.,()'\-]*?[A-ZÁÉÍÓÚÑ\)])\s+(?:\*[AB]\s+)?([<>≤≥]?\s*\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
 
 // Formato MULTI-LÍNEA (química sanguínea / función hepática de WinLab HGL):
 //   GLUCOSA                          ← nombre del estudio, solo
@@ -103,11 +107,13 @@ export function extractLabValuesFromText(text) {
   // multi-línea). Las líneas de método (METODOLOGIA) son ruido y NO lo pisan.
   let pending = null;
 
-  // Si la "unidad" capturada es en realidad un número (ej. analito sin unidad como
-  // "RELACION A/G  0.74  1.10 - 1.80"), muévela al rango.
+  // Si la "unidad" capturada es en realidad un número PURO (ej. analito sin unidad como
+  // "RELACION A/G  0.74  1.10 - 1.80" → "1.10" es el inicio del rango), muévela al rango.
+  // OJO: NO mover unidades que EMPIEZAN con dígito pero son unidades reales (10³/μL, 10^6/μL):
+  // exigir que el token sea SOLO número (con coma/punto), sin más caracteres detrás.
   const fixUnit = (unidad, ref) => {
     const u = (unidad || "").trim(), r = (ref || "").trim();
-    if (/^[<>≤≥]?\d/.test(u)) return { unidad: "", referencia: (u + " " + r).trim() };
+    if (/^[<>≤≥]?\d+(?:[.,]\d+)?$/.test(u)) return { unidad: "", referencia: (u + " " + r).trim() };
     return { unidad: u, referencia: r };
   };
 

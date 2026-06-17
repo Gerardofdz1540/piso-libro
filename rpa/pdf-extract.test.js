@@ -187,5 +187,35 @@ DIMERO D >5000 ng/mL 0-500`;
   assert(!v.some(x => /VALIDADO|P[áa]gina/i.test(x.estudio)), "multi-línea: firmas/paginación filtradas");
 }
 
+// ── 12. BIOMETRIA HEMATICA: línea ÚNICA con flag *A/*B entre nombre y valor ──
+// Caso real (PDF 3-155 pág 2): "HEMOGLOBINA *B\t10.10 g/dL 12.00 - 16.00". El flag
+// rompía el regex de una línea → hb/hct/leucos/plaq (fuera de rango) se dropeaban;
+// solo pasaban los analitos EN rango (el diferencial). Bug "no se reporta hemoglobina".
+{
+  const txt = [
+    "BIOMETRIA HEMATICA COMPLETA",
+    "METODOLOGIA: SULFOMETAHEMOGLOBINA, IMPEDANCIA, CITOMETRIA DE FLUJO",
+    "FLUORESCENTE",
+    "LEUCOCITOS *A\t20.97 10³/μL 4.00 - 10.00",
+    "ERITROCITOS *B\t3.81 10^6/μL 4.40 - 5.20",
+    "HEMOGLOBINA *B\t10.10 g/dL 12.00 - 16.00",
+    "HEMATOCRITO *B\t32.80 % 36.00 - 48.00",
+    "VOL. CORPUSCULAR MEDIO 86.10 fL 80.00 - 95.00",
+    "PLAQUETAS *A\t408 10³/μL 130 - 400",
+    "NEUTROFILOS 82.30 %",
+  ].join("\n");
+  const v = extractLabValuesFromText(txt);
+  const by = (n) => v.find(x => x.estudio === n);
+  assert(by("HEMOGLOBINA") && by("HEMOGLOBINA").valor === "10.10", "BH flag: HEMOGLOBINA=10.10 (prefijo *B en una línea)");
+  assert(by("HEMOGLOBINA").unidad === "g/dL", "BH flag: HEMOGLOBINA unidad=g/dL");
+  assert(by("LEUCOCITOS") && by("LEUCOCITOS").valor === "20.97" && by("LEUCOCITOS").unidad === "10³/μL", "BH flag: LEUCOCITOS=20.97 unidad 10³/μL (unidad con dígito NO se confunde con rango)");
+  assert(by("HEMATOCRITO") && by("HEMATOCRITO").valor === "32.80", "BH flag: HEMATOCRITO=32.80");
+  assert(by("PLAQUETAS") && by("PLAQUETAS").valor === "408", "BH flag: PLAQUETAS=408");
+  assert(by("ERITROCITOS") && by("ERITROCITOS").valor === "3.81", "BH flag: ERITROCITOS=3.81");
+  assert(by("VOL. CORPUSCULAR MEDIO") && by("VOL. CORPUSCULAR MEDIO").valor === "86.10", "BH sin flag: VOL CORPUSCULAR sigue OK (sin regresión)");
+  assert(by("NEUTROFILOS") && by("NEUTROFILOS").valor === "82.30", "BH diferencial: NEUTROFILOS 82.30 OK");
+  assert(!v.some(x => /METODOLOG|FLUORESCENTE|BIOMETRIA/i.test(x.estudio)), "BH: método/sección/continuación nunca se emiten como estudio");
+}
+
 console.log(`\n${pass} pass · ${fail} fail`);
 if (fail > 0) process.exit(1);
