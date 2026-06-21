@@ -3078,6 +3078,42 @@
     .resid-sheet-row.rs-hidden { display: none; }
     .resid-sheet-empty { padding: 22px; text-align: center; color: var(--text-muted); font-family: var(--font); font-size: 14px; }
 
+    /* ════ RESID — Ficha del Paciente (overlay read-only) ════ */
+    .ficha-backdrop { position: fixed; inset: 0; z-index: 4100; background: rgba(3,10,22,.62); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); display: flex; justify-content: center; align-items: flex-start; opacity: 0; transition: opacity .22s ease; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .ficha-backdrop.rs-open { opacity: 1; }
+    .ficha-panel { width: 100%; max-width: 460px; margin: 0 auto; min-height: 100%; background: #0a1628; color: #f2f6fb; font-family: var(--font); transform: translateY(14px); transition: transform .26s cubic-bezier(.32,.72,0,1); padding: 0 14px calc(30px + env(safe-area-inset-bottom)); }
+    .ficha-backdrop.rs-open .ficha-panel { transform: translateY(0); }
+    .ficha-top { display: flex; align-items: center; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 2px 14px; position: sticky; top: 0; background: linear-gradient(#0a1628 72%, rgba(10,22,40,0)); z-index: 2; }
+    .ficha-back, .ficha-edit { background: rgba(255,255,255,.08); border: none; color: #cfe0f5; height: 34px; border-radius: 17px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font); }
+    .ficha-back { width: 34px; font-size: 18px; }
+    .ficha-edit { padding: 0 14px; font-size: 13px; font-weight: 600; gap: 6px; }
+    .ficha-back:hover, .ficha-edit:hover { background: rgba(255,255,255,.16); }
+    .ficha-ttl { flex: 1; text-align: center; font-size: 16px; font-weight: 600; }
+    .ficha-card { background: #13294d; border: 1px solid #1f3a63; border-radius: 18px; padding: 18px; margin-bottom: 14px; }
+    .ficha-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .ficha-name { font-size: 22px; font-weight: 700; line-height: 1.15; }
+    .ficha-sub { color: #8da4c0; font-size: 13px; margin-top: 3px; }
+    .ficha-cama { flex: 0 0 auto; text-align: center; background: linear-gradient(160deg, #134a64, #0e2f49); border: 1px solid #1d5b78; border-radius: 14px; padding: 8px 16px; min-width: 82px; }
+    .ficha-cama .lbl { font-size: 10px; letter-spacing: 2px; color: #6fd0e6; font-weight: 700; }
+    .ficha-cama .val { font-size: 26px; font-weight: 800; color: #aee9f7; line-height: 1.05; }
+    .ficha-sevpill { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
+    .ficha-sevpill i { font-size: 15px; }
+    .ficha-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .ficha-chip { background: #0e2340; border: 1px solid #1d3658; border-radius: 12px; padding: 9px 12px; min-width: 0; }
+    .ficha-chip .k { font-size: 11px; color: #8da4c0; display: flex; align-items: center; gap: 6px; }
+    .ficha-chip .v { font-size: 14px; font-weight: 600; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ficha-sec-ttl { font-size: 15px; font-weight: 700; margin: 2px 0 11px; display: flex; align-items: center; gap: 8px; }
+    .ficha-sec-ttl i { color: #4f9be0; font-size: 19px; }
+    .ficha-vitals { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .ficha-vital { background: #0e2340; border: 1px solid #1d3658; border-radius: 12px; padding: 11px 6px; text-align: center; }
+    .ficha-vital i { font-size: 19px; }
+    .ficha-vital .vk { font-size: 10px; color: #8da4c0; letter-spacing: .5px; margin-top: 4px; font-weight: 600; }
+    .ficha-vital .vv { font-size: 15px; font-weight: 700; margin-top: 1px; }
+    .ficha-vital .vv .u { font-size: 9px; color: #8da4c0; font-weight: 600; }
+    .ficha-vital .vv.empty { color: #44607f; }
+    .ficha-field { background: #0e2340; border: 1px solid #1d3658; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; color: #dce8f7; }
+    .ficha-field.empty { color: #5b7a9c; font-style: italic; }
+
   </style>
 </head>
 
@@ -8871,6 +8907,7 @@
         ${renderDiasSinLabsBadge(nd)}
         ${curPendiente ? `<span style="background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap">🩹 Cur</span>` : ''}
         ${renderCruceBadge(nd, k)}
+        <button class="icon-btn" data-fichakey="${k}" onclick="openFichaResid(this.dataset.fichakey)" title="Ficha del paciente">🪪</button>
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
         <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
       </div>
@@ -8884,6 +8921,103 @@
       <div class="entrega-row">${fieldRow("📋 Entrega", nd.entrega, k, "entrega", 2)}</div>
     </div>
   </div>`;
+    }
+
+    // ─── FICHA DEL PACIENTE (estilo RESID, read-only) ──────────────────────────
+    const FICHA_SEV = {
+      ESTABLE:   { c: "#27ae60", i: "ph-check-circle",     t: "Estable" },
+      DELICADO:  { c: "#e67e22", i: "ph-warning",          t: "Delicado" },
+      GRAVE:     { c: "#e74c3c", i: "ph-warning-octagon",  t: "Grave" },
+      ALTA:      { c: "#0ea5e9", i: "ph-sign-out",         t: "Alta" },
+      "DEFUNCIÓN": { c: "#374151", i: "ph-cross",          t: "Defunción" }
+    };
+    function fichaVital(icon, label, val, unit, color) {
+      const has = val != null && String(val).trim() !== "";
+      const v = has
+        ? esc(String(val).trim()) + (unit ? ` <span class="u">${unit}</span>` : "")
+        : "—";
+      return `<div class="ficha-vital"><i class="ph ${icon}" style="color:${color}"></i>` +
+        `<div class="vk">${label}</div><div class="vv${has ? "" : " empty"}">${v}</div></div>`;
+    }
+    function fichaChip(icon, label, val) {
+      const has = val != null && String(val).trim() !== "";
+      return `<div class="ficha-chip"><div class="k"><i class="ph ${icon}"></i>${label}</div>` +
+        `<div class="v">${has ? esc(String(val).trim()) : "—"}</div></div>`;
+    }
+    function openFichaResid(k) {
+      const p = (patients || []).find(x => pid(x) === k);
+      if (!p) return;
+      const nd = getNote(k);
+      const cl = (nd && nd.checklist) || {};
+      const labs = (nd && nd.labs) || {};
+      const sev = FICHA_SEV[(p.estado || "").toUpperCase()] || { c: "#95a5a6", i: "ph-circle", t: (p.estado || "Sin estado") };
+      const sexo = getPatientSex(p, nd);
+      const dx = (p.dx || "").trim();
+      const pend = (nd.pendientes || "").trim();
+      const manejo = (nd.manejo || nd.pa || "").trim();
+
+      const html =
+        `<div class="ficha-panel">` +
+          `<div class="ficha-top">` +
+            `<button class="ficha-back" aria-label="Cerrar"><i class="ph ph-caret-left"></i></button>` +
+            `<div class="ficha-ttl">Ficha del Paciente</div>` +
+            `<button class="ficha-edit" data-k="${esc(k)}"><i class="ph ph-pencil-simple"></i>Editar</button>` +
+          `</div>` +
+          `<div class="ficha-card">` +
+            `<div class="ficha-summary">` +
+              `<div style="min-width:0">` +
+                `<div class="ficha-name">${esc(p.nombre || "Sin nombre")}</div>` +
+                `<div class="ficha-sub">Resumen del paciente</div>` +
+                `<div class="ficha-sevpill" style="background:${sev.c}"><i class="ph ${sev.i}"></i>${esc(sev.t)}</div>` +
+              `</div>` +
+              `<div class="ficha-cama"><div class="lbl">CAMA</div><div class="val">${esc(p.cama || "—")}</div></div>` +
+            `</div>` +
+            `<div class="ficha-chips">` +
+              fichaChip("ph-calendar-blank", "Fecha de ingreso", p.ingreso) +
+              fichaChip(sexo === "Femenino" ? "ph-gender-female" : "ph-gender-male", "Sexo", sexo) +
+              fichaChip("ph-cake", "Edad", p.edad ? p.edad + " años" : "") +
+              fichaChip("ph-stethoscope", "Especialidad", p.esp) +
+            `</div>` +
+          `</div>` +
+          `<div class="ficha-card">` +
+            `<div class="ficha-sec-ttl"><i class="ph ph-heartbeat"></i>Signos vitales</div>` +
+            `<div class="ficha-vitals">` +
+              fichaVital("ph-heartbeat", "TA",    cl.pm_ta,   "mmHg",  "#f87171") +
+              fichaVital("ph-pulse",     "FC",    cl.pm_fc,   "lpm",   "#fb7185") +
+              fichaVital("ph-wind",      "FR",    cl.pm_fr,   "rpm",   "#fbbf24") +
+              fichaVital("ph-thermometer","TEMP", cl.pm_temp, "°C",    "#fb923c") +
+              fichaVital("ph-drop",      "SatO₂", cl.pm_sao2, "%",     "#38bdf8") +
+              fichaVital("ph-syringe",   "DXT",   labs.glu,   "mg/dl", "#c084fc") +
+            `</div>` +
+          `</div>` +
+          `<div class="ficha-card">` +
+            `<div class="ficha-sec-ttl"><i class="ph ph-clipboard-text"></i>Diagnóstico</div>` +
+            `<div class="ficha-field${dx ? "" : " empty"}">${dx ? esc(dx) : "Sin diagnóstico registrado"}</div>` +
+          `</div>` +
+          `<div class="ficha-card">` +
+            `<div class="ficha-sec-ttl"><i class="ph ph-warning-circle"></i>Pendientes</div>` +
+            `<div class="ficha-field${pend ? "" : " empty"}">${pend ? esc(pend) : "Sin pendientes registrados"}</div>` +
+          `</div>` +
+          (manejo ? `<div class="ficha-card"><div class="ficha-sec-ttl"><i class="ph ph-first-aid-kit"></i>Manejo</div><div class="ficha-field">${esc(manejo)}</div></div>` : "") +
+        `</div>`;
+
+      const bd = document.createElement("div");
+      bd.className = "ficha-backdrop";
+      bd.innerHTML = html;
+      document.body.appendChild(bd);
+      void bd.offsetWidth;
+      bd.classList.add("rs-open");
+
+      function close() {
+        bd.classList.remove("rs-open");
+        document.removeEventListener("keydown", onKey, true);
+        setTimeout(() => { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 260);
+      }
+      function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); close(); } }
+      bd.addEventListener("click", e => { if (e.target === bd) close(); });
+      bd.querySelector(".ficha-back").addEventListener("click", close);
+      bd.querySelector(".ficha-edit").addEventListener("click", () => { close(); if (typeof openEditModal === "function") setTimeout(() => openEditModal(k), 120); });
+      document.addEventListener("keydown", onKey, true);
     }
 
     function fieldRow(label, val, k, field, rows) {
