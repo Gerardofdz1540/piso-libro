@@ -26,6 +26,8 @@
       });
     }
   </script>
+  <!-- Phosphor Icons (iconografía clínica estilo RESID) -->
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -3024,6 +3026,57 @@
     .entrega-row .field-label {
       color: #b45309
     }
+
+    /* ════ RESID — bottom-sheet select + iconografía clínica ════ */
+    .resid-select {
+      font: inherit; font-family: var(--font);
+      display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+      text-align: left; cursor: pointer; width: 100%; min-height: 40px;
+      background: var(--input-bg, #fff); color: var(--text, #1e293b);
+      border: 1px solid var(--input-border, #cbd5e1); border-radius: 12px;
+      padding: 9px 12px; transition: border-color .15s ease, background .15s ease;
+    }
+    .resid-select:hover { border-color: var(--accent); }
+    .resid-select:disabled { opacity: .55; cursor: not-allowed; }
+    .resid-select .rs-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .resid-select.rs-placeholder .rs-label { color: var(--text-muted, #94a3b8); }
+    .resid-select .rs-chevron { flex: 0 0 auto; opacity: .55; font-size: 1.1em; }
+
+    .resid-sheet-backdrop {
+      position: fixed; inset: 0; z-index: 4000;
+      background: rgba(3,10,22,.55); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+      display: flex; align-items: flex-end; justify-content: center;
+      opacity: 0; transition: opacity .22s ease;
+    }
+    .resid-sheet-backdrop.rs-open { opacity: 1; }
+    .resid-sheet {
+      width: 100%; max-width: 560px; display: flex; flex-direction: column; max-height: 82vh;
+      background: var(--card, #fff); color: var(--text, #1e293b);
+      border: 1px solid var(--border-soft, #e2e8f0); border-bottom: none;
+      border-radius: 22px 22px 0 0; box-shadow: 0 -12px 44px rgba(0,0,0,.4);
+      transform: translateY(100%); transition: transform .28s cubic-bezier(.32,.72,0,1);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .resid-sheet-backdrop.rs-open .resid-sheet { transform: translateY(0); }
+    .resid-sheet-grip { width: 38px; height: 5px; border-radius: 3px; background: var(--border-strong, #cbd5e1); margin: 10px auto 2px; flex: 0 0 auto; }
+    .resid-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px 10px; }
+    .resid-sheet-title { font-family: var(--font); font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 9px; color: var(--text); }
+    .resid-sheet-title i { color: var(--accent); font-size: 21px; }
+    .resid-sheet-close { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; line-height: 1; padding: 5px; border-radius: 8px; display: flex; }
+    .resid-sheet-close:hover { color: var(--text); background: var(--surface-3, #f1f5f9); }
+    .resid-sheet-search { position: relative; margin: 0 16px 6px; }
+    .resid-sheet-search input { width: 100%; border-radius: 999px; border: 1px solid var(--input-border, #cbd5e1); background: var(--input-bg, #f8fafc); color: var(--text); padding: 10px 14px 10px 40px; font-family: var(--font); font-size: 15px; }
+    .resid-sheet-search i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 17px; }
+    .resid-sheet-list { overflow-y: auto; padding: 4px 12px calc(14px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
+    .resid-sheet-row { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: none; border: none; border-radius: 14px; padding: 13px 12px; cursor: pointer; color: var(--text); font-family: var(--font); font-size: 16px; }
+    .resid-sheet-row:hover, .resid-sheet-row.rs-cursor { background: var(--surface-3, #f1f5f9); }
+    .resid-sheet-row.rs-active { background: var(--brand-muted, rgba(45,108,181,.14)); }
+    .resid-sheet-row .rs-ic { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--surface-2, #f1f5f9); color: var(--accent); font-size: 20px; }
+    .resid-sheet-row .rs-tx { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+    .resid-sheet-row .rs-check { flex: 0 0 auto; color: var(--accent); font-size: 20px; opacity: 0; }
+    .resid-sheet-row.rs-active .rs-check { opacity: 1; }
+    .resid-sheet-row.rs-hidden { display: none; }
+    .resid-sheet-empty { padding: 22px; text-align: center; color: var(--text-muted); font-family: var(--font); font-size: 14px; }
 
   </style>
 </head>
@@ -16914,6 +16967,210 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     <button onclick="undoLastField()" style="background:#6366f1;border:none;color:#fff;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700">↩ Deshacer</button>
     <button onclick="document.getElementById('undo-toast').style.display='none'" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">✕</button>
   </div>
+
+  <!-- ════ RESID — bottom-sheet select (progressive enhancement) ════ -->
+  <script>
+  (function () {
+    if (window.__residSelect) return; window.__residSelect = true;
+
+    // Mapa palabra-clave → icono Phosphor, enfocado a piso de Cirugía General.
+    var ICON_MAP = [
+      [/alerg/i, 'ph-warning-circle'],
+      [/(qu[ií]r[uú]rg|cirug|operad|postq|posqx|preqx)/i, 'ph-scissors'],
+      [/(traum|fractur|herida|cont[uú]si)/i, 'ph-bandaids'],
+      [/(transfus|sangr|hemo|hemat|anemia)/i, 'ph-drop'],
+      [/(toxicoman|droga|tabaq|tabaco|alcohol|etilis|sustanc)/i, 'ph-pill'],
+      [/(desarrollo|pedi|neonat|beb[eé]|reci[eé]n)/i, 'ph-baby'],
+      [/(infec|s[eé]psi|absces|viral|virus|fiebre)/i, 'ph-virus'],
+      [/(card|coraz|fc\b|frecuencia card|arritm|hta|hipertens)/i, 'ph-heartbeat'],
+      [/(respir|pulmon|\bfr\b|\bsato|\bo2\b|ventil|intub|disnea)/i, 'ph-lungs'],
+      [/(diabet|endocr|insulin|glucos|\bdxt\b|dm2|dm\b)/i, 'ph-syringe'],
+      [/(renal|ri[ñn][oó]n|nefro|uremi|di[aá]lisis)/i, 'ph-funnel'],
+      [/(neuro|cerebr|gcs|glasgow|conscien)/i, 'ph-brain'],
+      [/(estable|mejor[ií]a|asintom)/i, 'ph-check-circle'],
+      [/(delicad|regular|cuidado|vigil|observ)/i, 'ph-warning'],
+      [/(grave|cr[ií]tic|choque|shock|paro|terminal|agon)/i, 'ph-warning-octagon'],
+      [/(masculino|hombre|var[oó]n)/i, 'ph-gender-male'],
+      [/(femenino|mujer)/i, 'ph-gender-female'],
+      [/(alta|egres|domicili|defunci|fallec)/i, 'ph-sign-out'],
+      [/(ingres|admisi|nuevo ingreso)/i, 'ph-sign-in'],
+      [/(laborat|\blab\b|biometr|qu[ií]mica|electrolit)/i, 'ph-flask'],
+      [/(gabinet|imagen|radio|\brx\b|\btac\b|tomog|usg|ecograf|placa)/i, 'ph-monitor'],
+      [/(especialidad|servicio|interconsulta)/i, 'ph-stethoscope'],
+      [/(adscrito|residente|m[eé]dico|doctor|equipo|usuario|enfermer)/i, 'ph-identification-badge'],
+      [/(piso|cama|sala|urgenc|uci|terapia)/i, 'ph-bed'],
+      [/(ayuno|nvo|dieta|nutrici|l[ií]quid)/i, 'ph-fork-knife'],
+      [/(dolor|analges|eva\b)/i, 'ph-pulse'],
+      [/(otro|otra|ninguno|ningun|sin |n\/?a|seleccion)/i, 'ph-dots-three-circle']
+    ];
+    function iconFor(t) {
+      t = (t || '').trim();
+      for (var i = 0; i < ICON_MAP.length; i++) { if (ICON_MAP[i][0].test(t)) return ICON_MAP[i][1]; }
+      return 'ph-circle';
+    }
+
+    function labelFor(sel) {
+      if (sel.getAttribute('aria-label')) return sel.getAttribute('aria-label').trim();
+      if (sel.id) { try { var l = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(sel.id) : sel.id) + '"]'); if (l) return l.textContent.trim(); } catch (e) {} }
+      var p = sel.previousElementSibling;
+      while (p) { if (p.tagName === 'LABEL') return p.textContent.trim(); p = p.previousElementSibling; }
+      var par = sel.closest('.modal-field, .nm-field, .ck-field, .field, div');
+      if (par) { var ll = par.querySelector('label'); if (ll) return ll.textContent.trim(); }
+      return 'Seleccionar';
+    }
+
+    function shouldSkip(sel) {
+      return sel.multiple || sel.dataset.rsEnh || sel.dataset.noSheet != null ||
+        sel.closest('td, th') /* selects compactos del censo → nativos */;
+    }
+
+    function syncTrigger(sel) {
+      var trig = sel.__trig; if (!trig) return;
+      if (!sel.isConnected) { if (trig.parentNode) trig.parentNode.removeChild(trig); sel.__trig = null; return; }
+      var opt = sel.options[sel.selectedIndex];
+      var txt = opt ? opt.textContent.trim() : '';
+      var hasVal = txt && sel.value !== '' && !(opt && opt.disabled);
+      var lbl = trig.querySelector('.rs-label');
+      var newText = hasVal ? txt : (labelFor(sel) || 'Seleccionar');
+      // Solo escribir si cambió: evita disparar el MutationObserver en bucle.
+      if (lbl.textContent !== newText) lbl.textContent = newText;
+      if (trig.classList.contains('rs-placeholder') !== !hasVal) trig.classList.toggle('rs-placeholder', !hasVal);
+      if (trig.disabled !== sel.disabled) trig.disabled = sel.disabled;
+    }
+
+    function enhance(sel) {
+      if (shouldSkip(sel)) return;
+      sel.dataset.rsEnh = '1';
+      var trig = document.createElement('button');
+      trig.type = 'button';
+      trig.className = 'resid-select ' + (sel.className || '');
+      var st = sel.getAttribute('style');
+      if (st) trig.setAttribute('style', st.replace(/display\s*:[^;]+;?/i, ''));
+      trig.innerHTML = '<span class="rs-label"></span><i class="ph ph-caret-down rs-chevron"></i>';
+      sel.style.display = 'none';
+      sel.parentNode.insertBefore(trig, sel.nextSibling);
+      sel.__trig = trig; trig.__sel = sel;
+      syncTrigger(sel);
+      trig.addEventListener('click', function () { if (!sel.disabled) openSheet(sel); });
+      sel.addEventListener('change', function () { syncTrigger(sel); });
+    }
+
+    var activeBackdrop = null;
+    function closeSheet() {
+      if (!activeBackdrop) return;
+      var bd = activeBackdrop; activeBackdrop = null;
+      bd.classList.remove('rs-open');
+      document.removeEventListener('keydown', onKey, true);
+      setTimeout(function () { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 280);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); closeSheet(); }
+    }
+
+    function openSheet(sel) {
+      if (activeBackdrop) closeSheet();
+      var title = labelFor(sel) || 'Seleccionar';
+      var titleIcon = iconFor(title);
+
+      var bd = document.createElement('div');
+      bd.className = 'resid-sheet-backdrop';
+      var opts = Array.prototype.filter.call(sel.options, function (o) {
+        return !(o.disabled && o.value === '');
+      });
+      var bigList = opts.length > 8;
+
+      var rowsHtml = opts.map(function (o, idx) {
+        var label = o.textContent.trim() || '(vacío)';
+        var ic = o.value === '' ? 'ph-prohibit' : iconFor(label + ' ' + o.value);
+        var active = o.value === sel.value ? ' rs-active' : '';
+        return '<button type="button" class="resid-sheet-row' + active + '" data-idx="' + idx + '">' +
+          '<span class="rs-ic"><i class="ph ' + ic + '"></i></span>' +
+          '<span class="rs-tx">' + escapeHtml(label) + '</span>' +
+          '<i class="ph ph-check rs-check"></i></button>';
+      }).join('');
+
+      bd.innerHTML =
+        '<div class="resid-sheet" role="dialog" aria-modal="true">' +
+          '<div class="resid-sheet-grip"></div>' +
+          '<div class="resid-sheet-head">' +
+            '<div class="resid-sheet-title"><i class="ph ' + titleIcon + '"></i>' + escapeHtml(title) + '</div>' +
+            '<button type="button" class="resid-sheet-close" aria-label="Cerrar"><i class="ph ph-x"></i></button>' +
+          '</div>' +
+          (bigList ? '<div class="resid-sheet-search"><i class="ph ph-magnifying-glass"></i><input type="text" placeholder="Buscar..." /></div>' : '') +
+          '<div class="resid-sheet-list">' + rowsHtml +
+            '<div class="resid-sheet-empty" style="display:none">Sin coincidencias</div>' +
+          '</div>' +
+        '</div>';
+
+      document.body.appendChild(bd);
+      activeBackdrop = bd;
+      // forzar reflow para animar
+      void bd.offsetWidth; bd.classList.add('rs-open');
+
+      bd.addEventListener('click', function (e) { if (e.target === bd) closeSheet(); });
+      bd.querySelector('.resid-sheet-close').addEventListener('click', closeSheet);
+      document.addEventListener('keydown', onKey, true);
+
+      var listEl = bd.querySelector('.resid-sheet-list');
+      Array.prototype.forEach.call(bd.querySelectorAll('.resid-sheet-row'), function (row) {
+        row.addEventListener('click', function () {
+          var o = opts[+row.dataset.idx];
+          if (sel.value !== o.value) {
+            sel.value = o.value;
+            sel.dispatchEvent(new Event('input', { bubbles: true }));
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          syncTrigger(sel);
+          closeSheet();
+        });
+      });
+
+      var search = bd.querySelector('.resid-sheet-search input');
+      if (search) {
+        setTimeout(function () { search.focus(); }, 320);
+        search.addEventListener('input', function () {
+          var q = search.value.toLowerCase().trim();
+          var shown = 0;
+          Array.prototype.forEach.call(bd.querySelectorAll('.resid-sheet-row'), function (row) {
+            var hit = row.querySelector('.rs-tx').textContent.toLowerCase().indexOf(q) !== -1;
+            row.classList.toggle('rs-hidden', !hit); if (hit) shown++;
+          });
+          bd.querySelector('.resid-sheet-empty').style.display = shown ? 'none' : 'block';
+        });
+      }
+      // centrar la opción activa
+      var act = bd.querySelector('.resid-sheet-row.rs-active');
+      if (act && listEl) setTimeout(function () { act.scrollIntoView({ block: 'center' }); }, 30);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    // Escaneo + observador para selects creados dinámicamente.
+    var pending = false;
+    function sweep() {
+      pending = false;
+      var sels = document.querySelectorAll('select:not([data-rs-enh])');
+      Array.prototype.forEach.call(sels, enhance);
+      // re-sincroniza etiquetas (cubre cambios de value por JS junto a mutaciones DOM)
+      document.querySelectorAll('select[data-rs-enh]').forEach(function (s) { syncTrigger(s); });
+    }
+    function scheduleSweep() {
+      if (pending) return; pending = true;
+      (window.requestAnimationFrame || window.setTimeout)(sweep);
+    }
+    function start() {
+      sweep();
+      new MutationObserver(scheduleSweep).observe(document.body, { childList: true, subtree: true });
+    }
+    window.residSyncSelects = sweep; // por si otro código quiere forzar refresco
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+  })();
+  </script>
 </body>
 
 </html>
