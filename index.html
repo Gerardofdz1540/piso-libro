@@ -3128,6 +3128,32 @@
     .ficha-toast { position: fixed; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(8px); background: #1c3a5e; color: #eaf1f8; border: 1px solid #2f568a; padding: 10px 18px; border-radius: 12px; font-size: 13px; font-family: var(--font); z-index: 4200; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
     .ficha-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+    /* ════ RESID — Home / Launcher de módulos ════ */
+    .rhome-backdrop { position: fixed; inset: 0; z-index: 4090; background: #0a1726; display: flex; justify-content: center; align-items: flex-start; opacity: 0; transition: opacity .2s ease; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .rhome-backdrop.rs-open { opacity: 1; }
+    .rhome-panel { width: 100%; max-width: 520px; margin: 0 auto; min-height: 100%; background: radial-gradient(120% 60% at 50% 0%, #163152 0%, #0e2138 42%, #0a1726 100%); color: #eaf1f8; font-family: var(--font); display: flex; flex-direction: column; transform: translateY(12px); transition: transform .26s cubic-bezier(.32,.72,0,1); padding: calc(14px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom)); }
+    .rhome-backdrop.rs-open .rhome-panel { transform: translateY(0); }
+    .rhome-head { display: flex; align-items: center; gap: 12px; background: linear-gradient(100deg, #16304d, #122844); border: 1px solid #244366; border-radius: 18px; padding: 13px 15px; }
+    .rhome-logo { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(150deg, #2fb3ad, #1d7d8e); display: flex; align-items: center; justify-content: center; color: #eafffe; font-size: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    .rhome-hi { flex: 1; min-width: 0; }
+    .rhome-hi .h { font-size: 16px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rhome-hi .s { font-size: 11px; color: #8aa0bd; letter-spacing: 1.5px; font-weight: 600; margin-top: 2px; }
+    .rhome-head .x { background: rgba(255,255,255,.08); border: none; color: #cfe0f5; width: 32px; height: 32px; border-radius: 10px; font-size: 18px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .rhome-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; margin-top: 22px; }
+    .rhome-tile { background: linear-gradient(160deg, #17304c 0%, #122843 100%); border: 1px solid #25426a; border-radius: 18px; padding: 18px 6px 13px; display: flex; flex-direction: column; align-items: center; gap: 9px; cursor: pointer; color: #e4edf8; transition: transform .12s, border-color .15s, background .15s; }
+    .rhome-tile:active { transform: scale(.96); }
+    .rhome-tile:hover { border-color: #3a5a86; background: linear-gradient(160deg, #1b3756 0%, #163150 100%); }
+    .rhome-tile i { font-size: 27px; color: #6fb6d8; }
+    .rhome-tile .l { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; color: #cddcee; }
+    .rhome-dots { display: flex; justify-content: center; gap: 7px; margin: 20px 0 14px; }
+    .rhome-dots span { width: 7px; height: 7px; border-radius: 50%; background: #2c486e; }
+    .rhome-dots span.on { background: #6fb6d8; width: 20px; border-radius: 4px; }
+    .rhome-foot { margin-top: auto; display: flex; justify-content: space-around; align-items: center; background: linear-gradient(#102844, #0d2038); border: 1px solid #224266; border-radius: 18px; padding: 12px 8px; }
+    .rhome-fbtn { background: none; border: none; color: #b9c8dd; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; font-family: var(--font); flex: 1; }
+    .rhome-fbtn i { font-size: 22px; }
+    .rhome-fbtn .l { font-size: 11px; font-weight: 600; }
+    .rhome-fbtn.accent i { color: #2fb3ad; }
+
   </style>
 </head>
 
@@ -3246,6 +3272,7 @@
       </div>
     </div>
     <div id="tabs">
+      <button class="tab" onclick="openResidHome()" style="background:rgba(47,166,160,.22);border-color:rgba(47,166,160,.6)" title="Inicio (menú de módulos)">🏠 Inicio</button>
       <button class="tab active" onclick="setView('piso',this)">🏥 Piso Libro</button>
       <button class="tab" onclick="setView('census',this)">📊 Censo</button>
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
@@ -8935,6 +8962,73 @@
       <div class="entrega-row">${fieldRow("📋 Entrega", nd.entrega, k, "entrega", 2)}</div>
     </div>
   </div>`;
+    }
+
+    // ─── HOME / LAUNCHER (réplica RESID) ───────────────────────────────────────
+    // Módulos de la rejilla: icono Phosphor, etiqueta y acción.
+    const RHOME_TILES = [
+      { i: "ph-stethoscope",      l: "Pase de Visita", act: () => setView("piso") },
+      { i: "ph-users-three",      l: "Pacientes",      act: () => setView("census") },
+      { i: "ph-file-text",        l: "Entrega",        act: () => setView("print") },
+      { i: "ph-push-pin",         l: "No olvidar",     act: () => setView("noOlvidar") },
+      { i: "ph-list-checks",      l: "Pendientes",     act: () => setView("pendientes") },
+      { i: "ph-check-circle",     l: "Altas",          act: () => setView("altas") },
+      { i: "ph-archive-box",      l: "Egresados",      act: () => setView("papelera") },
+      { i: "ph-flask",            l: "Labs WinLab",    act: () => { if (typeof refreshWinlabLabs === "function") refreshWinlabLabs(); } },
+      { i: "ph-user-plus",        l: "Nuevo paciente", act: () => { if (typeof openAddModal === "function") openAddModal(); } }
+    ];
+    function openResidHome() {
+      const nombre = (localStorage.getItem("pl_user_name") || "").trim();
+      const saludo = nombre ? ("Hola, " + nombre) : "Hola";
+
+      const tilesHtml = RHOME_TILES.map((t, idx) =>
+        `<button class="rhome-tile" data-idx="${idx}"><i class="ph ${t.i}"></i><span class="l">${t.l}</span></button>`
+      ).join("");
+
+      const html =
+        `<div class="rhome-panel">` +
+          `<div class="rhome-head">` +
+            `<div class="rhome-logo"><i class="ph ph-first-aid"></i></div>` +
+            `<div class="rhome-hi"><div class="h">${esc(saludo)}</div><div class="s">CIRUGÍA GENERAL · HGL</div></div>` +
+            `<button class="x" aria-label="Cerrar"><i class="ph ph-x"></i></button>` +
+          `</div>` +
+          `<div class="rhome-grid">${tilesHtml}</div>` +
+          `<div class="rhome-dots"><span class="on"></span><span></span></div>` +
+          `<div class="rhome-foot">` +
+            `<button class="rhome-fbtn" data-foot="config"><i class="ph ph-gear-six"></i><span class="l">Config</span></button>` +
+            `<button class="rhome-fbtn" data-foot="sync"><i class="ph ph-arrows-clockwise"></i><span class="l">Sync</span></button>` +
+            `<button class="rhome-fbtn accent" data-foot="paciente"><i class="ph ph-plus-circle"></i><span class="l">Paciente</span></button>` +
+          `</div>` +
+        `</div>`;
+
+      const bd = document.createElement("div");
+      bd.className = "rhome-backdrop";
+      bd.innerHTML = html;
+      document.body.appendChild(bd);
+      void bd.offsetWidth;
+      bd.classList.add("rs-open");
+
+      function close() {
+        bd.classList.remove("rs-open");
+        document.removeEventListener("keydown", onKey, true);
+        setTimeout(() => { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 260);
+      }
+      function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); close(); } }
+      function run(fn) { close(); setTimeout(() => { try { fn(); } catch (_) {} }, 150); }
+      bd.addEventListener("click", e => {
+        if (e.target === bd) { close(); return; }
+        if (e.target.closest(".rhome-head .x")) { close(); return; }
+        const tile = e.target.closest(".rhome-tile");
+        if (tile) { run(RHOME_TILES[+tile.dataset.idx].act); return; }
+        const foot = e.target.closest("[data-foot]");
+        if (foot) {
+          const f = foot.dataset.foot;
+          if (f === "config") run(() => { if (typeof openConfigModal === "function") openConfigModal(); });
+          else if (f === "sync") run(() => { if (typeof refreshWinlabLabs === "function") refreshWinlabLabs(); });
+          else if (f === "paciente") run(() => { if (typeof openAddModal === "function") openAddModal(); });
+        }
+      });
+      document.addEventListener("keydown", onKey, true);
     }
 
     // ─── FICHA DEL PACIENTE (réplica RESID) ────────────────────────────────────
