@@ -3078,41 +3078,55 @@
     .resid-sheet-row.rs-hidden { display: none; }
     .resid-sheet-empty { padding: 22px; text-align: center; color: var(--text-muted); font-family: var(--font); font-size: 14px; }
 
-    /* ════ RESID — Ficha del Paciente (overlay read-only) ════ */
-    .ficha-backdrop { position: fixed; inset: 0; z-index: 4100; background: rgba(3,10,22,.62); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); display: flex; justify-content: center; align-items: flex-start; opacity: 0; transition: opacity .22s ease; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    /* ════ RESID — Ficha del Paciente (overlay) ════ */
+    .ficha-backdrop { position: fixed; inset: 0; z-index: 4100; background: #0b1828; display: flex; justify-content: center; align-items: flex-start; opacity: 0; transition: opacity .2s ease; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     .ficha-backdrop.rs-open { opacity: 1; }
-    .ficha-panel { width: 100%; max-width: 460px; margin: 0 auto; min-height: 100%; background: #0a1628; color: #f2f6fb; font-family: var(--font); transform: translateY(14px); transition: transform .26s cubic-bezier(.32,.72,0,1); padding: 0 14px calc(30px + env(safe-area-inset-bottom)); }
+    .ficha-panel { width: 100%; max-width: 520px; margin: 0 auto; min-height: 100%; background: linear-gradient(180deg, #0d1d31 0%, #0b1828 38%); color: #eaf1f8; font-family: var(--font); transform: translateY(12px); transition: transform .26s cubic-bezier(.32,.72,0,1); padding: 0 12px calc(26px + env(safe-area-inset-bottom)); }
     .ficha-backdrop.rs-open .ficha-panel { transform: translateY(0); }
-    .ficha-top { display: flex; align-items: center; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 2px 14px; position: sticky; top: 0; background: linear-gradient(#0a1628 72%, rgba(10,22,40,0)); z-index: 2; }
-    .ficha-back, .ficha-edit { background: rgba(255,255,255,.08); border: none; color: #cfe0f5; height: 34px; border-radius: 17px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-family: var(--font); }
-    .ficha-back { width: 34px; font-size: 18px; }
-    .ficha-edit { padding: 0 14px; font-size: 13px; font-weight: 600; gap: 6px; }
-    .ficha-back:hover, .ficha-edit:hover { background: rgba(255,255,255,.16); }
-    .ficha-ttl { flex: 1; text-align: center; font-size: 16px; font-weight: 600; }
-    .ficha-card { background: #13294d; border: 1px solid #1f3a63; border-radius: 18px; padding: 18px; margin-bottom: 14px; }
+    .ficha-top { display: flex; align-items: center; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 4px 12px; position: sticky; top: 0; background: linear-gradient(#0d1d31 70%, rgba(13,29,49,0)); z-index: 3; }
+    .ficha-back { background: transparent; border: none; color: #cfe0f5; height: 34px; width: 34px; font-size: 22px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .ficha-ttl { flex: 1; text-align: center; font-size: 16px; font-weight: 600; letter-spacing: .2px; }
+    .ficha-ttl + span { width: 34px; }
+    .ficha-body { display: flex; gap: 10px; align-items: flex-start; }
+    .ficha-main { flex: 1; min-width: 0; }
+    /* cards */
+    .ficha-card { background: #14273f; border: 1px solid #213a5c; border-radius: 18px; padding: 16px; margin-bottom: 13px; }
     .ficha-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .ficha-name { font-size: 22px; font-weight: 700; line-height: 1.15; }
-    .ficha-sub { color: #8da4c0; font-size: 13px; margin-top: 3px; }
-    .ficha-cama { flex: 0 0 auto; text-align: center; background: linear-gradient(160deg, #134a64, #0e2f49); border: 1px solid #1d5b78; border-radius: 14px; padding: 8px 16px; min-width: 82px; }
-    .ficha-cama .lbl { font-size: 10px; letter-spacing: 2px; color: #6fd0e6; font-weight: 700; }
-    .ficha-cama .val { font-size: 26px; font-weight: 800; color: #aee9f7; line-height: 1.05; }
-    .ficha-sevpill { display: inline-flex; align-items: center; gap: 7px; margin-top: 12px; padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
-    .ficha-sevpill i { font-size: 15px; }
+    .ficha-name { font-size: 21px; font-weight: 700; line-height: 1.15; }
+    .ficha-sub { color: #8597b0; font-size: 13px; margin-top: 3px; }
+    .ficha-cama { flex: 0 0 auto; text-align: center; background: linear-gradient(155deg, #1c5366 0%, #123a4d 100%); border: 1px solid #2a6c80; border-radius: 14px; padding: 9px 18px; min-width: 84px; box-shadow: 0 0 0 1px rgba(103,210,230,.06) inset; }
+    .ficha-cama .lbl { font-size: 10px; letter-spacing: 2.5px; color: #67d2e6; font-weight: 700; }
+    .ficha-cama .val { font-size: 27px; font-weight: 800; color: #cdeef6; line-height: 1.05; }
     .ficha-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
-    .ficha-chip { background: #0e2340; border: 1px solid #1d3658; border-radius: 12px; padding: 9px 12px; min-width: 0; }
-    .ficha-chip .k { font-size: 11px; color: #8da4c0; display: flex; align-items: center; gap: 6px; }
-    .ficha-chip .v { font-size: 14px; font-weight: 600; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ficha-sec-ttl { font-size: 15px; font-weight: 700; margin: 2px 0 11px; display: flex; align-items: center; gap: 8px; }
-    .ficha-sec-ttl i { color: #4f9be0; font-size: 19px; }
-    .ficha-vitals { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-    .ficha-vital { background: #0e2340; border: 1px solid #1d3658; border-radius: 12px; padding: 11px 6px; text-align: center; }
-    .ficha-vital i { font-size: 19px; }
-    .ficha-vital .vk { font-size: 10px; color: #8da4c0; letter-spacing: .5px; margin-top: 4px; font-weight: 600; }
-    .ficha-vital .vv { font-size: 15px; font-weight: 700; margin-top: 1px; }
-    .ficha-vital .vv .u { font-size: 9px; color: #8da4c0; font-weight: 600; }
-    .ficha-vital .vv.empty { color: #44607f; }
-    .ficha-field { background: #0e2340; border: 1px solid #1d3658; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; color: #dce8f7; }
-    .ficha-field.empty { color: #5b7a9c; font-style: italic; }
+    .ficha-chip { background: #0f1f37; border: 1px solid #203a5e; border-radius: 12px; padding: 10px 12px; min-width: 0; }
+    .ficha-chip .k { font-size: 11px; color: #8597b0; display: flex; align-items: center; gap: 6px; }
+    .ficha-chip .k i { font-size: 14px; color: #8597b0; }
+    .ficha-chip .v { font-size: 14px; font-weight: 600; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ficha-sec-head { display: flex; align-items: center; gap: 9px; }
+    .ficha-sec-head .ico { font-size: 19px; color: #b7c6dc; display: flex; }
+    .ficha-sec-head .t { flex: 1; font-size: 15px; font-weight: 600; }
+    .ficha-sec-head .chev, .ficha-sec-head .cnt { color: #8597b0; font-size: 15px; }
+    .ficha-sec-head .addb { background: #1c3a5e; border: none; color: #bcd2ee; width: 26px; height: 26px; border-radius: 8px; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .ficha-vitals { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; margin-top: 13px; }
+    .ficha-vital { background: #0f1f37; border: 1px solid #203a5e; border-radius: 12px; padding: 10px 5px; text-align: center; }
+    .ficha-vital i { font-size: 18px; }
+    .ficha-vital .vk { font-size: 10px; color: #8597b0; letter-spacing: .5px; margin-top: 4px; font-weight: 600; }
+    .ficha-vital .vv { font-size: 14px; font-weight: 700; margin-top: 1px; }
+    .ficha-vital .vv .u { font-size: 9px; color: #8597b0; font-weight: 600; }
+    .ficha-vital .vv.empty { color: #45617f; }
+    .ficha-field { background: #0f1f37; border: 1px solid #203a5e; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; color: #dce8f7; margin-top: 13px; }
+    .ficha-field.tight { margin-top: 13px; }
+    .ficha-field.empty { color: #5b7a9c; }
+    /* right module rail */
+    .ficha-rail { flex: 0 0 auto; width: 62px; display: flex; flex-direction: column; gap: 9px; padding-top: 2px; }
+    .ficha-railbtn { position: relative; background: #182b44; border: 1px solid #26395a; border-radius: 14px; padding: 9px 2px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; color: #c2d0e4; transition: background .15s, border-color .15s; }
+    .ficha-railbtn:hover { background: #1f3552; border-color: #3a5681; }
+    .ficha-railbtn i { font-size: 21px; }
+    .ficha-railbtn .rl { font-size: 8.5px; line-height: 1.1; text-align: center; color: #9aabc4; font-weight: 600; letter-spacing: .2px; }
+    .ficha-railbtn.danger i { color: #ff6b6b; }
+    .ficha-railbtn .badge { position: absolute; top: -5px; right: -4px; background: #ff453a; color: #fff; font-size: 9px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 3px; }
+    .ficha-toast { position: fixed; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(8px); background: #1c3a5e; color: #eaf1f8; border: 1px solid #2f568a; padding: 10px 18px; border-radius: 12px; font-size: 13px; font-family: var(--font); z-index: 4200; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+    .ficha-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
   </style>
 </head>
@@ -8923,14 +8937,7 @@
   </div>`;
     }
 
-    // ─── FICHA DEL PACIENTE (estilo RESID, read-only) ──────────────────────────
-    const FICHA_SEV = {
-      ESTABLE:   { c: "#27ae60", i: "ph-check-circle",     t: "Estable" },
-      DELICADO:  { c: "#e67e22", i: "ph-warning",          t: "Delicado" },
-      GRAVE:     { c: "#e74c3c", i: "ph-warning-octagon",  t: "Grave" },
-      ALTA:      { c: "#0ea5e9", i: "ph-sign-out",         t: "Alta" },
-      "DEFUNCIÓN": { c: "#374151", i: "ph-cross",          t: "Defunción" }
-    };
+    // ─── FICHA DEL PACIENTE (réplica RESID) ────────────────────────────────────
     function fichaVital(icon, label, val, unit, color) {
       const has = val != null && String(val).trim() !== "";
       const v = has
@@ -8944,61 +8951,95 @@
       return `<div class="ficha-chip"><div class="k"><i class="ph ${icon}"></i>${label}</div>` +
         `<div class="v">${has ? esc(String(val).trim()) : "—"}</div></div>`;
     }
+    function fichaToast(msg) {
+      let t = document.createElement("div");
+      t.className = "ficha-toast";
+      t.textContent = msg;
+      document.body.appendChild(t);
+      void t.offsetWidth;
+      t.classList.add("show");
+      setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 220); }, 1700);
+    }
+    // Módulos del riel lateral (icono, etiqueta, acción)
+    const FICHA_RAIL = [
+      { i: "ph-note-pencil",      l: "Nota",          act: "nota" },
+      { i: "ph-scales",           l: "Balances",      act: "soon" },
+      { i: "ph-chart-line-up",    l: "Gráficas",      act: "soon" },
+      { i: "ph-heartbeat",        l: "FAST HUG",      act: "soon" },
+      { i: "ph-pill",             l: "MAIDENS",       act: "soon" },
+      { i: "ph-folder-open",      l: "Interrogatorio",act: "soon" },
+      { i: "ph-hand-pointing",    l: "Exploración",   act: "soon" },
+      { i: "ph-flask",            l: "Auxiliares",    act: "labs" },
+      { i: "ph-clipboard-text",   l: "Impresión Dx",  act: "print" },
+      { i: "ph-trash",            l: "Eliminar",      act: "del", danger: true }
+    ];
     function openFichaResid(k) {
       const p = (patients || []).find(x => pid(x) === k);
       if (!p) return;
       const nd = getNote(k);
       const cl = (nd && nd.checklist) || {};
       const labs = (nd && nd.labs) || {};
-      const sev = FICHA_SEV[(p.estado || "").toUpperCase()] || { c: "#95a5a6", i: "ph-circle", t: (p.estado || "Sin estado") };
       const sexo = getPatientSex(p, nd);
+      const sangre = (cl.fqx_tipo_sangre || "").trim();
       const dx = (p.dx || "").trim();
-      const pend = (nd.pendientes || "").trim();
-      const manejo = (nd.manejo || nd.pa || "").trim();
+      const notas = (nd.entrega || "").trim();
+      const hasVitals = ["pm_ta", "pm_fc", "pm_fr", "pm_temp", "pm_sao2"].some(f => (cl[f] || "").toString().trim() !== "") || (labs.glu || "").toString().trim() !== "";
+
+      const vitalsHtml = hasVitals
+        ? `<div class="ficha-vitals">` +
+            fichaVital("ph-heartbeat", "TA",    cl.pm_ta,   "mmHg",  "#f87171") +
+            fichaVital("ph-pulse",     "FC",    cl.pm_fc,   "lpm",   "#fb7185") +
+            fichaVital("ph-wind",      "FR",    cl.pm_fr,   "rpm",   "#fbbf24") +
+            fichaVital("ph-thermometer","TEMP", cl.pm_temp, "°C",    "#fb923c") +
+            fichaVital("ph-drop",      "SatO₂", cl.pm_sao2, "%",     "#38bdf8") +
+            fichaVital("ph-syringe",   "DXT",   labs.glu,   "mg/dl", "#c084fc") +
+          `</div>`
+        : `<div class="ficha-field empty">Sin signos vitales registrados</div>`;
+
+      const railHtml = FICHA_RAIL.map(m =>
+        `<button class="ficha-railbtn${m.danger ? " danger" : ""}" data-act="${m.act}">` +
+        `<i class="ph ${m.i}"></i><span class="rl">${m.l}</span></button>`
+      ).join("");
 
       const html =
         `<div class="ficha-panel">` +
           `<div class="ficha-top">` +
             `<button class="ficha-back" aria-label="Cerrar"><i class="ph ph-caret-left"></i></button>` +
             `<div class="ficha-ttl">Ficha del Paciente</div>` +
-            `<button class="ficha-edit" data-k="${esc(k)}"><i class="ph ph-pencil-simple"></i>Editar</button>` +
+            `<span></span>` +
           `</div>` +
-          `<div class="ficha-card">` +
-            `<div class="ficha-summary">` +
-              `<div style="min-width:0">` +
-                `<div class="ficha-name">${esc(p.nombre || "Sin nombre")}</div>` +
-                `<div class="ficha-sub">Resumen del paciente</div>` +
-                `<div class="ficha-sevpill" style="background:${sev.c}"><i class="ph ${sev.i}"></i>${esc(sev.t)}</div>` +
+          `<div class="ficha-body">` +
+            `<div class="ficha-main">` +
+              `<div class="ficha-card">` +
+                `<div class="ficha-summary">` +
+                  `<div style="min-width:0">` +
+                    `<div class="ficha-name">${esc(p.nombre || "Sin nombre")}</div>` +
+                    `<div class="ficha-sub">Resumen del paciente</div>` +
+                  `</div>` +
+                  `<div class="ficha-cama"><div class="lbl">CAMA</div><div class="val">${esc(p.cama || "—")}</div></div>` +
+                `</div>` +
+                `<div class="ficha-chips">` +
+                  fichaChip("ph-calendar-blank", "Fecha de ingreso", p.ingreso) +
+                  fichaChip(sexo === "Femenino" ? "ph-gender-female" : "ph-gender-male", "Sexo", sexo) +
+                  fichaChip("ph-cake", "Edad", p.edad ? p.edad + " años" : "") +
+                  fichaChip("ph-drop", "Tipo de sangre", sangre) +
+                `</div>` +
+                `<div class="ficha-field${dx ? "" : " empty"}">${dx ? esc(dx) : "Sin diagnósticos registrados"}</div>` +
               `</div>` +
-              `<div class="ficha-cama"><div class="lbl">CAMA</div><div class="val">${esc(p.cama || "—")}</div></div>` +
+              `<div class="ficha-card">` +
+                `<div class="ficha-sec-head"><span class="ico"><i class="ph ph-activity"></i></span>` +
+                  `<span class="t">Signos vitales</span><span class="chev"><i class="ph ph-caret-right"></i></span></div>` +
+                vitalsHtml +
+              `</div>` +
+              `<div class="ficha-card">` +
+                `<div class="ficha-sec-head"><span class="ico"><i class="ph ph-note"></i></span>` +
+                  `<span class="t">Notas del paciente</span><span class="cnt">${notas ? 1 : 0}</span>` +
+                  `<button class="addb" data-act="nota" title="Agregar nota">+</button></div>` +
+                `<div class="ficha-field${notas ? "" : " empty"}">${notas ? esc(notas) : "Sin notas registradas"}</div>` +
+              `</div>` +
             `</div>` +
-            `<div class="ficha-chips">` +
-              fichaChip("ph-calendar-blank", "Fecha de ingreso", p.ingreso) +
-              fichaChip(sexo === "Femenino" ? "ph-gender-female" : "ph-gender-male", "Sexo", sexo) +
-              fichaChip("ph-cake", "Edad", p.edad ? p.edad + " años" : "") +
-              fichaChip("ph-stethoscope", "Especialidad", p.esp) +
-            `</div>` +
+            `<div class="ficha-rail">${railHtml}</div>` +
           `</div>` +
-          `<div class="ficha-card">` +
-            `<div class="ficha-sec-ttl"><i class="ph ph-heartbeat"></i>Signos vitales</div>` +
-            `<div class="ficha-vitals">` +
-              fichaVital("ph-heartbeat", "TA",    cl.pm_ta,   "mmHg",  "#f87171") +
-              fichaVital("ph-pulse",     "FC",    cl.pm_fc,   "lpm",   "#fb7185") +
-              fichaVital("ph-wind",      "FR",    cl.pm_fr,   "rpm",   "#fbbf24") +
-              fichaVital("ph-thermometer","TEMP", cl.pm_temp, "°C",    "#fb923c") +
-              fichaVital("ph-drop",      "SatO₂", cl.pm_sao2, "%",     "#38bdf8") +
-              fichaVital("ph-syringe",   "DXT",   labs.glu,   "mg/dl", "#c084fc") +
-            `</div>` +
-          `</div>` +
-          `<div class="ficha-card">` +
-            `<div class="ficha-sec-ttl"><i class="ph ph-clipboard-text"></i>Diagnóstico</div>` +
-            `<div class="ficha-field${dx ? "" : " empty"}">${dx ? esc(dx) : "Sin diagnóstico registrado"}</div>` +
-          `</div>` +
-          `<div class="ficha-card">` +
-            `<div class="ficha-sec-ttl"><i class="ph ph-warning-circle"></i>Pendientes</div>` +
-            `<div class="ficha-field${pend ? "" : " empty"}">${pend ? esc(pend) : "Sin pendientes registrados"}</div>` +
-          `</div>` +
-          (manejo ? `<div class="ficha-card"><div class="ficha-sec-ttl"><i class="ph ph-first-aid-kit"></i>Manejo</div><div class="ficha-field">${esc(manejo)}</div></div>` : "") +
         `</div>`;
 
       const bd = document.createElement("div");
@@ -9014,9 +9055,21 @@
         setTimeout(() => { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 260);
       }
       function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); close(); } }
-      bd.addEventListener("click", e => { if (e.target === bd) close(); });
+      function doAct(act) {
+        switch (act) {
+          case "nota": close(); if (typeof openEditModal === "function") setTimeout(() => openEditModal(k), 140); break;
+          case "labs": close(); if (typeof openWinLabForPatient === "function") setTimeout(() => openWinLabForPatient(k), 140); break;
+          case "print": close(); if (typeof setView === "function") setTimeout(() => setView("print"), 140); break;
+          case "del": close(); if (typeof openConfirm === "function") setTimeout(() => openConfirm(k), 140); break;
+          default: fichaToast("Módulo en construcción");
+        }
+      }
+      bd.addEventListener("click", e => {
+        if (e.target === bd) { close(); return; }
+        const btn = e.target.closest("[data-act]");
+        if (btn) { e.stopPropagation(); doAct(btn.dataset.act); }
+      });
       bd.querySelector(".ficha-back").addEventListener("click", close);
-      bd.querySelector(".ficha-edit").addEventListener("click", () => { close(); if (typeof openEditModal === "function") setTimeout(() => openEditModal(k), 120); });
       document.addEventListener("keydown", onKey, true);
     }
 
