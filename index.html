@@ -3538,6 +3538,12 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
     .hl-bbtn-primary:hover{background:rgba(34,197,94,.32)}
     .hl-bico{font-size:22px}
     @media(max-width:560px){.hl-grid{grid-template-columns:repeat(2,1fr);gap:12px}.hl-greet{font-size:17px}}
+    .ff-chart-btn{font-size:11px;font-weight:600;padding:2px 9px;border-radius:7px;border:1px solid #bae6fd;background:#f0f9ff;color:#0369a1;cursor:pointer;margin-left:8px;font-family:var(--font)}
+    .ff-chart-btn:hover{background:#e0f2fe}
+    .lc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+    .lc-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:6px 8px}
+    body.dark .lc-card{background:#16181d;border-color:#374151}
+    body.dark .ff-chart-btn{background:#0c2a3a;border-color:#155e75;color:#7dd3fc}
   </style>
   <div id="home-launcher" style="display:none">
     <div class="hl-top">
@@ -7270,7 +7276,7 @@ function plExportBackup() {
         if(otherRows || extraRows){
           otros = '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '">Otros</td></tr>' + otherRows + extraRows;
         }
-        return '<div class="ff-labs"><div class="ff-labs-h">Labs</div><div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + mainRows + otros + '</tbody></table></div></div>';
+        return '<div class="ff-labs"><div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(window.__focusPid)">📈 Gráficas</button></div><div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + mainRows + otros + '</tbody></table></div></div>';
       }catch(e){
         return renderLabSection(nd, k); // si algo falla, caer al render normal — nunca romper el foco
       }
@@ -15963,6 +15969,86 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         _lastScrapeDispatchTs = 0;
       }
     }
+    // ── Gráficas de tendencia de labs (SVG, sin librerías) ──────────────────
+    // Líneas por analito desde nd.labHistory: ves Hb/leucos/Cr subir/bajar de un vistazo,
+    // con banda de rango de referencia y color por severidad. Aditivo: no toca la tabla.
+    function _chartNum(raw) {
+      if (raw === undefined || raw === null) return null;
+      var s = String(raw).trim();
+      if (s === "" || s === "—") return null;
+      if (/[a-zA-Z]/.test(s)) return null;
+      if (/\d\s*[-–]\s*\d/.test(s)) return null;
+      var n = parseFloat(s.replace(/[<>≤≥]/g, "").replace(",", "."));
+      return isNaN(n) ? null : n;
+    }
+    function _chartSev(v, low, high, cl, ch) {
+      if (ch != null && v > ch) return "#dc2626";
+      if (cl != null && v < cl) return "#dc2626";
+      if (high != null && v > high) return "#dc2626";
+      if (low != null && v < low) return "#1d4ed8";
+      return "#16a34a";
+    }
+    function _chartFmt(n) { return (Math.round(n * 100) / 100).toString(); }
+    function _labChartSVG(label, unit, series, low, high, cl, ch) {
+      var W = 240, H = 118, padL = 10, padR = 10, padT = 22, padB = 22;
+      var vals = series.map(function (s) { return s.val; });
+      var yMin = Math.min.apply(null, vals), yMax = Math.max.apply(null, vals);
+      if (low != null) yMin = Math.min(yMin, low);
+      if (high != null) yMax = Math.max(yMax, high);
+      if (yMin === yMax) { yMin -= 1; yMax += 1; }
+      var padv = (yMax - yMin) * 0.14; yMin -= padv; yMax += padv;
+      var plotW = W - padL - padR, plotH = H - padT - padB;
+      var X = function (i) { return padL + (series.length === 1 ? plotW / 2 : (i / (series.length - 1)) * plotW); };
+      var Y = function (v) { return padT + (1 - (v - yMin) / (yMax - yMin)) * plotH; };
+      var band = "";
+      if (low != null && high != null) {
+        var yb1 = Y(high), yb2 = Y(low);
+        band = '<rect x="' + padL + '" y="' + yb1.toFixed(1) + '" width="' + plotW + '" height="' + Math.max(0, yb2 - yb1).toFixed(1) + '" fill="#16a34a" opacity="0.10"/>';
+      }
+      var pts = series.map(function (s, i) { return X(i).toFixed(1) + "," + Y(s.val).toFixed(1); }).join(" ");
+      var line = '<polyline points="' + pts + '" fill="none" stroke="#0e7490" stroke-width="2"/>';
+      var dots = series.map(function (s, i) {
+        var last = (i === series.length - 1);
+        return '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(s.val).toFixed(1) + '" r="' + (last ? 4 : 2.4) + '" fill="' + _chartSev(s.val, low, high, cl, ch) + '"/>';
+      }).join("");
+      var lastV = series[series.length - 1].val, lastCol = _chartSev(lastV, low, high, cl, ch);
+      var head = '<text x="' + padL + '" y="14" font-size="12" font-weight="700" fill="#334155">' + esc(label) + (unit ? ' <tspan font-size="9" fill="#94a3b8">' + esc(unit) + '</tspan>' : "") + '</text>';
+      var lastLbl = '<text x="' + (W - padR) + '" y="14" text-anchor="end" font-size="13" font-weight="800" fill="' + lastCol + '">' + _chartFmt(lastV) + '</text>';
+      var d0 = '<text x="' + padL + '" y="' + (H - 6) + '" font-size="9" fill="#94a3b8">' + esc(fmtDateChip(series[0].fecha)) + '</text>';
+      var dN = '<text x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end" font-size="9" fill="#94a3b8">' + esc(fmtDateChip(series[series.length - 1].fecha)) + '</text>';
+      return '<div class="lc-card"><svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="display:block">' + band + line + dots + head + lastLbl + d0 + dN + '</svg></div>';
+    }
+    function openLabCharts(k) {
+      try {
+        k = k || window.__focusPid;
+        if (!k) { if (typeof _plToast === "function") _plToast("Entra al foco de un paciente para ver sus gráficas.", "#b45309"); return; }
+        var p = (typeof patients !== "undefined") ? patients.find(function (x) { return pid(x) === k; }) : null;
+        var nd = getNote(k);
+        var history = ((nd && nd.labHistory) || []).filter(function (s) { return s && s.labs; })
+          .slice().sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+        if (history.length < 2) { if (typeof _plToast === "function") _plToast("Se necesitan ≥2 fechas de labs para graficar.", "#b45309"); return; }
+        var TH = {};
+        if (typeof LAB_GROUPS !== "undefined" && Array.isArray(LAB_GROUPS)) LAB_GROUPS.forEach(function (g) { (g.fields || []).forEach(function (f) { if (f && f.key) TH[f.key] = f; }); });
+        var order = (typeof FOCUS_LAB_ORDER !== "undefined") ? FOCUS_LAB_ORDER : [];
+        var charts = [];
+        order.forEach(function (pair) {
+          var label = pair[0], key = pair[1], series = [];
+          history.forEach(function (s) { var n = _chartNum(s.labs[key]); if (n !== null) series.push({ fecha: s.fecha, val: n }); });
+          if (series.length >= 2) { var f = TH[key] || {}; charts.push(_labChartSVG(label, f.unit || "", series, f.low, f.high, f.cl, f.ch)); }
+        });
+        if (!charts.length) { if (typeof _plToast === "function") _plToast("No hay analitos con ≥2 valores numéricos para graficar.", "#b45309"); return; }
+        var name = esc((p && p.nombre) || "");
+        var html = '<div class="modal-bg" id="labcharts-modal" style="display:flex" onclick="if(event.target===this)_closeLabCharts()">'
+          + '<div class="modal-box" style="max-width:920px;width:96%;max-height:88vh;overflow:auto">'
+          + '<div class="modal-header"><div class="modal-title">📈 Tendencia de labs — ' + name + '</div>'
+          + '<button class="modal-close" onclick="_closeLabCharts()">✕</button></div>'
+          + '<div class="lc-grid">' + charts.join("") + '</div></div></div>';
+        _closeLabCharts();
+        var wrap = document.createElement("div"); wrap.id = "labcharts-wrap"; wrap.innerHTML = html;
+        document.body.appendChild(wrap);
+      } catch (e) { if (typeof safeWarn === "function") safeWarn("openLabCharts", e); }
+    }
+    function _closeLabCharts() { var w = document.getElementById("labcharts-wrap"); if (w) w.remove(); }
     function openAddModal() {
       modalMode = "add"; modalOrigKey = null; _modalCurrentEditKey = null;
       document.getElementById("modal-title").textContent = "➕ Agregar nuevo paciente";
