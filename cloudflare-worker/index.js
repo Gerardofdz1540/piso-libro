@@ -84,9 +84,62 @@ export default {
       return handleLabsExtractRoute(request, env, cors);
     }
 
+    // ─── RUTA 3: /api/scrape — dispara el scraper WinLab (con dedup anti-cruce) ──
+    if (url.pathname === "/api/scrape") {
+      if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: cors });
+      return handleScrapeRoute(request, env, cors);
+    }
+
     return json({ error: "Not Found" }, 404, cors);
   }
 };
+
+// ─── HANDLER: /api/scrape — dispara el workflow del scraper WinLab ─────────────
+// DEDUP anti-cruce: si ya hay una corrida pendiente (en cola), NO dispara otra —
+// esa corrida leerá el censo MÁS RECIENTE de Supabase al arrancar. Así, aunque
+// importes varios censos seguidos, nunca hay más de 1 corriendo + 1 en cola, y la
+// última siempre toma tu censo final. El workflow ya tiene cancel-in-progress:false,
+// así que una corrida nueva se ENCOLA (no reinicia ni cancela la que ya corre).
+async function handleScrapeRoute(request, env, cors) {
+  if (!env.GITHUB_TOKEN) {
+    return json({ dispatched: false, error: "GITHUB_TOKEN no configurado en el worker" }, 503, cors);
+  }
+  const OWNER = "Gerardofdz1540", REPO = "piso-libro", WF = "winlab-scraper.yml", REF = "main";
+  const gh = (path, init) => fetch("https://api.github.com/repos/" + OWNER + "/" + REPO + path, {
+    ...(init || {}),
+    headers: {
+      "Authorization": "Bearer " + env.GITHUB_TOKEN,
+      "Accept": "application/vnd.github+json",
+      "User-Agent": "piso-libro-worker",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...((init && init.headers) || {})
+    }
+  });
+  try {
+    // ¿Hay alguna corrida que aún NO arranca (cola/espera)? Si sí, no dispares otra.
+    const PENDING = ["queued", "pending", "waiting", "requested"];
+    const runsResp = await gh("/actions/workflows/" + WF + "/runs?per_page=8");
+    if (runsResp.ok) {
+      const data = await runsResp.json();
+      const pending = (data.workflow_runs || []).filter((r) => PENDING.includes(r.status));
+      if (pending.length > 0) {
+        return json({ dispatched: false, reason: "already_pending",
+          message: "Ya hay una corrida en cola; tomará el censo más reciente." }, 200, cors);
+      }
+    }
+    // Disparar (204 = OK). Una corrida en progreso NO bloquea: la nueva se encola.
+    const dResp = await gh("/actions/workflows/" + WF + "/dispatches", {
+      method: "POST", body: JSON.stringify({ ref: REF })
+    });
+    if (dResp.status === 204) {
+      return json({ dispatched: true, message: "Scraper disparado." }, 200, cors);
+    }
+    const detail = await dResp.text().catch(() => "");
+    return json({ dispatched: false, reason: "dispatch_failed", status: dResp.status, detail: detail.slice(0, 240) }, 502, cors);
+  } catch (e) {
+    return json({ dispatched: false, reason: "exception", detail: String(e && e.message || e).slice(0, 240) }, 500, cors);
+  }
+}
 
 // ─── HANDLER: /api/ai (formato Anthropic Messages) ─────────────────────────
 async function handleAiRoute(request, env, cors) {

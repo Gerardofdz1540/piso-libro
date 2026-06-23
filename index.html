@@ -15920,6 +15920,49 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       try { setView(view, btn); } catch (e) { if (typeof safeWarn === "function") safeWarn("_navTo", e); }
     }
+    // ── Toast efímero (notificación) ──
+    function _plToast(msg, color, ms) {
+      try {
+        var t = document.getElementById("__pl_toast");
+        if (!t) {
+          t = document.createElement("div"); t.id = "__pl_toast";
+          t.style.cssText = "position:fixed;top:20px;right:20px;z-index:100000;padding:13px 18px;border-radius:10px;font:600 13px var(--font);color:#fff;box-shadow:0 8px 28px rgba(0,0,0,.28);max-width:430px;line-height:1.4;white-space:pre-line";
+          document.body.appendChild(t);
+        }
+        t.style.background = color || "#0369a1"; t.textContent = msg; t.style.display = "block";
+        clearTimeout(t._to); t._to = setTimeout(function () { t.style.display = "none"; }, ms || 7000);
+      } catch (_) {}
+    }
+    // ── Auto-disparo del scraper WinLab tras importar censo ──
+    // El worker /api/scrape DEDUPLICA: si ya hay corrida en cola, no dispara otra (esa
+    // leerá el censo más reciente). Debounce cliente 30s. Si no hay worker o falla, el
+    // flujo manual (pill WinLab) sigue disponible — nunca rompe la importación.
+    var _lastScrapeDispatchTs = 0;
+    async function _autoDispatchScraper(reason) {
+      var now = Date.now();
+      if (now - _lastScrapeDispatchTs < 30000) return; // debounce cliente
+      _lastScrapeDispatchTs = now;
+      var proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : "";
+      if (!proxyUrl) return;
+      try {
+        var resp = await fetch(proxyUrl + "/api/scrape", { method: "POST", headers: { ...apiHeaders() }, body: "{}" });
+        var data = {}; try { data = await resp.json(); } catch (_) {}
+        if (resp.ok && data.dispatched) {
+          _plToast("🔄 Scraper WinLab disparado con el censo nuevo. Los labs llegan en ~20-30 min.", "#15803d", 9000);
+        } else if (resp.ok && data.reason === "already_pending") {
+          _plToast("🔄 Ya había una corrida en cola; tomará tu censo más reciente.", "#0369a1", 8000);
+        } else if (resp.status === 503) {
+          _plToast("⚠️ Auto-scraper sin activar (falta GITHUB_TOKEN en el worker).", "#b45309", 9000);
+          _lastScrapeDispatchTs = 0;
+        } else {
+          _plToast("⚠️ No se pudo disparar el scraper (" + (data.reason || resp.status) + "). Fórzalo manual en la pill WinLab.", "#b45309", 9000);
+          _lastScrapeDispatchTs = 0;
+        }
+      } catch (e) {
+        if (typeof safeWarn === "function") safeWarn("autoDispatchScraper", e);
+        _lastScrapeDispatchTs = 0;
+      }
+    }
     function openAddModal() {
       modalMode = "add"; modalOrigKey = null; _modalCurrentEditKey = null;
       document.getElementById("modal-title").textContent = "➕ Agregar nuevo paciente";
@@ -17159,6 +17202,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       // Lanzar sync a Supabase de forma directa (no debounced) para que no se pierda en refresh
       _savePtsImmediate();
+
+      // Auto-disparar el scraper WinLab con el censo recién importado. El worker deduplica
+      // (no apila corridas) y la corrida lee el censo fresco de Supabase al arrancar, así que
+      // no hay cruce de datos aunque importes otro censo en minutos. Fire-and-forget.
+      try { _autoDispatchScraper("import"); } catch (_) {}
 
       // Banner de éxito
       const banner = document.getElementById("import-banner");
