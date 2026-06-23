@@ -3105,7 +3105,7 @@
 .focus-board{
   max-width:1180px; margin:0 auto; background:#ffffff;
   border:1.5px solid #0a1628; border-radius:8px;
-  box-shadow:0 12px 32px rgba(10,22,40,.16); overflow:hidden;
+  box-shadow:0 12px 32px rgba(10,22,40,.16); overflow:visible;
   color:#334155;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
 }
@@ -11289,8 +11289,8 @@ function plExportBackup() {
       out += '<div class="ff2-vit"><span class="fb-zh">Signos vitales</span><div class="ff2-vit-grid">' + pmHtml + '</div></div>';
       out += '<div class="ff2-dren fb-drains"><span class="fb-zh">Sondas / Balance:</span><div class="ff2-vit-grid" style="margin:4px 0 8px">' + pm2Html + '</div>' + drainsInner + '</div>';
       out += '<div class="ff2-eprow">'
-        + '<div class="ff2-zone">' + fbField("Entrega:", "entrega", nd.entrega, 6) + '</div>'
-        + '<div class="ff2-zone">' + fbField("Pendientes:", "pendientes", nd.pendientes, 6) + '</div>'
+        + '<div class="ff2-zone">' + fbField("Entrega:", "entrega", nd.entrega, 4) + '</div>'
+        + '<div class="ff2-zone">' + fbField("Pendientes:", "pendientes", nd.pendientes, 4) + '</div>'
         + '</div>';
       out += '</div>';
 
@@ -11357,6 +11357,9 @@ function plExportBackup() {
             if (ds) rbs[j].classList.toggle("ff2-rb-on", ds === sec);
           }
         }
+        // Llevar el detalle a la vista (estaba debajo del resumen, fuera de pantalla):
+        // sin esto, los botones del rail "no hacían nada" porque la sección cambiaba off-screen.
+        if (det) { try { det.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {} }
       } catch (e) { if (typeof safeWarn === "function") safeWarn("_fichaSec", e); }
     }
 
