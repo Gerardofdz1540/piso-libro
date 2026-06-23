@@ -3435,6 +3435,7 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
       </div>
     </div>
     <div id="tabs">
+      <button class="tab" onclick="_showHomeLauncher()" title="Panel frontal / inicio" style="background:rgba(79,195,247,.22);border-color:rgba(79,195,247,.55)">🏠 Inicio</button>
       <button class="tab active" onclick="setView('piso',this)">🏥 Piso Libro</button>
       <button class="tab" onclick="setView('census',this)">📊 Censo</button>
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
@@ -3511,6 +3512,61 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
     <div id="view-pendientes" style="display:none"></div>
     <div id="view-tablero" style="display:none"></div>
     <div id="view-papelera" style="display:none"></div>
+  </div>
+
+  <!-- HOME LAUNCHER (panel frontal estilo RESID) — overlay, NO toca el routing de setView -->
+  <style>
+    #home-launcher{position:fixed;inset:0;z-index:9000;background:linear-gradient(160deg,#0a1628 0%,#0f2d52 55%,#0d3a63 100%);display:none;flex-direction:column;font-family:var(--font);overflow-y:auto}
+    .hl-top{display:flex;align-items:center;justify-content:space-between;padding:20px 26px;flex-wrap:wrap;gap:10px}
+    .hl-id{display:flex;align-items:center;gap:14px}
+    .hl-logo{width:48px;height:48px;border-radius:13px;background:rgba(79,195,247,.18);border:1.5px solid rgba(79,195,247,.5);color:#7dd3fc;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:19px;flex-shrink:0}
+    .hl-greet{color:#fff;font-size:20px;font-weight:800;line-height:1.15}
+    .hl-sub{color:#93c5fd;font-size:13px;font-weight:600;letter-spacing:.3px}
+    .hl-top-actions{display:flex;gap:8px}
+    .hl-iconbtn{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#e2e8f0;font-size:17px;cursor:pointer;font-family:var(--font)}
+    .hl-iconbtn:hover{background:rgba(255,255,255,.16)}
+    .hl-grid{flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;padding:14px 26px 26px;align-content:start;max-width:1080px;width:100%;margin:0 auto;box-sizing:border-box}
+    .hl-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:26px 12px;border-radius:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#e2e8f0;cursor:pointer;transition:all .14s;font-family:var(--font)}
+    .hl-tile:hover{background:rgba(79,195,247,.16);border-color:rgba(79,195,247,.5);transform:translateY(-2px)}
+    .hl-tile:active{transform:translateY(0)}
+    .hl-ico{font-size:33px;line-height:1}
+    .hl-lbl{font-size:14px;font-weight:700;text-align:center}
+    .hl-bottom{display:flex;gap:14px;justify-content:center;padding:16px 26px 24px;background:rgba(0,0,0,.18);flex-wrap:wrap}
+    .hl-bbtn{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 26px;border-radius:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#e2e8f0;font-size:12px;font-weight:700;cursor:pointer;min-width:94px;font-family:var(--font)}
+    .hl-bbtn:hover{background:rgba(255,255,255,.14)}
+    .hl-bbtn-primary{background:rgba(34,197,94,.22);border-color:rgba(34,197,94,.5);color:#bbf7d0}
+    .hl-bbtn-primary:hover{background:rgba(34,197,94,.32)}
+    .hl-bico{font-size:22px}
+    @media(max-width:560px){.hl-grid{grid-template-columns:repeat(2,1fr);gap:12px}.hl-greet{font-size:17px}}
+  </style>
+  <div id="home-launcher" style="display:none">
+    <div class="hl-top">
+      <div class="hl-id">
+        <div class="hl-logo">PL</div>
+        <div><div class="hl-greet" id="hl-greet">Hola</div><div class="hl-sub">CIRUGÍA · HGL León</div></div>
+      </div>
+      <div class="hl-top-actions">
+        <button class="hl-iconbtn" onclick="logout()" title="Cerrar sesión">🚪</button>
+        <button class="hl-iconbtn" onclick="_hideHomeLauncher()" title="Entrar al piso">✕</button>
+      </div>
+    </div>
+    <div class="hl-grid">
+      <button class="hl-tile" onclick="_hideHomeLauncher();startRondas()"><span class="hl-ico">📋</span><span class="hl-lbl">Pase de visita</span></button>
+      <button class="hl-tile" onclick="_navTo('piso')"><span class="hl-ico">🏥</span><span class="hl-lbl">Pacientes</span></button>
+      <button class="hl-tile" onclick="_navTo('census')"><span class="hl-ico">📊</span><span class="hl-lbl">Censo</span></button>
+      <button class="hl-tile" onclick="_navTo('print')"><span class="hl-ico">📄</span><span class="hl-lbl">Entrega</span></button>
+      <button class="hl-tile" onclick="_navTo('pendientes')"><span class="hl-ico">📋</span><span class="hl-lbl">Pendientes</span></button>
+      <button class="hl-tile" onclick="_navTo('noOlvidar')"><span class="hl-ico">📌</span><span class="hl-lbl">No olvidar</span></button>
+      <button class="hl-tile" onclick="_navTo('tablero')"><span class="hl-ico">🗂️</span><span class="hl-lbl">Tablero</span></button>
+      <button class="hl-tile" onclick="_hideHomeLauncher();openProjection()"><span class="hl-ico">🖥️</span><span class="hl-lbl">Proyectar</span></button>
+      <button class="hl-tile" onclick="_hideHomeLauncher();openBulkLabsModal()"><span class="hl-ico">🧪</span><span class="hl-lbl">Labs masivo</span></button>
+      <button class="hl-tile" onclick="_hideHomeLauncher();openSystem('img')"><span class="hl-ico">🩻</span><span class="hl-lbl">Imagen</span></button>
+    </div>
+    <div class="hl-bottom">
+      <button class="hl-bbtn" onclick="_hideHomeLauncher();openConfigModal()"><span class="hl-bico">⚙️</span><span>Config</span></button>
+      <button class="hl-bbtn" onclick="_hideHomeLauncher();runWinlabSyncNow()"><span class="hl-bico">🔄</span><span>Sync</span></button>
+      <button class="hl-bbtn hl-bbtn-primary" onclick="_hideHomeLauncher();openAddModal()"><span class="hl-bico">➕</span><span>Paciente</span></button>
+    </div>
   </div>
 
   <!-- RESID-style registro: secciones, pastillas de estado, chips de dx, detalle colapsable -->
@@ -9529,6 +9585,9 @@ function plExportBackup() {
       renderUserChip();
       initFontSize();
       initTheme();
+      // Panel frontal estilo RESID: mostrarlo al abrir (sobre la app ya cargada).
+      // Si no hay sesión, el login-overlay (z mayor) lo tapa. Cada tile entra a su función.
+      try { _showHomeLauncher(); } catch (_) {}
       // Init del botón WinLab Auto-sync (refleja estado del feature flag)
       try {
         const btn = document.getElementById("winlab-autosync-btn");
@@ -15837,6 +15896,28 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       var cur = (ta.value || "").trim();
       ta.value = cur ? (cur + " · " + text) : text;
       try { ta.focus(); } catch (_) {}
+    }
+    // ── Home launcher (panel frontal estilo RESID) ──
+    // Overlay sobre la app; cada tile oculta el launcher y llama una función REAL.
+    // No toca el routing de setView ni el modelo de datos.
+    function _showHomeLauncher() {
+      try {
+        var el = document.getElementById("home-launcher"); if (!el) return;
+        var nm = (localStorage.getItem("pl_user_name") || "").trim();
+        var g = document.getElementById("hl-greet"); if (g) g.textContent = nm ? ("Hola, " + nm) : "Hola";
+        el.style.display = "flex";
+      } catch (_) {}
+    }
+    function _hideHomeLauncher() {
+      var el = document.getElementById("home-launcher"); if (el) el.style.display = "none";
+    }
+    function _navTo(view) {
+      _hideHomeLauncher();
+      var btn = null, tabs = document.querySelectorAll("#tabs .tab");
+      for (var i = 0; i < tabs.length; i++) {
+        if ((tabs[i].getAttribute("onclick") || "").indexOf("'" + view + "'") >= 0) { btn = tabs[i]; break; }
+      }
+      try { setView(view, btn); } catch (e) { if (typeof safeWarn === "function") safeWarn("_navTo", e); }
     }
     function openAddModal() {
       modalMode = "add"; modalOrigKey = null; _modalCurrentEditKey = null;
