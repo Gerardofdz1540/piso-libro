@@ -3544,6 +3544,44 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
     .lc-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:6px 8px}
     body.dark .lc-card{background:#16181d;border-color:#374151}
     body.dark .ff-chart-btn{background:#0c2a3a;border-color:#155e75;color:#7dd3fc}
+    /* Ficha estilo RESID (resumen + rail) */
+    .ff2-wrap{display:flex;gap:12px;align-items:flex-start}
+    .ff2-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+    .ff2-sum{display:flex;flex-direction:column;gap:10px}
+    .ff2-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .ff2-cama{text-align:center;background:rgba(14,116,144,.12);border:1px solid rgba(14,116,144,.3);border-radius:10px;padding:5px 16px;flex-shrink:0}
+    .ff2-cama span{display:block;font-size:9px;letter-spacing:.08em;color:#0e7490;font-weight:700}
+    .ff2-cama b{font-size:21px;color:#0e7490}
+    .ff2-htxt{flex:1;min-width:120px}
+    .ff2-name{font-size:21px;font-weight:800;color:#0f172a;line-height:1.1}
+    .ff2-sub{font-size:12px;color:#64748b;font-weight:600}
+    .ff2-hbadges{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+    .ff2-est{color:#fff;font-size:12px;font-weight:800;padding:3px 13px;border-radius:8px}
+    .ff2-day{font-size:11px;font-weight:700;color:#475569;background:#f1f5f9;border-radius:8px;padding:3px 10px}
+    .ff2-atb{font-size:11px;font-weight:700;color:#9a3412;background:#ffedd5;border-radius:8px;padding:3px 10px}
+    .ff2-idrow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    .ff2-idc{background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:6px 11px}
+    .ff2-idc span{display:block;font-size:10px;color:#94a3b8;font-weight:600}
+    .ff2-idc b{font-size:13px;color:#1e293b}
+    .ff2-vit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:6px;margin-top:4px}
+    .ff2-eprow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .ff2-detail{border-top:2px solid #e2e8f0;padding-top:10px;display:flex;flex-direction:column;gap:8px}
+    .ff2-zone{margin-bottom:2px}
+    .ff2-rail{display:flex;flex-direction:column;gap:5px;width:86px;flex-shrink:0;position:sticky;top:8px}
+    .ff2-rb{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 3px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);text-align:center}
+    .ff2-rb span{font-size:18px;line-height:1}
+    .ff2-rb:hover{background:#f1f5f9}
+    .ff2-rb-on{background:#0e7490;border-color:#0e7490;color:#fff}
+    .ff2-rb-danger{color:#b91c1c;border-color:#fecaca}
+    .ff2-rb-danger:hover{background:#fef2f2}
+    .ff2-rdiv{height:1px;background:#e2e8f0;margin:3px 4px}
+    body.dark .ff2-name{color:#f1f5f9}
+    body.dark .ff2-idc{background:#16181d;border-color:#374151}
+    body.dark .ff2-idc b{color:#e2e8f0}
+    body.dark .ff2-rb{background:#16181d;border-color:#374151;color:#cbd5e1}
+    body.dark .ff2-rb-on{background:#0e7490;color:#fff}
+    body.dark .ff2-detail{border-color:#374151}
+    @media(max-width:640px){.ff2-wrap{flex-direction:column}.ff2-rail{flex-direction:row;flex-wrap:wrap;width:100%;position:static}.ff2-rb{flex:1;min-width:70px}.ff2-idrow{grid-template-columns:repeat(2,1fr)}.ff2-eprow{grid-template-columns:1fr}}
   </style>
   <div id="home-launcher" style="display:none">
     <div class="hl-top">
@@ -11220,79 +11258,106 @@ function plExportBackup() {
       window.__fbMoreOpen = window.__fbMoreOpen || {};
       var moreOpen = !!window.__fbMoreOpen[k];
 
-      var out = '<div class="focus-board" id="card-' + k + '">';
+      var estado = _fbVal(p.estado);
+      var estCol = (typeof ESTADO_COLORS !== "undefined" && ESTADO_COLORS[String(p.estado || "").toUpperCase()]) || "#94a3b8";
+      var sexo = ""; try { sexo = (typeof getPatientSex === "function") ? (getPatientSex(p, nd) || "") : ""; } catch (e) {}
+      window.__fichaSec = window.__fichaSec || {};
+      var activeSec = window.__fichaSec[k] || "nota";
+      function _secStyle(s) { return s === activeSec ? "" : "display:none"; }
+      function _secOn(s) { return s === activeSec ? " ff2-rb-on" : ""; }
 
-      // HEADER
-      out += '<div class="fb-hd">'
-        + '<div class="fb-cama"><span class="fb-lbl">Cama</span><span class="fb-cama-v">' + (_fbEsc(p.cama) || "S/C") + '</span></div>'
-        + '<div class="fb-mid">'
-        +   '<div class="fb-name">' + (_fbEsc(p.nombre) || "SIN NOMBRE") + '</div>'
-        +   '<div class="fb-meta"><span>Edad: <b>' + (p.edad ? _fbEsc(p.edad) : "?") + '</b></span><span>FI: <b>' + _fbEsc(_fbVal(p.ingreso)) + '</b></span><span>Exp: <b>' + _fbEsc(_fbVal(p.exp)) + '</b></span><span>Esp: <b>' + _fbEsc(_fbVal(p.esp)) + '</b></span></div>'
-        + '</div>'
-        + '<div class="fb-badges">'
-        +   '<span class="fb-badge fb-b-day">Día ' + _fbEsc(days) + '</span>'
-        +   (atbOn ? '<span class="fb-badge fb-b-atb">' + atbTxt + '</span>' : '')
+      var out = '<div class="focus-board ff2" id="card-' + k + '"><div class="ff2-wrap"><div class="ff2-main">';
+
+      out += '<div class="ff2-sum">';
+      out += '<div class="ff2-head">'
+        + '<div class="ff2-cama"><span>CAMA</span><b>' + (_fbEsc(p.cama) || "S/C") + '</b></div>'
+        + '<div class="ff2-htxt"><div class="ff2-name">' + (_fbEsc(p.nombre) || "SIN NOMBRE") + '</div>'
+        +   '<div class="ff2-sub">Resumen del paciente · ' + _fbEsc(_fbVal(p.esp)) + '</div></div>'
+        + '<div class="ff2-hbadges">'
+        +   (estado ? '<span class="ff2-est" style="background:' + estCol + '">' + _fbEsc(estado) + '</span>' : '')
+        +   '<span class="ff2-day">Día ' + _fbEsc(days) + '</span>'
+        +   (atbOn ? '<span class="ff2-atb">' + atbTxt + '</span>' : '')
         +   alertBadges
-        + '</div>'
+        + '</div></div>';
+      out += '<div class="ff2-idrow">'
+        + '<div class="ff2-idc"><span>Ingreso</span><b>' + _fbEsc(_fbVal(p.ingreso)) + '</b></div>'
+        + '<div class="ff2-idc"><span>Edad</span><b>' + (p.edad ? _fbEsc(p.edad) : "?") + '</b></div>'
+        + '<div class="ff2-idc"><span>Sexo</span><b>' + (_fbEsc(sexo) || "—") + '</b></div>'
+        + '<div class="ff2-idc"><span>Exp</span><b>' + _fbEsc(_fbVal(p.exp)) + '</b></div>'
+        + '</div>';
+      out += '<div class="ff2-dx">' + fbField("Dx:", "dx", (nd.dx || p.dx), 2) + '</div>';
+      out += '<div class="ff2-vit"><span class="fb-zh">Signos vitales</span><div class="ff2-vit-grid">' + pmHtml + '</div></div>';
+      out += '<div class="ff2-dren fb-drains"><span class="fb-zh">Sondas / Balance:</span><div class="ff2-vit-grid" style="margin:4px 0 8px">' + pm2Html + '</div>' + drainsInner + '</div>';
+      out += '<div class="ff2-eprow">'
+        + '<div class="ff2-zone">' + fbField("Entrega:", "entrega", nd.entrega, 6) + '</div>'
+        + '<div class="ff2-zone">' + fbField("Pendientes:", "pendientes", nd.pendientes, 6) + '</div>'
+        + '</div>';
+      out += '</div>';
+
+      out += '<div class="ff2-detail" id="ff2-detail-' + k + '">';
+      out += '<div class="ff2-sec" data-sec="nota" style="' + _secStyle("nota") + '">'
+        +   '<div class="ff2-zone">' + fbField("APP:", "app", nd.app, 3) + '</div>'
+        +   '<div class="ff2-zone">' + fbField("PA:", "pa", nd.pa, 4) + '</div>'
+        +   '<div class="ff2-zone">' + fbField("Qx:", "qx", nd.qx, 4) + '</div>'
+        +   '<div class="ff2-zone">' + fbField("Manejo:", "manejo", nd.manejo, 3) + '</div>'
+        +   '<div class="ff2-zone">' + fbField("Sangrado:", "sangrado", nd.sangrado, 2) + '</div>'
+        + '</div>';
+      out += '<div class="ff2-sec" data-sec="labs" style="' + _secStyle("labs") + '">' + labsHtml + '</div>';
+      out += '<div class="ff2-sec" data-sec="cultivos" style="' + _secStyle("cultivos") + '">'
+        + '<div class="ff2-zone">' + ((cultHtml && String(cultHtml).trim()) ? cultHtml : '<span class="fb-zh">Cultivos:</span><p class="fb-empty">—</p>') + '</div>'
+        + '<div class="ff2-zone">' + ((icHtml && String(icHtml).trim()) ? icHtml : '<span class="fb-zh">IC:</span><p class="fb-empty">—</p>') + '</div>'
+        + '</div>';
+      out += '<div class="ff2-sec" data-sec="imagen" style="' + _secStyle("imagen") + '">' + ((imgHtml && String(imgHtml).trim()) ? imgHtml : '<span class="fb-zh">Imagen:</span><p class="fb-empty">—</p>') + '</div>';
+      out += '<div class="ff2-sec" data-sec="indicaciones" style="' + _secStyle("indicaciones") + '">'
+        + ((indHtml && String(indHtml).trim()) ? indHtml : '')
+        + ((cdsHtml && String(cdsHtml).trim()) ? ('<div class="ff2-zone">' + cdsHtml + '</div>') : '')
+        + (((!indHtml || !String(indHtml).trim()) && (!cdsHtml || !String(cdsHtml).trim())) ? '<span class="fb-zh">Indicaciones:</span><p class="fb-empty">—</p>' : '')
+        + '</div>';
+      out += '</div>';
+
+      out += '</div>';
+
+      out += '<div class="ff2-rail">'
+        + '<button type="button" class="ff2-rb' + _secOn("nota") + '" data-sec="nota" onclick="_fichaSec(\'' + k + '\',\'nota\',this)"><span>📝</span>Nota</button>'
+        + '<button type="button" class="ff2-rb' + _secOn("labs") + '" data-sec="labs" onclick="_fichaSec(\'' + k + '\',\'labs\',this)"><span>🧪</span>Labs</button>'
+        + '<button type="button" class="ff2-rb' + _secOn("cultivos") + '" data-sec="cultivos" onclick="_fichaSec(\'' + k + '\',\'cultivos\',this)"><span>🦠</span>Cultivos</button>'
+        + '<button type="button" class="ff2-rb' + _secOn("imagen") + '" data-sec="imagen" onclick="_fichaSec(\'' + k + '\',\'imagen\',this)"><span>🩻</span>Imagen</button>'
+        + '<button type="button" class="ff2-rb' + _secOn("indicaciones") + '" data-sec="indicaciones" onclick="_fichaSec(\'' + k + '\',\'indicaciones\',this)"><span>💊</span>Indicac.</button>'
+        + '<div class="ff2-rdiv"></div>'
+        + '<button type="button" class="ff2-rb" onclick="openLabCharts(\'' + k + '\')"><span>📈</span>Gráficas</button>'
+        + '<button type="button" class="ff2-rb" onclick="openEditModal(\'' + k + '\')"><span>✏️</span>Editar</button>'
+        + '<button type="button" class="ff2-rb" onclick="openReminderModal(\'' + k + '\')"><span>🔔</span>Record.</button>'
+        + '<button type="button" class="ff2-rb ff2-rb-danger" onclick="openConfirm(\'' + k + '\')"><span>🚪</span>Alta</button>'
         + '</div>';
 
-      // DX (editable, compacto)
-      out += '<div class="fb-dxband">' + fbField("Dx:", "dx", (nd.dx || p.dx), 2) + '</div>';
-
-      // CDS (seguridad — conservado del app)
-      if (cdsHtml && String(cdsHtml).trim()) out += '<div class="fb-band fb-cds">' + cdsHtml + '</div>';
-
-      /* FIX-v47 · geometría calcada de la hoja GoodNotes (papel = fuente de verdad):
-         ROW A: Labs multi-fecha | APP / PA / Qx apilados a la derecha
-         ROW B: Imagen | IC | Cultivos
-         ROW C: Pendientes | Entrega | Pase matutino (plantilla completa)
-         ROW D: plegable "Más del app" (Indicaciones · Drenajes+chips · Manejo · Sangrado) */
-
-      // ROW A — labs grandes + columna derecha del papel
-      out += '<div class="fb-row fb-row-paper">'
-        + '<div class="fb-zone fb-labs">' + labsHtml + '</div>'
-        + '<div class="fb-stack">'
-        +   '<div class="fb-zone">' + fbField("APP:", "app", nd.app, 3) + '</div>'
-        +   '<div class="fb-zone">' + fbField("PA:", "pa", nd.pa, 4) + '</div>'
-        +   '<div class="fb-zone">' + fbField("Qx:", "qx", nd.qx, 4) + '</div>'
-        + '</div>'
-        + '</div>';
-
-      // ROW B — fila media del papel
-      out += '<div class="fb-row fb-row-3">'
-        + '<div class="fb-zone fb-img">' + ((imgHtml && String(imgHtml).trim()) ? imgHtml : '<span class="fb-zh">Imagen:</span><p class="fb-empty">—</p>') + '</div>'
-        + '<div class="fb-zone fb-ic">' + ((icHtml && String(icHtml).trim()) ? icHtml : '<span class="fb-zh">IC:</span><p class="fb-empty">—</p>') + '</div>'
-        + '<div class="fb-zone fb-cult">' + ((cultHtml && String(cultHtml).trim()) ? cultHtml : '<span class="fb-zh">Cultivos:</span><p class="fb-empty">—</p>') + '</div>'
-        + '</div>';
-
-      // ROW C — fila baja del papel
-      out += '<div class="fb-row fb-row-3">'
-        + '<div class="fb-zone fb-pend">' + fbField("Pendientes:", "pendientes", nd.pendientes, 7) + '</div>'
-        + '<div class="fb-zone fb-ent">' + fbField("Entrega:", "entrega", nd.entrega, 7) + '</div>'
-        + '<div class="fb-zone fb-pase">'
-        +   '<span class="fb-zh">Pase matutino:</span>'
-        +   '<div class="fb-pm-grid">' + pmHtml + '</div>'
-        +   '<div class="fb-pm-rows">' + pm2Html + '</div>'
-        +   '<div class="fb-pase-drains fb-drains">' + drainsInner + '</div>'
-        + '</div>'
-        + '</div>';
-
-      // ROW D — extras del app que el papel no tiene (plegados, no estorban)
-      out += '<div class="fb-more' + (moreOpen ? ' open' : '') + '">'
-        + '<button type="button" class="fb-more-btn" data-k="' + k + '" onclick="fbToggleMore(this.dataset.k,this)">➕ Más del app: Indicaciones · Manejo · Sangrado <span class="fb-more-caret">▸</span></button>'
-        + '<div class="fb-more-body">'
-        +   '<div class="fb-row">'
-        +     '<div class="fb-zone fb-ind">' + ((indHtml && String(indHtml).trim()) ? indHtml : '<span class="fb-zh">Indicaciones:</span><p class="fb-empty">—</p>') + '</div>'
-        +   '</div>'
-        +   '<div class="fb-row">'
-        +     '<div class="fb-zone">' + fbField("Manejo:", "manejo", nd.manejo, 3) + '</div>'
-        +     '<div class="fb-zone">' + fbField("Sangrado:", "sangrado", nd.sangrado, 3) + '</div>'
-        +   '</div>'
-        + '</div>'
-        + '</div>';
-
+      out += '</div>';
       out += '</div>'; // .focus-board
       return out;
+    }
+
+    // Conmuta la sección activa del detalle de la ficha (rail). Pura manipulación DOM
+    // — no recomputa nada, no toca los hooks. Persiste en window.__fichaSec[k] para
+    // que sobreviva re-renders (ej. al editar un drenaje).
+    function _fichaSec(k, sec, btn) {
+      try {
+        window.__fichaSec = window.__fichaSec || {};
+        window.__fichaSec[k] = sec;
+        var det = document.getElementById("ff2-detail-" + k);
+        if (det) {
+          var secs = det.querySelectorAll(".ff2-sec");
+          for (var i = 0; i < secs.length; i++) {
+            secs[i].style.display = (secs[i].getAttribute("data-sec") === sec) ? "" : "none";
+          }
+        }
+        var card = document.getElementById("card-" + k);
+        if (card) {
+          var rbs = card.querySelectorAll(".ff2-rail .ff2-rb");
+          for (var j = 0; j < rbs.length; j++) {
+            var ds = rbs[j].getAttribute("data-sec");
+            if (ds) rbs[j].classList.toggle("ff2-rb-on", ds === sec);
+          }
+        }
+      } catch (e) { if (typeof safeWarn === "function") safeWarn("_fichaSec", e); }
     }
 
     // ═══ v42 · navegación Modo Tablero (GoodNotes) ═══════════════════════════
