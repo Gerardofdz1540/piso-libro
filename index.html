@@ -8687,6 +8687,10 @@ function plExportBackup() {
       initPresence();
 
       // Subscribe to patients changes
+      // SHEET-SYNC-v55: este canal "patients-changes" es el RECEPTOR del sync Google Sheet→Supabase
+      // (Apps Script en apps-script/censo-sync.gs hace UPSERT column-scoped por cama). Al editar el
+      // censo en Sheets, el evento Realtime llega aquí y handlePatientChange re-renderiza solo. NO
+      // se duplica la suscripción: el sync REUSA esta vía existente.
       try {
         const patSub = _supa.channel("patients-changes")
           .on("postgres_changes", { event: "*", schema: "public", table: "patients" }, (payload) => {
