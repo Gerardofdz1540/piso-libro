@@ -6,9 +6,28 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Piso Libro" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a1628" />
   <title>Piso Libro — HGL Cirugía General</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230a1628'/%3E%3Ctext x='32' y='41' font-size='26' text-anchor='middle' fill='white' font-family='Arial'%3EPL%3C/text%3E%3C/svg%3E" />
+  <script>
+    /* Registro del Service Worker (PWA instalable). No bloquea el arranque
+       y deja pasar Supabase/WinLab directo a la red. */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function (err) {
+          console.warn('SW registro falló:', err);
+        });
+      });
+    }
+  </script>
+  <!-- Phosphor Icons (iconografía clínica estilo RESID) -->
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -46,38 +65,39 @@
       --link: #0e7490;
     }
 
-    /* DARK THEME — Notion-inspired */
+    /* DARK THEME — RESID (iOS navy) */
     body.dark {
-      --navy: #0a0a0b;
-      --blue: #1a1a1d;
-      --accent: #d4a373;
-      --green: #32d74b;
-      --orange: #ff9f0a;
-      --red: #ff453a;
-      --gray: #a1a1aa;
-      --bg: #0a0a0b;
-      --card: #121214;
-      --border: #27272a;
+      --navy: #0a1628;
+      --blue: #15294d;
+      --accent: #2d6cb5;       /* RESID primary blue */
+      --teal: #2fa6a0;         /* RESID logo teal */
+      --green: #34c759;
+      --orange: #f0a020;
+      --red: #ef4444;
+      --gray: #8da4c0;
+      --bg: #0a1628;
+      --card: #15294d;
+      --border: #213a5e;
 
-      --text: #f4f4f5;
-      --text-muted: #a1a1aa;
-      --surface: #121214;
-      --surface-2: #171719;
-      --surface-3: #1a1a1d;
-      --border-soft: #1f1f22;
-      --border-strong: #27272a;
-      --input-bg: #171719;
-      --input-border: #27272a;
-      --shadow-sm: 0 1px 3px rgba(0,0,0,.4);
-      --shadow-md: 0 4px 14px rgba(0,0,0,.5);
-      --link: #d4a373;
+      --text: #f2f6fb;
+      --text-muted: #8da4c0;
+      --surface: #15294d;
+      --surface-2: #102443;
+      --surface-3: #1b355f;
+      --border-soft: #1d3354;
+      --border-strong: #284a78;
+      --input-bg: #0d2140;
+      --input-border: #244268;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.35);
+      --shadow-md: 0 8px 24px rgba(0,0,0,.45);
+      --link: #4f9be0;
       color-scheme: dark;
     }
 
     body.dark #header {
-      background: linear-gradient(135deg, #0a0a0b 0%, #121214 50%, #1a1a1d 100%) !important;
-      border-bottom: 1px solid #27272a;
-      box-shadow: 0 1px 0 #27272a;
+      background: linear-gradient(135deg, #0a1628 0%, #102443 50%, #15294d 100%) !important;
+      border-bottom: 1px solid #213a5e;
+      box-shadow: 0 1px 0 #213a5e;
     }
     body.dark input,
     body.dark textarea,
@@ -121,22 +141,54 @@
     body.dark .btn,
     body.dark button.tab,
     body.dark .btn-secondary { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
-    body.dark button.tab.active { background: rgba(212,163,115,.15) !important; color: #d4a373 !important; border-color: rgba(212,163,115,.5) !important; }
+    body.dark button.tab.active { background: rgba(45,108,181,.18) !important; color: #5b9be0 !important; border-color: rgba(45,108,181,.55) !important; }
     body.dark .btn-green { background: #1d7a3f !important; }
-    body.dark .btn-blue { background: #1e5fa8 !important; }
+    body.dark .btn-blue { background: #2d6cb5 !important; }
     body.dark .btn-orange { background: #b05413 !important; }
     body.dark #import-banner { background: var(--surface-2) !important; color: var(--text) !important; border-color: var(--border-strong) !important; }
-    body.dark .config-pill { background: rgba(212,163,115,.15) !important; color: #d4a373 !important; border-color: rgba(212,163,115,.4) !important; }
-    body.dark .modal-bg { background: rgba(0,0,0,.75) !important; }
+    body.dark .config-pill { background: rgba(45,108,181,.18) !important; color: #5b9be0 !important; border-color: rgba(45,108,181,.45) !important; }
+    body.dark .modal-bg { background: rgba(3,10,22,.78) !important; }
     body.dark .sync-dot { filter: brightness(1.3); }
     body.dark #sync-status { background: rgba(255,255,255,.05) !important; color: var(--text) !important; }
-    body.dark ::selection { background: rgba(212,163,115,.35); color: #fff; }
+    body.dark ::selection { background: rgba(45,108,181,.4); color: #fff; }
     body.dark ::-webkit-scrollbar { width: 10px; height: 10px; }
-    body.dark ::-webkit-scrollbar-track { background: #0a0a0b; }
-    body.dark ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 6px; }
-    body.dark ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    body.dark ::-webkit-scrollbar-track { background: #0a1628; }
+    body.dark ::-webkit-scrollbar-thumb { background: #284a78; border-radius: 6px; }
+    body.dark ::-webkit-scrollbar-thumb:hover { background: #356099; }
     body.dark a { color: var(--link); }
-    body.dark code, body.dark pre { background: var(--surface-2) !important; color: #d4a373 !important; border-color: var(--border-soft) !important; }
+    body.dark code, body.dark pre { background: var(--surface-2) !important; color: #5b9be0 !important; border-color: var(--border-soft) !important; }
+
+    /* ── RESID — superficies iOS redondeadas (solo tema oscuro/RESID) ── */
+    body.dark .card,
+    body.dark .lap-card,
+    body.dark .simple-card,
+    body.dark .pat-card,
+    body.dark .entrega-card,
+    body.dark .patient-card,
+    body.dark .panel,
+    body.dark .modal-content,
+    body.dark [class*="card"]:not(.qa-card):not(.btn-card) {
+      border-radius: 16px !important;
+      border: 1px solid var(--border-soft) !important;
+    }
+    body.dark .patient-card,
+    body.dark .pat-card,
+    body.dark .modal-content { box-shadow: var(--shadow-md) !important; }
+    body.dark input,
+    body.dark textarea,
+    body.dark select { border-radius: 12px !important; }
+    body.dark #search { border-radius: 999px !important; }
+    body.dark .btn,
+    body.dark button.tab,
+    body.dark .btn-secondary,
+    body.dark .btn-green,
+    body.dark .btn-blue,
+    body.dark .btn-orange { border-radius: 12px !important; }
+    /* Botón primario estilo RESID (azul sólido, pill) */
+    body.dark .btn-blue,
+    body.dark .btn-primary { background: var(--accent) !important; border-color: transparent !important; color: #fff !important; }
+    body.dark .btn-blue:hover,
+    body.dark .btn-primary:hover { background: #3a7ec4 !important; }
 
     body {
       font-family: var(--font);
@@ -2975,6 +3027,133 @@
       color: #b45309
     }
 
+    /* ════ RESID — bottom-sheet select + iconografía clínica ════ */
+    .resid-select {
+      font: inherit; font-family: var(--font);
+      display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+      text-align: left; cursor: pointer; width: 100%; min-height: 40px;
+      background: var(--input-bg, #fff); color: var(--text, #1e293b);
+      border: 1px solid var(--input-border, #cbd5e1); border-radius: 12px;
+      padding: 9px 12px; transition: border-color .15s ease, background .15s ease;
+    }
+    .resid-select:hover { border-color: var(--accent); }
+    .resid-select:disabled { opacity: .55; cursor: not-allowed; }
+    .resid-select .rs-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .resid-select.rs-placeholder .rs-label { color: var(--text-muted, #94a3b8); }
+    .resid-select .rs-chevron { flex: 0 0 auto; opacity: .55; font-size: 1.1em; }
+
+    .resid-sheet-backdrop {
+      position: fixed; inset: 0; z-index: 4000;
+      background: rgba(3,10,22,.55); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+      display: flex; align-items: flex-end; justify-content: center;
+      opacity: 0; transition: opacity .22s ease;
+    }
+    .resid-sheet-backdrop.rs-open { opacity: 1; }
+    .resid-sheet {
+      width: 100%; max-width: 560px; display: flex; flex-direction: column; max-height: 82vh;
+      background: var(--card, #fff); color: var(--text, #1e293b);
+      border: 1px solid var(--border-soft, #e2e8f0); border-bottom: none;
+      border-radius: 22px 22px 0 0; box-shadow: 0 -12px 44px rgba(0,0,0,.4);
+      transform: translateY(100%); transition: transform .28s cubic-bezier(.32,.72,0,1);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .resid-sheet-backdrop.rs-open .resid-sheet { transform: translateY(0); }
+    .resid-sheet-grip { width: 38px; height: 5px; border-radius: 3px; background: var(--border-strong, #cbd5e1); margin: 10px auto 2px; flex: 0 0 auto; }
+    .resid-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 18px 10px; }
+    .resid-sheet-title { font-family: var(--font); font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 9px; color: var(--text); }
+    .resid-sheet-title i { color: var(--accent); font-size: 21px; }
+    .resid-sheet-close { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; line-height: 1; padding: 5px; border-radius: 8px; display: flex; }
+    .resid-sheet-close:hover { color: var(--text); background: var(--surface-3, #f1f5f9); }
+    .resid-sheet-search { position: relative; margin: 0 16px 6px; }
+    .resid-sheet-search input { width: 100%; border-radius: 999px; border: 1px solid var(--input-border, #cbd5e1); background: var(--input-bg, #f8fafc); color: var(--text); padding: 10px 14px 10px 40px; font-family: var(--font); font-size: 15px; }
+    .resid-sheet-search i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 17px; }
+    .resid-sheet-list { overflow-y: auto; padding: 4px 12px calc(14px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
+    .resid-sheet-row { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: none; border: none; border-radius: 14px; padding: 13px 12px; cursor: pointer; color: var(--text); font-family: var(--font); font-size: 16px; }
+    .resid-sheet-row:hover, .resid-sheet-row.rs-cursor { background: var(--surface-3, #f1f5f9); }
+    .resid-sheet-row.rs-active { background: var(--brand-muted, rgba(45,108,181,.14)); }
+    .resid-sheet-row .rs-ic { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--surface-2, #f1f5f9); color: var(--accent); font-size: 20px; }
+    .resid-sheet-row .rs-tx { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+    .resid-sheet-row .rs-check { flex: 0 0 auto; color: var(--accent); font-size: 20px; opacity: 0; }
+    .resid-sheet-row.rs-active .rs-check { opacity: 1; }
+    .resid-sheet-row.rs-hidden { display: none; }
+    .resid-sheet-empty { padding: 22px; text-align: center; color: var(--text-muted); font-family: var(--font); font-size: 14px; }
+
+    /* ════ RESID — Ficha del Paciente (overlay) ════ */
+    .ficha-backdrop { position: fixed; inset: 0; z-index: 4100; background: #0b1828; display: flex; justify-content: center; align-items: flex-start; opacity: 0; transition: opacity .2s ease; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .ficha-backdrop.rs-open { opacity: 1; }
+    .ficha-panel { width: 100%; max-width: 520px; margin: 0 auto; min-height: 100%; background: linear-gradient(180deg, #0d1d31 0%, #0b1828 38%); color: #eaf1f8; font-family: var(--font); transform: translateY(12px); transition: transform .26s cubic-bezier(.32,.72,0,1); padding: 0 12px calc(26px + env(safe-area-inset-bottom)); }
+    .ficha-backdrop.rs-open .ficha-panel { transform: translateY(0); }
+    .ficha-top { display: flex; align-items: center; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 4px 12px; position: sticky; top: 0; background: linear-gradient(#0d1d31 70%, rgba(13,29,49,0)); z-index: 3; }
+    .ficha-back { background: transparent; border: none; color: #cfe0f5; height: 34px; width: 34px; font-size: 22px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .ficha-ttl { flex: 1; text-align: center; font-size: 16px; font-weight: 600; letter-spacing: .2px; }
+    .ficha-ttl + span { width: 34px; }
+    .ficha-body { display: flex; gap: 10px; align-items: flex-start; }
+    .ficha-main { flex: 1; min-width: 0; }
+    /* cards */
+    .ficha-card { background: #14273f; border: 1px solid #213a5c; border-radius: 18px; padding: 16px; margin-bottom: 13px; }
+    .ficha-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .ficha-name { font-size: 21px; font-weight: 700; line-height: 1.15; }
+    .ficha-sub { color: #8597b0; font-size: 13px; margin-top: 3px; }
+    .ficha-cama { flex: 0 0 auto; text-align: center; background: linear-gradient(155deg, #1c5366 0%, #123a4d 100%); border: 1px solid #2a6c80; border-radius: 14px; padding: 9px 18px; min-width: 84px; box-shadow: 0 0 0 1px rgba(103,210,230,.06) inset; }
+    .ficha-cama .lbl { font-size: 10px; letter-spacing: 2.5px; color: #67d2e6; font-weight: 700; }
+    .ficha-cama .val { font-size: 27px; font-weight: 800; color: #cdeef6; line-height: 1.05; }
+    .ficha-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .ficha-chip { background: #0f1f37; border: 1px solid #203a5e; border-radius: 12px; padding: 10px 12px; min-width: 0; }
+    .ficha-chip .k { font-size: 11px; color: #8597b0; display: flex; align-items: center; gap: 6px; }
+    .ficha-chip .k i { font-size: 14px; color: #8597b0; }
+    .ficha-chip .v { font-size: 14px; font-weight: 600; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ficha-sec-head { display: flex; align-items: center; gap: 9px; }
+    .ficha-sec-head .ico { font-size: 19px; color: #b7c6dc; display: flex; }
+    .ficha-sec-head .t { flex: 1; font-size: 15px; font-weight: 600; }
+    .ficha-sec-head .chev, .ficha-sec-head .cnt { color: #8597b0; font-size: 15px; }
+    .ficha-sec-head .addb { background: #1c3a5e; border: none; color: #bcd2ee; width: 26px; height: 26px; border-radius: 8px; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .ficha-vitals { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; margin-top: 13px; }
+    .ficha-vital { background: #0f1f37; border: 1px solid #203a5e; border-radius: 12px; padding: 10px 5px; text-align: center; }
+    .ficha-vital i { font-size: 18px; }
+    .ficha-vital .vk { font-size: 10px; color: #8597b0; letter-spacing: .5px; margin-top: 4px; font-weight: 600; }
+    .ficha-vital .vv { font-size: 14px; font-weight: 700; margin-top: 1px; }
+    .ficha-vital .vv .u { font-size: 9px; color: #8597b0; font-weight: 600; }
+    .ficha-vital .vv.empty { color: #45617f; }
+    .ficha-field { background: #0f1f37; border: 1px solid #203a5e; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; color: #dce8f7; margin-top: 13px; }
+    .ficha-field.tight { margin-top: 13px; }
+    .ficha-field.empty { color: #5b7a9c; }
+    /* right module rail */
+    .ficha-rail { flex: 0 0 auto; width: 62px; display: flex; flex-direction: column; gap: 9px; padding-top: 2px; }
+    .ficha-railbtn { position: relative; background: #182b44; border: 1px solid #26395a; border-radius: 14px; padding: 9px 2px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; color: #c2d0e4; transition: background .15s, border-color .15s; }
+    .ficha-railbtn:hover { background: #1f3552; border-color: #3a5681; }
+    .ficha-railbtn i { font-size: 21px; }
+    .ficha-railbtn .rl { font-size: 8.5px; line-height: 1.1; text-align: center; color: #9aabc4; font-weight: 600; letter-spacing: .2px; }
+    .ficha-railbtn.danger i { color: #ff6b6b; }
+    .ficha-railbtn .badge { position: absolute; top: -5px; right: -4px; background: #ff453a; color: #fff; font-size: 9px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px; display: flex; align-items: center; justify-content: center; padding: 0 3px; }
+    .ficha-toast { position: fixed; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(8px); background: #1c3a5e; color: #eaf1f8; border: 1px solid #2f568a; padding: 10px 18px; border-radius: 12px; font-size: 13px; font-family: var(--font); z-index: 4200; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+    .ficha-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ════ RESID — Home / Launcher de módulos ════ */
+    .rhome-backdrop { position: fixed; inset: 0; z-index: 4090; background: #0a1726; display: flex; justify-content: center; align-items: flex-start; opacity: 0; transition: opacity .2s ease; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .rhome-backdrop.rs-open { opacity: 1; }
+    .rhome-panel { width: 100%; max-width: 520px; margin: 0 auto; min-height: 100%; background: radial-gradient(120% 60% at 50% 0%, #163152 0%, #0e2138 42%, #0a1726 100%); color: #eaf1f8; font-family: var(--font); display: flex; flex-direction: column; transform: translateY(12px); transition: transform .26s cubic-bezier(.32,.72,0,1); padding: calc(14px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom)); }
+    .rhome-backdrop.rs-open .rhome-panel { transform: translateY(0); }
+    .rhome-head { display: flex; align-items: center; gap: 12px; background: linear-gradient(100deg, #16304d, #122844); border: 1px solid #244366; border-radius: 18px; padding: 13px 15px; }
+    .rhome-logo { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(150deg, #2fb3ad, #1d7d8e); display: flex; align-items: center; justify-content: center; color: #eafffe; font-size: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+    .rhome-hi { flex: 1; min-width: 0; }
+    .rhome-hi .h { font-size: 16px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rhome-hi .s { font-size: 11px; color: #8aa0bd; letter-spacing: 1.5px; font-weight: 600; margin-top: 2px; }
+    .rhome-head .x { background: rgba(255,255,255,.08); border: none; color: #cfe0f5; width: 32px; height: 32px; border-radius: 10px; font-size: 18px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .rhome-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; margin-top: 22px; }
+    .rhome-tile { background: linear-gradient(160deg, #17304c 0%, #122843 100%); border: 1px solid #25426a; border-radius: 18px; padding: 18px 6px 13px; display: flex; flex-direction: column; align-items: center; gap: 9px; cursor: pointer; color: #e4edf8; transition: transform .12s, border-color .15s, background .15s; }
+    .rhome-tile:active { transform: scale(.96); }
+    .rhome-tile:hover { border-color: #3a5a86; background: linear-gradient(160deg, #1b3756 0%, #163150 100%); }
+    .rhome-tile i { font-size: 27px; color: #6fb6d8; }
+    .rhome-tile .l { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; color: #cddcee; }
+    .rhome-dots { display: flex; justify-content: center; gap: 7px; margin: 20px 0 14px; }
+    .rhome-dots span { width: 7px; height: 7px; border-radius: 50%; background: #2c486e; }
+    .rhome-dots span.on { background: #6fb6d8; width: 20px; border-radius: 4px; }
+    .rhome-foot { margin-top: auto; display: flex; justify-content: space-around; align-items: center; background: linear-gradient(#102844, #0d2038); border: 1px solid #224266; border-radius: 18px; padding: 12px 8px; }
+    .rhome-fbtn { background: none; border: none; color: #b9c8dd; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; font-family: var(--font); flex: 1; }
+    .rhome-fbtn i { font-size: 22px; }
+    .rhome-fbtn .l { font-size: 11px; font-weight: 600; }
+    .rhome-fbtn.accent i { color: #2fb3ad; }
+
   </style>
 </head>
 
@@ -3093,6 +3272,7 @@
       </div>
     </div>
     <div id="tabs">
+      <button class="tab" onclick="openResidHome()" style="background:rgba(47,166,160,.22);border-color:rgba(47,166,160,.6)" title="Inicio (menú de módulos)">🏠 Inicio</button>
       <button class="tab active" onclick="setView('piso',this)">🏥 Piso Libro</button>
       <button class="tab" onclick="setView('census',this)">📊 Censo</button>
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
@@ -4229,19 +4409,19 @@
       if (btn) btn.title = theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
     }
     function toggleTheme() {
-      const current = localStorage.getItem("pl_theme") || "light";
+      const current = localStorage.getItem("pl_theme") || "dark";
       const next = current === "dark" ? "light" : "dark";
       localStorage.setItem("pl_theme", next);
       applyTheme(next);
     }
     function initTheme() {
-      const saved = localStorage.getItem("pl_theme") || "light";
+      const saved = localStorage.getItem("pl_theme") || "dark";
       applyTheme(saved);
     }
     // Apply theme as early as possible to avoid flash
     (function() {
       try {
-        const saved = localStorage.getItem("pl_theme") || "light";
+        const saved = localStorage.getItem("pl_theme") || "dark";
         if (saved === "dark") document.documentElement.classList.add("_pretheme-dark");
       } catch (e) {}
     })();
@@ -8768,6 +8948,7 @@
         ${renderDiasSinLabsBadge(nd)}
         ${curPendiente ? `<span style="background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap">🩹 Cur</span>` : ''}
         ${renderCruceBadge(nd, k)}
+        <button class="icon-btn" data-fichakey="${k}" onclick="openFichaResid(this.dataset.fichakey)" title="Ficha del paciente">🪪</button>
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
         <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
       </div>
@@ -8781,6 +8962,209 @@
       <div class="entrega-row">${fieldRow("📋 Entrega", nd.entrega, k, "entrega", 2)}</div>
     </div>
   </div>`;
+    }
+
+    // ─── HOME / LAUNCHER (réplica RESID) ───────────────────────────────────────
+    // Módulos de la rejilla: icono Phosphor, etiqueta y acción.
+    const RHOME_TILES = [
+      { i: "ph-stethoscope",      l: "Pase de Visita", act: () => setView("piso") },
+      { i: "ph-users-three",      l: "Pacientes",      act: () => setView("census") },
+      { i: "ph-file-text",        l: "Entrega",        act: () => setView("print") },
+      { i: "ph-push-pin",         l: "No olvidar",     act: () => setView("noOlvidar") },
+      { i: "ph-list-checks",      l: "Pendientes",     act: () => setView("pendientes") },
+      { i: "ph-check-circle",     l: "Altas",          act: () => setView("altas") },
+      { i: "ph-archive-box",      l: "Egresados",      act: () => setView("papelera") },
+      { i: "ph-flask",            l: "Labs WinLab",    act: () => { if (typeof refreshWinlabLabs === "function") refreshWinlabLabs(); } },
+      { i: "ph-user-plus",        l: "Nuevo paciente", act: () => { if (typeof openAddModal === "function") openAddModal(); } }
+    ];
+    function openResidHome() {
+      const nombre = (localStorage.getItem("pl_user_name") || "").trim();
+      const saludo = nombre ? ("Hola, " + nombre) : "Hola";
+
+      const tilesHtml = RHOME_TILES.map((t, idx) =>
+        `<button class="rhome-tile" data-idx="${idx}"><i class="ph ${t.i}"></i><span class="l">${t.l}</span></button>`
+      ).join("");
+
+      const html =
+        `<div class="rhome-panel">` +
+          `<div class="rhome-head">` +
+            `<div class="rhome-logo"><i class="ph ph-first-aid"></i></div>` +
+            `<div class="rhome-hi"><div class="h">${esc(saludo)}</div><div class="s">CIRUGÍA GENERAL · HGL</div></div>` +
+            `<button class="x" aria-label="Cerrar"><i class="ph ph-x"></i></button>` +
+          `</div>` +
+          `<div class="rhome-grid">${tilesHtml}</div>` +
+          `<div class="rhome-dots"><span class="on"></span><span></span></div>` +
+          `<div class="rhome-foot">` +
+            `<button class="rhome-fbtn" data-foot="config"><i class="ph ph-gear-six"></i><span class="l">Config</span></button>` +
+            `<button class="rhome-fbtn" data-foot="sync"><i class="ph ph-arrows-clockwise"></i><span class="l">Sync</span></button>` +
+            `<button class="rhome-fbtn accent" data-foot="paciente"><i class="ph ph-plus-circle"></i><span class="l">Paciente</span></button>` +
+          `</div>` +
+        `</div>`;
+
+      const bd = document.createElement("div");
+      bd.className = "rhome-backdrop";
+      bd.innerHTML = html;
+      document.body.appendChild(bd);
+      void bd.offsetWidth;
+      bd.classList.add("rs-open");
+
+      function close() {
+        bd.classList.remove("rs-open");
+        document.removeEventListener("keydown", onKey, true);
+        setTimeout(() => { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 260);
+      }
+      function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); close(); } }
+      function run(fn) { close(); setTimeout(() => { try { fn(); } catch (_) {} }, 150); }
+      bd.addEventListener("click", e => {
+        if (e.target === bd) { close(); return; }
+        if (e.target.closest(".rhome-head .x")) { close(); return; }
+        const tile = e.target.closest(".rhome-tile");
+        if (tile) { run(RHOME_TILES[+tile.dataset.idx].act); return; }
+        const foot = e.target.closest("[data-foot]");
+        if (foot) {
+          const f = foot.dataset.foot;
+          if (f === "config") run(() => { if (typeof openConfigModal === "function") openConfigModal(); });
+          else if (f === "sync") run(() => { if (typeof refreshWinlabLabs === "function") refreshWinlabLabs(); });
+          else if (f === "paciente") run(() => { if (typeof openAddModal === "function") openAddModal(); });
+        }
+      });
+      document.addEventListener("keydown", onKey, true);
+    }
+
+    // ─── FICHA DEL PACIENTE (réplica RESID) ────────────────────────────────────
+    function fichaVital(icon, label, val, unit, color) {
+      const has = val != null && String(val).trim() !== "";
+      const v = has
+        ? esc(String(val).trim()) + (unit ? ` <span class="u">${unit}</span>` : "")
+        : "—";
+      return `<div class="ficha-vital"><i class="ph ${icon}" style="color:${color}"></i>` +
+        `<div class="vk">${label}</div><div class="vv${has ? "" : " empty"}">${v}</div></div>`;
+    }
+    function fichaChip(icon, label, val) {
+      const has = val != null && String(val).trim() !== "";
+      return `<div class="ficha-chip"><div class="k"><i class="ph ${icon}"></i>${label}</div>` +
+        `<div class="v">${has ? esc(String(val).trim()) : "—"}</div></div>`;
+    }
+    function fichaToast(msg) {
+      let t = document.createElement("div");
+      t.className = "ficha-toast";
+      t.textContent = msg;
+      document.body.appendChild(t);
+      void t.offsetWidth;
+      t.classList.add("show");
+      setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 220); }, 1700);
+    }
+    // Módulos del riel lateral (icono, etiqueta, acción)
+    const FICHA_RAIL = [
+      { i: "ph-note-pencil",      l: "Nota",          act: "nota" },
+      { i: "ph-scales",           l: "Balances",      act: "soon" },
+      { i: "ph-chart-line-up",    l: "Gráficas",      act: "soon" },
+      { i: "ph-heartbeat",        l: "FAST HUG",      act: "soon" },
+      { i: "ph-pill",             l: "MAIDENS",       act: "soon" },
+      { i: "ph-folder-open",      l: "Interrogatorio",act: "soon" },
+      { i: "ph-hand-pointing",    l: "Exploración",   act: "soon" },
+      { i: "ph-flask",            l: "Auxiliares",    act: "labs" },
+      { i: "ph-clipboard-text",   l: "Impresión Dx",  act: "print" },
+      { i: "ph-trash",            l: "Eliminar",      act: "del", danger: true }
+    ];
+    function openFichaResid(k) {
+      const p = (patients || []).find(x => pid(x) === k);
+      if (!p) return;
+      const nd = getNote(k);
+      const cl = (nd && nd.checklist) || {};
+      const labs = (nd && nd.labs) || {};
+      const sexo = getPatientSex(p, nd);
+      const sangre = (cl.fqx_tipo_sangre || "").trim();
+      const dx = (p.dx || "").trim();
+      const notas = (nd.entrega || "").trim();
+      const hasVitals = ["pm_ta", "pm_fc", "pm_fr", "pm_temp", "pm_sao2"].some(f => (cl[f] || "").toString().trim() !== "") || (labs.glu || "").toString().trim() !== "";
+
+      const vitalsHtml = hasVitals
+        ? `<div class="ficha-vitals">` +
+            fichaVital("ph-heartbeat", "TA",    cl.pm_ta,   "mmHg",  "#f87171") +
+            fichaVital("ph-pulse",     "FC",    cl.pm_fc,   "lpm",   "#fb7185") +
+            fichaVital("ph-wind",      "FR",    cl.pm_fr,   "rpm",   "#fbbf24") +
+            fichaVital("ph-thermometer","TEMP", cl.pm_temp, "°C",    "#fb923c") +
+            fichaVital("ph-drop",      "SatO₂", cl.pm_sao2, "%",     "#38bdf8") +
+            fichaVital("ph-syringe",   "DXT",   labs.glu,   "mg/dl", "#c084fc") +
+          `</div>`
+        : `<div class="ficha-field empty">Sin signos vitales registrados</div>`;
+
+      const railHtml = FICHA_RAIL.map(m =>
+        `<button class="ficha-railbtn${m.danger ? " danger" : ""}" data-act="${m.act}">` +
+        `<i class="ph ${m.i}"></i><span class="rl">${m.l}</span></button>`
+      ).join("");
+
+      const html =
+        `<div class="ficha-panel">` +
+          `<div class="ficha-top">` +
+            `<button class="ficha-back" aria-label="Cerrar"><i class="ph ph-caret-left"></i></button>` +
+            `<div class="ficha-ttl">Ficha del Paciente</div>` +
+            `<span></span>` +
+          `</div>` +
+          `<div class="ficha-body">` +
+            `<div class="ficha-main">` +
+              `<div class="ficha-card">` +
+                `<div class="ficha-summary">` +
+                  `<div style="min-width:0">` +
+                    `<div class="ficha-name">${esc(p.nombre || "Sin nombre")}</div>` +
+                    `<div class="ficha-sub">Resumen del paciente</div>` +
+                  `</div>` +
+                  `<div class="ficha-cama"><div class="lbl">CAMA</div><div class="val">${esc(p.cama || "—")}</div></div>` +
+                `</div>` +
+                `<div class="ficha-chips">` +
+                  fichaChip("ph-calendar-blank", "Fecha de ingreso", p.ingreso) +
+                  fichaChip(sexo === "Femenino" ? "ph-gender-female" : "ph-gender-male", "Sexo", sexo) +
+                  fichaChip("ph-cake", "Edad", p.edad ? p.edad + " años" : "") +
+                  fichaChip("ph-drop", "Tipo de sangre", sangre) +
+                `</div>` +
+                `<div class="ficha-field${dx ? "" : " empty"}">${dx ? esc(dx) : "Sin diagnósticos registrados"}</div>` +
+              `</div>` +
+              `<div class="ficha-card">` +
+                `<div class="ficha-sec-head"><span class="ico"><i class="ph ph-activity"></i></span>` +
+                  `<span class="t">Signos vitales</span><span class="chev"><i class="ph ph-caret-right"></i></span></div>` +
+                vitalsHtml +
+              `</div>` +
+              `<div class="ficha-card">` +
+                `<div class="ficha-sec-head"><span class="ico"><i class="ph ph-note"></i></span>` +
+                  `<span class="t">Notas del paciente</span><span class="cnt">${notas ? 1 : 0}</span>` +
+                  `<button class="addb" data-act="nota" title="Agregar nota">+</button></div>` +
+                `<div class="ficha-field${notas ? "" : " empty"}">${notas ? esc(notas) : "Sin notas registradas"}</div>` +
+              `</div>` +
+            `</div>` +
+            `<div class="ficha-rail">${railHtml}</div>` +
+          `</div>` +
+        `</div>`;
+
+      const bd = document.createElement("div");
+      bd.className = "ficha-backdrop";
+      bd.innerHTML = html;
+      document.body.appendChild(bd);
+      void bd.offsetWidth;
+      bd.classList.add("rs-open");
+
+      function close() {
+        bd.classList.remove("rs-open");
+        document.removeEventListener("keydown", onKey, true);
+        setTimeout(() => { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 260);
+      }
+      function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); close(); } }
+      function doAct(act) {
+        switch (act) {
+          case "nota": close(); if (typeof openEditModal === "function") setTimeout(() => openEditModal(k), 140); break;
+          case "labs": close(); if (typeof openWinLabForPatient === "function") setTimeout(() => openWinLabForPatient(k), 140); break;
+          case "print": close(); if (typeof setView === "function") setTimeout(() => setView("print"), 140); break;
+          case "del": close(); if (typeof openConfirm === "function") setTimeout(() => openConfirm(k), 140); break;
+          default: fichaToast("Módulo en construcción");
+        }
+      }
+      bd.addEventListener("click", e => {
+        if (e.target === bd) { close(); return; }
+        const btn = e.target.closest("[data-act]");
+        if (btn) { e.stopPropagation(); doAct(btn.dataset.act); }
+      });
+      bd.querySelector(".ficha-back").addEventListener("click", close);
+      document.addEventListener("keydown", onKey, true);
     }
 
     function fieldRow(label, val, k, field, rows) {
@@ -16864,6 +17248,210 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     <button onclick="undoLastField()" style="background:#6366f1;border:none;color:#fff;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700">↩ Deshacer</button>
     <button onclick="document.getElementById('undo-toast').style.display='none'" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">✕</button>
   </div>
+
+  <!-- ════ RESID — bottom-sheet select (progressive enhancement) ════ -->
+  <script>
+  (function () {
+    if (window.__residSelect) return; window.__residSelect = true;
+
+    // Mapa palabra-clave → icono Phosphor, enfocado a piso de Cirugía General.
+    var ICON_MAP = [
+      [/alerg/i, 'ph-warning-circle'],
+      [/(qu[ií]r[uú]rg|cirug|operad|postq|posqx|preqx)/i, 'ph-scissors'],
+      [/(traum|fractur|herida|cont[uú]si)/i, 'ph-bandaids'],
+      [/(transfus|sangr|hemo|hemat|anemia)/i, 'ph-drop'],
+      [/(toxicoman|droga|tabaq|tabaco|alcohol|etilis|sustanc)/i, 'ph-pill'],
+      [/(desarrollo|pedi|neonat|beb[eé]|reci[eé]n)/i, 'ph-baby'],
+      [/(infec|s[eé]psi|absces|viral|virus|fiebre)/i, 'ph-virus'],
+      [/(card|coraz|fc\b|frecuencia card|arritm|hta|hipertens)/i, 'ph-heartbeat'],
+      [/(respir|pulmon|\bfr\b|\bsato|\bo2\b|ventil|intub|disnea)/i, 'ph-lungs'],
+      [/(diabet|endocr|insulin|glucos|\bdxt\b|dm2|dm\b)/i, 'ph-syringe'],
+      [/(renal|ri[ñn][oó]n|nefro|uremi|di[aá]lisis)/i, 'ph-funnel'],
+      [/(neuro|cerebr|gcs|glasgow|conscien)/i, 'ph-brain'],
+      [/(estable|mejor[ií]a|asintom)/i, 'ph-check-circle'],
+      [/(delicad|regular|cuidado|vigil|observ)/i, 'ph-warning'],
+      [/(grave|cr[ií]tic|choque|shock|paro|terminal|agon)/i, 'ph-warning-octagon'],
+      [/(masculino|hombre|var[oó]n)/i, 'ph-gender-male'],
+      [/(femenino|mujer)/i, 'ph-gender-female'],
+      [/(alta|egres|domicili|defunci|fallec)/i, 'ph-sign-out'],
+      [/(ingres|admisi|nuevo ingreso)/i, 'ph-sign-in'],
+      [/(laborat|\blab\b|biometr|qu[ií]mica|electrolit)/i, 'ph-flask'],
+      [/(gabinet|imagen|radio|\brx\b|\btac\b|tomog|usg|ecograf|placa)/i, 'ph-monitor'],
+      [/(especialidad|servicio|interconsulta)/i, 'ph-stethoscope'],
+      [/(adscrito|residente|m[eé]dico|doctor|equipo|usuario|enfermer)/i, 'ph-identification-badge'],
+      [/(piso|cama|sala|urgenc|uci|terapia)/i, 'ph-bed'],
+      [/(ayuno|nvo|dieta|nutrici|l[ií]quid)/i, 'ph-fork-knife'],
+      [/(dolor|analges|eva\b)/i, 'ph-pulse'],
+      [/(otro|otra|ninguno|ningun|sin |n\/?a|seleccion)/i, 'ph-dots-three-circle']
+    ];
+    function iconFor(t) {
+      t = (t || '').trim();
+      for (var i = 0; i < ICON_MAP.length; i++) { if (ICON_MAP[i][0].test(t)) return ICON_MAP[i][1]; }
+      return 'ph-circle';
+    }
+
+    function labelFor(sel) {
+      if (sel.getAttribute('aria-label')) return sel.getAttribute('aria-label').trim();
+      if (sel.id) { try { var l = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(sel.id) : sel.id) + '"]'); if (l) return l.textContent.trim(); } catch (e) {} }
+      var p = sel.previousElementSibling;
+      while (p) { if (p.tagName === 'LABEL') return p.textContent.trim(); p = p.previousElementSibling; }
+      var par = sel.closest('.modal-field, .nm-field, .ck-field, .field, div');
+      if (par) { var ll = par.querySelector('label'); if (ll) return ll.textContent.trim(); }
+      return 'Seleccionar';
+    }
+
+    function shouldSkip(sel) {
+      return sel.multiple || sel.dataset.rsEnh || sel.dataset.noSheet != null ||
+        sel.closest('td, th') /* selects compactos del censo → nativos */;
+    }
+
+    function syncTrigger(sel) {
+      var trig = sel.__trig; if (!trig) return;
+      if (!sel.isConnected) { if (trig.parentNode) trig.parentNode.removeChild(trig); sel.__trig = null; return; }
+      var opt = sel.options[sel.selectedIndex];
+      var txt = opt ? opt.textContent.trim() : '';
+      var hasVal = txt && sel.value !== '' && !(opt && opt.disabled);
+      var lbl = trig.querySelector('.rs-label');
+      var newText = hasVal ? txt : (labelFor(sel) || 'Seleccionar');
+      // Solo escribir si cambió: evita disparar el MutationObserver en bucle.
+      if (lbl.textContent !== newText) lbl.textContent = newText;
+      if (trig.classList.contains('rs-placeholder') !== !hasVal) trig.classList.toggle('rs-placeholder', !hasVal);
+      if (trig.disabled !== sel.disabled) trig.disabled = sel.disabled;
+    }
+
+    function enhance(sel) {
+      if (shouldSkip(sel)) return;
+      sel.dataset.rsEnh = '1';
+      var trig = document.createElement('button');
+      trig.type = 'button';
+      trig.className = 'resid-select ' + (sel.className || '');
+      var st = sel.getAttribute('style');
+      if (st) trig.setAttribute('style', st.replace(/display\s*:[^;]+;?/i, ''));
+      trig.innerHTML = '<span class="rs-label"></span><i class="ph ph-caret-down rs-chevron"></i>';
+      sel.style.display = 'none';
+      sel.parentNode.insertBefore(trig, sel.nextSibling);
+      sel.__trig = trig; trig.__sel = sel;
+      syncTrigger(sel);
+      trig.addEventListener('click', function () { if (!sel.disabled) openSheet(sel); });
+      sel.addEventListener('change', function () { syncTrigger(sel); });
+    }
+
+    var activeBackdrop = null;
+    function closeSheet() {
+      if (!activeBackdrop) return;
+      var bd = activeBackdrop; activeBackdrop = null;
+      bd.classList.remove('rs-open');
+      document.removeEventListener('keydown', onKey, true);
+      setTimeout(function () { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 280);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); closeSheet(); }
+    }
+
+    function openSheet(sel) {
+      if (activeBackdrop) closeSheet();
+      var title = labelFor(sel) || 'Seleccionar';
+      var titleIcon = iconFor(title);
+
+      var bd = document.createElement('div');
+      bd.className = 'resid-sheet-backdrop';
+      var opts = Array.prototype.filter.call(sel.options, function (o) {
+        return !(o.disabled && o.value === '');
+      });
+      var bigList = opts.length > 8;
+
+      var rowsHtml = opts.map(function (o, idx) {
+        var label = o.textContent.trim() || '(vacío)';
+        var ic = o.value === '' ? 'ph-prohibit' : iconFor(label + ' ' + o.value);
+        var active = o.value === sel.value ? ' rs-active' : '';
+        return '<button type="button" class="resid-sheet-row' + active + '" data-idx="' + idx + '">' +
+          '<span class="rs-ic"><i class="ph ' + ic + '"></i></span>' +
+          '<span class="rs-tx">' + escapeHtml(label) + '</span>' +
+          '<i class="ph ph-check rs-check"></i></button>';
+      }).join('');
+
+      bd.innerHTML =
+        '<div class="resid-sheet" role="dialog" aria-modal="true">' +
+          '<div class="resid-sheet-grip"></div>' +
+          '<div class="resid-sheet-head">' +
+            '<div class="resid-sheet-title"><i class="ph ' + titleIcon + '"></i>' + escapeHtml(title) + '</div>' +
+            '<button type="button" class="resid-sheet-close" aria-label="Cerrar"><i class="ph ph-x"></i></button>' +
+          '</div>' +
+          (bigList ? '<div class="resid-sheet-search"><i class="ph ph-magnifying-glass"></i><input type="text" placeholder="Buscar..." /></div>' : '') +
+          '<div class="resid-sheet-list">' + rowsHtml +
+            '<div class="resid-sheet-empty" style="display:none">Sin coincidencias</div>' +
+          '</div>' +
+        '</div>';
+
+      document.body.appendChild(bd);
+      activeBackdrop = bd;
+      // forzar reflow para animar
+      void bd.offsetWidth; bd.classList.add('rs-open');
+
+      bd.addEventListener('click', function (e) { if (e.target === bd) closeSheet(); });
+      bd.querySelector('.resid-sheet-close').addEventListener('click', closeSheet);
+      document.addEventListener('keydown', onKey, true);
+
+      var listEl = bd.querySelector('.resid-sheet-list');
+      Array.prototype.forEach.call(bd.querySelectorAll('.resid-sheet-row'), function (row) {
+        row.addEventListener('click', function () {
+          var o = opts[+row.dataset.idx];
+          if (sel.value !== o.value) {
+            sel.value = o.value;
+            sel.dispatchEvent(new Event('input', { bubbles: true }));
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          syncTrigger(sel);
+          closeSheet();
+        });
+      });
+
+      var search = bd.querySelector('.resid-sheet-search input');
+      if (search) {
+        setTimeout(function () { search.focus(); }, 320);
+        search.addEventListener('input', function () {
+          var q = search.value.toLowerCase().trim();
+          var shown = 0;
+          Array.prototype.forEach.call(bd.querySelectorAll('.resid-sheet-row'), function (row) {
+            var hit = row.querySelector('.rs-tx').textContent.toLowerCase().indexOf(q) !== -1;
+            row.classList.toggle('rs-hidden', !hit); if (hit) shown++;
+          });
+          bd.querySelector('.resid-sheet-empty').style.display = shown ? 'none' : 'block';
+        });
+      }
+      // centrar la opción activa
+      var act = bd.querySelector('.resid-sheet-row.rs-active');
+      if (act && listEl) setTimeout(function () { act.scrollIntoView({ block: 'center' }); }, 30);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    // Escaneo + observador para selects creados dinámicamente.
+    var pending = false;
+    function sweep() {
+      pending = false;
+      var sels = document.querySelectorAll('select:not([data-rs-enh])');
+      Array.prototype.forEach.call(sels, enhance);
+      // re-sincroniza etiquetas (cubre cambios de value por JS junto a mutaciones DOM)
+      document.querySelectorAll('select[data-rs-enh]').forEach(function (s) { syncTrigger(s); });
+    }
+    function scheduleSweep() {
+      if (pending) return; pending = true;
+      (window.requestAnimationFrame || window.setTimeout)(sweep);
+    }
+    function start() {
+      sweep();
+      new MutationObserver(scheduleSweep).observe(document.body, { childList: true, subtree: true });
+    }
+    window.residSyncSelects = sweep; // por si otro código quiere forzar refresco
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+  })();
+  </script>
 </body>
 
 </html>
