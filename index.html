@@ -5230,6 +5230,23 @@ function plExportBackup() {
       return toks.every(_espTokenIsCollapse);
     }
 
+    // ─── es_mio: ¿paciente del servicio quirúrgico (MÍO) o consulta ajena? ── CENSO-es_mio-v54
+    // Regla (GOAL): normalizar esp (upper, sin acentos, split en / , +). es_mio = TRUE si
+    // ALGÚN token NO está en {URO, NCX, TYO}; FALSE solo si TODOS lo están. esp vacío → TRUE
+    // (default, NO esconder desconocidos). Co-manejo (p.ej. URO/CG) → TRUE (también es mío).
+    // Sincronizado 1:1 con el backfill SQL de patients.es_mio.
+    const _ES_MIO_EXCL = new Set(["URO", "UROLOGIA", "NCX", "NEUROCX", "NEUROCIRUGIA", "TYO"]);
+    function computeEsMio(esp) {
+      const toks = normalizeEsp(esp).split(/[\/,+]+/).map(s => s.trim()).filter(Boolean);
+      if (!toks.length) return true;
+      return toks.some(t => !_ES_MIO_EXCL.has(t));
+    }
+    // Valor efectivo: respeta el es_mio persistido (boolean) y, si falta, lo calcula del esp.
+    function _esMioVal(p) {
+      if (p && typeof p.es_mio === "boolean") return p.es_mio;
+      return computeEsMio(p && p.esp);
+    }
+
     // Normalize specialty name from Excel to canonical code.
     // Returns "" for non-specialty labels (floor/unit names like RECUPERACION, UCIA).
     function normalizeEspImport(raw) {
@@ -5385,6 +5402,7 @@ function plExportBackup() {
     let selectedResidente = "ALL";
     let selectedAdscrito = "ALL";
     let showSoloIngresos = false;
+    let _soloMios = (function () { try { return localStorage.getItem("pl_solo_mios") === "1"; } catch (_) { return false; } })();
     let modalMode = "add";
     let modalOrigKey = null;
     let _modalCurrentEditKey = null; // clave del paciente que se edita actualmente en el modal (null si add o modal cerrado)
@@ -8025,6 +8043,7 @@ function plExportBackup() {
         cama: p.cama || "", nombre: p.nombre || "", exp: p.exp || "", dx: p.dx || "",
         edad: p.edad ? String(p.edad) : "", esp: p.esp || "", adscrito: p.adscrito || "",
         residente: p.residente || "", estado: p.estado || "",
+        es_mio: computeEsMio(p.esp),
         ingreso: ingresoToISO(p.ingreso),
         updated_by: localStorage.getItem("pl_user_name") || ""
       };
@@ -8205,6 +8224,7 @@ function plExportBackup() {
             dx: row.dx || "", edad: row.edad || "", esp: row.esp || "",
             adscrito: row.adscrito || "", residente: row.residente || "",
             estado: row.estado || "",
+            es_mio: (typeof row.es_mio === "boolean" ? row.es_mio : computeEsMio(row.esp)),
             ingreso: row.ingreso ? fmtDateFromISO(row.ingreso) : ""
           };
           // Si los campos de identidad llegaron vacíos desde Supabase, intentar
@@ -8997,7 +9017,7 @@ function plExportBackup() {
         cama: row.cama || "", nombre: row.nombre || "", exp: row.exp || "",
         dx: row.dx || "", edad: row.edad || "", esp: row.esp || "",
         adscrito: row.adscrito || "", residente: row.residente || "",
-        estado: row.estado || "", ingreso: fmtDateFromISO(row.ingreso)
+        estado: row.estado || "", es_mio: (typeof row.es_mio === "boolean" ? row.es_mio : computeEsMio(row.esp)), ingreso: fmtDateFromISO(row.ingreso)
       };
     }
 
@@ -9849,12 +9869,15 @@ function plExportBackup() {
         const rm = selectedResidente === "ALL" || (p.residente || "") === selectedResidente;
         const am = selectedAdscrito === "ALL" || (p.adscrito || "") === selectedAdscrito;
         const im = !showSoloIngresos || isRecentIngreso(p.ingreso);
+        // "Solo míos": oculta en PRESENTACIÓN a los de servicio ajeno (URO/NCX/TYO puros).
+        // Nunca borra datos; co-manejo y desconocidos cuentan como míos.
+        const mm = !_soloMios || _esMioVal(p) !== false;
         let sm = true;
         if (searchTokens.length > 0) {
           const haystack = normSearch(p.nombre) + normSearch(p.cama) + normSearch(p.exp || "") + normSearch(p.adscrito || "") + normSearch(p.residente || "");
           sm = searchTokens.every(tok => haystack.includes(tok));
         }
-        return em && sm && rm && am && im;
+        return em && sm && rm && am && im && mm;
       });
       const _cb = document.getElementById("count-badge");
       if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
@@ -9866,7 +9889,15 @@ function plExportBackup() {
         const _noFilter = searchTokens.length === 0 && selectedEsp === "ALL" && selectedResidente === "ALL" && selectedAdscrito === "ALL" && !showSoloIngresos;
         renderPiso(filtered, _noFilter);
       }
-      if (currentView === "census") renderCensus(filtered);
+      if (currentView === "census") {
+        // Defensivo: un registro inesperado en el censo nunca debe romper el board/foco.
+        try { renderCensus(filtered); }
+        catch (_eCensus) {
+          console.error("renderCensus error:", _eCensus);
+          var _vc = document.getElementById("view-census");
+          if (_vc) _vc.innerHTML = "<div style='padding:20px;color:#b91c1c;font-size:13px'>⚠️ No se pudo dibujar el censo (dato inesperado). Recarga la página. Detalle en consola.</div>";
+        }
+      }
       if (currentView === "print") renderPrint(filtered);
       if (currentView === "noOlvidar") renderNoOlvidar();
       if (currentView === "altas") renderAltas();
@@ -9899,7 +9930,12 @@ function plExportBackup() {
     function buildEspFilters() {
       const esps = [...new Set(patients.map(p => p.esp))].sort();
       const c = document.getElementById("esp-filters");
-      let html = `<button class="esp-btn ${selectedEsp === "ALL" ? "active" : ""}" style="color:#555;border-color:#555" onclick="setEsp('ALL',this)"><span>Todos</span></button>`;
+      // Toggle "Solo míos / Todo el piso" — filtra en presentación por es_mio (no esconde en BD).
+      const _ocultos = patients.filter(p => _esMioVal(p) === false).length;
+      const _smLabel = _soloMios ? ("🩺 Solo míos" + (_ocultos ? " · " + _ocultos + " ocultos" : "")) : "👥 Todo el piso";
+      const _smCol = _soloMios ? "#0e7490" : "#555";
+      let html = `<button class="esp-btn ${_soloMios ? "active" : ""}" style="color:${_smCol};border-color:${_smCol};font-weight:700" onclick="toggleSoloMios(this)" title="Alterna entre ver SOLO tus pacientes (CG + co-manejo) y TODO el piso. No borra datos.">${_smLabel}</button>`;
+      html += `<button class="esp-btn ${selectedEsp === "ALL" ? "active" : ""}" style="color:#555;border-color:#555" onclick="setEsp('ALL',this)"><span>Todos</span></button>`;
       esps.forEach(e => {
         const col = ESP_COLORS[e] || "#555";
         html += `<button class="esp-btn ${selectedEsp === e ? "active" : ""}" style="color:${col};border-color:${col}" onclick="setEsp('${esc(e)}',this)"><span style="color:inherit">${esc(e)}</span></button>`;
@@ -9915,13 +9951,20 @@ function plExportBackup() {
 
     function setEsp(v, btn) {
       selectedEsp = v;
-      document.querySelectorAll(".esp-btn").forEach(b => b.classList.remove("active"));
-      if (btn) btn.classList.add("active");
+      // Reconstruir el bar (en vez de togglear .active a mano) para que el botón
+      // "Solo míos" conserve su estado visual al cambiar de especialidad.
+      buildEspFilters();
       renderView();
     }
     function setCensusResidente(v) { selectedResidente = v; renderView(); }
     function setCensusAdscrito(v) { selectedAdscrito = v; renderView(); }
     function toggleSoloIngresos() { showSoloIngresos = !showSoloIngresos; renderView(); }
+    function toggleSoloMios(btn) {
+      _soloMios = !_soloMios;
+      try { localStorage.setItem("pl_solo_mios", _soloMios ? "1" : "0"); } catch (_) {}
+      buildEspFilters();
+      renderView();
+    }
     function quitarFiltrosCenso() { selectedResidente = "ALL"; selectedAdscrito = "ALL"; renderView(); }
 
     // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
@@ -16191,6 +16234,21 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       _presenceSetEditing(null);   // presencia: dejé de editar
       document.getElementById("patient-modal").style.display = "none";
     }
+    // MOVER un paciente existente a otra cama en vez de duplicarlo (UCI gana a piso).
+    function _moveExistingPatient(owner, fields) {
+      // owner conserva su _supa_id → misma fila en Supabase, mismo pid (su-<id>) → noteData intacta.
+      const oldKey = pid(owner);
+      Object.assign(owner, fields);
+      const newKey = pid(owner);
+      if (oldKey !== newKey && noteData[oldKey] && !noteData[newKey]) {
+        noteData[newKey] = noteData[oldKey];
+        delete noteData[oldKey];
+      }
+      lsSavePatients(patients);
+      _savePtsImmediate();   // PATCH inmediato (nueva cama) — Realtime propaga el movimiento
+      buildEspFilters();
+      renderView();
+    }
     function saveModal() {
       const cama = document.getElementById("mf-cama").value.trim().toUpperCase();
       const exp = document.getElementById("mf-exp").value.trim();
@@ -16213,6 +16271,52 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       var _res_val = document.getElementById("mf-residente").value.trim() || document.getElementById("mf-residente-sel").value;
       const existingPatient = modalMode === "edit" ? patients.find(pt => pid(pt) === modalOrigKey) : null;
       const sexo = normalizeSexValue(document.getElementById("mf-sexo").value);
+      // ── VALIDACIÓN DE IDENTIDAD (mata basura en origen) ── CENSO-es_mio-v54
+      // Nombre completo (nombre + apellido). Soft: confirmable para no bloquear urgencias.
+      if (nombre.split(/\s+/).filter(t => t.length >= 2).length < 2) {
+        if (!confirm("⚠️ El nombre parece incompleto: \"" + nombre + "\".\n\nLo ideal es nombre + apellido. ¿Guardar así de todas formas?")) return;
+      }
+      // Colisión / movimiento por EXPEDIENTE: ¿este exp ya vive en OTRA cama? (excluye al propio)
+      const _expOwner = patients.find(pt =>
+        pt.exp && String(pt.exp).trim() === exp &&
+        pid(pt) !== modalOrigKey &&
+        (pt.cama || "").toUpperCase() !== cama
+      );
+      if (_expOwner) {
+        // OJO: nameMatchScore/normalizeName viven dentro de la IIFE de PLIndicaciones y NO
+        // son globales. Las copias globales son _winlabNameMatchScore/_winlabNormalizeName.
+        const _onTok = _winlabNormalizeName(_expOwner.nombre || "");
+        const _nnTok = _winlabNormalizeName(nombre);
+        const _sameName = _onTok.length && _nnTok.length && (
+          _winlabNameMatchScore(_expOwner.nombre || "", nombre) >= 2 ||
+          _onTok.join(" ") === _nnTok.join(" ")
+        );
+        if (!_sameName) {
+          // Mismo exp, DISTINTA persona → riesgo de fuga de identidad. BLOQUEAR (no negociable).
+          alert("⛔ EXPEDIENTE EN CONFLICTO\n\nEl expediente " + exp + " ya pertenece a OTRO paciente:\n" +
+            (_expOwner.nombre || "(sin nombre)") + " — cama " + _expOwner.cama + ".\n\nUn expediente no puede ser de dos personas. Corrige el expediente antes de guardar.");
+          return;
+        }
+        // Mismo exp, MISMA persona, otra cama → se movió (UCI gana a piso). MOVER, no duplicar.
+        if (confirm("🛏 PACIENTE YA REGISTRADO\n\n" + (_expOwner.nombre || "Este paciente") + " ya está en la cama " + _expOwner.cama +
+          ".\n\n¿Moverlo a la cama " + cama + "?\n(Se actualiza su cama y datos; NO se crea una tarjeta duplicada.)")) {
+          _moveExistingPatient(_expOwner, {
+            cama, exp, nombre,
+            edad: parseInt(document.getElementById("mf-edad").value) || _expOwner.edad || "",
+            esp: document.getElementById("mf-esp").value,
+            adscrito: _ads_val.toUpperCase(), residente: _res_val.toUpperCase(),
+            ingreso: document.getElementById("mf-ingreso").value.trim() || _expOwner.ingreso || "",
+            estado: document.getElementById("mf-estado").value,
+            dx: document.getElementById("mf-dx").value.trim().toUpperCase() || _expOwner.dx || "",
+            sexo
+          });
+          closeModal();
+          return;
+        }
+        // Si NO quiere mover → no duplicar al mismo exp/persona en dos camas.
+        alert("Operación cancelada para no duplicar al paciente.\n\nSi en realidad es un paciente distinto, corrige el expediente.");
+        return;
+      }
       const p = {
         ...(existingPatient || {}),
         cama, exp, nombre,
