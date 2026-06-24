@@ -72,13 +72,19 @@ const WL_SEARCH_CLEAR_SEL       = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBTo
 // el scraper hace clic en ella antes de llenar el formulario de fechas+apellido.
 // Ejemplo: "#TabTemporalidad a, .tab-temporalidad, li[data-tab='fecha'] a"
 const WL_TEMPORALIDAD_TAB_SEL   = ENV("WL_TEMPORALIDAD_TAB_SEL", "");
-const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "2"), 10);  // HOY + AYER
+const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "30"), 10);  // ventana amplia (fallback si el profilo falla)
 const WL_DATE_FORMAT            = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 // Dropdown "Profilo Consultazione" — WinLab requiere seleccionarlo para que
 // los filtros de fecha apliquen. Valores: "AYER Y HOY" | "HOY" | "SEMANA" | "MES".
 // Si está vacío, se omite (compatible con instalaciones de WinLab que no lo tengan).
 const WL_PROFILO_SEL            = ENV("WL_PROFILO_SEL", "#pnlMain_cboProfiloConsultazioneRichiesteRicerca");
-const WL_PROFILO_VALUE          = ENV("WL_PROFILO_VALUE", "AYER Y HOY");
+// 24 jun 2026 — Gera: "todos deben tener AL MENOS los últimos labs registrados, aunque no
+// sean los más recientes". "AYER Y HOY" (2 días) dejaba SIN labs a quien no tuvo estudios en
+// las últimas 48h (26/39 con NINGUN REGISTRO). "MES" amplía la ventana a ~30 días → captura el
+// último set de cada paciente. El drill sigue topado a WL_DRILLDOWN_MAX (más recientes primero),
+// así que el costo por paciente NO crece por la ventana. Si "MES" no es opción válida del
+// dropdown, hay fallback a rango manual amplio (ver doSingleSearchInner).
+const WL_PROFILO_VALUE          = ENV("WL_PROFILO_VALUE", "MES");
 const WL_PER_PATIENT_TIMEOUT    = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
 const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 0 = solo lista, 1 = clickear cada reporte
 // max reportes drilleados por paciente. SUBIDO 2→12 (14 jun 2026): WinLab guarda
@@ -97,6 +103,8 @@ const WL_INTER_PATIENT_DELAY_MS = parseInt(ENV("WL_INTER_PATIENT_DELAY_MS", "500
 
 // Flag para mostrar diagnóstico __cells solo una vez por ejecución.
 let _firstCellsDumped = false;
+// Flag para volcar las opciones del dropdown de perfil temporal solo una vez.
+let _profiloOptsDumped = false;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 // Wrapper local para fechas con el formato configurado por env.
@@ -348,21 +356,34 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // teclear apellidos) y evita que el postback AJAX del dropdown borre el campo
   // de apellido si se llenara antes.
   const usandoProfilo = !!(WL_PROFILO_SEL && WL_PROFILO_VALUE);
+  let profiloOk = false;
   if (usandoProfilo) {
     const profiloEl = page.locator(WL_PROFILO_SEL);
     if (await profiloEl.count()) {
+      // Diagnóstico (una sola vez): qué opciones ofrece el dropdown de perfil temporal.
+      // Sirve para descubrir el label/value exacto de la ventana amplia ("MES"/"SEMANA"/...).
+      if (!_profiloOptsDumped) {
+        _profiloOptsDumped = true;
+        try {
+          const opts = await profiloEl.first().evaluate((el) =>
+            Array.from(el.options).map((o) => ({ value: o.value, label: (o.label || o.text || "").trim() })));
+          console.log(`       [profilo] opciones del dropdown: ${JSON.stringify(opts)}`);
+        } catch (_) {}
+      }
       try {
         await profiloEl.first().selectOption({ label: WL_PROFILO_VALUE });
         console.log(`       profilo: seleccionado "${WL_PROFILO_VALUE}"`);
         await waitForAspNetReady(page, 5000);
+        profiloOk = true;
       } catch (e) {
         // Fallback: intentar por valor en vez de label
         try {
           await profiloEl.first().selectOption({ value: WL_PROFILO_VALUE });
           console.log(`       profilo: seleccionado por value "${WL_PROFILO_VALUE}"`);
           await waitForAspNetReady(page, 5000);
+          profiloOk = true;
         } catch (e2) {
-          console.log(`       profilo: NO se pudo seleccionar "${WL_PROFILO_VALUE}" (${e2?.message?.slice(0, 100) || e2})`);
+          console.log(`       profilo: NO se pudo seleccionar "${WL_PROFILO_VALUE}" (${e2?.message?.slice(0, 100) || e2}) → fallback a rango de fechas manual`);
         }
       }
     }
@@ -383,7 +404,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // además los campos de fecha (como hacía antes) entra en conflicto con el
   // perfil y deja el rango vacío → WinLab devuelve "NINGUN REGISTRO" para todos.
   // El flujo manual del médico que sí funciona es: perfil + apellidos, sin fechas.
-  if (!usandoProfilo && WL_LOOKBACK_DAYS >= 0) {
+  if ((!usandoProfilo || !profiloOk) && WL_LOOKBACK_DAYS >= 0) {
     const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
     const fechaA  = formatDate(new Date());
     if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {

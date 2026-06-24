@@ -27,25 +27,13 @@ const EXCLUDED_ESPS = new Set([
 export function isAllowedEsp(esp) {
   const e = N(esp);
   if (!e) return false;
-  // Exclusión / inclusión por string COMPLETO (back-compat).
-  if (EXCLUDED_ESPS.has(e)) return false;
-  if (ALLOWED_ESPS.has(e)) return true;
-  // MANEJO CONJUNTO "A/B" (o "A B"): incluir si ALGÚN componente es un servicio
-  // nuestro permitido. Antes "CMF/CT" caía fuera (no estaba en ALLOWED y no tiene
-  // token CG) y el paciente en co-manejo se quedaba SIN labs en su tarjeta — aunque
-  // tanto CMF como CT son servicios permitidos por separado. Ahora se evalúa cada
-  // token: si lo co-maneja un servicio quirúrgico nuestro (CG, CT, CMF, CCR, ...),
-  // entra al scraper. (jun 2026, pedido explícito de Gera: "URO/CG, CMF/CT también
-  // deben tener labs aunque tengan otro servicio".)
-  const tokens = e.split(/[\/\s]+/).map((t) => t.trim()).filter(Boolean);
-  if (tokens.length > 1) {
-    for (const t of tokens) {
-      if (ALLOWED_ESPS.has(t)) return true;
-    }
-  }
-  // Legacy: cualquier esp que contenga el token CG (ej. "URO/CG").
-  if (/(^|[\/\s])CG([\/\s]|$)/.test(e)) return true;
-  return false;
+  // 24 jun 2026 — Gera: "TODOS los pacientes deben tener laboratorios". El censo (tabla
+  // `patients`) YA es el piso quirúrgico activo; no hay razón para excluir por servicio.
+  // Antes se excluían NCX/URO/TYO/GYO/TRASPLANTES/etc. y esos pacientes quedaban SIN labs
+  // en su tarjeta (caso real: 18 pacientes nunca buscados + nombre incompleto). Ahora se
+  // procesa TODO el censo con esp no vacío. Los sets ALLOWED_ESPS/EXCLUDED_ESPS se conservan
+  // solo como documentación histórica (ya no filtran).
+  return true;
 }
 
 export function formatDate(date, fmt = "dd/MM/yyyy") {

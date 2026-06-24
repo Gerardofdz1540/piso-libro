@@ -82,20 +82,20 @@ function deepEq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 assert(isAllowedEsp("CG") === true,        "isAllowedEsp: CG -> true");
 assert(isAllowedEsp("CT") === true,        "isAllowedEsp: CT -> true");
 assert(isAllowedEsp("CG/GYO") === true,    "isAllowedEsp: CG/GYO -> true");
-assert(isAllowedEsp("URO") === false,      "isAllowedEsp: URO -> false (excluida)");
-assert(isAllowedEsp("GYO") === false,      "isAllowedEsp: GYO -> false (excluida)");
+// 24 jun 2026 — Gera: "TODOS los pacientes deben tener labs". isAllowedEsp ahora procesa
+// TODO el censo (cualquier esp no vacío). Antes excluía URO/GYO/NCX y esos quedaban sin labs.
+assert(isAllowedEsp("URO") === true,       "isAllowedEsp: URO -> true (todos)");
+assert(isAllowedEsp("GYO") === true,       "isAllowedEsp: GYO -> true (todos)");
 assert(isAllowedEsp("") === false,         "isAllowedEsp: vacio -> false");
 assert(isAllowedEsp(null) === false,       "isAllowedEsp: null -> false");
 assert(isAllowedEsp("URGENCIAS") === true, "isAllowedEsp: URGENCIAS -> true");
-// MANEJO CONJUNTO (jun 2026): co-manejo con un servicio nuestro DEBE entrar al scraper.
-assert(isAllowedEsp("CMF/CT") === true,    "isAllowedEsp: CMF/CT -> true (co-manejo, ambos permitidos) [FIX]");
-assert(isAllowedEsp("URO/CG") === true,    "isAllowedEsp: URO/CG -> true (co-maneja CG)");
-assert(isAllowedEsp("CT/URO") === true,    "isAllowedEsp: CT/URO -> true (co-maneja CT)");
+assert(isAllowedEsp("CMF/CT") === true,    "isAllowedEsp: CMF/CT -> true");
+assert(isAllowedEsp("URO/CG") === true,    "isAllowedEsp: URO/CG -> true");
+assert(isAllowedEsp("CT/URO") === true,    "isAllowedEsp: CT/URO -> true");
 assert(isAllowedEsp("CG/CT") === true,     "isAllowedEsp: CG/CT -> true");
-assert(isAllowedEsp("NCX/CG") === true,    "isAllowedEsp: NCX/CG -> true (co-maneja CG)");
-// Co-manejo SIN ningún servicio nuestro sigue excluido (precisión).
-assert(isAllowedEsp("URO/GYO") === false,  "isAllowedEsp: URO/GYO -> false (ningún servicio nuestro)");
-assert(isAllowedEsp("NCX") === false,      "isAllowedEsp: NCX -> false (excluida, single)");
+assert(isAllowedEsp("NCX/CG") === true,    "isAllowedEsp: NCX/CG -> true");
+assert(isAllowedEsp("URO/GYO") === true,   "isAllowedEsp: URO/GYO -> true (todos)");
+assert(isAllowedEsp("NCX") === true,       "isAllowedEsp: NCX -> true (todos)");
 
 // ── 8. formatDate ─────────────────────────────────────────────────────
 {
