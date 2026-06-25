@@ -99,8 +99,16 @@ function parseCenso_(rows) {
   var out = [], section = 'PISO';   // primer bloque es PISO (implicito)
   for (var i = headerRow + 1; i < rows.length; i++) {
     var row = rows[i];
+    // DETENER en una 2a fila-encabezado: la hoja trae OTRA tabla mas abajo con columnas en
+    // distinto orden (ej. "NUMERO DE EXPEDIENTE | NOMBRE DEL PACIENTE | EDAD | CIRUJANO A
+    // CARGO | ..."). Reusar el mapeo de la 1a tabla la corrompia (exp<-nombre, nombre<-edad,
+    // el header entraba como paciente). Esa 2a tabla NO se sincroniza.
+    if (looksLikeHeader_(row)) break;
     var exp = cell_(row, col.exp), nombre = cell_(row, col.nombre);
     if (exp && nombre) {
+      // Guarda anti-mismap: un expediente real es numerico (ej. "26-13060"). Si "exp" trae
+      // un nombre (letras), la fila esta mal mapeada (2a tabla) -> saltarla.
+      if (!expLooksValid_(exp)) continue;
       if (sectionExcluded_(section)) continue;   // seccion ignorada -> no se sincroniza
       out.push({
         cama:      cell_(row, col.cama),
@@ -122,6 +130,28 @@ function parseCenso_(rows) {
     }
   }
   return out;
+}
+
+// ¿La fila parece un ENCABEZADO de columnas (otra tabla)? True si >=2 celdas son keywords
+// de encabezado. Las filas-encabezado de SECCION (1 sola celda "PISO"/"UCIA") NO disparan.
+function looksLikeHeader_(row) {
+  var KW = ['CAMA', 'EXPEDIENTE', 'NUMERO DE EXPEDIENTE', 'NOMBRE', 'PACIENTE', 'EDAD',
+    'DIAGNOSTICO', 'ESPECIALIDAD', 'SERVICIO', 'ADSCRITO', 'RESIDENTE', 'CIRUJANO', 'ESTADO'];
+  var hits = 0;
+  for (var i = 0; i < row.length; i++) {
+    var c = norm_(row[i]);
+    if (!c) continue;
+    for (var j = 0; j < KW.length; j++) { if (c.indexOf(KW[j]) >= 0) { hits++; break; } }
+    if (hits >= 2) return true;
+  }
+  return false;
+}
+
+// Un expediente real es numerico (ej. "26-13060", "2613060"). Rechaza valores con corridas
+// de >=3 letras (un nombre mal mapeado a la columna exp).
+function expLooksValid_(exp) {
+  var e = String(exp == null ? '' : exp).trim();
+  return /\d/.test(e) && !/[A-Za-z]{3,}/.test(e);
 }
 
 /**
