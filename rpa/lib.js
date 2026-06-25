@@ -161,10 +161,21 @@ export function isMeaningfulReportRow(row) {
 // Util para fallback cuando codigo paciente no matchea.
 export function extractApellidos(nombre) {
   if (!nombre) return [];
-  const parts = String(nombre).trim().toUpperCase().split(/\s+/).filter(Boolean);
+  // 24 jun 2026 — FIX cobertura: quitar ACENTOS/diéresis (Ñ→N) del término de búsqueda.
+  // WinLab busca/almacena sin acentos; sin esto "RODRÍGUEZ"/"GARCÍA"/"ZUÑIGA"/"MÁRQUEZ"/
+  // "PÁRAMO" se tecleaban con acento y daban NINGUN REGISTRO (los pacientes CON labs no
+  // tienen acentos en el apellido — correlación clara). No agrega búsquedas (sin riesgo de
+  // homónimos): solo normaliza el término existente.
+  const clean = String(nombre).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const parts = clean.trim().split(/\s+/).filter(Boolean);
   if (parts.length < 2) return [];
   const out = [];
-  if (parts.length >= 2) out.push(parts.slice(-2).join(" "));
+  // Apellidos = últimas 2 palabras, incluyendo una PARTÍCULA líder (DE/DEL/LA/LAS/LOS/Y) si
+  // precede al paterno (ej. "DEL ANGEL GOMEZ", "DE LEON MARQUEZ"), dejando >=1 palabra de nombre.
+  const PART = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1, Y: 1 };
+  let start = parts.length - 2;
+  if (start - 1 >= 1 && PART[parts[start - 1]]) start -= 1;
+  out.push(parts.slice(start).join(" "));
   if (parts.length >= 3 && parts[parts.length - 2]) out.push(parts[parts.length - 2]);
   return Array.from(new Set(out));
 }

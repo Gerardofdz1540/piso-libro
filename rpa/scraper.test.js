@@ -219,6 +219,13 @@ assert(extractApellidos("").length === 0,    "apellidos: vacio -> []");
   const a5 = extractApellidos("  Pedro  Romero  Juarez  ");
   assert(a5[0] === "ROMERO JUAREZ", "apellidos: trim + uppercase");
 }
+// FIX cobertura (24 jun 2026): acentos/Ñ y partículas líderes.
+assert(extractApellidos("JOSE ADRIÁN ARREGUIN RODRÍGUEZ")[0] === "ARREGUIN RODRIGUEZ", "apellidos: sin acentos");
+assert(extractApellidos("AARON ZUÑIGA PÁRAMO")[0] === "ZUNIGA PARAMO", "apellidos: Ñ→N + sin acento");
+assert(extractApellidos("ELIZABETH GARCÍA MÁRQUEZ")[0] === "GARCIA MARQUEZ", "apellidos: GARCIA MARQUEZ sin acento");
+assert(extractApellidos("JUAN DANIEL DEL ANGEL GOMEZ")[0] === "DEL ANGEL GOMEZ", "apellidos: incluye partícula DEL");
+assert(extractApellidos("MA GUADALUPE DIAZ DE LEON MARQUEZ")[0] === "DE LEON MARQUEZ", "apellidos: incluye partícula DE");
+assert(extractApellidos("JOSE DE JESUS LUNA MELENDEZ")[0] === "LUNA MELENDEZ", "apellidos: 'DE JESUS' (nombre) NO altera apellido");
 
 // ── 16. expVariants ───────────────────────────────────────────────────
 {
