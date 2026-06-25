@@ -279,12 +279,20 @@ async function captureSearchUrl(page) {
 // timeouts por exceso de homónimos. Si no hay resultados → sin labs en el rango.
 async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
   const apellidos = extractApellidos(paciente.nombre);
-  const cognome   = apellidos[0] || "";   // ej. "MARTINEZ ROLDAN" (paterno+materno)
+  let cognome   = apellidos[0] || "";   // ej. "MARTINEZ ROLDAN" (paterno+materno)
+  let nome      = null;
+  // 24 jun 2026 — FIX 2-palabras: un nombre "NOMBRE APELLIDO" (ej. "ARMANDO RIOS") hacía que
+  // extractApellidos devolviera "ARMANDO RIOS" como apellido → WinLab no matchea (nadie se
+  // apellida "ARMANDO RIOS"). Para 2 palabras: apellido = última, nombre de pila = primera en
+  // txtNome → WinLab desambigua SIN explotar homónimos (lo que crasheó el fallback de apellido
+  // solo). Solo afecta este caso; los nombres de 3+ palabras (que ya jalan) NO cambian.
+  const _toks = String(paciente.nombre || "").trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/\s+/).filter(Boolean);
+  if (_toks.length === 2) { cognome = _toks[1]; nome = _toks[0]; }
   if (!cognome) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
-  console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"`);
+  console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"${nome ? ` + txtNome: "${nome}"` : ""}`);
   // NOTA (jun 2026): se PROBÓ un fallback a paterno-solo cuando "paterno+materno" da
   // NINGÚN REGISTRO. Se REVIRTIÓ: el search por apellido único devuelve una lista de
   // homónimos cuyo ENCABEZADO el parser NO identifica (cae a "primeros N"), disparando
@@ -294,7 +302,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
   // arreglar el PARSEO del encabezado de la lista multi-paciente (ver HTML real de WinLab),
   // no un drill ciego. Diferido a propósito.
   return await doSingleSearch(page, searchUrl, paciente, {
-    codice: null, cognome, tag: `apellidos="${cognome}"`,
+    codice: null, cognome, nome, tag: `apellidos="${cognome}"${nome ? `,nome="${nome}"` : ""}`,
   }, deadlineTs);
 }
 
@@ -396,6 +404,12 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   if (params.cognome) {
     if (await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
       await setField(page, WL_SEARCH_COGNOME_SEL, String(params.cognome), `[${params.tag}]`);
+    }
+  }
+  // Nombre de pila en txtNome (solo para nombres de 2 palabras → desambigua sin homónimos).
+  if (params.nome) {
+    if (await page.locator(WL_SEARCH_NOME_SEL).count()) {
+      await setField(page, WL_SEARCH_NOME_SEL, String(params.nome), `[nome=${params.nome}]`);
     }
   }
 
