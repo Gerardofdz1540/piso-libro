@@ -5391,6 +5391,10 @@ function plExportBackup() {
     let patients = [];
     let noteData = {};
     let winlabByExp = {};     // exp -> { fecha, scraped_at, data: { headers, reportes, ... } }
+    // Cultivos WinLab por pid(paciente). Transitorio: lo reconstruye applyWinlabSyncToPatients
+    // en cada sync (load + realtime) tras pasar los MISMOS guards de identidad que los labs
+    // (exp + _winlabCensoNameOk + match de nombre por encabezado). renderCultivosSection lo lee.
+    let _winlabCultByK = {};  // CULTIVOS-WINLAB-v56
     let expandedCards = {};
     let labLoadingSet = new Set();
     let activeLabDate = {};   // k -> "YYYY-MM-DD"
@@ -6304,6 +6308,82 @@ function plExportBackup() {
       return common;
     }
 
+    // ── CULTIVOS WINLAB (CULTIVOS-WINLAB-v56) ───────────────────────────────────────
+    // Detecta un cultivo en un reporte WinLab y devuelve {tipo, organismo, muestra} o null.
+    // El germen vive en `referencia` del valor cuyo `estudio`/`seccion` dice CULTIVO
+    // (ej. estudio:"CULTIVO", referencia:"Escherichia coli"). Precisión > recall:
+    // SOLO emite si hay germen reconocido o un negativo explícito ("sin/no desarrollo").
+    var _WL_CULT_ORG = /\b(escherichia|klebsiella|candida|staphylococ\w*|streptococ\w*|pseudomonas|enterococ\w*|acinetobacter|proteus|enterobacter|serratia|morganella|citrobacter|stenotrophomonas|salmonella|shigella|haemophilus|providencia)\b/i;
+    var _WL_CULT_NEG = /sin\s+desarrollo|no\s+desarrollo|sin\s+crecimiento|desarrollo\s+negativo/i;
+    function extractWinlabCulture(rep) {
+      if (!rep || !Array.isArray(rep.valores)) return null;
+      var isCult = false, organismo = "", muestra = "", neg = false;
+      for (var i = 0; i < rep.valores.length; i++) {
+        var v = rep.valores[i]; if (!v) continue;
+        var est = String(v.estudio || v.nombre || "");
+        var ref = String(v.referencia || "");
+        var sec = String(v.seccion || "");
+        if (/cultivo/i.test(est) || /cultivo/i.test(sec)) {
+          isCult = true;
+          if (!muestra) muestra = sec.trim();
+          if (!organismo && _WL_CULT_ORG.test(ref)) organismo = ref.trim();
+          if (_WL_CULT_NEG.test(ref)) neg = true;
+        } else if (_WL_CULT_ORG.test(ref)) {
+          isCult = true;
+          if (!organismo) organismo = ref.trim();
+          if (!muestra) muestra = sec.trim();
+        }
+      }
+      if (!isCult) return null;
+      if (!organismo && !neg) return null;   // sin germen ni negativo explícito → no emitir
+      var hay = rep.valores.map(function (v) { return (v.estudio || "") + " " + (v.seccion || ""); }).join(" ").toUpperCase();
+      var tipo = /HEMOCULTIVO/.test(hay) ? "Hemocultivo"
+        : /UROCULTIVO/.test(hay) ? "Urocultivo"
+        : /PLEURAL/.test(hay) ? "Cultivo líquido pleural"
+        : /PERITONEAL/.test(hay) ? "Cultivo líquido peritoneal"
+        : /HERIDA|SECRECION/.test(hay) ? "Cultivo de herida/secreción"
+        : "Cultivo";
+      return { tipo: tipo, organismo: organismo || "Sin desarrollo", muestra: muestra || "", positivo: !!organismo };
+    }
+
+    // Recolecta cultivos de un blob WinLab atribuidos al paciente objetivo, usando EL MISMO
+    // guard de identidad por encabezado que buildWinlabLabSnapshots (nombre completo del
+    // objetivo presente en el encabezado). Reportes de homónimos del mismo apellido → ignorados.
+    function buildWinlabCultures(winlabRow) {
+      if (!winlabRow || !winlabRow.data) return [];
+      var reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
+      var fallbackFecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : "");
+      var targetTokens = _winlabNormalizeName(winlabRow.paciente || "");
+      var isDate = function (s) { return /^\s*\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/.test(String(s || "")); };
+      var isHeader = function (rep) {
+        return rep && rep.__hasLink === false
+          && rep.NOMBRE && !isDate(rep.NOMBRE)
+          && rep["APELLIDOS COMPLETOS"] && !isDate(rep["APELLIDOS COMPLETOS"]);
+      };
+      var headerMatches = function (rep) {
+        if (!targetTokens.length) return true;
+        var hName = ((rep["APELLIDOS COMPLETOS"] || "") + " " + (rep.NOMBRE || "")).trim();
+        return _winlabNameMatchScore(winlabRow.paciente, hName) >= targetTokens.length;
+      };
+      var hasHeaders = reportes.some(isHeader);
+      var curMatches = !hasHeaders || !targetTokens.length;
+      var out = [], seen = {};
+      for (var i = 0; i < reportes.length; i++) {
+        var rep = reportes[i];
+        if (hasHeaders && isHeader(rep)) { curMatches = headerMatches(rep); continue; }
+        if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
+        if (!curMatches) continue;   // reporte de OTRO paciente del mismo apellido → ignorar
+        var cult = extractWinlabCulture(rep);
+        if (!cult) continue;
+        var fecha = extractReportDate(rep) || fallbackFecha || "";
+        var key = fecha + "|" + cult.tipo + "|" + cult.organismo;
+        if (seen[key]) continue; seen[key] = 1;
+        out.push({ fecha: fecha, tipo: cult.tipo, organismo: cult.organismo, muestra: cult.muestra, positivo: cult.positivo });
+      }
+      out.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
+      return out;
+    }
+
     function buildWinlabLabSnapshots(winlabRow, targetEspCanon) {
       if (!winlabRow || !winlabRow.data) return [];
       const reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
@@ -6490,6 +6570,7 @@ function plExportBackup() {
 
     async function applyWinlabSyncToPatients(opts) {
       opts = opts || {};
+      _winlabCultByK = {};   // CULTIVOS-WINLAB-v56: se reconstruye en cada sync
       const verbose = !!opts.verbose;
       const stats = { matched: 0, inserted: 0, merged: 0, skipped: 0, errors: 0, no_exp: 0, no_winlab: 0, no_labs_parsed: 0 };
       // Diagnostics: muestra de mismatches para debugging
@@ -6531,6 +6612,9 @@ function plExportBackup() {
             }
             continue;
           }
+          // CULTIVOS-WINLAB-v56: cultivos del paciente (ya pasó exp + _winlabCensoNameOk;
+          // buildWinlabCultures re-aplica el guard de nombre por encabezado internamente).
+          try { _winlabCultByK[pid(p)] = buildWinlabCultures(wl); } catch (_) {}
           // Cambio mayo 2026: ahora procesamos MÚLTIPLES snapshots (uno por fecha)
           // para soportar 3 días previos del scraper.
           const snapshots = buildWinlabLabSnapshots(wl, normalizeEspImport(p.esp));
@@ -11115,6 +11199,21 @@ function plExportBackup() {
         chipsHtml += `<div class="cultivo-chip">${text}</div>`;
       });
 
+      // CULTIVOS-WINLAB-v56: cultivos traídos por el scraper WinLab (mismos guards de
+      // identidad que los labs: exp + _winlabCensoNameOk + match de nombre por encabezado).
+      const wlCults = (typeof _winlabCultByK !== "undefined" && _winlabCultByK[k]) ? _winlabCultByK[k] : [];
+      let wlChipsHtml = "";
+      wlCults.forEach(function(c) {
+        const col = c.positivo ? "#b91c1c" : "#475569";
+        const bg = c.positivo ? "#fef2f2" : "#f1f5f9";
+        let t = `<span style="font-weight:700;color:${col}">${esc(c.tipo)}</span>`;
+        if (c.fecha) t += ` <span style="color:#64748b;font-size:10px">${esc(c.fecha)}</span>`;
+        t += ` <span style="font-size:9px;color:#0e7490;font-weight:700">📡 WinLab</span>`;
+        if (c.muestra) t += ` · <span style="color:#475569;font-size:10px">🧫 ${esc(c.muestra)}</span>`;
+        t += `<br>${c.positivo ? "🦠" : "✓"} <span style="color:${col};font-weight:${c.positivo ? 700 : 400}">${esc(c.organismo)}</span>`;
+        wlChipsHtml += `<div class="cultivo-chip" style="border-color:${col};background:${bg}">${t}</div>`;
+      });
+
       // Quick-add tipo buttons
       const tiposBtns = CULTIVO_TIPOS.map(t =>
         `<button class="cultivo-tipo-btn" style="background:${t.bg};color:${t.color};border-color:${t.color}"
@@ -11125,10 +11224,10 @@ function plExportBackup() {
       const manualVal = esc((nd.checklist && nd.checklist.cultivos) || "");
       return `<div class="cultivos-box">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between">
-          <span>🦠 Cultivos / Labs especiales${cultivosExtraidos.length ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length} extraído(s)</span>` : ""}</span>
+          <span>🦠 Cultivos / Labs especiales${(cultivosExtraidos.length + wlCults.length) ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length + wlCults.length} extraído(s)</span>` : ""}</span>
         </div>
         <div class="cultivo-tipos-row">${tiposBtns}</div>
-        ${chipsHtml ? `<div style="margin-bottom:6px">${chipsHtml}</div>` : ""}
+        ${(wlChipsHtml || chipsHtml) ? `<div style="margin-bottom:6px">${wlChipsHtml}${chipsHtml}</div>` : ""}
         <textarea class="field-ta" rows="3"
           data-key="${k}" data-ckfield="cultivos"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
