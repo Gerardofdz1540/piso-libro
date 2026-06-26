@@ -67,10 +67,10 @@ function doSync() {
   if (result.quarantine.length) logQuarantine_(key, result.quarantine);
 
   var payload = result.keep.map(toPatientRow_);
-  upsertPatients_(key, payload);
+  var del = syncPatients_(key, payload);
 
-  Logger.log('Sync OK: ' + payload.length + ' upserts, ' + result.quarantine.length + ' en cuarentena.');
-  return { upserts: payload.length, quarantine: result.quarantine.length };
+  Logger.log('Sync OK: ' + payload.length + ' upserts, ' + del + ' retirados, ' + result.quarantine.length + ' en cuarentena.');
+  return { upserts: payload.length, retirados: del, quarantine: result.quarantine.length };
 }
 
 /** Lee todas las filas de la pestana del censo (por gid). */
@@ -186,15 +186,75 @@ function dedupAndQuarantine_(list) {
   return { keep: keep, quarantine: quarantine };
 }
 
+// Normaliza la cama al formato canónico de la app: GUION (no punto), MAYÚS, 1 espacio.
+// "3.183" -> "3-183", " uci 8 " -> "UCI 8". Sin esto, un punto en la hoja crea un DUPLICADO
+// (3.183 ≠ 3-183) → el paciente viejo nunca se reemplaza y aparece stale en la app.
+function normalizeCama_(c) {
+  return String(c == null ? '' : c).trim().toUpperCase().replace(/\./g, '-').replace(/\s+/g, ' ');
+}
+
 /** Convierte un registro parseado a la fila censal que se manda a Supabase (incluye es_mio calculado). */
 function toPatientRow_(p) {
   return {
-    cama: p.cama, nombre: p.nombre, exp: p.exp, edad: p.edad || '', dx: p.dx || '',
+    cama: normalizeCama_(p.cama), nombre: p.nombre, exp: p.exp, edad: p.edad || '', dx: p.dx || '',
     esp: p.esp || '', adscrito: p.adscrito || '', residente: p.residente || '',
     ingreso: p.ingreso || null, dias: (p.dias === '' ? null : p.dias),
     estado: p.estado || '', seccion: p.seccion || '', es_mio: computeEsMio_(p.esp),
     updated_by: 'sheet-sync'
   };
+}
+
+/**
+ * Sincroniza el censo haciendo que Supabase REFLEJE la hoja (fuente de verdad), de forma
+ * identidad-segura. Antes de upsertear:
+ *   (a) REASIGNACIÓN — misma cama con OTRO exp (otra persona) → borra la fila vieja (y su nota)
+ *       para que el nuevo entre como fila NUEVA. Sin esto, el upsert-por-cama heredaba la nota
+ *       clínica del paciente anterior al nuevo ocupante (fuga clínica).
+ *   (b) RETIRO — cama que ya NO está en la hoja Y la fila vino del sheet-sync → la retira
+ *       (paciente que salió del censo). NO toca pacientes agregados a mano en la app.
+ * GUARDAS: si la hoja parseó <10 o habría que borrar >50% del censo → NO reconcilia (solo upsert),
+ * para que un error de lectura nunca borre el piso. Devuelve cuántas filas retiró.
+ */
+function syncPatients_(key, payload) {
+  if (!payload.length) { Logger.log('syncPatients: payload vacío → no se toca nada.'); return 0; }
+  var sheetByCama = {};
+  payload.forEach(function (p) { sheetByCama[p.cama] = String(p.exp || '').trim(); });  // cama ya normalizada
+  var nSheet = Object.keys(sheetByCama).length;
+
+  // Estado actual en Supabase
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,updated_by', {
+    method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) { Logger.log('syncPatients: GET HTTP ' + res.getResponseCode() + ' → solo upsert'); upsertPatients_(key, payload); return 0; }
+  var cur = JSON.parse(res.getContentText() || '[]');
+
+  var toDelete = [];
+  cur.forEach(function (r) {
+    var cama = normalizeCama_(r.cama);
+    var sheetExp = sheetByCama[cama];
+    if (sheetExp !== undefined) {
+      if (String(r.exp || '').trim() !== sheetExp) toDelete.push(r);          // (a) reasignación
+    } else if (r.updated_by === 'sheet-sync') {
+      toDelete.push(r);                                                        // (b) retiro
+    }
+  });
+
+  // GUARDAS anti-catástrofe.
+  if (nSheet < 10) { Logger.log('syncPatients: solo ' + nSheet + ' en la hoja (posible error) → solo upsert, sin borrar.'); upsertPatients_(key, payload); return 0; }
+  if (toDelete.length > Math.max(10, Math.floor(cur.length * 0.5))) {
+    Logger.log('syncPatients: ' + toDelete.length + ' a borrar (>50%) → ABORTA reconciliación, solo upsert.');
+    upsertPatients_(key, payload); return 0;
+  }
+
+  // Borrar nota (FK) y luego la fila, por id.
+  toDelete.forEach(function (r) {
+    UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/notes?patient_id=eq.' + encodeURIComponent(r.id), { method: 'delete', headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' }, muteHttpExceptions: true });
+    UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?id=eq.' + encodeURIComponent(r.id), { method: 'delete', headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' }, muteHttpExceptions: true });
+  });
+  if (toDelete.length) Logger.log('syncPatients: retirados ' + toDelete.length + ' (reasignación/egreso): ' + toDelete.map(function (r) { return r.cama; }).join(', '));
+
+  upsertPatients_(key, payload);   // ahora sin filas conflictivas → reasignados entran limpios
+  return toDelete.length;
 }
 
 /** UPSERT column-scoped en lotes. Prefer: resolution=merge-duplicates -> ON CONFLICT(cama) DO UPDATE. */
