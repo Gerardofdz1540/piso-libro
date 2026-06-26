@@ -5583,7 +5583,7 @@ function plExportBackup() {
       _supa.auth.onAuthStateChange((event, session) => {
         switch (event) {
           case "SIGNED_IN":
-            if (session) _userAccessToken = session.access_token;
+            if (session) { _userAccessToken = session.access_token; _refreshRealtimeAuth(session); }
             _hideLoginOverlay();
             // init() dispara la carga de datos de Supabase DESPUÉS de initAuth(); si la
             // página cargó sin sesión, recargamos para que esa carga corra ya autenticada
@@ -5591,7 +5591,12 @@ function plExportBackup() {
             if (!_hadSessionAtLoad) location.reload();
             break;
           case "TOKEN_REFRESHED":
-            if (session) _userAccessToken = session.access_token;
+            // REALTIME-AUTH-FIX-v57: actualizar _userAccessToken NO basta — eso solo lo usan las
+            // llamadas REST. El Realtime seguía con el token VIEJO; al vencer, los canales quedaban
+            // en "joining" para siempre → la app dejaba de detectar cambios en vivo (y las escrituras
+            // fallaban con "Error al guardar"). Hay que pasarle el token nuevo al Realtime (setAuth)
+            // y, si algún canal quedó caído, re-suscribir.
+            if (session) { _userAccessToken = session.access_token; _refreshRealtimeAuth(session); }
             break;
           case "SIGNED_OUT":
             _userAccessToken = null;
@@ -8752,6 +8757,23 @@ function plExportBackup() {
           _scheduleRealtimeRestart(name + ":" + status);
         }
       };
+    }
+
+    // REALTIME-AUTH-FIX-v57: pasa el token NUEVO al Realtime tras login/refresh. Este SDK de
+    // supabase-js NO lo hace solo → cuando el token vencía, el Realtime seguía con el viejo y los
+    // canales quedaban colgados en "joining" (el callback de arriba solo cacha ERROR/TIMED_OUT, no
+    // "joining"), así que la app dejaba de detectar cambios en vivo y las escrituras fallaban.
+    // setAuth re-autentica los canales; si alguno quedó caído (token venció en background), re-suscribe.
+    function _refreshRealtimeAuth(session) {
+      if (!session || !_supa || !_supa.realtime) return;
+      try { _supa.realtime.setAuth(session.access_token); } catch (_) {}
+      setTimeout(async function() {
+        try {
+          var chs = (_supa.realtime && _supa.realtime.channels) || [];
+          var sano = chs.length > 0 && chs.every(function(c) { return c.state === "joined"; });
+          if (!sano) { try { await _supa.removeAllChannels(); } catch (_) {} startRealtime(); }
+        } catch (_) {}
+      }, 1500);
     }
 
     function startRealtime() {
