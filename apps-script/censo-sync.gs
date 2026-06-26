@@ -66,15 +66,23 @@ function doSync() {
 
   if (result.quarantine.length) logQuarantine_(key, result.quarantine);
 
-  // dedup por CAMA: si la hoja tiene el mismo cuarto repetido (dos pacientes en una cama),
+  // 1) dedup por CAMA: si la hoja tiene el mismo cuarto repetido (dos pacientes en una cama),
   // un upsert ON CONFLICT(cama) con ambos revienta con "cannot affect row a second time" y
   // TODA la sincronización falla. Quitamos el duplicado (gana el de más abajo en la hoja) y
   // lo logueamos a sync_log para que sea visible.
   var dd = dedupByCama_(result.keep.map(toPatientRow_), key);
-  upsertPatients_(key, dd.rows);
 
-  Logger.log('Sync OK: ' + dd.rows.length + ' upserts, ' + dd.dups + ' camas duplicadas, ' + result.quarantine.length + ' en cuarentena.');
-  return { upserts: dd.rows.length, camas_duplicadas: dd.dups, quarantine: result.quarantine.length };
+  // 2) RECONCILIACIÓN identidad-segura (Supabase REFLEJA la hoja, no solo acumula):
+  //    (a) RETIRO — paciente que ya NO está en la hoja (alta/defunción) y cuya fila vino del
+  //        sheet-sync → se retira. SIN esto los egresos quedaban como FANTASMAS en la app
+  //        (la queja "el 83 ya no es Claudio"). NO toca pacientes agregados a mano en la app.
+  //    (b) REASIGNACIÓN — misma cama con OTRO exp → borra fila+nota vieja para que el nuevo
+  //        ocupante NO herede la nota clínica del anterior (fuga clínica del upsert-por-cama).
+  //    GUARDAS anti-catástrofe dentro de syncPatients_ (hoja <10 o borrar >50% → solo upsert).
+  var retired = syncPatients_(key, dd.rows);
+
+  Logger.log('Sync OK: ' + dd.rows.length + ' upserts, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.quarantine.length + ' en cuarentena.');
+  return { upserts: dd.rows.length, retired: retired, camas_duplicadas: dd.dups, quarantine: result.quarantine.length };
 }
 
 /** Lee todas las filas de la pestana del censo (por gid). */
@@ -130,7 +138,12 @@ function parseCenso_(rows) {
       });
     } else if (!exp) {
       var nonEmpty = row.map(function (c) { return String(c == null ? '' : c).trim(); }).filter(Boolean);
-      if (nonEmpty.length >= 1 && nonEmpty.length <= 2) section = norm_(nonEmpty[0]);  // fila-encabezado de seccion
+      // Fila-encabezado de SECCION: 1-2 celdas Y la 1a NO parece una cama. Un paciente a medio
+      // capturar (cama puesta pero exp/nombre aun vacios, ej "3-184" + dx, 2 celdas) NO debe
+      // leerse como encabezado: corrompia "seccion" con un numero de cama Y -peor- podia
+      // DES-excluir una seccion ya excluida (si cae tras ALTAS/DEFUNCIONES) -> fuga de un egreso
+      // al censo activo. La identidad de seccion la dan los nombres reales (ALTAS, UCIA, ...).
+      if (nonEmpty.length >= 1 && nonEmpty.length <= 2 && !looksLikeCama_(nonEmpty[0])) section = norm_(nonEmpty[0]);
     }
   }
   return out;
@@ -149,6 +162,14 @@ function looksLikeHeader_(row) {
     if (hits >= 2) return true;
   }
   return false;
+}
+
+// ¿El texto parece una CAMA (no un encabezado de seccion)? Camas: "3-181", "2-026", "UCI 3",
+// "UTI AIS", "UTI-3", "EXT", "RECU". Cuida los HOMONIMOS por \b: "UCIA"/"RECUPERACION" son
+// SECCIONES (no llevan boundary tras el prefijo) y SI deben fijar seccion.
+function looksLikeCama_(s) {
+  var c = norm_(s);
+  return /^\d/.test(c) || /^(UCI|UTI|EXT|RECU)\b/.test(c);
 }
 
 // Un expediente real es numerico (ej. "26-13060", "2613060"). Rechaza valores con corridas
