@@ -66,11 +66,15 @@ function doSync() {
 
   if (result.quarantine.length) logQuarantine_(key, result.quarantine);
 
-  var payload = result.keep.map(toPatientRow_);
-  var del = syncPatients_(key, payload);
+  // dedup por CAMA: si la hoja tiene el mismo cuarto repetido (dos pacientes en una cama),
+  // un upsert ON CONFLICT(cama) con ambos revienta con "cannot affect row a second time" y
+  // TODA la sincronización falla. Quitamos el duplicado (gana el de más abajo en la hoja) y
+  // lo logueamos a sync_log para que sea visible.
+  var dd = dedupByCama_(result.keep.map(toPatientRow_), key);
+  upsertPatients_(key, dd.rows);
 
-  Logger.log('Sync OK: ' + payload.length + ' upserts, ' + del + ' retirados, ' + result.quarantine.length + ' en cuarentena.');
-  return { upserts: payload.length, retirados: del, quarantine: result.quarantine.length };
+  Logger.log('Sync OK: ' + dd.rows.length + ' upserts, ' + dd.dups + ' camas duplicadas, ' + result.quarantine.length + ' en cuarentena.');
+  return { upserts: dd.rows.length, camas_duplicadas: dd.dups, quarantine: result.quarantine.length };
 }
 
 /** Lee todas las filas de la pestana del censo (por gid). */
@@ -191,6 +195,25 @@ function dedupAndQuarantine_(list) {
 // (3.183 ≠ 3-183) → el paciente viejo nunca se reemplaza y aparece stale en la app.
 function normalizeCama_(c) {
   return String(c == null ? '' : c).trim().toUpperCase().replace(/\./g, '-').replace(/\s+/g, ' ');
+}
+
+// Quita filas con CAMA repetida (la hoja a veces lista el mismo cuarto 2 veces, o dos pacientes
+// distintos en una cama). Conserva la ÚLTIMA ocurrencia (la de más abajo en la hoja) y loguea el
+// duplicado a sync_log. SIN esto, el upsert ON CONFLICT(cama) revienta (error 21000 "cannot affect
+// row a second time") y NADA se sincroniza.
+function dedupByCama_(rows, key) {
+  var seen = {}, dups = [];
+  for (var i = 0; i < rows.length; i++) {
+    var c = rows[i].cama;
+    if (seen[c] !== undefined) {
+      dups.push({ exp: rows[i].exp, camas: c, nombres: rows[seen[c]].nombre + ' | ' + rows[i].nombre, motivo: 'cama_duplicada_en_hoja' });
+    }
+    seen[c] = i;
+  }
+  var out = [];
+  Object.keys(seen).forEach(function (c) { out.push(rows[seen[c]]); });
+  if (dups.length && key) { try { logQuarantine_(key, dups); } catch (_) {} }
+  return { rows: out, dups: dups.length };
 }
 
 /** Convierte un registro parseado a la fila censal que se manda a Supabase (incluye es_mio calculado). */
