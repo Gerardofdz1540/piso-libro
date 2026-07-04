@@ -6075,8 +6075,11 @@ function plExportBackup() {
       // Cardíaco
       tropI:     [/troponin.*i/i, /^trop\s*i$/i],
       tropT:     [/troponin.*t/i, /^trop\s*t$/i, /troponin.*alta sensib/i],
-      ck:        [/^ck$/i, /^cpk$/i, /creatin.*kinas/i, /creatin.*quinas/i],
-      ck_mb:     [/ck.*mb/i, /cpk.*mb/i],
+      // FIX-v58 (jul 2026): WinLab nombra la CK total "CREATIN-FOSFOCINASA" (español), NO
+      // "kinasa/quinasa" → antes NO mapeaba y la CK se PERDÍA (piso con trauma: CK importa).
+      // Anclado a fin ($) para NO tragarse la fracción "...FOSFOCINASA MB" (esa cae en ck_mb).
+      ck:        [/^ck$/i, /^cpk$/i, /creatin.*kinas/i, /creatin.*quinas/i, /creatin[\s-]*fosfocinasa$/i],
+      ck_mb:     [/ck.*mb/i, /cpk.*mb/i, /fosfocinasa.*mb/i],
       ldh:       [/^ldh$/i, /deshidrog.*l[áa]ct/i, /lactate dehy/i],
       bnp:       [/^bnp$/i, /p[eé]ptido.*natriur.*b/i],
       nt_probnp: [/nt.*probnp/i, /pro.*bnp/i],
