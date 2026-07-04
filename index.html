@@ -6345,7 +6345,16 @@ function plExportBackup() {
       if (!isCult) return null;
       if (!organismo && !neg) return null;   // sin germen ni negativo explícito → no emitir
       var hay = rep.valores.map(function (v) { return (v.estudio || "") + " " + (v.seccion || ""); }).join(" ").toUpperCase();
-      var tipo = /HEMOCULTIVO/.test(hay) ? "Hemocultivo"
+      // FIX-v58b (jul 2026): el tipo debe seguir la MUESTRA donde se halló el organismo, NO
+      // el texto completo del reporte. Un reporte puede MEZCLAR un cultivo pleural POSITIVO
+      // con un HEMOCULTIVO negativo (caso real MARIO GONZALEZ 26-11856: Enterococcus faecalis
+      // en líquido pleural + hemocultivo central sin desarrollo). Antes /HEMOCULTIVO/ ganaba en
+      // `hay` y el positivo pleural se etiquetaba "Hemocultivo" → fuente equivocada en un piso
+      // que maneja empiemas. `muestra` = sección del valor de cultivo donde salió el germen.
+      var muUp = String(muestra || "").toUpperCase();
+      var tipo = /PLEURAL/.test(muUp) ? "Cultivo líquido pleural"
+        : /PERITONEAL/.test(muUp) ? "Cultivo líquido peritoneal"
+        : /HEMOCULTIVO/.test(hay) ? "Hemocultivo"
         : /UROCULTIVO/.test(hay) ? "Urocultivo"
         : /PLEURAL/.test(hay) ? "Cultivo líquido pleural"
         : /PERITONEAL/.test(hay) ? "Cultivo líquido peritoneal"
