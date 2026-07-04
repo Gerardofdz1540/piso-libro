@@ -3154,6 +3154,79 @@
     .rhome-fbtn .l { font-size: 11px; font-weight: 600; }
     .rhome-fbtn.accent i { color: #2fb3ad; }
 
+    /* ════ RESID — Barra de navegación inferior (móvil) ════ */
+    #rnav { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 3500; background: rgba(13,30,52,.92); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-top: 1px solid rgba(111,182,216,.18); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); justify-content: space-around; }
+    .rnav-it { background: none; border: none; color: #8aa0bd; font-family: var(--font); display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; flex: 1; padding: 4px 0; transition: color .15s; }
+    .rnav-it i { font-size: 22px; }
+    .rnav-it span { font-size: 10px; font-weight: 600; }
+    .rnav-it.active { color: #4fd1c5; }
+    @media(max-width:700px) {
+      #rnav { display: flex; }
+      #tabs { display: none !important; }
+      body { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+      .rhome-panel { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+    }
+    @media print { #rnav { display: none !important; } }
+
+    /* ════ RESID — Lista de Pacientes ════ */
+    .rpac-backdrop { position: fixed; inset: 0; z-index: 4080; background: #0a1726; display: flex; justify-content: center; align-items: flex-start; opacity: 0; transition: opacity .2s ease; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .rpac-backdrop.rs-open { opacity: 1; }
+    .rpac-panel { width: 100%; max-width: 560px; margin: 0 auto; min-height: 100%; background: linear-gradient(180deg, #10253f 0%, #0a1726 30%); color: #eaf1f8; font-family: var(--font); padding: calc(10px + env(safe-area-inset-top)) 14px calc(80px + env(safe-area-inset-bottom)); }
+    .rpac-top { display: flex; align-items: center; gap: 10px; padding: 6px 0 12px; position: sticky; top: 0; background: linear-gradient(#10253f 75%, rgba(16,37,63,0)); z-index: 3; }
+    .rpac-top .bk { background: rgba(255,255,255,.08); border: none; color: #cfe0f5; width: 34px; height: 34px; border-radius: 10px; font-size: 18px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .rpac-top .t { font-size: 19px; font-weight: 700; flex: 1; }
+    .rpac-top .n { font-size: 12px; font-weight: 700; color: #6fb6d8; background: rgba(111,182,216,.12); border: 1px solid rgba(111,182,216,.3); padding: 3px 10px; border-radius: 12px; }
+    .rpac-search { display: flex; align-items: center; gap: 8px; background: #142c4a; border: 1px solid #24436b; border-radius: 13px; padding: 9px 13px; margin-bottom: 11px; }
+    .rpac-search i { color: #6d84a5; font-size: 17px; }
+    .rpac-search input { flex: 1; background: none; border: none; outline: none; color: #eaf1f8; font-size: 14px; font-family: var(--font); }
+    .rpac-search input::placeholder { color: #5e7594; }
+    .rpac-ctrl { display: flex; gap: 8px; align-items: center; margin-bottom: 13px; }
+    .rpac-seg { display: flex; background: #122740; border: 1px solid #24436b; border-radius: 11px; padding: 3px; }
+    .rpac-seg button { background: none; border: none; color: #8aa0bd; font-size: 12px; font-weight: 600; font-family: var(--font); padding: 6px 14px; border-radius: 8px; cursor: pointer; }
+    .rpac-seg button.on { background: #2fa6a0; color: #06201e; }
+    .rpac-chip { background: #122740; border: 1px solid #24436b; color: #8aa0bd; font-size: 12px; font-weight: 600; font-family: var(--font); padding: 8px 14px; border-radius: 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .rpac-chip.on { background: rgba(47,166,160,.18); border-color: rgba(47,166,160,.55); color: #4fd1c5; }
+    .rpac-card { display: flex; align-items: center; gap: 12px; background: linear-gradient(160deg, #16304c, #122843); border: 1px solid #22405f; border-radius: 15px; padding: 11px 13px; margin-bottom: 9px; cursor: pointer; transition: transform .1s, border-color .15s; }
+    .rpac-card:active { transform: scale(.985); }
+    .rpac-card .bed { flex: 0 0 auto; min-width: 46px; height: 46px; border-radius: 12px; background: linear-gradient(150deg, #2fb3ad, #1d7d8e); color: #06201e; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; padding: 0 6px; }
+    .rpac-card .bed small { font-size: 8px; font-weight: 700; letter-spacing: .5px; color: rgba(6,32,30,.7); }
+    .rpac-card .inf { flex: 1; min-width: 0; }
+    .rpac-card .nm { font-size: 14px; font-weight: 700; color: #f2f7fc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rpac-card .dx { font-size: 11.5px; color: #93a9c4; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .rpac-card .mt { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+    .rpac-card .tagx { font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 8px; background: rgba(111,182,216,.14); color: #6fb6d8; border: 1px solid rgba(111,182,216,.25); }
+    .rpac-card > i { color: #48628a; font-size: 18px; flex: 0 0 auto; }
+    .rpac-empty { text-align: center; color: #7d93b2; font-size: 13px; padding: 44px 20px; line-height: 1.6; }
+    .rpac-empty i { font-size: 40px; display: block; margin-bottom: 10px; color: #3d5878; }
+
+    /* ════ RESID — Mapa de Camas ════ */
+    .rcam-leg { display: flex; gap: 16px; margin: 2px 0 12px; font-size: 11px; color: #8aa0bd; align-items: center; }
+    .rcam-leg .sw { width: 11px; height: 11px; border-radius: 4px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+    .rcam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 9px; }
+    .rcam-bed { border-radius: 13px; padding: 9px 9px; cursor: pointer; border: 1px solid; font-family: var(--font); text-align: left; min-height: 64px; display: flex; flex-direction: column; gap: 3px; transition: transform .1s; }
+    .rcam-bed:active { transform: scale(.96); }
+    .rcam-bed .b { font-size: 13px; font-weight: 800; }
+    .rcam-bed .p { font-size: 9.5px; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .rcam-bed.occ { background: linear-gradient(160deg, #16304c, #122843); border-color: #2b4d77; color: #dbe7f5; }
+    .rcam-bed.occ .b { color: #6fb6d8; }
+    .rcam-bed.free { background: rgba(47,166,160,.1); border-color: rgba(47,166,160,.4); }
+    .rcam-bed.free .b { color: #4fd1c5; }
+    .rcam-bed.free .p { color: #3fa89f; }
+    .rsec-t { font-size: 12px; font-weight: 700; color: #8aa0bd; letter-spacing: .8px; margin: 18px 0 9px; text-transform: uppercase; }
+    .rcam-admin { width: 100%; margin-top: 18px; background: #122740; border: 1px solid #24436b; color: #b9c8dd; font-size: 13px; font-weight: 600; font-family: var(--font); padding: 12px; border-radius: 13px; cursor: pointer; }
+
+    /* ════ RESID — Cultivos ════ */
+    .rcul-chip { background: rgba(15,42,66,.7); border: 1px solid #24436b; border-radius: 11px; padding: 7px 10px; margin-top: 7px; font-size: 11.5px; line-height: 1.45; color: #c9d9ec; }
+    .rcul-chip .tp { font-weight: 800; color: #4fd1c5; }
+    .rcul-chip .dt { color: #7d93b2; font-size: 10px; }
+    .rcul-chip .org { color: #f8b4b4; font-weight: 700; }
+    .rcul-chip .sens { color: #86efac; }
+    .rcul-chip .res { color: #fca5a5; }
+    .rcul-card { display: block; cursor: pointer; background: linear-gradient(160deg, #16304c, #122843); border: 1px solid #22405f; border-radius: 15px; padding: 11px 13px; margin-bottom: 10px; }
+    .rcul-card .hd { display: flex; align-items: center; gap: 8px; }
+    .rcul-card .hd .cam { font-size: 10px; font-weight: 800; color: #06201e; background: linear-gradient(150deg, #2fb3ad, #1d7d8e); border-radius: 8px; padding: 3px 8px; }
+    .rcul-card .hd .nm { font-size: 13.5px; font-weight: 700; color: #f2f7fc; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
   </style>
 </head>
 
@@ -3285,6 +3358,15 @@
     </div>
   </div>
   </div>
+
+  <!-- ════ RESID — Barra de navegación inferior (móvil) ════ -->
+  <nav id="rnav" class="no-print" aria-label="Navegación principal">
+    <button class="rnav-it" data-rnav="home" onclick="openResidHome()"><i class="ph ph-house"></i><span>Inicio</span></button>
+    <button class="rnav-it active" data-rnav="piso" onclick="setView('piso')"><i class="ph ph-stethoscope"></i><span>Pase</span></button>
+    <button class="rnav-it" data-rnav="census" onclick="setView('census')"><i class="ph ph-users-three"></i><span>Censo</span></button>
+    <button class="rnav-it" data-rnav="pendientes" onclick="setView('pendientes')"><i class="ph ph-list-checks"></i><span>Pendientes</span></button>
+    <button class="rnav-it" data-rnav="print" onclick="setView('print')"><i class="ph ph-file-text"></i><span>Entrega</span></button>
+  </nav>
 
   <!-- MAIN -->
   <div id="main">
@@ -4218,6 +4300,12 @@
     function _hideLoginOverlay() {
       const ov = document.getElementById("login-overlay");
       if (ov) ov.style.display = "none";
+      // Al entrar (sesión previa o login recién completado) mostrar el Home RESID
+      // una sola vez por carga de página, como pantalla de inicio.
+      if (!window._rhomeBooted) {
+        window._rhomeBooted = true;
+        setTimeout(function () { try { openResidHome(); } catch (_) {} }, 400);
+      }
     }
 
     let _hadSessionAtLoad = false; // ¿había sesión al cargar la página? (evita reload-loop)
@@ -7641,7 +7729,14 @@
       currentView = v;
       document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
       if (btn) btn.classList.add("active");
+      updateRnavActive(v);
       renderView();
+    }
+    // Sincroniza la barra inferior RESID con la vista actual.
+    function updateRnavActive(v) {
+      document.querySelectorAll("#rnav .rnav-it").forEach(b => {
+        b.classList.toggle("active", b.dataset.rnav === v);
+      });
     }
     const renderViewFromSearch = debounce(function () { renderView(); }, 120);
     function handleSearchInput() { renderViewFromSearch(); }
@@ -8964,18 +9059,254 @@
   </div>`;
     }
 
+    // ─── Overlay base estilo RESID (header con volver + contador + cuerpo) ────
+    function rsOverlay(title) {
+      const bd = document.createElement("div");
+      bd.className = "rpac-backdrop";
+      bd.innerHTML =
+        `<div class="rpac-panel">` +
+          `<div class="rpac-top">` +
+            `<button class="bk" aria-label="Volver"><i class="ph ph-caret-left"></i></button>` +
+            `<div class="t">${esc(title)}</div>` +
+            `<div class="n" data-rs="count"></div>` +
+          `</div>` +
+          `<div data-rs="body"></div>` +
+        `</div>`;
+      document.body.appendChild(bd);
+      void bd.offsetWidth;
+      bd.classList.add("rs-open");
+      function close() {
+        bd.classList.remove("rs-open");
+        document.removeEventListener("keydown", onKey, true);
+        setTimeout(() => { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 220);
+      }
+      function onKey(e) { if (e.key === "Escape" && !document.querySelector(".ficha-backdrop")) { e.stopPropagation(); close(); } }
+      bd.addEventListener("click", e => { if (e.target.closest(".rpac-top .bk")) close(); });
+      document.addEventListener("keydown", onKey, true);
+      return { bd, close, body: bd.querySelector("[data-rs=body]"), count: bd.querySelector("[data-rs=count]") };
+    }
+
+    // ─── CAMAS (mapa estilo RESID: libres/ocupadas → ingreso o Ficha) ──────────
+    function openResidCamas() {
+      const ov = rsOverlay("Camas");
+      function render() {
+        const occ = new Map();
+        (patients || []).forEach(p => {
+          const c = toSafeString(p.cama).trim().toUpperCase();
+          if (c) occ.set(c, p);
+        });
+        const beds = (ALL_BEDS || []).slice().sort((a, b) => toSafeString(a).localeCompare(toSafeString(b), undefined, { numeric: true }));
+        const bedSet = new Set(beds.map(b => b.toUpperCase()));
+        const free = beds.filter(b => !occ.has(b.toUpperCase()));
+        ov.count.textContent = free.length + " libres · " + beds.length + " camas";
+
+        const gridHtml = beds.map(b => {
+          const p = occ.get(b.toUpperCase());
+          return p
+            ? `<button class="rcam-bed occ" data-k="${esc(pid(p))}"><span class="b">${esc(b)}</span><span class="p">${esc(p.nombre || "")}</span></button>`
+            : `<button class="rcam-bed free" data-bed="${esc(b)}"><span class="b">${esc(b)}</span><span class="p">Libre · toca para ingresar</span></button>`;
+        }).join("");
+
+        const fuera = (patients || []).filter(p => {
+          const c = toSafeString(p.cama).trim().toUpperCase();
+          return !c || !bedSet.has(c);
+        });
+        const fueraHtml = fuera.length
+          ? `<div class="rsec-t">Fuera del mapa / sin cama</div><div class="rcam-grid">` +
+            fuera.map(p => `<button class="rcam-bed occ" data-k="${esc(pid(p))}"><span class="b">${esc(p.cama || "S/C")}</span><span class="p">${esc(p.nombre || "")}</span></button>`).join("") +
+            `</div>`
+          : "";
+
+        ov.body.innerHTML =
+          `<div class="rcam-leg"><span><span class="sw" style="background:#2fb3ad"></span>Libre</span>` +
+          `<span><span class="sw" style="background:#2b4d77"></span>Ocupada</span></div>` +
+          (beds.length ? `<div class="rcam-grid">${gridHtml}</div>` :
+            `<div class="rpac-empty"><i class="ph ph-bed"></i>No hay camas registradas.<br>Usa «Administrar camas» para definir tu piso.</div>`) +
+          fueraHtml +
+          `<button class="rcam-admin" data-rs="admin"><i class="ph ph-gear-six"></i> Administrar camas</button>`;
+      }
+      ov.bd.addEventListener("click", e => {
+        const freeBed = e.target.closest(".rcam-bed.free");
+        if (freeBed) { ov.close(); setTimeout(() => { try { openAddModalWithBed(freeBed.dataset.bed); } catch (_) {} }, 150); return; }
+        const occBed = e.target.closest(".rcam-bed.occ");
+        if (occBed) { try { openFichaResid(occBed.dataset.k); } catch (_) {} return; }
+        if (e.target.closest("[data-rs=admin]")) { ov.close(); setTimeout(() => { try { openBedManager(); } catch (_) {} }, 150); }
+      });
+      render();
+    }
+
+    // ─── CULTIVOS (panorama de todos los pacientes → Ficha) ────────────────────
+    function openResidCultivos() {
+      const ov = rsOverlay("Cultivos");
+      const rows = (patients || []).map(p => {
+        const k = pid(p);
+        const nd = getNote(k);
+        const cults = [];
+        (((nd || {}).labHistory) || []).forEach(snap => {
+          if (!snap || !snap.labs) return;
+          const L = snap.labs;
+          if (L.micro_tipo_cultivo || L.micro_organismo) {
+            cults.push({
+              fecha: snap.fecha || "", tipo: L.micro_tipo_cultivo || "Cultivo",
+              organismo: L.micro_organismo || "", sens: L.micro_sensibilidades || "",
+              res: L.micro_resistencias || "", muestra: L.micro_muestra || ""
+            });
+          }
+        });
+        cults.sort((a, b) => b.fecha.localeCompare(a.fecha));
+        const manual = (((nd || {}).checklist || {}).cultivos || "").trim();
+        return { p, k, cults, manual };
+      }).filter(x => x.cults.length || x.manual)
+        .sort((a, b) => toSafeString(a.p.cama).localeCompare(toSafeString(b.p.cama), undefined, { numeric: true }));
+
+      ov.count.textContent = rows.length + (rows.length === 1 ? " paciente" : " pacientes");
+      ov.body.innerHTML = rows.length
+        ? rows.map(r => {
+            const chips = r.cults.map(c =>
+              `<div class="rcul-chip"><span class="tp">${esc(c.tipo)}</span>` +
+              (c.fecha ? ` <span class="dt">${esc(c.fecha)}</span>` : "") +
+              (c.muestra ? ` · 🧫 ${esc(c.muestra)}` : "") +
+              (c.organismo ? `<br>🦠 <span class="org">${esc(c.organismo)}</span>` : "") +
+              (c.sens ? `<br><span class="sens">S: ${esc(c.sens)}</span>` : "") +
+              (c.res ? ` <span class="res">R: ${esc(c.res)}</span>` : "") +
+              `</div>`).join("") +
+              (r.manual ? `<div class="rcul-chip">📝 ${esc(r.manual)}</div>` : "");
+            return `<div class="rcul-card" data-k="${esc(r.k)}">` +
+              `<div class="hd"><span class="cam">${esc(r.p.cama || "S/C")}</span><span class="nm">${esc(r.p.nombre || "")}</span><i class="ph ph-caret-right" style="color:#48628a"></i></div>` +
+              chips + `</div>`;
+          }).join("")
+        : `<div class="rpac-empty"><i class="ph ph-test-tube"></i>Sin cultivos registrados.<br>Se llenan desde WinLab (micro), labs masivos<br>o el campo Cultivos de cada tarjeta.</div>`;
+
+      ov.bd.addEventListener("click", e => {
+        const card = e.target.closest(".rcul-card");
+        if (card) { try { openFichaResid(card.dataset.k); } catch (_) {} }
+      });
+    }
+
+    // ─── PACIENTES (lista estilo RESID: búsqueda + orden + Mi equipo → Ficha) ──
+    function openResidPacientes() {
+      let rpSort = localStorage.getItem("pl_rpac_sort") || "cama";
+      let rpMine = false;
+      const rpNorm = s => toSafeString(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+      const bd = document.createElement("div");
+      bd.className = "rpac-backdrop";
+      bd.innerHTML =
+        `<div class="rpac-panel">` +
+          `<div class="rpac-top">` +
+            `<button class="bk" aria-label="Volver"><i class="ph ph-caret-left"></i></button>` +
+            `<div class="t">Pacientes</div>` +
+            `<div class="n" data-rp="count"></div>` +
+          `</div>` +
+          `<div class="rpac-search"><i class="ph ph-magnifying-glass"></i>` +
+            `<input type="search" placeholder="Buscar por nombre, cama, expediente o dx…" autocomplete="off">` +
+          `</div>` +
+          `<div class="rpac-ctrl">` +
+            `<div class="rpac-seg">` +
+              `<button data-rp="cama">Cama ↑</button>` +
+              `<button data-rp="nombre">Nombre</button>` +
+            `</div>` +
+            `<button class="rpac-chip" data-rp="mine"><i class="ph ph-users"></i> Mi equipo</button>` +
+          `</div>` +
+          `<div data-rp="list"></div>` +
+        `</div>`;
+      document.body.appendChild(bd);
+      void bd.offsetWidth;
+      bd.classList.add("rs-open");
+
+      const $ = sel => bd.querySelector(sel);
+      const input = $(".rpac-search input");
+
+      function rpData() {
+        let list = (patients || []).slice();
+        if (rpMine) {
+          const u = rpNorm(localStorage.getItem("pl_user_name") || "");
+          list = list.filter(p => {
+            const r = rpNorm(p.residente || "");
+            return u && r && (r.includes(u) || u.includes(r));
+          });
+        }
+        const q = rpNorm(input.value || "");
+        if (q) {
+          const toks = q.split(/\s+/).filter(Boolean);
+          list = list.filter(p => {
+            const hay = rpNorm(p.nombre) + " " + rpNorm(p.cama) + " " + rpNorm(p.exp || "") + " " + rpNorm(p.dx || "") + " " + rpNorm(p.residente || "");
+            return toks.every(t => hay.includes(t));
+          });
+        }
+        list.sort(rpSort === "cama"
+          ? (a, b) => {
+              const ca = toSafeString(a.cama).trim(), cb = toSafeString(b.cama).trim();
+              if (!ca && !cb) return toSafeString(a.nombre).localeCompare(toSafeString(b.nombre));
+              if (!ca) return 1;
+              if (!cb) return -1;
+              return ca.localeCompare(cb, undefined, { numeric: true });
+            }
+          : (a, b) => toSafeString(a.nombre).localeCompare(toSafeString(b.nombre)));
+        return list;
+      }
+
+      function renderList() {
+        bd.querySelectorAll(".rpac-seg button").forEach(b => b.classList.toggle("on", b.dataset.rp === rpSort));
+        $("[data-rp=mine]").classList.toggle("on", rpMine);
+        const list = rpData();
+        $("[data-rp=count]").textContent = list.length + (list.length === 1 ? " paciente" : " pacientes");
+        if (!list.length) {
+          $("[data-rp=list]").innerHTML =
+            `<div class="rpac-empty"><i class="ph ph-users-three"></i>` +
+            (rpMine ? "Sin pacientes con tu nombre en el campo residente.<br>Desactiva «Mi equipo» para ver todos." :
+              ((patients || []).length ? "Sin resultados para esta búsqueda." : "Aún no hay pacientes en el censo.<br>Importa el censo o agrega uno con ➕.")) +
+            `</div>`;
+          return;
+        }
+        $("[data-rp=list]").innerHTML = list.map(p => {
+          const k = pid(p);
+          const tags = [p.esp, p.residente].filter(Boolean).slice(0, 2)
+            .map(t => `<span class="tagx">${esc(t)}</span>`).join("");
+          return `<div class="rpac-card" data-k="${esc(k)}">` +
+            `<div class="bed"><small>CAMA</small>${esc(p.cama || "—")}</div>` +
+            `<div class="inf"><div class="nm">${esc(p.nombre || "(sin nombre)")}</div>` +
+            `<div class="dx">${esc(p.dx || "Sin diagnóstico registrado")}</div>` +
+            (tags ? `<div class="mt">${tags}</div>` : "") +
+            `</div><i class="ph ph-caret-right"></i></div>`;
+        }).join("");
+      }
+
+      function close() {
+        bd.classList.remove("rs-open");
+        document.removeEventListener("keydown", onKey, true);
+        setTimeout(() => { if (bd.parentNode) bd.parentNode.removeChild(bd); }, 220);
+      }
+      function onKey(e) { if (e.key === "Escape" && !document.querySelector(".ficha-backdrop")) { e.stopPropagation(); close(); } }
+
+      bd.addEventListener("click", e => {
+        if (e.target.closest(".bk")) { close(); return; }
+        const seg = e.target.closest(".rpac-seg button");
+        if (seg) { rpSort = seg.dataset.rp; localStorage.setItem("pl_rpac_sort", rpSort); renderList(); return; }
+        if (e.target.closest("[data-rp=mine]")) { rpMine = !rpMine; renderList(); return; }
+        const card = e.target.closest(".rpac-card");
+        if (card) { try { openFichaResid(card.dataset.k); } catch (_) {} }
+      });
+      input.addEventListener("input", debounce(renderList, 120));
+      document.addEventListener("keydown", onKey, true);
+      renderList();
+    }
+
     // ─── HOME / LAUNCHER (réplica RESID) ───────────────────────────────────────
     // Módulos de la rejilla: icono Phosphor, etiqueta y acción.
     const RHOME_TILES = [
-      { i: "ph-stethoscope",      l: "Pase de Visita", act: () => setView("piso") },
-      { i: "ph-users-three",      l: "Pacientes",      act: () => setView("census") },
-      { i: "ph-file-text",        l: "Entrega",        act: () => setView("print") },
-      { i: "ph-push-pin",         l: "No olvidar",     act: () => setView("noOlvidar") },
-      { i: "ph-list-checks",      l: "Pendientes",     act: () => setView("pendientes") },
-      { i: "ph-check-circle",     l: "Altas",          act: () => setView("altas") },
-      { i: "ph-archive-box",      l: "Egresados",      act: () => setView("papelera") },
-      { i: "ph-flask",            l: "Labs WinLab",    act: () => { if (typeof refreshWinlabLabs === "function") refreshWinlabLabs(); } },
-      { i: "ph-user-plus",        l: "Nuevo paciente", act: () => { if (typeof openAddModal === "function") openAddModal(); } }
+      { i: "ph-stethoscope",        l: "Pase de Visita", act: () => setView("piso") },
+      { i: "ph-users-three",        l: "Pacientes",      act: () => openResidPacientes() },
+      { i: "ph-bed",                l: "Camas",          act: () => openResidCamas() },
+      { i: "ph-test-tube",          l: "Cultivos",       act: () => openResidCultivos() },
+      { i: "ph-flask",              l: "Labs WinLab",    act: () => { if (typeof refreshWinlabLabs === "function") refreshWinlabLabs(); } },
+      { i: "ph-cloud-arrow-down",   l: "Importar Censo", act: () => { const f = document.getElementById("xlsx-file-input"); if (f) f.click(); } },
+      { i: "ph-file-text",          l: "Entrega",        act: () => setView("print") },
+      { i: "ph-list-checks",        l: "Pendientes",     act: () => setView("pendientes") },
+      { i: "ph-push-pin",           l: "No olvidar",     act: () => setView("noOlvidar") },
+      { i: "ph-check-circle",       l: "Altas",          act: () => setView("altas") },
+      { i: "ph-archive-box",        l: "Egresados",      act: () => setView("papelera") },
+      { i: "ph-arrows-clockwise",   l: "Rondas",         act: () => { if (typeof startRondas === "function") startRondas(); } }
     ];
     function openResidHome() {
       const nombre = (localStorage.getItem("pl_user_name") || "").trim();
@@ -12636,6 +12967,82 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
   </div>`;
     }
 
+    function printPrePostQx() {
+      const v = fmtV;
+      const ck = id => { const el = document.getElementById(id); return el && el.checked; };
+      const riesgos = [
+        ["fqx_nefro", "NEFROPATÍA"], ["fqx_coag", "COAGULOPATÍA"], ["fqx_cardio", "CARDIOPATÍA"],
+        ["fqx_dm", "DIABETES"], ["fqx_has", "HAS"], ["fqx_alcohol", "ALCOHOLISMO"],
+        ["fqx_tabaco", "TABAQUISMO"], ["fqx_adicc", "ADICCIONES"]
+      ].map(([id, lbl]) => `<span style="margin-right:8px;white-space:nowrap">${ck(id) ? "☑" : "☐"} ${lbl}</span>`).join("");
+      const w = window.open("", "_blank", "width=900,height=1100");
+      w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-Qx-234</title>
+  <style>
+    @page{size:letter;margin:10mm}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:Arial,sans-serif;font-size:9pt;color:#000;padding:6mm;line-height:1.35}
+    .hdr{text-align:center;font-size:9pt;margin-bottom:2mm}
+    h2{text-align:center;font-size:11pt;font-weight:bold;margin:2mm 0 3mm}
+    h3{font-size:9.5pt;font-weight:bold;background:#eee;border:1px solid #000;padding:2px 5px;margin:3mm 0 1.5mm}
+    .tbl{width:100%;border-collapse:collapse;margin:1.5mm 0}
+    .tbl td{border:1px solid #000;padding:2px 4px;font-size:9pt;vertical-align:top}
+    .tbl td.lbl{font-weight:bold;background:#f5f5f5;white-space:nowrap}
+    .box{border:1px solid #000;padding:2px 4px;min-height:9mm;margin:1mm 0;font-size:9pt;white-space:pre-wrap}
+    .sig-row{display:flex;justify-content:space-around;margin-top:8mm}
+    .sig-box{text-align:center;width:40%}
+    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:14mm}
+    .ft{text-align:right;font-size:7pt;color:#666;margin-top:4mm}
+  </style></head><body>
+    <div class="hdr">Instituto de Salud Pública del Estado de Guanajuato<br><b>Hospital General León</b></div>
+    <h2>ESTADO PRE Y POST QUIRÚRGICO</h2>
+    <table class="tbl">
+      <tr><td class="lbl">FECHA</td><td>${v("fqx_fecha")}</td><td class="lbl">HORA</td><td>${v("fqx_hora")}</td><td class="lbl">SERVICIO</td><td>${v("fqx_servicio")}</td><td class="lbl">CAMA</td><td>${v("fqx_cama")}</td></tr>
+      <tr><td class="lbl">NOMBRE</td><td colspan="3">${v("fqx_nombre")}</td><td class="lbl">EXPEDIENTE</td><td>${v("fqx_exp")}</td><td class="lbl">EDAD</td><td>${v("fqx_edad")}</td></tr>
+      <tr><td class="lbl">SEXO</td><td>${v("fqx_sexo")}</td><td class="lbl">F. NACIMIENTO</td><td>${v("fqx_fn")}</td><td class="lbl">TA</td><td>${v("fqx_ta")}</td><td class="lbl">FC / FR</td><td>${v("fqx_fc")} / ${v("fqx_fr")}</td></tr>
+      <tr><td class="lbl">TEMP</td><td>${v("fqx_temp")}</td><td class="lbl">PESO</td><td>${v("fqx_peso")}</td><td class="lbl">TALLA</td><td>${v("fqx_talla")}</td><td colspan="2"></td></tr>
+    </table>
+    <h3>NOTA PREQUIRÚRGICA</h3>
+    <table class="tbl">
+      <tr><td class="lbl">FECHA CIRUGÍA</td><td>${v("fqx_fecha_cx")}</td><td class="lbl">TIPO INTERVENCIÓN</td><td>${v("fqx_tipo_interv")}</td></tr>
+    </table>
+    <b style="font-size:8.5pt">PLAN QUIRÚRGICO:</b><div class="box">${v("fqx_plan_qx")}</div>
+    <b style="font-size:8.5pt">FACTORES DE RIESGO:</b><div class="box" style="min-height:6mm">${riesgos}${v("fqx_otros_riesgo") ? "<br>OTROS: " + v("fqx_otros_riesgo") : ""}</div>
+    <b style="font-size:8.5pt">RESUMEN DEL INTERROGATORIO:</b><div class="box">${v("fqx_interrogatorio")}</div>
+    <b style="font-size:8.5pt">EXPLORACIÓN FÍSICA:</b><div class="box">${v("fqx_ef")}</div>
+    <table class="tbl">
+      <tr><td class="lbl">TIPO SANGRE</td><td>${v("fqx_tipo_sangre")}</td><td class="lbl">TP</td><td>${v("fqx_tp")}</td><td class="lbl">TPT</td><td>${v("fqx_tpt")}</td><td class="lbl">HB</td><td>${v("fqx_hb")}</td><td class="lbl">HTO</td><td>${v("fqx_hto")}</td></tr>
+      <tr><td class="lbl">OTROS ESTUDIOS</td><td colspan="8">${v("fqx_otros_labs")}</td></tr>
+    </table>
+    <b style="font-size:8.5pt">DIAGNÓSTICOS PREQUIRÚRGICOS:</b><div class="box">${v("fqx_dx_pre")}</div>
+    <b style="font-size:8.5pt">CUIDADOS Y PLAN TERAPÉUTICO PREOPERATORIO:</b><div class="box">${v("fqx_cuidados_pre")}</div>
+    <table class="tbl">
+      <tr><td class="lbl">PRONÓSTICO</td><td>${v("fqx_pronostico_pre")}</td><td class="lbl">MÉDICO ADSCRITO</td><td>${v("fqx_adscrito")}</td><td class="lbl">ELABORA</td><td>${v("fqx_residente")}</td></tr>
+    </table>
+    <h3>NOTA POSTQUIRÚRGICA</h3>
+    <b style="font-size:8.5pt">DIAGNÓSTICO POSTOPERATORIO:</b><div class="box">${v("fqx_dx_post")}</div>
+    <b style="font-size:8.5pt">CIRUGÍA REALIZADA:</b><div class="box">${v("fqx_cx_realizada")}</div>
+    <table class="tbl">
+      <tr><td class="lbl">FECHA</td><td>${v("fqx_fecha_cx_real")}</td><td class="lbl">INICIO</td><td>${v("fqx_hora_inicio")}</td><td class="lbl">TÉRMINO</td><td>${v("fqx_hora_fin")}</td><td class="lbl">DURACIÓN</td><td>${v("fqx_duracion")}</td><td class="lbl">ANESTESIA</td><td>${v("fqx_anestesia")}</td></tr>
+      <tr><td class="lbl">CIRUJANO</td><td colspan="2">${v("fqx_cirujano")}</td><td class="lbl">ANESTESIÓLOGO</td><td colspan="2">${v("fqx_anestesiologo")}</td><td class="lbl">1er AYUDANTE</td><td colspan="2">${v("fqx_ayud1")}</td></tr>
+      <tr><td class="lbl">2do AYUDANTE</td><td colspan="2">${v("fqx_ayud2")}</td><td class="lbl">INSTRUMENTISTA</td><td colspan="2">${v("fqx_instrumentista")}</td><td class="lbl">CIRCULANTE</td><td colspan="2">${v("fqx_circulante")}</td></tr>
+    </table>
+    <b style="font-size:8.5pt">HALLAZGOS TRANSOPERATORIOS:</b><div class="box">${v("fqx_hallazgos")}</div>
+    <b style="font-size:8.5pt">DESCRIPCIÓN DE TÉCNICA QUIRÚRGICA:</b><div class="box" style="min-height:18mm">${v("fqx_tecnica")}</div>
+    <table class="tbl">
+      <tr><td class="lbl">SANGRADO</td><td>${v("fqx_sangrado")}</td><td class="lbl">CUENTA TEXTIL</td><td>${v("fqx_gasas")}</td><td class="lbl">PIEZA / HISTOPATOLÓGICO</td><td>${v("fqx_pieza")}</td></tr>
+      <tr><td class="lbl">INCIDENTES</td><td>${v("fqx_incidentes")}</td><td class="lbl">ESTADO POSTQX</td><td>${v("fqx_estado_post")}</td><td class="lbl">PRONÓSTICO</td><td>${v("fqx_pronostico_post")}</td></tr>
+    </table>
+    <b style="font-size:8.5pt">PLAN Y TRATAMIENTO INMEDIATO:</b><div class="box">${v("fqx_plan_post")}</div>
+    <div class="sig-row">
+      <div class="sig-box"><div class="sig-line">Nombre completo, cédula y firma del médico cirujano</div></div>
+      <div class="sig-box"><div class="sig-line">Nombre completo, cédula y firma del médico que elabora</div></div>
+    </div>
+    <div class="ft">FT-HGL-Qx-234 · Blvd. Puente Milenio N° 1001 A Predio San Carlos C.P. 37544</div>
+    <script>window.print();<\/script>
+  </body></html>`);
+      w.document.close();
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════
     // FORMAT 2: FT-HGL-AM-542 CONSENTIMIENTO QUIRURGICO
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -16176,6 +16583,55 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
     // ─── START ───────────────────────────────────────────────────────────────────────
     init();
+
+    // ─── Fallback de iconos Phosphor ───────────────────────────────────────────
+    // La app es offline-first: si el CDN de la fuente de iconos no responde
+    // (sin internet en el hospital, CDN bloqueado), sustituimos cada icono por
+    // un emoji equivalente para que la UI RESID nunca quede con huecos vacíos.
+    (function () {
+      const PH_EMOJI = {
+        "ph-house": "🏠", "ph-stethoscope": "🩺", "ph-users-three": "👥", "ph-users": "👥",
+        "ph-bed": "🛏", "ph-test-tube": "🧫", "ph-flask": "🧪", "ph-cloud-arrow-down": "📥",
+        "ph-file-text": "📄", "ph-list-checks": "📋", "ph-push-pin": "📌", "ph-check-circle": "✅",
+        "ph-check": "✓", "ph-archive-box": "📦", "ph-arrows-clockwise": "🔄", "ph-gear-six": "⚙️",
+        "ph-plus-circle": "➕", "ph-first-aid": "🏥", "ph-x": "✕", "ph-caret-left": "‹",
+        "ph-caret-right": "›", "ph-caret-down": "⌄", "ph-magnifying-glass": "🔍",
+        "ph-activity": "📈", "ph-note": "📝", "ph-note-pencil": "📝", "ph-heartbeat": "❤️",
+        "ph-pulse": "💓", "ph-wind": "🌬", "ph-thermometer": "🌡", "ph-drop": "💧",
+        "ph-syringe": "💉", "ph-pill": "💊", "ph-cake": "🎂", "ph-calendar-blank": "📅",
+        "ph-chart-line-up": "📈", "ph-clipboard-text": "📋", "ph-folder-open": "📂",
+        "ph-gender-female": "♀", "ph-gender-male": "♂", "ph-hand-pointing": "👉",
+        "ph-scales": "⚖️", "ph-trash": "🗑"
+      };
+      function injectPhFallback() {
+        if (document.getElementById("ph-emoji-fallback")) return;
+        let css = "";
+        Object.keys(PH_EMOJI).forEach(k => {
+          // !important en ambas propiedades: el CSS de Phosphor declara
+          // font-family:"Phosphor"!important en .ph::before y ganaría si la hoja
+          // cargó pero la fuente (woff2) no; este <style> va después y lo anula.
+          css += `i.ph.${k}::before{content:"${PH_EMOJI[k]}" !important;font-family:inherit !important;font-style:normal;font-weight:normal}`;
+        });
+        const st = document.createElement("style");
+        st.id = "ph-emoji-fallback";
+        st.textContent = css;
+        document.head.appendChild(st);
+      }
+      function applyPhFallback() {
+        if (document.getElementById("ph-emoji-fallback")) return;
+        // OJO: document.fonts.check() devuelve true para familias NO registradas,
+        // así que no sirve solo. load() fuerza la descarga y devuelve las caras
+        // realmente disponibles: [] si el CSS del CDN nunca cargó o el woff2 falló.
+        try {
+          if (!document.fonts || !document.fonts.load) { injectPhFallback(); return; }
+          document.fonts.load('1em "Phosphor"').then(faces => {
+            if (!(faces && faces.length > 0 && document.fonts.check('1em "Phosphor"'))) injectPhFallback();
+          }).catch(injectPhFallback);
+        } catch (_) { injectPhFallback(); }
+      }
+      window.addEventListener("load", () => setTimeout(applyPhFallback, 1200));
+      setTimeout(applyPhFallback, 5000); // último recurso si load nunca dispara
+    })();
 
     // ─── CHECKLIST OPERATIVO ─────────────────────────────────────────────────────────
     const CHECKLIST_ITEMS = [
