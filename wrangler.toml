@@ -1,0 +1,8 @@
+# Despliegue de la app (index.html + PWA) como Worker con assets estáticos.
+# Corresponde al worker existente "pisolibro" en la cuenta de Cloudflare.
+# El worker del proxy de labs vive aparte en cloudflare-worker/wrangler.toml.
+name = "pisolibro"
+compatibility_date = "2026-04-26"
+
+[assets]
+directory = "./dist"
