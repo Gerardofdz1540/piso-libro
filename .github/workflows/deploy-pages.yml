@@ -1,8 +1,8 @@
 name: Deploy a Cloudflare Pages
 
 # Auto-deploy continuo: cada push a la rama de produccion publica la app.
-# Solo se sube index.html + _headers (app de un solo archivo). El resto del
-# repo (rpa, scripts, docs) NO se publica.
+# Se suben index.html + _headers + assets de la PWA (manifest.json, sw.js,
+# icons/). El resto del repo (rpa, scripts, docs) NO se publica.
 #
 # Requiere 2 secrets en GitHub (Settings -> Secrets -> Actions):
 #   CLOUDFLARE_API_TOKEN   (token con permiso "Cloudflare Pages: Edit")
@@ -15,6 +15,9 @@ on:
     paths:
       - index.html
       - _headers
+      - manifest.json
+      - sw.js
+      - icons/**
       - .github/workflows/deploy-pages.yml
   workflow_dispatch:
 
@@ -29,12 +32,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Construir carpeta de publicacion (solo la app)
+      - name: Construir carpeta de publicacion (app + PWA)
         run: |
-          mkdir -p dist
-          cp index.html dist/index.html
-          cp _headers   dist/_headers
-          ls -la dist
+          mkdir -p dist/icons
+          cp index.html   dist/index.html
+          cp _headers     dist/_headers
+          cp manifest.json dist/manifest.json
+          cp sw.js        dist/sw.js
+          cp icons/*.png  dist/icons/
+          ls -la dist dist/icons
 
       - name: Publicar en Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
