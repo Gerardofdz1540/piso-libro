@@ -5,6 +5,7 @@ import {
   dedupRecords, isAllowedEsp, formatDate,
   isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
   isMeaningfulReportRow, extractApellidos, expVariants,
+  stripAccentsKeepEnie, buildSearchCandidates,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -219,9 +220,11 @@ assert(extractApellidos("").length === 0,    "apellidos: vacio -> []");
   const a5 = extractApellidos("  Pedro  Romero  Juarez  ");
   assert(a5[0] === "ROMERO JUAREZ", "apellidos: trim + uppercase");
 }
-// FIX cobertura (24 jun 2026): acentos/Ñ y partículas líderes.
+// FIX cobertura (24 jun 2026): acentos y partículas líderes.
+// FIX jul 2026: la Ñ se PRESERVA (WinLab es Ñ-sensible: MUÑIZ matcheaba con Ñ literal
+// pre-24jun; "ZUNIGA" post-strip daba NINGUN REGISTRO). Solo se quitan acentos de vocales.
 assert(extractApellidos("JOSE ADRIÁN ARREGUIN RODRÍGUEZ")[0] === "ARREGUIN RODRIGUEZ", "apellidos: sin acentos");
-assert(extractApellidos("AARON ZUÑIGA PÁRAMO")[0] === "ZUNIGA PARAMO", "apellidos: Ñ→N + sin acento");
+assert(extractApellidos("AARON ZUÑIGA PÁRAMO")[0] === "ZUÑIGA PARAMO", "apellidos: Ñ preservada + acento vocal fuera");
 assert(extractApellidos("ELIZABETH GARCÍA MÁRQUEZ")[0] === "GARCIA MARQUEZ", "apellidos: GARCIA MARQUEZ sin acento");
 assert(extractApellidos("JUAN DANIEL DEL ANGEL GOMEZ")[0] === "DEL ANGEL GOMEZ", "apellidos: incluye partícula DEL");
 assert(extractApellidos("MA GUADALUPE DIAZ DE LEON MARQUEZ")[0] === "DE LEON MARQUEZ", "apellidos: incluye partícula DE");
@@ -245,6 +248,54 @@ assert(extractApellidos("JOSE DE JESUS LUNA MELENDEZ")[0] === "LUNA MELENDEZ", "
 }
 assert(expVariants(null).length === 0, "expVariants: null -> []");
 assert(expVariants("").length === 0,   "expVariants: vacio -> []");
+
+// ── 17. stripAccentsKeepEnie (jul 2026) ───────────────────────────────
+assert(stripAccentsKeepEnie("RODRÍGUEZ ZUÑIGA") === "RODRIGUEZ ZUÑIGA", "strip: acento fuera, Ñ intacta");
+assert(stripAccentsKeepEnie("pérez ñato") === "PEREZ ÑATO", "strip: uppercase + ñ minúscula preservada");
+assert(stripAccentsKeepEnie("PIÑON") === "PIÑON", "strip: PIÑON intacto");
+assert(stripAccentsKeepEnie("ÑATO") === "ÑATO", "strip: Ñ descompuesta (N+U+0303) se recompone y preserva");
+assert(stripAccentsKeepEnie("  ÁÉÍÓÚÜ  ") === "AEIOUU", "strip: todas las vocales acentuadas + trim");
+assert(stripAccentsKeepEnie(null) === "", "strip: null -> ''");
+
+// ── 18. buildSearchCandidates (jul 2026) — escalera de búsqueda ───────
+{
+  // Caso Ñ (TADEO, 3-143): primaria con Ñ, retry con N.
+  const c = buildSearchCandidates("TADEO DE JESUS RODRIGUEZ ZUÑIGA");
+  assert(c[0].cognome === "RODRIGUEZ ZUÑIGA" && !c[0].nome, "cand: primaria Ñ preservada");
+  assert(c.some((x) => x.cognome === "RODRIGUEZ ZUNIGA"), "cand: variante N-por-Ñ presente");
+}
+{
+  // Caso nombre invertido en la hoja (MARQUEZ VALLEJO JUAN JOSE, 3-188).
+  const c = buildSearchCandidates("MARQUEZ VALLEJO JUAN JOSE");
+  assert(c[0].cognome === "JUAN JOSE", "cand: primaria = últimas 2 (convención)");
+  assert(c.some((x) => x.cognome === "MARQUEZ VALLEJO" && x.nome === "JUAN JOSE"),
+    "cand: retry invertido apellidos-primero con nome");
+}
+{
+  // Caso apellido extranjero de 3 palabras (PIERROT, 3-150).
+  const c = buildSearchCandidates("PIERROT TONY ZAKHIA EL DOVAIHY");
+  assert(c[0].cognome === "EL DOVAIHY", "cand: primaria últimas 2");
+  assert(c.some((x) => x.cognome === "ZAKHIA EL DOVAIHY"), "cand: retry apellido 3 palabras");
+}
+{
+  // Caso 2 palabras (ARMANDO RIOS): apellido+nombre y su swap.
+  const c = buildSearchCandidates("ARMANDO RIOS");
+  assert(c[0].cognome === "RIOS" && c[0].nome === "ARMANDO", "cand: 2-palabras apellido+nombre");
+  assert(c.some((x) => x.cognome === "ARMANDO" && x.nome === "RIOS"), "cand: 2-palabras swap");
+}
+{
+  // Nombre normal de 4 palabras: la primaria correcta va PRIMERO (sin regresión).
+  const c = buildSearchCandidates("AGUSTIN JAIME MENDOZA GONZALEZ");
+  assert(c[0].cognome === "MENDOZA GONZALEZ" && !c[0].nome, "cand: normal 4 palabras sin cambio");
+}
+{
+  // Sin candidatos duplicados.
+  const c = buildSearchCandidates("JUAN PEREZ PEREZ");
+  const keys = c.map((x) => x.key);
+  assert(new Set(keys).size === keys.length, "cand: sin duplicados");
+}
+assert(buildSearchCandidates("MARIA").length === 0, "cand: 1 palabra -> []");
+assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
 
 console.log(`\n${pass} pass · ${fail} fail`);
 process.exit(fail ? 1 : 0);

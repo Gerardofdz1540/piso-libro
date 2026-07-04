@@ -14,7 +14,7 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-         isMeaningfulReportRow, extractApellidos,
+         isMeaningfulReportRow, extractApellidos, buildSearchCandidates,
          patientHeaderMatches, extractHeaderName } from "./lib.js";
 import { parsePdfToLabValues, findPdfFrameUrl } from "./pdf-extract.js";
 
@@ -273,37 +273,44 @@ async function captureSearchUrl(page) {
 }
 
 // ── 4. BUSQUEDA + SCRAPE POR PACIENTE ─────────────────────────────────
-// Un solo intento por paciente: primer + segundo apellido concatenados en
-// txtCognome (ej. "MARTINEZ ROLDAN"). Sin fallbacks — los pacientes no están
-// registrados por expediente en WinLab, y buscar por un solo apellido genera
-// timeouts por exceso de homónimos. Si no hay resultados → sin labs en el rango.
+// Escalera de candidatos (jul 2026): la búsqueda primaria (apellidos = últimas 2 palabras,
+// Ñ preservada) + retries SOLO cuando la anterior dio NINGUN REGISTRO (respuesta rápida,
+// sin drill). Cubre los 4 modos de fallo reales: Ñ tecleada como N en WinLab, apellido
+// extranjero de 3 palabras (ZAKHIA EL DOVAIHY), nombre invertido en la hoja (MARQUEZ
+// VALLEJO JUAN JOSE) y 2-palabras invertido. Ver buildSearchCandidates en lib.js.
+//
+// SEGURIDAD ANTI-HOMÓNIMO: los retries (candidato >0) exigen identificación POSITIVA del
+// objetivo por fila-encabezado (requireTargetMatch) — si la lista trae solo homónimos, se
+// descarta y se prueba el siguiente candidato. NUNCA drill a ciegas en un retry. (El
+// fallback ciego de jun 2026 con apellido único saturó memoria y colapsó el navegador —
+// corrida 27665440228; esta escalera usa términos de 2+ palabras y drill solo-objetivo.)
 async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
-  const apellidos = extractApellidos(paciente.nombre);
-  let cognome   = apellidos[0] || "";   // ej. "MARTINEZ ROLDAN" (paterno+materno)
-  let nome      = null;
-  // 24 jun 2026 — FIX 2-palabras: un nombre "NOMBRE APELLIDO" (ej. "ARMANDO RIOS") hacía que
-  // extractApellidos devolviera "ARMANDO RIOS" como apellido → WinLab no matchea (nadie se
-  // apellida "ARMANDO RIOS"). Para 2 palabras: apellido = última, nombre de pila = primera en
-  // txtNome → WinLab desambigua SIN explotar homónimos (lo que crasheó el fallback de apellido
-  // solo). Solo afecta este caso; los nombres de 3+ palabras (que ya jalan) NO cambian.
-  const _toks = String(paciente.nombre || "").trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/\s+/).filter(Boolean);
-  if (_toks.length === 2) { cognome = _toks[1]; nome = _toks[0]; }
-  if (!cognome) {
+  const candidates = buildSearchCandidates(paciente.nombre);
+  if (!candidates.length) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
-  console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"${nome ? ` + txtNome: "${nome}"` : ""}`);
-  // NOTA (jun 2026): se PROBÓ un fallback a paterno-solo cuando "paterno+materno" da
-  // NINGÚN REGISTRO. Se REVIRTIÓ: el search por apellido único devuelve una lista de
-  // homónimos cuyo ENCABEZADO el parser NO identifica (cae a "primeros N"), disparando
-  // drill ciego de ~12 PDFs de pacientes ajenos por objetivo. Eso (a) no recupera al
-  // objetivo por nombre y (b) saturó memoria → COLAPSO del navegador (corrida 27665440228,
-  // crash determinista en pac 15-16, 3 reintentos). Recuperar los NINGÚN REGISTRO requiere
-  // arreglar el PARSEO del encabezado de la lista multi-paciente (ver HTML real de WinLab),
-  // no un drill ciego. Diferido a propósito.
-  return await doSingleSearch(page, searchUrl, paciente, {
-    codice: null, cognome, nome, tag: `apellidos="${cognome}"${nome ? `,nome="${nome}"` : ""}`,
-  }, deadlineTs);
+  const MAX_TRIES = Math.min(candidates.length, 4);
+  let last = null;
+  for (let ci = 0; ci < MAX_TRIES; ci++) {
+    const c = candidates[ci];
+    if (ci > 0) {
+      // Presupuesto: cada retry cuesta ~12-15s (goto + postback). Dejar >=25s para drill.
+      if (deadlineTs && Date.now() > deadlineTs - 25000) {
+        console.log(`       [retry] sin presupuesto para candidato ${ci + 1}/${MAX_TRIES} ("${c.cognome}") — devolviendo lo que hay`);
+        break;
+      }
+      console.log(`       [retry ${ci}/${MAX_TRIES - 1}] ${c.tag}`);
+    }
+    console.log(`       [busqueda] Apellidos → txtCognome: "${c.cognome}"${c.nome ? ` + txtNome: "${c.nome}"` : ""}`);
+    last = await doSingleSearch(page, searchUrl, paciente, {
+      codice: null, cognome: c.cognome, nome: c.nome,
+      tag: `apellidos="${c.cognome}"${c.nome ? `,nome="${c.nome}"` : ""}`,
+      requireTargetMatch: ci > 0,
+    }, deadlineTs);
+    if (!last.noResults) return last;
+  }
+  return last || { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
 }
 
 // Una sola tentativa de busqueda con parametros explicitos.
@@ -613,15 +620,11 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
     }
   }
 
-  // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──
-  if (WL_DRILLDOWN === 1 && result.rows.length > 0 && result.bestTableIdx >= 0) {
-    // TARGETING (jun 2026): WinLab busca por apellido y devuelve VARIOS homónimos.
-    // Drilleamos SOLO los reportes del paciente OBJETIVO (agrupando por fila-encabezado
-    // FEMENINO/MASCULINO y matcheando el nombre), no los primeros N a ciegas — eso
-    // causaba que el 4º de 5 "GONZALEZ GONZALEZ" nunca se capturara y el blob quedara
-    // con labs de otro paciente. FALLBACK SEGURO: si no se identifica al objetivo por
-    // encabezado (tabla COL_X / sin sexo), se usa el comportamiento legacy (primeros N).
-    const targetIdxs = [], linkIdxs = [];
+  // ── TARGETING (jun 2026): WinLab busca por apellido y devuelve VARIOS homónimos.
+  // Identificamos las filas del paciente OBJETIVO agrupando por fila-encabezado
+  // FEMENINO/MASCULINO y matcheando el nombre (orden-independiente, difuso).
+  const targetIdxs = [], linkIdxs = [];
+  {
     let curMatches = false;
     for (let i = 0; i < result.rows.length; i++) {
       const row = result.rows[i];
@@ -632,6 +635,24 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
         if (curMatches) targetIdxs.push(i);
       }
     }
+  }
+
+  // RETRY-GUARD (jul 2026): en un candidato de retry (búsqueda "ancha": invertido, Ñ→N,
+  // apellido 3 palabras) el objetivo DEBE identificarse positivamente por encabezado.
+  // Si la lista trae solo homónimos, descartamos TODO (rows=[]) y el caller prueba el
+  // siguiente candidato. Nunca drill a ciegas ni blob con puros ajenos. Precisión > recall.
+  if (params.requireTargetMatch && !targetIdxs.length) {
+    console.log(`       [retry-guard] resultados sin match del objetivo (${result.rows.length} filas de homónimos) → descartados`);
+    return { ...result, rows: [], noResults: true };
+  }
+
+  // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──
+  if (WL_DRILLDOWN === 1 && result.rows.length > 0 && result.bestTableIdx >= 0) {
+    // Drilleamos SOLO los reportes del objetivo, no los primeros N a ciegas — eso
+    // causaba que el 4º de 5 "GONZALEZ GONZALEZ" nunca se capturara y el blob quedara
+    // con labs de otro paciente. FALLBACK SEGURO (solo búsqueda primaria): si no se
+    // identifica al objetivo por encabezado (tabla COL_X / sin sexo), comportamiento
+    // legacy (primeros N).
     let drillIdxs;
     if (targetIdxs.length) {
       drillIdxs = targetIdxs.slice(0, WL_DRILLDOWN_MAX);
@@ -659,7 +680,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
       const dumpFirst = !firstDrilldownDone;
       firstDrilldownDone = true;
       try {
-        const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, dumpFirst);
+        const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, dumpFirst, params);
         if (valores && valores.length) {
           row.valores = valores;
           drilledOk++;
@@ -683,7 +704,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
 
 // ── DRILL-DOWN: para cada reporte, click → popup → frame PDF → descargar → parsear ──
 
-async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst) {
+async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst, searchParams) {
   const link = page.locator("table").nth(tableIdx)
     .locator("tr").nth(rowIdxInTable)
     .locator('a, input[type="image"], input[type="button"], input[type="submit"]').first();
@@ -1054,11 +1075,16 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
         await waitForAspNetReady(page, 5000);
       }
     }
-    // Re-buscar por apellidos (igual que la busqueda principal; el expediente no
-    // esta registrado en WinLab).
-    const reCognome = extractApellidos(paciente.nombre)[0] || "";
+    // Re-buscar con el MISMO candidato que produjo la lista (jul 2026): en un retry
+    // (nombre invertido / Ñ→N / apellido 3 palabras) extractApellidos ya NO es el término
+    // correcto y el re-search devolvería NINGUN REGISTRO → drills restantes rotos.
+    const reCognome = (searchParams && searchParams.cognome) || extractApellidos(paciente.nombre)[0] || "";
+    const reNome = (searchParams && searchParams.nome) || null;
     if (reCognome && await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
       await setField(page, WL_SEARCH_COGNOME_SEL, reCognome, `re-apellidos="${reCognome}"`);
+    }
+    if (reNome && await page.locator(WL_SEARCH_NOME_SEL).count()) {
+      await setField(page, WL_SEARCH_NOME_SEL, reNome, `re-nome="${reNome}"`);
     }
     if (!reUsandoProfilo && WL_LOOKBACK_DAYS >= 0) {
       const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));

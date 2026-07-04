@@ -153,6 +153,71 @@ export function isMeaningfulReportRow(row) {
   return false;
 }
 
+// Normaliza un término de búsqueda para WinLab: MAYÚS + quita acentos de VOCALES pero
+// PRESERVA la Ñ. Evidencia (4 jul 2026, datos reales de winlab_labs + logs del Action):
+//   - Búsquedas CON acento vocal fallaban ("RODRÍGUEZ" → NINGUN REGISTRO) → WinLab guarda
+//     los apellidos sin acentos (el capturista no los teclea). El fix del 24 jun lo arregló.
+//   - PERO ese fix también convertía Ñ→N, y la Ñ SÍ se teclea en WinLab: MUÑIZ/CASTAÑEDA/
+//     NUÑEZ/GAMIÑO/SALDAÑA matcheaban con Ñ literal ANTES del fix, y DESPUÉS del fix CERO
+//     pacientes con Ñ en apellido se capturaron (ZUÑIGA/PIÑON/AVIÑA → NINGUN REGISTRO).
+//   → Colación tipo CI_AS: case-insensitive, acento-sensible, Ñ ≠ N.
+export function stripAccentsKeepEnie(s) {
+  return String(s || "")
+    .normalize("NFC")                              // recompone Ñ descompuesta (N + U+0303)
+    .toUpperCase()
+    .replace(/Ñ/g, "\u0001")                       // proteger la Ñ del NFD-strip
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")        // quitar acentos de vocales (Á→A, É→E...)
+    .replace(/\u0001/g, "Ñ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ── Candidatos de búsqueda WinLab (jul 2026) ────────────────────────────────
+// La búsqueda primaria (apellidos = últimas 2 palabras) falla en 4 clases reales del censo:
+//   a) capturista de WinLab tecleó N en vez de Ñ            → variante Ñ→N
+//   b) apellido extranjero de 3 palabras (ZAKHIA EL DOVAIHY) → últimas 3 como cognome
+//   c) hoja con nombre INVERTIDO (MARQUEZ VALLEJO JUAN JOSE) → primeras 2 como cognome + resto en nome
+//   d) 2 palabras invertidas                                 → swap cognome/nome
+// Devuelve candidatos EN ORDEN; el caller intenta el siguiente SOLO si el anterior dio
+// "NINGUN REGISTRO" (respuesta rápida, sin drill). Los retries (índice >0) exigen
+// identificación POSITIVA del objetivo por encabezado (sin drill a ciegas): las capas de
+// identidad (patientHeaderMatches orden-independiente + filtro de nombre de la app)
+// garantizan que un candidato "ancho" nunca atribuya labs ajenos. Precisión > recall.
+export function buildSearchCandidates(nombre) {
+  const clean = stripAccentsKeepEnie(nombre);
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return [];
+  const out = [];
+  const push = (cognome, nome, tag) => {
+    cognome = (cognome || "").trim();
+    const key = cognome + "|" + (nome || "");
+    if (!cognome) return;
+    if (out.some((c) => c.key === key)) return;
+    out.push({ key, cognome, nome: (nome || "").trim() || null, tag });
+  };
+
+  if (parts.length === 2) {
+    // "NOMBRE APELLIDO" → apellido en cognome + nombre de pila en nome (fix 24 jun)
+    push(parts[1], parts[0], "2-palabras apellido+nombre");
+  } else {
+    push(extractApellidos(clean)[0], null, "apellidos estandar");
+  }
+
+  // (a) variante Ñ→N de los candidatos base (capturista tecleó N en WinLab)
+  for (const c of [...out]) {
+    if (/Ñ/.test(c.cognome) || (c.nome && /Ñ/.test(c.nome))) {
+      push(c.cognome.replace(/Ñ/g, "N"), c.nome ? c.nome.replace(/Ñ/g, "N") : null, "variante N-por-Ñ");
+    }
+  }
+  // (b) apellido compuesto de 3 palabras (nombres largos): últimas 3 como cognome
+  if (parts.length >= 5) push(parts.slice(-3).join(" "), null, "apellido 3 palabras");
+  // (c) nombre invertido en la hoja (APELLIDOS primero): primeras 2 como cognome + resto en nome
+  if (parts.length >= 4) push(parts.slice(0, 2).join(" "), parts.slice(2).join(" "), "invertido apellidos-primero");
+  // (d) 2 palabras: probar el swap (hoja "APELLIDO NOMBRE")
+  if (parts.length === 2) push(parts[0], parts[1], "2-palabras invertido");
+  return out;
+}
+
 // Extrae candidatos de "apellido" de un nombre completo.
 // Convencion mexicana: "NOMBRE(s) APELLIDO_PATERNO APELLIDO_MATERNO"
 // Devuelve array de candidatos en orden de preferencia:
@@ -161,12 +226,7 @@ export function isMeaningfulReportRow(row) {
 // Util para fallback cuando codigo paciente no matchea.
 export function extractApellidos(nombre) {
   if (!nombre) return [];
-  // 24 jun 2026 — FIX cobertura: quitar ACENTOS/diéresis (Ñ→N) del término de búsqueda.
-  // WinLab busca/almacena sin acentos; sin esto "RODRÍGUEZ"/"GARCÍA"/"ZUÑIGA"/"MÁRQUEZ"/
-  // "PÁRAMO" se tecleaban con acento y daban NINGUN REGISTRO (los pacientes CON labs no
-  // tienen acentos en el apellido — correlación clara). No agrega búsquedas (sin riesgo de
-  // homónimos): solo normaliza el término existente.
-  const clean = String(nombre).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const clean = stripAccentsKeepEnie(nombre);
   const parts = clean.trim().split(/\s+/).filter(Boolean);
   if (parts.length < 2) return [];
   const out = [];
