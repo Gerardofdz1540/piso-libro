@@ -4617,6 +4617,15 @@
       applyTheme(next);
     }
     function initTheme() {
+      // Migración única al rediseño RESID: al recibir esta versión, todos los
+      // dispositivos arrancan en tema RESID (oscuro) aunque tuvieran guardado
+      // "light"; después el toggle respeta la elección del usuario.
+      try {
+        if (!localStorage.getItem("pl_resid_v2")) {
+          localStorage.setItem("pl_resid_v2", "1");
+          localStorage.setItem("pl_theme", "dark");
+        }
+      } catch (e) {}
       const saved = localStorage.getItem("pl_theme") || "dark";
       applyTheme(saved);
     }
