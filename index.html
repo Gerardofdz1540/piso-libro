@@ -3801,8 +3801,6 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
       </div>
     </div>
     <div id="tabs">
-      <button class="tab" onclick="openResidHome()" style="background:rgba(47,166,160,.22);border-color:rgba(47,166,160,.6)" title="Inicio (menú de módulos)">🏠 Inicio</button>
-      <button class="tab" onclick="_showHomeLauncher()" title="Panel frontal / inicio" style="background:rgba(79,195,247,.22);border-color:rgba(79,195,247,.55)">🏠 Inicio</button>
       <button class="tab active" onclick="setView('piso',this)">🏥 Piso Libro</button>
       <button class="tab" onclick="setView('census',this)">📊 Censo</button>
       <button class="tab" onclick="setView('print',this)">📄 Entrega</button>
@@ -3817,7 +3815,6 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
 
   <!-- ════ RESID — Barra de navegación inferior (móvil) ════ -->
   <nav id="rnav" class="no-print" aria-label="Navegación principal">
-    <button class="rnav-it" data-rnav="home" onclick="openResidHome()"><i class="ph ph-house"></i><span>Inicio</span></button>
     <button class="rnav-it active" data-rnav="piso" onclick="setView('piso')"><i class="ph ph-stethoscope"></i><span>Pase</span></button>
     <button class="rnav-it" data-rnav="census" onclick="setView('census')"><i class="ph ph-users-three"></i><span>Censo</span></button>
     <button class="rnav-it" data-rnav="pendientes" onclick="setView('pendientes')"><i class="ph ph-list-checks"></i><span>Pendientes</span></button>
@@ -5941,12 +5938,8 @@ function plExportBackup() {
     function _hideLoginOverlay() {
       const ov = document.getElementById("login-overlay");
       if (ov) ov.style.display = "none";
-      // Al entrar (sesión previa o login recién completado) mostrar el Home RESID
-      // una sola vez por carga de página, como pantalla de inicio.
-      if (!window._rhomeBooted) {
-        window._rhomeBooted = true;
-        setTimeout(function () { try { openResidHome(); } catch (_) {} }, 400);
-      }
+      // La app abre DIRECTO al pase (una sola vista definitiva). Sin launcher de inicio
+      // auto-abierto (antes fragmentaba con 2 pantallas "Inicio" distintas).
     }
 
     let _hadSessionAtLoad = false; // ¿había sesión al cargar la página? (evita reload-loop)
@@ -6149,16 +6142,16 @@ function plExportBackup() {
       applyTheme(next);
     }
     function initTheme() {
-      // Migración única al rediseño RESID: al recibir esta versión, todos los
-      // dispositivos arrancan en tema RESID (oscuro) aunque tuvieran guardado
-      // "light"; después el toggle respeta la elección del usuario.
+      // Tema CLARO por defecto (jul 2026): el navy tapaba el texto y no se leía bien.
+      // Migración única que regresa a TODOS a "light" (deshace el force-dark del rediseño);
+      // el toggle sigue disponible si alguien quiere oscuro.
       try {
-        if (!localStorage.getItem("pl_resid_v2")) {
-          localStorage.setItem("pl_resid_v2", "1");
-          localStorage.setItem("pl_theme", "dark");
+        if (!localStorage.getItem("pl_lighttheme_v1")) {
+          localStorage.setItem("pl_lighttheme_v1", "1");
+          localStorage.setItem("pl_theme", "light");
         }
       } catch (e) {}
-      const saved = localStorage.getItem("pl_theme") || "dark";
+      const saved = localStorage.getItem("pl_theme") || "light";
       applyTheme(saved);
     }
     // Apply theme as early as possible to avoid flash
@@ -10167,9 +10160,8 @@ function plExportBackup() {
       renderUserChip();
       initFontSize();
       initTheme();
-      // Panel frontal estilo RESID: mostrarlo al abrir (sobre la app ya cargada).
-      // Si no hay sesión, el login-overlay (z mayor) lo tapa. Cada tile entra a su función.
-      try { _showHomeLauncher(); } catch (_) {}
+      // (jul 2026) Sin panel frontal auto-abierto: la app abre DIRECTO al pase (una sola
+      // vista definitiva). Antes había 2 launchers distintos auto-abriéndose = fragmentación.
       // Init del botón WinLab Auto-sync (refleja estado del feature flag)
       try {
         const btn = document.getElementById("winlab-autosync-btn");
@@ -12151,7 +12143,6 @@ function plExportBackup() {
         ${renderDiasSinLabsBadge(nd)}
         ${curPendiente ? `<span style="background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap">🩹 Cur</span>` : ''}
         ${renderCruceBadge(nd, k)}
-        <button class="icon-btn" data-fichakey="${k}" onclick="openFichaResid(this.dataset.fichakey)" title="Ficha del paciente">🪪</button>
         <button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Es de mi servicio (expandir + buscar labs)">🩺</button>
         <button class="icon-btn" data-fockey="${k}" onclick="enterFocus(this.dataset.fockey)" title="Pantalla completa">⛶</button>
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
