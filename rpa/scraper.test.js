@@ -6,6 +6,7 @@ import {
   isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
   isMeaningfulReportRow, extractApellidos, expVariants,
   stripAccentsKeepEnie, buildSearchCandidates,
+  jaroWinkler, patientHeaderMatches,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -287,6 +288,23 @@ assert(stripAccentsKeepEnie(null) === "", "strip: null -> ''");
   // Nombre normal de 4 palabras: la primaria correcta va PRIMERO (sin regresión).
   const c = buildSearchCandidates("AGUSTIN JAIME MENDOZA GONZALEZ");
   assert(c[0].cognome === "MENDOZA GONZALEZ" && !c[0].nome, "cand: normal 4 palabras sin cambio");
+}
+{
+  // Caso ADAN LOPEZ OVIEDO (37 días, sin labs con apellidos exactos → typo en materno).
+  // Último recurso: paterno-solo + nombre de pila (el match difuso confirma OVIEDO≈OBIEDO).
+  const c = buildSearchCandidates("ADAN LOPEZ OVIEDO");
+  assert(c[0].cognome === "LOPEZ OVIEDO" && !c[0].nome, "cand: primaria apellidos");
+  assert(c.some((x) => x.cognome === "LOPEZ" && x.nome === "ADAN"), "cand: retry paterno-solo + nombre");
+  // el paterno-solo va AL FINAL (es el último recurso, más ancho)
+  assert(c[c.length - 1].tag === "paterno-solo + nombre", "cand: paterno-solo es el último");
+}
+{
+  // El match difuso de encabezado reconoce el typo V/B en el materno.
+  assert(jaroWinkler("OVIEDO", "OBIEDO") >= 0.88, "match: OVIEDO≈OBIEDO Jaro-Winkler ≥0.88");
+  assert(patientHeaderMatches("LOPEZ OBIEDO ADAN", "ADAN LOPEZ OVIEDO") === true,
+    "match: header con materno mal escrito aún identifica al objetivo");
+  assert(patientHeaderMatches("LOPEZ HERNANDEZ PEDRO", "ADAN LOPEZ OVIEDO") === false,
+    "match: homónimo de apellido distinto NO se confunde (nombre de pila distinto)");
 }
 {
   // Sin candidatos duplicados.

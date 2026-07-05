@@ -173,11 +173,14 @@ export function stripAccentsKeepEnie(s) {
 }
 
 // ── Candidatos de búsqueda WinLab (jul 2026) ────────────────────────────────
-// La búsqueda primaria (apellidos = últimas 2 palabras) falla en 4 clases reales del censo:
+// La búsqueda primaria (apellidos = últimas 2 palabras) falla en 5 clases reales del censo:
 //   a) capturista de WinLab tecleó N en vez de Ñ            → variante Ñ→N
 //   b) apellido extranjero de 3 palabras (ZAKHIA EL DOVAIHY) → últimas 3 como cognome
 //   c) hoja con nombre INVERTIDO (MARQUEZ VALLEJO JUAN JOSE) → primeras 2 como cognome + resto en nome
 //   d) 2 palabras invertidas                                 → swap cognome/nome
+//   e) TYPO en el materno en WinLab (OVIEDO→OBIEDO, V/B)     → paterno-solo + nombre de pila
+//      Caso real: ADAN LOPEZ OVIEDO, 37 días DELICADO, SIN labs con "LOPEZ OVIEDO" exacto.
+//      El match difuso de encabezado (Jaro-Winkler ≥0.88) reconoce OVIEDO≈OBIEDO al drillear.
 // Devuelve candidatos EN ORDEN; el caller intenta el siguiente SOLO si el anterior dio
 // "NINGUN REGISTRO" (respuesta rápida, sin drill). Los retries (índice >0) exigen
 // identificación POSITIVA del objetivo por encabezado (sin drill a ciegas): las capas de
@@ -215,6 +218,15 @@ export function buildSearchCandidates(nombre) {
   if (parts.length >= 4) push(parts.slice(0, 2).join(" "), parts.slice(2).join(" "), "invertido apellidos-primero");
   // (d) 2 palabras: probar el swap (hoja "APELLIDO NOMBRE")
   if (parts.length === 2) push(parts[0], parts[1], "2-palabras invertido");
+  // (e) ÚLTIMO RECURSO: paterno-solo + nombre de pila. Recupera al paciente cuyo MATERNO
+  //     está mal escrito/ausente en WinLab (el "LOPEZ OVIEDO" exacto falla, pero "LOPEZ"
+  //     + nombre "ADAN" lo encuentra y el match difuso de encabezado confirma la identidad).
+  //     Va AL FINAL: "LOPEZ" solo trae muchos homónimos → el nome estrecha server-side y el
+  //     retry-guard (requireTargetMatch) descarta si el objetivo no aparece. Nunca drill ciego.
+  if (parts.length >= 3) {
+    const paterno = extractApellidos(clean)[1] || parts[parts.length - 2];
+    push(paterno, parts[0], "paterno-solo + nombre");
+  }
   return out;
 }
 

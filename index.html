@@ -6476,6 +6476,10 @@ function plExportBackup() {
       nt_probnp: [/nt.*probnp/i, /pro.*bnp/i],
       mioglobina:[/mioglobin/i, /myoglobin/i],
       ferritina: [/ferritin/i],
+      // Inflamación / tiroides (jul 2026): venían capturándose 0 porque no tenían alias
+      // (VSG n=26, TSH n=19 en datos reales). Ahora se mapean y se renderizan (grupo LAB_GROUPS abajo).
+      vsg:       [/velocidad.*sediment/i, /eritrosediment/i, /^vsg$/i, /^esr$/i, /sediment.*glob/i],
+      tsh:       [/^tsh/i, /tirotropina/i, /tirotrofina/i],
     };
 
     function normalizeWinlabName(s) {
@@ -6736,7 +6740,16 @@ function plExportBackup() {
       if (!isCult) return null;
       if (!organismo && !neg) return null;   // sin germen ni negativo explícito → no emitir
       var hay = rep.valores.map(function (v) { return (v.estudio || "") + " " + (v.seccion || ""); }).join(" ").toUpperCase();
-      var tipo = /HEMOCULTIVO/.test(hay) ? "Hemocultivo"
+      // FIX-v58b (jul 2026): el tipo debe seguir la MUESTRA donde se halló el organismo, NO
+      // el texto completo del reporte. Un reporte puede MEZCLAR un cultivo pleural POSITIVO
+      // con un HEMOCULTIVO negativo (caso real MARIO GONZALEZ 26-11856: Enterococcus faecalis
+      // en líquido pleural + hemocultivo central sin desarrollo). Antes /HEMOCULTIVO/ ganaba en
+      // `hay` y el positivo pleural se etiquetaba "Hemocultivo" → fuente equivocada en un piso
+      // que maneja empiemas. `muestra` = sección del valor de cultivo donde salió el germen.
+      var muUp = String(muestra || "").toUpperCase();
+      var tipo = /PLEURAL/.test(muUp) ? "Cultivo líquido pleural"
+        : /PERITONEAL/.test(muUp) ? "Cultivo líquido peritoneal"
+        : /HEMOCULTIVO/.test(hay) ? "Hemocultivo"
         : /UROCULTIVO/.test(hay) ? "Urocultivo"
         : /PLEURAL/.test(hay) ? "Cultivo líquido pleural"
         : /PERITONEAL/.test(hay) ? "Cultivo líquido peritoneal"
@@ -12995,6 +13008,22 @@ function plExportBackup() {
           { key: "nt_probnp", label: "NT-proBNP",  unit: "pg/mL", low: 0,   high: 125,   ch: 900 },
           { key: "mioglobina",label: "Mioglob",    unit: "ng/mL", low: 0,   high: 90,    ch: 300 },
           { key: "ferritina", label: "Ferritina",  unit: "ng/mL", low: 30,  high: 300 }
+        ]
+      },
+      {
+        // jul 2026: lípidos/proteínas YA se capturaban (tienen alias) pero NO estaban en
+        // LAB_GROUPS → se perdían en el render (invisibles). Aquí entran a la lista de labs.
+        // VSG y TSH son nuevos (alias agregado arriba). Rangos estándar de adulto.
+        id: "lipidos_otros", label: "🧴 Lípidos / Proteínas / Otros", fields: [
+          { key: "colest", label: "Colest", unit: "mg/dL",  low: 0,   high: 200, ch: 240 },
+          { key: "hdl",    label: "HDL",    unit: "mg/dL",  low: 40,  high: 100, cl: 40 },
+          { key: "ldl",    label: "LDL",    unit: "mg/dL",  low: 0,   high: 130, ch: 190 },
+          { key: "vldl",   label: "VLDL",   unit: "mg/dL",  low: 0,   high: 30 },
+          { key: "trig",   label: "Trig",   unit: "mg/dL",  low: 0,   high: 150, ch: 500 },
+          { key: "ptot",   label: "Prot.T", unit: "g/dL",   low: 6.0, high: 8.3 },
+          { key: "glob",   label: "Glob",   unit: "g/dL",   low: 2.0, high: 3.5 },
+          { key: "vsg",    label: "VSG",    unit: "mm/h",   low: 0,   high: 20,  ch: 50 },
+          { key: "tsh",    label: "TSH",    unit: "µUI/mL", low: 0.4, high: 4.0, cl: 0.1, ch: 10 }
         ]
       }
     ];

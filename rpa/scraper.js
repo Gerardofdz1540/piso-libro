@@ -290,7 +290,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
-  const MAX_TRIES = Math.min(candidates.length, 4);
+  const MAX_TRIES = Math.min(candidates.length, 5);
   let last = null;
   for (let ci = 0; ci < MAX_TRIES; ci++) {
     const c = candidates[ci];
