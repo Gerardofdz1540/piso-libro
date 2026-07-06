@@ -1630,6 +1630,33 @@
     /* Acento unificado: la pestaña activa usa el mismo azul del sistema, no un celeste suelto */
     .tab.active { border-bottom-color: var(--link, #2d6cb5) !important; }
 
+    /* ═══ BENTO 2 COLUMNAS de la tarjeta (jul 2026) — redistribución real:
+       izquierda = trabajo clínico (DX/labs/nota/pendientes/entrega),
+       derecha = exploración y estado (checklist/drenajes/indicaciones/cultivos).
+       En pantallas angostas colapsa a 1 columna (orden: trabajo primero). ═══ */
+    .fc-bento {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .fc-main { min-width: 0; }
+    .fc-side {
+      min-width: 0;
+      background: var(--surface-2, #f8fafc);
+      border: 1px solid var(--border-soft, #e2e8f0);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    /* En la columna angosta, los grids internos de 2/3 columnas se apilan */
+    .fc-side .fc-side-g3, .fc-side .fc-side-g2 { grid-template-columns: 1fr !important; }
+    @media (max-width: 1100px) {
+      .fc-bento { grid-template-columns: 1fr; }
+      .fc-side { background: transparent; border: none; padding: 0; }
+      .fc-side .fc-side-g3 { grid-template-columns: repeat(3, 1fr) !important; }
+      .fc-side .fc-side-g2 { grid-template-columns: 1fr 1fr !important; }
+    }
+
     /* ENTREGA */
     .entrega-wrap {
       background: #fff;
@@ -10584,7 +10611,7 @@ function plExportBackup() {
         if (!window.__boardOrder.length) {
           document.body.classList.remove("focus-on");
           document.getElementById("view-piso").innerHTML =
-            `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">Sin pacientes en esta vista</span><button class="bn-idx" onclick="enterListMode()">≣ Índice</button></div><div style="padding:24px;color:#64748b;font-size:13px">No hay pacientes (¿búsqueda o filtro activos?). Toca «≣ Índice» para ver todo.</div></div></div>`;
+            `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">Sin pacientes en esta vista</span><button class="bn-idx" onclick="var s=document.getElementById('search');if(s)s.value='';renderView()">✕ Limpiar filtros</button></div><div style="padding:24px;color:#64748b;font-size:13px">No hay pacientes con la búsqueda o filtros activos. Toca «✕ Limpiar filtros» para ver todo.</div></div></div>`;
           return;
         }
         if (!window.__focusPid || window.__boardOrder.indexOf(window.__focusPid) < 0) {
@@ -10610,8 +10637,10 @@ function plExportBackup() {
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
             + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
-            + `<button class="bn-idx" onclick="enterListMode()" title="Ver el índice (lista completa con búsqueda y filtros)">≣ Índice</button>`
             + `</div>`;
+            /* Botón "≣ Índice" ELIMINADO (jul 2026, pedido de Gera): llevaba al layout
+               viejo (modo lista). El board bento es LA vista única; la navegación es el
+               rail de camas + flechas. enterListMode sigue definida (inerte). */
           if (!window.__boardKeysBound) {
             window.__boardKeysBound = true;
             window.addEventListener("keydown", function (ev) {
@@ -12104,19 +12133,17 @@ function plExportBackup() {
 
       ${renderLabGuardianBanner(nd, k)}
 
+      <!-- ═══ BENTO 2 COLUMNAS (jul 2026, rediseño de distribución pedido por Gera):
+           IZQUIERDA = trabajo clínico (DX, labs, nota, pendientes, entrega).
+           DERECHA  = exploración y estado (vitales/checklist, drenajes, indicaciones,
+           cultivos, sugerencias). Mismos bloques y handlers de siempre, SOLO
+           redistribuidos — el contrato data-*/onclick no cambia. ═══ -->
+      <div class="fc-bento">
+      <div class="fc-main">
+
       ${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 3)}
 
       ${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}
-
-      ${renderCDSSection(p, nd, k)}
-      ${renderIndicacionesSection(p, nd, k)}
-      ${typeof renderCultivosLabSection === 'function' ? renderCultivosLabSection(p, nd, k) : ''}
-
-      ${/* renderWinlabSection: deshabilitada mayo 2026. Los labs ahora aparecen
-            integrados en los recuadros estándar de renderLabSection vía el nuevo
-            grupo "Biometría hemática completa". */ ""}
-
-      ${renderChecklist(nd, k)}
 
       <div class="grid-2" style="margin-top:10px">
         ${fieldRow("📋 APP / Antecedentes", nd.app, k, "app", 3)}
@@ -12125,21 +12152,6 @@ function plExportBackup() {
       <div class="grid-2" style="margin-top:10px">
         ${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}
         ${fieldRow("🩺 PA / Padecimiento actual", nd.pa, k, "pa", 3)}
-      </div>
-      <div class="grid-3" style="margin-top:10px">
-        ${fieldRow("🩸 Drenajes", nd.drenajes, k, "drenajes", 3)}
-        ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 3)}
-        ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
-      </div>
-
-      ${renderImagenField(nd, k)}
-
-      <div style="margin-top:10px">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #e2e8f0">🩺 Interconsultas · 🦠 Cultivos y labs especiales</div>
-        <div class="grid-2">
-          ${renderInterconsultasSection(nd, k)}
-          ${renderCultivosSection(nd, k)}
-        </div>
       </div>
 
       <div style="margin-top:10px">
@@ -12182,6 +12194,32 @@ function plExportBackup() {
           return cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : "";
         })()}
       </div>
+
+      </div><!-- /fc-main -->
+      <div class="fc-side">
+
+      ${renderChecklist(nd, k)}
+
+      <div class="grid-3 fc-side-g3" style="margin-top:10px">
+        ${fieldRow("🩸 Drenajes", nd.drenajes, k, "drenajes", 3)}
+        ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 3)}
+        ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
+      </div>
+
+      ${renderCDSSection(p, nd, k)}
+      ${renderIndicacionesSection(p, nd, k)}
+      ${typeof renderCultivosLabSection === 'function' ? renderCultivosLabSection(p, nd, k) : ''}
+
+      ${renderImagenField(nd, k)}
+
+      <div style="margin-top:10px">
+        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #e2e8f0">🩺 Interconsultas · 🦠 Cultivos y labs especiales</div>
+        <div class="grid-2 fc-side-g2">
+          ${renderInterconsultasSection(nd, k)}
+          ${renderCultivosSection(nd, k)}
+        </div>
+      </div>
+
       ${(function () {
         const _dOpen = !!(window.__drainsOpen && window.__drainsOpen[k]);
         return `<div class="drains-collapse" style="margin-top:10px">
@@ -12193,6 +12231,9 @@ function plExportBackup() {
       </div>`;
       })()}
       ${renderPtReminders(nd, k)}
+
+      </div><!-- /fc-side -->
+      </div><!-- /fc-bento -->
     </div>` : ""}
   </div>`;
     }
