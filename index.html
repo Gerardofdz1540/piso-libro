@@ -6102,23 +6102,19 @@ function plExportBackup() {
     }
 
     // ── THEME TOGGLE (Light/Dark) ─────────────────────────────────────────────
+    // ═══ TEMA ÚNICO CLARO (jul 2026, decisión de Gera) ═══
+    // El navy "tapaba el texto" y su dispositivo quedaba ATORADO en dark por el
+    // pl_theme=dark heredado de migraciones viejas → "se sigue viendo igual".
+    // La app ahora es SIEMPRE clara: applyTheme ignora lo guardado, borra la clase
+    // dark y normaliza localStorage. toggleTheme queda inerte (no hay modo oscuro).
     function applyTheme(theme) {
-      if (theme === "dark") {
-        document.body.classList.add("dark");
-      } else {
-        document.body.classList.remove("dark");
-      }
-      const icon = document.getElementById("theme-icon");
-      if (icon) icon.textContent = theme === "dark" ? "☀️" : "🌙";
+      document.body.classList.remove("dark");
+      document.documentElement.classList.remove("_pretheme-dark");
+      try { localStorage.setItem("pl_theme", "light"); } catch (e) {}
       const btn = document.getElementById("theme-toggle-btn");
-      if (btn) btn.title = theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
+      if (btn) btn.style.display = "none";
     }
-    function toggleTheme() {
-      const current = localStorage.getItem("pl_theme") || "dark";
-      const next = current === "dark" ? "light" : "dark";
-      localStorage.setItem("pl_theme", next);
-      applyTheme(next);
-    }
+    function toggleTheme() { applyTheme("light"); }
     function initTheme() {
       // Tema CLARO por defecto (jul 2026): el navy tapaba el texto y no se leía bien.
       // Migración única que regresa a TODOS a "light" (deshace el force-dark del rediseño);
@@ -6132,11 +6128,12 @@ function plExportBackup() {
       const saved = localStorage.getItem("pl_theme") || "light";
       applyTheme(saved);
     }
-    // Apply theme as early as possible to avoid flash
+    // Anti-flash: la app es SIEMPRE clara — nunca aplicar pre-tema oscuro y
+    // normalizar cualquier pl_theme=dark heredado ANTES de que nada lo lea.
     (function() {
       try {
-        const saved = localStorage.getItem("pl_theme") || "dark";
-        if (saved === "dark") document.documentElement.classList.add("_pretheme-dark");
+        document.documentElement.classList.remove("_pretheme-dark");
+        localStorage.setItem("pl_theme", "light");
       } catch (e) {}
     })();
     function getToken() { return getConfig().token || ""; }
@@ -11745,6 +11742,17 @@ function plExportBackup() {
     }
 
     function renderFocusBoard(p, nd, k){
+      // ═══ UNA SOLA VISTA (jul 2026, decisión de Gera) ═══
+      // Antes el modo board pintaba ESTA ficha ff2 y el modo lista pintaba la tarjeta
+      // clásica → DOS páginas de paciente distintas ("muchas formas y ninguna funcional").
+      // Ahora TODOS los modos (lista, board, foco, rondas, re-render de Realtime) delegan
+      // a LA MISMA tarjeta (renderFullCard, con labs de tendencias cuando está en foco).
+      // El cuerpo ff2 de abajo queda inalcanzable a propósito (rollback fácil si hiciera falta).
+      try {
+        var _nd1 = (typeof migrateNote === "function") ? migrateNote(nd) : nd;
+        if (!_nd1) _nd1 = (typeof defaultData === "function") ? defaultData() : {};
+        return renderFullCard(p, _nd1, k);
+      } catch (e) { /* fallback: cuerpo ff2 original */ }
       try { nd = (typeof migrateNote === "function") ? migrateNote(nd) : nd; } catch (e) {}
       if (!nd) nd = (typeof defaultData === "function") ? defaultData() : {};
       var ck = nd.checklist || {};

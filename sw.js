@@ -7,7 +7,7 @@
  *   - Las peticiones cross-origin (Supabase, CDNs, API de WinLab) NO se tocan:
  *     pasan directo a la red, igual que sin service worker.
  */
-const CACHE = 'pisolibro-v5'; // v5: cohesión RESID-claro en todas las superficies
+const CACHE = 'pisolibro-v6'; // v6: FINAL una sola vista + tema claro forzado
 const SHELL = [
   './',
   './index.html',
