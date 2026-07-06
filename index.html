@@ -458,6 +458,77 @@
       border-bottom-color: #4fc3f7
     }
 
+    /* ═══ SHELL RESID-claro (jul 2026): pestañas segmented iOS + menú ⋯ Más ═══ */
+    #tabs {
+      background: rgba(255,255,255,.09);
+      border-radius: 13px;
+      padding: 4px;
+      gap: 2px;
+      width: max-content;
+      max-width: 100%;
+      overflow-x: auto;
+      margin-top: 6px;
+    }
+    .tab {
+      border-radius: 10px;
+      border-bottom: none;
+      padding: 7px 16px;
+      font-weight: 500;
+      color: rgba(255,255,255,.75);
+      white-space: nowrap;
+    }
+    .tab:hover { background: rgba(255,255,255,.10); color: #fff; }
+    .tab.active {
+      background: #fff;
+      color: #0a1628;
+      font-weight: 700;
+      border-bottom: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,.25);
+    }
+    .tab.tab-ronda { color: #b7c9ff; }
+    .hc-more-wrap { position: relative; display: inline-block; }
+    #hc-more-btn {
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.22);
+      color: #fff;
+      padding: 5px 13px;
+      border-radius: 14px;
+      cursor: pointer;
+      font-size: 11.5px;
+      font-weight: 700;
+      font-family: var(--font);
+      white-space: nowrap;
+    }
+    #hc-more-btn:hover { background: rgba(255,255,255,.2); }
+    #hc-more-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 5000;
+      background: #10233f;
+      border: 1px solid #2a4a75;
+      border-radius: 14px;
+      padding: 10px;
+      min-width: 230px;
+      box-shadow: 0 16px 44px rgba(0,0,0,.45);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    #hc-more-menu > button, #hc-more-menu .quick-access-group { width: 100%; }
+    #hc-more-menu > button { text-align: left; }
+    #hc-more-menu .quick-access-group { display: flex; }
+    #hc-more-menu .quick-access-group .qa-btn { flex: 1; text-align: left; }
+    .hcm-sec {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #7f96b8;
+      padding: 2px 2px 0;
+    }
+    .hcm-danger-sec { color: #f8b4a0; border-top: 1px solid #2a4a75; padding-top: 8px; margin-top: 2px; }
+
     /* MAIN */
     #main {
       max-width: 1440px;
@@ -3781,21 +3852,8 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
         <input class="header-input" id="gi-fecha" placeholder="Fecha" inputmode="text" autocorrect="off" style="width:105px" />
         <input class="header-input" id="gi-entrega" placeholder="Entrega Dr." inputmode="text" autocorrect="off" autocapitalize="words" style="width:115px" />
         <input class="header-input" id="gi-recibe" placeholder="Recibe Dr." inputmode="text" autocorrect="off" autocapitalize="words" style="width:115px" />
-        <button class="btn-green" onclick="exportCensoFormatoDrive()" title="Exportar censo con formato idéntico al Google Drive">📊 Exportar Censo</button>
+        <button class="btn-green" onclick="exportCensoFormatoDrive()" title="Exportar censo con formato idéntico al Google Drive">📊 Exportar</button>
         <button class="btn-blue" onclick="window.print()">🖨 Imprimir</button>
-        <button class="btn-orange" onclick="resetCensoTotal()"
-          title="Borra TODO (local + Supabase) y empieza de cero">🔥 Borrar Todo</button>
-        <!-- ACCESOS RÁPIDOS -->
-        <div class="quick-access-group">
-          <button class="qa-btn qa-lab" onclick="openSystem('lab')" title="Abrir Laboratorio">🧪 Labs</button>
-          <button class="qa-cfg" onclick="openSystemConfig('lab')" title="Configurar credenciales">⚙</button>
-        </div>
-        <button style="background:#0e7490;border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)"
-          onclick="openBulkLabsModal()" title="Subir varios PDFs de labs y auto-asignar a pacientes">📦 Labs Masivo</button>
-        <div class="quick-access-group">
-          <button class="qa-btn qa-img" onclick="openSystem('img')" title="Abrir Imagen">🩻 Imagen</button>
-          <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
-        </div>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
         <button id="winlab-refresh-pill" onclick="refreshWinlabLabs()" title="Recargar labs de WinLab desde Supabase. El scraper corre solo todos los dias 13:15. Si necesitas forzar un scraping ahora, click derecho aqui."
           oncontextmenu="event.preventDefault(); openWinlabScrape();"
@@ -3809,21 +3867,40 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
           <span id="scraper-status-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
           <span id="scraper-status-text">💧 Scraper</span>
         </button>
-        <button id="pizarra-toggle-btn" onclick="window.pizarra && window.pizarra.toggle()"
-          title="🖊️ Activar pizarra libre con Apple Pencil o ratón. Dibuja sobre cualquier vista. Persistente."
-          style="background:rgba(168,85,247,.18);border:1px solid rgba(168,85,247,.4);color:#e9d5ff;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
-          🖊️ Pizarra
-        </button>
-        <button id="cuaderno-toggle-btn" onclick="window.toggleModoCuaderno && window.toggleModoCuaderno()"
-          title="📓 Fondo cuadriculado tipo GoodNotes. Solo cosmético."
-          style="background:rgba(245,158,11,.18);border:1px solid rgba(245,158,11,.4);color:#fde68a;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
-          📓 Cuaderno
-        </button>
-        <button id="proyectar-btn" onclick="openProjection()"
-          title="🖥️ Abre una 2ª ventana de proyección (un paciente a la vez, en grande) que SIGUE al paciente en foco. Llévala al proyector/TV o pantalla externa del iPad. Tú navegas aquí, el equipo ve la grande."
-          style="background:rgba(13,148,136,.20);border:1px solid rgba(13,148,136,.45);color:#99f6e4;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
-          🖥️ Proyectar
-        </button>
+        <div class="hc-more-wrap">
+          <button id="hc-more-btn" onclick="toggleHeaderMore(event)" title="Más herramientas">⋯ Más</button>
+          <div id="hc-more-menu" style="display:none">
+            <div class="hcm-sec">Herramientas</div>
+            <div class="quick-access-group">
+              <button class="qa-btn qa-lab" onclick="openSystem('lab')" title="Abrir Laboratorio">🧪 Labs (sistema)</button>
+              <button class="qa-cfg" onclick="openSystemConfig('lab')" title="Configurar credenciales">⚙</button>
+            </div>
+            <button style="background:#0e7490;border:none;color:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--font)"
+              onclick="openBulkLabsModal()" title="Subir varios PDFs de labs y auto-asignar a pacientes">📦 Labs Masivo</button>
+            <div class="quick-access-group">
+              <button class="qa-btn qa-img" onclick="openSystem('img')" title="Abrir Imagen">🩻 Imagen</button>
+              <button class="qa-cfg" onclick="openSystemConfig('img')" title="Configurar credenciales">⚙</button>
+            </div>
+            <button id="pizarra-toggle-btn" onclick="window.pizarra && window.pizarra.toggle()"
+              title="🖊️ Activar pizarra libre con Apple Pencil o ratón. Dibuja sobre cualquier vista. Persistente."
+              style="background:rgba(168,85,247,.18);border:1px solid rgba(168,85,247,.4);color:#e9d5ff;padding:6px 12px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap">
+              🖊️ Pizarra
+            </button>
+            <button id="cuaderno-toggle-btn" onclick="window.toggleModoCuaderno && window.toggleModoCuaderno()"
+              title="📓 Fondo cuadriculado tipo GoodNotes. Solo cosmético."
+              style="background:rgba(245,158,11,.18);border:1px solid rgba(245,158,11,.4);color:#fde68a;padding:6px 12px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap">
+              📓 Cuaderno
+            </button>
+            <button id="proyectar-btn" onclick="openProjection()"
+              title="🖥️ Abre una 2ª ventana de proyección (un paciente a la vez, en grande) que SIGUE al paciente en foco."
+              style="background:rgba(13,148,136,.20);border:1px solid rgba(13,148,136,.45);color:#99f6e4;padding:6px 12px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap">
+              🖥️ Proyectar
+            </button>
+            <div class="hcm-sec hcm-danger-sec">Zona de riesgo</div>
+            <button class="btn-orange" onclick="resetCensoTotal()"
+              title="Borra TODO (local + Supabase) y empieza de cero">🔥 Borrar Todo</button>
+          </div>
+        </div>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
         <button id="logout-btn" onclick="logout()" title="Cerrar sesión"
           style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);color:#fecaca;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">🚪 Salir</button>
@@ -3836,8 +3913,8 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
 
       <button class="tab" onclick="setView('noOlvidar',this)">📌 No olvidar</button>
       <button class="tab" onclick="setView('pendientes',this)">📋 Pendientes</button>
-      <button class="tab" onclick="setView('tablero',this)" style="background:rgba(168,85,247,.25);border-color:rgba(168,85,247,.6)">📌 Tablero</button>
-      <button class="tab" onclick="startRondas()" style="background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.6)">🔄 Pase de visita</button>
+      <button class="tab" onclick="setView('tablero',this)">📌 Tablero</button>
+      <button class="tab tab-ronda" onclick="startRondas()">🔄 Pase de visita</button>
     </div>
   </div>
   </div>
@@ -6115,6 +6192,26 @@ function plExportBackup() {
       if (btn) btn.style.display = "none";
     }
     function toggleTheme() { applyTheme("light"); }
+
+    // Menú "⋯ Más" del header (herramientas secundarias agrupadas — jul 2026).
+    // Cierra al hacer clic fuera o con Escape. No toca ningún handler existente.
+    function toggleHeaderMore(ev) {
+      if (ev) ev.stopPropagation();
+      const m = document.getElementById("hc-more-menu");
+      if (!m) return;
+      const open = m.style.display !== "none";
+      m.style.display = open ? "none" : "flex";
+    }
+    document.addEventListener("click", function (e) {
+      const m = document.getElementById("hc-more-menu");
+      if (m && m.style.display !== "none" && !e.target.closest(".hc-more-wrap")) m.style.display = "none";
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        const m = document.getElementById("hc-more-menu");
+        if (m && m.style.display !== "none") m.style.display = "none";
+      }
+    });
     function initTheme() {
       // Tema CLARO por defecto (jul 2026): el navy tapaba el texto y no se leía bien.
       // Migración única que regresa a TODOS a "light" (deshace el force-dark del rediseño);
@@ -22832,47 +22929,40 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       50%      { opacity: 0.4; }
     }
 
-    /* ── TABS más elegantes ─────────────────────────────────── */
+    /* ── TABS segmented iOS (RESID-claro, jul 2026) — última palabra del cascade ── */
     #tabs {
-      background: var(--pl-navy-800);
-      padding: 0 14px;
-      border-bottom: 1px solid var(--pl-navy-700);
-      box-shadow: var(--pl-shadow-sm);
+      background: rgba(255,255,255,.09);
+      border-radius: 13px;
+      padding: 4px !important;
+      gap: 2px;
+      width: max-content;
+      max-width: calc(100% - 24px);
+      overflow-x: auto;
+      margin: 6px 14px 10px;
+      border-bottom: none;
+      box-shadow: none;
     }
     #tabs .tab {
       background: transparent !important;
       border: none !important;
-      color: rgba(255,255,255,.65) !important;
-      padding: 12px 16px !important;
+      color: rgba(255,255,255,.75) !important;
+      padding: 8px 16px !important;
       font-size: 13px !important;
       font-weight: 500 !important;
-      border-radius: 0 !important;
-      border-bottom: 2px solid transparent !important;
+      border-radius: 10px !important;
       transition: all .15s !important;
       letter-spacing: 0.2px;
+      white-space: nowrap;
     }
     #tabs .tab:hover {
-      color: var(--pl-white) !important;
-      background: rgba(255,255,255,.05) !important;
+      color: #fff !important;
+      background: rgba(255,255,255,.10) !important;
     }
     #tabs .tab.active {
-      color: var(--pl-white) !important;
-      background: transparent !important;
-      border-bottom-color: var(--pl-accent) !important;
-      font-weight: 600 !important;
-    }
-    /* Tab destacada (Tablero y Rondas) - mantienen acento pero sutil */
-    #tabs .tab[onclick*="tablero"],
-    #tabs .tab[onclick*="Rondas"],
-    #tabs .tab[onclick*="rondas"] {
-      background: transparent !important;
-    }
-    #tabs .tab[onclick*="tablero"].active {
-      border-bottom-color: #a855f7 !important;
-    }
-    #tabs .tab[onclick*="Rondas"].active,
-    #tabs .tab[onclick*="rondas"].active {
-      border-bottom-color: #818cf8 !important;
+      color: #0a1628 !important;
+      background: #fff !important;
+      font-weight: 700 !important;
+      box-shadow: 0 1px 4px rgba(0,0,0,.25) !important;
     }
 
     /* ── SIDEBAR DE CAMAS — funcional y elegante ─────────── */
