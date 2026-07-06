@@ -3525,6 +3525,51 @@
 .focus-board .fb-ta::placeholder{ color:#b9b9ac; font-weight:400; }
 /* cama en azul claro manuscrito, como la hoja */
 .focus-board .fb-cama-v{ color:#6b9bd1; font-size:34px; }
+
+/* ═══ RESID CLARO (jul 2026) · board legible tipo iOS — supera el look "papel GoodNotes":
+   fondo limpio (sin puntos), campos editables como cajas blancas con texto oscuro legible
+   (antes: tinta azul negrita transparente sobre papel punteado = ilegible). Solo CSS,
+   no toca handlers/data-* → contrato de automatización intacto. ═══ */
+.focus-board{
+  background:var(--surface,#fff) !important;
+  background-image:none !important;
+  border:1px solid var(--border-soft,#e2e8f0);
+  border-radius:16px;
+  box-shadow:0 6px 24px rgba(15,23,42,.08);
+  color:var(--text,#1e293b);
+}
+.focus-board .fb-ta{
+  border:1px solid var(--border-soft,#e2e8f0) !important;
+  background:var(--surface,#fff) !important;
+  color:var(--text,#1e293b) !important;
+  font-weight:500 !important;
+  border-radius:10px !important;
+  padding:8px 10px !important;
+  font-size:13px !important;
+}
+.focus-board .fb-ta:focus{
+  outline:none !important;
+  border-color:var(--accent,#2d6cb5) !important;
+  box-shadow:0 0 0 3px rgba(45,108,181,.14) !important;
+}
+.focus-board .fb-pm-i{
+  border:1px solid var(--border-soft,#e2e8f0) !important;
+  background:var(--surface,#fff) !important;
+  border-radius:8px !important;
+  color:var(--text,#0f172a) !important;
+  padding:5px 8px !important;
+  text-align:center !important;
+}
+.focus-board .fb-pm-i:focus{ border-color:var(--accent,#2d6cb5) !important; outline:none !important; }
+/* etiquetas de zona: legibles, sin la línea negra dura del formato impreso */
+.focus-board .fb-zh{
+  color:var(--text-muted,#475569) !important;
+  border-bottom:none !important;
+  letter-spacing:.05em;
+  font-size:11px !important;
+}
+/* Dx e identidad: texto oscuro legible */
+.focus-board .ff2-dx .fb-ta{ font-weight:600 !important; color:var(--text,#0f172a) !important; }
 .focus-board .fb-dx-tag{ color:#111; }
 /* tabla de labs sobre papel */
 .focus-board .ff-labs-wrap{ border:none; border-radius:0; background:transparent; }
