@@ -63,6 +63,11 @@
       --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
       --shadow-md: 0 4px 12px rgba(0,0,0,.12);
       --link: #0e7490;
+      /* Tokens que faltaban en claro (los usaba el Tablero con fallback OSCURO → se veía
+         negro en tema claro). Definidos claros aquí + oscuros en body.dark → cohesión. */
+      --bg-2: #f1f5f9;
+      --bg-3: #e8edf4;
+      --text-2: #64748b;
     }
 
     /* DARK THEME — RESID (iOS navy) */
@@ -71,6 +76,9 @@
       --blue: #15294d;
       --accent: #2d6cb5;       /* RESID primary blue */
       --teal: #2fa6a0;         /* RESID logo teal */
+      --bg-2: #15294d;
+      --bg-3: #1b355f;
+      --text-2: #8da4c0;
       --green: #34c759;
       --orange: #f0a020;
       --red: #ef4444;
@@ -22712,7 +22720,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       --pl-gray-300: #cbd5e1;
       --pl-gray-100: #f1f5f9;
       --pl-border: #e2e8f0;
-      --pl-accent: #3b82f6;
+      --pl-accent: #2d6cb5; /* alineado al azul RESID del sistema (antes #3b82f6 suelto) */
       --pl-success: #059669;
       --pl-danger:  #dc2626;
       --pl-shadow-sm: 0 1px 2px rgba(10,22,40,.06);
