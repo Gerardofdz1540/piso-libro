@@ -6025,9 +6025,38 @@ function plExportBackup() {
     }
 
     let _hadSessionAtLoad = false; // ¿había sesión al cargar la página? (evita reload-loop)
+    let _sessionInvalidated = false;
+
+    function _showLoginError(msg) {
+      const el = document.getElementById("login-error");
+      if (el) el.textContent = msg || "";
+    }
+
+    // El backend rechazó el token de usuario (401): la sesión ya no sirve. Volver al login.
+    async function _onSessionInvalid() {
+      if (_sessionInvalidated) return;
+      _sessionInvalidated = true;
+      _userAccessToken = null;
+      _hadSessionAtLoad = false; // el próximo SIGNED_IN debe recargar para arrancar limpio
+      try { if (_supa) await _supa.auth.signOut(); } catch (_) {}
+      _showLoginOverlay();
+      _showLoginError("Tu sesión expiró o fue cerrada. Vuelve a iniciar sesión.");
+    }
+
     async function initAuth() {
-      const { data: { session }, error } = await _supa.auth.getSession();
-      if (error) console.error("Error obteniendo sesión:", error);
+      if (!_supa) {
+        _showLoginOverlay();
+        _showLoginError("No se pudo cargar Supabase (sin conexión o CDN bloqueado). Revisa tu red y recarga la página.");
+        return;
+      }
+      let session = null;
+      try {
+        const res = await _supa.auth.getSession();
+        if (res.error) console.error("Error obteniendo sesión:", res.error);
+        session = res.data ? res.data.session : null;
+      } catch (e) {
+        console.error("getSession falló:", e);
+      }
 
       if (session && session.access_token) {
         _userAccessToken = session.access_token;
@@ -6042,9 +6071,9 @@ function plExportBackup() {
           case "SIGNED_IN":
             if (session) { _userAccessToken = session.access_token; _refreshRealtimeAuth(session); }
             _hideLoginOverlay();
-            // init() dispara la carga de datos de Supabase DESPUÉS de initAuth(); si la
-            // página cargó sin sesión, recargamos para que esa carga corra ya autenticada
-            // (mismo patrón que logout()). El flag evita un loop al restaurar sesión.
+            // init() dispara la carga de datos DESPUÉS de initAuth(); si la página cargó sin
+            // sesión, recargamos para que esa carga corra ya autenticada (mismo patrón que
+            // logout()). El flag evita un loop: SIGNED_IN también se emite al reenfocar la pestaña.
             if (!_hadSessionAtLoad) location.reload();
             break;
           case "TOKEN_REFRESHED":
@@ -6075,9 +6104,15 @@ function plExportBackup() {
         return;
       }
       if (errorEl) errorEl.textContent = "";
-      const { error } = await _supa.auth.signInWithPassword({ email: email, password: password });
+      if (!_supa) { _showLoginError("No se pudo cargar Supabase. Revisa tu conexión y recarga la página."); return; }
+      let error = null;
+      try {
+        ({ error } = await _supa.auth.signInWithPassword({ email: email, password: password }));
+      } catch (e) {
+        error = e;
+      }
       if (error) {
-        if (errorEl) errorEl.textContent = "Error: " + error.message;
+        _showLoginError("Error: " + (error.message || "no se pudo iniciar sesión (¿sin conexión?)"));
         console.error("Login error:", error);
         const pf = document.getElementById("login-pwd");
         if (pf) { pf.value = ""; pf.focus(); }
@@ -6087,7 +6122,7 @@ function plExportBackup() {
     }
 
     async function logout() {
-      await _supa.auth.signOut();
+      try { if (_supa) await _supa.auth.signOut(); } catch (e) { console.warn("signOut:", e); }
       // onAuthStateChange (SIGNED_OUT) muestra el overlay; recargamos para limpiar estado in-memory de la SPA.
       location.reload();
     }
@@ -8144,7 +8179,7 @@ function plExportBackup() {
     }
     async function _sGet(table, qs) {
       const r = await fetch(SUPA_URL + "/rest/v1/" + table + (qs ? "?" + qs : ""), { headers: _sHeaders() });
-      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("GET " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
+      if (!r.ok) { if (r.status === 401 && _userAccessToken) _onSessionInvalid(); const t = await r.text().catch(() => ""); throw new Error("GET " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
       return r.json();
     }
     async function _sPost(table, body, extra) {
@@ -8152,7 +8187,7 @@ function plExportBackup() {
         method: "POST", headers: _sHeaders(Object.assign({ "Prefer": "return=representation" }, extra || {})),
         body: JSON.stringify(body)
       });
-      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("POST " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
+      if (!r.ok) { if (r.status === 401 && _userAccessToken) _onSessionInvalid(); const t = await r.text().catch(() => ""); throw new Error("POST " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
       const ct = r.headers.get("content-type") || "";
       return ct.includes("json") ? r.json() : null;
     }
@@ -8162,7 +8197,7 @@ function plExportBackup() {
         method: "POST", headers: _sHeaders({ "Prefer": "resolution=merge-duplicates,return=representation" }),
         body: JSON.stringify(body)
       });
-      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("POST " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
+      if (!r.ok) { if (r.status === 401 && _userAccessToken) _onSessionInvalid(); const t = await r.text().catch(() => ""); throw new Error("POST " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
       const ct = r.headers.get("content-type") || "";
       return ct.includes("json") ? r.json() : null;
     }
@@ -8171,14 +8206,14 @@ function plExportBackup() {
         method: "PATCH", headers: _sHeaders({ "Prefer": "return=representation" }),
         body: JSON.stringify(body)
       });
-      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("PATCH " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
+      if (!r.ok) { if (r.status === 401 && _userAccessToken) _onSessionInvalid(); const t = await r.text().catch(() => ""); throw new Error("PATCH " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
       const ct = r.headers.get("content-type") || "";
       if (ct.includes("json")) { const d = await r.json(); return Array.isArray(d) ? d[0] : d; }
       return null;
     }
     async function _sDelete(table, match) {
       const r = await fetch(SUPA_URL + "/rest/v1/" + table + "?" + match, { method: "DELETE", headers: _sHeaders() });
-      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("DELETE " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
+      if (!r.ok) { if (r.status === 401 && _userAccessToken) _onSessionInvalid(); const t = await r.text().catch(() => ""); throw new Error("DELETE " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
     }
     async function supaKeepAlive() {
       if (!navigator.onLine) return true;
@@ -10228,6 +10263,10 @@ function plExportBackup() {
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
       await initAuth();
+      // Sin sesión no hay acceso a datos: el overlay queda visible y no disparamos la carga
+      // (evita la lluvia de 401 y el prompt de nombre antes del login). Al autenticarse,
+      // SIGNED_IN recarga la página para que init() corra completo ya con token.
+      if (!_userAccessToken) return;
       try { _bindStickyResize(); _syncStickyOffsets(); } catch (_) {}
       loadSharedConfig().catch(() => {}); // Non-blocking: pull proxy URL from Supabase for other devices
 
