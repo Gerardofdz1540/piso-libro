@@ -5881,6 +5881,8 @@ function plExportBackup() {
       delete activeLabDate[k];
       delete activeImagenDate[k];
       delete _noteDebounceMap[k];
+      if (typeof _pendingDirty !== "undefined") delete _pendingDirty[k];
+      if (typeof _pendingPush !== "undefined") _pendingPush.delete(k);
     }
     let archivados = [];    // pacientes egresados (no se borran, se archivan)
     let snapshots = [];    // cortes de guardia guardados
@@ -8148,6 +8150,8 @@ function plExportBackup() {
           // Si aún no hay _supa_id (paciente recién creado offline), deduplicar por pid()
           return x.patient && newItem.patient && pid(x.patient) === pid(newItem.patient);
         }
+        // Egreso/archivo sin red: una operación por paciente (la última gana)
+        if (newItem.type === "delete_patient" || newItem.type === "archive") return x.key === newItem.key;
         return false;
       });
       if (idx !== -1) q[idx] = newItem; else q.push(newItem);
@@ -8780,6 +8784,34 @@ function plExportBackup() {
       if (!supaId) return;
       // No silenciar el error: _attemptDelete necesita atraparlo para reintentar
       await _sDelete("patients", "id=eq." + supaId);
+    }
+    // DELETE de una fila de patients por id o, si nunca tuvo id local, por exp+cama. Ambos son
+    // obligatorios en ese caso: "exp=eq.&cama=eq.X" borraría a cualquiera sin expediente en esa cama.
+    async function _sDeletePatientRow(ref) {
+      if (ref && ref.supa_id) return _sDelete("patients", "id=eq." + encodeURIComponent(ref.supa_id));
+      const exp = toSafeString(ref && ref.exp).trim(), cama = toSafeString(ref && ref.cama).trim();
+      if (!exp || !cama) return;
+      return _sDelete("patients", "exp=eq." + encodeURIComponent(exp) + "&cama=eq." + encodeURIComponent(cama));
+    }
+    // Egreso/retiro de un paciente en la nube con 3 reintentos; sin red (o si se agotan) queda en el
+    // outbox como "delete_patient" — antes el DELETE se perdía y el paciente reaparecía en todos los
+    // dispositivos al recargar. Devuelve una promesa que nunca rechaza (true = borrado ahora).
+    function _deletePatientRemote(p, why) {
+      const ref = { supa_id: (p && p._supa_id) || null, exp: toSafeString(p && p.exp).trim(), cama: toSafeString(p && p.cama).trim() };
+      if (!ref.supa_id && !(ref.exp && ref.cama)) return Promise.resolve(false);
+      const item = { type: "delete_patient", key: ref.supa_id || (ref.exp + "|" + ref.cama), supa_id: ref.supa_id, exp: ref.exp, cama: ref.cama };
+      const queue = function () { outboxEnqueue(item); updateOutboxBadge(); return false; };
+      if (!navigator.onLine) return Promise.resolve(queue());
+      return (async function () {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try { await _sDeletePatientRow(ref); return true; }
+          catch (e) {
+            safeLog("delete patient (" + why + ") intento " + (attempt + 1) + ":", e);
+            if (attempt < 2) await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          }
+        }
+        return queue();
+      })();
     }
 
     // ─── SUPABASE: SAVE NOTE ────────────────────────────────────────────────────────
@@ -9932,6 +9964,18 @@ function plExportBackup() {
               const res = await withOutboxRetry(async function(){ return await supaUpsertPatient(current); });
               results[absIdx] = res;
               if (res) lsSavePatients(patients);
+            } else if (item.type === "delete_patient" && item.key) {
+              // Egreso hecho sin red. Si el paciente volvió al censo local (restaurado desde la
+              // papelera) con ese mismo id, no se borra.
+              const back = item.supa_id ? patients.find(x => x._supa_id === item.supa_id) : null;
+              if (!back) await withOutboxRetry(async function () { await _sDeletePatientRow(item); });
+              results[absIdx] = true;
+            } else if (item.type === "archive" && item.patient) {
+              // Archivo (papelera en la nube) hecho sin red.
+              const rows = await withOutboxRetry(async function () { return await _sPost("archive", { patient_data: item.patient, note_data: item.note || {}, archived_by: item.by || "" }); });
+              const aid = rows && rows[0] && rows[0].id;
+              if (aid) { const a = archivados.find(x => x._archiveKey === item.key && !x._supaArchiveId); if (a) { a._supaArchiveId = aid; _persistArchivados(); } }
+              results[absIdx] = true;
             } else results[absIdx] = true; // tipo desconocido → descartar
           } catch (e) {
             if (isSupabasePausedError(e)) {
@@ -9943,7 +9987,7 @@ function plExportBackup() {
       }
       // Releer la cola y quitar SOLO lo que se aplicó: lo encolado DURANTE el flush sobrevive
       // (antes se guardaba el snapshot inicial menos fallidos → se perdían esas operaciones).
-      const sig = function (it) { return (it.type || "") + "|" + (it.key || (it.patient ? pid(it.patient) : "")) + "|" + (it.ts || ""); };
+      const sig = function (it) { return (it.type || "") + "|" + (it.key || (it.patient && it.type === "patient" ? pid(it.patient) : "")) + "|" + (it.ts || ""); };
       const done = new Set(q.filter((_, i) => results[i]).map(sig));
       const failed = outboxLoad().filter(function (it) { return !done.has(sig(it)); });
       outboxSave(failed);
@@ -10021,6 +10065,11 @@ function plExportBackup() {
     function patientIdentityKey(p) {
       return "pt-" + toSafeString(p && p.exp).trim() + "-" + toSafeString(p && p.cama).trim();
     }
+    // Claves normalizadas para comparar el censo importado con el actual: MAYÚS, punto→guion, un
+    // solo espacio (mismo canon que el sheet-sync y el modal). Sin esto "3.183", "3-183 " y "3-183"
+    // eran tres camas distintas y el import "reemplazaba" al mismo paciente (borrando su nota).
+    function importKeyNorm(s) { return toSafeString(s).trim().toUpperCase().replace(/\./g, "-").replace(/\s+/g, " "); }
+    function importIdentityKey(p) { return "pt-" + importKeyNorm(p && p.exp) + "-" + importKeyNorm(p && p.cama); }
     function hasMeaningfulPatientIdentity(p) {
       return !!(toSafeString(p && p.nombre).trim() || toSafeString(p && p.cama).trim() || toSafeString(p && p.exp).trim());
     }
@@ -17100,67 +17149,59 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       document.getElementById("confirm-btn").onclick = () => { dischargePatient(k); };
       document.getElementById("confirm-modal").style.display = "flex";
     }
+    // Persistir la papelera local con manejo de cuota (compartido por egreso, import y outbox).
+    function _persistArchivados() {
+      try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); return true; }
+      catch (e) {
+        if (e && e.name === "QuotaExceededError" && lsFreeSpace()) {
+          try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); return true; } catch (e2) { }
+        }
+        setSyncStatus("error", "⚠️ Almacenamiento lleno — paciente egresado en nube, ve a Papelera para confirmar");
+        return false;
+      }
+    }
+    // Archiva paciente + nota (papelera local y tabla `archive` en la nube) ANTES de quitarlo del
+    // censo. Es la única copia que sobrevive al DELETE (el FK de notes es ON DELETE CASCADE).
+    // Sin red o si falla la red, el POST queda en el outbox ("archive"). Nunca rechaza.
+    function _archivePatientRecord(p, nd, k, etiqueta) {
+      nd = nd || defaultData();
+      if (etiqueta && !nd._egreso) { nd._egreso = etiqueta; nd._egresoFecha = new Date().toLocaleDateString("es-MX"); }
+      const archived = { ...p, _archivedAt: new Date().toISOString(), _archiveKey: k, _note: nd };
+      archivados.unshift(archived);
+      _persistArchivados();
+      const by = localStorage.getItem("pl_user_name") || "";
+      const queue = function () {
+        outboxEnqueue({ type: "archive", key: k, patient: p, note: _lsNoteCopy(nd), by: by });
+        updateOutboxBadge();
+        return null;
+      };
+      if (!navigator.onLine) return Promise.resolve(queue());
+      return _sPost("archive", { patient_data: p, note_data: nd, archived_by: by })
+        .then(function (rows) {
+          const id = rows && rows[0] && rows[0].id;
+          if (id) { archived._supaArchiveId = id; _persistArchivados(); }
+          return id || null;
+        })
+        .catch(function (e) { safeLog("archive supabase error:", e); return isLikelyNetworkError(e) ? queue() : null; });
+    }
     function dischargePatient(k) {
       const p = patients.find(pt => pid(pt) === k);
       if (!p) { document.getElementById("confirm-modal").style.display = "none"; return; }
       suppressKey(p._supa_id || "__all__");
-      // Archivar: guardar paciente + sus notas antes de quitarlo del censo activo
+      // Archivar (papelera local + nube, también sin red) ANTES de quitarlo del censo activo.
+      // La etiqueta ALTA/DEFUNCIÓN ya viene en la nota cuando el egreso sale del modal.
       const nd = noteData[k] || defaultData();
-      const archived = {
-        ...p,
-        _archivedAt: new Date().toISOString(),
-        _archiveKey: k,
-        _note: nd
-      };
-      archivados.unshift(archived);
-      try {
-        localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados));
-      } catch (e) {
-        if (e && e.name === "QuotaExceededError") {
-          if (lsFreeSpace()) {
-            try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e2) {
-              setSyncStatus("error", "⚠️ Almacenamiento lleno — paciente egresado en nube, ve a Papelera para confirmar");
-            }
-          } else {
-            setSyncStatus("error", "⚠️ Almacenamiento lleno — paciente egresado en nube, ve a Papelera para confirmar");
-          }
-        }
-      }
+      _archivePatientRecord(p, nd, k, "EGRESO");
       // Quitar del censo activo
       patients = patients.filter(pt => pid(pt) !== k);
       delete noteData[k];
       localStorage.removeItem(NOTES_PREFIX + k);
       _cleanupPatientCache(k);
-      // Delete from Supabase (cascade deletes note too)
-      if (p._supa_id) {
-        // Reintenta el DELETE hasta 3 veces con backoff. Si falla, el paciente
-        // seguiría en Supabase y reaparecería en otros dispositivos al recargar.
-        const _supaIdToDelete = p._supa_id;
-        (async function _attemptDelete(attemptsLeft) {
-          try {
-            await supaDeletePatient(_supaIdToDelete);
-          } catch (e) {
-            safeLog("supaDeletePatient (discharge) intento fallido:", e);
-            if (attemptsLeft > 0 && navigator.onLine) {
-              setTimeout(() => _attemptDelete(attemptsLeft - 1), 5000);
-            } else {
-              safeLog("supaDeletePatient (discharge) sin más reintentos para id:", _supaIdToDelete);
-            }
-          }
-        })(2);
-        // Archive to Supabase — guardar ID de vuelta para poder recuperar desde la nube
-        _sPost("archive", { patient_data: p, note_data: nd, archived_by: localStorage.getItem("pl_user_name") || "" })
-          .then(function (rows) {
-            const supaArchiveId = rows && rows[0] && rows[0].id;
-            if (supaArchiveId) {
-              // Modificar la referencia directa al objeto (evita buscar por propiedades)
-              archived._supaArchiveId = supaArchiveId;
-              try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
-            }
-          })
-          .catch(e => safeLog("archive supabase error (egreso):", e));
-      }
-      savePts();
+      // DELETE en Supabase (cascade borra la nota; la copia vive en `archive`) con reintentos y outbox.
+      _deletePatientRemote(p, "egreso");
+      // Solo persistencia local: un egreso no necesita re-escribir el resto del censo en la nube.
+      lsSavePatients(patients);
+      localStorage.setItem("pl_last_save_ts", Date.now().toString());
       document.getElementById("confirm-modal").style.display = "none";
       buildEspFilters();
       renderView();
@@ -17172,7 +17213,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // ─── PAPELERA DE EGRESADOS ────────────────────────────────────────────────────────
     async function loadArchiveFromSupabase() {
       try {
-        const rows = await _sGet("archive", "order=created_at.desc&limit=100");
+        // La columna es archived_at (no created_at): con el nombre equivocado PostgREST respondía 400
+        // y "Cargar desde nube" siempre decía "No se encontraron registros adicionales".
+        const rows = await _sGet("archive", "order=archived_at.desc&limit=100");
         if (!rows || !rows.length) return 0;
         const localSupaIds = new Set(archivados.filter(a => a._supaArchiveId).map(a => a._supaArchiveId));
         let added = 0;
@@ -17181,7 +17224,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const p = row.patient_data || {};
           const archived = {
             ...p,
-            _archivedAt: row.created_at || new Date().toISOString(),
+            _archivedAt: row.archived_at || row.created_at || new Date().toISOString(),
             _archiveKey: pid(p) || ("arch-" + row.id),
             _note: row.note_data || null,
             _supaArchiveId: row.id
@@ -17259,16 +17302,19 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function restorePatient(archiveIdx) {
       const arc = archivados[archiveIdx]; if (!arc) return;
       if (!confirm(`¿Restaurar a ${arc.nombre} al censo activo?`)) return;
-      const { _archivedAt, _archiveKey, _note, _supa_id, _supaArchiveId, ...p } = arc;
+      const { _archivedAt, _archiveKey, _note, _supa_id, _supaArchiveId, _deletedRemotely, ...p } = arc;
       delete p._supa_id; // Force new Supabase row on save
       delete p._supaArchiveId;
+      delete p._deletedRemotely;
+      const restoredNote = _note || defaultData();
+      delete restoredNote._egreso; delete restoredNote._egresoFecha; // vuelve al censo activo
       patients.push(p);
-      noteData[pid(p)] = _note || defaultData();
+      noteData[pid(p)] = restoredNote;
       archivados.splice(archiveIdx, 1);
-      try { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivados)); } catch (e) { }
+      _persistArchivados();
       // Limpiar el registro en la tabla archive de Supabase
       if (_supaArchiveId) _sDelete("archive", "id=eq." + _supaArchiveId).catch(e => safeLog("archive restore delete:", e));
-      savePts();
+      _savePtsImmediate(p); // solo este paciente: INSERT → asigna _supa_id y re-clava su nota
       saveNote(pid(p), noteData[pid(p)]);
       buildEspFilters();
       renderView();
@@ -17448,6 +17494,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             } else {
               cama = String(r[iCama] || "").trim();
             }
+            cama = importKeyNorm(cama); // mismo canon que sheet-sync/modal ("3.183" → "3-183")
             const nombre = String(r[iNombre] || "").trim().toUpperCase();
             const exp = String(r[iExp] || "").trim();
             if (!cama || !nombre || cama.length < 2) {
@@ -17510,12 +17557,15 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
              nunca trae _supa_id ("pt-...") -> oldByPid.has(pid(p)) era SIEMPRE false y
              todos los pacientes identicos caian a changedPts (ruta destructiva:
              tarjeta vaciada + DELETE en Supabase con CASCADE a notes). */
-          const oldByPid  = new Map(patients.map(p => [patientIdentityKey(p), p]));
-          const oldByCama = new Map(patients.map(p => [p.cama, p]));
-          const oldByExp  = new Map(patients.map(p => [p.exp, p])); // para detectar cambios de cama
+          /* Claves normalizadas (importKeyNorm) y camas multi-paciente (EXT, PASILLO, AMB…) fuera de
+             los mapas por cama: ahí conviven varias personas y "misma cama, otro exp" NO es reemplazo. */
+          const _impMulti = cama => isNonCensableBed(cama);
+          const oldByPid  = new Map(patients.map(p => [importIdentityKey(p), p]));
+          const oldByCama = new Map(patients.filter(p => !_impMulti(p.cama)).map(p => [importKeyNorm(p.cama), p]));
+          const oldByExp  = new Map(patients.filter(p => importKeyNorm(p.exp)).map(p => [importKeyNorm(p.exp), p])); // para detectar cambios de cama
           // Mapas del censo nuevo
-          const newByCama = new Map(imported.map(p => [p.cama, p]));
-          const newByPid  = new Map(imported.map(p => [patientIdentityKey(p), p])); /* FIX-v46 */
+          const newByCama = new Map(imported.filter(p => !_impMulti(p.cama)).map(p => [importKeyNorm(p.cama), p]));
+          const newByPid  = new Map(imported.map(p => [importIdentityKey(p), p])); /* FIX-v46 */
 
           const samePts     = [];  // mismo exp+cama → actualizar datos
           const movedPts    = [];  // mismo exp, diferente cama → cambio de cama
@@ -17534,15 +17584,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
           // Expedientes ya archivados/egresados → se detectan como posibles reingresos
           // y se le pregunta al usuario si quiere reactivarlos, en lugar de ignorarlos silenciosamente.
-          const archivedByExp = new Map(archivados.filter(a => a.exp).map(a => [a.exp, a]));
+          const archivedByExp = new Map(archivados.filter(a => importKeyNorm(a.exp)).map(a => [importKeyNorm(a.exp), a]));
           const reingresoPts = [];  // {newPt, archived} — expedientes que reaparecen
           const skippedArchivedSilent = []; // (no se usan; se mantiene por compat.)
           let skippedArchived = 0;
 
           imported.forEach(p => {
-            // Si el expediente fue archivado antes, no lo ignoramos: lo mostramos como posible reingreso
-            if (p.exp && archivedByExp.has(p.exp)) {
-              const arch = archivedByExp.get(p.exp);
+            const expK = importKeyNorm(p.exp);
+            // Si el expediente fue archivado antes (y NO sigue activo en el censo), lo mostramos como
+            // posible reingreso. Si sigue activo, va por la ruta normal (evita duplicarlo).
+            if (expK && archivedByExp.has(expK) && !oldByPid.has(importIdentityKey(p)) && !oldByExp.has(expK)) {
+              const arch = archivedByExp.get(expK);
               reingresoPts.push({ newPt: p, archived: arch });
               importLog.push({
                 row: "-", action: "reingreso-detectado",
@@ -17552,15 +17604,15 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               return;
             }
 
-            if (oldByPid.has(patientIdentityKey(p))) { /* FIX-v46 */
+            if (oldByPid.has(importIdentityKey(p))) { /* FIX-v46 */
               // Exact match: same exp + same cama
               samePts.push(p);
-            } else if (p.exp && oldByExp.has(p.exp) && oldByExp.get(p.exp).cama !== p.cama) {
+            } else if (expK && oldByExp.has(expK) && importKeyNorm(oldByExp.get(expK).cama) !== importKeyNorm(p.cama)) {
               // Same expediente, different cama → patient moved beds
-              movedPts.push({ newPt: p, oldPt: oldByExp.get(p.exp) });
-            } else if (oldByCama.has(p.cama)) {
+              movedPts.push({ newPt: p, oldPt: oldByExp.get(expK) });
+            } else if (!_impMulti(p.cama) && oldByCama.has(importKeyNorm(p.cama))) {
               // Different patient in same bed → replacement
-              changedPts.push({ newPt: p, oldPt: oldByCama.get(p.cama) });
+              changedPts.push({ newPt: p, oldPt: oldByCama.get(importKeyNorm(p.cama)) });
             } else {
               // New patient: surgical/unknown → newPts (auto-add), explicitly non-surgical → otherPts (ask)
               const espUp = (p.esp || "").toUpperCase().trim();
@@ -17582,10 +17634,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           /* FIX-v46 (P4): pacientes ya reclamados por movedPts NO son "desaparecidos".
              Sin esto, un cambio de cama caia tambien en missingPts con default 'alta'
              -> archive + supaDeletePatient -> CASCADE borra la nota en la nube. */
-          const movedOldIdentities = new Set(movedPts.map(({oldPt}) => patientIdentityKey(oldPt)));
+          const movedOldIdentities = new Set(movedPts.map(({oldPt}) => importIdentityKey(oldPt)));
           patients.forEach(p => {
-            if (movedOldIdentities.has(patientIdentityKey(p))) return; /* FIX-v46 (P4) */
-            if (!newByPid.has(patientIdentityKey(p)) && !newByCama.has(p.cama)) { /* FIX-v46 */
+            if (movedOldIdentities.has(importIdentityKey(p))) return; /* FIX-v46 (P4) */
+            // En camas multi-paciente solo cuenta la identidad (otro paciente en "EXT" no lo reemplaza).
+            if (!newByPid.has(importIdentityKey(p)) && (_impMulti(p.cama) || !newByCama.has(importKeyNorm(p.cama)))) { /* FIX-v46 */
               missingPts.push(p);
               // Auto-detect: was this patient listed in ALTAS or DEFUNCIONES?
               if (defExpSet.has(p.exp)) {
@@ -17977,7 +18030,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const existingByPid = new Map(patients.map(p => [pid(p), p]));
       /* FIX-v46: lookup por identidad clinica (exp+cama) para reconectar con el
          paciente previo aunque pid() difiera (su-... vs pt-...). */
-      const existingByIdentity = new Map(patients.map(p => [patientIdentityKey(p), p]));
+      const existingByIdentity = new Map(patients.map(p => [importIdentityKey(p), p]));
       /* FIX-v46: campos editables que NO deben vaciarse si la celda del Excel viene vacia */
       const _IMP_KEEP = ["dx", "edad", "adscrito", "residente", "ingreso", "sexo"];
       const _impMergeCenso = (prevP, np) => {
@@ -17987,6 +18040,19 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           if ((v === "" || v === undefined || v === null) && prevP && prevP[f]) out[f] = prevP[f];
         });
         return out;
+      };
+      // Operaciones en la nube disparadas por el import (archivos, retiros, re-enlaces). El guardado
+      // del censo nuevo espera a que terminen para no correr contra los DELETE (UNIQUE(cama) → 409).
+      const cloudOps = [];
+      // Un paciente sale del censo: archivar (papelera local + nube) ANTES de borrar su fila; el
+      // FK de notes es ON DELETE CASCADE y antes la nota clínica se perdía con cada import.
+      const _importRetirePatient = (p, k, etiqueta) => {
+        const prev = existingByPid.get(k) || p;
+        const nd = noteData[k] || lsGetNote(k);
+        cloudOps.push(_archivePatientRecord(prev, nd, k, etiqueta).then(() => _deletePatientRemote(prev, "import")));
+        delete noteData[k];
+        localStorage.removeItem(NOTES_PREFIX + k);
+        _cleanupPatientCache(k);
       };
 
       // El nuevo censo Excel ES la fuente de verdad.
@@ -17998,7 +18064,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       samePts.forEach(p => {
         /* FIX-v46: buscar al previo por identidad clinica; conservar _supa_id para
            que pid(merged) siga siendo "su-..." y la tarjeta (noteData) no se huerfane. */
-        const prev = existingByIdentity.get(patientIdentityKey(p)) || existingByPid.get(pid(p)) || {};
+        const prev = existingByIdentity.get(importIdentityKey(p)) || existingByPid.get(pid(p)) || {};
         const merged = {
           ...prev,
           ..._impMergeCenso(prev, p),
@@ -18007,6 +18073,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         };
         nextPatients.push(merged);
         const k = pid(merged);
+        // Si la clave cambió solo por normalización de cama ("3.183" → "3-183") la nota viaja con él.
+        const prevKey = (prev && (prev.cama || prev.exp)) ? pid(prev) : null;
+        if (prevKey && prevKey !== k) {
+          if (noteData[prevKey] && !noteData[k]) noteData[k] = noteData[prevKey];
+          delete noteData[prevKey]; localStorage.removeItem(NOTES_PREFIX + prevKey); _cleanupPatientCache(prevKey);
+          processedOldPids.add(prevKey);
+        }
         processedOldPids.add(k);
         // Limpiar bandera si la tenian
         if (noteData[k]) noteData[k]._noEnCenso = false;
@@ -18032,9 +18105,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         processedOldPids.add(newKey);
         /* FIX-v46: con _supa_id NO se borra la fila — el sync hace PATCH de la cama sobre
            el mismo id. Borrarla cascadeaba (FK ON DELETE CASCADE) a notes -> nota perdida
-           en la nube y _supa_id stale. Solo limpiamos por exp+cama si nunca hubo sync. */
-        if (!prev._supa_id && oldPt.cama) {
-          _sDelete("patients", "exp=eq." + encodeURIComponent(oldPt.exp) + "&cama=eq." + encodeURIComponent(oldPt.cama)).catch(e => safeLog("import moved delete old (exp/cama):", e));
+           en la nube y _supa_id stale. Si nunca hubo sync local pero la fila existe en la nube
+           (la creó el sheet-sync u otro dispositivo), se re-enlaza a ese id para que el guardado
+           sea un PATCH de cama (antes: DELETE por exp+cama → la nota de la nube se perdía). */
+        if (!prev._supa_id && importKeyNorm(oldPt.exp) && importKeyNorm(oldPt.cama)) {
+          cloudOps.push(_sGet("patients", "exp=eq." + encodeURIComponent(toSafeString(oldPt.exp).trim()) + "&cama=eq." + encodeURIComponent(toSafeString(oldPt.cama).trim()) + "&select=id&limit=1")
+            .then(rows => { if (rows && rows[0] && rows[0].id) _relinkPatientId(merged, rows[0].id); })
+            .catch(e => safeLog("import moved lookup (exp/cama):", e)));
         }
       });
 
@@ -18042,18 +18119,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       changedPts.forEach(({ newPt, oldPt }) => {
         const oldKey = pid(oldPt);
         const newKey = pid(newPt);
-        // El paciente anterior queda archivado en noteData pero NO va al nuevo array
         processedOldPids.add(oldKey);
         processedOldPids.add(newKey);
         nextPatients.push({ ...newPt });
         // Conservar notes del nuevo si ya existían; si no, inicializar
         if (!noteData[newKey]) noteData[newKey] = defaultData();
-        // Eliminar paciente anterior de Supabase para evitar duplicados de cama al refrescar
-        if (oldPt._supa_id) {
-          supaDeletePatient(oldPt._supa_id).catch(e => safeLog("import delete patient:", e));
-        } else {
-          _sDelete("patients", "exp=eq." + encodeURIComponent(oldPt.exp) + "&cama=eq." + encodeURIComponent(oldPt.cama)).catch(e => safeLog("import delete patient (exp/cama):", e));
-        }
+        // El ocupante anterior sale del censo: papelera (local + nube) y después DELETE de su fila
+        // (evita duplicados de cama al refrescar sin perder su nota).
+        _importRetirePatient(oldPt, oldKey, "FUERA DE CENSO (cama reasignada)");
       });
 
       // 3) Completamente nuevos → agregar directamente
@@ -18084,19 +18157,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           nextPatients.push({ ...p, _noEnCenso: true });
           if (noteData[k]) noteData[k]._noEnCenso = true;
         } else {
-          // Alta, defunción o traslado → fuera del censo activo
-          // Guardamos el egreso en su nota por si se consulta después
-          if (!noteData[k]) noteData[k] = defaultData();
+          // Alta, defunción o traslado → fuera del censo activo. Va a la papelera (con su nota y
+          // la etiqueta de egreso) y luego se borra de Supabase para que no reaparezca al refrescar.
           const etiqueta = disp === 'defuncion' ? 'DEFUNCIÓN' : disp === 'traslado' ? 'TRASLADO' : 'ALTA MÉDICA';
-          noteData[k]._egreso = etiqueta;
-          noteData[k]._egresoFecha = new Date().toLocaleDateString("es-MX");
-          lsSaveNote(k, noteData[k]);
-          // Eliminar de Supabase para que no reaparezcan al refrescar
-          if (p._supa_id) {
-            supaDeletePatient(p._supa_id).catch(e => safeLog("import delete patient:", e));
-          } else {
-            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(e => safeLog("import delete patient (exp/cama):", e));
-          }
+          _importRetirePatient(p, k, etiqueta);
         }
         processedOldPids.add(k);
       });
@@ -18105,18 +18169,19 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // pero no quedó en nextPatients NI fue procesado explícitamente por changedPts/missingPts.
       // Esto ocurre cuando ya había camas duplicadas: el Map solo capturaba el ÚLTIMO paciente
       // por cama, dejando al primero sin procesar y sin borrar de Supabase.
+      // Fantasma = pid del censo anterior que NO quedó en nextPatients NI fue procesado arriba
+      // (processedOldPids incluye la clave vieja de los que cambiaron de cama: antes se usaba una
+      // lista parcial y un paciente movido sin _supa_id se "limpiaba" por exp+cama → nota perdida).
       const nextPidSet = new Set(nextPatients.map(p => pid(p)));
-      const explicitlyHandledPids = new Set([
-        ...changedPts.map(({ oldPt }) => pid(oldPt)),
-        ...missingPts.filter(p => dispositions[pid(p)] !== 'mantener').map(p => pid(p))
-      ]);
       prevPatients.forEach(p => {
         const k = pid(p);
-        if (!nextPidSet.has(k) && !explicitlyHandledPids.has(k)) {
-          if (p._supa_id) {
-            supaDeletePatient(p._supa_id).catch(e => safeLog("import delete patient:", e));
+        if (!nextPidSet.has(k) && !processedOldPids.has(k)) {
+          // Fantasma con nota escrita → papelera antes de borrar; sin nota → solo DELETE.
+          if (noteHasMeaningfulContent(noteData[k] || lsGetNote(k))) {
+            _importRetirePatient(p, k, "DUPLICADO (import)");
           } else {
-            _sDelete("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama)).catch(e => safeLog("import delete patient (exp/cama):", e));
+            cloudOps.push(_deletePatientRemote(p, "import-fantasma"));
+            delete noteData[k]; localStorage.removeItem(NOTES_PREFIX + k); _cleanupPatientCache(k);
           }
         }
       });
@@ -18163,8 +18228,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       buildEspFilters();
       renderView();
 
-      // Lanzar sync a Supabase de forma directa (no debounced) para que no se pierda en refresh
-      _savePtsImmediate();
+      // Lanzar sync a Supabase de forma directa (no debounced) para que no se pierda en refresh.
+      // Espera a que terminen archivos/retiros/re-enlaces: así el INSERT del nuevo ocupante no corre
+      // contra el DELETE del anterior (UNIQUE(cama) → 409) ni se re-inserta una fila recién borrada.
+      setSyncStatus("syncing", "Aplicando censo...");
+      Promise.all(cloudOps.map(op => Promise.resolve(op).catch(() => null)))
+        .then(() => { suppressKey("__all__", suppressMs); return _savePtsImmediate(); })
+        .catch(e => safeLog("import save:", e));
 
       // Auto-disparar el scraper WinLab con el censo recién importado. El worker deduplica
       // (no apila corridas) y la corrida lee el censo fresco de Supabase al arrancar, así que
