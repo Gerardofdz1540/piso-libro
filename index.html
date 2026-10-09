@@ -6683,15 +6683,45 @@ function plExportBackup() {
       return WINLAB_NON_BLOOD_PATTERNS.some(rx => rx.test(haystack));
     }
 
+    // Marcadores de SECCIÓN dentro de un reporte WinLab (ver mapWinlabReportesToLabs). Los de orina
+    // son analitos que solo existen en el EGO; los de sangre, analitos que solo existen en suero/BH.
+    const WINLAB_URINE_MARKERS = /DENSIDAD|UROBILIN|NITRIT|ESTERASA|CILINDR|CELULAS (EPITEL|UROTEL)|LEVADURAS|CRISTALES|^MUCOSA|^ESPERMA|HEMOGLOBINA LIBRE|EXAMEN GENERAL DE ORINA|\bEN ORINA\b|MICCION/i;
+    const WINLAB_CULTURE_MARKERS = /CULTIVO|ANTIBIOGRAMA|TINCION DE GRAM|MICROORGANISMO AISLADO/i;
+    const WINLAB_BLOOD_MARKERS = /HEMATOCRITO|CORPUSCULAR|PLAQUETA|RDW|NEUTROFILOS|LINFOCITOS|MONOCITOS|EOSINOFILOS|BASOFILOS|^UREA$|NITROGENO UREICO$|^CREATININA$|ACIDO URICO|COLESTEROL|TRIGLICERID|PROTEINAS TOTALES|ALBUMINA$|GLOBULINA|TRANSFERASA|BILIRRUBINA|FOSFATASA|AMILASA|LIPASA|^CALCIO$|^FOSFORO$|^MAGNESIO$|^SODIO$|^POTASIO$|^CLORO$|DESHIDROGENASA|FOSFOCINASA|CKMB|TROPONINA|PROCALCITONINA|PROTEINA C REACTIVA|MIOGLOBINA|PROTROMBINA|TROMBOPLASTINA|^INR|FIBRINOGENO|DIMERO|HEMOGLOBINA GLICADA|^TSH|TIROTROP/i;
+    // Nombres "pelados" que en la sección de orina pertenecen al EGO.
+    const WINLAB_URINE_BARE_ALIASES = {
+      ego_ph:    /^ph$/i,
+      ego_leuco: /^leucocitos$/i,
+      ego_hem:   /^eritrocitos$|^hemoglobina libre/i,
+      ego_prot:  /^proteinas?$/i,
+      ego_glu:   /^glucosa$/i,
+      ego_bact:  /^bacterias?$/i,
+      ego_nitri: /^nitritos?$/i,
+      ego_dens:  /^densidad/i,
+    };
+
     function mapWinlabReportesToLabs(reportes) {
       const labs = {};
       if (!Array.isArray(reportes)) return labs;
       for (const rep of reportes) {
         const valores = Array.isArray(rep?.valores) ? rep.valores : [];
+        // Contexto de PANEL (oct 2026). El scraper no persiste bucket/seccion y WinLab junta
+        // química + BH + EGO en UN solo reporte (verificado en la BD): la orina va al final,
+        // después de DENSIDAD, con nombres idénticos a los de sangre ("PH", "LEUCOCITOS",
+        // "ERITROCITOS", "PROTEINAS", "HEMOGLOBINA LIBRE"). Sin contexto pisaban hb/leucos/ph de
+        // la BH (Hb 12.9 pintada como "5" crítica, pH urinario 6.5 como acidosis). Modo POSICIONAL:
+        // sangre hasta el primer marcador exclusivo de orina; orina (solo ego_*) hasta el siguiente
+        // marcador exclusivo de sangre; cultivo/antibiograma → se omite hasta volver a sangre.
+        let _panelMode = "blood";
         for (const v of valores) {
           const rawName = v?.estudio || v?.nombre || "";
           const rawVal = v?.valor;
           if (!rawName || rawVal === null || rawVal === undefined || rawVal === "") continue;
+          const _nm = normalizeWinlabName(rawName);
+          if (WINLAB_URINE_MARKERS.test(_nm)) _panelMode = "urine";
+          else if (WINLAB_CULTURE_MARKERS.test(_nm)) _panelMode = "culture";
+          else if (WINLAB_BLOOD_MARKERS.test(_nm)) _panelMode = "blood";
+          if (_panelMode === "culture") continue;
           // Guarda CRÍTICA: si el valor proviene de orina/cultivo/drenaje, NO
           // mapearlo a aliases sanguíneos. Esto previene que LEUCOCITOS de
           // urocultivo (X CAMPO) se mapee al recuadro de leucos de BH.
@@ -6706,9 +6736,16 @@ function plExportBackup() {
           // Sin esto, "CREATININA EN ORINA" (116.10) caía en cr y "HEMOGLOBINA
           // LIBRE" (200) en hb, pisando los valores reales de sangre.
           const _sec = normalizeWinlabName(v?.seccion || "");
-          const _isUrine = (v?.bucket === "urine")
+          const _isUrine = (_panelMode === "urine") || (v?.bucket === "urine")
             || /\bEN ORINA\b|\bORINA\b|MICCION|EXAMEN GENERAL DE ORINA|UROCULTIVO|\bEGO\b/i.test(name + " " + _sec)
             || /HEMOGLOBINA\s+LIBRE/i.test(name);
+          // En la sección de orina los nombres "pelados" (PH, LEUCOCITOS, ERITROCITOS, PROTEINAS,
+          // GLUCOSA, BACTERIAS) son del EGO: se asignan a su llave ego_* sin pasar por los alias de sangre.
+          if (_isUrine) {
+            let _egoKey = null;
+            for (const [ek, rx] of Object.entries(WINLAB_URINE_BARE_ALIASES)) { if (rx.test(name)) { _egoKey = ek; break; } }
+            if (_egoKey) { if (!(_egoKey in labs)) labs[_egoKey] = String(rawVal).trim(); continue; }
+          }
           // Guarda LÍQUIDOS (jun 2026): un valor de líquido pleural/peritoneal/ascítico/LCR
           // NUNCA debe llenar una llave de SANGRE (ej. "ALBUMINA EN LIQUIDO PLEURAL" 1.8
           // caía en alb sérico; "GLUCOSA EN LIQUIDO PLEURAL" en glu). No tienen llave destino
@@ -7074,6 +7111,22 @@ function plExportBackup() {
       return Array.from(variants);
     }
 
+    // Consulta de winlab_labs acotada al censo actual (exp + variantes) y a los últimos 4 días.
+    // Antes bajaban las 500 filas más nuevas COMPLETAS (≈11,6 MB medidos: 127 expedientes cuando el
+    // censo necesita ~45) en cada arranque, cada vuelta a la pestaña y cada clic del pill. Lo
+    // anterior a 4 días ya vive en labHistory (tabla notes), así que no se pierde nada.
+    function _winlabRowsQuery(rows) {
+      const vars = new Set();
+      (rows || []).forEach(p => getExpVariants(p && p.exp).forEach(v => {
+        const s = String(v || "").trim();
+        if (s && /^[\w\-.\/]+$/.test(s)) vars.add(s);
+      }));
+      const since = new Date(Date.now() - 4 * 86400000).toISOString();
+      let q = "select=exp,paciente,fecha,scraped_at,data&scraped_at=gte." + encodeURIComponent(since) + "&order=scraped_at.desc&limit=500";
+      if (vars.size && vars.size <= 600) q += "&exp=in.(" + Array.from(vars).map(encodeURIComponent).join(",") + ")";
+      return q;
+    }
+
     // Resuelve un winlab row buscando el exp del paciente y sus variantes.
     // Construye un índice de winlabByExp expandido por variantes para búsqueda O(1).
     let _winlabExpIndex = null;
@@ -7177,6 +7230,9 @@ function plExportBackup() {
           const k = pid(p);
           const nd = migrateNote(noteData[k] || defaultData());
           let hist = Array.isArray(nd.labHistory) ? nd.labHistory.slice() : [];
+          // Firma sin synced_at/scraped_at: si los labs no cambiaron, NO se guarda (idempotente).
+          const _wlSig = h => JSON.stringify((h || []).map(s => s ? [s.fecha, s.labs, s.source || ""] : null));
+          const _wlBefore = _wlSig(hist);
           // Iterar cada snapshot (un por fecha) y mergear/insertar
           for (const snap of snapshots) {
             const existingIdx = hist.findIndex(s => s && s.fecha === snap.fecha);
@@ -7222,9 +7278,19 @@ function plExportBackup() {
               stats.merged++;
             }
           }
-          nd.labHistory = hist;
           noteData[k] = nd;
-          try { saveNote(k, nd); } catch (e) { stats.errors++; if (verbose) console.warn("[winlab-sync] saveNote fallo", k, e); }
+          if (_wlSig(hist) !== _wlBefore) {
+            nd.labHistory = hist;
+            // Solo labHistory viaja a la nube (fila parcial). Antes cada arranque re-subía la nota
+            // COMPLETA de todos los pacientes con match aunque nada cambiara → ~45 eventos Realtime
+            // (toasts y re-renders) en cada dispositivo y riesgo de pisar texto ajeno con la copia local.
+            _pendingDirty[k] = _pendingDirty[k] || new Set();
+            _pendingDirty[k].add("labHistory");
+            stats.saved = (stats.saved || 0) + 1;
+            try { saveNote(k, nd); } catch (e) { stats.errors++; if (verbose) console.warn("[winlab-sync] saveNote fallo", k, e); }
+          } else {
+            stats.unchanged = (stats.unchanged || 0) + 1;
+          }
         }
         if (verbose) {
           console.log("[winlab-sync] stats:", stats);
@@ -7362,7 +7428,7 @@ function plExportBackup() {
       if (icon) icon.textContent = "⏳";
       try {
         const wlRows = await retryNetwork(
-          () => _sGet("winlab_labs", "select=exp,paciente,fecha,scraped_at,data&order=scraped_at.desc&limit=500"),
+          () => _sGet("winlab_labs", _winlabRowsQuery(patients)),
           2, 200
         );
         const next = {};
@@ -8919,7 +8985,7 @@ function plExportBackup() {
         // Labs WinLab scrapeados por GitHub Action (tabla winlab_labs).
         // Indexa por exp; para cada paciente conserva el scraped_at mas reciente.
         try {
-          const wlRows = await retryNetwork(() => _sGet("winlab_labs", "select=exp,paciente,fecha,scraped_at,data&order=scraped_at.desc&limit=500"), 2, 200);
+          const wlRows = await retryNetwork(() => _sGet("winlab_labs", _winlabRowsQuery(pts)), 2, 200);
           const next = {};
           (wlRows || []).forEach(r => {
             const e = String(r.exp || "").trim();
@@ -9687,21 +9753,31 @@ function plExportBackup() {
       const prev = winlabByExp[exp];
       if (prev && prev.scraped_at && newRow.scraped_at && newRow.scraped_at <= prev.scraped_at) return;
       winlabByExp[exp] = newRow;
-      const affected = patients.filter(function(p) { return String(p.exp || "").trim() === exp; });
-      affected.forEach(function(p) {
-        const k = pid(p);
-        const cardEl = document.getElementById("card-" + k);
-        if (cardEl && !cardEl.contains(document.activeElement)) {
-          cardEl.outerHTML = isSimpleEsp(p.esp, noteData[k] || defaultData())
-            ? renderSimpleCard(p, noteData[k] || defaultData(), k)
-            : renderFullCard(p, noteData[k] || defaultData(), k);
+      _winlabExpIndex = null; // el índice por variantes de exp se cachea por identidad de winlabByExp (mutado en sitio)
+      const affected = patients.filter(function(p) { return findWinlabRowForPatient(p) === newRow; });
+      const rerender = function () {
+        affected.forEach(function(p) {
+          const k = pid(p);
+          const cardEl = document.getElementById("card-" + k);
+          if (cardEl && !cardEl.contains(document.activeElement)) {
+            cardEl.outerHTML = isSimpleEsp(p.esp, noteData[k] || defaultData())
+              ? renderSimpleCard(p, noteData[k] || defaultData(), k)
+              : renderFullCard(p, noteData[k] || defaultData(), k);
+          }
+        });
+        if (affected.length) {
+          const nombres = affected.map(function(p) { return p.nombre || p.exp; }).join(", ");
+          _showRTToast("🧪 Labs WinLab actualizados: " + nombres);
+          safeInfo("[RT] winlab_labs updated for exp=" + exp);
         }
-      });
-      if (affected.length) {
-        const nombres = affected.map(function(p) { return p.nombre || p.exp; }).join(", ");
-        _showRTToast("🧪 Labs WinLab actualizados: " + nombres);
-        safeInfo("[RT] winlab_labs updated for exp=" + exp);
-      }
+      };
+      // La tarjeta lee labHistory, no winlabByExp: sin aplicar el sync los labs nuevos no
+      // aparecían hasta recargar o pulsar el pill (requiere winlab_labs en la publicación Realtime).
+      if (!affected.length) return;
+      Promise.resolve()
+        .then(function () { return applyWinlabSyncToPatients({ verbose: false }); })
+        .catch(function (e) { safeLog("[RT] winlab sync:", e); })
+        .then(rerender);
     }
 
     function handleNoteChange(payload) {
