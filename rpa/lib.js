@@ -10,10 +10,16 @@ export const N = (s) =>
     .replace(/\s+/g, " ")
     .trim();
 
-export const todayISO = () => {
-  const d = new Date();
-  const off = d.getTimezoneOffset() * 60000;
-  return new Date(d - off).toISOString().slice(0, 10);
+// Fecha "de hoy" en la zona del hospital (León, UTC-6, sin horario de verano), no en la del
+// runner: GitHub Actions corre en UTC y la corrida de las 20:00 León caía en el día siguiente,
+// partiendo los reportes de un mismo día en dos filas (exp,fecha). Tuneable con WL_TZ.
+export const todayISO = (tz = process.env.WL_TZ || "America/Mexico_City", now = new Date()) => {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  } catch (_) {
+    const off = now.getTimezoneOffset() * 60000;
+    return new Date(now - off).toISOString().slice(0, 10);
+  }
 };
 
 const ALLOWED_ESPS = new Set([
@@ -89,6 +95,45 @@ export function dedupRecords(records, conflictCols = "exp,fecha") {
     });
   }
   return Array.from(map.values());
+}
+
+// ── Fusión de reportes entre corridas (oct 2026) ──────────────────────────────
+// El upsert (exp,fecha) REEMPLAZA la columna `data`: si la corrida de la tarde solo alcanza
+// a drillear los 7-8 refertos más nuevos (presupuesto por paciente), los `valores` que la de
+// la mañana ya tenía para refertos más viejos desaparecían de la fila y de la tarjeta.
+// Estas funciones permiten (a) reutilizar `valores` ya parseados en corridas previas del
+// mismo paciente y (b) no volver a drillear esos refertos. Solo se reutilizan valores de
+// filas marcadas __target (identificadas como del paciente por nombre+edad), para no
+// rescatar valores de homónimos de corridas anteriores.
+export function reportKey(rep) {
+  return JSON.stringify((rep && rep.__cells) || rep);
+}
+// rows: filas de winlab_labs ({ data: { reportes } }) o arrays de reportes → Map key → valores.
+export function indexParsedReportes(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const reportes = Array.isArray(row) ? row
+      : (row && row.data && Array.isArray(row.data.reportes)) ? row.data.reportes : [];
+    for (const rep of reportes) {
+      if (rep && rep.__target === true && Array.isArray(rep.valores) && rep.valores.length) {
+        map.set(reportKey(rep), rep.valores);
+      }
+    }
+  }
+  return map;
+}
+// Copia `valores` previos a los reportes nuevos del objetivo que aún no los tienen.
+export function mergeReportesPreservingValores(reportes, parsedMap) {
+  let reused = 0;
+  const out = reportes || [];
+  if (!parsedMap || !parsedMap.size) return { reportes: out, reused };
+  for (const rep of out) {
+    if (!rep || rep.__target !== true) continue;
+    if (Array.isArray(rep.valores) && rep.valores.length) continue;
+    const prev = parsedMap.get(reportKey(rep));
+    if (prev) { rep.valores = prev; rep.valores_src = "prev"; reused++; }
+  }
+  return { reportes: out, reused };
 }
 
 // ── Discriminadores de tablas WinLab (funciones puras testeables) ─────

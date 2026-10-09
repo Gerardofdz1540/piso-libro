@@ -8,6 +8,7 @@ import {
   stripAccentsKeepEnie, buildSearchCandidates,
   jaroWinkler, patientHeaderMatches,
   extractHeaderBirthDate, ageFromBirthDate, parseCensusAge, selectTargetRows,
+  todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -364,6 +365,37 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   // Nombre distinto nunca entra, con o sin edad compatible.
   const sel5 = selectTargetRows([hdr("PEREZ HERNANDEZ", "PEDRO", "MASCULINO", "01/01/1946"), rep("1")], paciente, { today: TODAY });
   assert(deepEq(sel5.targetIdxs, []) && sel5.ageRejected.length === 0, "target: nombre distinto no es objetivo (sin pasar por guarda de edad)");
+}
+
+// ── Fecha en zona León y fusión de valores entre corridas (oct 2026) ───
+{
+  const at = new Date("2026-10-10T02:30:00Z"); // 20:30 del 9 de octubre en León
+  assert(todayISO("America/Mexico_City", at) === "2026-10-09", "todayISO: 02:30Z es 9 oct en León (no 10 oct)");
+  assert(todayISO("UTC", at) === "2026-10-10", "todayISO: en UTC sí sería 10 oct (comportamiento viejo del runner)");
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(todayISO("Zona/Invalida", at)), "todayISO: zona inválida → fallback con formato ISO");
+
+  const rep = (code, valores, target) => ({
+    __cells: ["", "", code, "08/10/2026 06:16", "08/10/2026 06:34", ""], __hasLink: true,
+    ...(target ? { __target: true } : {}), ...(valores ? { valores } : {}),
+  });
+  const prevRows = [{ exp: "X", data: { reportes: [
+    rep("A1", [{ estudio: "GLUCOSA", valor: "90" }], true), // objetivo con valores → reutilizable
+    rep("B2", [{ estudio: "HB", valor: "13" }], false),     // homónimo con valores → NO reutilizable
+    rep("C3", null, true),                                   // objetivo sin valores → nada que reutilizar
+  ] } }];
+  const parsed = indexParsedReportes(prevRows);
+  assert(parsed.size === 1 && parsed.has(reportKey(rep("A1"))), "indexParsed: solo refertos __target con valores");
+  assert(reportKey(rep("A1")) === reportKey(rep("A1", null, true)), "reportKey: depende solo de __cells (no de flags)");
+
+  const nuevos = [rep("A1", null, true), rep("B2", null, true), rep("D4", [{ estudio: "K", valor: "4" }], true), rep("A1", null, false)];
+  const m = mergeReportesPreservingValores(nuevos, parsed);
+  assert(m.reused === 1, "merge: reutiliza exactamente 1 (A1 objetivo sin valores)");
+  assert(nuevos[0].valores && nuevos[0].valores[0].estudio === "GLUCOSA" && nuevos[0].valores_src === "prev", "merge: A1 recibe valores previos marcados src=prev");
+  assert(!nuevos[1].valores, "merge: B2 (valores previos de un homónimo) no recibe nada");
+  assert(nuevos[2].valores[0].valor === "4" && !nuevos[2].valores_src, "merge: valores propios de esta corrida se respetan");
+  assert(!nuevos[3].valores, "merge: una fila no-objetivo nunca recibe valores");
+  assert(mergeReportesPreservingValores(nuevos, new Map()).reused === 0, "merge: mapa vacío → 0 reutilizados");
+  assert(indexParsedReportes([]).size === 0 && indexParsedReportes(null).size === 0, "indexParsed: entradas vacías → mapa vacío");
 }
 
 console.log(`\n${pass} pass · ${fail} fail`);
