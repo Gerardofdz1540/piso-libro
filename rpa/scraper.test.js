@@ -5,6 +5,9 @@ import {
   dedupRecords, isAllowedEsp, formatDate,
   isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
   isMeaningfulReportRow, extractApellidos, expVariants,
+  stripAccentsKeepEnie, buildSearchCandidates,
+  jaroWinkler, patientHeaderMatches,
+  extractHeaderBirthDate, ageFromBirthDate, parseCensusAge, selectTargetRows,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -82,11 +85,20 @@ function deepEq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 assert(isAllowedEsp("CG") === true,        "isAllowedEsp: CG -> true");
 assert(isAllowedEsp("CT") === true,        "isAllowedEsp: CT -> true");
 assert(isAllowedEsp("CG/GYO") === true,    "isAllowedEsp: CG/GYO -> true");
-assert(isAllowedEsp("URO") === false,      "isAllowedEsp: URO -> false (excluida)");
-assert(isAllowedEsp("GYO") === false,      "isAllowedEsp: GYO -> false (excluida)");
+// 24 jun 2026 — Gera: "TODOS los pacientes deben tener labs". isAllowedEsp ahora procesa
+// TODO el censo (cualquier esp no vacío). Antes excluía URO/GYO/NCX y esos quedaban sin labs.
+assert(isAllowedEsp("URO") === true,       "isAllowedEsp: URO -> true (todos)");
+assert(isAllowedEsp("GYO") === true,       "isAllowedEsp: GYO -> true (todos)");
 assert(isAllowedEsp("") === false,         "isAllowedEsp: vacio -> false");
 assert(isAllowedEsp(null) === false,       "isAllowedEsp: null -> false");
 assert(isAllowedEsp("URGENCIAS") === true, "isAllowedEsp: URGENCIAS -> true");
+assert(isAllowedEsp("CMF/CT") === true,    "isAllowedEsp: CMF/CT -> true");
+assert(isAllowedEsp("URO/CG") === true,    "isAllowedEsp: URO/CG -> true");
+assert(isAllowedEsp("CT/URO") === true,    "isAllowedEsp: CT/URO -> true");
+assert(isAllowedEsp("CG/CT") === true,     "isAllowedEsp: CG/CT -> true");
+assert(isAllowedEsp("NCX/CG") === true,    "isAllowedEsp: NCX/CG -> true");
+assert(isAllowedEsp("URO/GYO") === true,   "isAllowedEsp: URO/GYO -> true (todos)");
+assert(isAllowedEsp("NCX") === true,       "isAllowedEsp: NCX -> true (todos)");
 
 // ── 8. formatDate ─────────────────────────────────────────────────────
 {
@@ -210,6 +222,15 @@ assert(extractApellidos("").length === 0,    "apellidos: vacio -> []");
   const a5 = extractApellidos("  Pedro  Romero  Juarez  ");
   assert(a5[0] === "ROMERO JUAREZ", "apellidos: trim + uppercase");
 }
+// FIX cobertura (24 jun 2026): acentos y partículas líderes.
+// FIX jul 2026: la Ñ se PRESERVA (WinLab es Ñ-sensible: MUÑIZ matcheaba con Ñ literal
+// pre-24jun; "ZUNIGA" post-strip daba NINGUN REGISTRO). Solo se quitan acentos de vocales.
+assert(extractApellidos("JOSE ADRIÁN ARREGUIN RODRÍGUEZ")[0] === "ARREGUIN RODRIGUEZ", "apellidos: sin acentos");
+assert(extractApellidos("AARON ZUÑIGA PÁRAMO")[0] === "ZUÑIGA PARAMO", "apellidos: Ñ preservada + acento vocal fuera");
+assert(extractApellidos("ELIZABETH GARCÍA MÁRQUEZ")[0] === "GARCIA MARQUEZ", "apellidos: GARCIA MARQUEZ sin acento");
+assert(extractApellidos("JUAN DANIEL DEL ANGEL GOMEZ")[0] === "DEL ANGEL GOMEZ", "apellidos: incluye partícula DEL");
+assert(extractApellidos("MA GUADALUPE DIAZ DE LEON MARQUEZ")[0] === "DE LEON MARQUEZ", "apellidos: incluye partícula DE");
+assert(extractApellidos("JOSE DE JESUS LUNA MELENDEZ")[0] === "LUNA MELENDEZ", "apellidos: 'DE JESUS' (nombre) NO altera apellido");
 
 // ── 16. expVariants ───────────────────────────────────────────────────
 {
@@ -229,6 +250,121 @@ assert(extractApellidos("").length === 0,    "apellidos: vacio -> []");
 }
 assert(expVariants(null).length === 0, "expVariants: null -> []");
 assert(expVariants("").length === 0,   "expVariants: vacio -> []");
+
+// ── 17. stripAccentsKeepEnie (jul 2026) ───────────────────────────────
+assert(stripAccentsKeepEnie("RODRÍGUEZ ZUÑIGA") === "RODRIGUEZ ZUÑIGA", "strip: acento fuera, Ñ intacta");
+assert(stripAccentsKeepEnie("pérez ñato") === "PEREZ ÑATO", "strip: uppercase + ñ minúscula preservada");
+assert(stripAccentsKeepEnie("PIÑON") === "PIÑON", "strip: PIÑON intacto");
+assert(stripAccentsKeepEnie("ÑATO") === "ÑATO", "strip: Ñ descompuesta (N+U+0303) se recompone y preserva");
+assert(stripAccentsKeepEnie("  ÁÉÍÓÚÜ  ") === "AEIOUU", "strip: todas las vocales acentuadas + trim");
+assert(stripAccentsKeepEnie(null) === "", "strip: null -> ''");
+
+// ── 18. buildSearchCandidates (jul 2026) — escalera de búsqueda ───────
+{
+  // Caso Ñ (TADEO, 3-143): primaria con Ñ, retry con N.
+  const c = buildSearchCandidates("TADEO DE JESUS RODRIGUEZ ZUÑIGA");
+  assert(c[0].cognome === "RODRIGUEZ ZUÑIGA" && !c[0].nome, "cand: primaria Ñ preservada");
+  assert(c.some((x) => x.cognome === "RODRIGUEZ ZUNIGA"), "cand: variante N-por-Ñ presente");
+}
+{
+  // Caso nombre invertido en la hoja (MARQUEZ VALLEJO JUAN JOSE, 3-188).
+  const c = buildSearchCandidates("MARQUEZ VALLEJO JUAN JOSE");
+  assert(c[0].cognome === "JUAN JOSE", "cand: primaria = últimas 2 (convención)");
+  assert(c.some((x) => x.cognome === "MARQUEZ VALLEJO" && x.nome === "JUAN JOSE"),
+    "cand: retry invertido apellidos-primero con nome");
+}
+{
+  // Caso apellido extranjero de 3 palabras (PIERROT, 3-150).
+  const c = buildSearchCandidates("PIERROT TONY ZAKHIA EL DOVAIHY");
+  assert(c[0].cognome === "EL DOVAIHY", "cand: primaria últimas 2");
+  assert(c.some((x) => x.cognome === "ZAKHIA EL DOVAIHY"), "cand: retry apellido 3 palabras");
+}
+{
+  // Caso 2 palabras (ARMANDO RIOS): apellido+nombre y su swap.
+  const c = buildSearchCandidates("ARMANDO RIOS");
+  assert(c[0].cognome === "RIOS" && c[0].nome === "ARMANDO", "cand: 2-palabras apellido+nombre");
+  assert(c.some((x) => x.cognome === "ARMANDO" && x.nome === "RIOS"), "cand: 2-palabras swap");
+}
+{
+  // Nombre normal de 4 palabras: la primaria correcta va PRIMERO (sin regresión).
+  const c = buildSearchCandidates("AGUSTIN JAIME MENDOZA GONZALEZ");
+  assert(c[0].cognome === "MENDOZA GONZALEZ" && !c[0].nome, "cand: normal 4 palabras sin cambio");
+}
+{
+  // Caso ADAN LOPEZ OVIEDO (37 días, sin labs con apellidos exactos → typo en materno).
+  // Último recurso: paterno-solo + nombre de pila (el match difuso confirma OVIEDO≈OBIEDO).
+  const c = buildSearchCandidates("ADAN LOPEZ OVIEDO");
+  assert(c[0].cognome === "LOPEZ OVIEDO" && !c[0].nome, "cand: primaria apellidos");
+  assert(c.some((x) => x.cognome === "LOPEZ" && x.nome === "ADAN"), "cand: retry paterno-solo + nombre");
+  // el paterno-solo va AL FINAL (es el último recurso, más ancho)
+  assert(c[c.length - 1].tag === "paterno-solo + nombre", "cand: paterno-solo es el último");
+}
+{
+  // El match difuso de encabezado reconoce el typo V/B en el materno.
+  assert(jaroWinkler("OVIEDO", "OBIEDO") >= 0.88, "match: OVIEDO≈OBIEDO Jaro-Winkler ≥0.88");
+  assert(patientHeaderMatches("LOPEZ OBIEDO ADAN", "ADAN LOPEZ OVIEDO") === true,
+    "match: header con materno mal escrito aún identifica al objetivo");
+  assert(patientHeaderMatches("LOPEZ HERNANDEZ PEDRO", "ADAN LOPEZ OVIEDO") === false,
+    "match: homónimo de apellido distinto NO se confunde (nombre de pila distinto)");
+}
+{
+  // Sin candidatos duplicados.
+  const c = buildSearchCandidates("JUAN PEREZ PEREZ");
+  const keys = c.map((x) => x.key);
+  assert(new Set(keys).size === keys.length, "cand: sin duplicados");
+}
+assert(buildSearchCandidates("MARIA").length === 0, "cand: 1 palabra -> []");
+assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
+
+// ── Guarda de edad en el targeting (oct 2026) ─────────────────────────
+{
+  const TODAY = new Date(2026, 9, 9); // 9 oct 2026 (mes 0-based)
+  // Fila-encabezado real de WinLab: ["", "", codigo(vacío), APELLIDOS, NOMBRE, SEXO, FECHA DE NAC.]
+  const hdr = (ap, no, sexo, fnac) => ({ __cells: ["", "", "", ap, no, sexo, fnac], __hasLink: false });
+  const rep = (id) => ({ __cells: ["", id, "08/10/2026 06:16", "08/10/2026 06:34", "08/10/2026 12:56", ""], __hasLink: true });
+
+  assert(extractHeaderBirthDate(hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/1946").__cells) === "01/01/1946",
+    "fnac: se extrae de la celda siguiente a SEXO");
+  assert(extractHeaderBirthDate(rep("1").__cells) === "", "fnac: fila de reporte (sin SEXO) -> ''");
+  assert(ageFromBirthDate("10/05/1973", TODAY) === 53, "edad: 10/05/1973 -> 53 el 9 oct 2026");
+  assert(ageFromBirthDate("15/12/2010", TODAY) === 15, "edad: cumpleaños pendiente resta 1");
+  assert(ageFromBirthDate("09/10/2010", TODAY) === 16, "edad: cumple hoy -> 16");
+  assert(ageFromBirthDate("garbage", TODAY) === null && ageFromBirthDate("", TODAY) === null, "edad: inválida -> null");
+  assert(parseCensusAge("52") === 52 && parseCensusAge("52a") === 52 && parseCensusAge("52 años") === 52,
+    "censo edad: '52' / '52a' / '52 años' -> 52");
+  assert(parseCensusAge("3m") === null && parseCensusAge("20 dias") === null && parseCensusAge("") === null && parseCensusAge(null) === null,
+    "censo edad: meses/días/vacío -> null (guarda no aplica)");
+
+  // Caso real corrida #386 (cama 2-024): homónimo de nombre COMPLETO, 16 años, listado
+  // ANTES del paciente real (80). Sin guarda, el bloque del joven se drilleaba.
+  const paciente = { nombre: "JUAN PEREZ LOPEZ", edad: "80" };
+  const rows = [
+    hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/2010"), rep("1"), rep("2"),   // idx 0..2 → 16 años
+    hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/1946"), rep("3"), rep("4"),   // idx 3..5 → 80 años
+    hdr("PEREZ HERNANDEZ", "PEDRO", "MASCULINO", "01/01/1946"), rep("5"),         // idx 6..7 → otro nombre
+  ];
+  const sel = selectTargetRows(rows, paciente, { ageTolerance: 2, today: TODAY });
+  assert(deepEq(sel.targetIdxs, [4, 5]), "target: solo el bloque con edad compatible (80)");
+  assert(sel.ageRejected.length === 1 && sel.ageRejected[0].headerAge === 16 && sel.ageRejected[0].censusAge === 80,
+    "target: el homónimo de 16 años queda registrado como rechazado por edad");
+  assert(deepEq(sel.linkIdxs, [1, 2, 4, 5, 7]), "target: linkIdxs lista todos los enlaces (diagnóstico)");
+
+  // Tolerancia: censo 75 vs WinLab 74 (cumpleaños reciente / edad del censo sin actualizar) sí pasa.
+  const sel2 = selectTargetRows([hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/1952"), rep("1")], { nombre: "JUAN PEREZ LOPEZ", edad: "75" }, { today: TODAY });
+  assert(deepEq(sel2.targetIdxs, [1]) && sel2.ageRejected.length === 0, "target: diferencia de 1 año dentro de la tolerancia");
+
+  // Sin edad en el censo → la guarda no aplica (comportamiento previo: solo nombre).
+  const sel3 = selectTargetRows(rows, { nombre: "JUAN PEREZ LOPEZ", edad: "" }, { today: TODAY });
+  assert(deepEq(sel3.targetIdxs, [1, 2, 4, 5]) && sel3.censusAge === null, "target: sin edad en censo -> ambos bloques homónimos (legacy)");
+
+  // Encabezado sin fecha de nacimiento (6 celdas) → no se puede verificar → se mantiene el match por nombre.
+  const sel4 = selectTargetRows([{ __cells: ["", "", "", "PEREZ LOPEZ", "JUAN", "MASCULINO"], __hasLink: false }, rep("1")], paciente, { today: TODAY });
+  assert(deepEq(sel4.targetIdxs, [1]), "target: encabezado sin fnac -> match por nombre se mantiene");
+
+  // Nombre distinto nunca entra, con o sin edad compatible.
+  const sel5 = selectTargetRows([hdr("PEREZ HERNANDEZ", "PEDRO", "MASCULINO", "01/01/1946"), rep("1")], paciente, { today: TODAY });
+  assert(deepEq(sel5.targetIdxs, []) && sel5.ageRejected.length === 0, "target: nombre distinto no es objetivo (sin pasar por guarda de edad)");
+}
 
 console.log(`\n${pass} pass · ${fail} fail`);
 process.exit(fail ? 1 : 0);

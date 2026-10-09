@@ -1,0 +1,37 @@
+# .assetsignore — Cloudflare Workers static assets
+# Solo se debe PUBLICAR index.html (la app). Todo lo demas se excluye del upload.
+# Sintaxis estilo .gitignore (confirmado en docs de Cloudflare).
+# NO toca el repo en git — solo lo que Cloudflare sirve publico.
+
+# Repositorio / control de versiones (NUNCA publico)
+.git
+.gitignore
+.gitconfig
+.github
+
+# Config de despliegue (no debe ser publica)
+.wrangler
+wrangler.jsonc
+wrangler.toml
+
+# Backend / scraper / worker (codigo privado)
+rpa
+scripts
+cloudflare-worker
+
+# Docs internas y esquema de BD
+memory
+*.md
+*.sql
+*.json
+*.toml
+*.user.js
+
+# Dependencias y basura
+node_modules
+**/node_modules
+.DS_Store
+
+# Respaldos del monolito (versiones viejas del index)
+index.html.backup-*
+index.html.ROTO-*
