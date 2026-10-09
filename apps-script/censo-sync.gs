@@ -261,8 +261,12 @@ function toPatientRow_(p) {
  */
 function syncPatients_(key, payload) {
   if (!payload.length) { Logger.log('syncPatients: payload vacío → no se toca nada.'); return 0; }
-  var sheetByCama = {};
-  payload.forEach(function (p) { sheetByCama[p.cama] = String(p.exp || '').trim(); });  // cama ya normalizada
+  var sheetByCama = {}, sheetCamaByExp = {};
+  payload.forEach(function (p) {
+    var e = String(p.exp || '').trim();
+    sheetByCama[p.cama] = e;                                  // cama ya normalizada
+    if (e && sheetCamaByExp[e] === undefined) sheetCamaByExp[e] = p.cama;
+  });
   var nSheet = Object.keys(sheetByCama).length;
 
   // Estado actual en Supabase
@@ -272,33 +276,141 @@ function syncPatients_(key, payload) {
   if (res.getResponseCode() !== 200) { Logger.log('syncPatients: GET HTTP ' + res.getResponseCode() + ' → solo upsert'); upsertPatients_(key, payload); return 0; }
   var cur = JSON.parse(res.getContentText() || '[]');
 
-  var toDelete = [];
+  // Camas que se quedan tal cual (misma persona en la misma cama): nadie puede moverse ahí.
+  var stayCamas = {};
   cur.forEach(function (r) {
     var cama = normalizeCama_(r.cama);
-    var sheetExp = sheetByCama[cama];
-    if (sheetExp !== undefined) {
-      if (String(r.exp || '').trim() !== sheetExp) toDelete.push(r);          // (a) reasignación
-    } else if (r.updated_by === 'sheet-sync') {
-      toDelete.push(r);                                                        // (b) retiro
-    }
+    if (sheetByCama[cama] !== undefined && sheetByCama[cama] === String(r.exp || '').trim()) stayCamas[cama] = true;
   });
 
-  // GUARDAS anti-catástrofe.
+  var toDelete = [], toMove = [], moveTargets = {};
+  cur.forEach(function (r) {
+    var cama = normalizeCama_(r.cama);
+    var exp = String(r.exp || '').trim();
+    var sheetExp = sheetByCama[cama];
+    if (sheetExp !== undefined && sheetExp === exp) return;   // sigue igual
+    // (c) CAMBIO DE CAMA — la MISMA persona (mismo exp) sigue en la hoja pero en OTRA cama →
+    //     se MUEVE la fila (PATCH de cama), no se borra. Antes esto caía en "retiro" + fila
+    //     nueva por el upsert: la nota clínica (FK ON DELETE CASCADE) se perdía en cada cambio
+    //     de cama. Si la cama destino ya la ocupa una fila que se queda (duplicado) o ya la
+    //     reclamó otra fila que se mueve, esta fila es un duplicado → se retira (archivada).
+    var newCama = exp ? sheetCamaByExp[exp] : undefined;
+    if (newCama !== undefined && newCama !== cama && !stayCamas[newCama] && !moveTargets[newCama]) {
+      toMove.push({ row: r, from: cama, to: newCama });
+      moveTargets[newCama] = true;
+      return;
+    }
+    if (sheetExp !== undefined) toDelete.push({ row: r, motivo: 'CAMA REASIGNADA (hoja)' });        // (a) reasignación
+    else if (r.updated_by === 'sheet-sync') toDelete.push({ row: r, motivo: 'RETIRADO DEL CENSO (hoja)' }); // (b) retiro
+  });
+
+  // GUARDAS anti-catástrofe (los movimientos no borran nada, pero tampoco se aplican con una
+  // hoja sospechosa: la cama destino podría ser basura).
   if (nSheet < 10) { Logger.log('syncPatients: solo ' + nSheet + ' en la hoja (posible error) → solo upsert, sin borrar.'); upsertPatients_(key, payload); return 0; }
   if (toDelete.length > Math.max(10, Math.floor(cur.length * 0.5))) {
     Logger.log('syncPatients: ' + toDelete.length + ' a borrar (>50%) → ABORTA reconciliación, solo upsert.');
     upsertPatients_(key, payload); return 0;
   }
 
-  // Borrar nota (FK) y luego la fila, por id.
-  toDelete.forEach(function (r) {
-    UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/notes?patient_id=eq.' + encodeURIComponent(r.id), { method: 'delete', headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' }, muteHttpExceptions: true });
-    UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?id=eq.' + encodeURIComponent(r.id), { method: 'delete', headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' }, muteHttpExceptions: true });
-  });
-  if (toDelete.length) Logger.log('syncPatients: retirados ' + toDelete.length + ' (reasignación/egreso): ' + toDelete.map(function (r) { return r.cama; }).join(', '));
+  // 1) Retiros/reasignaciones: ARCHIVAR (paciente + nota → public.archive, la papelera de la app)
+  //    y solo entonces borrar. Si el archivo falla, la fila NO se borra (reintenta en 5 min).
+  var retired = 0;
+  toDelete.forEach(function (d) { if (archiveAndDeletePatient_(key, d.row, d.motivo)) retired++; });
+  if (toDelete.length) Logger.log('syncPatients: retirados ' + retired + '/' + toDelete.length + ' (reasignación/egreso): ' + toDelete.map(function (d) { return d.row.cama; }).join(', '));
+
+  // 2) Cambios de cama: PATCH de la cama sobre la MISMA fila (id estable → la nota sigue ligada).
+  //    Intercambios A↔B chocarían con UNIQUE(cama); esos pasan primero por una cama temporal.
+  var moved = movePatients_(key, toMove);
+  if (toMove.length) Logger.log('syncPatients: movidos ' + moved + '/' + toMove.length + ': ' + toMove.map(function (m) { return m.from + '→' + m.to; }).join(', '));
 
   upsertPatients_(key, payload);   // ahora sin filas conflictivas → reasignados entran limpios
-  return toDelete.length;
+  return retired;
+}
+
+/** PATCH de columnas sobre una fila de patients por id. true si 2xx. */
+function patchPatient_(key, id, cols) {
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?id=eq.' + encodeURIComponent(id), {
+    method: 'patch', contentType: 'application/json',
+    headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' },
+    payload: JSON.stringify(cols), muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  if (code < 200 || code >= 300) { Logger.log('PATCH patients ' + id + ' HTTP ' + code + ': ' + res.getContentText()); return false; }
+  return true;
+}
+
+/**
+ * Aplica los cambios de cama. Si la cama destino de un movimiento es la cama ORIGEN de otro
+ * (intercambio/rotación), se usa una cama temporal única ('#MV-<id>') en una primera fase; si el
+ * script muriera a medias, la siguiente corrida los vuelve a detectar (exp en la hoja, cama '#MV')
+ * y los termina. Devuelve cuántos quedaron en su cama final.
+ */
+function movePatients_(key, toMove) {
+  if (!toMove.length) return 0;
+  var fromCamas = {};
+  toMove.forEach(function (m) { fromCamas[m.from] = true; });
+  var ok = 0;
+  var viaTemp = toMove.filter(function (m) { return fromCamas[m.to]; });
+  viaTemp.forEach(function (m) { patchPatient_(key, m.row.id, { cama: '#MV-' + String(m.row.id).slice(0, 8) }); });
+  toMove.forEach(function (m) { if (patchPatient_(key, m.row.id, { cama: m.to, updated_by: 'sheet-sync' })) ok++; });
+  return ok;
+}
+
+/**
+ * Archiva una fila de patients (con su nota) en public.archive con el formato que la app usa en
+ * su Papelera (patient_data / note_data restaurables) y DESPUÉS la borra. Si el archivo falla
+ * por cualquier motivo, NO borra: mejor un fantasma 5 min más que una nota perdida.
+ */
+function archiveAndDeletePatient_(key, r, motivo) {
+  var H = { apikey: key, Authorization: 'Bearer ' + key };
+  try {
+    var pr = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?id=eq.' + encodeURIComponent(r.id) + '&select=*,notes(*)', {
+      method: 'get', headers: H, muteHttpExceptions: true
+    });
+    if (pr.getResponseCode() !== 200) { Logger.log('archive: GET paciente ' + r.cama + ' HTTP ' + pr.getResponseCode() + ' → NO se borra'); return false; }
+    var rows = JSON.parse(pr.getContentText() || '[]');
+    var p = rows[0];
+    if (p) {   // si ya no existe, solo queda limpiar
+      var n = Array.isArray(p.notes) ? (p.notes[0] || {}) : (p.notes || {});
+      delete p.notes;
+      var body = { patient_data: patientForArchive_(p), note_data: noteForArchive_(n, motivo), archived_by: 'sheet-sync' };
+      var ar = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/archive', {
+        method: 'post', contentType: 'application/json',
+        headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' },
+        payload: JSON.stringify(body), muteHttpExceptions: true
+      });
+      var ac = ar.getResponseCode();
+      if (ac < 200 || ac >= 300) { Logger.log('archive: POST ' + r.cama + ' HTTP ' + ac + ': ' + ar.getContentText() + ' → NO se borra'); return false; }
+    }
+  } catch (e) { Logger.log('archive: error en ' + r.cama + ' → NO se borra: ' + e); return false; }
+  // Borrar nota (FK) y luego la fila, por id.
+  UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/notes?patient_id=eq.' + encodeURIComponent(r.id), { method: 'delete', headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' }, muteHttpExceptions: true });
+  var dr = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?id=eq.' + encodeURIComponent(r.id), { method: 'delete', headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' }, muteHttpExceptions: true });
+  var dc = dr.getResponseCode();
+  return dc >= 200 && dc < 300;
+}
+
+// Fila de patients → objeto paciente tal como lo guarda la app en su papelera (restaurable).
+function patientForArchive_(p) {
+  return {
+    cama: p.cama || '', nombre: p.nombre || '', exp: p.exp || '', dx: p.dx || '', edad: p.edad || '',
+    esp: p.esp || '', adscrito: p.adscrito || '', residente: p.residente || '', ingreso: p.ingreso || '',
+    estado: p.estado || '', seccion: p.seccion || '', es_mio: p.es_mio !== false, _supa_id: p.id
+  };
+}
+// Fila de notes → nota de la app (lab_history → labHistory, etc.) con la etiqueta de egreso.
+function noteForArchive_(n, motivo) {
+  n = n || {};
+  var out = {
+    app: n.app || '', pa: n.pa || '', drenajes: n.drenajes || '', qx: n.qx || '', manejo: n.manejo || '',
+    sangrado: n.sangrado || '', sv: n.sv || '', balance: n.balance || '', pendientes: n.pendientes || '',
+    checklist: n.checklist || {}, misc: n.misc || '',
+    labHistory: Array.isArray(n.lab_history) ? n.lab_history : [],
+    imagenHistory: Array.isArray(n.imagen_history) ? n.imagen_history : [],
+    _egreso: motivo || 'RETIRADO DEL CENSO (hoja)',
+    _egresoFecha: Utilities.formatDate(new Date(), 'America/Mexico_City', 'dd/MM/yyyy')
+  };
+  return out;
 }
 
 /** UPSERT column-scoped en lotes. Prefer: resolution=merge-duplicates -> ON CONFLICT(cama) DO UPDATE. */
@@ -318,17 +430,64 @@ function upsertPatients_(key, payload) {
   }
 }
 
-/** Inserta filas de cuarentena/dedup en public.sync_log. */
+/**
+ * Inserta filas de cuarentena/dedup en public.sync_log, UNA vez cada 6 h por (motivo, exp, camas).
+ * El sync corre cada 5 min y la misma cuarentena se re-registraba en cada corrida: sync_log llegó
+ * a ~29 000 filas de puro ruido y la tabla dejó de servir para diagnosticar.
+ */
 function logQuarantine_(key, rows) {
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (_) { cache = null; }
+  var keyOf = function (q) { return ('sl|' + q.motivo + '|' + q.exp + '|' + q.camas).slice(0, 240); };
+  var fresh = rows.filter(function (q) { return !(cache && cache.get(keyOf(q))); });
+  if (!fresh.length) return 0;
   var url = SUPABASE_URL + '/rest/v1/sync_log';
-  var body = rows.map(function (q) { return { exp: q.exp, camas: q.camas, nombres: q.nombres, motivo: q.motivo }; });
+  var body = fresh.map(function (q) { return { exp: q.exp, camas: q.camas, nombres: q.nombres, motivo: q.motivo }; });
   var res = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json',
     headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' },
     payload: JSON.stringify(body), muteHttpExceptions: true
   });
   var code = res.getResponseCode();
-  if (code < 200 || code >= 300) Logger.log('sync_log HTTP ' + code + ': ' + res.getContentText());
+  if (code < 200 || code >= 300) { Logger.log('sync_log HTTP ' + code + ': ' + res.getContentText()); return 0; }
+  if (cache) fresh.forEach(function (q) { try { cache.put(keyOf(q), '1', 21600); } catch (_) {} });
+  return fresh.length;
+}
+
+// --- WATCHDOG DE LABORATORIOS --------------------------------------------------------------------
+// El scraper de WinLab (GitHub Actions, 3 corridas/día) se quedó 5 semanas apagado en sept-oct 2026
+// (GitHub desactiva los cron tras 60 días sin actividad) y nadie se enteró hasta que faltaron labs.
+// Este chequeo corre cada 4 h: si el último scrape tiene más de LABS_STALE_HOURS, manda un correo
+// (máximo uno cada 6 h) y deja constancia en sync_log.
+var LABS_STALE_HOURS = 26;
+function checkLabsFreshness() {
+  var key = PropertiesService.getScriptProperties().getProperty('SUPABASE_KEY');
+  if (!key) { Logger.log('FALTA Script Property SUPABASE_KEY'); return { ok: false, reason: 'no_key' }; }
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/winlab_labs?select=scraped_at&order=scraped_at.desc&limit=1', {
+    method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) { Logger.log('labs watchdog: GET HTTP ' + res.getResponseCode()); return { ok: false, reason: 'http_' + res.getResponseCode() }; }
+  var rows = JSON.parse(res.getContentText() || '[]');
+  var last = rows[0] && rows[0].scraped_at;
+  var hours = last ? (Date.now() - new Date(last).getTime()) / 36e5 : Infinity;
+  Logger.log('labs watchdog: último scrape ' + (last || '(ninguno)') + ' → ' + (isFinite(hours) ? hours.toFixed(1) + ' h' : 'sin datos'));
+  if (hours < LABS_STALE_HOURS) return { ok: true, last: last, hours: hours };
+
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (_) { cache = null; }
+  if (cache && cache.get('labs_stale_alert')) return { ok: false, last: last, hours: hours, muted: true };
+  var to = PropertiesService.getScriptProperties().getProperty('ALERT_EMAIL') || Session.getEffectiveUser().getEmail();
+  var h = isFinite(hours) ? Math.round(hours) + ' h' : 'nunca';
+  MailApp.sendEmail(to,
+    '⚠️ PisoLibro: sin laboratorios nuevos (último scrape: ' + h + ')',
+    'El último scrape de WinLab guardado en Supabase (winlab_labs.scraped_at) es de ' + (last || 'nunca') + '.\n\n' +
+    '1) Revisa el workflow: https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml\n' +
+    '2) Si dice "This scheduled workflow is disabled", pulsa "Enable workflow".\n' +
+    '3) Lanza una corrida manual con "Run workflow" y revisa el log si falla (credenciales de WinLab, layout, etc.).\n\n' +
+    'Este aviso se repite como máximo cada 6 h mientras no lleguen labs nuevos.');
+  if (cache) try { cache.put('labs_stale_alert', '1', 21600); } catch (_) {}
+  try { logQuarantine_(key, [{ exp: '', camas: '', nombres: '', motivo: 'labs_stale_' + h.replace(/\s+/g, '') }]); } catch (_) {}
+  return { ok: false, last: last, hours: hours, alerted: true };
 }
 
 // --- HELPERS ------------------------------------------------------------------------------------
@@ -413,12 +572,13 @@ function toISODate_(v) {
 
 // --- INSTALACION / DIAGNOSTICO (se ejecutan a mano una vez) -------------------------------------
 
-/** Ejecuta esto UNA vez para instalar los 2 triggers (pide OAuth la primera vez). */
+/** Ejecuta esto UNA vez para instalar los 3 triggers (pide OAuth la primera vez; vuelve a correrlo al actualizar el script). */
 function createTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('onCensoEdit').forSpreadsheet(CENSO_SHEET_ID).onEdit().create();
   ScriptApp.newTrigger('doSyncScheduled').timeBased().everyMinutes(5).create();
-  Logger.log('Triggers creados: onEdit (instalable) + cada 5 min.');
+  ScriptApp.newTrigger('checkLabsFreshness').timeBased().everyHours(4).create();
+  Logger.log('Triggers creados: onEdit (instalable) + sync cada 5 min + watchdog de labs cada 4 h.');
 }
 
 /** Diagnostico sin escribir nada: cuantos pacientes parsea y cuantos quedan en cuarentena. */

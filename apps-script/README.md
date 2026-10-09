@@ -14,9 +14,32 @@ Editas la hoja → Apps Script (onEdit + cada 5 min) → UPSERT a Supabase (solo
 ## Regla de oro (lo que NUNCA toca)
 
 El script **solo** escribe columnas censales: `cama, nombre, exp, edad, dx, esp, adscrito,
-residente, ingreso, dias, estado, seccion, es_mio`. **Jamás** toca la tabla `notes` ni columnas
+residente, ingreso, dias, estado, seccion, es_mio`. **Jamás** edita la tabla `notes` ni columnas
 clínicas. El UPSERT es `ON CONFLICT (cama) DO UPDATE` de solo esas columnas → el `id` de la fila
 no cambia, así que las notas clínicas siguen ligadas e intactas (verificado contra la BD real).
+
+## Reconciliación (Supabase refleja la hoja) — sin perder notas
+
+En cada corrida el script compara la hoja con `patients` y:
+
+- **Cambio de cama (mismo expediente, otra cama):** hace **PATCH** de la cama sobre la misma fila
+  (el `id` no cambia → la nota clínica viaja con el paciente). Los intercambios A↔B pasan por una
+  cama temporal `#MV-…` durante un segundo para no chocar con `UNIQUE(cama)`.
+- **Reasignación (misma cama, otra persona)** y **retiro (ya no está en la hoja)**: primero
+  **archiva** paciente + nota en `public.archive` (la Papelera de la app, restaurable desde
+  "Cargar desde nube") con `archived_by = sheet-sync` y la etiqueta de egreso en la nota; **solo
+  si el archivo tuvo éxito** borra la nota y la fila. Si falla, la fila se queda y se reintenta en
+  la siguiente corrida.
+- **Guardas:** si la hoja parsea < 10 pacientes o habría que borrar > 50 % del censo, no borra ni
+  mueve nada (solo upsert). Solo retira filas que el propio sync creó (`updated_by = sheet-sync`);
+  los pacientes agregados a mano en la app no se tocan.
+
+## Watchdog de laboratorios
+
+`checkLabsFreshness()` corre cada 4 h (trigger). Si el último `winlab_labs.scraped_at` tiene más de
+26 h, manda un correo (máximo uno cada 6 h) al dueño del script, o a la propiedad `ALERT_EMAIL` si
+la defines, con el enlace al workflow de GitHub y los pasos para reactivarlo. También deja una fila
+`labs_stale_…` en `sync_log`.
 
 ## Dedup y cuarentena
 
@@ -40,16 +63,31 @@ no cambia, así que las notas clínicas siguen ligadas e intactas (verificado co
    **▶ Ejecutar**.
 6. Sale una ventana de permisos de Google → **Revisar permisos** → elige tu cuenta → **Permitir**.
 
-Listo: queda un trigger `onEdit` (instalable) + un respaldo cada 5 min.
+Listo: quedan 3 triggers: `onEdit` (instalable), sync cada 5 min y watchdog de labs cada 4 h.
+
+## Actualizar el script (cada vez que cambie `censo-sync.gs` en el repo)
+
+1. **Extensiones → Apps Script**, reemplaza TODO el contenido de `Código.gs` por el nuevo
+   `censo-sync.gs` y guarda.
+2. Vuelve a ejecutar **`createTriggers`** (borra y recrea los triggers; sin esto el watchdog de
+   labs no existe).
+3. Opcional: ejecuta **`checkLabsFreshness`** a mano y revisa **Ver → Registros** para confirmar la
+   fecha del último scrape.
 
 ## Probar sin escribir nada
 
 En el selector de función elige **`testParseOnly`** → **▶ Ejecutar** → menú **Ver → Registros**:
 verás cuántos pacientes parseó y cuántos quedaron en cuarentena, sin tocar Supabase.
 
+Pruebas offline de la reconciliación (sin Google ni Supabase, con stubs):
+
+```
+node apps-script/censo-sync.test.js
+```
+
 ## Notas
 
 - La **service_role key** vive solo en Script Properties (nunca en la hoja ni en el repo). El
   script bypassa RLS para escribir; la app pública sigue protegida por RLS (anon ciego).
-- El sync es **update-only**: si quitas un paciente de la hoja, no se borra en la app (eso se hace
-  con el alta/egreso dentro de la app). Nunca hace DELETE ni REPLACE.
+- `sync_log` recibe cada cuarentena/duplicado **una vez cada 6 h** (antes se repetía en cada corrida
+  de 5 min y la tabla pasó de 29 000 filas).
