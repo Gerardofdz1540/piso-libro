@@ -7,6 +7,7 @@ import {
   isMeaningfulReportRow, extractApellidos, expVariants,
   stripAccentsKeepEnie, buildSearchCandidates,
   jaroWinkler, patientHeaderMatches,
+  extractHeaderBirthDate, ageFromBirthDate, parseCensusAge, selectTargetRows,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -314,6 +315,56 @@ assert(stripAccentsKeepEnie(null) === "", "strip: null -> ''");
 }
 assert(buildSearchCandidates("MARIA").length === 0, "cand: 1 palabra -> []");
 assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
+
+// ── Guarda de edad en el targeting (oct 2026) ─────────────────────────
+{
+  const TODAY = new Date(2026, 9, 9); // 9 oct 2026 (mes 0-based)
+  // Fila-encabezado real de WinLab: ["", "", codigo(vacío), APELLIDOS, NOMBRE, SEXO, FECHA DE NAC.]
+  const hdr = (ap, no, sexo, fnac) => ({ __cells: ["", "", "", ap, no, sexo, fnac], __hasLink: false });
+  const rep = (id) => ({ __cells: ["", id, "08/10/2026 06:16", "08/10/2026 06:34", "08/10/2026 12:56", ""], __hasLink: true });
+
+  assert(extractHeaderBirthDate(hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/1946").__cells) === "01/01/1946",
+    "fnac: se extrae de la celda siguiente a SEXO");
+  assert(extractHeaderBirthDate(rep("1").__cells) === "", "fnac: fila de reporte (sin SEXO) -> ''");
+  assert(ageFromBirthDate("10/05/1973", TODAY) === 53, "edad: 10/05/1973 -> 53 el 9 oct 2026");
+  assert(ageFromBirthDate("15/12/2010", TODAY) === 15, "edad: cumpleaños pendiente resta 1");
+  assert(ageFromBirthDate("09/10/2010", TODAY) === 16, "edad: cumple hoy -> 16");
+  assert(ageFromBirthDate("garbage", TODAY) === null && ageFromBirthDate("", TODAY) === null, "edad: inválida -> null");
+  assert(parseCensusAge("52") === 52 && parseCensusAge("52a") === 52 && parseCensusAge("52 años") === 52,
+    "censo edad: '52' / '52a' / '52 años' -> 52");
+  assert(parseCensusAge("3m") === null && parseCensusAge("20 dias") === null && parseCensusAge("") === null && parseCensusAge(null) === null,
+    "censo edad: meses/días/vacío -> null (guarda no aplica)");
+
+  // Caso real corrida #386 (cama 2-024): homónimo de nombre COMPLETO, 16 años, listado
+  // ANTES del paciente real (80). Sin guarda, el bloque del joven se drilleaba.
+  const paciente = { nombre: "JUAN PEREZ LOPEZ", edad: "80" };
+  const rows = [
+    hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/2010"), rep("1"), rep("2"),   // idx 0..2 → 16 años
+    hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/1946"), rep("3"), rep("4"),   // idx 3..5 → 80 años
+    hdr("PEREZ HERNANDEZ", "PEDRO", "MASCULINO", "01/01/1946"), rep("5"),         // idx 6..7 → otro nombre
+  ];
+  const sel = selectTargetRows(rows, paciente, { ageTolerance: 2, today: TODAY });
+  assert(deepEq(sel.targetIdxs, [4, 5]), "target: solo el bloque con edad compatible (80)");
+  assert(sel.ageRejected.length === 1 && sel.ageRejected[0].headerAge === 16 && sel.ageRejected[0].censusAge === 80,
+    "target: el homónimo de 16 años queda registrado como rechazado por edad");
+  assert(deepEq(sel.linkIdxs, [1, 2, 4, 5, 7]), "target: linkIdxs lista todos los enlaces (diagnóstico)");
+
+  // Tolerancia: censo 75 vs WinLab 74 (cumpleaños reciente / edad del censo sin actualizar) sí pasa.
+  const sel2 = selectTargetRows([hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/1952"), rep("1")], { nombre: "JUAN PEREZ LOPEZ", edad: "75" }, { today: TODAY });
+  assert(deepEq(sel2.targetIdxs, [1]) && sel2.ageRejected.length === 0, "target: diferencia de 1 año dentro de la tolerancia");
+
+  // Sin edad en el censo → la guarda no aplica (comportamiento previo: solo nombre).
+  const sel3 = selectTargetRows(rows, { nombre: "JUAN PEREZ LOPEZ", edad: "" }, { today: TODAY });
+  assert(deepEq(sel3.targetIdxs, [1, 2, 4, 5]) && sel3.censusAge === null, "target: sin edad en censo -> ambos bloques homónimos (legacy)");
+
+  // Encabezado sin fecha de nacimiento (6 celdas) → no se puede verificar → se mantiene el match por nombre.
+  const sel4 = selectTargetRows([{ __cells: ["", "", "", "PEREZ LOPEZ", "JUAN", "MASCULINO"], __hasLink: false }, rep("1")], paciente, { today: TODAY });
+  assert(deepEq(sel4.targetIdxs, [1]), "target: encabezado sin fnac -> match por nombre se mantiene");
+
+  // Nombre distinto nunca entra, con o sin edad compatible.
+  const sel5 = selectTargetRows([hdr("PEREZ HERNANDEZ", "PEDRO", "MASCULINO", "01/01/1946"), rep("1")], paciente, { today: TODAY });
+  assert(deepEq(sel5.targetIdxs, []) && sel5.ageRejected.length === 0, "target: nombre distinto no es objetivo (sin pasar por guarda de edad)");
+}
 
 console.log(`\n${pass} pass · ${fail} fail`);
 process.exit(fail ? 1 : 0);

@@ -15,7 +15,7 @@ import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates,
-         patientHeaderMatches, extractHeaderName } from "./lib.js";
+         selectTargetRows } from "./lib.js";
 import { parsePdfToLabValues, findPdfFrameUrl } from "./pdf-extract.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
@@ -52,7 +52,7 @@ const SUPABASE_SERVICE_KEY    = ENV("SUPABASE_SERVICE_KEY");
 const SUPABASE_TABLE          = ENV("SUPABASE_TABLE", "winlab_labs");
 const SUPABASE_CONFLICT       = ENV("SUPABASE_ON_CONFLICT", "exp,fecha");
 const SUPABASE_CENSO_TABLE    = ENV("SUPABASE_CENSO_TABLE", "patients");
-const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp");
+const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp,edad");
 
 // Dry-run: recorre todo el flujo de WinLab (login → búsqueda → drill-down)
 // pero NO escribe en Supabase. Actívalo con DRY_RUN=1 o el argumento --dry-run.
@@ -96,6 +96,13 @@ const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);       
 // homónimos. Costo: más drills = scraper más lento (completitud > velocidad, por
 // pedido explícito). Tuneable por env WL_DRILLDOWN_MAX si hace falta más/menos.
 const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "12"), 10);     // max reportes/paciente
+// Guarda de edad (oct 2026): un bloque cuyo encabezado coincide por nombre pero cuya
+// |edad WinLab − edad censo| supera la tolerancia NO es el objetivo (homónimo de nombre
+// completo). Corrida #386: 8 bloques en 7 camas con labs de otra persona. Ver lib.js.
+const WL_AGE_TOLERANCE_YEARS    = parseInt(ENV("WL_AGE_TOLERANCE_YEARS", "2"), 10);
+// Fallback ciego ("primeros N" cuando ningún encabezado identifica al objetivo). APAGADO
+// por defecto: drillear a ciegas mete labs de homónimos en la tarjeta equivocada.
+const WL_BLIND_FALLBACK         = parseInt(ENV("WL_BLIND_FALLBACK", "0"), 10);
 const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "20000"), 10);
 // Pausa entre pacientes (ms) para no saturar WinLab con requests rapidos.
 // WinLab throttlea/resetea la conexion si recibe demasiadas busquedas seguidas.
@@ -623,43 +630,46 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // ── TARGETING (jun 2026): WinLab busca por apellido y devuelve VARIOS homónimos.
   // Identificamos las filas del paciente OBJETIVO agrupando por fila-encabezado
   // FEMENINO/MASCULINO y matcheando el nombre (orden-independiente, difuso).
-  const targetIdxs = [], linkIdxs = [];
-  {
-    let curMatches = false;
-    for (let i = 0; i < result.rows.length; i++) {
-      const row = result.rows[i];
-      const hdrName = extractHeaderName(row.__cells);
-      if (hdrName) curMatches = patientHeaderMatches(hdrName, paciente.nombre);
-      if (row.__hasLink) {
-        linkIdxs.push(i);
-        if (curMatches) targetIdxs.push(i);
-      }
-    }
+  // GUARDA DE EDAD (oct 2026): el nombre no distingue homónimos de nombre COMPLETO; si el
+  // censo trae `edad` y el encabezado FECHA DE NAC., ambas deben ser compatibles.
+  const sel = selectTargetRows(result.rows, paciente, { ageTolerance: WL_AGE_TOLERANCE_YEARS });
+  const { targetIdxs, linkIdxs, ageRejected } = sel;
+  for (const r of ageRejected) {
+    console.log(`       [age-guard] encabezado coincide por nombre pero edad WinLab ${r.headerAge} vs censo ${r.censusAge} (±${sel.tolerance}) → bloque descartado`);
   }
+  result.ageGuard = { census_age: sel.censusAge, tolerance: sel.tolerance, blocks_rejected: ageRejected.length };
 
   // RETRY-GUARD (jul 2026): en un candidato de retry (búsqueda "ancha": invertido, Ñ→N,
   // apellido 3 palabras) el objetivo DEBE identificarse positivamente por encabezado.
   // Si la lista trae solo homónimos, descartamos TODO (rows=[]) y el caller prueba el
   // siguiente candidato. Nunca drill a ciegas ni blob con puros ajenos. Precisión > recall.
   if (params.requireTargetMatch && !targetIdxs.length) {
-    console.log(`       [retry-guard] resultados sin match del objetivo (${result.rows.length} filas de homónimos) → descartados`);
-    return { ...result, rows: [], noResults: true };
+    console.log(`       [retry-guard] resultados sin match del objetivo (${result.rows.length} filas de homónimos${ageRejected.length ? `, ${ageRejected.length} bloque(s) descartados por edad` : ""}) → descartados`);
+    return { ...result, rows: [], noResults: true, noTarget: true };
   }
 
   // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──
   if (WL_DRILLDOWN === 1 && result.rows.length > 0 && result.bestTableIdx >= 0) {
     // Drilleamos SOLO los reportes del objetivo, no los primeros N a ciegas — eso
     // causaba que el 4º de 5 "GONZALEZ GONZALEZ" nunca se capturara y el blob quedara
-    // con labs de otro paciente. FALLBACK SEGURO (solo búsqueda primaria): si no se
-    // identifica al objetivo por encabezado (tabla COL_X / sin sexo), comportamiento
-    // legacy (primeros N).
+    // con labs de otro paciente. Sin objetivo identificado NO se drillea (oct 2026): cada
+    // enlace es de otra persona (homónimo de apellidos, o de nombre completo con edad
+    // incompatible). Las filas se descartan para no guardar homónimos bajo este exp y se
+    // devuelve noResults para que el caller pruebe el siguiente candidato de búsqueda.
+    // El fallback legacy "primeros N" solo reaparece con WL_BLIND_FALLBACK=1.
     let drillIdxs;
     if (targetIdxs.length) {
       drillIdxs = targetIdxs.slice(0, WL_DRILLDOWN_MAX);
       console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; drilleando ${drillIdxs.length}`);
-    } else {
+    } else if (WL_BLIND_FALLBACK === 1) {
       drillIdxs = linkIdxs.slice(0, WL_DRILLDOWN_MAX);
-      console.log(`       [targeting] objetivo no identificado por encabezado → fallback: primeros ${drillIdxs.length}`);
+      console.log(`       [targeting] objetivo no identificado por encabezado → fallback LEGACY (WL_BLIND_FALLBACK=1): primeros ${drillIdxs.length}`);
+    } else {
+      const why = ageRejected.length
+        ? `${ageRejected.length} bloque(s) con nombre coincidente descartados por edad`
+        : "ningún encabezado coincide con el nombre";
+      console.log(`       [targeting] objetivo no identificado (${why}; ${linkIdxs.length} enlaces de homónimos) → sin drill, filas descartadas`);
+      return { ...result, rows: [], noResults: true, noTarget: true };
     }
     // dumpFirst = true solo en la PRIMERA llamada real a drillDownReport.
     let firstDrilldownDone = false;
@@ -1149,7 +1159,8 @@ async function scrapeForCenso(page, searchUrl, censo) {
       const res = await Promise.race([work, timeout]);
 
       const matched = res.rows.length;
-      const tag2 = res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
+      const tag2 = res.noTarget ? `${matched} reportes [SIN OBJETIVO: solo homónimos / edad incompatible]`
+        : res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
       console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
 
       // Diagnóstico: tabla encontrada pero 0 filas de datos.
@@ -1194,6 +1205,7 @@ async function scrapeForCenso(page, searchUrl, censo) {
           data: {
             esp: p.esp || null,
             cama: p.cama || null,
+            age_guard: res.ageGuard || null,
             headers: res.headers,
             reportes: res.rows,
           },

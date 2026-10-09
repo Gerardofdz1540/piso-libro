@@ -314,6 +314,68 @@ export function extractHeaderName(cells) {
   return "";
 }
 
+// ── Guarda de edad para el targeting (oct 2026) ──────────────────────────────
+// El nombre NO basta para identificar al paciente: un homónimo de nombre COMPLETO
+// (mismos apellidos y nombres) pasa patientHeaderMatches y sus labs acaban en la
+// tarjeta equivocada (corrida #386: 8 bloques en 7 camas, p.ej. censo 80 años vs
+// WinLab 16). La fila-encabezado trae FECHA DE NAC. (celda siguiente a SEXO); la
+// comparamos con `edad` del censo. Si alguno de los dos falta/no se entiende, la
+// guarda no aplica (se mantiene el match por nombre), para no perder pacientes.
+export function extractHeaderBirthDate(cells) {
+  if (!Array.isArray(cells)) return "";
+  const sx = cells.findIndex((c) => { const u = String(c || "").toUpperCase().trim(); return u === "FEMENINO" || u === "MASCULINO"; });
+  if (sx < 0) return "";
+  const m = String(cells[sx + 1] || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? m[0] : "";
+}
+export function ageFromBirthDate(ddmmyyyy, today = new Date()) {
+  const m = String(ddmmyyyy || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return null;
+  const d = +m[1], mo = +m[2], y = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || y < 1900) return null;
+  let age = today.getFullYear() - y;
+  const tm = today.getMonth() + 1, td = today.getDate();
+  if (tm < mo || (tm === mo && td < d)) age--;
+  return age >= 0 && age <= 120 ? age : null;
+}
+// Edad del censo en años: "52", "52a", "52 años". Meses/días ("3m", "20 dias") u otros
+// formatos → null (desconocida ⇒ la guarda no aplica a ese paciente).
+export function parseCensusAge(edad) {
+  const s = String(edad ?? "").trim().toUpperCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const m = s.match(/^(\d{1,3})\s*(A|ANOS|ANO|Y)?\.?$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+// Selecciona las filas (índices) del paciente OBJETIVO: agrupa por fila-encabezado
+// FEMENINO/MASCULINO, exige match de nombre (difuso, orden-independiente) y, cuando hay
+// edad en el censo y fecha de nacimiento en el encabezado, edad compatible (±tolerance).
+// Devuelve también los enlaces totales (para diagnóstico) y los bloques rechazados por edad.
+export function selectTargetRows(rows, paciente, opts = {}) {
+  const tolerance = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : 2;
+  const today = opts.today || new Date();
+  const censusAge = parseCensusAge(paciente && paciente.edad);
+  const targetIdxs = [], linkIdxs = [], ageRejected = [];
+  let curMatches = false;
+  for (let i = 0; i < (rows || []).length; i++) {
+    const row = rows[i];
+    const hdrName = extractHeaderName(row.__cells);
+    if (hdrName) {
+      const nameOk = patientHeaderMatches(hdrName, paciente && paciente.nombre);
+      const hdrAge = nameOk && censusAge != null ? ageFromBirthDate(extractHeaderBirthDate(row.__cells), today) : null;
+      if (nameOk && hdrAge != null && Math.abs(hdrAge - censusAge) > tolerance) {
+        ageRejected.push({ idx: i, headerAge: hdrAge, censusAge });
+        curMatches = false;
+      } else {
+        curMatches = nameOk;
+      }
+    }
+    if (row.__hasLink) {
+      linkIdxs.push(i);
+      if (curMatches) targetIdxs.push(i);
+    }
+  }
+  return { targetIdxs, linkIdxs, ageRejected, censusAge, tolerance };
+}
+
 // Genera variantes del codigo paciente para probar en WinLab. El censo
 // guarda formatos como "26-06437" (con guion). WinLab puede esperar
 // el numero sin guion ("2606437") o solo la parte numerica final.
