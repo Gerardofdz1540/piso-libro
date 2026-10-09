@@ -2,13 +2,17 @@
 // @name         Piso Libro — WinLab Scan Automático
 // @namespace    https://pisocirugiahgl.netlify.app
 // @version      1.1
-// @description  Un clic en "▶ Scan" y el script recorre TODAS las páginas de WinLab solo, sin intervención.
+// @description  OBSOLETO (oct 2026): ya no puede cargar el censo (la anon key no tiene permisos). Usa el robot de laboratorios de la app.
 // @author       piso-libro
 // @match        *://*/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
 
+// OBSOLETO (oct 2026): este userscript lee el censo de Supabase con la anon key y, desde que el rol
+// anon no tiene permisos (ver scripts/SECURITY_NOTES.md), esa carga responde 401. El robot de
+// laboratorios (rpa/, 3 corridas al día) y el botón "Labs" de la app (clic derecho = disparar
+// corrida) cubren este flujo. Se conserva solo como referencia.
 (async function () {
   'use strict';
 

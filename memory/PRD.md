@@ -5,7 +5,7 @@
 
 ## Stack & deployment
 - Single-file `index.html` (~14,400 lines) — HTML + CSS + vanilla JS
-- Hosted on GitHub Pages: https://gerardofdz1540.github.io/piso-libro/
+- Production: https://pisolibro.pages.dev (Cloudflare Pages, deployed from `main` by `.github/workflows/deploy-pages.yml`). GitHub Pages / Netlify URLs are legacy.
 - Backend: Supabase (PostgreSQL + Realtime WebSocket)
 - Repo: https://github.com/Gerardofdz1540/piso-libro
 - Users: 7 surgery residents

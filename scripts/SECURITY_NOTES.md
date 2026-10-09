@@ -1,75 +1,76 @@
-# Notas de seguridad — Piso Libro
+# Notas de seguridad — Piso Libro (estado al 9 de octubre de 2026)
 
-Estado actual: **Riesgo medio**. La app es funcional pero hay dos cosas
-que conviene atender cuando puedas.
+Estado actual: **acceso a datos solo con sesión**. La app inicia sesión con
+Supabase Auth (correo + contraseña); el rol público `anon` no puede leer ni
+escribir ninguna tabla. Este documento dice qué llaves existen, dónde viven y
+qué hacer si alguna se filtra.
 
-## 1. `SUPA_KEY` (anon key) embebida en scripts del navegador
+## 1. Llaves y dónde viven
 
-**Dónde está:**
-- `scripts/winlab-bookmarklet.js` (línea ~40, constante `K`)
-- `scripts/winlab-tampermonkey.user.js` (línea ~16, constante `SUPA_KEY`)
-- `.github/workflows/keepalive.yml` (variable `SUPA_KEY`)
-- `index.html` (constante `SUPA_KEY`)
+| Llave | Dónde está | Riesgo si se filtra |
+|---|---|---|
+| **anon key** de Supabase | `index.html` (`SUPA_KEY`), `scripts/winlab-*.js` (legado) | Bajo: es pública por diseño y el rol `anon` tiene `REVOKE ALL` en todas las tablas. Sirve solo para iniciar sesión. |
+| **service_role key** de Supabase | Secret `SUPABASE_SERVICE_KEY` en GitHub Actions; propiedad `SUPABASE_KEY` del Apps Script | **Alto**: salta RLS. Nunca en el repo, la hoja ni la app. |
+| Credenciales de WinLab | Secrets `WINLAB_USER` / `WINLAB_PASS` en GitHub Actions | Alto: acceso al sistema del laboratorio. |
+| `WORKER_TOKEN` del Cloudflare Worker | Variable en Cloudflare + "Worker token" en Config de la app | Medio: permite usar el worker (IA, disparar el scraper). |
+| `ANTHROPIC_API_KEY` | Secret en Cloudflare | Medio: costo de API. |
+| `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` | Secrets en GitHub Actions | Medio: permite publicar la app. |
 
-**¿Es grave?** No es catastrófico — la `anon key` está diseñada para
-exposición pública (es la que usa cualquier cliente web). El riesgo real
-viene de combinarla con **RLS permisivas** (ver punto 2).
+## 2. Modelo de acceso en Supabase
 
-**Qué hacer si llegas a sospechar abuso:**
-1. Supabase Dashboard → Project Settings → API → Reset anon key
-2. Reemplazar en los 4 archivos de arriba
-3. `git commit` + push
-4. Pedir a los residentes que abran la app de nuevo para refrescar el bundle
+- RLS habilitado en todas las tablas; policy `authenticated_all` (lectura y
+  escritura) para el rol `authenticated`; `sync_log` solo lectura.
+- `anon`: sin privilegios (`REVOKE ALL`). Una petición REST con solo la anon
+  key responde 401.
+- `winlab_labs` tiene además policy para `service_role` (el scraper).
+- Referencia y re-aplicación idempotente: `scripts/supabase_rls_current.sql`.
+- Los scripts anteriores (`supabase_rls_permissive.sql`,
+  `supabase_rls_restrictive.sql`) daban acceso total a `anon` y se retiraron.
+  **No volver a aplicarlos.**
 
-## 2. RLS permisivas (todos los anon pueden leer/escribir todo)
+## 3. Usuarios
 
-**Configuración actual:** `scripts/supabase_rls_permissive.sql`
-crea policies `USING (true) WITH CHECK (true)` para rol `anon` en todas
-las tablas. Esto significa que **cualquiera con la URL+key puede leer
-o modificar cualquier registro**.
+- Se administran desde la app (Config → Usuarios) o en Supabase →
+  Authentication → Users. Para dar de baja a alguien: borrar su usuario ahí;
+  su sesión deja de funcionar en cuanto expira el token (≤ 1 h) y al recargar.
+- Cambio de contraseña: la app cierra sesión solo en el dispositivo actual
+  (`signOut({ scope: "local" })`); las demás sesiones siguen hasta que expiren.
 
-**Por qué se eligió así:**
-La app no usa Supabase Auth (no hay magic links ni JWT). El login en
-piso-libro es solo local (validación contra `users` table en frontend).
-Hacer policies por usuario requiere primero migrar a Supabase Auth.
+## 4. Qué hacer si se filtra algo
 
-**Plan para endurecer (cuando tengas tiempo):**
+### service_role key
+1. Supabase → Project Settings → API → **Reset** `service_role`.
+2. GitHub → Settings → Secrets → Actions → actualizar `SUPABASE_SERVICE_KEY`.
+3. Hoja del censo → Extensiones → Apps Script → ⚙ Configuración →
+   Propiedades → actualizar `SUPABASE_KEY`.
+4. Lanzar una corrida del scraper y un `doSync` del Apps Script para comprobar.
 
-### Opción A — Lectura pública, escritura por usuario
-Permite ver pero no modificar. Requiere mover el login a Supabase Auth.
+### anon key
+1. Supabase → Project Settings → API → Reset `anon`.
+2. Reemplazar `SUPA_KEY` en `index.html` (y en `scripts/winlab-*.js` si se
+   siguen usando) → commit → el deploy es automático.
 
-```sql
--- Ejemplo para tabla patients
-DROP POLICY IF EXISTS "piso_libro_full_access_anon" ON public.patients;
-CREATE POLICY "patients_read_anon" ON public.patients
-  FOR SELECT TO anon USING (true);
-CREATE POLICY "patients_write_auth" ON public.patients
-  FOR ALL TO authenticated USING (true) WITH CHECK (true);
-```
+### WinLab
+1. Cambiar la contraseña en WinLab.
+2. GitHub → Secrets → actualizar `WINLAB_PASS`.
 
-### Opción B — Acceso solo desde dominio fijo
-Combinar RLS + restricción de Origin en Supabase Dashboard
-(Auth → URL Configuration → Site URL).
+### Cloudflare Worker
+1. Cloudflare → Workers → `piso-libro-ai` → Settings → Variables → rotar
+   `WORKER_TOKEN`; actualizar en la app (Config → Worker token).
 
-### Opción C — Mantener como está
-Aceptable si:
-- No se filtra la `SUPA_URL` en lugares públicos
-- Los datos no incluyen información identificable de pacientes
-  (en este caso, **sí los incluye**, así que conviene endurecer)
+## 5. Scripts de navegador (legado)
 
-## 3. Token del Cloudflare Worker
+`scripts/winlab-bookmarklet.js` y `scripts/winlab-tampermonkey.user.js`
+leían el censo de Supabase con la anon key. Desde que `anon` no tiene
+permisos, **ya no pueden cargar el censo** y están marcados como obsoletos.
+El robot de laboratorios (`rpa/`, 3 corridas al día) y el botón "Labs" de la
+app (clic derecho = disparar corrida) cubren ese flujo. Si se quisiera
+revivirlos, la app tendría que generar el bookmarklet con el censo embebido.
 
-**Ubicación:** Configurado en `Config` de la app (campo `Worker token`).
-Se envía como header `X-Piso-Token` en cada extracción de labs.
+## 6. Datos de pacientes
 
-**Estado:** ✅ Bien — es un secret separado, no está en el código.
-El token actual debe coincidir con `WORKER_TOKEN` en Cloudflare Dashboard.
-
-**Rotación:** Si sospechas de filtración:
-1. Cloudflare Dashboard → Workers → piso-labs-worker → Settings → Variables
-2. Rotar `WORKER_TOKEN`
-3. Actualizar en piso-libro → Config → Worker token
-
-## 4. `ANTHROPIC_API_KEY`
-
-✅ Configurada como secret en Cloudflare Dashboard. No expuesta en código.
+Los datos clínicos están en Supabase (región del proyecto) y en el
+`localStorage` de cada dispositivo que usa la app. Al dar de baja un
+dispositivo, cerrar sesión en la app borra la sesión; el `localStorage` se
+limpia desde Config → "Borrar datos locales" o borrando los datos del sitio en
+el navegador.
