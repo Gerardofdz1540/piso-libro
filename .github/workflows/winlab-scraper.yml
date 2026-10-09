@@ -20,6 +20,12 @@ on:
         default: false
         type: boolean
 
+# Permisos mínimos del GITHUB_TOKEN. "actions: write" lo necesitan el paso keepalive
+# (endpoint "enable workflow") y actions/cache + upload-artifact con permisos explícitos.
+permissions:
+  contents: read
+  actions: write
+
 concurrency:
   group: winlab-scraper
   cancel-in-progress: false
@@ -40,6 +46,17 @@ jobs:
           # scraper (rpa/) y la app estan en feature/winlab-auto-sync. Checkout de
           # feature -> una sola fuente de verdad, sin divergencia rpa entre ramas.
           ref: feature/winlab-auto-sync
+
+      # GitHub desactiva los workflows programados tras 60 días sin actividad en el repo
+      # (ocurrió el 2026-09-05: estado "disabled_inactivity", cero corridas hasta octubre
+      # y la app se quedó sin labs). Llamar al endpoint "enable" cuenta como actividad y
+      # reinicia ese contador, así que lo hacemos en cada corrida. Best-effort: si falla,
+      # el scraping continúa igual.
+      - name: Keepalive del cron (evita disabled_inactivity)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/winlab-scraper.yml/enable"
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
