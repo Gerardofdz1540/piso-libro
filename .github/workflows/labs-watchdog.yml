@@ -1,0 +1,62 @@
+name: Vigilante de laboratorios
+
+# Comprueba cada 6 h que el scraper de WinLab sigue guardando labs. Si el último
+# scrape (winlab_labs.scraped_at) tiene más de 26 h, el job termina en ROJO y GitHub
+# manda el correo de "workflow failed" al dueño del repo (no requiere Apps Script ni
+# llaves nuevas: usa el mismo secret SUPABASE_SERVICE_KEY del scraper).
+# Hora León (UTC-6): 00:37, 06:37, 12:37 y 18:37.
+on:
+  schedule:
+    - cron: "37 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write   # keepalive (endpoint "enable workflow")
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # GitHub desactiva los cron tras 60 días sin actividad; llamar a "enable" reinicia el contador.
+      - name: Keepalive del cron
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/labs-watchdog.yml/enable"
+          gh api -X PUT "repos/${{ github.repository }}/actions/workflows/winlab-scraper.yml/enable"
+
+      - name: Último scrape en Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MAX_HOURS: "26"
+        run: |
+          set -euo pipefail
+          resp=$(curl -sS --max-time 30 \
+            "$SUPABASE_URL/rest/v1/winlab_labs?select=scraped_at&order=scraped_at.desc&limit=1" \
+            -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY")
+          last=$(echo "$resp" | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r[0]["scraped_at"] if r else "")')
+          if [ -z "$last" ]; then
+            echo "::error title=Sin laboratorios::winlab_labs está vacía o no respondió: $resp"
+            exit 1
+          fi
+          age=$(python3 - "$last" <<'PY'
+          import sys, datetime
+          s = sys.argv[1].replace("Z", "+00:00")
+          if "." in s and "+" in s:
+              head, tail = s.split("+", 1); s = head.split(".")[0] + "+" + tail
+          t = datetime.datetime.fromisoformat(s)
+          print(round((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() / 3600, 1))
+          PY
+          )
+          echo "Último scrape: $last  (hace $age h)"
+          echo "### Vigilante de laboratorios" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Último scrape: \`$last\` (hace **$age h**)" >> "$GITHUB_STEP_SUMMARY"
+          if python3 -c "import sys; sys.exit(0 if float('$age') > float('$MAX_HOURS') else 1)"; then
+            echo "::error title=Laboratorios atrasados::No hay labs nuevos desde hace $age h (límite $MAX_HOURS h). Revisa https://github.com/${{ github.repository }}/actions/workflows/winlab-scraper.yml — si dice 'This scheduled workflow is disabled' pulsa Enable workflow y luego Run workflow."
+            exit 1
+          fi
+          echo "OK: labs al día."
