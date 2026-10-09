@@ -1,4 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
+   OBSOLETO (oct 2026): este bookmarklet lee el censo de Supabase con la anon
+   key y, desde que el rol anon no tiene permisos (ver scripts/SECURITY_NOTES.md),
+   la carga del censo responde 401 y el script no hace nada. El robot de
+   laboratorios (rpa/, 3 corridas al día) y el botón "Labs" de la app (clic
+   derecho = disparar corrida) cubren este flujo. Se conserva solo como
+   referencia del algoritmo de match.
+   ═══════════════════════════════════════════════════════════════════════
    Piso Libro — Bookmarklet WinLab (v8 — fuzzy match + header detection)
    ═══════════════════════════════════════════════════════════════════════
    SOLO marca reportes de pacientes de Cirugía General y subespecialidades:

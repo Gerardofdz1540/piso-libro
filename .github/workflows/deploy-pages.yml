@@ -42,6 +42,11 @@ jobs:
           cp icons/*.png  dist/icons/
           ls -la dist dist/icons
 
+      # OJO: `--branch` NO es la rama de git que se publica (siempre es `main`, ver `on:`), sino la
+      # etiqueta que Cloudflare usa para decidir si el deploy es de PRODUCCIÓN o de preview. En el
+      # proyecto `pisolibro` la "Production branch" configurada sigue siendo feature/winlab-auto-sync,
+      # por eso se publica con esa etiqueta. Cuando en Cloudflare → pisolibro → Settings → Builds se
+      # cambie la Production branch a `main`, cambiar aquí a `--branch=main` (ver MANUAL-OPERACION.md).
       - name: Publicar en Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

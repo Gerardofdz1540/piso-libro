@@ -147,8 +147,9 @@ cd rpa && npm test
 
 ### Primera vez
 1. Aplicar archivos (ver `INSTRUCCIONES_APLICAR.md`)
-2. Push a `feature/winlab-auto-sync`
-3. Crear PR, mergear a main cuando validemos
+2. Abrir un PR contra `main` (desde octubre de 2026 `main` es la única rama
+   de producción; `feature/winlab-auto-sync` quedó fusionada y retirada)
+3. Al fusionar, Cloudflare Pages publica la app sola
 4. Próximo cron 13:15 CST corre con el fix
 
 ### Uso diario (médico)
