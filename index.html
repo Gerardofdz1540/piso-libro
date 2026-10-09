@@ -8217,7 +8217,7 @@ function plExportBackup() {
           return x.patient && newItem.patient && pid(x.patient) === pid(newItem.patient);
         }
         // Egreso/archivo sin red: una operación por paciente (la última gana)
-        if (newItem.type === "delete_patient" || newItem.type === "archive") return x.key === newItem.key;
+        if (newItem.type === "delete_patient" || newItem.type === "archive" || newItem.type === "rest") return x.key === newItem.key;
         return false;
       });
       if (idx !== -1) q[idx] = newItem; else q.push(newItem);
@@ -8243,6 +8243,74 @@ function plExportBackup() {
       updateOutboxBadge();
       if (navigator.onLine) setSyncStatus("synced", "✅ Guardado");
       else setSyncStatus("offline", "Sin conexión");
+    }
+    // Quita del outbox la operación con esa clave (p. ej. un recordatorio creado sin red que se
+    // borra antes de que suba: la inserción pendiente ya no tiene sentido).
+    function outboxRemoveKey(key) {
+      const q = outboxLoad();
+      const left = q.filter(function (it) { return !(it && it.key === key); });
+      if (left.length !== q.length) { outboxSave(left); updateOutboxBadge(); }
+    }
+    // ¿Fallo reintentable (sin red, timeout, 5xx, 429) y no de datos/permisos?
+    function _isRetryableSupaError(e) {
+      const msg = e && e.message ? String(e.message) : String(e || "");
+      return !navigator.onLine || isLikelyNetworkError(e) || /HTTP 5\d\d/.test(msg) || /HTTP 429/.test(msg);
+    }
+    // Operación REST genérica para el outbox (No olvidar, procedimientos del día): POST/PATCH/DELETE
+    // que se reintenta al volver la red. `map` sustituye el id temporal local por el real tras el POST.
+    // Antes estas escrituras se perdían sin red: el POST fallaba, nadie reintentaba y la carga
+    // inicial desde la nube borraba el item local.
+    function _restEnqueue(op) {
+      outboxEnqueue({ type: "rest", key: op.key, method: op.method, table: op.table, match: op.match || null, body: op.body || null, map: op.map || null });
+      updateOutboxBadge();
+    }
+    async function _restApply(item) {
+      if (item.method === "POST") {
+        let body = item.body || {};
+        // Usar el estado MÁS RECIENTE del item local (pudieron marcarlo "hecho" o editarlo sin red).
+        if (item.map && item.map.kind === "no_olvidar") {
+          const it = lsGetNoOlvidar().find(function (i) { return i && i.id === item.map.tempId; });
+          if (!it) return; // se borró antes de subir → nada que insertar
+          body = { texto: it.texto, author: it.author, fecha: it.fecha, done: !!it.done };
+        } else if (item.map && item.map.kind === "proc") {
+          const pr = (procedimientos || []).find(function (p) { return p && p._tempId === item.map.tempId; });
+          if (!pr) return;
+          body = _procToRow(pr);
+        }
+        const data = await _sPost(item.table, body, { "Prefer": "return=representation" });
+        const ins = Array.isArray(data) ? data[0] : data;
+        const newId = ins && ins.id;
+        if (newId != null && item.map) {
+          if (item.map.kind === "no_olvidar") {
+            const items = lsGetNoOlvidar();
+            const it = items.find(function (i) { return i && i.id === item.map.tempId; });
+            if (it) { it.id = newId; delete it._tempId; lsSaveNoOlvidar(items); if (typeof currentView !== "undefined" && currentView === "noOlvidar") renderNoOlvidar(); }
+          } else if (item.map.kind === "proc") {
+            const pr = (procedimientos || []).find(function (p) { return p && p._tempId === item.map.tempId; });
+            if (pr) { pr._id = newId; delete pr._tempId; saveProcs(); }
+          }
+        }
+      } else if (item.method === "PATCH") {
+        await _sPatch(item.table, item.match, item.body || {});
+      } else if (item.method === "DELETE") {
+        await _sDelete(item.table, item.match);
+      }
+    }
+    // Re-encola lo creado sin red que aún no subió (recordatorios con id temporal, procedimientos
+    // sin id de la nube) y que no esté ya en la cola — cubre también lo creado con versiones anteriores.
+    function _enqueuePendingMisc() {
+      const q = outboxLoad();
+      const has = function (key) { return q.some(function (it) { return it && it.key === key; }); };
+      lsGetNoOlvidar().forEach(function (i) {
+        if (i && i._tempId && !has("no_olvidar|insert|" + i.id)) _restEnqueue({ key: "no_olvidar|insert|" + i.id, method: "POST", table: "no_olvidar", map: { kind: "no_olvidar", tempId: i.id } });
+      });
+      let changed = false;
+      (procedimientos || []).forEach(function (p) {
+        if (!p || p._id) return;
+        if (!p._tempId) { p._tempId = "t" + Date.now() + Math.random().toString(36).slice(2, 6); changed = true; }
+        if (!has("proc|insert|" + p._tempId)) _restEnqueue({ key: "proc|insert|" + p._tempId, method: "POST", table: "procedimientos_dia", map: { kind: "proc", tempId: p._tempId } });
+      });
+      if (changed) saveProcs();
     }
     function updateOutboxBadge() {
       const q = outboxLoad();
@@ -9947,6 +10015,7 @@ function plExportBackup() {
           buildEspFilters(); renderView();
           localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         }
+        _enqueuePendingMisc();
         await flushOutbox();
         const repair = await recoverPendingNoteSync((loaded && loaded.remoteNotePatientIds) || []);
         syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
@@ -10045,6 +10114,10 @@ function plExportBackup() {
               // papelera) con ese mismo id, no se borra.
               const back = item.supa_id ? patients.find(x => x._supa_id === item.supa_id) : null;
               if (!back) await withOutboxRetry(async function () { await _sDeletePatientRow(item); });
+              results[absIdx] = true;
+            } else if (item.type === "rest" && item.table && item.method) {
+              // No olvidar / procedimientos escritos sin red.
+              await withOutboxRetry(async function () { await _restApply(item); });
               results[absIdx] = true;
             } else if (item.type === "archive" && item.patient) {
               // Archivo (papelera en la nube) hecho sin red.
@@ -10690,16 +10763,23 @@ function plExportBackup() {
       if (navigator.onLine) {
         supaLoadNoOlvidar().then(function(items) {
           if (!items) return;
-          lsSaveNoOlvidar(items);
+          // Conservar lo creado sin red que aún no subió (id temporal): antes la carga reemplazaba
+          // la lista entera y esos recordatorios desaparecían al recargar.
+          const temp = lsGetNoOlvidar().filter(function (i) { return i && i._tempId; });
+          lsSaveNoOlvidar(temp.concat(items.filter(function (i) { return !temp.some(function (t) { return t.id === i.id; }); })));
           if (currentView === "noOlvidar") renderNoOlvidar();
         }).catch(function(e) { safeLog("[NO] carga en segundo plano falló:", e); });
         supaLoadProcedimientos().then(function(procs) {
           if (!procs) return;
-          procedimientos = procs;
+          // Conservar los procedimientos creados sin red que aún no tienen id de la nube.
+          procedimientos = procs.concat((procedimientos || []).filter(function (p) { return p && !p._id; }));
           saveProcs();
           renderView();
         }).catch(function(e) { safeLog("[PROC] carga en segundo plano falló:", e); });
       }
+
+      // Re-encolar recordatorios/procedimientos creados sin red (el interval de abajo los sube).
+      try { _enqueuePendingMisc(); } catch (e) { safeLog("_enqueuePendingMisc:", e); }
 
       // ── Sync periódico del outbox ────────────────────────────────────────────
       // El evento 'online' solo cubre reconexiones. Si Supabase cae y se recupera
@@ -15815,26 +15895,40 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         });
       } catch (e) { safeLog("[NO] supaLoadNoOlvidar:", e); return null; }
     }
+    // Sin red (o fallo de red/servidor) las escrituras van al outbox y se reintentan solas.
     async function supaInsertNoOlvidar(item) {
+      const op = { key: "no_olvidar|insert|" + item.id, method: "POST", table: "no_olvidar", map: { kind: "no_olvidar", tempId: item.id } };
+      if (!navigator.onLine) { _restEnqueue(op); return null; }
       try {
         const data = await _sPost("no_olvidar",
           { texto: item.texto, author: item.author, fecha: item.fecha, done: !!item.done },
           { "Prefer": "return=representation" });
         const ins = Array.isArray(data) ? data[0] : data;
         return ins ? ins.id : null;
-      } catch (e) { safeLog("[NO] supaInsertNoOlvidar:", e); return null; }
+      } catch (e) {
+        safeLog("[NO] supaInsertNoOlvidar:", e);
+        if (_isRetryableSupaError(e)) _restEnqueue(op);
+        return null;
+      }
     }
     async function supaToggleNoOlvidar(id, done) {
+      const op = { key: "no_olvidar|patch|" + id, method: "PATCH", table: "no_olvidar", match: "id=eq." + id, body: { done: done } };
+      if (!navigator.onLine) { _restEnqueue(op); return; }
       try { await _sPatch("no_olvidar", "id=eq." + id, { done }); }
-      catch (e) { safeLog("[NO] supaToggleNoOlvidar:", e); }
+      catch (e) { safeLog("[NO] supaToggleNoOlvidar:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
     async function supaRemoveNoOlvidar(id) {
+      const op = { key: "no_olvidar|delete|" + id, method: "DELETE", table: "no_olvidar", match: "id=eq." + id };
+      outboxRemoveKey("no_olvidar|patch|" + id); // un toggle pendiente ya no tiene sentido
+      if (!navigator.onLine) { _restEnqueue(op); return; }
       try { await _sDelete("no_olvidar", "id=eq." + id); }
-      catch (e) { safeLog("[NO] supaRemoveNoOlvidar:", e); }
+      catch (e) { safeLog("[NO] supaRemoveNoOlvidar:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
     async function supaRemoveDoneNoOlvidar() {
+      const op = { key: "no_olvidar|delete_done", method: "DELETE", table: "no_olvidar", match: "done=eq.true" };
+      if (!navigator.onLine) { _restEnqueue(op); return; }
       try { await _sDelete("no_olvidar", "done=eq.true"); }
-      catch (e) { safeLog("[NO] supaRemoveDoneNoOlvidar:", e); }
+      catch (e) { safeLog("[NO] supaRemoveDoneNoOlvidar:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
 
     // ── Realtime handler para no_olvidar ──────────────────────────────────────────
@@ -15904,6 +15998,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       syncNoOlvidarBroadcast(items);
       renderNoOlvidar();
       if (id > 0) supaRemoveNoOlvidar(id);
+      else outboxRemoveKey("no_olvidar|insert|" + id); // nunca llegó a la nube: cancelar la inserción pendiente
     }
     function clearDoneNoOlvidar() {
       const items = lsGetNoOlvidar().filter(function(i) { return !i.done; });
@@ -18364,24 +18459,38 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         });
       } catch (e) { safeLog("[PROC] supaLoadProcedimientos:", e); return null; }
     }
+    // Sin red (o fallo de red/servidor) las escrituras van al outbox y se reintentan solas.
     async function supaInsertProc(proc) {
+      const op = proc && proc._tempId ? { key: "proc|insert|" + proc._tempId, method: "POST", table: "procedimientos_dia", map: { kind: "proc", tempId: proc._tempId } } : null;
+      if (!navigator.onLine) { if (op) _restEnqueue(op); return null; }
       try {
         const data = await _sPost("procedimientos_dia", _procToRow(proc), { "Prefer": "return=representation" });
         const ins = Array.isArray(data) ? data[0] : data;
         return ins ? ins.id : null;
-      } catch (e) { safeLog("[PROC] supaInsertProc:", e); return null; }
+      } catch (e) {
+        safeLog("[PROC] supaInsertProc:", e);
+        if (op && _isRetryableSupaError(e)) _restEnqueue(op);
+        return null;
+      }
     }
     async function supaUpdateProc(id, proc) {
+      const op = { key: "proc|patch|" + id, method: "PATCH", table: "procedimientos_dia", match: "id=eq." + id, body: _procToRow(proc) };
+      if (!navigator.onLine) { _restEnqueue(op); return; }
       try { await _sPatch("procedimientos_dia", "id=eq." + id, _procToRow(proc)); }
-      catch (e) { safeLog("[PROC] supaUpdateProc:", e); }
+      catch (e) { safeLog("[PROC] supaUpdateProc:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
     async function supaDeleteProc(id) {
+      const op = { key: "proc|delete|" + id, method: "DELETE", table: "procedimientos_dia", match: "id=eq." + id };
+      outboxRemoveKey("proc|patch|" + id);
+      if (!navigator.onLine) { _restEnqueue(op); return; }
       try { await _sDelete("procedimientos_dia", "id=eq." + id); }
-      catch (e) { safeLog("[PROC] supaDeleteProc:", e); }
+      catch (e) { safeLog("[PROC] supaDeleteProc:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
     async function supaDeleteAllProcs() {
+      const op = { key: "proc|delete_day|" + todayStr(), method: "DELETE", table: "procedimientos_dia", match: "fecha_dia=eq." + todayStr() };
+      if (!navigator.onLine) { _restEnqueue(op); return; }
       try { await _sDelete("procedimientos_dia", "fecha_dia=eq." + todayStr()); }
-      catch (e) { safeLog("[PROC] supaDeleteAllProcs:", e); }
+      catch (e) { safeLog("[PROC] supaDeleteAllProcs:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
 
     // ── Realtime handler para procedimientos_dia ──────────────────────────────────
@@ -18467,13 +18576,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         procedimientos[_procEditIdx] = { ...procedimientos[_procEditIdx], ...proc };
         saveProcs();
         if (existingId) supaUpdateProc(existingId, proc);
+        // Sin _id (la inserción sigue pendiente en el outbox) el POST pendiente toma los datos
+        // actuales del proc local al ejecutarse, así que la edición no se pierde.
       } else {
+        proc._tempId = "t" + Date.now() + Math.random().toString(36).slice(2, 6); // clave local hasta tener id de la nube
         procedimientos.push(proc);
         saveProcs();
         // Persistir en DB; al obtener el uuid real, asignarlo al proc local
         const insertedProc = procedimientos[procedimientos.length - 1];
-        supaInsertProc(proc).then(function(dbId) {
-          if (dbId && insertedProc) { insertedProc._id = dbId; saveProcs(); }
+        supaInsertProc(insertedProc).then(function(dbId) {
+          if (dbId && insertedProc) { insertedProc._id = dbId; delete insertedProc._tempId; saveProcs(); }
         });
       }
       closeProcModal();
@@ -18486,6 +18598,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       saveProcs();
       renderView();
       if (pr && pr._id) supaDeleteProc(pr._id).catch(e => safeLog("deleteProc:", e));
+      else if (pr && pr._tempId) outboxRemoveKey("proc|insert|" + pr._tempId); // nunca subió: cancelar la inserción pendiente
     }
     function clearAllProcs() {
       if (!confirm(`¿Eliminar los ${procedimientos.length} procedimientos del día? Esta acción no se puede deshacer.`)) return;
