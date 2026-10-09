@@ -15,7 +15,7 @@ import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates,
-         selectTargetRows } from "./lib.js";
+         selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores } from "./lib.js";
 import { parsePdfToLabValues, findPdfFrameUrl } from "./pdf-extract.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
@@ -103,6 +103,12 @@ const WL_AGE_TOLERANCE_YEARS    = parseInt(ENV("WL_AGE_TOLERANCE_YEARS", "2"), 1
 // Fallback ciego ("primeros N" cuando ningún encabezado identifica al objetivo). APAGADO
 // por defecto: drillear a ciegas mete labs de homónimos en la tarjeta equivocada.
 const WL_BLIND_FALLBACK         = parseInt(ENV("WL_BLIND_FALLBACK", "0"), 10);
+// Flush incremental (oct 2026): upsert cada N pacientes (y al abortar/SIGTERM) en vez de un
+// único upsert al final — un timeout del job a los 85-90 min perdía la corrida COMPLETA.
+const WL_FLUSH_EVERY            = Math.max(1, parseInt(ENV("WL_FLUSH_EVERY", "5"), 10) || 5);
+// Cobertura mínima (fracción del censo con labs) para considerar la corrida exitosa; por
+// debajo el proceso termina con código ≠ 0 para que GitHub avise por correo.
+const WL_MIN_COVERAGE           = Number.isFinite(parseFloat(ENV("WL_MIN_COVERAGE", "0.5"))) ? parseFloat(ENV("WL_MIN_COVERAGE", "0.5")) : 0.5;
 const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "20000"), 10);
 // Pausa entre pacientes (ms) para no saturar WinLab con requests rapidos.
 // WinLab throttlea/resetea la conexion si recibe demasiadas busquedas seguidas.
@@ -291,7 +297,7 @@ async function captureSearchUrl(page) {
 // descarta y se prueba el siguiente candidato. NUNCA drill a ciegas en un retry. (El
 // fallback ciego de jun 2026 con apellido único saturó memoria y colapsó el navegador —
 // corrida 27665440228; esta escalera usa términos de 2+ palabras y drill solo-objetivo.)
-async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
+async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = {}) {
   const candidates = buildSearchCandidates(paciente.nombre);
   if (!candidates.length) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
@@ -314,6 +320,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
       codice: null, cognome: c.cognome, nome: c.nome,
       tag: `apellidos="${c.cognome}"${c.nome ? `,nome="${c.nome}"` : ""}`,
       requireTargetMatch: ci > 0,
+      parsedMap: opts.parsedMap || null,
     }, deadlineTs);
     if (!last.noResults) return last;
   }
@@ -634,6 +641,13 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // censo trae `edad` y el encabezado FECHA DE NAC., ambas deben ser compatibles.
   const sel = selectTargetRows(result.rows, paciente, { ageTolerance: WL_AGE_TOLERANCE_YEARS });
   const { targetIdxs, linkIdxs, ageRejected } = sel;
+  // Marcar las filas del objetivo: la fusión entre corridas (y la app) solo confían en __target.
+  for (const i of targetIdxs) result.rows[i].__target = true;
+  // Reutilizar `valores` ya parseados en corridas previas (mismo referto = mismas celdas) para
+  // no volver a drillearlos: el presupuesto por paciente se gasta solo en refertos nuevos y los
+  // valores viejos sobreviven al upsert aunque esta corrida no alcance a drillearlos.
+  const merged = mergeReportesPreservingValores(result.rows, params.parsedMap);
+  result.reusedValores = merged.reused;
   for (const r of ageRejected) {
     console.log(`       [age-guard] encabezado coincide por nombre pero edad WinLab ${r.headerAge} vs censo ${r.censusAge} (±${sel.tolerance}) → bloque descartado`);
   }
@@ -659,8 +673,9 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
     // El fallback legacy "primeros N" solo reaparece con WL_BLIND_FALLBACK=1.
     let drillIdxs;
     if (targetIdxs.length) {
-      drillIdxs = targetIdxs.slice(0, WL_DRILLDOWN_MAX);
-      console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; drilleando ${drillIdxs.length}`);
+      const pendientes = targetIdxs.filter((i) => !(Array.isArray(result.rows[i].valores) && result.rows[i].valores.length));
+      drillIdxs = pendientes.slice(0, WL_DRILLDOWN_MAX);
+      console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; ${result.reusedValores || 0} con valores de corridas previas; drilleando ${drillIdxs.length}`);
     } else if (WL_BLIND_FALLBACK === 1) {
       drillIdxs = linkIdxs.slice(0, WL_DRILLDOWN_MAX);
       console.log(`       [targeting] objetivo no identificado por encabezado → fallback LEGACY (WL_BLIND_FALLBACK=1): primeros ${drillIdxs.length}`);
@@ -1114,18 +1129,68 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
   return detail.valores || [];
 }
 
+// Filas de winlab_labs de hoy y ayer (zona León) para los exps del censo →
+// Map exp → Map(reportKey → valores). Solo cuentan refertos marcados __target.
+async function loadParsedByExp(supa, censo, fechaToday) {
+  const byExp = new Map();
+  try {
+    const exps = Array.from(new Set(censo.map((p) => String(p.exp || "").trim()).filter(Boolean)));
+    if (!exps.length) return byExp;
+    const ayer = new Date(new Date(fechaToday + "T12:00:00Z").getTime() - 86400000).toISOString().slice(0, 10);
+    const { data, error } = await supa.from(SUPABASE_TABLE).select("exp,fecha,data").in("exp", exps).gte("fecha", ayer);
+    if (error) throw new Error(error.message);
+    for (const row of data || []) {
+      const m = byExp.get(row.exp) || new Map();
+      for (const [k, v] of indexParsedReportes([row])) if (!m.has(k)) m.set(k, v);
+      byExp.set(row.exp, m);
+    }
+    const total = Array.from(byExp.values()).reduce((n, m) => n + m.size, 0);
+    console.log(`       Valores previos reutilizables: ${total} referto(s) en ${byExp.size} paciente(s) (fecha ≥ ${ayer})`);
+  } catch (e) {
+    console.log(`       (sin valores previos reutilizables: ${e.message})`);
+  }
+  return byExp;
+}
+
 // Procesa todo el censo en serie con aislamiento por paciente.
 // Cada paciente recibe su propia Page (creada del mismo BrowserContext
 // para preservar la sesion de WinLab) y se destruye en finally para
 // evitar fuga de memoria. Circuit breaker: 45s por paciente. Si el
 // browser entero colapsa, abortamos el bucle (el contexto/proceso de
 // Chrome esta muerto y no se va a recuperar).
-async function scrapeForCenso(page, searchUrl, censo) {
+async function scrapeForCenso(page, searchUrl, censo, supa) {
   console.log(`[4/5] Buscando labs paciente por paciente (${censo.length} pacientes)...`);
   const records = [];
   const fechaToday = todayISO();
   const scraped_at = new Date().toISOString();
   const ctx = page.context();
+  const parsedByExp = await loadParsedByExp(supa, censo, fechaToday);
+  // FLUSH INCREMENTAL (oct 2026): lo capturado se upsertea cada WL_FLUSH_EVERY pacientes, al
+  // abortar y al recibir SIGTERM. Antes había un único upsert al final y un timeout del job
+  // (85-90 min) perdía la corrida completa. El upsert es idempotente (onConflict exp,fecha).
+  const pendingExps = new Set();
+  let flushed = 0, flushing = null, aborted = false;
+  const flush = (why) => {
+    if (flushing) return flushing;
+    const keys = new Set(pendingExps); pendingExps.clear();
+    if (!keys.size) return Promise.resolve();
+    const batch = dedupRecords(records, SUPABASE_CONFLICT).filter((r) => keys.has(r.exp));
+    flushing = (async () => {
+      try { flushed += await upsert(supa, batch, why); }
+      catch (e) { console.error(`       [flush] fallo (${why}): ${e.message}`); for (const k of keys) pendingExps.add(k); }
+      finally { flushing = null; }
+    })();
+    return flushing;
+  };
+  const onSignal = (sig) => {
+    console.error(`       [${sig}] guardando lo capturado antes de salir...`);
+    aborted = true;
+    // Si ya hay un flush en vuelo, esperar a que termine y volcar también lo encolado después.
+    (flushing || Promise.resolve()).then(() => flush(sig)).finally(() => process.exit(1));
+  };
+  const onSigterm = () => onSignal("SIGTERM"), onSigint = () => onSignal("SIGINT");
+  process.once("SIGTERM", onSigterm);
+  process.once("SIGINT", onSigint);
   // Presupuesto estricto por paciente (search + TODO el drilling). SUBIDO 45s→90s
   // (15 jun 2026): con WL_DRILLDOWN_MAX alto (drillear BH+QS+hepática+coags) un paciente
   // con muchos refertos tardaba >45s y se ABANDONABA sin labs (caso 3-175 GARCIA NORIA:
@@ -1152,7 +1217,7 @@ async function scrapeForCenso(page, searchUrl, censo) {
       // (deadlineTs) le dice al drill que pare ANTES (budget - margen) y devuelva parcial,
       // así el timeout duro casi nunca debería dispararse y el paciente nunca queda en 0.
       const deadlineTs = Date.now() + Math.max(20000, PER_PATIENT_BUDGET_MS - DRILL_SOFT_MARGIN_MS);
-      const work = searchAndScrapeOne(subPage, searchUrl, p, deadlineTs);
+      const work = searchAndScrapeOne(subPage, searchUrl, p, deadlineTs, { parsedMap: parsedByExp.get(String(p.exp || "").trim()) || null });
       const timeout = new Promise((_, rej) =>
         setTimeout(() => rej(new Error(`timeout ${PER_PATIENT_BUDGET_MS}ms`)), PER_PATIENT_BUDGET_MS)
       );
@@ -1206,11 +1271,14 @@ async function scrapeForCenso(page, searchUrl, censo) {
             esp: p.esp || null,
             cama: p.cama || null,
             age_guard: res.ageGuard || null,
+            merge: { reused_valores: res.reusedValores || 0 },
             headers: res.headers,
             reportes: res.rows,
           },
           scraped_at,
         });
+        pendingExps.add(String(p.exp).slice(0, 64));
+        if (pendingExps.size >= WL_FLUSH_EVERY) await flush(`cada ${WL_FLUSH_EVERY} pacientes`);
       }
       consecutiveErrors = 0;
     } catch (err) {
@@ -1223,11 +1291,13 @@ async function scrapeForCenso(page, searchUrl, censo) {
       // y dejar que el outer retry del workflow re-lance todo.
       if (/browser has been closed|context.*has been closed|Target page.*has been closed|Browser.*disconnected/i.test(msg)) {
         console.error(`       [CRITICO] Navegador colapsado. Abortando bucle (${i + 1}/${censo.length}).`);
+        aborted = true;
         break;
       }
       // Tolerancia a errores transientes: 10 seguidos -> abort.
       if (consecutiveErrors >= 10) {
         console.error(`       [CRITICO] 10 fallos seguidos. Abortando bucle.`);
+        aborted = true;
         break;
       }
     } finally {
@@ -1241,53 +1311,85 @@ async function scrapeForCenso(page, searchUrl, censo) {
       }
     }
   }
-  console.log(`       OK busqueda. Pacientes con labs: ${records.length}/${censo.length}`);
-  return records;
+  // Flush final acotado: si Supabase no responde, cada intento re-encola; sin tope sería un
+  // bucle infinito. Lo que no se pudo guardar cuenta como corrida abortada (salida ≠ 0).
+  for (let attempt = 0; pendingExps.size && attempt < 3; attempt++) await flush("final");
+  if (pendingExps.size) {
+    console.error(`       [flush] ${pendingExps.size} paciente(s) NO guardados tras reintentos: ${Array.from(pendingExps).join(", ")}`);
+    aborted = true;
+  }
+  process.off("SIGTERM", onSigterm);
+  process.off("SIGINT", onSigint);
+  console.log(`       OK busqueda. Pacientes con labs: ${records.length}/${censo.length} · filas upserteadas: ${flushed}${aborted ? " · corrida ABORTADA" : ""}`);
+  return { records, flushed, aborted };
 }
 
 // ── 5. UPSERT MASIVO ───────────────────────────────────────────────────
-async function upsert(supa, records) {
+// Upsert por lotes de 10 con 3 reintentos (1 s, 3 s, 7 s). Devuelve filas enviadas.
+// Se llama varias veces por corrida (flush incremental); en DRY_RUN no toca la red.
+async function upsert(supa, records, why = "final") {
   const deduped = dedupRecords(records, SUPABASE_CONFLICT);
   if (deduped.length !== records.length) {
     console.log(`[5/5] Dedup: ${records.length} -> ${deduped.length} filas (claves duplicadas en censo: ${records.length - deduped.length})`);
   }
-
+  if (!deduped.length) return 0;
   if (DRY_RUN) {
-    console.log(`\n${"─".repeat(60)}`);
-    console.log(`[DRY-RUN] ✅  Simulación completa — NADA escrito en Supabase.`);
-    console.log(`[DRY-RUN] Filas que se enviarían: ${deduped.length}`);
-    console.log(`${"─".repeat(60)}`);
-    for (const r of deduped) {
-      const reportes = r.data?.reportes || [];
-      const conValores = reportes.filter(rep => rep.valores?.length);
-      const totalValores = reportes.reduce((n, rep) => n + (rep.valores?.length || 0), 0);
-      const estado = reportes.length > 0
-        ? `✓ ${reportes.length} reporte(s) | ${totalValores} valor(es) drill-down`
-        : `✗ 0 reportes`;
-      console.log(`[DRY-RUN]  exp=${String(r.exp).padEnd(12)} "${r.paciente || ""}"  →  ${estado}`);
-      for (const rep of conValores.slice(0, 3)) {
-        const muestra = rep.valores.slice(0, 4).map(v => `${v.estudio}=${v.valor}${v.unidad ? " " + v.unidad : ""}`).join("  |  ");
-        const extra = rep.valores.length > 4 ? ` (+${rep.valores.length - 4} más)` : "";
-        console.log(`[DRY-RUN]      └ ${muestra}${extra}`);
+    console.log(`[DRY-RUN] (${why}) ${deduped.length} fila(s) NO escritas en Supabase`);
+    return deduped.length;
+  }
+  console.log(`[5/5] Upsert (${why}) -> tabla="${SUPABASE_TABLE}" onConflict="${SUPABASE_CONFLICT}" (${deduped.length} filas)`);
+  const CHUNK = 10, DELAYS_MS = [1000, 3000, 7000];
+  for (let i = 0; i < deduped.length; i += CHUNK) {
+    const chunk = deduped.slice(i, i + CHUNK);
+    let lastErr = null;
+    for (let attempt = 0; attempt <= DELAYS_MS.length; attempt++) {
+      const { error } = await supa.from(SUPABASE_TABLE).upsert(chunk, { onConflict: SUPABASE_CONFLICT });
+      if (!error) { lastErr = null; break; }
+      lastErr = error;
+      if (attempt < DELAYS_MS.length) {
+        console.log(`       upsert lote ${Math.floor(i / CHUNK) + 1}: ${error.message} (code=${error.code}) → reintento en ${DELAYS_MS[attempt] / 1000}s`);
+        await new Promise((r) => setTimeout(r, DELAYS_MS[attempt]));
       }
     }
-    console.log(`${"─".repeat(60)}\n`);
-    return;
+    if (lastErr) throw new Error(`Supabase upsert fallo: ${lastErr.message} (code=${lastErr.code})`);
   }
+  console.log(`       OK upsert (${why}): ${deduped.length} fila(s)`);
+  return deduped.length;
+}
 
-  console.log(`[5/5] Upsert -> Supabase tabla="${SUPABASE_TABLE}" onConflict="${SUPABASE_CONFLICT}" (${deduped.length} filas)`);
-  if (!deduped.length) {
-    console.log("       0 filas para upsertear (ningun paciente con labs en el rango). Saliendo OK.");
-    return;
+// Resumen legible del DRY-RUN al final de la corrida.
+function dryRunReport(records) {
+  const deduped = dedupRecords(records, SUPABASE_CONFLICT);
+  console.log(`\n${"─".repeat(60)}`);
+  console.log(`[DRY-RUN] ✅  Simulación completa — NADA escrito en Supabase.`);
+  console.log(`[DRY-RUN] Filas que se enviarían: ${deduped.length}`);
+  console.log(`${"─".repeat(60)}`);
+  for (const r of deduped) {
+    const reportes = r.data?.reportes || [];
+    const conValores = reportes.filter(rep => rep.valores?.length);
+    const totalValores = reportes.reduce((n, rep) => n + (rep.valores?.length || 0), 0);
+    const estado = reportes.length > 0
+      ? `✓ ${reportes.length} reporte(s) | ${totalValores} valor(es) drill-down`
+      : `✗ 0 reportes`;
+    console.log(`[DRY-RUN]  exp=${String(r.exp).padEnd(12)} "${r.paciente || ""}"  →  ${estado}`);
+    for (const rep of conValores.slice(0, 3)) {
+      const muestra = rep.valores.slice(0, 4).map(v => `${v.estudio}=${v.valor}${v.unidad ? " " + v.unidad : ""}`).join("  |  ");
+      const extra = rep.valores.length > 4 ? ` (+${rep.valores.length - 4} más)` : "";
+      console.log(`[DRY-RUN]      └ ${muestra}${extra}`);
+    }
   }
-  const { error, count } = await supa
-    .from(SUPABASE_TABLE)
-    .upsert(deduped, { onConflict: SUPABASE_CONFLICT, count: "exact" });
+  console.log(`${"─".repeat(60)}\n`);
+}
 
-  if (error) {
-    throw new Error(`Supabase upsert fallo: ${error.message} (code=${error.code})`);
-  }
-  console.log(`       OK upsert. Filas afectadas: ${count ?? deduped.length}`);
+// Resumen en la pestaña Summary del run de GitHub Actions (si existe la variable).
+async function writeStepSummary(resumen, records, censo) {
+  const f = process.env.GITHUB_STEP_SUMMARY;
+  if (!f) return;
+  try {
+    const fs = await import("node:fs");
+    const sinLabs = censo.length - records.length;
+    fs.appendFileSync(f, `### WinLab Scraper\n\n${resumen}\n\n- Con labs: **${records.length}** · Sin labs / sin objetivo: **${sinLabs}** · Censo: ${censo.length}\n`);
+  } catch (_) { /* best-effort */ }
 }
 
 // ── MODO EXPLORADOR ────────────────────────────────────────────────────
@@ -1405,19 +1507,25 @@ async function explorePage(page) {
     await login(page);
     const censo = await loadCenso(supa);
     const searchUrl = await captureSearchUrl(page);
-    const records = await scrapeForCenso(page, searchUrl, censo);
+    const { records, flushed, aborted } = await scrapeForCenso(page, searchUrl, censo, supa);
 
     if (!records.length) {
-      // No es necesariamente un fallo: puede que ningun paciente tenga
-      // labs en el rango. Activamos explorador y salimos en exit(0) tras
-      // upsert vacio para no spammear el correo de "fail" todos los dias.
+      // 0 pacientes con labs: casi seguro un cambio de layout/sesión en WinLab. Dump de la
+      // pantalla para diagnóstico; la salida ≠ 0 de abajo (cobertura) hace que GitHub avise.
       console.log("[!] 0 pacientes con labs. Dump de la ultima pantalla para diagnostico...");
       await explorePage(page);
     }
+    if (DRY_RUN) dryRunReport(records);
 
-    await upsert(supa, records);
-    console.log(`DONE en ${((Date.now() - t0) / 1000).toFixed(1)}s. Pacientes con labs: ${records.length}/${censo.length}.`);
+    const coverage = censo.length ? records.length / censo.length : 0;
+    const resumen = `Pacientes con labs: ${records.length}/${censo.length} (${(coverage * 100).toFixed(0)} %) · filas upserteadas: ${flushed}${aborted ? " · corrida ABORTADA" : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`;
+    await writeStepSummary(resumen, records, censo);
+    console.log(`DONE. ${resumen}`);
     await browser.close();
+    if (aborted || coverage < WL_MIN_COVERAGE) {
+      console.error(`::error title=WinLab Scraper: cobertura insuficiente::${resumen} (mínimo ${(WL_MIN_COVERAGE * 100).toFixed(0)} %)`);
+      process.exit(1);
+    }
     process.exit(0);
   } catch (err) {
     console.error("[FATAL]", err.message);
