@@ -8913,8 +8913,10 @@ function plExportBackup() {
         let hasChecklistDirty = false;
         dirtyFieldNames.forEach(function(f) {
           if (FIELD_TO_COL[f]) partial[FIELD_TO_COL[f]] = fullRow[FIELD_TO_COL[f]];
-          // Cualquier campo ck_* o campos de metadatos requieren actualizar checklist completo
-          if (f.startsWith("ck_") || f === "entrega" || f === "body_diagram_ant" || f === "body_diagram_post") hasChecklistDirty = true;
+          // Cualquier campo ck_* o campos de metadatos requieren actualizar checklist completo.
+          // "checklist" a secas es lo que marcan los toggles (dieta/herida/recordatorios…): sin
+          // reconocerlo, el partial quedaba vacío y se mandaba la fila COMPLETA (pisaba texto ajeno).
+          if (f === "checklist" || f.startsWith("ck_") || f === "entrega" || f === "body_diagram_ant" || f === "body_diagram_post") hasChecklistDirty = true;
         });
         if (hasChecklistDirty) partial.checklist = fullRow.checklist;
         // Si el partial solo tiene patient_id y updated_by (nada útil), enviar full para
@@ -11877,6 +11879,8 @@ function plExportBackup() {
       noteData[k] = nd;
       saveNote(k, nd);
       _rerenderCard(k);
+      // El mismo recordatorio se lista en la vista "No olvidar": refrescarla si está abierta.
+      if (typeof currentView !== "undefined" && currentView === "noOlvidar" && typeof renderNoOlvidar === "function") renderNoOlvidar();
     }
 
     function deletePtReminder(k, idx) {
@@ -15912,14 +15916,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       renderNoOlvidar();
       supaRemoveDoneNoOlvidar();
     }
-    function togglePtReminder(k, idx) {
-      const nd = getNote(k);
-      if (!nd || !nd.checklist || !Array.isArray(nd.checklist._ptReminders)) return;
-      nd.checklist._ptReminders[idx].done = !nd.checklist._ptReminders[idx].done;
-      noteData[k] = nd;
-      saveNote(k, nd);
-      renderNoOlvidar();
-    }
+    // togglePtReminder vive junto a los recordatorios de la tarjeta (una sola definición): aquí había
+    // una copia que, al declararse después, anulaba a la original y guardaba la nota sin marcar el
+    // checklist como sucio (fila completa → pisaba texto ajeno) ni repintar la tarjeta.
 
     // Broadcast via Supabase Realtime — conservado como fallback para peers offline
     var _noOlvidarChannel = null;
@@ -20772,6 +20771,9 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       }
 
       if (inInput) return; // El resto de atajos no se disparan dentro de inputs
+      // Con Ctrl/Cmd/Alt son atajos del navegador (Ctrl+F buscar, Ctrl+P imprimir, Cmd+N ventana
+      // nueva…): antes se capturaban y Ctrl+F abría la búsqueda de la app en vez de la del navegador.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       // / — enfocar búsqueda
       if (e.key === "/" || e.key === "f" || e.key === "F") {
@@ -20915,6 +20917,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       if (side === 'ant') nd.body_diagram_ant = dataUrl;
       else nd.body_diagram_post = dataUrl;
       noteData[k] = nd;
+      // Marcar solo el diagrama como sucio: el push sube el checklist (donde viaja el dibujo) y no
+      // la nota completa (antes un trazo re-subía todo el texto local y pisaba cambios de colegas).
+      _dirtyFields[k] = _dirtyFields[k] || new Set();
+      _dirtyFields[k].add(side === 'ant' ? 'body_diagram_ant' : 'body_diagram_post');
       saveNote(k, nd);
     }
 
@@ -20927,6 +20933,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       if (side === 'ant') nd.body_diagram_ant = '';
       else nd.body_diagram_post = '';
       noteData[k] = nd;
+      _dirtyFields[k] = _dirtyFields[k] || new Set();
+      _dirtyFields[k].add(side === 'ant' ? 'body_diagram_ant' : 'body_diagram_post');
       saveNote(k, nd);
     }
 
