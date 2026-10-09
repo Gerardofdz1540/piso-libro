@@ -14,7 +14,8 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-         isMeaningfulReportRow, extractApellidos } from "./lib.js";
+         isMeaningfulReportRow, extractApellidos, buildSearchCandidates,
+         selectTargetRows } from "./lib.js";
 import { parsePdfToLabValues, findPdfFrameUrl } from "./pdf-extract.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
@@ -51,7 +52,7 @@ const SUPABASE_SERVICE_KEY    = ENV("SUPABASE_SERVICE_KEY");
 const SUPABASE_TABLE          = ENV("SUPABASE_TABLE", "winlab_labs");
 const SUPABASE_CONFLICT       = ENV("SUPABASE_ON_CONFLICT", "exp,fecha");
 const SUPABASE_CENSO_TABLE    = ENV("SUPABASE_CENSO_TABLE", "patients");
-const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp");
+const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp,edad");
 
 // Dry-run: recorre todo el flujo de WinLab (login → búsqueda → drill-down)
 // pero NO escribe en Supabase. Actívalo con DRY_RUN=1 o el argumento --dry-run.
@@ -71,16 +72,37 @@ const WL_SEARCH_CLEAR_SEL       = ENV("WL_SEARCH_CLEAR_SEL", "#Intestazione_DBTo
 // el scraper hace clic en ella antes de llenar el formulario de fechas+apellido.
 // Ejemplo: "#TabTemporalidad a, .tab-temporalidad, li[data-tab='fecha'] a"
 const WL_TEMPORALIDAD_TAB_SEL   = ENV("WL_TEMPORALIDAD_TAB_SEL", "");
-const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "2"), 10);  // HOY + AYER
+const WL_LOOKBACK_DAYS          = parseInt(ENV("WL_LOOKBACK_DAYS", "30"), 10);  // ventana amplia (fallback si el profilo falla)
 const WL_DATE_FORMAT            = ENV("WL_DATE_FORMAT", "dd/MM/yyyy");
 // Dropdown "Profilo Consultazione" — WinLab requiere seleccionarlo para que
 // los filtros de fecha apliquen. Valores: "AYER Y HOY" | "HOY" | "SEMANA" | "MES".
 // Si está vacío, se omite (compatible con instalaciones de WinLab que no lo tengan).
 const WL_PROFILO_SEL            = ENV("WL_PROFILO_SEL", "#pnlMain_cboProfiloConsultazioneRichiesteRicerca");
-const WL_PROFILO_VALUE          = ENV("WL_PROFILO_VALUE", "AYER Y HOY");
+// 24 jun 2026 — Gera: "todos deben tener AL MENOS los últimos labs registrados, aunque no
+// sean los más recientes". "AYER Y HOY" (2 días) dejaba SIN labs a quien no tuvo estudios en
+// las últimas 48h (26/39 con NINGUN REGISTRO). "MES" amplía la ventana a ~30 días → captura el
+// último set de cada paciente. El drill sigue topado a WL_DRILLDOWN_MAX (más recientes primero),
+// así que el costo por paciente NO crece por la ventana. Si "MES" no es opción válida del
+// dropdown, hay fallback a rango manual amplio (ver doSingleSearchInner).
+const WL_PROFILO_VALUE          = ENV("WL_PROFILO_VALUE", "MES");
 const WL_PER_PATIENT_TIMEOUT    = parseInt(ENV("WL_PER_PATIENT_TIMEOUT", "30000"), 10);
 const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);          // 0 = solo lista, 1 = clickear cada reporte
-const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "4"), 10);      // max reportes/paciente (3 días + tolerancia)
+// max reportes drilleados por paciente. SUBIDO 2→12 (14 jun 2026): WinLab guarda
+// CADA panel (BIOMETRIA, QUIMICA SANGUINEA, PRUEBAS DE FUNCION HEPATICA, coags,
+// gases...) como un REFERTO SEPARADO. Con tope 2 solo se drilleaban los 2 refertos
+// de BH más recientes → la QS y la hepática NUNCA se capturaban (el usuario las hacía
+// a mano). El targeting ya limita los drills a los reportes DEL OBJETIVO en el rango
+// AYER+HOY, así que 12 cubre BH+QS+hepática(+coags/gases) de 2 días sin drillear
+// homónimos. Costo: más drills = scraper más lento (completitud > velocidad, por
+// pedido explícito). Tuneable por env WL_DRILLDOWN_MAX si hace falta más/menos.
+const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "12"), 10);     // max reportes/paciente
+// Guarda de edad (oct 2026): un bloque cuyo encabezado coincide por nombre pero cuya
+// |edad WinLab − edad censo| supera la tolerancia NO es el objetivo (homónimo de nombre
+// completo). Corrida #386: 8 bloques en 7 camas con labs de otra persona. Ver lib.js.
+const WL_AGE_TOLERANCE_YEARS    = parseInt(ENV("WL_AGE_TOLERANCE_YEARS", "2"), 10);
+// Fallback ciego ("primeros N" cuando ningún encabezado identifica al objetivo). APAGADO
+// por defecto: drillear a ciegas mete labs de homónimos en la tarjeta equivocada.
+const WL_BLIND_FALLBACK         = parseInt(ENV("WL_BLIND_FALLBACK", "0"), 10);
 const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "20000"), 10);
 // Pausa entre pacientes (ms) para no saturar WinLab con requests rapidos.
 // WinLab throttlea/resetea la conexion si recibe demasiadas busquedas seguidas.
@@ -88,6 +110,8 @@ const WL_INTER_PATIENT_DELAY_MS = parseInt(ENV("WL_INTER_PATIENT_DELAY_MS", "500
 
 // Flag para mostrar diagnóstico __cells solo una vez por ejecución.
 let _firstCellsDumped = false;
+// Flag para volcar las opciones del dropdown de perfil temporal solo una vez.
+let _profiloOptsDumped = false;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 // Wrapper local para fechas con el formato configurado por env.
@@ -256,32 +280,55 @@ async function captureSearchUrl(page) {
 }
 
 // ── 4. BUSQUEDA + SCRAPE POR PACIENTE ─────────────────────────────────
-// Un solo intento por paciente: primer + segundo apellido concatenados en
-// txtCognome (ej. "MARTINEZ ROLDAN"). Sin fallbacks — los pacientes no están
-// registrados por expediente en WinLab, y buscar por un solo apellido genera
-// timeouts por exceso de homónimos. Si no hay resultados → sin labs en el rango.
-async function searchAndScrapeOne(page, searchUrl, paciente) {
-  const apellidos = extractApellidos(paciente.nombre);
-  const cognome   = apellidos[0] || "";   // ej. "MARTINEZ ROLDAN"
-  if (!cognome) {
+// Escalera de candidatos (jul 2026): la búsqueda primaria (apellidos = últimas 2 palabras,
+// Ñ preservada) + retries SOLO cuando la anterior dio NINGUN REGISTRO (respuesta rápida,
+// sin drill). Cubre los 4 modos de fallo reales: Ñ tecleada como N en WinLab, apellido
+// extranjero de 3 palabras (ZAKHIA EL DOVAIHY), nombre invertido en la hoja (MARQUEZ
+// VALLEJO JUAN JOSE) y 2-palabras invertido. Ver buildSearchCandidates en lib.js.
+//
+// SEGURIDAD ANTI-HOMÓNIMO: los retries (candidato >0) exigen identificación POSITIVA del
+// objetivo por fila-encabezado (requireTargetMatch) — si la lista trae solo homónimos, se
+// descarta y se prueba el siguiente candidato. NUNCA drill a ciegas en un retry. (El
+// fallback ciego de jun 2026 con apellido único saturó memoria y colapsó el navegador —
+// corrida 27665440228; esta escalera usa términos de 2+ palabras y drill solo-objetivo.)
+async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs) {
+  const candidates = buildSearchCandidates(paciente.nombre);
+  if (!candidates.length) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
   }
-  console.log(`       [busqueda] Apellidos → txtCognome: "${cognome}"`);
-  return await doSingleSearch(page, searchUrl, paciente, {
-    codice: null, cognome, tag: `apellidos="${cognome}"`,
-  });
+  const MAX_TRIES = Math.min(candidates.length, 5);
+  let last = null;
+  for (let ci = 0; ci < MAX_TRIES; ci++) {
+    const c = candidates[ci];
+    if (ci > 0) {
+      // Presupuesto: cada retry cuesta ~12-15s (goto + postback). Dejar >=25s para drill.
+      if (deadlineTs && Date.now() > deadlineTs - 25000) {
+        console.log(`       [retry] sin presupuesto para candidato ${ci + 1}/${MAX_TRIES} ("${c.cognome}") — devolviendo lo que hay`);
+        break;
+      }
+      console.log(`       [retry ${ci}/${MAX_TRIES - 1}] ${c.tag}`);
+    }
+    console.log(`       [busqueda] Apellidos → txtCognome: "${c.cognome}"${c.nome ? ` + txtNome: "${c.nome}"` : ""}`);
+    last = await doSingleSearch(page, searchUrl, paciente, {
+      codice: null, cognome: c.cognome, nome: c.nome,
+      tag: `apellidos="${c.cognome}"${c.nome ? `,nome="${c.nome}"` : ""}`,
+      requireTargetMatch: ci > 0,
+    }, deadlineTs);
+    if (!last.noResults) return last;
+  }
+  return last || { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
 }
 
 // Una sola tentativa de busqueda con parametros explicitos.
 // Wrap con retry interno para "Execution context was destroyed" — error
 // transitorio cuando la pagina navega justo durante un page.evaluate
 // (frecuente en cascada de busquedas seguidas).
-async function doSingleSearch(page, searchUrl, paciente, params) {
+async function doSingleSearch(page, searchUrl, paciente, params, deadlineTs) {
   let lastErr = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await doSingleSearchInner(page, searchUrl, paciente, params);
+      return await doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs);
     } catch (e) {
       lastErr = e;
       const msg = e?.message || "";
@@ -297,7 +344,7 @@ async function doSingleSearch(page, searchUrl, paciente, params) {
   throw lastErr;
 }
 
-async function doSingleSearchInner(page, searchUrl, paciente, params) {
+async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs) {
   // Volver a la pantalla de busqueda fresca (limpia el form previo).
   await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
   // Esperar a que TODA la red descanse para evitar "context destroyed"
@@ -331,21 +378,34 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
   // teclear apellidos) y evita que el postback AJAX del dropdown borre el campo
   // de apellido si se llenara antes.
   const usandoProfilo = !!(WL_PROFILO_SEL && WL_PROFILO_VALUE);
+  let profiloOk = false;
   if (usandoProfilo) {
     const profiloEl = page.locator(WL_PROFILO_SEL);
     if (await profiloEl.count()) {
+      // Diagnóstico (una sola vez): qué opciones ofrece el dropdown de perfil temporal.
+      // Sirve para descubrir el label/value exacto de la ventana amplia ("MES"/"SEMANA"/...).
+      if (!_profiloOptsDumped) {
+        _profiloOptsDumped = true;
+        try {
+          const opts = await profiloEl.first().evaluate((el) =>
+            Array.from(el.options).map((o) => ({ value: o.value, label: (o.label || o.text || "").trim() })));
+          console.log(`       [profilo] opciones del dropdown: ${JSON.stringify(opts)}`);
+        } catch (_) {}
+      }
       try {
         await profiloEl.first().selectOption({ label: WL_PROFILO_VALUE });
         console.log(`       profilo: seleccionado "${WL_PROFILO_VALUE}"`);
         await waitForAspNetReady(page, 5000);
+        profiloOk = true;
       } catch (e) {
         // Fallback: intentar por valor en vez de label
         try {
           await profiloEl.first().selectOption({ value: WL_PROFILO_VALUE });
           console.log(`       profilo: seleccionado por value "${WL_PROFILO_VALUE}"`);
           await waitForAspNetReady(page, 5000);
+          profiloOk = true;
         } catch (e2) {
-          console.log(`       profilo: NO se pudo seleccionar "${WL_PROFILO_VALUE}" (${e2?.message?.slice(0, 100) || e2})`);
+          console.log(`       profilo: NO se pudo seleccionar "${WL_PROFILO_VALUE}" (${e2?.message?.slice(0, 100) || e2}) → fallback a rango de fechas manual`);
         }
       }
     }
@@ -360,13 +420,19 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
       await setField(page, WL_SEARCH_COGNOME_SEL, String(params.cognome), `[${params.tag}]`);
     }
   }
+  // Nombre de pila en txtNome (solo para nombres de 2 palabras → desambigua sin homónimos).
+  if (params.nome) {
+    if (await page.locator(WL_SEARCH_NOME_SEL).count()) {
+      await setField(page, WL_SEARCH_NOME_SEL, String(params.nome), `[nome=${params.nome}]`);
+    }
+  }
 
   // PASO 3: rango de fechas manual SOLO si NO hay perfil temporal configurado.
   // CRÍTICO: el perfil "AYER Y HOY" ya define el rango server-side. Rellenar
   // además los campos de fecha (como hacía antes) entra en conflicto con el
   // perfil y deja el rango vacío → WinLab devuelve "NINGUN REGISTRO" para todos.
   // El flujo manual del médico que sí funciona es: perfil + apellidos, sin fechas.
-  if (!usandoProfilo && WL_LOOKBACK_DAYS >= 0) {
+  if ((!usandoProfilo || !profiloOk) && WL_LOOKBACK_DAYS >= 0) {
     const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
     const fechaA  = formatDate(new Date());
     if (await page.locator(WL_SEARCH_FECHA_DE_SEL).count()) {
@@ -561,21 +627,73 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
     }
   }
 
+  // ── TARGETING (jun 2026): WinLab busca por apellido y devuelve VARIOS homónimos.
+  // Identificamos las filas del paciente OBJETIVO agrupando por fila-encabezado
+  // FEMENINO/MASCULINO y matcheando el nombre (orden-independiente, difuso).
+  // GUARDA DE EDAD (oct 2026): el nombre no distingue homónimos de nombre COMPLETO; si el
+  // censo trae `edad` y el encabezado FECHA DE NAC., ambas deben ser compatibles.
+  const sel = selectTargetRows(result.rows, paciente, { ageTolerance: WL_AGE_TOLERANCE_YEARS });
+  const { targetIdxs, linkIdxs, ageRejected } = sel;
+  for (const r of ageRejected) {
+    console.log(`       [age-guard] encabezado coincide por nombre pero edad WinLab ${r.headerAge} vs censo ${r.censusAge} (±${sel.tolerance}) → bloque descartado`);
+  }
+  result.ageGuard = { census_age: sel.censusAge, tolerance: sel.tolerance, blocks_rejected: ageRejected.length };
+
+  // RETRY-GUARD (jul 2026): en un candidato de retry (búsqueda "ancha": invertido, Ñ→N,
+  // apellido 3 palabras) el objetivo DEBE identificarse positivamente por encabezado.
+  // Si la lista trae solo homónimos, descartamos TODO (rows=[]) y el caller prueba el
+  // siguiente candidato. Nunca drill a ciegas ni blob con puros ajenos. Precisión > recall.
+  if (params.requireTargetMatch && !targetIdxs.length) {
+    console.log(`       [retry-guard] resultados sin match del objetivo (${result.rows.length} filas de homónimos${ageRejected.length ? `, ${ageRejected.length} bloque(s) descartados por edad` : ""}) → descartados`);
+    return { ...result, rows: [], noResults: true, noTarget: true };
+  }
+
   // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──
   if (WL_DRILLDOWN === 1 && result.rows.length > 0 && result.bestTableIdx >= 0) {
-    const max = Math.min(result.rows.length, WL_DRILLDOWN_MAX);
+    // Drilleamos SOLO los reportes del objetivo, no los primeros N a ciegas — eso
+    // causaba que el 4º de 5 "GONZALEZ GONZALEZ" nunca se capturara y el blob quedara
+    // con labs de otro paciente. Sin objetivo identificado NO se drillea (oct 2026): cada
+    // enlace es de otra persona (homónimo de apellidos, o de nombre completo con edad
+    // incompatible). Las filas se descartan para no guardar homónimos bajo este exp y se
+    // devuelve noResults para que el caller pruebe el siguiente candidato de búsqueda.
+    // El fallback legacy "primeros N" solo reaparece con WL_BLIND_FALLBACK=1.
+    let drillIdxs;
+    if (targetIdxs.length) {
+      drillIdxs = targetIdxs.slice(0, WL_DRILLDOWN_MAX);
+      console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; drilleando ${drillIdxs.length}`);
+    } else if (WL_BLIND_FALLBACK === 1) {
+      drillIdxs = linkIdxs.slice(0, WL_DRILLDOWN_MAX);
+      console.log(`       [targeting] objetivo no identificado por encabezado → fallback LEGACY (WL_BLIND_FALLBACK=1): primeros ${drillIdxs.length}`);
+    } else {
+      const why = ageRejected.length
+        ? `${ageRejected.length} bloque(s) con nombre coincidente descartados por edad`
+        : "ningún encabezado coincide con el nombre";
+      console.log(`       [targeting] objetivo no identificado (${why}; ${linkIdxs.length} enlaces de homónimos) → sin drill, filas descartadas`);
+      return { ...result, rows: [], noResults: true, noTarget: true };
+    }
     // dumpFirst = true solo en la PRIMERA llamada real a drillDownReport.
-    // No usar i===0 porque la fila 0 puede no tener link y saltarse con continue.
     let firstDrilldownDone = false;
-    for (let i = 0; i < max; i++) {
+    let drilledOk = 0;
+    for (const i of drillIdxs) {
+      // SOFT-DEADLINE (jun 2026): si nos acercamos al presupuesto por-paciente,
+      // PARAR de drillear y devolver lo que YA se capturó, en vez de dejar que el
+      // Promise.race externo (timeout duro 90s) RECHACE todo y el paciente se quede
+      // con CERO labs. Los refertos vienen más-reciente-primero, así que lo drilleado
+      // es lo de HOY/AYER (BH+QS+hepática), que es lo clínicamente importante. La
+      // historia profunda se acumula igual en corridas diarias. (Casos reales:
+      // GARCIA NORIA / CARRANCO / RANGEL — UCI/críticos, timeout 90s = 0 reportes.)
+      if (deadlineTs && Date.now() > deadlineTs) {
+        console.log(`       [soft-deadline] presupuesto agotado: drilleados ${drilledOk}/${drillIdxs.length}, devolviendo parcial`);
+        break;
+      }
       const row = result.rows[i];
-      if (!row.__hasLink) continue;
       const dumpFirst = !firstDrilldownDone;
       firstDrilldownDone = true;
       try {
-        const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, dumpFirst);
+        const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, dumpFirst, params);
         if (valores && valores.length) {
           row.valores = valores;
+          drilledOk++;
         }
       } catch (e) {
         console.log(`       drill-down [${i}]: ${e.message.split("\n")[0]}`);
@@ -596,7 +714,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params) {
 
 // ── DRILL-DOWN: para cada reporte, click → popup → frame PDF → descargar → parsear ──
 
-async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst) {
+async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst, searchParams) {
   const link = page.locator("table").nth(tableIdx)
     .locator("tr").nth(rowIdxInTable)
     .locator('a, input[type="image"], input[type="button"], input[type="submit"]').first();
@@ -967,11 +1085,16 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
         await waitForAspNetReady(page, 5000);
       }
     }
-    // Re-buscar por apellidos (igual que la busqueda principal; el expediente no
-    // esta registrado en WinLab).
-    const reCognome = extractApellidos(paciente.nombre)[0] || "";
+    // Re-buscar con el MISMO candidato que produjo la lista (jul 2026): en un retry
+    // (nombre invertido / Ñ→N / apellido 3 palabras) extractApellidos ya NO es el término
+    // correcto y el re-search devolvería NINGUN REGISTRO → drills restantes rotos.
+    const reCognome = (searchParams && searchParams.cognome) || extractApellidos(paciente.nombre)[0] || "";
+    const reNome = (searchParams && searchParams.nome) || null;
     if (reCognome && await page.locator(WL_SEARCH_COGNOME_SEL).count()) {
       await setField(page, WL_SEARCH_COGNOME_SEL, reCognome, `re-apellidos="${reCognome}"`);
+    }
+    if (reNome && await page.locator(WL_SEARCH_NOME_SEL).count()) {
+      await setField(page, WL_SEARCH_NOME_SEL, reNome, `re-nome="${reNome}"`);
     }
     if (!reUsandoProfilo && WL_LOOKBACK_DAYS >= 0) {
       const fechaDe = formatDate(daysAgo(WL_LOOKBACK_DAYS));
@@ -1003,7 +1126,15 @@ async function scrapeForCenso(page, searchUrl, censo) {
   const fechaToday = todayISO();
   const scraped_at = new Date().toISOString();
   const ctx = page.context();
-  const PER_PATIENT_BUDGET_MS = 45000;
+  // Presupuesto estricto por paciente (search + TODO el drilling). SUBIDO 45s→90s
+  // (15 jun 2026): con WL_DRILLDOWN_MAX alto (drillear BH+QS+hepática+coags) un paciente
+  // con muchos refertos tardaba >45s y se ABANDONABA sin labs (caso 3-175 GARCIA NORIA:
+  // "ERROR timeout 45000ms"). 90s da margen para ~12 drills + búsqueda. Tuneable por env.
+  const PER_PATIENT_BUDGET_MS = parseInt(ENV("WL_PER_PATIENT_BUDGET_MS", "90000"), 10);
+  // Margen SOFT antes del timeout DURO: el drill se detiene a (budget - margen) para
+  // alcanzar a devolver lo capturado y que records.push corra ANTES de que el
+  // Promise.race rechace y se pierda todo. Debe cubrir 1 drill en vuelo (~10s) + return.
+  const DRILL_SOFT_MARGIN_MS = parseInt(ENV("WL_DRILL_SOFT_MARGIN_MS", "15000"), 10);
   let consecutiveErrors = 0;
   let firstDiagDumped = false;
 
@@ -1017,15 +1148,19 @@ async function scrapeForCenso(page, searchUrl, censo) {
       subPage.setDefaultNavigationTimeout(PER_PATIENT_BUDGET_MS);
       subPage.setDefaultTimeout(SEL_TIMEOUT_MS);
 
-      // Circuit breaker: 45s estrictos por paciente via Promise.race.
-      const work = searchAndScrapeOne(subPage, searchUrl, p);
+      // Circuit breaker: timeout DURO por paciente via Promise.race. El soft-deadline
+      // (deadlineTs) le dice al drill que pare ANTES (budget - margen) y devuelva parcial,
+      // así el timeout duro casi nunca debería dispararse y el paciente nunca queda en 0.
+      const deadlineTs = Date.now() + Math.max(20000, PER_PATIENT_BUDGET_MS - DRILL_SOFT_MARGIN_MS);
+      const work = searchAndScrapeOne(subPage, searchUrl, p, deadlineTs);
       const timeout = new Promise((_, rej) =>
         setTimeout(() => rej(new Error(`timeout ${PER_PATIENT_BUDGET_MS}ms`)), PER_PATIENT_BUDGET_MS)
       );
       const res = await Promise.race([work, timeout]);
 
       const matched = res.rows.length;
-      const tag2 = res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
+      const tag2 = res.noTarget ? `${matched} reportes [SIN OBJETIVO: solo homónimos / edad incompatible]`
+        : res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
       console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
 
       // Diagnóstico: tabla encontrada pero 0 filas de datos.
@@ -1070,6 +1205,7 @@ async function scrapeForCenso(page, searchUrl, censo) {
           data: {
             esp: p.esp || null,
             cama: p.cama || null,
+            age_guard: res.ageGuard || null,
             headers: res.headers,
             reportes: res.rows,
           },

@@ -150,5 +150,72 @@ DIMERO D >5000 ng/mL 0-500`;
   assert(!PDF_LAB_LINE_RE.test("12345 100 mg"), "regex no match línea que empieza con dígito");
 }
 
+// ── 11. Formato MULTI-LÍNEA química sanguínea / función hepática (HGL) ───────
+// Caso real (PDF 3-155): nombre del estudio, línea METODOLOGIA, luego valor con
+// prefijo *A/*B. El parser line-by-line viejo dropeaba TODOS estos valores.
+{
+  const txt = [
+    "EXAMENES RESULTADOS UNIDADES VALORES DE REFERENCIA",
+    "GLUCOSA",
+    "METODOLOGIA: QUIMICA SECA",
+    "*B\t53.0 mg/dL 74.0 - 106.0",
+    "UREA",
+    "METODOLOGIA: QUIMICA SECA",
+    "23.0 mg/dL 15.0 - 36.0",
+    "ALANINO AMINO TRANSFERASA",
+    "METODOLOGIA: QUIMICA SECA",
+    "27.0 U/L 4.0 - 35.0",
+    "FOSFATASA ALCALINA",
+    "METODOLOGIA: QUIMICA SECA",
+    "*A\t219.0 U/L 38.0 - 126.0",
+    "RELACION A/G",
+    "METODOLOGIA: ESPECTROFOTOMETRIA AUTOMATIZADA",
+    "*B\t0.74 1.10 - 1.80",
+    "Validado por : Reyes García",
+    "Página No: 1 de 2",
+  ].join("\n");
+  const v = extractLabValuesFromText(txt);
+  const byName = (n) => v.find(x => x.estudio === n);
+  assert(byName("GLUCOSA") && byName("GLUCOSA").valor === "53.0", "multi-línea: GLUCOSA=53.0 (con prefijo *B)");
+  assert(byName("GLUCOSA").unidad === "mg/dL", "multi-línea: GLUCOSA unidad=mg/dL");
+  assert(byName("UREA") && byName("UREA").valor === "23.0", "multi-línea: UREA=23.0 (sin prefijo)");
+  assert(byName("ALANINO AMINO TRANSFERASA") && byName("ALANINO AMINO TRANSFERASA").valor === "27.0", "multi-línea: ALT=27.0");
+  assert(byName("FOSFATASA ALCALINA") && byName("FOSFATASA ALCALINA").valor === "219.0", "multi-línea: FA=219.0 (prefijo *A)");
+  const rag = byName("RELACION A/G");
+  assert(rag && rag.valor === "0.74" && rag.unidad === "", "multi-línea: RELACION A/G=0.74 sin unidad (rango no se confunde con unidad)");
+  assert(!v.some(x => /METODOLOG/i.test(x.estudio)), "multi-línea: METODOLOGIA nunca se emite como estudio");
+  assert(!v.some(x => /VALIDADO|P[áa]gina/i.test(x.estudio)), "multi-línea: firmas/paginación filtradas");
+}
+
+// ── 12. BIOMETRIA HEMATICA: línea ÚNICA con flag *A/*B entre nombre y valor ──
+// Caso real (PDF 3-155 pág 2): "HEMOGLOBINA *B\t10.10 g/dL 12.00 - 16.00". El flag
+// rompía el regex de una línea → hb/hct/leucos/plaq (fuera de rango) se dropeaban;
+// solo pasaban los analitos EN rango (el diferencial). Bug "no se reporta hemoglobina".
+{
+  const txt = [
+    "BIOMETRIA HEMATICA COMPLETA",
+    "METODOLOGIA: SULFOMETAHEMOGLOBINA, IMPEDANCIA, CITOMETRIA DE FLUJO",
+    "FLUORESCENTE",
+    "LEUCOCITOS *A\t20.97 10³/μL 4.00 - 10.00",
+    "ERITROCITOS *B\t3.81 10^6/μL 4.40 - 5.20",
+    "HEMOGLOBINA *B\t10.10 g/dL 12.00 - 16.00",
+    "HEMATOCRITO *B\t32.80 % 36.00 - 48.00",
+    "VOL. CORPUSCULAR MEDIO 86.10 fL 80.00 - 95.00",
+    "PLAQUETAS *A\t408 10³/μL 130 - 400",
+    "NEUTROFILOS 82.30 %",
+  ].join("\n");
+  const v = extractLabValuesFromText(txt);
+  const by = (n) => v.find(x => x.estudio === n);
+  assert(by("HEMOGLOBINA") && by("HEMOGLOBINA").valor === "10.10", "BH flag: HEMOGLOBINA=10.10 (prefijo *B en una línea)");
+  assert(by("HEMOGLOBINA").unidad === "g/dL", "BH flag: HEMOGLOBINA unidad=g/dL");
+  assert(by("LEUCOCITOS") && by("LEUCOCITOS").valor === "20.97" && by("LEUCOCITOS").unidad === "10³/μL", "BH flag: LEUCOCITOS=20.97 unidad 10³/μL (unidad con dígito NO se confunde con rango)");
+  assert(by("HEMATOCRITO") && by("HEMATOCRITO").valor === "32.80", "BH flag: HEMATOCRITO=32.80");
+  assert(by("PLAQUETAS") && by("PLAQUETAS").valor === "408", "BH flag: PLAQUETAS=408");
+  assert(by("ERITROCITOS") && by("ERITROCITOS").valor === "3.81", "BH flag: ERITROCITOS=3.81");
+  assert(by("VOL. CORPUSCULAR MEDIO") && by("VOL. CORPUSCULAR MEDIO").valor === "86.10", "BH sin flag: VOL CORPUSCULAR sigue OK (sin regresión)");
+  assert(by("NEUTROFILOS") && by("NEUTROFILOS").valor === "82.30", "BH diferencial: NEUTROFILOS 82.30 OK");
+  assert(!v.some(x => /METODOLOG|FLUORESCENTE|BIOMETRIA/i.test(x.estudio)), "BH: método/sección/continuación nunca se emiten como estudio");
+}
+
 console.log(`\n${pass} pass · ${fail} fail`);
 if (fail > 0) process.exit(1);

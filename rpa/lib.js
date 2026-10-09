@@ -27,10 +27,13 @@ const EXCLUDED_ESPS = new Set([
 export function isAllowedEsp(esp) {
   const e = N(esp);
   if (!e) return false;
-  if (EXCLUDED_ESPS.has(e)) return false;
-  if (ALLOWED_ESPS.has(e)) return true;
-  if (/(^|[\/\s])CG([\/\s]|$)/.test(e)) return true;
-  return false;
+  // 24 jun 2026 — Gera: "TODOS los pacientes deben tener laboratorios". El censo (tabla
+  // `patients`) YA es el piso quirúrgico activo; no hay razón para excluir por servicio.
+  // Antes se excluían NCX/URO/TYO/GYO/TRASPLANTES/etc. y esos pacientes quedaban SIN labs
+  // en su tarjeta (caso real: 18 pacientes nunca buscados + nombre incompleto). Ahora se
+  // procesa TODO el censo con esp no vacío. Los sets ALLOWED_ESPS/EXCLUDED_ESPS se conservan
+  // solo como documentación histórica (ya no filtran).
+  return true;
 }
 
 export function formatDate(date, fmt = "dd/MM/yyyy") {
@@ -150,6 +153,83 @@ export function isMeaningfulReportRow(row) {
   return false;
 }
 
+// Normaliza un término de búsqueda para WinLab: MAYÚS + quita acentos de VOCALES pero
+// PRESERVA la Ñ. Evidencia (4 jul 2026, datos reales de winlab_labs + logs del Action):
+//   - Búsquedas CON acento vocal fallaban ("RODRÍGUEZ" → NINGUN REGISTRO) → WinLab guarda
+//     los apellidos sin acentos (el capturista no los teclea). El fix del 24 jun lo arregló.
+//   - PERO ese fix también convertía Ñ→N, y la Ñ SÍ se teclea en WinLab: MUÑIZ/CASTAÑEDA/
+//     NUÑEZ/GAMIÑO/SALDAÑA matcheaban con Ñ literal ANTES del fix, y DESPUÉS del fix CERO
+//     pacientes con Ñ en apellido se capturaron (ZUÑIGA/PIÑON/AVIÑA → NINGUN REGISTRO).
+//   → Colación tipo CI_AS: case-insensitive, acento-sensible, Ñ ≠ N.
+export function stripAccentsKeepEnie(s) {
+  return String(s || "")
+    .normalize("NFC")                              // recompone Ñ descompuesta (N + U+0303)
+    .toUpperCase()
+    .replace(/Ñ/g, "\u0001")                       // proteger la Ñ del NFD-strip
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")        // quitar acentos de vocales (Á→A, É→E...)
+    .replace(/\u0001/g, "Ñ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// ── Candidatos de búsqueda WinLab (jul 2026) ────────────────────────────────
+// La búsqueda primaria (apellidos = últimas 2 palabras) falla en 5 clases reales del censo:
+//   a) capturista de WinLab tecleó N en vez de Ñ            → variante Ñ→N
+//   b) apellido extranjero de 3 palabras (ZAKHIA EL DOVAIHY) → últimas 3 como cognome
+//   c) hoja con nombre INVERTIDO (MARQUEZ VALLEJO JUAN JOSE) → primeras 2 como cognome + resto en nome
+//   d) 2 palabras invertidas                                 → swap cognome/nome
+//   e) TYPO en el materno en WinLab (OVIEDO→OBIEDO, V/B)     → paterno-solo + nombre de pila
+//      Caso real: ADAN LOPEZ OVIEDO, 37 días DELICADO, SIN labs con "LOPEZ OVIEDO" exacto.
+//      El match difuso de encabezado (Jaro-Winkler ≥0.88) reconoce OVIEDO≈OBIEDO al drillear.
+// Devuelve candidatos EN ORDEN; el caller intenta el siguiente SOLO si el anterior dio
+// "NINGUN REGISTRO" (respuesta rápida, sin drill). Los retries (índice >0) exigen
+// identificación POSITIVA del objetivo por encabezado (sin drill a ciegas): las capas de
+// identidad (patientHeaderMatches orden-independiente + filtro de nombre de la app)
+// garantizan que un candidato "ancho" nunca atribuya labs ajenos. Precisión > recall.
+export function buildSearchCandidates(nombre) {
+  const clean = stripAccentsKeepEnie(nombre);
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return [];
+  const out = [];
+  const push = (cognome, nome, tag) => {
+    cognome = (cognome || "").trim();
+    const key = cognome + "|" + (nome || "");
+    if (!cognome) return;
+    if (out.some((c) => c.key === key)) return;
+    out.push({ key, cognome, nome: (nome || "").trim() || null, tag });
+  };
+
+  if (parts.length === 2) {
+    // "NOMBRE APELLIDO" → apellido en cognome + nombre de pila en nome (fix 24 jun)
+    push(parts[1], parts[0], "2-palabras apellido+nombre");
+  } else {
+    push(extractApellidos(clean)[0], null, "apellidos estandar");
+  }
+
+  // (a) variante Ñ→N de los candidatos base (capturista tecleó N en WinLab)
+  for (const c of [...out]) {
+    if (/Ñ/.test(c.cognome) || (c.nome && /Ñ/.test(c.nome))) {
+      push(c.cognome.replace(/Ñ/g, "N"), c.nome ? c.nome.replace(/Ñ/g, "N") : null, "variante N-por-Ñ");
+    }
+  }
+  // (b) apellido compuesto de 3 palabras (nombres largos): últimas 3 como cognome
+  if (parts.length >= 5) push(parts.slice(-3).join(" "), null, "apellido 3 palabras");
+  // (c) nombre invertido en la hoja (APELLIDOS primero): primeras 2 como cognome + resto en nome
+  if (parts.length >= 4) push(parts.slice(0, 2).join(" "), parts.slice(2).join(" "), "invertido apellidos-primero");
+  // (d) 2 palabras: probar el swap (hoja "APELLIDO NOMBRE")
+  if (parts.length === 2) push(parts[0], parts[1], "2-palabras invertido");
+  // (e) ÚLTIMO RECURSO: paterno-solo + nombre de pila. Recupera al paciente cuyo MATERNO
+  //     está mal escrito/ausente en WinLab (el "LOPEZ OVIEDO" exacto falla, pero "LOPEZ"
+  //     + nombre "ADAN" lo encuentra y el match difuso de encabezado confirma la identidad).
+  //     Va AL FINAL: "LOPEZ" solo trae muchos homónimos → el nome estrecha server-side y el
+  //     retry-guard (requireTargetMatch) descarta si el objetivo no aparece. Nunca drill ciego.
+  if (parts.length >= 3) {
+    const paterno = extractApellidos(clean)[1] || parts[parts.length - 2];
+    push(paterno, parts[0], "paterno-solo + nombre");
+  }
+  return out;
+}
+
 // Extrae candidatos de "apellido" de un nombre completo.
 // Convencion mexicana: "NOMBRE(s) APELLIDO_PATERNO APELLIDO_MATERNO"
 // Devuelve array de candidatos en orden de preferencia:
@@ -158,12 +238,142 @@ export function isMeaningfulReportRow(row) {
 // Util para fallback cuando codigo paciente no matchea.
 export function extractApellidos(nombre) {
   if (!nombre) return [];
-  const parts = String(nombre).trim().toUpperCase().split(/\s+/).filter(Boolean);
+  const clean = stripAccentsKeepEnie(nombre);
+  const parts = clean.trim().split(/\s+/).filter(Boolean);
   if (parts.length < 2) return [];
   const out = [];
-  if (parts.length >= 2) out.push(parts.slice(-2).join(" "));
+  // Apellidos = últimas 2 palabras, incluyendo una PARTÍCULA líder (DE/DEL/LA/LAS/LOS/Y) si
+  // precede al paterno (ej. "DEL ANGEL GOMEZ", "DE LEON MARQUEZ"), dejando >=1 palabra de nombre.
+  const PART = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1, Y: 1 };
+  let start = parts.length - 2;
+  if (start - 1 >= 1 && PART[parts[start - 1]]) start -= 1;
+  out.push(parts.slice(start).join(" "));
   if (parts.length >= 3 && parts[parts.length - 2]) out.push(parts[parts.length - 2]);
   return Array.from(new Set(out));
+}
+
+// ── Match de identidad para targeting de drill-down (jun 2026) ──────────────
+// WinLab busca por apellido y devuelve VARIOS pacientes homónimos. El drill-down
+// debe clickear SOLO los reportes del paciente objetivo, no los primeros N a ciegas
+// (causaba que p.ej. el 4º de 5 "GONZALEZ GONZALEZ" nunca se capturara y el blob
+// quedara con labs de otro). Match difuso (Jaro-Winkler) tolera typos de OCR
+// (ESEQUIEL≈EZEQUIEL) sin confundir personas distintas (nombre de pila diferente).
+export function normNameTokens(name) {
+  if (!name) return [];
+  const s = String(name).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\./g, " ").replace(/[^A-Z\s]/g, " ")
+    .replace(/\bMA\b/g, "MARIA").replace(/\bJ\b/g, "JOSE").replace(/\bGPE\b/g, "GUADALUPE");
+  return s.split(/\s+/).filter((w) => w.length >= 3 &&
+    !["DEL", "LAS", "LOS", "CON", "SIN", "POR", "PARA", "Y", "O"].includes(w));
+}
+function _jaro(a, b) {
+  if (a === b) return 1;
+  const la = a.length, lb = b.length;
+  if (!la || !lb) return 0;
+  const dist = Math.max(0, Math.floor(Math.max(la, lb) / 2) - 1);
+  const ma = new Array(la).fill(false), mb = new Array(lb).fill(false);
+  let matches = 0;
+  for (let i = 0; i < la; i++) {
+    const lo = Math.max(0, i - dist), hi = Math.min(i + dist + 1, lb);
+    for (let j = lo; j < hi; j++) { if (!mb[j] && a[i] === b[j]) { ma[i] = mb[j] = true; matches++; break; } }
+  }
+  if (!matches) return 0;
+  let t = 0, k = 0;
+  for (let i = 0; i < la; i++) { if (!ma[i]) continue; while (!mb[k]) k++; if (a[i] !== b[k]) t++; k++; }
+  return (matches / la + matches / lb + (matches - t / 2) / matches) / 3;
+}
+export function jaroWinkler(a, b) {
+  const j = _jaro(a, b); if (j < 0.7) return j;
+  let p = 0; const l = Math.min(4, a.length, b.length);
+  while (p < l && a[p] === b[p]) p++;
+  return j + p * 0.1 * (1 - j);
+}
+function _tokenMatch(t1, t2) {
+  if (t1 === t2) return true;
+  if (t1.length >= 5 && t2.length >= 5) return jaroWinkler(t1, t2) >= 0.88;
+  return false;
+}
+// ¿el nombre del encabezado corresponde al paciente objetivo? (TODOS los tokens del
+// objetivo deben matchear, difuso). Precisión > recall.
+export function patientHeaderMatches(headerName, targetNombre) {
+  const t = normNameTokens(targetNombre), h = normNameTokens(headerName);
+  if (!t.length || !h.length) return false;
+  const used = new Array(h.length).fill(false);
+  let common = 0;
+  for (const tk of t) {
+    for (let j = 0; j < h.length; j++) { if (!used[j] && _tokenMatch(tk, h[j])) { used[j] = true; common++; break; } }
+  }
+  return common >= t.length;
+}
+// Extrae "APELLIDOS NOMBRE" de una fila-encabezado usando la posición de FEMENINO/MASCULINO
+// (mismo método que el bookmarklet): apellidos = cell[sx-2], nombre = cell[sx-1].
+export function extractHeaderName(cells) {
+  if (!Array.isArray(cells)) return "";
+  const sx = cells.findIndex((c) => { const u = String(c || "").toUpperCase().trim(); return u === "FEMENINO" || u === "MASCULINO"; });
+  if (sx >= 2 && cells[sx - 2]) return String(cells[sx - 2]) + " " + String(cells[sx - 1] || "");
+  return "";
+}
+
+// ── Guarda de edad para el targeting (oct 2026) ──────────────────────────────
+// El nombre NO basta para identificar al paciente: un homónimo de nombre COMPLETO
+// (mismos apellidos y nombres) pasa patientHeaderMatches y sus labs acaban en la
+// tarjeta equivocada (corrida #386: 8 bloques en 7 camas, p.ej. censo 80 años vs
+// WinLab 16). La fila-encabezado trae FECHA DE NAC. (celda siguiente a SEXO); la
+// comparamos con `edad` del censo. Si alguno de los dos falta/no se entiende, la
+// guarda no aplica (se mantiene el match por nombre), para no perder pacientes.
+export function extractHeaderBirthDate(cells) {
+  if (!Array.isArray(cells)) return "";
+  const sx = cells.findIndex((c) => { const u = String(c || "").toUpperCase().trim(); return u === "FEMENINO" || u === "MASCULINO"; });
+  if (sx < 0) return "";
+  const m = String(cells[sx + 1] || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? m[0] : "";
+}
+export function ageFromBirthDate(ddmmyyyy, today = new Date()) {
+  const m = String(ddmmyyyy || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return null;
+  const d = +m[1], mo = +m[2], y = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || y < 1900) return null;
+  let age = today.getFullYear() - y;
+  const tm = today.getMonth() + 1, td = today.getDate();
+  if (tm < mo || (tm === mo && td < d)) age--;
+  return age >= 0 && age <= 120 ? age : null;
+}
+// Edad del censo en años: "52", "52a", "52 años". Meses/días ("3m", "20 dias") u otros
+// formatos → null (desconocida ⇒ la guarda no aplica a ese paciente).
+export function parseCensusAge(edad) {
+  const s = String(edad ?? "").trim().toUpperCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const m = s.match(/^(\d{1,3})\s*(A|ANOS|ANO|Y)?\.?$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+// Selecciona las filas (índices) del paciente OBJETIVO: agrupa por fila-encabezado
+// FEMENINO/MASCULINO, exige match de nombre (difuso, orden-independiente) y, cuando hay
+// edad en el censo y fecha de nacimiento en el encabezado, edad compatible (±tolerance).
+// Devuelve también los enlaces totales (para diagnóstico) y los bloques rechazados por edad.
+export function selectTargetRows(rows, paciente, opts = {}) {
+  const tolerance = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : 2;
+  const today = opts.today || new Date();
+  const censusAge = parseCensusAge(paciente && paciente.edad);
+  const targetIdxs = [], linkIdxs = [], ageRejected = [];
+  let curMatches = false;
+  for (let i = 0; i < (rows || []).length; i++) {
+    const row = rows[i];
+    const hdrName = extractHeaderName(row.__cells);
+    if (hdrName) {
+      const nameOk = patientHeaderMatches(hdrName, paciente && paciente.nombre);
+      const hdrAge = nameOk && censusAge != null ? ageFromBirthDate(extractHeaderBirthDate(row.__cells), today) : null;
+      if (nameOk && hdrAge != null && Math.abs(hdrAge - censusAge) > tolerance) {
+        ageRejected.push({ idx: i, headerAge: hdrAge, censusAge });
+        curMatches = false;
+      } else {
+        curMatches = nameOk;
+      }
+    }
+    if (row.__hasLink) {
+      linkIdxs.push(i);
+      if (curMatches) targetIdxs.push(i);
+    }
+  }
+  return { targetIdxs, linkIdxs, ageRejected, censusAge, tolerance };
 }
 
 // Genera variantes del codigo paciente para probar en WinLab. El censo

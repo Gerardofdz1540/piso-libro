@@ -1,269 +1,170 @@
 // ════════════════════════════════════════════════════════════════════════
 // pdf-extract.js — extracción de valores de lab desde PDFs de WinLab
 //
-// v2 (mayo 2026): rewrite para soportar formatos multi-línea + marcadores
-// *B/*A. Tras detectar (con PDF de GERMAN ALVAREZ) que el parser previo
-// perdía ~50% de los valores: TODA la página 1 (QUÍMICA: glucosa, urea,
-// creatinina, electrolitos, función hepática) + HEMOGLOBINA, HEMATOCRITO,
-// ERITROCITOS, MCHC de página 2.
+// Módulo aislado para que las funciones de parsing sean testeables sin
+// Playwright. Importado por scraper.js.
 //
-// Formatos soportados:
-//   A) "NOMBRE VALOR UNIDAD RANGO"
-//      → LEUCOCITOS 8.45 10³/µL 4.00 - 10.00
-//
-//   B) "NOMBRE *B VALOR UNIDAD RANGO" (marcador fuera de rango)
-//      → HEMOGLOBINA *B  8.70 g/dL 12.00 - 16.00
-//
-//   C) Multi-línea (página de química):
-//      "NOMBRE"
-//      "METODOLOGIA: ..."
-//      "VALOR UNIDAD RANGO"
-//      → GLUCOSA \n METODOLOGIA: QUIMICA SECA \n 89.0 mg/dL 74.0 - 106.0
-//
-//   D) Multi-línea con marcador:
-//      "NOMBRE"
-//      "METODOLOGIA: ..."
-//      "*B VALOR UNIDAD RANGO"
+// Pipeline:
+//   PDF buffer (descargado por scraper)
+//     ↓ pdf-parse@2.4.5 (PDFParse.getText())
+//   Texto plano
+//     ↓ extractLabValuesFromText() — regex línea por línea
+//   Array de { estudio, valor, unidad, referencia }
+//     ↓ scraper persiste en winlab_labs.data.reportes[].valores[]
+//     ↓ cliente (mapWinlabReportesToLabs) mapea a campos tipados
+//   Tarjeta de paciente con Hb/Leu/Plaq/etc llenos
 // ════════════════════════════════════════════════════════════════════════
 
 import { PDFParse } from "pdf-parse";
 
+// Patrones de "ruido" — líneas que NO son valores de lab y deben descartarse.
+// Cubrir headers, info de paciente, paginación, separadores, en ES/IT/EN.
 export const PDF_NOISE_PATTERNS = [
   /^HOSPITAL/i,
   /^DEPARTAMENTO/i,
   /^LABORATORIO/i,
-  /^BLVD\./i,
-  /^FRACC\./i,
-  /^HOJA DE RESULTADOS$/i,
   /^PACIENTE[:\s]/i,
   /^EXPEDIENTE[:\s]/i,
   /^EXP[:\s.]/i,
-  /^CURP[:\s]/i,
   /^FECHA[:\s]/i,
   /^EDAD[:\s]/i,
   /^SEXO[:\s]/i,
-  /^GENERO[:\s]/i,
-  /^GÉNERO[:\s]/i,
   /^MEDICO[:\s]/i,
   /^MÉDICO[:\s]/i,
   /^SERVICIO[:\s]/i,
-  /^PROCEDENCIA[:\s]/i,
-  /^DIAGN[OÓ]STICO[:\s]/i,
-  /^C[OÓ]DIGO[:\s]/i,
-  /^TOMA DE MUESTRA[:\s]/i,
-  /^TURNO[:\s]/i,
-  /^FECHA DE [A-Z]/i,
-  /^T\.PACIENTE/i,
   /^CAMA[:\s]/i,
   /^FOLIO[:\s]/i,
-  /^EXAMENES?\s+RESULTADOS?/i,
-  /^DETERMINAZIONE\s+RISULTATO/i,
-  /^TEST\s+VALUE/i,
-  /^METODOLOGIA[:\s]/i,
-  /^FLUORESCENTE$/i,
-  /^[\-=_*]{3,}$/,
-  /^-- \d+ of \d+ --$/i,
-  /^\d+\s+of\s+\d+$/i,
-  /^P[áa]gina\s+(N|n)?o?:?\s*\d+/i,
+  /^ESTUDIO\s+RESULTADO/i,           // header de tabla ES
+  /^DETERMINAZIONE\s+RISULTATO/i,    // header IT
+  /^TEST\s+VALUE/i,                  // header EN
+  /^EXAMEN\s+RESULTADO/i,
+  /^EX[AÁ]MENES?\s+RESULTADOS?/i,    // header "EXAMENES RESULTADOS UNIDADES..."
+  /^METODOLOG[IÍ]A/i,                // "METODOLOGIA: QUIMICA SECA" — entre nombre y valor (QS/hepática)
+  /^V[AÁ]LIDADO\s+POR/i,
+  /^Q\.?F\.?B\.?/i,                  // firma química
+  /^T\.?L\.?C\.?/i,
+  /^CED\.?\s*PROF/i,
+  /^REG\.?\s*SSG/i,
+  /^UNIVERSIDAD/i,
+  /^JEFE\s+DE\s+LAB/i,
+  /^NOTA[:\s]/i,
+  /^RESULTADOS?[:\s]/i,
+  /^T\.?\s*PACIENTE/i,
+  /^DIAGN[OÓ]STICO[:\s]/i,
+  /^PROCEDENCIA[:\s]/i,
+  /^C[OÓ]DIGO\s+DE\s+ADMISI[OÓ]N/i,
+  /^TOMA\s+DE\s+MUESTRA/i,
+  /^CURP[:\s]/i,
+  /^G[EÉ]NERO[:\s]/i,
+  /^TURNO[:\s]/i,
+  /^[\-=_*]{3,}$/,                   // separadores
+  /^\d+\s+of\s+\d+$/i,               // paginación "1 of 1"
+  /^P[áa]gina\s+\d+/i,
   /^FIRMADO\s+POR/i,
   /^VALIDADO\s+POR/i,
-  /^Validado\s+por/i,
-  /^Q\.F\.B\./,
-  /^Ced\.\s*Prof\./i,
-  /^Universidad/i,
-  /^Jefe de Laboratorio/i,
-  /^Resultados? fuera de rango/i,
-  /^\*\s*Resultados? fuera de rango/i,
-  /^B = Bajo/i,
-  /^Nota[:\s]/i,
   /^OBSERVACIONES?[:\s]/i,
-  // Fragmentos de palabras truncadas por layout multi-columna (bug LUIS REY)
-  /^COAGULO\.?$/i,                   // fragmento de "COAGULOMETRIA"
-  /^METRIA\.?$/i,                    // segundo fragmento de "COAGULOMETRIA"
-  /^OMETR[ÍI]A\.?$/i,                // posibles otros cortes
-  /^\s*$/,
+  /^\s*$/,                            // líneas vacías
+  /^[<>]?\s*\d+[.,]?\d*\s*[-]\s*\d+[.,]?\d*\s*$/,  // solo rangos sueltos
+  /^[\d\s\/:.,\-]+$/,                // sólo dígitos/separadores
 ];
 
-export const PDF_LAB_LINE_RE_INLINE =
-  /^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\s\/.,()'\-]*?[A-ZÁÉÍÓÚÑ0-9#%.\)])\s+(?:\*[BA]\s*)?\s*([<>≤≥]?\s*\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
+// Pattern principal para línea de lab: NOMBRE + [*A/*B] + VALOR + UNIDAD? + RANGO?
+//   - Nombre: 2+ chars, empieza con MAYÚSCULA, puede tener espacios/slash/paréntesis
+//   - Flag opcional *A/*B entre nombre y valor (fuera de rango). FIX (jun 2026): la
+//     BIOMETRIA HEMATICA del HGL usa "LEUCOCITOS *A\t20.97 ..." / "HEMOGLOBINA *B\t10.10 ..."
+//     en UNA línea con el flag en medio; sin tolerar el flag, hb/hct/leucos/plaq (fuera de
+//     rango) se dropeaban y solo pasaban los analitos EN rango (el diferencial). 3-155.
+//   - Valor:  número (entero o decimal), opcionalmente prefijado con < > ≤ ≥
+//   - Unidad: opcional (g/dL, mg/dL, mmol/L, U/L, k/uL, %, ng/mL, μL, etc.)
+//   - Rango:  opcional ("N - N" o "N a N")
+export const PDF_LAB_LINE_RE =
+  /^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\s\/.,()'\-]*?[A-ZÁÉÍÓÚÑ\)])\s+(?:\*[AB]\s+)?([<>≤≥]?\s*\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
 
-// Alias legacy para retrocompatibilidad con pdf-extract.test.js
-export const PDF_LAB_LINE_RE = PDF_LAB_LINE_RE_INLINE;
-
-export const PDF_NAME_ONLY_RE =
-  /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\/.,()'\-]*[A-ZÁÉÍÓÚÑ.\)]$/;
-
-export const PDF_VALUE_ONLY_RE =
-  /^(?:\*[BA]\s+)?([<>≤≥]?\s*\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
-
-// Headers de sección. Si una línea coincide con uno de estos (case-insensitive),
-// NO es un valor sino el encabezado de la sección que sigue. El parser trackea
-// la SECCIÓN ACTIVA y la agrega a cada valor extraído como `seccion`.
+// Formato MULTI-LÍNEA (química sanguínea / función hepática de WinLab HGL):
+//   GLUCOSA                          ← nombre del estudio, solo
+//   METODOLOGIA: QUIMICA SECA        ← línea de método (ruido, no pisa el pendiente)
+//   *B  53.0 mg/dL 74.0 - 106.0      ← línea de VALOR (prefijo opcional *A/*B = fuera de rango)
+// Sin este manejo el parser line-by-line dropea TODA la QS/hepática (sólo capturaba BH).
 //
-// Esto permite distinguir LEUCOCITOS de sangre vs LEUCOCITOS de urocultivo,
-// HEMOGLOBINA en sangre vs HEMOGLOBINA en EGO (tira), AMILASA en sangre vs
-// AMILASA en líquido de drenaje (caso de Whipple), etc.
-export const SECTION_HEADERS = new Set([
-  // Sangre / química / coagulación
-  "BIOMETRIA HEMATICA COMPLETA",
-  "BIOMETRÍA HEMÁTICA COMPLETA",
-  "QUIMICA SANGUINEA",
-  "QUÍMICA SANGUÍNEA",
-  "ELECTROLITOS SERICOS",
-  "ELECTROLITOS SÉRICOS",
-  "PERFIL HEPATICO",
-  "PERFIL HEPÁTICO",
-  "TIEMPO DE PROTROMBINA",
-  "TIEMPO DE TROMBOPLASTINA PARCIAL",
-  "PROCALCITONINA",
-  // Fluidos no sanguíneos / cultivos
-  "EXAMEN GENERAL DE ORINA",
-  "EXAMEN GENERAL DE ORINA (EGO)",
-  "UROCULTIVO",
-  "HEMOCULTIVO",
-  "COPROCULTIVO",
-  "CULTIVO DE EXPECTORACION",
-  "CULTIVO DE EXPECTORACIÓN",
-  "CULTIVO DE LIQUIDO PERITONEAL",
-  "CULTIVO DE LÍQUIDO PERITONEAL",
-  "CULTIVO DE LIQUIDO DE DRENAJE",
-  "CULTIVO DE LÍQUIDO DE DRENAJE",
-  "CULTIVO DE PUNTA DE CATETER",
-  "CULTIVO DE PUNTA DE CATÉTER",
-  "ANTIBIOGRAMA",
-  // Líquidos especiales (drenajes Whipple, ascitis, etc.)
-  "LIQUIDO DE DRENAJE",
-  "LÍQUIDO DE DRENAJE",
-  "AMILASA EN LIQUIDO DE DRENAJE",
-  "AMILASA EN LÍQUIDO DE DRENAJE",
-  "LIQUIDO PERITONEAL",
-  "LÍQUIDO PERITONEAL",
-  "LIQUIDO PLEURAL",
-  "LÍQUIDO PLEURAL",
-  "LIQUIDO CEFALORRAQUIDEO",
-  "LÍQUIDO CEFALORRAQUÍDEO",
-  // Gasometría
-  "GASOMETRIA ARTERIAL",
-  "GASOMETRÍA ARTERIAL",
-  "GASOMETRIA VENOSA",
-  "GASOMETRÍA VENOSA",
-]);
+// Línea de VALOR: prefijo opcional *A/*B, número, luego (unidad? + rango?).
+export const PDF_VALUE_LINE_RE =
+  /^(?:\*[AB]\s+)?([<>≤≥]?\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
+// Línea de NOMBRE de estudio: TODO mayúsculas (sin dígitos), 3+ chars, sin ":" (eso es método/header).
+export const PDF_ESTUDIO_NAME_RE =
+  /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\/().'\-]{2,}$/;
 
-// Mapeo a categoría general para el frontend.
-// Cada sección detectada se clasifica en uno de estos buckets:
-//   "blood"     → BH, química, coagulación, electrolitos sangre, hepáticas
-//   "urine"     → EGO, urocultivo
-//   "culture"   → hemocultivo, coprocultivo, cultivos de fluidos, antibiograma
-//   "fluid"     → líquido de drenaje, ascitis, pleural, LCR, amilasa de drenaje
-//   "gas"       → gasometrías
-//   "other"     → no clasificado
-export function classifySection(seccion) {
-  // Si NO hay sección activa, asumir "blood" por default (la química clínica
-  // del HGL no tiene header explícito — empieza directo con GLUCOSA, UREA, etc.
-  // El frontend tiene un filtro non-blood adicional como segunda capa).
-  if (!seccion) return "blood";
-  const s = String(seccion).toUpperCase();
-  if (/BIOMETR|QUIMIC|QUÍMIC|HEPAT|HEPÁT|ELECTROL|COAGULAC|PROTROMBINA|TROMBOPLASTINA|PROCALCITONINA/.test(s)) return "blood";
-  if (/UROCULTIVO|EXAMEN GENERAL DE ORINA|\bEGO\b/.test(s)) return "urine";
-  if (/CULTIVO|ANTIBIOGRAMA|HEMOCULTIVO|COPROCULTIVO/.test(s)) return "culture";
-  if (/L[IÍ]QUIDO|DRENAJE|ASCITIS|PLEURAL|CEFALORRAQU/.test(s)) return "fluid";
-  if (/GASOMETR|GASOMETRÍ/.test(s)) return "gas";
-  return "other";
-}
-
+/**
+ * Extrae valores de lab tipados desde texto plano de un PDF.
+ * @param {string} text - Texto extraído del PDF
+ * @returns {Array<{estudio:string,valor:string,unidad:string,referencia:string}>}
+ */
 export function extractLabValuesFromText(text) {
   if (!text || typeof text !== "string") return [];
 
   const valores = [];
-  const lines = text
-    .split(/\r?\n/)
-    .map(l => l.replace(/\t/g, " ").trim().replace(/\s+/g, " "));
+  const lines = text.split(/\r?\n/);
+  // `pending` = nombre de estudio cuya línea de VALOR viene después (formato QS/hepática
+  // multi-línea). Las líneas de método (METODOLOGIA) son ruido y NO lo pisan.
+  let pending = null;
 
-  // Sección activa: cuando encontramos un header conocido, lo guardamos.
-  // Persiste para todos los valores siguientes hasta que se encuentre otro header.
-  // Esto permite saber el contexto clínico de cada valor (sangre, orina, cultivo, etc.)
-  let currentSection = null;
+  // Si la "unidad" capturada es en realidad un número PURO (ej. analito sin unidad como
+  // "RELACION A/G  0.74  1.10 - 1.80" → "1.10" es el inicio del rango), muévela al rango.
+  // OJO: NO mover unidades que EMPIEZAN con dígito pero son unidades reales (10³/μL, 10^6/μL):
+  // exigir que el token sea SOLO número (con coma/punto), sin más caracteres detrás.
+  const fixUnit = (unidad, ref) => {
+    const u = (unidad || "").trim(), r = (ref || "").trim();
+    if (/^[<>≤≥]?\d+(?:[.,]\d+)?$/.test(u)) return { unidad: "", referencia: (u + " " + r).trim() };
+    return { unidad: u, referencia: r };
+  };
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const rawLine of lines) {
+    const line = rawLine.trim().replace(/\s+/g, " ");
     if (!line) continue;
 
-    // ¿Es un header de sección? → actualizar contexto y NO extraer como valor
-    if (SECTION_HEADERS.has(line.toUpperCase())) {
-      currentSection = line.toUpperCase();
-      continue;
-    }
-
+    // Filtrar ruido conocido (METODOLOGIA, firmas, headers...) — NO toca `pending`.
     if (PDF_NOISE_PATTERNS.some(rx => rx.test(line))) continue;
 
-    // ── Caso A/B: línea inline ────────────────────────────────────────
-    const inlineMatch = line.match(PDF_LAB_LINE_RE_INLINE);
-    if (inlineMatch) {
-      const [, nombre, valor, unidad, referencia] = inlineMatch;
-      const cleanNombre = (nombre || "").trim();
-      if (SECTION_HEADERS.has(cleanNombre.toUpperCase())) {
-        // Header inline (raro): actualizar sección y skip
-        currentSection = cleanNombre.toUpperCase();
+    // 1) Formato de UNA línea (BH): NOMBRE VALOR UNIDAD RANGO.
+    const m = line.match(PDF_LAB_LINE_RE);
+    if (m) {
+      const cleanNombre = (m[1] || "").trim();
+      if (cleanNombre.length >= 2 && !/^\d/.test(cleanNombre)) {
+        const f = fixUnit(m[3], m[4]);
+        valores.push({ estudio: cleanNombre, valor: (m[2] || "").trim(), unidad: f.unidad, referencia: f.referencia });
+        pending = null;
         continue;
       }
-      if (cleanNombre.length < 2 || cleanNombre.length > 80) continue;
-      if (/^\d/.test(cleanNombre)) continue;
-      const numStr = valor.replace(/[<>≤≥\s]/g, "");
-      if (/^\d{7,}$/.test(numStr)) continue;
-      valores.push({
-        estudio: cleanNombre,
-        valor: valor.trim(),
-        unidad: (unidad || "").trim(),
-        referencia: (referencia || "").trim(),
-        seccion: currentSection,
-        bucket: classifySection(currentSection),
-      });
-      continue;
     }
 
-    // ── Caso C/D: NOMBRE solo, valor en líneas siguientes ─────────────
-    if (!PDF_NAME_ONLY_RE.test(line)) continue;
-    if (line.length < 2 || line.length > 80) continue;
-    if (SECTION_HEADERS.has(line.toUpperCase())) {
-      currentSection = line.toUpperCase();
-      continue;
-    }
-
-    // Si termina en punto, debe ser ACRÓNIMO válido (I.N.R., A.B.) — no palabra
-    // completa (COAGULO., METRIA., etc.). Acrónimo: letras individuales separadas
-    // por puntos.
-    if (/\.$/.test(line)) {
-      const isAcronym = /^[A-ZÁÉÍÓÚÑ]\.([A-ZÁÉÍÓÚÑ]\.)*$/.test(line);
-      if (!isAcronym) continue;
-    }
-
-    for (let j = i + 1; j <= Math.min(i + 4, lines.length - 1); j++) {
-      const next = lines[j];
-      if (!next) continue;
-      if (PDF_NOISE_PATTERNS.some(rx => rx.test(next))) continue;
-      if (PDF_NAME_ONLY_RE.test(next) && !PDF_VALUE_ONLY_RE.test(next)) break;
-      const valMatch = next.match(PDF_VALUE_ONLY_RE);
-      if (valMatch) {
-        const [, valor, unidad, referencia] = valMatch;
-        const numStr = (valor || "").replace(/[<>≤≥\s]/g, "");
-        if (/^\d{7,}$/.test(numStr)) break;
-        valores.push({
-          estudio: line.trim(),
-          valor: (valor || "").trim(),
-          unidad: (unidad || "").trim(),
-          referencia: (referencia || "").trim(),
-          seccion: currentSection,
-          bucket: classifySection(currentSection),
-        });
-        i = j;
-        break;
+    // 2) Línea de VALOR de un estudio cuyo NOMBRE vino antes (formato QS/hepática).
+    if (pending) {
+      const vm = line.match(PDF_VALUE_LINE_RE);
+      if (vm) {
+        const f = fixUnit(vm[2], vm[3]);
+        valores.push({ estudio: pending, valor: (vm[1] || "").trim(), unidad: f.unidad, referencia: f.referencia });
+        pending = null;
+        continue;
       }
     }
+
+    // 3) Línea de NOMBRE de estudio (sin valor) → recordarla para la línea de valor siguiente.
+    if (PDF_ESTUDIO_NAME_RE.test(line)) {
+      pending = line;
+      continue;
+    }
+
+    // 4) Línea desconocida → limpiar pendiente (evita asociaciones erróneas).
+    pending = null;
   }
 
   return valores;
 }
 
+/**
+ * Parsea un buffer de PDF y extrae valores de lab tipados.
+ * @param {Buffer} buffer - PDF crudo descargado
+ * @returns {Promise<Array<{estudio,valor,unidad,referencia}>>}
+ */
 export async function parsePdfToLabValues(buffer) {
   if (!buffer || !buffer.length) return [];
   try {
@@ -277,6 +178,14 @@ export async function parsePdfToLabValues(buffer) {
   }
 }
 
+/**
+ * Busca en los frames de un popup el que contiene el PDF de WinLab.
+ * El PDF se sirve vía EditPDF.aspx?FileName=...pdf.
+ * Reintenta varias veces porque el frameset puede tardar en cargar.
+ * @param {import('playwright').Page} popupPage
+ * @param {number} maxAttempts
+ * @returns {Promise<{pdfUrl:string, fileName:string}|null>}
+ */
 export async function findPdfFrameUrl(popupPage, maxAttempts = 10) {
   const PDF_URL_RE = /EditPDF\.aspx[^"]*FileName=[^"&]+\.pdf/i;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
