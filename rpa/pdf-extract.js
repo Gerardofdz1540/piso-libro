@@ -93,6 +93,18 @@ export const PDF_VALUE_LINE_RE =
 export const PDF_ESTUDIO_NAME_RE =
   /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\/().'\-]{2,}$/;
 
+// Resultados CUALITATIVOS (oct 2026): cultivos, serologías y tiras reactivas no traen número
+// ("UROCULTIVO  SIN DESARROLLO", "VIH  NO REACTIVO", "NITRITOS  NEGATIVO"). Antes se dropeaban
+// por completo (PDF_LAB_LINE_RE exige un número) y los cultivos nunca llegaban a la app.
+// Lista cerrada de palabras-resultado para no capturar encabezados ni texto libre.
+export const PDF_QUALITATIVE_VALUES =
+  "NEGATIVO|NEGATIVA|POSITIVO|POSITIVA|NO REACTIVO|REACTIVO|NO DETECTADO|DETECTADO|SIN DESARROLLO|NO DESARROLLO|" +
+  "AUSENTE|AUSENTES|PRESENTE|PRESENTES|NORMAL|ANORMAL|TRAZAS|INDETERMINADO|NO SE OBSERVAN?|ESCASOS?|ABUNDANTES?|MODERADOS?";
+export const PDF_QUALITATIVE_LINE_RE = new RegExp(
+  "^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\\s\\/.,()'\\-]*?[A-ZÁÉÍÓÚÑ\\)])\\s+(?:\\*[AB]\\s+)?(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$"
+);
+export const PDF_QUALITATIVE_VALUE_LINE_RE = new RegExp("^(?:\\*[AB]\\s+)?(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$");
+
 /**
  * Extrae valores de lab tipados desde texto plano de un PDF.
  * @param {string} text - Texto extraído del PDF
@@ -136,12 +148,32 @@ export function extractLabValuesFromText(text) {
       }
     }
 
+    // 1b) Formato de UNA línea con resultado CUALITATIVO: NOMBRE RESULTADO [REFERENCIA].
+    //     El nombre NO puede ser él mismo una palabra-resultado ni un encabezado.
+    const q = line.match(PDF_QUALITATIVE_LINE_RE);
+    if (q) {
+      const cleanNombre = (q[1] || "").trim();
+      const qualRe = new RegExp("^(" + PDF_QUALITATIVE_VALUES + ")$");
+      if (cleanNombre.length >= 3 && !/^\d/.test(cleanNombre) && !qualRe.test(cleanNombre)) {
+        valores.push({ estudio: cleanNombre, valor: (q[2] || "").trim(), unidad: "", referencia: (q[3] || "").trim() });
+        pending = null;
+        continue;
+      }
+    }
+
     // 2) Línea de VALOR de un estudio cuyo NOMBRE vino antes (formato QS/hepática).
     if (pending) {
       const vm = line.match(PDF_VALUE_LINE_RE);
       if (vm) {
         const f = fixUnit(vm[2], vm[3]);
         valores.push({ estudio: pending, valor: (vm[1] || "").trim(), unidad: f.unidad, referencia: f.referencia });
+        pending = null;
+        continue;
+      }
+      // 2b) Línea de resultado CUALITATIVO del estudio pendiente ("SIN DESARROLLO", "NEGATIVO"...).
+      const qv = line.match(PDF_QUALITATIVE_VALUE_LINE_RE);
+      if (qv) {
+        valores.push({ estudio: pending, valor: (qv[1] || "").trim(), unidad: "", referencia: (qv[2] || "").trim() });
         pending = null;
         continue;
       }
@@ -167,14 +199,19 @@ export function extractLabValuesFromText(text) {
  */
 export async function parsePdfToLabValues(buffer) {
   if (!buffer || !buffer.length) return [];
+  let parser = null;
   try {
-    const parser = new PDFParse({ data: buffer });
+    parser = new PDFParse({ data: buffer });
     const result = await parser.getText();
     if (!result || !result.text) return [];
     return extractLabValuesFromText(result.text);
   } catch (e) {
     console.log(`       [pdf-parse] Error: ${e.message.split("\n")[0]}`);
     return [];
+  } finally {
+    // Liberar el documento de pdf.js (oct 2026): sin destroy() cada PDF quedaba vivo en memoria
+    // durante toda la corrida (~500 PDFs) — contribuía al colapso por memoria del proceso.
+    try { if (parser && typeof parser.destroy === "function") await parser.destroy(); } catch (_) {}
   }
 }
 

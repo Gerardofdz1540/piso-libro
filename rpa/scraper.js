@@ -730,6 +730,19 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
 // ── DRILL-DOWN: para cada reporte, click → popup → frame PDF → descargar → parsear ──
 
 async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst, searchParams) {
+  // Cierre GARANTIZADO del popup (oct 2026): si el drill fallaba a mitad (evaluate sobre una
+  // página cerrada, timeout del PDF, etc.) la ventana emergente quedaba abierta; con cientos de
+  // drills por corrida el navegador acumulaba popups y memoria (corrida 27665440228 colapsó).
+  const st = { popup: null, listener: null };
+  try {
+    return await _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst, searchParams, st);
+  } finally {
+    try { if (st.popup && st.listener) st.popup.off("response", st.listener); } catch (_) {}
+    try { if (st.popup && !st.popup.isClosed()) await st.popup.close(); } catch (_) {}
+  }
+}
+
+async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdxInTable, dumpFirst, searchParams, st) {
   const link = page.locator("table").nth(tableIdx)
     .locator("tr").nth(rowIdxInTable)
     .locator('a, input[type="image"], input[type="button"], input[type="submit"]').first();
@@ -769,6 +782,7 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
   if (popup) {
     popupOpened = true;
     detailPage = popup;
+    st.popup = popup;
     if (dumpFirst) console.log(`       [drilldown] POPUP detectado: ${detailPage.url()}`);
 
     // ────────────────────────────────────────────────────────────────────────
@@ -805,6 +819,7 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
       } catch (_) { /* response.body() puede fallar si la página cerró */ }
     };
     detailPage.on("response", responseListener);
+    st.listener = responseListener;
 
     // AHORA esperar la carga del popup — el frame del PDF se cargará durante esto,
     // disparando el response listener.
@@ -813,12 +828,23 @@ async function drillDownReport(page, searchUrl, paciente, tableIdx, rowIdxInTabl
 
     // Espera ACTIVA: si el HTML wrapper carga el PDF binario en una request posterior
     // (vía <iframe>, <embed> lazy, o JS), darle tiempo para que llegue.
-    // Salimos en cuanto capturemos PDF, o tras 8s si no hay más actividad.
+    // Salimos en cuanto capturemos PDF, o tras WAIT_PDF_MS si no hay más actividad.
+    // SALIDA TEMPRANA (oct 2026): en Chromium headless el <embed> del wrapper NUNCA descarga
+    // el PDF (sin plugin), así que este bucle agotaba los 8 s en CADA reporte antes de caer
+    // en la descarga directa v5 (la que realmente funciona): ~7 s × ~12 reportes × ~45
+    // pacientes ≈ 1 h de espera muerta por corrida. En cuanto tenemos el HTML wrapper
+    // (que trae la ruta del PDF) damos solo un margen corto por si el binario llega y seguimos.
     const WAIT_PDF_MS = 8000;
+    const WRAPPER_GRACE_MS = Number(process.env.WL_WRAPPER_GRACE_MS || 1000);
     const CHECK_INTERVAL = 250;
     const startedWaiting = Date.now();
+    let wrapperSeenAt = null;
     while (!capturedPdfBuffer && (Date.now() - startedWaiting) < WAIT_PDF_MS) {
       if (detailPage.isClosed()) break;
+      if (capturedHtmlWrapper) {
+        if (wrapperSeenAt === null) wrapperSeenAt = Date.now();
+        else if (Date.now() - wrapperSeenAt >= WRAPPER_GRACE_MS) break;
+      }
       await detailPage.waitForTimeout(CHECK_INTERVAL).catch(() => {});
     }
 

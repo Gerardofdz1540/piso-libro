@@ -231,22 +231,40 @@ export function stripAccentsKeepEnie(s) {
 // identificación POSITIVA del objetivo por encabezado (sin drill a ciegas): las capas de
 // identidad (patientHeaderMatches orden-independiente + filtro de nombre de la app)
 // garantizan que un candidato "ancho" nunca atribuya labs ajenos. Precisión > recall.
+// Abreviaturas que la hoja usa en el NOMBRE de pila y que WinLab guarda completas (oct 2026):
+// "FCO. JAVIER" → "FRANCISCO JAVIER", "MA. DEL CARMEN" → "MARIA DEL CARMEN". Solo se expanden
+// en `nome` (los apellidos no se abrevian). Caso real: buscar nome="FCO JAVIER" daba NINGUN REGISTRO.
+const NOME_ABBREV = { FCO: "FRANCISCO", FCA: "FRANCISCA", MA: "MARIA", J: "JOSE", GPE: "GUADALUPE", GUADPE: "GUADALUPE" };
+export function expandNomeAbbrev(nome) {
+  return String(nome || "").split(/\s+/).filter(Boolean)
+    .map((w) => { const k = w.replace(/\.+$/g, ""); return NOME_ABBREV[k] || k; })
+    .join(" ");
+}
 export function buildSearchCandidates(nombre) {
-  const clean = stripAccentsKeepEnie(nombre);
+  // Quitar puntos de abreviatura antes de partir en palabras ("FCO." → "FCO").
+  const clean = stripAccentsKeepEnie(String(nombre || "").replace(/\.(?=\s|$)/g, ""));
   const parts = clean.split(/\s+/).filter(Boolean);
   if (parts.length < 2) return [];
   const out = [];
   const push = (cognome, nome, tag) => {
     cognome = (cognome || "").trim();
+    nome = expandNomeAbbrev(nome);
     const key = cognome + "|" + (nome || "");
     if (!cognome) return;
     if (out.some((c) => c.key === key)) return;
     out.push({ key, cognome, nome: (nome || "").trim() || null, tag });
   };
 
+  // Nombre que EMPIEZA con abreviatura (MA GUADALUPE RIOS, FCO JAVIER PEREZ LOPEZ): las 2
+  // primeras palabras son el nombre de pila compuesto; lo que sigue son los apellidos. Sin esto
+  // "MA GUADALUPE RIOS" se leía como nombre MA + apellidos GUADALUPE RIOS.
+  const abbrevLed = parts.length >= 3 && NOME_ABBREV[parts[0]] !== undefined;
   if (parts.length === 2) {
     // "NOMBRE APELLIDO" → apellido en cognome + nombre de pila en nome (fix 24 jun)
     push(parts[1], parts[0], "2-palabras apellido+nombre");
+  } else if (abbrevLed) {
+    push(parts.slice(2).join(" "), parts.slice(0, 2).join(" "), "nombre abreviado + apellidos");
+    if (parts.length >= 4) push(extractApellidos(clean)[0], null, "apellidos estandar");
   } else {
     push(extractApellidos(clean)[0], null, "apellidos estandar");
   }
@@ -259,8 +277,9 @@ export function buildSearchCandidates(nombre) {
   }
   // (b) apellido compuesto de 3 palabras (nombres largos): últimas 3 como cognome
   if (parts.length >= 5) push(parts.slice(-3).join(" "), null, "apellido 3 palabras");
-  // (c) nombre invertido en la hoja (APELLIDOS primero): primeras 2 como cognome + resto en nome
-  if (parts.length >= 4) push(parts.slice(0, 2).join(" "), parts.slice(2).join(" "), "invertido apellidos-primero");
+  // (c) nombre invertido en la hoja (APELLIDOS primero): primeras 2 como cognome + resto en nome.
+  //     No aplica si empieza con abreviatura de nombre (FCO/MA/J…): ahí el orden es evidente.
+  if (parts.length >= 4 && !abbrevLed) push(parts.slice(0, 2).join(" "), parts.slice(2).join(" "), "invertido apellidos-primero");
   // (d) 2 palabras: probar el swap (hoja "APELLIDO NOMBRE")
   if (parts.length === 2) push(parts[0], parts[1], "2-palabras invertido");
   // (e) ÚLTIMO RECURSO: paterno-solo + nombre de pila. Recupera al paciente cuyo MATERNO
@@ -269,8 +288,12 @@ export function buildSearchCandidates(nombre) {
   //     Va AL FINAL: "LOPEZ" solo trae muchos homónimos → el nome estrecha server-side y el
   //     retry-guard (requireTargetMatch) descarta si el objetivo no aparece. Nunca drill ciego.
   if (parts.length >= 3) {
-    const paterno = extractApellidos(clean)[1] || parts[parts.length - 2];
-    push(paterno, parts[0], "paterno-solo + nombre");
+    const paterno = abbrevLed ? parts[2] : (extractApellidos(clean)[1] || parts[parts.length - 2]);
+    const nombrePila = abbrevLed ? parts.slice(0, 2).join(" ") : parts[0];
+    push(paterno, nombrePila, "paterno-solo + nombre");
+    // Con nombre abreviado y un solo apellido ("MA GUADALUPE RIOS"), probar también el apellido
+    // a secas: si WinLab guardó el nombre de otra forma, el retry-guard sigue exigiendo match positivo.
+    if (abbrevLed && parts.length === 3) push(parts[2], null, "apellido solo (nombre abreviado)");
   }
   return out;
 }
@@ -307,7 +330,8 @@ export function normNameTokens(name) {
   if (!name) return [];
   const s = String(name).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/\./g, " ").replace(/[^A-Z\s]/g, " ")
-    .replace(/\bMA\b/g, "MARIA").replace(/\bJ\b/g, "JOSE").replace(/\bGPE\b/g, "GUADALUPE");
+    .replace(/\bMA\b/g, "MARIA").replace(/\bJ\b/g, "JOSE").replace(/\bGPE\b/g, "GUADALUPE")
+    .replace(/\bFCO\b/g, "FRANCISCO").replace(/\bFCA\b/g, "FRANCISCA");
   return s.split(/\s+/).filter((w) => w.length >= 3 &&
     !["DEL", "LAS", "LOS", "CON", "SIN", "POR", "PARA", "Y", "O"].includes(w));
 }
@@ -333,8 +357,17 @@ export function jaroWinkler(a, b) {
   while (p < l && a[p] === b[p]) p++;
   return j + p * 0.1 * (1 - j);
 }
+// Pares que difieren SOLO en la vocal final A/O son nombres distintos (ANTONIO/ANTONIA,
+// MARIO/MARIA, FRANCISCO/FRANCISCA, ALEJANDRO/ALEJANDRA): Jaro-Winkler los daba ≥0.9 y un
+// homónimo del otro sexo pasaba el match de nombre. (oct 2026)
+function _isGenderVariant(t1, t2) {
+  if (t1.length !== t2.length || t1.length < 4) return false;
+  const a = t1[t1.length - 1], b = t2[t2.length - 1];
+  return a !== b && "AO".includes(a) && "AO".includes(b) && t1.slice(0, -1) === t2.slice(0, -1);
+}
 function _tokenMatch(t1, t2) {
   if (t1 === t2) return true;
+  if (_isGenderVariant(t1, t2)) return false;
   if (t1.length >= 5 && t2.length >= 5) return jaroWinkler(t1, t2) >= 0.88;
   return false;
 }

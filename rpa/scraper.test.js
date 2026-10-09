@@ -9,6 +9,7 @@ import {
   jaroWinkler, patientHeaderMatches,
   extractHeaderBirthDate, ageFromBirthDate, parseCensusAge, selectTargetRows,
   todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
+  normNameTokens, expandNomeAbbrev,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -396,6 +397,33 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   assert(!nuevos[3].valores, "merge: una fila no-objetivo nunca recibe valores");
   assert(mergeReportesPreservingValores(nuevos, new Map()).reused === 0, "merge: mapa vacío → 0 reutilizados");
   assert(indexParsedReportes([]).size === 0 && indexParsedReportes(null).size === 0, "indexParsed: entradas vacías → mapa vacío");
+}
+
+// ── P1 (oct 2026): variante de género A/O, abreviaturas de nombre, candidatos con puntos ──
+{
+  assert(patientHeaderMatches("GARCIA LOPEZ ANTONIO", "ANTONIO GARCIA LOPEZ") === true, "match: mismo nombre completo → true");
+  assert(patientHeaderMatches("GARCIA LOPEZ ANTONIA", "ANTONIO GARCIA LOPEZ") === false, "match: ANTONIO vs ANTONIA (otro sexo) → false");
+  assert(patientHeaderMatches("HERNANDEZ RUIZ MARIO", "MARIA HERNANDEZ RUIZ") === false, "match: MARIO vs MARIA → false");
+  assert(patientHeaderMatches("HERNANDEZ RUIZ FRANCISCA", "FRANCISCO HERNANDEZ RUIZ") === false, "match: FRANCISCO vs FRANCISCA → false");
+  assert(patientHeaderMatches("RAMIREZ SOTO ESEQUIEL", "EZEQUIEL RAMIREZ SOTO") === true, "match: typo ESEQUIEL≈EZEQUIEL sigue tolerado (no es variante A/O)");
+  assert(patientHeaderMatches("PEREZ LUNA ROSARIO", "ROSARIO PEREZ LUNA") === true, "match: ROSARIO exacto → true");
+
+  assert(deepEq(normNameTokens("FCO. JAVIER PEREZ"), ["FRANCISCO", "JAVIER", "PEREZ"]), "normNameTokens: FCO. → FRANCISCO");
+  assert(deepEq(normNameTokens("FCA. ELENA"), ["FRANCISCA", "ELENA"]), "normNameTokens: FCA. → FRANCISCA");
+  assert(expandNomeAbbrev("MA. DEL CARMEN") === "MARIA DEL CARMEN", "expandNomeAbbrev: MA. → MARIA");
+  assert(expandNomeAbbrev("J. GPE") === "JOSE GUADALUPE", "expandNomeAbbrev: J. GPE → JOSE GUADALUPE");
+  assert(expandNomeAbbrev("") === "" && expandNomeAbbrev(null) === "", "expandNomeAbbrev: vacío/null → ''");
+
+  const c = buildSearchCandidates("FCO. JAVIER PEREZ LOPEZ");
+  assert(c.length > 0 && c[0].cognome === "PEREZ LOPEZ" && c[0].nome === "FRANCISCO JAVIER", "cand FCO.: primer candidato = apellidos + nombre expandido FRANCISCO JAVIER");
+  assert(c.some((x) => x.cognome === "PEREZ LOPEZ" && x.nome === null), "cand FCO.: segundo candidato = apellidos estándar sin nome");
+  assert(c.some((x) => x.cognome === "PEREZ" && x.nome === "FRANCISCO JAVIER"), "cand FCO.: paterno-solo + nombre expandido");
+  assert(!c.some((x) => /\bFCO\b|\./.test(x.cognome) || /\bFCO\b|\./.test(x.nome || "")), "cand FCO.: ningún candidato lleva la abreviatura ni puntos");
+  assert(!c.some((x) => x.cognome === "FCO JAVIER" || x.cognome === "FRANCISCO JAVIER"), "cand FCO.: no se genera el 'invertido' con el nombre como apellido");
+  const c2 = buildSearchCandidates("MA. GUADALUPE RIOS");
+  assert(c2[0].cognome === "RIOS" && c2[0].nome === "MARIA GUADALUPE", "cand MA.: RIOS + nombre MARIA GUADALUPE");
+  assert(c2.some((x) => x.cognome === "RIOS" && x.nome === null), "cand MA.: fallback apellido a secas");
+  assert(!c2.some((x) => x.cognome === "GUADALUPE RIOS"), "cand MA.: GUADALUPE ya no se toma como apellido");
 }
 
 console.log(`\n${pass} pass · ${fail} fail`);

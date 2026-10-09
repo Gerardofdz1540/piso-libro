@@ -217,5 +217,32 @@ DIMERO D >5000 ng/mL 0-500`;
   assert(!v.some(x => /METODOLOG|FLUORESCENTE|BIOMETRIA/i.test(x.estudio)), "BH: método/sección/continuación nunca se emiten como estudio");
 }
 
+// ── P1 (oct 2026): resultados CUALITATIVOS (cultivos, serologías, tira reactiva) ─────────────
+{
+  const v = extractLabValuesFromText([
+    "UROCULTIVO SIN DESARROLLO",
+    "VIH NO REACTIVO",
+    "ANTIGENO DE SUPERFICIE HEPATITIS B NEGATIVO",
+    "NITRITOS",
+    "NEGATIVO",
+    "HEMOCULTIVO",
+    "METODOLOGIA: AUTOMATIZADO",
+    "*A SIN DESARROLLO A LAS 48 HRS",
+    "RESULTADO NEGATIVO",      // encabezado/ruido: no es un estudio
+    "NEGATIVO",                // suelto, sin estudio pendiente → se ignora
+    "HEMOGLOBINA 11.2 g/dL 12-17",
+  ].join("\n"));
+  const by = (n) => v.find((x) => x.estudio === n);
+  assert(by("UROCULTIVO") && by("UROCULTIVO").valor === "SIN DESARROLLO", "cualitativo 1 línea: UROCULTIVO SIN DESARROLLO");
+  assert(by("VIH") && by("VIH").valor === "NO REACTIVO", "cualitativo 1 línea: VIH NO REACTIVO");
+  assert(by("ANTIGENO DE SUPERFICIE HEPATITIS B") && by("ANTIGENO DE SUPERFICIE HEPATITIS B").valor === "NEGATIVO", "cualitativo nombre largo: NEGATIVO");
+  assert(by("NITRITOS") && by("NITRITOS").valor === "NEGATIVO", "cualitativo multilínea: NITRITOS / NEGATIVO");
+  assert(by("HEMOCULTIVO") && by("HEMOCULTIVO").valor === "SIN DESARROLLO" && /48 HRS/.test(by("HEMOCULTIVO").referencia), "cualitativo multilínea con flag y método en medio: HEMOCULTIVO");
+  assert(!v.some((x) => /^RESULTADO/.test(x.estudio)), "cualitativo: 'RESULTADO NEGATIVO' (encabezado) no se emite");
+  assert(!v.some((x) => x.estudio === "NEGATIVO"), "cualitativo: un NEGATIVO suelto no genera estudio");
+  assert(by("HEMOGLOBINA") && by("HEMOGLOBINA").valor === "11.2", "cualitativo: las líneas numéricas siguen igual");
+  assert(v.length === 6, "cualitativo: exactamente 6 valores emitidos");
+}
+
 console.log(`\n${pass} pass · ${fail} fail`);
 if (fail > 0) process.exit(1);
