@@ -203,5 +203,16 @@ function assert(cond, name) {
   );
 }
 
+// ── P1 (oct 2026): cierre garantizado del popup y salida temprana de la espera del PDF ────────
+{
+  assert(/const st = \{ popup: null, listener: null \};[\s\S]*?finally \{[\s\S]*?st\.popup\.close\(\)/.test(scraperSource),
+    "P1: drillDownReport envuelve el drill en try/finally que cierra el popup");
+  assert(/st\.popup = popup;/.test(scraperSource), "P1: el popup se registra en st para el finally");
+  assert(/st\.listener = responseListener;/.test(scraperSource), "P1: el listener de responses se registra para quitarlo en el finally");
+  assert(/WRAPPER_GRACE_MS/.test(scraperSource) && /if \(capturedHtmlWrapper\) \{/.test(scraperSource),
+    "P1: la espera del PDF sale en cuanto llega el HTML wrapper (+ margen corto)");
+  assert(/parser\.destroy\(\)/.test(pdfExtractSource), "P1: parsePdfToLabValues libera el documento con destroy()");
+}
+
 console.log(`\n${pass} pass · ${fail} fail`);
 if (fail > 0) process.exit(1);
