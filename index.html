@@ -6033,12 +6033,25 @@ function plExportBackup() {
     }
 
     // El backend rechazó el token de usuario (401): la sesión ya no sirve. Volver al login.
+    let _refreshingSession = null;
     async function _onSessionInvalid() {
+      if (_sessionInvalidated) return;
+      // Un 401 tras dormir el teléfono suele ser solo un access_token vencido que el refresco
+      // automático aún no renovó: intentar renovarlo antes de cerrar sesión (una sola renovación
+      // en vuelo aunque lleguen varios 401 a la vez).
+      try {
+        if (_supa) {
+          _refreshingSession = _refreshingSession || _supa.auth.refreshSession().finally(() => { _refreshingSession = null; });
+          const { data } = await _refreshingSession;
+          if (data && data.session && data.session.access_token) { _userAccessToken = data.session.access_token; return; }
+        }
+      } catch (_) { /* sin red o refresh token revocado → cerrar sesión abajo */ }
       if (_sessionInvalidated) return;
       _sessionInvalidated = true;
       _userAccessToken = null;
       _hadSessionAtLoad = false; // el próximo SIGNED_IN debe recargar para arrancar limpio
-      try { if (_supa) await _supa.auth.signOut(); } catch (_) {}
+      // scope "local": no revocar los refresh tokens de OTROS dispositivos con la misma cuenta.
+      try { if (_supa) await _supa.auth.signOut({ scope: "local" }); } catch (_) {}
       _showLoginOverlay();
       _showLoginError("Tu sesión expiró o fue cerrada. Vuelve a iniciar sesión.");
     }
@@ -6122,7 +6135,7 @@ function plExportBackup() {
     }
 
     async function logout() {
-      try { if (_supa) await _supa.auth.signOut(); } catch (e) { console.warn("signOut:", e); }
+      try { if (_supa) await _supa.auth.signOut({ scope: "local" }); } catch (e) { console.warn("signOut:", e); }
       // onAuthStateChange (SIGNED_OUT) muestra el overlay; recargamos para limpiar estado in-memory de la SPA.
       location.reload();
     }
@@ -7465,7 +7478,13 @@ function plExportBackup() {
     const NOTE_SYNC_META_KEY = "__pl_note_meta";
 
     // ─── DATE HELPERS ────────────────────────────────────────────────────────────────
-    function todayStr() { return new Date().toISOString().slice(0, 10); }
+    // Fecha LOCAL del dispositivo (León, UTC-6), no UTC: con toISOString() a partir de las 18:00
+    // "hoy" era mañana → los procedimientos del día desaparecían en la tarde, los labs "Hoy"
+    // quedaban fechados mañana y las alertas "Sin labs hoy" se disparaban en falso.
+    function todayStr() {
+      const d = new Date();
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
     function fmtDateChip(d) {
       if (!d) return "?";
       const p = toSafeString(d).split("-");
@@ -8177,13 +8196,23 @@ function plExportBackup() {
         "Content-Type": "application/json"
       }, extra || {});
     }
+    // fetch con timeout: una conexión que acepta el TCP pero nunca responde (portal cautivo, AP
+    // saturado) dejaba init()/supaLoadAll colgados para siempre → nunca arrancaba Realtime ni el
+    // outbox. 20 s y AbortError se trata como red caída (isLikelyNetworkError).
+    const _S_FETCH_TIMEOUT_MS = 20000;
+    async function _sFetch(url, opts) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), _S_FETCH_TIMEOUT_MS);
+      try { return await fetch(url, Object.assign({}, opts || {}, { signal: ctrl.signal })); }
+      finally { clearTimeout(t); }
+    }
     async function _sGet(table, qs) {
-      const r = await fetch(SUPA_URL + "/rest/v1/" + table + (qs ? "?" + qs : ""), { headers: _sHeaders() });
+      const r = await _sFetch(SUPA_URL + "/rest/v1/" + table + (qs ? "?" + qs : ""), { headers: _sHeaders() });
       if (!r.ok) { if (r.status === 401 && _userAccessToken) _onSessionInvalid(); const t = await r.text().catch(() => ""); throw new Error("GET " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
       return r.json();
     }
     async function _sPost(table, body, extra) {
-      const r = await fetch(SUPA_URL + "/rest/v1/" + table, {
+      const r = await _sFetch(SUPA_URL + "/rest/v1/" + table, {
         method: "POST", headers: _sHeaders(Object.assign({ "Prefer": "return=representation" }, extra || {})),
         body: JSON.stringify(body)
       });
@@ -8193,7 +8222,7 @@ function plExportBackup() {
     }
     async function _sUpsert(table, body, conflictCols) {
       const qs = conflictCols ? "?on_conflict=" + conflictCols : "";
-      const r = await fetch(SUPA_URL + "/rest/v1/" + table + qs, {
+      const r = await _sFetch(SUPA_URL + "/rest/v1/" + table + qs, {
         method: "POST", headers: _sHeaders({ "Prefer": "resolution=merge-duplicates,return=representation" }),
         body: JSON.stringify(body)
       });
@@ -8202,7 +8231,7 @@ function plExportBackup() {
       return ct.includes("json") ? r.json() : null;
     }
     async function _sPatch(table, match, body) {
-      const r = await fetch(SUPA_URL + "/rest/v1/" + table + "?" + match, {
+      const r = await _sFetch(SUPA_URL + "/rest/v1/" + table + "?" + match, {
         method: "PATCH", headers: _sHeaders({ "Prefer": "return=representation" }),
         body: JSON.stringify(body)
       });
@@ -8212,7 +8241,7 @@ function plExportBackup() {
       return null;
     }
     async function _sDelete(table, match) {
-      const r = await fetch(SUPA_URL + "/rest/v1/" + table + "?" + match, { method: "DELETE", headers: _sHeaders() });
+      const r = await _sFetch(SUPA_URL + "/rest/v1/" + table + "?" + match, { method: "DELETE", headers: _sHeaders() });
       if (!r.ok) { if (r.status === 401 && _userAccessToken) _onSessionInvalid(); const t = await r.text().catch(() => ""); throw new Error("DELETE " + table + " HTTP " + r.status + " " + t.slice(0, 200)); }
     }
     async function supaKeepAlive() {
@@ -8253,6 +8282,7 @@ function plExportBackup() {
       const name = String((e && e.name) || "").toLowerCase();
       return (
         name === "typeerror" ||
+        name === "aborterror" || // timeout de _sFetch (20 s sin respuesta) = red caída
         msg.includes("networkerror") ||
         msg.includes("failed to fetch") ||
         msg.includes("load failed") ||
@@ -8661,6 +8691,36 @@ function plExportBackup() {
     }
 
     // ─── SUPABASE: SAVE PATIENT ─────────────────────────────────────────────────────
+    // Buscar paciente por su clave actual o, si la clave es legacy "pt-exp-cama", por identidad:
+    // un push/outbox armado antes de que el paciente recibiera _supa_id trae la clave vieja.
+    function _findPatientByKey(k) {
+      let p = patients.find((x) => pid(x) === k);
+      if (!p && typeof k === "string" && k.startsWith("pt-")) p = patients.find((x) => patientIdentityKey(x) === k);
+      return p || null;
+    }
+    // Asignar/cambiar _supa_id re-clavando TODO el estado de la nota: pid(p) pasa de "pt-exp-cama" a
+    // "su-<uuid>" y sin esto la nota inicial del paciente recién agregado quedaba huérfana
+    // (noteData/localStorage/outbox bajo la clave vieja → tarjeta vacía, manejo/pendientes perdidos).
+    function _relinkPatientId(p, newId) {
+      const oldKey = pid(p);
+      p._supa_id = newId;
+      const newKey = pid(p);
+      if (oldKey === newKey) return;
+      try {
+        if (noteData[oldKey]) { if (!noteData[newKey]) noteData[newKey] = noteData[oldKey]; delete noteData[oldKey]; }
+        const lsOld = localStorage.getItem(NOTES_PREFIX + oldKey);
+        if (lsOld) { if (!localStorage.getItem(NOTES_PREFIX + newKey)) localStorage.setItem(NOTES_PREFIX + newKey, lsOld); localStorage.removeItem(NOTES_PREFIX + oldKey); }
+        if (_dirtyFields[oldKey]) { _dirtyFields[newKey] = _dirtyFields[oldKey]; delete _dirtyFields[oldKey]; }
+        if (_pendingDirty[oldKey]) { _pendingDirty[newKey] = _pendingDirty[oldKey]; delete _pendingDirty[oldKey]; }
+        if (_pendingPush.has(oldKey)) { _pendingPush.delete(oldKey); _pendingPush.add(newKey); }
+        delete _noteDebounceMap[oldKey]; delete _pendingNoteAutosave[oldKey];
+        const q = outboxLoad(); let changed = false;
+        q.forEach((it) => { if (it && it.type === "note" && it.key === oldKey) { it.key = newKey; changed = true; } });
+        if (changed) outboxSave(q);
+        // La nota que existía bajo la clave vieja se empuja ya con la nueva clave.
+        if (noteData[newKey] && noteHasMeaningfulContent(noteData[newKey])) saveNote(newKey, noteData[newKey]);
+      } catch (e) { safeLog("_relinkPatientId:", e); }
+    }
     async function supaUpsertPatient(p) {
       const row = {
         cama: p.cama || "", nombre: p.nombre || "", exp: p.exp || "", dx: p.dx || "",
@@ -8678,15 +8738,25 @@ function plExportBackup() {
           // exp+cama para no dejar al paciente huérfano (reaparecería como duplicado
           // al abrir en otro dispositivo).
           if (data && typeof data === "object") return data;
-          safeWarn("supaUpsertPatient: PATCH 0 rows (stale _supa_id), re-upsert by exp+cama:", p.nombre || p.cama);
-          p._supa_id = null;
-          // caer al upsert de abajo
+          // PATCH 0 filas: la fila ya no existe con ese id. Si existe con otro id (p. ej. la re-creó
+          // un import o el sheet-sync), re-enlazar y PATCH; si NO existe, otro dispositivo la egresó
+          // o borró → NO re-insertar (antes se re-upserteaba por exp+cama y el paciente "resucitaba"
+          // en todos los dispositivos). Sentinel truthy para que el outbox no reintente eternamente.
+          const stale = await _sGet("patients", "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id&limit=1").catch(() => null);
+          if (stale && stale.length && stale[0].id) {
+            _relinkPatientId(p, stale[0].id);
+            const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
+            return patched || row;
+          }
+          safeWarn("supaUpsertPatient: fila borrada en remoto (egreso/borrado desde otro dispositivo); no se re-inserta:", p.nombre || p.cama);
+          p._deletedRemotely = true;
+          return { __deleted_remotely: true };
         }
         {
           try {
             const data = await _sUpsert("patients", row, "exp,cama");
             const ins = Array.isArray(data) ? data[0] : data;
-            if (ins && ins.id) p._supa_id = ins.id;
+            if (ins && ins.id) _relinkPatientId(p, ins.id);
             return ins || row;
           } catch (upsertErr) {
             // Fallback: si el upsert falla por conflicto, buscar el registro existente y hacer PATCH
@@ -8695,7 +8765,7 @@ function plExportBackup() {
               const qs = "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id&limit=1";
               const existing = await _sGet("patients", qs);
               if (existing && existing.length && existing[0].id) {
-                p._supa_id = existing[0].id;
+                _relinkPatientId(p, existing[0].id);
                 const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
                 return patched || row;
               }
@@ -9038,8 +9108,21 @@ function plExportBackup() {
     }
     // ── END NOTE HISTORY ─────────────────────────────────────────────────────────
 
+    // Campos sucios pendientes de push, por paciente. Se capturan AQUÍ (síncrono) porque el
+    // autosave limpia _dirtyFields justo después de llamar a saveNote(), y el push debounced
+    // (500 ms) encontraba el Set vacío → enviaba la fila COMPLETA y pisaba lo que otro
+    // dispositivo había guardado en otros campos (last-write-wins silencioso).
+    const _pendingDirty = {};
+    const _pendingPush = new Set(); // claves con push programado o en vuelo (persistBeforeExit las encola)
+    function _takePendingDirty(k) { const s = _pendingDirty[k]; delete _pendingDirty[k]; return s && s.size ? s : null; }
+    function _restorePendingDirty(k, s) { if (!s || !s.size) return; _pendingDirty[k] = _pendingDirty[k] || new Set(); s.forEach((f) => _pendingDirty[k].add(f)); }
     function saveNote(key, data) {
       _saveNoteSnapshot(key);
+      if (_dirtyFields[key] && _dirtyFields[key].size) {
+        _pendingDirty[key] = _pendingDirty[key] || new Set();
+        _dirtyFields[key].forEach((f) => _pendingDirty[key].add(f));
+      }
+      _pendingPush.add(key);
       const safeData = migrateNote(data);
       // Always save to localStorage immediately
       lsSaveNote(key, safeData);
@@ -9055,17 +9138,28 @@ function plExportBackup() {
       if (!_noteDebounceMap[key]) {
         _noteDebounceMap[key] = debounce(async (k, d) => {
           try {
-            const p = patients.find(x => pid(x) === k);
-            if (!p || !p._supa_id) { outboxEnqueue({ type: "note", key: k, data: d }); return; }
+            const p = _findPatientByKey(k);
+            if (!p || !p._supa_id) {
+              const dirtyNow = _takePendingDirty(k);
+              _pendingPush.delete(k);
+              outboxEnqueue({ type: "note", key: k, data: d, dirty: dirtyNow ? Array.from(dirtyNow) : null });
+              return;
+            }
             pendingSyncs++;
             setSyncStatus("syncing", "Guardando...");
-            // Pasar snapshot de dirty fields al upsert para merge por campo (evita LWW)
-            const dirtySnapshot = _dirtyFields[k] ? new Set(_dirtyFields[k]) : null;
+            // Snapshot de campos sucios capturado en saveNote() (ver _pendingDirty): merge por
+            // campo en vez de fila completa. Si el push falla se restaura para el reintento y
+            // viaja con el ítem del outbox.
+            const dirtySnapshot = _takePendingDirty(k);
             const res = await supaUpsertNote(p._supa_id, d, dirtySnapshot);
             pendingSyncs--;
+            _pendingPush.delete(k);
             // res === null indica error explícito; cualquier otro valor truthy (incluso {}) es éxito
             const ok = res !== null && res !== undefined;
-            if (!ok) outboxEnqueue({ type: "note", key: k, data: d });
+            if (!ok) {
+              _restorePendingDirty(k, dirtySnapshot);
+              outboxEnqueue({ type: "note", key: k, data: d, dirty: dirtySnapshot ? Array.from(dirtySnapshot) : null });
+            }
             if (pendingSyncs === 0) {
               if (ok) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
               else setSyncProblemStatus();
@@ -9074,7 +9168,8 @@ function plExportBackup() {
             safeLog("saveNote async error:", e);
             _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
             if (pendingSyncs > 0) pendingSyncs--;
-            outboxEnqueue({ type: "note", key: k, data: d });
+            _pendingPush.delete(k);
+            outboxEnqueue({ type: "note", key: k, data: d, dirty: _pendingDirty[k] ? Array.from(_pendingDirty[k]) : null });
             if (pendingSyncs === 0) setSyncProblemStatus();
           }
         }, 500);
@@ -9087,10 +9182,13 @@ function plExportBackup() {
     function _applyLoadedNotes(loadedNotes) {
       const prev = noteData;
       noteData = loadedNotes || {};
-      // Preservar campos que el usuario está editando ahora mismo (_dirtyFields)
-      Object.keys(_dirtyFields).forEach(function(k) {
-        const dirty = _dirtyFields[k];
-        if (!dirty || !dirty.size) return;
+      // Preservar campos que el usuario está editando ahora mismo (_dirtyFields) Y los que ya
+      // tienen un push programado/en vuelo (_pendingDirty): si el iPad vuelve del segundo plano
+      // y recarga desde Supabase antes de que ese push llegue, la copia remota (vieja) los pisaba.
+      const keys = new Set(Object.keys(_dirtyFields).concat(Object.keys(_pendingDirty)));
+      keys.forEach(function(k) {
+        const dirty = new Set([].concat(Array.from(_dirtyFields[k] || []), Array.from(_pendingDirty[k] || [])));
+        if (!dirty.size) return;
         const prevNd = prev[k];
         if (!prevNd) return;
         if (!noteData[k]) noteData[k] = defaultData();
@@ -9202,7 +9300,11 @@ function plExportBackup() {
       };
     }
 
-    async function _savePtsImmediate() {
+    // only: paciente (o array) a guardar. Sin `only` se re-escriben TODOS los pacientes con la
+    // copia local de este dispositivo — pisa cambios de colegas si se perdió un evento Realtime.
+    // Los flujos que editan un paciente concreto deben pasarlo.
+    async function _savePtsImmediate(only) {
+      const targets = only ? (Array.isArray(only) ? only : [only]).filter(Boolean) : patients;
       lsSavePatients(patients);
       localStorage.setItem("pl_last_save_ts", Date.now().toString());
       pendingSyncs++;
@@ -9211,8 +9313,8 @@ function plExportBackup() {
       // Guardar en paralelo por lotes de 6 para acelerar sync
       const BATCH = 6;
       const failedPts = [];
-      for (let i = 0; i < patients.length; i += BATCH) {
-        const batch = patients.slice(i, i + BATCH);
+      for (let i = 0; i < targets.length; i += BATCH) {
+        const batch = targets.slice(i, i + BATCH);
         const results = await Promise.all(batch.map(p => supaUpsertPatient(p)));
         results.forEach((res, j) => { if (!res) failedPts.push(batch[j]); });
       }
@@ -9244,11 +9346,11 @@ function plExportBackup() {
             setSyncStatus("syncing", "Reintentando...");
             // Reintentar en lotes de 6 para no saturar Supabase con un censo grande
             const retried2 = [];
-            for (let ri = 0; ri < patients.length; ri += BATCH) {
-              const rb = await Promise.all(patients.slice(ri, ri + BATCH).map(p => supaUpsertPatient(p)));
+            for (let ri = 0; ri < targets.length; ri += BATCH) {
+              const rb = await Promise.all(targets.slice(ri, ri + BATCH).map(p => supaUpsertPatient(p)));
               retried2.push(...rb);
             }
-            const retryFailed = patients.filter((_, i) => !retried2[i]);
+            const retryFailed = targets.filter((_, i) => !retried2[i]);
             lsSavePatients(patients);
             if (!retryFailed.length) {
               localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
@@ -9702,10 +9804,16 @@ function plExportBackup() {
         });
       } catch (_) {}
       try {
-        Object.keys(_dirtyFields).forEach(function (k) {
-          const dirty = _dirtyFields[k];
-          if (!dirty || !dirty.size || !noteData[k]) return;
-          outboxEnqueue({ type: "note", key: k, data: migrateNote(noteData[k]) });
+        // Encolar lo que aún no llegó a Supabase: campos sucios sin guardar, pushes programados
+        // (debounce de 500 ms) y pushes en vuelo. iOS congela timers y mata fetches en segundo
+        // plano, así que sin esto la última edición antes de bloquear el iPad se perdía.
+        const keys = new Set(Object.keys(_dirtyFields).filter(function (k) { return _dirtyFields[k] && _dirtyFields[k].size; }));
+        Object.keys(_pendingDirty).forEach(function (k) { keys.add(k); });
+        _pendingPush.forEach(function (k) { keys.add(k); });
+        keys.forEach(function (k) {
+          if (!noteData[k]) return;
+          const dirty = new Set([].concat(Array.from(_dirtyFields[k] || []), Array.from(_pendingDirty[k] || [])));
+          outboxEnqueue({ type: "note", key: k, data: migrateNote(noteData[k]), dirty: dirty.size ? Array.from(dirty) : null });
         });
       } catch (_) {}
       try { lsSavePatients(patients); } catch (_) {}
@@ -9717,25 +9825,24 @@ function plExportBackup() {
     // ─── OFFLINE: flush outbox when back online ─────────────────────────────────────
     window.addEventListener("online", async () => {
       setSyncStatus("syncing", "Reconectando...");
-      await flushOutbox();
       let syncOk = false;
-      const lastSaveTs2 = parseInt(localStorage.getItem("pl_last_save_ts") || "0", 10);
-      const lastSupabaseTs2 = parseInt(localStorage.getItem("pl_last_supabase_sync_ts") || "0", 10);
-      if (lastSaveTs2 > lastSupabaseTs2 && patients.length) {
-        // Local data is newer — push to Supabase
-        await _savePtsImmediate();
-        const repair = await recoverPendingNoteSync();
-        syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
-      } else {
+      try {
+        // SIEMPRE cargar el estado remoto primero. Antes, si pl_last_save_ts > pl_last_supabase_sync_ts
+        // (cierto tras cualquier guardado fallido), se empujaban los 48 pacientes de la copia LOCAL
+        // sin cargar → tras horas sin red pisaba el censo del equipo y resucitaba egresados.
+        // Los cambios propios pendientes viven en el outbox (con sus campos dirty) y se aplican después.
         const loaded = await supaLoadAll();
         if (loaded) {
-          patients = loaded.patients; _applyLoadedNotes(loaded.notes);
+          patients = sanitizePatients(loaded.patients);
+          _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
-          const repair = await recoverPendingNoteSync(loaded.remoteNotePatientIds || []);
           buildEspFilters(); renderView();
-          syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
+          localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         }
-      }
+        await flushOutbox();
+        const repair = await recoverPendingNoteSync((loaded && loaded.remoteNotePatientIds) || []);
+        syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
+      } catch (e) { safeLog("online handler:", e); }
       if (syncOk) setSyncStatus("synced", "✅ Guardado");
       else setSyncProblemStatus();
     });
@@ -9769,7 +9876,18 @@ function plExportBackup() {
       } catch (e) { safeLog("visibilitychange refresh error:", e); }
     });
 
+    // Mutex: online/visibilitychange/interval/init pueden disparar flushes solapados que se pisaban
+    // la cola entre sí (read-modify-write). Si llega otro durante el flush, se repite al terminar.
+    let _flushing = null, _flushAgain = false;
     async function flushOutbox() {
+      if (_flushing) { _flushAgain = true; return _flushing; }
+      _flushing = _flushOutboxInner().finally(function () {
+        _flushing = null;
+        if (_flushAgain) { _flushAgain = false; flushOutbox().catch(function () {}); }
+      });
+      return _flushing;
+    }
+    async function _flushOutboxInner() {
       const q = outboxLoad(); if (!q.length) return;
       const BATCH = 10; // peticiones simultáneas
       const results = new Array(q.length).fill(null);
@@ -9795,7 +9913,7 @@ function plExportBackup() {
           const absIdx = i + j;
           try {
             if (item.type === "note" && item.key && item.data) {
-              const p = patients.find(x => pid(x) === item.key);
+              const p = _findPatientByKey(item.key);
               // Paciente ya no existe localmente (borrado/reemplazado por Supabase) →
               // descartar nota huérfana para que no quede atascada indefinidamente.
               if (!p) { results[absIdx] = true; return; }
@@ -9803,7 +9921,8 @@ function plExportBackup() {
               // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
               if (!p._supa_id) await withOutboxRetry(async function(){ return await supaUpsertPatient(p); });
               if (p._supa_id) {
-                const noteRes = await withOutboxRetry(async function(){ return await supaUpsertNote(p._supa_id, item.data); });
+                // dirty: campos que cambiaron cuando se encoló → merge por campo (no pisar lo ajeno)
+                const noteRes = await withOutboxRetry(async function(){ return await supaUpsertNote(p._supa_id, item.data, Array.isArray(item.dirty) && item.dirty.length ? new Set(item.dirty) : null); });
                 // Considerar éxito cualquier valor no-null (incluso {} o true)
                 results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
               } else results[absIdx] = false;
@@ -9822,7 +9941,11 @@ function plExportBackup() {
           }
         }));
       }
-      const failed = q.filter((_, i) => !results[i]);
+      // Releer la cola y quitar SOLO lo que se aplicó: lo encolado DURANTE el flush sobrevive
+      // (antes se guardaba el snapshot inicial menos fallidos → se perdían esas operaciones).
+      const sig = function (it) { return (it.type || "") + "|" + (it.key || (it.patient ? pid(it.patient) : "")) + "|" + (it.ts || ""); };
+      const done = new Set(q.filter((_, i) => results[i]).map(sig));
+      const failed = outboxLoad().filter(function (it) { return !done.has(sig(it)); });
       outboxSave(failed);
       updateOutboxBadge();
       if (!failed.length) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
@@ -13991,7 +14114,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       if (!_inkKey || !_inkStrokes.length) { alert("No hay nada que guardar."); return; }
       if (!noteData[_inkKey]) noteData[_inkKey] = defaultData();
       noteData[_inkKey]._inkStrokes = JSON.parse(JSON.stringify(_inkStrokes));
-      lsSaveNote(_inkKey, noteData[_inkKey]);
+      saveNote(_inkKey, noteData[_inkKey]); // antes lsSaveNote (solo local): se perdía con el siguiente evento Realtime
       alert("✅ Trazo guardado. La próxima vez que abras ✍️ aparecerá tal cual.");
     }
 
@@ -14151,7 +14274,8 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         // Persist per-field strokes
         if (!nd._inkFields) nd._inkFields = {};
         nd._inkFields[_inkFieldMode] = JSON.parse(JSON.stringify(_inkStrokes));
-        lsSaveNote(_inkKey, nd);
+        if (_inkFieldMode !== "dx") (_dirtyFields[_inkKey] = _dirtyFields[_inkKey] || new Set()).add(_inkFieldMode);
+        saveNote(_inkKey, nd); // sube a Supabase; antes solo localStorage → se perdía y no lo veían otros dispositivos
         try { renderView(); } catch (_) { }
         try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) { }
         closeInkpad();
@@ -14172,11 +14296,12 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
           if (pt) pt.dx = v.toUpperCase();
         } else {
           nd[f] = (nd[f] ? nd[f].trim() + "\n" : "") + v;
+          (_dirtyFields[_inkKey] = _dirtyFields[_inkKey] || new Set()).add(f);
         }
         applied++;
       });
       nd._inkStrokes = JSON.parse(JSON.stringify(_inkStrokes));
-      lsSaveNote(_inkKey, nd);
+      saveNote(_inkKey, nd); // sube a Supabase; antes solo localStorage → se perdía
       try { renderView(); } catch (_) { }
       try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) { }
       alert(`✅ ${applied} campo${applied !== 1 ? "s" : ""} aplicado${applied !== 1 ? "s" : ""} a la ficha.`);
@@ -14480,7 +14605,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       });
 
       saveNote(k, nd);
-      if (p) _savePtsImmediate();
+      if (p) _savePtsImmediate(p);
       closeDocIntake();
       // Re-render the card so new field values are visible
       const cardEl = document.getElementById("card-" + k);
@@ -14543,7 +14668,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // dx vive en el objeto paciente (no en notas) — sincronizar también allá
       if (field === "dx") {
         const p = patients.find(function(pt){ return pid(pt) === k; });
-        if (p) { p.dx = value; _savePtsImmediate(); } // inmediato: dx puede cambiar justo antes de cerrar la app
+        if (p) { p.dx = value; _savePtsImmediate(p); } // inmediato: dx puede cambiar justo antes de cerrar la app
       }
     }
     var _undoToastTimer = null;
@@ -16825,7 +16950,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         delete noteData[oldKey];
       }
       lsSavePatients(patients);
-      _savePtsImmediate();   // PATCH inmediato (nueva cama) — Realtime propaga el movimiento
+      _savePtsImmediate(owner);   // PATCH inmediato solo de este paciente (nueva cama) — Realtime propaga el movimiento
       buildEspFilters();
       renderView();
     }
@@ -16961,7 +17086,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         }
         // Usuario canceló → guardar normalmente sin egresar
       }
-      _savePtsImmediate(); // inmediato: asigna _supa_id antes de que llegue el Realtime INSERT
+      _savePtsImmediate(p); // inmediato y solo este paciente: asigna _supa_id (y re-clava su nota) antes de que llegue el Realtime INSERT
       buildEspFilters();
       closeModal();
       renderView();
@@ -23267,6 +23392,9 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
 
   async function loadCultivos(force) {
     if (cultivosLoaded && !force) return;
+    // Sin sesión no hay acceso (el rol anon ya no tiene permisos): evitar el 401 antes del
+    // login. Tras autenticarse la página se recarga y el timer de arranque vuelve a llamar aquí.
+    if (typeof _userAccessToken === "undefined" || !_userAccessToken) return;
     try {
       // _sGet(table, qs) → fetch a PostgREST con la anon key del app. Devuelve array.
       var rows = await _sGet(
