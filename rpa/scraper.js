@@ -761,7 +761,13 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
   // si abre popup trabajamos con él, si no abre (fallback) usamos page como antes.
   // ────────────────────────────────────────────────────────────────────────────
   const ctx = page.context();
-  const popupPromise = ctx.waitForEvent("page", { timeout: 4000 }).catch(() => null);
+  // Espera del popup (oct 2026): con 4 s, ~60 % de los primeros drills de cada corrida caían al
+  // fallback "página actual" (que es la lista de búsqueda) y el reporte se DESCARTABA; se volvía
+  // a intentar hasta la siguiente corrida → labs tarde (caso real 11-oct: BH/QS de las 10:31 sin
+  // capturar en 3 corridas). WinLab tarda a veces 5–10 s en abrir la ventana cuando está cargado.
+  const POPUP_TIMEOUT_MS = Number(process.env.WL_POPUP_TIMEOUT_MS || 12000);
+  const pagesBefore = new Set(ctx.pages());
+  const popupPromise = ctx.waitForEvent("page", { timeout: POPUP_TIMEOUT_MS }).catch(() => null);
 
   // Click del link de detalle.
   try {
@@ -777,12 +783,14 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
 
   // Race: popup vs postback. Resolver cuál tipo de instalación es.
   const popup = await popupPromise;
+  // Último intento: una ventana nueva que el evento no entregó (ya estaba abierta al suscribirse).
+  const popupFound = popup || ctx.pages().find((pg) => pg !== page && !pagesBefore.has(pg) && !pg.isClosed()) || null;
   let detailPage;
   let popupOpened = false;
-  if (popup) {
+  if (popupFound) {
     popupOpened = true;
-    detailPage = popup;
-    st.popup = popup;
+    detailPage = popupFound;
+    st.popup = popupFound;
     if (dumpFirst) console.log(`       [drilldown] POPUP detectado: ${detailPage.url()}`);
 
     // ────────────────────────────────────────────────────────────────────────
