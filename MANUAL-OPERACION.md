@@ -17,7 +17,12 @@ Imagina una fábrica con cuatro máquinas que trabajan solas:
 3. **El robot de laboratorios** (GitHub Actions, carpeta `rpa/`). Tres veces al
    día entra a WinLab, busca a cada paciente del censo, descarga sus
    laboratorios y los guarda en la base de datos. Horarios (hora de León):
-   04:07, 13:15 y 20:07.
+   04:07, 13:15 y 20:07. Quien lo despierta a la hora exacta es la base de
+   datos (Supabase, tarea programada `winlab-scrape-*`), porque el reloj de
+   GitHub llega con 3 a 9 horas de retraso; el de GitHub queda como respaldo.
+   Para ver si despertó: tabla `winlab_dispatch_log` en Supabase (una fila por
+   intento, con la respuesta del worker). Detalle en
+   `scripts/supabase_pg_cron_dispatch.sql`.
 4. **La base de datos** (Supabase). Guarda pacientes, notas, laboratorios y la
    papelera. Solo se puede entrar con usuario y contraseña de la app.
 
