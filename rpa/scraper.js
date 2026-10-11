@@ -316,13 +316,41 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
       console.log(`       [retry ${ci}/${MAX_TRIES - 1}] ${c.tag}`);
     }
     console.log(`       [busqueda] Apellidos → txtCognome: "${c.cognome}"${c.nome ? ` + txtNome: "${c.nome}"` : ""}`);
+    if (c.sibling) continue; // las variantes "sibling" se buscan junto con su principal (abajo), no como retry
     last = await doSingleSearch(page, searchUrl, paciente, {
       codice: null, cognome: c.cognome, nome: c.nome,
       tag: `apellidos="${c.cognome}"${c.nome ? `,nome="${c.nome}"` : ""}`,
       requireTargetMatch: ci > 0,
       parsedMap: opts.parsedMap || null,
     }, deadlineTs);
-    if (!last.noResults) return last;
+    if (!last.noResults) {
+      // Variante literal del mismo nombre abreviado (ej. "MA ERIKA" además de "MARIA ERIKA"): WinLab
+      // puede tener dos registros del mismo paciente; buscar también la otra y UNIR filas (dedupe por
+      // celdas). Exige match positivo del objetivo (nunca homónimos a ciegas).
+      const sib = candidates[ci + 1];
+      if (sib && sib.sibling && (!deadlineTs || Date.now() < deadlineTs - 25000)) {
+        try {
+          console.log(`       [busqueda] variante literal → txtCognome: "${sib.cognome}" + txtNome: "${sib.nome}"`);
+          const extra = await doSingleSearch(page, searchUrl, paciente, {
+            codice: null, cognome: sib.cognome, nome: sib.nome,
+            tag: `apellidos="${sib.cognome}",nome="${sib.nome}"`,
+            requireTargetMatch: true,
+            parsedMap: opts.parsedMap || null,
+          }, deadlineTs);
+          if (extra && !extra.noResults && extra.rows && extra.rows.length) {
+            const sig = (r) => JSON.stringify(r && (r.__cells || r));
+            const seen = new Set(last.rows.map(sig));
+            const add = extra.rows.filter((r) => !seen.has(sig(r)));
+            if (add.length) {
+              last.rows = last.rows.concat(add);
+              last.reusedValores = (last.reusedValores || 0) + (extra.reusedValores || 0);
+              console.log(`       [variante literal] +${add.length} fila(s) del otro registro`);
+            }
+          }
+        } catch (e) { console.log(`       [variante literal] error: ${e && e.message || e}`); }
+      }
+      return last;
+    }
   }
   return last || { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
 }
