@@ -1702,7 +1702,8 @@
     }
     /* En la columna angosta, los grids internos de 2/3 columnas se apilan */
     .fc-side .fc-side-g3, .fc-side .fc-side-g2 { grid-template-columns: 1fr !important; }
-    @media (max-width: 1100px) {
+    /* Ficha compacta (oct 2026): dos columnas también en iPad horizontal (1194 px menos el carril de camas) */
+    @media (max-width: 1000px) {
       .fc-bento { grid-template-columns: 1fr; }
       .fc-side { background: transparent; border: none; padding: 0; }
       .fc-side .fc-side-g3 { grid-template-columns: repeat(3, 1fr) !important; }
@@ -3833,6 +3834,48 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
 #board-nav .bn-pos b{ color:#9fc3f0; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
 #board-nav .bn-idx{ font-size:12px; font-weight:700; padding:6px 12px; border:1px solid #3b5d8a; border-radius:6px; background:transparent; color:#cfe0f5; cursor:pointer; white-space:nowrap; }
 #board-nav .bn-idx:hover{ background:#122339; }
+/* ═══ Ficha compacta (oct 2026): barra de saltos, secciones plegables, labs en dos mitades, cabecera que se encoge ═══ */
+#board-nav{ flex-wrap:wrap; row-gap:4px; top:calc(var(--hdr-h, 0px) + 6px); }
+#board-side{ top:calc(var(--hdr-h, 0px) + 6px); max-height:calc(100vh - var(--hdr-h, 0px) - 20px); }
+@media (max-width:900px){ #board-nav .bn-jump button{ font-size:10px; padding:0 7px; min-height:28px; } }
+#board-nav .bn-jump{ flex-basis:100%; display:flex; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-top:4px; border-top:1px solid rgba(255,255,255,.14); }
+#board-nav .bn-jump::-webkit-scrollbar{ display:none; }
+#board-nav .bn-jump button{ flex:0 0 auto; display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:0 9px; min-height:30px; border:none; border-radius:6px; background:rgba(255,255,255,.1); color:#dbe7f5; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+#board-nav .bn-jump button:hover{ background:rgba(255,255,255,.22); }
+#board-nav .bn-jump .bj-n{ background:#0e7490; color:#fff; border-radius:8px; padding:0 5px; font-size:10px; line-height:16px; }
+#board-nav .bn-jump .bj-n.bj-crit{ background:#dc2626; }
+#board-nav .bn-jump .bj-n.bj-ok{ background:#059669; }
+.fc-anchor, details.fc-sec{ scroll-margin-top:var(--stick-h, 120px); }
+/* Plegadas = chips en una sola línea; abiertas = bloque a todo el ancho (mismo orden) */
+.fc-secs{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:flex-start; }
+.fc-secs > details.fc-sec, .fc-secs > .drains-collapse{ flex:0 0 auto; max-width:100%; margin-top:0; }
+.fc-secs > details.fc-sec[open], .fc-secs > .drains-collapse.open{ flex-basis:100%; }
+.fc-secs > .drains-collapse .drains-toggle{ width:auto; border-radius:8px; min-height:38px; padding:0 12px; color:#0a1628; background:#fff; letter-spacing:.04em; font-size:11px; font-weight:800; gap:8px; }
+.fc-secs > .drains-collapse.open .drains-toggle{ width:100%; }
+details.fc-sec{ border:1px solid #e2e8f0; border-radius:8px; background:#fff; }
+details.fc-sec:not([open]) > summary{ border-radius:8px; }
+details.fc-sec > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:8px; padding:0 12px; min-height:38px; font-size:11px; font-weight:800; color:#0a1628; text-transform:uppercase; letter-spacing:.04em; user-select:none; -webkit-user-select:none; }
+details.fc-sec > summary::-webkit-details-marker{ display:none; }
+details.fc-sec > summary::before{ content:"▸"; color:#64748b; font-size:12px; width:10px; flex:0 0 auto; }
+details.fc-sec[open] > summary::before{ content:"▾"; }
+details.fc-sec > summary .fcs-badge{ margin-left:6px; font-size:10px; font-weight:700; color:#64748b; text-transform:none; letter-spacing:0; white-space:nowrap; }
+details.fc-sec > .fcs-body{ padding:0 10px 10px; }
+details.fc-sec:not([open]) > .fcs-body{ display:none; }
+details.fc-sec > .fcs-body > .cds-section, details.fc-sec > .fcs-body > .ind-section, details.fc-sec > .fcs-body > .pt-reminders, details.fc-sec > .fcs-body > .cultivos-lab-box{ margin-top:0 !important; }
+.fc-cnt{ display:inline-block; background:#0e7490; color:#fff; border-radius:8px; padding:0 6px; font-size:10px; line-height:16px; font-weight:800; vertical-align:middle; }
+.fc-cnt.fc-cnt-crit{ background:#dc2626; }
+.fc-flash{ animation:fc-flash 1s ease-out; }
+@keyframes fc-flash{ 0%{ box-shadow:0 0 0 3px rgba(14,116,144,.55); } 100%{ box-shadow:0 0 0 0 rgba(14,116,144,0); } }
+.ff-labs-split{ display:grid; grid-template-columns:1fr 1fr; gap:6px; align-items:start; }
+.ff-labs-split .ff-labs-wrap{ min-width:0; }
+.fc-hist-grid{ grid-template-columns:1fr 1fr 1fr; }
+@media (max-width:1000px){ .fc-hist-grid{ grid-template-columns:1fr 1fr; } }
+@media (max-width:640px){ .ff-labs-split{ grid-template-columns:1fr; } .fc-hist-grid{ grid-template-columns:1fr; } }
+body.hdr-min #quote-bar, body.hdr-min #header-top{ display:none !important; }
+body.hdr-min #tabs{ margin-top:0; }
+body.dark details.fc-sec{ background:#0f1c2e; border-color:#23405f; }
+body.dark details.fc-sec > summary{ color:#cbd5e1; }
+body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
 @media (max-width:820px){
   #board-side{ flex-basis:108px; grid-template-columns:repeat(2, 1fr); }
   #board-side .bs-name{ display:none; }
@@ -8019,7 +8062,11 @@ function plExportBackup() {
         if(!dates.length){
           return '<div class="ff-labs"><div class="ff-labs-h">Labs</div><div class="ff-labs-empty">Sin laboratorios (los trae el scraper de WinLab)</div></div>';
         }
-        var shown = dates.slice(0, 5).reverse(); /* FIX-v48: como el papel — cronológico, la más reciente a la DERECHA */
+        /* FIX-v48: como el papel — cronológico, la más reciente a la DERECHA.
+           Ficha compacta (oct 2026): 3 fechas en modo Pase / 4 en Completo para que la tabla quepa
+           partida en dos mitades lado a lado (ver abajo); las demás fechas siguen en 📈 Gráficas. */
+        var _paseCols = (typeof isPaseMode === "function") && isPaseMode();
+        var shown = dates.slice(0, _paseCols ? 3 : 4).reverse();
         var byDate = {};
         history.forEach(function(s){ byDate[s.fecha] = s.labs || {}; });
         // ── umbrales TUYOS (reusados de LAB_GROUPS): low/high + cl (crít bajo) / ch (crít alto) ──
@@ -8076,13 +8123,14 @@ function plExportBackup() {
         // llenaba la pantalla del iPad de "—"); en modo Completo se conserva la hoja completa tipo GoodNotes.
         var _pase = (typeof isPaseMode === "function") && isPaseMode();
         var _hiddenEmpty = 0;
-        var mainRows = FOCUS_LAB_ORDER.filter(function(p){
+        var mainRowList = FOCUS_LAB_ORDER.filter(function(p){
           if (!_pase) return true;
           var has = shown.some(function(d){ var v = byDate[d][p[1]]; return v !== undefined && v !== null && String(v).trim() !== ""; });
           if (!has) _hiddenEmpty++;
           return has;
-        }).map(function(p){ return cellRow(p[0], p[1]); }).join('');
-        if (_pase && _hiddenEmpty) mainRows += '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '" style="font-weight:600;text-transform:none;letter-spacing:0">' + _hiddenEmpty + ' analitos sin valor ocultos (modo Pase)</td></tr>';
+        }).map(function(p){ return cellRow(p[0], p[1]); });
+        var mainRows = mainRowList.join('');
+        var hiddenNote = (_pase && _hiddenEmpty) ? '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '" style="font-weight:600;text-transform:none;letter-spacing:0">' + _hiddenEmpty + ' analitos sin valor ocultos (modo Pase)</td></tr>' : '';
         // ── OTROS: labs estándar con valor que NO están en tu orden ──
         var labelMap = {}, fieldOrder = {};
         if(typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)){
@@ -8127,7 +8175,17 @@ function plExportBackup() {
         if(otherRows || extraRows){
           otros = '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '">Otros</td></tr>' + otherRows + extraRows;
         }
-        return '<div class="ff-labs"><div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(\'' + k + '\')">📈 Gráficas</button></div><div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + mainRows + otros + '</tbody></table></div></div>';
+        var hdr = '<div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(\'' + k + '\')">📈 Gráficas</button></div>';
+        function tbl(rows){ return '<div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>'; }
+        // Ficha compacta: con muchas filas, dos mitades lado a lado (misma cabecera) → la mitad de alto.
+        // En pantallas angostas el CSS apila las mitades (.ff-labs-split).
+        if (mainRowList.length >= 8) {
+          var half = Math.ceil(mainRowList.length / 2);
+          var left = mainRowList.slice(0, half).join('');
+          var right = mainRowList.slice(half).join('');
+          return '<div class="ff-labs">' + hdr + '<div class="ff-labs-split">' + tbl(left) + tbl(right + hiddenNote + otros) + '</div></div>';
+        }
+        return '<div class="ff-labs">' + hdr + tbl(mainRows + hiddenNote + otros) + '</div>';
       }catch(e){
         return renderLabSection(nd, k); // si algo falla, caer al render normal — nunca romper el foco
       }
@@ -11528,8 +11586,10 @@ function plExportBackup() {
             + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
             + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, manejo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
+            + (isSimpleEsp(fp.esp, fnd) ? "" : _fcJumpBar(fp, fnd, fk))
             + `</div>`;
           _bindBoardSwipe();
+          _bindHeaderMin();
             /* Botón "≣ Índice" ELIMINADO (jul 2026, pedido de Gera): llevaba al layout
                viejo (modo lista). El board bento es LA vista única; la navegación es el
                rail de camas + flechas. enterListMode sigue definida (inerte). */
@@ -12987,13 +13047,108 @@ function plExportBackup() {
       document.body.classList.toggle("pase-mode", on);
       renderView();
     }
-    // Mostrar/ocultar en ESTA tarjeta los bloques que el modo Pase esconde (APP, Qx, PA, indicaciones…)
+    // Mostrar/ocultar en ESTA tarjeta TODOS los bloques plegables (APP/Qx/PA, MIPs/R1, IC, sugerencias,
+    // indicaciones, estudios, no olvidar). No persiste: es un vistazo puntual.
     function toggleCardFull(k) {
       const el = document.getElementById("card-" + k);
       if (!el) return;
-      el.classList.toggle("show-full");
-      const b = el.querySelector(".fc-showfull-btn");
-      if (b) b.textContent = el.classList.contains("show-full") ? "▾ Ocultar APP / Qx / PA / indicaciones" : "▸ Ver APP / Qx / PA / indicaciones";
+      const on = el.classList.toggle("show-full");
+      el.querySelectorAll("details.fc-sec").forEach(function (d) { d.open = on; });
+    }
+    // ─── FICHA COMPACTA (oct 2026): secciones plegables con memoria + salto de un clic ───
+    // Estado recordado por sección y por modo (Pase / Completo) en localStorage pl_sec_open.
+    function _secStateKey(name) { return name + (isPaseMode() ? "@p" : "@f"); }
+    function _secOpenState(name, autoOpen) {
+      try {
+        const m = JSON.parse(localStorage.getItem("pl_sec_open") || "{}");
+        const key = _secStateKey(name);
+        if (Object.prototype.hasOwnProperty.call(m, key)) return !!m[key];
+      } catch (_) {}
+      return !!autoOpen;
+    }
+    function fcSecClick(summary) {
+      // click llega ANTES de que <details> cambie: el estado nuevo es el contrario del actual
+      try {
+        const d = summary.parentElement;
+        const m = JSON.parse(localStorage.getItem("pl_sec_open") || "{}");
+        m[_secStateKey(d.dataset.sec)] = !d.open;
+        localStorage.setItem("pl_sec_open", JSON.stringify(m));
+      } catch (_) {}
+    }
+    function fcSec(name, k, title, badge, inner, autoOpen) {
+      const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
+      const open = _secOpenState(name, autoOpen);
+      return `<details class="fc-sec" id="sec-${name}-${ek}" data-sec="${name}"${open ? " open" : ""}>`
+        + `<summary onclick="fcSecClick(this)">${title}${badge ? `<span class="fcs-badge">${badge}</span>` : ""}</summary>`
+        + `<div class="fcs-body">${inner}</div></details>`;
+    }
+    // Altura de lo que queda pegado arriba (cabecera + barra del tablero) → scroll-margin de las anclas
+    function _stickyOffset() {
+      let h = 0, hh = 0;
+      try {
+        const hd = document.getElementById("header"); if (hd) hh = hd.offsetHeight;
+        const bn = document.getElementById("board-nav"); if (bn) h = bn.offsetHeight + 8;
+      } catch (_) {}
+      try {
+        document.documentElement.style.setProperty("--hdr-h", hh + "px");      // #board-nav se pega DEBAJO de la cabecera, no detrás
+        document.documentElement.style.setProperty("--stick-h", (hh + h + 8) + "px");
+      } catch (_) {}
+      return hh + h;
+    }
+    function fcJump(k, name) {
+      const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
+      const el = document.getElementById("sec-" + name + "-" + ek);
+      if (!el) return;
+      if (el.tagName === "DETAILS" && !el.open) el.open = true;
+      if (name === "diag" && !(window.__drainsOpen && window.__drainsOpen[k])) { toggleDrains(k); return fcJump(k, name); }
+      _stickyOffset();
+      try { el.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { el.scrollIntoView(); }
+      el.classList.add("fc-flash");
+      setTimeout(function () { el.classList.remove("fc-flash"); }, 1000);
+    }
+    // Barra de saltos del tablero: un botón por bloque de la ficha, con contadores (pendientes abiertos,
+    // sugerencias críticas, estudios, recordatorios). Se pinta dentro de #board-nav (pegajoso).
+    function _fcJumpBar(p, nd, k) {
+      try {
+        nd = migrateNote(nd);
+        const ck = nd.checklist || {};
+        const cnt = function (n, crit) { return n ? `<span class="bj-n${crit ? " bj-crit" : ""}">${n}</span>` : ""; };
+        const pendOpen = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s) && !/^✓\s/.test(s); }).length;
+        const dias = getDiasSinLabs(nd);
+        const labsBadge = dias === null ? '<span class="bj-n bj-crit">sin</span>' : (dias >= 2 ? `<span class="bj-n bj-crit">${dias}d</span>` : (dias === 0 ? '<span class="bj-n bj-ok">hoy</span>' : ""));
+        const imgCount = (nd.imagenHistory || []).reduce(function (n, e) { return n + ((e && e.estudios) || []).length; }, 0);
+        const remOpen = ((ck._ptReminders) || []).filter(function (r) { return !r.done; }).length;
+        let cds = 0, cdsCrit = false;
+        try { const s = PLCDS.sortBySeverity(PLCDS.evaluate(p, nd)).filter(function (x) { return !PLCDSStore.isIgnored(k, x.ruleId, x.valueHash); }); cds = s.length; cdsCrit = s.some(function (x) { return x.critical; }); } catch (_) {}
+        const items = [
+          ["dx", "Dx", ""], ["labs", "Labs", labsBadge], ["manejo", "Manejo", ""], ["plan", "Plan", cnt(pendOpen)],
+          ["pase", "Pase", ""], ["entrega", "Entrega", toSafeString(nd.entrega).trim() ? "" : ""],
+          ["historia", "Historia", ""], ["ic", "IC·Cult", ""], ["sug", "Sug.", cnt(cds, cdsCrit)],
+          ["ind", "Indic.", ""], ["img", "Estudios", cnt(imgCount)], ["diag", "Diagrama", ""], ["rec", "No olvidar", cnt(remOpen)]
+        ];
+        return `<div class="bn-jump">` + items.map(function (it) {
+          return `<button type="button" data-k="${esc(k)}" data-sec="${it[0]}" onclick="fcJump(this.dataset.k,this.dataset.sec)">${it[1]}${it[2]}</button>`;
+        }).join("") + `</div>`;
+      } catch (e) { return ""; }
+    }
+    // Cabecera que se encoge al desplazar la ficha (solo en el tablero): el lema y la barra de botones se
+    // ocultan al bajar y vuelven al llegar arriba. Con histéresis para que no parpadee.
+    let _hdrMinBound = false;
+    function _bindHeaderMin() {
+      if (_hdrMinBound) return;
+      _hdrMinBound = true;
+      let min = false;
+      const onScroll = function () {
+        const y = window.scrollY || window.pageYOffset || 0;
+        const focus = document.body.classList.contains("focus-on");
+        if (!focus) { if (min) { min = false; document.body.classList.remove("hdr-min"); } return; }
+        if (!min && y > 160) { min = true; document.body.classList.add("hdr-min"); }
+        else if (min && y < 24) { min = false; document.body.classList.remove("hdr-min"); }
+        _stickyOffset();
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      window.addEventListener("resize", _stickyOffset, { passive: true });
+      _stickyOffset();
     }
     // Deslizar con el dedo sobre la tarjeta para cambiar de paciente (además de las flechas y el rail)
     let _swipeBound = false;
@@ -13176,29 +13331,44 @@ function plExportBackup() {
            DERECHA  = exploración y estado (vitales/checklist, drenajes, indicaciones,
            cultivos, sugerencias). Mismos bloques y handlers de siempre, SOLO
            redistribuidos — el contrato data-*/onclick no cambia. ═══ -->
-      <div class="fc-bento">
+      ${(function () {
+        /* ═══ FICHA COMPACTA (oct 2026, pedido de Gera): misma información, menos alto y todo a un clic.
+           - Columna principal: DX → Labs (dos mitades) → Manejo → Pendientes/Plan → Entrega → Historia (APP/Qx/PA, plegable) → MIPs/R1 (plegable).
+           - Columna lateral: Pase (dieta/ATB/TVP, herida, vitales, drenajes, clínico) → Drenajes/Sangrado/Balance →
+             IC·Cultivos → Sugerencias → Indicaciones → Estudios → Diagrama → No olvidar (plegables con estado recordado).
+           - Cada bloque lleva id "sec-<nombre>-<ek>" para la barra de saltos del tablero (fcJump).
+           Mismos bloques y handlers de siempre: el contrato data-* / onclick no cambia. ═══ */
+        const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
+        const pase = isPaseMode();
+        const anchor = function (name) { return `id="sec-${name}-${ek}" class="fc-anchor"`; };
+        const pendLines = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s); });
+        const pendOpen = pendLines.filter(function (s) { return !/^✓\s/.test(s); }).length;
+        const cdsHtml = renderCDSSection(p, nd, k);
+        const cdsCount = (function () { const m = /cds-count">\((\d+)\)/.exec(cdsHtml); return m ? +m[1] : 0; })();
+        const cdsCrit = /cds-critical/.test(cdsHtml);
+        const imgCount = (nd.imagenHistory || []).reduce(function (n, e) { return n + ((e && e.estudios) || []).length; }, 0);
+        const icText = toSafeString(nd.checklist && nd.checklist.interconsultas).trim();
+        const cultLab = (typeof renderCultivosLabSection === "function") ? renderCultivosLabSection(p, nd, k) : "";
+        const cultText = toSafeString(nd.checklist && nd.checklist.cultivos).trim();
+        const cultPos = /POSITIVO/.test(cultLab);
+        const hasMicro = (nd.labHistory || []).some(function (s) { return s && s.labs && (s.labs.micro_tipo_cultivo || s.labs.micro_organismo); });
+        const icHas = !!(icText || cultText || cultLab || hasMicro);
+        const rems = (nd.checklist && nd.checklist._ptReminders) || [];
+        const remOpen = rems.filter(function (r) { return !r.done; }).length;
+        const mipsTxt = toSafeString(nd.checklist && nd.checklist.pendientes_mips).trim();
+        const r1Txt = toSafeString(nd.checklist && nd.checklist.pendientes_r1).trim();
+        const indHtml = renderIndicacionesSection(p, nd, k);
+        const indHas = !/ind-empty/.test(indHtml);
+        const cruceText = getCruceEntregaText(nd.checklist);
+        const _dOpen = !!(window.__drainsOpen && window.__drainsOpen[k]);
+        return `<div class="fc-bento">
       <div class="fc-main">
-
-      ${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 3)}
-
-      ${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}
-
-      <!-- Modo Pase: APP / Qx / PA quedan ocultos (CSS .fc-full-only) salvo que se pida "Ver" en esta tarjeta -->
-      <div class="fc-full-only">
-        <div class="grid-2" style="margin-top:10px">
-          ${fieldRow("📋 APP / Antecedentes", nd.app, k, "app", 3)}
-          ${fieldRow("🔧 Qx / Procedimiento", nd.qx, k, "qx", 3)}
-        </div>
-      </div>
-      <div class="grid-2 fc-manejo-grid" style="margin-top:10px">
-        ${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}
-        <div class="fc-full-only">${fieldRow("🩺 PA / Padecimiento actual", nd.pa, k, "pa", 3)}</div>
-      </div>
-      ${isPaseMode() ? `<button type="button" class="fc-showfull-btn" data-k="${k}" onclick="toggleCardFull(this.dataset.k)">▸ Ver APP / Qx / PA / indicaciones</button>` : ""}
-
-      <div style="margin-top:10px">
+      <div ${anchor("dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}</div>
+      <div ${anchor("labs")}>${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
+      <div ${anchor("manejo")} style="margin-top:8px">${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}</div>
+      <div ${anchor("plan")} style="margin-top:8px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-          <span class="field-label" style="margin:0">⚠️ Pendientes / Plan</span>
+          <span class="field-label" style="margin:0">⚠️ Pendientes / Plan${pendOpen ? ` <span class="fc-cnt">${pendOpen}</span>` : ""}</span>
           <button type="button" class="pend-tool" data-k="${k}" onclick="pendInsertToday(this.dataset.k)" title="Insertar la fecha de hoy al inicio (evolución del día)">➕ Hoy</button>
           <button type="button" class="pend-tool${(window.__pendList && window.__pendList[k]) ? " on" : ""}" data-k="${k}" onclick="togglePendList(this.dataset.k)" title="Ver los pendientes como lista con casillas para tachar">☑ Lista</button>
           ${renderTemplatesBtn(k)}
@@ -13211,10 +13381,28 @@ function plExportBackup() {
           placeholder="Pendientes / Plan...">${esc(nd.pendientes || "")}</textarea>
         ${renderPendList(nd, k)}
       </div>
-      <div class="grid-2" style="margin-top:10px">
+      <div id="sec-entrega-${ek}" class="fc-anchor entrega-row" style="margin-top:8px">
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <span>📋 Entrega de guardia</span>
+          <span style="display:flex;gap:4px;align-items:center">
+            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Auto-llenar entrega con labs críticos, pendientes y cruce">✨ Auto-llenar</button>
+            <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Entrega de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
+          </span>
+        </div>
+        <textarea class="field-ta" rows="3" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)">${esc(nd.entrega || "")}</textarea>
+        ${cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : ""}
+      </div>
+      <div class="fc-secs">
+      ${fcSec("historia", k, "📋 Historia · APP / Qx / PA", (toSafeString(nd.app).trim() || toSafeString(nd.qx).trim() || toSafeString(nd.pa).trim()) ? "con texto" : "vacío",
+        `<div class="grid-2 fc-hist-grid" style="margin-top:0">
+          ${fieldRow("📋 APP / Antecedentes", nd.app, k, "app", 3)}
+          ${fieldRow("🔧 Qx / Procedimiento", nd.qx, k, "qx", 3)}
+          ${fieldRow("🩺 PA / Padecimiento actual", nd.pa, k, "pa", 3)}
+        </div>`, !pase)}
+      ${fcSec("roles", k, "📋 Pendientes MIPs / R1", (mipsTxt || r1Txt) ? "con tareas" : "", `<div class="grid-2" style="margin-top:0">
         <div>
           <div class="field-label">📋 Pendientes MIPs</div>
-          <textarea class="field-ta" rows="3"
+          <textarea class="field-ta" rows="2"
             data-key="${k}" data-ckfield="pendientes_mips"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             oninput="liveCkText(this)"
@@ -13223,64 +13411,43 @@ function plExportBackup() {
         </div>
         <div>
           <div class="field-label">📋 Pendientes R1</div>
-          <textarea class="field-ta" rows="3"
+          <textarea class="field-ta" rows="2"
             data-key="${k}" data-ckfield="pendientes_r1"
             inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
             oninput="liveCkText(this)"
             onchange="updateCkText(this.dataset.key,'pendientes_r1',this.value)"
             placeholder="Tareas pendientes para R1...">${esc((nd.checklist && nd.checklist.pendientes_r1) || "")}</textarea>
         </div>
-      </div>
-      <div class="entrega-row" style="margin-top:10px">
-        ${fieldRow("📋 Entrega de guardia", nd.entrega, k, "entrega", 3)}
-        <button class="pase-inteligente-btn" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Auto-llenar entrega con labs críticos, pendientes y cruce">✨ Auto-llenar pase inteligente</button>
-        ${(function() {
-          const cruceText = getCruceEntregaText(nd.checklist);
-          return cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : "";
-        })()}
-      </div>
-
+      </div>`, !!(mipsTxt || r1Txt) || !pase)}
+      </div><!-- /fc-secs -->
       </div><!-- /fc-main -->
       <div class="fc-side">
-
-      ${renderChecklist(nd, k)}
-
-      <div class="grid-3 fc-side-g3" style="margin-top:10px">
-        ${fieldRow("🩸 Drenajes", nd.drenajes, k, "drenajes", 3)}
-        ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 3)}
-        ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
+      <div ${anchor("pase")}>${renderChecklist(nd, k)}</div>
+      <div class="grid-3 fc-side-g3" style="margin-top:8px">
+        ${fieldRow("🩸 Drenajes", nd.drenajes, k, "drenajes", 2)}
+        ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 2)}
+        ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 2)}
       </div>
-
-      <div class="fc-full-only">
-      ${renderCDSSection(p, nd, k)}
-      ${renderIndicacionesSection(p, nd, k)}
-      </div>
-      ${typeof renderCultivosLabSection === 'function' ? renderCultivosLabSection(p, nd, k) : ''}
-
-      <div class="fc-full-only">${renderImagenField(nd, k)}</div>
-
-      <div style="margin-top:10px">
-        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #e2e8f0">🩺 Interconsultas · 🦠 Cultivos y labs especiales</div>
-        <div class="grid-2 fc-side-g2">
+      <div class="fc-secs">
+      ${fcSec("ic", k, "🩺 Interconsultas · 🦠 Cultivos", cultPos ? '<span class="fc-cnt fc-cnt-crit">POSITIVO</span>' : (icHas ? "con datos" : ""), `${cultLab}<div class="grid-2 fc-side-g2" style="margin-top:0">
           ${renderInterconsultasSection(nd, k)}
           ${renderCultivosSection(nd, k)}
-        </div>
-      </div>
-
-      ${(function () {
-        const _dOpen = !!(window.__drainsOpen && window.__drainsOpen[k]);
-        return `<div class="drains-collapse" style="margin-top:10px">
+        </div>`, icHas)}
+      ${fcSec("sug", k, "💡 Sugerencias clínicas", cdsCount ? `<span class="fc-cnt${cdsCrit ? " fc-cnt-crit" : ""}">${cdsCount}</span>` : "sin pendientes", cdsHtml, cdsCrit)}
+      ${fcSec("ind", k, "💊 Indicaciones", indHas ? "importadas" : "sin importar", indHtml, indHas && !pase)}
+      ${fcSec("img", k, "🖼 Estudios de imagen", imgCount ? `<span class="fc-cnt">${imgCount}</span>` : "", renderImagenField(nd, k), imgCount > 0 && !pase)}
+      <div id="sec-diag-${ek}" class="fc-anchor drains-collapse${_dOpen ? " open" : ""}">
         <button type="button" class="drains-toggle" data-dkey="${k}" onclick="toggleDrains(this.dataset.dkey)">
           <span>🫁 Diagrama de drenajes / localización</span>
           <span style="margin-left:auto">${_dOpen ? "▾ ocultar" : "▸ mostrar"}</span>
         </button>
         ${_dOpen ? renderBodyDiagram(nd, k, true) : ""}
-      </div>`;
-      })()}
-      ${renderPtReminders(nd, k)}
-
+      </div>
+      ${fcSec("rec", k, "📌 No olvidar (paciente)", remOpen ? `<span class="fc-cnt">${remOpen}</span>` : "", renderPtReminders(nd, k), remOpen > 0)}
+      </div><!-- /fc-secs -->
       </div><!-- /fc-side -->
-      </div><!-- /fc-bento -->
+      </div><!-- /fc-bento -->`;
+      })()}
     </div>` : ""}
   </div>`;
     }
@@ -21538,10 +21705,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           `<span class="pm-label">FR</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_fr || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fr" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:40px"/>` +
           `<span class="pm-label">PIP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_pip || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_pip" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` : "");
 
+      // Ficha compacta (oct 2026): Dieta + Ayuno/ATB/TVP en UNA fila (antes los chips se calculaban
+      // pero no se pintaban → ATB/TVP solo se podían cambiar desde el modal) y Herida + NPT en otra.
       return `<div id="ck-row-${ek}" class="checklist-wrap">
-    <div class="checklist-row">
+    <div class="checklist-row ck-r-dieta">
       <span class="ck-title">🍽 Dieta:</span>
-      <input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
+      <input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${dieta}" placeholder="blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:120px"/>
+      <span class="ck-sep">|</span>
+      ${npoHtml}
+      ${atbHtml}
+      ${tvpHtml}
     </div>
     <div class="checklist-row ck-r-herida">
       <span class="ck-title">🩹 Herida Qx:</span>
