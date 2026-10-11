@@ -87,6 +87,26 @@ la rama vieja `feature/winlab-auto-sync`. Para dejarlo limpio:
    (`--branch=feature/winlab-auto-sync` → `--branch=main`). Hasta entonces,
    NO borres la rama `feature/winlab-auto-sync`.
 
+## Cómo moverse por la ficha del paciente (iPad)
+
+- La barra oscura de arriba de la ficha queda pegada al desplazar. Tiene las
+  flechas ← → para cambiar de paciente, el botón **Pase / Completo** y una fila
+  de saltos: **Dx · Labs · Manejo · Plan · Pase · Entrega · Historia · IC·Cult ·
+  Sug. · Indic. · Estudios · Diagrama · No olvidar**. Un toque lleva a ese bloque
+  (y lo abre si estaba plegado). Los numeritos indican pendientes abiertos,
+  sugerencias críticas, estudios y recordatorios; en Labs sale "hoy" o los días
+  sin laboratorios.
+- Al bajar por la ficha, el lema y la barra de botones de arriba se esconden
+  para ganar pantalla; vuelven al subir al principio.
+- Los bloques secundarios (Historia APP/Qx/PA, MIPs/R1, Interconsultas·Cultivos,
+  Sugerencias, Indicaciones, Estudios, No olvidar) son chips plegables. Lo que
+  abras o cierres se recuerda por separado en modo Pase y en modo Completo.
+- En iPad horizontal la ficha va en dos columnas (clínica a la izquierda,
+  exploración y checklist a la derecha). Las tablas de labs se parten en dos
+  mitades lado a lado; las fechas anteriores siguen en 📈 Gráficas.
+- Dieta, Ayuno, ATB y TVP se cambian con un toque en la primera fila del
+  checklist (antes solo desde el modal de editar).
+
 ## Si los laboratorios no llegan
 
 1. Abre https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml

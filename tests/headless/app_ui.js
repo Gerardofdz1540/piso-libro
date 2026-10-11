@@ -146,6 +146,42 @@ const MOCK = `(() => {
   });
   check('U7 hoja de alertas en el tablero: abierta, lista "sin labs de hoy" (EGO no cuenta), al llegar sangre sale de la lista y aparece como crítico', u7.hasPanel && u7.open && u7.listed && /sin labs hoy/.test(u7.title) && u7.stillListedEgo && !u7.afterListed && u7.crit && u7.allOk, JSON.stringify(u7));
 
+  // ── Ficha compacta (oct 2026): barra de saltos, secciones plegables con memoria, labs en dos mitades ──
+  const u8 = await page.evaluate(async()=>{
+    const k = pid(patients[0]);
+    const ek = k.replace(/[^a-zA-Z0-9]/g, '_');
+    const nd = getNote(k);
+    nd.labHistory = [{ fecha: todayStr(), labs: { hb:'9', leucos:'10', plaq:'200', glu:'100', cr:'1', bun:'14', k:'4', na:'138', inr:'1.1', tp:'12', ca:'8.9', mg:'2' } }];
+    noteData[k] = nd; localStorage.removeItem('pl_sec_open'); renderView();
+    const card = document.getElementById('card-' + k);
+    const jump = document.querySelectorAll('#board-nav .bn-jump button').length;
+    const split = card.querySelectorAll('.ff-labs-split .ff-labtable').length;
+    const dateCols = card.querySelectorAll('.ff-labtable thead th').length / Math.max(1, split || 1) - 1;
+    const atbChip = !!card.querySelector('.ck-r-dieta .ck-item[data-item="atb"]');
+    const hist = document.getElementById('sec-historia-' + ek);
+    const wasOpenFull = hist.open;
+    // plegar en modo Completo, persistir; en modo Pase arranca cerrada por defecto y no hereda
+    hist.querySelector('summary').click(); await new Promise(r=>setTimeout(r,50));
+    const closedNow = !hist.open;
+    const stored = JSON.parse(localStorage.getItem('pl_sec_open') || '{}');
+    togglePaseMode(); // → pase
+    const histP = document.getElementById('sec-historia-' + ek);
+    const closedPase = !histP.open;
+    fcJump(k, 'historia');
+    const openedByJump = histP.open;
+    const anchors = ['dx','labs','manejo','plan','pase','entrega','ic','sug','ind','img','diag','rec'].every(n => !!document.getElementById('sec-' + n + '-' + ek));
+    togglePaseMode(); // → completo
+    const histF = document.getElementById('sec-historia-' + ek);
+    const stillClosedFull = !histF.open;
+    window.scrollTo(0, 900); await new Promise(r=>setTimeout(r,120));
+    const hdrMin = document.body.classList.contains('hdr-min');
+    window.scrollTo(0, 0); await new Promise(r=>setTimeout(r,120));
+    const hdrBack = !document.body.classList.contains('hdr-min');
+    return { jump, split, dateCols, atbChip, wasOpenFull, closedNow, stored, closedPase, openedByJump, anchors, stillClosedFull, hdrMin, hdrBack };
+  });
+  check('U8 ficha compacta: barra de 13 saltos; labs en 2 tablas lado a lado; chip ATB en la fila de dieta; sección plegada se recuerda por modo; fcJump abre; cabecera se encoge al bajar',
+    u8.jump === 13 && u8.split === 2 && u8.dateCols === 1 && u8.atbChip && u8.wasOpenFull && u8.closedNow && u8.stored['historia@f'] === false && u8.closedPase && u8.openedByJump && u8.anchors && u8.stillClosedFull && u8.hdrMin && u8.hdrBack, JSON.stringify(u8));
+
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-UI: '+pass+' passed, '+fail+' failed');
   await browser.close();
