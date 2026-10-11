@@ -1324,6 +1324,10 @@
       display: flex;
       align-items: center
     }
+    /* iPad: sin hover, el botón "✕ Eliminar fecha" nunca aparecía */
+    @media (hover: none) {
+      .lab-chip-del { display: flex; align-items: center }
+    }
 
     .lab-extra-row {
       display: flex;
@@ -4695,7 +4699,7 @@ const PLCDS = (function() {
   "use strict";
   function num(v) {
     if (v === null || v === undefined || v === "") return NaN;
-    const s = String(v).replace(",", ".").trim();
+    const s = String(v).replace(/[<>≤≥]/g, "").replace(",", ".").trim(); // "<0.5", ">600" cuentan
     const n = parseFloat(s);
     return isFinite(n) ? n : NaN;
   }
@@ -4952,7 +4956,7 @@ const PLCDS = (function() {
       return (va===undefined?99:va)-(vb===undefined?99:vb);
     });
   }
-  return {evaluate:evaluate, sortBySeverity:sortBySeverity};
+  return {evaluate:evaluate, sortBySeverity:sortBySeverity, getActiveLabs:getActiveLabs, getSex:getSex};
 })();
 
 const PLCDSStore = (function() {
@@ -5850,6 +5854,7 @@ function plExportBackup() {
     let patients = [];
     let noteData = {};
     let winlabByExp = {};     // exp -> { fecha, scraped_at, data: { headers, reportes, ... } }
+    let _winlabLoadedOnce = false; // true tras la primera lectura de winlab_labs (evita el banner "Sin datos" del render temprano)
     // Cultivos WinLab por pid(paciente). Transitorio: lo reconstruye applyWinlabSyncToPatients
     // en cada sync (load + realtime) tras pasar los MISMOS guards de identidad que los labs
     // (exp + _winlabCensoNameOk + match de nombre por encabezado). renderCultivosSection lo lee.
@@ -6413,7 +6418,7 @@ function plExportBackup() {
         const deletedKeys = new Set(patients.filter(p => p.esp === esp).map(p => pid(p)));
         patients = patients.filter(p => p.esp !== esp);
         Object.keys(noteData).forEach(k => { if (deletedKeys.has(k)) delete noteData[k]; });
-        savePts();
+        lsSavePatients(patients);
         buildEspFilters();
         renderView();
         await showEspBreakdown(); // Refrescar
@@ -6594,7 +6599,7 @@ function plExportBackup() {
       // Gasometría
       ph:        [/^ph$/i, /^ph arter/i, /^ph venos/i],
       pco2:      [/pco2/i, /pco₂/i, /pco 2/i, /carbon diox/i],
-      po2:       [/^po2$/i, /^po₂$/i, /^po 2$/i, /pres.*o2/i],
+      po2:       [/^po2$/i, /^po₂$/i, /^po 2$/i, /pres.*\bo2\b/i], // \b: "PRESION PARCIAL DE CO2" ya no cae aquí
       hco3:      [/hco3/i, /hco₃/i, /bicarbonat/i],
       be:        [/exceso de base/i, /^be$/i, /^eb$/i, /base excess/i],
       sato2:     [/sato2/i, /sato₂/i, /satur.*o2/i, /^so2$/i],
@@ -6610,8 +6615,9 @@ function plExportBackup() {
       ego_glu:   [/glucos.*orin/i, /glucosuri/i],
       ego_hem:   [/hemat[ií]e/i, /eritroc.*orin/i, /sangre.*orin/i],
       // Cardíaco
-      tropI:     [/troponin.*i/i, /^trop\s*i$/i],
-      tropT:     [/troponin.*t/i, /^trop\s*t$/i, /troponin.*alta sensib/i],
+      // tropI anclado a " I" como palabra: /troponin.*i/ atrapaba "TROPONINA T ALTA SENSIBILIDAD" (la i de sensIbilidad)
+      tropI:     [/troponin[a-z]*\s+i\b/i, /^trop\s*i$/i],
+      tropT:     [/troponin[a-z]*\s+t\b/i, /^trop\s*t$/i, /troponin.*alta sensib/i],
       // FIX-v58 (jul 2026): WinLab nombra la CK total "CREATIN-FOSFOCINASA" (español), NO
       // "kinasa/quinasa" → antes NO mapeaba y la CK se PERDÍA (piso con trauma: CK importa).
       // Anclado a fin ($) para NO tragarse la fracción "...FOSFOCINASA MB" (esa cae en ck_mb).
@@ -6691,7 +6697,7 @@ function plExportBackup() {
     // son analitos que solo existen en el EGO; los de sangre, analitos que solo existen en suero/BH.
     const WINLAB_URINE_MARKERS = /DENSIDAD|UROBILIN|NITRIT|ESTERASA|CILINDR|CELULAS (EPITEL|UROTEL)|LEVADURAS|CRISTALES|^MUCOSA|^ESPERMA|HEMOGLOBINA LIBRE|EXAMEN GENERAL DE ORINA|\bEN ORINA\b|MICCION/i;
     const WINLAB_CULTURE_MARKERS = /CULTIVO|ANTIBIOGRAMA|TINCION DE GRAM|MICROORGANISMO AISLADO/i;
-    const WINLAB_BLOOD_MARKERS = /HEMATOCRITO|CORPUSCULAR|PLAQUETA|RDW|NEUTROFILOS|LINFOCITOS|MONOCITOS|EOSINOFILOS|BASOFILOS|^UREA$|NITROGENO UREICO$|^CREATININA$|ACIDO URICO|COLESTEROL|TRIGLICERID|PROTEINAS TOTALES|ALBUMINA$|GLOBULINA|TRANSFERASA|BILIRRUBINA|FOSFATASA|AMILASA|LIPASA|^CALCIO$|^FOSFORO$|^MAGNESIO$|^SODIO$|^POTASIO$|^CLORO$|DESHIDROGENASA|FOSFOCINASA|CKMB|TROPONINA|PROCALCITONINA|PROTEINA C REACTIVA|MIOGLOBINA|PROTROMBINA|TROMBOPLASTINA|^INR|FIBRINOGENO|DIMERO|HEMOGLOBINA GLICADA|^TSH|TIROTROP/i;
+    const WINLAB_BLOOD_MARKERS = /HEMATOCRITO|CORPUSCULAR|PLAQUETA|RDW|NEUTROFILOS|LINFOCITOS|MONOCITOS|EOSINOFILOS|BASOFILOS|^UREA$|NITROGENO UREICO$|^CREATININA$|ACIDO URICO|COLESTEROL|TRIGLICERID|PROTEINAS TOTALES|ALBUMINA$|GLOBULINA|TRANSFERASA|BILIRRUBINA (?:TOTAL|DIRECTA|INDIRECTA)|FOSFATASA|AMILASA|LIPASA|^CALCIO$|^FOSFORO$|^MAGNESIO$|^SODIO$|^POTASIO$|^CLORO$|DESHIDROGENASA|FOSFOCINASA|CKMB|TROPONINA|PROCALCITONINA|PROTEINA C REACTIVA|MIOGLOBINA|PROTROMBINA|TROMBOPLASTINA|^INR|FIBRINOGENO|DIMERO|HEMOGLOBINA GLICADA|^TSH|TIROTROP/i;
     // Nombres "pelados" que en la sección de orina pertenecen al EGO.
     const WINLAB_URINE_BARE_ALIASES = {
       ego_ph:    /^ph$/i,
@@ -7272,11 +7278,19 @@ function plExportBackup() {
                 // (caso real mayo 2026: el filtro non-blood quitó leucos del
                 // urocultivo de EVANGELINA, pero el merge mantenía el valor
                 // viejo. El reemplazo total resuelve esto).
+                // EXCEPTO los analitos capturados/corregidos a mano (manual_keys): un Lac de
+                // gasometría tecleado sobre el snapshot de WinLab desaparecía en el siguiente sync.
+                const manualKeys = Array.isArray(ex.manual_keys) ? ex.manual_keys : [];
+                const mergedLabs = { ...snap.labs };
+                manualKeys.forEach(function (mk) {
+                  if (exLabs[mk] !== undefined && exLabs[mk] !== null && String(exLabs[mk]).trim() !== "") mergedLabs[mk] = exLabs[mk];
+                });
                 hist[existingIdx] = {
-                  ...ex, labs: snap.labs,
+                  ...ex, labs: mergedLabs,
                   synced_at: snap.synced_at, scraped_at: snap.scraped_at,
                   source: "winlab",
                   winlab_paciente: snap.winlab_paciente || ex.winlab_paciente || "",
+                  manual_keys: manualKeys.length ? manualKeys : undefined,
                 };
               }
               stats.merged++;
@@ -7285,6 +7299,7 @@ function plExportBackup() {
           noteData[k] = nd;
           if (_wlSig(hist) !== _wlBefore) {
             nd.labHistory = hist;
+            delete labAnalysisCache[k]; // el análisis IA cacheado era de los valores previos
             // Solo labHistory viaja a la nube (fila parcial). Antes cada arranque re-subía la nota
             // COMPLETA de todos los pacientes con match aunque nada cambiara → ~45 eventos Realtime
             // (toasts y re-renders) en cada dispositivo y riesgo de pisar texto ajeno con la copia local.
@@ -7442,6 +7457,7 @@ function plExportBackup() {
           if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
         });
         winlabByExp = next;
+        _winlabLoadedOnce = true;
         // Auto-sync WinLab → labHistory.
         // Cambio mayo 2026: el refresh manual (botón pill) SIEMPRE aplica sync,
         // independiente del flag. Si el usuario clickeó el pill es porque quiere
@@ -7699,7 +7715,12 @@ function plExportBackup() {
             source_file_type: toSafeString(s.source_file_type).trim(),
             source_file_name: toSafeString(s.source_file_name).trim(),
             source_storage_bucket: toSafeString(s.source_storage_bucket).trim(),
-            source_storage_path: toSafeString(s.source_storage_path).trim()
+            source_storage_path: toSafeString(s.source_storage_path).trim(),
+            // PDF inline recortado en la copia local (se restaura desde la nube al subir)
+            source_file_stripped: s.source_file_stripped === true && !toSafeString(s.source_file).trim() ? true : undefined,
+            // Analitos capturados/corregidos a mano sobre un snapshot de WinLab: el reemplazo total
+            // del siguiente sync los conserva (antes el Lac/gaso tecleado desaparecía en el siguiente sync).
+            manual_keys: Array.isArray(s.manual_keys) && s.manual_keys.length ? s.manual_keys.map(function (x) { return toSafeString(x); }).filter(Boolean) : undefined
           };
         });
       nd.labs = sanitizeLabsMap(nd.labs);
@@ -7797,7 +7818,7 @@ function plExportBackup() {
     }
     function _plneHoy(){ var d=new Date(); function z(n){return String(n).padStart(2,"0");} return z(d.getDate())+"."+z(d.getMonth()+1)+"."+d.getFullYear(); }
     function _plneAhora(){ var d=new Date(); function z(n){return String(n).padStart(2,"0");} return z(d.getHours())+":"+z(d.getMinutes()); }
-    function _plneSex(p,nd){ var s=(typeof getSex==="function")?getSex(p,nd):""; return s==="F"?"Femenino":(s==="M"?"Masculino":""); }
+    function _plneSex(p,nd){ var s=(typeof PLCDS!=="undefined"&&PLCDS.getSex)?PLCDS.getSex(p,nd):""; return s==="F"?"Femenino":(s==="M"?"Masculino":""); }
     function _plneLabFecha(nd){ var h=(nd&&nd.labHistory)||[]; if(!h.length) return ""; var s=h.filter(function(x){return x&&x.labs;}).slice().sort(function(a,b){return String(b.fecha||"").localeCompare(String(a.fecha||""));}); return s.length?String(s[0].fecha||""):""; }
     function _plneFmtFecha(iso){ if(!iso) return ""; var p=String(iso).split("-"); return p.length===3?(p[2]+"/"+p[1]+"/"+p[0]):iso; }
     function _plneChip(l,v){ return '<span class="plne-chip"><b>'+l+'</b>'+esc(String(v))+'</span>'; }
@@ -7890,7 +7911,7 @@ function plExportBackup() {
         if(_plneKey) saveNote(_plneKey, nd);
         var p=patients.find(function(x){return pid(x)===_plneKey;}); if(!p){ alert("Paciente no encontrado."); return; }
         var ck=nd.checklist; var sexo=_plneSex(p,nd); var sexoL=sexo?sexo.toLowerCase():"";
-        var labs=(typeof getActiveLabs==="function")?getActiveLabs(nd):(nd.labs||{});
+        var labs=(typeof PLCDS!=="undefined"&&PLCDS.getActiveLabs)?PLCDS.getActiveLabs(nd):(nd.labs||{});
         var L=[];
         PLNE_LABS.forEach(function(pair){ var v=labs[pair[1]]; if(v!==undefined && v!==null && String(v).trim()!=="") L.push(pair[0]+": "+String(v).trim()); });
         var out=[];
@@ -8046,21 +8067,32 @@ function plExportBackup() {
         if(otherRows || extraRows){
           otros = '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '">Otros</td></tr>' + otherRows + extraRows;
         }
-        return '<div class="ff-labs"><div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(window.__focusPid)">📈 Gráficas</button></div><div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + mainRows + otros + '</tbody></table></div></div>';
+        return '<div class="ff-labs"><div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(\'' + k + '\')">📈 Gráficas</button></div><div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + mainRows + otros + '</tbody></table></div></div>';
       }catch(e){
         return renderLabSection(nd, k); // si algo falla, caer al render normal — nunca romper el foco
       }
     }
-    function applyModalExtraToNote(nd, extra) {
+    const MODAL_NOTE_FIELDS = ["app", "pa", "manejo", "sangrado", "drenajes", "pendientes"];
+    function _modalNoteFieldsOf(nd) {
+      const d = migrateNote(nd || defaultData());
+      const o = {};
+      MODAL_NOTE_FIELDS.forEach(function (f) { o[f] = toSafeString(d[f]).trim(); });
+      o.sexo = normalizeSexValue((d.checklist || {}).sexo);
+      return o;
+    }
+    // base: valores de la nota al ABRIR el modal. Un campo que no cambió respecto a la base se deja
+    // como está en la nota (puede haberlo actualizado otro dispositivo por Realtime mientras el
+    // modal estaba abierto). Sin base (alta nueva) se aplican todos.
+    function applyModalExtraToNote(nd, extra, base) {
       const next = migrateNote(nd || defaultData());
       const src = extra || {};
-      next.app = toSafeString(src.app).trim();
-      next.pa = toSafeString(src.pa).trim();
-      next.manejo = toSafeString(src.manejo).trim();
-      next.sangrado = toSafeString(src.sangrado).trim();
-      next.drenajes = toSafeString(src.drenajes).trim();
-      next.pendientes = toSafeString(src.pendientes).trim();
-      next.checklist.sexo = normalizeSexValue(src.sexo);
+      MODAL_NOTE_FIELDS.forEach(function (f) {
+        const v = toSafeString(src[f]).trim();
+        if (base && v === toSafeString(base[f]).trim()) return;
+        next[f] = v;
+      });
+      const sx = normalizeSexValue(src.sexo);
+      if (!base || sx !== base.sexo) next.checklist.sexo = sx;
       return next;
     }
 
@@ -8100,6 +8132,23 @@ function plExportBackup() {
         localStorage.removeItem(ARCHIVE_KEY);
         freed = true;
       }
+      // 4) Versiones de notas (pl_snap_*) a 2 por paciente e historial de la pizarra (PNG) fuera:
+      //    en iPad (~5 MB) eran lo primero que agotaba la cuota y bloqueaba notas y outbox.
+      try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+        keys.forEach(function (key) {
+          if (!key) return;
+          if (key.indexOf("pl_snap_") === 0) {
+            try {
+              const snaps = JSON.parse(localStorage.getItem(key) || "[]");
+              if (Array.isArray(snaps) && snaps.length > 2) { localStorage.setItem(key, JSON.stringify(snaps.slice(0, 2))); freed = true; }
+            } catch (_) { localStorage.removeItem(key); freed = true; }
+          } else if (key.indexOf("pl_pizarra_") === 0 && key.indexOf("_history") > 0) {
+            localStorage.removeItem(key); freed = true;
+          }
+        });
+      } catch (_) {}
       return freed;
     }
 
@@ -8124,14 +8173,18 @@ function plExportBackup() {
     function _lsNoteCopy(data) {
       const d = Object.assign({}, data);
       if (Array.isArray(d.labHistory)) {
+        // Sin recorte a 30 fechas: esta copia vuelve a ser noteData al arrancar sin nube y el
+        // siguiente push de lab_history subía la lista recortada → se perdían los labs más viejos
+        // de estancias largas. Sin PDF inline pesan poco; el PDF que solo existía inline queda
+        // marcado (source_file_stripped) y supaUpsertNote lo restaura desde la nube antes de subir.
         d.labHistory = d.labHistory
           .slice()
           .sort(function(a, b) { return (b.fecha || "").localeCompare(a.fecha || ""); })
-          .slice(0, 30)
           .map(function(s) {
             if (!s.source_file) return s;
             const sc = Object.assign({}, s);
             sc.source_file = "";
+            if (!s.source_storage_path) sc.source_file_stripped = true;
             return sc;
           });
       }
@@ -8199,14 +8252,34 @@ function plExportBackup() {
     function outboxSave(q) {
       try {
         localStorage.setItem(OUTBOX_KEY, JSON.stringify(q));
+        return true;
       } catch (e) {
-        if (e && e.name === "QuotaExceededError") {
+        if (e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014)) {
           if (lsFreeSpace()) {
-            try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); return; } catch (e2) { }
+            try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); return true; } catch (e2) { }
           }
           setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
         }
+        safeLog("outboxSave:", e);
+        return false;
       }
+    }
+    // Quita del outbox los ítems `note` de una clave encolados ANTES de un push directo que ya tuvo éxito.
+    function outboxDropNoteItemsBefore(key, beforeTs) {
+      const q = outboxLoad();
+      const kept = q.filter(function (it) { return !(it && it.type === "note" && it.key === key && (it.ts || 0) <= beforeTs); });
+      if (kept.length !== q.length) { outboxSave(kept); updateOutboxBadge(); }
+    }
+    // Copia de nota para el outbox: sin el PDF inline (`source_file` en base64) cuando ya está en
+    // Storage. Un ítem de varios MB llenaba la cuota de localStorage y la cola dejaba de guardarse.
+    function _outboxNoteCopy(d) {
+      if (!d || !Array.isArray(d.labHistory)) return d;
+      const c = Object.assign({}, d);
+      c.labHistory = d.labHistory.map(function (s) {
+        if (!s || !s.source_file || !s.source_storage_path) return s;
+        return Object.assign({}, s, { source_file: "" });
+      });
+      return c;
     }
     function outboxEnqueue(item) {
       const q = outboxLoad();
@@ -8224,7 +8297,15 @@ function plExportBackup() {
         if (newItem.type === "delete_patient" || newItem.type === "archive" || newItem.type === "rest") return x.key === newItem.key;
         return false;
       });
-      if (idx !== -1) q[idx] = newItem; else q.push(newItem);
+      if (idx !== -1) {
+        // Nota ya encolada: unir los campos sucios (si alguno era "todo" → sigue siendo "todo").
+        // Antes el reemplazo estrechaba `dirty` al último campo editado y el anterior nunca subía.
+        if (newItem.type === "note") {
+          const a = q[idx].dirty, b = newItem.dirty;
+          newItem.dirty = (Array.isArray(a) && Array.isArray(b)) ? Array.from(new Set(a.concat(b))) : null;
+        }
+        q[idx] = newItem;
+      } else q.push(newItem);
       // CRÍTICO: nunca descartar operaciones. Si la cola se llena, frenar nuevos enqueue.
       if (q.length > OUTBOX_MAX) {
         if (!_outboxOverflowLatched) {
@@ -8674,9 +8755,7 @@ function plExportBackup() {
       noteData[k] = nd;
       // Marcar campo de checklist como dirty para que el partial-update incluya el checklist
       // aunque haya otros campos de texto en edición simultánea (evita que cruce se pierda).
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("ck_cruce_activo");
-      saveNote(k, nd);
+      _saveNoteNow(k, nd, "ck_cruce_activo");
       const overlay = document.getElementById("cruce-modal-overlay");
       if (overlay) overlay.remove();
       _rerenderCard(k);
@@ -8691,9 +8770,7 @@ function plExportBackup() {
       nd.checklist.cruce_unidades = "";
       nd.checklist.cruce_banco = "";
       noteData[k] = nd;
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("ck_cruce_activo");
-      saveNote(k, nd);
+      _saveNoteNow(k, nd, "ck_cruce_activo");
       const overlay = document.getElementById("cruce-modal-overlay");
       if (overlay) overlay.remove();
       _rerenderCard(k);
@@ -8854,7 +8931,14 @@ function plExportBackup() {
         if (lsOld) { if (!localStorage.getItem(NOTES_PREFIX + newKey)) localStorage.setItem(NOTES_PREFIX + newKey, lsOld); localStorage.removeItem(NOTES_PREFIX + oldKey); }
         if (_dirtyFields[oldKey]) { _dirtyFields[newKey] = _dirtyFields[oldKey]; delete _dirtyFields[oldKey]; }
         if (_pendingDirty[oldKey]) { _pendingDirty[newKey] = _pendingDirty[oldKey]; delete _pendingDirty[oldKey]; }
+        if (_inflightDirty[oldKey]) { _inflightDirty[newKey] = _inflightDirty[oldKey]; delete _inflightDirty[oldKey]; }
         if (_pendingPush.has(oldKey)) { _pendingPush.delete(oldKey); _pendingPush.add(newKey); }
+        // Deshacer (↩) y notas libres del Pencil siguen la clave nueva
+        if (Array.isArray(_fieldHistory)) _fieldHistory.forEach(function (h) { if (h && h.k === oldKey) h.k = newKey; });
+        ["pl_notas_v1_", "pl_notas_v1_at_", "pl_notas_v1_size_"].forEach(function (pref) {
+          const v = localStorage.getItem(pref + oldKey);
+          if (v !== null) { if (localStorage.getItem(pref + newKey) === null) localStorage.setItem(pref + newKey, v); localStorage.removeItem(pref + oldKey); }
+        });
         delete _noteDebounceMap[oldKey]; delete _pendingNoteAutosave[oldKey];
         const q = outboxLoad(); let changed = false;
         q.forEach((it) => { if (it && it.type === "note" && it.key === oldKey) { it.key = newKey; changed = true; } });
@@ -8957,6 +9041,26 @@ function plExportBackup() {
     // Si se pasa, solo se envían esos campos a Supabase (merge por campo, no LWW completo).
     // Esto previene que el Dispositivo B sobreescriba campos del Dispositivo A cuando
     // ambos editan el mismo paciente con 200ms de diferencia y el Realtime está lento.
+    // Snapshots cuyo PDF solo existía inline y fue recortado en la copia local: antes de subir
+    // lab_history, recuperar `source_file` de la fila remota (por fecha) para no borrarlo en la nube.
+    async function _restoreStrippedLabSources(patientId, labHistory) {
+      if (!Array.isArray(labHistory)) return;
+      const needs = labHistory.filter(function (s) { return s && s.source_file_stripped && !s.source_file && !s.source_storage_path; });
+      if (!needs.length) return;
+      try {
+        const rows = await _sGet("notes", "patient_id=eq." + encodeURIComponent(patientId) + "&select=lab_history");
+        const remote = (rows && rows[0] && Array.isArray(rows[0].lab_history)) ? rows[0].lab_history : [];
+        needs.forEach(function (s) {
+          const r = remote.find(function (x) { return x && x.fecha === s.fecha && x.source_file; });
+          if (r) {
+            s.source_file = r.source_file;
+            if (!s.source_file_type) s.source_file_type = r.source_file_type || "";
+            if (!s.source_file_name) s.source_file_name = r.source_file_name || "";
+          }
+          delete s.source_file_stripped;
+        });
+      } catch (e) { safeLog("_restoreStrippedLabSources:", e); }
+    }
     async function supaUpsertNote(patientId, nd, dirtyFieldNames) {
       if (!patientId) return null;
       const buildFullRow = (pid) => ({
@@ -8978,8 +9082,15 @@ function plExportBackup() {
       };
       const buildRow = (pid) => {
         const fullRow = buildFullRow(pid);
-        // Si no hay dirty fields o es un guardado completo (outbox/migración), enviar todo
-        if (!dirtyFieldNames || dirtyFieldNames.size === 0) return fullRow;
+        // Sin campos sucios (toggles, modal, outbox, reparación): si conocemos la fila remota
+        // (_noteBaseline) mandar SOLO lo que difiere; sin base (primer guardado) va la fila completa.
+        if (!dirtyFieldNames || dirtyFieldNames.size === 0) {
+          const base = _noteBaseline[pid];
+          if (!base) return fullRow;
+          const diff = { patient_id: pid, updated_by: fullRow.updated_by };
+          NOTE_ROW_COLS.forEach(function (c) { if (!_sameJson(fullRow[c], base[c])) diff[c] = fullRow[c]; });
+          return Object.keys(diff).length <= 2 ? null : diff; // null = nada que mandar
+        }
         // Construir row parcial con solo los campos editados → merge por campo
         const partial = { patient_id: pid, updated_by: fullRow.updated_by };
         let hasChecklistDirty = false;
@@ -9000,7 +9111,11 @@ function plExportBackup() {
         // Upsert correcto: on_conflict=patient_id necesario para que PostgREST
         // genere ON CONFLICT (patient_id) DO UPDATE en lugar de INSERT puro.
         // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
-        const data = await _sUpsert("notes", buildRow(patientId), "patient_id");
+        const row = buildRow(patientId);
+        if (!row) return true; // idéntica a la fila remota conocida: nada que subir
+        if (row.lab_history) await _restoreStrippedLabSources(patientId, row.lab_history);
+        const data = await _sUpsert("notes", row, "patient_id");
+        _noteBaselineMerge(patientId, row);
         // Nunca retornar null/undefined en caso de éxito HTTP:
         // • [] → data[0] sería undefined (falso negativo)
         // • null → _sUpsert sin body JSON (e.g. Content-Type no es JSON) también es éxito
@@ -9014,12 +9129,32 @@ function plExportBackup() {
         if (msg.includes("23503") || msg.includes("notes_patient_id_fkey")) {
           const p = patients.find(x => x._supa_id === patientId);
           if (p) {
+            // ¿La fila del paciente ya no existe? Si otro dispositivo lo EGRESÓ mientras aquí se
+            // escribía (el DELETE Realtime llegó durante la supresión de 5 s), re-insertarlo lo
+            // RESUCITABA con id nuevo en todos los dispositivos. Primero buscar por identidad
+            // (import DELETE+INSERT → id nuevo); si tampoco existe, retirarlo localmente.
+            try {
+              const byId = await _sGet("patients", "id=eq." + encodeURIComponent(patientId) + "&select=id");
+              if (!byId || !byId.length) {
+                const twin = (p.exp && p.cama) ? await _sGet("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama) + "&select=id") : [];
+                if (twin && twin.length && twin[0].id) {
+                  _relinkPatientId(p, twin[0].id);
+                  lsSavePatients(patients);
+                  const data3 = await _sUpsert("notes", buildFullRow(twin[0].id), "patient_id");
+                  _noteBaselineMerge(twin[0].id, buildFullRow(twin[0].id));
+                  return Array.isArray(data3) ? (data3.length > 0 ? data3[0] : true) : (data3 ?? true);
+                }
+                _onPatientGoneRemotely(p, "egresado desde otro dispositivo");
+                return null;
+              }
+            } catch (eChk) { safeLog("supaUpsertNote: verificación de paciente:", eChk); }
             safeWarn("supaUpsertNote: FK violation, re-sync patient first", p.nombre || p.cama);
             p._supa_id = null;
             await supaUpsertPatient(p);
             if (p._supa_id) {
               try {
                 const data2 = await _sUpsert("notes", buildFullRow(p._supa_id), "patient_id");
+                _noteBaselineMerge(p._supa_id, buildFullRow(p._supa_id));
                 lsSavePatients(patients);
                 return Array.isArray(data2) ? (data2.length > 0 ? data2[0] : true) : (data2 ?? true);
               } catch (e2) {
@@ -9067,10 +9202,12 @@ function plExportBackup() {
             if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
           });
           winlabByExp = next;
+          _winlabLoadedOnce = true;
         } catch (e) {
           // Si la tabla no existe o no hay permisos, continuamos sin labs WinLab.
           console.warn("winlab_labs no disponible:", e?.message || e);
           winlabByExp = {};
+          _winlabLoadedOnce = true;
         }
 
         const noteMap = {};
@@ -9135,6 +9272,7 @@ function plExportBackup() {
           }
           const localNote = lsGetNote(k);
           if (sn) {
+            _noteBaselineSet(row.id, sn);
             const nd = migrateNote(localNote);
             nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
             nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
@@ -9214,7 +9352,8 @@ function plExportBackup() {
       try {
         const lsKey = "pl_snap_" + key;
         const snaps = JSON.parse(localStorage.getItem(lsKey) || "[]");
-        snaps.unshift({ ts: now, data: JSON.parse(JSON.stringify(current)) });
+        // Copia ligera (sin PDFs inline): 6 versiones con base64 de varios MB agotaban la cuota de Safari.
+        snaps.unshift({ ts: now, data: JSON.parse(JSON.stringify(_lsNoteCopy(current))) });
         if (snaps.length > 6) snaps.pop();
         localStorage.setItem(lsKey, JSON.stringify(snaps));
       } catch (_) {}
@@ -9286,8 +9425,48 @@ function plExportBackup() {
     // dispositivo había guardado en otros campos (last-write-wins silencioso).
     const _pendingDirty = {};
     const _pendingPush = new Set(); // claves con push programado o en vuelo (persistBeforeExit las encola)
+    // Campos sucios de un push EN VUELO: _takePendingDirty los saca de _pendingDirty antes del await,
+    // así que persistBeforeExit/_applyLoadedNotes no los veían y (a) encolaban la nota sin dirty
+    // (fila completa) o (b) dejaban que la copia remota vieja pisara el campo recién escrito.
+    const _inflightDirty = {};
+    function _dirtyUnion(k) {
+      const s = new Set();
+      [_dirtyFields[k], _pendingDirty[k], _inflightDirty[k]].forEach(function (set) { if (set) set.forEach(function (f) { s.add(f); }); });
+      return s;
+    }
     function _takePendingDirty(k) { const s = _pendingDirty[k]; delete _pendingDirty[k]; return s && s.size ? s : null; }
     function _restorePendingDirty(k, s) { if (!s || !s.size) return; _pendingDirty[k] = _pendingDirty[k] || new Set(); s.forEach((f) => _pendingDirty[k].add(f)); }
+    // Línea base por patient_id: la última fila de `notes` conocida de la nube (carga, Realtime o
+    // nuestro propio upsert). Cuando un guardado llega sin campos sucios (toggles, modal, outbox,
+    // reparación), supaUpsertNote solo manda las columnas que difieren de esta base en vez de la
+    // fila COMPLETA: así la copia local vieja de un campo ya no pisa lo que otro dispositivo guardó.
+    const _noteBaseline = {};
+    const NOTE_ROW_COLS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "checklist", "lab_history", "imagen_history"];
+    function _sameJson(a, b) { try { return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b); } catch (_) { return false; } }
+    function _noteBaselineSet(patientId, row) {
+      if (!patientId || !row) return;
+      const b = {};
+      NOTE_ROW_COLS.forEach(function (c) { if (row[c] !== undefined) b[c] = row[c]; });
+      _noteBaseline[patientId] = b;
+    }
+    function _noteBaselineMerge(patientId, row) {
+      if (!patientId || !row) return;
+      const b = _noteBaseline[patientId] || {};
+      NOTE_ROW_COLS.forEach(function (c) { if (row[c] !== undefined) b[c] = row[c]; });
+      _noteBaseline[patientId] = b;
+    }
+    // Guardado inmediato de checklist (toggles, dieta, ATB, TVP, NPT, recordatorios, cruce…):
+    // marca el campo como sucio para que el push sea parcial y lo desmarca al instante, porque
+    // un flag "checklist" que nunca se limpiaba hacía que cada recarga restaurara el checklist
+    // local completo y cada ocultado de la app lo re-encolara, pisando vitales/pendientes ajenos.
+    function _saveNoteNow(k, nd, flag) {
+      const f = flag || "checklist";
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add(f);
+      noteData[k] = nd;
+      saveNote(k, nd);
+      _dirtyFields[k].delete(f);
+    }
     function saveNote(key, data) {
       _saveNoteSnapshot(key);
       if (_dirtyFields[key] && _dirtyFields[key].size) {
@@ -9314,7 +9493,10 @@ function plExportBackup() {
             if (!p || !p._supa_id) {
               const dirtyNow = _takePendingDirty(k);
               _pendingPush.delete(k);
-              outboxEnqueue({ type: "note", key: k, data: d, dirty: dirtyNow ? Array.from(dirtyNow) : null });
+              outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(d), dirty: dirtyNow ? Array.from(dirtyNow) : null });
+              // Paciente aún sin id (creado sin red): conservar los campos sucios para que el
+              // siguiente push/encolado los acumule en vez de estrecharlos al último campo editado.
+              _restorePendingDirty(k, dirtyNow);
               return;
             }
             pendingSyncs++;
@@ -9323,14 +9505,22 @@ function plExportBackup() {
             // campo en vez de fila completa. Si el push falla se restaura para el reintento y
             // viaja con el ítem del outbox.
             const dirtySnapshot = _takePendingDirty(k);
-            const res = await supaUpsertNote(p._supa_id, d, dirtySnapshot);
+            const pushStart = Date.now();
+            _inflightDirty[k] = dirtySnapshot || new Set();
+            let res = null;
+            try { res = await supaUpsertNote(p._supa_id, d, dirtySnapshot); }
+            finally { delete _inflightDirty[k]; }
             pendingSyncs--;
             _pendingPush.delete(k);
             // res === null indica error explícito; cualquier otro valor truthy (incluso {}) es éxito
             const ok = res !== null && res !== undefined;
             if (!ok) {
               _restorePendingDirty(k, dirtySnapshot);
-              outboxEnqueue({ type: "note", key: k, data: d, dirty: dirtySnapshot ? Array.from(dirtySnapshot) : null });
+              outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(d), dirty: dirtySnapshot ? Array.from(dirtySnapshot) : null });
+            } else {
+              // Lo que quedó encolado ANTES de este push (p. ej. al ocultar la app) ya es viejo:
+              // si se reprodujera después, regresaría el texto a una versión anterior.
+              outboxDropNoteItemsBefore(k, pushStart);
             }
             if (pendingSyncs === 0) {
               if (ok) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
@@ -9341,7 +9531,8 @@ function plExportBackup() {
             _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
             if (pendingSyncs > 0) pendingSyncs--;
             _pendingPush.delete(k);
-            outboxEnqueue({ type: "note", key: k, data: d, dirty: _pendingDirty[k] ? Array.from(_pendingDirty[k]) : null });
+            delete _inflightDirty[k];
+            outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(d), dirty: _pendingDirty[k] ? Array.from(_pendingDirty[k]) : null });
             if (pendingSyncs === 0) setSyncProblemStatus();
           }
         }, 500);
@@ -9357,9 +9548,9 @@ function plExportBackup() {
       // Preservar campos que el usuario está editando ahora mismo (_dirtyFields) Y los que ya
       // tienen un push programado/en vuelo (_pendingDirty): si el iPad vuelve del segundo plano
       // y recarga desde Supabase antes de que ese push llegue, la copia remota (vieja) los pisaba.
-      const keys = new Set(Object.keys(_dirtyFields).concat(Object.keys(_pendingDirty)));
+      const keys = new Set(Object.keys(_dirtyFields).concat(Object.keys(_pendingDirty), Object.keys(_inflightDirty)));
       keys.forEach(function(k) {
-        const dirty = new Set([].concat(Array.from(_dirtyFields[k] || []), Array.from(_pendingDirty[k] || [])));
+        const dirty = _dirtyUnion(k);
         if (!dirty.size) return;
         const prevNd = prev[k];
         if (!prevNd) return;
@@ -9398,7 +9589,11 @@ function plExportBackup() {
     }
 
     function collectLocalNoteKeysForSync(remoteNotePatientIds) {
-      const remoteSet = new Set(Array.isArray(remoteNotePatientIds) ? remoteNotePatientIds : []);
+      // Sin lista remota (carga fallida, llamada sin argumento) NO hay nada que "reparar": antes
+      // una carga fallida tras reconectar subía TODAS las notas locales como fila completa y
+      // pisaba el trabajo del equipo. El outbox ya reintenta lo propio.
+      if (!Array.isArray(remoteNotePatientIds) || !remoteNotePatientIds.length) return [];
+      const remoteSet = new Set(remoteNotePatientIds);
       return patients.map(function (p) {
         const k = pid(p);
         const nd = getLocalNoteSnapshot(k);
@@ -9459,11 +9654,12 @@ function plExportBackup() {
 
     async function recoverPendingNoteSync(remoteNotePatientIds) {
       if (outboxLoad().length) await flushOutbox();
-      const queuedNoteKeys = outboxLoad()
-        .filter(function (item) { return item && item.type === "note" && item.key; })
-        .map(function (item) { return item.key; });
+      // Lo que sigue en el outbox tras el flush se queda ahí para el siguiente reintento (con SUS
+      // datos y SUS campos sucios). Antes se re-enviaba desde noteData como fila completa y, al
+      // tener éxito, se borraba el ítem: tras una recarga noteData ya era la copia remota vieja,
+      // así que la edición del usuario se perdía de memoria, localStorage, outbox y nube.
       const repairKeys = collectLocalNoteKeysForSync(remoteNotePatientIds);
-      const keys = Array.from(new Set([].concat(queuedNoteKeys, repairKeys)));
+      const keys = Array.from(new Set(repairKeys));
       if (!keys.length) return { synced: 0, failed: [] };
       const result = await syncLocalNotesImmediate(keys);
       return {
@@ -9681,7 +9877,9 @@ function plExportBackup() {
     function handlePatientChange(payload) {
       const { new: _chkNew, old: _chkOld } = payload;
       const _chkId = (_chkNew && _chkNew.id) || (_chkOld && _chkOld.id);
-      if (_suppressRealtimeKeys.has("__all__") || (_chkId && _suppressRealtimeKeys.has(_chkId))) return;
+      // Un DELETE nunca se suprime: si se descartaba mientras aquí se escribía la nota de ese
+      // paciente, quedaba un fantasma local y el siguiente push lo re-insertaba (resucitaba al egresado).
+      if (_suppressRealtimeKeys.has("__all__") || (_chkId && _suppressRealtimeKeys.has(_chkId) && payload.eventType !== "DELETE")) return;
       const { eventType, new: newRow, old: oldRow } = payload;
 
       if (eventType === "INSERT") {
@@ -9704,8 +9902,18 @@ function plExportBackup() {
             safeInfo("[RT] Patient replaced (dedup by pid):", p.nombre, oldSupaId, "→", newRow.id);
           }
         } else {
+          // ¿Es el eco de un alta hecha AQUÍ cuyo id aún no llegó por REST (o creada sin red)? Misma
+          // identidad (exp+cama) sin _supa_id → enlazar en vez de duplicar la tarjeta.
+          const twin = patients.find(function (x) { return !x._supa_id && patientIdentityKey(x) === patientIdentityKey(p); });
+          if (twin) {
+            _relinkPatientId(twin, newRow.id);
+            lsSavePatients(patients);
+            buildEspFilters(); renderViewSoft();
+            safeInfo("[RT] Patient inserted (enlazado a alta local):", p.nombre);
+            return;
+          }
           patients.push(p);
-          noteData[newK] = noteData[newK] || defaultData();
+          noteData[newK] = noteData[newK] || lsGetNote(newK);
           lsSavePatients(patients);
         }
         buildEspFilters(); renderViewSoft();
@@ -9772,6 +9980,27 @@ function plExportBackup() {
         buildEspFilters(); renderViewSoft();
         safeInfo("[RT] Patient deleted:", k);
       }
+    }
+    // El paciente ya no existe en la nube (egresado desde otro dispositivo y el DELETE no llegó):
+    // retirarlo localmente con aviso, como hace el DELETE Realtime, en vez de re-insertarlo.
+    function _onPatientGoneRemotely(p, why) {
+      try {
+        const idx = patients.indexOf(p);
+        if (idx === -1) return;
+        const k = pid(p);
+        if (_modalCurrentEditKey === k || modalOrigKey === k) closeModal();
+        const warn = document.createElement("div");
+        warn.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#dc2626;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+        warn.textContent = "⚠️ Este paciente fue dado de alta desde otro dispositivo (" + (why || "") + "). Revisa la Papelera.";
+        document.body.appendChild(warn);
+        setTimeout(function () { if (warn.parentNode) warn.parentNode.removeChild(warn); }, 6000);
+        patients.splice(idx, 1);
+        delete noteData[k];
+        localStorage.removeItem(NOTES_PREFIX + k);
+        _cleanupPatientCache(k);
+        lsSavePatients(patients);
+        buildEspFilters(); renderViewSoft();
+      } catch (e) { safeLog("_onPatientGoneRemotely:", e); }
     }
 
     // ── Realtime helpers ─────────────────────────────────────────────────────────
@@ -9844,6 +10073,7 @@ function plExportBackup() {
           _showRTToast("🧪 Labs WinLab actualizados: " + nombres);
           safeInfo("[RT] winlab_labs updated for exp=" + exp);
         }
+        try { renderStaleLabsBanner(); } catch (_) {} // labs frescos → quitar el aviso de "desactualizados"
       };
       // La tarjeta lee labHistory, no winlabByExp: sin aplicar el sync los labs nuevos no
       // aparecían hasta recargar o pulsar el pill (requiere winlab_labs en la publicación Realtime).
@@ -9863,9 +10093,12 @@ function plExportBackup() {
       // Find patient by _supa_id matching note's patient_id
       const p = patients.find(x => x._supa_id === newRow.patient_id);
       if (!p) return;
+      _noteBaselineSet(newRow.patient_id, newRow);
       const k = pid(p);
       const existing = noteData[k] || lsGetNote(k) || defaultData();
-      const dirty = _dirtyFields[k] || new Set();
+      // Sucios = en edición + con push programado + push en vuelo: un evento remoto no debe
+      // revertir un campo que este dispositivo está a punto de subir (o reintentar por outbox).
+      const dirty = _dirtyUnion(k);
       const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes"];
       const nd = migrateNote(existing);
       // Aplicar campos remotos solo si NO están siendo editados localmente
@@ -9889,8 +10122,10 @@ function plExportBackup() {
       if (dirty.has("ck_cultivos")) nd.checklist.cultivos = localChecklist.cultivos || "";
       if (remoteMeta.exists && !dirty.has("entrega")) nd.entrega = remoteMeta.entrega;
       if (remoteMeta.exists) {
-        nd.body_diagram_ant = remoteMeta.body_diagram_ant;
-        nd.body_diagram_post = remoteMeta.body_diagram_post;
+        // Diagrama corporal: no pisar un trazo local en edición/pendiente, ni borrar el local con
+        // un remoto vacío (otro dispositivo que aún no recibió nuestro dibujo manda su checklist).
+        if (!dirty.has("body_diagram_ant") && !(remoteMeta.body_diagram_ant === "" && existing.body_diagram_ant)) nd.body_diagram_ant = remoteMeta.body_diagram_ant;
+        if (!dirty.has("body_diagram_post") && !(remoteMeta.body_diagram_post === "" && existing.body_diagram_post)) nd.body_diagram_post = remoteMeta.body_diagram_post;
       }
       // BUG-C2/C3 FIX: merge labHistory por fecha (LWW por client_updated_at).
       // Si no hay dirty local → usar remote directamente.
@@ -9901,7 +10136,8 @@ function plExportBackup() {
         dirty.has("labHistory")
       );
       if (!dirty.has("imagenHistory")) {
-        nd.imagenHistory = (newRow.imagen_history && newRow.imagen_history.length)
+        // Un array remoto vacío también cuenta (borrar el último estudio en otro iPad debe verse aquí).
+        nd.imagenHistory = Array.isArray(newRow.imagen_history)
           ? newRow.imagen_history
           : (existing.imagenHistory || []);
       } else {
@@ -9991,11 +10227,12 @@ function plExportBackup() {
         // plano, así que sin esto la última edición antes de bloquear el iPad se perdía.
         const keys = new Set(Object.keys(_dirtyFields).filter(function (k) { return _dirtyFields[k] && _dirtyFields[k].size; }));
         Object.keys(_pendingDirty).forEach(function (k) { keys.add(k); });
+        Object.keys(_inflightDirty).forEach(function (k) { keys.add(k); });
         _pendingPush.forEach(function (k) { keys.add(k); });
         keys.forEach(function (k) {
           if (!noteData[k]) return;
-          const dirty = new Set([].concat(Array.from(_dirtyFields[k] || []), Array.from(_pendingDirty[k] || [])));
-          outboxEnqueue({ type: "note", key: k, data: migrateNote(noteData[k]), dirty: dirty.size ? Array.from(dirty) : null });
+          const dirty = _dirtyUnion(k);
+          outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(migrateNote(noteData[k])), dirty: dirty.size ? Array.from(dirty) : null });
           // "dx" vive en el paciente (no en la nota) y solo se copia ahí en onchange, es decir, al
           // soltar el campo. Si el iPad se oculta a media edición del Dx, reflejarlo y encolar el paciente.
           if (dirty.has("dx")) {
@@ -10033,7 +10270,7 @@ function plExportBackup() {
         }
         _enqueuePendingMisc();
         await flushOutbox();
-        const repair = await recoverPendingNoteSync((loaded && loaded.remoteNotePatientIds) || []);
+        const repair = loaded ? await recoverPendingNoteSync(loaded.remoteNotePatientIds || []) : { synced: 0, failed: [] };
         syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
       } catch (e) { safeLog("online handler:", e); }
       if (syncOk) setSyncStatus("synced", "✅ Guardado");
@@ -10142,8 +10379,14 @@ function plExportBackup() {
               // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
               if (!p._supa_id) await withOutboxRetry(async function(){ return await supaUpsertPatient(p); });
               if (p._supa_id) {
-                // dirty: campos que cambiaron cuando se encoló → merge por campo (no pisar lo ajeno)
-                const noteRes = await withOutboxRetry(async function(){ return await supaUpsertNote(p._supa_id, item.data, Array.isArray(item.dirty) && item.dirty.length ? new Set(item.dirty) : null); });
+                // dirty: campos que cambiaron cuando se encoló → merge por campo (no pisar lo ajeno).
+                // supaUpsertNote devuelve null (no lanza) al fallar: convertirlo en excepción para
+                // que withOutboxRetry reintente de verdad en vez de dejar el ítem "fallido" a la primera.
+                const noteRes = await withOutboxRetry(async function(){
+                  const r = await supaUpsertNote(p._supa_id, item.data, Array.isArray(item.dirty) && item.dirty.length ? new Set(item.dirty) : null);
+                  if (r === null || r === undefined) throw new Error("upsert note: " + (_lastSyncErrorDetail || "sin detalle"));
+                  return r;
+                });
                 // Considerar éxito cualquier valor no-null (incluso {} o true)
                 results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
               } else results[absIdx] = false;
@@ -10261,7 +10504,7 @@ function plExportBackup() {
     // Claves normalizadas para comparar el censo importado con el actual: MAYÚS, punto→guion, un
     // solo espacio (mismo canon que el sheet-sync y el modal). Sin esto "3.183", "3-183 " y "3-183"
     // eran tres camas distintas y el import "reemplazaba" al mismo paciente (borrando su nota).
-    function importKeyNorm(s) { return toSafeString(s).trim().toUpperCase().replace(/\./g, "-").replace(/\s+/g, " "); }
+    function importKeyNorm(s) { return toSafeString(s).trim().toUpperCase().replace(/\./g, "-").replace(/\s*-\s*/g, "-").replace(/\s+/g, " "); } // "3 - 101" = "3-101"
     function importIdentityKey(p) { return "pt-" + importKeyNorm(p && p.exp) + "-" + importKeyNorm(p && p.cama); }
     function hasMeaningfulPatientIdentity(p) {
       return !!(toSafeString(p && p.nombre).trim() || toSafeString(p && p.cama).trim() || toSafeString(p && p.exp).trim());
@@ -10286,7 +10529,8 @@ function plExportBackup() {
     }
     function parseLabNumber(v) {
       if (v === null || v === undefined) return NaN;
-      const s = String(v).trim().replace(",", ".");
+      // "<0.01", "> 5000": quitar el signo para que tarjeta y alertas coincidan con el tablero
+      const s = String(v).trim().replace(/^[<>≤≥]\s*/, "").replace(",", ".");
       const n = parseFloat(s);
       return Number.isFinite(n) ? n : NaN;
     }
@@ -10735,10 +10979,10 @@ function plExportBackup() {
         if (repair.failed.length || outboxLoad().length) setSyncProblemStatus();
         else setSyncStatus("synced", "✅ Guardado");
       } else {
-        // Supabase falló u offline → usar localStorage como fallback
+        // Supabase falló u offline → usar localStorage como fallback. Conservar lo que ya está en
+        // memoria (render temprano): vaciar noteData revertía lo tecleado durante la carga.
         patients = sanitizePatients(lsGetPatients() || []);
-        noteData = {};
-        patients.forEach(p => { noteData[pid(p)] = lsGetNote(pid(p)); });
+        patients.forEach(p => { const k = pid(p); if (!noteData[k]) noteData[k] = lsGetNote(k); });
         // Dedup local por pid() para evitar tarjetas duplicadas aunque Supabase esté caído
         const _seenLocal = new Set();
         patients = patients.filter(p => { const k = pid(p); if (_seenLocal.has(k)) return false; _seenLocal.add(k); return true; });
@@ -10781,7 +11025,7 @@ function plExportBackup() {
       }
 
       buildEspFilters();
-      renderView();
+      renderViewSoft(); // si el residente ya escribe en la tarjeta temprana, no destruir su campo
       updateProxyPill();
       rotateQuote();
       updateCourseCountdown();
@@ -10794,7 +11038,7 @@ function plExportBackup() {
       if (isWinlabAutoSyncEnabled() && patients && patients.length && winlabByExp && Object.keys(winlabByExp).length) {
         applyWinlabSyncToPatients({ verbose: false }).then(stats => {
           if (stats.inserted + stats.merged > 0) {
-            renderView();
+            renderViewSoft();
             _wlShowToast(
               `💧 WinLab: ${stats.matched} pacientes con labs auto-llenados`,
               "#0e7490", 3500
@@ -10818,7 +11062,7 @@ function plExportBackup() {
           // Conservar los procedimientos creados sin red que aún no tienen id de la nube.
           procedimientos = procs.concat((procedimientos || []).filter(function (p) { return p && !p._id; }));
           saveProcs();
-          renderView();
+          renderViewSoft();
         }).catch(function(e) { safeLog("[PROC] carga en segundo plano falló:", e); });
       }
 
@@ -10992,6 +11236,14 @@ function plExportBackup() {
       renderView();
     }
     function quitarFiltrosCenso() { selectedResidente = "ALL"; selectedAdscrito = "ALL"; renderView(); }
+    // "✕ Limpiar filtros" del tablero vacío: antes solo borraba la búsqueda y el tablero seguía en
+    // "Sin pacientes" por especialidad, "solo ingresos" o "solo míos" activos.
+    function quitarFiltrosTodo() {
+      const s = document.getElementById("search"); if (s) s.value = "";
+      selectedEsp = "ALL"; selectedResidente = "ALL"; selectedAdscrito = "ALL"; showSoloIngresos = false;
+      if (typeof _soloMios !== "undefined" && _soloMios) { _soloMios = false; try { localStorage.setItem("pl_solo_mios", "0"); } catch (_) {} }
+      buildEspFilters(); renderView();
+    }
 
     // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
     function pisoBedPriority(cama) {
@@ -11013,6 +11265,9 @@ function plExportBackup() {
       return [5, anyNum()];                                          // resto al final
     }
     function renderPiso(pts, showFreeInline) {
+      // Avisos operativos también en el tablero (antes solo se pintaban en el modo lista, que ya no
+      // tiene entrada): "scraper WinLab caído / labs viejos" y camas/pacientes duplicados.
+      try { renderStaleLabsBanner(); renderDupBanner(detectDuplicateBeds(patients)); renderDupPatientBanner(detectDuplicatePatients(patients)); } catch (e) { safeLog("banners:", e); }
       // ═══ v30 ═══ Enfoque a pantalla completa de un solo paciente
       // ═══ v42 · MODO TABLERO (GoodNotes): por defecto una página por paciente, se hojea ═══
       if (typeof window.__viewMode === "undefined") window.__viewMode = "board";
@@ -11022,7 +11277,7 @@ function plExportBackup() {
         if (!window.__boardOrder.length) {
           document.body.classList.remove("focus-on");
           document.getElementById("view-piso").innerHTML =
-            `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">Sin pacientes en esta vista</span><button class="bn-idx" onclick="var s=document.getElementById('search');if(s)s.value='';renderView()">✕ Limpiar filtros</button></div><div style="padding:24px;color:#64748b;font-size:13px">No hay pacientes con la búsqueda o filtros activos. Toca «✕ Limpiar filtros» para ver todo.</div></div></div>`;
+            `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">Sin pacientes en esta vista</span><button class="bn-idx" onclick="quitarFiltrosTodo()">✕ Limpiar filtros</button></div><div style="padding:24px;color:#64748b;font-size:13px">No hay pacientes con la búsqueda o filtros activos. Toca «✕ Limpiar filtros» para ver todo.</div></div></div>`;
           return;
         }
         if (!window.__focusPid || window.__boardOrder.indexOf(window.__focusPid) < 0) {
@@ -11289,10 +11544,22 @@ function plExportBackup() {
     function hasLabsOnDate(nd, fecha) {
       return (nd.labHistory || []).some(s => s.fecha === fecha && hasAnyLabValues(s));
     }
+    // ¿El snapshot trae valores de sangre (no solo EGO/cultivo/vacío)?
+    function _snapHasBloodValues(s) {
+      const labs = (s && s.labs) || {};
+      return Object.keys(labs).some(function (key) {
+        if (key.indexOf("ego_") === 0 || key.indexOf("micro_") === 0 || key === "fecha_labs") return false;
+        const v = labs[key];
+        return v !== undefined && v !== null && String(v).trim() !== "";
+      });
+    }
     function getLatestLabSnapshot(nd) {
       const history = (nd.labHistory || []).filter(s => s && s.fecha);
       if (!history.length) return null;
-      return [...history].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")))[0];
+      // El más reciente CON valores de sangre: un EGO solo o una fecha nueva vacía ("+ Nueva fecha")
+      // ocultaba la Hb/K críticos de ayer (punto rojo, banner y alertas desaparecían).
+      const sorted = [...history].sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")));
+      return sorted.find(_snapHasBloodValues) || sorted[0];
     }
     // allowedKeys: si se pasa, solo evalúa esos keys (útil para filtrar el panel de alertas)
     function getCriticalLabItemsFromSnapshot(snap, allowedKeys) {
@@ -11581,7 +11848,8 @@ function plExportBackup() {
       const criticals = snap ? getCriticalLabItemsFromSnapshot(snap) : [];
       const unacked = criticals.filter(c => {
         const a = acks[c.key];
-        return !a || a.value !== c.value;
+        // Reconocido = mismo valor Y misma fecha: un K 2.7 nuevo hoy no hereda el "visto" de ayer
+        return !a || a.value !== c.value || (a.fecha && snap && snap.fecha && a.fecha !== snap.fecha);
       });
       if (unacked.length) return "red";
       const dias = getDiasSinLabs(nd);
@@ -11604,7 +11872,8 @@ function plExportBackup() {
       const acks = (nd.checklist && nd.checklist._labAcks) || {};
       return criticals.filter(c => {
         const a = acks[c.key];
-        return !a || a.value !== c.value;
+        // Reconocido = mismo valor Y misma fecha: un K 2.7 nuevo hoy no hereda el "visto" de ayer
+        return !a || a.value !== c.value || (a.fecha && snap && snap.fecha && a.fecha !== snap.fecha);
       });
     }
 
@@ -11629,12 +11898,9 @@ function plExportBackup() {
       if (!nd.checklist) nd.checklist = {};
       if (!nd.checklist._labAcks) nd.checklist._labAcks = {};
       criticals.forEach(c => {
-        nd.checklist._labAcks[c.key] = { value: c.value, ts: Date.now() };
+        nd.checklist._labAcks[c.key] = { value: c.value, ts: Date.now(), fecha: snap.fecha || "" };
       });
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("checklist");
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
       _rerenderCard(k);
     }
 
@@ -11705,14 +11971,14 @@ function plExportBackup() {
           <div class="cm-result cm-result-na"></div>`;
       } else if (t === "mg") {
         const cur = getLabVal(snap, "mg");
-        html = `<div class="cm-field"><label>Mg²⁺ actual (mmol/L)</label>
-          <input type="number" id="cm-mg-val" step="0.1" value="${cur !== null ? cur : ""}" oninput="calcCorrec()" placeholder="ej. 0.5"></div>
+        html = `<div class="cm-field"><label>Mg²⁺ actual (mg/dL)</label>
+          <input type="number" id="cm-mg-val" step="0.1" value="${cur !== null ? cur : ""}" oninput="calcCorrec()" placeholder="ej. 1.4"></div>
           <div class="cm-result cm-result-mg"></div>`;
       } else if (t === "ca") {
         const cur = getLabVal(snap, "ca");
         const alb = getLabVal(snap, "alb");
-        html = `<div class="cm-field"><label>Ca²⁺ total actual (mmol/L)</label>
-          <input type="number" id="cm-ca-val" step="0.1" value="${cur !== null ? cur : ""}" oninput="calcCorrec()" placeholder="ej. 1.8"></div>
+        html = `<div class="cm-field"><label>Ca²⁺ total actual (mg/dL)</label>
+          <input type="number" id="cm-ca-val" step="0.1" value="${cur !== null ? cur : ""}" oninput="calcCorrec()" placeholder="ej. 7.6"></div>
           <div class="cm-field"><label>Albúmina (g/dL)</label>
           <input type="number" id="cm-ca-alb" step="0.1" value="${alb !== null ? alb : ""}" oninput="calcCorrec()" placeholder="ej. 3.2"></div>
           <div class="cm-result cm-result-ca"></div>`;
@@ -11773,12 +12039,12 @@ function plExportBackup() {
         } else if (t === "mg") {
           const mg = parseFloat(document.getElementById("cm-mg-val")?.value || "");
           if (!isNaN(mg)) {
-            if (mg < 0.5) {
-              txt = `Mg²⁺ ${mg} mmol/L — HIPOMAGNESEMIA GRAVE\n• MgSO4 2g IV en 15 min, luego 6g en 24h\n• Monitorizar reflejos y FR\n• Corregir K⁺ y Ca²⁺ concomitantemente`;
-            } else if (mg < 0.7) {
-              txt = `Mg²⁺ ${mg} mmol/L — Hipomagnesemia\n• MgSO4 1-2g IV en 1h o Mg VO 300mg c/12h\n• Controlar en 24-48h`;
+            if (mg < 1.2) {
+              txt = `Mg²⁺ ${mg} mg/dL — HIPOMAGNESEMIA GRAVE\n• MgSO4 2g IV en 15 min, luego 6g en 24h\n• Monitorizar reflejos y FR\n• Corregir K⁺ y Ca²⁺ concomitantemente`;
+            } else if (mg < 1.7) {
+              txt = `Mg²⁺ ${mg} mg/dL — Hipomagnesemia\n• MgSO4 1-2g IV en 1h o Mg VO 300mg c/12h\n• Controlar en 24-48h`;
             } else {
-              txt = `Mg²⁺ ${mg} mmol/L — dentro de rango normal`;
+              txt = `Mg²⁺ ${mg} mg/dL — dentro de rango normal`;
             }
           }
         } else if (t === "ca") {
@@ -11787,17 +12053,17 @@ function plExportBackup() {
           if (!isNaN(ca)) {
             let caCorr = ca;
             if (!isNaN(alb) && alb < 4) {
-              caCorr = ca + 0.2 * (4 - alb);
+              caCorr = ca + 0.8 * (4 - alb); // mg/dL: Ca corregido = Ca + 0.8 × (4 − albúmina)
               caCorr = Math.round(caCorr * 100) / 100;
             }
-            if (caCorr < 1.75) {
-              txt = `Ca²⁺ ${ca} mmol/L (corregido: ${caCorr}) — HIPOCALCEMIA GRAVE\n• Gluconato de calcio 1g IV en 10 min\n• Seguido de infusión 0.5-1.5 mg/kg/h\n• ECG continuo, control de reflejos`;
-            } else if (caCorr < 2.1) {
-              txt = `Ca²⁺ ${ca} mmol/L (corregido: ${caCorr}) — Hipocalcemia\n• Carbonato de calcio 500-1000mg VO c/8h\n• + Vitamina D si deficiencia\n• Control en 48-72h`;
-            } else if (caCorr > 2.9) {
-              txt = `Ca²⁺ ${ca} mmol/L (corregido: ${caCorr}) — HIPERCALCEMIA\n• Hidratación IV SF 0.9% 200-500 mL/h\n• Furosemida 20-40mg IV\n• Considerar bifosfonatos si hipercalcemia de malignidad`;
+            if (caCorr < 7.0) {
+              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — HIPOCALCEMIA GRAVE\n• Gluconato de calcio 1g IV en 10 min\n• Seguido de infusión 0.5-1.5 mg/kg/h\n• ECG continuo, control de reflejos`;
+            } else if (caCorr < 8.5) {
+              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — Hipocalcemia\n• Carbonato de calcio 500-1000mg VO c/8h\n• + Vitamina D si deficiencia\n• Control en 48-72h`;
+            } else if (caCorr > 10.5) {
+              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — HIPERCALCEMIA\n• Hidratación IV SF 0.9% 200-500 mL/h\n• Furosemida 20-40mg IV\n• Considerar bifosfonatos si hipercalcemia de malignidad`;
             } else {
-              txt = `Ca²⁺ ${ca} mmol/L (corregido: ${caCorr}) — dentro de rango normal`;
+              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — dentro de rango normal`;
             }
           }
         } else if (t === "hb") {
@@ -11983,10 +12249,7 @@ function plExportBackup() {
       if (!nd.checklist) nd.checklist = {};
       if (!nd.checklist._ptReminders) nd.checklist._ptReminders = [];
       nd.checklist._ptReminders.push({ text: txt, done: false });
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("checklist");
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
       inp.value = "";
       _rerenderCard(k);
     }
@@ -11996,10 +12259,7 @@ function plExportBackup() {
       if (!nd.checklist || !nd.checklist._ptReminders) return;
       if (!nd.checklist._ptReminders[idx]) return;
       nd.checklist._ptReminders[idx].done = !nd.checklist._ptReminders[idx].done;
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("checklist");
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
       _rerenderCard(k);
       // El mismo recordatorio se lista en la vista "No olvidar": refrescarla si está abierta.
       if (typeof currentView !== "undefined" && currentView === "noOlvidar" && typeof renderNoOlvidar === "function") renderNoOlvidar();
@@ -12009,10 +12269,7 @@ function plExportBackup() {
       const nd = migrateNote(noteData[k] || defaultData());
       if (!nd.checklist || !nd.checklist._ptReminders) return;
       nd.checklist._ptReminders.splice(idx, 1);
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("checklist");
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
       _rerenderCard(k);
     }
 
@@ -12021,7 +12278,7 @@ function plExportBackup() {
     let _rondasIdx = 0;
 
     function startRondas() {
-      _rondasList = Array.isArray(patients) ? patients.slice() : [];
+      _rondasList = Array.isArray(patients) ? orderPisoPatients(patients) : []; // en orden de cama, como el pase
       if (!_rondasList.length) { alert("No hay pacientes en piso."); return; }
       _rondasIdx = 0;
       // Clear main piso view to avoid duplicate card/checklist IDs in the DOM.
@@ -12780,7 +13037,8 @@ function plExportBackup() {
               onpointerdown="bdStartDraw(event,'${k}','${side}')"
               onpointermove="bdDraw(event,'${k}','${side}')"
               onpointerup="bdEndDraw(event,'${k}','${side}')"
-              onpointerleave="bdEndDraw(event,'${k}','${side}')"></canvas>
+              onpointerleave="bdEndDraw(event,'${k}','${side}')"
+              onpointercancel="bdEndDraw(event,'${k}','${side}')"></canvas>
           </div>
           <div class="bd-tools">
             <button class="bd-color-btn" style="background:#e74c3c" onclick="bdSetColor('${k}','${side}','#e74c3c')" title="Rojo"></button>
@@ -13054,9 +13312,10 @@ function plExportBackup() {
       },
       {
         id: "electrolitos", label: "⚡ Electrolitos extendidos", fields: [
-          { key: "mg", label: "Mg", unit: "mmol/L", low: 0.70, high: 1.05, cl: 0.5 },
-          { key: "ca", label: "Ca", unit: "mmol/L", low: 2.1, high: 2.6, cl: 1.75 },
-          { key: "p", label: "P", unit: "mmol/L", low: 0.81, high: 1.45 },
+          // Unidades de WinLab HGL (mg/dL): con umbrales en mmol/L un Ca 7.6 mg/dL salía como "Hipercalcemia severa".
+          { key: "mg", label: "Mg", unit: "mg/dL", low: 1.7, high: 2.4, cl: 1.2, ch: 4.0 },
+          { key: "ca", label: "Ca", unit: "mg/dL", low: 8.5, high: 10.5, cl: 7.0, ch: 13.0 },
+          { key: "p", label: "P", unit: "mg/dL", low: 2.5, high: 4.5, cl: 1.0, ch: 7.0 },
           { key: "cl", label: "Cl", unit: "mmol/L", low: 98, high: 107 }
         ]
       },
@@ -13065,8 +13324,9 @@ function plExportBackup() {
           { key: "tp", label: "TP", unit: "seg", low: 11, high: 14, ch: 20 },
           { key: "ttp", label: "TTP", unit: "seg", low: 25, high: 35, ch: 60 },
           { key: "inr", label: "INR", unit: "", low: 0, high: 1.2, ch: 3 },
-          { key: "fibrinogeno", label: "Fibri", unit: "g/L", low: 2, high: 4, cl: 1 },
-          { key: "dimero_d", label: "Dím-D", unit: "µg/mL", low: 0, high: 0.5, ch: 1 }
+          // WinLab reporta FIBRINOGENO CLAUSS en mg/dL y DIMERO D en ng/mL (ref 0-500)
+          { key: "fibrinogeno", label: "Fibri", unit: "mg/dL", low: 200, high: 400, cl: 100 },
+          { key: "dimero_d", label: "Dím-D", unit: "ng/mL", low: 0, high: 500, ch: 5000 }
         ]
       },
       {
@@ -13112,7 +13372,7 @@ function plExportBackup() {
       },
       {
         id: "cardiaco", label: "🫀 Cardíaco / Enzimas", fields: [
-          { key: "tropI",     label: "TropI",      unit: "ng/mL", low: 0,   high: 0.04,  ch: 0.1 },
+          { key: "tropI",     label: "TropI",      unit: "pg/mL", low: 0,   high: 40,    ch: 100 }, // WinLab: TROPONINA I en pg/mL
           { key: "tropT",     label: "TropT",      unit: "ng/mL", low: 0,   high: 0.014, ch: 0.05 },
           { key: "ck",        label: "CK",         unit: "U/L",   low: 0,   high: 170,   ch: 500 },
           { key: "ck_mb",     label: "CK-MB",      unit: "U/L",   low: 0,   high: 25,    ch: 75 },
@@ -13129,7 +13389,7 @@ function plExportBackup() {
         // VSG y TSH son nuevos (alias agregado arriba). Rangos estándar de adulto.
         id: "lipidos_otros", label: "🧴 Lípidos / Proteínas / Otros", fields: [
           { key: "colest", label: "Colest", unit: "mg/dL",  low: 0,   high: 200, ch: 240 },
-          { key: "hdl",    label: "HDL",    unit: "mg/dL",  low: 40,  high: 100, cl: 40 },
+          { key: "hdl",    label: "HDL",    unit: "mg/dL",  low: 40,  high: 100 }, // sin cl: HDL bajo no es "crítico"
           { key: "ldl",    label: "LDL",    unit: "mg/dL",  low: 0,   high: 130, ch: 190 },
           { key: "vldl",   label: "VLDL",   unit: "mg/dL",  low: 0,   high: 30 },
           { key: "trig",   label: "Trig",   unit: "mg/dL",  low: 0,   high: 150, ch: 500 },
@@ -13316,7 +13576,7 @@ function plExportBackup() {
         .join("\n")
         .trim();
       patientObj.dx = (cleanedDx ? (cleanedDx + "\n") : "") + suffix;
-      savePts();
+      _savePtsImmediate(patientObj); // solo este paciente: savePts() re-escribía los ~48 con la copia local
     }
     async function callLabsExtractionWorker(file, modeHint) {
       const proxyUrl = getProxyUrl();
@@ -13328,17 +13588,27 @@ function plExportBackup() {
         r.readAsDataURL(file);
       });
       if (!base64 || base64.length < 100) throw new Error("Archivo vacío o no legible.");
-      const resp = await fetch(proxyUrl + "/api/labs/extract", {
-        method: "POST",
-        headers: { ...apiHeaders() },
-        body: JSON.stringify({
-          file_base64: base64,
-          file_name: file.name || "labs.pdf",
-          mime_type: "application/pdf",
-          mode_hint: modeHint || "bulk",
-          prompt: buildHglLabsWorkerPrompt()
-        })
-      });
+      const _lxAbort = new AbortController();
+      const _lxTimer = setTimeout(function () { _lxAbort.abort(); }, 120000); // sin esto, una red colgada dejaba "⏳ Extrayendo..." para siempre
+      let resp;
+      try {
+        resp = await fetch(proxyUrl + "/api/labs/extract", {
+          method: "POST",
+          headers: { ...apiHeaders() },
+          body: JSON.stringify({
+            file_base64: base64,
+            file_name: file.name || "labs.pdf",
+            // El botón acepta "📷 Foto": mandar el tipo real (antes todo iba como PDF a Gemini)
+            mime_type: (file.type && file.type.indexOf("image/") === 0) ? file.type : "application/pdf",
+            mode_hint: modeHint || "bulk",
+            prompt: buildHglLabsWorkerPrompt()
+          }),
+          signal: _lxAbort.signal
+        });
+      } catch (netErr) {
+        if (netErr && netErr.name === "AbortError") throw new Error("Se agotó el tiempo (2 min) esperando al Worker. Intenta de nuevo.");
+        throw netErr;
+      } finally { clearTimeout(_lxTimer); }
       if (!resp.ok) {
         const errTxt = await resp.text().catch(function(){ return ""; });
         throw new Error("Worker HTTP " + resp.status + ": " + errTxt.slice(0, 250));
@@ -13421,23 +13691,27 @@ function plExportBackup() {
         if (v > 1.2) return { sev: "abn", title: "INR elevado", rec: "Evaluar anticoagulación activa vs coagulopatía. Si no en anticoagulantes: vitamina K oral, evaluar función hepática." };
         return null;
       },
+      // Mg / Ca / P en mg/dL (unidades de WinLab HGL). Antes los umbrales estaban en mmol/L y
+      // cualquier Ca normal (9 mg/dL) salía como "Hipercalcemia severa".
       mg: (v) => {
-        if (v < 0.5) return { sev: "crit", title: "Hipomagnesemia severa", rec: "Tx: MgSO4 4-8g IV en 4-8h, luego 1-2g/h mantenimiento. Vigilar reflejos rotulianos (suspender si ausentes), FR y diuresis. PREREQUISITO para que K y Ca respondan a reposición. ECG." };
-        if (v < 0.7) return { sev: "abn", title: "Hipomagnesemia", rec: "Tx: Oral — óxido/cloruro Mg 400mg c/8h. IV — MgSO4 2g en 1h c/6-8h. Corregir SIEMPRE antes o junto con K (K refractario si Mg bajo). Causas: diuréticos de asa, IBP crónicos, diarrea, alcohol." };
-        if (v > 1.05) return { sev: "abn", title: "Hipermagnesemia", rec: "Tx: Suspender suplementos Mg. Si severa (>2mmol/L): Gluconato Ca 10% 10mL IV (antagonista directo). Furosemida + SF para excreción renal. IR severa: diálisis. Monitorear reflejos, FR y ECG." };
+        if (v < 1.2) return { sev: "crit", title: "Hipomagnesemia severa", rec: "Tx: MgSO4 4-8g IV en 4-8h, luego 1-2g/h mantenimiento. Vigilar reflejos rotulianos (suspender si ausentes), FR y diuresis. PREREQUISITO para que K y Ca respondan a reposición. ECG." };
+        if (v < 1.7) return { sev: "abn", title: "Hipomagnesemia", rec: "Tx: Oral — óxido/cloruro Mg 400mg c/8h. IV — MgSO4 2g en 1h c/6-8h. Corregir SIEMPRE antes o junto con K (K refractario si Mg bajo). Causas: diuréticos de asa, IBP crónicos, diarrea, alcohol." };
+        if (v >= 4.0) return { sev: "crit", title: "Hipermagnesemia severa", rec: "Tx: Suspender todo aporte de Mg. Gluconato Ca 10% 10mL IV (antagonista directo). Furosemida + SF para excreción renal. IR severa: diálisis. Monitorear reflejos, FR y ECG." };
+        if (v > 2.4) return { sev: "abn", title: "Hipermagnesemia", rec: "Tx: Suspender suplementos Mg. Si severa (≥4 mg/dL): Gluconato Ca 10% 10mL IV (antagonista directo). Furosemida + SF para excreción renal. IR severa: diálisis. Monitorear reflejos, FR y ECG." };
         return null;
       },
       ca: (v) => {
-        if (v < 1.75) return { sev: "crit", title: "Hipocalcemia severa", rec: "Tx: Gluconato Ca 10% 10-20mL IV en 10min, luego 0.5-2mg/kg/h de Ca elemental. Corregir Mg si bajo. ECG continuo. Meta Ca iónico >1.1mmol/L. Repetir nivel c/4h." };
-        if (v < 2.1) return { sev: "abn", title: "Hipocalcemia", rec: "Tx: Carbonato Ca 1-3g/día VO + calcitriol 0.25-0.5mcg/día. Corregir Mg si bajo (hipocalcemia refractaria sin Mg corregido). Evaluar PTH y vitamina D. Control Ca en 48-72h." };
-        if (v > 2.75) return { sev: "crit", title: "Hipercalcemia severa", rec: "Tx: 1) SF 200-500mL/h IV. 2) Furosemida 20-40mg IV tras hidratar bien. 3) Zoledrónico 4mg IV en 15min o pamidronato 60-90mg en 2-4h. 4) Calcitonina 4UI/kg IM c/12h (efecto en horas). Diálisis si refractario." };
-        if (v > 2.6) return { sev: "abn", title: "Hipercalcemia", rec: "Tx: Hidratación IV/VO abundante. Suspender Ca/Vit D. Si neoplásica: bisfosfonato oral. Furosemida solo si bien hidratado. Causas: hiperPTH primario, neoplasia (PTHrP), sarcoidosis, tiazidas." };
+        if (v < 7.0) return { sev: "crit", title: "Hipocalcemia severa", rec: "Tx: Gluconato Ca 10% 10-20mL IV en 10min, luego 0.5-2mg/kg/h de Ca elemental. Corregir Mg si bajo. ECG continuo. Meta Ca iónico >1.1mmol/L. Repetir nivel c/4h." };
+        if (v < 8.5) return { sev: "abn", title: "Hipocalcemia", rec: "Tx: Carbonato Ca 1-3g/día VO + calcitriol 0.25-0.5mcg/día. Corregir Mg si bajo (hipocalcemia refractaria sin Mg corregido). Corregir por albúmina (Ca + 0.8×(4−alb)). Evaluar PTH y vitamina D. Control Ca en 48-72h." };
+        if (v >= 13.0) return { sev: "crit", title: "Hipercalcemia severa", rec: "Tx: 1) SF 200-500mL/h IV. 2) Furosemida 20-40mg IV tras hidratar bien. 3) Zoledrónico 4mg IV en 15min o pamidronato 60-90mg en 2-4h. 4) Calcitonina 4UI/kg IM c/12h (efecto en horas). Diálisis si refractario." };
+        if (v > 10.5) return { sev: "abn", title: "Hipercalcemia", rec: "Tx: Hidratación IV/VO abundante. Suspender Ca/Vit D. Si neoplásica: bisfosfonato oral. Furosemida solo si bien hidratado. Causas: hiperPTH primario, neoplasia (PTHrP), sarcoidosis, tiazidas." };
         return null;
       },
       p: (v) => {
-        if (v < 0.5) return { sev: "crit", title: "Hipofosfatemia severa", rec: "Tx: Fosfato K o Na IV 0.08-0.16mmol/kg en 6h. Monitorizar Ca durante reposición (riesgo hipocalcemia). Sínd. realimentación: restringir glucosa + fosfato lento. Control P c/6h hasta >0.8mmol/L." };
-        if (v < 0.81) return { sev: "abn", title: "Hipofosfatemia", rec: "Tx: Oral — Neutraphos 250-500mg c/6-8h con comidas. IV si no tolera: 0.08mmol/kg en 6h. Suspender antiácidos con Al/Mg. Corregir vitamina D si deficiente. Control en 24-48h." };
-        if (v > 1.45) return { sev: "abn", title: "Hiperfosfatemia", rec: "Restricción dietética de fósforo. Quelantes intestinales (carbonato de Ca). Evaluar función renal." };
+        if (v < 1.0) return { sev: "crit", title: "Hipofosfatemia severa", rec: "Tx: Fosfato K o Na IV 0.08-0.16mmol/kg en 6h. Monitorizar Ca durante reposición (riesgo hipocalcemia). Sínd. realimentación: restringir glucosa + fosfato lento. Control P c/6h hasta >2.5 mg/dL." };
+        if (v < 2.5) return { sev: "abn", title: "Hipofosfatemia", rec: "Tx: Oral — Neutraphos 250-500mg c/6-8h con comidas. IV si no tolera: 0.08mmol/kg en 6h. Suspender antiácidos con Al/Mg. Corregir vitamina D si deficiente. Control en 24-48h." };
+        if (v >= 7.0) return { sev: "crit", title: "Hiperfosfatemia severa", rec: "Riesgo de hipocalcemia y calcificación. Hidratación, quelantes (carbonato de Ca / sevelamer), evaluar diálisis si IR. Buscar lisis tumoral / rabdomiólisis." };
+        if (v > 4.5) return { sev: "abn", title: "Hiperfosfatemia", rec: "Restricción dietética de fósforo. Quelantes intestinales (carbonato de Ca). Evaluar función renal." };
         return null;
       },
       cl: (v) => {
@@ -13918,7 +14192,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
         var _raw = (data.content?.[0]?.text || "{}").replace(/```json/g, "").replace(/```/g, "").trim();
         // Extract JSON object robustly — find outermost { }
         var _jstart = _raw.indexOf("{"); var _jend = _raw.lastIndexOf("}");
-        var _jsonStr = (_jstart >= 0 && _jend > _jstart) ? _raw.slice(_jstart, _jend + 1) : "{}";
+        // Sin JSON (respuesta vacía del modelo, texto de error del worker): es un ERROR, no "sin
+        // alteraciones". Antes `{}` pintaba el check verde con K 2.6 y se cacheaba.
+        if (_jstart < 0 || _jend <= _jstart) throw new Error("La IA no devolvió un análisis válido: " + (_raw.slice(0, 120) || "respuesta vacía"));
+        var _jsonStr = _raw.slice(_jstart, _jend + 1);
         // Truncate any incomplete trailing content that breaks JSON
         var result;
         try { result = JSON.parse(_jsonStr); }
@@ -13926,8 +14203,9 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           // Attempt to salvage by trimming at last complete property
           var _trimmed = _jsonStr.replace(/,\s*"[^"]*"\s*:\s*[^}]*$/, "") + "}";
           try { result = JSON.parse(_trimmed); }
-          catch (e3) { result = { alteraciones: [], resumen: "Error al parsear respuesta IA. Intenta de nuevo.", prioridad: "baja" }; }
+          catch (e3) { throw new Error("Respuesta de la IA ilegible. Intenta de nuevo."); }
         }
+        if (!Array.isArray(result.alteraciones)) throw new Error("Respuesta de la IA incompleta. Intenta de nuevo.");
 
         // Build HTML panel
         let panelHtml = "";
@@ -14364,7 +14642,13 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
     async function inkSaveImage() {
       if (!_inkKey || !_inkStrokes.length) { alert("No hay nada que guardar."); return; }
       if (!noteData[_inkKey]) noteData[_inkKey] = defaultData();
-      noteData[_inkKey]._inkStrokes = JSON.parse(JSON.stringify(_inkStrokes));
+      if (_inkFieldMode) {
+        // Modo campo: guardar donde openInkpadForField lo lee (antes iba al lienzo global y el campo "perdía" el trazo)
+        noteData[_inkKey]._inkFields = noteData[_inkKey]._inkFields || {};
+        noteData[_inkKey]._inkFields[_inkFieldMode] = JSON.parse(JSON.stringify(_inkStrokes));
+      } else {
+        noteData[_inkKey]._inkStrokes = JSON.parse(JSON.stringify(_inkStrokes));
+      }
       saveNote(_inkKey, noteData[_inkKey]); // antes lsSaveNote (solo local): se perdía con el siguiente evento Realtime
       alert("✅ Trazo guardado. La próxima vez que abras ✍️ aparecerá tal cual.");
     }
@@ -14413,23 +14697,36 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
 }`;
         }
 
-        const resp = await fetch(proxyUrl + "/api/ai", {
-          method: "POST",
-          headers: { ...apiHeaders() },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 3000,
-            messages: [{ role: "user", content: [
-              { type: "image", source: { type: "base64", media_type: "image/png", data: base64 } },
-              { type: "text", text: prompt }
-            ]}]
-          })
-        });
+        // Paciente/campo al disparar: si el usuario cerró el Inkpad y lo abrió en OTRO paciente antes
+        // de que llegue la respuesta, se descarta (antes "Aplicar" la pegaba al paciente equivocado).
+        const _ikKey = _inkKey, _ikMode = _inkFieldMode;
+        const _ikAbort = new AbortController();
+        const _ikTimer = setTimeout(() => _ikAbort.abort(), 60000);
+        let resp;
+        try {
+          resp = await fetch(proxyUrl + "/api/ai", {
+            method: "POST",
+            headers: { ...apiHeaders() },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6",
+              max_tokens: 3000,
+              messages: [{ role: "user", content: [
+                { type: "image", source: { type: "base64", media_type: "image/png", data: base64 } },
+                { type: "text", text: prompt }
+              ]}]
+            }),
+            signal: _ikAbort.signal
+          });
+        } catch (netErr) {
+          if (netErr && netErr.name === "AbortError") throw new Error("Se agotó el tiempo (60 s). Intenta de nuevo.");
+          throw netErr;
+        } finally { clearTimeout(_ikTimer); }
         if (!resp.ok) {
           const t = await resp.text().catch(() => "");
           throw new Error("HTTP " + resp.status + (t ? ": " + t.slice(0, 200) : ""));
         }
         const data = await resp.json();
+        if (_inkKey !== _ikKey || _inkFieldMode !== _ikMode) return;
         const raw = (data.content?.[0]?.text || "").replace(/```json/g, "").replace(/```/g, "").trim();
         const js = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
         const result = JSON.parse(js);
@@ -14698,6 +14995,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
   }
 }`;
 
+        // Guardia contra respuestas tardías: si el usuario cerró el intake y lo abrió para OTRO
+        // paciente antes de que llegara esta respuesta, descartarla (antes se aplicaba al paciente equivocado).
+        const _diKeyAtStart = _diCurrentKey;
+        const _diRun = ++_diRunId;
         const _diAbort = new AbortController();
         const _diTimeout = setTimeout(() => _diAbort.abort(), 90000);
         let resp;
@@ -14728,6 +15029,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           throw new Error("HTTP " + resp.status + hint + (errTxt ? " — " + errTxt.slice(0, 300) : ""));
         }
         const data = await resp.json();
+        if (_diCurrentKey !== _diKeyAtStart || _diRun !== _diRunId) { console.warn("[doc-intake] respuesta tardía descartada (cambió el paciente)"); return; }
         console.log("[doc-intake] Respuesta IA recibida:", data);
         const raw = (data.content?.[0]?.text || "").replace(/```json/g,"").replace(/```/g,"").trim();
         if (!raw) throw new Error("La IA devolvió una respuesta vacía. Revisa la consola (F12) para ver el payload.");
@@ -14821,21 +15123,27 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       document.getElementById("di-fields-list").innerHTML = html;
     }
 
+    var _diRunId = 0;
     function applyDocIntake() {
       if (!_diExtracted || !_diCurrentKey) return;
       const k  = _diCurrentKey;
       const nd = getNote(k);
       const p  = patients.find(pt => pid(pt) === k);
       const cl = result => result.checklist || {};
+      const changed = new Set();
 
       // Apply boolean flags
       const clResult = _diExtracted.checklist || {};
       _DI_BOOL_FIELDS.forEach(b => {
-        if (clResult[b.key] === true) {
+        if (clResult[b.key] === true && !nd.checklist[b.clKey]) {
           nd.checklist[b.clKey] = true;
+          changed.add("checklist");
         }
       });
 
+      // Campos acumulativos: la nota de evolución que menciona "pendiente TAC" NO debe borrar los
+      // otros 5 pendientes ya capturados. Se anexa al final (salvo que el texto ya esté incluido).
+      const APPEND_FIELDS = new Set(["pendientes", "manejo", "app", "qx", "drenajes", "pa"]);
       // Apply text fields per checkbox state
       _DI_FIELDS.forEach((fd, idx) => {
         const chk = document.getElementById("di-chk-" + idx);
@@ -14845,17 +15153,34 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const text = val.value.trim();
         if (!text) return;
         if (fd.noteKey) {
-          nd[fd.noteKey] = text;
-          if (fd.noteKey === "dx" && p) { p.dx = text; }
+          if (fd.noteKey === "dx") {
+            // Conservar la línea [LABS …] que mantiene mergeLabsIntoDx al final del dx
+            const prevDx = toSafeString(p ? p.dx : nd.dx);
+            const labsLines = prevDx.split("\n").filter(l => /^\[LABS\s+/i.test(l.trim()));
+            const newDx = text + (labsLines.length ? "\n" + labsLines.join("\n") : "");
+            nd.dx = newDx;
+            if (p) p.dx = newDx;
+          } else {
+            const cur = toSafeString(nd[fd.noteKey]).trim();
+            if (APPEND_FIELDS.has(fd.noteKey) && cur && cur !== text && !cur.includes(text)) nd[fd.noteKey] = cur + "\n" + text;
+            else nd[fd.noteKey] = text;
+          }
+          changed.add(fd.noteKey);
         } else if (fd.pField === "nombre" && p) {
           // only apply name if patient currently has no name or it's a placeholder
           if (!p.nombre || p.nombre.trim() === "") p.nombre = text;
         } else if (fd.isCl) {
           nd.checklist[fd.clKey] = text;
+          changed.add("checklist");
         }
       });
 
+      // Solo los campos aplicados viajan (parcial): antes iba la fila COMPLETA desde la copia local
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      changed.forEach(f => _dirtyFields[k].add(f));
+      noteData[k] = nd;
       saveNote(k, nd);
+      changed.forEach(f => _dirtyFields[k].delete(f));
       if (p) _savePtsImmediate(p);
       closeDocIntake();
       // Re-render the card so new field values are visible
@@ -14894,6 +15219,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[lk] = el.value;
+      _markManualLabKey(snap, lk);
       snap.client_updated_at = Date.now();
       noteData[k] = nd;
       // BUG-C2 FIX: mark labHistory as dirty so handleNoteChange (Realtime) won't
@@ -14935,9 +15261,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function undoLastField() {
       if (_fieldHistory.length === 0) return;
       const last = _fieldHistory.pop();
-      if (!noteData[last.k]) noteData[last.k] = defaultData();
+      // Clave huérfana (paciente re-clavado o egresado): no crear una nota vacía y subirla
+      if (!noteData[last.k] || !_findPatientByKey(last.k)) { _fieldHistory.length = 0; return; }
       noteData[last.k][last.field] = last.prev;
-      saveNote(last.k, noteData[last.k]);
+      _saveNoteNow(last.k, noteData[last.k], last.field);
       // Update textarea in DOM if visible
       const ta = document.querySelector("textarea[data-key='" + last.k + "'][data-field='" + last.field + "']");
       if (ta) { ta.value = last.prev; liveUpdate(ta); }
@@ -14964,9 +15291,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       var nd = getNote(k);
       if (!nd.checklist) nd.checklist = {};
       nd.checklist[field] = value;
-      noteData[k] = nd;
-      saveNote(k, nd);
-      if (_dirtyFields[k]) _dirtyFields[k].delete("ck_" + field);
+      _saveNoteNow(k, nd, "ck_" + field);
     }
 
     // ─── APPLE PENCIL / SCRIBBLE: compositionend handler ──────────────────────
@@ -14985,17 +15310,24 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
     });
 
+    // Valor tecleado sobre un snapshot de WinLab: anotarlo para que el reemplazo total del siguiente sync lo respete.
+    function _markManualLabKey(snap, labKey) {
+      if (!snap || snap.source !== "winlab" || !labKey) return;
+      const mk = new Set(Array.isArray(snap.manual_keys) ? snap.manual_keys : []);
+      mk.add(labKey);
+      snap.manual_keys = Array.from(mk);
+    }
     function updateLabHistory(k, fecha, labKey, value) {
       const nd = getNote(k);
       let snap = nd.labHistory.find(s => s.fecha === fecha);
       if (!snap) { snap = { fecha, labs: {}, extra: [], source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
       if (!snap.labs) snap.labs = {};
       snap.labs[labKey] = value;
+      _markManualLabKey(snap, labKey);
       // keep nd.labs in sync with latest snapshot for export
       const dates = nd.labHistory.map(s => s.fecha).sort((a, b) => b.localeCompare(a));
       if (fecha === dates[0]) nd.labs = { ...snap.labs };
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd, "labHistory");
       // Actualizar solo la clase visual del cell afectado — sin destruir el DOM completo
       // (un outerHTML = renderFullCard() destruiría cualquier campo que el usuario esté editando en ese momento)
       const inputEl = document.querySelector('.lab-input[data-key="' + k + '"][data-labkey="' + labKey + '"]');
@@ -15259,6 +15591,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const fileMB = file.size / 1024 / 1024;
       if (!isImage && fileMB > MAX_PDF_MB) {
         labLoadingSet.delete(k);
+        try { const _le = document.getElementById("labs-sec-" + k); if (_le) _le.outerHTML = renderLabSection(getNote(k), k); } catch (_) {} // restaurar el botón "⏳ Extrayendo..."
         alert(`⚠️ El PDF pesa ${fileMB.toFixed(1)} MB (máx ${MAX_PDF_MB} MB). Comprime el PDF primero (ilovepdf.com) e inténtalo de nuevo.`);
         return;
       }
@@ -15316,8 +15649,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         delete labsFromExtract.cultivo_sensibilidades;
         delete labsFromExtract.cultivo_resistencias;
         const hasValues = getLabKeys().some(f => sanitizedExtracted[f] && sanitizedExtracted[f].trim() !== "");
+        // Marcar labHistory como sucio ANTES de la subida a Storage (segundos): un Realtime del mismo
+        // paciente durante el await reemplazaba nd.labHistory y los labs extraídos caían en un objeto huérfano.
+        if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+        _dirtyFields[k].add("labHistory");
+        snap.client_updated_at = Date.now();
         await attachLabSourceToSnap(k, targetFecha, snap, file, parsed.base64 || "");
         snap.labs = mergeLabsPerAnalyte(snap.labs, labsFromExtract);
+        snap.client_updated_at = Date.now();
         activeLabDate[k] = targetFecha;
         noteData[k] = nd;
         saveNote(k, nd);
@@ -15405,7 +15744,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       p.estado = sel.value;
       const col = ESTADO_COLORS[p.estado] || "#ccc";
       sel.style.background = col;
-      savePts();
+      _savePtsImmediate(p); // solo este paciente (savePts() PATCHeaba todo el censo con la copia local)
       // Actualizar solo la tarjeta de piso afectada (si está visible) — sin destruir las demás
       const cardEl = document.getElementById("card-" + pk);
       if (cardEl) {
@@ -15439,7 +15778,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             _cleanupPatientCache(oldKey);
             saveNote(newKey, noteData[newKey]);
           }
-          savePts();
+          _savePtsImmediate(p);
           buildEspFilters();
           renderView();
         } else {
@@ -17152,9 +17491,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (sA) sA.innerHTML = aOpts;
       if (sR) sR.innerHTML = rOpts;
     }
+    var _modalNoteSnapshot = null; // nota al abrir el modal de edición (para guardar solo lo que cambió)
     function openEditModal(k) {
       const p = patients.find(p => pid(p) === k); if (!p) return;
       modalMode = "edit"; modalOrigKey = k; _modalCurrentEditKey = k;
+      _modalNoteSnapshot = _modalNoteFieldsOf(noteData[k]);
       _presenceSetEditing(k);   // presencia: avisar a otros que edito este paciente
       document.getElementById("modal-title").textContent = "✏️ Editar datos del paciente";
       document.getElementById("modal-save-btn").textContent = "✓ Guardar cambios";
@@ -17190,12 +17531,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       document.getElementById("patient-modal").style.display = "flex";
     }
     function closeModal() {
-      // Limpiar dirty fields del modal: los campos editados via liveModalNote ya
-      // fueron guardados en saveModal(), así que ya no deben bloquear actualizaciones
-      // Realtime de otros dispositivos.
-      if (_modalCurrentEditKey && _dirtyFields[_modalCurrentEditKey]) {
-        delete _dirtyFields[_modalCurrentEditKey];
+      // Campos escritos en el modal (liveModalNote) que no pasaron por "Guardar" (Cancelar, ✕,
+      // cierre por egreso remoto): ya viven en noteData/localStorage, así que si no se suben la
+      // tarjeta los muestra pero la nube no los tiene y la siguiente recarga los borra. Subirlos.
+      const _ck = _modalCurrentEditKey;
+      if (_ck && _dirtyFields[_ck] && _dirtyFields[_ck].size && noteData[_ck] && _findPatientByKey(_ck)) {
+        try { saveNote(_ck, noteData[_ck]); } catch (e) { safeLog("closeModal saveNote:", e); }
       }
+      if (_ck && _dirtyFields[_ck]) {
+        delete _dirtyFields[_ck];
+      }
+      _modalNoteSnapshot = null;
       _modalCurrentEditKey = null;
       _presenceSetEditing(null);   // presencia: dejé de editar
       document.getElementById("patient-modal").style.display = "none";
@@ -17325,8 +17671,27 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           delete _pendingNoteAutosave[modalOrigKey];
           if (_dirtyFields[modalOrigKey]) delete _dirtyFields[modalOrigKey];
         }
-        noteData[newKey] = applyModalExtraToNote(noteData[newKey] || defaultData(), _modalExtra);
-        saveNote(newKey, noteData[newKey]);
+        // Guardar SOLO los campos de nota que cambiaron respecto a lo que había al abrir el modal.
+        // Antes se reescribían los 6 campos (y, sin campos sucios, la fila COMPLETA): un modal abierto
+        // 10 minutos para cambiar el estado pisaba los pendientes/manejo que otro residente escribió.
+        const _mBase = (modalOrigKey === newKey) ? _modalNoteSnapshot : null;
+        const _mNext = applyModalExtraToNote(noteData[newKey] || defaultData(), _modalExtra, _mBase);
+        // "Cambió" = lo que el usuario tecleó en el modal difiere de lo que había al abrirlo (no lo que
+        // Realtime haya actualizado mientras tanto, que ya está en la nube y no hay que re-enviar).
+        const _mChanged = _mBase ? MODAL_NOTE_FIELDS.filter(function (f) { return toSafeString(_modalExtra[f]).trim() !== _mBase[f]; }) : MODAL_NOTE_FIELDS.slice();
+        const _mSexChanged = !_mBase || normalizeSexValue(_modalExtra.sexo) !== _mBase.sexo;
+        noteData[newKey] = _mNext;
+        if (_mChanged.length || _mSexChanged) {
+          if (!_dirtyFields[newKey]) _dirtyFields[newKey] = new Set();
+          _mChanged.forEach(function (f) { _dirtyFields[newKey].add(f); });
+          if (_mSexChanged) _dirtyFields[newKey].add("checklist");
+          saveNote(newKey, _mNext);
+          _mChanged.forEach(function (f) { _dirtyFields[newKey].delete(f); });
+          _dirtyFields[newKey].delete("checklist");
+        } else {
+          lsSaveNote(newKey, _mNext);
+        }
+        MODAL_NOTE_FIELDS.forEach(function (f) { if (_dirtyFields[newKey]) _dirtyFields[newKey].delete(f); });
       }
       // Si el estado es ALTA o DEFUNCIÓN (edición) → confirmar egreso ANTES de guardar
       // a Supabase, para evitar el race condition save→delete.
@@ -17724,12 +18089,15 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               else { ingreso = String(v).trim(); }
             }
             const rawEst = String(r[iEst] || "").trim().toUpperCase();
-            const estado = ["ESTABLE", "DELICADO", "GRAVE"].includes(rawEst) ? rawEst : "ESTABLE";
+            const _estadoBlank = !["ESTABLE", "DELICADO", "GRAVE"].includes(rawEst);
+            const estado = _estadoBlank ? "ESTABLE" : rawEst;
             const rawEsp = iEsp >= 0 ? String(r[iEsp] || "").trim().toUpperCase().replace(/\s+/g, " ") : "";
             // Normalize esp: explicit column → sub-section label → fallback CG
+            const _espBlank = !(normalizeEspImport(rawEsp) || currentSubEsp);
             const esp = normalizeEspImport(rawEsp) || currentSubEsp || "CG";
             const pt = {
               cama, exp, nombre,
+              _impEstadoBlank: _estadoBlank, _impEspBlank: _espBlank, // celda vacía → conservar lo de la app al fusionar
               edad: parseInt(r[iEdad]) || "",
               dx: iDx >= 0 ? String(r[iDx] || "").trim().toUpperCase() : "",
               esp, adscrito: iAds >= 0 ? String(r[iAds] || "").trim().toUpperCase() : "",
@@ -17801,6 +18169,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const skippedArchivedSilent = []; // (no se usan; se mantiene por compat.)
           let skippedArchived = 0;
 
+          // Pase previo: identidades del censo actual que CAMBIAN de cama. Su cama vieja queda libre:
+          // el nuevo ocupante de esa cama es un paciente NUEVO, no un "reemplazo" del movido (antes el
+          // movido caía también en changedPts → se retiraba y se borraba su fila/nota en la nube).
+          const movedOldIds = new Set();
+          const _impNormName = s => toSafeString(s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z0-9]/g, " ").replace(/\s+/g, " ").trim();
+          imported.forEach(p => {
+            const expK = importKeyNorm(p.exp);
+            if (expK && oldByExp.has(expK) && !oldByPid.has(importIdentityKey(p)) && importKeyNorm(oldByExp.get(expK).cama) !== importKeyNorm(p.cama)) {
+              movedOldIds.add(importIdentityKey(oldByExp.get(expK)));
+            }
+          });
           imported.forEach(p => {
             const expK = importKeyNorm(p.exp);
             // Si el expediente fue archivado antes (y NO sigue activo en el censo), lo mostramos como
@@ -17822,9 +18201,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             } else if (expK && oldByExp.has(expK) && importKeyNorm(oldByExp.get(expK).cama) !== importKeyNorm(p.cama)) {
               // Same expediente, different cama → patient moved beds
               movedPts.push({ newPt: p, oldPt: oldByExp.get(expK) });
-            } else if (!_impMulti(p.cama) && oldByCama.has(importKeyNorm(p.cama))) {
-              // Different patient in same bed → replacement
-              changedPts.push({ newPt: p, oldPt: oldByCama.get(importKeyNorm(p.cama)) });
+            } else if (!_impMulti(p.cama) && oldByCama.has(importKeyNorm(p.cama)) && !movedOldIds.has(importIdentityKey(oldByCama.get(importKeyNorm(p.cama))))) {
+              const oldInBed = oldByCama.get(importKeyNorm(p.cama));
+              const sameName = _impNormName(oldInBed.nombre) && _impNormName(oldInBed.nombre) === _impNormName(p.nombre);
+              if (sameName) {
+                // Misma persona, misma cama, otro expediente = corrección de expediente en la hoja:
+                // conservar fila y nota (PATCH), no retirar al "anterior" y abrir tarjeta vacía.
+                movedPts.push({ newPt: p, oldPt: oldInBed });
+                importLog.push({ row: "-", action: "censo", reason: "Expediente corregido " + (oldInBed.exp || "?") + " → " + p.exp, data: p.cama + " · " + p.nombre });
+              } else {
+                // Different patient in same bed → replacement
+                changedPts.push({ newPt: p, oldPt: oldInBed });
+              }
             } else {
               // New patient: surgical/unknown → newPts (auto-add), explicitly non-surgical → otherPts (ask)
               const espUp = (p.esp || "").toUpperCase().trim();
@@ -17839,24 +18227,27 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
           // Pacientes en censo anterior que no están en el nuevo (ni por pid ni por cama)
           // Cross-reference with ALTAS and DEFUNCIONES sections from Excel
-          const altasExpSet = new Set(altasFromExcel.map(p => p.exp));
-          const defExpSet = new Set(defuncionesFromExcel.map(p => p.exp));
+          const altasExpSet = new Set(altasFromExcel.map(p => importKeyNorm(p.exp)).filter(Boolean));
+          const defExpSet = new Set(defuncionesFromExcel.map(p => importKeyNorm(p.exp)).filter(Boolean));
           const autoDetected = {}; // pid → 'alta_excel' | 'defuncion_excel'
 
           /* FIX-v46 (P4): pacientes ya reclamados por movedPts NO son "desaparecidos".
              Sin esto, un cambio de cama caia tambien en missingPts con default 'alta'
              -> archive + supaDeletePatient -> CASCADE borra la nota en la nube. */
           const movedOldIdentities = new Set(movedPts.map(({oldPt}) => importIdentityKey(oldPt)));
+          const replacedOldIdentities = new Set(changedPts.map(({oldPt}) => importIdentityKey(oldPt)));
           patients.forEach(p => {
             if (movedOldIdentities.has(importIdentityKey(p))) return; /* FIX-v46 (P4) */
-            // En camas multi-paciente solo cuenta la identidad (otro paciente en "EXT" no lo reemplaza).
-            if (!newByPid.has(importIdentityKey(p)) && (_impMulti(p.cama) || !newByCama.has(importKeyNorm(p.cama)))) { /* FIX-v46 */
+            // Desaparecido = no viene en el censo nuevo y nadie lo reemplazó en su cama (changedPts).
+            // Antes bastaba con que su cama tuviera ocupante nuevo: si ese ocupante era un MOVIDO, el
+            // egresado real no pasaba por aquí (sin papelera ni disposición) y caía al borrado silencioso.
+            if (!newByPid.has(importIdentityKey(p)) && !replacedOldIdentities.has(importIdentityKey(p))) { /* FIX-v46 */
               missingPts.push(p);
               // Auto-detect: was this patient listed in ALTAS or DEFUNCIONES?
-              if (defExpSet.has(p.exp)) {
+              if (defExpSet.has(importKeyNorm(p.exp))) {
                 dispositions[pid(p)] = 'defuncion';
                 autoDetected[pid(p)] = 'defuncion_excel';
-              } else if (altasExpSet.has(p.exp)) {
+              } else if (altasExpSet.has(importKeyNorm(p.exp))) {
                 dispositions[pid(p)] = 'alta';
                 autoDetected[pid(p)] = 'alta_excel';
               } else {
@@ -18212,6 +18603,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           if (!reingresoPtsChecked[idx]) return; // usuario decidió no reactivar
           newPts.push(newPt);
           toRemoveFromArchive.push(archived);
+          // Devolverle su nota (labs, manejo, pendientes): la única copia vivía en la papelera y se
+          // borraba de ahí sin pasarla a la tarjeta nueva.
+          try {
+            const rk = pid(newPt);
+            if (archived && archived._note && !noteHasMeaningfulContent(noteData[rk])) {
+              const rn = migrateNote(JSON.parse(JSON.stringify(archived._note)));
+              delete rn._egreso; delete rn._egresoFecha; rn._noEnCenso = false;
+              noteData[rk] = rn; lsSaveNote(rk, rn);
+            }
+          } catch (e) { safeLog("reingreso: restaurar nota:", e); }
         });
         if (toRemoveFromArchive.length) {
           const removeKeys = new Set(toRemoveFromArchive.map(a => a._archiveKey || (a.exp + "|" + a.cama)));
@@ -18236,6 +18637,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           applyEsp(samePts);
           applyEsp(newPts);
           changedPts.forEach(({ newPt }) => { if (pid(newPt) === matchPid) newPt.esp = "CG"; });
+          // Los candidatos viven en otherPts (no quirúrgicos con dx quirúrgico): marcarlos como CG y
+          // como "agregar"; antes el checkbox "Agregar como CG" no hacía nada.
+          if (otherPts && otherPtsChecked) otherPts.forEach((p, i) => { if (pid(p) === matchPid) { p.esp = "CG"; otherPtsChecked[i] = true; } });
         });
       }
       const prevPatients = [...patients]; // snapshot del censo anterior para limpiar fantasmas al final
@@ -18245,13 +18649,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const existingByIdentity = new Map(patients.map(p => [importIdentityKey(p), p]));
       /* FIX-v46: campos editables que NO deben vaciarse si la celda del Excel viene vacia */
       const _IMP_KEEP = ["dx", "edad", "adscrito", "residente", "ingreso", "sexo"];
+      const _impClean = (p) => { const o = { ...p }; delete o._impEstadoBlank; delete o._impEspBlank; return o; };
       const _impMergeCenso = (prevP, np) => {
         const out = { ...np };
         _IMP_KEEP.forEach(f => {
           const v = out[f];
           if ((v === "" || v === undefined || v === null) && prevP && prevP[f]) out[f] = prevP[f];
         });
-        return out;
+        // Estado/especialidad: el parser pone "ESTABLE"/"CG" cuando la celda viene vacía y eso pisaba
+        // en cada import el GRAVE o la especialidad capturados a mano en la app.
+        if (out._impEstadoBlank && prevP && prevP.estado) out.estado = prevP.estado;
+        if (out._impEspBlank && prevP && prevP.esp) out.esp = prevP.esp;
+        return _impClean(out);
       };
       // Operaciones en la nube disparadas por el import (archivos, retiros, re-enlaces). El guardado
       // del censo nuevo espera a que terminen para no correr contra los DELETE (UNIQUE(cama) → 409).
@@ -18333,7 +18742,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const newKey = pid(newPt);
         processedOldPids.add(oldKey);
         processedOldPids.add(newKey);
-        nextPatients.push({ ...newPt });
+        nextPatients.push(_impClean(newPt));
         // Conservar notes del nuevo si ya existían; si no, inicializar
         if (!noteData[newKey]) noteData[newKey] = defaultData();
         // El ocupante anterior sale del censo: papelera (local + nube) y después DELETE de su fila
@@ -18345,7 +18754,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       newPts.forEach(p => {
         const k = pid(p);
         processedOldPids.add(k);
-        nextPatients.push({ ...p });
+        nextPatients.push(_impClean(p));
         if (!noteData[k]) noteData[k] = defaultData();
       });
 
@@ -18355,7 +18764,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           if (!otherPtsChecked[idx]) return;
           const k = pid(p);
           processedOldPids.add(k);
-          nextPatients.push({ ...p });
+          nextPatients.push(_impClean(p));
           if (!noteData[k]) noteData[k] = defaultData();
         });
       }
@@ -19443,11 +19852,20 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           snap.labs = mergeLabsPerAnalyte(snap.labs, labsToMerge);
         }
         if (r && r.fileObj && !snap.source_file_name) {
+          if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+          _dirtyFields[k].add("labHistory"); // protege el snapshot de un Realtime durante la subida
           try { await attachLabSourceToSnap(k, fecha, snap, r.fileObj, r.fileBase64 || ""); } catch (_a) { }
         }
+        snap.client_updated_at = Date.now();
         activeLabDate[k] = fecha;
-        noteData[k] = nd;
-        saveNote(k, nd);
+        // Analitos subidos a mano sobre un snapshot de WinLab: protegerlos del reemplazo del siguiente sync
+        if (snap.source === "winlab" && !isCultivo) {
+          const mk = new Set(Array.isArray(snap.manual_keys) ? snap.manual_keys : []);
+          Object.keys(ex).forEach(function (ek) { if (!CULTIVO_ONLY_KEYS.has(ek) && ek !== "paciente" && ek !== "nombre" && ek !== "fecha_labs" && ek !== "fecha") mk.add(ek); });
+          snap.manual_keys = Array.from(mk);
+        }
+        // Solo lab_history viaja (parcial): antes iba la nota COMPLETA desde la copia local y pisaba texto ajeno
+        _saveNoteNow(k, nd, "labHistory");
         mergeLabsIntoDx(targetP, snap.labs || {}, fecha, ex.hora_labs || "");
         return { isCultivo: isCultivo };
       }
@@ -20000,7 +20418,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       if (keep._supa_id) suppressKey(keep._supa_id);
       saveNote(keepKey, keepNd);
-      savePts();
+      _savePtsImmediate(keep);
       buildEspFilters();
       renderView();
     }
@@ -20196,7 +20614,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         _cleanupPatientCache(oldKey);
         saveNote(newKey, noteData[newKey]);
       }
-      savePts();
+      _savePtsImmediate(p); // solo este paciente
       buildEspFilters();
       renderView();
     }
@@ -20313,6 +20731,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function renderStaleLabsBanner() {
       const existing = document.getElementById("stale-labs-banner");
       if (existing) existing.remove();
+      if (!_winlabLoadedOnce) return; // aún no se leyó winlab_labs (render temprano): no alarmar en falso
       const entries = Object.values(winlabByExp || {});
       let mostRecent = null;
       entries.forEach(r => {
@@ -20371,7 +20790,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       delete noteData[k];
       localStorage.removeItem(NOTES_PREFIX + k);
       _cleanupPatientCache(k);
-      savePts();
+      lsSavePatients(patients);
       buildEspFilters();
       renderView();
     }
@@ -20468,7 +20887,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         _cleanupPatientCache(oldKey);
         saveNote(newKey, noteData[newKey]);
       }
-      savePts();
+      _savePtsImmediate(p); // solo este paciente
       buildEspFilters();
       renderView();
     }
@@ -20548,8 +20967,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (item === "cur_realizada" && !nd.checklist[item]) {
         nd.checklist.cur_realizada_hora = "";
       }
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
       // Re-render the checklist row for immediate feedback
       const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
       const container = document.getElementById("ck-row-" + ek);
@@ -20562,8 +20980,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const nd = getNote(k);
       if (!nd.checklist) nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" };
       nd.checklist.dieta = val;
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
     }
 
     function updateNptField(k, field, val) {
@@ -20574,23 +20991,21 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (field === "npt_pct" && val) {
         nd.checklist.npt_fecha = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "2-digit" }) + " " + new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
       }
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
     }
 
     function updateAtbField(k, field, val) {
       const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
       nd.checklist[field] = val;
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
     }
 
     function updateTvpField(k, field, val) {
       const nd = getNote(k);
       if (!nd.checklist) nd.checklist = {};
       nd.checklist[field] = val;
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
       // Solo re-render al cambiar el tipo; re-renderizar en cada tecla rompe el foco
       // y hace que las siguientes teclas caigan en los atajos globales.
       if (field !== "tvp_tipo") return;
@@ -20610,17 +21025,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const nd = getNote(k);
       if (!nd.checklist) nd.checklist = {};
       nd.checklist[field] = val;
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
     }
 
     function updatePmField(k, field, val) {
       const nd = getNote(k);
       nd.checklist[field] = val;
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("checklist");
-      noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd);
     }
 
     function toggleSvcMine(k) {
@@ -20628,10 +21039,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const nd = getNote(k);
         if (!nd.checklist) nd.checklist = {};
         nd.checklist.svcMine = !nd.checklist.svcMine;
-        if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-        _dirtyFields[k].add("checklist");
-        noteData[k] = nd;
-        saveNote(k, nd);
+        _saveNoteNow(k, nd);
         const arr = (typeof patients !== "undefined" && Array.isArray(patients)) ? patients : [];
         const p = arr.find(function (x) { return pid(x) === k; });
         const el = document.getElementById("card-" + k);
@@ -20653,11 +21061,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const dieta = esc(cl.dieta || "");
 
       const npoHtml = `<span id="ck-${ek}-npo" class="ck-item${npoOn ? " ck-on" : ""}" data-ck="${k}" data-item="npo" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ayuno / Nada Por vía Oral"><span class="ck-label">${npoOn ? "✓ " : ""}Ayuno</span></span>` +
-        (npoOn ? `<input class="ck-dieta" value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
+        (npoOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
 
       const atbHtml = `<span id="ck-${ek}-atb" class="ck-item${atbOn ? " ck-on" : ""}" data-ck="${k}" data-item="atb" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Antibioticoterapia activa"><span class="ck-label">${atbOn ? "✓ " : ""}ATB</span></span>` +
-        (atbOn ? `<input class="ck-dieta" value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
-          `<input class="ck-dieta" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
+        (atbOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
+          `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
 
       const tvpTipo = cl.tvp_tipo || "";
       const tvpHtml = `<span id="ck-${ek}-tvp" class="ck-item${tvpOn ? " ck-on" : ""}" data-ck="${k}" data-item="tvp" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Profilaxis TVP (HBPM/compresión)"><span class="ck-label">${tvpOn ? "✓ " : ""}TVP</span></span>` +
@@ -20666,8 +21074,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           `<option value="enoxaparina"${tvpTipo === "enoxaparina" ? " selected" : ""}>Enoxaparina</option>` +
           `<option value="otro"${tvpTipo === "otro" ? " selected" : ""}>Otro</option>` +
           `</select>` +
-          (tvpTipo === "enoxaparina" ? `<input class="ck-dieta" value="${esc(cl.tvp_dosis || "")}" placeholder="Dosis (ej: 40mg)" data-ck="${k}" data-field="tvp_dosis" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Dosis de Enoxaparina" style="width:100px"/>` : "") +
-          (tvpTipo === "otro" ? `<input class="ck-dieta" value="${esc(cl.tvp_otro || "")}" placeholder="Especificar..." data-ck="${k}" data-field="tvp_otro" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Otra profilaxis TVP" style="width:140px"/>` : "") : "");
+          (tvpTipo === "enoxaparina" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.tvp_dosis || "")}" placeholder="Dosis (ej: 40mg)" data-ck="${k}" data-field="tvp_dosis" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Dosis de Enoxaparina" style="width:100px"/>` : "") +
+          (tvpTipo === "otro" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.tvp_otro || "")}" placeholder="Especificar..." data-ck="${k}" data-field="tvp_otro" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Otra profilaxis TVP" style="width:140px"/>` : "") : "");
 
       // ── Row 2: Herida Qx + NPT ──
       const woundNecOn = !!cl.cur_necesita;
@@ -20683,13 +21091,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const nptPct = esc(cl.npt_pct || "");
       const nptFecha = esc(cl.npt_fecha || "");
       const nptHtml = `<span id="ck-${ek}-npt" class="ck-item${nptOn ? " ck-on ck-npt-on" : ""}" data-ck="${k}" data-item="npt" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Nutrición Parenteral Total"><span class="ck-label">${nptOn ? "✓ " : ""}NPT</span></span>` +
-        (nptOn ? `<input class="ck-dieta" value="${nptPct}" placeholder="% (ej: 80%)" data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)" style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
+        (nptOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${nptPct}" placeholder="% (ej: 80%)" data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)" style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
           (nptFecha ? `<span style="font-size:9px;color:#94a3b8;white-space:nowrap" title="Última actualización del %">🕐 ${nptFecha}</span>` : "") : "");
 
       // ── Row 3: Pase Matutino — Signos Vitales ──
       function pmInp(field, w) {
         const val = esc(cl["pm_" + field] || "");
-        return `<input class="pm-input" value="${val}" placeholder="—" data-ck="${k}" data-field="pm_${field}" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)"${w ? ` style="width:${w}"` : ""}/>`;
+        return `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${val}" placeholder="—" data-ck="${k}" data-field="pm_${field}" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)"${w ? ` style="width:${w}"` : ""}/>`;
       }
       const vitalesHtml =
         `<div class="pm-field"><span class="pm-label">FC</span>${pmInp("fc")}</div>` +
@@ -20709,25 +21117,25 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const estomaOn = !!cl.pm_estoma;
 
       const sngHtml = `<span class="ck-item${sngOn ? " ck-on ck-sng-on" : ""}" data-ck="${k}" data-item="pm_sng" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sonda Nasogástrica activa"><span class="ck-label">${sngOn ? "✓ " : ""}SNG</span></span>` +
-        (sngOn ? `<input class="pm-input" value="${esc(cl.pm_sng_desc || "")}" placeholder="desc..." data-ck="${k}" data-field="pm_sng_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>` : "");
+        (sngOn ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_sng_desc || "")}" placeholder="desc..." data-ck="${k}" data-field="pm_sng_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>` : "");
 
       const prs1Html = `<span class="ck-item${prs1On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs1" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 1"><span class="ck-label">${prs1On ? "✓ " : ""}PRS 1</span></span>` +
-        (prs1On ? `<input class="pm-input" value="${esc(cl.pm_prs1_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs1_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+        (prs1On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_prs1_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs1_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
 
       const prs2Html = `<span class="ck-item${prs2On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs2" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 2"><span class="ck-label">${prs2On ? "✓ " : ""}PRS 2</span></span>` +
-        (prs2On ? `<input class="pm-input" value="${esc(cl.pm_prs2_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs2_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+        (prs2On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_prs2_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs2_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
 
       const prs3Html = `<span class="ck-item${prs3On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs3" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 3"><span class="ck-label">${prs3On ? "✓ " : ""}PRS 3</span></span>` +
-        (prs3On ? `<input class="pm-input" value="${esc(cl.pm_prs3_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs3_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+        (prs3On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_prs3_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs3_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
 
       const estomaHtml = `<span class="ck-item${estomaOn ? " ck-on ck-estoma-on" : ""}" data-ck="${k}" data-item="pm_estoma" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Estoma activo"><span class="ck-label">${estomaOn ? "✓ " : ""}Estoma</span></span>` +
         (estomaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_estoma_tipo" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Origen del estoma">` +
           `<option value="">-- origen --</option>` +
           ["Colon","Yeyuno","Ileon"].map(t => `<option value="${t}"${cl.pm_estoma_tipo === t ? " selected" : ""}>${t}</option>`).join("") +
           `</select>` +
-          `<span class="pm-label">Gasto:</span><input class="pm-input" value="${esc(cl.pm_estoma_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_estoma_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto del estoma en mL/24h"/>` : "");
+          `<span class="pm-label">Gasto:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_estoma_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_estoma_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto del estoma en mL/24h"/>` : "");
 
-      const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
+      const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
 
       // ── Row 5: Pase Matutino — SEP / HxQx / Ventilador ──
       const sepOn = !!cl.pm_sep;
@@ -20735,27 +21143,27 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const sepFugaOn = !!cl.pm_sep_fuga;
 
       const sepHtml = `<span class="ck-item${sepOn ? " ck-on ck-sep-on" : ""}" data-ck="${k}" data-item="pm_sep" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sepsis / cuadro séptico activo"><span class="ck-label">${sepOn ? "✓ " : ""}SEP</span></span>` +
-        (sepOn ? `<span class="pm-label">Gasto:</span><input class="pm-input" value="${esc(cl.pm_sep_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_sep_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto séptico en mL/24h"/>` +
+        (sepOn ? `<span class="pm-label">Gasto:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_sep_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_sep_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto séptico en mL/24h"/>` +
           `<span class="ck-item${sepFugaOn ? " ck-on" : ""}" data-ck="${k}" data-item="pm_sep_fuga" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Fuga activa"><span class="ck-label">${sepFugaOn ? "✓ " : ""}Fuga</span></span>` +
           (sepFugaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_sep_fuga_grado" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Grado de fuga">` +
             `<option value="">-- grado --</option>` +
             ["A","B","C"].map(g => `<option value="${g}"${cl.pm_sep_fuga_grado === g ? " selected" : ""}>${g}</option>`).join("") +
             `</select>` : "") : "");
 
-      const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
+      const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
 
       const ventHtml = `<span class="ck-item${ventOn ? " ck-on ck-vent-on" : ""}" data-ck="${k}" data-item="pm_vent" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ventilación mecánica activa"><span class="ck-label">${ventOn ? "✓ " : ""}🫁 VM</span></span>` +
-        (ventOn ? `<input class="pm-input" value="${esc(cl.pm_vent_modo || "")}" placeholder="Modo" data-ck="${k}" data-field="pm_vent_modo" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:60px;text-align:left" title="Modo (AC, PS, SIMV...)"/>` +
-          `<span class="pm-label">FiO₂%</span><input class="pm-input" value="${esc(cl.pm_vent_fio2 || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fio2" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">PEEP</span><input class="pm-input" value="${esc(cl.pm_vent_peep || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_peep" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">VT mL</span><input class="pm-input" value="${esc(cl.pm_vent_vt || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_vt" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">FR</span><input class="pm-input" value="${esc(cl.pm_vent_fr || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fr" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:40px"/>` +
-          `<span class="pm-label">PIP</span><input class="pm-input" value="${esc(cl.pm_vent_pip || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_pip" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` : "");
+        (ventOn ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_modo || "")}" placeholder="Modo" data-ck="${k}" data-field="pm_vent_modo" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:60px;text-align:left" title="Modo (AC, PS, SIMV...)"/>` +
+          `<span class="pm-label">FiO₂%</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_fio2 || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fio2" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">PEEP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_peep || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_peep" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">VT mL</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_vt || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_vt" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">FR</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_fr || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fr" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:40px"/>` +
+          `<span class="pm-label">PIP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_pip || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_pip" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` : "");
 
       return `<div id="ck-row-${ek}" class="checklist-wrap">
     <div class="checklist-row">
       <span class="ck-title">🍽 Dieta:</span>
-      <input class="ck-dieta" value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
+      <input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
     </div>
     <div class="checklist-row ck-r-herida">
       <span class="ck-title">🩹 Herida Qx:</span>
@@ -21082,6 +21490,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     function bdClear(k, side) {
       const canvas = bdGetCanvas(k, side);
       if (!canvas) return;
+      if (!confirm("¿Borrar el diagrama corporal? Se borra en todos los dispositivos.")) return; // 🗑 está pegado al botón negro
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const nd = noteData[k] || defaultData();

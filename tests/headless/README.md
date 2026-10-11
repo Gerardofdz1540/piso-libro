@@ -1,0 +1,29 @@
+# Pruebas headless de la app (Playwright + Chromium)
+
+Pruebas de extremo a extremo de `index.html` sin Supabase real: se intercepta `/rest/v1/*`
+con respuestas simuladas y se carga la app en Chromium headless (viewport de iPad en
+`app_ipad.js`). Cubren lo que más duele si se rompe: que no se pierda lo escrito, que los
+guardados sean parciales (no pisan a otros dispositivos), labs/WinLab, importación de censo,
+No olvidar/procedimientos sin red y atajos.
+
+```bash
+cd tests/headless
+npm i -g playwright && npx playwright install chromium   # una sola vez
+bash run_all.sh ../..                 # todas las suites
+bash run_all.sh ../.. app_sync app_ipad   # solo algunas
+node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
+```
+
+| Suite | Qué cubre |
+|---|---|
+| `noCdn.js` | la app arranca sin CDNs |
+| `mock.js`, `app_p0.js` | arranque, persistencia, outbox, re-clavado de ids |
+| `app_sync.js` | línea base + diff (sin campos sucios solo viaja lo que cambió), campos en vuelo al ocultar la app, outbox con reintento, sin push masivo tras carga fallida, modal que no pisa Realtime, unidades mg/dL, snapshot con sangre, DELETE no suprimido |
+| `app_ipad.js` | Hb crítica visible, ocultar la app conserva texto/Dx, repintado suave sin robar foco |
+| `app_import.js` | importación: PATCH de movidos, papelera antes de borrar, fantasmas |
+| `app_winlab.js` | mapeo WinLab → labHistory (BH/EGO/cultivos), sync idempotente, Realtime |
+| `app_misc.js` | No olvidar y procedimientos sin red |
+| `app_ui.js` | togglePtReminder, upsert parcial de checklist, atajos Ctrl/Cmd |
+
+`run_all.sh` levanta servidores HTTP locales (puertos 8766/8767/8771) sobre el directorio
+indicado y deja el log de cada suite en `$TMPDIR/suite_<nombre>.log`.

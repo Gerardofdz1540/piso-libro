@@ -89,6 +89,19 @@ const seq = (calls, pred) => calls.findIndex(pred);
   const retired = sb.syncPatients_("svc", sheet);
   check("T2 archive falla → sin DELETE, retired=0, upsert sigue", retired === 0 && !calls.some((c) => c.m === "DELETE") && calls.some((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")));
 }
+// ── 2b) Cama REASIGNADA cuyo archivo falla: el upsert NO toca esa cama (si no, la fila vieja se
+//        reescribía con el exp nuevo y la nota del paciente anterior quedaba pegada al nuevo) ──────
+{
+  const cur = [{ id: "b1", cama: "3-102", exp: "2", updated_by: "sheet-sync" }];
+  const full = { b1: { id: "b1", cama: "3-102", nombre: "B", exp: "2", notes: [] } };
+  const sheet = [row("3-102", "9")]; for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i)));
+  const { sb, calls } = makeSandbox({ cur, full, handler: (m, u) => (m === "POST" && u.startsWith("/rest/v1/archive") ? { code: 500, body: "boom" } : null) });
+  sb.syncPatients_("svc", sheet);
+  const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
+  const camas = up && Array.isArray(up.body) ? up.body.map((p) => p.cama) : [];
+  check("T2b archivo fallido en cama reasignada: esa cama queda fuera del upsert y las demás entran",
+    !!up && !camas.includes("3-102") && camas.length === 12 && !calls.some((c) => c.m === "DELETE"), JSON.stringify({ camas }));
+}
 
 // ── 3) Cambio de cama: PATCH de la misma fila, nunca DELETE ni archive ───────────────────────────
 {

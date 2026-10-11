@@ -115,7 +115,10 @@ function parseCenso_(rows) {
     // distinto orden (ej. "NUMERO DE EXPEDIENTE | NOMBRE DEL PACIENTE | EDAD | CIRUJANO A
     // CARGO | ..."). Reusar el mapeo de la 1a tabla la corrompia (exp<-nombre, nombre<-edad,
     // el header entraba como paciente). Esa 2a tabla NO se sincroniza.
-    if (looksLikeHeader_(row)) break;
+    // Una fila con expediente válido es un PACIENTE aunque su dx/adscrito contengan palabras de
+    // encabezado ("PACIENTE POSTOPERADA…", "CIRUJANO DE GUARDIA"): antes cortaba la tabla ahí y
+    // todos los de abajo se "retiraban" (archivo + borrado) en la siguiente corrida.
+    if (looksLikeHeader_(row) && !expLooksValid_(cell_(row, col.exp))) break;
     var exp = cell_(row, col.exp), nombre = cell_(row, col.nombre);
     if (exp && nombre) {
       // Guarda anti-mismap: un expediente real es numerico (ej. "26-13060"). Si "exp" trae
@@ -157,7 +160,7 @@ function looksLikeHeader_(row) {
   var hits = 0;
   for (var i = 0; i < row.length; i++) {
     var c = norm_(row[i]);
-    if (!c) continue;
+    if (!c || c.length > 30) continue;   // un encabezado es corto; un dx largo con "PACIENTE" no lo es
     for (var j = 0; j < KW.length; j++) { if (c.indexOf(KW[j]) >= 0) { hits++; break; } }
     if (hits >= 2) return true;
   }
@@ -315,7 +318,11 @@ function syncPatients_(key, payload) {
   // 1) Retiros/reasignaciones: ARCHIVAR (paciente + nota → public.archive, la papelera de la app)
   //    y solo entonces borrar. Si el archivo falla, la fila NO se borra (reintenta en 5 min).
   var retired = 0;
-  toDelete.forEach(function (d) { if (archiveAndDeletePatient_(key, d.row, d.motivo)) retired++; });
+  var skipCamas = {};   // camas cuyo ocupante anterior NO pudo archivarse: no tocar esa fila todavía
+  toDelete.forEach(function (d) {
+    if (archiveAndDeletePatient_(key, d.row, d.motivo)) retired++;
+    else skipCamas[d.row.cama] = true;
+  });
   if (toDelete.length) Logger.log('syncPatients: retirados ' + retired + '/' + toDelete.length + ' (reasignación/egreso): ' + toDelete.map(function (d) { return d.row.cama; }).join(', '));
 
   // 2) Cambios de cama: PATCH de la cama sobre la MISMA fila (id estable → la nota sigue ligada).
@@ -323,7 +330,14 @@ function syncPatients_(key, payload) {
   var moved = movePatients_(key, toMove);
   if (toMove.length) Logger.log('syncPatients: movidos ' + moved + '/' + toMove.length + ': ' + toMove.map(function (m) { return m.from + '→' + m.to; }).join(', '));
 
-  upsertPatients_(key, payload);   // ahora sin filas conflictivas → reasignados entran limpios
+  // Si el archivo del ocupante anterior falló, su fila sigue viva: el upsert por cama (on_conflict=cama)
+  // la REESCRIBIRÍA con el exp/nombre del nuevo ocupante y su nota clínica quedaría pegada al paciente
+  // equivocado (y nunca se archivaría). Esa cama se deja fuera y se reintenta en 5 min.
+  var finalPayload = payload.filter(function (p) { return !skipCamas[p.cama]; });
+  if (finalPayload.length !== payload.length) {
+    Logger.log('syncPatients: ' + (payload.length - finalPayload.length) + ' cama(s) sin archivar aún, se reintentan en la próxima corrida: ' + Object.keys(skipCamas).join(', '));
+  }
+  upsertPatients_(key, finalPayload);   // ahora sin filas conflictivas → reasignados entran limpios
   return retired;
 }
 

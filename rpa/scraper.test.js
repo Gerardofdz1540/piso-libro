@@ -91,8 +91,8 @@ assert(isAllowedEsp("CG/GYO") === true,    "isAllowedEsp: CG/GYO -> true");
 // TODO el censo (cualquier esp no vacío). Antes excluía URO/GYO/NCX y esos quedaban sin labs.
 assert(isAllowedEsp("URO") === true,       "isAllowedEsp: URO -> true (todos)");
 assert(isAllowedEsp("GYO") === true,       "isAllowedEsp: GYO -> true (todos)");
-assert(isAllowedEsp("") === false,         "isAllowedEsp: vacio -> false");
-assert(isAllowedEsp(null) === false,       "isAllowedEsp: null -> false");
+assert(isAllowedEsp("") === true,          "isAllowedEsp: vacio -> true (esta en el censo, necesita labs)");
+assert(isAllowedEsp(null) === true,        "isAllowedEsp: null -> true");
 assert(isAllowedEsp("URGENCIAS") === true, "isAllowedEsp: URGENCIAS -> true");
 assert(isAllowedEsp("CMF/CT") === true,    "isAllowedEsp: CMF/CT -> true");
 assert(isAllowedEsp("URO/CG") === true,    "isAllowedEsp: URO/CG -> true");

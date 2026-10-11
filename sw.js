@@ -8,9 +8,10 @@
  *     pasan directo a la red, igual que sin service worker.
  */
 const CACHE = 'pisolibro-v8'; // v8: tarjeta BENTO 2 columnas + sin modo indice
+// Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
+// redirigida guardada en caché no sirve como fallback de navegación (primer arranque offline en blanco).
 const SHELL = [
   './',
-  './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -49,11 +50,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
+          // Guardar una copia "limpia" (sin bandera redirected) bajo './' para el fallback offline
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('./index.html', copy)).catch(() => {});
+          caches.open(CACHE).then(async (c) => {
+            const body = await copy.blob();
+            await c.put('./', new Response(body, { status: 200, headers: copy.headers }));
+          }).catch(() => {});
           return res;
         })
-        .catch(() => caches.match('./index.html').then((r) => r || caches.match('./')))
+        .catch(() => caches.match('./'))
     );
     return;
   }
