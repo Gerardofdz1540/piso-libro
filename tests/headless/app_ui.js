@@ -125,6 +125,27 @@ const MOCK = `(() => {
   });
   check('U6 fecha Qx → chip "POP d3"; cabecera con 4 iconos + menú "Más" (8 acciones); vitales con teclado numérico', /POP d3/.test(u6.line) && !!u6.ck && u6.visibleIcons === 4 && u6.moreItems === 8 && u6.pmDecimal, JSON.stringify(u6));
 
+  // ── Hoja de alertas en el tablero: críticos + "sin labs de hoy" ──
+  const u7 = await page.evaluate(()=>{
+    const k = pid(patients[0]);
+    const nd = getNote(k); nd.labHistory = []; noteData[k] = nd; renderView();
+    const panel = document.querySelector('#view-piso .alerts-panel');
+    const body = document.getElementById('alerts-panel-body');
+    const open = !!body && body.style.display !== 'none';
+    const noLabs = document.getElementById('alerts-nolabs-today');
+    const listed = !!noLabs && /3-101/.test(noLabs.textContent) && /nunca/.test(noLabs.textContent);
+    const title = (panel && panel.querySelector('.alerts-panel-title') || {}).textContent || '';
+    // con labs de hoy (sangre) desaparece de la lista; con solo EGO sigue apareciendo
+    nd.labHistory = [{ fecha: todayStr(), labs: { ego_ph: '6' } }]; noteData[k] = nd; renderView();
+    const stillListedEgo = !!document.getElementById('alerts-nolabs-today') && /3-101/.test(document.getElementById('alerts-nolabs-today').textContent);
+    nd.labHistory = [{ fecha: todayStr(), labs: { hb: '6.1', k: '2.4' } }]; noteData[k] = nd; renderView();
+    const after = document.getElementById('alerts-nolabs-today');
+    const crit = /críticas/.test((document.querySelector('#view-piso .alerts-panel-title') || {}).textContent || '');
+    const allOk = /Todos los pacientes tienen labs de hoy/.test((document.getElementById('alerts-panel-body') || {}).textContent || '');
+    return { hasPanel: !!panel, open, listed, title, stillListedEgo, afterListed: !!after, crit, allOk };
+  });
+  check('U7 hoja de alertas en el tablero: abierta, lista "sin labs de hoy" (EGO no cuenta), al llegar sangre sale de la lista y aparece como crítico', u7.hasPanel && u7.open && u7.listed && /sin labs hoy/.test(u7.title) && u7.stillListedEgo && !u7.afterListed && u7.crit && u7.allOk, JSON.stringify(u7));
+
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-UI: '+pass+' passed, '+fail+' failed');
   await browser.close();
