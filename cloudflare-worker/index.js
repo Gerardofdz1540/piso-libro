@@ -117,11 +117,23 @@ async function handleScrapeRoute(request, env, cors) {
   });
   try {
     // ¿Hay alguna corrida que aún NO arranca (cola/espera)? Si sí, no dispares otra.
+    // ZOMBIS: GitHub a veces deja una corrida "queued" para siempre (la #385 del 9-oct-2026 pasó
+    // 2 días así) y eso bloqueaba TODOS los disparos (botón de la app y cron de Supabase) con
+    // "already_pending". Una corrida en cola de más de ZOMBIE_MIN minutos no cuenta como pendiente
+    // y se intenta cancelar (mejor esfuerzo) para que no estorbe en la lista.
     const PENDING = ["queued", "pending", "waiting", "requested"];
+    const ZOMBIE_MIN = 45;
     const runsResp = await gh("/actions/workflows/" + WF + "/runs?per_page=8");
     if (runsResp.ok) {
       const data = await runsResp.json();
-      const pending = (data.workflow_runs || []).filter((r) => PENDING.includes(r.status));
+      const now = Date.now();
+      const ageMin = (r) => (now - Date.parse(r.created_at || r.run_started_at || 0)) / 60000;
+      const queued = (data.workflow_runs || []).filter((r) => PENDING.includes(r.status));
+      const zombies = queued.filter((r) => ageMin(r) > ZOMBIE_MIN);
+      const pending = queued.filter((r) => ageMin(r) <= ZOMBIE_MIN);
+      for (const z of zombies) {
+        try { await gh("/actions/runs/" + z.id + "/cancel", { method: "POST" }); } catch (_) { /* mejor esfuerzo */ }
+      }
       if (pending.length > 0) {
         return json({ dispatched: false, reason: "already_pending",
           message: "Ya hay una corrida en cola; tomará el censo más reciente." }, 200, cors);

@@ -49,8 +49,10 @@ en lugar de Hb=11.2, Leu=8.4, etc.
 ### Pipeline completo
 
 ```
-[GitHub Actions cron 13:15 CST]
-        ↓
+[Supabase pg_cron 04:07 / 13:15 / 20:07 León]  (hora exacta; ver scripts/supabase_pg_cron_dispatch.sql)
+        ↓ net.http_post
+[Cloudflare worker /api/scrape] — dedupe de corridas en cola → GitHub workflow_dispatch
+        ↓                      (el cron propio de GitHub sigue activo como respaldo; llega 3–9 h tarde)
 rpa/scraper.js — login WinLab → buscar paciente → click "Rep." → POPUP
         ↓
 ctx.waitForEvent("page") detecta nueva ventana
