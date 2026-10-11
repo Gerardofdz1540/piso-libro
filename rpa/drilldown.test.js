@@ -29,6 +29,12 @@ function assert(cond, name) {
     /detailPage\.waitForLoadState\("domcontentloaded"/.test(scraperSource),
     "fix presente: espera carga del popup (frameset RefertiSel.htm)"
   );
+  // oct 2026: con 4 s de espera ~60 % de los primeros drills caían al fallback (lista de búsqueda) y
+  // el reporte se descartaba; 12 s por defecto + búsqueda de la ventana nueva en ctx.pages().
+  assert(
+    /WL_POPUP_TIMEOUT_MS \|\| 12000/.test(scraperSource) && /pagesBefore\.has\(pg\)/.test(scraperSource),
+    "popup: espera de 12 s configurable y rescate de ventana nueva en ctx.pages()"
+  );
 }
 
 // ── 2. REGRESSION GUARDS: vía PDF presente ──────────────────────────────────
@@ -207,7 +213,7 @@ function assert(cond, name) {
 {
   assert(/const st = \{ popup: null, listener: null \};[\s\S]*?finally \{[\s\S]*?st\.popup\.close\(\)/.test(scraperSource),
     "P1: drillDownReport envuelve el drill en try/finally que cierra el popup");
-  assert(/st\.popup = popup;/.test(scraperSource), "P1: el popup se registra en st para el finally");
+  assert(/st\.popup = popupFound;/.test(scraperSource), "P1: el popup se registra en st para el finally");
   assert(/st\.listener = responseListener;/.test(scraperSource), "P1: el listener de responses se registra para quitarlo en el finally");
   assert(/WRAPPER_GRACE_MS/.test(scraperSource) && /if \(capturedHtmlWrapper\) \{/.test(scraperSource),
     "P1: la espera del PDF sale en cuanto llega el HTML wrapper (+ margen corto)");
