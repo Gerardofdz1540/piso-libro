@@ -87,6 +87,22 @@ const wlRow = (hb, scrapedAt) => ({ exp: '26-05099', paciente: 'PEREZ LOPEZ JUAN
   const st3 = await page.evaluate(() => { const k = pid(patients[0]); const s = (noteData[k].labHistory||[])[0] || {}; return { hb: s.labs && s.labs.hb, n: (noteData[k].labHistory||[]).length }; });
   check('W5 handleWinlabChange aplica el sync (hb 7.70 → 8.00) y guarda una vez', st3.hb==='8.00' && st3.n===1 && notePosts().length===before2+1, JSON.stringify({ st3, posts: notePosts().length-before2 }));
 
+  // Novedades de labs: tras el sync hay aviso (banda, chip del rail, botón en tarjeta) y "Visto" lo quita
+  const w6 = await page.evaluate(() => {
+    const k = pid(patients[0]);
+    const news = _labNewsFor(k);
+    const banner = document.getElementById('lab-news-banner');
+    const bannerVisible = !!banner && banner.style.display !== 'none' && /3-101/.test(banner.textContent) && /Hb 8\.00/.test(banner.textContent);
+    const rail = !!document.querySelector('.bs-btn[data-k="' + k + '"] .bs-new');
+    const badge = !!document.querySelector('#card-' + CSS.escape(k) + ' .badge-labnew');
+    const pase = (document.querySelector('#card-' + CSS.escape(k) + ' .pase-line') || {}).textContent || '';
+    labNewsMarkSeen(k);
+    const after = { news: !!_labNewsFor(k), bannerHidden: (document.getElementById('lab-news-banner') || {}).style.display === 'none', rail: !!document.querySelector('.bs-btn[data-k="' + k + '"] .bs-new') };
+    return { hasNews: !!news && news.items.some(i => i.key==='hb' && i.valor==='8.00'), bannerVisible, rail, badge, pase, after };
+  });
+  check('W6 novedades de labs: banda con cama y Hb, 🧪 en el rail, botón en la tarjeta; "Visto" lo limpia', w6.hasNews && w6.bannerVisible && w6.rail && w6.badge && !w6.after.news && w6.after.bannerHidden && !w6.after.rail, JSON.stringify(w6));
+  check('W7 línea de pase en la cabecera con los labs clave (Hb con flecha ▲ 7.70→8.00)', /🧪/.test(w6.pase) && /Hb 8\.00/.test(w6.pase), JSON.stringify(w6.pase));
+
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-WINLAB: '+pass+' passed, '+fail+' failed');
   await browser.close();

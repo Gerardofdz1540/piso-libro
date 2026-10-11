@@ -732,6 +732,26 @@
       font-size: 11px;
       opacity: .8
     }
+    /* ── Novedades de labs ── */
+    .lab-news-banner { background:#ecfeff; border:1.5px solid #06b6d4; border-radius:12px; padding:8px 10px; margin:8px 0 10px; }
+    .lab-news-banner .lnb-head { display:flex; align-items:center; justify-content:space-between; font-weight:800; color:#0e7490; font-size:13px; margin-bottom:4px; }
+    .lab-news-banner .lnb-all { background:#0e7490; color:#fff; border:none; border-radius:8px; padding:6px 12px; font-size:12px; font-weight:700; cursor:pointer; font-family:var(--font); }
+    .lab-news-banner .lnb-row { display:flex; align-items:stretch; gap:6px; margin-top:4px; }
+    .lab-news-banner .lnb-go { flex:1; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; text-align:left; background:#fff; border:1px solid #a5f3fc; border-radius:10px; padding:7px 10px; cursor:pointer; font-family:var(--font); min-height:44px; }
+    .lab-news-banner .lnb-cama { font-family:var(--mono); font-weight:800; color:#0e7490; font-size:13px; }
+    .lab-news-banner .lnb-name { font-weight:700; color:#0f172a; font-size:12px; }
+    .lab-news-banner .lnb-vals { font-family:var(--mono); font-size:12px; color:#1e293b; flex-basis:100%; }
+    .lab-news-banner .lnb-ago { font-size:10px; color:#64748b; }
+    .lab-news-banner .lnb-ok { background:#fff; border:1px solid #a5f3fc; color:#0e7490; border-radius:10px; width:44px; font-size:16px; font-weight:800; cursor:pointer; }
+    body.dark .lab-news-banner { background:#082f3a; border-color:#0891b2; }
+    body.dark .lab-news-banner .lnb-go { background:#0f1c2e; border-color:#155e75; }
+    body.dark .lab-news-banner .lnb-name, body.dark .lab-news-banner .lnb-vals { color:#e2e8f0; }
+    .bs-new { font-size:11px; margin-right:2px; }
+    .badge-labnew { background:#06b6d4; color:#fff; border:none; border-radius:10px; padding:2px 8px; font-size:10px; font-weight:800; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+    /* ── Línea de pase (resumen de un vistazo) ── */
+    .pase-line { display:flex; flex-wrap:wrap; gap:4px 6px; padding:4px 10px 7px; }
+    .pase-line .pl-chip { background:rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:6px; padding:2px 7px; font-size:11px; font-weight:600; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+    body.dark .pase-line .pl-chip { background:rgba(255,255,255,.1); }
 
     .icon-btn {
       background: rgba(255, 255, 255, .2);
@@ -7240,6 +7260,7 @@ function plExportBackup() {
           const k = pid(p);
           const nd = migrateNote(noteData[k] || defaultData());
           let hist = Array.isArray(nd.labHistory) ? nd.labHistory.slice() : [];
+          const _histBefore = hist.slice(); // para "novedades de labs" (los merges reemplazan entradas, no las mutan)
           // Firma sin synced_at/scraped_at: si los labs no cambiaron, NO se guarda (idempotente).
           const _wlSig = h => JSON.stringify((h || []).map(s => s ? [s.fecha, s.labs, s.source || ""] : null));
           const _wlBefore = _wlSig(hist);
@@ -7300,6 +7321,7 @@ function plExportBackup() {
           if (_wlSig(hist) !== _wlBefore) {
             nd.labHistory = hist;
             delete labAnalysisCache[k]; // el análisis IA cacheado era de los valores previos
+            try { _labNewsAdd(k, hist, _histBefore); } catch (_) {} // aviso "labs nuevos" en tablero, rail y tarjeta
             // Solo labHistory viaja a la nube (fila parcial). Antes cada arranque re-subía la nota
             // COMPLETA de todos los pacientes con match aunque nada cambiara → ~45 eventos Realtime
             // (toasts y re-renders) en cada dispositivo y riesgo de pisar texto ajeno con la copia local.
@@ -10005,6 +10027,163 @@ function plExportBackup() {
 
     // ── Realtime helpers ─────────────────────────────────────────────────────────
 
+    // ─── NOVEDADES DE LABS (oct 2026) ───────────────────────────────────────────────
+    // Cada vez que el sync de WinLab cambia labHistory de un paciente, se registra qué analitos
+    // son nuevos o cambiaron. Se muestra: un aviso arriba del tablero (lista de pacientes con
+    // labs nuevos + hora), un 🧪 en el chip de la cama en el rail y un botón en la tarjeta.
+    // Se quita al tocar "✓ Visto" / "Ver" o a las 24 h. Vive en localStorage (por dispositivo).
+    const LAB_NEWS_KEY = "pl_lab_news_v1";
+    function _labNewsLoad() { try { return JSON.parse(localStorage.getItem(LAB_NEWS_KEY) || "{}") || {}; } catch (_) { return {}; } }
+    function _labNewsSave(o) { try { localStorage.setItem(LAB_NEWS_KEY, JSON.stringify(o)); } catch (_) {} }
+    function _labNewsAdd(k, histAfter, histBefore) {
+      const before = {};
+      (histBefore || []).forEach(function (s) { if (s && s.fecha) before[s.fecha] = s.labs || {}; });
+      const items = [];
+      (histAfter || []).forEach(function (s) {
+        if (!s || !s.fecha) return;
+        const b = before[s.fecha] || {};
+        Object.keys(s.labs || {}).forEach(function (key) {
+          if (key.indexOf("micro_") === 0 || key === "fecha_labs") return;
+          const v = s.labs[key];
+          if (v === undefined || v === null || String(v).trim() === "") return;
+          if (String(b[key] === undefined || b[key] === null ? "" : b[key]) !== String(v)) items.push({ key: key, fecha: s.fecha, valor: String(v) });
+        });
+      });
+      if (!items.length) return;
+      const news = _labNewsLoad();
+      const prev = news[k] || { ts: 0, items: [] };
+      const merged = (prev.items || []).filter(function (it) { return !items.some(function (n) { return n.key === it.key && n.fecha === it.fecha; }); }).concat(items).slice(-60);
+      news[k] = { ts: Date.now(), items: merged };
+      _labNewsSave(news);
+      renderLabNewsBanner();
+      _labNewsRefreshRail();
+    }
+    function _labNewsFor(k) {
+      const n = _labNewsLoad()[k];
+      if (!n || !n.ts) return null;
+      if (Date.now() - n.ts > 24 * 3600e3) return null;
+      return n;
+    }
+    function _labNewsAgo(ts) {
+      const m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+      if (m < 1) return "ahora";
+      if (m < 60) return "hace " + m + " min";
+      const h = Math.floor(m / 60);
+      return "hace " + h + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
+    }
+    function _labNewsLabel(n) {
+      const labelMap = {};
+      if (typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)) LAB_FIELDS.forEach(function (f) { labelMap[f.key] = f.label; });
+      const PRIO = ["hb", "hct", "leucos", "plaq", "neu_abs", "cr", "urea", "bun", "glu", "na", "k", "cl", "ca", "mg", "p", "alb", "bt", "bd", "alt", "ast", "fa", "amilasa", "lipasa", "pcr", "pct", "lac", "inr", "tp", "ttp"];
+      const items = (n.items || []).slice().sort(function (a, b) {
+        const ia = PRIO.indexOf(a.key), ib = PRIO.indexOf(b.key);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      });
+      const shown = items.slice(0, 6).map(function (it) {
+        const lbl = labelMap[it.key] || (it.key.indexOf("ego_") === 0 ? "EGO " + it.key.slice(4) : it.key);
+        return lbl + " " + it.valor;
+      });
+      const extra = items.length - shown.length;
+      const fechas = Array.from(new Set(items.map(function (it) { return it.fecha; }))).sort().reverse();
+      return { text: shown.join(" · ") + (extra > 0 ? " · +" + extra : ""), fechas: fechas.map(function (f) { return (typeof fmtDateChip === "function") ? fmtDateChip(f) : f; }).join(", ") };
+    }
+    function _labNewsEntries() {
+      const news = _labNewsLoad();
+      const out = [];
+      Object.keys(news).forEach(function (k) {
+        const n = _labNewsFor(k); if (!n) return;
+        const p = patients.find(function (x) { return pid(x) === k; }); if (!p) return;
+        out.push({ k: k, p: p, n: n });
+      });
+      out.sort(function (a, b) { return b.n.ts - a.n.ts; });
+      return out;
+    }
+    function renderLabNewsHtml() {
+      const entries = _labNewsEntries();
+      if (!entries.length) return `<div id="lab-news-banner" style="display:none"></div>`;
+      const rows = entries.map(function (e) {
+        const lbl = _labNewsLabel(e.n);
+        return `<div class="lnb-row">
+          <button class="lnb-go" data-k="${esc(e.k)}" onclick="labNewsGo(this.dataset.k)" title="Ir al paciente">
+            <span class="lnb-cama">${esc(e.p.cama || "S/C")}</span>
+            <span class="lnb-name">${esc(e.p.nombre || "")}</span>
+            <span class="lnb-vals">${esc(lbl.text)}</span>
+            <span class="lnb-ago">${esc(lbl.fechas)} · ${esc(_labNewsAgo(e.n.ts))}</span>
+          </button>
+          <button class="lnb-ok" data-k="${esc(e.k)}" onclick="labNewsMarkSeen(this.dataset.k)" title="Marcar como visto">✓</button>
+        </div>`;
+      }).join("");
+      return `<div id="lab-news-banner" class="lab-news-banner">
+        <div class="lnb-head"><span>🧪 Laboratorios nuevos (${entries.length})</span><button class="lnb-all" onclick="labNewsMarkSeen()">✓ Visto todo</button></div>
+        ${rows}
+      </div>`;
+    }
+    function renderLabNewsBanner() {
+      const el = document.getElementById("lab-news-banner");
+      if (!el) return;
+      const tmp = document.createElement("div");
+      tmp.innerHTML = renderLabNewsHtml();
+      el.replaceWith(tmp.firstElementChild);
+    }
+    function _labNewsRefreshRail() {
+      try {
+        document.querySelectorAll(".bs-btn[data-k]").forEach(function (b) {
+          const has = !!_labNewsFor(b.dataset.k);
+          let tag = b.querySelector(".bs-new");
+          if (has && !tag) { tag = document.createElement("span"); tag.className = "bs-new"; tag.textContent = "🧪"; b.insertBefore(tag, b.firstChild); }
+          if (!has && tag) tag.remove();
+        });
+      } catch (_) {}
+    }
+    function renderLabNewsBadge(nd, k) {
+      const n = _labNewsFor(k);
+      if (!n) return "";
+      return `<button class="badge-labnew" data-k="${esc(k)}" onclick="labNewsMarkSeen(this.dataset.k)" title="Labs nuevos o actualizados · toca para marcar como visto">🧪 Labs nuevos · ${esc(_labNewsAgo(n.ts))} ✓</button>`;
+    }
+    function labNewsMarkSeen(k) {
+      const news = _labNewsLoad();
+      if (k) delete news[k]; else Object.keys(news).forEach(function (x) { delete news[x]; });
+      _labNewsSave(news);
+      renderLabNewsBanner();
+      _labNewsRefreshRail();
+      if (k) { try { _rerenderCard(k); } catch (_) {} }
+      else { try { renderViewSoft(); } catch (_) {} }
+    }
+    function labNewsGo(k) {
+      labNewsMarkSeen(k);
+      if (typeof focusGoTo === "function") focusGoTo(k);
+    }
+    // ─── LÍNEA DE PASE: resumen de un vistazo (lo que en GoodNotes se escribía a mano) ──
+    function renderPaseLine(p, nd, k) {
+      try {
+        const ck = (nd && nd.checklist) || {};
+        const parts = [];
+        if (ck.npo) parts.push("⛔ Ayuno" + (ck.npo_dias ? " d" + ck.npo_dias : ""));
+        else if (ck.dieta) parts.push("🍽 " + ck.dieta);
+        if (ck.atb) parts.push("💊 ATB" + (ck.atb_nombre ? " " + ck.atb_nombre : "") + (ck.atb_dias ? " d" + ck.atb_dias : ""));
+        if (ck.tvp) parts.push("🩸 TVP " + (ck.tvp_tipo === "enoxaparina" ? "enoxa" + (ck.tvp_dosis ? " " + ck.tvp_dosis : "") : (ck.tvp_otro || ck.tvp_tipo || "")));
+        if (ck.npt) parts.push("🧃 NPT" + (ck.npt_pct ? " " + ck.npt_pct : ""));
+        const dren = toSafeString(nd && nd.drenajes).trim();
+        if (dren) parts.push("🫁 " + dren.split("\n")[0].slice(0, 42));
+        const snap = (typeof getLatestLabSnapshot === "function") ? getLatestLabSnapshot(nd) : null;
+        if (snap && snap.labs) {
+          const sorted = (nd.labHistory || []).filter(function (s) { return s && s.fecha && s.fecha < snap.fecha && _snapHasBloodValues(s); }).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
+          const prev = sorted.length ? (sorted[0].labs || {}) : {};
+          const KEYS = [["hb", "Hb"], ["leucos", "Leu"], ["plaq", "Plaq"], ["cr", "Cr"], ["k", "K"], ["na", "Na"], ["lac", "Lac"], ["pcr", "PCR"]];
+          const chips = [];
+          KEYS.forEach(function (pair) {
+            const v = snap.labs[pair[0]];
+            if (v === undefined || v === null || String(v).trim() === "") return;
+            const n = parseLabNumber(v), pn = parseLabNumber(prev[pair[0]]);
+            const arrow = (!isNaN(n) && !isNaN(pn)) ? (n > pn ? "▲" : (n < pn ? "▼" : "")) : "";
+            chips.push(pair[1] + " " + String(v).trim() + arrow);
+          });
+          if (chips.length) parts.push("🧪 " + ((typeof fmtDateChip === "function") ? fmtDateChip(snap.fecha) : snap.fecha) + ": " + chips.join(" · "));
+        }
+        if (!parts.length) return "";
+        return `<div class="pase-line">${parts.map(function (t) { return `<span class="pl-chip">${esc(t)}</span>`; }).join("")}</div>`;
+      } catch (e) { return ""; }
+    }
     function _showRTToast(msg) {
       var el = document.getElementById("rt-toast");
       if (!el) {
@@ -11297,7 +11476,8 @@ function plExportBackup() {
             const kk = pid(pp);
             const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
             const _fn = esc((pp.nombre || "").trim().split(/\s+/)[0] || "—");
-            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}"><span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
+            const _new = _labNewsFor(kk) ? `<span class="bs-new" title="Labs nuevos">🧪</span>` : "";
+            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
           }).join("") + `</div>`;
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
@@ -11319,7 +11499,7 @@ function plExportBackup() {
             });
           }
           document.getElementById("view-piso").innerHTML =
-            `<div id="board-wrap">${_side}<div id="board-main">${_nav}<div id="piso-grid">${fcard}</div></div></div>`;
+            renderLabNewsHtml() + `<div id="board-wrap">${_side}<div id="board-main">${_nav}<div id="piso-grid">${fcard}</div></div></div>`;
           return;
         }
       }
@@ -12777,6 +12957,7 @@ function plExportBackup() {
           <span class="badge-esp">${esc(p.esp)}</span>
           <span class="badge-day">Día ${days}</span>
           ${renderDiasSinLabsBadge(nd)}
+          ${renderLabNewsBadge(nd, k)}
           ${renderCruceBadge(nd, k)}
           ${(isSimpleEsp(p.esp) && nd && nd.checklist && nd.checklist.svcMine) ? `<button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Quitar de mi servicio">↩️</button>` : ''}
           <button class="icon-btn has-lbl" style="background:rgba(14,116,144,.5)" data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)" title="Buscar en WinLab (copia apellido)">🧪<span class="icon-lbl">WinLab</span></button>
@@ -12795,6 +12976,7 @@ function plExportBackup() {
       </div>
       <div class="card-sub">Exp: ${esc(p.exp)} · Ing: ${esc(p.ingreso)} · ${esc(p.adscrito)}/${esc(p.residente)}</div>
       ${alerts.length ? `<div style="display:flex;flex-wrap:wrap;gap:3px;padding:3px 10px 5px">${renderAlertBadges(alerts)}</div>` : ""}
+      ${renderPaseLine(p, nd, k)}
     </div>
     ${exp ? `<div class="card-body">
       ${noEnCenso ? `<div style="background:#fff3cd;border:1px solid #fcd34d;border-radius:6px;padding:7px 12px;margin-bottom:10px;font-size:12px;color:#78350f">
