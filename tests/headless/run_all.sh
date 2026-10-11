@@ -16,7 +16,7 @@ for p in 8766 8767 8771; do
   code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$p/index.html")
   [ "$code" = "200" ] || { echo "servidor $p no responde ($code)"; kill "${PIDS[@]}" 2>/dev/null; exit 3; }
 done
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(noCdn mock app_p0 app_import app_winlab)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(noCdn mock app_p0 app_import app_winlab app_sync app_ipad app_misc app_ui app_ind)
 rc=0
 for s in "${SUITES[@]}"; do
   echo "=== $s"

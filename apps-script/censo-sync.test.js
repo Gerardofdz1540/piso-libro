@@ -190,5 +190,35 @@ const seq = (calls, pred) => calls.findIndex(pred);
   check("T8c sin filas: alerta (nunca hubo scrape)", r4.ok === false && m3.length === 1);
 }
 
+// ── 9) Doc de indicaciones → indicaciones_doc (fila única), solo si el Doc cambió ────────────────
+{
+  const DOC = "💯 3-150\n\nINDICACIONES MÉDICAS DE PACIENTE UNO\nPACIENTE UNO 48 AÑOS | CAMA 3-150\n11/10/2026 8:00 am\nDIETA\nDIETA BLANDA\nMEDICAMENTOS\nPARACETAMOL 1 GR IV CADA 8 HORAS\n";
+  const props = {};
+  const mk = (updated) => {
+    const st = { props, handler: (m, u) => (m === "POST" && u.startsWith("/rest/v1/indicaciones_doc") ? { code: 201, body: "" } : null) };
+    const r = makeSandbox(st);
+    r.sb.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k === "SUPABASE_KEY" ? "svc" : props[k] || null), setProperty: (k, v) => { props[k] = v; } }) };
+    r.sb.DriveApp = { getFileById: () => ({ getLastUpdated: () => new Date(updated) }) };
+    r.sb.DocumentApp = { openById: () => ({ getBody: () => ({ getText: () => DOC }) }) };
+    r.sb.Utilities = { computeDigest: (a, s) => Array.from(Buffer.from(String(s))).slice(0, 16).map((b) => (b > 127 ? b - 256 : b)), DigestAlgorithm: { MD5: 1 }, Charset: { UTF_8: 1 }, formatDate: () => "" };
+    return r;
+  };
+  const a = mk("2026-10-11T19:00:00Z");
+  const r1 = a.sb.syncIndicaciones(false);
+  const up = a.calls.find((c) => c.m === "POST" && c.u.startsWith("/rest/v1/indicaciones_doc?on_conflict=id"));
+  check("T9 primera corrida: UPSERT de la fila id=1 con texto, hash y fecha del Doc; cuenta 1 bloque",
+    r1.ok === true && r1.bloques === 1 && !!up && up.body.id === 1 && up.body.text === DOC && /^[0-9a-f]{32}$/.test(up.body.text_hash) && up.body.doc_updated === "2026-10-11T19:00:00.000Z",
+    JSON.stringify({ r1, body: up && Object.keys(up.body) }));
+  const b = mk("2026-10-11T19:00:00Z");
+  const r2 = b.sb.syncIndicaciones(false);
+  check("T9b mismo Doc (misma fecha de edición) → no vuelve a subir", r2.skipped === true && !b.calls.some((c) => c.u.startsWith("/rest/v1/indicaciones_doc")));
+  const c = mk("2026-10-11T19:30:00Z");
+  const r3 = c.sb.syncIndicaciones(false);
+  check("T9c Doc editado después → vuelve a subir", r3.ok === true && !r3.skipped && c.calls.some((c2) => c2.u.startsWith("/rest/v1/indicaciones_doc")));
+  const d = mk("2026-10-11T19:30:00Z");
+  const r4 = d.sb.syncIndicaciones(true);
+  check("T9d force=true sube aunque no haya cambios", r4.ok === true && !r4.skipped);
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

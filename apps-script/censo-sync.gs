@@ -23,6 +23,9 @@
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
+// Google Doc "INDICACIONES HOSPITALIZACION": su texto completo se empuja a Supabase
+// (tabla indicaciones_doc, una sola fila) y la app lo cruza por cama + nombre en cada tarjeta.
+var INDICACIONES_DOC_ID = '1gRCydpjiByBjMxp5edTbuiEwrzHTh8Ir2IvgYqZY73A';
 
 // Secciones que NO se sincronizan (se ignoran por completo).
 var EXCLUDE_SECTION_RE = [
@@ -504,6 +507,58 @@ function checkLabsFreshness() {
   return { ok: false, last: last, hours: hours, alerted: true };
 }
 
+// --- INDICACIONES (Google Doc -> Supabase) ------------------------------------------------------
+// Cada 5 min: si el Doc cambió desde la última vez (fecha de modificación de Drive), lee TODO su
+// texto y lo sube a public.indicaciones_doc (fila única id=1). La app parsea los bloques
+// ("INDICACIONES MÉDICAS DE …", cama, DIETA/SOLUCIONES/MEDICAMENTOS/ANTIBIÓTICOS/MEDIDAS) y los
+// cruza por cama + nombre; Realtime avisa a las tarjetas abiertas. Nunca toca patients ni notes.
+function syncIndicaciones(force) {
+  var key = PropertiesService.getScriptProperties().getProperty('SUPABASE_KEY');
+  if (!key) { Logger.log('FALTA Script Property SUPABASE_KEY'); return { ok: false, reason: 'no_key' }; }
+  var props = PropertiesService.getScriptProperties();
+  var file = DriveApp.getFileById(INDICACIONES_DOC_ID);
+  var updated = file.getLastUpdated();
+  var updatedIso = updated && updated.toISOString ? updated.toISOString() : String(updated);
+  var last = props.getProperty('IND_LAST_UPDATED');
+  if (!force && last && last === updatedIso) { Logger.log('indicaciones: sin cambios desde ' + last); return { ok: true, skipped: true, docUpdated: updatedIso }; }
+
+  var text = DocumentApp.openById(INDICACIONES_DOC_ID).getBody().getText() || '';
+  var hash = indHash_(text);
+  var row = { id: 1, doc_id: INDICACIONES_DOC_ID, text: text, text_hash: hash, doc_updated: updatedIso, synced_at: new Date().toISOString() };
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/indicaciones_doc?on_conflict=id', {
+    method: 'post', contentType: 'application/json',
+    headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    payload: JSON.stringify(row), muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  if (code < 200 || code >= 300) { Logger.log('indicaciones: UPSERT HTTP ' + code + ' ' + res.getContentText()); return { ok: false, reason: 'http_' + code }; }
+  props.setProperty('IND_LAST_UPDATED', updatedIso);
+  var bloques = (text.match(/INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/gi) || []).length;
+  Logger.log('indicaciones: subidas ' + text.length + ' letras, ~' + bloques + ' bloques (Doc editado ' + updatedIso + ')');
+  return { ok: true, chars: text.length, bloques: bloques, docUpdated: updatedIso, hash: hash };
+}
+function syncIndicacionesScheduled() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return;
+  try { syncIndicaciones(false); } finally { lock.releaseLock(); }
+}
+/** Fuerza la subida aunque el Doc no haya cambiado (útil tras instalar). */
+function syncIndicacionesForce() { return syncIndicaciones(true); }
+/** Diagnóstico sin escribir nada: cuántos bloques y camas detecta en el Doc. */
+function testIndicacionesOnly() {
+  var text = DocumentApp.openById(INDICACIONES_DOC_ID).getBody().getText() || '';
+  var bloques = (text.match(/INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/gi) || []).length;
+  var camas = (text.match(/CAMA\s*[:#\-]?\s*\d+-\d{2,4}/gi) || []).length;
+  Logger.log('Doc: ' + text.length + ' letras · ~' + bloques + ' bloques de indicaciones · ' + camas + ' menciones de cama');
+  return { chars: text.length, bloques: bloques, camas: camas };
+}
+function indHash_(text) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, text, Utilities.Charset.UTF_8);
+  var out = '';
+  for (var i = 0; i < bytes.length; i++) { var b = (bytes[i] + 256) % 256; out += (b < 16 ? '0' : '') + b.toString(16); }
+  return out;
+}
+
 // --- HELPERS ------------------------------------------------------------------------------------
 
 // Quita acentos por codigo de caracter (rango combinante U+0300..U+036F) sin literales fragiles.
@@ -592,7 +647,10 @@ function createTriggers() {
   ScriptApp.newTrigger('onCensoEdit').forSpreadsheet(CENSO_SHEET_ID).onEdit().create();
   ScriptApp.newTrigger('doSyncScheduled').timeBased().everyMinutes(5).create();
   ScriptApp.newTrigger('checkLabsFreshness').timeBased().everyHours(4).create();
-  Logger.log('Triggers creados: onEdit (instalable) + sync cada 5 min + watchdog de labs cada 4 h.');
+  ScriptApp.newTrigger('syncIndicacionesScheduled').timeBased().everyMinutes(5).create();
+  Logger.log('Triggers creados: onEdit (instalable) + sync cada 5 min + watchdog de labs cada 4 h + indicaciones (Doc) cada 5 min.');
+  // Primera subida del Doc de indicaciones ahora mismo (si falla, el trigger reintenta en 5 min).
+  try { syncIndicaciones(true); } catch (e) { Logger.log('indicaciones: primera subida falló: ' + e); }
 }
 
 /** Diagnostico sin escribir nada: cuantos pacientes parsea y cuantos quedan en cuarentena. */

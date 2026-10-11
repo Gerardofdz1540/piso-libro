@@ -23,7 +23,8 @@ node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
 | `app_import.js` | importación: PATCH de movidos, papelera antes de borrar, fantasmas |
 | `app_winlab.js` | mapeo WinLab → labHistory (BH/EGO/cultivos), sync idempotente, Realtime |
 | `app_misc.js` | No olvidar y procedimientos sin red |
-| `app_ui.js` | togglePtReminder, upsert parcial de checklist, atajos Ctrl/Cmd |
+| `app_ui.js` | togglePtReminder, upsert parcial de checklist, atajos Ctrl/Cmd, ficha compacta (saltos, secciones plegables) |
+| `app_ind.js` | Indicaciones automáticas desde el Google Doc (`indicaciones_doc`): parseo, cruce cama+nombre, aviso por nombre distinto, Realtime, 🔄 |
 
 `run_all.sh` levanta servidores HTTP locales (puertos 8766/8767/8771) sobre el directorio
 indicado y deja el log de cada suite en `$TMPDIR/suite_<nombre>.log`.
