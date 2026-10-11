@@ -74,6 +74,57 @@ const MOCK = `(() => {
   });
   check('U3 Ctrl+F y Cmd+P pasan al navegador; "f" sola sigue siendo atajo de búsqueda', u3.ctrlF===false && u3.cmdP===false && u3.plainF===true && u3.searchExists, JSON.stringify(u3));
 
+  // ── Ficha para el pase (oct 2026) ──
+  const u4 = await page.evaluate(()=>{
+    const k = pid(patients[0]);
+    const card = () => document.getElementById('card-' + k);
+    const vis = (sel) => { const el = card() && card().querySelector(sel); return !!el && getComputedStyle(el).display !== 'none' && !!el.offsetParent; };
+    const before = { app: vis('textarea[data-field="app"]'), pa: vis('textarea[data-field="pa"]'), manejo: vis('textarea[data-field="manejo"]'), mode: isPaseMode() };
+    togglePaseMode();
+    const on = { app: vis('textarea[data-field="app"]'), pa: vis('textarea[data-field="pa"]'), manejo: vis('textarea[data-field="manejo"]'), pend: vis('textarea[data-field="pendientes"]'), mode: isPaseMode(), bodyCls: document.body.classList.contains('pase-mode'), btn: (document.querySelector('#board-nav .bn-mode')||{}).textContent };
+    toggleCardFull(k);
+    const shown = { app: vis('textarea[data-field="app"]') };
+    togglePaseMode();
+    return { before, on, shown, after: isPaseMode() };
+  });
+  check('U4 modo Pase: oculta APP/PA y deja Manejo/Pendientes; "Ver" los muestra en esa tarjeta; se persiste', u4.before.app && !u4.before.mode && u4.on.mode && u4.on.bodyCls && !u4.on.app && !u4.on.pa && u4.on.manejo && u4.on.pend && /Pase/.test(u4.on.btn||'') && u4.shown.app && !u4.after, JSON.stringify(u4));
+
+  const u5 = await page.evaluate(()=>{
+    const k = pid(patients[0]);
+    const ta = document.querySelector('textarea[data-key="'+k+'"][data-field="pendientes"]');
+    ta.value = 'Pedir TAC\n- IC nefro'; ta.dispatchEvent(new Event('input',{bubbles:true}));
+    pendInsertToday(k);
+    const d = new Date(); const stamp = String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0');
+    const v1 = document.querySelector('textarea[data-key="'+k+'"][data-field="pendientes"]').value;
+    pendInsertToday(k); // segunda vez no duplica
+    const v2 = document.querySelector('textarea[data-key="'+k+'"][data-field="pendientes"]').value;
+    togglePendList(k);
+    const rows = Array.from(document.querySelectorAll('#card-' + CSS.escape(k) + ' .pend-row')).map(r => r.textContent.trim());
+    const dateRow = !!document.querySelector('#card-' + CSS.escape(k) + ' .pend-date');
+    togglePendLine(k, 1); // "Pedir TAC" (línea 0 es la fecha)
+    const after = noteData[k].pendientes.split('\n');
+    const doneRow = !!document.querySelector('#card-' + CSS.escape(k) + ' .pend-row.done');
+    togglePendLine(k, 1);
+    const undone = noteData[k].pendientes.split('\n')[1];
+    return { stamp, v1, v2, rows, dateRow, after, doneRow, undone };
+  });
+  check('U5 "➕ Hoy" antepone la fecha una sola vez; lista marcable tacha/destacha con "✓ " sin perder texto', u5.v1.indexOf(u5.stamp + ' — \n') === 0 && u5.v1 === u5.v2 && u5.rows.length === 2 && u5.dateRow && u5.after[1] === '✓ Pedir TAC' && u5.doneRow && u5.undone === 'Pedir TAC', JSON.stringify(u5));
+
+  const u6 = await page.evaluate(()=>{
+    const k = pid(patients[0]);
+    const d = new Date(); d.setDate(d.getDate() - 3);
+    const iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    window.prompt = () => iso;
+    setQxFecha(k);
+    const line = (document.querySelector('#card-' + CSS.escape(k) + ' .pase-line') || {}).textContent || '';
+    const header = document.querySelector('#card-' + CSS.escape(k) + ' .card-badges');
+    const visibleIcons = Array.from(header.querySelectorAll(':scope > .icon-btn')).length;
+    const moreItems = header.querySelectorAll('.card-more-menu button').length;
+    const pmDecimal = Array.from(document.querySelectorAll('#card-' + CSS.escape(k) + ' .pm-input[data-field="pm_fc"]')).every(i => i.getAttribute('inputmode') === 'decimal');
+    return { line, ck: noteData[k].checklist.qx_fecha, visibleIcons, moreItems, pmDecimal, dirty: Array.from(_dirtyFields[k] || []) };
+  });
+  check('U6 fecha Qx → chip "POP d3"; cabecera con 4 iconos + menú "Más" (8 acciones); vitales con teclado numérico', /POP d3/.test(u6.line) && !!u6.ck && u6.visibleIcons === 4 && u6.moreItems === 8 && u6.pmDecimal, JSON.stringify(u6));
+
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-UI: '+pass+' passed, '+fail+' failed');
   await browser.close();

@@ -246,13 +246,13 @@ export function buildSearchCandidates(nombre) {
   const parts = clean.split(/\s+/).filter(Boolean);
   if (parts.length < 2) return [];
   const out = [];
-  const push = (cognome, nome, tag) => {
+  const push = (cognome, nome, tag, opt) => {
     cognome = (cognome || "").trim();
-    nome = expandNomeAbbrev(nome);
+    nome = (opt && opt.raw) ? String(nome || "").trim() : expandNomeAbbrev(nome);
     const key = cognome + "|" + (nome || "");
     if (!cognome) return;
     if (out.some((c) => c.key === key)) return;
-    out.push({ key, cognome, nome: (nome || "").trim() || null, tag });
+    out.push({ key, cognome, nome: (nome || "").trim() || null, tag, sibling: !!(opt && opt.sibling) });
   };
 
   // Nombre que EMPIEZA con abreviatura (MA GUADALUPE RIOS, FCO JAVIER PEREZ LOPEZ): las 2
@@ -264,6 +264,11 @@ export function buildSearchCandidates(nombre) {
     push(parts[1], parts[0], "2-palabras apellido+nombre");
   } else if (abbrevLed) {
     push(parts.slice(2).join(" "), parts.slice(0, 2).join(" "), "nombre abreviado + apellidos");
+    // Variante LITERAL ("MA ERIKA" sin expandir): WinLab puede tener OTRO registro del mismo
+    // paciente con la abreviatura tal cual (caso real 11-oct-2026: "MARIA ERIKA" traía solo el EGO
+    // de urgencias y "MA ERIKA" tenía la BH/QS de cirugía). Es "sibling": el caller la busca
+    // ADEMÁS de la expandida (no en vez de) y une las filas, exigiendo match del objetivo.
+    push(parts.slice(2).join(" "), parts.slice(0, 2).join(" "), "nombre abreviado literal", { raw: true, sibling: true });
     if (parts.length >= 4) push(extractApellidos(clean)[0], null, "apellidos estandar");
   } else {
     push(extractApellidos(clean)[0], null, "apellidos estandar");

@@ -751,7 +751,35 @@
     /* ── Línea de pase (resumen de un vistazo) ── */
     .pase-line { display:flex; flex-wrap:wrap; gap:4px 6px; padding:4px 10px 7px; }
     .pase-line .pl-chip { background:rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.35); border-radius:6px; padding:2px 7px; font-size:11px; font-weight:600; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+    .pase-line .pl-btn { cursor:pointer; font-family:var(--font); border-style:dashed; }
     body.dark .pase-line .pl-chip { background:rgba(255,255,255,.1); }
+    /* ── Modo Pase: esconde lo que no se usa en la visita ── */
+    body.pase-mode .fc-full-only { display:none; }
+    body.pase-mode .full-card.show-full .fc-full-only { display:block; }
+    body.pase-mode .fc-manejo-grid { grid-template-columns:1fr; }
+    body.pase-mode .full-card.show-full .fc-manejo-grid { grid-template-columns:1fr 1fr; }
+    .fc-showfull-btn { margin-top:8px; background:#f1f5f9; border:1px dashed #94a3b8; color:#475569; border-radius:8px; padding:8px 12px; font-size:12px; font-weight:700; cursor:pointer; font-family:var(--font); width:100%; text-align:left; }
+    body:not(.pase-mode) .fc-showfull-btn { display:none; }
+    #board-nav .bn-mode { font-size:12px; font-weight:800; padding:7px 10px; border:none; border-radius:6px; background:#1e3a5f; color:#fff; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+    #board-nav .bn-mode.on { background:#0e7490; }
+    /* ── "⋯ Más" en la cabecera ── */
+    .card-more { position:relative; display:inline-block; }
+    .card-more-menu { display:none; position:absolute; right:0; top:calc(100% + 4px); background:#fff; color:#0f172a; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.25); min-width:240px; z-index:50; padding:4px; }
+    .card-more.open .card-more-menu { display:block; }
+    .card-more-menu button { display:block; width:100%; text-align:left; background:none; border:none; padding:10px 12px; font-size:13px; font-weight:600; color:#0f172a; cursor:pointer; font-family:var(--font); border-radius:6px; }
+    .card-more-menu button:hover { background:#f1f5f9; }
+    body.dark .card-more-menu { background:#0f1c2e; border-color:#2b4a72; }
+    body.dark .card-more-menu button { color:#e2e8f0; }
+    body.dark .card-more-menu button:hover { background:#152e4d; }
+    /* ── Pendientes: "➕ Hoy" y lista marcable ── */
+    .pend-tool { background:#eef2ff; border:1px solid #c7d2fe; color:#3730a3; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; cursor:pointer; font-family:var(--font); }
+    .pend-tool.on { background:#4f46e5; color:#fff; border-color:#4f46e5; }
+    .pend-list { margin-top:6px; display:flex; flex-direction:column; gap:3px; }
+    .pend-row { display:flex; align-items:flex-start; gap:8px; width:100%; text-align:left; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px; font-size:13px; cursor:pointer; font-family:var(--font); min-height:40px; color:#0f172a; }
+    .pend-row .pend-box { font-size:16px; line-height:1; }
+    .pend-row.done .pend-txt { text-decoration:line-through; color:#94a3b8; }
+    .pend-date { font-size:11px; font-weight:800; color:#4f46e5; padding:4px 2px 0; }
+    body.dark .pend-row { background:#0f1c2e; border-color:#2b4a72; color:#e2e8f0; }
 
     .icon-btn {
       background: rgba(255, 255, 255, .2);
@@ -8044,7 +8072,17 @@ function plExportBackup() {
         // ── filas principales en TU orden ──
         var mainKeys = {};
         FOCUS_LAB_ORDER.forEach(function(p){ mainKeys[p[1]] = 1; });
-        var mainRows = FOCUS_LAB_ORDER.map(function(p){ return cellRow(p[0], p[1]); }).join('');
+        // Modo Pase: solo los analitos con algún valor en las fechas mostradas (la hoja fija de 31 renglones
+        // llenaba la pantalla del iPad de "—"); en modo Completo se conserva la hoja completa tipo GoodNotes.
+        var _pase = (typeof isPaseMode === "function") && isPaseMode();
+        var _hiddenEmpty = 0;
+        var mainRows = FOCUS_LAB_ORDER.filter(function(p){
+          if (!_pase) return true;
+          var has = shown.some(function(d){ var v = byDate[d][p[1]]; return v !== undefined && v !== null && String(v).trim() !== ""; });
+          if (!has) _hiddenEmpty++;
+          return has;
+        }).map(function(p){ return cellRow(p[0], p[1]); }).join('');
+        if (_pase && _hiddenEmpty) mainRows += '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '" style="font-weight:600;text-transform:none;letter-spacing:0">' + _hiddenEmpty + ' analitos sin valor ocultos (modo Pase)</td></tr>';
         // ── OTROS: labs estándar con valor que NO están en tu orden ──
         var labelMap = {}, fieldOrder = {};
         if(typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)){
@@ -10158,6 +10196,8 @@ function plExportBackup() {
       try {
         const ck = (nd && nd.checklist) || {};
         const parts = [];
+        const pop = popDays(nd);
+        if (pop !== null) parts.push("🔪 POP d" + pop + (nd.qx ? " · " + toSafeString(nd.qx).trim().split("\n")[0].slice(0, 34) : ""));
         if (ck.npo) parts.push("⛔ Ayuno" + (ck.npo_dias ? " d" + ck.npo_dias : ""));
         else if (ck.dieta) parts.push("🍽 " + ck.dieta);
         if (ck.atb) parts.push("💊 ATB" + (ck.atb_nombre ? " " + ck.atb_nombre : "") + (ck.atb_dias ? " d" + ck.atb_dias : ""));
@@ -10180,8 +10220,11 @@ function plExportBackup() {
           });
           if (chips.length) parts.push("🧪 " + ((typeof fmtDateChip === "function") ? fmtDateChip(snap.fecha) : snap.fecha) + ": " + chips.join(" · "));
         }
-        if (!parts.length) return "";
-        return `<div class="pase-line">${parts.map(function (t) { return `<span class="pl-chip">${esc(t)}</span>`; }).join("")}</div>`;
+        const popBtn = (pop === null)
+          ? `<button type="button" class="pl-chip pl-btn" data-k="${esc(k)}" onclick="setQxFecha(this.dataset.k)" title="Capturar fecha de cirugía para contar días postoperatorios">🔪 Fecha Qx?</button>`
+          : "";
+        if (!parts.length && !popBtn) return "";
+        return `<div class="pase-line">${parts.map(function (t) { return `<span class="pl-chip">${esc(t)}</span>`; }).join("")}${popBtn}</div>`;
       } catch (e) { return ""; }
     }
     function _showRTToast(msg) {
@@ -11203,6 +11246,7 @@ function plExportBackup() {
         }
       }
 
+      document.body.classList.toggle("pase-mode", isPaseMode()); // modo Pase persistido por dispositivo
       buildEspFilters();
       renderViewSoft(); // si el residente ya escribe en la tarjeta temprana, no destruir su campo
       updateProxyPill();
@@ -11482,8 +11526,10 @@ function plExportBackup() {
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
             + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
+            + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, manejo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
             + `</div>`;
+          _bindBoardSwipe();
             /* Botón "≣ Índice" ELIMINADO (jul 2026, pedido de Gera): llevaba al layout
                viejo (modo lista). El board bento es LA vista única; la navegación es el
                rail de camas + flechas. enterListMode sigue definida (inerte). */
@@ -12913,6 +12959,119 @@ function plExportBackup() {
       });
       return arr;
     }
+    // ─── MODO PASE (oct 2026): la ficha solo con lo que se usa en la visita ───────────
+    function isPaseMode() { try { return localStorage.getItem("pl_pase_mode") === "1"; } catch (_) { return false; } }
+    function togglePaseMode() {
+      const on = !isPaseMode();
+      try { localStorage.setItem("pl_pase_mode", on ? "1" : "0"); } catch (_) {}
+      document.body.classList.toggle("pase-mode", on);
+      renderView();
+    }
+    // Mostrar/ocultar en ESTA tarjeta los bloques que el modo Pase esconde (APP, Qx, PA, indicaciones…)
+    function toggleCardFull(k) {
+      const el = document.getElementById("card-" + k);
+      if (!el) return;
+      el.classList.toggle("show-full");
+      const b = el.querySelector(".fc-showfull-btn");
+      if (b) b.textContent = el.classList.contains("show-full") ? "▾ Ocultar APP / Qx / PA / indicaciones" : "▸ Ver APP / Qx / PA / indicaciones";
+    }
+    // Deslizar con el dedo sobre la tarjeta para cambiar de paciente (además de las flechas y el rail)
+    let _swipeBound = false;
+    function _bindBoardSwipe() {
+      if (_swipeBound) return;
+      _swipeBound = true;
+      let sx = 0, sy = 0, st = 0, ok = false;
+      document.addEventListener("touchstart", function (e) {
+        const t = e.target;
+        ok = !!(e.touches && e.touches.length === 1) && !!document.getElementById("board-main") && !(t && t.closest && t.closest("textarea, input, select, canvas, .ff-labs-wrap, .tmpl-menu, [contenteditable]"));
+        if (!ok) return;
+        sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
+      }, { passive: true });
+      document.addEventListener("touchend", function (e) {
+        if (!ok || !e.changedTouches || !e.changedTouches.length) return;
+        ok = false;
+        const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+        if (Date.now() - st > 700 || Math.abs(dx) < 90 || Math.abs(dy) > 50 || Math.abs(dx) < Math.abs(dy) * 2) return;
+        if (window.__viewMode !== "board" || !window.__focusPid) return;
+        if (typeof focusStep === "function") focusStep(dx < 0 ? 1 : -1);
+      }, { passive: true });
+    }
+    // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
+    function pendInsertToday(k) {
+      const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]');
+      const d = new Date();
+      const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
+      const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
+      if (cur.trim().indexOf(stamp + " —") === 0) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } return; }
+      const next = stamp + " — \n" + cur;
+      if (ta) {
+        ta.value = next; liveUpdate(ta); ta.focus();
+        try { ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } catch (_) {}
+      } else {
+        const nd = getNote(k); nd.pendientes = next; _saveNoteNow(k, nd, "pendientes"); _rerenderCard(k);
+      }
+    }
+    // Lista marcable de Pendientes: cada renglón con casilla; marcar antepone "✓ " (el texto sigue siendo la verdad)
+    function togglePendList(k) {
+      window.__pendList = window.__pendList || {};
+      window.__pendList[k] = !window.__pendList[k];
+      _rerenderCard(k);
+    }
+    function renderPendList(nd, k) {
+      if (!(window.__pendList && window.__pendList[k])) return "";
+      const lines = toSafeString(nd && nd.pendientes).split("\n");
+      const rows = lines.map(function (line, i) {
+        const t = line.trim();
+        if (!t) return "";
+        const done = /^✓\s/.test(t);
+        const txt = t.replace(/^✓\s*/, "").replace(/^[-•·\[\]\s]+/, "");
+        if (/^\d{2}\/\d{2}\s—/.test(t)) return `<div class="pend-date">${esc(t)}</div>`;
+        return `<button type="button" class="pend-row${done ? " done" : ""}" data-k="${esc(k)}" data-i="${i}" onclick="togglePendLine(this.dataset.k, +this.dataset.i)"><span class="pend-box">${done ? "☑" : "☐"}</span><span class="pend-txt">${esc(txt)}</span></button>`;
+      }).join("");
+      return `<div class="pend-list">${rows || '<div class="pend-date">Sin pendientes</div>'}</div>`;
+    }
+    function togglePendLine(k, i) {
+      const nd = getNote(k);
+      const lines = toSafeString(nd.pendientes).split("\n");
+      if (i < 0 || i >= lines.length) return;
+      const t = lines[i];
+      const lead = t.match(/^\s*/)[0];
+      const body = t.trim();
+      lines[i] = lead + (/^✓\s/.test(body) ? body.replace(/^✓\s*/, "") : "✓ " + body);
+      nd.pendientes = lines.join("\n");
+      _saveNoteNow(k, nd, "pendientes");
+      _rerenderCard(k);
+    }
+    // Fecha de cirugía → "POP dN" en la línea de pase. Vive en checklist.qx_fecha (viaja con la nota).
+    function setQxFecha(k) {
+      const nd = getNote(k);
+      const cur = (nd.checklist && nd.checklist.qx_fecha) || "";
+      const v = prompt("Fecha de la cirugía (AAAA-MM-DD). Vacío = quitar.", cur || todayStr());
+      if (v === null) return;
+      const val = v.trim();
+      if (val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) { alert("Formato: AAAA-MM-DD (ej. " + todayStr() + ")"); return; }
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist.qx_fecha = val;
+      _saveNoteNow(k, nd, "ck_qx_fecha");
+      _rerenderCard(k);
+    }
+    function popDays(nd) {
+      const f = nd && nd.checklist && nd.checklist.qx_fecha;
+      if (!f || !/^\d{4}-\d{2}-\d{2}$/.test(f)) return null;
+      const p = f.split("-");
+      const d = new Date(+p[0], +p[1] - 1, +p[2]); const today = new Date(); today.setHours(0, 0, 0, 0);
+      const n = Math.round((today - d) / 86400000);
+      return n >= 0 ? n : null;
+    }
+    function toggleCardMore(btn) {
+      const wrap = btn.closest(".card-more");
+      if (!wrap) return;
+      const open = wrap.classList.toggle("open");
+      if (open) {
+        const close = function (e) { if (!wrap.contains(e.target)) { wrap.classList.remove("open"); document.removeEventListener("click", close, true); } };
+        setTimeout(function () { document.addEventListener("click", close, true); }, 0);
+      }
+    }
     function focusGoTo(k){
       window.__viewMode = "board";
       window.__focusPid = k;
@@ -12960,17 +13119,24 @@ function plExportBackup() {
           ${renderLabNewsBadge(nd, k)}
           ${renderCruceBadge(nd, k)}
           ${(isSimpleEsp(p.esp) && nd && nd.checklist && nd.checklist.svcMine) ? `<button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Quitar de mi servicio">↩️</button>` : ''}
-          <button class="icon-btn has-lbl" style="background:rgba(14,116,144,.5)" data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)" title="Buscar en WinLab (copia apellido)">🧪<span class="icon-lbl">WinLab</span></button>
-          <button class="icon-btn has-lbl" style="background:rgba(14,165,233,.55)" data-corkey="${k}" onclick="openCorreccionModal(this.dataset.corkey)" title="Corrección guiada de electrolitos">⚡<span class="icon-lbl">Electrol.</span></button>
           <button class="icon-btn has-lbl" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️<span class="icon-lbl">Editar</span></button>
-          <button class="icon-btn has-lbl" style="background:rgba(251,146,60,.35)" data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)" title="Cambiar cama rápido">🛏<span class="icon-lbl">Cama</span></button>
-          <button class="icon-btn has-lbl" style="background:rgba(99,102,241,.4)" data-histkey="${k}" onclick="openNoteHistory(this.dataset.histkey)" title="Historial de versiones / recuperar datos">📜<span class="icon-lbl">Historial</span></button>
-          <button class="icon-btn has-lbl" style="background:rgba(16,185,129,.45)" data-dikey="${k}" onclick="openDocIntake(this.dataset.dikey)" title="Leer documento con IA (nota de ingreso, postQx, evolución)">📄<span class="icon-lbl">Leer Doc</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(139,92,246,.45)" data-inkkey="${k}" onclick="openInkpad(this.dataset.inkkey)" title="Escribir a mano con stylus (Apple Pencil, S Pen, etc.) y transcribir con IA">✍️<span class="icon-lbl">Escribir</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(245,158,11,.5)" data-remkey="${k}" onclick="openReminderModal(this.dataset.remkey)" title="Programar recordatorio (reposición K, gasometría a las 18h, etc.)">🔔<span class="icon-lbl">Recordar</span></button>
           <button class="icon-btn has-lbl danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪<span class="icon-lbl">Alta</span></button>
-          <button class="icon-btn has-lbl" style="background:rgba(5,150,105,.5)" data-nevokey="${k}" onclick="openNotaEvo(this.dataset.nevokey)" title="Generar nota de evolución desde los datos de la app">📝<span class="icon-lbl">Nota Evol.</span></button>
-          <button class="icon-btn has-lbl" style="background:rgba(2,132,199,.55)" data-fockey="${k}" onclick="enterFocus(this.dataset.fockey)" title="Ver este paciente a pantalla completa">⛶<span class="icon-lbl">Pantalla</span></button>
+          <!-- Resto de acciones en "⋯ Más": 12 iconos en dos filas se tocaban por error en iPad -->
+          <div class="card-more">
+            <button class="icon-btn has-lbl" style="background:rgba(255,255,255,.22)" onclick="toggleCardMore(this)" title="Más acciones">⋯<span class="icon-lbl">Más</span></button>
+            <div class="card-more-menu">
+              <button data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)">🧪 Buscar en WinLab</button>
+              <button data-corkey="${k}" onclick="openCorreccionModal(this.dataset.corkey)">⚡ Corrección de electrolitos</button>
+              <button data-dikey="${k}" onclick="openDocIntake(this.dataset.dikey)">📄 Leer documento con IA</button>
+              <button data-nevokey="${k}" onclick="openNotaEvo(this.dataset.nevokey)">📝 Nota de evolución</button>
+              <button data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)">🛏 Cambiar cama</button>
+              <button data-qxkey="${k}" onclick="setQxFecha(this.dataset.qxkey)">🔪 Fecha de cirugía (POP)</button>
+              <button data-histkey="${k}" onclick="openNoteHistory(this.dataset.histkey)">📜 Historial de versiones</button>
+              <button data-fockey="${k}" onclick="enterFocus(this.dataset.fockey)">⛶ Pantalla completa</button>
+            </div>
+          </div>
           <span class="expand-btn" data-expandkey="${k}" onclick="toggleExpand(this.dataset.expandkey)">${exp ? "▾" : "▸"}</span>
         </div>
       </div>
@@ -12997,18 +13163,24 @@ function plExportBackup() {
 
       ${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}
 
-      <div class="grid-2" style="margin-top:10px">
-        ${fieldRow("📋 APP / Antecedentes", nd.app, k, "app", 3)}
-        ${fieldRow("🔧 Qx / Procedimiento", nd.qx, k, "qx", 3)}
+      <!-- Modo Pase: APP / Qx / PA quedan ocultos (CSS .fc-full-only) salvo que se pida "Ver" en esta tarjeta -->
+      <div class="fc-full-only">
+        <div class="grid-2" style="margin-top:10px">
+          ${fieldRow("📋 APP / Antecedentes", nd.app, k, "app", 3)}
+          ${fieldRow("🔧 Qx / Procedimiento", nd.qx, k, "qx", 3)}
+        </div>
       </div>
-      <div class="grid-2" style="margin-top:10px">
+      <div class="grid-2 fc-manejo-grid" style="margin-top:10px">
         ${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}
-        ${fieldRow("🩺 PA / Padecimiento actual", nd.pa, k, "pa", 3)}
+        <div class="fc-full-only">${fieldRow("🩺 PA / Padecimiento actual", nd.pa, k, "pa", 3)}</div>
       </div>
+      ${isPaseMode() ? `<button type="button" class="fc-showfull-btn" data-k="${k}" onclick="toggleCardFull(this.dataset.k)">▸ Ver APP / Qx / PA / indicaciones</button>` : ""}
 
       <div style="margin-top:10px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
           <span class="field-label" style="margin:0">⚠️ Pendientes / Plan</span>
+          <button type="button" class="pend-tool" data-k="${k}" onclick="pendInsertToday(this.dataset.k)" title="Insertar la fecha de hoy al inicio (evolución del día)">➕ Hoy</button>
+          <button type="button" class="pend-tool${(window.__pendList && window.__pendList[k]) ? " on" : ""}" data-k="${k}" onclick="togglePendList(this.dataset.k)" title="Ver los pendientes como lista con casillas para tachar">☑ Lista</button>
           ${renderTemplatesBtn(k)}
         </div>
         <textarea class="field-ta" rows="3"
@@ -13017,6 +13189,7 @@ function plExportBackup() {
           oninput="liveUpdate(this)"
           onchange="updateField(this.dataset.key,this.dataset.field,this.value)"
           placeholder="Pendientes / Plan...">${esc(nd.pendientes || "")}</textarea>
+        ${renderPendList(nd, k)}
       </div>
       <div class="grid-2" style="margin-top:10px">
         <div>
@@ -13058,11 +13231,13 @@ function plExportBackup() {
         ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 3)}
       </div>
 
+      <div class="fc-full-only">
       ${renderCDSSection(p, nd, k)}
       ${renderIndicacionesSection(p, nd, k)}
+      </div>
       ${typeof renderCultivosLabSection === 'function' ? renderCultivosLabSection(p, nd, k) : ''}
 
-      ${renderImagenField(nd, k)}
+      <div class="fc-full-only">${renderImagenField(nd, k)}</div>
 
       <div style="margin-top:10px">
         <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #e2e8f0">🩺 Interconsultas · 🦠 Cultivos y labs especiales</div>
@@ -21243,11 +21418,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const dieta = esc(cl.dieta || "");
 
       const npoHtml = `<span id="ck-${ek}-npo" class="ck-item${npoOn ? " ck-on" : ""}" data-ck="${k}" data-item="npo" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ayuno / Nada Por vía Oral"><span class="ck-label">${npoOn ? "✓ " : ""}Ayuno</span></span>` +
-        (npoOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
+        (npoOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
 
       const atbHtml = `<span id="ck-${ek}-atb" class="ck-item${atbOn ? " ck-on" : ""}" data-ck="${k}" data-item="atb" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Antibioticoterapia activa"><span class="ck-label">${atbOn ? "✓ " : ""}ATB</span></span>` +
-        (atbOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
-          `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
+        (atbOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
+          `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
 
       const tvpTipo = cl.tvp_tipo || "";
       const tvpHtml = `<span id="ck-${ek}-tvp" class="ck-item${tvpOn ? " ck-on" : ""}" data-ck="${k}" data-item="tvp" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Profilaxis TVP (HBPM/compresión)"><span class="ck-label">${tvpOn ? "✓ " : ""}TVP</span></span>` +
@@ -21256,8 +21431,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           `<option value="enoxaparina"${tvpTipo === "enoxaparina" ? " selected" : ""}>Enoxaparina</option>` +
           `<option value="otro"${tvpTipo === "otro" ? " selected" : ""}>Otro</option>` +
           `</select>` +
-          (tvpTipo === "enoxaparina" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.tvp_dosis || "")}" placeholder="Dosis (ej: 40mg)" data-ck="${k}" data-field="tvp_dosis" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Dosis de Enoxaparina" style="width:100px"/>` : "") +
-          (tvpTipo === "otro" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.tvp_otro || "")}" placeholder="Especificar..." data-ck="${k}" data-field="tvp_otro" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Otra profilaxis TVP" style="width:140px"/>` : "") : "");
+          (tvpTipo === "enoxaparina" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.tvp_dosis || "")}" placeholder="Dosis (ej: 40mg)" data-ck="${k}" data-field="tvp_dosis" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Dosis de Enoxaparina" style="width:100px"/>` : "") +
+          (tvpTipo === "otro" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.tvp_otro || "")}" placeholder="Especificar..." data-ck="${k}" data-field="tvp_otro" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Otra profilaxis TVP" style="width:140px"/>` : "") : "");
 
       // ── Row 2: Herida Qx + NPT ──
       const woundNecOn = !!cl.cur_necesita;
@@ -21273,13 +21448,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const nptPct = esc(cl.npt_pct || "");
       const nptFecha = esc(cl.npt_fecha || "");
       const nptHtml = `<span id="ck-${ek}-npt" class="ck-item${nptOn ? " ck-on ck-npt-on" : ""}" data-ck="${k}" data-item="npt" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Nutrición Parenteral Total"><span class="ck-label">${nptOn ? "✓ " : ""}NPT</span></span>` +
-        (nptOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${nptPct}" placeholder="% (ej: 80%)" data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)" style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
+        (nptOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${nptPct}" placeholder="% (ej: 80%)" data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)" style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
           (nptFecha ? `<span style="font-size:9px;color:#94a3b8;white-space:nowrap" title="Última actualización del %">🕐 ${nptFecha}</span>` : "") : "");
 
       // ── Row 3: Pase Matutino — Signos Vitales ──
       function pmInp(field, w) {
         const val = esc(cl["pm_" + field] || "");
-        return `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${val}" placeholder="—" data-ck="${k}" data-field="pm_${field}" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)"${w ? ` style="width:${w}"` : ""}/>`;
+        const _im = (field === "ta" || field === "dxtx") ? "text" : "decimal"; // teclado numérico en iPad (TA lleva "/")
+        return `<input class="pm-input" inputmode="${_im}" autocorrect="off" autocapitalize="off" spellcheck="false" value="${val}" placeholder="—" data-ck="${k}" data-field="pm_${field}" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)"${w ? ` style="width:${w}"` : ""}/>`;
       }
       const vitalesHtml =
         `<div class="pm-field"><span class="pm-label">FC</span>${pmInp("fc")}</div>` +
@@ -21299,25 +21475,25 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const estomaOn = !!cl.pm_estoma;
 
       const sngHtml = `<span class="ck-item${sngOn ? " ck-on ck-sng-on" : ""}" data-ck="${k}" data-item="pm_sng" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sonda Nasogástrica activa"><span class="ck-label">${sngOn ? "✓ " : ""}SNG</span></span>` +
-        (sngOn ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_sng_desc || "")}" placeholder="desc..." data-ck="${k}" data-field="pm_sng_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>` : "");
+        (sngOn ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_sng_desc || "")}" placeholder="desc..." data-ck="${k}" data-field="pm_sng_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>` : "");
 
       const prs1Html = `<span class="ck-item${prs1On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs1" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 1"><span class="ck-label">${prs1On ? "✓ " : ""}PRS 1</span></span>` +
-        (prs1On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_prs1_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs1_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+        (prs1On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_prs1_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs1_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
 
       const prs2Html = `<span class="ck-item${prs2On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs2" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 2"><span class="ck-label">${prs2On ? "✓ " : ""}PRS 2</span></span>` +
-        (prs2On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_prs2_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs2_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+        (prs2On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_prs2_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs2_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
 
       const prs3Html = `<span class="ck-item${prs3On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs3" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 3"><span class="ck-label">${prs3On ? "✓ " : ""}PRS 3</span></span>` +
-        (prs3On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_prs3_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs3_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
+        (prs3On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_prs3_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs3_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
 
       const estomaHtml = `<span class="ck-item${estomaOn ? " ck-on ck-estoma-on" : ""}" data-ck="${k}" data-item="pm_estoma" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Estoma activo"><span class="ck-label">${estomaOn ? "✓ " : ""}Estoma</span></span>` +
         (estomaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_estoma_tipo" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Origen del estoma">` +
           `<option value="">-- origen --</option>` +
           ["Colon","Yeyuno","Ileon"].map(t => `<option value="${t}"${cl.pm_estoma_tipo === t ? " selected" : ""}>${t}</option>`).join("") +
           `</select>` +
-          `<span class="pm-label">Gasto:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_estoma_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_estoma_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto del estoma en mL/24h"/>` : "");
+          `<span class="pm-label">Gasto:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_estoma_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_estoma_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto del estoma en mL/24h"/>` : "");
 
-      const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
+      const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
 
       // ── Row 5: Pase Matutino — SEP / HxQx / Ventilador ──
       const sepOn = !!cl.pm_sep;
@@ -21325,27 +21501,27 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const sepFugaOn = !!cl.pm_sep_fuga;
 
       const sepHtml = `<span class="ck-item${sepOn ? " ck-on ck-sep-on" : ""}" data-ck="${k}" data-item="pm_sep" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sepsis / cuadro séptico activo"><span class="ck-label">${sepOn ? "✓ " : ""}SEP</span></span>` +
-        (sepOn ? `<span class="pm-label">Gasto:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_sep_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_sep_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto séptico en mL/24h"/>` +
+        (sepOn ? `<span class="pm-label">Gasto:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_sep_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_sep_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto séptico en mL/24h"/>` +
           `<span class="ck-item${sepFugaOn ? " ck-on" : ""}" data-ck="${k}" data-item="pm_sep_fuga" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Fuga activa"><span class="ck-label">${sepFugaOn ? "✓ " : ""}Fuga</span></span>` +
           (sepFugaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_sep_fuga_grado" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Grado de fuga">` +
             `<option value="">-- grado --</option>` +
             ["A","B","C"].map(g => `<option value="${g}"${cl.pm_sep_fuga_grado === g ? " selected" : ""}>${g}</option>`).join("") +
             `</select>` : "") : "");
 
-      const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
+      const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
 
       const ventHtml = `<span class="ck-item${ventOn ? " ck-on ck-vent-on" : ""}" data-ck="${k}" data-item="pm_vent" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ventilación mecánica activa"><span class="ck-label">${ventOn ? "✓ " : ""}🫁 VM</span></span>` +
-        (ventOn ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_modo || "")}" placeholder="Modo" data-ck="${k}" data-field="pm_vent_modo" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:60px;text-align:left" title="Modo (AC, PS, SIMV...)"/>` +
-          `<span class="pm-label">FiO₂%</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_fio2 || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fio2" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">PEEP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_peep || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_peep" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">VT mL</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_vt || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_vt" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">FR</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_fr || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fr" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:40px"/>` +
-          `<span class="pm-label">PIP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false"value="${esc(cl.pm_vent_pip || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_pip" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` : "");
+        (ventOn ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_modo || "")}" placeholder="Modo" data-ck="${k}" data-field="pm_vent_modo" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:60px;text-align:left" title="Modo (AC, PS, SIMV...)"/>` +
+          `<span class="pm-label">FiO₂%</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_fio2 || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fio2" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">PEEP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_peep || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_peep" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">VT mL</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_vt || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_vt" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
+          `<span class="pm-label">FR</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_fr || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fr" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:40px"/>` +
+          `<span class="pm-label">PIP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_pip || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_pip" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` : "");
 
       return `<div id="ck-row-${ek}" class="checklist-wrap">
     <div class="checklist-row">
       <span class="ck-title">🍽 Dieta:</span>
-      <input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false"value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
+      <input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${dieta}" placeholder="ej. blanda, líquidos, libre..." data-ck="${k}" oninput="updateDieta(this.dataset.ck,this.value)" style="width:140px"/>
     </div>
     <div class="checklist-row ck-r-herida">
       <span class="ck-title">🩹 Herida Qx:</span>
