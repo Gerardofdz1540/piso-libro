@@ -1165,13 +1165,19 @@ async function loadParsedByExp(supa, censo, fechaToday) {
     const ayer = new Date(new Date(fechaToday + "T12:00:00Z").getTime() - 86400000).toISOString().slice(0, 10);
     const { data, error } = await supa.from(SUPABASE_TABLE).select("exp,fecha,data").in("exp", exps).gte("fecha", ayer);
     if (error) throw new Error(error.message);
+    const runId = process.env.GITHUB_RUN_ID || "";
+    const doneThisRun = new Set();
     for (const row of data || []) {
       const m = byExp.get(row.exp) || new Map();
       for (const [k, v] of indexParsedReportes([row])) if (!m.has(k)) m.set(k, v);
       byExp.set(row.exp, m);
+      // Fila de HOY escrita por ESTE mismo job (intento anterior que se agotó por tiempo): ya está
+      // capturado; el reintento lo manda al final de la cola para llegar a los que faltan.
+      if (runId && row.fecha === fechaToday && row.data && String(row.data.run_id || "") === runId) doneThisRun.add(String(row.exp || "").trim());
     }
+    byExp.doneThisRun = doneThisRun;
     const total = Array.from(byExp.values()).reduce((n, m) => n + m.size, 0);
-    console.log(`       Valores previos reutilizables: ${total} referto(s) en ${byExp.size} paciente(s) (fecha ≥ ${ayer})`);
+    console.log(`       Valores previos reutilizables: ${total} referto(s) en ${byExp.size} paciente(s) (fecha ≥ ${ayer})${doneThisRun.size ? ` · ${doneThisRun.size} ya guardados por este job` : ""}`);
   } catch (e) {
     console.log(`       (sin valores previos reutilizables: ${e.message})`);
   }
@@ -1191,6 +1197,16 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
   const scraped_at = new Date().toISOString();
   const ctx = page.context();
   const parsedByExp = await loadParsedByExp(supa, censo, fechaToday);
+  // Reintento del mismo job (retry tras timeout): los pacientes ya guardados por este run van al
+  // FINAL. Antes el 2º intento recorría todo el censo en el mismo orden (~20 s de búsqueda por
+  // paciente ya hecho) y con un censo grande nunca alcanzaba a los últimos.
+  const doneThisRun = (parsedByExp && parsedByExp.doneThisRun) || new Set();
+  if (doneThisRun.size) {
+    const pending = censo.filter((p) => !doneThisRun.has(String(p.exp || "").trim()));
+    const done = censo.filter((p) => doneThisRun.has(String(p.exp || "").trim()));
+    censo = pending.concat(done);
+    console.log(`       Reintento: ${done.length} paciente(s) ya guardados por este job pasan al final; ${pending.length} pendientes primero.`);
+  }
   // FLUSH INCREMENTAL (oct 2026): lo capturado se upsertea cada WL_FLUSH_EVERY pacientes, al
   // abortar y al recibir SIGTERM. Antes había un único upsert al final y un timeout del job
   // (85-90 min) perdía la corrida completa. El upsert es idempotente (onConflict exp,fecha).
@@ -1296,6 +1312,7 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
           data: {
             esp: p.esp || null,
             cama: p.cama || null,
+            run_id: process.env.GITHUB_RUN_ID || null, // el reintento del mismo job salta lo ya guardado por este run
             age_guard: res.ageGuard || null,
             merge: { reused_valores: res.reusedValores || 0 },
             headers: res.headers,

@@ -31,8 +31,8 @@ const EXCLUDED_ESPS = new Set([
   "COLUMNA", "ENDOS", "NEUROCX", "ORTOPEDIA", "TRAUMA",
 ]);
 export function isAllowedEsp(esp) {
-  const e = N(esp);
-  if (!e) return false;
+  // esp vacío en la hoja ≠ "no buscar": el paciente está en el censo y necesita labs igual.
+  // (antes `if (!e) return false` lo dejaba sin labs en silencio, 3 corridas al día)
   // 24 jun 2026 — Gera: "TODOS los pacientes deben tener laboratorios". El censo (tabla
   // `patients`) YA es el piso quirúrgico activo; no hay razón para excluir por servicio.
   // Antes se excluían NCX/URO/TYO/GYO/TRASPLANTES/etc. y esos pacientes quedaban SIN labs
@@ -310,13 +310,21 @@ export function extractApellidos(nombre) {
   const parts = clean.trim().split(/\s+/).filter(Boolean);
   if (parts.length < 2) return [];
   const out = [];
-  // Apellidos = últimas 2 palabras, incluyendo una PARTÍCULA líder (DE/DEL/LA/LAS/LOS/Y) si
-  // precede al paterno (ej. "DEL ANGEL GOMEZ", "DE LEON MARQUEZ"), dejando >=1 palabra de nombre.
+  // Las PARTÍCULAS (DE/DEL/LA/LAS/LOS/Y) se agrupan con la palabra que sigue y cuentan como UNA
+  // palabra: "MARIA GARCIA DE LA TORRE" → [MARIA, GARCIA, "DE LA TORRE"] → apellidos "GARCIA DE LA
+  // TORRE", paterno "GARCIA". Antes solo se absorbía una partícula pegada al paterno y "DE LA TORRE"
+  // quedaba como apellidos completos (sin GARCIA) → WinLab, que busca por prefijo, no lo encontraba.
   const PART = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1, Y: 1 };
-  let start = parts.length - 2;
-  if (start - 1 >= 1 && PART[parts[start - 1]]) start -= 1;
-  out.push(parts.slice(start).join(" "));
-  if (parts.length >= 3 && parts[parts.length - 2]) out.push(parts[parts.length - 2]);
+  const groups = [];
+  let i = 0;
+  while (i < parts.length) {
+    let g = parts[i]; i++;
+    while (i < parts.length && PART[g.split(" ").pop()]) { g += " " + parts[i]; i++; }
+    groups.push(g);
+  }
+  if (groups.length < 2) return groups.length ? [groups[0]] : [];
+  out.push(groups.slice(-2).join(" "));
+  if (groups.length >= 3 && groups[groups.length - 2]) out.push(groups[groups.length - 2]);
   return Array.from(new Set(out));
 }
 

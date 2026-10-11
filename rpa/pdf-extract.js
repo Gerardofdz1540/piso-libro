@@ -78,7 +78,7 @@ export const PDF_NOISE_PATTERNS = [
 //   - Unidad: opcional (g/dL, mg/dL, mmol/L, U/L, k/uL, %, ng/mL, μL, etc.)
 //   - Rango:  opcional ("N - N" o "N a N")
 export const PDF_LAB_LINE_RE =
-  /^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\s\/.,()'\-]*?[A-ZÁÉÍÓÚÑ\)])\s+(?:\*[AB]\s+)?([<>≤≥]?\s*\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
+  /^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\s\/.,()'\-]*?[A-ZÁÉÍÓÚÑ\)])\s+(?:\*[AB]\s+)?([<>≤≥]?\s*-?\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/; // -? : EXCESO DE BASE -4.2
 
 // Formato MULTI-LÍNEA (química sanguínea / función hepática de WinLab HGL):
 //   GLUCOSA                          ← nombre del estudio, solo
@@ -88,7 +88,7 @@ export const PDF_LAB_LINE_RE =
 //
 // Línea de VALOR: prefijo opcional *A/*B, número, luego (unidad? + rango?).
 export const PDF_VALUE_LINE_RE =
-  /^(?:\*[AB]\s+)?([<>≤≥]?\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
+  /^(?:\*[AB]\s+)?([<>≤≥]?\s*-?\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/; // -? : gasometría con valores negativos
 // Línea de NOMBRE de estudio: TODO mayúsculas (sin dígitos), 3+ chars, sin ":" (eso es método/header).
 export const PDF_ESTUDIO_NAME_RE =
   /^[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\/().'\-]{2,}$/;
