@@ -107,6 +107,23 @@ la rama vieja `feature/winlab-auto-sync`. Para dejarlo limpio:
 - Dieta, Ayuno, ATB y TVP se cambian con un toque en la primera fila del
   checklist (antes solo desde el modal de editar).
 
+## Indicaciones del Google Doc en cada tarjeta
+
+Las indicaciones se escriben donde siempre, en el Doc "INDICACIONES HOSPITALIZACION". El
+programa de la hoja (Apps Script) revisa el Doc cada 5 minutos y, si cambió, lo sube a la nube; la
+app lo recibe al instante y cada tarjeta muestra su bloque en **Indicaciones** (Dieta, Soluciones,
+Medicamentos, Antibióticos, Medidas generales).
+
+- El cruce es por **cama + nombre**. Si un paciente cambió de cama, lo encuentra por nombre. Si en
+  el Doc hay varias fechas del mismo paciente, muestra la más reciente.
+- Si en el Doc la cama tiene indicaciones a nombre de **otra persona** (el paciente anterior),
+  la tarjeta avisa en rojo y no las muestra como propias hasta que toques "Ver de todos modos".
+- En la cabecera del bloque: 📄 abre el Doc; 🔄 lo trae ahora mismo sin esperar los 5 minutos.
+  "Doc editado hace X" dice cuándo se modificó el Doc por última vez.
+- Para activarlo hay que pegar una vez el `censo-sync.gs` nuevo en Apps Script y ejecutar
+  `createTriggers` (ver "Paso a paso: actualizar el programa de la hoja"); Google pedirá permiso
+  para leer Documentos y Drive. Esa misma ejecución sube el Doc por primera vez.
+
 ## Si los laboratorios no llegan
 
 1. Abre https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml

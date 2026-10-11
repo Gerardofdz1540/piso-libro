@@ -3522,6 +3522,8 @@
 .ind-import-btn { background:#1e3a5f; color:white; font-size:10px; padding:4px 10px; border-radius:5px; border:none; cursor:pointer; font-weight:600; }
 .ind-import-btn:hover { background:#0a1628; }
 .ind-empty-msg { font-size:11px; color:#64748b; font-style:italic; }
+.ind-warn { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; border-radius:6px; padding:6px 8px; font-size:11px; line-height:1.4; margin-bottom:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.ind-section.ind-mismatch { border-color:#dc2626; }
 .ind-content { display:flex; flex-direction:column; gap:6px; }
 .ind-block { background:white; border-radius:6px; padding:6px 10px; border:1px solid #93c5fd; }
 .ind-block-title { font-size:11px; font-weight:700; color:#1e40af; margin-bottom:3px; }
@@ -5147,8 +5149,12 @@ const PLIndicaciones = (function() {
   function saveBlocks(blocks) {
     try { localStorage.setItem(KEY_BLOCKS, JSON.stringify(blocks)); } catch (e) {}
   }
-  function setMeta(ts, stats) {
-    try { localStorage.setItem(KEY_META, JSON.stringify({ importedAt: ts, stats: stats || {} })); } catch (e) {}
+  function setMeta(ts, stats, docInfo) {
+    try {
+      const m = { importedAt: ts, stats: stats || {} };
+      if (docInfo) { m.docHash = docInfo.docHash; m.docUpdated = docInfo.docUpdated; m.syncedAt = docInfo.syncedAt; m.docId = docInfo.docId; }
+      localStorage.setItem(KEY_META, JSON.stringify(m));
+    } catch (e) {}
   }
   function getMeta() {
     try { const r = localStorage.getItem(KEY_META); return r ? JSON.parse(r) : null; }
@@ -5157,14 +5163,23 @@ const PLIndicaciones = (function() {
   function hoursSinceImport() {
     const m = getMeta();
     if (!m || !m.importedAt) return Infinity;
-    return (Date.now() - m.importedAt) / (1000 * 60 * 60);
+    // Con el Doc automático lo que importa es cuándo se EDITÓ el Doc, no cuándo se bajó.
+    const ref = (m.docHash && m.docUpdated) ? Date.parse(m.docUpdated) : m.importedAt;
+    return (Date.now() - (isNaN(ref) ? m.importedAt : ref)) / (1000 * 60 * 60);
+  }
+  function _ago(h) {
+    if (h < 1) return "hace " + Math.max(1, Math.round(h * 60)) + " min";
+    if (h < 48) return "hace " + Math.round(h * 10) / 10 + " h";
+    return "hace " + Math.round(h / 24) + " d";
   }
   function freshness() {
     const h = hoursSinceImport();
+    const m = getMeta();
+    const pre = (m && m.docHash) ? "Doc editado " : "Importado ";
     if (h === Infinity) return { state: "none", label: "Sin importar" };
-    if (h < 4) return { state: "fresh", label: "Hace " + Math.round(h * 10) / 10 + "h" };
-    if (h < 12) return { state: "stale", label: "Hace " + Math.round(h) + "h" };
-    return { state: "old", label: "Hace " + Math.round(h) + "h" };
+    if (h < 4) return { state: "fresh", label: pre + _ago(h) };
+    if (h < 12) return { state: "stale", label: pre + _ago(h) };
+    return { state: "old", label: pre + _ago(h) };
   }
 
   // ─── PARSER ─────────────────────────────────────────────────────────────────
@@ -5308,24 +5323,39 @@ const PLIndicaciones = (function() {
 
     if (!nombre && !cama) return null;
 
-    // SECCIONES
-    const sections = { DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "MEDIDAS GENERALES": [] };
+    // FECHA del bloque ("11/10/2026 8:00 am" debajo del nombre): con varios bloques del mismo
+    // paciente en el Doc (historial por cama), gana el más reciente.
+    // Solo la línea que EMPIEZA con la fecha ("11/10/2026 8:00 am"); nunca la fecha de nacimiento
+    // ("FN 30/01/1977") ni la de un antibiótico ("FI 01/10/2026").
+    let fecha = "";
+    for (let i = anchorIdx; i <= anchorIdx + 8 && i < segLines.length && !fecha; i++) {
+      const t = (segLines[i] || "").replace(/\u00A0/g, " ").replace(/\*\*/g, "").trim();
+      if (/A[ÑN]OS|\bFN\b|NAC/i.test(t)) continue;
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+      if (m && +m[3] >= 2000 && +m[2] >= 1 && +m[2] <= 12) fecha = m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+    }
+
+    // SECCIONES (ANTIBIÓTICOS aparte de MEDICAMENTOS; "MEDIAS GENERALES" es errata frecuente de MEDIDAS)
+    const sections = { DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "ANTIBIÓTICOS": [], "MEDIDAS GENERALES": [] };
     let current = null;
-    const SECTION_RE = /^[\s\u00A0\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*0-9.\-]*(DIETA|SOLUCIONES|MEDICAMENTOS|MEDIDAS\s+GENERALES)\s*[:：]?\s*$/i;
+    const SECTION_RE = /^[\s\u00A0\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*#0-9.\-]*(DIETA|SOLUCIONES|MEDICAMENTOS|ANTIBI[OÓÒ]TICOS?|MEDI(?:DA|A)S\s+GENERALES)\s*[:：]?\s*$/i;
     for (let i = anchorIdx + 1; i < segLines.length; i++) {
       const raw = segLines[i];
-      const line = raw.replace(/\u00A0/g, " ").replace(/[\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB]/g, "").trim();
+      const line = raw.replace(/\u00A0/g, " ").replace(/[\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB]/g, "").replace(/\*\*/g, "").trim();
       if (!line) continue;
       const sm = line.match(SECTION_RE);
       if (sm) {
         current = sm[1].toUpperCase().replace(/\s+/g, " ");
+        if (/^ANTIBI/.test(current)) current = "ANTIBIÓTICOS";
+        if (/^MEDIAS/.test(current)) current = "MEDIDAS GENERALES";
         if (!sections[current]) sections[current] = [];
         continue;
       }
       if (current && sections[current]) {
         const cleanedItem = line.replace(/^[\s\d.\-\*]+/, "").trim();
         if (/^(gracias|fecha)/i.test(cleanedItem)) continue;
-        if (/^(dra?\.?|dr\.?|mip)/i.test(cleanedItem) && /\//.test(cleanedItem)) continue;
+        // Firma del equipo ("DR. X MBCG / DRA. Y R2 CG | MIP Z"): no es una indicación
+        if (/^(dra?\.?|dr\.?|mip\d?)\b/i.test(cleanedItem) && (/\//.test(cleanedItem) || /\b(MB\s?C[GT]|R\d\s?C?G?|MIP\d?|CG|CT|MBMF)\b/i.test(cleanedItem))) continue;
         if (cleanedItem.length < 2) continue;
         sections[current].push(cleanedItem);
       }
@@ -5334,16 +5364,18 @@ const PLIndicaciones = (function() {
     return {
       cama: cama,
       nombre: nombre,
+      fecha: fecha,
       DIETA: sections.DIETA,
       SOLUCIONES: sections.SOLUCIONES,
       MEDICAMENTOS: sections.MEDICAMENTOS,
+      "ANTIBIÓTICOS": sections["ANTIBIÓTICOS"],
       "MEDIDAS GENERALES": sections["MEDIDAS GENERALES"]
     };
   }
   const ANCHOR_AGE_RE = /\b\d{1,3}\s*A[ÑN]OS?\b/i;
   const ANCHOR_ID_RE = /(EXP|CURP|FOLIO)/i;
 
-  function importPasted(text) {
+  function importPasted(text, docInfo) {
     const r = parsePasted(text);
     saveBlocks(r.blocks);
     const stats = {
@@ -5351,23 +5383,47 @@ const PLIndicaciones = (function() {
       withName: r.blocks.filter(function(b){return !!b.nombre}).length,
       withCama: r.blocks.filter(function(b){return !!b.cama}).length
     };
-    setMeta(Date.now(), stats);
+    setMeta(Date.now(), stats, docInfo || null);
     return { blocks: r.blocks, debug: r.debug, stats: stats };
   }
 
+  // ─── DOC AUTOMÁTICO (oct 2026): fila única de public.indicaciones_doc que empuja Apps Script ───
+  // Devuelve true si el texto cambió (y por tanto se re-importó).
+  function importFromDoc(row) {
+    if (!row || typeof row.text !== "string") return false;
+    const meta = getMeta();
+    const hash = row.text_hash || String(row.text.length);
+    if (meta && meta.docHash === hash && loadBlocks().length) return false;
+    importPasted(row.text, { docHash: hash, docUpdated: row.doc_updated || null, syncedAt: row.synced_at || null, docId: row.doc_id || null });
+    return true;
+  }
+  function docInfo() {
+    const m = getMeta();
+    return (m && m.docHash) ? { docUpdated: m.docUpdated, syncedAt: m.syncedAt, docId: m.docId } : null;
+  }
+
+  function _fechaOf(b) { return (b && b.fecha) || ""; }
   function getForPatient(p) {
     if (!p) return null;
     const blocks = loadBlocks();
     if (!blocks.length) return null;
-    let best = null, bestScore = 0;
+    let best = null, bestScore = 0, bestR = null;
     for (let i = 0; i < blocks.length; i++) {
       const r = matchPatient(p, blocks[i]);
-      if (r.matched && r.score > bestScore) {
+      if (!r.matched) continue;
+      // Mismo nivel de certeza (p. ej. dos días del mismo paciente): gana la fecha más reciente;
+      // sin fecha, el que aparece primero en el Doc.
+      const better = r.score > bestScore || (r.score === bestScore && best && _fechaOf(blocks[i]) > _fechaOf(best));
+      if (better) {
         best = blocks[i];
         bestScore = r.score;
-        best._matchMethod = r.method;
-        best._matchScore = r.score;
+        bestR = r;
       }
+    }
+    if (best) {
+      best._matchMethod = bestR.method;
+      best._matchScore = bestScore;
+      best._matchWarn = !!bestR.warn;   // "cama-sola": mismo cuarto, nombre distinto → NO mostrar como propias
     }
     return best;
   }
@@ -5393,7 +5449,7 @@ const PLIndicaciones = (function() {
   }
 
   return {
-    parsePasted: parsePasted, importPasted: importPasted, getForPatient: getForPatient,
+    parsePasted: parsePasted, importPasted: importPasted, importFromDoc: importFromDoc, docInfo: docInfo, getForPatient: getForPatient,
     matchPatient: matchPatient, diagnose: diagnose, freshness: freshness, getMeta: getMeta,
     loadBlocks: loadBlocks, normalizeName: normalizeName, normalizeCama: normalizeCama,
     nameMatchScore: nameMatchScore
@@ -5480,16 +5536,23 @@ function renderIndicacionesSection(p, nd, k) {
   try {
     const data = PLIndicaciones.getForPatient(p);
     const fresh = PLIndicaciones.freshness();
+    const doc = PLIndicaciones.docInfo();
+    // Doc automático: enlace al Google Doc + botón para traerlo ahora; sin Doc: importar pegando.
+    const docBtns = doc
+      ? '<a class="ind-import-btn" style="text-decoration:none" href="https://docs.google.com/document/d/' + escInd(doc.docId || '') + '/edit" target="_blank" rel="noopener" title="Abrir el Doc de indicaciones">📄 Doc</a>' +
+        '<button class="ind-import-btn" onclick="refreshIndicacionesDoc(true)" title="Traer el Doc ahora (se actualiza solo cada 5 min)">🔄</button>'
+      : '<button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button>';
+    const hdrStatus = '<span class="ind-fresh">⏱ ' + escInd(fresh.label) + (doc && doc.syncedAt ? ' · auto' : '') + '</span>';
     if (!data) {
       return '<div class="ind-section ind-empty" id="ind-' + escInd(k) + '">' +
-        '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
-        '<button class="ind-import-btn" onclick="openIndicacionesModal()">📥 Importar</button></div>' +
-        '<div class="ind-empty-msg">Sin indicaciones para ' + escInd((p && p.nombre) || '?') + '.</div></div>';
+        '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' + hdrStatus + '<span style="display:flex;gap:4px">' + docBtns + '</span></div>' +
+        '<div class="ind-empty-msg">Sin indicaciones en el Doc para ' + escInd((p && p.nombre) || '?') + (p && p.cama ? ' (cama ' + escInd(p.cama) + ')' : '') + '.</div></div>';
     }
     const sectionBlocks = [
       { key: "DIETA", icon: "🍴" },
       { key: "SOLUCIONES", icon: "💧" },
       { key: "MEDICAMENTOS", icon: "💊" },
+      { key: "ANTIBIÓTICOS", icon: "🦠" },
       { key: "MEDIDAS GENERALES", icon: "📋" }
     ];
     const content = sectionBlocks.map(function(b) {
@@ -5497,16 +5560,67 @@ function renderIndicacionesSection(p, nd, k) {
       if (!items) return "";
       return '<div class="ind-block"><div class="ind-block-title">' + b.icon + ' ' + b.key + '</div><ul class="ind-list">' + items + '</ul></div>';
     }).join("");
+    const fechaTxt = data.fecha ? ' · ' + escInd((typeof fmtDateChip === "function") ? fmtDateChip(data.fecha) : data.fecha) : '';
     const matchInfo = data._matchMethod ? ' · ' + escInd(data._matchMethod) : '';
-    return '<div class="ind-section ind-fresh-' + fresh.state + '" id="ind-' + escInd(k) + '">' +
+    // "cama-sola": en el Doc hay un bloque para este cuarto pero con OTRO nombre (paciente anterior o
+    // error de captura). Nunca mostrarlo como si fuera de este paciente: aviso y contenido oculto.
+    const warn = data._matchWarn
+      ? '<div class="ind-warn">⚠️ En el Doc, la cama ' + escInd(p.cama || data.cama || '') + ' tiene indicaciones a nombre de <b>' + escInd(data.nombre || '(sin nombre)') + '</b>, que no coincide con este paciente. Verifica el Doc antes de usarlas. ' +
+        '<button type="button" class="ind-import-btn" onclick="var c=this.closest(\'.ind-section\').querySelector(\'.ind-content\');c.style.display=c.style.display===\'none\'?\'\':\'none\'">Ver de todos modos</button></div>'
+      : '';
+    return '<div class="ind-section ind-fresh-' + fresh.state + (data._matchWarn ? ' ind-mismatch' : '') + '" id="ind-' + escInd(k) + '">' +
       '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
-      '<span class="ind-fresh">⏱ ' + escInd(fresh.label) + matchInfo + '</span>' +
-      '<button class="ind-import-btn" onclick="openIndicacionesModal()">🔄 Re-importar</button></div>' +
-      '<div class="ind-content">' + (content || '<div class="ind-empty-msg">Bloque sin secciones.</div>') + '</div></div>';
+      '<span class="ind-fresh">⏱ ' + escInd(fresh.label) + fechaTxt + matchInfo + (doc && doc.syncedAt ? ' · auto' : '') + '</span>' +
+      '<span style="display:flex;gap:4px">' + docBtns + '</span></div>' + warn +
+      '<div class="ind-content"' + (data._matchWarn ? ' style="display:none"' : '') + '>' + (content || '<div class="ind-empty-msg">Bloque sin secciones.</div>') + '</div></div>';
   } catch (e) {
     console.warn("renderIndicacionesSection error:", e);
     return '';
   }
+}
+
+// ─── Doc de indicaciones (Supabase indicaciones_doc ← Apps Script) ─────────────────────────────
+// Se carga al arrancar, por Realtime cuando Apps Script sube una versión nueva, y como respaldo
+// cada 10 min mientras la pestaña esté visible. Si el texto cambió, se re-parsea y se repintan
+// las tarjetas (suave: no roba el foco a quien esté escribiendo).
+let _indDocBusy = false, _indDocTimer = null;
+async function refreshIndicacionesDoc(force) {
+  if (_indDocBusy) return false;
+  if (typeof _sGet !== "function" || !navigator.onLine) return false;
+  _indDocBusy = true;
+  try {
+    const rows = await _sGet("indicaciones_doc", "select=doc_id,text,text_hash,doc_updated,synced_at&id=eq.1");
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) { if (force) _showRTToast("📄 El Doc de indicaciones aún no se ha subido (Apps Script)."); return false; }
+    const changed = PLIndicaciones.importFromDoc(row);
+    if (changed || force) {
+      if (typeof renderViewSoft === "function") renderViewSoft(); else if (typeof renderView === "function") renderView();
+      if (force) _showRTToast(changed ? "💊 Indicaciones actualizadas desde el Doc" : "💊 Indicaciones ya al día");
+    }
+    return changed;
+  } catch (e) {
+    console.warn("indicaciones_doc:", e && e.message || e);
+    if (force) _showRTToast("⚠️ No se pudo traer el Doc de indicaciones");
+    return false;
+  } finally { _indDocBusy = false; }
+}
+function handleIndicacionesDocChange(payload) {
+  try {
+    const row = payload && payload.new;
+    // Realtime puede traer la fila completa (replica identity full) → importar directo; si no, re-consultar.
+    if (row && typeof row.text === "string") {
+      if (PLIndicaciones.importFromDoc(row)) {
+        if (typeof renderViewSoft === "function") renderViewSoft();
+        _showRTToast("💊 Indicaciones actualizadas desde el Doc");
+      }
+    } else { refreshIndicacionesDoc(false); }
+  } catch (e) { console.warn("handleIndicacionesDocChange:", e); }
+}
+function _startIndicacionesDocPolling() {
+  if (_indDocTimer) clearInterval(_indDocTimer);
+  _indDocTimer = setInterval(function () {
+    if (document.visibilityState === "visible") refreshIndicacionesDoc(false);
+  }, 10 * 60 * 1000);
 }
 
 /* ─── MODAL ─── */
@@ -9328,6 +9442,10 @@ function plExportBackup() {
           _winlabLoadedOnce = true;
         }
 
+        // Doc de indicaciones (Apps Script → indicaciones_doc). No bloquea la carga: si falla, quedan
+        // los bloques ya guardados en localStorage.
+        try { await refreshIndicacionesDoc(false); _startIndicacionesDocPolling(); } catch (e) { console.warn("indicaciones_doc:", e?.message || e); }
+
         const noteMap = {};
         (nts || []).forEach(n => { noteMap[n.patient_id] = n; });
 
@@ -9990,6 +10108,16 @@ function plExportBackup() {
           .subscribe(_makeSubCallback("winlab_labs"));
         _realtimeSubs.push(wlSub);
       } catch (e) { safeLog("[RT] winlab_labs subscription failed:", e); }
+
+      // Doc de indicaciones: Apps Script sube el texto nuevo → todas las tarjetas se actualizan solas.
+      try {
+        const indSub = _supa.channel("indicaciones-doc-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "indicaciones_doc" }, function(payload) {
+            handleIndicacionesDocChange(payload);
+          })
+          .subscribe(_makeSubCallback("indicaciones_doc"));
+        _realtimeSubs.push(indSub);
+      } catch (e) { safeLog("[RT] indicaciones_doc subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -13120,11 +13248,17 @@ function plExportBackup() {
         const remOpen = ((ck._ptReminders) || []).filter(function (r) { return !r.done; }).length;
         let cds = 0, cdsCrit = false;
         try { const s = PLCDS.sortBySeverity(PLCDS.evaluate(p, nd)).filter(function (x) { return !PLCDSStore.isIgnored(k, x.ruleId, x.valueHash); }); cds = s.length; cdsCrit = s.some(function (x) { return x.critical; }); } catch (_) {}
+        let indBadge = "";
+        try {
+          const ind = PLIndicaciones.getForPatient(p);
+          if (ind && ind._matchWarn) indBadge = '<span class="bj-n bj-crit">?</span>';
+          else if (ind) indBadge = cnt((ind.MEDICAMENTOS || []).length + (ind["ANTIBIÓTICOS"] || []).length);
+        } catch (_) {}
         const items = [
           ["dx", "Dx", ""], ["labs", "Labs", labsBadge], ["manejo", "Manejo", ""], ["plan", "Plan", cnt(pendOpen)],
-          ["pase", "Pase", ""], ["entrega", "Entrega", toSafeString(nd.entrega).trim() ? "" : ""],
+          ["pase", "Pase", ""], ["entrega", "Entrega", ""],
           ["historia", "Historia", ""], ["ic", "IC·Cult", ""], ["sug", "Sug.", cnt(cds, cdsCrit)],
-          ["ind", "Indic.", ""], ["img", "Estudios", cnt(imgCount)], ["diag", "Diagrama", ""], ["rec", "No olvidar", cnt(remOpen)]
+          ["ind", "Indic.", indBadge], ["img", "Estudios", cnt(imgCount)], ["diag", "Diagrama", ""], ["rec", "No olvidar", cnt(remOpen)]
         ];
         return `<div class="bn-jump">` + items.map(function (it) {
           return `<button type="button" data-k="${esc(k)}" data-sec="${it[0]}" onclick="fcJump(this.dataset.k,this.dataset.sec)">${it[1]}${it[2]}</button>`;
@@ -13434,7 +13568,7 @@ function plExportBackup() {
           ${renderCultivosSection(nd, k)}
         </div>`, icHas)}
       ${fcSec("sug", k, "💡 Sugerencias clínicas", cdsCount ? `<span class="fc-cnt${cdsCrit ? " fc-cnt-crit" : ""}">${cdsCount}</span>` : "sin pendientes", cdsHtml, cdsCrit)}
-      ${fcSec("ind", k, "💊 Indicaciones", indHas ? "importadas" : "sin importar", indHtml, indHas && !pase)}
+      ${fcSec("ind", k, "💊 Indicaciones", indHas ? (/ind-mismatch/.test(indHtml) ? '<span class="fc-cnt fc-cnt-crit">verificar</span>' : "del Doc") : "sin indicaciones", indHtml, indHas)}
       ${fcSec("img", k, "🖼 Estudios de imagen", imgCount ? `<span class="fc-cnt">${imgCount}</span>` : "", renderImagenField(nd, k), imgCount > 0 && !pase)}
       <div id="sec-diag-${ek}" class="fc-anchor drains-collapse${_dOpen ? " open" : ""}">
         <button type="button" class="drains-toggle" data-dkey="${k}" onclick="toggleDrains(this.dataset.dkey)">

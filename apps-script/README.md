@@ -41,6 +41,25 @@ En cada corrida el script compara la hoja con `patients` y:
 la defines, con el enlace al workflow de GitHub y los pasos para reactivarlo. También deja una fila
 `labs_stale_…` en `sync_log`.
 
+## Indicaciones automáticas (Google Doc → cada tarjeta)
+
+`syncIndicaciones()` corre cada 5 min (trigger `syncIndicacionesScheduled`). Mira la fecha de
+modificación del Doc `INDICACIONES_DOC_ID` en Drive; si cambió desde la última subida, lee **todo**
+el texto del Doc y lo guarda en `public.indicaciones_doc` (una sola fila, `id = 1`, con `text`,
+`text_hash`, `doc_updated`). La app:
+
+- baja esa fila al arrancar, la recibe por Realtime cuando cambia y la vuelve a pedir cada 10 min;
+- parsea los bloques (`INDICACIONES MÉDICAS DE …`, línea `NOMBRE · AÑOS | CAMA 3-150`, fecha,
+  secciones DIETA / SOLUCIONES / MEDICAMENTOS / ANTIBIÓTICOS / MEDIDAS GENERALES);
+- cruza cada paciente por **cama + nombre** (si cambió de cama, por nombre); con varias fechas del
+  mismo paciente gana la más reciente;
+- si en el Doc la cama tiene indicaciones a **otro nombre** (paciente anterior), muestra un aviso
+  rojo y no las presenta como propias.
+
+Funciones útiles en el editor: `syncIndicacionesForce` (sube ahora aunque no haya cambios) y
+`testIndicacionesOnly` (solo cuenta bloques, sin escribir). Al ejecutar `createTriggers` Google
+pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
+
 ## Dedup y cuarentena
 
 - **Mismo exp en 2+ camas, misma persona:** conserva solo la cama de **UCI/UTI**, descarta piso.
@@ -63,7 +82,8 @@ la defines, con el enlace al workflow de GitHub y los pasos para reactivarlo. Ta
    **▶ Ejecutar**.
 6. Sale una ventana de permisos de Google → **Revisar permisos** → elige tu cuenta → **Permitir**.
 
-Listo: quedan 3 triggers: `onEdit` (instalable), sync cada 5 min y watchdog de labs cada 4 h.
+Listo: quedan 4 triggers: `onEdit` (instalable), sync cada 5 min, watchdog de labs cada 4 h e
+indicaciones (Doc) cada 5 min. `createTriggers` también hace la primera subida del Doc.
 
 ## Actualizar el script (cada vez que cambie `censo-sync.gs` en el repo)
 
