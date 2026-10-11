@@ -3527,10 +3527,12 @@
     /* color de valores (reusa umbrales clínicos de LAB_GROUPS) */
     .ff-labtable td.ff-lo{color:#1d4ed8;font-weight:800}
     .ff-labtable td.ff-hi{color:#dc2626;font-weight:800}
-    .ff-labtable td.ff-crit{color:#fff !important;background:#dc2626;font-weight:800;border-radius:3px}
+    /* El fondo rojo lleva !important: la regla de renglón par (tr:nth-child(even) td, más específica)
+       lo pisaba y dejaba texto blanco sobre fondo claro → la Hb (fila 2) era invisible. */
+    .ff-labtable td.ff-crit{color:#fff !important;background:#dc2626 !important;font-weight:800;border-radius:3px}
     body.dark .ff-labtable td.ff-lo{color:#60a5fa}
     body.dark .ff-labtable td.ff-hi{color:#f87171}
-    body.dark .ff-labtable td.ff-crit{color:#fff !important;background:#b91c1c}
+    body.dark .ff-labtable td.ff-crit{color:#fff !important;background:#b91c1c !important}
     /* v52 · Δ tendencia: flecha sutil junto al valor (no pisa el color del valor) */
     .ff-labtable td .ff-trend{font-size:9px;margin-left:3px;vertical-align:middle;opacity:.7;font-weight:700}
     .ff-labtable td .ff-trend-up{color:#dc2626}
@@ -3706,6 +3708,8 @@
 .focus-board .ff-labtable td.ff-an, .focus-board .ff-labtable th.ff-an{ color:#111; background:transparent; }
 .focus-board .ff-labtable thead th{ color:#111; background:transparent; }
 .focus-board .ff-labtable tbody tr:nth-child(even) td{ background:transparent; }
+/* valor crítico: conserva el fondo rojo también sobre "papel" (si no, texto blanco sobre transparente) */
+.focus-board .ff-labtable td.ff-crit{ background:#dc2626 !important; color:#fff !important; }
 /* pase matutino: renglones punteados como formato para llenar */
 .focus-board .fb-pm-k{ color:#111; }
 .focus-board .fb-pm-i{ color:#1a3aa8; font-weight:600; }
@@ -7383,7 +7387,7 @@ function plExportBackup() {
           color = "#64748b";
         }
         _wlShowToast(msg, color, 8000);
-        if (typeof renderView === "function") renderView();
+        if (typeof renderViewSoft === "function") renderViewSoft(); else renderView();
       } catch (e) {
         _wlShowToast("⚠️ Error: " + (e?.message || e), "#dc2626", 6000);
       } finally {
@@ -7447,8 +7451,8 @@ function plExportBackup() {
             await applyWinlabSyncToPatients({ verbose: false });
           } catch (_e) { /* no fatal: sigue mostrando UI */ }
         }
-        // Re-render con la nueva data.
-        if (typeof renderView === "function") renderView();
+        // Re-render con la nueva data (suave: si alguien está escribiendo, espera a que suelte el campo).
+        if (typeof renderViewSoft === "function") renderViewSoft(); else renderView();
         if (icon) icon.textContent = "✅";
         if (lbl) lbl.textContent = `Labs (${Object.keys(next).length})`;
         setTimeout(() => {
@@ -9704,7 +9708,7 @@ function plExportBackup() {
           noteData[newK] = noteData[newK] || defaultData();
           lsSavePatients(patients);
         }
-        buildEspFilters(); renderView();
+        buildEspFilters(); renderViewSoft();
         safeInfo("[RT] Patient inserted:", p.nombre);
       }
       else if (eventType === "UPDATE") {
@@ -9740,8 +9744,8 @@ function plExportBackup() {
         if (_ptCardEl && !_ptHasFocus && newKey !== _modalCurrentEditKey) {
           _ptCardEl.outerHTML = isSimpleEsp(updated.esp, (noteData[newKey] || defaultData())) ? renderSimpleCard(updated, noteData[newKey] || defaultData(), newKey) : renderFullCard(updated, noteData[newKey] || defaultData(), newKey);
         } else if (!_ptCardEl) {
-          // Key cambió o tarjeta no existe en DOM — renderizar vista completa
-          renderView();
+          // Key cambió o tarjeta no existe en DOM — renderizar vista completa (suave si se está escribiendo)
+          renderViewSoft();
         }
         safeInfo("[RT] Patient updated:", updated.nombre);
       }
@@ -9765,7 +9769,7 @@ function plExportBackup() {
         localStorage.removeItem(NOTES_PREFIX + k);
         _cleanupPatientCache(k);
         lsSavePatients(patients);
-        buildEspFilters(); renderView();
+        buildEspFilters(); renderViewSoft();
         safeInfo("[RT] Patient deleted:", k);
       }
     }
@@ -9992,6 +9996,16 @@ function plExportBackup() {
           if (!noteData[k]) return;
           const dirty = new Set([].concat(Array.from(_dirtyFields[k] || []), Array.from(_pendingDirty[k] || [])));
           outboxEnqueue({ type: "note", key: k, data: migrateNote(noteData[k]), dirty: dirty.size ? Array.from(dirty) : null });
+          // "dx" vive en el paciente (no en la nota) y solo se copia ahí en onchange, es decir, al
+          // soltar el campo. Si el iPad se oculta a media edición del Dx, reflejarlo y encolar el paciente.
+          if (dirty.has("dx")) {
+            const p = _findPatientByKey(k);
+            const v = noteData[k].dx;
+            if (p && typeof v === "string" && v !== (p.dx || "")) {
+              p.dx = v;
+              outboxEnqueue({ type: "patient", key: k, patient: p });
+            }
+          }
         });
       } catch (_) {}
       try { lsSavePatients(patients); } catch (_) {}
@@ -10014,7 +10028,7 @@ function plExportBackup() {
           patients = sanitizePatients(loaded.patients);
           _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
-          buildEspFilters(); renderView();
+          buildEspFilters(); renderViewSoft();
           localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         }
         _enqueuePendingMisc();
@@ -10032,8 +10046,36 @@ function plExportBackup() {
     // desactualizados sin ninguna indicación. Solo refresca si pasaron >60s
     // desde el último sync para evitar recargas innecesarias al tabear rápido.
     let _lastVisibleRefreshTs = 0;
+    // ¿El usuario está escribiendo en un campo ahora mismo?
+    function _isTypingNow() {
+      const ae = document.activeElement;
+      return !!(ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT" || ae.isContentEditable));
+    }
+    // renderView() reconstruye el DOM: si el residente está escribiendo (iPad: vuelve de otra app y
+    // sigue tecleando mientras cargamos), le quitaba el foco, cerraba el teclado y movía el cursor.
+    // Esta versión espera a que suelte el campo (focusout) y entonces repinta. El texto no se pierde:
+    // vive en noteData/_dirtyFields y _applyLoadedNotes lo respeta.
+    let _renderDeferred = false;
+    function renderViewSoft() {
+      if (!_isTypingNow()) { renderView(); return; }
+      if (_renderDeferred) return;
+      _renderDeferred = true;
+      const onOut = function () {
+        document.removeEventListener("focusout", onOut);
+        _renderDeferred = false;
+        setTimeout(function () { renderViewSoft(); }, 80);
+      };
+      document.addEventListener("focusout", onOut);
+    }
     document.addEventListener("visibilitychange", async function() {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible") {
+        // iPad/iOS: al cambiar de app NO llega pagehide y los timers (autosave 900 ms + push 500 ms)
+        // se congelan; si iOS descarta la pestaña en segundo plano, lo último escrito se perdía.
+        // Guardar TODO en local y encolar lo sucio AHORA, e intentar subirlo mientras aún hay vida.
+        try { persistBeforeExit(); } catch (_) {}
+        if (navigator.onLine && outboxLoad().length > 0) flushOutbox().catch(function () {});
+        return;
+      }
       if (!navigator.onLine) return;
       const now = Date.now();
       if (now - _lastVisibleRefreshTs < 10000) return;
@@ -10047,7 +10089,7 @@ function plExportBackup() {
           patients = sanitizePatients(loaded.patients);
           _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
-          buildEspFilters(); renderView();
+          buildEspFilters(); renderViewSoft();
           localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
           // Flush again in case the outbox grew while we were loading
           if (outboxLoad().length > 0) flushOutbox().catch(e => safeLog("visibilitychange outbox:", e));
@@ -18507,21 +18549,21 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "",
             _addedAt: newRow.added_at || new Date().toISOString() });
         }
-        saveProcs(); renderView();
+        saveProcs(); renderViewSoft();
       } else if (eventType === "UPDATE" && newRow) {
         var idx = procedimientos.findIndex(function(p) { return p._id === newRow.id; });
         if (idx >= 0) {
           procedimientos[idx] = { ...procedimientos[idx], cama: newRow.cama || "", exp: newRow.exp || "",
             nombre: newRow.nombre || "", edad: newRow.edad || "", dx: newRow.dx || "",
             esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "" };
-          saveProcs(); renderView();
+          saveProcs(); renderViewSoft();
         }
       } else if (eventType === "DELETE") {
         var delId = (oldRow && oldRow.id) || (newRow && newRow.id);
         if (!delId) return;
         var before = procedimientos.length;
         procedimientos = procedimientos.filter(function(p) { return p._id !== delId; });
-        if (procedimientos.length !== before) { saveProcs(); renderView(); }
+        if (procedimientos.length !== before) { saveProcs(); renderViewSoft(); }
       }
     }
 
