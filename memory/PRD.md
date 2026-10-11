@@ -7,6 +7,7 @@
 - Single-file `index.html` (~14,400 lines) — HTML + CSS + vanilla JS
 - Production: https://pisolibro.pages.dev (Cloudflare Pages, deployed from `main` by `.github/workflows/deploy-pages.yml`). GitHub Pages / Netlify URLs are legacy.
 - Backend: Supabase (PostgreSQL + Realtime WebSocket)
+- Labs scheduling (Oct 2026): Supabase `pg_cron` → `pg_net` → Cloudflare worker `/api/scrape` → GitHub `workflow_dispatch` at 04:07 / 13:15 / 20:07 León (exact time). GitHub's own cron stays as backup but fires 3–9 h late in this repo. Log table `winlab_dispatch_log`; SQL in `scripts/supabase_pg_cron_dispatch.sql`.
 - Repo: https://github.com/Gerardofdz1540/piso-libro
 - Users: 7 surgery residents
 - Auth: Supabase-based admin + user accounts
