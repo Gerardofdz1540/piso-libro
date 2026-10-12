@@ -182,6 +182,31 @@ const MOCK = `(() => {
   check('U8 ficha compacta: barra de 13 saltos; labs en 2 tablas lado a lado; chip ATB en la fila de dieta; sección plegada se recuerda por modo; fcJump abre; cabecera se encoge al bajar',
     u8.jump === 13 && u8.split === 2 && u8.dateCols === 1 && u8.atbChip && u8.wasOpenFull && u8.closedNow && u8.stored['historia@f'] === false && u8.closedPase && u8.openedByJump && u8.anchors && u8.stillClosedFull && u8.hdrMin && u8.hdrBack, JSON.stringify(u8));
 
+  // ── Panel lateral de alertas (oct 2026): nada arriba del tablero, botón 🔔 con contadores, salto a la tarjeta ──
+  const u9 = await page.evaluate(async()=>{
+    // El fixture trae un solo paciente: agregamos otro en memoria (sin labs) para tener "sin labs de hoy"
+    if (patients.length < 2) { patients.push({ _supa_id: 'a2', cama: '3-105', exp: '2', nombre: 'PACIENTE DOS', esp: 'CG', estado: 'ESTABLE', dx: '' }); }
+    const k0 = pid(patients[0]), k1 = pid(patients[1]);
+    const nd0 = getNote(k0); nd0.labHistory = [{ fecha: todayStr(), labs: { hb: '6.1', k: '2.4' } }]; noteData[k0] = nd0;
+    const nd1 = getNote(k1); nd1.labHistory = []; noteData[k1] = nd1;
+    focusGoTo(k0); renderView();
+    const topBanners = !!document.querySelector('#view-piso > .alerts-panel, #view-piso > .lab-news-banner');
+    const btn = document.querySelector('#board-nav .bn-alerts');
+    const drawer = document.getElementById('alerts-drawer');
+    const closedAtStart = !!drawer && !drawer.classList.contains('open');
+    toggleAlertsDrawer();
+    await new Promise(r=>setTimeout(r, 350)); // fin de la transición
+    const openNow = drawer.classList.contains('open') && getComputedStyle(drawer).transform === 'none';
+    const inDrawer = !!drawer.querySelector('.alerts-panel') && !!drawer.querySelector('#alerts-nolabs-today');
+    const dots = document.querySelectorAll('#board-side .bs-dot').length;
+    alertsGo(k1);
+    await new Promise(r=>setTimeout(r, 500));
+    const after = { focus: window.__focusPid, closed: !document.getElementById('alerts-drawer').classList.contains('open'), flashed: !!document.querySelector('#card-' + CSS.escape(k1) + '.fc-flash') };
+    return { k1, topBanners, btnTxt: btn ? btn.textContent : '', hasCrit: !!(btn && btn.classList.contains('has-crit')), closedAtStart, openNow, inDrawer, dots, after };
+  });
+  check('U9 alertas en panel lateral: nada arriba del tablero; 🔔 con contadores (1 crítico, sin labs hoy); abre con el botón; un renglón cierra el panel y abre la tarjeta resaltada; puntos de estado en el carril',
+    !u9.topBanners && /🔔/.test(u9.btnTxt) && /1/.test(u9.btnTxt) && /📭/.test(u9.btnTxt) && u9.hasCrit && u9.closedAtStart && u9.openNow && u9.inDrawer && u9.dots >= 2 && u9.after.focus === u9.k1 && u9.after.closed && u9.after.flashed, JSON.stringify(u9));
+
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-UI: '+pass+' passed, '+fail+' failed');
   await browser.close();

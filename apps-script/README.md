@@ -43,6 +43,10 @@ la defines, con el enlace al workflow de GitHub y los pasos para reactivarlo. Ta
 
 ## Indicaciones automáticas (Google Doc → cada tarjeta)
 
+> Desde el 12 oct 2026 el camino principal es **pg_cron + pg_net en Supabase**
+> (`scripts/supabase_indicaciones_doc.sql`): la base descarga el Doc cada 5 min por su enlace de
+> exportación. Lo de abajo es el **respaldo** por si el Doc deja de estar compartido por enlace.
+
 `syncIndicaciones()` corre cada 5 min (trigger `syncIndicacionesScheduled`). Mira la fecha de
 modificación del Doc `INDICACIONES_DOC_ID` en Drive; si cambió desde la última subida, lee **todo**
 el texto del Doc y lo guarda en `public.indicaciones_doc` (una sola fila, `id = 1`, con `text`,
