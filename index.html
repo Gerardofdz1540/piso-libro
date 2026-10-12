@@ -3541,6 +3541,26 @@
 .ind-import-btn { background:#1e3a5f; color:white; font-size:10px; padding:4px 10px; border-radius:5px; border:none; cursor:pointer; font-weight:600; }
 .ind-import-btn:hover { background:#0a1628; }
 .ind-empty-msg { font-size:11px; color:#64748b; font-style:italic; }
+/* Estudios de imagen del robot RIS */
+.ris-box { background:#f0f9ff; border:1px solid #7dd3fc; border-radius:8px; padding:8px 10px; margin-bottom:8px; }
+.ris-box-h { font-size:11px; font-weight:800; color:#0c4a6e; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+.ris-ago { font-weight:600; text-transform:none; letter-spacing:0; color:#64748b; }
+.ris-item { background:#fff; border:1px solid #bae6fd; border-radius:6px; padding:6px 8px; margin-top:5px; }
+.ris-item.ris-crit { border-color:#fca5a5; }
+.ris-head { display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:12px; }
+.ris-when { font-family:var(--mono); font-weight:700; color:#0369a1; }
+.ris-title { font-weight:800; color:#0f172a; }
+.ris-sede { font-size:10px; color:#64748b; }
+.ris-badge-crit { background:#dc2626; color:#fff; font-size:10px; font-weight:800; border-radius:8px; padding:0 6px; }
+.ris-link { font-size:11px; font-weight:700; color:#0369a1; text-decoration:none; border:1px solid #bae6fd; border-radius:6px; padding:1px 6px; }
+.ris-rep { margin-top:4px; }
+.ris-rep > summary { font-size:11px; font-weight:700; color:#0369a1; cursor:pointer; min-height:28px; display:flex; align-items:center; }
+.ris-rep-txt { white-space:pre-wrap; font-size:12px; line-height:1.45; color:#0f172a; background:#f8fafc; border-radius:6px; padding:8px; margin-top:4px; max-height:420px; overflow:auto; }
+.ris-norep { font-size:11px; color:#64748b; font-style:italic; margin-top:3px; }
+body.dark .ris-box { background:#082f49; border-color:#0369a1; }
+body.dark .ris-item { background:#0f1c2e; border-color:#1e3a5f; }
+body.dark .ris-title, body.dark .ris-rep-txt { color:#e2e8f0; }
+body.dark .ris-rep-txt { background:#0b1727; }
 .ind-warn { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; border-radius:6px; padding:6px 8px; font-size:11px; line-height:1.4; margin-bottom:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .ind-section.ind-mismatch { border-color:#dc2626; }
 .ind-content { display:flex; flex-direction:column; gap:6px; }
@@ -6099,6 +6119,7 @@ function plExportBackup() {
     let patients = [];
     let noteData = {};
     let winlabByExp = {};     // exp -> { fecha, scraped_at, data: { headers, reportes, ... } }
+    let risByExp = {};        // exp -> [ { id, fecha, hora, modalidad, estudios, reporte, ... } ] (robot RIS de imagen)
     let _winlabLoadedOnce = false; // true tras la primera lectura de winlab_labs (evita el banner "Sin datos" del render temprano)
     // Cultivos WinLab por pid(paciente). Transitorio: lo reconstruye applyWinlabSyncToPatients
     // en cada sync (load + realtime) tras pasar los MISMOS guards de identidad que los labs
@@ -9489,6 +9510,8 @@ function plExportBackup() {
         // Doc de indicaciones (Apps Script → indicaciones_doc). No bloquea la carga: si falla, quedan
         // los bloques ya guardados en localStorage.
         try { await refreshIndicacionesDoc(false); _startIndicacionesDocPolling(); } catch (e) { console.warn("indicaciones_doc:", e?.message || e); }
+        // Estudios de imagen (robot RIS → ris_estudios). No bloquea la carga.
+        try { await _loadRisEstudios(pts); } catch (e) { console.warn("ris_estudios:", e?.message || e); }
 
         const noteMap = {};
         (nts || []).forEach(n => { noteMap[n.patient_id] = n; });
@@ -10162,6 +10185,15 @@ function plExportBackup() {
           .subscribe(_makeSubCallback("indicaciones_doc"));
         _realtimeSubs.push(indSub);
       } catch (e) { safeLog("[RT] indicaciones_doc subscription failed:", e); }
+      // Estudios de imagen del robot RIS: la tarjeta se actualiza sola al llegar un estudio o su reporte.
+      try {
+        const risSub = _supa.channel("ris-estudios-changes")
+          .on("postgres_changes", { event: "*", schema: "public", table: "ris_estudios" }, function(payload) {
+            handleRisChange(payload);
+          })
+          .subscribe(_makeSubCallback("ris_estudios"));
+        _realtimeSubs.push(risSub);
+      } catch (e) { safeLog("[RT] ris_estudios subscription failed:", e); }
     }
 
     function handlePatientChange(payload) {
@@ -13345,7 +13377,7 @@ function plExportBackup() {
         const pendOpen = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s) && !/^✓\s/.test(s); }).length;
         const dias = getDiasSinLabs(nd);
         const labsBadge = dias === null ? '<span class="bj-n bj-crit">sin</span>' : (dias >= 2 ? `<span class="bj-n bj-crit">${dias}d</span>` : (dias === 0 ? '<span class="bj-n bj-ok">hoy</span>' : ""));
-        const imgCount = (nd.imagenHistory || []).reduce(function (n, e) { return n + ((e && e.estudios) || []).length; }, 0);
+        const imgCount = (nd.imagenHistory || []).reduce(function (n, e) { return n + ((e && e.estudios) || []).length; }, 0) + ((typeof risForPatient === "function") ? risForPatient(p).length : 0);
         const remOpen = ((ck._ptReminders) || []).filter(function (r) { return !r.done; }).length;
         let cds = 0, cdsCrit = false;
         try { const s = PLCDS.sortBySeverity(PLCDS.evaluate(p, nd)).filter(function (x) { return !PLCDSStore.isIgnored(k, x.ruleId, x.valueHash); }); cds = s.length; cdsCrit = s.some(function (x) { return x.critical; }); } catch (_) {}
@@ -13581,7 +13613,7 @@ function plExportBackup() {
         const cdsHtml = renderCDSSection(p, nd, k);
         const cdsCount = (function () { const m = /cds-count">\((\d+)\)/.exec(cdsHtml); return m ? +m[1] : 0; })();
         const cdsCrit = /cds-critical/.test(cdsHtml);
-        const imgCount = (nd.imagenHistory || []).reduce(function (n, e) { return n + ((e && e.estudios) || []).length; }, 0);
+        const imgCount = (nd.imagenHistory || []).reduce(function (n, e) { return n + ((e && e.estudios) || []).length; }, 0) + ((typeof risForPatient === "function") ? risForPatient(p).length : 0);
         const icText = toSafeString(nd.checklist && nd.checklist.interconsultas).trim();
         const cultLab = (typeof renderCultivosLabSection === "function") ? renderCultivosLabSection(p, nd, k) : "";
         const cultText = toSafeString(nd.checklist && nd.checklist.cultivos).trim();
@@ -13670,7 +13702,7 @@ function plExportBackup() {
         </div>`, icHas)}
       ${fcSec("sug", k, "💡 Sugerencias clínicas", cdsCount ? `<span class="fc-cnt${cdsCrit ? " fc-cnt-crit" : ""}">${cdsCount}</span>` : "sin pendientes", cdsHtml, cdsCrit)}
       ${fcSec("ind", k, "💊 Indicaciones", indHas ? (/ind-mismatch/.test(indHtml) ? '<span class="fc-cnt fc-cnt-crit">verificar</span>' : "del Doc") : "sin indicaciones", indHtml, indHas)}
-      ${fcSec("img", k, "🖼 Estudios de imagen", imgCount ? `<span class="fc-cnt">${imgCount}</span>` : "", renderImagenField(nd, k), imgCount > 0 && !pase)}
+      ${fcSec("img", k, "🖼 Estudios de imagen", imgCount ? `<span class="fc-cnt">${imgCount}</span>` : "", renderImagenField(nd, k), imgCount > 0)}
       <div id="sec-diag-${ek}" class="fc-anchor drains-collapse${_dOpen ? " open" : ""}">
         <button type="button" class="drains-toggle" data-dkey="${k}" onclick="toggleDrains(this.dataset.dkey)">
           <span>🫁 Diagrama de drenajes / localización</span>
@@ -13843,6 +13875,61 @@ function plExportBackup() {
     }
 
     // ─── IMAGEN FIELD (history) ──────────────────────────────────────────────────────
+    // ─── ESTUDIOS DE IMAGEN del robot RIS (tabla ris_estudios) ──────────────────────────────
+    const RIS_SELECT = "id,exp,paciente,fecha,hora,sede,estudios,modalidad,procedencia,critico,reporte,reporte_url,imagen_url,scraped_at";
+    function _risKey(exp) { return String(exp == null ? "" : exp).trim(); }
+    async function _loadRisEstudios(pts) {
+      const exps = new Set();
+      (pts || []).forEach(p => { const e = _risKey(p && p.exp); if (e && /^[\w\-.\/]+$/.test(e)) exps.add(e); });
+      if (!exps.size) { risByExp = {}; return; }
+      let q = "select=" + RIS_SELECT + "&order=fecha.desc,hora.desc&limit=800";
+      if (exps.size <= 600) q += "&exp=in.(" + Array.from(exps).map(encodeURIComponent).join(",") + ")";
+      const rows = await retryNetwork(() => _sGet("ris_estudios", q), 2, 200);
+      const next = {};
+      (rows || []).forEach(r => { const e = _risKey(r.exp); if (!e) return; (next[e] = next[e] || []).push(r); });
+      risByExp = next;
+    }
+    function risForPatient(p) {
+      const list = risByExp[_risKey(p && p.exp)] || [];
+      return list.slice().sort((a, b) => (String(b.fecha) + String(b.hora)).localeCompare(String(a.fecha) + String(a.hora)));
+    }
+    function handleRisChange(payload) {
+      try {
+        const { eventType, new: row, old: oldRow } = payload || {};
+        const r = row || oldRow; if (!r) return;
+        const e = _risKey(r.exp); if (!e) return;
+        const list = risByExp[e] || (risByExp[e] = []);
+        const i = list.findIndex(x => String(x.id) === String(r.id));
+        if (eventType === "DELETE") { if (i >= 0) list.splice(i, 1); }
+        else if (i >= 0) list[i] = row; else list.push(row);
+        const affected = patients.filter(p => _risKey(p.exp) === e);
+        affected.forEach(p => {
+          const k = pid(p);
+          const cardEl = document.getElementById("card-" + k);
+          if (cardEl && !cardEl.contains(document.activeElement)) cardEl.outerHTML = isSimpleEsp(p.esp, noteData[k] || defaultData()) ? renderSimpleCard(p, noteData[k] || defaultData(), k) : renderFullCard(p, noteData[k] || defaultData(), k);
+        });
+        if (affected.length && eventType !== "DELETE") _showRTToast("🩻 Estudio de imagen " + (row && row.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
+      } catch (err) { safeLog("handleRisChange:", err); }
+    }
+    function renderRisEstudios(p, k) {
+      const list = risForPatient(p);
+      if (!list.length) return "";
+      const ek = k.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const items = list.map((r, i) => {
+        const when = esc((r.fecha || "") + (r.hora ? " " + String(r.hora).slice(0, 5) : ""));
+        const titulo = esc([r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" · ") || "Estudio");
+        const rep = toSafeString(r.reporte).trim();
+        const rid = ek + "_ris_" + i;
+        const links = (r.reporte_url ? `<a href="${esc(r.reporte_url)}" target="_blank" rel="noopener" class="ris-link">📄 Reporte</a>` : "") + (r.imagen_url ? `<a href="${esc(r.imagen_url)}" target="_blank" rel="noopener" class="ris-link">🖼 Imagen</a>` : "");
+        return `<div class="ris-item${r.critico ? " ris-crit" : ""}${rep ? " ris-has-rep" : ""}">
+          <div class="ris-head"><span class="ris-when">${when}</span><span class="ris-title">${titulo}</span>${r.critico ? '<span class="ris-badge-crit">CRÍTICO</span>' : ""}${r.sede ? `<span class="ris-sede">${esc(r.sede)}</span>` : ""}${links}</div>
+          ${rep ? `<details class="ris-rep" id="${rid}"><summary>Reporte transcrito · ${esc(String(rep.length))} letras</summary><div class="ris-rep-txt">${esc(rep)}</div></details>` : `<div class="ris-norep">Sin reporte todavía · estudio realizado (${esc(r.modalidad || "imagen")})</div>`}
+        </div>`;
+      }).join("");
+      const last = list[0] && list[0].scraped_at ? new Date(list[0].scraped_at) : null;
+      return `<div class="ris-box"><div class="ris-box-h">🩻 Estudios del visor (RIS) · ${list.length}${last ? ` <span class="ris-ago">· robot ${esc(_labNewsAgo(last.getTime()))}</span>` : ""}</div>${items}</div>`;
+    }
+
     function renderImagenField(nd, k) {
       nd = migrateNote(nd);
       const ek = k.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -13902,7 +13989,10 @@ function plExportBackup() {
       const canAdd = activeFecha && estudios.length < 3;
       const noDate = !activeFecha;
 
+      const p = (typeof patients !== "undefined" && Array.isArray(patients)) ? patients.find(x => pid(x) === k) : null;
+      const risHtml = p ? renderRisEstudios(p, k) : "";
       return `<div id="img-sec-${k}">
+    ${risHtml}
     <div class="field-label">🖼 Imagen y hallazgos</div>
     <div class="img-date-bar">${dateChips}</div>
     ${noDate ? `<div style="font-size:12px;color:#94a3b8;padding:8px 0">Presiona «+ Nueva fecha» para agregar estudios de hoy.</div>` : `
