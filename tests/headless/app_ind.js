@@ -102,6 +102,25 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
   const i6 = await page.evaluate(() => { PLIndicaciones.importPasted('INDICACIONES MÉDICAS DE PACIENTE TRES\nPACIENTE TRES 40 AÑOS | CAMA 3-107\nDIETA\nLIBRE\n'); const f = PLIndicaciones.freshness(); return { label: f.label, doc: PLIndicaciones.docInfo() }; });
   check('I6 importación manual por pegado sigue disponible (sin marca de Doc)', /Importado/.test(i6.label) && i6.doc === null, JSON.stringify(i6));
 
+  // ── Estudios de imagen del robot RIS (ris_estudios) ──
+  const i7 = await page.evaluate(async () => {
+    const k = pid(patients[0]);
+    focusGoTo(k);
+    risByExp = {};
+    handleRisChange({ eventType: 'INSERT', new: { id: 1, exp: patients[0].exp, paciente: 'PACIENTE UNO', documento: 'PAT1', fecha: '2026-10-11', hora: '19:37:31', sede: 'Hospital General de Leon', estudios: '*', modalidad: 'US', procedencia: 'CITADOS', critico: false, reporte: null, imagen_url: 'https://x/viewer/view?studyUID=1', scraped_at: new Date().toISOString() } });
+    handleRisChange({ eventType: 'INSERT', new: { id: 2, exp: patients[0].exp, paciente: 'PACIENTE UNO', documento: 'PAT1', fecha: '2026-10-12', hora: '08:00:00', sede: 'Hospital General de Leon', estudios: 'TAC ABDOMEN', modalidad: 'CT', procedencia: 'HOSPITALIZADOS', critico: true, reporte: 'TOMOGRAFIA DE ABDOMEN\nHALLAZGOS: colección en FID de 4 cm.', reporte_url: 'https://x/rep/2', scraped_at: new Date().toISOString() } });
+    await new Promise(r => setTimeout(r, 300));
+    const card = document.getElementById('card-' + k);
+    const box = card.querySelector('.ris-box');
+    const items = box ? Array.from(box.querySelectorAll('.ris-item')).map(x => x.textContent.replace(/\s+/g, ' ').trim()) : [];
+    const det = document.getElementById('sec-img-' + k.replace(/[^a-zA-Z0-9]/g, '_'));
+    const jump = Array.from(document.querySelectorAll('#board-nav .bn-jump button')).find(b => b.dataset.sec === 'img');
+    const toast = (document.getElementById('rt-toast') || {}).textContent || '';
+    return { n: items.length, first: items[0] || '', second: items[1] || '', open: !!(det && det.open), badge: jump ? jump.textContent : '', toast, crit: !!box.querySelector('.ris-item.ris-crit') };
+  });
+  check('I7 estudios del robot RIS: llegan por Realtime, se pintan en Estudios de imagen (más reciente primero, reporte transcrito plegable, "sin reporte" cuando no hay), crítico marcado, sección abierta y contador en la barra',
+    i7.n === 2 && /CT · TAC ABDOMEN/.test(i7.first) && /Reporte transcrito/.test(i7.first) && /colección en FID/.test(i7.first) && /US/.test(i7.second) && /Sin reporte todavía/.test(i7.second) && i7.crit && i7.open && /Estudios\s*2/.test(i7.badge) && /Estudio de imagen/.test(i7.toast), JSON.stringify(i7));
+
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-IND: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();

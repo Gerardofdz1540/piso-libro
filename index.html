@@ -10560,6 +10560,7 @@ function plExportBackup() {
           const nombres = affected.map(function(p) { return p.nombre || p.exp; }).join(", ");
           _showRTToast("🧪 Labs WinLab actualizados: " + nombres);
           safeInfo("[RT] winlab_labs updated for exp=" + exp);
+          if (typeof _refreshJumpBar === "function") _refreshJumpBar();
         }
         try { renderStaleLabsBanner(); } catch (_) {} // labs frescos → quitar el aviso de "desactualizados"
       };
@@ -13909,7 +13910,18 @@ function plExportBackup() {
           if (cardEl && !cardEl.contains(document.activeElement)) cardEl.outerHTML = isSimpleEsp(p.esp, noteData[k] || defaultData()) ? renderSimpleCard(p, noteData[k] || defaultData(), k) : renderFullCard(p, noteData[k] || defaultData(), k);
         });
         if (affected.length && eventType !== "DELETE") _showRTToast("🩻 Estudio de imagen " + (row && row.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
+        _refreshJumpBar();
       } catch (err) { safeLog("handleRisChange:", err); }
+    }
+    // Barra de saltos del paciente en foco (contadores): repintarla sin tocar la tarjeta
+    function _refreshJumpBar() {
+      try {
+        const k = window.__focusPid; if (!k) return;
+        const p = patients.find(x => pid(x) === k); if (!p) return;
+        const bar = document.querySelector("#board-nav .bn-jump"); if (!bar) return;
+        const tmp = document.createElement("div"); tmp.innerHTML = _fcJumpBar(p, noteData[k] || defaultData(), k);
+        if (tmp.firstElementChild) bar.replaceWith(tmp.firstElementChild);
+      } catch (_) {}
     }
     function renderRisEstudios(p, k) {
       const list = risForPatient(p);
