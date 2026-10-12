@@ -24,7 +24,7 @@ import { createClient } from "@supabase/supabase-js";
 import { PDFParse } from "pdf-parse";
 import ws from "ws";
 import fs from "node:fs";
-import { patientHeaderMatches, isAllowedEsp, parseCensusAge } from "./lib.js";
+import { patientHeaderMatches, isAllowedEsp, parseCensusAge, normNameTokens } from "./lib.js";
 
 const ENV = (k, def) => (process.env[k] !== undefined && process.env[k] !== "" ? process.env[k] : def);
 const RIS_MODE = ENV("RIS_MODE", "scrape");
@@ -84,8 +84,7 @@ async function login(page, cfg) {
 }
 
 // ── TABLA COMPLETA por POST (lo que hace el botón Buscar) ─────────────
-async function fetchTabla(page, cfg) {
-  const dateS = iso(daysAgo(RIS_LOOKBACK_DAYS)), dateSS = iso(new Date());
+async function fetchTabla(page, cfg, dateS, dateSS) {
   log(`[2/4] POST consultas-pisos ${dateS} .. ${dateSS}`);
   const res = await page.evaluate(async ({ url, dateS, dateSS }) => {
     const r = await fetch(url, {
@@ -132,19 +131,68 @@ function rowToEstudio(r, hdr) {
     links: r.links,
   };
 }
-function matchCenso(est, censo) {
-  const cands = censo.filter((p) => patientHeaderMatches(est.nombre, p.nombre));
-  if (!cands.length) return null;
+// Cruce nombre ↔ censo. Niveles (precisión > recall, con la edad como guarda). Casos reales del
+// 12 oct 2026: "JULIETA" vs "JULIA" con 84 vs 87 años (misma paciente), "RICO" vs "RIZO" con 84/83,
+// y nombre idéntico de 4 palabras con 73 vs 51 años (edad mal capturada en el censo).
+//   4) nombre idéntico en ambos sentidos (≥ 3 tokens)                            → sin guarda de edad
+//   3) todos los tokens del censo están en el RIS (difuso)                       → edad ±5 o desconocida
+//   2) ídem pero un token difiere en UNA letra (RICO/RIZO)                       → edad ±2 (ambas conocidas)
+//   2) todos los tokens del RIS están en el del censo (el RIS omite un apellido)  → edad ±2 (ambas conocidas)
+//   1) ≥ 3 tokens en común                                                       → edad ±2 (ambas conocidas)
+function _ageDiff(p, est) {
   const risAge = /A[ÑN]OS/i.test(est.tipoEdad) ? parseInt(est.edad, 10) : NaN;
-  const ok = cands.filter((p) => {
-    const ca = parseCensusAge(p.edad);
-    if (ca == null || isNaN(risAge)) return true;
-    return Math.abs(ca - risAge) <= RIS_AGE_TOLERANCE;
-  });
-  if (!ok.length) return null;
-  // Si varios del censo matchean (homónimos), preferir el que coincide exacto en todos los tokens en ambos sentidos
-  const exact = ok.find((p) => patientHeaderMatches(p.nombre, est.nombre));
-  return exact || ok[0];
+  const ca = parseCensusAge(p.edad);
+  if (ca == null || isNaN(risAge)) return null; // desconocida
+  return Math.abs(ca - risAge);
+}
+function _lev1(a, b) { // ¿difieren en una sola letra (sustitución, inserción o borrado)?
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+function _commonTokens(a, b, near) {
+  const ta = normNameTokens(a), tb = normNameTokens(b);
+  let n = 0; const used = new Set();
+  for (const x of ta) { const j = tb.findIndex((y, i) => !used.has(i) && (x === y || (near && x.length >= 4 && _lev1(x, y)))); if (j >= 0) { used.add(j); n++; } }
+  return n;
+}
+function matchCenso(est, censo) {
+  const scored = [];
+  const tRis = normNameTokens(est.nombre);
+  for (const p of censo) {
+    const tC = normNameTokens(p.nombre);
+    if (!tC.length || !tRis.length) continue;
+    const diff = _ageDiff(p, est);
+    const ageKnown = diff !== null;
+    const both = patientHeaderMatches(p.nombre, est.nombre) && patientHeaderMatches(est.nombre, p.nombre);
+    let level = 0;
+    if (both && tC.length >= 3) level = 4;
+    else if (patientHeaderMatches(est.nombre, p.nombre) && (!ageKnown || diff <= 5)) level = 3;
+    else if (ageKnown && diff <= RIS_AGE_TOLERANCE && tC.length >= 2 && _commonTokens(p.nombre, est.nombre, true) >= tC.length) level = 2;
+    else if (ageKnown && diff <= RIS_AGE_TOLERANCE && tRis.length >= 2 && patientHeaderMatches(p.nombre, est.nombre)) level = 2;
+    else if (ageKnown && diff <= RIS_AGE_TOLERANCE && _commonTokens(est.nombre, p.nombre) >= 3) level = 1;
+    if (level) scored.push({ p, level, both });
+  }
+  if (!scored.length) return null;
+  scored.sort((a, b) => (b.level - a.level) || (b.both - a.both));
+  return scored[0].p;
+}
+// Diagnóstico: pacientes del censo sin estudio cuyo nombre se parece a alguna fila (≥ 2 tokens)
+function nearMisses(estudios, censo, matchedExps) {
+  const out = [];
+  for (const p of censo) {
+    if (matchedExps.has(p.exp)) continue;
+    const near = estudios.filter((e) => _commonTokens(e.nombre, p.nombre) >= 2).slice(0, 3)
+      .map((e) => `"${e.nombre}" ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad}`);
+    if (near.length) out.push(`cama ${p.cama} (${p.edad || "?"} a, "${p.nombre}") ≈ ${near.join(" | ")}`);
+  }
+  return out;
 }
 
 // ── REPORTE: bajar y transcribir ────────────────────────────────────────
@@ -220,8 +268,12 @@ async function fetchReporte(page, ctx, cfg, est) {
   page.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
   try {
     await login(page, cfg);
-    const tabla = await fetchTabla(page, cfg);
-    if (!tabla.rows.length) throw new Error("La tabla llegó vacía (¿cambió el portal o la sesión?)");
+    // Dos ventanas (el portal no acepta más de 14 días por consulta): hoy-13..hoy y hoy-27..hoy-14.
+    // Los pacientes de piso llevan semanas internados y sus estudios de ingreso quedaban fuera.
+    const w1 = await fetchTabla(page, cfg, iso(daysAgo(RIS_LOOKBACK_DAYS)), iso(new Date()));
+    if (!w1.rows.length) throw new Error("La tabla llegó vacía (¿cambió el portal o la sesión?)");
+    const w2 = await fetchTabla(page, cfg, iso(daysAgo(2 * RIS_LOOKBACK_DAYS + 1)), iso(daysAgo(RIS_LOOKBACK_DAYS + 1))).catch((e) => { log("       ventana 2 falló: " + e.message); return { rows: [] }; });
+    const tabla = { headers: w1.headers, rows: w1.rows.concat(w2.rows) };
     const estudios = tabla.rows.map((r) => rowToEstudio(r, tabla.headers));
     const conReporte = estudios.filter((e) => e.linkReporte);
     log(`       estudios en el rango: ${estudios.length} · con ícono de reporte: ${conReporte.length}`);
@@ -247,6 +299,8 @@ async function fetchReporte(page, ctx, cfg, est) {
     for (const e of estudios) { const p = matchCenso(e, censo); if (p) matched.push({ e, p }); }
     const pacientes = new Set(matched.map((m) => m.p.exp));
     log(`[3/4] cruce por nombre: ${matched.length} estudios de ${pacientes.size} pacientes del censo (censo: ${censo.length})`);
+    const nm = nearMisses(estudios, censo, pacientes);
+    if (nm.length) log(`       casi-coincidencias sin cruzar (revisar nombre/edad):\n       ` + nm.join("\n       "));
 
     // Reportes que ya tenemos (no volver a bajarlos)
     const docs = Array.from(new Set(matched.map((m) => m.e.documento).filter(Boolean)));
