@@ -507,8 +507,12 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
       "PACIENTE APELLIDO NOMBRE", "FECHA REPORTE DE A",
       "CON RESULTADOS", "UNIDAD SOLICITANTE", "CODIGO PACIENTE",
       "REPORTES IMPRESOS", "FECHA DE TOMA", "CODIGO TOMA",
+      // Italiano (WinLab cambia de idioma sin aviso; 11 oct 2026)
+      "CERCA REFERTI", "ELENCO REFERTI", "TUTTE LE UNITA", "PAZIENTE COGNOME NOME",
+      "DATA REFERTO DA A", "CON RISULTATI", "UNITA RICHIEDENTE", "CODICE PAZIENTE",
+      "REFERTI STAMPATI", "DATA PRELIEVO", "CODICE RICHIESTA",
     ];
-    const isMenu = (txt) => txt.includes("INICIO REPORTES AYUDA");
+    const isMenu = (txt) => txt.includes("INICIO REPORTES AYUDA") || txt.includes("HOME REFERTI AIUTO");
     const isForm = (txt) => {
       const head = txt.slice(0, 1500);
       let hits = 0;
@@ -1010,7 +1014,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
     const tables = Array.from(document.querySelectorAll("table"));
     for (const t of tables) {
       const txt = norm(t.innerText).slice(0, 200);
-      if (txt.includes("INICIO REPORTES AYUDA")) continue;
+      if (txt.includes("INICIO REPORTES AYUDA") || txt.includes("HOME REFERTI AIUTO")) continue;
       const trs = Array.from(t.querySelectorAll("tr"));
       if (trs.length < 2) continue;
 
@@ -1105,7 +1109,9 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
   // parseando la lista de reportes como si fuera tabla de valores.
   // ────────────────────────────────────────────────────────────────────────────
   if (detail && Array.isArray(detail.headers)) {
-    const SEARCH_PAGE_HEADERS_RE = /CODIGO PACIENTE|APELLIDOS COMPLETOS|FECHA DE NAC|UNIDAD SOLICITANTE|REPORTES IMPRESOS/i;
+    // ES + IT: si WinLab está en italiano, la lista de búsqueda trae CODICE PAZIENTE / COGNOME INTERO /
+    // DATA DI NASCITA / UNITA RICHIEDENTE; sin esto se parseaba la lista como si fueran valores.
+    const SEARCH_PAGE_HEADERS_RE = /CODIGO PACIENTE|APELLIDOS COMPLETOS|FECHA DE NAC|UNIDAD SOLICITANTE|REPORTES IMPRESOS|CODICE ?PAZIENTE|COGNOME ?INTERO|DATA DI NASC|UNIT[AÀ] RICHIEDENTE|REFERTI STAMPATI/i;
     const matchesSearchHeaders = detail.headers.some(h => SEARCH_PAGE_HEADERS_RE.test(String(h || "")));
     if (matchesSearchHeaders) {
       if (dumpFirst) {
