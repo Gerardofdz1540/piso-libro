@@ -131,35 +131,56 @@ function rowToEstudio(r, hdr) {
     links: r.links,
   };
 }
-// Cruce nombre ↔ censo. Niveles (precisión > recall, con la edad como guarda):
-//   A) todos los tokens del censo están en el nombre del RIS (difuso)           → edad compatible o desconocida
-//   B) todos los tokens del RIS están en el del censo (el RIS omite un apellido)  → exige edad compatible (ambas conocidas)
-//   C) ≥ 3 tokens en común                                                       → exige edad compatible (ambas conocidas)
-function _ageOk(p, est) {
+// Cruce nombre ↔ censo. Niveles (precisión > recall, con la edad como guarda). Casos reales del
+// 12 oct 2026: "JULIETA" vs "JULIA" con 84 vs 87 años (misma paciente), "RICO" vs "RIZO" con 84/83,
+// y nombre idéntico de 4 palabras con 73 vs 51 años (edad mal capturada en el censo).
+//   4) nombre idéntico en ambos sentidos (≥ 3 tokens)                            → sin guarda de edad
+//   3) todos los tokens del censo están en el RIS (difuso)                       → edad ±5 o desconocida
+//   2) ídem pero un token difiere en UNA letra (RICO/RIZO)                       → edad ±2 (ambas conocidas)
+//   2) todos los tokens del RIS están en el del censo (el RIS omite un apellido)  → edad ±2 (ambas conocidas)
+//   1) ≥ 3 tokens en común                                                       → edad ±2 (ambas conocidas)
+function _ageDiff(p, est) {
   const risAge = /A[ÑN]OS/i.test(est.tipoEdad) ? parseInt(est.edad, 10) : NaN;
   const ca = parseCensusAge(p.edad);
   if (ca == null || isNaN(risAge)) return null; // desconocida
-  return Math.abs(ca - risAge) <= RIS_AGE_TOLERANCE;
+  return Math.abs(ca - risAge);
 }
-function _commonTokens(a, b) {
+function _lev1(a, b) { // ¿difieren en una sola letra (sustitución, inserción o borrado)?
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+function _commonTokens(a, b, near) {
   const ta = normNameTokens(a), tb = normNameTokens(b);
   let n = 0; const used = new Set();
-  for (const x of ta) { const j = tb.findIndex((y, i) => !used.has(i) && (x === y)); if (j >= 0) { used.add(j); n++; } }
+  for (const x of ta) { const j = tb.findIndex((y, i) => !used.has(i) && (x === y || (near && x.length >= 4 && _lev1(x, y)))); if (j >= 0) { used.add(j); n++; } }
   return n;
 }
 function matchCenso(est, censo) {
   const scored = [];
+  const tRis = normNameTokens(est.nombre);
   for (const p of censo) {
-    const age = _ageOk(p, est);
-    if (age === false) continue;
+    const tC = normNameTokens(p.nombre);
+    if (!tC.length || !tRis.length) continue;
+    const diff = _ageDiff(p, est);
+    const ageKnown = diff !== null;
+    const both = patientHeaderMatches(p.nombre, est.nombre) && patientHeaderMatches(est.nombre, p.nombre);
     let level = 0;
-    if (patientHeaderMatches(est.nombre, p.nombre)) level = 3;
-    else if (age === true && normNameTokens(est.nombre).length >= 2 && patientHeaderMatches(p.nombre, est.nombre)) level = 2;
-    else if (age === true && _commonTokens(est.nombre, p.nombre) >= 3) level = 1;
-    if (level) scored.push({ p, level, both: patientHeaderMatches(p.nombre, est.nombre) && patientHeaderMatches(est.nombre, p.nombre) });
+    if (both && tC.length >= 3) level = 4;
+    else if (patientHeaderMatches(est.nombre, p.nombre) && (!ageKnown || diff <= 5)) level = 3;
+    else if (ageKnown && diff <= RIS_AGE_TOLERANCE && tC.length >= 2 && _commonTokens(p.nombre, est.nombre, true) >= tC.length) level = 2;
+    else if (ageKnown && diff <= RIS_AGE_TOLERANCE && tRis.length >= 2 && patientHeaderMatches(p.nombre, est.nombre)) level = 2;
+    else if (ageKnown && diff <= RIS_AGE_TOLERANCE && _commonTokens(est.nombre, p.nombre) >= 3) level = 1;
+    if (level) scored.push({ p, level, both });
   }
   if (!scored.length) return null;
-  scored.sort((a, b) => (b.both - a.both) || (b.level - a.level));
+  scored.sort((a, b) => (b.level - a.level) || (b.both - a.both));
   return scored[0].p;
 }
 // Diagnóstico: pacientes del censo sin estudio cuyo nombre se parece a alguna fila (≥ 2 tokens)
