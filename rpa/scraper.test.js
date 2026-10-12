@@ -7,7 +7,7 @@ import {
   isMeaningfulReportRow, extractApellidos, expVariants,
   stripAccentsKeepEnie, buildSearchCandidates,
   jaroWinkler, patientHeaderMatches,
-  extractHeaderBirthDate, ageFromBirthDate, parseCensusAge, selectTargetRows,
+  extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows,
   todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
   normNameTokens, expandNomeAbbrev,
 } from "./lib.js";
@@ -366,6 +366,25 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   // Nombre distinto nunca entra, con o sin edad compatible.
   const sel5 = selectTargetRows([hdr("PEREZ HERNANDEZ", "PEDRO", "MASCULINO", "01/01/1946"), rep("1")], paciente, { today: TODAY });
   assert(deepEq(sel5.targetIdxs, []) && sel5.ageRejected.length === 0, "target: nombre distinto no es objetivo (sin pasar por guarda de edad)");
+}
+
+// ── WinLab en italiano (11 oct 2026: la interfaz cambió de idioma y dos corridas dieron 0/48) ──
+{
+  const TODAY = new Date("2026-10-11T12:00:00Z");
+  const hdrIt = (ap, nom, sexo, fnac) => ({ __cells: ["", "", "", ap, nom, sexo, fnac], __hasLink: false });
+  const repIt = (id) => ({ __cells: ["", "", id, "11/10/2026 07:15", "11/10/2026 10:31", "CHIRURGIA GENERALE"], __hasLink: true });
+  const paciente = { nombre: "MARIA ERIKA HERNANDEZ", edad: "49" };
+  const sel = selectTargetRows([hdrIt("HERNANDEZ", "MA ERIKA", "Femminile", "30/01/1977"), repIt("1"), hdrIt("HERNANDEZ", "PEDRO", "Maschile", "01/01/1950"), repIt("2")], paciente, { today: TODAY });
+  assert(deepEq(sel.targetIdxs, [1]), "IT: encabezado con Femminile/Maschile se reconoce (targeting igual que en español)");
+  const selF = selectTargetRows([hdrIt("HERNANDEZ", "MA ERIKA", "F", "30/01/1977"), repIt("1")], paciente, { today: TODAY });
+  assert(deepEq(selF.targetIdxs, [1]), "IT: sexo abreviado F/M también se reconoce");
+  const selX = selectTargetRows([hdrIt("HERNANDEZ", "MA ERIKA", "Weiblich", "30/01/1977"), repIt("1")], paciente, { today: TODAY });
+  assert(deepEq(selX.targetIdxs, [1]), "idioma desconocido: la fila-encabezado se reconoce por su forma (nombre, nombre, sexo corto, fecha de nacimiento)");
+  assert(extractHeaderBirthDate(["", "", "", "HERNANDEZ", "MA ERIKA", "Femminile", "30/01/1977"]) === "30/01/1977", "IT: fecha de nacimiento tras la celda de sexo");
+  assert(extractHeaderName(repIt("1").__cells) === "", "IT: una fila de reporte (barcode + fechas-hora) nunca se toma por encabezado");
+  assert(isMenuTableText("Home\nReferti\nAiuto\nChiudi") === true, "IT: menú superior Home Referti Aiuto");
+  assert(isFormTableText("Cerca Referti Tutte le Unità organizzative Paziente Cognome Nome Codice Paziente Data Referto da a") === true, "IT: formulario de búsqueda");
+  assert(isMeaningfulReportRow({ __cells: ["ELENCO REFERTI", "HOME", "REFERTI"], COL_0: "x" }) === false, "IT: fila de menú/formulario no es un reporte");
 }
 
 // ── Fecha en zona León y fusión de valores entre corridas (oct 2026) ───

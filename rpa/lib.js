@@ -143,7 +143,8 @@ export function mergeReportesPreservingValores(reportes, parsedMap) {
 
 // Texto del menu superior global de WinLab.
 export function isMenuTableText(rawText) {
-  return N(rawText).includes("INICIO REPORTES AYUDA");
+  const t = N(rawText);
+  return t.includes("INICIO REPORTES AYUDA") || t.includes("HOME REFERTI AIUTO") || t.includes("HOME REPORTS HELP");
 }
 
 // Texto del formulario de busqueda Y de la "lista vacia" post-search
@@ -163,6 +164,10 @@ export function isFormTableText(rawText) {
     "REPORTES IMPRESOS",
     "FECHA DE TOMA",
     "CODIGO TOMA",
+    // Italiano (la interfaz de WinLab cambia de idioma sin aviso)
+    "CERCA REFERTI", "ELENCO REFERTI", "TUTTE LE UNITA", "PAZIENTE COGNOME NOME",
+    "DATA REFERTO DA A", "CON RISULTATI", "UNITA RICHIEDENTE", "CODICE PAZIENTE",
+    "REFERTI STAMPATI", "DATA PRELIEVO", "CODICE RICHIESTA",
   ];
   let hits = 0;
   for (const m of FORM_MARKERS) if (txt.includes(m)) hits++;
@@ -180,7 +185,7 @@ export function isMeaningfulReportRow(row) {
   // aunque los headers hayan caido en fallback COL_X. __cells contiene el
   // texto crudo de cada <td> — es la fuente mas confiable de si hay data.
   if (Array.isArray(row.__cells) && row.__cells.length > 0) {
-    const GARBAGE = /^(LISTA|BUSCA) REPORTES|TODAS LAS UNIDADES|^(INICIO|REPORTES|AYUDA|CIERRA)$/;
+    const GARBAGE = /^(LISTA|BUSCA) REPORTES|TODAS LAS UNIDADES|^(INICIO|REPORTES|AYUDA|CIERRA)$|^(ELENCO|CERCA) REFERTI|TUTTE LE UNITA|^(HOME|REFERTI|AIUTO|CHIUDI)$/;
     const realCells = row.__cells.filter(
       (c) => c && typeof c === "string" && c.trim() && !GARBAGE.test(c)
     );
@@ -398,9 +403,32 @@ export function patientHeaderMatches(headerName, targetNombre) {
 }
 // Extrae "APELLIDOS NOMBRE" de una fila-encabezado usando la posición de FEMENINO/MASCULINO
 // (mismo método que el bookmarklet): apellidos = cell[sx-2], nombre = cell[sx-1].
+// WinLab cambia de idioma sin aviso (11 oct 2026: la interfaz pasó de español a italiano a
+// media tarde y dos corridas quedaron en 0/48): la celda de sexo se acepta en ES/IT/EN y, si
+// no aparece ninguna palabra conocida, se reconoce la fila-encabezado por su forma:
+// [.., APELLIDOS, NOMBRE, <sexo corto>, dd/mm/aaaa (nacimiento)].
+export const SEX_CELL_RE = /^(FEMENIN[OA]|MASCULIN[OA]|FEMMIN[A-Z]*|MASCHI[A-Z]*|FEMALE|MALE|DONNA|UOMO|MUJER|HOMBRE|[FM])$/;
+export function isSexCell(c) { return SEX_CELL_RE.test(String(c || "").toUpperCase().trim()); }
+const BIRTH_RE = /^\d{2}\/\d{2}\/\d{4}$/;
+const ALPHA_NAME_RE = /^[A-ZÁÉÍÓÚÜÑ' .-]{2,}$/i;
+export function findSexIdx(cells) {
+  if (!Array.isArray(cells)) return -1;
+  let sx = cells.findIndex(isSexCell);
+  if (sx >= 0) return sx;
+  // Fallback estructural (idioma desconocido): celda corta alfabética seguida de fecha de
+  // nacimiento y precedida por dos celdas de nombre; una fila de reporte trae barcode/fechas-hora.
+  for (let i = 2; i < cells.length - 1; i++) {
+    const s = String(cells[i] || "").trim();
+    if (!s || s.length > 12 || !/^[A-Za-zÀ-ÿ]+$/.test(s)) continue;
+    if (!BIRTH_RE.test(String(cells[i + 1] || "").trim())) continue;
+    if (!ALPHA_NAME_RE.test(String(cells[i - 1] || "").trim()) || !ALPHA_NAME_RE.test(String(cells[i - 2] || "").trim())) continue;
+    return i;
+  }
+  return -1;
+}
 export function extractHeaderName(cells) {
   if (!Array.isArray(cells)) return "";
-  const sx = cells.findIndex((c) => { const u = String(c || "").toUpperCase().trim(); return u === "FEMENINO" || u === "MASCULINO"; });
+  const sx = findSexIdx(cells);
   if (sx >= 2 && cells[sx - 2]) return String(cells[sx - 2]) + " " + String(cells[sx - 1] || "");
   return "";
 }
@@ -414,7 +442,7 @@ export function extractHeaderName(cells) {
 // guarda no aplica (se mantiene el match por nombre), para no perder pacientes.
 export function extractHeaderBirthDate(cells) {
   if (!Array.isArray(cells)) return "";
-  const sx = cells.findIndex((c) => { const u = String(c || "").toUpperCase().trim(); return u === "FEMENINO" || u === "MASCULINO"; });
+  const sx = findSexIdx(cells);
   if (sx < 0) return "";
   const m = String(cells[sx + 1] || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
   return m ? m[0] : "";
