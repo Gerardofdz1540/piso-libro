@@ -137,6 +137,18 @@ gasto en mL/24 h, características (seroso, fecal, fuga…), día de colocación
 retirarlo. Lo que registres aparece resumido en la línea de pase de la cabecera y en la hoja de
 entrega. Los chips antiguos (SNG, PRS 1-3, Estoma, SEP) se convirtieron solos a esta lista.
 
+## Estudios de imagen (tomografías, ultrasonidos, rayos X) en cada tarjeta
+
+Un robot (`.github/workflows/ris-scraper.yml`) entra cada 2 horas al visor radiológico
+(consultas-pisos), pide los estudios de los últimos 14 días y cruza cada uno por nombre (y edad)
+con el censo. En la tarjeta, dentro de **Estudios de imagen**, aparece el bloque "Estudios del
+visor (RIS)": fecha y hora, modalidad (CT, US, RX…), nombre del estudio, sede, marca de caso
+crítico, enlace 🖼 al visor y, cuando ya existe el reporte, el **reporte transcrito** (plegable).
+Si todavía no hay reporte, dice "Sin reporte todavía · estudio realizado" y se completa solo en la
+siguiente pasada. Al llegar un estudio o reporte nuevo, la tarjeta se actualiza al instante con un
+aviso. Las credenciales del visor viven en la tabla `rpa_config` de Supabase (no en el código);
+si cambian, se actualizan ahí. Para lanzarlo a mano: Actions → "RIS Imagen" → Run workflow.
+
 ## Alertas y laboratorios en el tablero
 
 La hoja de labs críticos, labs nuevos y "sin laboratorios de hoy" ya no ocupa la parte de arriba:

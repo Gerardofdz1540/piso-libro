@@ -2,9 +2,10 @@ name: RIS Imagen (estudios cada 2 h)
 
 # Estudios de imagen (TC, US, RX…) del visor radiológico → Supabase (ris_estudios) → tarjetas.
 # Corre cada 2 horas; los minutos van desplazados porque GitHub retrasa los cron del minuto :00.
-# El horario (cada 2 h) se activa cuando el parser del reporte esté validado con una corrida
-# "explore" real; mientras tanto solo se lanza a mano.
+# Validado el 12 oct 2026 (corrida #2: 37 estudios de 26 pacientes, 30 reportes PDF → texto, 34 s).
 on:
+  schedule:
+    - cron: "23 */2 * * *"
   workflow_dispatch:
     inputs:
       mode:
