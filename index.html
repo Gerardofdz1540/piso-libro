@@ -2807,6 +2807,25 @@
     .checklist-row.ck-r-herida { background: #fff7ed; border-color: #fdba74; }
     .checklist-row.ck-r-vitales { background: #f0fdfa; border-color: #5eead4; gap: 8px; }
     .checklist-row.ck-r-drenajes { background: #fdf4ff; border-color: #d8b4fe; }
+    /* Drenajes y sondas personalizables (oct 2026) */
+    .checklist-row.dv-wrap { flex-direction: column; align-items: stretch; gap: 4px; }
+    .dv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+    .dv-add { font-size: 10px; font-weight: 700; padding: 0 8px; min-height: 26px; border-radius: 12px; border: 1px dashed #a78bfa; background: #fff; color: #6d28d9; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .dv-add:hover { background: #ede9fe; }
+    .dv-sel { font-size: 10px; font-weight: 700; min-height: 26px; border-radius: 12px; border: 1px dashed #a78bfa; background: #fff; color: #6d28d9; font-family: var(--font); width: 92px; }
+    .dv-list { display: flex; flex-direction: column; gap: 3px; }
+    .dv-row { display: grid; grid-template-columns: minmax(88px, 1.1fr) minmax(64px, 1fr) 60px minmax(84px, 1.4fr) 34px 26px; align-items: center; gap: 4px; background: #fff; border: 1px solid #e9d5ff; border-radius: 6px; padding: 3px 6px; }
+    .dv-row .pm-input.dv-in { width: 100% !important; min-width: 0; box-sizing: border-box; }
+    .dv-name { font-size: 11px; font-weight: 800; color: #5b21b6; background: #f3e8ff; border: none; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-family: var(--font); min-width: 0; text-align: left; min-height: 26px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dv-name b { color: #dc2626; }
+    .dv-in { min-height: 26px; }
+    .dv-day { font-size: 10px; font-weight: 700; color: #6d28d9; background: #ede9fe; border: none; border-radius: 6px; padding: 0 7px; min-height: 26px; cursor: pointer; font-family: var(--mono); }
+    .dv-day.on { background: #5b21b6; color: #fff; }
+    .dv-x { width: 26px; height: 26px; border: none; border-radius: 50%; background: #fee2e2; color: #991b1b; font-weight: 800; cursor: pointer; }
+    .dv-empty { font-size: 10px; color: #7c3aed; opacity: .75; font-style: italic; padding: 2px 4px; }
+    body.dark .dv-row { background: #0f1c2e; border-color: #3b2a66; }
+    body.dark .dv-name { background: #2e1065; color: #e9d5ff; }
+    body.dark .dv-add, body.dark .dv-sel { background: #0f1c2e; color: #c4b5fd; }
     .checklist-row.ck-r-clinico { background: #fef2f2; border-color: #fca5a5; }
     .ck-title.ck-t-vit { color: #0f766e; }
     .ck-title.ck-t-dren { color: #7c3aed; }
@@ -7785,6 +7804,7 @@ function plExportBackup() {
           pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "", pm_iu: "", /* FIX-v47 */
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_sep_gasto: "", pm_sep_fuga: false, pm_sep_fuga_grado: "", pm_hxqx: "",
+          dispositivos: [], /* oct 2026: lista personalizable de drenajes/sondas/estomas (ver renderChecklist) */
           pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
           cruce_activo: false, cruce_ts: "", cruce_unidades: "", cruce_banco: "",
           nota_fn: "", nota_dx: "", nota_s: "", nota_o: "", nota_plan: "", nota_prono: "", nota_adscrito: "", nota_residente: "",
@@ -7956,6 +7976,9 @@ function plExportBackup() {
       if (!isPlainObject(nd.checklist)) {
         nd.checklist = { ...checklistDefaults };
       }
+      // Dispositivos (oct 2026): una sola vez, convertir los chips fijos (SNG/PRS1-3/Estoma/SEP) en la
+      // lista personalizable. Solo cuando la nota aún no trae la lista (undefined), nunca sobre [].
+      if (!Array.isArray(nd.checklist.dispositivos)) nd.checklist.dispositivos = _dispositivosDesdeLegado(nd.checklist);
       Object.keys(checklistDefaults).forEach(function(ckKey) {
         if (nd.checklist[ckKey] === undefined) nd.checklist[ckKey] = checklistDefaults[ckKey];
       });
@@ -10412,8 +10435,10 @@ function plExportBackup() {
         if (ck.atb) parts.push("💊 ATB" + (ck.atb_nombre ? " " + ck.atb_nombre : "") + (ck.atb_dias ? " d" + ck.atb_dias : ""));
         if (ck.tvp) parts.push("🩸 TVP " + (ck.tvp_tipo === "enoxaparina" ? "enoxa" + (ck.tvp_dosis ? " " + ck.tvp_dosis : "") : (ck.tvp_otro || ck.tvp_tipo || "")));
         if (ck.npt) parts.push("🧃 NPT" + (ck.npt_pct ? " " + ck.npt_pct : ""));
+        const dispTxt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " · ", true) : "";
         const dren = toSafeString(nd && nd.drenajes).trim();
-        if (dren) parts.push("🫁 " + dren.split("\n")[0].slice(0, 42));
+        if (dispTxt) parts.push("🫁 " + dispTxt.slice(0, 90));
+        else if (dren) parts.push("🫁 " + dren.split("\n")[0].slice(0, 42));
         const snap = (typeof getLatestLabSnapshot === "function") ? getLatestLabSnapshot(nd) : null;
         if (snap && snap.labs) {
           const sorted = (nd.labHistory || []).filter(function (s) { return s && s.fecha && s.fecha < snap.fecha && _snapHasBloodValues(s); }).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
@@ -10551,6 +10576,7 @@ function plExportBackup() {
       if (dirty.has("ck_pendientes_r1")) nd.checklist.pendientes_r1 = localChecklist.pendientes_r1 || "";
       if (dirty.has("ck_interconsultas")) nd.checklist.interconsultas = localChecklist.interconsultas || "";
       if (dirty.has("ck_cultivos")) nd.checklist.cultivos = localChecklist.cultivos || "";
+      if (dirty.has("ck_dispositivos")) nd.checklist.dispositivos = Array.isArray(localChecklist.dispositivos) ? localChecklist.dispositivos : [];
       if (remoteMeta.exists && !dirty.has("entrega")) nd.entrega = remoteMeta.entrega;
       if (remoteMeta.exists) {
         // Diagrama corporal: no pisar un trazo local en edición/pendiente, ni borrar el local con
@@ -12707,6 +12733,8 @@ function plExportBackup() {
       if (ck.cruce_activo) parts.push("🔪 CRUCE QUIRÚRGICO ACTIVO");
       if (ck.npt) parts.push("💉 NPT activa");
       if (nd.balance && nd.balance.trim()) parts.push("⚖️ Balance: " + nd.balance.trim());
+      const _dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " | ") : "";
+      if (_dt) parts.push("🫁 Drenajes/sondas: " + _dt);
       if (nd.drenajes && nd.drenajes.trim()) parts.push("🩸 Drenajes: " + nd.drenajes.trim());
       if (nd.sangrado && nd.sangrado.trim()) parts.push("🔴 Sangrado: " + nd.sangrado.trim());
       return parts.join("\n");
@@ -16716,12 +16744,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Drain text
       const drainParts = [];
       if (nd.drenajes) drainParts.push(nd.drenajes);
-      if (cl.pm_sep) {
-        let sep = "SEP";
-        if (cl.pm_sep_gasto) sep += " " + cl.pm_sep_gasto + " mL/24h";
-        if (cl.pm_sep_fuga) sep += " · Fuga Gr." + (cl.pm_sep_fuga_grado || "?");
-        drainParts.push(sep);
-      }
+      { const _dt = dispositivosTexto(cl, " | "); if (_dt) drainParts.push(_dt); }
       const drainTxt = drainParts.join(" | ");
       // Labs
       const snap = (nd.labHistory || []).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
@@ -16881,12 +16904,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           // Gastos por drenajes (nd.drenajes + SEP si aplica).
           const drenParts = [];
           if (nd.drenajes && String(nd.drenajes).trim()) drenParts.push(String(nd.drenajes).trim());
-          if (cl.pm_sep) {
-            let sep = "SEP";
-            if (cl.pm_sep_gasto) sep += " " + cl.pm_sep_gasto + " mL/24h";
-            if (cl.pm_sep_fuga) sep += " · Fuga Gr." + (cl.pm_sep_fuga_grado || "?");
-            drenParts.push(sep);
-          }
+          { const _dt = dispositivosTexto(cl, " | "); if (_dt) drenParts.push(_dt); }
           const drenTxt = drenParts.join("  |  ");
           const drenBig = drenTxt ? `<div class="eg-bigrow"><span class="eg-biglbl">💧 Gastos por drenajes</span><div class="eg-bigval">${esc(drenTxt)}</div></div>` : "";
 
@@ -21800,6 +21818,93 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       } catch (e) { console.warn("toggleSvcMine", e); }
     }
 
+    // ─── DISPOSITIVOS: drenajes, sondas y estomas personalizables (oct 2026) ───────────────────
+    const DISPOSITIVOS_CATALOGO = [
+      { tipo: "SNG" }, { tipo: "Saratoga", lado: "D" }, { tipo: "Saratoga", lado: "I" }, { tipo: "Sonda endopleural", lado: "D" }, { tipo: "Sonda endopleural", lado: "I" },
+      { tipo: "CMP" }, { tipo: "Estoma" }, { tipo: "Ileostomía" }, { tipo: "Colostomía" }, { tipo: "Fístula mucosa" }, { tipo: "Yeyunostomía" }, { tipo: "Gastrostomía" },
+      { tipo: "Penrose" }, { tipo: "JP" }, { tipo: "Blake" }, { tipo: "Hemovac" }, { tipo: "Drenovac" }, { tipo: "Foley" }, { tipo: "Cistostomía" }, { tipo: "CVC" }, { tipo: "Catéter HD" }, { tipo: "TPN" }, { tipo: "Otro" }
+    ];
+    function _dispositivoId() { return "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+    // Convierte los chips fijos de antes (SNG, PRS 1-3, Estoma, SEP) en la lista nueva. Se usa UNA vez.
+    function _dispositivosDesdeLegado(cl) {
+      const out = [];
+      if (!cl) return out;
+      const mk = (tipo, extra) => Object.assign({ id: _dispositivoId(), tipo: tipo, lado: "", sitio: "", gasto: "", carac: "", fi: "" }, extra || {});
+      if (cl.pm_sng) out.push(mk("SNG", { carac: toSafeString(cl.pm_sng_desc) }));
+      [1, 2, 3].forEach(n => { if (cl["pm_prs" + n]) out.push(mk("Penrose", { sitio: toSafeString(cl["pm_prs" + n + "_desc"]) })); });
+      if (cl.pm_estoma) out.push(mk("Estoma", { sitio: toSafeString(cl.pm_estoma_desc), carac: toSafeString(cl.pm_estoma_tipo), gasto: toSafeString(cl.pm_estoma_gasto) }));
+      if (cl.pm_sep) out.push(mk("Sonda endopleural", { gasto: toSafeString(cl.pm_sep_gasto), carac: cl.pm_sep_fuga ? ("fuga gr. " + (cl.pm_sep_fuga_grado || "?")) : "" }));
+      return out;
+    }
+    function _dispositivoDias(fi) {
+      if (!fi || !/^\d{4}-\d{2}-\d{2}$/.test(fi)) return null;
+      const p = fi.split("-"); const d = new Date(+p[0], +p[1] - 1, +p[2]); const t = new Date(); t.setHours(0, 0, 0, 0);
+      const n = Math.round((t - d) / 86400000);
+      return n >= 0 ? n : null;
+    }
+    // Texto resumen: "Saratoga D (FID) 30 mL seroso d3 | SNG 200 mL | Estoma 400 mL fecal"
+    function dispositivosTexto(cl, sep, corto) {
+      const list = (cl && Array.isArray(cl.dispositivos)) ? cl.dispositivos : [];
+      return list.map(d => {
+        let s = toSafeString(d.tipo) || "Dispositivo";
+        if (corto && s === "Sonda endopleural") s = "SEP";
+        if (d.lado) s += " " + d.lado;
+        if (!corto && d.sitio) s += " (" + d.sitio + ")";
+        if (d.gasto) s += " " + d.gasto + (/^[\d.,]+$/.test(String(d.gasto).trim()) ? " mL" : "");
+        if (d.carac && !corto) s += " " + d.carac;
+        const dias = _dispositivoDias(d.fi);
+        if (dias !== null && !corto) s += " d" + dias;
+        return s;
+      }).join(sep || " | ");
+    }
+    function _saveDispositivos(k, nd) {
+      // Los chips fijos quedan apagados para que la impresión/entrega no los dupliquen.
+      ["pm_sng", "pm_prs1", "pm_prs2", "pm_prs3", "pm_estoma", "pm_sep"].forEach(f => { nd.checklist[f] = false; });
+      _saveNoteNow(k, nd, "ck_dispositivos");
+    }
+    function addDispositivo(k, tipo, lado) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      if (!Array.isArray(nd.checklist.dispositivos)) nd.checklist.dispositivos = [];
+      let t = toSafeString(tipo).trim();
+      if (t === "Otro" || !t) { const v = prompt("Nombre del dispositivo (ej. Sonda vesical, Drenaje biliar):", ""); if (v === null) return; t = v.trim(); if (!t) return; }
+      nd.checklist.dispositivos.push({ id: _dispositivoId(), tipo: t, lado: toSafeString(lado).trim(), sitio: "", gasto: "", carac: "", fi: todayStr() });
+      _saveDispositivos(k, nd);
+      _rerenderCard(k);
+    }
+    function addDispositivoSel(k, sel) {
+      const v = sel && sel.value; if (sel) sel.value = "";
+      if (!v) return;
+      const parts = v.split("|");
+      addDispositivo(k, parts[0], parts[1] || "");
+    }
+    function _findDispositivo(nd, id) { return ((nd.checklist && nd.checklist.dispositivos) || []).find(d => String(d.id) === String(id)); }
+    function updateDispositivo(k, id, field, val) {
+      const nd = getNote(k); const d = _findDispositivo(nd, id); if (!d) return;
+      d[field] = val;
+      _saveDispositivos(k, nd);
+    }
+    function toggleDispositivoLado(k, id) {
+      const nd = getNote(k); const d = _findDispositivo(nd, id); if (!d) return;
+      d.lado = d.lado === "" ? "D" : (d.lado === "D" ? "I" : "");
+      _saveDispositivos(k, nd); _rerenderCard(k);
+    }
+    function setDispositivoFecha(k, id) {
+      const nd = getNote(k); const d = _findDispositivo(nd, id); if (!d) return;
+      const v = prompt("Fecha de colocación (AAAA-MM-DD). Vacío = sin fecha.", d.fi || todayStr());
+      if (v === null) return;
+      const val = v.trim();
+      if (val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) { alert("Formato: AAAA-MM-DD (ej. " + todayStr() + ")"); return; }
+      d.fi = val; _saveDispositivos(k, nd); _rerenderCard(k);
+    }
+    function removeDispositivo(k, id) {
+      const nd = getNote(k);
+      const list = (nd.checklist && nd.checklist.dispositivos) || [];
+      const i = list.findIndex(d => String(d.id) === String(id)); if (i < 0) return;
+      list.splice(i, 1);
+      _saveDispositivos(k, nd); _rerenderCard(k);
+    }
+
     function renderChecklist(nd, k) {
       nd = migrateNote(nd);
       const cl = nd.checklist || {};
@@ -21861,46 +21966,30 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         `<div class="pm-field"><span class="pm-label">Uresis</span>${pmInp("uresis", "70px")}</div>` +
         `<div class="pm-field"><span class="pm-label">DxTx</span>${pmInp("dxtx")}</div>`;
 
-      // ── Row 4: Pase Matutino — Drenajes / Tubos / Balance ──
-      const sngOn = !!cl.pm_sng;
-      const prs1On = !!cl.pm_prs1;
-      const prs2On = !!cl.pm_prs2;
-      const prs3On = !!cl.pm_prs3;
-      const estomaOn = !!cl.pm_estoma;
-
-      const sngHtml = `<span class="ck-item${sngOn ? " ck-on ck-sng-on" : ""}" data-ck="${k}" data-item="pm_sng" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sonda Nasogástrica activa"><span class="ck-label">${sngOn ? "✓ " : ""}SNG</span></span>` +
-        (sngOn ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_sng_desc || "")}" placeholder="desc..." data-ck="${k}" data-field="pm_sng_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>` : "");
-
-      const prs1Html = `<span class="ck-item${prs1On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs1" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 1"><span class="ck-label">${prs1On ? "✓ " : ""}PRS 1</span></span>` +
-        (prs1On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_prs1_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs1_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
-
-      const prs2Html = `<span class="ck-item${prs2On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs2" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 2"><span class="ck-label">${prs2On ? "✓ " : ""}PRS 2</span></span>` +
-        (prs2On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_prs2_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs2_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
-
-      const prs3Html = `<span class="ck-item${prs3On ? " ck-on ck-prs-on" : ""}" data-ck="${k}" data-item="pm_prs3" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Penrose 3"><span class="ck-label">${prs3On ? "✓ " : ""}PRS 3</span></span>` +
-        (prs3On ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_prs3_desc || "")}" placeholder="lado/región" data-ck="${k}" data-field="pm_prs3_desc" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:100px;text-align:left"/>` : "");
-
-      const estomaHtml = `<span class="ck-item${estomaOn ? " ck-on ck-estoma-on" : ""}" data-ck="${k}" data-item="pm_estoma" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Estoma activo"><span class="ck-label">${estomaOn ? "✓ " : ""}Estoma</span></span>` +
-        (estomaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_estoma_tipo" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Origen del estoma">` +
-          `<option value="">-- origen --</option>` +
-          ["Colon","Yeyuno","Ileon"].map(t => `<option value="${t}"${cl.pm_estoma_tipo === t ? " selected" : ""}>${t}</option>`).join("") +
-          `</select>` +
-          `<span class="pm-label">Gasto:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_estoma_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_estoma_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto del estoma en mL/24h"/>` : "");
+      // ── Row 4 (oct 2026): Drenajes y sondas PERSONALIZABLES por paciente ──
+      // Lista nd.checklist.dispositivos: cada dispositivo con lado (D/I), sitio, gasto mL/24 h,
+      // características y día de colocación. Chips rápidos para los más usados + selector del catálogo.
+      const disp = Array.isArray(cl.dispositivos) ? cl.dispositivos : [];
+      const QUICK = [["SNG", ""], ["Saratoga", "D"], ["Saratoga", "I"], ["Sonda endopleural", ""], ["CMP", ""], ["Estoma", ""], ["Fístula mucosa", ""]];
+      const quickHtml = QUICK.map(q => `<button type="button" class="dv-add" data-ck="${k}" data-tipo="${esc(q[0])}" data-lado="${q[1]}" onclick="addDispositivo(this.dataset.ck,this.dataset.tipo,this.dataset.lado)" title="Agregar ${esc(q[0])}${q[1] ? " " + q[1] : ""}">+ ${esc(q[0] === "Sonda endopleural" ? "SEP" : q[0])}${q[1] ? " " + q[1] : ""}</button>`).join("");
+      const selHtml = `<select class="dv-sel" data-ck="${k}" onchange="addDispositivoSel(this.dataset.ck,this)" title="Catálogo completo de drenajes, sondas y estomas"><option value="">+ más…</option>${DISPOSITIVOS_CATALOGO.map(c => `<option value="${esc(c.tipo)}|${c.lado || ""}">${esc(c.tipo)}${c.lado ? " " + c.lado : ""}</option>`).join("")}</select>`;
+      const dvRows = disp.map(d => {
+        const dias = _dispositivoDias(d.fi);
+        const id = esc(String(d.id || ""));
+        return `<div class="dv-row">
+          <button type="button" class="dv-name" data-ck="${k}" data-id="${id}" onclick="toggleDispositivoLado(this.dataset.ck,this.dataset.id)" title="Toca para cambiar el lado (D / I / sin lado)">${esc(d.tipo || "Dispositivo")}${d.lado ? ` <b>${esc(d.lado)}</b>` : ""}</button>
+          <input class="pm-input dv-in" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.sitio || "")}" placeholder="sitio / región" data-ck="${k}" data-id="${id}" data-f="sitio" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" style="width:96px;text-align:left"/>
+          <input class="pm-input dv-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.gasto || "")}" placeholder="mL/24 h" data-ck="${k}" data-id="${id}" data-f="gasto" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" style="width:66px"/>
+          <input class="pm-input dv-in" autocorrect="off" autocapitalize="sentences" spellcheck="false" value="${esc(d.carac || "")}" placeholder="seroso, hemático, fecal, fuga…" data-ck="${k}" data-id="${id}" data-f="carac" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" style="width:150px;text-align:left"/>
+          <button type="button" class="dv-day${dias !== null ? " on" : ""}" data-ck="${k}" data-id="${id}" onclick="setDispositivoFecha(this.dataset.ck,this.dataset.id)" title="${dias !== null ? "Colocado el " + esc(d.fi) + " · toca para cambiar" : "Fecha de colocación"}">${dias !== null ? "d" + dias : "📅"}</button>
+          <button type="button" class="dv-x" data-ck="${k}" data-id="${id}" onclick="removeDispositivo(this.dataset.ck,this.dataset.id)" title="Retirar / quitar de la lista">✕</button>
+        </div>`;
+      }).join("");
 
       const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
 
-      // ── Row 5: Pase Matutino — SEP / HxQx / Ventilador ──
-      const sepOn = !!cl.pm_sep;
+      // ── Row 5: Pase Matutino — HxQx / Ventilador (la sonda endopleural vive en la lista de dispositivos) ──
       const ventOn = !!cl.pm_vent;
-      const sepFugaOn = !!cl.pm_sep_fuga;
-
-      const sepHtml = `<span class="ck-item${sepOn ? " ck-on ck-sep-on" : ""}" data-ck="${k}" data-item="pm_sep" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Sepsis / cuadro séptico activo"><span class="ck-label">${sepOn ? "✓ " : ""}SEP</span></span>` +
-        (sepOn ? `<span class="pm-label">Gasto:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_sep_gasto || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_sep_gasto" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:70px;text-align:left" title="Gasto séptico en mL/24h"/>` +
-          `<span class="ck-item${sepFugaOn ? " ck-on" : ""}" data-ck="${k}" data-item="pm_sep_fuga" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Fuga activa"><span class="ck-label">${sepFugaOn ? "✓ " : ""}Fuga</span></span>` +
-          (sepFugaOn ? `<select class="pm-input" data-ck="${k}" data-field="pm_sep_fuga_grado" onchange="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:90px" title="Grado de fuga">` +
-            `<option value="">-- grado --</option>` +
-            ["A","B","C"].map(g => `<option value="${g}"${cl.pm_sep_fuga_grado === g ? " selected" : ""}>${g}</option>`).join("") +
-            `</select>` : "") : "");
 
       const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
 
@@ -21934,20 +22023,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       <span class="ck-title ck-t-vit" style="margin-right:2px">🫀 Pase Matutino:</span>
       ${vitalesHtml}
     </div>
-    <div class="checklist-row ck-r-drenajes">
-      <span class="ck-title ck-t-dren">🩺 Drenajes:</span>
-      ${sngHtml}
-      <span class="ck-sep">|</span>
-      ${prs1Html} ${prs2Html} ${prs3Html}
-      <span class="ck-sep">|</span>
-      ${estomaHtml}
-      <span class="ck-sep">|</span>
-      ${balRow4Html}
+    <div class="checklist-row ck-r-drenajes dv-wrap">
+      <div class="dv-head">
+        <span class="ck-title ck-t-dren">🩺 Drenajes y sondas:</span>
+        ${quickHtml}${selHtml}
+        <span class="ck-sep">|</span>
+        ${balRow4Html}
+      </div>
+      ${dvRows ? `<div class="dv-list">${dvRows}</div>` : `<div class="dv-empty">Sin drenajes ni sondas registrados · toca un botón para agregar</div>`}
     </div>
     <div class="checklist-row ck-r-clinico">
       <span class="ck-title ck-t-clin">⚕️ Clínico:</span>
-      ${sepHtml}
-      <span class="ck-sep">|</span>
       ${hxqxHtml}
       <span class="ck-sep">|</span>
       ${ventHtml}

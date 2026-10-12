@@ -207,6 +207,37 @@ const MOCK = `(() => {
   check('U9 alertas en panel lateral: nada arriba del tablero; 🔔 con contadores (1 crítico, sin labs hoy); abre con el botón; un renglón cierra el panel y abre la tarjeta resaltada; puntos de estado en el carril',
     !u9.topBanners && /🔔/.test(u9.btnTxt) && /1/.test(u9.btnTxt) && /📭/.test(u9.btnTxt) && u9.hasCrit && u9.closedAtStart && u9.openNow && u9.inDrawer && u9.dots >= 2 && u9.after.focus === u9.k1 && u9.after.closed && u9.after.flashed, JSON.stringify(u9));
 
+  // ── Drenajes y sondas personalizables (oct 2026) ──
+  const u10 = await page.evaluate(async()=>{
+    const k = pid(patients[0]);
+    focusGoTo(k); // U9 dejó en foco al segundo paciente
+    // migración una sola vez desde los chips fijos
+    const legacy = migrateNote({ checklist: { pm_sng: true, pm_sng_desc: 'a derivación', pm_prs1: true, pm_prs1_desc: 'FID', pm_sep: true, pm_sep_gasto: '150', pm_sep_fuga: true, pm_sep_fuga_grado: 'B' } });
+    const mig = legacy.checklist.dispositivos.map(d => d.tipo + (d.sitio ? '@' + d.sitio : '') + (d.gasto ? '=' + d.gasto : '') + (d.carac ? '/' + d.carac : ''));
+    const emptyStays = migrateNote({ checklist: { pm_sng: true, dispositivos: [] } }).checklist.dispositivos.length;
+    window.prompt = () => 'Drenaje biliar';
+    addDispositivo(k, 'Saratoga', 'D'); addDispositivo(k, 'Saratoga', 'I'); addDispositivo(k, 'Estoma', ''); addDispositivo(k, 'Otro', '');
+    const list = getNote(k).checklist.dispositivos;
+    updateDispositivo(k, list[0].id, 'gasto', '30'); updateDispositivo(k, list[0].id, 'carac', 'seroso');
+    updateDispositivo(k, list[2].id, 'gasto', '400'); updateDispositivo(k, list[2].id, 'carac', 'fecal');
+    toggleDispositivoLado(k, list[2].id);
+    const card = () => document.getElementById('card-' + k);
+    const rows = card().querySelectorAll('.dv-row').length;
+    const pase = (card().querySelector('.pase-line') || {}).textContent || '';
+    const txt = dispositivosTexto(getNote(k).checklist, ' | ');
+    const legacyOff = getNote(k).checklist.pm_sng === false && getNote(k).checklist.pm_sep === false;
+    removeDispositivo(k, list[1].id);
+    const after = getNote(k).checklist.dispositivos.map(d => d.tipo + (d.lado || ''));
+    const dirty = Array.from(_dirtyUnion(k));
+    const sepChip = !!card().querySelector('.ck-item[data-item="pm_sep"]');
+    return { mig, emptyStays, rows, pase, txt, legacyOff, after, dirty, sepChip };
+  });
+  check('U10 drenajes personalizables: migra chips viejos (SNG, Penrose, SEP con fuga) una sola vez; agrega Saratoga D/I, Estoma, "Otro"; gasto/característica/lado; línea de pase y texto de entrega; quitar; SEP ya no está en Clínico',
+    u10.mig.length === 3 && /^SNG\/a derivaci/.test(u10.mig[0]) && u10.mig[1] === 'Penrose@FID' && /^Sonda endopleural=150\/fuga gr\. B$/.test(u10.mig[2]) && u10.emptyStays === 0
+    && u10.rows === 4 && /Saratoga D 30/.test(u10.pase) && /Estoma D 400/.test(u10.pase) && /Drenaje biliar/.test(u10.pase)
+    && /Saratoga D 30 mL seroso d0 \| Saratoga I d0 \| Estoma D 400 mL fecal d0 \| Drenaje biliar d0/.test(u10.txt)
+    && u10.legacyOff && u10.after.join(',') === 'SaratogaD,EstomaD,Drenaje biliar' && u10.dirty.includes('ck_dispositivos') && !u10.sepChip, JSON.stringify(u10));
+
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-UI: '+pass+' passed, '+fail+' failed');
   await browser.close();

@@ -126,6 +126,17 @@ programa de la hoja (Apps Script, `syncIndicaciones`) hace el mismo trabajo con 
   hace que también tu cuenta de Google suba el Doc; solo hace falta si el enlace deja de ser
   público.
 
+## Drenajes, sondas y estomas por paciente
+
+En el checklist de la tarjeta, la fila **Drenajes y sondas** es una lista libre: botones rápidos
+(+ SNG, + Saratoga D, + Saratoga I, + SEP, + CMP, + Estoma, + Fístula mucosa) y un selector
+"+ más…" con el catálogo (Penrose, JP, Blake, Hemovac, Drenovac, Foley, cistostomía, CVC, catéter
+de HD, ileostomía, colostomía, yeyunostomía, gastrostomía, TPN, Otro = nombre libre). Cada
+dispositivo tiene su renglón: tocar el nombre cambia el lado (D / I / sin lado), y lleva sitio,
+gasto en mL/24 h, características (seroso, fecal, fuga…), día de colocación (📅) y ✕ para
+retirarlo. Lo que registres aparece resumido en la línea de pase de la cabecera y en la hoja de
+entrega. Los chips antiguos (SNG, PRS 1-3, Estoma, SEP) se convirtieron solos a esta lista.
+
 ## Alertas y laboratorios en el tablero
 
 La hoja de labs críticos, labs nuevos y "sin laboratorios de hoy" ya no ocupa la parte de arriba:
