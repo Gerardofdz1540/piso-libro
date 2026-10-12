@@ -3838,6 +3838,27 @@ body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
 #board-nav .bn-idx:hover{ background:#122339; }
 /* ═══ Ficha compacta (oct 2026): barra de saltos, secciones plegables, labs en dos mitades, cabecera que se encoge ═══ */
 #board-nav{ flex-wrap:wrap; row-gap:4px; top:calc(var(--hdr-h, 0px) + 6px); }
+/* Botón de alertas en la barra + panel lateral (oct 2026) */
+#board-nav .bn-alerts{ display:inline-flex; align-items:center; gap:3px; font-size:14px; padding:5px 9px; min-height:36px; border:none; border-radius:6px; background:#2c4d77; color:#fff; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+#board-nav .bn-alerts.has-crit{ background:#7f1d1d; box-shadow:0 0 0 2px rgba(220,38,38,.45); }
+#board-nav .bn-alerts .bj-n{ background:#0e7490; color:#fff; border-radius:8px; padding:0 5px; font-size:10px; line-height:16px; font-weight:800; }
+#board-nav .bn-alerts .bj-n.bj-crit{ background:#dc2626; }
+#board-nav .bn-alerts .bj-n.bj-ok{ background:#059669; }
+#board-nav .bn-alerts .bj-n.bj-warn{ background:#b45309; }
+#board-nav .bn-alerts .bj-n.bj-npt{ background:#6d28d9; }
+#alerts-backdrop{ display:none; position:fixed; inset:0; background:rgba(10,22,40,.35); z-index:10499; }
+#alerts-backdrop.open{ display:block; }
+#alerts-drawer{ position:fixed; top:0; right:0; bottom:0; width:min(440px, 100vw); background:#fff; z-index:10500; box-shadow:-8px 0 30px rgba(0,0,0,.25); transform:translateX(105%); transition:transform .22s ease; display:flex; flex-direction:column; }
+#alerts-drawer.open{ transform:none; }
+#alerts-drawer .ad-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#0a1628; color:#fff; font-weight:800; font-size:13px; flex:0 0 auto; padding-top:calc(10px + env(safe-area-inset-top)); }
+#alerts-drawer .ad-close{ background:rgba(255,255,255,.15); border:none; color:#fff; width:36px; height:36px; border-radius:8px; font-size:16px; cursor:pointer; }
+#alerts-drawer .ad-body{ flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:10px 12px calc(20px + env(safe-area-inset-bottom)); }
+#alerts-drawer .alerts-panel{ margin-bottom:0 !important; border:none !important; }
+#alerts-drawer .lab-news-banner{ margin:0 0 10px; }
+body.dark #alerts-drawer{ background:#0f1c2e; }
+#board-side .bs-dot{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:3px; vertical-align:middle; }
+#board-side .bs-dot.red{ background:#dc2626; box-shadow:0 0 0 2px rgba(220,38,38,.25); }
+#board-side .bs-dot.yellow{ background:#f59e0b; }
 #board-side{ top:calc(var(--hdr-h, 0px) + 6px); max-height:calc(100vh - var(--hdr-h, 0px) - 20px); }
 @media (max-width:900px){ #board-nav .bn-jump button{ font-size:10px; padding:0 7px; min-height:28px; } }
 #board-nav .bn-jump{ flex-basis:100%; display:flex; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-top:4px; border-top:1px solid rgba(255,255,255,.14); }
@@ -10281,6 +10302,7 @@ function plExportBackup() {
       _labNewsSave(news);
       renderLabNewsBanner();
       _labNewsRefreshRail();
+      if (typeof _alertsNavRefresh === "function") _alertsNavRefresh();
     }
     function _labNewsFor(k) {
       const n = _labNewsLoad()[k];
@@ -10370,12 +10392,13 @@ function plExportBackup() {
       _labNewsSave(news);
       renderLabNewsBanner();
       _labNewsRefreshRail();
+      if (typeof _alertsNavRefresh === "function") _alertsNavRefresh();
       if (k) { try { _rerenderCard(k); } catch (_) {} }
       else { try { renderViewSoft(); } catch (_) {} }
     }
     function labNewsGo(k) {
       labNewsMarkSeen(k);
-      if (typeof focusGoTo === "function") focusGoTo(k);
+      if (typeof alertsGo === "function") alertsGo(k); else if (typeof focusGoTo === "function") focusGoTo(k);
     }
     // ─── LÍNEA DE PASE: resumen de un vistazo (lo que en GoodNotes se escribía a mano) ──
     function renderPaseLine(p, nd, k) {
@@ -11707,12 +11730,16 @@ function plExportBackup() {
             const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
             const _fn = esc((pp.nombre || "").trim().split(/\s+/)[0] || "—");
             const _new = _labNewsFor(kk) ? `<span class="bs-new" title="Labs nuevos">🧪</span>` : "";
-            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
+            // Punto de estado: rojo = lab crítico sin reconocer; ámbar = sin labs de hoy / viejos
+            let _dot = "";
+            try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}" title="${_st === "red" ? "Lab crítico" : "Sin labs recientes"}"></span>`; } catch (_) {}
+            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
           }).join("") + `</div>`;
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
             + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
             + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, manejo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
+            + renderAlertsNavBtn()
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
             + (isSimpleEsp(fp.esp, fnd) ? "" : _fcJumpBar(fp, fnd, fk))
             + `</div>`;
@@ -11734,9 +11761,12 @@ function plExportBackup() {
           }
           // Hoja de alertas (labs críticos, sin labs de hoy, NPT) también en el tablero: antes solo
           // se pintaba en el modo lista, que ya no tiene entrada.
+          // Oct 2026 (pedido de Gera): la hoja de alertas y los labs nuevos ya NO ocupan la parte de
+          // arriba del tablero; viven en un panel lateral (#alerts-drawer) que se abre con el botón 🔔 de
+          // la barra, y cada renglón lleva directo a la tarjeta del paciente (alertsGo).
           let _alertsHtml = ""; try { _alertsHtml = renderSpecialAlertsPanel(); } catch (e) { safeLog("alerts panel:", e); }
           document.getElementById("view-piso").innerHTML =
-            renderLabNewsHtml() + _alertsHtml + `<div id="board-wrap">${_side}<div id="board-main">${_nav}<div id="piso-grid">${fcard}</div></div></div>`;
+            renderAlertsDrawer(_alertsHtml) + `<div id="board-wrap">${_side}<div id="board-main">${_nav}<div id="piso-grid">${fcard}</div></div></div>`;
           return;
         }
       }
@@ -12078,6 +12108,50 @@ function plExportBackup() {
       if (body) body.style.display = alertsPanelCollapsed ? "none" : "";
       if (arrow) arrow.textContent = alertsPanelCollapsed ? "▸" : "▾";
     }
+    // ─── Panel lateral de alertas (oct 2026) ──────────────────────────────────────────────
+    let _alertsDrawerOpen = false;
+    function _alertsCounts() {
+      try {
+        const d = collectSpecialAlertsData(patients);
+        return { crit: d.criticalCases.length, noLabs: d.noLabsToday.length, npt: d.nptDay ? d.nptPending.length : 0, news: _labNewsEntries().length };
+      } catch (_) { return { crit: 0, noLabs: 0, npt: 0, news: 0 }; }
+    }
+    function renderAlertsNavBtn() {
+      const c = _alertsCounts();
+      const parts = [];
+      if (c.crit) parts.push(`<span class="bj-n bj-crit" title="Labs críticos">${c.crit}</span>`);
+      if (c.news) parts.push(`<span class="bj-n bj-ok" title="Labs nuevos">🧪${c.news}</span>`);
+      if (c.noLabs) parts.push(`<span class="bj-n bj-warn" title="Sin labs de hoy">📭${c.noLabs}</span>`);
+      if (c.npt) parts.push(`<span class="bj-n bj-npt" title="NPT sin labs hoy">NPT${c.npt}</span>`);
+      return `<button class="bn-alerts${c.crit ? " has-crit" : ""}" onclick="toggleAlertsDrawer()" title="Alertas: labs críticos, labs nuevos y pacientes sin labs de hoy">🔔${parts.join("")}</button>`;
+    }
+    function _alertsNavRefresh() {
+      try { const b = document.querySelector("#board-nav .bn-alerts"); if (b) b.outerHTML = renderAlertsNavBtn(); } catch (_) {}
+    }
+    function renderAlertsDrawer(panelHtml) {
+      const o = _alertsDrawerOpen ? "open" : "";
+      return `<div id="alerts-backdrop" class="${o}" onclick="toggleAlertsDrawer(false)"></div>
+        <aside id="alerts-drawer" class="${o}" aria-label="Alertas y laboratorios">
+          <div class="ad-head"><span>🔔 Alertas y laboratorios</span><button type="button" class="ad-close" onclick="toggleAlertsDrawer(false)" aria-label="Cerrar">✕</button></div>
+          <div class="ad-body">${renderLabNewsHtml()}${panelHtml || ""}</div>
+        </aside>`;
+    }
+    function toggleAlertsDrawer(force) {
+      _alertsDrawerOpen = (typeof force === "boolean") ? force : !_alertsDrawerOpen;
+      const d = document.getElementById("alerts-drawer"), b = document.getElementById("alerts-backdrop");
+      if (d) d.classList.toggle("open", _alertsDrawerOpen);
+      if (b) b.classList.toggle("open", _alertsDrawerOpen);
+      if (_alertsDrawerOpen) { try { renderLabNewsBanner(); } catch (_) {} }
+    }
+    // Un renglón de alerta → cerrar el panel, abrir la tarjeta de ese paciente y resaltarla
+    function alertsGo(k) {
+      toggleAlertsDrawer(false);
+      if (typeof focusGoTo === "function") focusGoTo(k); else scrollToPatient(k);
+      setTimeout(function () {
+        const c = document.getElementById("card-" + k);
+        if (c) { c.classList.add("fc-flash"); setTimeout(function () { c.classList.remove("fc-flash"); }, 1200); }
+      }, 300);
+    }
     function scrollToPatient(k) {
       // Tablero (un paciente a la vez): ir al paciente en foco en vez de buscar su tarjeta en el DOM
       if (window.__viewMode !== "list" && document.getElementById("board-main") && window.__focusPid !== k) {
@@ -12105,7 +12179,7 @@ function plExportBackup() {
       let nptBlock = "";
       if (data.nptDay) {
         const nptRows = data.nptPending.slice(0, 8).map(x =>
-          `<div onclick="scrollToPatient('${x.k}')" style="display:flex;gap:8px;align-items:center;padding:5px 6px;border-top:1px dashed #e9d5ff;cursor:pointer;border-radius:5px;transition:background .15s" onmouseover="this.style.background='#ede9fe'" onmouseout="this.style.background=''">
+          `<div onclick="alertsGo('${x.k}')" style="display:flex;gap:8px;align-items:center;padding:5px 6px;border-top:1px dashed #e9d5ff;cursor:pointer;border-radius:5px;transition:background .15s" onmouseover="this.style.background='#ede9fe'" onmouseout="this.style.background=''">
             <span style="background:#ede9fe;color:#5b21b6;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(x.p.cama || "—")}</span>
             <span style="font-size:11px;font-weight:600;color:#4c1d95;flex:1">${esc(x.p.nombre || "")}</span>
             <span style="font-size:10px;color:#7c3aed">→ ver</span>
@@ -12124,7 +12198,7 @@ function plExportBackup() {
         ).join(" · ");
         const extra = c.labs.length > 3 ? ` +${c.labs.length - 3} más` : "";
         const fecha = c.fecha ? fmtDateChip(c.fecha) : "s/f";
-        return `<div onclick="scrollToPatient('${c.k}')" style="padding:7px 10px;border:1px solid #fecaca;border-radius:8px;background:#fff7f7;margin-top:5px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff7f7'">
+        return `<div onclick="alertsGo('${c.k}')" style="padding:7px 10px;border:1px solid #fecaca;border-radius:8px;background:#fff7f7;margin-top:5px;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff7f7'">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span style="background:#fee2e2;color:#991b1b;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700">${esc(c.p.cama || "—")}</span>
             <span style="font-size:12px;font-weight:700;color:#7f1d1d;flex:1">${esc(c.p.nombre || "")}</span>
@@ -12149,7 +12223,7 @@ function plExportBackup() {
       const noLabsRows = data.noLabsToday.slice(0, 40).map(x => {
         const old = x.dias === null || x.dias >= 2;
         const dlabel = x.dias === null ? "nunca" : x.dias === 1 ? "último: ayer" : "último: hace " + x.dias + " d";
-        return `<div onclick="scrollToPatient('${x.k}')" style="display:flex;gap:8px;align-items:center;padding:6px 6px;border-top:1px dashed #fde68a;cursor:pointer;border-radius:5px;min-height:36px" onmouseover="this.style.background='#fffbeb'" onmouseout="this.style.background=''">
+        return `<div onclick="alertsGo('${x.k}')" style="display:flex;gap:8px;align-items:center;padding:6px 6px;border-top:1px dashed #fde68a;cursor:pointer;border-radius:5px;min-height:36px" onmouseover="this.style.background='#fffbeb'" onmouseout="this.style.background=''">
           <span style="background:${old ? "#fee2e2" : "#fef3c7"};color:${old ? "#991b1b" : "#92400e"};border-radius:5px;padding:1px 7px;font-size:11px;font-weight:800;font-family:var(--mono)">${esc(x.p.cama || "—")}</span>
           <span style="font-size:12px;font-weight:600;color:#78350f;flex:1">${esc(x.p.nombre || "")}</span>
           <span style="font-size:10px;color:${old ? "#991b1b" : "#b45309"};font-weight:700">${esc(dlabel)}</span>
@@ -12164,11 +12238,10 @@ function plExportBackup() {
 
       const hasAlerts = data.criticalCases.length > 0 || data.nptDay || data.noLabsToday.length > 0;
       return `<div class="alerts-panel" style="margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-        <div class="alerts-panel-hdr" onclick="toggleAlertsPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;background:${hasAlerts ? "#fff9f0" : "#f8fafc"};border-bottom:1px solid #e2e8f0;user-select:none">
+        <div class="alerts-panel-hdr" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${hasAlerts ? "#fff9f0" : "#f8fafc"};border-bottom:1px solid #e2e8f0;user-select:none">
           <span class="alerts-panel-title" style="font-size:12px;font-weight:800;color:#334155;letter-spacing:.3px">🔔 Alertas${data.criticalCases.length ? " · <span style='color:#dc2626'>" + data.criticalCases.length + " críticas</span>" : ""}${data.noLabsToday.length ? " · <span style='color:#b45309'>" + data.noLabsToday.length + " sin labs hoy</span>" : ""}${data.nptDay && data.nptPending.length ? " · <span style='color:#7c3aed'>" + data.nptPending.length + " NPT</span>" : ""}</span>
-          <span id="alerts-panel-arrow" style="font-size:16px;color:#94a3b8">${alertsPanelCollapsed ? "▸" : "▾"}</span>
         </div>
-        <div id="alerts-panel-body" style="padding:10px 12px;display:${alertsPanelCollapsed ? "none" : ""}">
+        <div id="alerts-panel-body" style="padding:10px 12px">
           ${nptBlock}
           ${criticalBlock}
           ${noLabsBlock}

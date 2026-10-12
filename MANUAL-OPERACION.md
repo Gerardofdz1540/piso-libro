@@ -109,10 +109,12 @@ la rama vieja `feature/winlab-auto-sync`. Para dejarlo limpio:
 
 ## Indicaciones del Google Doc en cada tarjeta
 
-Las indicaciones se escriben donde siempre, en el Doc "INDICACIONES HOSPITALIZACION". El
-programa de la hoja (Apps Script) revisa el Doc cada 5 minutos y, si cambió, lo sube a la nube; la
-app lo recibe al instante y cada tarjeta muestra su bloque en **Indicaciones** (Dieta, Soluciones,
-Medicamentos, Antibióticos, Medidas generales).
+Las indicaciones se escriben donde siempre, en el Doc "INDICACIONES HOSPITALIZACION". La base de
+datos (Supabase) descarga el Doc cada 5 minutos por su enlace de "compartir" y, si cambió, lo
+guarda; la app lo recibe al instante y cada tarjeta muestra su bloque en **Indicaciones** (Dieta,
+Soluciones, Medicamentos, Antibióticos, Medidas generales). No hay que hacer nada: solo mantener
+el Doc compartido como "cualquiera con el enlace puede ver". Si algún día se restringe, el
+programa de la hoja (Apps Script, `syncIndicaciones`) hace el mismo trabajo con tu cuenta de Google.
 
 - El cruce es por **cama + nombre**. Si un paciente cambió de cama, lo encuentra por nombre. Si en
   el Doc hay varias fechas del mismo paciente, muestra la más reciente.
@@ -120,9 +122,17 @@ Medicamentos, Antibióticos, Medidas generales).
   la tarjeta avisa en rojo y no las muestra como propias hasta que toques "Ver de todos modos".
 - En la cabecera del bloque: 📄 abre el Doc; 🔄 lo trae ahora mismo sin esperar los 5 minutos.
   "Doc editado hace X" dice cuándo se modificó el Doc por última vez.
-- Para activarlo hay que pegar una vez el `censo-sync.gs` nuevo en Apps Script y ejecutar
-  `createTriggers` (ver "Paso a paso: actualizar el programa de la hoja"); Google pedirá permiso
-  para leer Documentos y Drive. Esa misma ejecución sube el Doc por primera vez.
+- Opcional (respaldo): pegar el `censo-sync.gs` nuevo en Apps Script y ejecutar `createTriggers`
+  hace que también tu cuenta de Google suba el Doc; solo hace falta si el enlace deja de ser
+  público.
+
+## Alertas y laboratorios en el tablero
+
+La hoja de labs críticos, labs nuevos y "sin laboratorios de hoy" ya no ocupa la parte de arriba:
+está en el botón **🔔** de la barra del paciente (muestra los contadores: rojo = críticos,
+🧪 = labs nuevos, 📭 = sin labs de hoy). Se abre como panel lateral; tocar un renglón cierra el
+panel y abre la tarjeta de ese paciente, resaltada. En el carril de camas, un punto rojo marca
+labs críticos sin reconocer y uno ámbar labs atrasados.
 
 ## Si los laboratorios no llegan
 
