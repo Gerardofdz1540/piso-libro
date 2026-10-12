@@ -1,0 +1,87 @@
+name: RIS Imagen (estudios cada 2 h)
+
+# Estudios de imagen (TC, US, RX…) del visor radiológico → Supabase (ris_estudios) → tarjetas.
+# Corre cada 2 horas; los minutos van desplazados porque GitHub retrasa los cron del minuto :00.
+on:
+  schedule:
+    - cron: "23 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "explore = solo volcar la estructura del portal (diagnóstico) · scrape = corrida normal"
+        required: false
+        default: "scrape"
+        type: choice
+        options: [scrape, explore]
+      dry_run:
+        description: "No escribir en Supabase"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: ris-scraper
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: rpa
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Keepalive del cron (evita disabled_inactivity)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/ris-scraper.yml/enable"
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: rpa/package-lock.json
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${{ steps.pw-cache.outputs.cache-hit == 'true' && '1' || '0' }}
+        run: npm ci --no-audit --no-fund
+
+      - name: Ensure Chromium present
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Run RIS scraper
+        run: node ris-scraper.js
+        env:
+          RIS_MODE:             ${{ inputs.mode || 'scrape' }}
+          DRY_RUN:              ${{ inputs.dry_run || 'false' }}
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ris-diagnostics
+          path: |
+            rpa/ris-failure-*.png
+            rpa/ris-explorer-*.json
+          if-no-files-found: ignore
+          retention-days: 7
