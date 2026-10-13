@@ -265,18 +265,37 @@ function toPatientRow_(p) {
  * GUARDAS: si la hoja parseó <10 o habría que borrar >50% del censo → NO reconcilia (solo upsert),
  * para que un error de lectura nunca borre el piso. Devuelve cuántas filas retiró.
  */
+// Periodo de GRACIA antes de retirar (13 oct 2026). El trigger onEdit sincroniza en CADA tecla: al
+// cortar/pegar una fila para cambiar de cama (o al reescribir un expediente) la hoja pasa por un
+// estado intermedio en el que el paciente NO está; antes eso bastaba para archivarlo y borrarlo
+// (CASCADE a su nota: labs, pendientes, diagrama) y 3 s después el pegado lo creaba como fila NUEVA
+// y VACÍA (caso real: UCI 7 → 3-162, 3-180 → 3-161, 3-153 cortada y repegada). Ahora un paciente
+// solo se retira cuando lleva >= RETIRO_GRACIA_MIN minutos seguidos sin aparecer en la hoja.
+// Un egreso real sigue saliendo del tablero, solo que unos minutos después.
+var RETIRO_GRACIA_MIN = 12;
+var MISSING_PROP = 'PL_MISSING_SINCE';   // Script Property: {"<id>": epoch_ms} (primera corrida sin verlo)
+
+function readMissingSince_() {
+  try { var raw = PropertiesService.getScriptProperties().getProperty(MISSING_PROP); var o = raw ? JSON.parse(raw) : {}; return (o && typeof o === 'object') ? o : {}; }
+  catch (_) { return {}; }
+}
+function writeMissingSince_(map) {
+  try { var ps = PropertiesService.getScriptProperties(); if (ps && ps.setProperty) ps.setProperty(MISSING_PROP, JSON.stringify(map || {})); } catch (_) {}
+}
+
 function syncPatients_(key, payload) {
   if (!payload.length) { Logger.log('syncPatients: payload vacío → no se toca nada.'); return 0; }
-  var sheetByCama = {}, sheetCamaByExp = {};
+  var sheetByCama = {}, sheetCamaByExp = {}, sheetRowByCama = {};
   payload.forEach(function (p) {
     var e = String(p.exp || '').trim();
     sheetByCama[p.cama] = e;                                  // cama ya normalizada
+    sheetRowByCama[p.cama] = p;
     if (e && sheetCamaByExp[e] === undefined) sheetCamaByExp[e] = p.cama;
   });
   var nSheet = Object.keys(sheetByCama).length;
 
   // Estado actual en Supabase
-  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,updated_by', {
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by', {
     method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true
   });
   if (res.getResponseCode() !== 200) { Logger.log('syncPatients: GET HTTP ' + res.getResponseCode() + ' → solo upsert'); upsertPatients_(key, payload); return 0; }
@@ -289,7 +308,8 @@ function syncPatients_(key, payload) {
     if (sheetByCama[cama] !== undefined && sheetByCama[cama] === String(r.exp || '').trim()) stayCamas[cama] = true;
   });
 
-  var toDelete = [], toMove = [], moveTargets = {};
+  var toDelete = [], toMove = [], toFixExp = [], moveTargets = {};
+  var missing = readMissingSince_(), missingNext = {}, now = Date.now(), enGracia = [];
   cur.forEach(function (r) {
     var cama = normalizeCama_(r.cama);
     var exp = String(r.exp || '').trim();
@@ -306,9 +326,25 @@ function syncPatients_(key, payload) {
       moveTargets[newCama] = true;
       return;
     }
-    if (sheetExp !== undefined) toDelete.push({ row: r, motivo: 'CAMA REASIGNADA (hoja)' });        // (a) reasignación
-    else if (r.updated_by === 'sheet-sync') toDelete.push({ row: r, motivo: 'RETIRADO DEL CENSO (hoja)' }); // (b) retiro
+    if (sheetExp !== undefined) {
+      // (d) EXPEDIENTE CORREGIDO — misma cama, MISMA persona (nombre igual), otro exp en la hoja
+      //     (typo corregido): PATCH del exp sobre la misma fila; la nota sigue ligada.
+      var sr = sheetRowByCama[cama];
+      if (sr && sheetExp && samePerson_(r.nombre || '', sr.nombre || '') && String(r.nombre || '').trim() && String(sr.nombre || '').trim()) {
+        toFixExp.push({ row: r, from: exp, to: sheetExp });
+        return;
+      }
+      toDelete.push({ row: r, motivo: 'CAMA REASIGNADA (hoja)' });        // (a) reasignación: otra persona ocupa la cama
+    } else if (r.updated_by === 'sheet-sync') {
+      // (b) retiro: solo si lleva >= RETIRO_GRACIA_MIN min sin aparecer en la hoja (ver arriba).
+      var since = missing[r.id] || now;
+      missingNext[r.id] = since;
+      if (now - since >= RETIRO_GRACIA_MIN * 60000) toDelete.push({ row: r, motivo: 'RETIRADO DEL CENSO (hoja)' });
+      else enGracia.push(cama + ' (' + Math.round((now - since) / 60000) + ' min)');
+    }
   });
+  writeMissingSince_(missingNext);   // los que volvieron a la hoja salen del mapa
+  if (enGracia.length) Logger.log('syncPatients: ' + enGracia.length + ' fuera de la hoja en periodo de gracia (' + RETIRO_GRACIA_MIN + ' min): ' + enGracia.join(', '));
 
   // GUARDAS anti-catástrofe (los movimientos no borran nada, pero tampoco se aplican con una
   // hoja sospechosa: la cama destino podría ser basura).
@@ -332,6 +368,10 @@ function syncPatients_(key, payload) {
   //    Intercambios A↔B chocarían con UNIQUE(cama); esos pasan primero por una cama temporal.
   var moved = movePatients_(key, toMove);
   if (toMove.length) Logger.log('syncPatients: movidos ' + moved + '/' + toMove.length + ': ' + toMove.map(function (m) { return m.from + '→' + m.to; }).join(', '));
+  // 2b) Expediente corregido (misma persona, misma cama): PATCH del exp antes del upsert.
+  var fixed = 0;
+  toFixExp.forEach(function (f) { if (patchPatient_(key, f.row.id, { exp: f.to, updated_by: 'sheet-sync' })) fixed++; });
+  if (toFixExp.length) Logger.log('syncPatients: expedientes corregidos ' + fixed + '/' + toFixExp.length + ': ' + toFixExp.map(function (f) { return normalizeCama_(f.row.cama) + ' ' + f.from + '→' + f.to; }).join(', '));
 
   // Si el archivo del ocupante anterior falló, su fila sigue viva: el upsert por cama (on_conflict=cama)
   // la REESCRIBIRÍA con el exp/nombre del nuevo ocupante y su nota clínica quedaría pegada al paciente

@@ -173,6 +173,50 @@ labs críticos sin reconocer y uno ámbar labs atrasados.
    últimas líneas del registro; mándamelas y lo reviso. Nunca pegues ahí
    nombres de pacientes en mensajes públicos.
 
+## Cambios de cama: los labs viajan con el paciente
+
+Un paciente que cambia de cama en la hoja (cortar y pegar la fila, o reescribir el número de cama)
+conserva su tarjeta completa: labs, pendientes, checklist, diagrama. Tres capas lo garantizan:
+
+1. **La hoja** (`censo-sync.gs`): si la fila desaparece un instante mientras la mueves, el programa
+   espera 12 minutos antes de darla de baja; si en ese lapso aparece en otra cama, solo cambia la
+   cama. Corregir un número de expediente de la misma persona tampoco borra nada.
+   **Hay que volver a pegar el programa en Apps Script** (ver "Paso a paso" arriba).
+2. **La base de datos**: si un paciente con el mismo expediente y nombre vuelve a crearse en los
+   10 días siguientes a haber sido archivado, su nota se restaura sola desde la Papelera (trigger
+   `patients_restore_note_after_insert`, `scripts/supabase_restore_note.sql`).
+3. **La app**: al aparecer un paciente, primero lee su nota de la nube y después lo muestra; y
+   trae sus labs de WinLab aunque el último escaneo tenga más de 4 días.
+
+El 13 de octubre de 2026 se recuperaron así las notas de 3-151, 3-153, 3-162, 3-177, 3-181 y UCI 8.
+
+## Entrega de guardia: novedades automáticas
+
+Todo lo que llega solo se anota en la caja **Entrega de guardia** de la tarjeta, una línea por
+novedad con su fecha (`13-10-2026: …`): laboratorios nuevos con alteraciones (por ejemplo
+"Anemia severa (Hb 6.2), Hiperkalemia severa (K 6.3)"), estudios del visor (con la conclusión del
+reporte, o "reporte pendiente") y cultivos (positivo con germen, o sin desarrollo). Cada novedad se
+escribe una sola vez aunque la app esté abierta en varios iPads; lo escrito a mano no se toca.
+
+## Cultivos
+
+Los cultivos de WinLab aparecen en **IC · Cultivos** aunque el resultado venga como "POSITIVO",
+"NO DESARROLLO" o "NEGATIVO A 5 DÍAS" (antes solo se leía el germen y casi nunca salían). Cuando
+WinLab marca POSITIVO sin escribir el germen en la tabla, la tarjeta dice "POSITIVO (germen y
+antibiograma en el reporte)": hay que abrir el PDF en WinLab.
+
+## Nota de evolución
+
+En la tarjeta, **📝 Nota de evolución** genera la nota completa en el formato del servicio (todo en
+mayúsculas): encabezado con edad, FN, expediente y cama; década de la vida y diagnósticos unidos con
+"+"; subjetivo; signos vitales en texto (oxígeno por puntas nasales o mascarilla, ventilador);
+exploración; drenajes y sondas con gasto y características; Foley con uresis; laboratorios del día
+con nombres completos y los del control previo (lo que hoy no se tomó más la tendencia de
+leucocitos, hemoglobina, creatinina, PCR y procalcitonina); análisis por aparatos y sistemas;
+ayuno o dieta, antibiótico y día, NPT, tromboprofilaxis, cultivos, tomografía con conclusión,
+interconsultas, plan y pendientes; estado de salud y pronóstico; firma. Lo que la tarjeta no sabe
+queda entre corchetes `[…]` para llenarlo antes de pegar.
+
 ## Si un paciente desapareció del censo
 
 1. En la app, abre la pestaña **Papelera**.

@@ -7173,27 +7173,43 @@ function plExportBackup() {
     // SOLO emite si hay germen reconocido o un negativo explícito ("sin/no desarrollo").
     var _WL_CULT_ORG = /\b(escherichia|klebsiella|candida|staphylococ\w*|streptococ\w*|pseudomonas|enterococ\w*|acinetobacter|proteus|enterobacter|serratia|morganella|citrobacter|stenotrophomonas|salmonella|shigella|haemophilus|providencia)\b/i;
     var _WL_CULT_NEG = /sin\s+desarrollo|no\s+desarrollo|sin\s+crecimiento|desarrollo\s+negativo/i;
+    // Formatos reales de WinLab (oct 2026), el resultado vive en `valor` (no solo en `referencia`):
+    //   {estudio:"CULTIVO", valor:"NO DESARROLLO", referencia:"SIN DESARROLLO"}            → negativo
+    //   {estudio:"CULTIVO", valor:"POSITIVO", referencia:"Sin desarrollo"}                → POSITIVO (la
+    //      referencia es el rango normal; el germen y el antibiograma están en el PDF del reporte)
+    //   {estudio:"HEMOCULTIVO PERIFERICO", valor:"1", unidad:"DESARROLLO"} + {estudio:"NEGATIVO A", valor:"5", unidad:"DIAS"} → negativo a 5 días
+    //   {estudio:"CULTIVO", referencia:"Escherichia coli"} / valor:"Klebsiella pneumoniae"  → positivo con germen
+    // Antes solo se leía `referencia`: el "POSITIVO" salía como "Sin desarrollo" y el hemocultivo
+    // "NEGATIVO A 5 DIAS" no se mostraba. Ahora: germen o POSITIVO en valor/referencia/estudio → positivo;
+    // NO/SIN DESARROLLO o NEGATIVO (A n DÍAS) → negativo.
+    var _WL_CULT_POS = /\bPOSITIV[OA]\b|\bDESARROLLO\s+DE\b|\bSE\s+AISL/i;
     function extractWinlabCulture(rep) {
       if (!rep || !Array.isArray(rep.valores)) return null;
-      var isCult = false, organismo = "", muestra = "", neg = false;
+      var isCult = false, organismo = "", muestra = "", neg = false, pos = false, negDias = "";
       for (var i = 0; i < rep.valores.length; i++) {
         var v = rep.valores[i]; if (!v) continue;
         var est = String(v.estudio || v.nombre || "");
         var ref = String(v.referencia || "");
+        var val = String(v.valor || "");
+        var uni = String(v.unidad || "");
         var sec = String(v.seccion || "");
-        if (/cultivo/i.test(est) || /cultivo/i.test(sec)) {
+        var cultRow = /cultivo/i.test(est) || /cultivo/i.test(sec);
+        var orgHit = _WL_CULT_ORG.test(val) ? val : (_WL_CULT_ORG.test(ref) ? ref : (_WL_CULT_ORG.test(est) ? est : ""));
+        if (cultRow || orgHit) {
           isCult = true;
           if (!muestra) muestra = sec.trim();
-          if (!organismo && _WL_CULT_ORG.test(ref)) organismo = ref.trim();
-          if (_WL_CULT_NEG.test(ref)) neg = true;
-        } else if (_WL_CULT_ORG.test(ref)) {
-          isCult = true;
-          if (!organismo) organismo = ref.trim();
-          if (!muestra) muestra = sec.trim();
+          if (!organismo && orgHit) organismo = orgHit.trim();
+          if (_WL_CULT_NEG.test(val) || _WL_CULT_NEG.test(ref) && !/POSITIV/i.test(val)) neg = true;
+          if (_WL_CULT_POS.test(val)) pos = true;
         }
+        if (/^NEGATIVO\s+A\b/i.test(est) || (/NEGATIV/i.test(est) && /DIAS?/i.test(uni))) { isCult = true; neg = true; if (/^\d+$/.test(val.trim())) negDias = val.trim(); }
       }
       if (!isCult) return null;
-      if (!organismo && !neg) return null;   // sin germen ni negativo explícito → no emitir
+      if (organismo) pos = true;
+      if (pos) neg = false;
+      if (!organismo && !neg && !pos) return null;   // sin germen, sin positivo ni negativo explícito → no emitir
+      if (pos && !organismo) organismo = "POSITIVO (germen/antibiograma en el reporte)";
+      if (neg && negDias) negDias = " a " + negDias + " días";
       var hay = rep.valores.map(function (v) { return (v.estudio || "") + " " + (v.seccion || ""); }).join(" ").toUpperCase();
       // FIX-v58b (jul 2026): el tipo debe seguir la MUESTRA donde se halló el organismo, NO
       // el texto completo del reporte. Un reporte puede MEZCLAR un cultivo pleural POSITIVO
@@ -7210,7 +7226,7 @@ function plExportBackup() {
         : /PERITONEAL/.test(hay) ? "Cultivo líquido peritoneal"
         : /HERIDA|SECRECION/.test(hay) ? "Cultivo de herida/secreción"
         : "Cultivo";
-      return { tipo: tipo, organismo: organismo || "Sin desarrollo", muestra: muestra || "", positivo: !!organismo };
+      return { tipo: tipo, organismo: organismo || ("Sin desarrollo" + (negDias || "")), muestra: muestra || "", positivo: !!pos };
     }
 
     // Recolecta cultivos de un blob WinLab atribuidos al paciente objetivo, usando EL MISMO
@@ -7497,7 +7513,11 @@ function plExportBackup() {
           }
           // CULTIVOS-WINLAB-v56: cultivos del paciente (ya pasó exp + _winlabCensoNameOk;
           // buildWinlabCultures re-aplica el guard de nombre por encabezado internamente).
-          try { _winlabCultByK[pid(p)] = buildWinlabCultures(wl); } catch (_) {}
+          try {
+            _winlabCultByK[pid(p)] = buildWinlabCultures(wl);
+            // Cultivos nuevos → línea con fecha en la entrega de guardia (una sola vez por cultivo).
+            if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(pid(p), _entregaItemsFromCultures(_winlabCultByK[pid(p)]));
+          } catch (_) {}
           // Cambio mayo 2026: ahora procesamos MÚLTIPLES snapshots (uno por fecha)
           // para soportar 3 días previos del scraper.
           const snapshots = buildWinlabLabSnapshots(wl, normalizeEspImport(p.esp));
@@ -7568,6 +7588,8 @@ function plExportBackup() {
             nd.labHistory = hist;
             delete labAnalysisCache[k]; // el análisis IA cacheado era de los valores previos
             try { _labNewsAdd(k, hist, _histBefore); } catch (_) {} // aviso "labs nuevos" en tablero, rail y tarjeta
+            // Alteraciones de los labs nuevos → línea con fecha en la entrega de guardia (idempotente).
+            try { if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(k, _entregaItemsFromLabs(hist, _histBefore)); } catch (_) {}
             // Solo labHistory viaja a la nube (fila parcial). Antes cada arranque re-subía la nota
             // COMPLETA de todos los pacientes con match aunque nada cambiara → ~45 eventos Realtime
             // (toasts y re-renders) en cada dispositivo y riesgo de pisar texto ajeno con la copia local.
@@ -7828,7 +7850,7 @@ function plExportBackup() {
           dispositivos: [], /* oct 2026: lista personalizable de drenajes/sondas/estomas (ver renderChecklist) */
           pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
           cruce_activo: false, cruce_ts: "", cruce_unidades: "", cruce_banco: "",
-          nota_fn: "", nota_dx: "", nota_s: "", nota_o: "", nota_plan: "", nota_prono: "", nota_adscrito: "", nota_residente: "",
+          nota_fn: "", nota_dx: "", nota_s: "", nota_o: "", nota_plan: "", nota_prono: "", nota_estado: "", pm_o2via: "", nota_adscrito: "", nota_residente: "",
           nota_sis_neuro: "", nota_sis_hemo: "", nota_sis_vent: "", nota_sis_hema: "", nota_sis_hepato: "", nota_sis_gi: "", nota_sis_metab: "", nota_sis_renal: "", nota_sis_nutri: "", nota_sis_extra: "" }
       };
     }
@@ -8074,12 +8096,13 @@ function plExportBackup() {
         + '<div class="plne-field plne-full"><label>Exploración física</label><textarea id="plne-o"></textarea></div>'
         + '</div>'
         + '<div class="plne-sech">Signos vitales <span>· se comparten con el pase matutino</span></div>'
-        + '<div class="plne-vit"><div><label>FC</label><input id="plne-fc"></div><div><label>FR</label><input id="plne-fr"></div><div><label>TA</label><input id="plne-ta"></div><div><label>T °C</label><input id="plne-t"></div><div><label>SaO₂ %</label><input id="plne-sat"></div><div><label>O₂ L</label><input id="plne-o2"></div><div><label>Uresis</label><input id="plne-uresis"></div></div>'
+        + '<div class="plne-vit"><div><label>FC</label><input id="plne-fc"></div><div><label>FR</label><input id="plne-fr"></div><div><label>TA</label><input id="plne-ta"></div><div><label>T °C</label><input id="plne-t"></div><div><label>SaO₂ %</label><input id="plne-sat"></div><div><label>O₂ L</label><input id="plne-o2"></div><div><label>O₂ vía</label><input id="plne-o2via" placeholder="puntas nasales / mascarilla" style="text-align:left"></div><div><label>Uresis</label><input id="plne-uresis"></div></div>'
+        + '<div style="font-size:10.5px;color:#64748b;margin-top:6px">Drenajes/sondas con gasto, antibiótico, NPT, tromboprofilaxis, cultivos, estudios del visor y pendientes se toman solos de la tarjeta.</div>'
         + '<div class="plne-sech">Análisis · por aparatos y sistemas</div>'
         + '<div id="plne-sys"></div>'
         + '<button class="plne-addsys" onclick="_plneAddSys()">➕ Agregar sistema</button>'
         + '<div class="plne-sech">Plan y firma</div>'
-        + '<div class="plne-grid"><div class="plne-field plne-full"><label>Plan</label><textarea id="plne-plan"></textarea></div><div class="plne-field"><label>Pronóstico</label><input id="plne-prono"></div><div class="plne-field"></div><div class="plne-field"><label>Adscrito</label><input id="plne-adscrito"></div><div class="plne-field"><label>Residente</label><input id="plne-residente"></div></div>'
+        + '<div class="plne-grid"><div class="plne-field plne-full"><label>Plan</label><textarea id="plne-plan"></textarea></div><div class="plne-field"><label>Estado de salud</label><input id="plne-estado" placeholder="DELICADO / GRAVE / ESTABLE (del censo si vacío)"></div><div class="plne-field"><label>Pronóstico</label><input id="plne-prono" placeholder="RESERVADO A EVOLUCIÓN (si vacío)"></div><div class="plne-field"><label>Adscrito</label><input id="plne-adscrito"></div><div class="plne-field"><label>Residente</label><input id="plne-residente"></div></div>'
         + '<div class="plne-actions"><button class="plne-gen" onclick="generarNotaEvo()">📝 Generar nota</button><button class="plne-close2" onclick="closeNotaEvo()">Cerrar</button></div>'
         + '<div class="plne-out" id="plne-out"><div class="plne-out-top"><strong>Nota generada — revisa antes de pegar</strong><button id="plne-copybtn" class="plne-copy" onclick="copyNotaEvo()">Copiar</button></div><pre class="plne-out-text" id="plne-out-text"></pre></div>'
         + '</div></div>';
@@ -8115,8 +8138,8 @@ function plExportBackup() {
         _plneSet("plne-s", ck.nota_s||"");
         _plneSet("plne-o", ck.nota_o||"");
         _plneSet("plne-fc", ck.pm_fc||""); _plneSet("plne-fr", ck.pm_fr||""); _plneSet("plne-ta", ck.pm_ta||"");
-        _plneSet("plne-t", ck.pm_temp||""); _plneSet("plne-sat", ck.pm_sao2||""); _plneSet("plne-o2", ck.pm_o2l||""); _plneSet("plne-uresis", ck.pm_uresis||"");
-        _plneSet("plne-plan", ck.nota_plan||""); _plneSet("plne-prono", ck.nota_prono||"");
+        _plneSet("plne-t", ck.pm_temp||""); _plneSet("plne-sat", ck.pm_sao2||""); _plneSet("plne-o2", ck.pm_o2l||""); _plneSet("plne-o2via", ck.pm_o2via||""); _plneSet("plne-uresis", ck.pm_uresis||"");
+        _plneSet("plne-plan", ck.nota_plan||""); _plneSet("plne-estado", ck.nota_estado||""); _plneSet("plne-prono", ck.nota_prono||"");
         _plneSet("plne-adscrito", ck.nota_adscrito||p.adscrito||""); _plneSet("plne-residente", ck.nota_residente||p.residente||"");
         _plneBuildSys(ck);
         document.getElementById("plne-out").style.display="none";
@@ -8149,8 +8172,8 @@ function plExportBackup() {
       var nd=getNote(_plneKey); nd.checklist=nd.checklist||{}; var ck=nd.checklist;
       ck.nota_fn=_plneVal("plne-fn"); ck.nota_dx=_plneVal("plne-dx"); ck.nota_s=_plneVal("plne-s"); ck.nota_o=_plneVal("plne-o");
       ck.pm_fc=_plneVal("plne-fc"); ck.pm_fr=_plneVal("plne-fr"); ck.pm_ta=_plneVal("plne-ta"); ck.pm_temp=_plneVal("plne-t");
-      ck.pm_sao2=_plneVal("plne-sat"); ck.pm_o2l=_plneVal("plne-o2"); ck.pm_uresis=_plneVal("plne-uresis");
-      ck.nota_plan=_plneVal("plne-plan"); ck.nota_prono=_plneVal("plne-prono");
+      ck.pm_sao2=_plneVal("plne-sat"); ck.pm_o2l=_plneVal("plne-o2"); ck.pm_o2via=_plneVal("plne-o2via"); ck.pm_uresis=_plneVal("plne-uresis");
+      ck.nota_plan=_plneVal("plne-plan"); ck.nota_estado=_plneVal("plne-estado"); ck.nota_prono=_plneVal("plne-prono");
       ck.nota_adscrito=_plneVal("plne-adscrito"); ck.nota_residente=_plneVal("plne-residente");
       var sysEls=document.querySelectorAll("#plne-sys [data-sis]");
       sysEls.forEach(function(t){ ck["nota_sis_"+t.getAttribute("data-sis")]=t.value; });
@@ -8177,33 +8200,168 @@ function plExportBackup() {
       if((ck.pm_uresis||"").toString().trim()) parts.push("uresis "+ck.pm_uresis.toString().trim());
       return parts.join(", ");
     }
+    /* ═══ Nota de evolución COMPLETA (13 oct 2026, formato de CG del HGL, todo en mayúsculas) ═══
+       Estructura (igual que las notas reales del servicio):
+         1. Encabezado: NOMBRE | EDAD | FN | EXP | CAMA | fecha hora HRS
+         2. "PACIENTE <SEXO> EN LA <N> DÉCADA DE LA VIDA HOSPITALIZADO CON EL SIGUIENTE DIAGNÓSTICO: DX1 + DX2 …"
+         3. Subjetivo: "AL PASE DE VISITA EL/LA PACIENTE REFIERE …"
+         4. Objetivo: signos vitales (FC/FR/T/SatO₂/O₂/TA/ventilador), exploración, drenajes y sondas con
+            gasto (lista de dispositivos), uresis, balance.
+         5. "LABORATORIOS DEL dd.mm.aaaa: GLUCOSA …" con nombres completos, y los del control previo
+            (analitos que hoy no se tomaron + tendencia de leucos/Hb/Cr/PCR/PCT/lactato/plaquetas).
+         6. Análisis por aparatos y sistemas + manejo en curso (ayuno/dieta, antibiótico y día, NPT,
+            tromboprofilaxis, cultivos, estudios del visor con conclusión, interconsultas), plan y
+            pendientes, "ESTADO DE SALUD …, CON PRONÓSTICO …".
+         7. Firma: ADSCRITO | RESIDENTE.
+       Lo que la tarjeta no sabe queda marcado como [___] para llenarlo antes de pegar. */
+    var PLNE_LAB_NOMBRES = [
+      ["glu","GLUCOSA"],["urea","UREA"],["bun","BUN"],["cr","CREATININA"],["urico","ÁCIDO ÚRICO"],
+      ["na","SODIO"],["k","POTASIO"],["cl","CLORO"],["ca","CALCIO"],["p","FÓSFORO"],["mg","MAGNESIO"],
+      ["leucos","LEUCOCITOS"],["neu_pct","NEUTRÓFILOS"],["neu_abs","NEUTRÓFILOS ABSOLUTOS"],["lin_pct","LINFOCITOS"],["lin_abs","LINFOCITOS ABSOLUTOS"],
+      ["hb","HEMOGLOBINA"],["hct","HEMATOCRITO"],["mcv","VCM"],["mch","HCM"],["mchc","CHCM"],["rdw","RDW"],["plaq","PLAQUETAS"],
+      ["tp","TP"],["inr","INR"],["ttp","TTP"],["fibrinogeno","FIBRINÓGENO"],["dimero_d","DÍMERO D"],
+      ["pcr","PCR"],["pct","PROCALCITONINA"],["lac","LACTATO"],
+      ["amilasa","AMILASA"],["lipasa","LIPASA"],["alb","ALBÚMINA"],["bt","BILIRRUBINA TOTAL"],["bd","BILIRRUBINA DIRECTA"],["bi","BILIRRUBINA INDIRECTA"],
+      ["ast","AST"],["alt","ALT"],["fa","FOSFATASA ALCALINA"],["ggt","GGT"],["dhl","DHL"],
+      ["ph","PH"],["pco2","PCO2"],["po2","PO2"],["hco3","HCO3"],["be","EXCESO DE BASE"],["sato2","SATURACIÓN"],
+      ["tropI","TROPONINA I"],["tropT","TROPONINA T"],["ck","CK"],["ck_mb","CK-MB"],["bnp","BNP"]
+    ];
+    var PLNE_LAB_TENDENCIA = ["leucos","hb","plaq","cr","pcr","pct","lac","k","na"];
+    var PLNE_EGO_NOMBRES = [["ego_dens","DENSIDAD"],["ego_ph","PH"],["ego_leuco","LEUCOCITOS"],["ego_nitri","NITRITOS"],["ego_bact","BACTERIAS"],["ego_prot","PROTEÍNAS"],["ego_glu","GLUCOSA"],["ego_hem","ERITROCITOS"]];
+    function _plneDecada(edad){
+      var n=parseInt(String(edad||"").replace(/[^\d]/g,""),10); if(!isFinite(n)||n<=0) return "";
+      var ord=["PRIMERA","SEGUNDA","TERCERA","CUARTA","QUINTA","SEXTA","SÉPTIMA","OCTAVA","NOVENA","DÉCIMA"];
+      var i=Math.floor(n/10); return i<ord.length ? ord[i] : "";
+    }
+    function _plneFechaPunto(iso){ var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||"")); return m ? (m[3]+"."+m[2]+"."+m[1]) : String(iso||""); }
+    function _plneFnPunto(s){ var d=(typeof parseDmy==="function")?parseDmy(String(s||"").trim()):null; if(!d) return String(s||"").trim(); function z(n){return String(n).padStart(2,"0");} return z(d.getDate())+"."+z(d.getMonth()+1)+"."+d.getFullYear(); }
+    function _plneVal2(v){ return (v===undefined||v===null)?"":String(v).trim(); }
+    function _plneSnaps(nd){ return ((nd&&nd.labHistory)||[]).filter(function(s){ return s&&s.labs&&Object.keys(s.labs).some(function(k){ return _plneVal2(s.labs[k])!=="" && k!=="fecha_labs"; }); }).slice().sort(function(a,b){ return String(b.fecha||"").localeCompare(String(a.fecha||"")); }); }
+    function _plneLabsLista(labs, keys){
+      var out=[]; var usados={};
+      PLNE_LAB_NOMBRES.forEach(function(pair){
+        if(keys && keys.indexOf(pair[0])<0) return;
+        var v=_plneVal2(labs[pair[0]]); if(!v) return; usados[pair[0]]=1;
+        var s=pair[1]+" "+v;
+        if(pair[0]==="tp" && _plneVal2(labs.tp_testigo)) s+=" CON TESTIGO DE "+_plneVal2(labs.tp_testigo);
+        out.push(s);
+      });
+      if(!keys){
+        var ego=[]; PLNE_EGO_NOMBRES.forEach(function(pair){ var v=_plneVal2(labs[pair[0]]); if(v) ego.push(pair[1]+" "+v); });
+        if(ego.length) out.push("EGO CON "+ego.join(", "));
+        Object.keys(labs).forEach(function(k){
+          if(usados[k] || /^(ego_|micro_)/.test(k) || k==="fecha_labs" || k==="tp_testigo") return;
+          if(PLNE_LAB_NOMBRES.some(function(pr){ return pr[0]===k; })) return;
+          var v=_plneVal2(labs[k]); if(v) out.push(k.replace(/_/g," ").toUpperCase()+" "+v);
+        });
+      }
+      return out;
+    }
+    function _plneLado(l){ l=String(l||"").trim().toUpperCase(); return l==="D"?"DERECHO":(l==="I"?"IZQUIERDO":(l==="B"?"BILATERAL":l)); }
+    function _plneDispositivos(ck){
+      var list=(ck&&Array.isArray(ck.dispositivos))?ck.dispositivos:[]; var out=[]; var foley="";
+      list.forEach(function(d){
+        if(!d) return; var tipo=String(d.tipo||"").trim(); if(!tipo) return;
+        var dias=(typeof _dispositivoDias==="function")?_dispositivoDias(d.fi):null;
+        var gasto=_plneVal2(d.gasto); var gastoTxt=gasto?(" CON GASTO DE "+gasto+(/^[\d.,]+$/.test(gasto)?" ML":"")):"";
+        var carac=_plneVal2(d.carac)?(" DE CARACTERÍSTICAS "+_plneVal2(d.carac)):"";
+        if(/foley|vesical|cistostom/i.test(tipo)){ foley=tipo+" PERMEABLE A DERIVACIÓN"+(_plneVal2(ck.pm_uresis)?" CON URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":""):"")+(carac||"")+(dias!==null?" (DÍA "+dias+")":""); return; }
+        var base=/estoma|ileostom|colostom|yeyunostom|gastrostom|fístula|fistula/i.test(tipo)?tipo:("DRENAJE TIPO "+tipo);
+        if(/^(sng|sonda|cmp|cvc|catéter|cateter|tpn)/i.test(tipo)) base=tipo;
+        out.push(base+(d.lado?" "+_plneLado(d.lado):"")+(_plneVal2(d.sitio)?" EN "+_plneVal2(d.sitio):"")+gastoTxt+carac+(dias!==null?" (DÍA "+dias+")":""));
+      });
+      return { lista: out, foley: foley };
+    }
+    function _plneSplitDx(dx){ return String(dx||"").split(/\n|;|\s\+\s|,(?!\d)/).map(function(s){ return s.replace(/^[\s•\-\d.)]+/,"").trim(); }).filter(Boolean); }
+    function _plneLineas(t){ return String(t||"").split("\n").map(function(s){ return s.replace(/^[\s•\-*☐☑✓]+/,"").replace(/^\d{2}\/\d{2}\s—\s*/,"").trim(); }).filter(function(s){ return s && !/^✓/.test(s); }); }
+    function _plneOra(s){ s=String(s||"").trim(); if(!s) return ""; return /[.!?]$/.test(s)?s:(s+"."); }
+    function _plneBuild(p, nd){
+      var ck=nd.checklist||{}; var sexo=_plneSex(p,nd); var fem=sexo==="Femenino";
+      var SX=sexo?sexo.toUpperCase():"[SEXO]"; var art=fem?"LA":"EL"; var hosp=fem?"HOSPITALIZADA":"HOSPITALIZADO";
+      var hoy=_plneHoy(), hora=_plneAhora();
+      var out=[];
+      out.push("NOTA DE EVOLUCIÓN CIRUGÍA GENERAL");
+      out.push([(p.nombre||"[NOMBRE]"), "EDAD "+(p.edad?String(p.edad).replace(/[^\d]/g,"")+" AÑOS":"[EDAD]"), "FN "+(_plneFnPunto(ck.nota_fn)||"[FN]"), "EXP "+(p.exp||"[EXP]"), "CAMA "+(p.cama||"[CAMA]"), hoy+" "+hora+" HRS"].join(" | "));
+      out.push("");
+      // 1) Diagnósticos
+      var dxs=_plneSplitDx(ck.nota_dx||p.dx||nd.dx||"");
+      var dec=_plneDecada(p.edad);
+      out.push("PACIENTE "+SX+(dec?" EN LA "+dec+" DÉCADA DE LA VIDA":(p.edad?" DE "+String(p.edad).replace(/[^\d]/g,"")+" AÑOS":""))+" "+hosp+" CON EL SIGUIENTE DIAGNÓSTICO: "+(dxs.length?dxs.join(" + "):"[DIAGNÓSTICOS]")+".");
+      out.push("");
+      // 2) Subjetivo
+      var s=_plneVal2(ck.nota_s);
+      out.push("AL PASE DE VISITA "+art+" PACIENTE "+(s?(/^(refiere|niega|se encuentra|sin )/i.test(s)?_plneOra(s):_plneOra("REFIERE "+s)):"REFIERE [SUBJETIVO: DOLOR, TOLERANCIA A LA VÍA ORAL, CANALIZA GASES, EVACUACIONES, NÁUSEA/VÓMITO]."));
+      // 3) Objetivo
+      var vit=[];
+      if(_plneVal2(ck.pm_fc)) vit.push("FC "+_plneVal2(ck.pm_fc)+" LPM");
+      if(_plneVal2(ck.pm_fr)) vit.push("FR "+_plneVal2(ck.pm_fr)+" RPM");
+      if(_plneVal2(ck.pm_temp)) vit.push("TEMPERATURA "+_plneVal2(ck.pm_temp)+" °C");
+      var sat=_plneVal2(ck.pm_sao2), o2=_plneVal2(ck.pm_o2l), via=_plneVal2(ck.pm_o2via);
+      if(ck.pm_vent){ vit.push("SATURACIÓN DE OXÍGENO DE "+(sat||"[__]")+" % BAJO VENTILACIÓN MECÁNICA"+(_plneVal2(ck.pm_vent_modo)?" MODO "+_plneVal2(ck.pm_vent_modo):"")+(_plneVal2(ck.pm_vent_fio2)?" FIO2 "+_plneVal2(ck.pm_vent_fio2)+" %":"")+(_plneVal2(ck.pm_vent_peep)?" PEEP "+_plneVal2(ck.pm_vent_peep):"")); }
+      else if(sat||o2){ vit.push("SATURACIÓN DE OXÍGENO DE "+(sat||"[__]")+" % "+(o2?("CON OXÍGENO SUPLEMENTARIO"+(via?" POR "+via:"")+" A "+o2+" LITROS POR MINUTO"):"AL AIRE AMBIENTE")); }
+      if(_plneVal2(ck.pm_ta)) vit.push("TA "+_plneVal2(ck.pm_ta)+" MMHG");
+      if(_plneVal2(ck.pm_dxtx)) vit.push("GLUCEMIA CAPILAR "+_plneVal2(ck.pm_dxtx)+" MG/DL");
+      var o=_plneVal2(ck.nota_o);
+      var disp=_plneDispositivos(ck);
+      var obj="PACIENTE "+SX+(vit.length?", CON "+vit.join(", "):"")+". "+(o?_plneOra(o):"[EXPLORACIÓN FÍSICA: ESTADO DE ALERTA, MUCOSAS, TÓRAX, PRECORDIO, ABDOMEN, HERIDA QUIRÚRGICA, EXTREMIDADES].");
+      if(disp.lista.length) obj+=" "+_plneOra(disp.lista.join(", "));
+      if(disp.foley) obj+=" "+_plneOra(disp.foley); else if(_plneVal2(ck.pm_uresis)) obj+=" URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":"")+".";
+      var bal=_plneVal2(nd.balance||ck.pm_balance); if(bal) obj+=" BALANCE HÍDRICO "+bal+".";
+      var sang=_plneVal2(nd.sangrado); if(sang) obj+=" SANGRADO: "+_plneOra(sang);
+      out.push(obj);
+      // 4) Laboratorios: control más reciente completo + control previo (lo que hoy no se tomó + tendencia)
+      var snaps=_plneSnaps(nd);
+      if(snaps.length){
+        var hoyL=snaps[0]; var l0=_plneLabsLista(hoyL.labs);
+        var ex0=Array.isArray(hoyL.extra)?hoyL.extra.filter(function(e){return e&&e.nombre&&_plneVal2(e.valor);}).map(function(e){ return String(e.nombre).toUpperCase()+" "+_plneVal2(e.valor); }):[];
+        var txt="LABORATORIOS DEL "+_plneFechaPunto(hoyL.fecha)+": "+l0.concat(ex0).join(", ")+".";
+        if(snaps[1]){
+          var prev=snaps[1]; var keysPrev=Object.keys(prev.labs).filter(function(k){ if(!_plneVal2(prev.labs[k])||/^(ego_|micro_)/.test(k)||k==="fecha_labs") return false; var hoyTiene=_plneVal2(hoyL.labs[k])!==""; return !hoyTiene || PLNE_LAB_TENDENCIA.indexOf(k)>=0; });
+          var l1=_plneLabsLista(prev.labs, keysPrev);
+          if(l1.length) txt+=" LABORATORIOS DEL "+_plneFechaPunto(prev.fecha)+": "+l1.join(", ")+".";
+        }
+        out.push(txt);
+      } else { out.push("LABORATORIOS: [SIN LABORATORIOS REGISTRADOS EN LA TARJETA]."); }
+      // 5) Análisis y plan
+      var an=[];
+      var qx=_plneVal2(nd.qx);
+      an.push("PACIENTE "+SX+" CON LOS DIAGNÓSTICOS YA MENCIONADOS"+(qx?", CON ANTECEDENTE QUIRÚRGICO DE "+qx.replace(/\s+/g," "):"")+".");
+      PLNE_SIS.forEach(function(sis){ var v=_plneVal2(ck["nota_sis_"+sis[0]]); if(v) an.push(_plneOra(sis[1].toUpperCase()+": "+v)); });
+      try{ var ex=JSON.parse(ck.nota_sis_extra||"[]"); if(Array.isArray(ex)) ex.forEach(function(it){ if(it&&_plneVal2(it.txt)) an.push(_plneOra((_plneVal2(it.etq)||"OTRO").toUpperCase()+": "+_plneVal2(it.txt))); }); }catch(_){ }
+      var mx=[];
+      if(ck.npo) mx.push("SE MANTIENE EN AYUNO"+(_plneVal2(ck.npo_dias)?" (DÍA "+_plneVal2(ck.npo_dias)+")":"")); else if(_plneVal2(ck.dieta)) mx.push("CON DIETA "+_plneVal2(ck.dieta));
+      if(ck.npt) mx.push("NUTRICIÓN PARENTERAL"+(_plneVal2(ck.npt_pct)?" AL "+_plneVal2(ck.npt_pct)+" %":"")+(_plneVal2(ck.npt_fecha)?" DESDE EL "+_plneFnPunto(ck.npt_fecha):""));
+      if(ck.atb) mx.push("SE MANTIENE MANEJO ANTIMICROBIANO CON "+(_plneVal2(ck.atb_nombre)||"[ANTIBIÓTICO]")+(_plneVal2(ck.atb_dias)?" (DÍA "+_plneVal2(ck.atb_dias)+")":"")+" CON DURACIÓN GUIADA POR EVOLUCIÓN CLÍNICA Y MARCADORES INFLAMATORIOS");
+      if(ck.tvp) mx.push("TROMBOPROFILAXIS CON "+(ck.tvp_tipo==="enoxaparina"?("ENOXAPARINA "+(_plneVal2(ck.tvp_dosis)||"40 MG")+" SUBCUTÁNEA CADA 24 HORAS"):(_plneVal2(ck.tvp_otro)||_plneVal2(ck.tvp_tipo)||"[TIPO]")));
+      if(ck.cur_necesita||ck.cur_realizada) mx.push("CURACIÓN DIARIA DE HERIDA QUIRÚRGICA");
+      var cults=[];
+      var wlC=(typeof _winlabCultByK!=="undefined"&&_winlabCultByK[pid(p)])?_winlabCultByK[pid(p)]:[];
+      wlC.forEach(function(c){ cults.push(c.tipo.toUpperCase()+" DEL "+_plneFechaPunto(c.fecha)+(c.positivo?" POSITIVO A "+String(c.organismo).toUpperCase():" SIN DESARROLLO")); });
+      (nd.labHistory||[]).forEach(function(sn){ if(sn&&sn.labs&&(sn.labs.micro_tipo_cultivo||sn.labs.micro_organismo)) cults.push(String(sn.labs.micro_tipo_cultivo||"CULTIVO").toUpperCase()+" DEL "+_plneFechaPunto(sn.fecha)+": "+String(sn.labs.micro_organismo||"SIN DESARROLLO").toUpperCase()+(sn.labs.micro_sensibilidades?" (SENSIBLE A "+String(sn.labs.micro_sensibilidades).toUpperCase()+")":"")); });
+      _plneLineas(ck.cultivos).forEach(function(l){ cults.push(l); });
+      if(cults.length) mx.push("CULTIVOS: "+cults.join("; "));
+      var ris=(typeof risForPatient==="function")?risForPatient(p):[];
+      if(ris.length){ var r0=ris[0]; var tit=[r0.modalidad, r0.estudios&&r0.estudios!=="*"?r0.estudios:""].filter(Boolean).join(" ")||"ESTUDIO DE IMAGEN"; var conc=(typeof _risConclusion==="function")?_risConclusion(r0.reporte):_plneVal2(r0.reporte).slice(0,240);
+        mx.push(tit.toUpperCase()+" DEL "+_plneFechaPunto(r0.fecha)+(conc?" CON REPORTE: "+conc:" PENDIENTE DE REPORTE")); }
+      (nd.imagenHistory||[]).slice().sort(function(a,b){ return String(b.fecha||"").localeCompare(String(a.fecha||"")); }).slice(0,1).forEach(function(e){ (e.estudios||[]).forEach(function(est){ if(_plneVal2(est.descripcion)) mx.push((est.tipo||"ESTUDIO")+" DEL "+_plneFechaPunto(e.fecha)+": "+_plneVal2(est.descripcion)); }); });
+      var ic=_plneLineas(ck.interconsultas); if(ic.length) mx.push("INTERCONSULTAS: "+ic.join("; "));
+      var man=_plneVal2(nd.manejo); if(man) mx.push("MANEJO MÉDICO: "+man.replace(/\s+/g," "));
+      if(mx.length) an.push(mx.map(_plneOra).join(" "));
+      var plan=_plneVal2(ck.nota_plan); if(plan) an.push(_plneOra("PLAN: "+plan.replace(/\s+/g," ")));
+      var pend=_plneLineas(nd.pendientes); if(pend.length) an.push("SE SOLICITAN / PENDIENTES: "+pend.join("; ")+".");
+      var estado=_plneVal2(ck.nota_estado)||_plneVal2(p.estado); var prono=_plneVal2(ck.nota_prono);
+      an.push("ESTADO DE SALUD "+(estado||"[ESTADO]")+", CON PRONÓSTICO "+(prono||"RESERVADO A EVOLUCIÓN")+".");
+      out.push(an.join(" "));
+      var firma=[_plneVal2(ck.nota_adscrito)||_plneVal2(p.adscrito), _plneVal2(ck.nota_residente)||_plneVal2(p.residente)].filter(Boolean).join(" | ");
+      out.push(firma||"[ADSCRITO] | [RESIDENTE]");
+      return out.join("\n").toUpperCase();
+    }
     function generarNotaEvo(){
       try{
         var nd=_plneCollect(); if(!nd){ return; }
         if(_plneKey) saveNote(_plneKey, nd);
         var p=patients.find(function(x){return pid(x)===_plneKey;}); if(!p){ alert("Paciente no encontrado."); return; }
-        var ck=nd.checklist; var sexo=_plneSex(p,nd); var sexoL=sexo?sexo.toLowerCase():"";
-        var labs=(typeof PLCDS!=="undefined"&&PLCDS.getActiveLabs)?PLCDS.getActiveLabs(nd):(nd.labs||{});
-        var L=[];
-        PLNE_LABS.forEach(function(pair){ var v=labs[pair[1]]; if(v!==undefined && v!==null && String(v).trim()!=="") L.push(pair[0]+": "+String(v).trim()); });
-        var out=[];
-        out.push("NOTA DE EVOLUCIÓN CIRUGÍA GENERAL");
-        out.push((p.nombre||"")+" | FN "+((ck.nota_fn||"").trim()||"—")+" | EXP "+(p.exp||"")+" | "+(p.cama||"")+" | FECHA "+_plneHoy()+" | "+_plneAhora()+"HRS");
-        out.push("");
-        var dx=(ck.nota_dx||p.dx||"").trim();
-        if(dx) out.push((sexo||"Paciente")+" de "+(p.edad||"")+" años de edad que cursa con los siguientes diagnósticos: "+dx.replace(/\s*,\s*/g,", más ")+".");
-        if((ck.nota_s||"").trim()) out.push("Al pase de visita "+(sexoL.charAt(0)==="f"?"la":"el")+" paciente "+ck.nota_s.trim()+".");
-        var o=(ck.nota_o||"").trim(); var vit=_plneVitStr(ck);
-        if(o||vit){ var par=o?(o.charAt(0).toUpperCase()+o.slice(1)):""; if(par&&vit) par+=". Signos vitales: "+vit; else if(vit) par="Signos vitales: "+vit; out.push(par+"."); }
-        if(L.length){ var lf=_plneFmtFecha(_plneLabFecha(nd)); out.push("Laboratorios del "+(lf||"fecha no disponible")+", los más recientes disponibles: "+L.join(", ")+"."); }
-        var sys=[];
-        PLNE_SIS.forEach(function(s){ var v=(ck["nota_sis_"+s[0]]||"").trim(); if(v) sys.push(s[2]+" "+v); });
-        try{ var ex=JSON.parse(ck.nota_sis_extra||"[]"); if(Array.isArray(ex)) ex.forEach(function(it){ if(it&&it.txt&&it.txt.trim()) sys.push(((it.etq||"").trim().toLowerCase())+" "+it.txt.trim()); }); }catch(_){ }
-        if(sys.length) out.push((sexo||"Paciente")+" de "+(p.edad||"")+" años con los diagnósticos ya mencionados. Por aparatos y sistemas: "+sys.join("; ")+".");
-        if((ck.nota_plan||"").trim()){ var pl="Plan: "+ck.nota_plan.trim()+"."; if((ck.nota_prono||"").trim()) pl+=" Paciente con pronóstico "+ck.nota_prono.trim()+"."; out.push(pl); }
-        var firma=[(ck.nota_adscrito||p.adscrito||"").trim(),(ck.nota_residente||p.residente||"").trim()].filter(Boolean).join(" | ");
-        if(firma){ out.push(""); out.push(firma); }
-        document.getElementById("plne-out-text").textContent=out.join("\n");
+        document.getElementById("plne-out-text").textContent=_plneBuild(p, nd);
         document.getElementById("plne-out").style.display="block";
         document.getElementById("plne-out").scrollIntoView({behavior:"smooth",block:"nearest"});
       }catch(e){ alert("Error generando la nota: "+(e&&e.message||e)); }
@@ -9468,6 +9626,40 @@ function plExportBackup() {
       }
     }
 
+    // Columnas de `notes` que baja la app (entrega viaja dentro de checklist.__pl_note_meta).
+    const NOTES_SELECT_COLS = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,checklist,lab_history,imagen_history";
+    // Fila remota de `notes` → nota de la app, sobre la copia local (mismo mapeo que usa la carga inicial).
+    function _noteFromRemoteRow(sn, localNote) {
+      const nd = migrateNote(localNote);
+      nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
+      nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
+      nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
+      if (sn.entrega !== undefined) nd.entrega = sn.entrega || nd.entrega || "";
+      nd.checklist = { ...(nd.checklist || {}), ...(isPlainObject(sn.checklist) ? sn.checklist : {}) };
+      nd.labHistory = Array.isArray(sn.lab_history) ? sn.lab_history : (nd.labHistory || []);
+      nd.imagenHistory = Array.isArray(sn.imagen_history) ? sn.imagen_history : (nd.imagenHistory || []);
+      return migrateNote(nd);
+    }
+    // Filas de winlab_labs SIN la ventana de 4 días, para pacientes cuya nota no tiene labs (13 oct
+    // 2026): un paciente recreado (cambio de cama hecho como borrar+crear, reingreso) cuyo último
+    // scrape tenía >4 días quedaba sin labs aunque WinLab ya los tuviera. Devuelve cuántas filas
+    // nuevas entraron a winlabByExp.
+    async function _winlabFetchForPatients(rows) {
+      const vars = new Set();
+      (rows || []).forEach(p => getExpVariants(p && p.exp).forEach(v => { const s = String(v || "").trim(); if (s && /^[\w\-.\/]+$/.test(s)) vars.add(s); }));
+      if (!vars.size || vars.size > 300) return 0;
+      const q = "select=exp,paciente,fecha,scraped_at,data&order=scraped_at.desc&limit=200&exp=in.(" + Array.from(vars).map(encodeURIComponent).join(",") + ")";
+      const wl = await retryNetwork(() => _sGet("winlab_labs", q), 2, 200);
+      let added = 0;
+      winlabByExp = winlabByExp || {};
+      (wl || []).forEach(r => {
+        const e = String(r.exp || "").trim(); if (!e) return;
+        if (!winlabByExp[e] || (r.scraped_at && r.scraped_at > (winlabByExp[e].scraped_at || ""))) { winlabByExp[e] = r; added++; }
+      });
+      if (added) _winlabExpIndex = null;
+      return added;
+    }
+
     // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
     async function supaLoadAll() {
       _lastSyncErrorDetail = "";
@@ -9482,8 +9674,7 @@ function plExportBackup() {
           // (bug de INSERT sin on_conflict ya corregido), el noteMap[patient_id]
           // siempre termine con la nota MÁS RECIENTE. limit=500 evita timeout.
           // Nota: entrega se sincroniza vía checklist.__pl_note_meta, no como columna separada.
-          const notesSelect = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,checklist,lab_history,imagen_history";
-          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + notesSelect + "&order=updated_at.desc&limit=500"), 2, 200);
+          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + NOTES_SELECT_COLS + "&order=updated_at.desc&limit=500"), 2, 200);
         }
 
         if (!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
@@ -9515,6 +9706,11 @@ function plExportBackup() {
 
         const noteMap = {};
         (nts || []).forEach(n => { noteMap[n.patient_id] = n; });
+        // Pacientes sin labs en la nota: traer su último scrape de WinLab aunque tenga >4 días.
+        try {
+          const sinLabs = pts.filter(r => r && r.exp && !(noteMap[r.id] && Array.isArray(noteMap[r.id].lab_history) && noteMap[r.id].lab_history.length));
+          if (sinLabs.length) await _winlabFetchForPatients(sinLabs);
+        } catch (e) { console.warn("winlab_labs (sin ventana):", e?.message || e); }
 
         const loadedPatients = [];
         const loadedNotes = {};
@@ -9576,15 +9772,7 @@ function plExportBackup() {
           const localNote = lsGetNote(k);
           if (sn) {
             _noteBaselineSet(row.id, sn);
-            const nd = migrateNote(localNote);
-            nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
-            nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
-            nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
-            if (sn.entrega !== undefined) nd.entrega = sn.entrega || nd.entrega || "";
-            nd.checklist = { ...(nd.checklist || {}), ...(isPlainObject(sn.checklist) ? sn.checklist : {}) };
-            nd.labHistory = Array.isArray(sn.lab_history) ? sn.lab_history : (nd.labHistory || []);
-            nd.imagenHistory = Array.isArray(sn.imagen_history) ? sn.imagen_history : (nd.imagenHistory || []);
-            loadedNotes[k] = migrateNote(nd);
+            loadedNotes[k] = _noteFromRemoteRow(sn, localNote);
           } else {
             loadedNotes[k] = localNote;
           }
@@ -10196,6 +10384,7 @@ function plExportBackup() {
       } catch (e) { safeLog("[RT] ris_estudios subscription failed:", e); }
     }
 
+    const _rtInsertPending = new Set(); // ids de patients cuyo INSERT Realtime está bajando su nota
     function handlePatientChange(payload) {
       const { new: _chkNew, old: _chkOld } = payload;
       const _chkId = (_chkNew && _chkNew.id) || (_chkOld && _chkOld.id);
@@ -10234,9 +10423,32 @@ function plExportBackup() {
             safeInfo("[RT] Patient inserted (enlazado a alta local):", p.nombre);
             return;
           }
-          patients.push(p);
-          noteData[newK] = noteData[newK] || lsGetNote(newK);
-          lsSavePatients(patients);
+          // (13 oct 2026) Antes de mostrar la tarjeta, bajar su nota de la nube. Si el paciente
+          // REAPARECE (cambio de cama hecho como borrar+crear en la hoja, reingreso), el trigger de
+          // Supabase ya le restauró la nota archivada (labs, pendientes, checklist); sin esta lectura
+          // la tarjeta nacía vacía y el primer sync de WinLab subía un labHistory parcial que PISABA
+          // la restauración. También se traen sus labs de WinLab sin la ventana de 4 días.
+          if (_rtInsertPending.has(newRow.id)) return;
+          _rtInsertPending.add(newRow.id);
+          (async function () {
+            try {
+              const rows = await _sGet("notes", "patient_id=eq." + encodeURIComponent(newRow.id) + "&select=" + NOTES_SELECT_COLS);
+              const sn = rows && rows[0];
+              if (sn) { _noteBaselineSet(newRow.id, sn); noteData[newK] = _noteFromRemoteRow(sn, lsGetNote(newK)); lsSaveNote(newK, noteData[newK]); }
+              else noteData[newK] = noteData[newK] || lsGetNote(newK);
+            } catch (e) { safeLog("[RT] nota del paciente nuevo:", e); noteData[newK] = noteData[newK] || lsGetNote(newK); }
+            finally { _rtInsertPending.delete(newRow.id); }
+            if (patients.some(x => x._supa_id === newRow.id)) return;
+            patients.push(p);
+            lsSavePatients(patients);
+            buildEspFilters(); renderViewSoft();
+            safeInfo("[RT] Patient inserted:", p.nombre);
+            try {
+              _winlabFetchForPatients([p]).then(function (n) { return n ? applyWinlabSyncToPatients({ verbose: false }) : null; })
+                .then(function (st) { if (st) _rerenderCard(newK); }).catch(function (e) { safeLog("[RT] winlab paciente nuevo:", e); });
+            } catch (_) {}
+          })();
+          return;
         }
         buildEspFilters(); renderViewSoft();
         safeInfo("[RT] Patient inserted:", p.nombre);
@@ -11522,6 +11734,9 @@ function plExportBackup() {
       updateCourseCountdown();
       initNoOlvidarSync();
 
+      // Estudios del visor RIS de las últimas 72 h → novedades en la entrega de guardia (idempotente).
+      try { if (patients && patients.length) _entregaAutoFromRis(patients); } catch (e) { safeLog("[entrega auto RIS init]", e); }
+
       // ── WinLab Auto-sync inicial ──────────────────────────────────────────
       // Si el feature flag está activo, en cuanto patients + winlabByExp estén
       // cargados, aplicamos sync para que las tarjetas aparezcan ya con labs
@@ -12788,6 +13003,122 @@ function plExportBackup() {
       _rerenderCard(k);
     }
 
+    // ── NOVEDADES AUTOMÁTICAS EN LA ENTREGA DE GUARDIA (13 oct 2026) ───────────────────
+    // Todo lo nuevo que llega solo (labs de WinLab con alteraciones, estudios del visor RIS,
+    // cultivos) se anota en la caja "Entrega de guardia" como "dd-mm-aaaa: texto", una sola vez.
+    // Idempotente entre dispositivos: cada novedad lleva un id que se guarda en
+    // checklist.__entrega_auto (viaja con la nota) y además se omite si la línea ya está escrita.
+    const ENTREGA_AUTO_KEY = "__entrega_auto";
+    function _entregaFmtFecha(iso) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+      if (m) return m[3] + "-" + m[2] + "-" + m[1];
+      const d = new Date(); return String(d.getDate()).padStart(2, "0") + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + d.getFullYear();
+    }
+    // items: [{ id, fecha (AAAA-MM-DD), text }] → líneas nuevas agregadas (0 si nada)
+    function _entregaAutoAppend(k, items) {
+      if (!k || !Array.isArray(items) || !items.length) return 0;
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      const reg = Array.isArray(nd.checklist[ENTREGA_AUTO_KEY]) ? nd.checklist[ENTREGA_AUTO_KEY].slice() : [];
+      const cur = toSafeString(nd.entrega);
+      const lines = [];
+      items.forEach(function (it) {
+        if (!it || !it.id || !it.text) return;
+        if (reg.indexOf(it.id) >= 0) return;
+        const line = _entregaFmtFecha(it.fecha) + ": " + String(it.text).replace(/\s+/g, " ").trim();
+        reg.push(it.id);
+        if (cur.indexOf(line) >= 0 || lines.indexOf(line) >= 0) return;
+        lines.push(line);
+      });
+      if (reg.length > 150) reg.splice(0, reg.length - 150);
+      nd.checklist[ENTREGA_AUTO_KEY] = reg;
+      if (!lines.length) {
+        // Solo cambió el registro de ids: guardar sin tocar el texto.
+        noteData[k] = nd; _saveNoteNow(k, nd, "ck_entrega_auto");
+        return 0;
+      }
+      nd.entrega = cur ? (cur.replace(/\s+$/, "") + "\n" + lines.join("\n")) : lines.join("\n");
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_entrega_auto");
+      noteData[k] = nd;
+      saveNote(k, nd);
+      _dirtyFields[k].delete("entrega"); _dirtyFields[k].delete("ck_entrega_auto");
+      try {
+        const card = document.getElementById("card-" + k);
+        if (card && !card.contains(document.activeElement)) {
+          const ta = card.querySelector("textarea[data-field='entrega']");
+          if (ta) ta.value = nd.entrega;
+        }
+      } catch (_) {}
+      return lines.length;
+    }
+    // Labs: alteraciones (LAB_QUICK crit/abn) de los analitos NUEVOS o que cambiaron en el sync.
+    function _entregaItemsFromLabs(histAfter, histBefore) {
+      const before = {};
+      (histBefore || []).forEach(function (s) { if (s && s.fecha) before[s.fecha] = s.labs || {}; });
+      const labelMap = {};
+      if (typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)) LAB_FIELDS.forEach(function (f) { labelMap[f.key] = f.label; });
+      const out = [];
+      (histAfter || []).forEach(function (s) {
+        if (!s || !s.fecha || !s.labs) return;
+        const b = before[s.fecha] || {};
+        const found = [];
+        Object.keys(s.labs).forEach(function (key) {
+          if (key.indexOf("micro_") === 0 || key.indexOf("ego_") === 0 || key === "fecha_labs") return;
+          const v = s.labs[key];
+          if (v === undefined || v === null || String(v).trim() === "") return;
+          if (String(b[key] === undefined || b[key] === null ? "" : b[key]) === String(v)) return; // ya estaba igual
+          const num = parseLabNumber(v);
+          if (!Number.isFinite(num) || typeof LAB_QUICK === "undefined" || !LAB_QUICK[key]) return;
+          const q = LAB_QUICK[key](num);
+          if (!q || (q.sev !== "crit" && q.sev !== "abn")) return;
+          found.push({ key: key, sev: q.sev, title: String(q.title || "").replace(/\s*[—-]\s*.*$/, "").trim(), val: String(v).trim() });
+        });
+        if (!found.length) return;
+        found.sort(function (a, b2) { return (a.sev === "crit" ? 0 : 1) - (b2.sev === "crit" ? 0 : 1); });
+        const shown = found.slice(0, 7).map(function (f) { return f.title + " (" + (labelMap[f.key] || f.key) + " " + f.val + ")"; });
+        const extra = found.length - shown.length;
+        out.push({ id: "lab:" + s.fecha + ":" + found.map(function (f) { return f.key; }).sort().join(","), fecha: s.fecha,
+          text: "Labs: " + shown.join(", ") + (extra > 0 ? " y " + extra + " más" : "") });
+      });
+      return out;
+    }
+    function _risConclusion(txt) {
+      const t = String(txt || "").replace(/\s+/g, " ").trim();
+      if (!t) return "";
+      const m = /(CONCLUSI[OÓ]N(?:ES)?|IMPRESI[OÓ]N DIAGN[OÓ]STICA|DIAGN[OÓ]STICO(?:S)?(?:\s+RADIOL[OÓ]GICO)?|OPINI[OÓ]N)\s*[:.\-–]?\s*/i.exec(t);
+      let c = m ? t.slice(m.index + m[0].length) : t;
+      c = c.replace(/\b(ATENTAMENTE\b.*|DR[A]?\.?\s+[A-ZÁÉÍÓÚÑ]{2,}.*|M[EÉ]DICO RADI[OÓ]LOGO.*|C[EÉ]DULA.*)$/i, "").trim();
+      return c.length > 240 ? c.slice(0, 237).replace(/\s+\S*$/, "") + "…" : c;
+    }
+    // Estudios del visor RIS: nuevos (robot en las últimas 72 h) y los que acaban de recibir reporte.
+    function _entregaItemsFromRis(list) {
+      const since = Date.now() - 72 * 3600e3;
+      const out = [];
+      (list || []).forEach(function (r) {
+        if (!r || !r.id) return;
+        const sc = r.scraped_at ? new Date(r.scraped_at).getTime() : 0;
+        if (!sc || sc < since) return;
+        const titulo = [r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" ") || "Estudio de imagen";
+        const rep = toSafeString(r.reporte).trim();
+        if (rep) out.push({ id: "ris:" + r.id + ":rep", fecha: r.fecha, text: titulo + " (RIS): " + _risConclusion(rep) });
+        else out.push({ id: "ris:" + r.id, fecha: r.fecha, text: titulo + " (RIS): estudio realizado, reporte pendiente" });
+      });
+      return out;
+    }
+    function _entregaItemsFromCultures(cults) {
+      const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
+      return (cults || []).filter(function (c) { return c && c.fecha && c.fecha >= since; }).map(function (c) {
+        return { id: "cult:" + c.fecha + "|" + c.tipo + "|" + c.organismo, fecha: c.fecha,
+          text: c.positivo ? (c.tipo + " POSITIVO a " + c.organismo) : (c.tipo + " " + String(c.organismo || "sin desarrollo").toLowerCase()) };
+      });
+    }
+    function _entregaAutoFromRis(pts) {
+      (pts || patients || []).forEach(function (p) {
+        try { const items = _entregaItemsFromRis(risForPatient(p)); if (items.length) _entregaAutoAppend(pid(p), items); } catch (e) { safeLog("entrega auto RIS:", e); }
+      });
+    }
+
     // ── No olvidar por paciente ────────────────────────────────────────
     function renderPtReminders(nd, k) {
       const reminders = (nd.checklist && nd.checklist._ptReminders) || [];
@@ -13910,6 +14241,7 @@ function plExportBackup() {
           if (cardEl && !cardEl.contains(document.activeElement)) cardEl.outerHTML = isSimpleEsp(p.esp, noteData[k] || defaultData()) ? renderSimpleCard(p, noteData[k] || defaultData(), k) : renderFullCard(p, noteData[k] || defaultData(), k);
         });
         if (affected.length && eventType !== "DELETE") _showRTToast("🩻 Estudio de imagen " + (row && row.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
+        if (eventType !== "DELETE") _entregaAutoFromRis(affected);
         _refreshJumpBar();
       } catch (err) { safeLog("handleRisChange:", err); }
     }
@@ -25059,11 +25391,22 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     // Sin sesión no hay acceso (el rol anon ya no tiene permisos): evitar el 401 antes del
     // login. Tras autenticarse la página se recarga y el timer de arranque vuelve a llamar aquí.
     if (typeof _userAccessToken === "undefined" || !_userAccessToken) return;
+    // La vista winlab_cultivos recorre TODOS los reportes de winlab_labs (70 000+): sin filtros tardaba
+    // >60 s y PostgREST la cortaba, así que la caja "Cultivos (lab)" nunca aparecía. Con exp del censo
+    // y 45 días de fecha baja a ~2 s. Si el censo aún no cargó, reintenta un poco después.
+    var _exps = [];
+    try { _exps = (Array.isArray(patients) ? patients : []).map(function (p) { return String((p && p.exp) || "").trim(); }).filter(function (e) { return e && /^[\w\-.\/]+$/.test(e); }); } catch (_) {}
+    if (!_exps.length) {
+      loadCultivos._retries = (loadCultivos._retries || 0) + 1;
+      if (loadCultivos._retries <= 8) setTimeout(function () { loadCultivos(force); }, 5000);
+      return;
+    }
     try {
+      var _desde = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
       // _sGet(table, qs) → fetch a PostgREST con la anon key del app. Devuelve array.
       var rows = await _sGet(
         "winlab_cultivos",
-        "select=exp,cama,nombre,fecha,tipo,germen,resultado,texto_origen&order=fecha.desc"
+        "select=exp,cama,nombre,fecha,tipo,germen,resultado,texto_origen&order=fecha.desc&fecha=gte." + _desde + "&exp=in.(" + _exps.map(encodeURIComponent).join(",") + ")"
       );
       var map = {};
       (rows || []).forEach(function (r) {

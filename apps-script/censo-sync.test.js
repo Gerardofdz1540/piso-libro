@@ -19,7 +19,11 @@ function makeSandbox(state) {
   const sb = {
     console,
     Logger: { log: (m) => logs.push(String(m)) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k === "SUPABASE_KEY" ? "svc" : state.props && state.props[k] || null) }) },
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (k) => (k === "SUPABASE_KEY" ? "svc" : state.props && state.props[k] || null),
+      setProperty: (k, v) => { state.props = state.props || {}; state.props[k] = v; },
+      deleteProperty: (k) => { if (state.props) delete state.props[k]; }
+    }) },
     CacheService: { getScriptCache: () => ({ get: (k) => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
     MailApp: { sendEmail: (to, subject, body) => mails.push({ to, subject, body }) },
     Session: { getEffectiveUser: () => ({ getEmail: () => "owner@example.com" }) },
@@ -34,7 +38,7 @@ function makeSandbox(state) {
         calls.push({ m, u, body });
         const h = state.handler && state.handler(m, u, body, calls);
         if (h) return resp(h.code, h.body);
-        if (m === "GET" && u.startsWith("/rest/v1/patients?select=id,cama,exp,updated_by")) return resp(200, state.cur || []);
+        if (m === "GET" && u.startsWith("/rest/v1/patients?select=id,cama,exp,nombre,updated_by")) return resp(200, state.cur || []);
         if (m === "GET" && /^\/rest\/v1\/patients\?id=eq\./.test(u)) {
           const id = decodeURIComponent(u.match(/id=eq\.([^&]+)/)[1]);
           const row = (state.full || {})[id];
@@ -59,6 +63,52 @@ let pass = 0, fail = 0;
 const check = (name, cond, extra) => { if (cond) { pass++; console.log("PASS " + name); } else { fail++; console.log("FAIL " + name + (extra ? " :: " + extra : "")); } };
 const row = (cama, exp, extra) => Object.assign({ cama, nombre: "P " + exp, exp, es_mio: true }, extra || {});
 const seq = (calls, pred) => calls.findIndex(pred);
+// Mapa "fuera de la hoja desde…" ya vencido (20 min) para los ids dados → el retiro procede.
+const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntries(ids.map((id) => [id, Date.now() - 20 * 60000]))) });
+
+// ── 0) Periodo de gracia: la primera corrida sin el paciente NO lo retira (corte/pegado en la hoja)
+{
+  const cur = [{ id: "a1", cama: "3-101", exp: "1", updated_by: "sheet-sync" }, { id: "b1", cama: "UCI 7", exp: "2", updated_by: "sheet-sync" }];
+  const full = { b1: { id: "b1", cama: "UCI 7", nombre: "B DOS", exp: "2", notes: [{ patient_id: "b1", lab_history: [{ fecha: "2026-10-11", labs: { hb: "9" } }] }] } };
+  const sheet = [row("3-101", "1")]; for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i)));
+  const st = { cur, full, props: {} };
+  const { sb, calls } = makeSandbox(st);
+  const retired = sb.syncPatients_("svc", sheet);
+  const since = JSON.parse(st.props.PL_MISSING_SINCE || "{}");
+  check("T0 gracia: UCI 7 desaparece de la hoja → NO se archiva ni borra; se anota desde cuándo falta; el upsert sigue",
+    retired === 0 && !calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive")) && typeof since.b1 === "number" && Date.now() - since.b1 < 5000
+    && calls.some((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")), JSON.stringify({ retired, since, calls: calls.map((c) => c.m + " " + c.u) }));
+  // 2ª corrida (3 s después): la fila ya está pegada en 3-162 → se MUEVE (PATCH), nada se borra y sale del mapa
+  const sheet2 = sheet.concat([row("3-162", "2")]);
+  const { sb: sb2, calls: c2 } = makeSandbox(st);
+  sb2.syncPatients_("svc", sheet2);
+  const patches = c2.filter((c) => c.m === "PATCH");
+  check("T0b pegado en 3-162 dentro de la gracia → PATCH de cama b1→3-162, sin DELETE, y b1 sale del mapa de ausentes",
+    patches.length === 1 && patches[0].u.includes("id=eq.b1") && patches[0].body.cama === "3-162" && !c2.some((c) => c.m === "DELETE")
+    && !JSON.parse(st.props.PL_MISSING_SINCE || "{}").b1, JSON.stringify({ patches, props: st.props }));
+  // Egreso real: sigue ausente 20 min → ahora sí se archiva y se retira
+  const st3 = { cur, full, props: missingOld(["b1"]) };
+  const { sb: sb3, calls: c3 } = makeSandbox(st3);
+  const r3 = sb3.syncPatients_("svc", sheet);
+  check("T0c ausente >12 min → archive + DELETE (egreso real)", r3 === 1 && c3.some((c) => c.u.startsWith("/rest/v1/archive")) && c3.some((c) => c.m === "DELETE" && c.u.includes("id=eq.b1")));
+}
+
+// ── 0d) Expediente corregido (misma cama, misma persona, otro exp) → PATCH del exp, nunca archivo ─
+{
+  const cur = [{ id: "a1", cama: "3-101", exp: "26-1234", nombre: "GARCIA LOPEZ JUAN", updated_by: "sheet-sync" }];
+  const sheet = [row("3-101", "26-12345", { nombre: "GARCIA LOPEZ JUAN" })]; for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i)));
+  const { sb, calls } = makeSandbox({ cur, props: {} });
+  sb.syncPatients_("svc", sheet);
+  const patches = calls.filter((c) => c.m === "PATCH");
+  check("T0d typo de expediente corregido en la hoja: PATCH exp sobre la misma fila; sin archive ni DELETE",
+    patches.length === 1 && patches[0].u.includes("id=eq.a1") && patches[0].body.exp === "26-12345" && !calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive")), JSON.stringify(patches));
+  // Otra persona en la misma cama (nombre distinto) → sigue siendo reasignación (archivo inmediato)
+  const cur2 = [{ id: "a1", cama: "3-101", exp: "26-1234", nombre: "GARCIA LOPEZ JUAN", updated_by: "sheet-sync" }];
+  const sheet2 = [row("3-101", "26-9999", { nombre: "PEREZ RUIZ MARIA" })]; for (let i = 0; i < 12; i++) sheet2.push(row("4-" + (10 + i), String(100 + i)));
+  const { sb: sb2, calls: c2 } = makeSandbox({ cur: cur2, full: { a1: { id: "a1", cama: "3-101", exp: "26-1234", nombre: "GARCIA LOPEZ JUAN", notes: [] } }, props: {} });
+  sb2.syncPatients_("svc", sheet2);
+  check("T0e otra persona en la cama → CAMA REASIGNADA (archive + DELETE), sin PATCH", c2.some((c) => c.u.startsWith("/rest/v1/archive")) && c2.some((c) => c.m === "DELETE") && !c2.some((c) => c.m === "PATCH"));
+}
 
 // ── 1) Retiro: archivar (con nota mapeada) ANTES de borrar nota y fila ───────────────────────────
 {
@@ -66,7 +116,7 @@ const seq = (calls, pred) => calls.findIndex(pred);
   const full = { b1: { id: "b1", cama: "3-102", nombre: "B DOS", exp: "2", dx: "DX", esp: "CG", notes: [{ patient_id: "b1", pendientes: "nota B", lab_history: [{ fecha: "2026-10-08", labs: { hb: "12" } }], checklist: { atb: true } }] } };
   const sheet = [row("3-101", "1")].concat([]).concat([]); // 10+ filas para pasar la guarda
   for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i)));
-  const { sb, calls } = makeSandbox({ cur, full });
+  const { sb, calls } = makeSandbox({ cur, full, props: missingOld(["b1"]) });
   const retired = sb.syncPatients_("svc", sheet);
   const iArc = seq(calls, (c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive"));
   const iDelN = seq(calls, (c) => c.m === "DELETE" && c.u.includes("/notes?patient_id=eq.b1"));
@@ -85,7 +135,7 @@ const seq = (calls, pred) => calls.findIndex(pred);
   const cur = [{ id: "b1", cama: "3-102", exp: "2", updated_by: "sheet-sync" }];
   const full = { b1: { id: "b1", cama: "3-102", nombre: "B", exp: "2", notes: [] } };
   const sheet = []; for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i)));
-  const { sb, calls } = makeSandbox({ cur, full, handler: (m, u) => (m === "POST" && u.startsWith("/rest/v1/archive") ? { code: 500, body: "boom" } : null) });
+  const { sb, calls } = makeSandbox({ cur, full, props: missingOld(["b1"]), handler: (m, u) => (m === "POST" && u.startsWith("/rest/v1/archive") ? { code: 500, body: "boom" } : null) });
   const retired = sb.syncPatients_("svc", sheet);
   check("T2 archive falla → sin DELETE, retired=0, upsert sigue", retired === 0 && !calls.some((c) => c.m === "DELETE") && calls.some((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")));
 }
@@ -138,7 +188,7 @@ const seq = (calls, pred) => calls.findIndex(pred);
   const cur = [{ id: "a1", cama: "3-101", exp: "1", updated_by: "sheet-sync" }, { id: "d1", cama: "3-104", exp: "4", updated_by: "sheet-sync" }, { id: "d2", cama: "3-105", exp: "4", updated_by: "app" }];
   const full = { a1: { id: "a1", cama: "3-101", exp: "1", nombre: "A", notes: [] }, d1: { id: "d1", cama: "3-104", exp: "4", nombre: "D", notes: [] } };
   const sheet = [row("3-101", "9"), row("3-105", "4")]; for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i)));
-  const { sb, calls } = makeSandbox({ cur, full });
+  const { sb, calls } = makeSandbox({ cur, full, props: missingOld(["d1"]) });
   sb.syncPatients_("svc", sheet);
   const arcs = calls.filter((c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive")).map((c) => c.body.patient_data.exp + "|" + c.body.note_data._egreso);
   check("T5 reasignación archiva a1 con etiqueta CAMA REASIGNADA; duplicado d1 se retira; d2 intacto; sin PATCH",
