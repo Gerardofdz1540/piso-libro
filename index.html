@@ -7186,26 +7186,46 @@ function plExportBackup() {
     // Cultivo parseado del PDF por el robot (13 oct 2026): rep.cultivo = { tipo, resultado, germenes,
     // blee, carbapenemasa, mrsa, ufc, antibiograma:[{antibiotico,cim,interp}] } y rep.cultivo_texto
     // (texto íntegro del reporte). Tiene prioridad sobre la tabla, que solo dice "POSITIVO".
+    // Devuelve UNA entrada por muestra del reporte (hemocultivo periférico/central, urocultivo…); el
+    // formato v1 (sin `secciones`) se convierte a una sola entrada.
+    function _abLists(ab) {
+      var list = Array.isArray(ab) ? ab.filter(function (a) { return a && a.antibiotico; }) : [];
+      var fmt = function (a) { return a.antibiotico + (a.cim ? " " + a.cim : ""); };
+      return {
+        sensibles: list.filter(function (a) { return a.interp === "S" || a.interp === "SDD"; }).map(fmt),
+        intermedios: list.filter(function (a) { return a.interp === "I"; }).map(fmt),
+        resistentes: list.filter(function (a) { return a.interp === "R"; }).map(fmt)
+      };
+    }
     function _cultFromPdf(rep) {
       var c = rep && rep.cultivo; if (!c || typeof c !== "object") return null;
-      var germ = Array.isArray(c.germenes) ? c.germenes.filter(Boolean) : [];
-      var flags = [];
-      if (c.blee) flags.push("BLEE"); if (c.carbapenemasa) flags.push("carbapenemasa"); if (c.mrsa) flags.push("MRSA");
-      var ab = Array.isArray(c.antibiograma) ? c.antibiograma.filter(function (a) { return a && a.antibiotico; }) : [];
-      var pos = c.resultado === "POSITIVO";
-      var organismo = pos ? ((germ.join(" + ") || "POSITIVO (germen en el reporte)") + (flags.length ? " (" + flags.join(", ") + ")" : "")) : (c.resultado === "PENDIENTE" ? "Pendiente (preliminar)" : "Sin desarrollo");
-      return {
-        tipo: c.tipo || "Cultivo", organismo: organismo, muestra: c.muestra || "", positivo: pos, pendiente: c.resultado === "PENDIENTE",
-        ufc: c.ufc || "", flags: flags,
-        sensibles: ab.filter(function (a) { return a.interp === "S" || a.interp === "SDD"; }).map(function (a) { return a.antibiotico + (a.cim ? " " + a.cim : ""); }),
-        intermedios: ab.filter(function (a) { return a.interp === "I"; }).map(function (a) { return a.antibiotico + (a.cim ? " " + a.cim : ""); }),
-        resistentes: ab.filter(function (a) { return a.interp === "R"; }).map(function (a) { return a.antibiotico + (a.cim ? " " + a.cim : ""); }),
-        texto: toSafeString(rep.cultivo_texto), pdf: true
-      };
+      var texto = toSafeString(rep.cultivo_texto);
+      var secs = Array.isArray(c.secciones) && c.secciones.length ? c.secciones : [{
+        tipo: c.tipo, muestra: c.muestra, resultado: c.resultado, detalle: "",
+        germenes: (Array.isArray(c.germenes) ? c.germenes : []).map(function (g) { return { nombre: String(g), flags: [], ufc: c.ufc || "", antibiograma: [] }; }),
+        antibiograma: c.antibiograma || []
+      }];
+      return secs.map(function (s) {
+        var germs = (Array.isArray(s.germenes) ? s.germenes : []).filter(function (g) { return g && g.nombre; }).map(function (g) {
+          var l = _abLists(g.antibiograma);
+          return { nombre: g.nombre, flags: Array.isArray(g.flags) ? g.flags : [], ufc: g.ufc || "", deteccion: g.deteccion || "", sensibles: l.sensibles, intermedios: l.intermedios, resistentes: l.resistentes };
+        });
+        var pos = s.resultado === "POSITIVO";
+        var pend = s.resultado === "PENDIENTE" || s.resultado === "SIN MUESTRA";
+        var organismo = pos ? (germs.map(function (g) { return g.nombre + (g.flags.length ? " (" + g.flags.join(", ") + ")" : ""); }).join(" + ") || "POSITIVO (germen en el reporte)")
+          : (s.resultado === "SIN MUESTRA" ? "Sin muestra" : (pend ? "En proceso" : ("Sin desarrollo" + (s.detalle && /\d/.test(s.detalle) ? " (" + s.detalle + ")" : ""))));
+        var lists = _abLists(s.antibiograma);
+        return {
+          tipo: s.tipo || c.tipo || "Cultivo", organismo: organismo, muestra: s.muestra || "", positivo: pos, pendiente: pend, detalle: s.detalle || "",
+          ufc: (germs.map(function (g) { return g.ufc; }).find(Boolean)) || "", germenes: germs,
+          sensibles: lists.sensibles, intermedios: lists.intermedios, resistentes: lists.resistentes,
+          texto: texto, pdf: true
+        };
+      });
     }
     function extractWinlabCulture(rep) {
       if (!rep) return null;
-      var fromPdf = _cultFromPdf(rep); if (fromPdf) return fromPdf;
+      var fromPdf = _cultFromPdf(rep); if (fromPdf) return fromPdf.length === 1 ? fromPdf[0] : fromPdf;
       if (!Array.isArray(rep.valores)) return null;
       var isCult = false, organismo = "", muestra = "", neg = false, pos = false, negDias = "";
       for (var i = 0; i < rep.valores.length; i++) {
@@ -7278,13 +7298,15 @@ function plExportBackup() {
         if (hasHeaders && isHeader(rep)) { curMatches = headerMatches(rep); continue; }
         if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
         if (!curMatches) continue;   // reporte de OTRO paciente del mismo apellido → ignorar
-        var cult = extractWinlabCulture(rep);
-        if (!cult) continue;
+        var cultRes = extractWinlabCulture(rep);
+        if (!cultRes) continue;
         var fecha = extractReportDate(rep) || fallbackFecha || "";
-        var key = fecha + "|" + cult.tipo + "|" + cult.organismo;
-        if (seen[key]) continue; seen[key] = 1;
-        out.push({ fecha: fecha, tipo: cult.tipo, organismo: cult.organismo, muestra: cult.muestra, positivo: cult.positivo, pendiente: !!cult.pendiente,
-          sensibles: cult.sensibles || [], intermedios: cult.intermedios || [], resistentes: cult.resistentes || [], ufc: cult.ufc || "", texto: cult.texto || "", pdf: !!cult.pdf });
+        (Array.isArray(cultRes) ? cultRes : [cultRes]).forEach(function (cult) {
+          var key = fecha + "|" + cult.tipo + "|" + cult.organismo;
+          if (seen[key]) return; seen[key] = 1;
+          out.push({ fecha: fecha, tipo: cult.tipo, organismo: cult.organismo, muestra: cult.muestra, positivo: cult.positivo, pendiente: !!cult.pendiente, detalle: cult.detalle || "",
+            germenes: cult.germenes || [], sensibles: cult.sensibles || [], intermedios: cult.intermedios || [], resistentes: cult.resistentes || [], ufc: cult.ufc || "", texto: cult.texto || "", pdf: !!cult.pdf });
+        });
       }
       out.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
       return out;
@@ -8361,8 +8383,7 @@ function plExportBackup() {
       var wlC=(typeof _winlabCultByK!=="undefined"&&_winlabCultByK[pid(p)])?_winlabCultByK[pid(p)]:[];
       wlC.forEach(function(c){
         if(c.pendiente) { cults.push(c.tipo.toUpperCase()+" DEL "+_plneFechaPunto(c.fecha)+" EN PROCESO"); return; }
-        var ab=[]; if((c.sensibles||[]).length) ab.push("SENSIBLE A "+c.sensibles.join(", ").toUpperCase()); if((c.resistentes||[]).length) ab.push("RESISTENTE A "+c.resistentes.join(", ").toUpperCase());
-        cults.push(c.tipo.toUpperCase()+" DEL "+_plneFechaPunto(c.fecha)+(c.positivo?" POSITIVO A "+String(c.organismo).toUpperCase()+(ab.length?" ("+ab.join("; ")+")":""):" SIN DESARROLLO"));
+        cults.push(c.tipo.toUpperCase()+" DEL "+_plneFechaPunto(c.fecha)+" "+(c.positivo ? _cultTexto(c, true).slice(c.tipo.length+1) : "SIN DESARROLLO"+(c.detalle&&/\d/.test(c.detalle)?" ("+c.detalle+")":"")));
       });
       (nd.labHistory||[]).forEach(function(sn){ if(sn&&sn.labs&&(sn.labs.micro_tipo_cultivo||sn.labs.micro_organismo)) cults.push(String(sn.labs.micro_tipo_cultivo||"CULTIVO").toUpperCase()+" DEL "+_plneFechaPunto(sn.fecha)+": "+String(sn.labs.micro_organismo||"SIN DESARROLLO").toUpperCase()+(sn.labs.micro_sensibilidades?" (SENSIBLE A "+String(sn.labs.micro_sensibilidades).toUpperCase()+")":"")); });
       _plneLineas(ck.cultivos).forEach(function(l){ cults.push(l); });
@@ -13133,15 +13154,35 @@ function plExportBackup() {
       });
       return out;
     }
+    // Texto de un cultivo para la entrega / la nota: "Urocultivo POSITIVO a Klebsiella oxytoca (carbapenemasa KPC)
+    // (S: Amikacina; R: Ertapenem, Meropenem)"; con varios gérmenes, cada uno con su antibiograma entre corchetes.
+    function _cultTexto(c, mayus) {
+      const S = mayus ? "SENSIBLE A " : "S: ", R = mayus ? "RESISTENTE A " : "R: ", I = mayus ? "INTERMEDIO A " : "I: ";
+      const ab = function (g) {
+        const parts = [];
+        if ((g.sensibles || []).length) parts.push(S + g.sensibles.join(", "));
+        if ((g.intermedios || []).length) parts.push(I + g.intermedios.join(", "));
+        if ((g.resistentes || []).length) parts.push(R + g.resistentes.join(", "));
+        return parts.join("; ");
+      };
+      if (!c.positivo) return c.tipo + " " + String(c.organismo || "sin desarrollo").toLowerCase();
+      const germs = Array.isArray(c.germenes) ? c.germenes : [];
+      let body;
+      if (germs.length > 1) {
+        body = germs.map(function (g) { const a = ab(g); return g.nombre + ((g.flags || []).length ? " (" + g.flags.join(", ") + ")" : "") + (a ? " [" + a + "]" : ""); }).join(" + ");
+      } else {
+        const a = ab((germs[0] && ((germs[0].sensibles || []).length || (germs[0].resistentes || []).length)) ? germs[0] : c);
+        body = c.organismo + (c.ufc ? " " + c.ufc : "") + (a ? " (" + a + ")" : "");
+      }
+      return c.tipo + " POSITIVO a " + body;
+    }
     function _entregaItemsFromCultures(cults) {
       const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
       return (cults || []).filter(function (c) { return c && c.fecha && c.fecha >= since && !c.pendiente; }).map(function (c) {
-        const ab = [];
-        if ((c.sensibles || []).length) ab.push("S: " + c.sensibles.join(", "));
-        if ((c.resistentes || []).length) ab.push("R: " + c.resistentes.join(", "));
+        const txt = _cultTexto(c, false);
+        const hasAb = /\bS: |\bR: /.test(txt);
         // El id incluye el antibiograma: cuando el PDF llega después del "POSITIVO" de la tabla, se anota la línea completa.
-        return { id: "cult:" + c.fecha + "|" + c.tipo + "|" + c.organismo + (ab.length ? "|ab" : ""), fecha: c.fecha,
-          text: c.positivo ? (c.tipo + " POSITIVO a " + c.organismo + (ab.length ? " (" + ab.join("; ") + ")" : "")) : (c.tipo + " " + String(c.organismo || "sin desarrollo").toLowerCase()) };
+        return { id: "cult:" + c.fecha + "|" + c.tipo + "|" + c.organismo + (hasAb ? "|ab" : ""), fecha: c.fecha, text: txt };
       });
     }
     function _entregaAutoFromRis(pts) {
@@ -13339,12 +13380,26 @@ function plExportBackup() {
         if (c.fecha) t += ` <span style="color:#64748b;font-size:10px">${esc(c.fecha)}</span>`;
         t += ` <span style="font-size:9px;color:#0e7490;font-weight:700">📡 WinLab${c.pdf ? " · PDF" : ""}</span>`;
         if (c.muestra) t += ` · <span style="color:#475569;font-size:10px">🧫 ${esc(c.muestra)}</span>`;
-        t += `<br>${c.positivo ? "🦠" : (c.pendiente ? "⏳" : "✓")} <span style="color:${col};font-weight:${c.positivo ? 700 : 400}">${esc(c.organismo)}</span>${c.ufc ? ` <span style="color:#64748b;font-size:10px">${esc(c.ufc)}</span>` : ""}`;
-        // Antibiograma (del PDF): sensibles / intermedios / resistentes
-        if ((c.sensibles || []).length) t += `<br><span style="color:#15803d;font-size:11px"><b>S:</b> ${esc(c.sensibles.join(", "))}</span>`;
-        if ((c.intermedios || []).length) t += `<br><span style="color:#b45309;font-size:11px"><b>I:</b> ${esc(c.intermedios.join(", "))}</span>`;
-        if ((c.resistentes || []).length) t += `<br><span style="color:#b91c1c;font-size:11px"><b>R:</b> ${esc(c.resistentes.join(", "))}</span>`;
-        if (c.positivo && !(c.sensibles || []).length && !(c.resistentes || []).length) t += `<br><span style="color:#64748b;font-size:10px">${c.texto ? "Antibiograma no reconocido: ver reporte abajo" : "Antibiograma en el PDF de WinLab (el robot lo captura en la siguiente pasada)"}</span>`;
+        const abHtml = function (g) {
+          let h = "";
+          if ((g.sensibles || []).length) h += `<br><span style="color:#15803d;font-size:11px"><b>S:</b> ${esc(g.sensibles.join(", "))}</span>`;
+          if ((g.intermedios || []).length) h += `<br><span style="color:#b45309;font-size:11px"><b>I:</b> ${esc(g.intermedios.join(", "))}</span>`;
+          if ((g.resistentes || []).length) h += `<br><span style="color:#b91c1c;font-size:11px"><b>R:</b> ${esc(g.resistentes.join(", "))}</span>`;
+          return h;
+        };
+        const germs = Array.isArray(c.germenes) ? c.germenes : [];
+        if (c.positivo && germs.length) {
+          // Una línea por germen con su propio antibiograma (reportes con 2-3 gérmenes traen columnas)
+          germs.forEach(function (g) {
+            t += `<br>🦠 <span style="color:${col};font-weight:700">${esc(g.nombre)}${(g.flags || []).length ? " (" + esc(g.flags.join(", ")) + ")" : ""}</span>${g.ufc ? ` <span style="color:#64748b;font-size:10px">${esc(g.ufc)}</span>` : ""}${g.deteccion ? ` <span style="color:#64748b;font-size:10px">detección ${esc(g.deteccion)}</span>` : ""}`;
+            t += abHtml((g.sensibles || []).length || (g.resistentes || []).length || (g.intermedios || []).length ? g : (germs.length === 1 ? c : g));
+          });
+          if (!germs.some(function (g) { return (g.sensibles || []).length || (g.resistentes || []).length; }) && !(c.sensibles || []).length && !(c.resistentes || []).length) t += `<br><span style="color:#64748b;font-size:10px">${c.texto ? "Sin antibiograma en el reporte (o no reconocido): ver abajo" : "Antibiograma en el PDF de WinLab (el robot lo captura en la siguiente pasada)"}</span>`;
+        } else {
+          t += `<br>${c.positivo ? "🦠" : (c.pendiente ? "⏳" : "✓")} <span style="color:${col};font-weight:${c.positivo ? 700 : 400}">${esc(c.organismo)}</span>${c.ufc ? ` <span style="color:#64748b;font-size:10px">${esc(c.ufc)}</span>` : ""}`;
+          t += abHtml(c);
+          if (c.positivo && !(c.sensibles || []).length && !(c.resistentes || []).length) t += `<br><span style="color:#64748b;font-size:10px">${c.texto ? "Antibiograma no reconocido: ver reporte abajo" : "Antibiograma en el PDF de WinLab (el robot lo captura en la siguiente pasada)"}</span>`;
+        }
         if (c.texto) t += `<details class="cult-rep" style="margin-top:3px"><summary style="font-size:10px;color:#0e7490;cursor:pointer">📄 Reporte completo</summary><pre style="white-space:pre-wrap;font-size:10.5px;line-height:1.35;margin:4px 0 0;color:#334155;max-height:260px;overflow:auto">${esc(c.texto)}</pre></details>`;
         wlChipsHtml += `<div class="cultivo-chip" style="border-color:${col};background:${bg}">${t}</div>`;
       });

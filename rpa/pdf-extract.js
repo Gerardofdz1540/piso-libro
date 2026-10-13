@@ -204,121 +204,263 @@ export function extractLabValuesFromText(text) {
 // El scraper guarda ADEMÁS el texto completo del PDF (cultivo_texto) para que la tarjeta lo
 // muestre tal cual y para afinar este parser con reportes reales.
 // ════════════════════════════════════════════════════════════════════════
-export const CULTURE_TEXT_MARKERS = /CULTIVO|ANTIBIOGRAMA|MICROORGANISMO|GERMEN|AISLAD[OA]|UFC\s*\/\s*ML|SENSIBILIDAD\s+ANTIMICROBIANA|TINCI[OÓ]N\s+DE\s+GRAM/i;
+export const CULTURE_PARSER_VERSION = 2;
+export const CULTURE_TEXT_MARKERS = /CULTIVO|ANTIBIOGRAMA|ANTIBIOTICOS\s+CMI|MICROORGANISMO|MICRORGANISMO|GERMEN|AISLAD[OA]|UFC\s*\/\s*ML|SENSIBILIDAD\s+ANTIMICROBIANA|TINCI[OÓ]N\s+DE\s+GRAM/i;
 export const CULTURE_GENUS_RE = /\b(ESCHERICHIA|KLEBSIELLA|ENTEROBACTER|PROTEUS|PSEUDOMONAS|ACINETOBACTER|STAPHYLOCOCCUS|STREPTOCOCCUS|ENTEROCOCCUS|CANDIDA|SERRATIA|MORGANELLA|CITROBACTER|STENOTROPHOMONAS|PROVIDENCIA|SALMONELLA|SHIGELLA|HAEMOPHILUS|BURKHOLDERIA|BACTEROIDES|CLOSTRIDI(?:UM|OIDES)|LISTERIA|NEISSERIA|MORAXELLA|AEROMONAS|ACHROMOBACTER|CORYNEBACTERIUM|MICROCOCCUS|KOCURIA|RAOULTELLA|HAFNIA|PANTOEA|SPHINGOMONAS|ELIZABETHKINGIA|CHRYSEOBACTERIUM|ASPERGILLUS|CRYPTOCOCCUS|TRICHOSPORON|BACILLUS|LACTOBACILLUS|PEPTOSTREPTOCOCCUS|FUSOBACTERIUM|PREVOTELLA|ALCALIGENES|OCHROBACTRUM|RALSTONIA|EDWARDSIELLA|YERSINIA|VIBRIO|CAMPYLOBACTER|HELICOBACTER|MYCOBACTERIUM|NOCARDIA|ACTINOMYCES|GARDNERELLA|TRICHOMONAS|E\.\s?COLI|S\.\s?AUREUS)\b/i;
-export const CULTURE_ANTIBIOTIC_RE = /\b(AMIKACINA|GENTAMICINA|TOBRAMICINA|ESTREPTOMICINA|CIPROFLOXACIN[OA]|LEVOFLOXACIN[OA]|MOXIFLOXACIN[OA]|NORFLOXACIN[OA]|OFLOXACIN[OA]|CEFTRIAXONA|CEFOTAXIMA|CEFTAZIDIMA(?:[\s\-\/]+AVIBACTAM)?|CEFEPIM[AE]|CEFUROXIMA|CEFAZOLINA|CEFOXITINA|CEFALOTINA|CEFALEXINA|CEFIXIMA|CEFTAROLINA|CEFTOLOZAN[OA](?:[\s\-\/]+TAZOBACTAM)?|CEFIDEROCOL|AMPICILINA(?:[\s\-\/]+SULBACTAM)?|AMOXICILINA(?:[\s\-\/]+(?:[AÁ]C(?:IDO)?\.?\s+)?CLAVUL[AÁ]NICO)?|PIPERACILINA(?:[\s\-\/]+TAZOBACTAM)?|TICARCILINA(?:[\s\-\/]+CLAVULANATO)?|OXACILINA|PENICILINA(?:\s+G)?|DICLOXACILINA|MEROPENEM|IMIPENEM(?:[\s\-\/]+CILASTATINA)?|ERTAPENEM|DORIPENEM|AZTREONAM|VANCOMICINA|TEICOPLANINA|LINEZOLID|DAPTOMICINA|CLINDAMICINA|ERITROMICINA|CLARITROMICINA|AZITROMICINA|TRIMETOPRIM(?:A)?(?:[\s\-\/]+SULFAMETOXAZOL)?|SULFAMETOXAZOL(?:[\s\-\/]+TRIMETOPRIM(?:A)?)?|NITROFURANTO[IÍ]NA|FOSFOMICINA|COLISTINA|POLIMIXINA\s*B|TIGECICLINA|DOXICICLINA|MINOCICLINA|TETRACICLINA|RIFAMPICINA|CLORANFENICOL|METRONIDAZOL|QUINUPRISTINA(?:[\s\-\/]+DALFOPRISTINA)?|FLUCONAZOL|VORICONAZOL|ITRACONAZOL|POSACONAZOL|ANFOTERICINA\s*B|CASPOFUNGINA|MICAFUNGINA|ANIDULAFUNGINA|FLUCITOSINA|BENZILPENICILINA|CEFOTETAN|CEFACLOR|CEFPODOXIMA|CEFDITOREN|LOMEFLOXACIN[OA]|GATIFLOXACIN[OA]|NETILMICINA|KANAMICINA|TEDIZOLID|DALBAVANCINA|ORITAVANCINA|FUSIDICO|MUPIROCINA)\b/i;
-const CULTURE_INTERP_RE = /^(S|I|R|SDD|SENSIBLE|SUSCEPTIBLE|INTERMEDI[OA]|RESISTENTE|SENSIBLE\s+DOSIS\s+DEPENDIENTE)$/i;
-const CULTURE_CIM_RE = /^(?:CIM|MIC)?\s*[:=]?\s*([<>≤≥]=?\s*\d+(?:[.,]\d+)?(?:\s*\/\s*\d+(?:[.,]\d+)?)?(?:\s*(?:ug|µg|μg|mg)\s*\/\s*m?l)?)$/i;
-const CULTURE_NEG_RE = /SIN\s+DESARROLLO|NO\s+(?:HUBO|HAY|SE\s+OBSERV[OÓ])?\s*DESARROLLO|NO\s+DESARROLLO|SIN\s+CRECIMIENTO|NEGATIV[OA]\s+A\s+(?:LOS\s+|LAS\s+)?\d+|AUSENCIA\s+DE\s+(?:DESARROLLO|CRECIMIENTO)|FLORA\s+(?:NORMAL|HABITUAL|MIXTA\s+NORMAL)|NO\s+SE\s+AISL/i;
-const CULTURE_POS_RE = /\bPOSITIV[OA]\b|DESARROLLO\s+DE\b|SE\s+AISL[AO]|CRECIMIENTO\s+DE\b|MICROORGANISMO\s+AISLADO|GERMEN\s+AISLADO|\bUFC\b/i;
-const CULTURE_PENDING_RE = /PRELIMINAR|EN\s+PROCESO|PENDIENTE|INCUBACI[OÓ]N|EN\s+CURSO/i;
+export const CULTURE_ANTIBIOTIC_RE = /\b(AMIKACINA|GENTAMICINA|TOBRAMICINA|ESTREPTOMICINA|CIPROFLOXACIN[OA]|LEVOFLOXACIN[OA]|MOXIFLOXACIN[OA]|NORFLOXACIN[OA]|OFLOXACIN[OA]|CEFTRIAXONA|CEFOTAXIMA|CEFTAZI[DT]IMA(?:[\s\-\/]+AVIBACTAM)?|CEFEPIM[AE]|CEFUROXIMA|CEFAZOLINA|CEFOXITINA|CEFALOTINA|CEFALEXINA|CEFIXIMA|CEFTAROLINA|CEFTOLOZAN[OA](?:[\s\-\/]+TAZOBACTAM)?|CEFIDEROCOL|AMPICILINA(?:[\s\-\/]+SULBACTAM)?|AMOXICILINA(?:[\s\-\/]+(?:[AÁ]C(?:IDO)?\.?\s+)?CLAVUL[AÁ]NICO)?|PIPERACILINA(?:[\s\-\/]+TAZOBACTAM)?|TICARCILINA(?:[\s\-\/]+CLAVULANATO)?|OXACILINA|PENICILINA(?:\s+G)?|DICLOXACILINA|MEROPENEM|IMIPENEM(?:[\s\-\/]+CILASTATINA)?|ERTAPENEM|DORIPENEM|AZTREONAM|VANCOMICINA|TEICOPLANINA|LINEZOLID|DAPTOMICINA|CLINDAMICINA|ERITROMICINA|CLARITROMICINA|AZITROMICINA|TRIMETOPRIM(?:A)?(?:[\s\-\/]+SULFAMETOXAZOL)?|SULFAMETOXAZOL(?:[\s\-\/]+TRIMETOPRIM(?:A)?)?|NITROFURANTO[IÍ]NA|FOSFOMICINA|COLISTINA|POLIMIXINA\s*B|TIGECICLINA|DOXICICLINA|MINOCICLINA|TETRACICLINA|RIFAMPICINA|CLORANFENICOL|METRONIDAZOL|QUINUPRISTINA(?:[\s\-\/]+DALFOPRISTINA)?|FLUCONAZOL|VORICONAZOL|ITRACONAZOL|POSACONAZOL|ANFOTERICINA\s*B|CASPOFUNGINA|MICAFUNGINA|ANIDULAFUNGINA|FLUCITOSINA|BENZILPENICILINA|CEFOTETAN|CEFACLOR|CEFPODOXIMA|CEFDITOREN|LOMEFLOXACIN[OA]|GATIFLOXACIN[OA]|NETILMICINA|KANAMICINA|TEDIZOLID|DALBAVANCINA|ORITAVANCINA|FUSIDICO|MUPIROCINA)\b/i;
+const CULTURE_INTERP_RE = /^(S|I|R|SDD|SENSIBLE|SUSCEPTIBLE|INTERMEDI[OA]|RESISTENTE)\*?$/i;
+const CULTURE_CIM_TOKEN_RE = /^[<>≤≥]*=?\s*\d+(?:[.,]\d+)?(?:\/\d+(?:[.,]\d+)?)?$/;
+const CULTURE_NEG_RE = /SIN\s+DESARROLLO|NO\s+(?:HUBO|HAY|SE\s+OBSERV[OÓ])?\s*DESARROLLO|SIN\s+CRECIMIENTO|NEGATIV[OA]\s+A\s+(?:LOS\s+|LAS\s+)?\d+|AUSENCIA\s+DE\s+(?:DESARROLLO|CRECIMIENTO)|FLORA\s+(?:NORMAL|HABITUAL|MIXTA\s+NORMAL)|NO\s+SE\s+AISL/i;
+const CULTURE_POS_RE = /\bPOSITIV[OA]\b|DESARROLLO\s+DE\s+(?!:?\s*SIN\b)|SE\s+AISL[AO]|CRECIMIENTO\s+DE\b|MICROORGANISMO\s+AISLADO|GERMEN\s+AISLADO|\bUFC\b/i;
+const CULTURE_PENDING_RE = /PRELIMINAR|EN\s+PROCESO|PENDIENTE|INCUBACI[OÓ]N|EN\s+CURSO|SIN\s+MUESTRA/i;
+// Inicio de una SECCIÓN (una muestra) en el PDF del HGL: "HEMOCULTIVO PERIFERICO 1 …", "HEMOCULTIVO CENTRAL",
+// "UROCULTIVO", "CULTIVO DE SECRECIONES", "COPROCULTIVO", "CULTIVO DE LIQUIDO …". Lo que sigue en la
+// misma línea es el resultado en línea ("DESARROLLO", "En proceso", "SIN MUESTRA SIN DESARROLLO").
+const CULTURE_SECTION_RE = /^(HEMOCULTIVO(?:\s+(?:PERIF[EÉ]RICO|CENTRAL|ARTERIAL|VENOSO))?(?:\s+\d)?|UROCULTIVO|COPROCULTIVO|CULTIVO\s+DE\s+[A-ZÑÁÉÍÓÚ]+(?:\s+(?:DE|DEL|Y)\s+[A-ZÑÁÉÍÓÚ]+)*(?:\s+[A-ZÑÁÉÍÓÚ]+)?|CULTIVO\s+(?:DE\s+)?L[IÍ]QUIDO\s+[A-ZÑÁÉÍÓÚ]+|CULTIVO\s+PUNTA\s+DE\s+CAT[EÉ]TER)\b\s*(.*)$/i;
+const CULTURE_STOP_RE = /^(S\s*=\s*SENSIBLE|Q\.?F\.?B\.?|CED\.?\s*PROF|UNIVERSIDAD|NOTA:|\*\s*RESULTADOS\s+FUERA|P[AÁ]GINA\s+NO|REPORTE\s+NO\s+VALIDADO|JEFE\s+DE\s+LABORATORIO|--\s*\d+\s+of\s+\d+|HOSPITAL\s+GENERAL|LABORATORIO\s+DE\s+AN|BLVD\.|FRACC\.|HOJA\s+DE\s+RESULTADOS|PACIENTE:|FECHA\s+DE\s+NACIMIENTO|C[OÓ]DIGO\s+DE\s+ADMISI[OÓ]N|M[EÉ]DICO:|PROCEDENCIA:|EXAMENES\s+RESULTADOS|DIAGN[OÓ]STICO:|GRAM$|TINCI[OÓ]N\s+DE\s+GRAM)/i;
+const TEST_LINE_RE = /\bAG\b|ANT[IÍ]GENO|TOXINA|ANTICUERPO|\bPCR\b|DETECCI[OÓ]N\s+DE|PRUEBA\s+DE|SEROLOG|REACTIVO|\bIG[GMA]\b/i;
 
+function _up(s) { return String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 function _interp(tok) {
-  const t = String(tok || "").trim().toUpperCase().replace(/\s+/g, " ");
+  const t = String(tok || "").trim().toUpperCase().replace(/\*+$/, "");
   if (!CULTURE_INTERP_RE.test(t)) return "";
-  if (t === "SDD" || /DOSIS DEPENDIENTE/.test(t)) return "SDD";
-  return t[0]; // S / I / R
+  if (t === "SDD") return "SDD";
+  return t[0];
 }
 function _cleanGenus(g) {
-  const u = String(g || "").toUpperCase();
+  const u = _up(g);
   if (/^E\.?\s?COLI/.test(u)) return "Escherichia coli";
   if (/^S\.?\s?AUREUS/.test(u)) return "Staphylococcus aureus";
   return g.charAt(0).toUpperCase() + g.slice(1).toLowerCase();
 }
+// "1. Klebsiella oxytoca" / "Klebsiella pneumoniae BLEE" → "Klebsiella pneumoniae" (género + especie/spp)
+function _germFromLine(line) {
+  const m = line.match(CULTURE_GENUS_RE);
+  if (!m) return "";
+  const genus = _cleanGenus(m[1]);
+  if (/ /.test(genus)) return genus;
+  const rest = line.slice(m.index + m[0].length).match(/^\s+(SP\.?|SPP\.?|[A-Za-zñÑ\-]{3,})(?:\s+(?:SUBSP\.?|VAR\.?|SSP\.?)\s+([A-Za-z\-]{3,}))?/);
+  if (rest && !/^(SENSIBLE|RESISTENTE|INTERMEDIO|AISLADO|POSITIVO|NEGATIVO|UFC|BLEE|ESBL|CIM|MIC|SIN|CON|POR|EN|DE|DEL|LA|EL|AL|METICILINO|MRSA|MSSA|PRODUCTOR|PRODUCTORA|TEST|DESARROLLO|DETECCION|MULTIRRESISTENTE)$/i.test(rest[1])) {
+    return genus + " " + rest[1].toLowerCase().replace(/\.$/, "") + (rest[2] ? " " + rest[2].toLowerCase() : "");
+  }
+  return genus;
+}
+function _tipoFrom(nameUp, all) {
+  const n = nameUp;
+  if (/HEMOCULTIVO/.test(n)) return "Hemocultivo" + (/CENTRAL/.test(n) ? " central" : (/PERIF/.test(n) ? " periférico" : "")) + ((n.match(/\b(\d)\b/) || [])[1] ? " " + n.match(/\b(\d)\b/)[1] : "");
+  if (/UROCULTIVO|CULTIVO\s+DE\s+ORINA/.test(n)) return "Urocultivo";
+  if (/COPROCULTIVO|HECES/.test(n)) return "Coprocultivo";
+  if (/PLEURAL/.test(n)) return "Cultivo líquido pleural";
+  if (/PERITONEAL|ASCIT/.test(n)) return "Cultivo líquido peritoneal";
+  if (/CEFALORRAQU|\bLCR\b/.test(n)) return "Cultivo LCR";
+  if (/CATETER/.test(n)) return "Cultivo punta de catéter";
+  if (/BRONQUIAL|TRAQUEAL|EXPECTORACION|ESPUTO|LAVADO/.test(n)) return "Cultivo de secreción bronquial";
+  if (/SECRECION|HERIDA|ABSCESO|EXUDADO/.test(n)) return "Cultivo de secreción";
+  if (/LIQUIDO/.test(n)) return "Cultivo de líquido";
+  if (/CULTIVO\s+DE\s+/.test(n)) return "Cultivo de " + n.replace(/^CULTIVO\s+DE\s+/, "").toLowerCase();
+  if (all) return _tipoFrom(all, "");
+  return "Cultivo";
+}
+function _parseAbRows(rows, nOrgs) {
+  // rows: líneas del bloque "Antibioticos CMI ug/mL Cat." → [{antibiotico, cols:[{cim,interp}], cim, interp}]
+  const out = [];
+  for (const raw of rows) {
+    const L = raw.trim(); if (!L) continue;
+    const U = _up(L);
+    if (/^ANTIBIOTICOS?\b/.test(U) || /^-\s*\d+\s*-/.test(U) || /^CMI\b/.test(U) || CULTURE_STOP_RE.test(U)) continue;
+    const toks = L.split(/\s+/);
+    // nombre = tokens iniciales hasta el primer CIM o interpretación
+    let i = 0; const nameToks = [];
+    while (i < toks.length && !CULTURE_CIM_TOKEN_RE.test(toks[i]) && !_interp(toks[i])) { nameToks.push(toks[i]); i++; }
+    if (!nameToks.length || i >= toks.length) continue;
+    const name = nameToks.join(" ");
+    if (/^\d/.test(name) || name.length < 3) continue;
+    const cols = []; let cim = "";
+    for (; i < toks.length; i++) {
+      const t = toks[i];
+      if (CULTURE_CIM_TOKEN_RE.test(t)) { cim = t.replace(/\s+/g, ""); continue; }
+      if (/^(ug|µg|μg|mg)\/?m?l$/i.test(t)) continue;
+      const it = _interp(t);
+      if (it) { cols.push({ cim, interp: it }); cim = ""; continue; }
+      if (/^(SENSIBLE|RESISTENTE|INTERMEDI[OA])$/i.test(t)) { cols.push({ cim, interp: _interp(t) }); cim = ""; continue; }
+      break;
+    }
+    if (!cols.length) continue;
+    const worst = cols.some((c) => c.interp === "R") ? "R" : (cols.some((c) => c.interp === "I") ? "I" : (cols.some((c) => c.interp === "SDD") ? "SDD" : "S"));
+    out.push({ antibiotico: name.charAt(0).toUpperCase() + name.slice(1).toLowerCase(), cim: cols[0].cim, interp: worst, cols: cols.length > 1 || nOrgs > 1 ? cols : undefined });
+  }
+  return out;
+}
+function _newSection(nameLine, inline) {
+  return { nombre: nameLine, tipo: "", muestra: "", resultado: "", detalle: "", germenes: [], antibiograma: [], ufc: "", deteccion: "", _inline: inline || "", _lines: [] };
+}
 
 /**
- * @param {string} text - texto plano del PDF del reporte
- * @returns {null | { tipo, muestra, resultado, germenes: string[], blee: boolean, carbapenemasa: boolean,
- *                    ufc: string, antibiograma: Array<{antibiotico, cim, interp}>, pendiente: boolean }}
+ * Lee el texto plano del PDF de un reporte con cultivos del HGL (o formatos similares) y devuelve
+ * una sección por muestra (hemocultivo periférico/central, urocultivo, secreción…), cada una con
+ * resultado, gérmenes (con BLEE/carbapenemasa/MRSA, UFC, hora de detección) y antibiograma por
+ * germen cuando el reporte trae varias columnas ("- 1 - - 2 - - 3 -").
+ * @returns {null | { v, tipo, muestra, resultado, germenes: string[], blee, carbapenemasa, mrsa, ufc,
+ *                    antibiograma: Array<{antibiotico,cim,interp,cols?}>, pendiente, secciones: Array }}
  */
 export function extractCultureFromText(text) {
   if (!text || typeof text !== "string" || !CULTURE_TEXT_MARKERS.test(text)) return null;
-  const lines = text.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
-  const up = (s) => s.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  const all = up(lines.join("\n"));
+  // El PDF pega columnas con tabulador ("Test negativo para ESBL\t3. Morganella morganii"): cada tab es línea aparte.
+  const lines = text.split(/\r?\n|\t/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const bodyStart = lines.findIndex((l) => /^EXAMENES\s+RESULTADOS/i.test(_up(l)));
+  const body = bodyStart >= 0 ? lines.slice(bodyStart + 1) : lines;
 
-  // Tipo y muestra
-  const tipo = /HEMOCULTIVO/.test(all) ? "Hemocultivo"
-    : /UROCULTIVO|CULTIVO\s+DE\s+ORINA/.test(all) ? "Urocultivo"
-    : /L[IÍ]QUIDO\s+PLEURAL|PLEURAL/.test(all) ? "Cultivo líquido pleural"
-    : /L[IÍ]QUIDO\s+PERITONEAL|PERITONEAL|ASC[IÍ]TICO/.test(all) ? "Cultivo líquido peritoneal"
-    : /L[IÍ]QUIDO\s+CEFALORRAQU[IÍ]DEO|\bLCR\b/.test(all) ? "Cultivo LCR"
-    : /PUNTA\s+DE\s+CAT[EÉ]TER|CAT[EÉ]TER/.test(all) ? "Cultivo punta de catéter"
-    : /SECRECI[OÓ]N\s+BRONQUIAL|ASPIRADO\s+(?:BRONQUIAL|TRAQUEAL)|EXPECTORACI[OÓ]N|ESPUTO|LAVADO\s+BRONCO/.test(all) ? "Cultivo de secreción bronquial"
-    : /HERIDA|SECRECI[OÓ]N|ABSCESO|EXUDADO/.test(all) ? "Cultivo de herida/secreción"
-    : /COPROCULTIVO|HECES/.test(all) ? "Coprocultivo"
-    : "Cultivo";
-  let muestra = "";
-  const mm = all.match(/(?:MUESTRA|TIPO\s+DE\s+MUESTRA|ESPECIMEN|PRODUCTO)\s*[:\-]\s*([A-ZÑ][A-ZÑ0-9 ,.\/()\-]{2,60})/);
-  if (mm) muestra = mm[1].trim().replace(/\s+(FECHA|HORA|METODO|METODOLOGIA|RESULTADO).*$/, "");
+  // 1) Partir en secciones (muestras)
+  const secciones = [];
+  let cur = null;
+  for (const line of body) {
+    const U = _up(line);
+    if (CULTURE_STOP_RE.test(U)) { if (/^GRAM$|TINCION DE GRAM/.test(U)) cur = null; continue; }
+    const sm = line.match(CULTURE_SECTION_RE);
+    if (sm && !/^CULTIVO\s+(POSITIVO|NEGATIVO|NO\s+DESARROLLO|DESARROLLO|SIN)/i.test(line)) {
+      cur = _newSection(sm[1].trim(), sm[2] || "");
+      secciones.push(cur);
+      continue;
+    }
+    if (!cur) {
+      // Formatos sin encabezado de sección: una sola sección implícita
+      if (/CULTIVO|MICROORGANISMO|MICRORGANISMO|ANTIBIOGRAMA|ANTIBIOTICOS|UFC|SE AISL|DESARROLLO/.test(U) || CULTURE_GENUS_RE.test(line) || CULTURE_ANTIBIOTIC_RE.test(U)) {
+        cur = _newSection("", ""); secciones.push(cur);
+      } else continue;
+    }
+    cur._lines.push(line);
+  }
+  if (!secciones.length) return null;
 
-  // Gérmenes (género + especie), flags de resistencia
-  const germenes = [];
-  const seen = new Set();
-  const addGerm = (g) => { const key = g.toUpperCase(); if (!seen.has(key)) { seen.add(key); germenes.push(g); } };
-  for (const line of lines) {
-    const L = up(line);
-    if (CULTURE_ANTIBIOTIC_RE.test(L) && !CULTURE_GENUS_RE.test(L)) continue;
-    let m;
-    const re = new RegExp(CULTURE_GENUS_RE.source, "gi");
-    while ((m = re.exec(line))) {
-      const genus = _cleanGenus(m[1]);
-      let species = "";
-      if (!/ /.test(genus)) {
-        const rest = line.slice(m.index + m[0].length).match(/^\s+(SP\.?|SPP\.?|[A-Za-zñÑ\-]{3,})(?:\s+(?:SUBSP\.?|VAR\.?)\s+([A-Za-z\-]{3,}))?/);
-        if (rest && !/^(SENSIBLE|RESISTENTE|INTERMEDIO|AISLADO|POSITIVO|NEGATIVO|UFC|BLEE|ESBL|CIM|MIC|SIN|CON|POR|EN|DE|DEL|LA|EL|AL|METICILINO|MRSA|MSSA)$/i.test(rest[1])) {
-          species = " " + rest[1].toLowerCase() + (rest[2] ? " " + rest[2].toLowerCase() : "");
+  // 2) Interpretar cada sección
+  const allUp = _up(text);
+  for (const s of secciones) {
+    const nameUp = _up(s.nombre);
+    s.tipo = _tipoFrom(nameUp, nameUp ? "" : allUp);
+    const inlineUp = _up(s._inline);
+    const L = s._lines;
+    const LU = L.map(_up);
+    for (const ml of L) {
+      const mm = ml.match(/^(?:TIPO\s+DE\s+MUESTRA|MUESTRA|ESP[EÉ]CIMEN|PRODUCTO)\b\s*[:\-]?\s*([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ0-9 ,.\/()\-]{2,60})/i);
+      if (mm) { s.muestra = mm[1].trim().replace(/\s+(FECHA|HORA|METODO|METODOLOGIA|RESULTADO|CULTIVO).*$/i, ""); break; }
+    }
+    // Gérmenes: "Microrganismo" + "N. Nombre", "MICROORGANISMO AISLADO: X", "Se aisla X", "Desarrollo de X (y Y)"
+    let inOrgList = false, lastGerm = null;
+    let abStart = -1;
+    for (let i = 0; i < L.length; i++) {
+      const line = L[i], U = LU[i];
+      if (/^ANTIBIOTICOS?\b/.test(U) || /^ANTIBIOGRAMA/.test(U)) { abStart = i; break; }
+      if (/^MICRO+RGANISMOS?\s*(AISLADOS?)?\s*:?$/.test(U)) { inOrgList = true; continue; }
+      const mkGerm = (g) => { lastGerm = { nombre: g, flags: [], ufc: "", deteccion: "", antibiograma: [] }; s.germenes.push(lastGerm); };
+      let germLine = false;
+      const numbered = line.match(/^(\d+)\.\s*(.+)$/);
+      if (numbered && (inOrgList || CULTURE_GENUS_RE.test(numbered[2]))) {
+        mkGerm(_germFromLine(numbered[2]) || numbered[2].replace(/\.$/, "").trim());
+        germLine = true;
+      }
+      if (!germLine) {
+        const inlineOrg = line.match(/(?:MICRO+RGANISMOS?\s+AISLADOS?|GERMEN(?:ES)?\s+AISLADOS?|SE\s+AISL[AO]N?|CRECIMIENTO\s+DE|DESARROLLO\s+DE)\s*:?\s*(.+)$/i);
+        if (inlineOrg && !/^\s*(SIN|NO)\s+DESARROLLO/i.test(inlineOrg[1]) && !TEST_LINE_RE.test(U)) {
+          const parts = inlineOrg[1].split(/\s+(?:Y|E|\+|,)\s+|,\s*/i);
+          for (const p of parts) { const g = _germFromLine(p); if (g) { mkGerm(g); germLine = true; } }
         }
       }
-      addGerm(genus + species);
-    }
-  }
-  const blee = /\bBLEE\b|\bESBL\b|BETA\s*-?\s*LACTAMASA\s+DE\s+ESPECTRO\s+EXTENDIDO/.test(all) && !/\bBLEE\s*[:\-]?\s*(NEGATIV[OA]|NO\s+PRODUCTOR|AUSENTE)/.test(all);
-  const carbapenemasa = /CARBAPENEMASA|\bKPC\b|\bNDM\b|\bOXA-?48\b|\bVIM\b|\bIMP\b/.test(all) && !/CARBAPENEMASA\s*[:\-]?\s*(NEGATIV[OA]|NO\s+PRODUCTOR|AUSENTE)/.test(all);
-  const mrsa = /\bMRSA\b|METICILINO\s*-?\s*RESISTENTE|RESISTENTE\s+A\s+METICILINA/.test(all);
-  const ufcM = all.match(/([<>]?\s*\d[\d.,]*\s*(?:X\s*10\s*\^?\s*\d|E\d)?)\s*UFC\s*\/\s*ML/);
-  const ufc = ufcM ? ufcM[0].replace(/\s+/g, " ").trim() : "";
-
-  // Antibiograma: línea con antibiótico + (CIM)? + interpretación, o interpretación primero.
-  const antibiograma = [];
-  const seenAb = new Set();
-  for (const line of lines) {
-    const L = up(line);
-    const am = L.match(CULTURE_ANTIBIOTIC_RE);
-    if (!am) continue;
-    const name = am[1].replace(/\s+/g, " ").trim();
-    const before = L.slice(0, am.index).trim();
-    const after = L.slice(am.index + am[0].length).trim();
-    const toks = after.split(/\s+/).filter(Boolean);
-    let interp = "", cim = "";
-    // "NOMBRE  <=2  S" / "NOMBRE S" / "NOMBRE  SENSIBLE  <=2" / "NOMBRE 4 ug/mL R"
-    for (let i = 0; i < toks.length; i++) {
-      const t = toks[i];
-      if (!interp && _interp(t)) { interp = _interp(t); continue; }
-      if (!interp && i + 2 < toks.length && _interp(toks[i] + " " + toks[i + 1] + " " + toks[i + 2])) { interp = "SDD"; i += 2; continue; }
-      if (!cim) {
-        const joined = [t, toks[i + 1] || "", toks[i + 2] || ""].join(" ").trim();
-        const cm = (CULTURE_CIM_RE.test(t) ? t : (CULTURE_CIM_RE.test(joined) ? joined : (CULTURE_CIM_RE.test(t + " " + (toks[i + 1] || "")) ? t + " " + toks[i + 1] : "")));
-        if (cm) { cim = cm.replace(/^(CIM|MIC)\s*[:=]?\s*/i, "").replace(/\s+/g, " "); i += cm.split(" ").length - 1; continue; }
+      if (!germLine && !inOrgList && !lastGerm && CULTURE_GENUS_RE.test(line) && !TEST_LINE_RE.test(U) && !/CULTIVO/.test(U) && !CULTURE_ANTIBIOTIC_RE.test(U) && !/NEGATIV|POSITIV/.test(U)) {
+        // Germen suelto en su propia línea (formatos sin "Microrganismo")
+        const g = _germFromLine(line);
+        if (g && /^[A-Za-z]/.test(line) && line.split(" ").length <= 5) { mkGerm(g); germLine = true; }
       }
+      // Notas del germen (en su misma línea o en las siguientes)
+      const target = lastGerm;
+      if (/BETALACTAMASA\s+DE\s+(?:AMPLIO|ESPECTRO)|\bBLEE\b|\bESBL\b/.test(U)) {
+        if (/NEGATIV|NO\s+PRODUCTOR|AUSENTE/.test(U)) { /* test negativo */ } else if (target && !target.flags.includes("BLEE")) target.flags.push("BLEE");
+      }
+      if (/CARBAPENEMASA|\bKPC\b|\bNDM\b|OXA-?48|\bVIM\b/.test(U) && !/NEGATIV|NO\s+PRODUCTOR|AUSENTE/.test(U)) {
+        const tipoC = ((U + " " + (LU[i + 1] || "")).match(/\b(KPC|NDM|OXA-?48|VIM|IMP)\b/) || [])[1];
+        const f = "carbapenemasa" + (tipoC ? " " + tipoC : "");
+        if (target && !target.flags.some((x) => /carbapenemasa/.test(x))) target.flags.push(f);
+      }
+      if (/METICILIN|\bMRSA\b/.test(U)) {
+        const neg = /NEGATIV|SENSIBLE|\bMSSA\b/.test(U) || (i + 1 < L.length && /NEGATIV/.test(LU[i + 1]) && !/RESISTENCIA$/.test(U));
+        if (!neg && /POSITIV|RESISTENTE|\bMRSA\b/.test(U) && target && !target.flags.includes("MRSA")) target.flags.push("MRSA");
+      }
+      if (/PRODUCTOR(?:A)?\s+DE\s+BETALACTAM/.test(U + " " + (LU[i + 1] || "")) && !/ESPECTRO|AMPLIO|BLEE|ESBL/.test(U + " " + (LU[i + 1] || "")) && target && !target.flags.includes("betalactamasa")) target.flags.push("betalactamasa");
+      if (/MULTIRRESISTENTE|\bMDR\b|\bXDR\b/.test(U) && target && !target.flags.includes("multirresistente")) target.flags.push("multirresistente");
+      const ufcM = line.match(/([<>]?\s*(?:M[AÁ]S\s+DE\s+)?\d[\d.,]*\s*(?:X\s*10\s*\^?\s*\d|E\d)?)\s*UFC\s*\/\s*M?L/i);
+      if (ufcM) { const u = ufcM[0].replace(/\s+/g, " ").trim().replace(/^m[aá]s de\s*/i, "> ").replace(/^menos de\s*/i, "< "); if (target) target.ufc = u; else s.ufc = u; }
+      const det = line.match(/DETECCI[OÓ]N\s+A\s+(?:LAS\s+)?(\d{1,2}:\d{2})\s*H/i);
+      if (det && target) target.deteccion = det[1] + " h";
     }
-    if (!interp && before) { const bt = before.split(/\s+/); const last = bt[bt.length - 1]; if (_interp(last)) interp = _interp(last); }
-    if (!interp) continue; // antibiótico mencionado sin S/I/R (p.ej. en el tratamiento) → no es antibiograma
-    const key = name;
-    if (seenAb.has(key)) continue;
-    seenAb.add(key);
-    antibiograma.push({ antibiotico: name.charAt(0) + name.slice(1).toLowerCase(), cim, interp });
+    // Antibiograma
+    if (abStart >= 0) {
+      const rows = L.slice(abStart);
+      const marker = rows.find((r) => /^-\s*\d+\s*-/.test(r));
+      const nCols = marker ? (marker.match(/-\s*\d+\s*-/g) || []).length : 1;
+      s.antibiograma = _parseAbRows(rows, nCols);
+      // Asignar columnas a gérmenes cuando el conteo coincide
+      if (s.germenes.length > 1 && s.antibiograma.length) {
+        for (const ab of s.antibiograma) {
+          const cols = ab.cols || [{ cim: ab.cim, interp: ab.interp }];
+          cols.forEach((c, ci) => { if (s.germenes[ci]) s.germenes[ci].antibiograma.push({ antibiotico: ab.antibiotico, cim: c.cim, interp: c.interp }); });
+        }
+      } else if (s.germenes.length === 1) {
+        s.germenes[0].antibiograma = s.antibiograma.map((ab) => ({ antibiotico: ab.antibiotico, cim: ab.cim, interp: ab.interp }));
+      }
+    } else {
+      // Sin bloque: filas sueltas "AMIKACINA <=2 S" / "VANCOMICINA SENSIBLE CIM 1" con antibiótico conocido
+      const rows = L.filter((l) => CULTURE_ANTIBIOTIC_RE.test(_up(l)) && !CULTURE_GENUS_RE.test(l));
+      const parsed = [];
+      for (const r of rows) {
+        const U = _up(r); const am = U.match(CULTURE_ANTIBIOTIC_RE); if (!am) continue;
+        const after = U.slice(am.index + am[0].length).replace(/\b(CIM|MIC)\s*[:=]?/g, " ").trim();
+        const toks = after.split(/\s+/).filter(Boolean);
+        let interp = "", cim = "";
+        for (const t of toks) { if (!interp && _interp(t)) interp = _interp(t); else if (!cim && CULTURE_CIM_TOKEN_RE.test(t)) cim = t; }
+        if (!interp) continue;
+        const name = am[1].replace(/\s+/g, " ");
+        if (parsed.some((p) => _up(p.antibiotico) === name)) continue;
+        parsed.push({ antibiotico: name.charAt(0) + name.slice(1).toLowerCase(), cim, interp });
+      }
+      s.antibiograma = parsed;
+      if (s.germenes.length === 1) s.germenes[0].antibiograma = parsed.slice();
+    }
+    // Resultado de la sección
+    const bodyUp = (inlineUp + "\n" + LU.join("\n"));
+    const negLine = LU.find((u) => /^NEGATIVO\s+A\s+(?:LOS\s+)?\d+\s+DIAS?/.test(u) || /^CULTIVO\s+(NO\s+DESARROLLO|SIN\s+DESARROLLO|NEGATIVO)/.test(u) || /^(SIN|NO)\s+DESARROLLO$/.test(u));
+    if (s.germenes.length || s.antibiograma.length) { s.resultado = "POSITIVO"; }
+    else if (/SIN\s+MUESTRA/.test(bodyUp)) { s.resultado = "SIN MUESTRA"; s.detalle = "sin muestra"; }
+    else if (/EN\s+PROCESO|PRELIMINAR|INCUBACION|PENDIENTE/.test(bodyUp) && !negLine) { s.resultado = "PENDIENTE"; s.detalle = "en proceso"; }
+    else if (negLine || /^(DESARROLLO|NO\s+DESARROLLO|SIN\s+DESARROLLO)$/.test(inlineUp) || CULTURE_NEG_RE.test(bodyUp)) {
+      s.resultado = "NEGATIVO";
+      const d = bodyUp.match(/NEGATIVO\s+A\s+(?:LOS\s+)?(\d+)\s+DIAS?/) || bodyUp.match(/SIN\s+DESARROLLO\s+A\s+(?:LAS\s+)?(\d+)\s+H/);
+      s.detalle = d ? (/DIAS?/.test(d[0]) ? "negativo a " + d[1] + " días" : "sin desarrollo a " + d[1] + " h") : "sin desarrollo";
+    }
+    else if (/\bPOSITIV[OA]\b/.test(bodyUp)) { s.resultado = "POSITIVO"; s.detalle = "positivo (germen en el reporte)"; }
+    else { s.resultado = ""; }
+    delete s._lines; delete s._inline;
   }
+  const valid = secciones.filter((s) => s.resultado);
+  if (!valid.length) return null;
 
-  const pendiente = CULTURE_PENDING_RE.test(all) && !germenes.length && !antibiograma.length;
-  let resultado = "";
-  if (germenes.length || antibiograma.length) resultado = "POSITIVO";
-  else if (CULTURE_NEG_RE.test(all)) resultado = "NEGATIVO";
-  else if (CULTURE_POS_RE.test(all)) resultado = "POSITIVO";
-  else if (pendiente) resultado = "PENDIENTE";
-  else return null; // texto con la palabra CULTIVO pero sin resultado reconocible
-  if (resultado === "POSITIVO" && germenes.length === 0 && mrsa) germenes.push("Staphylococcus aureus");
-  return { tipo, muestra, resultado, germenes, blee, carbapenemasa, mrsa, ufc, antibiograma, pendiente: resultado === "PENDIENTE" };
+  // 3) Resumen compatible (primera sección positiva; si no hay, la primera)
+  const prim = valid.find((s) => s.resultado === "POSITIVO") || valid[0];
+  const flat = (arr) => [].concat(...arr);
+  const germNames = flat(valid.map((s) => s.germenes.map((g) => g.nombre + (g.flags.length ? " (" + g.flags.join(", ") + ")" : ""))));
+  const antibiograma = flat(valid.map((s) => s.antibiograma));
+  const anyPos = valid.some((s) => s.resultado === "POSITIVO");
+  const anyPend = valid.some((s) => s.resultado === "PENDIENTE" || s.resultado === "SIN MUESTRA");
+  const resultado = anyPos ? "POSITIVO" : (valid.every((s) => s.resultado === "NEGATIVO") ? "NEGATIVO" : (anyPend ? "PENDIENTE" : valid[0].resultado));
+  const allFlags = flat(valid.map((s) => flat(s.germenes.map((g) => g.flags))));
+  return {
+    v: CULTURE_PARSER_VERSION,
+    tipo: prim.tipo || "Cultivo", muestra: prim.muestra || "", resultado,
+    germenes: germNames,
+    blee: allFlags.includes("BLEE"), carbapenemasa: allFlags.some((f) => /carbapenemasa/.test(f)), mrsa: allFlags.includes("MRSA"),
+    ufc: (flat(valid.map((s) => s.germenes.map((g) => g.ufc))).find(Boolean)) || prim.ufc || "",
+    antibiograma,
+    pendiente: resultado === "PENDIENTE",
+    secciones: valid.map((s) => ({ nombre: s.nombre, tipo: s.tipo, muestra: s.muestra, resultado: s.resultado, detalle: s.detalle, germenes: s.germenes, antibiograma: s.antibiograma })),
+  };
 }
 
 /**

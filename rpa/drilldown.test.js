@@ -40,7 +40,7 @@ function assert(cond, name) {
 // ── 2. REGRESSION GUARDS: vía PDF presente ──────────────────────────────────
 {
   assert(
-    /import \{ parsePdfToReport, findPdfFrameUrl \} from ".\/pdf-extract\.js"/.test(scraperSource),
+    /import \{ parsePdfToReport, findPdfFrameUrl[^}]*\} from ".\/pdf-extract\.js"/.test(scraperSource),
     "vía PDF: import desde módulo separado pdf-extract.js"
   );
   assert(

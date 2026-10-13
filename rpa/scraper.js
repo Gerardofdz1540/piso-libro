@@ -16,7 +16,7 @@ import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRec
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates,
          selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport } from "./lib.js";
-import { parsePdfToReport, findPdfFrameUrl } from "./pdf-extract.js";
+import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -680,6 +680,13 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // valores viejos sobreviven al upsert aunque esta corrida no alcance a drillearlos.
   const merged = mergeReportesPreservingValores(result.rows, params.parsedMap);
   result.reusedValores = merged.reused;
+  // Cultivos ya capturados con una versión anterior del lector: re-leer el texto guardado del PDF
+  // (sin volver a abrirlo) para que germen/antibiograma salgan con el formato real del HGL.
+  for (const r of result.rows) {
+    if (r && r.cultivo_texto && (!r.cultivo || r.cultivo.v !== CULTURE_PARSER_VERSION)) {
+      try { const c = extractCultureFromText(r.cultivo_texto); if (c) r.cultivo = c; } catch (_) {}
+    }
+  }
   for (const r of ageRejected) {
     console.log(`       [age-guard] encabezado coincide por nombre pero edad WinLab ${r.headerAge} vs censo ${r.censusAge} (±${sel.tolerance}) → bloque descartado`);
   }
