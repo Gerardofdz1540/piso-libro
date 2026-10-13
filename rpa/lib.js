@@ -116,7 +116,12 @@ export function indexParsedReportes(rows) {
       : (row && row.data && Array.isArray(row.data.reportes)) ? row.data.reportes : [];
     for (const rep of reportes) {
       if (rep && rep.__target === true && Array.isArray(rep.valores) && rep.valores.length) {
-        map.set(reportKey(rep), rep.valores);
+        // Los valores viajan como array (compat); el cultivo parseado y el texto del PDF van en
+        // propiedades no enumerables del mismo array para que la reutilización los conserve.
+        const v = rep.valores.slice();
+        if (rep.cultivo) Object.defineProperty(v, "__cultivo", { value: rep.cultivo, enumerable: false });
+        if (rep.cultivo_texto) Object.defineProperty(v, "__cultivo_texto", { value: rep.cultivo_texto, enumerable: false });
+        map.set(reportKey(rep), v);
       }
     }
   }
@@ -131,9 +136,21 @@ export function mergeReportesPreservingValores(reportes, parsedMap) {
     if (!rep || rep.__target !== true) continue;
     if (Array.isArray(rep.valores) && rep.valores.length) continue;
     const prev = parsedMap.get(reportKey(rep));
-    if (prev) { rep.valores = prev; rep.valores_src = "prev"; reused++; }
+    if (prev) {
+      rep.valores = prev; rep.valores_src = "prev"; reused++;
+      if (prev.__cultivo && !rep.cultivo) rep.cultivo = prev.__cultivo;
+      if (prev.__cultivo_texto && !rep.cultivo_texto) rep.cultivo_texto = prev.__cultivo_texto;
+    }
   }
   return { reportes: out, reused };
+}
+
+// ¿El referto es un cultivo? (por sus valores de la tabla/PDF: estudio o valor con CULTIVO,
+// ANTIBIOGRAMA, DESARROLLO, UFC…). Sirve para re-drillear cultivos sin texto del PDF.
+export function looksLikeCultureReport(rep) {
+  if (!rep || !Array.isArray(rep.valores)) return false;
+  const RE = /CULTIVO|ANTIBIOGRAMA|DESARROLLO|\bUFC\b|MICROORGANISMO|GERMEN|AISLAD/i;
+  return rep.valores.some((v) => v && (RE.test(String(v.estudio || "")) || RE.test(String(v.valor || "")) || RE.test(String(v.referencia || "")) || RE.test(String(v.seccion || ""))));
 }
 
 // ── Discriminadores de tablas WinLab (funciones puras testeables) ─────

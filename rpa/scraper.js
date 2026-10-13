@@ -15,8 +15,8 @@ import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates,
-         selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores } from "./lib.js";
-import { parsePdfToLabValues, findPdfFrameUrl } from "./pdf-extract.js";
+         selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport } from "./lib.js";
+import { parsePdfToReport, findPdfFrameUrl } from "./pdf-extract.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -705,7 +705,13 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
     // El fallback legacy "primeros N" solo reaparece con WL_BLIND_FALLBACK=1.
     let drillIdxs;
     if (targetIdxs.length) {
-      const pendientes = targetIdxs.filter((i) => !(Array.isArray(result.rows[i].valores) && result.rows[i].valores.length));
+      // Pendiente = sin valores, o cultivo cuyo PDF aún no se guardó (germen/antibiograma viven
+      // en el PDF; las corridas anteriores solo tenían la tabla "CULTIVO POSITIVO").
+      const pendientes = targetIdxs.filter((i) => {
+        const r = result.rows[i];
+        if (!(Array.isArray(r.valores) && r.valores.length)) return true;
+        return looksLikeCultureReport(r) && !r.cultivo_texto;
+      });
       drillIdxs = pendientes.slice(0, WL_DRILLDOWN_MAX);
       console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; ${result.reusedValores || 0} con valores de corridas previas; drilleando ${drillIdxs.length}`);
     } else if (WL_BLIND_FALLBACK === 1) {
@@ -737,10 +743,18 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
       const dumpFirst = !firstDrilldownDone;
       firstDrilldownDone = true;
       try {
-        const valores = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, dumpFirst, params);
+        const rep = await drillDownReport(page, searchUrl, paciente, result.bestTableIdx, row.__rowIdxInTable, dumpFirst, params);
+        const valores = Array.isArray(rep) ? rep : (rep && rep.valores) || [];
         if (valores && valores.length) {
           row.valores = valores;
+          delete row.valores_src;
           drilledOk++;
+        }
+        // Cultivo: germen + antibiograma parseados y el texto íntegro del PDF (la app lo muestra).
+        if (rep && !Array.isArray(rep) && rep.cultivo) {
+          row.cultivo = rep.cultivo;
+          row.cultivo_texto = rep.text || "";
+          if (!valores.length) drilledOk++;
         }
       } catch (e) {
         console.log(`       drill-down [${i}]: ${e.message.split("\n")[0]}`);
@@ -897,8 +911,8 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
 
     if (capturedPdfBuffer) {
       console.log(`       [drilldown] PDF capturado del browser: ${capturedPdfBuffer.length} bytes (url=${capturedPdfUrl})`);
-      const valoresPDF = await parsePdfToLabValues(capturedPdfBuffer, 10000);
-      console.log(`       [drilldown] PDF parseado: ${valoresPDF.length} valores`);
+      const repPDF = await parsePdfToReport(capturedPdfBuffer, 10000);
+      console.log(`       [drilldown] PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}`);
 
       // Cleanup popup antes de retornar
       detailPage.off("response", responseListener);
@@ -906,7 +920,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
         if (detailPage && !detailPage.isClosed()) await detailPage.close();
       } catch (_) { /* best-effort cleanup */ }
 
-      return valoresPDF;
+      return repPDF;
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -943,8 +957,8 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
             const isPdf = body.length >= 4 && body.slice(0, 4).toString() === '%PDF';
             if (isPdf && body.length > 500) {
               console.log(`       [drilldown] v5: PDF descargado directo: ${body.length} bytes`);
-              const valoresPDF = await parsePdfToLabValues(body, 10000);
-              console.log(`       [drilldown] v5: PDF parseado: ${valoresPDF.length} valores`);
+              const repPDF = await parsePdfToReport(body, 10000);
+              console.log(`       [drilldown] v5: PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}`);
 
               // Cleanup popup antes de retornar
               detailPage.off("response", responseListener);
@@ -952,7 +966,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
                 if (detailPage && !detailPage.isClosed()) await detailPage.close();
               } catch (_) { /* best-effort cleanup */ }
 
-              return valoresPDF;
+              return repPDF;
             } else if (dumpFirst) {
               console.log(`       [drilldown] v5: response no es PDF válido (${body.length} bytes, magic=${body.slice(0, 8).toString('hex')})`);
             }
@@ -1194,7 +1208,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
     await waitForAspNetReady(page, WL_PER_PATIENT_TIMEOUT);
   }
 
-  return detail.valores || [];
+  return { valores: detail.valores || [], text: "", cultivo: null };
 }
 
 // Filas de winlab_labs de hoy y ayer (zona León) para los exps del censo →

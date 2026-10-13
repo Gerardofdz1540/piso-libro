@@ -6,6 +6,8 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import {
   extractLabValuesFromText,
+  extractCultureFromText,
+  parsePdfToReport,
   parsePdfToLabValues,
   PDF_NOISE_PATTERNS,
   PDF_LAB_LINE_RE,
@@ -242,6 +244,32 @@ DIMERO D >5000 ng/mL 0-500`;
   assert(!v.some((x) => x.estudio === "NEGATIVO"), "cualitativo: un NEGATIVO suelto no genera estudio");
   assert(by("HEMOGLOBINA") && by("HEMOGLOBINA").valor === "11.2", "cualitativo: las líneas numéricas siguen igual");
   assert(v.length === 6, "cualitativo: exactamente 6 valores emitidos");
+}
+
+// ── 10. extractCultureFromText: germen + antibiograma desde el texto del PDF ─────────────
+{
+  const c1 = extractCultureFromText([
+    "HOSPITAL GENERAL DE LEON", "UROCULTIVO", "METODOLOGIA: AUTOMATIZADO", "RESULTADO: POSITIVO",
+    "MICROORGANISMO AISLADO: Klebsiella pneumoniae BLEE", "> 100,000 UFC/mL", "ANTIBIOGRAMA",
+    "AMIKACINA <=2 S", "CIPROFLOXACINO >=4 R", "MEROPENEM <=0.25 S", "CEFTRIAXONA >=64 R",
+    "TRIMETOPRIM/SULFAMETOXAZOL <=20 S", "NITROFURANTOINA 64 I", "VALIDADO POR QFB X",
+  ].join("\n"));
+  assert(c1 && c1.tipo === "Urocultivo" && c1.resultado === "POSITIVO", "cultivo PDF: urocultivo positivo");
+  assert(c1 && c1.germenes.length === 1 && c1.germenes[0] === "Klebsiella pneumoniae" && c1.blee === true && /100,000 UFC/.test(c1.ufc), "cultivo PDF: germen género+especie, BLEE y UFC");
+  const by = (n) => c1.antibiograma.find((a) => a.antibiotico === n);
+  assert(c1.antibiograma.length === 6 && by("Amikacina").interp === "S" && by("Amikacina").cim === "<=2" && by("Ciprofloxacino").interp === "R" && by("Nitrofurantoina").interp === "I" && by("Trimetoprim/sulfametoxazol").interp === "S", "cultivo PDF: antibiograma NOMBRE CIM S/I/R");
+  const c2 = extractCultureFromText("HEMOCULTIVO PERIFERICO\nSIN DESARROLLO A LOS 5 DIAS");
+  assert(c2 && c2.tipo === "Hemocultivo" && c2.resultado === "NEGATIVO" && c2.germenes.length === 0, "cultivo PDF: hemocultivo negativo");
+  const c3 = extractCultureFromText("CULTIVO DE SECRECION DE HERIDA\nSe aisla Staphylococcus aureus\nOXACILINA RESISTENTE\nVANCOMICINA SENSIBLE CIM 1\nLINEZOLID S\nCLINDAMICINA R");
+  assert(c3 && /herida/.test(c3.tipo) && c3.germenes[0] === "Staphylococcus aureus" && c3.antibiograma.length === 4 && c3.antibiograma.find((a) => a.antibiotico === "Oxacilina").interp === "R" && c3.antibiograma.find((a) => a.antibiotico === "Vancomicina").interp === "S", "cultivo PDF: formato SENSIBLE/RESISTENTE en palabra y S/R");
+  const c4 = extractCultureFromText("CULTIVO\nPRELIMINAR: EN PROCESO DE INCUBACION");
+  assert(c4 && c4.resultado === "PENDIENTE" && c4.pendiente === true, "cultivo PDF: preliminar → pendiente");
+  assert(extractCultureFromText("BIOMETRIA HEMATICA\nHEMOGLOBINA 11.2 g/dL") === null, "cultivo PDF: un reporte sin cultivo → null");
+  assert(extractCultureFromText("") === null && extractCultureFromText(null) === null, "cultivo PDF: vacío → null");
+  const c5 = extractCultureFromText("CULTIVO DE EXPECTORACION\nDesarrollo de Pseudomonas aeruginosa y Escherichia coli\nPIPERACILINA/TAZOBACTAM S\nCEFTAZIDIMA I\nTRATAMIENTO SUGERIDO: MEROPENEM");
+  assert(c5 && c5.germenes.length === 2 && c5.germenes.includes("Pseudomonas aeruginosa") && c5.germenes.includes("Escherichia coli") && c5.antibiograma.length === 2 && !c5.antibiograma.some((a) => a.antibiotico === "Meropenem"), "cultivo PDF: dos gérmenes; antibiótico sin S/I/R (tratamiento) no entra al antibiograma");
+  const r = await parsePdfToReport(Buffer.from("not a pdf"));
+  assert(r && Array.isArray(r.valores) && r.valores.length === 0 && r.text === "" && r.cultivo === null, "parsePdfToReport: buffer inválido → vacío sin lanzar");
 }
 
 console.log(`\n${pass} pass · ${fail} fail`);

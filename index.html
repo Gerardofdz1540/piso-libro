@@ -7183,8 +7183,30 @@ function plExportBackup() {
     // "NEGATIVO A 5 DIAS" no se mostraba. Ahora: germen o POSITIVO en valor/referencia/estudio → positivo;
     // NO/SIN DESARROLLO o NEGATIVO (A n DÍAS) → negativo.
     var _WL_CULT_POS = /\bPOSITIV[OA]\b|\bDESARROLLO\s+DE\b|\bSE\s+AISL/i;
+    // Cultivo parseado del PDF por el robot (13 oct 2026): rep.cultivo = { tipo, resultado, germenes,
+    // blee, carbapenemasa, mrsa, ufc, antibiograma:[{antibiotico,cim,interp}] } y rep.cultivo_texto
+    // (texto íntegro del reporte). Tiene prioridad sobre la tabla, que solo dice "POSITIVO".
+    function _cultFromPdf(rep) {
+      var c = rep && rep.cultivo; if (!c || typeof c !== "object") return null;
+      var germ = Array.isArray(c.germenes) ? c.germenes.filter(Boolean) : [];
+      var flags = [];
+      if (c.blee) flags.push("BLEE"); if (c.carbapenemasa) flags.push("carbapenemasa"); if (c.mrsa) flags.push("MRSA");
+      var ab = Array.isArray(c.antibiograma) ? c.antibiograma.filter(function (a) { return a && a.antibiotico; }) : [];
+      var pos = c.resultado === "POSITIVO";
+      var organismo = pos ? ((germ.join(" + ") || "POSITIVO (germen en el reporte)") + (flags.length ? " (" + flags.join(", ") + ")" : "")) : (c.resultado === "PENDIENTE" ? "Pendiente (preliminar)" : "Sin desarrollo");
+      return {
+        tipo: c.tipo || "Cultivo", organismo: organismo, muestra: c.muestra || "", positivo: pos, pendiente: c.resultado === "PENDIENTE",
+        ufc: c.ufc || "", flags: flags,
+        sensibles: ab.filter(function (a) { return a.interp === "S" || a.interp === "SDD"; }).map(function (a) { return a.antibiotico + (a.cim ? " " + a.cim : ""); }),
+        intermedios: ab.filter(function (a) { return a.interp === "I"; }).map(function (a) { return a.antibiotico + (a.cim ? " " + a.cim : ""); }),
+        resistentes: ab.filter(function (a) { return a.interp === "R"; }).map(function (a) { return a.antibiotico + (a.cim ? " " + a.cim : ""); }),
+        texto: toSafeString(rep.cultivo_texto), pdf: true
+      };
+    }
     function extractWinlabCulture(rep) {
-      if (!rep || !Array.isArray(rep.valores)) return null;
+      if (!rep) return null;
+      var fromPdf = _cultFromPdf(rep); if (fromPdf) return fromPdf;
+      if (!Array.isArray(rep.valores)) return null;
       var isCult = false, organismo = "", muestra = "", neg = false, pos = false, negDias = "";
       for (var i = 0; i < rep.valores.length; i++) {
         var v = rep.valores[i]; if (!v) continue;
@@ -7261,7 +7283,8 @@ function plExportBackup() {
         var fecha = extractReportDate(rep) || fallbackFecha || "";
         var key = fecha + "|" + cult.tipo + "|" + cult.organismo;
         if (seen[key]) continue; seen[key] = 1;
-        out.push({ fecha: fecha, tipo: cult.tipo, organismo: cult.organismo, muestra: cult.muestra, positivo: cult.positivo });
+        out.push({ fecha: fecha, tipo: cult.tipo, organismo: cult.organismo, muestra: cult.muestra, positivo: cult.positivo, pendiente: !!cult.pendiente,
+          sensibles: cult.sensibles || [], intermedios: cult.intermedios || [], resistentes: cult.resistentes || [], ufc: cult.ufc || "", texto: cult.texto || "", pdf: !!cult.pdf });
       }
       out.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
       return out;
@@ -8336,7 +8359,11 @@ function plExportBackup() {
       if(ck.cur_necesita||ck.cur_realizada) mx.push("CURACIÓN DIARIA DE HERIDA QUIRÚRGICA");
       var cults=[];
       var wlC=(typeof _winlabCultByK!=="undefined"&&_winlabCultByK[pid(p)])?_winlabCultByK[pid(p)]:[];
-      wlC.forEach(function(c){ cults.push(c.tipo.toUpperCase()+" DEL "+_plneFechaPunto(c.fecha)+(c.positivo?" POSITIVO A "+String(c.organismo).toUpperCase():" SIN DESARROLLO")); });
+      wlC.forEach(function(c){
+        if(c.pendiente) { cults.push(c.tipo.toUpperCase()+" DEL "+_plneFechaPunto(c.fecha)+" EN PROCESO"); return; }
+        var ab=[]; if((c.sensibles||[]).length) ab.push("SENSIBLE A "+c.sensibles.join(", ").toUpperCase()); if((c.resistentes||[]).length) ab.push("RESISTENTE A "+c.resistentes.join(", ").toUpperCase());
+        cults.push(c.tipo.toUpperCase()+" DEL "+_plneFechaPunto(c.fecha)+(c.positivo?" POSITIVO A "+String(c.organismo).toUpperCase()+(ab.length?" ("+ab.join("; ")+")":""):" SIN DESARROLLO"));
+      });
       (nd.labHistory||[]).forEach(function(sn){ if(sn&&sn.labs&&(sn.labs.micro_tipo_cultivo||sn.labs.micro_organismo)) cults.push(String(sn.labs.micro_tipo_cultivo||"CULTIVO").toUpperCase()+" DEL "+_plneFechaPunto(sn.fecha)+": "+String(sn.labs.micro_organismo||"SIN DESARROLLO").toUpperCase()+(sn.labs.micro_sensibilidades?" (SENSIBLE A "+String(sn.labs.micro_sensibilidades).toUpperCase()+")":"")); });
       _plneLineas(ck.cultivos).forEach(function(l){ cults.push(l); });
       if(cults.length) mx.push("CULTIVOS: "+cults.join("; "));
@@ -13108,9 +13135,13 @@ function plExportBackup() {
     }
     function _entregaItemsFromCultures(cults) {
       const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
-      return (cults || []).filter(function (c) { return c && c.fecha && c.fecha >= since; }).map(function (c) {
-        return { id: "cult:" + c.fecha + "|" + c.tipo + "|" + c.organismo, fecha: c.fecha,
-          text: c.positivo ? (c.tipo + " POSITIVO a " + c.organismo) : (c.tipo + " " + String(c.organismo || "sin desarrollo").toLowerCase()) };
+      return (cults || []).filter(function (c) { return c && c.fecha && c.fecha >= since && !c.pendiente; }).map(function (c) {
+        const ab = [];
+        if ((c.sensibles || []).length) ab.push("S: " + c.sensibles.join(", "));
+        if ((c.resistentes || []).length) ab.push("R: " + c.resistentes.join(", "));
+        // El id incluye el antibiograma: cuando el PDF llega después del "POSITIVO" de la tabla, se anota la línea completa.
+        return { id: "cult:" + c.fecha + "|" + c.tipo + "|" + c.organismo + (ab.length ? "|ab" : ""), fecha: c.fecha,
+          text: c.positivo ? (c.tipo + " POSITIVO a " + c.organismo + (ab.length ? " (" + ab.join("; ") + ")" : "")) : (c.tipo + " " + String(c.organismo || "sin desarrollo").toLowerCase()) };
       });
     }
     function _entregaAutoFromRis(pts) {
@@ -13301,14 +13332,20 @@ function plExportBackup() {
       // identidad que los labs: exp + _winlabCensoNameOk + match de nombre por encabezado).
       const wlCults = (typeof _winlabCultByK !== "undefined" && _winlabCultByK[k]) ? _winlabCultByK[k] : [];
       let wlChipsHtml = "";
-      wlCults.forEach(function(c) {
-        const col = c.positivo ? "#b91c1c" : "#475569";
-        const bg = c.positivo ? "#fef2f2" : "#f1f5f9";
+      wlCults.forEach(function(c, ci) {
+        const col = c.positivo ? "#b91c1c" : (c.pendiente ? "#b45309" : "#475569");
+        const bg = c.positivo ? "#fef2f2" : (c.pendiente ? "#fffbeb" : "#f1f5f9");
         let t = `<span style="font-weight:700;color:${col}">${esc(c.tipo)}</span>`;
         if (c.fecha) t += ` <span style="color:#64748b;font-size:10px">${esc(c.fecha)}</span>`;
-        t += ` <span style="font-size:9px;color:#0e7490;font-weight:700">📡 WinLab</span>`;
+        t += ` <span style="font-size:9px;color:#0e7490;font-weight:700">📡 WinLab${c.pdf ? " · PDF" : ""}</span>`;
         if (c.muestra) t += ` · <span style="color:#475569;font-size:10px">🧫 ${esc(c.muestra)}</span>`;
-        t += `<br>${c.positivo ? "🦠" : "✓"} <span style="color:${col};font-weight:${c.positivo ? 700 : 400}">${esc(c.organismo)}</span>`;
+        t += `<br>${c.positivo ? "🦠" : (c.pendiente ? "⏳" : "✓")} <span style="color:${col};font-weight:${c.positivo ? 700 : 400}">${esc(c.organismo)}</span>${c.ufc ? ` <span style="color:#64748b;font-size:10px">${esc(c.ufc)}</span>` : ""}`;
+        // Antibiograma (del PDF): sensibles / intermedios / resistentes
+        if ((c.sensibles || []).length) t += `<br><span style="color:#15803d;font-size:11px"><b>S:</b> ${esc(c.sensibles.join(", "))}</span>`;
+        if ((c.intermedios || []).length) t += `<br><span style="color:#b45309;font-size:11px"><b>I:</b> ${esc(c.intermedios.join(", "))}</span>`;
+        if ((c.resistentes || []).length) t += `<br><span style="color:#b91c1c;font-size:11px"><b>R:</b> ${esc(c.resistentes.join(", "))}</span>`;
+        if (c.positivo && !(c.sensibles || []).length && !(c.resistentes || []).length) t += `<br><span style="color:#64748b;font-size:10px">${c.texto ? "Antibiograma no reconocido: ver reporte abajo" : "Antibiograma en el PDF de WinLab (el robot lo captura en la siguiente pasada)"}</span>`;
+        if (c.texto) t += `<details class="cult-rep" style="margin-top:3px"><summary style="font-size:10px;color:#0e7490;cursor:pointer">📄 Reporte completo</summary><pre style="white-space:pre-wrap;font-size:10.5px;line-height:1.35;margin:4px 0 0;color:#334155;max-height:260px;overflow:auto">${esc(c.texto)}</pre></details>`;
         wlChipsHtml += `<div class="cultivo-chip" style="border-color:${col};background:${bg}">${t}</div>`;
       });
 

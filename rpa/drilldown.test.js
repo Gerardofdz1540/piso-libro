@@ -40,7 +40,7 @@ function assert(cond, name) {
 // ── 2. REGRESSION GUARDS: vía PDF presente ──────────────────────────────────
 {
   assert(
-    /import \{ parsePdfToLabValues, findPdfFrameUrl \} from ".\/pdf-extract\.js"/.test(scraperSource),
+    /import \{ parsePdfToReport, findPdfFrameUrl \} from ".\/pdf-extract\.js"/.test(scraperSource),
     "vía PDF: import desde módulo separado pdf-extract.js"
   );
   assert(
@@ -52,7 +52,7 @@ function assert(cond, name) {
     "vía PDF: intercepta response del browser al cargar el frame (hereda sesión completa)"
   );
   assert(
-    /parsePdfToLabValues\(capturedPdfBuffer/.test(scraperSource),
+    /parsePdfToReport\(capturedPdfBuffer/.test(scraperSource),
     "vía PDF: parseo del buffer capturado"
   );
   assert(
