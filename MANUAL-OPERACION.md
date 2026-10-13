@@ -201,9 +201,16 @@ escribe una sola vez aunque la app esté abierta en varios iPads; lo escrito a m
 ## Cultivos
 
 Los cultivos de WinLab aparecen en **IC · Cultivos** aunque el resultado venga como "POSITIVO",
-"NO DESARROLLO" o "NEGATIVO A 5 DÍAS" (antes solo se leía el germen y casi nunca salían). Cuando
-WinLab marca POSITIVO sin escribir el germen en la tabla, la tarjeta dice "POSITIVO (germen y
-antibiograma en el reporte)": hay que abrir el PDF en WinLab.
+"NO DESARROLLO" o "NEGATIVO A 5 DÍAS" (antes solo se leía el germen y casi nunca salían).
+
+La tabla de WinLab solo dice "POSITIVO": el germen y el antibiograma están en el PDF del reporte.
+Desde el 13 de octubre de 2026 el robot abre ese PDF, guarda su texto completo y extrae germen
+(género y especie, con BLEE / carbapenemasa / MRSA si lo dice), UFC y antibiograma. La tarjeta
+muestra **S:** sensibles, **I:** intermedios y **R:** resistentes, con el reporte completo
+plegable ("📄 Reporte completo"). La entrega de guardia y la nota de evolución dicen a qué es
+sensible y resistente. Los cultivos ya capturados antes de esa fecha se vuelven a abrir una vez
+en la siguiente pasada del robot. Si un antibiograma no se reconoce, el texto completo sigue
+visible en la tarjeta: mándame ese caso (sin nombre) para afinar el lector.
 
 ## Nota de evolución
 
