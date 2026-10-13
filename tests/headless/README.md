@@ -25,6 +25,7 @@ node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
 | `app_misc.js` | No olvidar y procedimientos sin red |
 | `app_ui.js` | togglePtReminder, upsert parcial de checklist, atajos Ctrl/Cmd, ficha compacta (saltos, secciones plegables) |
 | `app_ind.js` | Indicaciones automáticas desde el Google Doc (`indicaciones_doc`): parseo, cruce cama+nombre, aviso por nombre distinto, Realtime, 🔄 |
+| `app_nota.js` | Cultivos WinLab (formatos reales: POSITIVO/NO DESARROLLO/NEGATIVO A n DÍAS), novedades automáticas con fecha en la entrega de guardia (labs alterados, RIS, cultivos; idempotente), nota de evolución completa, paciente que reaparece (nota restaurada antes de mostrar la tarjeta + labs WinLab sin ventana), vista de cultivos acotada |
 
 `run_all.sh` levanta servidores HTTP locales (puertos 8766/8767/8771) sobre el directorio
 indicado y deja el log de cada suite en `$TMPDIR/suite_<nombre>.log`.

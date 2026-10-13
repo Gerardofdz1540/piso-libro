@@ -25,6 +25,18 @@ En cada corrida el script compara la hoja con `patients` y:
 - **Cambio de cama (mismo expediente, otra cama):** hace **PATCH** de la cama sobre la misma fila
   (el `id` no cambia → la nota clínica viaja con el paciente). Los intercambios A↔B pasan por una
   cama temporal `#MV-…` durante un segundo para no chocar con `UNIQUE(cama)`.
+- **Expediente corregido (misma cama, misma persona, otro número):** hace **PATCH** del
+  expediente sobre la misma fila; la nota no se toca.
+- **Retiro (ya no está en la hoja): periodo de gracia de 12 minutos.** El trigger `onEdit`
+  sincroniza en cada tecla; al cortar y pegar una fila (cambio de cama) o reescribir un expediente
+  la hoja pasa por un instante en el que el paciente "no está". Antes eso bastaba para archivarlo y
+  borrarlo (con su nota) y el pegado lo recreaba vacío. Ahora solo se retira cuando lleva ≥ 12 min
+  seguidos fuera de la hoja (Script Property `PL_MISSING_SINCE`). Un egreso real sale del tablero
+  unos minutos más tarde; un corte/pegado se resuelve como **cambio de cama** (PATCH).
+- Además, en Supabase hay una red de seguridad: si un paciente con el mismo expediente y nombre
+  vuelve a insertarse en ≤ 10 días de haber sido archivado, el trigger
+  `patients_restore_note_after_insert` restaura su nota (labs, pendientes, checklist) desde
+  `public.archive` sin pisar lo que ya tenga (ver `scripts/supabase_restore_note.sql`).
 - **Reasignación (misma cama, otra persona)** y **retiro (ya no está en la hoja)**: primero
   **archiva** paciente + nota en `public.archive` (la Papelera de la app, restaurable desde
   "Cargar desde nube") con `archived_by = sheet-sync` y la etiqueta de egreso en la nota; **solo
