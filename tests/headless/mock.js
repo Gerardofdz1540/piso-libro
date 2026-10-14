@@ -27,6 +27,10 @@ const MOCK = `(() => {
   const errors=[]; page.on('pageerror',e=>errors.push(String((e&&e.stack)||e).slice(0,300)));
   const rest=[]; page.on('request',r=>{ if(r.url().includes('/rest/v1/')) rest.push({url:r.url().slice(0,110), auth:r.headers()['authorization'], apikey:(r.headers()['apikey']||'').slice(0,10)}); });
   await page.route('**/vendor/supabase*', r=>r.abort());
+  // REST local (oct 2026): antes las llamadas salían a Supabase real; cuando la red del entorno de
+  // pruebas sí alcanza supabase.co, el token falso recibe un 401 auténtico y la app cierra la sesión
+  // en la fase 2. Con esta respuesta local la suite no depende de la red (la fase 3 la sobreescribe con 401).
+  await page.route('**/rest/v1/**', r=>r.fulfill({status:200, contentType:'application/json', body:'[]'}));
   await page.addInitScript(MOCK);
   let pass=0, fail=0; const check=(n,c,x)=>{ if(c){pass++;console.log('PASS '+n);} else {fail++;console.log('FAIL '+n+(x?' :: '+x:''));} };
   const ov=()=>page.evaluate(()=>{const o=document.getElementById('login-overlay');return o?getComputedStyle(o).display:'MISSING';});

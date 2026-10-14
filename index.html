@@ -1714,6 +1714,77 @@
       .fc-side .fc-side-g2 { grid-template-columns: 1fr 1fr !important; }
     }
 
+    /* ═══ MODO HOJA (oct 2026, pedido de Gera): la ficha como la hoja de visita de GoodNotes ═══
+       Una cuadrícula fija con TODAS las cajas abiertas y a la vista (sin plegables):
+       DX · Labs · APP/PA | Cirugías | IC·Cultivos · Imagen | Pendientes | Entrega/Recibo · Pase matutino ·
+       Manejo | MIPs/R1 · Sugerencias | Indicaciones | Diagrama | No olvidar.
+       Mismos bloques y handlers de siempre: solo cambia dónde se pintan (grid-area) y que no se pliegan. */
+    body.pl-hoja .fc-bento {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-areas:
+        "dx dx dx dx"
+        "labs labs labs labs"
+        "hist hist cx cx"
+        "ic ic img plan"
+        "guardia guardia guardia guardia"
+        "pase pase pase pase"
+        "manejo manejo roles roles"
+        "sug ind diag rec";
+      gap: 8px;
+    }
+    body.pl-hoja .fc-main, body.pl-hoja .fc-side, body.pl-hoja .fc-secs { display: contents; }
+    body.pl-hoja .fc-blk-dx { grid-area: dx; }
+    body.pl-hoja .fc-anchor[id^="sec-labs-"] { grid-area: labs; margin-top: 0 !important; }
+    body.pl-hoja .fc-blk-cx { grid-area: cx; margin-top: 0 !important; }
+    body.pl-hoja .fc-blk-manejo { grid-area: manejo; margin-top: 0 !important; }
+    body.pl-hoja .fc-blk-plan { grid-area: plan; margin-top: 0 !important; }
+    body.pl-hoja .fc-guardia { grid-area: guardia; margin-top: 0; }
+    body.pl-hoja details[data-sec="historia"] { grid-area: hist; }
+    body.pl-hoja details[data-sec="roles"] { grid-area: roles; }
+    body.pl-hoja .fc-anchor[id^="sec-pase-"] { grid-area: pase; }
+    body.pl-hoja details[data-sec="ic"] { grid-area: ic; }
+    body.pl-hoja details[data-sec="sug"] { grid-area: sug; }
+    body.pl-hoja details[data-sec="ind"] { grid-area: ind; }
+    body.pl-hoja details[data-sec="img"] { grid-area: img; }
+    body.pl-hoja .drains-collapse { grid-area: diag; }
+    body.pl-hoja details[data-sec="rec"] { grid-area: rec; }
+    body.pl-hoja details.fc-sec, body.pl-hoja .drains-collapse { max-width: 100%; margin-top: 0; min-width: 0; }
+    body.pl-hoja details.fc-sec > summary { cursor: default; }
+    body.pl-hoja .fc-blk, body.pl-hoja .fc-anchor { min-width: 0; }
+    body.pl-hoja .field-ta { min-height: 64px; }
+    body.pl-hoja .fc-hist-grid { grid-template-columns: 1fr 1fr; }
+    body.pl-hoja .fc-side-g2 { grid-template-columns: 1fr 1fr !important; } /* IC | Cultivos lado a lado */
+    /* Cajas que el usuario decidió ocultar en modo Hoja (⚙ Cajas) */
+    body.pl-hoja.hoja-hide-labs .fc-anchor[id^="sec-labs-"], body.pl-hoja.hoja-hide-manejo .fc-blk-manejo, body.pl-hoja.hoja-hide-roles details[data-sec="roles"],
+    body.pl-hoja.hoja-hide-sug details[data-sec="sug"], body.pl-hoja.hoja-hide-ind details[data-sec="ind"], body.pl-hoja.hoja-hide-diag .drains-collapse,
+    body.pl-hoja.hoja-hide-rec details[data-sec="rec"], body.pl-hoja.hoja-hide-img details[data-sec="img"] { display: none !important; }
+    .hoja-cfg { position: relative; display: inline-block; }
+    .hoja-cfg > summary { list-style: none; cursor: pointer; font-size: 11px; font-weight: 800; padding: 0 10px; min-height: 30px; display: inline-flex; align-items: center; border: 1px solid #c7d2fe; border-radius: 8px; background: #eef2ff; color: #3730a3; }
+    .hoja-cfg > summary::-webkit-details-marker { display: none; }
+    .hoja-cfg-menu { position: absolute; top: 34px; left: 0; z-index: 60; background: #fff; border: 1px solid #cbd5e1; border-radius: 10px; box-shadow: 0 8px 24px rgba(15,23,42,.18); padding: 8px 10px; display: grid; gap: 4px; min-width: 190px; }
+    .hoja-cfg-menu label { font-size: 12px; color: #0f172a; display: flex; gap: 6px; align-items: center; cursor: pointer; white-space: nowrap; }
+    @media (max-width: 1000px) {
+      body.pl-hoja .fc-bento {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas: "dx dx" "labs labs" "hist hist" "cx cx" "ic ic" "img plan" "guardia guardia" "pase pase" "manejo roles" "sug ind" "diag rec";
+      }
+    }
+    @media (max-width: 640px) {
+      body.pl-hoja .fc-bento {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "dx" "labs" "hist" "cx" "ic" "img" "plan" "guardia" "pase" "manejo" "roles" "sug" "ind" "diag" "rec";
+      }
+      body.pl-hoja .fc-hist-grid { grid-template-columns: 1fr; }
+      body.pl-hoja .fc-side-g2 { grid-template-columns: 1fr !important; }
+    }
+    /* Pase matutino con fecha e historial (oct 2026) */
+    .pm-date { font-size: 10px; font-weight: 800; border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
+    .pm-date:empty { display: none; }
+    .pm-date.ok { background: #dcfce7; color: #166534; }
+    .pm-date.old { background: #fef3c7; color: #92400e; }
+    .pm-hist { font-size: 10.5px; color: #475569; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 4px 8px; margin: 4px 0 6px; line-height: 1.45; }
+    .pm-hist-d { font-weight: 800; color: #0f766e; }
+
     /* ENTREGA */
     .entrega-wrap {
       background: #fff;
@@ -2074,6 +2145,11 @@
         box-shadow: none;
         border: 1px solid #ccc
       }
+
+      /* Modo Hoja (oct 2026): una hoja por cama, como la impresión de GoodNotes */
+      body.pl-hoja .full-card, body.pl-hoja .simple-card { break-after: page; page-break-after: always; }
+      body.pl-hoja #board-nav, body.pl-hoja #rnav, body.pl-hoja #header { display: none !important; }
+      body.pl-hoja details.fc-sec > summary::-webkit-details-marker { display: none; }
     }
 
     /* ═══════════════════════════════════════════════════════════════
@@ -7985,6 +8061,7 @@ function plExportBackup() {
         labHistory: [], imagenHistory: [],
         checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "", interconsultas: "", cultivos: "",
           pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "", pm_iu: "", /* FIX-v47 */
+          pm_fecha: "", pm_hist: [], /* oct 2026: fecha de los vitales del pase e historial por día */
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_sep_gasto: "", pm_sep_fuga: false, pm_sep_fuga_grado: "", pm_hxqx: "",
           dispositivos: [], /* oct 2026: lista personalizable de drenajes/sondas/estomas (ver renderChecklist) */
@@ -11918,6 +11995,7 @@ function plExportBackup() {
       }
 
       document.body.classList.toggle("pase-mode", isPaseMode()); // modo Pase persistido por dispositivo
+      try { _applyHojaClasses(); } catch (_) {} // modo Hoja persistido por dispositivo
       buildEspFilters();
       renderViewSoft(); // si el residente ya escribe en la tarjeta temprana, no destruir su campo
       updateProxyPill();
@@ -12204,6 +12282,8 @@ function plExportBackup() {
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
             + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
             + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, manejo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
+            + `<button class="bn-mode${isHojaMode() ? " on" : ""}" onclick="toggleHojaMode()" title="Modo Hoja: la ficha como la hoja de visita (cuadrícula con todas las cajas abiertas; al imprimir, una hoja por cama)">${isHojaMode() ? "📑 Hoja" : "🗂 Tarjeta"}</button>`
+            + (isHojaMode() ? renderHojaCfg() : "")
             + renderAlertsNavBtn()
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
             + (isSimpleEsp(fp.esp, fnd) ? "" : _fcJumpBar(fp, fnd, fk))
@@ -13465,7 +13545,7 @@ function plExportBackup() {
     function renderInterconsultasSection(nd, k) {
       const val = esc((nd.checklist && nd.checklist.interconsultas) || "");
       return `<div class="interconsultas-box">
-        <div class="field-label">🩺 Interconsultas</div>
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas</span><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button></div>
         <textarea class="field-ta" rows="2"
           data-key="${k}" data-ckfield="interconsultas"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
@@ -13564,6 +13644,7 @@ function plExportBackup() {
       return `<div class="cultivos-box">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between">
           <span>🦠 Cultivos / Labs especiales${(cultivosExtraidos.length + wlCults.length) ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length + wlCults.length} extraído(s)</span>` : ""}</span>
+          <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'cultivos',true,'Cultivos')" title="Anotar la fecha de hoy antes de un cultivo nuevo">➕ Hoy</button>
         </div>
         <div class="cultivo-tipos-row">${tiposBtns}</div>
         ${(wlChipsHtml || chipsHtml) ? `<div style="margin-bottom:6px">${wlChipsHtml}${chipsHtml}</div>` : ""}
@@ -13882,6 +13963,35 @@ function plExportBackup() {
       document.body.classList.toggle("pase-mode", on);
       renderView();
     }
+    // ─── MODO HOJA (oct 2026): la ficha como la hoja de visita de GoodNotes ───
+    // Cuadrícula fija con todas las cajas abiertas (CSS body.pl-hoja); se recuerda por dispositivo
+    // (pl_hoja). ⚙ Cajas permite ocultar bloques en la hoja (pl_hoja_hide). Imprimir = una hoja por cama.
+    const HOJA_BLOCKS = [["labs", "Labs"], ["manejo", "Manejo"], ["roles", "MIPs / R1"], ["img", "Estudios de imagen"], ["sug", "Sugerencias"], ["ind", "Indicaciones"], ["diag", "Diagrama"], ["rec", "No olvidar"]];
+    function isHojaMode() { try { return localStorage.getItem("pl_hoja") === "1"; } catch (_) { return false; } }
+    function hojaHidden() { try { const a = JSON.parse(localStorage.getItem("pl_hoja_hide") || "[]"); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
+    function _applyHojaClasses() {
+      const on = isHojaMode(); const hid = hojaHidden();
+      document.body.classList.toggle("pl-hoja", on);
+      HOJA_BLOCKS.forEach(function (b) { document.body.classList.toggle("hoja-hide-" + b[0], on && hid.indexOf(b[0]) >= 0); });
+    }
+    function toggleHojaMode() {
+      const on = !isHojaMode();
+      try { localStorage.setItem("pl_hoja", on ? "1" : "0"); } catch (_) {}
+      _applyHojaClasses();
+      renderView();
+    }
+    function toggleHojaBlock(name) {
+      const hid = hojaHidden(); const i = hid.indexOf(name);
+      if (i >= 0) hid.splice(i, 1); else hid.push(name);
+      try { localStorage.setItem("pl_hoja_hide", JSON.stringify(hid)); } catch (_) {}
+      _applyHojaClasses();
+    }
+    function renderHojaCfg() {
+      const hid = hojaHidden();
+      return `<details class="hoja-cfg" title="Elegir qué cajas se ven en la Hoja"><summary>⚙ Cajas</summary><div class="hoja-cfg-menu">`
+        + HOJA_BLOCKS.map(function (b) { return `<label><input type="checkbox" data-blk="${b[0]}"${hid.indexOf(b[0]) >= 0 ? "" : " checked"} onchange="toggleHojaBlock(this.dataset.blk)"> ${b[1]}</label>`; }).join("")
+        + `<button type="button" class="pend-tool" onclick="window.print()" title="Imprimir: una hoja por cama">🖨 Imprimir hoja</button></div></details>`;
+    }
     // Mostrar/ocultar en ESTA tarjeta TODOS los bloques plegables (APP/Qx/PA, MIPs/R1, IC, sugerencias,
     // indicaciones, estudios, no olvidar). No persiste: es un vistazo puntual.
     function toggleCardFull(k) {
@@ -13894,6 +14004,7 @@ function plExportBackup() {
     // Estado recordado por sección y por modo (Pase / Completo) en localStorage pl_sec_open.
     function _secStateKey(name) { return name + (isPaseMode() ? "@p" : "@f"); }
     function _secOpenState(name, autoOpen) {
+      if (isHojaMode()) return true; // modo Hoja: todas las cajas abiertas, siempre
       try {
         const m = JSON.parse(localStorage.getItem("pl_sec_open") || "{}");
         const key = _secStateKey(name);
@@ -13902,6 +14013,8 @@ function plExportBackup() {
       return !!autoOpen;
     }
     function fcSecClick(summary) {
+      // Modo Hoja: las cajas no se pliegan y no se toca la memoria de Pase/Completo
+      if (isHojaMode()) { try { if (window.event && window.event.preventDefault) window.event.preventDefault(); } catch (_) {} return; }
       // click llega ANTES de que <details> cambie: el estado nuevo es el contrario del actual
       try {
         const d = summary.parentElement;
@@ -14014,6 +14127,28 @@ function plExportBackup() {
       }, { passive: true });
     }
     // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
+    // ➕ Hoy en IC / Cultivos / Entrega / Recibo (oct 2026): anota "dd/mm: " al final de la caja, como la
+    // fecha que se escribe a mano antes de cada renglón en la hoja de visita. isCk = campo del checklist.
+    function insertTodayStamp(k, field, isCk, label) {
+      const sel = isCk ? 'textarea[data-key="' + k + '"][data-ckfield="' + field + '"]' : 'textarea[data-key="' + k + '"][data-field="' + field + '"]';
+      const ta = document.querySelector(sel);
+      const d = new Date();
+      const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + ": ";
+      const nd = getNote(k);
+      const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
+      const trimmed = cur.replace(/\s+$/, "");
+      if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
+      _undoPush(k, "fecha de hoy en " + (label || field));
+      const next = (trimmed ? trimmed + "\n" : "") + stamp;
+      if (ta) {
+        ta.value = next; if (isCk) liveCkText(ta); else liveUpdate(ta); ta.focus();
+        try { ta.setSelectionRange(next.length, next.length); } catch (_) {}
+      } else if (isCk) {
+        if (!nd.checklist) nd.checklist = {}; nd.checklist[field] = next; _saveNoteNow(k, nd, "ck_" + field); _rerenderCard(k);
+      } else {
+        nd[field] = next; _saveNoteNow(k, nd, field); _rerenderCard(k);
+      }
+    }
     function pendInsertToday(k) {
       const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]');
       const d = new Date();
@@ -14245,6 +14380,7 @@ function plExportBackup() {
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
           <span>📤 Entrega de guardia</span>
           <span style="display:flex;gap:4px;align-items:center">
+            <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'entrega',false,'Entrega')" title="Anotar la fecha de hoy antes de la evolución del día">➕ Hoy</button>
             <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Auto-llenar entrega con labs críticos, pendientes y cruce">✨ Auto-llenar</button>
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Entrega de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
@@ -14255,7 +14391,10 @@ function plExportBackup() {
       <div id="sec-recibo-${ek}" class="fc-anchor recibo-row fc-blk fc-blk-recibo">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
           <span>📥 Recibo de guardia</span>
-          <button type="button" class="gd-btn" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasar lo que dejó la guardia anterior en Entrega a mi Recibo (con fecha y hora) y vaciar Entrega">⇄ Tomar guardia</button>
+          <span style="display:flex;gap:4px;align-items:center">
+            <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'recibo',true,'Recibo')" title="Anotar la fecha de hoy">➕ Hoy</button>
+            <button type="button" class="gd-btn" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasar lo que dejó la guardia anterior en Entrega a mi Recibo (con fecha y hora) y vaciar Entrega">⇄ Tomar guardia</button>
+          </span>
         </div>
         <textarea class="field-ta" rows="4" data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Lo que me entregan al recibir la guardia…">${esc(reciboTxt)}</textarea>
       </div>
@@ -22645,10 +22784,66 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       _saveNoteNow(k, nd);
     }
 
+    // Pase matutino con FECHA (oct 2026): los vitales llevan el día en que se tomaron (pm_fecha). Al primer
+    // dato de un día nuevo, los del día anterior pasan al historial (pm_hist, 14 días) y la fila queda
+    // limpia para el pase de hoy, como en la hoja de GoodNotes donde cada día tiene su renglón.
+    const PM_DAILY = ["pm_fc", "pm_fr", "pm_temp", "pm_sao2", "pm_o2l", "pm_ta", "pm_uresis", "pm_dxtx", "pm_iu", "pm_balance"];
+    function _pmRollover(k, cl) {
+      const today = todayStr();
+      if (cl.pm_fecha === today) return false;
+      const prev = toSafeString(cl.pm_fecha);
+      const snap = { fecha: prev };
+      let any = false;
+      PM_DAILY.forEach(function (f) { const v = toSafeString(cl[f]).trim(); snap[f.slice(3)] = v; if (v) any = true; });
+      if (any) {
+        _undoPush(k, "vitales de " + (prev ? fmtDateChip(prev) : "antes") + " al historial del pase");
+        const hist = Array.isArray(cl.pm_hist) ? cl.pm_hist.filter(function (h) { return h && h.fecha !== prev; }) : [];
+        hist.push(snap);
+        hist.sort(function (a, b) { return String(a.fecha).localeCompare(String(b.fecha)); });
+        cl.pm_hist = hist.slice(-14);
+        PM_DAILY.forEach(function (f) { cl[f] = ""; });
+      }
+      cl.pm_fecha = today;
+      return any;
+    }
     function updatePmField(k, field, val) {
       const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      let rolled = false;
+      if (PM_DAILY.indexOf(field) >= 0) rolled = _pmRollover(k, nd.checklist);
       nd.checklist[field] = val;
       _saveNoteNow(k, nd);
+      if (PM_DAILY.indexOf(field) >= 0) _refreshPmRow(k, rolled ? field : null);
+    }
+    // Refresca el chip de fecha y el historial del pase sin repintar la tarjeta (no roba el foco al escribir).
+    function _refreshPmRow(k, keepField) {
+      try {
+        const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
+        const wrap = document.getElementById("ck-row-" + ek); if (!wrap) return;
+        const cl = getNote(k).checklist || {};
+        if (keepField) wrap.querySelectorAll(".ck-r-vitales .pm-input, .dv-head .pm-input").forEach(function (inp) { if (inp.dataset.field && inp.dataset.field !== keepField && PM_DAILY.indexOf(inp.dataset.field) >= 0) inp.value = ""; });
+        const chip = wrap.querySelector(".pm-date"); if (chip) chip.outerHTML = _pmDateChip(cl);
+        const hist = wrap.querySelector(".pm-hist"); if (hist) hist.outerHTML = _pmHistHtml(cl);
+      } catch (_) {}
+    }
+    function _pmDateChip(cl) {
+      const f = toSafeString(cl && cl.pm_fecha);
+      if (!f) return `<span class="pm-date"></span>`;
+      return f === todayStr()
+        ? `<span class="pm-date ok" title="Vitales tomados hoy">hoy</span>`
+        : `<span class="pm-date old" title="Estos vitales son del ${esc(f)}: al escribir los de hoy pasan al historial">de ${esc(fmtDateChip(f))}</span>`;
+    }
+    function _pmHistLine(h) {
+      const parts = [];
+      const add = function (lbl, v, suf) { v = toSafeString(v).trim(); if (v) parts.push(lbl + " " + v + (suf || "")); };
+      add("FC", h.fc); add("FR", h.fr); add("T", h.temp); add("SaO₂", h.sao2, "%"); add("O₂", h.o2l, " L"); add("TA", h.ta); add("Uresis", h.uresis); add("Dxtx", h.dxtx); add("IU", h.iu); add("Bal", h.balance);
+      return parts.join(" · ");
+    }
+    function _pmHistHtml(cl) {
+      const hist = (cl && Array.isArray(cl.pm_hist)) ? cl.pm_hist.filter(function (h) { return !!h; }) : [];
+      if (!hist.length) return `<div class="pm-hist" style="display:none"></div>`;
+      const last = hist.slice(-3).reverse();
+      return `<div class="pm-hist" title="Pases de días anteriores (se guardan 14 días)">` + last.map(function (h) { return `<span class="pm-hist-d">${h.fecha ? esc(fmtDateChip(h.fecha)) : "antes"}:</span> ${esc(_pmHistLine(h))}`; }).join("<br>") + `</div>`;
     }
 
     function toggleSvcMine(k) {
@@ -23042,8 +23237,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     </div>
     <div class="checklist-row ck-r-vitales">
       <span class="ck-title ck-t-vit" style="margin-right:2px">🫀 Pase Matutino:</span>
+      ${_pmDateChip(cl)}
       ${vitalesHtml}
     </div>
+    ${_pmHistHtml(cl)}
     <div class="checklist-row ck-r-drenajes dv-wrap">
       <div class="dv-head">
         <span class="ck-title ck-t-dren">🩺 Drenajes y sondas:</span>

@@ -219,6 +219,29 @@ Los pasos se guardan en el dispositivo y sobreviven a cerrar la app (también si
 paciente dado de alta por error se recupera desde la **Papelera** (☁️ Cargar desde nube →
 ↩ Restaurar).
 
+## Modo Hoja de visita (octubre 2026)
+
+Es la ficha vista como la hoja de GoodNotes: una cuadrícula fija con **todas las cajas abiertas
+a la vez**, sin plegables. En la barra de arriba de la ficha, el botón **🗂 Tarjeta / 📑 Hoja**
+cambia entre los dos modos y se recuerda en cada dispositivo.
+
+Orden de la hoja: DX · Labs · APP/PA | Cirugías · IC/Cultivos | Imagen | Pendientes · Entrega |
+Recibo · Pase matutino (dieta, ATB, vitales, drenajes) · Manejo | MIPs/R1 · Sugerencias |
+Indicaciones | Diagrama | No olvidar. En iPad vertical se acomoda en dos columnas; en celular en
+una. Son las mismas cajas con los mismos botones: solo cambia dónde se pintan.
+
+- **⚙ Cajas** (aparece en modo Hoja): quita de la hoja lo que no uses (Labs, Manejo, MIPs/R1,
+  Imagen, Sugerencias, Indicaciones, Diagrama, No olvidar). Es por dispositivo y no borra nada.
+- **🖨 Imprimir hoja** (dentro de ⚙ Cajas) o imprimir desde el navegador: en modo Hoja sale
+  **una hoja por cama**, sin barras ni botones.
+- **➕ Hoy** en Interconsultas, Cultivos, Entrega y Recibo anota la fecha de hoy (`dd/mm: `) al
+  final de la caja, como la fecha que se escribe a mano antes de cada renglón. Pendientes ya lo
+  tenía (ahí va al inicio).
+- **Pase matutino con fecha**: los vitales llevan el día en que se tomaron. Si son de ayer, el
+  chip dice "de 13 Oct" en ámbar. Al escribir el primer dato de hoy, los de ayer pasan al
+  historial (renglón gris debajo, últimos 3 días a la vista, 14 guardados) y la fila queda limpia
+  para el pase de hoy. Si te arrepientes, ↩ Regresar lo deshace.
+
 ## Las cajas de la ficha (octubre 2026)
 
 Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, de arriba abajo:
