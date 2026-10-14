@@ -28,13 +28,28 @@ qué hacer si alguna se filtra.
   `supabase_rls_restrictive.sql`) daban acceso total a `anon` y se retiraron.
   **No volver a aplicarlos.**
 
-## 3. Usuarios
+## 3. Usuarios (modelo de octubre de 2026)
 
-- Se administran desde la app (Config → Usuarios) o en Supabase →
-  Authentication → Users. Para dar de baja a alguien: borrar su usuario ahí;
-  su sesión deja de funcionar en cuanto expira el token (≤ 1 h) y al recargar.
-- Cambio de contraseña: la app cierra sesión solo en el dispositivo actual
-  (`signOut({ scope: "local" })`); las demás sesiones siguen hasta que expiren.
+- Tabla `public.app_users` (id = auth.users.id, nombre, `role` admin/usuario,
+  `status` active/blocked). Funciones `pl_is_admin()` / `pl_is_active()`
+  (security definer). Política **restrictiva** `pl_solo_cuentas_activas` en
+  todas las tablas de datos y en `storage.objects`: una cuenta bloqueada o sin
+  registro no lee ni escribe nada aunque tenga sesión. `service_role` no pasa
+  por RLS (robot, hoja del censo, Edge Function).
+- Altas, bloqueos, roles y contraseñas: **👥 Usuarios** en la app → Edge
+  Function `admin-users` (verifica el JWT, exige role=admin activo, usa la
+  service_role key que Supabase inyecta en la función). Bloquear también pone
+  `ban_duration` en Auth; borrar quita la cuenta pero conserva su actividad.
+- Registro de actividad: `public.audit_log` (solo lo lee el admin) con
+  disparador `pl_audit()` en patients, notes, no_olvidar, procedimientos_dia,
+  guard_info y config: uid/correo del JWT, cabeceras `X-PL-Device` /
+  `X-PL-User` que manda la app, IP (`cf-connecting-ip`) y user-agent, campos
+  cambiados y "de → a". Retención 180 días (cron `audit-log-purge`).
+- Contraseñas: mínimo 12 caracteres (política del proyecto). Recuperación por
+  correo (`resetPasswordForEmail`, requiere SMTP propio), enlace generado por
+  el admin (`generateLink` recovery, 1 h) o contraseña temporal.
+- Si el administrador se queda fuera: `update public.app_users set role='admin',
+  status='active' where email='…';` en el SQL Editor.
 
 ## 4. Qué hacer si se filtra algo
 

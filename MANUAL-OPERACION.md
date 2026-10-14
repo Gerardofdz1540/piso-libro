@@ -384,6 +384,72 @@ U/MIN (20 U EN 100 ML A 9 ML/H)" y "BAJO VENTILACIÓN MECÁNICA INVASIVA (MODO A
 CMH2O, VOLUMEN TIDAL 420 ML (6.4 ML/KG DE PESO PREDICHO), FR 16 RPM, PIP 24 CMH2O, PRESIÓN MESETA
 20 CMH2O, PRESIÓN DE DISTENSIÓN 12 CMH2O, RELACIÓN I:E 1:2)".
 
+## Cuentas, permisos y registro de actividad (octubre 2026)
+
+Cada persona entra con **su propio correo y contraseña** (Supabase Auth). Solo entran las cuentas que
+el administrador tiene **activas** en 👥 Usuarios: la base de datos rechaza cualquier lectura o
+escritura de una cuenta bloqueada o sin registro, aunque tenga sesión abierta. El robot de labs y la
+hoja del censo no cambian (usan la llave de servicio).
+
+### 👥 Usuarios (solo el administrador)
+
+Botón **👥 Usuarios** en la cabecera (solo lo ve el administrador).
+
+- **➕ Dar acceso a alguien**: correo, nombre y rol → se crea la cuenta y aparece una **contraseña
+  temporal** una sola vez (12 caracteres, ya copiada): mándasela por WhatsApp. Entra con su correo y
+  esa contraseña y la cambia en 👤 Mi cuenta.
+- Por cuenta: **🔑 Contraseña temporal** (la anterior deja de servir), **🔗 Enlace** (copia un enlace de
+  recuperación que vale 1 hora: al abrirlo la app pide la contraseña nueva), **📧 Correo** (Supabase
+  manda ese enlace por correo; ver SMTP abajo), **✏️ Nombre**, **⬆️ Hacer admin / ⬇️ Quitar admin**,
+  **⛔ Bloquear / 🔓 Activar** (bloqueado no puede ni iniciar sesión) y **🗑 Borrar** (su actividad
+  anterior se conserva).
+- El administrador no puede bloquearse, borrarse ni quitarse el rol a sí mismo.
+- **Sin registro**: cuentas creadas a mano en el panel de Supabase; aparecen con **✅ Dar acceso**.
+
+### 🕵️ Actividad
+
+Pestaña **Actividad** del mismo panel: cada cambio guardado en la nube con **quién** (nombre y
+cuenta), **desde dónde** (nombre del dispositivo, navegador e IP) y **qué** (cama, paciente y cada
+campo con "de → a", incluidas las claves del checklist). Filtros por persona, cama y días; lo que
+hacen el robot de labs y la hoja del censo sale como 🤖. Se guardan 180 días (tabla `audit_log`,
+disparadores en pacientes, notas, No olvidar, procedimientos, guardia y configuración).
+
+### 👤 Mi cuenta (todos)
+
+Nombre (se guarda en la cuenta y se usa en todos tus dispositivos: iniciales en las cajas y en la
+actividad), **nombre de este dispositivo** (p. ej. "iPad de Gera", así sale en "desde dónde") y
+**🔑 Cambiar contraseña** (mínimo 12 caracteres; puede ser una frase corta).
+
+### Recuperar la contraseña (tres caminos)
+
+1. **¿Olvidaste tu contraseña?** en la pantalla de entrada: Supabase manda un enlace al correo
+   (requiere el SMTP de abajo). Al abrirlo, la app pide la contraseña nueva.
+2. El administrador toca **🔗 Enlace** y te lo manda por WhatsApp (no necesita correo).
+3. El administrador toca **🔑 Contraseña temporal** y te la dicta.
+
+### Configuración en Supabase (una vez, 5 minutos)
+
+1. **Authentication → URL Configuration**: Site URL `https://pisolibro.pages.dev`; en Redirect URLs
+   agrega `https://pisolibro.pages.dev/**` y `https://*--pisocirugiahgl.netlify.app/**`. Sin esto, los
+   enlaces de recuperación mandan a otra dirección.
+2. **Authentication → Sign In / Providers → Email**: desactiva *Allow new users to sign up*. Nadie se
+   registra solo (de todas formas, sin registro no ve nada).
+3. **Correo gratis para "¿Olvidaste tu contraseña?"**: el correo integrado de Supabase es limitado
+   (pocos por hora y, en la práctica, solo a correos del equipo del proyecto). Usa tu Gmail:
+   Google → Seguridad → Verificación en 2 pasos → **Contraseñas de aplicaciones** → crea una para
+   "Piso Libro". En Supabase → **Project Settings → Authentication → SMTP Settings** → *Enable
+   custom SMTP*: Host `smtp.gmail.com`, Port `465`, User `gfdz1540@gmail.com`, Password = la
+   contraseña de aplicación, Sender email `gfdz1540@gmail.com`, Sender name `Piso Libro`. Costo: $0
+   (límite ~500 correos al día). Los caminos 2 y 3 funcionan sin esto.
+
+### Si el administrador pierde su acceso
+
+En Supabase → SQL Editor:
+
+```sql
+update public.app_users set role = 'admin', status = 'active' where email = 'gfdz1540@gmail.com';
+```
+
 ## Si un paciente desapareció del censo
 
 1. En la app, abre la pestaña **Papelera**.

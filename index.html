@@ -2940,6 +2940,52 @@
     .vp-hint.vp-ssc { white-space: normal; flex-basis: 100%; }
     .vm-chips { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
     .vm-chip { font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 10px; background: #e0f2fe; border: 1px solid #7dd3fc; color: #075985; white-space: nowrap; }
+    /* 👥 Usuarios y actividad · 👤 Mi cuenta (oct 2026) */
+    .adm-box { max-width: 940px; width: 96vw; }
+    .adm-tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
+    .adm-tab { border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; border-radius: 8px; padding: 6px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: var(--font); }
+    .adm-tab.active { background: #0a1628; color: #fff; border-color: #0a1628; }
+    .adm-invite { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 12.5px; color: #064e3b; }
+    .adm-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+    .adm-row .modal-input { flex: 1 1 160px; min-width: 0; }
+    .adm-hint { font-size: 11.5px; color: #64748b; margin-top: 6px; line-height: 1.5; }
+    .adm-result { margin-top: 8px; font-size: 12.5px; color: #065f46; }
+    .adm-pass { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 15px; font-weight: 800; background: #fff; border: 1px dashed #059669; padding: 2px 8px; border-radius: 6px; letter-spacing: .06em; color: #0a1628; }
+    .adm-list { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow: auto; }
+    .adm-user { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 10px; background: #fff; }
+    .adm-user.adm-blocked { background: #fff1f2; border-color: #fecdd3; }
+    .adm-u-main { font-size: 13px; color: #0f172a; min-width: 0; }
+    .adm-mail { color: #64748b; font-size: 12px; }
+    .adm-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .adm-u-acts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 55%; }
+    .adm-btn { font-size: 11px; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; border-radius: 8px; padding: 4px 8px; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .adm-btn:hover { background: #e2e8f0; }
+    .adm-btn.adm-danger { border-color: #fca5a5; color: #991b1b; background: #fff5f5; }
+    .adm-badge { display: inline-block; font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 10px; background: #e2e8f0; color: #475569; margin-left: 2px; vertical-align: middle; }
+    .adm-badge.adm-ok { background: #d1fae5; color: #065f46; }
+    .adm-badge.adm-bad { background: #fee2e2; color: #991b1b; }
+    .adm-badge.adm-warn { background: #fef3c7; color: #92400e; }
+    .adm-badge.adm-adm { background: #ede9fe; color: #5b21b6; }
+    .adm-badge.adm-self { background: #dbeafe; color: #1e40af; }
+    .adm-err { color: #b91c1c; font-size: 12.5px; }
+    .adm-filters .modal-input { flex: 0 1 220px; }
+    .adm-act { border: 1px solid #e2e8f0; border-radius: 10px; padding: 7px 10px; background: #fff; font-size: 12.5px; }
+    .adm-act-h { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+    .adm-act-ts { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11.5px; color: #475569; }
+    .adm-act-where { margin-left: auto; font-size: 11px; color: #64748b; }
+    .adm-act-b { margin-top: 3px; color: #0f172a; }
+    .adm-diff { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+    .adm-d { font-size: 11.5px; color: #334155; white-space: pre-wrap; word-break: break-word; }
+    .adm-k { font-weight: 800; color: #0a1628; }
+    .adm-de { color: #991b1b; text-decoration: line-through; }
+    .adm-a { color: #065f46; font-weight: 600; }
+    .adm-lbl { display: block; font-size: 11px; font-weight: 800; color: #1e3a5f; text-transform: uppercase; letter-spacing: .03em; margin: 10px 0 3px; }
+    body.dark .adm-user, body.dark .adm-act { background: #0e2138; border-color: #23405f; }
+    body.dark .adm-u-main, body.dark .adm-act-b, body.dark .adm-d, body.dark .adm-k { color: #e2e8f0; }
+    body.dark .adm-invite { background: #0b2a24; border-color: #0f766e; color: #a7f3d0; }
+    body.dark .adm-btn, body.dark .adm-tab { background: #152e4d; border-color: #2f4f79; color: #cfdded; }
+    body.dark .adm-tab.active { background: #38bdf8; color: #0a1628; border-color: #38bdf8; }
+    body.dark .adm-pass { background: #0a1628; color: #fff; }
     .ck-title.ck-t-vit { color: #0f766e; }
     .ck-title.ck-t-dren { color: #7c3aed; }
     .ck-title.ck-t-clin { color: #991b1b; }
@@ -4125,6 +4171,8 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
           Entrar
         </button>
         <div id="login-error" role="alert" style="color:#c00;margin-top:8px;min-height:1.2em;font-size:0.9em;"></div>
+        <button type="button" onclick="forgotPassword()" data-testid="login-forgot"
+          style="background:none;border:none;color:#6366f1;font-size:12.5px;font-weight:600;cursor:pointer;margin-top:6px;font-family:inherit;text-decoration:underline">¿Olvidaste tu contraseña?</button>
       </div>
       <!-- First-time setup -->
       <div id="login-setup-section" style="display:none">
@@ -4241,6 +4289,10 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
           </div>
         </div>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
+        <button id="account-btn" onclick="openAccountPanel()" title="Mi cuenta: nombre, dispositivo y contraseña" data-testid="account-btn"
+          style="background:rgba(99,102,241,.22);border:1px solid rgba(99,102,241,.5);color:#c7d2fe;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">👤 Mi cuenta</button>
+        <button id="admin-btn" onclick="openAdminPanel()" title="Usuarios y actividad (solo administrador)" data-testid="admin-btn"
+          style="display:none;background:rgba(16,185,129,.22);border:1px solid rgba(16,185,129,.5);color:#a7f3d0;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">👥 Usuarios</button>
         <button id="logout-btn" onclick="logout()" title="Cerrar sesión"
           style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);color:#fecaca;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">🚪 Salir</button>
       </div>
@@ -6628,6 +6680,277 @@ function plExportBackup() {
       try { if (_supa) await _supa.auth.signOut({ scope: "local" }); } catch (e) { console.warn("signOut:", e); }
       // onAuthStateChange (SIGNED_OUT) muestra el overlay; recargamos para limpiar estado in-memory de la SPA.
       location.reload();
+    }
+
+    // ── Cuentas con administrador (oct 2026) ────────────────────────────────────────
+    // Perfil en public.app_users (rol admin/usuario, estado active/blocked). El administrador da de alta,
+    // bloquea y repone contraseñas desde 👥 Usuarios (Edge Function admin-users). Las políticas de la base
+    // solo dejan leer/escribir a cuentas activas, así que un bloqueado no ve nada aunque tenga sesión.
+    let _myProfile = null;
+    function _appUrl() { return location.origin + location.pathname; }
+    function _jwtPayload(tok) { try { return JSON.parse(atob(String(tok).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); } catch (_) { return null; } }
+    function myUserId() { const p = _jwtPayload(_userAccessToken); return (p && p.sub) || ""; }
+    function myEmail() { const p = _jwtPayload(_userAccessToken); return (p && p.email) || ""; }
+    function isAdmin() { return !!(_myProfile && _myProfile.role === "admin" && _myProfile.status === "active"); }
+    function _renderAdminButton() { const b = document.getElementById("admin-btn"); if (b) b.style.display = isAdmin() ? "" : "none"; }
+    async function _loadMyProfile() {
+      const uid = myUserId(); if (!uid) return true;
+      let rows = null;
+      try { rows = await _sGet("app_users", "select=id,email,nombre,role,status&id=eq." + encodeURIComponent(uid)); }
+      catch (e) {
+        // Sin red (o 401 ya manejado): seguir con la copia local; el servidor rechaza igual a los bloqueados.
+        safeLog("app_users:", e);
+        return !_sessionInvalidated;
+      }
+      const me = Array.isArray(rows) ? rows[0] : null;
+      if (!me || me.status !== "active") { await _accessDenied(me ? "bloqueada" : "sin_registro"); return false; }
+      _myProfile = me;
+      if (me.nombre) { try { if ((localStorage.getItem("pl_user_name") || "") !== me.nombre) localStorage.setItem("pl_user_name", me.nombre); } catch (_) {} }
+      _renderAdminButton();
+      _sPatch("app_users", "id=eq." + encodeURIComponent(uid), { last_seen_at: new Date().toISOString() }).catch(() => {});
+      return true;
+    }
+    async function _accessDenied(reason) {
+      _userAccessToken = null; _sessionInvalidated = true; _hadSessionAtLoad = false;
+      try { if (_supa) await _supa.auth.signOut({ scope: "local" }); } catch (_) {}
+      _showLoginOverlay();
+      _showLoginError(reason === "bloqueada"
+        ? "Tu cuenta está bloqueada. Pide al administrador que la active."
+        : "Tu cuenta aún no tiene acceso autorizado. Pide al administrador que la active en 👥 Usuarios.");
+    }
+    // ¿Olvidaste tu contraseña? → Supabase manda un enlace al correo (requiere SMTP configurado en el
+    // proyecto; si no llega, el administrador puede dar una contraseña temporal o copiar el enlace).
+    async function forgotPassword() {
+      const emailEl = document.getElementById("login-user");
+      let email = ((emailEl && emailEl.value) || "").trim();
+      if (!email) { email = (prompt("Escribe tu correo para enviarte el enlace de recuperación:") || "").trim(); if (!email) return; if (emailEl) emailEl.value = email; }
+      if (!_supa || !_supa.auth || typeof _supa.auth.resetPasswordForEmail !== "function") { _showLoginError("Sin conexión con Supabase. Revisa tu internet y vuelve a intentar."); return; }
+      try {
+        const { error } = await _supa.auth.resetPasswordForEmail(email, { redirectTo: _appUrl() });
+        if (error) throw error;
+        const msg = document.getElementById("login-msg");
+        if (msg) { msg.style.background = "#ecfdf5"; msg.style.color = "#065f46"; msg.textContent = "Si el correo está registrado, te llegará un enlace para poner una contraseña nueva (revisa también spam). Si no llega, pídele al administrador una contraseña temporal."; msg.style.display = "block"; }
+        _showLoginError("");
+      } catch (e) { _showLoginError("No se pudo enviar el correo: " + ((e && e.message) || e)); }
+    }
+    // Enlace de recuperación: la app no procesa la URL sola (detectSessionInUrl:false), así que al abrir con
+    // #access_token…&type=recovery se instala esa sesión y se pide la contraseña nueva antes de seguir.
+    async function _handleRecoveryLink() {
+      let h = ""; try { h = location.hash || ""; } catch (_) {}
+      if (!/access_token=/.test(h) || !/type=recovery/.test(h)) return false;
+      const q = new URLSearchParams(h.replace(/^#/, ""));
+      const at = q.get("access_token"), rt = q.get("refresh_token");
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+      if (!_supa || !at || !_supa.auth || typeof _supa.auth.setSession !== "function") return false;
+      try {
+        const { error } = await _supa.auth.setSession({ access_token: at, refresh_token: rt || "" });
+        if (error) throw error;
+      } catch (e) {
+        _showLoginOverlay();
+        _showLoginError("El enlace de recuperación ya no sirve (caducó o ya se usó). Pide uno nuevo.");
+        return true;
+      }
+      _recoveryPending = true;
+      return true;
+    }
+    let _recoveryPending = false;
+    function openNewPasswordDialog(fromRecovery) {
+      let m = document.getElementById("pwd-modal");
+      if (!m) {
+        m = document.createElement("div"); m.id = "pwd-modal"; m.className = "modal-bg"; m.style.display = "none"; m.style.zIndex = "100000";
+        m.innerHTML = '<div class="modal-box" style="max-width:420px"><div class="modal-header"><div class="modal-title">🔑 Contraseña nueva</div><button class="modal-close" onclick="closeNewPasswordDialog()">✕</button></div>'
+          + '<p id="pwd-hint" style="font-size:12.5px;color:#64748b;margin:0 0 10px"></p>'
+          + '<input id="pwd-new" type="password" autocomplete="new-password" placeholder="Nueva contraseña (mínimo 12 caracteres)" class="modal-input" style="width:100%;margin-bottom:8px;box-sizing:border-box" data-testid="pwd-new"/>'
+          + '<input id="pwd-new2" type="password" autocomplete="new-password" placeholder="Repite la contraseña" class="modal-input" style="width:100%;margin-bottom:10px;box-sizing:border-box" data-testid="pwd-new2" onkeydown="if(event.key===\'Enter\')saveNewPassword()"/>'
+          + '<div id="pwd-err" style="color:#dc2626;font-size:12px;min-height:1.2em;margin-bottom:8px"></div>'
+          + '<button class="btn-save" onclick="saveNewPassword()" data-testid="pwd-save" style="width:100%">Guardar contraseña</button></div>';
+        document.body.appendChild(m);
+      }
+      const hint = document.getElementById("pwd-hint");
+      if (hint) hint.textContent = fromRecovery ? "Entraste con el enlace de recuperación. Escribe tu contraseña nueva para terminar." : "Escribe tu contraseña nueva. Solo cambia la de tu cuenta.";
+      m.dataset.recovery = fromRecovery ? "1" : "";
+      document.getElementById("pwd-err").textContent = ""; document.getElementById("pwd-new").value = ""; document.getElementById("pwd-new2").value = "";
+      m.style.display = "flex";
+      setTimeout(() => { try { document.getElementById("pwd-new").focus(); } catch (_) {} }, 50);
+    }
+    function closeNewPasswordDialog() { const m = document.getElementById("pwd-modal"); if (m) m.style.display = "none"; }
+    async function saveNewPassword() {
+      const p1 = (document.getElementById("pwd-new") || {}).value || "", p2 = (document.getElementById("pwd-new2") || {}).value || "";
+      const err = document.getElementById("pwd-err");
+      if (p1.length < 12) { if (err) err.textContent = "Mínimo 12 caracteres (puede ser una frase corta)."; return; }
+      if (p1 !== p2) { if (err) err.textContent = "Las contraseñas no coinciden."; return; }
+      if (!_supa || !_supa.auth || typeof _supa.auth.updateUser !== "function") { if (err) err.textContent = "Sin conexión con Supabase."; return; }
+      try {
+        const { error } = await _supa.auth.updateUser({ password: p1 });
+        if (error) throw error;
+        const m = document.getElementById("pwd-modal"); const rec = !!(m && m.dataset.recovery === "1");
+        closeNewPasswordDialog();
+        alert("✅ Contraseña guardada." + (rec ? " Ya puedes usar la app con ella." : ""));
+      } catch (e) { if (err) err.textContent = "No se pudo cambiar: " + ((e && e.message) || e); }
+    }
+
+    // ── 👥 Usuarios y actividad (solo administrador) · 👤 Mi cuenta ──────────────────
+    const ADMIN_FN_URL = SUPA_URL + "/functions/v1/admin-users";
+    async function _adminCall(action, params) {
+      if (!_userAccessToken) throw new Error("Sin sesión");
+      const r = await _sFetch(ADMIN_FN_URL, { method: "POST", headers: _sHeaders(), body: JSON.stringify(Object.assign({ action, redirect_to: _appUrl() }, params || {})) });
+      let data = null; try { data = await r.json(); } catch (_) {}
+      if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
+      return data || {};
+    }
+    let _adminUsers = []; let _adminTab = "usuarios";
+    function _adminEl() {
+      let m = document.getElementById("admin-modal");
+      if (m) return m;
+      m = document.createElement("div"); m.id = "admin-modal"; m.className = "modal-bg"; m.style.display = "none";
+      m.innerHTML = '<div class="modal-box adm-box"><div class="modal-header"><div class="modal-title">👥 Usuarios y actividad</div><button class="modal-close" onclick="closeAdminPanel()">✕</button></div>'
+        + '<div class="adm-tabs"><button class="adm-tab active" data-tab="usuarios" onclick="adminTab(\'usuarios\')">👥 Usuarios</button><button class="adm-tab" data-tab="actividad" onclick="adminTab(\'actividad\')" data-testid="adm-tab-actividad">🕵️ Actividad</button></div>'
+        + '<div id="adm-usuarios">'
+        +   '<div class="adm-invite"><b>➕ Dar acceso a alguien</b><div class="adm-row"><input id="adm-inv-email" type="email" placeholder="correo@ejemplo.com" class="modal-input" autocomplete="off" data-testid="adm-inv-email"/><input id="adm-inv-nombre" placeholder="Nombre (p. ej. Dra. López R2)" class="modal-input" autocomplete="off" data-testid="adm-inv-nombre"/><select id="adm-inv-role" class="modal-input" data-no-sheet="1"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select><button class="btn-save" onclick="adminInvite()" data-testid="adm-invite">Crear cuenta</button></div><div class="adm-hint">Se crea la cuenta con una contraseña temporal que verás aquí una sola vez: mándasela por WhatsApp. La persona entra con su correo y esa contraseña, y puede cambiarla en 👤 Mi cuenta.</div><div id="adm-inv-result" class="adm-result" style="display:none"></div></div>'
+        +   '<div id="adm-list" class="adm-list">Cargando…</div>'
+        + '</div>'
+        + '<div id="adm-actividad" style="display:none">'
+        +   '<div class="adm-row adm-filters"><select id="adm-act-user" class="modal-input" data-no-sheet="1" onchange="adminLoadActivity()"><option value="">Todas las personas</option></select><input id="adm-act-cama" class="modal-input" placeholder="Cama (p. ej. 3-170)" style="width:130px" onchange="adminLoadActivity()" data-testid="adm-act-cama"/><select id="adm-act-dias" class="modal-input" data-no-sheet="1" onchange="adminLoadActivity()"><option value="1">Hoy</option><option value="7" selected>7 días</option><option value="30">30 días</option><option value="180">180 días</option></select><button class="btn-cancel" onclick="adminLoadActivity()" title="Actualizar">↺</button></div>'
+        +   '<div class="adm-hint">Cada cambio guardado en la nube: quién (cuenta y nombre), desde dónde (dispositivo, navegador, IP) y qué cambió (de → a). Lo que hacen el robot de labs y la hoja del censo aparece como 🤖 robot.</div>'
+        +   '<div id="adm-act-list" class="adm-list">Cargando…</div>'
+        + '</div></div>';
+      document.body.appendChild(m);
+      return m;
+    }
+    function openAdminPanel() { if (!isAdmin()) { alert("Solo el administrador puede abrir Usuarios."); return; } const m = _adminEl(); m.style.display = "flex"; adminTab(_adminTab); }
+    function closeAdminPanel() { const m = document.getElementById("admin-modal"); if (m) m.style.display = "none"; }
+    function adminTab(t) {
+      _adminTab = t; const m = _adminEl();
+      m.querySelectorAll(".adm-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === t));
+      document.getElementById("adm-usuarios").style.display = t === "usuarios" ? "" : "none";
+      document.getElementById("adm-actividad").style.display = t === "actividad" ? "" : "none";
+      if (t === "usuarios") adminLoadUsers(); else adminLoadActivity();
+    }
+    function _admFecha(iso) { if (!iso) return "—"; const d = new Date(iso); if (isNaN(d.getTime())) return String(iso); const z = n => String(n).padStart(2, "0"); return z(d.getDate()) + "/" + z(d.getMonth() + 1) + "/" + String(d.getFullYear()).slice(2) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
+    async function adminLoadUsers() {
+      const host = document.getElementById("adm-list"); if (!host) return;
+      host.textContent = "Cargando…";
+      try {
+        const data = await _adminCall("list");
+        _adminUsers = Array.isArray(data.users) ? data.users : [];
+        const meId = myUserId();
+        const rows = _adminUsers.map(u => {
+          const self = u.id === meId; const blocked = u.status === "blocked"; const sinReg = u.status === "sin_registro";
+          const est = sinReg ? '<span class="adm-badge adm-warn">sin registro</span>' : blocked ? '<span class="adm-badge adm-bad">bloqueado</span>' : '<span class="adm-badge adm-ok">activo</span>';
+          const rol = u.role === "admin" ? '<span class="adm-badge adm-adm">admin</span>' : '<span class="adm-badge">usuario</span>';
+          const acts = sinReg
+            ? `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('activar_registro', this.dataset.id)">✅ Dar acceso</button>`
+            : (`<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('temp_password', this.dataset.id)" title="Genera una contraseña temporal para pasársela">🔑 Contraseña temporal</button>`
+              + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('recovery_link', this.dataset.id)" title="Copia un enlace para que ponga su contraseña (vale 1 hora)">🔗 Enlace</button>`
+              + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('recovery_email', this.dataset.id)" title="Supabase le manda el enlace por correo (requiere SMTP configurado)">📧 Correo</button>`
+              + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('set_nombre', this.dataset.id)">✏️ Nombre</button>`
+              + (self ? "" : `<button class="adm-btn" data-id="${esc(u.id)}" data-role="${u.role === "admin" ? "usuario" : "admin"}" onclick="adminAct('set_role', this.dataset.id, {role:this.dataset.role})">${u.role === "admin" ? "⬇️ Quitar admin" : "⬆️ Hacer admin"}</button>`
+                + `<button class="adm-btn${blocked ? "" : " adm-danger"}" data-id="${esc(u.id)}" data-status="${blocked ? "active" : "blocked"}" onclick="adminAct('set_status', this.dataset.id, {status:this.dataset.status})" data-testid="adm-block">${blocked ? "🔓 Activar" : "⛔ Bloquear"}</button>`
+                + `<button class="adm-btn adm-danger" data-id="${esc(u.id)}" onclick="adminAct('delete_user', this.dataset.id)">🗑 Borrar</button>`));
+          return `<div class="adm-user${blocked ? " adm-blocked" : ""}" data-testid="adm-user" data-uid="${esc(u.id)}"><div class="adm-u-main"><b>${esc(u.nombre || "(sin nombre)")}</b> <span class="adm-mail">${esc(u.email || "")}</span> ${rol} ${est}${self ? ' <span class="adm-badge adm-self">tú</span>' : ""}<div class="adm-meta">Último acceso: ${_admFecha(u.last_seen_at || u.last_sign_in_at)} · Alta: ${_admFecha(u.created_at)}</div></div><div class="adm-u-acts">${acts}</div></div>`;
+        });
+        host.innerHTML = rows.join("") || '<div class="adm-hint">No hay cuentas.</div>';
+        const sel = document.getElementById("adm-act-user");
+        if (sel) { const cur = sel.value; sel.innerHTML = '<option value="">Todas las personas</option>' + _adminUsers.map(u => `<option value="${esc(u.id)}">${esc(u.nombre || u.email || u.id)}</option>`).join("") + '<option value="__robot">🤖 Robot / hoja del censo</option>'; sel.value = cur; }
+      } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar la lista: ' + esc((e && e.message) || e) + '</div>'; }
+    }
+    async function adminInvite() {
+      const email = ((document.getElementById("adm-inv-email") || {}).value || "").trim().toLowerCase();
+      const nombre = ((document.getElementById("adm-inv-nombre") || {}).value || "").trim();
+      const role = (document.getElementById("adm-inv-role") || {}).value || "usuario";
+      const out = document.getElementById("adm-inv-result");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert("Escribe un correo válido."); return; }
+      try {
+        const r = await _adminCall("invite", { email, nombre, role });
+        out.style.display = "";
+        out.innerHTML = `✅ Cuenta creada para <b>${esc(email)}</b>. Contraseña temporal: <code class="adm-pass" data-testid="adm-temp-pass">${esc(r.temp_password || "")}</code> <button class="adm-btn" data-p="${esc(r.temp_password || "")}" onclick="_copyTxt(this.dataset.p)">Copiar</button><div class="adm-hint">Mándasela por WhatsApp. Al entrar puede cambiarla en 👤 Mi cuenta.</div>`;
+        document.getElementById("adm-inv-email").value = ""; document.getElementById("adm-inv-nombre").value = "";
+        adminLoadUsers();
+      } catch (e) { out.style.display = ""; out.innerHTML = '<span class="adm-err">❌ ' + esc((e && e.message) || e) + '</span>'; }
+    }
+    async function adminAct(action, id, params) {
+      const u = _adminUsers.find(x => x.id === id) || { email: "" }; const who = u.nombre || u.email || id;
+      params = params || {};
+      try {
+        if (action === "set_nombre") { const n = prompt("Nombre que verán los demás (y sus iniciales en las cajas):", u.nombre || ""); if (n === null) return; params.nombre = n.trim(); }
+        if (action === "activar_registro") { const n = prompt("Nombre para " + who + ":", u.nombre || ""); if (n === null) return; params.nombre = n.trim(); params.role = "usuario"; }
+        if (action === "set_status" && params.status === "blocked" && !confirm("¿Bloquear a " + who + "? No podrá entrar ni ver nada hasta que lo actives.")) return;
+        if (action === "delete_user" && !confirm("¿Borrar la cuenta de " + who + "? Sus cambios anteriores siguen en el registro de actividad.")) return;
+        if (action === "temp_password" && !confirm("¿Generar una contraseña temporal para " + who + "? La anterior deja de servir.")) return;
+        const r = await _adminCall(action, Object.assign({ id }, params));
+        if (action === "temp_password") { _copyTxt(r.temp_password); alert("🔑 Contraseña temporal de " + who + " (ya está copiada):\n\n" + r.temp_password + "\n\nMándasela por WhatsApp; puede cambiarla en 👤 Mi cuenta."); }
+        else if (action === "recovery_link") { _copyTxt(r.link || ""); alert("🔗 Enlace de recuperación copiado (vale 1 hora). Mándaselo a " + who + ": al abrirlo le pide su contraseña nueva."); }
+        else if (action === "recovery_email") { alert("📧 Correo de recuperación enviado a " + (u.email || who) + "."); }
+        adminLoadUsers();
+      } catch (e) { alert("❌ " + ((e && e.message) || e)); }
+    }
+    function _copyTxt(t) { try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(String(t || "")).catch(() => {}); } catch (_) {} }
+    async function adminLoadActivity() {
+      const host = document.getElementById("adm-act-list"); if (!host) return;
+      host.textContent = "Cargando…";
+      const user = (document.getElementById("adm-act-user") || {}).value || "";
+      const cama = ((document.getElementById("adm-act-cama") || {}).value || "").trim();
+      const dias = parseInt((document.getElementById("adm-act-dias") || {}).value || "7", 10) || 7;
+      const since = new Date(Date.now() - dias * 86400e3).toISOString();
+      let qs = "select=id,ts,user_id,email,nombre,dispositivo,ip,ua,tabla,op,record_id,cama,paciente,campos,diff&order=ts.desc&limit=300&ts=gte." + encodeURIComponent(since);
+      if (user === "__robot") qs += "&user_id=is.null"; else if (user) qs += "&user_id=eq." + encodeURIComponent(user);
+      if (cama) qs += "&cama=eq." + encodeURIComponent(cama);
+      try {
+        const rows = await _sGet("audit_log", qs);
+        if (!Array.isArray(rows) || !rows.length) { host.innerHTML = '<div class="adm-hint">Sin actividad en ese periodo.</div>'; return; }
+        host.innerHTML = rows.map(r => {
+          const who = r.user_id ? ("<b>" + esc(r.nombre || r.email || "?") + "</b>" + (r.nombre && r.email ? ' <span class="adm-mail">' + esc(r.email) + "</span>" : "")) : ("<b>🤖 " + esc(r.email || "robot") + "</b>");
+          const where = [r.dispositivo, _uaCorto(r.ua), r.ip].filter(Boolean).map(esc).join(" · ");
+          return `<div class="adm-act" data-testid="adm-act"><div class="adm-act-h"><span class="adm-act-ts">${_admFecha(r.ts)}</span> ${who}<span class="adm-act-where">${where || "—"}</span></div><div class="adm-act-b">${_admQue(r)}</div></div>`;
+        }).join("");
+      } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar la actividad: ' + esc((e && e.message) || e) + '</div>'; }
+    }
+    function _uaCorto(ua) { ua = String(ua || ""); if (!ua) return ""; const b = /Edg\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : ""; const d = /iPad/.test(ua) || (/Macintosh/.test(ua) && /Mobile/.test(ua)) ? "iPad" : /iPhone/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Macintosh/.test(ua) ? "Mac" : ""; return [d, b].filter(Boolean).join(" "); }
+    const ADM_TABLA = { patients: "paciente", notes: "nota", no_olvidar: "No olvidar", procedimientos_dia: "procedimiento", guard_info: "guardia", config: "configuración", app_users: "cuentas" };
+    const ADM_OP = { INSERT: "creó", UPDATE: "editó", DELETE: "borró" };
+    function _admQue(r) {
+      const tabla = ADM_TABLA[r.tabla] || r.tabla;
+      if (r.tabla === "app_users") { const d = r.diff || {}; return esc(String(r.op || "").replace(/^ADMIN:/, "")) + (d.usuario ? " → <b>" + esc(d.usuario) + "</b>" : "") + (d.role ? " (" + esc(d.role) + ")" : ""); }
+      const head = "<b>" + esc(ADM_OP[r.op] || r.op) + "</b> " + esc(tabla) + (r.cama ? " · cama <b>" + esc(r.cama) + "</b>" : "") + (r.paciente ? " · " + esc(r.paciente) : "");
+      const d = r.diff || {}; const parts = [];
+      if (r.op === "UPDATE") {
+        Object.keys(d).forEach(k => {
+          const v = d[k];
+          if (k === "checklist" && v && typeof v === "object" && !("de" in v)) { Object.keys(v).forEach(kk => { const x = v[kk] || {}; parts.push(_admCampo(kk, x.de, x.a)); }); }
+          else if (v && typeof v === "object") parts.push(_admCampo(k, v.tipo === "elementos" ? v.de + " elementos" : v.de, v.tipo === "elementos" ? v.a + " elementos" : v.a));
+        });
+      } else if (Array.isArray(r.campos) && r.campos.length) parts.push('<div class="adm-d"><span class="adm-mail">' + esc(r.campos.slice(0, 14).join(", ")) + "</span></div>");
+      return head + (parts.length ? '<div class="adm-diff">' + parts.join("") + "</div>" : "");
+    }
+    function _admCampo(k, de, a) { const s = v => { v = (v === undefined || v === null) ? "" : String(v); return v.length > 180 ? v.slice(0, 180) + "…" : v; }; return `<div class="adm-d"><span class="adm-k">${esc(k)}</span> <span class="adm-de">${esc(s(de)) || "∅"}</span> → <span class="adm-a">${esc(s(a)) || "∅"}</span></div>`; }
+    function openAccountPanel() {
+      let m = document.getElementById("account-modal");
+      if (!m) {
+        m = document.createElement("div"); m.id = "account-modal"; m.className = "modal-bg"; m.style.display = "none";
+        m.innerHTML = '<div class="modal-box" style="max-width:460px"><div class="modal-header"><div class="modal-title">👤 Mi cuenta</div><button class="modal-close" onclick="document.getElementById(\'account-modal\').style.display=\'none\'">✕</button></div>'
+          + '<div class="adm-hint" id="acc-email"></div>'
+          + '<label class="adm-lbl">Nombre (iniciales en las cajas y en el registro de actividad)</label><input id="acc-nombre" class="modal-input" style="width:100%;box-sizing:border-box" autocomplete="off" data-testid="acc-nombre"/>'
+          + '<label class="adm-lbl">Nombre de este dispositivo (así aparece en «desde dónde»)</label><input id="acc-device" class="modal-input" style="width:100%;box-sizing:border-box" autocomplete="off" data-testid="acc-device"/>'
+          + '<div class="adm-row" style="margin-top:12px"><button class="btn-save" onclick="saveAccountPanel()" data-testid="acc-save">Guardar</button><button class="btn-cancel" onclick="openNewPasswordDialog(false)" data-testid="acc-pwd">🔑 Cambiar contraseña</button></div></div>';
+        document.body.appendChild(m);
+      }
+      const em = document.getElementById("acc-email"); if (em) em.textContent = "Cuenta: " + (myEmail() || "(sin sesión)") + (isAdmin() ? " · administrador" : "");
+      let nm = "", dv = ""; try { nm = localStorage.getItem("pl_user_name") || ""; dv = localStorage.getItem("pl_device_name") || ""; } catch (_) {}
+      document.getElementById("acc-nombre").value = nm;
+      const dEl = document.getElementById("acc-device"); dEl.value = dv; dEl.placeholder = deviceLabel();
+      m.style.display = "flex";
+    }
+    async function saveAccountPanel() {
+      const n = ((document.getElementById("acc-nombre") || {}).value || "").trim(); const d = ((document.getElementById("acc-device") || {}).value || "").trim();
+      try { if (n) localStorage.setItem("pl_user_name", n); if (d) localStorage.setItem("pl_device_name", d); else localStorage.removeItem("pl_device_name"); } catch (_) {}
+      renderUserChip();
+      const m = document.getElementById("account-modal"); if (m) m.style.display = "none";
+      // El nombre también se guarda en la cuenta (así lo ven los demás y sale igual en todos tus dispositivos).
+      const uid = myUserId();
+      if (n && uid && _myProfile && _myProfile.nombre !== n) {
+        try { await _sPatch("app_users", "id=eq." + encodeURIComponent(uid), { nombre: n }); _myProfile.nombre = n; }
+        catch (e) { safeLog("nombre de cuenta:", e); }
+      }
     }
 
     async function loginSetup() {
@@ -9404,13 +9727,26 @@ function plExportBackup() {
     // ─── SUPABASE REST API — SIN supabase-js (evita DataCloneError de Headers) ───────
     // fetch() directo a PostgREST — _supa solo se usa para Realtime (WebSocket).
 
+    // Quién y desde dónde (oct 2026): el registro de actividad de Supabase (trigger pl_audit) lee estas
+    // cabeceras. Solo ASCII: fetch rechaza acentos en cabeceras ("Fernández" → "Fernandez").
+    function _asciiHdr(s, n) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x20-\x7e]/g, "").trim().slice(0, n || 80); }
+    function deviceLabel() {
+      let saved = ""; try { saved = (localStorage.getItem("pl_device_name") || "").trim(); } catch (_) {}
+      if (saved) return saved;
+      const ua = navigator.userAgent || ""; let d = "Dispositivo";
+      if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) d = "iPad";
+      else if (/iPhone/.test(ua)) d = "iPhone"; else if (/Android/.test(ua)) d = "Android"; else if (/Windows/.test(ua)) d = "Windows"; else if (/Macintosh/.test(ua)) d = "Mac"; else if (/Linux/.test(ua)) d = "Linux";
+      const b = /Edg\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "";
+      return d + (b ? " " + b : "");
+    }
     function _sHeaders(extra) {
       const token = _userAccessToken || SUPA_KEY;
-      return Object.assign({
-        "apikey": SUPA_KEY,
-        "Authorization": "Bearer " + token,
-        "Content-Type": "application/json"
-      }, extra || {});
+      let who = ""; try { who = localStorage.getItem("pl_user_name") || ""; } catch (_) {}
+      const h = { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json" };
+      const dev = _asciiHdr(deviceLabel(), 80), usr = _asciiHdr(who, 80);
+      if (dev) h["X-PL-Device"] = dev;
+      if (usr) h["X-PL-User"] = usr;
+      return Object.assign(h, extra || {});
     }
     // fetch con timeout: una conexión que acepta el TCP pero nunca responde (portal cautivo, AP
     // saturado) dejaba init()/supaLoadAll colgados para siempre → nunca arrancaba Realtime ni el
@@ -12406,11 +12742,15 @@ function plExportBackup() {
 
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
+      await _handleRecoveryLink();
       await initAuth();
       // Sin sesión no hay acceso a datos: el overlay queda visible y no disparamos la carga
       // (evita la lluvia de 401 y el prompt de nombre antes del login). Al autenticarse,
       // SIGNED_IN recarga la página para que init() corra completo ya con token.
       if (!_userAccessToken) return;
+      // Cuentas con administrador (oct 2026): la cuenta debe estar registrada y activa en app_users.
+      if (!(await _loadMyProfile())) return;
+      if (_recoveryPending) { _recoveryPending = false; openNewPasswordDialog(true); }
       try { _bindStickyResize(); _syncStickyOffsets(); } catch (_) {}
       loadSharedConfig().catch(() => {}); // Non-blocking: pull proxy URL from Supabase for other devices
 
