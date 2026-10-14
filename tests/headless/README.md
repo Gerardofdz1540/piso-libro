@@ -23,7 +23,7 @@ node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
 | `app_import.js` | importación: PATCH de movidos, papelera antes de borrar, fantasmas |
 | `app_winlab.js` | mapeo WinLab → labHistory (BH/EGO/cultivos), sync idempotente, Realtime |
 | `app_misc.js` | No olvidar y procedimientos sin red |
-| `app_ui.js` | togglePtReminder, upsert parcial de checklist, atajos Ctrl/Cmd, ficha compacta (saltos, secciones plegables) |
+| `app_ui.js` | togglePtReminder, upsert parcial de checklist, atajos Ctrl/Cmd, ficha compacta (saltos, secciones plegables), drenajes personalizables, cirugías con fechas + Entrega/Recibo de guardia |
 | `app_ind.js` | Indicaciones automáticas desde el Google Doc (`indicaciones_doc`): parseo, cruce cama+nombre, aviso por nombre distinto, Realtime, 🔄 |
 | `app_nota.js` | Cultivos WinLab (formatos reales: POSITIVO/NO DESARROLLO/NEGATIVO A n DÍAS), novedades automáticas con fecha en la entrega de guardia (labs alterados, RIS, cultivos; idempotente), nota de evolución completa, paciente que reaparece (nota restaurada antes de mostrar la tarjeta + labs WinLab sin ventana), vista de cultivos acotada |
 

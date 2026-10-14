@@ -173,6 +173,31 @@ labs críticos sin reconocer y uno ámbar labs atrasados.
    últimas líneas del registro; mándamelas y lo reviso. Nunca pegues ahí
    nombres de pacientes en mensajes públicos.
 
+## Las cajas de la ficha (octubre 2026)
+
+Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, de arriba abajo:
+
+- **🔴 DX / Motivo de ingreso** (rojo).
+- **🧪 Laboratorios**.
+- **🔪 Cirugías / Procedimientos** (morado). Una fila por intervención con su **fecha** (calendario),
+  **PO día N** calculado solo, procedimiento, hallazgos, **sangrado** y cirujano. Botón
+  **+ Agregar cirugía** para pacientes con varias intervenciones; la más reciente arriba. Esta caja
+  sustituye a las antiguas "Qx / Procedimiento", "Drenajes" y "Sangrado": el texto que ya existía se
+  convirtió solo a la lista (una fila por línea con fecha; el sangrado quedó en la cirugía más
+  reciente). La fecha POP del menú "⋯ Más" ahora es la de la última cirugía.
+- **💉 Manejo médico actual** (verde azulado).
+- **⚠️ Pendientes / Plan** (ámbar).
+- **📤 Entrega de guardia** (naranja): lo que **yo dejo** para la siguiente guardia, eventualidades
+  y cosas por hacer. Las novedades de labs, imagen y cultivos se anotan solas con su fecha.
+- **📥 Recibo de guardia** (verde): lo que **me entregan** al llegar. El botón **⇄ Tomar guardia**
+  pasa el texto de Entrega a Recibo con fecha y hora y deja Entrega vacía para mi guardia.
+- Plegables: **Historia · APP / PA** y **Pendientes MIPs / R1**.
+
+Columna lateral: el **Pase** (dieta, ATB, TVP, herida, NPT, vitales, **drenajes y sondas** con su
+gasto y **Balance**, clínico), IC · Cultivos, Sugerencias, Indicaciones del Doc, Estudios de imagen,
+Diagrama y No olvidar. El balance ya solo se captura en el pase; bajo la lista de drenajes queda un
+renglón de nota libre por si hace falta.
+
 ## Cambios de cama: los labs viajan con el paciente
 
 Un paciente que cambia de cama en la hoja (cortar y pegar la fila, o reescribir el número de cama)
