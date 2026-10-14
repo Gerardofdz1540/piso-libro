@@ -242,6 +242,24 @@ una. Son las mismas cajas con los mismos botones: solo cambia dónde se pintan.
   historial (renglón gris debajo, últimos 3 días a la vista, 14 guardados) y la fila queda limpia
   para el pase de hoy. Si te arrepientes, ↩ Regresar lo deshace.
 
+## Fotos, trazos a mano y autor por caja (octubre 2026)
+
+Tres cosas que la hoja de GoodNotes hacía y la app no:
+
+- **📷 Fotos en Cirugías y Cultivos**: cada cirugía y la caja de Cultivos tienen un botón 📷
+  (cámara o galería, varias a la vez). La foto se reduce (JPEG, máximo 1600 px) y se guarda en
+  Supabase Storage (bucket privado `pl-fotos`, se muestra con enlace firmado); en la tarjeta
+  queda una miniatura, tocarla la abre en grande, ✕ la quita (con confirmación y ↩ Regresar).
+  **Sin red** la foto se guarda en el dispositivo marcada con borde punteado y se sube sola al
+  volver la red (o al abrir la app con red). Los PDFs de labs usan el bucket `lab-sources`, que
+  también se creó hoy: antes no existía y todo quedaba inline en la nota.
+- **✍️ → 📌 A la caja**: el lápiz de cada caja (incluye ahora Interconsultas, Cultivos y Recibo)
+  tiene un botón nuevo para dejar el trazo como imagen dentro de la caja, recortado al dibujo.
+  Se ve en la hoja, en la impresión y en los demás dispositivos. 🤖 Transcribir sigue igual.
+- **Autor por caja**: cada caja de texto muestra un chip con las iniciales de quien hizo el último
+  cambio, la fecha y la hora, con un color fijo por persona (el nombre que pusiste al entrar).
+  ➕ Hoy anota `dd/mm GF: ` y Tomar guardia sella `— Recibido dd/mm hh:mm GF —`.
+
 ## Las cajas de la ficha (octubre 2026)
 
 Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, de arriba abajo:

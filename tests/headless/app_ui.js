@@ -288,7 +288,7 @@ const MOCK = `(() => {
     && u11.rows === 2 && u11.po[0] === 'PO d1' && u11.po[1] === 'PO d5' && u11.dates[0] > u11.dates[1]
     && /POP d1 · Reintervención \+ lavado/.test(u11.pase) && /^Reintervención \+ lavado \(.+, PO d1\) \| LAPE \+ drenaje de colección \(.+, PO d5\) sangrado 400 mL$/.test(u11.txt)
     && u11.qxFechaSigue && u11.dirty.includes('ck_cirugias') && u11.noOldBoxes && u11.drenNote && /APP \/ PA/.test(u11.histTitle) && !/Qx/.test(u11.histTitle) && u11.colored && u11.afterRemove === 1
-    && /^— Recibido \d{2}\/\d{2} \d{2}:\d{2} —\nPendiente TAC control\nK 2\.9 en reposición$/.test(u11.recibo) && u11.entregaVacia && u11.reciboTa === u11.recibo && u11.entregaTa === '' && u11.dirty2.includes('entrega') && u11.dirty2.includes('ck_recibo') && u11.reciboSigue, JSON.stringify(u11));
+    && /^— Recibido \d{2}\/\d{2} \d{2}:\d{2}( [A-ZÁÉÍÓÚÑ]{1,3})? —\nPendiente TAC control\nK 2\.9 en reposición$/.test(u11.recibo) && u11.entregaVacia && u11.reciboTa === u11.recibo && u11.entregaTa === '' && u11.dirty2.includes('entrega') && u11.dirty2.includes('ck_recibo') && u11.reciboSigue, JSON.stringify(u11));
 
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-UI: '+pass+' passed, '+fail+' failed');

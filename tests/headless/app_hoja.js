@@ -107,7 +107,7 @@ const MOCK = `(() => {
   // H4
   const h4 = await page.evaluate(() => {
     const k = pid(patients[0]);
-    const d = new Date(); const stamp = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + ': ';
+    const d = new Date(); const ini = userInitials(); const stamp = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + (ini ? ' ' + ini : '') + ': ';
     insertTodayStamp(k, 'interconsultas', true, 'Interconsultas');
     insertTodayStamp(k, 'interconsultas', true, 'Interconsultas'); // no duplica
     insertTodayStamp(k, 'cultivos', true, 'Cultivos');

@@ -1777,6 +1777,19 @@
       body.pl-hoja .fc-hist-grid { grid-template-columns: 1fr; }
       body.pl-hoja .fc-side-g2 { grid-template-columns: 1fr !important; }
     }
+    /* Fotos en las cajas y autor por caja (oct 2026) */
+    .pl-fotos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; }
+    .pl-foto-wrap { position: relative; display: inline-block; }
+    .pl-foto { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: zoom-in; display: block; }
+    .pl-foto.pl-foto-nored { width: 76px; height: 76px; }
+    .pl-foto-wrap.pending .pl-foto { outline: 2px dashed #f59e0b; outline-offset: -2px; }
+    .pl-foto-file { height: 76px; max-width: 120px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 11px; padding: 0 8px; cursor: pointer; }
+    .pl-foto-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid #fca5a5; background: #fff; color: #dc2626; font-size: 11px; line-height: 18px; padding: 0; cursor: pointer; }
+    .pl-foto-add { width: 44px; height: 44px; border-radius: 8px; border: 1px dashed #94a3b8; background: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; }
+    .pl-foto-add:hover { background: #eef2ff; border-color: #6366f1; }
+    .by-chip { display: inline-block; font-size: 9.5px; font-weight: 800; color: #fff; border-radius: 999px; padding: 1px 7px; margin-left: 6px; letter-spacing: .02em; white-space: nowrap; vertical-align: middle; }
+    body.dark .pl-foto-add, body.dark .pl-foto-file { background: #0f1b2d; color: #cbd5e1; }
+    @media print { .pl-foto-x, .pl-foto-add { display: none !important; } .pl-foto { width: 120px; height: 120px; } }
     /* Pase matutino con fecha e historial (oct 2026) */
     .pm-date { font-size: 10px; font-weight: 800; border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
     .pm-date:empty { display: none; }
@@ -8127,13 +8140,17 @@ function plExportBackup() {
     }
     function buildChecklistForSync(nd) {
       const checklist = isPlainObject(nd && nd.checklist) ? { ...nd.checklist } : {};
+      // Los demás metadatos que viven en __pl_note_meta (autor por caja "by", marcas de carga…) se conservan;
+      // antes se reconstruía el objeto solo con entrega/diagramas y se perdían en cada subida.
+      const prevMeta = isPlainObject(checklist[NOTE_SYNC_META_KEY]) ? { ...checklist[NOTE_SYNC_META_KEY] } : {};
       const meta = {
         entrega: toSafeString(nd && nd.entrega).trim(),
         body_diagram_ant: toSafeString(nd && nd.body_diagram_ant).trim(),
         body_diagram_post: toSafeString(nd && nd.body_diagram_post).trim()
       };
-      if (meta.entrega || meta.body_diagram_ant || meta.body_diagram_post) {
-        checklist[NOTE_SYNC_META_KEY] = meta;
+      Object.keys(meta).forEach(function (key) { if (meta[key]) prevMeta[key] = meta[key]; else delete prevMeta[key]; });
+      if (Object.keys(prevMeta).length) {
+        checklist[NOTE_SYNC_META_KEY] = prevMeta;
       } else {
         delete checklist[NOTE_SYNC_META_KEY];
       }
@@ -8248,12 +8265,17 @@ function plExportBackup() {
         if (nd.checklist[ckKey] === undefined) nd.checklist[ckKey] = checklistDefaults[ckKey];
       });
       const noteSyncMeta = readNoteSyncMeta(nd.checklist);
+      // Los demás metadatos de __pl_note_meta (autor por caja "by", marcas de carga…) se conservan tal cual;
+      // solo se normalizan los tres conocidos. Antes se reconstruía el objeto y se perdían en cada guardado.
+      const rawMeta = isPlainObject(nd.checklist[NOTE_SYNC_META_KEY]) ? nd.checklist[NOTE_SYNC_META_KEY] : null;
+      const extraMeta = {};
+      if (rawMeta) Object.keys(rawMeta).forEach(function (mk) { if (mk !== "entrega" && mk !== "body_diagram_ant" && mk !== "body_diagram_post") extraMeta[mk] = rawMeta[mk]; });
       if (noteSyncMeta.exists) {
-        nd.checklist[NOTE_SYNC_META_KEY] = {
+        nd.checklist[NOTE_SYNC_META_KEY] = Object.assign(extraMeta, {
           entrega: noteSyncMeta.entrega,
           body_diagram_ant: noteSyncMeta.body_diagram_ant,
           body_diagram_post: noteSyncMeta.body_diagram_post
-        };
+        });
         if (!nd.entrega) nd.entrega = noteSyncMeta.entrega;
         if (!nd.body_diagram_ant) nd.body_diagram_ant = noteSyncMeta.body_diagram_ant;
         if (!nd.body_diagram_post) nd.body_diagram_post = noteSyncMeta.body_diagram_post;
@@ -8856,7 +8878,7 @@ function plExportBackup() {
     //   está en Supabase Storage o en el campo lab_history de la base de datos).
     // - Limita labHistory a las 30 entradas más recientes para evitar desbordamiento.
     function _lsNoteCopy(data) {
-      const d = Object.assign({}, data);
+      const d = _stripFotoB64(Object.assign({}, data)); // fotos ya en Storage: sin b64 en el dispositivo
       if (Array.isArray(d.labHistory)) {
         // Sin recorte a 30 fechas: esta copia vuelve a ser noteData al arrancar sin nube y el
         // siguiente push de lab_history subía la lista recortada → se perdían los labs más viejos
@@ -8958,6 +8980,7 @@ function plExportBackup() {
     // Copia de nota para el outbox: sin el PDF inline (`source_file` en base64) cuando ya está en
     // Storage. Un ítem de varios MB llenaba la cuota de localStorage y la cola dejaba de guardarse.
     function _outboxNoteCopy(d) {
+      d = _stripFotoB64(d);
       if (!d || !Array.isArray(d.labHistory)) return d;
       const c = Object.assign({}, d);
       c.labHistory = d.labHistory.map(function (s) {
@@ -9233,6 +9256,262 @@ function plExportBackup() {
         }
       }
       throw lastErr;
+    }
+    // ═══ FOTOS EN LAS CAJAS (oct 2026, pedido de Gera): como pegar una foto en la hoja de GoodNotes ═══
+    // Cada foto vive en la nota (checklist) como {id, name, type, bucket, path, w, h, ts, by} y el archivo
+    // en Supabase Storage (bucket pl-fotos, privado, URL firmada al mostrar). Si no hay red o falla la
+    // subida, la foto queda INLINE (b64, comprimida a JPEG ≤1600 px) marcada pending y se sube sola al
+    // volver la red (_fotosRetryPending). Alcances (scope): "cx:<id cirugía>" → cirugia.fotos,
+    // "cultivos" → checklist.cultivos_fotos, "ink:<campo>" → checklist.ink_fotos[campo] (trazos a mano).
+    const FOTO_BUCKET = "pl-fotos";
+    const FOTO_MAX_SIDE = 1600;
+    const _fotoUrlCache = {};
+    function _fotoId() { return "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+    function _fotoScopeFlag(scope) { return scope.indexOf("cx:") === 0 ? "ck_cirugias" : (scope === "cultivos" ? "ck_cultivos" : "checklist"); }
+    function _fotoScopeField(scope) { return scope.indexOf("cx:") === 0 ? "cirugias" : (scope === "cultivos" ? "cultivos" : scope.slice(4)); }
+    // Lista de fotos del alcance (crea la estructura si create=true). Devuelve null si el alcance no existe.
+    function _fotoList(nd, scope, create) {
+      if (!nd) return null;
+      if (!nd.checklist) { if (!create) return null; nd.checklist = {}; }
+      const ck = nd.checklist;
+      if (scope.indexOf("cx:") === 0) {
+        const id = scope.slice(3);
+        const c = (Array.isArray(ck.cirugias) ? ck.cirugias : []).find(function (x) { return x && String(x.id) === id; });
+        if (!c) return null;
+        if (!Array.isArray(c.fotos)) { if (!create) return []; c.fotos = []; }
+        return c.fotos;
+      }
+      if (scope === "cultivos") {
+        if (!Array.isArray(ck.cultivos_fotos)) { if (!create) return []; ck.cultivos_fotos = []; }
+        return ck.cultivos_fotos;
+      }
+      if (scope.indexOf("ink:") === 0) {
+        const f = scope.slice(4);
+        if (!isPlainObject(ck.ink_fotos)) { if (!create) return []; ck.ink_fotos = {}; }
+        if (!Array.isArray(ck.ink_fotos[f])) { if (!create) return []; ck.ink_fotos[f] = []; }
+        return ck.ink_fotos[f];
+      }
+      return null;
+    }
+    // Reduce la imagen a JPEG ≤ FOTO_MAX_SIDE px (una foto de iPad pesa 3-5 MB; así queda en 150-400 KB).
+    // Si el navegador no puede decodificarla (HEIC en Chrome), se sube el archivo tal cual, sin miniatura.
+    function _fotoPrepare(file) {
+      return new Promise(function (resolve) {
+        const fallback = function () { resolve({ blob: file, type: file.type || "application/octet-stream", w: 0, h: 0, b64: "" }); };
+        if (!file || !/^image\//.test(file.type || "")) return fallback();
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = function () {
+          try {
+            const scale = Math.min(1, FOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+            const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+            const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+            const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            const dataUrl = cv.toDataURL("image/jpeg", 0.82);
+            const b64 = dataUrl.split(",")[1] || "";
+            const bin = atob(b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            resolve({ blob: new Blob([bytes], { type: "image/jpeg" }), type: "image/jpeg", w: w, h: h, b64: b64 });
+          } catch (e) { safeWarn("foto: no se pudo reducir, va original:", e); fallback(); }
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); fallback(); };
+        img.src = url;
+      });
+    }
+    async function _fotoUpload(k, scope, blob, ext, mime) {
+      if (!blob || !_supa || !_supa.storage || !navigator.onLine) return null;
+      const p = patients.find(function (pt) { return pid(pt) === k; });
+      const patientPart = sanitizeStoragePathSegment((p && (p._supa_id || p.exp || p.nombre)) || k);
+      const objectPath = patientPart + "/" + sanitizeStoragePathSegment(scope) + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 6) + ext;
+      try {
+        const resp = await _supa.storage.from(FOTO_BUCKET).upload(objectPath, blob, { upsert: true, contentType: mime || "image/jpeg", cacheControl: "3600" });
+        if (resp && resp.error) throw resp.error;
+        return { bucket: FOTO_BUCKET, path: (resp && resp.data && resp.data.path) || objectPath };
+      } catch (e) { safeWarn("foto: subida fallida, queda en el dispositivo:", e); return null; }
+    }
+    async function _fotoSignedUrl(bucket, path) {
+      const key = bucket + "/" + path;
+      const c = _fotoUrlCache[key];
+      if (c && c.exp > Date.now()) return c.url;
+      const url = await resolveLabSourceUrl(bucket, path);
+      if (url) _fotoUrlCache[key] = { url: url, exp: Date.now() + 50 * 60 * 1000 };
+      return url;
+    }
+    // Agrega una foto (blob ya preparado) al alcance: sube a Storage; si falla, queda inline y pendiente.
+    async function fotoAttachBlob(k, scope, blob, name, mime, meta) {
+      const nd = getNote(k);
+      const list = _fotoList(nd, scope, true);
+      if (!list) { alert("No se encontró la caja para la foto."); return null; }
+      _undoPush(k, "agregar foto en " + _undoFieldLabel(_fotoScopeField(scope)));
+      const ext = mime === "image/png" ? ".png" : (mime === "image/jpeg" ? ".jpg" : ("." + (toSafeString(name).split(".").pop() || "bin").toLowerCase().slice(0, 5)));
+      const foto = { id: _fotoId(), name: toSafeString(name).slice(0, 80) || ("foto" + ext), type: mime || "image/jpeg", bucket: "", path: "", w: (meta && meta.w) || 0, h: (meta && meta.h) || 0, ts: new Date().toISOString(), by: userInitials() };
+      const up = await _fotoUpload(k, scope, blob, ext, mime);
+      if (up) { foto.bucket = up.bucket; foto.path = up.path; }
+      else if (meta && meta.b64) { foto.b64 = meta.b64; foto.pending = true; }
+      else {
+        // Sin red y sin versión reducida (p. ej. HEIC): guardar el archivo tal cual si es razonable
+        try {
+          if (blob.size <= 1.5 * 1024 * 1024) { foto.b64 = arrayBufferToBase64(await blob.arrayBuffer()); foto.pending = true; }
+          else { alert("Sin red no se puede guardar esta foto (" + (blob.size / 1024 / 1024).toFixed(1) + " MB). Intenta con red o toma la foto con la cámara."); return null; }
+        } catch (e) { alert("No se pudo leer la foto."); return null; }
+      }
+      list.push(foto);
+      _touchBy(nd, _fotoScopeField(scope));
+      _saveNoteNow(k, nd, _fotoScopeFlag(scope));
+      _rerenderCard(k);
+      if (foto.pending) try { setSyncStatus("offline", "📷 Foto guardada en el dispositivo · se sube al volver la red"); } catch (_) {}
+      return foto;
+    }
+    async function fotoFromInput(k, scope, input) {
+      const files = Array.from((input && input.files) || []);
+      if (input) input.value = "";
+      for (const file of files) {
+        if (file.size > 25 * 1024 * 1024) { alert("La foto pesa " + (file.size / 1024 / 1024).toFixed(0) + " MB. Máximo 25 MB."); continue; }
+        const prep = await _fotoPrepare(file);
+        await fotoAttachBlob(k, scope, prep.blob, file.name, prep.type, { w: prep.w, h: prep.h, b64: prep.b64 });
+      }
+    }
+    function fotoRemove(k, scope, id) {
+      const nd = getNote(k);
+      const list = _fotoList(nd, scope, false);
+      if (!list) return;
+      const i = list.findIndex(function (f) { return f && f.id === id; });
+      if (i < 0) return;
+      if (!confirm("¿Quitar esta foto de la caja? (Regresar la devuelve)")) return;
+      _undoPush(k, "quitar foto de " + _undoFieldLabel(_fotoScopeField(scope)));
+      list.splice(i, 1);
+      _touchBy(nd, _fotoScopeField(scope));
+      _saveNoteNow(k, nd, _fotoScopeFlag(scope));
+      _rerenderCard(k);
+    }
+    async function fotoOpen(k, scope, id) {
+      const list = _fotoList(getNote(k), scope, false) || [];
+      const f = list.find(function (x) { return x && x.id === id; });
+      if (!f) return;
+      let url = "";
+      if (f.b64) url = "data:" + (f.type || "image/jpeg") + ";base64," + f.b64;
+      else if (f.path) url = await _fotoSignedUrl(f.bucket || FOTO_BUCKET, f.path);
+      if (!url) { alert("No se pudo abrir la foto (¿sin red?)."); return; }
+      const w = window.open("", "_blank");
+      if (!w) { alert("El navegador bloqueó la ventana. Permite popups para ver la foto."); return; }
+      w.document.write('<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="' + url.replace(/"/g, "&quot;") + '" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>');
+      w.document.close();
+    }
+    // Tira de miniaturas + botón 📷 (cámara o galería). Las miniaturas de Storage se cargan después (hidratación).
+    function renderFotoStrip(k, scope, list, opts) {
+      opts = opts || {};
+      const arr = Array.isArray(list) ? list.filter(Boolean) : [];
+      const thumbs = arr.map(function (f) {
+        const src = f.b64 ? ("data:" + (f.type || "image/jpeg") + ";base64," + f.b64) : "";
+        const isImg = /^image\//.test(f.type || "") || !!f.b64;
+        const when = f.ts ? esc(String(f.ts).slice(0, 10).split("-").reverse().slice(0, 2).join("/")) : "";
+        const title = esc((f.name || "foto") + (when ? " · " + when : "") + (f.by ? " · " + f.by : "") + (f.pending ? " · pendiente de subir" : ""));
+        return `<div class="pl-foto-wrap${f.pending ? " pending" : ""}" data-id="${esc(f.id)}">`
+          + (isImg
+            ? `<img class="pl-foto" alt="foto" title="${title}" ${src ? `src="${src}"` : `data-bucket="${esc(f.bucket || FOTO_BUCKET)}" data-path="${esc(f.path || "")}"`} data-k="${esc(k)}" data-scope="${esc(scope)}" data-id="${esc(f.id)}" onclick="fotoOpen(this.dataset.k,this.dataset.scope,this.dataset.id)"/>`
+            : `<button type="button" class="pl-foto-file" title="${title}" data-k="${esc(k)}" data-scope="${esc(scope)}" data-id="${esc(f.id)}" onclick="fotoOpen(this.dataset.k,this.dataset.scope,this.dataset.id)">📎 ${esc((f.name || "archivo").slice(0, 14))}</button>`)
+          + `<button type="button" class="pl-foto-x" data-k="${esc(k)}" data-scope="${esc(scope)}" data-id="${esc(f.id)}" onclick="fotoRemove(this.dataset.k,this.dataset.scope,this.dataset.id)" title="Quitar foto">✕</button>`
+          + `</div>`;
+      }).join("");
+      const addBtn = opts.add === false ? "" : `<label class="pl-foto-add" title="${esc(opts.label || "Agregar foto (cámara o galería)")}">📷<input type="file" accept="image/*" multiple data-k="${esc(k)}" data-scope="${esc(scope)}" onchange="fotoFromInput(this.dataset.k,this.dataset.scope,this)" style="display:none"/></label>`;
+      if (!thumbs && !addBtn) return "";
+      return `<div class="pl-fotos" data-scope="${esc(scope)}">${thumbs}${addBtn}</div>`;
+    }
+    // Pone el src a las miniaturas guardadas en Storage (URL firmada 1 h, con caché). Corre tras cada repintado.
+    function _hydrateFotoImgs(root) {
+      try {
+        const imgs = (root || document).querySelectorAll ? (root || document).querySelectorAll("img.pl-foto[data-path]:not([src])") : [];
+        imgs.forEach(function (img) {
+          const bucket = img.dataset.bucket, path = img.dataset.path;
+          if (!path) { img.alt = "📷"; return; }
+          img.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==");
+          _fotoSignedUrl(bucket, path).then(function (url) { if (url) img.src = url; else { img.removeAttribute("src"); img.classList.add("pl-foto-nored"); } }).catch(function () { img.removeAttribute("src"); img.classList.add("pl-foto-nored"); });
+        });
+      } catch (_) {}
+    }
+    let _fotoHydrateTimer = null;
+    try {
+      new MutationObserver(function () { clearTimeout(_fotoHydrateTimer); _fotoHydrateTimer = setTimeout(function () { _hydrateFotoImgs(document); }, 60); })
+        .observe(document.documentElement, { childList: true, subtree: true });
+    } catch (_) {}
+    // Fotos que quedaron inline (sin red): subirlas y dejar solo la ruta. Se llama al volver la red y al arrancar.
+    let _fotosRetrying = false;
+    async function _fotosRetryPending() {
+      if (_fotosRetrying || !navigator.onLine || !_supa || !_supa.storage) return 0;
+      _fotosRetrying = true;
+      let n = 0;
+      try {
+        for (const p of (patients || [])) {
+          const k = pid(p); const nd = noteData[k]; if (!nd || !nd.checklist) continue;
+          const scopes = [];
+          (Array.isArray(nd.checklist.cirugias) ? nd.checklist.cirugias : []).forEach(function (c) { if (c && Array.isArray(c.fotos) && c.fotos.some(function (f) { return f && f.pending; })) scopes.push("cx:" + c.id); });
+          if ((nd.checklist.cultivos_fotos || []).some(function (f) { return f && f.pending; })) scopes.push("cultivos");
+          Object.keys(isPlainObject(nd.checklist.ink_fotos) ? nd.checklist.ink_fotos : {}).forEach(function (f) { if ((nd.checklist.ink_fotos[f] || []).some(function (x) { return x && x.pending; })) scopes.push("ink:" + f); });
+          let changed = false;
+          for (const scope of scopes) {
+            const list = _fotoList(nd, scope, false) || [];
+            for (const f of list) {
+              if (!f || !f.pending || !f.b64) continue;
+              try {
+                const bin = atob(f.b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const ext = f.type === "image/png" ? ".png" : ".jpg";
+                const up = await _fotoUpload(k, scope, new Blob([bytes], { type: f.type || "image/jpeg" }), ext, f.type || "image/jpeg");
+                if (up) { f.bucket = up.bucket; f.path = up.path; delete f.b64; delete f.pending; changed = true; n++; }
+              } catch (e) { safeWarn("foto: reintento fallido:", e); }
+            }
+          }
+          if (changed) { _saveNoteNow(k, nd, "checklist"); if (document.getElementById("card-" + k)) _rerenderCard(k); }
+        }
+      } finally { _fotosRetrying = false; }
+      return n;
+    }
+    // Copia sin el b64 de las fotos que ya están en Storage (para localStorage y para la red).
+    function _stripFotoB64(d) {
+      if (!d || !isPlainObject(d.checklist)) return d;
+      const ck = d.checklist;
+      const clean = function (list) { return (Array.isArray(list) ? list : []).map(function (f) { return (f && f.b64 && f.path) ? Object.assign({}, f, { b64: undefined, pending: undefined }) : f; }); };
+      let touched = false;
+      const out = Object.assign({}, ck);
+      if (Array.isArray(ck.cirugias) && ck.cirugias.some(function (c) { return c && Array.isArray(c.fotos) && c.fotos.some(function (f) { return f && f.b64 && f.path; }); })) { out.cirugias = ck.cirugias.map(function (c) { return (c && Array.isArray(c.fotos)) ? Object.assign({}, c, { fotos: clean(c.fotos) }) : c; }); touched = true; }
+      if (Array.isArray(ck.cultivos_fotos) && ck.cultivos_fotos.some(function (f) { return f && f.b64 && f.path; })) { out.cultivos_fotos = clean(ck.cultivos_fotos); touched = true; }
+      if (isPlainObject(ck.ink_fotos)) { const o = {}; let t2 = false; Object.keys(ck.ink_fotos).forEach(function (f) { const l = ck.ink_fotos[f]; if (Array.isArray(l) && l.some(function (x) { return x && x.b64 && x.path; })) { o[f] = clean(l); t2 = true; } else o[f] = l; }); if (t2) { out.ink_fotos = o; touched = true; } }
+      return touched ? Object.assign({}, d, { checklist: out }) : d;
+    }
+    // ═══ AUTOR POR CAJA (oct 2026): como el color de tinta de cada residente en GoodNotes ═══
+    // checklist.__pl_note_meta.by[campo] = {u: nombre, i: iniciales, t: ISO}. Se pinta como chip con un color
+    // fijo por nombre junto al título de la caja y las iniciales van en los sellos "➕ Hoy".
+    function userInitials() {
+      let n = ""; try { n = (localStorage.getItem("pl_user_name") || "").trim(); } catch (_) {}
+      if (!n) return "";
+      const parts = n.split(/\s+/).filter(Boolean);
+      const ini = parts.length >= 2 ? (parts[0][0] + parts[1][0]) : parts[0].slice(0, 2);
+      return ini.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+    }
+    function _byColor(name) {
+      let h = 0; const s = toSafeString(name).toLowerCase();
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return "hsl(" + (h % 360) + ", 55%, 40%)";
+    }
+    function _touchBy(nd, field) {
+      try {
+        if (!nd || !field) return;
+        if (!nd.checklist) nd.checklist = {};
+        const meta = isPlainObject(nd.checklist[NOTE_SYNC_META_KEY]) ? nd.checklist[NOTE_SYNC_META_KEY] : (nd.checklist[NOTE_SYNC_META_KEY] = {});
+        if (!isPlainObject(meta.by)) meta.by = {};
+        let name = ""; try { name = (localStorage.getItem("pl_user_name") || "").trim(); } catch (_) {}
+        meta.by[field] = { u: name.slice(0, 40), i: userInitials(), t: new Date().toISOString() };
+      } catch (_) {}
+    }
+    function _byChip(nd, field) {
+      try {
+        const meta = nd && nd.checklist && nd.checklist[NOTE_SYNC_META_KEY];
+        const b = meta && isPlainObject(meta.by) ? meta.by[field] : null;
+        if (!b || !(b.i || b.u)) return "";
+        const d = b.t ? new Date(b.t) : null;
+        const z = function (n) { return String(n).padStart(2, "0"); };
+        const when = d && !isNaN(d) ? (z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes())) : "";
+        return `<span class="by-chip" style="background:${_byColor(b.u || b.i)}" title="Último cambio: ${esc(b.u || b.i)}${when ? " · " + when : ""}">${esc(b.i || b.u.slice(0, 2).toUpperCase())}${when ? " · " + when : ""}</span>`;
+      } catch (_) { return ""; }
     }
     function sanitizeStoragePathSegment(v) {
       return toSafeString(v)
@@ -11240,6 +11519,7 @@ function plExportBackup() {
         }
         _enqueuePendingMisc();
         await flushOutbox();
+        try { await _fotosRetryPending(); } catch (e) { safeLog("fotos pendientes:", e); } // fotos guardadas sin red → Storage
         const repair = loaded ? await recoverPendingNoteSync(loaded.remoteNotePatientIds || []) : { synced: 0, failed: [] };
         syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
       } catch (e) { safeLog("online handler:", e); }
@@ -11942,6 +12222,7 @@ function plExportBackup() {
         localStorage.setItem("pl_last_save_ts", Date.now().toString());
         const repair = await recoverPendingNoteSync(loaded.remoteNotePatientIds || []);
         startRealtime();
+        setTimeout(function () { try { _fotosRetryPending().catch(function () {}); } catch (_) {} }, 8000); // fotos que quedaron sin subir en otra sesión
         // Si había outbox pendiente, empujar esos cambios ahora sobre los datos frescos
         if (localHasUnsyncedChanges) {
           flushOutbox().catch(e => safeLog("init flushOutbox:", e));
@@ -13545,13 +13826,14 @@ function plExportBackup() {
     function renderInterconsultasSection(nd, k) {
       const val = esc((nd.checklist && nd.checklist.interconsultas) || "");
       return `<div class="interconsultas-box">
-        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas</span><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button></div>
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas${_byChip(nd, "interconsultas")}</span><span style="display:flex;gap:4px;align-items:center"><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button><button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:interconsultas','Interconsultas')" title="Escribir a mano con stylus" data-testid="field-ink-ck-interconsultas">✍️</button></span></div>
         <textarea class="field-ta" rows="2"
           data-key="${k}" data-ckfield="interconsultas"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
           oninput="liveCkText(this)"
           onchange="updateCkText(this.dataset.key,'interconsultas',this.value)"
           placeholder="Esp: motivo, fecha solicitud, estado / respuesta...">${val}</textarea>
+        ${renderFotoStrip(k, "ink:ck:interconsultas", _fotoList(nd, "ink:ck:interconsultas", false), { add: false })}
       </div>`;
     }
 
@@ -13643,17 +13925,22 @@ function plExportBackup() {
       const manualVal = esc((nd.checklist && nd.checklist.cultivos) || "");
       return `<div class="cultivos-box">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between">
-          <span>🦠 Cultivos / Labs especiales${(cultivosExtraidos.length + wlCults.length) ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length + wlCults.length} extraído(s)</span>` : ""}</span>
-          <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'cultivos',true,'Cultivos')" title="Anotar la fecha de hoy antes de un cultivo nuevo">➕ Hoy</button>
+          <span>🦠 Cultivos / Labs especiales${(cultivosExtraidos.length + wlCults.length) ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length + wlCults.length} extraído(s)</span>` : ""}${_byChip(nd, "cultivos")}</span>
+          <span style="display:flex;gap:4px;align-items:center">
+            <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'cultivos',true,'Cultivos')" title="Anotar la fecha de hoy antes de un cultivo nuevo">➕ Hoy</button>
+            <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:cultivos','Cultivos')" title="Escribir a mano con stylus" data-testid="field-ink-ck-cultivos">✍️</button>
+          </span>
         </div>
         <div class="cultivo-tipos-row">${tiposBtns}</div>
         ${(wlChipsHtml || chipsHtml) ? `<div style="margin-bottom:6px">${wlChipsHtml}${chipsHtml}</div>` : ""}
+        ${renderFotoStrip(k, "cultivos", nd.checklist && nd.checklist.cultivos_fotos, { add: true, label: "Foto del reporte de cultivo (cámara o galería)" })}
         <textarea class="field-ta" rows="3"
           data-key="${k}" data-ckfield="cultivos"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
           oninput="liveCkText(this)"
           onchange="updateCkText(this.dataset.key,'cultivos',this.value)"
           placeholder="Ej: Hemocultivo x2 18/04 — pendiente resultado&#10;Urocultivo 17/04 — E. coli BLEE, sensible a imipenem&#10;Cultivo herida — flora mixta">${manualVal}</textarea>
+        ${renderFotoStrip(k, "ink:ck:cultivos", _fotoList(nd, "ink:ck:cultivos", false), { add: false })}
       </div>`;
     }
 
@@ -14133,12 +14420,15 @@ function plExportBackup() {
       const sel = isCk ? 'textarea[data-key="' + k + '"][data-ckfield="' + field + '"]' : 'textarea[data-key="' + k + '"][data-field="' + field + '"]';
       const ta = document.querySelector(sel);
       const d = new Date();
-      const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + ": ";
+      const ini = userInitials();
+      // "14/10 GF: " — la fecha y las iniciales de quien escribe, como el color de tinta de cada residente
+      const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + (ini ? " " + ini : "") + ": ";
       const nd = getNote(k);
       const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
       const trimmed = cur.replace(/\s+$/, "");
       if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
       _undoPush(k, "fecha de hoy en " + (label || field));
+      _touchBy(nd, field);
       const next = (trimmed ? trimmed + "\n" : "") + stamp;
       if (ta) {
         ta.value = next; if (isCk) liveCkText(ta); else liveUpdate(ta); ta.focus();
@@ -14156,6 +14446,7 @@ function plExportBackup() {
       const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
       if (cur.trim().indexOf(stamp + " —") === 0) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } return; }
       _undoPush(k, "fecha de hoy en pendientes");
+      _touchBy(getNote(k), "pendientes");
       const next = stamp + " — \n" + cur;
       if (ta) {
         ta.value = next; liveUpdate(ta); ta.focus();
@@ -14359,7 +14650,7 @@ function plExportBackup() {
       <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("💉 Manejo médico actual", nd.manejo, k, "manejo", 3)}</div>
       <div ${anchor("plan", "plan")} style="margin-top:8px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-          <span class="field-label" style="margin:0">⚠️ Pendientes / Plan${pendOpen ? ` <span class="fc-cnt">${pendOpen}</span>` : ""}</span>
+          <span class="field-label" style="margin:0">⚠️ Pendientes / Plan${pendOpen ? ` <span class="fc-cnt">${pendOpen}</span>` : ""}${_byChip(nd, "pendientes")}</span>
           <button type="button" class="pend-tool" data-k="${k}" onclick="pendInsertToday(this.dataset.k)" title="Insertar la fecha de hoy al inicio (evolución del día)">➕ Hoy</button>
           <button type="button" class="pend-tool${(window.__pendList && window.__pendList[k]) ? " on" : ""}" data-k="${k}" onclick="togglePendList(this.dataset.k)" title="Ver los pendientes como lista con casillas para tachar">☑ Lista</button>
           ${renderTemplatesBtn(k)}
@@ -14370,6 +14661,7 @@ function plExportBackup() {
           oninput="liveUpdate(this)"
           onchange="updateField(this.dataset.key,this.dataset.field,this.value)"
           placeholder="Pendientes / Plan...">${esc(nd.pendientes || "")}</textarea>
+        ${renderFotoStrip(k, "ink:pendientes", _fotoList(nd, "ink:pendientes", false), { add: false })}
         ${renderPendList(nd, k)}
       </div>
       <!-- Guardia (oct 2026): ENTREGA = lo que yo dejo para la siguiente guardia (eventualidades y por hacer;
@@ -14378,7 +14670,7 @@ function plExportBackup() {
       <div class="fc-guardia">
       <div id="sec-entrega-${ek}" class="fc-anchor entrega-row fc-blk fc-blk-entrega">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📤 Entrega de guardia</span>
+          <span>📤 Entrega de guardia${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'entrega',false,'Entrega')" title="Anotar la fecha de hoy antes de la evolución del día">➕ Hoy</button>
             <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Auto-llenar entrega con labs críticos, pendientes y cruce">✨ Auto-llenar</button>
@@ -14386,17 +14678,20 @@ function plExportBackup() {
           </span>
         </div>
         <textarea class="field-ta" rows="4" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Eventualidades de mi guardia y cosas por hacer para la siguiente…">${esc(nd.entrega || "")}</textarea>
+        ${renderFotoStrip(k, "ink:entrega", _fotoList(nd, "ink:entrega", false), { add: false })}
         ${cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : ""}
       </div>
       <div id="sec-recibo-${ek}" class="fc-anchor recibo-row fc-blk fc-blk-recibo">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📥 Recibo de guardia</span>
+          <span>📥 Recibo de guardia${_byChip(nd, "recibo")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'recibo',true,'Recibo')" title="Anotar la fecha de hoy">➕ Hoy</button>
+            <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:recibo','Recibo de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-ck-recibo">✍️</button>
             <button type="button" class="gd-btn" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasar lo que dejó la guardia anterior en Entrega a mi Recibo (con fecha y hora) y vaciar Entrega">⇄ Tomar guardia</button>
           </span>
         </div>
         <textarea class="field-ta" rows="4" data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Lo que me entregan al recibir la guardia…">${esc(reciboTxt)}</textarea>
+        ${renderFotoStrip(k, "ink:ck:recibo", _fotoList(nd, "ink:ck:recibo", false), { add: false })}
       </div>
       </div>
       <div class="fc-secs">
@@ -14527,9 +14822,10 @@ function plExportBackup() {
 
     function fieldRow(label, val, k, field, rows) {
       const safe = esc(val || "");
+      const ndRow = noteData[k] || null;
       return "<div>" +
         "<div class='field-label' style='display:flex;align-items:center;justify-content:space-between;gap:6px'>" +
-          "<span>" + label + "</span>" +
+          "<span>" + label + (ndRow ? _byChip(ndRow, field) : "") + "</span>" +
           "<button class='field-ink-btn' onclick=\"openInkpadForField('" + k + "','" + field + "','" + label.replace(/'/g, "\\'") + "')\" title='Escribir a mano con stylus' data-testid='field-ink-" + field + "'>✍️</button>" +
         "</div>" +
         "<textarea class='field-ta' rows='" + rows + "' " +
@@ -14537,6 +14833,7 @@ function plExportBackup() {
         "inputmode='text' autocorrect='off' autocapitalize='sentences' spellcheck='false' " +
         "onfocus=\"this.dataset.beforeValue=this.value\" " +
         "oninput=\"liveUpdate(this)\" onchange=\"updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)\">" + safe + "</textarea>" +
+        (ndRow ? renderFotoStrip(k, "ink:" + field, _fotoList(ndRow, "ink:" + field, false), { add: false }) : "") +
         "</div>";
     }
 
@@ -16083,6 +16380,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("inkpad-patient-bed").textContent = p ? `Cama ${p.cama} · Exp ${p.exp}` : "";
 
       document.getElementById("inkpad-modal").style.display = "flex";
+      try { document.getElementById("ink-tobox-btn").style.display = "none"; } catch (_) {}
 
       // Load persisted strokes (if any)
       const nd = noteData[k];
@@ -16112,6 +16410,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("inkpad-patient-bed").textContent = (p ? `Cama ${p.cama} · Exp ${p.exp}` : "") + "  ·  Solo llena el campo «" + fieldLabel + "»";
 
       document.getElementById("inkpad-modal").style.display = "flex";
+      try { document.getElementById("ink-tobox-btn").style.display = ""; } catch (_) {}
 
       // Per-field ink strokes are stored under a dedicated key (not shared with big canvas)
       const nd = noteData[k];
@@ -16272,6 +16571,50 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(_inkKey, noteData[_inkKey]); // antes lsSaveNote (solo local): se perdía con el siguiente evento Realtime
       alert("✅ Trazo guardado. La próxima vez que abras ✍️ aparecerá tal cual.");
     }
+    // Campos del Inkpad: "app"/"pa"/… viven en la nota; "ck:<campo>" en el checklist (IC, cultivos, recibo).
+    function _inkFieldGet(nd, fieldKey) {
+      if (!nd) return "";
+      if (fieldKey && fieldKey.indexOf("ck:") === 0) return toSafeString(nd.checklist && nd.checklist[fieldKey.slice(3)]);
+      return toSafeString(nd[fieldKey]);
+    }
+    function _inkFieldSet(nd, fieldKey, val) {
+      if (fieldKey && fieldKey.indexOf("ck:") === 0) { if (!nd.checklist) nd.checklist = {}; nd.checklist[fieldKey.slice(3)] = val; return "ck_" + fieldKey.slice(3); }
+      nd[fieldKey] = val; return fieldKey;
+    }
+    // PNG recortado al contorno de los trazos (con margen), a escala del dispositivo. null si no hay trazos.
+    function _inkExportPng() {
+      const strokes = _inkStrokes.filter(function (s) { return s && s.points && s.points.length > 1 && s.tool !== "eraser"; });
+      if (!strokes.length) return Promise.resolve(null);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      strokes.forEach(function (s) { s.points.forEach(function (p) { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y; }); });
+      const pad = 16;
+      const w = Math.max(40, Math.ceil(maxX - minX + pad * 2)), h = Math.max(40, Math.ceil(maxY - minY + pad * 2));
+      const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      const cv = document.createElement("canvas"); cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      const ctx = cv.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.translate(pad - minX, pad - minY);
+      _inkStrokes.forEach(function (s) { if (s && s.points && s.points.length > 1) _inkDrawFullStroke(ctx, s); });
+      return new Promise(function (resolve) {
+        try { cv.toBlob(function (b) { resolve(b ? { blob: b, w: w, h: h, b64: (cv.toDataURL("image/png").split(",")[1] || "") } : null); }, "image/png"); }
+        catch (e) { resolve(null); }
+      });
+    }
+    // 📌 A la caja: el trazo queda como imagen dentro de la caja (y se guarda el trazo editable en este dispositivo).
+    async function inkSaveToBox() {
+      if (!_inkKey || !_inkFieldMode) { alert("Abre el lápiz desde una caja (✍️) para guardar ahí."); return; }
+      if (!_inkStrokes.length) { alert("Dibuja algo primero."); return; }
+      const k = _inkKey, field = _inkFieldMode;
+      const png = await _inkExportPng();
+      if (!png) { alert("No hay trazo que guardar."); return; }
+      if (!noteData[k]) noteData[k] = defaultData();
+      noteData[k]._inkFields = noteData[k]._inkFields || {};
+      noteData[k]._inkFields[field] = JSON.parse(JSON.stringify(_inkStrokes));
+      const foto = await fotoAttachBlob(k, "ink:" + field, png.blob, "trazo-" + todayStr() + ".png", "image/png", { w: png.w, h: png.h, b64: png.b64 });
+      if (foto) { closeInkpad(); try { _showRTToast("📌 Trazo guardado en la caja"); } catch (_) {} }
+    }
 
     async function inkTranscribe() {
       if (!_inkStrokes.length) { alert("Dibuja algo primero."); return; }
@@ -16293,7 +16636,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             qx: "cirugía realizada y hallazgos", sangrado: "sangrado transoperatorio",
             drenajes: "drenajes y sus gastos", manejo: "manejo/tratamiento/indicaciones médicas",
             sv: "signos vitales", balance: "balance hídrico",
-            pendientes: "pendientes / estudios por hacer"
+            pendientes: "pendientes / estudios por hacer", entrega: "entrega de guardia (eventualidades y por hacer)",
+            "ck:interconsultas": "interconsultas solicitadas y sus respuestas", "ck:cultivos": "cultivos (tipo, fecha, germen y antibiograma)", "ck:recibo": "recibo de guardia"
           };
           const fieldDescr = labels[_inkFieldMode] || _inkFieldMode;
           prompt = `Eres un asistente médico quirúrgico. Esta imagen contiene texto manuscrito escrito por un residente de cirugía general sobre el apartado "${fieldDescr}" de un paciente. Transcribe TODO el texto que veas interpretando abreviaturas médicas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, etc.) y devuelve SOLO un JSON con este esquema exacto:
@@ -16367,7 +16711,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
     // Preview for field mode — a single textarea with the transcribed text
     function _renderInkpadFieldSingle(result, fieldKey) {
       const txt = (result.texto || result.transcripcion_completa || "").trim();
-      const currentVal = (noteData[_inkKey] && noteData[_inkKey][fieldKey]) || "";
+      const currentVal = _inkFieldGet(noteData[_inkKey], fieldKey);
       let html = `<div style="font-size:12px;color:#334155;margin-bottom:8px">
         <b>Texto detectado</b> para el campo ${esc(fieldKey.toUpperCase())}.
         Edítalo si hace falta y elige cómo aplicarlo.
@@ -16431,18 +16775,21 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         if (!newVal) { alert("No hay texto para aplicar."); return; }
         const modeRadio = document.querySelector('input[name="ink-mode"]:checked');
         const mode = modeRadio ? modeRadio.value : "replace";
-        const currentVal = (nd[_inkFieldMode] || "").trim();
+        const currentVal = _inkFieldGet(nd, _inkFieldMode).trim();
+        let dirtyFlag = _inkFieldMode;
         if (_inkFieldMode === "dx") {
           // dx lives on the patient object
           const pt = patients.find(pp => pid(pp) === _inkKey);
           if (pt) pt.dx = newVal.toUpperCase();
         } else {
-          nd[_inkFieldMode] = (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal;
+          _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")));
+          dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal);
+          _touchBy(nd, _inkFieldMode.replace(/^ck:/, ""));
         }
         // Persist per-field strokes
         if (!nd._inkFields) nd._inkFields = {};
         nd._inkFields[_inkFieldMode] = JSON.parse(JSON.stringify(_inkStrokes));
-        if (_inkFieldMode !== "dx") (_dirtyFields[_inkKey] = _dirtyFields[_inkKey] || new Set()).add(_inkFieldMode);
+        if (_inkFieldMode !== "dx") { (_dirtyFields[_inkKey] = _dirtyFields[_inkKey] || new Set()).add(dirtyFlag); _dirtyFields[_inkKey].add("checklist"); }
         saveNote(_inkKey, nd); // sube a Supabase; antes solo localStorage → se perdía y no lo veían otros dispositivos
         try { renderView(); } catch (_) { }
         try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) { }
@@ -17015,10 +17362,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
         _showUndoToast();
       }
+      const _changed = prev !== toSafeString(value);
       noteData[k][field] = value;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      // El push parcial debe llevar ESTE campo: updateField puede llegar sin liveUpdate previo (transcripción,
+      // pruebas, Scribble) y, con el checklist también sucio, el texto se quedaría fuera del envío.
+      _dirtyFields[k].add(field);
+      // Autor por caja: quién tocó este campo por última vez (viaja en checklist.__pl_note_meta.by)
+      if (_changed) { _touchBy(noteData[k], field); _dirtyFields[k].add("checklist"); }
       saveNote(k, noteData[k]);
       // Campo guardado: ya no está dirty
-      if (_dirtyFields[k]) _dirtyFields[k].delete(field);
+      _dirtyFields[k].delete(field); if (_changed) _dirtyFields[k].delete("checklist");
       // dx vive en el objeto paciente (no en notas) — sincronizar también allá
       if (field === "dx") {
         const p = patients.find(function(pt){ return pid(pt) === k; });
@@ -17064,6 +17418,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
       }
       nd.checklist[field] = value;
+      if (prevVal !== toSafeString(value)) _touchBy(nd, field);
       _saveNoteNow(k, nd, "ck_" + field);
     }
 
@@ -23086,6 +23441,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             <input class="cx-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
             <input class="cx-in" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(c.cirujano || "")}" placeholder="Cirujano" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>
           </div>
+          ${renderFotoStrip(k, "cx:" + String(c.id || ""), c.fotos, { add: true, label: "Foto de la nota quirúrgica o del reporte (cámara o galería)" })}
         </div>`;
       }).join("");
       return `<div class="cx-box">
@@ -23108,8 +23464,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
       if (!nd.checklist) nd.checklist = {};
       const prev = toSafeString(nd.checklist.recibo).replace(/\s+$/, "");
-      nd.checklist.recibo = (prev ? prev + "\n\n" : "") + "— Recibido " + stamp + " —\n" + ent;
+      nd.checklist.recibo = (prev ? prev + "\n\n" : "") + "— Recibido " + stamp + (userInitials() ? " " + userInitials() : "") + " —\n" + ent;
       nd.entrega = "";
+      _touchBy(nd, "recibo"); _touchBy(nd, "entrega");
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_recibo");
       noteData[k] = nd;
@@ -23995,6 +24352,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         <span style="width:1px;background:#475569;height:28px;margin:0 4px"></span>
         <button onclick="inkTranscribe()" class="ink-primary-btn" data-testid="ink-transcribe-btn" title="Transcribir con IA y llenar campos del paciente">🤖 Transcribir</button>
         <button onclick="inkSaveImage()" class="ink-secondary-btn" data-testid="ink-save-img-btn" title="Guardar solo como imagen sin transcribir">💾 Guardar</button>
+        <button id="ink-tobox-btn" onclick="inkSaveToBox()" class="ink-secondary-btn" style="display:none" data-testid="ink-tobox-btn" title="Guardar el trazo como imagen dentro de la caja: se ve en la hoja y en todos los dispositivos">📌 A la caja</button>
         <button onclick="closeInkpad()" class="ink-close-btn" data-testid="ink-close-btn">✕</button>
       </div>
     </div>
