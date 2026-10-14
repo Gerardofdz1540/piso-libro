@@ -73,3 +73,43 @@ SELECT t.tablename,
        (SELECT string_agg(p.policyname, ', ') FROM pg_policies p WHERE p.schemaname = 'public' AND p.tablename = t.tablename) AS policies,
        (SELECT count(*) FROM information_schema.role_table_grants g WHERE g.table_schema = 'public' AND g.table_name = t.tablename AND g.grantee = 'anon') AS anon_grants
 FROM pg_tables t WHERE t.schemaname = 'public' ORDER BY 1;
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Cuentas con administrador y registro de actividad (oct 2026). Referencia
+-- de lo aplicado (migraciones app_users_admin_accounts, audit_log_actividad,
+-- solo_cuentas_activas). Idempotente salvo las políticas (CREATE POLICY falla
+-- si ya existe: usar DROP POLICY IF EXISTS antes si se re-aplica).
+-- ═══════════════════════════════════════════════════════════════════════
+create table if not exists public.app_users (
+  id uuid primary key references auth.users(id),
+  email text not null default '', nombre text not null default '',
+  role text not null default 'usuario' check (role in ('admin','usuario')),
+  status text not null default 'active' check (status in ('active','blocked')),
+  created_at timestamptz not null default now(), created_by uuid,
+  updated_at timestamptz not null default now(), last_seen_at timestamptz, notas text not null default ''
+);
+alter table public.app_users enable row level security;
+revoke all on public.app_users from anon;
+grant select on public.app_users to authenticated;
+grant update (nombre, last_seen_at) on public.app_users to authenticated;
+create or replace function public.pl_is_admin() returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.app_users u where u.id = auth.uid() and u.role = 'admin' and u.status = 'active'); $$;
+create or replace function public.pl_is_active() returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.app_users u where u.id = auth.uid() and u.status = 'active'); $$;
+-- Políticas de app_users: cada quien ve su fila (el admin todas) y solo edita su nombre/último acceso.
+--   create policy app_users_read on public.app_users for select to authenticated using (id = auth.uid() or (select public.pl_is_admin()));
+--   create policy app_users_self_update on public.app_users for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+-- Semilla inicial: todas las cuentas existentes activas; el dueño del proyecto admin.
+--   insert into public.app_users (id, email, role, status) select id, coalesce(email,''), case when email='gfdz1540@gmail.com' then 'admin' else 'usuario' end, 'active' from auth.users on conflict (id) do nothing;
+-- Solo cuentas activas (restrictiva, se suma a authenticated_all) en: patients, notes, archive, config,
+-- guard_info, imagen_entries, lab_entries, no_olvidar, procedimientos_dia, winlab_dispatch_log, winlab_labs,
+-- winlab_reports, sync_log, indicaciones_doc, ris_estudios y storage.objects:
+--   create policy pl_solo_cuentas_activas on public.<tabla> as restrictive for all to authenticated
+--     using ((select public.pl_is_active())) with check ((select public.pl_is_active()));
+-- Registro de actividad: tabla public.audit_log (solo lectura para admin: policy audit_log_admin_read con
+-- pl_is_admin()), función disparadora public.pl_audit() (security definer; lee request.jwt.claims y
+-- request.headers: x-pl-device, x-pl-user, cf-connecting-ip, user-agent; guarda campos cambiados y de → a)
+-- y disparadores pl_audit_<tabla> AFTER INSERT OR UPDATE OR DELETE en patients, notes, no_olvidar,
+-- procedimientos_dia, guard_info y config. Retención: cron 'audit-log-purge' (180 días).
+-- Tablas internas sin acceso por API (RLS sin políticas, sin grants a anon/authenticated):
+-- notes_backup_20261014, indicaciones_parts, indicaciones_fetch_log.

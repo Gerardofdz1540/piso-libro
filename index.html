@@ -243,6 +243,14 @@
     body.dark .checklist-row.ck-r-vitales { border-left-color: #2dd4bf !important; }
     body.dark .checklist-row.ck-r-drenajes { border-left-color: #a78bfa !important; }
     body.dark .checklist-row.ck-r-clinico { border-left-color: #f87171 !important; }
+    body.dark .checklist-row.ck-r-vaso { border-left-color: #f472b6 !important; }
+    body.dark .ck-title.ck-t-vaso { color: #f9a8d4 !important; }
+    body.dark .ck-item.ck-vp-on { background: #be185d; color: #fff; border-color: #f472b6; }
+    body.dark .vp-res { background: #3b1230; border-color: #9d174d; color: #f9a8d4; }
+    body.dark .vp-hint { color: #f9a8d4; }
+    body.dark .vm-chip { background: #0c2a3f; border-color: #0369a1; color: #7dd3fc; }
+    body.dark .vp-res.vp-hi, body.dark .vm-chip.vm-hi { background: #450a0a; border-color: #b91c1c; color: #fca5a5; }
+    body.dark .vp-res.vp-na, body.dark .vm-chip.vm-na { background: #152e4d; border-color: #2f4f79; color: #9fb4d0; }
     body.dark .ck-title { color: #b9cbe3 !important; }
     body.dark .ck-title.ck-t-vit { color: #5eead4 !important; }
     body.dark .ck-title.ck-t-dren { color: #c4b5fd !important; }
@@ -1777,6 +1785,19 @@
       body.pl-hoja .fc-hist-grid { grid-template-columns: 1fr; }
       body.pl-hoja .fc-side-g2 { grid-template-columns: 1fr !important; }
     }
+    /* Fotos en las cajas y autor por caja (oct 2026) */
+    .pl-fotos { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 5px; }
+    .pl-foto-wrap { position: relative; display: inline-block; }
+    .pl-foto { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; background: #f1f5f9; cursor: zoom-in; display: block; }
+    .pl-foto.pl-foto-nored { width: 76px; height: 76px; }
+    .pl-foto-wrap.pending .pl-foto { outline: 2px dashed #f59e0b; outline-offset: -2px; }
+    .pl-foto-file { height: 76px; max-width: 120px; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; font-size: 11px; padding: 0 8px; cursor: pointer; }
+    .pl-foto-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid #fca5a5; background: #fff; color: #dc2626; font-size: 11px; line-height: 18px; padding: 0; cursor: pointer; }
+    .pl-foto-add { width: 44px; height: 44px; border-radius: 8px; border: 1px dashed #94a3b8; background: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; }
+    .pl-foto-add:hover { background: #eef2ff; border-color: #6366f1; }
+    .by-chip { display: inline-block; font-size: 9.5px; font-weight: 800; color: #fff; border-radius: 999px; padding: 1px 7px; margin-left: 6px; letter-spacing: .02em; white-space: nowrap; vertical-align: middle; }
+    body.dark .pl-foto-add, body.dark .pl-foto-file { background: #0f1b2d; color: #cbd5e1; }
+    @media print { .pl-foto-x, .pl-foto-add { display: none !important; } .pl-foto { width: 120px; height: 120px; } }
     /* Pase matutino con fecha e historial (oct 2026) */
     .pm-date { font-size: 10px; font-weight: 800; border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
     .pm-date:empty { display: none; }
@@ -2907,6 +2928,64 @@
     body.dark .dv-name { background: #2e1065; color: #e9d5ff; }
     body.dark .dv-add, body.dark .dv-sel { background: #0f1c2e; color: #c4b5fd; }
     .checklist-row.ck-r-clinico { background: #fef2f2; border-color: #fca5a5; }
+    /* Vasopresores (oct 2026): calculadora norepinefrina / vasopresina + chips del ventilador */
+    .checklist-row.ck-r-vaso { background: #fdf2f8; border-color: #f9a8d4; }
+    .ck-title.ck-t-vaso { color: #9d174d; }
+    .ck-item.ck-vp-on { background: #be185d; color: #fff; border-color: #9d174d; }
+    .vp-grp { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+    .vp-res { font-size: 11px; font-weight: 800; color: #9d174d; white-space: nowrap; padding: 1px 7px; border-radius: 10px; background: #fce7f3; border: 1px solid #f9a8d4; }
+    .vp-res.vp-hi, .vm-chip.vm-hi { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+    .vp-res.vp-na, .vm-chip.vm-na { background: #f1f5f9; border-color: #cbd5e1; color: #64748b; font-weight: 600; }
+    .vp-hint { font-size: 9.5px; font-weight: 700; color: #9d174d; white-space: nowrap; }
+    .vp-hint.vp-ssc { white-space: normal; flex-basis: 100%; }
+    .vm-chips { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+    .vm-chip { font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 10px; background: #e0f2fe; border: 1px solid #7dd3fc; color: #075985; white-space: nowrap; }
+    /* 👥 Usuarios y actividad · 👤 Mi cuenta (oct 2026) */
+    .adm-box { max-width: 940px; width: 96vw; }
+    .adm-tabs { display: flex; gap: 6px; margin: 4px 0 12px; }
+    .adm-tab { border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; border-radius: 8px; padding: 6px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: var(--font); }
+    .adm-tab.active { background: #0a1628; color: #fff; border-color: #0a1628; }
+    .adm-invite { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 12.5px; color: #064e3b; }
+    .adm-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+    .adm-row .modal-input { flex: 1 1 160px; min-width: 0; }
+    .adm-hint { font-size: 11.5px; color: #64748b; margin-top: 6px; line-height: 1.5; }
+    .adm-result { margin-top: 8px; font-size: 12.5px; color: #065f46; }
+    .adm-pass { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 15px; font-weight: 800; background: #fff; border: 1px dashed #059669; padding: 2px 8px; border-radius: 6px; letter-spacing: .06em; color: #0a1628; }
+    .adm-list { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow: auto; }
+    .adm-user { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 10px; background: #fff; }
+    .adm-user.adm-blocked { background: #fff1f2; border-color: #fecdd3; }
+    .adm-u-main { font-size: 13px; color: #0f172a; min-width: 0; }
+    .adm-mail { color: #64748b; font-size: 12px; }
+    .adm-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .adm-u-acts { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; max-width: 55%; }
+    .adm-btn { font-size: 11px; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; border-radius: 8px; padding: 4px 8px; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .adm-btn:hover { background: #e2e8f0; }
+    .adm-btn.adm-danger { border-color: #fca5a5; color: #991b1b; background: #fff5f5; }
+    .adm-badge { display: inline-block; font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 10px; background: #e2e8f0; color: #475569; margin-left: 2px; vertical-align: middle; }
+    .adm-badge.adm-ok { background: #d1fae5; color: #065f46; }
+    .adm-badge.adm-bad { background: #fee2e2; color: #991b1b; }
+    .adm-badge.adm-warn { background: #fef3c7; color: #92400e; }
+    .adm-badge.adm-adm { background: #ede9fe; color: #5b21b6; }
+    .adm-badge.adm-self { background: #dbeafe; color: #1e40af; }
+    .adm-err { color: #b91c1c; font-size: 12.5px; }
+    .adm-filters .modal-input { flex: 0 1 220px; }
+    .adm-act { border: 1px solid #e2e8f0; border-radius: 10px; padding: 7px 10px; background: #fff; font-size: 12.5px; }
+    .adm-act-h { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+    .adm-act-ts { font-family: var(--mono, ui-monospace, Menlo, monospace); font-size: 11.5px; color: #475569; }
+    .adm-act-where { margin-left: auto; font-size: 11px; color: #64748b; }
+    .adm-act-b { margin-top: 3px; color: #0f172a; }
+    .adm-diff { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+    .adm-d { font-size: 11.5px; color: #334155; white-space: pre-wrap; word-break: break-word; }
+    .adm-k { font-weight: 800; color: #0a1628; }
+    .adm-de { color: #991b1b; text-decoration: line-through; }
+    .adm-a { color: #065f46; font-weight: 600; }
+    .adm-lbl { display: block; font-size: 11px; font-weight: 800; color: #1e3a5f; text-transform: uppercase; letter-spacing: .03em; margin: 10px 0 3px; }
+    body.dark .adm-user, body.dark .adm-act { background: #0e2138; border-color: #23405f; }
+    body.dark .adm-u-main, body.dark .adm-act-b, body.dark .adm-d, body.dark .adm-k { color: #e2e8f0; }
+    body.dark .adm-invite { background: #0b2a24; border-color: #0f766e; color: #a7f3d0; }
+    body.dark .adm-btn, body.dark .adm-tab { background: #152e4d; border-color: #2f4f79; color: #cfdded; }
+    body.dark .adm-tab.active { background: #38bdf8; color: #0a1628; border-color: #38bdf8; }
+    body.dark .adm-pass { background: #0a1628; color: #fff; }
     .ck-title.ck-t-vit { color: #0f766e; }
     .ck-title.ck-t-dren { color: #7c3aed; }
     .ck-title.ck-t-clin { color: #991b1b; }
@@ -4092,6 +4171,8 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
           Entrar
         </button>
         <div id="login-error" role="alert" style="color:#c00;margin-top:8px;min-height:1.2em;font-size:0.9em;"></div>
+        <button type="button" onclick="forgotPassword()" data-testid="login-forgot"
+          style="background:none;border:none;color:#6366f1;font-size:12.5px;font-weight:600;cursor:pointer;margin-top:6px;font-family:inherit;text-decoration:underline">¿Olvidaste tu contraseña?</button>
       </div>
       <!-- First-time setup -->
       <div id="login-setup-section" style="display:none">
@@ -4208,6 +4289,10 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
           </div>
         </div>
         <button class="config-pill connected" id="proxy-pill" onclick="openConfigModal()">⚙️ Config ✓</button>
+        <button id="account-btn" onclick="openAccountPanel()" title="Mi cuenta: nombre, dispositivo y contraseña" data-testid="account-btn"
+          style="background:rgba(99,102,241,.22);border:1px solid rgba(99,102,241,.5);color:#c7d2fe;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">👤 Mi cuenta</button>
+        <button id="admin-btn" onclick="openAdminPanel()" title="Usuarios y actividad (solo administrador)" data-testid="admin-btn"
+          style="display:none;background:rgba(16,185,129,.22);border:1px solid rgba(16,185,129,.5);color:#a7f3d0;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">👥 Usuarios</button>
         <button id="logout-btn" onclick="logout()" title="Cerrar sesión"
           style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.4);color:#fecaca;padding:4px 10px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">🚪 Salir</button>
       </div>
@@ -4696,6 +4781,15 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
           Los cambios se sincronizan en <strong>tiempo real</strong> entre todos los dispositivos conectados.<br>
           Si pierdes internet, trabaja en modo offline — al reconectar, los cambios se suben automáticamente.
         </p>
+      </div>
+
+      <div class="config-section">
+        <h3>📝 Página de notas de evolución</h3>
+        <p style="font-size:12px;color:#64748b;margin-bottom:8px">Con «↗ Pasar a la página de notas» la nota se copia y se abre esta dirección para pegarla. Se comparte a todos los dispositivos.</p>
+        <div class="proxy-input-wrap">
+          <input id="notes-url-input" placeholder="https://…/notas-de-evolucion" type="url" autocomplete="off" autocorrect="off" spellcheck="false" />
+          <button class="btn-save" onclick="saveConfig()">Guardar</button>
+        </div>
       </div>
 
       <details style="margin-top:12px">
@@ -6588,6 +6682,277 @@ function plExportBackup() {
       location.reload();
     }
 
+    // ── Cuentas con administrador (oct 2026) ────────────────────────────────────────
+    // Perfil en public.app_users (rol admin/usuario, estado active/blocked). El administrador da de alta,
+    // bloquea y repone contraseñas desde 👥 Usuarios (Edge Function admin-users). Las políticas de la base
+    // solo dejan leer/escribir a cuentas activas, así que un bloqueado no ve nada aunque tenga sesión.
+    let _myProfile = null;
+    function _appUrl() { return location.origin + location.pathname; }
+    function _jwtPayload(tok) { try { return JSON.parse(atob(String(tok).split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); } catch (_) { return null; } }
+    function myUserId() { const p = _jwtPayload(_userAccessToken); return (p && p.sub) || ""; }
+    function myEmail() { const p = _jwtPayload(_userAccessToken); return (p && p.email) || ""; }
+    function isAdmin() { return !!(_myProfile && _myProfile.role === "admin" && _myProfile.status === "active"); }
+    function _renderAdminButton() { const b = document.getElementById("admin-btn"); if (b) b.style.display = isAdmin() ? "" : "none"; }
+    async function _loadMyProfile() {
+      const uid = myUserId(); if (!uid) return true;
+      let rows = null;
+      try { rows = await _sGet("app_users", "select=id,email,nombre,role,status&id=eq." + encodeURIComponent(uid)); }
+      catch (e) {
+        // Sin red (o 401 ya manejado): seguir con la copia local; el servidor rechaza igual a los bloqueados.
+        safeLog("app_users:", e);
+        return !_sessionInvalidated;
+      }
+      const me = Array.isArray(rows) ? rows[0] : null;
+      if (!me || me.status !== "active") { await _accessDenied(me ? "bloqueada" : "sin_registro"); return false; }
+      _myProfile = me;
+      if (me.nombre) { try { if ((localStorage.getItem("pl_user_name") || "") !== me.nombre) localStorage.setItem("pl_user_name", me.nombre); } catch (_) {} }
+      _renderAdminButton();
+      _sPatch("app_users", "id=eq." + encodeURIComponent(uid), { last_seen_at: new Date().toISOString() }).catch(() => {});
+      return true;
+    }
+    async function _accessDenied(reason) {
+      _userAccessToken = null; _sessionInvalidated = true; _hadSessionAtLoad = false;
+      try { if (_supa) await _supa.auth.signOut({ scope: "local" }); } catch (_) {}
+      _showLoginOverlay();
+      _showLoginError(reason === "bloqueada"
+        ? "Tu cuenta está bloqueada. Pide al administrador que la active."
+        : "Tu cuenta aún no tiene acceso autorizado. Pide al administrador que la active en 👥 Usuarios.");
+    }
+    // ¿Olvidaste tu contraseña? → Supabase manda un enlace al correo (requiere SMTP configurado en el
+    // proyecto; si no llega, el administrador puede dar una contraseña temporal o copiar el enlace).
+    async function forgotPassword() {
+      const emailEl = document.getElementById("login-user");
+      let email = ((emailEl && emailEl.value) || "").trim();
+      if (!email) { email = (prompt("Escribe tu correo para enviarte el enlace de recuperación:") || "").trim(); if (!email) return; if (emailEl) emailEl.value = email; }
+      if (!_supa || !_supa.auth || typeof _supa.auth.resetPasswordForEmail !== "function") { _showLoginError("Sin conexión con Supabase. Revisa tu internet y vuelve a intentar."); return; }
+      try {
+        const { error } = await _supa.auth.resetPasswordForEmail(email, { redirectTo: _appUrl() });
+        if (error) throw error;
+        const msg = document.getElementById("login-msg");
+        if (msg) { msg.style.background = "#ecfdf5"; msg.style.color = "#065f46"; msg.textContent = "Si el correo está registrado, te llegará un enlace para poner una contraseña nueva (revisa también spam). Si no llega, pídele al administrador una contraseña temporal."; msg.style.display = "block"; }
+        _showLoginError("");
+      } catch (e) { _showLoginError("No se pudo enviar el correo: " + ((e && e.message) || e)); }
+    }
+    // Enlace de recuperación: la app no procesa la URL sola (detectSessionInUrl:false), así que al abrir con
+    // #access_token…&type=recovery se instala esa sesión y se pide la contraseña nueva antes de seguir.
+    async function _handleRecoveryLink() {
+      let h = ""; try { h = location.hash || ""; } catch (_) {}
+      if (!/access_token=/.test(h) || !/type=recovery/.test(h)) return false;
+      const q = new URLSearchParams(h.replace(/^#/, ""));
+      const at = q.get("access_token"), rt = q.get("refresh_token");
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {}
+      if (!_supa || !at || !_supa.auth || typeof _supa.auth.setSession !== "function") return false;
+      try {
+        const { error } = await _supa.auth.setSession({ access_token: at, refresh_token: rt || "" });
+        if (error) throw error;
+      } catch (e) {
+        _showLoginOverlay();
+        _showLoginError("El enlace de recuperación ya no sirve (caducó o ya se usó). Pide uno nuevo.");
+        return true;
+      }
+      _recoveryPending = true;
+      return true;
+    }
+    let _recoveryPending = false;
+    function openNewPasswordDialog(fromRecovery) {
+      let m = document.getElementById("pwd-modal");
+      if (!m) {
+        m = document.createElement("div"); m.id = "pwd-modal"; m.className = "modal-bg"; m.style.display = "none"; m.style.zIndex = "100000";
+        m.innerHTML = '<div class="modal-box" style="max-width:420px"><div class="modal-header"><div class="modal-title">🔑 Contraseña nueva</div><button class="modal-close" onclick="closeNewPasswordDialog()">✕</button></div>'
+          + '<p id="pwd-hint" style="font-size:12.5px;color:#64748b;margin:0 0 10px"></p>'
+          + '<input id="pwd-new" type="password" autocomplete="new-password" placeholder="Nueva contraseña (mínimo 12 caracteres)" class="modal-input" style="width:100%;margin-bottom:8px;box-sizing:border-box" data-testid="pwd-new"/>'
+          + '<input id="pwd-new2" type="password" autocomplete="new-password" placeholder="Repite la contraseña" class="modal-input" style="width:100%;margin-bottom:10px;box-sizing:border-box" data-testid="pwd-new2" onkeydown="if(event.key===\'Enter\')saveNewPassword()"/>'
+          + '<div id="pwd-err" style="color:#dc2626;font-size:12px;min-height:1.2em;margin-bottom:8px"></div>'
+          + '<button class="btn-save" onclick="saveNewPassword()" data-testid="pwd-save" style="width:100%">Guardar contraseña</button></div>';
+        document.body.appendChild(m);
+      }
+      const hint = document.getElementById("pwd-hint");
+      if (hint) hint.textContent = fromRecovery ? "Entraste con el enlace de recuperación. Escribe tu contraseña nueva para terminar." : "Escribe tu contraseña nueva. Solo cambia la de tu cuenta.";
+      m.dataset.recovery = fromRecovery ? "1" : "";
+      document.getElementById("pwd-err").textContent = ""; document.getElementById("pwd-new").value = ""; document.getElementById("pwd-new2").value = "";
+      m.style.display = "flex";
+      setTimeout(() => { try { document.getElementById("pwd-new").focus(); } catch (_) {} }, 50);
+    }
+    function closeNewPasswordDialog() { const m = document.getElementById("pwd-modal"); if (m) m.style.display = "none"; }
+    async function saveNewPassword() {
+      const p1 = (document.getElementById("pwd-new") || {}).value || "", p2 = (document.getElementById("pwd-new2") || {}).value || "";
+      const err = document.getElementById("pwd-err");
+      if (p1.length < 12) { if (err) err.textContent = "Mínimo 12 caracteres (puede ser una frase corta)."; return; }
+      if (p1 !== p2) { if (err) err.textContent = "Las contraseñas no coinciden."; return; }
+      if (!_supa || !_supa.auth || typeof _supa.auth.updateUser !== "function") { if (err) err.textContent = "Sin conexión con Supabase."; return; }
+      try {
+        const { error } = await _supa.auth.updateUser({ password: p1 });
+        if (error) throw error;
+        const m = document.getElementById("pwd-modal"); const rec = !!(m && m.dataset.recovery === "1");
+        closeNewPasswordDialog();
+        alert("✅ Contraseña guardada." + (rec ? " Ya puedes usar la app con ella." : ""));
+      } catch (e) { if (err) err.textContent = "No se pudo cambiar: " + ((e && e.message) || e); }
+    }
+
+    // ── 👥 Usuarios y actividad (solo administrador) · 👤 Mi cuenta ──────────────────
+    const ADMIN_FN_URL = SUPA_URL + "/functions/v1/admin-users";
+    async function _adminCall(action, params) {
+      if (!_userAccessToken) throw new Error("Sin sesión");
+      const r = await _sFetch(ADMIN_FN_URL, { method: "POST", headers: _sHeaders(), body: JSON.stringify(Object.assign({ action, redirect_to: _appUrl() }, params || {})) });
+      let data = null; try { data = await r.json(); } catch (_) {}
+      if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
+      return data || {};
+    }
+    let _adminUsers = []; let _adminTab = "usuarios";
+    function _adminEl() {
+      let m = document.getElementById("admin-modal");
+      if (m) return m;
+      m = document.createElement("div"); m.id = "admin-modal"; m.className = "modal-bg"; m.style.display = "none";
+      m.innerHTML = '<div class="modal-box adm-box"><div class="modal-header"><div class="modal-title">👥 Usuarios y actividad</div><button class="modal-close" onclick="closeAdminPanel()">✕</button></div>'
+        + '<div class="adm-tabs"><button class="adm-tab active" data-tab="usuarios" onclick="adminTab(\'usuarios\')">👥 Usuarios</button><button class="adm-tab" data-tab="actividad" onclick="adminTab(\'actividad\')" data-testid="adm-tab-actividad">🕵️ Actividad</button></div>'
+        + '<div id="adm-usuarios">'
+        +   '<div class="adm-invite"><b>➕ Dar acceso a alguien</b><div class="adm-row"><input id="adm-inv-email" type="email" placeholder="correo@ejemplo.com" class="modal-input" autocomplete="off" data-testid="adm-inv-email"/><input id="adm-inv-nombre" placeholder="Nombre (p. ej. Dra. López R2)" class="modal-input" autocomplete="off" data-testid="adm-inv-nombre"/><select id="adm-inv-role" class="modal-input" data-no-sheet="1"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select><button class="btn-save" onclick="adminInvite()" data-testid="adm-invite">Crear cuenta</button></div><div class="adm-hint">Se crea la cuenta con una contraseña temporal que verás aquí una sola vez: mándasela por WhatsApp. La persona entra con su correo y esa contraseña, y puede cambiarla en 👤 Mi cuenta.</div><div id="adm-inv-result" class="adm-result" style="display:none"></div></div>'
+        +   '<div id="adm-list" class="adm-list">Cargando…</div>'
+        + '</div>'
+        + '<div id="adm-actividad" style="display:none">'
+        +   '<div class="adm-row adm-filters"><select id="adm-act-user" class="modal-input" data-no-sheet="1" onchange="adminLoadActivity()"><option value="">Todas las personas</option></select><input id="adm-act-cama" class="modal-input" placeholder="Cama (p. ej. 3-170)" style="width:130px" onchange="adminLoadActivity()" data-testid="adm-act-cama"/><select id="adm-act-dias" class="modal-input" data-no-sheet="1" onchange="adminLoadActivity()"><option value="1">Hoy</option><option value="7" selected>7 días</option><option value="30">30 días</option><option value="180">180 días</option></select><button class="btn-cancel" onclick="adminLoadActivity()" title="Actualizar">↺</button></div>'
+        +   '<div class="adm-hint">Cada cambio guardado en la nube: quién (cuenta y nombre), desde dónde (dispositivo, navegador, IP) y qué cambió (de → a). Lo que hacen el robot de labs y la hoja del censo aparece como 🤖 robot.</div>'
+        +   '<div id="adm-act-list" class="adm-list">Cargando…</div>'
+        + '</div></div>';
+      document.body.appendChild(m);
+      return m;
+    }
+    function openAdminPanel() { if (!isAdmin()) { alert("Solo el administrador puede abrir Usuarios."); return; } const m = _adminEl(); m.style.display = "flex"; adminTab(_adminTab); }
+    function closeAdminPanel() { const m = document.getElementById("admin-modal"); if (m) m.style.display = "none"; }
+    function adminTab(t) {
+      _adminTab = t; const m = _adminEl();
+      m.querySelectorAll(".adm-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === t));
+      document.getElementById("adm-usuarios").style.display = t === "usuarios" ? "" : "none";
+      document.getElementById("adm-actividad").style.display = t === "actividad" ? "" : "none";
+      if (t === "usuarios") adminLoadUsers(); else adminLoadActivity();
+    }
+    function _admFecha(iso) { if (!iso) return "—"; const d = new Date(iso); if (isNaN(d.getTime())) return String(iso); const z = n => String(n).padStart(2, "0"); return z(d.getDate()) + "/" + z(d.getMonth() + 1) + "/" + String(d.getFullYear()).slice(2) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
+    async function adminLoadUsers() {
+      const host = document.getElementById("adm-list"); if (!host) return;
+      host.textContent = "Cargando…";
+      try {
+        const data = await _adminCall("list");
+        _adminUsers = Array.isArray(data.users) ? data.users : [];
+        const meId = myUserId();
+        const rows = _adminUsers.map(u => {
+          const self = u.id === meId; const blocked = u.status === "blocked"; const sinReg = u.status === "sin_registro";
+          const est = sinReg ? '<span class="adm-badge adm-warn">sin registro</span>' : blocked ? '<span class="adm-badge adm-bad">bloqueado</span>' : '<span class="adm-badge adm-ok">activo</span>';
+          const rol = u.role === "admin" ? '<span class="adm-badge adm-adm">admin</span>' : '<span class="adm-badge">usuario</span>';
+          const acts = sinReg
+            ? `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('activar_registro', this.dataset.id)">✅ Dar acceso</button>`
+            : (`<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('temp_password', this.dataset.id)" title="Genera una contraseña temporal para pasársela">🔑 Contraseña temporal</button>`
+              + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('recovery_link', this.dataset.id)" title="Copia un enlace para que ponga su contraseña (vale 1 hora)">🔗 Enlace</button>`
+              + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('recovery_email', this.dataset.id)" title="Supabase le manda el enlace por correo (requiere SMTP configurado)">📧 Correo</button>`
+              + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('set_nombre', this.dataset.id)">✏️ Nombre</button>`
+              + (self ? "" : `<button class="adm-btn" data-id="${esc(u.id)}" data-role="${u.role === "admin" ? "usuario" : "admin"}" onclick="adminAct('set_role', this.dataset.id, {role:this.dataset.role})">${u.role === "admin" ? "⬇️ Quitar admin" : "⬆️ Hacer admin"}</button>`
+                + `<button class="adm-btn${blocked ? "" : " adm-danger"}" data-id="${esc(u.id)}" data-status="${blocked ? "active" : "blocked"}" onclick="adminAct('set_status', this.dataset.id, {status:this.dataset.status})" data-testid="adm-block">${blocked ? "🔓 Activar" : "⛔ Bloquear"}</button>`
+                + `<button class="adm-btn adm-danger" data-id="${esc(u.id)}" onclick="adminAct('delete_user', this.dataset.id)">🗑 Borrar</button>`));
+          return `<div class="adm-user${blocked ? " adm-blocked" : ""}" data-testid="adm-user" data-uid="${esc(u.id)}"><div class="adm-u-main"><b>${esc(u.nombre || "(sin nombre)")}</b> <span class="adm-mail">${esc(u.email || "")}</span> ${rol} ${est}${self ? ' <span class="adm-badge adm-self">tú</span>' : ""}<div class="adm-meta">Último acceso: ${_admFecha(u.last_seen_at || u.last_sign_in_at)} · Alta: ${_admFecha(u.created_at)}</div></div><div class="adm-u-acts">${acts}</div></div>`;
+        });
+        host.innerHTML = rows.join("") || '<div class="adm-hint">No hay cuentas.</div>';
+        const sel = document.getElementById("adm-act-user");
+        if (sel) { const cur = sel.value; sel.innerHTML = '<option value="">Todas las personas</option>' + _adminUsers.map(u => `<option value="${esc(u.id)}">${esc(u.nombre || u.email || u.id)}</option>`).join("") + '<option value="__robot">🤖 Robot / hoja del censo</option>'; sel.value = cur; }
+      } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar la lista: ' + esc((e && e.message) || e) + '</div>'; }
+    }
+    async function adminInvite() {
+      const email = ((document.getElementById("adm-inv-email") || {}).value || "").trim().toLowerCase();
+      const nombre = ((document.getElementById("adm-inv-nombre") || {}).value || "").trim();
+      const role = (document.getElementById("adm-inv-role") || {}).value || "usuario";
+      const out = document.getElementById("adm-inv-result");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert("Escribe un correo válido."); return; }
+      try {
+        const r = await _adminCall("invite", { email, nombre, role });
+        out.style.display = "";
+        out.innerHTML = `✅ Cuenta creada para <b>${esc(email)}</b>. Contraseña temporal: <code class="adm-pass" data-testid="adm-temp-pass">${esc(r.temp_password || "")}</code> <button class="adm-btn" data-p="${esc(r.temp_password || "")}" onclick="_copyTxt(this.dataset.p)">Copiar</button><div class="adm-hint">Mándasela por WhatsApp. Al entrar puede cambiarla en 👤 Mi cuenta.</div>`;
+        document.getElementById("adm-inv-email").value = ""; document.getElementById("adm-inv-nombre").value = "";
+        adminLoadUsers();
+      } catch (e) { out.style.display = ""; out.innerHTML = '<span class="adm-err">❌ ' + esc((e && e.message) || e) + '</span>'; }
+    }
+    async function adminAct(action, id, params) {
+      const u = _adminUsers.find(x => x.id === id) || { email: "" }; const who = u.nombre || u.email || id;
+      params = params || {};
+      try {
+        if (action === "set_nombre") { const n = prompt("Nombre que verán los demás (y sus iniciales en las cajas):", u.nombre || ""); if (n === null) return; params.nombre = n.trim(); }
+        if (action === "activar_registro") { const n = prompt("Nombre para " + who + ":", u.nombre || ""); if (n === null) return; params.nombre = n.trim(); params.role = "usuario"; }
+        if (action === "set_status" && params.status === "blocked" && !confirm("¿Bloquear a " + who + "? No podrá entrar ni ver nada hasta que lo actives.")) return;
+        if (action === "delete_user" && !confirm("¿Borrar la cuenta de " + who + "? Sus cambios anteriores siguen en el registro de actividad.")) return;
+        if (action === "temp_password" && !confirm("¿Generar una contraseña temporal para " + who + "? La anterior deja de servir.")) return;
+        const r = await _adminCall(action, Object.assign({ id }, params));
+        if (action === "temp_password") { _copyTxt(r.temp_password); alert("🔑 Contraseña temporal de " + who + " (ya está copiada):\n\n" + r.temp_password + "\n\nMándasela por WhatsApp; puede cambiarla en 👤 Mi cuenta."); }
+        else if (action === "recovery_link") { _copyTxt(r.link || ""); alert("🔗 Enlace de recuperación copiado (vale 1 hora). Mándaselo a " + who + ": al abrirlo le pide su contraseña nueva."); }
+        else if (action === "recovery_email") { alert("📧 Correo de recuperación enviado a " + (u.email || who) + "."); }
+        adminLoadUsers();
+      } catch (e) { alert("❌ " + ((e && e.message) || e)); }
+    }
+    function _copyTxt(t) { try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(String(t || "")).catch(() => {}); } catch (_) {} }
+    async function adminLoadActivity() {
+      const host = document.getElementById("adm-act-list"); if (!host) return;
+      host.textContent = "Cargando…";
+      const user = (document.getElementById("adm-act-user") || {}).value || "";
+      const cama = ((document.getElementById("adm-act-cama") || {}).value || "").trim();
+      const dias = parseInt((document.getElementById("adm-act-dias") || {}).value || "7", 10) || 7;
+      const since = new Date(Date.now() - dias * 86400e3).toISOString();
+      let qs = "select=id,ts,user_id,email,nombre,dispositivo,ip,ua,tabla,op,record_id,cama,paciente,campos,diff&order=ts.desc&limit=300&ts=gte." + encodeURIComponent(since);
+      if (user === "__robot") qs += "&user_id=is.null"; else if (user) qs += "&user_id=eq." + encodeURIComponent(user);
+      if (cama) qs += "&cama=eq." + encodeURIComponent(cama);
+      try {
+        const rows = await _sGet("audit_log", qs);
+        if (!Array.isArray(rows) || !rows.length) { host.innerHTML = '<div class="adm-hint">Sin actividad en ese periodo.</div>'; return; }
+        host.innerHTML = rows.map(r => {
+          const who = r.user_id ? ("<b>" + esc(r.nombre || r.email || "?") + "</b>" + (r.nombre && r.email ? ' <span class="adm-mail">' + esc(r.email) + "</span>" : "")) : ("<b>🤖 " + esc(r.email || "robot") + "</b>");
+          const where = [r.dispositivo, _uaCorto(r.ua), r.ip].filter(Boolean).map(esc).join(" · ");
+          return `<div class="adm-act" data-testid="adm-act"><div class="adm-act-h"><span class="adm-act-ts">${_admFecha(r.ts)}</span> ${who}<span class="adm-act-where">${where || "—"}</span></div><div class="adm-act-b">${_admQue(r)}</div></div>`;
+        }).join("");
+      } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar la actividad: ' + esc((e && e.message) || e) + '</div>'; }
+    }
+    function _uaCorto(ua) { ua = String(ua || ""); if (!ua) return ""; const b = /Edg\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : ""; const d = /iPad/.test(ua) || (/Macintosh/.test(ua) && /Mobile/.test(ua)) ? "iPad" : /iPhone/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Macintosh/.test(ua) ? "Mac" : ""; return [d, b].filter(Boolean).join(" "); }
+    const ADM_TABLA = { patients: "paciente", notes: "nota", no_olvidar: "No olvidar", procedimientos_dia: "procedimiento", guard_info: "guardia", config: "configuración", app_users: "cuentas" };
+    const ADM_OP = { INSERT: "creó", UPDATE: "editó", DELETE: "borró" };
+    function _admQue(r) {
+      const tabla = ADM_TABLA[r.tabla] || r.tabla;
+      if (r.tabla === "app_users") { const d = r.diff || {}; return esc(String(r.op || "").replace(/^ADMIN:/, "")) + (d.usuario ? " → <b>" + esc(d.usuario) + "</b>" : "") + (d.role ? " (" + esc(d.role) + ")" : ""); }
+      const head = "<b>" + esc(ADM_OP[r.op] || r.op) + "</b> " + esc(tabla) + (r.cama ? " · cama <b>" + esc(r.cama) + "</b>" : "") + (r.paciente ? " · " + esc(r.paciente) : "");
+      const d = r.diff || {}; const parts = [];
+      if (r.op === "UPDATE") {
+        Object.keys(d).forEach(k => {
+          const v = d[k];
+          if (k === "checklist" && v && typeof v === "object" && !("de" in v)) { Object.keys(v).forEach(kk => { const x = v[kk] || {}; parts.push(_admCampo(kk, x.de, x.a)); }); }
+          else if (v && typeof v === "object") parts.push(_admCampo(k, v.tipo === "elementos" ? v.de + " elementos" : v.de, v.tipo === "elementos" ? v.a + " elementos" : v.a));
+        });
+      } else if (Array.isArray(r.campos) && r.campos.length) parts.push('<div class="adm-d"><span class="adm-mail">' + esc(r.campos.slice(0, 14).join(", ")) + "</span></div>");
+      return head + (parts.length ? '<div class="adm-diff">' + parts.join("") + "</div>" : "");
+    }
+    function _admCampo(k, de, a) { const s = v => { v = (v === undefined || v === null) ? "" : String(v); return v.length > 180 ? v.slice(0, 180) + "…" : v; }; return `<div class="adm-d"><span class="adm-k">${esc(k)}</span> <span class="adm-de">${esc(s(de)) || "∅"}</span> → <span class="adm-a">${esc(s(a)) || "∅"}</span></div>`; }
+    function openAccountPanel() {
+      let m = document.getElementById("account-modal");
+      if (!m) {
+        m = document.createElement("div"); m.id = "account-modal"; m.className = "modal-bg"; m.style.display = "none";
+        m.innerHTML = '<div class="modal-box" style="max-width:460px"><div class="modal-header"><div class="modal-title">👤 Mi cuenta</div><button class="modal-close" onclick="document.getElementById(\'account-modal\').style.display=\'none\'">✕</button></div>'
+          + '<div class="adm-hint" id="acc-email"></div>'
+          + '<label class="adm-lbl">Nombre (iniciales en las cajas y en el registro de actividad)</label><input id="acc-nombre" class="modal-input" style="width:100%;box-sizing:border-box" autocomplete="off" data-testid="acc-nombre"/>'
+          + '<label class="adm-lbl">Nombre de este dispositivo (así aparece en «desde dónde»)</label><input id="acc-device" class="modal-input" style="width:100%;box-sizing:border-box" autocomplete="off" data-testid="acc-device"/>'
+          + '<div class="adm-row" style="margin-top:12px"><button class="btn-save" onclick="saveAccountPanel()" data-testid="acc-save">Guardar</button><button class="btn-cancel" onclick="openNewPasswordDialog(false)" data-testid="acc-pwd">🔑 Cambiar contraseña</button></div></div>';
+        document.body.appendChild(m);
+      }
+      const em = document.getElementById("acc-email"); if (em) em.textContent = "Cuenta: " + (myEmail() || "(sin sesión)") + (isAdmin() ? " · administrador" : "");
+      let nm = "", dv = ""; try { nm = localStorage.getItem("pl_user_name") || ""; dv = localStorage.getItem("pl_device_name") || ""; } catch (_) {}
+      document.getElementById("acc-nombre").value = nm;
+      const dEl = document.getElementById("acc-device"); dEl.value = dv; dEl.placeholder = deviceLabel();
+      m.style.display = "flex";
+    }
+    async function saveAccountPanel() {
+      const n = ((document.getElementById("acc-nombre") || {}).value || "").trim(); const d = ((document.getElementById("acc-device") || {}).value || "").trim();
+      try { if (n) localStorage.setItem("pl_user_name", n); if (d) localStorage.setItem("pl_device_name", d); else localStorage.removeItem("pl_device_name"); } catch (_) {}
+      renderUserChip();
+      const m = document.getElementById("account-modal"); if (m) m.style.display = "none";
+      // El nombre también se guarda en la cuenta (así lo ven los demás y sale igual en todos tus dispositivos).
+      const uid = myUserId();
+      if (n && uid && _myProfile && _myProfile.nombre !== n) {
+        try { await _sPatch("app_users", "id=eq." + encodeURIComponent(uid), { nombre: n }); _myProfile.nombre = n; }
+        catch (e) { safeLog("nombre de cuenta:", e); }
+      }
+    }
+
     async function loginSetup() {
       const username = ((document.getElementById("setup-user") || {}).value || "").trim();
       const p1 = (document.getElementById("setup-pwd") || {}).value || "";
@@ -6761,10 +7126,13 @@ function plExportBackup() {
     function saveConfig() {
       const url = document.getElementById("proxy-url-input").value.trim();
       const token = document.getElementById("proxy-token-input").value.trim();
+      const notesEl = document.getElementById("notes-url-input");
+      const notes_url = notesEl ? notesEl.value.trim() : (getConfig().notes_url || "");
       if (url && !url.startsWith("http")) { alert("La URL debe empezar con https://"); return; }
-      localStorage.setItem(CONFIG_KEY, JSON.stringify({ url, token }));
+      if (notes_url && !/^https?:\/\//i.test(notes_url)) { alert("La dirección de la página de notas debe empezar con https://"); return; }
+      localStorage.setItem(CONFIG_KEY, JSON.stringify({ url, token, notes_url }));
       // Sync to Supabase so ALL users on any device get the proxy URL automatically
-      _sUpsert("config", { key: "worker_config", value: { url, token } }, "key").catch(e => safeLog("saveConfig sync:", e));
+      _sUpsert("config", { key: "worker_config", value: { url, token, notes_url } }, "key").catch(e => safeLog("saveConfig sync:", e));
       updateProxyPill();
       updateProxyStatusBox(url ? "saved" : "empty");
       if (url) { startSyncPolling(); }
@@ -6778,8 +7146,11 @@ function plExportBackup() {
           const local = getConfig();
           // Only write remote to local if local has no URL (don't overwrite admin's own config)
           if (!local.url && remote.url) {
-            localStorage.setItem(CONFIG_KEY, JSON.stringify({ url: remote.url || "", token: remote.token || "" }));
+            localStorage.setItem(CONFIG_KEY, JSON.stringify({ url: remote.url || "", token: remote.token || "", notes_url: remote.notes_url || local.notes_url || "" }));
             updateProxyPill();
+          } else if (!local.notes_url && remote.notes_url) {
+            // Página de notas de evolución (oct 2026): se comparte aunque este dispositivo ya tenga su worker.
+            localStorage.setItem(CONFIG_KEY, JSON.stringify(Object.assign({}, local, { notes_url: remote.notes_url })));
           }
         }
       } catch (e) { safeLog("loadSharedConfig:", e); }
@@ -6810,6 +7181,7 @@ function plExportBackup() {
       const cfg = getConfig();
       document.getElementById("proxy-url-input").value = cfg.url || "";
       document.getElementById("proxy-token-input").value = cfg.token || "";
+      const notesEl = document.getElementById("notes-url-input"); if (notesEl) notesEl.value = cfg.notes_url || "";
       updateProxyStatusBox(cfg.url ? "saved" : "empty");
       document.getElementById("config-modal").style.display = "flex";
       refreshDebugPanel();
@@ -8068,6 +8440,9 @@ function plExportBackup() {
           cirugias: [],     /* oct 2026: cirugías/procedimientos con fecha (sustituye el texto qx + sangrado) */
           recibo: "",       /* oct 2026: lo que me entregan al recibir la guardia (la caja Entrega es lo que yo entrego) */
           pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
+          pm_vent_pplat: "", pm_vent_pmedia: "", pm_vent_ie: "", pm_peso: "", pm_talla: "", /* oct 2026: VM ampliada (Pplat, Pmedia, I:E) + peso/talla */
+          vp_nore_on: false, vp_nore_mg: "", vp_nore_ml: "", vp_nore_mlh: "", vp_nore_meta: "", vp_vaso_on: false, vp_vaso_u: "", vp_vaso_ml: "", vp_vaso_mlh: "", vp_vaso_meta: "", /* oct 2026: calculadora de vasopresores */
+          nota_hist: [], /* oct 2026: notas de evolución generadas (IA o borrador), máx. 10 */
           cruce_activo: false, cruce_ts: "", cruce_unidades: "", cruce_banco: "",
           nota_fn: "", nota_dx: "", nota_s: "", nota_o: "", nota_plan: "", nota_prono: "", nota_estado: "", pm_o2via: "", nota_adscrito: "", nota_residente: "",
           nota_sis_neuro: "", nota_sis_hemo: "", nota_sis_vent: "", nota_sis_hema: "", nota_sis_hepato: "", nota_sis_gi: "", nota_sis_metab: "", nota_sis_renal: "", nota_sis_nutri: "", nota_sis_extra: "" }
@@ -8127,13 +8502,17 @@ function plExportBackup() {
     }
     function buildChecklistForSync(nd) {
       const checklist = isPlainObject(nd && nd.checklist) ? { ...nd.checklist } : {};
+      // Los demás metadatos que viven en __pl_note_meta (autor por caja "by", marcas de carga…) se conservan;
+      // antes se reconstruía el objeto solo con entrega/diagramas y se perdían en cada subida.
+      const prevMeta = isPlainObject(checklist[NOTE_SYNC_META_KEY]) ? { ...checklist[NOTE_SYNC_META_KEY] } : {};
       const meta = {
         entrega: toSafeString(nd && nd.entrega).trim(),
         body_diagram_ant: toSafeString(nd && nd.body_diagram_ant).trim(),
         body_diagram_post: toSafeString(nd && nd.body_diagram_post).trim()
       };
-      if (meta.entrega || meta.body_diagram_ant || meta.body_diagram_post) {
-        checklist[NOTE_SYNC_META_KEY] = meta;
+      Object.keys(meta).forEach(function (key) { if (meta[key]) prevMeta[key] = meta[key]; else delete prevMeta[key]; });
+      if (Object.keys(prevMeta).length) {
+        checklist[NOTE_SYNC_META_KEY] = prevMeta;
       } else {
         delete checklist[NOTE_SYNC_META_KEY];
       }
@@ -8248,12 +8627,17 @@ function plExportBackup() {
         if (nd.checklist[ckKey] === undefined) nd.checklist[ckKey] = checklistDefaults[ckKey];
       });
       const noteSyncMeta = readNoteSyncMeta(nd.checklist);
+      // Los demás metadatos de __pl_note_meta (autor por caja "by", marcas de carga…) se conservan tal cual;
+      // solo se normalizan los tres conocidos. Antes se reconstruía el objeto y se perdían en cada guardado.
+      const rawMeta = isPlainObject(nd.checklist[NOTE_SYNC_META_KEY]) ? nd.checklist[NOTE_SYNC_META_KEY] : null;
+      const extraMeta = {};
+      if (rawMeta) Object.keys(rawMeta).forEach(function (mk) { if (mk !== "entrega" && mk !== "body_diagram_ant" && mk !== "body_diagram_post") extraMeta[mk] = rawMeta[mk]; });
       if (noteSyncMeta.exists) {
-        nd.checklist[NOTE_SYNC_META_KEY] = {
+        nd.checklist[NOTE_SYNC_META_KEY] = Object.assign(extraMeta, {
           entrega: noteSyncMeta.entrega,
           body_diagram_ant: noteSyncMeta.body_diagram_ant,
           body_diagram_post: noteSyncMeta.body_diagram_post
-        };
+        });
         if (!nd.entrega) nd.entrega = noteSyncMeta.entrega;
         if (!nd.body_diagram_ant) nd.body_diagram_ant = noteSyncMeta.body_diagram_ant;
         if (!nd.body_diagram_post) nd.body_diagram_post = noteSyncMeta.body_diagram_post;
@@ -8299,7 +8683,7 @@ function plExportBackup() {
     function _plneInjectCSS(){
       if (document.getElementById("plne-styles")) return;
       var s = document.createElement("style"); s.id = "plne-styles";
-      s.textContent = ".plne-back{position:fixed;inset:0;background:rgba(10,22,40,.55);display:none;align-items:flex-start;justify-content:center;padding:18px;z-index:99999;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.plne-back.show{display:flex}.plne-modal{background:#fff;max-width:880px;width:100%;border-radius:10px;box-shadow:0 12px 32px rgba(10,22,40,.4);overflow:hidden;margin:auto}.plne-top{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:#0a1628;color:#fff}.plne-top h3{font-size:14px;font-weight:800;margin:0}.plne-x{background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px}.plne-body{padding:14px 16px;max-height:82vh;overflow:auto;color:#334155}.plne-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.plne-chip{font-size:11px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:20px;padding:2px 9px;color:#065f46}.plne-chip b{color:#047857;font-weight:800;margin-right:3px}.plne-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.plne-field{display:flex;flex-direction:column}.plne-field.plne-full{grid-column:1/-1}.plne-field label,.plne-vit label,.plne-sysrow label{font-size:10px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}.plne-back textarea,.plne-back input{width:100%;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12.5px;color:#334155;padding:5px 7px;resize:none;line-height:1.4;box-sizing:border-box}.plne-back textarea{overflow:hidden;min-height:30px}.plne-back textarea:focus,.plne-back input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.12)}.plne-sech{font-size:11.5px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 7px;padding-bottom:3px;border-bottom:2px solid #1e3a5f}.plne-sech span{font-size:9.5px;font-weight:600;color:#64748b;text-transform:none;letter-spacing:0}.plne-vit{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.plne-vit>div{display:flex;flex-direction:column}.plne-vit input{font-family:ui-monospace,Menlo,monospace;text-align:center}.plne-sysrow{display:grid;grid-template-columns:130px 1fr;gap:7px;align-items:start;margin-bottom:5px}.plne-sysrow.plne-extra{grid-template-columns:130px 1fr 28px}.plne-sysrow label{padding-top:6px}.plne-extra-lbl{font-weight:700}.plne-del{background:#fee2e2;border:none;color:#dc2626;border-radius:5px;cursor:pointer;font-size:12px;height:30px}.plne-addsys{margin-top:4px;background:#e8eef6;border:1px dashed #3b5d8a;color:#1e3a5f;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}.plne-actions{display:flex;gap:10px;margin:16px 0 0}.plne-gen{background:#059669;color:#fff;border:none;border-radius:6px;padding:10px 18px;font-size:13.5px;font-weight:800;cursor:pointer}.plne-close2{background:#f1f5f9;color:#334155;border:none;border-radius:6px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer}.plne-out{display:none;margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}.plne-out-top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0}.plne-copy{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer}.plne-out-text{padding:16px 18px;margin:0;white-space:pre-wrap;font-family:'Times New Roman',Georgia,serif;font-size:13.5px;line-height:1.55;color:#1a1a1a;max-height:50vh;overflow:auto}";
+      s.textContent = ".plne-back{position:fixed;inset:0;background:rgba(10,22,40,.55);display:none;align-items:flex-start;justify-content:center;padding:18px;z-index:99999;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.plne-back.show{display:flex}.plne-modal{background:#fff;max-width:880px;width:100%;border-radius:10px;box-shadow:0 12px 32px rgba(10,22,40,.4);overflow:hidden;margin:auto}.plne-top{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:#0a1628;color:#fff}.plne-top h3{font-size:14px;font-weight:800;margin:0}.plne-x{background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px}.plne-body{padding:14px 16px;max-height:82vh;overflow:auto;color:#334155}.plne-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.plne-chip{font-size:11px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:20px;padding:2px 9px;color:#065f46}.plne-chip b{color:#047857;font-weight:800;margin-right:3px}.plne-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.plne-field{display:flex;flex-direction:column}.plne-field.plne-full{grid-column:1/-1}.plne-field label,.plne-vit label,.plne-sysrow label{font-size:10px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}.plne-back textarea,.plne-back input{width:100%;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12.5px;color:#334155;padding:5px 7px;resize:none;line-height:1.4;box-sizing:border-box}.plne-back textarea{overflow:hidden;min-height:30px}.plne-back textarea:focus,.plne-back input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.12)}.plne-sech{font-size:11.5px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 7px;padding-bottom:3px;border-bottom:2px solid #1e3a5f}.plne-sech span{font-size:9.5px;font-weight:600;color:#64748b;text-transform:none;letter-spacing:0}.plne-vit{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.plne-vit>div{display:flex;flex-direction:column}.plne-vit input{font-family:ui-monospace,Menlo,monospace;text-align:center}.plne-sysrow{display:grid;grid-template-columns:130px 1fr;gap:7px;align-items:start;margin-bottom:5px}.plne-sysrow.plne-extra{grid-template-columns:130px 1fr 28px}.plne-sysrow label{padding-top:6px}.plne-extra-lbl{font-weight:700}.plne-del{background:#fee2e2;border:none;color:#dc2626;border-radius:5px;cursor:pointer;font-size:12px;height:30px}.plne-addsys{margin-top:4px;background:#e8eef6;border:1px dashed #3b5d8a;color:#1e3a5f;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}.plne-actions{display:flex;gap:10px;margin:16px 0 0}.plne-gen{background:#059669;color:#fff;border:none;border-radius:6px;padding:10px 18px;font-size:13.5px;font-weight:800;cursor:pointer}.plne-close2{background:#f1f5f9;color:#334155;border:none;border-radius:6px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer}.plne-out{display:none;margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}.plne-out-top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0}.plne-copy{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer}.plne-out-text{padding:16px 18px;margin:0;white-space:pre-wrap;font-family:'Times New Roman',Georgia,serif;font-size:13.5px;line-height:1.55;color:#1a1a1a;max-height:50vh;overflow:auto}.plne-gen.plne-ai{background:#7c3aed}.plne-gen.plne-draft{background:#475569}.plne-gen:disabled{opacity:.6;cursor:wait}.plne-actions{flex-wrap:wrap}.plne-out-btns{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.plne-edit{background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}.plne-edit.on{background:#fef3c7;border-color:#f59e0b;color:#92400e}.plne-pasar{background:#0a1628;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer}.plne-hist{font-size:11.5px;border:1px solid #cbd5e1;border-radius:6px;padding:4px 6px;max-width:220px;color:#334155;background:#fff}.plne-warn{padding:8px 12px;background:#fef3c7;border-bottom:1px solid #fcd34d;color:#78350f;font-size:12px}.plne-out-text[contenteditable=true]{outline:2px solid #f59e0b;background:#fffbeb}@media(max-width:640px){.plne-out-top{flex-direction:column;align-items:flex-start;gap:6px}}";
       document.head.appendChild(s);
     }
     function _plneEl(){
@@ -8325,8 +8709,8 @@ function plExportBackup() {
         + '<button class="plne-addsys" onclick="_plneAddSys()">➕ Agregar sistema</button>'
         + '<div class="plne-sech">Plan y firma</div>'
         + '<div class="plne-grid"><div class="plne-field plne-full"><label>Plan</label><textarea id="plne-plan"></textarea></div><div class="plne-field"><label>Estado de salud</label><input id="plne-estado" placeholder="DELICADO / GRAVE / ESTABLE (del censo si vacío)"></div><div class="plne-field"><label>Pronóstico</label><input id="plne-prono" placeholder="RESERVADO A EVOLUCIÓN (si vacío)"></div><div class="plne-field"><label>Adscrito</label><input id="plne-adscrito"></div><div class="plne-field"><label>Residente</label><input id="plne-residente"></div></div>'
-        + '<div class="plne-actions"><button class="plne-gen" onclick="generarNotaEvo()">📝 Generar nota</button><button class="plne-close2" onclick="closeNotaEvo()">Cerrar</button></div>'
-        + '<div class="plne-out" id="plne-out"><div class="plne-out-top"><strong>Nota generada — revisa antes de pegar</strong><button id="plne-copybtn" class="plne-copy" onclick="copyNotaEvo()">Copiar</button></div><pre class="plne-out-text" id="plne-out-text"></pre></div>'
+        + '<div class="plne-actions"><button class="plne-gen plne-ai" id="plne-aibtn" onclick="generarNotaIA()" data-testid="plne-aibtn" title="Redacta la nota completa con IA a partir de todo lo que hay en la tarjeta (medicina basada en evidencia, sin inventar datos)">🤖 Nota con IA (1 clic)</button><button class="plne-gen plne-draft" onclick="generarNotaEvo()" title="Borrador estructurado sin IA">📝 Borrador sin IA</button><button class="plne-close2" onclick="closeNotaEvo()">Cerrar</button></div>'
+        + '<div class="plne-out" id="plne-out"><div class="plne-out-top"><strong id="plne-out-title">Nota generada — revisa antes de pegar</strong><span class="plne-out-btns"><select id="plne-hist" class="plne-hist" data-no-sheet="1" onchange="verNotaPrevia(this.value)" title="Notas generadas antes para este paciente" style="display:none"></select><button id="plne-editbtn" class="plne-edit" onclick="toggleEditarNota()" title="Corregir el texto antes de copiarlo">✏️ Editar</button><button id="plne-copybtn" class="plne-copy" onclick="copyNotaEvo()">Copiar</button><button id="plne-pasarbtn" class="plne-pasar" onclick="pasarNotaAPagina()" title="Copia la nota y abre la página de notas de evolución para pegarla">↗ Pasar a la página de notas</button></span></div><div class="plne-warn" id="plne-warn" style="display:none"></div><pre class="plne-out-text" id="plne-out-text"></pre></div>'
         + '</div></div>';
       document.body.appendChild(m);
       m.addEventListener("click", function(e){ if (e.target.id === "plne-back") closeNotaEvo(); });
@@ -8519,9 +8903,12 @@ function plExportBackup() {
       if(_plneVal2(ck.pm_fr)) vit.push("FR "+_plneVal2(ck.pm_fr)+" RPM");
       if(_plneVal2(ck.pm_temp)) vit.push("TEMPERATURA "+_plneVal2(ck.pm_temp)+" °C");
       var sat=_plneVal2(ck.pm_sao2), o2=_plneVal2(ck.pm_o2l), via=_plneVal2(ck.pm_o2via);
-      if(ck.pm_vent){ vit.push("SATURACIÓN DE OXÍGENO DE "+(sat||"[__]")+" % BAJO VENTILACIÓN MECÁNICA"+(_plneVal2(ck.pm_vent_modo)?" MODO "+_plneVal2(ck.pm_vent_modo):"")+(_plneVal2(ck.pm_vent_fio2)?" FIO2 "+_plneVal2(ck.pm_vent_fio2)+" %":"")+(_plneVal2(ck.pm_vent_peep)?" PEEP "+_plneVal2(ck.pm_vent_peep):"")); }
+      if(ck.pm_vent){ vit.push("SATURACIÓN DE OXÍGENO DE "+(sat||"[__]")+" % BAJO VENTILACIÓN MECÁNICA INVASIVA"+_vmTextoNota(ck, p, nd)); }
       else if(sat||o2){ vit.push("SATURACIÓN DE OXÍGENO DE "+(sat||"[__]")+" % "+(o2?("CON OXÍGENO SUPLEMENTARIO"+(via?" POR "+via:"")+" A "+o2+" LITROS POR MINUTO"):"AL AIRE AMBIENTE")); }
-      if(_plneVal2(ck.pm_ta)) vit.push("TA "+_plneVal2(ck.pm_ta)+" MMHG");
+      // Vasopresores (oct 2026): dosis calculada con peso, dilución y mL/h; la PAM solo se escribe cuando hay vasopresor (es su meta).
+      var _vpTxt=_vpTextoNota(ck); var _pam=_vpTxt?vpPam(ck.pm_ta):null;
+      if(_plneVal2(ck.pm_ta)) vit.push("TA "+_plneVal2(ck.pm_ta)+" MMHG"+(_pam!==null?" (PAM "+_pam+" MMHG)":"")+(_vpTxt?" "+_vpTxt:""));
+      else if(_vpTxt) vit.push(_vpTxt);
       if(_plneVal2(ck.pm_dxtx)) vit.push("GLUCEMIA CAPILAR "+_plneVal2(ck.pm_dxtx)+" MG/DL");
       var o=_plneVal2(ck.nota_o);
       var disp=_plneDispositivos(ck);
@@ -8591,19 +8978,262 @@ function plExportBackup() {
         var nd=_plneCollect(); if(!nd){ return; }
         if(_plneKey) saveNote(_plneKey, nd);
         var p=patients.find(function(x){return pid(x)===_plneKey;}); if(!p){ alert("Paciente no encontrado."); return; }
-        document.getElementById("plne-out-text").textContent=_plneBuild(p, nd);
-        document.getElementById("plne-out").style.display="block";
-        document.getElementById("plne-out").scrollIntoView({behavior:"smooth",block:"nearest"});
+        _plneLastIa=false;
+        _plneMostrar(_plneBuild(p, nd), "Borrador sin IA — revisa antes de pegar", "");
       }catch(e){ alert("Error generando la nota: "+(e&&e.message||e)); }
     }
-    function copyNotaEvo(){
-      var t=document.getElementById("plne-out-text").textContent;
-      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ _plneCopied(); }).catch(function(){ _plneCopyFallback(t); }); }
-      else { _plneCopyFallback(t); }
+    function _plneTextoActual(){ var pre=document.getElementById("plne-out-text"); if(!pre) return ""; var t=(pre.innerText!==undefined&&pre.innerText!==null)?pre.innerText:pre.textContent; return String(t||"").replace(/ /g," ").replace(/[ \t]+\n/g,"\n").trim(); }
+    function _plneCopiarTexto(t, cb){
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ if(cb) cb(); }).catch(function(){ _plneCopyFallback(t); if(cb) cb(); }); }
+      else { _plneCopyFallback(t); if(cb) cb(); }
     }
-    function _plneCopyFallback(t){ try{ var ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); _plneCopied(); }catch(e){} }
+    function copyNotaEvo(){
+      var t=_plneTextoActual(); if(!t) return;
+      if(_plneKey) _plneGuardarHist(_plneKey, t, _plneLastIa);
+      _plneCopiarTexto(t, _plneCopied);
+    }
+    function _plneCopyFallback(t){ try{ var ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); }catch(e){} }
     function _plneCopied(){ var b=document.getElementById("plne-copybtn"); if(b){ var o=b.textContent; b.textContent="✓ Copiada"; setTimeout(function(){ b.textContent=o; }, 1500); } }
     function closeNotaEvo(){ try{ var nd=_plneCollect(); if(nd && _plneKey) saveNote(_plneKey, nd); }catch(_){ } var m=document.getElementById("plne-back"); if(m) m.classList.remove("show"); }
+    /* ═══ Nota con IA en un clic (oct 2026) ═══
+       🤖 Nota con IA: toma TODO lo de la tarjeta (el borrador estructurado de _plneBuild + APP/PA/manejo/
+       pendientes/entrega/recibo/interconsultas/cultivos), lo manda al worker (/api/ai) con el formato exacto
+       del servicio (el de las notas reales) y reglas duras de no inventar datos, limpia la respuesta (sin
+       markdown, mayúsculas, encabezado y firma del borrador garantizados, "ESTADO DE SALUD…" garantizado) y
+       la deja lista para copiar o «↗ Pasar a la página de notas». Mientras responde ya se ve el borrador; si
+       la IA falla o no hay worker/red, te quedas con el borrador (aviso) y puedes reintentar.
+       Cada nota generada o copiada se guarda en checklist.nota_hist (máx. 10) para volver a verla. */
+    var PLNE_HIST_MAX = 10;
+    var _plneBusy = false, _plneLastIa = false;
+    function _plneCtxLinea(label, txt){
+      var lines=String(txt===undefined||txt===null?"":txt).split("\n").map(function(s){ return s.replace(/^[\s•\-*☐▪·]+/,"").trim(); }).filter(Boolean);
+      return lines.length?(label+": "+lines.join(" | ")):"";
+    }
+    function _plneContexto(p, nd){
+      var ck=(nd&&nd.checklist)||{};
+      return [
+        _plneCtxLinea("ANTECEDENTES PERSONALES PATOLÓGICOS (APP)", nd.app),
+        _plneCtxLinea("PADECIMIENTO ACTUAL / RESUMEN", nd.pa),
+        _plneCtxLinea("FECHA DE INGRESO", p.ingreso),
+        _plneCtxLinea("ESTADO EN EL CENSO", p.estado),
+        _plneCtxLinea("MANEJO ACTUAL (INDICACIONES)", nd.manejo),
+        _plneCtxLinea("PENDIENTES", nd.pendientes),
+        _plneCtxLinea("INTERCONSULTAS", ck.interconsultas),
+        _plneCtxLinea("CULTIVOS (CAJA)", ck.cultivos),
+        _plneCtxLinea("ENTREGA DE GUARDIA", nd.entrega),
+        _plneCtxLinea("RECIBO DE GUARDIA", ck.recibo),
+        _plneCtxLinea("HERIDA QUIRÚRGICA (PASE)", ck.pm_hxqx)
+      ].filter(Boolean).join("\n");
+    }
+    function _plnePrompt(draft, ctx){
+      return [
+        "Eres residente de cirugía general del Hospital General de León y vas a redactar la NOTA DE EVOLUCIÓN diaria de un paciente hospitalizado, bien redactada y con medicina basada en evidencia.",
+        "Tienes (A) el BORRADOR estructurado que generó el sistema con los datos reales de la tarjeta del paciente y (B) el CONTEXTO adicional de la tarjeta.",
+        "",
+        "FORMATO OBLIGATORIO (es el del servicio; respétalo al pie de la letra):",
+        "LÍNEA 1: NOTA DE EVOLUCIÓN CIRUGÍA GENERAL",
+        "LÍNEA 2: la línea de identificación del borrador (nombre | edad | FN | exp | cama | fecha y hora) SIN NINGÚN CAMBIO.",
+        "(línea en blanco)",
+        "PÁRRAFO 1: \"PACIENTE <SEXO> EN LA <N> DÉCADA DE LA VIDA HOSPITALIZADO/A CON EL SIGUIENTE DIAGNÓSTICO: ...\" con todos los diagnósticos unidos por \" + \" (incluye el postoperatorio como PO <CIRUGÍA> y las comorbilidades).",
+        "(línea en blanco)",
+        "PÁRRAFO 2: subjetivo: \"AL PASE DE VISITA EL/LA PACIENTE REFIERE ...\" (dolor, tolerancia a la vía oral, canalización de gases, evacuaciones, náusea o vómito, según lo que diga el borrador).",
+        "(línea en blanco)",
+        "PÁRRAFO 3: objetivo: \"PACIENTE <SEXO>, <ESTADO DE ALERTA>, CON FC ... LPM, FR ... RPM, TEMPERATURA ... °C, SATURACIÓN DE OXÍGENO DE ... % <dispositivo de oxígeno o parámetros del ventilador>, TA ... MMHG <PAM y vasopresor con dosis si los hay>.\" y después la exploración física por regiones (mucosas, tórax, precordio, abdomen, herida quirúrgica, drenajes y sondas con gasto y características, sonda Foley con uresis, extremidades, pulsos y llenado capilar) y el balance.",
+        "(línea en blanco)",
+        "PÁRRAFO 4: \"LABORATORIOS DEL dd.mm.aaaa: ...\" copiando los valores y los nombres EXACTOS del borrador, en el mismo orden, y después los del control previo si vienen en el borrador.",
+        "(línea en blanco)",
+        "PÁRRAFO 5: ANÁLISIS Y PLAN en UN SOLO PÁRRAFO corrido, como en las notas del servicio: empieza con \"PACIENTE <SEXO> EN EL POSTOPERATORIO <INMEDIATO/MEDIATO/TARDÍO> DE <CIRUGÍA> (DÍA N) ...\" o, si no hay cirugía, con el diagnóstico de base; sigue con la evolución de cada problema interpretando los datos (hemodinámico y sepsis con marcadores inflamatorios y lactato; respiratorio; renal e hidroelectrolítico; hematológico con umbral transfusional; metabólico y glucemia; nutricional; herida, drenajes y fuga; infeccioso con antibiótico, día de tratamiento, duración planeada y cultivos) y el plan de cada uno con METAS numéricas (PAM ≥ 65 MMHG, URESIS ≥ 0.5 ML/KG/H, GLUCEMIA 140-180 MG/DL, HEMOGLOBINA UMBRAL 7 G/DL, PRESIÓN MESETA < 30 CMH2O, VOLUMEN TIDAL 6-8 ML/KG DE PESO PREDICHO), justificando con MEDICINA BASADA EN EVIDENCIA y citando la guía por nombre y año SOLO cuando aplique al problema: SURVIVING SEPSIS CAMPAIGN 2021, WSES 2021 Y SURGICAL INFECTION SOCIETY 2024 (infección intraabdominal), ESPEN 2023 (nutrición en cirugía y paciente crítico), KDIGO 2012 (lesión renal aguda), AABB 2023 (transfusión restrictiva), ADA 2025 (glucemia hospitalaria), ERAS 2019, ASH/CHEST (tromboprofilaxis), ARDSNET (ventilación protectora), TOKYO 2018 (colangitis y colecistitis), WSES 2020 (pancreatitis). Incluye las medidas de soporte (tromboprofilaxis, profilaxis de úlcera por estrés, analgesia multimodal, curación de herida, movilización temprana, fisioterapia pulmonar), los estudios solicitados y pendientes y las interconsultas. Termina el párrafo con \"ESTADO DE SALUD <ESTADO>, CON PRONÓSTICO <PRONÓSTICO>.\"",
+        "(línea en blanco)",
+        "ÚLTIMA LÍNEA: la firma del borrador SIN CAMBIOS.",
+        "",
+        "REGLAS ESTRICTAS:",
+        "1. NO inventes datos: signos vitales, laboratorios, fechas, dosis, cultivos, hallazgos, estudios o medicamentos que no estén en el borrador o en el contexto. Si falta un dato clínicamente necesario escríbelo entre corchetes, por ejemplo [EXPLORACIÓN DE TÓRAX], para que el residente lo complete.",
+        "2. Conserva EXACTAMENTE las cifras, unidades y fechas del borrador. No redondees ni cambies valores.",
+        "3. Si el borrador trae texto entre corchetes, consérvalo entre corchetes (es un dato que falta).",
+        "4. Sin markdown, viñetas, negritas, encabezados, numeración ni símbolos decorativos: solo texto plano en MAYÚSCULAS, párrafos separados por UNA línea en blanco.",
+        "5. Lenguaje médico formal en español de México, oraciones completas; escribe las abreviaturas de forma completa la primera vez (POSTOPERATORIO, LAPAROTOMÍA EXPLORADORA, NUTRICIÓN PARENTERAL).",
+        "6. Extensión total de 350 a 750 palabras; el párrafo de análisis y plan es el más largo.",
+        "7. Devuelve ÚNICAMENTE la nota, sin comentarios antes ni después.",
+        "",
+        "(A) BORRADOR:",
+        String(draft||""),
+        "",
+        "(B) CONTEXTO DE LA TARJETA:",
+        ctx || "(sin información adicional)"
+      ].join("\n");
+    }
+    function _plneLimpiar(raw, draft){
+      var t=String(raw||"").replace(/\r/g,"");
+      t=t.replace(/```[a-zA-Z]*\n?/g,"");
+      t=t.replace(/^[ \t]*#{1,6}[ \t]*/gm,"");
+      t=t.replace(/\*\*/g,"").replace(/__/g,"").replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:]|$)/g,"$1$2").replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,;:]|$)/g,"$1$2");
+      t=t.replace(/^[ \t]*(?:[-•*▪·]|\d+[.)])[ \t]+/gm,"");
+      t=t.replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").replace(/[ \t]{2,}/g," ").trim().toUpperCase();
+      var dl=String(draft||"").split("\n"); var head1=dl[0]||"NOTA DE EVOLUCIÓN CIRUGÍA GENERAL", head2=dl[1]||"", firma=(dl[dl.length-1]||"").trim();
+      var lines=t.split("\n");
+      var trimEmpty=function(){ while(lines.length&&!lines[0].trim()) lines.shift(); while(lines.length&&!lines[lines.length-1].trim()) lines.pop(); };
+      trimEmpty();
+      if(lines.length&&/^NOTA DE EVOLUCI/.test(lines[0].trim())){ lines.shift(); trimEmpty(); }
+      if(lines.length&&lines[0].indexOf("|")>=0&&/EXP|CAMA|EDAD|HRS/.test(lines[0])){ lines.shift(); trimEmpty(); }
+      if(lines.length){ var last=lines[lines.length-1].trim(); if(last===firma||(/^(DR|DRA)\b/.test(last)&&last.length<140&&!/\.$/.test(last))){ lines.pop(); trimEmpty(); } }
+      var body=lines.join("\n");
+      if(!/ESTADO DE SALUD/.test(body)){ var m=/ESTADO DE SALUD[^\n]*?\./.exec(String(draft||"").toUpperCase()); if(m) body+=(body?" ":"")+m[0]; }
+      return [head1, head2, "", body, "", firma].join("\n");
+    }
+    function _plneMostrar(txt, title, warnTxt){
+      var out=document.getElementById("plne-out"); var pre=document.getElementById("plne-out-text"); if(!out||!pre) return;
+      pre.textContent=String(txt||""); pre.contentEditable="false";
+      var eb=document.getElementById("plne-editbtn"); if(eb){ eb.classList.remove("on"); eb.textContent="✏️ Editar"; }
+      var t=document.getElementById("plne-out-title"); if(t) t.textContent=title||"Nota generada — revisa antes de pegar";
+      var w=document.getElementById("plne-warn"); if(w){ w.textContent=warnTxt||""; w.style.display=warnTxt?"block":"none"; }
+      _plneRenderHist();
+      out.style.display="block";
+      try{ out.scrollIntoView({behavior:"smooth",block:"nearest"}); }catch(_){ }
+    }
+    function _plneGuardarHist(k, txt, ia){
+      try{
+        txt=String(txt||""); if(!txt.trim()||!k) return;
+        var nd=getNote(k); nd.checklist=nd.checklist||{};
+        var h=Array.isArray(nd.checklist.nota_hist)?nd.checklist.nota_hist.filter(function(e){ return e&&typeof e.txt==="string"; }):[];
+        if(h.length&&h[h.length-1].txt===txt) return; // misma nota (copiar dos veces): no duplicar
+        h.push({ ts:new Date().toISOString(), by:(typeof userInitials==="function"?userInitials():""), ia:!!ia, txt:txt });
+        while(h.length>PLNE_HIST_MAX) h.shift();
+        nd.checklist.nota_hist=h;
+        _saveNoteNow(k, nd, "checklist");
+      }catch(e){ safeLog("nota_hist:", e); }
+    }
+    function _plneHist(){ var nd=_plneKey?getNote(_plneKey):null; var h=(nd&&nd.checklist&&Array.isArray(nd.checklist.nota_hist))?nd.checklist.nota_hist:[]; return h.filter(function(e){ return e&&typeof e.txt==="string"; }); }
+    function _plneRenderHist(){
+      var sel=document.getElementById("plne-hist"); if(!sel) return;
+      var h=_plneHist();
+      if(!h.length){ sel.style.display="none"; sel.innerHTML=""; return; }
+      var z=function(n){ return String(n).padStart(2,"0"); };
+      var opts=['<option value="">🕘 Notas previas ('+h.length+')</option>'];
+      for(var i=h.length-1;i>=0;i--){ var e=h[i]; var d=new Date(e.ts); var lbl=(isNaN(d.getTime())?"":z(d.getDate())+"/"+z(d.getMonth()+1)+" "+z(d.getHours())+":"+z(d.getMinutes()))+(e.ia?" · IA":" · borrador")+(e.by?" · "+e.by:""); opts.push('<option value="'+i+'">'+esc(lbl)+'</option>'); }
+      sel.innerHTML=opts.join(""); sel.style.display="";
+    }
+    function verNotaPrevia(idx){
+      if(idx===""||idx===undefined||idx===null) return;
+      var h=_plneHist(); var e=h[parseInt(idx,10)]; if(!e) return;
+      _plneLastIa=!!e.ia;
+      _plneMostrar(e.txt, "Nota previa ("+(e.ia?"IA":"borrador")+") — revisa antes de pegar", "");
+      var sel=document.getElementById("plne-hist"); if(sel) sel.value=String(idx);
+    }
+    function toggleEditarNota(){
+      var pre=document.getElementById("plne-out-text"); var b=document.getElementById("plne-editbtn"); if(!pre) return;
+      var on=pre.contentEditable!=="true";
+      pre.contentEditable=on?"true":"false";
+      if(b){ b.classList.toggle("on", on); b.textContent=on?"✓ Listo":"✏️ Editar"; }
+      if(on){ try{ pre.focus(); }catch(_){ } }
+    }
+    async function generarNotaIA(){
+      if(_plneBusy) return;
+      var btn=document.getElementById("plne-aibtn"); var k=_plneKey;
+      try{
+        var nd=_plneCollect(); if(!nd||!k) return;
+        saveNote(k, nd);
+        var p=patients.find(function(x){return pid(x)===k;}); if(!p){ alert("Paciente no encontrado."); return; }
+        var draft=_plneBuild(p, nd);
+        _plneLastIa=false;
+        _plneMostrar(draft, "Borrador sin IA (redactando con IA…)", "");
+        var proxyUrl=getProxyUrl();
+        if(!proxyUrl){ _plneMostrar(draft, "Borrador sin IA — revisa antes de pegar", "⚙️ No hay URL del ayudante de IA en Configuración: se muestra el borrador estructurado."); return; }
+        if(typeof navigator!=="undefined"&&navigator.onLine===false){ _plneMostrar(draft, "Borrador sin IA — revisa antes de pegar", "📴 Sin red: se muestra el borrador estructurado. Con red vuelve a tocar 🤖."); return; }
+        _plneBusy=true; if(btn){ btn.disabled=true; btn.dataset.txt=btn.textContent; btn.textContent="⏳ Redactando con IA…"; }
+        var prompt=_plnePrompt(draft, _plneContexto(p, nd));
+        var ctl=new AbortController(); var tm=setTimeout(function(){ try{ ctl.abort(); }catch(_){ } }, 90000);
+        var resp;
+        try{
+          resp=await fetch(proxyUrl+"/api/ai", { method:"POST", headers: apiHeaders(), body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:6000, messages:[{ role:"user", content:[{ type:"text", text:prompt }] }] }), signal: ctl.signal });
+        }catch(ne){ if(ne&&ne.name==="AbortError") throw new Error("la IA tardó más de 90 s"); throw ne; }
+        finally{ clearTimeout(tm); }
+        if(!resp.ok){ var tt=await resp.text().catch(function(){ return ""; }); throw new Error("HTTP "+resp.status+(tt?": "+tt.slice(0,160):"")); }
+        var data=await resp.json();
+        if(_plneKey!==k) return; // se cambió de paciente mientras respondía
+        var raw=(data&&data.content&&data.content[0]&&data.content[0].text)||"";
+        if(!String(raw).trim()||/^\[RESPUESTA VACÍA/i.test(String(raw).trim())) throw new Error("la IA no devolvió texto");
+        var nota=_plneLimpiar(raw, draft);
+        if(nota.split(/\s+/).length<80) throw new Error("la IA devolvió una nota demasiado corta");
+        _plneLastIa=true;
+        _plneGuardarHist(k, nota, true);
+        _plneMostrar(nota, "Nota redactada con IA — revisa antes de pegar", "");
+      }catch(e){
+        try{
+          var p2=patients.find(function(x){return pid(x)===_plneKey;}); var nd2=_plneKey?getNote(_plneKey):null;
+          if(p2&&nd2){ _plneLastIa=false; _plneMostrar(_plneBuild(p2, nd2), "Borrador sin IA — revisa antes de pegar", "❌ La IA no respondió ("+(e&&e.message||e)+"). Se muestra el borrador estructurado: puedes copiarlo o volver a intentar con 🤖."); }
+          else alert("Error generando la nota: "+(e&&e.message||e));
+        }catch(_){ alert("Error generando la nota: "+(e&&e.message||e)); }
+      }finally{
+        _plneBusy=false; if(btn){ btn.disabled=false; if(btn.dataset.txt) btn.textContent=btn.dataset.txt; }
+      }
+    }
+    function notaIAUnClic(k){ openNotaEvo(k); if(_plneKey===k) setTimeout(function(){ generarNotaIA(); }, 0); }
+    async function setNotesUrl(u){
+      u=String(u||"").trim();
+      var cfg=getConfig(); cfg.notes_url=u; try{ localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg)); }catch(_){ }
+      // Compartir a todos los dispositivos sin pisar la URL/token del worker que haya en la nube.
+      try{
+        var rows=await _sGet("config", "key=eq.worker_config&select=value"); var remote=(rows&&rows[0]&&rows[0].value)||{};
+        await _sUpsert("config", { key:"worker_config", value:{ url:remote.url||cfg.url||"", token:remote.token||cfg.token||"", notes_url:u } }, "key");
+      }catch(e){ safeLog("notes_url sync:", e); }
+    }
+    function pasarNotaAPagina(){
+      var t=_plneTextoActual(); if(!t){ alert("Primero genera la nota."); return; }
+      var url=String(getConfig().notes_url||"").trim();
+      if(!url){
+        var u=prompt("Dirección (URL) de la página de notas de evolución. Se guarda para todos los dispositivos:", "https://");
+        u=String(u||"").trim();
+        if(!u||u==="https://"||!/^https?:\/\/.+/i.test(u)){ alert("La nota no se abrió en ninguna página. Puedes poner la dirección en ⚙️ Configuración → Página de notas de evolución."); return; }
+        url=u; setNotesUrl(url);
+      }
+      // Abrir primero (dentro del mismo clic, para que Safari/iPad no bloquee la ventana) y después copiar.
+      var w=null; try{ w=window.open(url, "_blank"); }catch(_){ w=null; }
+      if(_plneKey) _plneGuardarHist(_plneKey, t, _plneLastIa);
+      _plneCopiarTexto(t, function(){ _plneCopied(); var b=document.getElementById("plne-pasarbtn"); if(b){ var o=b.textContent; b.textContent="✓ Copiada · pégala en la página"; setTimeout(function(){ b.textContent=o; }, 2500); } });
+      if(!w) alert("La nota ya está copiada. El navegador no dejó abrir la página: ábrela tú y pega la nota (Ctrl/Cmd + V).");
+    }
+
+    /* ═══ Vasopresores y ventilador (oct 2026) ═══
+       Norepinefrina: mcg/kg/min = (mg·1000 ÷ mL) · mL/h ÷ 60 ÷ kg.   Vasopresina: U/min = (U ÷ mL) · mL/h ÷ 60.
+       Peso predicho (Devine, ARDSNet): H 50 + 0.91·(cm − 152.4) · M 45.5 + 0.91·(cm − 152.4).  ΔP = Pplat − PEEP. */
+    var VP_NORE_DEF = { mg: 4, ml: 250 }, VP_VASO_DEF = { u: 20, ml: 100 };
+    function vpNum(v){ if(v===undefined||v===null) return NaN; var n=parseFloat(String(v).replace(",",".").replace(/[^\d.\-]/g,"")); return isFinite(n)?n:NaN; }
+    function vpFmt(n, d){ if(n===null||n===undefined||!isFinite(n)) return ""; var dec=(d===undefined||d===null)?((n>0&&n<0.1)?3:2):d; var s=n.toFixed(dec); if(s.indexOf(".")>=0) s=s.replace(/0+$/,"").replace(/\.$/,""); return s==="-0"?"0":s; }
+    function vpNoreConc(mg, ml){ mg=vpNum(mg); ml=vpNum(ml); return (mg>0&&ml>0)?(mg*1000/ml):NaN; }                  // mcg/mL
+    function vpNoreDosis(mg, ml, mlh, peso){ var c=vpNoreConc(mg, ml); mlh=vpNum(mlh); peso=vpNum(peso); if(!(c>0)||!(mlh>=0)||!(peso>0)) return null; return c*mlh/60/peso; }  // mcg/kg/min
+    function vpNoreRate(mg, ml, dosis, peso){ var c=vpNoreConc(mg, ml); dosis=vpNum(dosis); peso=vpNum(peso); if(!(c>0)||!(dosis>=0)||!(peso>0)) return null; return dosis*peso*60/c; } // mL/h
+    function vpVasoConc(u, ml){ u=vpNum(u); ml=vpNum(ml); return (u>0&&ml>0)?(u/ml):NaN; }                            // U/mL
+    function vpVasoDosis(u, ml, mlh){ var c=vpVasoConc(u, ml); mlh=vpNum(mlh); if(!(c>0)||!(mlh>=0)) return null; return c*mlh/60; }          // U/min
+    function vpVasoRate(u, ml, dosis){ var c=vpVasoConc(u, ml); dosis=vpNum(dosis); if(!(c>0)||!(dosis>=0)) return null; return dosis*60/c; }   // mL/h
+    function vpPam(ta){ var m=/(\d{2,3})\s*[\/\\-]\s*(\d{2,3})/.exec(String(ta||"")); if(!m) return null; var s=+m[1], d=+m[2]; if(!(s>0&&d>0&&s>=d)) return null; return Math.round((s+2*d)/3); }
+    function vmPbw(tallaCm, sexo){ var t=vpNum(tallaCm); if(!(t>100&&t<250)) return null; var fem=/^F/i.test(String(sexo||"")); return Math.max(20, (fem?45.5:50)+0.91*(t-152.4)); }
+    function vmVtKg(vt, pbw){ vt=vpNum(vt); if(!(vt>0)||!(pbw>0)) return null; return vt/pbw; }
+    function vmDrivingP(pplat, peep){ pplat=vpNum(pplat); peep=vpNum(peep); if(!isFinite(pplat)||!isFinite(peep)) return null; return pplat-peep; }
+    function _vpDefaults(cl, item){
+      if(item==="vp_nore_on"){ if(!(vpNum(cl.vp_nore_mg)>0)) cl.vp_nore_mg=String(VP_NORE_DEF.mg); if(!(vpNum(cl.vp_nore_ml)>0)) cl.vp_nore_ml=String(VP_NORE_DEF.ml); }
+      if(item==="vp_vaso_on"){ if(!(vpNum(cl.vp_vaso_u)>0)) cl.vp_vaso_u=String(VP_VASO_DEF.u); if(!(vpNum(cl.vp_vaso_ml)>0)) cl.vp_vaso_ml=String(VP_VASO_DEF.ml); }
+    }
+    function _vpTextoNota(ck){
+      var partes=[];
+      if(ck.vp_nore_on){ var d=vpNoreDosis(ck.vp_nore_mg, ck.vp_nore_ml, ck.vp_nore_mlh, ck.pm_peso); var dil=(vpNum(ck.vp_nore_mg)>0&&vpNum(ck.vp_nore_ml)>0&&vpNum(ck.vp_nore_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_nore_mg))+" MG EN "+vpFmt(vpNum(ck.vp_nore_ml))+" ML A "+vpFmt(vpNum(ck.vp_nore_mlh))+" ML/H)"):""; partes.push("NOREPINEFRINA A "+(d!==null?vpFmt(d):"[__]")+" MCG/KG/MIN"+dil); }
+      if(ck.vp_vaso_on){ var v=vpVasoDosis(ck.vp_vaso_u, ck.vp_vaso_ml, ck.vp_vaso_mlh); var dv=(vpNum(ck.vp_vaso_u)>0&&vpNum(ck.vp_vaso_ml)>0&&vpNum(ck.vp_vaso_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_vaso_u))+" U EN "+vpFmt(vpNum(ck.vp_vaso_ml))+" ML A "+vpFmt(vpNum(ck.vp_vaso_mlh))+" ML/H)"):""; partes.push("VASOPRESINA A "+(v!==null?vpFmt(v):"[__]")+" U/MIN"+dv); }
+      return partes.length?("BAJO APOYO VASOPRESOR CON "+partes.join(" Y ")):"";
+    }
+    function _vmTextoNota(ck, p, nd){
+      var v=function(x){ return _plneVal2(x); }; var vm=[];
+      if(v(ck.pm_vent_modo)) vm.push("MODO "+v(ck.pm_vent_modo));
+      if(v(ck.pm_vent_fio2)) vm.push("FIO2 "+v(ck.pm_vent_fio2)+" %");
+      if(v(ck.pm_vent_peep)) vm.push("PEEP "+v(ck.pm_vent_peep)+" CMH2O");
+      var pbw=vmPbw(ck.pm_talla, _plneSex(p, nd)); var vtkg=vmVtKg(ck.pm_vent_vt, pbw);
+      if(v(ck.pm_vent_vt)) vm.push("VOLUMEN TIDAL "+v(ck.pm_vent_vt)+" ML"+(vtkg!==null?" ("+vpFmt(vtkg,1)+" ML/KG DE PESO PREDICHO)":""));
+      if(v(ck.pm_vent_fr)) vm.push("FR "+v(ck.pm_vent_fr)+" RPM");
+      if(v(ck.pm_vent_pip)) vm.push("PIP "+v(ck.pm_vent_pip)+" CMH2O");
+      if(v(ck.pm_vent_pplat)) vm.push("PRESIÓN MESETA "+v(ck.pm_vent_pplat)+" CMH2O");
+      var dp=vmDrivingP(ck.pm_vent_pplat, ck.pm_vent_peep); if(dp!==null) vm.push("PRESIÓN DE DISTENSIÓN "+vpFmt(dp,0)+" CMH2O");
+      if(v(ck.pm_vent_pmedia)) vm.push("PRESIÓN MEDIA "+v(ck.pm_vent_pmedia)+" CMH2O");
+      if(v(ck.pm_vent_ie)) vm.push("RELACIÓN I:E "+v(ck.pm_vent_ie));
+      return vm.length?(" ("+vm.join(", ")+")"):"";
+    }
     /* ═══ fin PLNotaEvo ═══ */
 
     /* ═══ v36 · renderFocusLabs · tabla columnar de labs en el ORDEN de GoodNotes ═══
@@ -8856,7 +9486,7 @@ function plExportBackup() {
     //   está en Supabase Storage o en el campo lab_history de la base de datos).
     // - Limita labHistory a las 30 entradas más recientes para evitar desbordamiento.
     function _lsNoteCopy(data) {
-      const d = Object.assign({}, data);
+      const d = _stripFotoB64(Object.assign({}, data)); // fotos ya en Storage: sin b64 en el dispositivo
       if (Array.isArray(d.labHistory)) {
         // Sin recorte a 30 fechas: esta copia vuelve a ser noteData al arrancar sin nube y el
         // siguiente push de lab_history subía la lista recortada → se perdían los labs más viejos
@@ -8958,6 +9588,7 @@ function plExportBackup() {
     // Copia de nota para el outbox: sin el PDF inline (`source_file` en base64) cuando ya está en
     // Storage. Un ítem de varios MB llenaba la cuota de localStorage y la cola dejaba de guardarse.
     function _outboxNoteCopy(d) {
+      d = _stripFotoB64(d);
       if (!d || !Array.isArray(d.labHistory)) return d;
       const c = Object.assign({}, d);
       c.labHistory = d.labHistory.map(function (s) {
@@ -9096,13 +9727,26 @@ function plExportBackup() {
     // ─── SUPABASE REST API — SIN supabase-js (evita DataCloneError de Headers) ───────
     // fetch() directo a PostgREST — _supa solo se usa para Realtime (WebSocket).
 
+    // Quién y desde dónde (oct 2026): el registro de actividad de Supabase (trigger pl_audit) lee estas
+    // cabeceras. Solo ASCII: fetch rechaza acentos en cabeceras ("Fernández" → "Fernandez").
+    function _asciiHdr(s, n) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^\x20-\x7e]/g, "").trim().slice(0, n || 80); }
+    function deviceLabel() {
+      let saved = ""; try { saved = (localStorage.getItem("pl_device_name") || "").trim(); } catch (_) {}
+      if (saved) return saved;
+      const ua = navigator.userAgent || ""; let d = "Dispositivo";
+      if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) d = "iPad";
+      else if (/iPhone/.test(ua)) d = "iPhone"; else if (/Android/.test(ua)) d = "Android"; else if (/Windows/.test(ua)) d = "Windows"; else if (/Macintosh/.test(ua)) d = "Mac"; else if (/Linux/.test(ua)) d = "Linux";
+      const b = /Edg\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "";
+      return d + (b ? " " + b : "");
+    }
     function _sHeaders(extra) {
       const token = _userAccessToken || SUPA_KEY;
-      return Object.assign({
-        "apikey": SUPA_KEY,
-        "Authorization": "Bearer " + token,
-        "Content-Type": "application/json"
-      }, extra || {});
+      let who = ""; try { who = localStorage.getItem("pl_user_name") || ""; } catch (_) {}
+      const h = { "apikey": SUPA_KEY, "Authorization": "Bearer " + token, "Content-Type": "application/json" };
+      const dev = _asciiHdr(deviceLabel(), 80), usr = _asciiHdr(who, 80);
+      if (dev) h["X-PL-Device"] = dev;
+      if (usr) h["X-PL-User"] = usr;
+      return Object.assign(h, extra || {});
     }
     // fetch con timeout: una conexión que acepta el TCP pero nunca responde (portal cautivo, AP
     // saturado) dejaba init()/supaLoadAll colgados para siempre → nunca arrancaba Realtime ni el
@@ -9233,6 +9877,262 @@ function plExportBackup() {
         }
       }
       throw lastErr;
+    }
+    // ═══ FOTOS EN LAS CAJAS (oct 2026, pedido de Gera): como pegar una foto en la hoja de GoodNotes ═══
+    // Cada foto vive en la nota (checklist) como {id, name, type, bucket, path, w, h, ts, by} y el archivo
+    // en Supabase Storage (bucket pl-fotos, privado, URL firmada al mostrar). Si no hay red o falla la
+    // subida, la foto queda INLINE (b64, comprimida a JPEG ≤1600 px) marcada pending y se sube sola al
+    // volver la red (_fotosRetryPending). Alcances (scope): "cx:<id cirugía>" → cirugia.fotos,
+    // "cultivos" → checklist.cultivos_fotos, "ink:<campo>" → checklist.ink_fotos[campo] (trazos a mano).
+    const FOTO_BUCKET = "pl-fotos";
+    const FOTO_MAX_SIDE = 1600;
+    const _fotoUrlCache = {};
+    function _fotoId() { return "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+    function _fotoScopeFlag(scope) { return scope.indexOf("cx:") === 0 ? "ck_cirugias" : (scope === "cultivos" ? "ck_cultivos" : "checklist"); }
+    function _fotoScopeField(scope) { return scope.indexOf("cx:") === 0 ? "cirugias" : (scope === "cultivos" ? "cultivos" : scope.slice(4)); }
+    // Lista de fotos del alcance (crea la estructura si create=true). Devuelve null si el alcance no existe.
+    function _fotoList(nd, scope, create) {
+      if (!nd) return null;
+      if (!nd.checklist) { if (!create) return null; nd.checklist = {}; }
+      const ck = nd.checklist;
+      if (scope.indexOf("cx:") === 0) {
+        const id = scope.slice(3);
+        const c = (Array.isArray(ck.cirugias) ? ck.cirugias : []).find(function (x) { return x && String(x.id) === id; });
+        if (!c) return null;
+        if (!Array.isArray(c.fotos)) { if (!create) return []; c.fotos = []; }
+        return c.fotos;
+      }
+      if (scope === "cultivos") {
+        if (!Array.isArray(ck.cultivos_fotos)) { if (!create) return []; ck.cultivos_fotos = []; }
+        return ck.cultivos_fotos;
+      }
+      if (scope.indexOf("ink:") === 0) {
+        const f = scope.slice(4);
+        if (!isPlainObject(ck.ink_fotos)) { if (!create) return []; ck.ink_fotos = {}; }
+        if (!Array.isArray(ck.ink_fotos[f])) { if (!create) return []; ck.ink_fotos[f] = []; }
+        return ck.ink_fotos[f];
+      }
+      return null;
+    }
+    // Reduce la imagen a JPEG ≤ FOTO_MAX_SIDE px (una foto de iPad pesa 3-5 MB; así queda en 150-400 KB).
+    // Si el navegador no puede decodificarla (HEIC en Chrome), se sube el archivo tal cual, sin miniatura.
+    function _fotoPrepare(file) {
+      return new Promise(function (resolve) {
+        const fallback = function () { resolve({ blob: file, type: file.type || "application/octet-stream", w: 0, h: 0, b64: "" }); };
+        if (!file || !/^image\//.test(file.type || "")) return fallback();
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = function () {
+          try {
+            const scale = Math.min(1, FOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+            const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+            const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+            const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            const dataUrl = cv.toDataURL("image/jpeg", 0.82);
+            const b64 = dataUrl.split(",")[1] || "";
+            const bin = atob(b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            resolve({ blob: new Blob([bytes], { type: "image/jpeg" }), type: "image/jpeg", w: w, h: h, b64: b64 });
+          } catch (e) { safeWarn("foto: no se pudo reducir, va original:", e); fallback(); }
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); fallback(); };
+        img.src = url;
+      });
+    }
+    async function _fotoUpload(k, scope, blob, ext, mime) {
+      if (!blob || !_supa || !_supa.storage || !navigator.onLine) return null;
+      const p = patients.find(function (pt) { return pid(pt) === k; });
+      const patientPart = sanitizeStoragePathSegment((p && (p._supa_id || p.exp || p.nombre)) || k);
+      const objectPath = patientPart + "/" + sanitizeStoragePathSegment(scope) + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 6) + ext;
+      try {
+        const resp = await _supa.storage.from(FOTO_BUCKET).upload(objectPath, blob, { upsert: true, contentType: mime || "image/jpeg", cacheControl: "3600" });
+        if (resp && resp.error) throw resp.error;
+        return { bucket: FOTO_BUCKET, path: (resp && resp.data && resp.data.path) || objectPath };
+      } catch (e) { safeWarn("foto: subida fallida, queda en el dispositivo:", e); return null; }
+    }
+    async function _fotoSignedUrl(bucket, path) {
+      const key = bucket + "/" + path;
+      const c = _fotoUrlCache[key];
+      if (c && c.exp > Date.now()) return c.url;
+      const url = await resolveLabSourceUrl(bucket, path);
+      if (url) _fotoUrlCache[key] = { url: url, exp: Date.now() + 50 * 60 * 1000 };
+      return url;
+    }
+    // Agrega una foto (blob ya preparado) al alcance: sube a Storage; si falla, queda inline y pendiente.
+    async function fotoAttachBlob(k, scope, blob, name, mime, meta) {
+      const nd = getNote(k);
+      const list = _fotoList(nd, scope, true);
+      if (!list) { alert("No se encontró la caja para la foto."); return null; }
+      _undoPush(k, "agregar foto en " + _undoFieldLabel(_fotoScopeField(scope)));
+      const ext = mime === "image/png" ? ".png" : (mime === "image/jpeg" ? ".jpg" : ("." + (toSafeString(name).split(".").pop() || "bin").toLowerCase().slice(0, 5)));
+      const foto = { id: _fotoId(), name: toSafeString(name).slice(0, 80) || ("foto" + ext), type: mime || "image/jpeg", bucket: "", path: "", w: (meta && meta.w) || 0, h: (meta && meta.h) || 0, ts: new Date().toISOString(), by: userInitials() };
+      const up = await _fotoUpload(k, scope, blob, ext, mime);
+      if (up) { foto.bucket = up.bucket; foto.path = up.path; }
+      else if (meta && meta.b64) { foto.b64 = meta.b64; foto.pending = true; }
+      else {
+        // Sin red y sin versión reducida (p. ej. HEIC): guardar el archivo tal cual si es razonable
+        try {
+          if (blob.size <= 1.5 * 1024 * 1024) { foto.b64 = arrayBufferToBase64(await blob.arrayBuffer()); foto.pending = true; }
+          else { alert("Sin red no se puede guardar esta foto (" + (blob.size / 1024 / 1024).toFixed(1) + " MB). Intenta con red o toma la foto con la cámara."); return null; }
+        } catch (e) { alert("No se pudo leer la foto."); return null; }
+      }
+      list.push(foto);
+      _touchBy(nd, _fotoScopeField(scope));
+      _saveNoteNow(k, nd, _fotoScopeFlag(scope));
+      _rerenderCard(k);
+      if (foto.pending) try { setSyncStatus("offline", "📷 Foto guardada en el dispositivo · se sube al volver la red"); } catch (_) {}
+      return foto;
+    }
+    async function fotoFromInput(k, scope, input) {
+      const files = Array.from((input && input.files) || []);
+      if (input) input.value = "";
+      for (const file of files) {
+        if (file.size > 25 * 1024 * 1024) { alert("La foto pesa " + (file.size / 1024 / 1024).toFixed(0) + " MB. Máximo 25 MB."); continue; }
+        const prep = await _fotoPrepare(file);
+        await fotoAttachBlob(k, scope, prep.blob, file.name, prep.type, { w: prep.w, h: prep.h, b64: prep.b64 });
+      }
+    }
+    function fotoRemove(k, scope, id) {
+      const nd = getNote(k);
+      const list = _fotoList(nd, scope, false);
+      if (!list) return;
+      const i = list.findIndex(function (f) { return f && f.id === id; });
+      if (i < 0) return;
+      if (!confirm("¿Quitar esta foto de la caja? (Regresar la devuelve)")) return;
+      _undoPush(k, "quitar foto de " + _undoFieldLabel(_fotoScopeField(scope)));
+      list.splice(i, 1);
+      _touchBy(nd, _fotoScopeField(scope));
+      _saveNoteNow(k, nd, _fotoScopeFlag(scope));
+      _rerenderCard(k);
+    }
+    async function fotoOpen(k, scope, id) {
+      const list = _fotoList(getNote(k), scope, false) || [];
+      const f = list.find(function (x) { return x && x.id === id; });
+      if (!f) return;
+      let url = "";
+      if (f.b64) url = "data:" + (f.type || "image/jpeg") + ";base64," + f.b64;
+      else if (f.path) url = await _fotoSignedUrl(f.bucket || FOTO_BUCKET, f.path);
+      if (!url) { alert("No se pudo abrir la foto (¿sin red?)."); return; }
+      const w = window.open("", "_blank");
+      if (!w) { alert("El navegador bloqueó la ventana. Permite popups para ver la foto."); return; }
+      w.document.write('<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="' + url.replace(/"/g, "&quot;") + '" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>');
+      w.document.close();
+    }
+    // Tira de miniaturas + botón 📷 (cámara o galería). Las miniaturas de Storage se cargan después (hidratación).
+    function renderFotoStrip(k, scope, list, opts) {
+      opts = opts || {};
+      const arr = Array.isArray(list) ? list.filter(Boolean) : [];
+      const thumbs = arr.map(function (f) {
+        const src = f.b64 ? ("data:" + (f.type || "image/jpeg") + ";base64," + f.b64) : "";
+        const isImg = /^image\//.test(f.type || "") || !!f.b64;
+        const when = f.ts ? esc(String(f.ts).slice(0, 10).split("-").reverse().slice(0, 2).join("/")) : "";
+        const title = esc((f.name || "foto") + (when ? " · " + when : "") + (f.by ? " · " + f.by : "") + (f.pending ? " · pendiente de subir" : ""));
+        return `<div class="pl-foto-wrap${f.pending ? " pending" : ""}" data-id="${esc(f.id)}">`
+          + (isImg
+            ? `<img class="pl-foto" alt="foto" title="${title}" ${src ? `src="${src}"` : `data-bucket="${esc(f.bucket || FOTO_BUCKET)}" data-path="${esc(f.path || "")}"`} data-k="${esc(k)}" data-scope="${esc(scope)}" data-id="${esc(f.id)}" onclick="fotoOpen(this.dataset.k,this.dataset.scope,this.dataset.id)"/>`
+            : `<button type="button" class="pl-foto-file" title="${title}" data-k="${esc(k)}" data-scope="${esc(scope)}" data-id="${esc(f.id)}" onclick="fotoOpen(this.dataset.k,this.dataset.scope,this.dataset.id)">📎 ${esc((f.name || "archivo").slice(0, 14))}</button>`)
+          + `<button type="button" class="pl-foto-x" data-k="${esc(k)}" data-scope="${esc(scope)}" data-id="${esc(f.id)}" onclick="fotoRemove(this.dataset.k,this.dataset.scope,this.dataset.id)" title="Quitar foto">✕</button>`
+          + `</div>`;
+      }).join("");
+      const addBtn = opts.add === false ? "" : `<label class="pl-foto-add" title="${esc(opts.label || "Agregar foto (cámara o galería)")}">📷<input type="file" accept="image/*" multiple data-k="${esc(k)}" data-scope="${esc(scope)}" onchange="fotoFromInput(this.dataset.k,this.dataset.scope,this)" style="display:none"/></label>`;
+      if (!thumbs && !addBtn) return "";
+      return `<div class="pl-fotos" data-scope="${esc(scope)}">${thumbs}${addBtn}</div>`;
+    }
+    // Pone el src a las miniaturas guardadas en Storage (URL firmada 1 h, con caché). Corre tras cada repintado.
+    function _hydrateFotoImgs(root) {
+      try {
+        const imgs = (root || document).querySelectorAll ? (root || document).querySelectorAll("img.pl-foto[data-path]:not([src])") : [];
+        imgs.forEach(function (img) {
+          const bucket = img.dataset.bucket, path = img.dataset.path;
+          if (!path) { img.alt = "📷"; return; }
+          img.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==");
+          _fotoSignedUrl(bucket, path).then(function (url) { if (url) img.src = url; else { img.removeAttribute("src"); img.classList.add("pl-foto-nored"); } }).catch(function () { img.removeAttribute("src"); img.classList.add("pl-foto-nored"); });
+        });
+      } catch (_) {}
+    }
+    let _fotoHydrateTimer = null;
+    try {
+      new MutationObserver(function () { clearTimeout(_fotoHydrateTimer); _fotoHydrateTimer = setTimeout(function () { _hydrateFotoImgs(document); }, 60); })
+        .observe(document.documentElement, { childList: true, subtree: true });
+    } catch (_) {}
+    // Fotos que quedaron inline (sin red): subirlas y dejar solo la ruta. Se llama al volver la red y al arrancar.
+    let _fotosRetrying = false;
+    async function _fotosRetryPending() {
+      if (_fotosRetrying || !navigator.onLine || !_supa || !_supa.storage) return 0;
+      _fotosRetrying = true;
+      let n = 0;
+      try {
+        for (const p of (patients || [])) {
+          const k = pid(p); const nd = noteData[k]; if (!nd || !nd.checklist) continue;
+          const scopes = [];
+          (Array.isArray(nd.checklist.cirugias) ? nd.checklist.cirugias : []).forEach(function (c) { if (c && Array.isArray(c.fotos) && c.fotos.some(function (f) { return f && f.pending; })) scopes.push("cx:" + c.id); });
+          if ((nd.checklist.cultivos_fotos || []).some(function (f) { return f && f.pending; })) scopes.push("cultivos");
+          Object.keys(isPlainObject(nd.checklist.ink_fotos) ? nd.checklist.ink_fotos : {}).forEach(function (f) { if ((nd.checklist.ink_fotos[f] || []).some(function (x) { return x && x.pending; })) scopes.push("ink:" + f); });
+          let changed = false;
+          for (const scope of scopes) {
+            const list = _fotoList(nd, scope, false) || [];
+            for (const f of list) {
+              if (!f || !f.pending || !f.b64) continue;
+              try {
+                const bin = atob(f.b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const ext = f.type === "image/png" ? ".png" : ".jpg";
+                const up = await _fotoUpload(k, scope, new Blob([bytes], { type: f.type || "image/jpeg" }), ext, f.type || "image/jpeg");
+                if (up) { f.bucket = up.bucket; f.path = up.path; delete f.b64; delete f.pending; changed = true; n++; }
+              } catch (e) { safeWarn("foto: reintento fallido:", e); }
+            }
+          }
+          if (changed) { _saveNoteNow(k, nd, "checklist"); if (document.getElementById("card-" + k)) _rerenderCard(k); }
+        }
+      } finally { _fotosRetrying = false; }
+      return n;
+    }
+    // Copia sin el b64 de las fotos que ya están en Storage (para localStorage y para la red).
+    function _stripFotoB64(d) {
+      if (!d || !isPlainObject(d.checklist)) return d;
+      const ck = d.checklist;
+      const clean = function (list) { return (Array.isArray(list) ? list : []).map(function (f) { return (f && f.b64 && f.path) ? Object.assign({}, f, { b64: undefined, pending: undefined }) : f; }); };
+      let touched = false;
+      const out = Object.assign({}, ck);
+      if (Array.isArray(ck.cirugias) && ck.cirugias.some(function (c) { return c && Array.isArray(c.fotos) && c.fotos.some(function (f) { return f && f.b64 && f.path; }); })) { out.cirugias = ck.cirugias.map(function (c) { return (c && Array.isArray(c.fotos)) ? Object.assign({}, c, { fotos: clean(c.fotos) }) : c; }); touched = true; }
+      if (Array.isArray(ck.cultivos_fotos) && ck.cultivos_fotos.some(function (f) { return f && f.b64 && f.path; })) { out.cultivos_fotos = clean(ck.cultivos_fotos); touched = true; }
+      if (isPlainObject(ck.ink_fotos)) { const o = {}; let t2 = false; Object.keys(ck.ink_fotos).forEach(function (f) { const l = ck.ink_fotos[f]; if (Array.isArray(l) && l.some(function (x) { return x && x.b64 && x.path; })) { o[f] = clean(l); t2 = true; } else o[f] = l; }); if (t2) { out.ink_fotos = o; touched = true; } }
+      return touched ? Object.assign({}, d, { checklist: out }) : d;
+    }
+    // ═══ AUTOR POR CAJA (oct 2026): como el color de tinta de cada residente en GoodNotes ═══
+    // checklist.__pl_note_meta.by[campo] = {u: nombre, i: iniciales, t: ISO}. Se pinta como chip con un color
+    // fijo por nombre junto al título de la caja y las iniciales van en los sellos "➕ Hoy".
+    function userInitials() {
+      let n = ""; try { n = (localStorage.getItem("pl_user_name") || "").trim(); } catch (_) {}
+      if (!n) return "";
+      const parts = n.split(/\s+/).filter(Boolean);
+      const ini = parts.length >= 2 ? (parts[0][0] + parts[1][0]) : parts[0].slice(0, 2);
+      return ini.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+    }
+    function _byColor(name) {
+      let h = 0; const s = toSafeString(name).toLowerCase();
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return "hsl(" + (h % 360) + ", 55%, 40%)";
+    }
+    function _touchBy(nd, field) {
+      try {
+        if (!nd || !field) return;
+        if (!nd.checklist) nd.checklist = {};
+        const meta = isPlainObject(nd.checklist[NOTE_SYNC_META_KEY]) ? nd.checklist[NOTE_SYNC_META_KEY] : (nd.checklist[NOTE_SYNC_META_KEY] = {});
+        if (!isPlainObject(meta.by)) meta.by = {};
+        let name = ""; try { name = (localStorage.getItem("pl_user_name") || "").trim(); } catch (_) {}
+        meta.by[field] = { u: name.slice(0, 40), i: userInitials(), t: new Date().toISOString() };
+      } catch (_) {}
+    }
+    function _byChip(nd, field) {
+      try {
+        const meta = nd && nd.checklist && nd.checklist[NOTE_SYNC_META_KEY];
+        const b = meta && isPlainObject(meta.by) ? meta.by[field] : null;
+        if (!b || !(b.i || b.u)) return "";
+        const d = b.t ? new Date(b.t) : null;
+        const z = function (n) { return String(n).padStart(2, "0"); };
+        const when = d && !isNaN(d) ? (z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes())) : "";
+        return `<span class="by-chip" style="background:${_byColor(b.u || b.i)}" title="Último cambio: ${esc(b.u || b.i)}${when ? " · " + when : ""}">${esc(b.i || b.u.slice(0, 2).toUpperCase())}${when ? " · " + when : ""}</span>`;
+      } catch (_) { return ""; }
     }
     function sanitizeStoragePathSegment(v) {
       return toSafeString(v)
@@ -11240,6 +12140,7 @@ function plExportBackup() {
         }
         _enqueuePendingMisc();
         await flushOutbox();
+        try { await _fotosRetryPending(); } catch (e) { safeLog("fotos pendientes:", e); } // fotos guardadas sin red → Storage
         const repair = loaded ? await recoverPendingNoteSync(loaded.remoteNotePatientIds || []) : { synced: 0, failed: [] };
         syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
       } catch (e) { safeLog("online handler:", e); }
@@ -11841,11 +12742,15 @@ function plExportBackup() {
 
     // ─── INIT ────────────────────────────────────────────────────────────────────────
     async function init() {
+      await _handleRecoveryLink();
       await initAuth();
       // Sin sesión no hay acceso a datos: el overlay queda visible y no disparamos la carga
       // (evita la lluvia de 401 y el prompt de nombre antes del login). Al autenticarse,
       // SIGNED_IN recarga la página para que init() corra completo ya con token.
       if (!_userAccessToken) return;
+      // Cuentas con administrador (oct 2026): la cuenta debe estar registrada y activa en app_users.
+      if (!(await _loadMyProfile())) return;
+      if (_recoveryPending) { _recoveryPending = false; openNewPasswordDialog(true); }
       try { _bindStickyResize(); _syncStickyOffsets(); } catch (_) {}
       loadSharedConfig().catch(() => {}); // Non-blocking: pull proxy URL from Supabase for other devices
 
@@ -11942,6 +12847,7 @@ function plExportBackup() {
         localStorage.setItem("pl_last_save_ts", Date.now().toString());
         const repair = await recoverPendingNoteSync(loaded.remoteNotePatientIds || []);
         startRealtime();
+        setTimeout(function () { try { _fotosRetryPending().catch(function () {}); } catch (_) {} }, 8000); // fotos que quedaron sin subir en otra sesión
         // Si había outbox pendiente, empujar esos cambios ahora sobre los datos frescos
         if (localHasUnsyncedChanges) {
           flushOutbox().catch(e => safeLog("init flushOutbox:", e));
@@ -12974,6 +13880,14 @@ function plExportBackup() {
       _correcTab = "k";
       renderCorrecTabs();
       renderCorrecContent(snap);
+      // Peso de la tarjeta (oct 2026): precarga los cálculos de K / Na / Hb si el campo está vacío.
+      try {
+        const w = (nd.checklist && nd.checklist.pm_peso) ? String(nd.checklist.pm_peso).replace(",", ".") : "";
+        if (w && parseFloat(w) > 0) {
+          ["cm-k-peso", "cm-na-peso", "cm-hb-peso"].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = w; });
+          if (typeof calcCorrec === "function") calcCorrec();
+        }
+      } catch (_) {}
       document.getElementById("correc-modal").classList.add("open");
     }
 
@@ -13545,13 +14459,14 @@ function plExportBackup() {
     function renderInterconsultasSection(nd, k) {
       const val = esc((nd.checklist && nd.checklist.interconsultas) || "");
       return `<div class="interconsultas-box">
-        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas</span><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button></div>
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas${_byChip(nd, "interconsultas")}</span><span style="display:flex;gap:4px;align-items:center"><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button><button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:interconsultas','Interconsultas')" title="Escribir a mano con stylus" data-testid="field-ink-ck-interconsultas">✍️</button></span></div>
         <textarea class="field-ta" rows="2"
           data-key="${k}" data-ckfield="interconsultas"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
           oninput="liveCkText(this)"
           onchange="updateCkText(this.dataset.key,'interconsultas',this.value)"
           placeholder="Esp: motivo, fecha solicitud, estado / respuesta...">${val}</textarea>
+        ${renderFotoStrip(k, "ink:ck:interconsultas", _fotoList(nd, "ink:ck:interconsultas", false), { add: false })}
       </div>`;
     }
 
@@ -13643,17 +14558,22 @@ function plExportBackup() {
       const manualVal = esc((nd.checklist && nd.checklist.cultivos) || "");
       return `<div class="cultivos-box">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between">
-          <span>🦠 Cultivos / Labs especiales${(cultivosExtraidos.length + wlCults.length) ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length + wlCults.length} extraído(s)</span>` : ""}</span>
-          <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'cultivos',true,'Cultivos')" title="Anotar la fecha de hoy antes de un cultivo nuevo">➕ Hoy</button>
+          <span>🦠 Cultivos / Labs especiales${(cultivosExtraidos.length + wlCults.length) ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length + wlCults.length} extraído(s)</span>` : ""}${_byChip(nd, "cultivos")}</span>
+          <span style="display:flex;gap:4px;align-items:center">
+            <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'cultivos',true,'Cultivos')" title="Anotar la fecha de hoy antes de un cultivo nuevo">➕ Hoy</button>
+            <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:cultivos','Cultivos')" title="Escribir a mano con stylus" data-testid="field-ink-ck-cultivos">✍️</button>
+          </span>
         </div>
         <div class="cultivo-tipos-row">${tiposBtns}</div>
         ${(wlChipsHtml || chipsHtml) ? `<div style="margin-bottom:6px">${wlChipsHtml}${chipsHtml}</div>` : ""}
+        ${renderFotoStrip(k, "cultivos", nd.checklist && nd.checklist.cultivos_fotos, { add: true, label: "Foto del reporte de cultivo (cámara o galería)" })}
         <textarea class="field-ta" rows="3"
           data-key="${k}" data-ckfield="cultivos"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
           oninput="liveCkText(this)"
           onchange="updateCkText(this.dataset.key,'cultivos',this.value)"
           placeholder="Ej: Hemocultivo x2 18/04 — pendiente resultado&#10;Urocultivo 17/04 — E. coli BLEE, sensible a imipenem&#10;Cultivo herida — flora mixta">${manualVal}</textarea>
+        ${renderFotoStrip(k, "ink:ck:cultivos", _fotoList(nd, "ink:ck:cultivos", false), { add: false })}
       </div>`;
     }
 
@@ -14133,12 +15053,15 @@ function plExportBackup() {
       const sel = isCk ? 'textarea[data-key="' + k + '"][data-ckfield="' + field + '"]' : 'textarea[data-key="' + k + '"][data-field="' + field + '"]';
       const ta = document.querySelector(sel);
       const d = new Date();
-      const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + ": ";
+      const ini = userInitials();
+      // "14/10 GF: " — la fecha y las iniciales de quien escribe, como el color de tinta de cada residente
+      const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + (ini ? " " + ini : "") + ": ";
       const nd = getNote(k);
       const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
       const trimmed = cur.replace(/\s+$/, "");
       if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
       _undoPush(k, "fecha de hoy en " + (label || field));
+      _touchBy(nd, field);
       const next = (trimmed ? trimmed + "\n" : "") + stamp;
       if (ta) {
         ta.value = next; if (isCk) liveCkText(ta); else liveUpdate(ta); ta.focus();
@@ -14156,6 +15079,7 @@ function plExportBackup() {
       const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
       if (cur.trim().indexOf(stamp + " —") === 0) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } return; }
       _undoPush(k, "fecha de hoy en pendientes");
+      _touchBy(getNote(k), "pendientes");
       const next = stamp + " — \n" + cur;
       if (ta) {
         ta.value = next; liveUpdate(ta); ta.focus();
@@ -14294,6 +15218,7 @@ function plExportBackup() {
               <button data-corkey="${k}" onclick="openCorreccionModal(this.dataset.corkey)">⚡ Corrección de electrolitos</button>
               <button data-dikey="${k}" onclick="openDocIntake(this.dataset.dikey)">📄 Leer documento con IA</button>
               <button data-nevokey="${k}" onclick="openNotaEvo(this.dataset.nevokey)">📝 Nota de evolución</button>
+              <button data-niakey="${k}" onclick="notaIAUnClic(this.dataset.niakey)" data-testid="card-nota-ia" title="Redacta la nota de evolución completa con IA a partir de todo lo que hay en la tarjeta">🤖 Nota IA (1 clic)</button>
               <button data-bedkey="${k}" onclick="promptChangeBed(this.dataset.bedkey)">🛏 Cambiar cama</button>
               <button data-qxkey="${k}" onclick="setQxFecha(this.dataset.qxkey)">🔪 Fecha de cirugía (POP)</button>
               <button data-histkey="${k}" onclick="openNoteHistory(this.dataset.histkey)">📜 Historial de versiones</button>
@@ -14359,7 +15284,7 @@ function plExportBackup() {
       <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("💉 Manejo médico actual", nd.manejo, k, "manejo", 3)}</div>
       <div ${anchor("plan", "plan")} style="margin-top:8px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-          <span class="field-label" style="margin:0">⚠️ Pendientes / Plan${pendOpen ? ` <span class="fc-cnt">${pendOpen}</span>` : ""}</span>
+          <span class="field-label" style="margin:0">⚠️ Pendientes / Plan${pendOpen ? ` <span class="fc-cnt">${pendOpen}</span>` : ""}${_byChip(nd, "pendientes")}</span>
           <button type="button" class="pend-tool" data-k="${k}" onclick="pendInsertToday(this.dataset.k)" title="Insertar la fecha de hoy al inicio (evolución del día)">➕ Hoy</button>
           <button type="button" class="pend-tool${(window.__pendList && window.__pendList[k]) ? " on" : ""}" data-k="${k}" onclick="togglePendList(this.dataset.k)" title="Ver los pendientes como lista con casillas para tachar">☑ Lista</button>
           ${renderTemplatesBtn(k)}
@@ -14370,6 +15295,7 @@ function plExportBackup() {
           oninput="liveUpdate(this)"
           onchange="updateField(this.dataset.key,this.dataset.field,this.value)"
           placeholder="Pendientes / Plan...">${esc(nd.pendientes || "")}</textarea>
+        ${renderFotoStrip(k, "ink:pendientes", _fotoList(nd, "ink:pendientes", false), { add: false })}
         ${renderPendList(nd, k)}
       </div>
       <!-- Guardia (oct 2026): ENTREGA = lo que yo dejo para la siguiente guardia (eventualidades y por hacer;
@@ -14378,7 +15304,7 @@ function plExportBackup() {
       <div class="fc-guardia">
       <div id="sec-entrega-${ek}" class="fc-anchor entrega-row fc-blk fc-blk-entrega">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📤 Entrega de guardia</span>
+          <span>📤 Entrega de guardia${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'entrega',false,'Entrega')" title="Anotar la fecha de hoy antes de la evolución del día">➕ Hoy</button>
             <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Auto-llenar entrega con labs críticos, pendientes y cruce">✨ Auto-llenar</button>
@@ -14386,17 +15312,20 @@ function plExportBackup() {
           </span>
         </div>
         <textarea class="field-ta" rows="4" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Eventualidades de mi guardia y cosas por hacer para la siguiente…">${esc(nd.entrega || "")}</textarea>
+        ${renderFotoStrip(k, "ink:entrega", _fotoList(nd, "ink:entrega", false), { add: false })}
         ${cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : ""}
       </div>
       <div id="sec-recibo-${ek}" class="fc-anchor recibo-row fc-blk fc-blk-recibo">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📥 Recibo de guardia</span>
+          <span>📥 Recibo de guardia${_byChip(nd, "recibo")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'recibo',true,'Recibo')" title="Anotar la fecha de hoy">➕ Hoy</button>
+            <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:recibo','Recibo de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-ck-recibo">✍️</button>
             <button type="button" class="gd-btn" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasar lo que dejó la guardia anterior en Entrega a mi Recibo (con fecha y hora) y vaciar Entrega">⇄ Tomar guardia</button>
           </span>
         </div>
         <textarea class="field-ta" rows="4" data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Lo que me entregan al recibir la guardia…">${esc(reciboTxt)}</textarea>
+        ${renderFotoStrip(k, "ink:ck:recibo", _fotoList(nd, "ink:ck:recibo", false), { add: false })}
       </div>
       </div>
       <div class="fc-secs">
@@ -14527,9 +15456,10 @@ function plExportBackup() {
 
     function fieldRow(label, val, k, field, rows) {
       const safe = esc(val || "");
+      const ndRow = noteData[k] || null;
       return "<div>" +
         "<div class='field-label' style='display:flex;align-items:center;justify-content:space-between;gap:6px'>" +
-          "<span>" + label + "</span>" +
+          "<span>" + label + (ndRow ? _byChip(ndRow, field) : "") + "</span>" +
           "<button class='field-ink-btn' onclick=\"openInkpadForField('" + k + "','" + field + "','" + label.replace(/'/g, "\\'") + "')\" title='Escribir a mano con stylus' data-testid='field-ink-" + field + "'>✍️</button>" +
         "</div>" +
         "<textarea class='field-ta' rows='" + rows + "' " +
@@ -14537,6 +15467,7 @@ function plExportBackup() {
         "inputmode='text' autocorrect='off' autocapitalize='sentences' spellcheck='false' " +
         "onfocus=\"this.dataset.beforeValue=this.value\" " +
         "oninput=\"liveUpdate(this)\" onchange=\"updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)\">" + safe + "</textarea>" +
+        (ndRow ? renderFotoStrip(k, "ink:" + field, _fotoList(ndRow, "ink:" + field, false), { add: false }) : "") +
         "</div>";
     }
 
@@ -16083,6 +17014,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("inkpad-patient-bed").textContent = p ? `Cama ${p.cama} · Exp ${p.exp}` : "";
 
       document.getElementById("inkpad-modal").style.display = "flex";
+      try { document.getElementById("ink-tobox-btn").style.display = "none"; } catch (_) {}
 
       // Load persisted strokes (if any)
       const nd = noteData[k];
@@ -16112,6 +17044,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       document.getElementById("inkpad-patient-bed").textContent = (p ? `Cama ${p.cama} · Exp ${p.exp}` : "") + "  ·  Solo llena el campo «" + fieldLabel + "»";
 
       document.getElementById("inkpad-modal").style.display = "flex";
+      try { document.getElementById("ink-tobox-btn").style.display = ""; } catch (_) {}
 
       // Per-field ink strokes are stored under a dedicated key (not shared with big canvas)
       const nd = noteData[k];
@@ -16272,6 +17205,50 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
       saveNote(_inkKey, noteData[_inkKey]); // antes lsSaveNote (solo local): se perdía con el siguiente evento Realtime
       alert("✅ Trazo guardado. La próxima vez que abras ✍️ aparecerá tal cual.");
     }
+    // Campos del Inkpad: "app"/"pa"/… viven en la nota; "ck:<campo>" en el checklist (IC, cultivos, recibo).
+    function _inkFieldGet(nd, fieldKey) {
+      if (!nd) return "";
+      if (fieldKey && fieldKey.indexOf("ck:") === 0) return toSafeString(nd.checklist && nd.checklist[fieldKey.slice(3)]);
+      return toSafeString(nd[fieldKey]);
+    }
+    function _inkFieldSet(nd, fieldKey, val) {
+      if (fieldKey && fieldKey.indexOf("ck:") === 0) { if (!nd.checklist) nd.checklist = {}; nd.checklist[fieldKey.slice(3)] = val; return "ck_" + fieldKey.slice(3); }
+      nd[fieldKey] = val; return fieldKey;
+    }
+    // PNG recortado al contorno de los trazos (con margen), a escala del dispositivo. null si no hay trazos.
+    function _inkExportPng() {
+      const strokes = _inkStrokes.filter(function (s) { return s && s.points && s.points.length > 1 && s.tool !== "eraser"; });
+      if (!strokes.length) return Promise.resolve(null);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      strokes.forEach(function (s) { s.points.forEach(function (p) { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y; }); });
+      const pad = 16;
+      const w = Math.max(40, Math.ceil(maxX - minX + pad * 2)), h = Math.max(40, Math.ceil(maxY - minY + pad * 2));
+      const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      const cv = document.createElement("canvas"); cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      const ctx = cv.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.translate(pad - minX, pad - minY);
+      _inkStrokes.forEach(function (s) { if (s && s.points && s.points.length > 1) _inkDrawFullStroke(ctx, s); });
+      return new Promise(function (resolve) {
+        try { cv.toBlob(function (b) { resolve(b ? { blob: b, w: w, h: h, b64: (cv.toDataURL("image/png").split(",")[1] || "") } : null); }, "image/png"); }
+        catch (e) { resolve(null); }
+      });
+    }
+    // 📌 A la caja: el trazo queda como imagen dentro de la caja (y se guarda el trazo editable en este dispositivo).
+    async function inkSaveToBox() {
+      if (!_inkKey || !_inkFieldMode) { alert("Abre el lápiz desde una caja (✍️) para guardar ahí."); return; }
+      if (!_inkStrokes.length) { alert("Dibuja algo primero."); return; }
+      const k = _inkKey, field = _inkFieldMode;
+      const png = await _inkExportPng();
+      if (!png) { alert("No hay trazo que guardar."); return; }
+      if (!noteData[k]) noteData[k] = defaultData();
+      noteData[k]._inkFields = noteData[k]._inkFields || {};
+      noteData[k]._inkFields[field] = JSON.parse(JSON.stringify(_inkStrokes));
+      const foto = await fotoAttachBlob(k, "ink:" + field, png.blob, "trazo-" + todayStr() + ".png", "image/png", { w: png.w, h: png.h, b64: png.b64 });
+      if (foto) { closeInkpad(); try { _showRTToast("📌 Trazo guardado en la caja"); } catch (_) {} }
+    }
 
     async function inkTranscribe() {
       if (!_inkStrokes.length) { alert("Dibuja algo primero."); return; }
@@ -16293,7 +17270,8 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             qx: "cirugía realizada y hallazgos", sangrado: "sangrado transoperatorio",
             drenajes: "drenajes y sus gastos", manejo: "manejo/tratamiento/indicaciones médicas",
             sv: "signos vitales", balance: "balance hídrico",
-            pendientes: "pendientes / estudios por hacer"
+            pendientes: "pendientes / estudios por hacer", entrega: "entrega de guardia (eventualidades y por hacer)",
+            "ck:interconsultas": "interconsultas solicitadas y sus respuestas", "ck:cultivos": "cultivos (tipo, fecha, germen y antibiograma)", "ck:recibo": "recibo de guardia"
           };
           const fieldDescr = labels[_inkFieldMode] || _inkFieldMode;
           prompt = `Eres un asistente médico quirúrgico. Esta imagen contiene texto manuscrito escrito por un residente de cirugía general sobre el apartado "${fieldDescr}" de un paciente. Transcribe TODO el texto que veas interpretando abreviaturas médicas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, etc.) y devuelve SOLO un JSON con este esquema exacto:
@@ -16367,7 +17345,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
     // Preview for field mode — a single textarea with the transcribed text
     function _renderInkpadFieldSingle(result, fieldKey) {
       const txt = (result.texto || result.transcripcion_completa || "").trim();
-      const currentVal = (noteData[_inkKey] && noteData[_inkKey][fieldKey]) || "";
+      const currentVal = _inkFieldGet(noteData[_inkKey], fieldKey);
       let html = `<div style="font-size:12px;color:#334155;margin-bottom:8px">
         <b>Texto detectado</b> para el campo ${esc(fieldKey.toUpperCase())}.
         Edítalo si hace falta y elige cómo aplicarlo.
@@ -16431,18 +17409,21 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         if (!newVal) { alert("No hay texto para aplicar."); return; }
         const modeRadio = document.querySelector('input[name="ink-mode"]:checked');
         const mode = modeRadio ? modeRadio.value : "replace";
-        const currentVal = (nd[_inkFieldMode] || "").trim();
+        const currentVal = _inkFieldGet(nd, _inkFieldMode).trim();
+        let dirtyFlag = _inkFieldMode;
         if (_inkFieldMode === "dx") {
           // dx lives on the patient object
           const pt = patients.find(pp => pid(pp) === _inkKey);
           if (pt) pt.dx = newVal.toUpperCase();
         } else {
-          nd[_inkFieldMode] = (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal;
+          _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")));
+          dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal);
+          _touchBy(nd, _inkFieldMode.replace(/^ck:/, ""));
         }
         // Persist per-field strokes
         if (!nd._inkFields) nd._inkFields = {};
         nd._inkFields[_inkFieldMode] = JSON.parse(JSON.stringify(_inkStrokes));
-        if (_inkFieldMode !== "dx") (_dirtyFields[_inkKey] = _dirtyFields[_inkKey] || new Set()).add(_inkFieldMode);
+        if (_inkFieldMode !== "dx") { (_dirtyFields[_inkKey] = _dirtyFields[_inkKey] || new Set()).add(dirtyFlag); _dirtyFields[_inkKey].add("checklist"); }
         saveNote(_inkKey, nd); // sube a Supabase; antes solo localStorage → se perdía y no lo veían otros dispositivos
         try { renderView(); } catch (_) { }
         try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) { }
@@ -17015,10 +17996,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
         _showUndoToast();
       }
+      const _changed = prev !== toSafeString(value);
       noteData[k][field] = value;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      // El push parcial debe llevar ESTE campo: updateField puede llegar sin liveUpdate previo (transcripción,
+      // pruebas, Scribble) y, con el checklist también sucio, el texto se quedaría fuera del envío.
+      _dirtyFields[k].add(field);
+      // Autor por caja: quién tocó este campo por última vez (viaja en checklist.__pl_note_meta.by)
+      if (_changed) { _touchBy(noteData[k], field); _dirtyFields[k].add("checklist"); }
       saveNote(k, noteData[k]);
       // Campo guardado: ya no está dirty
-      if (_dirtyFields[k]) _dirtyFields[k].delete(field);
+      _dirtyFields[k].delete(field); if (_changed) _dirtyFields[k].delete("checklist");
       // dx vive en el objeto paciente (no en notas) — sincronizar también allá
       if (field === "dx") {
         const p = patients.find(function(pt){ return pid(pt) === k; });
@@ -17064,6 +18052,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
       }
       nd.checklist[field] = value;
+      if (prevVal !== toSafeString(value)) _touchBy(nd, field);
       _saveNoteNow(k, nd, "ck_" + field);
     }
 
@@ -22716,6 +23705,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const nd = getNote(k);
       if (!nd.checklist) nd.checklist = { npo: false, atb: false, tvp: false, dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "" };
       nd.checklist[item] = !nd.checklist[item];
+      // Vasopresores (oct 2026): al encender, dilución habitual (4 mg/250 mL · 20 U/100 mL) si no había una.
+      if (nd.checklist[item] && (item === "vp_nore_on" || item === "vp_vaso_on")) _vpDefaults(nd.checklist, item);
       // If "curación realizada" toggled ON, auto-set timestamp
       if (item === "cur_realizada" && nd.checklist[item]) {
         nd.checklist.cur_realizada_hora = new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
@@ -22814,6 +23805,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       nd.checklist[field] = val;
       _saveNoteNow(k, nd);
       if (PM_DAILY.indexOf(field) >= 0) _refreshPmRow(k, rolled ? field : null);
+      if (field === "pm_peso" || field === "pm_talla" || field.indexOf("pm_vent_") === 0) _refreshVpRow(k);
     }
     // Refresca el chip de fecha y el historial del pase sin repintar la tarjeta (no roba el foco al escribir).
     function _refreshPmRow(k, keepField) {
@@ -23086,6 +24078,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             <input class="cx-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
             <input class="cx-in" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(c.cirujano || "")}" placeholder="Cirujano" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>
           </div>
+          ${renderFotoStrip(k, "cx:" + String(c.id || ""), c.fotos, { add: true, label: "Foto de la nota quirúrgica o del reporte (cámara o galería)" })}
         </div>`;
       }).join("");
       return `<div class="cx-box">
@@ -23108,14 +24101,84 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
       if (!nd.checklist) nd.checklist = {};
       const prev = toSafeString(nd.checklist.recibo).replace(/\s+$/, "");
-      nd.checklist.recibo = (prev ? prev + "\n\n" : "") + "— Recibido " + stamp + " —\n" + ent;
+      nd.checklist.recibo = (prev ? prev + "\n\n" : "") + "— Recibido " + stamp + (userInitials() ? " " + userInitials() : "") + " —\n" + ent;
       nd.entrega = "";
+      _touchBy(nd, "recibo"); _touchBy(nd, "entrega");
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_recibo");
       noteData[k] = nd;
       saveNote(k, nd);
       _dirtyFields[k].delete("entrega"); _dirtyFields[k].delete("ck_recibo");
       _rerenderCard(k);
+    }
+
+    // ── 💉 Vasopresores (oct 2026): calculadora de norepinefrina / vasopresina en el checklist ──
+    // Con el peso, la dilución (editable) y los mL/h muestra la dosis; con la dosis deseada ("meta"), los mL/h.
+    // Los resultados se refrescan en el sitio (sin repintar la tarjeta, no roba el foco al escribir).
+    function updateVpField(k, field, val) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[field] = val;
+      _saveNoteNow(k, nd);
+      _refreshVpRow(k);
+    }
+    function _vpNoreRes(cl) {
+      if (!(vpNum(cl.pm_peso) > 0)) return { txt: "⚖️ falta el peso", cls: "vp-na" };
+      const d = vpNoreDosis(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_mlh, cl.pm_peso);
+      if (d === null) return { txt: "— mcg/kg/min", cls: "vp-na" };
+      return { txt: vpFmt(d) + " mcg/kg/min", cls: d > 0.5 ? "vp-hi" : "" };
+    }
+    function _vpNoreMeta(cl) { const r = vpNoreRate(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_meta, cl.pm_peso); return r === null ? "" : "= " + vpFmt(r, 1) + " mL/h"; }
+    function _vpVasoRes(cl) {
+      const d = vpVasoDosis(cl.vp_vaso_u, cl.vp_vaso_ml, cl.vp_vaso_mlh);
+      if (d === null) return { txt: "— U/min", cls: "vp-na" };
+      return { txt: vpFmt(d) + " U/min (" + vpFmt(d * 60, 1) + " U/h)", cls: d > 0.04 ? "vp-hi" : "" };
+    }
+    function _vpVasoMeta(cl) { const r = vpVasoRate(cl.vp_vaso_u, cl.vp_vaso_ml, cl.vp_vaso_meta); return r === null ? "" : "= " + vpFmt(r, 1) + " mL/h"; }
+    // Surviving Sepsis Campaign 2021: con norepinefrina ≥ 0.25 mcg/kg/min se sugiere agregar vasopresina (0.03 U/min).
+    function _vpSsc(cl) { const d = vpNoreDosis(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_mlh, cl.pm_peso); return (d !== null && d >= 0.25 && !cl.vp_vaso_on) ? "SSC 2021: con norepinefrina ≥ 0.25 mcg/kg/min considera agregar vasopresina 0.03 U/min" : ""; }
+    function _vpResSpan(id, r) { return `<span class="vp-res${r.cls ? " " + r.cls : ""}" id="${id}">${esc(r.txt)}</span>`; }
+    function _vpSexo(k, nd) { const p = patients.find(function (x) { return pid(x) === k; }); return (typeof PLCDS !== "undefined" && PLCDS.getSex) ? PLCDS.getSex(p, nd) : ""; }
+    function _vmChipsHtml(cl, k) {
+      if (!cl.pm_vent) return "";
+      const pbw = vmPbw(cl.pm_talla, _vpSexo(k, noteData[k])); const chips = [];
+      if (pbw) chips.push(`<span class="vm-chip" title="Peso predicho (Devine) con la talla y el sexo">PP ${vpFmt(pbw, 1)} kg</span>`);
+      const vtkg = vmVtKg(cl.pm_vent_vt, pbw);
+      if (vtkg !== null) chips.push(`<span class="vm-chip${vtkg > 8 ? " vm-hi" : ""}" title="Volumen tidal por kg de peso predicho (meta 6-8 mL/kg, ARDSNet)">VT ${vpFmt(vtkg, 1)} mL/kg</span>`);
+      else if (vpNum(cl.pm_vent_vt) > 0 && !pbw) chips.push(`<span class="vm-chip vm-na" title="Anota la talla (y el sexo en ✏️ Editar) para calcular los mL/kg de peso predicho">📏 falta talla</span>`);
+      const dp = vmDrivingP(cl.pm_vent_pplat, cl.pm_vent_peep);
+      if (dp !== null) chips.push(`<span class="vm-chip${dp > 15 ? " vm-hi" : ""}" title="Presión de distensión = Pplat − PEEP (meta ≤ 15 cmH₂O)">ΔP ${vpFmt(dp, 0)}</span>`);
+      if (vpNum(cl.pm_vent_pplat) > 30) chips.push(`<span class="vm-chip vm-hi" title="Presión meseta por encima de 30 cmH₂O">Pplat > 30</span>`);
+      return chips.join("");
+    }
+    function _refreshVpRow(k) {
+      try {
+        const ek = k.replace(/[^a-zA-Z0-9]/g, "_"); const cl = getNote(k).checklist || {};
+        const set = (id, r) => { const el = document.getElementById(id); if (!el) return; el.textContent = r.txt; el.className = "vp-res" + (r.cls ? " " + r.cls : ""); };
+        set("vp-nore-res-" + ek, _vpNoreRes(cl)); set("vp-vaso-res-" + ek, _vpVasoRes(cl));
+        const m1 = document.getElementById("vp-nore-meta-" + ek); if (m1) m1.textContent = _vpNoreMeta(cl);
+        const m2 = document.getElementById("vp-vaso-meta-" + ek); if (m2) m2.textContent = _vpVasoMeta(cl);
+        const ssc = document.getElementById("vp-ssc-" + ek); if (ssc) { const s = _vpSsc(cl); ssc.textContent = s; ssc.style.display = s ? "" : "none"; }
+        const vm = document.getElementById("vm-chips-" + ek); if (vm) vm.innerHTML = _vmChipsHtml(cl, k);
+      } catch (_) {}
+    }
+    function renderVpRow(cl, k) {
+      const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
+      const noreOn = !!cl.vp_nore_on, vasoOn = !!cl.vp_vaso_on;
+      const inp = (field, w, ph, title) => `<input class="pm-input vp-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl[field] || "")}" placeholder="${ph}" data-ck="${k}" data-field="${field}" oninput="updateVpField(this.dataset.ck,this.dataset.field,this.value)" style="width:${w}px" title="${title}"/>`;
+      const chip = (item, on, label, title) => `<span class="ck-item${on ? " ck-on ck-vp-on" : ""}" data-ck="${k}" data-item="${item}" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="${title}"><span class="ck-label">${on ? "✓ " : ""}${label}</span></span>`;
+      const ssc = _vpSsc(cl);
+      const nore = chip("vp_nore_on", noreOn, "Norepinefrina", "Norepinefrina en infusión") +
+        (noreOn ? `<span class="vp-grp">${inp("vp_nore_mg", 40, "mg", "mg de norepinefrina en la dilución")}<span class="pm-label">mg en</span>${inp("vp_nore_ml", 48, "mL", "mL totales de la dilución")}<span class="pm-label">mL ·</span>${inp("vp_nore_mlh", 48, "mL/h", "Velocidad de infusión (mL/h)")}<span class="pm-label">mL/h →</span>${_vpResSpan("vp-nore-res-" + ek, _vpNoreRes(cl))}<span class="pm-label">· meta</span>${inp("vp_nore_meta", 52, "dosis", "Dosis deseada en mcg/kg/min → mL/h")}<span class="vp-hint" id="vp-nore-meta-${ek}">${esc(_vpNoreMeta(cl))}</span></span>` : "");
+      const vaso = chip("vp_vaso_on", vasoOn, "Vasopresina", "Vasopresina en infusión") +
+        (vasoOn ? `<span class="vp-grp">${inp("vp_vaso_u", 40, "U", "Unidades de vasopresina en la dilución")}<span class="pm-label">U en</span>${inp("vp_vaso_ml", 48, "mL", "mL totales de la dilución")}<span class="pm-label">mL ·</span>${inp("vp_vaso_mlh", 48, "mL/h", "Velocidad de infusión (mL/h)")}<span class="pm-label">mL/h →</span>${_vpResSpan("vp-vaso-res-" + ek, _vpVasoRes(cl))}<span class="pm-label">· meta</span>${inp("vp_vaso_meta", 60, "U/min", "Dosis deseada en U/min → mL/h")}<span class="vp-hint" id="vp-vaso-meta-${ek}">${esc(_vpVasoMeta(cl))}</span></span>` : "");
+      return `<div class="checklist-row ck-r-vaso" data-testid="vp-row">
+      <span class="ck-title ck-t-vaso">💉 Vasopresor:</span>
+      ${nore}
+      <span class="ck-sep">|</span>
+      ${vaso}
+      <span class="vp-hint vp-ssc" id="vp-ssc-${ek}"${ssc ? "" : ' style="display:none"'}>${esc(ssc)}</span>
+    </div>`;
     }
 
     function renderChecklist(nd, k) {
@@ -23209,13 +24272,23 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       const hxqxHtml = `<span class="pm-label" style="margin-left:2px">🩹 HxQx:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_hxqx || "")}" placeholder="estado herida..." data-ck="${k}" data-field="pm_hxqx" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:130px;text-align:left"/>`;
 
+      // Peso y talla (oct 2026): el peso alimenta la calculadora de vasopresores (y la corrección de electrolitos);
+      // la talla, el peso predicho del ventilador.
+      const antropoHtml = `<span class="pm-label">⚖️ Peso</span><input class="pm-input" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_peso || "")}" placeholder="kg" data-ck="${k}" data-field="pm_peso" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:46px" title="Peso en kg (vasopresores, dosis por kg)"/>` +
+        `<span class="pm-label">📏 Talla</span><input class="pm-input" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_talla || "")}" placeholder="cm" data-ck="${k}" data-field="pm_talla" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:46px" title="Talla en cm (peso predicho para el volumen tidal)"/>`;
+      // VM ampliada (oct 2026): Pplat, Pmedia, I:E y chips calculados (peso predicho, VT mL/kg, presión de distensión).
+      const vIn = (field, w, title) => `<input class="pm-input" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl[field] || "")}" placeholder="—" data-ck="${k}" data-field="${field}" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:${w}px" title="${title}"/>`;
       const ventHtml = `<span class="ck-item${ventOn ? " ck-on ck-vent-on" : ""}" data-ck="${k}" data-item="pm_vent" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ventilación mecánica activa"><span class="ck-label">${ventOn ? "✓ " : ""}🫁 VM</span></span>` +
         (ventOn ? `<input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_modo || "")}" placeholder="Modo" data-ck="${k}" data-field="pm_vent_modo" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:60px;text-align:left" title="Modo (AC, PS, SIMV...)"/>` +
-          `<span class="pm-label">FiO₂%</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_fio2 || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fio2" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">PEEP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_peep || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_peep" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">VT mL</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_vt || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_vt" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` +
-          `<span class="pm-label">FR</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_fr || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_fr" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:40px"/>` +
-          `<span class="pm-label">PIP</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_pip || "")}" placeholder="—" data-ck="${k}" data-field="pm_vent_pip" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px"/>` : "");
+          `<span class="pm-label">FiO₂%</span>${vIn("pm_vent_fio2", 44, "FiO₂ %")}` +
+          `<span class="pm-label">PEEP</span>${vIn("pm_vent_peep", 44, "PEEP (cmH₂O)")}` +
+          `<span class="pm-label">VT mL</span>${vIn("pm_vent_vt", 44, "Volumen tidal (mL) · meta 6-8 mL/kg de peso predicho")}` +
+          `<span class="pm-label">FR</span>${vIn("pm_vent_fr", 40, "Frecuencia respiratoria programada")}` +
+          `<span class="pm-label">PIP</span>${vIn("pm_vent_pip", 44, "Presión pico (cmH₂O)")}` +
+          `<span class="pm-label">Pplat</span>${vIn("pm_vent_pplat", 44, "Presión meseta (cmH₂O) · meta < 30 · presión de distensión = Pplat − PEEP")}` +
+          `<span class="pm-label">Pmedia</span>${vIn("pm_vent_pmedia", 44, "Presión media de la vía aérea (cmH₂O)")}` +
+          `<span class="pm-label">I:E</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_vent_ie || "")}" placeholder="1:2" data-ck="${k}" data-field="pm_vent_ie" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px" title="Relación inspiración:espiración"/>` +
+          `<span class="vm-chips" id="vm-chips-${ek}">${_vmChipsHtml(cl, k)}</span>` : "");
 
       // Ficha compacta (oct 2026): Dieta + Ayuno/ATB/TVP en UNA fila (antes los chips se calculaban
       // pero no se pintaban → ATB/TVP solo se podían cambiar desde el modal) y Herida + NPT en otra.
@@ -23253,10 +24326,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     </div>
     <div class="checklist-row ck-r-clinico">
       <span class="ck-title ck-t-clin">⚕️ Clínico:</span>
+      ${antropoHtml}
+      <span class="ck-sep">|</span>
       ${hxqxHtml}
       <span class="ck-sep">|</span>
       ${ventHtml}
     </div>
+    ${renderVpRow(cl, k)}
   </div>`;
     }
 
@@ -23995,6 +25071,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         <span style="width:1px;background:#475569;height:28px;margin:0 4px"></span>
         <button onclick="inkTranscribe()" class="ink-primary-btn" data-testid="ink-transcribe-btn" title="Transcribir con IA y llenar campos del paciente">🤖 Transcribir</button>
         <button onclick="inkSaveImage()" class="ink-secondary-btn" data-testid="ink-save-img-btn" title="Guardar solo como imagen sin transcribir">💾 Guardar</button>
+        <button id="ink-tobox-btn" onclick="inkSaveToBox()" class="ink-secondary-btn" style="display:none" data-testid="ink-tobox-btn" title="Guardar el trazo como imagen dentro de la caja: se ve en la hoja y en todos los dispositivos">📌 A la caja</button>
         <button onclick="closeInkpad()" class="ink-close-btn" data-testid="ink-close-btn">✕</button>
       </div>
     </div>

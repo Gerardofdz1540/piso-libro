@@ -242,6 +242,24 @@ una. Son las mismas cajas con los mismos botones: solo cambia dónde se pintan.
   historial (renglón gris debajo, últimos 3 días a la vista, 14 guardados) y la fila queda limpia
   para el pase de hoy. Si te arrepientes, ↩ Regresar lo deshace.
 
+## Fotos, trazos a mano y autor por caja (octubre 2026)
+
+Tres cosas que la hoja de GoodNotes hacía y la app no:
+
+- **📷 Fotos en Cirugías y Cultivos**: cada cirugía y la caja de Cultivos tienen un botón 📷
+  (cámara o galería, varias a la vez). La foto se reduce (JPEG, máximo 1600 px) y se guarda en
+  Supabase Storage (bucket privado `pl-fotos`, se muestra con enlace firmado); en la tarjeta
+  queda una miniatura, tocarla la abre en grande, ✕ la quita (con confirmación y ↩ Regresar).
+  **Sin red** la foto se guarda en el dispositivo marcada con borde punteado y se sube sola al
+  volver la red (o al abrir la app con red). Los PDFs de labs usan el bucket `lab-sources`, que
+  también se creó hoy: antes no existía y todo quedaba inline en la nota.
+- **✍️ → 📌 A la caja**: el lápiz de cada caja (incluye ahora Interconsultas, Cultivos y Recibo)
+  tiene un botón nuevo para dejar el trazo como imagen dentro de la caja, recortado al dibujo.
+  Se ve en la hoja, en la impresión y en los demás dispositivos. 🤖 Transcribir sigue igual.
+- **Autor por caja**: cada caja de texto muestra un chip con las iniciales de quien hizo el último
+  cambio, la fecha y la hora, con un color fijo por persona (el nombre que pusiste al entrar).
+  ➕ Hoy anota `dd/mm GF: ` y Tomar guardia sella `— Recibido dd/mm hh:mm GF —`.
+
 ## Las cajas de la ficha (octubre 2026)
 
 Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, de arriba abajo:
@@ -317,6 +335,120 @@ leucocitos, hemoglobina, creatinina, PCR y procalcitonina); análisis por aparat
 ayuno o dieta, antibiótico y día, NPT, tromboprofilaxis, cultivos, tomografía con conclusión,
 interconsultas, plan y pendientes; estado de salud y pronóstico; firma. Lo que la tarjeta no sabe
 queda entre corchetes `[…]` para llenarlo antes de pegar.
+
+### 🤖 Nota con IA en un clic (octubre 2026)
+
+En el menú **⋯ Más** de la tarjeta, **🤖 Nota IA (1 clic)** abre la nota y la redacta sola: toma
+todo lo de la tarjeta (diagnósticos, pase matutino, drenajes y sondas, cirugías, laboratorios por
+fecha, cultivos, estudios, antibiótico, APP/PA, manejo, pendientes, entrega y recibo de guardia), lo
+manda al ayudante de IA (el worker de Cloudflare, la misma configuración que "Leer documento con
+IA") con el formato exacto del servicio y la instrucción de redactar el análisis y plan con medicina
+basada en evidencia: metas numéricas y guías por nombre y año solo cuando aplican (Surviving Sepsis
+2021, WSES/SIS, ESPEN 2023, KDIGO, AABB, ADA, ERAS, ARDSNet, Tokyo 2018). Reglas duras: no inventa
+datos (lo que falta queda entre corchetes), conserva cifras y fechas tal cual, sin markdown, todo en
+mayúsculas; el encabezado y la firma siempre son los de la tarjeta. Mientras la IA responde ya ves
+el borrador estructurado; si la IA falla o no hay red, te quedas con ese borrador (aviso amarillo) y
+puedes reintentar.
+
+- **✏️ Editar** permite corregir el texto antes de copiarlo.
+- **Copiar** copia la nota. **↗ Pasar a la página de notas** la copia y abre la página de notas de
+  evolución del hospital para pegarla ahí (Ctrl/Cmd + V). La primera vez pide la dirección de esa
+  página; queda en **⚙️ Configuración → Página de notas de evolución** y se comparte a todos los
+  dispositivos.
+- **🕘 Notas previas**: cada nota generada o copiada se guarda en la tarjeta (las últimas 10) para
+  volver a verla.
+- **📝 Borrador sin IA** sigue generando la nota estructurada de siempre.
+
+### 💉 Vasopresores y 🫁 ventilador (octubre 2026)
+
+En el checklist de la tarjeta, la fila **⚕️ Clínico** tiene ahora **Peso (kg)** y **Talla (cm)**. El
+peso se usa en la calculadora y se precarga en la corrección de electrolitos.
+
+La fila **💉 Vasopresor** calcula la dosis con solo el peso, la dilución y la velocidad:
+
+- **Norepinefrina**: al encenderla propone 4 mg en 250 mL (editable). Con la velocidad en mL/h
+  muestra la dosis en mcg/kg/min: `(mg × 1000 ÷ mL) × mL/h ÷ 60 ÷ kg`. En **meta** escribes la
+  dosis deseada y te dice a cuántos mL/h ponerla. Más de 0.5 mcg/kg/min se marca en rojo; a partir
+  de 0.25 mcg/kg/min sugiere agregar vasopresina (Surviving Sepsis Campaign 2021).
+- **Vasopresina**: propone 20 U en 100 mL. Muestra U/min (y U/h): `(U ÷ mL) × mL/h ÷ 60`; la meta
+  funciona igual. Más de 0.04 U/min se marca en rojo.
+
+Con **🫁 VM** encendido, además de modo, FiO₂, PEEP, VT, FR y PIP puedes anotar **Pplat**,
+**Pmedia** e **I:E**. Con la talla (y el sexo en ✏️ Editar) calcula el peso predicho (Devine) y
+muestra **VT en mL/kg** (rojo si > 8) y la **presión de distensión** Pplat − PEEP (rojo si > 15;
+Pplat > 30 también se marca).
+
+La nota de evolución escribe todo esto en texto: "TA 110/70 MMHG (PAM 83 MMHG) BAJO APOYO
+VASOPRESOR CON NOREPINEFRINA A 0.076 MCG/KG/MIN (4 MG EN 250 ML A 20 ML/H) Y VASOPRESINA A 0.03
+U/MIN (20 U EN 100 ML A 9 ML/H)" y "BAJO VENTILACIÓN MECÁNICA INVASIVA (MODO AC, FIO2 40 %, PEEP 8
+CMH2O, VOLUMEN TIDAL 420 ML (6.4 ML/KG DE PESO PREDICHO), FR 16 RPM, PIP 24 CMH2O, PRESIÓN MESETA
+20 CMH2O, PRESIÓN DE DISTENSIÓN 12 CMH2O, RELACIÓN I:E 1:2)".
+
+## Cuentas, permisos y registro de actividad (octubre 2026)
+
+Cada persona entra con **su propio correo y contraseña** (Supabase Auth). Solo entran las cuentas que
+el administrador tiene **activas** en 👥 Usuarios: la base de datos rechaza cualquier lectura o
+escritura de una cuenta bloqueada o sin registro, aunque tenga sesión abierta. El robot de labs y la
+hoja del censo no cambian (usan la llave de servicio).
+
+### 👥 Usuarios (solo el administrador)
+
+Botón **👥 Usuarios** en la cabecera (solo lo ve el administrador).
+
+- **➕ Dar acceso a alguien**: correo, nombre y rol → se crea la cuenta y aparece una **contraseña
+  temporal** una sola vez (12 caracteres, ya copiada): mándasela por WhatsApp. Entra con su correo y
+  esa contraseña y la cambia en 👤 Mi cuenta.
+- Por cuenta: **🔑 Contraseña temporal** (la anterior deja de servir), **🔗 Enlace** (copia un enlace de
+  recuperación que vale 1 hora: al abrirlo la app pide la contraseña nueva), **📧 Correo** (Supabase
+  manda ese enlace por correo; ver SMTP abajo), **✏️ Nombre**, **⬆️ Hacer admin / ⬇️ Quitar admin**,
+  **⛔ Bloquear / 🔓 Activar** (bloqueado no puede ni iniciar sesión) y **🗑 Borrar** (su actividad
+  anterior se conserva).
+- El administrador no puede bloquearse, borrarse ni quitarse el rol a sí mismo.
+- **Sin registro**: cuentas creadas a mano en el panel de Supabase; aparecen con **✅ Dar acceso**.
+
+### 🕵️ Actividad
+
+Pestaña **Actividad** del mismo panel: cada cambio guardado en la nube con **quién** (nombre y
+cuenta), **desde dónde** (nombre del dispositivo, navegador e IP) y **qué** (cama, paciente y cada
+campo con "de → a", incluidas las claves del checklist). Filtros por persona, cama y días; lo que
+hacen el robot de labs y la hoja del censo sale como 🤖. Se guardan 180 días (tabla `audit_log`,
+disparadores en pacientes, notas, No olvidar, procedimientos, guardia y configuración).
+
+### 👤 Mi cuenta (todos)
+
+Nombre (se guarda en la cuenta y se usa en todos tus dispositivos: iniciales en las cajas y en la
+actividad), **nombre de este dispositivo** (p. ej. "iPad de Gera", así sale en "desde dónde") y
+**🔑 Cambiar contraseña** (mínimo 12 caracteres; puede ser una frase corta).
+
+### Recuperar la contraseña (tres caminos)
+
+1. **¿Olvidaste tu contraseña?** en la pantalla de entrada: Supabase manda un enlace al correo
+   (requiere el SMTP de abajo). Al abrirlo, la app pide la contraseña nueva.
+2. El administrador toca **🔗 Enlace** y te lo manda por WhatsApp (no necesita correo).
+3. El administrador toca **🔑 Contraseña temporal** y te la dicta.
+
+### Configuración en Supabase (una vez, 5 minutos)
+
+1. **Authentication → URL Configuration**: Site URL `https://pisolibro.pages.dev`; en Redirect URLs
+   agrega `https://pisolibro.pages.dev/**` y `https://*--pisocirugiahgl.netlify.app/**`. Sin esto, los
+   enlaces de recuperación mandan a otra dirección.
+2. **Authentication → Sign In / Providers → Email**: desactiva *Allow new users to sign up*. Nadie se
+   registra solo (de todas formas, sin registro no ve nada).
+3. **Correo gratis para "¿Olvidaste tu contraseña?"**: el correo integrado de Supabase es limitado
+   (pocos por hora y, en la práctica, solo a correos del equipo del proyecto). Usa tu Gmail:
+   Google → Seguridad → Verificación en 2 pasos → **Contraseñas de aplicaciones** → crea una para
+   "Piso Libro". En Supabase → **Project Settings → Authentication → SMTP Settings** → *Enable
+   custom SMTP*: Host `smtp.gmail.com`, Port `465`, User `gfdz1540@gmail.com`, Password = la
+   contraseña de aplicación, Sender email `gfdz1540@gmail.com`, Sender name `Piso Libro`. Costo: $0
+   (límite ~500 correos al día). Los caminos 2 y 3 funcionan sin esto.
+
+### Si el administrador pierde su acceso
+
+En Supabase → SQL Editor:
+
+```sql
+update public.app_users set role = 'admin', status = 'active' where email = 'gfdz1540@gmail.com';
+```
 
 ## Si un paciente desapareció del censo
 
