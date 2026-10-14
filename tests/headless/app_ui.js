@@ -124,7 +124,7 @@ const MOCK = `(() => {
     const pmDecimal = Array.from(document.querySelectorAll('#card-' + CSS.escape(k) + ' .pm-input[data-field="pm_fc"]')).every(i => i.getAttribute('inputmode') === 'decimal');
     return { line, ck: noteData[k].checklist.qx_fecha, visibleIcons, moreItems, pmDecimal, dirty: Array.from(_dirtyFields[k] || []) };
   });
-  check('U6 fecha Qx → chip "POP d3"; cabecera con 4 iconos + menú "Más" (8 acciones); vitales con teclado numérico', /POP d3/.test(u6.line) && !!u6.ck && u6.visibleIcons === 4 && u6.moreItems === 8 && u6.pmDecimal, JSON.stringify(u6));
+  check('U6 fecha Qx → chip "POP d3"; cabecera con 4 iconos + menú "Más" (9 acciones, con 🤖 Nota IA); vitales con teclado numérico', /POP d3/.test(u6.line) && !!u6.ck && u6.visibleIcons === 4 && u6.moreItems === 9 && u6.pmDecimal, JSON.stringify(u6));
 
   // ── Hoja de alertas en el tablero: críticos + "sin labs de hoy" ──
   const u7 = await page.evaluate(()=>{
