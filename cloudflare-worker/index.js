@@ -16,6 +16,9 @@
 // Variables de entorno requeridas (Cloudflare Workers → Settings → Variables):
 //   ACCESS_TOKEN     (encrypted) — token compartido con el frontend
 //   GEMINI_API_KEY   (encrypted) — API key de Google AI Studio
+//   GITHUB_TOKEN     (encrypted) — token de GitHub con permiso "actions: write" en el repo
+//                    piso-libro; lo usa /api/scrape para disparar el robot WinLab (sin él,
+//                    el botón de la app y el cron de Supabase responden 503 "no configurado")
 
 const GEMINI_MODEL = "gemini-2.5-pro";
 

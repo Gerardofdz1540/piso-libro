@@ -46,13 +46,14 @@ jobs:
           ls -la dist dist/icons dist/vendor
 
       # OJO: `--branch` NO es la rama de git que se publica (siempre es `main`, ver `on:`), sino la
-      # etiqueta que Cloudflare usa para decidir si el deploy es de PRODUCCIÓN o de preview. En el
-      # proyecto `pisolibro` la "Production branch" configurada sigue siendo feature/winlab-auto-sync,
-      # por eso se publica con esa etiqueta. Cuando en Cloudflare → pisolibro → Settings → Builds se
-      # cambie la Production branch a `main`, cambiar aquí a `--branch=main` (ver MANUAL-OPERACION.md).
+      # etiqueta que Cloudflare usa para decidir si el deploy es de PRODUCCIÓN o de preview: cuenta
+      # como producción solo si coincide con la "Production branch" del proyecto `pisolibro`
+      # (Cloudflare → pisolibro → Settings → Builds & deployments). Desde el 14-oct-2026 esa rama es
+      # `main` (antes feature/winlab-auto-sync). Si alguien la cambia en Cloudflare, hay que cambiarla
+      # aquí también, o los deploys quedarán como preview y producción se congelará sin aviso.
       - name: Publicar en Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=pisolibro --branch=feature/winlab-auto-sync
+          command: pages deploy dist --project-name=pisolibro --branch=main
