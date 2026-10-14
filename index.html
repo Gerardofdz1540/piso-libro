@@ -1702,6 +1702,10 @@
     }
     /* En la columna angosta, los grids internos de 2/3 columnas se apilan */
     .fc-side .fc-side-g3, .fc-side .fc-side-g2 { grid-template-columns: 1fr !important; }
+    /* Filas de drenajes más compactas en la columna lateral (iPad horizontal): antes se desbordaban */
+    .fc-side .dv-row { grid-template-columns: minmax(68px, 1fr) minmax(50px, .9fr) 50px minmax(64px, 1.2fr) 30px 24px; gap: 3px; padding: 3px 4px; }
+    .fc-side .dv-row .pm-input.dv-in { font-size: 11px; padding: 2px 4px; }
+    .fc-side .dv-sel { width: 78px; }
     /* Ficha compacta (oct 2026): dos columnas también en iPad horizontal (1194 px menos el carril de camas) */
     @media (max-width: 1000px) {
       .fc-bento { grid-template-columns: 1fr; }
@@ -2830,6 +2834,52 @@
     .ck-title.ck-t-vit { color: #0f766e; }
     .ck-title.ck-t-dren { color: #7c3aed; }
     .ck-title.ck-t-clin { color: #991b1b; }
+    /* Nota libre de drenajes (texto heredado): un renglón discreto bajo la lista estructurada */
+    .dv-note { font-size: 11.5px !important; min-height: 28px !important; padding: 4px 7px !important; background: #fff !important; border: 1px dashed #d8b4fe !important; }
+
+    /* ═══ Bloques de la ficha con color propio (oct 2026): cada caja lleva una franja y un tinte para
+       distinguirla de un vistazo: DX rojo, Cirugías morado, Manejo verde azulado, Pendientes ámbar,
+       Entrega naranja (lo que yo entrego), Recibo verde (lo que me entregan). ═══ */
+    .fc-blk { border-left: 3px solid var(--acc, #cbd5e1); padding-left: 8px; border-radius: 3px; }
+    .fc-blk .field-label { color: var(--acc, #64748b); }
+    .fc-blk .field-ta { background: var(--tint, #fafbfc); border-color: var(--line, #e2e8f0); }
+    .fc-blk .field-ta:focus { border-color: var(--acc, #4fc3f7); box-shadow: 0 0 0 2px color-mix(in srgb, var(--acc, #4fc3f7) 18%, transparent); }
+    .fc-blk-dx { --acc: #dc2626; --tint: #fff7f7; --line: #fecaca; }
+    .fc-blk-cx { --acc: #7c3aed; --tint: #faf5ff; --line: #ddd6fe; }
+    .fc-blk-manejo { --acc: #0d9488; --tint: #f0fdfa; --line: #99f6e4; }
+    .fc-blk-plan { --acc: #d97706; --tint: #fffbeb; --line: #fde68a; }
+    .fc-blk-entrega { --acc: #ea580c; --tint: #fff7ed; --line: #fdba74; }
+    .fc-blk-recibo { --acc: #16a34a; --tint: #f0fdf4; --line: #86efac; }
+    .fc-blk-hist { --acc: #64748b; --tint: #f8fafc; --line: #e2e8f0; }
+    body.dark .fc-blk .field-ta { background: #0f1c2e; border-color: #23405f; }
+    body.dark .fc-blk .field-label { color: var(--acc, #9fb4d0) !important; filter: brightness(1.35); }
+    /* Entrega + Recibo lado a lado (apilados en pantallas angostas) */
+    .fc-guardia { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+    @media (max-width: 640px) { .fc-guardia { grid-template-columns: 1fr; } }
+    .gd-btn { background: #fff; border: 1px solid var(--acc, #94a3b8); color: var(--acc, #334155); border-radius: 8px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .gd-btn:hover { background: var(--tint, #f8fafc); }
+    body.dark .gd-btn { background: #152e4d; }
+
+    /* ═══ Cirugías / procedimientos (oct 2026): lista con fecha, PO día N, procedimiento, hallazgos,
+       sangrado y cirujano. Sustituye las cajas de texto "Qx", "Drenajes" y "Sangrado". ═══ */
+    .cx-list { display: flex; flex-direction: column; gap: 5px; }
+    .cx-row { background: #fff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 5px 7px; }
+    .cx-r1 { display: grid; grid-template-columns: 142px auto minmax(0, 1fr) 26px; gap: 5px; align-items: start; }
+    .cx-r2 { display: grid; grid-template-columns: minmax(0, 1fr) 96px 130px; gap: 5px; margin-top: 4px; align-items: start; }
+    @media (max-width: 640px) { .cx-r1 { grid-template-columns: 1fr auto; } .cx-r1 .cx-proc { grid-column: 1 / -1; } .cx-r2 { grid-template-columns: 1fr 1fr; } .cx-r2 .cx-in-hal { grid-column: 1 / -1; } }
+    .cx-date { font-family: var(--mono); font-size: 11px; border: 1px solid #ddd6fe; border-radius: 6px; padding: 3px 4px; min-height: 28px; color: #3b0764; background: #faf5ff; font-weight: 700; box-sizing: border-box; width: 100%; }
+    .cx-po { font-size: 10px; font-weight: 800; color: #fff; background: #7c3aed; border-radius: 8px; padding: 2px 7px; white-space: nowrap; font-family: var(--mono); align-self: center; }
+    .cx-po.cx-po-none { background: #e9d5ff; color: #6d28d9; }
+    .cx-in { width: 100%; box-sizing: border-box; min-height: 28px; border: 1px solid #e9d5ff; border-radius: 6px; padding: 4px 7px; font-size: 12px; font-family: var(--font); color: #1e293b; background: #fff; resize: none; line-height: 1.35; overflow: hidden; }
+    .cx-in:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124, 58, 237, .14); }
+    .cx-proc { font-weight: 700; color: #3b0764; }
+    .cx-add { font-size: 11px; font-weight: 800; padding: 0 10px; min-height: 28px; border-radius: 12px; border: 1px dashed #a78bfa; background: #fff; color: #6d28d9; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .cx-add:hover { background: #ede9fe; }
+    .cx-empty { font-size: 11px; color: #7c3aed; opacity: .8; font-style: italic; padding: 4px 2px; }
+    body.dark .cx-row { background: #0f1c2e; border-color: #3b2a66; }
+    body.dark .cx-in, body.dark .cx-date { background: #0e2138; color: #e2e8f0; border-color: #3b2a66; }
+    body.dark .cx-proc { color: #e9d5ff; }
+    body.dark .cx-add { background: #0f1c2e; color: #c4b5fd; }
 
     .ck-sep {
       color: #cbd5e1;
@@ -3332,15 +3382,8 @@
       color: #991b1b
     }
 
-    /* ── ENTREGA FIELD HIGHLIGHT ─────────────────────────────────────────── */
-    .entrega-row .field-ta {
-      background: #fffbeb;
-      border-color: #fcd34d
-    }
-
-    .entrega-row .field-label {
-      color: #b45309
-    }
+    /* ── ENTREGA / RECIBO DE GUARDIA (los colores viven en .fc-blk-entrega / .fc-blk-recibo) ── */
+    .entrega-row .field-ta, .recibo-row .field-ta { min-height: 92px; }
 
     /* ════ RESID — bottom-sheet select + iconografía clínica ════ */
     .resid-select {
@@ -3930,8 +3973,7 @@ details.fc-sec > .fcs-body > .cds-section, details.fc-sec > .fcs-body > .ind-sec
 @keyframes fc-flash{ 0%{ box-shadow:0 0 0 3px rgba(14,116,144,.55); } 100%{ box-shadow:0 0 0 0 rgba(14,116,144,0); } }
 .ff-labs-split{ display:grid; grid-template-columns:1fr 1fr; gap:6px; align-items:start; }
 .ff-labs-split .ff-labs-wrap{ min-width:0; }
-.fc-hist-grid{ grid-template-columns:1fr 1fr 1fr; }
-@media (max-width:1000px){ .fc-hist-grid{ grid-template-columns:1fr 1fr; } }
+.fc-hist-grid{ grid-template-columns:1fr 1fr; }
 @media (max-width:640px){ .ff-labs-split{ grid-template-columns:1fr; } .fc-hist-grid{ grid-template-columns:1fr; } }
 body.hdr-min #quote-bar, body.hdr-min #header-top{ display:none !important; }
 body.hdr-min #tabs{ margin-top:0; }
@@ -7893,6 +7935,8 @@ function plExportBackup() {
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_sep_gasto: "", pm_sep_fuga: false, pm_sep_fuga_grado: "", pm_hxqx: "",
           dispositivos: [], /* oct 2026: lista personalizable de drenajes/sondas/estomas (ver renderChecklist) */
+          cirugias: [],     /* oct 2026: cirugías/procedimientos con fecha (sustituye el texto qx + sangrado) */
+          recibo: "",       /* oct 2026: lo que me entregan al recibir la guardia (la caja Entrega es lo que yo entrego) */
           pm_vent: false, pm_vent_modo: "", pm_vent_fio2: "", pm_vent_peep: "", pm_vent_vt: "", pm_vent_fr: "", pm_vent_pip: "",
           cruce_activo: false, cruce_ts: "", cruce_unidades: "", cruce_banco: "",
           nota_fn: "", nota_dx: "", nota_s: "", nota_o: "", nota_plan: "", nota_prono: "", nota_estado: "", pm_o2via: "", nota_adscrito: "", nota_residente: "",
@@ -8067,6 +8111,9 @@ function plExportBackup() {
       // Dispositivos (oct 2026): una sola vez, convertir los chips fijos (SNG/PRS1-3/Estoma/SEP) en la
       // lista personalizable. Solo cuando la nota aún no trae la lista (undefined), nunca sobre [].
       if (!Array.isArray(nd.checklist.dispositivos)) nd.checklist.dispositivos = _dispositivosDesdeLegado(nd.checklist);
+      // Cirugías (oct 2026): una sola vez, convertir el texto "Qx / Procedimiento" (+ sangrado + fecha POP)
+      // en la lista con fechas. Solo cuando la nota aún no trae la lista (undefined), nunca sobre [].
+      if (!Array.isArray(nd.checklist.cirugias)) nd.checklist.cirugias = _cirugiasDesdeLegado(nd);
       Object.keys(checklistDefaults).forEach(function(ckKey) {
         if (nd.checklist[ckKey] === undefined) nd.checklist[ckKey] = checklistDefaults[ckKey];
       });
@@ -8351,8 +8398,9 @@ function plExportBackup() {
       var obj="PACIENTE "+SX+(vit.length?", CON "+vit.join(", "):"")+". "+(o?_plneOra(o):"[EXPLORACIÓN FÍSICA: ESTADO DE ALERTA, MUCOSAS, TÓRAX, PRECORDIO, ABDOMEN, HERIDA QUIRÚRGICA, EXTREMIDADES].");
       if(disp.lista.length) obj+=" "+_plneOra(disp.lista.join(", "));
       if(disp.foley) obj+=" "+_plneOra(disp.foley); else if(_plneVal2(ck.pm_uresis)) obj+=" URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":"")+".";
-      var bal=_plneVal2(nd.balance||ck.pm_balance); if(bal) obj+=" BALANCE HÍDRICO "+bal+".";
-      var sang=_plneVal2(nd.sangrado); if(sang) obj+=" SANGRADO: "+_plneOra(sang);
+      var bal=_plneVal2(ck.pm_balance||nd.balance); if(bal) obj+=" BALANCE HÍDRICO "+bal+".";
+      var _cxList=(typeof cirugiasOrdenadas==="function")?cirugiasOrdenadas(ck):[];
+      var sang=_plneVal2(nd.sangrado); if(sang && !_cxList.some(function(c){ return _plneVal2(c.sangrado); })) obj+=" SANGRADO: "+_plneOra(sang);
       out.push(obj);
       // 4) Laboratorios: control más reciente completo + control previo (lo que hoy no se tomó + tendencia)
       var snaps=_plneSnaps(nd);
@@ -8369,7 +8417,11 @@ function plExportBackup() {
       } else { out.push("LABORATORIOS: [SIN LABORATORIOS REGISTRADOS EN LA TARJETA]."); }
       // 5) Análisis y plan
       var an=[];
-      var qx=_plneVal2(nd.qx);
+      // Cirugías de la lista (con fecha y día de postoperatorio); si no hay lista, el texto Qx anterior.
+      var qx=_cxList.filter(function(c){ return _plneVal2(c.procedimiento)||c.fecha; }).map(function(c){
+        var d=(typeof _cirugiaDias==="function")?_cirugiaDias(c.fecha):null; var meta=[c.fecha?_plneFechaPunto(c.fecha):"", d!==null?"PO DÍA "+d:""].filter(Boolean).join(", ");
+        var s=(_plneVal2(c.procedimiento)||"CIRUGÍA")+(meta?" ("+meta+")":""); if(_plneVal2(c.hallazgos)) s+=" CON HALLAZGOS DE "+_plneVal2(c.hallazgos); if(_plneVal2(c.sangrado)) s+=", SANGRADO "+_plneVal2(c.sangrado)+(/^[\d.,]+$/.test(_plneVal2(c.sangrado))?" ML":""); return s;
+      }).join(" + ") || _plneVal2(nd.qx);
       an.push("PACIENTE "+SX+" CON LOS DIAGNÓSTICOS YA MENCIONADOS"+(qx?", CON ANTECEDENTE QUIRÚRGICO DE "+qx.replace(/\s+/g," "):"")+".");
       PLNE_SIS.forEach(function(sis){ var v=_plneVal2(ck["nota_sis_"+sis[0]]); if(v) an.push(_plneOra(sis[1].toUpperCase()+": "+v)); });
       try{ var ex=JSON.parse(ck.nota_sis_extra||"[]"); if(Array.isArray(ex)) ex.forEach(function(it){ if(it&&_plneVal2(it.txt)) an.push(_plneOra((_plneVal2(it.etq)||"OTRO").toUpperCase()+": "+_plneVal2(it.txt))); }); }catch(_){ }
@@ -9164,8 +9216,8 @@ function plExportBackup() {
     // Genera el badge de cruce para insertar en el header de la tarjeta
     function renderCruceBadge(nd, k) {
       const ck = (nd && nd.checklist) || {};
-      const hasQx = nd && nd.qx && nd.qx.trim();
-      if (!hasQx && !ck.cruce_activo) return ""; // Oculto si no hay qx ni cruce iniciado
+      const hasQx = nd && ((nd.qx && nd.qx.trim()) || (Array.isArray(ck.cirugias) && ck.cirugias.length));
+      if (!hasQx && !ck.cruce_activo) return ""; // Oculto si no hay cirugía ni cruce iniciado
 
       const status = getCruceStatus(nd);
 
@@ -10721,7 +10773,10 @@ function plExportBackup() {
         const ck = (nd && nd.checklist) || {};
         const parts = [];
         const pop = popDays(nd);
-        if (pop !== null) parts.push("🔪 POP d" + pop + (nd.qx ? " · " + toSafeString(nd.qx).trim().split("\n")[0].slice(0, 34) : ""));
+        const _ucx = (typeof ultimaCirugia === "function") ? ultimaCirugia(ck) : null;
+        const _qxTxt = (_ucx && toSafeString(_ucx.procedimiento).trim()) || toSafeString(nd.qx).trim().split("\n")[0];
+        if (pop !== null) parts.push("🔪 POP d" + pop + (_qxTxt ? " · " + _qxTxt.slice(0, 34) : ""));
+        else if (_qxTxt) parts.push("🔪 " + _qxTxt.slice(0, 34));
         if (ck.npo) parts.push("⛔ Ayuno" + (ck.npo_dias ? " d" + ck.npo_dias : ""));
         else if (ck.dieta) parts.push("🍽 " + ck.dieta);
         if (ck.atb) parts.push("💊 ATB" + (ck.atb_nombre ? " " + ck.atb_nombre : "") + (ck.atb_dias ? " d" + ck.atb_dias : ""));
@@ -10870,6 +10925,8 @@ function plExportBackup() {
       if (dirty.has("ck_interconsultas")) nd.checklist.interconsultas = localChecklist.interconsultas || "";
       if (dirty.has("ck_cultivos")) nd.checklist.cultivos = localChecklist.cultivos || "";
       if (dirty.has("ck_dispositivos")) nd.checklist.dispositivos = Array.isArray(localChecklist.dispositivos) ? localChecklist.dispositivos : [];
+      if (dirty.has("ck_cirugias")) nd.checklist.cirugias = Array.isArray(localChecklist.cirugias) ? localChecklist.cirugias : [];
+      if (dirty.has("ck_recibo")) nd.checklist.recibo = localChecklist.recibo || "";
       if (remoteMeta.exists && !dirty.has("entrega")) nd.entrega = remoteMeta.entrega;
       if (remoteMeta.exists) {
         // Diagrama corporal: no pisar un trazo local en edición/pendiente, ni borrar el local con
@@ -13028,11 +13085,13 @@ function plExportBackup() {
       const ck = (nd.checklist) || {};
       if (ck.cruce_activo) parts.push("🔪 CRUCE QUIRÚRGICO ACTIVO");
       if (ck.npt) parts.push("💉 NPT activa");
-      if (nd.balance && nd.balance.trim()) parts.push("⚖️ Balance: " + nd.balance.trim());
+      const _cx = (typeof cirugiasTexto === "function") ? cirugiasTexto(ck, " | ") : "";
+      if (_cx) parts.push("🔪 Cirugías: " + _cx);
+      const _bal = (typeof balanceTexto === "function") ? balanceTexto(nd) : toSafeString(nd.balance).trim();
+      if (_bal) parts.push("⚖️ Balance: " + _bal);
       const _dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " | ") : "";
       if (_dt) parts.push("🫁 Drenajes/sondas: " + _dt);
-      if (nd.drenajes && nd.drenajes.trim()) parts.push("🩸 Drenajes: " + nd.drenajes.trim());
-      if (nd.sangrado && nd.sangrado.trim()) parts.push("🔴 Sangrado: " + nd.sangrado.trim());
+      if (nd.drenajes && nd.drenajes.trim()) parts.push("🩸 Nota de drenajes: " + nd.drenajes.trim());
       return parts.join("\n");
     }
 
@@ -13811,9 +13870,10 @@ function plExportBackup() {
           if (ind && ind._matchWarn) indBadge = '<span class="bj-n bj-crit">?</span>';
           else if (ind) indBadge = cnt((ind.MEDICAMENTOS || []).length + (ind["ANTIBIÓTICOS"] || []).length);
         } catch (_) {}
+        const nCx = ((ck.cirugias) || []).length;
         const items = [
-          ["dx", "Dx", ""], ["labs", "Labs", labsBadge], ["manejo", "Manejo", ""], ["plan", "Plan", cnt(pendOpen)],
-          ["pase", "Pase", ""], ["entrega", "Entrega", ""],
+          ["dx", "Dx", ""], ["labs", "Labs", labsBadge], ["cx", "Cirugías", cnt(nCx)], ["manejo", "Manejo", ""], ["plan", "Plan", cnt(pendOpen)],
+          ["pase", "Pase", ""], ["entrega", "Guardia", ""],
           ["historia", "Historia", ""], ["ic", "IC·Cult", ""], ["sug", "Sug.", cnt(cds, cdsCrit)],
           ["ind", "Indic.", indBadge], ["img", "Estudios", cnt(imgCount)], ["diag", "Diagrama", ""], ["rec", "No olvidar", cnt(remOpen)]
         ];
@@ -13918,11 +13978,20 @@ function plExportBackup() {
       if (val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) { alert("Formato: AAAA-MM-DD (ej. " + todayStr() + ")"); return; }
       if (!nd.checklist) nd.checklist = {};
       nd.checklist.qx_fecha = val;
+      // La fecha POP es la de la cirugía más reciente de la lista: se actualiza ahí (o se crea la entrada).
+      if (val && Array.isArray(nd.checklist.cirugias)) {
+        const u = ultimaCirugia(nd.checklist);
+        if (u) u.fecha = val;
+        else nd.checklist.cirugias.push({ id: _cirugiaId(), fecha: val, procedimiento: "", hallazgos: "", sangrado: "", cirujano: "" });
+        _saveNoteNow(k, nd, "ck_cirugias");
+      }
       _saveNoteNow(k, nd, "ck_qx_fecha");
       _rerenderCard(k);
     }
     function popDays(nd) {
-      const f = nd && nd.checklist && nd.checklist.qx_fecha;
+      // Días de postoperatorio: la cirugía más reciente de la lista; si no hay lista, la fecha POP (qx_fecha).
+      const u = (typeof ultimaCirugia === "function" && nd && nd.checklist) ? ultimaCirugia(nd.checklist) : null;
+      const f = (u && /^\d{4}-\d{2}-\d{2}$/.test(u.fecha || "")) ? u.fecha : (nd && nd.checklist && nd.checklist.qx_fecha);
       if (!f || !/^\d{4}-\d{2}-\d{2}$/.test(f)) return null;
       const p = f.split("-");
       const d = new Date(+p[0], +p[1] - 1, +p[2]); const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -14031,7 +14100,9 @@ function plExportBackup() {
            Mismos bloques y handlers de siempre: el contrato data-* / onclick no cambia. ═══ */
         const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
         const pase = isPaseMode();
-        const anchor = function (name) { return `id="sec-${name}-${ek}" class="fc-anchor"`; };
+        const anchor = function (name, blk) { return `id="sec-${name}-${ek}" class="fc-anchor${blk ? " fc-blk fc-blk-" + blk : ""}"`; };
+        const nCx = ((nd.checklist && nd.checklist.cirugias) || []).length;
+        const reciboTxt = toSafeString(nd.checklist && nd.checklist.recibo);
         const pendLines = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s); });
         const pendOpen = pendLines.filter(function (s) { return !/^✓\s/.test(s); }).length;
         const cdsHtml = renderCDSSection(p, nd, k);
@@ -14054,10 +14125,11 @@ function plExportBackup() {
         const _dOpen = !!(window.__drainsOpen && window.__drainsOpen[k]);
         return `<div class="fc-bento">
       <div class="fc-main">
-      <div ${anchor("dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}</div>
-      <div ${anchor("labs")}>${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
-      <div ${anchor("manejo")} style="margin-top:8px">${fieldRow("💉 Manejo médico", nd.manejo, k, "manejo", 3)}</div>
-      <div ${anchor("plan")} style="margin-top:8px">
+      <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}</div>
+      <div ${anchor("labs")} style="margin-top:8px">${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
+      <div ${anchor("cx", "cx")} style="margin-top:8px">${renderCirugiasSection(nd, k)}</div>
+      <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("💉 Manejo médico actual", nd.manejo, k, "manejo", 3)}</div>
+      <div ${anchor("plan", "plan")} style="margin-top:8px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
           <span class="field-label" style="margin:0">⚠️ Pendientes / Plan${pendOpen ? ` <span class="fc-cnt">${pendOpen}</span>` : ""}</span>
           <button type="button" class="pend-tool" data-k="${k}" onclick="pendInsertToday(this.dataset.k)" title="Insertar la fecha de hoy al inicio (evolución del día)">➕ Hoy</button>
@@ -14072,22 +14144,33 @@ function plExportBackup() {
           placeholder="Pendientes / Plan...">${esc(nd.pendientes || "")}</textarea>
         ${renderPendList(nd, k)}
       </div>
-      <div id="sec-entrega-${ek}" class="fc-anchor entrega-row" style="margin-top:8px">
+      <!-- Guardia (oct 2026): ENTREGA = lo que yo dejo para la siguiente guardia (eventualidades y por hacer;
+           las novedades de labs/imagen/cultivos se anotan solas). RECIBO = lo que me entregan al llegar.
+           "⇄ Tomar guardia" pasa la Entrega del saliente a mi Recibo con fecha y hora y deja Entrega vacía. -->
+      <div class="fc-guardia">
+      <div id="sec-entrega-${ek}" class="fc-anchor entrega-row fc-blk fc-blk-entrega">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📋 Entrega de guardia</span>
+          <span>📤 Entrega de guardia</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Auto-llenar entrega con labs críticos, pendientes y cruce">✨ Auto-llenar</button>
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Entrega de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
         </div>
-        <textarea class="field-ta" rows="3" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)">${esc(nd.entrega || "")}</textarea>
+        <textarea class="field-ta" rows="4" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Eventualidades de mi guardia y cosas por hacer para la siguiente…">${esc(nd.entrega || "")}</textarea>
         ${cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : ""}
       </div>
+      <div id="sec-recibo-${ek}" class="fc-anchor recibo-row fc-blk fc-blk-recibo">
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <span>📥 Recibo de guardia</span>
+          <button type="button" class="gd-btn" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasar lo que dejó la guardia anterior en Entrega a mi Recibo (con fecha y hora) y vaciar Entrega">⇄ Tomar guardia</button>
+        </div>
+        <textarea class="field-ta" rows="4" data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Lo que me entregan al recibir la guardia…">${esc(reciboTxt)}</textarea>
+      </div>
+      </div>
       <div class="fc-secs">
-      ${fcSec("historia", k, "📋 Historia · APP / Qx / PA", (toSafeString(nd.app).trim() || toSafeString(nd.qx).trim() || toSafeString(nd.pa).trim()) ? "con texto" : "vacío",
-        `<div class="grid-2 fc-hist-grid" style="margin-top:0">
+      ${fcSec("historia", k, "📋 Historia · APP / PA", (toSafeString(nd.app).trim() || toSafeString(nd.pa).trim()) ? "con texto" : "vacío",
+        `<div class="grid-2 fc-hist-grid fc-blk fc-blk-hist" style="margin-top:0">
           ${fieldRow("📋 APP / Antecedentes", nd.app, k, "app", 3)}
-          ${fieldRow("🔧 Qx / Procedimiento", nd.qx, k, "qx", 3)}
           ${fieldRow("🩺 PA / Padecimiento actual", nd.pa, k, "pa", 3)}
         </div>`, !pase)}
       ${fcSec("roles", k, "📋 Pendientes MIPs / R1", (mipsTxt || r1Txt) ? "con tareas" : "", `<div class="grid-2" style="margin-top:0">
@@ -14114,11 +14197,8 @@ function plExportBackup() {
       </div><!-- /fc-main -->
       <div class="fc-side">
       <div ${anchor("pase")}>${renderChecklist(nd, k)}</div>
-      <div class="grid-3 fc-side-g3" style="margin-top:8px">
-        ${fieldRow("🩸 Drenajes", nd.drenajes, k, "drenajes", 2)}
-        ${fieldRow("🔴 Sangrado", nd.sangrado, k, "sangrado", 2)}
-        ${fieldRow("⚖️ Balance", nd.balance, k, "balance", 2)}
-      </div>
+      <!-- (oct 2026) Las cajas de texto Drenajes / Sangrado / Balance se retiraron: los drenajes viven en la
+           lista de dispositivos del pase (con nota libre), el sangrado en cada cirugía y el balance en el pase. -->
       <div class="fc-secs">
       ${fcSec("ic", k, "🩺 Interconsultas · 🦠 Cultivos", cultPos ? '<span class="fc-cnt fc-cnt-crit">POSITIVO</span>' : (icHas ? "con datos" : ""), `${cultLab}<div class="grid-2 fc-side-g2" style="margin-top:0">
           ${renderInterconsultasSection(nd, k)}
@@ -15457,7 +15537,7 @@ function plExportBackup() {
       if (ck_ai.atb && ck_ai.atb_nombre) clinCtx.push("ATB activo: " + ck_ai.atb_nombre + (ck_ai.atb_dias ? " (día " + ck_ai.atb_dias + ")" : ""));
       if (ck_ai.npt) clinCtx.push("NPT activa" + (ck_ai.npt_pct ? " (" + ck_ai.npt_pct + "%)" : "") + (ck_ai.npt_inicio ? " desde " + ck_ai.npt_inicio : ""));
       if (ck_ai.tvp && ck_ai.tvp_tipo) clinCtx.push("TVP: " + ck_ai.tvp_tipo + (ck_ai.tvp_dosis ? " " + ck_ai.tvp_dosis : ""));
-      if (nd.qx && nd.qx.trim()) clinCtx.push("Qx/Procedimiento: " + nd.qx.trim());
+      { const _cxs = (typeof cirugiasTexto === "function") ? cirugiasTexto(ck_ai, " | ") : ""; if (_cxs) clinCtx.push("Cirugías: " + _cxs); else if (nd.qx && nd.qx.trim()) clinCtx.push("Qx/Procedimiento: " + nd.qx.trim()); }
       const clinCtxStr = clinCtx.length ? clinCtx.join(" | ") : "No especificado";
 
       const prompt = `Eres un médico clínico experto en cirugía general. Analiza los laboratorios de un paciente hospitalizado usando los rangos de referencia EXACTOS provistos. Debes detectar CUALQUIER valor fuera del rango normal, aunque sea levemente anormal.
@@ -17324,7 +17404,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             ${pf("DX", p.dx || nd.dx, true)}
           </div>
           <div>
-            ${pf("QX / Plan", nd.qx || nd.manejo)}
+            ${pf("QX / Plan", cirugiasTexto(cl, " | ") || nd.qx || nd.manejo)}
             ${drainTxt ? pf("💧 Drenajes", drainTxt) : ""}
             ${nptTxt ? pf("💉 NPT", nptTxt) : ""}
             ${pf("📌 Pendientes", nd.pendientes)}
@@ -17433,6 +17513,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           { const _dt = dispositivosTexto(cl, " | "); if (_dt) drenParts.push(_dt); }
           const drenTxt = drenParts.join("  |  ");
           const drenBig = drenTxt ? `<div class="eg-bigrow"><span class="eg-biglbl">💧 Gastos por drenajes</span><div class="eg-bigval">${esc(drenTxt)}</div></div>` : "";
+          const cxTxt = cirugiasTexto(cl, "  |  ");
+          const cxBig = cxTxt ? `<div class="eg-bigrow"><span class="eg-biglbl">🔪 Cirugías</span><div class="eg-bigval">${esc(cxTxt)}</div></div>` : "";
 
           cards += `<div class="eg-c" style="border-left:7px solid ${ec}">
         <div class="eg-bighdr">
@@ -17443,6 +17525,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           </div>
         </div>
         ${dxRow}
+        ${cxBig}
         ${labsTbl}
         ${drenBig}
       </div>`;
@@ -17867,7 +17950,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       <div class="fmt-section-title">🔪 NOTA PREQUIRÚRGICA</div>
       ${fmtF("fqx_fecha_cx", "Fecha cirugía", fecha)}
       ${fmtF("fqx_tipo_interv", "Tipo intervención", "", "false", "select").replace("</select>", `<option>URGENCIA</option><option>ELECTIVA</option><option>PROGRAMADA</option></select>`)}
-      ${fmtF("fqx_plan_qx", "Plan quirúrgico", nd.qx || "", true, "textarea")}
+      ${fmtF("fqx_plan_qx", "Plan quirúrgico", (ultimaCirugia(nd.checklist) || {}).procedimiento || nd.qx || "", true, "textarea")}
 
       <div class="fmt-section-title">⚠️ FACTORES DE RIESGO</div>
       <div class="fmt-field fmt-full"><div class="fmt-checks">
@@ -17912,9 +17995,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       ${fmtF("fqx_ayud2", "2do Ayudante", "")}
       ${fmtF("fqx_instrumentista", "Instrumentista", "")}
       ${fmtF("fqx_circulante", "Circulante", "")}
-      ${fmtF("fqx_hallazgos", "Hallazgos transoperatorios", nd.drenajes ? "Drenajes: " + nd.drenajes : "", true, "textarea")}
+      ${fmtF("fqx_hallazgos", "Hallazgos transoperatorios", (ultimaCirugia(nd.checklist) || {}).hallazgos || (nd.drenajes ? "Drenajes: " + nd.drenajes : ""), true, "textarea")}
       ${fmtF("fqx_tecnica", "Descripción técnica quirúrgica", "", true, "textarea")}
-      ${fmtF("fqx_sangrado", "Sangrado", nd.sangrado || "")}
+      ${fmtF("fqx_sangrado", "Sangrado", (ultimaCirugia(nd.checklist) || {}).sangrado || nd.sangrado || "")}
       ${fmtF("fqx_gasas", "Cuenta textil", "COMPLETA", false, "select").replace("</select>", `<option>COMPLETA</option><option>INCOMPLETA</option></select>`)}
       ${fmtF("fqx_pieza", "Estudio histopatológico / Pieza", "")}
       ${fmtF("fqx_incidentes", "Incidentes / Accidentes", "NINGUNO")}
@@ -18022,8 +18105,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       ${fmtF("fcq_exp", "N° Expediente", p.exp)}
       ${fmtF("fcq_responsable", "Nombre acompañante responsable", "", true)}
       ${fmtF("fcq_medico", "Nombre médico tratante", p.adscrito || "", false, "select").replace("</select>", `<option value="">—</option>${adsOpts}</select>`)}
-      ${fmtF("fcq_procedimiento", "Procedimiento médico/quirúrgico a realizar", nd.qx || p.dx || "", true, "textarea")}
-      ${fmtF("fcq_consiste", "Que consiste en", nd.qx || "", true, "textarea")}
+      ${fmtF("fcq_procedimiento", "Procedimiento médico/quirúrgico a realizar", (ultimaCirugia(nd.checklist) || {}).procedimiento || nd.qx || p.dx || "", true, "textarea")}
+      ${fmtF("fcq_consiste", "Que consiste en", (ultimaCirugia(nd.checklist) || {}).procedimiento || nd.qx || "", true, "textarea")}
       ${fmtF("fcq_beneficios", "Beneficios", "", true, "textarea")}
       ${fmtF("fcq_complicaciones", "Complicaciones más frecuentes", "HEMORRAGIA, INFECCIÓN DE HERIDA QUIRÚRGICA, LESIÓN DE ÓRGANOS ADYACENTES, DEHISCENCIA, FORMACIÓN DE ABSCESO, HERNIA POSTINCISIONAL, NECESIDAD DE REINTERVENCIÓN, CHOQUE, MUERTE.", true, "textarea")}
       ${fmtF("fcq_alternativas", "Alternativas disponibles", "", true, "textarea")}
@@ -22431,6 +22514,173 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       _saveDispositivos(k, nd); _rerenderCard(k);
     }
 
+    // ═══ CIRUGÍAS / PROCEDIMIENTOS (oct 2026, pedido de Gera) ═══════════════════════════════════
+    // Un paciente puede tener varias intervenciones en la misma hospitalización. Lista en
+    // checklist.cirugias: [{ id, fecha (AAAA-MM-DD), procedimiento, hallazgos, sangrado, cirujano }].
+    // Sustituye las cajas de texto "Qx / Procedimiento", "Drenajes" (ya hay lista de dispositivos) y
+    // "Sangrado" (es por cirugía). El texto anterior se convierte UNA vez (ver migrateNote) sin perderse.
+    function _cirugiaId() { return "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+    function _cxFechaDeTexto(s) {
+      const m = String(s || "").match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+      if (m) { let y = m[3]; if (y.length === 2) y = "20" + y; const iso = y + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0"); return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? { iso: iso, raw: m[0] } : null; }
+      const n = String(s || "").match(/(\d{4})-(\d{2})-(\d{2})/);
+      return n ? { iso: n[0], raw: n[0] } : null;
+    }
+    function _cirugiasDesdeLegado(nd) {
+      const out = [];
+      const ck = (nd && nd.checklist) || {};
+      const qx = toSafeString(nd && nd.qx).trim();
+      const sang = toSafeString(nd && nd.sangrado).trim();
+      const mk = (extra) => Object.assign({ id: _cirugiaId(), fecha: "", procedimiento: "", hallazgos: "", sangrado: "", cirujano: "" }, extra || {});
+      const lines = qx.split("\n").map(s => s.replace(/^[\s•\-*·]+/, "").trim()).filter(Boolean);
+      const dated = lines.filter(l => _cxFechaDeTexto(l));
+      if (dated.length) {
+        // Líneas con fecha = una cirugía cada una; las líneas sin fecha que siguen son sus hallazgos/notas.
+        let cur = null;
+        lines.forEach(l => {
+          const f = _cxFechaDeTexto(l);
+          if (f) {
+            const txt = l.replace(f.raw, "").replace(/^[\s:·\-–—()]+|[\s:·\-–—()]+$/g, "").trim();
+            cur = mk({ fecha: f.iso, procedimiento: txt });
+            out.push(cur);
+          } else if (cur) { cur.hallazgos = cur.hallazgos ? cur.hallazgos + " · " + l : l; }
+          else { cur = mk({ procedimiento: l }); out.push(cur); }
+        });
+      } else if (lines.length === 1) {
+        out.push(mk({ procedimiento: lines[0] }));
+      } else {
+        lines.forEach(l => out.push(mk({ procedimiento: l })));
+      }
+      // Fecha POP registrada con "🔪 Fecha de cirugía" → a la única cirugía sin fecha
+      const qf = toSafeString(ck.qx_fecha).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(qf)) {
+        const sinFecha = out.filter(c => !c.fecha);
+        if (out.length === 1 && sinFecha.length === 1) sinFecha[0].fecha = qf;
+        else if (!out.length) out.push(mk({ fecha: qf, procedimiento: "" }));
+      }
+      // Sangrado (texto anterior) → a la cirugía más reciente
+      if (sang) {
+        if (!out.length) out.push(mk({ sangrado: sang }));
+        else { const last = cirugiasOrdenadas({ cirugias: out })[0]; if (!last.sangrado) last.sangrado = sang; else last.hallazgos = (last.hallazgos ? last.hallazgos + " · " : "") + "Sangrado: " + sang; }
+      }
+      return out;
+    }
+    function _cirugiaDias(fecha) { return (typeof _dispositivoDias === "function") ? _dispositivoDias(fecha) : null; }
+    // Más reciente primero; sin fecha al final (en su orden de captura)
+    function cirugiasOrdenadas(ck) {
+      const list = (ck && Array.isArray(ck.cirugias)) ? ck.cirugias.filter(Boolean) : [];
+      return list.slice().sort((a, b) => {
+        const fa = String(a.fecha || ""), fb = String(b.fecha || "");
+        if (fa && fb) return fb.localeCompare(fa);
+        if (fa) return -1; if (fb) return 1; return 0;
+      });
+    }
+    function ultimaCirugia(ck) { return cirugiasOrdenadas(ck)[0] || null; }
+    // Texto resumen: "LAPE + drenaje (10/10, PO d3) | Reintervención (12/10, PO d1)"
+    function cirugiasTexto(ck, sep, mayus) {
+      return cirugiasOrdenadas(ck).filter(c => toSafeString(c.procedimiento).trim() || c.fecha).map(c => {
+        const d = _cirugiaDias(c.fecha);
+        const f = c.fecha ? (typeof fmtDateChip === "function" ? fmtDateChip(c.fecha) : c.fecha) : "";
+        const meta = [f, d !== null ? "PO d" + d : ""].filter(Boolean).join(", ");
+        let s = (toSafeString(c.procedimiento).trim() || "Cirugía") + (meta ? " (" + meta + ")" : "");
+        if (toSafeString(c.sangrado).trim()) s += " sangrado " + toSafeString(c.sangrado).trim() + (/^[\d.,]+$/.test(toSafeString(c.sangrado).trim()) ? " mL" : "");
+        return mayus ? s.toUpperCase() : s;
+      }).join(sep || " | ");
+    }
+    // Balance hídrico: vive en el pase (pm_balance); el texto anterior nd.balance sigue siendo respaldo.
+    function balanceTexto(nd) { const ck = (nd && nd.checklist) || {}; return toSafeString(ck.pm_balance).trim() || toSafeString(nd && nd.balance).trim(); }
+    function _saveCirugias(k, nd) {
+      // La fecha POP (qx_fecha) sigue a la cirugía más reciente para que "POP dN", cruce, etc. no cambien.
+      const u = ultimaCirugia(nd.checklist);
+      nd.checklist.qx_fecha = (u && /^\d{4}-\d{2}-\d{2}$/.test(u.fecha || "")) ? u.fecha : (nd.checklist.cirugias.length ? "" : (nd.checklist.qx_fecha || ""));
+      _saveNoteNow(k, nd, "ck_cirugias");
+    }
+    function addCirugia(k, fecha) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      if (!Array.isArray(nd.checklist.cirugias)) nd.checklist.cirugias = [];
+      const c = { id: _cirugiaId(), fecha: fecha || todayStr(), procedimiento: "", hallazgos: "", sangrado: "", cirujano: "" };
+      nd.checklist.cirugias.push(c);
+      _saveCirugias(k, nd); _rerenderCard(k);
+      try { const el = document.querySelector('#card-' + CSS.escape(k) + ' .cx-row[data-id="' + c.id + '"] .cx-proc'); if (el) el.focus(); } catch (_) {}
+      return c.id;
+    }
+    function _findCirugia(nd, id) { return ((nd.checklist && nd.checklist.cirugias) || []).find(c => String(c.id) === String(id)); }
+    function updateCirugia(k, id, field, val) {
+      const nd = getNote(k); const c = _findCirugia(nd, id); if (!c) return;
+      if (field === "fecha" && val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
+      c[field] = val;
+      _saveCirugias(k, nd);
+      if (field === "fecha") _rerenderCard(k);
+      else if (field === "procedimiento") _refreshPaseLine(k, nd);
+    }
+    // Repinta solo la línea de pase de la cabecera (sin tocar los campos en edición).
+    function _refreshPaseLine(k, nd) {
+      try {
+        const p = patients.find(x => pid(x) === k); if (!p) return;
+        const el = document.querySelector('#card-' + CSS.escape(k) + ' .pase-line'); if (!el) return;
+        const tmp = document.createElement("div"); tmp.innerHTML = renderPaseLine(p, nd, k);
+        if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+      } catch (_) {}
+    }
+    function removeCirugia(k, id) {
+      const nd = getNote(k);
+      const list = (nd.checklist && nd.checklist.cirugias) || [];
+      const i = list.findIndex(c => String(c.id) === String(id)); if (i < 0) return;
+      const c = list[i];
+      if ((toSafeString(c.procedimiento).trim() || toSafeString(c.hallazgos).trim()) && !confirm("¿Quitar esta cirugía de la lista?\n" + (c.fecha ? c.fecha + " · " : "") + toSafeString(c.procedimiento).trim())) return;
+      list.splice(i, 1);
+      _saveCirugias(k, nd); _rerenderCard(k);
+    }
+    function renderCirugiasSection(nd, k) {
+      const ck = nd.checklist || {};
+      const list = cirugiasOrdenadas(ck);
+      const rows = list.map(c => {
+        const id = esc(String(c.id || ""));
+        const d = _cirugiaDias(c.fecha);
+        return `<div class="cx-row" data-id="${id}">
+          <div class="cx-r1">
+            <input type="date" class="cx-date" value="${esc(c.fecha || "")}" data-ck="${k}" data-id="${id}" onchange="updateCirugia(this.dataset.ck,this.dataset.id,'fecha',this.value)" title="Fecha de la cirugía"/>
+            <span class="cx-po${d === null ? " cx-po-none" : ""}" title="Días de postoperatorio">${d === null ? "PO —" : "PO d" + d}</span>
+            <textarea class="cx-in cx-proc" rows="${Math.max(1, Math.min(4, Math.ceil(toSafeString(c.procedimiento).length / 44)))}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Procedimiento (ej. LAPE + drenaje de colección + adherenciolisis)" data-ck="${k}" data-id="${id}" data-f="procedimiento" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${esc(c.procedimiento || "")}</textarea>
+            <button type="button" class="dv-x" data-ck="${k}" data-id="${id}" onclick="removeCirugia(this.dataset.ck,this.dataset.id)" title="Quitar de la lista">✕</button>
+          </div>
+          <div class="cx-r2">
+            <textarea class="cx-in cx-in-hal" rows="${Math.max(1, Math.min(3, Math.ceil(toSafeString(c.hallazgos).length / 60)))}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Hallazgos / técnica / complicaciones" data-ck="${k}" data-id="${id}" data-f="hallazgos" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${esc(c.hallazgos || "")}</textarea>
+            <input class="cx-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
+            <input class="cx-in" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(c.cirujano || "")}" placeholder="Cirujano" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>
+          </div>
+        </div>`;
+      }).join("");
+      return `<div class="cx-box">
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
+          <span>🔪 Cirugías / Procedimientos${list.length ? ` <span class="fc-cnt" style="background:#7c3aed">${list.length}</span>` : ""}</span>
+          <button type="button" class="cx-add" data-ck="${k}" onclick="addCirugia(this.dataset.ck)" title="Agregar una cirugía o procedimiento con su fecha">+ Agregar cirugía</button>
+        </div>
+        ${rows ? `<div class="cx-list">${rows}</div>` : `<div class="cx-empty">Sin cirugías registradas · toca "+ Agregar cirugía" (una por intervención, con su fecha)</div>`}
+      </div>`;
+    }
+    // ═══ TOMAR GUARDIA: lo que el saliente escribió en "Entrega" pasa a mi "Recibo" (con fecha y hora)
+    // y "Entrega" queda vacía para lo que yo entregaré al final de mi guardia.
+    function tomarGuardia(k) {
+      const nd = getNote(k);
+      const ent = toSafeString(nd.entrega).trim();
+      if (!ent) { alert("La caja Entrega está vacía: no hay nada que recibir."); return; }
+      if (!confirm("¿Pasar el texto de Entrega a Recibo (con fecha y hora) y dejar Entrega vacía para tu guardia?")) return;
+      const d = new Date(); const z = n => String(n).padStart(2, "0");
+      const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
+      if (!nd.checklist) nd.checklist = {};
+      const prev = toSafeString(nd.checklist.recibo).replace(/\s+$/, "");
+      nd.checklist.recibo = (prev ? prev + "\n\n" : "") + "— Recibido " + stamp + " —\n" + ent;
+      nd.entrega = "";
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_recibo");
+      noteData[k] = nd;
+      saveNote(k, nd);
+      _dirtyFields[k].delete("entrega"); _dirtyFields[k].delete("ck_recibo");
+      _rerenderCard(k);
+    }
+
     function renderChecklist(nd, k) {
       nd = migrateNote(nd);
       const cl = nd.checklist || {};
@@ -22512,7 +22762,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         </div>`;
       }).join("");
 
-      const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Bal:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:80px;text-align:left"/>`;
+      // Balance: única caja (oct 2026). Si solo existe el texto anterior nd.balance, se muestra aquí como valor inicial.
+      const balRow4Html = `<span class="pm-label" style="margin-left:2px">💧 Balance:</span><input class="pm-input" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_balance || nd.balance || "")}" placeholder="mL/24h" data-ck="${k}" data-field="pm_balance" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:96px;text-align:left"/>`;
+      // Nota libre de drenajes (texto heredado de la caja "Drenajes"): un renglón discreto, editable.
+      const dvNoteHtml = `<textarea class="field-ta dv-note" rows="1" data-key="${k}" data-field="drenajes" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Nota libre de drenajes (opcional)…">${esc(nd.drenajes || "")}</textarea>`;
 
       // ── Row 5: Pase Matutino — HxQx / Ventilador (la sonda endopleural vive en la lista de dispositivos) ──
       const ventOn = !!cl.pm_vent;
@@ -22557,6 +22810,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         ${balRow4Html}
       </div>
       ${dvRows ? `<div class="dv-list">${dvRows}</div>` : `<div class="dv-empty">Sin drenajes ni sondas registrados · toca un botón para agregar</div>`}
+      ${dvNoteHtml}
     </div>
     <div class="checklist-row ck-r-clinico">
       <span class="ck-title ck-t-clin">⚕️ Clínico:</span>
@@ -22656,10 +22910,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         `Ing: ${p.ingreso || "—"} (Día ${daysSince(p.ingreso)})`,
         `Estado: ${p.estado || "—"}`,
         "",
-        nd.qx?.trim() ? `🔧 Qx/Proc: ${nd.qx.trim()}` : null,
+        cirugiasTexto(nd.checklist, " | ") ? `🔪 Cirugías: ${cirugiasTexto(nd.checklist, " | ")}` : (nd.qx?.trim() ? `🔧 Qx/Proc: ${nd.qx.trim()}` : null),
         nd.manejo?.trim() ? `💉 Manejo: ${nd.manejo.trim()}` : null,
         nd.sv?.trim() ? `📊 SV: ${nd.sv.trim()}` : null,
-        (nd.drenajes || nd.sangrado || nd.balance) ? `🩸 Drenajes: ${nd.drenajes || "—"} · Sangrado: ${nd.sangrado || "—"} · Balance: ${nd.balance || "—"}` : null,
+        (dispositivosTexto(nd.checklist, " | ") || nd.drenajes || balanceTexto(nd)) ? `🩸 Drenajes: ${dispositivosTexto(nd.checklist, " | ") || nd.drenajes || "—"} · Balance: ${balanceTexto(nd) || "—"}` : null,
         labsTexto || null,
         imagenTexto || null,
         "",

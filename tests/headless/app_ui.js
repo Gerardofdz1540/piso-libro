@@ -169,7 +169,7 @@ const MOCK = `(() => {
     const closedPase = !histP.open;
     fcJump(k, 'historia');
     const openedByJump = histP.open;
-    const anchors = ['dx','labs','manejo','plan','pase','entrega','ic','sug','ind','img','diag','rec'].every(n => !!document.getElementById('sec-' + n + '-' + ek));
+    const anchors = ['dx','labs','cx','manejo','plan','pase','entrega','recibo','ic','sug','ind','img','diag','rec'].every(n => !!document.getElementById('sec-' + n + '-' + ek));
     togglePaseMode(); // → completo
     const histF = document.getElementById('sec-historia-' + ek);
     const stillClosedFull = !histF.open;
@@ -179,8 +179,8 @@ const MOCK = `(() => {
     const hdrBack = !document.body.classList.contains('hdr-min');
     return { jump, split, dateCols, atbChip, wasOpenFull, closedNow, stored, closedPase, openedByJump, anchors, stillClosedFull, hdrMin, hdrBack };
   });
-  check('U8 ficha compacta: barra de 13 saltos; labs en 2 tablas lado a lado; chip ATB en la fila de dieta; sección plegada se recuerda por modo; fcJump abre; cabecera se encoge al bajar',
-    u8.jump === 13 && u8.split === 2 && u8.dateCols === 1 && u8.atbChip && u8.wasOpenFull && u8.closedNow && u8.stored['historia@f'] === false && u8.closedPase && u8.openedByJump && u8.anchors && u8.stillClosedFull && u8.hdrMin && u8.hdrBack, JSON.stringify(u8));
+  check('U8 ficha compacta: barra de 14 saltos; labs en 2 tablas lado a lado; chip ATB en la fila de dieta; sección plegada se recuerda por modo; fcJump abre; cabecera se encoge al bajar',
+    u8.jump === 14 && u8.split === 2 && u8.dateCols === 1 && u8.atbChip && u8.wasOpenFull && u8.closedNow && u8.stored['historia@f'] === false && u8.closedPase && u8.openedByJump && u8.anchors && u8.stillClosedFull && u8.hdrMin && u8.hdrBack, JSON.stringify(u8));
 
   // ── Panel lateral de alertas (oct 2026): nada arriba del tablero, botón 🔔 con contadores, salto a la tarjeta ──
   const u9 = await page.evaluate(async()=>{
@@ -237,6 +237,57 @@ const MOCK = `(() => {
     && u10.rows === 4 && /Saratoga D 30/.test(u10.pase) && /Estoma D 400/.test(u10.pase) && /Drenaje biliar/.test(u10.pase)
     && /Saratoga D 30 mL seroso d0 \| Saratoga I d0 \| Estoma D 400 mL fecal d0 \| Drenaje biliar d0/.test(u10.txt)
     && u10.legacyOff && u10.after.join(',') === 'SaratogaD,EstomaD,Drenaje biliar' && u10.dirty.includes('ck_dispositivos') && !u10.sepChip, JSON.stringify(u10));
+
+  // ── Cirugías con varias fechas + Entrega/Recibo de guardia (oct 2026) ──
+  const u11 = await page.evaluate(async()=>{
+    const k = pid(patients[0]);
+    focusGoTo(k);
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const hace = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+    // 1) Migración una sola vez desde el texto Qx (dos líneas con fecha + hallazgos) y sangrado
+    const leg = migrateNote({ qx: 'LAPE + drenaje de colección 10/10/2026\nhallazgos: colección interasa 300 mL\nReintervención 12/10/26', sangrado: '400', checklist: { qx_fecha: '2026-10-12' } });
+    const migr = leg.checklist.cirugias.map(c => [c.fecha, c.procedimiento, c.hallazgos, c.sangrado].join('|'));
+    const legPop = migrateNote({ qx: 'Apendicectomía', checklist: { qx_fecha: '2026-10-11' } }).checklist.cirugias.map(c => c.fecha + '|' + c.procedimiento);
+    const emptyStays = migrateNote({ qx: 'LAPE', checklist: { cirugias: [] } }).checklist.cirugias.length;
+    // 2) Lista en la tarjeta: agregar dos cirugías con fechas distintas, editar, PO día N, línea de pase, texto resumen
+    const nd0 = getNote(k); nd0.checklist.cirugias = []; nd0.checklist.qx_fecha = ''; nd0.qx = ''; noteData[k] = nd0; renderView();
+    const id1 = addCirugia(k, hace(5)); updateCirugia(k, id1, 'procedimiento', 'LAPE + drenaje de colección'); updateCirugia(k, id1, 'sangrado', '400');
+    const id2 = addCirugia(k, hace(1)); updateCirugia(k, id2, 'procedimiento', 'Reintervención + lavado'); updateCirugia(k, id2, 'hallazgos', 'fuga de rafia');
+    const card = () => document.getElementById('card-' + k);
+    const rows = card().querySelectorAll('.cx-row').length;
+    const po = Array.from(card().querySelectorAll('.cx-po')).map(x => x.textContent.trim());
+    const dates = Array.from(card().querySelectorAll('.cx-date')).map(x => x.value);
+    const pase = (card().querySelector('.pase-line') || {}).textContent || '';
+    const txt = cirugiasTexto(getNote(k).checklist, ' | ');
+    const qxFechaSigue = getNote(k).checklist.qx_fecha === hace(1) && popDays(getNote(k)) === 1;
+    const dirty = Array.from(_dirtyUnion(k));
+    const noOldBoxes = !card().querySelector('textarea[data-field="qx"]') && !card().querySelector('textarea[data-field="sangrado"]') && !card().querySelector('textarea[data-field="balance"]');
+    const drenNote = !!card().querySelector('.dv-note[data-field="drenajes"]');
+    const histTitle = (document.getElementById('sec-historia-' + k.replace(/[^a-zA-Z0-9]/g, '_')).querySelector('summary') || {}).textContent || '';
+    const colored = !!card().querySelector('.fc-blk-cx') && !!card().querySelector('.fc-blk-entrega') && !!card().querySelector('.fc-blk-recibo') && !!card().querySelector('.fc-blk-dx');
+    window.confirm = () => true;
+    removeCirugia(k, id1);
+    const afterRemove = getNote(k).checklist.cirugias.length;
+    // 3) Entrega → Recibo: "Tomar guardia" pasa el texto con fecha/hora y vacía Entrega
+    const nd1 = getNote(k); nd1.entrega = 'Pendiente TAC control\nK 2.9 en reposición'; nd1.checklist.recibo = ''; noteData[k] = nd1; renderView();
+    tomarGuardia(k);
+    const nd2 = getNote(k);
+    const reciboTa = card().querySelector('textarea[data-ckfield="recibo"]');
+    const entregaTa = card().querySelector('textarea[data-field="entrega"]');
+    const dirty2 = Array.from(_dirtyUnion(k));
+    // sin texto en Entrega no hace nada
+    window.alert = () => {};
+    tomarGuardia(k);
+    return { migr, legPop, emptyStays, rows, po, dates, pase, txt, qxFechaSigue, dirty, noOldBoxes, drenNote, histTitle, colored, afterRemove,
+      recibo: nd2.checklist.recibo, entregaVacia: nd2.entrega === '', reciboTa: reciboTa ? reciboTa.value : null, entregaTa: entregaTa ? entregaTa.value : null, dirty2, reciboSigue: getNote(k).checklist.recibo === nd2.checklist.recibo };
+  });
+  check('U11 cirugías con fechas: migra el texto Qx (líneas con fecha + hallazgos + sangrado + fecha POP) una sola vez; lista con PO dN, más reciente primero, línea de pase, texto resumen, POP sigue a la última; sin cajas Qx/Sangrado/Balance (nota de drenajes sigue); bloques con color; Entrega → Recibo con "Tomar guardia"',
+    u11.migr.length === 2 && u11.migr[0] === '2026-10-10|LAPE + drenaje de colección|hallazgos: colección interasa 300 mL|' && u11.migr[1] === '2026-10-12|Reintervención||400'
+    && u11.legPop.length === 1 && u11.legPop[0] === '2026-10-11|Apendicectomía' && u11.emptyStays === 0
+    && u11.rows === 2 && u11.po[0] === 'PO d1' && u11.po[1] === 'PO d5' && u11.dates[0] > u11.dates[1]
+    && /POP d1 · Reintervención \+ lavado/.test(u11.pase) && /^Reintervención \+ lavado \(.+, PO d1\) \| LAPE \+ drenaje de colección \(.+, PO d5\) sangrado 400 mL$/.test(u11.txt)
+    && u11.qxFechaSigue && u11.dirty.includes('ck_cirugias') && u11.noOldBoxes && u11.drenNote && /APP \/ PA/.test(u11.histTitle) && !/Qx/.test(u11.histTitle) && u11.colored && u11.afterRemove === 1
+    && /^— Recibido \d{2}\/\d{2} \d{2}:\d{2} —\nPendiente TAC control\nK 2\.9 en reposición$/.test(u11.recibo) && u11.entregaVacia && u11.reciboTa === u11.recibo && u11.entregaTa === '' && u11.dirty2.includes('entrega') && u11.dirty2.includes('ck_recibo') && u11.reciboSigue, JSON.stringify(u11));
 
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-UI: '+pass+' passed, '+fail+' failed');
