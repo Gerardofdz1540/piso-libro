@@ -2986,6 +2986,22 @@
     body.dark .adm-btn, body.dark .adm-tab { background: #152e4d; border-color: #2f4f79; color: #cfdded; }
     body.dark .adm-tab.active { background: #38bdf8; color: #0a1628; border-color: #38bdf8; }
     body.dark .adm-pass { background: #0a1628; color: #fff; }
+    /* 🤖 Robot WinLab por paciente (oct 2026) */
+    .rb-line { margin: 6px 0 8px; padding: 7px 10px; border-radius: 8px; font-size: 12px; line-height: 1.45; color: #0f172a; }
+    .rb-line.rb-warn { background: #fffbeb; border: 1px solid #fcd34d; color: #78350f; }
+    .rb-line.rb-ok { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+    .rb-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+    .rb-btn { font-size: 11px; font-weight: 700; border: 1px solid #cbd5e1; background: #fff; color: #1e293b; border-radius: 8px; padding: 5px 9px; cursor: pointer; font-family: var(--font); min-height: 30px; }
+    .rb-btn.rb-go { background: #0369a1; color: #fff; border-color: #0369a1; }
+    .rb-sub { font-size: 11px; color: #64748b; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .rb-line.rb-warn .rb-sub { color: #92400e; }
+    .rb-chip { font-size: 11px; font-weight: 700; border: 1px dashed #0369a1; background: #e0f2fe; color: #075985; border-radius: 10px; padding: 2px 8px; cursor: pointer; font-family: var(--font); }
+    .rb-badge { font-size: 10.5px; font-weight: 800; padding: 1px 7px; border-radius: 10px; background: #dbeafe; color: #1e40af; margin-left: 4px; }
+    body.dark .rb-line.rb-warn { background: #3a2a06; border-color: #b45309; color: #fde68a; }
+    body.dark .rb-line.rb-ok { background: #0b2a24; border-color: #0f766e; color: #a7f3d0; }
+    body.dark .rb-btn { background: #152e4d; border-color: #2f4f79; color: #cfdded; }
+    body.dark .rb-chip { background: #0c2a3f; border-color: #0369a1; color: #7dd3fc; }
+    body.dark .rb-line.rb-warn .rb-sub { color: #fcd34d; }
     .ck-title.ck-t-vit { color: #0f766e; }
     .ck-title.ck-t-dren { color: #7c3aed; }
     .ck-title.ck-t-clin { color: #991b1b; }
@@ -6349,6 +6365,7 @@ function plExportBackup() {
     let patients = [];
     let noteData = {};
     let winlabByExp = {};     // exp -> { fecha, scraped_at, data: { headers, reportes, ... } }
+    let winlabMatchByExp = {}; // exp -> fila de winlab_match (resultado de la búsqueda del robot por paciente, oct 2026)
     let risByExp = {};        // exp -> [ { id, fecha, hora, modalidad, estudios, reporte, ... } ] (robot RIS de imagen)
     let _winlabLoadedOnce = false; // true tras la primera lectura de winlab_labs (evita el banner "Sin datos" del render temprano)
     // Cultivos WinLab por pid(paciente). Transitorio: lo reconstruye applyWinlabSyncToPatients
@@ -8007,6 +8024,117 @@ function plExportBackup() {
       return q;
     }
 
+    // ── 🤖 Robot WinLab por paciente (oct 2026) ─────────────────────────────────────
+    // winlab_match: el robot deja por expediente qué buscó, si encontró al paciente (y con qué
+    // nombre) o qué nombres parecidos vio. La tarjeta lo muestra con sugerencias tocables para fijar
+    // el "nombre en WinLab" (notes.checklist.winlab_alias, se guarda aun sin red y el robot lo usa
+    // primero) y un botón para pedir una corrida dirigida a ese paciente.
+    async function _loadWinlabMatch(rows, merge) {
+      const exps = new Set();
+      (rows || []).forEach(p => { const e = String((p && p.exp) || "").trim(); if (e && /^[\w\-.\/]+$/.test(e)) exps.add(e); });
+      if (!exps.size || exps.size > 600) return 0;
+      const q = "select=exp,cama,alias,status,buscado,candidatos,encontrado_como,reportes,detalle,checked_at&exp=in.(" + Array.from(exps).map(encodeURIComponent).join(",") + ")";
+      const rowsM = await retryNetwork(() => _sGet("winlab_match", q), 2, 200);
+      const next = merge ? Object.assign({}, winlabMatchByExp) : {};
+      (rowsM || []).forEach(r => { const e = String(r.exp || "").trim(); if (e) next[e] = r; });
+      winlabMatchByExp = next;
+      return (rowsM || []).length;
+    }
+    const _robotPending = {}; // exp -> texto del estado ("pedido 13:40", "en cola") mientras el robot corre
+    function _robotFecha(iso) { if (!iso) return ""; const d = new Date(iso); if (isNaN(d.getTime())) return ""; const z = n => String(n).padStart(2, "0"); return z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
+    function renderRobotLine(p, nd, k) {
+      const exp = String((p && p.exp) || "").trim(); if (!exp) return "";
+      const m = winlabMatchByExp[exp] || null;
+      const alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
+      const hasWl = !!(winlabByExp[exp] && winlabByExp[exp].data);
+      const pend = _robotPending[exp] ? `<span class="rb-badge" data-testid="robot-pending">⏳ robot en camino · ${esc(_robotPending[exp])}</span>` : "";
+      const btnAlias = `<button class="rb-btn" data-k="${k}" onclick="setWinlabAlias(this.dataset.k)" data-testid="robot-alias" title="Cómo está escrito el nombre en WinLab (cuando la hoja trae un error de dedo o el orden es otro)">✏️ ${alias ? "Nombre en WinLab: " + esc(alias) : "Nombre en WinLab"}</button>`;
+      const btnBuscar = `<button class="rb-btn rb-go" data-k="${k}" onclick="robotBuscarAhora(this.dataset.k)" data-testid="robot-go" title="El robot busca SOLO a este paciente en WinLab (2-4 min). Necesita internet.">🔎 Buscar ahora</button>`;
+      const ok = !!(m && m.status === "ok");
+      if (ok && !alias && !_robotPending[exp]) return ""; // todo en orden: no estorbar
+      if (ok) {
+        return `<div class="rb-line rb-ok" data-testid="robot-line">🤖 Robot: encontrado${m.encontrado_como ? ` como «${esc(m.encontrado_como)}»` : ""}${alias ? " (nombre en WinLab fijado en la app)" : ""} · ${_robotFecha(m.checked_at)} ${pend}<div class="rb-acts">${btnAlias}</div></div>`;
+      }
+      const why = !m ? (hasWl ? "" : "El robot aún no ha buscado a este paciente (corre a las 4:07, 13:15 y 20:07).")
+        : m.status === "sin_registro" ? "El robot no encontró a este paciente en WinLab."
+        : m.status === "homonimos" ? "WinLab devolvió otras personas y ninguna coincide con el nombre del censo."
+        : m.status === "error" ? "El robot tuvo un error con este paciente" + (m.detalle ? " (" + esc(String(m.detalle).slice(0, 80)) + ")" : "") + "."
+        : "";
+      if (!why && !alias && !_robotPending[exp]) return "";
+      const buscado = m && Array.isArray(m.buscado) && m.buscado.length ? `<div class="rb-sub" data-testid="robot-buscado">Buscó: ${m.buscado.map(esc).join(" · ")}${m.checked_at ? " · " + _robotFecha(m.checked_at) : ""}</div>` : "";
+      const cands = m && Array.isArray(m.candidatos) ? m.candidatos.filter(c => c && String(c).trim() && String(c).trim().toUpperCase() !== alias.toUpperCase()) : [];
+      const sug = cands.length ? `<div class="rb-sub">¿Es alguno de estos? ${cands.slice(0, 5).map(c => `<button class="rb-chip" data-k="${k}" data-n="${esc(c)}" onclick="setWinlabAlias(this.dataset.k, this.dataset.n)" title="Fijar este nombre como «nombre en WinLab» para el robot">${esc(c)}</button>`).join("")}</div>` : "";
+      return `<div class="rb-line rb-warn" data-testid="robot-line">🤖 ${why || "Nombre en WinLab fijado: el robot lo usará en su próxima corrida."} ${pend}
+        <div class="rb-acts">${btnAlias}${btnBuscar}</div>${buscado}${sug}
+        <div class="rb-sub">Mientras tanto: 📄 PDF / 📷 Foto (arriba) lee la hoja de laboratorio con IA y la guarda aquí.</div></div>`;
+    }
+    function setWinlabAlias(k, value) {
+      const nd = getNote(k); if (!nd.checklist) nd.checklist = {};
+      const cur = toSafeString(nd.checklist.winlab_alias);
+      let v = value;
+      if (v === undefined || v === null) { v = prompt("Nombre del paciente TAL COMO está en WinLab (apellidos y nombre). Déjalo vacío para quitarlo:", cur); if (v === null) return; }
+      v = toSafeString(v).trim().toUpperCase().replace(/\s+/g, " ");
+      if (v === cur) return;
+      _undoPush(k, v ? "nombre en WinLab «" + v + "»" : "quitar nombre en WinLab");
+      nd.checklist.winlab_alias = v;
+      _touchBy(nd, "winlab_alias");
+      _saveNoteNow(k, nd, "checklist");
+      _rerenderCard(k);
+      if (v) _plToast("✏️ El robot buscará «" + v + "» en su próxima corrida. Toca 🔎 Buscar ahora para no esperar.", "#15803d", 8000);
+    }
+    async function robotBuscarAhora(k) {
+      const p = patients.find(x => pid(x) === k); if (!p) return;
+      const exp = String(p.exp || "").trim();
+      if (!exp) { alert("Este paciente no tiene expediente en el censo; el robot busca por nombre y guarda por expediente."); return; }
+      const proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : "";
+      if (!proxyUrl) { alert("⚙️ Falta la URL del worker en Configuración (es la que dispara al robot)."); return; }
+      if (navigator.onLine === false) { alert("📴 Sin internet no se puede pedir al robot. El nombre en WinLab que fijes se guarda y se usa en la siguiente corrida (4:07, 13:15 y 20:07)."); return; }
+      try {
+        const r = await _sFetch(proxyUrl + "/api/scrape", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ exp }) });
+        let data = {}; try { data = await r.json(); } catch (_) {}
+        if (r.ok && data.dispatched) {
+          _robotPending[exp] = "pedido " + _robotFecha(new Date().toISOString());
+          _plToast("🔎 Robot en camino para la cama " + (p.cama || "") + ". Suele tardar 2-4 min; la tarjeta se actualiza sola.", "#15803d", 9000);
+          _robotWatch(exp, k);
+        } else if (r.ok && data.reason === "already_pending") {
+          _robotPending[exp] = "en cola";
+          _plToast("🔄 Ya hay una corrida del robot en cola; incluirá a este paciente (y usará el nombre en WinLab si lo fijaste).", "#0369a1", 9000);
+          _robotWatch(exp, k);
+        } else if (r.status === 503) {
+          _plToast("⚠️ El worker no tiene GITHUB_TOKEN; no puede disparar al robot.", "#b45309", 9000);
+        } else {
+          _plToast("⚠️ No se pudo pedir al robot (" + (data.reason || r.status) + ").", "#b45309", 9000);
+        }
+        _rerenderCard(k);
+      } catch (e) { _plToast("⚠️ Sin conexión con el worker: " + ((e && e.message) || e), "#b45309", 8000); }
+    }
+    // Vigila winlab_match de ese expediente (cada 30 s, hasta 12 min). Al llegar un resultado nuevo:
+    // baja sus labs de WinLab, los pasa a la nota y repinta la tarjeta.
+    function _robotWatch(exp, k, intervalMs) {
+      const every = intervalMs || 30000; const start = Date.now();
+      const prev = (winlabMatchByExp[exp] || {}).checked_at || "";
+      const tick = async () => {
+        if (Date.now() - start > 12 * 60000) { delete _robotPending[exp]; _rerenderCard(k); return; }
+        try {
+          const p = patients.find(x => pid(x) === k);
+          await _loadWinlabMatch(p ? [p] : [], true);
+          const m = winlabMatchByExp[exp];
+          if (m && m.checked_at && m.checked_at !== prev) {
+            delete _robotPending[exp];
+            if (m.status === "ok") {
+              try { await _winlabFetchForPatients(p ? [p] : []); await applyWinlabSyncToPatients({ verbose: false }); } catch (_) {}
+              _plToast("✅ El robot encontró a la cama " + ((p && p.cama) || "") + (m.encontrado_como ? " como «" + m.encontrado_como + "»" : "") + ". Labs en la tarjeta.", "#15803d", 9000);
+            } else {
+              _plToast("🤖 El robot terminó y no encontró a la cama " + ((p && p.cama) || "") + ". Revisa las sugerencias en la tarjeta o fija el nombre en WinLab.", "#b45309", 10000);
+            }
+            _rerenderCard(k); return;
+          }
+        } catch (_) {}
+        setTimeout(tick, every);
+      };
+      setTimeout(tick, every);
+    }
+
     // Resuelve un winlab row buscando el exp del paciente y sus variantes.
     // Construye un índice de winlabByExp expandido por variantes para búsqueda O(1).
     let _winlabExpIndex = null;
@@ -8336,6 +8464,7 @@ function plExportBackup() {
         });
         winlabByExp = next;
         _winlabLoadedOnce = true;
+        try { await _loadWinlabMatch(patients, false); } catch (_) {}
         // Auto-sync WinLab → labHistory.
         // Cambio mayo 2026: el refresh manual (botón pill) SIEMPRE aplica sync,
         // independiente del flag. Si el usuario clickeó el pill es porque quiere
@@ -9256,8 +9385,11 @@ function plExportBackup() {
         nd = migrateNote(nd);
         var history = (nd.labHistory || []).filter(function(s){ return s && s.labs; });
         var dates = history.map(function(s){ return s.fecha; }).sort(function(a,b){ return String(b).localeCompare(String(a)); });
+        // Estado del robot por paciente (oct 2026): no lo encontró / nombre en WinLab / robot en camino.
+        var _robotHtml = "";
+        try { _robotHtml = renderRobotLine(patients.find(function(x){ return pid(x) === k; }), nd, k); } catch (_) {}
         if(!dates.length){
-          return '<div class="ff-labs"><div class="ff-labs-h">Labs</div><div class="ff-labs-empty">Sin laboratorios (los trae el scraper de WinLab)</div></div>';
+          return '<div class="ff-labs"><div class="ff-labs-h">Labs</div>' + _robotHtml + '<div class="ff-labs-empty">Sin laboratorios (los trae el robot de WinLab)</div></div>';
         }
         /* FIX-v48: como el papel — cronológico, la más reciente a la DERECHA.
            Ficha compacta (oct 2026): 3 fechas en modo Pase / 4 en Completo para que la tabla quepa
@@ -9372,7 +9504,7 @@ function plExportBackup() {
         if(otherRows || extraRows){
           otros = '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '">Otros</td></tr>' + otherRows + extraRows;
         }
-        var hdr = '<div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(\'' + k + '\')">📈 Gráficas</button></div>';
+        var hdr = '<div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(\'' + k + '\')">📈 Gráficas</button></div>' + _robotHtml;
         function tbl(rows){ return '<div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>'; }
         // Ficha compacta: con muchas filas, dos mitades lado a lado (misma cabecera) → la mitad de alto.
         // En pantallas angostas el CSS apila las mitades (.ff-labs-split).
@@ -10827,6 +10959,8 @@ function plExportBackup() {
           winlabByExp = {};
           _winlabLoadedOnce = true;
         }
+        // Resultado del robot por paciente (winlab_match): no bloquea la carga.
+        try { await _loadWinlabMatch(pts, false); } catch (e) { console.warn("winlab_match:", e?.message || e); }
 
         // Doc de indicaciones (Apps Script → indicaciones_doc). No bloquea la carga: si falla, quedan
         // los bloques ya guardados en localStorage.
@@ -15215,6 +15349,7 @@ function plExportBackup() {
             <button class="icon-btn has-lbl" style="background:rgba(255,255,255,.22)" onclick="toggleCardMore(this)" title="Más acciones">⋯<span class="icon-lbl">Más</span></button>
             <div class="card-more-menu">
               <button data-wlkey="${k}" onclick="openWinLabForPatient(this.dataset.wlkey)">🧪 Buscar en WinLab</button>
+              <button data-rbkey="${k}" onclick="robotBuscarAhora(this.dataset.rbkey)" data-testid="card-robot" title="El robot busca a este paciente en WinLab y trae sus labs (2-4 min). Sirve desde el iPad.">🤖 Pedir labs al robot</button>
               <button data-corkey="${k}" onclick="openCorreccionModal(this.dataset.corkey)">⚡ Corrección de electrolitos</button>
               <button data-dikey="${k}" onclick="openDocIntake(this.dataset.dikey)">📄 Leer documento con IA</button>
               <button data-nevokey="${k}" onclick="openNotaEvo(this.dataset.nevokey)">📝 Nota de evolución</button>
@@ -16605,6 +16740,7 @@ function plExportBackup() {
         `: ""}
       </div>
     </div>
+    ${renderRobotLine(patients.find(x => pid(x) === k), nd, k)}
     <div class="lab-date-bar">${dateChips}</div>
     ${activeFecha ? `
     <div style="display:flex;align-items:center;gap:8px;padding:5px 0 8px;border-bottom:1px dashed #e2e8f0;margin-bottom:8px">

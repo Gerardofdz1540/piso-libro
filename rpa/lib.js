@@ -318,11 +318,49 @@ export function buildSearchCandidates(nombre) {
     const paterno = abbrevLed ? parts[2] : (extractApellidos(clean)[1] || parts[parts.length - 2]);
     const nombrePila = abbrevLed ? parts.slice(0, 2).join(" ") : parts[0];
     push(paterno, nombrePila, "paterno-solo + nombre");
+    // (f) MATERNO-solo + nombre de pila (oct 2026): el error de dedo también cae en el PATERNO
+    //     (cama 3-181, corrida #419: dos letras invertidas en el paterno): TODAS las variantes
+    //     anteriores llevan el paterno y WinLab no devuelve nada. Con materno + nombre WinLab sí lista
+    //     al paciente y el encabezado difuso (Jaro-Winkler ≥ 0.88 tolera la transposición) confirma la identidad.
+    const ap = extractApellidos(clean);
+    const materno = (ap[0] && ap[1] && ap[0].startsWith(ap[1] + " ")) ? ap[0].slice(ap[1].length + 1).trim() : null;
+    if (materno && materno !== paterno) push(materno, nombrePila, "materno-solo + nombre");
     // Con nombre abreviado y un solo apellido ("MA GUADALUPE RIOS"), probar también el apellido
     // a secas: si WinLab guardó el nombre de otra forma, el retry-guard sigue exigiendo match positivo.
     if (abbrevLed && parts.length === 3) push(parts[2], null, "apellido solo (nombre abreviado)");
   }
   return out;
+}
+
+// Candidatos con ALIAS (oct 2026): "nombre en WinLab" que el equipo fija desde la app cuando el
+// censo (hoja) y WinLab no coinciden (otro orden, apellido de casada, error de dedo). Los
+// candidatos del alias van PRIMERO y se marcan `alias:true`; después los del nombre del censo.
+// Formato del alias: "APELLIDOS, NOMBRE" (con coma, como lo lista WinLab y como lo sugiere la app)
+// → se busca exactamente así y, de respaldo, paterno + nombre y materno + nombre. Sin coma se lee
+// como en el censo (NOMBRE APELLIDOS) y pasa por la escalera normal.
+export function buildSearchCandidatesWithAlias(nombre, alias) {
+  const base = buildSearchCandidates(nombre);
+  const a = stripAccentsKeepEnie(String(alias || "").replace(/\.(?=\s|$|,)/g, ""));
+  if (!a) return base;
+  let fromAlias = [];
+  if (a.includes(",")) {
+    const ap = a.split(",")[0].trim(), nm = a.split(",").slice(1).join(" ").trim();
+    const nome = nm ? expandNomeAbbrev(nm) : null;
+    const push = (cognome, n, tag) => {
+      cognome = (cognome || "").trim(); if (!cognome) return;
+      const key = cognome + "|" + (n || "");
+      if (fromAlias.some((c) => c.key === key)) return;
+      fromAlias.push({ key, cognome, nome: n || null, tag: "alias · " + tag, sibling: false, alias: true });
+    };
+    push(ap, nome, "apellidos + nombre");
+    push(ap, null, "apellidos solos");
+    const apParts = ap.split(/\s+/).filter(Boolean);
+    if (apParts.length >= 2 && nome) { push(apParts[0], nome, "paterno + nombre"); push(apParts.slice(1).join(" "), nome, "materno + nombre"); }
+  } else {
+    fromAlias = buildSearchCandidates(a).map((c) => ({ ...c, alias: true, tag: "alias · " + c.tag }));
+  }
+  const seen = new Set(fromAlias.map((c) => c.key));
+  return fromAlias.concat(base.filter((c) => !seen.has(c.key)));
 }
 
 // Extrae candidatos de "apellido" de un nombre completo.
@@ -489,19 +527,26 @@ export function selectTargetRows(rows, paciente, opts = {}) {
   const tolerance = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : 2;
   const today = opts.today || new Date();
   const censusAge = parseCensusAge(paciente && paciente.edad);
-  const targetIdxs = [], linkIdxs = [], ageRejected = [];
-  let curMatches = false;
+  const targetIdxs = [], linkIdxs = [], ageRejected = [], seenNames = [];
+  let curMatches = false, matchedHeader = "";
+  const alias = String((paciente && paciente.alias) || "").trim();
   for (let i = 0; i < (rows || []).length; i++) {
     const row = rows[i];
     const hdrName = extractHeaderName(row.__cells);
     if (hdrName) {
-      const nameOk = patientHeaderMatches(hdrName, paciente && paciente.nombre);
+      // Nombres que listó WinLab, como "APELLIDOS, NOMBRE" (formato del alias que fija la app).
+      const sxi = findSexIdx(row.__cells);
+      const seenLabel = sxi >= 2 ? String(row.__cells[sxi - 2] || "").trim() + ", " + String(row.__cells[sxi - 1] || "").trim() : hdrName;
+      if (!seenNames.includes(seenLabel)) seenNames.push(seenLabel);
+      // El alias ("nombre en WinLab" fijado en la app) también identifica al objetivo.
+      const nameOk = patientHeaderMatches(hdrName, paciente && paciente.nombre) || (!!alias && patientHeaderMatches(hdrName, alias));
       const hdrAge = nameOk && censusAge != null ? ageFromBirthDate(extractHeaderBirthDate(row.__cells), today) : null;
       if (nameOk && hdrAge != null && Math.abs(hdrAge - censusAge) > tolerance) {
         ageRejected.push({ idx: i, headerAge: hdrAge, censusAge });
         curMatches = false;
       } else {
         curMatches = nameOk;
+        if (nameOk && !matchedHeader) matchedHeader = hdrName;
       }
     }
     if (row.__hasLink) {
@@ -509,7 +554,13 @@ export function selectTargetRows(rows, paciente, opts = {}) {
       if (curMatches) targetIdxs.push(i);
     }
   }
-  return { targetIdxs, linkIdxs, ageRejected, censusAge, tolerance };
+  return { targetIdxs, linkIdxs, ageRejected, censusAge, tolerance, seenNames: seenNames.slice(0, 8), matchedHeader };
+}
+
+// Expediente normalizado para comparar objetivos (WL_TARGET_EXP) con el censo: "26-00001",
+// "2600001" y " 26 00001 " son el mismo.
+export function normExp(exp) {
+  return String(exp || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
 }
 
 // Genera variantes del codigo paciente para probar en WinLab. El censo

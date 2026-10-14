@@ -12,6 +12,8 @@
 // Rutas:
 //   POST /api/ai            → endpoint existente (formato Anthropic Messages)
 //   POST /api/labs/extract  → para Labs Masivo (extrae pacientes+labs de PDF)
+//   POST /api/scrape        → dispara el robot WinLab; con cuerpo {"exp":"26-23836"} busca solo a
+//                             ese paciente (oct 2026, botón «🔎 Buscar ahora» de la tarjeta)
 //
 // Variables de entorno requeridas (Cloudflare Workers → Settings → Variables):
 //   ACCESS_TOKEN     (encrypted) — token compartido con el frontend
@@ -108,6 +110,11 @@ async function handleScrapeRoute(request, env, cors) {
     return json({ dispatched: false, error: "GITHUB_TOKEN no configurado en el worker" }, 503, cors);
   }
   const OWNER = "Gerardofdz1540", REPO = "piso-libro", WF = "winlab-scraper.yml", REF = "main";
+  // Corrida dirigida (oct 2026): la app manda {exp} ("🔎 Buscar ahora" en la tarjeta) y el robot
+  // busca SOLO a ese paciente (input `exp` del workflow → WL_TARGET_EXP). Sin exp: censo completo.
+  let body = {};
+  try { body = await request.json(); } catch (_) { body = {}; }
+  const exp = String((body && body.exp) || "").trim().replace(/[^\w\-.,\/ ]/g, "").slice(0, 80);
   const gh = (path, init) => fetch("https://api.github.com/repos/" + OWNER + "/" + REPO + path, {
     ...(init || {}),
     headers: {
@@ -144,10 +151,10 @@ async function handleScrapeRoute(request, env, cors) {
     }
     // Disparar (204 = OK). Una corrida en progreso NO bloquea: la nueva se encola.
     const dResp = await gh("/actions/workflows/" + WF + "/dispatches", {
-      method: "POST", body: JSON.stringify({ ref: REF })
+      method: "POST", body: JSON.stringify(exp ? { ref: REF, inputs: { exp } } : { ref: REF })
     });
     if (dResp.status === 204) {
-      return json({ dispatched: true, message: "Scraper disparado." }, 200, cors);
+      return json({ dispatched: true, exp: exp || null, message: exp ? "Robot disparado para " + exp + "." : "Scraper disparado." }, 200, cors);
     }
     const detail = await dResp.text().catch(() => "");
     return json({ dispatched: false, reason: "dispatch_failed", status: dResp.status, detail: detail.slice(0, 240) }, 502, cors);
