@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const MOCK = `(() => {
+  try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
   const log=(m)=>{ try{ const a=JSON.parse(sessionStorage.getItem('__mock_log')||'[]'); a.push(m); sessionStorage.setItem('__mock_log', JSON.stringify(a)); }catch(e){} };
   window.prompt=function(){ log('prompt'); return 'Tester'; };
@@ -25,7 +26,7 @@ const MOCK = `(() => {
   const browser=await chromium.launch(); const page=await browser.newPage();
   const errors=[]; page.on('pageerror',e=>errors.push(String((e&&e.stack)||e).slice(0,300)));
   const rest=[]; page.on('request',r=>{ if(r.url().includes('/rest/v1/')) rest.push({url:r.url().slice(0,110), auth:r.headers()['authorization'], apikey:(r.headers()['apikey']||'').slice(0,10)}); });
-  await page.route('**/supabase-js@*/**', r=>r.abort());
+  await page.route('**/vendor/supabase*', r=>r.abort());
   await page.addInitScript(MOCK);
   let pass=0, fail=0; const check=(n,c,x)=>{ if(c){pass++;console.log('PASS '+n);} else {fail++;console.log('FAIL '+n+(x?' :: '+x:''));} };
   const ov=()=>page.evaluate(()=>{const o=document.getElementById('login-overlay');return o?getComputedStyle(o).display:'MISSING';});

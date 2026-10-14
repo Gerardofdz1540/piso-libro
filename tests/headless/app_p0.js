@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const MOCK = `(() => {
+  try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
   sessionStorage.setItem(KEY, JSON.stringify({ access_token:'mock-token-123', refresh_token:'r', user:{ email:'t@t.t' } }));
   window.prompt=function(){ return 'Tester'; }; window.alert=function(){}; window.confirm=function(){ return true; };
@@ -17,7 +18,7 @@ const MOCK = `(() => {
   const browser=await chromium.launch(); const page=await browser.newPage();
   const errors=[]; page.on('pageerror',e=>errors.push(String((e&&e.stack)||e).slice(0,300)));
   const notesBodies=[]; const patientCalls=[];
-  await page.route('**/supabase-js@*/**', r=>r.abort());
+  await page.route('**/vendor/supabase*', r=>r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req=route.request(); const url=req.url(); const m=req.method();
     if (url.includes('/rest/v1/notes') && m==='POST') { try { notesBodies.push(JSON.parse(req.postData()||'{}')); } catch(_) { notesBodies.push({}); } return route.fulfill({ status:201, contentType:'application/json', body:'[{"patient_id":"x"}]' }); }

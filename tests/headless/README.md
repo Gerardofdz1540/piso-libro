@@ -16,7 +16,8 @@ node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
 
 | Suite | Qué cubre |
 |---|---|
-| `noCdn.js` | la app arranca sin CDNs |
+| `noCdn.js` | la app arranca aunque no cargue supabase-js (aviso en el login, sin errores) |
+| `app_offline.js` | abrir sin red: service worker con la app y `vendor/` en caché, ningún script externo, sesión guardada sin red, lo escrito sin red queda en el dispositivo y en la cola con su campo, recarga sin red, al volver la red lo remoto no pisa lo escrito, ↩ Regresar / ↪ Rehacer |
 | `mock.js`, `app_p0.js` | arranque, persistencia, outbox, re-clavado de ids |
 | `app_sync.js` | línea base + diff (sin campos sucios solo viaja lo que cambió), campos en vuelo al ocultar la app, outbox con reintento, sin push masivo tras carga fallida, modal que no pisa Realtime, unidades mg/dL, snapshot con sangre, DELETE no suprimido |
 | `app_ipad.js` | Hb crítica visible, ocultar la app conserva texto/Dx, repintado suave sin robar foco |

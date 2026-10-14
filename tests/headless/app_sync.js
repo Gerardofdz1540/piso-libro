@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const MOCK = `(() => {
+  try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
   sessionStorage.setItem(KEY, JSON.stringify({ access_token:'mock-token-123', refresh_token:'r', user:{ email:'t@t.t' } }));
   window.prompt=function(){ return 'Tester'; }; window.alert=function(){}; window.confirm=function(){ return true; };
@@ -19,7 +20,7 @@ const REMOTE_NOTE = { patient_id:'a1', app:'APP REMOTO', pa:'', drenajes:'DREN R
   const errors=[]; page.on('pageerror',e=>errors.push(String((e&&e.stack)||e).slice(0,300)));
   const calls=[];
   const ctl = { slowNotesPost: 0, failNotesPostOnce: false, notesPostCount: 0 };
-  await page.route('**/supabase-js@*/**', r=>r.abort());
+  await page.route('**/vendor/supabase*', r=>r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req=route.request(); const url=req.url().replace(/^https?:\/\/[^/]+/,''); const m=req.method();
     let body=null; try { body=JSON.parse(req.postData()||'null'); } catch(_) {}

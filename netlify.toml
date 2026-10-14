@@ -1,0 +1,7 @@
+# Espejo de la app en Netlify (oct 2026): segunda dirección por si la principal (Cloudflare Pages)
+# no abre desde alguna red móvil. Publica EXACTAMENTE lo mismo que .github/workflows/deploy-pages.yml:
+# la app, la PWA (manifest, service worker, íconos) y las librerías empaquetadas en vendor/.
+# El resto del repositorio (robot, scripts, docs) no se publica.
+[build]
+  command = "mkdir -p dist/icons dist/vendor && cp index.html _headers manifest.json sw.js dist/ && cp icons/*.png dist/icons/ && cp vendor/*.js dist/vendor/"
+  publish = "dist"

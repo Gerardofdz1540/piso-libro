@@ -26,8 +26,8 @@
       });
     }
   </script>
-  <!-- Phosphor Icons (iconografía clínica estilo RESID) -->
-  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+  <!-- (oct 2026) Sin scripts externos en la cabecera: la fuente de íconos de unpkg bloqueaba el
+       arranque en redes que cortan esos dominios. Los pocos íconos que usaba son ahora emoji. -->
   <style>
     * {
       box-sizing: border-box;
@@ -4151,10 +4151,10 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
 
   <!-- ════ RESID — Barra de navegación inferior (móvil) ════ -->
   <nav id="rnav" class="no-print" aria-label="Navegación principal">
-    <button class="rnav-it active" data-rnav="piso" onclick="setView('piso')"><i class="ph ph-stethoscope"></i><span>Pase</span></button>
-    <button class="rnav-it" data-rnav="census" onclick="setView('census')"><i class="ph ph-users-three"></i><span>Censo</span></button>
-    <button class="rnav-it" data-rnav="pendientes" onclick="setView('pendientes')"><i class="ph ph-list-checks"></i><span>Pendientes</span></button>
-    <button class="rnav-it" data-rnav="print" onclick="setView('print')"><i class="ph ph-file-text"></i><span>Entrega</span></button>
+    <button class="rnav-it active" data-rnav="piso" onclick="setView('piso')"><i class="ic">🩺</i><span>Pase</span></button>
+    <button class="rnav-it" data-rnav="census" onclick="setView('census')"><i class="ic">👥</i><span>Censo</span></button>
+    <button class="rnav-it" data-rnav="pendientes" onclick="setView('pendientes')"><i class="ic">☑️</i><span>Pendientes</span></button>
+    <button class="rnav-it" data-rnav="print" onclick="setView('print')"><i class="ic">📄</i><span>Entrega</span></button>
   </nav>
 
   <!-- MAIN -->
@@ -4859,15 +4859,33 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.1/dist/umd/supabase.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- ═══ Librerías EMPAQUETADAS (oct 2026) ═══
+       Antes se cargaban desde cdnjs / jsdelivr y el service worker no las guardaba: en redes móviles
+       que bloquean esos dominios la app no abría (ni en el celular ni compartiendo internet a la
+       computadora). Ahora viven en ./vendor/ (copias exactas de npm, mismo origen, precacheadas por
+       sw.js). supabase-js es la única que hace falta al arrancar; Excel (SheetJS / ExcelJS) y Word
+       (docx) se cargan solo cuando se usan (ver _libLoad). pdf.js se retiró: no se usaba. -->
+  <script src="vendor/supabase-2.46.1.js"></script>
   <script>
-    if (window.pdfjsLib) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    }
+    // Carga perezosa de librerías pesadas, una sola vez, desde el mismo origen (y la caché del SW).
+    window._libLoad = (function () {
+      var SRC = { xlsx: "vendor/xlsx-0.18.5.full.min.js", exceljs: "vendor/exceljs-4.4.0.min.js", docx: "vendor/docx-8.5.0.umd.js" };
+      var READY = { xlsx: function () { return !!window.XLSX; }, exceljs: function () { return !!window.ExcelJS; }, docx: function () { return !!window.docx; } };
+      var pending = {};
+      return function (name) {
+        if (!SRC[name]) return Promise.reject(new Error("Librería desconocida: " + name));
+        if (READY[name]()) return Promise.resolve(true);
+        if (pending[name]) return pending[name];
+        pending[name] = new Promise(function (resolve, reject) {
+          var s = document.createElement("script");
+          s.src = SRC[name]; s.async = true;
+          s.onload = function () { resolve(true); };
+          s.onerror = function () { delete pending[name]; reject(new Error("No se pudo cargar " + SRC[name] + " (sin conexión y aún no guardada en este dispositivo).")); };
+          document.head.appendChild(s);
+        });
+        return pending[name];
+      };
+    })();
   </script>
   
 
@@ -6375,19 +6393,40 @@ function plExportBackup() {
       _showLoginError("Tu sesión expiró o fue cerrada. Vuelve a iniciar sesión.");
     }
 
-    async function initAuth() {
-      if (!_supa) {
-        _showLoginOverlay();
-        _showLoginError("No se pudo cargar Supabase (sin conexión o CDN bloqueado). Revisa tu red y recarga la página.");
-        return;
-      }
-      let session = null;
+    // Sesión guardada por supabase-js en localStorage (clave sb-<ref>-auth-token). Sin red, getSession()
+    // falla al intentar renovar un token vencido y devolvía "sin sesión" → login imposible aunque el
+    // usuario ya se hubiera autenticado en este dispositivo. Con esta copia la app abre en modo sin
+    // conexión; al volver la red, supabase-js renueva el token solo (TOKEN_REFRESHED) y el outbox sube.
+    let _offlineSession = false;
+    function _storedSessionFallback() {
       try {
-        const res = await _supa.auth.getSession();
-        if (res.error) console.error("Error obteniendo sesión:", res.error);
-        session = res.data ? res.data.session : null;
-      } catch (e) {
-        console.error("getSession falló:", e);
+        const ref = (SUPA_URL.match(/^https?:\/\/([^.]+)\./) || [])[1] || "";
+        const raw = localStorage.getItem("sb-" + ref + "-auth-token");
+        if (!raw) return null;
+        let s = JSON.parse(raw);
+        if (typeof s === "string") s = JSON.parse(s);
+        if (s && s.currentSession) s = s.currentSession; // formato antiguo de supabase-js
+        if (s && s.access_token && s.user) return s;
+      } catch (_) {}
+      return null;
+    }
+    function _looksLikeNetworkAuthError(e) {
+      if (!e) return false;
+      if (typeof isLikelyNetworkError === "function" && isLikelyNetworkError(e)) return true;
+      const m = String((e && e.message) || e || "").toLowerCase();
+      return /fetch|network|load failed|abort|timeout|retryable|connection/.test(m);
+    }
+    async function initAuth() {
+      let session = null, authErr = null;
+      if (_supa) {
+        try {
+          const res = await _supa.auth.getSession();
+          if (res.error) { authErr = res.error; console.error("Error obteniendo sesión:", res.error); }
+          session = res.data ? res.data.session : null;
+        } catch (e) {
+          authErr = e;
+          console.error("getSession falló:", e);
+        }
       }
 
       if (session && session.access_token) {
@@ -6395,8 +6434,22 @@ function plExportBackup() {
         _hadSessionAtLoad = true;
         _hideLoginOverlay();
       } else {
-        _showLoginOverlay();
+        const stored = _storedSessionFallback();
+        const netProblem = !_supa || !navigator.onLine || _looksLikeNetworkAuthError(authErr);
+        if (stored && netProblem) {
+          // Modo sin conexión con la sesión guardada: se trabaja con la copia local y el outbox.
+          _userAccessToken = stored.access_token;
+          _hadSessionAtLoad = true;
+          _offlineSession = true;
+          _hideLoginOverlay();
+          try { setSyncStatus("offline", "Sin conexión · sesión guardada"); } catch (_) {}
+          safeInfo("[auth] sin red: sesión guardada de " + ((stored.user && stored.user.email) || "usuario"));
+        } else {
+          _showLoginOverlay();
+          if (!_supa) _showLoginError("No se pudo cargar la librería de Supabase. Recarga la página con internet una vez; después funciona sin conexión.");
+        }
       }
+      if (!_supa) return;
 
       _supa.auth.onAuthStateChange((event, session) => {
         switch (event) {
@@ -9489,7 +9542,7 @@ function plExportBackup() {
         if (_inflightDirty[oldKey]) { _inflightDirty[newKey] = _inflightDirty[oldKey]; delete _inflightDirty[oldKey]; }
         if (_pendingPush.has(oldKey)) { _pendingPush.delete(oldKey); _pendingPush.add(newKey); }
         // Deshacer (↩) y notas libres del Pencil siguen la clave nueva
-        if (Array.isArray(_fieldHistory)) _fieldHistory.forEach(function (h) { if (h && h.k === oldKey) h.k = newKey; });
+        try { _fieldHistoryRekey(oldKey, newKey); } catch (_) {}
         ["pl_notas_v1_", "pl_notas_v1_at_", "pl_notas_v1_size_"].forEach(function (pref) {
           const v = localStorage.getItem(pref + oldKey);
           if (v !== null) { if (localStorage.getItem(pref + newKey) === null) localStorage.setItem(pref + newKey, v); localStorage.removeItem(pref + oldKey); }
@@ -10133,9 +10186,42 @@ function plExportBackup() {
 
     // Aplica datos de notas de Supabase sin perder ediciones dirty en memoria.
     // Úsalo en lugar de `noteData = loadedNotes` para evitar race conditions.
+    // Campos escritos sin red que siguen en el outbox (tras recargar la app ya no están en
+    // _dirtyFields): la copia remota NO debe pisarlos en pantalla mientras esperan subir. Se aplican
+    // sobre las notas cargadas; flushOutbox los sube después con esos mismos valores.
+    function _applyOutboxOverlay(target) {
+      let q = [];
+      try { q = outboxLoad(); } catch (_) { return; }
+      q.forEach(function (it) {
+        if (!it || it.type !== "note" || !it.key || !it.data) return;
+        const src = it.data;
+        const base = target[it.key];
+        if (!base) {
+          // La nube aún no tiene nota para este paciente (creado sin red): lo encolado es lo único que hay.
+          if (_findPatientByKey(it.key)) target[it.key] = migrateNote(Object.assign(defaultData(), src));
+          return;
+        }
+        const dirty = Array.isArray(it.dirty) && it.dirty.length ? it.dirty : null;
+        if (!dirty) {
+          // Nota completa encolada (sin lista de campos): lo local pendiente gana.
+          target[it.key] = migrateNote(Object.assign({}, base, src));
+          return;
+        }
+        const nd = migrateNote(base);
+        dirty.forEach(function (f) {
+          if (f === "labHistory") nd.labHistory = _mergeLabHistory(src.labHistory, nd.labHistory, true);
+          else if (f === "imagenHistory") { if (Array.isArray(src.imagenHistory)) nd.imagenHistory = src.imagenHistory; }
+          else if (f === "checklist") { nd.checklist = Object.assign({}, nd.checklist || {}, src.checklist || {}); }
+          else if (f.indexOf("ck_") === 0) { const ck = f.slice(3); if (!nd.checklist) nd.checklist = {}; if (src.checklist && src.checklist[ck] !== undefined) nd.checklist[ck] = src.checklist[ck]; }
+          else if (src[f] !== undefined) nd[f] = src[f];
+        });
+        target[it.key] = nd;
+      });
+    }
     function _applyLoadedNotes(loadedNotes) {
       const prev = noteData;
       noteData = loadedNotes || {};
+      try { _applyOutboxOverlay(noteData); } catch (e) { safeLog("_applyOutboxOverlay:", e); }
       // Preservar campos que el usuario está editando ahora mismo (_dirtyFields) Y los que ya
       // tienen un push programado/en vuelo (_pendingDirty): si el iPad vuelve del segundo plano
       // y recarga desde Supabase antes de que ese push llegue, la copia remota (vieja) los pisaba.
@@ -13047,6 +13133,7 @@ function plExportBackup() {
       if (!item) return;
       const txt = isCustom ? item : item.text;
       const nd = migrateNote(noteData[k] || defaultData());
+      _undoPush(k, "orden rápida en pendientes");
       const prev = nd.pendientes || "";
       nd.pendientes = prev ? prev + "\n• " + txt : "• " + txt;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -13101,6 +13188,7 @@ function plExportBackup() {
       const nd = migrateNote(noteData[k] || defaultData());
       const built = buildPaseInteligente(p, nd);
       if (!built) { alert("No hay información relevante para auto-llenar la entrega."); return; }
+      _undoPush(k, "auto-llenar entrega");
       const prev = nd.entrega || "";
       nd.entrega = prev ? prev + "\n\n" + built : built;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -13138,12 +13226,14 @@ function plExportBackup() {
         lines.push(line);
       });
       if (reg.length > 150) reg.splice(0, reg.length - 150);
-      nd.checklist[ENTREGA_AUTO_KEY] = reg;
       if (!lines.length) {
         // Solo cambió el registro de ids: guardar sin tocar el texto.
+        nd.checklist[ENTREGA_AUTO_KEY] = reg;
         noteData[k] = nd; _saveNoteNow(k, nd, "ck_entrega_auto");
         return 0;
       }
+      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")");
+      nd.checklist[ENTREGA_AUTO_KEY] = reg;
       nd.entrega = cur ? (cur.replace(/\s+$/, "") + "\n" + lines.join("\n")) : lines.join("\n");
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_entrega_auto");
@@ -13489,6 +13579,7 @@ function plExportBackup() {
     function cultivoQuickAdd(k, tipo) {
       const nd = getNote(k);
       if (!nd.checklist) nd.checklist = {};
+      _undoPush(k, "agregar cultivo " + tipo);
       const prev = nd.checklist.cultivos || "";
       const date = todayStr();
       const line = (prev ? "\n" : "") + tipo + " " + date + " — ";
@@ -13929,6 +14020,7 @@ function plExportBackup() {
       const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
       const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
       if (cur.trim().indexOf(stamp + " —") === 0) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } return; }
+      _undoPush(k, "fecha de hoy en pendientes");
       const next = stamp + " — \n" + cur;
       if (ta) {
         ta.value = next; liveUpdate(ta); ta.focus();
@@ -14054,6 +14146,7 @@ function plExportBackup() {
           ${renderLabNewsBadge(nd, k)}
           ${renderCruceBadge(nd, k)}
           ${(isSimpleEsp(p.esp) && nd && nd.checklist && nd.checklist.svcMine) ? `<button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Quitar de mi servicio">↩️</button>` : ''}
+          ${renderUndoBtn(k)}
           <button class="icon-btn has-lbl" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️<span class="icon-lbl">Editar</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(139,92,246,.45)" data-inkkey="${k}" onclick="openInkpad(this.dataset.inkkey)" title="Escribir a mano con stylus (Apple Pencil, S Pen, etc.) y transcribir con IA">✍️<span class="icon-lbl">Escribir</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(245,158,11,.5)" data-remkey="${k}" onclick="openReminderModal(this.dataset.remkey)" title="Programar recordatorio (reposición K, gasometría a las 18h, etc.)">🔔<span class="icon-lbl">Recordar</span></button>
@@ -14556,6 +14649,7 @@ function plExportBackup() {
       const nd = getNote(k);
       const entry = nd.imagenHistory.find(e => e.fecha === fecha);
       if (!entry) return;
+      _undoPush(k, "quitar estudio de imagen " + fmtDateChip(fecha));
       entry.estudios.splice(idx, 1);
       if (entry.estudios.length === 0) {
         nd.imagenHistory = nd.imagenHistory.filter(e => e.fecha !== fecha);
@@ -14619,6 +14713,7 @@ function plExportBackup() {
       const nd = getNote(k);
       const entry = nd.imagenHistory.find(e => e.fecha === fecha);
       if (!entry || !entry.estudios[idx]) return;
+      _undoPush(k, "quitar archivo de estudio " + fmtDateChip(fecha));
       entry.estudios[idx].file = ""; entry.estudios[idx].file_type = ""; entry.estudios[idx].file_name = "";
       noteData[k] = nd; saveNote(k, nd);
       _refreshImgSec(k);
@@ -14628,6 +14723,7 @@ function plExportBackup() {
       const nd = getNote(k);
       const entry = nd.imagenHistory.find(e => e.fecha === fecha);
       if (!entry || !entry.estudios[idx]) return;
+      _undoPush(k, "quitar enlace de estudio " + fmtDateChip(fecha));
       entry.estudios[idx].link = "";
       noteData[k] = nd; saveNote(k, nd);
       _refreshImgSec(k);
@@ -16588,9 +16684,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       _pendingNoteAutosave[k](k);
     }
+    var _fieldPrevVals = {}; // k|campo → valor antes del primer teclazo (liveUpdate), para Regresar al soltar
     function liveUpdate(el) {
       var k = el.dataset.key, f = el.dataset.field;
       if (!noteData[k]) noteData[k] = defaultData();
+      if (_fieldPrevVals[k + "|" + f] === undefined) _fieldPrevVals[k + "|" + f] = toSafeString(noteData[k][f]);
       noteData[k][f] = el.value;
       // Marcar campo como dirty (editado localmente, pendiente de guardar)
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -16614,13 +16712,168 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       delete labAnalysisCache[k]; // labs cambiaron → invalidar análisis IA
       scheduleNoteAutosave(k);
     }
-    var _fieldHistory = [];
+    // ═══ REGRESAR (oct 2026, pedido de Gera): deshacer el último cambio de una tarjeta ═══
+    // Antes solo había un aviso de 5 s para el último texto. Ahora cada cambio que puede doler (texto
+    // guardado, quitar cirugía/drenaje/labs/estudio, tomar guardia, auto-llenar, plantillas, novedades
+    // automáticas) guarda ANTES una copia de la nota del paciente en una pila por paciente
+    // (localStorage pl_undo_v1, 20 pasos por paciente, sobrevive a recargas y a cerrar la app).
+    // El botón "↩ Regresar" de la cabecera de la tarjeta vuelve un paso atrás (y otro, y otro…) y sube el
+    // cambio como cualquier edición (solo los campos que difieren). Cada Regresar deja el estado que había
+    // en una pila de "Rehacer" (botón ↪), para volver si el regreso fue el error. Si después de regresar
+    // se edita algo nuevo, la versión más reciente que se dejó atrás NO se pierde: pasa a la pila de
+    // Regresar como "como estaba antes de regresar «…»".
+    const UNDO_KEY = "pl_undo_v1";
+    const REDO_KEY = "pl_redo_v1";
+    const UNDO_PER_PATIENT = 20;
+    let _undoStacks = null;
+    let _redoStacks = null;
+    let _lastUndoKey = null;
+    function _undoLoad() {
+      if (_undoStacks) return _undoStacks;
+      try { _undoStacks = JSON.parse(localStorage.getItem(UNDO_KEY) || "{}") || {}; } catch (_) { _undoStacks = {}; }
+      if (!_undoStacks || typeof _undoStacks !== "object") _undoStacks = {};
+      return _undoStacks;
+    }
+    function _redoLoad() {
+      if (_redoStacks) return _redoStacks;
+      try { _redoStacks = JSON.parse(localStorage.getItem(REDO_KEY) || "{}") || {}; } catch (_) { _redoStacks = {}; }
+      if (!_redoStacks || typeof _redoStacks !== "object") _redoStacks = {};
+      return _redoStacks;
+    }
+    function _stackSave(key, stacks, limit) {
+      try {
+        Object.keys(stacks).forEach(function (k) { if (!Array.isArray(stacks[k]) || !stacks[k].length) delete stacks[k]; });
+        let txt = JSON.stringify(stacks);
+        // Cuota: si pesa demasiado, recortar los pasos más viejos de cada paciente hasta caber.
+        let guard = 0;
+        while (txt.length > limit && guard++ < 40) {
+          Object.keys(stacks).forEach(function (k) { if (stacks[k].length > 1) stacks[k].shift(); });
+          txt = JSON.stringify(stacks);
+        }
+        localStorage.setItem(key, txt);
+      } catch (_) {}
+    }
+    function _undoSave() { _stackSave(UNDO_KEY, _undoLoad(), 1500000); }
+    function _redoSave() { _stackSave(REDO_KEY, _redoLoad(), 600000); }
+    function _fieldHistoryRekey(oldKey, newKey) {
+      [[_undoLoad(), _undoSave], [_redoLoad(), _redoSave]].forEach(function (pair) {
+        const st = pair[0];
+        if (st[oldKey] && !st[newKey]) { st[newKey] = st[oldKey]; delete st[oldKey]; pair[1](); }
+      });
+    }
+    function _undoEntry(label, nd) { return { ts: Date.now(), label: String(label || "cambio"), note: JSON.parse(JSON.stringify(_lsNoteCopy(migrateNote(nd)))) }; }
+    // Guarda el estado ACTUAL de la nota antes de un cambio. Llamar antes de mutar noteData[k].
+    function _undoPush(k, label) {
+      try {
+        const nd = noteData[k]; if (!nd || !k) return;
+        const st = _undoLoad();
+        const entry = _undoEntry(label, nd);
+        const arr = st[k] || (st[k] = []);
+        // Edición nueva después de Regresar: lo que se dejó atrás al regresar no se pierde, queda como paso.
+        const rd = _redoLoad();
+        if (rd[k] && rd[k].length) {
+          const newest = rd[k][rd[k].length - 1];
+          if (JSON.stringify(newest.note) !== JSON.stringify(entry.note)) arr.push({ ts: Date.now(), label: "como estaba antes de regresar «" + newest.label + "»", note: newest.note });
+          delete rd[k]; _redoSave();
+        }
+        const last = arr[arr.length - 1];
+        // Mismo contenido que el último paso (p. ej. un blur sin cambios): no duplicar.
+        if (last && last.note && JSON.stringify(last.note) === JSON.stringify(entry.note)) { last.label = entry.label; last.ts = entry.ts; _undoSave(); _refreshUndoButton(k); return; }
+        arr.push(entry);
+        while (arr.length > UNDO_PER_PATIENT) arr.shift();
+        _lastUndoKey = k;
+        _undoSave();
+        _refreshUndoButton(k);
+      } catch (e) { safeLog("_undoPush:", e); }
+    }
+    function _undoCount(k) { return (_undoLoad()[k] || []).length; }
+    function _redoCount(k) { return (_redoLoad()[k] || []).length; }
+    function _undoLastLabel(k) { const a = _undoLoad()[k] || []; return a.length ? a[a.length - 1].label : ""; }
+    function _redoLastLabel(k) { const a = _redoLoad()[k] || []; return a.length ? a[a.length - 1].label : ""; }
+    function _undoTitle(k) { const n = _undoCount(k); return n ? ("Regresar: " + _undoLastLabel(k) + " (" + n + " paso" + (n === 1 ? "" : "s") + ")") : ""; }
+    function _redoTitle(k) { const n = _redoCount(k); return n ? ("Rehacer (volver a como estaba): " + _redoLastLabel(k) + " (" + n + " paso" + (n === 1 ? "" : "s") + ")") : ""; }
+    function _refreshUndoButton(k) {
+      try {
+        const card = document.getElementById("card-" + k); if (!card) return;
+        const btn = card.querySelector(".undo-btn");
+        if (btn) { const n = _undoCount(k); btn.style.display = n ? "" : "none"; btn.title = _undoTitle(k); }
+        const rbtn = card.querySelector(".redo-btn");
+        if (rbtn) { const r = _redoCount(k); rbtn.style.display = r ? "" : "none"; rbtn.title = _redoTitle(k); }
+      } catch (_) {}
+    }
+    function renderUndoBtn(k) {
+      const n = _undoCount(k), r = _redoCount(k);
+      return `<button class="icon-btn has-lbl undo-btn" style="background:rgba(99,102,241,.5);display:${n ? "" : "none"}" data-undokey="${k}" onclick="undoLast(this.dataset.undokey)" title="${esc(_undoTitle(k))}">↩<span class="icon-lbl">Regresar</span></button>` +
+        `<button class="icon-btn has-lbl redo-btn" style="background:rgba(99,102,241,.35);display:${r ? "" : "none"}" data-undokey="${k}" onclick="redoLast(this.dataset.undokey)" title="${esc(_redoTitle(k))}">↪<span class="icon-lbl">Rehacer</span></button>`;
+    }
+    const _UNDO_TEXT_FIELDS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega", "dx", "body_diagram_ant", "body_diagram_post"];
+    // Deja la nota del paciente k como en `target` (copia guardada) y sube solo los campos que difieren.
+    function _undoRestore(k, target) {
+      const cur = migrateNote(noteData[k]);
+      const prev = migrateNote(target);
+      // PDF inline recortado en la copia: conservar el actual si es la misma fecha.
+      (prev.labHistory || []).forEach(function (s) {
+        if (s && s.source_file_stripped) { const c = (cur.labHistory || []).find(function (x) { return x && x.fecha === s.fecha && x.source_file; }); if (c) { s.source_file = c.source_file; delete s.source_file_stripped; } }
+      });
+      const dirty = new Set();
+      _UNDO_TEXT_FIELDS.forEach(function (f) { if (toSafeString(cur[f]) !== toSafeString(prev[f])) dirty.add(f); });
+      if (JSON.stringify(cur.checklist || {}) !== JSON.stringify(prev.checklist || {})) dirty.add("checklist");
+      if (JSON.stringify(cur.labHistory || []) !== JSON.stringify(prev.labHistory || [])) dirty.add("labHistory");
+      if (JSON.stringify(cur.imagenHistory || []) !== JSON.stringify(prev.imagenHistory || [])) dirty.add("imagenHistory");
+      (prev.labHistory || []).forEach(function (s) { if (s) s.client_updated_at = Date.now(); });
+      noteData[k] = prev;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      dirty.forEach(function (f) { _dirtyFields[k].add(f); });
+      saveNote(k, prev);
+      dirty.forEach(function (f) { _dirtyFields[k].delete(f); });
+      if (dirty.has("dx")) { const p = patients.find(function (pt) { return pid(pt) === k; }); if (p) { p.dx = prev.dx; _savePtsImmediate(p); } }
+      delete labAnalysisCache[k];
+      _rerenderCard(k);
+    }
+    // Vuelve al paso anterior de la nota del paciente k. Devuelve la etiqueta deshecha o "" si no había.
+    function undoLast(k) {
+      const st = _undoLoad();
+      const arr = st[k] || [];
+      if (!arr.length) return "";
+      // Clave huérfana (paciente re-clavado o egresado): no crear una nota vacía y subirla
+      if (!noteData[k] || !_findPatientByKey(k)) { delete st[k]; _undoSave(); return ""; }
+      const entry = arr.pop();
+      // Lo que había ANTES de regresar queda en Rehacer, por si el regreso fue el error.
+      const rd = _redoLoad();
+      const rarr = rd[k] || (rd[k] = []);
+      rarr.push(_undoEntry(entry.label, noteData[k]));
+      while (rarr.length > UNDO_PER_PATIENT) rarr.shift();
+      _undoSave(); _redoSave();
+      _undoRestore(k, entry.note);
+      try { _showRTToast("↩ Regresado: " + entry.label); } catch (_) {}
+      return entry.label;
+    }
+    // Deshace el último Regresar (vuelve a como estaba). Devuelve la etiqueta o "" si no había.
+    function redoLast(k) {
+      const rd = _redoLoad();
+      const rarr = rd[k] || [];
+      if (!rarr.length) return "";
+      if (!noteData[k] || !_findPatientByKey(k)) { delete rd[k]; _redoSave(); return ""; }
+      const entry = rarr.pop();
+      const st = _undoLoad();
+      const arr = st[k] || (st[k] = []);
+      arr.push(_undoEntry(entry.label, noteData[k]));
+      while (arr.length > UNDO_PER_PATIENT) arr.shift();
+      _redoSave(); _undoSave();
+      _undoRestore(k, entry.note);
+      try { _showRTToast("↪ Rehecho: " + entry.label); } catch (_) {}
+      return entry.label;
+    }
+    function undoLastField() { if (_lastUndoKey) undoLast(_lastUndoKey); }
     function updateField(k, field, value, prevValue) {
       if (!noteData[k]) noteData[k] = defaultData();
-      const prev = prevValue !== undefined ? prevValue : (noteData[k][field] || "");
-      if (prev !== value && prev !== undefined) {
-        _fieldHistory.push({ k, field, prev, current: value, ts: Date.now() });
-        if (_fieldHistory.length > 30) _fieldHistory.shift();
+      if (prevValue === undefined && _fieldPrevVals[k + "|" + field] !== undefined) prevValue = _fieldPrevVals[k + "|" + field];
+      delete _fieldPrevVals[k + "|" + field];
+      const prev = prevValue !== undefined ? toSafeString(prevValue) : toSafeString(noteData[k][field]);
+      if (prev !== toSafeString(value)) {
+        // Copia ANTES del cambio con el valor previo del campo (el textarea ya mostraba el nuevo).
+        const before = Object.assign({}, noteData[k]); before[field] = prev;
+        const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
         _showUndoToast();
       }
       noteData[k][field] = value;
@@ -16633,6 +16886,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (p) { p.dx = value; _savePtsImmediate(p); } // inmediato: dx puede cambiar justo antes de cerrar la app
       }
     }
+    function _undoFieldLabel(f) {
+      return ({ dx: "DX", app: "APP", pa: "PA", qx: "Qx", manejo: "Manejo", pendientes: "Pendientes", entrega: "Entrega", drenajes: "nota de drenajes", sangrado: "Sangrado", balance: "Balance", sv: "SV", interconsultas: "Interconsultas", cultivos: "Cultivos", recibo: "Recibo", pendientes_mips: "Pendientes MIPs", pendientes_r1: "Pendientes R1" })[f] || f;
+    }
     var _undoToastTimer = null;
     function _showUndoToast() {
       var toast = document.getElementById("undo-toast");
@@ -16643,38 +16899,31 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (toast) toast.style.display = "none";
       }, 5000);
     }
-    function undoLastField() {
-      if (_fieldHistory.length === 0) return;
-      const last = _fieldHistory.pop();
-      // Clave huérfana (paciente re-clavado o egresado): no crear una nota vacía y subirla
-      if (!noteData[last.k] || !_findPatientByKey(last.k)) { _fieldHistory.length = 0; return; }
-      noteData[last.k][last.field] = last.prev;
-      _saveNoteNow(last.k, noteData[last.k], last.field);
-      // Update textarea in DOM if visible
-      const ta = document.querySelector("textarea[data-key='" + last.k + "'][data-field='" + last.field + "']");
-      if (ta) { ta.value = last.prev; liveUpdate(ta); }
-      if (_fieldHistory.length === 0) {
-        const toast = document.getElementById("undo-toast");
-        if (toast) toast.style.display = "none";
-        clearTimeout(_undoToastTimer);
-      } else {
-        _showUndoToast();
-      }
-    }
     // Handlers para campos de texto dentro del checklist (pendientes_mips, pendientes_r1)
     function liveCkText(el) {
       var k = el.dataset.key, f = el.dataset.ckfield;
       var nd = getNote(k);
       if (!nd.checklist) nd.checklist = {};
+      // Valor previo al primer teclazo (para "Regresar" al soltar el campo); se limpia en updateCkText.
+      if (_ckPrevVals[k + "|" + f] === undefined) _ckPrevVals[k + "|" + f] = toSafeString(nd.checklist[f]);
       nd.checklist[f] = el.value;
       noteData[k] = nd;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add("ck_" + f);
       scheduleNoteAutosave(k);
     }
+    var _ckPrevVals = {}; // k|campo → valor antes del primer teclazo (liveCkText), para Regresar
     function updateCkText(k, field, value) {
       var nd = getNote(k);
       if (!nd.checklist) nd.checklist = {};
+      var prevVal = _ckPrevVals[k + "|" + field];
+      if (prevVal === undefined) prevVal = toSafeString(nd.checklist[field]);
+      delete _ckPrevVals[k + "|" + field];
+      if (prevVal !== toSafeString(value)) {
+        // Copia ANTES del cambio (liveCkText ya escribió el nuevo valor en noteData): regresar con el previo.
+        var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd)))); before.checklist[field] = prevVal;
+        var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
+      }
       nd.checklist[field] = value;
       _saveNoteNow(k, nd, "ck_" + field);
     }
@@ -16794,8 +17043,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
 
     function deleteLabDate(k, fecha) {
-      if (!confirm("Eliminar labs del " + fmtDateChip(fecha) + "?\nNo se puede deshacer.")) return;
+      if (!confirm("Eliminar labs del " + fmtDateChip(fecha) + "?\n(Se puede regresar con el botón ↩ Regresar de la tarjeta.)")) return;
       var nd = getNote(k);
+      _undoPush(k, "eliminar labs del " + fmtDateChip(fecha));
       var snapToDelete = (nd.labHistory || []).find(function (s) { return s.fecha === fecha; });
       if (snapToDelete && snapToDelete.source_storage_path) {
         deleteLabSourceFromStorage(snapToDelete.source_storage_bucket || LAB_STORAGE_BUCKET, snapToDelete.source_storage_path);
@@ -18539,7 +18789,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       return data;
     }
 
-    function downloadAltaWord(pk) {
+    async function downloadAltaWord(pk) {
+      try { await _libLoad("docx"); } catch (e) { alert("No se pudo cargar la librería de Word: " + (e && e.message ? e.message : e)); return; }
       if (!window.docx) { alert("Librería cargando."); return; }
       const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType } = window.docx;
       const p = patients.find(x => pid(x) === pk); if (!p) return;
@@ -19312,8 +19563,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const file = input.files[0]; if (!file) return;
       input.value = "";
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
+          await _libLoad("xlsx");
           const rawBuffer = e.target.result;
           saveExportTemplateBuffer(rawBuffer);
           const wb = XLSX.read(rawBuffer, { type: "array", cellDates: true, cellStyles: true });
@@ -20601,8 +20853,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
 
     async function _doExportCensoFormatoDrive(apellido, separadores) {
-      if (!window.ExcelJS) {
-        alert("⚠️ ExcelJS aún cargando. Espera 2 seg e inténtalo de nuevo.");
+      // Librerías de Excel a demanda (mismo origen; ExcelJS con formato, SheetJS como respaldo)
+      try { await _libLoad("exceljs"); } catch (e) { console.warn("ExcelJS no cargó:", e); }
+      try { await _libLoad("xlsx"); } catch (e) { console.warn("SheetJS no cargó:", e); }
+      if (!window.ExcelJS && !window.XLSX) {
+        alert("⚠️ No se pudo cargar la librería de Excel (sin conexión y aún no guardada en este dispositivo).");
         return;
       }
 
@@ -22273,10 +22528,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // ─── START ───────────────────────────────────────────────────────────────────────
     init();
 
-    // ─── Fallback de iconos Phosphor ───────────────────────────────────────────
-    // La app es offline-first: si el CDN de la fuente de iconos no responde
-    // (sin internet en el hospital, CDN bloqueado), sustituimos cada icono por
-    // un emoji equivalente para que la UI RESID nunca quede con huecos vacíos.
+    // ─── Iconos "ph-*" → emoji ─────────────────────────────────────────────────
+    // La fuente Phosphor (CDN) ya no se carga: la app debe abrir en cualquier red y sin
+    // internet, y cada script externo era un punto más de falla. Los pocos iconos dinámicos
+    // que quedan (ficha RESID) se dibujan siempre con su emoji equivalente, de inmediato.
     (function () {
       const PH_EMOJI = {
         "ph-house": "🏠", "ph-stethoscope": "🩺", "ph-users-three": "👥", "ph-users": "👥",
@@ -22294,32 +22549,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       };
       function injectPhFallback() {
         if (document.getElementById("ph-emoji-fallback")) return;
-        let css = "";
+        let css = "i.ph{font-style:normal;display:inline-block}";
         Object.keys(PH_EMOJI).forEach(k => {
-          // !important en ambas propiedades: el CSS de Phosphor declara
-          // font-family:"Phosphor"!important en .ph::before y ganaría si la hoja
-          // cargó pero la fuente (woff2) no; este <style> va después y lo anula.
-          css += `i.ph.${k}::before{content:"${PH_EMOJI[k]}" !important;font-family:inherit !important;font-style:normal;font-weight:normal}`;
+          css += `i.ph.${k}::before{content:"${PH_EMOJI[k]}";font-family:inherit;font-style:normal;font-weight:normal}`;
         });
         const st = document.createElement("style");
         st.id = "ph-emoji-fallback";
         st.textContent = css;
-        document.head.appendChild(st);
+        (document.head || document.documentElement).appendChild(st);
       }
-      function applyPhFallback() {
-        if (document.getElementById("ph-emoji-fallback")) return;
-        // OJO: document.fonts.check() devuelve true para familias NO registradas,
-        // así que no sirve solo. load() fuerza la descarga y devuelve las caras
-        // realmente disponibles: [] si el CSS del CDN nunca cargó o el woff2 falló.
-        try {
-          if (!document.fonts || !document.fonts.load) { injectPhFallback(); return; }
-          document.fonts.load('1em "Phosphor"').then(faces => {
-            if (!(faces && faces.length > 0 && document.fonts.check('1em "Phosphor"'))) injectPhFallback();
-          }).catch(injectPhFallback);
-        } catch (_) { injectPhFallback(); }
-      }
-      window.addEventListener("load", () => setTimeout(applyPhFallback, 1200));
-      setTimeout(applyPhFallback, 5000); // último recurso si load nunca dispara
+      try { injectPhFallback(); } catch (_) { try { window.addEventListener("load", injectPhFallback); } catch (__) {} }
     })();
 
     // ─── CHECKLIST OPERATIVO ─────────────────────────────────────────────────────────
@@ -22510,6 +22749,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const nd = getNote(k);
       const list = (nd.checklist && nd.checklist.dispositivos) || [];
       const i = list.findIndex(d => String(d.id) === String(id)); if (i < 0) return;
+      _undoPush(k, "quitar " + (toSafeString(list[i].tipo) || "drenaje") + (list[i].lado ? " " + list[i].lado : ""));
       list.splice(i, 1);
       _saveDispositivos(k, nd); _rerenderCard(k);
     }
@@ -22628,7 +22868,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const list = (nd.checklist && nd.checklist.cirugias) || [];
       const i = list.findIndex(c => String(c.id) === String(id)); if (i < 0) return;
       const c = list[i];
-      if ((toSafeString(c.procedimiento).trim() || toSafeString(c.hallazgos).trim()) && !confirm("¿Quitar esta cirugía de la lista?\n" + (c.fecha ? c.fecha + " · " : "") + toSafeString(c.procedimiento).trim())) return;
+      if ((toSafeString(c.procedimiento).trim() || toSafeString(c.hallazgos).trim()) && !confirm("¿Quitar esta cirugía de la lista?\n" + (c.fecha ? c.fecha + " · " : "") + toSafeString(c.procedimiento).trim() + "\n\n(Se puede regresar con el botón ↩ Regresar de la tarjeta.)")) return;
+      _undoPush(k, "quitar cirugía " + (toSafeString(c.procedimiento).trim().slice(0, 30) || c.fecha || ""));
       list.splice(i, 1);
       _saveCirugias(k, nd); _rerenderCard(k);
     }
@@ -22667,6 +22908,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const ent = toSafeString(nd.entrega).trim();
       if (!ent) { alert("La caja Entrega está vacía: no hay nada que recibir."); return; }
       if (!confirm("¿Pasar el texto de Entrega a Recibo (con fecha y hora) y dejar Entrega vacía para tu guardia?")) return;
+      _undoPush(k, "tomar guardia (Entrega → Recibo)");
       const d = new Date(); const z = n => String(n).padStart(2, "0");
       const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
       if (!nd.checklist) nd.checklist = {};
@@ -23769,7 +24011,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       trig.className = 'resid-select ' + (sel.className || '');
       var st = sel.getAttribute('style');
       if (st) trig.setAttribute('style', st.replace(/display\s*:[^;]+;?/i, ''));
-      trig.innerHTML = '<span class="rs-label"></span><i class="ph ph-caret-down rs-chevron"></i>';
+      trig.innerHTML = '<span class="rs-label"></span><i class="rs-chevron">▾</i>';
       sel.style.display = 'none';
       sel.parentNode.insertBefore(trig, sel.nextSibling);
       sel.__trig = trig; trig.__sel = sel;
@@ -23809,7 +24051,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         return '<button type="button" class="resid-sheet-row' + active + '" data-idx="' + idx + '">' +
           '<span class="rs-ic"><i class="ph ' + ic + '"></i></span>' +
           '<span class="rs-tx">' + escapeHtml(label) + '</span>' +
-          '<i class="ph ph-check rs-check"></i></button>';
+          '<i class="rs-check">✓</i></button>';
       }).join('');
 
       bd.innerHTML =
@@ -23817,9 +24059,9 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
           '<div class="resid-sheet-grip"></div>' +
           '<div class="resid-sheet-head">' +
             '<div class="resid-sheet-title"><i class="ph ' + titleIcon + '"></i>' + escapeHtml(title) + '</div>' +
-            '<button type="button" class="resid-sheet-close" aria-label="Cerrar"><i class="ph ph-x"></i></button>' +
+            '<button type="button" class="resid-sheet-close" aria-label="Cerrar"><i>✕</i></button>' +
           '</div>' +
-          (bigList ? '<div class="resid-sheet-search"><i class="ph ph-magnifying-glass"></i><input type="text" placeholder="Buscar..." /></div>' : '') +
+          (bigList ? '<div class="resid-sheet-search"><i>🔍</i><input type="text" placeholder="Buscar..." /></div>' : '') +
           '<div class="resid-sheet-list">' + rowsHtml +
             '<div class="resid-sheet-empty" style="display:none">Sin coincidencias</div>' +
           '</div>' +
@@ -26002,10 +26244,11 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     return m;
   }
 
-  function openPendientesImport() {
+  async function openPendientesImport() {
     try {
+      try { await window._libLoad("xlsx"); } catch (e) { console.warn("SheetJS no cargó:", e); }
       if (typeof XLSX === "undefined" || !XLSX || !XLSX.read) {
-        alert("La librería de Excel (SheetJS) no cargó. Revisa tu conexión y recarga con Cmd+Shift+R.");
+        alert("La librería de Excel (SheetJS) no cargó: sin conexión y aún no está guardada en este dispositivo. Ábrela una vez con internet.");
         return;
       }
       var m = _modal();
