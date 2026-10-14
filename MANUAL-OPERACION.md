@@ -73,19 +73,21 @@ Las ramas son "copias de trabajo" que ya se fusionaron y solo estorban.
    - `feature/winlab-auto-sync` (solo después del paso de Cloudflare de abajo)
 3. No borres `main`.
 
-## Paso a paso: decirle a Cloudflare que `main` es la rama de producción
+## Cloudflare Pages: `main` es la rama de producción (hecho el 14-oct-2026)
 
-Hoy Cloudflare publica la app en producción porque el deploy "se disfraza" de
-la rama vieja `feature/winlab-auto-sync`. Para dejarlo limpio:
+Cloudflare publica como **producción** solo los deploys cuya etiqueta de rama
+coincide con la "Production branch" del proyecto. Desde el 14 de octubre de 2026
+esa rama es `main` en ambos lados:
 
-1. Entra a https://dash.cloudflare.com → **Workers & Pages** → proyecto
-   **pisolibro**.
-2. Pestaña **Settings → Builds & deployments** (o "Configuración →
-   Compilaciones e implementaciones").
-3. En **Production branch** escribe `main` y guarda.
-4. Avísame y cambio una línea del archivo `.github/workflows/deploy-pages.yml`
-   (`--branch=feature/winlab-auto-sync` → `--branch=main`). Hasta entonces,
-   NO borres la rama `feature/winlab-auto-sync`.
+- En Cloudflare: **Workers & Pages → pisolibro → Settings → Builds & deployments
+  → Production branch = `main`**.
+- En el repo: `.github/workflows/deploy-pages.yml` publica con `--branch=main`.
+
+Si alguna vez cambias la Production branch en Cloudflare, cambia también esa
+línea del workflow: si no coinciden, cada push a `main` se publica como
+*preview* y la app en producción se queda congelada sin ningún aviso. La rama
+vieja `feature/winlab-auto-sync` ya no hace falta para publicar; puedes borrarla
+cuando quieras.
 
 ## Cómo moverse por la ficha del paciente (iPad)
 
