@@ -22,6 +22,11 @@ on:
         required: false
         default: false
         type: boolean
+      exp:
+        description: "Corrida dirigida: expediente(s) separados por coma (p. ej. 26-23836). Solo busca a esos pacientes (2-4 min). Lo manda la app con «🔎 Buscar ahora»."
+        required: false
+        default: ""
+        type: string
 
 # Permisos mínimos del GITHUB_TOKEN. "actions: write" lo necesitan el paso keepalive
 # (endpoint "enable workflow") y actions/cache + upload-artifact con permisos explícitos.
@@ -128,6 +133,8 @@ jobs:
           SUPABASE_TABLE:           ${{ secrets.SUPABASE_TABLE }}
           SUPABASE_ON_CONFLICT:     ${{ secrets.SUPABASE_ON_CONFLICT }}
           DRY_RUN:                  ${{ inputs.dry_run || 'false' }}
+          # Corrida dirigida a uno o varios expedientes (oct 2026): vacío = censo completo.
+          WL_TARGET_EXP:            ${{ inputs.exp || '' }}
 
       - name: Upload diagnostics on failure
         if: failure()

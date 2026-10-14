@@ -450,6 +450,32 @@ En Supabase → SQL Editor:
 update public.app_users set role = 'admin', status = 'active' where email = 'gfdz1540@gmail.com';
 ```
 
+## Si un paciente no tiene labs: el nombre no coincide con WinLab (octubre 2026)
+
+El robot busca a cada paciente en WinLab por apellidos y nombre. Si la hoja del censo trae un
+error de dedo (cama 3-181: dos letras invertidas en el apellido paterno), WinLab no devuelve nada. Desde octubre de 2026:
+
+1. **El robot prueba más variantes**: apellidos completos, Ñ/N, orden invertido, paterno + nombre y
+   ahora también **materno + nombre** (tolera el error en el paterno). Al identificar al paciente
+   acepta diferencias de una o dos letras (letras invertidas, una letra de más o de menos) y exige edad compatible.
+2. **La tarjeta te dice qué pasó**: en la sección de labs aparece "🤖 El robot no encontró a este
+   paciente", qué buscó y a qué hora, y los nombres parecidos que WinLab listó. **Toca el correcto**
+   y queda como *nombre en WinLab* del paciente (se guarda en la nota, también sin red; la hoja del
+   censo no lo pisa). También puedes escribirlo con **✏️ Nombre en WinLab** en el formato
+   `APELLIDOS, NOMBRE` (con coma), tal como aparece en WinLab.
+3. **🔎 Buscar ahora** (también en el menú ⋯ de la tarjeta: 🤖 Pedir labs al robot) pide al robot
+   una corrida solo para ese paciente: tarda 2-4 minutos y la tarjeta se actualiza sola ("encontrado
+   como …"). Necesita internet; sin red, el nombre fijado se usa en la siguiente corrida automática
+   (4:07, 13:15 y 20:07). Sirve desde el iPad, que no puede abrir la página de WinLab.
+4. **Mientras tanto**: 📄 PDF / 📷 Foto en la sección de labs lee la hoja impresa o la pantalla con
+   IA y guarda los valores en la tarjeta.
+
+Lo que el robot encuentra o no por paciente queda en la tabla `winlab_match` (qué buscó, nombres
+vistos, "encontrado como", hora); el alias vive en `notes.checklist.winlab_alias`. La corrida dirigida
+usa el input `exp` del workflow `winlab-scraper.yml` (`WL_TARGET_EXP`), que el worker manda cuando la
+app llama `/api/scrape` con `{"exp": "…"}`. Para que el botón dispare la corrida dirigida (y no una
+completa) hay que pegar el `cloudflare-worker/index.js` actualizado en el worker `piso-libro-ai`.
+
 ## Si un paciente desapareció del censo
 
 1. En la app, abre la pestaña **Papelera**.

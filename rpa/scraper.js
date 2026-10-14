@@ -14,7 +14,7 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
-         isMeaningfulReportRow, extractApellidos, buildSearchCandidates,
+         isMeaningfulReportRow, extractApellidos, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
          selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport } from "./lib.js";
 import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
 
@@ -52,7 +52,13 @@ const SUPABASE_SERVICE_KEY    = ENV("SUPABASE_SERVICE_KEY");
 const SUPABASE_TABLE          = ENV("SUPABASE_TABLE", "winlab_labs");
 const SUPABASE_CONFLICT       = ENV("SUPABASE_ON_CONFLICT", "exp,fecha");
 const SUPABASE_CENSO_TABLE    = ENV("SUPABASE_CENSO_TABLE", "patients");
-const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "cama,exp,nombre,esp,edad");
+const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "id,cama,exp,nombre,esp,edad");
+// Tabla con el resultado de la búsqueda por paciente (oct 2026): la app muestra "el robot no
+// encontró a este paciente", qué buscó y los nombres parecidos que vio, para fijar el alias.
+const SUPABASE_MATCH_TABLE    = ENV("SUPABASE_MATCH_TABLE", "winlab_match");
+// Corrida dirigida a uno o varios expedientes (coma): la pide la app con "🔎 Buscar ahora".
+// Con objetivo no aplica la cobertura mínima (1 paciente sin labs no es una corrida fallida).
+const WL_TARGET_EXP           = ENV("WL_TARGET_EXP", "").split(/[,\s]+/).map(normExp).filter(Boolean);
 
 // Dry-run: recorre todo el flujo de WinLab (login → búsqueda → drill-down)
 // pero NO escribe en Supabase. Actívalo con DRY_RUN=1 o el argumento --dry-run.
@@ -267,10 +273,33 @@ async function loadCenso(supa) {
   if (error) throw new Error(`Lectura de censo fallo: ${error.message}`);
 
   const total = data?.length || 0;
-  const filtrados = (data || []).filter((p) => isAllowedEsp(p.esp));
+  let filtrados = (data || []).filter((p) => isAllowedEsp(p.esp));
   console.log(`       Censo total=${total}, despues de filtro especialidad=${filtrados.length}`);
   if (!filtrados.length) {
     throw new Error(`Censo vacio o sin pacientes de las especialidades permitidas (CG/CT/CV/CCR/CPR/CMF/URG). Revisa la columna 'esp' en ${SUPABASE_CENSO_TABLE}.`);
+  }
+  // Corrida dirigida (oct 2026): solo los expedientes pedidos.
+  if (WL_TARGET_EXP.length) {
+    filtrados = filtrados.filter((p) => WL_TARGET_EXP.includes(normExp(p.exp)));
+    console.log(`       [objetivo] WL_TARGET_EXP=${WL_TARGET_EXP.join(",")} → ${filtrados.length} paciente(s) del censo`);
+    if (!filtrados.length) {
+      console.log("       [objetivo] ninguno de esos expedientes está en el censo; nada que hacer.");
+      process.exit(0);
+    }
+  }
+  // Alias "nombre en WinLab" fijado desde la app (notes.checklist.winlab_alias): se busca PRIMERO.
+  try {
+    const ids = filtrados.map((p) => p.id).filter(Boolean);
+    if (ids.length) {
+      const { data: al, error: e2 } = await supa.from("notes").select("patient_id, alias:checklist->>winlab_alias").in("patient_id", ids);
+      if (e2) throw e2;
+      const byId = new Map((al || []).map((r) => [r.patient_id, String(r.alias || "").trim()]));
+      let n = 0;
+      for (const p of filtrados) { const a = byId.get(p.id); if (a) { p.alias = a; n++; } }
+      console.log(`       Alias de WinLab fijados en la app: ${n} paciente(s)`);
+    }
+  } catch (e) {
+    console.log(`       (alias de WinLab no disponibles: ${e && e.message || e})`);
   }
   return filtrados;
 }
@@ -298,13 +327,20 @@ async function captureSearchUrl(page) {
 // fallback ciego de jun 2026 con apellido único saturó memoria y colapsó el navegador —
 // corrida 27665440228; esta escalera usa términos de 2+ palabras y drill solo-objetivo.)
 async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = {}) {
-  const candidates = buildSearchCandidates(paciente.nombre);
+  const candidates = buildSearchCandidatesWithAlias(paciente.nombre, paciente.alias);
   if (!candidates.length) {
     console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
-    return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
+    return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true, tried: [], seenNames: [] };
   }
-  const MAX_TRIES = Math.min(candidates.length, 5);
+  if (paciente.alias) console.log(`       [alias] nombre en WinLab fijado en la app: "${paciente.alias}"`);
+  // 6 intentos (antes 5): con el candidato "materno-solo + nombre" la escalera de un nombre de
+  // 4 palabras llega a 6. El presupuesto por paciente sigue mandando (abajo). Caso real: cama 3-181
+  // (corrida #419) con el paterno mal escrito en la hoja → se encontró en el 3.er candidato.
+  const MAX_TRIES = Math.min(candidates.length, 6);
   let last = null;
+  // Diagnóstico para la app (winlab_match): qué se buscó y qué nombres parecidos devolvió WinLab.
+  const tried = [], seen = new Set();
+  const noteSearch = (res) => { if (res && Array.isArray(res.seenNames)) for (const n of res.seenNames) seen.add(n); };
   for (let ci = 0; ci < MAX_TRIES; ci++) {
     const c = candidates[ci];
     if (ci > 0) {
@@ -317,12 +353,17 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
     }
     console.log(`       [busqueda] Apellidos → txtCognome: "${c.cognome}"${c.nome ? ` + txtNome: "${c.nome}"` : ""}`);
     if (c.sibling) continue; // las variantes "sibling" se buscan junto con su principal (abajo), no como retry
+    tried.push(c.cognome + (c.nome ? " + " + c.nome : ""));
     last = await doSingleSearch(page, searchUrl, paciente, {
       codice: null, cognome: c.cognome, nome: c.nome,
       tag: `apellidos="${c.cognome}"${c.nome ? `,nome="${c.nome}"` : ""}`,
-      requireTargetMatch: ci > 0,
+      // El alias lo fijó una persona viendo WinLab: su primer candidato se trata como búsqueda
+      // primaria; todo lo demás exige identificación positiva del objetivo.
+      requireTargetMatch: c.alias ? false : ci > 0,
       parsedMap: opts.parsedMap || null,
     }, deadlineTs);
+    noteSearch(last);
+    last.tried = tried.slice(); last.seenNames = Array.from(seen).slice(0, 8);
     if (!last.noResults) {
       // Variante literal del mismo nombre abreviado (ej. "MA ERIKA" además de "MARIA ERIKA"): WinLab
       // puede tener dos registros del mismo paciente; buscar también la otra y UNIR filas (dedupe por
@@ -352,7 +393,8 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
       return last;
     }
   }
-  return last || { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true };
+  if (last) { last.tried = tried.slice(); last.seenNames = Array.from(seen).slice(0, 8); return last; }
+  return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true, tried, seenNames: [] };
 }
 
 // Una sola tentativa de busqueda con parametros explicitos.
@@ -673,6 +715,9 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // censo trae `edad` y el encabezado FECHA DE NAC., ambas deben ser compatibles.
   const sel = selectTargetRows(result.rows, paciente, { ageTolerance: WL_AGE_TOLERANCE_YEARS });
   const { targetIdxs, linkIdxs, ageRejected } = sel;
+  // Para la app (winlab_match): nombres que WinLab listó y con cuál se identificó al objetivo.
+  result.seenNames = sel.seenNames || [];
+  if (sel.matchedHeader && targetIdxs.length) result.encontradoComo = sel.matchedHeader;
   // Marcar las filas del objetivo: la fusión entre corridas (y la app) solo confían en __target.
   for (const i of targetIdxs) result.rows[i].__target = true;
   // Reutilizar `valores` ya parseados en corridas previas (mismo referto = mismas celdas) para
@@ -1274,16 +1319,22 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
   // abortar y al recibir SIGTERM. Antes había un único upsert al final y un timeout del job
   // (85-90 min) perdía la corrida completa. El upsert es idempotente (onConflict exp,fecha).
   const pendingExps = new Set();
+  // Resultado de la búsqueda por paciente (oct 2026) → tabla winlab_match (la app lo muestra).
+  const matchRecords = [];
+  let pendingMatch = [];
   let flushed = 0, flushing = null, aborted = false;
   const flush = (why) => {
     if (flushing) return flushing;
     const keys = new Set(pendingExps); pendingExps.clear();
-    if (!keys.size) return Promise.resolve();
+    const matchBatch = pendingMatch; pendingMatch = [];
+    if (!keys.size && !matchBatch.length) return Promise.resolve();
     const batch = dedupRecords(records, SUPABASE_CONFLICT).filter((r) => keys.has(r.exp));
     flushing = (async () => {
-      try { flushed += await upsert(supa, batch, why); }
+      try { if (batch.length) flushed += await upsert(supa, batch, why); }
       catch (e) { console.error(`       [flush] fallo (${why}): ${e.message}`); for (const k of keys) pendingExps.add(k); }
-      finally { flushing = null; }
+      try { if (matchBatch.length) await upsertMatch(supa, matchBatch, why); }
+      catch (e) { console.error(`       [flush] winlab_match fallo (${why}): ${e.message}`); }
+      flushing = null;
     })();
     return flushing;
   };
@@ -1332,6 +1383,15 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
       const tag2 = res.noTarget ? `${matched} reportes [SIN OBJETIVO: solo homónimos / edad incompatible]`
         : res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
       console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
+      if (res.encontradoComo) console.log(`       [identidad] encontrado como "${res.encontradoComo}"${p.alias ? " (alias fijado en la app)" : ""}`);
+      else if (!matched && (res.seenNames || []).length) console.log(`       [parecidos] WinLab listó: ${res.seenNames.slice(0, 5).join(" | ")}`);
+      const mrec = {
+        exp: String(p.exp).slice(0, 64), cama: p.cama || null, nombre_censo: p.nombre || null, alias: p.alias || null,
+        status: matched > 0 ? "ok" : (res.noTarget ? "homonimos" : "sin_registro"),
+        buscado: res.tried || [], candidatos: (res.seenNames || []).slice(0, 8), encontrado_como: res.encontradoComo || null,
+        reportes: matched, detalle: null, checked_at: new Date().toISOString(), run_id: process.env.GITHUB_RUN_ID || null,
+      };
+      matchRecords.push(mrec); pendingMatch.push(mrec);
 
       // Diagnóstico: tabla encontrada pero 0 filas de datos.
       if (!firstDiagDumped && matched === 0 && !res.noResults && res.zeroRowsDiag) {
@@ -1391,6 +1451,10 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
       consecutiveErrors++;
       const msg = err?.message?.split("\n")[0] || String(err);
       console.error(`       ${tag}: ERROR ${msg}`);
+      const erec = { exp: String(p.exp).slice(0, 64), cama: p.cama || null, nombre_censo: p.nombre || null, alias: p.alias || null,
+        status: "error", buscado: [], candidatos: [], encontrado_como: null, reportes: 0, detalle: msg.slice(0, 200),
+        checked_at: new Date().toISOString(), run_id: process.env.GITHUB_RUN_ID || null };
+      matchRecords.push(erec); pendingMatch.push(erec);
 
       // Manejo de fallo CRITICO: el navegador o contexto colapso. No tiene
       // sentido seguir intentando con los demas pacientes; hay que abortar
@@ -1427,7 +1491,24 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
   process.off("SIGTERM", onSigterm);
   process.off("SIGINT", onSigint);
   console.log(`       OK busqueda. Pacientes con labs: ${records.length}/${censo.length} · filas upserteadas: ${flushed}${aborted ? " · corrida ABORTADA" : ""}`);
-  return { records, flushed, aborted };
+  const sinLabs = matchRecords.filter((m) => m.status !== "ok");
+  if (sinLabs.length) console.log(`       Sin labs esta corrida: ${sinLabs.map((m) => `${m.cama || "?"} (${m.status})`).join(", ")}`);
+  return { records, flushed, aborted, matchRecords };
+}
+
+// Resultado de la búsqueda por paciente → winlab_match (clave: exp). Nunca hace fallar la corrida.
+async function upsertMatch(supa, recs, why = "final") {
+  const byExp = new Map(); for (const r of recs) byExp.set(r.exp, r);
+  const rows = Array.from(byExp.values());
+  if (!rows.length) return 0;
+  if (DRY_RUN) {
+    console.log(`[DRY-RUN] (${why}) winlab_match: ${rows.length} fila(s) NO escritas: ${rows.map((r) => `${r.exp}=${r.status}${r.encontrado_como ? ` («${r.encontrado_como}»)` : ""}`).join(", ")}`);
+    return rows.length;
+  }
+  const { error } = await supa.from(SUPABASE_MATCH_TABLE).upsert(rows, { onConflict: "exp" });
+  if (error) throw new Error(`${error.message} (code=${error.code})`);
+  console.log(`       OK winlab_match (${why}): ${rows.length} fila(s)`);
+  return rows.length;
 }
 
 // ── 5. UPSERT MASIVO ───────────────────────────────────────────────────
@@ -1624,11 +1705,13 @@ async function explorePage(page) {
     if (DRY_RUN) dryRunReport(records);
 
     const coverage = censo.length ? records.length / censo.length : 0;
-    const resumen = `Pacientes con labs: ${records.length}/${censo.length} (${(coverage * 100).toFixed(0)} %) · filas upserteadas: ${flushed}${aborted ? " · corrida ABORTADA" : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`;
+    const resumen = `Pacientes con labs: ${records.length}/${censo.length} (${(coverage * 100).toFixed(0)} %) · filas upserteadas: ${flushed}${aborted ? " · corrida ABORTADA" : ""}${WL_TARGET_EXP.length ? ` · objetivo ${WL_TARGET_EXP.join(",")}` : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`;
     await writeStepSummary(resumen, records, censo);
     console.log(`DONE. ${resumen}`);
     await browser.close();
-    if (aborted || coverage < WL_MIN_COVERAGE) {
+    // Corrida dirigida a un expediente: que ese paciente no tenga labs no es una corrida fallida.
+    const minCoverage = WL_TARGET_EXP.length ? 0 : WL_MIN_COVERAGE;
+    if (aborted || coverage < minCoverage) {
       console.error(`::error title=WinLab Scraper: cobertura insuficiente::${resumen} (mínimo ${(WL_MIN_COVERAGE * 100).toFixed(0)} %)`);
       process.exit(1);
     }

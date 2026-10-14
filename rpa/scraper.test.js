@@ -5,7 +5,7 @@ import {
   dedupRecords, isAllowedEsp, formatDate,
   isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
   isMeaningfulReportRow, extractApellidos, expVariants,
-  stripAccentsKeepEnie, buildSearchCandidates,
+  stripAccentsKeepEnie, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
   jaroWinkler, patientHeaderMatches,
   extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows,
   todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
@@ -207,7 +207,7 @@ assert(isMeaningfulReportRow({
 {
   const a1 = extractApellidos("AGUSTIN JAIME MENDOZA GONZALEZ");
   assert(a1.includes("MENDOZA GONZALEZ"), "apellidos: 2 ultimas palabras");
-  assert(a1.includes("MENDOZA"),          "apellidos: solo penultima (paterno)");
+  assert(a1.includes("MENDOZA"),            "apellidos: solo penultima (paterno)");
 }
 {
   const a2 = extractApellidos("ALEJANDRO RAMIREZ HERNANDEZ");
@@ -298,8 +298,8 @@ assert(stripAccentsKeepEnie(null) === "", "strip: null -> ''");
   const c = buildSearchCandidates("ADAN LOPEZ OVIEDO");
   assert(c[0].cognome === "LOPEZ OVIEDO" && !c[0].nome, "cand: primaria apellidos");
   assert(c.some((x) => x.cognome === "LOPEZ" && x.nome === "ADAN"), "cand: retry paterno-solo + nombre");
-  // el paterno-solo va AL FINAL (es el último recurso, más ancho)
-  assert(c[c.length - 1].tag === "paterno-solo + nombre", "cand: paterno-solo es el último");
+  // paterno-solo y materno-solo van AL FINAL (último recurso, búsquedas más anchas), en ese orden
+  assert(c[c.length - 2].tag === "paterno-solo + nombre" && c[c.length - 1].tag === "materno-solo + nombre" && c[c.length - 1].cognome === "OVIEDO" && c[c.length - 1].nome === "ADAN", "cand: paterno-solo y materno-solo son los últimos");
 }
 {
   // El match difuso de encabezado reconoce el typo V/B en el materno.
@@ -446,6 +446,46 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   assert(c2[0].cognome === "RIOS" && c2[0].nome === "MARIA GUADALUPE", "cand MA.: RIOS + nombre MARIA GUADALUPE");
   assert(c2.some((x) => x.cognome === "RIOS" && x.nome === null), "cand MA.: fallback apellido a secas");
   assert(!c2.some((x) => x.cognome === "GUADALUPE RIOS"), "cand MA.: GUADALUPE ya no se toma como apellido");
+}
+
+// ── Alias "nombre en WinLab", materno-solo + nombre y corrida dirigida (oct 2026) ──
+{
+  // Caso real cama 3-181 (corrida #419): paterno con letras invertidas en el censo.
+  const c = buildSearchCandidates("ADRIAN HERNADNEZ CASTRO");
+  assert(c.some((x) => x.cognome === "CASTRO" && x.nome === "ADRIAN" && x.tag === "materno-solo + nombre"), "cand 3-181: materno-solo + nombre (CASTRO + ADRIAN) tolera el error de dedo en el paterno");
+  const iPat = c.findIndex((x) => x.tag === "paterno-solo + nombre"), iMat = c.findIndex((x) => x.tag === "materno-solo + nombre");
+  assert(iPat >= 0 && iMat === iPat + 1 && iMat === c.length - 1, "cand: materno-solo va justo después del paterno-solo y es el último recurso");
+  assert(jaroWinkler("HERNADNEZ", "HERNANDEZ") >= 0.88 && patientHeaderMatches("HERNANDEZ CASTRO ADRIAN", "ADRIAN HERNADNEZ CASTRO"), "match difuso: HERNADNEZ≈HERNANDEZ (letras invertidas) identifica al objetivo en el encabezado");
+  const c4 = buildSearchCandidates("MARIA GARCIA DE LA TORRE");
+  assert(c4.some((x) => x.cognome === "DE LA TORRE" && x.nome === "MARIA"), "cand: materno con partícula (DE LA TORRE) + nombre");
+  const same = buildSearchCandidates("JUAN PEREZ PEREZ");
+  assert(same.filter((x) => x.cognome === "PEREZ" && x.nome === "JUAN").length === 1, "cand: paterno = materno no duplica el candidato");
+  // Alias con coma: APELLIDOS, NOMBRE (como lo lista WinLab) → primero, con respaldos; luego el censo.
+  const ca = buildSearchCandidatesWithAlias("ADRIAN HERNADNEZ CASTRO", "HERNANDEZ CASTRO, ADRIAN");
+  assert(ca[0].alias === true && ca[0].cognome === "HERNANDEZ CASTRO" && ca[0].nome === "ADRIAN", "alias con coma: primer candidato = apellidos de WinLab + nombre");
+  assert(ca[1].alias === true && ca[1].cognome === "HERNANDEZ CASTRO" && ca[1].nome === null, "alias: segundo = apellidos solos");
+  assert(ca.some((x) => x.alias && x.cognome === "HERNANDEZ" && x.nome === "ADRIAN") && ca.some((x) => x.alias && x.cognome === "CASTRO" && x.nome === "ADRIAN"), "alias: también paterno + nombre y materno + nombre");
+  assert(ca.some((x) => !x.alias && x.cognome === "HERNADNEZ CASTRO"), "alias: después siguen los candidatos del censo");
+  assert(buildSearchCandidatesWithAlias("ADRIAN HERNADNEZ CASTRO", "MA. DEL CARMEN RIOS, MA. ELENA")[0].nome === "MARIA ELENA", "alias: abreviaturas del nombre expandidas");
+  const cb = buildSearchCandidatesWithAlias("ADRIAN HERNADNEZ CASTRO", "ADRIAN HERNANDEZ CASTRO");
+  assert(cb[0].alias === true && cb[0].cognome === "HERNANDEZ CASTRO" && cb[0].nome === null, "alias sin coma: se lee como en el censo (NOMBRE APELLIDOS)");
+  assert(deepEq(buildSearchCandidatesWithAlias("ADRIAN HERNADNEZ CASTRO", "  "), buildSearchCandidates("ADRIAN HERNADNEZ CASTRO")), "sin alias: mismos candidatos de siempre");
+  // selectTargetRows: el alias identifica al objetivo; seenNames en formato APELLIDOS, NOMBRE; edad sigue mandando.
+  const rowsW = [
+    { __cells: ["", "", "", "HERNANDEZ CASTRO", "ADRIAN", "Masculino", "03/01/1990"], __hasLink: false },
+    { __cells: ["", "", "2610141380", "14/10/2026 09:07", "14/10/2026 10:51", "CIRUGIA"], __hasLink: true },
+    { __cells: ["", "", "", "HERNANDEZ CASTRO", "ADRIAN", "Masculino", "03/01/1960"], __hasLink: false },
+    { __cells: ["", "", "2610141381", "14/10/2026 09:07", "14/10/2026 10:51", "CIRUGIA"], __hasLink: true },
+  ];
+  const hoy = new Date("2026-10-14T12:00:00");
+  const selA = selectTargetRows(rowsW, { nombre: "JUAN LOPEZ LOPEZ", alias: "HERNANDEZ CASTRO, ADRIAN", edad: "36" }, { today: hoy });
+  assert(deepEq(selA.targetIdxs, [1]) && selA.matchedHeader === "HERNANDEZ CASTRO ADRIAN", "selectTargetRows: el alias identifica al objetivo aunque el censo diga otro nombre; matchedHeader");
+  assert(deepEq(selA.seenNames, ["HERNANDEZ CASTRO, ADRIAN"]), "selectTargetRows: seenNames como APELLIDOS, NOMBRE sin repetir (sugerencias para la app)");
+  const selB = selectTargetRows(rowsW, { nombre: "ADRIAN HERNADNEZ CASTRO", edad: "36" }, { today: hoy });
+  assert(deepEq(selB.targetIdxs, [1]) && selB.ageRejected.length === 1, "selectTargetRows: sin alias, HERNADNEZ≈HERNANDEZ elige al de 36 años y descarta al homónimo de nombre completo de 66 por edad");
+  const selC = selectTargetRows(rowsW, { nombre: "JUAN LOPEZ LOPEZ", edad: "36" }, { today: hoy });
+  assert(deepEq(selC.targetIdxs, []) && selC.matchedHeader === "" && selC.seenNames.length === 1, "selectTargetRows: sin match no hay objetivo pero sí nombres vistos");
+  assert(normExp(" 26-00001 ") === "2600001" && normExp("2600001") === "2600001" && normExp(null) === "", "normExp: con guion, sin guion y vacío");
 }
 
 console.log(`\n${pass} pass · ${fail} fail`);
