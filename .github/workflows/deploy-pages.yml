@@ -18,6 +18,7 @@ on:
       - manifest.json
       - sw.js
       - icons/**
+      - vendor/**
       - .github/workflows/deploy-pages.yml
   workflow_dispatch:
 
@@ -34,13 +35,15 @@ jobs:
 
       - name: Construir carpeta de publicacion (app + PWA)
         run: |
-          mkdir -p dist/icons
+          mkdir -p dist/icons dist/vendor
           cp index.html   dist/index.html
           cp _headers     dist/_headers
           cp manifest.json dist/manifest.json
           cp sw.js        dist/sw.js
           cp icons/*.png  dist/icons/
-          ls -la dist dist/icons
+          # Librerías empaquetadas (oct 2026): la app ya no depende de CDNs externos
+          cp vendor/*.js  dist/vendor/
+          ls -la dist dist/icons dist/vendor
 
       # OJO: `--branch` NO es la rama de git que se publica (siempre es `main`, ver `on:`), sino la
       # etiqueta que Cloudflare usa para decidir si el deploy es de PRODUCCIÓN o de preview. En el

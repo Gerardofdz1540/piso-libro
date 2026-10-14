@@ -5,6 +5,7 @@ const { chromium } = require('playwright');
 const fs = require('fs'); const path = require('path');
 const FIX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture_ego_bh.json'), 'utf8'));
 const MOCK = `(() => {
+  try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
   sessionStorage.setItem(KEY, JSON.stringify({ access_token:'mock-token-123', refresh_token:'r', user:{ email:'t@t.t' } }));
   window.prompt=function(){ return 'Tester'; }; window.alert=function(){}; window.confirm=function(){ return true; };
@@ -23,7 +24,7 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
     lab_history: [{ fecha: ayer, labs: { hb: '7.7', leucos: '28.34', cr: '0.94', k: '4.38' }, source: 'winlab' }], imagen_history: [] };
   const oldWl = { exp: '26-23107', paciente: 'LOPEZ RUIZ ANA', fecha: '2026-10-09', scraped_at: new Date(Date.now() - 6 * 86400e3).toISOString(),
     data: { headers: [], reportes: [{ __cells: ['', '', '', '09/10/2026 06:10', '09/10/2026 08:00', '', ''], __hasLink: true, valores: FIX.valores.map(v => v.estudio === 'HEMOGLOBINA' ? { ...v, valor: '8.1' } : v) }] } };
-  await page.route('**/supabase-js@*/**', r => r.abort());
+  await page.route('**/vendor/supabase*', r => r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
     let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}

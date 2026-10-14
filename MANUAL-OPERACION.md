@@ -173,6 +173,50 @@ labs críticos sin reconocer y uno ámbar labs atrasados.
    últimas líneas del registro; mándamelas y lo reviso. Nunca pegues ahí
    nombres de pacientes en mensajes públicos.
 
+## Abrir la app desde el celular, con datos móviles o sin conexión
+
+Desde octubre de 2026 la app ya no depende de internet para abrir:
+
+- Todas las librerías que necesita vienen dentro de la app (carpeta `vendor/`). Antes se bajaban
+  de servidores externos (unpkg, cdnjs, jsdelivr) y en redes móviles que los bloquean la página se
+  quedaba en blanco o pedía login con el aviso "CDN bloqueado".
+- La primera vez que abras la app **con internet** (Wi-Fi del hospital), el navegador guarda una
+  copia completa en el dispositivo. A partir de ahí abre siempre, aunque no haya red o la red
+  corte la dirección: si el servidor no responde en 4 segundos, se usa la copia guardada.
+- La sesión también se guarda: sin red no vuelve a pedir contraseña.
+- Para instalarla como app: en iPhone/iPad, Safari → **Compartir → Agregar a inicio**; en
+  Android, Chrome → menú ⋮ → **Instalar aplicación**.
+- Hay una segunda dirección por si la principal no abre desde tu operador:
+  https://pisocirugiahgl.netlify.app (misma app, mismos datos). En Netlify, comprueba que la
+  "Production branch" del sitio sea `main`.
+
+**Sin conexión** se puede leer y escribir todo. Lo que escribas se guarda en el dispositivo y en
+una cola de envío; el estado abajo dice "Sin conexión". En cuanto vuelve una red que llega a
+Supabase, la app sube la cola y descarga lo nuevo de los demás. Si cierras la app sin red, al
+reabrirla sigue ahí lo que escribiste y se sube cuando haya red. Los laboratorios automáticos,
+el Doc de indicaciones y las imágenes solo llegan con red.
+
+Si tu operador bloquea también a Supabase (la app abre, pero el estado se queda en "Sin conexión"
+aunque tengas datos), prueba desde el celular abrir
+https://vkxplmrzyqlamxpbtmes.supabase.co/auth/v1/health : si no carga, esa red no sirve para
+sincronizar y hay que esperar al Wi-Fi del hospital; lo escrito no se pierde.
+
+## Botones ↩ Regresar y ↪ Rehacer
+
+En la cabecera de cada tarjeta aparece **↩ Regresar** cuando hay algo que deshacer. Cada cambio
+que puede doler guarda antes una copia de la tarjeta: texto de una caja al terminar de escribir,
+quitar una cirugía, un drenaje, unos labs o un estudio, "Tomar guardia", auto-llenar, órdenes
+rápidas y las novedades automáticas. Regresar vuelve un paso; tocarlo otra vez vuelve otro paso
+más (hasta 20 por paciente) y cada regreso se sube como cualquier edición.
+
+Si el regreso fue el error, aparece **↪ Rehacer**: vuelve a dejar la tarjeta como estaba antes
+de regresar. Si en vez de rehacer escribes algo nuevo, lo que habías dejado atrás no se pierde:
+queda como un paso más de Regresar ("como estaba antes de regresar…").
+
+Los pasos se guardan en el dispositivo y sobreviven a cerrar la app (también sin red). Un
+paciente dado de alta por error se recupera desde la **Papelera** (☁️ Cargar desde nube →
+↩ Restaurar).
+
 ## Las cajas de la ficha (octubre 2026)
 
 Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, de arriba abajo:
