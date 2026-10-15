@@ -7,7 +7,8 @@ const MOCK = `(() => {
   const KEY='__mock_session'; const listeners=[];
   sessionStorage.setItem(KEY, JSON.stringify({ access_token:'mock-token-123', refresh_token:'r', user:{ email:'t@t.t' } }));
   localStorage.setItem('pl_user_name', 'Gerardo Fernández');
-  localStorage.setItem('pl_pen_mode', '1');      // en Chromium headless no hay touch: encender el lápiz a mano
+  localStorage.setItem('pl_pen_mode', '1');      // modo Tinta (en Chromium headless no hay lápiz: se simula con PointerEvent)
+  localStorage.setItem('hgl-worker-config', JSON.stringify({ url:'https://mock.local/worker', token:'tok', notes_url:'' }));
   window.__alerts=[]; window.prompt=function(){ return 'Tester'; }; window.alert=function(m){ window.__alerts.push(String(m)); }; window.confirm=function(){ return true; };
   const auth={ getSession: async()=>({ data:{ session: JSON.parse(sessionStorage.getItem(KEY)) }, error:null }), onAuthStateChange: (cb)=>{ listeners.push(cb); return { data:{ subscription:{ unsubscribe(){} } } }; }, refreshSession: async()=>({ data:{ session:null }, error:{ message:'no' } }), signInWithPassword: async()=>({ data:{}, error:{ message:'n/a' } }), signOut: async()=>({ error:null }) };
   const chan={ on(){ return chan; }, subscribe(){ return chan; }, unsubscribe(){ return Promise.resolve('ok'); }, send(){ return Promise.resolve('ok'); } };
@@ -17,6 +18,15 @@ const MOCK = `(() => {
   const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const calls = [];
+  // Ayudante de IA simulado para ✍️ → Texto: devuelve "TEXTO n" (o falla con 500)
+  let aiN = 0, aiMode = 'ok'; const aiBodies = [];
+  await page.route('**/api/ai', async (route) => {
+    let body = null; try { body = JSON.parse(route.request().postData() || 'null'); } catch (_) {}
+    aiBodies.push(body);
+    if (aiMode === 'fail') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'x' }) });
+    aiN++; await new Promise(r => setTimeout(r, 150));
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: [{ type: 'text', text: '```json\n{"texto":"TEXTO ' + aiN + '"}\n```' }] }) });
+  });
   await page.route('**/vendor/supabase*', r => r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
@@ -53,7 +63,7 @@ const MOCK = `(() => {
   await page.setViewportSize({ width: 1194, height: 834 });
   await page.evaluate(() => renderView());
   check('L1 iPad horizontal (1194 px): las camas van en una tira dentro de la barra pegajosa (cama en foco marcada, punto de estado) y el riel lateral se oculta; sin botones flotantes a la derecha ni margen reservado; «📊 Planes» y «✍️ Lápiz» en la barra (Pase sigue siendo el primero); los tres botones viven en ⋯ Más; en laptop (1400 px) vuelve el riel lateral y se oculta la tira',
-    l1.fab === false && /Pase|Completo/.test(l1.modes[0]) && l1.modes.includes('📊 Planes') && l1.modes.includes('✍️ Lápiz') && l1.stripShown === 'flex' && l1.sideShown === 'none' && l1.chips === 2 && JSON.stringify(l1.cur) === JSON.stringify(['3-170']) && l1.sideBtns === 2
+    l1.fab === false && /Pase|Completo/.test(l1.modes[0]) && l1.modes.includes('📊 Planes') && l1.modes.includes('✍️ Tinta') && l1.stripShown === 'flex' && l1.sideShown === 'none' && l1.chips === 2 && JSON.stringify(l1.cur) === JSON.stringify(['3-170']) && l1.sideBtns === 2
     && l1.padR === '0px' && l1.menuBtns.every(Boolean) && l1.penBtn && l1.bodyPen && l1b.side === 'grid' && l1b.strip === 'none', JSON.stringify({ l1, l1b }));
 
   // ── L2: tinta con el lápiz: trazo, segundo trazo, el dedo no pinta, rayón borra solo lo que toca, toque = cursor, sobrevive al repintado, se guarda ──
@@ -121,15 +131,17 @@ const MOCK = `(() => {
     const r = ta.getBoundingClientRect();
     ['pointerdown', 'pointermove', 'pointermove', 'pointerup'].forEach((t, i) => ta.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + 10 + i * 15, clientY: r.top + 10 + i * 3, pressure: 0.5 })));
     const noInk = !(getNote(k).checklist.__ink && getNote(k).checklist.__ink['manejo']);
-    togglePenMode(document.querySelector('.bn-pen'));
-    const on = penModeOn() && localStorage.getItem('pl_pen_mode') === '1';
+    togglePenMode(document.querySelector('.bn-pen'));   // apagado → ✍️ → Texto
+    const textMode = penMode() === 'text' && localStorage.getItem('pl_pen_mode') === '2' && document.querySelector('.bn-pen').textContent === '✍️ → Texto' && document.body.classList.contains('pen-on');
+    togglePenMode(document.querySelector('.bn-pen'));   // → Texto → Tinta
+    const on = penMode() === 'ink' && localStorage.getItem('pl_pen_mode') === '1' && document.querySelector('.bn-pen').textContent === '✍️ Tinta';
     // tinta guardada con otro ancho de caja (otro dispositivo) → se reescala y la caja crece para que no se corte
     const nd = getNote(k); nd.checklist.__ink = { manejo: { w: Math.round(ta.offsetWidth / 2), s: [{ c: '#1d4ed8', p: [[10, 10, 0.5], [20, 60, 0.5], [30, 62, 0.5]] }] } }; noteData[k] = nd;
     ta.style.height = ''; _penMountAll();
-    return { acts, nUndo, modal, nBig, firstPt, cleared, menuHidden, off, noInk, on, scaledH: parseFloat(getComputedStyle(ta).height), cvThere: !!(ta.nextElementSibling && ta.nextElementSibling.classList.contains('pl-ink-cv')) };
+    return { acts, nUndo, modal, nBig, firstPt, cleared, menuHidden, off, noInk, textMode, on, scaledH: parseFloat(getComputedStyle(ta).height), cvThere: !!(ta.nextElementSibling && ta.nextElementSibling.classList.contains('pl-ink-cv')) };
   });
-  check('L3 menú ✍️: deshacer quita el último trazo; «pasar a texto» abre el lienzo grande con la tinta precargada (más grande) para 🤖 Transcribir; borrar quita la tinta y oculta el botón; con ✍️ Lápiz apagado el lápiz no pinta; se recuerda por dispositivo; tinta guardada con otro ancho se reescala y la caja crece',
-    JSON.stringify(l3.acts) === JSON.stringify(['undo', 'text', 'clear']) && l3.nUndo === 2 && l3.modal === 'flex' && l3.nBig === 2 && l3.firstPt && l3.firstPt.x === 40 + 100 * 1.8 && l3.cleared && l3.menuHidden && l3.off && l3.noInk && l3.on
+  check('L3 menú ✍️: deshacer quita el último trazo; «pasar a texto» abre el lienzo grande con la tinta precargada (más grande) para 🤖 Transcribir; borrar quita la tinta y oculta el botón; el botón de la barra cicla Tinta → apagado (el lápiz no pinta: el iPad decide) → «→ Texto» → Tinta y se recuerda por dispositivo; tinta guardada con otro ancho se reescala y la caja crece',
+    JSON.stringify(l3.acts) === JSON.stringify(['undo', 'text', 'clear']) && l3.nUndo === 2 && l3.modal === 'flex' && l3.nBig === 2 && l3.firstPt && l3.firstPt.x === 40 + 100 * 1.8 && l3.cleared && l3.menuHidden && l3.off && l3.noInk && l3.textMode && l3.on
     && l3.scaledH >= 62 * 2 + 14 && l3.cvThere, JSON.stringify(l3));
 
   // ── L4: la tarjeta se repinta DIRECTO (como Realtime / RIS / fotos) → la capa de tinta se vuelve a montar sola ──
@@ -142,6 +154,61 @@ const MOCK = `(() => {
     return { after: !!cv, w: cv ? cv.style.width : null };
   });
   check('L4 si la tarjeta se repinta directo (Realtime, RIS, fotos…) la capa de tinta se vuelve a montar sola (MutationObserver)', l4.after === true && /px$/.test(l4.w || ''), JSON.stringify(l4));
+
+  // ── L5: ✍️ → Texto: la tinta se convierte en texto con IA al soltar el lápiz y se inserta por la vía del teclado ──
+  const l5 = await page.evaluate(async () => {
+    localStorage.setItem('pl_pen_mode', '2');
+    const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]';
+    const ta = document.querySelector(sel); ta.value = ''; noteData[k].pendientes = '';
+    const stroke = (pts) => { const r = ta.getBoundingClientRect(); const ev = (type, x, y) => ta.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + y, pressure: 0.5 })); ev('pointerdown', pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ev('pointermove', pts[i][0], pts[i][1]); ev('pointerup', pts[pts.length - 1][0], pts[pts.length - 1][1]); };
+    const key = k + '|pendientes';
+    stroke([[10, 10], [30, 14], [50, 12], [70, 16]]);
+    const pend1 = PEN.pending[key].strokes.length; const menu = ta.nextElementSibling.nextElementSibling; const menuShown1 = menu.style.display !== 'none';
+    // tachar la tinta pendiente la borra (no se manda a la IA)
+    stroke([[8, 8], [22, 24], [14, 6], [30, 26], [20, 4], [40, 26], [32, 6], [50, 26], [44, 8], [62, 26], [56, 6], [74, 26]]);
+    const pendAfterScratch = PEN.pending[key].strokes.length;
+    stroke([[10, 10], [30, 14], [50, 12], [70, 16]]);                 // se vuelve a escribir
+    await new Promise(r => setTimeout(r, 2300));                       // pausa de 1.6 s + respuesta simulada
+    const val1 = ta.value, nd1 = getNote(k).pendientes, pendAfter = PEN.pending[key].strokes.length, inkSaved = !!(getNote(k).checklist.__ink && getNote(k).checklist.__ink.pendientes);
+    const menuHidden = menu.style.display === 'none';
+    stroke([[10, 60], [30, 64], [50, 62]]);                            // otro renglón (más abajo) → salto de línea
+    await new Promise(r => setTimeout(r, 2300));
+    const val2 = ta.value;
+    stroke([[90, 60], [110, 64], [130, 62]]);                          // mismo renglón (< 10 s) → se une con espacio
+    await new Promise(r => setTimeout(r, 2300));
+    const val3 = ta.value;
+    return { pend1, menuShown1, pendAfterScratch, val1, nd1, pendAfter, inkSaved, menuHidden, val2, val3, by: ((getNote(k).checklist.__pl_note_meta || {}).by || {}).pendientes, taStill: document.querySelector(sel) === ta };
+  });
+  const ai0 = aiBodies[0] || {}; const c0 = ((ai0.messages || [])[0] || {}).content || [];
+  const textPosted = calls.some(c => (c.m === 'POST' || c.m === 'PATCH') && /\/rest\/v1\/notes/.test(c.url) && c.body && typeof c.body.pendientes === 'string' && /^TEXTO 1/.test(c.body.pendientes));
+  check('L5 ✍️ → Texto: el trazo queda pendiente (morado, botón ✍️ visible); tachar la tinta pendiente la borra sin mandarla; tras la pausa la tinta va al ayudante de IA (imagen + instrucción de la caja) y el texto reconocido se inserta en la caja sin guardar tinta; otro renglón → salto de línea; mismo renglón → espacio; se guarda con autor como si fuera tecleado',
+    l5.pend1 === 1 && l5.menuShown1 && l5.pendAfterScratch === 0 && l5.val1 === 'TEXTO 1' && l5.nd1 === 'TEXTO 1' && l5.pendAfter === 0 && !l5.inkSaved && l5.menuHidden
+    && l5.val2 === 'TEXTO 1\nTEXTO 2' && l5.val3 === 'TEXTO 1\nTEXTO 2 TEXTO 3' && l5.by && l5.by.i === 'GF' && l5.taStill
+    && aiBodies.length === 3 && c0[0] && c0[0].type === 'image' && c0[0].source && c0[0].source.media_type === 'image/png' && c0[0].source.data.length > 100 && c0[1] && /pendientes \/ plan/.test(c0[1].text) && /SOLO un JSON/.test(c0[1].text) && ai0.max_tokens === 800
+    && textPosted, JSON.stringify({ l5, nAi: aiBodies.length, textPosted }));
+
+  // ── L6: si la IA falla, la tinta se queda; «🤖 Convertir ahora» desde el menú ✍️ la reintenta ──
+  aiMode = 'fail';
+  const l6 = await page.evaluate(async () => {
+    const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]'; const ta = document.querySelector(sel); const key = k + '|pendientes';
+    const r = ta.getBoundingClientRect(); const ev = (type, x, y) => ta.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + y, pressure: 0.5 }));
+    ev('pointerdown', 10, 100); ev('pointermove', 30, 104); ev('pointermove', 50, 102); ev('pointerup', 50, 102);
+    await new Promise(r2 => setTimeout(r2, 2300));
+    return { kept: PEN.pending[key].strokes.length, val: ta.value, menuShown: ta.nextElementSibling.nextElementSibling.style.display !== 'none', alerts: window.__alerts.length };
+  });
+  aiMode = 'ok';
+  const l6b = await page.evaluate(async () => {
+    const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]'; const ta = document.querySelector(sel); const key = k + '|pendientes';
+    ta.nextElementSibling.nextElementSibling.click();
+    const acts = Array.from(document.querySelectorAll('.pl-ink-pop button')).map(b => b.dataset.act);
+    document.querySelector('.pl-ink-pop button[data-act="now"]').click();
+    await new Promise(r => setTimeout(r, 800));
+    localStorage.setItem('pl_pen_mode', '1');
+    return { acts, val: ta.value, pend: PEN.pending[key].strokes.length };
+  });
+  check('L6 la IA falla (HTTP 500): el texto no cambia, la tinta pendiente se queda y el botón ✍️ sigue visible (aviso, sin alert); el menú ofrece «🤖 Convertir ahora», que reintenta y agrega el texto en renglón nuevo',
+    l6.kept === 1 && l6.val === 'TEXTO 1\nTEXTO 2 TEXTO 3' && l6.menuShown && l6.alerts === 0
+    && JSON.stringify(l6b.acts) === JSON.stringify(['now', 'undo', 'clear']) && l6b.val === 'TEXTO 1\nTEXTO 2 TEXTO 3\nTEXTO 4' && l6b.pend === 0, JSON.stringify({ l6, l6b }));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-PEN: ' + pass + ' passed, ' + fail + ' failed');
