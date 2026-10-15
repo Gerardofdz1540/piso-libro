@@ -495,6 +495,11 @@ export function extractHeaderName(cells) {
 // WinLab 16). La fila-encabezado trae FECHA DE NAC. (celda siguiente a SEXO); la
 // comparamos con `edad` del censo. Si alguno de los dos falta/no se entiende, la
 // guarda no aplica (se mantiene el match por nombre), para no perder pacientes.
+// IMPORTANTE (corrida #434): la guarda es un DESEMPATE entre homónimos, no un filtro absoluto. Si WinLab
+// trae UN SOLO registro con ese nombre (o varios que son el mismo paciente con el año mal escrito), la
+// edad NO lo descarta: descartar al único match dejaba al paciente SIN labs (3-151/3-159/3-168/3-181,
+// nombre exacto y, aun así, "homónimos"). La edad solo elige cuando hay 2+ personas posibles con ese
+// nombre.
 export function extractHeaderBirthDate(cells) {
   if (!Array.isArray(cells)) return "";
   const sx = findSexIdx(cells);
@@ -531,6 +536,18 @@ export function sameBirthdayOtherYear(a, b) {
   if (!ma || !mb) return false;
   return ma[1] === mb[1] && ma[2] !== mb[2] && ma[1] !== "01/01";
 }
+// ¿Pueden ser el MISMO paciente dos bloques que coinciden por nombre? Sí cuando listan el mismo nombre
+// (misma etiqueta "APELLIDOS, NOMBRE") y su fecha de nacimiento es compatible: idéntica, solo cambia el
+// año (año mal escrito, 05/03/2006 vs 05/03/1968) o a alguno le falta la fecha. Si el nombre listado
+// difiere o la fecha difiere en día/mes (homónimos reales, o 01/01 que es comodín), son 2+ personas
+// posibles → la edad decide cuál es el paciente.
+export function possiblySameWinlabPerson(a, b) {
+  if (!a || !b) return false;
+  if (String(a.label || "") !== String(b.label || "")) return false;
+  const fa = String(a.fnac || ""), fb = String(b.fnac || "");
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fa) || !/^\d{2}\/\d{2}\/\d{4}$/.test(fb)) return true;   // falta fecha → no se puede separar
+  return fa === fb || sameBirthdayOtherYear(fa, fb);
+}
 export function selectTargetRows(rows, paciente, opts = {}) {
   const tolerance = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : 2;
   const today = opts.today || new Date();
@@ -558,6 +575,16 @@ export function selectTargetRows(rows, paciente, opts = {}) {
       if (cur) cur.links.push(i);
     }
   }
+  // UN SOLO PACIENTE → el nombre manda (corrida #434): si todos los bloques que coinciden por nombre
+  // pueden ser la MISMA persona (un solo registro, o varios con el año mal escrito), la guarda de edad
+  // NO aplica — así el único match no se tira por una edad que no cuadra. Solo cuando hay 2+ personas
+  // posibles con ese nombre se usa la edad (abajo) para elegir y rescatar los registros del mismo.
+  const nameBlocks = blocks.filter((b) => b.nameOk);
+  let multiPerson = false;
+  for (let i = 0; i < nameBlocks.length && !multiPerson; i++)
+    for (let j = i + 1; j < nameBlocks.length; j++)
+      if (!possiblySameWinlabPerson(nameBlocks[i], nameBlocks[j])) { multiPerson = true; break; }
+  if (!multiPerson) nameBlocks.forEach((b) => { b.ageOk = true; });
   // RESCATE por año mal capturado (oct 2026, cama 3-163): el mismo paciente aparece en WinLab con dos
   // registros del MISMO nombre y la MISMA fecha de nacimiento salvo el año (05/03/1968 y 05/03/2006).
   // La guarda de edad descartaba el registro "joven" y con él los labs nuevos (los de hospitalización
