@@ -25,7 +25,9 @@ const MOCK = `(() => {
     aiBodies.push(body);
     if (aiMode === 'fail') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'x' }) });
     aiN++; await new Promise(r => setTimeout(r, 150));
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: [{ type: 'text', text: '```json\n{"texto":"TEXTO ' + aiN + '"}\n```' }] }) });
+    const content = (((body || {}).messages || [])[0] || {}).content; const ptxt = Array.isArray(content) ? ((content.find(c => c.type === 'text') || {}).text || '') : '';
+    const texto = /campo numérico/.test(ptxt) ? String(90 + aiN) : 'TEXTO ' + aiN;     // campos numéricos (vitales, vasopresor) → número
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: [{ type: 'text', text: '```json\n{"texto":"' + texto + '"}\n```' }] }) });
   });
   await page.route('**/vendor/supabase*', r => r.abort());
   await page.route('**/rest/v1/**', async (route) => {
@@ -209,6 +211,65 @@ const MOCK = `(() => {
   check('L6 la IA falla (HTTP 500): el texto no cambia, la tinta pendiente se queda y el botón ✍️ sigue visible (aviso, sin alert); el menú ofrece «🤖 Convertir ahora», que reintenta y agrega el texto en renglón nuevo',
     l6.kept === 1 && l6.val === 'TEXTO 1\nTEXTO 2 TEXTO 3' && l6.menuShown && l6.alerts === 0
     && JSON.stringify(l6b.acts) === JSON.stringify(['now', 'undo', 'clear']) && l6b.val === 'TEXTO 1\nTEXTO 2 TEXTO 3\nTEXTO 4' && l6b.pend === 0, JSON.stringify({ l6, l6b }));
+
+  // ── L7: campos de UNA LÍNEA (vitales, vasopresor, dieta…): el lápiz abre una banda de escritura; lo escrito queda como valor del campo ──
+  const l7 = await page.evaluate(async () => {
+    localStorage.setItem('pl_pen_mode', '2');
+    const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_');
+    const q = (f) => document.querySelector('#ck-row-' + ek + ' input[data-field="' + f + '"]');
+    const pen = (el, type, x, y, id) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id || 7, pointerType: 'pen', isPrimary: true, clientX: x, clientY: y, pressure: 0.5 }));
+    const tap = (el) => { const r = el.getBoundingClientRect(); pen(el, 'pointerdown', r.left + 4, r.top + 4); pen(el, 'pointerup', r.left + 4, r.top + 4); return document.querySelector('.pl-pen-strip'); };
+    const write = (s) => { const cv = s.querySelector('canvas'); const c = cv.getBoundingClientRect(); pen(cv, 'pointerdown', c.left + 20, c.top + 40); pen(cv, 'pointermove', c.left + 40, c.top + 60); pen(cv, 'pointermove', c.left + 60, c.top + 40); pen(cv, 'pointermove', c.left + 80, c.top + 60); pen(cv, 'pointerup', c.left + 80, c.top + 60); return cv; };
+    // FC (numérico): toque con el lápiz → banda con el nombre del campo (el campo NO recibe el foco)
+    const fc = q('pm_fc'); const s1 = tap(fc); const lbl = s1 && s1.querySelector('.pps-lbl').textContent; const focused = document.activeElement === fc;
+    const cv1 = write(s1); const pend = PEN_STRIP.strokes.length;
+    const c1 = cv1.getBoundingClientRect();     // el dedo sobre la banda no pinta
+    cv1.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', isPrimary: true, clientX: c1.left + 120, clientY: c1.top + 40 })); cv1.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', isPrimary: true, clientX: c1.left + 120, clientY: c1.top + 40 }));
+    const pend2 = PEN_STRIP.strokes.length;
+    await new Promise(r => setTimeout(r, 2300));
+    const val = q('pm_fc').value, saved = getNote(k).checklist.pm_fc;
+    await new Promise(r => setTimeout(r, 1000));
+    const closed = !document.querySelector('.pl-pen-strip');
+    // vasopresor: mL/h numérico con ✓ (convertir ahora) → recalcula la dosis
+    toggleChecklist(k, 'vp_nore_on'); { const p = q('pm_peso'); p.value = '70'; p.dispatchEvent(new Event('input', { bubbles: true })); }
+    const s2 = tap(q('vp_nore_mlh')); write(s2); s2.querySelector('button[data-act="ok"]').click();
+    await new Promise(r => setTimeout(r, 700));
+    const mlhVal = q('vp_nore_mlh').value, res = document.getElementById('vp-nore-res-' + ek).textContent;
+    // dieta (texto): tocar FUERA de la banda (dedo) convierte lo pendiente y la cierra
+    const dieta = document.querySelector('#ck-row-' + ek + ' input[placeholder^="blanda"]'); const s3 = tap(dieta); const lbl3 = s3.querySelector('.pps-lbl').textContent; write(s3);
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', isPrimary: true, clientX: 5, clientY: 5 }));
+    const closedByTap = !document.querySelector('.pl-pen-strip');
+    await new Promise(r => setTimeout(r, 700));
+    const dietaVal = getNote(k).checklist.dieta;
+    // ✕ cierra sin convertir
+    const s5 = tap(q('pm_fr')); write(s5); s5.querySelector('button[data-act="close"]').click();
+    await new Promise(r => setTimeout(r, 300));
+    // el lápiz sobre el MISMO campo con la banda abierta: la cierra y pone el cursor
+    const s6 = tap(q('pm_fr')); const open6 = !!s6; tap(q('pm_fr'));
+    const closed6 = !document.querySelector('.pl-pen-strip'), focused6 = document.activeElement === q('pm_fr');
+    return { lbl, focused, pend, pend2, val, saved, closed, mlhVal, res, lbl3, closedByTap, dietaVal, frVal: q('pm_fr').value, open6, closed6, focused6 };
+  });
+  check('L7 campos de una línea: el lápiz sobre FC abre la banda «FC» (sin robar el foco); lo escrito se convierte (solo el número) y queda como valor guardado; la banda se cierra sola; el dedo no pinta en la banda; vasopresor mL/h con ✓ recalcula la dosis; dieta (texto) se convierte al tocar fuera; ✕ cierra sin convertir; tocar el mismo campo con el lápiz cierra la banda y pone el cursor',
+    l7.lbl === 'FC' && l7.focused === false && l7.pend === 1 && l7.pend2 === 1 && l7.val === '95' && l7.saved === '95' && l7.closed
+    && l7.mlhVal === '96' && /^54\.9 mcg\/kg\/h/.test(l7.res) && /Dieta/.test(l7.lbl3) && l7.closedByTap && l7.dietaVal === 'TEXTO 7' && l7.frVal === '' && l7.open6 && l7.closed6 && l7.focused6, JSON.stringify(l7));
+
+  // ── L8: cajas de texto fuera de la ficha (modal de paciente): el lápiz también escribe ahí ──
+  const l8 = await page.evaluate(async () => {
+    openAddModal();
+    const ta = document.getElementById('mf-app-modal'); ta.value = '';
+    const r = ta.getBoundingClientRect();
+    const ev = (type, x, y) => ta.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + y, pressure: 0.5 }));
+    ev('pointerdown', 10, 10); ev('pointermove', 30, 14); ev('pointermove', 50, 12); ev('pointerup', 50, 12);
+    const layer = !!(ta.nextElementSibling && ta.nextElementSibling.classList.contains('pl-ink-cv')); const key = _penField(ta);
+    const pend = (PEN.pending[_penPendKey('', key)] || { strokes: [] }).strokes.length;
+    await new Promise(r2 => setTimeout(r2, 2300));
+    const val = ta.value;
+    document.getElementById('patient-modal').style.display = 'none';
+    localStorage.setItem('pl_pen_mode', '1');
+    return { layer, key, pend, val };
+  });
+  check('L8 cajas fuera de la ficha (modal de paciente): el lápiz también escribe ahí; la tinta se convierte en texto y se pone en la caja (sin guardar tinta)',
+    l8.layer && /^el:p\d+$/.test(l8.key) && l8.pend === 1 && l8.val === 'TEXTO 8', JSON.stringify(l8));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-PEN: ' + pass + ' passed, ' + fail + ' failed');

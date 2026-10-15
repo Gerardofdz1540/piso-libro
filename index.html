@@ -4109,6 +4109,17 @@ body.focus-on #board-main{ padding-bottom:160px; }
 .pl-ink-pop button{ font:600 12px var(--font); color:#0f172a; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; cursor:pointer; text-align:left; white-space:nowrap; }
 .pl-ink-pop button:hover{ background:#eef2ff; }
 body.pen-on textarea.field-ta{ cursor:text; }
+/* Banda de escritura para campos de una línea (se abre al tocar el campo con el lápiz) */
+.pl-pen-strip{ position:fixed; z-index:10600; background:#fff; border:1.5px solid #7c3aed; border-radius:12px; box-shadow:0 12px 32px rgba(15,23,42,.28); overflow:hidden; }
+.pl-pen-strip .pps-h{ display:flex; align-items:center; gap:8px; padding:5px 8px; background:#f5f3ff; border-bottom:1px solid #ddd6fe; font:600 12px var(--font); color:#4c1d95; min-height:36px; }
+.pl-pen-strip .pps-lbl{ font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:38%; }
+.pl-pen-strip .pps-cur{ color:#6d28d9; white-space:nowrap; font-weight:500; }
+.pl-pen-strip .pps-st{ flex:1; color:#7c3aed; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pl-pen-strip .pps-btns{ display:flex; gap:4px; }
+.pl-pen-strip .pps-btns button{ width:32px; height:28px; border-radius:7px; border:1px solid #c4b5fd; background:#fff; cursor:pointer; font-size:14px; }
+.pl-pen-strip .pps-cv{ display:block; touch-action:none; background:#fff; cursor:crosshair; }
+.pl-pen-flash{ box-shadow:0 0 0 3px rgba(124,58,237,.45) !important; transition:box-shadow .2s; }
+body.dark .pl-pen-strip{ background:#0f1c2e; border-color:#8b5cf6; } body.dark .pl-pen-strip .pps-h{ background:#1e1b4b; color:#ddd6fe; border-color:#312e81; } body.dark .pl-pen-strip .pps-cv{ background:#0f1c2e; } body.dark .pl-pen-strip .pps-btns button{ background:#152e4d; color:#e2e8f0; border-color:#4c1d95; }
 body.dark .pl-ink-pop{ background:#0f1c2e; border-color:#23405f; }
 body.dark .pl-ink-pop button{ background:#152e4d; border-color:#2f4f79; color:#e2e8f0; }
 @media print{ .pl-ink-menu, .pl-ink-pop{ display:none !important; } }
@@ -15441,7 +15452,7 @@ function plExportBackup() {
        Formato: __ink[campo] = { w: anchoDeLaCajaAlEscribir, s: [ { c: color, p: [[x, y, presión], …] } ] } */
     const PEN_MAX_POINTS = 6000;
     const PEN_TEXT_PAUSE_MS = 1600;     // pausa sin trazos tras la cual la tinta pendiente se convierte en texto
-    const PEN = { active: null, saveTimers: {}, lastUndo: {}, pending: {}, busy: {} };
+    const PEN = { active: null, saveTimers: {}, lastUndo: {}, pending: {}, busy: {}, seq: 0 };
     // Modo del lápiz, por dispositivo (pl_pen_mode): "off" (el iPad manda: Scribble escribe texto), "text" (la app
     // convierte la tinta en texto con IA al soltar el lápiz) o "ink" (la tinta se queda sobre la caja).
     // Por defecto APAGADO: así el Apple Pencil llega a la caja y el Scribble del sistema puede trabajar (oct 2026).
@@ -15463,8 +15474,18 @@ function plExportBackup() {
           : "✍️ Lápiz apagado: el iPad escribe texto con Scribble (Ajustes → Apple Pencil → Garabatear)",
         next === "off" ? "#475569" : "#7c3aed", 3200);
     }
-    function _penField(ta) { return ta.dataset.ckfield ? "ck:" + ta.dataset.ckfield : (ta.dataset.field || ""); }
-    function _penTa(el) { return (el && el.closest) ? el.closest("textarea.field-ta[data-key]") : null; }
+    // Llave del campo: "app"/"manejo"… (nota), "ck:recibo"… (checklist) o "el:pN" para cualquier otra caja de texto
+    // (modales, cabecera): ahí la tinta solo se convierte en texto, no se guarda.
+    function _penField(ta) {
+      if (ta.dataset.ckfield) return "ck:" + ta.dataset.ckfield;
+      if (ta.dataset.field && ta.dataset.key) return ta.dataset.field;
+      if (!ta.dataset.penId) ta.dataset.penId = "p" + (++PEN.seq);
+      return "el:" + ta.dataset.penId;
+    }
+    function _penTa(el) {
+      const ta = (el && el.closest) ? el.closest("textarea") : null;
+      return (ta && !ta.disabled && !ta.readOnly) ? ta : null;
+    }
     function _penInk(nd, field, create) {
       if (!nd) return null;
       if (!nd.checklist) { if (!create) return null; nd.checklist = {}; }
@@ -15549,7 +15570,7 @@ function plExportBackup() {
     }
     function _penPressure(e) { return (e && e.pressure > 0 && e.pressure < 1) ? Math.round(e.pressure * 100) / 100 : 0.6; }
     function _penStart(ta, e) {
-      const k = ta.dataset.key; getNote(k);
+      const k = ta.dataset.key || ""; if (k) getNote(k);
       if (!_penLayer(ta, true)) return;
       _penFit(ta);
       const r = ta.getBoundingClientRect();
@@ -15575,7 +15596,8 @@ function plExportBackup() {
         try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
         return;
       }
-      if (penMode() === "text") { _penTextStroke(ta, k, field, a); return; }   // ✍️ → Texto: la tinta se convierte, no se guarda
+      // ✍️ → Texto (o caja fuera de la ficha, donde no hay dónde guardar tinta): la tinta se convierte, no se guarda
+      if (penMode() === "text" || !ta.dataset.key) { _penTextStroke(ta, k, field, a); return; }
       const nd = getNote(k); const ink = _penInk(nd, field, true);
       if (!(ink.w > 0)) ink.w = ta.offsetWidth || 1;
       const scale = _penScale(ink, ta);        // al ancho de referencia de la caja (misma tinta en iPad y laptop)
@@ -15630,7 +15652,26 @@ function plExportBackup() {
       PEN.saveTimers[k] = setTimeout(function () { try { _saveNoteNow(k, getNote(k), "ck___ink"); } catch (e) { safeLog("pen save:", e); } }, 600);
     }
     function _penTaFor(k, field) {
+      if (field.indexOf("el:") === 0) return document.querySelector('textarea[data-pen-id="' + field.slice(3) + '"]');
       return document.querySelector(field.indexOf("ck:") === 0 ? 'textarea.field-ta[data-key="' + k + '"][data-ckfield="' + field.slice(3) + '"]' : 'textarea.field-ta[data-key="' + k + '"][data-field="' + field + '"]');
+    }
+    // Llamada al ayudante de IA (worker /api/ai, visión): PNG base64 + instrucción → texto reconocido (lanza error si falla).
+    async function _penRecognize(png, prompt) {
+      const proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : "";
+      if (!proxyUrl) throw new Error("falta la URL del worker de IA (⚙️ Config)");
+      const ctl = new AbortController(); const tm = setTimeout(function () { ctl.abort(); }, 45000);
+      let resp;
+      try {
+        resp = await fetch(proxyUrl + "/api/ai", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: prompt }] }] }), signal: ctl.signal });
+      } finally { clearTimeout(tm); }
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      const raw = String((data && data.content && data.content[0] && data.content[0].text) || "").replace(/```json|```/g, "").trim();
+      let texto = "";
+      try { const js = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1); texto = String(JSON.parse(js).texto || "").trim(); } catch (_) { texto = raw; }
+      texto = texto.replace(/\s+$/, "");
+      if (!texto) throw new Error("no se reconoció texto");
+      return texto;
     }
     /* ── ✍️ → Texto: la tinta de la caja se convierte en texto con el ayudante de IA (worker /api/ai, visión) ──
        Los trazos se acumulan como "pendientes" (morado); tras PEN_TEXT_PAUSE_MS sin escribir se mandan en un lote
@@ -15649,9 +15690,11 @@ function plExportBackup() {
       if (pend.strokes.length) pend.timer = setTimeout(function () { _penTextConvert(k, field); }, PEN_TEXT_PAUSE_MS);
     }
     function penConvertNow(k, field) { const pend = PEN.pending[_penPendKey(k, field)]; if (pend) { clearTimeout(pend.timer); _penTextConvert(k, field); } }
-    function _penTextPrompt(field) {
+    function _penTextPrompt(field, ta) {
       const labels = { pa: "padecimiento actual", app: "antecedentes", dx: "diagnóstico", manejo: "manejo / indicaciones médicas", pendientes: "pendientes / plan", entrega: "entrega de guardia", drenajes: "nota de drenajes", "ck:interconsultas": "interconsultas", "ck:cultivos": "cultivos", "ck:recibo": "recibo de guardia", "ck:pendientes_mips": "pendientes de MIPs", "ck:pendientes_r1": "pendientes de R1" };
-      return "La imagen es texto MANUSCRITO en español, escrito con lápiz por un residente de cirugía general sobre la caja \"" + (labels[field] || field) + "\" de la ficha de un paciente. Transcríbelo TAL CUAL, sin agregar, completar ni interpretar nada: conserva números, unidades, signos, abreviaturas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, BH, QS, TAC, IC…) y los saltos de línea. Si algo es ilegible escribe [?]. Devuelve SOLO un JSON con este esquema: {\"texto\":\"…\"}";
+      let label = labels[field];
+      if (!label && field.indexOf("el:") === 0) label = ((ta && (ta.getAttribute("title") || ta.getAttribute("placeholder"))) || "texto").slice(0, 60);
+      return "La imagen es texto MANUSCRITO en español, escrito con lápiz por un residente de cirugía general sobre la caja \"" + (label || field) + "\" de la ficha de un paciente. Transcríbelo TAL CUAL, sin agregar, completar ni interpretar nada: conserva números, unidades, signos, abreviaturas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, BH, QS, TAC, IC…) y los saltos de línea. Si algo es ilegible escribe [?]. Devuelve SOLO un JSON con este esquema: {\"texto\":\"…\"}";
     }
     // PNG recortado de los trazos (×2.2 para que la letra se lea mejor), fondo blanco, tinta negra.
     function _penStrokesPng(strokes) {
@@ -15681,18 +15724,7 @@ function plExportBackup() {
       const inflight = PEN.busy[key] || (PEN.busy[key] = []); inflight.push(strokes);
       if (ta0) _penRedraw(ta0);
       try {
-        const ctl = new AbortController(); const tm = setTimeout(function () { ctl.abort(); }, 45000);
-        let resp;
-        try {
-          resp = await fetch(proxyUrl + "/api/ai", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: _penTextPrompt(field) }] }] }), signal: ctl.signal });
-        } finally { clearTimeout(tm); }
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
-        const data = await resp.json();
-        const raw = String((data && data.content && data.content[0] && data.content[0].text) || "").replace(/```json|```/g, "").trim();
-        let texto = "";
-        try { const js = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1); texto = String(JSON.parse(js).texto || "").trim(); } catch (_) { texto = raw; }
-        texto = texto.replace(/\s+$/, "");
-        if (!texto) throw new Error("no se reconoció texto");
+        const texto = await _penRecognize(png, _penTextPrompt(field, ta0));
         // Mismo renglón que el lote anterior (hace < 10 s y a la misma altura) → se une con espacio; si no, renglón nuevo.
         const y = _penBatchY(strokes); const last = pend.last; const now = Date.now();
         const sameLine = !!(last && now - last.t < 10000 && y[0] < last.y[1] + 6 && y[1] > last.y[0] - 6);
@@ -15707,7 +15739,15 @@ function plExportBackup() {
       }
     }
     function _penInsertText(k, field, texto, sep) {
-      const ta = _penTaFor(k, field); const nd = getNote(k);
+      const ta = _penTaFor(k, field);
+      if (field.indexOf("el:") === 0) {       // caja fuera de la ficha (modal, cabecera): solo el texto, con input/change para sus manejadores
+        if (!ta) return;
+        const cur0 = ta.value; ta.value = cur0.trim() ? (cur0.replace(/\s+$/, "") + (sep || "\n") + texto) : texto;
+        ta.dispatchEvent(new Event("input", { bubbles: true })); ta.dispatchEvent(new Event("change", { bubbles: true }));
+        if (typeof _plToast === "function") _plToast("✍️ Texto: " + _egCut(texto, 70), "#059669", 2200);
+        return;
+      }
+      const nd = getNote(k);
       const cur = toSafeString(_inkFieldGet(nd, field));
       const next = cur.trim() ? (cur.replace(/\s+$/, "") + (sep || "\n") + texto) : texto;
       if (ta) {
@@ -15722,9 +15762,10 @@ function plExportBackup() {
       const k = ta.dataset.key, field = _penField(ta);
       const pop = document.createElement("div"); pop.className = "pl-ink-pop"; pop._for = ta;
       const pendN = (PEN.pending[_penPendKey(k, field)] || { strokes: [] }).strokes.length;
+      const generic = field.indexOf("el:") === 0;
       pop.innerHTML = (pendN ? '<button type="button" data-act="now">🤖 Convertir ahora</button>' : '')
         + '<button type="button" data-act="undo">↶ Deshacer trazo</button>'
-        + (pendN ? '' : '<button type="button" data-act="text">🤖 Pasar a texto (lienzo)</button>')
+        + ((pendN || generic) ? '' : '<button type="button" data-act="text">🤖 Pasar a texto (lienzo)</button>')
         + '<button type="button" data-act="clear">🧹 Borrar la tinta</button>';
       pop.addEventListener("click", function (ev) {
         const b = ev.target.closest("button[data-act]"); if (!b) return;
@@ -15743,6 +15784,7 @@ function plExportBackup() {
         if (pend.strokes.length) pend.timer = setTimeout(function () { _penTextConvert(k, field); }, PEN_TEXT_PAUSE_MS);
         if (ta) _penRedraw(ta); return;
       }
+      if (!k) return;
       const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) return;
       _penUndoOnce(k, field); ink.s.pop(); _penSave(k);
       if (ta) _penRedraw(ta);
@@ -15751,6 +15793,7 @@ function plExportBackup() {
       const ta = _penTaFor(k, field);
       const pend = PEN.pending[_penPendKey(k, field)];
       if (pend && pend.strokes.length) { pend.strokes = []; clearTimeout(pend.timer); if (ta) _penRedraw(ta); return; }
+      if (!k) return;
       const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) return;
       if (!confirm("¿Borrar toda la tinta de esta caja? (El texto escrito no se toca)")) return;
       try { _undoPush(k, "borrar tinta en " + field); } catch (_) {}
@@ -15759,25 +15802,165 @@ function plExportBackup() {
     }
     // La tinta de la caja al lienzo grande (más grande, para leerla): ahí 🤖 Transcribir la pasa a texto del campo.
     function penToText(k, field) {
+      if (!k) return;
       const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) { alert("Esta caja no tiene tinta."); return; }
       const f = 1.8;
       nd._inkFields = nd._inkFields || {};
       nd._inkFields[field] = ink.s.map(function (s) { return { tool: "pen", color: "#0f172a", alpha: 1, points: (s.p || []).map(function (p) { return { x: 40 + p[0] * f, y: 40 + p[1] * f, p: p[2] || 0.6 }; }) }; });
       openInkpadForField(k, field, _penLabel(_penTaFor(k, field)) || field);
     }
+    /* ── ✍️ en CAMPOS DE UNA LÍNEA (signos vitales, vasopresor, labs, dieta, ATB, drenajes, cabecera, modales…) ──
+       Un campo de 40–60 px no da para escribir encima: al tocarlo con el lápiz se abre una BANDA de escritura
+       debajo (o encima) con el nombre del campo; lo escrito ahí se convierte en texto (IA) y queda como valor
+       del campo, disparando input/change para que sus manejadores guarden como si se hubiera tecleado. */
+    const PEN_STRIP = { el: null, cv: null, inp: null, strokes: [], timer: 0, active: null, busy: false, label: "", numeric: false };
+    function _penInputOf(el) {
+      const inp = (el && el.closest) ? el.closest("input") : null;
+      if (!inp || inp.disabled || inp.readOnly) return null;
+      const t = (inp.getAttribute("type") || "text").toLowerCase();
+      return ["text", "search", "number", "tel", "email", "url"].indexOf(t) >= 0 ? inp : null;
+    }
+    function _penInputLabel(inp) {
+      const t = (inp.getAttribute("title") || "").trim(); if (t) return t.slice(0, 60);
+      try { if (inp.id) { const lb = document.querySelector('label[for="' + CSS.escape(inp.id) + '"]'); if (lb && lb.textContent.trim()) return lb.textContent.trim().slice(0, 60); } } catch (_) {}
+      const prev = inp.previousElementSibling;
+      if (prev && !/^(input|select|textarea|button)$/i.test(prev.tagName) && prev.textContent.trim() && prev.textContent.trim().length <= 24) return prev.textContent.trim();
+      const par = inp.parentElement; if (par) { const lab = par.querySelector(".pm-label, .lab-key, .field-label, label"); if (lab && lab.textContent.trim()) return lab.textContent.trim().slice(0, 60); }
+      return (inp.getAttribute("placeholder") || inp.name || inp.dataset.field || "valor").slice(0, 60);
+    }
+    function _penInputPrompt(label, numeric) {
+      return "La imagen es un valor MANUSCRITO (con lápiz, por un residente de cirugía general) para el campo «" + label + "» de la ficha de un paciente. "
+        + (numeric ? "Es un campo numérico: devuelve SOLO el número tal cual está escrito (punto decimal, sin unidades ni texto); si es una presión arterial, en formato 120/80. " : "Devuelve el texto tal cual, corto, sin interpretar ni completar. ")
+        + "Devuelve SOLO un JSON con este esquema: {\"texto\":\"…\"}";
+    }
+    // Si la tarjeta se repintó mientras se escribía, el campo original ya no está en el DOM: buscar su reemplazo.
+    function _penInputReplacement(inp) {
+      if (inp.isConnected) return inp;
+      try {
+        if (inp.id) { const e = document.getElementById(inp.id); if (e) return e; }
+        const d = inp.dataset; let sel = "input";
+        ["ck", "field", "key", "labkey", "fecha"].forEach(function (a) { if (d[a] !== undefined) sel += '[data-' + a + '="' + String(d[a]).replace(/"/g, '\\"') + '"]'; });
+        if (sel !== "input") { const e = document.querySelector(sel); if (e) return e; }
+      } catch (_) {}
+      return inp;
+    }
+    function _penSetInputValue(inp, texto, numeric) {
+      inp = _penInputReplacement(inp);
+      let v = String(texto || "").trim();
+      if (numeric) { const m = v.replace(",", ".").match(/-?\d+(?:\.\d+)?(?:\s*\/\s*\d+(?:\.\d+)?)?/); if (m) v = m[0].replace(/\s+/g, ""); }
+      inp.value = v;
+      inp.dispatchEvent(new Event("input", { bubbles: true }));
+      inp.dispatchEvent(new Event("change", { bubbles: true }));
+      try { inp.classList.add("pl-pen-flash"); setTimeout(function () { inp.classList.remove("pl-pen-flash"); }, 1200); } catch (_) {}
+      return v;
+    }
+    function _penStripOpen(inp) {
+      _penStripClose(true);
+      const el = document.createElement("div"); el.className = "pl-pen-strip";
+      const numeric = /^(decimal|numeric|tel)$/.test(inp.getAttribute("inputmode") || "") || (inp.getAttribute("type") || "").toLowerCase() === "number";
+      const label = _penInputLabel(inp);
+      el.innerHTML = '<div class="pps-h"><span class="pps-lbl"></span><span class="pps-cur"></span><span class="pps-st">Escribe aquí con el lápiz</span><span class="pps-btns"><button type="button" data-act="clear" title="Borrar lo escrito">🧹</button><button type="button" data-act="ok" title="Convertir ahora">✓</button><button type="button" data-act="close" title="Cerrar sin convertir">✕</button></span></div><canvas class="pps-cv"></canvas>';
+      el.querySelector(".pps-lbl").textContent = label; el.querySelector(".pps-cur").textContent = inp.value ? "actual: " + inp.value : "";
+      document.body.appendChild(el);
+      const r = inp.getBoundingClientRect(); const vw = window.innerWidth, vh = window.innerHeight; const w = Math.min(560, vw - 16), ch = 108, h = ch + 36;
+      const left = Math.max(8, Math.min(r.left - 40, vw - w - 8));
+      const below = (vh - r.bottom) >= h + 10; const top = below ? r.bottom + 6 : Math.max(8, r.top - h - 6);
+      el.style.left = left + "px"; el.style.top = top + "px"; el.style.width = w + "px";
+      const cv = el.querySelector(".pps-cv"); const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      cv.style.width = w + "px"; cv.style.height = ch + "px"; cv.width = Math.round(w * dpr); cv.height = Math.round(ch * dpr);
+      PEN_STRIP.el = el; PEN_STRIP.cv = cv; PEN_STRIP.inp = inp; PEN_STRIP.strokes = []; PEN_STRIP.active = null; PEN_STRIP.busy = false; PEN_STRIP.label = label; PEN_STRIP.numeric = numeric; clearTimeout(PEN_STRIP.timer);
+      el.querySelector(".pps-btns").addEventListener("click", function (ev) {
+        const b = ev.target.closest("button[data-act]"); if (!b) return; ev.preventDefault(); ev.stopPropagation();
+        if (b.dataset.act === "clear") { PEN_STRIP.strokes = []; clearTimeout(PEN_STRIP.timer); _penStripRedraw(); }
+        else if (b.dataset.act === "ok") { clearTimeout(PEN_STRIP.timer); _penStripConvert(); }
+        else _penStripClose(false);
+      });
+      cv.addEventListener("pointerdown", _penStripDown); cv.addEventListener("pointermove", _penStripMove); cv.addEventListener("pointerup", _penStripUp); cv.addEventListener("pointercancel", _penStripUp);
+      _penStripRedraw();
+    }
+    function _penStripClose(convert) {
+      const S = PEN_STRIP; if (!S.el) return;
+      clearTimeout(S.timer);
+      if (convert && S.strokes.length && !S.busy) _penStripConvert();   // sigue en segundo plano: pone el valor aunque la banda ya no esté
+      const el = S.el; S.el = null; S.cv = null; S.active = null;
+      if (!S.busy) { S.inp = null; S.strokes = []; }
+      el.remove();
+    }
+    function _penStripPt(e) { const r = PEN_STRIP.cv.getBoundingClientRect(); return [Math.round((e.clientX - r.left) * 10) / 10, Math.round((e.clientY - r.top) * 10) / 10, _penPressure(e)]; }
+    function _penStripDown(e) {
+      if (e.pointerType === "touch" || !PEN_STRIP.cv) return;      // el dedo no pinta (solo lápiz o ratón)
+      e.preventDefault(); e.stopPropagation();
+      try { PEN_STRIP.cv.setPointerCapture(e.pointerId); } catch (_) {}
+      clearTimeout(PEN_STRIP.timer);
+      PEN_STRIP.active = { id: e.pointerId, pts: [_penStripPt(e)], len: 0 };
+    }
+    function _penStripMove(e) {
+      const a = PEN_STRIP.active; if (!a || e.pointerId !== a.id) return; e.preventDefault();
+      const p = _penStripPt(e); const l = a.pts[a.pts.length - 1]; const d = Math.hypot(p[0] - l[0], p[1] - l[1]); if (d < 1) return;
+      a.len += d; a.pts.push(p); _penStripRedraw();
+    }
+    function _penStripUp(e) {
+      const a = PEN_STRIP.active; if (!a || e.pointerId !== a.id) return; PEN_STRIP.active = null;
+      if (a.len >= 4) {
+        const fake = { s: PEN_STRIP.strokes.map(function (p) { return { p: p }; }) }; const erased = _penScratch(fake, a.pts);
+        if (erased.length) PEN_STRIP.strokes = PEN_STRIP.strokes.filter(function (p) { return !erased.some(function (x) { return x.p === p; }); });
+        else PEN_STRIP.strokes.push(a.pts);
+      }
+      _penStripRedraw();
+      clearTimeout(PEN_STRIP.timer); if (PEN_STRIP.strokes.length) PEN_STRIP.timer = setTimeout(_penStripConvert, PEN_TEXT_PAUSE_MS);
+    }
+    function _penStripRedraw() {
+      const S = PEN_STRIP; const cv = S.cv; if (!cv) return;
+      const ctx = cv.getContext("2d"); const w = parseFloat(cv.style.width) || 0, h = parseFloat(cv.style.height) || 0; const dpr = cv.width / Math.max(1, w);
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(10, h * 0.72); ctx.lineTo(w - 10, h * 0.72); ctx.stroke();   // renglón guía
+      S.strokes.forEach(function (p) { _penStrokePath(ctx, p, 1, S.busy ? "#c4b5fd" : "#7c3aed"); });
+      if (S.active) _penStrokePath(ctx, S.active.pts, 1, "#7c3aed");
+      const st = S.el && S.el.querySelector(".pps-st"); if (st && !S.busy) st.textContent = S.strokes.length ? "Al soltar el lápiz se convierte en texto…" : "Escribe aquí con el lápiz";
+    }
+    async function _penStripConvert() {
+      const S = PEN_STRIP; if (!S.strokes.length || S.busy) return;
+      const inp = S.inp, strokes = S.strokes, label = S.label, numeric = S.numeric; if (!inp) return;
+      const st = S.el && S.el.querySelector(".pps-st");
+      S.busy = true; _penStripRedraw(); if (st) st.textContent = "🤖 Convirtiendo…";
+      try {
+        const png = _penStrokesPng(strokes); if (!png) throw new Error("sin trazos");
+        const texto = await _penRecognize(png, _penInputPrompt(label, numeric));
+        const v = _penSetInputValue(inp, texto, numeric);
+        if (S.inp === inp) { S.strokes = []; const st2 = S.el && S.el.querySelector(".pps-st"); if (st2) st2.textContent = "✓ " + v; }
+        setTimeout(function () { if (PEN_STRIP.el && PEN_STRIP.inp === inp && !PEN_STRIP.strokes.length && !PEN_STRIP.active) _penStripClose(false); }, 900);
+      } catch (e) {
+        const st3 = S.el && S.el.querySelector(".pps-st"); if (st3) st3.textContent = "No se pudo convertir (" + ((e && e.message) || e) + "): vuelve a intentar con ✓";
+        else if (typeof _plToast === "function") _plToast("No se pudo convertir lo escrito para «" + label + "» (" + ((e && e.message) || e) + ")", "#b91c1c", 3500);
+      } finally {
+        S.busy = false;
+        if (S.inp !== inp) { /* ya se abrió otra banda */ } else if (!S.el) { S.inp = null; S.strokes = []; }
+        _penStripRedraw();
+      }
+    }
     // Eventos: SOLO el lápiz (pointerType "pen"). El dedo y el ratón siguen llegando a la caja (cursor, teclado, scroll).
     (function _penBind() {
       document.addEventListener("touchstart", function (e) {
         try {
-          if (!penModeOn() || !e.touches || e.touches.length !== 1) return;
+          if (!e.touches || e.touches.length !== 1) return;
+          if (PEN_STRIP.el && PEN_STRIP.el.contains(e.target)) { if (e.touches[0].touchType === "stylus") e.preventDefault(); return; }
+          if (!penModeOn()) return;
           if (e.touches[0].touchType !== "stylus") return;        // WebKit: "stylus" = Apple Pencil
-          if (!_penTa(e.target)) return;
+          if (!_penTa(e.target) && !_penInputOf(e.target)) return;
           e.preventDefault();                                        // ni scroll ni Scribble: la tinta la pinta la app
         } catch (_) {}
       }, { passive: false, capture: true });
-      document.addEventListener("touchmove", function (e) { if (PEN.active && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
+      document.addEventListener("touchmove", function (e) { if ((PEN.active || PEN_STRIP.active) && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
       document.addEventListener("pointerdown", function (e) {
+        // Tocar fuera de la banda de escritura la cierra (convirtiendo lo pendiente); el lápiz sobre el MISMO campo la cierra y pone el cursor.
+        if (PEN_STRIP.el && !PEN_STRIP.el.contains(e.target)) {
+          const same = e.pointerType === "pen" && _penInputOf(e.target) === PEN_STRIP.inp;
+          _penStripClose(true);
+          if (same) { e.preventDefault(); e.stopPropagation(); try { _penInputOf(e.target).focus(); } catch (_) {} return; }
+        }
         if (e.pointerType !== "pen" || !penModeOn()) return;
+        const inp = _penInputOf(e.target);
+        if (inp) { e.preventDefault(); e.stopPropagation(); _penStripOpen(inp); return; }
         const ta = _penTa(e.target); if (!ta) return;
         e.preventDefault(); e.stopPropagation();
         _penStart(ta, e);

@@ -379,6 +379,16 @@ El botón **✍️** de la barra del tablero tiene tres estados (se recuerdan po
 En los tres casos: un **toque** con el lápiz (sin arrastrar) pone el cursor; el dedo y el teclado
 siguen igual; si escribes cerca del borde de abajo, la caja **crece** sola.
 
+**Campos de una línea** (signos vitales, calculadora de vasopresor, labs, dieta, antibiótico, drenajes,
+cabecera, modales): no cabe escribir encima, así que al **tocarlos con el lápiz** (con ✍️ → Texto o ✍️
+Tinta encendido) se abre una **banda de escritura** debajo con el nombre del campo y su valor actual.
+Escribes ahí; al soltar el lápiz el texto reconocido queda como valor del campo (en los numéricos solo
+el número; la TA como 120/80) y la banda se cierra sola. **✓** convierte sin esperar, **🧹** borra lo
+escrito, **✕** cierra sin convertir; tocar fuera de la banda convierte lo pendiente y la cierra; tocar el
+mismo campo otra vez con el lápiz cierra la banda y pone el cursor (teclado). El dedo no pinta en la
+banda. Las cajas de texto de los modales y de la cabecera también aceptan el lápiz: el texto se inserta
+(ahí no se guarda tinta).
+
 ## Vista de escritorio (octubre 2026)
 
 En un monitor ancho el contenido usa hasta 1 740 px (antes 1 440, con márgenes enormes), la cabecera y
