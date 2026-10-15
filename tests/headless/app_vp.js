@@ -21,9 +21,9 @@ const MOCK = `(() => {
 const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**HERNANDEZ GONZALEZ FAUSTINO | EDAD 58 AÑOS | FN [FN] | EXP 24-20852 | CAMA 3-170 | 14.10.2026 09:00 HRS**\n\n'
   + 'Paciente masculino en la sexta década de la vida hospitalizado con el siguiente diagnóstico: choque séptico de origen abdominal + PO LAPE + drenaje de colección + DM2 + HAS.\n\n'
   + 'Al pase de visita el paciente refiere dolor en sitio de herida quirúrgica, niega náusea y vómito.\n\n'
-  + 'Paciente masculino, consciente, orientado, con FC 103 LPM, saturación de oxígeno de 96 % bajo ventilación mecánica invasiva (modo AC, FiO2 40 %, PEEP 8 cmH2O, volumen tidal 420 mL (6.4 mL/kg de peso predicho)), TA 110/70 mmHg (PAM 83 mmHg) bajo apoyo vasopresor con norepinefrina a 0.076 mcg/kg/min y vasopresina a 0.03 U/min. Abdomen blando, depresible, herida quirúrgica con bordes bien afrontados, [EXPLORACIÓN DE TÓRAX], extremidades íntegras con llenado capilar conservado.\n\n'
+  + 'Paciente masculino, consciente, orientado, con FC 103 LPM, saturación de oxígeno de 96 % bajo ventilación mecánica invasiva (modo AC, FiO2 40 %, PEEP 8 cmH2O, volumen tidal 420 mL (6.4 mL/kg de peso predicho)), TA 110/70 mmHg (PAM 83 mmHg) bajo apoyo vasopresor con norepinefrina a 11.4 mcg/kg/h (0.19 mcg/kg/min) y vasopresina a 0.03 U/min. Abdomen blando, depresible, herida quirúrgica con bordes bien afrontados, [EXPLORACIÓN DE TÓRAX], extremidades íntegras con llenado capilar conservado.\n\n'
   + 'LABORATORIOS: [SIN LABORATORIOS REGISTRADOS EN LA TARJETA].\n\n'
-  + '- Paciente masculino en el postoperatorio mediato de *laparotomía exploradora* con choque séptico de origen abdominal en resolución, con requerimiento vasopresor de norepinefrina a 0.076 mcg/kg/min y vasopresina a 0.03 U/min; se continúa el retiro progresivo del vasopresor con meta de presión arterial media mayor o igual a 65 mmHg y uresis mayor o igual a 0.5 mL/kg/h guiado por lactato y llenado capilar conforme a Surviving Sepsis Campaign 2021. Bajo ventilación mecánica protectora con volumen tidal de 6.4 mL/kg de peso predicho y presión de distensión de 12 cmH2O (ARDSNet), se valorará prueba de ventilación espontánea al retirar el vasopresor. Diabetes mellitus tipo 2 con meta de glucemia de 140 a 180 mg/dL (ADA 2025). Se mantiene tromboprofilaxis con enoxaparina, profilaxis de úlcera por estrés con inhibidor de bomba de protones, analgesia multimodal y curación diaria de herida quirúrgica. Nutrición enteral trófica al estabilizar el requerimiento vasopresor conforme a ESPEN 2023. Se solicitan biometría hemática, química sanguínea, electrolitos séricos, procalcitonina y gasometría arterial con lactato, y TAC de control. Estado de salud delicado, con pronóstico reservado a evolución.\n\n'
+  + '- Paciente masculino en el postoperatorio mediato de *laparotomía exploradora* con choque séptico de origen abdominal en resolución, con requerimiento vasopresor de norepinefrina a 11.4 mcg/kg/h (0.19 mcg/kg/min) y vasopresina a 0.03 U/min; se continúa el retiro progresivo del vasopresor con meta de presión arterial media mayor o igual a 65 mmHg y uresis mayor o igual a 0.5 mL/kg/h guiado por lactato y llenado capilar conforme a Surviving Sepsis Campaign 2021. Bajo ventilación mecánica protectora con volumen tidal de 6.4 mL/kg de peso predicho y presión de distensión de 12 cmH2O (ARDSNet), se valorará prueba de ventilación espontánea al retirar el vasopresor. Diabetes mellitus tipo 2 con meta de glucemia de 140 a 180 mg/dL (ADA 2025). Se mantiene tromboprofilaxis con enoxaparina, profilaxis de úlcera por estrés con inhibidor de bomba de protones, analgesia multimodal y curación diaria de herida quirúrgica. Nutrición enteral trófica al estabilizar el requerimiento vasopresor conforme a ESPEN 2023. Se solicitan biometría hemática, química sanguínea, electrolitos séricos, procalcitonina y gasometría arterial con lactato, y TAC de control. Estado de salud delicado, con pronóstico reservado a evolución.\n\n'
   + 'DR GARNELO MBCG | DR FERNÁNDEZ R2CG\n```';
 (async () => {
   const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
@@ -58,13 +58,15 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**HERNANDEZ GONZALE
   // ── V1: fórmulas puras ──
   const v1 = await page.evaluate(() => ({
     d1: vpNoreDosis(4, 250, 10, 70), r1: vpNoreRate(4, 250, 0.1, 70), c1: vpNoreConc(8, 250),
+    dH: vpNoreDosisH(4, 100, 10, 70), rH: vpNoreRateH(4, 100, 6, 70), dHnul: vpNoreDosisH(4, 100, 10, ''), rHnul: vpNoreRateH(4, 100, '', 70), def: [VP_NORE_DEF.mg, VP_NORE_DEF.ml],
     d2: vpVasoDosis(20, 100, 9), r2: vpVasoRate(20, 100, 0.03),
     pam: vpPam('110/70'), pamBad: vpPam('abc'), pbwM: vmPbw(170, 'M'), pbwF: vmPbw(170, 'F'), pbwNo: vmPbw('', 'M'), vtkg: vmVtKg(420, vmPbw(170, 'M')), dp: vmDrivingP(20, 8), dpNo: vmDrivingP('', 8),
     f1: vpFmt(0.038095), f2: vpFmt(4), f3: vpFmt(0.5), f4: vpFmt(12.345, 1), f5: vpFmt(null),
     nul: vpNoreDosis('', 250, 10, 70), nul2: vpNoreDosis(4, 250, 10, ''), nul3: vpVasoDosis(20, 100, ''), comma: vpNoreDosis('4', '250', '7,5', '70')
   }));
-  check('V1 fórmulas: norepinefrina mcg/kg/min = (mg·1000/mL)·mL/h ÷ 60 ÷ kg y su inversa; vasopresina U/min = (U/mL)·mL/h ÷ 60 y su inversa; PAM; peso predicho Devine H/M; VT/kg; presión de distensión; formato; vacíos → null; coma decimal',
+  check('V1 fórmulas: norepinefrina mcg/kg/min = (mg·1000/mL)·mL/h ÷ 60 ÷ kg y su inversa; en mcg/kg/h (× 60: 4 mg/100 mL a 10 mL/h en 70 kg = 5.71) y su inversa (meta 6 mcg/kg/h → 10.5 mL/h); dilución por defecto 4 mg en 100 mL; vasopresina U/min = (U/mL)·mL/h ÷ 60 y su inversa; PAM; peso predicho Devine H/M; VT/kg; presión de distensión; formato; vacíos → null; coma decimal',
     near(v1.d1, 0.0381, 3) && near(v1.r1, 26.25, 2) && v1.c1 === 32 && near(v1.d2, 0.03, 4) && near(v1.r2, 9, 4)
+    && near(v1.dH, 5.714, 2) && near(v1.rH, 10.5, 3) && v1.dHnul === null && v1.rHnul === null && v1.def[0] === 4 && v1.def[1] === 100
     && v1.pam === 83 && v1.pamBad === null && near(v1.pbwM, 66.0, 1) && near(v1.pbwF, 61.5, 1) && v1.pbwNo === null && near(v1.vtkg, 6.36, 2) && v1.dp === 12 && v1.dpNo === null
     && v1.f1 === '0.038' && v1.f2 === '4' && v1.f3 === '0.5' && v1.f4 === '12.3' && v1.f5 === ''
     && v1.nul === null && v1.nul2 === null && v1.nul3 === null && near(v1.comma, 0.0286, 3), JSON.stringify(v1));
@@ -80,10 +82,19 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**HERNANDEZ GONZALE
     set('pm_peso', '70');
     toggleChecklist(k, 'vp_nore_on');
     const def = [getNote(k).checklist.vp_nore_mg, getNote(k).checklist.vp_nore_ml];
+    // ⚖️ el peso también está en la fila del vasopresor (mismo pm_peso) y los dos campos se siguen
+    const pesoInputs = document.querySelectorAll('#ck-row-' + ek + ' input[data-field="pm_peso"]').length;
+    const pesoVp = document.querySelector('#ck-row-' + ek + ' .ck-r-vaso input[data-field="pm_peso"]');
+    const pesoVpVal0 = pesoVp ? pesoVp.value : null;
+    if (pesoVp) { pesoVp.value = '80'; pesoVp.dispatchEvent(new Event('input', { bubbles: true })); }
+    const pesoClin80 = q('pm_peso').value; const pesoSaved80 = getNote(k).checklist.pm_peso;
+    set('pm_peso', '70');
+    const pesoVp70 = pesoVp ? pesoVp.value : null;
     set('vp_nore_mlh', '10');
     const res1 = document.getElementById('vp-nore-res-' + ek).textContent;
-    set('vp_nore_meta', '0.1');
+    set('vp_nore_meta', '6');                     // meta en mcg/kg/h
     const meta1 = document.getElementById('vp-nore-meta-' + ek).textContent;
+    const metaPh = q('vp_nore_meta').placeholder;
     set('vp_nore_mg', '8');                       // cambiar la dilución: la dosis se duplica
     const res2 = document.getElementById('vp-nore-res-' + ek).textContent;
     set('vp_nore_mlh', '80');                     // dosis alta → rojo + sugerencia SSC
@@ -104,14 +115,16 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**HERNANDEZ GONZALE
     const after = { mg: q('vp_nore_mg').value, mlh: q('vp_nore_mlh').value, res: document.getElementById('vp-nore-res-' + ek).textContent, resV: document.getElementById('vp-vaso-res-' + ek).textContent };
     await new Promise(r => setTimeout(r, 900));
     const s = getNote(k).checklist;
-    return { row0, noInputs0, def, res1, meta1, res2, hi, ssc, sscShown, sscHidden, defV, resV, hiV, noPeso, after, saved: { on: s.vp_nore_on, mg: s.vp_nore_mg, mlh: s.vp_nore_mlh, von: s.vp_vaso_on, vmlh: s.vp_vaso_mlh, peso: s.pm_peso } };
+    return { row0, noInputs0, def, pesoInputs, pesoVpVal0, pesoClin80, pesoSaved80, pesoVp70, res1, meta1, metaPh, res2, hi, ssc, sscShown, sscHidden, defV, resV, hiV, noPeso, after, saved: { on: s.vp_nore_on, mg: s.vp_nore_mg, mlh: s.vp_nore_mlh, von: s.vp_vaso_on, vmlh: s.vp_vaso_mlh, peso: s.pm_peso } };
   });
   const vpPosted = calls.some(c => c.m === 'POST' && /\/rest\/v1\/notes/.test(c.url) && c.body && c.body.checklist && c.body.checklist.vp_nore_mlh === '10' && c.body.checklist.vp_vaso_mlh === '9');
-  check('V2 💉 fila de vasopresores: chips apagados sin campos; al encender norepinefrina propone 4 mg/250 mL; con peso 70 kg y 10 mL/h → 0.038 mcg/kg/min; meta 0.1 → 26.3 mL/h; 8 mg/250 → 0.076; 80 mL/h → rojo + sugerencia SSC (se oculta al bajar); vasopresina 20 U/100 mL a 9 mL/h → 0.03 U/min (1.8 U/h), 15 mL/h → rojo; sin peso avisa; sobrevive al repintado; se guarda en la nube',
-    v2.row0 && v2.noInputs0 && v2.def[0] === '4' && v2.def[1] === '250' && v2.res1 === '0.038 mcg/kg/min' && v2.meta1 === '= 26.3 mL/h' && v2.res2 === '0.076 mcg/kg/min'
-    && /vp-hi/.test(v2.hi) && /SSC 2021/.test(v2.ssc) && v2.sscShown && v2.sscHidden
+  check('V2 💉 fila de vasopresores: chips apagados sin campos; al encender norepinefrina propone 4 mg/100 mL y muestra el ⚖️ peso en la misma fila (sigue al de Clínico y viceversa); con 70 kg y 10 mL/h → 5.7 mcg/kg/h (0.095 mcg/kg/min); meta 6 mcg/kg/h → 10.5 mL/h; 8 mg/100 → 11.4 mcg/kg/h; 80 mL/h → rojo + sugerencia SSC en mcg/kg/h (se oculta al bajar); vasopresina 20 U/100 mL a 9 mL/h → 0.03 U/min (1.8 U/h), 15 mL/h → rojo; sin peso avisa; sobrevive al repintado; se guarda en la nube',
+    v2.row0 && v2.noInputs0 && v2.def[0] === '4' && v2.def[1] === '100'
+    && v2.pesoInputs === 2 && v2.pesoVpVal0 === '70' && v2.pesoClin80 === '80' && v2.pesoSaved80 === '80' && v2.pesoVp70 === '70'
+    && v2.res1 === '5.7 mcg/kg/h (0.095 mcg/kg/min)' && v2.meta1 === '= 10.5 mL/h' && v2.metaPh === 'mcg/kg/h' && v2.res2 === '11.4 mcg/kg/h (0.19 mcg/kg/min)'
+    && /vp-hi/.test(v2.hi) && /SSC 2021: con norepinefrina ≥ 15 mcg\/kg\/h/.test(v2.ssc) && v2.sscShown && v2.sscHidden
     && v2.defV[0] === '20' && v2.defV[1] === '100' && v2.resV === '0.03 U/min (1.8 U/h)' && /vp-hi/.test(v2.hiV) && /falta el peso/.test(v2.noPeso)
-    && v2.after.mg === '8' && v2.after.mlh === '10' && v2.after.res === '0.076 mcg/kg/min' && v2.after.resV === '0.03 U/min (1.8 U/h)'
+    && v2.after.mg === '8' && v2.after.mlh === '10' && v2.after.res === '11.4 mcg/kg/h (0.19 mcg/kg/min)' && v2.after.resV === '0.03 U/min (1.8 U/h)'
     && v2.saved.on === true && v2.saved.mg === '8' && v2.saved.mlh === '10' && v2.saved.von === true && v2.saved.vmlh === '9' && v2.saved.peso === '70' && vpPosted, JSON.stringify({ v2, vpPosted }));
 
   // ── V3: 🫁 ventilador ampliado ──
@@ -150,9 +163,9 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**HERNANDEZ GONZALE
     const sinVp = _plneBuild(p, nd2);
     return { conVp, sinVp };
   });
-  check('V4 nota de evolución: ventilador completo (modo, FiO2, PEEP, VT con mL/kg de peso predicho, FR, PIP, Pplat, presión de distensión, Pmedia, I:E), TA con PAM y vasopresores con dosis calculada y dilución; sin vasopresor la TA se escribe como siempre (sin PAM)',
+  check('V4 nota de evolución: ventilador completo (modo, FiO2, PEEP, VT con mL/kg de peso predicho, FR, PIP, Pplat, presión de distensión, Pmedia, I:E), TA con PAM y vasopresores con dosis calculada en mcg/kg/h (y mcg/kg/min) y dilución; sin vasopresor la TA se escribe como siempre (sin PAM)',
     /SATURACIÓN DE OXÍGENO DE 96 % BAJO VENTILACIÓN MECÁNICA INVASIVA \(MODO AC, FIO2 40 %, PEEP 8 CMH2O, VOLUMEN TIDAL 420 ML \(6\.4 ML\/KG DE PESO PREDICHO\), FR 16 RPM, PIP 24 CMH2O, PRESIÓN MESETA 20 CMH2O, PRESIÓN DE DISTENSIÓN 12 CMH2O, PRESIÓN MEDIA 12 CMH2O, RELACIÓN I:E 1:2\)/.test(v4.conVp)
-    && /TA 110\/70 MMHG \(PAM 83 MMHG\) BAJO APOYO VASOPRESOR CON NOREPINEFRINA A 0\.076 MCG\/KG\/MIN \(8 MG EN 250 ML A 10 ML\/H\) Y VASOPRESINA A 0\.03 U\/MIN \(20 U EN 100 ML A 9 ML\/H\)/.test(v4.conVp)
+    && /TA 110\/70 MMHG \(PAM 83 MMHG\) BAJO APOYO VASOPRESOR CON NOREPINEFRINA A 11\.4 MCG\/KG\/H \(0\.19 MCG\/KG\/MIN\) \(8 MG EN 100 ML A 10 ML\/H\) Y VASOPRESINA A 0\.03 U\/MIN \(20 U EN 100 ML A 9 ML\/H\)/.test(v4.conVp)
     && /TA 110\/70 MMHG\./.test(v4.sinVp) && !/PAM|VASOPRESOR|VENTILACIÓN/.test(v4.sinVp), v4.conVp.slice(0, 900));
 
   // ── V5: 🤖 Nota IA en un clic ──
@@ -176,7 +189,7 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**HERNANDEZ GONZALE
     sinMarkdown: !/[#*`]/.test(v5.txt), mayusculas: v5.txt === v5.txt.toUpperCase(), decada: /PACIENTE MASCULINO EN LA SEXTA DÉCADA/.test(v5.txt), sscNota: /SURVIVING SEPSIS CAMPAIGN 2021/.test(v5.txt), corchete: /\[EXPLORACIÓN DE TÓRAX\]/.test(v5.txt), estado: /ESTADO DE SALUD DELICADO, CON PRONÓSTICO RESERVADO A EVOLUCIÓN\./.test(v5.txt),
     encabezadoUnaVez: (v5.txt.match(/NOTA DE EVOLUCIÓN CIRUGÍA GENERAL/g) || []).length === 1, firmaUnaVez: (v5.txt.match(/DR GARNELO MBCG/g) || []).length === 1, idUnaVez: !/EDAD 58 AÑOS[\s\S]*EDAD 58 AÑOS/.test(v5.txt),
     hist: v5.hist.length === 1 && v5.hist[0].ia === true && v5.hist[0].by === 'GF', warn: v5.warn === 'none', sel: v5.sel !== 'none', btn: v5.btn === false,
-    aiUna: aiBodies.length === 1, modelo: ai0.model === 'claude-sonnet-4-6', borrador: /\(A\) BORRADOR:\nNOTA DE EVOLUCIÓN CIRUGÍA GENERAL/.test(ai0.text), app: /DM2 de 10 años/.test(ai0.text), pend: /PENDIENTES: TAC de control/.test(ai0.text), reglas: /NO inventes datos/.test(ai0.text), sscPrompt: /SURVIVING SEPSIS CAMPAIGN 2021/.test(ai0.text), vpPrompt: /BAJO APOYO VASOPRESOR CON NOREPINEFRINA A 0\.076/.test(ai0.text)
+    aiUna: aiBodies.length === 1, modelo: ai0.model === 'claude-sonnet-4-6', borrador: /\(A\) BORRADOR:\nNOTA DE EVOLUCIÓN CIRUGÍA GENERAL/.test(ai0.text), app: /DM2 de 10 años/.test(ai0.text), pend: /PENDIENTES: TAC de control/.test(ai0.text), reglas: /NO inventes datos/.test(ai0.text), sscPrompt: /SURVIVING SEPSIS CAMPAIGN 2021/.test(ai0.text), vpPrompt: /BAJO APOYO VASOPRESOR CON NOREPINEFRINA A 11\.4 MCG\/KG\/H \(0\.19 MCG\/KG\/MIN\)/.test(ai0.text)
   };
   const bad5 = Object.keys(c5).filter(x => !c5[x]);
   check('V5 🤖 Nota IA en un clic desde la tarjeta: abre el modal, muestra el borrador mientras redacta, manda borrador + contexto (APP, pendientes, reglas) al worker, limpia la respuesta (sin markdown ni ```, mayúsculas), encabezado y firma del borrador una sola vez, "ESTADO DE SALUD", guarda en notas previas con iniciales',

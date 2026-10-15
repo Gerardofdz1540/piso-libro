@@ -1044,6 +1044,9 @@
       font-family: var(--mono)
     }
 
+    /* INR estimado (TP ÷ testigo) como marca de agua cuando WinLab no lo reporta */
+    .lab-cell.lab-est .lab-input::placeholder { color: inherit; opacity: .9; font-weight: 800; }
+    .lab-est-tag { color: #9d174d; font-weight: 800; margin-left: 2px; }
     .lab-input.abn {
       color: #92400e
     }
@@ -7415,6 +7418,9 @@ function plExportBackup() {
       cl:        [/^cloro$/i, /^cl$/i, /^cl-/i, /chlorid/i],
       // Coagulación
       tp:        [/tiempo de protromb/i, /^tp$/i, /^pt$/i, /prothromb/i],
+      // TESTIGO (control del TP, oct 2026): WinLab NO reporta INR; con TP y testigo la app lo estima (TP ÷ testigo).
+      // Va justo después del TP en el panel; el control del TTP llega como "RANGO DE REFERENCIA" y se descarta.
+      tp_testigo: [/^testigo$/i, /^testigo\s+(de\s+)?(tp|protromb)/i],
       ttp:       [/tromboplastin/i, /^ttp$/i, /^aptt$/i, /^ptt$/i],
       inr:       [/^i\.?n\.?r\.?$/i, /^inr$/i, /raz[oó]n.*normalizad/i],
       fibrinogeno: [/fibrin[oó]gen/i, /^fib$/i],
@@ -7482,9 +7488,9 @@ function plExportBackup() {
       if (/^[\d\s:.,\/\-]+$/.test(n)) return true;
       // Sospechosos: contiene "PACIENTE", "REPORTE", "CIRUGIA", servicios
       if (/^(CIRUGIA|MEDICINA|GINECO|PEDIATRIA|URGENCIA|TRAUMA|UCI|UTI|UNIDAD)/i.test(n)) return true;
-      // Metadata del PDF de WinLab: TESTIGO y RANGO DE REFERENCIA aparecen
-      // como falsos "estudios" cuando el PDF tiene tiempos de coagulación
-      if (/^TESTIGO$/i.test(n)) return true;
+      // Metadata del PDF de WinLab: RANGO DE REFERENCIA (control del TTP) aparece como falso
+      // "estudio" en los tiempos de coagulación. TESTIGO (control del TP) SÍ se conserva desde
+      // oct 2026: sirve para estimar el INR, que WinLab no reporta (alias tp_testigo).
       if (/^RANGO DE REFERENCIA$/i.test(n)) return true;
       // Unidades sueltas que el parser confundió con nombres de estudio
       if (/^U\/L$/i.test(n)) return true;
@@ -8598,7 +8604,8 @@ function plExportBackup() {
       "amilasa", "lipasa",
       "ph", "pco2", "po2", "hco3", "be", "sato2",
       "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
-    const LAB_META_KEYS = new Set(["paciente", "nombre", "fecha_labs", "hora_labs", "tipo", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias", "micro_muestra", "micro_comentarios"]);
+    // tp_testigo (oct 2026): control del TP que reporta WinLab; no es un analito para mostrar, sirve para estimar el INR.
+    const LAB_META_KEYS = new Set(["paciente", "nombre", "fecha_labs", "hora_labs", "tipo", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias", "micro_muestra", "micro_comentarios", "tp_testigo"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
@@ -8976,7 +8983,10 @@ function plExportBackup() {
       var out=[]; var usados={};
       PLNE_LAB_NOMBRES.forEach(function(pair){
         if(keys && keys.indexOf(pair[0])<0) return;
-        var v=_plneVal2(labs[pair[0]]); if(!v) return; usados[pair[0]]=1;
+        var v=_plneVal2(labs[pair[0]]);
+        // INR que WinLab no reporta: se escribe el estimado (TP ÷ testigo) marcado como tal.
+        if(!v && pair[0]==="inr" && typeof inrOf==="function"){ var io=inrOf(labs); if(io&&io.est){ usados.inr=1; out.push("INR "+io.txt+" (ESTIMADO TP/TESTIGO)"); } return; }
+        if(!v) return; usados[pair[0]]=1;
         var s=pair[1]+" "+v;
         if(pair[0]==="tp" && _plneVal2(labs.tp_testigo)) s+=" CON TESTIGO DE "+_plneVal2(labs.tp_testigo);
         out.push(s);
@@ -9323,14 +9333,17 @@ function plExportBackup() {
     }
 
     /* ═══ Vasopresores y ventilador (oct 2026) ═══
-       Norepinefrina: mcg/kg/min = (mg·1000 ÷ mL) · mL/h ÷ 60 ÷ kg.   Vasopresina: U/min = (U ÷ mL) · mL/h ÷ 60.
+       Norepinefrina: mcg/kg/min = (mg·1000 ÷ mL) · mL/h ÷ 60 ÷ kg; en el piso se lee en mcg/kg/h (× 60).
+       Vasopresina: U/min = (U ÷ mL) · mL/h ÷ 60.   En el servicio TODO se diluye en 100 mL (pedido de Gera, 15 oct 2026).
        Peso predicho (Devine, ARDSNet): H 50 + 0.91·(cm − 152.4) · M 45.5 + 0.91·(cm − 152.4).  ΔP = Pplat − PEEP. */
-    var VP_NORE_DEF = { mg: 4, ml: 250 }, VP_VASO_DEF = { u: 20, ml: 100 };
+    var VP_NORE_DEF = { mg: 4, ml: 100 }, VP_VASO_DEF = { u: 20, ml: 100 };
     function vpNum(v){ if(v===undefined||v===null) return NaN; var n=parseFloat(String(v).replace(",",".").replace(/[^\d.\-]/g,"")); return isFinite(n)?n:NaN; }
     function vpFmt(n, d){ if(n===null||n===undefined||!isFinite(n)) return ""; var dec=(d===undefined||d===null)?((n>0&&n<0.1)?3:2):d; var s=n.toFixed(dec); if(s.indexOf(".")>=0) s=s.replace(/0+$/,"").replace(/\.$/,""); return s==="-0"?"0":s; }
     function vpNoreConc(mg, ml){ mg=vpNum(mg); ml=vpNum(ml); return (mg>0&&ml>0)?(mg*1000/ml):NaN; }                  // mcg/mL
     function vpNoreDosis(mg, ml, mlh, peso){ var c=vpNoreConc(mg, ml); mlh=vpNum(mlh); peso=vpNum(peso); if(!(c>0)||!(mlh>=0)||!(peso>0)) return null; return c*mlh/60/peso; }  // mcg/kg/min
     function vpNoreRate(mg, ml, dosis, peso){ var c=vpNoreConc(mg, ml); dosis=vpNum(dosis); peso=vpNum(peso); if(!(c>0)||!(dosis>=0)||!(peso>0)) return null; return dosis*peso*60/c; } // mL/h
+    function vpNoreDosisH(mg, ml, mlh, peso){ var d=vpNoreDosis(mg, ml, mlh, peso); return d===null?null:d*60; }                                    // mcg/kg/h
+    function vpNoreRateH(mg, ml, dosisH, peso){ dosisH=vpNum(dosisH); if(!(dosisH>=0)) return null; return vpNoreRate(mg, ml, dosisH/60, peso); }    // mL/h desde mcg/kg/h
     function vpVasoConc(u, ml){ u=vpNum(u); ml=vpNum(ml); return (u>0&&ml>0)?(u/ml):NaN; }                            // U/mL
     function vpVasoDosis(u, ml, mlh){ var c=vpVasoConc(u, ml); mlh=vpNum(mlh); if(!(c>0)||!(mlh>=0)) return null; return c*mlh/60; }          // U/min
     function vpVasoRate(u, ml, dosis){ var c=vpVasoConc(u, ml); dosis=vpNum(dosis); if(!(c>0)||!(dosis>=0)) return null; return dosis*60/c; }   // mL/h
@@ -9344,7 +9357,7 @@ function plExportBackup() {
     }
     function _vpTextoNota(ck){
       var partes=[];
-      if(ck.vp_nore_on){ var d=vpNoreDosis(ck.vp_nore_mg, ck.vp_nore_ml, ck.vp_nore_mlh, ck.pm_peso); var dil=(vpNum(ck.vp_nore_mg)>0&&vpNum(ck.vp_nore_ml)>0&&vpNum(ck.vp_nore_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_nore_mg))+" MG EN "+vpFmt(vpNum(ck.vp_nore_ml))+" ML A "+vpFmt(vpNum(ck.vp_nore_mlh))+" ML/H)"):""; partes.push("NOREPINEFRINA A "+(d!==null?vpFmt(d):"[__]")+" MCG/KG/MIN"+dil); }
+      if(ck.vp_nore_on){ var d=vpNoreDosis(ck.vp_nore_mg, ck.vp_nore_ml, ck.vp_nore_mlh, ck.pm_peso); var dil=(vpNum(ck.vp_nore_mg)>0&&vpNum(ck.vp_nore_ml)>0&&vpNum(ck.vp_nore_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_nore_mg))+" MG EN "+vpFmt(vpNum(ck.vp_nore_ml))+" ML A "+vpFmt(vpNum(ck.vp_nore_mlh))+" ML/H)"):""; partes.push("NOREPINEFRINA A "+(d!==null?(vpFmt(d*60,1)+" MCG/KG/H ("+vpFmt(d)+" MCG/KG/MIN)"):"[__] MCG/KG/H")+dil); }
       if(ck.vp_vaso_on){ var v=vpVasoDosis(ck.vp_vaso_u, ck.vp_vaso_ml, ck.vp_vaso_mlh); var dv=(vpNum(ck.vp_vaso_u)>0&&vpNum(ck.vp_vaso_ml)>0&&vpNum(ck.vp_vaso_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_vaso_u))+" U EN "+vpFmt(vpNum(ck.vp_vaso_ml))+" ML A "+vpFmt(vpNum(ck.vp_vaso_mlh))+" ML/H)"):""; partes.push("VASOPRESINA A "+(v!==null?vpFmt(v):"[__]")+" U/MIN"+dv); }
       return partes.length?("BAJO APOYO VASOPRESOR CON "+partes.join(" Y ")):"";
     }
@@ -9398,6 +9411,10 @@ function plExportBackup() {
         var shown = dates.slice(0, _paseCols ? 3 : 4).reverse();
         var byDate = {};
         history.forEach(function(s){ byDate[s.fecha] = s.labs || {}; });
+        // INR (oct 2026): WinLab no lo reporta; si falta se ESTIMA TP ÷ testigo y se marca "≈". La fila INR siempre se muestra.
+        var inrEst = {};
+        shown.forEach(function(d){ var io = (typeof inrOf === "function") ? inrOf(byDate[d]) : null; if (io && io.est) inrEst[d] = io.txt; });
+        function rawOf(d, key){ var raw = byDate[d][key]; if (key === "inr" && inrEst[d] && (raw === undefined || raw === null || String(raw).trim() === "")) return inrEst[d]; return raw; }
         // ── umbrales TUYOS (reusados de LAB_GROUPS): low/high + cl (crít bajo) / ch (crít alto) ──
         var TH = {};
         if(typeof LAB_GROUPS !== "undefined" && Array.isArray(LAB_GROUPS)){
@@ -9427,8 +9444,8 @@ function plExportBackup() {
         }
         function trendMark(key, idx){
           if(idx <= 0) return "";                      // primera columna: no hay previo
-          var cur  = trendNum(byDate[shown[idx]][key]);
-          var prev = trendNum(byDate[shown[idx-1]][key]);
+          var cur  = trendNum(rawOf(shown[idx], key));
+          var prev = trendNum(rawOf(shown[idx-1], key));
           if(cur === null || prev === null) return "";  // sin valor previo o no numérico → sin flecha
           if(cur > prev) return '<span class="ff-trend ff-trend-up" title="Sube vs columna previa">▲</span>';
           if(cur < prev) return '<span class="ff-trend ff-trend-dn" title="Baja vs columna previa">▼</span>';
@@ -9436,11 +9453,12 @@ function plExportBackup() {
         }
         function cellRow(label, key){
           var tds = shown.map(function(d, idx){
-            var raw = byDate[d][key];
+            var raw = rawOf(d, key);
+            var est = key === "inr" && !!inrEst[d];
             var v = (raw === undefined || raw === null || String(raw).trim() === "") ? "—" : String(raw).trim();
             var cls = (v === "—") ? "" : labClass(key, v);
             var tr = (v === "—") ? "" : trendMark(key, idx);
-            return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(v) + tr + '</td>';
+            return '<td' + (cls ? ' class="' + cls + '"' : '') + (est ? ' title="INR estimado = TP ÷ testigo (WinLab no reporta INR)"' : '') + '>' + (est ? '≈' : '') + esc(v) + tr + '</td>';
           }).join('');
           return '<tr><td class="ff-an">' + esc(label) + '</td>' + tds + '</tr>';
         }
@@ -9454,12 +9472,14 @@ function plExportBackup() {
         var _hiddenEmpty = 0;
         var mainRowList = FOCUS_LAB_ORDER.filter(function(p){
           if (!_pase) return true;
-          var has = shown.some(function(d){ var v = byDate[d][p[1]]; return v !== undefined && v !== null && String(v).trim() !== ""; });
+          if (p[1] === "inr") return true;             // el INR se muestra SIEMPRE (decide cirugías), aunque no haya valor
+          var has = shown.some(function(d){ var v = rawOf(d, p[1]); return v !== undefined && v !== null && String(v).trim() !== ""; });
           if (!has) _hiddenEmpty++;
           return has;
         }).map(function(p){ return cellRow(p[0], p[1]); });
         var mainRows = mainRowList.join('');
         var hiddenNote = (_pase && _hiddenEmpty) ? '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '" style="font-weight:600;text-transform:none;letter-spacing:0">' + _hiddenEmpty + ' analitos sin valor ocultos (modo Pase)</td></tr>' : '';
+        var inrNote = Object.keys(inrEst).length ? '<tr class="ff-otros-h ff-inr-note"><td colspan="' + (shown.length + 1) + '" style="font-weight:600;text-transform:none;letter-spacing:0">≈ INR estimado = TP ÷ testigo (WinLab no reporta INR)</td></tr>' : '';
         // ── OTROS: labs estándar con valor que NO están en tu orden ──
         var labelMap = {}, fieldOrder = {};
         if(typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)){
@@ -9512,9 +9532,9 @@ function plExportBackup() {
           var half = Math.ceil(mainRowList.length / 2);
           var left = mainRowList.slice(0, half).join('');
           var right = mainRowList.slice(half).join('');
-          return '<div class="ff-labs">' + hdr + '<div class="ff-labs-split">' + tbl(left) + tbl(right + hiddenNote + otros) + '</div></div>';
+          return '<div class="ff-labs">' + hdr + '<div class="ff-labs-split">' + tbl(left) + tbl(right + hiddenNote + inrNote + otros) + '</div></div>';
         }
-        return '<div class="ff-labs">' + hdr + tbl(mainRows + hiddenNote + otros) + '</div>';
+        return '<div class="ff-labs">' + hdr + tbl(mainRows + hiddenNote + inrNote + otros) + '</div>';
       }catch(e){
         return renderLabSection(nd, k); // si algo falla, caer al render normal — nunca romper el foco
       }
@@ -11996,6 +12016,9 @@ function plExportBackup() {
             const arrow = (!isNaN(n) && !isNaN(pn)) ? (n > pn ? "▲" : (n < pn ? "▼" : "")) : "";
             chips.push(pair[1] + " " + String(v).trim() + arrow);
           });
+          // INR siempre (oct 2026): el real, o el estimado TP ÷ testigo marcado con ≈ (WinLab no lo reporta)
+          const io = (typeof inrOf === "function") ? inrOf(snap.labs) : null;
+          if (io && Number.isFinite(io.v)) { const pio = inrOf(prev); const ia = (pio && Number.isFinite(pio.v)) ? (io.v > pio.v ? "▲" : (io.v < pio.v ? "▼" : "")) : ""; chips.push("INR " + (io.est ? "≈" : "") + io.txt + ia); }
           if (chips.length) parts.push("🧪 " + ((typeof fmtDateChip === "function") ? fmtDateChip(snap.fecha) : snap.fecha) + ": " + chips.join(" · "));
         }
         const popBtn = (pop === null)
@@ -12538,6 +12561,18 @@ function plExportBackup() {
       const s = String(v).trim().replace(/^[<>≤≥]\s*/, "").replace(",", ".");
       const n = parseFloat(s);
       return Number.isFinite(n) ? n : NaN;
+    }
+    // INR (oct 2026): WinLab no reporta INR — solo TP, su TESTIGO (control) y TTP. Si no hay INR capturado,
+    // se ESTIMA como TP ÷ testigo (ISI ≈ 1) y se marca como estimado ("≈"). Es de los analitos que deciden
+    // una cirugía, por eso se muestra SIEMPRE (tabla, línea de pase, nota, entrega).
+    //   → { v: número, txt: texto a mostrar, est: true si es estimado } · null si no hay cómo saberlo
+    function inrOf(labs) {
+      if (!labs) return null;
+      const raw = labs.inr;
+      if (raw !== undefined && raw !== null && String(raw).trim() !== "") return { v: parseLabNumber(raw), txt: String(raw).trim(), est: false };
+      const tp = parseLabNumber(labs.tp), tg = parseLabNumber(labs.tp_testigo);
+      if (Number.isFinite(tp) && Number.isFinite(tg) && tp > 0 && tg > 0) { const r = Math.round(tp / tg * 100) / 100; return { v: r, txt: r.toFixed(2), est: true }; }
+      return null;
     }
     function setSyncProblemStatus() {
       if (!navigator.onLine) {
@@ -14286,44 +14321,200 @@ function plExportBackup() {
       _rerenderCard(k);
     }
 
-    // ── Pase de guardia inteligente ────────────────────────────────────
-    function buildPaseInteligente(p, nd) {
-      const parts = [];
-      const snap = getLatestLabSnapshot(nd);
-      const criticals = snap ? getCriticalLabItemsFromSnapshot(snap) : [];
-      if (criticals.length) {
-        parts.push("🚨 LABS CRÍTICOS: " + criticals.map(c => `${c.label} ${c.value}${c.unit?" "+c.unit:""}`).join(", "));
-      }
-      const dias = getDiasSinLabs(nd);
-      if (dias !== null && dias >= 2) parts.push(`⚠️ Sin labs recientes (${dias}d)`);
-      if (nd.pendientes && nd.pendientes.trim()) parts.push("📋 Pendientes: " + nd.pendientes.trim());
-      const ck = (nd.checklist) || {};
-      if (ck.cruce_activo) parts.push("🔪 CRUCE QUIRÚRGICO ACTIVO");
-      if (ck.npt) parts.push("💉 NPT activa");
-      const _cx = (typeof cirugiasTexto === "function") ? cirugiasTexto(ck, " | ") : "";
-      if (_cx) parts.push("🔪 Cirugías: " + _cx);
-      const _bal = (typeof balanceTexto === "function") ? balanceTexto(nd) : toSafeString(nd.balance).trim();
-      if (_bal) parts.push("⚖️ Balance: " + _bal);
-      const _dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " | ") : "";
-      if (_dt) parts.push("🫁 Drenajes/sondas: " + _dt);
-      if (nd.drenajes && nd.drenajes.trim()) parts.push("🩸 Nota de drenajes: " + nd.drenajes.trim());
-      return parts.join("\n");
+    // ── Resumen de entrega de guardia (oct 2026, pedido de Gera) ──────────────────────────────────
+    // La entrega NO transcribe la tarjeta. Solo lo que la siguiente guardia necesita de un vistazo:
+    // si pasó a quirófano, los gastos, labs PUNTUALES (críticos, cambios grandes, INR), lo NUEVO del
+    // día (lo que se agregó, pidió o llegó hoy/ayer) y los pendientes abiertos. Mismo resumen para el
+    // botón ✨ Resumen de la tarjeta (texto) y para la vista 📤 Entrega (ficha por paciente).
+    const ENTREGA_RESUMEN_HDR = /^— Resumen \d{2}\/\d{2}[^\n]*—\s*$/;
+    function _egIsoOffset(n) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + (n || 0)); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+    function _egDdMm(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || "")); return m ? m[3] + "/" + m[2] : String(iso || ""); }
+    // "dd/mm" (sello ➕ Hoy, encabezado del día en Pendientes, Recibido) → AAAA-MM-DD: año actual, o el anterior si cae en el futuro.
+    function _egIsoFromDdMm(dd, mm) {
+      const y = new Date().getFullYear();
+      let iso = y + "-" + String(mm).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+      if (iso > _egIsoOffset(1)) iso = (y - 1) + iso.slice(4);
+      return iso;
     }
-
+    // Reparte los renglones de una caja por fecha según los sellos que ya usa la app: "dd/mm GF: texto"
+    // (➕ Hoy), "dd/mm — " (encabezado del día en Pendientes), "dd-mm-aaaa: texto" (novedades automáticas)
+    // y "— Recibido dd/mm hh:mm GF —" (Tomar guardia). Lo que sigue a un encabezado hereda su fecha; lo
+    // que no tiene fecha queda con fecha null. El bloque "— Resumen … —" anterior se ignora.
+    function _egLineasFechadas(text) {
+      const out = []; let cur = null;
+      toSafeString(text).split("\n").forEach(function (line) {
+        const t = line.trim();
+        if (t === "") { if (cur === "resumen") cur = null; return; }
+        if (ENTREGA_RESUMEN_HDR.test(t)) { cur = "resumen"; return; }
+        if (cur === "resumen") return;
+        let m;
+        if ((m = /^(\d{2})\/(\d{2})\s*—\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
+        if ((m = /^—\s*Recibido\s+(\d{2})\/(\d{2})[^—]*—\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
+        if ((m = /^(\d{2})-(\d{2})-(\d{4}):\s*(.*)$/.exec(t))) { out.push({ fecha: m[3] + "-" + m[2] + "-" + m[1], text: m[4].trim(), auto: true }); return; }
+        if ((m = /^(\d{2})\/(\d{2})(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
+        out.push({ fecha: cur, text: t.replace(/^[-•·*]\s*/, "") });
+      });
+      return out;
+    }
+    // Cambios "grandes" contra el control previo (unidades de WinLab HGL) que vale la pena entregar aunque no sean críticos.
+    const _EG_DELTA = { hb: 1.5, leucos: 4, plaq: 60, cr: 0.3, k: 0.7, na: 5, pcr: 50, pct: 1, lac: 1, glu: 100, bt: 1, inr: 0.3, alb: 0.5, mg: 0.5, ca: 1 };
+    const _EG_LAB_ORDER = ["hb", "k", "na", "cr", "leucos", "plaq", "lac", "pct", "pcr", "inr", "glu", "bt", "alb", "mg", "ca", "p", "tp", "ttp", "amilasa", "lipasa", "urea", "bun", "cl", "hct", "fibrinogeno", "dimero_d", "ph", "hco3", "pco2", "po2", "sato2", "be", "ast", "alt", "fa", "ggt", "ldh", "tropI", "tropT", "ck"];
+    function _egNum(v) { const n = parseLabNumber(v); return Number.isFinite(n) ? n : null; }
+    function _egCut(s, n) { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1).replace(/\s+\S*$/, "") + "…" : s; }
+    // 🧪 Labs puntuales del último control: críticos (LAB_QUICK), cambios grandes contra el previo, INR ≥ 1.3
+    // (el real o el estimado TP ÷ testigo) y lactato > 2. Máximo 6; el resto se cuenta.
+    function _egLabsPuntuales(nd) {
+      const snap = (typeof getLatestLabSnapshot === "function") ? getLatestLabSnapshot(nd) : null;
+      if (!snap || !snap.labs || !_snapHasBloodValues(snap)) return null;
+      const prevS = (nd.labHistory || []).filter(function (s) { return s && s.fecha && s.fecha < snap.fecha && _snapHasBloodValues(s); }).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); })[0];
+      const prev = prevS ? (prevS.labs || {}) : {};
+      const labelMap = {}; (Array.isArray(LAB_FIELDS) ? LAB_FIELDS : []).forEach(function (f) { labelMap[f.key] = f.label; });
+      const keys = _EG_LAB_ORDER.slice(); Object.keys(snap.labs).forEach(function (key) { if (keys.indexOf(key) < 0) keys.push(key); });
+      const items = []; let extra = 0;
+      keys.forEach(function (key) {
+        if (/^(ego_|micro_)/.test(key) || key === "fecha_labs" || key === "tp_testigo" || (typeof LAB_META_KEYS !== "undefined" && LAB_META_KEYS.has(key))) return;
+        let n, txt, pn, est = false, pTxt = "";
+        if (key === "inr") {
+          const io = inrOf(snap.labs); if (!io || !Number.isFinite(io.v)) return;
+          n = io.v; txt = io.txt; est = io.est; const pio = inrOf(prev); pn = (pio && Number.isFinite(pio.v)) ? pio.v : null; pTxt = pio ? pio.txt : "";
+        } else {
+          n = _egNum(snap.labs[key]); if (n === null) return;
+          txt = String(snap.labs[key]).trim(); pn = _egNum(prev[key]); pTxt = pn === null ? "" : String(prev[key]).trim();
+        }
+        const q = (typeof LAB_QUICK !== "undefined" && LAB_QUICK[key]) ? LAB_QUICK[key](n) : null;
+        const crit = !!(q && q.sev === "crit");
+        const delta = pn !== null && _EG_DELTA[key] != null && Math.abs(n - pn) >= _EG_DELTA[key];
+        const inrAlto = key === "inr" && n >= 1.3;
+        const lacAlto = key === "lac" && n > 2;
+        if (!crit && !delta && !inrAlto && !lacAlto) return;
+        if (items.length >= 6) { extra++; return; }
+        const arrow = pn === null ? "" : (n > pn ? "▲" : (n < pn ? "▼" : ""));
+        items.push({ key: key, crit: crit, text: (labelMap[key] || key.toUpperCase()) + " " + (est ? "≈" : "") + txt + arrow + (delta ? " (de " + pTxt + ")" : "") });
+      });
+      const dias = (typeof getDiasSinLabs === "function") ? getDiasSinLabs(nd) : null;
+      return { fecha: snap.fecha, items: items, extra: extra, dias: dias };
+    }
+    function buildEntregaResumen(p, nd) {
+      nd = migrateNote(nd || defaultData());
+      const ck = nd.checklist || {};
+      const hoy = _egIsoOffset(0), ayer = _egIsoOffset(-1);
+      const esNuevo = function (f) { return f === hoy || f === ayer; };
+      const R = { qx: [], alertas: [], gastos: [], labs: null, nuevo: [], pend: [] };
+      // 🔪 Quirófano: cirugía de hoy/ayer con hallazgos y sangrado; si no, el día POP de la última.
+      const cxs = (typeof cirugiasOrdenadas === "function") ? cirugiasOrdenadas(ck) : [];
+      const u = cxs[0] || null;
+      if (u && esNuevo(u.fecha)) {
+        let s = (u.fecha === hoy ? "HOY" : "AYER") + " pasó a quirófano: " + (toSafeString(u.procedimiento).trim() || "procedimiento sin nombre");
+        if (toSafeString(u.hallazgos).trim()) s += " · " + _egCut(u.hallazgos, 90);
+        if (toSafeString(u.sangrado).trim()) s += " · sangrado " + toSafeString(u.sangrado).trim() + (/^[\d.,]+$/.test(toSafeString(u.sangrado).trim()) ? " mL" : "");
+        if (toSafeString(u.cirujano).trim()) s += " · " + toSafeString(u.cirujano).trim();
+        R.qx.push(s);
+      } else {
+        const pop = (typeof popDays === "function") ? popDays(nd) : null;
+        if (pop !== null) R.qx.push("POP d" + pop + (u && toSafeString(u.procedimiento).trim() ? " de " + _egCut(u.procedimiento, 60) : ""));
+      }
+      if (cxs.length > 1) R.qx.push("+" + (cxs.length - 1) + (cxs.length > 2 ? " cirugías previas" : " cirugía previa"));
+      if (ck.cruce_activo) { const ct = (typeof getCruceEntregaText === "function") ? toSafeString(getCruceEntregaText(ck)).trim() : ""; R.qx.push(ct || "Cruce quirúrgico activo"); }
+      // ⚠️ Atención: soporte y avisos que la siguiente guardia debe saber de entrada.
+      if (ck.vp_nore_on) { const d = vpNoreDosis(ck.vp_nore_mg, ck.vp_nore_ml, ck.vp_nore_mlh, ck.pm_peso); R.alertas.push("Norepinefrina" + (d !== null ? " " + vpFmt(d * 60, 1) + " mcg/kg/h" : "") + (vpNum(ck.vp_nore_mlh) >= 0 ? " a " + vpFmt(vpNum(ck.vp_nore_mlh)) + " mL/h" : "")); }
+      if (ck.vp_vaso_on) { const v = vpVasoDosis(ck.vp_vaso_u, ck.vp_vaso_ml, ck.vp_vaso_mlh); R.alertas.push("Vasopresina" + (v !== null ? " " + vpFmt(v) + " U/min" : "")); }
+      if (ck.pm_vent) R.alertas.push("Ventilación mecánica" + (toSafeString(ck.pm_vent_modo).trim() ? " " + toSafeString(ck.pm_vent_modo).trim() : "") + (toSafeString(ck.pm_vent_fio2).trim() ? " FiO2 " + toSafeString(ck.pm_vent_fio2).trim() + " %" : ""));
+      if (ck.npt) R.alertas.push("NPT" + (toSafeString(ck.npt_pct).trim() ? " " + toSafeString(ck.npt_pct).trim() : ""));
+      if (ck.npo) R.alertas.push("Ayuno" + (toSafeString(ck.npo_dias).trim() ? " d" + toSafeString(ck.npo_dias).trim() : ""));
+      // 💧 Gastos: drenajes y sondas con gasto, nota de drenajes, uresis y balance.
+      const dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " · ", false) : "";
+      if (dt) R.gastos.push(dt);
+      if (toSafeString(nd.drenajes).trim()) R.gastos.push(_egCut(nd.drenajes, 120));
+      if (toSafeString(ck.pm_uresis).trim()) R.gastos.push("Uresis " + toSafeString(ck.pm_uresis).trim() + (/^[\d.,]+$/.test(toSafeString(ck.pm_uresis).trim()) ? " mL" : ""));
+      const bal = (typeof balanceTexto === "function") ? balanceTexto(nd) : "";
+      if (bal) R.gastos.push("Balance " + bal);
+      // 🧪 Labs puntuales
+      R.labs = _egLabsPuntuales(nd);
+      if (R.labs && R.labs.dias !== null && R.labs.dias >= 2) R.alertas.push("Sin labs desde hace " + R.labs.dias + " días");
+      if (!R.labs) R.alertas.push("Sin laboratorios");
+      // 🆕 Nuevo del día: renglones con fecha de hoy/ayer en Pendientes, Manejo, IC, Cultivos y Entrega;
+      //    drenajes colocados hoy/ayer; estudios del visor y cultivos recién llegados.
+      [["Pendientes", nd.pendientes], ["Manejo", nd.manejo], ["IC", ck.interconsultas], ["Cultivos", ck.cultivos], ["", nd.entrega]].forEach(function (pair) {
+        _egLineasFechadas(pair[1]).forEach(function (l) {
+          if (!esNuevo(l.fecha) || /^✓\s/.test(l.text)) return;
+          if (l.auto && /^Labs:/i.test(l.text)) return;          // los labs ya van en 🧪
+          R.nuevo.push(_egDdMm(l.fecha) + " " + (pair[0] ? pair[0] + ": " : "") + _egCut(l.text, 110));
+        });
+      });
+      (Array.isArray(ck.dispositivos) ? ck.dispositivos : []).forEach(function (d) {
+        if (!d || !esNuevo(d.fi)) return;
+        R.nuevo.push(_egDdMm(d.fi) + " se colocó " + (toSafeString(d.tipo).trim() || "drenaje") + (d.lado ? " " + d.lado : "") + (toSafeString(d.sitio).trim() ? " (" + toSafeString(d.sitio).trim() + ")" : ""));
+      });
+      try {
+        const since = Date.now() - 36 * 3600e3;
+        ((typeof risForPatient === "function" && p) ? risForPatient(p) : []).forEach(function (r) {
+          if (!r) return;
+          const sc = r.scraped_at ? new Date(r.scraped_at).getTime() : 0;
+          if (!esNuevo(r.fecha) && !(sc && sc >= since)) return;
+          const titulo = [r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" ") || "Estudio de imagen";
+          const rep = toSafeString(r.reporte).trim();
+          R.nuevo.push(_egDdMm(r.fecha) + " " + titulo + ": " + (rep ? _egCut(_risConclusion(rep), 110) : "realizado, reporte pendiente"));
+        });
+      } catch (_) {}
+      try {
+        const cults = (p && typeof _winlabCultByK !== "undefined" && _winlabCultByK[pid(p)]) || [];
+        const since2 = _egIsoOffset(-2);
+        cults.forEach(function (c) { if (c && c.fecha && c.fecha >= since2 && !c.pendiente) R.nuevo.push(_egDdMm(c.fecha) + " " + _egCut(_cultTexto(c, false), 110)); });
+      } catch (_) {}
+      const seen = {};
+      R.nuevo = R.nuevo.filter(function (s) { const key = s.toLowerCase(); if (seen[key]) return false; seen[key] = 1; return true; });
+      if (R.nuevo.length > 8) { const n = R.nuevo.length - 8; R.nuevo = R.nuevo.slice(0, 8); R.nuevo.push("+" + n + " más en la tarjeta"); }
+      // 📋 Pendientes abiertos (sin ✓, sin encabezados de fecha) + No olvidar del paciente.
+      const pendOpen = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); })
+        .filter(function (s) { return s && !/^\d{2}\/\d{2}\s*—/.test(s) && !/^✓\s/.test(s); })
+        .map(function (s) { return s.replace(/^\d{2}\/\d{2}(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*/, "").replace(/^[-•·*]\s*/, "").trim(); }).filter(Boolean);
+      pendOpen.slice(0, 6).forEach(function (s) { R.pend.push(_egCut(s, 90)); });
+      if (pendOpen.length > 6) R.pend.push("+" + (pendOpen.length - 6) + " más");
+      (Array.isArray(ck._ptReminders) ? ck._ptReminders : []).filter(function (r) { return r && !r.done && toSafeString(r.text).trim(); }).slice(0, 3).forEach(function (r) { R.pend.push("No olvidar: " + _egCut(r.text, 80)); });
+      return R;
+    }
+    // Texto para la caja Entrega (una línea por sección, encabezado con fecha, hora e iniciales).
+    function entregaResumenTexto(p, nd) {
+      const R = buildEntregaResumen(p, nd);
+      const d = new Date(); const z = function (n) { return String(n).padStart(2, "0"); };
+      const ini = (typeof userInitials === "function") ? userInitials() : "";
+      const lines = ["— Resumen " + z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes()) + (ini ? " " + ini : "") + " —"];
+      if (R.qx.length) lines.push("🔪 " + R.qx.join(" · "));
+      if (R.alertas.length) lines.push("⚠️ " + R.alertas.join(" · "));
+      if (R.gastos.length) lines.push("💧 Gastos: " + R.gastos.join(" · "));
+      if (R.labs && R.labs.items.length) lines.push("🧪 Labs " + _egDdMm(R.labs.fecha) + ": " + R.labs.items.map(function (i) { return i.text; }).join(" · ") + (R.labs.extra ? " · +" + R.labs.extra + " alterados" : ""));
+      else if (R.labs) lines.push("🧪 Labs " + _egDdMm(R.labs.fecha) + ": sin valores críticos ni cambios grandes");
+      if (R.nuevo.length) lines.push("🆕 Nuevo: " + R.nuevo.join(" · "));
+      if (R.pend.length) lines.push("📋 Pendientes: " + R.pend.join(" · "));
+      return lines.length > 1 ? lines.join("\n") : "";
+    }
+    // Quita el bloque "— Resumen … —" (hasta la línea en blanco o el final) para no duplicarlo ni contarlo como novedad.
+    function _entregaSinResumen(text) {
+      const out = []; let skip = false;
+      toSafeString(text).split("\n").forEach(function (l) {
+        if (ENTREGA_RESUMEN_HDR.test(l.trim())) { skip = true; return; }
+        if (skip) { if (l.trim() === "") skip = false; return; }
+        out.push(l);
+      });
+      return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
+    }
+    // ✨ Resumen: escribe (o reemplaza) el bloque de resumen al final de la Entrega; lo escrito a mano no se toca.
     function applyPaseInteligente(k) {
-      const p = patients.find(x => pid(x) === k);
+      const p = patients.find(function (x) { return pid(x) === k; });
       if (!p) return;
       const nd = migrateNote(noteData[k] || defaultData());
-      const built = buildPaseInteligente(p, nd);
-      if (!built) { alert("No hay información relevante para auto-llenar la entrega."); return; }
-      _undoPush(k, "auto-llenar entrega");
-      const prev = nd.entrega || "";
-      nd.entrega = prev ? prev + "\n\n" + built : built;
+      const built = entregaResumenTexto(p, nd);
+      if (!built) { alert("No hay información para resumir en esta tarjeta."); return; }
+      _undoPush(k, "resumen de entrega");
+      const base = _entregaSinResumen(nd.entrega);
+      nd.entrega = (base ? base + "\n\n" : "") + built;
+      _touchBy(nd, "entrega");
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add("entrega");
       noteData[k] = nd;
       saveNote(k, nd);
       _rerenderCard(k);
+      if (typeof _plToast === "function") _plToast("✨ Resumen de entrega actualizado", "#059669", 1800);
     }
 
     // ── NOVEDADES AUTOMÁTICAS EN LA ENTREGA DE GUARDIA (13 oct 2026) ───────────────────
@@ -14396,12 +14587,18 @@ function plExportBackup() {
           const num = parseLabNumber(v);
           if (!Number.isFinite(num) || typeof LAB_QUICK === "undefined" || !LAB_QUICK[key]) return;
           const q = LAB_QUICK[key](num);
-          if (!q || (q.sev !== "crit" && q.sev !== "abn")) return;
+          // Solo lo PUNTUAL (oct 2026): valores críticos. Lo "anormal" ya se ve en la tabla; aquí estorbaba.
+          if (!q || q.sev !== "crit") return;
           found.push({ key: key, sev: q.sev, title: String(q.title || "").replace(/\s*[—-]\s*.*$/, "").trim(), val: String(v).trim() });
         });
+        // INR que WinLab no reporta: estimado TP ÷ testigo ≥ 1.5 (decide cirugías), una vez por valor.
+        try {
+          const io = inrOf(s.labs), bio = inrOf(b);
+          if (io && io.est && io.v >= 1.5 && !(bio && bio.txt === io.txt)) found.push({ key: "inr", sev: io.v >= 3 ? "crit" : "abn", title: "INR estimado " + io.txt + " (TP ÷ testigo)", val: "", plain: true });
+        } catch (_) {}
         if (!found.length) return;
         found.sort(function (a, b2) { return (a.sev === "crit" ? 0 : 1) - (b2.sev === "crit" ? 0 : 1); });
-        const shown = found.slice(0, 7).map(function (f) { return f.title + " (" + (labelMap[f.key] || f.key) + " " + f.val + ")"; });
+        const shown = found.slice(0, 4).map(function (f) { return f.plain ? f.title : f.title + " (" + (labelMap[f.key] || f.key) + " " + f.val + ")"; });
         const extra = found.length - shown.length;
         out.push({ id: "lab:" + s.fecha + ":" + found.map(function (f) { return f.key; }).sort().join(","), fecha: s.fecha,
           text: "Labs: " + shown.join(", ") + (extra > 0 ? " y " + extra + " más" : "") });
@@ -15442,7 +15639,7 @@ function plExportBackup() {
           <span>📤 Entrega de guardia${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'entrega',false,'Entrega')" title="Anotar la fecha de hoy antes de la evolución del día">➕ Hoy</button>
-            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Auto-llenar entrega con labs críticos, pendientes y cruce">✨ Auto-llenar</button>
+            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Escribir o actualizar el resumen de entrega: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (lo escrito a mano no se toca)">✨ Resumen</button>
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Entrega de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
         </div>
@@ -16513,17 +16710,21 @@ function plExportBackup() {
       }
     };
 
-    function labCellHtml(lf, val, k, fecha, prevVal) {
-      const num = parseLabNumber(val);
-      const crit = val && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch));
-      const abn = val && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
+    // est (oct 2026): { v, txt, est:true } de inrOf → cuando la celda está vacía se muestra el INR ESTIMADO (TP ÷ testigo)
+    // como marca de agua "≈1.59" con su color; al escribir un INR real, el estimado desaparece.
+    function labCellHtml(lf, val, k, fecha, prevVal, est) {
+      const estOn = !val && !!(est && est.est && est.txt);
+      const num = parseLabNumber(estOn ? est.txt : val);
+      const has = !!val || estOn;
+      const crit = has && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch));
+      const abn = has && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
       const cls = crit ? "crit" : abn ? "abn" : "";
       const hasAlert = (crit || abn) && LAB_QUICK[lf.key];
       const tid = ("tip-" + k + "-" + lf.key).replace(/[^a-zA-Z0-9]/g, "_");
 
       // ── Tendencia Δ ──────────────────────────────────────────────────────────
       let trendHtml = "";
-      if (val && prevVal !== undefined && prevVal !== "" && prevVal !== null) {
+      if (has && prevVal !== undefined && prevVal !== "" && prevVal !== null) {
         const prev = parseFloat(prevVal);
         if (!isNaN(prev) && !isNaN(num) && prev !== 0) {
           const delta = num - prev;
@@ -16539,14 +16740,14 @@ function plExportBackup() {
         }
       }
 
-      return `<div class='lab-cell ${cls}' ${hasAlert ? `onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"` : ""}>` +
-        `<div class='lab-key'>${lf.label}</div>` +
-        `<input class='lab-input ${cls}' value='${esc(val)}' placeholder='—'` +
+      return `<div class='lab-cell ${cls}${estOn ? " lab-est" : ""}' ${hasAlert ? `onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"` : ""}>` +
+        `<div class='lab-key'>${lf.label}${estOn ? "<span class='lab-est-tag' title='INR estimado = TP ÷ testigo (WinLab no reporta INR)'>≈</span>" : ""}</div>` +
+        `<input class='lab-input ${cls}' value='${esc(val)}' placeholder='${estOn ? "≈" + esc(est.txt) : "—"}'${estOn ? " title='INR estimado = TP ÷ testigo (WinLab no reporta INR). Escribe el INR real si lo tienes.'" : ""}` +
         ` data-key='${k}' data-labkey='${lf.key}' data-fecha='${fecha}'` +
         ` oninput="liveLabUpdate(this)" onchange="updateLabHistory(this.dataset.key,this.dataset.fecha,this.dataset.labkey,this.value)"/>` +
         `<div class='lab-unit'>${lf.unit}</div>` +
         trendHtml +
-        (hasAlert ? renderLabTipHtml(tid, lf, val, num, crit) : "") +
+        (hasAlert ? renderLabTipHtml(tid, lf, estOn ? est.txt : val, num, crit) : "") +
         `</div>`;
     }
 
@@ -16653,7 +16854,12 @@ function plExportBackup() {
         const prevFecha = prevDates.length ? prevDates[0] : null;
         const prevSnap = prevFecha ? history.find(s => s.fecha === prevFecha) : null;
         const prevLabs = prevSnap ? (prevSnap.labs || {}) : {};
-        const _cell = lf => labCellHtml(lf, labs[lf.key] || "", k, activeFecha, prevFecha ? (prevLabs[lf.key] ?? undefined) : undefined);
+        // INR (oct 2026): si WinLab no lo trajo, la celda muestra el estimado TP ÷ testigo (≈) con su color.
+        const _inrCur = (typeof inrOf === "function") ? inrOf(labs) : null;
+        const _inrPrev = (prevFecha && typeof inrOf === "function") ? inrOf(prevLabs) : null;
+        const _cell = lf => labCellHtml(lf, labs[lf.key] || "", k, activeFecha,
+          prevFecha ? (lf.key === "inr" ? ((_inrPrev && Number.isFinite(_inrPrev.v)) ? _inrPrev.txt : undefined) : (prevLabs[lf.key] ?? undefined)) : undefined,
+          lf.key === "inr" ? _inrCur : null);
         const _byKey = {}; LAB_FIELDS.forEach(f => { _byKey[f.key] = f; });
         const _used = {};
         const _mainFields = [];
@@ -18978,9 +19184,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const nd = noteData[pid(p)] || defaultData();
           const cl = nd.checklist || {};
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
-          // ── ENTREGA: una ficha por paciente — id + diagnóstico + últimos 2 labs + drenajes ──
-          // Por pedido de Gera (jun 2026): ficha de identificación, Dx, los últimos
-          // laboratorios (al menos los 2 más recientes, comparados) y gastos de drenajes.
+          // ── ENTREGA (oct 2026, pedido de Gera): una ficha por paciente que RESUME, no transcribe —
+          // id + Dx + quirófano + atención (soporte) + gastos + labs PUNTUALES + lo nuevo del día +
+          // pendientes abiertos + lo escrito a mano en la caja Entrega (sin el bloque de resumen).
+          // Antes: tabla de todos los analitos de 2 fechas (no resumía nada).
           let days = ""; try { days = daysSince(p.ingreso); } catch (_) { days = ""; }
           const idParts = [
             p.edad ? p.edad + "a" : "",
@@ -18994,41 +19201,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const dxTxt = p.dx || nd.dx || "";
           const dxRow = (dxTxt && String(dxTxt).trim())
             ? `<div class="eg-bigrow"><span class="eg-biglbl">🩺 Diagnóstico</span><div class="eg-bigval">${esc(String(dxTxt))}</div></div>` : "";
-          // Últimos 2 laboratorios (comparados, cronológico viejo→nuevo).
-          const LAB_ORDER_EG = ["hb","hct","leucos","plaq","cr","bun","urea","glu","na","k","cl","ca","mg","alb","ptot","glob","bt","bd","bi","alt","ast","fa","ggt","ldh","pcr","pct","tp","ttp","inr","fibrinogeno","lac"];
-          const recent = (nd.labHistory || []).slice().filter(s => s && s.fecha)
-            .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 2);
-          const cols = recent.slice().reverse(); // [previo, más reciente]
-          const presentKeys = LAB_ORDER_EG.filter(x => cols.some(s => s.labs && s.labs[x] && String(s.labs[x]).trim() !== ""));
-          const cellCls = (key, val) => {
-            const lf = LAB_FIELDS.find(f => f.key === key); const num = parseFloat(val);
-            if (!lf || isNaN(num)) return "";
-            if ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)) return "crit";
-            if ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high)) return "abn";
-            return "";
-          };
-          let labsTbl = "";
-          if (presentKeys.length && cols.length) {
-            const header = `<tr><th></th>${cols.map(s => `<th>${fmtDateChip(s.fecha)}</th>`).join("")}</tr>`;
-            const rows = presentKeys.map(key => {
-              const lf = LAB_FIELDS.find(f => f.key === key);
-              const lbl = lf ? lf.label : key.toUpperCase();
-              return `<tr><td>${esc(lbl)}</td>${cols.map(s => {
-                const v = (s.labs && s.labs[key]) ? String(s.labs[key]) : "—";
-                const c = v === "—" ? "" : cellCls(key, v);
-                return `<td class="${c}">${esc(v)}</td>`;
-              }).join("")}</tr>`;
-            }).join("");
-            labsTbl = `<div class="eg-bigrow"><span class="eg-biglbl">🧪 Laboratorios (últimos ${cols.length})</span><table class="eg-labtbl">${header}${rows}</table></div>`;
-          }
-          // Gastos por drenajes (nd.drenajes + SEP si aplica).
-          const drenParts = [];
-          if (nd.drenajes && String(nd.drenajes).trim()) drenParts.push(String(nd.drenajes).trim());
-          { const _dt = dispositivosTexto(cl, " | "); if (_dt) drenParts.push(_dt); }
-          const drenTxt = drenParts.join("  |  ");
-          const drenBig = drenTxt ? `<div class="eg-bigrow"><span class="eg-biglbl">💧 Gastos por drenajes</span><div class="eg-bigval">${esc(drenTxt)}</div></div>` : "";
-          const cxTxt = cirugiasTexto(cl, "  |  ");
-          const cxBig = cxTxt ? `<div class="eg-bigrow"><span class="eg-biglbl">🔪 Cirugías</span><div class="eg-bigval">${esc(cxTxt)}</div></div>` : "";
+          // Resumen (oct 2026): las mismas secciones que el botón ✨ Resumen de la tarjeta.
+          const R = buildEntregaResumen(p, nd);
+          const egRow = (icon, label, inner, extraCls) => inner ? `<div class="eg-bigrow${extraCls ? " " + extraCls : ""}"><span class="eg-biglbl">${icon} ${label}</span>${inner}</div>` : "";
+          const egList = (arr) => (arr && arr.length) ? `<ul class="eg-list">${arr.map(s => `<li>${esc(s)}</li>`).join("")}</ul>` : "";
+          const labsInner = R.labs
+            ? (R.labs.items.length
+              ? `<div class="eg-labchips">${R.labs.items.map(i => `<span class="eg-biglab ${i.crit ? "crit" : "abn"}">${esc(i.text)}</span>`).join("")}${R.labs.extra ? `<span class="eg-biglab">+${R.labs.extra} alterados</span>` : ""}</div>`
+              : `<div class="eg-bigval eg-muted">sin valores críticos ni cambios grandes</div>`)
+            : `<div class="eg-bigval eg-muted">sin laboratorios</div>`;
+          const entregaTxt = _entregaSinResumen(nd.entrega);
+          const entregaInner = entregaTxt ? `<div class="eg-pre">${esc(entregaTxt.length > 700 ? entregaTxt.slice(0, 700) + "…" : entregaTxt)}</div>` : "";
 
           cards += `<div class="eg-c" style="border-left:7px solid ${ec}">
         <div class="eg-bighdr">
@@ -19039,9 +19222,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           </div>
         </div>
         ${dxRow}
-        ${cxBig}
-        ${labsTbl}
-        ${drenBig}
+        ${egRow("🔪", "Quirófano", egList(R.qx))}
+        ${egRow("⚠️", "Atención", egList(R.alertas), "eg-warn")}
+        ${egRow("💧", "Gastos", egList(R.gastos))}
+        ${egRow("🧪", "Labs puntuales" + (R.labs ? " · " + esc(fmtDateChip(R.labs.fecha)) : ""), labsInner)}
+        ${egRow("🆕", "Nuevo del día", egList(R.nuevo))}
+        ${egRow("📋", "Pendientes", egList(R.pend))}
+        ${egRow("📤", "Entrega escrita", entregaInner)}
       </div>`;
         });
         sectionsHtml += `<div class="eg-sec"><div class="eg-sh" style="background:${sec.color}"><span>${sec.label}</span><span class="eg-sc">${sorted.length}</span></div><div class="eg-sg">${cards}</div></div>`;
@@ -19103,16 +19290,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       .eg-biglab.abn b{color:#78350f}
       .eg-biglab.crit{background:#fee2e2;border-color:#fca5a5;color:#b91c1c;font-weight:800}
       .eg-biglab.crit b{color:#991b1b}
-      /* Entrega v2 (jun 2026): ficha id + Dx + últimos 2 labs comparados + drenajes */
+      /* Entrega v3 (oct 2026): ficha id + Dx + resumen (quirófano, atención, gastos, labs puntuales, nuevo del día, pendientes) + entrega escrita */
       .eg-bigidwrap{display:flex;flex-direction:column;gap:2px;min-width:0}
       .eg-bigid{font-size:13px;font-weight:600;color:#64748b;line-height:1.2}
-      .eg-labtbl{border-collapse:collapse;margin-top:2px}
-      .eg-labtbl th{font-size:12px;font-weight:700;color:#0e7490;text-align:right;padding:2px 14px 4px;border-bottom:2px solid #e2e8f0;white-space:nowrap}
-      .eg-labtbl th:first-child{text-align:left}
-      .eg-labtbl td{font-size:18px;font-weight:600;color:#1e293b;text-align:right;padding:2px 14px;white-space:nowrap}
-      .eg-labtbl td:first-child{font-size:14px;font-weight:700;color:#475569;text-align:left}
-      .eg-labtbl td.abn{color:#92400e}
-      .eg-labtbl td.crit{color:#b91c1c;font-weight:800}
+      .eg-list{margin:0;padding-left:22px;font-size:19px;font-weight:600;color:#1e293b;line-height:1.35}
+      .eg-list li{margin:2px 0;word-break:break-word}
+      .eg-labchips{display:flex;flex-wrap:wrap;gap:8px}
+      .eg-muted{color:#94a3b8;font-weight:500;font-size:16px}
+      .eg-pre{white-space:pre-wrap;font-size:17px;font-weight:500;color:#334155;line-height:1.35;word-break:break-word}
+      .eg-warn .eg-biglbl{color:#b45309}
+      .eg-warn .eg-list{color:#92400e}
       @media print{.eg-c{break-inside:avoid;box-shadow:none}}
       @media(max-width:640px){.eg-sg{grid-template-columns:1fr}.eg-r2,.eg-r3{grid-template-columns:1fr}}
     </style>
@@ -24258,21 +24445,23 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       _saveNoteNow(k, nd);
       _refreshVpRow(k);
     }
+    // Norepinefrina en mcg/kg/h (así se lee en el piso) con el equivalente en mcg/kg/min; rojo > 30 mcg/kg/h (0.5 mcg/kg/min).
     function _vpNoreRes(cl) {
       if (!(vpNum(cl.pm_peso) > 0)) return { txt: "⚖️ falta el peso", cls: "vp-na" };
       const d = vpNoreDosis(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_mlh, cl.pm_peso);
-      if (d === null) return { txt: "— mcg/kg/min", cls: "vp-na" };
-      return { txt: vpFmt(d) + " mcg/kg/min", cls: d > 0.5 ? "vp-hi" : "" };
+      if (d === null) return { txt: "— mcg/kg/h", cls: "vp-na" };
+      return { txt: vpFmt(d * 60, 1) + " mcg/kg/h (" + vpFmt(d) + " mcg/kg/min)", cls: d > 0.5 ? "vp-hi" : "" };
     }
-    function _vpNoreMeta(cl) { const r = vpNoreRate(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_meta, cl.pm_peso); return r === null ? "" : "= " + vpFmt(r, 1) + " mL/h"; }
+    // La meta se escribe en mcg/kg/h y se traduce a mL/h.
+    function _vpNoreMeta(cl) { const r = vpNoreRateH(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_meta, cl.pm_peso); return r === null ? "" : "= " + vpFmt(r, 1) + " mL/h"; }
     function _vpVasoRes(cl) {
       const d = vpVasoDosis(cl.vp_vaso_u, cl.vp_vaso_ml, cl.vp_vaso_mlh);
       if (d === null) return { txt: "— U/min", cls: "vp-na" };
       return { txt: vpFmt(d) + " U/min (" + vpFmt(d * 60, 1) + " U/h)", cls: d > 0.04 ? "vp-hi" : "" };
     }
     function _vpVasoMeta(cl) { const r = vpVasoRate(cl.vp_vaso_u, cl.vp_vaso_ml, cl.vp_vaso_meta); return r === null ? "" : "= " + vpFmt(r, 1) + " mL/h"; }
-    // Surviving Sepsis Campaign 2021: con norepinefrina ≥ 0.25 mcg/kg/min se sugiere agregar vasopresina (0.03 U/min).
-    function _vpSsc(cl) { const d = vpNoreDosis(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_mlh, cl.pm_peso); return (d !== null && d >= 0.25 && !cl.vp_vaso_on) ? "SSC 2021: con norepinefrina ≥ 0.25 mcg/kg/min considera agregar vasopresina 0.03 U/min" : ""; }
+    // Surviving Sepsis Campaign 2021: con norepinefrina ≥ 0.25 mcg/kg/min (= 15 mcg/kg/h) se sugiere agregar vasopresina (0.03 U/min).
+    function _vpSsc(cl) { const d = vpNoreDosis(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_mlh, cl.pm_peso); return (d !== null && d >= 0.25 && !cl.vp_vaso_on) ? "SSC 2021: con norepinefrina ≥ 15 mcg/kg/h (0.25 mcg/kg/min) considera agregar vasopresina 0.03 U/min" : ""; }
     function _vpResSpan(id, r) { return `<span class="vp-res${r.cls ? " " + r.cls : ""}" id="${id}">${esc(r.txt)}</span>`; }
     function _vpSexo(k, nd) { const p = patients.find(function (x) { return pid(x) === k; }); return (typeof PLCDS !== "undefined" && PLCDS.getSex) ? PLCDS.getSex(p, nd) : ""; }
     function _vmChipsHtml(cl, k) {
@@ -24296,6 +24485,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const m2 = document.getElementById("vp-vaso-meta-" + ek); if (m2) m2.textContent = _vpVasoMeta(cl);
         const ssc = document.getElementById("vp-ssc-" + ek); if (ssc) { const s = _vpSsc(cl); ssc.textContent = s; ssc.style.display = s ? "" : "none"; }
         const vm = document.getElementById("vm-chips-" + ek); if (vm) vm.innerHTML = _vmChipsHtml(cl, k);
+        // El peso vive en dos sitios (fila Clínico y fila Vasopresor): el que no se está escribiendo sigue al otro.
+        const wrap = document.getElementById("ck-row-" + ek);
+        if (wrap) wrap.querySelectorAll('input[data-field="pm_peso"]').forEach(function (inp) { const v = toSafeString(cl.pm_peso); if (inp !== document.activeElement && inp.value !== v) inp.value = v; });
       } catch (_) {}
     }
     function renderVpRow(cl, k) {
@@ -24304,8 +24496,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const inp = (field, w, ph, title) => `<input class="pm-input vp-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl[field] || "")}" placeholder="${ph}" data-ck="${k}" data-field="${field}" oninput="updateVpField(this.dataset.ck,this.dataset.field,this.value)" style="width:${w}px" title="${title}"/>`;
       const chip = (item, on, label, title) => `<span class="ck-item${on ? " ck-on ck-vp-on" : ""}" data-ck="${k}" data-item="${item}" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="${title}"><span class="ck-label">${on ? "✓ " : ""}${label}</span></span>`;
       const ssc = _vpSsc(cl);
+      // ⚖️ El peso aquí mismo (pedido de Gera): es el mismo pm_peso de la fila Clínico; updatePmField refresca ambos.
+      const pesoInp = `<span class="pm-label">⚖️</span><input class="pm-input vp-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_peso || "")}" placeholder="kg" data-ck="${k}" data-field="pm_peso" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:46px" title="Peso del paciente en kg (el mismo de la fila Clínico)"/><span class="pm-label">kg ·</span>`;
       const nore = chip("vp_nore_on", noreOn, "Norepinefrina", "Norepinefrina en infusión") +
-        (noreOn ? `<span class="vp-grp">${inp("vp_nore_mg", 40, "mg", "mg de norepinefrina en la dilución")}<span class="pm-label">mg en</span>${inp("vp_nore_ml", 48, "mL", "mL totales de la dilución")}<span class="pm-label">mL ·</span>${inp("vp_nore_mlh", 48, "mL/h", "Velocidad de infusión (mL/h)")}<span class="pm-label">mL/h →</span>${_vpResSpan("vp-nore-res-" + ek, _vpNoreRes(cl))}<span class="pm-label">· meta</span>${inp("vp_nore_meta", 52, "dosis", "Dosis deseada en mcg/kg/min → mL/h")}<span class="vp-hint" id="vp-nore-meta-${ek}">${esc(_vpNoreMeta(cl))}</span></span>` : "");
+        (noreOn ? `<span class="vp-grp">${pesoInp}${inp("vp_nore_mg", 40, "mg", "mg de norepinefrina en la dilución")}<span class="pm-label">mg en</span>${inp("vp_nore_ml", 48, "mL", "mL totales de la dilución (en el piso: 100 mL)")}<span class="pm-label">mL ·</span>${inp("vp_nore_mlh", 48, "mL/h", "Velocidad de infusión (mL/h)")}<span class="pm-label">mL/h →</span>${_vpResSpan("vp-nore-res-" + ek, _vpNoreRes(cl))}<span class="pm-label">· meta</span>${inp("vp_nore_meta", 64, "mcg/kg/h", "Dosis deseada en mcg/kg/h → a cuántos mL/h ponerla")}<span class="vp-hint" id="vp-nore-meta-${ek}">${esc(_vpNoreMeta(cl))}</span></span>` : "");
       const vaso = chip("vp_vaso_on", vasoOn, "Vasopresina", "Vasopresina en infusión") +
         (vasoOn ? `<span class="vp-grp">${inp("vp_vaso_u", 40, "U", "Unidades de vasopresina en la dilución")}<span class="pm-label">U en</span>${inp("vp_vaso_ml", 48, "mL", "mL totales de la dilución")}<span class="pm-label">mL ·</span>${inp("vp_vaso_mlh", 48, "mL/h", "Velocidad de infusión (mL/h)")}<span class="pm-label">mL/h →</span>${_vpResSpan("vp-vaso-res-" + ek, _vpVasoRes(cl))}<span class="pm-label">· meta</span>${inp("vp_vaso_meta", 60, "U/min", "Dosis deseada en U/min → mL/h")}<span class="vp-hint" id="vp-vaso-meta-${ek}">${esc(_vpVasoMeta(cl))}</span></span>` : "");
       return `<div class="checklist-row ck-r-vaso" data-testid="vp-row">
