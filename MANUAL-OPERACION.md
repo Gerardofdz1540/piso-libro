@@ -354,23 +354,37 @@ el INR decide si se opera, la app ahora:
 
 Si el laboratorio reporta un INR real, se usa ese y desaparece el estimado.
 
-## ✍️ Lápiz: escribir con el Apple Pencil directo sobre las cajas (octubre 2026)
+## ✍️ Lápiz: escribir con el Apple Pencil sobre las cajas (octubre 2026)
 
-En el tablero, el botón **✍️ Lápiz** de la barra (encendido por defecto en iPad) hace que el Apple
-Pencil escriba **encima de cualquier caja de texto**, como en GoodNotes: la tinta se queda sobre la
-caja, viaja con la nota y se ve en todos los dispositivos (también en la hoja impresa). El dedo y el
-teclado siguen funcionando igual: tocar con el dedo pone el cursor y la tinta no estorba.
+El botón **✍️** de la barra del tablero tiene tres estados (se recuerdan por dispositivo):
 
-- **Tachar o rayonear** encima de algo escrito a mano lo **borra** (se borran los trazos que toca el
-  rayón; el rayón no se guarda). Rayar en un espacio vacío solo dibuja.
-- Un **toque** con el lápiz (sin arrastrar) pone el cursor en la caja para teclear.
-- Si escribes cerca del borde de abajo, la caja **crece** sola para seguir escribiendo.
-- En la esquina de cada caja con tinta aparece **✍️**: deshacer el último trazo, **🤖 pasar a texto**
-  (abre el lienzo grande con esa tinta para transcribirla con IA al campo) o borrar toda la tinta.
-- Con **✍️ Lápiz apagado** vuelve el comportamiento del iPad: el lápiz escribe texto con **Scribble**
-  (Ajustes → Apple Pencil → Garabatear encendido). Si así tampoco escribe, revisa ese ajuste.
-- Límite: unas 6 000 muestras de tinta por caja (varios renglones); después pide borrar o pasar a
-  texto.
+1. **✍️ Lápiz (apagado, el valor por defecto)**: la app no toca el lápiz; el iPad escribe texto con
+   **Scribble** al escribir a mano sobre una caja, y tachar una palabra la borra. Si al escribir solo
+   se selecciona texto, Scribble está apagado en el iPad: **Ajustes → Apple Pencil → Garabatear**
+   (encendido) y, si hace falta, cerrar y volver a abrir la app para que cargue la versión nueva.
+   Prueba rápida: escribir con el lápiz en el buscador de Safari; si ahí tampoco convierte, es el
+   ajuste del iPad, no la app.
+2. **✍️ → Texto**: escribes a mano sobre la caja (tinta morada) y, al soltar el lápiz un segundo y
+   medio, la app manda esa tinta al ayudante de IA (el worker de Cloudflare) y pega el texto
+   reconocido al final de la caja, como si lo hubieras tecleado (autor, Regresar y guardado iguales).
+   Lo escrito en el mismo renglón se une con espacio; en otro renglón, con salto de línea. Tachar la
+   tinta morada antes de que se convierta la borra. En la esquina, **✍️ → 🤖 Convertir ahora** no
+   espera la pausa. Si la IA no responde, la tinta se queda para reintentar. Necesita la URL del
+   worker en ⚙️ Config.
+3. **✍️ Tinta**: lo escrito se queda como tinta sobre la caja (viaja con la nota y se ve en todos los
+   dispositivos y en la hoja impresa). Tachar encima de la tinta borra los trazos que toca; rayar en
+   espacio vacío solo dibuja. En la esquina, **✍️**: deshacer, **🤖 pasar a texto** (abre el lienzo
+   grande con esa tinta para transcribirla) o borrar. Límite de unas 6 000 muestras por caja.
+
+En los tres casos: un **toque** con el lápiz (sin arrastrar) pone el cursor; el dedo y el teclado
+siguen igual; si escribes cerca del borde de abajo, la caja **crece** sola.
+
+## Vista de escritorio (octubre 2026)
+
+En un monitor ancho el contenido usa hasta 1 740 px (antes 1 440, con márgenes enormes), la cabecera y
+las pestañas quedan alineadas con el contenido (el logo y «Salir» ya no tocan el borde) y la ficha del
+paciente mide lo mismo que la barra de navegación (antes se centraba a 1 100 px bajo una barra más
+ancha). En laptop sigue el riel de camas a la izquierda; en iPad, la tira de camas en la barra.
 
 ## Vista iPad: las cajas usan todo el ancho (octubre 2026)
 
