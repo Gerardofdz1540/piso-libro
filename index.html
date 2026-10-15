@@ -527,6 +527,8 @@
     #hc-more-menu > button { text-align: left; }
     #hc-more-menu .quick-access-group { display: flex; }
     #hc-more-menu .quick-access-group .qa-btn { flex: 1; text-align: left; }
+    .hcm-tool { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #e2e8f0; padding: 6px 12px; border-radius: 10px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap; text-align: left; font-family: var(--font); }
+    .hcm-tool:hover { background: rgba(255,255,255,.16); }
     .hcm-sec {
       font-size: 9.5px;
       font-weight: 800;
@@ -1044,6 +1046,9 @@
       font-family: var(--mono)
     }
 
+    /* INR estimado (TP ÷ testigo) como marca de agua cuando WinLab no lo reporta */
+    .lab-cell.lab-est .lab-input::placeholder { color: inherit; opacity: .9; font-weight: 800; }
+    .lab-est-tag { color: #9d174d; font-weight: 800; margin-left: 2px; }
     .lab-input.abn {
       color: #92400e
     }
@@ -4078,9 +4083,31 @@ body.dark .ris-rep-txt { background:#0b1727; }
 #board-side .bs-btn.bs-cur .bs-cama{ color:#fff; }
 #board-side .bs-btn.bs-cur .bs-name{ color:#cbd5e1; }
 #board-main{ flex:1 1 auto; min-width:0; }
-/* FIX-FAB: reservar canalon inferior-derecho para que el FAB fijo (#pl-fab-v28) nunca tape datos del card (Pase matutino dcho / botones header). Scopeado a modo foco; inocuo en pantallas anchas donde el board va centrado. */
-body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
-@media (min-width:1340px){ body.focus-on #board-main{ padding-right:0; } }
+/* Oct 2026 (pedido de Gera): sin botones flotantes a la derecha, la ficha usa TODO el ancho; abajo queda aire para el teclado del iPad. */
+body.focus-on #board-main{ padding-bottom:160px; }
+/* Camas en una TIRA horizontal dentro de la barra pegajosa cuando la pantalla es angosta (iPad): el riel lateral
+   se oculta y las cajas quedan completas. En pantallas anchas (laptop) sigue el riel de la izquierda. */
+#board-nav .bn-beds{ flex-basis:100%; display:none; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-top:4px; border-top:1px solid rgba(255,255,255,.14); }
+#board-nav .bn-beds::-webkit-scrollbar{ display:none; }
+#board-nav .bn-beds .bb{ flex:0 0 auto; display:inline-flex; align-items:center; gap:3px; min-height:32px; padding:0 10px; border:none; border-top:3px solid transparent; border-radius:6px; background:rgba(255,255,255,.1); color:#dbe7f5; cursor:pointer; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:12.5px; font-weight:800; }
+#board-nav .bn-beds .bb.bb-cur{ background:#fff; color:#0a1628; }
+#board-nav .bn-beds .bb .bs-dot{ display:inline-block; width:7px; height:7px; border-radius:50%; }
+#board-nav .bn-beds .bb .bs-dot.red{ background:#dc2626; box-shadow:0 0 0 2px rgba(220,38,38,.25); }
+#board-nav .bn-beds .bb .bs-dot.yellow{ background:#f59e0b; }
+@media (max-width:1339px){
+  body.focus-on #board-side{ display:none; }
+  #board-nav .bn-beds{ display:flex; }
+}
+/* ✍️ Lápiz directo sobre las cajas: la capa de tinta no atrapa el dedo (pointer-events:none); el botón ✍️ de la esquina sí. */
+.pl-ink-cv{ position:absolute; pointer-events:none; z-index:2; }
+.pl-ink-menu{ position:absolute; z-index:3; width:26px; height:22px; padding:0; font-size:12px; line-height:1; border-radius:6px; background:rgba(124,58,237,.12); border:1px solid rgba(124,58,237,.35); color:#7c3aed; cursor:pointer; }
+.pl-ink-pop{ position:absolute; z-index:60; display:grid; gap:4px; padding:6px; background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 8px 24px rgba(15,23,42,.18); }
+.pl-ink-pop button{ font:600 12px var(--font); color:#0f172a; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; cursor:pointer; text-align:left; white-space:nowrap; }
+.pl-ink-pop button:hover{ background:#eef2ff; }
+body.pen-on textarea.field-ta{ cursor:text; }
+body.dark .pl-ink-pop{ background:#0f1c2e; border-color:#23405f; }
+body.dark .pl-ink-pop button{ background:#152e4d; border-color:#2f4f79; color:#e2e8f0; }
+@media print{ .pl-ink-menu, .pl-ink-pop{ display:none !important; } }
 #board-nav{ display:flex; align-items:center; gap:8px; margin-bottom:10px; padding:6px 10px; background:#0a1628; border-radius:8px; position:sticky; top:8px; z-index:5; }
 #board-nav .bn-btn{ font-size:18px; font-weight:800; line-height:1; min-width:44px; padding:6px 10px; border:none; border-radius:6px; background:#2c4d77; color:#fff; cursor:pointer; }
 #board-nav .bn-btn:hover:not([disabled]){ background:#3b5d8a; }
@@ -4299,6 +4326,12 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
               style="background:rgba(13,148,136,.20);border:1px solid rgba(13,148,136,.45);color:#99f6e4;padding:6px 12px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap">
               🖥️ Proyectar
             </button>
+            <!-- Oct 2026 (pedido de Gera): los tres botones flotantes de la derecha estorbaban a las cajas en el iPad.
+                 Viven aquí; «📊 Planes» además está en la barra del tablero. -->
+            <div class="hcm-sec">Importar y respaldo</div>
+            <button class="hcm-tool" onclick="openPendientesImport()" title="Importar pendientes / planes desde el Excel del censo" data-testid="hcm-planes">📊 Importar planes (Excel)</button>
+            <button class="hcm-tool" onclick="openIndicacionesModal()" title="Importar indicaciones" data-testid="hcm-indic">📥 Importar indicaciones</button>
+            <button class="hcm-tool" onclick="plExportBackup()" title="Descargar respaldo local (indicaciones, snapshots, configuración)" data-testid="hcm-backup">💾 Respaldo local</button>
             <div class="hcm-sec hcm-danger-sec">Zona de riesgo</div>
             <button class="btn-orange" onclick="resetCensoTotal()"
               title="Borra TODO (local + Supabase) y empieza de cero">🔥 Borrar Todo</button>
@@ -7415,6 +7448,9 @@ function plExportBackup() {
       cl:        [/^cloro$/i, /^cl$/i, /^cl-/i, /chlorid/i],
       // Coagulación
       tp:        [/tiempo de protromb/i, /^tp$/i, /^pt$/i, /prothromb/i],
+      // TESTIGO (control del TP, oct 2026): WinLab NO reporta INR; con TP y testigo la app lo estima (TP ÷ testigo).
+      // Va justo después del TP en el panel; el control del TTP llega como "RANGO DE REFERENCIA" y se descarta.
+      tp_testigo: [/^testigo$/i, /^testigo\s+(de\s+)?(tp|protromb)/i],
       ttp:       [/tromboplastin/i, /^ttp$/i, /^aptt$/i, /^ptt$/i],
       inr:       [/^i\.?n\.?r\.?$/i, /^inr$/i, /raz[oó]n.*normalizad/i],
       fibrinogeno: [/fibrin[oó]gen/i, /^fib$/i],
@@ -7482,9 +7518,9 @@ function plExportBackup() {
       if (/^[\d\s:.,\/\-]+$/.test(n)) return true;
       // Sospechosos: contiene "PACIENTE", "REPORTE", "CIRUGIA", servicios
       if (/^(CIRUGIA|MEDICINA|GINECO|PEDIATRIA|URGENCIA|TRAUMA|UCI|UTI|UNIDAD)/i.test(n)) return true;
-      // Metadata del PDF de WinLab: TESTIGO y RANGO DE REFERENCIA aparecen
-      // como falsos "estudios" cuando el PDF tiene tiempos de coagulación
-      if (/^TESTIGO$/i.test(n)) return true;
+      // Metadata del PDF de WinLab: RANGO DE REFERENCIA (control del TTP) aparece como falso
+      // "estudio" en los tiempos de coagulación. TESTIGO (control del TP) SÍ se conserva desde
+      // oct 2026: sirve para estimar el INR, que WinLab no reporta (alias tp_testigo).
       if (/^RANGO DE REFERENCIA$/i.test(n)) return true;
       // Unidades sueltas que el parser confundió con nombres de estudio
       if (/^U\/L$/i.test(n)) return true;
@@ -8598,7 +8634,8 @@ function plExportBackup() {
       "amilasa", "lipasa",
       "ph", "pco2", "po2", "hco3", "be", "sato2",
       "ego_color", "ego_asp", "ego_dens", "ego_ph", "ego_leuco", "ego_nitri", "ego_bact", "ego_prot", "ego_glu", "ego_hem"];
-    const LAB_META_KEYS = new Set(["paciente", "nombre", "fecha_labs", "hora_labs", "tipo", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias", "micro_muestra", "micro_comentarios"]);
+    // tp_testigo (oct 2026): control del TP que reporta WinLab; no es un analito para mostrar, sirve para estimar el INR.
+    const LAB_META_KEYS = new Set(["paciente", "nombre", "fecha_labs", "hora_labs", "tipo", "tipo_lab", "tipo_cultivo", "cultivo_organismo", "cultivo_sensibilidades", "cultivo_resistencias", "micro_muestra", "micro_comentarios", "tp_testigo"]);
     function toSafeString(v) {
       if (v === null || v === undefined) return "";
       return typeof v === "string" ? v : String(v);
@@ -8976,7 +9013,10 @@ function plExportBackup() {
       var out=[]; var usados={};
       PLNE_LAB_NOMBRES.forEach(function(pair){
         if(keys && keys.indexOf(pair[0])<0) return;
-        var v=_plneVal2(labs[pair[0]]); if(!v) return; usados[pair[0]]=1;
+        var v=_plneVal2(labs[pair[0]]);
+        // INR que WinLab no reporta: se escribe el estimado (TP ÷ testigo) marcado como tal.
+        if(!v && pair[0]==="inr" && typeof inrOf==="function"){ var io=inrOf(labs); if(io&&io.est){ usados.inr=1; out.push("INR "+io.txt+" (ESTIMADO TP/TESTIGO)"); } return; }
+        if(!v) return; usados[pair[0]]=1;
         var s=pair[1]+" "+v;
         if(pair[0]==="tp" && _plneVal2(labs.tp_testigo)) s+=" CON TESTIGO DE "+_plneVal2(labs.tp_testigo);
         out.push(s);
@@ -9323,14 +9363,17 @@ function plExportBackup() {
     }
 
     /* ═══ Vasopresores y ventilador (oct 2026) ═══
-       Norepinefrina: mcg/kg/min = (mg·1000 ÷ mL) · mL/h ÷ 60 ÷ kg.   Vasopresina: U/min = (U ÷ mL) · mL/h ÷ 60.
+       Norepinefrina: mcg/kg/min = (mg·1000 ÷ mL) · mL/h ÷ 60 ÷ kg; en el piso se lee en mcg/kg/h (× 60).
+       Vasopresina: U/min = (U ÷ mL) · mL/h ÷ 60.   En el servicio TODO se diluye en 100 mL (pedido de Gera, 15 oct 2026).
        Peso predicho (Devine, ARDSNet): H 50 + 0.91·(cm − 152.4) · M 45.5 + 0.91·(cm − 152.4).  ΔP = Pplat − PEEP. */
-    var VP_NORE_DEF = { mg: 4, ml: 250 }, VP_VASO_DEF = { u: 20, ml: 100 };
+    var VP_NORE_DEF = { mg: 4, ml: 100 }, VP_VASO_DEF = { u: 20, ml: 100 };
     function vpNum(v){ if(v===undefined||v===null) return NaN; var n=parseFloat(String(v).replace(",",".").replace(/[^\d.\-]/g,"")); return isFinite(n)?n:NaN; }
     function vpFmt(n, d){ if(n===null||n===undefined||!isFinite(n)) return ""; var dec=(d===undefined||d===null)?((n>0&&n<0.1)?3:2):d; var s=n.toFixed(dec); if(s.indexOf(".")>=0) s=s.replace(/0+$/,"").replace(/\.$/,""); return s==="-0"?"0":s; }
     function vpNoreConc(mg, ml){ mg=vpNum(mg); ml=vpNum(ml); return (mg>0&&ml>0)?(mg*1000/ml):NaN; }                  // mcg/mL
     function vpNoreDosis(mg, ml, mlh, peso){ var c=vpNoreConc(mg, ml); mlh=vpNum(mlh); peso=vpNum(peso); if(!(c>0)||!(mlh>=0)||!(peso>0)) return null; return c*mlh/60/peso; }  // mcg/kg/min
     function vpNoreRate(mg, ml, dosis, peso){ var c=vpNoreConc(mg, ml); dosis=vpNum(dosis); peso=vpNum(peso); if(!(c>0)||!(dosis>=0)||!(peso>0)) return null; return dosis*peso*60/c; } // mL/h
+    function vpNoreDosisH(mg, ml, mlh, peso){ var d=vpNoreDosis(mg, ml, mlh, peso); return d===null?null:d*60; }                                    // mcg/kg/h
+    function vpNoreRateH(mg, ml, dosisH, peso){ dosisH=vpNum(dosisH); if(!(dosisH>=0)) return null; return vpNoreRate(mg, ml, dosisH/60, peso); }    // mL/h desde mcg/kg/h
     function vpVasoConc(u, ml){ u=vpNum(u); ml=vpNum(ml); return (u>0&&ml>0)?(u/ml):NaN; }                            // U/mL
     function vpVasoDosis(u, ml, mlh){ var c=vpVasoConc(u, ml); mlh=vpNum(mlh); if(!(c>0)||!(mlh>=0)) return null; return c*mlh/60; }          // U/min
     function vpVasoRate(u, ml, dosis){ var c=vpVasoConc(u, ml); dosis=vpNum(dosis); if(!(c>0)||!(dosis>=0)) return null; return dosis*60/c; }   // mL/h
@@ -9344,7 +9387,7 @@ function plExportBackup() {
     }
     function _vpTextoNota(ck){
       var partes=[];
-      if(ck.vp_nore_on){ var d=vpNoreDosis(ck.vp_nore_mg, ck.vp_nore_ml, ck.vp_nore_mlh, ck.pm_peso); var dil=(vpNum(ck.vp_nore_mg)>0&&vpNum(ck.vp_nore_ml)>0&&vpNum(ck.vp_nore_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_nore_mg))+" MG EN "+vpFmt(vpNum(ck.vp_nore_ml))+" ML A "+vpFmt(vpNum(ck.vp_nore_mlh))+" ML/H)"):""; partes.push("NOREPINEFRINA A "+(d!==null?vpFmt(d):"[__]")+" MCG/KG/MIN"+dil); }
+      if(ck.vp_nore_on){ var d=vpNoreDosis(ck.vp_nore_mg, ck.vp_nore_ml, ck.vp_nore_mlh, ck.pm_peso); var dil=(vpNum(ck.vp_nore_mg)>0&&vpNum(ck.vp_nore_ml)>0&&vpNum(ck.vp_nore_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_nore_mg))+" MG EN "+vpFmt(vpNum(ck.vp_nore_ml))+" ML A "+vpFmt(vpNum(ck.vp_nore_mlh))+" ML/H)"):""; partes.push("NOREPINEFRINA A "+(d!==null?(vpFmt(d*60,1)+" MCG/KG/H ("+vpFmt(d)+" MCG/KG/MIN)"):"[__] MCG/KG/H")+dil); }
       if(ck.vp_vaso_on){ var v=vpVasoDosis(ck.vp_vaso_u, ck.vp_vaso_ml, ck.vp_vaso_mlh); var dv=(vpNum(ck.vp_vaso_u)>0&&vpNum(ck.vp_vaso_ml)>0&&vpNum(ck.vp_vaso_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_vaso_u))+" U EN "+vpFmt(vpNum(ck.vp_vaso_ml))+" ML A "+vpFmt(vpNum(ck.vp_vaso_mlh))+" ML/H)"):""; partes.push("VASOPRESINA A "+(v!==null?vpFmt(v):"[__]")+" U/MIN"+dv); }
       return partes.length?("BAJO APOYO VASOPRESOR CON "+partes.join(" Y ")):"";
     }
@@ -9398,6 +9441,10 @@ function plExportBackup() {
         var shown = dates.slice(0, _paseCols ? 3 : 4).reverse();
         var byDate = {};
         history.forEach(function(s){ byDate[s.fecha] = s.labs || {}; });
+        // INR (oct 2026): WinLab no lo reporta; si falta se ESTIMA TP ÷ testigo y se marca "≈". La fila INR siempre se muestra.
+        var inrEst = {};
+        shown.forEach(function(d){ var io = (typeof inrOf === "function") ? inrOf(byDate[d]) : null; if (io && io.est) inrEst[d] = io.txt; });
+        function rawOf(d, key){ var raw = byDate[d][key]; if (key === "inr" && inrEst[d] && (raw === undefined || raw === null || String(raw).trim() === "")) return inrEst[d]; return raw; }
         // ── umbrales TUYOS (reusados de LAB_GROUPS): low/high + cl (crít bajo) / ch (crít alto) ──
         var TH = {};
         if(typeof LAB_GROUPS !== "undefined" && Array.isArray(LAB_GROUPS)){
@@ -9427,8 +9474,8 @@ function plExportBackup() {
         }
         function trendMark(key, idx){
           if(idx <= 0) return "";                      // primera columna: no hay previo
-          var cur  = trendNum(byDate[shown[idx]][key]);
-          var prev = trendNum(byDate[shown[idx-1]][key]);
+          var cur  = trendNum(rawOf(shown[idx], key));
+          var prev = trendNum(rawOf(shown[idx-1], key));
           if(cur === null || prev === null) return "";  // sin valor previo o no numérico → sin flecha
           if(cur > prev) return '<span class="ff-trend ff-trend-up" title="Sube vs columna previa">▲</span>';
           if(cur < prev) return '<span class="ff-trend ff-trend-dn" title="Baja vs columna previa">▼</span>';
@@ -9436,11 +9483,12 @@ function plExportBackup() {
         }
         function cellRow(label, key){
           var tds = shown.map(function(d, idx){
-            var raw = byDate[d][key];
+            var raw = rawOf(d, key);
+            var est = key === "inr" && !!inrEst[d];
             var v = (raw === undefined || raw === null || String(raw).trim() === "") ? "—" : String(raw).trim();
             var cls = (v === "—") ? "" : labClass(key, v);
             var tr = (v === "—") ? "" : trendMark(key, idx);
-            return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(v) + tr + '</td>';
+            return '<td' + (cls ? ' class="' + cls + '"' : '') + (est ? ' title="INR estimado = TP ÷ testigo (WinLab no reporta INR)"' : '') + '>' + (est ? '≈' : '') + esc(v) + tr + '</td>';
           }).join('');
           return '<tr><td class="ff-an">' + esc(label) + '</td>' + tds + '</tr>';
         }
@@ -9454,12 +9502,14 @@ function plExportBackup() {
         var _hiddenEmpty = 0;
         var mainRowList = FOCUS_LAB_ORDER.filter(function(p){
           if (!_pase) return true;
-          var has = shown.some(function(d){ var v = byDate[d][p[1]]; return v !== undefined && v !== null && String(v).trim() !== ""; });
+          if (p[1] === "inr") return true;             // el INR se muestra SIEMPRE (decide cirugías), aunque no haya valor
+          var has = shown.some(function(d){ var v = rawOf(d, p[1]); return v !== undefined && v !== null && String(v).trim() !== ""; });
           if (!has) _hiddenEmpty++;
           return has;
         }).map(function(p){ return cellRow(p[0], p[1]); });
         var mainRows = mainRowList.join('');
         var hiddenNote = (_pase && _hiddenEmpty) ? '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '" style="font-weight:600;text-transform:none;letter-spacing:0">' + _hiddenEmpty + ' analitos sin valor ocultos (modo Pase)</td></tr>' : '';
+        var inrNote = Object.keys(inrEst).length ? '<tr class="ff-otros-h ff-inr-note"><td colspan="' + (shown.length + 1) + '" style="font-weight:600;text-transform:none;letter-spacing:0">≈ INR estimado = TP ÷ testigo (WinLab no reporta INR)</td></tr>' : '';
         // ── OTROS: labs estándar con valor que NO están en tu orden ──
         var labelMap = {}, fieldOrder = {};
         if(typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)){
@@ -9512,9 +9562,9 @@ function plExportBackup() {
           var half = Math.ceil(mainRowList.length / 2);
           var left = mainRowList.slice(0, half).join('');
           var right = mainRowList.slice(half).join('');
-          return '<div class="ff-labs">' + hdr + '<div class="ff-labs-split">' + tbl(left) + tbl(right + hiddenNote + otros) + '</div></div>';
+          return '<div class="ff-labs">' + hdr + '<div class="ff-labs-split">' + tbl(left) + tbl(right + hiddenNote + inrNote + otros) + '</div></div>';
         }
-        return '<div class="ff-labs">' + hdr + tbl(mainRows + hiddenNote + otros) + '</div>';
+        return '<div class="ff-labs">' + hdr + tbl(mainRows + hiddenNote + inrNote + otros) + '</div>';
       }catch(e){
         return renderLabSection(nd, k); // si algo falla, caer al render normal — nunca romper el foco
       }
@@ -10502,6 +10552,7 @@ function plExportBackup() {
         cardEl.outerHTML = isSimpleEsp(p.esp, _nd)
           ? renderSimpleCard(p, _nd, k)
           : renderFullCard(p, _nd, k);
+        try { _penMountAll(document.getElementById("card-" + k)); } catch (_) {}   // ✍️ tinta de las cajas
       }
       // Si este paciente es el que está PROYECTADO, refresca la proyección en vivo
       // (ej. editaste labs/plan/drenajes y se ven al instante en la pantalla grande).
@@ -11996,6 +12047,9 @@ function plExportBackup() {
             const arrow = (!isNaN(n) && !isNaN(pn)) ? (n > pn ? "▲" : (n < pn ? "▼" : "")) : "";
             chips.push(pair[1] + " " + String(v).trim() + arrow);
           });
+          // INR siempre (oct 2026): el real, o el estimado TP ÷ testigo marcado con ≈ (WinLab no lo reporta)
+          const io = (typeof inrOf === "function") ? inrOf(snap.labs) : null;
+          if (io && Number.isFinite(io.v)) { const pio = inrOf(prev); const ia = (pio && Number.isFinite(pio.v)) ? (io.v > pio.v ? "▲" : (io.v < pio.v ? "▼" : "")) : ""; chips.push("INR " + (io.est ? "≈" : "") + io.txt + ia); }
           if (chips.length) parts.push("🧪 " + ((typeof fmtDateChip === "function") ? fmtDateChip(snap.fecha) : snap.fecha) + ": " + chips.join(" · "));
         }
         const popBtn = (pop === null)
@@ -12538,6 +12592,18 @@ function plExportBackup() {
       const s = String(v).trim().replace(/^[<>≤≥]\s*/, "").replace(",", ".");
       const n = parseFloat(s);
       return Number.isFinite(n) ? n : NaN;
+    }
+    // INR (oct 2026): WinLab no reporta INR — solo TP, su TESTIGO (control) y TTP. Si no hay INR capturado,
+    // se ESTIMA como TP ÷ testigo (ISI ≈ 1) y se marca como estimado ("≈"). Es de los analitos que deciden
+    // una cirugía, por eso se muestra SIEMPRE (tabla, línea de pase, nota, entrega).
+    //   → { v: número, txt: texto a mostrar, est: true si es estimado } · null si no hay cómo saberlo
+    function inrOf(labs) {
+      if (!labs) return null;
+      const raw = labs.inr;
+      if (raw !== undefined && raw !== null && String(raw).trim() !== "") return { v: parseLabNumber(raw), txt: String(raw).trim(), est: false };
+      const tp = parseLabNumber(labs.tp), tg = parseLabNumber(labs.tp_testigo);
+      if (Number.isFinite(tp) && Number.isFinite(tg) && tp > 0 && tg > 0) { const r = Math.round(tp / tg * 100) / 100; return { v: r, txt: r.toFixed(2), est: true }; }
+      return null;
     }
     function setSyncProblemStatus() {
       if (!navigator.onLine) {
@@ -13191,6 +13257,15 @@ function plExportBackup() {
       if (currentView === "papelera") renderPapelera();
       try { _applyPresenceBadges(); } catch (_) {}   // reaplicar badges de presencia tras re-render
       try { _syncStickyOffsets(); } catch (_) {}     // top del rail de camas = altura real del header
+      try { _penMountAll(); } catch (_) {}           // ✍️ tinta directa sobre las cajas (capa por caja con tinta)
+    }
+    // La tira de camas se desplaza para que la cama en foco quede a la vista (centrada).
+    function _bedStripCenter() {
+      try {
+        const strip = document.querySelector("#board-nav .bn-beds"); const cur = strip && strip.querySelector(".bb-cur");
+        if (!strip || !cur) return;
+        strip.scrollLeft = Math.max(0, cur.offsetLeft - strip.clientWidth / 2 + cur.offsetWidth / 2);
+      } catch (_) {}
     }
 
     // Mide la altura real del #header (sticky) y la expone como --pl-header-h para que
@@ -13318,14 +13393,24 @@ function plExportBackup() {
             try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}" title="${_st === "red" ? "Lab crítico" : "Sin labs recientes"}"></span>`; } catch (_) {}
             return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
           }).join("") + `</div>`;
+          // Carril de camas HORIZONTAL (oct 2026, pedido de Gera): en el iPad el riel lateral estorbaba a las cajas.
+          // En pantallas < 1340 px las camas van en esta tira deslizable dentro de la barra pegajosa (#board-side se oculta por CSS).
+          const _beds = `<div class="bn-beds" data-testid="bn-beds">` + _ordered.map(pp => {
+            const kk = pid(pp); const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
+            let _dot = ""; try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}"></span>`; } catch (_) {}
+            return `<button type="button" class="bb${kk === fk ? " bb-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-top-color:${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_labNewsFor(kk) ? "🧪" : ""}${esc(pp.cama || "S/C")}</button>`;
+          }).join("") + `</div>`;
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
             + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
             + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, manejo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
             + `<button class="bn-mode${isHojaMode() ? " on" : ""}" onclick="toggleHojaMode()" title="Modo Hoja: la ficha como la hoja de visita (cuadrícula con todas las cajas abiertas; al imprimir, una hoja por cama)">${isHojaMode() ? "📑 Hoja" : "🗂 Tarjeta"}</button>`
             + (isHojaMode() ? renderHojaCfg() : "")
+            + `<button class="bn-mode bn-pen${(typeof penModeOn === "function" && penModeOn()) ? " on" : ""}" onclick="togglePenMode(this)" title="✍️ Lápiz: con el Apple Pencil escribes directo sobre cualquier caja (la tinta se queda ahí y tachar borra). Apagado: el lápiz escribe texto (Scribble).">✍️ Lápiz</button>`
+            + `<button class="bn-mode" onclick="openPendientesImport()" title="Importar pendientes / planes desde el Excel del censo">📊 Planes</button>`
             + renderAlertsNavBtn()
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
+            + _beds
             + (isSimpleEsp(fp.esp, fnd) ? "" : _fcJumpBar(fp, fnd, fk))
             + `</div>`;
           _bindBoardSwipe();
@@ -13352,6 +13437,7 @@ function plExportBackup() {
           let _alertsHtml = ""; try { _alertsHtml = renderSpecialAlertsPanel(); } catch (e) { safeLog("alerts panel:", e); }
           document.getElementById("view-piso").innerHTML =
             renderAlertsDrawer(_alertsHtml) + `<div id="board-wrap">${_side}<div id="board-main">${_nav}<div id="piso-grid">${fcard}</div></div></div>`;
+          try { requestAnimationFrame(_bedStripCenter); } catch (_) {}
           return;
         }
       }
@@ -14286,44 +14372,200 @@ function plExportBackup() {
       _rerenderCard(k);
     }
 
-    // ── Pase de guardia inteligente ────────────────────────────────────
-    function buildPaseInteligente(p, nd) {
-      const parts = [];
-      const snap = getLatestLabSnapshot(nd);
-      const criticals = snap ? getCriticalLabItemsFromSnapshot(snap) : [];
-      if (criticals.length) {
-        parts.push("🚨 LABS CRÍTICOS: " + criticals.map(c => `${c.label} ${c.value}${c.unit?" "+c.unit:""}`).join(", "));
-      }
-      const dias = getDiasSinLabs(nd);
-      if (dias !== null && dias >= 2) parts.push(`⚠️ Sin labs recientes (${dias}d)`);
-      if (nd.pendientes && nd.pendientes.trim()) parts.push("📋 Pendientes: " + nd.pendientes.trim());
-      const ck = (nd.checklist) || {};
-      if (ck.cruce_activo) parts.push("🔪 CRUCE QUIRÚRGICO ACTIVO");
-      if (ck.npt) parts.push("💉 NPT activa");
-      const _cx = (typeof cirugiasTexto === "function") ? cirugiasTexto(ck, " | ") : "";
-      if (_cx) parts.push("🔪 Cirugías: " + _cx);
-      const _bal = (typeof balanceTexto === "function") ? balanceTexto(nd) : toSafeString(nd.balance).trim();
-      if (_bal) parts.push("⚖️ Balance: " + _bal);
-      const _dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " | ") : "";
-      if (_dt) parts.push("🫁 Drenajes/sondas: " + _dt);
-      if (nd.drenajes && nd.drenajes.trim()) parts.push("🩸 Nota de drenajes: " + nd.drenajes.trim());
-      return parts.join("\n");
+    // ── Resumen de entrega de guardia (oct 2026, pedido de Gera) ──────────────────────────────────
+    // La entrega NO transcribe la tarjeta. Solo lo que la siguiente guardia necesita de un vistazo:
+    // si pasó a quirófano, los gastos, labs PUNTUALES (críticos, cambios grandes, INR), lo NUEVO del
+    // día (lo que se agregó, pidió o llegó hoy/ayer) y los pendientes abiertos. Mismo resumen para el
+    // botón ✨ Resumen de la tarjeta (texto) y para la vista 📤 Entrega (ficha por paciente).
+    const ENTREGA_RESUMEN_HDR = /^— Resumen \d{2}\/\d{2}[^\n]*—\s*$/;
+    function _egIsoOffset(n) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + (n || 0)); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+    function _egDdMm(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || "")); return m ? m[3] + "/" + m[2] : String(iso || ""); }
+    // "dd/mm" (sello ➕ Hoy, encabezado del día en Pendientes, Recibido) → AAAA-MM-DD: año actual, o el anterior si cae en el futuro.
+    function _egIsoFromDdMm(dd, mm) {
+      const y = new Date().getFullYear();
+      let iso = y + "-" + String(mm).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
+      if (iso > _egIsoOffset(1)) iso = (y - 1) + iso.slice(4);
+      return iso;
     }
-
+    // Reparte los renglones de una caja por fecha según los sellos que ya usa la app: "dd/mm GF: texto"
+    // (➕ Hoy), "dd/mm — " (encabezado del día en Pendientes), "dd-mm-aaaa: texto" (novedades automáticas)
+    // y "— Recibido dd/mm hh:mm GF —" (Tomar guardia). Lo que sigue a un encabezado hereda su fecha; lo
+    // que no tiene fecha queda con fecha null. El bloque "— Resumen … —" anterior se ignora.
+    function _egLineasFechadas(text) {
+      const out = []; let cur = null;
+      toSafeString(text).split("\n").forEach(function (line) {
+        const t = line.trim();
+        if (t === "") { if (cur === "resumen") cur = null; return; }
+        if (ENTREGA_RESUMEN_HDR.test(t)) { cur = "resumen"; return; }
+        if (cur === "resumen") return;
+        let m;
+        if ((m = /^(\d{2})\/(\d{2})\s*—\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
+        if ((m = /^—\s*Recibido\s+(\d{2})\/(\d{2})[^—]*—\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
+        if ((m = /^(\d{2})-(\d{2})-(\d{4}):\s*(.*)$/.exec(t))) { out.push({ fecha: m[3] + "-" + m[2] + "-" + m[1], text: m[4].trim(), auto: true }); return; }
+        if ((m = /^(\d{2})\/(\d{2})(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
+        out.push({ fecha: cur, text: t.replace(/^[-•·*]\s*/, "") });
+      });
+      return out;
+    }
+    // Cambios "grandes" contra el control previo (unidades de WinLab HGL) que vale la pena entregar aunque no sean críticos.
+    const _EG_DELTA = { hb: 1.5, leucos: 4, plaq: 60, cr: 0.3, k: 0.7, na: 5, pcr: 50, pct: 1, lac: 1, glu: 100, bt: 1, inr: 0.3, alb: 0.5, mg: 0.5, ca: 1 };
+    const _EG_LAB_ORDER = ["hb", "k", "na", "cr", "leucos", "plaq", "lac", "pct", "pcr", "inr", "glu", "bt", "alb", "mg", "ca", "p", "tp", "ttp", "amilasa", "lipasa", "urea", "bun", "cl", "hct", "fibrinogeno", "dimero_d", "ph", "hco3", "pco2", "po2", "sato2", "be", "ast", "alt", "fa", "ggt", "ldh", "tropI", "tropT", "ck"];
+    function _egNum(v) { const n = parseLabNumber(v); return Number.isFinite(n) ? n : null; }
+    function _egCut(s, n) { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1).replace(/\s+\S*$/, "") + "…" : s; }
+    // 🧪 Labs puntuales del último control: críticos (LAB_QUICK), cambios grandes contra el previo, INR ≥ 1.3
+    // (el real o el estimado TP ÷ testigo) y lactato > 2. Máximo 6; el resto se cuenta.
+    function _egLabsPuntuales(nd) {
+      const snap = (typeof getLatestLabSnapshot === "function") ? getLatestLabSnapshot(nd) : null;
+      if (!snap || !snap.labs || !_snapHasBloodValues(snap)) return null;
+      const prevS = (nd.labHistory || []).filter(function (s) { return s && s.fecha && s.fecha < snap.fecha && _snapHasBloodValues(s); }).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); })[0];
+      const prev = prevS ? (prevS.labs || {}) : {};
+      const labelMap = {}; (Array.isArray(LAB_FIELDS) ? LAB_FIELDS : []).forEach(function (f) { labelMap[f.key] = f.label; });
+      const keys = _EG_LAB_ORDER.slice(); Object.keys(snap.labs).forEach(function (key) { if (keys.indexOf(key) < 0) keys.push(key); });
+      const items = []; let extra = 0;
+      keys.forEach(function (key) {
+        if (/^(ego_|micro_)/.test(key) || key === "fecha_labs" || key === "tp_testigo" || (typeof LAB_META_KEYS !== "undefined" && LAB_META_KEYS.has(key))) return;
+        let n, txt, pn, est = false, pTxt = "";
+        if (key === "inr") {
+          const io = inrOf(snap.labs); if (!io || !Number.isFinite(io.v)) return;
+          n = io.v; txt = io.txt; est = io.est; const pio = inrOf(prev); pn = (pio && Number.isFinite(pio.v)) ? pio.v : null; pTxt = pio ? pio.txt : "";
+        } else {
+          n = _egNum(snap.labs[key]); if (n === null) return;
+          txt = String(snap.labs[key]).trim(); pn = _egNum(prev[key]); pTxt = pn === null ? "" : String(prev[key]).trim();
+        }
+        const q = (typeof LAB_QUICK !== "undefined" && LAB_QUICK[key]) ? LAB_QUICK[key](n) : null;
+        const crit = !!(q && q.sev === "crit");
+        const delta = pn !== null && _EG_DELTA[key] != null && Math.abs(n - pn) >= _EG_DELTA[key];
+        const inrAlto = key === "inr" && n >= 1.3;
+        const lacAlto = key === "lac" && n > 2;
+        if (!crit && !delta && !inrAlto && !lacAlto) return;
+        if (items.length >= 6) { extra++; return; }
+        const arrow = pn === null ? "" : (n > pn ? "▲" : (n < pn ? "▼" : ""));
+        items.push({ key: key, crit: crit, text: (labelMap[key] || key.toUpperCase()) + " " + (est ? "≈" : "") + txt + arrow + (delta ? " (de " + pTxt + ")" : "") });
+      });
+      const dias = (typeof getDiasSinLabs === "function") ? getDiasSinLabs(nd) : null;
+      return { fecha: snap.fecha, items: items, extra: extra, dias: dias };
+    }
+    function buildEntregaResumen(p, nd) {
+      nd = migrateNote(nd || defaultData());
+      const ck = nd.checklist || {};
+      const hoy = _egIsoOffset(0), ayer = _egIsoOffset(-1);
+      const esNuevo = function (f) { return f === hoy || f === ayer; };
+      const R = { qx: [], alertas: [], gastos: [], labs: null, nuevo: [], pend: [] };
+      // 🔪 Quirófano: cirugía de hoy/ayer con hallazgos y sangrado; si no, el día POP de la última.
+      const cxs = (typeof cirugiasOrdenadas === "function") ? cirugiasOrdenadas(ck) : [];
+      const u = cxs[0] || null;
+      if (u && esNuevo(u.fecha)) {
+        let s = (u.fecha === hoy ? "HOY" : "AYER") + " pasó a quirófano: " + (toSafeString(u.procedimiento).trim() || "procedimiento sin nombre");
+        if (toSafeString(u.hallazgos).trim()) s += " · " + _egCut(u.hallazgos, 90);
+        if (toSafeString(u.sangrado).trim()) s += " · sangrado " + toSafeString(u.sangrado).trim() + (/^[\d.,]+$/.test(toSafeString(u.sangrado).trim()) ? " mL" : "");
+        if (toSafeString(u.cirujano).trim()) s += " · " + toSafeString(u.cirujano).trim();
+        R.qx.push(s);
+      } else {
+        const pop = (typeof popDays === "function") ? popDays(nd) : null;
+        if (pop !== null) R.qx.push("POP d" + pop + (u && toSafeString(u.procedimiento).trim() ? " de " + _egCut(u.procedimiento, 60) : ""));
+      }
+      if (cxs.length > 1) R.qx.push("+" + (cxs.length - 1) + (cxs.length > 2 ? " cirugías previas" : " cirugía previa"));
+      if (ck.cruce_activo) { const ct = (typeof getCruceEntregaText === "function") ? toSafeString(getCruceEntregaText(ck)).trim() : ""; R.qx.push(ct || "Cruce quirúrgico activo"); }
+      // ⚠️ Atención: soporte y avisos que la siguiente guardia debe saber de entrada.
+      if (ck.vp_nore_on) { const d = vpNoreDosis(ck.vp_nore_mg, ck.vp_nore_ml, ck.vp_nore_mlh, ck.pm_peso); R.alertas.push("Norepinefrina" + (d !== null ? " " + vpFmt(d * 60, 1) + " mcg/kg/h" : "") + (vpNum(ck.vp_nore_mlh) >= 0 ? " a " + vpFmt(vpNum(ck.vp_nore_mlh)) + " mL/h" : "")); }
+      if (ck.vp_vaso_on) { const v = vpVasoDosis(ck.vp_vaso_u, ck.vp_vaso_ml, ck.vp_vaso_mlh); R.alertas.push("Vasopresina" + (v !== null ? " " + vpFmt(v) + " U/min" : "")); }
+      if (ck.pm_vent) R.alertas.push("Ventilación mecánica" + (toSafeString(ck.pm_vent_modo).trim() ? " " + toSafeString(ck.pm_vent_modo).trim() : "") + (toSafeString(ck.pm_vent_fio2).trim() ? " FiO2 " + toSafeString(ck.pm_vent_fio2).trim() + " %" : ""));
+      if (ck.npt) R.alertas.push("NPT" + (toSafeString(ck.npt_pct).trim() ? " " + toSafeString(ck.npt_pct).trim() : ""));
+      if (ck.npo) R.alertas.push("Ayuno" + (toSafeString(ck.npo_dias).trim() ? " d" + toSafeString(ck.npo_dias).trim() : ""));
+      // 💧 Gastos: drenajes y sondas con gasto, nota de drenajes, uresis y balance.
+      const dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " · ", false) : "";
+      if (dt) R.gastos.push(dt);
+      if (toSafeString(nd.drenajes).trim()) R.gastos.push(_egCut(nd.drenajes, 120));
+      if (toSafeString(ck.pm_uresis).trim()) R.gastos.push("Uresis " + toSafeString(ck.pm_uresis).trim() + (/^[\d.,]+$/.test(toSafeString(ck.pm_uresis).trim()) ? " mL" : ""));
+      const bal = (typeof balanceTexto === "function") ? balanceTexto(nd) : "";
+      if (bal) R.gastos.push("Balance " + bal);
+      // 🧪 Labs puntuales
+      R.labs = _egLabsPuntuales(nd);
+      if (R.labs && R.labs.dias !== null && R.labs.dias >= 2) R.alertas.push("Sin labs desde hace " + R.labs.dias + " días");
+      if (!R.labs) R.alertas.push("Sin laboratorios");
+      // 🆕 Nuevo del día: renglones con fecha de hoy/ayer en Pendientes, Manejo, IC, Cultivos y Entrega;
+      //    drenajes colocados hoy/ayer; estudios del visor y cultivos recién llegados.
+      [["Pendientes", nd.pendientes], ["Manejo", nd.manejo], ["IC", ck.interconsultas], ["Cultivos", ck.cultivos], ["", nd.entrega]].forEach(function (pair) {
+        _egLineasFechadas(pair[1]).forEach(function (l) {
+          if (!esNuevo(l.fecha) || /^✓\s/.test(l.text)) return;
+          if (l.auto && /^Labs:/i.test(l.text)) return;          // los labs ya van en 🧪
+          R.nuevo.push(_egDdMm(l.fecha) + " " + (pair[0] ? pair[0] + ": " : "") + _egCut(l.text, 110));
+        });
+      });
+      (Array.isArray(ck.dispositivos) ? ck.dispositivos : []).forEach(function (d) {
+        if (!d || !esNuevo(d.fi)) return;
+        R.nuevo.push(_egDdMm(d.fi) + " se colocó " + (toSafeString(d.tipo).trim() || "drenaje") + (d.lado ? " " + d.lado : "") + (toSafeString(d.sitio).trim() ? " (" + toSafeString(d.sitio).trim() + ")" : ""));
+      });
+      try {
+        const since = Date.now() - 36 * 3600e3;
+        ((typeof risForPatient === "function" && p) ? risForPatient(p) : []).forEach(function (r) {
+          if (!r) return;
+          const sc = r.scraped_at ? new Date(r.scraped_at).getTime() : 0;
+          if (!esNuevo(r.fecha) && !(sc && sc >= since)) return;
+          const titulo = [r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" ") || "Estudio de imagen";
+          const rep = toSafeString(r.reporte).trim();
+          R.nuevo.push(_egDdMm(r.fecha) + " " + titulo + ": " + (rep ? _egCut(_risConclusion(rep), 110) : "realizado, reporte pendiente"));
+        });
+      } catch (_) {}
+      try {
+        const cults = (p && typeof _winlabCultByK !== "undefined" && _winlabCultByK[pid(p)]) || [];
+        const since2 = _egIsoOffset(-2);
+        cults.forEach(function (c) { if (c && c.fecha && c.fecha >= since2 && !c.pendiente) R.nuevo.push(_egDdMm(c.fecha) + " " + _egCut(_cultTexto(c, false), 110)); });
+      } catch (_) {}
+      const seen = {};
+      R.nuevo = R.nuevo.filter(function (s) { const key = s.toLowerCase(); if (seen[key]) return false; seen[key] = 1; return true; });
+      if (R.nuevo.length > 8) { const n = R.nuevo.length - 8; R.nuevo = R.nuevo.slice(0, 8); R.nuevo.push("+" + n + " más en la tarjeta"); }
+      // 📋 Pendientes abiertos (sin ✓, sin encabezados de fecha) + No olvidar del paciente.
+      const pendOpen = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); })
+        .filter(function (s) { return s && !/^\d{2}\/\d{2}\s*—/.test(s) && !/^✓\s/.test(s); })
+        .map(function (s) { return s.replace(/^\d{2}\/\d{2}(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*/, "").replace(/^[-•·*]\s*/, "").trim(); }).filter(Boolean);
+      pendOpen.slice(0, 6).forEach(function (s) { R.pend.push(_egCut(s, 90)); });
+      if (pendOpen.length > 6) R.pend.push("+" + (pendOpen.length - 6) + " más");
+      (Array.isArray(ck._ptReminders) ? ck._ptReminders : []).filter(function (r) { return r && !r.done && toSafeString(r.text).trim(); }).slice(0, 3).forEach(function (r) { R.pend.push("No olvidar: " + _egCut(r.text, 80)); });
+      return R;
+    }
+    // Texto para la caja Entrega (una línea por sección, encabezado con fecha, hora e iniciales).
+    function entregaResumenTexto(p, nd) {
+      const R = buildEntregaResumen(p, nd);
+      const d = new Date(); const z = function (n) { return String(n).padStart(2, "0"); };
+      const ini = (typeof userInitials === "function") ? userInitials() : "";
+      const lines = ["— Resumen " + z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes()) + (ini ? " " + ini : "") + " —"];
+      if (R.qx.length) lines.push("🔪 " + R.qx.join(" · "));
+      if (R.alertas.length) lines.push("⚠️ " + R.alertas.join(" · "));
+      if (R.gastos.length) lines.push("💧 Gastos: " + R.gastos.join(" · "));
+      if (R.labs && R.labs.items.length) lines.push("🧪 Labs " + _egDdMm(R.labs.fecha) + ": " + R.labs.items.map(function (i) { return i.text; }).join(" · ") + (R.labs.extra ? " · +" + R.labs.extra + " alterados" : ""));
+      else if (R.labs) lines.push("🧪 Labs " + _egDdMm(R.labs.fecha) + ": sin valores críticos ni cambios grandes");
+      if (R.nuevo.length) lines.push("🆕 Nuevo: " + R.nuevo.join(" · "));
+      if (R.pend.length) lines.push("📋 Pendientes: " + R.pend.join(" · "));
+      return lines.length > 1 ? lines.join("\n") : "";
+    }
+    // Quita el bloque "— Resumen … —" (hasta la línea en blanco o el final) para no duplicarlo ni contarlo como novedad.
+    function _entregaSinResumen(text) {
+      const out = []; let skip = false;
+      toSafeString(text).split("\n").forEach(function (l) {
+        if (ENTREGA_RESUMEN_HDR.test(l.trim())) { skip = true; return; }
+        if (skip) { if (l.trim() === "") skip = false; return; }
+        out.push(l);
+      });
+      return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
+    }
+    // ✨ Resumen: escribe (o reemplaza) el bloque de resumen al final de la Entrega; lo escrito a mano no se toca.
     function applyPaseInteligente(k) {
-      const p = patients.find(x => pid(x) === k);
+      const p = patients.find(function (x) { return pid(x) === k; });
       if (!p) return;
       const nd = migrateNote(noteData[k] || defaultData());
-      const built = buildPaseInteligente(p, nd);
-      if (!built) { alert("No hay información relevante para auto-llenar la entrega."); return; }
-      _undoPush(k, "auto-llenar entrega");
-      const prev = nd.entrega || "";
-      nd.entrega = prev ? prev + "\n\n" + built : built;
+      const built = entregaResumenTexto(p, nd);
+      if (!built) { alert("No hay información para resumir en esta tarjeta."); return; }
+      _undoPush(k, "resumen de entrega");
+      const base = _entregaSinResumen(nd.entrega);
+      nd.entrega = (base ? base + "\n\n" : "") + built;
+      _touchBy(nd, "entrega");
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add("entrega");
       noteData[k] = nd;
       saveNote(k, nd);
       _rerenderCard(k);
+      if (typeof _plToast === "function") _plToast("✨ Resumen de entrega actualizado", "#059669", 1800);
     }
 
     // ── NOVEDADES AUTOMÁTICAS EN LA ENTREGA DE GUARDIA (13 oct 2026) ───────────────────
@@ -14396,12 +14638,18 @@ function plExportBackup() {
           const num = parseLabNumber(v);
           if (!Number.isFinite(num) || typeof LAB_QUICK === "undefined" || !LAB_QUICK[key]) return;
           const q = LAB_QUICK[key](num);
-          if (!q || (q.sev !== "crit" && q.sev !== "abn")) return;
+          // Solo lo PUNTUAL (oct 2026): valores críticos. Lo "anormal" ya se ve en la tabla; aquí estorbaba.
+          if (!q || q.sev !== "crit") return;
           found.push({ key: key, sev: q.sev, title: String(q.title || "").replace(/\s*[—-]\s*.*$/, "").trim(), val: String(v).trim() });
         });
+        // INR que WinLab no reporta: estimado TP ÷ testigo ≥ 1.5 (decide cirugías), una vez por valor.
+        try {
+          const io = inrOf(s.labs), bio = inrOf(b);
+          if (io && io.est && io.v >= 1.5 && !(bio && bio.txt === io.txt)) found.push({ key: "inr", sev: io.v >= 3 ? "crit" : "abn", title: "INR estimado " + io.txt + " (TP ÷ testigo)", val: "", plain: true });
+        } catch (_) {}
         if (!found.length) return;
         found.sort(function (a, b2) { return (a.sev === "crit" ? 0 : 1) - (b2.sev === "crit" ? 0 : 1); });
-        const shown = found.slice(0, 7).map(function (f) { return f.title + " (" + (labelMap[f.key] || f.key) + " " + f.val + ")"; });
+        const shown = found.slice(0, 4).map(function (f) { return f.plain ? f.title : f.title + " (" + (labelMap[f.key] || f.key) + " " + f.val + ")"; });
         const extra = found.length - shown.length;
         out.push({ id: "lab:" + s.fecha + ":" + found.map(function (f) { return f.key; }).sort().join(","), fecha: s.fecha,
           text: "Labs: " + shown.join(", ") + (extra > 0 ? " y " + extra + " más" : "") });
@@ -15180,6 +15428,254 @@ function plExportBackup() {
         if (typeof focusStep === "function") focusStep(dx < 0 ? 1 : -1);
       }, { passive: true });
     }
+
+    /* ═══ ✍️ Lápiz directo sobre las cajas (oct 2026, pedido de Gera) ═══════════════════════════════
+       Con el Apple Pencil se escribe ENCIMA de cualquier caja de texto (como en GoodNotes) sin abrir el
+       lienzo grande: la tinta queda sobre la caja, viaja con la nota (checklist.__ink[campo]) y se ve en
+       todos los dispositivos. Rayar/tachar sobre lo escrito lo borra. El dedo y el teclado siguen igual
+       (la capa de tinta no atrapa el toque). Solo pointerType "pen"; se apaga con ✍️ Lápiz en la barra.
+       Formato: __ink[campo] = { w: anchoDeLaCajaAlEscribir, s: [ { c: color, p: [[x, y, presión], …] } ] } */
+    const PEN_MAX_POINTS = 6000;
+    const PEN = { active: null, saveTimers: {}, lastUndo: {} };
+    function penModeOn() {
+      try { const v = localStorage.getItem("pl_pen_mode"); if (v === "0") return false; if (v === "1") return true; } catch (_) {}
+      return (navigator.maxTouchPoints || 0) > 1;     // por defecto: encendido en iPad/tablet, apagado en laptop
+    }
+    function togglePenMode(btn) {
+      const on = !penModeOn();
+      try { localStorage.setItem("pl_pen_mode", on ? "1" : "0"); } catch (_) {}
+      document.body.classList.toggle("pen-on", on);
+      document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.toggle("on", on); });
+      if (!on) PEN.active = null;
+      if (typeof _plToast === "function") _plToast(on ? "✍️ Lápiz encendido: escribe con el Apple Pencil directo sobre las cajas (tachar borra)" : "✍️ Lápiz apagado: el lápiz escribe texto (Scribble del iPad)", on ? "#7c3aed" : "#475569", 2600);
+    }
+    function _penField(ta) { return ta.dataset.ckfield ? "ck:" + ta.dataset.ckfield : (ta.dataset.field || ""); }
+    function _penTa(el) { return (el && el.closest) ? el.closest("textarea.field-ta[data-key]") : null; }
+    function _penInk(nd, field, create) {
+      if (!nd) return null;
+      if (!nd.checklist) { if (!create) return null; nd.checklist = {}; }
+      if (!isPlainObject(nd.checklist.__ink)) { if (!create) return null; nd.checklist.__ink = {}; }
+      let ink = nd.checklist.__ink[field];
+      if (!isPlainObject(ink) || !Array.isArray(ink.s)) { if (!create) return null; ink = nd.checklist.__ink[field] = { w: 0, s: [] }; }
+      return ink;
+    }
+    function _penPoints(ink) { return ink.s.reduce(function (n, s) { return n + ((s && s.p) ? s.p.length : 0); }, 0); }
+    // Capa (canvas + botón ✍️ de la esquina) pegada a la caja: se crea al vuelo y sigue el tamaño de la caja.
+    function _penLayer(ta, create) {
+      let cv = ta.nextElementSibling;
+      if (!(cv && cv.classList && cv.classList.contains("pl-ink-cv"))) {
+        if (!create) return null;
+        const par = ta.parentElement; if (!par) return null;
+        if (getComputedStyle(par).position === "static") par.style.position = "relative";
+        cv = document.createElement("canvas"); cv.className = "pl-ink-cv";
+        const menu = document.createElement("button"); menu.type = "button"; menu.className = "pl-ink-menu"; menu.textContent = "✍️"; menu.style.display = "none";
+        menu.title = "Tinta de esta caja: deshacer, pasar a texto, borrar";
+        menu.addEventListener("click", function (ev) { ev.preventDefault(); ev.stopPropagation(); _penMenu(ta, menu); });
+        ta.insertAdjacentElement("afterend", cv); cv.insertAdjacentElement("afterend", menu);
+        try { const ro = new ResizeObserver(function () { _penFit(ta); }); ro.observe(ta); cv._ro = ro; } catch (_) {}
+      }
+      return cv;
+    }
+    function _penFit(ta) {
+      const cv = _penLayer(ta, false); if (!cv) return;
+      const w = ta.offsetWidth, h = ta.offsetHeight; if (!w || !h) return;
+      const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      cv.style.left = ta.offsetLeft + "px"; cv.style.top = ta.offsetTop + "px"; cv.style.width = w + "px"; cv.style.height = h + "px";
+      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+      const menu = cv.nextElementSibling;
+      if (menu && menu.classList.contains("pl-ink-menu")) { menu.style.left = (ta.offsetLeft + w - 32) + "px"; menu.style.top = (ta.offsetTop + 4) + "px"; }
+      _penRedraw(ta);
+    }
+    function _penScale(ink, ta) { const w = ta.offsetWidth; return (ink && ink.w > 0 && w > 0) ? (w / ink.w) : 1; }
+    function _penColor(c) { return (document.body.classList.contains("dark") && (!c || c === "#1d4ed8")) ? "#93c5fd" : (c || "#1d4ed8"); }
+    function _penStrokePath(ctx, pts, scale, color) {
+      if (!pts || pts.length < 2) return;
+      ctx.strokeStyle = _penColor(color); ctx.lineCap = "round"; ctx.lineJoin = "round";
+      const k = Math.max(.6, Math.min(1.6, scale));
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        ctx.lineWidth = (1.5 + ((b[2] || 0.6) * 2.2)) * k;
+        ctx.beginPath(); ctx.moveTo(a[0] * scale, a[1] * scale); ctx.lineTo(b[0] * scale, b[1] * scale); ctx.stroke();
+      }
+    }
+    function _penRedraw(ta) {
+      const cv = _penLayer(ta, false); if (!cv) return;
+      const nd = noteData[ta.dataset.key]; const ink = nd ? _penInk(nd, _penField(ta), false) : null;
+      const ctx = cv.getContext("2d"); const dpr = cv.width / Math.max(1, ta.offsetWidth || 1);
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const has = !!(ink && ink.s.length);
+      const menu = cv.nextElementSibling; if (menu && menu.classList.contains("pl-ink-menu")) menu.style.display = has ? "" : "none";
+      if (has) { const scale = _penScale(ink, ta); ink.s.forEach(function (s) { _penStrokePath(ctx, s.p, scale, s.c); }); }
+      if (PEN.active && PEN.active.ta === ta) _penStrokePath(ctx, PEN.active.pts, 1, PEN.active.color);
+    }
+    // Tras cada render: capa en todas las cajas con tinta; la caja se estira para que la tinta no se corte.
+    function _penMountAll(root) {
+      const scope = (root && root.querySelectorAll) ? root : document;
+      scope.querySelectorAll("textarea.field-ta[data-key]").forEach(function (ta) {
+        const nd = noteData[ta.dataset.key]; const ink = nd ? _penInk(nd, _penField(ta), false) : null;
+        if (!ink || !ink.s.length) { if (_penLayer(ta, false)) _penRedraw(ta); return; }
+        _penLayer(ta, true);
+        const scale = _penScale(ink, ta); let maxY = 0;
+        ink.s.forEach(function (s) { (s.p || []).forEach(function (p) { if (p[1] > maxY) maxY = p[1]; }); });
+        const need = Math.ceil(maxY * scale + 14);
+        if (ta.offsetHeight && need > ta.offsetHeight) ta.style.height = need + "px";
+        _penFit(ta);
+      });
+    }
+    function _penPressure(e) { return (e && e.pressure > 0 && e.pressure < 1) ? Math.round(e.pressure * 100) / 100 : 0.6; }
+    function _penStart(ta, e) {
+      const k = ta.dataset.key; getNote(k);
+      if (!_penLayer(ta, true)) return;
+      _penFit(ta);
+      const r = ta.getBoundingClientRect();
+      PEN.active = { id: e.pointerId, ta: ta, k: k, field: _penField(ta), color: "#1d4ed8", pts: [[Math.round((e.clientX - r.left) * 10) / 10, Math.round((e.clientY - r.top) * 10) / 10, _penPressure(e)]], len: 0, rect: r, grew: false };
+    }
+    function _penMove(e) {
+      const a = PEN.active; if (!a) return;
+      const r = a.rect; const x = e.clientX - r.left, y = e.clientY - r.top;
+      const last = a.pts[a.pts.length - 1]; const d = Math.hypot(x - last[0], y - last[1]);
+      if (d < 1) return;
+      a.len += d; a.pts.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10, _penPressure(e)]);
+      // Cerca del borde de abajo: la caja crece para seguir escribiendo (como pasar de renglón en la hoja)
+      if (y > a.ta.offsetHeight - 22 && !a.grew) { a.grew = true; a.ta.style.height = (a.ta.offsetHeight + 60) + "px"; _penFit(a.ta); a.rect = a.ta.getBoundingClientRect(); }
+      const cv = _penLayer(a.ta, false); if (!cv) return;
+      _penStrokePath(cv.getContext("2d"), a.pts.slice(-2), 1, a.color);
+    }
+    function _penEnd(e, cancelled) {
+      const a = PEN.active; PEN.active = null; if (!a) return;
+      const ta = a.ta, k = a.k, field = a.field;
+      if (cancelled) { _penRedraw(ta); return; }
+      if (a.len < 4) {               // toque con el lápiz (sin arrastrar) = poner el cursor en la caja
+        _penRedraw(ta);
+        try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
+        return;
+      }
+      const nd = getNote(k); const ink = _penInk(nd, field, true);
+      if (!(ink.w > 0)) ink.w = ta.offsetWidth || 1;
+      const scale = _penScale(ink, ta);        // al ancho de referencia de la caja (misma tinta en iPad y laptop)
+      const pts = a.pts.map(function (p) { return [Math.round(p[0] / scale * 10) / 10, Math.round(p[1] / scale * 10) / 10, p[2]]; });
+      const label = _penLabel(ta);
+      // Tachadura / rayoneo ENCIMA de tinta → borra los trazos que toca (el rayón no se guarda)
+      const erased = _penScratch(ink, pts);
+      if (erased.length) {
+        _penUndoOnce(k, label);
+        ink.s = ink.s.filter(function (s) { return erased.indexOf(s) < 0; });
+        _penRedraw(ta); _penSave(k);
+        if (typeof _plToast === "function") _plToast("🧽 " + erased.length + (erased.length > 1 ? " trazos borrados" : " trazo borrado"), "#7c3aed", 1200);
+        return;
+      }
+      if (_penPoints(ink) + pts.length > PEN_MAX_POINTS) {
+        _penRedraw(ta);
+        if (typeof _plToast === "function") _plToast("Esta caja ya tiene mucha tinta: bórrala o pásala a texto (✍️ en la esquina), o usa el lienzo grande", "#b45309", 3200);
+        return;
+      }
+      _penUndoOnce(k, label);
+      ink.s.push({ c: a.color, p: pts, t: Date.now(), by: (typeof userInitials === "function") ? userInitials() : "" });
+      _penRedraw(ta); _penSave(k);
+    }
+    function _penLabel(ta) {
+      try { const lbl = ta && ta.parentElement && ta.parentElement.querySelector(".field-label"); return lbl ? lbl.textContent.replace(/\s+/g, " ").trim().slice(0, 30) : (ta ? _penField(ta) : ""); } catch (_) { return ta ? _penField(ta) : ""; }
+    }
+    function _penUndoOnce(k, label) {
+      const now = Date.now(); if (PEN.lastUndo[k] && now - PEN.lastUndo[k] < 20000) return;
+      PEN.lastUndo[k] = now; try { _undoPush(k, "tinta en " + label); } catch (_) {}
+    }
+    // ¿Es un rayón? Zigzag (≥ 4 cambios de dirección), más largo que su propio recuadro y ENCIMA de tinta
+    // previa (≥ 2 puntos de algún trazo dentro del recuadro). Escribir "mm" en espacio vacío NO borra nada.
+    function _penScratch(ink, pts) {
+      if (pts.length < 8 || !ink.s.length) return [];
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, len = 0, revX = 0, revY = 0, dx0 = 0, dy0 = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i]; if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0]; if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
+        if (i) {
+          const dx = p[0] - pts[i - 1][0], dy = p[1] - pts[i - 1][1]; len += Math.hypot(dx, dy);
+          const sx = Math.abs(dx) > 1.5 ? Math.sign(dx) : 0, sy = Math.abs(dy) > 1.5 ? Math.sign(dy) : 0;
+          if (sx && dx0 && sx !== dx0) revX++; if (sx) dx0 = sx;
+          if (sy && dy0 && sy !== dy0) revY++; if (sy) dy0 = sy;
+        }
+      }
+      const bw = maxX - minX, bh = maxY - minY;
+      if (Math.max(revX, revY) < 4 || len < 2 * Math.max(bw, bh) || Math.max(bw, bh) < 10) return [];
+      const pad = 6, x0 = minX - pad, x1 = maxX + pad, y0 = minY - pad, y1 = maxY + pad;
+      return ink.s.filter(function (s) { let n = 0; for (const q of (s.p || [])) { if (q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1 && ++n >= 2) return true; } return false; });
+    }
+    function _penSave(k) {
+      clearTimeout(PEN.saveTimers[k]);
+      PEN.saveTimers[k] = setTimeout(function () { try { _saveNoteNow(k, getNote(k), "ck___ink"); } catch (e) { safeLog("pen save:", e); } }, 600);
+    }
+    function _penTaFor(k, field) {
+      return document.querySelector(field.indexOf("ck:") === 0 ? 'textarea.field-ta[data-key="' + k + '"][data-ckfield="' + field.slice(3) + '"]' : 'textarea.field-ta[data-key="' + k + '"][data-field="' + field + '"]');
+    }
+    function _penMenu(ta, btn) {
+      const old = document.querySelector(".pl-ink-pop"); if (old) { const same = old._for === ta; old.remove(); if (same) return; }
+      const k = ta.dataset.key, field = _penField(ta);
+      const pop = document.createElement("div"); pop.className = "pl-ink-pop"; pop._for = ta;
+      pop.innerHTML = '<button type="button" data-act="undo">↶ Deshacer trazo</button><button type="button" data-act="text">🤖 Pasar a texto</button><button type="button" data-act="clear">🧹 Borrar la tinta</button>';
+      pop.addEventListener("click", function (ev) {
+        const b = ev.target.closest("button[data-act]"); if (!b) return;
+        ev.preventDefault(); ev.stopPropagation(); pop.remove();
+        if (b.dataset.act === "undo") penUndo(k, field); else if (b.dataset.act === "clear") penClear(k, field); else if (b.dataset.act === "text") penToText(k, field);
+      });
+      btn.insertAdjacentElement("afterend", pop);
+      pop.style.left = Math.max(0, parseFloat(btn.style.left || "0") - 150) + "px"; pop.style.top = (parseFloat(btn.style.top || "0") + 28) + "px";
+      setTimeout(function () { const close = function (e) { if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener("pointerdown", close, true); } }; document.addEventListener("pointerdown", close, true); }, 0);
+    }
+    function penUndo(k, field) {
+      const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) return;
+      _penUndoOnce(k, field); ink.s.pop(); _penSave(k);
+      const ta = _penTaFor(k, field); if (ta) _penRedraw(ta);
+    }
+    function penClear(k, field) {
+      const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) return;
+      if (!confirm("¿Borrar toda la tinta de esta caja? (El texto escrito no se toca)")) return;
+      try { _undoPush(k, "borrar tinta en " + field); } catch (_) {}
+      delete nd.checklist.__ink[field]; _penSave(k);
+      const ta = _penTaFor(k, field); if (ta) _penRedraw(ta);
+    }
+    // La tinta de la caja al lienzo grande (más grande, para leerla): ahí 🤖 Transcribir la pasa a texto del campo.
+    function penToText(k, field) {
+      const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) { alert("Esta caja no tiene tinta."); return; }
+      const f = 1.8;
+      nd._inkFields = nd._inkFields || {};
+      nd._inkFields[field] = ink.s.map(function (s) { return { tool: "pen", color: "#0f172a", alpha: 1, points: (s.p || []).map(function (p) { return { x: 40 + p[0] * f, y: 40 + p[1] * f, p: p[2] || 0.6 }; }) }; });
+      openInkpadForField(k, field, _penLabel(_penTaFor(k, field)) || field);
+    }
+    // Eventos: SOLO el lápiz (pointerType "pen"). El dedo y el ratón siguen llegando a la caja (cursor, teclado, scroll).
+    (function _penBind() {
+      document.addEventListener("touchstart", function (e) {
+        try {
+          if (!penModeOn() || !e.touches || e.touches.length !== 1) return;
+          if (e.touches[0].touchType !== "stylus") return;        // WebKit: "stylus" = Apple Pencil
+          if (!_penTa(e.target)) return;
+          e.preventDefault();                                        // ni scroll ni Scribble: la tinta la pinta la app
+        } catch (_) {}
+      }, { passive: false, capture: true });
+      document.addEventListener("touchmove", function (e) { if (PEN.active && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
+      document.addEventListener("pointerdown", function (e) {
+        if (e.pointerType !== "pen" || !penModeOn()) return;
+        const ta = _penTa(e.target); if (!ta) return;
+        e.preventDefault(); e.stopPropagation();
+        _penStart(ta, e);
+      }, true);
+      document.addEventListener("pointermove", function (e) { if (PEN.active && e.pointerId === PEN.active.id) { if (e.cancelable) e.preventDefault(); _penMove(e); } }, true);
+      document.addEventListener("pointerup", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, false); }, true);
+      document.addEventListener("pointercancel", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, true); }, true);
+      window.addEventListener("blur", function () { if (PEN.active) _penEnd(null, true); });
+      try { document.body.classList.toggle("pen-on", penModeOn()); } catch (_) {}
+      // Las tarjetas también se repintan fuera de renderView/_rerenderCard (Realtime, RIS, fotos…): cualquier
+      // cambio de nodos en la vista vuelve a montar las capas de tinta (los nodos propios de la tinta no cuentan).
+      try {
+        const host = document.getElementById("view-piso") || document.body; let raf = 0;
+        const isPenEl = function (n) { return n.nodeType === 1 && (n.classList.contains("pl-ink-cv") || n.classList.contains("pl-ink-menu") || n.classList.contains("pl-ink-pop")); };
+        const other = function (list) { return Array.prototype.some.call(list, function (n) { return !isPenEl(n); }); };
+        new MutationObserver(function (recs) {
+          if (!recs.some(function (r) { return other(r.addedNodes) || other(r.removedNodes); })) return;
+          if (raf) return;
+          raf = requestAnimationFrame(function () { raf = 0; try { _penMountAll(); } catch (_) {} });
+        }).observe(host, { childList: true, subtree: true });
+      } catch (_) {}
+    })();
+
     // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
     // ➕ Hoy en IC / Cultivos / Entrega / Recibo (oct 2026): anota "dd/mm: " al final de la caja, como la
     // fecha que se escribe a mano antes de cada renglón en la hoja de visita. isCk = campo del checklist.
@@ -15442,7 +15938,7 @@ function plExportBackup() {
           <span>📤 Entrega de guardia${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'entrega',false,'Entrega')" title="Anotar la fecha de hoy antes de la evolución del día">➕ Hoy</button>
-            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Auto-llenar entrega con labs críticos, pendientes y cruce">✨ Auto-llenar</button>
+            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Escribir o actualizar el resumen de entrega: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (lo escrito a mano no se toca)">✨ Resumen</button>
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Entrega de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
         </div>
@@ -16513,17 +17009,21 @@ function plExportBackup() {
       }
     };
 
-    function labCellHtml(lf, val, k, fecha, prevVal) {
-      const num = parseLabNumber(val);
-      const crit = val && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch));
-      const abn = val && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
+    // est (oct 2026): { v, txt, est:true } de inrOf → cuando la celda está vacía se muestra el INR ESTIMADO (TP ÷ testigo)
+    // como marca de agua "≈1.59" con su color; al escribir un INR real, el estimado desaparece.
+    function labCellHtml(lf, val, k, fecha, prevVal, est) {
+      const estOn = !val && !!(est && est.est && est.txt);
+      const num = parseLabNumber(estOn ? est.txt : val);
+      const has = !!val || estOn;
+      const crit = has && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch));
+      const abn = has && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
       const cls = crit ? "crit" : abn ? "abn" : "";
       const hasAlert = (crit || abn) && LAB_QUICK[lf.key];
       const tid = ("tip-" + k + "-" + lf.key).replace(/[^a-zA-Z0-9]/g, "_");
 
       // ── Tendencia Δ ──────────────────────────────────────────────────────────
       let trendHtml = "";
-      if (val && prevVal !== undefined && prevVal !== "" && prevVal !== null) {
+      if (has && prevVal !== undefined && prevVal !== "" && prevVal !== null) {
         const prev = parseFloat(prevVal);
         if (!isNaN(prev) && !isNaN(num) && prev !== 0) {
           const delta = num - prev;
@@ -16539,14 +17039,14 @@ function plExportBackup() {
         }
       }
 
-      return `<div class='lab-cell ${cls}' ${hasAlert ? `onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"` : ""}>` +
-        `<div class='lab-key'>${lf.label}</div>` +
-        `<input class='lab-input ${cls}' value='${esc(val)}' placeholder='—'` +
+      return `<div class='lab-cell ${cls}${estOn ? " lab-est" : ""}' ${hasAlert ? `onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"` : ""}>` +
+        `<div class='lab-key'>${lf.label}${estOn ? "<span class='lab-est-tag' title='INR estimado = TP ÷ testigo (WinLab no reporta INR)'>≈</span>" : ""}</div>` +
+        `<input class='lab-input ${cls}' value='${esc(val)}' placeholder='${estOn ? "≈" + esc(est.txt) : "—"}'${estOn ? " title='INR estimado = TP ÷ testigo (WinLab no reporta INR). Escribe el INR real si lo tienes.'" : ""}` +
         ` data-key='${k}' data-labkey='${lf.key}' data-fecha='${fecha}'` +
         ` oninput="liveLabUpdate(this)" onchange="updateLabHistory(this.dataset.key,this.dataset.fecha,this.dataset.labkey,this.value)"/>` +
         `<div class='lab-unit'>${lf.unit}</div>` +
         trendHtml +
-        (hasAlert ? renderLabTipHtml(tid, lf, val, num, crit) : "") +
+        (hasAlert ? renderLabTipHtml(tid, lf, estOn ? est.txt : val, num, crit) : "") +
         `</div>`;
     }
 
@@ -16653,7 +17153,12 @@ function plExportBackup() {
         const prevFecha = prevDates.length ? prevDates[0] : null;
         const prevSnap = prevFecha ? history.find(s => s.fecha === prevFecha) : null;
         const prevLabs = prevSnap ? (prevSnap.labs || {}) : {};
-        const _cell = lf => labCellHtml(lf, labs[lf.key] || "", k, activeFecha, prevFecha ? (prevLabs[lf.key] ?? undefined) : undefined);
+        // INR (oct 2026): si WinLab no lo trajo, la celda muestra el estimado TP ÷ testigo (≈) con su color.
+        const _inrCur = (typeof inrOf === "function") ? inrOf(labs) : null;
+        const _inrPrev = (prevFecha && typeof inrOf === "function") ? inrOf(prevLabs) : null;
+        const _cell = lf => labCellHtml(lf, labs[lf.key] || "", k, activeFecha,
+          prevFecha ? (lf.key === "inr" ? ((_inrPrev && Number.isFinite(_inrPrev.v)) ? _inrPrev.txt : undefined) : (prevLabs[lf.key] ?? undefined)) : undefined,
+          lf.key === "inr" ? _inrCur : null);
         const _byKey = {}; LAB_FIELDS.forEach(f => { _byKey[f.key] = f; });
         const _used = {};
         const _mainFields = [];
@@ -18978,9 +19483,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const nd = noteData[pid(p)] || defaultData();
           const cl = nd.checklist || {};
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
-          // ── ENTREGA: una ficha por paciente — id + diagnóstico + últimos 2 labs + drenajes ──
-          // Por pedido de Gera (jun 2026): ficha de identificación, Dx, los últimos
-          // laboratorios (al menos los 2 más recientes, comparados) y gastos de drenajes.
+          // ── ENTREGA (oct 2026, pedido de Gera): una ficha por paciente que RESUME, no transcribe —
+          // id + Dx + quirófano + atención (soporte) + gastos + labs PUNTUALES + lo nuevo del día +
+          // pendientes abiertos + lo escrito a mano en la caja Entrega (sin el bloque de resumen).
+          // Antes: tabla de todos los analitos de 2 fechas (no resumía nada).
           let days = ""; try { days = daysSince(p.ingreso); } catch (_) { days = ""; }
           const idParts = [
             p.edad ? p.edad + "a" : "",
@@ -18994,41 +19500,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const dxTxt = p.dx || nd.dx || "";
           const dxRow = (dxTxt && String(dxTxt).trim())
             ? `<div class="eg-bigrow"><span class="eg-biglbl">🩺 Diagnóstico</span><div class="eg-bigval">${esc(String(dxTxt))}</div></div>` : "";
-          // Últimos 2 laboratorios (comparados, cronológico viejo→nuevo).
-          const LAB_ORDER_EG = ["hb","hct","leucos","plaq","cr","bun","urea","glu","na","k","cl","ca","mg","alb","ptot","glob","bt","bd","bi","alt","ast","fa","ggt","ldh","pcr","pct","tp","ttp","inr","fibrinogeno","lac"];
-          const recent = (nd.labHistory || []).slice().filter(s => s && s.fecha)
-            .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 2);
-          const cols = recent.slice().reverse(); // [previo, más reciente]
-          const presentKeys = LAB_ORDER_EG.filter(x => cols.some(s => s.labs && s.labs[x] && String(s.labs[x]).trim() !== ""));
-          const cellCls = (key, val) => {
-            const lf = LAB_FIELDS.find(f => f.key === key); const num = parseFloat(val);
-            if (!lf || isNaN(num)) return "";
-            if ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)) return "crit";
-            if ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high)) return "abn";
-            return "";
-          };
-          let labsTbl = "";
-          if (presentKeys.length && cols.length) {
-            const header = `<tr><th></th>${cols.map(s => `<th>${fmtDateChip(s.fecha)}</th>`).join("")}</tr>`;
-            const rows = presentKeys.map(key => {
-              const lf = LAB_FIELDS.find(f => f.key === key);
-              const lbl = lf ? lf.label : key.toUpperCase();
-              return `<tr><td>${esc(lbl)}</td>${cols.map(s => {
-                const v = (s.labs && s.labs[key]) ? String(s.labs[key]) : "—";
-                const c = v === "—" ? "" : cellCls(key, v);
-                return `<td class="${c}">${esc(v)}</td>`;
-              }).join("")}</tr>`;
-            }).join("");
-            labsTbl = `<div class="eg-bigrow"><span class="eg-biglbl">🧪 Laboratorios (últimos ${cols.length})</span><table class="eg-labtbl">${header}${rows}</table></div>`;
-          }
-          // Gastos por drenajes (nd.drenajes + SEP si aplica).
-          const drenParts = [];
-          if (nd.drenajes && String(nd.drenajes).trim()) drenParts.push(String(nd.drenajes).trim());
-          { const _dt = dispositivosTexto(cl, " | "); if (_dt) drenParts.push(_dt); }
-          const drenTxt = drenParts.join("  |  ");
-          const drenBig = drenTxt ? `<div class="eg-bigrow"><span class="eg-biglbl">💧 Gastos por drenajes</span><div class="eg-bigval">${esc(drenTxt)}</div></div>` : "";
-          const cxTxt = cirugiasTexto(cl, "  |  ");
-          const cxBig = cxTxt ? `<div class="eg-bigrow"><span class="eg-biglbl">🔪 Cirugías</span><div class="eg-bigval">${esc(cxTxt)}</div></div>` : "";
+          // Resumen (oct 2026): las mismas secciones que el botón ✨ Resumen de la tarjeta.
+          const R = buildEntregaResumen(p, nd);
+          const egRow = (icon, label, inner, extraCls) => inner ? `<div class="eg-bigrow${extraCls ? " " + extraCls : ""}"><span class="eg-biglbl">${icon} ${label}</span>${inner}</div>` : "";
+          const egList = (arr) => (arr && arr.length) ? `<ul class="eg-list">${arr.map(s => `<li>${esc(s)}</li>`).join("")}</ul>` : "";
+          const labsInner = R.labs
+            ? (R.labs.items.length
+              ? `<div class="eg-labchips">${R.labs.items.map(i => `<span class="eg-biglab ${i.crit ? "crit" : "abn"}">${esc(i.text)}</span>`).join("")}${R.labs.extra ? `<span class="eg-biglab">+${R.labs.extra} alterados</span>` : ""}</div>`
+              : `<div class="eg-bigval eg-muted">sin valores críticos ni cambios grandes</div>`)
+            : `<div class="eg-bigval eg-muted">sin laboratorios</div>`;
+          const entregaTxt = _entregaSinResumen(nd.entrega);
+          const entregaInner = entregaTxt ? `<div class="eg-pre">${esc(entregaTxt.length > 700 ? entregaTxt.slice(0, 700) + "…" : entregaTxt)}</div>` : "";
 
           cards += `<div class="eg-c" style="border-left:7px solid ${ec}">
         <div class="eg-bighdr">
@@ -19039,9 +19521,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           </div>
         </div>
         ${dxRow}
-        ${cxBig}
-        ${labsTbl}
-        ${drenBig}
+        ${egRow("🔪", "Quirófano", egList(R.qx))}
+        ${egRow("⚠️", "Atención", egList(R.alertas), "eg-warn")}
+        ${egRow("💧", "Gastos", egList(R.gastos))}
+        ${egRow("🧪", "Labs puntuales" + (R.labs ? " · " + esc(fmtDateChip(R.labs.fecha)) : ""), labsInner)}
+        ${egRow("🆕", "Nuevo del día", egList(R.nuevo))}
+        ${egRow("📋", "Pendientes", egList(R.pend))}
+        ${egRow("📤", "Entrega escrita", entregaInner)}
       </div>`;
         });
         sectionsHtml += `<div class="eg-sec"><div class="eg-sh" style="background:${sec.color}"><span>${sec.label}</span><span class="eg-sc">${sorted.length}</span></div><div class="eg-sg">${cards}</div></div>`;
@@ -19103,16 +19589,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       .eg-biglab.abn b{color:#78350f}
       .eg-biglab.crit{background:#fee2e2;border-color:#fca5a5;color:#b91c1c;font-weight:800}
       .eg-biglab.crit b{color:#991b1b}
-      /* Entrega v2 (jun 2026): ficha id + Dx + últimos 2 labs comparados + drenajes */
+      /* Entrega v3 (oct 2026): ficha id + Dx + resumen (quirófano, atención, gastos, labs puntuales, nuevo del día, pendientes) + entrega escrita */
       .eg-bigidwrap{display:flex;flex-direction:column;gap:2px;min-width:0}
       .eg-bigid{font-size:13px;font-weight:600;color:#64748b;line-height:1.2}
-      .eg-labtbl{border-collapse:collapse;margin-top:2px}
-      .eg-labtbl th{font-size:12px;font-weight:700;color:#0e7490;text-align:right;padding:2px 14px 4px;border-bottom:2px solid #e2e8f0;white-space:nowrap}
-      .eg-labtbl th:first-child{text-align:left}
-      .eg-labtbl td{font-size:18px;font-weight:600;color:#1e293b;text-align:right;padding:2px 14px;white-space:nowrap}
-      .eg-labtbl td:first-child{font-size:14px;font-weight:700;color:#475569;text-align:left}
-      .eg-labtbl td.abn{color:#92400e}
-      .eg-labtbl td.crit{color:#b91c1c;font-weight:800}
+      .eg-list{margin:0;padding-left:22px;font-size:19px;font-weight:600;color:#1e293b;line-height:1.35}
+      .eg-list li{margin:2px 0;word-break:break-word}
+      .eg-labchips{display:flex;flex-wrap:wrap;gap:8px}
+      .eg-muted{color:#94a3b8;font-weight:500;font-size:16px}
+      .eg-pre{white-space:pre-wrap;font-size:17px;font-weight:500;color:#334155;line-height:1.35;word-break:break-word}
+      .eg-warn .eg-biglbl{color:#b45309}
+      .eg-warn .eg-list{color:#92400e}
       @media print{.eg-c{break-inside:avoid;box-shadow:none}}
       @media(max-width:640px){.eg-sg{grid-template-columns:1fr}.eg-r2,.eg-r3{grid-template-columns:1fr}}
     </style>
@@ -24258,21 +24744,23 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       _saveNoteNow(k, nd);
       _refreshVpRow(k);
     }
+    // Norepinefrina en mcg/kg/h (así se lee en el piso) con el equivalente en mcg/kg/min; rojo > 30 mcg/kg/h (0.5 mcg/kg/min).
     function _vpNoreRes(cl) {
       if (!(vpNum(cl.pm_peso) > 0)) return { txt: "⚖️ falta el peso", cls: "vp-na" };
       const d = vpNoreDosis(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_mlh, cl.pm_peso);
-      if (d === null) return { txt: "— mcg/kg/min", cls: "vp-na" };
-      return { txt: vpFmt(d) + " mcg/kg/min", cls: d > 0.5 ? "vp-hi" : "" };
+      if (d === null) return { txt: "— mcg/kg/h", cls: "vp-na" };
+      return { txt: vpFmt(d * 60, 1) + " mcg/kg/h (" + vpFmt(d) + " mcg/kg/min)", cls: d > 0.5 ? "vp-hi" : "" };
     }
-    function _vpNoreMeta(cl) { const r = vpNoreRate(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_meta, cl.pm_peso); return r === null ? "" : "= " + vpFmt(r, 1) + " mL/h"; }
+    // La meta se escribe en mcg/kg/h y se traduce a mL/h.
+    function _vpNoreMeta(cl) { const r = vpNoreRateH(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_meta, cl.pm_peso); return r === null ? "" : "= " + vpFmt(r, 1) + " mL/h"; }
     function _vpVasoRes(cl) {
       const d = vpVasoDosis(cl.vp_vaso_u, cl.vp_vaso_ml, cl.vp_vaso_mlh);
       if (d === null) return { txt: "— U/min", cls: "vp-na" };
       return { txt: vpFmt(d) + " U/min (" + vpFmt(d * 60, 1) + " U/h)", cls: d > 0.04 ? "vp-hi" : "" };
     }
     function _vpVasoMeta(cl) { const r = vpVasoRate(cl.vp_vaso_u, cl.vp_vaso_ml, cl.vp_vaso_meta); return r === null ? "" : "= " + vpFmt(r, 1) + " mL/h"; }
-    // Surviving Sepsis Campaign 2021: con norepinefrina ≥ 0.25 mcg/kg/min se sugiere agregar vasopresina (0.03 U/min).
-    function _vpSsc(cl) { const d = vpNoreDosis(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_mlh, cl.pm_peso); return (d !== null && d >= 0.25 && !cl.vp_vaso_on) ? "SSC 2021: con norepinefrina ≥ 0.25 mcg/kg/min considera agregar vasopresina 0.03 U/min" : ""; }
+    // Surviving Sepsis Campaign 2021: con norepinefrina ≥ 0.25 mcg/kg/min (= 15 mcg/kg/h) se sugiere agregar vasopresina (0.03 U/min).
+    function _vpSsc(cl) { const d = vpNoreDosis(cl.vp_nore_mg, cl.vp_nore_ml, cl.vp_nore_mlh, cl.pm_peso); return (d !== null && d >= 0.25 && !cl.vp_vaso_on) ? "SSC 2021: con norepinefrina ≥ 15 mcg/kg/h (0.25 mcg/kg/min) considera agregar vasopresina 0.03 U/min" : ""; }
     function _vpResSpan(id, r) { return `<span class="vp-res${r.cls ? " " + r.cls : ""}" id="${id}">${esc(r.txt)}</span>`; }
     function _vpSexo(k, nd) { const p = patients.find(function (x) { return pid(x) === k; }); return (typeof PLCDS !== "undefined" && PLCDS.getSex) ? PLCDS.getSex(p, nd) : ""; }
     function _vmChipsHtml(cl, k) {
@@ -24296,6 +24784,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const m2 = document.getElementById("vp-vaso-meta-" + ek); if (m2) m2.textContent = _vpVasoMeta(cl);
         const ssc = document.getElementById("vp-ssc-" + ek); if (ssc) { const s = _vpSsc(cl); ssc.textContent = s; ssc.style.display = s ? "" : "none"; }
         const vm = document.getElementById("vm-chips-" + ek); if (vm) vm.innerHTML = _vmChipsHtml(cl, k);
+        // El peso vive en dos sitios (fila Clínico y fila Vasopresor): el que no se está escribiendo sigue al otro.
+        const wrap = document.getElementById("ck-row-" + ek);
+        if (wrap) wrap.querySelectorAll('input[data-field="pm_peso"]').forEach(function (inp) { const v = toSafeString(cl.pm_peso); if (inp !== document.activeElement && inp.value !== v) inp.value = v; });
       } catch (_) {}
     }
     function renderVpRow(cl, k) {
@@ -24304,8 +24795,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const inp = (field, w, ph, title) => `<input class="pm-input vp-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl[field] || "")}" placeholder="${ph}" data-ck="${k}" data-field="${field}" oninput="updateVpField(this.dataset.ck,this.dataset.field,this.value)" style="width:${w}px" title="${title}"/>`;
       const chip = (item, on, label, title) => `<span class="ck-item${on ? " ck-on ck-vp-on" : ""}" data-ck="${k}" data-item="${item}" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="${title}"><span class="ck-label">${on ? "✓ " : ""}${label}</span></span>`;
       const ssc = _vpSsc(cl);
+      // ⚖️ El peso aquí mismo (pedido de Gera): es el mismo pm_peso de la fila Clínico; updatePmField refresca ambos.
+      const pesoInp = `<span class="pm-label">⚖️</span><input class="pm-input vp-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_peso || "")}" placeholder="kg" data-ck="${k}" data-field="pm_peso" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:46px" title="Peso del paciente en kg (el mismo de la fila Clínico)"/><span class="pm-label">kg ·</span>`;
       const nore = chip("vp_nore_on", noreOn, "Norepinefrina", "Norepinefrina en infusión") +
-        (noreOn ? `<span class="vp-grp">${inp("vp_nore_mg", 40, "mg", "mg de norepinefrina en la dilución")}<span class="pm-label">mg en</span>${inp("vp_nore_ml", 48, "mL", "mL totales de la dilución")}<span class="pm-label">mL ·</span>${inp("vp_nore_mlh", 48, "mL/h", "Velocidad de infusión (mL/h)")}<span class="pm-label">mL/h →</span>${_vpResSpan("vp-nore-res-" + ek, _vpNoreRes(cl))}<span class="pm-label">· meta</span>${inp("vp_nore_meta", 52, "dosis", "Dosis deseada en mcg/kg/min → mL/h")}<span class="vp-hint" id="vp-nore-meta-${ek}">${esc(_vpNoreMeta(cl))}</span></span>` : "");
+        (noreOn ? `<span class="vp-grp">${pesoInp}${inp("vp_nore_mg", 40, "mg", "mg de norepinefrina en la dilución")}<span class="pm-label">mg en</span>${inp("vp_nore_ml", 48, "mL", "mL totales de la dilución (en el piso: 100 mL)")}<span class="pm-label">mL ·</span>${inp("vp_nore_mlh", 48, "mL/h", "Velocidad de infusión (mL/h)")}<span class="pm-label">mL/h →</span>${_vpResSpan("vp-nore-res-" + ek, _vpNoreRes(cl))}<span class="pm-label">· meta</span>${inp("vp_nore_meta", 64, "mcg/kg/h", "Dosis deseada en mcg/kg/h → a cuántos mL/h ponerla")}<span class="vp-hint" id="vp-nore-meta-${ek}">${esc(_vpNoreMeta(cl))}</span></span>` : "");
       const vaso = chip("vp_vaso_on", vasoOn, "Vasopresina", "Vasopresina en infusión") +
         (vasoOn ? `<span class="vp-grp">${inp("vp_vaso_u", 40, "U", "Unidades de vasopresina en la dilución")}<span class="pm-label">U en</span>${inp("vp_vaso_ml", 48, "mL", "mL totales de la dilución")}<span class="pm-label">mL ·</span>${inp("vp_vaso_mlh", 48, "mL/h", "Velocidad de infusión (mL/h)")}<span class="pm-label">mL/h →</span>${_vpResSpan("vp-vaso-res-" + ek, _vpVasoRes(cl))}<span class="pm-label">· meta</span>${inp("vp_vaso_meta", 60, "U/min", "Dosis deseada en U/min → mL/h")}<span class="vp-hint" id="vp-vaso-meta-${ek}">${esc(_vpVasoMeta(cl))}</span></span>` : "");
       return `<div class="checklist-row ck-r-vaso" data-testid="vp-row">
@@ -27316,14 +27809,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     }
   </style>
 
-<div id="pl-fab-v28" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
-  <button onclick="plExportBackup()" title="Descargar backup local (indicaciones, snapshots, config)"
-    style="background:linear-gradient(135deg,#64748b 0%,#475569 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">💾</button>
-  <button onclick="openIndicacionesModal()" title="Importar indicaciones"
-    style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
-  <button onclick="openPendientesImport()" title="Importar pendientes/plan desde Excel (censo)"
-    style="background:linear-gradient(135deg,#14b8a6 0%,#0f766e 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📊</button>
-</div>
+<!-- Los botones flotantes (💾 respaldo, 📥 indicaciones, 📊 planes) se quitaron en oct 2026 (pedido de Gera):
+     tapaban las cajas en el iPad. Ahora están en el menú «⋯ Más» del encabezado y «📊 Planes» en la barra del tablero. -->
 
 <!-- ═══ PisoLibro v29: Cultivos + Importador Pendientes ═══ -->
 <script>

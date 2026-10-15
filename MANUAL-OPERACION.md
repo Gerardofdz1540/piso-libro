@@ -275,7 +275,9 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
 - **💉 Manejo médico actual** (verde azulado).
 - **⚠️ Pendientes / Plan** (ámbar).
 - **📤 Entrega de guardia** (naranja): lo que **yo dejo** para la siguiente guardia, eventualidades
-  y cosas por hacer. Las novedades de labs, imagen y cultivos se anotan solas con su fecha.
+  y cosas por hacer. El botón **✨ Resumen** escribe al final un bloque corto con lo que importa (ver
+  "Entrega de guardia que resume"); las novedades de labs críticos, imagen y cultivos se anotan solas
+  con su fecha.
 - **📥 Recibo de guardia** (verde): lo que **me entregan** al llegar. El botón **⇄ Tomar guardia**
   pasa el texto de Entrega a Recibo con fecha y hora y deja Entrega vacía para mi guardia.
 - Plegables: **Historia · APP / PA** y **Pendientes MIPs / R1**.
@@ -302,13 +304,82 @@ conserva su tarjeta completa: labs, pendientes, checklist, diagrama. Tres capas 
 
 El 13 de octubre de 2026 se recuperaron así las notas de 3-151, 3-153, 3-162, 3-177, 3-181 y UCI 8.
 
-## Entrega de guardia: novedades automáticas
+## Entrega de guardia que resume (octubre 2026)
 
-Todo lo que llega solo se anota en la caja **Entrega de guardia** de la tarjeta, una línea por
-novedad con su fecha (`13-10-2026: …`): laboratorios nuevos con alteraciones (por ejemplo
-"Anemia severa (Hb 6.2), Hiperkalemia severa (K 6.3)"), estudios del visor (con la conclusión del
-reporte, o "reporte pendiente") y cultivos (positivo con germen, o sin desarrollo). Cada novedad se
-escribe una sola vez aunque la app esté abierta en varios iPads; lo escrito a mano no se toca.
+La entrega ya no transcribe la tarjeta. Tanto el botón **✨ Resumen** de la caja Entrega como la
+vista **📤 Entrega** (una ficha por paciente) muestran solo lo que la siguiente guardia necesita:
+
+- **🔪 Quirófano**: si pasó a quirófano hoy o ayer (procedimiento, hallazgos, sangrado, cirujano);
+  si no, el día POP de la última cirugía y cuántas previas hay. Cruce quirúrgico si está activo.
+- **⚠️ Atención**: vasopresor con dosis, ventilador, NPT, ayuno, "sin labs desde hace N días".
+- **💧 Gastos**: cada drenaje o sonda con su gasto y características, la nota de drenajes, la uresis
+  y el balance del pase.
+- **🧪 Labs puntuales** del último control: solo valores críticos, cambios grandes contra el control
+  previo (por ejemplo Hb que baja 1.5 o más, K que cambia 0.7, creatinina 0.3), INR ≥ 1.3 y lactato
+  > 2, con flecha de tendencia y el valor anterior. Máximo seis; el resto se cuenta. Nada de
+  transcribir todos los analitos.
+- **🆕 Nuevo del día**: lo que se agregó, pidió o llegó hoy o ayer. Se reconoce por los sellos de
+  fecha que ya usa la app (➕ Hoy, el encabezado del día en Pendientes, las novedades automáticas)
+  en Pendientes, Manejo, IC, Cultivos y Entrega; además los drenajes colocados hoy/ayer, los
+  estudios del visor recién llegados (con su conclusión) y los cultivos de los últimos dos días.
+  Por eso conviene tocar ➕ Hoy antes de escribir: lo que no tiene fecha no se puede saber si es nuevo.
+- **📋 Pendientes** abiertos (sin ✓) y los "No olvidar" del paciente.
+
+✨ Resumen agrega el bloque `— Resumen dd/mm hh:mm GF —` al final de la caja; si ya había uno, lo
+reemplaza (lo escrito a mano no se toca). En la vista 📤 Entrega aparece además lo escrito en la caja
+("Entrega escrita"), sin el bloque de resumen.
+
+### Novedades automáticas
+
+Todo lo que llega solo se anota en la caja **Entrega de guardia**, una línea por novedad con su fecha
+(`13-10-2026: …`): laboratorios nuevos **con valores críticos** (por ejemplo "Anemia severa (Hb 6.2),
+Hiperkalemia severa (K 6.3)"; lo solo "anormal" ya no se anota, se ve en la tabla) y el INR estimado
+cuando es ≥ 1.5, estudios del visor (con la conclusión del reporte, o "reporte pendiente") y cultivos
+(positivo con germen, o sin desarrollo). Cada novedad se escribe una sola vez aunque la app esté
+abierta en varios iPads; lo escrito a mano no se toca.
+
+## INR: siempre visible (octubre 2026)
+
+WinLab **no reporta INR**: en coagulación solo entrega TP, su **testigo** (control, 13 s) y TTP. Como
+el INR decide si se opera, la app ahora:
+
+- guarda el testigo del TP (`tp_testigo`), que antes se descartaba como basura del PDF;
+- cuando no hay INR capturado, lo **estima** como TP ÷ testigo (ISI ≈ 1) y lo marca con **≈** (por
+  ejemplo TP 20.7 s con testigo 13 s → INR ≈1.59, en ámbar; ≥ 3 en rojo);
+- muestra la fila INR **siempre** en la tabla de labs de la ficha, aunque no haya valor (en modo Pase
+  las demás filas vacías se ocultan); en la lista, la celda vacía trae el estimado como marca de agua
+  y al escribir el INR real este manda;
+- lo pone en la línea de pase (`INR ≈1.59▲`), en la nota de evolución ("INR 1.59 (ESTIMADO
+  TP/TESTIGO)"), en los labs puntuales de la entrega y como novedad automática si es ≥ 1.5.
+
+Si el laboratorio reporta un INR real, se usa ese y desaparece el estimado.
+
+## ✍️ Lápiz: escribir con el Apple Pencil directo sobre las cajas (octubre 2026)
+
+En el tablero, el botón **✍️ Lápiz** de la barra (encendido por defecto en iPad) hace que el Apple
+Pencil escriba **encima de cualquier caja de texto**, como en GoodNotes: la tinta se queda sobre la
+caja, viaja con la nota y se ve en todos los dispositivos (también en la hoja impresa). El dedo y el
+teclado siguen funcionando igual: tocar con el dedo pone el cursor y la tinta no estorba.
+
+- **Tachar o rayonear** encima de algo escrito a mano lo **borra** (se borran los trazos que toca el
+  rayón; el rayón no se guarda). Rayar en un espacio vacío solo dibuja.
+- Un **toque** con el lápiz (sin arrastrar) pone el cursor en la caja para teclear.
+- Si escribes cerca del borde de abajo, la caja **crece** sola para seguir escribiendo.
+- En la esquina de cada caja con tinta aparece **✍️**: deshacer el último trazo, **🤖 pasar a texto**
+  (abre el lienzo grande con esa tinta para transcribirla con IA al campo) o borrar toda la tinta.
+- Con **✍️ Lápiz apagado** vuelve el comportamiento del iPad: el lápiz escribe texto con **Scribble**
+  (Ajustes → Apple Pencil → Garabatear encendido). Si así tampoco escribe, revisa ese ajuste.
+- Límite: unas 6 000 muestras de tinta por caja (varios renglones); después pide borrar o pasar a
+  texto.
+
+## Vista iPad: las cajas usan todo el ancho (octubre 2026)
+
+- Las **camas** ya no van en el riel de la izquierda cuando la pantalla mide menos de 1 340 px (iPad):
+  están en una **tira deslizable** dentro de la barra pegajosa del tablero (la cama en foco queda a la
+  vista; el punto rojo/ámbar y 🧪 labs nuevos se conservan). En laptop sigue el riel lateral.
+- Se quitaron los **tres botones flotantes** de la derecha (💾 respaldo, 📥 indicaciones, 📊 planes)
+  que tapaban las cajas. **📊 Planes** está en la barra del tablero y los tres viven en el menú
+  **⋯ Más → Importar y respaldo**.
 
 ## Cultivos
 
@@ -364,12 +435,16 @@ puedes reintentar.
 En el checklist de la tarjeta, la fila **⚕️ Clínico** tiene ahora **Peso (kg)** y **Talla (cm)**. El
 peso se usa en la calculadora y se precarga en la corrección de electrolitos.
 
-La fila **💉 Vasopresor** calcula la dosis con solo el peso, la dilución y la velocidad:
+La fila **💉 Vasopresor** calcula la dosis con solo el peso, la dilución y la velocidad. El **⚖️ peso**
+se captura ahí mismo (es el mismo de la fila Clínico: cambiar uno actualiza el otro):
 
-- **Norepinefrina**: al encenderla propone 4 mg en 250 mL (editable). Con la velocidad en mL/h
-  muestra la dosis en mcg/kg/min: `(mg × 1000 ÷ mL) × mL/h ÷ 60 ÷ kg`. En **meta** escribes la
-  dosis deseada y te dice a cuántos mL/h ponerla. Más de 0.5 mcg/kg/min se marca en rojo; a partir
-  de 0.25 mcg/kg/min sugiere agregar vasopresina (Surviving Sepsis Campaign 2021).
+- **Norepinefrina**: al encenderla propone **4 mg en 100 mL** (en el servicio todo se diluye en
+  100 mL; editable). Con la velocidad en mL/h muestra la dosis en **mcg/kg/h** y, entre paréntesis,
+  en mcg/kg/min: `(mg × 1000 ÷ mL) × mL/h ÷ kg` (÷ 60 para mcg/kg/min). Ejemplo: 4 mg/100 mL a
+  10 mL/h en 70 kg = 5.7 mcg/kg/h (0.095 mcg/kg/min). En **meta** escribes la dosis deseada en
+  mcg/kg/h y te dice a cuántos mL/h ponerla. Más de 30 mcg/kg/h (0.5 mcg/kg/min) se marca en rojo;
+  a partir de 15 mcg/kg/h (0.25 mcg/kg/min) sugiere agregar vasopresina (Surviving Sepsis
+  Campaign 2021).
 - **Vasopresina**: propone 20 U en 100 mL. Muestra U/min (y U/h): `(U ÷ mL) × mL/h ÷ 60`; la meta
   funciona igual. Más de 0.04 U/min se marca en rojo.
 
@@ -379,7 +454,7 @@ muestra **VT en mL/kg** (rojo si > 8) y la **presión de distensión** Pplat −
 Pplat > 30 también se marca).
 
 La nota de evolución escribe todo esto en texto: "TA 110/70 MMHG (PAM 83 MMHG) BAJO APOYO
-VASOPRESOR CON NOREPINEFRINA A 0.076 MCG/KG/MIN (4 MG EN 250 ML A 20 ML/H) Y VASOPRESINA A 0.03
+VASOPRESOR CON NOREPINEFRINA A 11.4 MCG/KG/H (0.19 MCG/KG/MIN) (4 MG EN 100 ML A 20 ML/H) Y VASOPRESINA A 0.03
 U/MIN (20 U EN 100 ML A 9 ML/H)" y "BAJO VENTILACIÓN MECÁNICA INVASIVA (MODO AC, FIO2 40 %, PEEP 8
 CMH2O, VOLUMEN TIDAL 420 ML (6.4 ML/KG DE PESO PREDICHO), FR 16 RPM, PIP 24 CMH2O, PRESIÓN MESETA
 20 CMH2O, PRESIÓN DE DISTENSIÓN 12 CMH2O, RELACIÓN I:E 1:2)".
