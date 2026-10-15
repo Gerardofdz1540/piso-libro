@@ -364,39 +364,40 @@ El botón **✍️** de la barra del tablero tiene tres estados (se recuerdan po
    (encendido) y, si hace falta, cerrar y volver a abrir la app para que cargue la versión nueva.
    Prueba rápida: escribir con el lápiz en el buscador de Safari; si ahí tampoco convierte, es el
    ajuste del iPad, no la app.
-2. **✍️ → Texto**: escribes a mano sobre la caja (tinta morada) y, al soltar el lápiz un segundo y
-   medio, la app manda esa tinta al ayudante de IA (el worker de Cloudflare) y pega el texto
-   reconocido al final de la caja, como si lo hubieras tecleado (autor, Regresar y guardado iguales).
-   Lo escrito en el mismo renglón se une con espacio; en otro renglón, con salto de línea. Tachar la
-   tinta morada antes de que se convierta la borra. En la esquina, **✍️ → 🤖 Convertir ahora** no
-   espera la pausa. Si la IA no responde, la tinta se queda para reintentar. Necesita la URL del
-   worker en ⚙️ Config.
-3. **✍️ Tinta**: lo escrito se queda como tinta sobre la caja (viaja con la nota y se ve en todos los
-   dispositivos y en la hoja impresa). Tachar encima de la tinta borra los trazos que toca; rayar en
-   espacio vacío solo dibuja. En la esquina, **✍️**: deshacer, **🤖 pasar a texto** (abre el lienzo
-   grande con esa tinta para transcribirla) o borrar. Límite de unas 6 000 muestras por caja.
+2. **✍️ → Texto (escritura directa)**: escribes a mano **encima de cualquier caja**, del tamaño que
+   salga; no aparece ningún recuadro. La tinta se dibuja sobre la pantalla (morada) y la app la
+   convierte en **texto al instante, sin internet** (reconocedor local): mientras escribes ya ves el
+   valor en la caja. Al soltar el lápiz un momento (0.9 s en números, 1.3 s en texto) el valor queda
+   fijo —como si lo hubieras tecleado (autor, Regresar y guardado iguales)— y la tinta se pone verde y
+   se desvanece. Escribe en **letra de molde, MAYÚSCULAS**. En las cajas grandes, otro renglón es un
+   salto de línea y el mismo renglón se une con espacio.
+3. **✍️ Tinta**: en las **cajas grandes** lo escrito se queda como tinta sobre la caja (viaja con la
+   nota y se ve en todos los dispositivos y en la hoja impresa); tachar encima borra los trazos que
+   toca y rayar en vacío solo dibuja. En la esquina, **✍️**: deshacer, **🤖 pasar a texto** (lienzo
+   grande) o borrar. Los **campos de una línea** (vitales, vasopresor, labs…) se comportan como en
+   ✍️ → Texto: se convierten a texto al momento. Límite de unas 6 000 muestras por caja de tinta.
 
-En los tres casos: un **toque** con el lápiz (sin arrastrar) pone el cursor; el dedo y el teclado
-siguen igual; si escribes cerca del borde de abajo, la caja **crece** sola.
+En todos los casos: un **toque** con el lápiz (sin arrastrar) pone el cursor; el **dedo y el teclado**
+siguen igual (el dedo no pinta); si escribes cerca del borde de abajo, la caja **crece** sola.
 
-**Campos de una línea** (signos vitales, calculadora de vasopresor, labs, dieta, antibiótico, drenajes,
-cabecera, modales): no cabe escribir encima, así que al **tocarlos con el lápiz** (con ✍️ → Texto o ✍️
-Tinta encendido) se abre una **banda de escritura** debajo con el nombre del campo y su valor actual.
+### Cómo funciona la escritura directa (sin recuadros)
 
-- **Campos numéricos** (FC, FR, T°, SaO₂, TA, uresis, mL/h y mg del vasopresor, peso, talla, ventilador,
-  labs, días de ATB/ayuno): el número se reconoce **al instante y sin internet** (reconocedor local en
-  la app). Mientras escribes ves la lectura (`→ 95`); al soltar el lápiz un momento (0.9 s) el número se
-  pone solo en el campo y la banda se cierra. La TA se escribe con su barra (`130/80`); el punto decimal
-  y los dos puntos (I:E `1:2`) también. Debajo hay un **teclado** por si prefieres tocar los dígitos o
-  corregir (⌫); **✓** lo pone ya. Cada vez que confirmas con ✓ o corriges, la app **aprende tu letra**
-  en ese dispositivo (la próxima vez acierta mejor). Si se lee mal, corrige con el teclado y ✓.
-- **Campos de texto** (dieta, antibiótico, modo de ventilador…): lo escrito se manda al ayudante de IA
-  al soltar el lápiz (tarda unos segundos) y queda como valor del campo.
-
-En ambos: **🧹** borra lo escrito, **✕** cierra sin cambiar el campo; tocar fuera de la banda pone lo
-pendiente y la cierra; tocar el mismo campo otra vez con el lápiz cierra la banda y pone el cursor
-(teclado del iPad). El dedo no pinta en la banda. Las cajas de texto de los modales y de la cabecera
-también aceptan el lápiz: el texto se inserta (ahí no se guarda tinta).
+- **Encima del campo y lo que se salga**: todos los trazos, aunque se salgan del cuadro, son del campo
+  donde empezaste. Para saltar a otro campo, empieza el trazo claramente sobre él (a un lado o
+  arriba/abajo); un **toque** en otro campo también cierra lo que llevabas y te lleva ahí.
+- **Números al instante** (FC, FR, T°, SaO₂, TA, uresis, mL/h y mg del vasopresor, peso, talla,
+  ventilador, labs, días de ATB/ayuno): solo dígitos y `. : - /`. La **TA** se escribe con su barra
+  (`130/80`); el punto decimal (`36.5`) y los dos puntos de la relación I:E (`1:2`) también.
+- **Texto** (dieta, antibiótico, modo de ventilador, padecimiento, pendientes, interconsultas…):
+  letra de molde en mayúsculas, con números y acentos. Reconoce las abreviaturas de la hoja (O₂, SaO₂,
+  DM2, HAS, POP, LAPE, ATB, BH, QS, TAC…). Si configuraste el **worker de IA** (⚙️ Config), además
+  **revisa en segundo plano** lo que escribiste y lo corrige si leyó distinto (con aviso); sin worker
+  o sin internet se queda lo que leyó la app.
+- **Aprende tu letra**: cuando un valor se queda ~20 s sin que lo corrijas, la app aprende tus trazos
+  en ese dispositivo (la próxima vez acierta mejor); si lo corriges con el teclado, aprende la
+  corrección. Si algo se lee mal, bórralo (tacha la tinta antes de que se fije, o corrige con el
+  teclado del iPad tras el toque).
+- **Tachar** la tinta antes de que se fije la borra; el campo vuelve a su valor anterior.
 
 ## Vista de escritorio (octubre 2026)
 

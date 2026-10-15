@@ -4110,22 +4110,12 @@ body.focus-on #board-main{ padding-bottom:160px; }
 .pl-ink-pop button:hover{ background:#eef2ff; }
 body.pen-on textarea.field-ta{ cursor:text; }
 /* Banda de escritura para campos de una línea (se abre al tocar el campo con el lápiz) */
-.pl-pen-strip{ position:fixed; z-index:10600; background:#fff; border:1.5px solid #7c3aed; border-radius:12px; box-shadow:0 12px 32px rgba(15,23,42,.28); overflow:hidden; }
-.pl-pen-strip .pps-h{ display:flex; align-items:center; gap:8px; padding:5px 8px; background:#f5f3ff; border-bottom:1px solid #ddd6fe; font:600 12px var(--font); color:#4c1d95; min-height:36px; }
-.pl-pen-strip .pps-lbl{ font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:38%; }
-.pl-pen-strip .pps-cur{ color:#6d28d9; white-space:nowrap; font-weight:500; }
-.pl-pen-strip .pps-st{ flex:1; color:#7c3aed; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.pl-pen-strip .pps-btns{ display:flex; gap:4px; }
-.pl-pen-strip .pps-btns button{ width:32px; height:28px; border-radius:7px; border:1px solid #c4b5fd; background:#fff; cursor:pointer; font-size:14px; }
-.pl-pen-strip .pps-cv{ display:block; touch-action:none; background:#fff; cursor:crosshair; }
-.pl-pen-strip .pps-prev{ font:800 20px ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:#4c1d95; white-space:nowrap; }
-.pl-pen-strip .pps-prev.ok{ color:#15803d; }
-.pl-pen-strip .pps-keys{ display:flex; gap:4px; padding:5px 8px 7px; background:#faf5ff; border-top:1px solid #ede9fe; }
-.pl-pen-strip .pps-keys button{ flex:1 1 0; min-width:0; height:30px; border-radius:7px; border:1px solid #c4b5fd; background:#fff; color:#4c1d95; font:800 15px ui-monospace,"SF Mono",Menlo,Consolas,monospace; cursor:pointer; }
-.pl-pen-strip .pps-keys button:active{ background:#ede9fe; }
-body.dark .pl-pen-strip .pps-keys{ background:#1e1b4b; border-color:#312e81; } body.dark .pl-pen-strip .pps-keys button{ background:#152e4d; color:#e2e8f0; border-color:#4c1d95; } body.dark .pl-pen-strip .pps-prev{ color:#c4b5fd; }
-.pl-pen-flash{ box-shadow:0 0 0 3px rgba(124,58,237,.45) !important; transition:box-shadow .2s; }
-body.dark .pl-pen-strip{ background:#0f1c2e; border-color:#8b5cf6; } body.dark .pl-pen-strip .pps-h{ background:#1e1b4b; color:#ddd6fe; border-color:#312e81; } body.dark .pl-pen-strip .pps-cv{ background:#0f1c2e; } body.dark .pl-pen-strip .pps-btns button{ background:#152e4d; color:#e2e8f0; border-color:#4c1d95; }
+/* Escritura directa (oct 2026): cristal fijo sobre toda la pantalla donde se pinta la tinta del lápiz (no atrapa toques);
+   el campo que se está escribiendo se marca en morado y, al quedar el valor, parpadea en verde. */
+.pl-pen-glass{ position:fixed; inset:0; z-index:10600; pointer-events:none; }
+.pl-pen-live{ box-shadow:0 0 0 2px rgba(124,58,237,.55) !important; }
+.pl-pen-flash{ box-shadow:0 0 0 3px rgba(22,163,74,.55) !important; transition:box-shadow .2s; }
+@media print{ .pl-pen-glass{ display:none !important; } }
 body.dark .pl-ink-pop{ background:#0f1c2e; border-color:#23405f; }
 body.dark .pl-ink-pop button{ background:#152e4d; border-color:#2f4f79; color:#e2e8f0; }
 @media print{ .pl-ink-menu, .pl-ink-pop{ display:none !important; } }
@@ -15457,10 +15447,10 @@ function plExportBackup() {
        (la capa de tinta no atrapa el toque). Solo pointerType "pen"; se apaga con ✍️ Lápiz en la barra.
        Formato: __ink[campo] = { w: anchoDeLaCajaAlEscribir, s: [ { c: color, p: [[x, y, presión], …] } ] } */
     const PEN_MAX_POINTS = 6000;
-    const PEN_TEXT_PAUSE_MS = 1600;     // pausa sin trazos tras la cual la tinta pendiente se convierte en texto
-    const PEN = { active: null, saveTimers: {}, lastUndo: {}, pending: {}, busy: {}, seq: 0 };
+    const PEN = { active: null, saveTimers: {}, lastUndo: {}, seq: 0 };
     // Modo del lápiz, por dispositivo (pl_pen_mode): "off" (el iPad manda: Scribble escribe texto), "text" (la app
-    // convierte la tinta en texto con IA al soltar el lápiz) o "ink" (la tinta se queda sobre la caja).
+    // convierte lo escrito en texto AL MOMENTO con el reconocedor local, sobre cualquier campo) o "ink" (en las cajas
+    // grandes la tinta se queda sobre la caja; los campos de una línea se convierten igual).
     // Por defecto APAGADO: así el Apple Pencil llega a la caja y el Scribble del sistema puede trabajar (oct 2026).
     function penMode() {
       try { const v = localStorage.getItem("pl_pen_mode"); if (v === "1") return "ink"; if (v === "2") return "text"; } catch (_) {}
@@ -15473,10 +15463,10 @@ function plExportBackup() {
       try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); } catch (_) {}
       document.body.classList.toggle("pen-on", next !== "off");
       document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.toggle("on", next !== "off"); b.textContent = _penModeLabel(next); });
-      if (next === "off") PEN.active = null;
+      if (next === "off") { PEN.active = null; try { _penLiveFinalize("apagado"); } catch (_) {} }
       if (typeof _plToast === "function") _plToast(
-        next === "text" ? "✍️ → Texto: escribe con el Apple Pencil sobre la caja; al soltar, la tinta se convierte en texto (IA)"
-          : next === "ink" ? "✍️ Tinta: lo escrito se queda como tinta sobre la caja (tachar borra)"
+        next === "text" ? "✍️ → Texto: escribe con el Apple Pencil encima de cualquier campo (letra de molde, en mayúsculas); se vuelve texto al soltar el lápiz"
+          : next === "ink" ? "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); en los campos de una línea se vuelve texto"
           : "✍️ Lápiz apagado: el iPad escribe texto con Scribble (Ajustes → Apple Pencil → Garabatear)",
         next === "off" ? "#475569" : "#7c3aed", 3200);
     }
@@ -15543,28 +15533,19 @@ function plExportBackup() {
       const cv = _penLayer(ta, false); if (!cv) return;
       const k = ta.dataset.key, field = _penField(ta);
       const nd = noteData[k]; const ink = nd ? _penInk(nd, field, false) : null;
-      const pend = PEN.pending[_penPendKey(k, field)]; const inflight = PEN.busy[_penPendKey(k, field)] || [];
       const ctx = cv.getContext("2d"); const dpr = cv.width / Math.max(1, ta.offsetWidth || 1);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const has = !!(ink && ink.s.length), hasPend = !!(pend && pend.strokes.length), busy = inflight.length > 0;
+      const has = !!(ink && ink.s.length);
       const menu = cv.nextElementSibling;
-      if (menu && menu.classList.contains("pl-ink-menu")) {
-        menu.style.display = (has || hasPend || busy) ? "" : "none";
-        menu.textContent = busy ? "🤖…" : "✍️";
-        menu.title = busy ? "Convirtiendo la tinta en texto…" : "Tinta de esta caja: deshacer, pasar a texto, borrar";
-      }
+      if (menu && menu.classList.contains("pl-ink-menu")) menu.style.display = has ? "" : "none";
       if (has) { const scale = _penScale(ink, ta); ink.s.forEach(function (s) { _penStrokePath(ctx, s.p, scale, s.c); }); }
-      inflight.forEach(function (b) { b.forEach(function (p) { _penStrokePath(ctx, p, 1, "#c4b5fd"); }); });   // lote en conversión: lila claro
-      if (hasPend) pend.strokes.forEach(function (p) { _penStrokePath(ctx, p, 1, "#7c3aed"); });             // pendiente de convertir: morado
-      if (PEN.active && PEN.active.ta === ta) _penStrokePath(ctx, PEN.active.pts, 1, penMode() === "text" ? "#7c3aed" : PEN.active.color);
+      if (PEN.active && PEN.active.ta === ta) _penStrokePath(ctx, PEN.active.pts, 1, PEN.active.color);
     }
     // Tras cada render: capa en todas las cajas con tinta; la caja se estira para que la tinta no se corte.
     function _penMountAll(root) {
       const scope = (root && root.querySelectorAll) ? root : document;
       scope.querySelectorAll("textarea.field-ta[data-key]").forEach(function (ta) {
         const nd = noteData[ta.dataset.key]; const ink = nd ? _penInk(nd, _penField(ta), false) : null;
-        const pk = _penPendKey(ta.dataset.key, _penField(ta));
-        if ((PEN.pending[pk] && PEN.pending[pk].strokes.length) || (PEN.busy[pk] || []).length) { _penLayer(ta, true); _penFit(ta); return; }
         if (!ink || !ink.s.length) { if (_penLayer(ta, false)) _penRedraw(ta); return; }
         _penLayer(ta, true);
         const scale = _penScale(ink, ta); let maxY = 0;
@@ -15602,8 +15583,7 @@ function plExportBackup() {
         try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
         return;
       }
-      // ✍️ → Texto (o caja fuera de la ficha, donde no hay dónde guardar tinta): la tinta se convierte, no se guarda
-      if (penMode() === "text" || !ta.dataset.key) { _penTextStroke(ta, k, field, a); return; }
+      if (penMode() !== "ink" || !ta.dataset.key) { _penRedraw(ta); return; }   // solo ✍️ Tinta en cajas de la ficha guarda tinta; lo demás va por el cristal
       const nd = getNote(k); const ink = _penInk(nd, field, true);
       if (!(ink.w > 0)) ink.w = ta.offsetWidth || 1;
       const scale = _penScale(ink, ta);        // al ancho de referencia de la caja (misma tinta en iPad y laptop)
@@ -15679,23 +15659,8 @@ function plExportBackup() {
       if (!texto) throw new Error("no se reconoció texto");
       return texto;
     }
-    /* ── ✍️ → Texto: la tinta de la caja se convierte en texto con el ayudante de IA (worker /api/ai, visión) ──
-       Los trazos se acumulan como "pendientes" (morado); tras PEN_TEXT_PAUSE_MS sin escribir se mandan en un lote
-       (lila mientras vuelve la respuesta) y el texto se inserta en la caja por la misma vía que el teclado
-       (liveUpdate/updateField → autor, deshacer, guardado). Si falla, la tinta se queda para reintentar. */
-    function _penPendKey(k, field) { return k + "|" + field; }
-    function _penTextStroke(ta, k, field, a) {
-      const key = _penPendKey(k, field);
-      const pend = PEN.pending[key] || (PEN.pending[key] = { strokes: [], timer: 0, last: null });
-      const fake = { s: pend.strokes.map(function (p) { return { p: p }; }) };
-      const erased = _penScratch(fake, a.pts);          // tachar la tinta pendiente la borra (no se convierte)
-      if (erased.length) pend.strokes = pend.strokes.filter(function (p) { return !erased.some(function (e) { return e.p === p; }); });
-      else pend.strokes.push(a.pts);
-      _penRedraw(ta);
-      clearTimeout(pend.timer);
-      if (pend.strokes.length) pend.timer = setTimeout(function () { _penTextConvert(k, field); }, PEN_TEXT_PAUSE_MS);
-    }
-    function penConvertNow(k, field) { const pend = PEN.pending[_penPendKey(k, field)]; if (pend) { clearTimeout(pend.timer); _penTextConvert(k, field); } }
+    /* ── Ayudante de IA (worker /api/ai, visión) como REVISOR: la escritura directa (abajo) convierte al momento con el
+       reconocedor local; en los campos de texto la IA revisa después en segundo plano y corrige si leyó distinto. ── */
     function _penTextPrompt(field, ta) {
       const labels = { pa: "padecimiento actual", app: "antecedentes", dx: "diagnóstico", manejo: "manejo / indicaciones médicas", pendientes: "pendientes / plan", entrega: "entrega de guardia", drenajes: "nota de drenajes", "ck:interconsultas": "interconsultas", "ck:cultivos": "cultivos", "ck:recibo": "recibo de guardia", "ck:pendientes_mips": "pendientes de MIPs", "ck:pendientes_r1": "pendientes de R1" };
       let label = labels[field];
@@ -15715,42 +15680,14 @@ function plExportBackup() {
       strokes.forEach(function (p) { _penStrokePath(ctx, p, 1, "#0f172a"); });
       try { return cv.toDataURL("image/png").split(",")[1] || null; } catch (_) { return null; }
     }
-    function _penBatchY(strokes) { let a = Infinity, b = -Infinity; strokes.forEach(function (p) { p.forEach(function (q) { if (q[1] < a) a = q[1]; if (q[1] > b) b = q[1]; }); }); return [a, b]; }
-    async function _penTextConvert(k, field) {
-      const key = _penPendKey(k, field); const pend = PEN.pending[key]; if (!pend || !pend.strokes.length) return;
-      const ta0 = _penTaFor(k, field);
-      const strokes = pend.strokes; pend.strokes = [];               // este lote se va; lo que se escriba después es otro lote
-      const proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : "";
-      if (!proxyUrl) {
-        pend.strokes = strokes.concat(pend.strokes); if (ta0) _penRedraw(ta0);
-        if (typeof _plToast === "function") _plToast("✍️ → Texto necesita el ayudante de IA: configura la URL del worker en ⚙️ Config (o usa ✍️ Tinta)", "#b45309", 4000);
-        return;
-      }
-      const png = _penStrokesPng(strokes); if (!png) return;
-      const inflight = PEN.busy[key] || (PEN.busy[key] = []); inflight.push(strokes);
-      if (ta0) _penRedraw(ta0);
-      try {
-        const texto = await _penRecognize(png, _penTextPrompt(field, ta0));
-        // Mismo renglón que el lote anterior (hace < 10 s y a la misma altura) → se une con espacio; si no, renglón nuevo.
-        const y = _penBatchY(strokes); const last = pend.last; const now = Date.now();
-        const sameLine = !!(last && now - last.t < 10000 && y[0] < last.y[1] + 6 && y[1] > last.y[0] - 6);
-        _penInsertText(k, field, texto, sameLine ? " " : "\n");
-        pend.last = { t: now, y: y };
-      } catch (e) {
-        pend.strokes = strokes.concat(pend.strokes);                  // la tinta se queda para reintentar
-        if (typeof _plToast === "function") _plToast("No se pudo convertir a texto (" + ((e && e.message) || e) + "). La tinta se queda: toca ✍️ → «Convertir ahora» o escribe con el teclado", "#b91c1c", 4000);
-      } finally {
-        const i = inflight.indexOf(strokes); if (i >= 0) inflight.splice(i, 1);
-        const ta = _penTaFor(k, field); if (ta) _penRedraw(ta);
-      }
-    }
-    function _penInsertText(k, field, texto, sep) {
+    // Inserta texto al final de una caja por la misma vía que el teclado (liveUpdate/updateField → autor, deshacer, guardado).
+    function _penInsertText(k, field, texto, sep, quiet) {
       const ta = _penTaFor(k, field);
       if (field.indexOf("el:") === 0) {       // caja fuera de la ficha (modal, cabecera): solo el texto, con input/change para sus manejadores
         if (!ta) return;
         const cur0 = ta.value; ta.value = cur0.trim() ? (cur0.replace(/\s+$/, "") + (sep || "\n") + texto) : texto;
         ta.dispatchEvent(new Event("input", { bubbles: true })); ta.dispatchEvent(new Event("change", { bubbles: true }));
-        if (typeof _plToast === "function") _plToast("✍️ Texto: " + _egCut(texto, 70), "#059669", 2200);
+        if (!quiet && typeof _plToast === "function") _plToast("✍️ Texto: " + _egCut(texto, 70), "#059669", 2200);
         return;
       }
       const nd = getNote(k);
@@ -15761,22 +15698,20 @@ function plExportBackup() {
         if (field.indexOf("ck:") === 0) { liveCkText(ta); updateCkText(k, field.slice(3), next); }
         else { liveUpdate(ta); updateField(k, field, next, cur); }
       } else { _saveNoteNow(k, nd, _inkFieldSet(nd, field, next)); }
-      if (typeof _plToast === "function") _plToast("✍️ Texto: " + _egCut(texto, 70), "#059669", 2200);
+      if (!quiet && typeof _plToast === "function") _plToast("✍️ Texto: " + _egCut(texto, 70), "#059669", 2200);
     }
     function _penMenu(ta, btn) {
       const old = document.querySelector(".pl-ink-pop"); if (old) { const same = old._for === ta; old.remove(); if (same) return; }
       const k = ta.dataset.key, field = _penField(ta);
       const pop = document.createElement("div"); pop.className = "pl-ink-pop"; pop._for = ta;
-      const pendN = (PEN.pending[_penPendKey(k, field)] || { strokes: [] }).strokes.length;
       const generic = field.indexOf("el:") === 0;
-      pop.innerHTML = (pendN ? '<button type="button" data-act="now">🤖 Convertir ahora</button>' : '')
-        + '<button type="button" data-act="undo">↶ Deshacer trazo</button>'
-        + ((pendN || generic) ? '' : '<button type="button" data-act="text">🤖 Pasar a texto (lienzo)</button>')
+      pop.innerHTML = '<button type="button" data-act="undo">↶ Deshacer trazo</button>'
+        + (generic ? '' : '<button type="button" data-act="text">🤖 Pasar a texto (lienzo)</button>')
         + '<button type="button" data-act="clear">🧹 Borrar la tinta</button>';
       pop.addEventListener("click", function (ev) {
         const b = ev.target.closest("button[data-act]"); if (!b) return;
         ev.preventDefault(); ev.stopPropagation(); pop.remove();
-        if (b.dataset.act === "undo") penUndo(k, field); else if (b.dataset.act === "clear") penClear(k, field); else if (b.dataset.act === "text") penToText(k, field); else if (b.dataset.act === "now") penConvertNow(k, field);
+        if (b.dataset.act === "undo") penUndo(k, field); else if (b.dataset.act === "clear") penClear(k, field); else if (b.dataset.act === "text") penToText(k, field);
       });
       btn.insertAdjacentElement("afterend", pop);
       pop.style.left = Math.max(0, parseFloat(btn.style.left || "0") - 150) + "px"; pop.style.top = (parseFloat(btn.style.top || "0") + 28) + "px";
@@ -15784,12 +15719,6 @@ function plExportBackup() {
     }
     function penUndo(k, field) {
       const ta = _penTaFor(k, field);
-      const pend = PEN.pending[_penPendKey(k, field)];
-      if (pend && pend.strokes.length) {   // tinta pendiente de convertir: quitar el último trazo
-        pend.strokes.pop(); clearTimeout(pend.timer);
-        if (pend.strokes.length) pend.timer = setTimeout(function () { _penTextConvert(k, field); }, PEN_TEXT_PAUSE_MS);
-        if (ta) _penRedraw(ta); return;
-      }
       if (!k) return;
       const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) return;
       _penUndoOnce(k, field); ink.s.pop(); _penSave(k);
@@ -15797,8 +15726,6 @@ function plExportBackup() {
     }
     function penClear(k, field) {
       const ta = _penTaFor(k, field);
-      const pend = PEN.pending[_penPendKey(k, field)];
-      if (pend && pend.strokes.length) { pend.strokes = []; clearTimeout(pend.timer); if (ta) _penRedraw(ta); return; }
       if (!k) return;
       const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) return;
       if (!confirm("¿Borrar toda la tinta de esta caja? (El texto escrito no se toca)")) return;
@@ -15815,16 +15742,16 @@ function plExportBackup() {
       nd._inkFields[field] = ink.s.map(function (s) { return { tool: "pen", color: "#0f172a", alpha: 1, points: (s.p || []).map(function (p) { return { x: 40 + p[0] * f, y: 40 + p[1] * f, p: p[2] || 0.6 }; }) }; });
       openInkpadForField(k, field, _penLabel(_penTaFor(k, field)) || field);
     }
-    /* ── ✍️ en CAMPOS DE UNA LÍNEA (signos vitales, vasopresor, labs, dieta, ATB, drenajes, cabecera, modales…) ──
-       Un campo de 40–60 px no da para escribir encima: al tocarlo con el lápiz se abre una BANDA de escritura
-       debajo (o encima) con el nombre del campo; lo escrito ahí se convierte en texto (IA) y queda como valor
-       del campo, disparando input/change para que sus manejadores guarden como si se hubiera tecleado. */
-    /* ═══ Reconocedor LOCAL de dígitos ($P Point-Cloud Recognizer, Vatavu·Anthony·Wobbrock 2012) ═══
-       Instantáneo y sin red: en los campos numéricos lo escrito con el lápiz se vuelve número al momento.
-       Plantillas sintéticas para 0-9 / - (el punto y los dos puntos se reconocen por tamaño) más plantillas
-       APRENDIDAS de las confirmaciones y correcciones de cada quien (localStorage pl_pen_digits_v1).
-       Varios dígitos: los trazos se agrupan por posición horizontal (un "4" de dos trazos queda junto). */
-    const PEN_DIGITS = (function () {
+/* ═══ Reconocedor LOCAL de escritura ($P Point-Cloud Recognizer, Vatavu·Anthony·Wobbrock 2012) ═══
+       Instantáneo y sin red: lo escrito con el lápiz se vuelve texto al momento, sin IA ni recuadros.
+       Alfabeto: dígitos, letra de MOLDE en mayúsculas (A-Z, Ñ, vocales con acento), . : - / +.
+       Plantillas sintéticas (varios estilos por carácter) más plantillas APRENDIDAS de la letra de cada
+       quien (localStorage pl_pen_digits_v1). Los trazos se agrupan en renglones (por altura) y, dentro
+       del renglón, en caracteres (por solapamiento horizontal); un hueco ancho entre caracteres es un
+       espacio. En campos numéricos solo se consideran dígitos y . : - /. Letras y dígitos que se
+       escriben igual (I/1, O/0, S/5, Z/2, B/8, G/6) se deciden por la palabra en la que están
+       (vocabulario de la hoja: O2, SAO2, DM2, HAS… y, si no, por los vecinos). */
+    const PEN_OCR = (function () {
       const N = 48, LS = "pl_pen_digits_v1", MAX_LEARN = 8;
       function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
       function pathLength(pts) { let d = 0; for (let i = 1; i < pts.length; i++) if (pts[i].id === pts[i - 1].id) d += dist(pts[i - 1], pts[i]); return d; }
@@ -15851,105 +15778,274 @@ function plExportBackup() {
         return pts.map(function (p) { return { x: (p.x - minX) / size, y: (p.y - minY) / size, id: p.id }; });
       }
       function translate(pts) { let cx = 0, cy = 0; pts.forEach(function (p) { cx += p.x; cy += p.y; }); cx /= pts.length; cy /= pts.length; return pts.map(function (p) { return { x: p.x - cx, y: p.y - cy, id: p.id }; }); }
-      function normalize(strokes) {      // strokes: [ [[x,y,…], …], … ] → nube de N puntos
+      function normalizePts(strokes) {   // strokes: [ [[x,y,…], …], … ] → N puntos normalizados (para guardar)
         const pts = []; strokes.forEach(function (s, i) { s.forEach(function (p) { pts.push({ x: p[0], y: p[1], id: i }); }); });
         if (pts.length < 2) return null;
         const r = resample(pts, N); return r ? translate(scale(r)) : null;
       }
-      function cloudDistance(a, b, start) {
-        const n = a.length, matched = new Array(n).fill(false); let sum = 0, i = start;
+      function normalize(strokes) { const p = normalizePts(strokes); return p ? toCloud(p) : null; }
+      // Nube como arreglos planos (rápido) y distancia $P con corte temprano: en cuanto la suma parcial rebasa el
+      // límite (el mejor candidato hasta ahora) la plantilla se descarta. Así cada carácter cuesta unos ms.
+      function toCloud(pts) { const n = pts.length, x = new Float64Array(n), y = new Float64Array(n); for (let i = 0; i < n; i++) { x[i] = pts[i].x; y[i] = pts[i].y; } return { x: x, y: y, n: n }; }
+      function cloudDistance(a, b, start, limit) {
+        const n = a.n, ax = a.x, ay = a.y, bx = b.x, by = b.y, matched = new Uint8Array(n); let sum = 0, i = start;
         do {
           let idx = -1, min = Infinity;
-          for (let j = 0; j < n; j++) { if (!matched[j]) { const d = dist(a[i], b[j]); if (d < min) { min = d; idx = j; } } }
-          matched[idx] = true; sum += (1 - ((i - start + n) % n) / n) * min; i = (i + 1) % n;
+          for (let j = 0; j < n; j++) { if (!matched[j]) { const dx = ax[i] - bx[j], dy = ay[i] - by[j]; const d = dx * dx + dy * dy; if (d < min) { min = d; idx = j; } } }
+          matched[idx] = 1; sum += (1 - ((i - start + n) % n) / n) * Math.sqrt(min);
+          if (sum > limit) return Infinity;
+          i = (i + 1) % n;
         } while (i !== start);
         return sum;
       }
-      function greedy(a, b) { const n = a.length, step = Math.max(1, Math.floor(Math.sqrt(n))); let min = Infinity; for (let i = 0; i < n; i += step) min = Math.min(min, cloudDistance(a, b, i), cloudDistance(b, a, i)); return min; }
+      function greedy(a, b, limit) {
+        const n = a.n, step = Math.max(1, Math.floor(Math.sqrt(n))); let min = limit;
+        for (let i = 0; i < n; i += step) { const d1 = cloudDistance(a, b, i, min); if (d1 < min) min = d1; const d2 = cloudDistance(b, a, i, min); if (d2 < min) min = d2; }
+        return min < limit ? min : Infinity;
+      }
       // Plantillas sintéticas en una caja de 100×100 (y hacia abajo), como se escriben a mano (varios estilos).
       const D2R = Math.PI / 180;
       function arc(cx, cy, rx, ry, a0, a1, n) { const out = []; for (let i = 0; i <= n; i++) { const t = (a0 + (a1 - a0) * i / n) * D2R; out.push([cx + rx * Math.cos(t), cy + ry * Math.sin(t)]); } return out; }
       function line(x0, y0, x1, y1, n) { const out = []; for (let i = 0; i <= n; i++) out.push([x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n]); return out; }
+      function cat() { return Array.prototype.concat.apply([], arguments); }
+      // Panza derecha de B/P/R/D entre y0 e y1, pegada al palo en x=26.
+      function bump(y0, y1, w) { const cy = (y0 + y1) / 2, ry = (y1 - y0) / 2, x = 26 + w - ry; return cat(line(26, y0, x, y0, 3), arc(x, cy, ry, ry, -90, 90, 14), line(x, y1, 26, y1, 3)); }
       const BASE = {
         "0": [[arc(50, 50, 28, 45, 90, 450, 36)], [arc(50, 50, 20, 45, 90, 450, 36)]],
-        "1": [[line(50, 5, 50, 95, 20)], [line(35, 25, 52, 5, 6).concat(line(52, 5, 52, 95, 20))]],
-        "2": [[arc(50, 30, 22, 24, 200, 390, 16).concat(line(68, 44, 26, 95, 14)).concat(line(26, 95, 76, 95, 8))], [arc(50, 28, 20, 22, 210, 380, 14).concat(line(66, 40, 28, 92, 12)).concat(line(28, 92, 74, 92, 8))]],
-        "3": [[arc(50, 29, 22, 23, 210, 460, 16).concat(arc(50, 72, 24, 25, 270, 520, 18))], [line(28, 8, 72, 8, 8).concat(line(72, 8, 46, 48, 8)).concat(arc(50, 72, 24, 25, 270, 520, 18))]],
-        "4": [[line(62, 5, 28, 62, 12).concat(line(28, 62, 80, 62, 10)), line(62, 5, 62, 95, 18)], [line(32, 5, 32, 55, 10).concat(line(32, 55, 76, 55, 9)), line(66, 5, 66, 95, 18)]],
-        "5": [[line(72, 8, 32, 8, 8).concat(line(32, 8, 28, 48, 8)).concat(arc(50, 70, 26, 24, 230, 480, 18))], [line(30, 8, 30, 48, 8).concat(arc(50, 70, 26, 24, 230, 480, 18)), line(30, 8, 72, 8, 8)]],
-        "6": [[line(68, 8, 36, 50, 10).concat(arc(50, 70, 24, 25, 180, 540, 24))], [arc(52, 50, 26, 44, 300, 90, 12).concat(arc(50, 72, 24, 23, 180, 540, 22))]],
-        "7": [[line(24, 8, 78, 8, 10).concat(line(78, 8, 44, 95, 16))], [line(24, 8, 78, 8, 10).concat(line(78, 8, 44, 95, 16)), line(34, 52, 70, 52, 6)]],
-        "8": [[arc(50, 28, 21, 23, 90, 450, 20).concat(arc(50, 72, 25, 27, 270, -90, 20))], [arc(50, 28, 21, 23, 90, -270, 20).concat(arc(50, 72, 25, 27, 270, 630, 20))]],
-        "9": [[arc(50, 32, 22, 26, 0, 360, 20).concat(line(72, 32, 60, 95, 12))], [arc(50, 30, 22, 25, 0, 360, 20).concat(line(72, 30, 72, 95, 12))]],
-        "/": [[line(72, 5, 28, 95, 16)], [line(28, 95, 72, 5, 16)]],
-        "-": [[line(22, 50, 78, 50, 12)]]
+        "1": [[line(50, 5, 50, 95, 20)], [cat(line(35, 25, 52, 5, 6), line(52, 5, 52, 95, 20))]],
+        "2": [[cat(arc(50, 30, 22, 24, 200, 390, 16), line(68, 44, 26, 95, 14), line(26, 95, 76, 95, 8))], [cat(arc(50, 28, 20, 22, 210, 380, 14), line(66, 40, 28, 92, 12), line(28, 92, 74, 92, 8))]],
+        "3": [[cat(arc(50, 29, 22, 23, 210, 460, 16), arc(50, 72, 24, 25, 270, 520, 18))], [cat(line(28, 8, 72, 8, 8), line(72, 8, 46, 48, 8), arc(50, 72, 24, 25, 270, 520, 18))]],
+        "4": [[cat(line(62, 5, 28, 62, 12), line(28, 62, 80, 62, 10)), line(62, 5, 62, 95, 18)], [cat(line(32, 5, 32, 55, 10), line(32, 55, 76, 55, 9)), line(66, 5, 66, 95, 18)]],
+        "5": [[cat(line(72, 8, 32, 8, 8), line(32, 8, 28, 48, 8), arc(50, 70, 26, 24, 230, 480, 18))], [cat(line(30, 8, 30, 48, 8), arc(50, 70, 26, 24, 230, 480, 18)), line(30, 8, 72, 8, 8)]],
+        "6": [[cat(line(68, 8, 36, 50, 10), arc(50, 70, 24, 25, 180, 540, 24))], [cat(arc(52, 50, 26, 44, 300, 90, 12), arc(50, 72, 24, 23, 180, 540, 22))]],
+        "7": [[cat(line(24, 8, 78, 8, 10), line(78, 8, 44, 95, 16))], [cat(line(24, 8, 78, 8, 10), line(78, 8, 44, 95, 16)), line(34, 52, 70, 52, 6)]],
+        "8": [[cat(arc(50, 28, 21, 23, 90, 450, 20), arc(50, 72, 25, 27, 270, -90, 20))], [cat(arc(50, 28, 21, 23, 90, -270, 20), arc(50, 72, 25, 27, 270, 630, 20))]],
+        "9": [[cat(arc(50, 32, 22, 26, 0, 360, 20), line(72, 32, 60, 95, 12))], [cat(arc(50, 30, 22, 25, 0, 360, 20), line(72, 30, 72, 95, 12))]],
+        "/": [[line(76, 5, 24, 95, 16)], [line(24, 95, 76, 5, 16)]],
+        "-": [[line(22, 50, 78, 50, 12)]],
+        "+": [[line(22, 50, 78, 50, 10), line(50, 22, 50, 78, 10)]],
+        "A": [[cat(line(16, 95, 50, 5, 12), line(50, 5, 84, 95, 12)), line(30, 62, 70, 62, 8)], [cat(line(22, 95, 50, 8, 12), line(50, 8, 78, 95, 12)), line(34, 58, 66, 58, 6)], [line(16, 95, 50, 5, 12), line(50, 5, 84, 95, 12), line(30, 62, 70, 62, 8)]],
+        "B": [[line(26, 5, 26, 95, 18), bump(6, 48, 40), bump(50, 94, 46)], [line(26, 5, 26, 95, 18), cat(bump(6, 48, 40), bump(50, 94, 46))], [cat(line(26, 95, 26, 5, 18), bump(6, 48, 40), bump(50, 94, 46))]],
+        "C": [[arc(55, 50, 36, 45, 40, 320, 24)], [arc(52, 50, 30, 45, 50, 310, 24)]],
+        "D": [[line(26, 5, 26, 95, 18), cat(line(26, 5, 40, 5, 3), arc(40, 50, 42, 45, -90, 90, 20), line(40, 95, 26, 95, 3))], [cat(line(26, 95, 26, 5, 18), line(26, 5, 40, 5, 3), arc(40, 50, 42, 45, -90, 90, 20), line(40, 95, 26, 95, 3))]],
+        "E": [[line(26, 5, 26, 95, 18), line(26, 5, 78, 5, 8), line(26, 50, 66, 50, 6), line(26, 95, 78, 95, 8)], [cat(line(78, 5, 26, 5, 8), line(26, 5, 26, 95, 18), line(26, 95, 78, 95, 8)), line(26, 50, 66, 50, 6)]],
+        "F": [[line(26, 5, 26, 95, 18), line(26, 5, 78, 5, 8), line(26, 50, 66, 50, 6)], [cat(line(78, 5, 26, 5, 8), line(26, 5, 26, 95, 18)), line(26, 50, 66, 50, 6)]],
+        "G": [[arc(52, 50, 34, 45, 40, 320, 22), cat(line(54, 52, 86, 52, 6), line(86, 52, 86, 78, 4))], [cat(arc(52, 50, 34, 45, 320, 45, 22), line(76, 82, 86, 68, 3), line(86, 68, 86, 52, 3), line(86, 52, 56, 52, 5))]],
+        "H": [[line(24, 5, 24, 95, 18), line(76, 5, 76, 95, 18), line(24, 50, 76, 50, 10)], [cat(line(24, 5, 24, 95, 18), line(24, 50, 76, 50, 10), line(76, 50, 76, 5, 9), line(76, 5, 76, 95, 18))]],
+        "I": [[line(50, 5, 50, 95, 18)], [line(30, 5, 70, 5, 6), line(50, 5, 50, 95, 16), line(30, 95, 70, 95, 6)]],
+        "J": [[cat(line(60, 5, 60, 70, 12), arc(40, 70, 20, 25, 0, 180, 10))], [line(36, 5, 82, 5, 6), cat(line(62, 5, 62, 70, 12), arc(42, 70, 20, 25, 0, 180, 10))]],
+        "K": [[line(26, 5, 26, 95, 18), line(26, 50, 78, 5, 10), line(26, 50, 78, 95, 10)], [line(26, 5, 26, 95, 18), cat(line(78, 5, 26, 50, 10), line(26, 50, 78, 95, 10))]],
+        "L": [[cat(line(26, 5, 26, 95, 18), line(26, 95, 78, 95, 8))], [line(26, 5, 26, 95, 18), line(26, 95, 78, 95, 8)]],
+        "M": [[cat(line(18, 95, 18, 5, 16), line(18, 5, 50, 62, 12), line(50, 62, 82, 5, 12), line(82, 5, 82, 95, 16))], [cat(line(14, 95, 26, 5, 16), line(26, 5, 50, 70, 12), line(50, 70, 74, 5, 12), line(74, 5, 86, 95, 16))]],
+        "N": [[cat(line(22, 95, 22, 5, 16), line(22, 5, 78, 95, 16), line(78, 95, 78, 5, 16))], [line(22, 95, 22, 5, 16), cat(line(22, 5, 78, 95, 16), line(78, 95, 78, 5, 16))]],
+        "O": [[arc(50, 50, 32, 45, 90, 450, 36)], [arc(50, 50, 40, 45, 90, 450, 36)]],
+        "P": [[line(26, 5, 26, 95, 18), bump(6, 50, 46)], [cat(line(26, 95, 26, 5, 18), bump(6, 50, 46))]],
+        "Q": [[arc(50, 46, 34, 42, 90, 450, 32), line(56, 72, 86, 98, 6)], [cat(arc(50, 46, 34, 42, 60, 420, 32), line(66, 82, 88, 98, 5))]],
+        "R": [[line(26, 5, 26, 95, 18), bump(6, 50, 46), line(40, 50, 80, 95, 8)], [cat(line(26, 95, 26, 5, 18), bump(6, 50, 46), line(26, 50, 40, 50, 2), line(40, 50, 80, 95, 8))]],
+        "S": [[cat(arc(50, 28, 24, 23, 320, 90, 16), arc(50, 72, 24, 23, 270, 500, 18))], [cat(arc(50, 30, 20, 25, 330, 90, 16), arc(50, 72, 22, 23, 270, 490, 18))]],
+        "T": [[line(22, 6, 78, 6, 10), line(50, 6, 50, 95, 16)], [cat(line(22, 6, 78, 6, 10), line(78, 6, 50, 6, 4), line(50, 6, 50, 95, 16))]],
+        "U": [[cat(line(22, 5, 22, 62, 10), arc(50, 62, 28, 32, 180, 0, 14), line(78, 62, 78, 5, 10))], [cat(line(24, 5, 24, 70, 10), arc(50, 70, 26, 24, 180, 0, 12), line(76, 70, 76, 5, 10))]],
+        "V": [[cat(line(18, 5, 50, 95, 14), line(50, 95, 82, 5, 14))], [cat(line(24, 5, 50, 95, 14), line(50, 95, 76, 5, 14))]],
+        "W": [[cat(line(12, 5, 30, 95, 14), line(30, 95, 50, 30, 10), line(50, 30, 70, 95, 10), line(70, 95, 88, 5, 14))], [cat(line(10, 5, 32, 95, 14), line(32, 95, 50, 45, 8), line(50, 45, 68, 95, 8), line(68, 95, 90, 5, 14))]],
+        "X": [[line(20, 5, 80, 95, 16), line(80, 5, 20, 95, 16)], [line(24, 5, 76, 95, 16), line(76, 5, 24, 95, 16)]],
+        "Y": [[cat(line(20, 5, 50, 50, 8), line(50, 50, 80, 5, 8)), line(50, 50, 50, 95, 8)], [cat(line(80, 5, 50, 50, 8), line(50, 50, 50, 95, 8)), line(20, 5, 50, 50, 8)]],
+        "Z": [[cat(line(22, 6, 78, 6, 10), line(78, 6, 22, 94, 16), line(22, 94, 78, 94, 10))], [cat(line(26, 8, 74, 8, 10), line(74, 8, 26, 92, 16), line(26, 92, 74, 92, 10), line(40, 50, 60, 50, 3))]]
       };
+      // Acentos y la tilde de la Ñ no son plantillas: un trazo corto ENCIMA del cuerpo de la letra marca la vocal (Á É Í Ó Ú) o la Ñ.
+      const ACC = { "A": "Á", "E": "É", "I": "Í", "O": "Ó", "U": "Ú", "N": "Ñ" };
+      const DIGIT_SET = "0123456789/-.:";
+      // Pares que se escriben igual (o casi): se deciden por la palabra.
+      const AMBIG = { "1": "I", "0": "O", "5": "S", "2": "Z", "8": "B", "6": "G", "I": "1", "O": "0", "S": "5", "Z": "2", "B": "8", "G": "6" };
+      // Vocabulario de la hoja de visita para decidir esos pares (O2 y no 02, DM2 y no DMZ, SAO2, HAS…).
+      const LEX = "O2 SO2 SAO2 SPO2 CO2 PCO2 PO2 FIO2 H2O DM2 DM1 DM HAS EPOC ERC IRC IRA ICC IAM TVP TEP SIRS SEPSIS POP LAPE ATB BH QS QSC TAC USG RX ECG EKG NPT NPO SNG IC UCI UTI CG CX QX SV FC FR TA SAT SATO2 DX TX HB HTO PLT LEU NEU LINF CR BUN GLU NA CL MG CA TP TTP INR PCR VSG ALT AST BT BD BI FA GGT DHL LIP AMI EGO KCL IV VO IM SC PRN ML MCG KG HRS DIAS AÑOS DIA HOY AYER DIETA BLANDA LIQUIDOS LIBRE AYUNO SOLUCIONES SOL ESTABLE DELICADO GRAVE DOLOR FIEBRE SIN CON POR PARA DE EN EL LA LOS LAS AL SE NO SI ES PENDIENTE PENDIENTES VALORAR CONTROL LABS LAB ALTA EGRESO INGRESO CIRUGIA QUIROFANO HERIDA DRENAJE PENROSE JP FOLEY SONDA GASTO BILIAR SEROHEMATICO PURULENTO FECAL ESTOMA COLOSTOMIA ILEOSTOMIA OMEPRAZOL PARACETAMOL KETOROLACO METAMIZOL TRAMADOL CEFTRIAXONA METRONIDAZOL MEROPENEM PIPERACILINA TAZOBACTAM VANCOMICINA ENOXAPARINA HEPARINA INSULINA NORE NOREPINEFRINA VASOPRESINA BID TID QID SOS".split(" ");
+      const LEXSET = {}; LEX.forEach(function (w) { LEXSET[w] = true; });
       let baseT = null, learned = null;
+      let learnedT = null, version = 0;
       function loadLearned() { if (learned) return learned; try { learned = JSON.parse(localStorage.getItem(LS) || "[]"); if (!Array.isArray(learned)) learned = []; } catch (_) { learned = []; } return learned; }
       function templates() {
         if (!baseT) { baseT = []; Object.keys(BASE).forEach(function (name) { BASE[name].forEach(function (variant) { const c = normalize(variant); if (c) baseT.push({ name: name, cloud: c }); }); }); }
-        return baseT.concat(loadLearned());
+        if (!learnedT) learnedT = loadLearned().filter(function (t) { return t && Array.isArray(t.cloud) && t.cloud.length === N; }).map(function (t) { return { name: t.name, cloud: toCloud(t.cloud) }; });
+        return baseT.concat(learnedT);
       }
+      // Resultado $P por grupo de trazos (clave: identidad de los trazos): al escribir, solo el carácter que cambió se vuelve a calcular.
+      let seq = 0; const cache = new Map();
+      function classify(strokes, alpha) {
+        const key = strokes.map(function (s) { if (!s.__pid) s.__pid = ++seq; return s.__pid; }).join(",") + (alpha ? "a" : "n") + version;
+        const hit = cache.get(key); if (hit) return hit;
+        const cloud = normalize(strokes); if (!cloud) return null;
+        const byName = {}; let best = "", bestD = Infinity;
+        templates().forEach(function (t) {
+          if (!alpha && !isDigitish(t.name)) return;
+          const d = greedy(cloud, t.cloud, bestD * 1.5);      // más de 1.5× el mejor ya no interesa
+          if (!(byName[t.name] <= d)) byName[t.name] = d;
+          if (d < bestD) { bestD = d; best = t.name; }
+        });
+        const res = { best: best, bestD: bestD, byName: byName };
+        if (cache.size > 300) cache.clear();
+        cache.set(key, res);
+        return res;
+      }
+      function isDigitish(ch) { return DIGIT_SET.indexOf(ch) >= 0; }
       function bbox(stroke) { let a = Infinity, b = -Infinity, c = Infinity, d = -Infinity; stroke.forEach(function (p) { a = Math.min(a, p[0]); b = Math.max(b, p[0]); c = Math.min(c, p[1]); d = Math.max(d, p[1]); }); return { x0: a, x1: b, y0: c, y1: d, w: b - a, h: d - c }; }
-      // Agrupar trazos por solapamiento horizontal: cada grupo es un carácter (un "4" o un "5" de dos trazos se solapan).
+      // Agrupar trazos por solapamiento horizontal: cada grupo es un carácter (el palo del "4", la barra de la "T" o las
+      // barras de la "E" se solapan con el resto). Un trazo angosto (un palo) se ensancha a 8 px para que cuente.
+      // ¿El trazo b arranca o termina pegado a algún punto del trazo a? (palo de la K, brazo de la Y, segundo trazo de la N)
+      function touches(a, b, tol) {
+        const ends = [b[0], b[b.length - 1], a[0], a[a.length - 1]], t2 = tol * tol;
+        for (let e = 0; e < 4; e++) { const q = ends[e], other = e < 2 ? a : b; for (let i = 0; i < other.length; i++) { const dx = other[i][0] - q[0], dy = other[i][1] - q[1]; if (dx * dx + dy * dy <= t2) return true; } }
+        return false;
+      }
       function clusters(strokes) {
-        const PAD = 4;   // un trazo vertical casi no tiene ancho: se le da ±4 px para que el palo del "4" o los dos puntos se junten
-        const items = strokes.map(function (s) { return { s: s, b: bbox(s) }; }).sort(function (p, q) { return p.b.x0 - q.b.x0; });
+        const items = strokes.map(function (s) { const b = bbox(s); const pad = Math.max(0, (8 - b.w) / 2); return { s: s, b: b, ex0: b.x0 - pad, ex1: b.x1 + pad }; }).sort(function (p, q) { return p.ex0 - q.ex0; });
         const out = [];
         items.forEach(function (it) {
           const last = out[out.length - 1];
           if (last) {
-            const ov = Math.min(last.x1 + PAD, it.b.x1 + PAD) - Math.max(last.x0 - PAD, it.b.x0 - PAD);
-            const minW = Math.max(6, Math.min(last.x1 - last.x0, it.b.w) + 2 * PAD);
-            if (ov > 0.3 * minW) { last.strokes.push(it.s); last.x0 = Math.min(last.x0, it.b.x0); last.x1 = Math.max(last.x1, it.b.x1); last.y0 = Math.min(last.y0, it.b.y0); last.y1 = Math.max(last.y1, it.b.y1); return; }
+            const ov = Math.min(last.ex1, it.ex1) - Math.max(last.ex0, it.ex0);
+            const minW = Math.max(6, Math.min(last.ex1 - last.ex0, it.ex1 - it.ex0));
+            const tol = 0.08 * Math.max(it.b.h, last.y1 - last.y0, 12);
+            const joined = ov > 0.3 * minW || (ov > -tol && last.strokes.some(function (s) { return touches(s, it.s, tol); }));
+            if (joined) { last.strokes.push(it.s); last.x0 = Math.min(last.x0, it.b.x0); last.x1 = Math.max(last.x1, it.b.x1); last.y0 = Math.min(last.y0, it.b.y0); last.y1 = Math.max(last.y1, it.b.y1); last.ex0 = Math.min(last.ex0, it.ex0); last.ex1 = Math.max(last.ex1, it.ex1); return; }
           }
-          out.push({ strokes: [it.s], x0: it.b.x0, x1: it.b.x1, y0: it.b.y0, y1: it.b.y1 });
+          out.push({ strokes: [it.s], x0: it.b.x0, x1: it.b.x1, y0: it.b.y0, y1: it.b.y1, ex0: it.ex0, ex1: it.ex1 });
         });
         return out;
       }
-      // Un solo trazo casi recto se decide por su inclinación (no por la nube): | = 1, / = barra, — = guion.
+      // Renglones: trazos que comparten altura (solapamiento vertical) van juntos; los puntos, guiones y acentos se
+      // pegan al renglón más cercano. Devuelve los renglones de arriba a abajo.
+      function lines(strokes) {
+        const items = strokes.map(function (s) { return { s: s, b: bbox(s) }; });
+        let H = 0; items.forEach(function (it) { H = Math.max(H, it.b.h); });
+        const big = items.filter(function (it) { return it.b.h >= 0.35 * H; }).sort(function (p, q) { return (p.b.y0 + p.b.y1) - (q.b.y0 + q.b.y1); });
+        const small = items.filter(function (it) { return it.b.h < 0.35 * H; });
+        const out = [];
+        big.forEach(function (it) {
+          const last = out[out.length - 1];
+          if (last) {
+            const ov = Math.min(last.y1, it.b.y1) - Math.max(last.y0, it.b.y0);
+            if (ov > 0.45 * Math.min(last.y1 - last.y0, it.b.h)) { last.strokes.push(it.s); last.y0 = Math.min(last.y0, it.b.y0); last.y1 = Math.max(last.y1, it.b.y1); return; }
+          }
+          out.push({ strokes: [it.s], y0: it.b.y0, y1: it.b.y1 });
+        });
+        if (!out.length) return [{ strokes: strokes.slice() }];
+        small.forEach(function (it) {
+          const cy = (it.b.y0 + it.b.y1) / 2; let best = out[0], bd = Infinity;
+          out.forEach(function (ln) { const d = cy < ln.y0 ? ln.y0 - cy : (cy > ln.y1 ? cy - ln.y1 : 0); if (d < bd) { bd = d; best = ln; } });
+          best.strokes.push(it.s);
+        });
+        return out;
+      }
+      // Un solo trazo casi recto se decide por su inclinación (no por la nube): | = 1 (o I), / = barra, — = guion.
       function straightChar(stroke) {
         if (stroke.length < 2) return "";
         let len = 0; for (let i = 1; i < stroke.length; i++) len += Math.hypot(stroke[i][0] - stroke[i - 1][0], stroke[i][1] - stroke[i - 1][1]);
         const a = stroke[0], b = stroke[stroke.length - 1]; const chord = Math.hypot(b[0] - a[0], b[1] - a[1]);
         if (!(len > 0) || chord / len < 0.92) return "";
         const ang = Math.atan2(Math.abs(b[1] - a[1]), Math.abs(b[0] - a[0])) * 180 / Math.PI;   // 0 = horizontal, 90 = vertical
-        return ang > 76 ? "1" : (ang < 22 ? "-" : "/");
+        return ang > 72 ? "1" : (ang < 22 ? "-" : "/");
       }
       function tiny(stroke, H) { const b = bbox(stroke); return b.w < 0.22 * H && b.h < 0.22 * H; }
-      function recognizeCluster(cl, H) {
+      // Reconoce un carácter: reglas (puntos, guion, trazo recto) y después la nube contra las plantillas del alfabeto.
+      // Devuelve { ch, conf, alt }: mejor carácter, confianza (margen sobre el segundo) y, si el par letra/dígito
+      // queda cerca, el otro miembro del par (se decide por la palabra).
+      function recognizeCluster(cl, H, alpha) {
         const w = cl.x1 - cl.x0, h = cl.y1 - cl.y0;
-        if (cl.strokes.length >= 2 && cl.strokes.every(function (s) { return tiny(s, H); })) return ":";   // dos puntos (I:E)
-        if (w < 0.22 * H && h < 0.22 * H) return ".";                                                      // punto decimal
-        if (cl.strokes.length === 1 && h < 0.18 * H && w > 0.3 * H) return "-";                             // guion
-        if (cl.strokes.length === 1) { const sc = straightChar(cl.strokes[0]); if (sc) return sc; }
-        const cloud = normalize(cl.strokes); if (!cloud) return "";
-        let best = "", bestD = Infinity;
-        templates().forEach(function (t) { const d = greedy(cloud, t.cloud); if (d < bestD) { bestD = d; best = t.name; } });
-        return best;
+        if (cl.strokes.length >= 2 && cl.strokes.every(function (s) { return tiny(s, H); })) return { ch: ":", conf: 1 };   // dos puntos (I:E)
+        if (w < 0.22 * H && h < 0.22 * H) return { ch: ".", conf: 1 };                                                      // punto decimal
+        if (cl.strokes.length === 1 && h < 0.18 * H && w > 0.3 * H) return { ch: "-", conf: 1 };                             // guion
+        // Acento / tilde: trazo corto arriba del resto (solo en texto) → se reconoce el cuerpo y se marca la vocal o la Ñ.
+        let body = cl.strokes, mark = false;
+        if (alpha && cl.strokes.length >= 2) {
+          const bs = cl.strokes.map(function (s) { return { s: s, b: bbox(s) }; });
+          const marks = bs.filter(function (it) {
+            if (!(it.b.h < 0.3 * h && it.b.w <= w + 4)) return false;
+            let bodyTop = Infinity; bs.forEach(function (o) { if (o !== it) bodyTop = Math.min(bodyTop, o.b.y0); });
+            return it.b.y1 < bodyTop - 0.06 * h;        // despegado por arriba (la barra de la T o la E toca el cuerpo: no es acento)
+          });
+          if (marks.length && marks.length < bs.length) { body = bs.filter(function (it) { return marks.indexOf(it) < 0; }).map(function (it) { return it.s; }); mark = true; }
+        }
+        if (body.length === 1) { const sc = straightChar(body[0]); if (sc) { const ch = (mark && sc === "1") ? "Í" : sc; return { ch: ch, conf: 1, alt: (alpha && sc === "1" && !mark) ? "I" : "" }; } }
+        const r = classify(body, alpha); if (!r) return { ch: "", conf: 0 };
+        let best = r.best; const bestD = r.bestD, byName = r.byName;
+        let second = Infinity, runner = ""; Object.keys(byName).forEach(function (n) { if (n !== best && byName[n] < second) { second = byName[n]; runner = n; } });
+        const altName = alpha ? AMBIG[best] : "";
+        let alt = (altName && byName[altName] <= bestD * 1.35) ? altName : "";
+        if (mark) { best = ACC[best] || ACC[alt] || best; alt = ""; }
+        // Segundo candidato cercano (Q/O, D/O, S/5…): solo lo decide el vocabulario de la hoja.
+        const near = (alpha && runner && runner !== alt && second <= bestD * 1.2 && !mark) ? runner : "";
+        return { ch: best, conf: Math.min(9, isFinite(second) && bestD > 0 ? (second - bestD) / bestD : 9), alt: alt, near: near, mark: mark, cloud: true };
       }
-      function recognize(strokes) {
-        const cls = clusters(strokes || []); if (!cls.length) return { text: "", clusters: [], chars: [] };
-        let H = 0; cls.forEach(function (c) { H = Math.max(H, c.y1 - c.y0); }); H = Math.max(H, 12);
-        const chars = cls.map(function (c) { return recognizeCluster(c, H); });
-        return { text: chars.join(""), clusters: cls, chars: chars };
+      // Palabra: los pares letra/dígito ambiguos se deciden por el vocabulario de la hoja y, si no, por los vecinos
+      // (más letras → letra, más dígitos → dígito; empate → dígito, lo habitual en la hoja: 10, 50, 100).
+      function disambiguate(word) {
+        const open = word.filter(function (c) { return c.alt || c.near; });
+        if (!open.length) return;
+        if (open.length <= 7) {            // ¿alguna combinación de alternativas está en el vocabulario? (O2, QS, DM2, HAS…)
+          const opts = word.map(function (c) { const o = [c.ch]; if (c.alt) o.push(c.alt); if (c.near) o.push(c.near); return o; });
+          let total = 1; opts.forEach(function (o) { total *= o.length; });
+          for (let m = 0; m < total; m++) {
+            let s = "", k = m; const pick = [];
+            opts.forEach(function (o) { const i = k % o.length; k = Math.floor(k / o.length); pick.push(i); s += o[i]; });
+            if (LEXSET[s]) { word.forEach(function (c, i) { if (pick[i]) { c.raw = c.ch; c.ch = opts[i][pick[i]]; } }); return; }
+          }
+        }
+        let letters = 0, digits = 0;
+        word.forEach(function (c) { if (!c.ch || c.alt) return; if (/^[A-ZÁÉÍÓÚÑ]$/.test(c.ch)) letters++; else if (/^[0-9]$/.test(c.ch)) digits++; });
+        const toLetter = letters > digits;
+        word.forEach(function (c) { if (!c.alt) return; const isLetter = /^[A-Z]$/.test(c.ch); if (toLetter !== isLetter) { c.raw = c.ch; c.ch = c.alt; } });
+      }
+      // strokes → { text, lines: [ { text, clusters, chars } ], clusters, chars }. opts.alpha: letras permitidas (campo de
+      // texto); opts.multiline: varios renglones (cajas grandes). Sin alpha no hay espacios ni letras (campo numérico).
+      function recognize(strokes, opts) {
+        opts = opts || {};
+        const alpha = !!opts.alpha;
+        const lns = opts.multiline ? lines(strokes || []) : [{ strokes: (strokes || []).slice() }];
+        const outLines = [], allClusters = [], allChars = [];
+        lns.forEach(function (ln) {
+          const cls = clusters(ln.strokes); if (!cls.length) return;
+          let H = 0; cls.forEach(function (c) { H = Math.max(H, c.y1 - c.y0); }); H = Math.max(H, 12);
+          const chars = cls.map(function (c) { const r = recognizeCluster(c, H, alpha); r.cluster = c; return r; });
+          let text = "", word = [];
+          const flush = function () { if (alpha) disambiguate(word); word.forEach(function (c) { text += c.ch; }); word = []; };
+          chars.forEach(function (c, i) {
+            if (alpha && i > 0 && c.cluster.x0 - cls[i - 1].x1 > 0.5 * H) { flush(); text += " "; }   // hueco ancho = espacio
+            word.push(c);
+          });
+          flush();
+          outLines.push({ text: text, clusters: cls, chars: chars });
+          cls.forEach(function (c) { allClusters.push(c); }); chars.forEach(function (c) { allChars.push(c); });
+        });
+        return { text: outLines.map(function (l) { return l.text; }).join("\n"), lines: outLines, clusters: allClusters, chars: allChars };
       }
       // Aprender: los trazos de cada quien como plantilla de ese carácter (máx. MAX_LEARN por carácter, las más nuevas).
       function learn(ch, strokes) {
-        if (!/^[0-9\/\-]$/.test(ch)) return false;
-        const cloud = normalize(strokes); if (!cloud) return false;
+        if (!/^[0-9A-ZÁÉÍÓÚÑ\/\-+]$/.test(ch)) return false;
+        const pts = normalizePts(strokes); if (!pts) return false;
         const L = loadLearned();
-        L.push({ name: ch, cloud: cloud.map(function (p) { return { x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000, id: p.id }; }) });
+        L.push({ name: ch, cloud: pts.map(function (p) { return { x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000, id: p.id }; }) });
         const mine = L.filter(function (t) { return t.name === ch; });
         if (mine.length > MAX_LEARN) { const drop = mine[0]; L.splice(L.indexOf(drop), 1); }
         try { localStorage.setItem(LS, JSON.stringify(L)); } catch (_) {}
+        learnedT = null; version++; cache.clear();
         return true;
       }
-      function forget() { learned = []; try { localStorage.removeItem(LS); } catch (_) {} }
-      return { recognize: recognize, learn: learn, forget: forget, templatesFor: function (ch) { return BASE[ch] || []; }, learnedCount: function () { return loadLearned().length; } };
+      function forget() { learned = []; learnedT = null; version++; cache.clear(); try { localStorage.removeItem(LS); } catch (_) {} }
+      return { recognize: recognize, learn: learn, forget: forget, templatesFor: function (ch) { return BASE[ch] || []; }, learnedCount: function () { return loadLearned().length; }, alphabet: function () { return Object.keys(BASE).concat(Object.keys(ACC).map(function (k) { return ACC[k]; })); }, accentOf: function (ch) { return ACC[ch] || ""; } };
     })();
-    const PEN_NUM_PAUSE_MS = 900, PEN_NUM_CLOSE_MS = 2500;
-    const PEN_STRIP = { el: null, cv: null, inp: null, strokes: [], timer: 0, closeTimer: 0, active: null, busy: false, label: "", numeric: false, preview: "", manual: null, rec: null, applied: null };
+    /* ── ✍️ ESCRITURA DIRECTA sobre cualquier campo (oct 2026, pedido de Gera: «sin recuadros, al escribir sobre el
+       cuadro sale el marcador y se convierte a texto al instante») ──────────────────────────────────────────────
+       Con ✍️ → Texto (y con ✍️ Tinta en los campos de una línea y en las cajas fuera de la ficha) se escribe ENCIMA
+       del campo, del tamaño que salga: la tinta se pinta en un cristal que cubre toda la pantalla y lo escrito se
+       reconoce AL MOMENTO con PEN_OCR (local, sin red): el campo muestra la lectura mientras escribes y, al soltar
+       el lápiz un instante (0.9 s en numéricos, 1.3 s en texto), queda como valor del campo (input/change, como si
+       se hubiera tecleado). La tinta se pone verde y se desvanece. Todos los trazos hasta esa pausa son del campo
+       donde empezó el primero (aunque se salgan del cuadro); un trazo que empieza LEJOS sobre otro campo (más de
+       1.2 alturas a un lado o 0.6 arriba/abajo) abre el otro campo. Toque sin arrastrar = cursor. Tachar la tinta
+       pendiente la borra. En campos de texto, si hay ayudante de IA (worker), revisa en segundo plano y corrige si
+       leyó distinto (con aviso); en los numéricos no interviene. La letra se APRENDE sola cuando el valor se queda
+       20 s sin corregir, o con la corrección que se teclee. */
+    const PEN_LIVE_NUM_MS = 900, PEN_LIVE_TEXT_MS = 1300, PEN_LIVE_FADE_MS = 1400, PEN_LIVE_JOIN_MS = 6000;
+    const PEN_LIVE = { el: null, kind: "", numeric: false, multiline: false, k: "", field: "", strokes: [], active: null, timer: 0, fadeTimer: 0, fadeTok: 0, base: "", text: "", rec: null, lastDone: null, applied: null, learnTimer: 0, learnMs: 20000, glass: null, lastBatch: {} };
     function _penInputOf(el) {
       const inp = (el && el.closest) ? el.closest("input") : null;
       if (!inp || inp.disabled || inp.readOnly) return null;
@@ -15964,8 +16060,8 @@ function plExportBackup() {
       const par = inp.parentElement; if (par) { const lab = par.querySelector(".pm-label, .lab-key, .field-label, label"); if (lab && lab.textContent.trim()) return lab.textContent.trim().slice(0, 60); }
       return (inp.getAttribute("placeholder") || inp.name || inp.dataset.field || "valor").slice(0, 60);
     }
-    // ¿Campo numérico? → reconocedor local (instantáneo). inputmode decimal/numeric/tel, type number, celdas de labs,
-    // TA / DxTx del pase y los días (ATB, ayuno).
+    // ¿Campo numérico? → solo dígitos y . : - / (sin letras ni espacios). inputmode decimal/numeric/tel, type number,
+    // celdas de labs, TA / DxTx del pase y los días (ATB, ayuno).
     function _penIsNumeric(inp) {
       if (/^(decimal|numeric|tel)$/.test(inp.getAttribute("inputmode") || "") || (inp.getAttribute("type") || "").toLowerCase() === "number") return true;
       if (inp.classList.contains("lab-input") || inp.classList.contains("lab-extra-val")) return true;
@@ -15973,190 +16069,244 @@ function plExportBackup() {
     }
     function _penInputPrompt(label, numeric) {
       return "La imagen es un valor MANUSCRITO (con lápiz, por un residente de cirugía general) para el campo «" + label + "» de la ficha de un paciente. "
-        + (numeric ? "Es un campo numérico: devuelve SOLO el número tal cual está escrito (punto decimal, sin unidades ni texto); si es una presión arterial, en formato 120/80. " : "Devuelve el texto tal cual, corto, sin interpretar ni completar. ")
+        + (numeric ? "Es un campo numérico: devuelve SOLO el número tal cual está escrito (punto decimal, sin unidades ni texto); si es una presión arterial, en formato 120/80. " : "Devuelve el texto tal cual, corto, en MAYÚSCULAS, sin interpretar ni completar. ")
         + "Devuelve SOLO un JSON con este esquema: {\"texto\":\"…\"}";
     }
     // Si la tarjeta se repintó mientras se escribía, el campo original ya no está en el DOM: buscar su reemplazo.
-    function _penInputReplacement(inp) {
-      if (inp.isConnected) return inp;
+    function _penElReplacement(el) {
+      if (!el || el.isConnected) return el;
       try {
-        if (inp.id) { const e = document.getElementById(inp.id); if (e) return e; }
-        const d = inp.dataset; let sel = "input";
-        ["ck", "field", "key", "labkey", "fecha"].forEach(function (a) { if (d[a] !== undefined) sel += '[data-' + a + '="' + String(d[a]).replace(/"/g, '\\"') + '"]'; });
-        if (sel !== "input") { const e = document.querySelector(sel); if (e) return e; }
+        if (el.id) { const e = document.getElementById(el.id); if (e) return e; }
+        const d = el.dataset; let sel = el.tagName.toLowerCase();
+        ["ck", "field", "key", "ckfield", "labkey", "fecha", "penId"].forEach(function (a) { if (d[a] !== undefined) sel += '[data-' + a.replace(/[A-Z]/g, function (m) { return "-" + m.toLowerCase(); }) + '="' + String(d[a]).replace(/"/g, '\\"') + '"]'; });
+        if (sel.indexOf("[") > 0) { const e = document.querySelector(sel); if (e) return e; }
       } catch (_) {}
-      return inp;
+      return el;
     }
-    function _penSetInputValue(inp, texto, numeric) {
-      inp = _penInputReplacement(inp);
-      let v = String(texto || "").trim();
-      if (numeric) { const m = v.replace(",", ".").match(/-?\d+(?:\.\d+)?(?:\s*\/\s*\d+(?:\.\d+)?)?/); if (m) v = m[0].replace(/\s+/g, ""); }
+    function _penSetInputValue(inp, texto) {
+      inp = _penElReplacement(inp);
+      const v = String(texto || "").trim();
       inp.value = v;
       inp.dispatchEvent(new Event("input", { bubbles: true }));
       inp.dispatchEvent(new Event("change", { bubbles: true }));
       try { inp.classList.add("pl-pen-flash"); setTimeout(function () { inp.classList.remove("pl-pen-flash"); }, 1200); } catch (_) {}
       return v;
     }
-    function _penStripOpen(inp) {
-      _penStripClose(true);
-      const el = document.createElement("div"); el.className = "pl-pen-strip";
-      const numeric = _penIsNumeric(inp);
-      const label = _penInputLabel(inp);
-      el.innerHTML = '<div class="pps-h"><span class="pps-lbl"></span><span class="pps-cur"></span><span class="pps-prev"></span><span class="pps-st">' + (numeric ? "Escribe el número con el lápiz" : "Escribe aquí con el lápiz") + '</span><span class="pps-btns"><button type="button" data-act="clear" title="Borrar lo escrito">🧹</button><button type="button" data-act="ok" title="' + (numeric ? "Poner el número ya" : "Convertir ahora") + '">✓</button><button type="button" data-act="close" title="Cerrar sin cambiar el campo">✕</button></span></div><canvas class="pps-cv"></canvas>'
-        + (numeric ? '<div class="pps-keys">' + ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", ".", "/", "⌫"].map(function (k) { return '<button type="button" data-k="' + k + '">' + k + '</button>'; }).join("") + '</div>' : '');
-      el.querySelector(".pps-lbl").textContent = label; el.querySelector(".pps-cur").textContent = inp.value ? "actual: " + inp.value : "";
-      document.body.appendChild(el);
-      const r = inp.getBoundingClientRect(); const vw = window.innerWidth, vh = window.innerHeight; const w = Math.min(560, vw - 16), ch = 108, h = ch + 36 + (numeric ? 42 : 0);
-      const left = Math.max(8, Math.min(r.left - 40, vw - w - 8));
-      const below = (vh - r.bottom) >= h + 10; const top = below ? r.bottom + 6 : Math.max(8, r.top - h - 6);
-      el.style.left = left + "px"; el.style.top = top + "px"; el.style.width = w + "px";
-      const cv = el.querySelector(".pps-cv"); const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-      cv.style.width = w + "px"; cv.style.height = ch + "px"; cv.width = Math.round(w * dpr); cv.height = Math.round(ch * dpr);
-      PEN_STRIP.el = el; PEN_STRIP.cv = cv; PEN_STRIP.inp = inp; PEN_STRIP.strokes = []; PEN_STRIP.active = null; PEN_STRIP.busy = false; PEN_STRIP.label = label; PEN_STRIP.numeric = numeric;
-      PEN_STRIP.preview = ""; PEN_STRIP.manual = null; PEN_STRIP.rec = null; PEN_STRIP.applied = null; clearTimeout(PEN_STRIP.timer); clearTimeout(PEN_STRIP.closeTimer);
-      el.querySelector(".pps-btns").addEventListener("click", function (ev) {
-        const b = ev.target.closest("button[data-act]"); if (!b) return; ev.preventDefault(); ev.stopPropagation();
-        if (b.dataset.act === "clear") { PEN_STRIP.strokes = []; PEN_STRIP.manual = null; PEN_STRIP.preview = ""; PEN_STRIP.rec = null; clearTimeout(PEN_STRIP.timer); _penStripRedraw(); }
-        else if (b.dataset.act === "ok") { clearTimeout(PEN_STRIP.timer); if (PEN_STRIP.numeric) _penStripApplyNum(true); else _penStripConvert(); }
-        else _penStripClose(false);
-      });
-      const keys = el.querySelector(".pps-keys");
-      if (keys) keys.addEventListener("click", function (ev) {
-        const b = ev.target.closest("button[data-k]"); if (!b) return; ev.preventDefault(); ev.stopPropagation();
-        const S = PEN_STRIP; const cur = S.manual !== null ? S.manual : (S.preview || "");
-        S.manual = b.dataset.k === "⌫" ? cur.slice(0, -1) : cur + b.dataset.k;
-        S.applied = null; clearTimeout(S.closeTimer); _penStripRedraw();
-        clearTimeout(S.timer); S.timer = setTimeout(function () { _penStripApplyNum(false); }, 1200);
-      });
-      cv.addEventListener("pointerdown", _penStripDown); cv.addEventListener("pointermove", _penStripMove); cv.addEventListener("pointerup", _penStripUp); cv.addEventListener("pointercancel", _penStripUp);
-      _penStripRedraw();
+    // ── Cristal: un canvas fijo sobre toda la pantalla (no atrapa toques) donde se pinta la tinta de la sesión ──
+    function _penGlass() {
+      let cv = PEN_LIVE.glass;
+      if (!cv || !cv.isConnected) { cv = document.createElement("canvas"); cv.className = "pl-pen-glass"; document.body.appendChild(cv); PEN_LIVE.glass = cv; }
+      const w = window.innerWidth, h = window.innerHeight, dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.width = w + "px"; cv.style.height = h + "px"; }
+      return cv;
     }
-    function _penStripClose(convert) {
-      const S = PEN_STRIP; if (!S.el) return;
-      clearTimeout(S.timer); clearTimeout(S.closeTimer);
-      if (convert) {
-        if (S.numeric) { if (!S.applied) _penStripApplyNum(false); }                 // numérico: el valor ya está (o se pone ahora)
-        else if (S.strokes.length && !S.busy) _penStripConvert();                     // texto: sigue en segundo plano
+    function _penGlassCtx(cv) { const ctx = cv.getContext("2d"); const dpr = cv.width / Math.max(1, window.innerWidth); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx; }
+    function _penGlassDraw(strokes, active, done) {
+      const cv = _penGlass(); const ctx = cv.getContext("2d");
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); _penGlassCtx(cv);
+      const color = done ? "#16a34a" : "#7c3aed";
+      (strokes || []).forEach(function (p) { _penStrokePath(ctx, p, 1, color); });
+      if (active) _penStrokePath(ctx, active.pts, 1, "#7c3aed");
+      cv.style.transition = "none"; cv.style.opacity = "1";
+    }
+    // Vacía el cristal (clearRect). NO reinicia la opacidad: si la tinta se estaba desvaneciendo (opacity → 0), se queda
+    // en 0 con el lienzo ya vacío; el siguiente _penGlassDraw la vuelve a poner en 1 al instante. (Antes la reiniciaba a 1
+    // justo al terminar el desvanecido, dejando el cristal "visible" pero vacío.)
+    function _penGlassClear() { clearTimeout(PEN_LIVE.fadeTimer); const cv = PEN_LIVE.glass; if (!cv) return; const ctx = cv.getContext("2d"); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); }
+    // La tinta ya aplicada (verde) se queda un momento y se desvanece; una sesión nueva la quita de inmediato.
+    function _penGlassFade() {
+      clearTimeout(PEN_LIVE.fadeTimer); const tok = ++PEN_LIVE.fadeTok;
+      PEN_LIVE.fadeTimer = setTimeout(function () {
+        if (PEN_LIVE.fadeTok !== tok || PEN_LIVE.el || PEN_LIVE.active) return;
+        const cv = PEN_LIVE.glass; if (!cv) return; cv.style.transition = "opacity .5s"; cv.style.opacity = "0";
+        setTimeout(function () { if (PEN_LIVE.fadeTok === tok && !PEN_LIVE.el && !PEN_LIVE.active) _penGlassClear(); }, 520);
+      }, PEN_LIVE_FADE_MS);
+    }
+    // Campo bajo el lápiz: input (una línea) o textarea (varios renglones). Con ✍️ Tinta, las cajas de la ficha
+    // (con data-key) se quedan con tinta en su propia capa y no entran aquí.
+    function _penLiveTarget(el) {
+      const inp = _penInputOf(el);
+      if (inp) return { el: inp, kind: "inp", numeric: _penIsNumeric(inp), multiline: false };
+      const ta = _penTa(el);
+      if (ta && !(penMode() === "ink" && ta.dataset.key)) return { el: ta, kind: "ta", numeric: false, multiline: true };
+      return null;
+    }
+    function _penLiveEl() { const S = PEN_LIVE; if (!S.el) return null; if (!S.el.isConnected) { const r = S.kind === "ta" && S.field ? (_penTaFor(S.k, S.field) || _penElReplacement(S.el)) : _penElReplacement(S.el); if (r) S.el = r; } return S.el; }
+    function _penLiveJoin(base, text, sep) { const b = String(base || "").replace(/\s+$/, ""); return b ? (text ? b + sep + text : b) : text; }
+    function _penLiveClean(text, numeric) {
+      if (numeric) return String(text || "").replace(/[^0-9.:\/\-]/g, "");
+      return String(text || "").split("\n").map(function (l) { return l.replace(/\s+/g, " ").trim(); }).filter(Boolean).join("\n");
+    }
+    function _penStrokesY(strokes) { let a = Infinity, b = -Infinity; strokes.forEach(function (p) { p.forEach(function (q) { if (q[1] < a) a = q[1]; if (q[1] > b) b = q[1]; }); }); return [a, b]; }
+    // Caja grande: lo escrito en el mismo renglón que el lote anterior (hace < 10 s y a la misma altura) se une con espacio; si no, renglón nuevo.
+    function _penLiveSep() {
+      const S = PEN_LIVE; if (S.kind !== "ta") return " ";
+      const last = S.lastBatch[S.k + "|" + S.field]; if (!last || !S.strokes.length || Date.now() - last.t > 10000) return "\n";
+      const y = _penStrokesY(S.strokes);
+      return (y[0] < last.y[1] + 6 && y[1] > last.y[0] - 6) ? " " : "\n";
+    }
+    function _penLiveBegin(t) {
+      _penLiveFinalize("otro campo");
+      clearTimeout(PEN_LIVE.fadeTimer); PEN_LIVE.fadeTok++;
+      const S = PEN_LIVE; S.el = t.el; S.kind = t.kind; S.numeric = t.numeric; S.multiline = t.multiline; S.strokes = []; S.text = ""; S.rec = null;
+      if (t.kind === "ta") { S.k = t.el.dataset.key || ""; S.field = _penField(t.el); if (S.k) getNote(S.k); S.base = t.el.value; }
+      else {
+        S.k = ""; S.field = "";
+        // Campo de texto en el que se acaba de escribir (< 6 s): lo nuevo se agrega con espacio; si no, se reemplaza el valor.
+        const ld = S.lastDone; const cont = !t.numeric && ld && ld.el === t.el && Date.now() - ld.t < PEN_LIVE_JOIN_MS && String(t.el.value || "").trim();
+        S.base = cont ? t.el.value : "";
       }
-      const el = S.el; S.el = null; S.cv = null; S.active = null;
-      if (!S.busy) { S.inp = null; S.strokes = []; }
-      el.remove();
+      try { t.el.classList.add("pl-pen-live"); } catch (_) {}
     }
-    // Numérico: reconocimiento local en cada trazo (vista previa al momento); tras una pausa corta el valor se pone solo.
-    function _penStripRecognize() {
-      const S = PEN_STRIP; S.rec = PEN_DIGITS.recognize(S.strokes); S.manual = null; S.preview = S.rec.text; S.applied = null;
+    // ¿El trazo nuevo empieza lejos de la tinta de la sesión? (otro renglón u otro campo)
+    function _penLiveFar(pts) {
+      const S = PEN_LIVE; if (!S.strokes.length) return false;
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      S.strokes.forEach(function (p) { p.forEach(function (q) { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }); });
+      const H = Math.max(y1 - y0, 24), p = pts[0];
+      return p[0] > x1 + 1.2 * H || p[0] < x0 - 1.2 * H || p[1] > y1 + 0.6 * H || p[1] < y0 - 0.6 * H;
     }
-    function _penStripApplyNum(confirm) {
-      const S = PEN_STRIP; if (!S.inp) return;
-      const v = (S.manual !== null ? S.manual : S.preview) || "";
-      if (!v) return;
-      const inp = S.inp;
-      _penSetInputValue(inp, v, false);
-      S.applied = v;
-      // Aprender la letra de quien escribe: al confirmar (✓) o al corregir con el teclado, si cada grupo de trazos es un carácter.
-      if ((confirm || S.manual !== null) && S.rec && S.rec.clusters.length === v.length) S.rec.clusters.forEach(function (c, i) { PEN_DIGITS.learn(v[i], c.strokes); });
-      _penStripRedraw();
-      clearTimeout(S.closeTimer);
-      S.closeTimer = setTimeout(function () { if (PEN_STRIP.el && PEN_STRIP.inp === inp && PEN_STRIP.applied && !PEN_STRIP.active) _penStripClose(false); }, PEN_NUM_CLOSE_MS);
+    function _penLiveAdd(pts) {
+      const S = PEN_LIVE; if (!S.el) return;
+      clearTimeout(S.timer); S.timer = 0;
+      const fake = { s: S.strokes.map(function (p) { return { p: p }; }) }; const erased = _penScratch(fake, pts);   // tachar la tinta pendiente la borra
+      if (erased.length) S.strokes = S.strokes.filter(function (p) { return !erased.some(function (e) { return e.p === p; }); });
+      else S.strokes.push(pts);
+      if (!S.strokes.length) { S.text = ""; S.rec = null; _penLiveFinalize("borrado"); return; }   // se borró todo: el campo vuelve a su valor
+      _penLivePreview();
+      _penGlassDraw(S.strokes, null, false);
+      S.timer = setTimeout(function () { _penLiveFinalize("pausa"); }, S.numeric ? PEN_LIVE_NUM_MS : PEN_LIVE_TEXT_MS);
     }
-    function _penStripPt(e) { const r = PEN_STRIP.cv.getBoundingClientRect(); return [Math.round((e.clientX - r.left) * 10) / 10, Math.round((e.clientY - r.top) * 10) / 10, _penPressure(e)]; }
-    function _penStripDown(e) {
-      if (e.pointerType === "touch" || !PEN_STRIP.cv) return;      // el dedo no pinta (solo lápiz o ratón)
-      e.preventDefault(); e.stopPropagation();
-      try { PEN_STRIP.cv.setPointerCapture(e.pointerId); } catch (_) {}
-      clearTimeout(PEN_STRIP.timer); clearTimeout(PEN_STRIP.closeTimer);
-      if (PEN_STRIP.numeric && PEN_STRIP.manual !== null) { PEN_STRIP.strokes = []; PEN_STRIP.manual = null; PEN_STRIP.preview = ""; }   // tras corregir con teclas, escribir = empezar de nuevo
-      PEN_STRIP.applied = null;
-      PEN_STRIP.active = { id: e.pointerId, pts: [_penStripPt(e)], len: 0 };
+    // Lectura al momento: el campo muestra lo reconocido mientras se escribe (sin disparar todavía input/change).
+    function _penLivePreview() {
+      const S = PEN_LIVE; const el = _penLiveEl(); if (!el) return;
+      S.rec = S.strokes.length ? PEN_OCR.recognize(S.strokes, { alpha: !S.numeric, multiline: S.multiline }) : null;
+      S.text = S.rec ? _penLiveClean(S.rec.text, S.numeric) : "";
+      el.value = _penLiveJoin(S.base, S.text, S.kind === "ta" ? _penLiveSep() : " ");
     }
-    function _penStripMove(e) {
-      const a = PEN_STRIP.active; if (!a || e.pointerId !== a.id) return; e.preventDefault();
-      const p = _penStripPt(e); const l = a.pts[a.pts.length - 1]; const d = Math.hypot(p[0] - l[0], p[1] - l[1]); if (d < 1) return;
-      a.len += d; a.pts.push(p); _penStripRedraw();
-    }
-    function _penStripUp(e) {
-      const a = PEN_STRIP.active; if (!a || e.pointerId !== a.id) return; PEN_STRIP.active = null;
-      if (a.len >= 4) {
-        const fake = { s: PEN_STRIP.strokes.map(function (p) { return { p: p }; }) }; const erased = _penScratch(fake, a.pts);
-        if (erased.length) PEN_STRIP.strokes = PEN_STRIP.strokes.filter(function (p) { return !erased.some(function (x) { return x.p === p; }); });
-        else PEN_STRIP.strokes.push(a.pts);
+    function _penLiveFinalize(why) {
+      const S = PEN_LIVE; if (!S.el) return;
+      clearTimeout(S.timer); S.timer = 0;
+      const el = _penLiveEl(), text = S.text, strokes = S.strokes, numeric = S.numeric, kind = S.kind, k = S.k, field = S.field, rec = S.rec, base = S.base;
+      const sep = _penLiveSep();
+      try { if (el) el.classList.remove("pl-pen-live"); } catch (_) {}
+      S.el = null; S.strokes = []; S.text = ""; S.rec = null;
+      if (!text || !el) { _penGlassClear(); if (el) el.value = base; return; }     // nada legible: el campo vuelve a lo que tenía
+      let start = 0;
+      if (kind === "inp") { const applied = _penLiveJoin(base, text, " "); _penSetInputValue(el, applied); start = applied.length - text.length; }
+      else {
+        el.value = base; _penInsertText(k, field, text, sep, true); start = el.value.length - text.length;
+        S.lastBatch[k + "|" + field] = { t: Date.now(), y: _penStrokesY(strokes) };
       }
-      clearTimeout(PEN_STRIP.timer);
-      if (PEN_STRIP.numeric) { _penStripRecognize(); _penStripRedraw(); if (PEN_STRIP.strokes.length) PEN_STRIP.timer = setTimeout(function () { _penStripApplyNum(false); }, PEN_NUM_PAUSE_MS); return; }
-      _penStripRedraw();
-      if (PEN_STRIP.strokes.length) PEN_STRIP.timer = setTimeout(_penStripConvert, PEN_TEXT_PAUSE_MS);
+      S.lastDone = { el: el, t: Date.now() };
+      _penGlassDraw(strokes, null, true); _penGlassFade();
+      _penLiveLearnLater(el, text, start, rec);
+      if (!numeric) _penLiveAiCheck(el, kind, k, field, text, strokes);
     }
-    function _penStripRedraw() {
-      const S = PEN_STRIP; const cv = S.cv; if (!cv) return;
-      const ctx = cv.getContext("2d"); const w = parseFloat(cv.style.width) || 0, h = parseFloat(cv.style.height) || 0; const dpr = cv.width / Math.max(1, w);
-      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(10, h * 0.72); ctx.lineTo(w - 10, h * 0.72); ctx.stroke();   // renglón guía
-      S.strokes.forEach(function (p) { _penStrokePath(ctx, p, 1, S.busy ? "#c4b5fd" : (S.applied ? "#16a34a" : "#7c3aed")); });
-      if (S.active) _penStrokePath(ctx, S.active.pts, 1, "#7c3aed");
-      const st = S.el && S.el.querySelector(".pps-st"), pv = S.el && S.el.querySelector(".pps-prev");
-      if (S.numeric) {
-        const v = (S.manual !== null ? S.manual : S.preview) || "";
-        if (pv) { pv.textContent = v ? "→ " + v : ""; pv.classList.toggle("ok", !!S.applied); }
-        if (st) st.textContent = S.applied ? "✓ Puesto en el campo" : (v ? "Se pone solo al soltar el lápiz · ✓ ya" : "Escribe el número con el lápiz");
-      } else if (st && !S.busy) st.textContent = S.strokes.length ? "Al soltar el lápiz se convierte en texto…" : "Escribe aquí con el lápiz";
+    // Aprendizaje implícito: si en 20 s el valor sigue igual, cada carácter (confiable) se aprende con los trazos de quien
+    // escribe; si se corrigió tecleando y hay tantos caracteres como grupos de trazos, se aprende la corrección.
+    function _penLiveLearnLater(el, text, start, rec) {
+      const S = PEN_LIVE; clearTimeout(S.learnTimer); S.applied = null;
+      if (!rec || !rec.chars.length || rec.chars.some(function (c) { return !c.ch; })) return;
+      S.applied = { el: el, text: text, start: start, rec: rec };
+      S.learnTimer = setTimeout(_penLiveLearnNow, S.learnMs);
     }
-    async function _penStripConvert() {
-      const S = PEN_STRIP; if (!S.strokes.length || S.busy) return;
-      const inp = S.inp, strokes = S.strokes, label = S.label, numeric = S.numeric; if (!inp) return;
-      const st = S.el && S.el.querySelector(".pps-st");
-      S.busy = true; _penStripRedraw(); if (st) st.textContent = "🤖 Convirtiendo…";
+    function _penLiveLearnNow() {
+      const A = PEN_LIVE.applied; PEN_LIVE.applied = null; if (!A) return 0;
+      const el = _penElReplacement(A.el); if (!el) return 0;
+      const seg = String(el.value || "").slice(A.start); const chars = A.rec.chars; let n = 0;
+      const flat = seg.replace(/\s+/g, "").toUpperCase();
+      if (seg === A.text) {                                                        // sin corregir: aprender lo confiable
+        chars.forEach(function (c) { if (c.cloud && !c.mark && c.conf >= 0.12 && PEN_OCR.learn(c.ch, c.cluster.strokes)) n++; });
+      } else if (flat.length === chars.length && flat !== A.text.replace(/\s+/g, "")) {   // corregido a mano: aprender la corrección
+        chars.forEach(function (c, i) { if (c.cloud && !c.mark && PEN_OCR.learn(flat[i], c.cluster.strokes)) n++; });
+      }
+      return n;
+    }
+    // Revisión en segundo plano por el ayudante de IA (worker /api/ai): solo texto; si lee distinto y el campo sigue como
+    // lo dejó el lápiz, lo corrige y avisa. Sin worker o sin red no pasa nada (lo local se queda).
+    async function _penLiveAiCheck(el, kind, k, field, text, strokes) {
+      const proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : ""; if (!proxyUrl) return;
       try {
-        const png = _penStrokesPng(strokes); if (!png) throw new Error("sin trazos");
-        const texto = await _penRecognize(png, _penInputPrompt(label, numeric));
-        const v = _penSetInputValue(inp, texto, numeric);
-        if (S.inp === inp) { S.strokes = []; const st2 = S.el && S.el.querySelector(".pps-st"); if (st2) st2.textContent = "✓ " + v; }
-        setTimeout(function () { if (PEN_STRIP.el && PEN_STRIP.inp === inp && !PEN_STRIP.strokes.length && !PEN_STRIP.active) _penStripClose(false); }, 900);
-      } catch (e) {
-        const st3 = S.el && S.el.querySelector(".pps-st"); if (st3) st3.textContent = "No se pudo convertir (" + ((e && e.message) || e) + "): vuelve a intentar con ✓";
-        else if (typeof _plToast === "function") _plToast("No se pudo convertir lo escrito para «" + label + "» (" + ((e && e.message) || e) + ")", "#b91c1c", 3500);
-      } finally {
-        S.busy = false;
-        if (S.inp !== inp) { /* ya se abrió otra banda */ } else if (!S.el) { S.inp = null; S.strokes = []; }
-        _penStripRedraw();
-      }
+        const png = _penStrokesPng(strokes); if (!png) return;
+        const ai = await _penRecognize(png, kind === "inp" ? _penInputPrompt(_penInputLabel(el), false) : _penTextPrompt(field, el));
+        const norm = function (s) { return String(s || "").replace(/\s+/g, " ").trim().toUpperCase(); };
+        if (!ai || norm(ai) === norm(text)) return;
+        const cur = _penElReplacement(el); if (!cur) return;
+        const v = String(cur.value || ""); const at = v.lastIndexOf(text);
+        if (at < 0 || at + text.length !== v.length) return;                      // ya se siguió escribiendo o se corrigió: no tocar
+        const next = v.slice(0, at) + ai;
+        clearTimeout(PEN_LIVE.learnTimer); PEN_LIVE.applied = null;              // no aprender una lectura que la IA cambió
+        if (kind === "inp") _penSetInputValue(cur, next);
+        else if (field.indexOf("el:") === 0) { cur.value = next; cur.dispatchEvent(new Event("input", { bubbles: true })); cur.dispatchEvent(new Event("change", { bubbles: true })); }
+        else {
+          const nd = getNote(k); const prev = toSafeString(_inkFieldGet(nd, field)); cur.value = next;
+          if (field.indexOf("ck:") === 0) { liveCkText(cur); updateCkText(k, field.slice(3), next); } else { liveUpdate(cur); updateField(k, field, next, prev); }
+        }
+        if (typeof _plToast === "function") _plToast("🤖 La IA corrigió lo escrito: «" + _egCut(text, 40) + "» → «" + _egCut(ai, 40) + "»", "#7c3aed", 3500);
+      } catch (e) { safeLog("pen ai check:", e); }
     }
-    // Eventos: SOLO el lápiz (pointerType "pen"). El dedo y el ratón siguen llegando a la caja (cursor, teclado, scroll).
+    // ── Eventos del cristal: SOLO el lápiz (pointerType "pen"). El dedo y el ratón siguen llegando al campo. ──
+    function _penLiveDown(e, t) {
+      PEN_LIVE.active = { id: e.pointerId, pts: [[Math.round(e.clientX * 10) / 10, Math.round(e.clientY * 10) / 10, _penPressure(e)]], len: 0, target: t };
+      clearTimeout(PEN_LIVE.timer); PEN_LIVE.timer = 0;                           // con el lápiz abajo la sesión no se cierra
+      _penGlassDraw(PEN_LIVE.strokes, PEN_LIVE.active, false);
+    }
+    function _penLiveMove(e) {
+      const a = PEN_LIVE.active; if (!a) return;
+      const x = e.clientX, y = e.clientY; const last = a.pts[a.pts.length - 1]; const d = Math.hypot(x - last[0], y - last[1]); if (d < 1) return;
+      a.len += d; a.pts.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10, _penPressure(e)]);
+      _penStrokePath(_penGlassCtx(_penGlass()), a.pts.slice(-2), 1, "#7c3aed");
+    }
+    function _penLiveUp(e, cancelled) {
+      const a = PEN_LIVE.active; PEN_LIVE.active = null; if (!a) return;
+      const S = PEN_LIVE;
+      if (cancelled) { _penGlassDraw(S.strokes, null, false); if (S.el && S.strokes.length) S.timer = setTimeout(function () { _penLiveFinalize("pausa"); }, S.numeric ? PEN_LIVE_NUM_MS : PEN_LIVE_TEXT_MS); return; }
+      if (a.len < 4) {                                                              // toque: cierra lo pendiente y pone el cursor
+        _penLiveFinalize("toque");
+        if (a.target) { try { a.target.el.focus(); if (a.target.el.setSelectionRange) a.target.el.setSelectionRange(a.target.el.value.length, a.target.el.value.length); } catch (_) {} }
+        return;
+      }
+      if (S.el && (!a.target || a.target.el === S.el || !_penLiveFar(a.pts))) { /* sigue el mismo campo */ }
+      else if (a.target) _penLiveBegin(a.target);
+      else { _penGlassClear(); return; }
+      _penLiveAdd(a.pts);
+    }
     (function _penBind() {
       document.addEventListener("touchstart", function (e) {
         try {
-          if (!e.touches || e.touches.length !== 1) return;
-          if (PEN_STRIP.el && PEN_STRIP.el.contains(e.target)) { if (e.touches[0].touchType === "stylus") e.preventDefault(); return; }
-          if (!penModeOn()) return;
+          if (!e.touches || e.touches.length !== 1 || !penModeOn()) return;
           if (e.touches[0].touchType !== "stylus") return;        // WebKit: "stylus" = Apple Pencil
-          if (!_penTa(e.target) && !_penInputOf(e.target)) return;
+          if (!PEN_LIVE.el && !_penTa(e.target) && !_penInputOf(e.target)) return;   // con sesión abierta, todo trazo es del campo
           e.preventDefault();                                        // ni scroll ni Scribble: la tinta la pinta la app
         } catch (_) {}
       }, { passive: false, capture: true });
-      document.addEventListener("touchmove", function (e) { if ((PEN.active || PEN_STRIP.active) && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
+      document.addEventListener("touchmove", function (e) { if ((PEN.active || PEN_LIVE.active) && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
       document.addEventListener("pointerdown", function (e) {
-        // Tocar fuera de la banda de escritura la cierra (convirtiendo lo pendiente); el lápiz sobre el MISMO campo la cierra y pone el cursor.
-        if (PEN_STRIP.el && !PEN_STRIP.el.contains(e.target)) {
-          const same = e.pointerType === "pen" && _penInputOf(e.target) === PEN_STRIP.inp;
-          _penStripClose(true);
-          if (same) { e.preventDefault(); e.stopPropagation(); try { _penInputOf(e.target).focus(); } catch (_) {} return; }
-        }
         if (e.pointerType !== "pen" || !penModeOn()) return;
-        const inp = _penInputOf(e.target);
-        if (inp) { e.preventDefault(); e.stopPropagation(); _penStripOpen(inp); return; }
-        const ta = _penTa(e.target); if (!ta) return;
+        const t = _penLiveTarget(e.target);
+        if (!t && !PEN_LIVE.el) {
+          const ta = _penTa(e.target); if (!ta) return;              // ✍️ Tinta sobre una caja de la ficha: capa de tinta propia
+          e.preventDefault(); e.stopPropagation(); _penStart(ta, e); return;
+        }
         e.preventDefault(); e.stopPropagation();
-        _penStart(ta, e);
+        _penLiveDown(e, t);
       }, true);
-      document.addEventListener("pointermove", function (e) { if (PEN.active && e.pointerId === PEN.active.id) { if (e.cancelable) e.preventDefault(); _penMove(e); } }, true);
-      document.addEventListener("pointerup", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, false); }, true);
-      document.addEventListener("pointercancel", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, true); }, true);
-      window.addEventListener("blur", function () { if (PEN.active) _penEnd(null, true); });
+      document.addEventListener("pointermove", function (e) {
+        if (PEN.active && e.pointerId === PEN.active.id) { if (e.cancelable) e.preventDefault(); _penMove(e); return; }
+        if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) { if (e.cancelable) e.preventDefault(); _penLiveMove(e); }
+      }, true);
+      document.addEventListener("pointerup", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, false); else if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) _penLiveUp(e, false); }, true);
+      document.addEventListener("pointercancel", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, true); else if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) _penLiveUp(e, true); }, true);
+      window.addEventListener("blur", function () { if (PEN.active) _penEnd(null, true); if (PEN_LIVE.active) _penLiveUp(null, true); _penLiveFinalize("blur"); });
+      window.addEventListener("scroll", function () { if (PEN_LIVE.el && !PEN_LIVE.active) _penLiveFinalize("scroll"); }, true);
+      window.addEventListener("resize", function () { if (PEN_LIVE.el && !PEN_LIVE.active) _penLiveFinalize("resize"); if (!PEN_LIVE.el) _penGlassClear(); });
       try { document.body.classList.toggle("pen-on", penModeOn()); } catch (_) {}
       // Las tarjetas también se repintan fuera de renderView/_rerenderCard (Realtime, RIS, fotos…): cualquier
       // cambio de nodos en la vista vuelve a montar las capas de tinta (los nodos propios de la tinta no cuentan).
       try {
         const host = document.getElementById("view-piso") || document.body; let raf = 0;
-        const isPenEl = function (n) { return n.nodeType === 1 && (n.classList.contains("pl-ink-cv") || n.classList.contains("pl-ink-menu") || n.classList.contains("pl-ink-pop")); };
+        const isPenEl = function (n) { return n.nodeType === 1 && (n.classList.contains("pl-ink-cv") || n.classList.contains("pl-ink-menu") || n.classList.contains("pl-ink-pop") || n.classList.contains("pl-pen-glass")); };
         const other = function (list) { return Array.prototype.some.call(list, function (n) { return !isPenEl(n); }); };
         new MutationObserver(function (recs) {
           if (!recs.some(function (r) { return other(r.addedNodes) || other(r.removedNodes); })) return;

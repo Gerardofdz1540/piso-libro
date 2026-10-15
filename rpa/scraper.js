@@ -735,7 +735,10 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   for (const r of ageRejected) {
     console.log(`       [age-guard] encabezado coincide por nombre pero edad WinLab ${r.headerAge} vs censo ${r.censusAge} (±${sel.tolerance}) → bloque descartado`);
   }
-  result.ageGuard = { census_age: sel.censusAge, tolerance: sel.tolerance, blocks_rejected: ageRejected.length };
+  for (const r of (sel.ageRescued || [])) {
+    console.log(`       [age-guard] bloque con edad WinLab ${r.headerAge} vs censo ${r.censusAge} RESCATADO: mismo nombre y misma fecha de nacimiento salvo el año que el bloque aceptado (${r.fnac} vs ${r.twinFnac}) → año mal capturado en WinLab`);
+  }
+  result.ageGuard = { census_age: sel.censusAge, tolerance: sel.tolerance, blocks_rejected: ageRejected.length, blocks_rescued: (sel.ageRescued || []).length };
 
   // RETRY-GUARD (jul 2026): en un candidato de retry (búsqueda "ancha": invertido, Ñ→N,
   // apellido 3 palabras) el objetivo DEBE identificarse positivamente por encabezado.

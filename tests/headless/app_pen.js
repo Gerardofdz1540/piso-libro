@@ -1,5 +1,6 @@
-// ✍️ Lápiz directo sobre las cajas (tinta por caja que viaja con la nota, tachadura que borra, toque = cursor,
-// dedo no pinta, menú de la esquina) + vista iPad: tira de camas en la barra, sin botones flotantes.
+// ✍️ Lápiz: tinta por caja (viaja con la nota, tachadura que borra, toque = cursor, dedo no pinta, menú de la esquina),
+// escritura DIRECTA sobre cualquier campo (sin recuadro: reconocedor local PEN_OCR al momento, IA solo como revisor)
+// + vista iPad: tira de camas en la barra, sin botones flotantes.
 //   node tests/headless/app_pen.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
 const { chromium } = require('playwright');
 const MOCK = `(() => {
@@ -26,7 +27,7 @@ const MOCK = `(() => {
     if (aiMode === 'fail') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'x' }) });
     aiN++; await new Promise(r => setTimeout(r, 150));
     const content = (((body || {}).messages || [])[0] || {}).content; const ptxt = Array.isArray(content) ? ((content.find(c => c.type === 'text') || {}).text || '') : '';
-    const texto = /campo numérico/.test(ptxt) ? String(90 + aiN) : 'TEXTO ' + aiN;     // campos numéricos (vitales, vasopresor) → número
+    const texto = /Dieta/.test(ptxt) ? (aiN--, 'BLANDA') : 'TEXTO ' + aiN;             // dieta: la IA lee lo mismo que el reconocedor local
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: [{ type: 'text', text: '```json\n{"texto":"' + texto + '"}\n```' }] }) });
   });
   await page.route('**/vendor/supabase*', r => r.abort());
@@ -157,150 +158,190 @@ const MOCK = `(() => {
   });
   check('L4 si la tarjeta se repinta directo (Realtime, RIS, fotos…) la capa de tinta se vuelve a montar sola (MutationObserver)', l4.after === true && /px$/.test(l4.w || ''), JSON.stringify(l4));
 
-  // ── L5: ✍️ → Texto: la tinta se convierte en texto con IA al soltar el lápiz y se inserta por la vía del teclado ──
+  // ── Escritura DIRECTA (sin recuadro): trazos "a mano" con las plantillas del reconocedor, sobre el campo y lo que se salga ──
+  // Helpers inyectados en la página: pen(el, tipo, x, y), strokeAt(P), writeChars(str, x0, y0, s, gap) (altura ≈ 90·s px),
+  // tap(el). Los trazos van a document.elementFromPoint, como en el iPad (los que se salen del cuadro caen donde caigan).
+  await page.evaluate(() => {
+    window.__pen = (el, type, x, y, id, ptype) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id || 7, pointerType: ptype || 'pen', isPrimary: true, clientX: x, clientY: y, pressure: 0.5 }));
+    // forceEl: dispatch el pointerdown del PRIMER trazo en ese elemento (para cajas 0×0 en headless, como los modales).
+    window.__strokeAt = (P, forceEl) => { const el0 = forceEl || document.elementFromPoint(P[0][0], P[0][1]) || document.body; __pen(el0, 'pointerdown', P[0][0], P[0][1]); P.slice(1).forEach(p => __pen(document.body, 'pointermove', p[0], p[1])); __pen(document.body, 'pointerup', P[P.length - 1][0], P[P.length - 1][1]); };
+    window.__writeChars = (str, x0, y0, s, gap, opts) => {
+      opts = opts || {}; const minCell = opts.minCell || 0; let x = x0, first = true;
+      for (const ch of str) {
+        if (ch === ' ') { x += 0.9 * 90 * s; continue; }
+        if (ch === '.') { __strokeAt([[x + 2, y0 + 86 * s], [x + 3, y0 + 87 * s], [x + 4, y0 + 86 * s]], first ? opts.el : null); first = false; x += Math.max(8, minCell) * s + gap; continue; }
+        const tpl = PEN_OCR.templatesFor(ch)[0];
+        let minX = Infinity, maxX = -Infinity; tpl.forEach(st => st.forEach(p => { minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); }));
+        tpl.forEach((st, i) => { __strokeAt(st.map(p => [x + (p[0] - minX) * s, y0 + (p[1] - 5) * s]), (first && i === 0) ? opts.el : null); });
+        first = false;
+        x += Math.max(maxX - minX, minCell) * s + gap;
+      }
+    };
+    window.__tap = (el) => { const r = el.getBoundingClientRect(); __pen(el, 'pointerdown', r.left + 4, r.top + 4); __pen(el, 'pointerup', r.left + 4, r.top + 4); };
+  });
+
+  // ── L5: caja grande en ✍️ → Texto: lo escrito se vuelve texto AL MOMENTO (local), queda con autor y la IA revisa en segundo plano ──
   const l5 = await page.evaluate(async () => {
     localStorage.setItem('pl_pen_mode', '2');
     const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]';
     const ta = document.querySelector(sel); ta.value = ''; noteData[k].pendientes = '';
-    const stroke = (pts) => { const r = ta.getBoundingClientRect(); const ev = (type, x, y) => ta.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + y, pressure: 0.5 })); ev('pointerdown', pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ev('pointermove', pts[i][0], pts[i][1]); ev('pointerup', pts[pts.length - 1][0], pts[pts.length - 1][1]); };
-    const key = k + '|pendientes';
-    stroke([[10, 10], [30, 14], [50, 12], [70, 16]]);
-    const pend1 = PEN.pending[key].strokes.length; const menu = ta.nextElementSibling.nextElementSibling; const menuShown1 = menu.style.display !== 'none';
-    // tachar la tinta pendiente la borra (no se manda a la IA)
-    stroke([[8, 8], [22, 24], [14, 6], [30, 26], [20, 4], [40, 26], [32, 6], [50, 26], [44, 8], [62, 26], [56, 6], [74, 26]]);
-    const pendAfterScratch = PEN.pending[key].strokes.length;
-    stroke([[10, 10], [30, 14], [50, 12], [70, 16]]);                 // se vuelve a escribir
-    await new Promise(r => setTimeout(r, 2300));                       // pausa de 1.6 s + respuesta simulada
-    const val1 = ta.value, nd1 = getNote(k).pendientes, pendAfter = PEN.pending[key].strokes.length, inkSaved = !!(getNote(k).checklist.__ink && getNote(k).checklist.__ink.pendientes);
-    const menuHidden = menu.style.display === 'none';
-    stroke([[10, 60], [30, 64], [50, 62]]);                            // otro renglón (más abajo) → salto de línea
-    await new Promise(r => setTimeout(r, 2300));
-    const val2 = ta.value;
-    stroke([[90, 60], [110, 64], [130, 62]]);                          // mismo renglón (< 10 s) → se une con espacio
-    await new Promise(r => setTimeout(r, 2300));
-    const val3 = ta.value;
-    return { pend1, menuShown1, pendAfterScratch, val1, nd1, pendAfter, inkSaved, menuHidden, val2, val3, by: ((getNote(k).checklist.__pl_note_meta || {}).by || {}).pendientes, taStill: document.querySelector(sel) === ta };
+    ta.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120));
+    const r = ta.getBoundingClientRect();
+    __writeChars('HAS', r.left + 8, r.top + 6, 0.4, 6);
+    const live = ta.value, liveCls = ta.classList.contains('pl-pen-live'), glass = document.querySelector('canvas.pl-pen-glass'), sess = PEN_LIVE.el === ta && PEN_LIVE.strokes.length === 6;   // H (3 trazos) + A (2) + S (1)
+    const notFocused = document.activeElement !== ta;
+    await new Promise(r2 => setTimeout(r2, 1350));                       // pausa de 1.3 s → queda como texto (sin IA; la IA simulada tarda 150 ms más)
+    const v1 = ta.value, nd1 = getNote(k).pendientes, clsOff = !ta.classList.contains('pl-pen-live'), closed = PEN_LIVE.el === null, inkSaved = !!(getNote(k).checklist.__ink && getNote(k).checklist.__ink.pendientes);
+    await new Promise(r2 => setTimeout(r2, 500));                        // la IA (simulada) leyó distinto → corrige
+    const v1b = ta.value, nd1b = getNote(k).pendientes;
+    await new Promise(r2 => setTimeout(r2, 1500));                       // 1.4 s después de quedar, la tinta verde se desvanece
+    const faded = glass && glass.style.opacity === '0';
+    __writeChars('DM2', r.left + 8, r.top + 60, 0.4, 6);                 // otro renglón (más abajo) → salto de línea
+    const live2 = ta.value;
+    await new Promise(r2 => setTimeout(r2, 2000));
+    const v2 = ta.value;
+    __writeChars('POP', r.left + 150, r.top + 60, 0.4, 6);               // mismo renglón (< 10 s, misma altura) → espacio
+    await new Promise(r2 => setTimeout(r2, 2000));
+    const v3 = ta.value;
+    return { live, liveCls, glass: !!glass, sess, notFocused, v1, nd1, clsOff, closed, inkSaved, v1b, nd1b, faded, live2, v2, v3, by: ((getNote(k).checklist.__pl_note_meta || {}).by || {}).pendientes, taStill: document.querySelector(sel) === ta };
   });
   const ai0 = aiBodies[0] || {}; const c0 = ((ai0.messages || [])[0] || {}).content || [];
-  const textPosted = calls.some(c => (c.m === 'POST' || c.m === 'PATCH') && /\/rest\/v1\/notes/.test(c.url) && c.body && typeof c.body.pendientes === 'string' && /^TEXTO 1/.test(c.body.pendientes));
-  check('L5 ✍️ → Texto: el trazo queda pendiente (morado, botón ✍️ visible); tachar la tinta pendiente la borra sin mandarla; tras la pausa la tinta va al ayudante de IA (imagen + instrucción de la caja) y el texto reconocido se inserta en la caja sin guardar tinta; otro renglón → salto de línea; mismo renglón → espacio; se guarda con autor como si fuera tecleado',
-    l5.pend1 === 1 && l5.menuShown1 && l5.pendAfterScratch === 0 && l5.val1 === 'TEXTO 1' && l5.nd1 === 'TEXTO 1' && l5.pendAfter === 0 && !l5.inkSaved && l5.menuHidden
-    && l5.val2 === 'TEXTO 1\nTEXTO 2' && l5.val3 === 'TEXTO 1\nTEXTO 2 TEXTO 3' && l5.by && l5.by.i === 'GF' && l5.taStill
+  const textPosted = calls.some(c => (c.m === 'POST' || c.m === 'PATCH') && /\/rest\/v1\/notes/.test(c.url) && c.body && typeof c.body.pendientes === 'string' && /^(HAS|TEXTO 1)/.test(c.body.pendientes));
+  check('L5 ✍️ → Texto en una caja grande: «HAS» a mano aparece en la caja AL MOMENTO (sin IA, sin recuadro, sin robar el foco; tinta en el cristal, caja marcada); tras 1.3 s queda como texto con autor y sin guardar tinta; la IA revisa en segundo plano y corrige (TEXTO 1); la tinta se desvanece; otro renglón → salto de línea; mismo renglón → espacio; viaja a la nube',
+    l5.live === 'HAS' && l5.liveCls && l5.glass && l5.sess && l5.notFocused && l5.v1 === 'HAS' && l5.nd1 === 'HAS' && l5.clsOff && l5.closed && !l5.inkSaved && l5.v1b === 'TEXTO 1' && l5.nd1b === 'TEXTO 1' && l5.faded
+    && l5.live2 === 'TEXTO 1\nDM2' && l5.v2 === 'TEXTO 1\nTEXTO 2' && l5.v3 === 'TEXTO 1\nTEXTO 2 TEXTO 3' && l5.by && l5.by.i === 'GF' && l5.taStill
     && aiBodies.length === 3 && c0[0] && c0[0].type === 'image' && c0[0].source && c0[0].source.media_type === 'image/png' && c0[0].source.data.length > 100 && c0[1] && /pendientes \/ plan/.test(c0[1].text) && /SOLO un JSON/.test(c0[1].text) && ai0.max_tokens === 800
     && textPosted, JSON.stringify({ l5, nAi: aiBodies.length, textPosted }));
 
-  // ── L6: si la IA falla, la tinta se queda; «🤖 Convertir ahora» desde el menú ✍️ la reintenta ──
+  // ── L6: si la IA falla (HTTP 500), lo leído localmente se queda tal cual (sin alert, sin tinta pendiente) ──
   aiMode = 'fail';
   const l6 = await page.evaluate(async () => {
-    const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]'; const ta = document.querySelector(sel); const key = k + '|pendientes';
-    const r = ta.getBoundingClientRect(); const ev = (type, x, y) => ta.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + y, pressure: 0.5 }));
-    ev('pointerdown', 10, 100); ev('pointermove', 30, 104); ev('pointermove', 50, 102); ev('pointerup', 50, 102);
-    await new Promise(r2 => setTimeout(r2, 2300));
-    return { kept: PEN.pending[key].strokes.length, val: ta.value, menuShown: ta.nextElementSibling.nextElementSibling.style.display !== 'none', alerts: window.__alerts.length };
+    const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]'; const ta = document.querySelector(sel);
+    const r = ta.getBoundingClientRect();
+    __writeChars('TAC', r.left + 8, r.top + 8, 0.4, 6);              // encima del texto que ya hay (otro renglón que el último lote)
+    await new Promise(r2 => setTimeout(r2, 2000));
+    return { val: ta.value, nd: getNote(k).pendientes, alerts: window.__alerts.length, closed: PEN_LIVE.el === null, menuHidden: !ta.nextElementSibling || !ta.nextElementSibling.nextElementSibling || ta.nextElementSibling.nextElementSibling.style.display === 'none' };
   });
   aiMode = 'ok';
-  const l6b = await page.evaluate(async () => {
-    const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]'; const ta = document.querySelector(sel); const key = k + '|pendientes';
-    ta.nextElementSibling.nextElementSibling.click();
-    const acts = Array.from(document.querySelectorAll('.pl-ink-pop button')).map(b => b.dataset.act);
-    document.querySelector('.pl-ink-pop button[data-act="now"]').click();
-    await new Promise(r => setTimeout(r, 800));
-    localStorage.setItem('pl_pen_mode', '1');
-    return { acts, val: ta.value, pend: PEN.pending[key].strokes.length };
-  });
-  check('L6 la IA falla (HTTP 500): el texto no cambia, la tinta pendiente se queda y el botón ✍️ sigue visible (aviso, sin alert); el menú ofrece «🤖 Convertir ahora», que reintenta y agrega el texto en renglón nuevo',
-    l6.kept === 1 && l6.val === 'TEXTO 1\nTEXTO 2 TEXTO 3' && l6.menuShown && l6.alerts === 0
-    && JSON.stringify(l6b.acts) === JSON.stringify(['now', 'undo', 'clear']) && l6b.val === 'TEXTO 1\nTEXTO 2 TEXTO 3\nTEXTO 4' && l6b.pend === 0, JSON.stringify({ l6, l6b }));
+  check('L6 la IA falla (HTTP 500): el texto local se queda («TAC» en renglón nuevo), sin alert ni tinta pendiente ni botón ✍️',
+    l6.val === 'TEXTO 1\nTEXTO 2 TEXTO 3\nTAC' && l6.nd === l6.val && l6.alerts === 0 && l6.closed && l6.menuHidden, JSON.stringify(l6));
 
-  // ── L7: campos de UNA LÍNEA: el lápiz abre una banda; en los NUMÉRICOS el número se reconoce al instante (sin IA) y se pone solo ──
+  // ── L7: campos de UNA LÍNEA: se escribe ENCIMA (y lo que se salga del cuadro también cuenta), el número aparece al momento y se pone solo ──
   const l7 = await page.evaluate(async () => {
-    localStorage.setItem('pl_pen_mode', '2'); PEN_DIGITS.forget();
+    localStorage.setItem('pl_pen_mode', '2'); PEN_OCR.forget(); PEN_LIVE.learnMs = 60;
     const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_');
     const q = (f) => document.querySelector('#ck-row-' + ek + ' input[data-field="' + f + '"]');
-    const pen = (el, type, x, y, id) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id || 7, pointerType: 'pen', isPrimary: true, clientX: x, clientY: y, pressure: 0.5 }));
-    const tap = (el) => { const r = el.getBoundingClientRect(); pen(el, 'pointerdown', r.left + 4, r.top + 4); pen(el, 'pointerup', r.left + 4, r.top + 4); return document.querySelector('.pl-pen-strip'); };
-    // dígitos "a mano": las plantillas del reconocedor (100×100) escaladas a 70 px, cada trazo con su pointerdown/move/up
-    const digit = (s, ch, x0) => { const cv = s.querySelector('canvas'); const c = cv.getBoundingClientRect(); const tpl = PEN_DIGITS.templatesFor(ch)[0];
-      tpl.forEach(st => { const P = st.map(p => [c.left + x0 + p[0] * 0.7, c.top + 12 + p[1] * 0.7]); pen(cv, 'pointerdown', P[0][0], P[0][1]); P.slice(1).forEach(p => pen(cv, 'pointermove', p[0], p[1])); pen(cv, 'pointerup', P[P.length - 1][0], P[P.length - 1][1]); }); return cv; };
-    const scribble = (s) => { const cv = s.querySelector('canvas'); const c = cv.getBoundingClientRect(); pen(cv, 'pointerdown', c.left + 20, c.top + 40); pen(cv, 'pointermove', c.left + 40, c.top + 60); pen(cv, 'pointermove', c.left + 60, c.top + 40); pen(cv, 'pointermove', c.left + 80, c.top + 60); pen(cv, 'pointerup', c.left + 80, c.top + 60); return cv; };
-    // FC (numérico): toque → banda «FC» (sin robar el foco) con teclado; "9" y "5" → vista previa "95" al momento; se pone solo tras la pausa; la banda se cierra sola
-    const fc = q('pm_fc'); const s1 = tap(fc); const lbl = s1 && s1.querySelector('.pps-lbl').textContent; const focused = document.activeElement === fc; const keys = s1.querySelectorAll('.pps-keys button').length;
-    const cv1 = digit(s1, '9', 20); digit(s1, '5', 90);
-    const preview = s1.querySelector('.pps-prev').textContent; const notYet = q('pm_fc').value;
-    const c1 = cv1.getBoundingClientRect();     // el dedo sobre la banda no pinta
-    cv1.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', isPrimary: true, clientX: c1.left + 200, clientY: c1.top + 40 })); cv1.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', isPrimary: true, clientX: c1.left + 200, clientY: c1.top + 40 }));
-    const nStrokes = PEN_STRIP.strokes.length;
-    await new Promise(r => setTimeout(r, 1300));
-    const val = q('pm_fc').value, saved = getNote(k).checklist.pm_fc, okCls = s1.querySelector('.pps-prev').className, stillOpen = !!document.querySelector('.pl-pen-strip');
-    await new Promise(r => setTimeout(r, 2800));
-    const closed = !document.querySelector('.pl-pen-strip');
-    // vasopresor: mL/h "9","6" con ✓ (ya) → recalcula la dosis y APRENDE la letra (2 plantillas)
+    const prep = async (el) => { el.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120)); return el.getBoundingClientRect(); };
+    const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    // FC: "95" de 36 px de alto, más ancho que el cuadro (el "5" cae fuera) → lectura al momento, sin foco; tras 0.9 s se guarda; tinta verde que se desvanece; aprende 2 plantillas
+    const fc = q('pm_fc'); let r = await prep(fc);
+    __writeChars('95', r.left + 4, r.top + 2, 0.5, 8);
+    const live = fc.value, cls = fc.classList.contains('pl-pen-live'), notFocused = document.activeElement !== fc, nStrokes = PEN_LIVE.strokes.length, notYet = getNote(k).checklist.pm_fc || '';
+    const spilled = Math.max.apply(null, PEN_LIVE.strokes.flat().map(p => p[0])) > r.right;      // la tinta se sale del cuadro por la derecha
+    await wait(1100);
+    const val = fc.value, saved = getNote(k).checklist.pm_fc, closed = PEN_LIVE.el === null, learned = PEN_OCR.learnedCount(), lsLearned = !!localStorage.getItem('pl_pen_digits_v1');
+    await wait(2000);
+    const faded = document.querySelector('canvas.pl-pen-glass').style.opacity === '0';
+    // el dedo no escribe
+    __pen(fc, 'pointerdown', r.left + 6, r.top + 6, 9, 'touch'); __pen(document.body, 'pointermove', r.left + 30, r.top + 10, 9, 'touch'); __pen(document.body, 'pointerup', r.left + 30, r.top + 10, 9, 'touch');
+    const fingerNo = PEN_LIVE.el === null && fc.value === '95';
+    // vasopresor: mL/h "96" → recalcula la dosis
     toggleChecklist(k, 'vp_nore_on'); { const p = q('pm_peso'); p.value = '70'; p.dispatchEvent(new Event('input', { bubbles: true })); }
-    const s2 = tap(q('vp_nore_mlh')); digit(s2, '9', 20); digit(s2, '6', 90); s2.querySelector('button[data-act="ok"]').click();
-    const mlhVal = q('vp_nore_mlh').value, res = document.getElementById('vp-nore-res-' + ek).textContent, learned = PEN_DIGITS.learnedCount(), lsLearned = !!localStorage.getItem('pl_pen_digits_v1');
-    // TA: con el TECLADO de la banda "1 2 0 / 8 0" → ✓
-    const s4 = tap(q('pm_ta')); ['1', '2', '0', '/', '8', '0'].forEach(kk => s4.querySelector('.pps-keys button[data-k="' + kk + '"]').click()); const prevTa = s4.querySelector('.pps-prev').textContent; s4.querySelector('button[data-act="ok"]').click();
+    const mlh = q('vp_nore_mlh'); r = await prep(mlh); __writeChars('96', r.left + 4, r.top + 2, 0.4, 8); await wait(1100);
+    const mlhVal = q('vp_nore_mlh').value, res = document.getElementById('vp-nore-res-' + ek).textContent;
+    // TA: "130/80" (la barra es un trazo recto inclinado)
+    const ta = q('pm_ta'); r = await prep(ta); __writeChars('130/80', r.left + 4, r.top + 2, 0.34, 5, { minCell: 45 }); const taLive = ta.value; await wait(1100);
     const taVal = getNote(k).checklist.pm_ta;
-    // dieta (texto): sigue por IA; tocar FUERA de la banda (dedo) convierte lo pendiente y la cierra
-    const dieta = document.querySelector('#ck-row-' + ek + ' input[placeholder^="blanda"]'); const s3 = tap(dieta); const lbl3 = s3.querySelector('.pps-lbl').textContent; const noKeys = !s3.querySelector('.pps-keys'); scribble(s3);
-    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 9, pointerType: 'touch', isPrimary: true, clientX: 5, clientY: 5 }));
-    const closedByTap = !document.querySelector('.pl-pen-strip');
-    await new Promise(r => setTimeout(r, 700));
-    const dietaVal = getNote(k).checklist.dieta;
-    // ✕ cierra sin poner nada
-    const s5 = tap(q('pm_fr')); digit(s5, '1', 20); s5.querySelector('button[data-act="close"]').click();
-    await new Promise(r => setTimeout(r, 1100));
-    // el lápiz sobre el MISMO campo con la banda abierta: la cierra y pone el cursor
-    const s6 = tap(q('pm_fr')); const open6 = !!s6; tap(q('pm_fr'));
-    const closed6 = !document.querySelector('.pl-pen-strip'), focused6 = document.activeElement === q('pm_fr');
-    return { lbl, focused, keys, preview, notYet, nStrokes, val, saved, okCls, stillOpen, closed, mlhVal, res, learned, lsLearned, prevTa, taVal, lbl3, noKeys, closedByTap, dietaVal, frVal: q('pm_fr').value, open6, closed6, focused6 };
+    // dieta (texto): «BLANDA» en mayúsculas de molde → al momento; la IA (simulada) lee lo mismo → no cambia nada
+    const dieta = document.querySelector('#ck-row-' + ek + ' input.ck-dieta'); r = await prep(dieta); __writeChars('BLANDA', r.left + 4, r.top + 2, 0.36, 6);
+    const dietaLive = dieta.value; await wait(1500); const dietaVal = getNote(k).checklist.dieta; await wait(500); const dietaStill = dieta.value;
+    // cambio RÁPIDO de campo: "7" en FR y, sin esperar, "8" lejos en uresis → cada uno a su campo
+    const fr = q('pm_fr'), ur = q('pm_uresis'); r = await prep(fr); __writeChars('7', r.left + 4, r.top + 2, 0.4, 8);
+    const ru = ur.getBoundingClientRect(); __writeChars('8', ru.left + 4, ru.top + 2, 0.4, 8); await wait(1100);
+    const frVal = getNote(k).checklist.pm_fr, urVal = getNote(k).checklist.pm_uresis;
+    // el trazo que se sale al cuadro de al lado sigue siendo del primer campo: "10" empezando a media caja de SaO₂ (el "0" cae fuera, hacia O₂ L)
+    const sa = q('pm_sao2'), o2n = q('pm_o2l'); r = await prep(sa); __writeChars('10', r.left + 30, r.top + 2, 0.5, 8);
+    const saLive = sa.value, dxLive = o2n.value, over = ((document.elementFromPoint(r.right + 12, r.top + 10) || {}).dataset || {}).field || (document.elementFromPoint(r.right + 12, r.top + 10) || {}).tagName; await wait(1100);
+    const saVal = getNote(k).checklist.pm_sao2, dxVal = getNote(k).checklist.pm_o2l || '';
+    // toque en OTRO campo con la sesión abierta: cierra lo pendiente ("5" en T°) y pone el cursor
+    const temp = q('pm_temp'); r = await prep(temp); __writeChars('5', r.left + 4, r.top + 2, 0.4, 8); __tap(fr);
+    const tempVal = getNote(k).checklist.pm_temp, frFocused = document.activeElement === fr, tempClosed = PEN_LIVE.el === null;
+    // corrección tecleada → se aprende la corrección (O₂ L: se lee "7", se corrige a "1")
+    PEN_LIVE.learnMs = 400; const o2 = q('pm_o2l'); r = await prep(o2); __writeChars('7', r.left + 4, r.top + 2, 0.4, 8); await wait(1000);
+    const before = PEN_OCR.learnedCount(); o2.value = '1'; o2.dispatchEvent(new Event('input', { bubbles: true })); await wait(600); const afterFix = PEN_OCR.learnedCount();
+    // tachar la tinta pendiente la borra y el campo vuelve a lo que tenía
+    const iu = q('pm_talla'); r = await prep(iu); __writeChars('9', r.left + 4, r.top + 2, 0.4, 8); const iuLive = iu.value;
+    __strokeAt([[r.left + 2, r.top + 2], [r.left + 12, r.top + 30], [r.left + 6, r.top + 1], [r.left + 18, r.top + 32], [r.left + 10, r.top], [r.left + 24, r.top + 32], [r.left + 16, r.top + 2], [r.left + 30, r.top + 32], [r.left + 22, r.top + 2], [r.left + 36, r.top + 30]]);
+    const iuAfter = iu.value, iuClosed = PEN_LIVE.el === null; await wait(1100); const iuVal = getNote(k).checklist.pm_talla || '';
+    // lápiz apagado: no pasa nada
+    localStorage.setItem('pl_pen_mode', '0'); r = await prep(fc); __writeChars('4', r.left + 4, r.top + 2, 0.4, 8); const offVal = fc.value; localStorage.setItem('pl_pen_mode', '2');
+    return { live, cls, notFocused, nStrokes, notYet, spilled, val, saved, closed, learned, lsLearned, faded, fingerNo, mlhVal, res, taLive, taVal, dietaLive, dietaVal, dietaStill, frVal, urVal, saLive, dxLive, over, saVal, dxVal, tempVal, frFocused, tempClosed, before, afterFix, iuLive, iuAfter, iuClosed, iuVal, offVal };
   });
-  check('L7 campos de una línea: FC abre la banda «FC» con teclado (sin robar el foco); "9" y "5" a mano → vista previa "95" al instante (sin IA), se pone solo tras 0.9 s y la banda se cierra sola; el dedo no pinta; vasopresor "96" con ✓ recalcula la dosis y aprende 2 plantillas; TA con el teclado "120/80"; dieta (texto, sin teclado) sigue por IA y se convierte al tocar fuera; ✕ cierra sin poner nada; tocar el mismo campo cierra la banda y pone el cursor',
-    l7.lbl === 'FC' && l7.focused === false && l7.keys === 13 && l7.preview === '→ 95' && l7.notYet === '' && l7.nStrokes === 2 && l7.val === '95' && l7.saved === '95' && /ok/.test(l7.okCls) && l7.stillOpen && l7.closed
-    && l7.mlhVal === '96' && /^54\.9 mcg\/kg\/h/.test(l7.res) && l7.learned === 2 && l7.lsLearned && l7.prevTa === '→ 120/80' && l7.taVal === '120/80'
-    && /Dieta/.test(l7.lbl3) && l7.noKeys && l7.closedByTap && l7.dietaVal === 'TEXTO 5' && l7.frVal === '' && l7.open6 && l7.closed6 && l7.focused6, JSON.stringify(l7));
+  check('L7 campos de una línea: «95» escrito ENCIMA de FC (más ancho que el cuadro) se lee al momento sin foco ni recuadro, se guarda solo tras 0.9 s y aprende la letra; la tinta se desvanece; el dedo no escribe; vasopresor «96» recalcula la dosis; TA «130/80»; dieta «BLANDA» (texto) al momento y la IA no cambia lo que leyó igual; cambio rápido FR→uresis; el dígito que se sale al cuadro de al lado sigue siendo de SaO₂; toque en otro campo cierra y pone el cursor; la corrección tecleada se aprende; tachar borra lo pendiente (talla); apagado no escribe',
+    l7.live === '95' && l7.cls && l7.notFocused && l7.nStrokes === 2 && l7.notYet === '' && l7.spilled && l7.val === '95' && l7.saved === '95' && l7.closed && l7.learned === 2 && l7.lsLearned && l7.faded && l7.fingerNo
+    && l7.mlhVal === '96' && /^54\.9 mcg\/kg\/h/.test(l7.res) && l7.taLive === '130/80' && l7.taVal === '130/80' && l7.dietaLive === 'BLANDA' && l7.dietaVal === 'BLANDA' && l7.dietaStill === 'BLANDA'
+    && l7.frVal === '7' && l7.urVal === '8' && l7.saLive === '10' && l7.dxLive === '' && l7.saVal === '10' && l7.dxVal === '' && l7.tempVal === '5' && l7.frFocused && l7.tempClosed && l7.afterFix === l7.before + 1
+    && l7.iuLive === '9' && l7.iuAfter === '' && l7.iuClosed && l7.iuVal === '' && l7.offVal === '95', JSON.stringify(l7));
 
-  // ── L9: reconocedor local: cadenas completas con plantillas perturbadas y aprendizaje de la letra propia ──
-  const l9 = await page.evaluate(() => {
-    let seed = 3; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-    function word(str, s, gap) {
-      const strokes = []; let x = 40;
-      for (const ch of str) {
-        if (ch === '.') { strokes.push([[x + 3, 100 + 42 * s, 0.5], [x + 4, 100 + 43 * s, 0.5], [x + 5, 100 + 42 * s, 0.5]]); x += 12 * s + gap; continue; }
-        if (ch === ':') { strokes.push([[x + 3, 100 - 15 * s, 0.5], [x + 4, 100 - 14 * s, 0.5]]); strokes.push([[x + 3, 100 + 20 * s, 0.5], [x + 4, 100 + 21 * s, 0.5]]); x += 12 * s + gap; continue; }
-        const tpl = PEN_DIGITS.templatesFor(ch)[0];
-        tpl.forEach(st => strokes.push(st.map(p => [x + (p[0] - 20) * s + (rnd() - 0.5) * 3, 100 + (p[1] - 50) * s + (rnd() - 0.5) * 3, 0.5])));
-        x += 60 * s + gap;
-      }
-      return strokes;
-    }
-    const words = ['130/80', '36.3', '1:2', '95', '0.03', '120', '7', '18', '4', '14.5', '100', '2', '6', '8', '9'];
-    const out = words.map(w => ({ w, r: PEN_DIGITS.recognize(word(w, 0.8, 10)).text, r2: PEN_DIGITS.recognize(word(w, 0.5, 6)).text }));
-    // aprender: una forma rara de "7" (sin barra, muy inclinada) se reconoce como 7 después de enseñársela
-    const raro = [[[10, 10, .5], [60, 12, .5], [58, 14, .5], [30, 60, .5], [22, 90, .5]]];
-    const antes = PEN_DIGITS.recognize(raro).text; PEN_DIGITS.learn('7', raro); const despues = PEN_DIGITS.recognize(raro).text;
-    return { out, bad: out.filter(o => o.r !== o.w || o.r2 !== o.w), antes, despues, learned: PEN_DIGITS.learnedCount() };
-  });
-  check('L9 reconocedor local: 130/80, 36.3, 1:2, 95, 0.03, 120, 7, 18, 4, 14.5, 100 y dígitos sueltos se leen bien en dos tamaños; una forma propia enseñada se reconoce después',
-    l9.bad.length === 0 && l9.despues === '7' && l9.learned >= 1, JSON.stringify(l9));
-
-  // ── L8: cajas de texto fuera de la ficha (modal de paciente): el lápiz también escribe ahí ──
+  // ── L8: cajas de texto fuera de la ficha (modal de paciente): el lápiz también escribe ahí (texto local + revisión IA) ──
   const l8 = await page.evaluate(async () => {
     openAddModal();
     const ta = document.getElementById('mf-app-modal'); ta.value = '';
+    ta.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120));
     const r = ta.getBoundingClientRect();
-    const ev = (type, x, y) => ta.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + y, pressure: 0.5 }));
-    ev('pointerdown', 10, 10); ev('pointermove', 30, 14); ev('pointermove', 50, 12); ev('pointerup', 50, 12);
-    const layer = !!(ta.nextElementSibling && ta.nextElementSibling.classList.contains('pl-ink-cv')); const key = _penField(ta);
-    const pend = (PEN.pending[_penPendKey('', key)] || { strokes: [] }).strokes.length;
-    await new Promise(r2 => setTimeout(r2, 2300));
-    const val = ta.value;
+    __writeChars('HAS', (r.left || 20) + 8, (r.top || 20) + 6, 0.4, 6, { el: ta });   // el modal es 0×0 en headless: forzamos el destino del lápiz
+    const live = ta.value, key = _penField(ta), kind = PEN_LIVE.kind, noLayer = !(ta.nextElementSibling && ta.nextElementSibling.classList.contains('pl-ink-cv'));
+    await new Promise(r2 => setTimeout(r2, 1350)); const val = ta.value;      // tras la pausa (local, antes de que responda la IA)
+    await new Promise(r2 => setTimeout(r2, 700)); const valAi = ta.value;     // la IA (simulada) revisa y corrige
     document.getElementById('patient-modal').style.display = 'none';
     localStorage.setItem('pl_pen_mode', '1');
-    return { layer, key, pend, val };
+    return { live, key, kind, noLayer, val, valAi };
   });
-  check('L8 cajas fuera de la ficha (modal de paciente): el lápiz también escribe ahí; la tinta se convierte en texto y se pone en la caja (sin guardar tinta)',
-    l8.layer && /^el:p\d+$/.test(l8.key) && l8.pend === 1 && l8.val === 'TEXTO 6', JSON.stringify(l8));
+  check('L8 cajas fuera de la ficha (modal de paciente): «HAS» aparece al momento (local), queda como texto al soltar (sin capa de tinta) y la IA lo revisa y corrige en segundo plano',
+    l8.live === 'HAS' && /^el:p\d+$/.test(l8.key) && l8.kind === 'ta' && l8.noLayer && l8.val === 'HAS' && l8.valAi === 'TEXTO 4', JSON.stringify(l8));
+
+  // ── L9: reconocedor local a fondo: palabras y cifras de la hoja, renglones, caracteres perturbados, aprendizaje ──
+  const l9 = await page.evaluate(() => {
+    PEN_OCR.forget();
+    let seed = 3; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const ACC = { 'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U', 'Ñ': 'N' };
+    const tpls = (ch) => { if (!ACC[ch]) return PEN_OCR.templatesFor(ch); const mark = ch === 'Ñ' ? [[28, 12], [40, 4], [50, 8], [60, 12], [72, 4]] : [[46, 12], [52, 6], [58, 1]]; return PEN_OCR.templatesFor(ACC[ch]).map(v => v.map(st => st.map(p => [50 + (p[0] - 50) * 0.75, 25 + (p[1] - 5) * 0.75])).concat([mark])); };
+    function word(str, s, gap, noise, lineY) {
+      const strokes = []; let x = 40; const H = 90 * s;
+      for (const ch of str) {
+        if (ch === ' ') { x += 0.9 * H; continue; }
+        if (ch === '.') { strokes.push([[x + 3, lineY + 42 * s, 0.5], [x + 4, lineY + 43 * s, 0.5], [x + 5, lineY + 42 * s, 0.5]]); x += 12 * s + gap; continue; }
+        if (ch === ':') { strokes.push([[x + 3, lineY - 15 * s, 0.5], [x + 4, lineY - 14 * s, 0.5]]); strokes.push([[x + 3, lineY + 20 * s, 0.5], [x + 4, lineY + 21 * s, 0.5]]); x += 12 * s + gap; continue; }
+        const vars = tpls(ch); const tpl = vars[Math.floor(rnd() * vars.length)];
+        let minX = Infinity, maxX = -Infinity; tpl.forEach(st => st.forEach(p => { minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); }));
+        tpl.forEach(st => strokes.push(st.map(p => [x + (p[0] - minX) * s + (rnd() - 0.5) * noise, lineY + (p[1] - 50) * s + (rnd() - 0.5) * noise, 0.5])));
+        x += (maxX - minX) * s + gap;
+      }
+      return strokes;
+    }
+    const words = ['HAS', 'DM2', 'POP', 'LAPE', 'ATB', 'BH', 'QS', 'TAC', 'DIETA BLANDA', 'FC 95', '130/80', 'AÑOS', 'IC', 'NPT', 'TVP', 'O2', 'SAO2', 'RX', 'USG', 'KCL', 'I:E', '1:2', 'PCR', 'PO 1', 'COLECISTITIS', 'SEPSIS', 'SIN DOLOR', '36.5', '100', 'SO2 95', 'CÓLICO', 'QUIRÓFANO', 'HOY', 'DX', 'JP', 'IV', 'VO', 'MG', 'KG', 'TA 120/80', 'DM2 HAS', 'POP 3', 'ESTABLE', 'GRAVE', 'INR 1.2', 'HB 10', 'BIS', 'DIA 2', 'EGO', 'NA 135', 'K 4.1', 'ZINC', 'GAZA', 'OJO', 'BOLSA', 'ÁCIDO', 'ÚLCERA'];
+    const badW = []; words.forEach(w => [[0.8, 10, 3], [0.5, 6, 2], [1.2, 14, 3]].forEach(([s, gap, noise]) => { const r = PEN_OCR.recognize(word(w, s, gap, noise, 100), { alpha: true }).text; if (r !== w) badW.push(w + '→' + r); }));
+    const ml = word('HAS DM2', 0.8, 10, 3, 100).concat(word('POP 3 LAPE', 0.8, 10, 3, 220)).concat(word('TA 120/80', 0.8, 10, 3, 340));
+    const lines = PEN_OCR.recognize(ml, { alpha: true, multiline: true }).text;
+    const nums = ['130/80', '36.3', '1:2', '95', '0.03', '120', '7', '18', '4', '14.5', '100', '2', '6', '8', '9', '37.8', '88', '110/70', '0.5', '12.5'];
+    const badN = []; nums.forEach(w => [[0.8, 10, 3], [0.5, 6, 2]].forEach(([s, gap, noise]) => { const r = PEN_OCR.recognize(word(w, s, gap, noise, 100)).text; if (r !== w) badN.push(w + '→' + r); }));
+    // caracteres aislados perturbados (escala, rotación ±8°, cizalla, ruido): letra y dígito que se escriben igual cuentan como acierto
+    const AMB = { '1': 'I', '0': 'O', '5': 'S', '2': 'Z', '8': 'B', '6': 'G', 'I': '1', 'O': '0', 'S': '5', 'Z': '2', 'B': '8', 'G': '6' };
+    const xf = (tpl, s, rot, shear, noise) => { const c = Math.cos(rot), sn = Math.sin(rot); return tpl.map(st => st.map(p => { let x = (p[0] - 50) * s, y = (p[1] - 50) * s; x += shear * y; return [100 + x * c - y * sn + (rnd() - 0.5) * 2 * noise, 100 + x * sn + y * c + (rnd() - 0.5) * 2 * noise, 0.5]; })); };
+    let tA = 0, okA = 0, tN = 0, okN = 0;
+    PEN_OCR.alphabet().forEach(ch => tpls(ch).forEach(tpl => [0.5, 1.1].forEach(s => [-8, 8].forEach(deg => [-0.1, 0.1].forEach(sh => {
+      const strokes = xf(tpl, s, deg * Math.PI / 180, sh, 1.5); const got = (PEN_OCR.recognize(strokes, { alpha: true }).chars[0] || {}).ch || '';
+      tA++; if (got === ch || AMB[ch] === got) okA++;
+      if (/^[0-9]$/.test(ch)) { tN++; if (PEN_OCR.recognize(strokes).text === ch) okN++; }
+    })))));
+    // aprender: una forma rara de "7" (sin barra, muy inclinada) se reconoce como 7 después de enseñársela
+    const raro = [[[10, 10, .5], [60, 12, .5], [58, 14, .5], [30, 60, .5], [22, 90, .5]]];
+    const antes = PEN_OCR.recognize(raro).text; PEN_OCR.learn('7', raro); const despues = PEN_OCR.recognize(raro).text;
+    const t0 = performance.now(); for (let i = 0; i < 10; i++) PEN_OCR.recognize(word('DIETA BLANDA', 0.8, 10, 3, 100), { alpha: true }); const ms = (performance.now() - t0) / 10;
+    return { badW, lines, badN, accA: okA / tA, accN: okN / tN, tA, antes, despues, learned: PEN_OCR.learnedCount(), ms };
+  });
+  check('L9 reconocedor local: ' + 57 + ' palabras y cifras de la hoja (HAS, DM2, SAO2, O2, DIETA BLANDA, AÑOS, 130/80, 36.5…) en tres tamaños sin fallar; tres renglones; cifras en modo numérico; caracteres aislados perturbados ≥ 90 % (dígitos ≥ 93 %); una forma propia enseñada se reconoce después; una frase de 11 letras en < 400 ms',
+    l9.badW.length === 0 && l9.lines === 'HAS DM2\nPOP 3 LAPE\nTA 120/80' && l9.badN.length === 0 && l9.accA >= 0.9 && l9.accN >= 0.93 && l9.despues === '7' && l9.learned >= 1 && l9.ms < 400, JSON.stringify(l9));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-PEN: ' + pass + ' passed, ' + fail + ' failed');
