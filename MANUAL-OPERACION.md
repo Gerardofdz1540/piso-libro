@@ -354,6 +354,33 @@ el INR decide si se opera, la app ahora:
 
 Si el laboratorio reporta un INR real, se usa ese y desaparece el estimado.
 
+## ✍️ Lápiz: escribir con el Apple Pencil directo sobre las cajas (octubre 2026)
+
+En el tablero, el botón **✍️ Lápiz** de la barra (encendido por defecto en iPad) hace que el Apple
+Pencil escriba **encima de cualquier caja de texto**, como en GoodNotes: la tinta se queda sobre la
+caja, viaja con la nota y se ve en todos los dispositivos (también en la hoja impresa). El dedo y el
+teclado siguen funcionando igual: tocar con el dedo pone el cursor y la tinta no estorba.
+
+- **Tachar o rayonear** encima de algo escrito a mano lo **borra** (se borran los trazos que toca el
+  rayón; el rayón no se guarda). Rayar en un espacio vacío solo dibuja.
+- Un **toque** con el lápiz (sin arrastrar) pone el cursor en la caja para teclear.
+- Si escribes cerca del borde de abajo, la caja **crece** sola para seguir escribiendo.
+- En la esquina de cada caja con tinta aparece **✍️**: deshacer el último trazo, **🤖 pasar a texto**
+  (abre el lienzo grande con esa tinta para transcribirla con IA al campo) o borrar toda la tinta.
+- Con **✍️ Lápiz apagado** vuelve el comportamiento del iPad: el lápiz escribe texto con **Scribble**
+  (Ajustes → Apple Pencil → Garabatear encendido). Si así tampoco escribe, revisa ese ajuste.
+- Límite: unas 6 000 muestras de tinta por caja (varios renglones); después pide borrar o pasar a
+  texto.
+
+## Vista iPad: las cajas usan todo el ancho (octubre 2026)
+
+- Las **camas** ya no van en el riel de la izquierda cuando la pantalla mide menos de 1 340 px (iPad):
+  están en una **tira deslizable** dentro de la barra pegajosa del tablero (la cama en foco queda a la
+  vista; el punto rojo/ámbar y 🧪 labs nuevos se conservan). En laptop sigue el riel lateral.
+- Se quitaron los **tres botones flotantes** de la derecha (💾 respaldo, 📥 indicaciones, 📊 planes)
+  que tapaban las cajas. **📊 Planes** está en la barra del tablero y los tres viven en el menú
+  **⋯ Más → Importar y respaldo**.
+
 ## Cultivos
 
 Los cultivos de WinLab aparecen en **IC · Cultivos** aunque el resultado venga como "POSITIVO",

@@ -527,6 +527,8 @@
     #hc-more-menu > button { text-align: left; }
     #hc-more-menu .quick-access-group { display: flex; }
     #hc-more-menu .quick-access-group .qa-btn { flex: 1; text-align: left; }
+    .hcm-tool { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #e2e8f0; padding: 6px 12px; border-radius: 10px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap; text-align: left; font-family: var(--font); }
+    .hcm-tool:hover { background: rgba(255,255,255,.16); }
     .hcm-sec {
       font-size: 9.5px;
       font-weight: 800;
@@ -4081,9 +4083,31 @@ body.dark .ris-rep-txt { background:#0b1727; }
 #board-side .bs-btn.bs-cur .bs-cama{ color:#fff; }
 #board-side .bs-btn.bs-cur .bs-name{ color:#cbd5e1; }
 #board-main{ flex:1 1 auto; min-width:0; }
-/* FIX-FAB: reservar canalon inferior-derecho para que el FAB fijo (#pl-fab-v28) nunca tape datos del card (Pase matutino dcho / botones header). Scopeado a modo foco; inocuo en pantallas anchas donde el board va centrado. */
-body.focus-on #board-main{ padding-right:78px; padding-bottom:200px; }
-@media (min-width:1340px){ body.focus-on #board-main{ padding-right:0; } }
+/* Oct 2026 (pedido de Gera): sin botones flotantes a la derecha, la ficha usa TODO el ancho; abajo queda aire para el teclado del iPad. */
+body.focus-on #board-main{ padding-bottom:160px; }
+/* Camas en una TIRA horizontal dentro de la barra pegajosa cuando la pantalla es angosta (iPad): el riel lateral
+   se oculta y las cajas quedan completas. En pantallas anchas (laptop) sigue el riel de la izquierda. */
+#board-nav .bn-beds{ flex-basis:100%; display:none; gap:4px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-top:4px; border-top:1px solid rgba(255,255,255,.14); }
+#board-nav .bn-beds::-webkit-scrollbar{ display:none; }
+#board-nav .bn-beds .bb{ flex:0 0 auto; display:inline-flex; align-items:center; gap:3px; min-height:32px; padding:0 10px; border:none; border-top:3px solid transparent; border-radius:6px; background:rgba(255,255,255,.1); color:#dbe7f5; cursor:pointer; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:12.5px; font-weight:800; }
+#board-nav .bn-beds .bb.bb-cur{ background:#fff; color:#0a1628; }
+#board-nav .bn-beds .bb .bs-dot{ display:inline-block; width:7px; height:7px; border-radius:50%; }
+#board-nav .bn-beds .bb .bs-dot.red{ background:#dc2626; box-shadow:0 0 0 2px rgba(220,38,38,.25); }
+#board-nav .bn-beds .bb .bs-dot.yellow{ background:#f59e0b; }
+@media (max-width:1339px){
+  body.focus-on #board-side{ display:none; }
+  #board-nav .bn-beds{ display:flex; }
+}
+/* ✍️ Lápiz directo sobre las cajas: la capa de tinta no atrapa el dedo (pointer-events:none); el botón ✍️ de la esquina sí. */
+.pl-ink-cv{ position:absolute; pointer-events:none; z-index:2; }
+.pl-ink-menu{ position:absolute; z-index:3; width:26px; height:22px; padding:0; font-size:12px; line-height:1; border-radius:6px; background:rgba(124,58,237,.12); border:1px solid rgba(124,58,237,.35); color:#7c3aed; cursor:pointer; }
+.pl-ink-pop{ position:absolute; z-index:60; display:grid; gap:4px; padding:6px; background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 8px 24px rgba(15,23,42,.18); }
+.pl-ink-pop button{ font:600 12px var(--font); color:#0f172a; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; cursor:pointer; text-align:left; white-space:nowrap; }
+.pl-ink-pop button:hover{ background:#eef2ff; }
+body.pen-on textarea.field-ta{ cursor:text; }
+body.dark .pl-ink-pop{ background:#0f1c2e; border-color:#23405f; }
+body.dark .pl-ink-pop button{ background:#152e4d; border-color:#2f4f79; color:#e2e8f0; }
+@media print{ .pl-ink-menu, .pl-ink-pop{ display:none !important; } }
 #board-nav{ display:flex; align-items:center; gap:8px; margin-bottom:10px; padding:6px 10px; background:#0a1628; border-radius:8px; position:sticky; top:8px; z-index:5; }
 #board-nav .bn-btn{ font-size:18px; font-weight:800; line-height:1; min-width:44px; padding:6px 10px; border:none; border-radius:6px; background:#2c4d77; color:#fff; cursor:pointer; }
 #board-nav .bn-btn:hover:not([disabled]){ background:#3b5d8a; }
@@ -4302,6 +4326,12 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
               style="background:rgba(13,148,136,.20);border:1px solid rgba(13,148,136,.45);color:#99f6e4;padding:6px 12px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap">
               🖥️ Proyectar
             </button>
+            <!-- Oct 2026 (pedido de Gera): los tres botones flotantes de la derecha estorbaban a las cajas en el iPad.
+                 Viven aquí; «📊 Planes» además está en la barra del tablero. -->
+            <div class="hcm-sec">Importar y respaldo</div>
+            <button class="hcm-tool" onclick="openPendientesImport()" title="Importar pendientes / planes desde el Excel del censo" data-testid="hcm-planes">📊 Importar planes (Excel)</button>
+            <button class="hcm-tool" onclick="openIndicacionesModal()" title="Importar indicaciones" data-testid="hcm-indic">📥 Importar indicaciones</button>
+            <button class="hcm-tool" onclick="plExportBackup()" title="Descargar respaldo local (indicaciones, snapshots, configuración)" data-testid="hcm-backup">💾 Respaldo local</button>
             <div class="hcm-sec hcm-danger-sec">Zona de riesgo</div>
             <button class="btn-orange" onclick="resetCensoTotal()"
               title="Borra TODO (local + Supabase) y empieza de cero">🔥 Borrar Todo</button>
@@ -10522,6 +10552,7 @@ function plExportBackup() {
         cardEl.outerHTML = isSimpleEsp(p.esp, _nd)
           ? renderSimpleCard(p, _nd, k)
           : renderFullCard(p, _nd, k);
+        try { _penMountAll(document.getElementById("card-" + k)); } catch (_) {}   // ✍️ tinta de las cajas
       }
       // Si este paciente es el que está PROYECTADO, refresca la proyección en vivo
       // (ej. editaste labs/plan/drenajes y se ven al instante en la pantalla grande).
@@ -13226,6 +13257,15 @@ function plExportBackup() {
       if (currentView === "papelera") renderPapelera();
       try { _applyPresenceBadges(); } catch (_) {}   // reaplicar badges de presencia tras re-render
       try { _syncStickyOffsets(); } catch (_) {}     // top del rail de camas = altura real del header
+      try { _penMountAll(); } catch (_) {}           // ✍️ tinta directa sobre las cajas (capa por caja con tinta)
+    }
+    // La tira de camas se desplaza para que la cama en foco quede a la vista (centrada).
+    function _bedStripCenter() {
+      try {
+        const strip = document.querySelector("#board-nav .bn-beds"); const cur = strip && strip.querySelector(".bb-cur");
+        if (!strip || !cur) return;
+        strip.scrollLeft = Math.max(0, cur.offsetLeft - strip.clientWidth / 2 + cur.offsetWidth / 2);
+      } catch (_) {}
     }
 
     // Mide la altura real del #header (sticky) y la expone como --pl-header-h para que
@@ -13353,14 +13393,24 @@ function plExportBackup() {
             try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}" title="${_st === "red" ? "Lab crítico" : "Sin labs recientes"}"></span>`; } catch (_) {}
             return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
           }).join("") + `</div>`;
+          // Carril de camas HORIZONTAL (oct 2026, pedido de Gera): en el iPad el riel lateral estorbaba a las cajas.
+          // En pantallas < 1340 px las camas van en esta tira deslizable dentro de la barra pegajosa (#board-side se oculta por CSS).
+          const _beds = `<div class="bn-beds" data-testid="bn-beds">` + _ordered.map(pp => {
+            const kk = pid(pp); const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
+            let _dot = ""; try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}"></span>`; } catch (_) {}
+            return `<button type="button" class="bb${kk === fk ? " bb-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-top-color:${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_labNewsFor(kk) ? "🧪" : ""}${esc(pp.cama || "S/C")}</button>`;
+          }).join("") + `</div>`;
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
             + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
             + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, manejo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
             + `<button class="bn-mode${isHojaMode() ? " on" : ""}" onclick="toggleHojaMode()" title="Modo Hoja: la ficha como la hoja de visita (cuadrícula con todas las cajas abiertas; al imprimir, una hoja por cama)">${isHojaMode() ? "📑 Hoja" : "🗂 Tarjeta"}</button>`
             + (isHojaMode() ? renderHojaCfg() : "")
+            + `<button class="bn-mode bn-pen${(typeof penModeOn === "function" && penModeOn()) ? " on" : ""}" onclick="togglePenMode(this)" title="✍️ Lápiz: con el Apple Pencil escribes directo sobre cualquier caja (la tinta se queda ahí y tachar borra). Apagado: el lápiz escribe texto (Scribble).">✍️ Lápiz</button>`
+            + `<button class="bn-mode" onclick="openPendientesImport()" title="Importar pendientes / planes desde el Excel del censo">📊 Planes</button>`
             + renderAlertsNavBtn()
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
+            + _beds
             + (isSimpleEsp(fp.esp, fnd) ? "" : _fcJumpBar(fp, fnd, fk))
             + `</div>`;
           _bindBoardSwipe();
@@ -13387,6 +13437,7 @@ function plExportBackup() {
           let _alertsHtml = ""; try { _alertsHtml = renderSpecialAlertsPanel(); } catch (e) { safeLog("alerts panel:", e); }
           document.getElementById("view-piso").innerHTML =
             renderAlertsDrawer(_alertsHtml) + `<div id="board-wrap">${_side}<div id="board-main">${_nav}<div id="piso-grid">${fcard}</div></div></div>`;
+          try { requestAnimationFrame(_bedStripCenter); } catch (_) {}
           return;
         }
       }
@@ -15377,6 +15428,254 @@ function plExportBackup() {
         if (typeof focusStep === "function") focusStep(dx < 0 ? 1 : -1);
       }, { passive: true });
     }
+
+    /* ═══ ✍️ Lápiz directo sobre las cajas (oct 2026, pedido de Gera) ═══════════════════════════════
+       Con el Apple Pencil se escribe ENCIMA de cualquier caja de texto (como en GoodNotes) sin abrir el
+       lienzo grande: la tinta queda sobre la caja, viaja con la nota (checklist.__ink[campo]) y se ve en
+       todos los dispositivos. Rayar/tachar sobre lo escrito lo borra. El dedo y el teclado siguen igual
+       (la capa de tinta no atrapa el toque). Solo pointerType "pen"; se apaga con ✍️ Lápiz en la barra.
+       Formato: __ink[campo] = { w: anchoDeLaCajaAlEscribir, s: [ { c: color, p: [[x, y, presión], …] } ] } */
+    const PEN_MAX_POINTS = 6000;
+    const PEN = { active: null, saveTimers: {}, lastUndo: {} };
+    function penModeOn() {
+      try { const v = localStorage.getItem("pl_pen_mode"); if (v === "0") return false; if (v === "1") return true; } catch (_) {}
+      return (navigator.maxTouchPoints || 0) > 1;     // por defecto: encendido en iPad/tablet, apagado en laptop
+    }
+    function togglePenMode(btn) {
+      const on = !penModeOn();
+      try { localStorage.setItem("pl_pen_mode", on ? "1" : "0"); } catch (_) {}
+      document.body.classList.toggle("pen-on", on);
+      document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.toggle("on", on); });
+      if (!on) PEN.active = null;
+      if (typeof _plToast === "function") _plToast(on ? "✍️ Lápiz encendido: escribe con el Apple Pencil directo sobre las cajas (tachar borra)" : "✍️ Lápiz apagado: el lápiz escribe texto (Scribble del iPad)", on ? "#7c3aed" : "#475569", 2600);
+    }
+    function _penField(ta) { return ta.dataset.ckfield ? "ck:" + ta.dataset.ckfield : (ta.dataset.field || ""); }
+    function _penTa(el) { return (el && el.closest) ? el.closest("textarea.field-ta[data-key]") : null; }
+    function _penInk(nd, field, create) {
+      if (!nd) return null;
+      if (!nd.checklist) { if (!create) return null; nd.checklist = {}; }
+      if (!isPlainObject(nd.checklist.__ink)) { if (!create) return null; nd.checklist.__ink = {}; }
+      let ink = nd.checklist.__ink[field];
+      if (!isPlainObject(ink) || !Array.isArray(ink.s)) { if (!create) return null; ink = nd.checklist.__ink[field] = { w: 0, s: [] }; }
+      return ink;
+    }
+    function _penPoints(ink) { return ink.s.reduce(function (n, s) { return n + ((s && s.p) ? s.p.length : 0); }, 0); }
+    // Capa (canvas + botón ✍️ de la esquina) pegada a la caja: se crea al vuelo y sigue el tamaño de la caja.
+    function _penLayer(ta, create) {
+      let cv = ta.nextElementSibling;
+      if (!(cv && cv.classList && cv.classList.contains("pl-ink-cv"))) {
+        if (!create) return null;
+        const par = ta.parentElement; if (!par) return null;
+        if (getComputedStyle(par).position === "static") par.style.position = "relative";
+        cv = document.createElement("canvas"); cv.className = "pl-ink-cv";
+        const menu = document.createElement("button"); menu.type = "button"; menu.className = "pl-ink-menu"; menu.textContent = "✍️"; menu.style.display = "none";
+        menu.title = "Tinta de esta caja: deshacer, pasar a texto, borrar";
+        menu.addEventListener("click", function (ev) { ev.preventDefault(); ev.stopPropagation(); _penMenu(ta, menu); });
+        ta.insertAdjacentElement("afterend", cv); cv.insertAdjacentElement("afterend", menu);
+        try { const ro = new ResizeObserver(function () { _penFit(ta); }); ro.observe(ta); cv._ro = ro; } catch (_) {}
+      }
+      return cv;
+    }
+    function _penFit(ta) {
+      const cv = _penLayer(ta, false); if (!cv) return;
+      const w = ta.offsetWidth, h = ta.offsetHeight; if (!w || !h) return;
+      const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      cv.style.left = ta.offsetLeft + "px"; cv.style.top = ta.offsetTop + "px"; cv.style.width = w + "px"; cv.style.height = h + "px";
+      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+      const menu = cv.nextElementSibling;
+      if (menu && menu.classList.contains("pl-ink-menu")) { menu.style.left = (ta.offsetLeft + w - 32) + "px"; menu.style.top = (ta.offsetTop + 4) + "px"; }
+      _penRedraw(ta);
+    }
+    function _penScale(ink, ta) { const w = ta.offsetWidth; return (ink && ink.w > 0 && w > 0) ? (w / ink.w) : 1; }
+    function _penColor(c) { return (document.body.classList.contains("dark") && (!c || c === "#1d4ed8")) ? "#93c5fd" : (c || "#1d4ed8"); }
+    function _penStrokePath(ctx, pts, scale, color) {
+      if (!pts || pts.length < 2) return;
+      ctx.strokeStyle = _penColor(color); ctx.lineCap = "round"; ctx.lineJoin = "round";
+      const k = Math.max(.6, Math.min(1.6, scale));
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        ctx.lineWidth = (1.5 + ((b[2] || 0.6) * 2.2)) * k;
+        ctx.beginPath(); ctx.moveTo(a[0] * scale, a[1] * scale); ctx.lineTo(b[0] * scale, b[1] * scale); ctx.stroke();
+      }
+    }
+    function _penRedraw(ta) {
+      const cv = _penLayer(ta, false); if (!cv) return;
+      const nd = noteData[ta.dataset.key]; const ink = nd ? _penInk(nd, _penField(ta), false) : null;
+      const ctx = cv.getContext("2d"); const dpr = cv.width / Math.max(1, ta.offsetWidth || 1);
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const has = !!(ink && ink.s.length);
+      const menu = cv.nextElementSibling; if (menu && menu.classList.contains("pl-ink-menu")) menu.style.display = has ? "" : "none";
+      if (has) { const scale = _penScale(ink, ta); ink.s.forEach(function (s) { _penStrokePath(ctx, s.p, scale, s.c); }); }
+      if (PEN.active && PEN.active.ta === ta) _penStrokePath(ctx, PEN.active.pts, 1, PEN.active.color);
+    }
+    // Tras cada render: capa en todas las cajas con tinta; la caja se estira para que la tinta no se corte.
+    function _penMountAll(root) {
+      const scope = (root && root.querySelectorAll) ? root : document;
+      scope.querySelectorAll("textarea.field-ta[data-key]").forEach(function (ta) {
+        const nd = noteData[ta.dataset.key]; const ink = nd ? _penInk(nd, _penField(ta), false) : null;
+        if (!ink || !ink.s.length) { if (_penLayer(ta, false)) _penRedraw(ta); return; }
+        _penLayer(ta, true);
+        const scale = _penScale(ink, ta); let maxY = 0;
+        ink.s.forEach(function (s) { (s.p || []).forEach(function (p) { if (p[1] > maxY) maxY = p[1]; }); });
+        const need = Math.ceil(maxY * scale + 14);
+        if (ta.offsetHeight && need > ta.offsetHeight) ta.style.height = need + "px";
+        _penFit(ta);
+      });
+    }
+    function _penPressure(e) { return (e && e.pressure > 0 && e.pressure < 1) ? Math.round(e.pressure * 100) / 100 : 0.6; }
+    function _penStart(ta, e) {
+      const k = ta.dataset.key; getNote(k);
+      if (!_penLayer(ta, true)) return;
+      _penFit(ta);
+      const r = ta.getBoundingClientRect();
+      PEN.active = { id: e.pointerId, ta: ta, k: k, field: _penField(ta), color: "#1d4ed8", pts: [[Math.round((e.clientX - r.left) * 10) / 10, Math.round((e.clientY - r.top) * 10) / 10, _penPressure(e)]], len: 0, rect: r, grew: false };
+    }
+    function _penMove(e) {
+      const a = PEN.active; if (!a) return;
+      const r = a.rect; const x = e.clientX - r.left, y = e.clientY - r.top;
+      const last = a.pts[a.pts.length - 1]; const d = Math.hypot(x - last[0], y - last[1]);
+      if (d < 1) return;
+      a.len += d; a.pts.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10, _penPressure(e)]);
+      // Cerca del borde de abajo: la caja crece para seguir escribiendo (como pasar de renglón en la hoja)
+      if (y > a.ta.offsetHeight - 22 && !a.grew) { a.grew = true; a.ta.style.height = (a.ta.offsetHeight + 60) + "px"; _penFit(a.ta); a.rect = a.ta.getBoundingClientRect(); }
+      const cv = _penLayer(a.ta, false); if (!cv) return;
+      _penStrokePath(cv.getContext("2d"), a.pts.slice(-2), 1, a.color);
+    }
+    function _penEnd(e, cancelled) {
+      const a = PEN.active; PEN.active = null; if (!a) return;
+      const ta = a.ta, k = a.k, field = a.field;
+      if (cancelled) { _penRedraw(ta); return; }
+      if (a.len < 4) {               // toque con el lápiz (sin arrastrar) = poner el cursor en la caja
+        _penRedraw(ta);
+        try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
+        return;
+      }
+      const nd = getNote(k); const ink = _penInk(nd, field, true);
+      if (!(ink.w > 0)) ink.w = ta.offsetWidth || 1;
+      const scale = _penScale(ink, ta);        // al ancho de referencia de la caja (misma tinta en iPad y laptop)
+      const pts = a.pts.map(function (p) { return [Math.round(p[0] / scale * 10) / 10, Math.round(p[1] / scale * 10) / 10, p[2]]; });
+      const label = _penLabel(ta);
+      // Tachadura / rayoneo ENCIMA de tinta → borra los trazos que toca (el rayón no se guarda)
+      const erased = _penScratch(ink, pts);
+      if (erased.length) {
+        _penUndoOnce(k, label);
+        ink.s = ink.s.filter(function (s) { return erased.indexOf(s) < 0; });
+        _penRedraw(ta); _penSave(k);
+        if (typeof _plToast === "function") _plToast("🧽 " + erased.length + (erased.length > 1 ? " trazos borrados" : " trazo borrado"), "#7c3aed", 1200);
+        return;
+      }
+      if (_penPoints(ink) + pts.length > PEN_MAX_POINTS) {
+        _penRedraw(ta);
+        if (typeof _plToast === "function") _plToast("Esta caja ya tiene mucha tinta: bórrala o pásala a texto (✍️ en la esquina), o usa el lienzo grande", "#b45309", 3200);
+        return;
+      }
+      _penUndoOnce(k, label);
+      ink.s.push({ c: a.color, p: pts, t: Date.now(), by: (typeof userInitials === "function") ? userInitials() : "" });
+      _penRedraw(ta); _penSave(k);
+    }
+    function _penLabel(ta) {
+      try { const lbl = ta && ta.parentElement && ta.parentElement.querySelector(".field-label"); return lbl ? lbl.textContent.replace(/\s+/g, " ").trim().slice(0, 30) : (ta ? _penField(ta) : ""); } catch (_) { return ta ? _penField(ta) : ""; }
+    }
+    function _penUndoOnce(k, label) {
+      const now = Date.now(); if (PEN.lastUndo[k] && now - PEN.lastUndo[k] < 20000) return;
+      PEN.lastUndo[k] = now; try { _undoPush(k, "tinta en " + label); } catch (_) {}
+    }
+    // ¿Es un rayón? Zigzag (≥ 4 cambios de dirección), más largo que su propio recuadro y ENCIMA de tinta
+    // previa (≥ 2 puntos de algún trazo dentro del recuadro). Escribir "mm" en espacio vacío NO borra nada.
+    function _penScratch(ink, pts) {
+      if (pts.length < 8 || !ink.s.length) return [];
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, len = 0, revX = 0, revY = 0, dx0 = 0, dy0 = 0;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i]; if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0]; if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
+        if (i) {
+          const dx = p[0] - pts[i - 1][0], dy = p[1] - pts[i - 1][1]; len += Math.hypot(dx, dy);
+          const sx = Math.abs(dx) > 1.5 ? Math.sign(dx) : 0, sy = Math.abs(dy) > 1.5 ? Math.sign(dy) : 0;
+          if (sx && dx0 && sx !== dx0) revX++; if (sx) dx0 = sx;
+          if (sy && dy0 && sy !== dy0) revY++; if (sy) dy0 = sy;
+        }
+      }
+      const bw = maxX - minX, bh = maxY - minY;
+      if (Math.max(revX, revY) < 4 || len < 2 * Math.max(bw, bh) || Math.max(bw, bh) < 10) return [];
+      const pad = 6, x0 = minX - pad, x1 = maxX + pad, y0 = minY - pad, y1 = maxY + pad;
+      return ink.s.filter(function (s) { let n = 0; for (const q of (s.p || [])) { if (q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1 && ++n >= 2) return true; } return false; });
+    }
+    function _penSave(k) {
+      clearTimeout(PEN.saveTimers[k]);
+      PEN.saveTimers[k] = setTimeout(function () { try { _saveNoteNow(k, getNote(k), "ck___ink"); } catch (e) { safeLog("pen save:", e); } }, 600);
+    }
+    function _penTaFor(k, field) {
+      return document.querySelector(field.indexOf("ck:") === 0 ? 'textarea.field-ta[data-key="' + k + '"][data-ckfield="' + field.slice(3) + '"]' : 'textarea.field-ta[data-key="' + k + '"][data-field="' + field + '"]');
+    }
+    function _penMenu(ta, btn) {
+      const old = document.querySelector(".pl-ink-pop"); if (old) { const same = old._for === ta; old.remove(); if (same) return; }
+      const k = ta.dataset.key, field = _penField(ta);
+      const pop = document.createElement("div"); pop.className = "pl-ink-pop"; pop._for = ta;
+      pop.innerHTML = '<button type="button" data-act="undo">↶ Deshacer trazo</button><button type="button" data-act="text">🤖 Pasar a texto</button><button type="button" data-act="clear">🧹 Borrar la tinta</button>';
+      pop.addEventListener("click", function (ev) {
+        const b = ev.target.closest("button[data-act]"); if (!b) return;
+        ev.preventDefault(); ev.stopPropagation(); pop.remove();
+        if (b.dataset.act === "undo") penUndo(k, field); else if (b.dataset.act === "clear") penClear(k, field); else if (b.dataset.act === "text") penToText(k, field);
+      });
+      btn.insertAdjacentElement("afterend", pop);
+      pop.style.left = Math.max(0, parseFloat(btn.style.left || "0") - 150) + "px"; pop.style.top = (parseFloat(btn.style.top || "0") + 28) + "px";
+      setTimeout(function () { const close = function (e) { if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener("pointerdown", close, true); } }; document.addEventListener("pointerdown", close, true); }, 0);
+    }
+    function penUndo(k, field) {
+      const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) return;
+      _penUndoOnce(k, field); ink.s.pop(); _penSave(k);
+      const ta = _penTaFor(k, field); if (ta) _penRedraw(ta);
+    }
+    function penClear(k, field) {
+      const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) return;
+      if (!confirm("¿Borrar toda la tinta de esta caja? (El texto escrito no se toca)")) return;
+      try { _undoPush(k, "borrar tinta en " + field); } catch (_) {}
+      delete nd.checklist.__ink[field]; _penSave(k);
+      const ta = _penTaFor(k, field); if (ta) _penRedraw(ta);
+    }
+    // La tinta de la caja al lienzo grande (más grande, para leerla): ahí 🤖 Transcribir la pasa a texto del campo.
+    function penToText(k, field) {
+      const nd = getNote(k); const ink = _penInk(nd, field, false); if (!ink || !ink.s.length) { alert("Esta caja no tiene tinta."); return; }
+      const f = 1.8;
+      nd._inkFields = nd._inkFields || {};
+      nd._inkFields[field] = ink.s.map(function (s) { return { tool: "pen", color: "#0f172a", alpha: 1, points: (s.p || []).map(function (p) { return { x: 40 + p[0] * f, y: 40 + p[1] * f, p: p[2] || 0.6 }; }) }; });
+      openInkpadForField(k, field, _penLabel(_penTaFor(k, field)) || field);
+    }
+    // Eventos: SOLO el lápiz (pointerType "pen"). El dedo y el ratón siguen llegando a la caja (cursor, teclado, scroll).
+    (function _penBind() {
+      document.addEventListener("touchstart", function (e) {
+        try {
+          if (!penModeOn() || !e.touches || e.touches.length !== 1) return;
+          if (e.touches[0].touchType !== "stylus") return;        // WebKit: "stylus" = Apple Pencil
+          if (!_penTa(e.target)) return;
+          e.preventDefault();                                        // ni scroll ni Scribble: la tinta la pinta la app
+        } catch (_) {}
+      }, { passive: false, capture: true });
+      document.addEventListener("touchmove", function (e) { if (PEN.active && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
+      document.addEventListener("pointerdown", function (e) {
+        if (e.pointerType !== "pen" || !penModeOn()) return;
+        const ta = _penTa(e.target); if (!ta) return;
+        e.preventDefault(); e.stopPropagation();
+        _penStart(ta, e);
+      }, true);
+      document.addEventListener("pointermove", function (e) { if (PEN.active && e.pointerId === PEN.active.id) { if (e.cancelable) e.preventDefault(); _penMove(e); } }, true);
+      document.addEventListener("pointerup", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, false); }, true);
+      document.addEventListener("pointercancel", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, true); }, true);
+      window.addEventListener("blur", function () { if (PEN.active) _penEnd(null, true); });
+      try { document.body.classList.toggle("pen-on", penModeOn()); } catch (_) {}
+      // Las tarjetas también se repintan fuera de renderView/_rerenderCard (Realtime, RIS, fotos…): cualquier
+      // cambio de nodos en la vista vuelve a montar las capas de tinta (los nodos propios de la tinta no cuentan).
+      try {
+        const host = document.getElementById("view-piso") || document.body; let raf = 0;
+        const isPenEl = function (n) { return n.nodeType === 1 && (n.classList.contains("pl-ink-cv") || n.classList.contains("pl-ink-menu") || n.classList.contains("pl-ink-pop")); };
+        const other = function (list) { return Array.prototype.some.call(list, function (n) { return !isPenEl(n); }); };
+        new MutationObserver(function (recs) {
+          if (!recs.some(function (r) { return other(r.addedNodes) || other(r.removedNodes); })) return;
+          if (raf) return;
+          raf = requestAnimationFrame(function () { raf = 0; try { _penMountAll(); } catch (_) {} });
+        }).observe(host, { childList: true, subtree: true });
+      } catch (_) {}
+    })();
+
     // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
     // ➕ Hoy en IC / Cultivos / Entrega / Recibo (oct 2026): anota "dd/mm: " al final de la caja, como la
     // fecha que se escribe a mano antes de cada renglón en la hoja de visita. isCk = campo del checklist.
@@ -27510,14 +27809,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     }
   </style>
 
-<div id="pl-fab-v28" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px">
-  <button onclick="plExportBackup()" title="Descargar backup local (indicaciones, snapshots, config)"
-    style="background:linear-gradient(135deg,#64748b 0%,#475569 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">💾</button>
-  <button onclick="openIndicacionesModal()" title="Importar indicaciones"
-    style="background:linear-gradient(135deg,#3b82f6 0%,#1e40af 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📥</button>
-  <button onclick="openPendientesImport()" title="Importar pendientes/plan desde Excel (censo)"
-    style="background:linear-gradient(135deg,#14b8a6 0%,#0f766e 100%);color:white;border:none;width:54px;height:54px;border-radius:50%;font-size:22px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.25);font-weight:600">📊</button>
-</div>
+<!-- Los botones flotantes (💾 respaldo, 📥 indicaciones, 📊 planes) se quitaron en oct 2026 (pedido de Gera):
+     tapaban las cajas en el iPad. Ahora están en el menú «⋯ Más» del encabezado y «📊 Planes» en la barra del tablero. -->
 
 <!-- ═══ PisoLibro v29: Cultivos + Importador Pendientes ═══ -->
 <script>
