@@ -118,7 +118,8 @@ function readCensoRows_() {
  * Parser robusto a la menseria:
  *  - Encuentra la fila de encabezados (CAMA + NOMBRE + EXPEDIENTE) y mapea columnas por nombre.
  *  - Fila = PACIENTE si EXP y NOMBRE no vacios. Fila-encabezado de seccion = exp vacio y 1-2 celdas.
- *  - seccion = ultimo encabezado visto. Excluye las secciones de EXCLUDE_SECTION_RE.
+ *  - seccion = ultimo encabezado visto. Ignora las secciones administrativas (EXCLUDE_ALWAYS_RE) y,
+ *    en salas de otro servicio (OTHER_WARD_RE: gine/onco/hemato), deja solo a nuestros quirúrgicos.
  */
 function parseCenso_(rows) {
   var headerRow = -1, col = {};
