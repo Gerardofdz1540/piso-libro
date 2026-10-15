@@ -270,5 +270,44 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   check("T9d force=true sube aunque no haya cambios", r4.ok === true && !r4.skipped);
 }
 
+// ── 10) Salas de otros servicios: se capta a NUESTRO paciente quirúrgico, no a los de ese servicio ─
+{
+  const H = ['CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNOSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DIAS', 'ESTADO'];
+  const pr = (cama, exp, esp) => [cama, exp, 'P ' + exp, '40', 'DX', esp, 'ADSC', 'RES', '14/10/2026', '1', 'ESTABLE'];
+  const rows = [
+    H,
+    ['PISO'],
+    pr('3-101', '26-0001', 'CG'),            // piso, nuestro
+    pr('3-102', '26-0008', 'NCX'),           // piso, otro servicio quirúrgico que el piso sí lista
+    ['GINECOLOGIA'],
+    pr('2-092', '26-0002', 'CG'),            // embarazada de cirugía general en cama de gine → SE CAPTA
+    pr('2-093', '26-0003', 'GO'),            // paciente de ginecología → NO
+    pr('2-094', '26-0004', ''),              // sin especialidad en sala ajena → NO
+    pr('2-095', '26-0009', 'CG/URO'),        // combinado con componente quirúrgico → SE CAPTA
+    ['ONCOLOGIA'],
+    pr('5-010', '26-0005', 'CG'),            // nuestro en onco → SE CAPTA
+    pr('5-011', '26-0006', 'ONC'),           // oncología médica → NO
+    ['ALTAS'],
+    pr('3-109', '26-0007', 'CG'),            // alta, aunque sea CG → NO (sección administrativa)
+  ];
+  const { sb } = makeSandbox({});
+  const parsed = sb.parseCenso_(rows);
+  const byExp = {}; parsed.forEach((p) => { byExp[p.exp] = p; });
+  const got = parsed.map((p) => p.exp + ':' + p.seccion + ':' + p.esp).sort();
+  check('T10 gine/onco/hemato: se capta al paciente quirúrgico hospedado (CG en gine 2-092, CG/URO, CG en onco) con su sección; NO a los del servicio (GO, ONC, sin esp); ALTAS nunca entra aunque sea CG; el piso sigue igual (CG + NCX)',
+    !!byExp['26-0001'] && !!byExp['26-0008']
+    && !!byExp['26-0002'] && byExp['26-0002'].seccion === 'GINECOLOGIA' && byExp['26-0002'].cama === '2-092'
+    && !byExp['26-0003'] && !byExp['26-0004'] && !!byExp['26-0009']
+    && !!byExp['26-0005'] && byExp['26-0005'].seccion === 'ONCOLOGIA' && !byExp['26-0006']
+    && !byExp['26-0007'] && parsed.length === 5, JSON.stringify(got));
+  // helpers directos
+  check('T10b isSurgicalService_: CG/CT/CV/CPR/NCX/URO/CG-URO sí; GO/GINE/ONC/HEM/vacío no',
+    sb.isSurgicalService_('CG') && sb.isSurgicalService_('CT') && sb.isSurgicalService_('CV') && sb.isSurgicalService_('CPR')
+    && sb.isSurgicalService_('NCX') && sb.isSurgicalService_('URO') && sb.isSurgicalService_('CG / URO')
+    && !sb.isSurgicalService_('GO') && !sb.isSurgicalService_('GINE') && !sb.isSurgicalService_('ONC') && !sb.isSurgicalService_('HEM')
+    && !sb.isSurgicalService_('CARD') && !sb.isSurgicalService_(''),
+    JSON.stringify(['CG', 'GO', 'ONC', 'CARD', ''].map((e) => e + '=' + sb.isSurgicalService_(e))));
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

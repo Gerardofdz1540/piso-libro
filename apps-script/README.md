@@ -81,8 +81,13 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
 - **Mismo exp en 2+ camas, misma persona:** conserva solo la cama de **UCI/UTI**, descarta piso.
 - **Mismo exp con nombres distintos** (error de captura): **no sincroniza ninguna** y lo registra
   en la tabla `public.sync_log` (exp, camas, nombres, motivo).
-- **Secciones que ignora:** ALTAS, DEFUNCIONES, PROCEDIMIENTOS, INGRESOS, MOVIMIENTOS DE CAMAS,
-  TPN, ONCOLOGÍA/HEMATOLOGÍA/GINECOLOGÍA.
+- **Secciones administrativas que ignora por completo:** ALTAS, DEFUNCIONES, PROCEDIMIENTOS,
+  INGRESOS, MOVIMIENTOS DE CAMAS, TPN.
+- **Salas de otros servicios (GINECOLOGÍA, ONCOLOGÍA, HEMATOLOGÍA):** se ignoran *sus* pacientes,
+  pero un paciente **nuestro** (especialidad quirúrgica: CG y demás cirugías, NCX, URO…) hospedado
+  ahí **sí** se capta, con su sección. Así una embarazada de cirugía general en cama de gine (p. ej.
+  2-092) aparece en el tablero. Un paciente del propio servicio (GO/GINE, ONC, HEM) o sin
+  especialidad no entra. (`isSurgicalService_`; antes la sección entera se descartaba.)
 
 ## Instalación (1 sola vez, ~2 min)
 

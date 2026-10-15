@@ -27,14 +27,31 @@ var CENSO_GID      = 14179734;
 // (tabla indicaciones_doc, una sola fila) y la app lo cruza por cama + nombre en cada tarjeta.
 var INDICACIONES_DOC_ID = '1gRCydpjiByBjMxp5edTbuiEwrzHTh8Ir2IvgYqZY73A';
 
-// Secciones que NO se sincronizan (se ignoran por completo).
-var EXCLUDE_SECTION_RE = [
-  /^ALTAS/, /^DEFUNCION/, /^PROCEDIMIENTO/, /^INGRESOS/, /MOVIMIENTO/, /^TPN/,
-  /ONCOLOG/, /HEMATOLOG/, /GINECOLOG/
+// Secciones ADMINISTRATIVAS (no son pacientes activos del piso): se ignoran por completo.
+var EXCLUDE_ALWAYS_RE = [
+  /^ALTAS/, /^DEFUNCION/, /^PROCEDIMIENTO/, /^INGRESOS/, /MOVIMIENTO/, /^TPN/
 ];
+// Salas de OTROS servicios: se ignoran SUS pacientes, pero un paciente NUESTRO (quirúrgico)
+// hospedado ahí SÍ se capta — p. ej. una embarazada de cirugía general en cama de gine (oct 2026,
+// cama 2-092): antes la sección entera se descartaba y el paciente no aparecía en el tablero.
+var OTHER_WARD_RE = [/ONCOLOG/, /HEMATOLOG/, /GINECOLOG/];
 
 // Servicios "ajenos" para es_mio (FALSE solo si TODOS los componentes estan aqui).
 var ES_MIO_EXCL = ['URO', 'UROLOGIA', 'NCX', 'NEUROCX', 'NEUROCIRUGIA', 'TYO'];
+
+// ¿La especialidad es un servicio QUIRÚRGICO que el piso sigue? Se usa para rescatar a nuestros
+// pacientes hospedados en salas de otros servicios (gine/onco/hemato). Cirugía = empieza con C y no
+// es cardiología; más las subespecialidades quirúrgicas conocidas. Un paciente del servicio de esa
+// sala (GO/GINE, ONC, HEM) o sin especialidad NO se capta. Combinaciones ("CG/URO") entran si algún
+// componente es quirúrgico.
+function isSurgicalService_(esp) {
+  var toks = norm_(esp).split(/[\/,+&]+/).map(function (t) { return t.trim(); }).filter(Boolean);
+  if (!toks.length) return false;
+  return toks.some(function (t) {
+    if (/^C[A-Z]*$/.test(t) && t.length <= 5 && !/^CARD/.test(t)) return true;   // CG, CT, CV, CP, CPR, CCR, CMF, CYC, CPL…
+    return /^(NCX|NEUROCX|NEUROCIRUGIA|URO|UROLOGIA|ANGIO|MAXILO|PLASTICA|COLOPROCTO|PROCTO|ONCOQX|TRASPLANTE)$/.test(t);
+  });
+}
 
 // --- ENTRADAS (triggers) ------------------------------------------------------------------------
 
@@ -127,7 +144,9 @@ function parseCenso_(rows) {
       // Guarda anti-mismap: un expediente real es numerico (ej. "26-13060"). Si "exp" trae
       // un nombre (letras), la fila esta mal mapeada (2a tabla) -> saltarla.
       if (!expLooksValid_(exp)) continue;
-      if (sectionExcluded_(section)) continue;   // seccion ignorada -> no se sincroniza
+      if (sectionExcludedAlways_(section)) continue;   // ALTAS/DEFUNCIONES/… -> nunca se sincroniza
+      // Sala de otro servicio (gine/onco/hemato): solo NUESTROS pacientes quirúrgicos.
+      if (sectionOtherWard_(section) && !isSurgicalService_(cell_(row, col.esp))) continue;
       out.push({
         cama:      cell_(row, col.cama),
         exp:       exp,
@@ -628,9 +647,14 @@ function mapCols_(up, col) {
   }
 }
 
-function sectionExcluded_(section) {
+function sectionExcludedAlways_(section) {
   var s = norm_(section);
-  for (var i = 0; i < EXCLUDE_SECTION_RE.length; i++) { if (EXCLUDE_SECTION_RE[i].test(s)) return true; }
+  for (var i = 0; i < EXCLUDE_ALWAYS_RE.length; i++) { if (EXCLUDE_ALWAYS_RE[i].test(s)) return true; }
+  return false;
+}
+function sectionOtherWard_(section) {
+  var s = norm_(section);
+  for (var i = 0; i < OTHER_WARD_RE.length; i++) { if (OTHER_WARD_RE[i].test(s)) return true; }
   return false;
 }
 
