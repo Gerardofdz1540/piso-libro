@@ -523,13 +523,21 @@ export function parseCensusAge(edad) {
 // FEMENINO/MASCULINO, exige match de nombre (difuso, orden-independiente) y, cuando hay
 // edad en el censo y fecha de nacimiento en el encabezado, edad compatible (±tolerance).
 // Devuelve también los enlaces totales (para diagnóstico) y los bloques rechazados por edad.
+// ¿Dos fechas de nacimiento con el MISMO día y mes pero distinto año? Es la firma de un año mal
+// capturado al registrar al paciente otra vez en WinLab (dígitos cambiados 1996→1969, 1968→2006…).
+// 01/01 no cuenta: es el comodín que se pone cuando no se conoce la fecha.
+export function sameBirthdayOtherYear(a, b) {
+  const ma = String(a || "").match(/^(\d{2}\/\d{2})\/(\d{4})$/), mb = String(b || "").match(/^(\d{2}\/\d{2})\/(\d{4})$/);
+  if (!ma || !mb) return false;
+  return ma[1] === mb[1] && ma[2] !== mb[2] && ma[1] !== "01/01";
+}
 export function selectTargetRows(rows, paciente, opts = {}) {
   const tolerance = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : 2;
   const today = opts.today || new Date();
   const censusAge = parseCensusAge(paciente && paciente.edad);
-  const targetIdxs = [], linkIdxs = [], ageRejected = [], seenNames = [];
-  let curMatches = false, matchedHeader = "";
+  const linkIdxs = [], seenNames = [], blocks = [];
   const alias = String((paciente && paciente.alias) || "").trim();
+  let cur = null;
   for (let i = 0; i < (rows || []).length; i++) {
     const row = rows[i];
     const hdrName = extractHeaderName(row.__cells);
@@ -540,21 +548,38 @@ export function selectTargetRows(rows, paciente, opts = {}) {
       if (!seenNames.includes(seenLabel)) seenNames.push(seenLabel);
       // El alias ("nombre en WinLab" fijado en la app) también identifica al objetivo.
       const nameOk = patientHeaderMatches(hdrName, paciente && paciente.nombre) || (!!alias && patientHeaderMatches(hdrName, alias));
-      const hdrAge = nameOk && censusAge != null ? ageFromBirthDate(extractHeaderBirthDate(row.__cells), today) : null;
-      if (nameOk && hdrAge != null && Math.abs(hdrAge - censusAge) > tolerance) {
-        ageRejected.push({ idx: i, headerAge: hdrAge, censusAge });
-        curMatches = false;
-      } else {
-        curMatches = nameOk;
-        if (nameOk && !matchedHeader) matchedHeader = hdrName;
-      }
+      const fnac = extractHeaderBirthDate(row.__cells);
+      const hdrAge = nameOk && censusAge != null ? ageFromBirthDate(fnac, today) : null;
+      cur = { idx: i, hdrName, label: seenLabel.toUpperCase(), fnac, hdrAge, nameOk, ageOk: !(nameOk && hdrAge != null && Math.abs(hdrAge - censusAge) > tolerance), links: [] };
+      blocks.push(cur);
     }
     if (row.__hasLink) {
       linkIdxs.push(i);
-      if (curMatches) targetIdxs.push(i);
+      if (cur) cur.links.push(i);
     }
   }
-  return { targetIdxs, linkIdxs, ageRejected, censusAge, tolerance, seenNames: seenNames.slice(0, 8), matchedHeader };
+  // RESCATE por año mal capturado (oct 2026, cama 3-163): el mismo paciente aparece en WinLab con dos
+  // registros del MISMO nombre y la MISMA fecha de nacimiento salvo el año (05/03/1968 y 05/03/2006).
+  // La guarda de edad descartaba el registro "joven" y con él los labs nuevos (los de hospitalización
+  // se capturaron en el registro equivocado). En los blobs guardados, 6 de 7 pacientes con bloques
+  // homónimos descartados tenían exactamente esta firma. Un bloque descartado por edad se rescata si
+  // OTRO bloque del mismo nombre (etiqueta idéntica) pasó la guarda y comparte día/mes de nacimiento.
+  // Homónimos reales (otra fecha de nacimiento) siguen fuera.
+  const accepted = blocks.filter((b) => b.nameOk && b.ageOk);
+  const ageRescued = [];
+  for (const b of blocks) {
+    if (!b.nameOk || b.ageOk) continue;
+    const twin = accepted.find((a) => a.label === b.label && sameBirthdayOtherYear(a.fnac, b.fnac));
+    if (twin) { b.ageOk = true; ageRescued.push({ idx: b.idx, headerAge: b.hdrAge, censusAge, twinAge: twin.hdrAge, fnac: b.fnac, twinFnac: twin.fnac }); }
+  }
+  const targetIdxs = [], ageRejected = [];
+  let matchedHeader = "";
+  for (const b of blocks) {
+    if (!b.nameOk) continue;
+    if (b.ageOk) { for (const i of b.links) targetIdxs.push(i); if (!matchedHeader) matchedHeader = b.hdrName; }
+    else ageRejected.push({ idx: b.idx, headerAge: b.hdrAge, censusAge });
+  }
+  return { targetIdxs, linkIdxs, ageRejected, ageRescued, censusAge, tolerance, seenNames: seenNames.slice(0, 8), matchedHeader };
 }
 
 // Expediente normalizado para comparar objetivos (WL_TARGET_EXP) con el censo: "26-00001",

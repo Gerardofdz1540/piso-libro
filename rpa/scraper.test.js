@@ -7,7 +7,7 @@ import {
   isMeaningfulReportRow, extractApellidos, expVariants,
   stripAccentsKeepEnie, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
   jaroWinkler, patientHeaderMatches,
-  extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows,
+  extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows, sameBirthdayOtherYear,
   todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
   normNameTokens, expandNomeAbbrev,
 } from "./lib.js";
@@ -474,7 +474,7 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   const rowsW = [
     { __cells: ["", "", "", "HERNANDEZ CASTRO", "ADRIAN", "Masculino", "03/01/1990"], __hasLink: false },
     { __cells: ["", "", "2610141380", "14/10/2026 09:07", "14/10/2026 10:51", "CIRUGIA"], __hasLink: true },
-    { __cells: ["", "", "", "HERNANDEZ CASTRO", "ADRIAN", "Masculino", "03/01/1960"], __hasLink: false },
+    { __cells: ["", "", "", "HERNANDEZ CASTRO", "ADRIAN", "Masculino", "15/07/1960"], __hasLink: false },   // homónimo real: otra fecha de nacimiento
     { __cells: ["", "", "2610141381", "14/10/2026 09:07", "14/10/2026 10:51", "CIRUGIA"], __hasLink: true },
   ];
   const hoy = new Date("2026-10-14T12:00:00");
@@ -486,6 +486,44 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   const selC = selectTargetRows(rowsW, { nombre: "JUAN LOPEZ LOPEZ", edad: "36" }, { today: hoy });
   assert(deepEq(selC.targetIdxs, []) && selC.matchedHeader === "" && selC.seenNames.length === 1, "selectTargetRows: sin match no hay objetivo pero sí nombres vistos");
   assert(normExp(" 26-00001 ") === "2600001" && normExp("2600001") === "2600001" && normExp(null) === "", "normExp: con guion, sin guion y vacío");
+}
+
+// ── Rescate por año de nacimiento mal capturado (15 oct 2026, cama 3-163) ─────────────────────
+// El mismo paciente tenía en WinLab tres registros con el mismo nombre: 05/03/2006, 05/03/1968 y
+// 05/03/2006 (censo 58 años). La guarda de edad descartaba los dos "de 20 años" y los labs de
+// hospitalización (13-14 oct) nunca se drilleaban: la app solo mostraba los de urgencias del 12.
+{
+  const TODAY = new Date("2026-10-15T12:00:00");
+  const hdr = (ap, no, fnac) => ({ __cells: ["", "", "", ap, no, "MASCULINO", fnac], __hasLink: false });
+  const rep = (id) => ({ __cells: ["", "", id, "13/10/2026 06:19", "13/10/2026 09:31", "CIRUGIA GENERAL"], __hasLink: true });
+  const paciente = { nombre: "JUAN PEREZ LOPEZ", edad: "58" };
+  const rows = [
+    hdr("PEREZ LOPEZ", "JUAN", "05/03/2006"), rep("1"), rep("2"),   // 20 años: año mal capturado
+    hdr("PEREZ LOPEZ", "JUAN", "05/03/1968"), rep("3"),             // 58: el que pasa la guarda
+    hdr("PEREZ LOPEZ", "JUAN", "05/03/2006"), rep("4"), rep("5"), rep("6"),
+  ];
+  const sel = selectTargetRows(rows, paciente, { ageTolerance: 2, today: TODAY });
+  assert(deepEq(sel.targetIdxs, [1, 2, 4, 6, 7, 8]), "rescate: los tres bloques del mismo nombre y mismo día/mes de nacimiento son del paciente (año mal capturado)");
+  assert(sel.ageRejected.length === 0 && sel.ageRescued.length === 2 && sel.ageRescued[0].headerAge === 20 && sel.ageRescued[0].twinAge === 58 && sel.ageRescued[0].fnac === "05/03/2006" && sel.ageRescued[0].twinFnac === "05/03/1968",
+    "rescate: queda registrado (edad del bloque, edad del gemelo aceptado, fechas) y no cuenta como rechazado");
+  assert(sel.matchedHeader === "PEREZ LOPEZ JUAN", "rescate: matchedHeader sigue siendo el nombre del encabezado");
+  // Homónimo real: mismo nombre pero OTRO día/mes de nacimiento → sigue descartado por edad.
+  const selH = selectTargetRows([hdr("PEREZ LOPEZ", "JUAN", "19/06/2004"), rep("1"), hdr("PEREZ LOPEZ", "JUAN", "05/03/1968"), rep("2")], paciente, { today: TODAY });
+  assert(deepEq(selH.targetIdxs, [3]) && selH.ageRejected.length === 1 && selH.ageRescued.length === 0, "rescate: otro día/mes de nacimiento = homónimo real → descartado");
+  // 01/01 es comodín de fecha desconocida: dos registros 01/01 con años distintos NO se consideran la misma persona.
+  const selP = selectTargetRows([hdr("PEREZ LOPEZ", "JUAN", "01/01/2006"), rep("1"), hdr("PEREZ LOPEZ", "JUAN", "01/01/1968"), rep("2")], paciente, { today: TODAY });
+  assert(deepEq(selP.targetIdxs, [3]) && selP.ageRejected.length === 1, "rescate: 01/01 (fecha desconocida) no rescata");
+  // Sin bloque aceptado no hay a quién parecerse: el censo dice 58 y WinLab solo trae registros de 20 → sin objetivo.
+  const selN = selectTargetRows([hdr("PEREZ LOPEZ", "JUAN", "05/03/2006"), rep("1")], paciente, { today: TODAY });
+  assert(deepEq(selN.targetIdxs, []) && selN.ageRejected.length === 1 && selN.ageRescued.length === 0, "rescate: sin bloque aceptado del mismo nombre no se rescata nada");
+  // La etiqueta debe ser idéntica: otra forma de escribir el nombre (aunque matchee difuso) no rescata.
+  const selL = selectTargetRows([hdr("PEREZ LOPEZ", "JUAN CARLOS", "05/03/2006"), rep("1"), hdr("PEREZ LOPEZ", "JUAN", "05/03/1968"), rep("2")], paciente, { today: TODAY });
+  assert(deepEq(selL.targetIdxs, [3]) && selL.ageRejected.length === 1, "rescate: nombre escrito distinto (JUAN CARLOS) no rescata");
+  assert(sameBirthdayOtherYear("05/03/2006", "05/03/1968") === true && sameBirthdayOtherYear("05/03/2006", "05/03/2006") === false && sameBirthdayOtherYear("01/01/2006", "01/01/1968") === false && sameBirthdayOtherYear("x", "05/03/1968") === false,
+    "sameBirthdayOtherYear: mismo día/mes y otro año; misma fecha, 01/01 o basura → false");
+  // El caso #386 (01/01/2010 vs 01/01/1946) sigue descartando al joven (arriba) y sin edad en el censo todo sigue igual.
+  const selS = selectTargetRows(rows, { nombre: "JUAN PEREZ LOPEZ", edad: "" }, { today: TODAY });
+  assert(deepEq(selS.targetIdxs, [1, 2, 4, 6, 7, 8]) && selS.ageRescued.length === 0, "rescate: sin edad en el censo no interviene (todos por nombre, como antes)");
 }
 
 console.log(`\n${pass} pass · ${fail} fail`);
