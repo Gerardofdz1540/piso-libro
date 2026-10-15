@@ -382,12 +382,21 @@ siguen igual; si escribes cerca del borde de abajo, la caja **crece** sola.
 **Campos de una línea** (signos vitales, calculadora de vasopresor, labs, dieta, antibiótico, drenajes,
 cabecera, modales): no cabe escribir encima, así que al **tocarlos con el lápiz** (con ✍️ → Texto o ✍️
 Tinta encendido) se abre una **banda de escritura** debajo con el nombre del campo y su valor actual.
-Escribes ahí; al soltar el lápiz el texto reconocido queda como valor del campo (en los numéricos solo
-el número; la TA como 120/80) y la banda se cierra sola. **✓** convierte sin esperar, **🧹** borra lo
-escrito, **✕** cierra sin convertir; tocar fuera de la banda convierte lo pendiente y la cierra; tocar el
-mismo campo otra vez con el lápiz cierra la banda y pone el cursor (teclado). El dedo no pinta en la
-banda. Las cajas de texto de los modales y de la cabecera también aceptan el lápiz: el texto se inserta
-(ahí no se guarda tinta).
+
+- **Campos numéricos** (FC, FR, T°, SaO₂, TA, uresis, mL/h y mg del vasopresor, peso, talla, ventilador,
+  labs, días de ATB/ayuno): el número se reconoce **al instante y sin internet** (reconocedor local en
+  la app). Mientras escribes ves la lectura (`→ 95`); al soltar el lápiz un momento (0.9 s) el número se
+  pone solo en el campo y la banda se cierra. La TA se escribe con su barra (`130/80`); el punto decimal
+  y los dos puntos (I:E `1:2`) también. Debajo hay un **teclado** por si prefieres tocar los dígitos o
+  corregir (⌫); **✓** lo pone ya. Cada vez que confirmas con ✓ o corriges, la app **aprende tu letra**
+  en ese dispositivo (la próxima vez acierta mejor). Si se lee mal, corrige con el teclado y ✓.
+- **Campos de texto** (dieta, antibiótico, modo de ventilador…): lo escrito se manda al ayudante de IA
+  al soltar el lápiz (tarda unos segundos) y queda como valor del campo.
+
+En ambos: **🧹** borra lo escrito, **✕** cierra sin cambiar el campo; tocar fuera de la banda pone lo
+pendiente y la cierra; tocar el mismo campo otra vez con el lápiz cierra la banda y pone el cursor
+(teclado del iPad). El dedo no pinta en la banda. Las cajas de texto de los modales y de la cabecera
+también aceptan el lápiz: el texto se inserta (ahí no se guarda tinta).
 
 ## Vista de escritorio (octubre 2026)
 

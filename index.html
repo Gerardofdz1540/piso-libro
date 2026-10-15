@@ -4118,6 +4118,12 @@ body.pen-on textarea.field-ta{ cursor:text; }
 .pl-pen-strip .pps-btns{ display:flex; gap:4px; }
 .pl-pen-strip .pps-btns button{ width:32px; height:28px; border-radius:7px; border:1px solid #c4b5fd; background:#fff; cursor:pointer; font-size:14px; }
 .pl-pen-strip .pps-cv{ display:block; touch-action:none; background:#fff; cursor:crosshair; }
+.pl-pen-strip .pps-prev{ font:800 20px ui-monospace,"SF Mono",Menlo,Consolas,monospace; color:#4c1d95; white-space:nowrap; }
+.pl-pen-strip .pps-prev.ok{ color:#15803d; }
+.pl-pen-strip .pps-keys{ display:flex; gap:4px; padding:5px 8px 7px; background:#faf5ff; border-top:1px solid #ede9fe; }
+.pl-pen-strip .pps-keys button{ flex:1 1 0; min-width:0; height:30px; border-radius:7px; border:1px solid #c4b5fd; background:#fff; color:#4c1d95; font:800 15px ui-monospace,"SF Mono",Menlo,Consolas,monospace; cursor:pointer; }
+.pl-pen-strip .pps-keys button:active{ background:#ede9fe; }
+body.dark .pl-pen-strip .pps-keys{ background:#1e1b4b; border-color:#312e81; } body.dark .pl-pen-strip .pps-keys button{ background:#152e4d; color:#e2e8f0; border-color:#4c1d95; } body.dark .pl-pen-strip .pps-prev{ color:#c4b5fd; }
 .pl-pen-flash{ box-shadow:0 0 0 3px rgba(124,58,237,.45) !important; transition:box-shadow .2s; }
 body.dark .pl-pen-strip{ background:#0f1c2e; border-color:#8b5cf6; } body.dark .pl-pen-strip .pps-h{ background:#1e1b4b; color:#ddd6fe; border-color:#312e81; } body.dark .pl-pen-strip .pps-cv{ background:#0f1c2e; } body.dark .pl-pen-strip .pps-btns button{ background:#152e4d; color:#e2e8f0; border-color:#4c1d95; }
 body.dark .pl-ink-pop{ background:#0f1c2e; border-color:#23405f; }
@@ -15813,7 +15819,137 @@ function plExportBackup() {
        Un campo de 40–60 px no da para escribir encima: al tocarlo con el lápiz se abre una BANDA de escritura
        debajo (o encima) con el nombre del campo; lo escrito ahí se convierte en texto (IA) y queda como valor
        del campo, disparando input/change para que sus manejadores guarden como si se hubiera tecleado. */
-    const PEN_STRIP = { el: null, cv: null, inp: null, strokes: [], timer: 0, active: null, busy: false, label: "", numeric: false };
+    /* ═══ Reconocedor LOCAL de dígitos ($P Point-Cloud Recognizer, Vatavu·Anthony·Wobbrock 2012) ═══
+       Instantáneo y sin red: en los campos numéricos lo escrito con el lápiz se vuelve número al momento.
+       Plantillas sintéticas para 0-9 / - (el punto y los dos puntos se reconocen por tamaño) más plantillas
+       APRENDIDAS de las confirmaciones y correcciones de cada quien (localStorage pl_pen_digits_v1).
+       Varios dígitos: los trazos se agrupan por posición horizontal (un "4" de dos trazos queda junto). */
+    const PEN_DIGITS = (function () {
+      const N = 48, LS = "pl_pen_digits_v1", MAX_LEARN = 8;
+      function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+      function pathLength(pts) { let d = 0; for (let i = 1; i < pts.length; i++) if (pts[i].id === pts[i - 1].id) d += dist(pts[i - 1], pts[i]); return d; }
+      function resample(points, n) {
+        const pts = points.map(function (p) { return { x: p.x, y: p.y, id: p.id }; });
+        const I = pathLength(pts) / (n - 1); let D = 0; const out = [pts[0]];
+        if (!(I > 0)) return null;
+        for (let i = 1; i < pts.length; i++) {
+          if (pts[i].id === pts[i - 1].id) {
+            const d = dist(pts[i - 1], pts[i]);
+            if (D + d >= I && d > 0) {
+              const q = { x: pts[i - 1].x + ((I - D) / d) * (pts[i].x - pts[i - 1].x), y: pts[i - 1].y + ((I - D) / d) * (pts[i].y - pts[i - 1].y), id: pts[i].id };
+              out.push(q); pts.splice(i, 0, q); D = 0;
+            } else D += d;
+          }
+        }
+        while (out.length < n) out.push({ x: pts[pts.length - 1].x, y: pts[pts.length - 1].y, id: pts[pts.length - 1].id });
+        return out.slice(0, n);
+      }
+      function scale(pts) {
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        pts.forEach(function (p) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); });
+        const size = Math.max(maxX - minX, maxY - minY) || 1;
+        return pts.map(function (p) { return { x: (p.x - minX) / size, y: (p.y - minY) / size, id: p.id }; });
+      }
+      function translate(pts) { let cx = 0, cy = 0; pts.forEach(function (p) { cx += p.x; cy += p.y; }); cx /= pts.length; cy /= pts.length; return pts.map(function (p) { return { x: p.x - cx, y: p.y - cy, id: p.id }; }); }
+      function normalize(strokes) {      // strokes: [ [[x,y,…], …], … ] → nube de N puntos
+        const pts = []; strokes.forEach(function (s, i) { s.forEach(function (p) { pts.push({ x: p[0], y: p[1], id: i }); }); });
+        if (pts.length < 2) return null;
+        const r = resample(pts, N); return r ? translate(scale(r)) : null;
+      }
+      function cloudDistance(a, b, start) {
+        const n = a.length, matched = new Array(n).fill(false); let sum = 0, i = start;
+        do {
+          let idx = -1, min = Infinity;
+          for (let j = 0; j < n; j++) { if (!matched[j]) { const d = dist(a[i], b[j]); if (d < min) { min = d; idx = j; } } }
+          matched[idx] = true; sum += (1 - ((i - start + n) % n) / n) * min; i = (i + 1) % n;
+        } while (i !== start);
+        return sum;
+      }
+      function greedy(a, b) { const n = a.length, step = Math.max(1, Math.floor(Math.sqrt(n))); let min = Infinity; for (let i = 0; i < n; i += step) min = Math.min(min, cloudDistance(a, b, i), cloudDistance(b, a, i)); return min; }
+      // Plantillas sintéticas en una caja de 100×100 (y hacia abajo), como se escriben a mano (varios estilos).
+      const D2R = Math.PI / 180;
+      function arc(cx, cy, rx, ry, a0, a1, n) { const out = []; for (let i = 0; i <= n; i++) { const t = (a0 + (a1 - a0) * i / n) * D2R; out.push([cx + rx * Math.cos(t), cy + ry * Math.sin(t)]); } return out; }
+      function line(x0, y0, x1, y1, n) { const out = []; for (let i = 0; i <= n; i++) out.push([x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n]); return out; }
+      const BASE = {
+        "0": [[arc(50, 50, 28, 45, 90, 450, 36)], [arc(50, 50, 20, 45, 90, 450, 36)]],
+        "1": [[line(50, 5, 50, 95, 20)], [line(35, 25, 52, 5, 6).concat(line(52, 5, 52, 95, 20))]],
+        "2": [[arc(50, 30, 22, 24, 200, 390, 16).concat(line(68, 44, 26, 95, 14)).concat(line(26, 95, 76, 95, 8))], [arc(50, 28, 20, 22, 210, 380, 14).concat(line(66, 40, 28, 92, 12)).concat(line(28, 92, 74, 92, 8))]],
+        "3": [[arc(50, 29, 22, 23, 210, 460, 16).concat(arc(50, 72, 24, 25, 270, 520, 18))], [line(28, 8, 72, 8, 8).concat(line(72, 8, 46, 48, 8)).concat(arc(50, 72, 24, 25, 270, 520, 18))]],
+        "4": [[line(62, 5, 28, 62, 12).concat(line(28, 62, 80, 62, 10)), line(62, 5, 62, 95, 18)], [line(32, 5, 32, 55, 10).concat(line(32, 55, 76, 55, 9)), line(66, 5, 66, 95, 18)]],
+        "5": [[line(72, 8, 32, 8, 8).concat(line(32, 8, 28, 48, 8)).concat(arc(50, 70, 26, 24, 230, 480, 18))], [line(30, 8, 30, 48, 8).concat(arc(50, 70, 26, 24, 230, 480, 18)), line(30, 8, 72, 8, 8)]],
+        "6": [[line(68, 8, 36, 50, 10).concat(arc(50, 70, 24, 25, 180, 540, 24))], [arc(52, 50, 26, 44, 300, 90, 12).concat(arc(50, 72, 24, 23, 180, 540, 22))]],
+        "7": [[line(24, 8, 78, 8, 10).concat(line(78, 8, 44, 95, 16))], [line(24, 8, 78, 8, 10).concat(line(78, 8, 44, 95, 16)), line(34, 52, 70, 52, 6)]],
+        "8": [[arc(50, 28, 21, 23, 90, 450, 20).concat(arc(50, 72, 25, 27, 270, -90, 20))], [arc(50, 28, 21, 23, 90, -270, 20).concat(arc(50, 72, 25, 27, 270, 630, 20))]],
+        "9": [[arc(50, 32, 22, 26, 0, 360, 20).concat(line(72, 32, 60, 95, 12))], [arc(50, 30, 22, 25, 0, 360, 20).concat(line(72, 30, 72, 95, 12))]],
+        "/": [[line(72, 5, 28, 95, 16)], [line(28, 95, 72, 5, 16)]],
+        "-": [[line(22, 50, 78, 50, 12)]]
+      };
+      let baseT = null, learned = null;
+      function loadLearned() { if (learned) return learned; try { learned = JSON.parse(localStorage.getItem(LS) || "[]"); if (!Array.isArray(learned)) learned = []; } catch (_) { learned = []; } return learned; }
+      function templates() {
+        if (!baseT) { baseT = []; Object.keys(BASE).forEach(function (name) { BASE[name].forEach(function (variant) { const c = normalize(variant); if (c) baseT.push({ name: name, cloud: c }); }); }); }
+        return baseT.concat(loadLearned());
+      }
+      function bbox(stroke) { let a = Infinity, b = -Infinity, c = Infinity, d = -Infinity; stroke.forEach(function (p) { a = Math.min(a, p[0]); b = Math.max(b, p[0]); c = Math.min(c, p[1]); d = Math.max(d, p[1]); }); return { x0: a, x1: b, y0: c, y1: d, w: b - a, h: d - c }; }
+      // Agrupar trazos por solapamiento horizontal: cada grupo es un carácter (un "4" o un "5" de dos trazos se solapan).
+      function clusters(strokes) {
+        const PAD = 4;   // un trazo vertical casi no tiene ancho: se le da ±4 px para que el palo del "4" o los dos puntos se junten
+        const items = strokes.map(function (s) { return { s: s, b: bbox(s) }; }).sort(function (p, q) { return p.b.x0 - q.b.x0; });
+        const out = [];
+        items.forEach(function (it) {
+          const last = out[out.length - 1];
+          if (last) {
+            const ov = Math.min(last.x1 + PAD, it.b.x1 + PAD) - Math.max(last.x0 - PAD, it.b.x0 - PAD);
+            const minW = Math.max(6, Math.min(last.x1 - last.x0, it.b.w) + 2 * PAD);
+            if (ov > 0.3 * minW) { last.strokes.push(it.s); last.x0 = Math.min(last.x0, it.b.x0); last.x1 = Math.max(last.x1, it.b.x1); last.y0 = Math.min(last.y0, it.b.y0); last.y1 = Math.max(last.y1, it.b.y1); return; }
+          }
+          out.push({ strokes: [it.s], x0: it.b.x0, x1: it.b.x1, y0: it.b.y0, y1: it.b.y1 });
+        });
+        return out;
+      }
+      // Un solo trazo casi recto se decide por su inclinación (no por la nube): | = 1, / = barra, — = guion.
+      function straightChar(stroke) {
+        if (stroke.length < 2) return "";
+        let len = 0; for (let i = 1; i < stroke.length; i++) len += Math.hypot(stroke[i][0] - stroke[i - 1][0], stroke[i][1] - stroke[i - 1][1]);
+        const a = stroke[0], b = stroke[stroke.length - 1]; const chord = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (!(len > 0) || chord / len < 0.92) return "";
+        const ang = Math.atan2(Math.abs(b[1] - a[1]), Math.abs(b[0] - a[0])) * 180 / Math.PI;   // 0 = horizontal, 90 = vertical
+        return ang > 76 ? "1" : (ang < 22 ? "-" : "/");
+      }
+      function tiny(stroke, H) { const b = bbox(stroke); return b.w < 0.22 * H && b.h < 0.22 * H; }
+      function recognizeCluster(cl, H) {
+        const w = cl.x1 - cl.x0, h = cl.y1 - cl.y0;
+        if (cl.strokes.length >= 2 && cl.strokes.every(function (s) { return tiny(s, H); })) return ":";   // dos puntos (I:E)
+        if (w < 0.22 * H && h < 0.22 * H) return ".";                                                      // punto decimal
+        if (cl.strokes.length === 1 && h < 0.18 * H && w > 0.3 * H) return "-";                             // guion
+        if (cl.strokes.length === 1) { const sc = straightChar(cl.strokes[0]); if (sc) return sc; }
+        const cloud = normalize(cl.strokes); if (!cloud) return "";
+        let best = "", bestD = Infinity;
+        templates().forEach(function (t) { const d = greedy(cloud, t.cloud); if (d < bestD) { bestD = d; best = t.name; } });
+        return best;
+      }
+      function recognize(strokes) {
+        const cls = clusters(strokes || []); if (!cls.length) return { text: "", clusters: [], chars: [] };
+        let H = 0; cls.forEach(function (c) { H = Math.max(H, c.y1 - c.y0); }); H = Math.max(H, 12);
+        const chars = cls.map(function (c) { return recognizeCluster(c, H); });
+        return { text: chars.join(""), clusters: cls, chars: chars };
+      }
+      // Aprender: los trazos de cada quien como plantilla de ese carácter (máx. MAX_LEARN por carácter, las más nuevas).
+      function learn(ch, strokes) {
+        if (!/^[0-9\/\-]$/.test(ch)) return false;
+        const cloud = normalize(strokes); if (!cloud) return false;
+        const L = loadLearned();
+        L.push({ name: ch, cloud: cloud.map(function (p) { return { x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000, id: p.id }; }) });
+        const mine = L.filter(function (t) { return t.name === ch; });
+        if (mine.length > MAX_LEARN) { const drop = mine[0]; L.splice(L.indexOf(drop), 1); }
+        try { localStorage.setItem(LS, JSON.stringify(L)); } catch (_) {}
+        return true;
+      }
+      function forget() { learned = []; try { localStorage.removeItem(LS); } catch (_) {} }
+      return { recognize: recognize, learn: learn, forget: forget, templatesFor: function (ch) { return BASE[ch] || []; }, learnedCount: function () { return loadLearned().length; } };
+    })();
+    const PEN_NUM_PAUSE_MS = 900, PEN_NUM_CLOSE_MS = 2500;
+    const PEN_STRIP = { el: null, cv: null, inp: null, strokes: [], timer: 0, closeTimer: 0, active: null, busy: false, label: "", numeric: false, preview: "", manual: null, rec: null, applied: null };
     function _penInputOf(el) {
       const inp = (el && el.closest) ? el.closest("input") : null;
       if (!inp || inp.disabled || inp.readOnly) return null;
@@ -15827,6 +15963,13 @@ function plExportBackup() {
       if (prev && !/^(input|select|textarea|button)$/i.test(prev.tagName) && prev.textContent.trim() && prev.textContent.trim().length <= 24) return prev.textContent.trim();
       const par = inp.parentElement; if (par) { const lab = par.querySelector(".pm-label, .lab-key, .field-label, label"); if (lab && lab.textContent.trim()) return lab.textContent.trim().slice(0, 60); }
       return (inp.getAttribute("placeholder") || inp.name || inp.dataset.field || "valor").slice(0, 60);
+    }
+    // ¿Campo numérico? → reconocedor local (instantáneo). inputmode decimal/numeric/tel, type number, celdas de labs,
+    // TA / DxTx del pase y los días (ATB, ayuno).
+    function _penIsNumeric(inp) {
+      if (/^(decimal|numeric|tel)$/.test(inp.getAttribute("inputmode") || "") || (inp.getAttribute("type") || "").toLowerCase() === "number") return true;
+      if (inp.classList.contains("lab-input") || inp.classList.contains("lab-extra-val")) return true;
+      return /^(pm_ta|pm_dxtx|atb_dias|npo_dias|pm_balance)$/.test(inp.dataset.field || "");
     }
     function _penInputPrompt(label, numeric) {
       return "La imagen es un valor MANUSCRITO (con lápiz, por un residente de cirugía general) para el campo «" + label + "» de la ficha de un paciente. "
@@ -15857,41 +16000,73 @@ function plExportBackup() {
     function _penStripOpen(inp) {
       _penStripClose(true);
       const el = document.createElement("div"); el.className = "pl-pen-strip";
-      const numeric = /^(decimal|numeric|tel)$/.test(inp.getAttribute("inputmode") || "") || (inp.getAttribute("type") || "").toLowerCase() === "number";
+      const numeric = _penIsNumeric(inp);
       const label = _penInputLabel(inp);
-      el.innerHTML = '<div class="pps-h"><span class="pps-lbl"></span><span class="pps-cur"></span><span class="pps-st">Escribe aquí con el lápiz</span><span class="pps-btns"><button type="button" data-act="clear" title="Borrar lo escrito">🧹</button><button type="button" data-act="ok" title="Convertir ahora">✓</button><button type="button" data-act="close" title="Cerrar sin convertir">✕</button></span></div><canvas class="pps-cv"></canvas>';
+      el.innerHTML = '<div class="pps-h"><span class="pps-lbl"></span><span class="pps-cur"></span><span class="pps-prev"></span><span class="pps-st">' + (numeric ? "Escribe el número con el lápiz" : "Escribe aquí con el lápiz") + '</span><span class="pps-btns"><button type="button" data-act="clear" title="Borrar lo escrito">🧹</button><button type="button" data-act="ok" title="' + (numeric ? "Poner el número ya" : "Convertir ahora") + '">✓</button><button type="button" data-act="close" title="Cerrar sin cambiar el campo">✕</button></span></div><canvas class="pps-cv"></canvas>'
+        + (numeric ? '<div class="pps-keys">' + ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", ".", "/", "⌫"].map(function (k) { return '<button type="button" data-k="' + k + '">' + k + '</button>'; }).join("") + '</div>' : '');
       el.querySelector(".pps-lbl").textContent = label; el.querySelector(".pps-cur").textContent = inp.value ? "actual: " + inp.value : "";
       document.body.appendChild(el);
-      const r = inp.getBoundingClientRect(); const vw = window.innerWidth, vh = window.innerHeight; const w = Math.min(560, vw - 16), ch = 108, h = ch + 36;
+      const r = inp.getBoundingClientRect(); const vw = window.innerWidth, vh = window.innerHeight; const w = Math.min(560, vw - 16), ch = 108, h = ch + 36 + (numeric ? 42 : 0);
       const left = Math.max(8, Math.min(r.left - 40, vw - w - 8));
       const below = (vh - r.bottom) >= h + 10; const top = below ? r.bottom + 6 : Math.max(8, r.top - h - 6);
       el.style.left = left + "px"; el.style.top = top + "px"; el.style.width = w + "px";
       const cv = el.querySelector(".pps-cv"); const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
       cv.style.width = w + "px"; cv.style.height = ch + "px"; cv.width = Math.round(w * dpr); cv.height = Math.round(ch * dpr);
-      PEN_STRIP.el = el; PEN_STRIP.cv = cv; PEN_STRIP.inp = inp; PEN_STRIP.strokes = []; PEN_STRIP.active = null; PEN_STRIP.busy = false; PEN_STRIP.label = label; PEN_STRIP.numeric = numeric; clearTimeout(PEN_STRIP.timer);
+      PEN_STRIP.el = el; PEN_STRIP.cv = cv; PEN_STRIP.inp = inp; PEN_STRIP.strokes = []; PEN_STRIP.active = null; PEN_STRIP.busy = false; PEN_STRIP.label = label; PEN_STRIP.numeric = numeric;
+      PEN_STRIP.preview = ""; PEN_STRIP.manual = null; PEN_STRIP.rec = null; PEN_STRIP.applied = null; clearTimeout(PEN_STRIP.timer); clearTimeout(PEN_STRIP.closeTimer);
       el.querySelector(".pps-btns").addEventListener("click", function (ev) {
         const b = ev.target.closest("button[data-act]"); if (!b) return; ev.preventDefault(); ev.stopPropagation();
-        if (b.dataset.act === "clear") { PEN_STRIP.strokes = []; clearTimeout(PEN_STRIP.timer); _penStripRedraw(); }
-        else if (b.dataset.act === "ok") { clearTimeout(PEN_STRIP.timer); _penStripConvert(); }
+        if (b.dataset.act === "clear") { PEN_STRIP.strokes = []; PEN_STRIP.manual = null; PEN_STRIP.preview = ""; PEN_STRIP.rec = null; clearTimeout(PEN_STRIP.timer); _penStripRedraw(); }
+        else if (b.dataset.act === "ok") { clearTimeout(PEN_STRIP.timer); if (PEN_STRIP.numeric) _penStripApplyNum(true); else _penStripConvert(); }
         else _penStripClose(false);
+      });
+      const keys = el.querySelector(".pps-keys");
+      if (keys) keys.addEventListener("click", function (ev) {
+        const b = ev.target.closest("button[data-k]"); if (!b) return; ev.preventDefault(); ev.stopPropagation();
+        const S = PEN_STRIP; const cur = S.manual !== null ? S.manual : (S.preview || "");
+        S.manual = b.dataset.k === "⌫" ? cur.slice(0, -1) : cur + b.dataset.k;
+        S.applied = null; clearTimeout(S.closeTimer); _penStripRedraw();
+        clearTimeout(S.timer); S.timer = setTimeout(function () { _penStripApplyNum(false); }, 1200);
       });
       cv.addEventListener("pointerdown", _penStripDown); cv.addEventListener("pointermove", _penStripMove); cv.addEventListener("pointerup", _penStripUp); cv.addEventListener("pointercancel", _penStripUp);
       _penStripRedraw();
     }
     function _penStripClose(convert) {
       const S = PEN_STRIP; if (!S.el) return;
-      clearTimeout(S.timer);
-      if (convert && S.strokes.length && !S.busy) _penStripConvert();   // sigue en segundo plano: pone el valor aunque la banda ya no esté
+      clearTimeout(S.timer); clearTimeout(S.closeTimer);
+      if (convert) {
+        if (S.numeric) { if (!S.applied) _penStripApplyNum(false); }                 // numérico: el valor ya está (o se pone ahora)
+        else if (S.strokes.length && !S.busy) _penStripConvert();                     // texto: sigue en segundo plano
+      }
       const el = S.el; S.el = null; S.cv = null; S.active = null;
       if (!S.busy) { S.inp = null; S.strokes = []; }
       el.remove();
+    }
+    // Numérico: reconocimiento local en cada trazo (vista previa al momento); tras una pausa corta el valor se pone solo.
+    function _penStripRecognize() {
+      const S = PEN_STRIP; S.rec = PEN_DIGITS.recognize(S.strokes); S.manual = null; S.preview = S.rec.text; S.applied = null;
+    }
+    function _penStripApplyNum(confirm) {
+      const S = PEN_STRIP; if (!S.inp) return;
+      const v = (S.manual !== null ? S.manual : S.preview) || "";
+      if (!v) return;
+      const inp = S.inp;
+      _penSetInputValue(inp, v, false);
+      S.applied = v;
+      // Aprender la letra de quien escribe: al confirmar (✓) o al corregir con el teclado, si cada grupo de trazos es un carácter.
+      if ((confirm || S.manual !== null) && S.rec && S.rec.clusters.length === v.length) S.rec.clusters.forEach(function (c, i) { PEN_DIGITS.learn(v[i], c.strokes); });
+      _penStripRedraw();
+      clearTimeout(S.closeTimer);
+      S.closeTimer = setTimeout(function () { if (PEN_STRIP.el && PEN_STRIP.inp === inp && PEN_STRIP.applied && !PEN_STRIP.active) _penStripClose(false); }, PEN_NUM_CLOSE_MS);
     }
     function _penStripPt(e) { const r = PEN_STRIP.cv.getBoundingClientRect(); return [Math.round((e.clientX - r.left) * 10) / 10, Math.round((e.clientY - r.top) * 10) / 10, _penPressure(e)]; }
     function _penStripDown(e) {
       if (e.pointerType === "touch" || !PEN_STRIP.cv) return;      // el dedo no pinta (solo lápiz o ratón)
       e.preventDefault(); e.stopPropagation();
       try { PEN_STRIP.cv.setPointerCapture(e.pointerId); } catch (_) {}
-      clearTimeout(PEN_STRIP.timer);
+      clearTimeout(PEN_STRIP.timer); clearTimeout(PEN_STRIP.closeTimer);
+      if (PEN_STRIP.numeric && PEN_STRIP.manual !== null) { PEN_STRIP.strokes = []; PEN_STRIP.manual = null; PEN_STRIP.preview = ""; }   // tras corregir con teclas, escribir = empezar de nuevo
+      PEN_STRIP.applied = null;
       PEN_STRIP.active = { id: e.pointerId, pts: [_penStripPt(e)], len: 0 };
     }
     function _penStripMove(e) {
@@ -15906,17 +16081,24 @@ function plExportBackup() {
         if (erased.length) PEN_STRIP.strokes = PEN_STRIP.strokes.filter(function (p) { return !erased.some(function (x) { return x.p === p; }); });
         else PEN_STRIP.strokes.push(a.pts);
       }
+      clearTimeout(PEN_STRIP.timer);
+      if (PEN_STRIP.numeric) { _penStripRecognize(); _penStripRedraw(); if (PEN_STRIP.strokes.length) PEN_STRIP.timer = setTimeout(function () { _penStripApplyNum(false); }, PEN_NUM_PAUSE_MS); return; }
       _penStripRedraw();
-      clearTimeout(PEN_STRIP.timer); if (PEN_STRIP.strokes.length) PEN_STRIP.timer = setTimeout(_penStripConvert, PEN_TEXT_PAUSE_MS);
+      if (PEN_STRIP.strokes.length) PEN_STRIP.timer = setTimeout(_penStripConvert, PEN_TEXT_PAUSE_MS);
     }
     function _penStripRedraw() {
       const S = PEN_STRIP; const cv = S.cv; if (!cv) return;
       const ctx = cv.getContext("2d"); const w = parseFloat(cv.style.width) || 0, h = parseFloat(cv.style.height) || 0; const dpr = cv.width / Math.max(1, w);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(10, h * 0.72); ctx.lineTo(w - 10, h * 0.72); ctx.stroke();   // renglón guía
-      S.strokes.forEach(function (p) { _penStrokePath(ctx, p, 1, S.busy ? "#c4b5fd" : "#7c3aed"); });
+      S.strokes.forEach(function (p) { _penStrokePath(ctx, p, 1, S.busy ? "#c4b5fd" : (S.applied ? "#16a34a" : "#7c3aed")); });
       if (S.active) _penStrokePath(ctx, S.active.pts, 1, "#7c3aed");
-      const st = S.el && S.el.querySelector(".pps-st"); if (st && !S.busy) st.textContent = S.strokes.length ? "Al soltar el lápiz se convierte en texto…" : "Escribe aquí con el lápiz";
+      const st = S.el && S.el.querySelector(".pps-st"), pv = S.el && S.el.querySelector(".pps-prev");
+      if (S.numeric) {
+        const v = (S.manual !== null ? S.manual : S.preview) || "";
+        if (pv) { pv.textContent = v ? "→ " + v : ""; pv.classList.toggle("ok", !!S.applied); }
+        if (st) st.textContent = S.applied ? "✓ Puesto en el campo" : (v ? "Se pone solo al soltar el lápiz · ✓ ya" : "Escribe el número con el lápiz");
+      } else if (st && !S.busy) st.textContent = S.strokes.length ? "Al soltar el lápiz se convierte en texto…" : "Escribe aquí con el lápiz";
     }
     async function _penStripConvert() {
       const S = PEN_STRIP; if (!S.strokes.length || S.busy) return;
@@ -25130,11 +25312,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const dieta = esc(cl.dieta || "");
 
       const npoHtml = `<span id="ck-${ek}-npo" class="ck-item${npoOn ? " ck-on" : ""}" data-ck="${k}" data-item="npo" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ayuno / Nada Por vía Oral"><span class="ck-label">${npoOn ? "✓ " : ""}Ayuno</span></span>` +
-        (npoOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
+        (npoOn ? `<input class="ck-dieta" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
 
       const atbHtml = `<span id="ck-${ek}-atb" class="ck-item${atbOn ? " ck-on" : ""}" data-ck="${k}" data-item="atb" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Antibioticoterapia activa"><span class="ck-label">${atbOn ? "✓ " : ""}ATB</span></span>` +
         (atbOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
-          `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
+          `<input class="ck-dieta" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
 
       const tvpTipo = cl.tvp_tipo || "";
       const tvpHtml = `<span id="ck-${ek}-tvp" class="ck-item${tvpOn ? " ck-on" : ""}" data-ck="${k}" data-item="tvp" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Profilaxis TVP (HBPM/compresión)"><span class="ck-label">${tvpOn ? "✓ " : ""}TVP</span></span>` +
