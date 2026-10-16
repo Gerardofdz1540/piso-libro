@@ -312,16 +312,19 @@ El 13 de octubre de 2026 se recuperaron así las notas de 3-151, 3-153, 3-162, 3
 
 ## Entrega de guardia que resume (octubre 2026)
 
-La vista **📤 Entrega** (una ficha por paciente) muestra **solo** seis bloques, siempre en este
-orden y con "sin registro" cuando falta el dato: **🩺 Diagnóstico**, **❤️ Signos vitales** del pase
+La vista **📤 Entrega** (una ficha por paciente) muestra **solo** estos bloques, en este orden, y
+únicamente los que tienen algo escrito (lo que no está registrado no aparece): **🩺 Diagnóstico**, **❤️ Signos vitales** del pase
 (TA con PAM, FC, FR, temperatura, SaO₂ con el O₂; si hoy aún no se capturan, los del último día con
 su fecha), **💧 Gastos**, **🧪 Laboratorios** puntuales, **🦠 Cultivos** (WinLab con germen y
-antibiograma, o "en proceso", y lo escrito en la caja Cultivos) y **🩻 Estudios de imagen** (los del
-visor de las últimas dos semanas con la conclusión del reporte, y el último registro manual).
+antibiograma, o "en proceso", y lo escrito en la caja Cultivos) y **🩻 Estudios de imagen** (solo
+las conclusiones: los estudios del visor de las últimas dos semanas que ya tienen reporte, y el
+último registro manual).
 
 **📽 Modo Proyector** (botón en la vista Entrega): muestra una ficha por paciente a pantalla completa
-con esos mismos bloques y **todos los laboratorios** del último control, agrupados como en la tarjeta
-(críticos en rojo, anormales en ámbar). Empieza en la cama 150 y sigue el orden del tablero (piso 3
+con esos mismos bloques más los **🔪 eventos quirúrgicos** (fecha, día POP, hallazgos, sangrado y
+cirujano), **todos los laboratorios** del último control agrupados como en la tarjeta (críticos en
+rojo, anormales en ámbar) y las **💊 indicaciones** del Doc de indicaciones. Solo aparece lo que está
+registrado. Empieza en la cama 150 y sigue el orden del tablero (piso 3
 por número, luego UCI, UTI y piso 2); con **Ir a cama** se elige desde dónde empezar, y ◀ ▶ (o las
 flechas del teclado) avanzan. La ficha se ajusta sola al tamaño de la pantalla para que no se corte.
 

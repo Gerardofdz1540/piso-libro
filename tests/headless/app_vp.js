@@ -18,7 +18,7 @@ const MOCK = `(() => {
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
 // Respuesta simulada de la IA: con markdown, minúsculas, encabezado y firma repetidos (todo eso debe limpiarse).
-const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**HERNANDEZ GONZALEZ FAUSTINO | EDAD 58 AÑOS | FN [FN] | EXP 24-20852 | CAMA 3-170 | 14.10.2026 09:00 HRS**\n\n'
+const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**RUIZ SOTO MATEO | EDAD 58 AÑOS | FN [FN] | EXP 24-99901 | CAMA 3-170 | 14.10.2026 09:00 HRS**\n\n'
   + 'Paciente masculino en la sexta década de la vida hospitalizado con el siguiente diagnóstico: choque séptico de origen abdominal + PO LAPE + drenaje de colección + DM2 + HAS.\n\n'
   + 'Al pase de visita el paciente refiere dolor en sitio de herida quirúrgica, niega náusea y vómito.\n\n'
   + 'Paciente masculino, consciente, orientado, con FC 103 LPM, saturación de oxígeno de 96 % bajo ventilación mecánica invasiva (modo AC, FiO2 40 %, PEEP 8 cmH2O, volumen tidal 420 mL (6.4 mL/kg de peso predicho)), TA 110/70 mmHg (PAM 83 mmHg) bajo apoyo vasopresor con norepinefrina a 11.4 mcg/kg/h (0.19 mcg/kg/min) y vasopresina a 0.03 U/min. Abdomen blando, depresible, herida quirúrgica con bordes bien afrontados, [EXPLORACIÓN DE TÓRAX], extremidades íntegras con llenado capilar conservado.\n\n'
@@ -43,7 +43,7 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**HERNANDEZ GONZALE
     calls.push({ m, url, body });
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.startsWith('/rest/v1/patients')) {
-      if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-170', exp: '24-20852', nombre: 'HERNANDEZ GONZALEZ FAUSTINO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'CHOQUE SÉPTICO DE ORIGEN ABDOMINAL, PO LAPE + DRENAJE DE COLECCIÓN, DM2, HAS', adscrito: 'DR GARNELO MBCG', residente: 'DR FERNÁNDEZ R2CG' }]);
+      if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-170', exp: '24-99901', nombre: 'RUIZ SOTO MATEO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'CHOQUE SÉPTICO DE ORIGEN ABDOMINAL, PO LAPE + DRENAJE DE COLECCIÓN, DM2, HAS', adscrito: 'DR GARNELO MBCG', residente: 'DR FERNÁNDEZ R2CG' }]);
       return json(201, [{ id: 'a1' }]);
     }
     if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: 'a1' }]); }

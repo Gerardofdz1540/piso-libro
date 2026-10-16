@@ -31,7 +31,7 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
     calls.push({ m, url, body });
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.startsWith('/rest/v1/patients')) {
-      if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-170', exp: '24-20852', nombre: 'HERNANDEZ GONZALEZ FAUSTINO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'CHOQUE SÉPTICO DE ORIGEN ABDOMINAL, PO LAPE + DRENAJE DE COLECCIÓN, DM2, HAS', adscrito: 'DR GARNELO MBCG', residente: 'DR FERNÁNDEZ R2CG' }]);
+      if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-170', exp: '24-99901', nombre: 'RUIZ SOTO MATEO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'CHOQUE SÉPTICO DE ORIGEN ABDOMINAL, PO LAPE + DRENAJE DE COLECCIÓN, DM2, HAS', adscrito: 'DR GARNELO MBCG', residente: 'DR FERNÁNDEZ R2CG' }]);
       return json(201, [{ id: 'a1' }]);
     }
     if (url.startsWith('/rest/v1/notes')) {
@@ -148,7 +148,7 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
   }, ayer);
   const dAyerP = ayer.split('-').reverse().join('.');
   check('N3 nota de evolución: encabezado completo, década de la vida + diagnósticos con "+", subjetivo, vitales en texto (O₂ por puntas nasales), exploración, drenajes con gasto, Foley con uresis, labs de hoy con nombres completos y los del control previo (PCR/PCT/amilasa + tendencia leucos/Hb, sin repetir glucosa), análisis por sistemas, antibiótico, ayuno, tromboprofilaxis, TAC con conclusión, pendientes, estado/pronóstico y firma; todo en mayúsculas',
-    n3.startsWith('NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\nHERNANDEZ GONZALEZ FAUSTINO | EDAD 58 AÑOS | FN 09.01.1968 | EXP 24-20852 | CAMA 3-170 | ')
+    n3.startsWith('NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\nRUIZ SOTO MATEO | EDAD 58 AÑOS | FN 09.01.1968 | EXP 24-99901 | CAMA 3-170 | ')
     && / HRS\n\nPACIENTE MASCULINO EN LA SEXTA DÉCADA DE LA VIDA HOSPITALIZADO CON EL SIGUIENTE DIAGNÓSTICO: CHOQUE SÉPTICO DE ORIGEN ABDOMINAL \+ PO LAPE \+ DRENAJE DE COLECCIÓN \+ DM2 \+ HAS\./.test(n3)
     && /AL PASE DE VISITA EL PACIENTE REFIERE DOLOR EN SITIO DE HERIDA QUIRÚRGICA, NIEGA NÁUSEA Y VÓMITO\./.test(n3)
     && /PACIENTE MASCULINO, CON FC 103 LPM, FR 16 RPM, TEMPERATURA 36\.4 °C, SATURACIÓN DE OXÍGENO DE 96 % CON OXÍGENO SUPLEMENTARIO POR PUNTAS NASALES A 4 LITROS POR MINUTO, TA 110\/70 MMHG\. CONSCIENTE, ORIENTADO/.test(n3)
