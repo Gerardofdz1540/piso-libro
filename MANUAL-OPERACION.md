@@ -142,14 +142,20 @@ entrega. Los chips antiguos (SNG, PRS 1-3, Estoma, SEP) se convirtieron solos a 
 ## Estudios de imagen (tomografías, ultrasonidos, rayos X) en cada tarjeta
 
 Un robot (`.github/workflows/ris-scraper.yml`) entra cada 2 horas al visor radiológico
-(consultas-pisos), pide los estudios de los últimos 14 días y cruza cada uno por nombre (y edad)
-con el censo. En la tarjeta, dentro de **Estudios de imagen**, aparece el bloque "Estudios del
-visor (RIS)": fecha y hora, modalidad (CT, US, RX…), nombre del estudio, sede, marca de caso
+(consultas-pisos), lee el censo completo (también NCX, URO, CT y los pacientes que no son
+nuestros), pide los estudios en ventanas de 14 días desde hoy hasta el ingreso más antiguo del
+censo (hasta 5 ventanas = 70 días) y cruza cada uno por nombre (y edad) con el censo; si dos
+pacientes del censo se parecen, decide la edad, y el alias «✏️ Nombre en WinLab» también sirve
+para identificarlo. En la tarjeta, dentro de **Estudios de imagen**, aparece el bloque "Estudios
+del visor (RIS)": fecha y hora, modalidad (CT, US, RX…), nombre del estudio, sede, marca de caso
 crítico, enlace 🖼 al visor y, cuando ya existe el reporte, el **reporte transcrito** (plegable).
-Si todavía no hay reporte, dice "Sin reporte todavía · estudio realizado" y se completa solo en la
-siguiente pasada. Al llegar un estudio o reporte nuevo, la tarjeta se actualiza al instante con un
-aviso. Las credenciales del visor viven en la tabla `rpa_config` de Supabase (no en el código);
-si cambian, se actualizan ahí. Para lanzarlo a mano: Actions → "RIS Imagen" → Run workflow.
+Si el RIS aún no lo transcribió dice "Sin reporte todavía · estudio realizado"; si el reporte ya
+está en el visor pero el robot no pudo bajarlo (sesión caducada, presupuesto de la corrida) dice
+"Reporte disponible en el visor · el robot lo descarga en la siguiente pasada" y lo reintenta
+cada 2 horas: nunca se da por perdido. Al llegar un estudio o reporte nuevo, la tarjeta se
+actualiza al instante con un aviso. Las credenciales del visor viven en la tabla `rpa_config` de
+Supabase (no en el código); si cambian, se actualizan ahí. Para lanzarlo a mano: Actions → "RIS
+Imagen" → Run workflow.
 
 ## Alertas y laboratorios en el tablero
 

@@ -114,7 +114,7 @@ renderLabSection() — campos tipados llenos automáticamente
 
 ---
 
-## Tests (142 pasan offline, sin Playwright ni red)
+## Tests (585 pasan offline, sin Playwright ni red)
 
 ```bash
 cd rpa && npm test
@@ -122,9 +122,10 @@ cd rpa && npm test
 
 | Suite | Tests | Cobertura |
 |---|---|---|
-| `scraper.test.js` | 64 | dedup, isAllowedEsp, formatDate, isMenuTableText, isMeaningfulReportRow, extractApellidos, expVariants |
-| `drilldown.test.js` | 28 | regression guards: hooks correctos en código, regex PDF URL, FileName extraction, anti-confusión |
-| `pdf-extract.test.js` | 50 | extractLabValuesFromText (edge cases, multi-formato), parsePdfToLabValues con PDF binario real (14 estudios) |
+| `scraper.test.js` | 286 | dedup, formatDate, isMeaningfulReportRow/isGarbageCell (menú, formulario y paginación ES/IT), looksLikeReportLinkRow, extractApellidos, escalera de candidatos (Ñ, invertido con nome y apellidos solos, abreviaturas, paterno/materno-solo, alias), patientHeaderMatches/Kind (simétrico, género, typos), selectTargetRows (guarda de edad, homónimos, rescate de año, coincidencia parcial, paginación), expVariants |
+| `drilldown.test.js` | 70 | regression guards: hooks correctos en código, regex PDF URL, FileName extraction, anti-confusión, orderDrillCandidates (cultivos primero, topes), WL_DRILLDOWN_MAX saneado |
+| `pdf-extract.test.js` | 100 | extractLabValuesFromText (edge cases, multi-formato), parsePdfToLabValues con PDF binario real, cultivos (germen, antibiograma, formatos HGL) |
+| `ris.test.js` | 129 | robot de imagen (ris-lib.js): censo completo, ventanas hasta el ingreso, rowToEstudio/dedup con fusión, edad, cobertura de tokens, escalera de niveles con guarda de edad, desempate entre camas, homónimos del RIS, estado del reporte y reintento, login, upsert tolerante; guardas de fuente sobre ris-scraper.js |
 
 ---
 
@@ -142,6 +143,11 @@ cd rpa && npm test
 | Línea parece lab pero empieza con dígito | Sanity check rechaza |
 | Cliente recibe basura del scraper | `isWinlabGarbageEstudio()` filtra (defense in depth) |
 | Manual edit vs WinLab refresh | Manual gana SIEMPRE; WinLab solo llena vacíos |
+| Censo con TRES nombres de pila y WinLab con dos ("SOTO MEDINA, JUAN PABLO" vs "JUAN PABLO ANDRES SOTO MEDINA") | `patientHeaderMatches` es simétrico (oct 2026): coincide si todos los tokens del censo están en el encabezado, o si todos los del encabezado están en el censo cuando el encabezado trae ≥ 3 tokens (2 apellidos + nombre). Un encabezado de 2 tokens no usa la regla nueva; nombre de pila distinto sigue siendo otra persona |
+| Filas de PAGINACIÓN de WinLab con enlace ("Inicio Página", "Elementos Encontrados : N", "Página 1 de 2"; IT "RecordTrovati", "Fine Pagina") | `isGarbageCell` las descarta y `looksLikeReportLinkRow` exige fecha-hora dd/mm/aaaa hh:mm o barcode ≥ 8 dígitos para contar una fila con enlace como reporte: no se drillean ni gastan cupo de `WL_DRILLDOWN_MAX` |
+| Paciente con más de 20 reportes (WinLab pagina de 20 en 20, más reciente primero por fecha de reporte) | El robot lee la primera página; un reporte que se reemite (cultivo que pasa de "en proceso" a final) sube de nuevo arriba, y la historia se acumula corrida a corrida en `winlab_labs` por fecha |
+| Cultivos pendientes detrás de los labs diarios (tope de 12 drills por paciente) | `drill-order.js`: primero los cultivos sin texto de PDF, luego el resto por recencia; el tope aplica a los no-cultivo (máximo +6 cultivos extra) |
+| Hoja con APELLIDOS primero y nombre de pila guardado distinto en WinLab ("MA DEL ROSARIO") | Candidato "invertido apellidos solos": los dos primeros tokens como apellidos sin filtrar por nombre; el encabezado difuso (MA→MARIA) identifica al paciente y el retry-guard descarta si no aparece |
 
 ---
 

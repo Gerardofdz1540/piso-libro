@@ -10,6 +10,7 @@ import {
   extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows, sameBirthdayOtherYear, possiblySameWinlabPerson,
   todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
   normNameTokens, expandNomeAbbrev,
+  isGarbageCell, looksLikeReportLinkRow, patientHeaderMatchKind,
 } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -293,20 +294,20 @@ assert(stripAccentsKeepEnie(null) === "", "strip: null -> ''");
   assert(c[0].cognome === "MENDOZA GONZALEZ" && !c[0].nome, "cand: normal 4 palabras sin cambio");
 }
 {
-  // Caso ADAN LOPEZ OVIEDO (37 días, sin labs con apellidos exactos → typo en materno).
-  // Último recurso: paterno-solo + nombre de pila (el match difuso confirma OVIEDO≈OBIEDO).
-  const c = buildSearchCandidates("ADAN LOPEZ OVIEDO");
-  assert(c[0].cognome === "LOPEZ OVIEDO" && !c[0].nome, "cand: primaria apellidos");
-  assert(c.some((x) => x.cognome === "LOPEZ" && x.nome === "ADAN"), "cand: retry paterno-solo + nombre");
+  // Caso real anonimizado (nombre ficticio) RUBEN SOLIS NOVELO: 37 días, sin labs con apellidos exactos → typo en materno.
+  // Último recurso: paterno-solo + nombre de pila (el match difuso confirma NOVELO≈NOBELO).
+  const c = buildSearchCandidates("RUBEN SOLIS NOVELO");
+  assert(c[0].cognome === "SOLIS NOVELO" && !c[0].nome, "cand: primaria apellidos");
+  assert(c.some((x) => x.cognome === "SOLIS" && x.nome === "RUBEN"), "cand: retry paterno-solo + nombre");
   // paterno-solo y materno-solo van AL FINAL (último recurso, búsquedas más anchas), en ese orden
-  assert(c[c.length - 2].tag === "paterno-solo + nombre" && c[c.length - 1].tag === "materno-solo + nombre" && c[c.length - 1].cognome === "OVIEDO" && c[c.length - 1].nome === "ADAN", "cand: paterno-solo y materno-solo son los últimos");
+  assert(c[c.length - 2].tag === "paterno-solo + nombre" && c[c.length - 1].tag === "materno-solo + nombre" && c[c.length - 1].cognome === "NOVELO" && c[c.length - 1].nome === "RUBEN", "cand: paterno-solo y materno-solo son los últimos");
 }
 {
   // El match difuso de encabezado reconoce el typo V/B en el materno.
-  assert(jaroWinkler("OVIEDO", "OBIEDO") >= 0.88, "match: OVIEDO≈OBIEDO Jaro-Winkler ≥0.88");
-  assert(patientHeaderMatches("LOPEZ OBIEDO ADAN", "ADAN LOPEZ OVIEDO") === true,
+  assert(jaroWinkler("NOVELO", "NOBELO") >= 0.88, "match: NOVELO≈NOBELO Jaro-Winkler ≥0.88");
+  assert(patientHeaderMatches("SOLIS NOBELO RUBEN", "RUBEN SOLIS NOVELO") === true,
     "match: header con materno mal escrito aún identifica al objetivo");
-  assert(patientHeaderMatches("LOPEZ HERNANDEZ PEDRO", "ADAN LOPEZ OVIEDO") === false,
+  assert(patientHeaderMatches("SOLIS HERNANDEZ PEDRO", "RUBEN SOLIS NOVELO") === false,
     "match: homónimo de apellido distinto NO se confunde (nombre de pila distinto)");
 }
 {
@@ -317,6 +318,39 @@ assert(stripAccentsKeepEnie(null) === "", "strip: null -> ''");
 }
 assert(buildSearchCandidates("MARIA").length === 0, "cand: 1 palabra -> []");
 assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
+{
+  // Caso cama 3-160 (oct 2026, corrida #441): hoja con APELLIDOS primero y nombre de pila que WinLab
+  // guarda distinto ("MA DEL ROSARIO"): el invertido CON nome dio NINGÚN REGISTRO. Además del invertido
+  // con nome debe existir el invertido con apellidos SOLOS (sin filtro de nombre), después de aquel.
+  const c = buildSearchCandidates("SOTO MEDINA MARIA DEL ROSARIO");
+  const iNome = c.findIndex((x) => x.cognome === "SOTO MEDINA" && x.nome === "MARIA DEL ROSARIO");
+  const iSolo = c.findIndex((x) => x.cognome === "SOTO MEDINA" && !x.nome);
+  assert(iNome >= 0 && iSolo >= 0 && iSolo === iNome + 1, "cand: invertido apellidos-primero con nome y, justo después, invertido apellidos SOLOS");
+  assert(c[iSolo].tag === "invertido apellidos solos", "cand: etiqueta 'invertido apellidos solos'");
+  assert(c[c.length - 1].tag === "materno-solo + nombre", "cand: paterno/materno-solo siguen siendo los últimos");
+  assert(c.length <= 7, "cand: la escalera de 5 palabras cabe en los 7 intentos del scraper");
+  // Con Ñ (una variante más) tampoco se pasa de 7, para que materno-solo no quede fuera.
+  assert(buildSearchCandidates("PEÑA LOYOLA MARIA DEL ROSARIO").length <= 7, "cand: 5 palabras + Ñ ≤ 7 candidatos");
+  // El encabezado real que lista WinLab ("SOTO MEDINA, MA DEL ROSARIO") identifica al objetivo del censo
+  // invertido (MA→MARIA, orden libre, DEL ignorado) y un homónimo de apellidos no.
+  assert(patientHeaderMatches("SOTO MEDINA MA DEL ROSARIO", "SOTO MEDINA MARIA DEL ROSARIO") === true, "match: encabezado con MA. identifica al censo invertido");
+  assert(patientHeaderMatches("SOTO MEDINA ROSARIO", "SOTO MEDINA MARIA DEL ROSARIO") === true, "match: WinLab con un solo nombre de pila (3 tokens ⊆ censo) identifica");
+  assert(patientHeaderMatches("SOTO MEDINA MARIA JOSE", "SOTO MEDINA MARIA DEL ROSARIO") === false, "match: otro nombre de pila (JOSE) sigue siendo otra persona");
+  // Nombre con abreviatura al inicio: el orden es evidente y NO se agrega el invertido solos.
+  assert(!buildSearchCandidates("MA GUADALUPE RIOS PEREZ").some((x) => x.tag === "invertido apellidos solos"), "cand: con nombre abreviado al inicio no hay invertido solos");
+  // Nombre normal de 4 palabras: el invertido solos existe pero va DESPUÉS de la primaria (no cambia el orden útil).
+  const n = buildSearchCandidates("AGUSTIN JAIME MENDOZA GONZALEZ");
+  assert(n[0].cognome === "MENDOZA GONZALEZ" && n.findIndex((x) => x.tag === "invertido apellidos solos") > 0, "cand: 4 palabras normales: primaria primero, invertido solos después");
+}
+{
+  // Menú/formulario de WinLab en italiano con las palabras pegadas (blobs del 11-12 oct 2026).
+  for (const s of ["ELENCOREFERTI", "ELENCO REFERTI", "CERCAREFERTI", "TUTTE ENTITA UTENTE", "TUTTE LE UNITÀ", "HOME REFERTI HELP CHIUDI", "HELP"])
+    assert(isGarbageCell(s) === true, `garbage IT: "${s}" es menú/formulario`);
+  for (const s of ["REFERTO EMOCROMO", "UNITA DI TERAPIA INTENSIVA", "HOMERO LOPEZ", "TUTTI I RISULTATI"])
+    assert(isGarbageCell(s) === false, `garbage IT: "${s}" NO es basura`);
+  assert(isMeaningfulReportRow({ __cells: ["HOME REFERTI HELP CHIUDI"], __hasLink: true }) === false, "fila de menú IT de una celda con enlace no es reporte");
+  assert(isMeaningfulReportRow({ __cells: Array(16).fill("ELENCOREFERTI TUTTE ENTITA UTENTE"), __hasLink: true }) === false, "fila de formulario IT repetida en 16 celdas no es reporte");
+}
 
 // ── Guarda de edad en el targeting (oct 2026) ─────────────────────────
 {
@@ -373,14 +407,14 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   const TODAY = new Date("2026-10-11T12:00:00Z");
   const hdrIt = (ap, nom, sexo, fnac) => ({ __cells: ["", "", "", ap, nom, sexo, fnac], __hasLink: false });
   const repIt = (id) => ({ __cells: ["", "", id, "11/10/2026 07:15", "11/10/2026 10:31", "CHIRURGIA GENERALE"], __hasLink: true });
-  const paciente = { nombre: "MARIA ERIKA HERNANDEZ", edad: "49" };
-  const sel = selectTargetRows([hdrIt("HERNANDEZ", "MA ERIKA", "Femminile", "30/01/1977"), repIt("1"), hdrIt("HERNANDEZ", "PEDRO", "Maschile", "01/01/1950"), repIt("2")], paciente, { today: TODAY });
+  const paciente = { nombre: "MARIA ELISA HERNANDEZ", edad: "49" };
+  const sel = selectTargetRows([hdrIt("HERNANDEZ", "MA ELISA", "Femminile", "12/06/1977"), repIt("1"), hdrIt("HERNANDEZ", "PEDRO", "Maschile", "01/01/1950"), repIt("2")], paciente, { today: TODAY });
   assert(deepEq(sel.targetIdxs, [1]), "IT: encabezado con Femminile/Maschile se reconoce (targeting igual que en español)");
-  const selF = selectTargetRows([hdrIt("HERNANDEZ", "MA ERIKA", "F", "30/01/1977"), repIt("1")], paciente, { today: TODAY });
+  const selF = selectTargetRows([hdrIt("HERNANDEZ", "MA ELISA", "F", "12/06/1977"), repIt("1")], paciente, { today: TODAY });
   assert(deepEq(selF.targetIdxs, [1]), "IT: sexo abreviado F/M también se reconoce");
-  const selX = selectTargetRows([hdrIt("HERNANDEZ", "MA ERIKA", "Weiblich", "30/01/1977"), repIt("1")], paciente, { today: TODAY });
+  const selX = selectTargetRows([hdrIt("HERNANDEZ", "MA ELISA", "Weiblich", "12/06/1977"), repIt("1")], paciente, { today: TODAY });
   assert(deepEq(selX.targetIdxs, [1]), "idioma desconocido: la fila-encabezado se reconoce por su forma (nombre, nombre, sexo corto, fecha de nacimiento)");
-  assert(extractHeaderBirthDate(["", "", "", "HERNANDEZ", "MA ERIKA", "Femminile", "30/01/1977"]) === "30/01/1977", "IT: fecha de nacimiento tras la celda de sexo");
+  assert(extractHeaderBirthDate(["", "", "", "HERNANDEZ", "MA ELISA", "Femminile", "12/06/1977"]) === "12/06/1977", "IT: fecha de nacimiento tras la celda de sexo");
   assert(extractHeaderName(repIt("1").__cells) === "", "IT: una fila de reporte (barcode + fechas-hora) nunca se toma por encabezado");
   assert(isMenuTableText("Home\nReferti\nAiuto\nChiudi") === true, "IT: menú superior Home Referti Aiuto");
   assert(isFormTableText("Cerca Referti Tutte le Unità organizzative Paziente Cognome Nome Codice Paziente Data Referto da a") === true, "IT: formulario de búsqueda");
@@ -439,8 +473,8 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   assert(c.some((x) => x.cognome === "PEREZ" && x.nome === "FRANCISCO JAVIER"), "cand FCO.: paterno-solo + nombre expandido");
   assert(!c.some((x) => !x.sibling && (/\bFCO\b|\./.test(x.cognome) || /\bFCO\b|\./.test(x.nome || ""))), "cand FCO.: ningún candidato principal lleva la abreviatura ni puntos");
   assert(c.some((x) => x.sibling && x.cognome === "PEREZ LOPEZ" && x.nome === "FCO JAVIER") && c.findIndex((x) => x.sibling) === 1, "cand FCO.: variante literal 'FCO JAVIER' como sibling justo después de la expandida (otro registro en WinLab)");
-  const c3 = buildSearchCandidates("MA. ERIKA HERNANDEZ");
-  assert(c3[0].cognome === "HERNANDEZ" && c3[0].nome === "MARIA ERIKA" && c3[1].sibling && c3[1].nome === "MA ERIKA", "cand MA. ERIKA: expandida y luego literal como sibling");
+  const c3 = buildSearchCandidates("MA. ELISA HERNANDEZ");
+  assert(c3[0].cognome === "HERNANDEZ" && c3[0].nome === "MARIA ELISA" && c3[1].sibling && c3[1].nome === "MA ELISA", "cand MA. ELISA: expandida y luego literal como sibling");
   assert(!c.some((x) => x.cognome === "FCO JAVIER" || x.cognome === "FRANCISCO JAVIER"), "cand FCO.: no se genera el 'invertido' con el nombre como apellido");
   const c2 = buildSearchCandidates("MA. GUADALUPE RIOS");
   assert(c2[0].cognome === "RIOS" && c2[0].nome === "MARIA GUADALUPE", "cand MA.: RIOS + nombre MARIA GUADALUPE");
@@ -532,6 +566,179 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   // Sin edad en el censo no interviene (todos por nombre, como antes).
   const selS = selectTargetRows(rows, { nombre: "JUAN PEREZ LOPEZ", edad: "" }, { today: TODAY });
   assert(deepEq(selS.targetIdxs, [1, 2, 4, 6, 7, 8]), "sin edad en el censo: todos los bloques del nombre (como antes)");
+}
+
+// ── Cotejo simétrico: censo con TRES nombres de pila y WinLab con dos (16 oct 2026, cama 3-162) ──
+// El censo trae tres nombres de pila (p.ej. "JUAN PABLO ANDRES SOTO MEDINA") y WinLab lista solo dos
+// ("SOTO MEDINA, JUAN PABLO"): el tercer nombre no está en el encabezado y el paciente caía en
+// "homónimos" sin labs (solo funcionaba con alias puesto a mano). Nombres inventados.
+{
+  assert(patientHeaderMatches("SOTO MEDINA JUAN PABLO", "JUAN PABLO ANDRES SOTO MEDINA") === true,
+    "match 3 nombres: encabezado con 2 nombres ⊆ censo con 3 → true");
+  assert(patientHeaderMatches("SOTO MEDINA, JUAN PABLO", "JUAN PABLO ANDRES SOTO MEDINA") === true,
+    "match 3 nombres: también en formato APELLIDOS, NOMBRE (coma) → true");
+  assert(patientHeaderMatches("GARCIA RUIZ ANA", "ANA MARIA GARCIA RUIZ") === true,
+    "match 3 nombres: GARCIA RUIZ ANA ⊆ ANA MARIA GARCIA RUIZ → true");
+  assert(patientHeaderMatches("PEREZ LOPEZ JUAN", "PEDRO PEREZ LOPEZ") === false,
+    "match 3 nombres: nombre de pila distinto (JUAN vs PEDRO) sigue siendo otra persona → false");
+  assert(patientHeaderMatches("SOTO MEDINA PEDRO", "JUAN PABLO ANDRES SOTO MEDINA") === false,
+    "match 3 nombres: mismos apellidos pero otro nombre de pila → false");
+  assert(patientHeaderMatches("LOPEZ JUAN", "JUAN CARLOS LOPEZ RUIZ") === false,
+    "match 3 nombres: encabezado de solo 2 tokens NO usa la regla nueva (le falta un apellido) → false");
+  assert(patientHeaderMatches("LOPEZ JUAN", "JUAN LOPEZ") === true,
+    "match 3 nombres: la regla original (censo ⊆ encabezado) sigue intacta con 2 tokens");
+  // La precisión por token no cambia con la regla nueva.
+  assert(patientHeaderMatches("GARCIA RUIZ ANTONIA", "ANTONIO MANUEL GARCIA RUIZ") === false,
+    "match 3 nombres: variante de género ANTONIA/ANTONIO tampoco pasa por la regla nueva → false");
+  assert(patientHeaderMatches("RAMIREZ SOTO ESEQUIEL", "EZEQUIEL JOSE RAMIREZ SOTO") === true,
+    "match 3 nombres: typo ESEQUIEL≈EZEQUIEL (Jaro-Winkler, tokens ≥5) tolerado también en la regla nueva");
+  assert(patientHeaderMatches("GARCIA LOPEZ ANTONIA", "ANTONIO GARCIA LOPEZ") === false
+    && patientHeaderMatches("HERNANDEZ RUIZ MARIO", "MARIA HERNANDEZ RUIZ") === false
+    && patientHeaderMatches("SOLIS NOBELO RUBEN", "RUBEN SOLIS NOVELO") === true
+    && patientHeaderMatches("SOLIS HERNANDEZ PEDRO", "RUBEN SOLIS NOVELO") === false,
+    "match 3 nombres: los casos previos de género/typo/homónimo no cambian");
+  assert(patientHeaderMatches("", "JUAN PEREZ") === false && patientHeaderMatches("PEREZ JUAN", "") === false,
+    "match 3 nombres: vacío → false");
+
+  // De punta a punta: encabezado de WinLab con 2 nombres, censo con 3 → ahora sí hay objetivo.
+  const TODAY = new Date("2026-10-16T12:00:00");
+  const rows = [
+    { __cells: ["", "", "", "SOTO MEDINA", "JUAN PABLO", "Masculino", "12/05/1960"], __hasLink: false },
+    { __cells: ["", "", "2610151234", "15/10/2026 06:20", "15/10/2026 09:02", "CIRUGIA GENERAL"], __hasLink: true },
+    { __cells: ["", "", "2610161235", "16/10/2026 06:11", "16/10/2026 08:40", "CIRUGIA GENERAL"], __hasLink: true },
+    { __cells: ["", "", "", "SOTO MEDINA", "PEDRO", "Masculino", "01/01/1980"], __hasLink: false },      // otro paciente
+    { __cells: ["", "", "2610161236", "16/10/2026 07:00", "16/10/2026 09:30", "URGENCIAS"], __hasLink: true },
+  ];
+  const sel = selectTargetRows(rows, { nombre: "JUAN PABLO ANDRES SOTO MEDINA", edad: "66" }, { today: TODAY });
+  assert(deepEq(sel.targetIdxs, [1, 2]) && sel.matchedHeader === "SOTO MEDINA JUAN PABLO",
+    "selectTargetRows 3 nombres: el bloque con 2 nombres es el objetivo sin alias; el otro apellido-homónimo no");
+  assert(deepEq(sel.seenNames, ["SOTO MEDINA, JUAN PABLO", "SOTO MEDINA, PEDRO"]), "selectTargetRows 3 nombres: seenNames lista ambos encabezados");
+  assert(sel.ageRejected.length === 0, "selectTargetRows 3 nombres: la edad del único match (66) cuadra, nada rechazado");
+}
+
+// ── Cautela con la coincidencia PARCIAL (revisión 16 oct 2026) ───────────────────────────────
+// "SOTO MEDINA, JUAN PABLO" ⊆ "JUAN PABLO ANDRES SOTO MEDINA" también puede ser OTRA persona. Por eso la
+// coincidencia parcial (regla b) NO goza de la excepción de registro único (#434: si la edad no cuadra se
+// descarta aunque sea el único bloque) y NO compite con un bloque que coincide por nombre completo.
+{
+  assert(patientHeaderMatchKind("SOTO MEDINA JUAN PABLO ANDRES", "JUAN PABLO ANDRES SOTO MEDINA") === "full", "matchKind: nombre completo → full");
+  assert(patientHeaderMatchKind("SOTO MEDINA JUAN PABLO", "JUAN PABLO ANDRES SOTO MEDINA") === "partial", "matchKind: encabezado ⊆ censo (le falta un nombre) → partial");
+  assert(patientHeaderMatchKind("SOTO MEDINA PEDRO", "JUAN PABLO ANDRES SOTO MEDINA") === "" && patientHeaderMatchKind("", "JUAN PEREZ") === "", "matchKind: otra persona / vacío → ''");
+  assert(patientHeaderMatchKind("LOPEZ JUAN", "JUAN LOPEZ RUIZ") === "", "matchKind: encabezado de 2 tokens no usa la regla parcial");
+  assert(patientHeaderMatchKind("HERNANDEZ CASTRO ADRIAN", "ADRIAN HERNADNEZ CASTRO") === "full", "matchKind: difuso (letras invertidas) sigue siendo full");
+  assert([["SOTO MEDINA JUAN PABLO", "JUAN PABLO ANDRES SOTO MEDINA"], ["SOTO MEDINA PEDRO", "JUAN PABLO ANDRES SOTO MEDINA"], ["LOPEZ JUAN", "JUAN LOPEZ"], ["LOPEZ JUAN", "JUAN LOPEZ RUIZ"]]
+    .every(([h, t]) => patientHeaderMatches(h, t) === (patientHeaderMatchKind(h, t) !== "")), "patientHeaderMatches equivale a matchKind !== ''");
+
+  const TODAY = new Date("2026-10-16T12:00:00");
+  const hdr = (ap, no, fnac) => ({ __cells: ["", "", "", ap, no, "Masculino", fnac], __hasLink: false });
+  const rep = (id) => ({ __cells: ["", "", id, "15/10/2026 06:20", "15/10/2026 09:02", "CIRUGIA GENERAL"], __hasLink: true });
+  const pac = { nombre: "JUAN PABLO ANDRES SOTO MEDINA", edad: "66" };
+  // Único bloque, parcial, edad que cuadra → objetivo (caso real de la cama 3-162), marcado partialMatch.
+  const s1 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO", "12/05/1960"), rep("2610151234")], pac, { today: TODAY });
+  assert(deepEq(s1.targetIdxs, [1]) && s1.partialMatch === true && s1.ageRejected.length === 0, "parcial: único bloque con edad compatible → objetivo (partialMatch=true)");
+  // Único bloque, parcial, edad que NO cuadra → se descarta: puede ser otra persona (sin excepción #434).
+  const s2 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO", "12/05/2001"), rep("2610151234")], pac, { today: TODAY });
+  assert(deepEq(s2.targetIdxs, []) && s2.ageRejected.length === 1 && s2.ageRejected[0].headerAge === 25 && s2.partialMatch === false && s2.matchedHeader === "",
+    "parcial: único bloque con edad 25 vs censo 66 → descartado (la excepción de registro único NO aplica a la parcial)");
+  // Mismo caso con nombre COMPLETO: la excepción #434 sigue igual (comportamiento previo intacto).
+  const s3 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO ANDRES", "12/05/2001"), rep("2610151234")], pac, { today: TODAY });
+  assert(deepEq(s3.targetIdxs, [1]) && s3.partialMatch === false, "completo: único registro con nombre completo se acepta aunque la edad no cuadre (#434, como antes)");
+  // Edad del censo desconocida (vacía/meses) o sin fecha de nacimiento en WinLab → la parcial se acepta (no hay con qué contrastar).
+  const s4 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO", "12/05/2001"), rep("1")], { nombre: pac.nombre, edad: "" }, { today: TODAY });
+  const s4m = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO", "12/05/2001"), rep("1")], { nombre: pac.nombre, edad: "3m" }, { today: TODAY });
+  const s5 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO", ""), rep("1")], pac, { today: TODAY });
+  assert(deepEq(s4.targetIdxs, [1]) && deepEq(s4m.targetIdxs, [1]) && deepEq(s5.targetIdxs, [1]) && s4.partialMatch && s5.partialMatch,
+    "parcial: sin edad del censo (vacía o en meses) o sin fecha de nacimiento en WinLab → se acepta");
+  // Bloque COMPLETO + bloque PARCIAL: el parcial no compite. Aunque la edad del completo no cuadre (año mal
+  // capturado) y la del parcial sí, el objetivo es el completo — exactamente lo que pasaba antes de la regla b.
+  const s6 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO ANDRES", "12/05/2001"), rep("1"), hdr("SOTO MEDINA", "JUAN PABLO", "12/05/1960"), rep("2")], pac, { today: TODAY });
+  assert(deepEq(s6.targetIdxs, [1]) && s6.ageRejected.length === 0 && s6.matchedHeader === "SOTO MEDINA JUAN PABLO ANDRES" && s6.partialMatch === false,
+    "completo + parcial: el parcial no compite ni como homónimo; el completo se acepta como registro único (igual que antes)");
+  const s7 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO ANDRES", "12/05/1960"), rep("1"), hdr("SOTO MEDINA", "JUAN PABLO", "12/05/1960"), rep("2")], pac, { today: TODAY });
+  assert(deepEq(s7.targetIdxs, [1]) && deepEq(s7.seenNames, ["SOTO MEDINA, JUAN PABLO ANDRES", "SOTO MEDINA, JUAN PABLO"]),
+    "completo + parcial con la misma edad: solo los reportes del completo; seenNames lista ambos");
+  // Dos bloques PARCIALES con distinta fecha de nacimiento (dos personas posibles): la edad elige.
+  const s8 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO", "19/06/2001"), rep("1"), hdr("SOTO MEDINA", "JUAN PABLO", "12/05/1960"), rep("2")], pac, { today: TODAY });
+  assert(deepEq(s8.targetIdxs, [3]) && s8.ageRejected.length === 1 && s8.partialMatch === true, "dos parciales (otro día/mes): la edad elige al de 66");
+  // Dos parciales con el mismo día/mes y otro año = mismo paciente con el año mal escrito → rescate (como con nombre completo).
+  const s8b = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO", "12/05/2001"), rep("1"), hdr("SOTO MEDINA", "JUAN PABLO", "12/05/1960"), rep("2")], pac, { today: TODAY });
+  assert(deepEq(s8b.targetIdxs, [1, 3]) && s8b.ageRescued.length === 1 && s8b.ageRejected.length === 0, "dos parciales con mismo día/mes: el del año mal capturado se rescata");
+  // Alias = nombre que lista WinLab → coincidencia COMPLETA: conserva la excepción #434 (vía manual intacta).
+  const s9 = selectTargetRows([hdr("SOTO MEDINA", "JUAN PABLO", "12/05/2001"), rep("1")], { ...pac, alias: "SOTO MEDINA, JUAN PABLO" }, { today: TODAY });
+  assert(deepEq(s9.targetIdxs, [1]) && s9.partialMatch === false, "alias con el nombre de WinLab: coincidencia completa, se acepta aunque la edad no cuadre");
+}
+
+// ── Paginación de WinLab colada como reporte (16 oct 2026, cama 3-154) ───────────────────────
+// La tabla de resultados termina con ["Elementos Encontrados : 20", "", "Inicio Página"] y
+// ["", "", "", "INICIO PAGINA"], ambas con enlaces de paginación. Pasaban isMeaningfulReportRow,
+// caían bajo el bloque del paciente y se drilleaban en vano (0 valores, cupo gastado).
+{
+  // isGarbageCell: formas reales (normaliza acento/mayúsculas/espacios)
+  for (const c of ["Inicio Página", "INICIO PAGINA", "Fin Página", "FIN DE PAGINA", "Elementos Encontrados : 20", "ELEMENTOS ENCONTRADOS: 3",
+                   "Selecciona Todo", "Página 2", "PAGINA 1 DE 3", "Inizio Pagina", "Fine Pagina", "Elementi trovati : 5", "Seleziona tutto", "  Inicio   Página  ",
+                   // formas reales guardadas en los blobs (IT con palabras pegadas)
+                   "RECORDTROVATI : 4", "SELEZIONATUTTO", "PAGINA 1 DI 2", "ELEMENTOSENCONTRADOS : 7"])
+    assert(isGarbageCell(c) === true, `isGarbageCell: "${c}" es paginación → true`);
+  for (const c of ["BIOMETRIA HEMATICA", "14/10/2026 09:07", "2610141380", "CIRUGIA GENERAL", "INICIO DE TRATAMIENTO", "PAGINADOR", "", null, 20])
+    assert(isGarbageCell(c) === false, `isGarbageCell: "${c}" no es basura → false`);
+
+  // isMeaningfulReportRow: las filas de paginación reales → false; un reporte real → true
+  assert(isMeaningfulReportRow({ COL_0: "Elementos Encontrados : 20", COL_1: "", COL_2: "Inicio Página", __cells: ["Elementos Encontrados : 20", "", "Inicio Página"], __hasLink: true, __rowIdxInTable: 21 }) === false,
+    "meaningful: fila 'Elementos Encontrados : 20' / 'Inicio Página' (headers COL_X) → false");
+  assert(isMeaningfulReportRow({ COL_3: "INICIO PAGINA", __cells: ["", "", "", "INICIO PAGINA"], __hasLink: true, __rowIdxInTable: 22 }) === false,
+    "meaningful: fila ['', '', '', 'INICIO PAGINA'] → false");
+  assert(isMeaningfulReportRow({ PACIENTE: "Elementos Encontrados : 20", FECHA: "Inicio Página", __cells: ["Elementos Encontrados : 20", "", "Inicio Página"], __hasLink: true }) === false,
+    "meaningful: paginación bajo headers REALES (no COL_X) tampoco cuenta como dato");
+  assert(isMeaningfulReportRow({ __cells: ["Fin de Página", "Selecciona Todo", "Página 1 de 3"], __hasLink: true }) === false,
+    "meaningful: FIN DE PAGINA / SELECCIONA TODO / PAGINA N → false");
+  // Formas reales de los blobs (9-15 oct 2026): pie en español con 2 páginas y pie en italiano (palabras pegadas).
+  assert(isMeaningfulReportRow({ __cells: ["", "ELEMENTOS ENCONTRADOS : 26", "PAGINA 1 DE 2", "INICIO PAGINA"], __hasLink: true }) === false,
+    "meaningful: pie real ES con 'PAGINA 1 DE 2' → false");
+  assert(isMeaningfulReportRow({ __cells: ["SELEZIONATUTTO", "RECORDTROVATI : 4", "", "FINE PAGINA"], __hasLink: true }) === false
+    && isMeaningfulReportRow({ __cells: ["", "RECORDTROVATI : 36", "PAGINA 1 DI 2", "INIZIO PAGINA"], __hasLink: true }) === false,
+    "meaningful: pie real IT (SELEZIONATUTTO / RECORDTROVATI / FINE-INIZIO PAGINA / PAGINA 1 DI 2) → false");
+  assert(isMeaningfulReportRow({ __cells: ["", "", "2610141380", "14/10/2026 09:07", "14/10/2026 10:51", "CIRUGIA"], __hasLink: true }) === true,
+    "meaningful: reporte real (barcode + fechas-hora) → true");
+  assert(isMeaningfulReportRow({ __cells: ["", "", "", "PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/1946"], __hasLink: false }) === true,
+    "meaningful: fila-encabezado de paciente sigue siendo significativa");
+  assert(isMeaningfulReportRow({ COL_0: "BIOMETRIA HEMATICA", COL_1: "25/04/2026", __cells: ["BIOMETRIA HEMATICA", "25/04/2026"] }) === true
+    && isMeaningfulReportRow({ __cells: ["LISTA REPORTES TODAS LAS UNIDADES", "INICIO", "REPORTES"], COL_0: "x" }) === false,
+    "meaningful: los casos previos (data real / menú ES) no cambian");
+
+  // looksLikeReportLinkRow directo
+  assert(looksLikeReportLinkRow(["", "", "2610141380", "14/10/2026 09:07", "14/10/2026 10:51", "CIRUGIA"]) === true, "reportLinkRow: barcode + fecha-hora → true");
+  assert(looksLikeReportLinkRow(["", "1", "08/10/2026 06:16", "08/10/2026 06:34", "08/10/2026 12:56", ""]) === true, "reportLinkRow: solo fecha-hora (sin barcode largo) → true");
+  assert(looksLikeReportLinkRow(["", "", "2610141380", "", "", "CIRUGIA"]) === true, "reportLinkRow: solo barcode ≥8 dígitos → true");
+  assert(looksLikeReportLinkRow(["Elementos Encontrados : 20", "", "Inicio Página"]) === false, "reportLinkRow: paginación 'Elementos Encontrados' → false");
+  assert(looksLikeReportLinkRow(["", "", "", "INICIO PAGINA"]) === false, "reportLinkRow: paginación 'INICIO PAGINA' → false");
+  assert(looksLikeReportLinkRow(["1", "2", "3", "Siguiente"]) === false, "reportLinkRow: números de página → false");
+  assert(looksLikeReportLinkRow(["25/04/2026", "BIOMETRIA"]) === false, "reportLinkRow: fecha sin hora ni barcode → false (no es fila de reporte de WinLab)");
+  assert(looksLikeReportLinkRow([]) === false && looksLikeReportLinkRow(null) === false && looksLikeReportLinkRow(undefined) === false, "reportLinkRow: vacío/null → false");
+
+  // selectTargetRows: bloque del paciente seguido de 2 filas de paginación con __hasLink → solo el reporte real
+  const TODAY = new Date("2026-10-16T12:00:00");
+  const rows = [
+    { __cells: ["", "", "", "PEREZ LOPEZ", "JUAN", "Masculino", "03/01/1990"], __hasLink: false },
+    { __cells: ["", "", "2610151380", "15/10/2026 09:07", "15/10/2026 10:51", "CIRUGIA"], __hasLink: true },
+    { COL_0: "Elementos Encontrados : 20", COL_2: "Inicio Página", __cells: ["Elementos Encontrados : 20", "", "Inicio Página"], __hasLink: true },
+    { COL_3: "INICIO PAGINA", __cells: ["", "", "", "INICIO PAGINA"], __hasLink: true },
+  ];
+  const sel = selectTargetRows(rows, { nombre: "JUAN PEREZ LOPEZ", edad: "36" }, { today: TODAY });
+  assert(deepEq(sel.targetIdxs, [1]), "selectTargetRows paginación: targetIdxs solo trae el reporte real");
+  assert(deepEq(sel.linkIdxs, [1]), "selectTargetRows paginación: las filas de paginación tampoco cuentan como enlaces (diagnóstico)");
+  assert(sel.matchedHeader === "PEREZ LOPEZ JUAN", "selectTargetRows paginación: el encabezado del paciente se sigue reconociendo");
+  // Y en la práctica el scraper filtra antes con isMeaningfulReportRow: el mismo resultado.
+  const filtered = rows.filter(isMeaningfulReportRow);
+  assert(filtered.length === 2 && deepEq(selectTargetRows(filtered, { nombre: "JUAN PEREZ LOPEZ", edad: "36" }, { today: TODAY }).targetIdxs, [1]),
+    "selectTargetRows paginación: tras el filtro isMeaningfulReportRow quedan encabezado + reporte, objetivo = [1]");
+  // Reportes reales de distintos formatos (ES e IT) nunca se descartan por la capa (b).
+  const selIt = selectTargetRows([
+    { __cells: ["", "", "", "HERNANDEZ", "MA ELISA", "Femminile", "12/06/1977"], __hasLink: false },
+    { __cells: ["", "", "1", "11/10/2026 07:15", "11/10/2026 10:31", "CHIRURGIA GENERALE"], __hasLink: true },
+    { __cells: ["SELEZIONATUTTO", "RECORDTROVATI : 1", "", "FINE PAGINA"], __hasLink: true },
+    { __cells: ["", "RECORDTROVATI : 1", "", "INIZIO PAGINA"], __hasLink: true },
+  ], { nombre: "MARIA ELISA HERNANDEZ", edad: "49" }, { today: TODAY });
+  assert(deepEq(selIt.targetIdxs, [1]) && deepEq(selIt.linkIdxs, [1]), "selectTargetRows paginación: reporte real en italiano (fecha-hora) sigue siendo objetivo; el pie IT no");
 }
 
 console.log(`\n${pass} pass · ${fail} fail`);

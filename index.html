@@ -16927,7 +16927,7 @@ function plExportBackup() {
 
     // ─── IMAGEN FIELD (history) ──────────────────────────────────────────────────────
     // ─── ESTUDIOS DE IMAGEN del robot RIS (tabla ris_estudios) ──────────────────────────────
-    const RIS_SELECT = "id,exp,paciente,fecha,hora,sede,estudios,modalidad,procedencia,critico,reporte,reporte_url,imagen_url,scraped_at";
+    const RIS_SELECT = "id,exp,paciente,fecha,hora,sede,estudios,modalidad,procedencia,critico,reporte,reporte_url,imagen_url,reporte_estado,reporte_motivo,scraped_at";
     function _risKey(exp) { return String(exp == null ? "" : exp).trim(); }
     async function _loadRisEstudios(pts) {
       const exps = new Set();
@@ -16984,9 +16984,16 @@ function plExportBackup() {
         const rep = toSafeString(r.reporte).trim();
         const rid = ek + "_ris_" + i;
         const links = (r.reporte_url ? `<a href="${esc(r.reporte_url)}" target="_blank" rel="noopener" class="ris-link">📄 Reporte</a>` : "") + (r.imagen_url ? `<a href="${esc(r.imagen_url)}" target="_blank" rel="noopener" class="ris-link">🖼 Imagen</a>` : "");
+        // Estado del reporte que escribe el robot (oct 2026): 'pendiente_ris' = el RIS aún no lo
+        // transcribió; 'pendiente_descarga' = el reporte ya existe en el visor pero el robot no pudo
+        // bajarlo (sesión/presupuesto) y lo reintenta en la siguiente pasada. Sin estado → texto de siempre.
+        const estado = String(r.reporte_estado || "");
+        const sinRep = estado === "pendiente_descarga"
+          ? `Reporte disponible en el visor · el robot lo descarga en la siguiente pasada${r.reporte_motivo ? ` (${esc(String(r.reporte_motivo).slice(0, 80))})` : ""}`
+          : `Sin reporte todavía · estudio realizado (${esc(r.modalidad || "imagen")})${estado === "pendiente_ris" ? " · el RIS aún no lo transcribe" : ""}`;
         return `<div class="ris-item${r.critico ? " ris-crit" : ""}${rep ? " ris-has-rep" : ""}">
           <div class="ris-head"><span class="ris-when">${when}</span><span class="ris-title">${titulo}</span>${r.critico ? '<span class="ris-badge-crit">CRÍTICO</span>' : ""}${r.sede ? `<span class="ris-sede">${esc(r.sede)}</span>` : ""}${links}</div>
-          ${rep ? `<details class="ris-rep" id="${rid}"><summary>Reporte transcrito · ${esc(String(rep.length))} letras</summary><div class="ris-rep-txt">${esc(rep)}</div></details>` : `<div class="ris-norep">Sin reporte todavía · estudio realizado (${esc(r.modalidad || "imagen")})</div>`}
+          ${rep ? `<details class="ris-rep" id="${rid}"><summary>Reporte transcrito · ${esc(String(rep.length))} letras</summary><div class="ris-rep-txt">${esc(rep)}</div></details>` : `<div class="ris-norep">${sinRep}</div>`}
         </div>`;
       }).join("");
       const last = list[0] && list[0].scraped_at ? new Date(list[0].scraped_at) : null;
