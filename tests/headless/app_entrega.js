@@ -23,7 +23,7 @@ const MOCK = `(() => {
     calls.push({ m, url, body });
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.startsWith('/rest/v1/patients')) {
-      if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-170', exp: '24-20852', nombre: 'HERNANDEZ GONZALEZ FAUSTINO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'CHOQUE SÉPTICO DE ORIGEN ABDOMINAL, PO LAPE', adscrito: 'DR GARNELO MBCG', residente: 'DR FERNÁNDEZ R2CG' }]);
+      if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-170', exp: '24-99901', nombre: 'RUIZ SOTO MATEO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'CHOQUE SÉPTICO DE ORIGEN ABDOMINAL, PO LAPE', adscrito: 'DR GARNELO MBCG', residente: 'DR FERNÁNDEZ R2CG' }]);
       return json(201, [{ id: 'a1' }]);
     }
     if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: 'a1' }]); }
@@ -179,7 +179,7 @@ const MOCK = `(() => {
     img: (r4.rows['🩻 Estudios de imagen'] || []).length === 1 && / CT TAC ABDOMEN: COLECCIÓN SUBFRÉNICA DE 6 CM\.$/.test(r4.rows['🩻 Estudios de imagen'][0]),
     li: r4.li === 5,
     hist: e4.histR.labels[1] === '❤️ Signos vitales · 03 Oct' && (e4.histR.rows['❤️ Signos vitales'] || [])[0] === 'FC 76',
-    vacio: e4.vacio.labels[1] === '❤️ Signos vitales' && (e4.vacio.rows['❤️ Signos vitales'] || [])[0] === 'sin registro'
+    vacio: !e4.vacio.labels.some(l => /Signos vitales/.test(l)) && !/sin registro/.test(JSON.stringify(e4.vacio))
   };
   const bad4 = Object.keys(c4).filter(x => !c4[x]);
   check('E4 vista Entrega: SOLO 🩺 Diagnóstico + ❤️ signos vitales del pase (TA con PAM, FC, FR, T, SaO₂ con O₂; si hoy no hay, los del último día del historial con su fecha; si nada, "sin registro") + 💧 gastos + 🧪 laboratorios puntuales (chips) + 🦠 cultivos + 🩻 estudios de imagen con conclusión; nada de quirófano, avisos, novedades, pendientes ni caja escrita; sin tabla de analitos',
@@ -209,7 +209,13 @@ const MOCK = `(() => {
     const k0 = pid(base); const nd0 = getNote(k0);
     const many = { hb: '7.4', leucos: '18', plaq: '45', cr: '2.1', urea: '80', glu: '160', na: '131', k: '6.1', cl: '99', ca: '7.9', mg: '1.6', p: '2.1', alb: '2.2', bt: '1.9', ast: '88', alt: '95', fa: '210', ggt: '150', ldh: '400', pcr: '210', pct: '4.1', lac: '3.1', tp: '19.8', tp_testigo: '13', ttp: '40', fibrinogeno: '150', ph: '7.29', hco3: '17', pco2: '33', po2: '80', zz_raro: '12' };
     nd0.labHistory = [{ fecha: _egIsoOffset(0), labs: many, extra: [{ nombre: 'Amonio', valor: '60' }] }];
+    // RIS: un estudio con reporte (su conclusión sale) y otro sin reporte (no sale: solo conclusiones)
+    risByExp[_risKey(base.exp)] = [
+      { id: 91, exp: base.exp, fecha: _egIsoOffset(0), hora: '10:00', modalidad: 'CT', estudios: 'TAC ABDOMEN', reporte: 'HALLAZGOS: ... CONCLUSIÓN: COLECCIÓN SUBFRÉNICA DE 6 CM. ATENTAMENTE DR R', scraped_at: new Date().toISOString() },
+      { id: 92, exp: base.exp, fecha: _egIsoOffset(0), hora: '12:00', modalidad: 'US', estudios: 'US HEPÁTICO', reporte: '', scraped_at: new Date().toISOString() }];
     noteData[k0] = nd0;
+    // Indicaciones del Doc para el paciente base
+    PLIndicaciones.importPasted('INDICACIONES MÉDICAS DE ' + base.nombre + '\n' + base.nombre + ' 58 AÑOS | CAMA ' + base.cama + '\n' + '16/10/2026 8:00 am\n\nDIETA\nAYUNO\n\nMEDICAMENTOS\nPARACETAMOL 1 GR IV CADA 8 HORAS\n\nANTIBIÓTICOS:\nMEROPENEM 1 GR IV CADA 8 HORAS\n');
     openProyector();
     await new Promise(r => setTimeout(r, 80));
     const sel = document.getElementById('proj-jump');
@@ -226,7 +232,15 @@ const MOCK = `(() => {
       fits: cr.top >= ar.top - 1 && cr.bottom <= ar.bottom + 1 && cr.left >= ar.left - 1 && cr.right <= ar.right + 1, fs: card.style.fontSize,
       labN: labTxt.length, hasINR: labTxt.some(t => /^INR ≈ 1\.52/.test(t)), hasRaro: labTxt.some(t => /ZZ RARO/.test(t)), hasAmonio: labTxt.some(t => /Amonio 60/.test(t)),
       critHb: !!Array.from(card.querySelectorAll('.pj-lab.crit')).find(x => /^Hb/.test(x.textContent.trim())), blocks,
-      sinExtra: !/Pendientes|ENTREGA|QX \/ Plan/.test(card.textContent) };
+      sinExtra: !/Pendientes|ENTREGA|QX \/ Plan/.test(card.textContent), sinRegistro: !/sin registro|sin laboratorios/i.test(card.textContent),
+      cx: Array.from(card.querySelectorAll('.pj-b')).filter(b => /Eventos quirúrgicos/.test(b.textContent)).map(b => Array.from(b.querySelectorAll('li')).map(x => x.textContent)),
+      img: Array.from(card.querySelectorAll('.pj-b')).filter(b => /Estudios de imagen/.test(b.textContent)).map(b => Array.from(b.querySelectorAll('li')).map(x => x.textContent)),
+      ind: Array.from(card.querySelectorAll('.pj-b')).filter(b => /Indicaciones/.test(b.textContent)).map(b => b.textContent) };
+    // Paciente sin nada registrado (solo Dx): la ficha lleva SOLO el Diagnóstico
+    const iVacio = _projPatients.findIndex(p => p.cama === '2-027'); proyectorGoTo(iVacio);
+    const cv = document.querySelector('#proj-card-area .pj-card');
+    res.vacioBlocks = Array.from(cv.querySelectorAll('.pj-bh')).map(x => x.textContent.trim()); res.vacioSinRegistro = !/sin registro|sin laboratorios/i.test(cv.textContent);
+    proyectorGoTo(iBase);
     proyectorNext(); const next = _projPatients[_projIdx].cama;
     closeProyector();
     patients.splice(patients.length - extra.length, extra.length);
@@ -238,11 +252,15 @@ const MOCK = `(() => {
     selector: e6.isBase,
     encuadrada: e6.fits,
     todosLabs: e6.labN >= 32 && e6.hasINR && e6.hasRaro && e6.hasAmonio && e6.critHb,
-    bloques: JSON.stringify(e6.blocks) === JSON.stringify(['🩺 Diagnóstico', '❤️ Signos vitales', '💧 Gastos', '🦠 Cultivos', '🩻 Estudios de imagen', '🧪 Laboratorios']) && e6.sinExtra,
+    bloques: JSON.stringify(e6.blocks) === JSON.stringify(['🩺 Diagnóstico', '🔪 Eventos quirúrgicos', '💧 Gastos', '🦠 Cultivos', '🩻 Estudios de imagen', '🧪 Laboratorios', '💊 Indicaciones']) && e6.sinExtra && e6.sinRegistro,
+    cirugias: e6.cx.length === 1 && e6.cx[0].length === 2 && /POP d0 · Relaparotomía \+ lavado · hallazgos: Absceso subfrénico 200 mL · sangrado 150 mL · Dr\. X$/.test(e6.cx[0][0]) && /LAPE \+ drenaje de colección · sangrado 300 mL$/.test(e6.cx[0][1]),
+    imagen: e6.img.length === 1 && e6.img[0].length === 1 && / CT TAC ABDOMEN: COLECCIÓN SUBFRÉNICA DE 6 CM\.$/.test(e6.img[0][0]),
+    indicaciones: e6.ind.length === 1 && /AYUNO/.test(e6.ind[0]) && /PARACETAMOL 1 GR IV CADA 8 HORAS/.test(e6.ind[0]) && /MEROPENEM/.test(e6.ind[0]),
+    vacio: JSON.stringify(e6.vacioBlocks) === JSON.stringify(['🩺 Diagnóstico']) && e6.vacioSinRegistro,
     navega: e6.next !== e6.now, cierra: e6.closed === 'none'
   };
   const bad6 = Object.keys(c6).filter(x => !c6[x]);
-  check('E6 📽 Modo Proyector: empieza en la cama 150 (orden del tablero: piso 3 por número, luego UCI, luego piso 2), «Ir a cama» permite empezar en cualquiera, la ficha queda encuadrada en la pantalla (no se corta), muestra Dx/vitales/gastos/cultivos/imagen y TODOS los laboratorios del último control (grupos, otros, extra, INR estimado; críticos en rojo); ◀ ▶ y Salir funcionan',
+  check('E6 📽 Modo Proyector: eventos quirúrgicos (fecha, POP, hallazgos, sangrado, cirujano), estudios de imagen SOLO con su conclusión, indicaciones del Doc y SOLO lo registrado (un paciente sin datos muestra solo el Dx; nunca "sin registro"); empieza en la cama 150 (orden del tablero: piso 3 por número, luego UCI, luego piso 2), «Ir a cama» permite empezar en cualquiera, la ficha queda encuadrada en la pantalla (no se corta), muestra Dx/vitales/gastos/cultivos/imagen y TODOS los laboratorios del último control (grupos, otros, extra, INR estimado; críticos en rojo); ◀ ▶ y Salir funcionan',
     bad6.length === 0, 'fallan: ' + bad6.join(', ') + ' :: ' + JSON.stringify(e6));
 
   // ── E7: en reposo la página NO muta sin parar. El selector «Ir a cama» (dentro de un <label>) hacía que el enhancer de

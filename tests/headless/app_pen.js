@@ -41,7 +41,7 @@ const MOCK = `(() => {
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.startsWith('/rest/v1/patients')) {
       if (m === 'GET') return json(200, [
-        { id: 'a1', cama: '3-170', exp: '24-20852', nombre: 'HERNANDEZ GONZALEZ FAUSTINO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'CHOQUE SÉPTICO' },
+        { id: 'a1', cama: '3-170', exp: '24-99901', nombre: 'RUIZ SOTO MATEO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'CHOQUE SÉPTICO' },
         { id: 'a2', cama: '3-172', exp: '24-20900', nombre: 'LOPEZ RUIZ ANA', esp: 'CG', estado: 'ESTABLE', edad: '45', dx: 'COLECISTITIS' }]);
       return json(201, [{ id: 'a1' }]);
     }

@@ -14825,17 +14825,47 @@ function plExportBackup() {
       const ris = (p && typeof risForPatient === "function") ? risForPatient(p) : [];
       const since = _egIsoOffset(-14);
       let list = ris.filter(function (r) { return r && String(r.fecha || "") >= since; });
-      if (!list.length && ris.length) list = ris.slice(0, 1);
+      if (!list.length && ris.length) list = ris.filter(function (r) { return r && toSafeString(r.reporte).trim(); }).slice(0, 1);
+      // Solo lo IMPORTANTE (pedido de Gera): la conclusión del reporte. Un estudio sin reporte aún no se lista.
+      list = list.filter(function (r) { return toSafeString(r.reporte).trim() && toSafeString(_risConclusion(r.reporte)).trim(); });
       list.slice(0, 4).forEach(function (r) {
         const titulo = [r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" ") || "Estudio de imagen";
-        const rep = toSafeString(r.reporte).trim();
-        out.push(_egDdMm(r.fecha) + " " + titulo + ": " + (rep ? _egCut(_risConclusion(rep), 180) : "realizado, reporte pendiente"));
+        out.push(_egDdMm(r.fecha) + " " + titulo + ": " + _egCut(_risConclusion(r.reporte), 180));
       });
       if (list.length > 4) out.push("+" + (list.length - 4) + " más en la tarjeta");
       const ih = (nd.imagenHistory || []).filter(function (e) { return e && e.fecha && Array.isArray(e.estudios) && e.estudios.some(function (s) { return s && toSafeString(s.descripcion).trim(); }); })
         .sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); })[0];
       if (ih) ih.estudios.forEach(function (s) { if (s && toSafeString(s.descripcion).trim()) out.push(_egDdMm(ih.fecha) + " " + (toSafeString(s.tipo).trim() || "Estudio") + ": " + _egCut(s.descripcion, 180)); });
       return out;
+    }
+    // 🔪 Eventos quirúrgicos: cada cirugía de la lista (más reciente primero) con fecha, día POP, hallazgos, sangrado y
+    // cirujano; si no hay lista, el texto Qx anterior de la tarjeta.
+    function _egCirugias(nd) {
+      const ck = (nd && nd.checklist) || {};
+      const out = (typeof cirugiasOrdenadas === "function" ? cirugiasOrdenadas(ck) : []).filter(function (c) { return c && (toSafeString(c.procedimiento).trim() || c.fecha); }).map(function (c) {
+        const d = (typeof _cirugiaDias === "function") ? _cirugiaDias(c.fecha) : null;
+        const parts = [];
+        const head = [c.fecha ? _egDdMm(c.fecha) : "", d !== null ? "POP d" + d : ""].filter(Boolean).join(" · ");
+        parts.push((head ? head + " · " : "") + (toSafeString(c.procedimiento).trim() || "Cirugía"));
+        if (toSafeString(c.hallazgos).trim()) parts.push("hallazgos: " + _egCut(c.hallazgos, 160));
+        if (toSafeString(c.sangrado).trim()) parts.push("sangrado " + toSafeString(c.sangrado).trim() + (/^[\d.,]+$/.test(toSafeString(c.sangrado).trim()) ? " mL" : ""));
+        if (toSafeString(c.cirujano).trim()) parts.push(toSafeString(c.cirujano).trim());
+        return parts.join(" · ");
+      });
+      if (!out.length && toSafeString(nd && nd.qx).trim()) out.push(_egCut(nd.qx, 200));
+      return out;
+    }
+    // 💊 Indicaciones del Doc (PLIndicaciones) por sección. Si el Doc tiene ese cuarto a nombre de OTRA persona
+    // (_matchWarn), no se muestran: nunca indicaciones de otro paciente.
+    function _egIndicaciones(p) {
+      try {
+        const d = (typeof PLIndicaciones !== "undefined" && PLIndicaciones.getForPatient) ? PLIndicaciones.getForPatient(p) : null;
+        if (!d || d._matchWarn) return null;
+        const secs = [["DIETA", "🍴 Dieta"], ["SOLUCIONES", "💧 Soluciones"], ["MEDICAMENTOS", "💊 Medicamentos"], ["ANTIBIÓTICOS", "🦠 Antibióticos"], ["MEDIDAS GENERALES", "📋 Medidas generales"]]
+          .map(function (x) { return { label: x[1], items: (Array.isArray(d[x[0]]) ? d[x[0]] : []).map(function (t) { return toSafeString(t).trim(); }).filter(Boolean) }; })
+          .filter(function (x) { return x.items.length; });
+        return secs.length ? { fecha: d.fecha || "", secs: secs } : null;
+      } catch (_) { return null; }
     }
     // Texto para la caja Entrega (una línea por sección, encabezado con fecha, hora e iniciales).
     function entregaResumenTexto(p, nd) {
@@ -20516,8 +20546,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function _projFit() {
       const area = document.getElementById("proj-card-area"), card = area && area.querySelector(".pj-card");
       if (!card) return;
+      // Espacio útil = área sin su relleno (padding); la ficha (con su borde) debe caber ahí entera.
+      const cs = getComputedStyle(area);
+      const availH = area.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0) - 4;
+      const availW = area.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - 4;
+      const tooBig = function () { const r = card.getBoundingClientRect(); return r.height > availH || r.width > availW || card.scrollWidth > availW; };
       let fs = 18; card.style.fontSize = fs + "px";
-      for (let i = 0; i < 14 && (card.scrollHeight > area.clientHeight - 8 || card.scrollWidth > area.clientWidth - 8) && fs > 10; i++) { fs -= 0.75; card.style.fontSize = fs + "px"; }
+      for (let i = 0; i < 20 && tooBig() && fs > 9; i++) { fs -= 0.6; card.style.fontSize = fs + "px"; }
     }
     function _renderProjCard() {
       const cEl = document.getElementById("proj-counter");
@@ -20531,10 +20566,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const days = daysSince(p.ingreso);
       const ec = ESP_COLORS[p.esp] || "#1a3a6b";
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
-      const R = buildEntregaResumen(p, nd), V = _egVitales(cl), CU = _egCultivos(p, nd), IM = _egImagen(p, nd), L = _projLabsHtml(nd);
-      const none = `<div class="pj-none">sin registro</div>`;
-      const list = function (arr) { return (arr && arr.length) ? `<ul class="pj-ul">${arr.map(function (s) { return `<li>${esc(s)}</li>`; }).join("")}</ul>` : none; };
-      const blk = function (icon, label, inner) { return `<div class="pj-b"><div class="pj-bh">${icon} ${label}</div>${inner}</div>`; };
+      const R = buildEntregaResumen(p, nd), V = _egVitales(cl), CU = _egCultivos(p, nd), IM = _egImagen(p, nd), L = _projLabsHtml(nd), CX = _egCirugias(nd), IND = _egIndicaciones(p);
+      // Solo lo registrado (pedido de Gera): un bloque sin contenido no se pinta (nada de "sin registro").
+      const list = function (arr) { return (arr && arr.length) ? `<ul class="pj-ul">${arr.map(function (s) { return `<li>${esc(s)}</li>`; }).join("")}</ul>` : ""; };
+      const blk = function (icon, label, inner) { return inner ? `<div class="pj-b"><div class="pj-bh">${icon} ${label}</div>${inner}</div>` : ""; };
+      const indInner = IND ? IND.secs.map(function (x) { return `<div class="pj-lg"><div class="pj-lgh">${esc(x.label)}</div><ul class="pj-ul">${x.items.map(function (t) { return `<li>${esc(t)}</li>`; }).join("")}</ul></div>`; }).join("") : "";
       const dx = toSafeString(p.dx || nd.dx).trim();
       area.innerHTML = `<div class="pj-card" style="border-top:6px solid ${ec}">
         <div class="pj-hdr">
@@ -20545,16 +20581,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               ${p.estado ? `<span class="pj-est" style="background:${sc}">${esc(p.estado)}</span>` : ""}</div>
           </div>
         </div>
-        ${blk("🩺", "Diagnóstico", dx ? `<div class="pj-dx">${esc(dx)}</div>` : none)}
+        ${blk("🩺", "Diagnóstico", dx ? `<div class="pj-dx">${esc(dx)}</div>` : "")}
         <div class="pj-grid">
           <div class="pj-col">
-            ${blk("❤️", "Signos vitales" + (V.fecha ? " · " + esc(fmtDateChip(V.fecha)) : ""), V.items.length ? `<div class="pj-txt">${esc(V.items.join(" · "))}</div>` : none)}
+            ${blk("🔪", "Eventos quirúrgicos", list(CX))}
+            ${blk("❤️", "Signos vitales" + (V.fecha ? " · " + esc(fmtDateChip(V.fecha)) : ""), V.items.length ? `<div class="pj-txt">${esc(V.items.join(" · "))}</div>` : "")}
             ${blk("💧", "Gastos", list(R.gastos))}
             ${blk("🦠", "Cultivos", list(CU))}
-            ${blk("🩻", "Estudios de imagen", list(IM))}
+            ${blk("🩻", "Estudios de imagen · conclusiones", list(IM))}
           </div>
           <div class="pj-col">
-            ${blk("🧪", "Laboratorios" + (L.fecha ? " · " + esc(fmtDateChip(L.fecha)) : ""), L.html || `<div class="pj-none">sin laboratorios</div>`)}
+            ${blk("🧪", "Laboratorios" + (L.fecha ? " · " + esc(fmtDateChip(L.fecha)) : ""), L.html)}
+            ${blk("💊", "Indicaciones" + (IND && IND.fecha ? " · " + esc(fmtDateChip(IND.fecha)) : ""), indInner)}
           </div>
         </div>
       </div>`;
@@ -20624,14 +20662,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           // Gastos y labs puntuales salen del mismo resumen que el botón ✨ Resumen; vitales, cultivos e imagen, de sus helpers.
           const R = buildEntregaResumen(p, nd);
           const V = _egVitales(cl), CU = _egCultivos(p, nd), IM = _egImagen(p, nd);
-          const egMuted = `<div class="eg-bigval eg-muted">sin registro</div>`;
-          const egRow = (icon, label, inner, extraCls) => `<div class="eg-bigrow${extraCls ? " " + extraCls : ""}"><span class="eg-biglbl">${icon} ${label}</span>${inner || egMuted}</div>`;
+          // Solo lo registrado (pedido de Gera): una fila sin contenido no se pinta.
+          const egRow = (icon, label, inner, extraCls) => inner ? `<div class="eg-bigrow${extraCls ? " " + extraCls : ""}"><span class="eg-biglbl">${icon} ${label}</span>${inner}</div>` : "";
           const egList = (arr) => (arr && arr.length) ? `<ul class="eg-list">${arr.map(s => `<li>${esc(s)}</li>`).join("")}</ul>` : "";
           const labsInner = R.labs
             ? (R.labs.items.length
               ? `<div class="eg-labchips">${R.labs.items.map(i => `<span class="eg-biglab ${i.crit ? "crit" : "abn"}">${esc(i.text)}</span>`).join("")}${R.labs.extra ? `<span class="eg-biglab">+${R.labs.extra} alterados</span>` : ""}</div>`
               : `<div class="eg-bigval eg-muted">sin valores críticos ni cambios grandes</div>`)
-            : `<div class="eg-bigval eg-muted">sin laboratorios</div>`;
+            : "";
           const vitInner = V.items.length ? `<div class="eg-bigval">${esc(V.items.join(" · "))}</div>` : "";
 
           cards += `<div class="eg-c" style="border-left:7px solid ${ec}">
