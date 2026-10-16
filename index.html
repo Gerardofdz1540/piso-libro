@@ -1719,7 +1719,7 @@
     /* En la columna angosta, los grids internos de 2/3 columnas se apilan */
     .fc-side .fc-side-g3, .fc-side .fc-side-g2 { grid-template-columns: 1fr !important; }
     /* Filas de drenajes más compactas en la columna lateral (iPad horizontal): antes se desbordaban */
-    .fc-side .dv-row { grid-template-columns: minmax(68px, 1fr) minmax(50px, .9fr) 50px minmax(64px, 1.2fr) 30px 24px; gap: 3px; padding: 3px 4px; }
+    .fc-side .dv-row { gap: 3px; padding: 3px 4px; }
     .fc-side .dv-row .pm-input.dv-in { font-size: 11px; padding: 2px 4px; }
     .fc-side .dv-sel { width: 78px; }
     /* Ficha compacta (oct 2026): dos columnas también en iPad horizontal (1194 px menos el carril de camas) */
@@ -2922,8 +2922,20 @@
     .dv-add { font-size: 10px; font-weight: 700; padding: 0 8px; min-height: 26px; border-radius: 12px; border: 1px dashed #a78bfa; background: #fff; color: #6d28d9; cursor: pointer; font-family: var(--font); white-space: nowrap; }
     .dv-add:hover { background: #ede9fe; }
     .dv-sel { font-size: 10px; font-weight: 700; min-height: 26px; border-radius: 12px; border: 1px dashed #a78bfa; background: #fff; color: #6d28d9; font-family: var(--font); width: 92px; }
-    .dv-list { display: flex; flex-direction: column; gap: 3px; }
-    .dv-row { display: grid; grid-template-columns: minmax(88px, 1.1fr) minmax(64px, 1fr) 60px minmax(84px, 1.4fr) 34px 26px; align-items: center; gap: 4px; background: #fff; border: 1px solid #e9d5ff; border-radius: 6px; padding: 3px 6px; }
+    /* Gasto siempre legible (oct 2026): antes 48-60 px con letra de 16 px (regla anti-zoom de iOS) → "1250 mL" cortado.
+       Angosto: dos renglones (nombre · GASTO ≥ 96 px · día · ✕ / sitio · características); ancho (≥ 640 px): uno solo. */
+    .dv-list { display: flex; flex-direction: column; gap: 3px; container: dvlist / inline-size; }
+    .dv-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(96px, 36%) 34px 26px; grid-template-areas: "name gasto day x" "sitio carac carac carac"; align-items: center; gap: 4px; background: #fff; border: 1px solid #e9d5ff; border-radius: 6px; padding: 3px 6px; }
+    .dv-row .dv-name { grid-area: name; } .dv-row .dv-gasto { grid-area: gasto; } .dv-row .dv-day { grid-area: day; } .dv-row .dv-x { grid-area: x; }
+    .dv-row .dv-sitio { grid-area: sitio; text-align: left; } .dv-row .dv-carac { grid-area: carac; text-align: left; }
+    .dv-row .pm-input.dv-gasto { font-family: var(--mono); font-weight: 800; text-align: center; color: #3b0764; }
+    body.dark .dv-row .pm-input.dv-gasto { color: #e9d5ff; }
+    @container dvlist (max-width: 360px) {
+      .dv-row { grid-template-areas: "name gasto day x" "sitio sitio sitio sitio" "carac carac carac carac"; }
+    }
+    @container dvlist (min-width: 640px) {
+      .dv-row { grid-template-columns: minmax(88px, 1.1fr) minmax(70px, 1fr) minmax(104px, .9fr) minmax(90px, 1.4fr) 34px 26px; grid-template-areas: "name sitio gasto carac day x"; }
+    }
     .dv-row .pm-input.dv-in { width: 100% !important; min-width: 0; box-sizing: border-box; }
     .dv-name { font-size: 11px; font-weight: 800; color: #5b21b6; background: #f3e8ff; border: none; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-family: var(--font); min-width: 0; text-align: left; min-height: 26px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dv-name b { color: #dc2626; }
@@ -3044,8 +3056,11 @@
     .cx-list { display: flex; flex-direction: column; gap: 5px; }
     .cx-row { background: #fff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 5px 7px; }
     .cx-r1 { display: grid; grid-template-columns: 142px auto minmax(0, 1fr) 26px; gap: 5px; align-items: start; }
-    .cx-r2 { display: grid; grid-template-columns: minmax(0, 1fr) 96px 130px; gap: 5px; margin-top: 4px; align-items: start; }
-    @media (max-width: 640px) { .cx-r1 { grid-template-columns: 1fr auto; } .cx-r1 .cx-proc { grid-column: 1 / -1; } .cx-r2 { grid-template-columns: 1fr 1fr; } .cx-r2 .cx-in-hal { grid-column: 1 / -1; } }
+    /* Hallazgos a todo el ancho; sangrado y cirujano debajo con espacio (antes 96 px y 130 px: se cortaban). */
+    .cx-r2 { display: grid; grid-template-columns: minmax(120px, 190px) minmax(0, 1fr); gap: 5px; margin-top: 4px; align-items: start; }
+    .cx-r2 .cx-in-hal { grid-column: 1 / -1; }
+    .cx-sang { font-family: var(--mono); font-weight: 700; }
+    @media (max-width: 640px) { .cx-r1 { grid-template-columns: 1fr auto; } .cx-r1 .cx-proc { grid-column: 1 / -1; } .cx-r2 { grid-template-columns: minmax(0, 1fr); } }
     .cx-date { font-family: var(--mono); font-size: 11px; border: 1px solid #ddd6fe; border-radius: 6px; padding: 3px 4px; min-height: 28px; color: #3b0764; background: #faf5ff; font-weight: 700; box-sizing: border-box; width: 100%; }
     .cx-po { font-size: 10px; font-weight: 800; color: #fff; background: #7c3aed; border-radius: 8px; padding: 2px 7px; white-space: nowrap; font-family: var(--mono); align-self: center; }
     .cx-po.cx-po-none { background: #e9d5ff; color: #6d28d9; }
@@ -26051,6 +26066,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       list.splice(i, 1);
       _saveCirugias(k, nd); _rerenderCard(k);
     }
+    // Renglones iniciales de una caja de Cirugías según TODO su texto (antes tope de 4 y 3: el resto quedaba oculto).
+    function _cxRows(txt, perLine) { return Math.max(1, Math.min(40, toSafeString(txt).split("\n").reduce(function (n, l) { return n + Math.max(1, Math.ceil(l.length / perLine)); }, 0))); }
     function renderCirugiasSection(nd, k) {
       const ck = nd.checklist || {};
       const list = cirugiasOrdenadas(ck);
@@ -26061,13 +26078,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           <div class="cx-r1">
             <input type="date" class="cx-date" value="${esc(c.fecha || "")}" data-ck="${k}" data-id="${id}" onchange="updateCirugia(this.dataset.ck,this.dataset.id,'fecha',this.value)" title="Fecha de la cirugía"/>
             <span class="cx-po${d === null ? " cx-po-none" : ""}" title="Días de postoperatorio">${d === null ? "PO —" : "PO d" + d}</span>
-            <textarea class="cx-in cx-proc" rows="${Math.max(1, Math.min(4, Math.ceil(toSafeString(c.procedimiento).length / 44)))}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Procedimiento (ej. LAPE + drenaje de colección + adherenciolisis)" data-ck="${k}" data-id="${id}" data-f="procedimiento" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${esc(c.procedimiento || "")}</textarea>
+            <textarea class="cx-in cx-proc" rows="${_cxRows(c.procedimiento, 44)}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Procedimiento (ej. LAPE + drenaje de colección + adherenciolisis)" data-ck="${k}" data-id="${id}" data-f="procedimiento" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${esc(c.procedimiento || "")}</textarea>
             <button type="button" class="dv-x" data-ck="${k}" data-id="${id}" onclick="removeCirugia(this.dataset.ck,this.dataset.id)" title="Quitar de la lista">✕</button>
           </div>
           <div class="cx-r2">
-            <textarea class="cx-in cx-in-hal" rows="${Math.max(1, Math.min(3, Math.ceil(toSafeString(c.hallazgos).length / 60)))}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Hallazgos / técnica / complicaciones" data-ck="${k}" data-id="${id}" data-f="hallazgos" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${esc(c.hallazgos || "")}</textarea>
-            <input class="cx-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
-            <input class="cx-in" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(c.cirujano || "")}" placeholder="Cirujano" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>
+            <textarea class="cx-in cx-in-hal" rows="${_cxRows(c.hallazgos, 60)}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Hallazgos / técnica / complicaciones" data-ck="${k}" data-id="${id}" data-f="hallazgos" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${esc(c.hallazgos || "")}</textarea>
+            <input class="cx-in cx-sang" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
+            <input class="cx-in cx-cir" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(c.cirujano || "")}" placeholder="Cirujano" title="${esc(c.cirujano || "Cirujano")}" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>
           </div>
           ${renderFotoStrip(k, "cx:" + String(c.id || ""), c.fotos, { add: true, label: "Foto de la nota quirúrgica o del reporte (cámara o galería)" })}
         </div>`;
@@ -26252,9 +26269,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const id = esc(String(d.id || ""));
         return `<div class="dv-row">
           <button type="button" class="dv-name" data-ck="${k}" data-id="${id}" onclick="toggleDispositivoLado(this.dataset.ck,this.dataset.id)" title="Toca para cambiar el lado (D / I / sin lado)">${esc(d.tipo || "Dispositivo")}${d.lado ? ` <b>${esc(d.lado)}</b>` : ""}</button>
-          <input class="pm-input dv-in" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.sitio || "")}" placeholder="sitio / región" data-ck="${k}" data-id="${id}" data-f="sitio" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" style="width:96px;text-align:left"/>
-          <input class="pm-input dv-in" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.gasto || "")}" placeholder="mL/24 h" data-ck="${k}" data-id="${id}" data-f="gasto" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" style="width:66px"/>
-          <input class="pm-input dv-in" autocorrect="off" autocapitalize="sentences" spellcheck="false" value="${esc(d.carac || "")}" placeholder="seroso, hemático, fecal, fuga…" data-ck="${k}" data-id="${id}" data-f="carac" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" style="width:150px;text-align:left"/>
+          <input class="pm-input dv-in dv-sitio" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.sitio || "")}" placeholder="sitio / región" data-ck="${k}" data-id="${id}" data-f="sitio" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="${esc(d.sitio || "Sitio / región")}"/>
+          <input class="pm-input dv-in dv-gasto" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.gasto || "")}" placeholder="mL/24 h" data-ck="${k}" data-id="${id}" data-f="gasto" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Gasto mL/24 h${d.gasto ? ": " + esc(d.gasto) : ""}"/>
+          <input class="pm-input dv-in dv-carac" autocorrect="off" autocapitalize="sentences" spellcheck="false" value="${esc(d.carac || "")}" placeholder="seroso, hemático, fecal, fuga…" data-ck="${k}" data-id="${id}" data-f="carac" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="${esc(d.carac || "Características")}"/>
           <button type="button" class="dv-day${dias !== null ? " on" : ""}" data-ck="${k}" data-id="${id}" onclick="setDispositivoFecha(this.dataset.ck,this.dataset.id)" title="${dias !== null ? "Colocado el " + esc(d.fi) + " · toca para cambiar" : "Fecha de colocación"}">${dias !== null ? "d" + dias : "📅"}</button>
           <button type="button" class="dv-x" data-ck="${k}" data-id="${id}" onclick="removeDispositivo(this.dataset.ck,this.dataset.id)" title="Retirar / quitar de la lista">✕</button>
         </div>`;
@@ -26698,7 +26715,54 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     }
     function autoResizeAll(root) {
       (root || document).querySelectorAll('textarea.field-ta').forEach(_autoResizeTA);
+      // Cirugías (oct 2026): procedimiento y hallazgos crecen a TODO su texto. Una caja oculta (sección cerrada) mide 0:
+      // se deja con sus renglones y se ajusta al abrirse (evento toggle, abajo).
+      (root || document).querySelectorAll('textarea.cx-in').forEach(function (el) { if (el.getClientRects().length) _autoResizeTA(el); });
+      fitInputsIn(root);
     }
+    // ─── Que el NÚMERO/TEXTO quepa en su cuadro (oct 2026) ───────────────────────────────────────────────────────────
+    // La regla anti-zoom de iOS fija TODA caja de texto en 16 px (!important): en cuadros angostos (gasto de drenajes y
+    // estomas, sangrado/cirujano, signos vitales, balance) el valor se cortaba ("1250 mL" → "1250"). Sin foco, la letra
+    // baja lo justo para que el valor completo quepa (mínimo FIT_MIN_PX); al tocar/enfocar vuelve a 16 px (iOS no hace
+    // zoom) y al soltar se vuelve a ajustar. Mide con canvas: no depende de cómo cada navegador reporta scrollWidth.
+    const FIT_SEL = "input.cx-in, input.dv-in, input.pm-input";
+    const FIT_MIN_PX = 9;
+    let _fitCtx = null;
+    function _fitTextWidth(el, fs, txt) {
+      try {
+        if (!_fitCtx) _fitCtx = document.createElement("canvas").getContext("2d");
+        const cs = getComputedStyle(el);
+        _fitCtx.font = (cs.fontStyle || "normal") + " " + (cs.fontWeight || "400") + " " + fs + "px " + (cs.fontFamily || "sans-serif");
+        const ls = parseFloat(cs.letterSpacing) || 0;
+        return _fitCtx.measureText(txt).width + ls * txt.length;
+      } catch (_) { return 0; }
+    }
+    function _fitInput(el) {
+      if (!el || el.tagName !== "INPUT" || !el.isConnected) return;
+      if (document.activeElement === el) return;            // escribiendo: 16 px (sin zoom de iOS); se ajusta al soltar
+      el.style.removeProperty("font-size");
+      const v = el.value || "";
+      if (!v || !el.clientWidth) return;                       // vacío u oculto (sección cerrada): nada que ajustar
+      const cs = getComputedStyle(el);
+      const avail = el.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - 2;
+      const base = parseFloat(cs.fontSize) || 16;
+      const w = _fitTextWidth(el, base, v);
+      if (!(w > avail) || avail <= 0) return;
+      const fs = Math.max(FIT_MIN_PX, Math.floor((base * avail / w) * 10) / 10);
+      el.style.setProperty("font-size", fs + "px", "important");
+    }
+    function fitInputsIn(root) { try { (root || document).querySelectorAll(FIT_SEL).forEach(_fitInput); } catch (_) {} }
+    // Tocar / enfocar → 16 px ANTES del foco (iOS decide el zoom al enfocar); soltar → ajustar de nuevo.
+    function _fitRelease(e) { const t = e.target; if (t && t.matches && t.matches(FIT_SEL)) t.style.removeProperty("font-size"); }
+    document.addEventListener("pointerdown", _fitRelease, true);
+    document.addEventListener("touchstart", _fitRelease, { capture: true, passive: true });
+    document.addEventListener("focusin", _fitRelease, true);
+    document.addEventListener("focusout", function (e) { const t = e.target; if (t && t.matches && t.matches(FIT_SEL)) setTimeout(function () { _fitInput(t); }, 0); }, true);
+    // Valor puesto por código (escritura a mano, sync) sin foco: ajustar ya.
+    document.addEventListener("input", function (e) { const t = e.target; if (t && t.matches && t.matches(FIT_SEL) && document.activeElement !== t) _fitInput(t); }, true);
+    // Sección que se abre (details) o cambio de tamaño/orientación: re-medir.
+    document.addEventListener("toggle", function (e) { const d = e.target; if (d && d.tagName === "DETAILS" && d.open) { try { autoResizeAll(d); } catch (_) {} } }, true);
+    { let _fitT = 0; window.addEventListener("resize", function () { clearTimeout(_fitT); _fitT = setTimeout(function () { try { autoResizeAll(document.getElementById("main") || document); } catch (_) {} }, 150); }); }
     // Al escribir, re-ajusta el recuadro enfocado
     document.addEventListener('input', function (e) {
       const t = e.target;
@@ -26715,7 +26779,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
           m.addedNodes.forEach(function (node) {
             if (node.nodeType !== 1) return;
             if (node.classList && node.classList.contains('field-ta')) need = true;
-            else if (node.querySelector && node.querySelector('textarea.field-ta')) need = true;
+            else if (node.matches && node.matches(FIT_SEL + ', textarea.cx-in')) need = true;
+            else if (node.querySelector && node.querySelector('textarea.field-ta, textarea.cx-in, ' + FIT_SEL)) need = true;
           });
         });
         if (need) {

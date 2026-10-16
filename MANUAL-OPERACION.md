@@ -334,6 +334,14 @@ Un encabezado de WinLab con menos nombres de pila que la hoja ahora sí cuenta, 
 nombres en WinLab y tres en la hoja. Solo cuenta si el robot ya validó ese reporte con nombre y edad.
 Otra persona con los mismos apellidos nunca entra.
 
+## Cirugías y gastos: todo el texto cabe (16 de octubre de 2026)
+
+Las cajas de Cirugías crecen hasta mostrar todo el procedimiento y los hallazgos. Sangrado y cirujano
+van en su propio renglón con espacio. En drenajes, sondas y estomas el gasto tiene un cuadro de al
+menos 96 px y se lee completo. Si el panel es angosto, cada dispositivo usa dos renglones. Cuando un
+valor no cabe, la letra baja solo lo necesario. Al tocar el cuadro vuelve a su tamaño normal, para que
+el iPad no haga zoom, y al soltarlo se ajusta de nuevo.
+
 ## Entrega de guardia que resume (octubre 2026)
 
 La vista **📤 Entrega** (una ficha por paciente) muestra **solo** estos bloques, en este orden, y
