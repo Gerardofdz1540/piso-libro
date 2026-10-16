@@ -199,10 +199,14 @@ export function nameCoverage(nombreCenso, nombreRis) {
 // nombre invertido (APELLIDOS NOMBRES), censo con 3 nombres de pila y el RIS con 2.
 //   4) mismo nombre (≥ 3 tokens exactos) o un lado omite un token con ≥ 4 exactos → SIN guarda de edad
 //   3) un lado ⊆ del otro con ≥ 3 tokens (difuso permitido, sin letra cambiada) → edad ±5 o desconocida
-//   3) nombre de 2 tokens idéntico/contenido                                      → edad ±5 OBLIGATORIA
+//   3) nombre de 2 tokens idéntico/contenido, los 2 EXACTOS (corrida #23: "PEDRO SOTO" ≈ "LUIS PEDRO
+//      SOTOMAYOR RUIZ" cruzaba por SOTO≈SOTOMAYOR difuso)                         → edad ±5 OBLIGATORIA
 //   2) un lado ⊆ del otro con una letra cambiada (RICO/RIZO) → edad ±2 (con 2 o más tokens: una letra
 //      también separa a RAUL/SAUL, ROSA/ROSAS, LAURA/MAURA, hermanos con los mismos apellidos a pocos años)
-//   1) ≥ 3 tokens EXACTOS en común con sobrantes en ambos lados                  → edad ±2
+//   —  SIN nivel para "≥ 3 tokens en común con sobrantes en AMBOS lados": con los mismos apellidos y la
+//      misma edad, un primer nombre distinto es casi siempre un HERMANO/GEMELO (corrida #23: dos
+//      pacientes de 20 años con los mismos apellidos y segundo nombre, distinto primer nombre). Esos
+//      casos quedan en "casi-coincidencias" del log para alias manual. Precisión > recall.
 // La edad "desconocida" (censo en meses, RIS sin tipo de edad) solo se tolera en el nivel 3 con ≥ 3 tokens.
 export function scoreMatchByName(nombreCenso, est, diff, opts = {}) {
   const tol = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : RIS_AGE_TOLERANCE_DEFAULT;
@@ -216,14 +220,18 @@ export function scoreMatchByName(nombreCenso, est, diff, opts = {}) {
   let level = 0, label = "";
   if (allExact && ((identical && cov.common >= 3) || (subset && cov.common >= 4))) { level = 4; label = identical ? "nombre idéntico" : "subconjunto exacto (≥ 4 tokens)"; }
   else if (subset && cov.near === 0 && cov.common >= 3 && (!known || diff <= tolWide)) { level = 3; label = cov.censoCovered ? "censo ⊆ RIS" : "RIS ⊆ censo"; }
-  else if (subset && cov.near === 0 && cov.common === 2 && known && diff <= tolWide) { level = 3; label = "2 tokens + edad"; }
+  else if (subset && allExact && cov.common === 2 && known && diff <= tolWide) { level = 3; label = "2 tokens + edad"; }
   else if (subset && cov.near > 0 && cov.common >= 3 && known && diff <= tol) { level = 2; label = "una letra distinta (≥ 3 tokens)"; }
   else if (subset && cov.near > 0 && cov.common === 2 && known && diff <= tol) { level = 2; label = "una letra distinta (2 tokens)"; }
-  else if (cov.exact >= 3 && known && diff <= tol) { level = 1; label = "≥ 3 tokens exactos en común"; }
+  // (sin nivel 1: sobrantes en ambos lados = hermanos/gemelos con los mismos apellidos; ver arriba)
   if (!level) return null;
   return { level, label, cov, diff };
 }
 // Un paciente puede traer `alias` ("nombre en WinLab" fijado desde la app): también identifica.
+// Un alias CORTO (≤ 2 tokens: el equipo a veces fija solo los apellidos, "SOTO MEDINA", para que WinLab
+// busque por ellos) solo identifica en el RIS si el nombre del RIS es IDÉNTICO al alias; si no, cualquier
+// homónimo de apellidos con edad parecida (corrida #23: "MARTHA SOTO MEDINA" 60 a por "AMALIA SOTO
+// MEDINA" 58 a) entraría a la tarjeta. El nombre del censo sigue cruzando por su cuenta.
 export function scoreMatch(p, est, opts = {}) {
   const diff = ageDiff(p, est);
   const names = [p && p.nombre, p && p.alias].filter((s) => s && String(s).trim());
@@ -231,7 +239,9 @@ export function scoreMatch(p, est, opts = {}) {
   for (const nm of names) {
     const s = scoreMatchByName(nm, est, diff, opts);
     if (!s) continue;
-    if (!best || s.level > best.level || (s.level === best.level && s.cov.exact > best.cov.exact)) best = { ...s, via: nm === p.nombre ? "nombre" : "alias" };
+    const isAlias = nm !== p.nombre;
+    if (isAlias && normNameTokens(nm).length < 3 && !(s.cov.censoCovered && s.cov.risCovered)) continue;
+    if (!best || s.level > best.level || (s.level === best.level && s.cov.exact > best.cov.exact)) best = { ...s, via: isAlias ? "alias" : "nombre" };
   }
   return best;
 }

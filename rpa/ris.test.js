@@ -145,8 +145,11 @@ const pac = (exp, nombre, edad, extra = {}) => ({ id: "id-" + exp, exp, nombre, 
   assert(lvl("LUIS RICO", 84, "LUIS RIZO PRADO", 85) === 2 && lvl("LUIS RICO", 84, "LUIS RIZO PRADO", 88) === 0, "L2: 2 tokens con letra distinta exige ±2");
   assert(lvl("JUAN PEREZ", 50, "JUAN PEREZ", 53) === 3 && lvl("JUAN PEREZ", 50, "JUAN CARLOS PEREZ LOPEZ", 54) === 3, "L3: nombre de 2 tokens cruza con edad ±5");
   assert(lvl("JUAN PEREZ", 50, "JUAN PEREZ", 50, "") === 0 && lvl("JUAN PEREZ", 50, "JUAN PEREZ", 57) === 0, "2 tokens: sin edad o con diferencia 7 → no cruza (homónimos abiertos)");
-  assert(lvl("JUAN PEREZ LOPEZ GARCIA", 50, "JUAN CARLOS PEREZ LOPEZ", 51) === 1 && lvl("JUAN PEREZ LOPEZ GARCIA", 50, "JUAN CARLOS PEREZ LOPEZ", 53) === 0, "L1: ≥ 3 tokens en común con sobrantes a ambos lados exige ±2");
-  assert(lvl("JUAN HERNANDEZ PRADO GARCIA", 50, "FERNANDEZ PRADO RUIZ JUAN", 51) === 0, "L1 exige 3 tokens EXACTOS: 2 exactos + HERNANDEZ≈FERNANDEZ difuso → no cruza");
+  assert(lvl("JUAN PEREZ LOPEZ GARCIA", 50, "JUAN CARLOS PEREZ LOPEZ", 51) === 0 && lvl("JUAN PEREZ LOPEZ GARCIA", 50, "JUAN CARLOS PEREZ LOPEZ", 53) === 0, "sobrantes en AMBOS lados (3 en común) → ya NO cruza aunque la edad cuadre (antes nivel 1)");
+  assert(lvl("EMILIO DANIEL SOTO MEDINA", 20, "GUSTAVO DANIEL SOTO MEDINA", 20) === 0, "hermanos/gemelos: mismos apellidos y segundo nombre, distinto primer nombre, misma edad → NO cruza (corrida #23)");
+  assert(lvl("JUAN HERNANDEZ PRADO GARCIA", 50, "FERNANDEZ PRADO RUIZ JUAN", 51) === 0, "2 exactos + HERNANDEZ≈FERNANDEZ difuso con sobrantes → no cruza");
+  assert(lvl("PEDRO SOTO", 30, "LUIS PEDRO SOTOMAYOR RUIZ", 28) === 0, "2 tokens: SOTO≈SOTOMAYOR difuso NO basta (corrida #23: nombre de 2 palabras cruzaba con otra persona por apellido parecido)");
+  assert(lvl("PEDRO SOTO", 30, "LUIS PEDRO SOTO RUIZ", 28) === 3, "2 tokens EXACTOS contenidos en el RIS con edad ±5 → sigue cruzando (nivel 3)");
   assert(lvl("JUAN ANTONIO SALCEDO MIRELES", 50, "JUANA ANTONIA SALCEDO MIRELES", 50) === 0, "variantes de género (ANTONIO/ANTONIA) no cruzan aunque la edad cuadre");
   assert(lvl("JUAN PEREZ LOPEZ", 50, "PEDRO GOMEZ DIAZ", 50) === 0 && lvl("JUAN PEREZ LOPEZ", 50, "JUAN GOMEZ DIAZ", 50) === 0, "nombres distintos / 1 token en común → no cruza");
   // alias "nombre en WinLab" fijado desde la app
@@ -155,6 +158,16 @@ const pac = (exp, nombre, edad, extra = {}) => ({ id: "id-" + exp, exp, nombre, 
   assert(sA && sA.level === 4 && sA.via === "alias", "scoreMatch: el alias de la app identifica cuando el nombre del censo no coincide");
   const sN = scoreMatch(pac("9", "MARIA RUIZ SOTO", 60), est("MARIA ELENA RUIZ SOTOMAYOR", 61));
   assert(sN === null, "sin alias ese mismo caso no cruza (SOTO ≠ SOTOMAYOR)");
+  // Alias CORTO (solo apellidos): identifica solo si el nombre del RIS es idéntico al alias.
+  const pCorto = pac("10", "AMALIA SOTO MEDINA", 58, { alias: "SOTO MEDINA" });
+  assert(scoreMatch(pCorto, est("MARTHA SOTO MEDINA", 60)) === null, "alias de solo apellidos NO cruza con otra persona de esos apellidos y edad parecida (corrida #23)");
+  const sId = scoreMatch(pCorto, est("SOTO MEDINA", 58));
+  assert(sId && sId.level === 3, "alias de solo apellidos SÍ cruza cuando el RIS lista exactamente ese nombre (2 tokens exactos + edad)");
+  assert(scoreMatch(pac("12", "AMALIA PEREZ RUIZ", 58, { alias: "SOTO MEDINA" }), est("SOTO MEDINA", 58)).via === "alias", "…y si el nombre del censo no cruza, el alias idéntico es quien identifica");
+  const sCen = scoreMatch(pCorto, est("AMALIA SOTO MEDINA", 58));
+  assert(sCen && sCen.via === "nombre" && sCen.level === 4, "con alias corto el nombre del censo sigue cruzando por su cuenta (idéntico → nivel 4)");
+  const sLargo = scoreMatch(pac("11", "ANA RUIZ", 40, { alias: "RUIZ SOTOMAYOR, ANA MARIA" }), est("ANA MARIA RUIZ SOTOMAYOR", 41));
+  assert(sLargo && sLargo.via === "alias" && sLargo.level === 4, "alias completo (≥ 3 tokens) cruza como siempre");
   assert(ageCompat(null) === 1 && ageCompat(3) === 2 && ageCompat(9) === 0, "ageCompat: 2 cuadra, 1 desconocida, 0 no cuadra");
 }
 
