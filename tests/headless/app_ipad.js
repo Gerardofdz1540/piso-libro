@@ -367,7 +367,9 @@ const MOCK = `(() => {
     const nd = getNote(k); nd.manejo = Array.from({ length: 60 }, (_, i) => 'LINEA DE MANEJO ' + i).join('\n'); nd.pendientes = nd.manejo; noteData[k] = nd; renderView();
     await new Promise(r => setTimeout(r, 120));
     fcJump(k, 'ic');                                               // abre la sección SIN clic (no pasa por pl_sec_open)
-    await new Promise(r => setTimeout(r, 700));                    // deja terminar el scrollIntoView suave de fcJump
+    // Deja terminar el scrollIntoView SUAVE de fcJump: esperar a que scrollY se quede quieto (antes 700 ms fijos; con la
+    // máquina cargada la animación seguía y movía la página a mitad de la medición).
+    { let last = -1, still = 0; for (let i = 0; i < 40 && still < 4; i++) { await new Promise(r => setTimeout(r, 100)); if (window.scrollY === last) still++; else { still = 0; last = window.scrollY; } } }
     const strip = document.querySelector('#board-nav .bn-beds'); strip.scrollLeft = 40; const stripBefore = strip.scrollLeft;
     const max = document.documentElement.scrollHeight - innerHeight; window.scrollTo(0, Math.min(400, max)); await new Promise(r => setTimeout(r, 300));
     const yBefore = window.scrollY;
