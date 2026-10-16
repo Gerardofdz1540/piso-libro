@@ -20441,118 +20441,125 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
 
     // ─── PROYECTOR ─────────────────────────────────────────────────────────────────────
+    // Modo Proyector de la pestaña 📤 Entrega (oct 2026, pedido de Gera): mismo orden que el tablero (piso 3 por número
+    // —empieza en la 150—, luego UCI, UTI, piso 2…), selector «Ir a cama» para empezar donde se quiera, la ficha se ajusta
+    // a la pantalla (nada cortado) y muestra los mismos bloques que la vista Entrega con TODOS los laboratorios del último
+    // control (agrupados como en la tarjeta, críticos en rojo y anormales en ámbar).
     var _projPatients = [], _projIdx = 0;
+    function _projStartIndex(list) {
+      const i = list.findIndex(function (p) { const m = /^3\D*(\d+)/.exec(toSafeString(p.cama).trim()); return m && parseInt(m[1], 10) >= 150; });
+      return i >= 0 ? i : 0;
+    }
     function openProyector() {
-      // Collect patients in the same order as the entrega view
-      const prSortFn = (a, b) => {
-        const k = c => { const m = String(c || "").match(/^(\d+)-(\d+)$/); return m ? parseInt(m[1])*10000+parseInt(m[2]) : 9999; };
-        return k(a.cama) - k(b.cama);
-      };
-      _projPatients = [...patients].sort(prSortFn).filter(p => {
+      _projPatients = orderPisoPatients(patients.filter(function (p) {
         const e = String(p.estado || "").toUpperCase();
         return e !== "ALTA" && e !== "DEFUNCIÓN" && e !== "DEFUNCION";
-      });
+      }));
       if (!_projPatients.length) { alert("No hay pacientes para proyectar."); return; }
-      _projIdx = 0;
+      _projIdx = _projStartIndex(_projPatients);
+      const sel = document.getElementById("proj-jump");
+      if (sel) sel.innerHTML = _projPatients.map(function (p, i) { return `<option value="${i}">${esc(p.cama || "S/C")} · ${esc(String(p.nombre || "").trim().split(/\s+/)[0] || "")}</option>`; }).join("");
       const ov = document.getElementById("proj-overlay");
       if (ov) ov.style.display = "flex";
       document.addEventListener("keydown", _projKeyHandler);
+      window.addEventListener("resize", _projFit);
       _renderProjCard();
     }
     function closeProyector() {
       const ov = document.getElementById("proj-overlay");
       if (ov) ov.style.display = "none";
       document.removeEventListener("keydown", _projKeyHandler);
+      window.removeEventListener("resize", _projFit);
     }
     function _projKeyHandler(e) {
+      if (e.target && e.target.id === "proj-jump") return;   // el selector usa las flechas solo
       if (e.key === "ArrowRight" || e.key === "ArrowDown") proyectorNext();
       else if (e.key === "ArrowLeft" || e.key === "ArrowUp") proyectorPrev();
       else if (e.key === "Escape") closeProyector();
     }
     function proyectorNext() { if (_projIdx < _projPatients.length - 1) { _projIdx++; _renderProjCard(); } }
     function proyectorPrev() { if (_projIdx > 0) { _projIdx--; _renderProjCard(); } }
+    function proyectorGoTo(i) { i = parseInt(i, 10); if (Number.isFinite(i) && i >= 0 && i < _projPatients.length) { _projIdx = i; _renderProjCard(); } }
+    // TODOS los analitos del último control con valores (getLatestLabSnapshot), por grupo de LAB_GROUPS; lo que no está en
+    // ningún grupo va a «Otros»; los extra capturados a mano (snap.extra) también; INR estimado (TP ÷ testigo) si falta.
+    function _projLabsHtml(nd) {
+      const snap = (typeof getLatestLabSnapshot === "function") ? getLatestLabSnapshot(nd) : null;
+      if (!snap || !snap.labs) return { fecha: "", html: "" };
+      const labs = snap.labs, used = {};
+      const chip = function (label, val, lf) {
+        const num = parseLabNumber(val);
+        let cls = "";
+        if (lf && Number.isFinite(num)) {
+          if ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)) cls = " crit";
+          else if ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high)) cls = " abn";
+        }
+        return `<span class="pj-lab${cls}"><b>${esc(label)}</b> ${esc(String(val).trim())}</span>`;
+      };
+      const has = function (k) { const v = labs[k]; return v !== undefined && v !== null && String(v).trim() !== ""; };
+      let html = "";
+      (Array.isArray(LAB_GROUPS) ? LAB_GROUPS : []).forEach(function (g) {
+        const chips = [];
+        (g.fields || []).forEach(function (f) {
+          if (!f || !f.key) return; used[f.key] = 1;
+          if (f.key === "inr" && !has("inr")) { const io = inrOf(labs); if (io && Number.isFinite(io.v)) chips.push(chip("INR ≈", io.txt, f)); return; }
+          if (has(f.key)) chips.push(chip(f.label || f.key, labs[f.key], f));
+        });
+        if (chips.length) html += `<div class="pj-lg"><div class="pj-lgh">${esc(g.label || "")}</div><div class="pj-labs">${chips.join("")}</div></div>`;
+      });
+      const otros = Object.keys(labs).filter(function (k) { return !used[k] && has(k) && k !== "fecha_labs" && !(typeof LAB_META_KEYS !== "undefined" && LAB_META_KEYS.has(k)); })
+        .map(function (k) { return chip(k.replace(/^(ego|micro)_/, "").replace(/_/g, " ").toUpperCase(), labs[k], null); });
+      (Array.isArray(snap.extra) ? snap.extra : []).forEach(function (e) { if (e && e.nombre && toSafeString(e.valor).trim()) otros.push(chip(String(e.nombre), e.valor, null)); });
+      if (otros.length) html += `<div class="pj-lg"><div class="pj-lgh">Otros</div><div class="pj-labs">${otros.join("")}</div></div>`;
+      return { fecha: snap.fecha || "", html: html };
+    }
+    // Ajusta la ficha a la pantalla: baja la letra (em) hasta que quepa; si aun así no cabe, se desplaza (sin cortar arriba).
+    function _projFit() {
+      const area = document.getElementById("proj-card-area"), card = area && area.querySelector(".pj-card");
+      if (!card) return;
+      let fs = 18; card.style.fontSize = fs + "px";
+      for (let i = 0; i < 14 && (card.scrollHeight > area.clientHeight - 8 || card.scrollWidth > area.clientWidth - 8) && fs > 10; i++) { fs -= 0.75; card.style.fontSize = fs + "px"; }
+    }
     function _renderProjCard() {
       const cEl = document.getElementById("proj-counter");
       if (cEl) cEl.textContent = (_projIdx + 1) + " / " + _projPatients.length;
+      const sel = document.getElementById("proj-jump"); if (sel) sel.value = String(_projIdx);
       const area = document.getElementById("proj-card-area");
       if (!area) return;
       const p = _projPatients[_projIdx];
-      const nd = noteData[pid(p)] || defaultData();
+      const nd = migrateNote(noteData[pid(p)] || defaultData());
       const cl = nd.checklist || {};
       const days = daysSince(p.ingreso);
       const ec = ESP_COLORS[p.esp] || "#1a3a6b";
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
-      const nptTxt = getEntregaNptText(cl);
-      // Drain text
-      const drainParts = [];
-      if (nd.drenajes) drainParts.push(nd.drenajes);
-      { const _dt = dispositivosTexto(cl, " | "); if (_dt) drainParts.push(_dt); }
-      const drainTxt = drainParts.join(" | ");
-      // Labs
-      const snap = (nd.labHistory || []).sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
-      const labs = snap ? snap.labs || {} : {};
-      const labDate = snap ? fmtDateChip(snap.fecha) : "";
-      const labKeys = ["hb","leucos","plaq","cr","glu","na","k","alb","pcr","pct","tp","inr","ph","lac","tropI","tropT","bnp"].filter(x => labs[x]);
-      const labHtml = labKeys.length ? `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(255,255,255,.2)">
-        <div style="font-size:12px;font-weight:700;color:#7dd3fc;margin-bottom:6px">🧪 ${labDate}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">` +
-        labKeys.map(x => {
-          const lf = LAB_FIELDS.find(f => f.key === x);
-          const num = parseFloat(labs[x]);
-          let bg = "rgba(255,255,255,.1)", col = "#e2e8f0";
-          if (lf && !isNaN(num)) {
-            const isCrit = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
-            const isAbn = !isCrit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
-            if (isCrit) { bg = "#fee2e2"; col = "#b91c1c"; }
-            else if (isAbn) { bg = "#fef3c7"; col = "#92400e"; }
-          }
-          return `<span style="background:${bg};color:${col};padding:3px 8px;border-radius:5px;font-size:14px;font-weight:600"><b style="margin-right:3px">${lf ? lf.label : x}</b>${labs[x]}</span>`;
-        }).join("") + `</div></div>` : "";
-
-      function pf(lbl, v, big) {
-        if (!v || !String(v).trim()) return "";
-        return `<div style="margin-bottom:${big ? "12" : "8"}px">
-          <div style="font-size:12px;font-weight:700;color:#7dd3fc;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">${lbl}</div>
-          <div style="font-size:${big ? "18" : "16"}px;color:#f1f5f9;line-height:1.4">${esc(String(v))}</div>
-        </div>`;
-      }
-      const tags = [];
-      if (cl.npo) tags.push('<span style="background:#dc2626;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">NPO</span>');
-      if (cl.atb) tags.push('<span style="background:#0369a1;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">ATB</span>');
-      if (cl.tvp) tags.push('<span style="background:#7c3aed;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">TVP</span>');
-      if (cl.dren) tags.push('<span style="background:#b45309;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">DREN</span>');
-      if (cl.npt) tags.push('<span style="background:#6d28d9;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">NPT</span>');
-      if (cl.dieta) tags.push(`<span style="background:#059669;color:#fff;padding:4px 10px;border-radius:6px;font-size:14px;font-weight:700">🍽 ${esc(cl.dieta)}</span>`);
-
-      area.innerHTML = `<div style="width:min(900px,98vw);background:linear-gradient(135deg,#0f2238 0%,#1a3a6b 100%);border-radius:16px;padding:32px 36px;box-shadow:0 12px 48px rgba(0,0,0,.6);border:1px solid rgba(79,195,247,.3)">
-        <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap">
-          <div>
-            <span style="background:${ec};color:#fff;padding:6px 16px;border-radius:8px;font-size:22px;font-weight:800;display:inline-block;margin-bottom:6px">${esc(p.cama)}</span>
-            <span style="background:${sc};color:#fff;padding:3px 10px;border-radius:8px;font-size:13px;font-weight:700;margin-left:8px">${esc(p.estado || "")}</span>
-            <span style="background:rgba(255,255,255,.1);color:#e2e8f0;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:700;margin-left:6px">${esc(p.esp)}</span>
-            <span style="color:#94a3b8;font-size:13px;margin-left:8px">D${days}</span>
+      const R = buildEntregaResumen(p, nd), V = _egVitales(cl), CU = _egCultivos(p, nd), IM = _egImagen(p, nd), L = _projLabsHtml(nd);
+      const none = `<div class="pj-none">sin registro</div>`;
+      const list = function (arr) { return (arr && arr.length) ? `<ul class="pj-ul">${arr.map(function (s) { return `<li>${esc(s)}</li>`; }).join("")}</ul>` : none; };
+      const blk = function (icon, label, inner) { return `<div class="pj-b"><div class="pj-bh">${icon} ${label}</div>${inner}</div>`; };
+      const dx = toSafeString(p.dx || nd.dx).trim();
+      area.innerHTML = `<div class="pj-card" style="border-top:6px solid ${ec}">
+        <div class="pj-hdr">
+          <span class="pj-cama" style="background:${ec}">${esc(p.cama || "S/C")}</span>
+          <div class="pj-id">
+            <div class="pj-nom">${esc(p.nombre || "")}</div>
+            <div class="pj-meta">${esc(String(p.edad || "—"))}a · ${esc(p.exp || "")} · ${esc(p.esp || "")} · D${esc(String(days))}${p.adscrito || p.residente ? " · " + esc(p.adscrito || "") + " / " + esc(p.residente || "") : ""}
+              ${p.estado ? `<span class="pj-est" style="background:${sc}">${esc(p.estado)}</span>` : ""}</div>
           </div>
         </div>
-        <div style="font-size:28px;font-weight:800;color:#fff;margin-bottom:4px">${esc(p.nombre)}</div>
-        <div style="font-size:15px;color:#94a3b8;margin-bottom:20px">${p.edad || "—"}a · ${esc(p.exp || "")} · ${esc(p.adscrito || "")} / ${esc(p.residente || "")}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div>
-            ${pf("DX", p.dx || nd.dx, true)}
+        ${blk("🩺", "Diagnóstico", dx ? `<div class="pj-dx">${esc(dx)}</div>` : none)}
+        <div class="pj-grid">
+          <div class="pj-col">
+            ${blk("❤️", "Signos vitales" + (V.fecha ? " · " + esc(fmtDateChip(V.fecha)) : ""), V.items.length ? `<div class="pj-txt">${esc(V.items.join(" · "))}</div>` : none)}
+            ${blk("💧", "Gastos", list(R.gastos))}
+            ${blk("🦠", "Cultivos", list(CU))}
+            ${blk("🩻", "Estudios de imagen", list(IM))}
           </div>
-          <div>
-            ${pf("QX / Plan", cirugiasTexto(cl, " | ") || nd.qx || nd.manejo)}
-            ${drainTxt ? pf("💧 Drenajes", drainTxt) : ""}
-            ${nptTxt ? pf("💉 NPT", nptTxt) : ""}
-            ${pf("📌 Pendientes", nd.pendientes)}
+          <div class="pj-col">
+            ${blk("🧪", "Laboratorios" + (L.fecha ? " · " + esc(fmtDateChip(L.fecha)) : ""), L.html || `<div class="pj-none">sin laboratorios</div>`)}
           </div>
         </div>
-        ${nd.entrega ? `<div style="margin-top:14px;background:rgba(245,158,11,.15);border-left:4px solid #f59e0b;padding:10px 14px;border-radius:0 8px 8px 0">
-          <div style="font-size:12px;font-weight:700;color:#fbbf24;margin-bottom:4px">📋 ENTREGA</div>
-          <div style="font-size:17px;color:#fef3c7;font-weight:600">${esc(String(nd.entrega))}</div>
-        </div>` : ""}
-        ${labHtml}
-        ${tags.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">${tags.join("")}</div>` : ""}
       </div>`;
+      area.scrollTop = 0;
+      _projFit();
     }
 
     // ─── PRINT / ENTREGA VIEW ─────────────────────────────────────────────────────────
@@ -26718,18 +26725,49 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
 
   <!-- PROJECTOR OVERLAY -->
   <div id="proj-overlay" style="display:none;position:fixed;inset:0;z-index:99990;background:#0a1628;flex-direction:column;align-items:stretch">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#061020;flex-shrink:0">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top));background:#061020;flex-shrink:0">
       <div style="color:#fff;font-size:13px;font-weight:700;letter-spacing:1px">
         📽 MODO PROYECTOR — <span id="proj-counter"></span>
       </div>
       <div style="display:flex;gap:10px;align-items:center">
+        <label style="color:#94a3b8;font-size:12px;font-weight:700">Ir a cama
+          <select id="proj-jump" onchange="proyectorGoTo(this.value)" style="margin-left:6px;background:#0f2238;color:#fff;border:1px solid #1a3a6b;border-radius:8px;padding:7px 8px;font-size:14px;font-weight:700;max-width:46vw"></select></label>
         <button onclick="proyectorPrev()" style="background:#1a3a6b;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700">◀ Anterior</button>
         <button onclick="proyectorNext()" style="background:#1a3a6b;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700">Siguiente ▶</button>
         <button onclick="closeProyector()" style="background:#dc2626;border:none;color:#fff;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">✕ Salir</button>
       </div>
     </div>
-    <div id="proj-card-area" style="flex:1;overflow-y:auto;display:flex;align-items:center;justify-content:center;padding:20px"></div>
+    <div id="proj-card-area" style="flex:1;min-height:0;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:14px 16px calc(14px + env(safe-area-inset-bottom))"></div>
   </div>
+  <style>
+    /* Modo Proyector: la ficha se centra con margin:auto (si no cabe, se desplaza sin cortarse arriba) y todo va en em para
+       que _projFit la encuadre bajando el tamaño de letra. */
+    #proj-card-area .pj-card{ margin:auto; width:min(1500px,100%); box-sizing:border-box; background:linear-gradient(135deg,#0f2238 0%,#1a3a6b 100%); border-radius:16px; padding:1.1em 1.4em; box-shadow:0 12px 48px rgba(0,0,0,.6); border:1px solid rgba(79,195,247,.3); color:#f1f5f9; font-size:18px; line-height:1.35; }
+    #proj-card-area .pj-hdr{ display:flex; align-items:center; gap:.8em; margin-bottom:.6em; }
+    #proj-card-area .pj-cama{ color:#fff; padding:.25em .7em; border-radius:.4em; font-size:1.6em; font-weight:800; flex:0 0 auto; }
+    #proj-card-area .pj-id{ min-width:0; }
+    #proj-card-area .pj-nom{ font-size:1.45em; font-weight:800; color:#fff; line-height:1.2; }
+    #proj-card-area .pj-meta{ font-size:.85em; color:#94a3b8; margin-top:.15em; }
+    #proj-card-area .pj-est{ color:#fff; padding:.1em .55em; border-radius:.5em; font-size:.85em; font-weight:700; margin-left:.4em; }
+    #proj-card-area .pj-grid{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:.9em; }
+    @media (max-width:820px){ #proj-card-area .pj-grid{ grid-template-columns:minmax(0,1fr); } }
+    #proj-card-area .pj-col{ min-width:0; display:flex; flex-direction:column; gap:.6em; }
+    #proj-card-area .pj-b{ background:rgba(255,255,255,.05); border:1px solid rgba(125,211,252,.18); border-radius:.6em; padding:.5em .7em; margin-bottom:.6em; }
+    #proj-card-area .pj-col .pj-b{ margin-bottom:0; }
+    #proj-card-area .pj-bh{ font-size:.72em; font-weight:800; color:#7dd3fc; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3em; }
+    #proj-card-area .pj-dx{ font-size:1.1em; font-weight:700; }
+    #proj-card-area .pj-txt{ font-size:1em; font-weight:600; }
+    #proj-card-area .pj-ul{ margin:0; padding-left:1.1em; font-size:.92em; }
+    #proj-card-area .pj-ul li{ margin:.1em 0; overflow-wrap:anywhere; }
+    #proj-card-area .pj-none{ font-size:.85em; color:#64748b; font-style:italic; }
+    #proj-card-area .pj-lg{ margin-bottom:.4em; }
+    #proj-card-area .pj-lgh{ font-size:.66em; color:#94a3b8; font-weight:700; margin-bottom:.15em; }
+    #proj-card-area .pj-labs{ display:flex; flex-wrap:wrap; gap:.3em; }
+    #proj-card-area .pj-lab{ background:rgba(255,255,255,.1); color:#e2e8f0; padding:.12em .45em; border-radius:.3em; font-size:.85em; font-weight:600; white-space:nowrap; }
+    #proj-card-area .pj-lab b{ margin-right:.2em; color:#cbd5e1; }
+    #proj-card-area .pj-lab.abn{ background:#fef3c7; color:#92400e; } #proj-card-area .pj-lab.abn b{ color:#92400e; }
+    #proj-card-area .pj-lab.crit{ background:#fee2e2; color:#b91c1c; } #proj-card-area .pj-lab.crit b{ color:#b91c1c; }
+  </style>
 
   <!-- ═══ REMINDERS MODAL + GLOBAL CENTER ═════════════════════════════════════ -->
   <div class="modal-bg" id="reminder-modal" style="display:none">
