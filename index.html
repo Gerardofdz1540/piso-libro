@@ -4114,6 +4114,7 @@ body.pen-on textarea.field-ta{ cursor:text; }
    el campo que se está escribiendo se marca en morado y, al quedar el valor, parpadea en verde. */
 .pl-pen-glass{ position:fixed; inset:0; z-index:10600; pointer-events:none; }
 .pl-pen-live{ box-shadow:0 0 0 2px rgba(124,58,237,.55) !important; }
+.pl-pen-prov{ color:#7c3aed !important; font-style:italic; opacity:.8; }   /* texto provisional: esperando a la IA, no guardado */
 .pl-pen-flash{ box-shadow:0 0 0 3px rgba(22,163,74,.55) !important; transition:box-shadow .2s; }
 @media print{ .pl-pen-glass{ display:none !important; } }
 body.dark .pl-ink-pop{ background:#0f1c2e; border-color:#23405f; }
@@ -15457,7 +15458,7 @@ function plExportBackup() {
       return "off";
     }
     function penModeOn() { return penMode() !== "off"; }
-    function _penModeLabel(m) { return m === "ink" ? "✍️ Tinta" : (m === "text" ? "✍️ → Texto" : "✍️ Lápiz"); }
+    function _penModeLabel(m) { return m === "ink" ? "✍️ Tinta" : (m === "text" ? "✍️ → Texto" : "✍️ Scribble"); }
     function togglePenMode(btn) {
       const cur = penMode(); const next = cur === "off" ? "text" : (cur === "text" ? "ink" : "off");
       try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); } catch (_) {}
@@ -15465,10 +15466,10 @@ function plExportBackup() {
       document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.toggle("on", next !== "off"); b.textContent = _penModeLabel(next); });
       if (next === "off") { PEN.active = null; try { _penLiveFinalize("apagado"); } catch (_) {} }
       if (typeof _plToast === "function") _plToast(
-        next === "text" ? "✍️ → Texto: escribe con el Apple Pencil encima de cualquier campo (letra de molde, en mayúsculas); se vuelve texto al soltar el lápiz"
-          : next === "ink" ? "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); en los campos de una línea se vuelve texto"
-          : "✍️ Lápiz apagado: el iPad escribe texto con Scribble (Ajustes → Apple Pencil → Garabatear)",
-        next === "off" ? "#475569" : "#7c3aed", 3200);
+        next === "text" ? "✍️ → Texto: los NÚMEROS (vitales, labs, vasopresor) se escriben encima del campo y entran al instante; el TEXTO lo escribe Scribble del iPad (letra perfecta)"
+          : next === "ink" ? "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); los números entran al instante; el texto lo escribe Scribble"
+          : "✍️ Scribble: el iPad convierte tu letra en texto en cualquier campo. Si solo selecciona: Ajustes → Apple Pencil → Garabatear",
+        next === "off" ? "#475569" : "#7c3aed", 3600);
     }
     // Llave del campo: "app"/"manejo"… (nota), "ck:recibo"… (checklist) o "el:pN" para cualquier otra caja de texto
     // (modales, cabecera): ahí la tinta solo se convierte en texto, no se guarda.
@@ -16045,7 +16046,7 @@ function plExportBackup() {
        leyó distinto (con aviso); en los numéricos no interviene. La letra se APRENDE sola cuando el valor se queda
        20 s sin corregir, o con la corrección que se teclee. */
     const PEN_LIVE_NUM_MS = 900, PEN_LIVE_TEXT_MS = 1300, PEN_LIVE_FADE_MS = 1400, PEN_LIVE_JOIN_MS = 6000;
-    const PEN_LIVE = { el: null, kind: "", numeric: false, multiline: false, k: "", field: "", strokes: [], active: null, timer: 0, fadeTimer: 0, fadeTok: 0, base: "", text: "", rec: null, lastDone: null, applied: null, learnTimer: 0, learnMs: 20000, glass: null, lastBatch: {} };
+    const PEN_LIVE = { el: null, kind: "", numeric: false, multiline: false, k: "", field: "", strokes: [], active: null, timer: 0, fadeTimer: 0, fadeTok: 0, base: "", orig: "", text: "", rec: null, lastDone: null, applied: null, learnTimer: 0, learnMs: 20000, glass: null, lastBatch: {}, pendingAi: [], aiTok: 0, scribbleHint: false, rect: null };
     function _penInputOf(el) {
       const inp = (el && el.closest) ? el.closest("input") : null;
       if (!inp || inp.disabled || inp.readOnly) return null;
@@ -16073,13 +16074,21 @@ function plExportBackup() {
         + "Devuelve SOLO un JSON con este esquema: {\"texto\":\"…\"}";
     }
     // Si la tarjeta se repintó mientras se escribía, el campo original ya no está en el DOM: buscar su reemplazo.
+    // Varias cajas comparten los mismos data-* (dieta y NPT % solo llevan data-ck; cirugías y dispositivos, data-ck + data-id),
+    // así que entre las candidatas se exige la misma clase, placeholder, título y los mismos data-* presentes; si no hay una
+    // igual no se adivina (antes la dieta repintada caía en la primera caja con ese data-ck: la fecha de una cirugía).
     function _penElReplacement(el) {
       if (!el || el.isConnected) return el;
       try {
         if (el.id) { const e = document.getElementById(el.id); if (e) return e; }
+        const KEYS = ["ck", "field", "key", "ckfield", "labkey", "fecha", "penId", "id", "f"];
         const d = el.dataset; let sel = el.tagName.toLowerCase();
-        ["ck", "field", "key", "ckfield", "labkey", "fecha", "penId"].forEach(function (a) { if (d[a] !== undefined) sel += '[data-' + a.replace(/[A-Z]/g, function (m) { return "-" + m.toLowerCase(); }) + '="' + String(d[a]).replace(/"/g, '\\"') + '"]'; });
-        if (sel.indexOf("[") > 0) { const e = document.querySelector(sel); if (e) return e; }
+        KEYS.forEach(function (a) { if (d[a] !== undefined) sel += '[data-' + a.replace(/[A-Z]/g, function (m) { return "-" + m.toLowerCase(); }) + '="' + String(d[a]).replace(/"/g, '\\"') + '"]'; });
+        if (sel.indexOf("[") > 0) {
+          const cls = function (e) { return Array.prototype.filter.call(e.classList, function (c) { return c.indexOf("pl-pen-") !== 0; }).sort().join(" "); };
+          const same = function (e) { return cls(e) === cls(el) && e.getAttribute("placeholder") === el.getAttribute("placeholder") && e.getAttribute("title") === el.getAttribute("title") && KEYS.every(function (a) { return (e.dataset[a] === undefined) === (d[a] === undefined); }); };
+          const e = Array.prototype.find.call(document.querySelectorAll(sel), same); if (e) return e;
+        }
       } catch (_) {}
       return el;
     }
@@ -16122,16 +16131,39 @@ function plExportBackup() {
         setTimeout(function () { if (PEN_LIVE.fadeTok === tok && !PEN_LIVE.el && !PEN_LIVE.active) _penGlassClear(); }, 520);
       }, PEN_LIVE_FADE_MS);
     }
-    // Campo bajo el lápiz: input (una línea) o textarea (varios renglones). Con ✍️ Tinta, las cajas de la ficha
-    // (con data-key) se quedan con tinta en su propia capa y no entran aquí.
+    // ¿Es un iPad? Ahí el TEXTO lo escribe Scribble (el reconocedor de Apple: letra perfecta y al instante) y la app
+    // solo atiende los NÚMEROS, que sí reconoce bien y al momento. El reconocedor local de letras (plantillas
+    // sintéticas de molde) NO es fiable con escritura real: nunca se guarda como valor. En otros dispositivos (sin
+    // Scribble) el texto va por el ayudante de IA. Forzable en pruebas con window.__pl_force_ipad.
+    function _penIsIPad() {
+      if (typeof window.__pl_force_ipad === "boolean") return window.__pl_force_ipad;
+      const ua = navigator.userAgent || "";
+      return /iPad/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+    }
+    function _penScribbleHandlesText() { return _penIsIPad(); }
+    // Campo bajo el lápiz que la app ATIENDE: input numérico (siempre), input de texto o textarea (solo fuera del iPad,
+    // por IA). Con ✍️ Tinta, las cajas de la ficha (con data-key) se quedan con tinta en su propia capa y no entran aquí.
     function _penLiveTarget(el) {
       const inp = _penInputOf(el);
-      if (inp) return { el: inp, kind: "inp", numeric: _penIsNumeric(inp), multiline: false };
+      if (inp) { const numeric = _penIsNumeric(inp); if (!numeric && _penScribbleHandlesText()) return null; return { el: inp, kind: "inp", numeric: numeric, multiline: false }; }
       const ta = _penTa(el);
-      if (ta && !(penMode() === "ink" && ta.dataset.key)) return { el: ta, kind: "ta", numeric: false, multiline: true };
+      if (ta && !(penMode() === "ink" && ta.dataset.key)) { if (_penScribbleHandlesText()) return null; return { el: ta, kind: "ta", numeric: false, multiline: true }; }
+      return null;
+    }
+    // ¿Es un campo de TEXTO que en iPad se deja a Scribble? (la app no intercepta el lápiz y avisa una sola vez)
+    function _penScribbleField(el) {
+      if (!_penScribbleHandlesText()) return null;
+      const inp = _penInputOf(el); if (inp) return _penIsNumeric(inp) ? null : inp;
+      const ta = _penTa(el); if (ta && !(penMode() === "ink" && ta.dataset.key)) return ta;
       return null;
     }
     function _penLiveEl() { const S = PEN_LIVE; if (!S.el) return null; if (!S.el.isConnected) { const r = S.kind === "ta" && S.field ? (_penTaFor(S.k, S.field) || _penElReplacement(S.el)) : _penElReplacement(S.el); if (r) S.el = r; } return S.el; }
+    // Posición del campo de la sesión en pantalla (se anota tras cada trazo). Un `scroll` solo cierra la sesión si el campo
+    // de verdad se movió (la tinta del cristal ya no le queda encima): un evento de scroll atrasado —el de un scrollIntoView
+    // anterior que llega en el siguiente cuadro, el desplazamiento interno de una caja al cambiar su valor…— no cierra nada
+    // (antes partía la palabra o el número en dos lotes y mandaba el primero antes de la pausa).
+    function _penLiveRect() { const el = _penLiveEl(); if (!el) return null; const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; }
+    function _penLiveMoved() { const S = PEN_LIVE, r = _penLiveRect(); return !r || !S.rect || Math.abs(r[0] - S.rect[0]) > 1 || Math.abs(r[1] - S.rect[1]) > 1; }
     function _penLiveJoin(base, text, sep) { const b = String(base || "").replace(/\s+$/, ""); return b ? (text ? b + sep + text : b) : text; }
     function _penLiveClean(text, numeric) {
       if (numeric) return String(text || "").replace(/[^0-9.:\/\-]/g, "");
@@ -16139,21 +16171,25 @@ function plExportBackup() {
     }
     function _penStrokesY(strokes) { let a = Infinity, b = -Infinity; strokes.forEach(function (p) { p.forEach(function (q) { if (q[1] < a) a = q[1]; if (q[1] > b) b = q[1]; }); }); return [a, b]; }
     // Caja grande: lo escrito en el mismo renglón que el lote anterior (hace < 10 s y a la misma altura) se une con espacio; si no, renglón nuevo.
-    function _penLiveSep() {
-      const S = PEN_LIVE; if (S.kind !== "ta") return " ";
-      const last = S.lastBatch[S.k + "|" + S.field]; if (!last || !S.strokes.length || Date.now() - last.t > 10000) return "\n";
-      const y = _penStrokesY(S.strokes);
+    function _penLiveSepFor(kind, k, field, strokes) {
+      if (kind !== "ta") return " ";
+      const last = PEN_LIVE.lastBatch[k + "|" + field]; if (!last || !strokes.length || Date.now() - last.t > 10000) return "\n";
+      const y = _penStrokesY(strokes);
       return (y[0] < last.y[1] + 6 && y[1] > last.y[0] - 6) ? " " : "\n";
     }
+    function _penLiveSep() { const S = PEN_LIVE; return _penLiveSepFor(S.kind, S.k, S.field, S.strokes); }
+    // ¿Hay lotes de ese campo esperando a la IA? (su texto provisional está en el campo, sin guardar)
+    function _penLiveAiPending(el) { return PEN_LIVE.pendingAi.filter(function (P) { return P.el === el || _penElReplacement(P.el) === el; }); }
     function _penLiveBegin(t) {
       _penLiveFinalize("otro campo");
       clearTimeout(PEN_LIVE.fadeTimer); PEN_LIVE.fadeTok++;
       const S = PEN_LIVE; S.el = t.el; S.kind = t.kind; S.numeric = t.numeric; S.multiline = t.multiline; S.strokes = []; S.text = ""; S.rec = null;
+      S.orig = t.el.value;                                       // valor antes de escribir: a él se vuelve si no queda nada
       if (t.kind === "ta") { S.k = t.el.dataset.key || ""; S.field = _penField(t.el); if (S.k) getNote(S.k); S.base = t.el.value; }
       else {
         S.k = ""; S.field = "";
-        // Campo de texto en el que se acaba de escribir (< 6 s): lo nuevo se agrega con espacio; si no, se reemplaza el valor.
-        const ld = S.lastDone; const cont = !t.numeric && ld && ld.el === t.el && Date.now() - ld.t < PEN_LIVE_JOIN_MS && String(t.el.value || "").trim();
+        // Campo de texto en el que se acaba de escribir (< 6 s) o que aún espera a la IA: lo nuevo se agrega con espacio; si no, se reemplaza el valor.
+        const ld = S.lastDone; const cont = !t.numeric && (_penLiveAiPending(t.el).length || (ld && ld.el === t.el && Date.now() - ld.t < PEN_LIVE_JOIN_MS)) && String(t.el.value || "").trim();
         S.base = cont ? t.el.value : "";
       }
       try { t.el.classList.add("pl-pen-live"); } catch (_) {}
@@ -16174,6 +16210,7 @@ function plExportBackup() {
       else S.strokes.push(pts);
       if (!S.strokes.length) { S.text = ""; S.rec = null; _penLiveFinalize("borrado"); return; }   // se borró todo: el campo vuelve a su valor
       _penLivePreview();
+      S.rect = _penLiveRect();
       _penGlassDraw(S.strokes, null, false);
       S.timer = setTimeout(function () { _penLiveFinalize("pausa"); }, S.numeric ? PEN_LIVE_NUM_MS : PEN_LIVE_TEXT_MS);
     }
@@ -16187,21 +16224,20 @@ function plExportBackup() {
     function _penLiveFinalize(why) {
       const S = PEN_LIVE; if (!S.el) return;
       clearTimeout(S.timer); S.timer = 0;
-      const el = _penLiveEl(), text = S.text, strokes = S.strokes, numeric = S.numeric, kind = S.kind, k = S.k, field = S.field, rec = S.rec, base = S.base;
+      const el = _penLiveEl(), text = S.text, strokes = S.strokes, numeric = S.numeric, kind = S.kind, k = S.k, field = S.field, rec = S.rec, base = S.base, orig = S.orig;
       const sep = _penLiveSep();
       try { if (el) el.classList.remove("pl-pen-live"); } catch (_) {}
       S.el = null; S.strokes = []; S.text = ""; S.rec = null;
-      if (!text || !el) { _penGlassClear(); if (el) el.value = base; return; }     // nada legible: el campo vuelve a lo que tenía
-      let start = 0;
-      if (kind === "inp") { const applied = _penLiveJoin(base, text, " "); _penSetInputValue(el, applied); start = applied.length - text.length; }
-      else {
-        el.value = base; _penInsertText(k, field, text, sep, true); start = el.value.length - text.length;
-        S.lastBatch[k + "|" + field] = { t: Date.now(), y: _penStrokesY(strokes) };
-      }
-      S.lastDone = { el: el, t: Date.now() };
+      if (!text || !el) { _penGlassClear(); if (el) el.value = orig; return; }     // nada legible: el campo vuelve a lo que tenía
       _penGlassDraw(strokes, null, true); _penGlassFade();
-      _penLiveLearnLater(el, text, start, rec);
-      if (!numeric) _penLiveAiCheck(el, kind, k, field, text, strokes);
+      if (!numeric) {
+        // TEXTO: la lectura local es solo PROVISIONAL (no es fiable con escritura real); el valor lo da la IA.
+        _penLiveAiCommit(el, kind, k, field, base, orig, sep, text, strokes);
+        return;
+      }
+      const applied = _penLiveJoin(base, text, " "); _penSetInputValue(el, applied);
+      S.lastDone = { el: el, t: Date.now() };
+      _penLiveLearnLater(el, text, applied.length - text.length, rec);
     }
     // Aprendizaje implícito: si en 20 s el valor sigue igual, cada carácter (confiable) se aprende con los trazos de quien
     // escribe; si se corrigió tecleando y hay tantos caracteres como grupos de trazos, se aprende la corrección.
@@ -16223,28 +16259,85 @@ function plExportBackup() {
       }
       return n;
     }
-    // Revisión en segundo plano por el ayudante de IA (worker /api/ai): solo texto; si lee distinto y el campo sigue como
-    // lo dejó el lápiz, lo corrige y avisa. Sin worker o sin red no pasa nada (lo local se queda).
-    async function _penLiveAiCheck(el, kind, k, field, text, strokes) {
-      const proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : ""; if (!proxyUrl) return;
-      try {
-        const png = _penStrokesPng(strokes); if (!png) return;
-        const ai = await _penRecognize(png, kind === "inp" ? _penInputPrompt(_penInputLabel(el), false) : _penTextPrompt(field, el));
-        const norm = function (s) { return String(s || "").replace(/\s+/g, " ").trim().toUpperCase(); };
-        if (!ai || norm(ai) === norm(text)) return;
-        const cur = _penElReplacement(el); if (!cur) return;
-        const v = String(cur.value || ""); const at = v.lastIndexOf(text);
-        if (at < 0 || at + text.length !== v.length) return;                      // ya se siguió escribiendo o se corrigió: no tocar
-        const next = v.slice(0, at) + ai;
-        clearTimeout(PEN_LIVE.learnTimer); PEN_LIVE.applied = null;              // no aprender una lectura que la IA cambió
-        if (kind === "inp") _penSetInputValue(cur, next);
-        else if (field.indexOf("el:") === 0) { cur.value = next; cur.dispatchEvent(new Event("input", { bubbles: true })); cur.dispatchEvent(new Event("change", { bubbles: true })); }
-        else {
-          const nd = getNote(k); const prev = toSafeString(_inkFieldGet(nd, field)); cur.value = next;
-          if (field.indexOf("ck:") === 0) { liveCkText(cur); updateCkText(k, field.slice(3), next); } else { liveUpdate(cur); updateField(k, field, next, prev); }
+    // TEXTO con el ayudante de IA (worker /api/ai, visión). La lectura local queda PROVISIONAL en el campo (morada,
+    // cursiva, SIN guardar) mientras la IA transcribe los trazos; al volver, su texto se inserta por la vía del teclado
+    // (autor, deshacer, guardado). Si no hay worker o falla, el campo vuelve a lo que tenía y se avisa qué hacer. En iPad
+    // el texto normalmente ni pasa por aquí: lo escribe Scribble. Varias cajas pueden estar esperando a la vez, y en una misma
+    // caja varios lotes (una palabra tras otra: cada pausa de 1.3 s manda uno): entran DETRÁS del anterior, en orden; nada se pierde.
+    async function _penLiveAiCommit(el, kind, k, field, base, orig, sep, provisional, strokes) {
+      const S = PEN_LIVE;
+      const proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : "";
+      if (!proxyUrl) {
+        el.value = orig;
+        if (typeof _plToast === "function") _plToast("✍️ Texto con el lápiz: en iPad actívalo en Ajustes → Apple Pencil → Garabatear (Scribble); en otros equipos configura el ayudante de IA en ⚙️ Config. Los números sí entran al instante.", "#b45309", 5500);
+        return;
+      }
+      const prev = _penLiveAiPending(el);                       // lotes anteriores de ESTE campo aún en espera: este va detrás (base/orig se fijan cuando acaben)
+      // Si la caja ya es del teclado (algún lote SUELTO), este lote también va suelto: su lectura local NO se muestra (si se
+      // mostrara, el lote suelto anterior la tomaría por texto tecleado al volver su IA y la guardaría) y la caja vuelve a lo
+      // que tenía antes de la sesión; la IA se agregará detrás de lo que haya.
+      const released = prev.some(function (Q) { return Q.released; });
+      const P = { el: el, kind: kind, k: k, field: field, base: base, orig: orig, sep: sep, prov: provisional, strokes: strokes, tok: ++S.aiTok, shown: "", released: released };
+      S.pendingAi.push(P);
+      if (released) el.value = orig;
+      else { el.value = P.shown = _penLiveJoin(base, provisional, sep); el.classList.add("pl-pen-prov", "pl-pen-live"); }
+      // Lo que de verdad hay en la caja (tecleado/confirmado) sin ninguna lectura local: con una sesión abierta en ella, la caja
+      // muestra la lectura en vivo y lo real es S.orig (el valor antes de empezar a escribir).
+      const typedIn = function (cur) { return (_penLiveEl() === cur) ? String(S.orig || "") : String(cur.value || ""); };
+      P.done = (async function () {
+        let ai = "";
+        try {
+          const png = _penStrokesPng(strokes); if (!png) throw new Error("sin trazos");
+          const req = _penRecognize(png, kind === "inp" ? _penInputPrompt(_penInputLabel(el), false) : _penTextPrompt(field, el));
+          req.catch(function () {});                            // la IA arranca ya; mientras, se espera a los lotes anteriores
+          await Promise.all(prev.map(function (Q) { return Q.done.catch(function () {}); }));
+          ai = await req;
+        } catch (e) {
+          try { await Promise.all(prev.map(function (Q) { return Q.done.catch(function () {}); })); } catch (_) {}   // los anteriores fijan base/orig de este antes de deshacerlo
+          const i = S.pendingAi.indexOf(P); if (i >= 0) S.pendingAi.splice(i, 1);
+          // Suelto (el teclado tomó la caja): no se pisa lo que haya; solo se quita el lote y se avisa.
+          const cur = _penElReplacement(el);
+          if (cur) { const typed = typedIn(cur); if (!P.released) cur.value = P.orig; cur.classList.remove("pl-pen-prov", "pl-pen-live"); _penLiveAiSettled(cur, P.released ? typed : P.orig); }
+          if (typeof _plToast === "function") _plToast("No se pudo convertir el texto con IA (" + ((e && e.message) || e) + "). Escríbelo con el teclado o con Scribble.", "#b91c1c", 4000);
+          return;
         }
-        if (typeof _plToast === "function") _plToast("🤖 La IA corrigió lo escrito: «" + _egCut(text, 40) + "» → «" + _egCut(ai, 40) + "»", "#7c3aed", 3500);
-      } catch (e) { safeLog("pen ai check:", e); }
+        const i = S.pendingAi.indexOf(P); if (i >= 0) S.pendingAi.splice(i, 1);
+        const cur = _penElReplacement(el); if (!cur) return;
+        cur.classList.remove("pl-pen-prov", "pl-pen-live");
+        // Suelto: lo tecleado se respeta y la IA se agrega detrás; si no, parte de su base como siempre. Nunca de una lectura local.
+        const typed = typedIn(cur), b = (P.released && typed !== P.orig) ? typed : P.base;
+        cur.value = b;
+        if (kind === "inp") _penSetInputValue(cur, _penLiveJoin(b, ai, P.sep));
+        else {
+          _penInsertText(k, field, ai, P.sep, true); S.lastBatch[k + "|" + field] = { t: Date.now(), y: _penStrokesY(strokes) };
+          try { cur.classList.add("pl-pen-flash"); setTimeout(function () { cur.classList.remove("pl-pen-flash"); }, 1200); } catch (_) {}
+        }
+        S.lastDone = { el: cur, t: Date.now() };
+        _penLiveAiSettled(cur, cur.value);
+      })();
+      P.done.catch(function () {});
+    }
+    // Un lote de `cur` acabó (bien o mal) y el campo quedó en `confirmed`: los lotes que siguen esperando en ese campo parten de
+    // ahí (su base, su valor de vuelta y su separador), y el campo muestra lo confirmado + sus provisionales + lo que se esté escribiendo.
+    // Si algún lote de esa caja está SUELTO (el teclado la tomó), no se vuelve a mostrar ningún provisional ahí.
+    function _penLiveAiSettled(cur, confirmed) {
+      const S = PEN_LIVE; let shown = confirmed; const Qs = _penLiveAiPending(cur), released = Qs.some(function (Q) { return Q.released; });
+      Qs.forEach(function (Q) { Q.base = Q.orig = shown; Q.sep = _penLiveSepFor(Q.kind, Q.k, Q.field, Q.strokes); if (!Q.released) { shown = _penLiveJoin(shown, Q.prov, Q.sep); Q.shown = shown; } });
+      const waiting = shown !== confirmed && !released, live = _penLiveEl() === cur;
+      if (live) { S.base = S.orig = shown; _penLivePreview(); } else if (waiting) cur.value = shown;
+      cur.classList.toggle("pl-pen-prov", waiting); cur.classList.toggle("pl-pen-live", waiting || live);
+    }
+    // El TECLADO toma una caja con lectura provisional (foco, tecla o entrada de texto): el provisional se quita ANTES de que
+    // entre nada tecleado —así nunca se guarda con ello por input/liveUpdate— y sus lotes quedan SUELTOS: su texto de la IA se
+    // agrega detrás de lo que haya al llegar, sin volver a mostrar provisionales ni pisar lo tecleado. Una sesión abierta en esa
+    // caja se cierra (va a la IA) antes.
+    function _penLiveAiRelease(el) {
+      if (_penLiveEl() === el) _penLiveFinalize("teclado");       // (_penLiveEl: también si la caja de la sesión se repintó)
+      const Qs = _penLiveAiPending(el); if (!Qs.length) return;
+      const live = Qs.filter(function (Q) { return !Q.released; });
+      if (live.length && String(el.value || "") === live[live.length - 1].shown) el.value = live[0].orig;   // la caja muestra justo nuestro provisional: vuelve a lo confirmado
+      Qs.forEach(function (Q) { Q.released = true; });
+      el.classList.remove("pl-pen-prov", "pl-pen-live");
     }
     // ── Eventos del cristal: SOLO el lápiz (pointerType "pen"). El dedo y el ratón siguen llegando al campo. ──
     function _penLiveDown(e, t) {
@@ -16277,17 +16370,33 @@ function plExportBackup() {
         try {
           if (!e.touches || e.touches.length !== 1 || !penModeOn()) return;
           if (e.touches[0].touchType !== "stylus") return;        // WebKit: "stylus" = Apple Pencil
-          if (!PEN_LIVE.el && !_penTa(e.target) && !_penInputOf(e.target)) return;   // con sesión abierta, todo trazo es del campo
-          e.preventDefault();                                        // ni scroll ni Scribble: la tinta la pinta la app
+          if (PEN_LIVE.el) {                                       // con sesión abierta, todo trazo es del campo (aunque se salga)…
+            const p = e.touches[0];                                // …salvo el que empieza LEJOS sobre un campo de TEXTO del iPad: ese es de Scribble (pointerdown cierra la sesión)
+            if (!(_penScribbleField(e.target) && _penLiveFar([[p.clientX, p.clientY]]))) e.preventDefault();
+            return;
+          }
+          const ta = _penTa(e.target);
+          if (ta && penMode() === "ink" && ta.dataset.key) { e.preventDefault(); return; }   // ✍️ Tinta en caja de la ficha
+          if (_penLiveTarget(e.target)) e.preventDefault();        // solo lo que atiende la app; el TEXTO en iPad sigue a Scribble
         } catch (_) {}
       }, { passive: false, capture: true });
       document.addEventListener("touchmove", function (e) { if ((PEN.active || PEN_LIVE.active) && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
       document.addEventListener("pointerdown", function (e) {
         if (e.pointerType !== "pen" || !penModeOn()) return;
+        const ta = _penTa(e.target), inkBox = !!(ta && penMode() === "ink" && ta.dataset.key);
+        if (PEN_LIVE.el) {
+          // Sesión abierta: todo trazo es de ella (aunque se salga del cuadro)… salvo el que empieza LEJOS sobre un campo que no
+          // es suyo: un campo de TEXTO del iPad (es de Scribble: se cierra lo pendiente y NO se intercepta) o una caja de ✍️ Tinta.
+          const away = (inkBox || _penScribbleField(e.target)) && _penLiveFar([[e.clientX, e.clientY]]);
+          if (!away) { e.preventDefault(); e.stopPropagation(); _penLiveDown(e, _penLiveTarget(e.target)); return; }
+          _penLiveFinalize("otro campo");
+        }
+        if (inkBox) { e.preventDefault(); e.stopPropagation(); _penStart(ta, e); return; }   // ✍️ Tinta: capa propia
         const t = _penLiveTarget(e.target);
-        if (!t && !PEN_LIVE.el) {
-          const ta = _penTa(e.target); if (!ta) return;              // ✍️ Tinta sobre una caja de la ficha: capa de tinta propia
-          e.preventDefault(); e.stopPropagation(); _penStart(ta, e); return;
+        if (!t) {
+          // Campo de TEXTO en iPad: no se intercepta, lo escribe Scribble. Un solo aviso por si está apagado en Ajustes.
+          if (_penScribbleField(e.target) && !PEN_LIVE.scribbleHint) { PEN_LIVE.scribbleHint = true; if (typeof _plToast === "function") _plToast("✍️ El texto lo escribe Scribble del iPad. Si solo selecciona en vez de escribir: Ajustes → Apple Pencil → Garabatear", "#475569", 4500); }
+          return;
         }
         e.preventDefault(); e.stopPropagation();
         _penLiveDown(e, t);
@@ -16299,7 +16408,11 @@ function plExportBackup() {
       document.addEventListener("pointerup", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, false); else if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) _penLiveUp(e, false); }, true);
       document.addEventListener("pointercancel", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, true); else if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) _penLiveUp(e, true); }, true);
       window.addEventListener("blur", function () { if (PEN.active) _penEnd(null, true); if (PEN_LIVE.active) _penLiveUp(null, true); _penLiveFinalize("blur"); });
-      window.addEventListener("scroll", function () { if (PEN_LIVE.el && !PEN_LIVE.active) _penLiveFinalize("scroll"); }, true);
+      // Teclado en una caja con provisional (o con sesión abierta): el provisional se quita antes de que entre lo tecleado.
+      // (también la caja repintada por Realtime mientras espera a la IA: ya no lleva la clase, pero sigue con lotes pendientes)
+      const onKeyboard = function (e) { try { const t = e.target; if (!t || !t.classList) return; if ((PEN_LIVE.el && _penLiveEl() === t) || (PEN_LIVE.pendingAi.length && (t.classList.contains("pl-pen-prov") || _penLiveAiPending(t).length))) _penLiveAiRelease(t); } catch (_) {} };
+      document.addEventListener("focus", onKeyboard, true); document.addEventListener("keydown", onKeyboard, true); document.addEventListener("beforeinput", onKeyboard, true);
+      window.addEventListener("scroll", function () { if (PEN_LIVE.el && !PEN_LIVE.active && _penLiveMoved()) _penLiveFinalize("scroll"); }, true);
       window.addEventListener("resize", function () { if (PEN_LIVE.el && !PEN_LIVE.active) _penLiveFinalize("resize"); if (!PEN_LIVE.el) _penGlassClear(); });
       try { document.body.classList.toggle("pen-on", penModeOn()); } catch (_) {}
       // Las tarjetas también se repintan fuera de renderView/_rerenderCard (Realtime, RIS, fotos…): cualquier
@@ -16814,7 +16927,7 @@ function plExportBackup() {
 
     // ─── IMAGEN FIELD (history) ──────────────────────────────────────────────────────
     // ─── ESTUDIOS DE IMAGEN del robot RIS (tabla ris_estudios) ──────────────────────────────
-    const RIS_SELECT = "id,exp,paciente,fecha,hora,sede,estudios,modalidad,procedencia,critico,reporte,reporte_url,imagen_url,scraped_at";
+    const RIS_SELECT = "id,exp,paciente,fecha,hora,sede,estudios,modalidad,procedencia,critico,reporte,reporte_url,imagen_url,reporte_estado,reporte_motivo,scraped_at";
     function _risKey(exp) { return String(exp == null ? "" : exp).trim(); }
     async function _loadRisEstudios(pts) {
       const exps = new Set();
@@ -16871,9 +16984,16 @@ function plExportBackup() {
         const rep = toSafeString(r.reporte).trim();
         const rid = ek + "_ris_" + i;
         const links = (r.reporte_url ? `<a href="${esc(r.reporte_url)}" target="_blank" rel="noopener" class="ris-link">📄 Reporte</a>` : "") + (r.imagen_url ? `<a href="${esc(r.imagen_url)}" target="_blank" rel="noopener" class="ris-link">🖼 Imagen</a>` : "");
+        // Estado del reporte que escribe el robot (oct 2026): 'pendiente_ris' = el RIS aún no lo
+        // transcribió; 'pendiente_descarga' = el reporte ya existe en el visor pero el robot no pudo
+        // bajarlo (sesión/presupuesto) y lo reintenta en la siguiente pasada. Sin estado → texto de siempre.
+        const estado = String(r.reporte_estado || "");
+        const sinRep = estado === "pendiente_descarga"
+          ? `Reporte disponible en el visor · el robot lo descarga en la siguiente pasada${r.reporte_motivo ? ` (${esc(String(r.reporte_motivo).slice(0, 80))})` : ""}`
+          : `Sin reporte todavía · estudio realizado (${esc(r.modalidad || "imagen")})${estado === "pendiente_ris" ? " · el RIS aún no lo transcribe" : ""}`;
         return `<div class="ris-item${r.critico ? " ris-crit" : ""}${rep ? " ris-has-rep" : ""}">
           <div class="ris-head"><span class="ris-when">${when}</span><span class="ris-title">${titulo}</span>${r.critico ? '<span class="ris-badge-crit">CRÍTICO</span>' : ""}${r.sede ? `<span class="ris-sede">${esc(r.sede)}</span>` : ""}${links}</div>
-          ${rep ? `<details class="ris-rep" id="${rid}"><summary>Reporte transcrito · ${esc(String(rep.length))} letras</summary><div class="ris-rep-txt">${esc(rep)}</div></details>` : `<div class="ris-norep">Sin reporte todavía · estudio realizado (${esc(r.modalidad || "imagen")})</div>`}
+          ${rep ? `<details class="ris-rep" id="${rid}"><summary>Reporte transcrito · ${esc(String(rep.length))} letras</summary><div class="ris-rep-txt">${esc(rep)}</div></details>` : `<div class="ris-norep">${sinRep}</div>`}
         </div>`;
       }).join("");
       const last = list[0] && list[0].scraped_at ? new Date(list[0].scraped_at) : null;

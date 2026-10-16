@@ -17,6 +17,7 @@ import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRec
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
          selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport } from "./lib.js";
 import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
+import { orderDrillCandidates, isPendingCulture } from "./drill-order.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -101,7 +102,10 @@ const WL_DRILLDOWN              = parseInt(ENV("WL_DRILLDOWN", "1"), 10);       
 // AYER+HOY, así que 12 cubre BH+QS+hepática(+coags/gases) de 2 días sin drillear
 // homónimos. Costo: más drills = scraper más lento (completitud > velocidad, por
 // pedido explícito). Tuneable por env WL_DRILLDOWN_MAX si hace falta más/menos.
-const WL_DRILLDOWN_MAX          = parseInt(ENV("WL_DRILLDOWN_MAX", "12"), 10);     // max reportes/paciente
+// Saneado (oct 2026): una env mal puesta ("abc", vacía, negativa) vuelve al 12 por defecto, así el
+// drill del objetivo (drill-order.js) y el fallback legacy comparten el mismo tope y ninguno queda
+// en 0 drills ni "sin tope" por accidente.
+const WL_DRILLDOWN_MAX          = (() => { const n = parseInt(ENV("WL_DRILLDOWN_MAX", "12"), 10); return Number.isFinite(n) && n >= 0 ? n : 12; })();     // max reportes/paciente
 // Guarda de edad (oct 2026): un bloque cuyo encabezado coincide por nombre pero cuya
 // |edad WinLab − edad censo| supera la tolerancia NO es el objetivo (homónimo de nombre
 // completo). Corrida #386: 8 bloques en 7 camas con labs de otra persona. Ver lib.js.
@@ -333,10 +337,11 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true, tried: [], seenNames: [] };
   }
   if (paciente.alias) console.log(`       [alias] nombre en WinLab fijado en la app: "${paciente.alias}"`);
-  // 6 intentos (antes 5): con el candidato "materno-solo + nombre" la escalera de un nombre de
-  // 4 palabras llega a 6. El presupuesto por paciente sigue mandando (abajo). Caso real: cama 3-181
-  // (corrida #419) con el paterno mal escrito en la hoja → se encontró en el 3.er candidato.
-  const MAX_TRIES = Math.min(candidates.length, 6);
+  // 7 intentos (antes 6): con el candidato "invertido apellidos solos" (oct 2026) la escalera de un
+  // nombre de 5 palabras con Ñ llega a 7. El presupuesto por paciente sigue mandando (abajo) y cada
+  // NINGÚN REGISTRO es rápido. Caso real: cama 3-181 (corrida #419) con el paterno mal escrito en la
+  // hoja → se encontró en el 3.er candidato.
+  const MAX_TRIES = Math.min(candidates.length, 7);
   let last = null;
   // Diagnóstico para la app (winlab_match): qué se buscó y qué nombres parecidos devolvió WinLab.
   const tried = [], seen = new Set();
@@ -365,7 +370,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
     noteSearch(last);
     last.tried = tried.slice(); last.seenNames = Array.from(seen).slice(0, 8);
     if (!last.noResults) {
-      // Variante literal del mismo nombre abreviado (ej. "MA ERIKA" además de "MARIA ERIKA"): WinLab
+      // Variante literal del mismo nombre abreviado (ej. "MA ELISA" además de "MARIA ELISA"): WinLab
       // puede tener dos registros del mismo paciente; buscar también la otra y UNIR filas (dedupe por
       // celdas). Exige match positivo del objetivo (nunca homónimos a ciegas).
       const sib = candidates[ci + 1];
@@ -718,6 +723,12 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // Para la app (winlab_match): nombres que WinLab listó y con cuál se identificó al objetivo.
   result.seenNames = sel.seenNames || [];
   if (sel.matchedHeader && targetIdxs.length) result.encontradoComo = sel.matchedHeader;
+  // Coincidencia PARCIAL (oct 2026): WinLab lista menos nombres de pila que el censo (3 vs 2). Queda
+  // en el log y en winlab_match.detalle para vigilar que la regla no cuele homónimos.
+  if (sel.partialMatch && targetIdxs.length) {
+    result.partialMatch = true;
+    console.log(`       [targeting] coincidencia PARCIAL con «${sel.matchedHeader}» (WinLab lista menos nombres que el censo)`);
+  }
   // Marcar las filas del objetivo: la fusión entre corridas (y la app) solo confían en __target.
   for (const i of targetIdxs) result.rows[i].__target = true;
   // Reutilizar `valores` ya parseados en corridas previas (mismo referto = mismas celdas) para
@@ -745,7 +756,10 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // Si la lista trae solo homónimos, descartamos TODO (rows=[]) y el caller prueba el
   // siguiente candidato. Nunca drill a ciegas ni blob con puros ajenos. Precisión > recall.
   if (params.requireTargetMatch && !targetIdxs.length) {
-    console.log(`       [retry-guard] resultados sin match del objetivo (${result.rows.length} filas de homónimos${ageRejected.length ? `, ${ageRejected.length} bloque(s) descartados por edad` : ""}) → descartados`);
+    // Distinguir "WinLab no devolvió nada" de "devolvió solo homónimos": antes todo salía como
+    // "0 filas de homónimos" y confundía el diagnóstico (corrida #441).
+    if (result.noResults || !result.rows.length) console.log(`       [retry-guard] NINGÚN REGISTRO con este candidato → siguiente`);
+    else console.log(`       [retry-guard] resultados sin match del objetivo (${result.rows.length} filas de homónimos${ageRejected.length ? `, ${ageRejected.length} bloque(s) descartados por edad` : ""}) → descartados`);
     return { ...result, rows: [], noResults: true, noTarget: true };
   }
 
@@ -762,13 +776,13 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
     if (targetIdxs.length) {
       // Pendiente = sin valores, o cultivo cuyo PDF aún no se guardó (germen/antibiograma viven
       // en el PDF; las corridas anteriores solo tenían la tabla "CULTIVO POSITIVO").
-      const pendientes = targetIdxs.filter((i) => {
-        const r = result.rows[i];
-        if (!(Array.isArray(r.valores) && r.valores.length)) return true;
-        return looksLikeCultureReport(r) && !r.cultivo_texto;
-      });
-      drillIdxs = pendientes.slice(0, WL_DRILLDOWN_MAX);
-      console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; ${result.reusedValores || 0} con valores de corridas previas; drilleando ${drillIdxs.length}`);
+      // CULTIVOS PRIMERO (oct 2026): un cultivo tarda 5-7 días, así que en la lista (más reciente
+      // primero) queda detrás de los labs diarios; con >WL_DRILLDOWN_MAX pendientes el tope lo dejaba
+      // fuera corrida tras corrida y la app nunca mostraba germen/antibiograma. El orden vive en
+      // drill-order.js: cultivos pendientes → resto por recencia; el tope aplica a los no-cultivo.
+      drillIdxs = orderDrillCandidates(result.rows, targetIdxs, { max: WL_DRILLDOWN_MAX, looksLikeCultureReport });
+      const nCultivos = drillIdxs.filter((i) => isPendingCulture(result.rows[i], looksLikeCultureReport)).length;
+      console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; ${result.reusedValores || 0} con valores de corridas previas; drilleando ${drillIdxs.length} (${nCultivos} cultivos primero)`);
     } else if (WL_BLIND_FALLBACK === 1) {
       drillIdxs = linkIdxs.slice(0, WL_DRILLDOWN_MAX);
       console.log(`       [targeting] objetivo no identificado por encabezado → fallback LEGACY (WL_BLIND_FALLBACK=1): primeros ${drillIdxs.length}`);
@@ -786,10 +800,11 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
       // SOFT-DEADLINE (jun 2026): si nos acercamos al presupuesto por-paciente,
       // PARAR de drillear y devolver lo que YA se capturó, en vez de dejar que el
       // Promise.race externo (timeout duro 90s) RECHACE todo y el paciente se quede
-      // con CERO labs. Los refertos vienen más-reciente-primero, así que lo drilleado
-      // es lo de HOY/AYER (BH+QS+hepática), que es lo clínicamente importante. La
-      // historia profunda se acumula igual en corridas diarias. (Casos reales:
-      // GARCIA NORIA / CARRANCO / RANGEL — UCI/críticos, timeout 90s = 0 reportes.)
+      // con CERO labs. Los refertos vienen más-reciente-primero (tras los cultivos
+      // pendientes, que drill-order.js pone al frente), así que lo drilleado es lo de
+      // HOY/AYER (BH+QS+hepática), que es lo clínicamente importante. La
+      // historia profunda se acumula igual en corridas diarias. (Casos reales jun 2026:
+      // tres pacientes de UCI/críticos con muchos refertos, timeout 90s = 0 reportes.)
       if (deadlineTs && Date.now() > deadlineTs) {
         console.log(`       [soft-deadline] presupuesto agotado: drilleados ${drilledOk}/${drillIdxs.length}, devolviendo parcial`);
         break;
@@ -1352,7 +1367,7 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
   process.once("SIGINT", onSigint);
   // Presupuesto estricto por paciente (search + TODO el drilling). SUBIDO 45s→90s
   // (15 jun 2026): con WL_DRILLDOWN_MAX alto (drillear BH+QS+hepática+coags) un paciente
-  // con muchos refertos tardaba >45s y se ABANDONABA sin labs (caso 3-175 GARCIA NORIA:
+  // con muchos refertos tardaba >45s y se ABANDONABA sin labs (caso real cama 3-175:
   // "ERROR timeout 45000ms"). 90s da margen para ~12 drills + búsqueda. Tuneable por env.
   const PER_PATIENT_BUDGET_MS = parseInt(ENV("WL_PER_PATIENT_BUDGET_MS", "90000"), 10);
   // Margen SOFT antes del timeout DURO: el drill se detiene a (budget - margen) para
@@ -1392,7 +1407,8 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
         exp: String(p.exp).slice(0, 64), cama: p.cama || null, nombre_censo: p.nombre || null, alias: p.alias || null,
         status: matched > 0 ? "ok" : (res.noTarget ? "homonimos" : "sin_registro"),
         buscado: res.tried || [], candidatos: (res.seenNames || []).slice(0, 8), encontrado_como: res.encontradoComo || null,
-        reportes: matched, detalle: null, checked_at: new Date().toISOString(), run_id: process.env.GITHUB_RUN_ID || null,
+        reportes: matched, detalle: res.partialMatch ? "coincidencia parcial: WinLab lista menos nombres de pila que el censo" : null,
+        checked_at: new Date().toISOString(), run_id: process.env.GITHUB_RUN_ID || null,
       };
       matchRecords.push(mrec); pendingMatch.push(mrec);
 

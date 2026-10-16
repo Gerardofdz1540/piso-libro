@@ -191,6 +191,42 @@ export function isFormTableText(rawText) {
   return hits >= 2;
 }
 
+// Celdas que NO son datos de un reporte: menú/formulario de WinLab (ES/IT) y, desde oct 2026, la
+// PAGINACIÓN con que termina la tabla de resultados: ["Elementos Encontrados : 20", "", "Inicio Página"]
+// y ["", "", "", "INICIO PAGINA"] (con enlaces). Esas filas pasaban como reporte con __hasLink, caían
+// bajo el bloque del paciente (cama 3-154: 3 "targets", 2 eran paginación) y se drilleaban en vano,
+// gastando cupo de WL_DRILLDOWN_MAX. Se compara en MAYÚSCULAS y sin acentos ("Inicio Página" cuenta).
+const GARBAGE_CELL_RE = new RegExp([
+  "^(LISTA|BUSCA) REPORTES", "TODAS LAS UNIDADES", "^(INICIO|REPORTES|AYUDA|CIERRA)$",
+  // menú/formulario en italiano: WinLab a veces pega las palabras ("ELENCOREFERTI", "HOME REFERTI HELP CHIUDI",
+  // "TUTTE ENTITA UTENTE"), por eso espacio opcional y UNITA|ENTITA
+  "^(ELENCO|CERCA) ?REFERTI", "TUTTE (LE )?(UNITA|ENTITA)", "^HOME REFERTI", "^(HOME|REFERTI|AIUTO|HELP|CHIUDI)$",
+  // paginación al pie de la tabla (formas reales en los blobs, ES / IT; en italiano WinLab pega las
+  // palabras: "RECORDTROVATI : 4", "SELEZIONATUTTO", "PAGINA 1 DI 2")
+  "^(INICIO|FIN) (DE )?PAGINA$", "^ELEMENTOS ?ENCONTRADOS", "^SELECCIONA ?TODO$", "^PAGINA \\d",
+  "^(INIZIO|FINE) PAGINA$", "^(ELEMENTI|RECORD) ?TROVATI", "^SELEZIONA ?TUTT[OI]$",
+].join("|"));
+export function isGarbageCell(c) {
+  if (typeof c !== "string") return false;
+  const s = c.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+  return !!s && GARBAGE_CELL_RE.test(s);
+}
+
+// ¿Una fila con enlace (__hasLink) es de verdad un REPORTE? Los reportes de WinLab siempre traen
+// fecha-hora de toma/reporte (dd/mm/aaaa hh:mm) y/o el barcode del referto (≥ 8 dígitos). Las filas
+// de paginación ("Inicio Página", "Elementos Encontrados : 20", números de página) también llevan
+// enlaces pero no tienen ninguna de las dos cosas → no se drillean ni cuentan como enlaces del
+// paciente. Las filas-encabezado de paciente no pasan por aquí (no tienen __hasLink).
+const REPORT_DATETIME_RE = /\b\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}\b/;
+const REPORT_BARCODE_RE = /(^|\D)\d{8,}(\D|$)/;
+export function looksLikeReportLinkRow(cells) {
+  if (!Array.isArray(cells)) return false;
+  return cells.some((c) => {
+    const s = String(c ?? "").trim();
+    return !!s && (REPORT_DATETIME_RE.test(s) || REPORT_BARCODE_RE.test(s));
+  });
+}
+
 // Verifica si una "fila" extraida es realmente data o solo metadata
 // tecnica (COL_X / __hasLink / __rowIdxInTable). Lo usamos para no
 // guardar basura en winlab_labs.
@@ -202,9 +238,8 @@ export function isMeaningfulReportRow(row) {
   // aunque los headers hayan caido en fallback COL_X. __cells contiene el
   // texto crudo de cada <td> — es la fuente mas confiable de si hay data.
   if (Array.isArray(row.__cells) && row.__cells.length > 0) {
-    const GARBAGE = /^(LISTA|BUSCA) REPORTES|TODAS LAS UNIDADES|^(INICIO|REPORTES|AYUDA|CIERRA)$|^(ELENCO|CERCA) REFERTI|TUTTE LE UNITA|^(HOME|REFERTI|AIUTO|CHIUDI)$/;
     const realCells = row.__cells.filter(
-      (c) => c && typeof c === "string" && c.trim() && !GARBAGE.test(c)
+      (c) => c && typeof c === "string" && c.trim() && !isGarbageCell(c)
     );
     if (realCells.length >= 2) return true;
   }
@@ -213,8 +248,7 @@ export function isMeaningfulReportRow(row) {
     if (technicalKeys.has(key)) continue;
     if (/^COL_\d+$/.test(key)) continue;          // header generico = no real
     if (val === null || val === undefined || val === "") continue;
-    if (typeof val === "string" && /^(LISTA|BUSCA) REPORTES/.test(val)) continue;
-    if (typeof val === "string" && val.includes("TODAS LAS UNIDADES")) continue;
+    if (typeof val === "string" && isGarbageCell(val)) continue;   // menú/formulario/paginación bajo header real
     return true; // hay al menos 1 campo con data real
   }
   return false;
@@ -245,9 +279,9 @@ export function stripAccentsKeepEnie(s) {
 //   b) apellido extranjero de 3 palabras (ZAKHIA EL DOVAIHY) → últimas 3 como cognome
 //   c) hoja con nombre INVERTIDO (MARQUEZ VALLEJO JUAN JOSE) → primeras 2 como cognome + resto en nome
 //   d) 2 palabras invertidas                                 → swap cognome/nome
-//   e) TYPO en el materno en WinLab (OVIEDO→OBIEDO, V/B)     → paterno-solo + nombre de pila
-//      Caso real: ADAN LOPEZ OVIEDO, 37 días DELICADO, SIN labs con "LOPEZ OVIEDO" exacto.
-//      El match difuso de encabezado (Jaro-Winkler ≥0.88) reconoce OVIEDO≈OBIEDO al drillear.
+//   e) TYPO en el materno en WinLab (NOVELO→NOBELO, V/B)     → paterno-solo + nombre de pila
+//      Caso real (nombre ficticio): RUBEN SOLIS NOVELO, 37 días DELICADO, SIN labs con "SOLIS NOVELO" exacto.
+//      El match difuso de encabezado (Jaro-Winkler ≥0.88) reconoce NOVELO≈NOBELO al drillear.
 // Devuelve candidatos EN ORDEN; el caller intenta el siguiente SOLO si el anterior dio
 // "NINGUN REGISTRO" (respuesta rápida, sin drill). Los retries (índice >0) exigen
 // identificación POSITIVA del objetivo por encabezado (sin drill a ciegas): las capas de
@@ -286,9 +320,9 @@ export function buildSearchCandidates(nombre) {
     push(parts[1], parts[0], "2-palabras apellido+nombre");
   } else if (abbrevLed) {
     push(parts.slice(2).join(" "), parts.slice(0, 2).join(" "), "nombre abreviado + apellidos");
-    // Variante LITERAL ("MA ERIKA" sin expandir): WinLab puede tener OTRO registro del mismo
-    // paciente con la abreviatura tal cual (caso real 11-oct-2026: "MARIA ERIKA" traía solo el EGO
-    // de urgencias y "MA ERIKA" tenía la BH/QS de cirugía). Es "sibling": el caller la busca
+    // Variante LITERAL ("MA ELISA" sin expandir): WinLab puede tener OTRO registro del mismo
+    // paciente con la abreviatura tal cual (caso real 11-oct-2026, nombre ficticio: "MARIA ELISA" traía
+    // solo el EGO de urgencias y "MA ELISA" tenía la BH/QS de cirugía). Es "sibling": el caller la busca
     // ADEMÁS de la expandida (no en vez de) y une las filas, exigiendo match del objetivo.
     push(parts.slice(2).join(" "), parts.slice(0, 2).join(" "), "nombre abreviado literal", { raw: true, sibling: true });
     if (parts.length >= 4) push(extractApellidos(clean)[0], null, "apellidos estandar");
@@ -307,11 +341,18 @@ export function buildSearchCandidates(nombre) {
   // (c) nombre invertido en la hoja (APELLIDOS primero): primeras 2 como cognome + resto en nome.
   //     No aplica si empieza con abreviatura de nombre (FCO/MA/J…): ahí el orden es evidente.
   if (parts.length >= 4 && !abbrevLed) push(parts.slice(0, 2).join(" "), parts.slice(2).join(" "), "invertido apellidos-primero");
+  // (c2) invertido con apellidos SOLOS (oct 2026, cama 3-160, corrida #441): la hoja traía APELLIDOS
+  //      primero y WinLab guarda el nombre de pila de otra forma ("MA DEL ROSARIO", "MA." o un segundo
+  //      nombre distinto), así que el filtro txtNome de (c) devolvía NINGÚN REGISTRO. Con los dos primeros
+  //      tokens como apellidos y SIN nome, WinLab lista a todos los homónimos de apellido y el encabezado
+  //      difuso (MA→MARIA, orden libre) identifica al objetivo; el retry-guard descarta si no aparece.
+  //      Nunca drill a ciegas. Va después de (c): primero la búsqueda estrecha, luego la ancha.
+  if (parts.length >= 4 && !abbrevLed) push(parts.slice(0, 2).join(" "), null, "invertido apellidos solos");
   // (d) 2 palabras: probar el swap (hoja "APELLIDO NOMBRE")
   if (parts.length === 2) push(parts[0], parts[1], "2-palabras invertido");
   // (e) ÚLTIMO RECURSO: paterno-solo + nombre de pila. Recupera al paciente cuyo MATERNO
-  //     está mal escrito/ausente en WinLab (el "LOPEZ OVIEDO" exacto falla, pero "LOPEZ"
-  //     + nombre "ADAN" lo encuentra y el match difuso de encabezado confirma la identidad).
+  //     está mal escrito/ausente en WinLab (el "SOLIS NOVELO" exacto falla, pero "SOLIS"
+  //     + nombre "RUBEN" lo encuentra y el match difuso de encabezado confirma la identidad).
   //     Va AL FINAL: "LOPEZ" solo trae muchos homónimos → el nome estrecha server-side y el
   //     retry-guard (requireTargetMatch) descarta si el objetivo no aparece. Nunca drill ciego.
   if (parts.length >= 3) {
@@ -444,17 +485,37 @@ function _tokenMatch(t1, t2) {
   if (t1.length >= 5 && t2.length >= 5) return jaroWinkler(t1, t2) >= 0.88;
   return false;
 }
-// ¿el nombre del encabezado corresponde al paciente objetivo? (TODOS los tokens del
-// objetivo deben matchear, difuso). Precisión > recall.
-export function patientHeaderMatches(headerName, targetNombre) {
-  const t = normNameTokens(targetNombre), h = normNameTokens(headerName);
-  if (!t.length || !h.length) return false;
-  const used = new Array(h.length).fill(false);
-  let common = 0;
-  for (const tk of t) {
-    for (let j = 0; j < h.length; j++) { if (!used[j] && _tokenMatch(tk, h[j])) { used[j] = true; common++; break; } }
+// ¿TODOS los tokens de `needles` encuentran un token DISTINTO en `haystack` (difuso)?
+function _allTokensIn(needles, haystack) {
+  const used = new Array(haystack.length).fill(false);
+  for (const tk of needles) {
+    let hit = false;
+    for (let j = 0; j < haystack.length; j++) { if (!used[j] && _tokenMatch(tk, haystack[j])) { used[j] = true; hit = true; break; } }
+    if (!hit) return false;
   }
-  return common >= t.length;
+  return true;
+}
+// ¿el nombre del encabezado corresponde al paciente objetivo? Cotejo SIMÉTRICO (oct 2026):
+//   a) TODOS los tokens del censo están en el encabezado (regla original), o
+//   b) TODOS los tokens del encabezado están en el censo, cuando el encabezado trae ≥ 3 tokens
+//      (2 apellidos + ≥ 1 nombre). Caso real (cama 3-162, oct 2026): censo con TRES nombres de pila
+//      (p.ej. "JUAN PABLO ANDRES SOTO MEDINA") y WinLab con solo dos ("SOTO MEDINA, JUAN PABLO"): el
+//      tercer nombre no aparece en el encabezado y el paciente caía en "homónimos" sin labs (solo
+//      funcionaba con alias puesto a mano).
+// Un encabezado de 2 tokens (p.ej. "LOPEZ JUAN") NO usa (b): le falta un apellido y sería demasiado
+// ancho. La precisión por token no cambia (variante A/O, Jaro-Winkler ≥0.88 solo con ≥5 letras):
+// un nombre de pila distinto sigue siendo otra persona. Precisión > recall.
+// patientHeaderMatchKind distingue la coincidencia COMPLETA ("full", regla a) de la PARCIAL ("partial",
+// regla b): selectTargetRows trata la parcial con más cautela (ver ahí), porque "SOTO MEDINA, JUAN PABLO"
+// también puede ser OTRA persona que no es "JUAN PABLO ANDRES SOTO MEDINA".
+export function patientHeaderMatchKind(headerName, targetNombre) {
+  const t = normNameTokens(targetNombre), h = normNameTokens(headerName);
+  if (!t.length || !h.length) return "";
+  if (_allTokensIn(t, h)) return "full";
+  return h.length >= 3 && _allTokensIn(h, t) ? "partial" : "";
+}
+export function patientHeaderMatches(headerName, targetNombre) {
+  return !!patientHeaderMatchKind(headerName, targetNombre);
 }
 // Extrae "APELLIDOS NOMBRE" de una fila-encabezado usando la posición de FEMENINO/MASCULINO
 // (mismo método que el bookmarklet): apellidos = cell[sx-2], nombre = cell[sx-1].
@@ -564,17 +625,31 @@ export function selectTargetRows(rows, paciente, opts = {}) {
       const seenLabel = sxi >= 2 ? String(row.__cells[sxi - 2] || "").trim() + ", " + String(row.__cells[sxi - 1] || "").trim() : hdrName;
       if (!seenNames.includes(seenLabel)) seenNames.push(seenLabel);
       // El alias ("nombre en WinLab" fijado en la app) también identifica al objetivo.
-      const nameOk = patientHeaderMatches(hdrName, paciente && paciente.nombre) || (!!alias && patientHeaderMatches(hdrName, alias));
+      const kindN = patientHeaderMatchKind(hdrName, paciente && paciente.nombre);
+      const kindA = alias ? patientHeaderMatchKind(hdrName, alias) : "";
+      const full = kindN === "full" || kindA === "full";
+      const nameOk = full || !!kindN || !!kindA;
       const fnac = extractHeaderBirthDate(row.__cells);
       const hdrAge = nameOk && censusAge != null ? ageFromBirthDate(fnac, today) : null;
-      cur = { idx: i, hdrName, label: seenLabel.toUpperCase(), fnac, hdrAge, nameOk, ageOk: !(nameOk && hdrAge != null && Math.abs(hdrAge - censusAge) > tolerance), links: [] };
+      // partial: coincide solo por la regla (b) (encabezado ⊆ censo, a WinLab le falta algún nombre del censo).
+      cur = { idx: i, hdrName, label: seenLabel.toUpperCase(), fnac, hdrAge, nameOk, partial: nameOk && !full, ageOk: !(nameOk && hdrAge != null && Math.abs(hdrAge - censusAge) > tolerance), links: [] };
       blocks.push(cur);
     }
     if (row.__hasLink) {
+      // Paginación/menú con enlace (sin fecha-hora ni barcode) no es un reporte: ni del paciente ni de nadie.
+      if (!looksLikeReportLinkRow(row.__cells)) continue;
       linkIdxs.push(i);
       if (cur) cur.links.push(i);
     }
   }
+  // COINCIDENCIA PARCIAL (regla b, oct 2026) con cautela — precisión > recall:
+  //   1) solo cuenta si NINGÚN bloque coincide por nombre COMPLETO: con "SOTO MEDINA, JUAN PABLO ANDRES"
+  //      en la lista, "SOTO MEDINA, JUAN PABLO" no compite ni como homónimo (antes de la regla b ni
+  //      siquiera era candidato, y como "2ª persona" obligaría a la edad a decidir y podría ganar).
+  //   2) NO goza de la excepción de registro único (#434, abajo): un encabezado al que le falta un nombre
+  //      del censo bien puede ser otra persona, así que si la edad no cuadra se descarta aunque sea el
+  //      único bloque. Con edad desconocida (censo en meses/vacío, o sin fecha en WinLab) se acepta.
+  if (blocks.some((b) => b.nameOk && !b.partial)) blocks.forEach((b) => { if (b.partial) b.nameOk = false; });
   // UN SOLO PACIENTE → el nombre manda (corrida #434): si todos los bloques que coinciden por nombre
   // pueden ser la MISMA persona (un solo registro, o varios con el año mal escrito), la guarda de edad
   // NO aplica — así el único match no se tira por una edad que no cuadra. Solo cuando hay 2+ personas
@@ -584,7 +659,7 @@ export function selectTargetRows(rows, paciente, opts = {}) {
   for (let i = 0; i < nameBlocks.length && !multiPerson; i++)
     for (let j = i + 1; j < nameBlocks.length; j++)
       if (!possiblySameWinlabPerson(nameBlocks[i], nameBlocks[j])) { multiPerson = true; break; }
-  if (!multiPerson) nameBlocks.forEach((b) => { b.ageOk = true; });
+  if (!multiPerson) nameBlocks.forEach((b) => { if (!b.partial) b.ageOk = true; });
   // RESCATE por año mal capturado (oct 2026, cama 3-163): el mismo paciente aparece en WinLab con dos
   // registros del MISMO nombre y la MISMA fecha de nacimiento salvo el año (05/03/1968 y 05/03/2006).
   // La guarda de edad descartaba el registro "joven" y con él los labs nuevos (los de hospitalización
@@ -600,13 +675,14 @@ export function selectTargetRows(rows, paciente, opts = {}) {
     if (twin) { b.ageOk = true; ageRescued.push({ idx: b.idx, headerAge: b.hdrAge, censusAge, twinAge: twin.hdrAge, fnac: b.fnac, twinFnac: twin.fnac }); }
   }
   const targetIdxs = [], ageRejected = [];
-  let matchedHeader = "";
+  let matchedHeader = "", partialMatch = false;
   for (const b of blocks) {
     if (!b.nameOk) continue;
-    if (b.ageOk) { for (const i of b.links) targetIdxs.push(i); if (!matchedHeader) matchedHeader = b.hdrName; }
+    if (b.ageOk) { for (const i of b.links) targetIdxs.push(i); if (!matchedHeader) { matchedHeader = b.hdrName; partialMatch = !!b.partial; } }
     else ageRejected.push({ idx: b.idx, headerAge: b.hdrAge, censusAge });
   }
-  return { targetIdxs, linkIdxs, ageRejected, ageRescued, censusAge, tolerance, seenNames: seenNames.slice(0, 8), matchedHeader };
+  // partialMatch: el objetivo se identificó por coincidencia PARCIAL (WinLab lista menos nombres que el censo).
+  return { targetIdxs, linkIdxs, ageRejected, ageRescued, censusAge, tolerance, seenNames: seenNames.slice(0, 8), matchedHeader, partialMatch };
 }
 
 // Expediente normalizado para comparar objetivos (WL_TARGET_EXP) con el censo: "26-00001",
