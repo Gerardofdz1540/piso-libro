@@ -245,6 +245,19 @@ const MOCK = `(() => {
   check('E6 📽 Modo Proyector: empieza en la cama 150 (orden del tablero: piso 3 por número, luego UCI, luego piso 2), «Ir a cama» permite empezar en cualquiera, la ficha queda encuadrada en la pantalla (no se corta), muestra Dx/vitales/gastos/cultivos/imagen y TODOS los laboratorios del último control (grupos, otros, extra, INR estimado; críticos en rojo); ◀ ▶ y Salir funcionan',
     bad6.length === 0, 'fallan: ' + bad6.join(', ') + ' :: ' + JSON.stringify(e6));
 
+  // ── E7: en reposo la página NO muta sin parar. El selector «Ir a cama» (dentro de un <label>) hacía que el enhancer de
+  //        selects reescribiera su etiqueta en cada pasada → MutationObserver en bucle (CPU del iPad, fotos sin miniatura). ──
+  const e7 = await page.evaluate(async () => {
+    await new Promise(r => setTimeout(r, 400));
+    let n = 0; const mo = new MutationObserver(recs => { n += recs.length; });
+    mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+    await new Promise(r => setTimeout(r, 1200));
+    mo.disconnect();
+    const sel = document.getElementById('proj-jump');
+    return { n, enhanced: !!(sel && sel.dataset.rsEnh) };
+  });
+  check('E7 en reposo la página no muta en bucle (el selector del proyector queda nativo, sin enhancer)', e7.n < 10 && !e7.enhanced, JSON.stringify(e7));
+
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-ENTREGA: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();

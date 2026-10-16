@@ -26731,7 +26731,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       </div>
       <div style="display:flex;gap:10px;align-items:center">
         <label style="color:#94a3b8;font-size:12px;font-weight:700">Ir a cama
-          <select id="proj-jump" onchange="proyectorGoTo(this.value)" style="margin-left:6px;background:#0f2238;color:#fff;border:1px solid #1a3a6b;border-radius:8px;padding:7px 8px;font-size:14px;font-weight:700;max-width:46vw"></select></label>
+          <select id="proj-jump" data-no-sheet aria-label="Ir a cama" onchange="proyectorGoTo(this.value)" style="margin-left:6px;background:#0f2238;color:#fff;border:1px solid #1a3a6b;border-radius:8px;padding:7px 8px;font-size:14px;font-weight:700;max-width:46vw"></select></label>
         <button onclick="proyectorPrev()" style="background:#1a3a6b;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700">◀ Anterior</button>
         <button onclick="proyectorNext()" style="background:#1a3a6b;border:none;color:#fff;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:16px;font-weight:700">Siguiente ▶</button>
         <button onclick="closeProyector()" style="background:#dc2626;border:none;color:#fff;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">✕ Salir</button>
@@ -27042,7 +27042,16 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       var p = sel.previousElementSibling;
       while (p) { if (p.tagName === 'LABEL') return p.textContent.trim(); p = p.previousElementSibling; }
       var par = sel.closest('.modal-field, .nm-field, .ck-field, .field, div');
-      if (par) { var ll = par.querySelector('label'); if (ll) return ll.textContent.trim(); }
+      if (par) {
+        var ll = par.querySelector('label');
+        // Si el <label> ENVUELVE al select, su texto incluye las opciones y el botón que este mismo enhancer insertó:
+        // la etiqueta cambiaba en cada pasada y el MutationObserver de abajo entraba en bucle (oct 2026: el selector
+        // «Ir a cama» del proyector dejó la página mutando sin parar y las miniaturas de fotos nunca cargaban).
+        if (ll) {
+          if (ll.contains(sel)) { var c = ll.cloneNode(true); Array.prototype.forEach.call(c.querySelectorAll('select, .resid-select, button'), function (x) { x.remove(); }); return (c.textContent || '').trim() || 'Seleccionar'; }
+          return ll.textContent.trim();
+        }
+      }
       return 'Seleccionar';
     }
 
