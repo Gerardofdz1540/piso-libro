@@ -1803,6 +1803,14 @@
     .pl-foto-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid #fca5a5; background: #fff; color: #dc2626; font-size: 11px; line-height: 18px; padding: 0; cursor: pointer; }
     .pl-foto-add { width: 44px; height: 44px; border-radius: 8px; border: 1px dashed #94a3b8; background: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; }
     .pl-foto-add:hover { background: #eef2ff; border-color: #6366f1; }
+    /* 📷 ahora es <button> (el input de archivo vive fuera de la tarjeta, ver fotoPick) */
+    button.pl-foto-add { padding: 0; color: inherit; font-family: inherit; -webkit-appearance: none; appearance: none; }
+    /* 🤖 Nota postquirúrgica → campos de la cirugía (oct 2026) */
+    .cx-ai-btn { font-size: 11px; font-weight: 800; min-height: 32px; padding: 0 10px; border-radius: 12px; border: 1px solid #a78bfa; background: #f5f3ff; color: #6d28d9; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .cx-ai-btn:hover { background: #ede9fe; }
+    .cx-ai-busy { display: inline-block; font-size: 11px; font-weight: 800; color: #6d28d9; background: #f5f3ff; border: 1px dashed #a78bfa; border-radius: 12px; padding: 6px 10px; white-space: nowrap; }
+    body.dark .cx-ai-btn, body.dark .cx-ai-busy { background: #1e1b4b; color: #c4b5fd; border-color: #6d28d9; }
+    @media print { .cx-ai-btn, .cx-ai-busy, .cx-nota { display: none !important; } }
     .by-chip { display: inline-block; font-size: 9.5px; font-weight: 800; color: #fff; border-radius: 999px; padding: 1px 7px; margin-left: 6px; letter-spacing: .02em; white-space: nowrap; vertical-align: middle; }
     body.dark .pl-foto-add, body.dark .pl-foto-file { background: #0f1b2d; color: #cbd5e1; }
     @media print { .pl-foto-x, .pl-foto-add { display: none !important; } .pl-foto { width: 120px; height: 120px; } }
@@ -4612,13 +4620,13 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
         </div>
         <div class="mf-collapse">
           <div class="mf-collapse-h" onclick="_toggleModalDetail()">
-            <span>🗒️ Detalle clínico · APP, PA, manejo, drenajes, pendientes</span>
+            <span>🗒️ Detalle clínico · APP, PA, misceláneo, drenajes, pendientes</span>
             <span class="mf-chev" id="mf-detail-chev">▸</span>
           </div>
           <div class="mf-collapse-body" id="mf-detail-body" style="display:none">
             <div class="modal-field"><label>APP (antecedentes patológicos)</label><textarea class="modal-input" id="mf-app-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('app',this.value)" placeholder="HTA, DM2, cardiopatía..."></textarea></div>
             <div class="modal-field"><label>PA (procedimiento actual / QX)</label><textarea class="modal-input" id="mf-pa-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('pa',this.value)" placeholder="Procedimiento quirúrgico realizado..."></textarea></div>
-            <div class="modal-field"><label>Procedimiento / Manejo</label><textarea class="modal-input" id="mf-manejo-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('manejo',this.value)" placeholder="Plan de manejo, antibióticos, soluciones..."></textarea></div>
+            <div class="modal-field"><label>Misceláneo</label><textarea class="modal-input" id="mf-manejo-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('manejo',this.value)" placeholder="Notas varias: lo que no cabe en otra caja..."></textarea></div>
             <div class="mf-grid" style="grid-template-columns:1fr 2fr">
               <div class="modal-field"><label>Sangrado estimado</label><input class="modal-input" id="mf-sangrado-modal" inputmode="text" autocorrect="off" oninput="liveModalNote('sangrado',this.value)" placeholder="Ej: 200 mL" /></div>
               <div class="modal-field"><label>Drenajes</label>
@@ -5100,7 +5108,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
       <div id="cm-content"></div>
       <div class="cm-btns">
         <button class="cm-btn secondary" onclick="document.getElementById('correc-modal').classList.remove('open')">Cerrar</button>
-        <button class="cm-btn primary" id="cm-insert-btn" onclick="insertCorreccionToField()">📋 Insertar en Manejo</button>
+        <button class="cm-btn primary" id="cm-insert-btn" onclick="insertCorreccionToField()">📋 Insertar en Misceláneo</button>
       </div>
     </div>
   </div>
@@ -5886,6 +5894,7 @@ function cdsApplySuggestion(patientKey, ruleId) {
     if (confirm("Agregar al dx:\n\n" + s.suggestion.text + "\n\n¿Confirmar?")) {
       nd.dx = currentDx + "\n📋 " + s.suggestion.text;
       saveNote(patientKey, nd);
+      p.dx = nd.dx; if (typeof _savePtsImmediate === "function") _savePtsImmediate(p, ["dx"]);   // antes solo quedaba en la nota local: no llegaba a la nube ni a la Entrega (lee p.dx)
       if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
     }
   } catch (e) { console.warn("cdsApplySuggestion:", e); }
@@ -6376,7 +6385,16 @@ function plExportBackup() {
     try {
       _supa = (window.supabase || window.supabaseJs || {}).createClient
         ? window.supabase.createClient(SUPA_URL, SUPA_KEY, {
-            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+            // supabase-js no pone timeout a sus fetch (renovación del token, Storage): con una red que acepta TCP y no
+            // responde, getSession()/refresh/subida de fotos quedaban colgados para siempre. Auth 15 s; Storage 60 s.
+            global: { fetch: function (input, init) {
+              if (init && init.signal) return fetch(input, init);
+              const ctl = new AbortController();
+              const ms = /\/auth\/v1\//.test(String((input && input.url) || input)) ? 15000 : 60000;
+              const t = setTimeout(function () { try { ctl.abort(); } catch (_) {} }, ms);
+              return fetch(input, Object.assign({}, init || {}, { signal: ctl.signal })).finally(function () { clearTimeout(t); });
+            } }
           })
         : null;
     } catch (_supaInitErr) {
@@ -6386,7 +6404,14 @@ function plExportBackup() {
     let _userAccessToken = null; // access_token del usuario autenticado (Supabase Auth); null ⇒ usar anon key
     let _realtimeSubs = [];  // active Realtime subscriptions
     let _suppressRealtimeKeys = new Set(); // per-patient suppression (use "__all__" for global)
-    function suppressKey(k, ms) { _suppressRealtimeKeys.add(k); setTimeout(function(){ _suppressRealtimeKeys.delete(k); }, ms || 3000); }
+    const _rtNoteMissed = new Map(); // patient_id → última fila de `notes` descartada durante una supresión
+    function suppressKey(k, ms) {
+      _suppressRealtimeKeys.add(k);
+      setTimeout(function () {
+        _suppressRealtimeKeys.delete(k);
+        try { if (typeof _rtNoteCatchUp === "function") _rtNoteCatchUp(k); } catch (_) {}
+      }, ms || 3000);
+    }
     const EXCEL_TEMPLATE_KEY = "hgl-export-template-b64";
     const ARCHIVE_KEY = "pl_archive_v1";    // pacientes egresados/archivados
     const SNAPSHOT_KEY = "pl_snapshots_v1";  // cortes de guardia
@@ -6470,6 +6495,10 @@ function plExportBackup() {
     let _pendingNoteAutosave = {}; // patientKey -> debounced autosave fn
     let _noteDebounceMap = {}; // patientKey -> debounced Supabase push fn
     function _cleanupPatientCache(k) {
+      // La clave ya no tiene tarjeta: sus versiones (pl_snap_) y su pila de Regresar/Rehacer quedaban para siempre
+      // en localStorage y con cada egreso se acercaban a la cuota (~5 MB del iPad).
+      try { localStorage.removeItem("pl_snap_" + k); } catch (_) {}
+      try { const st = _undoLoad(), rd = _redoLoad(); if (st[k]) { delete st[k]; _undoSave(); } if (rd[k]) { delete rd[k]; _redoSave(); } } catch (_) {}
       delete _pendingNoteAutosave[k];
       delete labAnalysisCache[k];
       delete _dirtyFields[k];
@@ -6639,10 +6668,13 @@ function plExportBackup() {
       try {
         if (_supa) {
           _refreshingSession = _refreshingSession || _supa.auth.refreshSession().finally(() => { _refreshingSession = null; });
-          const { data } = await _refreshingSession;
+          const { data, error } = await _refreshingSession;
           if (data && data.session && data.session.access_token) { _userAccessToken = data.session.access_token; return; }
+          // Red caída/intermitente: no cerrar sesión. signOut borraría la sesión guardada (sb-…-auth-token) y la app ya
+          // no abriría sin conexión; el próximo 401 vuelve a intentar renovar. Solo un rechazo real del servidor cierra.
+          if (error && _looksLikeNetworkAuthError(error)) return;
         }
-      } catch (_) { /* sin red o refresh token revocado → cerrar sesión abajo */ }
+      } catch (e) { if (_looksLikeNetworkAuthError(e)) return; /* refresh token revocado → cerrar sesión abajo */ }
       if (_sessionInvalidated) return;
       _sessionInvalidated = true;
       _userAccessToken = null;
@@ -6672,6 +6704,8 @@ function plExportBackup() {
     }
     function _looksLikeNetworkAuthError(e) {
       if (!e) return false;
+      // Un TypeError de PROGRAMACIÓN ("x is not a function", "cannot read…") no es la red: no debe mantener viva una sesión rota.
+      if (/is not a function|cannot read|undefined is not|null is not/i.test(String((e && e.message) || ""))) return false;
       if (typeof isLikelyNetworkError === "function" && isLikelyNetworkError(e)) return true;
       const m = String((e && e.message) || e || "").toLowerCase();
       return /fetch|network|load failed|abort|timeout|retryable|connection/.test(m);
@@ -6680,7 +6714,15 @@ function plExportBackup() {
       let session = null, authErr = null;
       if (_supa) {
         try {
-          const res = await _supa.auth.getSession();
+          // Sin red con el access_token vencido (>1 h), supabase-js reintenta el refresh ~25 s al iniciar y otros ~25 s
+          // dentro de getSession (y en una red que no responde no tiene timeout): el tablero quedaba vacío ~50 s o para
+          // siempre. Sin red y con sesión guardada se salta; con red, máximo 6 s y después la sesión guardada.
+          const res = (!navigator.onLine && _storedSessionFallback())
+            ? { data: { session: null }, error: new Error("offline: sin red") }
+            : await Promise.race([
+                _supa.auth.getSession(),
+                new Promise(function (_, rej) { setTimeout(function () { rej(new Error("getSession timeout")); }, 6000); })
+              ]);
           if (res.error) { authErr = res.error; console.error("Error obteniendo sesión:", res.error); }
           session = res.data ? res.data.session : null;
         } catch (e) {
@@ -8198,7 +8240,7 @@ function plExportBackup() {
       const every = intervalMs || 30000; const start = Date.now();
       const prev = (winlabMatchByExp[exp] || {}).checked_at || "";
       const tick = async () => {
-        if (Date.now() - start > 12 * 60000) { delete _robotPending[exp]; _rerenderCard(k); return; }
+        if (Date.now() - start > 12 * 60000) { delete _robotPending[exp]; _rerenderCardSoft(k); return; }
         try {
           const p = patients.find(x => pid(x) === k);
           await _loadWinlabMatch(p ? [p] : [], true);
@@ -8211,7 +8253,7 @@ function plExportBackup() {
             } else {
               _plToast("🤖 El robot terminó y no encontró a la cama " + ((p && p.cama) || "") + ". Revisa las sugerencias en la tarjeta o fija el nombre en WinLab.", "#b45309", 10000);
             }
-            _rerenderCard(k); return;
+            _rerenderCardSoft(k); return;
           }
         } catch (_) {}
         setTimeout(tick, every);
@@ -9213,7 +9255,7 @@ function plExportBackup() {
         mx.push(tit.toUpperCase()+" DEL "+_plneFechaPunto(r0.fecha)+(conc?" CON REPORTE: "+conc:" PENDIENTE DE REPORTE")); }
       (nd.imagenHistory||[]).slice().sort(function(a,b){ return String(b.fecha||"").localeCompare(String(a.fecha||"")); }).slice(0,1).forEach(function(e){ (e.estudios||[]).forEach(function(est){ if(_plneVal2(est.descripcion)) mx.push((est.tipo||"ESTUDIO")+" DEL "+_plneFechaPunto(e.fecha)+": "+_plneVal2(est.descripcion)); }); });
       var ic=_plneLineas(ck.interconsultas); if(ic.length) mx.push("INTERCONSULTAS: "+ic.join("; "));
-      var man=_plneVal2(nd.manejo); if(man) mx.push("MANEJO MÉDICO: "+man.replace(/\s+/g," "));
+      var man=_plneVal2(nd.manejo); if(man) mx.push("MISCELÁNEO: "+man.replace(/\s+/g," "));
       if(mx.length) an.push(mx.map(_plneOra).join(" "));
       var plan=_plneVal2(ck.nota_plan); if(plan) an.push(_plneOra("PLAN: "+plan.replace(/\s+/g," ")));
       var pend=_plneLineas(nd.pendientes); if(pend.length) an.push("SE SOLICITAN / PENDIENTES: "+pend.join("; ")+".");
@@ -9267,7 +9309,7 @@ function plExportBackup() {
         _plneCtxLinea("PADECIMIENTO ACTUAL / RESUMEN", nd.pa),
         _plneCtxLinea("FECHA DE INGRESO", p.ingreso),
         _plneCtxLinea("ESTADO EN EL CENSO", p.estado),
-        _plneCtxLinea("MANEJO ACTUAL (INDICACIONES)", nd.manejo),
+        _plneCtxLinea("MISCELÁNEO (NOTAS LIBRES DE LA TARJETA)", nd.manejo),
         _plneCtxLinea("PENDIENTES", nd.pendientes),
         _plneCtxLinea("INTERCONSULTAS", ck.interconsultas),
         _plneCtxLinea("CULTIVOS (CAJA)", ck.cultivos),
@@ -9719,6 +9761,8 @@ function plExportBackup() {
         keys.forEach(function (key) {
           if (!key) return;
           if (key.indexOf("pl_snap_") === 0) {
+            // Versiones de un paciente que ya no está en el censo (egresado): nadie las borraba.
+            if (patients.length && !_findPatientByKey(key.slice(8))) { localStorage.removeItem(key); freed = true; return; }
             try {
               const snaps = JSON.parse(localStorage.getItem(key) || "[]");
               if (Array.isArray(snaps) && snaps.length > 2) { localStorage.setItem(key, JSON.stringify(snaps.slice(0, 2))); freed = true; }
@@ -9727,6 +9771,18 @@ function plExportBackup() {
             localStorage.removeItem(key); freed = true;
           }
         });
+      } catch (_) {}
+      // 5) Pila de Regresar/Rehacer (hasta 1.5 M + 0.6 M caracteres): lo más grande que NO se liberaba.
+      //    Queda solo el último paso de cada paciente del censo y Rehacer se vacía: notas y outbox van primero.
+      try {
+        const st = _undoLoad(), rd = _redoLoad();
+        let cut = false;
+        Object.keys(st).forEach(function (k) {
+          if (!Array.isArray(st[k]) || (patients.length && !_findPatientByKey(k))) { delete st[k]; cut = true; }
+          else if (st[k].length > 1) { st[k] = st[k].slice(-1); cut = true; }
+        });
+        if (Object.keys(rd).length) { Object.keys(rd).forEach(function (k) { delete rd[k]; }); localStorage.removeItem("pl_redo_v1"); cut = true; }
+        if (cut) { _undoSave(); freed = true; }
       } catch (_) {}
       return freed;
     }
@@ -9837,7 +9893,8 @@ function plExportBackup() {
           if (lsFreeSpace()) {
             try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); return true; } catch (e2) { }
           }
-          setSyncStatus("error", "⚠️ Almacenamiento lleno — se liberó espacio, recarga la app");
+          // NO pedir recargar: lo que no se guardó aquí solo vive en memoria y, sin red, recargar lo borra.
+          setSyncStatus("error", navigator.onLine ? "⚠️ Almacenamiento lleno — no recargues hasta ver ✅ Guardado" : "🚨 Almacenamiento lleno y sin red — NO recargues ni cierres la app; conéctate para guardar");
         }
         safeLog("outboxSave:", e);
         return false;
@@ -9921,7 +9978,8 @@ function plExportBackup() {
     // ¿Fallo reintentable (sin red, timeout, 5xx, 429) y no de datos/permisos?
     function _isRetryableSupaError(e) {
       const msg = e && e.message ? String(e.message) : String(e || "");
-      return !navigator.onLine || isLikelyNetworkError(e) || /HTTP 5\d\d/.test(msg) || /HTTP 429/.test(msg);
+      // 401: token vencido/renovándose → la sesión se renueva sola y el outbox reintenta (antes la operación se perdía).
+      return !navigator.onLine || isLikelyNetworkError(e) || /HTTP 5\d\d/.test(msg) || /HTTP 429/.test(msg) || /HTTP 401/.test(msg);
     }
     // Operación REST genérica para el outbox (No olvidar, procedimientos del día): POST/PATCH/DELETE
     // que se reintenta al volver la red. `map` sustituye el id temporal local por el real tras el POST.
@@ -10019,10 +10077,25 @@ function plExportBackup() {
     // outbox. 20 s y AbortError se trata como red caída (isLikelyNetworkError).
     const _S_FETCH_TIMEOUT_MS = 20000;
     async function _sFetch(url, opts) {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), _S_FETCH_TIMEOUT_MS);
-      try { return await fetch(url, Object.assign({}, opts || {}, { signal: ctrl.signal })); }
-      finally { clearTimeout(t); }
+      const once = async function (o) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), _S_FETCH_TIMEOUT_MS);
+        try { return await fetch(url, Object.assign({}, o || {}, { signal: ctrl.signal })); }
+        finally { clearTimeout(t); }
+      };
+      const r = await once(opts);
+      // 401 por token vencido (iPad que despierta tras >1 h: la petición sale antes de que supabase-js renueve):
+      // renovar y repetir UNA vez con el token nuevo (máx. 15 s esperando la renovación).
+      if (r.status === 401 && String(url).indexOf(SUPA_URL) === 0 && opts && opts.headers && opts.headers.Authorization) {
+        const sent = String(opts.headers.Authorization).replace(/^Bearer /, "");
+        if (sent !== SUPA_KEY) {
+          if (_userAccessToken === sent) { try { await Promise.race([_onSessionInvalid(), new Promise(function (res) { setTimeout(res, 15000); })]); } catch (_) {} }
+          if (_userAccessToken && _userAccessToken !== sent) {
+            return once(Object.assign({}, opts, { headers: Object.assign({}, opts.headers, { "Authorization": "Bearer " + _userAccessToken }) }));
+          }
+        }
+      }
+      return r;
     }
     async function _sGet(table, qs) {
       const r = await _sFetch(SUPA_URL + "/rest/v1/" + table + (qs ? "?" + qs : ""), { headers: _sHeaders() });
@@ -10154,7 +10227,10 @@ function plExportBackup() {
     const FOTO_MAX_SIDE = 1600;
     const _fotoUrlCache = {};
     function _fotoId() { return "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
-    function _fotoScopeFlag(scope) { return scope.indexOf("cx:") === 0 ? "ck_cirugias" : (scope === "cultivos" ? "ck_cultivos" : "checklist"); }
+    // Bandera "sucia" = el campo REAL del checklist donde vive la foto (ck_<campo>): Realtime y la recarga al volver al primer
+    // plano conservan así la foto local mientras su subida está pendiente (antes "ck_cultivos" protegía el TEXTO de cultivos
+    // y "checklist" no protegía nada: un evento remoto en ese lapso borraba la foto recién agregada).
+    function _fotoScopeFlag(scope) { return scope.indexOf("cx:") === 0 ? "ck_cirugias" : (scope === "cultivos" ? "ck_cultivos_fotos" : "ck_ink_fotos"); }
     function _fotoScopeField(scope) { return scope.indexOf("cx:") === 0 ? "cirugias" : (scope === "cultivos" ? "cultivos" : scope.slice(4)); }
     // Lista de fotos del alcance (crea la estructura si create=true). Devuelve null si el alcance no existe.
     function _fotoList(nd, scope, create) {
@@ -10184,78 +10260,187 @@ function plExportBackup() {
     // Si el navegador no puede decodificarla (HEIC en Chrome), se sube el archivo tal cual, sin miniatura.
     function _fotoPrepare(file) {
       return new Promise(function (resolve) {
-        const fallback = function () { resolve({ blob: file, type: file.type || "application/octet-stream", w: 0, h: 0, b64: "" }); };
+        let settled = false;
+        const done = function (v) { if (!settled) { settled = true; resolve(v); } };
+        const fallback = function () { done({ blob: file, type: (file && file.type) || "application/octet-stream", w: 0, h: 0, b64: "" }); };
         if (!file || !/^image\//.test(file.type || "")) return fallback();
-        const url = URL.createObjectURL(file);
+        let url = "";
+        try { url = URL.createObjectURL(file); } catch (_) { return fallback(); }
         const img = new Image();
+        // Decodificación que nunca termina (iPad con poca memoria): no dejar la foto colgada.
+        const tm = setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) {} fallback(); }, 20000);
         img.onload = function () {
+          clearTimeout(tm);
+          let cv = null;
           try {
-            const scale = Math.min(1, FOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
-            const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
-            const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
-            const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
-            URL.revokeObjectURL(url);
+            const nw = img.naturalWidth, nh = img.naturalHeight;
+            if (!nw || !nh) throw new Error("imagen sin tamaño");
+            const scale = Math.min(1, FOTO_MAX_SIDE / Math.max(nw, nh));
+            const w = Math.max(1, Math.round(nw * scale)), h = Math.max(1, Math.round(nh * scale));
+            cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+            const ctx = cv.getContext("2d");
+            if (!ctx) throw new Error("sin memoria para el lienzo");
+            ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
             const dataUrl = cv.toDataURL("image/jpeg", 0.82);
             const b64 = dataUrl.split(",")[1] || "";
+            if (b64.length < 100) throw new Error("lienzo vacío");   // iOS sin memoria de lienzo devuelve "data:,"
             const bin = atob(b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-            resolve({ blob: new Blob([bytes], { type: "image/jpeg" }), type: "image/jpeg", w: w, h: h, b64: b64 });
+            done({ blob: new Blob([bytes], { type: "image/jpeg" }), type: "image/jpeg", w: w, h: h, b64: b64 });
           } catch (e) { safeWarn("foto: no se pudo reducir, va original:", e); fallback(); }
+          finally {
+            try { URL.revokeObjectURL(url); } catch (_) {}
+            if (cv) { cv.width = 0; cv.height = 0; }                  // iOS: libera YA la memoria del lienzo (tope total de lienzos)
+          }
         };
-        img.onerror = function () { URL.revokeObjectURL(url); fallback(); };
+        img.onerror = function () { clearTimeout(tm); try { URL.revokeObjectURL(url); } catch (_) {} fallback(); };
         img.src = url;
+      });
+    }
+    // Tope de tiempo para promesas de red sin AbortSignal (supabase-js storage): resuelve null al vencer, nunca rechaza.
+    // En la red del hospital (portal cautivo, Wi-Fi débil) la subida podía quedarse colgada para siempre y la foto no
+    // aparecía nunca ("la cámara no sirve").
+    const FOTO_FAST_MS = 4000;     // si la subida tarda más, la foto se guarda ya en el dispositivo y se sube detrás
+    const FOTO_UPLOAD_MS = 30000;  // tope total de una subida
+    function _fotoTimeout(promise, ms) {
+      return new Promise(function (resolve) {
+        let done = false;
+        const t = setTimeout(function () { if (!done) { done = true; resolve(null); } }, ms);
+        Promise.resolve(promise).then(function (v) { if (!done) { done = true; clearTimeout(t); resolve(v); } }, function () { if (!done) { done = true; clearTimeout(t); resolve(null); } });
       });
     }
     async function _fotoUpload(k, scope, blob, ext, mime) {
       if (!blob || !_supa || !_supa.storage || !navigator.onLine) return null;
-      const p = patients.find(function (pt) { return pid(pt) === k; });
-      const patientPart = sanitizeStoragePathSegment((p && (p._supa_id || p.exp || p.nombre)) || k);
-      const objectPath = patientPart + "/" + sanitizeStoragePathSegment(scope) + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 6) + ext;
       try {
-        const resp = await _supa.storage.from(FOTO_BUCKET).upload(objectPath, blob, { upsert: true, contentType: mime || "image/jpeg", cacheControl: "3600" });
-        if (resp && resp.error) throw resp.error;
-        return { bucket: FOTO_BUCKET, path: (resp && resp.data && resp.data.path) || objectPath };
+        const p = patients.find(function (pt) { return pid(pt) === k; });
+        const patientPart = sanitizeStoragePathSegment((p && (p._supa_id || p.exp || p.nombre)) || k);
+        const objectPath = patientPart + "/" + sanitizeStoragePathSegment(scope) + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 6) + ext;
+        const resp = await _fotoTimeout(_supa.storage.from(FOTO_BUCKET).upload(objectPath, blob, { upsert: true, contentType: mime || "image/jpeg", cacheControl: "3600" }), FOTO_UPLOAD_MS);
+        if (!resp) throw new Error("tiempo agotado (" + (FOTO_UPLOAD_MS / 1000) + " s)");
+        if (resp.error) throw resp.error;
+        return { bucket: FOTO_BUCKET, path: (resp.data && resp.data.path) || objectPath };
       } catch (e) { safeWarn("foto: subida fallida, queda en el dispositivo:", e); return null; }
     }
+    // URL firmada para ver la foto. Antes usaba resolveLabSourceUrl: firmaba por 60 s pero se guardaba en caché 50 min
+    // (miniatura/visor rotos pasado el primer minuto) y, sin red, devolvía la URL PÚBLICA de un bucket privado que también
+    // quedaba 50 min en caché. Ahora: firma de 1 h, sin URL pública y sin cachear fallos.
     async function _fotoSignedUrl(bucket, path) {
       const key = bucket + "/" + path;
       const c = _fotoUrlCache[key];
       if (c && c.exp > Date.now()) return c.url;
-      const url = await resolveLabSourceUrl(bucket, path);
-      if (url) _fotoUrlCache[key] = { url: url, exp: Date.now() + 50 * 60 * 1000 };
-      return url;
+      if (!bucket || !path || !_supa || !_supa.storage || !navigator.onLine) return null;
+      try {
+        const signed = await _fotoTimeout(_supa.storage.from(bucket).createSignedUrl(path, 3600), 15000);
+        const url = signed && !signed.error && signed.data && signed.data.signedUrl;
+        if (!url) return null;
+        _fotoUrlCache[key] = { url: url, exp: Date.now() + 50 * 60 * 1000 };
+        return url;
+      } catch (e) { safeWarn("foto: no se pudo firmar la URL:", e); return null; }
     }
-    // Agrega una foto (blob ya preparado) al alcance: sube a Storage; si falla, queda inline y pendiente.
+    // Agrega una foto (blob ya preparado) al alcance. Sube a Storage; si la subida no termina en FOTO_FAST_MS (red lenta)
+    // o falla, la foto queda YA guardada inline (pendiente, borde punteado) y la subida sigue detrás: al terminar se cambia
+    // por la ruta de Storage. Nunca lanza: devuelve la foto o null.
     async function fotoAttachBlob(k, scope, blob, name, mime, meta) {
+      try {
+        if (!_fotoList(getNote(k), scope, true)) { alert("No se encontró la caja para la foto."); return null; }
+        const ext = mime === "image/png" ? ".png" : (mime === "image/jpeg" ? ".jpg" : ("." + (toSafeString(name).split(".").pop() || "bin").toLowerCase().slice(0, 5)));
+        const foto = { id: _fotoId(), name: toSafeString(name).slice(0, 80) || ("foto" + ext), type: mime || "image/jpeg", bucket: "", path: "", w: (meta && meta.w) || 0, h: (meta && meta.h) || 0, ts: new Date().toISOString(), by: userInitials() };
+        let inlineB64 = (meta && meta.b64) || "";
+        if (!inlineB64 && blob && blob.size <= 1.5 * 1024 * 1024) { try { inlineB64 = arrayBufferToBase64(await blob.arrayBuffer()); } catch (_) {} }
+        const upP = _fotoUpload(k, scope, blob, ext, mime);          // nunca rechaza (null si falla o vence)
+        let up = await _fotoTimeout(upP, FOTO_FAST_MS);
+        if (!up && !inlineB64) {
+          // Sin copia inline posible (p. ej. HEIC grande que el navegador no pudo reducir): esperar la subida completa.
+          up = await upP;
+          if (!up) { alert("Sin red no se puede guardar esta foto" + ((blob && blob.size) ? " (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)" : "") + ". Intenta con red o toma la foto con la cámara."); return null; }
+        }
+        if (up) { foto.bucket = up.bucket; foto.path = up.path; }
+        else { foto.b64 = inlineB64; foto.pending = true; }
+        if (!_fotoCommit(k, scope, foto)) return null;
+        if (foto.pending) {
+          try { setSyncStatus(navigator.onLine ? "syncing" : "offline", navigator.onLine ? "📷 Foto guardada · subiendo…" : "📷 Foto guardada en el dispositivo · se sube al volver la red"); } catch (_) {}
+          // Subida lenta aún en curso: al terminar, cambiar el inline por la ruta (en la nota ACTUAL, por id).
+          upP.then(function (u) { if (u) _fotoMarkUploaded(k, scope, foto.id, u); else setTimeout(function () { try { _fotosRetryPending().catch(function () {}); } catch (_) {} }, 60000); });
+        }
+        return foto;
+      } catch (e) {
+        safeWarn("foto: no se pudo agregar:", e);
+        try { alert("No se pudo guardar la foto: " + ((e && e.message) || e)); } catch (_) {}
+        return null;
+      }
+    }
+    // Mete la foto en la lista de la nota VIGENTE. Se vuelve a buscar aquí porque, mientras se preparaba o subía la foto,
+    // Realtime (handleNoteChange: nd.checklist = {…}) o la recarga al volver de la cámara (_applyLoadedNotes: noteData
+    // nuevo) reemplazan el objeto: antes la foto se metía en la lista vieja (huérfana) y se perdía sin aviso.
+    function _fotoCommit(k, scope, foto) {
       const nd = getNote(k);
       const list = _fotoList(nd, scope, true);
-      if (!list) { alert("No se encontró la caja para la foto."); return null; }
+      if (!list) { alert("La caja de la foto ya no existe (¿se quitó la cirugía?). La foto no se agregó."); return false; }
       _undoPush(k, "agregar foto en " + _undoFieldLabel(_fotoScopeField(scope)));
-      const ext = mime === "image/png" ? ".png" : (mime === "image/jpeg" ? ".jpg" : ("." + (toSafeString(name).split(".").pop() || "bin").toLowerCase().slice(0, 5)));
-      const foto = { id: _fotoId(), name: toSafeString(name).slice(0, 80) || ("foto" + ext), type: mime || "image/jpeg", bucket: "", path: "", w: (meta && meta.w) || 0, h: (meta && meta.h) || 0, ts: new Date().toISOString(), by: userInitials() };
-      const up = await _fotoUpload(k, scope, blob, ext, mime);
-      if (up) { foto.bucket = up.bucket; foto.path = up.path; }
-      else if (meta && meta.b64) { foto.b64 = meta.b64; foto.pending = true; }
-      else {
-        // Sin red y sin versión reducida (p. ej. HEIC): guardar el archivo tal cual si es razonable
-        try {
-          if (blob.size <= 1.5 * 1024 * 1024) { foto.b64 = arrayBufferToBase64(await blob.arrayBuffer()); foto.pending = true; }
-          else { alert("Sin red no se puede guardar esta foto (" + (blob.size / 1024 / 1024).toFixed(1) + " MB). Intenta con red o toma la foto con la cámara."); return null; }
-        } catch (e) { alert("No se pudo leer la foto."); return null; }
-      }
-      list.push(foto);
-      _touchBy(nd, _fotoScopeField(scope));
-      _saveNoteNow(k, nd, _fotoScopeFlag(scope));
+      // La subida tardó segundos: Realtime (handleNoteChange pone un checklist NUEVO) o una recarga (_applyLoadedNotes
+      // reemplaza noteData) pudieron cambiar la nota mientras tanto. Volver a tomarla: si no, la foto caía en una lista
+      // huérfana (se perdía sin aviso) o se re-subía la copia vieja de la cirugía/checklist encima de la de otro.
+      const ndNow = getNote(k);
+      const listNow = _fotoList(ndNow, scope, true);
+      if (!listNow) { alert("La caja de la foto ya no existe (¿se quitó la cirugía en otro dispositivo?)."); return null; }
+      listNow.push(foto);
+      _touchBy(ndNow, _fotoScopeField(scope));
+      _saveNoteNow(k, ndNow, _fotoScopeFlag(scope));
       _rerenderCard(k);
-      if (foto.pending) try { setSyncStatus("offline", "📷 Foto guardada en el dispositivo · se sube al volver la red"); } catch (_) {}
-      return foto;
+      return true;
+    }
+    function _fotoMarkUploaded(k, scope, id, up) {
+      try {
+        const nd = getNote(k);
+        const f = (_fotoList(nd, scope, false) || []).find(function (x) { return x && x.id === id; });
+        if (!f || f.path) return;                         // quitada, o ya la subió el reintento
+        f.bucket = up.bucket; f.path = up.path; delete f.b64; delete f.pending;
+        _saveNoteNow(k, nd, _fotoScopeFlag(scope));
+        _rerenderCardSoft(k);
+        try { setSyncStatus("synced", "✅ Foto subida"); } catch (_) {}
+      } catch (e) { safeWarn("foto: no se pudo marcar como subida:", e); }
+    }
+    // 📷: un solo input de archivo FUERA de las tarjetas (como #pl-global-pdf-input de labs). El input que vivía dentro de la
+    // tarjeta lo destruía cualquier repintado (Realtime, recarga al volver de la cámara, otra foto) mientras el selector del
+    // iPad estaba abierto y entonces el onchange no llegaba: "tomo la foto y no pasa nada".
+    function fotoPick(k, scope) {
+      try {
+        let el = document.getElementById("pl-global-foto-input");
+        if (!el) {
+          el = document.createElement("input");
+          el.type = "file"; el.accept = "image/*"; el.multiple = true; el.id = "pl-global-foto-input";
+          el.tabIndex = -1; el.setAttribute("aria-hidden", "true");
+          el.style.cssText = "position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0";
+          document.body.appendChild(el);
+        }
+        el.onchange = null;
+        el.value = "";
+        el.onchange = function () { fotoFromInput(k, scope, el); };
+        el.click();                                         // síncrono, dentro del toque (iOS lo exige)
+      } catch (e) { safeWarn("foto: no se pudo abrir el selector:", e); alert("No se pudo abrir la cámara/galería: " + ((e && e.message) || e)); }
     }
     async function fotoFromInput(k, scope, input) {
-      const files = Array.from((input && input.files) || []);
-      if (input) input.value = "";
-      for (const file of files) {
-        if (file.size > 25 * 1024 * 1024) { alert("La foto pesa " + (file.size / 1024 / 1024).toFixed(0) + " MB. Máximo 25 MB."); continue; }
-        const prep = await _fotoPrepare(file);
-        await fotoAttachBlob(k, scope, prep.blob, file.name, prep.type, { w: prep.w, h: prep.h, b64: prep.b64 });
+      let files = [];
+      try { files = Array.from((input && input.files) || []); } catch (_) {}
+      try { if (input) input.value = ""; } catch (_) {}
+      if (!files.length) return;
+      try {
+        // "📷 Nota postquirúrgica" (cabecera de Cirugías): la fila se crea SOLO cuando ya hay foto (cancelar no deja filas vacías).
+        if (scope === "cx:new") { const cid = _cxTargetForNota(k); if (!cid) return; scope = "cx:" + cid; }
+        try { _plToast("📷 Guardando " + (files.length > 1 ? files.length + " fotos" : "foto") + "…", "#475569", 2500); } catch (_) {}
+        const imgs = [];
+        for (const file of files) {
+          try {
+            if (file.size > 25 * 1024 * 1024) { alert("La foto pesa " + (file.size / 1024 / 1024).toFixed(0) + " MB. Máximo 25 MB."); continue; }
+            const prep = await _fotoPrepare(file);
+            const foto = await fotoAttachBlob(k, scope, prep.blob, file.name, prep.type, { w: prep.w, h: prep.h, b64: prep.b64 });
+            if (foto && prep.b64 && prep.type === "image/jpeg") imgs.push(prep.b64);
+          } catch (e) { safeWarn("foto: una foto falló:", e); }
+        }
+        // Cirugías: la nota postquirúrgica se transcribe sola a los campos VACÍOS (sin esperar; nunca lanza).
+        if (scope.indexOf("cx:") === 0 && imgs.length) cxLeerNota(k, scope.slice(3), imgs);
+      } catch (e) {
+        safeWarn("foto: error al procesar:", e);
+        try { alert("No se pudo procesar la foto: " + ((e && e.message) || e)); } catch (_) {}
       }
     }
     function fotoRemove(k, scope, id) {
@@ -10271,18 +10456,53 @@ function plExportBackup() {
       _saveNoteNow(k, nd, _fotoScopeFlag(scope));
       _rerenderCard(k);
     }
+    // Visor DENTRO de la app. Antes: window.open("") después de un await (URL firmada) → Safari del iPad lo bloquea, y en la
+    // app de inicio (standalone) la ventana nueva no siempre deja escribir en ella → "no abre la foto".
+    function _fotoViewerClose() {
+      const ov = document.getElementById("pl-foto-viewer"); if (!ov) return;
+      ov.style.display = "none";
+      const im = document.getElementById("pl-foto-viewer-img"); if (im) { im.onload = im.onerror = null; im.removeAttribute("src"); }
+    }
+    function _fotoViewerShow(msg) {
+      let ov = document.getElementById("pl-foto-viewer");
+      if (!ov) {
+        ov = document.createElement("div"); ov.id = "pl-foto-viewer"; ov.setAttribute("role", "dialog");
+        ov.style.cssText = "position:fixed;inset:0;z-index:100002;background:rgba(15,23,42,.94);display:none;flex-direction:column;align-items:center;justify-content:center;padding:12px;box-sizing:border-box";
+        ov.innerHTML = '<button type="button" data-x="1" title="Cerrar" style="position:absolute;top:12px;right:12px;width:44px;height:44px;border-radius:50%;border:none;background:#fff;color:#0f172a;font-size:20px;font-weight:800;cursor:pointer">✕</button>'
+          + '<div id="pl-foto-viewer-msg" style="color:#e2e8f0;font-weight:600;font-size:14px;text-align:center"></div>'
+          + '<img id="pl-foto-viewer-img" alt="foto" style="max-width:100%;max-height:calc(100vh - 90px);object-fit:contain;display:none"/>'
+          + '<a id="pl-foto-viewer-tab" target="_blank" rel="noopener" style="display:none;margin-top:10px;color:#93c5fd;font-weight:600;font-size:13px">Abrir en pestaña nueva (para acercar)</a>';
+        ov.addEventListener("click", function (e) { const t = e.target; if (t === ov || (t && t.getAttribute && t.getAttribute("data-x"))) _fotoViewerClose(); });
+        document.addEventListener("keydown", function (e) { if (e.key === "Escape") _fotoViewerClose(); });
+        document.body.appendChild(ov);
+      }
+      const m = document.getElementById("pl-foto-viewer-msg"); if (m) { m.textContent = msg || ""; m.style.display = msg ? "" : "none"; }
+      const im = document.getElementById("pl-foto-viewer-img"); if (im) { im.onload = im.onerror = null; im.style.display = "none"; im.removeAttribute("src"); }
+      const a = document.getElementById("pl-foto-viewer-tab"); if (a) { a.style.display = "none"; a.removeAttribute("href"); }
+      ov.style.display = "flex";
+      return ov;
+    }
     async function fotoOpen(k, scope, id) {
-      const list = _fotoList(getNote(k), scope, false) || [];
-      const f = list.find(function (x) { return x && x.id === id; });
-      if (!f) return;
-      let url = "";
-      if (f.b64) url = "data:" + (f.type || "image/jpeg") + ";base64," + f.b64;
-      else if (f.path) url = await _fotoSignedUrl(f.bucket || FOTO_BUCKET, f.path);
-      if (!url) { alert("No se pudo abrir la foto (¿sin red?)."); return; }
-      const w = window.open("", "_blank");
-      if (!w) { alert("El navegador bloqueó la ventana. Permite popups para ver la foto."); return; }
-      w.document.write('<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="' + url.replace(/"/g, "&quot;") + '" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>');
-      w.document.close();
+      try {
+        const list = _fotoList(getNote(k), scope, false) || [];
+        const f = list.find(function (x) { return x && x.id === id; });
+        if (!f) return;
+        _fotoViewerShow("Cargando foto…");
+        let url = "";
+        if (f.b64) url = "data:" + (f.type || "image/jpeg") + ";base64," + f.b64;
+        else if (f.path) url = await _fotoSignedUrl(f.bucket || FOTO_BUCKET, f.path);
+        if (!url) { _fotoViewerShow("No se pudo abrir la foto (¿sin red?). Toca para cerrar."); return; }
+        if (/^image\//.test(f.type || "") || f.b64) {
+          const im = document.getElementById("pl-foto-viewer-img");
+          im.onload = function () { const m = document.getElementById("pl-foto-viewer-msg"); if (m) m.style.display = "none"; };
+          im.onerror = function () { _fotoViewerShow("No se pudo mostrar la foto. Toca para cerrar."); };
+          im.src = url; im.style.display = "block";
+        } else {
+          _fotoViewerShow("Archivo adjunto: ábrelo en una pestaña.");
+        }
+        const a = document.getElementById("pl-foto-viewer-tab");
+        if (a && /^https?:/.test(url)) { a.href = url; a.style.display = ""; }
+      } catch (e) { safeWarn("foto: no se pudo abrir:", e); try { _fotoViewerShow("No se pudo abrir la foto. Toca para cerrar."); } catch (_) {} }
     }
     // Tira de miniaturas + botón 📷 (cámara o galería). Las miniaturas de Storage se cargan después (hidratación).
     function renderFotoStrip(k, scope, list, opts) {
@@ -10300,9 +10520,12 @@ function plExportBackup() {
           + `<button type="button" class="pl-foto-x" data-k="${esc(k)}" data-scope="${esc(scope)}" data-id="${esc(f.id)}" onclick="fotoRemove(this.dataset.k,this.dataset.scope,this.dataset.id)" title="Quitar foto">✕</button>`
           + `</div>`;
       }).join("");
-      const addBtn = opts.add === false ? "" : `<label class="pl-foto-add" title="${esc(opts.label || "Agregar foto (cámara o galería)")}">📷<input type="file" accept="image/*" multiple data-k="${esc(k)}" data-scope="${esc(scope)}" onchange="fotoFromInput(this.dataset.k,this.dataset.scope,this)" style="display:none"/></label>`;
-      if (!thumbs && !addBtn) return "";
-      return `<div class="pl-fotos" data-scope="${esc(scope)}">${thumbs}${addBtn}</div>`;
+      // Botón, no <label> con <input> dentro: el input vive FUERA de la tarjeta (fotoPick). Un repintado de la tarjeta mientras
+      // el selector de fotos / la cámara del iPad está abierto ya no se lleva el input ni su onchange.
+      const addBtn = opts.add === false ? "" : `<button type="button" class="pl-foto-add" title="${esc(opts.label || "Agregar foto (cámara o galería)")}" data-k="${esc(k)}" data-scope="${esc(scope)}" onclick="fotoPick(this.dataset.k,this.dataset.scope)">📷</button>`;
+      const tail = opts.tail || "";
+      if (!thumbs && !addBtn && !tail) return "";
+      return `<div class="pl-fotos" data-scope="${esc(scope)}">${thumbs}${addBtn}${tail}</div>`;
     }
     // Pone el src a las miniaturas guardadas en Storage (URL firmada 1 h, con caché). Corre tras cada repintado.
     function _hydrateFotoImgs(root) {
@@ -10334,20 +10557,23 @@ function plExportBackup() {
           (Array.isArray(nd.checklist.cirugias) ? nd.checklist.cirugias : []).forEach(function (c) { if (c && Array.isArray(c.fotos) && c.fotos.some(function (f) { return f && f.pending; })) scopes.push("cx:" + c.id); });
           if ((nd.checklist.cultivos_fotos || []).some(function (f) { return f && f.pending; })) scopes.push("cultivos");
           Object.keys(isPlainObject(nd.checklist.ink_fotos) ? nd.checklist.ink_fotos : {}).forEach(function (f) { if ((nd.checklist.ink_fotos[f] || []).some(function (x) { return x && x.pending; })) scopes.push("ink:" + f); });
-          let changed = false;
+          const flags = new Set();
           for (const scope of scopes) {
-            const list = _fotoList(nd, scope, false) || [];
+            const list = (_fotoList(nd, scope, false) || []).slice();
             for (const f of list) {
-              if (!f || !f.pending || !f.b64) continue;
+              if (!f || !f.pending || !f.b64 || f.path) continue;
               try {
                 const bin = atob(f.b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
                 const ext = f.type === "image/png" ? ".png" : ".jpg";
                 const up = await _fotoUpload(k, scope, new Blob([bytes], { type: f.type || "image/jpeg" }), ext, f.type || "image/jpeg");
-                if (up) { f.bucket = up.bucket; f.path = up.path; delete f.b64; delete f.pending; changed = true; n++; }
+                if (!up) continue;
+                // La nota pudo cambiar de objeto durante la subida (Realtime / recarga): marcar la foto en la nota ACTUAL, por id.
+                const live = (_fotoList(getNote(k), scope, false) || []).find(function (x) { return x && x.id === f.id; });
+                if (live && !live.path) { live.bucket = up.bucket; live.path = up.path; delete live.b64; delete live.pending; flags.add(_fotoScopeFlag(scope)); n++; }
               } catch (e) { safeWarn("foto: reintento fallido:", e); }
             }
           }
-          if (changed) { _saveNoteNow(k, nd, "checklist"); if (document.getElementById("card-" + k)) _rerenderCard(k); }
+          if (flags.size) { flags.forEach(function (fl) { _saveNoteNow(k, getNote(k), fl); }); if (document.getElementById("card-" + k)) _rerenderCardSoft(k); }
         }
       } finally { _fotosRetrying = false; }
       return n;
@@ -10525,7 +10751,7 @@ function plExportBackup() {
         const lowTime = rem < 12 * 3600 * 1000; // <12h → blink rojo
         const timeStr = formatCruceTime(rem);
         const units = ck.cruce_unidades ? " · " + esc(ck.cruce_unidades) : "";
-        const bancoTip = ck.cruce_banco ? "\nBanco: " + ck.cruce_banco : "";
+        const bancoTip = ck.cruce_banco ? "\nBanco: " + esc(ck.cruce_banco) : "";
         return `<button class="badge-cruce ${lowTime ? 'cruce-warning' : 'cruce-active'}" onclick="openCruceModal('${k}')" title="Cruce confirmado${bancoTip}\n${lowTime ? '⚠️ ' : ''}Vigencia: ${timeStr} restantes">✅ Cruzado${units} · ${timeStr}</button>`;
       }
       // pendiente
@@ -10801,7 +11027,7 @@ function plExportBackup() {
         if (noteData[newKey] && noteHasMeaningfulContent(noteData[newKey])) saveNote(newKey, noteData[newKey]);
       } catch (e) { safeLog("_relinkPatientId:", e); }
     }
-    async function supaUpsertPatient(p) {
+    async function supaUpsertPatient(p, dirtyFields) {
       const row = {
         cama: p.cama || "", nombre: p.nombre || "", exp: p.exp || "", dx: p.dx || "",
         edad: p.edad ? String(p.edad) : "", esp: p.esp || "", adscrito: p.adscrito || "",
@@ -10813,9 +11039,26 @@ function plExportBackup() {
       // Cama cambiada desde la APP (oct 2026): la marca viaja con la fila y el sheet-sync la respeta mientras la hoja
       // no cambie (apps-script/censo-sync.gs). Solo se manda si existe: nunca la borra (eso lo hace el sheet-sync).
       if (p.cama_app_ts) row.cama_app_ts = p.cama_app_ts;
+      // PATCH solo de los campos censales que cambiaron AQUÍ (más los de un cambio sin red aún en la cola): la fila
+      // completa desde la copia local regresaba la cama/estado que otro dispositivo o el sheet-sync acababan de
+      // cambiar (evento Realtime aún no recibido o descartado por la supresión de 5 s). Sin lista: fila completa.
+      let patchRow = row;
+      if (p._supa_id && Array.isArray(dirtyFields)) {
+        let fields = dirtyFields.slice();
+        const pend = _outboxPatientItemFor(p._supa_id);
+        if (pend) fields = Array.isArray(pend.dirty) ? fields.concat(pend.dirty) : null;
+        if (fields) {
+          fields = fields.filter(function (f) { return PATIENT_SYNC_FIELDS.indexOf(f) !== -1; });
+          if (!fields.length) return { __noop: true }; // nada censal que subir
+          patchRow = { updated_by: row.updated_by };
+          fields.forEach(function (f) { patchRow[f] = row[f]; });
+          if (fields.indexOf("esp") !== -1) patchRow.es_mio = row.es_mio;
+          if (fields.indexOf("cama") !== -1 && row.cama_app_ts) patchRow.cama_app_ts = row.cama_app_ts;
+        }
+      }
       try {
         if (p._supa_id) {
-          const data = await _sPatch("patients", "id=eq." + p._supa_id, row);
+          const data = await _sPatch("patients", "id=eq." + p._supa_id, patchRow);
           // FIX: Si el PATCH afectó 0 filas (data undefined/null), el _supa_id está "stale"
           // — la fila fue borrada en Supabase. Resetear _supa_id y caer al upsert por
           // exp+cama para no dejar al paciente huérfano (reaparecería como duplicado
@@ -10930,6 +11173,40 @@ function plExportBackup() {
       } catch (_) { return { merged: arr, added: [] }; }
     }
     function pidBySupaId(id) { const p = patients.find(function (x) { return x._supa_id === id; }); return p ? pid(p) : null; }
+    // `checklist` es UNA columna jsonb: casillas, dieta/ATB, cirugías, recibo, pendientes MIPs/R1 y, en __pl_note_meta,
+    // la Entrega, los diagramas y el autor por caja. Cada edición de texto la manda ENTERA (updateField → _touchBy →
+    // "checklist"), así que la copia local vieja de un dispositivo que no recibió un cambio (evento descartado en la
+    // supresión de 5 s, iPad en segundo plano) borraba la Entrega/Recibo/casillas del colega. Solo las llaves que
+    // cambiaron EN ESTE dispositivo (vs. _noteBaseline) se aplican sobre la fila remota vigente. Sin base o si falla
+    // la lectura se manda la local, como antes. Vacío ("", false, [], {}) ≡ ausente: defaultData() no cuenta como cambio.
+    function _ckEmpty(v) { return v === undefined || v === null || v === "" || v === false || (Array.isArray(v) && !v.length) || (isPlainObject(v) && !Object.keys(v).length); }
+    function _mergeChangedKeys(remote, local, base, skip) {
+      const out = Object.assign({}, isPlainObject(remote) ? remote : {});
+      const loc = isPlainObject(local) ? local : {}, bas = isPlainObject(base) ? base : {};
+      Object.keys(Object.assign({}, bas, loc)).forEach(function (key) {
+        if (key === skip || _sameJson(loc[key], bas[key]) || (_ckEmpty(loc[key]) && _ckEmpty(bas[key]))) return; // no se cambió aquí
+        if (loc[key] === undefined) delete out[key]; else out[key] = loc[key];
+      });
+      return out;
+    }
+    async function _checklistMergeRemote(patientId, local) {
+      const b0 = _noteBaseline[patientId];
+      if (!b0 || !isPlainObject(b0.checklist) || !isPlainObject(local)) return local;
+      let remote = null;
+      try {
+        const rows = await _sGet("notes", "patient_id=eq." + encodeURIComponent(patientId) + "&select=checklist&limit=1");
+        remote = rows && rows[0] ? rows[0].checklist : null;
+      } catch (_) { return local; }
+      if (!isPlainObject(remote)) return local;
+      const M = NOTE_SYNC_META_KEY, base = b0.checklist;
+      const out = _mergeChangedKeys(remote, local, base, M);
+      const lm = isPlainObject(local[M]) ? local[M] : {}, bm = isPlainObject(base[M]) ? base[M] : {}, rm = isPlainObject(remote[M]) ? remote[M] : {};
+      const om = _mergeChangedKeys(rm, lm, bm, "by");
+      const ob = _mergeChangedKeys(rm.by, lm.by, bm.by);
+      if (Object.keys(ob).length) om.by = ob; else delete om.by;
+      if (Object.keys(om).length) out[M] = om; else delete out[M];
+      return out;
+    }
     async function supaUpsertNote(patientId, nd, dirtyFieldNames) {
       if (!patientId) return null;
       const buildFullRow = (pid) => ({
@@ -10973,7 +11250,15 @@ function plExportBackup() {
         if (hasChecklistDirty) partial.checklist = fullRow.checklist;
         // Si el partial solo tiene patient_id y updated_by (nada útil), enviar full para
         // garantizar que la nota existe en Supabase (primer guardado)
-        if (Object.keys(partial).length <= 2) return fullRow;
+        // Partial sin columnas de `notes` (p. ej. solo "dx", que vive en patients): NO la fila completa (pisaba texto,
+        // checklist e imagen de otros dispositivos). Con base conocida, solo lo que difiere; sin base, la fila completa.
+        if (Object.keys(partial).length <= 2) {
+          const base = _noteBaseline[pid];
+          if (!base) return fullRow;
+          const diff = { patient_id: pid, updated_by: fullRow.updated_by };
+          NOTE_ROW_COLS.forEach(function (c) { if (!_sameJson(fullRow[c], base[c])) diff[c] = fullRow[c]; });
+          return Object.keys(diff).length <= 2 ? null : diff;
+        }
         return partial;
       };
       try {
@@ -10982,6 +11267,9 @@ function plExportBackup() {
         // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
         const row = buildRow(patientId);
         if (!row) return true; // idéntica a la fila remota conocida: nada que subir
+        // checklist: solo las llaves cambiadas AQUÍ van sobre la fila remota vigente (ver _checklistMergeRemote).
+        const _ckLocal = row.checklist;
+        if (_ckLocal) row.checklist = await _checklistMergeRemote(patientId, _ckLocal);
         if (row.lab_history) {
           // NUNCA quitar fechas que ya están en la nube (oct 2026: un dispositivo con copia vieja subía la lista corta y
           // borraba labs; bitácora 15→11, 5→0…). Se agregan las fechas remotas que aquí faltan, salvo las borradas a mano
@@ -11012,7 +11300,9 @@ function plExportBackup() {
           await _restoreStrippedLabSources(patientId, row.lab_history);
         }
         const data = await _sUpsert("notes", row, "patient_id");
-        _noteBaselineMerge(patientId, row);
+        // Base = la checklist de ESTE dispositivo (no la mezcla): el próximo diff solo ve sus cambios nuevos y no toma
+        // las llaves del colega que aquí aún no llegan como "cambios locales".
+        _noteBaselineMerge(patientId, _ckLocal ? Object.assign({}, row, { checklist: _ckLocal }) : row);
         // Nunca retornar null/undefined en caso de éxito HTTP:
         // • [] → data[0] sería undefined (falso negativo)
         // • null → _sUpsert sin body JSON (e.g. Content-Type no es JSON) también es éxito
@@ -11172,6 +11462,7 @@ function plExportBackup() {
     async function supaLoadAll() {
       _lastSyncErrorDetail = "";
       setSyncStatus("syncing", "Cargando...");
+      const _loadStartTs = Date.now();   // lo guardado/subido aquí DESPUÉS de esta hora puede no venir en la foto (ver _keepRecentLocal)
       try {
         // Primero pacientes, luego notas filtradas por sus IDs (menor payload)
         const pts = await retryNetwork(() => _sGet("patients", "order=cama"), 2, 200);
@@ -11197,7 +11488,9 @@ function plExportBackup() {
         } catch (e) {
           // Si la tabla no existe o no hay permisos, continuamos sin labs WinLab.
           console.warn("winlab_labs no disponible:", e?.message || e);
-          winlabByExp = {}; winlabRowsByExp = {};
+          // Corte de red / timeout / 5xx: conservar lo que ya estaba en memoria (antes la sección WinLab y los cultivos
+          // del robot desaparecían de todas las tarjetas hasta la siguiente carga buena).
+          if (!(isLikelyNetworkError(e) || /HTTP (5\d\d|429)/.test(String((e && e.message) || "")))) { winlabByExp = {}; winlabRowsByExp = {}; }
           _winlabLoadedOnce = true;
         }
         // Resultado del robot por paciente (winlab_match): no bloquea la carga.
@@ -11318,6 +11611,9 @@ function plExportBackup() {
           });
         }
 
+        // Hora de inicio de la carga en el objeto de notas (no enumerable: no aparece en Object.keys ni en JSON), para que
+        // _applyLoadedNotes conserve lo que este dispositivo guardó o subió mientras tanto, sin cambiar a quienes la llaman.
+        try { Object.defineProperty(loadedNotes, "__loadStartTs", { value: _loadStartTs, enumerable: false }); } catch (_) {}
         return { patients: dedupedPatients, notes: loadedNotes, remoteNotePatientIds: Object.keys(noteMap) };
       } catch (e) {
         if (isLikelyNetworkError(e)) {
@@ -11350,9 +11646,17 @@ function plExportBackup() {
         const lsKey = "pl_snap_" + key;
         const snaps = JSON.parse(localStorage.getItem(lsKey) || "[]");
         // Copia ligera (sin PDFs inline): 6 versiones con base64 de varios MB agotaban la cuota de Safari.
-        snaps.unshift({ ts: now, data: JSON.parse(JSON.stringify(_lsNoteCopy(current))) });
+        const entryTxt = JSON.stringify({ ts: now, data: _lsNoteCopy(current) });
+        // Una versión de más de 300 K caracteres es casi siempre una foto sin subir (b64) o un archivo de estudio
+        // inline: copiarla en 6 versiones agotaba la cuota del iPad (y entonces fallaban nota y outbox). Esa versión
+        // no se guarda y las anteriores se conservan; cuando la foto sube (sin b64) las versiones siguen.
+        if (entryTxt.length > 300000) return;
+        snaps.unshift(JSON.parse(entryTxt));
         if (snaps.length > 6) snaps.pop();
-        localStorage.setItem(lsKey, JSON.stringify(snaps));
+        // Tope por paciente (600 K) sin bajar de 2 versiones (lo mismo que deja lsFreeSpace).
+        let txt = JSON.stringify(snaps);
+        while (snaps.length > 2 && txt.length > 600000) { snaps.pop(); txt = JSON.stringify(snaps); }
+        localStorage.setItem(lsKey, txt);
       } catch (_) {}
     }
     function openNoteHistory(k) {
@@ -11426,6 +11730,16 @@ function plExportBackup() {
     // así que persistBeforeExit/_applyLoadedNotes no los veían y (a) encolaban la nota sin dirty
     // (fila completa) o (b) dejaban que la copia remota vieja pisara el campo recién escrito.
     const _inflightDirty = {};
+    // Último guardado/subida LOCAL por campo (k → {campo: ms}). supaLoadAll tarda varios segundos (pacientes, notas,
+    // WinLab, RIS…): lo que se guardó o subió DESPUÉS de que empezó la carga puede no venir en esa foto de la nube y, ya sin
+    // campos sucios (el push terminó), _applyLoadedNotes lo regresaba al valor viejo → la caja «perdía» lo escrito al abrir
+    // la app, al volver la red o al regresar a la app. _keepRecentLocal conserva esos campos.
+    const _localFieldTouch = {};
+    function _touchLocalFields(k, fields) {
+      if (!k || !fields) return;
+      const m = _localFieldTouch[k] || (_localFieldTouch[k] = {}); const t = Date.now();
+      fields.forEach(function (f) { m[f] = t; });
+    }
     function _dirtyUnion(k) {
       const s = new Set();
       [_dirtyFields[k], _pendingDirty[k], _inflightDirty[k]].forEach(function (set) { if (set) set.forEach(function (f) { s.add(f); }); });
@@ -11433,6 +11747,21 @@ function plExportBackup() {
     }
     function _takePendingDirty(k) { const s = _pendingDirty[k]; delete _pendingDirty[k]; return s && s.size ? s : null; }
     function _restorePendingDirty(k, s) { if (!s || !s.size) return; _pendingDirty[k] = _pendingDirty[k] || new Set(); s.forEach((f) => _pendingDirty[k].add(f)); }
+    // Un push directo fallido deja sus campos en _pendingDirty (_restorePendingDirty) y solo otro saveNote de ESE paciente
+    // los quitaba. Ya subidos por el outbox seguían «sucios»: Realtime ignoraba para siempre ese campo (lo que otro
+    // dispositivo escribía después no se veía aquí) y cada vez que se ocultaba la app persistBeforeExit re-encolaba el valor
+    // local viejo → pisaba en la nube lo del colega. Al confirmar el ítem se desmarcan los campos de texto que viajaron en él
+    // y cuyo valor local es el mismo que acaba de subir, si no hay otro push programado o en vuelo para ese paciente.
+    function _settlePendingDirty(k, sent, sentDirty) {
+      const s = _pendingDirty[k], cur = noteData[k];
+      if (!s || !s.size || !sent || !cur || _pendingPush.has(k) || _inflightDirty[k]) return;
+      const TEXT = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega"];
+      const fields = (Array.isArray(sentDirty) && sentDirty.length) ? sentDirty : TEXT;
+      fields.forEach(function (f) {
+        if (TEXT.indexOf(f) !== -1 && s.has(f) && toSafeString(cur[f]) === toSafeString(sent[f])) s.delete(f);
+      });
+      if (!s.size) delete _pendingDirty[k];
+    }
     // Línea base por patient_id: la última fila de `notes` conocida de la nube (carga, Realtime o
     // nuestro propio upsert). Cuando un guardado llega sin campos sucios (toggles, modal, outbox,
     // reparación), supaUpsertNote solo manda las columnas que difieren de esta base en vez de la
@@ -11440,17 +11769,41 @@ function plExportBackup() {
     const _noteBaseline = {};
     const NOTE_ROW_COLS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "checklist", "lab_history", "imagen_history"];
     function _sameJson(a, b) { try { return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b); } catch (_) { return false; } }
+    // COPIA profunda: buildChecklistForSync copia la checklist solo un nivel, así que la base compartía las listas
+    // (cirugías, fotos, dispositivos…) con la nota viva; una foto o cambio local aparecía TAMBIÉN en la base, el diff lo
+    // veía "sin cambio" y la copia remota (sin la foto) ganaba al subir.
+    function _baselineClone(v) { if (v === null || typeof v !== "object") return v; try { return JSON.parse(JSON.stringify(v)); } catch (_) { return v; } }
     function _noteBaselineSet(patientId, row) {
       if (!patientId || !row) return;
       const b = {};
-      NOTE_ROW_COLS.forEach(function (c) { if (row[c] !== undefined) b[c] = row[c]; });
+      NOTE_ROW_COLS.forEach(function (c) { if (row[c] !== undefined) b[c] = _baselineClone(row[c]); });
       _noteBaseline[patientId] = b;
     }
     function _noteBaselineMerge(patientId, row) {
       if (!patientId || !row) return;
       const b = _noteBaseline[patientId] || {};
-      NOTE_ROW_COLS.forEach(function (c) { if (row[c] !== undefined) b[c] = row[c]; });
+      NOTE_ROW_COLS.forEach(function (c) { if (row[c] !== undefined) b[c] = _baselineClone(row[c]); });
       _noteBaseline[patientId] = b;
+    }
+    // Campos que difieren de la última fila remota conocida, para guardados SIN campos marcados (imagen, labs, ✨ IA,
+    // plantillas, ➕ Hoy, restaurar versión…). Sin esto el ítem del outbox iba sin lista ("fila completa"): al volver la
+    // red o recargar, _applyOutboxOverlay hacía ganar la copia vieja ENTERA y el flush subía cada columna que difería de
+    // la fila remota recién cargada, pisando lo que el equipo escribió mientras tanto. null = sin base (nota nueva).
+    function _noteDirtyFromBaseline(key, nd) {
+      const p = _findPatientByKey(key);
+      const base = p && p._supa_id ? _noteBaseline[p._supa_id] : null;
+      if (!base || !nd) return null;
+      const empty = function (v) { return v === undefined || v === null || v === "" || v === false || (Array.isArray(v) && !v.length) || (isPlainObject(v) && !Object.keys(v).length); };
+      const same = function (a, b) { return (empty(a) && empty(b)) || _sameJson(a, b); };
+      const out = [];
+      ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes"].forEach(function (f) { if (!same(nd[f], base[f])) out.push(f); });
+      if (!same(nd.labHistory, base.lab_history)) out.push("labHistory");
+      if (!same(nd.imagenHistory, base.imagen_history)) out.push("imagenHistory");
+      const lc = buildChecklistForSync(nd), bc = isPlainObject(base.checklist) ? base.checklist : {};
+      if (Object.keys(Object.assign({}, bc, lc)).some(function (c) { return !same(lc[c], bc[c]); })) out.push("checklist");
+      const bmeta = isPlainObject(bc[NOTE_SYNC_META_KEY]) ? bc[NOTE_SYNC_META_KEY] : {};
+      if (!same(toSafeString(nd.entrega).trim(), bmeta.entrega)) out.push("entrega");
+      return out;
     }
     // Guardado inmediato de checklist (toggles, dieta, ATB, TVP, NPT, recordatorios, cruce…):
     // marca el campo como sucio para que el push sea parcial y lo desmarca al instante, porque
@@ -11469,9 +11822,16 @@ function plExportBackup() {
       if (_dirtyFields[key] && _dirtyFields[key].size) {
         _pendingDirty[key] = _pendingDirty[key] || new Set();
         _dirtyFields[key].forEach((f) => _pendingDirty[key].add(f));
+        _touchLocalFields(key, _dirtyFields[key]);
       }
       _pendingPush.add(key);
       const safeData = migrateNote(data);
+      if (!(_dirtyFields[key] && _dirtyFields[key].size)) {
+        try {
+          const _df = _noteDirtyFromBaseline(key, safeData);
+          if (_df && _df.length) { _pendingDirty[key] = _pendingDirty[key] || new Set(); _df.forEach((f) => _pendingDirty[key].add(f)); }
+        } catch (_) {}
+      }
       // Always save to localStorage immediately
       lsSaveNote(key, safeData);
       noteData[key] = safeData;
@@ -11506,14 +11866,16 @@ function plExportBackup() {
             _inflightDirty[k] = dirtySnapshot || new Set();
             let res = null;
             try { res = await supaUpsertNote(p._supa_id, d, dirtySnapshot); }
-            finally { delete _inflightDirty[k]; }
+            finally { delete _inflightDirty[k]; _touchLocalFields(pid(p), dirtySnapshot); }
             pendingSyncs--;
             _pendingPush.delete(k);
             // res === null indica error explícito; cualquier otro valor truthy (incluso {}) es éxito
             const ok = res !== null && res !== undefined;
             if (!ok) {
               _restorePendingDirty(k, dirtySnapshot);
-              outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(d), dirty: dirtySnapshot ? Array.from(dirtySnapshot) : null });
+              // La copia VIGENTE (no la `d` de cuando arrancó este push): si otro push más nuevo ya subió mientras este
+              // colgaba, reproducir `d` desde el outbox regresaría el campo a una versión anterior.
+              outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(noteData[k] || d), dirty: dirtySnapshot ? Array.from(dirtySnapshot) : null });
             } else {
               // Lo que quedó encolado ANTES de este push (p. ej. al ocultar la app) ya es viejo:
               // si se reprodujera después, regresaría el texto a una versión anterior.
@@ -11635,6 +11997,10 @@ function plExportBackup() {
         let p = list.find(function (x) { return pid(x) === k; });
         if (!p && k.indexOf("pt-") === 0) p = list.find(function (x) { return patientIdentityKey(x) === k; });
         if (p) _applyOutboxPatientFields(p, it);
+        // Alta hecha SIN RED (sin _supa_id): la nube aún no la tiene, así que reemplazar el censo por la lista remota la
+        // borraba de pantalla y de localStorage, y el flush descartaba su nota ("paciente inexistente"). Se conserva
+        // hasta que el flush la suba y _relinkPatientId la re-clave.
+        else if (!it.patient._supa_id && hasMeaningfulPatientIdentity(it.patient)) list.push(Object.assign({}, it.patient));
       });
       return list;
     }
@@ -11659,6 +12025,28 @@ function plExportBackup() {
             noteData[k].checklist[ckField] = (prevNd.checklist || {})[ckField];
           } else {
             noteData[k][field] = prevNd[field];
+          }
+        });
+      });
+      _keepRecentLocal(prev, loadedNotes && loadedNotes.__loadStartTs);
+    }
+    // Campos de texto que ESTE dispositivo guardó o subió después de que empezó la carga: la foto de la nube puede ser de
+    // antes (y el push ya terminó, así que no están sucios). Se conserva el valor en memoria, el más nuevo de este equipo.
+    function _keepRecentLocal(prev, sinceTs) {
+      if (!sinceTs || !prev) return;
+      const TEXT = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega"];
+      Object.keys(_localFieldTouch).forEach(function (k) {
+        const m = _localFieldTouch[k], prevNd = prev[k], nd = noteData[k];
+        if (!m || !prevNd || !nd) return;
+        Object.keys(m).forEach(function (field) {
+          if (m[field] < sinceTs) return;
+          if (field.indexOf("ck_") === 0) {
+            const ckField = field.slice(3), v = (prevNd.checklist || {})[ckField];
+            if (typeof v !== "string") return;
+            if (!nd.checklist) nd.checklist = {};
+            nd.checklist[ckField] = v;
+          } else if (TEXT.indexOf(field) !== -1 && prevNd[field] !== undefined) {
+            nd[field] = prevNd[field];
           }
         });
       });
@@ -11792,7 +12180,7 @@ function plExportBackup() {
       const failedPts = [];
       for (let i = 0; i < targets.length; i += BATCH) {
         const batch = targets.slice(i, i + BATCH);
-        const results = await Promise.all(batch.map(p => supaUpsertPatient(p)));
+        const results = await Promise.all(batch.map(p => supaUpsertPatient(p, _dirtyList)));
         results.forEach((res, j) => { if (!res) failedPts.push(batch[j]); });
       }
 
@@ -11800,7 +12188,7 @@ function plExportBackup() {
       let stillFailed = [];
       if (failedPts.length) {
         await new Promise(r => setTimeout(r, 300));
-        const retried = await Promise.all(failedPts.map(p => supaUpsertPatient(p)));
+        const retried = await Promise.all(failedPts.map(p => supaUpsertPatient(p, _dirtyList)));
         failedPts.forEach((p, i) => { if (!retried[i]) stillFailed.push(p); });
       }
 
@@ -11834,7 +12222,7 @@ function plExportBackup() {
             // Reintentar en lotes de 6 para no saturar Supabase con un censo grande
             const retried2 = [];
             for (let ri = 0; ri < live.length; ri += BATCH) {
-              const rb = await Promise.all(live.slice(ri, ri + BATCH).map(p => supaUpsertPatient(p)));
+              const rb = await Promise.all(live.slice(ri, ri + BATCH).map(p => supaUpsertPatient(p, _dirtyList)));
               retried2.push(...rb);
             }
             const retryFailed = live.filter((_, i) => !retried2[i]);
@@ -12074,7 +12462,7 @@ function plExportBackup() {
             safeInfo("[RT] Patient inserted:", p.nombre);
             try {
               _winlabFetchForPatients([p]).then(function (n) { return n ? applyWinlabSyncToPatients({ verbose: false }) : null; })
-                .then(function (st) { if (st) _rerenderCard(newK); }).catch(function (e) { safeLog("[RT] winlab paciente nuevo:", e); });
+                .then(function (st) { if (st) _rerenderCardSoft(newK); }).catch(function (e) { safeLog("[RT] winlab paciente nuevo:", e); });
             } catch (_) {}
           })();
           return;
@@ -12419,7 +12807,11 @@ function plExportBackup() {
 
     function handleNoteChange(payload) {
       const { new: _ncNew } = payload;
-      if (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id))) return;
+      if (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id))) {
+        // Descartado por la supresión tras un guardado propio: revisarlo al terminar (antes se perdía para siempre).
+        if (_ncNew && _ncNew.patient_id) _rtNoteMissed.set(_ncNew.patient_id, _ncNew);
+        return;
+      }
       const { eventType, new: newRow } = payload;
       if (eventType === "DELETE") return;
       if (!newRow || !newRow.patient_id) return;
@@ -12456,6 +12848,9 @@ function plExportBackup() {
       if (dirty.has("ck_dispositivos")) nd.checklist.dispositivos = Array.isArray(localChecklist.dispositivos) ? localChecklist.dispositivos : [];
       if (dirty.has("ck_cirugias")) nd.checklist.cirugias = Array.isArray(localChecklist.cirugias) ? localChecklist.cirugias : [];
       if (dirty.has("ck_recibo")) nd.checklist.recibo = localChecklist.recibo || "";
+      // Cualquier otro campo del checklist marcado sucio (ck_<campo>: fotos de Cultivos / trazos, tinta __ink…), igual que
+      // _applyLoadedNotes: sin esto un evento remoto durante la subida reemplazaba el campo y lo local se perdía.
+      dirty.forEach(function (f) { if (f.indexOf("ck_") === 0 && f.length > 3 && localChecklist[f.slice(3)] !== undefined) nd.checklist[f.slice(3)] = localChecklist[f.slice(3)]; });
       if (remoteMeta.exists && !dirty.has("entrega")) nd.entrega = remoteMeta.entrega;
       if (remoteMeta.exists) {
         // Diagrama corporal: no pisar un trazo local en edición/pendiente, ni borrar el local con
@@ -12497,6 +12892,24 @@ function plExportBackup() {
       safeInfo("[RT] Note updated:", k);
     }
 
+    // Al terminar una supresión, si lo descartado no era solo el eco de nuestro propio guardado, re-lee la nota de la
+    // nube y la aplica como un UPDATE normal (respeta campos sucios). Espera a que no quede push propio pendiente.
+    function _rtNoteCatchUp(k, n) {
+      const ids = k === "__all__" ? Array.from(_rtNoteMissed.keys()) : (_rtNoteMissed.has(k) ? [k] : []);
+      ids.forEach(function (id) {
+        if (_suppressRealtimeKeys.has(id) || _suppressRealtimeKeys.has("__all__")) return; // otra supresión vigente: su timer lo revisa
+        const key = pidBySupaId(id);
+        if (!key) { _rtNoteMissed.delete(id); return; }
+        if (_pendingPush.has(key) && (n || 0) < 10) { setTimeout(function () { _rtNoteCatchUp(id, (n || 0) + 1); }, 2000); return; }
+        const dropped = _rtNoteMissed.get(id) || {};
+        _rtNoteMissed.delete(id);
+        const b = _noteBaseline[id] || {};
+        if (NOTE_ROW_COLS.every(function (c) { return dropped[c] === undefined || _sameJson(dropped[c], b[c]); })) return; // solo nuestro eco
+        _sGet("notes", "patient_id=eq." + encodeURIComponent(id) + "&select=" + NOTES_SELECT_COLS + "&limit=1")
+          .then(function (rows) { if (rows && rows[0]) handleNoteChange({ eventType: "UPDATE", new: rows[0] }); })
+          .catch(function (e) { safeLog("_rtNoteCatchUp:", e); });
+      });
+    }
     function supaRowToPatient(row) {
       return {
         _supa_id: row.id,
@@ -12594,9 +13007,14 @@ function plExportBackup() {
           buildEspFilters(); renderViewSoft();
           localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         }
+        // Arranque sin red: init no suscribe Realtime (y TOKEN_REFRESHED/SIGNED_IN, que lo reintentan, pueden tardar) →
+        // sin cambios en vivo de colegas ni labs del robot. Al volver la red con carga exitosa y sesión, suscribir si falta.
+        // (_userAccessToken: con la anon key supaLoadAll puede devolver [] con 200 en la pantalla de login.)
+        if (loaded && _userAccessToken && !_realtimeSubs.length) { try { startRealtime(); } catch (e) { safeLog("online startRealtime:", e); } }
         _enqueuePendingMisc();
         await flushOutbox();
         try { await _fotosRetryPending(); } catch (e) { safeLog("fotos pendientes:", e); } // fotos guardadas sin red → Storage
+        try { _cxAiQueueRun(); } catch (_) {} // notas postquirúrgicas fotografiadas sin red → IA (no se espera)
         const repair = loaded ? await recoverPendingNoteSync(loaded.remoteNotePatientIds || []) : { synced: 0, failed: [] };
         syncOk = outboxLoad().length === 0 && repair.failed.length === 0;
       } catch (e) { safeLog("online handler:", e); }
@@ -12835,6 +13253,13 @@ function plExportBackup() {
                 });
                 // Considerar éxito cualquier valor no-null (incluso {} o true)
                 results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
+                if (results[absIdx]) {
+                  try {
+                    const _fk = pid(p);
+                    if (Array.isArray(item.dirty)) _touchLocalFields(_fk, item.dirty);
+                    _settlePendingDirty(_fk, item.data, item.dirty);
+                  } catch (_) {}
+                }
               } else results[absIdx] = false;
             } else if (item.type === "patient" && item.patient) {
               const k = pid(item.patient);
@@ -12849,7 +13274,7 @@ function plExportBackup() {
               if (!live) { results[absIdx] = true; return; }
               const changedLocal = current ? _applyOutboxPatientFields(current, live) : false;
               const target = current || live.patient;
-              const res = await withOutboxRetry(async function(){ return await supaUpsertPatient(target); });
+              const res = await withOutboxRetry(async function(){ return await supaUpsertPatient(target, Array.isArray(live.dirty) ? live.dirty : null); });
               results[absIdx] = res;
               if (res || changedLocal) lsSavePatients(patients);
               if (changedLocal) { try { buildEspFilters(); renderViewSoft(); } catch (_) {} }
@@ -13347,7 +13772,10 @@ function plExportBackup() {
       // SIGNED_IN recarga la página para que init() corra completo ya con token.
       if (!_userAccessToken) return;
       // Cuentas con administrador (oct 2026): la cuenta debe estar registrada y activa en app_users.
-      if (!(await _loadMyProfile())) return;
+      // Perfil con tope de 5 s: en una red que acepta la conexión y no responde, _sGet espera 20 s y el tablero quedaba
+      // vacío aunque los pacientes estuvieran en el dispositivo. Si después resulta bloqueada, _loadMyProfile llama
+      // _accessDenied (cierra sesión y muestra el login) igual.
+      if (!(await Promise.race([_loadMyProfile(), new Promise(function (r) { setTimeout(function () { r(true); }, 5000); })]))) return;
       if (_recoveryPending) { _recoveryPending = false; openNewPasswordDialog(true); }
       try { _bindStickyResize(); _syncStickyOffsets(); } catch (_) {}
       loadSharedConfig().catch(() => {}); // Non-blocking: pull proxy URL from Supabase for other devices
@@ -13446,6 +13874,7 @@ function plExportBackup() {
         const repair = await recoverPendingNoteSync(loaded.remoteNotePatientIds || []);
         startRealtime();
         setTimeout(function () { try { _fotosRetryPending().catch(function () {}); } catch (_) {} }, 8000); // fotos que quedaron sin subir en otra sesión
+        setTimeout(function () { try { _cxAiQueueRun(); } catch (_) {} }, 20000); // notas postquirúrgicas que quedaron sin transcribir
         // Si había outbox pendiente, empujar esos cambios ahora sobre los datos frescos
         if (localHasUnsyncedChanges) {
           flushOutbox().catch(e => safeLog("init flushOutbox:", e));
@@ -13823,7 +14252,7 @@ function plExportBackup() {
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
             + `<span class="bn-pos">${esc(fp.cama || "S/C")} · ${esc(fp.nombre || "")} <b>(${_idx + 1}/${_tot})</b></span>`
-            + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, manejo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
+            + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, misceláneo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
             + `<button class="bn-mode${isHojaMode() ? " on" : ""}" onclick="toggleHojaMode()" title="Modo Hoja: la ficha como la hoja de visita (cuadrícula con todas las cajas abiertas; al imprimir, una hoja por cama)">${isHojaMode() ? "📑 Hoja" : "🗂 Tarjeta"}</button>`
             + (isHojaMode() ? renderHojaCfg() : "")
             + `<button class="bn-mode bn-pen${(typeof penModeOn === "function" && penModeOn()) ? " on" : ""}" onclick="togglePenMode(this)" title="Lápiz (toca para cambiar). iPad: Scribble = el iPad convierte tu letra en texto en cualquier caja (vitales, TA, drenajes, labs…) · Tinta = en las cajas grandes lo escrito se queda como tinta (tachar borra) y lo demás sigue siendo Scribble. Fuera del iPad: → Texto = la app convierte lo escrito (números al instante, texto por IA)">${(typeof _penModeLabel === "function") ? _penModeLabel(penMode()) : "✍️ Lápiz"}</button>`
@@ -14709,10 +15138,9 @@ function plExportBackup() {
       const nd = migrateNote(noteData[_correcKey] || defaultData());
       const prev = nd.manejo || "";
       nd.manejo = prev ? prev + "\n\n" + txt : txt;
-      if (!_dirtyFields[_correcKey]) _dirtyFields[_correcKey] = new Set();
-      _dirtyFields[_correcKey].add("manejo");
-      noteData[_correcKey] = nd;
-      saveNote(_correcKey, nd);
+      // Marca, guarda y DESMARCA: "manejo" se quedaba sucio para siempre (Realtime ignoraba la caja y, al ocultar la app,
+      // persistBeforeExit re-encolaba el valor local → pisaba lo que otro dispositivo escribió después en Misceláneo).
+      _saveNoteNow(_correcKey, nd, "manejo");
       _rerenderCard(_correcKey);
       document.getElementById("correc-modal").classList.remove("open");
     }
@@ -14777,9 +15205,8 @@ function plExportBackup() {
       const prev = nd.pendientes || "";
       nd.pendientes = prev ? prev + "\n• " + txt : "• " + txt;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("pendientes");
       noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd, "pendientes");   // marca y desmarca: un flag que se quedaba bloqueaba Realtime y re-subía la copia vieja al ocultar la app
       _rerenderCard(k);
       const menu = document.getElementById("tmpl-menu-" + k);
       if (menu) menu.classList.remove("open");
@@ -14911,7 +15338,7 @@ function plExportBackup() {
       if (!R.labs) R.alertas.push("Sin laboratorios");
       // 🆕 Nuevo del día: renglones con fecha de hoy/ayer en Pendientes, Manejo, IC, Cultivos y Entrega;
       //    drenajes colocados hoy/ayer; estudios del visor y cultivos recién llegados.
-      [["Pendientes", nd.pendientes], ["Manejo", nd.manejo], ["IC", ck.interconsultas], ["Cultivos", ck.cultivos], ["", nd.entrega]].forEach(function (pair) {
+      [["Pendientes", nd.pendientes], ["Misceláneo", nd.manejo], ["IC", ck.interconsultas], ["Cultivos", ck.cultivos], ["", nd.entrega]].forEach(function (pair) {
         _egLineasFechadas(pair[1]).forEach(function (l) {
           if (!esNuevo(l.fecha) || /^✓\s/.test(l.text)) return;
           if (l.auto && /^Labs:/i.test(l.text)) return;          // los labs ya van en 🧪
@@ -15079,10 +15506,8 @@ function plExportBackup() {
       const base = _entregaSinResumen(nd.entrega);
       nd.entrega = (base ? base + "\n\n" : "") + built;
       _touchBy(nd, "entrega");
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("entrega");
       noteData[k] = nd;
-      saveNote(k, nd);
+      _saveNoteNow(k, nd, "entrega");   // marca y desmarca "entrega" (antes quedaba sucio: no llegaba la Entrega de otros y ocultar la app re-subía la vieja)
       _rerenderCard(k);
       if (typeof _plToast === "function") _plToast("✨ Resumen de entrega actualizado", "#059669", 1800);
     }
@@ -15698,7 +16123,7 @@ function plExportBackup() {
         +   '<div class="ff2-zone">' + fbField("APP:", "app", nd.app, 3) + '</div>'
         +   '<div class="ff2-zone">' + fbField("PA:", "pa", nd.pa, 4) + '</div>'
         +   '<div class="ff2-zone">' + fbField("Qx:", "qx", nd.qx, 4) + '</div>'
-        +   '<div class="ff2-zone">' + fbField("Manejo:", "manejo", nd.manejo, 3) + '</div>'
+        +   '<div class="ff2-zone">' + fbField("Misceláneo:", "manejo", nd.manejo, 3) + '</div>'
         +   '<div class="ff2-zone">' + fbField("Sangrado:", "sangrado", nd.sangrado, 2) + '</div>'
         + '</div>';
       out += '<div class="ff2-sec" data-sec="labs" style="' + _secStyle("labs") + '">' + labsHtml + '</div>';
@@ -15787,7 +16212,7 @@ function plExportBackup() {
     // ─── MODO HOJA (oct 2026): la ficha como la hoja de visita de GoodNotes ───
     // Cuadrícula fija con todas las cajas abiertas (CSS body.pl-hoja); se recuerda por dispositivo
     // (pl_hoja). ⚙ Cajas permite ocultar bloques en la hoja (pl_hoja_hide). Imprimir = una hoja por cama.
-    const HOJA_BLOCKS = [["labs", "Labs"], ["manejo", "Manejo"], ["roles", "MIPs / R1"], ["img", "Estudios de imagen"], ["sug", "Sugerencias"], ["ind", "Indicaciones"], ["diag", "Diagrama"], ["rec", "No olvidar"]];
+    const HOJA_BLOCKS = [["labs", "Labs"], ["manejo", "Misceláneo"], ["roles", "MIPs / R1"], ["img", "Estudios de imagen"], ["sug", "Sugerencias"], ["ind", "Indicaciones"], ["diag", "Diagrama"], ["rec", "No olvidar"]];
     function isHojaMode() { try { return localStorage.getItem("pl_hoja") === "1"; } catch (_) { return false; } }
     function hojaHidden() { try { const a = JSON.parse(localStorage.getItem("pl_hoja_hide") || "[]"); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
     function _applyHojaClasses() {
@@ -15897,7 +16322,7 @@ function plExportBackup() {
         } catch (_) {}
         const nCx = ((ck.cirugias) || []).length;
         const items = [
-          ["dx", "Dx", ""], ["labs", "Labs", labsBadge], ["cx", "Cirugías", cnt(nCx)], ["manejo", "Manejo", ""], ["plan", "Plan", cnt(pendOpen)],
+          ["dx", "Dx", ""], ["labs", "Labs", labsBadge], ["cx", "Cirugías", cnt(nCx)], ["manejo", "Misceláneo", ""], ["plan", "Plan", cnt(pendOpen)],
           ["pase", "Pase", ""], ["entrega", "Guardia", ""],
           ["historia", "Historia", ""], ["ic", "IC·Cult", ""], ["sug", "Sug.", cnt(cds, cdsCrit)],
           ["ind", "Indic.", indBadge], ["img", "Estudios", cnt(imgCount)], ["diag", "Diagrama", ""], ["rec", "No olvidar", cnt(remOpen)]
@@ -15957,7 +16382,7 @@ function plExportBackup() {
       if (_swipeBound) return;
       _swipeBound = true;
       let sx = 0, sy = 0, st = 0, ok = false;
-      document.addEventListener("pointerdown", function (e) { if (e.pointerType === "pen") _swipePenTs = Date.now(); }, { capture: true, passive: true });
+      ["pointerdown", "pointermove", "pointerup"].forEach(function (t) { document.addEventListener(t, function (e) { if (e.pointerType === "pen") _swipePenTs = Date.now(); }, { capture: true, passive: true }); });   // lápiz escribiendo: cada movimiento cuenta
       document.addEventListener("touchstart", function (e) {
         ok = false;
         const t = e.target, p = e.touches && e.touches[0];
@@ -15974,6 +16399,7 @@ function plExportBackup() {
       document.addEventListener("touchend", function (e) {
         if (!ok || !e.changedTouches || !e.changedTouches.length) return;
         ok = false;
+        if (typeof _isTypingNow === "function" && _isTypingNow()) return;                          // Scribble enfocó una caja durante el gesto (palma): no hojear
         const p = e.changedTouches[0];
         if (p.touchType === "stylus" || _swipePenTs >= st - 100) return;                            // el lápiz apareció durante el gesto
         const dx = p.clientX - sx, dy = p.clientY - sy;
@@ -16005,9 +16431,10 @@ function plExportBackup() {
         // (marca pl_pen_ipad_v2): el iPad pudo quedarse en Tinta desde cuando era el modo por defecto, y ahí las cajas grandes
         // no se convierten en letra de máquina (la tinta ya guardada no se toca). Después, la Tinta elegida a propósito con ✍️
         // se respeta (togglePenMode deja la marca).
-        let done = null; try { done = localStorage.getItem("pl_pen_ipad_v2"); } catch (_) {}
-        if (v === "2" || !done) { try { localStorage.setItem("pl_pen_mode", "0"); localStorage.setItem("pl_pen_ipad_v2", "1"); } catch (_) {} return "off"; }
+        let done = null; try { done = localStorage.getItem("pl_pen_ipad_v3"); } catch (_) {}
+        if (v === "2" || !done) { try { localStorage.setItem("pl_pen_mode", "0"); localStorage.setItem("pl_pen_ipad_v3", "1"); } catch (_) {} return "off"; }
       }
+      if (v === "1" || v === "2") _penInterceptSet(true);   // Tinta / → Texto: la app atiende el trazo → interceptores puestos (idempotente)
       if (v === "1") return "ink";
       if (v === "2") return "text";
       return "off";
@@ -16018,8 +16445,9 @@ function plExportBackup() {
       const cur = penMode(), ipad = _penIsIPad();
       // iPad: solo Scribble ↔ Tinta (el iPad escribe todo; la app no reconoce nada). Fuera del iPad: Scribble → → Texto → Tinta → Scribble.
       const next = ipad ? (cur === "ink" ? "off" : "ink") : (cur === "off" ? "text" : (cur === "text" ? "ink" : "off"));
-      try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); if (ipad) localStorage.setItem("pl_pen_ipad_v2", "1"); } catch (_) {}
+      try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); if (ipad) localStorage.setItem("pl_pen_ipad_v3", "1"); } catch (_) {}
       document.body.classList.toggle("pen-on", next !== "off");
+      _penInterceptSet(!ipad || next !== "off");   // iPad en Scribble: ningún oyente NO pasivo del lápiz en document
       document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.toggle("on", next !== "off"); b.textContent = _penModeLabel(next); });
       if (next === "off") { PEN.active = null; try { _penLiveFinalize("apagado"); } catch (_) {} }
       if (typeof _plToast === "function") _plToast(
@@ -16209,9 +16637,9 @@ function plExportBackup() {
       let resp;
       try {
         resp = await fetch(proxyUrl + "/api/ai", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: prompt }] }] }), signal: ctl.signal });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        var data = await resp.json();   // el cuerpo también dentro del timeout: un cuerpo que no termina de llegar se aborta
       } finally { clearTimeout(tm); }
-      if (!resp.ok) throw new Error("HTTP " + resp.status);
-      const data = await resp.json();
       const raw = String((data && data.content && data.content[0] && data.content[0].text) || "").replace(/```json|```/g, "").trim();
       let texto = "";
       try { const js = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1); texto = String(JSON.parse(js).texto || "").trim(); } catch (_) { texto = raw; }
@@ -16222,7 +16650,7 @@ function plExportBackup() {
     /* ── Ayudante de IA (worker /api/ai, visión) como REVISOR: la escritura directa (abajo) convierte al momento con el
        reconocedor local; en los campos de texto la IA revisa después en segundo plano y corrige si leyó distinto. ── */
     function _penTextPrompt(field, ta) {
-      const labels = { pa: "padecimiento actual", app: "antecedentes", dx: "diagnóstico", manejo: "manejo / indicaciones médicas", pendientes: "pendientes / plan", entrega: "entrega de guardia", drenajes: "nota de drenajes", "ck:interconsultas": "interconsultas", "ck:cultivos": "cultivos", "ck:recibo": "recibo de guardia", "ck:pendientes_mips": "pendientes de MIPs", "ck:pendientes_r1": "pendientes de R1" };
+      const labels = { pa: "padecimiento actual", app: "antecedentes", dx: "diagnóstico", manejo: "misceláneo (notas varias)", pendientes: "pendientes / plan", entrega: "entrega de guardia", drenajes: "nota de drenajes", "ck:interconsultas": "interconsultas", "ck:cultivos": "cultivos", "ck:recibo": "recibo de guardia", "ck:pendientes_mips": "pendientes de MIPs", "ck:pendientes_r1": "pendientes de R1" };
       let label = labels[field];
       if (!label && field.indexOf("el:") === 0) label = ((ta && (ta.getAttribute("title") || ta.getAttribute("placeholder"))) || "texto").slice(0, 60);
       return "La imagen es texto MANUSCRITO en español, escrito con lápiz por un residente de cirugía general sobre la caja \"" + (label || field) + "\" de la ficha de un paciente. Transcríbelo TAL CUAL, sin agregar, completar ni interpretar nada: conserva números, unidades, signos, abreviaturas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, BH, QS, TAC, IC…) y los saltos de línea. Si algo es ilegible escribe [?]. Devuelve SOLO un JSON con este esquema: {\"texto\":\"…\"}";
@@ -16275,7 +16703,7 @@ function plExportBackup() {
       });
       btn.insertAdjacentElement("afterend", pop);
       pop.style.left = Math.max(0, parseFloat(btn.style.left || "0") - 150) + "px"; pop.style.top = (parseFloat(btn.style.top || "0") + 28) + "px";
-      setTimeout(function () { const close = function (e) { if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener("pointerdown", close, true); } }; document.addEventListener("pointerdown", close, true); }, 0);
+      setTimeout(function () { const close = function (e) { if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener("pointerdown", close, true); } }; document.addEventListener("pointerdown", close, { capture: true, passive: true }); }, 0);
     }
     function penUndo(k, field) {
       const ta = _penTaFor(k, field);
@@ -16925,8 +17353,26 @@ function plExportBackup() {
       else { _penGlassClear(); return; }
       _penLiveAdd(a.pts);
     }
+    // Interceptores NO pasivos del lápiz (touchstart / touchmove / pointerdown / pointermove en captura). Solo hacen falta cuando
+    // la app atiende el trazo (✍️ Tinta, → Texto o la escritura directa fuera del iPad). En iPad con ✍️ Scribble NO se registran:
+    // un oyente de toque o de puntero NO pasivo en document vuelve SÍNCRONO cada toque de la página (WebKit espera la respuesta
+    // del JS antes de soltar los gestos nativos, Scribble incluido) y, con el hilo ocupado (guardar la caja recién soltada,
+    // repintados), el Apple Pencil seleccionaba o no escribía. `var` + declaración de función: penMode() puede llamar a
+    // _penInterceptSet antes de que corra _penBind (sin zona muerta; hasta entonces no hace nada).
+    var _penIntercept = null, _penInterceptOn = false;
+    function _penInterceptSet(on) {
+      on = !!on;
+      if (!_penIntercept || on === _penInterceptOn) return;
+      _penInterceptOn = on;
+      const m = on ? "addEventListener" : "removeEventListener";
+      document[m]("touchstart", _penIntercept.touchstart, { passive: false, capture: true });
+      document[m]("touchmove", _penIntercept.touchmove, { passive: false, capture: true });
+      document[m]("pointerdown", _penIntercept.pointerdown, true);
+      document[m]("pointermove", _penIntercept.pointermove, true);
+    }
     (function _penBind() {
-      document.addEventListener("touchstart", function (e) {
+      _penIntercept = {};
+      _penIntercept.touchstart = function (e) {
         try {
           if (!e.touches || e.touches.length !== 1 || !penModeOn()) return;
           if (e.touches[0].touchType !== "stylus") return;        // WebKit: "stylus" = Apple Pencil
@@ -16939,9 +17385,9 @@ function plExportBackup() {
           if (ta && penMode() === "ink" && ta.dataset.key) { e.preventDefault(); return; }   // ✍️ Tinta en caja de la ficha
           if (_penLiveTarget(e.target)) e.preventDefault();        // solo lo que atiende la app (nunca en iPad: ahí todo sigue a Scribble)
         } catch (_) {}
-      }, { passive: false, capture: true });
-      document.addEventListener("touchmove", function (e) { if ((PEN.active || PEN_LIVE.active) && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
-      document.addEventListener("pointerdown", function (e) {
+      };
+      _penIntercept.touchmove = function (e) { if ((PEN.active || PEN_LIVE.active) && e.cancelable) e.preventDefault(); };
+      _penIntercept.pointerdown = function (e) {
         if (e.pointerType !== "pen" || !penModeOn()) return;
         const ta = _penTa(e.target), inkBox = !!(ta && penMode() === "ink" && ta.dataset.key);
         if (PEN_LIVE.el) {
@@ -16961,13 +17407,16 @@ function plExportBackup() {
         }
         e.preventDefault(); e.stopPropagation();
         _penLiveDown(e, t);
-      }, true);
-      document.addEventListener("pointermove", function (e) {
+      };
+      _penIntercept.pointermove = function (e) {
         if (PEN.active && e.pointerId === PEN.active.id) { if (e.cancelable) e.preventDefault(); _penMove(e); return; }
         if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) { if (e.cancelable) e.preventDefault(); _penLiveMove(e); }
-      }, true);
-      document.addEventListener("pointerup", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, false); else if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) _penLiveUp(e, false); }, true);
-      document.addEventListener("pointercancel", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, true); else if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) _penLiveUp(e, true); }, true);
+      };
+      // Fuera del iPad, como siempre (la escritura directa la atiende la app). En iPad, solo con ✍️ Tinta (togglePenMode/penMode los ponen y quitan).
+      _penInterceptSet(!_penIsIPad() || penModeOn());
+      // Soltar / cancelar no llaman preventDefault: pasivos (no vuelven síncronos los toques).
+      document.addEventListener("pointerup", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, false); else if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) _penLiveUp(e, false); }, { capture: true, passive: true });
+      document.addEventListener("pointercancel", function (e) { if (PEN.active && e.pointerId === PEN.active.id) _penEnd(e, true); else if (PEN_LIVE.active && e.pointerId === PEN_LIVE.active.id) _penLiveUp(e, true); }, { capture: true, passive: true });
       window.addEventListener("blur", function () { if (PEN.active) _penEnd(null, true); if (PEN_LIVE.active) _penLiveUp(null, true); _penLiveFinalize("blur"); });
       // Teclado en una caja con provisional (o con sesión abierta): el provisional se quita antes de que entre lo tecleado.
       // (también la caja repintada por Realtime mientras espera a la IA: ya no lleva la clase, pero sigue con lotes pendientes)
@@ -17228,7 +17677,7 @@ function plExportBackup() {
       <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}</div>
       <div ${anchor("labs")} style="margin-top:8px">${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
       <div ${anchor("cx", "cx")} style="margin-top:8px">${renderCirugiasSection(nd, k)}</div>
-      <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("💉 Manejo médico actual", nd.manejo, k, "manejo", 3)}</div>
+      <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("🗂️ Misceláneo", nd.manejo, k, "manejo", 3)}</div>
       <div ${anchor("plan", "plan")} style="margin-top:8px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
           <span class="field-label" style="margin:0">⚠️ Pendientes / Plan${pendOpen ? ` <span class="fc-cnt">${pendOpen}</span>` : ""}${_byChip(nd, "pendientes")}</span>
@@ -17705,14 +18154,24 @@ function plExportBackup() {
     async function handleEstudioFile(k, fecha, idx, input) {
       const file = input.files[0]; if (!file) return;
       input.value = "";
-      const MAX = 1.8 * 1024 * 1024;
-      if (file.size > MAX) { alert(`El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB. Límite: 1.8 MB`); return; }
-      const base64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
+      // El archivo va INLINE en la nota (localStorage, versiones, Regresar, outbox y fila de la nube en cada guardado):
+      // 1.8 MB eran 2.4 M caracteres en base64 y agotaban la cuota del iPad. Imagen → JPEG ≤1600 px como las fotos; PDF ≤ 700 KB.
+      let base64 = "", ftype = file.type || "application/octet-stream";
+      if (/^image\//.test(file.type || "") && file.size <= 25 * 1024 * 1024) {
+        const prep = await _fotoPrepare(file);
+        if (prep && prep.b64) { base64 = prep.b64; ftype = "image/jpeg"; }
+      }
+      if (!base64) {
+        const MAX = 700 * 1024;
+        if (file.size > MAX) { alert(`El archivo pesa ${(file.size / 1024).toFixed(0)} KB. Límite: 700 KB (toma una foto de la hoja o pega el enlace del estudio).`); return; }
+        try { base64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ""); r.onerror = rej; r.readAsDataURL(file); }); }
+        catch (e) { alert("No se pudo leer el archivo."); return; }
+      }
       const nd = getNote(k);
       const entry = nd.imagenHistory.find(e => e.fecha === fecha);
       if (!entry || !entry.estudios[idx]) return;
       entry.estudios[idx].file = base64;
-      entry.estudios[idx].file_type = file.type || "application/octet-stream";
+      entry.estudios[idx].file_type = ftype;
       entry.estudios[idx].file_name = file.name;
       noteData[k] = nd; saveNote(k, nd);
       _refreshImgSec(k);
@@ -18660,7 +19119,7 @@ function plExportBackup() {
       // BUG-I1 FIX: Build rich clinical context for AI analysis
       const ck_ai = (nd && nd.checklist) || {};
       const clinCtx = [];
-      if (nd.manejo && nd.manejo.trim()) clinCtx.push("Manejo médico: " + nd.manejo.trim());
+      if (nd.manejo && nd.manejo.trim()) clinCtx.push("Misceláneo (notas de la tarjeta): " + nd.manejo.trim());
       if (ck_ai.atb && ck_ai.atb_nombre) clinCtx.push("ATB activo: " + ck_ai.atb_nombre + (ck_ai.atb_dias ? " (día " + ck_ai.atb_dias + ")" : ""));
       if (ck_ai.npt) clinCtx.push("NPT activa" + (ck_ai.npt_pct ? " (" + ck_ai.npt_pct + "%)" : "") + (ck_ai.npt_inicio ? " desde " + ck_ai.npt_inicio : ""));
       if (ck_ai.tvp && ck_ai.tvp_tipo) clinCtx.push("TVP: " + ck_ai.tvp_tipo + (ck_ai.tvp_dosis ? " " + ck_ai.tvp_dosis : ""));
@@ -19229,7 +19688,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
           const labels = {
             pa: "padecimiento actual", app: "antecedentes personales patológicos",
             qx: "cirugía realizada y hallazgos", sangrado: "sangrado transoperatorio",
-            drenajes: "drenajes y sus gastos", manejo: "manejo/tratamiento/indicaciones médicas",
+            drenajes: "drenajes y sus gastos", manejo: "misceláneo (notas varias de la tarjeta)",
             sv: "signos vitales", balance: "balance hídrico",
             pendientes: "pendientes / estudios por hacer", entrega: "entrega de guardia (eventualidades y por hacer)",
             "ck:interconsultas": "interconsultas solicitadas y sus respuestas", "ck:cultivos": "cultivos (tipo, fecha, germen y antibiograma)", "ck:recibo": "recibo de guardia"
@@ -19249,7 +19708,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
   "qx": "cirugía realizada y hallazgos si aparecen",
   "sangrado": "volumen de sangrado si aparece",
   "drenajes": "drenajes si se mencionan",
-  "manejo": "indicaciones médicas, tratamiento, plan",
+  "manejo": "misceláneo: todo lo que no encaje en los demás campos (notas varias, tratamiento, indicaciones)",
   "sv": "signos vitales si aparecen",
   "balance": "balance hídrico si aparece",
   "pendientes": "pendientes, estudios por hacer, interconsultas"
@@ -19332,7 +19791,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         { key: "qx",          label: "🔧 Qx / Procedimiento" },
         { key: "sangrado",    label: "🩸 Sangrado" },
         { key: "drenajes",    label: "💧 Drenajes" },
-        { key: "manejo",      label: "💉 Manejo" },
+        { key: "manejo",      label: "🗂️ Misceláneo" },
         { key: "sv",          label: "📊 SV" },
         { key: "balance",     label: "⚖️ Balance" },
         { key: "pendientes",  label: "⚠️ Pendientes" },
@@ -19373,9 +19832,14 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         const currentVal = _inkFieldGet(nd, _inkFieldMode).trim();
         let dirtyFlag = _inkFieldMode;
         if (_inkFieldMode === "dx") {
-          // dx lives on the patient object
+          // dx vive en el paciente (tabla patients), no en la nota. Antes solo se ponía pt.dx en memoria y se llamaba a
+          // supaUpsertPatients, que NO existe (ReferenceError tragado): el DX escrito a mano nunca se guardaba y la
+          // tarjeta (nd.dx || p.dx) seguía mostrando el nd.dx viejo. Igual que updateField("dx").
           const pt = patients.find(pp => pid(pp) === _inkKey);
-          if (pt) pt.dx = newVal.toUpperCase();
+          if (pt) nd.dx = toSafeString(pt.dx);   // «Regresar» debe volver al DX anterior, no a vacío (borraría el DX en la nube)
+          _undoPush(_inkKey, "transcripción a mano en DX");
+          nd.dx = newVal.toUpperCase();
+          if (pt) { pt.dx = nd.dx; _savePtsImmediate(pt, ["dx"]); }
         } else {
           _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")));
           dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal);
@@ -19386,6 +19850,14 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         nd._inkFields[_inkFieldMode] = JSON.parse(JSON.stringify(_inkStrokes));
         if (_inkFieldMode !== "dx") { (_dirtyFields[_inkKey] = _dirtyFields[_inkKey] || new Set()).add(dirtyFlag); _dirtyFields[_inkKey].add("checklist"); }
         saveNote(_inkKey, nd); // sube a Supabase; antes solo localStorage → se perdía y no lo veían otros dispositivos
+        // saveNote ya pasó los campos a _pendingDirty (viajan en el push): quitarlos de _dirtyFields, como hace updateField.
+        // Si se quedaban, Realtime ignoraba ese campo para siempre y cada vez que se ocultaba la app persistBeforeExit
+        // re-subía la copia local vieja (pisaba lo que un colega escribió después en Manejo, Pendientes, etc.).
+        if (_inkFieldMode !== "dx" && _dirtyFields[_inkKey]) { _dirtyFields[_inkKey].delete(dirtyFlag); _dirtyFields[_inkKey].delete("checklist"); }
+        // Ya guardado (saveNote los pasó a _pendingDirty para el push): desmarcar. Si se quedaban en _dirtyFields, Realtime
+        // ignoraba esa caja y cada vez que se ocultaba la app persistBeforeExit re-encolaba la caja y el checklist COMPLETO
+        // locales → pisaban lo que otro dispositivo escribió después (Misceláneo, cirugías, cultivos…).
+        if (_inkFieldMode !== "dx" && _dirtyFields[_inkKey]) { _dirtyFields[_inkKey].delete(dirtyFlag); _dirtyFields[_inkKey].delete("checklist"); }
         try { renderView(); } catch (_) { }
         try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) { }
         closeInkpad();
@@ -19412,6 +19884,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
       });
       nd._inkStrokes = JSON.parse(JSON.stringify(_inkStrokes));
       saveNote(_inkKey, nd); // sube a Supabase; antes solo localStorage → se perdía
+      if (_dirtyFields[_inkKey]) fields.forEach(function (f) { _dirtyFields[_inkKey].delete(f); });   // ya van en _pendingDirty: no dejarlos sucios para siempre
       try { renderView(); } catch (_) { }
       try { supaUpsertPatients && supaUpsertPatients([patients.find(pp => pid(pp) === _inkKey)].filter(Boolean)); } catch (_) { }
       alert(`✅ ${applied} campo${applied !== 1 ? "s" : ""} aplicado${applied !== 1 ? "s" : ""} a la ficha.`);
@@ -19541,7 +20014,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
   "qx": "CIRUGÍA: nombre del procedimiento\\nHALLAZGOS: hallazgos transoperatorios relevantes\\nPROCEDIMIENTO: descripción de lo realizado paso a paso resumido\\nRESECCIÓN: órgano o tejido resecado si aplica\\nANASTOMOSIS: tipo y técnica si se realizó\\nDISPOSITIVOS: stents, mallas, prótesis, clips u otros dispositivos colocados\\nCOMPLICACIONES: complicaciones intraoperatorias si las hubo",
   "sangrado": "volumen de sangrado ejemplo: 200 mL",
   "drenajes": "drenajes colocados: tipo y ubicación",
-  "manejo": "plan de manejo, tratamiento, indicaciones médicas actuales",
+  "manejo": "misceláneo: datos relevantes que no encajan en los demás campos (plan, tratamiento, indicaciones actuales, notas varias)",
   "sv": "signos vitales si están presentes",
   "balance": "balance hídrico si está presente",
   "pendientes": "estudios pendientes, interconsultas o procedimientos por realizar",
@@ -19627,7 +20100,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       { key: "qx",              label: "🔧 Qx / Procedimiento",  noteKey: "qx"                        },
       { key: "sangrado",        label: "🩸 Sangrado",            noteKey: "sangrado"                   },
       { key: "drenajes",        label: "💧 Drenajes",            noteKey: "drenajes"                   },
-      { key: "manejo",          label: "💉 Manejo médico",       noteKey: "manejo"                     },
+      { key: "manejo",          label: "🗂️ Misceláneo",          noteKey: "manejo"                     },
       { key: "sv",              label: "📊 Signos vitales",      noteKey: "sv"                         },
       { key: "balance",         label: "⚖️ Balance hídrico",     noteKey: "balance"                    },
       { key: "pendientes",      label: "⚠️ Pendientes",          noteKey: "pendientes"                 },
@@ -19768,8 +20241,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       _pendingNoteAutosave[k](k);
     }
     var _fieldPrevVals = {}; // k|campo → valor antes del primer teclazo (liveUpdate), para Regresar al soltar
+    // La tarjeta pudo pintarse con la clave vieja "pt-exp-cama" y el paciente recibir su _supa_id mientras se escribía
+    // (_relinkPatientId mueve la nota a "su-…"): sin esto cada letra iba a una nota huérfana vacía bajo la clave vieja y la
+    // nota real se quedaba sin lo último escrito. Se corrige la clave del campo (y onchange ya usa la buena).
+    function _liveKey(el) {
+      var k = el.dataset.key;
+      if (k && !noteData[k] && k.indexOf("pt-") === 0) {
+        try { var p = _findPatientByKey(k); if (p && pid(p) !== k && noteData[pid(p)]) { k = pid(p); el.dataset.key = k; } } catch (_) {}
+      }
+      return k;
+    }
     function liveUpdate(el) {
-      var k = el.dataset.key, f = el.dataset.field;
+      var k = _liveKey(el), f = el.dataset.field;
       if (!noteData[k]) noteData[k] = defaultData();
       if (_fieldPrevVals[k + "|" + f] === undefined) _fieldPrevVals[k + "|" + f] = toSafeString(noteData[k][f]);
       noteData[k][f] = el.value;
@@ -19825,14 +20308,19 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
     function _stackSave(key, stacks, limit) {
       try {
-        Object.keys(stacks).forEach(function (k) { if (!Array.isArray(stacks[k]) || !stacks[k].length) delete stacks[k]; });
+        // Pacientes que ya no están en el censo (egresos): su pila ya no se puede abrir y crecía con cada egreso.
+        const prune = Array.isArray(patients) && patients.length > 0;
+        Object.keys(stacks).forEach(function (k) { if (!Array.isArray(stacks[k]) || !stacks[k].length || (prune && !_findPatientByKey(k))) delete stacks[k]; });
         let txt = JSON.stringify(stacks);
         // Cuota: si pesa demasiado, recortar los pasos más viejos de cada paciente hasta caber.
         let guard = 0;
         while (txt.length > limit && guard++ < 40) {
-          Object.keys(stacks).forEach(function (k) { if (stacks[k].length > 1) stacks[k].shift(); });
+          let cut = false;
+          Object.keys(stacks).forEach(function (k) { if (stacks[k].length > 1) { stacks[k].shift(); cut = true; } });
+          if (!cut) break; // ya hay 1 paso por paciente: re-serializar 40 veces congelaba el iPad en cada edición
           txt = JSON.stringify(stacks);
         }
+        if (txt.length > limit) { localStorage.removeItem(key); return; } // no robar la cuota a notas/outbox; la pila sigue en memoria
         localStorage.setItem(key, txt);
       } catch (_) {}
     }
@@ -19977,7 +20465,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
     }
     function _undoFieldLabel(f) {
-      return ({ dx: "DX", app: "APP", pa: "PA", qx: "Qx", manejo: "Manejo", pendientes: "Pendientes", entrega: "Entrega", drenajes: "nota de drenajes", sangrado: "Sangrado", balance: "Balance", sv: "SV", interconsultas: "Interconsultas", cultivos: "Cultivos", recibo: "Recibo", pendientes_mips: "Pendientes MIPs", pendientes_r1: "Pendientes R1" })[f] || f;
+      return ({ dx: "DX", app: "APP", pa: "PA", qx: "Qx", manejo: "Misceláneo", pendientes: "Pendientes", entrega: "Entrega", drenajes: "nota de drenajes", sangrado: "Sangrado", balance: "Balance", sv: "SV", interconsultas: "Interconsultas", cultivos: "Cultivos", recibo: "Recibo", pendientes_mips: "Pendientes MIPs", pendientes_r1: "Pendientes R1" })[f] || f;
     }
     var _undoToastTimer = null;
     function _showUndoToast() {
@@ -20227,6 +20715,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (arrow) arrow.textContent = open ? "▶" : "▼";
     }
     function toggleExpand(k) {
+      // Tablero (una ficha a la vez): plegarla la dejaba SIN cajas; un toque del lápiz o del dedo en la cama / el nombre de la
+      // cabecera "quitaba" todas las cajas de la tarjeta. Ahí solo se permite volver a desplegar.
+      if (document.body.classList.contains("focus-on") && expandedCards[k] !== false) return;
       if (expandedCards[k] === undefined) expandedCards[k] = false;
       else expandedCards[k] = !expandedCards[k];
       // Re-render solo ESTA tarjeta — evitar renderView() que destruye todas las demás
@@ -21119,6 +21610,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const stored = lsGetNoOlvidar();
         const it = stored.find(function(i) { return i.id === tempId; });
         if (it) { it.id = dbId; delete it._tempId; lsSaveNoOlvidar(stored); }
+        // Los botones de marcar/eliminar ya pintados llevan el id TEMPORAL en su onclick: sin repintar, el primer toque no hacía
+        // nada (toggle no encontraba el id) y «Eliminar» dejaba el recordatorio. Repintar salvo que se esté escribiendo otro.
+        const _noInp = document.getElementById("no-olvidar-input");
+        if (it && currentView === "noOlvidar" && !(_noInp && (_noInp.value || document.activeElement === _noInp))) renderNoOlvidar();
       });
     }
     function toggleNoOlvidar(id) {
@@ -22536,6 +23031,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       delete noteData[k];
       localStorage.removeItem(NOTES_PREFIX + k);
       _cleanupPatientCache(k);
+      // Lo que este paciente tenía en la cola ya no debe subir: un alta hecha sin red se re-insertaba en paralelo al
+      // DELETE (resucitaba) y el overlay de la cola lo regresaría al censo.
+      _outboxDropPatientItems(p, Date.now());
+      outboxDropNoteKeys([k]);
       // DELETE en Supabase (cascade borra la nota; la copia vive en `archive`) con reintentos y outbox.
       _deletePatientRemote(p, "egreso");
       // Solo persistencia local: un egreso no necesita re-escribir el resto del censo en la nube.
@@ -26078,24 +26577,307 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           <div class="cx-r1">
             <input type="date" class="cx-date" value="${esc(c.fecha || "")}" data-ck="${k}" data-id="${id}" onchange="updateCirugia(this.dataset.ck,this.dataset.id,'fecha',this.value)" title="Fecha de la cirugía"/>
             <span class="cx-po${d === null ? " cx-po-none" : ""}" title="Días de postoperatorio">${d === null ? "PO —" : "PO d" + d}</span>
-            <textarea class="cx-in cx-proc" rows="${_cxRows(c.procedimiento, 44)}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Procedimiento (ej. LAPE + drenaje de colección + adherenciolisis)" data-ck="${k}" data-id="${id}" data-f="procedimiento" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${esc(c.procedimiento || "")}</textarea>
+            <textarea class="cx-in cx-proc" rows="${_cxRows(c.procedimiento, 44)}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Procedimiento (ej. LAPE + drenaje de colección + adherenciolisis)" data-ck="${k}" data-id="${id}" data-f="procedimiento" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)">${esc(c.procedimiento || "")}</textarea>
             <button type="button" class="dv-x" data-ck="${k}" data-id="${id}" onclick="removeCirugia(this.dataset.ck,this.dataset.id)" title="Quitar de la lista">✕</button>
           </div>
           <div class="cx-r2">
-            <textarea class="cx-in cx-in-hal" rows="${_cxRows(c.hallazgos, 60)}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Hallazgos / técnica / complicaciones" data-ck="${k}" data-id="${id}" data-f="hallazgos" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);this.style.height='auto';this.style.height=this.scrollHeight+'px'">${esc(c.hallazgos || "")}</textarea>
+            <textarea class="cx-in cx-in-hal" rows="${_cxRows(c.hallazgos, 60)}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Hallazgos / técnica / complicaciones" data-ck="${k}" data-id="${id}" data-f="hallazgos" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)">${esc(c.hallazgos || "")}</textarea>
             <input class="cx-in cx-sang" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
             <input class="cx-in cx-cir" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(c.cirujano || "")}" placeholder="Cirujano" title="${esc(c.cirujano || "Cirujano")}" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>
           </div>
-          ${renderFotoStrip(k, "cx:" + String(c.id || ""), c.fotos, { add: true, label: "Foto de la nota quirúrgica o del reporte (cámara o galería)" })}
+          ${renderFotoStrip(k, "cx:" + String(c.id || ""), c.fotos, { add: true, label: "Foto de la nota postquirúrgica (cámara o galería): la IA llena los campos vacíos", tail: _cxAiTail(k, c) })}
         </div>`;
       }).join("");
       return `<div class="cx-box">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">
           <span>🔪 Cirugías / Procedimientos${list.length ? ` <span class="fc-cnt" style="background:#7c3aed">${list.length}</span>` : ""}</span>
-          <button type="button" class="cx-add" data-ck="${k}" onclick="addCirugia(this.dataset.ck)" title="Agregar una cirugía o procedimiento con su fecha">+ Agregar cirugía</button>
+          <span style="display:inline-flex;gap:5px;flex-wrap:wrap">
+            <button type="button" class="cx-add cx-nota" data-ck="${k}" onclick="fotoPick(this.dataset.ck,'cx:new')" title="Toma o elige la foto de la nota postquirúrgica (una o varias páginas): se agrega la cirugía y la IA llena fecha, procedimiento, hallazgos, sangrado y cirujano (solo lo vacío)">📷 Nota postquirúrgica</button>
+            <button type="button" class="cx-add" data-ck="${k}" onclick="addCirugia(this.dataset.ck)" title="Agregar una cirugía o procedimiento con su fecha">+ Agregar cirugía</button>
+          </span>
         </div>
         ${rows ? `<div class="cx-list">${rows}</div>` : `<div class="cx-empty">Sin cirugías registradas · toca "+ Agregar cirugía" (una por intervención, con su fecha)</div>`}
       </div>`;
+    }
+    // ═══ 🤖 NOTA POSTQUIRÚRGICA → CAMPOS DE LA CIRUGÍA (oct 2026, pedido de Gera) ═══════════════════════════════════
+    // La foto (o fotos: varias páginas) de la nota postquirúrgica se manda al ayudante de IA (worker /api/ai, visión) y con
+    // lo que lee se llenan SOLO los campos VACÍOS de la cirugía: fecha, procedimiento, hallazgos (+ dx postqx, técnica,
+    // drenajes, complicaciones, lo importante), sangrado y cirujano. Lo que el residente ya escribió nunca se pisa (el aviso
+    // dice qué no se tocó). La foto queda en la cirugía pase lo que pase. Sin red o con error: la lectura se reintenta sola
+    // al volver la red (cola local de este dispositivo) o con 🤖 Transcribir. ↩ Regresar deshace lo llenado.
+    var _cxAiBusy = new Set();                 // "k|idCirugía" en lectura (var: sin TDZ si una tarjeta se pinta antes)
+    var CX_AI_MAX_IMGS = 5;                    // páginas por lectura
+    var CX_AI_TIMEOUT_MS = 90000;              // el worker usa un modelo con razonamiento: con fotos tarda 20-60 s
+    var CX_AI_QUEUE_KEY = "pl_cx_ai_queue_v1";
+    var _cxAiQueueRunning = false;
+    var CX_CAMPOS = ["fecha", "procedimiento", "hallazgos", "sangrado", "cirujano"];
+    function _cxCamposVacios(c) { return CX_CAMPOS.filter(function (f) { return !toSafeString(c && c[f]).trim(); }); }
+    // Cirugía por id en la nota vigente (y, si el paciente cambió de clave mientras la IA leía, en cualquier nota).
+    function _cxLocate(k, cid) {
+      const find = function (kk) { if (!kk || !noteData[kk]) return null; const nd = getNote(kk); const c = _findCirugia(nd, cid); return c ? { k: kk, nd: nd, c: c } : null; };
+      const direct = find(k); if (direct) return direct;
+      const keys = Object.keys(noteData);
+      for (let i = 0; i < keys.length; i++) { if (keys[i] !== k) { const r = find(keys[i]); if (r) return r; } }
+      return null;
+    }
+    // Fila destino de "📷 Nota postquirúrgica": la más reciente VACÍA (sin procedimiento, hallazgos ni fotos); si no hay,
+    // una nueva SIN fecha (la pone la IA; si la nota no la trae, la pone el residente).
+    function _cxTargetForNota(k) {
+      try {
+        const nd = getNote(k);
+        if (!nd.checklist) nd.checklist = {};
+        if (!Array.isArray(nd.checklist.cirugias)) nd.checklist.cirugias = [];
+        const vacia = nd.checklist.cirugias.slice().reverse().find(function (c) { return c && c.id && !toSafeString(c.procedimiento).trim() && !toSafeString(c.hallazgos).trim() && !(Array.isArray(c.fotos) && c.fotos.length); });
+        if (vacia) return String(vacia.id);
+        _undoPush(k, "agregar cirugía (nota postquirúrgica)");
+        const c = { id: _cirugiaId(), fecha: "", procedimiento: "", hallazgos: "", sangrado: "", cirujano: "" };
+        nd.checklist.cirugias.push(c);
+        _saveCirugias(k, nd);
+        return c.id;
+      } catch (e) { safeWarn("cx: no se pudo crear la cirugía:", e); alert("No se pudo agregar la cirugía: " + ((e && e.message) || e)); return null; }
+    }
+    // A la derecha de la tira de fotos de cada cirugía: ⏳ mientras la IA lee, o 🤖 Transcribir si hay fotos.
+    function _cxAiTail(k, c) {
+      try {
+        const cid = String((c && c.id) || "");
+        if (_cxAiBusy && _cxAiBusy.has(k + "|" + cid)) return '<span class="cx-ai-busy">⏳ Leyendo nota…</span>';
+        const hasImg = Array.isArray(c && c.fotos) && c.fotos.some(function (f) { return f && (f.b64 || f.path) && (/^image\//.test(f.type || "") || !!f.b64); });
+        if (!hasImg || !cid) return "";
+        return '<button type="button" class="cx-ai-btn" data-ck="' + esc(k) + '" data-id="' + esc(cid) + '" onclick="cxLeerNota(this.dataset.ck,this.dataset.id)" title="Leer con IA las fotos de la nota postquirúrgica y llenar SOLO los campos vacíos">🤖 Transcribir</button>';
+      } catch (_) { return ""; }
+    }
+    function _cxNotaPrompt(nPag) {
+      return "Eres residente de Cirugía General en un hospital de México. " +
+        (nPag > 1 ? "Las " + nPag + " imágenes son las páginas, en orden, de UNA sola nota postquirúrgica" : "La imagen es una nota postquirúrgica") +
+        " (nota operatoria, hoja quirúrgica o reporte de procedimiento) de un paciente hospitalizado. Puede estar impresa o escrita a mano y la foto puede estar chueca, cortada o con sombras.\n" +
+        "Lee TODO y extrae SOLO lo que está escrito. NO inventes, NO completes y NO supongas: si un dato no aparece o es ilegible, déjalo vacío (\"\"), o null en sangrado_ml. Conserva las abreviaturas médicas usuales (LAPE, CCL, POP, ATB, etc.). No incluyas el nombre del paciente.\n" +
+        "Hoy es " + todayStr() + ". Las fechas vienen como día/mes/año (05/10/26 = 2026-10-05); si no traen año usa el de hoy. La fecha que se pide es la de la CIRUGÍA, no la de ingreso ni la de impresión.\n" +
+        "Responde ÚNICAMENTE con un objeto JSON válido, sin markdown y sin texto antes ni después, con exactamente estas claves:\n" +
+        "{\"es_nota_quirurgica\": true, \"fecha\": \"AAAA-MM-DD\", \"procedimiento\": \"procedimiento(s) realizado(s), conciso\", \"diagnostico_postqx\": \"diagnóstico postoperatorio\", \"hallazgos\": \"hallazgos transoperatorios relevantes, breve\", \"tecnica\": \"técnica o pasos clave en 1-2 líneas (abordaje, resección, anastomosis, cierre)\", \"drenajes\": \"drenajes, sondas o estomas dejados (tipo y sitio)\", \"complicaciones\": \"incidentes o complicaciones transoperatorias; vacío si no se mencionan\", \"importante\": \"lo más importante para el manejo en piso, máximo 2 líneas\", \"sangrado_ml\": null, \"cirujano\": \"cirujano principal tal como aparece\"}\n" +
+        "sangrado_ml es un número entero de mL (ej. 150). Si dice \"escaso\" o \"mínimo\" sin cifra, pon null y anótalo en hallazgos.\n" +
+        "Si las imágenes NO son una nota quirúrgica, responde {\"es_nota_quirurgica\": false} con las demás claves vacías.";
+    }
+    // JSON de la respuesta: sin ```, del primer { al último }; segundo intento quitando comas colgantes.
+    function _cxParseJson(raw) {
+      const s = String(raw || "").replace(/```json/gi, "").replace(/```/g, "").trim();
+      const a = s.indexOf("{"), b = s.lastIndexOf("}");
+      if (a < 0 || b <= a) return null;
+      const js = s.slice(a, b + 1);
+      try { const o = JSON.parse(js); return isPlainObject(o) ? o : null; } catch (_) {}
+      try { const o = JSON.parse(js.replace(/,\s*([}\]])/g, "$1")); return isPlainObject(o) ? o : null; } catch (_) {}
+      return null;
+    }
+    function _cxFechaValida(iso) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) return false;
+      const d = new Date(iso + "T12:00:00");
+      if (isNaN(d.getTime())) return false;
+      const back = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      return back === iso && iso >= "2000-01-01" && iso <= todayStr();   // fecha real del calendario y no futura
+    }
+    // Texto limpio; "N/A", "no se menciona", "ilegible"… cuentan como vacío ("Ninguna" solo vale en complicaciones).
+    function _cxTxt(v, max, keepNinguna) {
+      if (v === null || v === undefined || typeof v === "object") return "";
+      let s = toSafeString(v).replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+      if (/^(n\/?a|null|undefined|-+|—|\?+|ilegible|desconocid[oa]|no (se )?(especifica|menciona|refiere|reporta|aplica|encontr[oó]|indica)[a-z]*)\.?$/i.test(s)) s = "";
+      if (!keepNinguna && /^(ningun[oa]s?|sin datos?)\.?$/i.test(s)) s = "";
+      return s.slice(0, max || 600);
+    }
+    function _cxNormalizar(o) {
+      o = isPlainObject(o) ? o : {};
+      let fecha = "";
+      const fr = _cxTxt(o.fecha, 40);
+      if (_cxFechaValida(fr)) fecha = fr;
+      else { const f2 = _cxFechaDeTexto(fr); if (f2 && _cxFechaValida(f2.iso)) fecha = f2.iso; }
+      const partes = [];
+      const add = function (lbl, val) { if (val) partes.push(lbl + ": " + val); };
+      add("Dx postqx", _cxTxt(o.diagnostico_postqx, 300));
+      add("Hallazgos", _cxTxt(o.hallazgos, 900));
+      add("Técnica", _cxTxt(o.tecnica, 500));
+      add("Drenajes", _cxTxt(o.drenajes, 300));
+      add("Complicaciones", _cxTxt(o.complicaciones, 300, true));
+      add("⚠ Importante", _cxTxt(o.importante, 300));
+      let sangrado = "";
+      const sv = (o.sangrado_ml !== undefined && o.sangrado_ml !== null) ? o.sangrado_ml : o.sangrado;
+      if (typeof sv === "number" && isFinite(sv)) { if (sv >= 0 && sv <= 20000) sangrado = String(Math.round(sv)); }
+      else {
+        const str = toSafeString(sv).replace(/,/g, "");
+        const m = str.match(/\d+(\.\d+)?/);
+        if (m) {
+          let n = parseFloat(m[0]);
+          if (/\d\s*(l|lt|litros?)\b/i.test(str) && !/ml/i.test(str)) n = n * 1000;   // "1.2 L" → 1200
+          n = Math.round(n);
+          if (n >= 0 && n <= 20000) sangrado = String(n);
+        }
+      }
+      return {
+        esNota: o.es_nota_quirurgica !== false,
+        fecha: fecha,
+        procedimiento: _cxTxt(o.procedimiento, 300),
+        hallazgos: partes.join("\n").slice(0, 2500),
+        sangrado: sangrado,
+        cirujano: _cxTxt(o.cirujano, 80)
+      };
+    }
+    // Llamada al worker (/api/ai, formato Anthropic Messages con imágenes), como _penRecognize/handleDocIntakeFile, con tope
+    // de 90 s que cubre también la lectura del cuerpo. Nunca lanza: { ok, data } o { ok:false, retry, error }.
+    async function _cxAiCall(proxyUrl, imgs) {
+      const ctl = new AbortController();
+      const tm = setTimeout(function () { try { ctl.abort(); } catch (_) {} }, CX_AI_TIMEOUT_MS);
+      let status = 0, text = "";
+      try {
+        const content = imgs.map(function (b64) { return { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }; });
+        content.push({ type: "text", text: _cxNotaPrompt(imgs.length) });
+        const resp = await fetch(proxyUrl + "/api/ai", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: content }] }), signal: ctl.signal });
+        status = resp.status;
+        text = await resp.text();
+      } catch (e) {
+        return { ok: false, retry: true, error: (e && e.name === "AbortError") ? "se agotó el tiempo (" + Math.round(CX_AI_TIMEOUT_MS / 1000) + " s)" : "sin conexión con el Worker" };
+      } finally { clearTimeout(tm); }
+      if (status < 200 || status >= 300) {
+        const hint = (status === 401 || status === 403) ? "token del Worker inválido (⚙️ Config API)" : status === 404 ? "URL del Worker incorrecta (⚙️ Config API)" : status === 413 ? "fotos demasiado grandes" : status === 429 ? "límite de la IA, espera unos minutos" : status >= 500 ? "el Worker o la IA tuvo un problema" : "";
+        return { ok: false, retry: status === 429 || status >= 500, error: "HTTP " + status + (hint ? " · " + hint : "") };
+      }
+      let data = null; try { data = JSON.parse(text); } catch (_) {}
+      const raw = String((data && data.content && data.content[0] && data.content[0].text) || "");
+      const obj = _cxParseJson(raw);
+      if (!obj) return { ok: false, retry: /Respuesta vacía/.test(raw), error: raw ? "la IA no devolvió datos legibles" : "respuesta vacía de la IA" };
+      return { ok: true, data: obj };
+    }
+    // Fotos ya guardadas en la cirugía → JPEG base64 ≤1600 px (inline o bajadas de Storage con URL firmada). Las últimas N.
+    async function _cxImgsDeFotos(c) {
+      const out = [];
+      const fotos = (Array.isArray(c && c.fotos) ? c.fotos : []).filter(function (f) { return f && (f.b64 || f.path) && (/^image\//.test(f.type || "") || !!f.b64); });
+      for (const f of fotos.slice(-CX_AI_MAX_IMGS)) {
+        try {
+          if (f.b64 && (f.type || "image/jpeg") === "image/jpeg") { out.push(f.b64); continue; }   // ya reducida por _fotoPrepare
+          let blob = null;
+          if (f.b64) {
+            const bin = atob(f.b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            blob = new Blob([bytes], { type: f.type || "image/jpeg" });
+          } else {
+            const url = await _fotoSignedUrl(f.bucket || FOTO_BUCKET, f.path);
+            if (!url) continue;
+            const ctl = new AbortController(); const tm = setTimeout(function () { try { ctl.abort(); } catch (_) {} }, 20000);
+            try { const r = await fetch(url, { signal: ctl.signal }); if (r.ok) { const b = await r.blob(); blob = new Blob([b], { type: b.type || f.type || "image/jpeg" }); } } finally { clearTimeout(tm); }
+          }
+          if (!blob) continue;
+          const prep = await _fotoPrepare(blob);
+          if (prep.b64) out.push(prep.b64);
+        } catch (e) { safeWarn("cx IA: no se pudo leer una foto:", e); }
+      }
+      return out;
+    }
+    // Pinta al momento los campos llenados (sin repintar la tarjeta; nunca el campo con foco ni uno que ya tenga texto).
+    function _cxPintarCampos(k, cid, cambios) {
+      try {
+        const card = document.getElementById("card-" + k); if (!card) return;
+        const row = card.querySelector('.cx-row[data-id="' + CSS.escape(String(cid)) + '"]'); if (!row) return;
+        Object.keys(cambios).forEach(function (f) {
+          const el = f === "fecha" ? row.querySelector("input.cx-date") : row.querySelector('[data-f="' + f + '"]');
+          if (!el || el === document.activeElement || el.value) return;
+          el.value = cambios[f];
+          if (el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+        });
+      } catch (_) {}
+    }
+    // Llena SOLO lo vacío en la cirugía VIGENTE (se vuelve a buscar: pudo cambiar mientras la IA leía).
+    function _cxAplicar(k, cid, raw) {
+      const loc = _cxLocate(k, cid);
+      if (!loc) { _plToast("🤖 Se leyó la nota, pero esa cirugía ya no está en la ficha. No se cambió nada.", "#b45309", 6500); return; }
+      const v = _cxNormalizar(raw);
+      if (!v.esNota) { _plToast("📷 La foto quedó guardada, pero no parece una nota quirúrgica: no se llenó nada.", "#b45309", 6500); return; }
+      const cambios = {}, noTocados = [];
+      CX_CAMPOS.forEach(function (f) {
+        const nuevo = v[f]; if (!nuevo) return;
+        const cur = toSafeString(loc.c[f]).trim();
+        if (cur) { if (cur !== nuevo) noTocados.push(f + (f === "fecha" ? " (la nota dice " + nuevo.split("-").reverse().join("/") + ")" : "")); return; }
+        cambios[f] = nuevo;
+      });
+      const p = patients.find(function (x) { return pid(x) === loc.k; });
+      const cama = (p && p.cama) ? "Cama " + p.cama + " · " : "";
+      if (!Object.keys(cambios).length) {
+        _plToast("🤖 " + cama + "Nota leída: no había campos vacíos que llenar" + (noTocados.length ? "\nNo toqué (ya tenían texto): " + noTocados.join(", ") : "") + "\nLa foto quedó en la cirugía.", "#475569", 8000);
+        return;
+      }
+      _undoPush(loc.k, "transcribir nota postquirúrgica");
+      Object.keys(cambios).forEach(function (f) { loc.c[f] = cambios[f]; });
+      _touchBy(loc.nd, "cirugias");
+      _saveCirugias(loc.k, loc.nd);
+      _cxPintarCampos(loc.k, cid, cambios);
+      _refreshPaseLine(loc.k, loc.nd);
+      _rerenderCardSoft(loc.k);
+      const faltan = _cxCamposVacios(loc.c);
+      _plToast("🤖 " + cama + "Nota postquirúrgica transcrita\nLlené: " + Object.keys(cambios).join(", ") +
+        (noTocados.length ? "\nNo toqué (ya tenían texto): " + noTocados.join(", ") : "") +
+        (faltan.length ? "\nNo venía en la nota: " + faltan.join(", ") : "") +
+        "\nRevisa los datos · ↩ Regresar lo deshace", "#7c3aed", 10000);
+    }
+    // Cola local (este dispositivo) de lecturas pendientes por falta de red o error temporal del worker.
+    function _cxAiQueueLoad() { try { const q = JSON.parse(localStorage.getItem(CX_AI_QUEUE_KEY) || "[]"); return Array.isArray(q) ? q : []; } catch (_) { return []; } }
+    function _cxAiQueueSave(q) { try { localStorage.setItem(CX_AI_QUEUE_KEY, JSON.stringify(q.slice(-30))); } catch (_) {} }
+    function _cxAiQueueAdd(k, cid) {
+      const q = _cxAiQueueLoad(); const prev = q.find(function (x) { return x && x.cid === cid; });
+      const rest = q.filter(function (x) { return x && x.cid !== cid; });
+      rest.push({ k: k, cid: cid, ts: (prev && prev.ts) || Date.now() });
+      _cxAiQueueSave(rest);
+    }
+    function _cxAiQueueDel(cid) { const q = _cxAiQueueLoad(); const r = q.filter(function (x) { return x && x.cid !== cid; }); if (r.length !== q.length) _cxAiQueueSave(r); }
+    async function _cxAiQueueRun() {
+      if (_cxAiQueueRunning || !navigator.onLine || !getProxyUrl()) return;
+      _cxAiQueueRunning = true;
+      try {
+        const q = _cxAiQueueLoad();
+        for (let i = 0; i < q.length; i++) {
+          const it = q[i];
+          if (!it || !it.cid) continue;
+          if (Date.now() - (Number(it.ts) || 0) > 3 * 86400000) { _cxAiQueueDel(it.cid); continue; }   // > 3 días: se descarta (la foto sigue)
+          if (!navigator.onLine) break;
+          await cxLeerNota(it.k, it.cid, null, { auto: true });
+        }
+      } catch (e) { safeWarn("cx IA cola:", e); } finally { _cxAiQueueRunning = false; }
+    }
+    // Lee con IA la nota postquirúrgica de una cirugía. imgs = JPEG base64 ya reducidos (recién tomados); sin imgs usa las
+    // fotos guardadas en la cirugía. Nunca lanza y nunca toca las fotos.
+    async function cxLeerNota(k, cid, imgs, opts) {
+      const auto = !!(opts && opts.auto);
+      let mine = "";
+      try {
+        cid = String(cid || "");
+        const loc = _cxLocate(k, cid);
+        if (!loc) { _cxAiQueueDel(cid); if (!auto) alert("No se encontró la cirugía."); return; }
+        const busyKey = loc.k + "|" + cid;
+        if (_cxAiBusy.has(busyKey)) { if (!auto) _plToast("🤖 Ya estoy leyendo esta nota…", "#475569", 3000); return; }
+        if (!_cxCamposVacios(loc.c).length) {
+          _cxAiQueueDel(cid);
+          if (!auto) _plToast("📷 Foto guardada. La cirugía ya tiene todos los datos: no se cambió nada (borra el campo que quieras que llene la IA y toca 🤖 Transcribir).", "#475569", 6500);
+          return;
+        }
+        const proxyUrl = getProxyUrl();
+        if (!proxyUrl) { if (!auto) _plToast("📷 Foto guardada. Para transcribir la nota configura la URL del Worker (⚙️ Config API).", "#b45309", 6500); return; }
+        if (!navigator.onLine) {
+          _cxAiQueueAdd(loc.k, cid);
+          if (!auto) _plToast("📷 Foto guardada sin red. La nota se transcribe sola al volver la red (o toca 🤖 Transcribir).", "#b45309", 6500);
+          return;
+        }
+        _cxAiBusy.add(busyKey); mine = busyKey;
+        _rerenderCardSoft(loc.k);                                         // ⏳ en la fila
+        if (!Array.isArray(imgs) || !imgs.length) imgs = await _cxImgsDeFotos(loc.c);
+        if (!imgs.length) { _cxAiQueueDel(cid); _plToast("📷 No pude abrir las fotos de esta cirugía para leerlas (¿sin red?). Las fotos siguen guardadas.", "#b45309", 6500); return; }
+        if (!auto) _plToast("🤖 Leyendo la nota postquirúrgica… (20-60 s, puedes seguir trabajando)", "#7c3aed", 5000);
+        const res = await _cxAiCall(proxyUrl, imgs.slice(0, CX_AI_MAX_IMGS));
+        if (!res.ok) {
+          if (res.retry) _cxAiQueueAdd(loc.k, cid); else _cxAiQueueDel(cid);
+          _plToast("⚠️ No se pudo leer la nota: " + res.error + "\nLa foto quedó guardada en la cirugía" + (res.retry ? "; se reintenta sola al volver la red, o toca 🤖 Transcribir." : "; toca 🤖 Transcribir para reintentar."), "#dc2626", 9000);
+          return;
+        }
+        _cxAiQueueDel(cid);
+        _cxAplicar(loc.k, cid, res.data);
+      } catch (e) {
+        safeWarn("cx IA:", e);
+        try { _plToast("⚠️ No se pudo transcribir la nota: " + ((e && e.message) || e) + "\nLa foto quedó guardada.", "#dc2626", 8000); } catch (_) {}
+      } finally {
+        if (mine && _cxAiBusy.delete(mine)) { try { const l = _cxLocate(k, cid); if (l) _rerenderCardSoft(l.k); } catch (_) {} }
+      }
     }
     // ═══ TOMAR GUARDIA: lo que el saliente escribió en "Entrega" pasa a mi "Recibo" (con fecha y hora)
     // y "Entrega" queda vacía para lo que yo entregaré al final de mi guardia.
@@ -26441,7 +27223,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         `Estado: ${p.estado || "—"}`,
         "",
         cirugiasTexto(nd.checklist, " | ") ? `🔪 Cirugías: ${cirugiasTexto(nd.checklist, " | ")}` : (nd.qx?.trim() ? `🔧 Qx/Proc: ${nd.qx.trim()}` : null),
-        nd.manejo?.trim() ? `💉 Manejo: ${nd.manejo.trim()}` : null,
+        nd.manejo?.trim() ? `🗂️ Misceláneo: ${nd.manejo.trim()}` : null,
         nd.sv?.trim() ? `📊 SV: ${nd.sv.trim()}` : null,
         (dispositivosTexto(nd.checklist, " | ") || nd.drenajes || balanceTexto(nd)) ? `🩸 Drenajes: ${dispositivosTexto(nd.checklist, " | ") || nd.drenajes || "—"} · Balance: ${balanceTexto(nd) || "—"}` : null,
         labsTexto || null,
@@ -26709,9 +27491,13 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     // ─── v32: AUTO-AJUSTE DE ALTURA DE RECUADROS (compactar tarjeta) ───────────────────
     function _autoResizeTA(el) {
       if (!el || el.tagName !== 'TEXTAREA') return;
+      const y = window.scrollY || window.pageYOffset || 0;
       el.style.height = 'auto';
       const h = el.scrollHeight;
       el.style.height = (h > 0 ? h : 22) + 'px';
+      // height:auto encoge la página un instante: cerca del final el navegador recorta el scroll y la caja en la que se escribe
+      // brincaba bajo la punta del lápiz a media palabra (Scribble seleccionaba o seguía en otra caja). Solo la caja con foco.
+      if (document.activeElement === el && (window.scrollY || window.pageYOffset || 0) !== y) { try { window.scrollTo(0, y); } catch (_) {} }
     }
     function autoResizeAll(root) {
       (root || document).querySelectorAll('textarea.field-ta').forEach(_autoResizeTA);
@@ -26754,7 +27540,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     function fitInputsIn(root) { try { (root || document).querySelectorAll(FIT_SEL).forEach(_fitInput); } catch (_) {} }
     // Tocar / enfocar → 16 px ANTES del foco (iOS decide el zoom al enfocar); soltar → ajustar de nuevo.
     function _fitRelease(e) { const t = e.target; if (t && t.matches && t.matches(FIT_SEL)) t.style.removeProperty("font-size"); }
-    document.addEventListener("pointerdown", _fitRelease, true);
+    document.addEventListener("pointerdown", _fitRelease, { capture: true, passive: true });   // pasivo: no vuelve síncronos los toques (Scribble)
     document.addEventListener("touchstart", _fitRelease, { capture: true, passive: true });
     document.addEventListener("focusin", _fitRelease, true);
     document.addEventListener("focusout", function (e) { const t = e.target; if (t && t.matches && t.matches(FIT_SEL)) setTimeout(function () { _fitInput(t); }, 0); }, true);
@@ -28071,10 +28857,15 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
             let hist = [];
             try { hist = JSON.parse(localStorage.getItem(histKey) || "[]"); } catch(e) {}
             hist.push(data);
-            if (hist.length > 10) hist = hist.slice(-10);
+            // 3 pasos (no 10): cada PNG de pantalla completa son cientos de miles de caracteres en base64 y 11 copias
+            // llenaban la cuota (notas y outbox dejaban de guardarse).
+            if (hist.length > 3) hist = hist.slice(-3);
             localStorage.setItem(histKey, JSON.stringify(hist));
           } catch (e) {
             console.warn("[Pizarra] No se pudo guardar:", e);
+            // Cuota llena: soltar el historial (prescindible) y volver a guardar el dibujo actual; si tampoco cabe, avisar.
+            try { localStorage.removeItem(this.storageKey() + "_history"); localStorage.setItem(this.storageKey(), this.canvas.toDataURL("image/png")); }
+            catch (_) { if (typeof _plToast === "function") _plToast("⚠️ Sin espacio: la pizarra no se guardó en el dispositivo", "#b45309", 4000); }
           }
           this.actualizarLabel();
         }
@@ -28267,6 +29058,15 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         tableroSave(data);
       };
 
+      // Repintar al soltar una tarjeta destruía la SIGUIENTE, en la que Scribble ya escribía (blur de la primera → foco en la
+      // segunda → innerHTML nuevo → se perdía lo escrito). Solo se repinta si ninguna tarjeta del tablero quedó con el foco.
+      window.tableroRenderLater = function() {
+        setTimeout(function () {
+          const a = document.activeElement;
+          if (a && a.classList && a.classList.contains("tablero-text")) return;
+          renderTablero();
+        }, 0);
+      };
       window.tableroClearDone = function(qId) {
         if (!confirm(`¿Borrar todos los completados de "${QUADRANTS.find(q => q.id === qId).titulo}"?`)) return;
         const data = tableroLoad();
@@ -28641,7 +29441,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
                        spellcheck="false"
                        data-q-id="${q.id}"
                        data-item-id="${item.id}"
-                       onblur="tableroUpdateText('${q.id}','${item.id}', this.innerText); renderTablero();"
+                       onblur="tableroUpdateText('${q.id}','${item.id}', this.innerText); tableroRenderLater();"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();tableroAddItem('${q.id}');}"
                        data-placeholder="Escribe aquí...">${textShown.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
                   ${pacBadge}
@@ -29351,7 +30151,13 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     if (cultivosLoaded && !force) return;
     // Sin sesión no hay acceso (el rol anon ya no tiene permisos): evitar el 401 antes del
     // login. Tras autenticarse la página se recarga y el timer de arranque vuelve a llamar aquí.
-    if (typeof _userAccessToken === "undefined" || !_userAccessToken) return;
+    if (typeof _userAccessToken === "undefined" || !_userAccessToken) {
+      // La sesión puede tardar más de 3.5 s en restaurarse (token vencido, red lenta, arranque sin red): antes se
+      // salía sin reintentar y la caja "Cultivos (lab)" quedaba vacía toda la sesión. Reintento cada 5 s (máx. 2 min).
+      loadCultivos._authWaits = (loadCultivos._authWaits || 0) + 1;
+      if (loadCultivos._authWaits <= 24) setTimeout(function () { loadCultivos(force); }, 5000);
+      return;
+    }
     // La vista winlab_cultivos recorre TODOS los reportes de winlab_labs (70 000+): sin filtros tardaba
     // >60 s y PostgREST la cortaba, así que la caja "Cultivos (lab)" nunca aparecía. Con exp del censo
     // y 45 días de fecha baja a ~2 s. Si el censo aún no cargó, reintenta un poco después.
@@ -29383,11 +30189,13 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         var modalOpen = !!document.querySelector(".modal[style*='flex'], .modal-overlay[style*='flex']");
         var ae = document.activeElement;
         var editing = ae && /TEXTAREA|INPUT/.test(ae.tagName);
-        if (!modalOpen && !editing && typeof renderView === "function") renderView();
+        if (!modalOpen && typeof renderViewSoft === "function") renderViewSoft(); else if (!modalOpen && !editing && typeof renderView === "function") renderView();
       } catch (e2) {}
     } catch (e) {
       cultivosError = (e && e.message) ? e.message : String(e || "");
-      cultivosLoaded = true; // no reintentar en loop; refresh manual disponible
+      var _cNet = typeof isLikelyNetworkError === "function" && isLikelyNetworkError(e);
+      cultivosLoaded = !_cNet; // error real del servidor: no reintentar en loop
+      if (_cNet) setTimeout(function () { loadCultivos(false); }, 60000);
       try { console.warn("[v29] loadCultivos:", cultivosError); } catch (_) {}
     }
   }

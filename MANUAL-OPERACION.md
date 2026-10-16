@@ -342,6 +342,31 @@ menos 96 px y se lee completo. Si el panel es angosto, cada dispositivo usa dos 
 valor no cabe, la letra baja solo lo necesario. Al tocar el cuadro vuelve a su tamaño normal, para que
 el iPad no haga zoom, y al soltarlo se ajusta de nuevo.
 
+## Apple Pencil, Misceláneo y nota postquirúrgica con IA (16 de octubre de 2026)
+
+**Apple Pencil.** En el iPad, con ✍️ Scribble (el modo por defecto), la app ya no deja ningún oyente que haga
+esperar al lápiz: antes cada toque esperaba a la app y, si estaba ocupada guardando, el lápiz solo
+seleccionaba. Un iPad que se había quedado en ✍️ Tinta regresa una vez a Scribble. En 📌 Tablero, pasar
+de una nota a otra ya no borra la nota en la que se escribe. Tocar la cama o el nombre en la cabecera de la
+ficha ya no esconde las cajas.
+
+**Misceláneo.** La caja «Manejo médico actual» ahora se llama 🗂️ Misceláneo en la ficha, la barra de saltos,
+⚙ Cajas, el editor y la nota de evolución. El dato es el mismo. Lo escrito no se pierde al cambiar de
+tarjeta antes de que se guarde, al perder la red, al ocultar la app ni cuando llega un cambio de otro iPad.
+
+**Nota postquirúrgica con IA.** En Cirugías, el 📷 de cada cirugía o el botón «📷 Nota postquirúrgica»
+toman la foto (o varias páginas). La foto queda en la cirugía y el ayudante de IA llena SOLO los campos
+vacíos: fecha, procedimiento, hallazgos (con técnica, complicaciones y lo importante), sangrado y cirujano.
+Lo que ya estaba escrito nunca se pisa. Revisa lo llenado; ↩ Regresar lo deshace. Sin red o si falla, la foto
+se queda y la lectura se reintenta sola al volver la red, o con 🤖 Transcribir. La foto también se guarda en
+el iPad si la subida tarda, y se abre en un visor dentro de la app.
+
+**Robustez.** Revisión completa del archivo con 5 revisores y verificación independiente: arranque sin red
+sin pantalla vacía, no cerrar sesión cuando solo falta la red, la copia vieja de otro iPad ya no borra la
+Entrega o las casillas del colega, la recarga ya no regresa lo recién escrito, altas y pacientes nuevos sin
+red ya no reaparecen ni desaparecen, el almacenamiento lleno libera historial de pacientes egresados, y
+las llamadas a la nube y a la IA tienen límite de tiempo.
+
 ## Entrega de guardia que resume (octubre 2026)
 
 La vista **📤 Entrega** (una ficha por paciente) muestra **solo** estos bloques, en este orden, y
