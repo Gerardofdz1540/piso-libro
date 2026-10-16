@@ -17,7 +17,7 @@ Imagina una fábrica con cuatro máquinas que trabajan solas:
 3. **El robot de laboratorios** (GitHub Actions, carpeta `rpa/`). Tres veces al
    día entra a WinLab, busca a cada paciente del censo, descarga sus
    laboratorios y los guarda en la base de datos. Horarios (hora de León):
-   04:07, 13:15 y 20:07. Quien lo despierta a la hora exacta es la base de
+   05:00, 12:30 y 20:07. Quien lo despierta a la hora exacta es la base de
    datos (Supabase, tarea programada `winlab-scrape-*`), porque el reloj de
    GitHub llega con 3 a 9 horas de retraso; el de GitHub queda como respaldo.
    Para ver si despertó: tabla `winlab_dispatch_log` en Supabase (una fila por
@@ -168,7 +168,7 @@ labs críticos sin reconocer y uno ámbar labs atrasados.
 ## Si los laboratorios no llegan
 
 1. Abre https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml
-2. Mira la lista de corridas. Cada día debe haber tres (04:07, 13:15 y 20:07
+2. Mira la lista de corridas. Cada día debe haber tres (05:00, 12:30 y 20:07
    hora de León). Un círculo verde es éxito; rojo es error.
 3. Si arriba aparece un aviso amarillo que dice **"This scheduled workflow is
    disabled"**: pulsa **Enable workflow**. (GitHub apaga el robot si el
@@ -572,7 +572,7 @@ error de dedo (cama 3-181: dos letras invertidas en el apellido paterno), WinLab
 3. **🔎 Buscar ahora** (también en el menú ⋯ de la tarjeta: 🤖 Pedir labs al robot) pide al robot
    una corrida solo para ese paciente: tarda 2-4 minutos y la tarjeta se actualiza sola ("encontrado
    como …"). Necesita internet; sin red, el nombre fijado se usa en la siguiente corrida automática
-   (4:07, 13:15 y 20:07). Sirve desde el iPad, que no puede abrir la página de WinLab.
+   (5:00, 12:30 y 20:07). Sirve desde el iPad, que no puede abrir la página de WinLab.
 4. **Mientras tanto**: 📄 PDF / 📷 Foto en la sección de labs lee la hoja impresa o la pantalla con
    IA y guarda los valores en la tarjeta.
 

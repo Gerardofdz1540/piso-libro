@@ -102,9 +102,13 @@ revoke all on function public.winlab_dispatch_scrape(text) from public, anon;
 revoke all on function public.winlab_dispatch_collect() from public, anon;
 grant execute on function public.winlab_dispatch_scrape(text) to authenticated;
 
--- Horarios: mismos que .github/workflows/winlab-scraper.yml (UTC). León = UTC-6 todo el año.
-select cron.schedule('winlab-scrape-0407-leon', '7 10 * * *',  $$select public.winlab_dispatch_scrape('cron 04:07 León')$$);
-select cron.schedule('winlab-scrape-1315-leon', '15 19 * * *', $$select public.winlab_dispatch_scrape('cron 13:15 León')$$);
+-- Horarios (UTC). León = UTC-6 todo el año.
+-- 16-oct-2026: la madrugada pasó de 04:07 a 05:00 y la visita de 13:15 a 12:30 (pedido del jefe de
+-- servicio: labs listos antes de la visita de las 14:00). Se aplicó con cron.alter_job(1, …) y
+-- cron.alter_job(2, …); los jobname conservan el nombre original (…-0407-… y …-1315-…) por continuidad
+-- del historial en cron.job_run_details.
+select cron.schedule('winlab-scrape-0407-leon', '0 11 * * *',  $$select public.winlab_dispatch_scrape('cron 05:00 León')$$);
+select cron.schedule('winlab-scrape-1315-leon', '30 18 * * *', $$select public.winlab_dispatch_scrape('cron 12:30 León')$$);
 select cron.schedule('winlab-scrape-2007-leon', '7 2 * * *',   $$select public.winlab_dispatch_scrape('cron 20:07 León')$$);
 select cron.schedule('winlab-dispatch-collect', '*/15 * * * *', $$select public.winlab_dispatch_collect()$$);
 select cron.schedule('cron-history-purge', '23 4 * * *', $$delete from cron.job_run_details where end_time < now() - interval '14 days'$$);
