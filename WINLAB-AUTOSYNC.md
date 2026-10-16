@@ -114,7 +114,7 @@ renderLabSection() — campos tipados llenos automáticamente
 
 ---
 
-## Tests (585 pasan offline, sin Playwright ni red)
+## Tests (593 pasan offline, sin Playwright ni red)
 
 ```bash
 cd rpa && npm test
@@ -125,7 +125,7 @@ cd rpa && npm test
 | `scraper.test.js` | 286 | dedup, formatDate, isMeaningfulReportRow/isGarbageCell (menú, formulario y paginación ES/IT), looksLikeReportLinkRow, extractApellidos, escalera de candidatos (Ñ, invertido con nome y apellidos solos, abreviaturas, paterno/materno-solo, alias), patientHeaderMatches/Kind (simétrico, género, typos), selectTargetRows (guarda de edad, homónimos, rescate de año, coincidencia parcial, paginación), expVariants |
 | `drilldown.test.js` | 70 | regression guards: hooks correctos en código, regex PDF URL, FileName extraction, anti-confusión, orderDrillCandidates (cultivos primero, topes), WL_DRILLDOWN_MAX saneado |
 | `pdf-extract.test.js` | 100 | extractLabValuesFromText (edge cases, multi-formato), parsePdfToLabValues con PDF binario real, cultivos (germen, antibiograma, formatos HGL) |
-| `ris.test.js` | 129 | robot de imagen (ris-lib.js): censo completo, ventanas hasta el ingreso, rowToEstudio/dedup con fusión, edad, cobertura de tokens, escalera de niveles con guarda de edad, desempate entre camas, homónimos del RIS, estado del reporte y reintento, login, upsert tolerante; guardas de fuente sobre ris-scraper.js |
+| `ris.test.js` | 137 | robot de imagen (ris-lib.js): censo completo, ventanas hasta el ingreso, rowToEstudio/dedup con fusión, edad, cobertura de tokens, escalera de niveles con guarda de edad (2 tokens solo exactos, sin nivel para hermanos/gemelos, alias corto solo idéntico), desempate entre camas, homónimos del RIS, estado del reporte y reintento, login, upsert tolerante; guardas de fuente sobre ris-scraper.js |
 
 ---
 
