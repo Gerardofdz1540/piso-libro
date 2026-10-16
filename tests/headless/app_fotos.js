@@ -55,8 +55,11 @@ const MOCK = `(() => {
   check('init: sin errores no capturados', errors.length === 0, errors.join(' | '));
 
   // F1
-  const inputSel = '.pl-fotos[data-scope="cx:c1"] input[type=file]';
-  await page.setInputFiles(inputSel, { name: 'nota-qx.png', mimeType: 'image/png', buffer: PNG_1x1 });
+  // El 📷 ya no lleva un <input> dentro de la tarjeta (un repintado con la cámara abierta lo desprendía y la foto se
+  // perdía en iPad): abre UN selector global (#pl-global-foto-input).
+  const [fc1] = await Promise.all([page.waitForEvent('filechooser'), page.click('.pl-fotos[data-scope="cx:c1"] .pl-foto-add')]);
+  const fc1Id = await (await fc1.element()).getAttribute('id');
+  await fc1.setFiles({ name: 'nota-qx.png', mimeType: 'image/png', buffer: PNG_1x1 });
   await page.waitForTimeout(1800);
   const f1 = await page.evaluate(() => {
     const k = pid(patients[0]); const nd = getNote(k); const c = nd.checklist.cirugias[0]; const f = (c.fotos || [])[0] || null;
@@ -66,11 +69,12 @@ const MOCK = `(() => {
   });
   const postCx = posts.find(b => b && b.checklist && Array.isArray(b.checklist.cirugias) && (b.checklist.cirugias[0].fotos || []).length === 1);
   check('F1 foto en cirugía: reducida a JPEG, subida a Storage (ruta, sin b64), miniatura con URL firmada, autor GF, Regresar y el checklist con la foto se sube',
-    f1.n === 1 && !!f1.path && f1.bucket === 'pl-fotos' && !f1.hasB64 && f1.type === 'image/jpeg' && f1.by === 'GF' && f1.w === 1 && !f1.pending && f1.img && /mock\.local\/signed\/pl-fotos\//.test(f1.src || '') && f1.uploads === 1 && f1.upType === 'image/jpeg' && f1.byCx === 'GF' && /agregar foto/.test(f1.undo) && !!postCx && !postCx.checklist.cirugias[0].fotos[0].b64 && !!postCx.checklist.cirugias[0].fotos[0].path, JSON.stringify({ f1, postCx: !!postCx }));
+    fc1Id === 'pl-global-foto-input' && f1.n === 1 && !!f1.path && f1.bucket === 'pl-fotos' && !f1.hasB64 && f1.type === 'image/jpeg' && f1.by === 'GF' && f1.w === 1 && !f1.pending && f1.img && /mock\.local\/signed\/pl-fotos\//.test(f1.src || '') && f1.uploads === 1 && f1.upType === 'image/jpeg' && f1.byCx === 'GF' && /agregar foto/.test(f1.undo) && !!postCx && !postCx.checklist.cirugias[0].fotos[0].b64 && !!postCx.checklist.cirugias[0].fotos[0].path, JSON.stringify({ f1, postCx: !!postCx }));
 
   // F2
   await page.evaluate(() => { window.__storage.fail = true; });
-  await page.setInputFiles('.pl-fotos[data-scope="cultivos"] input[type=file]', { name: 'reporte.png', mimeType: 'image/png', buffer: PNG_1x1 });
+  const [fc2] = await Promise.all([page.waitForEvent('filechooser'), page.click('.pl-fotos[data-scope="cultivos"] .pl-foto-add')]);
+  await fc2.setFiles({ name: 'reporte.png', mimeType: 'image/png', buffer: PNG_1x1 });
   await page.waitForTimeout(1800);
   const f2a = await page.evaluate(() => {
     const k = pid(patients[0]); const nd = getNote(k); const f = (nd.checklist.cultivos_fotos || [])[0] || null;

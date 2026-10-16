@@ -11,7 +11,7 @@
  *   - Supabase sigue pasando directo a la red (la app ya tiene outbox y copia local para trabajar
  *     sin conexión y sincronizar después).
  */
-const VERSION = 'pisolibro-v9';
+const VERSION = 'pisolibro-v10';
 const CACHE = VERSION;
 const NAV_TIMEOUT_MS = 4000;
 // Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
@@ -77,7 +77,18 @@ self.addEventListener('fetch', (event) => {
       const cache = await caches.open(CACHE);
       try {
         const res = await fetchWithTimeout(req, NAV_TIMEOUT_MS);
-        if (res && res.ok) { await putClean(cache, './', res); return res; }
+        if (res && res.ok) {
+          // Documento COMPLETO antes de responder y, si hay copia guardada, con tope propio: con cabeceras a tiempo
+          // pero cuerpo lento o cortado (wifi saturado) antes se colgaba en blanco o entregaba la página truncada.
+          const prev = await cache.match('./');
+          const body = await (prev
+            ? Promise.race([res.blob(), new Promise((_, rej) => setTimeout(() => rej(new Error('body timeout')), 15000))])
+            : res.blob());
+          const h = new Headers(res.headers); h.delete('content-encoding'); h.delete('content-length');
+          const fresh = new Response(body, { status: 200, headers: h });
+          try { await cache.put('./', fresh.clone()); } catch (_) {}
+          return fresh;
+        }
         const cached = await cache.match('./');
         return cached || res;
       } catch (_) {

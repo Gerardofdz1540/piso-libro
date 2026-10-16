@@ -6,6 +6,8 @@ const MOCK = `(() => {
   window.prompt=function(){ log('prompt'); return 'Tester'; };
   window.alert=function(m){ log('alert:'+String(m).slice(0,40)); };
   const auth={
+    // Refresh rechazado por el servidor (token revocado/vencido de verdad): debe cerrar sesión. Sin red NO (BOOT-5).
+    refreshSession: async()=>({ data:{ session:null }, error:{ name:'AuthApiError', message:'Invalid Refresh Token: Already Used' } }),
     getSession: async()=>{ const s=sessionStorage.getItem(KEY); return { data:{ session: s?JSON.parse(s):null }, error:null }; },
     onAuthStateChange: (cb)=>{ listeners.push(cb); return { data:{ subscription:{ unsubscribe(){} } } }; },
     signInWithPassword: async({email,password})=>{

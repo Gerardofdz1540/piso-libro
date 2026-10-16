@@ -69,7 +69,7 @@ const MOCK = `(() => {
   const o1 = await page.evaluate(async () => {
     const t0 = Date.now(); let doc = null, lib = null, sw = null;
     while (Date.now() - t0 < 15000) {
-      try { sw = await navigator.serviceWorker.getRegistration(); const c = await caches.open('pisolibro-v9'); doc = await c.match('./'); lib = await c.match('./vendor/supabase-2.46.1.js'); } catch (e) {}
+      try { sw = await navigator.serviceWorker.getRegistration(); const ck = (await caches.keys()).find(n => /^pisolibro-v\d+$/.test(n)) || 'pisolibro-v10'; const c = await caches.open(ck); doc = await c.match('./'); lib = await c.match('./vendor/supabase-2.46.1.js'); } catch (e) {}
       if (doc && lib) break;
       await new Promise(r => setTimeout(r, 300));
     }
@@ -306,7 +306,7 @@ const MOCK = `(() => {
   const okPatches12 = patches.filter(p => !p.failed && /\/rest\/v1\/patients/.test(p.url)).map(p => p.body && (p.body.cama + '|' + p.body.estado));
   check('O12 estado cambiado sin red: el ítem lleva solo ["estado"]; al volver la red sube GRAVE sin regresar la cama que la hoja cambió en la nube (3-121)',
     !o12a.online && o12a.estado === 'GRAVE' && Array.isArray(o12a.dirty) && o12a.dirty.join() === 'estado'
-    && o12.cama === '3-121' && o12.estado === 'GRAVE' && o12.qPt === 0 && okPatches12.length >= 1 && okPatches12.every(s => s === '3-121|GRAVE') && remotePatient.cama === '3-121',
+    && o12.cama === '3-121' && o12.estado === 'GRAVE' && o12.qPt === 0 && okPatches12.length >= 1 && okPatches12.every(s => s === '3-121|GRAVE' || s === 'undefined|GRAVE') && remotePatient.cama === '3-121',
     JSON.stringify({ o12a, o12, okPatches12, remote: remotePatient.cama }));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));

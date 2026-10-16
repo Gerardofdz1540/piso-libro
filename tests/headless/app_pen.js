@@ -335,7 +335,7 @@ const MOCK = `(() => {
   const l10 = await page.evaluate(async () => {
     window.__pl_force_ipad = true; localStorage.setItem('pl_pen_mode', '2'); PEN_LIVE.scribbleHint = false;
     const k = pid(patients[0]); const wait = (ms) => new Promise(r => setTimeout(r, ms));
-    const migrated = penMode() === 'off' && localStorage.getItem('pl_pen_mode') === '0' && !penModeOn() && localStorage.getItem('pl_pen_ipad_v2') === '1';   // deja la marca de "ya migrado"
+    const migrated = penMode() === 'off' && localStorage.getItem('pl_pen_mode') === '0' && !penModeOn() && localStorage.getItem('pl_pen_ipad_v3') === '1';   // deja la marca de "ya migrado"
     renderView(); await wait(150);
     const label = (document.querySelector('.bn-pen') || {}).textContent, btnOff = !document.querySelector('.bn-pen').classList.contains('on');
     const F = __ipadFields(); const missing = [];
@@ -363,7 +363,7 @@ const MOCK = `(() => {
   // ── L12: iPad en ✍️ Tinta: SOLO las cajas grandes de la ficha (textarea con data-key) se interceptan y quedan como tinta; todos los inputs y las
   //        textareas sin data-key siguen siendo de Scribble (sin sesión numérica: ya no existe en iPad); aviso una vez; el botón cicla Scribble ↔ Tinta ──
   const l12 = await page.evaluate(async () => {
-    window.__pl_force_ipad = true; localStorage.setItem('pl_pen_ipad_v2', '1'); localStorage.setItem('pl_pen_mode', '1'); PEN_LIVE.scribbleHint = false;   // con la marca: Tinta elegida a propósito, se respeta
+    window.__pl_force_ipad = true; localStorage.setItem('pl_pen_ipad_v3', '1'); localStorage.setItem('pl_pen_mode', '1'); PEN_LIVE.scribbleHint = false;   // con la marca: Tinta elegida a propósito, se respeta
     const k = pid(patients[0]); const wait = (ms) => new Promise(r => setTimeout(r, ms));
     renderView(); await wait(150);
     const F = __ipadFields(); const missing = []; const probed = {};
@@ -637,18 +637,18 @@ const MOCK = `(() => {
     const r = fc ? fc.getBoundingClientRect() : { left: 0, top: 0 };
     const pdOk = fc ? fc.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + 6, clientY: r.top + 6, pressure: 0.5 })) : null;
     const base = { ipad: _penIsIPad(), ls: localStorage.getItem('pl_pen_mode'), mode: penMode(), on: document.body.classList.contains('pen-on'), label: (document.querySelector('.bn-pen') || {}).textContent, btnOn: !!document.querySelector('.bn-pen.on'), pdOk, noSess: PEN_LIVE.el === null && PEN_LIVE.active === null };
-    // Tinta ("1") heredada SIN la marca pl_pen_ipad_v2 (el iPad se quedó en Tinta desde cuando era el modo por defecto): se baja a
+    // Tinta ("1") heredada SIN la marca pl_pen_ipad_v3 (el iPad se quedó en Tinta desde cuando era el modo por defecto): se baja a
     // Scribble UNA sola vez y deja la marca; la Tinta elegida después con ✍️ se respeta en lecturas sucesivas; y con la marca puesta un
     // "1" guardado sigue siendo Tinta.
-    localStorage.removeItem('pl_pen_ipad_v2'); localStorage.setItem('pl_pen_mode', '1');
-    const inkOnce = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), mark: localStorage.getItem('pl_pen_ipad_v2'), again: penMode() };
+    localStorage.removeItem('pl_pen_ipad_v3'); localStorage.setItem('pl_pen_mode', '1');
+    const inkOnce = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), mark: localStorage.getItem('pl_pen_ipad_v3'), again: penMode() };
     const btn = document.querySelector('.bn-pen'); togglePenMode(btn);
-    const inkKept = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), again: penMode(), on: document.body.classList.contains('pen-on'), txt: btn.textContent, mark: localStorage.getItem('pl_pen_ipad_v2') };
+    const inkKept = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), again: penMode(), on: document.body.classList.contains('pen-on'), txt: btn.textContent, mark: localStorage.getItem('pl_pen_ipad_v3') };
     localStorage.setItem('pl_pen_mode', '1'); const inkDirect = penMode();
     togglePenMode(btn); const back = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), on: document.body.classList.contains('pen-on') };
     return { base, inkOnce, inkKept, inkDirect, back };
   });
-  check('L16 iPad que se quedó en "2" (→ Texto): al cargar se migra a "0" (Scribble): sin pen-on, la barra dice «✍️ Scribble» y un pointerdown del lápiz sobre FC no se cancela ni abre sesión; un "1" (Tinta) heredado sin la marca se baja a Scribble UNA sola vez (deja pl_pen_ipad_v2); la Tinta elegida con ✍️ después se respeta (y un "1" con la marca también); ✍️ otra vez vuelve a Scribble',
+  check('L16 iPad que se quedó en "2" (→ Texto): al cargar se migra a "0" (Scribble): sin pen-on, la barra dice «✍️ Scribble» y un pointerdown del lápiz sobre FC no se cancela ni abre sesión; un "1" (Tinta) heredado sin la marca se baja a Scribble UNA sola vez (deja pl_pen_ipad_v3); la Tinta elegida con ✍️ después se respeta (y un "1" con la marca también); ✍️ otra vez vuelve a Scribble',
     l16.base.ipad === true && l16.base.ls === '0' && l16.base.mode === 'off' && !l16.base.on && l16.base.label === '✍️ Scribble' && !l16.base.btnOn && l16.base.pdOk === true && l16.base.noSess
     && l16.inkOnce.mode === 'off' && l16.inkOnce.ls === '0' && l16.inkOnce.mark === '1' && l16.inkOnce.again === 'off'
     && l16.inkKept.mode === 'ink' && l16.inkKept.ls === '1' && l16.inkKept.again === 'ink' && l16.inkKept.on && l16.inkKept.txt === '✍️ Tinta' && l16.inkKept.mark === '1'
