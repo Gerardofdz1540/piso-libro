@@ -319,6 +319,12 @@ su fecha), **💧 Gastos**, **🧪 Laboratorios** puntuales, **🦠 Cultivos** (
 antibiograma, o "en proceso", y lo escrito en la caja Cultivos) y **🩻 Estudios de imagen** (los del
 visor de las últimas dos semanas con la conclusión del reporte, y el último registro manual).
 
+**📽 Modo Proyector** (botón en la vista Entrega): muestra una ficha por paciente a pantalla completa
+con esos mismos bloques y **todos los laboratorios** del último control, agrupados como en la tarjeta
+(críticos en rojo, anormales en ámbar). Empieza en la cama 150 y sigue el orden del tablero (piso 3
+por número, luego UCI, UTI y piso 2); con **Ir a cama** se elige desde dónde empezar, y ◀ ▶ (o las
+flechas del teclado) avanzan. La ficha se ajusta sola al tamaño de la pantalla para que no se corte.
+
 El botón **✨ Resumen** de la caja Entrega sigue escribiendo el resumen completo, que además incluye:
 
 - **🔪 Quirófano**: si pasó a quirófano hoy o ayer (procedimiento, hallazgos, sangrado, cirujano);

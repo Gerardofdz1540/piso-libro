@@ -197,6 +197,54 @@ const MOCK = `(() => {
   check('E5 novedades automáticas de labs: anota los críticos ("Anemia severa (Hb 6.2)") y el INR estimado ≥ 1.5; los solo anormales (glucosa 160, K 5.5, INR 1.15) ya no ensucian la entrega; nada cambió → nada',
     e5.items.length === 1 && e5.items[0] === 'Labs: Anemia severa (Hb 6.2), INR estimado 1.52 (TP ÷ testigo)' && e5.again === 0 && e5.soloAbn === 0, JSON.stringify(e5));
 
+  // ── E6: 📽 Modo Proyector — empieza en la cama 150 (no en UCI), selector para empezar en otra, ficha encuadrada
+  //        (no se corta) con los bloques de Entrega y TODOS los laboratorios del último control ──
+  const e6 = await page.evaluate(async () => {
+    const base = patients[0];
+    const extra = [['UCI 5', 'u5'], ['2-027', 'p27'], ['3-151', 'p151'], ['3-150', 'p150']].map(function (x, i) {
+      return { _supa_id: x[1], cama: x[0], exp: '9' + i, nombre: 'JUAN PEREZ LOPEZ ' + i, esp: 'CG', estado: 'ESTABLE', dx: 'DX ' + i, edad: '50', adscrito: '', residente: '', ingreso: '' };
+    });
+    extra.forEach(function (p) { patients.push(p); });
+    // Muchos labs en el paciente base para comprobar que se ven TODOS y que la ficha cabe
+    const k0 = pid(base); const nd0 = getNote(k0);
+    const many = { hb: '7.4', leucos: '18', plaq: '45', cr: '2.1', urea: '80', glu: '160', na: '131', k: '6.1', cl: '99', ca: '7.9', mg: '1.6', p: '2.1', alb: '2.2', bt: '1.9', ast: '88', alt: '95', fa: '210', ggt: '150', ldh: '400', pcr: '210', pct: '4.1', lac: '3.1', tp: '19.8', tp_testigo: '13', ttp: '40', fibrinogeno: '150', ph: '7.29', hco3: '17', pco2: '33', po2: '80', zz_raro: '12' };
+    nd0.labHistory = [{ fecha: _egIsoOffset(0), labs: many, extra: [{ nombre: 'Amonio', valor: '60' }] }];
+    noteData[k0] = nd0;
+    openProyector();
+    await new Promise(r => setTimeout(r, 80));
+    const sel = document.getElementById('proj-jump');
+    const first = { cama: _projPatients[_projIdx].cama, idx: _projIdx, n: _projPatients.length, opts: sel ? sel.options.length : 0, selVal: sel ? sel.value : null, order: _projPatients.map(p => p.cama) };
+    // Ir al paciente base con el selector
+    const iBase = _projPatients.indexOf(base);
+    sel.value = String(iBase); sel.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 80));
+    const area = document.getElementById('proj-card-area'), card = area.querySelector('.pj-card');
+    const ar = area.getBoundingClientRect(), cr = card.getBoundingClientRect();
+    const labTxt = Array.from(card.querySelectorAll('.pj-lab')).map(x => x.textContent.trim());
+    const blocks = Array.from(card.querySelectorAll('.pj-bh')).map(x => x.textContent.trim().replace(/ · .*$/, ''));
+    const res = { first, now: _projPatients[_projIdx].cama, isBase: _projPatients[_projIdx] === base,
+      fits: cr.top >= ar.top - 1 && cr.bottom <= ar.bottom + 1 && cr.left >= ar.left - 1 && cr.right <= ar.right + 1, fs: card.style.fontSize,
+      labN: labTxt.length, hasINR: labTxt.some(t => /^INR ≈ 1\.52/.test(t)), hasRaro: labTxt.some(t => /ZZ RARO/.test(t)), hasAmonio: labTxt.some(t => /Amonio 60/.test(t)),
+      critHb: !!Array.from(card.querySelectorAll('.pj-lab.crit')).find(x => /^Hb/.test(x.textContent.trim())), blocks,
+      sinExtra: !/Pendientes|ENTREGA|QX \/ Plan/.test(card.textContent) };
+    proyectorNext(); const next = _projPatients[_projIdx].cama;
+    closeProyector();
+    patients.splice(patients.length - extra.length, extra.length);
+    return Object.assign(res, { next, closed: document.getElementById('proj-overlay').style.display });
+  });
+  const c6 = {
+    empieza150: e6.first.cama === '3-150' && e6.first.selVal === String(e6.first.idx) && e6.first.opts === e6.first.n,
+    orden: e6.first.order.indexOf('3-150') < e6.first.order.indexOf('3-151') && e6.first.order.indexOf('3-151') < e6.first.order.indexOf('UCI 5') && e6.first.order.indexOf('UCI 5') < e6.first.order.indexOf('2-027'),
+    selector: e6.isBase,
+    encuadrada: e6.fits,
+    todosLabs: e6.labN >= 32 && e6.hasINR && e6.hasRaro && e6.hasAmonio && e6.critHb,
+    bloques: JSON.stringify(e6.blocks) === JSON.stringify(['🩺 Diagnóstico', '❤️ Signos vitales', '💧 Gastos', '🦠 Cultivos', '🩻 Estudios de imagen', '🧪 Laboratorios']) && e6.sinExtra,
+    navega: e6.next !== e6.now, cierra: e6.closed === 'none'
+  };
+  const bad6 = Object.keys(c6).filter(x => !c6[x]);
+  check('E6 📽 Modo Proyector: empieza en la cama 150 (orden del tablero: piso 3 por número, luego UCI, luego piso 2), «Ir a cama» permite empezar en cualquiera, la ficha queda encuadrada en la pantalla (no se corta), muestra Dx/vitales/gastos/cultivos/imagen y TODOS los laboratorios del último control (grupos, otros, extra, INR estimado; críticos en rojo); ◀ ▶ y Salir funcionan',
+    bad6.length === 0, 'fallan: ' + bad6.join(', ') + ' :: ' + JSON.stringify(e6));
+
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-ENTREGA: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();
