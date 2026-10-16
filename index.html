@@ -6410,6 +6410,19 @@ function plExportBackup() {
     let patients = [];
     let noteData = {};
     let winlabByExp = {};     // exp -> { fecha, scraped_at, data: { headers, reportes, ... } }
+    // TODAS las filas del robot por exp (más vieja → más nueva). Oct 2026: con solo la más reciente (y solo 4 días)
+    // un dispositivo con copia vieja no podía reponer fechas perdidas; ahora el sync une las fechas de todas.
+    let winlabRowsByExp = {};
+    function _winlabIndexRows(rows) {
+      const latest = {}, all = {};
+      (rows || []).forEach(function (r) {
+        const e = String((r && r.exp) || "").trim(); if (!e) return;
+        if (!latest[e] || (r.scraped_at && r.scraped_at > latest[e].scraped_at)) latest[e] = r;
+        (all[e] = all[e] || []).push(r);
+      });
+      Object.keys(all).forEach(function (e) { all[e].sort(function (a, b) { return String(a.scraped_at || a.fecha || "").localeCompare(String(b.scraped_at || b.fecha || "")); }); });
+      return { latest: latest, all: all };
+    }
     let winlabMatchByExp = {}; // exp -> fila de winlab_match (resultado de la búsqueda del robot por paciente, oct 2026)
     let risByExp = {};        // exp -> [ { id, fecha, hora, modalidad, estudios, reporte, ... } ] (robot RIS de imagen)
     let _winlabLoadedOnce = false; // true tras la primera lectura de winlab_labs (evita el banner "Sin datos" del render temprano)
@@ -7882,6 +7895,17 @@ function plExportBackup() {
     // Recolecta cultivos de un blob WinLab atribuidos al paciente objetivo, usando EL MISMO
     // guard de identidad por encabezado que buildWinlabLabSnapshots (nombre completo del
     // objetivo presente en el encabezado). Reportes de homónimos del mismo apellido → ignorados.
+    // ¿El encabezado de WinLab es del paciente? "full" = todos los nombres del censo están en el encabezado (regla de
+    // siempre); "partial" = el encabezado trae ≥ 3 tokens y TODOS están en el censo (WinLab lista menos nombres de pila
+    // que la hoja, p. ej. 3 nombres en el censo y 2 en WinLab; mismo criterio que el robot); false = otra persona.
+    function _winlabHeaderMatchKind(paciente, rep, targetTokens) {
+      if (!targetTokens || !targetTokens.length) return "full";
+      const hName = ((rep["APELLIDOS COMPLETOS"] || "") + " " + (rep.NOMBRE || "")).trim();
+      if (_winlabNameMatchScore(paciente, hName) >= targetTokens.length) return "full";
+      const hTok = _winlabNormalizeName(hName);
+      if (hTok.length >= 3 && _winlabNameMatchScore(hName, paciente) >= hTok.length) return "partial";
+      return false;
+    }
     function buildWinlabCultures(winlabRow) {
       if (!winlabRow || !winlabRow.data) return [];
       var reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
@@ -7893,11 +7917,7 @@ function plExportBackup() {
           && rep.NOMBRE && !isDate(rep.NOMBRE)
           && rep["APELLIDOS COMPLETOS"] && !isDate(rep["APELLIDOS COMPLETOS"]);
       };
-      var headerMatches = function (rep) {
-        if (!targetTokens.length) return true;
-        var hName = ((rep["APELLIDOS COMPLETOS"] || "") + " " + (rep.NOMBRE || "")).trim();
-        return _winlabNameMatchScore(winlabRow.paciente, hName) >= targetTokens.length;
-      };
+      var headerMatches = function (rep) { return _winlabHeaderMatchKind(winlabRow.paciente, rep, targetTokens); };
       var hasHeaders = reportes.some(isHeader);
       var curMatches = !hasHeaders || !targetTokens.length;
       var out = [], seen = {};
@@ -7906,6 +7926,7 @@ function plExportBackup() {
         if (hasHeaders && isHeader(rep)) { curMatches = headerMatches(rep); continue; }
         if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
         if (!curMatches) continue;   // reporte de OTRO paciente del mismo apellido → ignorar
+        if (curMatches === "partial" && rep.__target !== true) continue;   // ver buildWinlabLabSnapshots
         var cultRes = extractWinlabCulture(rep);
         if (!cultRes) continue;
         var fecha = extractReportDate(rep) || fallbackFecha || "";
@@ -7942,12 +7963,7 @@ function plExportBackup() {
           && rep.NOMBRE && !_wlIsDate(rep.NOMBRE)
           && rep["APELLIDOS COMPLETOS"] && !_wlIsDate(rep["APELLIDOS COMPLETOS"]);
       };
-      const _wlHeaderMatches = function (rep) {
-        if (!_wlTargetTokens.length) return true;
-        const hName = ((rep["APELLIDOS COMPLETOS"] || "") + " " + (rep.NOMBRE || "")).trim();
-        // TODOS los tokens del objetivo deben estar en el encabezado (nombre completo)
-        return _winlabNameMatchScore(winlabRow.paciente, hName) >= _wlTargetTokens.length;
-      };
+      const _wlHeaderMatches = function (rep) { return _winlabHeaderMatchKind(winlabRow.paciente, rep, _wlTargetTokens); };
       const _wlHasHeaders = reportes.some(_wlIsHeader);
       let _wlCurMatches = !_wlHasHeaders || !_wlTargetTokens.length;
       // ¿Hay match de identidad por NOMBRE de encabezado disponible? (blob con
@@ -7959,6 +7975,9 @@ function plExportBackup() {
         if (_wlHasHeaders && _wlIsHeader(rep)) { _wlCurMatches = _wlHeaderMatches(rep); continue; }
         if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
         if (!_wlCurMatches) continue; // reporte de OTRO paciente del mismo apellido → ignorar
+        // Encabezado con MENOS nombres que el censo (3 nombres de pila en la hoja, 2 en WinLab): solo si el robot ya
+        // validó ese reporte como del paciente (nombre + edad → __target). Así nunca entra un homónimo de apellidos.
+        if (_wlCurMatches === "partial" && rep.__target !== true) continue;
         // GUARDIA DE SERVICIO — solo como señal de identidad de RESPALDO.
         // FIX-v53 (jun 2026): el "servicio" del reporte WinLab (rep.SEXO / última celda)
         // es el servicio de la ORDEN del panel, NO el servicio quirúrgico del paciente —
@@ -8066,6 +8085,8 @@ function plExportBackup() {
         const s = String(v || "").trim();
         if (s && /^[\w\-.\/]+$/.test(s)) vars.add(s);
       }));
+      // Ventana de 4 días para la carga normal (todo el historial del censo pesa ≈11 MB de JSON). Las fechas más
+      // viejas las repone _winlabBackfillOlder en segundo plano, una vez por paciente y dispositivo.
       const since = new Date(Date.now() - 4 * 86400000).toISOString();
       let q = "select=exp,paciente,fecha,scraped_at,data&scraped_at=gte." + encodeURIComponent(since) + "&order=scraped_at.desc&limit=500";
       if (vars.size && vars.size <= 600) q += "&exp=in.(" + Array.from(vars).map(encodeURIComponent).join(",") + ")";
@@ -8231,6 +8252,23 @@ function plExportBackup() {
       return null;
     }
 
+    // ¿El snapshot del robot solo repite valores que el usuario ya borró? (sin registro de lo borrado → trae algo nuevo)
+    function _labSnapAddsNothing(labs, deletedLabs) {
+      if (!isPlainObject(deletedLabs)) return false;
+      return Object.keys(isPlainObject(labs) ? labs : {}).every(function (key) {
+        const v = String(labs[key] == null ? "" : labs[key]).trim();
+        return v === "" || String(deletedLabs[key] == null ? "" : deletedLabs[key]).trim() === v;
+      });
+    }
+    // Todas las filas del robot de este paciente (cualquier variante del exp), más vieja → más nueva; incluye `latest`.
+    function _winlabAllRowsForPatient(p, latest) {
+      const seen = new Set(), out = [];
+      getExpVariants(p && p.exp).forEach(function (v) {
+        (winlabRowsByExp[v] || []).forEach(function (r) { const key = (r.exp || "") + "|" + (r.fecha || "") + "|" + (r.scraped_at || ""); if (!seen.has(key)) { seen.add(key); out.push(r); } });
+      });
+      if (latest && !out.includes(latest)) out.push(latest);
+      return out.sort(function (a, b) { return String(a.scraped_at || a.fecha || "").localeCompare(String(b.scraped_at || b.fecha || "")); });
+    }
     async function applyWinlabSyncToPatients(opts) {
       opts = opts || {};
       _winlabCultByK = {};   // CULTIVOS-WINLAB-v56: se reconstruye en cada sync
@@ -8253,6 +8291,7 @@ function plExportBackup() {
         // (b) usar comparación simétrica de nombre, (c) validar con 2 dispositivos.
         // El stamp winlab_paciente sigue presente para una eventual versión segura.
 
+        const _wlRecentCut = (function () { const d = new Date(Date.now() - 4 * 86400000); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
         for (const p of patients) {
           const exp = String(p?.exp || "").trim();
           if (!exp) { stats.skipped++; stats.no_exp++; continue; }
@@ -8284,7 +8323,20 @@ function plExportBackup() {
           } catch (_) {}
           // Cambio mayo 2026: ahora procesamos MÚLTIPLES snapshots (uno por fecha)
           // para soportar 3 días previos del scraper.
-          const snapshots = buildWinlabLabSnapshots(wl, normalizeEspImport(p.esp));
+          // Fechas de TODAS las filas del robot cargadas para este exp (4 días + las viejas del respaldo). Repone las
+          // fechas que un guardado con copia vieja le quitó a la nota.
+          const _espCanon = normalizeEspImport(p.esp);
+          const _byFecha = {};
+          _winlabAllRowsForPatient(p, wl).forEach(function (row) {
+            if (row !== wl && !_winlabCensoNameOk(p, row)) return;
+            // Por analito: la fila más nueva gana; las viejas solo rellenan huecos (una búsqueda reciente puede traer
+            // ese día incompleto).
+            buildWinlabLabSnapshots(row, _espCanon).forEach(function (sn) {
+              const prev = _byFecha[sn.fecha];
+              _byFecha[sn.fecha] = prev ? Object.assign({}, sn, { labs: Object.assign({}, prev.labs, sn.labs) }) : sn;
+            });
+          });
+          const snapshots = Object.keys(_byFecha).sort().map(function (f) { return _byFecha[f]; });
           if (!snapshots.length) { stats.skipped++; stats.no_labs_parsed++; continue; }
           stats.matched++;
           const k = pid(p);
@@ -8294,10 +8346,15 @@ function plExportBackup() {
           // Firma sin synced_at/scraped_at: si los labs no cambiaron, NO se guarda (idempotente).
           const _wlSig = h => JSON.stringify((h || []).map(s => s ? [s.fecha, s.labs, s.source || ""] : null));
           const _wlBefore = _wlSig(hist);
+          // Fechas borradas a mano (Eliminar labs): no se reponen con los mismos valores; sí si el robot trae algo nuevo.
+          const _ckl = isPlainObject(nd.checklist) ? nd.checklist : {};
+          const _delSet = new Set(Array.isArray(_ckl.__lab_deleted) ? _ckl.__lab_deleted : []);
+          const _delLabs = isPlainObject(_ckl.__lab_deleted_labs) ? _ckl.__lab_deleted_labs : {};
           // Iterar cada snapshot (un por fecha) y mergear/insertar
           for (const snap of snapshots) {
             const existingIdx = hist.findIndex(s => s && s.fecha === snap.fecha);
             if (existingIdx === -1) {
+              if (_delSet.has(snap.fecha) && _labSnapAddsNothing(snap.labs, _delLabs[snap.fecha])) { stats.tombstoned = (stats.tombstoned || 0) + 1; continue; }
               hist.push(snap);
               stats.inserted++;
             } else {
@@ -8351,9 +8408,12 @@ function plExportBackup() {
           if (_wlSig(hist) !== _wlBefore) {
             nd.labHistory = hist;
             delete labAnalysisCache[k]; // el análisis IA cacheado era de los valores previos
-            try { _labNewsAdd(k, hist, _histBefore); } catch (_) {} // aviso "labs nuevos" en tablero, rail y tarjeta
+            // Avisos solo de fechas RECIENTES (≤ 4 días): una fecha vieja repuesta (respaldo, reporte viejo en la búsqueda
+            // de WinLab) no es "labs nuevos" ni va a la entrega de guardia.
+            const _recentHist = hist.filter(function (s) { return s && s.fecha && s.fecha >= _wlRecentCut; });
+            try { _labNewsAdd(k, _recentHist, _histBefore); } catch (_) {} // aviso "labs nuevos" en tablero, rail y tarjeta
             // Alteraciones de los labs nuevos → línea con fecha en la entrega de guardia (idempotente).
-            try { if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(k, _entregaItemsFromLabs(hist, _histBefore)); } catch (_) {}
+            try { if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(k, _entregaItemsFromLabs(_recentHist, _histBefore)); } catch (_) {}
             // Solo labHistory viaja a la nube (fila parcial). Antes cada arranque re-subía la nota
             // COMPLETA de todos los pacientes con match aunque nada cambiara → ~45 eventos Realtime
             // (toasts y re-renders) en cada dispositivo y riesgo de pisar texto ajeno con la copia local.
@@ -8504,13 +8564,8 @@ function plExportBackup() {
           () => _sGet("winlab_labs", _winlabRowsQuery(patients)),
           2, 200
         );
-        const next = {};
-        (wlRows || []).forEach(r => {
-          const e = String(r.exp || "").trim();
-          if (!e) return;
-          if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
-        });
-        winlabByExp = next;
+        const _ix = _winlabIndexRows(wlRows);
+        winlabByExp = _ix.latest; winlabRowsByExp = _ix.all;
         _winlabLoadedOnce = true;
         try { await _loadWinlabMatch(patients, false); } catch (_) {}
         // Auto-sync WinLab → labHistory.
@@ -8525,7 +8580,7 @@ function plExportBackup() {
         // Re-render con la nueva data (suave: si alguien está escribiendo, espera a que suelte el campo).
         if (typeof renderViewSoft === "function") renderViewSoft(); else renderView();
         if (icon) icon.textContent = "✅";
-        if (lbl) lbl.textContent = `Labs (${Object.keys(next).length})`;
+        if (lbl) lbl.textContent = `Labs (${Object.keys(winlabByExp).length})`;
         setTimeout(() => {
           if (icon) icon.textContent = prevIcon || "🧪";
           if (lbl) lbl.textContent = prevLbl || "Labs";
@@ -10848,6 +10903,18 @@ function plExportBackup() {
         });
       } catch (e) { safeLog("_restoreStrippedLabSources:", e); }
     }
+    async function _labHistoryUnionRemote(patientId, arr, deleted) {
+      arr = Array.isArray(arr) ? arr : [];
+      try {
+        const rows = await _sGet("notes", "patient_id=eq." + encodeURIComponent(patientId) + "&select=lab_history&limit=1");
+        const remote = rows && rows[0] && Array.isArray(rows[0].lab_history) ? rows[0].lab_history : [];
+        const have = new Set(arr.filter(function (s) { return s && s.fecha; }).map(function (s) { return s.fecha; }));
+        const del = new Set(Array.isArray(deleted) ? deleted : []);
+        const added = remote.filter(function (s) { return s && s.fecha && !have.has(s.fecha) && !del.has(s.fecha); });
+        return { merged: added.length ? arr.concat(added) : arr, added: added };
+      } catch (_) { return { merged: arr, added: [] }; }
+    }
+    function pidBySupaId(id) { const p = patients.find(function (x) { return x._supa_id === id; }); return p ? pid(p) : null; }
     async function supaUpsertNote(patientId, nd, dirtyFieldNames) {
       if (!patientId) return null;
       const buildFullRow = (pid) => ({
@@ -10900,7 +10967,35 @@ function plExportBackup() {
         // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
         const row = buildRow(patientId);
         if (!row) return true; // idéntica a la fila remota conocida: nada que subir
-        if (row.lab_history) await _restoreStrippedLabSources(patientId, row.lab_history);
+        if (row.lab_history) {
+          // NUNCA quitar fechas que ya están en la nube (oct 2026: un dispositivo con copia vieja subía la lista corta y
+          // borraba labs; bitácora 15→11, 5→0…). Se agregan las fechas remotas que aquí faltan, salvo las borradas a mano
+          // (checklist.__lab_deleted). La base tiene además un trigger con la misma regla.
+          const _u = await _labHistoryUnionRemote(patientId, row.lab_history, (nd.checklist || {}).__lab_deleted);
+          if (_u.added.length) {
+            row.lab_history = _u.merged;
+            const _desc = function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); };
+            nd.labHistory = _u.merged.slice().sort(_desc);
+            // La copia en pantalla puede ser un objeto más nuevo que `nd` (guardado con debounce): reponer ahí también.
+            const _pk = pidBySupaId(patientId), _live = _pk ? noteData[_pk] : null;
+            if (_pk) {
+              try {
+                if (_live && _live !== nd) {
+                  _live.labHistory = Array.isArray(_live.labHistory) ? _live.labHistory : [];
+                  const _haveL = new Set(_live.labHistory.map(function (s) { return s && s.fecha; }));
+                  _u.added.forEach(function (s) { if (!_haveL.has(s.fecha)) _live.labHistory.push(s); });
+                  _live.labHistory.sort(_desc);
+                }
+                lsSaveNote(_pk, _live || nd);
+              } catch (_) {}
+              try {
+                const _el = document.getElementById("labs-sec-" + _pk);
+                if (_el && !(_isTypingNow() && _el.contains(document.activeElement))) _el.outerHTML = renderLabSection(_live || nd, _pk);
+              } catch (_) {}
+            }
+          }
+          await _restoreStrippedLabSources(patientId, row.lab_history);
+        }
         const data = await _sUpsert("notes", row, "patient_id");
         _noteBaselineMerge(patientId, row);
         // Nunca retornar null/undefined en caso de éxito HTTP:
@@ -10987,9 +11082,75 @@ function plExportBackup() {
       (wl || []).forEach(r => {
         const e = String(r.exp || "").trim(); if (!e) return;
         if (!winlabByExp[e] || (r.scraped_at && r.scraped_at > (winlabByExp[e].scraped_at || ""))) { winlabByExp[e] = r; added++; }
+        const list = winlabRowsByExp[e] = winlabRowsByExp[e] || [];
+        if (!list.some(function (x) { return x.fecha === r.fecha && x.scraped_at === r.scraped_at; })) { list.push(r); list.sort(function (a, b) { return String(a.scraped_at || "").localeCompare(String(b.scraped_at || "")); }); }
       });
       if (added) _winlabExpIndex = null;
       return added;
+    }
+
+    // Respaldo de fechas viejas (oct 2026): guardados con copia vieja le quitaron fechas de labs a varias notas y la
+    // carga normal solo trae 4 días del robot. En segundo plano, por grupos de 6 pacientes, se bajan las filas MÁS
+    // VIEJAS de winlab_labs y el sync repone las fechas que faltan (nunca quita). Una vez por paciente y dispositivo
+    // cada 7 días; al terminar se sueltan esas filas de memoria (las fechas ya quedaron en la nota).
+    let _wlBackfillRunning = false;
+    const WL_BACKFILL_KEY = "pl_wl_backfill_v1";
+    async function _winlabBackfillOlder(opts) {
+      opts = opts || {};
+      if (_wlBackfillRunning || navigator.onLine === false || !Array.isArray(patients) || !patients.length) return { rows: 0, inserted: 0 };
+      _wlBackfillRunning = true;
+      let total = 0, inserted = 0;
+      try {
+        let done = {};
+        try { done = JSON.parse(localStorage.getItem(WL_BACKFILL_KEY) || "{}") || {}; } catch (_) { done = {}; }
+        const now = Date.now(), since = new Date(now - 4 * 86400000).toISOString();
+        const todo = patients.filter(function (p) { const e = String((p && p.exp) || "").trim(); return e && (opts.force || !(done[e] > now - 7 * 86400000)); });
+        // Solo ESTE internamiento: desde 5 días antes del ingreso (labs de urgencias); sin fecha de ingreso, 60 días.
+        // Un reingreso con el mismo expediente no debe traer los labs de hace meses.
+        const _floor = function (p) {
+          let iso = null; try { iso = ingresoToISO(p.ingreso); } catch (_) {}
+          const t = iso ? Date.parse(iso + "T00:00:00Z") - 5 * 86400000 : NaN;
+          return new Date(isFinite(t) ? t : now - 60 * 86400000).toISOString();
+        };
+        for (let i = 0; i < todo.length; i += 6) {
+          const chunk = todo.slice(i, i + 6), vars = new Set(), floorByVar = {};
+          chunk.forEach(function (p) {
+            const f = _floor(p);
+            getExpVariants(p.exp).forEach(function (v) {
+              const s = String(v || "").trim(); if (!s || !/^[\w\-.\/]+$/.test(s)) return;
+              vars.add(s); if (!floorByVar[s] || f < floorByVar[s]) floorByVar[s] = f;
+            });
+          });
+          if (!vars.size) continue;
+          const minFloor = Object.keys(floorByVar).reduce(function (m, s) { return floorByVar[s] < m ? floorByVar[s] : m; }, since);
+          if (minFloor >= since) { chunk.forEach(function (p) { done[String(p.exp).trim()] = now; }); continue; }
+          const q = "select=exp,paciente,fecha,scraped_at,data&scraped_at=lt." + encodeURIComponent(since) + "&scraped_at=gte." + encodeURIComponent(minFloor) + "&order=scraped_at.asc&limit=400&exp=in.(" + Array.from(vars).map(encodeURIComponent).join(",") + ")";
+          let rows;
+          try { rows = await retryNetwork(function () { return _sGet("winlab_labs", q); }, 1, 500); }
+          catch (e) { safeLog("[winlab backfill] corte de red; se retoma en el siguiente arranque", e); break; }
+          (rows || []).forEach(function (r) {
+            const e = String((r && r.exp) || "").trim(); if (!e) return;
+            if (floorByVar[e] && r.scraped_at && String(r.scraped_at) < floorByVar[e]) return;
+            const list = winlabRowsByExp[e] = winlabRowsByExp[e] || [];
+            if (!list.some(function (x) { return x.fecha === r.fecha && x.scraped_at === r.scraped_at; })) { list.push(r); total++; }
+            // Paciente cuyo último scrape tiene > 4 días: sin esto el sync lo saltaba (no hay fila "más reciente").
+            if (!winlabByExp[e] || (r.scraped_at && r.scraped_at > (winlabByExp[e].scraped_at || ""))) { winlabByExp[e] = r; _winlabExpIndex = null; }
+          });
+          chunk.forEach(function (p) { done[String(p.exp).trim()] = now; });
+        }
+        if (total) {
+          Object.keys(winlabRowsByExp).forEach(function (e) { winlabRowsByExp[e].sort(function (a, b) { return String(a.scraped_at || "").localeCompare(String(b.scraped_at || "")); }); });
+          const st = await applyWinlabSyncToPatients({ verbose: false });
+          inserted = (st && st.inserted) || 0;
+          // Soltar las filas viejas (≈11 MB): las fechas ya están en las notas y la unión al guardar las protege.
+          Object.keys(winlabRowsByExp).forEach(function (e) {
+            winlabRowsByExp[e] = winlabRowsByExp[e].filter(function (r) { return r === winlabByExp[e] || !(r.scraped_at && r.scraped_at < since); });
+          });
+          if (inserted && typeof renderViewSoft === "function") renderViewSoft();
+        }
+        try { localStorage.setItem(WL_BACKFILL_KEY, JSON.stringify(done)); } catch (_) {}
+      } finally { _wlBackfillRunning = false; }
+      return { rows: total, inserted: inserted };
     }
 
     // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
@@ -11015,18 +11176,13 @@ function plExportBackup() {
         // Indexa por exp; para cada paciente conserva el scraped_at mas reciente.
         try {
           const wlRows = await retryNetwork(() => _sGet("winlab_labs", _winlabRowsQuery(pts)), 2, 200);
-          const next = {};
-          (wlRows || []).forEach(r => {
-            const e = String(r.exp || "").trim();
-            if (!e) return;
-            if (!next[e] || (r.scraped_at && r.scraped_at > next[e].scraped_at)) next[e] = r;
-          });
-          winlabByExp = next;
+          const _ix = _winlabIndexRows(wlRows);
+          winlabByExp = _ix.latest; winlabRowsByExp = _ix.all;
           _winlabLoadedOnce = true;
         } catch (e) {
           // Si la tabla no existe o no hay permisos, continuamos sin labs WinLab.
           console.warn("winlab_labs no disponible:", e?.message || e);
-          winlabByExp = {};
+          winlabByExp = {}; winlabRowsByExp = {};
           _winlabLoadedOnce = true;
         }
         // Resultado del robot por paciente (winlab_match): no bloquea la carga.
@@ -12223,6 +12379,7 @@ function plExportBackup() {
       const prev = winlabByExp[exp];
       if (prev && prev.scraped_at && newRow.scraped_at && newRow.scraped_at <= prev.scraped_at) return;
       winlabByExp[exp] = newRow;
+      { const list = winlabRowsByExp[exp] = (winlabRowsByExp[exp] || []).filter(function (x) { return x.fecha !== newRow.fecha; }); list.push(newRow); list.sort(function (a, b) { return String(a.scraped_at || "").localeCompare(String(b.scraped_at || "")); }); }
       _winlabExpIndex = null; // el índice por variantes de exp se cachea por identidad de winlabByExp (mutado en sitio)
       const affected = patients.filter(function(p) { return findWinlabRowForPatient(p) === newRow; });
       const rerender = function () {
@@ -13352,6 +13509,10 @@ function plExportBackup() {
             );
           }
         }).catch(e => safeLog("[winlab-autosync init]", e));
+      }
+      // Fechas de labs más viejas que la ventana de 4 días: reponerlas en segundo plano (no bloquea el arranque).
+      if (isWinlabAutoSyncEnabled() && patients && patients.length) {
+        setTimeout(function () { _winlabBackfillOlder().catch(function (e) { safeLog("[winlab backfill]", e); }); }, 12000);
       }
 
       // Cargar no_olvidar y procedimientos desde DB en segundo plano (no bloquea el render inicial)
@@ -19966,6 +20127,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         deleteLabSourceFromStorage(snapToDelete.source_storage_bucket || LAB_STORAGE_BUCKET, snapToDelete.source_storage_path);
       }
       nd.labHistory = (nd.labHistory || []).filter(function (s) { return s.fecha !== fecha; });
+      // Borrado EXPLÍCITO: la fecha va a checklist.__lab_deleted para que ni la unión con la nube ni el trigger de la base
+      // la regresen (lo demás nunca se quita al guardar).
+      if (!nd.checklist || typeof nd.checklist !== "object") nd.checklist = {};
+      { const del = Array.isArray(nd.checklist.__lab_deleted) ? nd.checklist.__lab_deleted.filter(function (x) { return x !== fecha; }) : []; del.push(fecha); nd.checklist.__lab_deleted = del.slice(-100);
+        // Valores borrados: el robot no repone esa fecha con LOS MISMOS datos, pero sí si trae resultados nuevos.
+        const dl = isPlainObject(nd.checklist.__lab_deleted_labs) ? nd.checklist.__lab_deleted_labs : {};
+        dl[fecha] = (snapToDelete && isPlainObject(snapToDelete.labs)) ? Object.assign({}, snapToDelete.labs) : {};
+        Object.keys(dl).forEach(function (f) { if (nd.checklist.__lab_deleted.indexOf(f) === -1) delete dl[f]; });
+        nd.checklist.__lab_deleted_labs = dl; }
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      _dirtyFields[k].add("labHistory"); _dirtyFields[k].add("checklist");
       if (activeLabDate[k] === fecha) {
         var rem = (nd.labHistory || []).map(function (s) { return s.fecha; }).sort(function (a, b) { return b.localeCompare(a); });
         activeLabDate[k] = rem[0] || null;

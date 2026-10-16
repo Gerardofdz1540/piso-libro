@@ -310,6 +310,30 @@ conserva su tarjeta completa: labs, pendientes, checklist, diagrama. Tres capas 
 
 El 13 de octubre de 2026 se recuperaron así las notas de 3-151, 3-153, 3-162, 3-177, 3-181 y UCI 8.
 
+## Los labs nunca se borran solos (16 de octubre de 2026)
+
+La bitácora mostraba notas que perdían fechas de labs (15 → 11, 5 → 0). La causa era un dispositivo
+con una copia vieja de la nota que, al guardar, subía su lista corta y pisaba la de la nube.
+Ahora hay cuatro protecciones:
+
+1. **Al guardar**, la app primero lee las fechas que ya están en la nube y agrega las que le faltan.
+   Si no hay red para esa consulta, el guardado sigue igual.
+2. **Eliminar labs** es la única forma de quitar una fecha. El borrado queda anotado en la nota y
+   ningún otro dispositivo la regresa. El robot tampoco la regresa con los mismos valores, pero sí
+   si WinLab trae un resultado nuevo de esa fecha.
+3. **Respaldo en segundo plano**: unos segundos después de abrir la app, se bajan los escaneos del
+   robot de más de 4 días y se reponen las fechas que falten. Solo cuentan los escaneos de este
+   internamiento, desde 5 días antes del ingreso, así que un reingreso no trae labs de hace meses.
+   Corre una vez por paciente y dispositivo cada 7 días. Las fechas repuestas no salen como
+   «labs nuevos» ni en la entrega.
+4. **La base de datos** tiene la misma regla. Hay que ejecutar una vez
+   `scripts/supabase_preserve_lab_history.sql` en Supabase → SQL Editor. Para purgar labs a mano
+   por SQL, agrega la fecha a `checklist.__lab_deleted` en el mismo cambio.
+
+Un encabezado de WinLab con menos nombres de pila que la hoja ahora sí cuenta, por ejemplo dos
+nombres en WinLab y tres en la hoja. Solo cuenta si el robot ya validó ese reporte con nombre y edad.
+Otra persona con los mismos apellidos nunca entra.
+
 ## Entrega de guardia que resume (octubre 2026)
 
 La vista **📤 Entrega** (una ficha por paciente) muestra **solo** estos bloques, en este orden, y
