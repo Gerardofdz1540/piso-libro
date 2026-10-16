@@ -29,6 +29,7 @@ import { PDFParse } from "pdf-parse";
 import ws from "ws";
 import fs from "node:fs";
 import { todayISO } from "./lib.js";
+import { pn, pu } from "./privacy.js";
 import {
   filterCenso, buildWindows, oldestIngreso, rowToEstudio, estudioKey, dedupEstudios,
   matchCensoDetailed, resolveHomonyms, nearMisses,
@@ -318,12 +319,12 @@ async function upsertRis(supa, batch) {
     log(`       estudios en el rango: ${estudios.length} · con ícono de reporte: ${conReporte.length}`);
 
     if (RIS_MODE === "explore") {
-      log(`[EXPL] 3 filas con reporte: ${JSON.stringify(conReporte.slice(0, 3).map((e) => ({ doc: e.documento, fecha: e.fecha, mod: e.modalidad, links: e.links })))}`);
+      log(`[EXPL] 3 filas con reporte: ${JSON.stringify(conReporte.slice(0, 3).map((e) => ({ fecha: e.fecha, mod: e.modalidad, links: e.links.length })))}`);
       log(`[EXPL] tipos de enlace: ${JSON.stringify(estudios.flatMap((e) => e.links.map((l) => l.kind + ":" + (l.html.match(/class=\\"[^\\"]*\\"/) || [""])[0])).reduce((m, k) => (m[k] = (m[k] || 0) + 1, m), {}))}`);
       if (conReporte.length) {
         const e = conReporte[0];
         const rep = await fetchReporte(page, ctx, cfg, e);
-        log(`[EXPL reporte] doc=${e.documento} url=${rep.url} ct=${rep.ct || ""} chars=${rep.text.length} motivo=${rep.motivo || ""} texto=${JSON.stringify(rep.text.slice(0, 1200))}`);
+        log(`[EXPL reporte] url=${pu(rep.url)} ct=${rep.ct || ""} chars=${rep.text.length} motivo=${rep.motivo || ""}`);
       }
       fs.writeFileSync(`ris-explorer-${Date.now()}.json`, JSON.stringify({ headers: tabla.headers, sample: estudios.slice(0, 20) }, null, 2));
       log(`DONE explore · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
@@ -335,18 +336,18 @@ async function upsertRis(supa, batch) {
     let ambiguos = 0, homonimosProbables = 0;
     for (const e of estudios) {
       const { m, descartados } = matchCensoGuarded(e, censo);
-      for (const c of descartados) { homonimosProbables++; log(`       no cruzado: "${e.nombre}" ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad} ≈ cama ${c.p.cama} (${c.p.edad || "?"} a): subconjunto exacto con edad incompatible (homónimo probable)`); }
+      for (const c of descartados) { homonimosProbables++; log(`       no cruzado: ${pn(e.nombre)} ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad} ≈ cama ${c.p.cama} (${c.p.edad || "?"} a): subconjunto exacto con edad incompatible (homónimo probable)`); }
       if (!m) continue;
       // Empate COMPLETO entre dos pacientes del censo con expediente distinto (mismo nombre, misma edad,
       // mismo nivel): el estudio solo puede escribirse bajo un exp (clave documento|fecha|hora|modalidad)
       // y asignarlo al primero acierta el 50 %. No se asigna: queda en el log hasta que se corrija el
       // censo o se ponga alias; la siguiente corrida lo vuelve a intentar.
-      if (m.ambiguous) { ambiguos++; log(`       ambiguo: "${e.nombre}" ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad} empata por completo entre camas ${m.candidates.slice(0, 2).map((c) => c.p.cama).join(" y ")} → NO se asigna (corrige el censo o pon alias «Nombre en WinLab»)`); continue; }
+      if (m.ambiguous) { ambiguos++; log(`       ambiguo: ${pn(e.nombre)} ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad} empata por completo entre camas ${m.candidates.slice(0, 2).map((c) => c.p.cama).join(" y ")} → NO se asigna (corrige el censo o pon alias «Nombre en WinLab»)`); continue; }
       matchedRaw.push({ e, p: m.p, level: m.level, label: m.label, diff: m.diff, via: m.via });
     }
     const { kept: matched, dropped, ambiguous } = resolveHomonyms(matchedRaw, MATCH_OPTS);
-    for (const d of dropped) log(`       homónimo descartado: cama ${d.p.cama} ← "${d.e.nombre}" ${d.e.edad} ${d.e.tipoEdad} ${d.e.fecha} ${d.e.modalidad} · ${d.motivo}`);
-    for (const a of ambiguous) log(`       cama ${a.cama}: ${a.motivo} (${a.personas.join(" | ")})`);
+    for (const d of dropped) log(`       homónimo descartado: cama ${d.p.cama} ← ${pn(d.e.nombre)} ${d.e.edad} ${d.e.tipoEdad} ${d.e.fecha} ${d.e.modalidad} · ninguna identidad cuadra con la edad del censo`);
+    for (const a of ambiguous) log(`       cama ${a.cama}: ${a.motivo} (${a.personas.length} identidades: ${a.personas.map(pn).join(" | ")})`);
     const pacientes = new Set(matched.map((m) => m.p.exp));
     log(`[3/4] cruce por nombre: ${matched.length} estudios de ${pacientes.size}/${censo.length} pacientes del censo` +
       (ambiguos ? ` · ${ambiguos} estudio(s) ambiguo(s) entre dos camas, sin asignar` : "") + (dropped.length ? ` · ${dropped.length} descartado(s) por homonimia` : "") +
@@ -356,7 +357,7 @@ async function upsertRis(supa, batch) {
     const sinEstudio = censo.filter((p) => !pacientes.has(p.exp));
     if (sinEstudio.length) log(`       sin estudio en el RIS desde ${windows[windows.length - 1].dateS} (${sinEstudio.length}): ${sinEstudio.map((p) => `cama ${p.cama}`).join(", ")}`);
     const nm = nearMisses(estudios, censo, pacientes);
-    if (nm.length) log(`       casi-coincidencias sin cruzar (revisar nombre/edad):\n       ` + nm.join("\n       "));
+    if (nm.length) log(`       casi-coincidencias sin cruzar (revisar nombre/edad en la app): ${nm.length} · camas ${nm.map((x) => (String(x).match(/^cama (\S+)/) || [])[1] || "?").join(", ")}`);
 
     // Reportes que ya tenemos con texto útil (no volver a bajarlos). Los vacíos NO cuentan → reintento.
     const docs = Array.from(new Set(matched.map((m) => m.e.documento).filter(Boolean)));
@@ -402,7 +403,7 @@ async function upsertRis(supa, batch) {
         log(`       reporte ✓ cama ${it.p.cama} ${it.e.modalidad} ${it.e.fecha} (${r.text.length} letras, ${r.ct || ""})`);
       } else if (cls.estado === REPORTE_ESTADO.PENDIENTE_DESCARGA && r.attempted) {
         fallidos++;
-        log(`       reporte ✗ cama ${it.p.cama} ${it.e.modalidad} ${it.e.fecha} (${r.url || "sin url"}) · ${cls.motivo}`);
+        log(`       reporte ✗ cama ${it.p.cama} ${it.e.modalidad} ${it.e.fecha} (${r.url ? pu(r.url) : "sin url"}) · ${cls.motivo}`);
       }
     }
     const presupuesto = items.filter((it) => it.result && it.result.budgetExhausted).length;

@@ -77,7 +77,9 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
 
       - name: Upload diagnostics
-        if: always()
+        # Repositorio público: las capturas y volcados muestran datos de pacientes y cualquiera podía bajarlos.
+        # Solo se suben si se activa a propósito la variable del repositorio DIAG_ARTIFACTS=1, y duran 1 día.
+        if: always() && vars.DIAG_ARTIFACTS == '1'
         uses: actions/upload-artifact@v4
         with:
           name: ris-diagnostics
@@ -85,4 +87,4 @@ jobs:
             rpa/ris-failure-*.png
             rpa/ris-explorer-*.json
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1

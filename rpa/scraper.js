@@ -18,6 +18,7 @@ import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRec
          selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport } from "./lib.js";
 import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
 import { orderDrillCandidates, isPendingCulture } from "./drill-order.js";
+import { pn, pe, pu, pd } from "./privacy.js";
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -285,7 +286,7 @@ async function loadCenso(supa) {
   // Corrida dirigida (oct 2026): solo los expedientes pedidos.
   if (WL_TARGET_EXP.length) {
     filtrados = filtrados.filter((p) => WL_TARGET_EXP.includes(normExp(p.exp)));
-    console.log(`       [objetivo] WL_TARGET_EXP=${WL_TARGET_EXP.join(",")} → ${filtrados.length} paciente(s) del censo`);
+    console.log(`       [objetivo] WL_TARGET_EXP=${WL_TARGET_EXP.map(pe).join(",")} → ${filtrados.length} paciente(s) del censo`);
     if (!filtrados.length) {
       console.log("       [objetivo] ninguno de esos expedientes está en el censo; nada que hacer.");
       process.exit(0);
@@ -333,10 +334,10 @@ async function captureSearchUrl(page) {
 async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = {}) {
   const candidates = buildSearchCandidatesWithAlias(paciente.nombre, paciente.alias);
   if (!candidates.length) {
-    console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
+    console.log(`       [skip] Sin apellidos extraíbles para: cama ${paciente.cama || "?"} (${pn(paciente.nombre)})`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true, tried: [], seenNames: [] };
   }
-  if (paciente.alias) console.log(`       [alias] nombre en WinLab fijado en la app: "${paciente.alias}"`);
+  if (paciente.alias) console.log(`       [alias] nombre en WinLab fijado en la app (${pn(paciente.alias)})`);
   // 7 intentos (antes 6): con el candidato "invertido apellidos solos" (oct 2026) la escalera de un
   // nombre de 5 palabras con Ñ llega a 7. El presupuesto por paciente sigue mandando (abajo) y cada
   // NINGÚN REGISTRO es rápido. Caso real: cama 3-181 (corrida #419) con el paterno mal escrito en la
@@ -351,12 +352,12 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
     if (ci > 0) {
       // Presupuesto: cada retry cuesta ~12-15s (goto + postback). Dejar >=25s para drill.
       if (deadlineTs && Date.now() > deadlineTs - 25000) {
-        console.log(`       [retry] sin presupuesto para candidato ${ci + 1}/${MAX_TRIES} ("${c.cognome}") — devolviendo lo que hay`);
+        console.log(`       [retry] sin presupuesto para candidato ${ci + 1}/${MAX_TRIES} (${pn(c.cognome)}) — devolviendo lo que hay`);
         break;
       }
-      console.log(`       [retry ${ci}/${MAX_TRIES - 1}] ${c.tag}`);
+      console.log(`       [retry ${ci}/${MAX_TRIES - 1}] apellidos=${pn(c.cognome)}${c.nome ? ` nome=${pn(c.nome)}` : ""}`);
     }
-    console.log(`       [busqueda] Apellidos → txtCognome: "${c.cognome}"${c.nome ? ` + txtNome: "${c.nome}"` : ""}`);
+    console.log(`       [busqueda] Apellidos → txtCognome: ${pn(c.cognome)}${c.nome ? ` + txtNome: ${pn(c.nome)}` : ""}`);
     if (c.sibling) continue; // las variantes "sibling" se buscan junto con su principal (abajo), no como retry
     tried.push(c.cognome + (c.nome ? " + " + c.nome : ""));
     last = await doSingleSearch(page, searchUrl, paciente, {
@@ -376,7 +377,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
       const sib = candidates[ci + 1];
       if (sib && sib.sibling && (!deadlineTs || Date.now() < deadlineTs - 25000)) {
         try {
-          console.log(`       [busqueda] variante literal → txtCognome: "${sib.cognome}" + txtNome: "${sib.nome}"`);
+          console.log(`       [busqueda] variante literal → txtCognome: ${pn(sib.cognome)} + txtNome: ${pn(sib.nome)}`);
           const extra = await doSingleSearch(page, searchUrl, paciente, {
             codice: null, cognome: sib.cognome, nome: sib.nome,
             tag: `apellidos="${sib.cognome}",nome="${sib.nome}"`,
@@ -727,7 +728,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // en el log y en winlab_match.detalle para vigilar que la regla no cuele homónimos.
   if (sel.partialMatch && targetIdxs.length) {
     result.partialMatch = true;
-    console.log(`       [targeting] coincidencia PARCIAL con «${sel.matchedHeader}» (WinLab lista menos nombres que el censo)`);
+    console.log(`       [targeting] coincidencia PARCIAL con «${pn(sel.matchedHeader)}» (WinLab lista menos nombres que el censo)`);
   }
   // Marcar las filas del objetivo: la fusión entre corridas (y la app) solo confían en __target.
   for (const i of targetIdxs) result.rows[i].__target = true;
@@ -747,7 +748,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
     console.log(`       [age-guard] encabezado coincide por nombre pero edad WinLab ${r.headerAge} vs censo ${r.censusAge} (±${sel.tolerance}) → bloque descartado`);
   }
   for (const r of (sel.ageRescued || [])) {
-    console.log(`       [age-guard] bloque con edad WinLab ${r.headerAge} vs censo ${r.censusAge} RESCATADO: mismo nombre y misma fecha de nacimiento salvo el año que el bloque aceptado (${r.fnac} vs ${r.twinFnac}) → año mal capturado en WinLab`);
+    console.log(`       [age-guard] bloque con edad WinLab ${r.headerAge} vs censo ${r.censusAge} RESCATADO: mismo nombre y misma fecha de nacimiento salvo el año que el bloque aceptado (${pd(r.fnac)} vs ${pd(r.twinFnac)}) → año mal capturado en WinLab`);
   }
   result.ageGuard = { census_age: sel.censusAge, tolerance: sel.tolerance, blocks_rejected: ageRejected.length, blocks_rescued: (sel.ageRescued || []).length };
 
@@ -976,11 +977,11 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
     const pdfInfo = await findPdfFrameUrl(detailPage, 4);
 
     if (pdfInfo) {
-      console.log(`       [drilldown] PDF frame detectado: FileName=${pdfInfo.fileName}`);
+      console.log(`       [drilldown] PDF frame detectado: FileName=${pu(pdfInfo.fileName)}`);
     }
 
     if (capturedPdfBuffer) {
-      console.log(`       [drilldown] PDF capturado del browser: ${capturedPdfBuffer.length} bytes (url=${capturedPdfUrl})`);
+      console.log(`       [drilldown] PDF capturado del browser: ${capturedPdfBuffer.length} bytes (url=${pu(capturedPdfUrl)})`);
       const repPDF = await parsePdfToReport(capturedPdfBuffer, 10000);
       console.log(`       [drilldown] PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}`);
 
@@ -1018,7 +1019,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
           const popupUrl = detailPage.url();
           const pdfUrl = new URL(relPath, popupUrl).toString();
           if (dumpFirst) {
-            console.log(`       [drilldown] v5: descargando PDF directo: ${pdfUrl}`);
+            console.log(`       [drilldown] v5: descargando PDF directo: ${pu(pdfUrl)}`);
           }
           // ctx.request.get() hereda cookies del browser context (sesión WinLab)
           const apiResp = await ctx.request.get(pdfUrl, { timeout: 15000 });
@@ -1062,7 +1063,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
       console.log(`==========================================`);
       // Buscar referencias a otras URLs .pdf dentro del HTML
       const pdfRefs = capturedHtmlWrapper.match(/[\w\/\.\?=&-]+\.pdf[\w\?=&-]*/gi) || [];
-      console.log(`       [drilldown] URLs .pdf encontradas en HTML wrapper: ${JSON.stringify(pdfRefs.slice(0, 5))}`);
+      console.log(`       [drilldown] URLs .pdf encontradas en HTML wrapper: ${pdfRefs.length}`);
     }
 
     detailPage.off("response", responseListener);
@@ -1379,7 +1380,7 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
 
   for (let i = 0; i < censo.length; i++) {
     const p = censo[i];
-    const tag = `[${i + 1}/${censo.length}] exp=${p.exp} ${String(p.nombre || "").slice(0, 40)}`;
+    const tag = `[${i + 1}/${censo.length}] cama=${p.cama || "?"} exp=${pe(p.exp)} ${pn(p.nombre)}`;
     let subPage = null;
     try {
       // Aislamiento: nueva Page por paciente, hereda cookies/sesion del contexto.
@@ -1401,8 +1402,8 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
       const tag2 = res.noTarget ? `${matched} reportes [SIN OBJETIVO: solo homónimos / edad incompatible]`
         : res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
       console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
-      if (res.encontradoComo) console.log(`       [identidad] encontrado como "${res.encontradoComo}"${p.alias ? " (alias fijado en la app)" : ""}`);
-      else if (!matched && (res.seenNames || []).length) console.log(`       [parecidos] WinLab listó: ${res.seenNames.slice(0, 5).join(" | ")}`);
+      if (res.encontradoComo) console.log(`       [identidad] encontrado como ${pn(res.encontradoComo)}${p.alias ? " (alias fijado en la app)" : ""}`);
+      else if (!matched && (res.seenNames || []).length) console.log(`       [parecidos] WinLab listó ${res.seenNames.length} nombre(s) parecido(s): ${res.seenNames.slice(0, 5).map(pn).join(" | ")}`);
       const mrec = {
         exp: String(p.exp).slice(0, 64), cama: p.cama || null, nombre_censo: p.nombre || null, alias: p.alias || null,
         status: matched > 0 ? "ok" : (res.noTarget ? "homonimos" : "sin_registro"),
@@ -1504,7 +1505,7 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
   // bucle infinito. Lo que no se pudo guardar cuenta como corrida abortada (salida ≠ 0).
   for (let attempt = 0; pendingExps.size && attempt < 3; attempt++) await flush("final");
   if (pendingExps.size) {
-    console.error(`       [flush] ${pendingExps.size} paciente(s) NO guardados tras reintentos: ${Array.from(pendingExps).join(", ")}`);
+    console.error(`       [flush] ${pendingExps.size} paciente(s) NO guardados tras reintentos: ${Array.from(pendingExps).map(pe).join(", ")}`);
     aborted = true;
   }
   process.off("SIGTERM", onSigterm);
@@ -1521,7 +1522,7 @@ async function upsertMatch(supa, recs, why = "final") {
   const rows = Array.from(byExp.values());
   if (!rows.length) return 0;
   if (DRY_RUN) {
-    console.log(`[DRY-RUN] (${why}) winlab_match: ${rows.length} fila(s) NO escritas: ${rows.map((r) => `${r.exp}=${r.status}${r.encontrado_como ? ` («${r.encontrado_como}»)` : ""}`).join(", ")}`);
+    console.log(`[DRY-RUN] (${why}) winlab_match: ${rows.length} fila(s) NO escritas: ${rows.map((r) => `${pe(r.exp)}=${r.status}${r.encontrado_como ? ` («${pn(r.encontrado_como)}»)` : ""}`).join(", ")}`);
     return rows.length;
   }
   const { error } = await supa.from(SUPABASE_MATCH_TABLE).upsert(rows, { onConflict: "exp" });
@@ -1577,7 +1578,7 @@ function dryRunReport(records) {
     const estado = reportes.length > 0
       ? `✓ ${reportes.length} reporte(s) | ${totalValores} valor(es) drill-down`
       : `✗ 0 reportes`;
-    console.log(`[DRY-RUN]  exp=${String(r.exp).padEnd(12)} "${r.paciente || ""}"  →  ${estado}`);
+    console.log(`[DRY-RUN]  exp=${pe(r.exp).padEnd(12)} ${pn(r.paciente)}  →  ${estado}`);
     for (const rep of conValores.slice(0, 3)) {
       const muestra = rep.valores.slice(0, 4).map(v => `${v.estudio}=${v.valor}${v.unidad ? " " + v.unidad : ""}`).join("  |  ");
       const extra = rep.valores.length > 4 ? ` (+${rep.valores.length - 4} más)` : "";
