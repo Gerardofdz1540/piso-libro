@@ -20714,17 +20714,42 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (otros.length) html += `<div class="pj-lg"><div class="pj-lgh">Otros</div><div class="pj-labs">${otros.join("")}</div></div>`;
       return { fecha: snap.fecha || "", html: html };
     }
-    // Ajusta la ficha a la pantalla: baja la letra (em) hasta que quepa; si aun así no cabe, se desplaza (sin cortar arriba).
+    // Encuadra la ficha: prueba 1, 2 y 3 columnas (según el ancho) y para cada una busca la letra MÁS GRANDE con la que
+    // todo cabe (búsqueda binaria entre PROJ_FS_MIN y PROJ_FS_MAX); se queda con la combinación de letra mayor (a igualdad,
+    // menos columnas). Si ni con la mínima cabe, queda en la mínima legible y el área se desplaza (nunca se corta arriba).
+    const PROJ_FS_MIN = 13, PROJ_FS_MAX = 40;
     function _projFit() {
       const area = document.getElementById("proj-card-area"), card = area && area.querySelector(".pj-card");
       if (!card) return;
+      const flow = card.querySelector(".pj-flow");
       // Espacio útil = área sin su relleno (padding); la ficha (con su borde) debe caber ahí entera.
       const cs = getComputedStyle(area);
       const availH = area.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0) - 4;
-      const availW = area.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - 4;
-      const tooBig = function () { const r = card.getBoundingClientRect(); return r.height > availH || r.width > availW || card.scrollWidth > availW; };
-      let fs = 18; card.style.fontSize = fs + "px";
-      for (let i = 0; i < 20 && tooBig() && fs > 9; i++) { fs -= 0.6; card.style.fontSize = fs + "px"; }
+      const availW = area.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+      const fits = function () {
+        const r = card.getBoundingClientRect();
+        if (r.height > availH || r.width > availW + 1 || card.scrollWidth > card.clientWidth + 1) return false;
+        // Columnas: si el contenido no cabe a lo alto, el navegador crea columnas EXTRA a la derecha (desbordan a lo ancho).
+        return !flow || flow.scrollWidth <= flow.clientWidth + 1;
+      };
+      const opts = availW < 700 ? [1] : availW < 1150 ? [1, 2] : [2, 3];
+      let best = null;
+      opts.forEach(function (cols) {
+        if (flow) flow.style.columnCount = String(cols);
+        let lo = PROJ_FS_MIN, hi = PROJ_FS_MAX, ok = 0;
+        card.style.fontSize = lo + "px";
+        if (!fits()) { if (!best) best = { cols: cols, fs: 0 }; return; }
+        ok = lo;
+        for (let i = 0; i < 9; i++) {
+          const mid = (lo + hi) / 2; card.style.fontSize = mid + "px";
+          if (fits()) { ok = mid; lo = mid; } else hi = mid;
+        }
+        if (!best || ok > best.fs + 0.75) best = { cols: cols, fs: ok };
+      });
+      if (flow) flow.style.columnCount = String(best ? best.cols : opts[opts.length - 1]);
+      // Sin combinación que quepa: la letra mínima legible con el mayor número de columnas.
+      if (!best || !best.fs) { if (flow) flow.style.columnCount = String(opts[opts.length - 1]); card.style.fontSize = PROJ_FS_MIN + "px"; return; }
+      card.style.fontSize = (Math.floor(best.fs * 10) / 10) + "px";
     }
     function _renderProjCard() {
       const cEl = document.getElementById("proj-counter");
@@ -20741,8 +20766,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const R = buildEntregaResumen(p, nd), V = _egVitales(cl), CU = _egCultivos(p, nd), IM = _egImagen(p, nd), L = _projLabsHtml(nd), CX = _egCirugias(nd), IND = _egIndicaciones(p);
       // Solo lo registrado (pedido de Gera): un bloque sin contenido no se pinta (nada de "sin registro").
       const list = function (arr) { return (arr && arr.length) ? `<ul class="pj-ul">${arr.map(function (s) { return `<li>${esc(s)}</li>`; }).join("")}</ul>` : ""; };
-      const blk = function (icon, label, inner) { return inner ? `<div class="pj-b"><div class="pj-bh">${icon} ${label}</div>${inner}</div>` : ""; };
-      const indInner = IND ? IND.secs.map(function (x) { return `<div class="pj-lg"><div class="pj-lgh">${esc(x.label)}</div><ul class="pj-ul">${x.items.map(function (t) { return `<li>${esc(t)}</li>`; }).join("")}</ul></div>`; }).join("") : "";
+      const blk = function (icon, label, inner, keep) { return inner ? `<div class="pj-b${keep ? " pj-keep" : ""}"><div class="pj-bh">${icon} ${label}</div>${inner}</div>` : ""; };
+      // Medicamentos, soluciones y antibióticos: uno por renglón. Dieta y medidas generales/cuidados (renglones cortos):
+      // seguidos con «•», que ocupan una fracción del alto.
+      const _indInline = function (label, items) { return items.length <= 1 || /dieta|medidas|cuidados|generales|enfermer|otros|vigilancia/i.test(label || ""); };
+      const indInner = IND ? IND.secs.map(function (x) {
+        const items = (x.items || []).filter(function (t) { return toSafeString(t).trim(); });
+        if (!items.length) return "";
+        const body = _indInline(x.label, items)
+          ? `<div class="pj-inl">${items.map(function (t) { return `<span>${esc(t)}</span>`; }).join("<i>•</i>")}</div>`
+          : `<ul class="pj-ul">${items.map(function (t) { return `<li>${esc(t)}</li>`; }).join("")}</ul>`;
+        return `<div class="pj-lg"><div class="pj-lgh">${esc(x.label)}</div>${body}</div>`;
+      }).join("") : "";
       const dx = toSafeString(p.dx || nd.dx).trim();
       area.innerHTML = `<div class="pj-card" style="border-top:6px solid ${ec}">
         <div class="pj-hdr">
@@ -20754,18 +20789,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           </div>
         </div>
         ${blk("🩺", "Diagnóstico", dx ? `<div class="pj-dx">${esc(dx)}</div>` : "")}
-        <div class="pj-grid">
-          <div class="pj-col">
-            ${blk("🔪", "Eventos quirúrgicos", list(CX))}
-            ${blk("❤️", "Signos vitales" + (V.fecha ? " · " + esc(fmtDateChip(V.fecha)) : ""), V.items.length ? `<div class="pj-txt">${esc(V.items.join(" · "))}</div>` : "")}
-            ${blk("💧", "Gastos", list(R.gastos))}
-            ${blk("🦠", "Cultivos", list(CU))}
-            ${blk("🩻", "Estudios de imagen · conclusiones", list(IM))}
-          </div>
-          <div class="pj-col">
-            ${blk("🧪", "Laboratorios" + (L.fecha ? " · " + esc(fmtDateChip(L.fecha)) : ""), L.html)}
-            ${blk("💊", "Indicaciones" + (IND && IND.fecha ? " · " + esc(fmtDateChip(IND.fecha)) : ""), indInner)}
-          </div>
+        <div class="pj-flow">
+          ${blk("🔪", "Eventos quirúrgicos", list(CX))}
+          ${blk("❤️", "Signos vitales" + (V.fecha ? " · " + esc(fmtDateChip(V.fecha)) : ""), V.items.length ? `<div class="pj-txt">${esc(V.items.join(" · "))}</div>` : "", true)}
+          ${blk("💧", "Gastos", list(R.gastos))}
+          ${blk("🦠", "Cultivos", list(CU))}
+          ${blk("🩻", "Estudios de imagen · conclusiones", list(IM))}
+          ${blk("🧪", "Laboratorios" + (L.fecha ? " · " + esc(fmtDateChip(L.fecha)) : ""), L.html)}
+          ${blk("💊", "Indicaciones" + (IND && IND.fecha ? " · " + esc(fmtDateChip(IND.fecha)) : ""), indInner)}
         </div>
       </div>`;
       area.scrollTop = 0;
@@ -26947,33 +26978,35 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         <button onclick="closeProyector()" style="background:#dc2626;border:none;color:#fff;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">✕ Salir</button>
       </div>
     </div>
-    <div id="proj-card-area" style="flex:1;min-height:0;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:14px 16px calc(14px + env(safe-area-inset-bottom))"></div>
+    <div id="proj-card-area" style="flex:1;min-height:0;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:8px 10px calc(8px + env(safe-area-inset-bottom))"></div>
   </div>
   <style>
-    /* Modo Proyector: la ficha se centra con margin:auto (si no cabe, se desplaza sin cortarse arriba) y todo va en em para
-       que _projFit la encuadre bajando el tamaño de letra. */
-    #proj-card-area .pj-card{ margin:auto; width:min(1500px,100%); box-sizing:border-box; background:linear-gradient(135deg,#0f2238 0%,#1a3a6b 100%); border-radius:16px; padding:1.1em 1.4em; box-shadow:0 12px 48px rgba(0,0,0,.6); border:1px solid rgba(79,195,247,.3); color:#f1f5f9; font-size:18px; line-height:1.35; }
-    #proj-card-area .pj-hdr{ display:flex; align-items:center; gap:.8em; margin-bottom:.6em; }
-    #proj-card-area .pj-cama{ color:#fff; padding:.25em .7em; border-radius:.4em; font-size:1.6em; font-weight:800; flex:0 0 auto; }
+    /* Modo Proyector: la ficha usa TODA la pantalla; los bloques fluyen en 2-3 columnas equilibradas (.pj-flow) y _projFit
+       elige columnas y la letra MÁS GRANDE con la que cabe todo (oct 2026: con 2 columnas fijas, la de labs+indicaciones
+       obligaba a letra diminuta mientras la otra quedaba vacía). Todo va en em. */
+    #proj-card-area .pj-card{ margin:auto; width:100%; box-sizing:border-box; background:linear-gradient(135deg,#0f2238 0%,#1a3a6b 100%); border-radius:14px; padding:.7em .9em; box-shadow:0 12px 48px rgba(0,0,0,.6); border:1px solid rgba(79,195,247,.3); color:#f8fafc; font-size:18px; line-height:1.3; }
+    #proj-card-area .pj-hdr{ display:flex; align-items:center; gap:.7em; margin-bottom:.45em; }
+    #proj-card-area .pj-cama{ color:#fff; padding:.2em .6em; border-radius:.4em; font-size:1.5em; font-weight:800; flex:0 0 auto; }
     #proj-card-area .pj-id{ min-width:0; }
-    #proj-card-area .pj-nom{ font-size:1.45em; font-weight:800; color:#fff; line-height:1.2; }
-    #proj-card-area .pj-meta{ font-size:.85em; color:#94a3b8; margin-top:.15em; }
-    #proj-card-area .pj-est{ color:#fff; padding:.1em .55em; border-radius:.5em; font-size:.85em; font-weight:700; margin-left:.4em; }
-    #proj-card-area .pj-grid{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:.9em; }
-    @media (max-width:820px){ #proj-card-area .pj-grid{ grid-template-columns:minmax(0,1fr); } }
-    #proj-card-area .pj-col{ min-width:0; display:flex; flex-direction:column; gap:.6em; }
-    #proj-card-area .pj-b{ background:rgba(255,255,255,.05); border:1px solid rgba(125,211,252,.18); border-radius:.6em; padding:.5em .7em; margin-bottom:.6em; }
-    #proj-card-area .pj-col .pj-b{ margin-bottom:0; }
-    #proj-card-area .pj-bh{ font-size:.72em; font-weight:800; color:#7dd3fc; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3em; }
-    #proj-card-area .pj-dx{ font-size:1.1em; font-weight:700; }
+    #proj-card-area .pj-nom{ font-size:1.3em; font-weight:800; color:#fff; line-height:1.2; }
+    #proj-card-area .pj-meta{ font-size:.9em; color:#cbd5e1; margin-top:.1em; }
+    #proj-card-area .pj-est{ color:#fff; padding:.1em .55em; border-radius:.5em; font-size:.9em; font-weight:700; margin-left:.4em; }
+    #proj-card-area .pj-flow{ column-count:2; column-gap:.7em; column-fill:balance; }
+    #proj-card-area .pj-b{ background:rgba(255,255,255,.06); border:1px solid rgba(125,211,252,.22); border-radius:.5em; padding:.35em .55em; margin-bottom:.45em; -webkit-box-decoration-break:clone; box-decoration-break:clone; }
+    #proj-card-area .pj-flow .pj-b{ display:block; break-inside:auto; }
+    #proj-card-area .pj-flow .pj-b.pj-keep{ break-inside:avoid; }
+    #proj-card-area .pj-bh{ font-size:.88em; font-weight:800; color:#7dd3fc; text-transform:uppercase; letter-spacing:.04em; margin-bottom:.2em; break-after:avoid; }
+    #proj-card-area .pj-dx{ font-size:1.05em; font-weight:700; }
     #proj-card-area .pj-txt{ font-size:1em; font-weight:600; }
-    #proj-card-area .pj-ul{ margin:0; padding-left:1.1em; font-size:.92em; }
-    #proj-card-area .pj-ul li{ margin:.1em 0; overflow-wrap:anywhere; }
+    #proj-card-area .pj-ul{ margin:0; padding-left:1em; font-size:1em; font-weight:500; }
+    #proj-card-area .pj-ul li{ margin:.05em 0; overflow-wrap:anywhere; break-inside:avoid; }
+    #proj-card-area .pj-inl{ font-size:1em; font-weight:500; overflow-wrap:anywhere; }
+    #proj-card-area .pj-inl i{ font-style:normal; color:#7dd3fc; margin:0 .35em; font-weight:800; }
     #proj-card-area .pj-none{ font-size:.85em; color:#64748b; font-style:italic; }
-    #proj-card-area .pj-lg{ margin-bottom:.4em; }
-    #proj-card-area .pj-lgh{ font-size:.66em; color:#94a3b8; font-weight:700; margin-bottom:.15em; }
-    #proj-card-area .pj-labs{ display:flex; flex-wrap:wrap; gap:.3em; }
-    #proj-card-area .pj-lab{ background:rgba(255,255,255,.1); color:#e2e8f0; padding:.12em .45em; border-radius:.3em; font-size:.85em; font-weight:600; white-space:nowrap; }
+    #proj-card-area .pj-lg{ margin-bottom:.3em; break-inside:avoid; }
+    #proj-card-area .pj-lgh{ font-size:.85em; color:#cbd5e1; font-weight:700; margin-bottom:.1em; break-after:avoid; }
+    #proj-card-area .pj-labs{ display:flex; flex-wrap:wrap; gap:.25em; }
+    #proj-card-area .pj-lab{ background:rgba(255,255,255,.12); color:#f1f5f9; padding:.08em .4em; border-radius:.3em; font-size:.95em; font-weight:600; max-width:100%; box-sizing:border-box; overflow-wrap:anywhere; }
     #proj-card-area .pj-lab b{ margin-right:.2em; color:#cbd5e1; }
     #proj-card-area .pj-lab.abn{ background:#fef3c7; color:#92400e; } #proj-card-area .pj-lab.abn b{ color:#92400e; }
     #proj-card-area .pj-lab.crit{ background:#fee2e2; color:#b91c1c; } #proj-card-area .pj-lab.crit b{ color:#b91c1c; }

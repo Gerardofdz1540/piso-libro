@@ -229,7 +229,7 @@ const MOCK = `(() => {
     const labTxt = Array.from(card.querySelectorAll('.pj-lab')).map(x => x.textContent.trim());
     const blocks = Array.from(card.querySelectorAll('.pj-bh')).map(x => x.textContent.trim().replace(/ · .*$/, ''));
     const res = { first, now: _projPatients[_projIdx].cama, isBase: _projPatients[_projIdx] === base,
-      fits: cr.top >= ar.top - 1 && cr.bottom <= ar.bottom + 1 && cr.left >= ar.left - 1 && cr.right <= ar.right + 1, fs: card.style.fontSize,
+      fits: cr.top >= ar.top - 1 && cr.bottom <= ar.bottom + 1 && cr.left >= ar.left - 1 && cr.right <= ar.right + 1, fs: card.style.fontSize, cols: (card.querySelector('.pj-flow') || { style: {} }).style.columnCount,
       labN: labTxt.length, hasINR: labTxt.some(t => /^INR ≈ 1\.52/.test(t)), hasRaro: labTxt.some(t => /ZZ RARO/.test(t)), hasAmonio: labTxt.some(t => /Amonio 60/.test(t)),
       critHb: !!Array.from(card.querySelectorAll('.pj-lab.crit')).find(x => /^Hb/.test(x.textContent.trim())), blocks,
       sinExtra: !/Pendientes|ENTREGA|QX \/ Plan/.test(card.textContent), sinRegistro: !/sin registro|sin laboratorios/i.test(card.textContent),
@@ -251,6 +251,8 @@ const MOCK = `(() => {
     orden: e6.first.order.indexOf('3-150') < e6.first.order.indexOf('3-151') && e6.first.order.indexOf('3-151') < e6.first.order.indexOf('UCI 5') && e6.first.order.indexOf('UCI 5') < e6.first.order.indexOf('2-027'),
     selector: e6.isBase,
     encuadrada: e6.fits,
+    // Letra legible (oct 2026: con 2 columnas fijas bajaba a ~11 px): columnas equilibradas y la letra más grande que cabe.
+    legible: parseFloat(e6.fs) >= 16 && /^[23]$/.test(String(e6.cols)),
     todosLabs: e6.labN >= 32 && e6.hasINR && e6.hasRaro && e6.hasAmonio && e6.critHb,
     bloques: JSON.stringify(e6.blocks) === JSON.stringify(['🩺 Diagnóstico', '🔪 Eventos quirúrgicos', '💧 Gastos', '🦠 Cultivos', '🩻 Estudios de imagen', '🧪 Laboratorios', '💊 Indicaciones']) && e6.sinExtra && e6.sinRegistro,
     cirugias: e6.cx.length === 1 && e6.cx[0].length === 2 && /POP d0 · Relaparotomía \+ lavado · hallazgos: Absceso subfrénico 200 mL · sangrado 150 mL · Dr\. X$/.test(e6.cx[0][0]) && /LAPE \+ drenaje de colección · sangrado 300 mL$/.test(e6.cx[0][1]),
