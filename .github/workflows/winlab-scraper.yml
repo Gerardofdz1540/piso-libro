@@ -3,8 +3,8 @@ name: WinLab Scraper (Visita Medica 14:00)
 # WinLab publica labs a distintas horas. Corremos 3 veces al dia (León = CST,
 # UTC-6, sin horario de verano). Todos los dias (incluye fines de semana por
 # guardias). Si no hay labs nuevos, el upsert reescribe la misma data, no rompe.
-#   04:07 León = 10:07 UTC  (labs de la madrugada / nocturnos)
-#   13:15 León = 19:15 UTC  (visita medica — run principal)
+#   05:00 León = 11:00 UTC  (labs de la madrugada / nocturnos; antes 04:07)
+#   12:30 León = 18:30 UTC  (visita medica — run principal, listo antes de las 14:00; antes 13:15)
 #   20:07 León = 02:07 UTC  (labs de la tarde/noche)
 # Quien dispara esas 3 corridas A LA HORA EXACTA es Supabase (pg_cron → worker /api/scrape →
 # workflow_dispatch; ver scripts/supabase_pg_cron_dispatch.sql). El cron de GitHub en este repo
