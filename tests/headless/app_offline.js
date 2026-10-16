@@ -1,6 +1,7 @@
 // Abrir sin red y sin perder nada (oct 2026): service worker con copia de la app, sesión guardada sin
 // red, texto escrito sin conexión que sobrevive a recargar y se sube al volver la red sin que la
-// copia remota lo pise, y el botón ↩ Regresar.
+// copia remota lo pise, el botón ↩ Regresar, y la cama cambiada sin red (✏️ Editar) que sobrevive a la
+// recarga, no la pisa la fila remota ni Realtime, y sube con la cama nueva al volver la red (O6-O9).
 //   node tests/headless/app_offline.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
 const { chromium } = require('playwright');
 const MOCK = `(() => {
@@ -28,14 +29,30 @@ const MOCK = `(() => {
   const page = await context.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   let offline = false;
+  // Red intermitente (O10/O11): navigator.onLine sigue en true pero los PATCH a patients no llegan (wifi del hospital).
+  let failPatch = false;
   const posts = [];
+  // Fila remota MUTABLE: un PATCH a /rest/v1/patients con `cama` la actualiza (como Supabase), así la
+  // aserción "la nube termina con la cama nueva" es real y no un eco del mock.
+  const remotePatient = { id: 'a1', cama: '3-101', exp: '1', nombre: 'PACIENTE UNO', esp: 'CG', estado: 'ESTABLE', dx: 'X' };
+  const patches = [];
   const remoteNote = { patient_id: 'a1', app: '', pa: '', drenajes: '', qx: '', manejo: '', sangrado: '', sv: '', balance: '', pendientes: 'PEND REMOTO', checklist: {}, lab_history: [], imagen_history: [] };
   // context.route también cubre peticiones que pasan por el service worker (Chromium)
   await context.route('**/rest/v1/**', async (route) => {
     if (offline) return route.abort('internetdisconnected');
     const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
-    if (url.startsWith('/rest/v1/patients')) { if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-101', exp: '1', nombre: 'PACIENTE UNO', esp: 'CG', estado: 'ESTABLE', dx: 'X' }]); return json(201, [{ id: 'a1' }]); }
+    if (url.startsWith('/rest/v1/patients')) {
+      if (m === 'GET') return json(200, [Object.assign({}, remotePatient)]);
+      if (m === 'PATCH') {
+        let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
+        if (failPatch) { patches.push({ url, body, failed: true }); return route.abort('timedout'); }
+        patches.push({ url, body });
+        if (body && body.cama !== undefined) remotePatient.cama = body.cama;
+        return json(200, [Object.assign({}, remotePatient)]);
+      }
+      return json(201, [{ id: 'a1' }]);
+    }
     if (url.startsWith('/rest/v1/notes')) {
       if (m === 'GET') return json(200, [remoteNote]);
       let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
@@ -143,6 +160,154 @@ const MOCK = `(() => {
     && /texto de Pendientes/.test(o5.l2) && o5.redo === 'TEXTO EQUIVOCADO' && /texto de Pendientes/.test(o5.l2b) && o5.again === 'ESCRITO SIN RED'
     && o5.redoAfterEdit === 0 && /texto de Pendientes/.test(o5.l2c) && o5.back1 === 'ESCRITO SIN RED' && /como estaba antes de regresar/.test(o5.l2d) && o5.back2 === 'TEXTO EQUIVOCADO' && o5.back3 === 'TEXTO NUEVO'
     && o5.final === 'ESCRITO SIN RED' && o5.n0 === 0 && /quitar cirugía LAPE/.test(o5.l3) && o5.n1 === 1 && o5.hasStack && o5.hasRedo, JSON.stringify(o5));
+
+  // ── Cama editada SIN RED que se revertía al volver la red ──────────────────────────────────────
+  // Antes: 'online'/init cargaban la fila remota (cama vieja) ANTES del flush, el flush leía esa fila
+  // y PATCHeaba la cama VIEJA → la nube no cambiaba y la tarjeta volvía a la cama anterior.
+  // Helper: editar la cama en ✏️ Editar sin red y esperar a que el PATCH falle y el cambio pase a la cola.
+  const editBedOffline = (newBed) => page.evaluate(async (bed) => {
+    const k = pid(patients[0]);
+    openEditModal(k);
+    document.getElementById('mf-cama').value = bed;
+    saveModal();
+    await new Promise(r => setTimeout(r, 1500)); // PATCH falla + reintento 300 ms → outbox
+    const it = outboxLoad().find(x => x.type === 'patient');
+    const ls = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const posEl = document.querySelector('#board-nav .bn-pos');
+    return { online: navigator.onLine, cama: patients[0].cama, lsCama: ls[0] && ls[0].cama, itCama: it && it.patient && it.patient.cama, itTs: it && it.patient && it.patient.cama_app_ts, dirty: it && it.dirty, modal: document.getElementById('patient-modal').style.display, uiBed: (document.querySelector('.card-bed') || {}).textContent, pos: posEl ? posEl.textContent : null };
+  }, newBed);
+
+  // 6) Sin red: cambiar la cama en ✏️ Editar → tarjeta, localStorage y cola (solo el campo cama); un UPDATE
+  //    de Realtime con la cama vieja (otro iPad / sheet-sync) NO la pisa mientras el cambio espera subir.
+  offline = true; await context.setOffline(true); await page.waitForTimeout(400);
+  const o6 = await editBedOffline('3-105');
+  const o6rt = await page.evaluate(() => {
+    // saveNote suprime Realtime 5 s para este paciente (BUG-C1): quitarla para que el UPDATE sí se procese
+    // (en producción llega pasada la ventana, p. ej. al reconectar Realtime) y la aserción no sea vacía.
+    _suppressRealtimeKeys.clear();
+    const suppressed = _suppressRealtimeKeys.size;
+    handlePatientChange({ eventType: 'UPDATE', new: { id: 'a1', cama: '3-101', exp: '1', nombre: 'PACIENTE UNO', esp: 'CG', estado: 'ESTABLE', dx: 'X' }, old: { id: 'a1' } });
+    const ls2 = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    return { suppressed, afterRt: patients[0].cama, afterRtTs: patients[0].cama_app_ts, afterRtLs: ls2[0] && ls2[0].cama, uiBed: (document.querySelector('.card-bed') || {}).textContent, q: outboxLoad().filter(x => x.type === 'patient').length };
+  });
+  check('O6 sin red: cambiar la cama en ✏️ Editar queda en la tarjeta, en localStorage y en la cola (solo el campo cama, con la marca cama_app_ts para que el sheet-sync no la regrese); un UPDATE de Realtime con la cama vieja no la pisa ni le quita la marca',
+    !o6.online && /^\d{4}-\d{2}-\d{2}T/.test(o6.itTs || '') && o6rt.afterRtTs === o6.itTs && o6.cama === '3-105' && o6.lsCama === '3-105' && o6.itCama === '3-105' && Array.isArray(o6.dirty) && o6.dirty.length === 1 && o6.dirty[0] === 'cama' && o6.modal === 'none' && o6.uiBed === '3-105' && (o6.pos === null || /3-105/.test(o6.pos))
+    && o6rt.suppressed === 0 && o6rt.afterRt === '3-105' && o6rt.afterRtLs === '3-105' && o6rt.uiBed === '3-105' && o6rt.q === 1, JSON.stringify({ o6, o6rt }));
+
+  // 7) Recarga SIN red: la cama nueva sigue en la tarjeta y el cambio sigue en la cola. Arranca un vigía
+  //    que anota cada 30 ms la cama en memoria y en la tarjeta (para O8: la vieja no debe verse ni un instante).
+  let reload7 = true;
+  try { await page.reload({ waitUntil: 'load', timeout: 30000 }); } catch (e) { reload7 = false; errors.push('reload offline 2: ' + String(e).slice(0, 120)); }
+  await page.waitForTimeout(4500);
+  const o7 = reload7 ? await page.evaluate(() => {
+    window.__camaSeen = []; window.__camaT = setInterval(() => { try { window.__camaSeen.push(String(patients[0] && patients[0].cama) + '|' + ((document.querySelector('.card-bed') || {}).textContent || '')); } catch (_) {} }, 30);
+    return { online: navigator.onLine, cama: patients[0] && patients[0].cama, uiBed: (document.querySelector('.card-bed') || {}).textContent, q: outboxLoad().filter(x => x.type === 'patient').length };
+  }) : { reload7 };
+  check('O7 recarga sin red: la cama nueva sigue en la tarjeta y el cambio sigue en la cola', reload7 && !o7.online && o7.cama === '3-105' && o7.uiBed === '3-105' && o7.q === 1, JSON.stringify(o7));
+
+  // 8) Vuelve la red ('online' → carga remota → flush): el PATCH lleva la cama NUEVA (ninguno con la vieja),
+  //    la fila remota vieja no se ve ni un instante, la cola queda vacía y la nube termina con la cama nueva.
+  patches.length = 0;
+  offline = false; await context.setOffline(false);
+  await page.waitForTimeout(6500);
+  const o8 = await page.evaluate(() => {
+    clearInterval(window.__camaT);
+    const ls = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const posEl = document.querySelector('#board-nav .bn-pos');
+    return { online: navigator.onLine, cama: patients[0].cama, lsCama: ls[0] && ls[0].cama, uiBed: (document.querySelector('.card-bed') || {}).textContent, pos: posEl ? posEl.textContent : null, qPt: outboxLoad().filter(x => x.type === 'patient').length, seen: Array.from(new Set(window.__camaSeen)) };
+  });
+  const ptPatches8 = patches.filter(p => /\/rest\/v1\/patients/.test(p.url));
+  check('O8 al volver la red: el PATCH a patients lleva la cama NUEVA con su marca cama_app_ts (ninguno con la vieja), la fila remota vieja no se ve ni un instante, la tarjeta muestra la cama nueva, la cola queda vacía y la nube termina con la nueva',
+    o8.online && ptPatches8.length >= 1 && ptPatches8.every(p => p.body && p.body.cama === '3-105' && /^\d{4}-\d{2}-\d{2}T/.test(p.body.cama_app_ts || '')) && o8.cama === '3-105' && o8.lsCama === '3-105' && o8.uiBed === '3-105' && (o8.pos === null || /3-105/.test(o8.pos)) && o8.qPt === 0 && o8.seen.length > 0 && o8.seen.every(s => !/3-101/.test(s)) && remotePatient.cama === '3-105',
+    JSON.stringify({ o8, patches: ptPatches8.map(p => p.body && p.body.cama), remote: remotePatient.cama }));
+
+  // 9) Camino init CON red: otra edición sin red ('3-107'), se cierra la pestaña sin red y se abre la app
+  //    de nuevo ya con red (así el 'online' no corre antes que init). init carga lo remoto ('3-105') → el
+  //    ítem pendiente se superpone → el flush sube '3-107' y la nube queda con '3-107'.
+  offline = true; await context.setOffline(true); await page.waitForTimeout(400);
+  const o9a = await editBedOffline('3-107');
+  await page.close();
+  patches.length = 0;
+  offline = false; await context.setOffline(false);
+  const page2 = await context.newPage();
+  page2.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+  await page2.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page2.waitForTimeout(6500);
+  const o9 = await page2.evaluate(() => {
+    const ls = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    return { online: navigator.onLine, pts: patients.length, cama: patients[0] && patients[0].cama, lsCama: ls[0] && ls[0].cama, uiBed: (document.querySelector('.card-bed') || {}).textContent, qPt: outboxLoad().filter(x => x.type === 'patient').length, status: (document.getElementById('sync-status') || {}).textContent || '' };
+  });
+  const ptPatches9 = patches.filter(p => /\/rest\/v1\/patients/.test(p.url));
+  check('O9 abrir la app con red tras editar la cama sin red (init): lo remoto no pisa el cambio pendiente, el PATCH lleva la cama nueva, la cola queda vacía y la nube termina con ella',
+    o9a.cama === '3-107' && o9a.itCama === '3-107' && Array.isArray(o9a.dirty) && o9a.dirty.join() === 'cama'
+    && o9.online && o9.pts === 1 && ptPatches9.length >= 1 && ptPatches9.every(p => p.body && p.body.cama === '3-107' && p.body.cama_app_ts === o9a.itTs) && o9.cama === '3-107' && o9.lsCama === '3-107' && o9.uiBed === '3-107' && o9.qPt === 0 && remotePatient.cama === '3-107',
+    JSON.stringify({ o9a, o9, patches: ptPatches9.map(p => p.body && p.body.cama), remote: remotePatient.cama }));
+
+  // 10-11) Red INTERMITENTE (sin evento 'offline'/'online'): la 1.ª cama no sube y queda en la cola; la 2.ª sí sube.
+  //    Antes del arreglo del revisor la cola guardaba la 1.ª y la volvía a imponer: el eco de Realtime de la 2.ª y el
+  //    flush de cada 30 s regresaban la tarjeta y la nube a la 1.ª (la misma "cama que se revierte").
+  const editBed = (pg, bed, waitMs) => pg.evaluate(async ([bed, waitMs]) => {
+    openEditModal(pid(patients[0])); document.getElementById('mf-cama').value = bed; saveModal();
+    await new Promise(r => setTimeout(r, waitMs));
+    return { online: navigator.onLine, cama: patients[0].cama, q: outboxLoad().filter(x => x.type === 'patient').map(x => x.patient.cama) };
+  }, [bed, waitMs]);
+  const stateOf = (pg) => pg.evaluate(() => {
+    const ls = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    return { cama: patients[0].cama, lsCama: ls[0] && ls[0].cama, uiBed: (document.querySelector('.card-bed') || {}).textContent, qPt: outboxLoad().filter(x => x.type === 'patient').length };
+  });
+  patches.length = 0;
+  failPatch = true;
+  const o10a = await editBed(page2, '3-109', 1500);   // PATCH + reintento de 300 ms fallan → cola
+  await page2.waitForTimeout(4500);                    // el reintento de 4 s también falla
+  const o10q = await page2.evaluate(() => outboxLoad().filter(x => x.type === 'patient').map(x => x.patient.cama));
+  failPatch = false;                                   // vuelve la red SIN evento 'online'
+  const o10b = await editBed(page2, '3-111', 1200);    // 2.ª edición: sube
+  const o10rt = await page2.evaluate(() => {           // eco de Realtime de la 2.ª edición
+    _suppressRealtimeKeys.clear();
+    handlePatientChange({ eventType: 'UPDATE', new: { id: 'a1', cama: '3-111', exp: '1', nombre: 'PACIENTE UNO', esp: 'CG', estado: 'ESTABLE', dx: 'X' }, old: { id: 'a1' } });
+    return { cama: patients[0].cama };
+  });
+  await page2.evaluate(() => flushOutbox());           // el flush periódico (30 s) adelantado
+  const o10 = await stateOf(page2);
+  const okPatches10 = patches.filter(p => !p.failed && /\/rest\/v1\/patients/.test(p.url)).map(p => p.body && p.body.cama);
+  check('O10 red intermitente: la 1.ª cama (3-109) no sube y queda en la cola; la 2.ª (3-111) sube y saca a la 1.ª de la cola; ni el eco de Realtime ni el flush la regresan a 3-109 (tarjeta, localStorage y nube en 3-111)',
+    o10a.online && o10q.length === 1 && o10q[0] === '3-109' && o10b.cama === '3-111' && o10b.q.length === 0 && o10rt.cama === '3-111'
+    && o10.cama === '3-111' && o10.lsCama === '3-111' && o10.uiBed === '3-111' && o10.qPt === 0 && okPatches10.length >= 1 && okPatches10.every(c => c === '3-111') && remotePatient.cama === '3-111',
+    JSON.stringify({ o10a, o10q, o10b, o10rt, o10, okPatches10, remote: remotePatient.cama }));
+
+  // 11) El reintento de 4 s de un guardado que falló no sube el objeto VIEJO encima de una edición posterior.
+  patches.length = 0;
+  failPatch = true;
+  const o11a = await editBed(page2, '3-113', 800);     // falla → cola; el reintento de 4 s queda programado
+  failPatch = false;
+  const o11b = await editBed(page2, '3-115', 800);     // antes de los 4 s: 2.ª edición, sube
+  await page2.waitForTimeout(4500);                    // corre el reintento de 4 s de la 1.ª
+  const o11 = await stateOf(page2);
+  const okPatches11 = patches.filter(p => !p.failed && /\/rest\/v1\/patients/.test(p.url)).map(p => p.body && p.body.cama);
+  check('O11 el reintento de 4 s de la 1.ª edición (3-113) sube la fila VIGENTE (3-115), no la de hace 4 s: tarjeta, localStorage y nube en 3-115 y cola vacía',
+    o11a.q.length === 1 && o11a.q[0] === '3-113' && o11b.cama === '3-115' && o11.cama === '3-115' && o11.lsCama === '3-115' && o11.uiBed === '3-115' && o11.qPt === 0
+    && okPatches11.length >= 1 && okPatches11.every(c => c === '3-115') && remotePatient.cama === '3-115',
+    JSON.stringify({ o11a, o11b, o11, okPatches11, remote: remotePatient.cama }));
+
+  // 12) Sin red se cambia SOLO el estado (select en línea) mientras la hoja mueve al paciente de cama en la nube: al
+  //     volver la red el ítem lleva solo `estado` y NO regresa la cama vieja (con el ítem de fila completa sí la regresaba).
+  offline = true; await page2.context().setOffline(true); await page2.waitForTimeout(400);
+  const o12a = await page2.evaluate(async () => {
+    inlineEstado({ dataset: { pk: pid(patients[0]) }, value: 'GRAVE', style: {} });
+    await new Promise(r => setTimeout(r, 1500));
+    const it = outboxLoad().find(x => x.type === 'patient');
+    return { online: navigator.onLine, estado: patients[0].estado, cama: patients[0].cama, dirty: it ? it.dirty : 'sin ítem' };
+  });
+  remotePatient.cama = '3-121';                        // la hoja lo movió mientras este iPad no tenía red
+  patches.length = 0;
+  offline = false; await page2.context().setOffline(false);
+  await page2.waitForTimeout(6500);
+  const o12 = await page2.evaluate(() => ({ cama: patients[0].cama, estado: patients[0].estado, qPt: outboxLoad().filter(x => x.type === 'patient').length }));
+  const okPatches12 = patches.filter(p => !p.failed && /\/rest\/v1\/patients/.test(p.url)).map(p => p.body && (p.body.cama + '|' + p.body.estado));
+  check('O12 estado cambiado sin red: el ítem lleva solo ["estado"]; al volver la red sube GRAVE sin regresar la cama que la hoja cambió en la nube (3-121)',
+    !o12a.online && o12a.estado === 'GRAVE' && Array.isArray(o12a.dirty) && o12a.dirty.join() === 'estado'
+    && o12.cama === '3-121' && o12.estado === 'GRAVE' && o12.qPt === 0 && okPatches12.length >= 1 && okPatches12.every(s => s === '3-121|GRAVE') && remotePatient.cama === '3-121',
+    JSON.stringify({ o12a, o12, okPatches12, remote: remotePatient.cama }));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-OFFLINE: ' + pass + ' passed, ' + fail + ' failed');

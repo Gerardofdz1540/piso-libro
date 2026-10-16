@@ -309,5 +309,111 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     JSON.stringify(['CG', 'GO', 'ONC', 'CARD', ''].map((e) => e + '=' + sb.isSurgicalService_(e))));
 }
 
+// ── 11) Cama cambiada desde la APP (cama_app_ts / cama_hoja_prev): la app gana hasta que la hoja cambie ─
+{
+  const TS = "2026-10-16T10:00:00Z";
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i))); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.exp) : null; };
+  const patchesOf = (calls) => calls.filter((c) => c.m === "PATCH").map((c) => ({ id: c.u.match(/id=eq\.(\w+)/)[1], body: c.body }));
+  const noDestroy = (calls) => !calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive"));
+  // El residente movió a JUAN PEREZ LOPEZ (exp 7) de 3-101 a 3-105 desde la app; la hoja sigue diciendo 3-101.
+  const p7 = (extra) => Object.assign({ id: "p7", cama: "3-105", exp: "7", nombre: "JUAN PEREZ LOPEZ", updated_by: "Dr. Residente", cama_app_ts: TS, cama_hoja_prev: null }, extra || {});
+
+  // (1) primera divergencia → se anota cama_hoja_prev, la cama NO se toca, la fila 3-101 de exp 7 no va al upsert
+  {
+    const { sb, calls } = makeSandbox({ cur: [p7()], props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    const ps = patchesOf(calls), up = upsertOf(calls);
+    check("T11a app movió 3-101→3-105, hoja dice 3-101 (1ª vez): un solo PATCH {cama_hoja_prev:'3-101'} sin cama; sin DELETE/archive",
+      ps.length === 1 && ps[0].id === "p7" && ps[0].body.cama === undefined && ps[0].body.cama_hoja_prev === "3-101" && Object.keys(ps[0].body).length === 1 && noDestroy(calls), JSON.stringify(ps));
+    check("T11b el upsert NO lleva la fila 3-101 de exp 7 (evita el duplicado en la cama vieja) y sí las otras 12",
+      !!up && !up.includes("3-101:7") && up.length === 12, JSON.stringify(up));
+  }
+  // (2) segunda corrida: prev='3-101' y la hoja sigue en 3-101 → nada se mueve, nada se parchea, sin duplicado
+  {
+    const { sb, calls, logs } = makeSandbox({ cur: [p7({ cama_hoja_prev: "3-101" })], props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    const up = upsertOf(calls);
+    check("T11c 2ª corrida (hoja sin cambios): sin PATCH, sin DELETE, la fila 3-101 sigue fuera del upsert y se loguea que la app gana",
+      !calls.some((c) => c.m === "PATCH") && noDestroy(calls) && !!up && !up.includes("3-101:7") && up.length === 12
+      && logs.some((l) => /fijada\(s\) desde la app/.test(l) && /3-101/.test(l)), JSON.stringify({ up, logs }));
+  }
+  // (3) la hoja alcanza a la app (3-105) → se limpian cama_app_ts/cama_hoja_prev; la cama no se toca; 3-105 entra al upsert
+  {
+    const { sb, calls } = makeSandbox({ cur: [p7({ cama_hoja_prev: "3-101" })], props: {} });
+    sb.syncPatients_("svc", fill([row("3-105", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    const ps = patchesOf(calls), up = upsertOf(calls);
+    check("T11d hoja ya dice 3-105: un PATCH que resuelve {cama_app_ts:null, cama_hoja_prev:'ok@<ts>'} sin mover; 3-105 va al upsert",
+      ps.length === 1 && ps[0].id === "p7" && ps[0].body.cama === undefined && ps[0].body.cama_app_ts === null && ps[0].body.cama_hoja_prev === "ok@" + TS
+      && noDestroy(calls) && !!up && up.includes("3-105:7") && up.length === 13, JSON.stringify({ ps, up }));
+    // ya resuelto (ts null + marca) y la hoja sigue igual → ningún PATCH (no hay bucle de limpiezas cada 5 min)
+    const { sb: sbR, calls: cR } = makeSandbox({ cur: [p7({ cama_app_ts: null, cama_hoja_prev: "ok@" + TS })], props: {} });
+    sbR.syncPatients_("svc", fill([row("3-105", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    check("T11d2 resuelto y la hoja igual: sin PATCH en las corridas siguientes", !cR.some((c) => c.m === "PATCH"), JSON.stringify(cR.map((c) => c.m + " " + c.u)));
+  }
+  // (4) la hoja cambió a 3-120 (≠ prev 3-101) después del movimiento → manda la hoja: PATCH cama 3-120 + limpieza
+  {
+    const { sb, calls } = makeSandbox({ cur: [p7({ cama_hoja_prev: "3-101" })], props: {} });
+    sb.syncPatients_("svc", fill([row("3-120", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    const ps = patchesOf(calls), up = upsertOf(calls);
+    check("T11e hoja cambió a 3-120 ≠ prev: PATCH {cama:'3-120', cama_app_ts:null, cama_hoja_prev:'ok@<ts>', updated_by:'sheet-sync'}; 3-120 en el upsert; sin DELETE",
+      ps.length === 1 && ps[0].id === "p7" && ps[0].body.cama === "3-120" && ps[0].body.cama_app_ts === null && ps[0].body.cama_hoja_prev === "ok@" + TS
+      && ps[0].body.updated_by === "sheet-sync" && noDestroy(calls) && !!up && up.includes("3-120:7"), JSON.stringify({ ps, up }));
+  }
+  // (5) fila SIN cama_app_ts (movida por la hoja o por nadie) → comportamiento de siempre: la hoja manda
+  {
+    const { sb, calls } = makeSandbox({ cur: [p7({ cama_app_ts: null })], props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    const ps = patchesOf(calls), up = upsertOf(calls);
+    check("T11f sin cama_app_ts: PATCH de cama a 3-101 como siempre (sin columnas de control) y 3-101 en el upsert",
+      ps.length === 1 && ps[0].id === "p7" && ps[0].body.cama === "3-101" && ps[0].body.cama_app_ts === undefined && !!up && up.includes("3-101:7"), JSON.stringify({ ps, up }));
+  }
+  // (6) en la cama vieja (3-101) la hoja ya puso a OTRA persona (exp 9) → esa fila sí va al upsert (reasignación normal)
+  {
+    // 6a: exp 7 ya aparece en 3-105 (coincide) → limpieza; 3-101:9 entra
+    const { sb, calls } = makeSandbox({ cur: [p7({ cama_hoja_prev: "3-101" })], props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "9", { nombre: "MARIA RUIZ SOTO" }), row("3-105", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    const ps = patchesOf(calls), up = upsertOf(calls);
+    check("T11g otra persona en la cama vieja + exp 7 ya en 3-105: la fila 3-101:9 SÍ va al upsert; p7 solo se limpia",
+      !!up && up.includes("3-101:9") && up.includes("3-105:7") && ps.length === 1 && ps[0].body.cama_app_ts === null && ps[0].body.cama === undefined && noDestroy(calls), JSON.stringify({ ps, up }));
+    // 6b: exp 7 ya no está en la hoja; 3-101 es de exp 9 → 3-101:9 entra; p7 (hecho en la app) no se retira ni se parchea
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [p7({ cama_hoja_prev: "3-101" })], props: {} });
+    sb2.syncPatients_("svc", fill([row("3-101", "9", { nombre: "MARIA RUIZ SOTO" })]));
+    const up2 = upsertOf(c2);
+    check("T11h exp 7 fuera de la hoja y otra persona en 3-101: 3-101:9 al upsert; p7 sin PATCH ni DELETE en la 1ª corrida",
+      !!up2 && up2.includes("3-101:9") && !c2.some((c) => c.m === "PATCH") && noDestroy(c2), JSON.stringify({ up2 }));
+  }
+  // (7) protección: la hoja pone a OTRO exp (8) en la cama que la app fijó (3-105) → esa fila NO se upsertea (pisaría a p7 y su
+  //     nota quedaría bajo otro nombre) y la fila de exp 8 ni se mueve ahí (UNIQUE) ni se retira
+  {
+    const cur = [p7({ cama_hoja_prev: "3-101" }), { id: "p8", cama: "3-120", exp: "8", nombre: "PEDRO GOMEZ DIAZ", updated_by: "sheet-sync" }];
+    const st = { cur, props: {} };
+    const { sb, calls, logs } = makeSandbox(st);
+    sb.syncPatients_("svc", fill([row("3-101", "7", { nombre: "JUAN PEREZ LOPEZ" }), row("3-105", "8", { nombre: "PEDRO GOMEZ DIAZ" })]));
+    const up = upsertOf(calls);
+    const since = JSON.parse(st.props.PL_MISSING_SINCE || "{}");
+    check("T11i otro exp en la cama fijada: ni 3-101:7 ni 3-105:8 van al upsert; p8 no se mueve ni entra en gracia; sin DELETE; se loguea",
+      !!up && !up.includes("3-101:7") && !up.includes("3-105:8") && up.length === 12 && !calls.some((c) => c.m === "PATCH" && c.u.includes("id=eq.p8"))
+      && !since.p8 && noDestroy(calls) && logs.some((l) => /en espera/.test(l) && /3-120→3-105/.test(l)), JSON.stringify({ up, since, logs }));
+  }
+  // (8) duplicado viejo: antes de este arreglo el upsert ya había recreado a exp 7 en 3-101 (fila sheet-sync vacía) →
+  //     p7 (app) se respeta y el duplicado p7b pasa a "fuera de la hoja": gracia y luego retiro normal
+  {
+    const dup = { id: "p7b", cama: "3-101", exp: "7", nombre: "JUAN PEREZ LOPEZ", updated_by: "sheet-sync" };
+    const full = { p7b: { id: "p7b", cama: "3-101", exp: "7", nombre: "JUAN PEREZ LOPEZ", notes: [] } };
+    const st = { cur: [p7({ cama_hoja_prev: "3-101" }), dup], full, props: {} };
+    const { sb, calls } = makeSandbox(st);
+    sb.syncPatients_("svc", fill([row("3-101", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    const since = JSON.parse(st.props.PL_MISSING_SINCE || "{}");
+    check("T11j duplicado sheet-sync en la cama vieja: 1ª corrida entra en gracia (sin DELETE), p7 sin PATCH, 3-101 fuera del upsert",
+      typeof since.p7b === "number" && noDestroy(calls) && !calls.some((c) => c.m === "PATCH") && !upsertOf(calls).includes("3-101:7"), JSON.stringify({ since, calls: calls.map((c) => c.m + " " + c.u) }));
+    const st2 = { cur: [p7({ cama_hoja_prev: "3-101" }), dup], full, props: missingOld(["p7b"]) };
+    const { sb: sb2, calls: c2 } = makeSandbox(st2);
+    const r2 = sb2.syncPatients_("svc", fill([row("3-101", "7", { nombre: "JUAN PEREZ LOPEZ" })]));
+    check("T11k ... y tras la gracia se archiva y borra SOLO p7b; p7 (la fila con la nota) intacta",
+      r2 === 1 && c2.some((c) => c.m === "DELETE" && c.u.includes("id=eq.p7b")) && !c2.some((c) => c.u.includes("id=eq.p7&") || c.u.endsWith("id=eq.p7")) , JSON.stringify(c2.map((c) => c.m + " " + c.u)));
+  }
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

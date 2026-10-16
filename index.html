@@ -9810,7 +9810,9 @@ function plExportBackup() {
       if (idx !== -1) {
         // Nota ya encolada: unir los campos sucios (si alguno era "todo" → sigue siendo "todo").
         // Antes el reemplazo estrechaba `dirty` al último campo editado y el anterior nunca subía.
-        if (newItem.type === "note") {
+        // Paciente ("patient"): misma regla — `dirty` son los campos censales cambiados (cama, dx…);
+        // null = la fila completa.
+        if (newItem.type === "note" || newItem.type === "patient") {
           const a = q[idx].dirty, b = newItem.dirty;
           newItem.dirty = (Array.isArray(a) && Array.isArray(b)) ? Array.from(new Set(a.concat(b))) : null;
         }
@@ -10560,10 +10562,12 @@ function plExportBackup() {
       const p = patients.find(function(pt) { return pid(pt) === k; });
       const cardEl = document.getElementById("card-" + k);
       if (cardEl && p) {
+        const _st = _viewStateCapture();   // scroll + secciones abiertas (fcJump/toque); null fuera del tablero
         const _nd = noteData[k] || defaultData();
         cardEl.outerHTML = isSimpleEsp(p.esp, _nd)
           ? renderSimpleCard(p, _nd, k)
           : renderFullCard(p, _nd, k);
+        _viewStateRestore(_st);   // secciones abiertas + altura del texto + scroll (ANTES de la tinta: ✍️ puede estirar la caja más)
         try { _penMountAll(document.getElementById("card-" + k)); } catch (_) {}   // ✍️ tinta de las cajas
       }
       // Si este paciente es el que está PROYECTADO, refresca la proyección en vivo
@@ -10736,6 +10740,9 @@ function plExportBackup() {
         ingreso: ingresoToISO(p.ingreso),
         updated_by: localStorage.getItem("pl_user_name") || ""
       };
+      // Cama cambiada desde la APP (oct 2026): la marca viaja con la fila y el sheet-sync la respeta mientras la hoja
+      // no cambie (apps-script/censo-sync.gs). Solo se manda si existe: nunca la borra (eso lo hace el sheet-sync).
+      if (p.cama_app_ts) row.cama_app_ts = p.cama_app_ts;
       try {
         if (p._supa_id) {
           const data = await _sPatch("patients", "id=eq." + p._supa_id, row);
@@ -11053,7 +11060,8 @@ function plExportBackup() {
             adscrito: row.adscrito || "", residente: row.residente || "",
             estado: row.estado || "",
             es_mio: (typeof row.es_mio === "boolean" ? row.es_mio : computeEsMio(row.esp)),
-            ingreso: row.ingreso ? fmtDateFromISO(row.ingreso) : ""
+            ingreso: row.ingreso ? fmtDateFromISO(row.ingreso) : "",
+            cama_app_ts: row.cama_app_ts || null
           };
           // Si los campos de identidad llegaron vacíos desde Supabase, intentar
           // restaurarlos desde el caché local (mismo _supa_id)
@@ -11392,6 +11400,73 @@ function plExportBackup() {
         target[it.key] = nd;
       });
     }
+    // ─── Ítems "patient" del outbox sobre el censo (oct 2026) ───────────────────────────
+    // Una cama/dx editados SIN RED viven en el ítem "patient" de la cola. Al volver la red se carga
+    // la fila remota (vieja) ANTES del flush y el flush leía esa fila → PATCH con la cama vieja.
+    // Campos censales que viajan en supaUpsertPatient (los que un ítem "patient" puede traer).
+    const PATIENT_SYNC_FIELDS = ["cama", "nombre", "exp", "dx", "edad", "esp", "adscrito", "residente", "ingreso", "estado"];
+    // Aplica sobre `target` (fila local) los campos del ítem: solo `dirty` si trae lista, todos los
+    // censales si no (ítem = fila completa). Devuelve true si cambió algo. Conserva _supa_id.
+    function _applyOutboxPatientFields(target, item) {
+      const src = item && item.patient;
+      if (!target || !src) return false;
+      const fields = Array.isArray(item.dirty) ? item.dirty : PATIENT_SYNC_FIELDS;
+      let changed = false;
+      fields.forEach(function (f) {
+        if (PATIENT_SYNC_FIELDS.indexOf(f) === -1 || src[f] === undefined) return;
+        if (toSafeString(target[f]) !== toSafeString(src[f])) { target[f] = src[f]; changed = true; }
+      });
+      if (changed && fields.indexOf("esp") !== -1) target.es_mio = computeEsMio(target.esp);
+      // La marca "cama cambiada desde la app" acompaña a la cama del ítem (si no, el flush subiría la cama nueva sin la
+      // marca y el sheet-sync la regresaría a la de la hoja).
+      if (src.cama_app_ts && fields.indexOf("cama") !== -1 && toSafeString(target.cama) === toSafeString(src.cama) && target.cama_app_ts !== src.cama_app_ts) {
+        target.cama_app_ts = src.cama_app_ts; changed = true;
+      }
+      return changed;
+    }
+    // Ítem "patient" pendiente para una fila de Supabase (por id); el último encolado.
+    function _outboxPatientItemFor(supaId) {
+      if (!supaId) return null;
+      let q = [];
+      try { q = outboxLoad(); } catch (_) { return null; }
+      for (let i = q.length - 1; i >= 0; i--) {
+        const it = q[i];
+        if (it && it.type === "patient" && it.patient && it.patient._supa_id === supaId) return it;
+      }
+      return null;
+    }
+    // ¿El ítem "patient" es de este paciente? Por _supa_id si los dos lo tienen; si no, por pid / exp+cama.
+    function _outboxPatientItemMatches(it, p) {
+      if (!it || it.type !== "patient" || !it.patient || !p) return false;
+      if (p._supa_id && it.patient._supa_id) return it.patient._supa_id === p._supa_id;
+      return pid(it.patient) === pid(p) || patientIdentityKey(it.patient) === patientIdentityKey(p);
+    }
+    // Quita de la cola los ítems "patient" de `p` encolados hasta `uptoTs`: un supaUpsertPatient(p) que ACABA de
+    // subir ya los incluye (sube la fila censal completa desde la copia local, que tiene esos valores u otros más
+    // nuevos). Sin esto, un cambio encolado con la red intermitente (1.ª cama) se quedaba en la cola aunque una
+    // edición posterior (2.ª cama) sí subiera, y el eco de Realtime / la carga al volver la red / el flush volvían
+    // a imponer la 1.ª. Lo encolado DESPUÉS de `uptoTs` se queda (puede traer algo más nuevo).
+    function _outboxDropPatientItems(p, uptoTs) {
+      if (!p) return;
+      let q; try { q = outboxLoad(); } catch (_) { return; }
+      const keep = q.filter(function (it) { return !(it && it.type === "patient" && it.ts <= uptoTs && _outboxPatientItemMatches(it, p)); });
+      if (keep.length !== q.length) { outboxSave(keep); try { updateOutboxBadge(); } catch (_) {} }
+    }
+    // Re-aplica los ítems "patient" pendientes sobre el censo recién cargado (online/init/visibilitychange):
+    // la UI no muestra la cama vieja ni un segundo y el flush (que lee `patients`) sube la nueva.
+    function _applyOutboxPatientOverlay(list) {
+      if (!Array.isArray(list)) return list;
+      let q = [];
+      try { q = outboxLoad(); } catch (_) { return list; }
+      q.forEach(function (it) {
+        if (!it || it.type !== "patient" || !it.patient) return;
+        const k = pid(it.patient);
+        let p = list.find(function (x) { return pid(x) === k; });
+        if (!p && k.indexOf("pt-") === 0) p = list.find(function (x) { return patientIdentityKey(x) === k; });
+        if (p) _applyOutboxPatientFields(p, it);
+      });
+      return list;
+    }
     function _applyLoadedNotes(loadedNotes) {
       const prev = noteData;
       noteData = loadedNotes || {};
@@ -11522,8 +11597,20 @@ function plExportBackup() {
     // only: paciente (o array) a guardar. Sin `only` se re-escriben TODOS los pacientes con la
     // copia local de este dispositivo — pisa cambios de colegas si se perdió un evento Realtime.
     // Los flujos que editan un paciente concreto deben pasarlo.
-    async function _savePtsImmediate(only) {
+    // dirty: campos censales que cambiaron en `only` (p. ej. ["cama"]). Viaja en el ítem del outbox para
+    // que el flush aplique SOLO esos sobre la fila vigente; sin lista, el ítem es la fila completa.
+    async function _savePtsImmediate(only, dirty) {
       const targets = only ? (Array.isArray(only) ? only : [only]).filter(Boolean) : patients;
+      const _dirtyList = Array.isArray(dirty) ? dirty.slice() : null;
+      // Si alguno ya tiene un ítem "patient" en la cola (cambio sin red que aún no sube), se actualiza AHORA con la
+      // fila local vigente (une `dirty`): la cola nunca guarda una cama/dx más viejos que lo que se ve en pantalla.
+      try {
+        const _q0 = outboxLoad().filter(function (it) { return it && it.type === "patient" && it.patient; });
+        if (_q0.length) targets.forEach(function (p) {
+          if (_q0.some(function (it) { return _outboxPatientItemMatches(it, p); })) outboxEnqueue({ type: "patient", patient: p, dirty: _dirtyList });
+        });
+      } catch (e) { safeLog("_savePtsImmediate refresh outbox:", e); }
+      const _t0 = Date.now();   // lo encolado hasta aquí lo cubre un PATCH exitoso de este guardado
       lsSavePatients(patients);
       localStorage.setItem("pl_last_save_ts", Date.now().toString());
       pendingSyncs++;
@@ -11548,10 +11635,12 @@ function plExportBackup() {
 
       const allOk = stillFailed.length === 0;
       lsSavePatients(patients); // re-save with updated _supa_ids
+      // Subió: lo que este paciente tenía encolado antes de este guardado ya va incluido → fuera de la cola.
+      targets.forEach(function (p) { if (stillFailed.indexOf(p) === -1) _outboxDropPatientItems(p, _t0); });
       if (allOk) {
         localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
       } else {
-        stillFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p }));
+        stillFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p, dirty: _dirtyList }));
       }
       pendingSyncs--;
       if (pendingSyncs === 0) {
@@ -11563,18 +11652,27 @@ function plExportBackup() {
             if (pendingSyncs > 0) return;
             pendingSyncs++;
             setSyncStatus("syncing", "Reintentando...");
+            // La fila VIGENTE de cada paciente: si en estos 4 s se editó otra vez (✏️ Editar reemplaza el objeto) o
+            // se egresó, reintentar con el objeto de hace 4 s subía la cama/dx VIEJOS encima de la edición nueva.
+            const live = targets.map(function (t) {
+              if (patients.indexOf(t) !== -1) return t;
+              if (t._supa_id) return patients.find(function (x) { return x._supa_id === t._supa_id; }) || null;
+              return _findPatientByKey(pid(t));
+            }).filter(Boolean);
+            const _t1 = Date.now();
             // Reintentar en lotes de 6 para no saturar Supabase con un censo grande
             const retried2 = [];
-            for (let ri = 0; ri < targets.length; ri += BATCH) {
-              const rb = await Promise.all(targets.slice(ri, ri + BATCH).map(p => supaUpsertPatient(p)));
+            for (let ri = 0; ri < live.length; ri += BATCH) {
+              const rb = await Promise.all(live.slice(ri, ri + BATCH).map(p => supaUpsertPatient(p)));
               retried2.push(...rb);
             }
-            const retryFailed = targets.filter((_, i) => !retried2[i]);
+            const retryFailed = live.filter((_, i) => !retried2[i]);
+            live.forEach(function (p, i) { if (retried2[i]) _outboxDropPatientItems(p, _t1); });
             lsSavePatients(patients);
             if (!retryFailed.length) {
               localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
             } else {
-              retryFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p }));
+              retryFailed.forEach(p => outboxEnqueue({ type: "patient", patient: p, dirty: _dirtyList }));
             }
             if (pendingSyncs > 0) pendingSyncs--;
             if (pendingSyncs === 0) {
@@ -11828,6 +11926,10 @@ function plExportBackup() {
         if (!updated.exp    && existing.exp)    updated.exp    = existing.exp;
         if (!updated.esp    && existing.esp)    updated.esp    = existing.esp;
         if (!updated.ingreso && existing.ingreso) updated.ingreso = existing.ingreso;
+        // Ítem "patient" pendiente en la cola para esta fila (cama/dx editados sin red que aún no subieron):
+        // la fila remota no debe pisarlos; el flush los sube después con estos mismos valores.
+        const _pendPt = _outboxPatientItemFor(newRow.id);
+        if (_pendPt) _applyOutboxPatientFields(updated, _pendPt);
         const newKey = pid(updated);
         // Transfer noteData if key changed
         if (oldKey !== newKey && noteData[oldKey]) {
@@ -11840,14 +11942,13 @@ function plExportBackup() {
         patients[idx] = updated;
         lsSavePatients(patients);
         buildEspFilters();
-        // Re-render solo la tarjeta afectada para no destruir texto en edición en otros cards
+        // Re-render solo la tarjeta afectada (no destruir texto en edición en otros cards) y sólo en calma.
         const _ptCardEl = document.getElementById("card-" + newKey);
-        const _ptHasFocus = _ptCardEl && _ptCardEl.contains(document.activeElement);
-        if (_ptCardEl && !_ptHasFocus && newKey !== _modalCurrentEditKey) {
-          _ptCardEl.outerHTML = isSimpleEsp(updated.esp, (noteData[newKey] || defaultData())) ? renderSimpleCard(updated, noteData[newKey] || defaultData(), newKey) : renderFullCard(updated, noteData[newKey] || defaultData(), newKey);
-        } else if (!_ptCardEl) {
-          // Key cambió o tarjeta no existe en DOM — renderizar vista completa (suave si se está escribiendo)
-          renderViewSoft();
+        if (!_ptCardEl) renderViewSoft();                                   // clave cambió / tarjeta no está: vista completa, suave
+        else if (newKey !== _modalCurrentEditKey) {
+          // cama/nombre/esp también viven en #board-nav y en la tira → vista completa (suave); si no, sólo la tarjeta y en calma
+          const _navChanged = existing.cama !== updated.cama || existing.nombre !== updated.nombre || existing.esp !== updated.esp;
+          if (_navChanged && document.body.classList.contains("focus-on")) renderViewSoft(); else _rerenderCardSoft(newKey);
         }
         safeInfo("[RT] Patient updated:", updated.nombre);
       }
@@ -12125,15 +12226,8 @@ function plExportBackup() {
       _winlabExpIndex = null; // el índice por variantes de exp se cachea por identidad de winlabByExp (mutado en sitio)
       const affected = patients.filter(function(p) { return findWinlabRowForPatient(p) === newRow; });
       const rerender = function () {
-        affected.forEach(function(p) {
-          const k = pid(p);
-          const cardEl = document.getElementById("card-" + k);
-          if (cardEl && !cardEl.contains(document.activeElement)) {
-            cardEl.outerHTML = isSimpleEsp(p.esp, noteData[k] || defaultData())
-              ? renderSimpleCard(p, noteData[k] || defaultData(), k)
-              : renderFullCard(p, noteData[k] || defaultData(), k);
-          }
-        });
+        // Tarjeta afectada en calma (antes: en cuanto no tenía foco, aunque el usuario estuviera a punto de tocarla)
+        affected.forEach(function(p) { const k = pid(p); if (document.getElementById("card-" + k)) _rerenderCardSoft(k); });
         if (affected.length) {
           const nombres = affected.map(function(p) { return p.nombre || p.exp; }).join(", ");
           _showRTToast("🧪 Labs WinLab actualizados: " + nombres);
@@ -12222,25 +12316,11 @@ function plExportBackup() {
         var _rtModalWarn = document.getElementById("modal-realtime-warn");
         if (_rtModalWarn) _rtModalWarn.style.display = "block";
       }
-      // Re-render SOLO la tarjeta afectada — renderView() destruiría texto en edición en TODOS los demás cards
-      // Además, si el usuario tiene foco dentro de esta misma tarjeta o el modal está abierto, no re-renderizar
-      const _rtCardEl = document.getElementById("card-" + k);
-      const _rtHasFocus = _rtCardEl && _rtCardEl.contains(document.activeElement);
-      if (_rtCardEl && !_rtHasFocus && !_modalIsOpenForThis) {
-        // FIX: en modo TABLERO ("Pantalla") la tarjeta en foco se dibuja con renderFocusBoard.
-        // Reemplazarla con renderFullCard (rejilla) sacaba al otro dispositivo del board y
-        // parecía "saltar a Piso Libro". Usar el MISMO renderer que renderPiso según el modo.
-        const _ndk = noteData[k];
-        const _inBoard = (window.__viewMode === "board") && document.body.classList.contains("focus-on") && (k === window.__focusPid);
-        if (_inBoard) {
-          _rtCardEl.outerHTML = isSimpleEsp(p.esp, _ndk)
-            ? renderSimpleCard(p, _ndk, k)
-            : (typeof renderFocusBoard === "function" ? renderFocusBoard(p, _ndk, k) : renderFullCard(p, _ndk, k));
-        } else {
-          _rtCardEl.outerHTML = isSimpleEsp(p.esp, _ndk) ? renderSimpleCard(p, _ndk, k) : renderFullCard(p, _ndk, k);
-        }
-        try { _applyPresenceBadges(); } catch (_) {}   // re-pintar badge tras reconstruir la tarjeta
-      }
+      // Re-render SOLO la tarjeta afectada (renderView() destruiría texto en edición en los demás cards) y SOLO en
+      // calma (sin foco, sin toque/lápiz en 1.8 s): antes se reemplazaba la tarjeta entera en cuanto no había foco,
+      // es decir justo entre soltar una caja y tocar la siguiente. Con el modal abierto para este paciente sólo se
+      // avisa (como antes). renderFocusBoard delega en renderFullCard, así que _rerenderCard pinta lo mismo que el tablero.
+      if (document.getElementById("card-" + k) && !_modalIsOpenForThis) _rerenderCardSoft(k);
       _showRTToast("📡 Actualización recibida: " + (p.nombre || k));
       safeInfo("[RT] Note updated:", k);
     }
@@ -12251,9 +12331,13 @@ function plExportBackup() {
         cama: row.cama || "", nombre: row.nombre || "", exp: row.exp || "",
         dx: row.dx || "", edad: row.edad || "", esp: row.esp || "",
         adscrito: row.adscrito || "", residente: row.residente || "",
-        estado: row.estado || "", es_mio: (typeof row.es_mio === "boolean" ? row.es_mio : computeEsMio(row.esp)), ingreso: fmtDateFromISO(row.ingreso)
+        estado: row.estado || "", es_mio: (typeof row.es_mio === "boolean" ? row.es_mio : computeEsMio(row.esp)), ingreso: fmtDateFromISO(row.ingreso),
+        cama_app_ts: row.cama_app_ts || null
       };
     }
+    // La app cambió la cama de este paciente (Editar, cama en línea, 🛏 Cambiar cama, mover por expediente): se marca con
+    // la hora para que el sheet-sync no la regrese a la cama de la hoja mientras la hoja no cambie.
+    function _markCamaApp(p) { if (p) p.cama_app_ts = new Date().toISOString(); }
 
     // Elimina registros ghost: sin nombre, cama NI expediente.
     // Intenta rescatar usando caché local por _supa_id antes de descartar.
@@ -12310,7 +12394,7 @@ function plExportBackup() {
             const v = noteData[k].dx;
             if (p && typeof v === "string" && v !== (p.dx || "")) {
               p.dx = v;
-              outboxEnqueue({ type: "patient", key: k, patient: p });
+              outboxEnqueue({ type: "patient", key: k, patient: p, dirty: ["dx"] });
             }
           }
         });
@@ -12332,7 +12416,7 @@ function plExportBackup() {
         // Los cambios propios pendientes viven en el outbox (con sus campos dirty) y se aplican después.
         const loaded = await supaLoadAll();
         if (loaded) {
-          patients = sanitizePatients(loaded.patients);
+          patients = _applyOutboxPatientOverlay(sanitizePatients(loaded.patients)); // cama/dx editados sin red (outbox) sobre lo remoto
           _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
           buildEspFilters(); renderViewSoft();
@@ -12357,24 +12441,143 @@ function plExportBackup() {
     // ¿El usuario está escribiendo en un campo ahora mismo?
     function _isTypingNow() {
       const ae = document.activeElement;
-      return !!(ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT" || ae.isContentEditable));
+      if (!ae) return false;
+      // Casilla/radio/botón con foco (Chromium/escritorio los enfoca al hacer clic) NO es escribir: antes bloqueaba el
+      // repintado suave (y la excepción de "control") hasta hacer clic en otro lado.
+      if (ae.tagName === "INPUT") return !/^(checkbox|radio|button|submit|reset|image|range|color|file)$/i.test(ae.type || "");
+      return !!(ae.tagName === "TEXTAREA" || ae.isContentEditable);
     }
-    // renderView() reconstruye el DOM: si el residente está escribiendo (iPad: vuelve de otra app y
-    // sigue tecleando mientras cargamos), le quitaba el foco, cerraba el teclado y movía el cursor.
-    // Esta versión espera a que suelte el campo (focusout) y entonces repinta. El texto no se pierde:
-    // vive en noteData/_dirtyFields y _applyLoadedNotes lo respeta.
-    let _renderDeferred = false;
+    // renderView() reconstruye el DOM. Antes esperaba un `focusout` y repintaba 80 ms después: ese repintado caía
+    // JUSTO entre soltar una caja y tocar la siguiente (200-1000 ms con el lápiz o el dedo), destruía el nodo que el
+    // usuario iba a tocar, cerraba secciones y recortaba el scroll ("al ir a escribir te cambia de sección").
+    // Ahora se repinta sólo en CALMA: sin foco en un campo, sin lápiz activo y sin toque/foco/tecla en los últimos
+    // RENDER_CALM_MS; si no hay calma, reintenta. El texto no se pierde: vive en noteData/_dirtyFields.
+    // Excepción: el último gesto fue un CONTROL (botón, summary, enlace, casilla…) fuera de la barra del tablero y de
+    // los campos: el usuario acaba de pedir una acción (importar, guardar, marcar) y su repintado debe ser inmediato.
+    const RENDER_CALM_MS = 1800;
+    // Desplazamiento de la PÁGINA en curso (dedo arrastrando sin soltar > 1.8 s, inercia del iPad tras soltar, scroll
+    // suave de focusGoTo/fcJump): repintar ahí cortaba la inercia (scrollTo de _viewStateRestore) y cambiaba el DOM bajo el
+    // dedo. Ventana corta: sólo mientras llegan eventos de scroll de la ventana (no los de la tira/tablas: esos son de
+    // elementos y no detienen la página).
+    const RENDER_SCROLL_QUIET_MS = 400;
+    let _lastInteractTs = 0, _lastInteractCtrl = false, _lastScrollTs = 0;
+    try { window.addEventListener("scroll", function () { _lastScrollTs = Date.now(); }, { passive: true }); } catch (_) {}
+    (function _bindCalmMarks() {
+      const FIELD_SEL = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable], .pl-pen-glass, .pl-ink-cv, .pl-ink-menu, #board-nav, #board-side';
+      const CTRL_SEL = 'button, summary, a, select, label, [role="button"], input[type="checkbox"], input[type="radio"], input[type="button"], input[type="submit"]';
+      const byTarget = { click: 1, pointerdown: 1, pointerup: 1, touchstart: 1, touchend: 1 };
+      const mark = function (e) {
+        _lastInteractTs = Date.now();
+        let ctrl = false;
+        try {
+          const t = e && e.target;
+          if (t && t.closest && byTarget[e.type]) ctrl = !t.closest(FIELD_SEL) && !!t.closest(CTRL_SEL);
+        } catch (_) {}
+        _lastInteractCtrl = ctrl;
+      };
+      // ("scroll" no entra aquí: con 1.8 s el desplazamiento suave de focusGoTo/scrollIntoView bloquearía el repintado;
+      //  va aparte con la ventana corta RENDER_SCROLL_QUIET_MS, sólo mientras la página se mueve)
+      ["touchstart", "touchend", "pointerdown", "pointerup", "click", "focusin", "focusout", "keydown", "beforeinput", "input", "compositionstart", "compositionend"]
+        .forEach(function (t) { document.addEventListener(t, mark, { capture: true, passive: true }); });
+    })();
+    function _isCalm() {
+      if (_isTypingNow()) return false;
+      try { if ((typeof PEN_LIVE !== "undefined" && (PEN_LIVE.el || PEN_LIVE.active)) || (typeof PEN !== "undefined" && PEN.active)) return false; } catch (_) {}
+      if (!_lastInteractCtrl && Date.now() - _lastInteractTs < RENDER_CALM_MS) return false;
+      if (Date.now() - _lastScrollTs < RENDER_SCROLL_QUIET_MS) return false;
+      return true;
+    }
+    let _renderDeferred = false, _renderSoftTimer = 0;
+    function _renderSoftLater() {
+      clearTimeout(_renderSoftTimer);
+      const wait = Math.max(150, RENDER_CALM_MS - (Date.now() - _lastInteractTs));
+      _renderSoftTimer = setTimeout(function () {
+        _renderSoftTimer = 0;
+        if (!_renderDeferred) return;
+        if (!_isCalm()) { _renderSoftLater(); return; }   // volvió a tocar/escribir: esperar otra vez
+        _renderDeferred = false;
+        renderView();
+      }, wait);
+    }
     function renderViewSoft() {
-      if (!_isTypingNow()) { renderView(); return; }
+      if (_isCalm()) { _renderDeferred = false; clearTimeout(_renderSoftTimer); _renderSoftTimer = 0; renderView(); return; }
       if (_renderDeferred) return;
       _renderDeferred = true;
-      const onOut = function () {
-        document.removeEventListener("focusout", onOut);
-        _renderDeferred = false;
-        setTimeout(function () { renderViewSoft(); }, 80);
-      };
-      document.addEventListener("focusout", onOut);
+      _renderSoftLater();
     }
+    // Lo que un repintado completo (renderView) o de tarjeta (_rerenderCard) perdía: scroll de la página, secciones
+    // abiertas con fcJump/toque (no pasan por pl_sec_open) y altura real de las cajas. Se restaura sólo si la vista
+    // sigue siendo del MISMO paciente y MISMO modo (sellos data-pl-pid / data-pl-mode que pone renderPiso) y no se
+    // está navegando a propósito (focusGoTo/focusStep/enterFocus ponen _bedStrip.force y van arriba).
+    function _viewStateCapture() {
+      try {
+        const vp = document.getElementById("view-piso");
+        if (!vp || currentView !== "piso" || !document.body.classList.contains("focus-on") || !vp.dataset.plPid) return null;
+        if (typeof _bedStrip !== "undefined" && _bedStrip.force) return null;
+        const jb = vp.querySelector("#board-nav .bn-jump");
+        const st = { pid: vp.dataset.plPid, mode: vp.dataset.plMode || "", y: window.scrollY || window.pageYOffset || 0, secs: {}, jl: jb ? jb.scrollLeft : 0 };
+        vp.querySelectorAll("details.fc-sec[data-sec]").forEach(function (d) { st.secs[d.dataset.sec] = !!d.open; });
+        return st;
+      } catch (_) { return null; }
+    }
+    function _viewStateRestore(st) {
+      if (!st) return;
+      const vp = document.getElementById("view-piso");
+      if (!vp || !document.body.classList.contains("focus-on")) return;
+      if (vp.dataset.plPid !== st.pid || (vp.dataset.plMode || "") !== st.mode) return;   // otro paciente / otro modo: estado nuevo a propósito
+      // Secciones: sólo se RE-ABREN las que estaban abiertas (fcJump, toque en el summary, "ver todo"); nunca se cierra
+      // una que el render abrió solo (p. ej. "Estudios" al llegar el primer estudio del robot).
+      if (!isHojaMode()) {
+        try { Object.keys(st.secs).forEach(function (n) { if (!st.secs[n]) return; const d = vp.querySelector('details.fc-sec[data-sec="' + n + '"]'); if (d && !d.open) d.open = true; }); } catch (_) {}
+      }
+      // Altura real de las cajas AHORA (no en el rAF del MutationObserver): el documento no se encoge y el scroll no se recorta.
+      try { if (typeof autoResizeAll === "function") autoResizeAll(vp); } catch (_) {}
+      try { if (Math.abs((window.scrollY || 0) - st.y) > 1) window.scrollTo(0, st.y); } catch (_) {}
+      try { const jb = st.jl && vp.querySelector("#board-nav .bn-jump"); if (jb && jb.scrollLeft !== st.jl) jb.scrollLeft = st.jl; } catch (_) {}   // barra de saltos (renderView la reconstruye)
+    }
+    // Repintado de UNA tarjeta en calma (Realtime: notas de otro dispositivo, censo, WinLab, RIS). Varias peticiones se
+    // juntan; si hay foco/toque reciente se espera. Nunca toca el DOM "justo cuando soltó el lápiz".
+    const _cardSoftPending = new Set(); let _cardSoftTimer = 0;
+    function _rerenderCardSoft(k) {
+      if (k) _cardSoftPending.add(k);
+      if (_cardSoftTimer) return;
+      const run = function () {
+        _cardSoftTimer = 0;
+        if (!_cardSoftPending.size) return;
+        if (!_isCalm()) { _cardSoftTimer = setTimeout(run, Math.max(150, RENDER_CALM_MS - (Date.now() - _lastInteractTs))); return; }
+        const ks = Array.from(_cardSoftPending); _cardSoftPending.clear();
+        ks.forEach(function (kk) { try { _rerenderCard(kk); } catch (e) { safeLog("_rerenderCardSoft:", e); } });
+        try { _applyPresenceBadges(); } catch (_) {}
+        try { if (typeof _refreshJumpBar === "function") _refreshJumpBar(); } catch (_) {}
+      };
+      run();
+    }
+    // Mientras se espera la calma, la tarjeta puede mostrar el valor VIEJO de una caja que otro dispositivo acaba de
+    // cambiar (noteData ya trae el nuevo). Si el usuario toca esa caja y escribe, liveUpdate subiría «viejo + lo suyo»
+    // y borraría en silencio lo del colega. Al ENFOCAR una caja de una tarjeta con repintado pendiente se le pone el
+    // valor del modelo (sólo si no está sucia y sólo en las cajas que se pintan tal cual desde noteData).
+    const _STALE_NOTE_FIELDS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega"];
+    const _STALE_CK_FIELDS = ["interconsultas", "pendientes_mips", "pendientes_r1"];
+    // "focus" en captura: corre ANTES del onfocus del textarea (beforeValue para ↩ Regresar ya toma el valor bueno).
+    document.addEventListener("focus", function (e) {
+      try {
+        const el = e.target;
+        if (!el || el.tagName !== "TEXTAREA" || !el.dataset || !el.dataset.key) return;
+        const k = el.dataset.key;
+        if (!_renderDeferred && !_cardSoftPending.has(k)) return;   // sin repintado pendiente el DOM ya es el modelo
+        const nd = noteData[k]; if (!nd) return;
+        const dirty = _dirtyUnion(k);
+        let model = null;
+        if (el.dataset.field && _STALE_NOTE_FIELDS.indexOf(el.dataset.field) !== -1) {
+          if (!dirty.has(el.dataset.field)) model = toSafeString(nd[el.dataset.field]);
+        } else if (el.dataset.ckfield && _STALE_CK_FIELDS.indexOf(el.dataset.ckfield) !== -1) {
+          if (!dirty.has("ck_" + el.dataset.ckfield)) model = toSafeString((nd.checklist || {})[el.dataset.ckfield]);
+        }
+        if (model === null || el.value === model) return;
+        el.value = model;   // antes de onfocus (beforeValue) y antes de la primera letra
+        try { if (typeof _autoResizeTA === "function" && el.classList.contains("field-ta")) _autoResizeTA(el); } catch (_) {}
+      } catch (_) {}
+    }, true);
     document.addEventListener("visibilitychange", async function() {
       if (document.visibilityState !== "visible") {
         // iPad/iOS: al cambiar de app NO llega pagehide y los timers (autosave 900 ms + push 500 ms)
@@ -12394,7 +12597,7 @@ function plExportBackup() {
         if (outboxLoad().length > 0) await flushOutbox();
         const loaded = await supaLoadAll();
         if (loaded) {
-          patients = sanitizePatients(loaded.patients);
+          patients = _applyOutboxPatientOverlay(sanitizePatients(loaded.patients)); // el flush previo pudo fallar: lo encolado sigue mandando
           _applyLoadedNotes(loaded.notes);
           lsSavePatients(patients);
           buildEspFilters(); renderViewSoft();
@@ -12463,10 +12666,21 @@ function plExportBackup() {
               } else results[absIdx] = false;
             } else if (item.type === "patient" && item.patient) {
               const k = pid(item.patient);
-              const current = patients.find(x => pid(x) === k) || item.patient;
-              const res = await withOutboxRetry(async function(){ return await supaUpsertPatient(current); });
+              // La fila local pudo ser REEMPLAZADA por la remota (cama vieja) al volver la red (online/init
+              // cargan primero): re-aplicar los campos encolados sobre ella y PATCHear ESA fila (misma
+              // referencia que vive en `patients`, para que _relinkPatientId re-clave la nota si hace falta).
+              const current = _findPatientByKey(k);
+              // El ítem VIGENTE de la cola (no la copia leída al empezar el flush): un guardado posterior pudo
+              // actualizarlo (valores más nuevos) o quitarlo porque ya subió; en ese caso no se re-impone el viejo.
+              const _sid = item.patient._supa_id;
+              const live = _sid ? _outboxPatientItemFor(_sid) : item;
+              if (!live) { results[absIdx] = true; return; }
+              const changedLocal = current ? _applyOutboxPatientFields(current, live) : false;
+              const target = current || live.patient;
+              const res = await withOutboxRetry(async function(){ return await supaUpsertPatient(target); });
               results[absIdx] = res;
-              if (res) lsSavePatients(patients);
+              if (res || changedLocal) lsSavePatients(patients);
+              if (changedLocal) { try { buildEspFilters(); renderViewSoft(); } catch (_) {} }
             } else if (item.type === "delete_patient" && item.key) {
               // Egreso hecho sin red. Si el paciente volvió al censo local (restaurado desde la
               // papelera) con ese mismo id, no se borra.
@@ -13050,7 +13264,7 @@ function plExportBackup() {
         // FIX: removido el guard `localHasMore` que causaba resurrecciones de pacientes
         // dados de alta en otro dispositivo (porque Device B conservaba el paciente en local
         // y lo empujaba de vuelta a Supabase, creando duplicados).
-        patients = supaClean;
+        patients = _applyOutboxPatientOverlay(supaClean); // ítems "patient" pendientes (cama/dx sin red) sobre lo remoto
         _applyLoadedNotes(loaded.notes || {});
         lsSavePatients(patients);
         // Cache notes locally
@@ -13221,6 +13435,10 @@ function plExportBackup() {
     const renderViewFromSearch = debounce(function () { renderView(); }, 120);
     function handleSearchInput() { renderViewFromSearch(); }
     function renderView() {
+      // Un repintado completo satisface cualquier repintado suave o de tarjeta que estuviera esperando calma.
+      _renderDeferred = false; if (_renderSoftTimer) { clearTimeout(_renderSoftTimer); _renderSoftTimer = 0; }
+      _cardSoftPending.clear(); if (_cardSoftTimer) { clearTimeout(_cardSoftTimer); _cardSoftTimer = 0; }
+      const _vs = _viewStateCapture();   // scroll, secciones abiertas (null si cambia de paciente/modo o no es el tablero)
       const _searchEl = document.getElementById("search");
       const search = _searchEl ? _searchEl.value.toLowerCase() : "";
       // Búsqueda robusta: normalizar acentos + tokenizar + match por partes
@@ -13267,16 +13485,29 @@ function plExportBackup() {
       if (currentView === "pendientes") renderPendientes(filtered);
       if (currentView === "tablero") renderTablero();
       if (currentView === "papelera") renderPapelera();
+      _viewStateRestore(_vs);   // mismo paciente y modo: scroll, secciones abiertas y altura de cajas como estaban
       try { _applyPresenceBadges(); } catch (_) {}   // reaplicar badges de presencia tras re-render
       try { _syncStickyOffsets(); } catch (_) {}     // top del rail de camas = altura real del header
       try { _penMountAll(); } catch (_) {}           // ✍️ tinta directa sobre las cajas (capa por caja con tinta)
     }
-    // La tira de camas se desplaza para que la cama en foco quede a la vista (centrada).
+    // La tira de camas se desplaza para que la cama en foco quede a la vista (centrada) SOLO cuando cambia el
+    // paciente en foco (flechas, deslizar, chip, alerta) o en el primer pintado. renderView reconstruye #board-nav con
+    // innerHTML (scrollLeft vuelve a 0): si el foco no cambió, o el usuario tocó la tira hace < 2 s, se conserva el
+    // desplazamiento que llevaba (antes cada Realtime/autoguardado/focusout "regresaba" la tira a la cama actual).
+    // Excepción: si la CAMA del paciente en foco cambió (Editar, cambiar cama, censo), su chip se movió de lugar en la
+    // tira (va ordenada por cama) y se vuelve a centrar para que se vea dónde quedó.
+    const _bedStrip = { key: null, cama: null, left: null, touchTs: 0, force: false };
+    function _bedStripRemember() {
+      try { const s = document.querySelector("#board-nav .bn-beds"); if (s) _bedStrip.left = s.scrollLeft; } catch (_) {}
+    }
     function _bedStripCenter() {
       try {
         const strip = document.querySelector("#board-nav .bn-beds"); const cur = strip && strip.querySelector(".bb-cur");
         if (!strip || !cur) return;
-        strip.scrollLeft = Math.max(0, cur.offsetLeft - strip.clientWidth / 2 + cur.offsetWidth / 2);
+        const fk = window.__focusPid || null, cama = cur.dataset.cama || "";
+        const keep = !_bedStrip.force && _bedStrip.left !== null && _bedStrip.cama === cama && (_bedStrip.key === fk || Date.now() - _bedStrip.touchTs < 2000);
+        strip.scrollLeft = keep ? _bedStrip.left : Math.max(0, cur.offsetLeft - strip.clientWidth / 2 + cur.offsetWidth / 2);
+        _bedStrip.key = fk; _bedStrip.cama = cama; _bedStrip.left = strip.scrollLeft; _bedStrip.force = false;
       } catch (_) {}
     }
 
@@ -13380,6 +13611,7 @@ function plExportBackup() {
           document.body.classList.remove("focus-on");
           document.getElementById("view-piso").innerHTML =
             `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">Sin pacientes en esta vista</span><button class="bn-idx" onclick="quitarFiltrosTodo()">✕ Limpiar filtros</button></div><div style="padding:24px;color:#64748b;font-size:13px">No hay pacientes con la búsqueda o filtros activos. Toca «✕ Limpiar filtros» para ver todo.</div></div></div>`;
+          document.getElementById("view-piso").dataset.plPid = "";   // nada que restaurar sobre «Sin pacientes»
           return;
         }
         if (!window.__focusPid || window.__boardOrder.indexOf(window.__focusPid) < 0) {
@@ -13410,7 +13642,7 @@ function plExportBackup() {
           const _beds = `<div class="bn-beds" data-testid="bn-beds">` + _ordered.map(pp => {
             const kk = pid(pp); const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
             let _dot = ""; try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}"></span>`; } catch (_) {}
-            return `<button type="button" class="bb${kk === fk ? " bb-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-top-color:${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_labNewsFor(kk) ? "🧪" : ""}${esc(pp.cama || "S/C")}</button>`;
+            return `<button type="button" class="bb${kk === fk ? " bb-cur" : ""}" data-k="${esc(kk)}" data-cama="${esc(pp.cama || "")}" onclick="focusGoTo(this.dataset.k)" style="border-top-color:${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_labNewsFor(kk) ? "🧪" : ""}${esc(pp.cama || "S/C")}</button>`;
           }).join("") + `</div>`;
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
@@ -13418,7 +13650,7 @@ function plExportBackup() {
             + `<button class="bn-mode${isPaseMode() ? " on" : ""}" onclick="togglePaseMode()" title="Modo Pase: solo lo que se usa en la visita (labs, vitales, manejo, pendientes). Completo: toda la ficha.">${isPaseMode() ? "📋 Pase" : "📄 Completo"}</button>`
             + `<button class="bn-mode${isHojaMode() ? " on" : ""}" onclick="toggleHojaMode()" title="Modo Hoja: la ficha como la hoja de visita (cuadrícula con todas las cajas abiertas; al imprimir, una hoja por cama)">${isHojaMode() ? "📑 Hoja" : "🗂 Tarjeta"}</button>`
             + (isHojaMode() ? renderHojaCfg() : "")
-            + `<button class="bn-mode bn-pen${(typeof penModeOn === "function" && penModeOn()) ? " on" : ""}" onclick="togglePenMode(this)" title="Lápiz (toca para cambiar): Apagado = el iPad escribe texto con Scribble · → Texto = escribes sobre la caja y al soltar la tinta se convierte en texto (IA) · Tinta = lo escrito se queda como tinta (tachar borra)">${(typeof _penModeLabel === "function") ? _penModeLabel(penMode()) : "✍️ Lápiz"}</button>`
+            + `<button class="bn-mode bn-pen${(typeof penModeOn === "function" && penModeOn()) ? " on" : ""}" onclick="togglePenMode(this)" title="Lápiz (toca para cambiar). iPad: Scribble = el iPad convierte tu letra en texto en cualquier caja (vitales, TA, drenajes, labs…) · Tinta = en las cajas grandes lo escrito se queda como tinta (tachar borra) y lo demás sigue siendo Scribble. Fuera del iPad: → Texto = la app convierte lo escrito (números al instante, texto por IA)">${(typeof _penModeLabel === "function") ? _penModeLabel(penMode()) : "✍️ Lápiz"}</button>`
             + `<button class="bn-mode" onclick="openPendientesImport()" title="Importar pendientes / planes desde el Excel del censo">📊 Planes</button>`
             + renderAlertsNavBtn()
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
@@ -13447,9 +13679,14 @@ function plExportBackup() {
           // arriba del tablero; viven en un panel lateral (#alerts-drawer) que se abre con el botón 🔔 de
           // la barra, y cada renglón lleva directo a la tarjeta del paciente (alertsGo).
           let _alertsHtml = ""; try { _alertsHtml = renderSpecialAlertsPanel(); } catch (e) { safeLog("alerts panel:", e); }
-          document.getElementById("view-piso").innerHTML =
+          _bedStripRemember();   // desplazamiento manual de la tira ANTES de destruirla
+          const _vp = document.getElementById("view-piso");
+          _vp.innerHTML =
             renderAlertsDrawer(_alertsHtml) + `<div id="board-wrap">${_side}<div id="board-main">${_nav}<div id="piso-grid">${fcard}</div></div></div>`;
-          try { requestAnimationFrame(_bedStripCenter); } catch (_) {}
+          _vp.dataset.plPid = fk;                                                            // sellos para _viewStateCapture/_viewStateRestore
+          _vp.dataset.plMode = (isHojaMode() ? "h" : "") + (isPaseMode() ? "p" : "f");
+          _bedStripCenter();                                                    // mismo cuadro: sin parpadeo a scrollLeft 0
+          try { requestAnimationFrame(_bedStripCenter); } catch (_) {}          // idempotente (segunda pasada tras layout)
           return;
         }
       }
@@ -13534,6 +13771,7 @@ function plExportBackup() {
     function enterFocus(k) {
       window.__viewMode = "board";
       window.__focusPid = k;
+      _bedStrip.force = true;              // la tira se centra en la cama nueva
       broadcastProjection(k);              // proyección sigue al paciente en foco
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
       renderView();
@@ -14536,6 +14774,69 @@ function plExportBackup() {
       (Array.isArray(ck._ptReminders) ? ck._ptReminders : []).filter(function (r) { return r && !r.done && toSafeString(r.text).trim(); }).slice(0, 3).forEach(function (r) { R.pend.push("No olvidar: " + _egCut(r.text, 80)); });
       return R;
     }
+    // ── Vista 📤 Entrega (oct 2026, pedido de Gera): por paciente SOLO Diagnóstico + signos vitales + gastos +
+    // laboratorios + cultivos + estudios de imagen. Quirófano, avisos, novedades, pendientes y la caja escrita siguen
+    // en la tarjeta y en ✨ Resumen, pero ya no en esta vista. Cada bloque aparece siempre ("sin registro" si está vacío)
+    // para que la guardia que recibe vea de un vistazo qué falta.
+    // ❤️ Signos vitales del pase (pm_*). Si los de hoy están vacíos, el último día del historial (pm_hist) con su fecha.
+    function _egVitales(ck) {
+      ck = ck || {};
+      const v = function (x) { return toSafeString(x).trim(); };
+      const F = ["fc", "fr", "temp", "sao2", "o2l", "ta", "dxtx"];
+      let src = {}; F.forEach(function (f) { src[f] = v(ck["pm_" + f]); });
+      let fecha = v(ck.pm_fecha);
+      if (!F.some(function (f) { return src[f]; })) {
+        const hist = (Array.isArray(ck.pm_hist) ? ck.pm_hist : []).filter(function (h) { return h && F.some(function (f) { return v(h[f]); }); })
+          .sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
+        if (!hist.length) return { items: [], fecha: "" };
+        src = {}; F.forEach(function (f) { src[f] = v(hist[0][f]); }); fecha = v(hist[0].fecha);
+      }
+      const it = [];
+      if (src.ta) { const pam = (typeof vpPam === "function") ? vpPam(src.ta) : null; it.push("TA " + src.ta + (pam !== null ? " (PAM " + pam + ")" : "")); }
+      if (src.fc) it.push("FC " + src.fc);
+      if (src.fr) it.push("FR " + src.fr);
+      if (src.temp) it.push("T " + src.temp + " °C");
+      if (src.sao2 || src.o2l || ck.pm_vent) it.push("SaO₂ " + (src.sao2 ? src.sao2 + " %" : "—") + (ck.pm_vent ? " con VMI" : (src.o2l ? " con O₂ " + src.o2l + " L" : "")));
+      if (src.dxtx) it.push("Dxtx " + src.dxtx);
+      return { items: it, fecha: (fecha && fecha !== todayStr()) ? fecha : "" };
+    }
+    // 🦠 Cultivos: los de WinLab (germen y antibiograma, o "en proceso"), los micro capturados a mano en labs y los
+    // renglones de la caja Cultivos de la tarjeta.
+    function _egCultivos(p, nd) {
+      const out = [];
+      const k = p ? pid(p) : "";
+      const wl = ((k && typeof _winlabCultByK !== "undefined" && _winlabCultByK[k]) || []).filter(Boolean).slice()
+        .sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); });
+      wl.slice(0, 5).forEach(function (c) { out.push((c.fecha ? _egDdMm(c.fecha) + " " : "") + (c.pendiente ? (c.tipo || "Cultivo") + " en proceso" : _egCut(_cultTexto(c, false), 220))); });
+      if (wl.length > 5) out.push("+" + (wl.length - 5) + " más en la tarjeta");
+      (nd.labHistory || []).filter(function (sn) { return sn && sn.labs && (sn.labs.micro_tipo_cultivo || sn.labs.micro_organismo); })
+        .sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); }).slice(0, 3).forEach(function (sn) {
+          out.push(_egDdMm(sn.fecha) + " " + (toSafeString(sn.labs.micro_tipo_cultivo).trim() || "Cultivo") + ": " + (toSafeString(sn.labs.micro_organismo).trim() || "sin desarrollo") + (toSafeString(sn.labs.micro_sensibilidades).trim() ? " (S: " + toSafeString(sn.labs.micro_sensibilidades).trim() + ")" : ""));
+        });
+      _egLineasFechadas((nd.checklist || {}).cultivos).filter(function (l) { return l.text && !/^✓\s/.test(l.text); }).slice(-4)
+        .forEach(function (l) { out.push((l.fecha ? _egDdMm(l.fecha) + " " : "") + _egCut(l.text, 160)); });
+      const seen = {};
+      return out.filter(function (s) { const key = s.toLowerCase(); if (seen[key]) return false; seen[key] = 1; return true; });
+    }
+    // 🩻 Estudios de imagen: los del visor RIS de las últimas 2 semanas (o el más reciente si no hay) con la conclusión
+    // del reporte, y el último registro manual de la caja Imagen.
+    function _egImagen(p, nd) {
+      const out = [];
+      const ris = (p && typeof risForPatient === "function") ? risForPatient(p) : [];
+      const since = _egIsoOffset(-14);
+      let list = ris.filter(function (r) { return r && String(r.fecha || "") >= since; });
+      if (!list.length && ris.length) list = ris.slice(0, 1);
+      list.slice(0, 4).forEach(function (r) {
+        const titulo = [r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" ") || "Estudio de imagen";
+        const rep = toSafeString(r.reporte).trim();
+        out.push(_egDdMm(r.fecha) + " " + titulo + ": " + (rep ? _egCut(_risConclusion(rep), 180) : "realizado, reporte pendiente"));
+      });
+      if (list.length > 4) out.push("+" + (list.length - 4) + " más en la tarjeta");
+      const ih = (nd.imagenHistory || []).filter(function (e) { return e && e.fecha && Array.isArray(e.estudios) && e.estudios.some(function (s) { return s && toSafeString(s.descripcion).trim(); }); })
+        .sort(function (a, b) { return String(b.fecha || "").localeCompare(String(a.fecha || "")); })[0];
+      if (ih) ih.estudios.forEach(function (s) { if (s && toSafeString(s.descripcion).trim()) out.push(_egDdMm(ih.fecha) + " " + (toSafeString(s.tipo).trim() || "Estudio") + ": " + _egCut(s.descripcion, 180)); });
+      return out;
+    }
     // Texto para la caja Entrega (una línea por sección, encabezado con fecha, hora e iniciales).
     function entregaResumenTexto(p, nd) {
       const R = buildEntregaResumen(p, nd);
@@ -15421,20 +15722,55 @@ function plExportBackup() {
     }
     // Deslizar con el dedo sobre la tarjeta para cambiar de paciente (además de las flechas y el rail)
     let _swipeBound = false;
+    // Último pointerdown del Apple Pencil (pointerType "pen"). WebKit además marca el toque como touchType "stylus";
+    // Chromium (pruebas) no expone touchType, por eso se guardan las dos señales. Un trazo del lápiz NUNCA cambia de paciente.
+    let _swipePenTs = 0;
+    // ¿El toque empezó en algo que se desplaza en horizontal (tira de camas, barra de saltos, barra pegajosa, tabla de
+    // labs, pestañas) o dentro de un contenedor con overflow-x auto/scroll que de verdad desborda? Ese gesto es para
+    // desplazar, no para hojear pacientes.
+    function _swipeFromScroller(t) {
+      if (!t || !t.closest) return false;
+      if (t.closest("#board-nav, .bn-beds, .bn-jump, .ff-labs-wrap, #tabs")) return true;
+      for (let e = t; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+        try {
+          if (e.scrollWidth > e.clientWidth + 1) { const ox = getComputedStyle(e).overflowX; if (ox === "auto" || ox === "scroll") return true; }
+        } catch (_) { break; }
+      }
+      return false;
+    }
+    // ¿Hay una ventana abierta (las de la app usan .modal-bg con display)? Entonces el dedo no hojea pacientes detrás.
+    function _swipeModalOpen() {
+      try {
+        if (document.body.classList.contains("modal-open")) return true;
+        const bgs = document.querySelectorAll(".modal-bg");
+        for (let i = 0; i < bgs.length; i++) { const s = bgs[i].style.display; if (s && s !== "none") return true; if (!s && bgs[i].offsetParent !== null) return true; }
+      } catch (_) {}
+      return false;
+    }
     function _bindBoardSwipe() {
       if (_swipeBound) return;
       _swipeBound = true;
       let sx = 0, sy = 0, st = 0, ok = false;
+      document.addEventListener("pointerdown", function (e) { if (e.pointerType === "pen") _swipePenTs = Date.now(); }, { capture: true, passive: true });
       document.addEventListener("touchstart", function (e) {
-        const t = e.target;
-        ok = !!(e.touches && e.touches.length === 1) && !!document.getElementById("board-main") && !(t && t.closest && t.closest("textarea, input, select, canvas, .ff-labs-wrap, .tmpl-menu, [contenteditable]"));
-        if (!ok) return;
-        sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
+        ok = false;
+        const t = e.target, p = e.touches && e.touches[0];
+        if (!p || e.touches.length !== 1 || !document.getElementById("board-main")) return;
+        if (t && t.closest && t.closest("#board-nav .bn-beds")) _bedStrip.touchTs = Date.now();   // el usuario está moviendo la tira
+        if (p.touchType === "stylus" || Date.now() - _swipePenTs < 100) return;                     // lápiz: nunca es un deslizamiento
+        // Con un modal abierto (✏️ Editar…) o un campo con foco (escribiendo) el dedo NO cambia de paciente detrás:
+        // era una de las formas de "ir a escribir y que la app se mueva a otra cama".
+        if (_swipeModalOpen() || (typeof _isTypingNow === "function" && _isTypingNow())) return;
+        if (t && t.closest && t.closest("textarea, input, select, canvas, .ff-labs-wrap, .tmpl-menu, [contenteditable], .modal-bg, .modal-box, [role=dialog]")) return;
+        if (_swipeFromScroller(t)) return;
+        ok = true; sx = p.clientX; sy = p.clientY; st = Date.now();
       }, { passive: true });
       document.addEventListener("touchend", function (e) {
         if (!ok || !e.changedTouches || !e.changedTouches.length) return;
         ok = false;
-        const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+        const p = e.changedTouches[0];
+        if (p.touchType === "stylus" || _swipePenTs >= st - 100) return;                            // el lápiz apareció durante el gesto
+        const dx = p.clientX - sx, dy = p.clientY - sy;
         if (Date.now() - st > 700 || Math.abs(dx) < 90 || Math.abs(dy) > 50 || Math.abs(dx) < Math.abs(dy) * 2) return;
         if (window.__viewMode !== "board" || !window.__focusPid) return;
         if (typeof focusStep === "function") focusStep(dx < 0 ? 1 : -1);
@@ -15449,26 +15785,43 @@ function plExportBackup() {
        Formato: __ink[campo] = { w: anchoDeLaCajaAlEscribir, s: [ { c: color, p: [[x, y, presión], …] } ] } */
     const PEN_MAX_POINTS = 6000;
     const PEN = { active: null, saveTimers: {}, lastUndo: {}, seq: 0 };
-    // Modo del lápiz, por dispositivo (pl_pen_mode): "off" (el iPad manda: Scribble escribe texto), "text" (la app
-    // convierte lo escrito en texto AL MOMENTO con el reconocedor local, sobre cualquier campo) o "ink" (en las cajas
-    // grandes la tinta se queda sobre la caja; los campos de una línea se convierten igual).
-    // Por defecto APAGADO: así el Apple Pencil llega a la caja y el Scribble del sistema puede trabajar (oct 2026).
+    // Modo del lápiz, por dispositivo (pl_pen_mode): "0"/off = Scribble (en iPad el sistema convierte la letra en texto en
+    // CUALQUIER caja, números y TA 120/80 incluidos: la app no intercepta nada); "1"/ink = Tinta (en las cajas grandes de la
+    // ficha —textarea con data-key— lo escrito se queda como tinta; todo lo demás sigue siendo de Scribble); "2"/text = → Texto
+    // SOLO fuera del iPad (la app convierte lo escrito: números con el reconocedor local, texto con la IA). En iPad "2" ya no
+    // existe: se migra a "0" al leerlo (oct 2026, pedido de Gera: escribir en TODAS las cajas y que salga en letra de máquina).
+    // Por defecto APAGADO: así el Apple Pencil llega a la caja y el Scribble del sistema puede trabajar.
     function penMode() {
-      try { const v = localStorage.getItem("pl_pen_mode"); if (v === "1") return "ink"; if (v === "2") return "text"; } catch (_) {}
+      let v = null;
+      try { v = localStorage.getItem("pl_pen_mode"); } catch (_) {}
+      if ((v === "1" || v === "2") && _penIsIPad()) {
+        // iPad: "2" (→ Texto) ya no existe → Scribble siempre. "1" (Tinta) se baja a Scribble UNA sola vez por dispositivo
+        // (marca pl_pen_ipad_v2): el iPad pudo quedarse en Tinta desde cuando era el modo por defecto, y ahí las cajas grandes
+        // no se convierten en letra de máquina (la tinta ya guardada no se toca). Después, la Tinta elegida a propósito con ✍️
+        // se respeta (togglePenMode deja la marca).
+        let done = null; try { done = localStorage.getItem("pl_pen_ipad_v2"); } catch (_) {}
+        if (v === "2" || !done) { try { localStorage.setItem("pl_pen_mode", "0"); localStorage.setItem("pl_pen_ipad_v2", "1"); } catch (_) {} return "off"; }
+      }
+      if (v === "1") return "ink";
+      if (v === "2") return "text";
       return "off";
     }
     function penModeOn() { return penMode() !== "off"; }
     function _penModeLabel(m) { return m === "ink" ? "✍️ Tinta" : (m === "text" ? "✍️ → Texto" : "✍️ Scribble"); }
     function togglePenMode(btn) {
-      const cur = penMode(); const next = cur === "off" ? "text" : (cur === "text" ? "ink" : "off");
-      try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); } catch (_) {}
+      const cur = penMode(), ipad = _penIsIPad();
+      // iPad: solo Scribble ↔ Tinta (el iPad escribe todo; la app no reconoce nada). Fuera del iPad: Scribble → → Texto → Tinta → Scribble.
+      const next = ipad ? (cur === "ink" ? "off" : "ink") : (cur === "off" ? "text" : (cur === "text" ? "ink" : "off"));
+      try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); if (ipad) localStorage.setItem("pl_pen_ipad_v2", "1"); } catch (_) {}
       document.body.classList.toggle("pen-on", next !== "off");
       document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.toggle("on", next !== "off"); b.textContent = _penModeLabel(next); });
       if (next === "off") { PEN.active = null; try { _penLiveFinalize("apagado"); } catch (_) {} }
       if (typeof _plToast === "function") _plToast(
-        next === "text" ? "✍️ → Texto: los NÚMEROS (vitales, labs, vasopresor) se escriben encima del campo y entran al instante; el TEXTO lo escribe Scribble del iPad (letra perfecta)"
-          : next === "ink" ? "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); los números entran al instante; el texto lo escribe Scribble"
-          : "✍️ Scribble: el iPad convierte tu letra en texto en cualquier campo. Si solo selecciona: Ajustes → Apple Pencil → Garabatear",
+        next === "text" ? "✍️ → Texto: los NÚMEROS (vitales, labs, vasopresor) se escriben encima del campo y entran al instante; el TEXTO lo revisa la IA"
+          : next === "ink" ? (ipad ? "✍️ Tinta: en las cajas grandes de la ficha lo escrito se queda como tinta (tachar borra). Vitales, drenajes, labs, dieta y lo demás los sigue escribiendo Scribble en letra de máquina"
+                                   : "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); los números entran al instante")
+          : (ipad ? "✍️ Scribble: el iPad convierte tu letra en texto en CUALQUIER caja (vitales, TA 120/80, drenajes, labs…). Si solo selecciona en vez de escribir: Ajustes → Apple Pencil → Garabatear"
+                  : "✍️ Lápiz apagado: el sistema decide qué hace el lápiz"),
         next === "off" ? "#475569" : "#7c3aed", 3600);
     }
     // Llave del campo: "app"/"manejo"… (nota), "ck:recibo"… (checklist) o "el:pN" para cualquier otra caja de texto
@@ -16131,29 +16484,30 @@ function plExportBackup() {
         setTimeout(function () { if (PEN_LIVE.fadeTok === tok && !PEN_LIVE.el && !PEN_LIVE.active) _penGlassClear(); }, 520);
       }, PEN_LIVE_FADE_MS);
     }
-    // ¿Es un iPad? Ahí el TEXTO lo escribe Scribble (el reconocedor de Apple: letra perfecta y al instante) y la app
-    // solo atiende los NÚMEROS, que sí reconoce bien y al momento. El reconocedor local de letras (plantillas
-    // sintéticas de molde) NO es fiable con escritura real: nunca se guarda como valor. En otros dispositivos (sin
-    // Scribble) el texto va por el ayudante de IA. Forzable en pruebas con window.__pl_force_ipad.
+    // ¿Es un iPad? Ahí el lápiz es de Scribble en TODOS los campos (texto y números: letra perfecta y al instante) y la app
+    // no intercepta nada (salvo ✍️ Tinta en las cajas grandes). El reconocedor local de letras (plantillas sintéticas de
+    // molde) NO es fiable con escritura real; el reconocedor local de números y la IA quedan para los demás dispositivos.
+    // Forzable en pruebas con window.__pl_force_ipad.
     function _penIsIPad() {
       if (typeof window.__pl_force_ipad === "boolean") return window.__pl_force_ipad;
       const ua = navigator.userAgent || "";
       return /iPad/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
     }
-    function _penScribbleHandlesText() { return _penIsIPad(); }
-    // Campo bajo el lápiz que la app ATIENDE: input numérico (siempre), input de texto o textarea (solo fuera del iPad,
-    // por IA). Con ✍️ Tinta, las cajas de la ficha (con data-key) se quedan con tinta en su propia capa y no entran aquí.
+    // Campo bajo el lápiz que la app ATIENDE (reconocedor local / IA). En iPad NUNCA (Scribble escribe texto y números en
+    // cualquier caja). Fuera del iPad: input (numérico o de texto) y textarea, salvo la caja de la ficha en ✍️ Tinta
+    // (con data-key: se queda con tinta en su propia capa y no entra aquí).
     function _penLiveTarget(el) {
+      if (_penIsIPad()) return null;
       const inp = _penInputOf(el);
-      if (inp) { const numeric = _penIsNumeric(inp); if (!numeric && _penScribbleHandlesText()) return null; return { el: inp, kind: "inp", numeric: numeric, multiline: false }; }
+      if (inp) return { el: inp, kind: "inp", numeric: _penIsNumeric(inp), multiline: false };
       const ta = _penTa(el);
-      if (ta && !(penMode() === "ink" && ta.dataset.key)) { if (_penScribbleHandlesText()) return null; return { el: ta, kind: "ta", numeric: false, multiline: true }; }
+      if (ta && !(penMode() === "ink" && ta.dataset.key)) return { el: ta, kind: "ta", numeric: false, multiline: true };
       return null;
     }
-    // ¿Es un campo de TEXTO que en iPad se deja a Scribble? (la app no intercepta el lápiz y avisa una sola vez)
+    // ¿Campo que en iPad se deja a Scribble? Cualquier input o textarea editable, salvo la caja de tinta (solo para el aviso único).
     function _penScribbleField(el) {
-      if (!_penScribbleHandlesText()) return null;
-      const inp = _penInputOf(el); if (inp) return _penIsNumeric(inp) ? null : inp;
+      if (!_penIsIPad()) return null;
+      const inp = _penInputOf(el); if (inp) return inp;
       const ta = _penTa(el); if (ta && !(penMode() === "ink" && ta.dataset.key)) return ta;
       return null;
     }
@@ -16370,14 +16724,14 @@ function plExportBackup() {
         try {
           if (!e.touches || e.touches.length !== 1 || !penModeOn()) return;
           if (e.touches[0].touchType !== "stylus") return;        // WebKit: "stylus" = Apple Pencil
-          if (PEN_LIVE.el) {                                       // con sesión abierta, todo trazo es del campo (aunque se salga)…
-            const p = e.touches[0];                                // …salvo el que empieza LEJOS sobre un campo de TEXTO del iPad: ese es de Scribble (pointerdown cierra la sesión)
+          if (PEN_LIVE.el) {                                       // con sesión abierta (solo fuera del iPad), todo trazo es del campo (aunque se salga)…
+            const p = e.touches[0];                                // …salvo el que empieza LEJOS sobre un campo que Scribble atendería (pointerdown cierra la sesión)
             if (!(_penScribbleField(e.target) && _penLiveFar([[p.clientX, p.clientY]]))) e.preventDefault();
             return;
           }
           const ta = _penTa(e.target);
           if (ta && penMode() === "ink" && ta.dataset.key) { e.preventDefault(); return; }   // ✍️ Tinta en caja de la ficha
-          if (_penLiveTarget(e.target)) e.preventDefault();        // solo lo que atiende la app; el TEXTO en iPad sigue a Scribble
+          if (_penLiveTarget(e.target)) e.preventDefault();        // solo lo que atiende la app (nunca en iPad: ahí todo sigue a Scribble)
         } catch (_) {}
       }, { passive: false, capture: true });
       document.addEventListener("touchmove", function (e) { if ((PEN.active || PEN_LIVE.active) && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
@@ -16385,8 +16739,8 @@ function plExportBackup() {
         if (e.pointerType !== "pen" || !penModeOn()) return;
         const ta = _penTa(e.target), inkBox = !!(ta && penMode() === "ink" && ta.dataset.key);
         if (PEN_LIVE.el) {
-          // Sesión abierta: todo trazo es de ella (aunque se salga del cuadro)… salvo el que empieza LEJOS sobre un campo que no
-          // es suyo: un campo de TEXTO del iPad (es de Scribble: se cierra lo pendiente y NO se intercepta) o una caja de ✍️ Tinta.
+          // Sesión abierta (solo fuera del iPad): todo trazo es de ella (aunque se salga del cuadro)… salvo el que empieza LEJOS
+          // sobre una caja de ✍️ Tinta (se cierra lo pendiente y el trazo va a la tinta).
           const away = (inkBox || _penScribbleField(e.target)) && _penLiveFar([[e.clientX, e.clientY]]);
           if (!away) { e.preventDefault(); e.stopPropagation(); _penLiveDown(e, _penLiveTarget(e.target)); return; }
           _penLiveFinalize("otro campo");
@@ -16394,8 +16748,9 @@ function plExportBackup() {
         if (inkBox) { e.preventDefault(); e.stopPropagation(); _penStart(ta, e); return; }   // ✍️ Tinta: capa propia
         const t = _penLiveTarget(e.target);
         if (!t) {
-          // Campo de TEXTO en iPad: no se intercepta, lo escribe Scribble. Un solo aviso por si está apagado en Ajustes.
-          if (_penScribbleField(e.target) && !PEN_LIVE.scribbleHint) { PEN_LIVE.scribbleHint = true; if (typeof _plToast === "function") _plToast("✍️ El texto lo escribe Scribble del iPad. Si solo selecciona en vez de escribir: Ajustes → Apple Pencil → Garabatear", "#475569", 4500); }
+          // Campo en iPad (solo se llega aquí en ✍️ Tinta, en una caja que no es de tinta): no se intercepta, lo escribe Scribble.
+          // Un solo aviso por si está apagado en Ajustes. En Scribble la app no hace nada (ni aviso).
+          if (_penScribbleField(e.target) && !PEN_LIVE.scribbleHint) { PEN_LIVE.scribbleHint = true; if (typeof _plToast === "function") _plToast("✍️ Esta caja la escribe Scribble del iPad (letra de máquina). Si solo selecciona en vez de escribir: Ajustes → Apple Pencil → Garabatear", "#475569", 4500); }
           return;
         }
         e.preventDefault(); e.stopPropagation();
@@ -16544,6 +16899,7 @@ function plExportBackup() {
     function focusGoTo(k){
       window.__viewMode = "board";
       window.__focusPid = k;
+      _bedStrip.force = true;              // la tira se centra en la cama nueva
       broadcastProjection(k);              // proyección sigue al paciente seleccionado
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
       renderView();
@@ -16554,6 +16910,7 @@ function plExportBackup() {
       var i = order.indexOf(window.__focusPid);
       if (i < 0) i = 0; else i = Math.min(order.length - 1, Math.max(0, i + delta));
       window.__focusPid = order[i];
+      _bedStrip.force = true;              // la tira se centra en la cama nueva
       broadcastProjection(order[i]);       // proyección sigue al navegar ◀ ▶
       try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (_) { window.scrollTo(0, 0); }
       renderView();
@@ -16954,11 +17311,7 @@ function plExportBackup() {
         if (eventType === "DELETE") { if (i >= 0) list.splice(i, 1); }
         else if (i >= 0) list[i] = row; else list.push(row);
         const affected = patients.filter(p => _risKey(p.exp) === e);
-        affected.forEach(p => {
-          const k = pid(p);
-          const cardEl = document.getElementById("card-" + k);
-          if (cardEl && !cardEl.contains(document.activeElement)) cardEl.outerHTML = isSimpleEsp(p.esp, noteData[k] || defaultData()) ? renderSimpleCard(p, noteData[k] || defaultData(), k) : renderFullCard(p, noteData[k] || defaultData(), k);
-        });
+        affected.forEach(p => { const k = pid(p); if (document.getElementById("card-" + k)) _rerenderCardSoft(k); });   // en calma, conserva sección/scroll
         if (affected.length && eventType !== "DELETE") _showRTToast("🩻 Estudio de imagen " + (row && row.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
         if (eventType !== "DELETE") _entregaAutoFromRis(affected);
         _refreshJumpBar();
@@ -16971,7 +17324,8 @@ function plExportBackup() {
         const p = patients.find(x => pid(x) === k); if (!p) return;
         const bar = document.querySelector("#board-nav .bn-jump"); if (!bar) return;
         const tmp = document.createElement("div"); tmp.innerHTML = _fcJumpBar(p, noteData[k] || defaultData(), k);
-        if (tmp.firstElementChild) bar.replaceWith(tmp.firstElementChild);
+        const sl = bar.scrollLeft, nb = tmp.firstElementChild;   // la barra se desplaza en horizontal: no regresarla al inicio
+        if (nb) { bar.replaceWith(nb); if (sl) nb.scrollLeft = sl; }
       } catch (_) {}
     }
     function renderRisEstudios(p, k) {
@@ -17518,7 +17872,7 @@ function plExportBackup() {
         .join("\n")
         .trim();
       patientObj.dx = (cleanedDx ? (cleanedDx + "\n") : "") + suffix;
-      _savePtsImmediate(patientObj); // solo este paciente: savePts() re-escribía los ~48 con la copia local
+      _savePtsImmediate(patientObj, ["dx"]); // solo este paciente y, sin red, solo su dx (savePts() re-escribía los ~48 con la copia local)
     }
     async function callLabsExtractionWorker(file, modeHint) {
       const proxyUrl = getProxyUrl();
@@ -19133,6 +19487,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const p  = patients.find(pt => pid(pt) === k);
       const cl = result => result.checklist || {};
       const changed = new Set();
+      const _diNombreAntes = p ? toSafeString(p.nombre) : "";
 
       // Apply boolean flags
       const clResult = _diExtracted.checklist || {};
@@ -19183,7 +19538,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       noteData[k] = nd;
       saveNote(k, nd);
       changed.forEach(f => _dirtyFields[k].delete(f));
-      if (p) _savePtsImmediate(p);
+      // Sin red, el ítem del outbox lleva solo los campos del paciente que cambiaron (dx y, si estaba vacío, el nombre).
+      if (p) _savePtsImmediate(p, [changed.has("dx") ? "dx" : "", toSafeString(p.nombre) !== _diNombreAntes ? "nombre" : ""].filter(Boolean));
       closeDocIntake();
       // Re-render the card so new field values are visible
       const cardEl = document.getElementById("card-" + k);
@@ -19347,7 +19703,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       dirty.forEach(function (f) { _dirtyFields[k].add(f); });
       saveNote(k, prev);
       dirty.forEach(function (f) { _dirtyFields[k].delete(f); });
-      if (dirty.has("dx")) { const p = patients.find(function (pt) { return pid(pt) === k; }); if (p) { p.dx = prev.dx; _savePtsImmediate(p); } }
+      if (dirty.has("dx")) { const p = patients.find(function (pt) { return pid(pt) === k; }); if (p) { p.dx = prev.dx; _savePtsImmediate(p, ["dx"]); } }
       delete labAnalysisCache[k];
       _rerenderCard(k);
     }
@@ -19411,7 +19767,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // dx vive en el objeto paciente (no en notas) — sincronizar también allá
       if (field === "dx") {
         const p = patients.find(function(pt){ return pid(pt) === k; });
-        if (p) { p.dx = value; _savePtsImmediate(p); } // inmediato: dx puede cambiar justo antes de cerrar la app
+        if (p) { p.dx = value; _savePtsImmediate(p, ["dx"]); } // inmediato: dx puede cambiar justo antes de cerrar la app; sin red el ítem lleva solo el dx
       }
     }
     function _undoFieldLabel(f) {
@@ -19908,7 +20264,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       p.estado = sel.value;
       const col = ESTADO_COLORS[p.estado] || "#ccc";
       sel.style.background = col;
-      _savePtsImmediate(p); // solo este paciente (savePts() PATCHeaba todo el censo con la copia local)
+      _savePtsImmediate(p, ["estado"]); // solo este paciente; sin red el ítem lleva solo el estado (no impone una cama vieja al volver la red)
       // Actualizar solo la tarjeta de piso afectada (si está visible) — sin destruir las demás
       const cardEl = document.getElementById("card-" + pk);
       if (cardEl) {
@@ -19942,7 +20298,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             _cleanupPatientCache(oldKey);
             saveNote(newKey, noteData[newKey]);
           }
-          _savePtsImmediate(p);
+          _markCamaApp(p);
+          _savePtsImmediate(p, ["cama"]); // sin red el ítem del outbox lleva solo la cama (y su marca)
           buildEspFilters();
           renderView();
         } else {
@@ -20243,10 +20600,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const nd = noteData[pid(p)] || defaultData();
           const cl = nd.checklist || {};
           const ec = ESP_COLORS[p.esp] || "#1a3a6b";
-          // ── ENTREGA (oct 2026, pedido de Gera): una ficha por paciente que RESUME, no transcribe —
-          // id + Dx + quirófano + atención (soporte) + gastos + labs PUNTUALES + lo nuevo del día +
-          // pendientes abiertos + lo escrito a mano en la caja Entrega (sin el bloque de resumen).
-          // Antes: tabla de todos los analitos de 2 fechas (no resumía nada).
+          // ── ENTREGA (oct 2026, pedido de Gera): una ficha por paciente con SOLO id + Diagnóstico + signos
+          // vitales + gastos + laboratorios (puntuales) + cultivos + estudios de imagen. Nada más: quirófano,
+          // avisos, novedades, pendientes y la caja escrita viven en la tarjeta y en ✨ Resumen.
           let days = ""; try { days = daysSince(p.ingreso); } catch (_) { days = ""; }
           const idParts = [
             p.edad ? p.edad + "a" : "",
@@ -20257,20 +20613,19 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           ].filter(Boolean);
           const idLine = idParts.join(" · ");
           // Diagnóstico
-          const dxTxt = p.dx || nd.dx || "";
-          const dxRow = (dxTxt && String(dxTxt).trim())
-            ? `<div class="eg-bigrow"><span class="eg-biglbl">🩺 Diagnóstico</span><div class="eg-bigval">${esc(String(dxTxt))}</div></div>` : "";
-          // Resumen (oct 2026): las mismas secciones que el botón ✨ Resumen de la tarjeta.
+          const dxTxt = toSafeString(p.dx || nd.dx || "").trim();
+          // Gastos y labs puntuales salen del mismo resumen que el botón ✨ Resumen; vitales, cultivos e imagen, de sus helpers.
           const R = buildEntregaResumen(p, nd);
-          const egRow = (icon, label, inner, extraCls) => inner ? `<div class="eg-bigrow${extraCls ? " " + extraCls : ""}"><span class="eg-biglbl">${icon} ${label}</span>${inner}</div>` : "";
+          const V = _egVitales(cl), CU = _egCultivos(p, nd), IM = _egImagen(p, nd);
+          const egMuted = `<div class="eg-bigval eg-muted">sin registro</div>`;
+          const egRow = (icon, label, inner, extraCls) => `<div class="eg-bigrow${extraCls ? " " + extraCls : ""}"><span class="eg-biglbl">${icon} ${label}</span>${inner || egMuted}</div>`;
           const egList = (arr) => (arr && arr.length) ? `<ul class="eg-list">${arr.map(s => `<li>${esc(s)}</li>`).join("")}</ul>` : "";
           const labsInner = R.labs
             ? (R.labs.items.length
               ? `<div class="eg-labchips">${R.labs.items.map(i => `<span class="eg-biglab ${i.crit ? "crit" : "abn"}">${esc(i.text)}</span>`).join("")}${R.labs.extra ? `<span class="eg-biglab">+${R.labs.extra} alterados</span>` : ""}</div>`
               : `<div class="eg-bigval eg-muted">sin valores críticos ni cambios grandes</div>`)
             : `<div class="eg-bigval eg-muted">sin laboratorios</div>`;
-          const entregaTxt = _entregaSinResumen(nd.entrega);
-          const entregaInner = entregaTxt ? `<div class="eg-pre">${esc(entregaTxt.length > 700 ? entregaTxt.slice(0, 700) + "…" : entregaTxt)}</div>` : "";
+          const vitInner = V.items.length ? `<div class="eg-bigval">${esc(V.items.join(" · "))}</div>` : "";
 
           cards += `<div class="eg-c" style="border-left:7px solid ${ec}">
         <div class="eg-bighdr">
@@ -20280,14 +20635,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             ${idLine ? `<span class="eg-bigid">${idLine}</span>` : ""}
           </div>
         </div>
-        ${dxRow}
-        ${egRow("🔪", "Quirófano", egList(R.qx))}
-        ${egRow("⚠️", "Atención", egList(R.alertas), "eg-warn")}
+        ${egRow("🩺", "Diagnóstico", dxTxt ? `<div class="eg-bigval">${esc(dxTxt)}</div>` : "")}
+        ${egRow("❤️", "Signos vitales" + (V.fecha ? " · " + esc(fmtDateChip(V.fecha)) : ""), vitInner)}
         ${egRow("💧", "Gastos", egList(R.gastos))}
-        ${egRow("🧪", "Labs puntuales" + (R.labs ? " · " + esc(fmtDateChip(R.labs.fecha)) : ""), labsInner)}
-        ${egRow("🆕", "Nuevo del día", egList(R.nuevo))}
-        ${egRow("📋", "Pendientes", egList(R.pend))}
-        ${egRow("📤", "Entrega escrita", entregaInner)}
+        ${egRow("🧪", "Laboratorios" + (R.labs ? " · " + esc(fmtDateChip(R.labs.fecha)) : ""), labsInner)}
+        ${egRow("🦠", "Cultivos", egList(CU))}
+        ${egRow("🩻", "Estudios de imagen", egList(IM))}
       </div>`;
         });
         sectionsHtml += `<div class="eg-sec"><div class="eg-sh" style="background:${sec.color}"><span>${sec.label}</span><span class="eg-sc">${sorted.length}</span></div><div class="eg-sg">${cards}</div></div>`;
@@ -21689,14 +22042,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function _moveExistingPatient(owner, fields) {
       // owner conserva su _supa_id → misma fila en Supabase, mismo pid (su-<id>) → noteData intacta.
       const oldKey = pid(owner);
+      const _before = Object.assign({}, owner);
       Object.assign(owner, fields);
+      const _mDirty = PATIENT_SYNC_FIELDS.filter(function (f) { return toSafeString(owner[f]).trim() !== toSafeString(_before[f]).trim(); });
+      if (_mDirty.indexOf("cama") !== -1) _markCamaApp(owner);
       const newKey = pid(owner);
       if (oldKey !== newKey && noteData[oldKey] && !noteData[newKey]) {
         noteData[newKey] = noteData[oldKey];
         delete noteData[oldKey];
       }
       lsSavePatients(patients);
-      _savePtsImmediate(owner);   // PATCH inmediato solo de este paciente (nueva cama) — Realtime propaga el movimiento
+      _savePtsImmediate(owner, _mDirty);   // PATCH inmediato solo de este paciente (nueva cama); el ítem del outbox lleva los campos cambiados
       buildEspFilters();
       renderView();
     }
@@ -21780,6 +22136,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         dx: document.getElementById("mf-dx").value.trim().toUpperCase(),
         sexo
       };
+      // Edición: campos censales que cambiaron respecto a la fila que había. Viajan como `dirty` en el ítem
+      // del outbox si el PATCH falla sin red → al subir solo esos pisan la fila remota. Alta: null (fila completa).
+      const _pDirty = existingPatient ? PATIENT_SYNC_FIELDS.filter(function (f) { return toSafeString(p[f]).trim() !== toSafeString(existingPatient[f]).trim(); }) : null;
+      if (_pDirty && _pDirty.indexOf("cama") !== -1) _markCamaApp(p);
       var _modalExtra = {
         app: (document.getElementById("mf-app-modal") || {}).value || "",
         pa: (document.getElementById("mf-pa-modal") || {}).value || "",
@@ -21851,7 +22211,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         }
         // Usuario canceló → guardar normalmente sin egresar
       }
-      _savePtsImmediate(p); // inmediato y solo este paciente: asigna _supa_id (y re-clava su nota) antes de que llegue el Realtime INSERT
+      _savePtsImmediate(p, _pDirty); // inmediato y solo este paciente: asigna _supa_id (y re-clava su nota) antes de que llegue el Realtime INSERT
       buildEspFilters();
       closeModal();
       renderView();
@@ -25030,7 +25390,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         _cleanupPatientCache(oldKey);
         saveNote(newKey, noteData[newKey]);
       }
-      _savePtsImmediate(p); // solo este paciente
+      _markCamaApp(p);
+      _savePtsImmediate(p, ["cama"]); // solo este paciente; el ítem del outbox lleva solo la cama (y su marca)
       buildEspFilters();
       renderView();
     }
