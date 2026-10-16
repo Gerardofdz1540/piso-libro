@@ -312,8 +312,14 @@ El 13 de octubre de 2026 se recuperaron así las notas de 3-151, 3-153, 3-162, 3
 
 ## Entrega de guardia que resume (octubre 2026)
 
-La entrega ya no transcribe la tarjeta. Tanto el botón **✨ Resumen** de la caja Entrega como la
-vista **📤 Entrega** (una ficha por paciente) muestran solo lo que la siguiente guardia necesita:
+La vista **📤 Entrega** (una ficha por paciente) muestra **solo** seis bloques, siempre en este
+orden y con "sin registro" cuando falta el dato: **🩺 Diagnóstico**, **❤️ Signos vitales** del pase
+(TA con PAM, FC, FR, temperatura, SaO₂ con el O₂; si hoy aún no se capturan, los del último día con
+su fecha), **💧 Gastos**, **🧪 Laboratorios** puntuales, **🦠 Cultivos** (WinLab con germen y
+antibiograma, o "en proceso", y lo escrito en la caja Cultivos) y **🩻 Estudios de imagen** (los del
+visor de las últimas dos semanas con la conclusión del reporte, y el último registro manual).
+
+El botón **✨ Resumen** de la caja Entrega sigue escribiendo el resumen completo, que además incluye:
 
 - **🔪 Quirófano**: si pasó a quirófano hoy o ayer (procedimiento, hallazgos, sangrado, cirujano);
   si no, el día POP de la última cirugía y cuántas previas hay. Cruce quirúrgico si está activo.
@@ -332,8 +338,8 @@ vista **📤 Entrega** (una ficha por paciente) muestran solo lo que la siguient
 - **📋 Pendientes** abiertos (sin ✓) y los "No olvidar" del paciente.
 
 ✨ Resumen agrega el bloque `— Resumen dd/mm hh:mm GF —` al final de la caja; si ya había uno, lo
-reemplaza (lo escrito a mano no se toca). En la vista 📤 Entrega aparece además lo escrito en la caja
-("Entrega escrita"), sin el bloque de resumen.
+reemplaza (lo escrito a mano no se toca). Lo escrito en la caja Entrega se ve en la tarjeta, ya no en
+la vista 📤 Entrega.
 
 ### Novedades automáticas
 
@@ -362,39 +368,22 @@ Si el laboratorio reporta un INR real, se usa ese y desaparece el estimado.
 
 ## ✍️ Lápiz: escribir con el Apple Pencil (octubre 2026)
 
-Dos motores, cada uno en lo que es mejor:
+**En el iPad escribe con el lápiz encima de CUALQUIER caja** (vitales FC/FR/T°/SaO₂, TA `120/80`, uresis,
+gasto de drenajes, dieta, días de ATB, labs, vasopresor, modales, cajas grandes) y el iPad lo convierte en
+letra de máquina al instante (Scribble, el reconocedor de Apple). La app no interviene: no hay que elegir
+nada. El botón **✍️** de la barra solo tiene dos estados en el iPad: **✍️ Scribble** (por defecto) y
+**✍️ Tinta** (solo si quieres **dibujar**: en las cajas grandes de la ficha lo escrito se queda como tinta,
+viaja con la nota, tachar borra, menú ✍️ en la esquina para deshacer, pasar a texto o borrar; todas las demás
+cajas siguen siendo Scribble). Un **toque** con el lápiz pone el cursor; el dedo y el teclado siguen igual.
+La primera vez que abras esta versión, el iPad arranca en **✍️ Scribble** aunque antes estuviera en Tinta o en
+«→ Texto» (la tinta ya guardada en las cajas no se pierde); si quieres Tinta, tócalo una vez y se recuerda.
 
-- **TEXTO → Scribble (el reconocedor de Apple).** Letra perfecta y al instante en cualquier caja o campo:
-  cursiva o de molde, minúsculas, acentos. Escribes **encima** del campo y el iPad lo convierte; la app no
-  interviene. Es el único reconocedor que puede ser realmente fiable con escritura real.
-- **NÚMEROS → la app.** En los campos numéricos (FC, FR, T°, SaO₂, TA `130/80`, uresis, mL/h y mg del
-  vasopresor, peso, talla, ventilador, labs, días de ATB/ayuno) escribes encima del campo, **del tamaño que
-  quieras aunque te salgas del cuadro**, y el número entra al instante (reconocedor local de dígitos, sin
-  red). Tachar la tinta antes de que se fije la borra; aprende tu letra con el uso.
+**Si el lápiz solo selecciona texto en vez de escribir**, Scribble está apagado en el iPad: Ajustes →
+Apple Pencil → **Garabatear** (encendido). Prueba rápida: escribe con el lápiz en el buscador de Safari.
 
-El botón **✍️** de la barra tiene tres estados (se recuerdan por dispositivo):
-
-1. **✍️ Scribble** (por defecto): todo lo escribe el iPad, texto y números.
-2. **✍️ → Texto**: los números los atiende la app (instantáneos, se pueden escribir grandes); el texto
-   lo sigue escribiendo Scribble.
-3. **✍️ Tinta**: en las cajas grandes lo escrito se queda como **tinta** (viaja con la nota, se ve en todos
-   los dispositivos y en la hoja impresa; tachar borra; menú ✍️ en la esquina para deshacer, pasar al lienzo
-   o borrar). Los números, por la app; el texto corto, por Scribble.
-
-**Activar Scribble (una sola vez en el iPad):** Ajustes → Apple Pencil → **Garabatear** (encendido). Si al
-escribir con el lápiz sobre un campo solo **selecciona** texto en vez de escribir, es que está apagado.
-Prueba rápida: escribe con el lápiz en el buscador de Safari. La app avisa una vez si detecta que escribes
-texto con el lápiz en un modo de la app.
-
-Por qué así: el reconocedor local de **letras** que la app traía (plantillas de molde sintéticas) no es
-fiable con escritura real y daba letras al azar; se retiró como fuente de texto. Fuera del iPad (sin
-Scribble) el texto va por el **ayudante de IA** (worker en ⚙️ Config): mientras la IA transcribe (2-3 s)
-la caja muestra una lectura **provisional en morado que no se guarda**; solo el texto de la IA queda como
-valor. Si no hay IA configurada o falla, la caja vuelve a lo que tenía y se avisa qué activar.
-
-En todos los casos: un **toque** con el lápiz (sin arrastrar) pone el cursor; el **dedo y el teclado**
-siguen igual (el dedo no pinta); si escribes cerca del borde de abajo de una caja grande en Tinta, la caja
-**crece** sola.
+Fuera del iPad (laptop con lápiz, Android) sigue existiendo el estado **✍️ → Texto**: los números los
+convierte la app al instante (reconocedor local de dígitos, sin red) y el texto el **ayudante de IA**
+(worker en ⚙️ Config), con una lectura provisional en morado que no se guarda hasta que la IA responde.
 
 ## Vista de escritorio (octubre 2026)
 

@@ -5,7 +5,8 @@
  *         (canal patients-changes del monolito)  ->  la app se re-renderiza sola.
  *
  * REGLA DE ORO (P0): este script SOLO escribe columnas censales de `patients`
- *   (cama, nombre, exp, edad, dx, esp, adscrito, residente, ingreso, dias, estado, seccion, es_mio).
+ *   (cama, nombre, exp, edad, dx, esp, adscrito, residente, ingreso, dias, estado, seccion, es_mio)
+ *   y las dos columnas de control de cama (cama_app_ts, cama_hoja_prev; ver caso (e) en syncPatients_).
  *   NUNCA toca la tabla `notes` ni ninguna otra columna clinica. UPSERT por ON CONFLICT(cama):
  *   actualiza censales y deja intacto el resto de la fila (id estable -> la nota sigue ligada).
  *
@@ -282,6 +283,9 @@ function toPatientRow_(p) {
  *       clínica del paciente anterior al nuevo ocupante (fuga clínica).
  *   (b) RETIRO — cama que ya NO está en la hoja Y la fila vino del sheet-sync → la retira
  *       (paciente que salió del censo). NO toca pacientes agregados a mano en la app.
+ *   (e) CAMA CAMBIADA DESDE LA APP (16 oct 2026) — ver appBedDecisions_: la cama que un residente
+ *       fijó en la app se RESPETA hasta que la hoja la cambie; mientras tanto la fila de la hoja con
+ *       ese exp en la cama vieja no entra al upsert (si no, on_conflict=cama lo duplicaba allí).
  * GUARDAS: si la hoja parseó <10 o habría que borrar >50% del censo → NO reconcilia (solo upsert),
  * para que un error de lectura nunca borre el piso. Devuelve cuántas filas retiró.
  */
@@ -303,23 +307,119 @@ function writeMissingSince_(map) {
   try { var ps = PropertiesService.getScriptProperties(); if (ps && ps.setProperty) ps.setProperty(MISSING_PROP, JSON.stringify(map || {})); } catch (_) {}
 }
 
-function syncPatients_(key, payload) {
-  if (!payload.length) { Logger.log('syncPatients: payload vacío → no se toca nada.'); return 0; }
-  var sheetByCama = {}, sheetCamaByExp = {}, sheetRowByCama = {};
+// Mapas de la hoja (camas ya normalizadas): cama→exp, exp→cama (1ª aparición) y cama→fila.
+function sheetMaps_(payload) {
+  var byCama = {}, camaByExp = {}, rowByCama = {};
   payload.forEach(function (p) {
     var e = String(p.exp || '').trim();
-    sheetByCama[p.cama] = e;                                  // cama ya normalizada
-    sheetRowByCama[p.cama] = p;
-    if (e && sheetCamaByExp[e] === undefined) sheetCamaByExp[e] = p.cama;
+    byCama[p.cama] = e;
+    rowByCama[p.cama] = p;
+    if (e && camaByExp[e] === undefined) camaByExp[e] = p.cama;
   });
-  var nSheet = Object.keys(sheetByCama).length;
+  return { byCama: byCama, camaByExp: camaByExp, rowByCama: rowByCama };
+}
+
+// Columnas de control del caso (e). cama_hoja_prev guarda o bien la cama que decía la hoja cuando se vio
+// por 1ª vez el movimiento de la app (pin activo), o bien la marca 'ok@<cama_app_ts>' = "ese movimiento
+// ya se resolvió" (la hoja lo alcanzó o lo cambió). La marca existe porque la app REENVÍA cama_app_ts en
+// cada guardado mientras su copia local no se refresque (iPad sin Realtime tras dormir, red intermitente):
+// sin ella, ese reenvío re-armaba un movimiento ya resuelto y la siguiente corrida fijaba la cama vieja de
+// la app por encima de un cambio legítimo de la hoja. Un movimiento NUEVO trae un cama_app_ts posterior.
+var CAMA_OK_PREFIX = 'ok@';
+function camaTsMs_(v) { var t = new Date(String(v)).getTime(); return isNaN(t) ? null : t; }
+function camaPrevIsMark_(r) { return r.cama_hoja_prev != null && String(r.cama_hoja_prev).indexOf(CAMA_OK_PREFIX) === 0; }
+// ¿El cama_app_ts de la fila ya está cubierto por la marca de resuelto (mismo o anterior)?
+function camaAppResolved_(r) {
+  if (r.cama_app_ts == null || !camaPrevIsMark_(r)) return false;
+  var done = String(r.cama_hoja_prev).slice(CAMA_OK_PREFIX.length), ts = String(r.cama_app_ts);
+  if (done === ts) return true;
+  var a = camaTsMs_(ts), b = camaTsMs_(done);
+  return a !== null && b !== null && a <= b;
+}
+// Movimiento de la app pendiente de resolver.
+function camaAppActive_(r) { return r.cama_app_ts != null && !camaAppResolved_(r); }
+// Cama de la hoja anotada para el pin activo (null si no hay o si es la marca de resuelto).
+function camaHojaPrev_(r) { return (r.cama_hoja_prev == null || camaPrevIsMark_(r)) ? null : normalizeCama_(r.cama_hoja_prev); }
+// Columnas para dar por resuelto el movimiento de la app ({} si no hay nada que cambiar).
+function camaResolvedCols_(r) {
+  if (r.cama_app_ts == null) return (r.cama_hoja_prev != null && !camaPrevIsMark_(r)) ? { cama_hoja_prev: null } : {};
+  if (camaAppResolved_(r)) return { cama_app_ts: null };   // reenvío de una marca ya resuelta: no se baja la marca
+  return { cama_app_ts: null, cama_hoja_prev: CAMA_OK_PREFIX + String(r.cama_app_ts) };
+}
+
+/**
+ * (e) CAMA CAMBIADA DESDE LA APP. Cuando un residente mueve a un paciente desde la app (Editar /
+ * cambiar cama) la fila queda con cama_app_ts = now(). La hoja tarda en enterarse y sigue mostrando
+ * al mismo exp en la cama VIEJA: antes el caso (c) lo devolvía ahí en ≤ 5 min y, si la fila ya no
+ * estaba en esa cama, el upsert on_conflict=cama lo recreaba en la cama vieja (duplicado).
+ * Regla: la cama de la app se RESPETA hasta que la HOJA la cambie. Para una fila r con cama_app_ts
+ * cuyo exp aparece en la hoja en OTRA cama (sheetNow):
+ *   · cama_hoja_prev null       → 1ª vez que vemos la divergencia: se anota PATCH {cama_hoja_prev: sheetNow}
+ *                                 (sin tocar la cama) y la app gana.
+ *   · cama_hoja_prev === sheetNow → la hoja no ha cambiado desde el movimiento → la app sigue ganando.
+ *   · cama_hoja_prev !== sheetNow → alguien editó la hoja DESPUÉS → la hoja manda: el caso (c) la mueve
+ *                                 y deja la marca de resuelto (movePatients_ → camaResolvedCols_).
+ *   · la hoja ya coincide con la app → marca de resuelto (bucle principal, "sigue igual").
+ *   · cama_app_ts ya cubierto por la marca 'ok@…' (reenvío de una copia vieja de la app) → no cuenta.
+ * Mientras la app gana: (1) la fila de la hoja con ese exp (cama vieja) sale del payload y de los
+ * mapas (si no, el upsert lo duplicaría en la cama vieja; un duplicado viejo del sheet-sync en esa
+ * cama pasa a "fuera de la hoja" y se retira con la gracia normal); (2) si la hoja pone a OTRO exp
+ * en la cama que la app fijó, esa fila de la hoja NO se upsertea (pisaría la fila fijada y su nota
+ * quedaría bajo otro nombre) ni se mueve a nadie ahí (chocaría con UNIQUE(cama)). Si en la cama
+ * vieja la hoja ya puso a otra persona, esa fila sí entra al upsert (reasignación normal).
+ * Devuelve { pinnedIds, pinnedCamas, dropCamas (fuera de mapas y upsert), holdCamas (solo fuera del
+ * upsert), toPin [{row, prev}], kept [texto para log] }.
+ */
+function appBedDecisions_(cur, maps) {
+  var out = { pinnedIds: {}, pinnedCamas: {}, dropCamas: {}, holdCamas: {}, toPin: [], kept: [] };
+  cur.forEach(function (r) {
+    if (!camaAppActive_(r)) return;
+    var cama = normalizeCama_(r.cama), exp = String(r.exp || '').trim();
+    if (!exp) return;
+    var sheetNow = maps.camaByExp[exp];
+    if (sheetNow === undefined || sheetNow === cama) return;   // no está en la hoja / ya coincide (se resuelve en el bucle)
+    var prev = camaHojaPrev_(r);
+    if (prev !== null && prev !== sheetNow) return;            // la hoja cambió después del movimiento → manda la hoja (caso c)
+    out.pinnedIds[r.id] = true;
+    out.pinnedCamas[cama] = true;
+    out.dropCamas[sheetNow] = true;                            // la fila de la hoja con este exp (cama vieja) no cuenta
+    if (prev === null) out.toPin.push({ row: r, prev: sheetNow });
+    else out.kept.push(cama + ' (la hoja aún dice ' + sheetNow + ')');
+    var other = maps.byCama[cama];
+    if (other !== undefined && other !== exp) out.holdCamas[cama] = true;   // otro exp en la cama fijada → no pisar
+  });
+  return out;
+}
+
+function syncPatients_(key, payload) {
+  if (!payload.length) { Logger.log('syncPatients: payload vacío → no se toca nada.'); return 0; }
+  var maps = sheetMaps_(payload);
+  var nSheet = Object.keys(maps.byCama).length;   // tamaño REAL de la hoja (antes de excluir nada) para la guarda
 
   // Estado actual en Supabase
-  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by', {
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev', {
     method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true
   });
-  if (res.getResponseCode() !== 200) { Logger.log('syncPatients: GET HTTP ' + res.getResponseCode() + ' → solo upsert'); upsertPatients_(key, payload); return 0; }
+  // Sin el estado actual NO se upsertea a ciegas: con camas fijadas desde la app (caso e) la fila de la
+  // hoja en la cama vieja caería sobre OTRO paciente que la app puso ahí (intercambio, cama liberada) y su
+  // nota quedaría bajo otro nombre, o duplicaría al paciente. Mejor una corrida perdida (≤ 5 min) que dato ajeno.
+  if (res.getResponseCode() !== 200) { Logger.log('syncPatients: GET HTTP ' + res.getResponseCode() + ' → NO se sincroniza esta corrida (sin estado actual un upsert por cama podía pisar camas fijadas desde la app)'); return 0; }
   var cur = JSON.parse(res.getContentText() || '[]');
+
+  // (e) Camas fijadas desde la app: decidir ANTES de reconciliar y quitar del payload/mapas las
+  //     filas de la hoja que la app gana (así ni el caso (c) ni el upsert las devuelven a la cama vieja).
+  var ab = appBedDecisions_(cur, maps);
+  var dropped = Object.keys(ab.dropCamas);
+  if (dropped.length) {
+    payload = payload.filter(function (p) { return !ab.dropCamas[p.cama]; });
+    maps = sheetMaps_(payload);
+    Logger.log('syncPatients: ' + dropped.length + ' fila(s) de la hoja ignoradas por cama fijada desde la app (cama vieja): ' + dropped.join(', '));
+  }
+  var held = Object.keys(ab.holdCamas);
+  if (held.length) Logger.log('syncPatients: ' + held.length + ' cama(s) fijada(s) desde la app con OTRO exp en la hoja → no se upsertean hasta que la hoja se aclare: ' + held.join(', '));
+  // Lo que puede ir al upsert sin pisar una cama fijada (se aplica también en las rutas de guarda).
+  var safePayload = held.length ? payload.filter(function (p) { return !ab.holdCamas[p.cama]; }) : payload;
+  var sheetByCama = maps.byCama, sheetCamaByExp = maps.camaByExp, sheetRowByCama = maps.rowByCama;
 
   // Camas que se quedan tal cual (misma persona en la misma cama): nadie puede moverse ahí.
   var stayCamas = {};
@@ -328,22 +428,37 @@ function syncPatients_(key, payload) {
     if (sheetByCama[cama] !== undefined && sheetByCama[cama] === String(r.exp || '').trim()) stayCamas[cama] = true;
   });
 
-  var toDelete = [], toMove = [], toFixExp = [], moveTargets = {};
+  var toDelete = [], toMove = [], toFixExp = [], toClear = [], enConflicto = [], moveTargets = {}, holdLoop = {};
   var missing = readMissingSince_(), missingNext = {}, now = Date.now(), enGracia = [];
   cur.forEach(function (r) {
+    if (ab.pinnedIds[r.id]) return;   // (e) cama fijada desde la app: ni se mueve ni se retira
     var cama = normalizeCama_(r.cama);
     var exp = String(r.exp || '').trim();
     var sheetExp = sheetByCama[cama];
-    if (sheetExp !== undefined && sheetExp === exp) return;   // sigue igual
+    if (sheetExp !== undefined && sheetExp === exp) {         // sigue igual
+      // (e) la hoja ya alcanzó a la app → movimiento resuelto (marca ok@ para que un reenvío viejo no lo re-arme)
+      var cc = camaResolvedCols_(r);
+      if (Object.keys(cc).length) toClear.push({ row: r, cols: cc });
+      return;
+    }
     // (c) CAMBIO DE CAMA — la MISMA persona (mismo exp) sigue en la hoja pero en OTRA cama →
     //     se MUEVE la fila (PATCH de cama), no se borra. Antes esto caía en "retiro" + fila
     //     nueva por el upsert: la nota clínica (FK ON DELETE CASCADE) se perdía en cada cambio
     //     de cama. Si la cama destino ya la ocupa una fila que se queda (duplicado) o ya la
     //     reclamó otra fila que se mueve, esta fila es un duplicado → se retira (archivada).
     var newCama = exp ? sheetCamaByExp[exp] : undefined;
-    if (newCama !== undefined && newCama !== cama && !stayCamas[newCama] && !moveTargets[newCama]) {
+    if (newCama !== undefined && newCama !== cama && !stayCamas[newCama] && !moveTargets[newCama] && !ab.pinnedCamas[newCama]) {
       toMove.push({ row: r, from: cama, to: newCama });
       moveTargets[newCama] = true;
+      return;
+    }
+    if (newCama !== undefined && newCama !== cama && ab.pinnedCamas[newCama]) {
+      // (e) la hoja lo pone en una cama que la app fijó para OTRO paciente: no se mueve (UNIQUE) ni
+      //     se retira; se deja donde está hasta que la hoja o la app se aclaren. Si en SU cama actual la hoja
+      //     ya puso a otra persona, esa fila tampoco se upsertea: on_conflict=cama reescribiría ESTA fila
+      //     (con su nota) con el nombre/exp del otro → fuga clínica.
+      enConflicto.push(cama + '→' + newCama);
+      if (sheetExp !== undefined) holdLoop[cama] = true;
       return;
     }
     if (sheetExp !== undefined) {
@@ -355,8 +470,11 @@ function syncPatients_(key, payload) {
         return;
       }
       toDelete.push({ row: r, motivo: 'CAMA REASIGNADA (hoja)' });        // (a) reasignación: otra persona ocupa la cama
-    } else if (r.updated_by === 'sheet-sync') {
+    } else if (r.updated_by === 'sheet-sync' || r.cama_hoja_prev != null) {
       // (b) retiro: solo si lleva >= RETIRO_GRACIA_MIN min sin aparecer en la hoja (ver arriba).
+      //     cama_hoja_prev solo lo escribe este script tras ver el exp en la hoja → es paciente del censo aunque
+      //     la app lo haya editado (updated_by = residente): sin esto, un paciente movido en la app y dado de
+      //     alta en la hoja antes de que la hoja actualizara su cama quedaba como FANTASMA para siempre.
       var since = missing[r.id] || now;
       missingNext[r.id] = since;
       if (now - since >= RETIRO_GRACIA_MIN * 60000) toDelete.push({ row: r, motivo: 'RETIRADO DEL CENSO (hoja)' });
@@ -365,13 +483,20 @@ function syncPatients_(key, payload) {
   });
   writeMissingSince_(missingNext);   // los que volvieron a la hoja salen del mapa
   if (enGracia.length) Logger.log('syncPatients: ' + enGracia.length + ' fuera de la hoja en periodo de gracia (' + RETIRO_GRACIA_MIN + ' min): ' + enGracia.join(', '));
+  if (enConflicto.length) Logger.log('syncPatients: ' + enConflicto.length + ' movimiento(s) de la hoja hacia una cama fijada desde la app, en espera: ' + enConflicto.join(', '));
+  var heldLoop = Object.keys(holdLoop);
+  if (heldLoop.length) {
+    safePayload = safePayload.filter(function (p) { return !holdLoop[p.cama]; });
+    Logger.log('syncPatients: ' + heldLoop.length + ' cama(s) cuyo ocupante espera una cama fijada desde la app → no se upsertean (pisarían su fila): ' + heldLoop.join(', '));
+  }
 
   // GUARDAS anti-catástrofe (los movimientos no borran nada, pero tampoco se aplican con una
-  // hoja sospechosa: la cama destino podría ser basura).
-  if (nSheet < 10) { Logger.log('syncPatients: solo ' + nSheet + ' en la hoja (posible error) → solo upsert, sin borrar.'); upsertPatients_(key, payload); return 0; }
+  // hoja sospechosa: la cama destino podría ser basura). Con hoja sospechosa tampoco se anota
+  // cama_hoja_prev (podría ser basura y haría "ganar" a la hoja en la siguiente corrida buena).
+  if (nSheet < 10) { Logger.log('syncPatients: solo ' + nSheet + ' en la hoja (posible error) → solo upsert, sin borrar.'); upsertPatients_(key, safePayload); return 0; }
   if (toDelete.length > Math.max(10, Math.floor(cur.length * 0.5))) {
     Logger.log('syncPatients: ' + toDelete.length + ' a borrar (>50%) → ABORTA reconciliación, solo upsert.');
-    upsertPatients_(key, payload); return 0;
+    upsertPatients_(key, safePayload); return 0;
   }
 
   // 1) Retiros/reasignaciones: ARCHIVAR (paciente + nota → public.archive, la papelera de la app)
@@ -392,13 +517,22 @@ function syncPatients_(key, payload) {
   var fixed = 0;
   toFixExp.forEach(function (f) { if (patchPatient_(key, f.row.id, { exp: f.to, updated_by: 'sheet-sync' })) fixed++; });
   if (toFixExp.length) Logger.log('syncPatients: expedientes corregidos ' + fixed + '/' + toFixExp.length + ': ' + toFixExp.map(function (f) { return normalizeCama_(f.row.cama) + ' ' + f.from + '→' + f.to; }).join(', '));
+  // 2c) (e) Camas fijadas desde la app: anotar la cama que hoy dice la hoja (1ª divergencia) y
+  //     limpiar las columnas de control cuando la hoja ya coincide con la app.
+  var pinnedOk = 0;
+  ab.toPin.forEach(function (p) { if (patchPatient_(key, p.row.id, { cama_hoja_prev: p.prev })) pinnedOk++; });
+  if (ab.toPin.length) Logger.log('syncPatients: cama fijada desde la app (1ª vez) ' + pinnedOk + '/' + ab.toPin.length + ': ' + ab.toPin.map(function (p) { return normalizeCama_(p.row.cama) + ' (la hoja dice ' + p.prev + ')'; }).join(', '));
+  if (ab.kept.length) Logger.log('syncPatients: ' + ab.kept.length + ' cama(s) fijada(s) desde la app, la hoja no ha cambiado: ' + ab.kept.join(', '));
+  var cleared = 0;
+  toClear.forEach(function (c) { if (patchPatient_(key, c.row.id, c.cols)) cleared++; });
+  if (toClear.length) Logger.log('syncPatients: la hoja ya coincide con la app en ' + cleared + '/' + toClear.length + ' cama(s), movimiento resuelto: ' + toClear.map(function (c) { return normalizeCama_(c.row.cama); }).join(', '));
 
   // Si el archivo del ocupante anterior falló, su fila sigue viva: el upsert por cama (on_conflict=cama)
   // la REESCRIBIRÍA con el exp/nombre del nuevo ocupante y su nota clínica quedaría pegada al paciente
   // equivocado (y nunca se archivaría). Esa cama se deja fuera y se reintenta en 5 min.
-  var finalPayload = payload.filter(function (p) { return !skipCamas[p.cama]; });
-  if (finalPayload.length !== payload.length) {
-    Logger.log('syncPatients: ' + (payload.length - finalPayload.length) + ' cama(s) sin archivar aún, se reintentan en la próxima corrida: ' + Object.keys(skipCamas).join(', '));
+  var finalPayload = safePayload.filter(function (p) { return !skipCamas[p.cama]; });
+  if (finalPayload.length !== safePayload.length) {
+    Logger.log('syncPatients: ' + (safePayload.length - finalPayload.length) + ' cama(s) sin archivar aún, se reintentan en la próxima corrida: ' + Object.keys(skipCamas).join(', '));
   }
   upsertPatients_(key, finalPayload);   // ahora sin filas conflictivas → reasignados entran limpios
   return retired;
@@ -429,7 +563,14 @@ function movePatients_(key, toMove) {
   var ok = 0;
   var viaTemp = toMove.filter(function (m) { return fromCamas[m.to]; });
   viaTemp.forEach(function (m) { patchPatient_(key, m.row.id, { cama: '#MV-' + String(m.row.id).slice(0, 8) }); });
-  toMove.forEach(function (m) { if (patchPatient_(key, m.row.id, { cama: m.to, updated_by: 'sheet-sync' })) ok++; });
+  toMove.forEach(function (m) {
+    var cols = { cama: m.to, updated_by: 'sheet-sync' };
+    // (e) la hoja cambió DESPUÉS de un movimiento hecho desde la app (o la app reenvió una cama vieja con una
+    //     marca ya resuelta) → manda la hoja y el movimiento de la app queda resuelto (marca ok@).
+    var cc = camaResolvedCols_(m.row);
+    Object.keys(cc).forEach(function (k) { cols[k] = cc[k]; });
+    if (patchPatient_(key, m.row.id, cols)) ok++;
+  });
   return ok;
 }
 

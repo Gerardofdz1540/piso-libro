@@ -27,6 +27,17 @@ En cada corrida el script compara la hoja con `patients` y:
   cama temporal `#MV-…` durante un segundo para no chocar con `UNIQUE(cama)`.
 - **Expediente corregido (misma cama, misma persona, otro número):** hace **PATCH** del
   expediente sobre la misma fila; la nota no se toca.
+- **Cama cambiada desde la app (16 oct 2026): la cama que fijó el residente se respeta hasta que
+  la hoja la cambie.** Al mover a un paciente desde la app (Editar / cambiar cama) la fila queda con
+  `cama_app_ts`. Si la hoja sigue mostrando al mismo expediente en la cama vieja, el script **no lo
+  regresa**: la primera vez anota en `cama_hoja_prev` la cama que dice la hoja y, mientras la hoja no
+  cambie, deja fuera del upsert esa fila (si no, `ON CONFLICT (cama)` lo duplicaba en la cama vieja).
+  Si la hoja ya coincide con la app, limpia las dos columnas; si alguien cambia la cama **en la hoja
+  después** del movimiento (`cama_hoja_prev` ≠ cama de la hoja), vuelve a mandar la hoja (PATCH de
+  cama + limpieza). Si la hoja pone a **otra persona** en la cama que la app fijó, esa fila no se
+  upsertea ni se mueve a nadie ahí (quedaría la nota bajo otro nombre); se loguea y se espera.
+  Requiere las columnas `patients.cama_app_ts timestamptz` y `patients.cama_hoja_prev text`
+  **antes** de desplegar este script (sin ellas el GET falla y el script cae a "solo upsert").
 - **Retiro (ya no está en la hoja): periodo de gracia de 12 minutos.** El trigger `onEdit`
   sincroniza en cada tecla; al cortar y pegar una fila (cambio de cama) o reescribir un expediente
   la hoja pasa por un instante en el que el paciente "no está". Antes eso bastaba para archivarlo y

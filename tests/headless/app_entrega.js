@@ -147,19 +147,43 @@ const MOCK = `(() => {
   check('E3 resumen de entrega: renglones por fecha (sellos ➕ Hoy / "dd/mm —"), 🔪 HOY pasó a quirófano (hallazgos, sangrado, cirujano, +1 previa), ⚠️ norepinefrina en mcg/kg/h + ayuno, 💧 gastos (drenajes con característica y día, uresis, balance), 🧪 labs PUNTUALES (crítico, cambio grande, lactato, INR estimado con tendencia y valor previo; nada de transcribir todo), 🆕 nuevo del día (pendiente, IC, lo pedido ayer, RIS, drenaje colocado hoy, TAC con conclusión), 📋 pendientes abiertos + No olvidar; botón ✨ Resumen escribe el bloque al final sin tocar lo escrito y al repetirlo lo REEMPLAZA (uno solo); se guarda en la nube',
     bad3.length === 0, 'fallan: ' + bad3.join(', ') + ' :: ' + JSON.stringify({ R: e3.R, txt: e3.txt, e2: e3.e2, lines: e3.lines, notesCalls: calls.filter(c => /\/rest\/v1\/notes/.test(c.url)).map(c => c.m + ' ' + c.url + ' ' + JSON.stringify(c.body || null).slice(0, 300)) }));
 
-  // ── E4: vista 📤 Entrega — ficha por paciente con el mismo resumen y sin tabla de analitos ──
+  // ── E4: vista 📤 Entrega — SOLO Diagnóstico, signos vitales, gastos, laboratorios, cultivos e imagen ──
   const e4 = await page.evaluate(() => {
-    renderPrint(patients);
-    const card = document.querySelector('#view-print .eg-c');
-    return { labels: Array.from(card.querySelectorAll('.eg-biglbl')).map(x => x.textContent.trim()),
-      chips: Array.from(card.querySelectorAll('.eg-biglab')).map(x => x.textContent + (/crit/.test(x.className) ? '!' : '')),
-      li: card.querySelectorAll('.eg-list li').length, hasTable: !!card.querySelector('table'), pre: (card.querySelector('.eg-pre') || {}).textContent || null,
-      dx: (card.querySelector('.eg-bigval') || {}).textContent || '' };
+    const k = pid(patients[0]); const ck = getNote(k).checklist;
+    ck.pm_fecha = todayStr(); ck.pm_ta = '110/70'; ck.pm_fc = '98'; ck.pm_fr = '20'; ck.pm_temp = '37.8'; ck.pm_sao2 = '93'; ck.pm_o2l = '3';
+    const read = function () {
+      renderPrint(patients);
+      const card = document.querySelector('#view-print .eg-c');
+      const rows = {}; Array.from(card.querySelectorAll('.eg-bigrow')).forEach(function (r) { const l = r.querySelector('.eg-biglbl').textContent.trim(); rows[l.replace(/ · .*$/, '')] = Array.from(r.querySelectorAll('li')).map(x => x.textContent).concat(Array.from(r.querySelectorAll('.eg-bigval')).map(x => x.textContent)); });
+      return { labels: Array.from(card.querySelectorAll('.eg-biglbl')).map(x => x.textContent.trim()), rows,
+        chips: Array.from(card.querySelectorAll('.eg-biglab')).map(x => x.textContent + (/crit/.test(x.className) ? '!' : '')),
+        li: card.querySelectorAll('.eg-list li').length, hasTable: !!card.querySelector('table'), pre: !!card.querySelector('.eg-pre') };
+    };
+    const hoyR = read();
+    // Sin vitales de hoy → los del último día del historial del pase, con su fecha en la etiqueta
+    ['pm_ta', 'pm_fc', 'pm_fr', 'pm_temp', 'pm_sao2', 'pm_o2l'].forEach(f => { ck[f] = ''; });
+    ck.pm_hist = [{ fecha: '2026-10-01', fc: '80', ta: '120/80' }, { fecha: '2026-10-03', fc: '76', ta: '' }];
+    const histR = read();
+    ck.pm_hist = []; const vacio = read();
+    return { hoyR, histR, vacio };
   });
-  check('E4 vista Entrega: Dx + Quirófano + Atención + Gastos + Labs puntuales (chips: críticos en rojo, cambios en ámbar) + Nuevo del día + Pendientes + Entrega escrita (lo escrito a mano, sin el bloque de resumen); ya no hay tabla de todos los analitos',
-    e4.labels.length === 8 && e4.labels[0] === '🩺 Diagnóstico' && e4.labels[1] === '🔪 Quirófano' && e4.labels[2] === '⚠️ Atención' && e4.labels[3] === '💧 Gastos' && /^🧪 Labs puntuales · /.test(e4.labels[4]) && e4.labels[5] === '🆕 Nuevo del día' && e4.labels[6] === '📋 Pendientes' && e4.labels[7] === '📤 Entrega escrita'
-    && JSON.stringify(e4.chips) === JSON.stringify(['Hb 7.4▼ (de 9.1)!', 'K 6.1▲ (de 4.0)!', 'Lac 3.1', 'INR ≈1.52▲ (de 1.20)'])
-    && e4.li === 16 && e4.hasTable === false && e4.pre === e3.orig && /CHOQUE SÉPTICO/.test(e4.dx), JSON.stringify(e4));
+  const r4 = e4.hoyR;
+  const c4 = {
+    labels: JSON.stringify(r4.labels.map(l => l.replace(/ · .*$/, ''))) === JSON.stringify(['🩺 Diagnóstico', '❤️ Signos vitales', '💧 Gastos', '🧪 Laboratorios', '🦠 Cultivos', '🩻 Estudios de imagen']),
+    nada_mas: !r4.labels.some(l => /Quirófano|Atención|Nuevo|Pendientes|Entrega escrita/.test(l)) && r4.pre === false && r4.hasTable === false,
+    dx: /CHOQUE SÉPTICO/.test((r4.rows['🩺 Diagnóstico'] || [])[0] || ''),
+    vit: (r4.rows['❤️ Signos vitales'] || [])[0] === 'TA 110/70 (PAM 83) · FC 98 · FR 20 · T 37.8 °C · SaO₂ 93 % con O₂ 3 L' && r4.labels[1] === '❤️ Signos vitales',
+    gastos: (r4.rows['💧 Gastos'] || []).length === 3 && r4.rows['💧 Gastos'][1] === 'Uresis 900 mL' && r4.rows['💧 Gastos'][2] === 'Balance +450',
+    labs: /^🧪 Laboratorios · /.test(r4.labels[3]) && JSON.stringify(r4.chips) === JSON.stringify(['Hb 7.4▼ (de 9.1)!', 'K 6.1▲ (de 4.0)!', 'Lac 3.1', 'INR ≈1.52▲ (de 1.20)']),
+    cult: JSON.stringify(r4.rows['🦠 Cultivos']) === JSON.stringify(['01/10 hemocultivos tomados']),
+    img: (r4.rows['🩻 Estudios de imagen'] || []).length === 1 && / CT TAC ABDOMEN: COLECCIÓN SUBFRÉNICA DE 6 CM\.$/.test(r4.rows['🩻 Estudios de imagen'][0]),
+    li: r4.li === 5,
+    hist: e4.histR.labels[1] === '❤️ Signos vitales · 03 Oct' && (e4.histR.rows['❤️ Signos vitales'] || [])[0] === 'FC 76',
+    vacio: e4.vacio.labels[1] === '❤️ Signos vitales' && (e4.vacio.rows['❤️ Signos vitales'] || [])[0] === 'sin registro'
+  };
+  const bad4 = Object.keys(c4).filter(x => !c4[x]);
+  check('E4 vista Entrega: SOLO 🩺 Diagnóstico + ❤️ signos vitales del pase (TA con PAM, FC, FR, T, SaO₂ con O₂; si hoy no hay, los del último día del historial con su fecha; si nada, "sin registro") + 💧 gastos + 🧪 laboratorios puntuales (chips) + 🦠 cultivos + 🩻 estudios de imagen con conclusión; nada de quirófano, avisos, novedades, pendientes ni caja escrita; sin tabla de analitos',
+    bad4.length === 0, 'fallan: ' + bad4.join(', ') + ' :: ' + JSON.stringify(e4));
 
   // ── E5: novedades automáticas de labs: solo CRÍTICOS (+ INR estimado ≥ 1.5), idempotente ──
   const e5 = await page.evaluate(() => {
