@@ -98,8 +98,10 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
   corregirle el exp), la reconciliación distingue a esas personas por **nombre**: solo mueve a alguien
   a la cama donde la hoja tiene su nombre, y si en su cama ahora está la otra persona con el mismo exp
   lo trata como cama reasignada (archivo + fila nueva) en vez de ponerle a su fila, con su nota, el
-  nombre del otro. Un nombre **corregido** en la hoja (una letra, `HDZ` → `HERNANDEZ`) sigue siendo la
-  misma persona si no es el nombre de la otra. Un nombre incompleto (solo apellidos) que encaja con
+  nombre del otro. Un nombre **corregido** en la hoja (una letra en una palabra de 5+ letras, o
+  abreviatura de apellido como `HDZ` → `HERNANDEZ`; mismo número de palabras y solo una distinta) sigue
+  siendo la misma persona si la edad cuadra, si no es el nombre de la otra y si su propio nombre no está
+  en otra cama (eso es un cambio de cama). JUAN/JULIAN, ANA/ADRIANA o LUIS/LUISA nunca son "casi iguales". Un nombre incompleto (solo apellidos) que encaja con
   dos personas distintas entra como paciente aparte en vez de juntarlas.
 - **Movimiento de cama que falla** (PATCH rechazado): la cama de origen y la de destino quedan fuera
   del upsert de esa corrida, para que la fila que no se movió no reciba el nombre del siguiente

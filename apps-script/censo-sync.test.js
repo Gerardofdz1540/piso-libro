@@ -575,9 +575,11 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   // closeName_ / groupPeople_ directos
   {
     const { sb } = makeSandbox({});
-    check("T13g closeName_: una letra, abreviatura y palabra de más sí; nombres distintos no",
-      sb.closeName_("PERES RUIZ JUAN", "PEREZ RUIZ JUAN") && sb.closeName_("HDZ MORA PEDRO", "HERNANDEZ MORA PEDRO") && sb.closeName_("PEREZ JUAN", "PEREZ RUIZ JUAN")
-      && !sb.closeName_("PEREZ RUIZ JUAN", "LOPEZ SOTO MIGUEL") && !sb.closeName_("JUAN PEREZ", "MARIA PEREZ LOPEZ SOTO"));
+    check("T13g closeName_: una letra (5+ letras) y abreviatura de apellido sí; nombres de pila parecidos (ANA/ADRIANA, JUAN/JULIAN, LUIS/LUISA, ROSA/ROSARIO), dos palabras distintas o distinto número de palabras no",
+      sb.closeName_("PERES RUIZ JUAN", "PEREZ RUIZ JUAN") && sb.closeName_("HDZ MORA PEDRO", "HERNANDEZ MORA PEDRO") && sb.closeName_("HDEZ MORA PEDRO", "HERNANDEZ MORA PEDRO")
+      && !sb.closeName_("PEREZ JUAN", "PEREZ RUIZ JUAN") && !sb.closeName_("PEREZ RUIZ JUAN", "LOPEZ SOTO MIGUEL") && !sb.closeName_("JUAN PEREZ", "MARIA PEREZ LOPEZ SOTO")
+      && !sb.closeName_("HERNANDEZ ANA", "HERNANDEZ ADRIANA") && !sb.closeName_("PEREZ LOPEZ JUAN", "PEREZ LOPEZ JULIAN") && !sb.closeName_("SOTO LUIS", "SOTO LUISA")
+      && !sb.closeName_("DIAZ ROSA", "DIAZ ROSARIO") && !sb.closeName_("PERES RUIS JUAN", "PEREZ RUIZ JUAN"));
     const g = sb.groupPeople_([{ nombre: "PEREZ RUIZ" }, { nombre: "PEREZ RUIZ JUAN CARLOS" }, { nombre: "PEREZ RUIZ MARIA ELENA" }]);
     const d = sb.dedupAndQuarantine_([{ cama: "3-101", exp: "X", nombre: "PEREZ RUIZ" }, { cama: "3-154", exp: "X", nombre: "PEREZ RUIZ JUAN CARLOS" }, { cama: "3-189", exp: "X", nombre: "PEREZ RUIZ MARIA ELENA" }]);
     check("T13h solo apellidos que encajan con dos personas: va aparte y no las junta; entran las 3 filas con aviso de exp repetido",
@@ -595,6 +597,41 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   const camas = up && Array.isArray(up.body) ? up.body.map((p) => p.cama) : [];
   check("T14 PATCH de cama fallido: ni 3-101 (origen) ni 3-102 (destino) van al upsert esta corrida (la nota de p1 no recibe el nombre de R)",
     !!up && !camas.includes("3-101") && !camas.includes("3-102") && camas.length === 12, JSON.stringify(camas));
+}
+
+// ── 15) Segunda revisión: el "nombre casi igual" nunca le da la fila (y la nota) de alguien a otra persona ──────
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i))); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.nombre) : []; };
+  const patches = (calls) => calls.filter((c) => c.m === "PATCH").map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + JSON.stringify(c.body));
+  const MARIO = "LOPEZ GARCIA MARIO", MARIA = "LOPEZ GARCIA MARIA";
+  // MARIO se mueve a 3-189 y en su cama entra MARIA (apellidos iguales, una letra en el nombre, exp copiado)
+  for (const edades of [[40, 38], [40, 40]]) {
+    const a4 = { id: "a4", cama: "3-154", exp: "X", nombre: MARIO, edad: String(edades[0]), updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a4], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: MARIA, edad: edades[1] }), row("3-189", "X", { nombre: MARIO, edad: edades[0] })]));
+    const ps = patches(calls);
+    check("T15a MARIO→3-189 y MARIA entra a 3-154 (edades " + edades.join("/") + "): a4 (MARIO, con su nota) se MUEVE a 3-189; MARIA entra nueva; nunca se renombra a4",
+      ps.length === 1 && ps[0].startsWith("a4:") && ps[0].includes('"cama":"3-189"') && upsertOf(calls).includes("3-154:" + MARIA) && !calls.some((c) => c.m === "DELETE"), JSON.stringify({ ps, up: upsertOf(calls) }));
+  }
+  // MARIO ya no está; MARIA (otra edad) entra con su exp a una cama libre y una tercera persona también tiene X
+  {
+    const a4 = { id: "a4", cama: "3-154", exp: "X", nombre: MARIO, edad: "40", updated_by: "sheet-sync" }, t1 = { id: "t1", cama: "3-110", exp: "X", nombre: "DIAZ MORA PEDRO", edad: "60", updated_by: "sheet-sync" };
+    const st = { cur: [a4, t1], props: {} };
+    const { sb, calls } = makeSandbox(st);
+    sb.syncPatients_("svc", fill([row("3-110", "X", { nombre: "DIAZ MORA PEDRO", edad: 60 }), row("3-170", "X", { nombre: MARIA, edad: 25 })]));
+    check("T15b MARIO sale y MARIA (25 años) entra con su exp a 3-170: a4 NO se mueve a la cama de MARIA (queda en gracia); MARIA entra nueva",
+      !patches(calls).some((p) => p.startsWith("a4:")) && typeof JSON.parse(st.props.PL_MISSING_SINCE || "{}").a4 === "number" && upsertOf(calls).includes("3-170:" + MARIA), JSON.stringify({ ps: patches(calls), up: upsertOf(calls) }));
+  }
+  // fila con solo apellidos + JUAN cambia de cama: se mueve JUAN (no se retira ni se recrea vacío)
+  {
+    const cur = [{ id: "s1", cama: "3-101", exp: "X", nombre: "PEREZ RUIZ", updated_by: "sheet-sync" }, { id: "j1", cama: "3-154", exp: "X", nombre: "PEREZ RUIZ JUAN CARLOS", updated_by: "sheet-sync" }, { id: "m1", cama: "3-189", exp: "X", nombre: "PEREZ RUIZ MARIA ELENA", updated_by: "sheet-sync" }];
+    const { sb, calls } = makeSandbox({ cur, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "X", { nombre: "PEREZ RUIZ" }), row("3-160", "X", { nombre: "PEREZ RUIZ JUAN CARLOS" }), row("3-189", "X", { nombre: "PEREZ RUIZ MARIA ELENA" })]));
+    const ps = patches(calls);
+    check("T15c exp con una fila de solo apellidos: JUAN CARLOS pasa a 3-160 por PATCH (su nota viaja); s1 y m1 se quedan; nada se archiva",
+      ps.length === 1 && ps[0].startsWith("j1:") && ps[0].includes('"cama":"3-160"') && !calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive")), JSON.stringify(ps));
+  }
 }
 
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");

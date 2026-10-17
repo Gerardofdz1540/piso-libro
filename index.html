@@ -8307,9 +8307,12 @@ function plExportBackup() {
       var e = _plExpNorm(p && p.exp);
       if (!e || !Array.isArray(patients)) return [];
       var k = pid(p);
-      return patients.filter(function (q) {
-        return q && q !== p && pid(q) !== k && _plExpNorm(q.exp) === e && _plSamePerson(p, q) !== true;
-      });
+      var others = patients.filter(function (q) { return q && q !== p && pid(q) !== k && _plExpNorm(q.exp) === e; });
+      // Un nombre que encaja con dos personas distintas de ese exp (p. ej. solo apellidos) es ambiguo: no es de
+      // nadie, así que todos los demás cuentan como gemelos y no recibe lo que llega solo por expediente.
+      var same = others.filter(function (q) { return _plSamePerson(p, q) === true; });
+      if (same.some(function (a) { return same.some(function (b) { return a !== b && _plSamePerson(a, b) === false; }); })) return others;
+      return others.filter(function (q) { return _plSamePerson(p, q) !== true; });
     }
     // ¿Son la MISMA persona dos pacientes del censo? Todas las palabras del nombre más corto iguales (la regla
     // del sync de la hoja), o el parecido con tolerancia a errores de dedo (_winlabNamesMatch) solo si la edad
@@ -8325,14 +8328,13 @@ function plExportBackup() {
       var sa = normalizeSexValue(p.sexo), sb = normalizeSexValue(q.sexo);
       return !(sa && sb && sa !== sb);
     }
-    // ¿Nombre casi igual (corrección de dedo)? Misma cantidad de palabras ±1 y cada palabra del más corto con
-    // pareja: igual, a una letra (4+ letras) o abreviatura (HDEZ ↔ HERNANDEZ). Misma regla que closeName_ del sync.
+    // ¿Nombre casi igual (corrección de dedo)? Mismo número de palabras y todas iguales salvo UNA, que solo puede
+    // diferir por una letra (5+ letras) o ser abreviatura de apellido (HDEZ ↔ HERNANDEZ: a lo más una vocal).
+    // ANA/ADRIANA, JUAN/JULIAN, LUIS/LUISA no son casi iguales. Misma regla que closeName_ del sync.
     function _plCloseName(n1, n2) {
       var tok = function (s) { return String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z\s]/g, " ").split(/\s+/).filter(function (w) { return w.length >= 2 && ["DE", "DEL", "LA", "LAS", "LOS", "Y"].indexOf(w) < 0; }); };
       var a = tok(n1), b = tok(n2);
-      if (!a.length || !b.length) return false;
-      var s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a;
-      if (l.length - s.length > 1) return false;
+      if (!a.length || a.length !== b.length) return false;
       var ed1 = function (x, y) {
         if (Math.abs(x.length - y.length) > 1) return false;
         var i = 0, j = 0, d = 0;
@@ -8340,14 +8342,26 @@ function plExportBackup() {
         return d + (x.length - i) + (y.length - j) <= 1;
       };
       var close = function (t, u) {
-        if (t === u) return true;
-        if (t.length >= 4 && u.length >= 4 && ed1(t, u)) return true;
+        if (t.length >= 5 && u.length >= 5 && ed1(t, u)) return true;
         var sh = t.length <= u.length ? t : u, lo = t.length <= u.length ? u : t;
-        if (sh.length >= 2 && sh.length <= 4 && sh[0] === lo[0]) { var j = 0; for (var i = 0; i < lo.length && j < sh.length; i++) if (lo[i] === sh[j]) j++; if (j === sh.length) return true; }
+        var vowels = (sh.match(/[AEIOU]/g) || []).length;
+        if (sh.length >= 2 && sh.length <= 5 && vowels <= 1 && lo.length > sh.length && sh[0] === lo[0]) { var j = 0; for (var i = 0; i < lo.length && j < sh.length; i++) if (lo[i] === sh[j]) j++; if (j === sh.length) return true; }
         return false;
       };
-      var used = {};
-      return s.every(function (t) { for (var i = 0; i < l.length; i++) { if (!used[i] && close(t, l[i])) { used[i] = true; return true; } } return false; });
+      var used = {}, diffs = 0;
+      var ok = a.every(function (t) {
+        for (var i = 0; i < b.length; i++) if (!used[i] && b[i] === t) { used[i] = true; return true; }
+        for (var j = 0; j < b.length; j++) if (!used[j] && close(t, b[j])) { used[j] = true; diffs++; return true; }
+        return false;
+      });
+      return ok && diffs <= 1;
+    }
+    // ¿La edad y el sexo NO contradicen que sean la misma persona? (±2 años cuando ambas se conocen)
+    function _plAgeSexOk(p, q) {
+      var ea = parseInt(p && p.edad, 10), eb = parseInt(q && q.edad, 10);
+      if (!isNaN(ea) && !isNaN(eb) && Math.abs(ea - eb) > 2) return false;
+      var sa = normalizeSexValue(p && p.sexo), sb = normalizeSexValue(q && q.sexo);
+      return !(sa && sb && sa !== sb);
     }
     function _winlabCensoNameOk(p, wl) {
       // Si falta nombre normalizable en cualquiera, no se puede verificar por nombre.
@@ -18040,8 +18054,15 @@ function plExportBackup() {
       // por el paciente al que el robot lo asignó (patient_id) o, en filas viejas, por el nombre del RIS
       // (sin nombre no se atribuye a nadie). Sin esto los dos veían los estudios de ambos y la entrega
       // automática los guardaba en la nota del otro.
+      // Un estudio que el robot asignó a OTRO paciente activo nunca va en esta tarjeta (p. ej. justo después de
+      // corregir un expediente repetido, hasta que el robot lo vuelva a guardar con el exp nuevo).
+      list = list.filter(r => !_risOtherOwner(p, r));
       if (_plExpTwins(p).length) list = list.filter(r => _risIsFor(p, r));
       return list.slice().sort((a, b) => (String(b.fecha) + String(b.hora)).localeCompare(String(a.fecha) + String(a.hora)));
+    }
+    function _risOtherOwner(p, r) {
+      const id = r && r.patient_id ? String(r.patient_id) : "";
+      return !!id && id !== String((p && p._supa_id) || "") && patients.some(q => q && String(q._supa_id || "") === id);
     }
     function _risIsFor(p, r) {
       const id = r && r.patient_id ? String(r.patient_id) : "";
@@ -18057,7 +18078,7 @@ function plExportBackup() {
         const i = list.findIndex(x => String(x.id) === String(r.id));
         if (eventType === "DELETE") { if (i >= 0) list.splice(i, 1); }
         else if (i >= 0) list[i] = row; else list.push(row);
-        const affected = patients.filter(p => _risKey(p.exp) === e && (eventType === "DELETE" || !_plExpTwins(p).length || _risIsFor(p, r)));
+        const affected = patients.filter(p => _risKey(p.exp) === e && (eventType === "DELETE" || (!_risOtherOwner(p, r) && (!_plExpTwins(p).length || _risIsFor(p, r)))));
         affected.forEach(p => { const k = pid(p); if (document.getElementById("card-" + k)) _rerenderCardSoft(k); });   // en calma, conserva sección/scroll
         if (affected.length && eventType !== "DELETE") _showRTToast("🩻 Estudio de imagen " + (row && row.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
         if (eventType !== "DELETE") _entregaAutoFromRis(affected);
@@ -23513,7 +23534,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const _oldForExp = p => {
             const e = importKeyNorm(p.exp), list = e ? (oldListByExp.get(e) || []) : [];
             if (list.length === 1 && !_expShared(e)) return list[0];
-            const hits = list.filter(o => _plSamePerson(o, p) === true);
+            let hits = list.filter(o => _plSamePerson(o, p) === true);
+            // Varios encajan (p. ej. uno con solo apellidos): se descartan los ambiguos y, si sigue habiendo más
+            // de uno, se prefiere el de nombre idéntico.
+            if (hits.length > 1) hits = hits.filter(o => { const m = list.filter(x => x !== o && _plSamePerson(o, x) === true); return !m.some(a => m.some(b => a !== b && _plSamePerson(a, b) === false)); });
+            if (hits.length > 1) { const ex = hits.filter(o => _impNormName(o.nombre) === _impNormName(p.nombre)); if (ex.length === 1) hits = ex; }
             return hits.length === 1 ? hits[0] : null;
           };
           // Fila actual con el mismo exp+cama, salvo que el exp esté repetido y sea OTRA persona.
@@ -23552,7 +23577,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const _archFor = p => {
             const list = archListByExp.get(importKeyNorm(p.exp)) || [];
             return list.find(a => _plSamePerson(a, p) === true) || list.find(a => _plSamePerson(a, p) === null)
-              || list.find(a => _plCloseName(a.nombre, p.nombre)) || null;
+              || list.find(a => _plCloseName(a.nombre, p.nombre) && _plAgeSexOk(a, p)) || null;
           };
           const reingresoPts = [];  // {newPt, archived} — expedientes que reaparecen
           const skippedArchivedSilent = []; // (no se usan; se mantiene por compat.)
@@ -25702,9 +25727,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       Object.entries(byExp).filter(([, list]) => list.length > 1).forEach(([exp, list]) => {
         // Mismo expediente pero PERSONAS distintas (error de captura en la hoja) no es un duplicado: los
         // dos son pacientes reales y borrar uno lo quitaría del censo. Solo se agrupa a la misma persona.
+        // Sin encadenar (un nombre con solo apellidos no junta a dos personas) y las filas ambiguas (encajan con
+        // dos personas distintas) no se agrupan con nadie.
+        const amb = l => { const m = list.filter(o => o !== l && _plSamePerson(o.patient, l.patient) !== false); return m.some(a => m.some(b => a !== b && _plSamePerson(a.patient, b.patient) === false)); };
         const people = [];
         list.forEach(l => {
-          const g = people.find(grp => grp.some(o => _plSamePerson(o.patient, l.patient) !== false));
+          if (amb(l)) return;
+          const g = people.find(grp => grp.every(o => _plSamePerson(o.patient, l.patient) !== false));
           if (g) g.push(l); else people.push([l]);
         });
         people.filter(grp => grp.length > 1).forEach((grp, gi) => {
@@ -30318,7 +30347,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       // _sGet(table, qs) → fetch a PostgREST con la anon key del app. Devuelve array.
       var rows = await _sGet(
         "winlab_cultivos",
-        "select=exp,cama,nombre,fecha,tipo,germen,resultado,texto_origen&order=fecha.desc&fecha=gte." + _desde + "&exp=in.(" + _exps.map(encodeURIComponent).join(",") + ")"
+        "select=exp,cama,nombre,fecha,tipo,germen,resultado,texto_origen,busqueda&order=fecha.desc&fecha=gte." + _desde + "&exp=in.(" + _exps.map(encodeURIComponent).join(",") + ")"
       );
       var map = {};
       (rows || []).forEach(function (r) {
@@ -30356,6 +30385,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       // Con gemelos esta caja no se muestra; cada quien ve SUS cultivos en 🦠 Cultivos (los del PDF de
       // WinLab, ya separados por nombre en applyWinlabSyncToPatients).
       if (typeof _plExpTwins === "function" && _plExpTwins(p).length) return "";
+      // `busqueda` = a quién encontró el robot en WinLab: tras corregir un expediente repetido, los cultivos
+      // viejos de la otra persona bajo este exp no se muestran aquí.
+      rows = rows.filter(function (r) { return !r.busqueda || typeof _winlabCensoNameOk !== "function" || _winlabCensoNameOk(p, { paciente: r.busqueda }); });
+      if (!rows.length) return "";
       var hasPos = rows.some(function (r) { return String(r.resultado || "").toUpperCase() === "POSITIVO"; });
 
       var items = rows.map(function (r) {
