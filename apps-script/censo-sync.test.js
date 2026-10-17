@@ -415,5 +415,102 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   }
 }
 
+// ── 12) Mismo expediente con NOMBRES distintos (error de captura): ya NO hay cuarentena, entran todos.
+//        Caso real 17 oct 2026: 3-154 y 3-189 con el mismo exp → no entraba ninguno y el de la 3-189,
+//        que ya estaba en la app, se retiraba a los 12 min. Las personas se distinguen por nombre.
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i))); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.exp + ":" + p.nombre) : null; };
+  const noDestroy = (calls) => !calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive"));
+  const A = "PEREZ RUIZ JUAN CARLOS", B = "LOPEZ SOTO MIGUEL ANGEL", C = "DIAZ MORA PEDRO";
+  const { sb } = makeSandbox({});
+
+  // dedup: dos personas con el mismo exp → las dos se quedan y queda un aviso
+  const d1 = sb.dedupAndQuarantine_([{ cama: "3-154", exp: "X", nombre: A }, { cama: "3-189", exp: "X", nombre: B }]);
+  check("T12a mismo exp, nombres distintos: se sincronizan LAS DOS y queda un aviso exp_repetido_sincronizado",
+    d1.keep.length === 2 && d1.avisos.length === 1 && d1.avisos[0].motivo === "exp_repetido_sincronizado" && d1.avisos[0].camas === "3-154, 3-189", JSON.stringify(d1));
+  // misma persona (nombres en otro orden) en dos camas → sigue siendo una sola (como antes)
+  const d2 = sb.dedupAndQuarantine_([{ cama: "3-157", exp: "Y", nombre: "ANA LUISA PEREZ GOMEZ" }, { cama: "3-186", exp: "Y", nombre: "LUISA ANA PEREZ GOMEZ" }]);
+  check("T12b misma persona en dos camas → una sola fila (sin cambio)", d2.keep.length === 1 && d2.keep[0].cama === "3-157" && d2.avisos[0].motivo === "dedup_misma_persona_multi_cama", JSON.stringify(d2));
+  // mezcla: A en piso y en UCI + B con el mismo exp → A una vez (UCI gana) y B
+  const d3 = sb.dedupAndQuarantine_([{ cama: "3-101", exp: "Z", nombre: A }, { cama: "UCI 2", exp: "Z", nombre: A }, { cama: "3-120", exp: "Z", nombre: B }]);
+  check("T12c mezcla: A en 3-101 y UCI 2 + B → entran UCI 2 (A) y 3-120 (B)",
+    d3.keep.length === 2 && d3.keep.some((p) => p.cama === "UCI 2") && d3.keep.some((p) => p.cama === "3-120") && d3.avisos.some((a) => a.motivo === "dedup_uci_gana_a_piso"), JSON.stringify(d3));
+
+  // caso real: B estaba en la app en 3-189; la hoja agrega a A en 3-154 con el MISMO exp → nada se borra, entran los dos
+  {
+    const cur = [{ id: "b9", cama: "3-189", exp: "X", nombre: B, updated_by: "sheet-sync" }];
+    const st = { cur, props: missingOld(["b9"]) };
+    const { sb: s, calls } = makeSandbox(st);
+    const r = s.syncPatients_("svc", fill([row("3-154", "X", { nombre: A }), row("3-189", "X", { nombre: B })]));
+    const up = upsertOf(calls);
+    check("T12d caso 3-154/3-189: sin archivo ni DELETE ni PATCH; el upsert lleva a 3-154 (A) y 3-189 (B); b9 sale del mapa de ausentes",
+      r === 0 && noDestroy(calls) && !calls.some((c) => c.m === "PATCH") && !!up && up.includes("3-154:X:" + A) && up.includes("3-189:X:" + B)
+      && !JSON.parse(st.props.PL_MISSING_SINCE || "{}").b9, JSON.stringify({ up, calls: calls.map((c) => c.m + " " + c.u) }));
+  }
+  // la persona correcta se mueve por NOMBRE: A estaba en 3-154; la hoja pone a B en 3-154 y a A en 3-170 (mismo exp)
+  {
+    const cur = [{ id: "a4", cama: "3-154", exp: "X", nombre: A, updated_by: "sheet-sync" }];
+    const { sb: s, calls } = makeSandbox({ cur, props: {} });
+    s.syncPatients_("svc", fill([row("3-154", "X", { nombre: B }), row("3-170", "X", { nombre: A })]));
+    const ps = calls.filter((c) => c.m === "PATCH");
+    const up = upsertOf(calls);
+    check("T12e exp repetido: A se MUEVE a 3-170 (su nombre), no se queda en 3-154 con el nombre de B; B entra nuevo en 3-154; sin borrar",
+      ps.length === 1 && ps[0].u.includes("id=eq.a4") && ps[0].body.cama === "3-170" && noDestroy(calls)
+      && !!up && up.includes("3-154:X:" + B) && up.includes("3-170:X:" + A), JSON.stringify({ ps: ps.map((c) => c.u + " " + JSON.stringify(c.body)), up }));
+    const iPatch = seq(calls, (c) => c.m === "PATCH"), iUp = seq(calls, (c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
+    check("T12e2 el PATCH de A ocurre antes del upsert (así 3-154 queda libre para B)", iPatch >= 0 && iUp > iPatch);
+  }
+  // A estaba en 3-154 y ya no está en la hoja; ahí ahora está B con el MISMO exp → A se archiva (su nota NO pasa a B)
+  {
+    const cur = [{ id: "a4", cama: "3-154", exp: "X", nombre: A, updated_by: "sheet-sync" }];
+    const full = { a4: { id: "a4", cama: "3-154", exp: "X", nombre: A, notes: [{ patient_id: "a4", pendientes: "nota de A" }] } };
+    const { sb: s, calls } = makeSandbox({ cur, full, props: {} });
+    s.syncPatients_("svc", fill([row("3-154", "X", { nombre: B }), row("3-189", "X", { nombre: C })]));
+    const arc = calls.find((c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive"));
+    const iDel = seq(calls, (c) => c.m === "DELETE" && c.u.includes("/patients?id=eq.a4")), iUp = seq(calls, (c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
+    check("T12f otra persona con el mismo exp en la cama: CAMA REASIGNADA (archivo con la nota de A + DELETE) ANTES del upsert de B",
+      !!arc && arc.body.patient_data.nombre === A && /CAMA REASIGNADA/.test(arc.body.note_data._egreso) && iDel >= 0 && iUp > iDel
+      && upsertOf(calls).includes("3-154:X:" + B), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+  }
+  // intercambio de camas entre dos personas con el mismo exp → dos movimientos por nombre (fase temporal), sin borrar
+  {
+    const cur = [{ id: "a4", cama: "3-154", exp: "X", nombre: A, updated_by: "sheet-sync" }, { id: "b9", cama: "3-189", exp: "X", nombre: B, updated_by: "sheet-sync" }];
+    const { sb: s, calls } = makeSandbox({ cur, props: {} });
+    s.syncPatients_("svc", fill([row("3-154", "X", { nombre: B }), row("3-189", "X", { nombre: A })]));
+    const finals = calls.filter((c) => c.m === "PATCH" && !/#MV-/.test(c.body.cama)).map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + c.body.cama);
+    check("T12g intercambio con exp repetido: a4→3-189 y b9→3-154 (por nombre), sin DELETE",
+      finals.length === 2 && finals.includes("a4:3-189") && finals.includes("b9:3-154") && noDestroy(calls), JSON.stringify(finals));
+  }
+  // nombre que no coincide con ninguna de las filas del exp repetido → no se adivina a dónde moverlo
+  {
+    const cur = [{ id: "c1", cama: "3-110", exp: "X", nombre: C, updated_by: "sheet-sync" }];
+    const st = { cur, props: {} };
+    const { sb: s, calls } = makeSandbox(st);
+    s.syncPatients_("svc", fill([row("3-154", "X", { nombre: A }), row("3-189", "X", { nombre: B })]));
+    check("T12h exp repetido y ninguna fila es esa persona: no se mueve a la cama de otro; entra en gracia como ausente",
+      !calls.some((c) => c.m === "PATCH") && noDestroy(calls) && typeof JSON.parse(st.props.PL_MISSING_SINCE || "{}").c1 === "number", JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+  }
+  // exp único (lo normal): el cambio de cama sigue siendo por expediente aunque el nombre se haya corregido
+  {
+    const cur = [{ id: "d1", cama: "3-104", exp: "4", nombre: "GARCIA LOPZ JUAN", updated_by: "sheet-sync" }];
+    const { sb: s, calls } = makeSandbox({ cur });
+    s.syncPatients_("svc", fill([row("3-107", "4", { nombre: "GARCIA LOPEZ JUAN" })]));
+    const ps = calls.filter((c) => c.m === "PATCH");
+    check("T12i exp único: el movimiento sigue siendo por expediente (sin exigir el mismo nombre), como antes",
+      ps.length === 1 && ps[0].u.includes("id=eq.d1") && ps[0].body.cama === "3-107", JSON.stringify(ps));
+  }
+  // cama fijada desde la app y la hoja pone ahí a OTRA persona con el MISMO exp → esa fila no pisa la cama fijada
+  {
+    const TS = "2026-10-16T10:00:00Z";
+    const cur = [{ id: "p7", cama: "3-105", exp: "X", nombre: A, updated_by: "Dr. Residente", cama_app_ts: TS, cama_hoja_prev: "3-101" }];
+    const { sb: s, calls } = makeSandbox({ cur, props: {} });
+    s.syncPatients_("svc", fill([row("3-101", "X", { nombre: A }), row("3-105", "X", { nombre: B })]));
+    const up = upsertOf(calls);
+    check("T12j cama fijada desde la app con el mismo exp de otra persona: ni 3-101 (A, cama vieja) ni 3-105 (B) pisan la fila de A; sin borrar",
+      !!up && !up.some((u) => u.startsWith("3-101:")) && !up.some((u) => u.startsWith("3-105:")) && noDestroy(calls) && !calls.some((c) => c.m === "PATCH" && c.body.cama), JSON.stringify({ up }));
+  }
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
