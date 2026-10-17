@@ -83,9 +83,9 @@ function doSync() {
 
   var rows = readCensoRows_();                 // valores crudos de la hoja
   var parsed = parseCenso_(rows);              // [{cama,exp,nombre,...,seccion}] ya filtrado por seccion
-  var result = dedupAndQuarantine_(parsed);    // {keep:[...], quarantine:[...]}
+  var result = dedupAndQuarantine_(parsed);    // {keep:[...], avisos:[...]}
 
-  if (result.quarantine.length) logQuarantine_(key, result.quarantine);
+  if (result.avisos.length) logQuarantine_(key, result.avisos);
 
   // 1) dedup por CAMA: si la hoja tiene el mismo cuarto repetido (dos pacientes en una cama),
   // un upsert ON CONFLICT(cama) con ambos revienta con "cannot affect row a second time" y
@@ -102,8 +102,8 @@ function doSync() {
   //    GUARDAS anti-catástrofe dentro de syncPatients_ (hoja <10 o borrar >50% → solo upsert).
   var retired = syncPatients_(key, dd.rows);
 
-  Logger.log('Sync OK: ' + dd.rows.length + ' upserts, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.quarantine.length + ' en cuarentena.');
-  return { upserts: dd.rows.length, retired: retired, camas_duplicadas: dd.dups, quarantine: result.quarantine.length };
+  Logger.log('Sync OK: ' + dd.rows.length + ' upserts, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.avisos.length + ' avisos de expediente repetido.');
+  return { upserts: dd.rows.length, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
 }
 
 /** Lee todas las filas de la pestana del censo (por gid). */
@@ -207,35 +207,104 @@ function expLooksValid_(exp) {
 }
 
 /**
- * Dedup + cuarentena (precision > recall: "mejor sin dato que dato ajeno").
- *  - Mismo exp en 2+ camas, MISMA persona -> conserva SOLO la cama de UCI/UTI, descarta piso.
- *  - Mismo exp con NOMBRES distintos -> cuarentena: no sincroniza NINGUNA, loguea a sync_log.
+ * Dedup por expediente, agrupando por PERSONA (mismo exp ya no implica misma persona).
+ *  - Mismo exp en 2+ camas, MISMA persona -> conserva SOLO una cama (UCI/UTI gana a piso).
+ *  - Mismo exp con NOMBRES distintos (error de captura en la hoja) -> se sincronizan TODOS (17 oct
+ *    2026): es más importante que el paciente aparezca en la app. Antes se ponían en cuarentena: no
+ *    entraba ninguno y el que ya estaba en la app se retiraba a los 12 min (caso real 3-154/3-189).
+ *    Se deja aviso en sync_log para corregirlo en la hoja; syncPatients_ distingue a esas personas
+ *    por nombre (sheetCamaFor_ / sameOccupant_) para no cruzar sus notas.
+ * Devuelve { keep, avisos } (avisos = filas para sync_log).
  */
 function dedupAndQuarantine_(list) {
   var byExp = {};
   list.forEach(function (p) { (byExp[p.exp] = byExp[p.exp] || []).push(p); });
 
-  var keep = [], quarantine = [];
+  var keep = [], avisos = [];
   Object.keys(byExp).forEach(function (exp) {
     var grp = byExp[exp];
     if (grp.length === 1) { keep.push(grp[0]); return; }
 
-    var ref = grp.slice().sort(function (a, b) { return nameTokens_(b.nombre).length - nameTokens_(a.nombre).length; })[0];
-    var allSame = grp.every(function (p) { return samePerson_(p.nombre, ref.nombre); });
-
-    if (!allSame) {
-      quarantine.push({ exp: exp, camas: grp.map(function (p) { return p.cama; }).join(', '),
-                        nombres: grp.map(function (p) { return p.nombre; }).join(' | '),
-                        motivo: 'exp_duplicado_nombres_distintos' });
-      return;  // no se sincroniza ninguna
+    var people = groupPeople_(grp);
+    if (people.length > 1) {
+      avisos.push({ exp: exp, camas: grp.map(function (p) { return p.cama; }).join(', '),
+                    nombres: grp.map(function (p) { return p.nombre; }).join(' | '),
+                    motivo: 'exp_repetido_sincronizado' });
     }
-    // misma persona en varias camas -> UCI/UTI gana a piso
-    var uci = grp.filter(function (p) { return /^(UCI|UTI)/i.test(String(p.cama || '').trim()); });
-    keep.push(uci.length ? uci[0] : grp[0]);
-    quarantine.push({ exp: exp, camas: grp.map(function (p) { return p.cama; }).join(', '),
-                      nombres: ref.nombre, motivo: uci.length ? 'dedup_uci_gana_a_piso' : 'dedup_misma_persona_multi_cama' });
+
+    people.forEach(function (rows) {
+      if (rows.length === 1) { keep.push(rows[0]); return; }
+      // misma persona en varias camas -> UCI/UTI gana a piso
+      var ref = rows.slice().sort(function (a, b) { return nameTokens_(b.nombre).length - nameTokens_(a.nombre).length; })[0];
+      var uci = rows.filter(function (p) { return /^(UCI|UTI)/i.test(String(p.cama || '').trim()); });
+      keep.push(uci.length ? uci[0] : rows[0]);
+      avisos.push({ exp: exp, camas: rows.map(function (p) { return p.cama; }).join(', '),
+                    nombres: ref.nombre, motivo: uci.length ? 'dedup_uci_gana_a_piso' : 'dedup_misma_persona_multi_cama' });
+    });
   });
-  return { keep: keep, quarantine: quarantine };
+  return { keep: keep, avisos: avisos };
+}
+
+// Agrupa filas por PERSONA. Una fila entra a un grupo solo si es la misma persona que TODOS sus miembros
+// y no encaja también en otro grupo: un nombre incompleto ("PEREZ RUIZ", solo apellidos) que encaja con
+// dos personas distintas queda aparte en vez de juntarlas (antes se quedaba una sola fila y las otras dos
+// personas no entraban al censo).
+function groupPeople_(rows) {
+  rows = rows || [];
+  // Fila ambigua: encaja con dos filas que entre sí son personas distintas → va sola.
+  var amb = rows.map(function (r, i) {
+    var m = rows.filter(function (s, j) { return j !== i && samePerson_(r.nombre, s.nombre); });
+    return m.some(function (s) { return m.some(function (t) { return s !== t && !samePerson_(s.nombre, t.nombre); }); });
+  });
+  var people = [];
+  rows.forEach(function (p, i) {
+    if (amb[i]) { var solo = [p]; solo.ambig = true; people.push(solo); return; }
+    var fits = people.filter(function (g) { return !g.ambig && g.every(function (q) { return samePerson_(p.nombre, q.nombre); }); });
+    if (fits.length === 1) fits[0].push(p); else people.push([p]);
+  });
+  return people;
+}
+
+// ¿Dos nombres son casi iguales (corrección de dedo en la hoja)? Misma cantidad de palabras ±1 y cada
+// palabra del más corto tiene pareja en el otro: igual, a una letra de distancia (palabras de 4+ letras)
+// o abreviatura (HDZ ↔ HERNANDEZ: misma inicial y sus letras en orden). Solo se usa con expediente
+// ambiguo y siempre junto con "no es el nombre de la otra persona".
+function closeName_(n1, n2) {
+  var a = nameTokens_(n1), b = nameTokens_(n2);
+  if (!a.length || !b.length) return false;
+  var s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a;
+  if (l.length - s.length > 1) return false;
+  var used = {};
+  return s.every(function (t) {
+    for (var i = 0; i < l.length; i++) {
+      if (used[i]) continue;
+      if (tokenClose_(t, l[i])) { used[i] = true; return true; }
+    }
+    return false;
+  });
+}
+function tokenClose_(t, u) {
+  if (t === u) return true;
+  if (t.length >= 4 && u.length >= 4 && editDistance1_(t, u)) return true;
+  var sh = t.length <= u.length ? t : u, lo = t.length <= u.length ? u : t;
+  if (sh.length >= 2 && sh.length <= 4 && sh[0] === lo[0]) {   // abreviatura: letras en orden
+    var j = 0;
+    for (var i = 0; i < lo.length && j < sh.length; i++) if (lo[i] === sh[j]) j++;
+    if (j === sh.length) return true;
+  }
+  return false;
+}
+// ¿Distancia de edición ≤ 1 (una letra cambiada, de más o de menos)?
+function editDistance1_(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  var i = 0, j = 0, diff = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++diff > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return diff + (a.length - i) + (b.length - j) <= 1;
 }
 
 // Normaliza la cama al formato canónico de la app: GUION (no punto), MAYÚS, 1 espacio.
@@ -307,16 +376,65 @@ function writeMissingSince_(map) {
   try { var ps = PropertiesService.getScriptProperties(); if (ps && ps.setProperty) ps.setProperty(MISSING_PROP, JSON.stringify(map || {})); } catch (_) {}
 }
 
-// Mapas de la hoja (camas ya normalizadas): cama→exp, exp→cama (1ª aparición) y cama→fila.
+// Mapas de la hoja (camas ya normalizadas): cama→exp, exp→todas sus camas y cama→fila.
 function sheetMaps_(payload) {
-  var byCama = {}, camaByExp = {}, rowByCama = {};
+  var byCama = {}, camasByExp = {}, rowByCama = {};
   payload.forEach(function (p) {
     var e = String(p.exp || '').trim();
     byCama[p.cama] = e;
     rowByCama[p.cama] = p;
-    if (e && camaByExp[e] === undefined) camaByExp[e] = p.cama;
+    if (e) (camasByExp[e] = camasByExp[e] || []).push(p.cama);
   });
-  return { byCama: byCama, camaByExp: camaByExp, rowByCama: rowByCama };
+  return { byCama: byCama, camasByExp: camasByExp, rowByCama: rowByCama };
+}
+
+// Cama de la hoja para una persona (exp + nombre). Exp único en la hoja: su cama, como siempre.
+// Exp que comparten 2+ personas (error de captura que ya no se pone en cuarentena): solo la cama
+// cuya fila es la MISMA persona; si no hay exactamente una, undefined (no se adivina: adivinar
+// movería la fila, con su nota, a la cama de la otra persona).
+function sheetCamaFor_(maps, exp, nombre, selfId) {
+  var camas = maps.camasByExp[exp];
+  if (!camas || !camas.length) return undefined;
+  if (!expAmbiguous_(maps, exp)) return camas.length === 1 ? camas[0] : undefined;
+  var hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && samePerson_(nombre || '', sr.nombre || ''); });
+  if (!hits.length) {   // nombre corregido en la hoja: parecido y que no sea el de la otra persona
+    hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && closeName_(nombre || '', sr.nombre || '') && !otherHasName_(maps, exp, selfId, sr.nombre); });
+  }
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
+// ¿Expediente AMBIGUO? 2+ personas distintas con ese exp en la hoja O en Supabase. Basta con que Supabase
+// aún tenga a las dos (la hoja ya dio de alta a una, le corrigió el exp o está a medio intercambiar camas):
+// sin esto el exp, otra vez único en la hoja, volvía a emparejar por expediente y una fila, con su nota,
+// recibía el nombre y la cama de la otra persona.
+function expAmbiguous_(maps, exp) {
+  return (maps.camasByExp[exp] || []).length >= 2 || !!(maps.ambig && maps.ambig[exp]);
+}
+// Expedientes con 2+ personas distintas en Supabase (cur) → { exp: true }.
+function ambiguousExps_(cur) {
+  var byExp = {}, out = {};
+  (cur || []).forEach(function (r) { var e = String(r.exp || '').trim(); if (e && String(r.nombre || '').trim()) (byExp[e] = byExp[e] || []).push(r); });
+  Object.keys(byExp).forEach(function (e) { if (groupPeople_(byExp[e]).length > 1) out[e] = true; });
+  return out;
+}
+// ¿Algún OTRO paciente de Supabase con ese exp tiene ese nombre (igual o parecido)?
+function otherHasName_(maps, exp, selfId, nombre) {
+  return (maps.curByExp && maps.curByExp[exp] || []).some(function (q) {
+    return q.id !== selfId && (samePerson_(q.nombre || '', nombre || '') || closeName_(q.nombre || '', nombre || ''));
+  });
+}
+
+// ¿La fila r de Supabase sigue siendo quien la hoja tiene en esa cama? Mismo exp basta salvo que el exp
+// sea ambiguo: entonces también tiene que ser la misma persona (si no, el upsert por cama le pondría a
+// esta fila, con su nota, el nombre de la otra persona). Un nombre corregido en la hoja ("PERES" → "PEREZ",
+// "HDZ" → "HERNANDEZ") sigue siendo la misma persona si no es el nombre de la otra.
+function sameOccupant_(maps, r, cama, exp) {
+  if (maps.byCama[cama] === undefined || maps.byCama[cama] !== exp) return false;
+  if (!expAmbiguous_(maps, exp) || !String(r.nombre || '').trim()) return true;
+  var sr = maps.rowByCama[cama];
+  if (!sr) return false;
+  if (samePerson_(r.nombre, sr.nombre || '')) return true;
+  return closeName_(r.nombre, sr.nombre || '') && !otherHasName_(maps, exp, r.id, sr.nombre);
 }
 
 // Columnas de control del caso (e). cama_hoja_prev guarda o bien la cama que decía la hoja cuando se vio
@@ -376,7 +494,7 @@ function appBedDecisions_(cur, maps) {
     if (!camaAppActive_(r)) return;
     var cama = normalizeCama_(r.cama), exp = String(r.exp || '').trim();
     if (!exp) return;
-    var sheetNow = maps.camaByExp[exp];
+    var sheetNow = sheetCamaFor_(maps, exp, r.nombre, r.id);
     if (sheetNow === undefined || sheetNow === cama) return;   // no está en la hoja / ya coincide (se resuelve en el bucle)
     var prev = camaHojaPrev_(r);
     if (prev !== null && prev !== sheetNow) return;            // la hoja cambió después del movimiento → manda la hoja (caso c)
@@ -385,8 +503,8 @@ function appBedDecisions_(cur, maps) {
     out.dropCamas[sheetNow] = true;                            // la fila de la hoja con este exp (cama vieja) no cuenta
     if (prev === null) out.toPin.push({ row: r, prev: sheetNow });
     else out.kept.push(cama + ' (la hoja aún dice ' + sheetNow + ')');
-    var other = maps.byCama[cama];
-    if (other !== undefined && other !== exp) out.holdCamas[cama] = true;   // otro exp en la cama fijada → no pisar
+    // otra persona (otro exp, o el mismo exp repetido con otro nombre) en la cama fijada → no pisar
+    if (maps.byCama[cama] !== undefined && !sameOccupant_(maps, r, cama, exp)) out.holdCamas[cama] = true;
   });
   return out;
 }
@@ -405,6 +523,10 @@ function syncPatients_(key, payload) {
   // nota quedaría bajo otro nombre, o duplicaría al paciente. Mejor una corrida perdida (≤ 5 min) que dato ajeno.
   if (res.getResponseCode() !== 200) { Logger.log('syncPatients: GET HTTP ' + res.getResponseCode() + ' → NO se sincroniza esta corrida (sin estado actual un upsert por cama podía pisar camas fijadas desde la app)'); return 0; }
   var cur = JSON.parse(res.getContentText() || '[]');
+  // Expedientes ambiguos vistos desde Supabase (ver expAmbiguous_) y sus filas, para decidir por nombre.
+  var curAmbig = ambiguousExps_(cur), curByExp = {};
+  cur.forEach(function (r) { var e = String(r.exp || '').trim(); if (e) (curByExp[e] = curByExp[e] || []).push(r); });
+  maps.ambig = curAmbig; maps.curByExp = curByExp;
 
   // (e) Camas fijadas desde la app: decidir ANTES de reconciliar y quitar del payload/mapas las
   //     filas de la hoja que la app gana (así ni el caso (c) ni el upsert las devuelven a la cama vieja).
@@ -413,19 +535,20 @@ function syncPatients_(key, payload) {
   if (dropped.length) {
     payload = payload.filter(function (p) { return !ab.dropCamas[p.cama]; });
     maps = sheetMaps_(payload);
+    maps.ambig = curAmbig; maps.curByExp = curByExp;
     Logger.log('syncPatients: ' + dropped.length + ' fila(s) de la hoja ignoradas por cama fijada desde la app (cama vieja): ' + dropped.join(', '));
   }
   var held = Object.keys(ab.holdCamas);
   if (held.length) Logger.log('syncPatients: ' + held.length + ' cama(s) fijada(s) desde la app con OTRO exp en la hoja → no se upsertean hasta que la hoja se aclare: ' + held.join(', '));
   // Lo que puede ir al upsert sin pisar una cama fijada (se aplica también en las rutas de guarda).
   var safePayload = held.length ? payload.filter(function (p) { return !ab.holdCamas[p.cama]; }) : payload;
-  var sheetByCama = maps.byCama, sheetCamaByExp = maps.camaByExp, sheetRowByCama = maps.rowByCama;
+  var sheetByCama = maps.byCama, sheetRowByCama = maps.rowByCama;
 
   // Camas que se quedan tal cual (misma persona en la misma cama): nadie puede moverse ahí.
   var stayCamas = {};
   cur.forEach(function (r) {
     var cama = normalizeCama_(r.cama);
-    if (sheetByCama[cama] !== undefined && sheetByCama[cama] === String(r.exp || '').trim()) stayCamas[cama] = true;
+    if (sameOccupant_(maps, r, cama, String(r.exp || '').trim())) stayCamas[cama] = true;
   });
 
   var toDelete = [], toMove = [], toFixExp = [], toClear = [], enConflicto = [], moveTargets = {}, holdLoop = {};
@@ -435,7 +558,7 @@ function syncPatients_(key, payload) {
     var cama = normalizeCama_(r.cama);
     var exp = String(r.exp || '').trim();
     var sheetExp = sheetByCama[cama];
-    if (sheetExp !== undefined && sheetExp === exp) {         // sigue igual
+    if (sameOccupant_(maps, r, cama, exp)) {                  // sigue igual
       // (e) la hoja ya alcanzó a la app → movimiento resuelto (marca ok@ para que un reenvío viejo no lo re-arme)
       var cc = camaResolvedCols_(r);
       if (Object.keys(cc).length) toClear.push({ row: r, cols: cc });
@@ -446,7 +569,7 @@ function syncPatients_(key, payload) {
     //     nueva por el upsert: la nota clínica (FK ON DELETE CASCADE) se perdía en cada cambio
     //     de cama. Si la cama destino ya la ocupa una fila que se queda (duplicado) o ya la
     //     reclamó otra fila que se mueve, esta fila es un duplicado → se retira (archivada).
-    var newCama = exp ? sheetCamaByExp[exp] : undefined;
+    var newCama = exp ? sheetCamaFor_(maps, exp, r.nombre, r.id) : undefined;
     if (newCama !== undefined && newCama !== cama && !stayCamas[newCama] && !moveTargets[newCama] && !ab.pinnedCamas[newCama]) {
       toMove.push({ row: r, from: cama, to: newCama });
       moveTargets[newCama] = true;
@@ -511,8 +634,12 @@ function syncPatients_(key, payload) {
 
   // 2) Cambios de cama: PATCH de la cama sobre la MISMA fila (id estable → la nota sigue ligada).
   //    Intercambios A↔B chocarían con UNIQUE(cama); esos pasan primero por una cama temporal.
-  var moved = movePatients_(key, toMove);
-  if (toMove.length) Logger.log('syncPatients: movidos ' + moved + '/' + toMove.length + ': ' + toMove.map(function (m) { return m.from + '→' + m.to; }).join(', '));
+  var mv = movePatients_(key, toMove);
+  if (toMove.length) Logger.log('syncPatients: movidos ' + mv.ok + '/' + toMove.length + ': ' + toMove.map(function (m) { return m.from + '→' + m.to; }).join(', '));
+  // Un movimiento que no llegó a su cama (PATCH fallido, choque con UNIQUE): su cama de origen y la de
+  // destino quedan fuera del upsert esta corrida. Si no, la fila que no se movió recibía el nombre del
+  // siguiente ocupante de su cama (con su nota) y en la de destino se creaba una copia vacía.
+  mv.failed.forEach(function (m) { skipCamas[m.from] = true; skipCamas[m.to] = true; });
   // 2b) Expediente corregido (misma persona, misma cama): PATCH del exp antes del upsert.
   var fixed = 0;
   toFixExp.forEach(function (f) { if (patchPatient_(key, f.row.id, { exp: f.to, updated_by: 'sheet-sync' })) fixed++; });
@@ -557,7 +684,8 @@ function patchPatient_(key, id, cols) {
  * y los termina. Devuelve cuántos quedaron en su cama final.
  */
 function movePatients_(key, toMove) {
-  if (!toMove.length) return 0;
+  var failed = [];
+  if (!toMove.length) return { ok: 0, failed: failed };
   var fromCamas = {};
   toMove.forEach(function (m) { fromCamas[m.from] = true; });
   var ok = 0;
@@ -569,9 +697,9 @@ function movePatients_(key, toMove) {
     //     marca ya resuelta) → manda la hoja y el movimiento de la app queda resuelto (marca ok@).
     var cc = camaResolvedCols_(m.row);
     Object.keys(cc).forEach(function (k) { cols[k] = cc[k]; });
-    if (patchPatient_(key, m.row.id, cols)) ok++;
+    if (patchPatient_(key, m.row.id, cols)) ok++; else failed.push(m);
   });
-  return ok;
+  return { ok: ok, failed: failed };
 }
 
 /**
@@ -859,12 +987,12 @@ function createTriggers() {
   try { syncIndicaciones(true); } catch (e) { Logger.log('indicaciones: primera subida falló: ' + e); }
 }
 
-/** Diagnostico sin escribir nada: cuantos pacientes parsea y cuantos quedan en cuarentena. */
+/** Diagnostico sin escribir nada: cuantos pacientes parsea y que expedientes repetidos hay. */
 function testParseOnly() {
   var rows = readCensoRows_();
   var parsed = parseCenso_(rows);
   var res = dedupAndQuarantine_(parsed);
-  Logger.log('Parseados: ' + parsed.length + ' | A sincronizar: ' + res.keep.length + ' | Cuarentena/dedup: ' + res.quarantine.length);
-  Logger.log('Cuarentena: ' + JSON.stringify(res.quarantine, null, 2));
+  Logger.log('Parseados: ' + parsed.length + ' | A sincronizar: ' + res.keep.length + ' | Avisos de expediente repetido: ' + res.avisos.length);
+  Logger.log('Avisos: ' + JSON.stringify(res.avisos, null, 2));
   return res;
 }
