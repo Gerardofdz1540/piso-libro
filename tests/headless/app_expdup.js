@@ -33,6 +33,8 @@ const RIS = [
   { id: 905, exp: X, patient_id: 'b1', paciente: 'DIAZ M PEDRO', fecha: '2026-10-16', hora: '11:00:00', modalidad: 'TC', estudios: 'ABDOMEN', reporte: 'LIQUIDO LIBRE', scraped_at: NOW },
   // patient_id de una fila que ya no existe → se decide por nombre
   { id: 906, exp: X, patient_id: 'zz-gone', paciente: 'PEREZ LOPEZ JUAN', fecha: '2026-10-15', hora: '11:00:00', modalidad: 'RX', estudios: 'TORAX PA', reporte: 'SIN CAMBIOS', scraped_at: NOW },
+  // bajo el exp de 3-150 (único) pero el robot lo asignó a 3-154 (exp recién corregido): no es de 3-150
+  { id: 907, exp: '26-11111', patient_id: 'a1', paciente: 'PEREZ LOPEZ JUAN', fecha: '2026-10-14', hora: '11:00:00', modalidad: 'TC', estudios: 'CRANEO', reporte: 'SIN LESIONES', scraped_at: NOW },
 ];
 const d0 = new Date(); const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const dmy = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -44,7 +46,9 @@ const WL_B = { exp: X, paciente: 'PEDRO DIAZ MORA', fecha: ymd(d0), scraped_at: 
 const CULT = [
   { exp: X, cama: '3-154', nombre: A.nombre, fecha: '2026-10-16', tipo: 'Hemocultivo', germen: 'Escherichia coli', resultado: 'POSITIVO', texto_origen: 'x' },
   { exp: X, cama: '3-189', nombre: B.nombre, fecha: '2026-10-16', tipo: 'Hemocultivo', germen: 'Escherichia coli', resultado: 'POSITIVO', texto_origen: 'x' },
-  { exp: '26-11111', cama: '3-150', nombre: C.nombre, fecha: '2026-10-16', tipo: 'Urocultivo', germen: 'Klebsiella pneumoniae', resultado: 'POSITIVO', texto_origen: 'x' },
+  { exp: '26-11111', cama: '3-150', nombre: C.nombre, fecha: '2026-10-16', tipo: 'Urocultivo', germen: 'Klebsiella pneumoniae', resultado: 'POSITIVO', texto_origen: 'x', busqueda: 'ANA RUIZ SOTO' },
+  // cultivo viejo de OTRA persona que tuvo este exp (expediente ya corregido): no es de 3-150
+  { exp: '26-11111', cama: '3-150', nombre: C.nombre, fecha: '2026-10-10', tipo: 'Hemocultivo', germen: 'Candida albicans', resultado: 'POSITIVO', texto_origen: 'x', busqueda: 'PEDRO DIAZ MORA' },
 ];
 const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscado: ['PEREZ LOPEZ'], candidatos: ['PEREZ LOPEZ, JUANA'], encontrado_como: null, reportes: 0, detalle: null, checked_at: '2026-10-17T11:00:00Z' }];
 (async () => {
@@ -107,10 +111,10 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
     const ha = renderCultivosLabSection(a, getNote(pid(a)), pid(a)), hb = renderCultivosLabSection(b, getNote(pid(b)), pid(b));
     winlabByExp = {};
     const none = renderCultivosLabSection(a, getNote(pid(a)), pid(a));
-    return { c: /Klebsiella/.test(hc), nA: (ha.match(/Escherichia coli/g) || []).length, hb, none };
+    return { c: /Klebsiella/.test(hc), cOther: /Candida/.test(hc), nA: (ha.match(/Escherichia coli/g) || []).length, hb, none };
   });
-  check('X4 cultivos: la vista no dice de cuál de los dos es cada cultivo → con gemelos la caja «Cultivos (lab)» no se muestra en ninguna (cada quien ve los suyos en 🦠 Cultivos, ya separados por nombre); 3-150 sí la ve',
-    x4.hb === '' && x4.none === '' && x4.nA === 0 && x4.c === true, JSON.stringify({ ...x4, hb: x4.hb.slice(0, 80), none: x4.none.slice(0, 80) }));
+  check('X4 cultivos: la vista no dice de cuál de los dos es cada cultivo → con gemelos la caja «Cultivos (lab)» no se muestra en ninguna (cada quien ve los suyos en 🦠 Cultivos, ya separados por nombre); 3-150 sí la ve, pero sin el cultivo viejo de otra persona que tuvo su exp',
+    x4.hb === '' && x4.none === '' && x4.nA === 0 && x4.c === true && x4.cOther === false, JSON.stringify({ ...x4, hb: x4.hb.slice(0, 80), none: x4.none.slice(0, 80) }));
 
   // ── X5: labs de WinLab: la guarda de nombre es EXCLUSIVA con expediente repetido ──
   const x5 = await page.evaluate(() => {
@@ -210,9 +214,11 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
     sub: _plSamePerson({ nombre: 'JUAN PEREZ' }, { nombre: 'JUAN CARLOS PEREZ LOPEZ' }),
     two: _plSamePerson({ nombre: 'MARIA GUADALUPE GARCIA LOPEZ' }, { nombre: 'MARIA ELENA GARCIA RUIZ' }),
     close: _plCloseName('JOSE LUIS HDEZ PEREZ', 'JOSE LUIS HERNANDEZ PEREZ'), notClose: _plCloseName('ROSA MENA DIAZ', 'PABLO TORO GIL'),
+    julian: _plCloseName('JUAN PEREZ LOPEZ', 'JULIAN PEREZ LOPEZ'), adriana: _plCloseName('ANA HERNANDEZ', 'ADRIANA HERNANDEZ'), luisa: _plCloseName('LUIS SOTO', 'LUISA SOTO'),
   }));
-  check('X12 misma persona: HERNANDEZ/FERNANDEZ con otra edad = dos personas; una letra con la misma edad = la misma; subconjunto = la misma; nombre + apellido en común no basta; HDEZ≈HERNANDEZ es nombre casi igual',
-    x12.hf === false && x12.hfSame === true && x12.sub === true && x12.two === false && x12.close === true && x12.notClose === false, JSON.stringify(x12));
+  check('X12 misma persona: HERNANDEZ/FERNANDEZ con otra edad = dos personas; una letra con la misma edad = la misma; subconjunto = la misma; nombre + apellido en común no basta; HDEZ≈HERNANDEZ es nombre casi igual; JUAN/JULIAN, ANA/ADRIANA, LUIS/LUISA no',
+    x12.hf === false && x12.hfSame === true && x12.sub === true && x12.two === false && x12.close === true && x12.notClose === false
+    && x12.julian === false && x12.adriana === false && x12.luisa === false, JSON.stringify(x12));
 
   // ── X13: ✏️ Editar con gemelos que comparten nombre y apellido: nunca ofrece «mover» la fila del otro ──
   const x13 = await page.evaluate(async () => {
@@ -259,6 +265,33 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
   await page.evaluate(() => { archivados = archivados.filter(a => a._archiveKey !== 'k55' && a._archiveKey !== 'k66'); });
   check('X14b Excel: «JOSE LUIS HERNANDEZ PEREZ» se ofrece como reingreso del archivado «HDEZ»; «PABLO TORO GIL» con el exp de otra persona archivada entra como nuevo (sin su nota)',
     x14b.rein.includes('JOSE LUIS HERNANDEZ PEREZ<=JOSE LUIS HDEZ PEREZ') && !x14b.rein.some(r => /PABLO/.test(r)) && x14b.nuevos.includes('3-181:PABLO TORO GIL'), JSON.stringify(x14b));
+  await page.evaluate(() => {
+    archivados.unshift({ cama: '3-182', exp: '26-44444', nombre: 'JUAN PEREZ LOPEZ', edad: '70', _archivedAt: new Date().toISOString(), _archiveKey: 'k44', _note: { pendientes: 'nota de JUAN' } });
+    archivados.unshift({ cama: '3-183', exp: '26-33333', nombre: 'MARIA HERNANDEZ LOPEZ', edad: '75', _archivedAt: new Date().toISOString(), _archiveKey: 'k33', _note: { pendientes: 'nota de MARIA H' } });
+  });
+  const x14c = await runImport([H, ['3-150', '26-11111', 'ANA RUIZ SOTO', 60, 'COLANGITIS', 'CG', 'ESTABLE'], ['3-154', '26-99999', 'JUAN PEREZ LOPEZ', 44, 'TRAUMA DE TORAX', 'CT', 'ESTABLE'], ['3-189', '26-99999', 'PEDRO DIAZ MORA', 31, 'TRAUMA ABDOMINAL', 'CG', 'ESTABLE'],
+    ['3-182', '26-44444', 'JULIAN PEREZ LOPEZ', 25, 'DX', 'CG', 'ESTABLE'], ['3-183', '26-33333', 'MARIA FERNANDEZ LOPEZ', 40, 'DX', 'CG', 'ESTABLE']]);
+  await page.evaluate(() => { archivados = archivados.filter(a => a._archiveKey !== 'k44' && a._archiveKey !== 'k33'); });
+  check('X14c Excel: JULIAN (25) con el exp del archivado JUAN (70) y MARIA FERNANDEZ (40) con el de MARIA HERNANDEZ (75) NO son reingresos: entran como nuevos, sin la nota de otra persona',
+    x14c.rein.length === 0 && x14c.nuevos.includes('3-182:JULIAN PEREZ LOPEZ') && x14c.nuevos.includes('3-183:MARIA FERNANDEZ LOPEZ'), JSON.stringify(x14c));
+
+  // ── X15: una fila con solo apellidos que encaja con dos personas del mismo exp no recibe datos de ninguna ──
+  const x15 = await page.evaluate(() => {
+    const extra = [{ _supa_id: 's1', cama: '3-101', exp: '26-88888', nombre: 'PEREZ RUIZ', esp: 'CG' }, { _supa_id: 'j1', cama: '3-102', exp: '26-88888', nombre: 'PEREZ RUIZ JUAN CARLOS', esp: 'CG' }, { _supa_id: 'm1', cama: '3-103', exp: '26-88888', nombre: 'PEREZ RUIZ MARIA ELENA', esp: 'CG' }];
+    patients.push(...extra);
+    const s1 = extra[0], j1 = extra[1];
+    const r = { twS: _plExpTwins(s1).length, twJ: _plExpTwins(j1).map(q => q.cama), sGetsJ: _winlabCensoNameOk(s1, { paciente: 'PEREZ RUIZ JUAN CARLOS' }), jGetsJ: _winlabCensoNameOk(j1, { paciente: 'PEREZ RUIZ JUAN CARLOS' }),
+      dup: detectDuplicatePatients(patients).filter(g => g.patients.some(p => p.exp === '26-88888')).length };
+    patients = patients.filter(p => !['s1', 'j1', 'm1'].includes(p._supa_id));
+    return r;
+  });
+  check('X15 solo apellidos + dos personas con el mismo exp: la fila ambigua tiene a las dos como gemelas y no recibe los labs de JUAN; JUAN sí; no se arma grupo de «duplicados» que encadene a las tres',
+    x15.twS === 2 && JSON.stringify(x15.twJ) === '["3-103"]' && x15.sGetsJ === false && x15.jGetsJ === true && x15.dup === 0, JSON.stringify(x15));
+
+  // ── X16: un estudio que el robot asignó a OTRO paciente activo no aparece aunque el exp sea único ──
+  const x16 = await page.evaluate(() => risForPatient(patients.find(p => p.cama === '3-150')).map(r => r.id));
+  check('X16 imagen: con exp único, el estudio con patient_id de otro paciente activo (exp recién corregido) no sale en 3-150',
+    JSON.stringify(x16) === '[904]', JSON.stringify(x16));
 
   check('X10 sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   await browser.close();

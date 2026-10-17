@@ -265,34 +265,39 @@ function groupPeople_(rows) {
   return people;
 }
 
-// ¿Dos nombres son casi iguales (corrección de dedo en la hoja)? Misma cantidad de palabras ±1 y cada
-// palabra del más corto tiene pareja en el otro: igual, a una letra de distancia (palabras de 4+ letras)
-// o abreviatura (HDZ ↔ HERNANDEZ: misma inicial y sus letras en orden). Solo se usa con expediente
-// ambiguo y siempre junto con "no es el nombre de la otra persona".
+// ¿Dos nombres son casi iguales (corrección de dedo en la hoja)? Mismo número de palabras y todas iguales
+// salvo UNA, que solo puede diferir por una letra (palabras de 5+ letras: PERES/PEREZ) o ser abreviatura
+// de apellido (HDZ/HDEZ ↔ HERNANDEZ: misma inicial, a lo más una vocal y sus letras en orden). Así
+// ANA/ADRIANA, JUAN/JULIAN, LUIS/LUISA o ROSA/ROSARIO NO son "casi iguales". Solo se usa con expediente
+// ambiguo, junto con la edad (closePerson_) y con "no es el nombre de la otra persona".
 function closeName_(n1, n2) {
   var a = nameTokens_(n1), b = nameTokens_(n2);
-  if (!a.length || !b.length) return false;
-  var s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a;
-  if (l.length - s.length > 1) return false;
-  var used = {};
-  return s.every(function (t) {
-    for (var i = 0; i < l.length; i++) {
-      if (used[i]) continue;
-      if (tokenClose_(t, l[i])) { used[i] = true; return true; }
-    }
+  if (!a.length || a.length !== b.length) return false;
+  var used = {}, diffs = 0;
+  var ok = a.every(function (t) {
+    for (var i = 0; i < b.length; i++) if (!used[i] && b[i] === t) { used[i] = true; return true; }
+    for (var j = 0; j < b.length; j++) if (!used[j] && tokenClose_(t, b[j])) { used[j] = true; diffs++; return true; }
     return false;
   });
+  return ok && diffs <= 1;
 }
 function tokenClose_(t, u) {
   if (t === u) return true;
-  if (t.length >= 4 && u.length >= 4 && editDistance1_(t, u)) return true;
+  if (t.length >= 5 && u.length >= 5 && editDistance1_(t, u)) return true;
   var sh = t.length <= u.length ? t : u, lo = t.length <= u.length ? u : t;
-  if (sh.length >= 2 && sh.length <= 4 && sh[0] === lo[0]) {   // abreviatura: letras en orden
+  var vowels = (sh.match(/[AEIOU]/g) || []).length;
+  if (sh.length >= 2 && sh.length <= 5 && vowels <= 1 && lo.length > sh.length && sh[0] === lo[0]) {   // abreviatura
     var j = 0;
     for (var i = 0; i < lo.length && j < sh.length; i++) if (lo[i] === sh[j]) j++;
     if (j === sh.length) return true;
   }
   return false;
+}
+// Casi la misma persona: nombre casi igual y la edad no lo contradice (±1 año cuando ambas se conocen).
+function closePerson_(r, s) {
+  if (!closeName_(r && r.nombre || '', s && s.nombre || '')) return false;
+  var ea = parseInt(r && r.edad, 10), eb = parseInt(s && s.edad, 10);
+  return isNaN(ea) || isNaN(eb) || Math.abs(ea - eb) <= 1;
 }
 // ¿Distancia de edición ≤ 1 (una letra cambiada, de más o de menos)?
 function editDistance1_(a, b) {
@@ -392,15 +397,25 @@ function sheetMaps_(payload) {
 // Exp que comparten 2+ personas (error de captura que ya no se pone en cuarentena): solo la cama
 // cuya fila es la MISMA persona; si no hay exactamente una, undefined (no se adivina: adivinar
 // movería la fila, con su nota, a la cama de la otra persona).
-function sheetCamaFor_(maps, exp, nombre, selfId) {
+function sheetCamaFor_(maps, exp, r) {
   var camas = maps.camasByExp[exp];
   if (!camas || !camas.length) return undefined;
   if (!expAmbiguous_(maps, exp)) return camas.length === 1 ? camas[0] : undefined;
-  var hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && samePerson_(nombre || '', sr.nombre || ''); });
-  if (!hits.length) {   // nombre corregido en la hoja: parecido y que no sea el de la otra persona
-    hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && closeName_(nombre || '', sr.nombre || '') && !otherHasName_(maps, exp, selfId, sr.nombre); });
+  var nombre = (r && r.nombre) || '';
+  var hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && samePerson_(nombre, sr.nombre || ''); });
+  // Varias filas encajan (p. ej. una con solo apellidos): se descartan las ambiguas de la hoja.
+  if (hits.length > 1) hits = hits.filter(function (c) { return !ambiguousSheetRow_(maps, exp, c); });
+  if (!hits.length) {   // nombre corregido en la hoja: casi igual, misma edad y que no sea el de otra persona
+    hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && closePerson_(r, sr) && !otherHasName_(maps, exp, r && r.id, sr.nombre); });
   }
   return hits.length === 1 ? hits[0] : undefined;
+}
+// ¿La fila de la hoja en esa cama encaja con dos filas de la hoja (mismo exp) que entre sí son personas
+// distintas? (un nombre con solo apellidos): no se usa para decidir a quién mover.
+function ambiguousSheetRow_(maps, exp, cama) {
+  var sr = maps.rowByCama[cama];
+  var m = (maps.camasByExp[exp] || []).filter(function (c) { var o = maps.rowByCama[c]; return c !== cama && o && sr && samePerson_(sr.nombre || '', o.nombre || ''); });
+  return m.some(function (a) { return m.some(function (b) { return a !== b && !samePerson_(maps.rowByCama[a].nombre || '', maps.rowByCama[b].nombre || ''); }); });
 }
 
 // ¿Expediente AMBIGUO? 2+ personas distintas con ese exp en la hoja O en Supabase. Basta con que Supabase
@@ -434,7 +449,10 @@ function sameOccupant_(maps, r, cama, exp) {
   var sr = maps.rowByCama[cama];
   if (!sr) return false;
   if (samePerson_(r.nombre, sr.nombre || '')) return true;
-  return closeName_(r.nombre, sr.nombre || '') && !otherHasName_(maps, exp, r.id, sr.nombre);
+  // Si su propio nombre está en OTRA cama de la hoja con ese exp, se movió: no es una corrección de nombre.
+  var ownElsewhere = (maps.camasByExp[exp] || []).some(function (c) { var o = maps.rowByCama[c]; return c !== cama && o && samePerson_(r.nombre, o.nombre || ''); });
+  if (ownElsewhere) return false;
+  return closePerson_(r, sr) && !otherHasName_(maps, exp, r.id, sr.nombre);
 }
 
 // Columnas de control del caso (e). cama_hoja_prev guarda o bien la cama que decía la hoja cuando se vio
@@ -494,7 +512,7 @@ function appBedDecisions_(cur, maps) {
     if (!camaAppActive_(r)) return;
     var cama = normalizeCama_(r.cama), exp = String(r.exp || '').trim();
     if (!exp) return;
-    var sheetNow = sheetCamaFor_(maps, exp, r.nombre, r.id);
+    var sheetNow = sheetCamaFor_(maps, exp, r);
     if (sheetNow === undefined || sheetNow === cama) return;   // no está en la hoja / ya coincide (se resuelve en el bucle)
     var prev = camaHojaPrev_(r);
     if (prev !== null && prev !== sheetNow) return;            // la hoja cambió después del movimiento → manda la hoja (caso c)
@@ -515,7 +533,7 @@ function syncPatients_(key, payload) {
   var nSheet = Object.keys(maps.byCama).length;   // tamaño REAL de la hoja (antes de excluir nada) para la guarda
 
   // Estado actual en Supabase
-  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev', {
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev,edad', {
     method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true
   });
   // Sin el estado actual NO se upsertea a ciegas: con camas fijadas desde la app (caso e) la fila de la
@@ -569,7 +587,7 @@ function syncPatients_(key, payload) {
     //     nueva por el upsert: la nota clínica (FK ON DELETE CASCADE) se perdía en cada cambio
     //     de cama. Si la cama destino ya la ocupa una fila que se queda (duplicado) o ya la
     //     reclamó otra fila que se mueve, esta fila es un duplicado → se retira (archivada).
-    var newCama = exp ? sheetCamaFor_(maps, exp, r.nombre, r.id) : undefined;
+    var newCama = exp ? sheetCamaFor_(maps, exp, r) : undefined;
     if (newCama !== undefined && newCama !== cama && !stayCamas[newCama] && !moveTargets[newCama] && !ab.pinnedCamas[newCama]) {
       toMove.push({ row: r, from: cama, to: newCama });
       moveTargets[newCama] = true;
