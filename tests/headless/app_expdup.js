@@ -4,6 +4,8 @@
 // bloquea; el aviso de duplicados no ofrece borrarlas; el Excel las empareja por nombre.
 //   node tests/headless/app_expdup.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
 const { chromium } = require('playwright');
+const fs = require('fs'); const path = require('path');
+const FIX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture_ego_bh.json'), 'utf8'));
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -27,11 +29,22 @@ const RIS = [
   { id: 902, exp: X, paciente: 'DIAZ MORA PEDRO', fecha: '2026-10-17', hora: '09:00:00', modalidad: 'RX', estudios: 'ABDOMEN', reporte: 'NIVELES HIDROAEREOS', scraped_at: NOW },
   { id: 903, exp: X, paciente: '', fecha: '2026-10-17', hora: '10:00:00', modalidad: 'US', estudios: 'HIGADO', reporte: 'SIN NOMBRE EN EL RIS', scraped_at: NOW },
   { id: 904, exp: '26-11111', paciente: 'RUIZ SOTO ANA', fecha: '2026-10-17', hora: '07:00:00', modalidad: 'US', estudios: 'VESICULA', reporte: 'COLEDOCOLITIASIS', scraped_at: NOW },
+  // el robot lo asignó a 3-189 (patient_id) aunque el RIS lo trae con un nombre que la app no reconoce (FCO/abreviatura)
+  { id: 905, exp: X, patient_id: 'b1', paciente: 'DIAZ M PEDRO', fecha: '2026-10-16', hora: '11:00:00', modalidad: 'TC', estudios: 'ABDOMEN', reporte: 'LIQUIDO LIBRE', scraped_at: NOW },
+  // patient_id de una fila que ya no existe → se decide por nombre
+  { id: 906, exp: X, patient_id: 'zz-gone', paciente: 'PEREZ LOPEZ JUAN', fecha: '2026-10-15', hora: '11:00:00', modalidad: 'RX', estudios: 'TORAX PA', reporte: 'SIN CAMBIOS', scraped_at: NOW },
 ];
+const d0 = new Date(); const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dmy = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+const ayer = new Date(d0.getTime() - 86400000);
+const mkReport = (hb, d) => ({ __cells: ['', '', '', `${dmy(d)} 06:10`, `${dmy(d)} 08:00`, '', ''], __hasLink: true, valores: FIX.valores.map(v => v.estudio === 'HEMOGLOBINA' ? { ...v, valor: hb } : v) });
+const WL_A = { exp: X, paciente: 'JUAN PEREZ LOPEZ', fecha: ymd(ayer), scraped_at: new Date(d0.getTime() - 20 * 3600e3).toISOString(), data: { headers: [], reportes: [mkReport('7.70', ayer)] } };
+const WL_B = { exp: X, paciente: 'PEDRO DIAZ MORA', fecha: ymd(d0), scraped_at: new Date(d0.getTime() - 3600e3).toISOString(), data: { headers: [], reportes: [mkReport('9.90', d0)] } };
 // La vista winlab_cultivos une por expediente: el mismo cultivo llega una vez por cada cama con ese exp.
 const CULT = [
   { exp: X, cama: '3-154', nombre: A.nombre, fecha: '2026-10-16', tipo: 'Hemocultivo', germen: 'Escherichia coli', resultado: 'POSITIVO', texto_origen: 'x' },
   { exp: X, cama: '3-189', nombre: B.nombre, fecha: '2026-10-16', tipo: 'Hemocultivo', germen: 'Escherichia coli', resultado: 'POSITIVO', texto_origen: 'x' },
+  { exp: '26-11111', cama: '3-150', nombre: C.nombre, fecha: '2026-10-16', tipo: 'Urocultivo', germen: 'Klebsiella pneumoniae', resultado: 'POSITIVO', texto_origen: 'x' },
 ];
 const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscado: ['PEREZ LOPEZ'], candidatos: ['PEREZ LOPEZ, JUANA'], encontrado_como: null, reportes: 0, detalle: null, checked_at: '2026-10-17T11:00:00Z' }];
 (async () => {
@@ -71,8 +84,8 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
     const f = c => risForPatient(patients.find(p => p.cama === c)).map(r => r.id);
     return { a: f('3-154'), b: f('3-189'), c: f('3-150') };
   });
-  check('X2 imagen: 3-154 solo ve su TC de tórax, 3-189 solo su RX de abdomen, el estudio sin nombre no va a ninguno; 3-150 (exp único) igual que siempre',
-    JSON.stringify(x2.a) === '[901]' && JSON.stringify(x2.b) === '[902]' && JSON.stringify(x2.c) === '[904]', JSON.stringify(x2));
+  check('X2 imagen: 3-154 ve su TC de tórax (y el RX cuyo patient_id ya no existe, por su nombre); 3-189 su RX de abdomen y el TC que el robot le asignó por patient_id aunque el nombre del RIS no coincida; el estudio sin nombre no va a ninguno; 3-150 (exp único) igual que siempre',
+    JSON.stringify(x2.a) === '[901,906]' && JSON.stringify(x2.b) === '[902,905]' && JSON.stringify(x2.c) === '[904]', JSON.stringify(x2));
 
   // ── X3: la entrega automática no guarda en la nota de uno el estudio del otro ──
   const x3 = await page.evaluate(async () => {
@@ -86,17 +99,18 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
 
   // ── X4: caja «Cultivos (lab)»: solo en la tarjeta de quien el robot encontró en WinLab, una vez ──
   const x4 = await page.evaluate(async () => {
+    const a = patients.find(p => p.cama === '3-154'), b = patients.find(p => p.cama === '3-189'), c = patients.find(p => p.cama === '3-150');
+    // espera a que cargue la vista (3-150 tiene exp único y debe ver su caja)
+    let hc = '';
+    for (let i = 0; i < 60 && !hc; i++) { hc = renderCultivosLabSection(c, getNote(pid(c)), pid(c)); if (!hc) await new Promise(r => setTimeout(r, 250)); }
     winlabByExp = { '26-99999': { exp: '26-99999', paciente: 'JUAN PEREZ LOPEZ', data: {} } };
-    const a = patients.find(p => p.cama === '3-154'), b = patients.find(p => p.cama === '3-189');
-    let ha = '';
-    for (let i = 0; i < 60 && !ha; i++) { ha = renderCultivosLabSection(a, getNote(pid(a)), pid(a)); if (!ha) await new Promise(r => setTimeout(r, 250)); }
-    const hb = renderCultivosLabSection(b, getNote(pid(b)), pid(b));
+    const ha = renderCultivosLabSection(a, getNote(pid(a)), pid(a)), hb = renderCultivosLabSection(b, getNote(pid(b)), pid(b));
     winlabByExp = {};
     const none = renderCultivosLabSection(a, getNote(pid(a)), pid(a));
-    return { loaded: !!ha, nA: (ha.match(/Escherichia coli/g) || []).length, hb, none };
+    return { c: /Klebsiella/.test(hc), nA: (ha.match(/Escherichia coli/g) || []).length, hb, none };
   });
-  check('X4 cultivos: la vista los repite por cama, pero salen UNA vez y solo en 3-154 (la persona de la fila de WinLab); 3-189 no los ve; sin fila de WinLab no se atribuyen a nadie',
-    x4.loaded && x4.nA === 1 && x4.hb === '' && x4.none === '', JSON.stringify({ ...x4, hb: x4.hb.slice(0, 80), none: x4.none.slice(0, 80) }));
+  check('X4 cultivos: la vista no dice de cuál de los dos es cada cultivo → con gemelos la caja «Cultivos (lab)» no se muestra en ninguna (cada quien ve los suyos en 🦠 Cultivos, ya separados por nombre); 3-150 sí la ve',
+    x4.hb === '' && x4.none === '' && x4.nA === 0 && x4.c === true, JSON.stringify({ ...x4, hb: x4.hb.slice(0, 80), none: x4.none.slice(0, 80) }));
 
   // ── X5: labs de WinLab: la guarda de nombre es EXCLUSIVA con expediente repetido ──
   const x5 = await page.evaluate(() => {
@@ -177,6 +191,74 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
   check('X9 Excel con el exp repetido: 3-189 (PEDRO) se movió a 3-160 → el cambio de cama es de PEDRO (no de JUAN); JUAN sigue en 3-154; nadie queda como desaparecido ni duplicado',
     x9.moved.length === 1 && x9.moved[0] === '3-189→3-160:PEDRO DIAZ MORA=PEDRO DIAZ MORA' && x9.same.includes('3-154:JUAN PEREZ LOPEZ') && x9.same.includes('3-150:ANA RUIZ SOTO')
     && x9.missing.length === 0 && x9.changed.length === 0 && x9.nuevos.length === 0, JSON.stringify(x9));
+
+  // ── X11: labs de WinLab: si la fila más nueva del exp es de la otra persona, cada quien recibe SOLO la suya ──
+  const x11 = await page.evaluate(async ({ wa, wb }) => {
+    winlabByExp = { '26-99999': wb };
+    winlabRowsByExp['26-99999'] = [wa, wb];
+    await applyWinlabSyncToPatients({ verbose: false });
+    const hb = c => (getNote(pid(patients.find(p => p.cama === c))).labHistory || []).map(s => s.labs && s.labs.hb).filter(Boolean);
+    return { a: hb('3-154'), b: hb('3-189') };
+  }, { wa: WL_A, wb: WL_B });
+  check('X11 labs: la fila más nueva (de 3-189) no le quita a 3-154 la suya de ayer: 3-154 tiene solo Hb 7.70 y 3-189 solo Hb 9.90',
+    x11.a.includes('7.70') && !x11.a.includes('9.90') && x11.b.includes('9.90') && !x11.b.includes('7.70'), JSON.stringify(x11));
+
+  // ── X12: misma persona = todas las palabras, o parecido sin contradicción de edad/sexo ──
+  const x12 = await page.evaluate(() => ({
+    hf: _plSamePerson({ nombre: 'JUAN HERNANDEZ LOPEZ', edad: '44' }, { nombre: 'JUAN FERNANDEZ LOPEZ', edad: '67' }),
+    hfSame: _plSamePerson({ nombre: 'JUAN HERNANDEZ LOPEZ', edad: '44' }, { nombre: 'JUAN HERNANDES LOPEZ', edad: '44' }),
+    sub: _plSamePerson({ nombre: 'JUAN PEREZ' }, { nombre: 'JUAN CARLOS PEREZ LOPEZ' }),
+    two: _plSamePerson({ nombre: 'MARIA GUADALUPE GARCIA LOPEZ' }, { nombre: 'MARIA ELENA GARCIA RUIZ' }),
+    close: _plCloseName('JOSE LUIS HDEZ PEREZ', 'JOSE LUIS HERNANDEZ PEREZ'), notClose: _plCloseName('ROSA MENA DIAZ', 'PABLO TORO GIL'),
+  }));
+  check('X12 misma persona: HERNANDEZ/FERNANDEZ con otra edad = dos personas; una letra con la misma edad = la misma; subconjunto = la misma; nombre + apellido en común no basta; HDEZ≈HERNANDEZ es nombre casi igual',
+    x12.hf === false && x12.hfSame === true && x12.sub === true && x12.two === false && x12.close === true && x12.notClose === false, JSON.stringify(x12));
+
+  // ── X13: ✏️ Editar con gemelos que comparten nombre y apellido: nunca ofrece «mover» la fila del otro ──
+  const x13 = await page.evaluate(async () => {
+    patients.push({ _supa_id: 't1', cama: '3-171', exp: '26-77777', nombre: 'MARIA GUADALUPE GARCIA LOPEZ', esp: 'CG', edad: '50', estado: 'ESTABLE' });
+    patients.push({ _supa_id: 't2', cama: '3-172', exp: '26-77777', nombre: 'MARIA ELENA GARCIA RUIZ', esp: 'CG', edad: '33', estado: 'ESTABLE' });
+    window.__alerts.length = 0; window.__confirms.length = 0;
+    openEditModal('su-t1');
+    document.getElementById('mf-dx').value = 'DX NUEVO';
+    saveModal();
+    await new Promise(r => setTimeout(r, 300));
+    const t1 = patients.find(p => p._supa_id === 't1'), t2 = patients.find(p => p._supa_id === 't2');
+    const r = { confirms: window.__confirms.slice(), alerts: window.__alerts.slice(), t1: t1 && [t1.cama, t1.nombre, t1.dx], t2: t2 && [t2.cama, t2.nombre] };
+    patients = patients.filter(p => p._supa_id !== 't1' && p._supa_id !== 't2');
+    return r;
+  });
+  check('X13 Editar a una de dos personas con el mismo exp y «MARIA … GARCIA» en común: se guarda el dx sin «PACIENTE YA REGISTRADO» ni «Operación cancelada»; la otra queda intacta',
+    !x13.confirms.some(c => /PACIENTE YA REGISTRADO|EXPEDIENTE/.test(c)) && !x13.alerts.some(a => /cancelada|CONFLICTO/.test(a))
+    && JSON.stringify(x13.t1) === '["3-171","MARIA GUADALUPE GARCIA LOPEZ","DX NUEVO"]' && JSON.stringify(x13.t2) === '["3-172","MARIA ELENA GARCIA RUIZ"]', JSON.stringify(x13));
+
+  // ── X14: Excel: el gemelo cuya cama toma el otro sale en «no encontrados»; reingreso con nombre abreviado sí, otra persona no ──
+  const runImport = async (rows) => page.evaluate(async (rows) => {
+    await _libLoad('xlsx');
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Hoja1');
+    pendingImport = null;
+    handleXlsxImport({ files: [new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], 'censo.xlsx')], value: '' });
+    for (let i = 0; i < 40 && !pendingImport; i++) await new Promise(r => setTimeout(r, 150));
+    const pi = pendingImport || {};
+    const r = { moved: (pi.movedPts || []).map(m => m.oldPt.cama + '→' + m.newPt.cama + ':' + m.oldPt.nombre), missing: (pi.missingPts || []).map(p => p.cama + ':' + p.nombre),
+      rein: (pi.reingresoPts || []).map(x => x.newPt.nombre + '<=' + x.archived.nombre), nuevos: (pi.newPts || []).map(p => p.cama + ':' + p.nombre) };
+    try { if (typeof closeImportModal === 'function') closeImportModal(); } catch (_) {}
+    pendingImport = null;
+    return r;
+  }, rows);
+  const H = ['CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ESTADO'];
+  const x14a = await runImport([H, ['3-150', '26-11111', 'ANA RUIZ SOTO', 60, 'COLANGITIS', 'CG', 'ESTABLE'], ['3-189', '26-99999', 'JUAN PEREZ LOPEZ', 44, 'TRAUMA DE TORAX', 'CT', 'ESTABLE']]);
+  check('X14a Excel: JUAN pasa a 3-189 y PEDRO (3-189) ya no viene → JUAN se mueve y PEDRO sale en «no encontrados» (no se borra como fantasma)',
+    x14a.moved.includes('3-154→3-189:JUAN PEREZ LOPEZ') && x14a.missing.includes('3-189:PEDRO DIAZ MORA'), JSON.stringify(x14a));
+  await page.evaluate(() => {
+    archivados.unshift({ cama: '3-180', exp: '26-55555', nombre: 'JOSE LUIS HDEZ PEREZ', _archivedAt: new Date().toISOString(), _archiveKey: 'k55', _note: {} });
+    archivados.unshift({ cama: '3-181', exp: '26-66666', nombre: 'ROSA MENA DIAZ', _archivedAt: new Date().toISOString(), _archiveKey: 'k66', _note: { pendientes: 'nota de ROSA' } });
+  });
+  const x14b = await runImport([H, ['3-150', '26-11111', 'ANA RUIZ SOTO', 60, 'COLANGITIS', 'CG', 'ESTABLE'], ['3-154', '26-99999', 'JUAN PEREZ LOPEZ', 44, 'TRAUMA DE TORAX', 'CT', 'ESTABLE'], ['3-189', '26-99999', 'PEDRO DIAZ MORA', 31, 'TRAUMA ABDOMINAL', 'CG', 'ESTABLE'],
+    ['3-180', '26-55555', 'JOSE LUIS HERNANDEZ PEREZ', 50, 'DX', 'CG', 'ESTABLE'], ['3-181', '26-66666', 'PABLO TORO GIL', 40, 'DX', 'CG', 'ESTABLE']]);
+  await page.evaluate(() => { archivados = archivados.filter(a => a._archiveKey !== 'k55' && a._archiveKey !== 'k66'); });
+  check('X14b Excel: «JOSE LUIS HERNANDEZ PEREZ» se ofrece como reingreso del archivado «HDEZ»; «PABLO TORO GIL» con el exp de otra persona archivada entra como nuevo (sin su nota)',
+    x14b.rein.includes('JOSE LUIS HERNANDEZ PEREZ<=JOSE LUIS HDEZ PEREZ') && !x14b.rein.some(r => /PABLO/.test(r)) && x14b.nuevos.includes('3-181:PABLO TORO GIL'), JSON.stringify(x14b));
 
   check('X10 sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   await browser.close();

@@ -36,7 +36,7 @@ export const REPORTE_ESTADO = Object.freeze({
 });
 // Columnas que el robot escribe si existen en ris_estudios (ver scripts/supabase_ris_estudios.sql);
 // si la tabla aún no las tiene, el upsert se reintenta sin ellas (isUnknownColumnError + stripColumns).
-export const RIS_OPTIONAL_COLS = ["reporte_estado", "reporte_motivo"];
+export const RIS_OPTIONAL_COLS = ["reporte_estado", "reporte_motivo", "patient_id"];
 
 // ── (a) Censo elegible ──────────────────────────────────────────────────
 // NO filtra por especialidad ni por es_mio: el usuario quiere imagen de TODOS los del censo.
