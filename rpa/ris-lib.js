@@ -277,10 +277,13 @@ export function matchCenso(est, censo, opts = {}) { const m = matchCensoDetailed
 export function resolveHomonyms(matched, opts = {}) {
   const tol = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : RIS_AGE_TOLERANCE_DEFAULT;
   const tolWide = Number.isFinite(opts.ageToleranceWide) ? opts.ageToleranceWide : RIS_AGE_TOLERANCE_WIDE;
+  // Por paciente del censo (no por expediente): con un expediente repetido en la hoja (dos personas,
+  // error de captura) los estudios de cada una se juzgaban como "homónimos" de la otra y se descartaban.
   const byExp = new Map();
-  for (const m of matched || []) { const k = String(m.p.exp); if (!byExp.has(k)) byExp.set(k, []); byExp.get(k).push(m); }
+  for (const m of matched || []) { const k = m.p.id != null ? "id:" + m.p.id : String(m.p.exp) + "|" + String(m.p.cama || ""); if (!byExp.has(k)) byExp.set(k, []); byExp.get(k).push(m); }
   const kept = [], dropped = [], ambiguous = [];
-  for (const [exp, ms] of byExp) {
+  for (const ms of byExp.values()) {
+    const exp = String(ms[0].p.exp);
     const ids = [];
     for (const m of ms) {
       const nameKey = normNameTokens(m.e.nombre).slice().sort().join(" "), age = risAgeYears(m.e);
