@@ -370,7 +370,8 @@ async function upsertRis(supa, batch) {
     const items = matched.map(({ e, p, level }) => ({
       e, p, level, key: estudioKey(e), result: null,
       row: {
-        exp: p.exp, paciente: e.nombre, documento: e.documento, fecha: e.fecha, hora: e.hora, sede: e.sede, estudios: e.estudios,
+        // patient_id: a quién del censo se asignó (con un expediente repetido en la hoja el exp no basta).
+        exp: p.exp, patient_id: p.id || null, paciente: e.nombre, documento: e.documento, fecha: e.fecha, hora: e.hora, sede: e.sede, estudios: e.estudios,
         modalidad: e.modalidad, procedencia: e.procedencia, critico: e.critico,
         reporte_url: e.linkReporte ? abs(cfg.base, e.linkReporte.dataHref || e.linkReporte.href) : null,
         imagen_url: e.linkImagen ? abs(cfg.base, e.linkImagen.dataHref || e.linkImagen.href) : null,

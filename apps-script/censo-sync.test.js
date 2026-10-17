@@ -512,5 +512,90 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   }
 }
 
+// ── 13) Revisión: el expediente sigue siendo ambiguo mientras Supabase tenga a las DOS personas, aunque la hoja
+//        ya lo muestre una sola vez (alta de una, exp corregido, intercambio a medias) ─────────────────────────
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i))); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.exp + ":" + p.nombre) : []; };
+  const A = "PEREZ RUIZ JUAN CARLOS", B = "LOPEZ SOTO MIGUEL ANGEL";
+  const a4 = { id: "a4", cama: "3-154", exp: "X", nombre: A, updated_by: "sheet-sync" }, b9 = { id: "b9", cama: "3-189", exp: "X", nombre: B, updated_by: "sheet-sync" };
+  const full = { a4: { ...a4, notes: [{ patient_id: "a4", pendientes: "nota de A" }] }, b9: { ...b9, notes: [{ patient_id: "b9", pendientes: "nota de B" }] } };
+  const patches = (calls) => calls.filter((c) => c.m === "PATCH").map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + JSON.stringify(c.body));
+
+  // (i) B se dio de alta y A pasó a la cama de B: la fila de B (con su nota) NO recibe el nombre de A
+  {
+    const { sb, calls } = makeSandbox({ cur: [a4, b9], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-189", "X", { nombre: A })]));
+    const arc = calls.filter((c) => c.u.startsWith("/rest/v1/archive")).map((c) => c.body.patient_data.nombre);
+    const ps = patches(calls);
+    check("T13a alta de B + A pasa a 3-189 (exp ya único en la hoja): b9 se archiva como cama reasignada y a4 se MUEVE a 3-189; nunca se le pone el nombre de A a b9",
+      arc.includes(B) && !arc.includes(A) && ps.some((p) => p.startsWith("a4:") && p.includes('"cama":"3-189"')) && !ps.some((p) => p.startsWith("b9:"))
+      && calls.some((c) => c.m === "DELETE" && c.u.includes("id=eq.b9")), JSON.stringify({ arc, ps, up: upsertOf(calls) }));
+  }
+  // (iii) a B le corrigen el exp a Z y A se mueve a 3-160, con b9 PRIMERO en la lista de Supabase
+  {
+    const { sb, calls } = makeSandbox({ cur: [b9, a4], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-160", "X", { nombre: A }), row("3-189", "Z", { nombre: B })]));
+    const ps = patches(calls);
+    check("T13b exp de B corregido a Z + A a 3-160 (b9 primero): a4 se mueve a 3-160 por nombre; a b9 solo se le corrige el exp; nadie se archiva",
+      ps.some((p) => p.startsWith("a4:") && p.includes('"cama":"3-160"')) && ps.some((p) => p.startsWith("b9:") && p.includes('"exp":"Z"')) && !ps.some((p) => p.startsWith("b9:") && p.includes('"cama"'))
+      && !calls.some((c) => c.u.startsWith("/rest/v1/archive") || c.m === "DELETE"), JSON.stringify(ps));
+  }
+  // (iv) B ya no está en la hoja (gracia) y A pasa a una cama libre, b9 primero → b9 no se mueve a la cama de A
+  {
+    const st = { cur: [b9, a4], full, props: {} };
+    const { sb, calls } = makeSandbox(st);
+    sb.syncPatients_("svc", fill([row("3-170", "X", { nombre: A })]));
+    const ps = patches(calls);
+    check("T13c B fuera de la hoja + A a 3-170 (b9 primero): se mueve a4 (no b9); b9 queda en gracia",
+      ps.length === 1 && ps[0].startsWith("a4:") && ps[0].includes('"cama":"3-170"') && typeof JSON.parse(st.props.PL_MISSING_SINCE || "{}").b9 === "number" && !calls.some((c) => c.m === "DELETE"), JSON.stringify(ps));
+  }
+  // (ii) intercambio a medias (dedupByCama dejó solo a A en 3-189): b9 no recibe el nombre de A
+  {
+    const { sb, calls } = makeSandbox({ cur: [a4, b9], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-189", "X", { nombre: A })]));
+    check("T13d intercambio a medias: el upsert de 3-189 (A) nunca cae sobre b9 sin archivarlo antes",
+      !upsertOf(calls).includes("3-189:X:" + A) || seq(calls, (c) => c.m === "DELETE" && c.u.includes("id=eq.b9")) >= 0, JSON.stringify(upsertOf(calls)));
+  }
+  // S3: con exp ambiguo, un nombre CORREGIDO en la hoja (una letra / abreviatura) sigue siendo la misma persona
+  {
+    const a4b = { ...a4, nombre: "PERES RUIZ JUAN CARLOS" }, hd = { id: "h1", cama: "3-170", exp: "X", nombre: "HDZ MORA PEDRO", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a4b, b9, hd], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: A }), row("3-189", "X", { nombre: B }), row("3-170", "X", { nombre: "HERNANDEZ MORA PEDRO" })]));
+    check("T13e exp ambiguo + nombre corregido en la hoja (PERES→PEREZ, HDZ→HERNANDEZ): misma persona, sin archivo ni fila nueva",
+      !calls.some((c) => c.u.startsWith("/rest/v1/archive") || c.m === "DELETE") && !calls.some((c) => c.m === "PATCH"), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+  }
+  // ...pero si el nombre de la hoja es el de la OTRA persona, no se confunde
+  {
+    const { sb, calls } = makeSandbox({ cur: [a4, b9], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: B }), row("3-189", "X", { nombre: A })]));
+    const finals = calls.filter((c) => c.m === "PATCH" && c.body.cama && !/#MV-/.test(c.body.cama)).map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + c.body.cama);
+    check("T13f intercambio completo con exp ambiguo: se mueven por nombre (a4→3-189, b9→3-154), sin archivar", finals.includes("a4:3-189") && finals.includes("b9:3-154") && !calls.some((c) => c.m === "DELETE"), JSON.stringify(finals));
+  }
+  // closeName_ / groupPeople_ directos
+  {
+    const { sb } = makeSandbox({});
+    check("T13g closeName_: una letra, abreviatura y palabra de más sí; nombres distintos no",
+      sb.closeName_("PERES RUIZ JUAN", "PEREZ RUIZ JUAN") && sb.closeName_("HDZ MORA PEDRO", "HERNANDEZ MORA PEDRO") && sb.closeName_("PEREZ JUAN", "PEREZ RUIZ JUAN")
+      && !sb.closeName_("PEREZ RUIZ JUAN", "LOPEZ SOTO MIGUEL") && !sb.closeName_("JUAN PEREZ", "MARIA PEREZ LOPEZ SOTO"));
+    const g = sb.groupPeople_([{ nombre: "PEREZ RUIZ" }, { nombre: "PEREZ RUIZ JUAN CARLOS" }, { nombre: "PEREZ RUIZ MARIA ELENA" }]);
+    const d = sb.dedupAndQuarantine_([{ cama: "3-101", exp: "X", nombre: "PEREZ RUIZ" }, { cama: "3-154", exp: "X", nombre: "PEREZ RUIZ JUAN CARLOS" }, { cama: "3-189", exp: "X", nombre: "PEREZ RUIZ MARIA ELENA" }]);
+    check("T13h solo apellidos que encajan con dos personas: va aparte y no las junta; entran las 3 filas con aviso de exp repetido",
+      g.length === 3 && d.keep.length === 3 && d.avisos.some((a) => a.motivo === "exp_repetido_sincronizado"), JSON.stringify({ g: g.length, keep: d.keep.map((p) => p.cama) }));
+  }
+}
+
+// ── 14) Revisión: un movimiento que falla no deja que el upsert pise la fila que no se movió ─────────────────
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i))); return sheet; };
+  const cur = [{ id: "p1", cama: "3-101", exp: "1", nombre: "P 1", updated_by: "sheet-sync" }];
+  const { sb, calls } = makeSandbox({ cur, props: {}, handler: (m, u) => (m === "PATCH" && u.includes("id=eq.p1") ? { code: 409, body: "duplicate key" } : null) });
+  sb.syncPatients_("svc", fill([row("3-102", "1"), row("3-101", "3", { nombre: "R NUEVO" })]));
+  const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
+  const camas = up && Array.isArray(up.body) ? up.body.map((p) => p.cama) : [];
+  check("T14 PATCH de cama fallido: ni 3-101 (origen) ni 3-102 (destino) van al upsert esta corrida (la nota de p1 no recibe el nombre de R)",
+    !!up && !camas.includes("3-101") && !camas.includes("3-102") && camas.length === 12, JSON.stringify(camas));
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

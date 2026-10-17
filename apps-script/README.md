@@ -93,10 +93,17 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
 - **Mismo exp con nombres distintos** (error de captura): **se sincronizan todos** (17 oct 2026) y
   queda un aviso `exp_repetido_sincronizado` en `public.sync_log` para corregir la hoja. Antes se
   ponían en cuarentena: no entraba ninguno y el que ya estaba en la app se retiraba a los 12 min.
-  Mientras el exp siga repetido, la reconciliación distingue a esas personas por **nombre**: solo
-  mueve a alguien a la cama donde la hoja tiene su nombre, y si en su cama ahora está la otra
-  persona con el mismo exp lo trata como cama reasignada (archivo + fila nueva) en vez de ponerle
-  a su fila, con su nota, el nombre del otro.
+  Mientras el exp sea **ambiguo** (2+ personas con ese número en la hoja **o en Supabase**: basta con
+  que Supabase aún tenga a las dos aunque la hoja ya muestre una sola, p. ej. tras dar de alta a una o
+  corregirle el exp), la reconciliación distingue a esas personas por **nombre**: solo mueve a alguien
+  a la cama donde la hoja tiene su nombre, y si en su cama ahora está la otra persona con el mismo exp
+  lo trata como cama reasignada (archivo + fila nueva) en vez de ponerle a su fila, con su nota, el
+  nombre del otro. Un nombre **corregido** en la hoja (una letra, `HDZ` → `HERNANDEZ`) sigue siendo la
+  misma persona si no es el nombre de la otra. Un nombre incompleto (solo apellidos) que encaja con
+  dos personas distintas entra como paciente aparte en vez de juntarlas.
+- **Movimiento de cama que falla** (PATCH rechazado): la cama de origen y la de destino quedan fuera
+  del upsert de esa corrida, para que la fila que no se movió no reciba el nombre del siguiente
+  ocupante.
 - **Secciones administrativas que ignora por completo:** ALTAS, DEFUNCIONES, PROCEDIMIENTOS,
   INGRESOS, MOVIMIENTOS DE CAMAS, TPN.
 - **Salas de otros servicios (GINECOLOGÍA, ONCOLOGÍA, HEMATOLOGÍA):** se ignoran *sus* pacientes,
