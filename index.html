@@ -8170,9 +8170,19 @@ function plExportBackup() {
     function _robotFecha(iso) { if (!iso) return ""; const d = new Date(iso); if (isNaN(d.getTime())) return ""; const z = n => String(n).padStart(2, "0"); return z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
     function renderRobotLine(p, nd, k) {
       const exp = String((p && p.exp) || "").trim(); if (!exp) return "";
-      const m = winlabMatchByExp[exp] || null;
+      let m = winlabMatchByExp[exp] || null;
       const alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
       const hasWl = !!(winlabByExp[exp] && winlabByExp[exp].data);
+      // Expediente repetido en el censo: winlab_match guarda UN resultado por expediente (el del último
+      // paciente que buscó el robot). Si es de la otra cama no se muestra aquí, ni sus nombres sugeridos:
+      // tocar uno fijaría como «nombre en WinLab» el de otra persona.
+      const twins = _plExpTwins(p);
+      if (m && twins.length && String(m.cama || "").trim().toUpperCase() !== String(p.cama || "").trim().toUpperCase()) m = null;
+      const twinLine = twins.length ? `<div class="rb-line rb-warn" data-testid="robot-expdup">⚠️ Expediente repetido en la hoja: también lo tiene la cama ${twins.map(q => esc(q.cama || "?")).join(", ")} (otra persona). Corrígelo en la hoja; mientras tanto el robot solo puede traer los labs de uno de los dos.</div>` : "";
+      const line = _renderRobotLineBody(p, nd, k, exp, m, alias, hasWl);
+      return twinLine + line;
+    }
+    function _renderRobotLineBody(p, nd, k, exp, m, alias, hasWl) {
       const pend = _robotPending[exp] ? `<span class="rb-badge" data-testid="robot-pending">⏳ robot en camino · ${esc(_robotPending[exp])}</span>` : "";
       const btnAlias = `<button class="rb-btn" data-k="${k}" onclick="setWinlabAlias(this.dataset.k)" data-testid="robot-alias" title="Cómo está escrito el nombre en WinLab (cuando la hoja trae un error de dedo o el orden es otro)">✏️ ${alias ? "Nombre en WinLab: " + esc(alias) : "Nombre en WinLab"}</button>`;
       const btnBuscar = `<button class="rb-btn rb-go" data-k="${k}" onclick="robotBuscarAhora(this.dataset.k)" data-testid="robot-go" title="El robot busca SOLO a este paciente en WinLab (2-4 min). Necesita internet.">🔎 Buscar ahora</button>`;
@@ -8247,6 +8257,14 @@ function plExportBackup() {
           const m = winlabMatchByExp[exp];
           if (m && m.checked_at && m.checked_at !== prev) {
             delete _robotPending[exp];
+            // Expediente repetido: el robot guarda UN resultado por expediente; si es de la otra cama no se
+            // anuncia como de este paciente (ni con el nombre de WinLab de otra persona).
+            const twins = p ? _plExpTwins(p) : [];
+            if (twins.length && String(m.cama || "").trim().toUpperCase() !== String((p && p.cama) || "").trim().toUpperCase()) {
+              _plToast("🤖 El robot terminó, pero este expediente está repetido en la hoja y el resultado guardado es el de la cama " + (m.cama || "?") + " (otra persona). Corrige el expediente en la hoja.", "#b45309", 10000);
+              _rerenderCardSoft(k); twins.forEach(function (q) { _rerenderCardSoft(pid(q)); });
+              return;
+            }
             if (m.status === "ok") {
               try { await _winlabFetchForPatients(p ? [p] : []); await applyWinlabSyncToPatients({ verbose: false }); } catch (_) {}
               _plToast("✅ El robot encontró a la cama " + ((p && p.cama) || "") + (m.encontrado_como ? " como «" + m.encontrado_como + "»" : "") + ". Labs en la tarjeta.", "#15803d", 9000);
@@ -8273,16 +8291,87 @@ function plExportBackup() {
     // con el de la fila WinLab: TODOS los tokens del nombre MÁS CORTO deben estar en
     // el otro. Tolera 2º nombre/apellido extra, pero RECHAZA si el nombre de pila
     // difiere (JUAN vs MARIA). Precisión > recall: mejor SIN labs que labs de otro.
+    // true/false si los dos nombres son (o no) la misma persona; null si alguno no trae nombre
+    // normalizable y no se puede verificar.
+    function _winlabNamesMatch(n1, n2) {
+      var a = _winlabNormalizeName(n1 || ""), b = _winlabNormalizeName(n2 || "");
+      if (!a.length || !b.length) return null;
+      return _winlabNameMatchScore(n1 || "", n2 || "") >= Math.min(a.length, b.length);
+    }
+    // Expediente repetido en el censo (error de captura en la hoja). Desde el 17 oct 2026 el sync sube
+    // a los dos pacientes en vez de dejarlos fuera; aquí se devuelven los OTROS pacientes activos con ese
+    // expediente que no son la misma persona. Con alguno, lo que llega solo por expediente (labs, imagen,
+    // cultivos, estado del robot) se atribuye por nombre y nunca a los dos.
+    function _plExpNorm(e) { return toSafeString(e).replace(/[\s\-]/g, "").toUpperCase(); }
+    function _plExpTwins(p) {
+      var e = _plExpNorm(p && p.exp);
+      if (!e || !Array.isArray(patients)) return [];
+      var k = pid(p);
+      var others = patients.filter(function (q) { return q && q !== p && pid(q) !== k && _plExpNorm(q.exp) === e; });
+      // Un nombre que encaja con dos personas distintas de ese exp (p. ej. solo apellidos) es ambiguo: no es de
+      // nadie, así que todos los demás cuentan como gemelos y no recibe lo que llega solo por expediente.
+      var same = others.filter(function (q) { return _plSamePerson(p, q) === true; });
+      if (same.some(function (a) { return same.some(function (b) { return a !== b && _plSamePerson(a, b) === false; }); })) return others;
+      return others.filter(function (q) { return _plSamePerson(p, q) !== true; });
+    }
+    // ¿Son la MISMA persona dos pacientes del censo? Todas las palabras del nombre más corto iguales (la regla
+    // del sync de la hoja), o el parecido con tolerancia a errores de dedo (_winlabNamesMatch) solo si la edad
+    // y el sexo no lo contradicen: HERNANDEZ/FERNANDEZ con otra edad son dos personas. null = sin nombre.
+    function _plSamePerson(p, q) {
+      var a = _winlabNormalizeName((p && p.nombre) || ""), b = _winlabNormalizeName((q && q.nombre) || "");
+      if (!a.length || !b.length) return null;
+      var s = a.length <= b.length ? a : b, pool = (a.length <= b.length ? b : a).slice();
+      if (s.every(function (t) { var i = pool.indexOf(t); if (i < 0) return false; pool.splice(i, 1); return true; })) return true;
+      if (_winlabNamesMatch(p.nombre, q.nombre) !== true) return false;
+      var ea = parseInt(p.edad, 10), eb = parseInt(q.edad, 10);
+      if (!isNaN(ea) && !isNaN(eb) && Math.abs(ea - eb) > 2) return false;
+      var sa = normalizeSexValue(p.sexo), sb = normalizeSexValue(q.sexo);
+      return !(sa && sb && sa !== sb);
+    }
+    // ¿Nombre casi igual (corrección de dedo)? Mismo número de palabras y todas iguales salvo UNA, que solo puede
+    // diferir por una letra (5+ letras) o ser abreviatura de apellido (HDEZ ↔ HERNANDEZ: a lo más una vocal).
+    // ANA/ADRIANA, JUAN/JULIAN, LUIS/LUISA no son casi iguales. Misma regla que closeName_ del sync.
+    function _plCloseName(n1, n2) {
+      var tok = function (s) { return String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z\s]/g, " ").split(/\s+/).filter(function (w) { return w.length >= 2 && ["DE", "DEL", "LA", "LAS", "LOS", "Y"].indexOf(w) < 0; }); };
+      var a = tok(n1), b = tok(n2);
+      if (!a.length || a.length !== b.length) return false;
+      var ed1 = function (x, y) {
+        if (Math.abs(x.length - y.length) > 1) return false;
+        var i = 0, j = 0, d = 0;
+        while (i < x.length && j < y.length) { if (x[i] === y[j]) { i++; j++; continue; } if (++d > 1) return false; if (x.length > y.length) i++; else if (y.length > x.length) j++; else { i++; j++; } }
+        return d + (x.length - i) + (y.length - j) <= 1;
+      };
+      var close = function (t, u) {
+        if (t.length >= 5 && u.length >= 5 && ed1(t, u)) return true;
+        var sh = t.length <= u.length ? t : u, lo = t.length <= u.length ? u : t;
+        var vowels = (sh.match(/[AEIOU]/g) || []).length;
+        if (sh.length >= 2 && sh.length <= 5 && vowels <= 1 && lo.length > sh.length && sh[0] === lo[0]) { var j = 0; for (var i = 0; i < lo.length && j < sh.length; i++) if (lo[i] === sh[j]) j++; if (j === sh.length) return true; }
+        return false;
+      };
+      var used = {}, diffs = 0;
+      var ok = a.every(function (t) {
+        for (var i = 0; i < b.length; i++) if (!used[i] && b[i] === t) { used[i] = true; return true; }
+        for (var j = 0; j < b.length; j++) if (!used[j] && close(t, b[j])) { used[j] = true; diffs++; return true; }
+        return false;
+      });
+      return ok && diffs <= 1;
+    }
+    // ¿La edad y el sexo NO contradicen que sean la misma persona? (±2 años cuando ambas se conocen)
+    function _plAgeSexOk(p, q) {
+      var ea = parseInt(p && p.edad, 10), eb = parseInt(q && q.edad, 10);
+      if (!isNaN(ea) && !isNaN(eb) && Math.abs(ea - eb) > 2) return false;
+      var sa = normalizeSexValue(p && p.sexo), sb = normalizeSexValue(q && q.sexo);
+      return !(sa && sb && sa !== sb);
+    }
     function _winlabCensoNameOk(p, wl) {
-      var censoTokens = _winlabNormalizeName((p && p.nombre) || "");
-      var wlTokens    = _winlabNormalizeName((wl && wl.paciente) || "");
       // Si falta nombre normalizable en cualquiera, no se puede verificar por nombre.
       // Conservador y compatible: dejar pasar (siguen aplicando exp + filtro interno por
       // encabezado). El caso de fuga reportado SIEMPRE tiene nombre completo en ambos.
-      if (!censoTokens.length || !wlTokens.length) return true;
-      var common = _winlabNameMatchScore((p && p.nombre) || "", (wl && wl.paciente) || "");
-      var need = Math.min(censoTokens.length, wlTokens.length);
-      return common >= need;
+      var ok = _winlabNamesMatch(p && p.nombre, wl && wl.paciente);
+      var twins = _plExpTwins(p);
+      if (!twins.length) return ok !== false;
+      // Expediente repetido: solo si el nombre es de ESTE paciente y no también del otro.
+      return ok === true && !twins.some(function (q) { return _winlabNamesMatch(q.nombre, wl && wl.paciente) === true; });
     }
 
     function findWinlabRowForPatient(p) {
@@ -8352,7 +8441,13 @@ function plExportBackup() {
         for (const p of patients) {
           const exp = String(p?.exp || "").trim();
           if (!exp) { stats.skipped++; stats.no_exp++; continue; }
-          const wl = findWinlabRowForPatient(p);
+          let wl = findWinlabRowForPatient(p);
+          // Expediente repetido: la fila más nueva puede ser de la otra persona (el robot guarda una por exp y
+          // fecha); entonces se usa la más reciente que sí es de este paciente, si ya está en memoria.
+          if (wl && wl.data && !_winlabCensoNameOk(p, wl) && _plExpTwins(p).length) {
+            const own = _winlabAllRowsForPatient(p, wl).filter(function (r) { return r && r.data && _winlabCensoNameOk(p, r); });
+            if (own.length) wl = own[own.length - 1];
+          }
           if (!wl || !wl.data) {
             stats.skipped++; stats.no_winlab++;
             if (verbose && sample_mismatches.length < 5) {
@@ -12784,7 +12879,8 @@ function plExportBackup() {
       winlabByExp[exp] = newRow;
       { const list = winlabRowsByExp[exp] = (winlabRowsByExp[exp] || []).filter(function (x) { return x.fecha !== newRow.fecha; }); list.push(newRow); list.sort(function (a, b) { return String(a.scraped_at || "").localeCompare(String(b.scraped_at || "")); }); }
       _winlabExpIndex = null; // el índice por variantes de exp se cachea por identidad de winlabByExp (mutado en sitio)
-      const affected = patients.filter(function(p) { return findWinlabRowForPatient(p) === newRow; });
+      // Con expediente repetido, la fila es solo de la persona cuyo nombre trae (aviso y repintado solo de esa).
+      const affected = patients.filter(function(p) { return findWinlabRowForPatient(p) === newRow && (!_plExpTwins(p).length || _winlabCensoNameOk(p, newRow)); });
       const rerender = function () {
         // Tarjeta afectada en calma (antes: en cuanto no tenía foco, aunque el usuario estuviera a punto de tocarla)
         affected.forEach(function(p) { const k = pid(p); if (document.getElementById("card-" + k)) _rerenderCardSoft(k); });
@@ -17939,7 +18035,7 @@ function plExportBackup() {
 
     // ─── IMAGEN FIELD (history) ──────────────────────────────────────────────────────
     // ─── ESTUDIOS DE IMAGEN del robot RIS (tabla ris_estudios) ──────────────────────────────
-    const RIS_SELECT = "id,exp,paciente,fecha,hora,sede,estudios,modalidad,procedencia,critico,reporte,reporte_url,imagen_url,reporte_estado,reporte_motivo,scraped_at";
+    const RIS_SELECT = "id,exp,patient_id,paciente,fecha,hora,sede,estudios,modalidad,procedencia,critico,reporte,reporte_url,imagen_url,reporte_estado,reporte_motivo,scraped_at";
     function _risKey(exp) { return String(exp == null ? "" : exp).trim(); }
     async function _loadRisEstudios(pts) {
       const exps = new Set();
@@ -17953,8 +18049,25 @@ function plExportBackup() {
       risByExp = next;
     }
     function risForPatient(p) {
-      const list = risByExp[_risKey(p && p.exp)] || [];
+      let list = risByExp[_risKey(p && p.exp)] || [];
+      // Expediente repetido en el censo: el robot guarda cada estudio bajo el expediente, así que se separa
+      // por el paciente al que el robot lo asignó (patient_id) o, en filas viejas, por el nombre del RIS
+      // (sin nombre no se atribuye a nadie). Sin esto los dos veían los estudios de ambos y la entrega
+      // automática los guardaba en la nota del otro.
+      // Un estudio que el robot asignó a OTRO paciente activo nunca va en esta tarjeta (p. ej. justo después de
+      // corregir un expediente repetido, hasta que el robot lo vuelva a guardar con el exp nuevo).
+      list = list.filter(r => !_risOtherOwner(p, r));
+      if (_plExpTwins(p).length) list = list.filter(r => _risIsFor(p, r));
       return list.slice().sort((a, b) => (String(b.fecha) + String(b.hora)).localeCompare(String(a.fecha) + String(a.hora)));
+    }
+    function _risOtherOwner(p, r) {
+      const id = r && r.patient_id ? String(r.patient_id) : "";
+      return !!id && id !== String((p && p._supa_id) || "") && patients.some(q => q && String(q._supa_id || "") === id);
+    }
+    function _risIsFor(p, r) {
+      const id = r && r.patient_id ? String(r.patient_id) : "";
+      if (id && patients.some(q => q && String(q._supa_id || "") === id)) return String((p && p._supa_id) || "") === id;
+      return _winlabCensoNameOk(p, { paciente: r && r.paciente });
     }
     function handleRisChange(payload) {
       try {
@@ -17965,7 +18078,7 @@ function plExportBackup() {
         const i = list.findIndex(x => String(x.id) === String(r.id));
         if (eventType === "DELETE") { if (i >= 0) list.splice(i, 1); }
         else if (i >= 0) list[i] = row; else list.push(row);
-        const affected = patients.filter(p => _risKey(p.exp) === e);
+        const affected = patients.filter(p => _risKey(p.exp) === e && (eventType === "DELETE" || (!_risOtherOwner(p, r) && (!_plExpTwins(p).length || _risIsFor(p, r)))));
         affected.forEach(p => { const k = pid(p); if (document.getElementById("card-" + k)) _rerenderCardSoft(k); });   // en calma, conserva sección/scroll
         if (affected.length && eventType !== "DELETE") _showRTToast("🩻 Estudio de imagen " + (row && row.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
         if (eventType !== "DELETE") _entregaAutoFromRis(affected);
@@ -22842,45 +22955,49 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (!confirm("⚠️ El nombre parece incompleto: \"" + nombre + "\".\n\nLo ideal es nombre + apellido. ¿Guardar así de todas formas?")) return;
       }
       // Colisión / movimiento por EXPEDIENTE: ¿este exp ya vive en OTRA cama? (excluye al propio)
-      const _expOwner = patients.find(pt =>
+      const _expMatches = patients.filter(pt =>
         pt.exp && String(pt.exp).trim() === exp &&
         pid(pt) !== modalOrigKey &&
         (pt.cama || "").toUpperCase() !== cama
       );
+      // Si hay varios con ese exp (expediente repetido), el "dueño" es el que es la MISMA persona; así nunca
+      // se ofrece mover la fila (con su nota) de la otra persona.
+      const _modalPerson = { nombre, edad: document.getElementById("mf-edad").value, sexo };
+      const _expOwner = _expMatches.find(pt => _plSamePerson(pt, _modalPerson) === true) || _expMatches[0];
       if (_expOwner) {
-        // OJO: nameMatchScore/normalizeName viven dentro de la IIFE de PLIndicaciones y NO
-        // son globales. Las copias globales son _winlabNameMatchScore/_winlabNormalizeName.
-        const _onTok = _winlabNormalizeName(_expOwner.nombre || "");
-        const _nnTok = _winlabNormalizeName(nombre);
-        const _sameName = _onTok.length && _nnTok.length && (
-          _winlabNameMatchScore(_expOwner.nombre || "", nombre) >= 2 ||
-          _onTok.join(" ") === _nnTok.join(" ")
-        );
+        // Misma regla de identidad que _plExpTwins (todas las palabras del nombre más corto, o parecido sin
+        // contradicción de edad/sexo). Antes bastaban 2 palabras en común: dos personas con nombre y apellido
+        // iguales se tomaban por la misma y «Mover» le ponía a una la cama, el nombre y la nota de la otra.
+        const _sameName = _plSamePerson(_expOwner, _modalPerson) === true;
         if (!_sameName) {
-          // Mismo exp, DISTINTA persona → riesgo de fuga de identidad. BLOQUEAR (no negociable).
-          alert("⛔ EXPEDIENTE EN CONFLICTO\n\nEl expediente " + exp + " ya pertenece a OTRO paciente:\n" +
-            (_expOwner.nombre || "(sin nombre)") + " — cama " + _expOwner.cama + ".\n\nUn expediente no puede ser de dos personas. Corrige el expediente antes de guardar.");
+          // Mismo exp, DISTINTA persona (error de captura en la hoja). Antes se bloqueaba siempre: con el
+          // sync que ya sube a los dos (17 oct 2026), ninguno de los dos se podía editar. Si el expediente
+          // no cambió se guarda sin preguntar; si se escribe o agrega ese exp, se confirma y se guarda como
+          // paciente distinto (labs, imagen y cultivos se atribuyen por nombre mientras siga repetido).
+          const _expSinCambio = !!existingPatient && String(existingPatient.exp || "").trim() === exp;
+          if (!_expSinCambio && !confirm("⚠️ EXPEDIENTE REPETIDO\n\nEl expediente " + exp + " ya lo tiene OTRA persona:\n" +
+            (_expOwner.nombre || "(sin nombre)") + " — cama " + _expOwner.cama + ".\n\n¿Guardar de todas formas como paciente distinto?\n(Corrige el expediente en la hoja en cuanto puedas.)")) return;
+        } else {
+          // Mismo exp, MISMA persona, otra cama → se movió (UCI gana a piso). MOVER, no duplicar.
+          if (confirm("🛏 PACIENTE YA REGISTRADO\n\n" + (_expOwner.nombre || "Este paciente") + " ya está en la cama " + _expOwner.cama +
+            ".\n\n¿Moverlo a la cama " + cama + "?\n(Se actualiza su cama y datos; NO se crea una tarjeta duplicada.)")) {
+            _moveExistingPatient(_expOwner, {
+              cama, exp, nombre,
+              edad: parseInt(document.getElementById("mf-edad").value) || _expOwner.edad || "",
+              esp: document.getElementById("mf-esp").value,
+              adscrito: _ads_val.toUpperCase(), residente: _res_val.toUpperCase(),
+              ingreso: document.getElementById("mf-ingreso").value.trim() || _expOwner.ingreso || "",
+              estado: document.getElementById("mf-estado").value,
+              dx: document.getElementById("mf-dx").value.trim().toUpperCase() || _expOwner.dx || "",
+              sexo
+            });
+            closeModal();
+            return;
+          }
+          // Si NO quiere mover → no duplicar al mismo exp/persona en dos camas.
+          alert("Operación cancelada para no duplicar al paciente.\n\nSi en realidad es un paciente distinto, corrige el expediente.");
           return;
         }
-        // Mismo exp, MISMA persona, otra cama → se movió (UCI gana a piso). MOVER, no duplicar.
-        if (confirm("🛏 PACIENTE YA REGISTRADO\n\n" + (_expOwner.nombre || "Este paciente") + " ya está en la cama " + _expOwner.cama +
-          ".\n\n¿Moverlo a la cama " + cama + "?\n(Se actualiza su cama y datos; NO se crea una tarjeta duplicada.)")) {
-          _moveExistingPatient(_expOwner, {
-            cama, exp, nombre,
-            edad: parseInt(document.getElementById("mf-edad").value) || _expOwner.edad || "",
-            esp: document.getElementById("mf-esp").value,
-            adscrito: _ads_val.toUpperCase(), residente: _res_val.toUpperCase(),
-            ingreso: document.getElementById("mf-ingreso").value.trim() || _expOwner.ingreso || "",
-            estado: document.getElementById("mf-estado").value,
-            dx: document.getElementById("mf-dx").value.trim().toUpperCase() || _expOwner.dx || "",
-            sexo
-          });
-          closeModal();
-          return;
-        }
-        // Si NO quiere mover → no duplicar al mismo exp/persona en dos camas.
-        alert("Operación cancelada para no duplicar al paciente.\n\nSi en realidad es un paciente distinto, corrige el expediente.");
-        return;
       }
       const p = {
         ...(existingPatient || {}),
@@ -23405,6 +23522,31 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const oldByPid  = new Map(patients.map(p => [importIdentityKey(p), p]));
           const oldByCama = new Map(patients.filter(p => !_impMulti(p.cama)).map(p => [importKeyNorm(p.cama), p]));
           const oldByExp  = new Map(patients.filter(p => importKeyNorm(p.exp)).map(p => [importKeyNorm(p.exp), p])); // para detectar cambios de cama
+          // Expediente repetido (dos personas con el mismo número por error de captura; el sync de la hoja
+          // ya los sube a los dos): el expediente solo ya no identifica. Se empareja con el paciente actual
+          // de ese exp que es la MISMA persona; sin coincidencia de nombre no hay match (antes el Excel le
+          // ponía a la fila y nota de uno el nombre y la cama del otro).
+          const oldListByExp = new Map();
+          patients.forEach(p => { const e = importKeyNorm(p.exp); if (e) { if (!oldListByExp.has(e)) oldListByExp.set(e, []); oldListByExp.get(e).push(p); } });
+          const impExpCount = new Map();
+          imported.forEach(p => { const e = importKeyNorm(p.exp); if (e) impExpCount.set(e, (impExpCount.get(e) || 0) + 1); });
+          const _expShared = e => !!e && ((oldListByExp.get(e) || []).length > 1 || (impExpCount.get(e) || 0) > 1);
+          const _oldForExp = p => {
+            const e = importKeyNorm(p.exp), list = e ? (oldListByExp.get(e) || []) : [];
+            if (list.length === 1 && !_expShared(e)) return list[0];
+            let hits = list.filter(o => _plSamePerson(o, p) === true);
+            // Varios encajan (p. ej. uno con solo apellidos): se descartan los ambiguos y, si sigue habiendo más
+            // de uno, se prefiere el de nombre idéntico.
+            if (hits.length > 1) hits = hits.filter(o => { const m = list.filter(x => x !== o && _plSamePerson(o, x) === true); return !m.some(a => m.some(b => a !== b && _plSamePerson(a, b) === false)); });
+            if (hits.length > 1) { const ex = hits.filter(o => _impNormName(o.nombre) === _impNormName(p.nombre)); if (ex.length === 1) hits = ex; }
+            return hits.length === 1 ? hits[0] : null;
+          };
+          // Fila actual con el mismo exp+cama, salvo que el exp esté repetido y sea OTRA persona.
+          const _exactOld = p => {
+            const o = oldByPid.get(importIdentityKey(p));
+            if (!o) return null;
+            return (_expShared(importKeyNorm(p.exp)) && _plSamePerson(o, p) === false) ? null : o;
+          };
           // Mapas del censo nuevo
           const newByCama = new Map(imported.filter(p => !_impMulti(p.cama)).map(p => [importKeyNorm(p.cama), p]));
           const newByPid  = new Map(imported.map(p => [importIdentityKey(p), p])); /* FIX-v46 */
@@ -23426,7 +23568,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
           // Expedientes ya archivados/egresados → se detectan como posibles reingresos
           // y se le pregunta al usuario si quiere reactivarlos, en lugar de ignorarlos silenciosamente.
-          const archivedByExp = new Map(archivados.filter(a => importKeyNorm(a.exp)).map(a => [importKeyNorm(a.exp), a]));
+          // Archivados por exp, del más reciente al más viejo (archivados ya viene así). Para un reingreso se toma
+          // el más reciente que es la misma persona; si ninguno lo es pero alguno tiene un nombre casi igual
+          // (HDEZ/HERNANDEZ) o sin nombre, ese. Si todos son claramente otra persona (expediente repetido o mal
+          // capturado) no es reingreso: entra como paciente nuevo y nunca recibe la nota archivada de otro.
+          const archListByExp = new Map();
+          archivados.forEach(a => { const e = importKeyNorm(a.exp); if (e) { if (!archListByExp.has(e)) archListByExp.set(e, []); archListByExp.get(e).push(a); } });
+          const _archFor = p => {
+            const list = archListByExp.get(importKeyNorm(p.exp)) || [];
+            return list.find(a => _plSamePerson(a, p) === true) || list.find(a => _plSamePerson(a, p) === null)
+              || list.find(a => _plCloseName(a.nombre, p.nombre) && _plAgeSexOk(a, p)) || null;
+          };
           const reingresoPts = [];  // {newPt, archived} — expedientes que reaparecen
           const skippedArchivedSilent = []; // (no se usan; se mantiene por compat.)
           let skippedArchived = 0;
@@ -23437,17 +23589,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const movedOldIds = new Set();
           const _impNormName = s => toSafeString(s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z0-9]/g, " ").replace(/\s+/g, " ").trim();
           imported.forEach(p => {
-            const expK = importKeyNorm(p.exp);
-            if (expK && oldByExp.has(expK) && !oldByPid.has(importIdentityKey(p)) && importKeyNorm(oldByExp.get(expK).cama) !== importKeyNorm(p.cama)) {
-              movedOldIds.add(importIdentityKey(oldByExp.get(expK)));
+            const o = _oldForExp(p);
+            if (o && !_exactOld(p) && importKeyNorm(o.cama) !== importKeyNorm(p.cama)) {
+              movedOldIds.add(importIdentityKey(o));
             }
           });
           imported.forEach(p => {
             const expK = importKeyNorm(p.exp);
             // Si el expediente fue archivado antes (y NO sigue activo en el censo), lo mostramos como
             // posible reingreso. Si sigue activo, va por la ruta normal (evita duplicarlo).
-            if (expK && archivedByExp.has(expK) && !oldByPid.has(importIdentityKey(p)) && !oldByExp.has(expK)) {
-              const arch = archivedByExp.get(expK);
+            const _arch = expK ? _archFor(p) : null;
+            if (_arch && !oldByPid.has(importIdentityKey(p)) && !oldByExp.has(expK)) {
+              const arch = _arch;
               reingresoPts.push({ newPt: p, archived: arch });
               importLog.push({
                 row: "-", action: "reingreso-detectado",
@@ -23457,12 +23610,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               return;
             }
 
-            if (oldByPid.has(importIdentityKey(p))) { /* FIX-v46 */
+            const _movedFrom = expK ? _oldForExp(p) : null;
+            if (_exactOld(p)) { /* FIX-v46 */
               // Exact match: same exp + same cama
               samePts.push(p);
-            } else if (expK && oldByExp.has(expK) && importKeyNorm(oldByExp.get(expK).cama) !== importKeyNorm(p.cama)) {
+            } else if (_movedFrom && importKeyNorm(_movedFrom.cama) !== importKeyNorm(p.cama)) {
               // Same expediente, different cama → patient moved beds
-              movedPts.push({ newPt: p, oldPt: oldByExp.get(expK) });
+              movedPts.push({ newPt: p, oldPt: _movedFrom });
             } else if (!_impMulti(p.cama) && oldByCama.has(importKeyNorm(p.cama)) && !movedOldIds.has(importIdentityKey(oldByCama.get(importKeyNorm(p.cama))))) {
               const oldInBed = oldByCama.get(importKeyNorm(p.cama));
               const sameName = _impNormName(oldInBed.nombre) && _impNormName(oldInBed.nombre) === _impNormName(p.nombre);
@@ -23503,7 +23657,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             // Desaparecido = no viene en el censo nuevo y nadie lo reemplazó en su cama (changedPts).
             // Antes bastaba con que su cama tuviera ocupante nuevo: si ese ocupante era un MOVIDO, el
             // egresado real no pasaba por aquí (sin papelera ni disposición) y caía al borrado silencioso.
-            if (!newByPid.has(importIdentityKey(p)) && !replacedOldIdentities.has(importIdentityKey(p))) { /* FIX-v46 */
+            // Con el expediente repetido, la fila del Excel con su exp+cama tiene que ser la MISMA persona: si ahí
+            // está la otra (le tomó la cama), este paciente no viene en el censo y se pregunta qué pasó con él
+            // (antes no salía en "no encontrados" y se borraba como fantasma sin preguntar).
+            const _rowSame = newByPid.get(importIdentityKey(p));
+            const _present = !!_rowSame && !(_expShared(importKeyNorm(p.exp)) && _plSamePerson(p, _rowSame) === false);
+            if (!_present && !replacedOldIdentities.has(importIdentityKey(p))) { /* FIX-v46 */
               missingPts.push(p);
               // Auto-detect: was this patient listed in ALTAS or DEFUNCIONES?
               if (defExpSet.has(importKeyNorm(p.exp))) {
@@ -25566,8 +25725,21 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         byExp[exp].push({ patient: p, idx: i });
       });
       Object.entries(byExp).filter(([, list]) => list.length > 1).forEach(([exp, list]) => {
-        results.push({ key: "EXP:" + exp, patients: list.map(l => l.patient), indices: list.map(l => l.idx), type: "expediente" });
-        list.forEach(l => alreadyGrouped.add(l.idx));
+        // Mismo expediente pero PERSONAS distintas (error de captura en la hoja) no es un duplicado: los
+        // dos son pacientes reales y borrar uno lo quitaría del censo. Solo se agrupa a la misma persona.
+        // Sin encadenar (un nombre con solo apellidos no junta a dos personas) y las filas ambiguas (encajan con
+        // dos personas distintas) no se agrupan con nadie.
+        const amb = l => { const m = list.filter(o => o !== l && _plSamePerson(o.patient, l.patient) !== false); return m.some(a => m.some(b => a !== b && _plSamePerson(a.patient, b.patient) === false)); };
+        const people = [];
+        list.forEach(l => {
+          if (amb(l)) return;
+          const g = people.find(grp => grp.every(o => _plSamePerson(o.patient, l.patient) !== false));
+          if (g) g.push(l); else people.push([l]);
+        });
+        people.filter(grp => grp.length > 1).forEach((grp, gi) => {
+          results.push({ key: "EXP:" + exp + (gi ? "#" + gi : ""), patients: grp.map(l => l.patient), indices: grp.map(l => l.idx), type: "expediente" });
+          grp.forEach(l => alreadyGrouped.add(l.idx));
+        });
       });
 
       // Pass 2: Same normalized name (only patients NOT already in an exp group)
@@ -26050,6 +26222,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const p = patients[idx];
       const k = pid(p);
       if (p._supa_id) suppressKey(p._supa_id);
+      // A la Papelera ANTES de borrar (como un egreso): si el "duplicado" era otra persona, se recupera.
+      _archivePatientRecord(p, noteData[k] || lsGetNote(k) || defaultData(), k, "DUPLICADO (eliminado a mano)");
       if (p._supa_id) supaDeletePatient(p._supa_id).catch(e => safeLog("supaDeletePatient (removeDup):", e));
       patients.splice(idx, 1);
       delete noteData[k];
@@ -30173,7 +30347,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       // _sGet(table, qs) → fetch a PostgREST con la anon key del app. Devuelve array.
       var rows = await _sGet(
         "winlab_cultivos",
-        "select=exp,cama,nombre,fecha,tipo,germen,resultado,texto_origen&order=fecha.desc&fecha=gte." + _desde + "&exp=in.(" + _exps.map(encodeURIComponent).join(",") + ")"
+        "select=exp,cama,nombre,fecha,tipo,germen,resultado,texto_origen,busqueda&order=fecha.desc&fecha=gte." + _desde + "&exp=in.(" + _exps.map(encodeURIComponent).join(",") + ")"
       );
       var map = {};
       (rows || []).forEach(function (r) {
@@ -30206,6 +30380,15 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       if (!p || !p.exp) return "";
       var rows = cultivosByExp[plNormExp(p.exp)];
       if (!rows || !rows.length) return "";
+      // Expediente repetido en el censo: la vista une los cultivos por expediente y los repite para cada
+      // cama, sin decir de cuál de las dos personas es cada uno (los días anteriores pueden ser de la otra).
+      // Con gemelos esta caja no se muestra; cada quien ve SUS cultivos en 🦠 Cultivos (los del PDF de
+      // WinLab, ya separados por nombre en applyWinlabSyncToPatients).
+      if (typeof _plExpTwins === "function" && _plExpTwins(p).length) return "";
+      // `busqueda` = a quién encontró el robot en WinLab: tras corregir un expediente repetido, los cultivos
+      // viejos de la otra persona bajo este exp no se muestran aquí.
+      rows = rows.filter(function (r) { return !r.busqueda || typeof _winlabCensoNameOk !== "function" || _winlabCensoNameOk(p, { paciente: r.busqueda }); });
+      if (!rows.length) return "";
       var hasPos = rows.some(function (r) { return String(r.resultado || "").toUpperCase() === "POSITIVO"; });
 
       var items = rows.map(function (r) {

@@ -87,11 +87,25 @@ Funciones útiles en el editor: `syncIndicacionesForce` (sube ahora aunque no ha
 `testIndicacionesOnly` (solo cuenta bloques, sin escribir). Al ejecutar `createTriggers` Google
 pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
 
-## Dedup y cuarentena
+## Expedientes repetidos
 
 - **Mismo exp en 2+ camas, misma persona:** conserva solo la cama de **UCI/UTI**, descarta piso.
-- **Mismo exp con nombres distintos** (error de captura): **no sincroniza ninguna** y lo registra
-  en la tabla `public.sync_log` (exp, camas, nombres, motivo).
+- **Mismo exp con nombres distintos** (error de captura): **se sincronizan todos** (17 oct 2026) y
+  queda un aviso `exp_repetido_sincronizado` en `public.sync_log` para corregir la hoja. Antes se
+  ponían en cuarentena: no entraba ninguno y el que ya estaba en la app se retiraba a los 12 min.
+  Mientras el exp sea **ambiguo** (2+ personas con ese número en la hoja **o en Supabase**: basta con
+  que Supabase aún tenga a las dos aunque la hoja ya muestre una sola, p. ej. tras dar de alta a una o
+  corregirle el exp), la reconciliación distingue a esas personas por **nombre**: solo mueve a alguien
+  a la cama donde la hoja tiene su nombre, y si en su cama ahora está la otra persona con el mismo exp
+  lo trata como cama reasignada (archivo + fila nueva) en vez de ponerle a su fila, con su nota, el
+  nombre del otro. Un nombre **corregido** en la hoja (una letra en una palabra de 5+ letras, o
+  abreviatura de apellido como `HDZ` → `HERNANDEZ`; mismo número de palabras y solo una distinta) sigue
+  siendo la misma persona si la edad cuadra, si no es el nombre de la otra y si su propio nombre no está
+  en otra cama (eso es un cambio de cama). JUAN/JULIAN, ANA/ADRIANA o LUIS/LUISA nunca son "casi iguales". Un nombre incompleto (solo apellidos) que encaja con
+  dos personas distintas entra como paciente aparte en vez de juntarlas.
+- **Movimiento de cama que falla** (PATCH rechazado): la cama de origen y la de destino quedan fuera
+  del upsert de esa corrida, para que la fila que no se movió no reciba el nombre del siguiente
+  ocupante.
 - **Secciones administrativas que ignora por completo:** ALTAS, DEFUNCIONES, PROCEDIMIENTOS,
   INGRESOS, MOVIMIENTOS DE CAMAS, TPN.
 - **Salas de otros servicios (GINECOLOGÍA, ONCOLOGÍA, HEMATOLOGÍA):** se ignoran *sus* pacientes,
@@ -129,7 +143,7 @@ indicaciones (Doc) cada 5 min. `createTriggers` también hace la primera subida 
 ## Probar sin escribir nada
 
 En el selector de función elige **`testParseOnly`** → **▶ Ejecutar** → menú **Ver → Registros**:
-verás cuántos pacientes parseó y cuántos quedaron en cuarentena, sin tocar Supabase.
+verás cuántos pacientes parseó y qué expedientes repetidos hay, sin tocar Supabase.
 
 Pruebas offline de la reconciliación (sin Google ni Supabase, con stubs):
 
@@ -141,5 +155,5 @@ node apps-script/censo-sync.test.js
 
 - La **service_role key** vive solo en Script Properties (nunca en la hoja ni en el repo). El
   script bypassa RLS para escribir; la app pública sigue protegida por RLS (anon ciego).
-- `sync_log` recibe cada cuarentena/duplicado **una vez cada 6 h** (antes se repetía en cada corrida
+- `sync_log` recibe cada aviso de expediente repetido/duplicado **una vez cada 6 h** (antes se repetía en cada corrida
   de 5 min y la tabla pasó de 29 000 filas).

@@ -209,6 +209,10 @@ const pac = (exp, nombre, edad, extra = {}) => ({ id: "id-" + exp, exp, nombre, 
   const r7 = resolveHomonyms([...rows("MARIA RUIZ SOTO", 70, 1).map((m) => ({ ...m, p: pMal })), ...rows("MARIA RUIZ SOTO", 30, 1).map((m) => ({ ...m, p: pMal }))]);
   assert(r7.kept.length === 2 && r7.ambiguous.length === 1, "ninguna cuadra y empatan en nombre → se conservan todas (ambiguo)");
   assert(resolveHomonyms([]).kept.length === 0 && resolveHomonyms(rows("X Y Z", 1, 1)).kept.length === 1, "sin homónimos → passthrough");
+  // Expediente repetido en el censo (dos personas, error de captura): cada una es su propio paciente, no "homónimos"
+  const tw1 = pac("TW", "JUAN PEREZ LOPEZ", 44, { id: "id-tw1", cama: "3-154" }), tw2 = pac("TW", "PEDRO DIAZ MORA", 31, { id: "id-tw2", cama: "3-189" });
+  const r8 = resolveHomonyms([...rows("JUAN PEREZ LOPEZ", 44, 2).map((m) => ({ ...m, p: tw1 })), ...rows("PEDRO DIAZ MORA", 31, 2).map((m) => ({ ...m, p: tw2 }))]);
+  assert(r8.kept.length === 4 && r8.dropped.length === 0 && r8.ambiguous.length === 0, "expediente repetido en dos camas con personas distintas → se conservan los estudios de las dos");
   const nm = nearMisses([est("JUAN PEREZ GOMEZ", 50)], [pac("N", "JUAN PEREZ LOPEZ", 50, { cama: "3-7" })], new Set());
   assert(nm.length === 1 && /cama 3-7/.test(nm[0]), "nearMisses: lista al paciente sin estudio con una fila parecida (≥ 2 tokens)");
 }
