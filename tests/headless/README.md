@@ -1,18 +1,68 @@
-# Pruebas headless de la app (Playwright + Chromium)
+# Pruebas headless de la app (Playwright: Chromium, y WebKit para las del iPad)
 
 Pruebas de extremo a extremo de `index.html` sin Supabase real: se intercepta `/rest/v1/*`
-con respuestas simuladas y se carga la app en Chromium headless (viewport de iPad en
-`app_ipad.js`). Cubren lo que más duele si se rompe: que no se pierda lo escrito, que los
-guardados sean parciales (no pisan a otros dispositivos), labs/WinLab, importación de censo,
-No olvidar/procedimientos sin red y atajos.
+con respuestas simuladas y se carga la app en un navegador headless (Chromium por defecto;
+viewport de iPad en `app_ipad.js`). Cubren lo que más duele si se rompe: que no se pierda lo
+escrito, que los guardados sean parciales (no pisan a otros dispositivos), labs/WinLab,
+importación de censo, No olvidar/procedimientos sin red y atajos.
 
 ```bash
 cd tests/headless
-npm i -g playwright && npx playwright install chromium   # una sola vez
-bash run_all.sh ../..                 # todas las suites
-bash run_all.sh ../.. app_sync app_ipad   # solo algunas
-node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
+npm ci && npx playwright install chromium   # una sola vez; Playwright fijado en package.json (1.56.1)
+npm run all                            # todas las suites (= bash run_all.sh ../..)
+npm run suite -- app_sync app_ipad     # solo algunas
+npm run webkit                         # las suites del iPad en WebKit, el motor de Safari (ver abajo)
+node app_sync.js                       # una suite suelta, con el repo servido en 127.0.0.1:8771 (ver Puertos)
+node syncheck.js ../../index.html      # sintaxis de los 7 <script> inline
 ```
+
+`package.json` fija la versión exacta de Playwright (`devDependencies` + `package-lock.json`): la
+misma en cada máquina y en CI, sin `npm i -g playwright` que cambia de versión sola. Las suites hacen
+`require('playwright')` y Node lo resuelve desde `tests/headless/node_modules` (lo crea `npm ci`); un
+Playwright instalado global **no** lo encuentran por sí solas, porque Node no busca en la carpeta
+global de npm. Si solo tienes la versión global, exporta `NODE_PATH=$(npm root -g)` antes de correrlas.
+
+## Puertos
+
+`run_all.sh` ya no usa puertos fijos ni mata procesos (`fuser -k`): en cada corrida pide al sistema
+tres puertos libres, sirve el directorio indicado en los tres y se los pasa a las suites por variables
+de entorno, así dos baterías (o la batería y un servidor tuyo) conviven en la misma máquina:
+
+| Variable | Quién la usa | Si no está definida |
+|---|---|---|
+| `PL_BASE_URL` (= `http://127.0.0.1:$PL_PORT_C`) | todas las suites `app_*` | `http://127.0.0.1:8771` |
+| `PL_BASE_URL_A` (= `http://127.0.0.1:$PL_PORT_A`) | `mock.js` | `http://127.0.0.1:8766` |
+| `PL_BASE_URL_B` (= `http://127.0.0.1:$PL_PORT_B`) | `noCdn.js` | `http://127.0.0.1:8767` |
+
+Una suite suelta (`node app_sync.js`) funciona igual que antes: sirve el repo en su puerto de siempre
+(`python3 -m http.server 8771 --bind 127.0.0.1` desde la raíz) o apunta `PL_BASE_URL` a otro
+servidor. `app_cxocr.js` y `app_pencil.js` no usan puerto (sirven el repo desde `page.route`).
+`mock.js` y `noCdn.js` nacieron con puertos propios aunque sirvan el mismo directorio (no hay una razón
+técnica documentada); se conservan tres puertos por si algún día dos suites necesitan servirse con
+configuraciones distintas.
+
+## Motor: Chromium o WebKit (Safari)
+
+Las suites lanzan el navegador con `_browser.js`, que lee `BROWSER` (`chromium` por defecto, `webkit`
+o `firefox`). «iPad Pro 11» en Chromium solo simula tamaño, touch y UA; el motor de Safari es WebKit,
+así que las suites del iPad (`app_ipad`, `app_pen`, `app_pencil`, `app_offline`, `app_cajas`) conviene
+correrlas también ahí:
+
+```bash
+npx playwright install --with-deps webkit   # una sola vez (en Linux instala también sus librerías del sistema)
+npm run webkit                              # = BROWSER=webkit bash run_all.sh ../.. app_ipad app_pen app_pencil app_offline app_cajas
+BROWSER=webkit node app_cajas.js            # una suite suelta
+```
+
+Ni WebKit ni Chromium sustituyen la prueba en un iPad real: el Apple Pencil y Scribble no se pueden
+simular.
+
+## En CI
+
+`.github/workflows/ci.yml` corre en cada pull request (y antes de publicar la app) toda la batería en
+Chromium (`npm run all`) con la versión de Playwright fijada aquí (`npm ci` en `tests/headless`), y
+las suites del iPad en WebKit (`npm run webkit`) como aviso: aparecen en el PR pero no lo bloquean
+hasta que pasen en WebKit. Un PR con una suite de Chromium en rojo no se fusiona.
 
 | Suite | Qué cubre |
 |---|---|
@@ -26,6 +76,7 @@ node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
 | `app_cxocr.js` | 📷 Cámara de Cirugías y 🤖 nota postquirúrgica (sin puertos): la foto sobrevive a un evento Realtime durante la subida; el 📷 abre UN selector global (multiple); la IA recibe la(s) foto(s) en JPEG y llena SOLO los campos vacíos (lo escrito nunca se pisa), con ↩ Regresar y aviso; «📷 Nota postquirúrgica» no crea fila si se cancela y con 2 páginas crea 1 fila; error 500 → foto intacta, en cola y se procesa al volver la red; subida lenta → inline pendiente y luego Storage; visor dentro de la app con URL firmada 1 h |
 | `app_pencil.js` | ✍️ Apple Pencil en las tarjetas y 🗂️ Misceláneo (sin puertos): en iPad + Scribble cero oyentes táctiles no pasivos en document (el lápiz escribe, no «solo selecciona»); Tinta los vuelve a poner y de regreso se quitan; en 📌 Tablero pasar de una nota a otra no destruye la nota en la que se escribe; tocar la cabecera de la ficha no pliega la tarjeta; la caja se llama Misceláneo y lo escrito sobrevive al cambiar de tarjeta y, sin red, al ocultar la app (localStorage + cola) |
 | `app_expdup.js` | 🪪 Expediente repetido en el censo (dos personas con el mismo número por error de captura; el sync ya sube a las dos): aparecen las dos con claves distintas (X1); la imagen del RIS se atribuye por el paciente que asignó el robot (`patient_id`) o, en filas viejas, por nombre, y el estudio sin nombre a nadie (X2); un estudio asignado a otro paciente activo no sale aunque el exp sea único (X16); la entrega automática no guarda en una nota el estudio de la otra (X3); la caja Cultivos (lab) no se muestra con gemelos y, con exp único, no muestra cultivos de otra persona que tuvo ese exp (`busqueda`, X4); la guarda de nombre de los labs es exclusiva (X5) y la fila más nueva de la otra persona no le quita a nadie la suya (X11); un nombre con solo apellidos que encaja con dos personas no recibe datos de ninguna (X15); la línea del robot avisa en las dos y no muestra resultado ni sugerencias de la otra persona (X6); no cuentan como duplicado (X7); ✏️ Editar no se bloquea, agregar ese exp pide confirmar (X8) y dos personas con nombre y apellido en común nunca se «mueven» una sobre otra (X13); misma persona = todas las palabras o parecido sin contradicción de edad/sexo, y JUAN/JULIAN o ANA/ADRIANA no son «casi iguales» (X12); el Excel empareja por nombre (X9), el gemelo cuya cama toma el otro sale en «no encontrados» (X14a) y el reingreso acepta HDEZ≈HERNANDEZ pero no a otra persona ni a un nombre parecido con otra edad (X14b-c) |
+| `app_guardia.js` | ↩ Regresar/↪ Rehacer acotados a la caja del paso (un Realtime ajeno en otra caja no se pisa; el ↩ Deshacer del aviso deshace al paciente que lo anunció); guarda de arrastre: `beforeinput` deleteByDrag/insertFromDrop cancelados, selección en contenteditable no se arrastra, ítem del Tablero sí; 🕘 Historial por caja (botón en cada caja; modal con versiones anteriores desde la función SQL `pl_historial_caja_v3` —texto plano, `fmt`, marcas `de_cortada`/`a_cortada`— con respaldo a `_v2` y a `pl_historial_caja` si la base no las tiene (404) y decodificación de las sub-llaves del checklist guardadas como texto JSON; marca «recortada» (por la marca de la base o por el largo, 6000); autor, dispositivo, hora, letras; restaurar pasa por updateField/updateCkText, sube y queda en ↩ Regresar; selector de caja incl. sub-llaves del checklist y Entrega; fallo de red visible), sección 🔄 Guardia (encabezado único con «📥 Recibir guardia», Recibido de solo lectura con ✏️ Corregir, etiquetas nuevas), 👤 autor y hora en Procedimientos del día (se conserva al editar) |
 | `app_vp.js` | Vasopresores (norepinefrina / vasopresina: dosis con peso, dilución 4 mg/100 mL y mL/h en mcg/kg/h con el equivalente en mcg/kg/min; ⚖️ peso en la misma fila; meta en mcg/kg/h → mL/h; avisos de dosis alta y SSC), ventilador ampliado (Pplat, Pmedia, I:E, peso predicho, VT mL/kg, presión de distensión), texto en la nota, 🤖 Nota IA en un clic (borrador + contexto al worker, limpieza, encabezado y firma garantizados, notas previas, si falla → borrador), ↗ Pasar a la página de notas (URL en configuración, portapapeles) |
 | `app_admin.js` | Cuentas con administrador: cabeceras X-PL-Device / X-PL-User en cada petición, perfil al entrar (nombre de la cuenta, último acceso, botón 👥 solo admin), cuenta bloqueada → fuera con aviso, ¿Olvidaste tu contraseña?, enlace de recuperación (#type=recovery → contraseña nueva), panel 👥 Usuarios (lista, crear cuenta con contraseña temporal, bloquear, rol, nombre, contraseña temporal, enlace, borrar; sin bloquearse a sí mismo), 🕵️ Actividad (quién, desde dónde, de → a, filtros), 👤 Mi cuenta (nombre, dispositivo, cambiar contraseña) |
 | `app_robot.js` | 🤖 Robot WinLab por paciente: aviso cuando no lo encontró (qué buscó, nombres parecidos tocables), ✏️ Nombre en WinLab (alias en la nota, con Regresar y autor), 🔎 Buscar ahora (corrida dirigida {exp} al worker; en cola; sin internet), vigilancia hasta que llega el resultado («encontrado como …») |
@@ -40,5 +91,6 @@ node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
 | `app_ind.js` | Indicaciones automáticas desde el Google Doc (`indicaciones_doc`): parseo, cruce cama+nombre, aviso por nombre distinto, Realtime, 🔄 |
 | `app_nota.js` | Cultivos WinLab (formatos reales: POSITIVO/NO DESARROLLO/NEGATIVO A n DÍAS), novedades automáticas con fecha en la entrega de guardia (labs alterados, RIS, cultivos; idempotente), nota de evolución completa, paciente que reaparece (nota restaurada antes de mostrar la tarjeta + labs WinLab sin ventana), vista de cultivos acotada |
 
-`run_all.sh` levanta servidores HTTP locales (puertos 8766/8767/8771) sobre el directorio
-indicado y deja el log de cada suite en `$TMPDIR/suite_<nombre>.log`.
+`run_all.sh` levanta servidores HTTP locales (tres puertos libres, ver Puertos) sobre el directorio
+indicado, deja el log de cada suite en `$TMPDIR/suite_<nombre>.log` y apaga los servidores al
+terminar o si se interrumpe.

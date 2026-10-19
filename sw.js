@@ -10,8 +10,11 @@
  *     la red tiene 4 s; si no responde, se sirve la copia en caché y la app abre al instante.
  *   - Supabase sigue pasando directo a la red (la app ya tiene outbox y copia local para trabajar
  *     sin conexión y sincronizar después).
+ *   - v11 (19-oct-2026): SheetJS 0.18.5 → 0.20.3 (la 0.18.5 tenía fallas de seguridad conocidas al leer
+ *     un Excel manipulado). Subir VERSION hace que los iPads descarten la caché vieja y bajen el archivo
+ *     nuevo; el procedimiento para actualizar cualquier librería está en vendor/README.md.
  */
-const VERSION = 'pisolibro-v10';
+const VERSION = 'pisolibro-v11';
 const CACHE = VERSION;
 const NAV_TIMEOUT_MS = 4000;
 // Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
@@ -26,8 +29,10 @@ const SHELL = [
 ];
 // Pesadas y de uso ocasional (importar/exportar Excel y Word): se precachean "a la mejor", sin
 // bloquear la instalación si alguna falla; si no están en caché, la app las pide a la red al usarlas.
+// Los nombres llevan versión (cache-first, inmutables): al actualizar una librería hay que cambiar el
+// nombre aquí y en index.html (_libLoad) y subir VERSION; si no, el iPad sigue sirviendo la vieja.
 const OPTIONAL = [
-  './vendor/xlsx-0.18.5.full.min.js',
+  './vendor/xlsx-0.20.3.full.min.js',
   './vendor/exceljs-4.4.0.min.js',
   './vendor/docx-8.5.0.umd.js'
 ];

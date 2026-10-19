@@ -1,6 +1,6 @@
 // 📷 Nota postquirúrgica → campos de la cirugía (oct 2026) y cámara de Cirugías robusta. Sin puertos: page.route sirve los
 // archivos del repo (no choca con run_all). Datos inventados.   node tests/headless/app_cxocr.js [index.html] [race]
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
 const fs = require('fs'); const path = require('path');
 const HTML = process.argv[2] || path.join(__dirname, '..', '..', 'index.html'); const RACE_ONLY = process.argv[3] === 'race';
 const REPO = path.join(__dirname, '..', '..');
@@ -24,7 +24,7 @@ const MOCK = `(() => {
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from: bucketApi } }) };
 })();`;
 (async () => {
-  const browser = await chromium.launch(); const context = await browser.newContext({ viewport: { width: 1300, height: 1400 } }); const page = await context.newPage();
+  const browser = await launch(); const context = await browser.newContext({ viewport: { width: 1300, height: 1400 } }); const page = await context.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   let aiCalls = []; let aiMode = 'ok';
   await page.route('**/*', async (route) => {

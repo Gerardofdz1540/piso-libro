@@ -4,7 +4,8 @@
 //  H3 Pase matutino con fecha: vitales de ayer → al escribir hoy pasan al historial (pm_hist), la fila queda limpia, chip "hoy", Regresar disponible
 //  H4 ➕ Hoy en Interconsultas / Cultivos / Entrega / Recibo: anota "dd/mm: " al final y marca el campo sucio; no duplica si ya está
 //  H5 Impresión: en modo Hoja cada tarjeta corta página (break-after: page)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -21,7 +22,7 @@ const MOCK = `(() => {
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
 (async () => {
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1300, height: 1200 } });
+  const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1300, height: 1200 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   await page.route('**/vendor/supabase*', r => r.abort());
   const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
@@ -37,7 +38,7 @@ const MOCK = `(() => {
   });
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
   check('init: sin errores no capturados', errors.length === 0, errors.join(' | '));
 

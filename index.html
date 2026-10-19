@@ -896,6 +896,19 @@
     .field-ink-btn:hover, .field-ink-btn:focus { opacity: 1; background: rgba(139, 92, 246, 0.25); }
     /* Hide on very small screens unless touch device */
     @media (hover: none) and (pointer: coarse) { .field-ink-btn { opacity: 1; } }
+    /* 🕘 Historial por caja (oct 2026): versiones anteriores de una caja, restaurables desde la tarjeta */
+    .field-hist-btn { background: rgba(100, 116, 139, 0.12); border: 1px solid rgba(100, 116, 139, 0.30); color: #475569; cursor: pointer; padding: 1px 6px; border-radius: 4px; font-size: 11px; line-height: 1; opacity: 0.55; flex-shrink: 0; }
+    .field-hist-btn:hover, .field-hist-btn:focus { opacity: 1; background: rgba(100, 116, 139, 0.25); }
+    @media (hover: none) and (pointer: coarse) { .field-hist-btn { opacity: 1; } }
+    /* ✍️ aviso: Garabatear apagado en el iPad */
+    /* abajo (no tapa la barra fija ni la tira de camas) y por debajo de los modales (9998) */
+    #scribble-hint { display: none; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9500; max-width: 680px; width: calc(100% - 24px); box-sizing: border-box; background: #fffbeb; color: #78350f; border: 1px solid #fcd34d; border-radius: 12px; padding: 10px 14px; gap: 12px; align-items: center; font-size: 13px; line-height: 1.4; box-shadow: 0 6px 24px rgba(0,0,0,.18); font-family: var(--font); }
+    #scribble-hint button { background: #b45309; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .hist-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px; margin-top: 6px; background: #fff; }
+    .hist-cur { background: #f0fdf4; border-color: #86efac; }
+    .hist-h { font-size: 11px; color: #475569; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .hist-pre { white-space: pre-wrap; word-break: break-word; font-family: var(--font); font-size: 12px; margin: 4px 0 0; max-height: 150px; overflow: auto; color: #1e293b; }
+    body.dark .hist-item { background: #0f2238; border-color: #27415f; } body.dark .hist-cur { background: #0f2e22; } body.dark .hist-pre { color: #e2e8f0; }
 
     .field-ta {
       width: 100%;
@@ -3055,6 +3068,13 @@
     /* Entrega + Recibo lado a lado (apilados en pantallas angostas) */
     .fc-guardia { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
     @media (max-width: 640px) { .fc-guardia { grid-template-columns: 1fr; } }
+    .fc-guardia-title { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 2px 0; border-top: 2px solid #e2e8f0; }
+    .fc-guardia-name { font-size: 13px; font-weight: 800; color: #334155; }
+    .fc-guardia-hint { font-size: 10.5px; color: #64748b; flex: 1; min-width: 160px; }
+    .gd-btn-main { --acc: #16a34a; --tint: #f0fdf4; background: #16a34a; color: #fff; padding: 5px 12px; font-size: 12px; }
+    .gd-btn-main:hover { background: #15803d; }
+    .gd-recibido[readonly] { background: #f8fafc; color: #1e293b; cursor: default; }
+    body.dark .fc-guardia-title { border-top-color: #27415f; } body.dark .fc-guardia-name { color: #e2e8f0; } body.dark .gd-recibido[readonly] { background: #0f2238; color: #e2e8f0; }
     .gd-btn { background: #fff; border: 1px solid var(--acc, #94a3b8); color: var(--acc, #334155); border-radius: 8px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap; }
     .gd-btn:hover { background: var(--tint, #f8fafc); }
     body.dark .gd-btn { background: #152e4d; }
@@ -4252,24 +4272,6 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
         <button type="button" onclick="forgotPassword()" data-testid="login-forgot"
           style="background:none;border:none;color:#6366f1;font-size:12.5px;font-weight:600;cursor:pointer;margin-top:6px;font-family:inherit;text-decoration:underline">¿Olvidaste tu contraseña?</button>
       </div>
-      <!-- First-time setup -->
-      <div id="login-setup-section" style="display:none">
-        <p style="font-size:13px;color:#64748b;margin-bottom:16px">Primera configuración — crea la cuenta administrador</p>
-        <input id="setup-user" type="text" placeholder="Nombre de usuario (admin)" autocomplete="username"
-          style="width:100%;padding:11px 14px;border:2px solid #e2e8f0;border-radius:9px;font-size:15px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box"
-          onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#e2e8f0'" />
-        <input id="setup-pwd" type="password" placeholder="Contraseña" autocomplete="new-password"
-          style="width:100%;padding:11px 14px;border:2px solid #e2e8f0;border-radius:9px;font-size:15px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box"
-          onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#e2e8f0'" />
-        <input id="setup-pwd2" type="password" placeholder="Confirmar contraseña" autocomplete="new-password"
-          style="width:100%;padding:11px 14px;border:2px solid #e2e8f0;border-radius:9px;font-size:15px;font-family:inherit;outline:none;margin-bottom:12px;box-sizing:border-box"
-          onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#e2e8f0'"
-          onkeydown="if(event.key==='Enter')loginSetup()" />
-        <button onclick="loginSetup()"
-          style="width:100%;background:#059669;color:#fff;border:none;padding:12px;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">
-          Crear cuenta administrador
-        </button>
-      </div>
     </div>
   </div>
 
@@ -4919,111 +4921,72 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
           style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;color:#334155;line-height:1.8">
           Cargando…</div>
       </div>
-      <!-- USER MANAGEMENT -->
-      <div id="user-mgmt-panel" style="display:none;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:14px">
-        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px">👥 Gestión de usuarios</div>
-        <div id="user-mgmt-list"></div>
-        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
-          <input id="new-user-name" type="text" placeholder="Nuevo usuario"
-            style="flex:1;min-width:110px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;font-family:var(--font);outline:none" />
-          <input id="new-user-pwd" type="password" placeholder="Contraseña"
-            style="flex:1;min-width:110px;padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;font-family:var(--font);outline:none" />
-          <select id="new-user-role"
-            style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;font-family:var(--font);outline:none">
-            <option value="user">Usuario</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button onclick="addNewUser()"
-            style="background:#059669;color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:700;font-family:var(--font)">
-            ➕ Agregar
-          </button>
-        </div>
-      </div>
+      <!-- (Las cuentas se administran desde 👥 Usuarios del header: app_users + Edge Function admin-users.) -->
       <div class="modal-footer" style="gap:8px;flex-wrap:wrap">
         <button class="btn-cancel"
           onclick="document.getElementById('config-modal').style.display='none'">Cerrar</button>
         <button onclick="openWinLabTool()"
           style="background:#0891b2;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)"
+          title="Plan B si el robot no puede entrar a WinLab: marcador con el censo incluido para una PC del hospital"
           data-testid="winlab-tool-btn">
-          🧪 Bookmarklet WinLab
-        </button>
-        <button onclick="authChangePassword()"
-          style="display:none;background:#6366f1;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)">
-          🔑 Mi contraseña
-        </button>
-        <button onclick="openUserManagement()"
-          style="display:none;background:#0a1628;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font)">
-          👥 Usuarios
+          🧪 Marcador WinLab (respaldo manual)
         </button>
       </div>
     </div>
   </div>
 
-  <!-- ═══ WINLAB BOOKMARKLET INSTALL MODAL ═════════════════════════════════ -->
+  <!-- ═══ MARCADOR WINLAB (respaldo manual con el censo embebido) ═══════════ -->
   <div class="modal-bg" id="winlab-tool-modal" style="display:none">
     <div class="modal" style="max-width:640px;width:96%">
       <div class="modal-header">
-        <div class="modal-title">🧪 Sync rápido con WinLab</div>
+        <div class="modal-title">🧪 Marcador WinLab (respaldo manual)</div>
         <button class="modal-close" onclick="document.getElementById('winlab-tool-modal').style.display='none'" data-testid="winlab-tool-close">✕</button>
       </div>
       <div style="padding:14px 18px;font-size:13px;color:#334155;line-height:1.55">
-        <p style="margin:0 0 12px"><b>¿Qué hace?</b> Te ahorra palomear paciente por paciente en WinLab. Al picarlo estando en la lista de reportes, selecciona automáticamente los pacientes de tu censo.</p>
-
-        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:12px;color:#78350f">
-          <b>⚠️ Importante:</b> NO copies ni pegues el código manualmente — Firefox escapa las comillas y rompe el bookmark.
-          En lugar de eso, <b>arrastra el botón de abajo directo a tu barra de marcadores</b> (la franja con los favoritos arriba).
+        <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin:0 0 12px;font-size:12px;color:#78350f">
+          <b>⚠️ Solo es un respaldo.</b> Los labs llegan solos con el robot (3 corridas al día y «🔎 Buscar ahora» en cada tarjeta).
+          Usa este marcador únicamente el día en que el robot no pueda entrar a WinLab (acceso externo cerrado, cambio de dirección,
+          bloqueo), desde una PC del hospital con WinLab abierto.
         </div>
 
+        <p style="margin:0 0 10px"><b>¿Qué hace?</b> En la lista de reportes de WinLab palomea solo los reportes completos de los pacientes del censo
+          (tolera errores de captura en el nombre y usa el «nombre en WinLab» si lo fijaste) y avanza de página solo. Al terminar imprimes el PDF
+          y lo sueltas en <b>📦 Labs Masivo</b>.</p>
+        <p style="margin:0 0 12px"><b>El censo va dentro del marcador</b>, tomado de esta app al momento de generarlo: no se conecta a la base ni lleva
+          ninguna llave. Por eso hay que volver a arrastrarlo (o copiarlo) cada día o cuando cambie el censo.
+          <span id="winlab-bm-info" style="display:block;margin-top:4px;font-weight:700;color:#0e7490" data-testid="winlab-bm-info"></span></p>
+
         <div style="text-align:center;padding:20px;background:#f8fafc;border-radius:10px;border:2px dashed #94a3b8;margin-bottom:14px">
-          <div style="font-size:11px;color:#64748b;margin-bottom:10px">⬇️ Arrastra este botón a tu barra de marcadores ⬇️</div>
+          <div style="font-size:11px;color:#64748b;margin-bottom:10px">⬇️ Arrastra este botón a la barra de marcadores del navegador de la PC ⬇️</div>
           <a id="winlab-draggable-bookmark"
              href="#"
              draggable="true"
              style="display:inline-block;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;cursor:grab;box-shadow:0 4px 12px rgba(8,145,178,.3);user-select:none"
              data-testid="winlab-draggable-bookmark">
-            📋 Sync censo WinLab
+            📋 Censo → WinLab
           </a>
-          <div style="font-size:10px;color:#94a3b8;margin-top:10px">Si no ves la barra de marcadores: Firefox → Menú → Ver → Barras de herramientas → Barra de marcadores</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:10px">Si no ves la barra de marcadores: Firefox → Menú → Ver → Barras de herramientas → Barra de marcadores · Chrome/Edge → Ctrl+Mayús+B</div>
         </div>
 
         <div style="background:#f0f9ff;border:1px solid #7dd3fc;border-radius:8px;padding:10px 14px;font-size:12px;color:#075985">
-          <b style="font-size:13px">Cómo usarlo:</b>
+          <b style="font-size:13px">Cómo usarlo (en la PC del hospital):</b>
           <ol style="margin:6px 0 0 18px;padding:0">
-            <li>Abre WinLab en otra pestaña y loguéate.</li>
-            <li>Ve a <b>Reportes</b> y dale "Ir" para ver los reportes de HOY.</li>
-            <li>Clic en tu nuevo favorito <b>"📋 Sync censo WinLab"</b> (arriba).</li>
-            <li>Aparece un toast verde arriba a la derecha con los pacientes encontrados.</li>
-            <li>Clic en <b>"Imprime Reportes"</b> → descargas el PDF combinado.</li>
-            <li>Regresa a piso-libro → <b>📦 Carga Masiva de Labs</b> → suelta el PDF.</li>
+            <li>Abre esta app, entra a ⚙️ Config → 🧪 Marcador WinLab y arrastra el botón de arriba a la barra de marcadores (o copia el código de abajo).</li>
+            <li>Abre WinLab en otra pestaña, entra y ve a <b>Reportes</b> → "Ir" para ver los reportes de HOY.</li>
+            <li>Clic en el marcador <b>"📋 Censo → WinLab"</b>: aparece un aviso con los pacientes encontrados y pasa a la página siguiente solo
+              (si no puede, pasa tú de página y vuelve a dar clic).</li>
+            <li>Clic en <b>"Imprime Reportes"</b> → se descarga el PDF combinado.</li>
+            <li>Regresa a la app → <b>📦 Labs Masivo</b> → suelta el PDF.</li>
           </ol>
         </div>
 
-        <!-- ── Tampermonkey: modo completamente automático ── -->
-        <details style="margin-top:14px" id="winlab-tm-details">
-          <summary style="cursor:pointer;font-size:12px;color:#0369a1;font-weight:600">⚡ Modo automático total (Tampermonkey) — sin clicks extra</summary>
-          <div style="margin-top:10px;padding:12px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:12px;color:#14532d;line-height:1.6">
-            <p style="margin:0 0 8px">Instala el <b>userscript de piso-libro</b>: al abrir WinLab aparece un botón <b>▶ Scan</b>. Un solo clic y el script recorre <b>todas las páginas solo</b>, sin que toques nada más.</p>
-            <ol style="margin:0 0 10px 18px;padding:0">
-              <li>Instala la extensión <b>Tampermonkey</b> en tu navegador:
-                <a href="https://www.tampermonkey.net/" target="_blank" style="color:#0369a1;font-weight:700">tampermonkey.net</a></li>
-              <li>Clic en el botón de abajo — Tampermonkey abrirá la pantalla de instalación:</li>
-            </ol>
-            <div style="text-align:center;margin:10px 0">
-              <a href="/scripts/winlab-tampermonkey.user.js" target="_blank"
-                 style="display:inline-block;background:#15803d;color:#fff;padding:9px 20px;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(21,128,61,.3)">
-                ⬇️ Instalar userscript piso-libro
-              </a>
-            </div>
-            <p style="margin:6px 0 0;font-size:11px;color:#166534"><b>Uso:</b> abre WinLab → Reportes → "Ir" → clic en <b>▶ Scan Piso-Libro</b> (botón azul abajo a la derecha) → el script trabaja solo hasta terminar todas las páginas.</p>
-          </div>
-        </details>
-
         <details style="margin-top:10px">
-          <summary style="cursor:pointer;font-size:12px;color:#64748b">¿No puedes arrastrar? (móvil/tablet, instalación manual)</summary>
+          <summary style="cursor:pointer;font-size:12px;color:#64748b">¿No puedes arrastrar? (copiar el código a mano)</summary>
           <div style="margin-top:8px;padding:10px;background:#f1f5f9;border-radius:6px;font-size:11px;color:#475569">
-            <p>1. Copia todo el código de abajo (clic en el cuadro → Cmd+A → Cmd+C):</p>
+            <p>1. Copia todo el código (botón de abajo, o clic en el cuadro → Ctrl+A → Ctrl+C):</p>
             <textarea id="winlab-code-raw" readonly rows="4" style="width:100%;font-family:monospace;font-size:9px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;margin-top:6px" data-testid="winlab-code-raw"></textarea>
-            <p style="margin-top:8px">2. Crea un nuevo marcador manualmente y pega el código en el campo URL. Si Firefox te quita la parte <code>javascript:</code>, ponla de vuelta al inicio a mano.</p>
+            <button class="btn-cancel" style="margin-top:6px;padding:4px 12px;font-size:11px" onclick="copyWinLabBookmarklet()" data-testid="winlab-code-copy">📋 Copiar código</button>
+            <p style="margin-top:8px">2. Crea un marcador nuevo y pega el código en el campo de dirección (URL). Si el navegador quita la parte <code>javascript:</code>, escríbela de nuevo al inicio.</p>
           </div>
         </details>
       </div>
@@ -5123,7 +5086,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
   <script>
     // Carga perezosa de librerías pesadas, una sola vez, desde el mismo origen (y la caché del SW).
     window._libLoad = (function () {
-      var SRC = { xlsx: "vendor/xlsx-0.18.5.full.min.js", exceljs: "vendor/exceljs-4.4.0.min.js", docx: "vendor/docx-8.5.0.umd.js" };
+      var SRC = { xlsx: "vendor/xlsx-0.20.3.full.min.js", exceljs: "vendor/exceljs-4.4.0.min.js", docx: "vendor/docx-8.5.0.umd.js" };
       var READY = { xlsx: function () { return !!window.XLSX; }, exceljs: function () { return !!window.ExcelJS; }, docx: function () { return !!window.docx; } };
       var pending = {};
       return function (name) {
@@ -6581,64 +6544,14 @@ function plExportBackup() {
       if (trimmed) { localStorage.setItem("pl_user_name", trimmed); renderUserChip(); }
     }
     // ── AUTH ─────────────────────────────────────────────────────────────────────
-    const _AUTH_SESSION_KEY = "pl_auth_session";
-    const _AUTH_SESSION_TTL = 12 * 60 * 60 * 1000; // 12 h
-
-    async function _sha256(str) {
-      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
-    }
-
-    // ── user list stored in Supabase pl_users + localStorage fallback ─────────
-    async function _usersGetAll() {
-      if (window._supaClient) {
-        try {
-          const { data } = await window._supaClient.from("pl_users").select("username,pwd_hash,role,active");
-          if (data) return data;
-        } catch (_) {}
-      }
-      try { return JSON.parse(localStorage.getItem("pl_users_local") || "[]"); } catch (_) { return []; }
-    }
-
-    async function _usersSave(users) {
-      localStorage.setItem("pl_users_local", JSON.stringify(users));
-      if (window._supaClient) {
-        try { await window._supaClient.from("pl_users").upsert(users); } catch (_) {}
-      }
-    }
-
-    async function _usersGetOne(username) {
-      const all = await _usersGetAll();
-      return all.find(u => u.username.toLowerCase() === username.toLowerCase()) || null;
-    }
-
-    function _authSessionValid() {
-      try {
-        const s = JSON.parse(sessionStorage.getItem(_AUTH_SESSION_KEY) || "null");
-        return s && (Date.now() - s.ts < _AUTH_SESSION_TTL) && s.username;
-      } catch (_) { return false; }
-    }
-
-    function _authSessionUser() {
-      try {
-        const s = JSON.parse(sessionStorage.getItem(_AUTH_SESSION_KEY) || "null");
-        return (s && s.username) ? s.username : null;
-      } catch (_) { return null; }
-    }
-
-    function _authStartSession(username, role) {
-      sessionStorage.setItem(_AUTH_SESSION_KEY, JSON.stringify({ ts: Date.now(), username, role }));
-    }
-
-    function _showLoginOverlay(setupMode) {
+    // Inicio de sesión con Supabase Auth (email + contraseña) y perfil en app_users (más abajo). El
+    // sistema casero anterior (tabla pl_users con SHA-256 sin sal, "primera configuración" y panel de
+    // usuarios en Config) se retiró en oct 2026: la tabla ya no existe y nada lo llamaba.
+    function _showLoginOverlay() {
       const ov = document.getElementById("login-overlay");
       if (ov) ov.style.display = "flex";
-      const normal = document.getElementById("login-form-normal");
-      const setup = document.getElementById("login-setup-section");
-      if (normal) normal.style.display = setupMode ? "none" : "block";
-      if (setup) setup.style.display = setupMode ? "block" : "none";
       setTimeout(function() {
-        const f = setupMode ? document.getElementById("setup-user") : document.getElementById("login-user");
+        const f = document.getElementById("login-user");
         if (f) f.focus();
       }, 100);
     }
@@ -7085,103 +6998,6 @@ function plExportBackup() {
       }
     }
 
-    async function loginSetup() {
-      const username = ((document.getElementById("setup-user") || {}).value || "").trim();
-      const p1 = (document.getElementById("setup-pwd") || {}).value || "";
-      const p2 = (document.getElementById("setup-pwd2") || {}).value || "";
-      const msg = document.getElementById("login-msg");
-      if (!username || username.length < 2) {
-        if (msg) { msg.textContent = "El nombre de usuario debe tener al menos 2 caracteres."; msg.style.display = "block"; }
-        return;
-      }
-      if (!p1 || p1.length < 4) {
-        if (msg) { msg.textContent = "La contraseña debe tener al menos 4 caracteres."; msg.style.display = "block"; }
-        return;
-      }
-      if (p1 !== p2) {
-        if (msg) { msg.textContent = "Las contraseñas no coinciden."; msg.style.display = "block"; }
-        return;
-      }
-      const h = await _sha256(p1);
-      await _usersSave([{ username, pwd_hash: h, role: "admin", active: true }]);
-      _authStartSession(username, "admin");
-      _hideLoginOverlay();
-    }
-
-    async function authChangePassword() {
-      const p1 = prompt("Nueva contraseña (mín. 4 caracteres):");
-      if (p1 === null) return;
-      if (!p1 || p1.length < 4) { alert("Contraseña muy corta."); return; }
-      const p2 = prompt("Confirmar nueva contraseña:");
-      if (p1 !== p2) { alert("Las contraseñas no coinciden."); return; }
-      const me = _authSessionUser();
-      if (!me) { alert("No hay sesión activa."); return; }
-      const all = await _usersGetAll();
-      const idx = all.findIndex(u => u.username.toLowerCase() === me.toLowerCase());
-      if (idx < 0) { alert("Usuario no encontrado."); return; }
-      all[idx].pwd_hash = await _sha256(p1);
-      await _usersSave(all);
-      alert("Contraseña actualizada.");
-    }
-
-    async function openUserManagement() {
-      const me = _authSessionUser();
-      const all = await _usersGetAll();
-      const myRole = all.find(u => u.username.toLowerCase() === (me || "").toLowerCase())?.role;
-      if (myRole !== "admin") { alert("Solo el administrador puede gestionar usuarios."); return; }
-      const el = document.getElementById("user-mgmt-panel");
-      if (!el) return;
-      el.style.display = "block";
-      renderUserMgmtPanel(all);
-    }
-
-    function renderUserMgmtPanel(users) {
-      const el = document.getElementById("user-mgmt-list");
-      if (!el) return;
-      if (!users.length) { el.innerHTML = "<div style='color:#94a3b8;font-size:13px'>No hay usuarios.</div>"; return; }
-      el.innerHTML = users.map(u => `
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px">
-          <span style="font-size:16px">${u.role === "admin" ? "👑" : "👤"}</span>
-          <span style="flex:1;font-size:13px;font-weight:600;color:#1e293b">${esc(u.username)}</span>
-          <span style="font-size:10px;background:${u.active ? "#dcfce7" : "#fee2e2"};color:${u.active ? "#166534" : "#dc2626"};padding:2px 7px;border-radius:10px;font-weight:700">${u.active ? "ACTIVO" : "INACTIVO"}</span>
-          <button onclick="toggleUserActive(${JSON.stringify(u.username)})"
-            style="background:${u.active ? "#fee2e2" : "#dcfce7"};border:none;color:${u.active ? "#dc2626" : "#059669"};padding:3px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font)">
-            ${u.active ? "Revocar" : "Reactivar"}
-          </button>
-        </div>`).join("");
-    }
-
-    async function addNewUser() {
-      const uEl = document.getElementById("new-user-name");
-      const pEl = document.getElementById("new-user-pwd");
-      const rEl = document.getElementById("new-user-role");
-      const username = (uEl ? uEl.value : "").trim();
-      const pwd = pEl ? pEl.value : "";
-      const role = rEl ? rEl.value : "user";
-      if (!username || !pwd || pwd.length < 4) { alert("Usuario (≥1 car) y contraseña (≥4 car) son obligatorios."); return; }
-      const all = await _usersGetAll();
-      if (all.find(u => u.username.toLowerCase() === username.toLowerCase())) {
-        alert("Ya existe un usuario con ese nombre."); return;
-      }
-      const h = await _sha256(pwd);
-      all.push({ username, pwd_hash: h, role, active: true });
-      await _usersSave(all);
-      if (uEl) uEl.value = "";
-      if (pEl) pEl.value = "";
-      renderUserMgmtPanel(all);
-      alert("Usuario '" + username + "' creado.");
-    }
-
-    async function toggleUserActive(username) {
-      const me = _authSessionUser();
-      if (me && me.toLowerCase() === username.toLowerCase()) { alert("No puedes revocar tu propia sesión."); return; }
-      const all = await _usersGetAll();
-      const idx = all.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
-      if (idx < 0) return;
-      all[idx].active = !all[idx].active;
-      await _usersSave(all);
-      renderUserMgmtPanel(all);
-    }
     // ── END AUTH ─────────────────────────────────────────────────────────────────
 
     const _FS_SIZES = { S: "11px", M: "13px", L: "16px" };
@@ -7289,24 +7105,232 @@ function plExportBackup() {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // WinLab Bookmarklet installer — provides draggable link so users don't
-    // have to copy-paste the javascript: URI (Firefox strips/escapes it).
+    // Marcador (bookmarklet) WinLab — respaldo MANUAL para una PC del hospital (oct 2026).
+    // El camino normal son el robot (rpa/, 3 corridas al día) y «🔎 Buscar ahora»; esto es el plan B
+    // para el día en que el robot no pueda entrar a WinLab (acceso externo cerrado, DDNS cambiado,
+    // bloqueo). El marcador se genera bajo demanda con el censo EMBEBIDO desde la memoria de la app
+    // (cama, exp, nombre, esp y el «nombre en WinLab» si se fijó): no llama a Supabase ni lleva ninguna
+    // llave (la versión anterior bajaba el censo con la llave anon y fallaba por RLS). Corrido en la
+    // lista de reportes de WinLab palomea los reportes completos de los pacientes del censo (match
+    // difuso Jaro-Winkler por tokens, mismo algoritmo que _winlabJaro) y avanza de página solo.
+    //
+    // _winlabMarkerMain corre DENTRO de la página de WinLab: no puede usar nada de la app. Su texto
+    // (toString) se pega en el javascript: URL con las líneas unidas por espacios, así que adentro no
+    // van comentarios "//" ni plantillas con saltos de línea. Mensajes en ASCII para que el marcador
+    // sobreviva a cualquier codificación del navegador.
     // ═══════════════════════════════════════════════════════════════════════
-    const WINLAB_BOOKMARKLET = `javascript:(async()=>{const S="${SUPA_URL}",K="${SUPA_KEY}",V="v7";const SS="__pl_winlab_state";const toast=(m,c,tms)=>{let t=document.getElementById("__plt");if(!t){t=document.createElement("div");t.id="__plt";t.style.cssText="position:fixed;top:20px;right:20px;z-index:99999;padding:14px 20px;border-radius:10px;font:600 13px -apple-system,sans-serif;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,.25);max-width:460px;line-height:1.45;white-space:pre-line";document.body.appendChild(t)}t.style.background=c||"#0369a1";t.textContent=m;t.style.display="block";clearTimeout(t._to);t._to=setTimeout(()=>t.style.display="none",tms||25000)};const N=s=>String(s||"").toUpperCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/\\s+/g," ").trim();const loadState=()=>{try{return JSON.parse(sessionStorage.getItem(SS)||"null")}catch(e){return null}};const saveState=s=>sessionStorage.setItem(SS,JSON.stringify(s));let state=loadState();if(!state){toast("[piso-libro "+V+"] Leyendo censo...","#0369a1");let pts;try{const r=await fetch(S+"/rest/v1/patients?select=cama,exp,nombre,esp",{headers:{apikey:K,Authorization:"Bearer "+K}});if(!r.ok)throw new Error("HTTP "+r.status);pts=await r.json()}catch(e){toast("Error leyendo censo: "+e.message,"#dc2626");return}if(!pts||!pts.length){toast("Censo vacio. Importa primero el Excel.","#d97706");return}state={pts,totalMatched:0,totalBoxes:0,totalPending:0,totalForeign:0,seenPts:[],pagesDone:0};saveState(state);toast("[piso-libro "+V+"] Censo cargado: "+pts.length+" pacientes. Empezando scan...","#0369a1",3000);await new Promise(r=>setTimeout(r,700))}const pts=state.pts;function jaro(a,b){if(a===b)return 1;const la=a.length,lb=b.length;if(!la||!lb)return 0;const dist=Math.max(0,Math.floor(Math.max(la,lb)/2)-1);const ma=new Uint8Array(la),mb=new Uint8Array(lb);let matches=0;for(let i=0;i<la;i++){const lo=Math.max(0,i-dist),hi=Math.min(i+dist+1,lb);for(let j=lo;j<hi;j++){if(!mb[j]&&a[i]===b[j]){ma[i]=mb[j]=1;matches++;break}}}if(!matches)return 0;let t=0,k=0;for(let i=0;i<la;i++){if(!ma[i])continue;while(!mb[k])k++;if(a[i]!==b[k])t++;k++}return(matches/la+matches/lb+(matches-t/2)/matches)/3}function jaroWinkler(a,b){const j=jaro(a,b);let p=0;const l=Math.min(4,a.length,b.length);while(p<l&&a[p]===b[p])p++;return j+p*0.1*(1-j)}function nameSim(s1,s2){const t1=s1.split(" ").filter(Boolean),t2=s2.split(" ").filter(Boolean);if(!t1.length||!t2.length)return 0;const[sh,lo]=t1.length<=t2.length?[t1,t2]:[t2,t1];let tot=0;for(const a of sh){let best=0;for(const b of lo){const s=jaroWinkler(a,b);if(s>best)best=s}tot+=best}return tot/lo.length}const THRESH=0.72;const censoNorm=pts.map(p=>({pt:p,norm:N(p.nombre)}));function findMatch(ap,no){const q=(N(ap)+" "+N(no)).replace(/\\s+/g," ").trim();if(!q)return null;let best=null,bs=0;for(const c of censoNorm){const s=nameSim(q,c.norm);if(s>bs){bs=s;best=c}}return bs>=THRESH?best:null}function detectHdr(rows){for(const row of rows){const cells=Array.from(row.querySelectorAll("th,td")).map(c=>N(c.innerText));const apI=cells.findIndex(c=>/^APELLIDO(S)?$/.test(c));const noI=cells.findIndex(c=>/^NOMBRE(S)?$/.test(c));const ptI=cells.findIndex(c=>/^PACIENTE(S)?$/.test(c));if(apI>=0&&noI>=0)return{apIdx:apI,noIdx:noI,ptIdx:-1};if(ptI>=0)return{apIdx:-1,noIdx:-1,ptIdx:ptI}}return null}const NR=/^[A-Z]{2,}( [A-Z]{2,}){0,3}$/;function extractNames(cells,hdr){if(hdr){if(hdr.ptIdx>=0&&cells[hdr.ptIdx])return{ap:cells[hdr.ptIdx],no:""};if(hdr.apIdx>=0&&cells[hdr.apIdx])return{ap:cells[hdr.apIdx],no:hdr.noIdx>=0?(cells[hdr.noIdx]||""):""}}const sx=cells.findIndex(c=>c==="FEMENINO"||c==="MASCULINO");if(sx>=2&&cells[sx-2])return{ap:cells[sx-2],no:cells[sx-1]||""};const hits=cells.filter(c=>NR.test(c)&&c.length<=50);if(hits.length>=2)return{ap:hits[0],no:hits[1]};if(hits.length===1)return{ap:hits[0],no:""};return null}const rows=Array.from(document.querySelectorAll("table tr"));const hdr=detectHdr(rows);let matched=0,boxes=0,pending=0,foreign=0,headers=0;const seen=new Set(state.seenPts);const debugHits=[];for(let i=0;i<rows.length;i++){const cells=Array.from(rows[i].cells||[]).map(x=>N(x.innerText));if(cells.length<2)continue;if(!cells.some(c=>c==="FEMENINO"||c==="MASCULINO"))continue;headers++;const names=extractNames(cells,hdr);if(!names||!names.ap)continue;const{ap,no}=names;const match=findMatch(ap,no);if(!match){debugHits.push({row:i,ap,no,matched:"(no)"});foreign++;continue}debugHits.push({row:i,ap,no,matched:match.pt.nombre});matched++;seen.add(match.pt.exp||match.pt.nombre);for(let j=i+1;j<rows.length;j++){const nc=Array.from(rows[j].cells||[]).map(x=>N(x.innerText));if(nc.some(x=>x==="FEMENINO"||x==="MASCULINO"))break;const hasC=nc.some((txt,idx)=>idx>=2&&idx<=6&&txt==="C");if(!hasC){if(rows[j].querySelector('input[type="checkbox"]'))pending++;continue}const allCbs=rows[j].querySelectorAll('input[type="checkbox"]');allCbs.forEach(cb=>{if(!cb.checked&&!cb.disabled){try{cb.click();boxes++}catch(e){}}})}}console.log("[piso-libro] Pag scan:",{matched,boxes,pending,foreign,headers,totalRows:rows.length});console.table(debugHits);state.seenPts=Array.from(seen);state.totalMatched+=matched;state.totalBoxes+=boxes;state.totalPending=(state.totalPending||0)+pending;state.totalForeign+=foreign;state.pagesDone++;saveState(state);let curPg=1,totPg=1;const _b=document.body.innerText;for(const _p of[/P[aá]g(?:ina)?[.:]?\\s*(\\d+)\\s+de\\s+(\\d+)/i,/Page\\s+(\\d+)\\s+of\\s+(\\d+)/i]){const _m=_b.match(_p);if(_m&&+_m[1]>0&&+_m[2]>0){curPg=+_m[1];totPg=+_m[2];break}}const nextLink=(()=>{const cands=Array.from(document.querySelectorAll('a,input[type="image"],input[type="button"],input[type="submit"],button'));const byLbl=cands.find(el=>{if(el.disabled||el.getAttribute("disabled")==="disabled")return false;const t=(el.title||el.alt||el.value||el.innerText||"").trim().toLowerCase();const src=(el.src||"").toLowerCase();const href=(el.href||el.getAttribute("href")||"").toLowerCase();if(t.includes("siguiente")||t.includes("next")||t===">"||t===">>"||t==="\u00bb"||t==="\u203a")return true;if(src.includes("next")&&!src.includes("last"))return true;if(href.includes("__dopostback")&&(href.includes("next")||href.includes("siguiente")))return true;return false});if(byLbl)return byLbl;const byNum=cands.find(el=>(el.innerText||el.value||"").trim()===String(curPg+1)&&!el.disabled);return byNum||null})();if(nextLink&&(curPg<totPg||totPg<=1)){toast("[piso-libro "+V+"] Pag "+curPg+(totPg>1?"/"+totPg:"")+": +"+matched+" pac, +"+boxes+" completos"+(pending?", "+pending+" preliminares omitidos":"")+"\\n\\nTotal: "+state.totalMatched+" pac / "+state.totalBoxes+" completos / "+(state.totalPending||0)+" preliminares\\n\\n>> Avanzando a la pag "+(curPg+1)+"...","#0369a1",6000);await new Promise(r=>setTimeout(r,800));try{nextLink.click()}catch(e){toast("No pude clicar. Hazlo tu y pica el bookmark otra vez.","#d97706")}return}else if(curPg<totPg){toast("[piso-libro "+V+"] Pag "+curPg+"/"+totPg+": +"+matched+" pac, +"+boxes+" completos\\n\\nTotal: "+state.totalMatched+" / "+state.totalBoxes+" completos / "+(state.totalPending||0)+" preliminares\\n\\nHaz clic en > manualmente y pica el bookmark otra vez.","#d97706",30000);return}const miss=pts.filter(p=>!state.seenPts.includes(p.exp||p.nombre));const missPreview=miss.slice(0,8).map(p=>"  - "+p.nombre.split(" ").slice(0,3).join(" "));let msg="[piso-libro "+V+"] COMPLETO\\n"+state.pagesDone+" paginas escaneadas\\n"+state.totalMatched+" pacientes del censo encontrados\\n"+state.totalBoxes+" reportes COMPLETOS palomeados"+(state.totalPending?"\\n"+state.totalPending+" reportes preliminares (C vacio) - omitidos":"");if(miss.length){msg+="\\n\\nSin labs completos hoy ("+miss.length+"/"+pts.length+"):\\n"+missPreview.join("\\n");if(miss.length>8)msg+="\\n  ... y "+(miss.length-8)+" mas"}msg+="\\n\\n>>> Clic en Imprime Reportes <<<";sessionStorage.removeItem(SS);toast(msg,state.totalMatched?"#15803d":"#d97706",90000)})();`;
+    async function _winlabMarkerMain(D) {
+      var V = "v8", SS = "__pl_winlab_state";
+      var toast = function (m, c, ms) {
+        var t = document.getElementById("__plt");
+        if (!t) {
+          t = document.createElement("div"); t.id = "__plt"; t.title = "Clic para cerrar";
+          t.style.cssText = "position:fixed;top:20px;right:20px;z-index:2147483647;padding:14px 20px;border-radius:10px;font:600 13px -apple-system,sans-serif;color:#fff;box-shadow:0 8px 32px rgba(0,0,0,.25);max-width:460px;line-height:1.45;white-space:pre-line;cursor:pointer";
+          t.onclick = function () { t.style.display = "none"; };
+          document.body.appendChild(t);
+        }
+        t.style.background = c || "#0369a1"; t.textContent = m; t.style.display = "block";
+        clearTimeout(t._to); t._to = setTimeout(function () { t.style.display = "none"; }, ms || 25000);
+      };
+      var N = function (s) { return String(s || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim(); };
+      var pts = (D && D.pts) || [];
+      if (!pts.length) { toast("[piso-libro " + V + "] El marcador no trae censo. Generalo de nuevo en la app (Config > Marcador WinLab).", "#dc2626"); return; }
+      var state = null;
+      try { state = JSON.parse(sessionStorage.getItem(SS) || "null"); } catch (e) { state = null; }
+      if (state && state.stamp !== D.stamp) state = null;
+      var saveState = function (s) { sessionStorage.setItem(SS, JSON.stringify(s)); };
+      if (!state) {
+        state = { stamp: D.stamp, totalMatched: 0, totalBoxes: 0, totalPending: 0, totalForeign: 0, seenPts: [], pagesDone: 0 };
+        saveState(state);
+        toast("[piso-libro " + V + "] Censo del " + D.stamp + ": " + pts.length + " pacientes. Buscando en esta pagina...", "#0369a1", 3000);
+        await new Promise(function (r) { setTimeout(r, 500); });
+      }
+      function jaro(a, b) {
+        if (a === b) return 1;
+        var la = a.length, lb = b.length;
+        if (!la || !lb) return 0;
+        var dist = Math.max(0, Math.floor(Math.max(la, lb) / 2) - 1);
+        var ma = new Uint8Array(la), mb = new Uint8Array(lb), matches = 0, i, j;
+        for (i = 0; i < la; i++) {
+          var lo = Math.max(0, i - dist), hi = Math.min(i + dist + 1, lb);
+          for (j = lo; j < hi; j++) { if (!mb[j] && a[i] === b[j]) { ma[i] = mb[j] = 1; matches++; break; } }
+        }
+        if (!matches) return 0;
+        var t = 0, k = 0;
+        for (i = 0; i < la; i++) { if (!ma[i]) continue; while (!mb[k]) k++; if (a[i] !== b[k]) t++; k++; }
+        return (matches / la + matches / lb + (matches - t / 2) / matches) / 3;
+      }
+      function jaroWinkler(a, b) {
+        var j = jaro(a, b), p = 0, l = Math.min(4, a.length, b.length);
+        while (p < l && a[p] === b[p]) p++;
+        return j + p * 0.1 * (1 - j);
+      }
+      function nameSim(s1, s2) {
+        var t1 = s1.split(" ").filter(Boolean), t2 = s2.split(" ").filter(Boolean);
+        if (!t1.length || !t2.length) return 0;
+        var sh = t1.length <= t2.length ? t1 : t2, lo = t1.length <= t2.length ? t2 : t1, tot = 0;
+        sh.forEach(function (a) { var best = 0; lo.forEach(function (b) { var s = jaroWinkler(a, b); if (s > best) best = s; }); tot += best; });
+        return tot / lo.length;
+      }
+      var THRESH = 0.72, censo = [];
+      pts.forEach(function (p) {
+        censo.push({ pt: p, norm: N(p.nombre) });
+        if (p.alias) censo.push({ pt: p, norm: N(p.alias) });
+      });
+      function findMatch(ap, no) {
+        var q = (N(ap) + " " + N(no)).replace(/\s+/g, " ").trim();
+        if (!q) return null;
+        var best = null, bs = 0;
+        censo.forEach(function (c) { var s = nameSim(q, c.norm); if (s > bs) { bs = s; best = c; } });
+        return bs >= THRESH ? best : null;
+      }
+      var cellsOf = function (row) { return Array.prototype.map.call(row.cells || [], function (x) { return N(x.innerText); }); };
+      var isSex = function (c) { return c === "FEMENINO" || c === "MASCULINO"; };
+      function detectHdr(rows) {
+        for (var r = 0; r < rows.length; r++) {
+          var cells = Array.prototype.map.call(rows[r].querySelectorAll("th,td"), function (c) { return N(c.innerText); });
+          var apI = cells.findIndex(function (c) { return /^APELLIDO(S)?$/.test(c); });
+          var noI = cells.findIndex(function (c) { return /^NOMBRE(S)?$/.test(c); });
+          var ptI = cells.findIndex(function (c) { return /^PACIENTE(S)?$/.test(c); });
+          if (apI >= 0 && noI >= 0) return { apIdx: apI, noIdx: noI, ptIdx: -1 };
+          if (ptI >= 0) return { apIdx: -1, noIdx: -1, ptIdx: ptI };
+        }
+        return null;
+      }
+      var NR = /^[A-Z]{2,}( [A-Z]{2,}){0,3}$/;
+      function extractNames(cells, hdr) {
+        if (hdr) {
+          if (hdr.ptIdx >= 0 && cells[hdr.ptIdx]) return { ap: cells[hdr.ptIdx], no: "" };
+          if (hdr.apIdx >= 0 && cells[hdr.apIdx]) return { ap: cells[hdr.apIdx], no: hdr.noIdx >= 0 ? (cells[hdr.noIdx] || "") : "" };
+        }
+        var sx = cells.findIndex(isSex);
+        if (sx >= 2 && cells[sx - 2]) return { ap: cells[sx - 2], no: cells[sx - 1] || "" };
+        var hits = cells.filter(function (c) { return NR.test(c) && c.length <= 50; });
+        if (hits.length >= 2) return { ap: hits[0], no: hits[1] };
+        if (hits.length === 1) return { ap: hits[0], no: "" };
+        return null;
+      }
+      var rows = Array.prototype.slice.call(document.querySelectorAll("table tr"));
+      var hdr = detectHdr(rows);
+      var matched = 0, boxes = 0, pending = 0, foreign = 0, seen = {};
+      state.seenPts.forEach(function (k) { seen[k] = 1; });
+      for (var i = 0; i < rows.length; i++) {
+        var cells = cellsOf(rows[i]);
+        if (cells.length < 2 || !cells.some(isSex)) continue;
+        var names = extractNames(cells, hdr);
+        if (!names || !names.ap) continue;
+        var match = findMatch(names.ap, names.no);
+        if (!match) { foreign++; continue; }
+        matched++;
+        seen[match.pt.exp || match.pt.nombre] = 1;
+        for (var j = i + 1; j < rows.length; j++) {
+          var nc = cellsOf(rows[j]);
+          if (nc.some(isSex)) break;
+          var hasC = nc.some(function (txt, idx) { return idx >= 2 && idx <= 6 && txt === "C"; });
+          if (!hasC) { if (rows[j].querySelector('input[type="checkbox"]')) pending++; continue; }
+          Array.prototype.forEach.call(rows[j].querySelectorAll('input[type="checkbox"]'), function (cb) {
+            if (!cb.checked && !cb.disabled) { try { cb.click(); boxes++; } catch (e) {} }
+          });
+        }
+      }
+      state.seenPts = Object.keys(seen);
+      state.totalMatched += matched; state.totalBoxes += boxes; state.totalPending += pending; state.totalForeign += foreign; state.pagesDone++;
+      saveState(state);
+      var curPg = 1, totPg = 1, body = document.body.innerText;
+      var pgRes = [/P[a\u00e1]g(?:ina)?[.:]?\s*(\d+)\s+de\s+(\d+)/i, /Page\s+(\d+)\s+of\s+(\d+)/i];
+      for (var g = 0; g < pgRes.length; g++) { var mm = body.match(pgRes[g]); if (mm && +mm[1] > 0 && +mm[2] > 0) { curPg = +mm[1]; totPg = +mm[2]; break; } }
+      var cands = Array.prototype.slice.call(document.querySelectorAll('a,input[type="image"],input[type="button"],input[type="submit"],button'));
+      var nextLink = cands.find(function (el) {
+        if (el.disabled || el.getAttribute("disabled") === "disabled") return false;
+        var t = (el.title || el.alt || el.value || el.innerText || "").trim().toLowerCase();
+        var src = (el.src || "").toLowerCase(), href = (el.href || el.getAttribute("href") || "").toLowerCase();
+        if (t.indexOf("siguiente") >= 0 || t.indexOf("next") >= 0 || t === ">" || t === ">>" || t === "\u00bb" || t === "\u203a") return true;
+        if (src.indexOf("next") >= 0 && src.indexOf("last") < 0) return true;
+        if (href.indexOf("__dopostback") >= 0 && (href.indexOf("next") >= 0 || href.indexOf("siguiente") >= 0)) return true;
+        return false;
+      }) || cands.find(function (el) { return (el.innerText || el.value || "").trim() === String(curPg + 1) && !el.disabled; }) || null;
+      var pgTxt = "Pag " + curPg + (totPg > 1 ? "/" + totPg : "") + ": +" + matched + " pac, +" + boxes + " completos" + (pending ? ", " + pending + " preliminares omitidos" : "");
+      var totTxt = "Total: " + state.totalMatched + " pac / " + state.totalBoxes + " completos / " + state.totalPending + " preliminares";
+      if (nextLink && (curPg < totPg || totPg <= 1)) {
+        toast("[piso-libro " + V + "] " + pgTxt + "\n\n" + totTxt + "\n\n>> Avanzando a la pag " + (curPg + 1) + "...", "#0369a1", 6000);
+        await new Promise(function (r) { setTimeout(r, 800); });
+        try { nextLink.click(); } catch (e) { toast("No pude pasar de pagina. Pasa tu y da clic al marcador otra vez.", "#d97706"); }
+        return;
+      }
+      if (curPg < totPg) {
+        toast("[piso-libro " + V + "] " + pgTxt + "\n\n" + totTxt + "\n\nPasa de pagina a mano (>) y da clic al marcador otra vez.", "#d97706", 30000);
+        return;
+      }
+      var miss = pts.filter(function (p) { return !seen[p.exp || p.nombre]; });
+      var msg = "[piso-libro " + V + "] COMPLETO\n" + state.pagesDone + " paginas revisadas\n" + state.totalMatched + " pacientes del censo encontrados\n" + state.totalBoxes + " reportes COMPLETOS palomeados" + (state.totalPending ? "\n" + state.totalPending + " reportes preliminares (C vacio) omitidos" : "");
+      if (miss.length) {
+        msg += "\n\nSin labs completos hoy (" + miss.length + "/" + pts.length + "):\n" + miss.slice(0, 8).map(function (p) { return "  - " + (p.cama ? p.cama + " " : "") + p.nombre.split(" ").slice(0, 3).join(" "); }).join("\n");
+        if (miss.length > 8) msg += "\n  ... y " + (miss.length - 8) + " mas";
+      }
+      msg += "\n\n>>> Clic en Imprime Reportes y suelta el PDF en Labs Masivo <<<";
+      sessionStorage.removeItem(SS);
+      toast(msg, state.totalMatched ? "#15803d" : "#d97706", 90000);
+    }
+
+    // Censo que viaja dentro del marcador: solo lo que necesita el match (nada clínico).
+    function _winlabBookmarkletCenso() {
+      const out = [];
+      (patients || []).forEach(p => {
+        const nombre = toSafeString(p && p.nombre).trim();
+        if (!nombre) return;
+        const nd = noteData[pid(p)];
+        const alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
+        const row = { cama: toSafeString(p.cama).trim(), exp: toSafeString(p.exp).trim(), nombre: nombre, esp: toSafeString(p.esp).trim() };
+        if (alias && alias.toUpperCase() !== nombre.toUpperCase()) row.alias = alias;
+        out.push(row);
+      });
+      return out;
+    }
+
+    // Arma el javascript: URL con el censo de este momento. Un javascript: URL se decodifica como URL al
+    // ejecutarse, así que el JSON va como literal JS (comillas y barras escapadas por JSON.stringify),
+    // lo no ASCII como \uXXXX y sin "%"; por eso tampoco se usa encodeURIComponent.
+    function buildWinLabBookmarklet(censo) {
+      const pts = censo || _winlabBookmarkletCenso();
+      const d = new Date(), z = n => String(n).padStart(2, "0");
+      const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + "/" + d.getFullYear() + " " + z(d.getHours()) + ":" + z(d.getMinutes());
+      const lit = JSON.stringify(JSON.stringify({ stamp: stamp, pts: pts }))
+        .replace(/%/g, "")
+        .replace(/[^\x20-\x7E]/g, c => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+      const fn = _winlabMarkerMain.toString().replace(/\s*\n\s*/g, " ");
+      return { code: "javascript:void (" + fn + ")(JSON.parse(" + lit + "))", stamp: stamp, count: pts.length };
+    }
 
     function openWinLabTool() {
+      const bm = buildWinLabBookmarklet();
       const a = document.getElementById("winlab-draggable-bookmark");
       if (a) {
-        a.href = WINLAB_BOOKMARKLET;
-        // Prevent accidental navigation when user just clicks instead of drags
+        a.href = bm.code;
+        // Si le dan clic en vez de arrastrarlo, no ejecutar nada aquí (correría sobre la propia app).
         a.onclick = (e) => {
           e.preventDefault();
-          alert("👉 No le des clic, arrástralo a la barra de marcadores de Firefox (arriba).");
+          alert("👉 No le des clic aquí: arrástralo a la barra de marcadores del navegador (o copia el código de abajo).");
         };
       }
       const ta = document.getElementById("winlab-code-raw");
-      if (ta) ta.value = WINLAB_BOOKMARKLET;
+      if (ta) ta.value = bm.code;
+      const info = document.getElementById("winlab-bm-info");
+      if (info) info.textContent = bm.count
+        ? "Este marcador lleva " + bm.count + " paciente" + (bm.count === 1 ? "" : "s") + " del censo (generado el " + bm.stamp + ")."
+        : "El censo está vacío: importa el censo antes de generar el marcador.";
       document.getElementById("winlab-tool-modal").style.display = "flex";
+    }
+
+    async function copyWinLabBookmarklet() {
+      const ta = document.getElementById("winlab-code-raw");
+      if (!ta || !ta.value) return;
+      try {
+        await navigator.clipboard.writeText(ta.value);
+        alert("Código copiado. Pégalo como dirección (URL) de un marcador nuevo.");
+      } catch (_) {
+        ta.focus(); ta.select();
+        alert("No se pudo copiar solo. Con el cuadro seleccionado usa Ctrl+C (Cmd+C en Mac).");
+      }
     }
 
     function openConfigModal() {
@@ -8369,6 +8393,8 @@ function plExportBackup() {
     // ALEJ, inicial J, palabras juntas o separadas DELACRUZ); si a los dos les sobra alguna, es otra persona (hermanos,
     // JUAN/JUANA, exp copiado). La edad no cuenta. Un no identificado (DESCONOCIDO, FEMENINA, RN…) que se identifica
     // sigue siendo él; alguien con nombre que pasa a no identificado es otro ingreso. Sin nombre en alguno: true.
+    // ORDEN DE ARGUMENTOS (no es simétrica por lo de los no identificados): p = el que YA está (fila de la nube, tarjeta
+    // actual, ocupante), q = el que LLEGA (fila del Excel, tarjeta de la cola, paciente que se sube o se restaura).
     function _plNamesCompatible(p, q) {
       if (!q) return true;
       var a = _plNameWords(p && p.nombre), b = _plNameWords(q && q.nombre);
@@ -8378,8 +8404,12 @@ function plExportBackup() {
       return cov.a || cov.b;
     }
     var _PL_NAME_PARTICLE = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1 };
-    var _PL_NAME_EXPAND = { MA: "MARIA", GPE: "GUADALUPE" };
-    var _PL_NAME_PLACEHOLDER_RE = /^(DESCON[A-Z]*|DESCO|DESC|NN|RN|RECIEN|NACID[OA]|IDENT|IDENTIFICAD[OA]|NI|NOMBRE|PACIENTE|MASC|MASCULIN[OA]|FEM|FEMENIN[OA]|XX+|DATOS|HIJ[OA]|BEBE|PRODUCTO|MUJER|HOMBRE)$/;
+    var _PL_NAME_EXPAND = { MA: "MARIA", GPE: "GUADALUPE", LUPE: "GUADALUPE", LUPITA: "GUADALUPE", PACO: "FRANCISCO", PANCHO: "FRANCISCO",
+      PEPE: "JOSE", CHUY: "JESUS", CHUCHO: "JESUS", CONCHA: "CONCEPCION", CONCHITA: "CONCEPCION", NACHO: "IGNACIO", MEMO: "GUILLERMO",
+      LALO: "EDUARDO", TONO: "ANTONIO", TONA: "ANTONIA", CHAVA: "SALVADOR", QUIQUE: "ENRIQUE", LOLA: "DOLORES", TERE: "TERESA",
+      PATY: "PATRICIA", MAGO: "MARGARITA", MAGOS: "MARGARITA", FCO: "FRANCISCO", FCA: "FRANCISCA" };
+    var _PL_NAME_PLACEHOLDER_RE = /^(DESCON[A-Z]*|DESCO|DESC|NN|RN|RECIEN|NACID[OA]|IDENT|IDENTIF[A-Z]*|IGNORAD[OA]|ANONIM[OA]|INCOGNIT[OA]|FILIAD[OA]|REGISTRAD[OA]|REGISTRO|NI|NOMBRE|PACIENTE|MASC|MASCULIN[OA]|FEM|FEMENIN[OA]|XX+|DATOS|HIJ[OA]|BEBE|PRODUCTO|MUJER|HOMBRE)$/;
+    function _plNameWild(x) { return /^[NX]$/.test(x.core); }   // "N"/"X" sueltas: apellido que aún no se sabe (PEREZ N JUAN)
     function _plNameWords(name) {
       var out = [], pre = "";
       String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z\s]/g, " ").split(/\s+/).forEach(function (w) {
@@ -8392,21 +8422,51 @@ function plExportBackup() {
       return out;
     }
     function _plNamePlaceholder(words) {
-      return words.some(function (x) { return _PL_NAME_PLACEHOLDER_RE.test(x.core); }) || words.every(function (x) { return /^[NX]$/.test(x.core); });
+      return words.some(function (x) { return _PL_NAME_PLACEHOLDER_RE.test(x.core) || (x.core.length >= 9 && _plEditDistance(x.core, "DESCONOCIDO") <= 2); })
+        || words.every(function (x) { return /^[NXSDI]$/.test(x.core); });
     }
     function _plCoverWords(a, b) {
-      var ua = a.map(function () { return false; }), ub = b.map(function () { return false; });
-      var pass = function (eq) {
+      var ua = a.map(function () { return 0; }), ub = b.map(function () { return 0; });   // 0 = sin par; 1 = igual; 2 = parecida
+      var pass = function (eq, kind) {
         a.forEach(function (x, i) {
           if (ua[i]) return;
-          for (var j = 0; j < b.length; j++) if (!ub[j] && eq(x, b[j])) { ua[i] = ub[j] = true; return; }
+          for (var j = 0; j < b.length; j++) if (!ub[j] && eq(x, b[j])) { ua[i] = ub[j] = kind; return; }
         });
       };
-      pass(function (x, y) { return x.w === y.w; });
-      pass(function (x, y) { return x.core === y.core || x.w === y.core || x.core === y.w; });
-      pass(function (x, y) { return _plWordClose(x.core, y.core) || _plWordClose(x.w, y.w); });
+      pass(function (x, y) { return x.w === y.w; }, 1);
+      pass(function (x, y) { return x.core === y.core || x.w === y.core || x.core === y.w; }, 1);
+      pass(function (x, y) { return _plWordClose(x.core, y.core) || _plWordClose(x.w, y.w); }, 2);
       _plJoinCover(a, ua, b, ub); _plJoinCover(b, ub, a, ua);
+      // "N"/"X" sueltas sin par valen por UNA palabra que sobre del otro nombre (PEREZ N JUAN / PEREZ GOMEZ JUAN).
+      var wild = function (a, ua, b, ub) {
+        a.forEach(function (x, i) {
+          if (ua[i] || !_plNameWild(x)) return;
+          for (var j = 0; j < b.length; j++) if (!ub[j]) { ua[i] = ub[j] = 1; return; }
+        });
+      };
+      wild(a, ua, b, ub); wild(b, ub, a, ua);
+      // Una sola palabra corta (3 letras: ANA/AMA, DIA/DIAZ, LUI/LUIS) con un error de dedo, si TODAS las demás son iguales.
+      var ia = ua.indexOf(0), ib = ub.indexOf(0);
+      if (ia >= 0 && ib >= 0 && ua.indexOf(0, ia + 1) < 0 && ub.indexOf(0, ib + 1) < 0
+          && ua.every(function (k, i) { return i === ia || k === 1; }) && ub.every(function (k, j) { return j === ib || k === 1; })) {
+        if (_plShortWordFix(a[ia].core, b[ib].core)) ua[ia] = ub[ib] = 2;
+      }
       return { a: ua.every(Boolean), b: ub.every(Boolean) };
+    }
+    // Palabra corta con un error de dedo (shortWordFix_ del sync): una es la otra sin la última letra (DIA/DIAZ) o cambia
+    // UNA consonante (AMA/ANA); vocal distinta o letra de más en medio es otro nombre (LUZ/LIZ, IAN/IVAN); y si la corta
+    // es un nombre de pila completo (NOE/NOEL) o las dos lo son (ANA/ADA), son dos personas.
+    var _PL_SHORT_GIVEN_NAMES = {};
+    "ANA EVA IVA LUZ LIZ LIA MIA ZOE NOE ELI ELY IAN LEO SOL PAZ ALI ADA IDA EMA AMY RUT GIL ABI ABY ARI BEA ISA IVO JOB JON KIM LEA LIS LUA MAX MEL NOA NIA PIA RAY REY ROY SAM TEO UMA VAL JOE GUS TOM ANI ANY AZU LUIS IVAN NOEL ELIA ELIO LILA LANA LEON EVAN JOEL LIAM ADAN JUAN JOSE RAUL SAUL ABEL ALAN ALMA ARON AXEL CLOE DANA ELSA EMMA ERIK GAEL HUGO IKER INES IRIS ISAI JADE LUNA LEVI LOLA LUCA MARA NOAH OMAR OTTO RITA ROSA RUTH SARA".split(" ").forEach(function (n) { _PL_SHORT_GIVEN_NAMES[n] = 1; });
+    function _plShortWordFix(x, y) {
+      var sh = x.length <= y.length ? x : y, lo = x.length <= y.length ? y : x;
+      if (sh.length < 3 || _plGenderPair(x, y)) return false;
+      if (lo.length === sh.length + 1) return lo.indexOf(sh) === 0 && !_PL_SHORT_GIVEN_NAMES[sh];
+      if (lo.length !== sh.length) return false;
+      var d = 0, k = -1;
+      for (var i = 0; i < sh.length; i++) if (sh[i] !== lo[i]) { d++; k = i; }
+      if (d !== 1 || /[AEIOU]/.test(sh[k]) || /[AEIOU]/.test(lo[k])) return false;
+      return !(_PL_SHORT_GIVEN_NAMES[sh] && _PL_SHORT_GIVEN_NAMES[lo]);
     }
     function _plJoinCover(a, ua, b, ub) {
       a.forEach(function (x, i) {
@@ -8415,7 +8475,7 @@ function plExportBackup() {
           for (var k = j + 1; k < b.length && k <= j + 2; k++) {
             var free = true, s = "", q;
             for (q = j; q <= k; q++) { if (ub[q]) free = false; s += b[q].w; }
-            if (free && _plEditDistance(_plPhon(s), _plPhon(x.w)) <= 1) { ua[i] = true; for (q = j; q <= k; q++) ub[q] = true; return; }
+            if (free && _plEditDistance(_plPhon(s), _plPhon(x.w)) <= 1) { ua[i] = 2; for (q = j; q <= k; q++) ub[q] = 2; return; }
           }
         }
       });
@@ -8431,9 +8491,31 @@ function plExportBackup() {
       var d = _plEditDistance(pt, pu), n = Math.min(pt.length, pu.length);
       return (d <= 1 && n >= 4) || (d <= 2 && n >= 7);
     }
+    // Masculino/femenino del mismo nombre de pila (JUAN/JUANA): personas distintas. Lista de nombres conocidos (cortos) y,
+    // para palabras de 7+ letras, la regla general (A al final u O/A final: EUGENIO/EUGENIA, NICOLAS/NICOLASA). En un
+    // apellido corto una A de más o de menos (GARCI/GARCIA, SOTA/SOTO) es captura. Misma lista que NAME_GENDER_PAIRS del sync.
+    var _PL_NAME_GENDER_PAIRS = ["JUAN JUANA", "LUIS LUISA", "MARIO MARIA", "JOSE JOSEFA", "JOSE JOSEFINA", "FRANCISCO FRANCISCA", "ANTONIO ANTONIA",
+      "DANIEL DANIELA", "ALEJANDRO ALEJANDRA", "ADRIAN ADRIANA", "CRISTIAN CRISTINA", "JULIO JULIA", "ROBERTO ROBERTA", "FERNANDO FERNANDA",
+      "MANUEL MANUELA", "RAFAEL RAFAELA", "ANGEL ANGELA", "VICTOR VICTORIA", "ANDRES ANDREA", "GABRIEL GABRIELA", "EMILIO EMILIA",
+      "PAULO PAULA", "PABLO PAULA", "PABLO PABLA", "MARIANO MARIANA", "AGUSTIN AGUSTINA", "JOAQUIN JOAQUINA", "MARTIN MARTINA", "VALENTIN VALENTINA",
+      "RAMON RAMONA", "LORENZO LORENZA", "VICENTE VICENTA", "CARLOS CARLA", "EDUARDO EDUARDA", "RICARDO RICARDA", "IGNACIO IGNACIA",
+      "PEDRO PETRA", "JESUS JESUSA", "TOMAS TOMASA", "DOMINGO DOMINGA", "ALBERTO ALBERTA", "ERNESTO ERNESTINA", "AURELIO AURELIA",
+      "CLAUDIO CLAUDIA", "SILVIO SILVIA", "OCTAVIO OCTAVIA", "JUSTINO JUSTINA", "FLORENTINO FLORENTINA", "MAXIMO MAXIMA", "PATRICIO PATRICIA",
+      "LUCIO LUCIA", "RUBEN RUBI", "ALEJO ALEJA", "GERMAN GERMANA", "JULIAN JULIANA", "SEBASTIAN SEBASTIANA", "ELIAS ELISA", "BENITO BENITA",
+      "FELIPE FELIPA", "GUILLERMO GUILLERMINA", "LEONARDO LEONARDA", "ARTURO ARTURA", "MARCO MARCA", "MARCELO MARCELA", "ROGELIO ROGELIA",
+      "HILARIO HILARIA", "EVARISTO EVARISTA", "CELESTINO CELESTINA", "TEODORO TEODORA", "ISIDRO ISIDRA", "JACINTO JACINTA", "EUSEBIO EUSEBIA",
+      "IVAN IVANA", "PAUL PAULA", "LEON LEONA", "ERIK ERIKA", "DARIO DARIA", "ELIO ELIA", "PAOLO PAOLA", "SIMON SIMONA", "BRUNO BRUNA",
+      "ADOLFO ADOLFA", "ELISEO ELISEA", "ROMAN ROMANA", "AMADO AMADA", "SERGIO SERGIA", "FABIAN FABIANA", "DAMIAN DAMIANA", "ELENO ELENA",
+      "CIRILO CIRILA", "ELADIO ELADIA", "FAUSTO FAUSTA", "FIDEL FIDELA", "GENARO GENARA", "JOVITO JOVITA", "LAZARO LAZARA", "LINO LINA",
+      "MAURO MAURA", "PASCUAL PASCUALA", "RAMIRO RAMIRA", "RUFINO RUFINA", "SEVERO SEVERA", "SOTERO SOTERA", "URBANO URBANA", "ZENON ZENONA"];
+    var _PL_NAME_GENDER_SET = {};
+    _PL_NAME_GENDER_PAIRS.forEach(function (p) { var m = p.split(" "); _PL_NAME_GENDER_SET[m[0] + " " + m[1]] = _PL_NAME_GENDER_SET[m[1] + " " + m[0]] = true; });
     function _plGenderPair(t, u) {
+      if (t === u) return false;
+      if (_PL_NAME_GENDER_SET[t + " " + u]) return true;
+      if (t.length < 7 || u.length < 7) return false;
       if (t + "A" === u || u + "A" === t) return true;
-      return t.length === u.length && t.slice(0, -1) === u.slice(0, -1) && /[AO]$/.test(t) && /[AO]$/.test(u);
+      return t.length === u.length && t.slice(0, -1) === u.slice(0, -1) && /^[OA]$/.test(t.slice(-1)) && /^[OA]$/.test(u.slice(-1));
     }
     function _plPhon(w) {
       return w.replace(/V/g, "B").replace(/Z/g, "S").replace(/C([EI])/g, "S$1").replace(/LL/g, "Y").replace(/(.)\1+/g, "$1");
@@ -10319,6 +10401,8 @@ function plExportBackup() {
       const ct = r.headers.get("content-type") || "";
       return ct.includes("json") ? r.json() : null;
     }
+    // Función SQL (rpc) con la sesión del usuario: POST /rest/v1/rpc/<nombre> con sus parámetros.
+    async function _sRpc(name, params) { return _sPost("rpc/" + name, params || {}); }
     async function _sUpsert(table, body, conflictCols) {
       const qs = conflictCols ? "?on_conflict=" + conflictCols : "";
       const r = await _sFetch(SUPA_URL + "/rest/v1/" + table + qs, {
@@ -11200,10 +11284,25 @@ function plExportBackup() {
     // ─── SUPABASE: SAVE PATIENT ─────────────────────────────────────────────────────
     // Buscar paciente por su clave actual o, si la clave es legacy "pt-exp-cama", por identidad:
     // un push/outbox armado antes de que el paciente recibiera _supa_id trae la clave vieja.
-    function _findPatientByKey(k) {
+    // `who` (opcional): el paciente tal como iba en la cola; la clave por identidad (exp+cama) solo vale si esa fila es la
+    // MISMA persona (el sync de la hoja pudo darle esa cama a otra con el exp copiado, o restaurarse de la Papelera a un
+    // ocupante distinto): sin esto la nota y los datos de la cola caían en la fila ajena.
+    function _findPatientByKey(k, who) {
       let p = patients.find((x) => pid(x) === k);
-      if (!p && typeof k === "string" && k.startsWith("pt-")) p = patients.find((x) => patientIdentityKey(x) === k);
+      if (!p && typeof k === "string" && k.startsWith("pt-")) p = patients.find((x) => patientIdentityKey(x) === k && (!who || _plNamesCompatible(x, who)));
       return p || null;
+    }
+    // Al cambiar la clave de una tarjeta SIN id (pt-exp-cama → otra cama/exp desde ✏️ Editar o Mover): los ítems "patient"
+    // de la cola con la clave vieja ya no valen (la tarjeta editada se sube completa ahora) y los de nota siguen a la
+    // clave nueva. Sin esto, tras «cambia la cama (✏️ Editar)» el ítem viejo seguía en la cola: reaparecía como tarjeta
+    // fantasma en cada recarga, el estado se quedaba en error y el flush podía aplicarlo sobre la fila de otra persona.
+    function _outboxRekeyPatient(oldKey, newKey) {
+      if (!oldKey || oldKey === newKey || oldKey.indexOf("pt-") !== 0) return;
+      let q; try { q = outboxLoad(); } catch (_) { return; }
+      let changed = false;
+      q = q.filter(function (it) { if (it && it.type === "patient" && it.patient && !it.patient._supa_id && pid(it.patient) === oldKey) { changed = true; return false; } return true; });
+      q.forEach(function (it) { if (it && it.type === "note" && it.key === oldKey) { it.key = newKey; changed = true; } });
+      if (changed) { outboxSave(q); try { updateOutboxBadge(); } catch (_) {} }
     }
     // Asignar/cambiar _supa_id re-clavando TODO el estado de la nota: pid(p) pasa de "pt-exp-cama" a
     // "su-<uuid>" y sin esto la nota inicial del paciente recién agregado quedaba huérfana
@@ -11280,7 +11379,7 @@ function plExportBackup() {
           // copió a OTRA persona en esa cama (mismo exp+cama, otro nombre); re-enlazar ahí le ponía a ella el nombre y
           // los datos de esta tarjeta.
           const stale = await _sRowAtExpCama(p.exp, p.cama).catch(() => null);
-          if (stale && _plNamesCompatible(p, stale)) {
+          if (stale && _plNamesCompatible(stale, p)) {
             _relinkPatientId(p, stale.id);
             const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
             return patched || row;
@@ -11297,9 +11396,10 @@ function plExportBackup() {
             let held = null;
             try { held = await _sRowAtExpCama(p.exp, p.cama); }
             catch (eHeld) { safeLog("supaUpsertPatient: verificación exp+cama:", eHeld); _lastSyncErrorDetail = eHeld && eHeld.message ? eHeld.message : String(eHeld || ""); return null; }
-            if (held && !_plNamesCompatible(p, held)) {
+            if (held && !_plNamesCompatible(held, p)) {
               safeWarn("supaUpsertPatient: la cama la tiene otra persona con el mismo expediente; no se fusiona:", p.cama);
               _lastSyncErrorDetail = "La cama " + p.cama + " ya la tiene otra persona con el mismo expediente";
+              try { setSyncStatus("error", "⚠️ La cama " + p.cama + " ya la tiene otra persona en la nube: cambia la cama de este paciente (✏️ Editar) para que suba"); } catch (_) {}
               return null;
             }
           }
@@ -11313,7 +11413,7 @@ function plExportBackup() {
             const msg = upsertErr && upsertErr.message ? upsertErr.message : "";
             if (msg.includes("409") || msg.includes("23505")) {
               const existing = await _sRowAtExpCama(p.exp, p.cama);
-              if (existing && _plNamesCompatible(p, existing)) {
+              if (existing && _plNamesCompatible(existing, p)) {
                 _relinkPatientId(p, existing.id);
                 const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
                 return patched || row;
@@ -11332,19 +11432,28 @@ function plExportBackup() {
     }
     // DELETE de una fila de patients por id o, si nunca tuvo id local, por exp+cama. Ambos son
     // obligatorios en ese caso: "exp=eq.&cama=eq.X" borraría a cualquiera sin expediente en esa cama.
+    // Sin id se busca primero la fila y solo se borra si es la MISMA persona (ref.nombre): una tarjeta sin id (restaurada
+    // o creada sin red) cuya cama+exp ya tiene a OTRA persona en la nube (el sync se la dio con el exp copiado) borraba la
+    // fila y la nota de esa otra persona al egresar la tarjeta fantasma.
     async function _sDeletePatientRow(ref) {
       if (ref && ref.supa_id) return _sDelete("patients", "id=eq." + encodeURIComponent(ref.supa_id));
       const exp = toSafeString(ref && ref.exp).trim(), cama = toSafeString(ref && ref.cama).trim();
       if (!exp || !cama) return;
-      return _sDelete("patients", "exp=eq." + encodeURIComponent(exp) + "&cama=eq." + encodeURIComponent(cama));
+      const row = await _sRowAtExpCama(exp, cama);
+      if (!row) return;
+      if (toSafeString(ref.nombre).trim() && !_plNamesCompatible(row, { nombre: ref.nombre })) {
+        safeWarn("_sDeletePatientRow: la fila de esa cama+exp es de otra persona; no se borra:", cama);
+        return;
+      }
+      return _sDelete("patients", "id=eq." + encodeURIComponent(row.id));
     }
     // Egreso/retiro de un paciente en la nube con 3 reintentos; sin red (o si se agotan) queda en el
     // outbox como "delete_patient" — antes el DELETE se perdía y el paciente reaparecía en todos los
     // dispositivos al recargar. Devuelve una promesa que nunca rechaza (true = borrado ahora).
     function _deletePatientRemote(p, why) {
-      const ref = { supa_id: (p && p._supa_id) || null, exp: toSafeString(p && p.exp).trim(), cama: toSafeString(p && p.cama).trim() };
+      const ref = { supa_id: (p && p._supa_id) || null, exp: toSafeString(p && p.exp).trim(), cama: toSafeString(p && p.cama).trim(), nombre: toSafeString(p && p.nombre).trim() };
       if (!ref.supa_id && !(ref.exp && ref.cama)) return Promise.resolve(false);
-      const item = { type: "delete_patient", key: ref.supa_id || (ref.exp + "|" + ref.cama), supa_id: ref.supa_id, exp: ref.exp, cama: ref.cama };
+      const item = { type: "delete_patient", key: ref.supa_id || (ref.exp + "|" + ref.cama), supa_id: ref.supa_id, exp: ref.exp, cama: ref.cama, nombre: ref.nombre };
       const queue = function () { outboxEnqueue(item); updateOutboxBadge(); return false; };
       if (!navigator.onLine) return Promise.resolve(queue());
       return (async function () {
@@ -11550,7 +11659,7 @@ function plExportBackup() {
                 const twin = twinRow ? [twinRow] : [];
                 // Otra persona en esa cama con el mismo exp (el sync archivó esta fila como cama reasignada): esta nota
                 // NO se sube a la suya; se guarda en la Papelera y la tarjeta se retira como un egreso remoto.
-                const other = twinRow && !_plNamesCompatible(p, twinRow);
+                const other = twinRow && !_plNamesCompatible(twinRow, p);
                 if (other) {
                   _archivePatientRecord(p, nd || noteData[pid(p)], pid(p), "CAMA REASIGNADA (otra persona con el mismo expediente)");
                   _onPatientGoneRemotely(p, "su cama la tiene otra persona con el mismo expediente");
@@ -12088,7 +12197,7 @@ function plExportBackup() {
             if (!p || !p._supa_id) {
               const dirtyNow = _takePendingDirty(k);
               _pendingPush.delete(k);
-              outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(d), dirty: dirtyNow ? Array.from(dirtyNow) : null });
+              outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(d), dirty: dirtyNow ? Array.from(dirtyNow) : null, who: _outboxNoteWho(k) });
               // Paciente aún sin id (creado sin red): conservar los campos sucios para que el
               // siguiente push/encolado los acumule en vez de estrecharlos al último campo editado.
               _restorePendingDirty(k, dirtyNow);
@@ -12113,7 +12222,7 @@ function plExportBackup() {
               _restorePendingDirty(k, dirtySnapshot);
               // La copia VIGENTE (no la `d` de cuando arrancó este push): si otro push más nuevo ya subió mientras este
               // colgaba, reproducir `d` desde el outbox regresaría el campo a una versión anterior.
-              outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(noteData[k] || d), dirty: dirtySnapshot ? Array.from(dirtySnapshot) : null });
+              outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(noteData[k] || d), dirty: dirtySnapshot ? Array.from(dirtySnapshot) : null, who: _outboxNoteWho(k) });
             } else {
               // Lo que quedó encolado ANTES de este push (p. ej. al ocultar la app) ya es viejo:
               // si se reprodujera después, regresaría el texto a una versión anterior.
@@ -12129,7 +12238,7 @@ function plExportBackup() {
             if (pendingSyncs > 0) pendingSyncs--;
             _pendingPush.delete(k);
             delete _inflightDirty[k];
-            outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(d), dirty: _pendingDirty[k] ? Array.from(_pendingDirty[k]) : null });
+            outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(d), dirty: _pendingDirty[k] ? Array.from(_pendingDirty[k]) : null, who: _outboxNoteWho(k) });
             if (pendingSyncs === 0) setSyncProblemStatus();
           }
         }, 500);
@@ -12206,11 +12315,20 @@ function plExportBackup() {
       }
       return null;
     }
-    // ¿El ítem "patient" es de este paciente? Por _supa_id si los dos lo tienen; si no, por pid / exp+cama.
+    // ¿El ítem "patient" es de este paciente? Por _supa_id si los dos lo tienen; si no, por pid o por exp+cama, y en
+    // este último caso solo si es la MISMA persona: con el exp copiado a otro ocupante (o una tarjeta sin id en espera
+    // junto a la persona que sí tiene la cama) el ítem de uno se descartaba al guardar o egresar al otro, y la nota en
+    // cola quedaba huérfana (caía por exp+cama en la fila ajena) o se perdía la edición censal del otro.
     function _outboxPatientItemMatches(it, p) {
       if (!it || it.type !== "patient" || !it.patient || !p) return false;
       if (p._supa_id && it.patient._supa_id) return it.patient._supa_id === p._supa_id;
-      return pid(it.patient) === pid(p) || patientIdentityKey(it.patient) === patientIdentityKey(p);
+      return pid(it.patient) === pid(p) || (patientIdentityKey(it.patient) === patientIdentityKey(p) && _plNamesCompatible(p, it.patient));
+    }
+    // Identidad de la tarjeta dueña de una nota en cola (viaja en el ítem "note"): si al subir la clave vieja
+    // (pt-exp-cama) ya no encuentra su tarjeta, nunca se resuelve por exp+cama a ciegas sobre la fila de otra persona.
+    function _outboxNoteWho(k) {
+      const p = patients.find(function (x) { return pid(x) === k; });
+      return p ? { nombre: toSafeString(p.nombre) } : null;
     }
     // Quita de la cola los ítems "patient" de `p` encolados hasta `uptoTs`: un supaUpsertPatient(p) que ACABA de
     // subir ya los incluye (sube la fila censal completa desde la copia local, que tiene esos valores u otros más
@@ -12233,7 +12351,10 @@ function plExportBackup() {
         if (!it || it.type !== "patient" || !it.patient) return;
         const k = pid(it.patient);
         let p = list.find(function (x) { return pid(x) === k; });
-        if (!p && k.indexOf("pt-") === 0) p = list.find(function (x) { return patientIdentityKey(x) === k; });
+        // Por identidad (exp+cama) solo si es la MISMA persona: con el exp copiado a otro ocupante, o al restaurar de la
+        // Papelera sobre una cama que ya tiene a otro, la fila remota con ese exp+cama es de otra persona y la cola le
+        // pisaba nombre, edad y dx (y luego su nota).
+        if (!p && k.indexOf("pt-") === 0) p = list.find(function (x) { return patientIdentityKey(x) === k && _plNamesCompatible(x, it.patient); });
         if (p) _applyOutboxPatientFields(p, it);
         // Alta hecha SIN RED (sin _supa_id): la nube aún no la tiene, así que reemplazar el censo por la lista remota la
         // borraba de pantalla y de localStorage, y el flush descartaba su nota ("paciente inexistente"). Se conserva
@@ -12365,7 +12486,7 @@ function plExportBackup() {
           }
           else {
             failed.push(r.key);
-            outboxEnqueue({ type: "note", key: r.key, data: r.data });
+            outboxEnqueue({ type: "note", key: r.key, data: r.data, who: _outboxNoteWho(r.key) });
           }
         });
       }
@@ -13210,7 +13331,7 @@ function plExportBackup() {
         keys.forEach(function (k) {
           if (!noteData[k]) return;
           const dirty = _dirtyUnion(k);
-          outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(migrateNote(noteData[k])), dirty: dirty.size ? Array.from(dirty) : null });
+          outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(migrateNote(noteData[k])), dirty: dirty.size ? Array.from(dirty) : null, who: _outboxNoteWho(k) });
           // "dx" vive en el paciente (no en la nota) y solo se copia ahí en onchange, es decir, al
           // soltar el campo. Si el iPad se oculta a media edición del Dx, reflejarlo y encolar el paciente.
           if (dirty.has("dx")) {
@@ -13387,6 +13508,23 @@ function plExportBackup() {
     // valor del modelo (sólo si no está sucia y sólo en las cajas que se pintan tal cual desde noteData).
     const _STALE_NOTE_FIELDS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega"];
     const _STALE_CK_FIELDS = ["interconsultas", "pendientes_mips", "pendientes_r1"];
+    // ── Sin arrastrar texto entre cajas (19 oct 2026) ─────────────────────────────────────────────────────────────
+    // En iPad, una pulsación larga (dedo o Pencil sin Scribble) selecciona texto y arrastrarlo a otra caja lo MUEVE: en
+    // una entrega, bloques enteros pasaron de Misceláneo a Pendientes y de Pendientes a APP y a PA, y un arrastre a
+    // medias los dejaba borrados unos segundos. Ninguna caja ni campo acepta arrastres ni deja sacar texto arrastrando;
+    // copiar y pegar siguen igual. (Captura en document: vale para las cajas que se pintan después.)
+    function _esCampoTexto(t) { return !!(t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT")); }
+    // Texto editable sin ser caja (📌 Tablero: contenteditable dentro de un <li draggable>): el arrastre del ÍTEM (dataTransfer
+    // itemId) sigue; el de una SELECCIÓN de texto dentro del ítem, no (también movería texto entre ítems).
+    function _esTextoEditable(t) { try { return !!(t && t.nodeType === 1 && t.isContentEditable); } catch (_) { return false; } }
+    function _arrastraSeleccion(t) { try { const s = window.getSelection(); return !!(s && !s.isCollapsed && s.anchorNode && t.contains(s.anchorNode)); } catch (_) { return false; } }
+    function _traeItem(e) { try { return !!(e.dataTransfer && (e.dataTransfer.getData("itemId") || (e.dataTransfer.types && Array.prototype.indexOf.call(e.dataTransfer.types, "itemId") >= 0))); } catch (_) { return false; } }
+    document.addEventListener("dragstart", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && _arrastraSeleccion(e.target))) e.preventDefault(); }, true);
+    document.addEventListener("dragover", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && !_traeItem(e))) { e.preventDefault(); try { if (e.dataTransfer) e.dataTransfer.dropEffect = "none"; } catch (_) {} } }, true);
+    document.addEventListener("drop", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && !_traeItem(e))) { e.preventDefault(); e.stopPropagation(); } }, true);
+    // Cinturón y tirantes: si pese a todo el sistema inicia un movimiento de texto (otra app en Split View, un motor que no
+    // respeta dragstart cancelado), las ediciones deleteByDrag / insertFromDrop se cancelan antes de tocar la caja.
+    document.addEventListener("beforeinput", function (e) { if ((e.inputType === "deleteByDrag" || e.inputType === "insertFromDrop") && e.cancelable) e.preventDefault(); }, true);
     // "focus" en captura: corre ANTES del onfocus del textarea (beforeValue para ↩ Regresar ya toma el valor bueno).
     document.addEventListener("focus", function (e) {
       try {
@@ -13474,10 +13612,17 @@ function plExportBackup() {
           const absIdx = i + j;
           try {
             if (item.type === "note" && item.key && item.data) {
-              const p = _findPatientByKey(item.key);
+              // Con clave vieja (pt-exp-cama), la fila por identidad tiene que ser la misma persona que la dueña de la
+              // nota (item.who, guardado al encolar; o el ítem "patient" con esa clave). Sin con quién comparar, solo
+              // por clave exacta: nunca por exp+cama a ciegas (caía en la fila de otra persona con el exp copiado).
+              const _qp = (q.find(function (it) { return it && it.type === "patient" && it.patient && pid(it.patient) === item.key; }) || {}).patient;
+              const _who = (item.who && item.who.nombre) ? item.who : _qp;
+              const p = _who ? _findPatientByKey(item.key, _who) : (patients.find(function (x) { return pid(x) === item.key; }) || null);
               // Paciente ya no existe localmente (borrado/reemplazado por Supabase) →
-              // descartar nota huérfana para que no quede atascada indefinidamente.
-              if (!p) { results[absIdx] = true; return; }
+              // descartar nota huérfana para que no quede atascada indefinidamente. Si su ítem "patient" sigue en la
+              // cola (la subida se rechazó: la cama la tiene otra persona), la nota espera con él: al cambiarle la
+              // cama o al subirlo, _outboxRekeyPatient/_relinkPatientId la re-clavan y entonces sí sube.
+              if (!p) { results[absIdx] = !_qp; return; }
               // Si el paciente no tiene _supa_id, intentar sincronizarlo primero antes
               // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
               if (!p._supa_id) await withOutboxRetry(async function(){ return await supaUpsertPatient(p); });
@@ -13505,7 +13650,9 @@ function plExportBackup() {
               // La fila local pudo ser REEMPLAZADA por la remota (cama vieja) al volver la red (online/init
               // cargan primero): re-aplicar los campos encolados sobre ella y PATCHear ESA fila (misma
               // referencia que vive en `patients`, para que _relinkPatientId re-clave la nota si hace falta).
-              const current = _findPatientByKey(k);
+              // Con clave vieja (pt-exp-cama) solo si esa tarjeta es la MISMA persona que la de la cola (misma guarda
+              // que la nota y la superposición): si no, la fila de otra persona recibía nombre, edad y dx de la cola.
+              const current = _findPatientByKey(k, item.patient);
               // El ítem VIGENTE de la cola (no la copia leída al empezar el flush): un guardado posterior pudo
               // actualizarlo (valores más nuevos) o quitarlo porque ya subió; en ese caso no se re-impone el viejo.
               const _sid = item.patient._supa_id;
@@ -13583,7 +13730,7 @@ function plExportBackup() {
         if (!p._supa_id) {
           // Solo si la fila de la nube con ese exp+cama es la misma persona (el sync pudo darle la cama a otra)
           const remote = remoteByKey[patientIdentityKey(p)];
-          if (remote && remote.id && _plNamesCompatible(p, remote)) p._supa_id = remote.id;
+          if (remote && remote.id && _plNamesCompatible(remote, p)) p._supa_id = remote.id;
         }
         let inserted = null;
         try { inserted = await supaUpsertPatient(p); }
@@ -13604,7 +13751,7 @@ function plExportBackup() {
       // Reload from Supabase
       const loaded = await supaLoadAll();
       if (loaded) {
-        patients = loaded.patients; _applyLoadedNotes(loaded.notes);
+        patients = _applyOutboxPatientOverlay(sanitizePatients(loaded.patients)); _applyLoadedNotes(loaded.notes); // lo encolado sigue mandando, como en online/init
         lsSavePatients(patients);
         buildEspFilters(); renderView();
       }
@@ -13864,7 +14011,6 @@ function plExportBackup() {
     })();
     function _presenceLabel() {
       try { var n = (localStorage.getItem("pl_user_name") || "").trim(); if (n) return n; } catch (_) {}
-      try { var u = _authSessionUser(); if (u) return u; } catch (_) {}
       return "Alguien";
     }
     function _presenceTrack() {
@@ -15441,7 +15587,7 @@ function plExportBackup() {
       if (!item) return;
       const txt = isCustom ? item : item.text;
       const nd = migrateNote(noteData[k] || defaultData());
-      _undoPush(k, "orden rápida en pendientes");
+      _undoPush(k, "orden rápida en pendientes", ["pendientes"]);
       const prev = nd.pendientes || "";
       nd.pendientes = prev ? prev + "\n• " + txt : "• " + txt;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -15742,7 +15888,7 @@ function plExportBackup() {
       const nd = migrateNote(noteData[k] || defaultData());
       const built = entregaResumenTexto(p, nd);
       if (!built) { alert("No hay información para resumir en esta tarjeta."); return; }
-      _undoPush(k, "resumen de entrega");
+      _undoPush(k, "resumen de entrega", ["entrega"]);
       const base = _entregaSinResumen(nd.entrega);
       nd.entrega = (base ? base + "\n\n" : "") + built;
       _touchBy(nd, "entrega");
@@ -15786,7 +15932,7 @@ function plExportBackup() {
         noteData[k] = nd; _saveNoteNow(k, nd, "ck_entrega_auto");
         return 0;
       }
-      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")");
+      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")", ["entrega"]);
       nd.checklist[ENTREGA_AUTO_KEY] = reg;
       nd.entrega = cur ? (cur.replace(/\s+$/, "") + "\n" + lines.join("\n")) : lines.join("\n");
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -16025,7 +16171,7 @@ function plExportBackup() {
     function renderInterconsultasSection(nd, k) {
       const val = esc((nd.checklist && nd.checklist.interconsultas) || "");
       return `<div class="interconsultas-box">
-        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas${_byChip(nd, "interconsultas")}</span><span style="display:flex;gap:4px;align-items:center"><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button><button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:interconsultas','Interconsultas')" title="Escribir a mano con stylus" data-testid="field-ink-ck-interconsultas">✍️</button></span></div>
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas${_byChip(nd, "interconsultas")}</span><span style="display:flex;gap:4px;align-items:center"><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button>${histBtn(k, "ck:interconsultas")}<button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:interconsultas','Interconsultas')" title="Escribir a mano con stylus" data-testid="field-ink-ck-interconsultas">✍️</button></span></div>
         <textarea class="field-ta" rows="2"
           data-key="${k}" data-ckfield="interconsultas"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
@@ -16127,6 +16273,7 @@ function plExportBackup() {
           <span>🦠 Cultivos / Labs especiales${(cultivosExtraidos.length + wlCults.length) ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length + wlCults.length} extraído(s)</span>` : ""}${_byChip(nd, "cultivos")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'cultivos',true,'Cultivos')" title="Anotar la fecha de hoy antes de un cultivo nuevo">➕ Hoy</button>
+            ${histBtn(k, "ck:cultivos")}
             <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:cultivos','Cultivos')" title="Escribir a mano con stylus" data-testid="field-ink-ck-cultivos">✍️</button>
           </span>
         </div>
@@ -16666,36 +16813,44 @@ function plExportBackup() {
     function penMode() {
       let v = null;
       try { v = localStorage.getItem("pl_pen_mode"); } catch (_) {}
-      if ((v === "1" || v === "2") && _penIsIPad()) {
-        // iPad: "2" (→ Texto) ya no existe → Scribble siempre. "1" (Tinta) se baja a Scribble UNA sola vez por dispositivo
-        // (marca pl_pen_ipad_v2): el iPad pudo quedarse en Tinta desde cuando era el modo por defecto, y ahí las cajas grandes
-        // no se convierten en letra de máquina (la tinta ya guardada no se toca). Después, la Tinta elegida a propósito con ✍️
-        // se respeta (togglePenMode deja la marca).
-        let done = null; try { done = localStorage.getItem("pl_pen_ipad_v3"); } catch (_) {}
-        if (v === "2" || !done) { try { localStorage.setItem("pl_pen_mode", "0"); localStorage.setItem("pl_pen_ipad_v3", "1"); } catch (_) {} return "off"; }
+      if (_penIsIPad()) {
+        // iPad (19 oct 2026): SOLO Scribble, sin modos. ✍️ Tinta dejaba la letra como tinta en las cajas grandes y, con sus
+        // oyentes NO pasivos en document, degradaba Scribble en el resto de campos (vitales que "no dejan escribir", lápiz
+        // que selecciona o arrastra texto en vez de escribir: así se movieron bloques enteros entre cajas en una entrega).
+        // Un "1" (Tinta) o "2" (→ Texto) guardado se baja a "0" al leerlo. La tinta ya guardada sigue viéndose y el ✍️ de
+        // cada caja (lienzo grande) sigue para dibujar o firmar.
+        if (v === "1" || v === "2") { try { localStorage.setItem("pl_pen_mode", "0"); } catch (_) {} }
+        _penInterceptSet(false);
+        return "off";
       }
-      if (v === "1" || v === "2") _penInterceptSet(true);   // Tinta / → Texto: la app atiende el trazo → interceptores puestos (idempotente)
+      _penInterceptSet(true);   // fuera del iPad la app atiende SIEMPRE el trazo (escritura directa, Tinta o → Texto): interceptores puestos (idempotente)
       if (v === "1") return "ink";
       if (v === "2") return "text";
       return "off";
     }
     function penModeOn() { return penMode() !== "off"; }
     function _penModeLabel(m) { return m === "ink" ? "✍️ Tinta" : (m === "text" ? "✍️ → Texto" : "✍️ Scribble"); }
+    const PEN_IPAD_HINT = "✍️ En el iPad el lápiz escribe letra de máquina en CUALQUIER caja (vitales, TA 120/80, drenajes, labs…): es Scribble del sistema y la app no interviene. Si solo selecciona o no escribe: Ajustes → Apple Pencil → Garabatear (encendido). Para dibujar o firmar usa el ✍️ de cada caja.";
     function togglePenMode(btn) {
       const cur = penMode(), ipad = _penIsIPad();
-      // iPad: solo Scribble ↔ Tinta (el iPad escribe todo; la app no reconoce nada). Fuera del iPad: Scribble → → Texto → Tinta → Scribble.
-      const next = ipad ? (cur === "ink" ? "off" : "ink") : (cur === "off" ? "text" : (cur === "text" ? "ink" : "off"));
-      try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); if (ipad) localStorage.setItem("pl_pen_ipad_v3", "1"); } catch (_) {}
+      if (ipad) {
+        // iPad: no hay modos que alternar (solo Scribble); el botón solo explica cómo funciona y cómo activar Garabatear.
+        document.body.classList.remove("pen-on"); _penInterceptSet(false);
+        document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.remove("on"); b.textContent = _penModeLabel("off"); });
+        if (typeof _plToast === "function") _plToast(PEN_IPAD_HINT, "#475569", 6500);
+        return;
+      }
+      // Fuera del iPad: Scribble → → Texto → Tinta → Scribble.
+      const next = cur === "off" ? "text" : (cur === "text" ? "ink" : "off");
+      try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); } catch (_) {}
       document.body.classList.toggle("pen-on", next !== "off");
-      _penInterceptSet(!ipad || next !== "off");   // iPad en Scribble: ningún oyente NO pasivo del lápiz en document
+      _penInterceptSet(true);
       document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.toggle("on", next !== "off"); b.textContent = _penModeLabel(next); });
       if (next === "off") { PEN.active = null; try { _penLiveFinalize("apagado"); } catch (_) {} }
       if (typeof _plToast === "function") _plToast(
         next === "text" ? "✍️ → Texto: los NÚMEROS (vitales, labs, vasopresor) se escriben encima del campo y entran al instante; el TEXTO lo revisa la IA"
-          : next === "ink" ? (ipad ? "✍️ Tinta: en las cajas grandes de la ficha lo escrito se queda como tinta (tachar borra). Vitales, drenajes, labs, dieta y lo demás los sigue escribiendo Scribble en letra de máquina"
-                                   : "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); los números entran al instante")
-          : (ipad ? "✍️ Scribble: el iPad convierte tu letra en texto en CUALQUIER caja (vitales, TA 120/80, drenajes, labs…). Si solo selecciona en vez de escribir: Ajustes → Apple Pencil → Garabatear"
-                  : "✍️ Lápiz apagado: el sistema decide qué hace el lápiz"),
+          : next === "ink" ? "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); los números entran al instante"
+          : "✍️ Lápiz apagado: el sistema decide qué hace el lápiz",
         next === "off" ? "#475569" : "#7c3aed", 3600);
     }
     // Llave del campo: "app"/"manejo"… (nota), "ck:recibo"… (checklist) o "el:pN" para cualquier otra caja de texto
@@ -17679,12 +17834,68 @@ function plExportBackup() {
       } catch (_) {}
     })();
 
+    // ── ✍️ Vigilante de Scribble (iPad, 19 oct 2026) ───────────────────────────────────────────────────────────────
+    // Si el lápiz se mueve sobre una caja de texto como escribiendo (≥ 50 px) y, tras el ÚLTIMO trazo de la ráfaga, en
+    // 2.2 s no entra ningún texto, Garabatear está apagado en Ajustes: el lápiz entonces selecciona o arrastra como un dedo
+    // (así se movieron bloques enteros entre cajas en una entrega). Una ráfaga son los trazos seguidos de una palabra:
+    // Scribble convierte al hacer pausa, así que el temporizador es UNO solo y se re-arma con cada trazo (contar por trazo
+    // avisaba en iPads que sí escriben). Cualquier texto que entre (Scribble o teclado) descarta la ráfaga y los fallos
+    // previos; un gesto que el sistema se queda (pointercancel: desplazar, seleccionar) no cuenta. Dos fallos en 30 s →
+    // aviso con el camino exacto. Oyentes PASIVOS: no vuelven síncronos los toques (Scribble sigue intacto).
+    // Estado en window.__plScribbleWatch (pruebas; wait ajustable).
+    const SCRIB = { down: null, timer: 0, strikes: 0, strikeTs: 0, shownTs: 0, wait: 2200 };
+    window.__plScribbleWatch = SCRIB;
+    function _scribEditable(t) {
+      if (!t || t.disabled || t.readOnly) return false;
+      if (t.tagName === "TEXTAREA") return true;
+      return t.tagName === "INPUT" && !/^(checkbox|radio|button|submit|file|range|color|date|time|hidden)$/i.test(t.type || "text");
+    }
+    function _scribShowHint() {
+      const now = Date.now(); if (now - SCRIB.shownTs < 60000) return; SCRIB.shownTs = now;
+      let b = document.getElementById("scribble-hint");
+      if (!b) {
+        b = document.createElement("div"); b.id = "scribble-hint"; b.setAttribute("data-testid", "scribble-hint");
+        b.innerHTML = "<span>✍️ <b>El lápiz no está escribiendo texto.</b> En el iPad: <b>Ajustes → Apple Pencil → Garabatear</b> (encendido). Con eso, lo que escribas en cualquier caja aparece en letra de máquina. Mientras tanto, usa el teclado o el ✍️ de la caja.</span>"
+          + "<button type=\"button\" onclick=\"document.getElementById('scribble-hint').style.display='none'\">Entendido</button>";
+        document.body.appendChild(b);
+      }
+      b.style.display = "flex";
+    }
+    (function _scribBind() {
+      document.addEventListener("pointerdown", function (e) {
+        if (e.pointerType !== "pen" || !_penIsIPad() || !_scribEditable(e.target)) { SCRIB.down = null; return; }
+        SCRIB.down = { el: e.target, x: e.clientX, y: e.clientY, len: 0, id: e.pointerId };
+      }, { capture: true, passive: true });
+      document.addEventListener("pointermove", function (e) {
+        const d = SCRIB.down; if (!d || e.pointerId !== d.id) return;
+        d.len += Math.hypot(e.clientX - d.x, e.clientY - d.y); d.x = e.clientX; d.y = e.clientY;
+      }, { capture: true, passive: true });
+      // Entró texto (Scribble convirtió la palabra, o teclado): la ráfaga pendiente se descarta y se olvidan los fallos.
+      const typed = function () { if (SCRIB.timer) { clearTimeout(SCRIB.timer); SCRIB.timer = 0; } SCRIB.strikes = 0; };
+      ["beforeinput", "input", "compositionstart"].forEach(function (t) { document.addEventListener(t, typed, { capture: true, passive: true }); });
+      const up = function (e) {
+        const d = SCRIB.down; if (!d || e.pointerId !== d.id) return;
+        SCRIB.down = null;
+        if (e.type === "pointercancel" || d.len < 50) return;   // el sistema se quedó el gesto (scroll/selección), o toque corto: poner el cursor
+        if (SCRIB.timer) clearTimeout(SCRIB.timer);            // un temporizador por ráfaga: se re-arma con cada trazo
+        SCRIB.timer = setTimeout(function () {
+          SCRIB.timer = 0;
+          const now = Date.now(); if (now - SCRIB.strikeTs > 30000) SCRIB.strikes = 0;   // fallos sueltos muy separados no se suman
+          SCRIB.strikes++; SCRIB.strikeTs = now;
+          if (SCRIB.strikes >= 2) _scribShowHint();
+        }, SCRIB.wait);
+      };
+      document.addEventListener("pointerup", up, { capture: true, passive: true });
+      document.addEventListener("pointercancel", up, { capture: true, passive: true });
+    })();
+
     // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
     // ➕ Hoy en IC / Cultivos / Entrega / Recibo (oct 2026): anota "dd/mm: " al final de la caja, como la
     // fecha que se escribe a mano antes de cada renglón en la hoja de visita. isCk = campo del checklist.
     function insertTodayStamp(k, field, isCk, label) {
       const sel = isCk ? 'textarea[data-key="' + k + '"][data-ckfield="' + field + '"]' : 'textarea[data-key="' + k + '"][data-field="' + field + '"]';
       const ta = document.querySelector(sel);
+      if (ta && ta.readOnly) ta.readOnly = false;   // «Recibido» es de solo lectura: ➕ Hoy la abre para escribir (como ✏️ Corregir)
       const d = new Date();
       const ini = userInitials();
       // "14/10 GF: " — la fecha y las iniciales de quien escribe, como el color de tinta de cada residente
@@ -17693,7 +17904,7 @@ function plExportBackup() {
       const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
       const trimmed = cur.replace(/\s+$/, "");
       if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
-      _undoPush(k, "fecha de hoy en " + (label || field));
+      _undoPush(k, "fecha de hoy en " + (label || field), [isCk ? "ck:" + field : field]);
       _touchBy(nd, field);
       const next = (trimmed ? trimmed + "\n" : "") + stamp;
       if (ta) {
@@ -17711,7 +17922,7 @@ function plExportBackup() {
       const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
       const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
       if (cur.trim().indexOf(stamp + " —") === 0) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } return; }
-      _undoPush(k, "fecha de hoy en pendientes");
+      _undoPush(k, "fecha de hoy en pendientes", ["pendientes"]);
       _touchBy(getNote(k), "pendientes");
       const next = stamp + " — \n" + cur;
       if (ta) {
@@ -17924,6 +18135,7 @@ function plExportBackup() {
           <button type="button" class="pend-tool" data-k="${k}" onclick="pendInsertToday(this.dataset.k)" title="Insertar la fecha de hoy al inicio (evolución del día)">➕ Hoy</button>
           <button type="button" class="pend-tool${(window.__pendList && window.__pendList[k]) ? " on" : ""}" data-k="${k}" onclick="togglePendList(this.dataset.k)" title="Ver los pendientes como lista con casillas para tachar">☑ Lista</button>
           ${renderTemplatesBtn(k)}
+          ${histBtn(k, "pendientes")}
         </div>
         <textarea class="field-ta" rows="3"
           data-key="${k}" data-field="pendientes"
@@ -17934,33 +18146,42 @@ function plExportBackup() {
         ${renderFotoStrip(k, "ink:pendientes", _fotoList(nd, "ink:pendientes", false), { add: false })}
         ${renderPendList(nd, k)}
       </div>
-      <!-- Guardia (oct 2026): ENTREGA = lo que yo dejo para la siguiente guardia (eventualidades y por hacer;
-           las novedades de labs/imagen/cultivos se anotan solas). RECIBO = lo que me entregan al llegar.
-           "⇄ Tomar guardia" pasa la Entrega del saliente a mi Recibo con fecha y hora y deja Entrega vacía. -->
+      <!-- 🔄 Guardia (oct 2026): UNA sección con dos cajas. «Para la siguiente guardia» = lo que YO dejo (eventualidades y
+           por hacer; las novedades de labs/imagen/cultivos se anotan solas). «Recibido» = lo que me entregaron: de solo
+           lectura (lo escribió la otra guardia), con fecha, hora e iniciales de cada recepción; ✏️ la abre si hace falta
+           corregir algo. «📥 Recibir guardia» pasa lo que dejó la guardia anterior a «Recibido» y vacía la caja de entrega
+           para esta guardia. (Datos: entrega = nd.entrega; recibido = checklist.recibo.) -->
       <div class="fc-guardia">
+      <div class="fc-guardia-title">
+        <span class="fc-guardia-name">🔄 Guardia</span>
+        <span class="fc-guardia-hint">📤 Naranja: lo que dejo a la siguiente guardia. 📥 Verde: lo que me dejaron a mí.</span>
+        <button type="button" class="gd-btn gd-btn-main" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasa lo que la guardia anterior dejó en «Para la siguiente guardia» a «Recibido», con fecha, hora e iniciales, y deja la caja de entrega vacía para ti" data-testid="gd-recibir">📥 Recibir guardia</button>
+      </div>
       <div id="sec-entrega-${ek}" class="fc-anchor entrega-row fc-blk fc-blk-entrega">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📤 Entrega de guardia${_byChip(nd, "entrega")}</span>
+          <span>📤 Para la siguiente guardia${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'entrega',false,'Entrega')" title="Anotar la fecha de hoy antes de la evolución del día">➕ Hoy</button>
             <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Escribir o actualizar el resumen de entrega: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (lo escrito a mano no se toca)">✨ Resumen</button>
+            ${histBtn(k, "entrega")}
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Entrega de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
         </div>
-        <textarea class="field-ta" rows="4" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Eventualidades de mi guardia y cosas por hacer para la siguiente…">${esc(nd.entrega || "")}</textarea>
+        <textarea class="field-ta" rows="4" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Lo que la siguiente guardia debe saber y hacer: eventualidades, pendientes, qué vigilar…">${esc(nd.entrega || "")}</textarea>
         ${renderFotoStrip(k, "ink:entrega", _fotoList(nd, "ink:entrega", false), { add: false })}
         ${cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : ""}
       </div>
       <div id="sec-recibo-${ek}" class="fc-anchor recibo-row fc-blk fc-blk-recibo">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📥 Recibo de guardia${_byChip(nd, "recibo")}</span>
+          <span>📥 Recibido${_byChip(nd, "recibo")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'recibo',true,'Recibo')" title="Anotar la fecha de hoy">➕ Hoy</button>
+            ${histBtn(k, "ck:recibo")}
             <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:recibo','Recibo de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-ck-recibo">✍️</button>
-            <button type="button" class="gd-btn" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasar lo que dejó la guardia anterior en Entrega a mi Recibo (con fecha y hora) y vaciar Entrega">⇄ Tomar guardia</button>
+            <button type="button" class="pend-tool" style="padding:2px 8px" onclick="guardiaEditarRecibo(this)" title="Lo recibido lo escribió la otra guardia y se guarda tal cual; toca aquí solo si hace falta corregirlo" data-testid="gd-editar-recibo">✏️ Corregir</button>
           </span>
         </div>
-        <textarea class="field-ta" rows="4" data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Lo que me entregan al recibir la guardia…">${esc(reciboTxt)}</textarea>
+        <textarea class="field-ta gd-recibido" rows="4" readonly data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Aquí aparece lo que te dejó la guardia anterior cuando pulsas «📥 Recibir guardia»">${esc(reciboTxt)}</textarea>
         ${renderFotoStrip(k, "ink:ck:recibo", _fotoList(nd, "ink:ck:recibo", false), { add: false })}
       </div>
       </div>
@@ -18096,7 +18317,8 @@ function plExportBackup() {
       return "<div>" +
         "<div class='field-label' style='display:flex;align-items:center;justify-content:space-between;gap:6px'>" +
           "<span>" + label + (ndRow ? _byChip(ndRow, field) : "") + "</span>" +
-          "<button class='field-ink-btn' onclick=\"openInkpadForField('" + k + "','" + field + "','" + label.replace(/'/g, "\\'") + "')\" title='Escribir a mano con stylus' data-testid='field-ink-" + field + "'>✍️</button>" +
+          "<span style='display:flex;gap:4px;align-items:center'>" + (ndRow ? histBtn(k, field) : "") +
+          "<button class='field-ink-btn' onclick=\"openInkpadForField('" + k + "','" + field + "','" + label.replace(/'/g, "\\'") + "')\" title='Escribir a mano con stylus' data-testid='field-ink-" + field + "'>✍️</button></span>" +
         "</div>" +
         "<textarea class='field-ta' rows='" + rows + "' " +
         "data-key='" + k + "' data-field='" + field + "' " +
@@ -20094,11 +20316,11 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
           // tarjeta (nd.dx || p.dx) seguía mostrando el nd.dx viejo. Igual que updateField("dx").
           const pt = patients.find(pp => pid(pp) === _inkKey);
           if (pt) nd.dx = toSafeString(pt.dx);   // «Regresar» debe volver al DX anterior, no a vacío (borraría el DX en la nube)
-          _undoPush(_inkKey, "transcripción a mano en DX");
+          _undoPush(_inkKey, "transcripción a mano en DX", ["dx"]);
           nd.dx = newVal.toUpperCase();
           if (pt) { pt.dx = nd.dx; _savePtsImmediate(pt, ["dx"]); }
         } else {
-          _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")));
+          _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")), [_inkFieldMode]);
           dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal);
           _touchBy(nd, _inkFieldMode.replace(/^ck:/, ""));
         }
@@ -20313,11 +20535,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const errTxt = await resp.text().catch(() => "");
           console.error("[doc-intake] Worker response error:", resp.status, errTxt);
           let hint = "";
-          if (resp.status === 401 || resp.status === 403) hint = " (⚠️ Token del Worker inválido o API key de Anthropic expirada)";
+          if (resp.status === 401 || resp.status === 403) hint = " (⚠️ Token del Worker inválido o clave del ayudante de IA (Google Gemini) expirada)";
           else if (resp.status === 404) hint = " (⚠️ La URL del Worker es incorrecta o la ruta /api/ai no existe)";
           else if (resp.status === 413) hint = " (⚠️ Archivo muy grande — intenta con PDF más pequeño o foto comprimida)";
           else if (resp.status === 429) hint = " (⚠️ Límite de requests alcanzado — espera unos minutos)";
-          else if (resp.status >= 500) hint = " (⚠️ El Worker o la API de Anthropic tuvo un problema interno)";
+          else if (resp.status >= 500) hint = " (⚠️ El Worker o el ayudante de IA (Google Gemini) tuvo un problema interno)";
           throw new Error("HTTP " + resp.status + hint + (errTxt ? " — " + errTxt.slice(0, 300) : ""));
         }
         const data = await resp.json();
@@ -20508,10 +20730,38 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       return k;
     }
+    // Un borrado grande de golpe (bloque de 40+ letras que desaparece en un solo evento: tachadura de Scribble, seleccionar
+    // todo y escribir encima, pegado que sustituye) deja SIEMPRE un paso en ↩ Regresar con el texto anterior, aunque la
+    // caja no llegue a soltar el foco. Como mucho uno cada 5 s por caja, para no llenar la pila al teclear.
+    var _bigDelTs = {};
+    function _guardBigDelete(k, f, prev, next, isCk, el) {
+      try {
+        prev = toSafeString(prev); next = toSafeString(next);
+        if (prev.length - next.length < 40) return;
+        var id = k + "|" + f, now = Date.now();
+        if (_bigDelTs[id] && now - _bigDelTs[id] < 5000) return;
+        _bigDelTs[id] = now;
+        var nd = noteData[k]; if (!nd) return;
+        var pv = isCk ? _ckPrevVals : _fieldPrevVals;   // lo que había al tomar el foco (el paso que subiría al soltar la caja)
+        var snap = function (val, label) {
+          var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd))));
+          if (isCk) { if (!before.checklist) before.checklist = {}; before.checklist[f] = val; } else before[f] = val;
+          var keep = noteData[k]; noteData[k] = before; _undoPush(k, label, [isCk ? "ck:" + f : f]); noteData[k] = keep;
+        };
+        // Orden correcto en ↩ Regresar: arriba lo que había JUSTO ANTES del borrón; debajo, lo que había al tomar el foco
+        // (si se empujara al soltar la caja quedaría encima y el primer Regresar perdería lo tecleado en la sesión).
+        if (pv[id] !== undefined && toSafeString(pv[id]) !== prev) snap(toSafeString(pv[id]), "texto de " + _undoFieldLabel(f));
+        snap(prev, "borrado grande en " + _undoFieldLabel(f));
+        pv[id] = prev;   // el paso de soltar la caja parte de aquí: mismo contenido que el de arriba, no se duplica
+        try { if (el && el.dataset && el.dataset.beforeValue !== undefined) el.dataset.beforeValue = prev; } catch (_) {}   // onchange pasa beforeValue (del foco): alinearlo también
+        _showUndoToast(k);
+      } catch (_) {}
+    }
     function liveUpdate(el) {
       var k = _liveKey(el), f = el.dataset.field;
       if (!noteData[k]) noteData[k] = defaultData();
       if (_fieldPrevVals[k + "|" + f] === undefined) _fieldPrevVals[k + "|" + f] = toSafeString(noteData[k][f]);
+      _guardBigDelete(k, f, noteData[k][f], el.value, false, el);
       noteData[k][f] = el.value;
       // Marcar campo como dirty (editado localmente, pendiente de guardar)
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -20589,19 +20839,22 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (st[oldKey] && !st[newKey]) { st[newKey] = st[oldKey]; delete st[oldKey]; pair[1](); }
       });
     }
-    function _undoEntry(label, nd) { return { ts: Date.now(), label: String(label || "cambio"), note: JSON.parse(JSON.stringify(_lsNoteCopy(migrateNote(nd)))) }; }
+    // fields (opcional): las cajas que tocó ESE paso ("pendientes", "ck:recibo"…). Con fields, Regresar/Rehacer solo ponen
+    // de vuelta esas cajas y dejan intacto lo que un compañero haya escrito en otras mientras tanto (19 oct 2026: antes se
+    // restauraba la nota completa y un Regresar tras un Realtime ajeno pisaba cajas que no eran del paso).
+    function _undoEntry(label, nd, fields) { const e = { ts: Date.now(), label: String(label || "cambio"), note: JSON.parse(JSON.stringify(_lsNoteCopy(migrateNote(nd)))) }; if (Array.isArray(fields) && fields.length) e.fields = fields.slice(); return e; }
     // Guarda el estado ACTUAL de la nota antes de un cambio. Llamar antes de mutar noteData[k].
-    function _undoPush(k, label) {
+    function _undoPush(k, label, fields) {
       try {
         const nd = noteData[k]; if (!nd || !k) return;
         const st = _undoLoad();
-        const entry = _undoEntry(label, nd);
+        const entry = _undoEntry(label, nd, fields);
         const arr = st[k] || (st[k] = []);
         // Edición nueva después de Regresar: lo que se dejó atrás al regresar no se pierde, queda como paso.
         const rd = _redoLoad();
         if (rd[k] && rd[k].length) {
           const newest = rd[k][rd[k].length - 1];
-          if (JSON.stringify(newest.note) !== JSON.stringify(entry.note)) arr.push({ ts: Date.now(), label: "como estaba antes de regresar «" + newest.label + "»", note: newest.note });
+          if (JSON.stringify(newest.note) !== JSON.stringify(entry.note)) arr.push(Object.assign({ ts: Date.now(), label: "como estaba antes de regresar «" + newest.label + "»", note: newest.note }, newest.fields ? { fields: newest.fields } : {}));
           delete rd[k]; _redoSave();
         }
         const last = arr[arr.length - 1];
@@ -20636,9 +20889,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
     const _UNDO_TEXT_FIELDS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega", "dx", "body_diagram_ant", "body_diagram_post"];
     // Deja la nota del paciente k como en `target` (copia guardada) y sube solo los campos que difieren.
-    function _undoRestore(k, target) {
+    // Con `fields` (paso de una o dos cajas) solo se ponen de vuelta ESAS cajas sobre la nota actual: lo que otro escribió
+    // en las demás mientras tanto (Realtime) se respeta.
+    function _undoRestore(k, target, fields) {
       const cur = migrateNote(noteData[k]);
       const prev = migrateNote(target);
+      if (Array.isArray(fields) && fields.length) {
+        const next = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(cur))));
+        if (!next.checklist) next.checklist = {};
+        const dirtyF = new Set();
+        fields.forEach(function (f) {
+          if (f.indexOf("ck:") === 0) { const sub = f.slice(3); const v = (prev.checklist || {})[sub]; if (v === undefined) delete next.checklist[sub]; else next.checklist[sub] = v; dirtyF.add("checklist"); }
+          else { next[f] = prev[f] === undefined ? "" : prev[f]; dirtyF.add(f); }
+        });
+        noteData[k] = next;
+        if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+        dirtyF.forEach(function (f) { _dirtyFields[k].add(f); });
+        saveNote(k, next);
+        dirtyF.forEach(function (f) { _dirtyFields[k].delete(f); });
+        if (dirtyF.has("dx")) { const p = patients.find(function (pt) { return pid(pt) === k; }); if (p) { p.dx = next.dx; _savePtsImmediate(p, ["dx"]); } }
+        delete labAnalysisCache[k];
+        _rerenderCard(k);
+        return;
+      }
       // PDF inline recortado en la copia: conservar el actual si es la misma fecha.
       (prev.labHistory || []).forEach(function (s) {
         if (s && s.source_file_stripped) { const c = (cur.labHistory || []).find(function (x) { return x && x.fecha === s.fecha && x.source_file; }); if (c) { s.source_file = c.source_file; delete s.source_file_stripped; } }
@@ -20666,13 +20939,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Clave huérfana (paciente re-clavado o egresado): no crear una nota vacía y subirla
       if (!noteData[k] || !_findPatientByKey(k)) { delete st[k]; _undoSave(); return ""; }
       const entry = arr.pop();
-      // Lo que había ANTES de regresar queda en Rehacer, por si el regreso fue el error.
+      // Lo que había ANTES de regresar queda en Rehacer, por si el regreso fue el error (mismas cajas que el paso).
       const rd = _redoLoad();
       const rarr = rd[k] || (rd[k] = []);
-      rarr.push(_undoEntry(entry.label, noteData[k]));
+      rarr.push(_undoEntry(entry.label, noteData[k], entry.fields));
       while (rarr.length > UNDO_PER_PATIENT) rarr.shift();
       _undoSave(); _redoSave();
-      _undoRestore(k, entry.note);
+      _undoRestore(k, entry.note, entry.fields);
       try { _showRTToast("↩ Regresado: " + entry.label); } catch (_) {}
       return entry.label;
     }
@@ -20685,14 +20958,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const entry = rarr.pop();
       const st = _undoLoad();
       const arr = st[k] || (st[k] = []);
-      arr.push(_undoEntry(entry.label, noteData[k]));
+      arr.push(_undoEntry(entry.label, noteData[k], entry.fields));
       while (arr.length > UNDO_PER_PATIENT) arr.shift();
       _redoSave(); _undoSave();
-      _undoRestore(k, entry.note);
+      _undoRestore(k, entry.note, entry.fields);
       try { _showRTToast("↪ Rehecho: " + entry.label); } catch (_) {}
       return entry.label;
     }
-    function undoLastField() { if (_lastUndoKey) undoLast(_lastUndoKey); }
+    // Botón ↩ Deshacer del aviso «Cambio guardado»: deshace el paso del paciente que anunció ESE aviso (_toastUndoKey), no el
+    // último _undoPush de cualquier paciente (las novedades automáticas de entrega, la tinta… también apilan pasos).
+    let _toastUndoKey = null;
+    function undoLastField() { const k = _toastUndoKey || _lastUndoKey; if (k) undoLast(k); }
     function updateField(k, field, value, prevValue) {
       if (!noteData[k]) noteData[k] = defaultData();
       if (prevValue === undefined && _fieldPrevVals[k + "|" + field] !== undefined) prevValue = _fieldPrevVals[k + "|" + field];
@@ -20701,8 +20977,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (prev !== toSafeString(value)) {
         // Copia ANTES del cambio con el valor previo del campo (el textarea ya mostraba el nuevo).
         const before = Object.assign({}, noteData[k]); before[field] = prev;
-        const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
-        _showUndoToast();
+        const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field), [field]); noteData[k] = keep;
+        _showUndoToast(k);
       }
       const _changed = prev !== toSafeString(value);
       noteData[k][field] = value;
@@ -20725,7 +21001,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       return ({ dx: "DX", app: "APP", pa: "PA", qx: "Qx", manejo: "Misceláneo", pendientes: "Pendientes", entrega: "Entrega", drenajes: "nota de drenajes", sangrado: "Sangrado", balance: "Balance", sv: "SV", interconsultas: "Interconsultas", cultivos: "Cultivos", recibo: "Recibo", pendientes_mips: "Pendientes MIPs", pendientes_r1: "Pendientes R1" })[f] || f;
     }
     var _undoToastTimer = null;
-    function _showUndoToast() {
+    function _showUndoToast(k) {
+      _toastUndoKey = k || _lastUndoKey;
       var toast = document.getElementById("undo-toast");
       if (!toast) return;
       toast.style.display = "flex";
@@ -20741,6 +21018,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!nd.checklist) nd.checklist = {};
       // Valor previo al primer teclazo (para "Regresar" al soltar el campo); se limpia en updateCkText.
       if (_ckPrevVals[k + "|" + f] === undefined) _ckPrevVals[k + "|" + f] = toSafeString(nd.checklist[f]);
+      _guardBigDelete(k, f, nd.checklist[f], el.value, true, el);
       nd.checklist[f] = el.value;
       noteData[k] = nd;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -20748,6 +21026,95 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       scheduleNoteAutosave(k);
     }
     var _ckPrevVals = {}; // k|campo → valor antes del primer teclazo (liveCkText), para Regresar
+    // ─── 🕘 HISTORIAL POR CAJA (oct 2026, tras el incidente de la entrega del 19 oct) ────────────────────────
+    // Cada cambio de cada caja queda en audit_log (texto completo, también la Entrega). Desde la tarjeta, cualquier
+    // residente ve las versiones anteriores de UNA caja (función SQL pl_historial_caja) y restaura la que quiera sin
+    // pedirlo al administrador. La restauración pasa por updateField/updateCkText: queda en ↩ Regresar y en el historial.
+    const HIST_FIELDS = [["pendientes", "Pendientes / Plan"], ["entrega", "Entrega de guardia"], ["ck:recibo", "Recibo de guardia"], ["manejo", "Misceláneo"],
+      ["app", "APP (antecedentes)"], ["pa", "PA (padecimiento actual)"], ["dx", "DX"], ["drenajes", "Nota de drenajes"], ["ck:interconsultas", "Interconsultas"], ["ck:cultivos", "Cultivos"],
+      ["ck:pendientes_mips", "Pendientes MIPs"], ["ck:pendientes_r1", "Pendientes R1"], ["sv", "Signos vitales (texto)"], ["balance", "Balance"], ["sangrado", "Sangrado"], ["qx", "Qx (texto)"]];
+    function _histLabel(f) { const m = HIST_FIELDS.find(x => x[0] === f); return m ? m[1] : f; }
+    const HIST_MAX = 6000;   // tope de letras que guarda el disparador pl_audit por campo de notes (v_max): más largo = versión recortada
+    // Texto de una versión tal como llega del RPC. Con fmt >= 2 ya viene en texto plano. Sin fmt (RPC viejo), las sub-llaves
+    // del checklist llegaban como el texto JSON sin comillas ("línea 1\nlínea 2" con \n literal): se decodifica si es JSON válido.
+    // ¿Versión recortada? La v3 lo dice (de_cortada, calculado sobre lo almacenado); con v2/v1 se infiere por el largo
+    // (las cajas del checklist se guardan escapadas, así que ahí el largo decodificado puede quedarse corto: por eso la v3).
+    function _histCortada(r, de) { return !!(r && (r.de_cortada === true || (r.de_cortada === undefined && toSafeString(de).length >= HIST_MAX))); }
+    function _histTexto(field, r, key) {
+      const s = toSafeString(r && r[key]);
+      if (!r || Number(r.fmt) >= 2 || field.indexOf("ck:") !== 0 || s.indexOf("\\") < 0) return s;
+      try { const d = JSON.parse('"' + s + '"'); return typeof d === "string" ? d : s; } catch (_) { return s; }
+    }
+    function _histCurrent(k, f) { const nd = getNote(k); return toSafeString(f.indexOf("ck:") === 0 ? (nd.checklist || {})[f.slice(3)] : nd[f]); }
+    function histBtn(k, field) {
+      return `<button type="button" class="field-hist-btn" data-k="${esc(k)}" data-f="${esc(field)}" onclick="openFieldHistory(this.dataset.k,this.dataset.f)" title="Versiones anteriores de esta caja: ver quién cambió qué y restaurar lo borrado" data-testid="field-hist-${esc(field).replace(/:/g, "-")}">🕘</button>`;
+    }
+    let _histState = { k: null, field: null, rows: [] };
+    async function openFieldHistory(k, field) {
+      const p = patients.find(x => pid(x) === k);
+      let m = document.getElementById("hist-modal");
+      if (!m) {
+        m = document.createElement("div"); m.id = "hist-modal"; m.className = "modal-bg"; m.style.display = "none";
+        m.onclick = function (e) { if (e.target === m) m.style.display = "none"; };
+        document.body.appendChild(m);
+      }
+      _histState = { k: k, field: field, rows: [] };
+      const opts = HIST_FIELDS.map(([f, l]) => `<option value="${f}"${f === field ? " selected" : ""}>${esc(l)}</option>`).join("");
+      m.innerHTML = `<div class="modal-box" style="max-width:640px;width:96%;max-height:88vh;overflow:auto"><div class="modal-header"><div class="modal-title">🕘 Historial de la caja</div><button class="modal-close" onclick="document.getElementById('hist-modal').style.display='none'">✕</button></div>`
+        + `<div class="adm-row" style="gap:8px;align-items:center;flex-wrap:wrap"><label class="adm-lbl" style="margin:0">Caja</label><select id="hist-field" class="modal-input" style="flex:1;min-width:160px" onchange="openFieldHistory(_histState.k,this.value)" data-testid="hist-field">${opts}</select></div>`
+        + `<div class="adm-hint" style="margin-top:6px">Cama <b>${esc((p && p.cama) || "")}</b>. Cada versión es lo que había ANTES de un cambio. «Restaurar» la pone de vuelta en la caja; lo que hay ahora no se pierde: queda en el historial y en ↩ Regresar.</div>`
+        + `<div id="hist-list" style="margin-top:8px">Cargando…</div></div>`;
+      m.style.display = "flex";
+      const host = document.getElementById("hist-list");
+      if (!p || !p._supa_id) { host.innerHTML = '<div class="adm-hint">Este paciente aún no se ha sincronizado con la nube: todavía no hay historial.</div>'; return; }
+      try {
+        const args = { p_patient: p._supa_id, p_campo: field, p_limit: 40 };
+        let rows;
+        // v3: texto plano (fmt = 3), marcas de_cortada/a_cortada, DX desde patients y solo cuentas activas. Si la base aún no
+        // la tiene (404 "function … not found") se cae a la v2 y luego a la v1 (ahí _histTexto decodifica las cajas del
+        // checklist y la marca «recortada» se infiere por el largo).
+        const missing = e => /not (be )?found|does not exist|PGRST202|\b404\b/i.test(String((e && e.message) || e));
+        try { rows = await _sRpc("pl_historial_caja_v3", args); }
+        catch (e3) {
+          if (!missing(e3)) throw e3;
+          try { rows = await _sRpc("pl_historial_caja_v2", args); }
+          catch (e2) { if (!missing(e2)) throw e2; rows = await _sRpc("pl_historial_caja", args); }
+        }
+        if (_histState.k !== k || _histState.field !== field) return;   // el usuario cambió de caja mientras cargaba
+        _histState.rows = Array.isArray(rows) ? rows : [];
+        renderFieldHistory();
+      } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar el historial: ' + esc((e && e.message) || e) + '</div>'; }
+    }
+    function renderFieldHistory() {
+      const host = document.getElementById("hist-list"); if (!host) return;
+      const k = _histState.k, field = _histState.field, rows = _histState.rows;
+      const cur = _histCurrent(k, field);
+      const z = n => String(n).padStart(2, "0");
+      const fmt = ts => { const d = new Date(ts); return isNaN(d) ? "" : z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); };
+      const pre = s => `<pre class="hist-pre">${esc(s)}</pre>`;
+      let html = `<div class="hist-item hist-cur" data-testid="hist-cur"><div class="hist-h"><b>Ahora</b> · ${cur.length} letras</div>${cur ? pre(cur) : '<div class="adm-hint">(vacía)</div>'}</div>`;
+      if (!rows.length) html += '<div class="adm-hint" style="margin-top:8px">Sin cambios registrados en esta caja.</div>';
+      rows.forEach((r, i) => {
+        const de = _histTexto(field, r, "de"), a = _histTexto(field, r, "a");
+        const same = de === cur, cut = _histCortada(r, de);
+        html += `<div class="hist-item" data-testid="hist-item"><div class="hist-h"><span class="adm-act-ts">${fmt(r.ts)}</span> <b>${esc(r.nombre || "?")}</b> <span class="adm-mail">${esc(r.dispositivo || "")}</span> · ${de.length} → ${a.length} letras${same ? ' <span class="adm-badge">igual a la actual</span>' : ""}${cut ? ` <span class="adm-badge" style="background:#fef3c7;color:#92400e" data-testid="hist-cut">recortada a ${HIST_MAX} letras</span>` : ""}</div>`
+          + (de ? pre(de) : '<div class="adm-hint">(estaba vacía)</div>')
+          + (de && !same ? `<div class="adm-row" style="margin-top:4px"><button class="adm-btn" data-i="${i}" onclick="restoreFieldVersion(this.dataset.i)" data-testid="hist-restore">↩ Restaurar esta versión</button></div>` : "")
+          + `</div>`;
+      });
+      host.innerHTML = html;
+    }
+    function restoreFieldVersion(i) {
+      const k = _histState.k, field = _histState.field, r = _histState.rows[Number(i)]; if (!r) return;
+      const txt = _histTexto(field, r, "de");
+      const aviso = _histCortada(r, txt) ? " OJO: esta versión está recortada (la caja era más larga que lo que guarda el historial, " + HIST_MAX + " letras); lo que sobrepasaba no se puede recuperar desde aquí." : "";
+      if (!confirm("¿Poner este texto en la caja «" + _histLabel(field) + "»? Lo que hay ahora queda en el historial y en ↩ Regresar." + aviso)) return;
+      if (field.indexOf("ck:") === 0) updateCkText(k, field.slice(3), txt);
+      else updateField(k, field, txt);
+      try { _rerenderCard(k); } catch (_) {}
+      renderFieldHistory();
+      try { if (typeof _plToast === "function") _plToast("Caja restaurada: " + _histLabel(field), "#15803d"); } catch (_) {}
+    }
     function updateCkText(k, field, value) {
       var nd = getNote(k);
       if (!nd.checklist) nd.checklist = {};
@@ -20757,7 +21124,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (prevVal !== toSafeString(value)) {
         // Copia ANTES del cambio (liveCkText ya escribió el nuevo valor en noteData): regresar con el previo.
         var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd)))); before.checklist[field] = prevVal;
-        var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
+        var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field), ["ck:" + field]); noteData[k] = keep;
       }
       nd.checklist[field] = value;
       if (prevVal !== toSafeString(value)) _touchBy(nd, field);
@@ -22139,82 +22506,6 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
   </div>`;
     }
 
-    function printPrePostQx() {
-      const v = fmtV;
-      const ck = id => { const el = document.getElementById(id); return el && el.checked; };
-      const riesgos = [
-        ["fqx_nefro", "NEFROPATÍA"], ["fqx_coag", "COAGULOPATÍA"], ["fqx_cardio", "CARDIOPATÍA"],
-        ["fqx_dm", "DIABETES"], ["fqx_has", "HAS"], ["fqx_alcohol", "ALCOHOLISMO"],
-        ["fqx_tabaco", "TABAQUISMO"], ["fqx_adicc", "ADICCIONES"]
-      ].map(([id, lbl]) => `<span style="margin-right:8px;white-space:nowrap">${ck(id) ? "☑" : "☐"} ${lbl}</span>`).join("");
-      const w = window.open("", "_blank", "width=900,height=1100");
-      w.document.write(`<!DOCTYPE html><html><head><title>FT-HGL-Qx-234</title>
-  <style>
-    @page{size:letter;margin:10mm}
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:Arial,sans-serif;font-size:9pt;color:#000;padding:6mm;line-height:1.35}
-    .hdr{text-align:center;font-size:9pt;margin-bottom:2mm}
-    h2{text-align:center;font-size:11pt;font-weight:bold;margin:2mm 0 3mm}
-    h3{font-size:9.5pt;font-weight:bold;background:#eee;border:1px solid #000;padding:2px 5px;margin:3mm 0 1.5mm}
-    .tbl{width:100%;border-collapse:collapse;margin:1.5mm 0}
-    .tbl td{border:1px solid #000;padding:2px 4px;font-size:9pt;vertical-align:top}
-    .tbl td.lbl{font-weight:bold;background:#f5f5f5;white-space:nowrap}
-    .box{border:1px solid #000;padding:2px 4px;min-height:9mm;margin:1mm 0;font-size:9pt;white-space:pre-wrap}
-    .sig-row{display:flex;justify-content:space-around;margin-top:8mm}
-    .sig-box{text-align:center;width:40%}
-    .sig-box .sig-line{border-top:1px solid #000;padding-top:2px;font-size:8pt;font-weight:bold;margin-top:14mm}
-    .ft{text-align:right;font-size:7pt;color:#666;margin-top:4mm}
-  </style></head><body>
-    <div class="hdr">Instituto de Salud Pública del Estado de Guanajuato<br><b>Hospital General León</b></div>
-    <h2>ESTADO PRE Y POST QUIRÚRGICO</h2>
-    <table class="tbl">
-      <tr><td class="lbl">FECHA</td><td>${v("fqx_fecha")}</td><td class="lbl">HORA</td><td>${v("fqx_hora")}</td><td class="lbl">SERVICIO</td><td>${v("fqx_servicio")}</td><td class="lbl">CAMA</td><td>${v("fqx_cama")}</td></tr>
-      <tr><td class="lbl">NOMBRE</td><td colspan="3">${v("fqx_nombre")}</td><td class="lbl">EXPEDIENTE</td><td>${v("fqx_exp")}</td><td class="lbl">EDAD</td><td>${v("fqx_edad")}</td></tr>
-      <tr><td class="lbl">SEXO</td><td>${v("fqx_sexo")}</td><td class="lbl">F. NACIMIENTO</td><td>${v("fqx_fn")}</td><td class="lbl">TA</td><td>${v("fqx_ta")}</td><td class="lbl">FC / FR</td><td>${v("fqx_fc")} / ${v("fqx_fr")}</td></tr>
-      <tr><td class="lbl">TEMP</td><td>${v("fqx_temp")}</td><td class="lbl">PESO</td><td>${v("fqx_peso")}</td><td class="lbl">TALLA</td><td>${v("fqx_talla")}</td><td colspan="2"></td></tr>
-    </table>
-    <h3>NOTA PREQUIRÚRGICA</h3>
-    <table class="tbl">
-      <tr><td class="lbl">FECHA CIRUGÍA</td><td>${v("fqx_fecha_cx")}</td><td class="lbl">TIPO INTERVENCIÓN</td><td>${v("fqx_tipo_interv")}</td></tr>
-    </table>
-    <b style="font-size:8.5pt">PLAN QUIRÚRGICO:</b><div class="box">${v("fqx_plan_qx")}</div>
-    <b style="font-size:8.5pt">FACTORES DE RIESGO:</b><div class="box" style="min-height:6mm">${riesgos}${v("fqx_otros_riesgo") ? "<br>OTROS: " + v("fqx_otros_riesgo") : ""}</div>
-    <b style="font-size:8.5pt">RESUMEN DEL INTERROGATORIO:</b><div class="box">${v("fqx_interrogatorio")}</div>
-    <b style="font-size:8.5pt">EXPLORACIÓN FÍSICA:</b><div class="box">${v("fqx_ef")}</div>
-    <table class="tbl">
-      <tr><td class="lbl">TIPO SANGRE</td><td>${v("fqx_tipo_sangre")}</td><td class="lbl">TP</td><td>${v("fqx_tp")}</td><td class="lbl">TPT</td><td>${v("fqx_tpt")}</td><td class="lbl">HB</td><td>${v("fqx_hb")}</td><td class="lbl">HTO</td><td>${v("fqx_hto")}</td></tr>
-      <tr><td class="lbl">OTROS ESTUDIOS</td><td colspan="8">${v("fqx_otros_labs")}</td></tr>
-    </table>
-    <b style="font-size:8.5pt">DIAGNÓSTICOS PREQUIRÚRGICOS:</b><div class="box">${v("fqx_dx_pre")}</div>
-    <b style="font-size:8.5pt">CUIDADOS Y PLAN TERAPÉUTICO PREOPERATORIO:</b><div class="box">${v("fqx_cuidados_pre")}</div>
-    <table class="tbl">
-      <tr><td class="lbl">PRONÓSTICO</td><td>${v("fqx_pronostico_pre")}</td><td class="lbl">MÉDICO ADSCRITO</td><td>${v("fqx_adscrito")}</td><td class="lbl">ELABORA</td><td>${v("fqx_residente")}</td></tr>
-    </table>
-    <h3>NOTA POSTQUIRÚRGICA</h3>
-    <b style="font-size:8.5pt">DIAGNÓSTICO POSTOPERATORIO:</b><div class="box">${v("fqx_dx_post")}</div>
-    <b style="font-size:8.5pt">CIRUGÍA REALIZADA:</b><div class="box">${v("fqx_cx_realizada")}</div>
-    <table class="tbl">
-      <tr><td class="lbl">FECHA</td><td>${v("fqx_fecha_cx_real")}</td><td class="lbl">INICIO</td><td>${v("fqx_hora_inicio")}</td><td class="lbl">TÉRMINO</td><td>${v("fqx_hora_fin")}</td><td class="lbl">DURACIÓN</td><td>${v("fqx_duracion")}</td><td class="lbl">ANESTESIA</td><td>${v("fqx_anestesia")}</td></tr>
-      <tr><td class="lbl">CIRUJANO</td><td colspan="2">${v("fqx_cirujano")}</td><td class="lbl">ANESTESIÓLOGO</td><td colspan="2">${v("fqx_anestesiologo")}</td><td class="lbl">1er AYUDANTE</td><td colspan="2">${v("fqx_ayud1")}</td></tr>
-      <tr><td class="lbl">2do AYUDANTE</td><td colspan="2">${v("fqx_ayud2")}</td><td class="lbl">INSTRUMENTISTA</td><td colspan="2">${v("fqx_instrumentista")}</td><td class="lbl">CIRCULANTE</td><td colspan="2">${v("fqx_circulante")}</td></tr>
-    </table>
-    <b style="font-size:8.5pt">HALLAZGOS TRANSOPERATORIOS:</b><div class="box">${v("fqx_hallazgos")}</div>
-    <b style="font-size:8.5pt">DESCRIPCIÓN DE TÉCNICA QUIRÚRGICA:</b><div class="box" style="min-height:18mm">${v("fqx_tecnica")}</div>
-    <table class="tbl">
-      <tr><td class="lbl">SANGRADO</td><td>${v("fqx_sangrado")}</td><td class="lbl">CUENTA TEXTIL</td><td>${v("fqx_gasas")}</td><td class="lbl">PIEZA / HISTOPATOLÓGICO</td><td>${v("fqx_pieza")}</td></tr>
-      <tr><td class="lbl">INCIDENTES</td><td>${v("fqx_incidentes")}</td><td class="lbl">ESTADO POSTQX</td><td>${v("fqx_estado_post")}</td><td class="lbl">PRONÓSTICO</td><td>${v("fqx_pronostico_post")}</td></tr>
-    </table>
-    <b style="font-size:8.5pt">PLAN Y TRATAMIENTO INMEDIATO:</b><div class="box">${v("fqx_plan_post")}</div>
-    <div class="sig-row">
-      <div class="sig-box"><div class="sig-line">Nombre completo, cédula y firma del médico cirujano</div></div>
-      <div class="sig-box"><div class="sig-line">Nombre completo, cédula y firma del médico que elabora</div></div>
-    </div>
-    <div class="ft">FT-HGL-Qx-234 · Blvd. Puente Milenio N° 1001 A Predio San Carlos C.P. 37544</div>
-    <script>window.print();<\/script>
-  </body></html>`);
-      w.document.close();
-    }
-
     // ═══════════════════════════════════════════════════════════════════════════════
     // FORMAT 2: FT-HGL-AM-542 CONSENTIMIENTO QUIRURGICO
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -23066,6 +23357,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         noteData[newKey] = noteData[oldKey];
         delete noteData[oldKey];
       }
+      _outboxRekeyPatient(oldKey, newKey);
       lsSavePatients(patients);
       _savePtsImmediate(owner, _mDirty);   // PATCH inmediato solo de este paciente (nueva cama); el ítem del outbox lleva los campos cambiados
       buildEspFilters();
@@ -23179,6 +23471,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (modalOrigKey !== newKey) {
           noteData[newKey] = noteData[modalOrigKey] || defaultData();
           delete noteData[modalOrigKey];
+          _outboxRekeyPatient(modalOrigKey, newKey);
           // Limpiar oldKey en localStorage y en KV remoto para evitar "ghost notes"
           localStorage.removeItem(NOTES_PREFIX + modalOrigKey);
           deleteNoteRemote(modalOrigKey);
@@ -23398,7 +23691,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       el.innerHTML = html;
     }
 
-    function restorePatient(archiveIdx) {
+    async function restorePatient(archiveIdx) {
       const arc = archivados[archiveIdx]; if (!arc) return;
       if (!confirm(`¿Restaurar a ${arc.nombre} al censo activo?`)) return;
       const { _archivedAt, _archiveKey, _note, _supa_id, _supaArchiveId, _deletedRemotely, ...p } = arc;
@@ -23407,18 +23700,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       delete p._deletedRemotely;
       // Su cama ya la tiene OTRA persona (p. ej. el sync se la dio con el mismo expediente al archivarlo como cama
       // reasignada): restaurarlo ahí fusionaba las dos tarjetas (el upsert por exp+cama reescribía la fila del otro).
-      const _otraEn = function (c) { return patients.find(function (q) { return q && importKeyNorm(q.cama) === importKeyNorm(c) && !_plNamesCompatible(p, q); }); };
-      if (toSafeString(p.cama).trim() && _otraEn(p.cama)) {
+      // Se mira el censo local Y la nube (la copia local puede ir atrasada): si solo se viera aquí, el guardado la
+      // rechazaba después («cambia la cama») y la tarjeta quedaba en la cola sin poder subir.
+      const _otraEn = async function (c) {
+        const local = patients.find(function (q) { return q && importKeyNorm(q.cama) === importKeyNorm(c) && !_plNamesCompatible(q, p); });
+        if (local || !navigator.onLine || !toSafeString(p.exp).trim()) return local || null;
+        try { const row = await _sRowAtExpCama(p.exp, importKeyNorm(c)); return (row && !_plNamesCompatible(row, p)) ? row : null; }
+        catch (_) { return null; }
+      };
+      if (toSafeString(p.cama).trim() && await _otraEn(p.cama)) {
         const nueva = prompt("La cama " + p.cama + " ya la tiene otra persona. ¿En qué cama restauras a " + (arc.nombre || "este paciente") + "? (vacío = cancelar)");
         if (!nueva || !toSafeString(nueva).trim()) return;
-        if (_otraEn(nueva)) { alert("La cama " + importKeyNorm(nueva) + " también está ocupada. No se restauró."); return; }
+        if (await _otraEn(nueva)) { alert("La cama " + importKeyNorm(nueva) + " también está ocupada. No se restauró."); return; }
         p.cama = importKeyNorm(nueva);
       }
+      // La Papelera pudo cambiar mientras se consultaba la nube (otra restauración terminó antes): la entrada se busca
+      // por identidad, no por el índice con el que se pulsó el botón; si ya no está, no hay nada que restaurar.
+      const arcIdx = archivados.indexOf(arc);
+      if (arcIdx === -1) return;
       const restoredNote = _note || defaultData();
       delete restoredNote._egreso; delete restoredNote._egresoFecha; // vuelve al censo activo
       patients.push(p);
       noteData[pid(p)] = restoredNote;
-      archivados.splice(archiveIdx, 1);
+      archivados.splice(arcIdx, 1);
       _persistArchivados();
       // Limpiar el registro en la tabla archive de Supabase
       if (_supaArchiveId) _sDelete("archive", "id=eq." + _supaArchiveId).catch(e => safeLog("archive restore delete:", e));
@@ -23686,7 +23990,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const _expShared = e => !!e && ((oldListByExp.get(e) || []).length > 1 || (impExpCount.get(e) || 0) > 1);
           const _oldForExp = p => {
             const e = importKeyNorm(p.exp), list = e ? (oldListByExp.get(e) || []) : [];
-            if (list.length === 1 && !_expShared(e)) return list[0];
+            // Exp único: también tiene que poder ser la misma persona (caso real 18 oct: el exp corregido en una cama dejó
+            // el número viejo solo en otra, de OTRA persona; el Excel movía y renombraba la fila y la nota del primero).
+            if (list.length === 1 && !_expShared(e)) return _plNamesCompatible(list[0], p) ? list[0] : null;   // (actual, Excel): un DESCONOCIDO que el Excel identifica sigue su fila
             let hits = list.filter(o => _plSamePerson(o, p) === true);
             // Varios encajan (p. ej. uno con solo apellidos): se descartan los ambiguos y, si sigue habiendo más
             // de uno, se prefiere el de nombre idéntico.
@@ -23698,7 +24004,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const _exactOld = p => {
             const o = oldByPid.get(importIdentityKey(p));
             if (!o) return null;
-            return (_expShared(importKeyNorm(p.exp)) && _plSamePerson(o, p) === false) ? null : o;
+            if (_expShared(importKeyNorm(p.exp)) && _plSamePerson(o, p) === false) return null;
+            return _plNamesCompatible(o, p) ? o : null;   // (actual, Excel); mismo exp+cama con OTRA persona (exp copiado): no es la misma fila
           };
           // Mapas del censo nuevo
           const newByCama = new Map(imported.filter(p => !_impMulti(p.cama)).map(p => [importKeyNorm(p.cama), p]));
@@ -24305,7 +24612,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
            sea un PATCH de cama (antes: DELETE por exp+cama → la nota de la nube se perdía). */
         if (!prev._supa_id && importKeyNorm(oldPt.exp) && importKeyNorm(oldPt.cama)) {
           cloudOps.push(_sRowAtExpCama(oldPt.exp, oldPt.cama)
-            .then(row => { if (row && _plNamesCompatible(merged, row)) _relinkPatientId(merged, row.id); })
+            .then(row => { if (row && _plNamesCompatible(row, merged)) _relinkPatientId(merged, row.id); })
             .catch(e => safeLog("import moved lookup (exp/cama):", e)));
         }
       });
@@ -24468,7 +24775,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         adscrito:  proc.adscrito  || "",
         residente: proc.residente || "",
         fecha_dia: todayStr(),
-        added_by:  localStorage.getItem("pl_user_name") || ""
+        // quien lo AGREGÓ (se conserva al editar; antes cada edición ponía al editor como autor)
+        added_by:  proc.added_by || localStorage.getItem("pl_user_name") || ""
       };
     }
     async function supaLoadProcedimientos() {
@@ -24478,7 +24786,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return rows.map(function(r) {
           return { _id: r.id, cama: r.cama || "", exp: r.exp || "", nombre: r.nombre || "",
             edad: r.edad || "", dx: r.dx || "", esp: r.esp || "CG",
-            adscrito: r.adscrito || "", residente: r.residente || "",
+            adscrito: r.adscrito || "", residente: r.residente || "", added_by: r.added_by || "",
             _addedAt: r.added_at || new Date().toISOString() };
         });
       } catch (e) { safeLog("[PROC] supaLoadProcedimientos:", e); return null; }
@@ -24497,10 +24805,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return null;
       }
     }
+    // Cuerpo del PATCH al editar: SIN added_by (quién lo agregó no cambia al editar; si la copia local no lo trae, tampoco se pisa).
+    function _procPatchBody(proc) { const row = _procToRow(proc); delete row.added_by; return row; }
     async function supaUpdateProc(id, proc) {
-      const op = { key: "proc|patch|" + id, method: "PATCH", table: "procedimientos_dia", match: "id=eq." + id, body: _procToRow(proc) };
+      const op = { key: "proc|patch|" + id, method: "PATCH", table: "procedimientos_dia", match: "id=eq." + id, body: _procPatchBody(proc) };
       if (!navigator.onLine) { _restEnqueue(op); return; }
-      try { await _sPatch("procedimientos_dia", "id=eq." + id, _procToRow(proc)); }
+      try { await _sPatch("procedimientos_dia", "id=eq." + id, _procPatchBody(proc)); }
       catch (e) { safeLog("[PROC] supaUpdateProc:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
     async function supaDeleteProc(id) {
@@ -24529,7 +24839,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         } else {
           procedimientos.push({ _id: newRow.id, cama: newRow.cama || "", exp: newRow.exp || "",
             nombre: newRow.nombre || "", edad: newRow.edad || "", dx: newRow.dx || "",
-            esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "",
+            esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "", added_by: newRow.added_by || "",
             _addedAt: newRow.added_at || new Date().toISOString() });
         }
         saveProcs(); renderViewSoft();
@@ -24592,14 +24902,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         dx: document.getElementById("pf-dx").value.trim().toUpperCase(),
         esp: document.getElementById("pf-esp").value,
         adscrito: document.getElementById("pf-adscrito").value.trim().toUpperCase(),
-        residente: document.getElementById("pf-residente").value.trim().toUpperCase(),
-        _addedAt: new Date().toISOString()
+        residente: document.getElementById("pf-residente").value.trim().toUpperCase()
       };
+      if (_procEditIdx < 0) { proc.added_by = localStorage.getItem("pl_user_name") || ""; proc._addedAt = new Date().toISOString(); }   // autor y hora solo al crear
       if (_procEditIdx >= 0) {
+        // Editar conserva quién lo agregó y a qué hora (el PATCH no lleva added_by: ver _procPatchBody).
         const existingId = procedimientos[_procEditIdx]._id;
-        procedimientos[_procEditIdx] = { ...procedimientos[_procEditIdx], ...proc };
+        const merged = { ...procedimientos[_procEditIdx], ...proc };
+        procedimientos[_procEditIdx] = merged;
         saveProcs();
-        if (existingId) supaUpdateProc(existingId, proc);
+        if (existingId) supaUpdateProc(existingId, merged);
         // Sin _id (la inserción sigue pendiente en el outbox) el POST pendiente toma los datos
         // actuales del proc local al ejecutarse, así que la edición no se pierde.
       } else {
@@ -24631,6 +24943,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       renderView();
       supaDeleteAllProcs().catch(e => safeLog("clearAllProcs:", e));
     }
+    // " · 08:15" con la hora en que se agregó el procedimiento (vacío si no se sabe)
+    function _procHora(iso) { const d = iso ? new Date(iso) : null; return (d && !isNaN(d)) ? " · " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") : ""; }
     function renderProcSection() {
       let rows = "";
       if (procedimientos.length) {
@@ -24642,6 +24956,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         <span style="font-size:11px;color:#64748b">${pr.edad ? pr.edad + "a" : ""} · ${esc(pr.esp)}</span>
         <span style="font-size:11px;color:#475569;flex:2;min-width:200px">${esc((pr.dx || "").slice(0, 80))}${(pr.dx || "").length > 80 ? "…" : ""}</span>
         <span style="font-size:10px;color:#94a3b8">${esc(pr.adscrito || "")}${pr.residente ? " / " + esc(pr.residente) : ""}</span>
+        <span style="font-size:10px;color:#64748b;white-space:nowrap" title="Quién lo agregó en la app y a qué hora" data-testid="proc-added-by">👤 ${esc(pr.added_by || "?")}${_procHora(pr._addedAt)}</span>
         <button onclick="openProcModal(${idx})" style="background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">✏️</button>
         <button onclick="deleteProc(${idx})" style="background:#dc2626;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">✕</button>
       </div>`;
@@ -27206,14 +27521,23 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (mine && _cxAiBusy.delete(mine)) { try { const l = _cxLocate(k, cid); if (l) _rerenderCardSoft(l.k); } catch (_) {} }
       }
     }
-    // ═══ TOMAR GUARDIA: lo que el saliente escribió en "Entrega" pasa a mi "Recibo" (con fecha y hora)
-    // y "Entrega" queda vacía para lo que yo entregaré al final de mi guardia.
+    // «Recibido» es de solo lectura (lo escribió la otra guardia); ✏️ Corregir la abre para editar.
+    function guardiaEditarRecibo(btn) {
+      try {
+        const ta = btn.closest(".fc-blk-recibo").querySelector("textarea[data-ckfield='recibo']");
+        if (!ta) return;
+        ta.readOnly = false; ta.focus();
+        try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
+      } catch (_) {}
+    }
+    // ═══ RECIBIR GUARDIA: lo que el saliente dejó en «Para la siguiente guardia» pasa a mi «Recibido» (con fecha, hora e
+    // iniciales) y la caja de entrega queda vacía para lo que yo entregaré al final de mi guardia.
     function tomarGuardia(k) {
       const nd = getNote(k);
       const ent = toSafeString(nd.entrega).trim();
-      if (!ent) { alert("La caja Entrega está vacía: no hay nada que recibir."); return; }
-      if (!confirm("¿Pasar el texto de Entrega a Recibo (con fecha y hora) y dejar Entrega vacía para tu guardia?")) return;
-      _undoPush(k, "tomar guardia (Entrega → Recibo)");
+      if (!ent) { alert("La caja «Para la siguiente guardia» está vacía: no hay nada que recibir."); return; }
+      if (!confirm("¿Recibir la guardia? Lo que dejó la guardia anterior pasa a «Recibido» (con fecha y hora) y la caja de entrega queda vacía para ti.")) return;
+      _undoPush(k, "tomar guardia (Entrega → Recibo)", ["entrega", "ck:recibo"]);
       const d = new Date(); const z = n => String(n).padStart(2, "0");
       const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
       if (!nd.checklist) nd.checklist = {};

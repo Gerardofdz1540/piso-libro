@@ -22,13 +22,25 @@ language sql immutable as $$
   select btrim(regexp_replace(upper(translate(coalesce(t,''), 'ÁÉÍÓÚÜÑáéíóúüñ', 'AEIOUUNAEIOUUN')), '[^A-Z0-9 ]+', ' ', 'g'))
 $$;
 
+-- Nombre de paciente aún no identificado (DESCONOCIDO, N.N., S/N, RN, HIJO DE…, SIN IDENTIFICAR) o solo iniciales (N N,
+-- X): la misma lista que namePlaceholder_ en apps-script/censo-sync.gs y _plNamePlaceholder en index.html (19 oct 2026).
+-- Una "N" suelta junto a palabras reales (PEREZ N JUAN: apellido que aún no se sabe) NO es no identificado.
+create or replace function public.pl_name_placeholder(t text) returns boolean
+language sql immutable as $$
+  select coalesce(public.pl_name_norm(t), '') ~ '(^|\s)(DESCON[A-Z]*|DESCO|DESC|NN|RN|RECIEN|NACID[OA]|IDENT|IDENTIF[A-Z]*|IGNORAD[OA]|ANONIM[OA]|INCOGNIT[OA]|FILIAD[OA]|REGISTRAD[OA]|REGISTRO|NI|NOMBRE|PACIENTE|MASC|MASCULIN[OA]|FEM|FEMENIN[OA]|XX+|DATOS|HIJ[OA]|BEBE|PRODUCTO|MUJER|HOMBRE)(\s|$)'
+      or coalesce(public.pl_name_norm(t), '') ~ '^([NXSDI](\s+|$))+$'
+$$;
+
 -- Misma persona: nombres iguales normalizados, o todos los tokens del nombre más corto (>= 2)
 -- presentes en el otro. Sin nombre en alguno de los dos → true (ya coincide el expediente).
+-- Si solo UNO de los dos es un no identificado (MARIA LOPEZ SOTO ↔ HIJO DE MARIA LOPEZ SOTO) son dos personas: la nota
+-- archivada de la madre no se restaura sobre el recién nacido (19 oct 2026).
 create or replace function public.pl_same_person(a text, b text) returns boolean
 language plpgsql immutable as $$
 declare na text := public.pl_name_norm(a); nb text := public.pl_name_norm(b); ta text[]; tb text[]; sh text[]; lo text[]; t text;
 begin
   if na = '' or nb = '' then return true; end if;
+  if public.pl_name_placeholder(na) <> public.pl_name_placeholder(nb) then return false; end if;
   if na = nb then return true; end if;
   ta := regexp_split_to_array(na, '\s+'); tb := regexp_split_to_array(nb, '\s+');
   if array_length(ta,1) <= array_length(tb,1) then sh := ta; lo := tb; else sh := tb; lo := ta; end if;

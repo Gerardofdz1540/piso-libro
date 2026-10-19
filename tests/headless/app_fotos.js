@@ -5,7 +5,8 @@
 //  F4 ✍️ en Interconsultas → 📌 A la caja: el trazo queda como PNG en checklist.ink_fotos["ck:interconsultas"], el modal se cierra y la tira aparece bajo la caja
 //  F5 autor por caja: updateField marca by.app = GF (y sube checklist), el chip aparece en la etiqueta, ➕ Hoy lleva iniciales, buildChecklistForSync conserva "by"
 //  F6 updateCkText marca autor en IC y Tomar guardia en Recibo/Entrega
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const PNG_1x1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
@@ -31,7 +32,7 @@ const MOCK = `(() => {
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from: bucketApi } }) };
 })();`;
 (async () => {
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1300, height: 1400 } });
+  const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1300, height: 1400 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const posts = [];
   await page.route('**/vendor/supabase*', r => r.abort());
@@ -50,7 +51,7 @@ const MOCK = `(() => {
   });
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
   check('init: sin errores no capturados', errors.length === 0, errors.join(' | '));
 

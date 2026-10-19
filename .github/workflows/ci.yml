@@ -1,0 +1,166 @@
+name: CI
+
+# Pruebas en cada pull request (todas las ramas) y, vía workflow_call, antes de publicar la app
+# (deploy-pages.yml llama a este archivo y solo publica si pasa). Tres jobs:
+#   unidad      sintaxis de los scripts de index.html (syncheck), pruebas del Apps Script del censo,
+#               lint de index.html (si hay package.json en la raíz) y las pruebas sin red del robot
+#               (scraper, drilldown, parser PDF, RIS). No necesita navegador.
+#   app         las suites headless de la app en Chromium (tests/headless/run_all.sh).
+#   app-webkit  las suites del iPad en WebKit (el motor de Safari). Advisorio (continue-on-error)
+#               hasta que pasen en WebKit: aparece en el PR pero no lo bloquea.
+# Protección de main (GitHub → Settings → Branches → main → "Require status checks to pass"):
+# exigir los checks "unidad" y "app". Las acciones van fijadas por SHA de commit (ver dependabot.yml).
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un push nuevo a la misma rama/PR cancela la corrida anterior (no hace falta terminarla).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unidad:
+    name: unidad
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: rpa/package-lock.json
+
+      - name: Sintaxis de los scripts de index.html
+        run: node tests/headless/syncheck.js index.html
+
+      - name: Pruebas del Apps Script (censo-sync)
+        run: node apps-script/censo-sync.test.js
+
+      # Lint de index.html (funciones duplicadas, etc.): node tools/lint-index.js, sin dependencias.
+      # Solo si existe package.json en la raíz (lo trae el PR que añade el lint).
+      - name: Lint de index.html (si hay package.json raíz)
+        run: |
+          if [ -f package.json ]; then
+            npm run lint
+          else
+            echo "Sin package.json en la raíz: se omite el lint."
+          fi
+
+      # Las pruebas del robot son funciones puras: no hace falta Chromium. --ignore-scripts salta el
+      # postinstall de rpa (playwright install --with-deps chromium) y la variable evita la descarga
+      # si algo lo invoca de todos modos. npm ci instala EXACTAMENTE lo que fija package-lock.json.
+      - name: Instalar dependencias del robot (sin Chromium)
+        working-directory: rpa
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Pruebas sin red del robot (scraper, drilldown, parser PDF, RIS)
+        working-directory: rpa
+        run: npm test
+
+  app:
+    name: app
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: tests/headless
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: tests/headless/package-lock.json
+
+      # Playwright fijado en tests/headless/package-lock.json (las suites hacen require('playwright')).
+      - name: Instalar Playwright
+        run: npm ci --no-audit --no-fund
+
+      # La llave incluye el hash del lockfile: al subir Playwright se baja el Chromium que le toca.
+      - name: Cache de navegadores Playwright
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/headless/package-lock.json') }}
+
+      # Con el navegador ya en caché solo instala las librerías del sistema (--with-deps).
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      # run_all.sh deja el log de cada suite en $TMPDIR/suite_<nombre>.log; lo apuntamos a la carpeta
+      # temporal del runner para poder subirlo si algo falla.
+      - name: Suites headless (Chromium)
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: npm run all
+
+      - name: Subir logs de las suites
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-suites-chromium
+          path: ${{ runner.temp }}/suite_*.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Mismas suites del iPad (app_ipad, app_pen, app_pencil, app_offline, app_cajas) en WebKit, el
+  # motor de Safari: lo que usan los iPads. Advisorio: el job se marca con aviso si falla, pero no
+  # bloquea el PR ni la publicación. Quitar continue-on-error cuando pasen en WebKit.
+  app-webkit:
+    name: app-webkit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: tests/headless
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: tests/headless/package-lock.json
+
+      - name: Instalar Playwright
+        run: npm ci --no-audit --no-fund
+
+      - name: Cache de navegadores Playwright
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ hashFiles('tests/headless/package-lock.json') }}
+
+      - name: Instalar WebKit
+        run: npx playwright install --with-deps webkit
+
+      - name: Suites del iPad (WebKit)
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: npm run webkit
+
+      - name: Subir logs de las suites
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: logs-suites-webkit
+          path: ${{ runner.temp }}/suite_*.log
+          if-no-files-found: warn
+          retention-days: 7

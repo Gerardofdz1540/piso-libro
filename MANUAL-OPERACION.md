@@ -28,10 +28,22 @@ Imagina una fábrica con cuatro máquinas que trabajan solas:
 
 ## Una sola dirección para todos
 
-Todo el equipo debe usar **https://pisolibro.pages.dev**. Las direcciones
-viejas (GitHub Pages, Netlify) sirven versiones antiguas que borran datos de
-los laboratorios. Si alguien tiene la app "instalada" en el teléfono desde
-otra dirección, que la borre y la vuelva a instalar desde esta.
+Todo el equipo debe usar **https://pisolibro.pages.dev**. Es la única
+dirección que publica el repositorio (cada fusión en `main` la actualiza
+después de pasar las pruebas). Las otras direcciones que existieron **no deben
+usarse**:
+
+- **https://pisocirugiahgl.netlify.app** hoy sirve una versión vieja (de días
+  atrás, sin las librerías para trabajar sin red) y el ayudante de IA rechaza
+  lo que llega desde ahí; escribe en los mismos pacientes con reglas viejas.
+  Alinearla con la principal queda **pendiente en otro lote**; hasta entonces
+  no es respaldo de nada. Cuando se alinee, se anotará aquí y en "Abrir la app
+  desde el celular".
+- **GitHub Pages** (gerardofdz1540.github.io) sirve versiones antiguas que
+  borran datos de los laboratorios.
+
+Si alguien tiene la app "instalada" en el teléfono o el iPad desde otra
+dirección, que la borre y la vuelva a instalar desde la principal.
 
 ## Paso a paso: actualizar el programa de la hoja (Apps Script)
 
@@ -88,6 +100,26 @@ línea del workflow: si no coinciden, cada push a `main` se publica como
 *preview* y la app en producción se queda congelada sin ningún aviso. La rama
 vieja `feature/winlab-auto-sync` ya no hace falta para publicar; puedes borrarla
 cuando quieras.
+
+## Regresar a la versión anterior (si una publicación sale mal)
+
+Desde octubre de 2026 **cada publicación corre las pruebas antes** (`ci.yml`,
+llamado desde `deploy-pages.yml`): si alguna falla, no se publica y los iPads
+siguen con la versión anterior. Aun así, si una versión publicada falla en el
+piso, cualquiera con acceso a Cloudflare la regresa en un minuto:
+
+1. Cloudflare → **Workers & Pages → pisolibro → Deployments**.
+2. En la lista, busca la publicación anterior que sí funcionaba (por fecha y
+   hora; la de arriba es la actual). Pulsa los tres puntos **⋯** de esa fila →
+   **Rollback to this deployment** → confirmar.
+3. En los iPads basta con cerrar la app del todo y volver a abrirla con red:
+   toma la versión publicada.
+4. **Después**, para que el cambio malo no se vuelva a publicar en la siguiente
+   fusión: en GitHub, abre el PR que lo trajo → botón **Revert** → crea el PR
+   de reversión y fusiónalo en `main` (o `git revert <commit>` desde la
+   computadora y PR). Eso publica otra vez la versión buena, con pruebas. Sin
+   este paso, el rollback solo dura hasta la próxima publicación.
+5. Avisa en el grupo qué versión quedó y mándame el síntoma (sin pacientes).
 
 ## Cómo moverse por la ficha del paciente (iPad)
 
@@ -181,6 +213,92 @@ labs críticos sin reconocer y uno ámbar labs atrasados.
    últimas líneas del registro; mándamelas y lo reviso. Nunca pegues ahí
    nombres de pacientes en mensajes públicos.
 
+## Si el robot no puede entrar (plan B)
+
+Los dos robots (labs e imagen) corren en computadoras de GitHub fuera del hospital y entran a
+WinLab y al visor por internet. Si Informática cierra ese acceso, cambia la dirección o bloquea
+esas conexiones, las corridas fallan al iniciar sesión (en Actions, el paso rojo dice que no pudo
+entrar) y nada automático llega. Qué hacer:
+
+**Ese mismo día**
+
+1. **Avisar** en el grupo del servicio que los labs y los estudios no llegarán solos, y al
+   responsable de la app (mándale el nombre de la corrida en rojo, sin pacientes).
+2. **Descartar que sea la contraseña**: lista "Login fallido" en "Cuentas que usan los robots". Si
+   la cuenta entra a mano desde una PC del hospital pero el robot no, es bloqueo de red: sigue.
+3. **Labs de todo el piso con el marcador manual**, desde una PC del hospital con WinLab:
+   - En la app (con tu sesión, en esa PC): ⚙️ Config → botón del marcador de WinLab → arrastra el
+     botón a la barra de marcadores del navegador. El marcador ya lleva dentro el censo de ese
+     momento: no pide llaves ni consulta nada.
+   - En WinLab: Reportes → "Ir" (reportes de hoy) → clic en el marcador: palomea solo a los
+     pacientes del censo, página por página → **Imprime Reportes** → se baja un PDF.
+   - En la app: **📦 Labs Masivo** (barra del tablero) → suelta el PDF → revisa a quién se asignó
+     cada hoja y confirma.
+   - Al terminar, **borra el marcador** de esa PC: contiene los nombres de los pacientes. Al día
+     siguiente se genera otro (el censo cambia).
+4. **Un paciente suelto**: en su tarjeta, sección de labs, 📄 PDF / 📷 Foto lee la hoja impresa o
+   la pantalla con IA, como siempre.
+5. **Imagen**: los estudios y reportes se consultan directo en el visor; cuando el robot vuelva,
+   repone lo que falte en las siguientes pasadas.
+
+**Para dejar de depender de internet: un "runner" propio en una PC del servicio**
+
+Un runner es una computadora que GitHub usa para correr los robots en vez de las suyas. Si está
+dentro del hospital, entra a WinLab y al visor como cualquier PC del piso. Preparación (la hace el
+responsable; una tarde):
+
+1. Hablar con Informática: avisar que el robot correrá desde una PC del servicio y preguntar si lo
+   prefieren así.
+2. Una PC del servicio **siempre encendida y con cable de red**, con usuario propio y código de
+   bloqueo, que nadie use para otra cosa. Mejor Linux (Ubuntu): los workflows usan comandos de
+   Linux.
+3. En GitHub: repo → **Settings → Actions → Runners → New self-hosted runner** → elegir el sistema
+   de la PC → seguir los pasos que GitHub muestra en pantalla (descargar, configurar con el código
+   que aparece ahí, instalar como servicio para que arranque sola). Ponerle la etiqueta `hospital`.
+4. En esa PC instalar Node 22 y el navegador del robot (`npx playwright install --with-deps
+   chromium` dentro de `rpa/`).
+5. En el repo, cambiar en `winlab-scraper.yml`, `winlab-dryrun.yml` y `ris-scraper.yml` la línea
+   `runs-on: ubuntu-latest` por `runs-on: [self-hosted, hospital]` (PR normal; pasa por pruebas).
+6. Probar con Actions → **"WinLab corrida en seco" → Run workflow**: debe entrar y recorrer WinLab
+   sin escribir nada.
+
+Las contraseñas siguen guardadas en GitHub y en Supabase, no en la PC. Las capturas de pantalla de
+corridas fallidas sí se quedan en la carpeta del runner: borrarlas cada semana. Mientras no exista
+el runner, GitHub sigue usando sus computadoras.
+
+## Cuentas que usan los robots
+
+Cada robot entra al sistema del hospital con la cuenta de **una persona**, no con una cuenta del
+servicio. Para WinLab y el visor, cada búsqueda del robot la hizo esa persona (también las de
+homónimos de otros servicios). Por eso hay que saber de quién es, que Informática lo sepa y qué
+hacer cuando cambie la contraseña.
+
+| Robot | Sistema | Cuenta de (llenar) | Contraseña vence (llenar) | Dónde vive la contraseña | Dónde se cambia |
+|---|---|---|---|---|---|
+| Labs | WinLab | ____________ | ____________ | GitHub → Settings → Secrets and variables → Actions → `WINLAB_USER` / `WINLAB_PASS` | Ahí mismo: `WINLAB_PASS` → Update secret |
+| Imagen | Visor radiológico (RIS) | ____________ | ____________ | Supabase → Table Editor → tabla `rpa_config` → filas `RIS_USER` / `RIS_PASS` | Ahí mismo: `value` de `RIS_PASS` → Save |
+
+- Pedir por escrito a Informática una cuenta de **solo consulta** a nombre del Servicio de Cirugía
+  General para el robot. Mientras no exista, que el dueño de la cuenta y la jefatura dejen por
+  escrito que se usa así, y revisarlo en cada cambio de rotación.
+- Si el dueño de la cuenta rota, egresa o el hospital le pide cambiar la contraseña: **el mismo
+  día** cambiarla en GitHub (`WINLAB_PASS`) o en `rpa_config` (`RIS_PASS`) y lanzar la corrida de
+  prueba (paso 4 de abajo). Si no, los robots se detienen y los labs dejan de llegar hasta que
+  alguien se dé cuenta.
+
+**Lista "Login fallido"** (la corrida en rojo dice que no pudo iniciar sesión):
+
+1. Entra a mano en una PC del hospital con el mismo usuario y contraseña. ¿No entra? La contraseña
+   cambió, venció o la cuenta está bloqueada: arréglalo en WinLab o en el visor, actualiza el
+   secreto o `rpa_config` y lanza la prueba del paso 4.
+2. ¿Entra a mano pero el robot no? WinLab o el visor cambiaron algo (idioma, pantalla, aviso al
+   entrar) o la red del hospital cerró el acceso desde fuera. Mándale al responsable el nombre de
+   la corrida y el paso rojo (sin pacientes) y sigue "Si el robot no puede entrar (plan B)".
+3. ¿No hay corrida a la hora esperada? Entonces no es la cuenta: revisa "Si los laboratorios no
+   llegan" y la tabla `winlab_dispatch_log`.
+4. Prueba después de cambiar algo: Actions → **"WinLab corrida en seco" → Run workflow** (entra y
+   recorre sin escribir) o **"RIS Imagen" → Run workflow** con `dry_run` marcado. Verde = listo.
+
 ## Abrir la app desde el celular, con datos móviles o sin conexión
 
 Desde octubre de 2026 la app ya no depende de internet para abrir:
@@ -194,9 +312,9 @@ Desde octubre de 2026 la app ya no depende de internet para abrir:
 - La sesión también se guarda: sin red no vuelve a pedir contraseña.
 - Para instalarla como app: en iPhone/iPad, Safari → **Compartir → Agregar a inicio**; en
   Android, Chrome → menú ⋮ → **Instalar aplicación**.
-- Hay una segunda dirección por si la principal no abre desde tu operador:
-  https://pisocirugiahgl.netlify.app (misma app, mismos datos). En Netlify, comprueba que la
-  "Production branch" del sitio sea `main`.
+- Por ahora **no hay segunda dirección**: la copia de Netlify está atrasada y no debe usarse (ver
+  "Una sola dirección para todos"). Si la principal no abre desde tu operador, la copia guardada en
+  el dispositivo sigue funcionando sin red y lo escrito se sube al volver al Wi-Fi del hospital.
 
 **Sin conexión** se puede leer y escribir todo. Lo que escribas se guarda en el dispositivo y en
 una cola de envío; el estado abajo dice "Sin conexión". En cuanto vuelve una red que llega a
@@ -213,7 +331,7 @@ sincronizar y hay que esperar al Wi-Fi del hospital; lo escrito no se pierde.
 
 En la cabecera de cada tarjeta aparece **↩ Regresar** cuando hay algo que deshacer. Cada cambio
 que puede doler guarda antes una copia de la tarjeta: texto de una caja al terminar de escribir,
-quitar una cirugía, un drenaje, unos labs o un estudio, "Tomar guardia", auto-llenar, órdenes
+quitar una cirugía, un drenaje, unos labs o un estudio, "Recibir guardia", auto-llenar, órdenes
 rápidas y las novedades automáticas. Regresar vuelve un paso; tocarlo otra vez vuelve otro paso
 más (hasta 20 por paciente) y cada regreso se sube como cualquier edición.
 
@@ -264,7 +382,7 @@ Tres cosas que la hoja de GoodNotes hacía y la app no:
   Se ve en la hoja, en la impresión y en los demás dispositivos. 🤖 Transcribir sigue igual.
 - **Autor por caja**: cada caja de texto muestra un chip con las iniciales de quien hizo el último
   cambio, la fecha y la hora, con un color fijo por persona (el nombre que pusiste al entrar).
-  ➕ Hoy anota `dd/mm GF: ` y Tomar guardia sella `— Recibido dd/mm hh:mm GF —`.
+  ➕ Hoy anota `dd/mm GF: ` y Recibir guardia sella `— Recibido dd/mm hh:mm GF —`.
 
 ## Las cajas de la ficha (octubre 2026)
 
@@ -280,12 +398,21 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
   reciente). La fecha POP del menú "⋯ Más" ahora es la de la última cirugía.
 - **💉 Manejo médico actual** (verde azulado).
 - **⚠️ Pendientes / Plan** (ámbar).
-- **📤 Entrega de guardia** (naranja): lo que **yo dejo** para la siguiente guardia, eventualidades
-  y cosas por hacer. El botón **✨ Resumen** escribe al final un bloque corto con lo que importa (ver
-  "Entrega de guardia que resume"); las novedades de labs críticos, imagen y cultivos se anotan solas
-  con su fecha.
-- **📥 Recibo de guardia** (verde): lo que **me entregan** al llegar. El botón **⇄ Tomar guardia**
-  pasa el texto de Entrega a Recibo con fecha y hora y deja Entrega vacía para mi guardia.
+- **🔄 Guardia** (19 oct 2026, antes dos cajas sueltas que se confundían): un solo bloque con el botón
+  grande **📥 Recibir guardia** arriba y dos cajas debajo.
+  - **📤 Para la siguiente guardia** (naranja): lo que **yo dejo** al que llega: eventualidades y cosas
+    por hacer. El botón **✨ Resumen** escribe al final un bloque corto con lo que importa (ver "Entrega
+    de guardia que resume"); las novedades de labs críticos, imagen y cultivos se anotan solas con su fecha.
+  - **📥 Recibido** (verde, de solo lectura): lo que **me entregaron** al llegar. **📥 Recibir guardia**
+    pasa el texto de la caja naranja a esta, con fecha, hora y quién recibe, y deja la naranja vacía para
+    mi guardia. Si hay que corregir algo de lo recibido, el botón **✏️ Corregir** la abre para escribir.
+- **🕘 Historial por caja**: cada caja de texto (Pendientes, Interconsultas, Cultivos, Misceláneo, Guardia…)
+  tiene un reloj junto a su título. Abre un diario con las versiones anteriores de ESA caja (quién, cuándo,
+  texto completo) y un botón **Restaurar** por versión. Sirve para recuperar lo que alguien borró o lo que un
+  arrastre movió de caja: se restaura la versión buena y queda registrado como un cambio más.
+- **↩ Regresar / ↪ Rehacer solo tocan la caja de ese paso** (19 oct 2026): si un compañero escribió en otra caja
+  desde su iPad mientras tanto, un Regresar tuyo ya no se lo pisa. El botón ↩ Deshacer del aviso «Cambio guardado»
+  deshace al paciente que anunció ese aviso.
 - Plegables: **Historia · APP / PA** y **Pendientes MIPs / R1**.
 
 Columna lateral: el **Pase** (dieta, ATB, TVP, herida, NPT, vitales, **drenajes y sondas** con su
@@ -437,19 +564,35 @@ Si el laboratorio reporta un INR real, se usa ese y desaparece el estimado.
 **En el iPad escribe con el lápiz encima de CUALQUIER caja** (vitales FC/FR/T°/SaO₂, TA `120/80`, uresis,
 gasto de drenajes, dieta, días de ATB, labs, vasopresor, modales, cajas grandes) y el iPad lo convierte en
 letra de máquina al instante (Scribble, el reconocedor de Apple). La app no interviene: no hay que elegir
-nada. El botón **✍️** de la barra solo tiene dos estados en el iPad: **✍️ Scribble** (por defecto) y
-**✍️ Tinta** (solo si quieres **dibujar**: en las cajas grandes de la ficha lo escrito se queda como tinta,
-viaja con la nota, tachar borra, menú ✍️ en la esquina para deshacer, pasar a texto o borrar; todas las demás
-cajas siguen siendo Scribble). Un **toque** con el lápiz pone el cursor; el dedo y el teclado siguen igual.
-La primera vez que abras esta versión, el iPad arranca en **✍️ Scribble** aunque antes estuviera en Tinta o en
-«→ Texto» (la tinta ya guardada en las cajas no se pierde); si quieres Tinta, tócalo una vez y se recuerda.
+nada. **Desde el 19 de octubre de 2026 en el iPad no hay modos**: el botón **✍️** de la barra siempre dice
+«✍️ Scribble» y, al tocarlo, solo recuerda cómo funciona y cómo activar Garabatear. El estado **✍️ Tinta**
+se retiró del iPad: dejaba la letra como tinta en las cajas grandes y, con sus oyentes en la página, hacía
+que en las demás cajas (vitales, gastos) el lápiz "no dejara escribir" o seleccionara y arrastrara texto de
+una caja a otra (así se movieron bloques enteros en una entrega). Un iPad que se quedó en Tinta o en «→ Texto»
+vuelve solo a Scribble al abrir; la tinta que ya estaba guardada en una caja se sigue viendo y el ✍️ de cada
+caja (lienzo grande) sigue ahí para dibujar o firmar. Un **toque** con el lápiz pone el cursor; el dedo y el
+teclado siguen igual.
 
 **Si el lápiz solo selecciona texto en vez de escribir**, Scribble está apagado en el iPad: Ajustes →
 Apple Pencil → **Garabatear** (encendido). Prueba rápida: escribe con el lápiz en el buscador de Safari.
+La app lo detecta sola: si escribes dos palabras seguidas con el lápiz en una caja de texto y no entra ninguna
+letra, aparece un aviso abajo con esos pasos (botón «Entendido» para cerrarlo; vuelve a salir si pasa de nuevo).
+Mientras Scribble convierta lo escrito, el aviso no sale.
+
+**Protección contra arrastres y borrados** (19 oct 2026): el texto ya no se puede arrastrar ni soltar
+entre cajas (ni con el lápiz ni con el dedo: lo seleccionado se queda donde está). Si una caja pierde
+40 o más letras de golpe (borrón, Scribble que tachó de más), sale el aviso **Deshacer** unos segundos;
+y si ya pasó, el reloj 🕘 de la caja abre su historial para restaurar la versión anterior.
 
 Fuera del iPad (laptop con lápiz, Android) sigue existiendo el estado **✍️ → Texto**: los números los
 convierte la app al instante (reconocedor local de dígitos, sin red) y el texto el **ayudante de IA**
 (worker en ⚙️ Config), con una lectura provisional en morado que no se guarda hasta que la IA responde.
+
+## Quién agregó cada procedimiento del día (19 de octubre de 2026)
+
+En la lista **🔬 Procedimientos del día** (al pie de la vista Piso) cada fila muestra ahora **👤 quién lo
+agregó en la app y a qué hora** (el nombre con el que esa persona entró). Se guarda al crearlo y no cambia
+al editarlo; los procedimientos de antes de esta versión muestran «?».
 
 ## Vista de escritorio (octubre 2026)
 
@@ -567,6 +710,41 @@ Botón **👥 Usuarios** en la cabecera (solo lo ve el administrador).
 - El administrador no puede bloquearse, borrarse ni quitarse el rol a sí mismo.
 - **Sin registro**: cuentas creadas a mano en el panel de Supabase; aparecen con **✅ Dar acceso**.
 
+### Cuando alguien se va del servicio (rotación, egreso)
+
+El mismo día, el administrador:
+
+1. 👥 Usuarios → su cuenta → **⛔ Bloquear** (no borrar: su actividad se conserva).
+2. Hoja del censo (Google Sheets) → Compartir → quitarlo. Doc "INDICACIONES HOSPITALIZACION" →
+   Compartir → quitarlo.
+3. Pedirle que en su iPad y celular cierre sesión y **borre los datos del sitio** (iPad/iPhone:
+   Ajustes → Safari → Avanzado → Datos de sitios web → `pisolibro.pages.dev` → Eliminar; Android:
+   Chrome → ⋮ → Configuración → Configuración de sitios → Datos del sitio) y quite el icono de la
+   pantalla de inicio. 🚪 Salir **no** borra la copia local de los pacientes.
+4. Si conocía el token del ayudante de IA (⚙️ Config → desplegar «🔧 Worker proxy (legacy /
+   avanzado)» → 🔑 Token de Acceso → Guardar; el campo está oculto hasta desplegar esa sección),
+   cambiarlo: pasos en `scripts/SECURITY_NOTES.md` (`ACCESS_TOKEN`).
+5. Sacarlo del grupo donde se mandan las contraseñas temporales.
+6. Si era el dueño de la cuenta de WinLab o del visor que usan los robots, ver "Cuentas que usan
+   los robots".
+
+### Cuando alguien llega
+
+1. 👥 Usuarios → **➕ Dar acceso**: correo, nombre y rol; mandarle la contraseña temporal; que la
+   cambie en 👤 Mi cuenta al entrar.
+2. Explicarle **tres reglas**: código de bloqueo en el iPad y el celular; la cuenta es personal y
+   no se presta; no se mandan capturas de pantalla con pacientes por WhatsApp.
+3. Enseñarle dónde está este manual (`MANUAL-OPERACION.md` en GitHub) y las secciones "Si los
+   laboratorios no llegan" y "Recuperar la contraseña".
+4. Acceso a la hoja del censo y al Doc solo si los va a editar.
+
+### Revisión mensual de cuentas
+
+Una vez al mes, y en cada cambio de rotación, el administrador abre 👥 Usuarios y mira "Último
+acceso": **bloquea** las cuentas con más de 30 días sin entrar y las creadas hace más de una
+semana que nunca han entrado (🔓 Activar las repone si la persona regresa). Ponerlo en el
+calendario del servicio junto con la fecha de cambio de rotación.
+
 ### 🕵️ Actividad
 
 Pestaña **Actividad** del mismo panel: cada cambio guardado en la nube con **quién** (nombre y
@@ -591,8 +769,9 @@ actividad), **nombre de este dispositivo** (p. ej. "iPad de Gera", así sale en 
 ### Configuración en Supabase (una vez, 5 minutos)
 
 1. **Authentication → URL Configuration**: Site URL `https://pisolibro.pages.dev`; en Redirect URLs
-   agrega `https://pisolibro.pages.dev/**` y `https://*--pisocirugiahgl.netlify.app/**`. Sin esto, los
-   enlaces de recuperación mandan a otra dirección.
+   agrega `https://pisolibro.pages.dev/**` (y `https://*--pisocirugiahgl.netlify.app/**` solo cuando
+   la copia de Netlify se alinee; hoy no se usa). Sin esto, los enlaces de recuperación mandan a
+   otra dirección.
 2. **Authentication → Sign In / Providers → Email**: desactiva *Allow new users to sign up*. Nadie se
    registra solo (de todas formas, sin registro no ve nada).
 3. **Correo gratis para "¿Olvidaste tu contraseña?"**: el correo integrado de Supabase es limitado
@@ -610,6 +789,27 @@ En Supabase → SQL Editor:
 ```sql
 update public.app_users set role = 'admin', status = 'active' where email = 'gfdz1540@gmail.com';
 ```
+
+## Llaves y vencimientos (recordatorio 2 semanas antes)
+
+Varias piezas dejan de funcionar en una fecha, o cuando alguien cambia su contraseña, sin ningún
+aviso claro. Esta tabla es para anotar esas fechas y poner un **recordatorio en el calendario del
+servicio 2 semanas antes** de cada una (título: "Renovar <llave> — Piso Libro", con el enlace a
+esta sección). La guía completa de cada llave, dónde vive y cómo cambiarla el mismo día en todos
+lados está en `scripts/SECURITY_NOTES.md`.
+
+| Llave | Para qué sirve | Si vence, qué se nota | ¿Cuándo vence? | Vence el (llenar) | Cómo renovarla (resumen) |
+|---|---|---|---|---|---|
+| Token de GitHub del worker (`GITHUB_TOKEN` en Cloudflare) | Despierta al robot a la hora exacta y con 🔎 Buscar ahora | Los labs dejan de llegar a las 5:00, 12:30 y 20:07 y solo llegan una vez en la tarde; 🔎 Buscar ahora falla; `winlab_dispatch_log` con 502 | En la fecha elegida al crearlo (GitHub propone 30 días) | ________ | GitHub → token nuevo → Cloudflare → worker `piso-libro-ai` → `GITHUB_TOKEN` → Deploy → probar 🔎 Buscar ahora |
+| Contraseña de aplicación de Gmail | Correo de "¿Olvidaste tu contraseña?" | El correo no llega; 🔗 Enlace y 🔑 Contraseña temporal siguen funcionando | Cuando se cambia la contraseña de la cuenta de Google o se apaga la verificación en 2 pasos | ________ | Google → Contraseñas de aplicaciones → nueva → Supabase → SMTP Settings |
+| Token de Cloudflare (`CLOUDFLARE_API_TOKEN` en GitHub) | Publicar la app | El paso "Publicar en Cloudflare Pages" sale en rojo; la app se queda en la versión anterior | Solo si se le puso fecha al crearlo | ________ | Cloudflare → API Tokens → nuevo → GitHub → secret → Run workflow de "Deploy a Cloudflare Pages" |
+| Contraseña de WinLab (`WINLAB_PASS`) | Robot de labs | Corrida en rojo con "Login fallido" | Según el hospital | ________ | WinLab → GitHub secret → "WinLab corrida en seco" |
+| Contraseña del visor (`RIS_PASS`) | Robot de imagen | "RIS Imagen" en rojo al iniciar sesión | Según el hospital | ________ | Visor → Supabase `rpa_config` → "RIS Imagen" con `dry_run` |
+| Clave de Gemini (`GEMINI_API_KEY` en Cloudflare) | Toda la IA (nota, labs de foto/PDF, lápiz → texto) | Todo lo de IA falla con «Token del Worker inválido o clave del ayudante de IA (Google Gemini) expirada» o con un HTTP 400/403 pelón (el worker devuelve el error de Google tal cual); 🤖 Nota IA cae al borrador sin IA con «La IA no respondió (HTTP …)». «…tuvo un problema» solo sale con errores 5xx (worker o Gemini caídos), no por la clave | No por fecha; lo que sí puede retirarse es el modelo que usa el worker | — | AI Studio → clave nueva → Cloudflare → Deploy; si es el modelo, cambiar `GEMINI_MODEL` en el worker |
+
+Además, sin ser llaves: GitHub apaga los robots tras 60 días sin cambios en el repositorio (se
+mantienen despiertos solos) y Supabase pausa el proyecto tras 7 días sin tráfico (hay un ping cada
+3 días).
 
 ## Si un paciente no tiene labs: el nombre no coincide con WinLab (octubre 2026)
 
@@ -664,7 +864,11 @@ from notes_lab_history_backup_20261009 b where b.patient_id = n.patient_id;
 | `apps-script/censo-sync.gs` | El programa de la hoja del censo (se pega a mano en Google) |
 | `rpa/` | El robot de laboratorios (WinLab → Supabase) |
 | `.github/workflows/winlab-scraper.yml` | Los horarios y la configuración del robot |
-| `.github/workflows/deploy-pages.yml` | Cómo se publica la app en Cloudflare |
+| `.github/workflows/winlab-dryrun.yml` | La corrida en seco del domingo (prueba que el robot aún puede entrar a WinLab) |
+| `.github/workflows/ris-scraper.yml` | El robot de imagen (visor RIS → Supabase) |
+| `.github/workflows/labs-watchdog.yml` | El vigilante que avisa si los labs llevan más de 26 h sin llegar |
+| `.github/workflows/ci.yml` | Las pruebas que corren en cada PR y antes de publicar |
+| `.github/workflows/deploy-pages.yml` | Cómo se publica la app en Cloudflare (solo si pasan las pruebas) |
 | `cloudflare-worker/` | El ayudante de IA (extraer labs de PDF, disparar el robot) |
 | `scripts/supabase_rls_current.sql` | La configuración de seguridad vigente de la base de datos |
 | `scripts/SECURITY_NOTES.md` | Qué llaves existen y qué hacer si se filtra alguna |

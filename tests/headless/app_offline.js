@@ -3,7 +3,8 @@
 // copia remota lo pise, el botón ↩ Regresar, y la cama cambiada sin red (✏️ Editar) que sobrevive a la
 // recarga, no la pisa la fila remota ni Realtime, y sube con la cama nueva al volver la red (O6-O9).
 //   node tests/headless/app_offline.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   const KEY='__mock_session';
   if (!sessionStorage.getItem(KEY)) sessionStorage.setItem(KEY, JSON.stringify({ access_token:'mock-token-123', refresh_token:'r', user:{ email:'t@t.t' } }));
@@ -24,7 +25,7 @@ const MOCK = `(() => {
   Object.defineProperty(window, 'supabase', { value: mock, writable: false, configurable: false });
 })();`;
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await launch();
   const context = await browser.newContext({ viewport: { width: 1194, height: 834 } });
   const page = await context.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
@@ -64,7 +65,7 @@ const MOCK = `(() => {
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
 
   // 1) Con red: arranca, instala el service worker y guarda la app + supabase-js en caché
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(4000);
   const o1 = await page.evaluate(async () => {
     const t0 = Date.now(); let doc = null, lib = null, sw = null;
@@ -231,7 +232,7 @@ const MOCK = `(() => {
   offline = false; await context.setOffline(false);
   const page2 = await context.newPage();
   page2.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
-  await page2.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page2.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page2.waitForTimeout(6500);
   const o9 = await page2.evaluate(() => {
     const ls = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');

@@ -1,7 +1,8 @@
 // Cuentas con administrador (oct 2026): cabeceras de dispositivo/usuario, perfil al entrar, cuenta bloqueada,
 // recuperación de contraseña (correo y enlace), panel 👥 Usuarios + 🕵️ Actividad (solo admin) y 👤 Mi cuenta.
 //   node tests/headless/app_admin.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64');
 // Token con forma de JWT: la app lee sub/email del payload (myUserId / myEmail).
 const tokenFor = (uid, email) => 'eyJhbGciOiJIUzI1NiJ9.' + b64({ sub: uid, email, role: 'authenticated' }) + '.firma';
@@ -43,7 +44,7 @@ const AUDIT = [
   { id: 7, ts: new Date(Date.now() - 86400e3).toISOString(), user_id: ADMIN_UID, email: ADMIN_EMAIL, nombre: 'Dr. Fernandez R2', dispositivo: 'Mac Chrome', ip: '10.0.0.5', ua: 'Mozilla/5.0 (Macintosh) Chrome/130', tabla: 'app_users', op: 'ADMIN:bloquear', record_id: 'u-3', cama: null, paciente: null, campos: null, diff: { usuario: 'bloqueado@t.t' } }
 ];
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await launch();
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
   const errorsAll = [];
   // Rutas comunes: REST simulado + función admin-users simulada. opts.profile: fila de app_users del usuario (o null).
@@ -81,7 +82,7 @@ const AUDIT = [
   const ctxA = await browser.newContext({ viewport: { width: 1194, height: 834 } }); const page = await ctxA.newPage();
   const { calls, fn } = await wire(page, { profile: USERS[0] });
   await page.addInitScript(mockScript(ADMIN_UID, ADMIN_EMAIL));
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
 
   const a1 = await page.evaluate(async () => {
@@ -106,7 +107,7 @@ const AUDIT = [
   check('A3 panel 👥 Usuarios: pide la lista a la función con el token del usuario y la cabecera de dispositivo; muestra activo/bloqueado/sin registro, admin, "tú"; el admin no tiene botón para bloquearse; el sin registro solo tiene "Dar acceso"',
     a3.shown === 'flex' && a3.rows.length === 4 && /tú/.test(a3.rows[0].txt) && /admin/.test(a3.rows[0].txt) && a3.rows[2].blocked && /bloqueado/.test(a3.rows[2].txt) && /sin registro/.test(a3.rows[3].txt)
     && a3.rows[3].acts.length === 1 && /Dar acceso/.test(a3.rows[3].acts[0]) && a3.rows[1].acts.some(t => /Bloquear/.test(t)) && a3.rows[2].acts.some(t => /Activar/.test(t)) && !a3.selfBlock
-    && listCall && /^Bearer eyJ/.test(listCall.headers['authorization']) && listCall.headers['x-pl-device'] && listCall.body.redirect_to === 'http://127.0.0.1:8771/index.html', JSON.stringify({ a3, listHdr: listCall && listCall.headers }));
+    && listCall && /^Bearer eyJ/.test(listCall.headers['authorization']) && listCall.headers['x-pl-device'] && listCall.body.redirect_to === BASE_URL + '/index.html', JSON.stringify({ a3, listHdr: listCall && listCall.headers }));
 
   const a4 = await page.evaluate(async () => {
     document.getElementById('adm-inv-email').value = 'Nueva@Hospital.MX'; document.getElementById('adm-inv-nombre').value = 'Dra. Nueva R1'; document.getElementById('adm-inv-role').value = 'usuario';
@@ -183,14 +184,14 @@ const AUDIT = [
     return { auth: window.__auth.filter(a => a[0] === 'resetPasswordForEmail'), msg: msg.textContent, shown: msg.style.display, link: !!document.querySelector('[data-testid="login-forgot"]') };
   });
   check('A8 ¿Olvidaste tu contraseña?: botón en el login; pide a Supabase el correo de recuperación con el redirect a la app y avisa',
-    a8.link && a8.auth.length === 1 && a8.auth[0][1] === 'olvido@t.t' && a8.auth[0][2].redirectTo === 'http://127.0.0.1:8771/index.html' && /te llegará un enlace/.test(a8.msg) && a8.shown === 'block', JSON.stringify(a8));
+    a8.link && a8.auth.length === 1 && a8.auth[0][1] === 'olvido@t.t' && a8.auth[0][2].redirectTo === BASE_URL + '/index.html' && /te llegará un enlace/.test(a8.msg) && a8.shown === 'block', JSON.stringify(a8));
   await ctxA.close();
 
   // ── Escenario B: cuenta bloqueada ──
   const ctxB = await browser.newContext({ viewport: { width: 1194, height: 834 } }); const pageB = await ctxB.newPage();
   const wB = await wire(pageB, { profile: { id: 'u-3', email: 'bloqueado@t.t', nombre: 'Bloqueado', role: 'usuario', status: 'blocked' } });
   await pageB.addInitScript(mockScript('u-3', 'bloqueado@t.t'));
-  await pageB.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await pageB.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await pageB.waitForTimeout(4000);
   const b1 = await pageB.evaluate(() => ({ overlay: document.getElementById('login-overlay').style.display, err: document.getElementById('login-error').textContent, token: _userAccessToken, auth: window.__auth.filter(a => a[0] === 'signOut').length, admin: document.getElementById('admin-btn').style.display }));
   const dataGets = wB.calls.filter(c => c.m === 'GET' && /\/rest\/v1\/(patients|notes)/.test(c.url)).length;
@@ -202,7 +203,7 @@ const AUDIT = [
   const ctxC = await browser.newContext({ viewport: { width: 1194, height: 834 } }); const pageC = await ctxC.newPage();
   await wire(pageC, { profile: null });
   await pageC.addInitScript(mockScript('u-nuevo', 'nuevo@t.t'));
-  await pageC.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await pageC.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await pageC.waitForTimeout(4000);
   const c1 = await pageC.evaluate(() => ({ overlay: document.getElementById('login-overlay').style.display, err: document.getElementById('login-error').textContent }));
   check('C1 cuenta sin registro en app_users: fuera con aviso de pedir acceso al administrador', c1.overlay === 'flex' && /no tiene acceso autorizado/.test(c1.err), JSON.stringify(c1));
@@ -213,7 +214,7 @@ const AUDIT = [
   await wire(pageD, { profile: USERS[1] });
   await pageD.addInitScript(mockScript('u-2', 'residente2@t.t', "sessionStorage.removeItem('__mock_session');"));
   const recTok = tokenFor('u-2', 'residente2@t.t');
-  await pageD.goto('http://127.0.0.1:8771/index.html#access_token=' + recTok + '&refresh_token=rt-1&type=recovery&expires_in=3600', { waitUntil: 'load', timeout: 90000 });
+  await pageD.goto(BASE_URL + '/index.html#access_token=' + recTok + '&refresh_token=rt-1&type=recovery&expires_in=3600', { waitUntil: 'load', timeout: 90000 });
   await pageD.waitForTimeout(5000);
   const d1 = await pageD.evaluate(async () => {
     const before = { hash: location.hash, modal: (document.getElementById('pwd-modal') || {}).style ? document.getElementById('pwd-modal').style.display : 'no', hint: (document.getElementById('pwd-hint') || {}).textContent || '', overlay: document.getElementById('login-overlay').style.display, set: window.__auth.filter(a => a[0] === 'setSession').map(a => a[1].access_token.slice(0, 10)) };

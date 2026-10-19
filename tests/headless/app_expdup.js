@@ -3,7 +3,8 @@
 // cultivos, labs de WinLab, estado del robot) se atribuye por nombre y nunca a las dos; Editar no se
 // bloquea; el aviso de duplicados no ofrece borrarlas; el Excel las empareja por nombre.
 //   node tests/headless/app_expdup.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const fs = require('fs'); const path = require('path');
 const FIX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture_ego_bh.json'), 'utf8'));
 const MOCK = `(() => {
@@ -52,17 +53,18 @@ const CULT = [
 ];
 const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscado: ['PEREZ LOPEZ'], candidatos: ['PEREZ LOPEZ, JUANA'], encontrado_como: null, reportes: 0, detalle: null, checked_at: '2026-10-17T11:00:00Z' }];
 (async () => {
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
+  const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const calls = [];
   // X17-X18: la fila `goneId` ya no existe en la nube y en su exp+cama hay otra fila (`twin`)
-  let relink = null;
+  let relink = null, slowExp = 0;
   await page.route('**/vendor/supabase*', r => r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
     let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
     calls.push({ m, url, body });
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+    if (slowExp && m === 'GET' && url.startsWith('/rest/v1/patients?exp=eq.')) await new Promise(r => setTimeout(r, slowExp));
     if (relink) {
       if (url.startsWith('/rest/v1/notes') && m === 'POST' && body && body.patient_id === relink.goneId) return json(409, { code: '23503', message: 'insert or update on table "notes" violates foreign key constraint "notes_patient_id_fkey"' });
       if (url.startsWith('/rest/v1/patients?id=eq.' + relink.goneId)) return json(200, []);
@@ -79,7 +81,7 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
   });
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3 && Object.keys(risByExp || {}).length > 0, null, { timeout: 30000 });
   await page.waitForTimeout(1500);
 
@@ -255,7 +257,8 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
     for (let i = 0; i < 40 && !pendingImport; i++) await new Promise(r => setTimeout(r, 150));
     const pi = pendingImport || {};
     const r = { moved: (pi.movedPts || []).map(m => m.oldPt.cama + '→' + m.newPt.cama + ':' + m.oldPt.nombre), missing: (pi.missingPts || []).map(p => p.cama + ':' + p.nombre),
-      rein: (pi.reingresoPts || []).map(x => x.newPt.nombre + '<=' + x.archived.nombre), nuevos: (pi.newPts || []).map(p => p.cama + ':' + p.nombre) };
+      rein: (pi.reingresoPts || []).map(x => x.newPt.nombre + '<=' + x.archived.nombre), nuevos: (pi.newPts || []).map(p => p.cama + ':' + p.nombre),
+      changed: (pi.changedPts || []).map(c => c.oldPt.cama + ':' + c.oldPt.nombre + '→' + c.newPt.nombre), same: (pi.samePts || []).map(p => p.cama + ':' + p.nombre) };
     try { if (typeof closeImportModal === 'function') closeImportModal(); } catch (_) {}
     pendingImport = null;
     return r;
@@ -353,14 +356,20 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
     'GARCIA ANA', 'LOPEZ ANA', 'PEREZ J', 'J. PEREZ L.', 'MONTESDEOCA ANA', 'MONTES DE OCA ANA LUISA', 'MARIAJOSE PERES', 'MARIA JOSE PEREZ', 'ALEJ PEREZ', 'ALEJANDRO PEREZ',
     'BAEZ ANA', 'VAES ANA', 'FEMENINA', 'N.N.', 'HIJO DE MARIA LOPEZ', 'MARIA LOPEZ', 'PEREZ LOPEZ JUANA', 'SOTO LUIS', 'SOTO LUISA', 'MA. DE JESUS LOPEZ', 'MARIA JESUS LOPEZ',
     'GPE LOPEZ', 'GUADALUPE LOPEZ SOTO', 'LOPEZ PEREZ MARIA GUADALUPE', 'SANCHEZ RUIZ MARIA GUADALUPE', 'HERNADES RUIZ JUAN', 'HERNANDEZ RUIZ JUAN', 'GONZALES MARTINES',
-    'GONZALEZ MARTINEZ', 'NUÑEZ PEÑA ANA', 'NUNEZ PENA ANA', 'LLAMAS CRUZ', 'YAMAS CRUS', 'CECILIA VEGA', 'SESILIA BEGA', 'DIAZ ROSA', 'DIAZ ROSARIO', '', 'X', 'RN DE PEREZ'];
+    'GONZALEZ MARTINEZ', 'NUÑEZ PEÑA ANA', 'NUNEZ PENA ANA', 'LLAMAS CRUZ', 'YAMAS CRUS', 'CECILIA VEGA', 'SESILIA BEGA', 'DIAZ ROSA', 'DIAZ ROSARIO', '', 'X', 'RN DE PEREZ',
+    // reglas nuevas (19 oct): pares de género de 7+ letras, nombres cortos, N suelta, apodos, apellidos con A/O
+    'SOTO RUIZ EUGENIO', 'SOTO RUIZ EUGENIA', 'SOTO RUIZ NICOLAS', 'SOTO RUIZ NICOLASA', 'SOTO RUIZ IVAN', 'SOTO RUIZ IVANA', 'GARCIA LOPEZ LUZ', 'GARCIA LOPEZ LUIS', 'GARCIA LOPEZ LIZ',
+    'GARCIA LOPEZ NOE', 'GARCIA LOPEZ NOEL', 'GARCIA LOPEZ AMA', 'GARCIA LOPEZ ANA', 'GARCIA LOPEZ ADA', 'PEREZ DIA JUAN', 'PEREZ LOPEZ LUI', 'PEREZ N JUAN', 'PEREZ GOMEZ JUAN', 'NAVA N JUAN', 'N N',
+    'LUPE PEREZ SOTO', 'GUADALUPE PEREZ SOTO', 'PACO LOPEZ RUIZ', 'FRANCISCO LOPEZ RUIZ', 'JUAN PEREZ GARCI', 'JUAN PEREZ GARCIA', 'OCHO ANA', 'OCHOA ANA', 'S/N', 'DECONOCIDO', 'NO IDENTIF.'];
   const PAIRS = []; for (const a of BASE) for (const b of BASE) PAIRS.push([a, b]);
   const x20app = await page.evaluate((pairs) => pairs.map(([a, b]) => _plNamesCompatible({ nombre: a, edad: '40' }, { nombre: b, edad: '40' })), PAIRS);
   const x20diff = PAIRS.filter(([a, b], i) => SYNC.namesCompatible_({ nombre: a, edad: '40' }, { nombre: b, edad: '40' }) !== x20app[i]);
   const P20 = (a, b) => x20app[PAIRS.findIndex(([x, y]) => x === a && y === b)];
   check('X20 _plNamesCompatible da lo mismo que namesCompatible_ del sync en los ' + PAIRS.length + ' pares; correcciones (DIAS/DIAZ, HDZ, J, DELACRUZ, acentos) sí; hermanos, JUANA/LUISA o un solo apellido en común no',
     x20diff.length === 0 && P20('PEREZ DIAS JUAN', 'PEREZ DIAZ JUAN') && P20('HDZ LOPEZ JUAN', 'HERNANDEZ LOPEZ JUAN CARLOS') && P20('PEREZ J', 'PEREZ LOPEZ JUAN') && P20('Pérez Ruíz Juan', 'PEREZ RUIZ JUAN CARLOS')
-    && !P20('PEREZ LOPEZ JUAN', 'PEREZ LOPEZ MARIA') && !P20('PEREZ LOPEZ JUAN', 'PEREZ LOPEZ JUANA') && !P20('PEREZ RUIZ JUAN CARLOS', 'PEREZ SOTO MIGUEL') && !P20('MARIA LOPEZ', 'HIJO DE MARIA LOPEZ'),
+    && !P20('PEREZ LOPEZ JUAN', 'PEREZ LOPEZ MARIA') && !P20('PEREZ LOPEZ JUAN', 'PEREZ LOPEZ JUANA') && !P20('PEREZ RUIZ JUAN CARLOS', 'PEREZ SOTO MIGUEL') && !P20('MARIA LOPEZ', 'HIJO DE MARIA LOPEZ')
+    && !P20('SOTO RUIZ EUGENIO', 'SOTO RUIZ EUGENIA') && !P20('SOTO RUIZ NICOLAS', 'SOTO RUIZ NICOLASA') && !P20('SOTO RUIZ IVAN', 'SOTO RUIZ IVANA') && !P20('GARCIA LOPEZ LUZ', 'GARCIA LOPEZ LUIS') && !P20('GARCIA LOPEZ NOE', 'GARCIA LOPEZ NOEL') && !P20('GARCIA LOPEZ ANA', 'GARCIA LOPEZ ADA')
+    && P20('GARCIA LOPEZ AMA', 'GARCIA LOPEZ ANA') && P20('PEREZ DIA JUAN', 'PEREZ DIAZ JUAN') && P20('PEREZ N JUAN', 'PEREZ GOMEZ JUAN') && !P20('PEREZ N JUAN', 'GARCIA LOPEZ ANA') && P20('N N', 'PEREZ GOMEZ JUAN') && P20('LUPE PEREZ SOTO', 'GUADALUPE PEREZ SOTO') && P20('JUAN PEREZ GARCI', 'JUAN PEREZ GARCIA') && P20('S/N', 'PEREZ LOPEZ JUAN') && !P20('PEREZ LOPEZ JUAN', 'S/N'),
     JSON.stringify(x20diff.slice(0, 8)));
 
   // ── X21: alta sin id (p. ej. restaurar de la Papelera) en una cama+exp que la nube ya tiene con OTRA persona: no se fusiona ──
@@ -403,10 +412,10 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
       archivados.unshift({ cama: '3-189', exp: b.exp, nombre: 'RAUL TORRES NAVA', edad: '52', esp: 'CG', _archivedAt: new Date().toISOString(), _archiveKey: 'kx23', _note: { ...defaultData(), pendientes: 'nota de RAUL' } });
       const before = patients.length;
       window.prompt = function () { return null; };   // cancela
-      restorePatient(0);
+      await restorePatient(0);
       const cancelled = patients.length === before && archivados[0] && archivados[0]._archiveKey === 'kx23';
       window.prompt = function () { return '3-199'; };
-      restorePatient(0);
+      await restorePatient(0);
       const rp = patients.find(p => p.nombre === 'RAUL TORRES NAVA');
       const out = { cancelled, cama: rp && rp.cama, bStill: patients.find(p => p.cama === '3-189') === b };
       patients = patients.filter(p => p !== rp);
@@ -415,6 +424,219 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
     });
     check('X23 restaurar de la Papelera con su cama ocupada por otra persona: pregunta otra cama (cancelar no restaura); se restaura en la cama elegida y el ocupante no se toca',
       r.cancelled && r.cama === '3-199' && r.bStill, JSON.stringify(r));
+  }
+
+  // ── X24: la cola (ítem "patient" sin id) no se aplica por exp+cama sobre la fila de OTRA persona ──
+  const x24 = await page.evaluate(() => {
+    const mk = () => [{ _supa_id: 'b1', cama: '3-170', exp: '26-77777', nombre: 'MARIA SOTO RUIZ', edad: '30', esp: 'CG', dx: 'DX DE MARIA' }];
+    const clean = () => outboxSave(outboxLoad().filter(it => !(it && it.type === 'patient' && it.patient && it.patient.exp === '26-77777')));
+    clean();
+    outboxEnqueue({ type: 'patient', patient: { cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA', edad: '50', esp: 'CG', dx: 'DX DE LUIS' }, dirty: null });
+    const l1 = _applyOutboxPatientOverlay(mk());
+    const other = { n: l1.length, b1dx: l1[0].dx, b1nombre: l1[0].nombre, added: l1.some(p => !p._supa_id && p.nombre === 'LUIS GARCIA VEGA') };
+    clean();
+    outboxEnqueue({ type: 'patient', patient: { cama: '3-170', exp: '26-77777', nombre: 'MARIA SOTO RUIS', edad: '30', esp: 'CG', dx: 'DX NUEVO' }, dirty: null });
+    const l2 = _applyOutboxPatientOverlay(mk());
+    const same = { n: l2.length, b1dx: l2[0].dx };
+    clean();
+    return { other, same };
+  });
+  check('X24 cola sin id por exp+cama: con OTRA persona en esa fila no se le pisan nombre/dx y la tarjeta de la cola queda aparte; con la misma persona (typo) sí se aplica',
+    x24.other.n === 2 && x24.other.b1dx === 'DX DE MARIA' && x24.other.b1nombre === 'MARIA SOTO RUIZ' && x24.other.added && x24.same.n === 1 && x24.same.b1dx === 'DX NUEVO', JSON.stringify(x24));
+  // ── X25: importar Excel con exp único no mueve ni renombra la fila de otra persona (la forma del caso real) ──
+  const x25 = await runImport([H, ['3-150', '26-12121', 'ANA RUIZ SOTO', 60, 'COLANGITIS', 'CG', 'ESTABLE'], ['3-160', '26-11111', 'LUIS GARCIA VEGA', 50, 'HERNIA', 'CG', 'ESTABLE'],
+    ['3-154', '26-99999', 'JUAN PEREZ LOPEZ', 44, 'TRAUMA DE TORAX', 'CT', 'ESTABLE'], ['3-189', '26-99999', 'PEDRO DIAZ MORA', 31, 'TRAUMA ABDOMINAL', 'CG', 'ESTABLE']]);
+  check('X25 Excel: a 3-150 le corrigen el exp y el viejo queda en 3-160 con OTRA persona → 3-150 es «expediente corregido» (misma fila) y 3-160 entra nuevo; nunca se mueve a 3-150 sobre el otro',
+    x25.moved.includes('3-150→3-150:ANA RUIZ SOTO') && !x25.moved.some(m => m.startsWith('3-150→3-160')) && x25.nuevos.includes('3-160:LUIS GARCIA VEGA'), JSON.stringify(x25));
+  const x25b = await runImport([H, ['3-150', '26-11111', 'LUIS GARCIA VEGA', 50, 'HERNIA', 'CG', 'ESTABLE'],
+    ['3-154', '26-99999', 'JUAN PEREZ LOPEZ', 44, 'TRAUMA DE TORAX', 'CT', 'ESTABLE'], ['3-189', '26-99999', 'PEDRO DIAZ MORA', 31, 'TRAUMA ABDOMINAL', 'CG', 'ESTABLE']]);
+  check('X25b Excel: mismo exp+cama con OTRA persona (exp copiado) → cama reasignada (el anterior a la Papelera), no se renombra su fila',
+    x25b.changed.includes('3-150:ANA RUIZ SOTO→LUIS GARCIA VEGA') && !x25b.same.includes('3-150:LUIS GARCIA VEGA'), JSON.stringify(x25b));
+  // ── X26: buscar por clave vieja (pt-exp-cama) solo encuentra a la misma persona ──
+  const x26 = await page.evaluate(() => {
+    const b1 = { _supa_id: 'b1', cama: '3-170', exp: '26-77777', nombre: 'MARIA SOTO RUIZ', edad: '30', esp: 'CG' };
+    patients.push(b1);
+    const r = { other: _findPatientByKey('pt-26-77777-3-170', { nombre: 'LUIS GARCIA VEGA' }), same: _findPatientByKey('pt-26-77777-3-170', { nombre: 'MARIA SOTO RUIS' }), legacy: _findPatientByKey('pt-26-77777-3-170') };
+    patients = patients.filter(p => p !== b1);
+    return { other: r.other && r.other._supa_id, same: r.same && r.same._supa_id, legacy: r.legacy && r.legacy._supa_id };
+  });
+  check('X26 _findPatientByKey por identidad: otra persona → nada; misma persona (typo) → la fila; sin con quién comparar → como antes', x26.other == null && x26.same === 'b1' && x26.legacy === 'b1', JSON.stringify(x26));
+
+  // ── X27: el FLUSH de un ítem "patient" sin id (clave vieja pt-exp-cama) no cae sobre la fila de OTRA persona ──
+  //         (4.ª revisión: la rama "patient" buscaba la tarjeta por exp+cama sin comparar el nombre y le PATCHeaba
+  //         nombre/edad/dx a la otra persona; y en el mismo lote la nota de la cola caía en su fila)
+  {
+    const MARIA = { id: 'b1', cama: '3-170', exp: '26-77777', nombre: 'MARIA SOTO RUIZ', edad: '30' };
+    relink = { goneId: '__none__', twin: MARIA }; const from = calls.length;
+    const r = await page.evaluate(async () => {
+      const b1 = { _supa_id: 'b1', cama: '3-170', exp: '26-77777', nombre: 'MARIA SOTO RUIZ', edad: '30', esp: 'CG', dx: 'DX DE MARIA' };
+      patients.push(b1); noteData[pid(b1)] = { ...defaultData(), pendientes: 'NOTA DE MARIA' };
+      const mine = it => it && ((it.type === 'patient' && it.patient && it.patient.exp === '26-77777') || (it.type === 'note' && it.key === 'pt-26-77777-3-170'));
+      const clean = () => outboxSave(outboxLoad().filter(it => !mine(it)));
+      clean();
+      outboxEnqueue({ type: 'patient', patient: { cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA', edad: '50', esp: 'CG', dx: 'DX DE LUIS' }, dirty: null });
+      outboxEnqueue({ type: 'note', key: 'pt-26-77777-3-170', data: { ...defaultData(), pendientes: 'NOTA DE LUIS' }, dirty: ['pendientes'] });
+      await flushOutbox();
+      const q = outboxLoad().filter(mine).map(it => it.type).sort();
+      const out = { nombre: b1.nombre, dx: b1.dx, supa: b1._supa_id, pend: noteData[pid(b1)].pendientes, q };
+      clean(); patients = patients.filter(p => p !== b1); delete noteData['su-b1'];
+      return out;
+    });
+    relink = null;
+    const c = calls.slice(from);
+    check('X27 flush de la cola sin id por exp+cama con OTRA persona en esa fila: ni su tarjeta, ni su fila (PATCH), ni su nota reciben lo de la cola; el ítem y su nota se quedan en la cola para reintentar',
+      r.nombre === 'MARIA SOTO RUIZ' && r.dx === 'DX DE MARIA' && r.pend === 'NOTA DE MARIA' && !c.some(x => x.m === 'PATCH' && x.url.includes('id=eq.b1')) && !c.some(x => x.m === 'POST' && x.url.startsWith('/rest/v1/notes') && x.body && x.body.patient_id === 'b1')
+      && !c.some(x => x.m === 'POST' && x.url.startsWith('/rest/v1/patients')) && JSON.stringify(r.q) === '["note","patient"]', JSON.stringify({ r, c: c.map(x => x.m + ' ' + x.url) }));
+  }
+
+  // ── X28: Excel que IDENTIFICA a un no identificado (misma fila), lo identifica y lo mueve, y uno con nombre que pasa a no identificado (otro ingreso) ──
+  //         (4.ª revisión: la regla espejo se llamaba al revés y el DESCONOCIDO identificado iba a la Papelera y su fila se borraba)
+  {
+    await page.evaluate(() => {
+      patients.push({ _supa_id: 'd1', cama: '3-120', exp: '26-30303', nombre: 'DESCONOCIDO', esp: 'CG', estado: 'ESTABLE', edad: '', dx: 'POLITRAUMA' },
+        { _supa_id: 'm1', cama: '3-121', exp: '26-40404', nombre: 'MASCULINO', esp: 'CG', estado: 'ESTABLE', edad: '', dx: 'TCE' },
+        { _supa_id: 'l1', cama: '3-140', exp: '26-50505', nombre: 'LAURA MENDEZ RIOS', esp: 'CG', estado: 'ESTABLE', edad: '35', dx: 'APENDICITIS' });
+      noteData['su-d1'] = { ...defaultData(), pendientes: 'NOTA DEL DESCONOCIDO' };
+    });
+    const x28 = await runImport([H, ['3-150', '26-11111', 'ANA RUIZ SOTO', 60, 'COLANGITIS', 'CG', 'ESTABLE'], ['3-154', '26-99999', 'JUAN PEREZ LOPEZ', 44, 'TRAUMA DE TORAX', 'CT', 'ESTABLE'], ['3-189', '26-99999', 'PEDRO DIAZ MORA', 31, 'TRAUMA ABDOMINAL', 'CG', 'ESTABLE'],
+      ['3-120', '26-30303', 'JUAN TORRES NAVA', 48, 'POLITRAUMA', 'CG', 'ESTABLE'], ['3-130', '26-40404', 'PEDRO ROJAS LIMA', 52, 'TCE', 'CG', 'ESTABLE'], ['3-140', '26-50505', 'FEMENINO', '', 'APENDICITIS', 'CG', 'ESTABLE']]);
+    await page.evaluate(() => { patients = patients.filter(p => !['d1', 'm1', 'l1'].includes(p._supa_id)); delete noteData['su-d1']; });
+    check('X28 Excel: DESCONOCIDO que el Excel identifica en su cama → misma fila (no Papelera); MASCULINO identificado en otra cama → se mueve; con nombre que pasa a FEMENINO → otro ingreso (cama reasignada)',
+      x28.same.includes('3-120:JUAN TORRES NAVA') && !x28.changed.some(c => c.startsWith('3-120:')) && x28.moved.includes('3-121→3-130:MASCULINO') && !x28.missing.some(m => m.startsWith('3-121:'))
+      && x28.changed.includes('3-140:LAURA MENDEZ RIOS→FEMENINO') && !x28.same.includes('3-140:FEMENINO'), JSON.stringify(x28));
+  }
+
+  // ── X29: al cambiar de cama (✏️ Editar) una tarjeta SIN id, la cola no conserva el ítem de la clave vieja ──
+  //         (4.ª revisión: tras «cambia la cama» el ítem viejo reaparecía como tarjeta fantasma, el estado seguía en error
+  //         y el flush podía aplicarlo sobre otra persona)
+  {
+    const r = await page.evaluate(async () => {
+      const z = { cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA', edad: '50', esp: 'CG', estado: 'ESTABLE', dx: 'DX DE LUIS' };
+      patients.push(z); const k0 = pid(z);
+      noteData[k0] = { ...defaultData(), pendientes: 'NOTA DE LUIS' };
+      const mine = it => it && ((it.type === 'patient' && it.patient && it.patient.exp === '26-77777') || (it.type === 'note' && /26-77777/.test(it.key || '')));
+      const clean = () => outboxSave(outboxLoad().filter(it => !mine(it)));
+      clean();
+      outboxEnqueue({ type: 'patient', patient: Object.assign({}, z), dirty: null });
+      outboxEnqueue({ type: 'note', key: k0, data: noteData[k0], dirty: ['pendientes'] });
+      const direct = (() => { _outboxRekeyPatient(k0, 'pt-26-77777-3-171'); const q = outboxLoad().filter(mine); return { pat: q.filter(it => it.type === 'patient').length, note: q.filter(it => it.type === 'note').map(it => it.key) }; })();
+      clean();
+      outboxEnqueue({ type: 'patient', patient: Object.assign({}, z), dirty: null });
+      outboxEnqueue({ type: 'note', key: k0, data: noteData[k0], dirty: ['pendientes'] });
+      openEditModal(k0);
+      document.getElementById('mf-cama').value = '3-171';
+      saveModal();
+      await new Promise(r => setTimeout(r, 1200));
+      const q = outboxLoad().filter(mine);
+      const zz = patients.find(p => p.exp === '26-77777' && p.cama === '3-171');
+      const out = { direct, oldPatientItem: q.some(it => it.type === 'patient' && pid(it.patient) === k0), oldNoteItem: q.some(it => it.type === 'note' && it.key === k0), moved: !!zz, supa: zz && zz._supa_id, pend: zz && noteData[pid(zz)] && noteData[pid(zz)].pendientes, dup: patients.filter(p => p.exp === '26-77777').length };
+      clean(); patients = patients.filter(p => p.exp !== '26-77777'); try { closeModal(); } catch (_) {}
+      return out;
+    });
+    check('X29 editar la cama de una tarjeta sin id: el ítem "patient" de la clave vieja sale de la cola y el de nota sigue a la clave nueva (helper y ✏️ Editar de punta a punta); la tarjeta sube con su nota y no queda duplicada',
+      r.direct.pat === 0 && JSON.stringify(r.direct.note) === '["pt-26-77777-3-171"]' && !r.oldPatientItem && !r.oldNoteItem && r.moved && !!r.supa && r.pend === 'NOTA DE LUIS' && r.dup === 1, JSON.stringify(r));
+  }
+
+  // ── X30: egresar una tarjeta SIN id cuya cama+exp en la nube es de OTRA persona no borra la fila de esa persona ──
+  //         (4.ª revisión: el DELETE por exp+cama borraba la fila y la nota del ocupante real)
+  {
+    relink = { goneId: '__none__', twin: { id: 'b1', nombre: 'MARIA SOTO RUIZ', edad: '30', exp: '26-77777', cama: '3-170' } }; const from1 = calls.length;
+    const r1 = await page.evaluate(() => _deletePatientRemote({ cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA' }, 'prueba'));
+    const c1 = calls.slice(from1);
+    relink = { goneId: '__none__', twin: { id: 'b1', nombre: 'GARCIA VEGA LUIS', edad: '50', exp: '26-77777', cama: '3-170' } }; const from2 = calls.length;
+    const r2 = await page.evaluate(() => _deletePatientRemote({ cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA' }, 'prueba'));
+    const c2 = calls.slice(from2);
+    relink = null;
+    check('X30 egreso de una tarjeta sin id: con OTRA persona en esa cama+exp en la nube no hay DELETE; con la misma persona se borra su fila por id (nunca por exp+cama)',
+      !c1.some(x => x.m === 'DELETE') && c2.some(x => x.m === 'DELETE' && x.url.includes('id=eq.b1')) && !c2.some(x => x.m === 'DELETE' && x.url.includes('exp=eq.')) && r2 === true, JSON.stringify({ r1, r2, c1: c1.map(x => x.m + ' ' + x.url), c2: c2.map(x => x.m + ' ' + x.url) }));
+  }
+
+  // ── X31: restaurar de la Papelera cuando la NUBE (no el censo local, que va atrasado) ya tiene a otra persona en esa cama+exp: pide otra cama antes de encolar ──
+  {
+    relink = { goneId: '__none__', twin: { id: 'b1', nombre: 'MARIA SOTO RUIZ', edad: '30', exp: '26-77777', cama: '3-170' } };
+    const r = await page.evaluate(async () => {
+      archivados.unshift({ cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA', edad: '50', esp: 'CG', _archivedAt: new Date().toISOString(), _archiveKey: 'kx31', _note: { ...defaultData(), pendientes: 'nota de LUIS' } });
+      let asked = 0; window.prompt = function () { asked++; return '3-198'; };
+      await restorePatient(0);
+      await new Promise(r => setTimeout(r, 600));
+      const rp = patients.find(p => p.nombre === 'LUIS GARCIA VEGA' && p.exp === '26-77777');
+      const out = { asked, cama: rp && rp.cama, supa: rp && rp._supa_id, localFree: !patients.some(p => p.cama === '3-170'), q: outboxLoad().filter(it => it && it.type === 'patient' && it.patient && it.patient.exp === '26-77777').length };
+      patients = patients.filter(p => p !== rp); window.prompt = function () { return null; };
+      outboxSave(outboxLoad().filter(it => !(it && ((it.type === 'patient' && it.patient && it.patient.exp === '26-77777') || (it.type === 'note' && /26-77777/.test(it.key || ''))))));
+      return out;
+    });
+    relink = null;
+    check('X31 restaurar con la cama libre en el censo local pero ocupada en la nube por otra persona con el mismo exp: pregunta otra cama y se restaura ahí con id (nada se queda atorado en la cola)',
+      r.asked === 1 && r.cama === '3-198' && !!r.supa && r.localFree && r.q === 0, JSON.stringify(r));
+  }
+
+  // ── X32: al descartar ítems "patient" de la cola por exp+cama, solo los de la MISMA persona ──
+  //         (5.ª revisión: guardar o egresar a la ocupante real descartaba el ítem del fantasma sin id, dejaba su nota
+  //         huérfana (caía en la fila ajena) o, al revés, egresar al fantasma perdía la edición censal de ella)
+  const x32 = await page.evaluate(() => {
+    const maria = { _supa_id: 'b1', cama: '3-170', exp: '26-77777', nombre: 'MARIA SOTO RUIZ', edad: '30', esp: 'CG', dx: 'DX DE MARIA' };
+    const luis = { cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA', edad: '50', esp: 'CG', dx: 'DX DE LUIS' };
+    const mine = it => it && it.type === 'patient' && it.patient && it.patient.exp === '26-77777';
+    const clean = () => outboxSave(outboxLoad().filter(it => !mine(it)));
+    const seed = () => { clean(); outboxEnqueue({ type: 'patient', patient: Object.assign({}, luis), dirty: null }); outboxEnqueue({ type: 'patient', patient: Object.assign({}, maria), dirty: ['dx'] }); };
+    seed(); _outboxDropPatientItems(maria, Date.now() + 1000);
+    const afterMaria = outboxLoad().filter(mine).map(it => it.patient.nombre);
+    seed(); _outboxDropPatientItems(luis, Date.now() + 1000);
+    const afterLuis = outboxLoad().filter(mine).map(it => it.patient.nombre);
+    clean(); outboxEnqueue({ type: 'patient', patient: Object.assign({}, luis), dirty: null });
+    const rekey = _outboxPatientItemMatches(outboxLoad().find(mine), Object.assign({ _supa_id: 'n9' }, luis));
+    const typo = _outboxPatientItemMatches(outboxLoad().find(mine), Object.assign({ _supa_id: 'n9' }, luis, { nombre: 'LUIS GARCIA BEGA' }));
+    clean();
+    return { afterMaria, afterLuis, rekey, typo };
+  });
+  check('X32 descartar ítems de la cola por exp+cama: guardar a MARIA no descarta el ítem de LUIS (sin id) ni al revés; la misma persona re-clavada (pt- → su-, con o sin typo) sí coincide',
+    JSON.stringify(x32.afterMaria) === '["LUIS GARCIA VEGA"]' && JSON.stringify(x32.afterLuis) === '["MARIA SOTO RUIZ"]' && x32.rekey === true && x32.typo === true, JSON.stringify(x32));
+
+  // ── X33: el ítem de nota guarda a su dueña (`who`); sin tarjeta ni ítem "patient", no cae en la fila de otra persona ──
+  {
+    const from = calls.length;
+    const r = await page.evaluate(async () => {
+      const b1 = { _supa_id: 'b1', cama: '3-170', exp: '26-77777', nombre: 'MARIA SOTO RUIZ', edad: '30', esp: 'CG', dx: 'DX DE MARIA' };
+      patients.push(b1); noteData['su-b1'] = { ...defaultData(), pendientes: 'NOTA DE MARIA' };
+      const mine = it => it && ((it.type === 'patient' && it.patient && it.patient.exp === '26-77777') || (it.type === 'note' && it.key === 'pt-26-77777-3-170'));
+      const clean = () => outboxSave(outboxLoad().filter(it => !mine(it)));
+      clean();
+      const z = { cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA', edad: '50', esp: 'CG' };
+      patients.push(z); noteData[pid(z)] = { ...defaultData(), pendientes: 'NOTA DE LUIS' };
+      saveNote(pid(z), noteData[pid(z)]);
+      await new Promise(r => setTimeout(r, 900));
+      const it = outboxLoad().find(x => x && x.type === 'note' && x.key === 'pt-26-77777-3-170');
+      const who = it && it.who && it.who.nombre;
+      // la tarjeta de LUIS y su ítem "patient" ya no están (p. ej. se descartaron en otro dispositivo): la nota con `who` no cae en MARIA
+      patients = patients.filter(p => p !== z); delete noteData[pid(z)];
+      outboxSave(outboxLoad().filter(x => !(x && x.type === 'patient' && x.patient && x.patient.exp === '26-77777')));
+      await flushOutbox();
+      const left = outboxLoad().filter(mine).length;
+      const out = { who, left, pend: noteData['su-b1'].pendientes, legacy: _findPatientByKey('pt-26-77777-3-170') === b1 };
+      clean(); patients = patients.filter(p => p !== b1); delete noteData['su-b1'];
+      return out;
+    });
+    const c = calls.slice(from);
+    check('X33 la nota en cola lleva a su dueña (who); sin su tarjeta ni su ítem "patient" no se sube a la fila de MARIA (misma exp+cama) y se descarta en vez de quedar atascada',
+      r.who === 'LUIS GARCIA VEGA' && r.left === 0 && r.pend === 'NOTA DE MARIA' && !c.some(x => x.m === 'POST' && x.url.startsWith('/rest/v1/notes') && x.body && x.body.patient_id === 'b1'), JSON.stringify({ r, c: c.map(x => x.m + ' ' + x.url) }));
+  }
+
+  // ── X34: dos restauraciones seguidas mientras la consulta a la nube tarda: las dos se restauran (la entrada se busca por identidad, no por índice) ──
+  {
+    slowExp = 500;
+    const r = await page.evaluate(async () => {
+      archivados.unshift({ cama: '3-191', exp: '26-70001', nombre: 'RAUL TORRES NAVA', edad: '52', esp: 'CG', _archivedAt: new Date().toISOString(), _archiveKey: 'kx34a', _note: { ...defaultData(), pendientes: 'nota de RAUL' } });
+      archivados.unshift({ cama: '3-192', exp: '26-70002', nombre: 'ELENA MORA RIOS', edad: '47', esp: 'CG', _archivedAt: new Date().toISOString(), _archiveKey: 'kx34b', _note: { ...defaultData(), pendientes: 'nota de ELENA' } });
+      const p0 = restorePatient(0); await new Promise(r => setTimeout(r, 100)); const p1 = restorePatient(1);
+      await Promise.all([p0, p1]); await new Promise(r => setTimeout(r, 400));
+      const got = patients.filter(p => ['26-70001', '26-70002'].includes(p.exp)).map(p => p.exp).sort();
+      const left = archivados.filter(a => a._archiveKey === 'kx34a' || a._archiveKey === 'kx34b').length;
+      patients = patients.filter(p => !['26-70001', '26-70002'].includes(p.exp)); archivados = archivados.filter(a => !/^kx34/.test(a._archiveKey || ''));
+      outboxSave(outboxLoad().filter(it => !(it && it.type === 'patient' && it.patient && /26-7000/.test(it.patient.exp || ''))));
+      return { got, left };
+    });
+    slowExp = 0;
+    check('X34 restaurar dos entradas seguidas con la nube lenta: las dos vuelven al censo y salen de la Papelera', JSON.stringify(r.got) === '["26-70001","26-70002"]' && r.left === 0, JSON.stringify(r));
   }
 
   check('X10 sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));

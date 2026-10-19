@@ -1,4 +1,5 @@
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -16,7 +17,7 @@ const MOCK = `(() => {
 })();`;
 const REMOTE_NOTE = { patient_id:'a1', app:'APP REMOTO', pa:'', drenajes:'DREN REMOTO', qx:'', manejo:'M1', sangrado:'', sv:'', balance:'', pendientes:'PEND REMOTO', entrega:'', checklist:{ npo:false, atb:true, atb_nombre:'CEFTRIAXONA' }, lab_history:[], imagen_history:[] };
 (async()=>{
-  const browser=await chromium.launch(); const page=await browser.newPage();
+  const browser=await launch(); const page=await browser.newPage();
   const errors=[]; page.on('pageerror',e=>errors.push(String((e&&e.stack)||e).slice(0,300)));
   const calls=[];
   const ctl = { slowNotesPost: 0, failNotesPostOnce: false, notesPostCount: 0 };
@@ -44,7 +45,7 @@ const REMOTE_NOTE = { patient_id:'a1', app:'APP REMOTO', pa:'', drenajes:'DREN R
   });
   await page.addInitScript(MOCK);
   let pass=0, fail=0; const check=(n,c,x)=>{ if(c){pass++;console.log('PASS '+n);} else {fail++;console.log('FAIL '+n+(x?' :: '+x:''));} };
-  await page.goto('http://127.0.0.1:8771/index.html',{waitUntil:'load',timeout:90000});
+  await page.goto(BASE_URL + '/index.html',{waitUntil:'load',timeout:90000});
   await page.waitForTimeout(5000);
   check('init: sin errores no capturados', errors.length===0, errors.join(' | '));
   const notePosts = () => calls.filter(c=>c.m==='POST' && c.url.startsWith('/rest/v1/notes')).map(c=>Object.keys(c.body||{}).sort());
