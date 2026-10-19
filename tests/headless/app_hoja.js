@@ -2,7 +2,8 @@
 //  H1 toggleHojaMode: body.pl-hoja, recordado en localStorage, la ficha pasa a cuadrícula con áreas y TODAS las cajas abiertas
 //  H2 ⚙ Cajas: ocultar un bloque lo quita de la hoja (display none) y se recuerda; al volver a Tarjeta no afecta la memoria Pase/Completo
 //  H3 Pase matutino con fecha: vitales de ayer → al escribir hoy pasan al historial (pm_hist), la fila queda limpia, chip "hoy", Regresar disponible
-//  H4 ➕ Hoy en Interconsultas / Cultivos / Entrega / Recibo: anota "dd/mm: " al final y marca el campo sucio; no duplica si ya está
+//  H4 ➕ Hoy en Interconsultas / Cultivos: anota "dd/mm INI: " al final y marca el campo sucio; no duplica si ya está;
+//     🕓 «➕ Ahora» en la Cronología anota "dd/mm hh:mm INI: " (19 oct 2026: ya no hay caja Recibido ni ➕ Hoy en Entrega)
 //  H5 Impresión: en modo Hoja cada tarjeta corta página (break-after: page)
 const { launch } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
@@ -112,16 +113,17 @@ const MOCK = `(() => {
     insertTodayStamp(k, 'interconsultas', true, 'Interconsultas');
     insertTodayStamp(k, 'interconsultas', true, 'Interconsultas'); // no duplica
     insertTodayStamp(k, 'cultivos', true, 'Cultivos');
-    insertTodayStamp(k, 'entrega', false, 'Entrega');
-    insertTodayStamp(k, 'recibo', true, 'Recibo');
+    cronoInsertNow(k);                                             // 🕓 Cronología (19 oct 2026): «➕ Ahora» = fecha + hora + iniciales
     const nd = getNote(k);
     const dirty = Array.from(_dirtyUnion(k));
-    const btns = ['interconsultas', 'cultivos', 'entrega', 'recibo'].map(f => !!document.querySelector('#card-' + CSS.escape(k) + ' button[onclick*="insertTodayStamp"][onclick*="\'' + f + '\'"]'));
-    return { stamp, ic: nd.checklist.interconsultas, cult: nd.checklist.cultivos, entrega: nd.entrega, recibo: nd.checklist.recibo, dirty, btns };
+    const btns = ['interconsultas', 'cultivos'].map(f => !!document.querySelector('#card-' + CSS.escape(k) + ' button[onclick*="insertTodayStamp"][onclick*="\'' + f + '\'"]'));
+    const ahoraBtn = !!document.querySelector('#card-' + CSS.escape(k) + ' [data-testid="crono-ahora"]');
+    const noRecibo = !document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-ckfield="recibo"]');
+    return { stamp, ic: nd.checklist.interconsultas, cult: nd.checklist.cultivos, entrega: nd.entrega, dirty, btns, ahoraBtn, noRecibo };
   });
-  check('H4 ➕ Hoy: anota "dd/mm: " al final de IC (sin duplicar), Cultivos, Entrega y Recibo; campos sucios; botones presentes',
-    h4.ic === 'MI: valorado\n' + h4.stamp && h4.cult === h4.stamp && h4.entrega === h4.stamp && h4.recibo === h4.stamp
-    && h4.dirty.includes('ck_interconsultas') && h4.dirty.includes('ck_cultivos') && h4.dirty.includes('entrega') && h4.dirty.includes('ck_recibo') && h4.btns.every(Boolean), JSON.stringify(h4));
+  check('H4 ➕ Hoy: anota "dd/mm INI: " al final de IC (sin duplicar) y Cultivos; 🕓 «➕ Ahora» anota "dd/mm hh:mm INI: " al final de la Cronología; campos sucios; botones presentes; ya no hay caja Recibido',
+    h4.ic === 'MI: valorado\n' + h4.stamp && h4.cult === h4.stamp && /^\d{2}\/\d{2} \d{2}:\d{2}( \S+)?: $/.test(h4.entrega)
+    && h4.dirty.includes('ck_interconsultas') && h4.dirty.includes('ck_cultivos') && h4.dirty.includes('entrega') && h4.btns.every(Boolean) && h4.ahoraBtn && h4.noRecibo, JSON.stringify(h4));
 
   // H5
   await page.emulateMedia({ media: 'print' });
