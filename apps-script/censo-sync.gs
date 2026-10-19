@@ -11,8 +11,12 @@
  *   actualiza censales y deja intacto el resto de la fila (id estable -> la nota sigue ligada).
  *
  * SEGURIDAD: la SERVICE KEY de Supabase vive SOLO en Script Properties (clave SUPABASE_KEY),
- *   nunca en la hoja ni en el repo. La PHI viaja autenticada por HTTPS a Supabase, jamas por una
- *   URL publica de Google.
+ *   nunca en la hoja ni en el repo. El censo (PHI) viaja de este script a Supabase autenticado por
+ *   HTTPS; la hoja no se expone por ningun enlace publico. OJO: el Doc de indicaciones
+ *   (INDICACIONES_DOC_ID) SI se descarga por su enlace publico de Google ("cualquiera con el
+ *   enlace", export?format=txt) desde Supabase (pg_cron + pg_net, scripts/supabase_indicaciones_doc.sql):
+ *   quien tenga ese enlace lee las indicaciones de todo el piso. syncIndicaciones() de este script
+ *   lo lee con la cuenta de Google (DocumentApp) y es el camino si el Doc deja de ser publico.
  *
  * INSTALACION (1 sola vez): ver apps-script/README.md. Resumen:
  *   1) Pega este archivo en Extensiones -> Apps Script.
@@ -313,9 +317,13 @@ function namesCompatible_(r, s) {
   return cov.a || cov.b;
 }
 // Palabras para namesCompatible_: sin acentos ni signos; DE/DEL/LA/LAS/LOS se pegan a la palabra siguiente
-// (DE LA CRUZ → DELACRUZ, núcleo CRUZ); MA → MARIA, GPE → GUADALUPE; las iniciales (J, L) se quedan.
+// (DE LA CRUZ → DELACRUZ, núcleo CRUZ); abreviaturas y apodos usuales al nombre completo (MA → MARIA, LUPE →
+// GUADALUPE, PACO → FRANCISCO); las iniciales (J, L) se quedan. Solo apodos que no son ambiguos (BETO, FER, ALE no).
 var NAME_PARTICLE = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1 };
-var NAME_EXPAND = { MA: 'MARIA', GPE: 'GUADALUPE' };
+var NAME_EXPAND = { MA: 'MARIA', GPE: 'GUADALUPE', LUPE: 'GUADALUPE', LUPITA: 'GUADALUPE', PACO: 'FRANCISCO', PANCHO: 'FRANCISCO',
+  PEPE: 'JOSE', CHUY: 'JESUS', CHUCHO: 'JESUS', CONCHA: 'CONCEPCION', CONCHITA: 'CONCEPCION', NACHO: 'IGNACIO', MEMO: 'GUILLERMO',
+  LALO: 'EDUARDO', TONO: 'ANTONIO', TONA: 'ANTONIA', CHAVA: 'SALVADOR', QUIQUE: 'ENRIQUE', LOLA: 'DOLORES', TERE: 'TERESA',
+  PATY: 'PATRICIA', MAGO: 'MARGARITA', MAGOS: 'MARGARITA', FCO: 'FRANCISCO', FCA: 'FRANCISCA' };
 function nameWords_(name) {
   var out = [], pre = '';
   norm_(name).replace(/[^A-Z\s]/g, ' ').split(/\s+/).forEach(function (w) {
@@ -327,25 +335,65 @@ function nameWords_(name) {
   if (pre) out.push({ w: pre, core: pre });
   return out;
 }
-// Nombre de paciente aún no identificado (DESCONOCIDO, FEMENINA, N.N., RN, HIJO DE…, SIN DATOS, XX).
-var NAME_PLACEHOLDER_RE = /^(DESCON[A-Z]*|DESCO|DESC|NN|RN|RECIEN|NACID[OA]|IDENT|IDENTIFICAD[OA]|NI|NOMBRE|PACIENTE|MASC|MASCULIN[OA]|FEM|FEMENIN[OA]|XX+|DATOS|HIJ[OA]|BEBE|PRODUCTO|MUJER|HOMBRE)$/;
+// Nombre de paciente aún no identificado (DESCONOCIDO y sus errores de dedo, FEMENINA, N.N., S/N, RN, HIJO DE…, SIN
+// IDENTIFICAR, IGNORADO, ANÓNIMO, SIN DATOS, XX) o solo iniciales (N N, X). Una "N" suelta junto a palabras reales
+// (PEREZ N JUAN: apellido que aún no se sabe) NO vuelve comodín al nombre entero: vale por una palabra (coverWords_).
+var NAME_PLACEHOLDER_RE = /^(DESCON[A-Z]*|DESCO|DESC|NN|RN|RECIEN|NACID[OA]|IDENT|IDENTIF[A-Z]*|IGNORAD[OA]|ANONIM[OA]|INCOGNIT[OA]|FILIAD[OA]|REGISTRAD[OA]|REGISTRO|NI|NOMBRE|PACIENTE|MASC|MASCULIN[OA]|FEM|FEMENIN[OA]|XX+|DATOS|HIJ[OA]|BEBE|PRODUCTO|MUJER|HOMBRE)$/;
 function namePlaceholder_(words) {
-  return words.some(function (x) { return NAME_PLACEHOLDER_RE.test(x.core); }) || words.every(function (x) { return /^[NX]$/.test(x.core); });
+  return words.some(function (x) { return NAME_PLACEHOLDER_RE.test(x.core) || (x.core.length >= 9 && editDistance_(x.core, 'DESCONOCIDO') <= 2); })
+    || words.every(function (x) { return /^[NXSDI]$/.test(x.core); });
+}
+// "N" o "X" sueltas: apellido/nombre que aún no se sabe → encaja con cualquier palabra que sobre del otro nombre.
+function nameWild_(x) { return /^[NX]$/.test(x.core); }
+// ¿Mismo nombre (palabra por palabra, ya normalizado y con apodos/abreviaturas expandidos)?
+function exactName_(r, s) {
+  var a = nameWords_(r && r.nombre || ''), b = nameWords_(s && s.nombre || '');
+  return a.length > 0 && a.length === b.length && a.every(function (x, i) { return x.w === b[i].w; });
 }
 // ¿Todas las palabras de a (o todas las de b) encajan, una a una, en el otro nombre? → { a, b }
 function coverWords_(a, b) {
-  var ua = a.map(function () { return false; }), ub = b.map(function () { return false; });
-  var pass = function (eq) {
+  var ua = a.map(function () { return 0; }), ub = b.map(function () { return 0; });   // 0 = sin par; 1 = igual; 2 = parecida
+  var pass = function (eq, kind) {
     a.forEach(function (x, i) {
       if (ua[i]) return;
-      for (var j = 0; j < b.length; j++) if (!ub[j] && eq(x, b[j])) { ua[i] = ub[j] = true; return; }
+      for (var j = 0; j < b.length; j++) if (!ub[j] && eq(x, b[j])) { ua[i] = ub[j] = kind; return; }
     });
   };
-  pass(function (x, y) { return x.w === y.w; });
-  pass(function (x, y) { return x.core === y.core || x.w === y.core || x.core === y.w; });
-  pass(function (x, y) { return wordClose_(x.core, y.core) || wordClose_(x.w, y.w); });
+  pass(function (x, y) { return x.w === y.w; }, 1);
+  pass(function (x, y) { return x.core === y.core || x.w === y.core || x.core === y.w; }, 1);
+  pass(function (x, y) { return wordClose_(x.core, y.core) || wordClose_(x.w, y.w); }, 2);
   joinCover_(a, ua, b, ub); joinCover_(b, ub, a, ua);
+  // "N"/"X" sueltas que quedaron sin par valen por UNA palabra que sobre del otro nombre (PEREZ N JUAN / PEREZ GOMEZ JUAN).
+  var wild = function (a, ua, b, ub) {
+    a.forEach(function (x, i) {
+      if (ua[i] || !nameWild_(x)) return;
+      for (var j = 0; j < b.length; j++) if (!ub[j]) { ua[i] = ub[j] = 1; return; }
+    });
+  };
+  wild(a, ua, b, ub); wild(b, ub, a, ua);
+  // Una sola palabra corta (3 letras: ANA/AMA, DIA/DIAZ, LUI/LUIS) con un error de dedo, si TODAS las demás son iguales.
+  var ia = ua.indexOf(0), ib = ub.indexOf(0);
+  if (ia >= 0 && ib >= 0 && ua.indexOf(0, ia + 1) < 0 && ub.indexOf(0, ib + 1) < 0
+      && ua.every(function (k, i) { return i === ia || k === 1; }) && ub.every(function (k, j) { return j === ib || k === 1; })) {
+    if (shortWordFix_(a[ia].core, b[ib].core)) ua[ia] = ub[ib] = 2;
+  }
   return { a: ua.every(Boolean), b: ub.every(Boolean) };
+}
+// Palabra corta (3 letras) con un error de dedo: solo si una es la otra sin la última letra (DIA/DIAZ, LUI/LUIS) o cambia
+// UNA consonante (AMA/ANA). Una vocal distinta o una letra de más en medio ya es otro nombre (LUZ/LIZ, EVA/IVA, LUZ/LUIS,
+// IAN/IVAN, LIA/LILA); y si la corta es un nombre de pila completo (NOE/NOEL, ELI/ELIA, LEO/LEON) o las dos lo son
+// (ANA/ADA), son dos personas, como JUAN/JUANA.
+var SHORT_GIVEN_NAMES = {};
+'ANA EVA IVA LUZ LIZ LIA MIA ZOE NOE ELI ELY IAN LEO SOL PAZ ALI ADA IDA EMA AMY RUT GIL ABI ABY ARI BEA ISA IVO JOB JON KIM LEA LIS LUA MAX MEL NOA NIA PIA RAY REY ROY SAM TEO UMA VAL JOE GUS TOM ANI ANY AZU LUIS IVAN NOEL ELIA ELIO LILA LANA LEON EVAN JOEL LIAM ADAN JUAN JOSE RAUL SAUL ABEL ALAN ALMA ARON AXEL CLOE DANA ELSA EMMA ERIK GAEL HUGO IKER INES IRIS ISAI JADE LUNA LEVI LOLA LUCA MARA NOAH OMAR OTTO RITA ROSA RUTH SARA'.split(' ').forEach(function (n) { SHORT_GIVEN_NAMES[n] = 1; });
+function shortWordFix_(x, y) {
+  var sh = x.length <= y.length ? x : y, lo = x.length <= y.length ? y : x;
+  if (sh.length < 3 || genderPair_(x, y)) return false;
+  if (lo.length === sh.length + 1) return lo.indexOf(sh) === 0 && !SHORT_GIVEN_NAMES[sh];
+  if (lo.length !== sh.length) return false;
+  var d = 0, k = -1;
+  for (var i = 0; i < sh.length; i++) if (sh[i] !== lo[i]) { d++; k = i; }
+  if (d !== 1 || /[AEIOU]/.test(sh[k]) || /[AEIOU]/.test(lo[k])) return false;
+  return !(SHORT_GIVEN_NAMES[sh] && SHORT_GIVEN_NAMES[lo]);
 }
 // Una palabra que son dos o tres seguidas del otro nombre, pegadas (MONTESDEOCA / MONTES DE OCA, MARIAJOSE / MARIA JOSE).
 function joinCover_(a, ua, b, ub) {
@@ -355,7 +403,7 @@ function joinCover_(a, ua, b, ub) {
       for (var k = j + 1; k < b.length && k <= j + 2; k++) {
         var free = true, s = '', q;
         for (q = j; q <= k; q++) { if (ub[q]) free = false; s += b[q].w; }
-        if (free && editDistance_(phon_(s), phon_(x.w)) <= 1) { ua[i] = true; for (q = j; q <= k; q++) ub[q] = true; return; }
+        if (free && editDistance_(phon_(s), phon_(x.w)) <= 1) { ua[i] = 2; for (q = j; q <= k; q++) ub[q] = 2; return; }
       }
     }
   });
@@ -372,10 +420,32 @@ function wordClose_(t, u) {
   var d = editDistance_(pt, pu), n = Math.min(pt.length, pu.length);
   return (d <= 1 && n >= 4) || (d <= 2 && n >= 7);                           // JUNA/JUAN; HERNADES/HERNANDEZ
 }
-// Masculino/femenino del mismo nombre (JUAN/JUANA, LUIS/LUISA, MARIO/MARIA): son nombres distintos, no un error.
+// Masculino/femenino del mismo nombre de pila (JUAN/JUANA, LUIS/LUISA, MARIO/MARIA): son personas distintas, no un error
+// de dedo. Lista de nombres de pila conocidos (cortos) y, para palabras de 7+ letras, la regla general (una A al final o
+// O/A final: EUGENIO/EUGENIA, NICOLAS/NICOLASA, GREGORIO/GREGORIA). En un apellido corto, una A de más o de menos o una A
+// por O (GARCI/GARCIA, SOTA/SOTO, OCHO/OCHOA) es captura, y los hermanos comparten apellidos, así que ahí no distingue a nadie.
+var NAME_GENDER_PAIRS = ['JUAN JUANA', 'LUIS LUISA', 'MARIO MARIA', 'JOSE JOSEFA', 'JOSE JOSEFINA', 'FRANCISCO FRANCISCA', 'ANTONIO ANTONIA',
+  'DANIEL DANIELA', 'ALEJANDRO ALEJANDRA', 'ADRIAN ADRIANA', 'CRISTIAN CRISTINA', 'JULIO JULIA', 'ROBERTO ROBERTA', 'FERNANDO FERNANDA',
+  'MANUEL MANUELA', 'RAFAEL RAFAELA', 'ANGEL ANGELA', 'VICTOR VICTORIA', 'ANDRES ANDREA', 'GABRIEL GABRIELA', 'EMILIO EMILIA',
+  'PAULO PAULA', 'PABLO PAULA', 'PABLO PABLA', 'MARIANO MARIANA', 'AGUSTIN AGUSTINA', 'JOAQUIN JOAQUINA', 'MARTIN MARTINA', 'VALENTIN VALENTINA',
+  'RAMON RAMONA', 'LORENZO LORENZA', 'VICENTE VICENTA', 'CARLOS CARLA', 'EDUARDO EDUARDA', 'RICARDO RICARDA', 'IGNACIO IGNACIA',
+  'PEDRO PETRA', 'JESUS JESUSA', 'TOMAS TOMASA', 'DOMINGO DOMINGA', 'ALBERTO ALBERTA', 'ERNESTO ERNESTINA', 'AURELIO AURELIA',
+  'CLAUDIO CLAUDIA', 'SILVIO SILVIA', 'OCTAVIO OCTAVIA', 'JUSTINO JUSTINA', 'FLORENTINO FLORENTINA', 'MAXIMO MAXIMA', 'PATRICIO PATRICIA',
+  'LUCIO LUCIA', 'RUBEN RUBI', 'ALEJO ALEJA', 'GERMAN GERMANA', 'JULIAN JULIANA', 'SEBASTIAN SEBASTIANA', 'ELIAS ELISA', 'BENITO BENITA',
+  'FELIPE FELIPA', 'GUILLERMO GUILLERMINA', 'LEONARDO LEONARDA', 'ARTURO ARTURA', 'MARCO MARCA', 'MARCELO MARCELA', 'ROGELIO ROGELIA',
+  'HILARIO HILARIA', 'EVARISTO EVARISTA', 'CELESTINO CELESTINA', 'TEODORO TEODORA', 'ISIDRO ISIDRA', 'JACINTO JACINTA', 'EUSEBIO EUSEBIA',
+  'IVAN IVANA', 'PAUL PAULA', 'LEON LEONA', 'ERIK ERIKA', 'DARIO DARIA', 'ELIO ELIA', 'PAOLO PAOLA', 'SIMON SIMONA', 'BRUNO BRUNA',
+  'ADOLFO ADOLFA', 'ELISEO ELISEA', 'ROMAN ROMANA', 'AMADO AMADA', 'SERGIO SERGIA', 'FABIAN FABIANA', 'DAMIAN DAMIANA', 'ELENO ELENA',
+  'CIRILO CIRILA', 'ELADIO ELADIA', 'FAUSTO FAUSTA', 'FIDEL FIDELA', 'GENARO GENARA', 'JOVITO JOVITA', 'LAZARO LAZARA', 'LINO LINA',
+  'MAURO MAURA', 'PASCUAL PASCUALA', 'RAMIRO RAMIRA', 'RUFINO RUFINA', 'SEVERO SEVERA', 'SOTERO SOTERA', 'URBANO URBANA', 'ZENON ZENONA'];
+var NAME_GENDER_SET = {};
+NAME_GENDER_PAIRS.forEach(function (p) { var m = p.split(' '); NAME_GENDER_SET[m[0] + ' ' + m[1]] = NAME_GENDER_SET[m[1] + ' ' + m[0]] = true; });
 function genderPair_(t, u) {
+  if (t === u) return false;
+  if (NAME_GENDER_SET[t + ' ' + u]) return true;
+  if (t.length < 7 || u.length < 7) return false;
   if (t + 'A' === u || u + 'A' === t) return true;
-  return t.length === u.length && t.slice(0, -1) === u.slice(0, -1) && /[AO]$/.test(t) && /[AO]$/.test(u);
+  return t.length === u.length && t.slice(0, -1) === u.slice(0, -1) && /^[OA]$/.test(t.slice(-1)) && /^[OA]$/.test(u.slice(-1));
 }
 // Forma "como suena" para errores de captura comunes: V=B, Z=S, CE/CI=SE/SI, LL=Y, sin letras repetidas.
 function phon_(w) {
@@ -396,17 +466,39 @@ function editDistance_(a, b) {
   }
   return prev[b.length];
 }
-// Exp único: ¿la fila de la hoja en esa cama es la persona de la fila r de Supabase? (namesCompatible_). Para MOVER a
-// un no identificado (DESCONOCIDO…) a una cama donde la hoja tiene a alguien con nombre, además su propia cama no
-// debe seguir con un no identificado y otro exp: eso es el caso real de la 3-189 (le corrigieron el exp y el viejo
-// quedó en la cama de otra persona); ahí solo se le corrige el exp (caso d).
+// Exp único: ¿la fila de la hoja en esa cama es la persona de la fila r de Supabase? (namesCompatible_). Si además la
+// hoja tiene en SU cama actual a alguien con OTRO exp, la foto admite dos historias: le corrigieron el exp (se queda, caso
+// d; el caso real de la 3-189: el exp viejo quedó en la cama de otra persona) o se fue a `cama` y su cama la ocupa otro
+// ingreso. Decide, en este orden: su nombre exacto en su cama → se queda; su nombre exacto en el destino → se mueve; la
+// fecha de ingreso (la hoja la copia con el paciente) → donde esté la suya; y si nada lo aclara y los dos son no
+// identificados, EMPATE: el bucle deja las dos camas quietas (maps.tie) y avisa, en vez de adivinar.
 function uniqueExpMatch_(maps, r, cama) {
   var s = maps.rowByCama[cama];
   if (!namesCompatible_(r, s)) return false;
   var own = normalizeCama_(r && r.cama), o = maps.rowByCama[own];
   if (own === cama || !o || !s || String(o.exp || '').trim() === String(s.exp || '').trim()) return true;
+  var rPh = namePlaceholder_(nameWords_(r && r.nombre || ''));
+  if (!rPh) {   // un nombre real sí identifica; dos "DESCONOCIDO" iguales no dicen nada
+    var exOwn = exactName_(r, o), exDest = exactName_(r, s);
+    if (exOwn && !exDest) return false;
+    if (exDest && !exOwn) return true;
+  }
+  var ing = String(r && r.ingreso || '').trim(), ingOwn = String(o.ingreso || '').trim(), ingDest = String(s.ingreso || '').trim();
+  // La fecha de su cama solo vale si el nombre de esa cama puede ser él: mientras se reescribe la fila para otra persona
+  // la hoja conserva la fecha del ocupante anterior (como la edad), y con ella se le archivaba en vez de moverlo.
+  if (ing && ingOwn === ing && ingDest !== ing && namesCompatible_(r, o)) {
+    // Un no identificado cuya cama ya tiene a alguien CON nombre y otro exp no puede "quedarse" como corrección de exp
+    // (ese nombre no es el suyo) y acababa archivado: EMPATE, las dos camas esperan a que la hoja lo aclare.
+    if (rPh && !namePlaceholder_(nameWords_(o.nombre || '')) && maps.tie) maps.tie[r.id] = cama;
+    return false;
+  }
+  if (ing && ingDest === ing && ingOwn !== ing) return true;
   var ws = nameWords_(s.nombre || '');
-  return !(namePlaceholder_(nameWords_(r && r.nombre || '')) && namePlaceholder_(nameWords_(o.nombre || '')) && ws.length && !namePlaceholder_(ws));
+  if (rPh && namePlaceholder_(nameWords_(o.nombre || '')) && ws.length && !namePlaceholder_(ws)) {
+    if (maps.tie) maps.tie[r.id] = cama;
+    return false;
+  }
+  return true;
 }
 // Casi la misma persona: nombre casi igual y la edad no lo contradice (±1 año cuando ambas se conocen).
 function closePerson_(r, s) {
@@ -518,7 +610,31 @@ function sheetCamaFor_(maps, exp, r) {
   // Exp único: su cama, salvo que el nombre sea de otra persona (uniqueExpMatch_; caso real 18 oct: a la 3-189
   // le corrigieron el exp y el viejo quedó solo en la 3-154, de OTRA persona; se movía la fila de la 3-189,
   // con su nota, a la 3-154 y se le ponía el nombre del de la 3-154).
-  if (!expAmbiguous_(maps, exp)) return camas.length === 1 && uniqueExpMatch_(maps, r, camas[0]) ? camas[0] : undefined;
+  if (!expAmbiguous_(maps, exp)) {
+    if (camas.length !== 1) return undefined;
+    var c0 = camas[0], s0 = maps.rowByCama[c0];
+    if (uniqueExpMatch_(maps, r, c0)) return c0;
+    // Fila escrita desde la APP (ver sameOccupant_) cuyo exp la hoja tiene en OTRA cama con un nombre no compatible:
+    // la hoja lo movió (cortar/pegar) antes de escribir el nombre. Si la hoja trae un no identificado, no contradice
+    // a nadie → se MUEVE conservando su nombre (appMove: el PATCH no toca updated_by y la cama nueva queda fuera del
+    // upsert; en la siguiente corrida espera ahí como en la misma cama). Si trae otro nombre, no se adivina: las dos
+    // camas esperan (appHold). Sin esto quedaba como fantasma en la cama vieja y la hoja lo insertaba duplicado.
+    // Salvo que en SU cama la hoja lo tenga a él con otro exp (le corrigieron el exp y el viejo quedó en otra cama, el
+    // caso real de la 3-189): entonces manda la corrección de exp (d) y no se mueve ni espera.
+    var own0 = normalizeCama_(r && r.cama), o0 = maps.rowByCama[own0];
+    if (r && appWritten_(r) && c0 !== own0 && s0 && !namesCompatible_(r, s0) && !(o0 && namesCompatible_(r, o0))) {
+      if (maps.appHold) maps.appHold[r.id] = c0;
+      // ...y si su fecha de ingreso sigue en SU cama (y no en la nueva), la hoja está reescribiendo su fila (exp
+      // corregido, nombre pendiente): se queda esperando ahí, no se mueve (misma regla de fecha que uniqueExpMatch_).
+      var ingR = String(r.ingreso || '').trim();
+      var dateStays = ingR && o0 && String(o0.ingreso || '').trim() === ingR && String(s0.ingreso || '').trim() !== ingR;
+      if (!dateStays && namePlaceholder_(nameWords_(s0.nombre || '')) && !namePlaceholder_(nameWords_(r.nombre || ''))) {
+        if (maps.appMove) maps.appMove[r.id] = c0;
+        return c0;
+      }
+    }
+    return undefined;
+  }
   var nombre = (r && r.nombre) || '';
   var hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && samePerson_(nombre, sr.nombre || ''); });
   // Varias filas encajan (p. ej. una con solo apellidos): se descartan las ambiguas de la hoja.
@@ -557,6 +673,10 @@ function otherHasName_(maps, exp, selfId, nombre) {
   });
 }
 
+// ¿La fila la escribió la app (o un import) y no este script? El upsert pone 'sheet-sync' en cada corrida; cualquier
+// otro valor, vacío incluido (dispositivo sin nombre de usuario), es una escritura ajena a la hoja.
+function appWritten_(r) { return String(r && r.updated_by || '') !== 'sheet-sync'; }
+
 // ¿La fila r de Supabase sigue siendo quien la hoja tiene en esa cama? Mismo exp basta salvo que el exp
 // sea ambiguo: entonces también tiene que ser la misma persona (si no, el upsert por cama le pondría a
 // esta fila, con su nota, el nombre de la otra persona). Un nombre corregido en la hoja ("PERES" → "PEREZ",
@@ -565,7 +685,18 @@ function sameOccupant_(maps, r, cama, exp) {
   if (maps.byCama[cama] === undefined || maps.byCama[cama] !== exp) return false;
   // Exp único: misma cama + mismo exp basta salvo que el nombre sea claramente de otra persona (exp copiado
   // a un ingreso nuevo en esa cama): entonces es cama reasignada, nunca renombrar la fila con su nota.
-  if (!expAmbiguous_(maps, exp)) return uniqueExpMatch_(maps, r, cama);
+  // Si la fila la escribió la APP hace un momento (updated_by ≠ sheet-sync; el upsert lo vuelve a poner en ≤ 5 min) y
+  // la hoja trae OTRO nombre con el mismo exp, la foto admite dos historias: el residente identificó a un DESCONOCIDO
+  // o corrigió el nombre y la hoja va atrasada, o la hoja puso un ingreso nuevo encima con el exp copiado. No se
+  // adivina: ni se renombra (la nota quedaría bajo otro nombre) ni se archiva (perdería la corrección): la cama espera
+  // (maps.appHold → fuera del upsert) y se avisa en sync_log hasta que la hoja coincida o cambie el exp.
+  if (!expAmbiguous_(maps, exp)) {
+    if (appWritten_(r) && !namesCompatible_(r, maps.rowByCama[cama])) {
+      if (maps.appHold) maps.appHold[r.id] = cama;
+      return false;
+    }
+    return uniqueExpMatch_(maps, r, cama);
+  }
   if (!String(r.nombre || '').trim()) return true;
   var sr = maps.rowByCama[cama];
   if (!sr) return false;
@@ -654,7 +785,7 @@ function syncPatients_(key, payload) {
   var nSheet = Object.keys(maps.byCama).length;   // tamaño REAL de la hoja (antes de excluir nada) para la guarda
 
   // Estado actual en Supabase
-  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev,edad', {
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev,edad,ingreso', {
     method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true
   });
   // Sin el estado actual NO se upsertea a ciegas: con camas fijadas desde la app (caso e) la fila de la
@@ -663,9 +794,9 @@ function syncPatients_(key, payload) {
   if (res.getResponseCode() !== 200) { Logger.log('syncPatients: GET HTTP ' + res.getResponseCode() + ' → NO se sincroniza esta corrida (sin estado actual un upsert por cama podía pisar camas fijadas desde la app)'); return 0; }
   var cur = JSON.parse(res.getContentText() || '[]');
   // Expedientes ambiguos vistos desde Supabase (ver expAmbiguous_) y sus filas, para decidir por nombre.
-  var curAmbig = ambiguousExps_(cur), curByExp = {};
+  var curAmbig = ambiguousExps_(cur), curByExp = {}, ties = {}, appHold = {}, appMove = {};
   cur.forEach(function (r) { var e = String(r.exp || '').trim(); if (e) (curByExp[e] = curByExp[e] || []).push(r); });
-  maps.ambig = curAmbig; maps.curByExp = curByExp;
+  maps.ambig = curAmbig; maps.curByExp = curByExp; maps.tie = ties; maps.appHold = appHold; maps.appMove = appMove;
 
   // (e) Camas fijadas desde la app: decidir ANTES de reconciliar y quitar del payload/mapas las
   //     filas de la hoja que la app gana (así ni el caso (c) ni el upsert las devuelven a la cama vieja).
@@ -674,7 +805,7 @@ function syncPatients_(key, payload) {
   if (dropped.length) {
     payload = payload.filter(function (p) { return !ab.dropCamas[p.cama]; });
     maps = sheetMaps_(payload);
-    maps.ambig = curAmbig; maps.curByExp = curByExp;
+    maps.ambig = curAmbig; maps.curByExp = curByExp; maps.tie = ties; maps.appHold = appHold; maps.appMove = appMove;
     Logger.log('syncPatients: ' + dropped.length + ' fila(s) de la hoja ignoradas por cama fijada desde la app (cama vieja): ' + dropped.join(', '));
   }
   var held = Object.keys(ab.holdCamas);
@@ -690,7 +821,7 @@ function syncPatients_(key, payload) {
     if (sameOccupant_(maps, r, cama, String(r.exp || '').trim())) stayCamas[cama] = true;
   });
 
-  var toDelete = [], toMove = [], toFixExp = [], toClear = [], enConflicto = [], moveTargets = {}, holdLoop = {};
+  var toDelete = [], toMove = [], toFixExp = [], toClear = [], enConflicto = [], enEmpate = [], moveTargets = {}, holdLoop = {}, appMoveHold = {};
   var missing = readMissingSince_(), missingNext = {}, now = Date.now(), enGracia = [];
   cur.forEach(function (r) {
     if (ab.pinnedIds[r.id]) return;   // (e) cama fijada desde la app: ni se mueve ni se retira
@@ -710,8 +841,12 @@ function syncPatients_(key, payload) {
     //     reclamó otra fila que se mueve, esta fila es un duplicado → se retira (archivada).
     var newCama = exp ? sheetCamaFor_(maps, exp, r) : undefined;
     if (newCama !== undefined && newCama !== cama && !stayCamas[newCama] && !moveTargets[newCama] && !ab.pinnedCamas[newCama]) {
-      toMove.push({ row: r, from: cama, to: newCama });
+      // appMove (ver sheetCamaFor_): fila escrita desde la app que la hoja movió aún como no identificado → se mueve
+      // conservando su nombre: el PATCH no toca updated_by y la cama nueva no se upsertea esta corrida.
+      var keepBy = !!appMove[r.id];
+      toMove.push({ row: r, from: cama, to: newCama, keepBy: keepBy });
       moveTargets[newCama] = true;
+      if (keepBy) appMoveHold[newCama] = true;   // se vuelca a holdLoop tras el bucle (si el movimiento sobrevive)
       return;
     }
     if (newCama !== undefined && newCama !== cama && ab.pinnedCamas[newCama]) {
@@ -723,21 +858,59 @@ function syncPatients_(key, payload) {
       if (sheetExp !== undefined) holdLoop[cama] = true;
       return;
     }
+    // EMPATE (ver uniqueExpMatch_): no identificado cuya cama ahora tiene a OTRO no identificado con otro exp y cuyo exp
+    // aparece en otra cama con nombre. Ni se mueve, ni se le corrige el exp, ni se archiva: las dos camas quedan fuera
+    // del upsert hasta que la hoja lo aclare (identificar a alguno o corregir el exp) y se avisa en sync_log.
+    if (ties[r.id]) {
+      holdLoop[cama] = true; holdLoop[ties[r.id]] = true;
+      enEmpate.push({ exp: exp, camas: cama + ', ' + ties[r.id], nombres: (r.nombre || '') + ' | ' + ((sheetRowByCama[cama] || {}).nombre || '') + ' | ' + ((sheetRowByCama[ties[r.id]] || {}).nombre || ''), motivo: 'no_identificado_ambiguo' });
+      return;
+    }
+    // Fila escrita desde la APP con otro nombre en la hoja (ver sameOccupant_ y sheetCamaFor_): ni se renombra ni se
+    // archiva; su cama (si la hoja puso a alguien ahí) y la cama donde la hoja tiene su exp quedan fuera del upsert y se
+    // avisa hasta que la hoja coincida con la app o cambie el exp (cama reasignada normal). La fila se marca una vez
+    // (cama_hoja_prev = ok@hold, marca ya resuelta para el caso e) como paciente del censo: así, si la hoja lo da de
+    // alta mientras espera, el retiro con gracia (b) sí lo alcanza (el upsert, que ponía sheet-sync, ya no la toca).
+    var sr = sheetRowByCama[cama];
+    // (d) EXPEDIENTE CORREGIDO — misma cama, MISMA persona (nombre igual), otro exp en la hoja (typo corregido): PATCH
+    //     del exp sobre la misma fila; la nota sigue ligada. Con el MISMO exp no aplica (ya decidió sameOccupant_: es
+    //     otra persona), ni si el nombre de la hoja es de un no identificado para alguien con nombre (HIJO DE MARIA
+    //     LOPEZ en la cama de MARIA LOPEZ).
+    var dFix = !!(sheetExp !== undefined && sr && sheetExp && sheetExp !== exp && samePerson_(r.nombre || '', sr.nombre || '') && namesCompatible_(r, sr) && String(r.nombre || '').trim() && String(sr.nombre || '').trim());
+    var holdApp = appHold[r.id] ? appHold[r.id]
+      // Fila escrita desde la app con otro exp en su cama y un nombre que no prueba otro ingreso: la fila de la hoja
+      // sigue como no identificado (el residente ya lo identificó en la app) o trae un nombre compatible pero no igual
+      // (inicial, error de dedo, apodo: a (d) no le basta). Espera en vez de archivarse; se libera cuando la hoja
+      // escribe el nombre: igual → corrección de exp (d); otro → cama reasignada.
+      : (!dFix && sheetExp !== undefined && sr && appWritten_(r) && !namePlaceholder_(nameWords_(r.nombre || ''))
+         && (namePlaceholder_(nameWords_(sr.nombre || '')) || namesCompatible_(r, sr))) ? cama : null;
+    if (holdApp) {
+      if (sheetExp !== undefined) holdLoop[cama] = true;
+      holdLoop[holdApp] = true;
+      if (holdApp === cama && r.cama_app_ts != null) {
+        // (e) la hoja ya alcanzó la cama que fijó la app (aunque el nombre aún no coincida): el movimiento queda
+        // resuelto (marca ok@…, que también sirve de marca de censo); si no, un movimiento posterior de la hoja se
+        // tomaba como "primera divergencia" y la app ganaba para siempre.
+        var ccH = camaResolvedCols_(r);
+        if (Object.keys(ccH).length) toClear.push({ row: r, cols: ccH });
+      } else if (r.cama_hoja_prev == null && r.cama_app_ts == null) {
+        toClear.push({ row: r, cols: { cama_hoja_prev: CAMA_OK_PREFIX + 'hold' } });
+      }
+      var camasHold = holdApp === cama ? cama : cama + ', ' + holdApp;
+      enEmpate.push({ exp: exp, camas: camasHold, nombres: (r.nombre || '') + ' (app) | ' + ((sheetRowByCama[holdApp] || {}).nombre || '') + ' (hoja)', motivo: 'nombre_app_vs_hoja' });
+      return;
+    }
     if (sheetExp !== undefined) {
-      // (d) EXPEDIENTE CORREGIDO — misma cama, MISMA persona (nombre igual), otro exp en la hoja
-      //     (typo corregido): PATCH del exp sobre la misma fila; la nota sigue ligada.
-      var sr = sheetRowByCama[cama];
-      //     Con el MISMO exp esto no aplica (ya decidió sameOccupant_: es otra persona), ni si el nombre de la hoja es
-      //     de un no identificado para alguien con nombre (HIJO DE MARIA LOPEZ en la cama de MARIA LOPEZ).
-      if (sr && sheetExp && sheetExp !== exp && samePerson_(r.nombre || '', sr.nombre || '') && namesCompatible_(r, sr) && String(r.nombre || '').trim() && String(sr.nombre || '').trim()) {
+      if (dFix) {
         toFixExp.push({ row: r, from: exp, to: sheetExp });
         return;
       }
       toDelete.push({ row: r, motivo: 'CAMA REASIGNADA (hoja)' });        // (a) reasignación: otra persona ocupa la cama
     } else if (r.updated_by === 'sheet-sync' || r.cama_hoja_prev != null) {
       // (b) retiro: solo si lleva >= RETIRO_GRACIA_MIN min sin aparecer en la hoja (ver arriba).
-      //     cama_hoja_prev solo lo escribe este script tras ver el exp en la hoja → es paciente del censo aunque
-      //     la app lo haya editado (updated_by = residente): sin esto, un paciente movido en la app y dado de
+      //     cama_hoja_prev solo lo escribe este script: tras ver el exp en la hoja (caso e) o como marca ok@hold mientras
+      //     la fila espera por su nombre → es paciente del censo aunque la app lo haya editado (updated_by =
+      //     residente): sin esto, un paciente movido en la app y dado de
       //     alta en la hoja antes de que la hoja actualizara su cama quedaba como FANTASMA para siempre.
       var since = missing[r.id] || now;
       missingNext[r.id] = since;
@@ -745,13 +918,64 @@ function syncPatients_(key, payload) {
       else enGracia.push(cama + ' (' + Math.round((now - since) / 60000) + ' min)');
     }
   });
+  // Dos filas reclaman la MISMA fila de la hoja: una se movería a esa cama (r, su exp está ahí) y la que ya ocupa esa
+  // cama en Supabase con otro exp (q, no identificado) la tomaría como "exp corregido" (d). Sin esto el PATCH de cama
+  // chocaba con UNIQUE(cama), q se quedaba con el exp de r y r era un fantasma sin aviso. Decide la fecha de ingreso
+  // (la hoja la copia con el paciente): la de r → q es cama reasignada y r se mueve; la de q → q corrige su exp y r
+  // (que ya no está en la hoja) se retira con gracia o, si su cama ya tiene a otro, como reasignada; sin fecha que lo
+  // aclare, las dos camas esperan y se avisa.
+  toFixExp = toFixExp.filter(function (f) {
+    var c = normalizeCama_(f.row.cama);
+    var mv = toMove.filter(function (m) { return m.to === c; });
+    if (!mv.length) return true;
+    var srC = sheetRowByCama[c] || {}, ingS = String(srC.ingreso || '').trim(), ingQ = String(f.row.ingreso || '').trim();
+    var m = mv[0], ingR = String(m.row.ingreso || '').trim(), from = normalizeCama_(m.row.cama);
+    if (ingS && ingS === ingR && ingS !== ingQ) {
+      toDelete.push({ row: f.row, motivo: 'CAMA REASIGNADA (hoja)' });
+      return false;
+    }
+    toMove = toMove.filter(function (x) { return x !== m; }); delete moveTargets[c];
+    if (ingS && ingS === ingQ && ingS !== ingR) {
+      if (sheetByCama[from] !== undefined) toDelete.push({ row: m.row, motivo: 'CAMA REASIGNADA (hoja)' });
+      else {
+        var sinceM = missing[m.row.id] || now;
+        missingNext[m.row.id] = sinceM;
+        if (now - sinceM >= RETIRO_GRACIA_MIN * 60000) toDelete.push({ row: m.row, motivo: 'RETIRADO DEL CENSO (hoja)' });
+        else {
+          enGracia.push(from + ' (' + Math.round((now - sinceM) / 60000) + ' min)');
+          // marca de censo: en la siguiente corrida el exp ya es ambiguo y (b) solo alcanza filas marcadas
+          if (m.row.cama_hoja_prev == null && m.row.cama_app_ts == null) toClear.push({ row: m.row, cols: { cama_hoja_prev: CAMA_OK_PREFIX + 'hold' } });
+        }
+      }
+      return true;
+    }
+    holdLoop[c] = true; if (sheetByCama[from] !== undefined) holdLoop[from] = true;
+    enEmpate.push({ exp: String(m.row.exp || '').trim(), camas: from + ', ' + c, nombres: (m.row.nombre || '') + ' | ' + (f.row.nombre || '') + ' | ' + (srC.nombre || '') + ' (hoja)', motivo: 'cama_en_disputa' });
+    return false;
+  });
+  // Un movimiento hacia una cama que otra fila dejó en espera (p. ej. la escribió la app y la hoja ya trae otro exp ahí)
+  // chocaría con UNIQUE(cama) en cada corrida y, al fallar, dejaba fuera del upsert la cama de origen para siempre, sin
+  // aviso: mejor no intentarlo; las dos camas esperan y se avisa hasta que la hoja aclare la cama destino.
+  toMove = toMove.filter(function (m) {
+    if (!holdLoop[m.to]) return true;
+    var from = normalizeCama_(m.row.cama);
+    delete moveTargets[m.to];
+    if (sheetByCama[from] !== undefined) holdLoop[from] = true;
+    enEmpate.push({ exp: String(m.row.exp || '').trim(), camas: from + ', ' + m.to, nombres: (m.row.nombre || '') + ' | ' + ((sheetRowByCama[m.to] || {}).nombre || '') + ' (hoja)', motivo: 'cama_en_disputa' });
+    return false;
+  });
+  toMove.forEach(function (m) { if (m.keepBy) holdLoop[m.to] = true; });
   writeMissingSince_(missingNext);   // los que volvieron a la hoja salen del mapa
   if (enGracia.length) Logger.log('syncPatients: ' + enGracia.length + ' fuera de la hoja en periodo de gracia (' + RETIRO_GRACIA_MIN + ' min): ' + enGracia.join(', '));
   if (enConflicto.length) Logger.log('syncPatients: ' + enConflicto.length + ' movimiento(s) de la hoja hacia una cama fijada desde la app, en espera: ' + enConflicto.join(', '));
+  if (enEmpate.length) {
+    Logger.log('syncPatients: ' + enEmpate.length + ' cama(s) en espera por nombre: ' + enEmpate.map(function (e) { return e.camas + ' [' + e.motivo + ']'; }).join(' / '));
+    try { logQuarantine_(key, enEmpate); } catch (_) {}
+  }
   var heldLoop = Object.keys(holdLoop);
   if (heldLoop.length) {
     safePayload = safePayload.filter(function (p) { return !holdLoop[p.cama]; });
-    Logger.log('syncPatients: ' + heldLoop.length + ' cama(s) cuyo ocupante espera una cama fijada desde la app → no se upsertean (pisarían su fila): ' + heldLoop.join(', '));
+    Logger.log('syncPatients: ' + heldLoop.length + ' cama(s) en espera (cama fijada desde la app, empate o nombre distinto en la app) → no se upsertean (pisarían su fila): ' + heldLoop.join(', '));
   }
 
   // GUARDAS anti-catástrofe (los movimientos no borran nada, pero tampoco se aplican con una
@@ -833,7 +1057,9 @@ function movePatients_(key, toMove) {
   var viaTemp = toMove.filter(function (m) { return fromCamas[m.to]; });
   viaTemp.forEach(function (m) { patchPatient_(key, m.row.id, { cama: '#MV-' + String(m.row.id).slice(0, 8) }); });
   toMove.forEach(function (m) {
-    var cols = { cama: m.to, updated_by: 'sheet-sync' };
+    // keepBy (appMove): la fila la escribió la app y la hoja aún no tiene su nombre → updated_by se conserva para que
+    // en la cama nueva siga esperando (sameOccupant_) en vez de que el upsert la renombre.
+    var cols = m.keepBy ? { cama: m.to } : { cama: m.to, updated_by: 'sheet-sync' };
     // (e) la hoja cambió DESPUÉS de un movimiento hecho desde la app (o la app reenvió una cama vieja con una
     //     marca ya resuelta) → manda la hoja y el movimiento de la app queda resuelto (marca ok@).
     var cc = camaResolvedCols_(m.row);

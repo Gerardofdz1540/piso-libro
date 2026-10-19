@@ -2,7 +2,8 @@
 // sí borra (y no regresa con los mismos datos), el respaldo en segundo plano repone fechas viejas del robot solo de
 // ESTE internamiento, y un encabezado de WinLab con menos nombres que el censo entra solo si el robot lo marcó __target.
 // Datos inventados.
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const fs = require('fs'); const path = require('path');
 const FIX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture_ego_bh.json'), 'utf8'));
 const MOCK = `(() => {
@@ -32,7 +33,7 @@ const mkReport = (t, hb, extra) => Object.assign({ __cells: ['', '', '', `${dmy(
 const wlRow = (t, hb, scrapedAt) => ({ exp: EXP, paciente: NAME, fecha: iso(t), scraped_at: scrapedAt, data: { headers: [], reportes: [mkReport(t, hb)] } });
 
 (async()=>{
-  const browser=await chromium.launch(); const page=await browser.newPage();
+  const browser=await launch(); const page=await browser.newPage();
   const errors=[]; page.on('pageerror',e=>errors.push(String((e&&e.stack)||e).slice(0,300)));
   const consoleWarn=[]; page.on('console', m => { if (m.type()==='warning' || m.type()==='error') consoleWarn.push(m.text().slice(0,200)); });
   const calls=[];
@@ -75,7 +76,7 @@ const wlRow = (t, hb, scrapedAt) => ({ exp: EXP, paciente: NAME, fecha: iso(t), 
   });
   await page.addInitScript(MOCK);
   let pass=0, fail=0; const check=(n,c,x)=>{ if(c){pass++;console.log('PASS '+n);} else {fail++;console.log('FAIL '+n+(x?' :: '+x:''));} };
-  await page.goto('http://127.0.0.1:8771/index.html',{waitUntil:'load',timeout:90000});
+  await page.goto(BASE_URL + '/index.html',{waitUntil:'load',timeout:90000});
   await page.waitForTimeout(7000);
   check('init: sin errores no capturados', errors.length===0, errors.join(' | '));
   const notePosts = () => calls.filter(c => c.m==='POST' && c.url.startsWith('/rest/v1/notes'));

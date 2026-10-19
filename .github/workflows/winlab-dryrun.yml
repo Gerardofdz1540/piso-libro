@@ -1,0 +1,103 @@
+name: WinLab corrida en seco (semanal)
+
+# Recorre WinLab completo (login → búsqueda → drill-down) con `node scraper.js --dry-run`: NO
+# escribe en Supabase (solo lee el censo). Sirve para enterarse de que WinLab cambió (selectores,
+# pestañas, sesión, popups) ANTES de que falle la corrida real de las 05:00 o las 12:30. Las
+# pruebas de ci.yml son de funciones puras y no ven esos cambios; esta corrida sí.
+# Domingo 03:17 León = 09:17 UTC: fuera de la visita y lejos de las corridas reales (05:00 León
+# la más cercana; el tope de 60 min deja margen aunque GitHub retrase el cron). Comparte el grupo
+# de concurrencia con winlab-scraper.yml para que nunca haya dos robots a la vez con la misma
+# cuenta de WinLab: si coinciden, uno espera al otro.
+# Si falla, el job termina en ROJO y GitHub manda el correo de "workflow failed" al dueño del repo
+# (mismo mecanismo que labs-watchdog.yml; no requiere llaves nuevas). NO sube artefactos: las
+# capturas y los JSON del explorador llevan datos de pacientes.
+on:
+  schedule:
+    - cron: "17 9 * * 0"  # domingo 03:17 León (UTC-6, sin horario de verano)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write   # keepalive (endpoint "enable workflow")
+
+concurrency:
+  group: winlab-scraper
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: rpa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # GitHub desactiva los cron tras 60 días sin actividad; llamar a "enable" reinicia el contador.
+      - name: Keepalive del cron (evita disabled_inactivity)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/winlab-dryrun.yml/enable"
+
+      - name: Setup Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: rpa/package-lock.json
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${{ steps.pw-cache.outputs.cache-hit == 'true' && '1' || '0' }}
+        run: npm ci --no-audit --no-fund
+
+      - name: Ensure Chromium present
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install --with-deps chromium
+
+      # Mismo entorno y secretos que la corrida real (winlab-scraper.yml), con --dry-run y DRY_RUN.
+      # Un solo intento con tope de 60 min: `timeout` manda SIGTERM a todo el grupo de procesos y el
+      # scraper cierra en orden; --kill-after remata si no sale solo.
+      - name: Corrida en seco (sin escribir en Supabase)
+        run: timeout --kill-after=60s 60m node scraper.js --dry-run
+        env:
+          WINLAB_URL:               ${{ secrets.WINLAB_URL }}
+          WINLAB_USER:              ${{ secrets.WINLAB_USER }}
+          WINLAB_PASS:              ${{ secrets.WINLAB_PASS }}
+          WINLAB_RESULTS_URL:       ${{ secrets.WINLAB_RESULTS_URL }}
+          WINLAB_USER_SELECTOR:     ${{ secrets.WINLAB_USER_SELECTOR }}
+          WINLAB_PASS_SELECTOR:     ${{ secrets.WINLAB_PASS_SELECTOR }}
+          WINLAB_SUBMIT_SELECTOR:   ${{ secrets.WINLAB_SUBMIT_SELECTOR }}
+          WINLAB_TABLE_SELECTOR:    ${{ secrets.WINLAB_TABLE_SELECTOR }}
+          WINLAB_LOGGED_SELECTOR:   ${{ secrets.WINLAB_LOGGED_SELECTOR }}
+          WINLAB_NEXT_SELECTOR:     ${{ secrets.WINLAB_NEXT_SELECTOR }}
+          WL_TEMPORALIDAD_TAB_SEL:  ${{ secrets.WL_TEMPORALIDAD_TAB_SEL }}
+          WL_PROFILO_SEL:           ${{ secrets.WL_PROFILO_SEL }}
+          WL_PROFILO_VALUE:         ${{ secrets.WL_PROFILO_VALUE }}
+          WL_LOOKBACK_DAYS:         ${{ secrets.WL_LOOKBACK_DAYS }}
+          # Mismo tope de drill-down que la corrida real (ver winlab-scraper.yml).
+          WL_DRILLDOWN_MAX:         "12"
+          SUPABASE_URL:             ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY:     ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_TABLE:           ${{ secrets.SUPABASE_TABLE }}
+          SUPABASE_ON_CONFLICT:     ${{ secrets.SUPABASE_ON_CONFLICT }}
+          DRY_RUN:                  "true"
+
+      - name: Aviso de fallo (GitHub manda el correo de "workflow failed")
+        if: failure()
+        run: |
+          echo "### WinLab corrida en seco: FALLÓ" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Revisa el log de este run antes de la próxima corrida real (05:00 / 12:30 León)." >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=WinLab cambió o el robot no pudo recorrerlo::La corrida en seco semanal falló (login, búsqueda, drill-down o cobertura). Revisa el log de este run antes de la próxima corrida real: https://github.com/${{ github.repository }}/actions/workflows/winlab-dryrun.yml"
+          exit 1

@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # GitHub desactiva los workflows programados tras 60 días sin actividad en el repo
       # (ocurrió el 2026-09-05: estado "disabled_inactivity", cero corridas hasta octubre
@@ -62,7 +62,7 @@ jobs:
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/winlab-scraper.yml/enable"
 
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: "npm"
@@ -70,7 +70,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: pw-cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-v1
@@ -83,26 +83,49 @@ jobs:
         # romper el scraper sin que nadie cambiara nada).
         run: npm ci --no-audit --no-fund
 
-      - name: Tests offline (dedup, filtros, fechas, drilldown, parser PDF)
-        run: node scraper.test.js && node drilldown.test.js && node pdf-extract.test.js
+      # Las pruebas sin red ya corren (y bloquean) en cada pull request (ci.yml, job "unidad"), así
+      # que aquí solo AVISAN: una prueba rota no debe dejar al piso sin labs. continue-on-error deja
+      # el paso en rojo con su aviso, pero la corrida sigue.
+      - name: Tests offline (solo aviso; bloquean en ci.yml, no aquí)
+        continue-on-error: true
+        run: |
+          if ! (node scraper.test.js && node drilldown.test.js && node pdf-extract.test.js); then
+            echo "::warning title=Pruebas del robot rotas::Alguna prueba sin red falló; la corrida de labs continúa. Revisa el último PR y el job 'unidad' de ci.yml."
+            exit 1
+          fi
 
       - name: Ensure Chromium present
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install --with-deps chromium
 
       # Reintento coherente con el timeout del job (90 min): 60 min para el primer intento y lo que
-      # quede para el segundo. Antes era 85 min × 2 intentos → el segundo nunca cabía. retry_on: any
-      # también reintenta cuando el primer intento se agota por tiempo (antes solo por error):
-      # con el flush incremental lo ya guardado no se pierde y el reintento reutiliza los reportes
-      # ya parseados, así que solo gasta tiempo en lo que falta.
+      # quede para el segundo. Antes era 85 min × 2 intentos → el segundo nunca cabía. Se reintenta
+      # tanto por error como por tiempo agotado: con el flush incremental lo ya guardado no se
+      # pierde y el reintento reutiliza los reportes ya parseados, así que solo gasta tiempo en lo
+      # que falta.
+      # Bucle propio en bash (oct 2026): antes era nick-fields/retry@v3, una acción de terceros que
+      # recibía WINLAB_PASS y SUPABASE_SERVICE_KEY. Mismos 2 intentos, 60 min por intento y 30 s de
+      # espera. `timeout` manda SIGTERM a todo el grupo de procesos (npm y node), así el scraper
+      # alcanza a volcar lo capturado; --kill-after remata si no sale solo.
       - name: Run scraper (con reintentos)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 60
-          max_attempts: 2
-          retry_wait_seconds: 30
-          retry_on: any
-          command: cd rpa && npm run scrape
+        run: |
+          rc=1
+          for intento in 1 2; do
+            echo "::group::Intento $intento de 2 (tope 60 min)"
+            set +e
+            timeout --kill-after=60s 60m npm run scrape
+            rc=$?
+            set -e
+            echo "::endgroup::"
+            if [ "$rc" -eq 0 ]; then break; fi
+            if [ "$rc" -eq 124 ]; then
+              echo "::warning title=WinLab Scraper::Intento $intento agotó los 60 min."
+            else
+              echo "::warning title=WinLab Scraper::Intento $intento falló (código $rc)."
+            fi
+            if [ "$intento" -lt 2 ]; then sleep 30; fi
+          done
+          exit "$rc"
         env:
           WINLAB_URL:               ${{ secrets.WINLAB_URL }}
           WINLAB_USER:              ${{ secrets.WINLAB_USER }}
@@ -138,7 +161,7 @@ jobs:
 
       - name: Upload diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: failure-screenshot
           path: |

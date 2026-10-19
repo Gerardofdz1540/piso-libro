@@ -1,0 +1,46 @@
+# Dependabot: abre un PR cuando hay versión nueva de las acciones de GitHub y de las dependencias
+# npm del robot (rpa/) y de las pruebas headless (tests/headless/). Las acciones de los workflows
+# están fijadas por SHA de commit con el "# vX.Y.Z" al lado: Dependabot actualiza el SHA y el
+# comentario juntos. Cada PR pasa por ci.yml antes de poder fusionarse.
+# Las etiquetas deben existir en el repo (Issues → Labels); si alguna no existe, Dependabot la ignora.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: America/Mexico_City
+    labels:
+      - dependencias
+      - github-actions
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+
+  - package-ecosystem: npm
+    directory: /rpa
+    schedule:
+      interval: monthly
+      time: "07:00"
+      timezone: America/Mexico_City
+    labels:
+      - dependencias
+      - robot
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(rpa)"
+
+  - package-ecosystem: npm
+    directory: /tests/headless
+    schedule:
+      interval: monthly
+      time: "07:00"
+      timezone: America/Mexico_City
+    labels:
+      - dependencias
+      - pruebas
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(tests)"

@@ -5,7 +5,8 @@
 // sobre los campos (sin recuadro): NÚMEROS con el reconocedor local PEN_OCR al momento; TEXTO por IA (la lectura local solo se
 // muestra provisional, nunca se guarda); ciclo Scribble → → Texto → Tinta. + vista iPad: tira de camas en la barra, sin botones flotantes.
 //   node tests/headless/app_pen.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -19,7 +20,7 @@ const MOCK = `(() => {
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
 (async () => {
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
+  const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const calls = [];
   // Ayudante de IA simulado para ✍️ → Texto: devuelve "TEXTO n" (o falla con 500)
@@ -50,7 +51,7 @@ const MOCK = `(() => {
   });
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
 
   // ── L1: vista iPad (1194 px): tira de camas en la barra, riel lateral oculto, sin botones flotantes, menú ⋯ Más ──
@@ -629,7 +630,7 @@ const MOCK = `(() => {
 
   // ── L16: migración AL CARGAR en iPad: un dispositivo que se quedó en "2" (→ Texto) arranca en Scribble (sin pen-on, etiqueta, nada se intercepta) ──
   await page.addInitScript(() => { localStorage.setItem('pl_pen_mode', '2'); window.__pl_force_ipad = true; });   // después del MOCK (que pone "1"): gana el "2"
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
   const l16 = await page.evaluate(async () => {
     const k = pid(patients[0]); focusGoTo(k); await new Promise(r => setTimeout(r, 150));

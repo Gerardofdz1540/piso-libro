@@ -2,7 +2,8 @@
 // cirujano con espacio) y gastos de drenajes, sondas y estomas (el número completo siempre se lee). La regla anti-zoom
 // de iOS fija las cajas en 16 px: sin foco, la letra baja lo justo para que el valor quepa; con foco vuelve a 16 px.
 // Datos inventados.   node tests/headless/app_cajas.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium, devices } = require('playwright');
+const { launch } = require('./_browser'); const { devices } = require('playwright');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session';
@@ -45,7 +46,7 @@ const SETUP = async () => {
   return { cut, gastos, nCx: document.querySelectorAll('.cx-row').length, nDv: document.querySelectorAll('.dv-row').length };
 };
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await launch();
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
   for (const c of CASES) {
     const ctx = await browser.newContext(c.ctx); const page = await ctx.newPage();
@@ -59,7 +60,7 @@ const SETUP = async () => {
     });
     await page.addInitScript(MOCK);
     await page.addInitScript((h) => { try { localStorage.setItem('pl_hoja', h ? '1' : '0'); } catch (_) {} }, c.hoja);
-    await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+    await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
     await page.waitForTimeout(4000);
     const r = await page.evaluate(SETUP);
     check(`K1 ${c.name}: Cirugías y drenajes completos, nada cortado (procedimiento, hallazgos, sangrado, cirujano, sitio, gasto, características, balance)`,

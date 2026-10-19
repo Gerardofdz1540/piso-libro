@@ -2,7 +2,8 @@
 // nombres parecidos tocables), "nombre en WinLab" (alias en la nota, sin red), 🔎 Buscar ahora (corrida
 // dirigida vía worker) y vigilancia hasta que llegan los labs.
 //   node tests/headless/app_robot.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -18,7 +19,7 @@ const MOCK = `(() => {
 })();`;
 const EXP = '26-00001';
 (async () => {
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
+  const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const calls = []; const scrapes = [];
   let matchRow = { exp: EXP, cama: '3-181', alias: null, status: 'homonimos', buscado: ['HERNADNEZ CASTRO', 'HERNADNEZ + ADRIAN', 'CASTRO + ADRIAN'], candidatos: ['HERNANDEZ CASTRO, ADRIAN', 'HERNANDEZ CASTRO, ADRIEL'], encontrado_como: null, reportes: 0, detalle: null, checked_at: '2026-10-14T20:33:20Z' };
@@ -44,7 +45,7 @@ const EXP = '26-00001';
   });
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
 
   // ── R1: aviso del robot en la sección de labs + botón en el menú de la tarjeta ──

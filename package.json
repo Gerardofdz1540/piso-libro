@@ -1,0 +1,9 @@
+{
+  "name": "piso-libro",
+  "private": true,
+  "description": "App del piso de cirugía (index.html). Las dependencias del robot viven en rpa/.",
+  "scripts": {
+    "lint": "node tools/lint-index.js",
+    "syncheck": "node tests/headless/syncheck.js index.html"
+  }
+}

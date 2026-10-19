@@ -806,8 +806,10 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     const { sb, calls } = makeSandbox({ cur: [b9], props: {} });
     sb.syncPatients_("svc", fill([row("3-154", "26-1500", { nombre: "TORRES NAVA RAUL", edad: 52 }), row("3-189", "26-1777", { nombre: "DESCONOCIDO" })]));
     const ps = patches(calls), up = upsertOf(calls);
-    check("T18e exp corregido a un DESCONOCIDO en 3-189 y el viejo en 3-154 (otra persona con nombre): b9 solo corrige su exp, 3-154 entra nueva",
-      ps.length === 1 && ps[0] === 'b9:{"exp":"26-1777","updated_by":"sheet-sync"}' && up.includes("3-154:26-1500:TORRES NAVA RAUL") && !touched(calls), JSON.stringify({ ps, up }));
+    // La misma foto también es "lo identificaron, se fue a la 3-154 y en la 3-189 entró otro desconocido": sin fecha de
+    // ingreso que lo aclare no se adivina (T19f): nada se mueve ni se archiva, las dos camas esperan y hay aviso.
+    check("T18e exp corregido a un DESCONOCIDO en 3-189 y el viejo en 3-154 (otra persona con nombre): empate → b9 no se mueve ni se archiva; 3-154 y 3-189 esperan a que la hoja lo aclare",
+      ps.length === 0 && !touched(calls) && !up.some((u) => u.startsWith("3-154:") || u.startsWith("3-189:")) && calls.some((c) => c.m === "POST" && c.u.startsWith("/rest/v1/sync_log") && JSON.stringify(c.body).includes("no_identificado_ambiguo")), JSON.stringify({ ps, up }));
     // ...pero un DESCONOCIDO que de verdad cambió de cama (su cama vieja quedó libre) sí se mueve por expediente
     const { sb: sb2, calls: c2 } = makeSandbox({ cur: [b9], props: {} });
     sb2.syncPatients_("svc", fill([row("3-154", "26-1500", { nombre: "DESCONOCIDO" })]));
@@ -822,6 +824,293 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     const arc = calls.find((c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive"));
     check("T18g cama que se reescribe celda por celda (exp ya corregido, luego el nombre de otra persona con la edad vieja): se archiva la anterior, no se renombra",
       !!arc && arc.body.patient_data.nombre === "LOPEZ PEREZ MARIA GUADALUPE" && upsertOf(calls).includes("3-101:26-2222:SANCHEZ RUIZ MARIA GUADALUPE"), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+  }
+}
+
+// ── 19) Cuarta revisión: correcciones hechas en la app, apellidos con A/O, apodos, más no identificados, palabras de 3
+//        letras, el empate del no identificado que se mueve y el caso real con nombres parecidos ────────────────────────
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i), { nombre: "RELLENO " + "ABCDEFGHIJKL"[i] + " SOTO" })); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.exp + ":" + p.nombre) : []; };
+  const patches = (calls) => calls.filter((c) => c.m === "PATCH").map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + JSON.stringify(c.body));
+  const touched = (calls) => calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive"));
+  const sameBed = (n1, n2, extra) => {
+    const a1 = Object.assign({ id: "a1", cama: "3-101", exp: "77", nombre: n1, edad: "40", updated_by: "sheet-sync" }, extra || {});
+    const { sb, calls } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de a1" }] } }, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "77", { nombre: n2, edad: 40 })]));
+    return calls;
+  };
+  const moved = (n1, n2) => {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: n1, edad: "40", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-120", "77", { nombre: n2, edad: 40 })]));
+    return patches(calls).some((p) => p.startsWith("a1:") && p.includes('"cama":"3-120"')) && !touched(calls);
+  };
+  // (a) fila escrita desde la APP (updated_by ≠ sheet-sync) con OTRO nombre en la hoja y el mismo exp: pudo ser que el
+  //     residente identificó o corrigió el nombre y la hoja va atrasada, o que la hoja puso un ingreso nuevo encima con
+  //     el exp copiado. No se adivina: ni Papelera (perdería la corrección) ni renombrar (la nota quedaría bajo otro
+  //     nombre): la cama queda fuera del upsert, sin PATCH, y hay aviso nombre_app_vs_hoja en sync_log.
+  const appHold = [["TORRES NAVA RAUL", "DESCONOCIDO MASCULINO"], ["PEREZ LOPEZ JUAN", "PEREZ LOPEZ JOSE"], ["PEREZ GOMEZ JUAN", "PEREZ LOPEZ JUAN"],
+    ["PEREZ RUIZ JUAN CARLOS", "LOPEZ SOTO MIGUEL ANGEL"], ["PEREZ RUIZ JUAN CARLOS", "GOMEZ VEGA ANA LAURA"]];
+  // La única escritura permitida mientras espera: la marca ok@hold (una vez) para que el retiro con gracia lo alcance.
+  const MARK = 'a1:{"cama_hoja_prev":"ok@hold"}';
+  const badHold = appHold.filter(([app, hoja]) => {
+    const c = sameBed(app, hoja, { updated_by: "residente" }), up = upsertOf(c), ps = patches(c);
+    const log = c.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/sync_log"));
+    return touched(c) || ps.length !== 1 || ps[0] !== MARK || up.some((u) => u.startsWith("3-101:")) || up.length !== 12 || !log || !JSON.stringify(log.body).includes("nombre_app_vs_hoja");
+  });
+  check("T19a fila escrita desde la app con OTRO nombre en la hoja (identificación/corrección atrasada o ingreso nuevo con el exp copiado): ni Papelera ni renombrar; la cama espera fuera del upsert, hay aviso nombre_app_vs_hoja y solo se escribe la marca ok@hold", badHold.length === 0, JSON.stringify(badHold));
+  {
+    // ...y con la marca ya puesta no se vuelve a escribir nada; updated_by sigue siendo el del residente (la espera persiste)
+    const c = sameBed("TORRES NAVA RAUL", "DESCONOCIDO MASCULINO", { updated_by: "residente", cama_hoja_prev: "ok@hold" });
+    check("T19a-m con la marca ok@hold puesta, en espera no hay ningún PATCH más ni upsert de esa cama", patches(c).length === 0 && !touched(c) && !upsertOf(c).some((u) => u.startsWith("3-101:")), JSON.stringify(patches(c)));
+  }
+  // ...pero si el nombre de la hoja SÍ es compatible (la app solo cambió dx/estado, o la hoja completó el nombre), sigue igual
+  const appSame = [["PEREZ RUIZ JUAN CARLOS", "PEREZ RUIZ JUAN CARLOS"], ["PEREZ LOPEZ JUAN", "PEREZ LOPEZ JUAN CARLOS"], ["DESCONOCIDO", "PEREZ LOPEZ JUAN"]];
+  const badSame = appSame.filter(([app, hoja]) => { const c = sameBed(app, hoja, { updated_by: "residente" }); return touched(c) || patches(c).length || !upsertOf(c).includes("3-101:77:" + hoja); });
+  check("T19a' fila escrita desde la app con nombre compatible en la hoja (solo cambió dx/estado, nombre completado, no identificado que la hoja identifica): sigue igual y se upsertea", badSame.length === 0, JSON.stringify(badSame));
+  // ...y cuando la hoja ya cambió el exp de esa cama, es cama reasignada normal (se archiva con su nota, entra el nuevo)
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ RUIZ JUAN CARLOS", edad: "44", updated_by: "residente" };
+    const { sb, calls } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de a1" }] } }, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "88", { nombre: "LOPEZ SOTO MIGUEL ANGEL", edad: 31 })]));
+    const arc = calls.filter((c) => c.u.startsWith("/rest/v1/archive")).map((c) => c.body.patient_data.nombre);
+    check("T19a'' fila escrita desde la app y la hoja ya puso OTRO exp y otro nombre en su cama: cama reasignada normal (se archiva con su nota y entra el nuevo)", arc.length === 1 && arc[0] === "PEREZ RUIZ JUAN CARLOS" && upsertOf(calls).includes("3-101:88:LOPEZ SOTO MIGUEL ANGEL"), JSON.stringify({ arc, up: upsertOf(calls).slice(0, 2) }));
+  }
+  // (h) la hoja MUEVE (cortar/pegar) al paciente que el residente identificó en la app, aún como no identificado:
+  //     se mueve conservando su nombre (el PATCH no toca updated_by), la cama nueva no se upsertea y en la siguiente
+  //     corrida espera ahí; cuando la hoja escribe el nombre, sigue igual. Si la hoja lo mueve con OTRO nombre, las dos
+  //     camas esperan (ni se mueve, ni se archiva, ni entra el nuevo ocupante de la cama vieja sobre su fila).
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null };
+    const full = { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de JUAN" }] } };
+    const { sb, calls } = makeSandbox({ cur: [a1], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-105", "77", { nombre: "DESCONOCIDO", edad: 40 })]));
+    const ps = patches(calls), up = upsertOf(calls);
+    check("T19h la hoja mueve a 3-105 (aún DESCONOCIDO) al que la app identificó: se MUEVE con su nota conservando updated_by; 3-105 no se upsertea; sin archivo ni duplicado",
+      ps.length === 1 && ps[0] === 'a1:{"cama":"3-105"}' && !touched(calls) && !up.some((u) => u.startsWith("3-105:")) && up.length === 12, JSON.stringify({ ps, up: up.filter((u) => /3-10/.test(u)) }));
+    const a1m = { ...a1, cama: "3-105" };
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [a1m], full: { a1: { ...a1m, notes: [] } }, props: {} });
+    sb2.syncPatients_("svc", fill([row("3-105", "77", { nombre: "DESCONOCIDO", edad: 40 })]));
+    const log2 = c2.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/sync_log"));
+    check("T19h' en la cama nueva sigue esperando (aviso nombre_app_vs_hoja, marca ok@hold, sin upsert de 3-105)", patches(c2).length === 1 && patches(c2)[0] === 'a1:{"cama_hoja_prev":"ok@hold"}' && !touched(c2) && !upsertOf(c2).some((u) => u.startsWith("3-105:")) && !!log2 && JSON.stringify(log2.body).includes("3-105"), JSON.stringify(patches(c2)));
+    const { sb: sb3, calls: c3 } = makeSandbox({ cur: [{ ...a1m, cama_hoja_prev: "ok@hold" }], props: {} });
+    sb3.syncPatients_("svc", fill([row("3-105", "77", { nombre: "PEREZ LOPEZ JUAN", edad: 40 })]));
+    check("T19h'' la hoja escribe su nombre en 3-105: sigue igual y se upsertea", patches(c3).length === 0 && !touched(c3) && upsertOf(c3).includes("3-105:77:PEREZ LOPEZ JUAN"), JSON.stringify(upsertOf(c3).slice(0, 2)));
+    // otro nombre en la cama nueva y un ingreso nuevo en la vieja: esperan las dos camas
+    const { sb: sb4, calls: c4 } = makeSandbox({ cur: [a1], full, props: {} });
+    sb4.syncPatients_("svc", fill([row("3-105", "77", { nombre: "LOPEZ SOTO MIGUEL ANGEL", edad: 31 }), row("3-101", "88", { nombre: "GOMEZ RUIZ ANA", edad: 60 })]));
+    const up4 = upsertOf(c4), log4 = c4.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/sync_log"));
+    check("T19h''' la hoja tiene su exp en 3-105 con OTRO nombre y a otra persona en 3-101: ni se mueve ni se archiva; 3-101 y 3-105 esperan fuera del upsert (la fila con su nota no recibe a nadie) y el aviso nombra las dos camas",
+      patches(c4).length === 1 && patches(c4)[0] === 'a1:{"cama_hoja_prev":"ok@hold"}' && !touched(c4) && !up4.some((u) => u.startsWith("3-101:") || u.startsWith("3-105:")) && up4.length === 12 && !!log4 && JSON.stringify(log4.body).includes("3-101, 3-105"), JSON.stringify({ ps: patches(c4), up: up4.filter((u) => /3-10/.test(u)), log: log4 && log4.body }));
+  }
+  // (i) fila en espera que la hoja da de alta (la cama desaparece): con la marca ok@hold entra a la gracia y se retira
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: "ok@hold" };
+    const st = { cur: [a1], full: { a1: { ...a1, notes: [] } }, props: {} };
+    const { sb, calls } = makeSandbox(st);
+    sb.syncPatients_("svc", fill([]));
+    const since = JSON.parse(st.props.PL_MISSING_SINCE || "{}");
+    check("T19i fila en espera (marca ok@hold) cuya cama ya no está en la hoja: entra al periodo de gracia", !!since.a1 && !touched(calls), JSON.stringify(st.props));
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [] } }, props: missingOld(["a1"]) });
+    sb2.syncPatients_("svc", fill([]));
+    const arc = c2.filter((c) => c.u.startsWith("/rest/v1/archive")).map((c) => c.body.patient_data.nombre);
+    check("T19i' ...y tras la gracia se retira del censo (archivada con su nota)", arc.length === 1 && arc[0] === "PEREZ LOPEZ JUAN" && c2.some((c) => c.m === "DELETE" && c.u.includes("id=eq.a1")), JSON.stringify(arc));
+  }
+  // (j) exp corregido en la hoja en una fila que SIGUE como no identificado (el residente ya lo identificó en la app):
+  //     espera en vez de archivarse; cuando la hoja escribe su nombre, corrección de exp sobre la misma fila
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "26-1500", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null };
+    const full = { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de JUAN" }] } };
+    const { sb, calls } = makeSandbox({ cur: [a1], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "26-1050", { nombre: "DESCONOCIDO", edad: 40 })]));
+    const log = calls.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/sync_log"));
+    check("T19j exp corregido en la hoja con la fila aún DESCONOCIDO y la app ya con nombre: espera (sin archivo, solo la marca ok@hold, 3-101 fuera del upsert, aviso)", !touched(calls) && patches(calls).length === 1 && patches(calls)[0] === 'a1:{"cama_hoja_prev":"ok@hold"}' && !upsertOf(calls).some((u) => u.startsWith("3-101:")) && !!log && JSON.stringify(log.body).includes("nombre_app_vs_hoja"), JSON.stringify(patches(calls)));
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [{ ...a1, cama_hoja_prev: "ok@hold" }], full, props: {} });
+    sb2.syncPatients_("svc", fill([row("3-101", "26-1050", { nombre: "PEREZ LOPEZ JUAN", edad: 40 })]));
+    check("T19j' la hoja escribe su nombre: corrección de exp sobre la misma fila (la nota sigue), sin archivo", patches(c2).length === 1 && patches(c2)[0] === 'a1:{"exp":"26-1050","updated_by":"sheet-sync"}' && !touched(c2), JSON.stringify(patches(c2)));
+    const { sb: sb3, calls: c3 } = makeSandbox({ cur: [{ ...a1, cama_hoja_prev: "ok@hold" }], full, props: {} });
+    sb3.syncPatients_("svc", fill([row("3-101", "26-1050", { nombre: "GOMEZ RUIZ ANA", edad: 60 })]));
+    const arc3 = c3.filter((c) => c.u.startsWith("/rest/v1/archive")).map((c) => c.body.patient_data.nombre);
+    check("T19j'' la hoja escribe OTRO nombre con el exp nuevo: cama reasignada normal (se archiva con su nota, entra la nueva)", arc3.length === 1 && arc3[0] === "PEREZ LOPEZ JUAN" && upsertOf(c3).includes("3-101:26-1050:GOMEZ RUIZ ANA"), JSON.stringify(arc3));
+  }
+  // (l) fila escrita desde la app a la que la hoja le CORRIGIÓ el exp en su cama y el exp viejo quedó en otra cama (el
+  //     caso real de la 3-189): manda la corrección de exp; ni se mueve ni espera, aunque en la otra cama haya un no identificado
+  for (const other of ["TORRES NAVA RAUL", "DESCONOCIDO"]) {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null };
+    const { sb, calls } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota" }] } }, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "78", { nombre: "PEREZ LOPEZ JUAN", edad: 40 }), row("3-105", "77", { nombre: other, edad: 52 })]));
+    const ps = patches(calls), up = upsertOf(calls);
+    // (tras el PATCH del exp, el upsert de 3-101 cae sobre la misma fila a1 por cama: no es un duplicado)
+    check("T19l (app) exp corregido en su cama y el viejo en 3-105 (" + other + "): solo PATCH del exp sobre a1 (sin mover ni esperar), la hoja de 3-101 cae sobre a1 y 3-105 entra como ingreso nuevo",
+      ps.length === 1 && ps[0] === 'a1:{"exp":"78","updated_by":"sheet-sync"}' && !touched(calls) && up.includes("3-105:77:" + other) && up.includes("3-101:78:PEREZ LOPEZ JUAN"), JSON.stringify({ ps, up: up.filter((u) => /3-10/.test(u)) }));
+  }
+  // (m) appMove hacia una cama que en Supabase ocupa OTRO no identificado con otro exp (q), mientras la hoja ahí tiene
+  //     el exp de r: dos filas reclaman la misma fila de la hoja. Decide la fecha de ingreso; sin ella, esperan.
+  {
+    const mk = (ingR, ingQ, ingS, extraSheet) => {
+      const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null, ingreso: ingR };
+      const q1 = { id: "q1", cama: "3-105", exp: "99", nombre: "DESCONOCIDO", edad: "", updated_by: "sheet-sync", ingreso: ingQ };
+      const { sb, calls } = makeSandbox({ cur: [a1, q1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de JUAN" }] }, q1: { ...q1, notes: [] } }, props: {} });
+      sb.syncPatients_("svc", fill([row("3-105", "77", { nombre: "DESCONOCIDO", ingreso: ingS })].concat(extraSheet || [])));
+      return { ps: patches(calls), up: upsertOf(calls), arc: calls.filter((c) => c.u.startsWith("/rest/v1/archive")).map((c) => c.body.patient_data.nombre + "@" + c.body.patient_data.cama), log: calls.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/sync_log")) };
+    };
+    const r1 = mk("2026-10-10", "2026-10-05", "2026-10-10");
+    check("T19m la fecha de la fila de la hoja es la de r: q (3-105, otro exp) es cama reasignada (archivada) y r se mueve a 3-105 con su nombre y su nota", r1.arc.length === 1 && r1.arc[0] === "DESCONOCIDO@3-105" && r1.ps.length === 1 && r1.ps[0] === 'a1:{"cama":"3-105"}' && !r1.up.some((u) => u.startsWith("3-105:")), JSON.stringify(r1));
+    const r2 = mk("2026-10-10", "2026-10-05", "2026-10-05");
+    check("T19m' la fecha es la de q: q corrige su exp a 77 y r (ya no está en la hoja) entra a la gracia con la marca de censo, sin archivo", r2.arc.length === 0 && r2.ps.length === 2 && r2.ps.includes('q1:{"exp":"77","updated_by":"sheet-sync"}') && r2.ps.includes('a1:{"cama_hoja_prev":"ok@hold"}'), JSON.stringify(r2));
+    const r2b = mk("2026-10-10", "2026-10-05", "2026-10-05", [row("3-101", "88", { nombre: "GOMEZ RUIZ ANA", edad: 60 })]);
+    check("T19m'' la fecha es la de q y en la cama de r ya hay otra persona: q corrige su exp y r se archiva como cama reasignada (no se pisa su fila)", r2b.arc.length === 1 && r2b.arc[0] === "PEREZ LOPEZ JUAN@3-101" && r2b.ps.some((p) => p === 'q1:{"exp":"77","updated_by":"sheet-sync"}') && r2b.up.includes("3-101:88:GOMEZ RUIZ ANA"), JSON.stringify(r2b));
+    const r3 = mk(null, null, null);
+    check("T19m''' sin fecha que lo aclare: ni se mueve, ni se corrige el exp, ni se archiva; 3-105 espera fuera del upsert y hay aviso cama_en_disputa", r3.arc.length === 0 && r3.ps.length === 0 && !r3.up.some((u) => u.startsWith("3-105:")) && !!r3.log && JSON.stringify(r3.log.body).includes("cama_en_disputa"), JSON.stringify(r3));
+  }
+  // (n) fila movida desde la APP (cama_app_ts) a la que la hoja ya alcanzó en esa cama pero aún como no identificado: la
+  //     espera no impide dar por resuelto el movimiento (marca ok@ts); así un movimiento posterior de la hoja no se toma
+  //     como "primera divergencia" con la app ganando para siempre
+  {
+    const TS = "2026-10-18T10:00:00.000Z";
+    const a1 = { id: "a1", cama: "3-120", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_app_ts: TS, cama_hoja_prev: null };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-120", "77", { nombre: "DESCONOCIDO" })]));
+    check("T19n en espera en la cama que fijó la app y la hoja ya la alcanzó: el movimiento de la app queda resuelto (cama_app_ts null, marca ok@ts) y la cama sigue fuera del upsert", patches(calls).length === 1 && patches(calls)[0] === 'a1:{"cama_app_ts":null,"cama_hoja_prev":"ok@' + TS + '"}' && !touched(calls) && !upsertOf(calls).some((u) => u.startsWith("3-120:")), JSON.stringify(patches(calls)));
+    // ...y después la hoja lo mueve (aún DESCONOCIDO): se mueve con su nombre (appMove), no se fija la cama vieja
+    const a1r = { ...a1, cama_app_ts: null, cama_hoja_prev: "ok@" + TS };
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [a1r], props: {} });
+    sb2.syncPatients_("svc", fill([row("3-130", "77", { nombre: "DESCONOCIDO" })]));
+    check("T19n' ...y si luego la hoja lo mueve a 3-130 aún como DESCONOCIDO: se mueve con su nombre (no queda fijado en 3-120)", patches(c2).length === 1 && patches(c2)[0] === 'a1:{"cama":"3-130"}' && !touched(c2), JSON.stringify(patches(c2)));
+  }
+  // (o) exp corregido con el exp nuevo repetido en otra cama (ambiguo): igual espera, no se archiva
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "26-1500", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null };
+    const { sb, calls } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota" }] } }, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "26-1050", { nombre: "DESCONOCIDO" }), row("3-110", "26-1050", { nombre: "DIAZ MORA PEDRO", edad: 50 })]));
+    check("T19o exp corregido a un número que la hoja repite en otra cama, con la fila aún DESCONOCIDO: espera (sin archivo) y la otra cama entra normal", !touched(calls) && !upsertOf(calls).some((u) => u.startsWith("3-101:")) && upsertOf(calls).includes("3-110:26-1050:DIAZ MORA PEDRO"), JSON.stringify(upsertOf(calls).filter((u) => /3-1[01]/.test(u))));
+  }
+  // (p) dispositivo sin nombre de usuario (updated_by vacío): la fila también cuenta como escrita desde la app
+  {
+    const c = sameBed("TORRES NAVA RAUL", "DESCONOCIDO MASCULINO", { updated_by: "" });
+    check("T19p updated_by vacío (dispositivo sin nombre) con otro nombre en la hoja: también espera, no se archiva", !touched(c) && !upsertOf(c).some((u) => u.startsWith("3-101:")), JSON.stringify(patches(c)));
+  }
+  // (q) exp corregido en su cama con el nombre compatible pero no igual (inicial, error de dedo, apodo) y el exp viejo
+  //     en otra cama: a (d) no le basta y antes se archivaba con su nota; ahora espera hasta que la hoja escriba el nombre
+  for (const sheetName of ["PEREZ LOPEZ J", "PERES LOPEZ JUAN", "PEREZ LOPEZ JUNA"]) {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null };
+    const { sb, calls } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota" }] } }, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "78", { nombre: sheetName, edad: 40 }), row("3-105", "77", { nombre: "DESCONOCIDO" })]));
+    const up = upsertOf(calls), log = calls.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/sync_log"));
+    check("T19q (app) exp corregido en su cama con nombre compatible pero no igual (" + sheetName + ") y el viejo en 3-105: ni archivo ni movimiento; espera con aviso", !touched(calls) && patches(calls).length === 1 && patches(calls)[0] === 'a1:{"cama_hoja_prev":"ok@hold"}' && !up.some((u) => u.startsWith("3-101:")) && !!log && JSON.stringify(log.body).includes("nombre_app_vs_hoja"), JSON.stringify({ ps: patches(calls), up: up.filter((u) => /3-10/.test(u)) }));
+  }
+  // (r) la hoja reescribe SU fila (exp nuevo, aún DESCONOCIDO) conservando su fecha de ingreso y su exp viejo aparece en
+  //     otra cama con otro no identificado: la fecha dice que sigue en su cama → espera ahí, no se mueve
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null, ingreso: "2026-10-10" };
+    const { sb, calls } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota" }] } }, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "99", { nombre: "DESCONOCIDO", ingreso: "2026-10-10" }), row("3-105", "77", { nombre: "DESCONOCIDO", ingreso: "2026-10-18" })]));
+    const up = upsertOf(calls);
+    check("T19r su fecha sigue en su cama (fila reescrita con exp nuevo) y su exp viejo en 3-105 con otra fecha: no se mueve; 3-101 y 3-105 esperan", !touched(calls) && !patches(calls).some((p) => p.includes('"cama"')) && !up.some((u) => u.startsWith("3-101:") || u.startsWith("3-105:")), JSON.stringify({ ps: patches(calls), up: up.filter((u) => /3-10/.test(u)) }));
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [{ ...a1, cama_hoja_prev: "ok@hold" }], props: {} });
+    sb2.syncPatients_("svc", fill([row("3-101", "99", { nombre: "PEREZ LOPEZ JUAN", ingreso: "2026-10-10" }), row("3-105", "77", { nombre: "TORRES NAVA RAUL", ingreso: "2026-10-18" })]));
+    check("T19r' ...y cuando la hoja escribe los nombres: corrección de exp en su cama y 3-105 entra nuevo", patches(c2).some((p) => p === 'a1:{"exp":"99","updated_by":"sheet-sync"}') && !touched(c2) && upsertOf(c2).includes("3-105:77:TORRES NAVA RAUL"), JSON.stringify(patches(c2)));
+  }
+  // (s) en la disputa que gana q por fecha, r (ya fuera de la hoja) lleva la marca de censo para que la gracia termine
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null, ingreso: "2026-10-10" };
+    const q1 = { id: "q1", cama: "3-105", exp: "99", nombre: "DESCONOCIDO", edad: "", updated_by: "sheet-sync", ingreso: "2026-10-05" };
+    const { sb, calls } = makeSandbox({ cur: [a1, q1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-105", "77", { nombre: "DESCONOCIDO", ingreso: "2026-10-05" })]));
+    check("T19s disputa que gana q por fecha: r entra a la gracia con la marca ok@hold", patches(calls).includes('a1:{"cama_hoja_prev":"ok@hold"}') && patches(calls).includes('q1:{"exp":"77","updated_by":"sheet-sync"}') && !touched(calls), JSON.stringify(patches(calls)));
+    // corrida siguiente: q ya con exp 77 (ambiguo con r), r marcado, gracia vencida → r se retira
+    const a1m = { ...a1, cama_hoja_prev: "ok@hold" }, q1f = { ...q1, exp: "77" };
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [a1m, q1f], full: { a1: { ...a1m, notes: [] }, q1: { ...q1f, notes: [] } }, props: missingOld(["a1"]) });
+    sb2.syncPatients_("svc", fill([row("3-105", "77", { nombre: "DESCONOCIDO", ingreso: "2026-10-05" })]));
+    const arc2 = c2.filter((c) => c.u.startsWith("/rest/v1/archive")).map((c) => c.body.patient_data.nombre);
+    check("T19s' ...y tras la gracia r se retira (archivado con su nota) y q se queda", arc2.length === 1 && arc2[0] === "PEREZ LOPEZ JUAN" && c2.some((c) => c.m === "DELETE" && c.u.includes("id=eq.a1")), JSON.stringify(arc2));
+  }
+  // (t) appMove hacia una cama que otra fila escrita desde la app dejó en espera: no se intenta el PATCH (chocaría con
+  //     UNIQUE en cada corrida y dejaba la cama de origen fuera del upsert sin aviso); esperan las dos con aviso
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "residente", cama_hoja_prev: null };
+    const q1 = { id: "q1", cama: "3-105", exp: "99", nombre: "DIAZ MORA PEDRO", edad: "50", updated_by: "residente", cama_hoja_prev: null };
+    const { sb, calls } = makeSandbox({ cur: [a1, q1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-105", "77", { nombre: "DESCONOCIDO" }), row("3-101", "88", { nombre: "GOMEZ RUIZ ANA", edad: 60 })]));
+    const up = upsertOf(calls), logs = calls.filter((x) => x.m === "POST" && x.u.startsWith("/rest/v1/sync_log")).map((x) => JSON.stringify(x.body)).join(" ");
+    check("T19t appMove hacia la cama que q (app) dejó en espera: sin PATCH de cama, sin archivo; 3-101 y 3-105 fuera del upsert y aviso cama_en_disputa que nombra 3-101", !patches(calls).some((p) => p.includes('"cama"')) && !touched(calls) && !up.some((u) => u.startsWith("3-101:") || u.startsWith("3-105:")) && logs.includes("cama_en_disputa") && logs.includes("3-101, 3-105"), JSON.stringify({ ps: patches(calls), up: up.filter((u) => /3-10/.test(u)), logs }));
+  }
+  // (k) no identificado que se movió en la hoja mientras su cama se reescribe para alguien CON nombre que conserva su
+  //     fecha de ingreso: la fecha "rancia" no lo deja quieto (no puede ser corrección de exp con otro nombre) → EMPATE
+  for (const ingDest of ["2026-10-12", null]) {
+    const a1 = { id: "a1", cama: "3-150", exp: "26-1500", nombre: "DESCONOCIDO", edad: "", updated_by: "sheet-sync", ingreso: "2026-10-10" };
+    const { sb, calls } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota" }] } }, props: {} });
+    sb.syncPatients_("svc", fill([row("3-150", "26-1777", { nombre: "GOMEZ RUIZ ANA", edad: 60, ingreso: "2026-10-10" }), row("3-160", "26-1500", { nombre: "TORRES NAVA RAUL", edad: 52, ingreso: ingDest })]));
+    const up = upsertOf(calls), log = calls.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/sync_log"));
+    check("T19k DESCONOCIDO con su exp en 3-160 (nombre, ingreso " + ingDest + ") y en 3-150 otra persona con nombre que conserva SU fecha: no se archiva; empate (3-150 y 3-160 esperan, aviso)",
+      !touched(calls) && patches(calls).length === 0 && !up.some((u) => u.startsWith("3-150:") || u.startsWith("3-160:")) && !!log && JSON.stringify(log.body).includes("no_identificado_ambiguo"), JSON.stringify({ ps: patches(calls), up: up.filter((u) => /3-1[56]0/.test(u)) }));
+  }
+  // (b) apellidos con una A de más o de menos, o A/O: captura, no otra persona; los nombres de pila sí distinguen
+  const surn = [["JUAN PEREZ GARCI", "JUAN PEREZ GARCIA"], ["MEDIN LUIS", "MEDINA LUIS"], ["OCHO ANA", "OCHOA ANA"], ["SOTA JUAN", "SOTO JUAN"], ["ZAMORO ANA", "ZAMORA ANA"], ["PEREZ LUN ANA", "PEREZ LUNA ANA"]];
+  const lostSurn = surn.filter(([n1, n2]) => touched(sameBed(n1, n2)));
+  check("T19b apellido con A de más/menos o A/O (GARCI/GARCIA, SOTA/SOTO, OCHO/OCHOA): misma fila; y se mueve con esa corrección", lostSurn.length === 0 && moved("JUAN PEREZ GARCI", "JUAN PEREZ GARCIA"), JSON.stringify(lostSurn));
+  const sib = [["PEREZ LOPEZ JUAN", "PEREZ LOPEZ JUANA"], ["SOTO LUIS", "SOTO LUISA"], ["PEREZ LOPEZ MARIO", "PEREZ LOPEZ MARIA"], ["SOTO RUIZ PAULA", "SOTO RUIZ PAULO"], ["SOTO RUIZ JOSE", "SOTO RUIZ JOSEFA"],
+    ["SOTO RUIZ EUGENIO", "SOTO RUIZ EUGENIA"], ["SOTO RUIZ GREGORIO", "SOTO RUIZ GREGORIA"], ["SOTO RUIZ NICOLAS", "SOTO RUIZ NICOLASA"], ["SOTO RUIZ PAULINA", "SOTO RUIZ PAULINO"], ["SOTO RUIZ GERARDO", "SOTO RUIZ GERARDA"],
+    ["SOTO RUIZ IVAN", "SOTO RUIZ IVANA"], ["SOTO RUIZ FEDERICO", "SOTO RUIZ FEDERICA"]].filter(([n1, n2]) => !touched(sameBed(n1, n2)));
+  check("T19b' JUAN/JUANA, LUIS/LUISA, MARIO/MARIA, PAULA/PAULO, JOSE/JOSEFA y los de 7+ letras (EUGENIO/EUGENIA, GREGORIO/GREGORIA, NICOLAS/NICOLASA…) siguen siendo otra persona (cama reasignada)", sib.length === 0, JSON.stringify(sib));
+  // Un apellido largo con A/O al final SÍ se trata como otra persona (regla general de 7+ letras: antes era así en main)
+  // pero los cortos (SOTA/SOTO, OCHO/OCHOA) y los nombres de pila de la lista no se confunden con captura.
+  // (b'') palabras cortas de 3 letras que son nombres de pila distintos: otra persona (hermanos con los mismos apellidos)
+  const sh3other = [["GARCIA LOPEZ LUZ", "GARCIA LOPEZ LUIS"], ["GARCIA LOPEZ LUZ", "GARCIA LOPEZ LIZ"], ["GARCIA LOPEZ EVA", "GARCIA LOPEZ IVA"], ["GARCIA LOPEZ IAN", "GARCIA LOPEZ IVAN"],
+    ["GARCIA LOPEZ ELI", "GARCIA LOPEZ ELIA"], ["GARCIA LOPEZ NOE", "GARCIA LOPEZ NOEL"], ["GARCIA LOPEZ LIA", "GARCIA LOPEZ LILA"], ["GARCIA LOPEZ ANA", "GARCIA LOPEZ ADA"], ["GARCIA LOPEZ ANA", "GARCIA LOPEZ LANA"]].filter(([n1, n2]) => !touched(sameBed(n1, n2)));
+  check("T19b'' LUZ/LUIS, LUZ/LIZ, EVA/IVA, IAN/IVAN, ELI/ELIA, NOE/NOEL, LIA/LILA, ANA/ADA, ANA/LANA: nombres de pila distintos → otra persona", sh3other.length === 0, JSON.stringify(sh3other));
+  // (b''') una N suelta vale por el apellido que falta, pero las palabras reales sí tienen que encajar
+  const nWild = [["PEREZ N JUAN", "PEREZ GOMEZ JUAN"], ["NAVA N JUAN", "NAVA LOPEZ JUAN"], ["JUAN N", "JUAN PEREZ LOPEZ"], ["N N", "PEREZ GOMEZ JUAN"]].filter(([n1, n2]) => touched(sameBed(n1, n2)));
+  const nReal = [["PEREZ N JUAN", "GOMEZ RUIZ ANA"], ["NAVA N JUAN", "SOTO VEGA LUIS"], ["PEREZ X JUAN", "GOMEZ RUIZ ANA"]].filter(([n1, n2]) => !touched(sameBed(n1, n2)));
+  check("T19b''' PEREZ N JUAN → PEREZ GOMEZ JUAN y JUAN N → JUAN PEREZ LOPEZ: misma fila; PEREZ N JUAN → GOMEZ RUIZ ANA: otra persona (la N no vuelve comodín al nombre)", nWild.length === 0 && nReal.length === 0, JSON.stringify({ nWild, nReal }));
+  // (c) apodos
+  const nick = [["LUPE PEREZ SOTO", "GUADALUPE PEREZ SOTO"], ["PACO LOPEZ RUIZ", "FRANCISCO LOPEZ RUIZ"], ["PEPE RUIZ MORA", "JOSE RUIZ MORA"], ["CHUY GARCIA VEGA", "JESUS GARCIA VEGA"]].filter(([n1, n2]) => touched(sameBed(n1, n2)));
+  check("T19c apodo → nombre completo (LUPE, PACO, PEPE, CHUY): misma fila; y se mueve", nick.length === 0 && moved("LUPE PEREZ SOTO", "GUADALUPE PEREZ SOTO"), JSON.stringify(nick));
+  // (d) más formas de no identificado
+  const ph = [["S/N", "PEREZ JUAN"], ["SIN IDENTIFICAR", "PEREZ JUAN"], ["DECONOCIDO", "PEREZ JUAN"], ["NO IDENTIF.", "PEREZ JUAN"], ["JUAN N", "JUAN PEREZ LOPEZ"], ["N/I", "PEREZ ANA"], ["ANONIMO", "PEREZ ANA"], ["IGNORADO", "PEREZ ANA"]].filter(([n1, n2]) => touched(sameBed(n1, n2)));
+  check("T19d no identificado escrito de otras formas (S/N, SIN IDENTIFICAR, DECONOCIDO, NO IDENTIF., JUAN N, N/I, ANONIMO): al identificarlo sigue su fila", ph.length === 0, JSON.stringify(ph));
+  // (e) palabras de 3 letras con un error, si todo lo demás es igual
+  const sh3 = [["GARCIA LOPEZ AMA", "GARCIA LOPEZ ANA"], ["PEREZ DIA JUAN", "PEREZ DIAZ JUAN"], ["PEREZ LOPEZ LUI", "PEREZ LOPEZ LUIS"]].filter(([n1, n2]) => touched(sameBed(n1, n2)));
+  check("T19e palabra de 3 letras con un error (AMA/ANA, DIA/DIAZ, LUI/LUIS) y el resto igual: misma fila", sh3.length === 0, JSON.stringify(sh3));
+  // (f) no identificado que se mueve mientras OTRO no identificado (otro exp) toma su cama: la foto admite dos lecturas
+  const tie = (ingA1, ingOwn, ingDest) => {
+    const a1 = { id: "a1", cama: "3-150", exp: "26-1500", nombre: "DESCONOCIDO", edad: "", updated_by: "sheet-sync", ingreso: ingA1 };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-150", "26-1777", { nombre: "DESCONOCIDO", ingreso: ingOwn }), row("3-160", "26-1500", { nombre: "TORRES NAVA RAUL", edad: 52, ingreso: ingDest })]));
+    return { ps: patches(calls), up: upsertOf(calls), touched: touched(calls), log: calls.find((c) => c.m === "POST" && c.u.startsWith("/rest/v1/sync_log")) };
+  };
+  const t0 = tie(null, null, null);
+  check("T19f sin fecha de ingreso que lo aclare: EMPATE → ni se mueve, ni se le cambia el exp, ni se archiva; las dos camas quedan fuera del upsert y hay aviso en sync_log",
+    t0.ps.length === 0 && !t0.touched && !t0.up.some((u) => u.startsWith("3-150:") || u.startsWith("3-160:")) && t0.up.length === 12 && !!t0.log && JSON.stringify(t0.log.body).includes("no_identificado_ambiguo"), JSON.stringify({ ps: t0.ps, up: t0.up.slice(0, 3), log: !!t0.log }));
+  const t1 = tie("2026-10-10", "2026-10-18", "2026-10-10");
+  check("T19f' su fecha de ingreso viajó a 3-160: se MUEVE con su nota (identificado y cambiado de cama) y 3-150 entra como ingreso nuevo", t1.ps.length === 1 && t1.ps[0].startsWith("a1:") && t1.ps[0].includes('"cama":"3-160"') && !t1.touched && t1.up.includes("3-150:26-1777:DESCONOCIDO"), JSON.stringify(t1.ps));
+  const t2 = tie("2026-10-10", "2026-10-10", "2026-10-18");
+  check("T19f'' su fecha de ingreso sigue en 3-150: le corrigieron el exp (se queda) y 3-160 entra nuevo", t2.ps.length === 1 && t2.ps[0] === 'a1:{"exp":"26-1777","updated_by":"sheet-sync"}' && !t2.touched && t2.up.includes("3-160:26-1500:TORRES NAVA RAUL"), JSON.stringify(t2.ps));
+  // (f''') la fecha de ingreso de SU cama solo cuenta si el nombre de esa cama puede ser él: mientras se reescribe la fila
+  //       para otra persona la hoja conserva la fecha anterior (como la edad) y con ella se le archivaba en vez de moverlo.
+  for (const dest of [["PEREZ LOPEZ JUAN CARLOS", "2026-10-12"], ["PEREZ LOPEZ JUAN CARLOS", null], ["PEREZ LOPEZ J", "2026-10-12"], ["DIAZ LOPEZ JUAN", null]]) {
+    const a1 = { id: "a1", cama: "3-189", exp: "X", nombre: dest[0] === "DIAZ LOPEZ JUAN" ? "DIAS LOPEZ JUAN" : "PEREZ LOPEZ JUAN", edad: "40", ingreso: "2026-10-10", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: dest[0], edad: 40, ingreso: dest[1] }), row("3-189", "Y", { nombre: "GOMEZ RUIZ ANA", edad: 60, ingreso: "2026-10-10" })]));
+    const ps = patches(calls);
+    check("T19f''' movido a 3-154 con el nombre completado (" + dest[0] + ", ingreso " + dest[1] + ") y en 3-189 otra persona cuya fila aún trae SU fecha de ingreso: se MUEVE con su nota, no se archiva", ps.length === 1 && ps[0].startsWith("a1:") && ps[0].includes('"cama":"3-154"') && !touched(calls), JSON.stringify(ps));
+  }
+  // (g) caso real con nombres PARECIDOS en la otra cama: su nombre exacto sigue en su cama → solo exp
+  for (const other of ["PEREZ LOPEZ JUAN CARLOS", "FERNANDEZ LOPEZ JUAN", "PEREZ LOPEZ J"]) {
+    const b9 = { id: "b9", cama: "3-189", exp: "X", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [b9], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: other, edad: 40 }), row("3-189", "Y", { nombre: "PEREZ LOPEZ JUAN", edad: 40 })]));
+    const ps = patches(calls);
+    check("T19g exp corregido en 3-189 y el viejo en 3-154 con nombre parecido (" + other + "): b9 se queda y solo corrige su exp", ps.length === 1 && ps[0] === 'b9:{"exp":"Y","updated_by":"sheet-sync"}' && !touched(calls), JSON.stringify(ps));
+  }
+  // ...y al revés: su nombre exacto está en la cama destino y en su cama hay otro con otro exp → se mueve
+  {
+    const b9 = { id: "b9", cama: "3-189", exp: "X", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [b9], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: "PEREZ LOPEZ JUAN", edad: 40 }), row("3-189", "Y", { nombre: "GOMEZ RUIZ ANA", edad: 60 })]));
+    const ps = patches(calls);
+    check("T19g' su nombre exacto está en 3-154 y en 3-189 ya hay otra persona: se MUEVE a 3-154", ps.length === 1 && ps[0].startsWith("b9:") && ps[0].includes('"cama":"3-154"') && !touched(calls), JSON.stringify(ps));
   }
 }
 

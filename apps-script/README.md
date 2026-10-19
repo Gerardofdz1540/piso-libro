@@ -105,26 +105,53 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
   dos personas distintas entra como paciente aparte en vez de juntarlas.
 - **Expediente copiado a otra persona** (18 oct 2026): con expediente único sigue mandando el
   expediente, pero una fila no se mueve ni se queda en su cama si el nombre **prueba** que es otra
-  persona (`namesCompatible_`). Caso real: a la 3-189 le corrigieron el exp y el viejo quedó solo en la
+  persona (`namesCompatible_`), con una excepción: las filas recién escritas desde la app (último
+  punto de esta lista). Caso real: a la 3-189 le corrigieron el exp y el viejo quedó solo en la
   3-154, de otra persona; antes la fila de la 3-189 se movía a la 3-154 con su nota y recibía el otro
   nombre. Ahora a la 3-189 solo se le corrige el exp y la 3-154 entra como paciente nuevo. Si en la
   misma cama aparece otra persona con el mismo exp (también al reescribir la fila celda por celda), la
-  cama cuenta como reasignada (archivo + fila nueva). La regla:
-  - **Misma persona** si **todas** las palabras de uno de los dos nombres encajan, una a una, en el
-    otro: iguales, mismo sonido (`DIAS`/`DIAZ`, `BAEZ`/`VAES`), error de dedo o letras cruzadas
-    (`JUAM`, `JUNA`, `GRACIA`; dos letras en palabras de 7+), abreviatura (`HDZ`, `FCO`, `ALEJ`),
-    inicial (`J`, `L`), palabras juntas o separadas (`DELACRUZ`/`DE LA CRUZ`, `MONTESDEOCA`,
-    `MARIAJOSE`). Así siguen en su fila, con su nota, las correcciones y los nombres que se completan,
-    en la hoja o en la app.
-  - **Otra persona** si a **los dos** nombres les sobra alguna palabra: hermanos (`JUAN`/`MARIA`,
-    `JUAN`/`JUANA`, `LUIS`/`LUISA`), mismos nombres de pila con otros apellidos, o un solo apellido en
-    común (el caso real).
-  - La **edad no cuenta**: mientras se reescribe una fila, la hoja conserva la edad del ocupante
-    anterior.
-  - **No identificados** (`DESCONOCIDO`, `FEMENINA`, `N.N.`, `RN`, `HIJO DE…`, `SIN DATOS`, `XX`): el
-    que se identifica sigue siendo él; alguien con nombre que pasa a no identificado es otro ingreso.
-    Un no identificado no se mueve a la cama de alguien con nombre si su propia cama sigue con un no
-    identificado y otro exp (el caso real con un `DESCONOCIDO`).
+  cama cuenta como reasignada (archivo + fila nueva). Las reglas:
+  - **Expediente único, misma cama y mismo exp: misma persona**, salvo que el nombre **pruebe** que es
+    otra. Es la misma si **todas** las palabras de uno de los dos nombres encajan, una a una, en el
+    otro: iguales, mismo sonido (`DIAS`/`DIAZ`), error de dedo, abreviatura (`HDZ`, `FCO`), inicial
+    (`J`), apodos → nombre completo (`LUPE`, `PACO`, `PEPE`, `CHUY`, `MA`), apellidos con una `A` de
+    más o de menos o `A`/`O` cambiada (`GARCI`/`GARCIA`, `SOTA`/`SOTO`, `OCHO`/`OCHOA`), palabras
+    juntas o separadas (`DELACRUZ`/`DE LA CRUZ`). Así siguen en su fila, con su nota, las correcciones
+    y los nombres que se completan, en la hoja o en la app.
+  - **Otra persona** si a **los dos** nombres les sobra alguna palabra (hermanos, exp copiado a otro
+    ingreso). Masculino/femenino del mismo nombre de pila (`JUAN`/`JUANA`, `LUIS`/`LUISA`,
+    `MARIO`/`MARIA`, `EUGENIO`/`EUGENIA`…) son dos personas.
+  - Una palabra corta de **3 letras con un error** (`AMA`/`ANA`, `DIA`/`DIAZ`, `LUI`/`LUIS`) cuenta
+    como la misma solo si lo demás es idéntico y no son dos nombres de pila distintos (`LUZ`/`LUIS`,
+    `EVA`/`IVA`, `NOE`/`NOEL` no). Una `N` o `X` sueltas (`PEREZ N JUAN`) valen por el apellido que
+    falte.
+  - La **edad no cuenta** para decidir si es la misma persona: mientras se reescribe una fila, la
+    hoja conserva la edad del ocupante anterior. La **fecha de ingreso sí cuenta**, pero solo para
+    decidir si la fila se queda o se mueve (desempate de abajo).
+  - **No identificados** (`DESCONOCIDO` y sus errores de dedo, `FEMENINA`/`MASCULINO`, `N.N.`, `S/N`,
+    `RN`, `HIJO DE…`, `SIN IDENTIFICAR`, `ANÓNIMO`): el que se identifica sigue siendo él (misma fila,
+    misma nota); alguien con nombre que pasa a no identificado es **otro** ingreso.
+  - **Desempate** cuando además su exp aparece en otra cama y en su cama hay otro exp, en este orden:
+    su nombre exacto en su cama → se queda (exp corregido); su nombre exacto en el destino → se mueve;
+    la fecha de ingreso (la hoja la copia con el paciente) → donde esté la suya, y la de su cama solo
+    cuenta si el nombre de esa cama es compatible con el suyo; si nada lo aclara y los dos son no
+    identificados → **EMPATE**: las dos camas quedan fuera del upsert y `sync_log` recibe el aviso
+    `no_identificado_ambiguo` hasta que la hoja lo aclare.
+  - **Fila escrita por la app hace un momento** (`updated_by` ≠ `sheet-sync`) cuyo nombre en la hoja
+    **no** es compatible: no se adivina (pudo ser que el residente identificó o corrigió el nombre y
+    la hoja va atrasada, o que la hoja puso un ingreso nuevo encima con el exp copiado). La cama no se
+    renombra ni se archiva, queda fuera del upsert y `sync_log` recibe el aviso `nombre_app_vs_hoja`
+    hasta que la hoja coincida. Mientras espera, la fila lleva la marca `cama_hoja_prev = ok@hold`
+    (paciente del censo): si la hoja lo da de alta, se retira con la gracia normal. Si la hoja lo
+    **mueve** de cama aún como no identificado, se mueve con su nombre y sigue esperando en la cama
+    nueva; si lo mueve con otro nombre, esperan las dos camas. Si la hoja le **cambia el exp** y la fila
+    sigue como no identificado, o trae un nombre compatible pero no igual (inicial, error de dedo,
+    apodo), también espera (nada prueba que sea otro ingreso); en cuanto la hoja escribe el nombre:
+    igual → corrección de exp, otro → cama reasignada normal. Si la hoja lo
+    tiene a él en su cama con un exp nuevo y el viejo quedó en otra cama, manda la corrección de exp
+    (no se mueve ni espera). Si al moverse su cama destino la ocupa en Supabase otro no identificado
+    con otro exp, la fecha de ingreso decide quién es el de la hoja; sin fecha, esperan las dos camas
+    con el aviso `cama_en_disputa`.
 
   La app usa una copia exacta de la regla (`_plNamesCompatible`; la prueba `app_expdup` X20 compara las
   dos). La app la aplica antes de re-enlazar una tarjeta a otra fila con su exp y cama, y antes de dar

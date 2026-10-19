@@ -1,18 +1,68 @@
-# Pruebas headless de la app (Playwright + Chromium)
+# Pruebas headless de la app (Playwright: Chromium, y WebKit para las del iPad)
 
 Pruebas de extremo a extremo de `index.html` sin Supabase real: se intercepta `/rest/v1/*`
-con respuestas simuladas y se carga la app en Chromium headless (viewport de iPad en
-`app_ipad.js`). Cubren lo que más duele si se rompe: que no se pierda lo escrito, que los
-guardados sean parciales (no pisan a otros dispositivos), labs/WinLab, importación de censo,
-No olvidar/procedimientos sin red y atajos.
+con respuestas simuladas y se carga la app en un navegador headless (Chromium por defecto;
+viewport de iPad en `app_ipad.js`). Cubren lo que más duele si se rompe: que no se pierda lo
+escrito, que los guardados sean parciales (no pisan a otros dispositivos), labs/WinLab,
+importación de censo, No olvidar/procedimientos sin red y atajos.
 
 ```bash
 cd tests/headless
-npm i -g playwright && npx playwright install chromium   # una sola vez
-bash run_all.sh ../..                 # todas las suites
-bash run_all.sh ../.. app_sync app_ipad   # solo algunas
-node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
+npm ci && npx playwright install chromium   # una sola vez; Playwright fijado en package.json (1.56.1)
+npm run all                            # todas las suites (= bash run_all.sh ../..)
+npm run suite -- app_sync app_ipad     # solo algunas
+npm run webkit                         # las suites del iPad en WebKit, el motor de Safari (ver abajo)
+node app_sync.js                       # una suite suelta, con el repo servido en 127.0.0.1:8771 (ver Puertos)
+node syncheck.js ../../index.html      # sintaxis de los 7 <script> inline
 ```
+
+`package.json` fija la versión exacta de Playwright (`devDependencies` + `package-lock.json`): la
+misma en cada máquina y en CI, sin `npm i -g playwright` que cambia de versión sola. Las suites hacen
+`require('playwright')` y Node lo resuelve desde `tests/headless/node_modules` (lo crea `npm ci`); un
+Playwright instalado global **no** lo encuentran por sí solas, porque Node no busca en la carpeta
+global de npm. Si solo tienes la versión global, exporta `NODE_PATH=$(npm root -g)` antes de correrlas.
+
+## Puertos
+
+`run_all.sh` ya no usa puertos fijos ni mata procesos (`fuser -k`): en cada corrida pide al sistema
+tres puertos libres, sirve el directorio indicado en los tres y se los pasa a las suites por variables
+de entorno, así dos baterías (o la batería y un servidor tuyo) conviven en la misma máquina:
+
+| Variable | Quién la usa | Si no está definida |
+|---|---|---|
+| `PL_BASE_URL` (= `http://127.0.0.1:$PL_PORT_C`) | todas las suites `app_*` | `http://127.0.0.1:8771` |
+| `PL_BASE_URL_A` (= `http://127.0.0.1:$PL_PORT_A`) | `mock.js` | `http://127.0.0.1:8766` |
+| `PL_BASE_URL_B` (= `http://127.0.0.1:$PL_PORT_B`) | `noCdn.js` | `http://127.0.0.1:8767` |
+
+Una suite suelta (`node app_sync.js`) funciona igual que antes: sirve el repo en su puerto de siempre
+(`python3 -m http.server 8771 --bind 127.0.0.1` desde la raíz) o apunta `PL_BASE_URL` a otro
+servidor. `app_cxocr.js` y `app_pencil.js` no usan puerto (sirven el repo desde `page.route`).
+`mock.js` y `noCdn.js` nacieron con puertos propios aunque sirvan el mismo directorio (no hay una razón
+técnica documentada); se conservan tres puertos por si algún día dos suites necesitan servirse con
+configuraciones distintas.
+
+## Motor: Chromium o WebKit (Safari)
+
+Las suites lanzan el navegador con `_browser.js`, que lee `BROWSER` (`chromium` por defecto, `webkit`
+o `firefox`). «iPad Pro 11» en Chromium solo simula tamaño, touch y UA; el motor de Safari es WebKit,
+así que las suites del iPad (`app_ipad`, `app_pen`, `app_pencil`, `app_offline`, `app_cajas`) conviene
+correrlas también ahí:
+
+```bash
+npx playwright install --with-deps webkit   # una sola vez (en Linux instala también sus librerías del sistema)
+npm run webkit                              # = BROWSER=webkit bash run_all.sh ../.. app_ipad app_pen app_pencil app_offline app_cajas
+BROWSER=webkit node app_cajas.js            # una suite suelta
+```
+
+Ni WebKit ni Chromium sustituyen la prueba en un iPad real: el Apple Pencil y Scribble no se pueden
+simular.
+
+## En CI
+
+`.github/workflows/ci.yml` corre en cada pull request (y antes de publicar la app) toda la batería en
+Chromium (`npm run all`) con la versión de Playwright fijada aquí (`npm ci` en `tests/headless`), y
+las suites del iPad en WebKit (`npm run webkit`) como aviso: aparecen en el PR pero no lo bloquean
+hasta que pasen en WebKit. Un PR con una suite de Chromium en rojo no se fusiona.
 
 | Suite | Qué cubre |
 |---|---|
@@ -40,5 +90,6 @@ node syncheck.js ../../index.html     # sintaxis de los 7 <script> inline
 | `app_ind.js` | Indicaciones automáticas desde el Google Doc (`indicaciones_doc`): parseo, cruce cama+nombre, aviso por nombre distinto, Realtime, 🔄 |
 | `app_nota.js` | Cultivos WinLab (formatos reales: POSITIVO/NO DESARROLLO/NEGATIVO A n DÍAS), novedades automáticas con fecha en la entrega de guardia (labs alterados, RIS, cultivos; idempotente), nota de evolución completa, paciente que reaparece (nota restaurada antes de mostrar la tarjeta + labs WinLab sin ventana), vista de cultivos acotada |
 
-`run_all.sh` levanta servidores HTTP locales (puertos 8766/8767/8771) sobre el directorio
-indicado y deja el log de cada suite en `$TMPDIR/suite_<nombre>.log`.
+`run_all.sh` levanta servidores HTTP locales (tres puertos libres, ver Puertos) sobre el directorio
+indicado, deja el log de cada suite en `$TMPDIR/suite_<nombre>.log` y apaga los servidores al
+terminar o si se interrumpe.

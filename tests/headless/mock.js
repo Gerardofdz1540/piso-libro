@@ -1,4 +1,5 @@
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL_A || 'http://127.0.0.1:8766';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -25,7 +26,7 @@ const MOCK = `(() => {
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
 (async()=>{
-  const browser=await chromium.launch(); const page=await browser.newPage();
+  const browser=await launch(); const page=await browser.newPage();
   const errors=[]; page.on('pageerror',e=>errors.push(String((e&&e.stack)||e).slice(0,300)));
   const rest=[]; page.on('request',r=>{ if(r.url().includes('/rest/v1/')) rest.push({url:r.url().slice(0,110), auth:r.headers()['authorization'], apikey:(r.headers()['apikey']||'').slice(0,10)}); });
   await page.route('**/vendor/supabase*', r=>r.abort());
@@ -38,7 +39,7 @@ const MOCK = `(() => {
   const ov=()=>page.evaluate(()=>{const o=document.getElementById('login-overlay');return o?getComputedStyle(o).display:'MISSING';});
 
   // ── Phase 1: no session ──
-  await page.goto('http://127.0.0.1:8766/index.html',{waitUntil:'load',timeout:90000});
+  await page.goto(BASE_URL + '/index.html',{waitUntil:'load',timeout:90000});
   await page.waitForTimeout(3000);
   check('P1 overlay visible without session', (await ov())==='flex', await ov());
   check('P1 no REST calls before login', rest.length===0, 'rest='+rest.length);

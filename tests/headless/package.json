@@ -1,0 +1,17 @@
+{
+  "name": "piso-libro-headless",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pruebas headless de index.html con Playwright (Chromium por defecto; BROWSER=webkit para el motor de Safari).",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "all": "bash run_all.sh ../..",
+    "webkit": "BROWSER=webkit bash run_all.sh ../.. app_ipad app_pen app_pencil app_offline app_cajas",
+    "suite": "bash run_all.sh ../.."
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

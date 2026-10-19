@@ -1,4 +1,5 @@
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const fs = require('fs'); const path = require('path');
 const FIX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture_ego_bh.json'), 'utf8'));
 const MOCK = `(() => {
@@ -22,7 +23,7 @@ const mkReport = (hb) => ({ __cells: ['', '', '', `${dd}/${mm}/${yyyy} 06:10`, `
   valores: FIX.valores.map(v => v.estudio === 'HEMOGLOBINA' ? { ...v, valor: hb } : v) });
 const wlRow = (hb, scrapedAt) => ({ exp: '26-05099', paciente: 'PEREZ LOPEZ JUAN', fecha: todayLocal, scraped_at: scrapedAt, data: { headers: [], reportes: [mkReport(hb)] } });
 (async()=>{
-  const browser=await chromium.launch(); const page=await browser.newPage();
+  const browser=await launch(); const page=await browser.newPage();
   const errors=[]; page.on('pageerror',e=>errors.push(String((e&&e.stack)||e).slice(0,300)));
   const calls=[];
   let wlRows = [wlRow('7.70', '2026-01-01T05:00:00+00:00')];
@@ -45,7 +46,7 @@ const wlRow = (hb, scrapedAt) => ({ exp: '26-05099', paciente: 'PEREZ LOPEZ JUAN
   wlRows[0].scraped_at = new Date(Date.now() - 3600e3).toISOString();
   await page.addInitScript(MOCK);
   let pass=0, fail=0; const check=(n,c,x)=>{ if(c){pass++;console.log('PASS '+n);} else {fail++;console.log('FAIL '+n+(x?' :: '+x:''));} };
-  await page.goto('http://127.0.0.1:8771/index.html',{waitUntil:'load',timeout:90000});
+  await page.goto(BASE_URL + '/index.html',{waitUntil:'load',timeout:90000});
   await page.waitForTimeout(6000);
   check('init: sin errores no capturados', errors.length===0, errors.join(' | '));
 

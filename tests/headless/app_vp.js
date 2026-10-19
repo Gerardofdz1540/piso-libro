@@ -1,7 +1,8 @@
 // Vasopresores (norepinefrina / vasopresina), ventilador ampliado (peso predicho, VT mL/kg, presión de
 // distensión) y nota de evolución con IA en un clic (formato del servicio, sin inventar, pasar a la página).
 //   node tests/headless/app_vp.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -26,7 +27,7 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**RUIZ SOTO MATEO |
   + '- Paciente masculino en el postoperatorio mediato de *laparotomía exploradora* con choque séptico de origen abdominal en resolución, con requerimiento vasopresor de norepinefrina a 11.4 mcg/kg/h (0.19 mcg/kg/min) y vasopresina a 0.03 U/min; se continúa el retiro progresivo del vasopresor con meta de presión arterial media mayor o igual a 65 mmHg y uresis mayor o igual a 0.5 mL/kg/h guiado por lactato y llenado capilar conforme a Surviving Sepsis Campaign 2021. Bajo ventilación mecánica protectora con volumen tidal de 6.4 mL/kg de peso predicho y presión de distensión de 12 cmH2O (ARDSNet), se valorará prueba de ventilación espontánea al retirar el vasopresor. Diabetes mellitus tipo 2 con meta de glucemia de 140 a 180 mg/dL (ADA 2025). Se mantiene tromboprofilaxis con enoxaparina, profilaxis de úlcera por estrés con inhibidor de bomba de protones, analgesia multimodal y curación diaria de herida quirúrgica. Nutrición enteral trófica al estabilizar el requerimiento vasopresor conforme a ESPEN 2023. Se solicitan biometría hemática, química sanguínea, electrolitos séricos, procalcitonina y gasometría arterial con lactato, y TAC de control. Estado de salud delicado, con pronóstico reservado a evolución.\n\n'
   + 'DR GARNELO MBCG | DR FERNÁNDEZ R2CG\n```';
 (async () => {
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
+  const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const calls = []; const aiBodies = []; let aiMode = 'ok';
   await page.route('**/vendor/supabase*', r => r.abort());
@@ -52,7 +53,7 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**RUIZ SOTO MATEO |
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
   const near = (a, b, d) => typeof a === 'number' && Math.abs(a - b) < Math.pow(10, -d) * 0.51;
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
 
   // ── V1: fórmulas puras ──

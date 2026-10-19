@@ -1,4 +1,5 @@
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -37,12 +38,12 @@ async function mkPage(browser, calls, opts){
   });
   await page.addInitScript(MOCK);
   if (opts && opts.seed) await page.addInitScript(opts.seed);
-  await page.goto('http://127.0.0.1:8771/index.html',{waitUntil:'load',timeout:90000});
+  await page.goto(BASE_URL + '/index.html',{waitUntil:'load',timeout:90000});
   await page.waitForTimeout(5000);
   return { page, errors };
 }
 (async()=>{
-  const browser=await chromium.launch();
+  const browser=await launch();
   let pass=0, fail=0; const check=(n,c,x)=>{ if(c){pass++;console.log('PASS '+n);} else {fail++;console.log('FAIL '+n+(x?' :: '+x:''));} };
   const calls=[];
   const { page, errors } = await mkPage(browser, calls);
