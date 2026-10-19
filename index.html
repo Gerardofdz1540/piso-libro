@@ -896,6 +896,19 @@
     .field-ink-btn:hover, .field-ink-btn:focus { opacity: 1; background: rgba(139, 92, 246, 0.25); }
     /* Hide on very small screens unless touch device */
     @media (hover: none) and (pointer: coarse) { .field-ink-btn { opacity: 1; } }
+    /* 🕘 Historial por caja (oct 2026): versiones anteriores de una caja, restaurables desde la tarjeta */
+    .field-hist-btn { background: rgba(100, 116, 139, 0.12); border: 1px solid rgba(100, 116, 139, 0.30); color: #475569; cursor: pointer; padding: 1px 6px; border-radius: 4px; font-size: 11px; line-height: 1; opacity: 0.55; flex-shrink: 0; }
+    .field-hist-btn:hover, .field-hist-btn:focus { opacity: 1; background: rgba(100, 116, 139, 0.25); }
+    @media (hover: none) and (pointer: coarse) { .field-hist-btn { opacity: 1; } }
+    /* ✍️ aviso: Garabatear apagado en el iPad */
+    /* abajo (no tapa la barra fija ni la tira de camas) y por debajo de los modales (9998) */
+    #scribble-hint { display: none; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9500; max-width: 680px; width: calc(100% - 24px); box-sizing: border-box; background: #fffbeb; color: #78350f; border: 1px solid #fcd34d; border-radius: 12px; padding: 10px 14px; gap: 12px; align-items: center; font-size: 13px; line-height: 1.4; box-shadow: 0 6px 24px rgba(0,0,0,.18); font-family: var(--font); }
+    #scribble-hint button { background: #b45309; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .hist-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px; margin-top: 6px; background: #fff; }
+    .hist-cur { background: #f0fdf4; border-color: #86efac; }
+    .hist-h { font-size: 11px; color: #475569; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .hist-pre { white-space: pre-wrap; word-break: break-word; font-family: var(--font); font-size: 12px; margin: 4px 0 0; max-height: 150px; overflow: auto; color: #1e293b; }
+    body.dark .hist-item { background: #0f2238; border-color: #27415f; } body.dark .hist-cur { background: #0f2e22; } body.dark .hist-pre { color: #e2e8f0; }
 
     .field-ta {
       width: 100%;
@@ -3055,6 +3068,13 @@
     /* Entrega + Recibo lado a lado (apilados en pantallas angostas) */
     .fc-guardia { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
     @media (max-width: 640px) { .fc-guardia { grid-template-columns: 1fr; } }
+    .fc-guardia-title { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 2px 0; border-top: 2px solid #e2e8f0; }
+    .fc-guardia-name { font-size: 13px; font-weight: 800; color: #334155; }
+    .fc-guardia-hint { font-size: 10.5px; color: #64748b; flex: 1; min-width: 160px; }
+    .gd-btn-main { --acc: #16a34a; --tint: #f0fdf4; background: #16a34a; color: #fff; padding: 5px 12px; font-size: 12px; }
+    .gd-btn-main:hover { background: #15803d; }
+    .gd-recibido[readonly] { background: #f8fafc; color: #1e293b; cursor: default; }
+    body.dark .fc-guardia-title { border-top-color: #27415f; } body.dark .fc-guardia-name { color: #e2e8f0; } body.dark .gd-recibido[readonly] { background: #0f2238; color: #e2e8f0; }
     .gd-btn { background: #fff; border: 1px solid var(--acc, #94a3b8); color: var(--acc, #334155); border-radius: 8px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap; }
     .gd-btn:hover { background: var(--tint, #f8fafc); }
     body.dark .gd-btn { background: #152e4d; }
@@ -10381,6 +10401,8 @@ function plExportBackup() {
       const ct = r.headers.get("content-type") || "";
       return ct.includes("json") ? r.json() : null;
     }
+    // Función SQL (rpc) con la sesión del usuario: POST /rest/v1/rpc/<nombre> con sus parámetros.
+    async function _sRpc(name, params) { return _sPost("rpc/" + name, params || {}); }
     async function _sUpsert(table, body, conflictCols) {
       const qs = conflictCols ? "?on_conflict=" + conflictCols : "";
       const r = await _sFetch(SUPA_URL + "/rest/v1/" + table + qs, {
@@ -13486,6 +13508,23 @@ function plExportBackup() {
     // valor del modelo (sólo si no está sucia y sólo en las cajas que se pintan tal cual desde noteData).
     const _STALE_NOTE_FIELDS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega"];
     const _STALE_CK_FIELDS = ["interconsultas", "pendientes_mips", "pendientes_r1"];
+    // ── Sin arrastrar texto entre cajas (19 oct 2026) ─────────────────────────────────────────────────────────────
+    // En iPad, una pulsación larga (dedo o Pencil sin Scribble) selecciona texto y arrastrarlo a otra caja lo MUEVE: en
+    // una entrega, bloques enteros pasaron de Misceláneo a Pendientes y de Pendientes a APP y a PA, y un arrastre a
+    // medias los dejaba borrados unos segundos. Ninguna caja ni campo acepta arrastres ni deja sacar texto arrastrando;
+    // copiar y pegar siguen igual. (Captura en document: vale para las cajas que se pintan después.)
+    function _esCampoTexto(t) { return !!(t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT")); }
+    // Texto editable sin ser caja (📌 Tablero: contenteditable dentro de un <li draggable>): el arrastre del ÍTEM (dataTransfer
+    // itemId) sigue; el de una SELECCIÓN de texto dentro del ítem, no (también movería texto entre ítems).
+    function _esTextoEditable(t) { try { return !!(t && t.nodeType === 1 && t.isContentEditable); } catch (_) { return false; } }
+    function _arrastraSeleccion(t) { try { const s = window.getSelection(); return !!(s && !s.isCollapsed && s.anchorNode && t.contains(s.anchorNode)); } catch (_) { return false; } }
+    function _traeItem(e) { try { return !!(e.dataTransfer && (e.dataTransfer.getData("itemId") || (e.dataTransfer.types && Array.prototype.indexOf.call(e.dataTransfer.types, "itemId") >= 0))); } catch (_) { return false; } }
+    document.addEventListener("dragstart", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && _arrastraSeleccion(e.target))) e.preventDefault(); }, true);
+    document.addEventListener("dragover", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && !_traeItem(e))) { e.preventDefault(); try { if (e.dataTransfer) e.dataTransfer.dropEffect = "none"; } catch (_) {} } }, true);
+    document.addEventListener("drop", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && !_traeItem(e))) { e.preventDefault(); e.stopPropagation(); } }, true);
+    // Cinturón y tirantes: si pese a todo el sistema inicia un movimiento de texto (otra app en Split View, un motor que no
+    // respeta dragstart cancelado), las ediciones deleteByDrag / insertFromDrop se cancelan antes de tocar la caja.
+    document.addEventListener("beforeinput", function (e) { if ((e.inputType === "deleteByDrag" || e.inputType === "insertFromDrop") && e.cancelable) e.preventDefault(); }, true);
     // "focus" en captura: corre ANTES del onfocus del textarea (beforeValue para ↩ Regresar ya toma el valor bueno).
     document.addEventListener("focus", function (e) {
       try {
@@ -15548,7 +15587,7 @@ function plExportBackup() {
       if (!item) return;
       const txt = isCustom ? item : item.text;
       const nd = migrateNote(noteData[k] || defaultData());
-      _undoPush(k, "orden rápida en pendientes");
+      _undoPush(k, "orden rápida en pendientes", ["pendientes"]);
       const prev = nd.pendientes || "";
       nd.pendientes = prev ? prev + "\n• " + txt : "• " + txt;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -15849,7 +15888,7 @@ function plExportBackup() {
       const nd = migrateNote(noteData[k] || defaultData());
       const built = entregaResumenTexto(p, nd);
       if (!built) { alert("No hay información para resumir en esta tarjeta."); return; }
-      _undoPush(k, "resumen de entrega");
+      _undoPush(k, "resumen de entrega", ["entrega"]);
       const base = _entregaSinResumen(nd.entrega);
       nd.entrega = (base ? base + "\n\n" : "") + built;
       _touchBy(nd, "entrega");
@@ -15893,7 +15932,7 @@ function plExportBackup() {
         noteData[k] = nd; _saveNoteNow(k, nd, "ck_entrega_auto");
         return 0;
       }
-      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")");
+      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")", ["entrega"]);
       nd.checklist[ENTREGA_AUTO_KEY] = reg;
       nd.entrega = cur ? (cur.replace(/\s+$/, "") + "\n" + lines.join("\n")) : lines.join("\n");
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -16132,7 +16171,7 @@ function plExportBackup() {
     function renderInterconsultasSection(nd, k) {
       const val = esc((nd.checklist && nd.checklist.interconsultas) || "");
       return `<div class="interconsultas-box">
-        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas${_byChip(nd, "interconsultas")}</span><span style="display:flex;gap:4px;align-items:center"><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button><button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:interconsultas','Interconsultas')" title="Escribir a mano con stylus" data-testid="field-ink-ck-interconsultas">✍️</button></span></div>
+        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px"><span>🩺 Interconsultas${_byChip(nd, "interconsultas")}</span><span style="display:flex;gap:4px;align-items:center"><button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'interconsultas',true,'Interconsultas')" title="Anotar la fecha de hoy antes de una interconsulta nueva">➕ Hoy</button>${histBtn(k, "ck:interconsultas")}<button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:interconsultas','Interconsultas')" title="Escribir a mano con stylus" data-testid="field-ink-ck-interconsultas">✍️</button></span></div>
         <textarea class="field-ta" rows="2"
           data-key="${k}" data-ckfield="interconsultas"
           inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false"
@@ -16234,6 +16273,7 @@ function plExportBackup() {
           <span>🦠 Cultivos / Labs especiales${(cultivosExtraidos.length + wlCults.length) ? ` <span style="font-weight:400;color:#16a34a;font-size:10px">${cultivosExtraidos.length + wlCults.length} extraído(s)</span>` : ""}${_byChip(nd, "cultivos")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'cultivos',true,'Cultivos')" title="Anotar la fecha de hoy antes de un cultivo nuevo">➕ Hoy</button>
+            ${histBtn(k, "ck:cultivos")}
             <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:cultivos','Cultivos')" title="Escribir a mano con stylus" data-testid="field-ink-ck-cultivos">✍️</button>
           </span>
         </div>
@@ -16773,36 +16813,44 @@ function plExportBackup() {
     function penMode() {
       let v = null;
       try { v = localStorage.getItem("pl_pen_mode"); } catch (_) {}
-      if ((v === "1" || v === "2") && _penIsIPad()) {
-        // iPad: "2" (→ Texto) ya no existe → Scribble siempre. "1" (Tinta) se baja a Scribble UNA sola vez por dispositivo
-        // (marca pl_pen_ipad_v2): el iPad pudo quedarse en Tinta desde cuando era el modo por defecto, y ahí las cajas grandes
-        // no se convierten en letra de máquina (la tinta ya guardada no se toca). Después, la Tinta elegida a propósito con ✍️
-        // se respeta (togglePenMode deja la marca).
-        let done = null; try { done = localStorage.getItem("pl_pen_ipad_v3"); } catch (_) {}
-        if (v === "2" || !done) { try { localStorage.setItem("pl_pen_mode", "0"); localStorage.setItem("pl_pen_ipad_v3", "1"); } catch (_) {} return "off"; }
+      if (_penIsIPad()) {
+        // iPad (19 oct 2026): SOLO Scribble, sin modos. ✍️ Tinta dejaba la letra como tinta en las cajas grandes y, con sus
+        // oyentes NO pasivos en document, degradaba Scribble en el resto de campos (vitales que "no dejan escribir", lápiz
+        // que selecciona o arrastra texto en vez de escribir: así se movieron bloques enteros entre cajas en una entrega).
+        // Un "1" (Tinta) o "2" (→ Texto) guardado se baja a "0" al leerlo. La tinta ya guardada sigue viéndose y el ✍️ de
+        // cada caja (lienzo grande) sigue para dibujar o firmar.
+        if (v === "1" || v === "2") { try { localStorage.setItem("pl_pen_mode", "0"); } catch (_) {} }
+        _penInterceptSet(false);
+        return "off";
       }
-      if (v === "1" || v === "2") _penInterceptSet(true);   // Tinta / → Texto: la app atiende el trazo → interceptores puestos (idempotente)
+      _penInterceptSet(true);   // fuera del iPad la app atiende SIEMPRE el trazo (escritura directa, Tinta o → Texto): interceptores puestos (idempotente)
       if (v === "1") return "ink";
       if (v === "2") return "text";
       return "off";
     }
     function penModeOn() { return penMode() !== "off"; }
     function _penModeLabel(m) { return m === "ink" ? "✍️ Tinta" : (m === "text" ? "✍️ → Texto" : "✍️ Scribble"); }
+    const PEN_IPAD_HINT = "✍️ En el iPad el lápiz escribe letra de máquina en CUALQUIER caja (vitales, TA 120/80, drenajes, labs…): es Scribble del sistema y la app no interviene. Si solo selecciona o no escribe: Ajustes → Apple Pencil → Garabatear (encendido). Para dibujar o firmar usa el ✍️ de cada caja.";
     function togglePenMode(btn) {
       const cur = penMode(), ipad = _penIsIPad();
-      // iPad: solo Scribble ↔ Tinta (el iPad escribe todo; la app no reconoce nada). Fuera del iPad: Scribble → → Texto → Tinta → Scribble.
-      const next = ipad ? (cur === "ink" ? "off" : "ink") : (cur === "off" ? "text" : (cur === "text" ? "ink" : "off"));
-      try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); if (ipad) localStorage.setItem("pl_pen_ipad_v3", "1"); } catch (_) {}
+      if (ipad) {
+        // iPad: no hay modos que alternar (solo Scribble); el botón solo explica cómo funciona y cómo activar Garabatear.
+        document.body.classList.remove("pen-on"); _penInterceptSet(false);
+        document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.remove("on"); b.textContent = _penModeLabel("off"); });
+        if (typeof _plToast === "function") _plToast(PEN_IPAD_HINT, "#475569", 6500);
+        return;
+      }
+      // Fuera del iPad: Scribble → → Texto → Tinta → Scribble.
+      const next = cur === "off" ? "text" : (cur === "text" ? "ink" : "off");
+      try { localStorage.setItem("pl_pen_mode", next === "ink" ? "1" : (next === "text" ? "2" : "0")); } catch (_) {}
       document.body.classList.toggle("pen-on", next !== "off");
-      _penInterceptSet(!ipad || next !== "off");   // iPad en Scribble: ningún oyente NO pasivo del lápiz en document
+      _penInterceptSet(true);
       document.querySelectorAll(".bn-pen").forEach(function (b) { b.classList.toggle("on", next !== "off"); b.textContent = _penModeLabel(next); });
       if (next === "off") { PEN.active = null; try { _penLiveFinalize("apagado"); } catch (_) {} }
       if (typeof _plToast === "function") _plToast(
         next === "text" ? "✍️ → Texto: los NÚMEROS (vitales, labs, vasopresor) se escriben encima del campo y entran al instante; el TEXTO lo revisa la IA"
-          : next === "ink" ? (ipad ? "✍️ Tinta: en las cajas grandes de la ficha lo escrito se queda como tinta (tachar borra). Vitales, drenajes, labs, dieta y lo demás los sigue escribiendo Scribble en letra de máquina"
-                                   : "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); los números entran al instante")
-          : (ipad ? "✍️ Scribble: el iPad convierte tu letra en texto en CUALQUIER caja (vitales, TA 120/80, drenajes, labs…). Si solo selecciona en vez de escribir: Ajustes → Apple Pencil → Garabatear"
-                  : "✍️ Lápiz apagado: el sistema decide qué hace el lápiz"),
+          : next === "ink" ? "✍️ Tinta: en las cajas grandes lo escrito se queda como tinta (tachar borra); los números entran al instante"
+          : "✍️ Lápiz apagado: el sistema decide qué hace el lápiz",
         next === "off" ? "#475569" : "#7c3aed", 3600);
     }
     // Llave del campo: "app"/"manejo"… (nota), "ck:recibo"… (checklist) o "el:pN" para cualquier otra caja de texto
@@ -17786,12 +17834,68 @@ function plExportBackup() {
       } catch (_) {}
     })();
 
+    // ── ✍️ Vigilante de Scribble (iPad, 19 oct 2026) ───────────────────────────────────────────────────────────────
+    // Si el lápiz se mueve sobre una caja de texto como escribiendo (≥ 50 px) y, tras el ÚLTIMO trazo de la ráfaga, en
+    // 2.2 s no entra ningún texto, Garabatear está apagado en Ajustes: el lápiz entonces selecciona o arrastra como un dedo
+    // (así se movieron bloques enteros entre cajas en una entrega). Una ráfaga son los trazos seguidos de una palabra:
+    // Scribble convierte al hacer pausa, así que el temporizador es UNO solo y se re-arma con cada trazo (contar por trazo
+    // avisaba en iPads que sí escriben). Cualquier texto que entre (Scribble o teclado) descarta la ráfaga y los fallos
+    // previos; un gesto que el sistema se queda (pointercancel: desplazar, seleccionar) no cuenta. Dos fallos en 30 s →
+    // aviso con el camino exacto. Oyentes PASIVOS: no vuelven síncronos los toques (Scribble sigue intacto).
+    // Estado en window.__plScribbleWatch (pruebas; wait ajustable).
+    const SCRIB = { down: null, timer: 0, strikes: 0, strikeTs: 0, shownTs: 0, wait: 2200 };
+    window.__plScribbleWatch = SCRIB;
+    function _scribEditable(t) {
+      if (!t || t.disabled || t.readOnly) return false;
+      if (t.tagName === "TEXTAREA") return true;
+      return t.tagName === "INPUT" && !/^(checkbox|radio|button|submit|file|range|color|date|time|hidden)$/i.test(t.type || "text");
+    }
+    function _scribShowHint() {
+      const now = Date.now(); if (now - SCRIB.shownTs < 60000) return; SCRIB.shownTs = now;
+      let b = document.getElementById("scribble-hint");
+      if (!b) {
+        b = document.createElement("div"); b.id = "scribble-hint"; b.setAttribute("data-testid", "scribble-hint");
+        b.innerHTML = "<span>✍️ <b>El lápiz no está escribiendo texto.</b> En el iPad: <b>Ajustes → Apple Pencil → Garabatear</b> (encendido). Con eso, lo que escribas en cualquier caja aparece en letra de máquina. Mientras tanto, usa el teclado o el ✍️ de la caja.</span>"
+          + "<button type=\"button\" onclick=\"document.getElementById('scribble-hint').style.display='none'\">Entendido</button>";
+        document.body.appendChild(b);
+      }
+      b.style.display = "flex";
+    }
+    (function _scribBind() {
+      document.addEventListener("pointerdown", function (e) {
+        if (e.pointerType !== "pen" || !_penIsIPad() || !_scribEditable(e.target)) { SCRIB.down = null; return; }
+        SCRIB.down = { el: e.target, x: e.clientX, y: e.clientY, len: 0, id: e.pointerId };
+      }, { capture: true, passive: true });
+      document.addEventListener("pointermove", function (e) {
+        const d = SCRIB.down; if (!d || e.pointerId !== d.id) return;
+        d.len += Math.hypot(e.clientX - d.x, e.clientY - d.y); d.x = e.clientX; d.y = e.clientY;
+      }, { capture: true, passive: true });
+      // Entró texto (Scribble convirtió la palabra, o teclado): la ráfaga pendiente se descarta y se olvidan los fallos.
+      const typed = function () { if (SCRIB.timer) { clearTimeout(SCRIB.timer); SCRIB.timer = 0; } SCRIB.strikes = 0; };
+      ["beforeinput", "input", "compositionstart"].forEach(function (t) { document.addEventListener(t, typed, { capture: true, passive: true }); });
+      const up = function (e) {
+        const d = SCRIB.down; if (!d || e.pointerId !== d.id) return;
+        SCRIB.down = null;
+        if (e.type === "pointercancel" || d.len < 50) return;   // el sistema se quedó el gesto (scroll/selección), o toque corto: poner el cursor
+        if (SCRIB.timer) clearTimeout(SCRIB.timer);            // un temporizador por ráfaga: se re-arma con cada trazo
+        SCRIB.timer = setTimeout(function () {
+          SCRIB.timer = 0;
+          const now = Date.now(); if (now - SCRIB.strikeTs > 30000) SCRIB.strikes = 0;   // fallos sueltos muy separados no se suman
+          SCRIB.strikes++; SCRIB.strikeTs = now;
+          if (SCRIB.strikes >= 2) _scribShowHint();
+        }, SCRIB.wait);
+      };
+      document.addEventListener("pointerup", up, { capture: true, passive: true });
+      document.addEventListener("pointercancel", up, { capture: true, passive: true });
+    })();
+
     // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
     // ➕ Hoy en IC / Cultivos / Entrega / Recibo (oct 2026): anota "dd/mm: " al final de la caja, como la
     // fecha que se escribe a mano antes de cada renglón en la hoja de visita. isCk = campo del checklist.
     function insertTodayStamp(k, field, isCk, label) {
       const sel = isCk ? 'textarea[data-key="' + k + '"][data-ckfield="' + field + '"]' : 'textarea[data-key="' + k + '"][data-field="' + field + '"]';
       const ta = document.querySelector(sel);
+      if (ta && ta.readOnly) ta.readOnly = false;   // «Recibido» es de solo lectura: ➕ Hoy la abre para escribir (como ✏️ Corregir)
       const d = new Date();
       const ini = userInitials();
       // "14/10 GF: " — la fecha y las iniciales de quien escribe, como el color de tinta de cada residente
@@ -17800,7 +17904,7 @@ function plExportBackup() {
       const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
       const trimmed = cur.replace(/\s+$/, "");
       if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
-      _undoPush(k, "fecha de hoy en " + (label || field));
+      _undoPush(k, "fecha de hoy en " + (label || field), [isCk ? "ck:" + field : field]);
       _touchBy(nd, field);
       const next = (trimmed ? trimmed + "\n" : "") + stamp;
       if (ta) {
@@ -17818,7 +17922,7 @@ function plExportBackup() {
       const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
       const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
       if (cur.trim().indexOf(stamp + " —") === 0) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } return; }
-      _undoPush(k, "fecha de hoy en pendientes");
+      _undoPush(k, "fecha de hoy en pendientes", ["pendientes"]);
       _touchBy(getNote(k), "pendientes");
       const next = stamp + " — \n" + cur;
       if (ta) {
@@ -18031,6 +18135,7 @@ function plExportBackup() {
           <button type="button" class="pend-tool" data-k="${k}" onclick="pendInsertToday(this.dataset.k)" title="Insertar la fecha de hoy al inicio (evolución del día)">➕ Hoy</button>
           <button type="button" class="pend-tool${(window.__pendList && window.__pendList[k]) ? " on" : ""}" data-k="${k}" onclick="togglePendList(this.dataset.k)" title="Ver los pendientes como lista con casillas para tachar">☑ Lista</button>
           ${renderTemplatesBtn(k)}
+          ${histBtn(k, "pendientes")}
         </div>
         <textarea class="field-ta" rows="3"
           data-key="${k}" data-field="pendientes"
@@ -18041,33 +18146,42 @@ function plExportBackup() {
         ${renderFotoStrip(k, "ink:pendientes", _fotoList(nd, "ink:pendientes", false), { add: false })}
         ${renderPendList(nd, k)}
       </div>
-      <!-- Guardia (oct 2026): ENTREGA = lo que yo dejo para la siguiente guardia (eventualidades y por hacer;
-           las novedades de labs/imagen/cultivos se anotan solas). RECIBO = lo que me entregan al llegar.
-           "⇄ Tomar guardia" pasa la Entrega del saliente a mi Recibo con fecha y hora y deja Entrega vacía. -->
+      <!-- 🔄 Guardia (oct 2026): UNA sección con dos cajas. «Para la siguiente guardia» = lo que YO dejo (eventualidades y
+           por hacer; las novedades de labs/imagen/cultivos se anotan solas). «Recibido» = lo que me entregaron: de solo
+           lectura (lo escribió la otra guardia), con fecha, hora e iniciales de cada recepción; ✏️ la abre si hace falta
+           corregir algo. «📥 Recibir guardia» pasa lo que dejó la guardia anterior a «Recibido» y vacía la caja de entrega
+           para esta guardia. (Datos: entrega = nd.entrega; recibido = checklist.recibo.) -->
       <div class="fc-guardia">
+      <div class="fc-guardia-title">
+        <span class="fc-guardia-name">🔄 Guardia</span>
+        <span class="fc-guardia-hint">📤 Naranja: lo que dejo a la siguiente guardia. 📥 Verde: lo que me dejaron a mí.</span>
+        <button type="button" class="gd-btn gd-btn-main" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasa lo que la guardia anterior dejó en «Para la siguiente guardia» a «Recibido», con fecha, hora e iniciales, y deja la caja de entrega vacía para ti" data-testid="gd-recibir">📥 Recibir guardia</button>
+      </div>
       <div id="sec-entrega-${ek}" class="fc-anchor entrega-row fc-blk fc-blk-entrega">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📤 Entrega de guardia${_byChip(nd, "entrega")}</span>
+          <span>📤 Para la siguiente guardia${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'entrega',false,'Entrega')" title="Anotar la fecha de hoy antes de la evolución del día">➕ Hoy</button>
             <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Escribir o actualizar el resumen de entrega: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (lo escrito a mano no se toca)">✨ Resumen</button>
+            ${histBtn(k, "entrega")}
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Entrega de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
         </div>
-        <textarea class="field-ta" rows="4" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Eventualidades de mi guardia y cosas por hacer para la siguiente…">${esc(nd.entrega || "")}</textarea>
+        <textarea class="field-ta" rows="4" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Lo que la siguiente guardia debe saber y hacer: eventualidades, pendientes, qué vigilar…">${esc(nd.entrega || "")}</textarea>
         ${renderFotoStrip(k, "ink:entrega", _fotoList(nd, "ink:entrega", false), { add: false })}
         ${cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : ""}
       </div>
       <div id="sec-recibo-${ek}" class="fc-anchor recibo-row fc-blk fc-blk-recibo">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📥 Recibo de guardia${_byChip(nd, "recibo")}</span>
+          <span>📥 Recibido${_byChip(nd, "recibo")}</span>
           <span style="display:flex;gap:4px;align-items:center">
             <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'recibo',true,'Recibo')" title="Anotar la fecha de hoy">➕ Hoy</button>
+            ${histBtn(k, "ck:recibo")}
             <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:recibo','Recibo de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-ck-recibo">✍️</button>
-            <button type="button" class="gd-btn" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasar lo que dejó la guardia anterior en Entrega a mi Recibo (con fecha y hora) y vaciar Entrega">⇄ Tomar guardia</button>
+            <button type="button" class="pend-tool" style="padding:2px 8px" onclick="guardiaEditarRecibo(this)" title="Lo recibido lo escribió la otra guardia y se guarda tal cual; toca aquí solo si hace falta corregirlo" data-testid="gd-editar-recibo">✏️ Corregir</button>
           </span>
         </div>
-        <textarea class="field-ta" rows="4" data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Lo que me entregan al recibir la guardia…">${esc(reciboTxt)}</textarea>
+        <textarea class="field-ta gd-recibido" rows="4" readonly data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Aquí aparece lo que te dejó la guardia anterior cuando pulsas «📥 Recibir guardia»">${esc(reciboTxt)}</textarea>
         ${renderFotoStrip(k, "ink:ck:recibo", _fotoList(nd, "ink:ck:recibo", false), { add: false })}
       </div>
       </div>
@@ -18203,7 +18317,8 @@ function plExportBackup() {
       return "<div>" +
         "<div class='field-label' style='display:flex;align-items:center;justify-content:space-between;gap:6px'>" +
           "<span>" + label + (ndRow ? _byChip(ndRow, field) : "") + "</span>" +
-          "<button class='field-ink-btn' onclick=\"openInkpadForField('" + k + "','" + field + "','" + label.replace(/'/g, "\\'") + "')\" title='Escribir a mano con stylus' data-testid='field-ink-" + field + "'>✍️</button>" +
+          "<span style='display:flex;gap:4px;align-items:center'>" + (ndRow ? histBtn(k, field) : "") +
+          "<button class='field-ink-btn' onclick=\"openInkpadForField('" + k + "','" + field + "','" + label.replace(/'/g, "\\'") + "')\" title='Escribir a mano con stylus' data-testid='field-ink-" + field + "'>✍️</button></span>" +
         "</div>" +
         "<textarea class='field-ta' rows='" + rows + "' " +
         "data-key='" + k + "' data-field='" + field + "' " +
@@ -20201,11 +20316,11 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
           // tarjeta (nd.dx || p.dx) seguía mostrando el nd.dx viejo. Igual que updateField("dx").
           const pt = patients.find(pp => pid(pp) === _inkKey);
           if (pt) nd.dx = toSafeString(pt.dx);   // «Regresar» debe volver al DX anterior, no a vacío (borraría el DX en la nube)
-          _undoPush(_inkKey, "transcripción a mano en DX");
+          _undoPush(_inkKey, "transcripción a mano en DX", ["dx"]);
           nd.dx = newVal.toUpperCase();
           if (pt) { pt.dx = nd.dx; _savePtsImmediate(pt, ["dx"]); }
         } else {
-          _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")));
+          _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")), [_inkFieldMode]);
           dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal);
           _touchBy(nd, _inkFieldMode.replace(/^ck:/, ""));
         }
@@ -20615,10 +20730,38 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       return k;
     }
+    // Un borrado grande de golpe (bloque de 40+ letras que desaparece en un solo evento: tachadura de Scribble, seleccionar
+    // todo y escribir encima, pegado que sustituye) deja SIEMPRE un paso en ↩ Regresar con el texto anterior, aunque la
+    // caja no llegue a soltar el foco. Como mucho uno cada 5 s por caja, para no llenar la pila al teclear.
+    var _bigDelTs = {};
+    function _guardBigDelete(k, f, prev, next, isCk, el) {
+      try {
+        prev = toSafeString(prev); next = toSafeString(next);
+        if (prev.length - next.length < 40) return;
+        var id = k + "|" + f, now = Date.now();
+        if (_bigDelTs[id] && now - _bigDelTs[id] < 5000) return;
+        _bigDelTs[id] = now;
+        var nd = noteData[k]; if (!nd) return;
+        var pv = isCk ? _ckPrevVals : _fieldPrevVals;   // lo que había al tomar el foco (el paso que subiría al soltar la caja)
+        var snap = function (val, label) {
+          var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd))));
+          if (isCk) { if (!before.checklist) before.checklist = {}; before.checklist[f] = val; } else before[f] = val;
+          var keep = noteData[k]; noteData[k] = before; _undoPush(k, label, [isCk ? "ck:" + f : f]); noteData[k] = keep;
+        };
+        // Orden correcto en ↩ Regresar: arriba lo que había JUSTO ANTES del borrón; debajo, lo que había al tomar el foco
+        // (si se empujara al soltar la caja quedaría encima y el primer Regresar perdería lo tecleado en la sesión).
+        if (pv[id] !== undefined && toSafeString(pv[id]) !== prev) snap(toSafeString(pv[id]), "texto de " + _undoFieldLabel(f));
+        snap(prev, "borrado grande en " + _undoFieldLabel(f));
+        pv[id] = prev;   // el paso de soltar la caja parte de aquí: mismo contenido que el de arriba, no se duplica
+        try { if (el && el.dataset && el.dataset.beforeValue !== undefined) el.dataset.beforeValue = prev; } catch (_) {}   // onchange pasa beforeValue (del foco): alinearlo también
+        _showUndoToast(k);
+      } catch (_) {}
+    }
     function liveUpdate(el) {
       var k = _liveKey(el), f = el.dataset.field;
       if (!noteData[k]) noteData[k] = defaultData();
       if (_fieldPrevVals[k + "|" + f] === undefined) _fieldPrevVals[k + "|" + f] = toSafeString(noteData[k][f]);
+      _guardBigDelete(k, f, noteData[k][f], el.value, false, el);
       noteData[k][f] = el.value;
       // Marcar campo como dirty (editado localmente, pendiente de guardar)
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -20696,19 +20839,22 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (st[oldKey] && !st[newKey]) { st[newKey] = st[oldKey]; delete st[oldKey]; pair[1](); }
       });
     }
-    function _undoEntry(label, nd) { return { ts: Date.now(), label: String(label || "cambio"), note: JSON.parse(JSON.stringify(_lsNoteCopy(migrateNote(nd)))) }; }
+    // fields (opcional): las cajas que tocó ESE paso ("pendientes", "ck:recibo"…). Con fields, Regresar/Rehacer solo ponen
+    // de vuelta esas cajas y dejan intacto lo que un compañero haya escrito en otras mientras tanto (19 oct 2026: antes se
+    // restauraba la nota completa y un Regresar tras un Realtime ajeno pisaba cajas que no eran del paso).
+    function _undoEntry(label, nd, fields) { const e = { ts: Date.now(), label: String(label || "cambio"), note: JSON.parse(JSON.stringify(_lsNoteCopy(migrateNote(nd)))) }; if (Array.isArray(fields) && fields.length) e.fields = fields.slice(); return e; }
     // Guarda el estado ACTUAL de la nota antes de un cambio. Llamar antes de mutar noteData[k].
-    function _undoPush(k, label) {
+    function _undoPush(k, label, fields) {
       try {
         const nd = noteData[k]; if (!nd || !k) return;
         const st = _undoLoad();
-        const entry = _undoEntry(label, nd);
+        const entry = _undoEntry(label, nd, fields);
         const arr = st[k] || (st[k] = []);
         // Edición nueva después de Regresar: lo que se dejó atrás al regresar no se pierde, queda como paso.
         const rd = _redoLoad();
         if (rd[k] && rd[k].length) {
           const newest = rd[k][rd[k].length - 1];
-          if (JSON.stringify(newest.note) !== JSON.stringify(entry.note)) arr.push({ ts: Date.now(), label: "como estaba antes de regresar «" + newest.label + "»", note: newest.note });
+          if (JSON.stringify(newest.note) !== JSON.stringify(entry.note)) arr.push(Object.assign({ ts: Date.now(), label: "como estaba antes de regresar «" + newest.label + "»", note: newest.note }, newest.fields ? { fields: newest.fields } : {}));
           delete rd[k]; _redoSave();
         }
         const last = arr[arr.length - 1];
@@ -20743,9 +20889,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
     const _UNDO_TEXT_FIELDS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega", "dx", "body_diagram_ant", "body_diagram_post"];
     // Deja la nota del paciente k como en `target` (copia guardada) y sube solo los campos que difieren.
-    function _undoRestore(k, target) {
+    // Con `fields` (paso de una o dos cajas) solo se ponen de vuelta ESAS cajas sobre la nota actual: lo que otro escribió
+    // en las demás mientras tanto (Realtime) se respeta.
+    function _undoRestore(k, target, fields) {
       const cur = migrateNote(noteData[k]);
       const prev = migrateNote(target);
+      if (Array.isArray(fields) && fields.length) {
+        const next = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(cur))));
+        if (!next.checklist) next.checklist = {};
+        const dirtyF = new Set();
+        fields.forEach(function (f) {
+          if (f.indexOf("ck:") === 0) { const sub = f.slice(3); const v = (prev.checklist || {})[sub]; if (v === undefined) delete next.checklist[sub]; else next.checklist[sub] = v; dirtyF.add("checklist"); }
+          else { next[f] = prev[f] === undefined ? "" : prev[f]; dirtyF.add(f); }
+        });
+        noteData[k] = next;
+        if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+        dirtyF.forEach(function (f) { _dirtyFields[k].add(f); });
+        saveNote(k, next);
+        dirtyF.forEach(function (f) { _dirtyFields[k].delete(f); });
+        if (dirtyF.has("dx")) { const p = patients.find(function (pt) { return pid(pt) === k; }); if (p) { p.dx = next.dx; _savePtsImmediate(p, ["dx"]); } }
+        delete labAnalysisCache[k];
+        _rerenderCard(k);
+        return;
+      }
       // PDF inline recortado en la copia: conservar el actual si es la misma fecha.
       (prev.labHistory || []).forEach(function (s) {
         if (s && s.source_file_stripped) { const c = (cur.labHistory || []).find(function (x) { return x && x.fecha === s.fecha && x.source_file; }); if (c) { s.source_file = c.source_file; delete s.source_file_stripped; } }
@@ -20773,13 +20939,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Clave huérfana (paciente re-clavado o egresado): no crear una nota vacía y subirla
       if (!noteData[k] || !_findPatientByKey(k)) { delete st[k]; _undoSave(); return ""; }
       const entry = arr.pop();
-      // Lo que había ANTES de regresar queda en Rehacer, por si el regreso fue el error.
+      // Lo que había ANTES de regresar queda en Rehacer, por si el regreso fue el error (mismas cajas que el paso).
       const rd = _redoLoad();
       const rarr = rd[k] || (rd[k] = []);
-      rarr.push(_undoEntry(entry.label, noteData[k]));
+      rarr.push(_undoEntry(entry.label, noteData[k], entry.fields));
       while (rarr.length > UNDO_PER_PATIENT) rarr.shift();
       _undoSave(); _redoSave();
-      _undoRestore(k, entry.note);
+      _undoRestore(k, entry.note, entry.fields);
       try { _showRTToast("↩ Regresado: " + entry.label); } catch (_) {}
       return entry.label;
     }
@@ -20792,14 +20958,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const entry = rarr.pop();
       const st = _undoLoad();
       const arr = st[k] || (st[k] = []);
-      arr.push(_undoEntry(entry.label, noteData[k]));
+      arr.push(_undoEntry(entry.label, noteData[k], entry.fields));
       while (arr.length > UNDO_PER_PATIENT) arr.shift();
       _redoSave(); _undoSave();
-      _undoRestore(k, entry.note);
+      _undoRestore(k, entry.note, entry.fields);
       try { _showRTToast("↪ Rehecho: " + entry.label); } catch (_) {}
       return entry.label;
     }
-    function undoLastField() { if (_lastUndoKey) undoLast(_lastUndoKey); }
+    // Botón ↩ Deshacer del aviso «Cambio guardado»: deshace el paso del paciente que anunció ESE aviso (_toastUndoKey), no el
+    // último _undoPush de cualquier paciente (las novedades automáticas de entrega, la tinta… también apilan pasos).
+    let _toastUndoKey = null;
+    function undoLastField() { const k = _toastUndoKey || _lastUndoKey; if (k) undoLast(k); }
     function updateField(k, field, value, prevValue) {
       if (!noteData[k]) noteData[k] = defaultData();
       if (prevValue === undefined && _fieldPrevVals[k + "|" + field] !== undefined) prevValue = _fieldPrevVals[k + "|" + field];
@@ -20808,8 +20977,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (prev !== toSafeString(value)) {
         // Copia ANTES del cambio con el valor previo del campo (el textarea ya mostraba el nuevo).
         const before = Object.assign({}, noteData[k]); before[field] = prev;
-        const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
-        _showUndoToast();
+        const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field), [field]); noteData[k] = keep;
+        _showUndoToast(k);
       }
       const _changed = prev !== toSafeString(value);
       noteData[k][field] = value;
@@ -20832,7 +21001,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       return ({ dx: "DX", app: "APP", pa: "PA", qx: "Qx", manejo: "Misceláneo", pendientes: "Pendientes", entrega: "Entrega", drenajes: "nota de drenajes", sangrado: "Sangrado", balance: "Balance", sv: "SV", interconsultas: "Interconsultas", cultivos: "Cultivos", recibo: "Recibo", pendientes_mips: "Pendientes MIPs", pendientes_r1: "Pendientes R1" })[f] || f;
     }
     var _undoToastTimer = null;
-    function _showUndoToast() {
+    function _showUndoToast(k) {
+      _toastUndoKey = k || _lastUndoKey;
       var toast = document.getElementById("undo-toast");
       if (!toast) return;
       toast.style.display = "flex";
@@ -20848,6 +21018,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!nd.checklist) nd.checklist = {};
       // Valor previo al primer teclazo (para "Regresar" al soltar el campo); se limpia en updateCkText.
       if (_ckPrevVals[k + "|" + f] === undefined) _ckPrevVals[k + "|" + f] = toSafeString(nd.checklist[f]);
+      _guardBigDelete(k, f, nd.checklist[f], el.value, true, el);
       nd.checklist[f] = el.value;
       noteData[k] = nd;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -20855,6 +21026,95 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       scheduleNoteAutosave(k);
     }
     var _ckPrevVals = {}; // k|campo → valor antes del primer teclazo (liveCkText), para Regresar
+    // ─── 🕘 HISTORIAL POR CAJA (oct 2026, tras el incidente de la entrega del 19 oct) ────────────────────────
+    // Cada cambio de cada caja queda en audit_log (texto completo, también la Entrega). Desde la tarjeta, cualquier
+    // residente ve las versiones anteriores de UNA caja (función SQL pl_historial_caja) y restaura la que quiera sin
+    // pedirlo al administrador. La restauración pasa por updateField/updateCkText: queda en ↩ Regresar y en el historial.
+    const HIST_FIELDS = [["pendientes", "Pendientes / Plan"], ["entrega", "Entrega de guardia"], ["ck:recibo", "Recibo de guardia"], ["manejo", "Misceláneo"],
+      ["app", "APP (antecedentes)"], ["pa", "PA (padecimiento actual)"], ["dx", "DX"], ["drenajes", "Nota de drenajes"], ["ck:interconsultas", "Interconsultas"], ["ck:cultivos", "Cultivos"],
+      ["ck:pendientes_mips", "Pendientes MIPs"], ["ck:pendientes_r1", "Pendientes R1"], ["sv", "Signos vitales (texto)"], ["balance", "Balance"], ["sangrado", "Sangrado"], ["qx", "Qx (texto)"]];
+    function _histLabel(f) { const m = HIST_FIELDS.find(x => x[0] === f); return m ? m[1] : f; }
+    const HIST_MAX = 6000;   // tope de letras que guarda el disparador pl_audit por campo de notes (v_max): más largo = versión recortada
+    // Texto de una versión tal como llega del RPC. Con fmt >= 2 ya viene en texto plano. Sin fmt (RPC viejo), las sub-llaves
+    // del checklist llegaban como el texto JSON sin comillas ("línea 1\nlínea 2" con \n literal): se decodifica si es JSON válido.
+    // ¿Versión recortada? La v3 lo dice (de_cortada, calculado sobre lo almacenado); con v2/v1 se infiere por el largo
+    // (las cajas del checklist se guardan escapadas, así que ahí el largo decodificado puede quedarse corto: por eso la v3).
+    function _histCortada(r, de) { return !!(r && (r.de_cortada === true || (r.de_cortada === undefined && toSafeString(de).length >= HIST_MAX))); }
+    function _histTexto(field, r, key) {
+      const s = toSafeString(r && r[key]);
+      if (!r || Number(r.fmt) >= 2 || field.indexOf("ck:") !== 0 || s.indexOf("\\") < 0) return s;
+      try { const d = JSON.parse('"' + s + '"'); return typeof d === "string" ? d : s; } catch (_) { return s; }
+    }
+    function _histCurrent(k, f) { const nd = getNote(k); return toSafeString(f.indexOf("ck:") === 0 ? (nd.checklist || {})[f.slice(3)] : nd[f]); }
+    function histBtn(k, field) {
+      return `<button type="button" class="field-hist-btn" data-k="${esc(k)}" data-f="${esc(field)}" onclick="openFieldHistory(this.dataset.k,this.dataset.f)" title="Versiones anteriores de esta caja: ver quién cambió qué y restaurar lo borrado" data-testid="field-hist-${esc(field).replace(/:/g, "-")}">🕘</button>`;
+    }
+    let _histState = { k: null, field: null, rows: [] };
+    async function openFieldHistory(k, field) {
+      const p = patients.find(x => pid(x) === k);
+      let m = document.getElementById("hist-modal");
+      if (!m) {
+        m = document.createElement("div"); m.id = "hist-modal"; m.className = "modal-bg"; m.style.display = "none";
+        m.onclick = function (e) { if (e.target === m) m.style.display = "none"; };
+        document.body.appendChild(m);
+      }
+      _histState = { k: k, field: field, rows: [] };
+      const opts = HIST_FIELDS.map(([f, l]) => `<option value="${f}"${f === field ? " selected" : ""}>${esc(l)}</option>`).join("");
+      m.innerHTML = `<div class="modal-box" style="max-width:640px;width:96%;max-height:88vh;overflow:auto"><div class="modal-header"><div class="modal-title">🕘 Historial de la caja</div><button class="modal-close" onclick="document.getElementById('hist-modal').style.display='none'">✕</button></div>`
+        + `<div class="adm-row" style="gap:8px;align-items:center;flex-wrap:wrap"><label class="adm-lbl" style="margin:0">Caja</label><select id="hist-field" class="modal-input" style="flex:1;min-width:160px" onchange="openFieldHistory(_histState.k,this.value)" data-testid="hist-field">${opts}</select></div>`
+        + `<div class="adm-hint" style="margin-top:6px">Cama <b>${esc((p && p.cama) || "")}</b>. Cada versión es lo que había ANTES de un cambio. «Restaurar» la pone de vuelta en la caja; lo que hay ahora no se pierde: queda en el historial y en ↩ Regresar.</div>`
+        + `<div id="hist-list" style="margin-top:8px">Cargando…</div></div>`;
+      m.style.display = "flex";
+      const host = document.getElementById("hist-list");
+      if (!p || !p._supa_id) { host.innerHTML = '<div class="adm-hint">Este paciente aún no se ha sincronizado con la nube: todavía no hay historial.</div>'; return; }
+      try {
+        const args = { p_patient: p._supa_id, p_campo: field, p_limit: 40 };
+        let rows;
+        // v3: texto plano (fmt = 3), marcas de_cortada/a_cortada, DX desde patients y solo cuentas activas. Si la base aún no
+        // la tiene (404 "function … not found") se cae a la v2 y luego a la v1 (ahí _histTexto decodifica las cajas del
+        // checklist y la marca «recortada» se infiere por el largo).
+        const missing = e => /not (be )?found|does not exist|PGRST202|\b404\b/i.test(String((e && e.message) || e));
+        try { rows = await _sRpc("pl_historial_caja_v3", args); }
+        catch (e3) {
+          if (!missing(e3)) throw e3;
+          try { rows = await _sRpc("pl_historial_caja_v2", args); }
+          catch (e2) { if (!missing(e2)) throw e2; rows = await _sRpc("pl_historial_caja", args); }
+        }
+        if (_histState.k !== k || _histState.field !== field) return;   // el usuario cambió de caja mientras cargaba
+        _histState.rows = Array.isArray(rows) ? rows : [];
+        renderFieldHistory();
+      } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar el historial: ' + esc((e && e.message) || e) + '</div>'; }
+    }
+    function renderFieldHistory() {
+      const host = document.getElementById("hist-list"); if (!host) return;
+      const k = _histState.k, field = _histState.field, rows = _histState.rows;
+      const cur = _histCurrent(k, field);
+      const z = n => String(n).padStart(2, "0");
+      const fmt = ts => { const d = new Date(ts); return isNaN(d) ? "" : z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); };
+      const pre = s => `<pre class="hist-pre">${esc(s)}</pre>`;
+      let html = `<div class="hist-item hist-cur" data-testid="hist-cur"><div class="hist-h"><b>Ahora</b> · ${cur.length} letras</div>${cur ? pre(cur) : '<div class="adm-hint">(vacía)</div>'}</div>`;
+      if (!rows.length) html += '<div class="adm-hint" style="margin-top:8px">Sin cambios registrados en esta caja.</div>';
+      rows.forEach((r, i) => {
+        const de = _histTexto(field, r, "de"), a = _histTexto(field, r, "a");
+        const same = de === cur, cut = _histCortada(r, de);
+        html += `<div class="hist-item" data-testid="hist-item"><div class="hist-h"><span class="adm-act-ts">${fmt(r.ts)}</span> <b>${esc(r.nombre || "?")}</b> <span class="adm-mail">${esc(r.dispositivo || "")}</span> · ${de.length} → ${a.length} letras${same ? ' <span class="adm-badge">igual a la actual</span>' : ""}${cut ? ` <span class="adm-badge" style="background:#fef3c7;color:#92400e" data-testid="hist-cut">recortada a ${HIST_MAX} letras</span>` : ""}</div>`
+          + (de ? pre(de) : '<div class="adm-hint">(estaba vacía)</div>')
+          + (de && !same ? `<div class="adm-row" style="margin-top:4px"><button class="adm-btn" data-i="${i}" onclick="restoreFieldVersion(this.dataset.i)" data-testid="hist-restore">↩ Restaurar esta versión</button></div>` : "")
+          + `</div>`;
+      });
+      host.innerHTML = html;
+    }
+    function restoreFieldVersion(i) {
+      const k = _histState.k, field = _histState.field, r = _histState.rows[Number(i)]; if (!r) return;
+      const txt = _histTexto(field, r, "de");
+      const aviso = _histCortada(r, txt) ? " OJO: esta versión está recortada (la caja era más larga que lo que guarda el historial, " + HIST_MAX + " letras); lo que sobrepasaba no se puede recuperar desde aquí." : "";
+      if (!confirm("¿Poner este texto en la caja «" + _histLabel(field) + "»? Lo que hay ahora queda en el historial y en ↩ Regresar." + aviso)) return;
+      if (field.indexOf("ck:") === 0) updateCkText(k, field.slice(3), txt);
+      else updateField(k, field, txt);
+      try { _rerenderCard(k); } catch (_) {}
+      renderFieldHistory();
+      try { if (typeof _plToast === "function") _plToast("Caja restaurada: " + _histLabel(field), "#15803d"); } catch (_) {}
+    }
     function updateCkText(k, field, value) {
       var nd = getNote(k);
       if (!nd.checklist) nd.checklist = {};
@@ -20864,7 +21124,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (prevVal !== toSafeString(value)) {
         // Copia ANTES del cambio (liveCkText ya escribió el nuevo valor en noteData): regresar con el previo.
         var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd)))); before.checklist[field] = prevVal;
-        var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
+        var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field), ["ck:" + field]); noteData[k] = keep;
       }
       nd.checklist[field] = value;
       if (prevVal !== toSafeString(value)) _touchBy(nd, field);
@@ -24515,7 +24775,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         adscrito:  proc.adscrito  || "",
         residente: proc.residente || "",
         fecha_dia: todayStr(),
-        added_by:  localStorage.getItem("pl_user_name") || ""
+        // quien lo AGREGÓ (se conserva al editar; antes cada edición ponía al editor como autor)
+        added_by:  proc.added_by || localStorage.getItem("pl_user_name") || ""
       };
     }
     async function supaLoadProcedimientos() {
@@ -24525,7 +24786,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return rows.map(function(r) {
           return { _id: r.id, cama: r.cama || "", exp: r.exp || "", nombre: r.nombre || "",
             edad: r.edad || "", dx: r.dx || "", esp: r.esp || "CG",
-            adscrito: r.adscrito || "", residente: r.residente || "",
+            adscrito: r.adscrito || "", residente: r.residente || "", added_by: r.added_by || "",
             _addedAt: r.added_at || new Date().toISOString() };
         });
       } catch (e) { safeLog("[PROC] supaLoadProcedimientos:", e); return null; }
@@ -24544,10 +24805,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return null;
       }
     }
+    // Cuerpo del PATCH al editar: SIN added_by (quién lo agregó no cambia al editar; si la copia local no lo trae, tampoco se pisa).
+    function _procPatchBody(proc) { const row = _procToRow(proc); delete row.added_by; return row; }
     async function supaUpdateProc(id, proc) {
-      const op = { key: "proc|patch|" + id, method: "PATCH", table: "procedimientos_dia", match: "id=eq." + id, body: _procToRow(proc) };
+      const op = { key: "proc|patch|" + id, method: "PATCH", table: "procedimientos_dia", match: "id=eq." + id, body: _procPatchBody(proc) };
       if (!navigator.onLine) { _restEnqueue(op); return; }
-      try { await _sPatch("procedimientos_dia", "id=eq." + id, _procToRow(proc)); }
+      try { await _sPatch("procedimientos_dia", "id=eq." + id, _procPatchBody(proc)); }
       catch (e) { safeLog("[PROC] supaUpdateProc:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
     async function supaDeleteProc(id) {
@@ -24576,7 +24839,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         } else {
           procedimientos.push({ _id: newRow.id, cama: newRow.cama || "", exp: newRow.exp || "",
             nombre: newRow.nombre || "", edad: newRow.edad || "", dx: newRow.dx || "",
-            esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "",
+            esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "", added_by: newRow.added_by || "",
             _addedAt: newRow.added_at || new Date().toISOString() });
         }
         saveProcs(); renderViewSoft();
@@ -24639,14 +24902,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         dx: document.getElementById("pf-dx").value.trim().toUpperCase(),
         esp: document.getElementById("pf-esp").value,
         adscrito: document.getElementById("pf-adscrito").value.trim().toUpperCase(),
-        residente: document.getElementById("pf-residente").value.trim().toUpperCase(),
-        _addedAt: new Date().toISOString()
+        residente: document.getElementById("pf-residente").value.trim().toUpperCase()
       };
+      if (_procEditIdx < 0) { proc.added_by = localStorage.getItem("pl_user_name") || ""; proc._addedAt = new Date().toISOString(); }   // autor y hora solo al crear
       if (_procEditIdx >= 0) {
+        // Editar conserva quién lo agregó y a qué hora (el PATCH no lleva added_by: ver _procPatchBody).
         const existingId = procedimientos[_procEditIdx]._id;
-        procedimientos[_procEditIdx] = { ...procedimientos[_procEditIdx], ...proc };
+        const merged = { ...procedimientos[_procEditIdx], ...proc };
+        procedimientos[_procEditIdx] = merged;
         saveProcs();
-        if (existingId) supaUpdateProc(existingId, proc);
+        if (existingId) supaUpdateProc(existingId, merged);
         // Sin _id (la inserción sigue pendiente en el outbox) el POST pendiente toma los datos
         // actuales del proc local al ejecutarse, así que la edición no se pierde.
       } else {
@@ -24678,6 +24943,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       renderView();
       supaDeleteAllProcs().catch(e => safeLog("clearAllProcs:", e));
     }
+    // " · 08:15" con la hora en que se agregó el procedimiento (vacío si no se sabe)
+    function _procHora(iso) { const d = iso ? new Date(iso) : null; return (d && !isNaN(d)) ? " · " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") : ""; }
     function renderProcSection() {
       let rows = "";
       if (procedimientos.length) {
@@ -24689,6 +24956,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         <span style="font-size:11px;color:#64748b">${pr.edad ? pr.edad + "a" : ""} · ${esc(pr.esp)}</span>
         <span style="font-size:11px;color:#475569;flex:2;min-width:200px">${esc((pr.dx || "").slice(0, 80))}${(pr.dx || "").length > 80 ? "…" : ""}</span>
         <span style="font-size:10px;color:#94a3b8">${esc(pr.adscrito || "")}${pr.residente ? " / " + esc(pr.residente) : ""}</span>
+        <span style="font-size:10px;color:#64748b;white-space:nowrap" title="Quién lo agregó en la app y a qué hora" data-testid="proc-added-by">👤 ${esc(pr.added_by || "?")}${_procHora(pr._addedAt)}</span>
         <button onclick="openProcModal(${idx})" style="background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">✏️</button>
         <button onclick="deleteProc(${idx})" style="background:#dc2626;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">✕</button>
       </div>`;
@@ -27253,14 +27521,23 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (mine && _cxAiBusy.delete(mine)) { try { const l = _cxLocate(k, cid); if (l) _rerenderCardSoft(l.k); } catch (_) {} }
       }
     }
-    // ═══ TOMAR GUARDIA: lo que el saliente escribió en "Entrega" pasa a mi "Recibo" (con fecha y hora)
-    // y "Entrega" queda vacía para lo que yo entregaré al final de mi guardia.
+    // «Recibido» es de solo lectura (lo escribió la otra guardia); ✏️ Corregir la abre para editar.
+    function guardiaEditarRecibo(btn) {
+      try {
+        const ta = btn.closest(".fc-blk-recibo").querySelector("textarea[data-ckfield='recibo']");
+        if (!ta) return;
+        ta.readOnly = false; ta.focus();
+        try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
+      } catch (_) {}
+    }
+    // ═══ RECIBIR GUARDIA: lo que el saliente dejó en «Para la siguiente guardia» pasa a mi «Recibido» (con fecha, hora e
+    // iniciales) y la caja de entrega queda vacía para lo que yo entregaré al final de mi guardia.
     function tomarGuardia(k) {
       const nd = getNote(k);
       const ent = toSafeString(nd.entrega).trim();
-      if (!ent) { alert("La caja Entrega está vacía: no hay nada que recibir."); return; }
-      if (!confirm("¿Pasar el texto de Entrega a Recibo (con fecha y hora) y dejar Entrega vacía para tu guardia?")) return;
-      _undoPush(k, "tomar guardia (Entrega → Recibo)");
+      if (!ent) { alert("La caja «Para la siguiente guardia» está vacía: no hay nada que recibir."); return; }
+      if (!confirm("¿Recibir la guardia? Lo que dejó la guardia anterior pasa a «Recibido» (con fecha y hora) y la caja de entrega queda vacía para ti.")) return;
+      _undoPush(k, "tomar guardia (Entrega → Recibo)", ["entrega", "ck:recibo"]);
       const d = new Date(); const z = n => String(n).padStart(2, "0");
       const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
       if (!nd.checklist) nd.checklist = {};

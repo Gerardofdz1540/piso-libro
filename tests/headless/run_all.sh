@@ -33,7 +33,7 @@ for p in "$PL_PORT_A" "$PL_PORT_B" "$PL_PORT_C"; do
   [ "$code" = "200" ] || { echo "servidor $p no responde ($code)"; exit 3; }
 done
 echo "motor ${BROWSER:-chromium} · puertos $PL_PORT_A $PL_PORT_B $PL_PORT_C · logs $LOGS/suite_<suite>.log"
-SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(noCdn mock app_p0 app_import app_winlab app_sync app_ipad app_misc app_ui app_ind app_nota app_offline app_hoja app_fotos app_vp app_admin app_robot app_entrega app_pen app_labkeep app_cajas app_cxocr app_pencil app_expdup)
+SUITES=("$@"); [ ${#SUITES[@]} -eq 0 ] && SUITES=(noCdn mock app_p0 app_import app_winlab app_sync app_ipad app_misc app_ui app_ind app_nota app_offline app_hoja app_fotos app_vp app_admin app_robot app_entrega app_pen app_labkeep app_cajas app_cxocr app_pencil app_expdup app_guardia)
 rc=0
 for s in "${SUITES[@]}"; do
   echo "=== $s"

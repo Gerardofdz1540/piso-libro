@@ -4,7 +4,8 @@
 // P1  iPad + ✍️ Scribble: NINGÚN oyente táctil/de puntero NO pasivo en document (en WebKit cada uno hace que el toque espere
 //     al hilo principal antes de que arranque el reconocedor de Scribble → el lápiz «solo selecciona»); el lápiz sobre una
 //     caja grande no se cancela.
-// P2  ✍️ Tinta: los oyentes vuelven (la tinta sí intercepta el lápiz); ✍️ otra vez → Scribble y se quitan de nuevo.
+// P2  ✍️ en iPad (19 oct 2026, ya sin Tinta): el botón NO cambia de modo ni pone oyentes (sigue Scribble, el lápiz no se
+//     cancela); solo avisa cómo activar Garabatear. Dos toques seguidos: igual.
 // P3  Tablero (📌): pasar de una nota a otra (lo que hace Scribble al escribir) no destruye la nota en la que se escribe.
 // P4  Ficha (tablero de una tarjeta): tocar la cama/nombre de la cabecera ya no pliega la tarjeta (las cajas no desaparecen).
 // P5  Misceláneo: la caja se llama así en la ficha, la barra de saltos y ⚙ Cajas; lo escrito no se pierde al cambiar de
@@ -75,11 +76,13 @@ const TYPES = /^(touchstart|touchmove|touchend|pointerdown|pointermove|pointerup
   });
   const p1 = { mode: await page.evaluate(() => penMode()), np: await nonPassive(), pd: await penDown() };
   check('P1 iPad Scribble: cero oyentes táctiles/de puntero no pasivos en document y el lápiz sobre la caja no se cancela', p1.mode === 'off' && p1.np.length === 0 && p1.pd === 'no cancelado', JSON.stringify(p1));
+  await page.evaluate(() => { window.__toasts = []; window.__origToast = window._plToast; window._plToast = function (m) { window.__toasts.push(String(m)); }; togglePenMode(document.querySelector('.bn-pen')); });
+  const p2a = { mode: await page.evaluate(() => penMode()), ls: await page.evaluate(() => localStorage.getItem('pl_pen_mode')), np: await nonPassive(), pd: await penDown(), on: await page.evaluate(() => document.body.classList.contains('pen-on')), label: await page.evaluate(() => document.querySelector('.bn-pen').textContent) };
   await page.evaluate(() => togglePenMode(document.querySelector('.bn-pen')));
-  const p2a = { mode: await page.evaluate(() => penMode()), np: await nonPassive(), pd: await penDown() };
-  await page.evaluate(() => togglePenMode(document.querySelector('.bn-pen')));
-  const p2b = { mode: await page.evaluate(() => penMode()), np: await nonPassive(), pd: await penDown() };
-  check('P2 ✍️ Tinta: los oyentes vuelven y la tinta intercepta el lápiz; de vuelta a Scribble se quitan otra vez', p2a.mode === 'ink' && p2a.np.length > 0 && p2a.pd === 'cancelado' && p2b.mode === 'off' && p2b.np.length === 0 && p2b.pd === 'no cancelado', JSON.stringify({ p2a, p2b }));
+  const p2b = { mode: await page.evaluate(() => penMode()), ls: await page.evaluate(() => localStorage.getItem('pl_pen_mode')), np: await nonPassive(), pd: await penDown(), toasts: await page.evaluate(() => { const t = window.__toasts.slice(); window._plToast = window.__origToast; return t; }) };
+  check('P2 ✍️ en iPad: el botón no cambia de modo (sigue Scribble, "0", sin pen-on, etiqueta «✍️ Scribble»), no pone oyentes no pasivos y el lápiz no se cancela; dos toques seguidos solo avisan cómo activar Garabatear',
+    p2a.mode === 'off' && p2a.ls === '0' && p2a.np.length === 0 && p2a.pd === 'no cancelado' && !p2a.on && p2a.label === '✍️ Scribble'
+    && p2b.mode === 'off' && p2b.ls === '0' && p2b.np.length === 0 && p2b.pd === 'no cancelado' && p2b.toasts.length === 2 && p2b.toasts.every(t => /Garabatear/.test(t)), JSON.stringify({ p2a, p2b }));
 
   const p3 = await page.evaluate(async () => {
     localStorage.removeItem('pl_tablero_v1');

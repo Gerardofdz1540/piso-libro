@@ -331,7 +331,7 @@ sincronizar y hay que esperar al Wi-Fi del hospital; lo escrito no se pierde.
 
 En la cabecera de cada tarjeta aparece **↩ Regresar** cuando hay algo que deshacer. Cada cambio
 que puede doler guarda antes una copia de la tarjeta: texto de una caja al terminar de escribir,
-quitar una cirugía, un drenaje, unos labs o un estudio, "Tomar guardia", auto-llenar, órdenes
+quitar una cirugía, un drenaje, unos labs o un estudio, "Recibir guardia", auto-llenar, órdenes
 rápidas y las novedades automáticas. Regresar vuelve un paso; tocarlo otra vez vuelve otro paso
 más (hasta 20 por paciente) y cada regreso se sube como cualquier edición.
 
@@ -382,7 +382,7 @@ Tres cosas que la hoja de GoodNotes hacía y la app no:
   Se ve en la hoja, en la impresión y en los demás dispositivos. 🤖 Transcribir sigue igual.
 - **Autor por caja**: cada caja de texto muestra un chip con las iniciales de quien hizo el último
   cambio, la fecha y la hora, con un color fijo por persona (el nombre que pusiste al entrar).
-  ➕ Hoy anota `dd/mm GF: ` y Tomar guardia sella `— Recibido dd/mm hh:mm GF —`.
+  ➕ Hoy anota `dd/mm GF: ` y Recibir guardia sella `— Recibido dd/mm hh:mm GF —`.
 
 ## Las cajas de la ficha (octubre 2026)
 
@@ -398,12 +398,21 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
   reciente). La fecha POP del menú "⋯ Más" ahora es la de la última cirugía.
 - **💉 Manejo médico actual** (verde azulado).
 - **⚠️ Pendientes / Plan** (ámbar).
-- **📤 Entrega de guardia** (naranja): lo que **yo dejo** para la siguiente guardia, eventualidades
-  y cosas por hacer. El botón **✨ Resumen** escribe al final un bloque corto con lo que importa (ver
-  "Entrega de guardia que resume"); las novedades de labs críticos, imagen y cultivos se anotan solas
-  con su fecha.
-- **📥 Recibo de guardia** (verde): lo que **me entregan** al llegar. El botón **⇄ Tomar guardia**
-  pasa el texto de Entrega a Recibo con fecha y hora y deja Entrega vacía para mi guardia.
+- **🔄 Guardia** (19 oct 2026, antes dos cajas sueltas que se confundían): un solo bloque con el botón
+  grande **📥 Recibir guardia** arriba y dos cajas debajo.
+  - **📤 Para la siguiente guardia** (naranja): lo que **yo dejo** al que llega: eventualidades y cosas
+    por hacer. El botón **✨ Resumen** escribe al final un bloque corto con lo que importa (ver "Entrega
+    de guardia que resume"); las novedades de labs críticos, imagen y cultivos se anotan solas con su fecha.
+  - **📥 Recibido** (verde, de solo lectura): lo que **me entregaron** al llegar. **📥 Recibir guardia**
+    pasa el texto de la caja naranja a esta, con fecha, hora y quién recibe, y deja la naranja vacía para
+    mi guardia. Si hay que corregir algo de lo recibido, el botón **✏️ Corregir** la abre para escribir.
+- **🕘 Historial por caja**: cada caja de texto (Pendientes, Interconsultas, Cultivos, Misceláneo, Guardia…)
+  tiene un reloj junto a su título. Abre un diario con las versiones anteriores de ESA caja (quién, cuándo,
+  texto completo) y un botón **Restaurar** por versión. Sirve para recuperar lo que alguien borró o lo que un
+  arrastre movió de caja: se restaura la versión buena y queda registrado como un cambio más.
+- **↩ Regresar / ↪ Rehacer solo tocan la caja de ese paso** (19 oct 2026): si un compañero escribió en otra caja
+  desde su iPad mientras tanto, un Regresar tuyo ya no se lo pisa. El botón ↩ Deshacer del aviso «Cambio guardado»
+  deshace al paciente que anunció ese aviso.
 - Plegables: **Historia · APP / PA** y **Pendientes MIPs / R1**.
 
 Columna lateral: el **Pase** (dieta, ATB, TVP, herida, NPT, vitales, **drenajes y sondas** con su
@@ -555,19 +564,35 @@ Si el laboratorio reporta un INR real, se usa ese y desaparece el estimado.
 **En el iPad escribe con el lápiz encima de CUALQUIER caja** (vitales FC/FR/T°/SaO₂, TA `120/80`, uresis,
 gasto de drenajes, dieta, días de ATB, labs, vasopresor, modales, cajas grandes) y el iPad lo convierte en
 letra de máquina al instante (Scribble, el reconocedor de Apple). La app no interviene: no hay que elegir
-nada. El botón **✍️** de la barra solo tiene dos estados en el iPad: **✍️ Scribble** (por defecto) y
-**✍️ Tinta** (solo si quieres **dibujar**: en las cajas grandes de la ficha lo escrito se queda como tinta,
-viaja con la nota, tachar borra, menú ✍️ en la esquina para deshacer, pasar a texto o borrar; todas las demás
-cajas siguen siendo Scribble). Un **toque** con el lápiz pone el cursor; el dedo y el teclado siguen igual.
-La primera vez que abras esta versión, el iPad arranca en **✍️ Scribble** aunque antes estuviera en Tinta o en
-«→ Texto» (la tinta ya guardada en las cajas no se pierde); si quieres Tinta, tócalo una vez y se recuerda.
+nada. **Desde el 19 de octubre de 2026 en el iPad no hay modos**: el botón **✍️** de la barra siempre dice
+«✍️ Scribble» y, al tocarlo, solo recuerda cómo funciona y cómo activar Garabatear. El estado **✍️ Tinta**
+se retiró del iPad: dejaba la letra como tinta en las cajas grandes y, con sus oyentes en la página, hacía
+que en las demás cajas (vitales, gastos) el lápiz "no dejara escribir" o seleccionara y arrastrara texto de
+una caja a otra (así se movieron bloques enteros en una entrega). Un iPad que se quedó en Tinta o en «→ Texto»
+vuelve solo a Scribble al abrir; la tinta que ya estaba guardada en una caja se sigue viendo y el ✍️ de cada
+caja (lienzo grande) sigue ahí para dibujar o firmar. Un **toque** con el lápiz pone el cursor; el dedo y el
+teclado siguen igual.
 
 **Si el lápiz solo selecciona texto en vez de escribir**, Scribble está apagado en el iPad: Ajustes →
 Apple Pencil → **Garabatear** (encendido). Prueba rápida: escribe con el lápiz en el buscador de Safari.
+La app lo detecta sola: si escribes dos palabras seguidas con el lápiz en una caja de texto y no entra ninguna
+letra, aparece un aviso abajo con esos pasos (botón «Entendido» para cerrarlo; vuelve a salir si pasa de nuevo).
+Mientras Scribble convierta lo escrito, el aviso no sale.
+
+**Protección contra arrastres y borrados** (19 oct 2026): el texto ya no se puede arrastrar ni soltar
+entre cajas (ni con el lápiz ni con el dedo: lo seleccionado se queda donde está). Si una caja pierde
+40 o más letras de golpe (borrón, Scribble que tachó de más), sale el aviso **Deshacer** unos segundos;
+y si ya pasó, el reloj 🕘 de la caja abre su historial para restaurar la versión anterior.
 
 Fuera del iPad (laptop con lápiz, Android) sigue existiendo el estado **✍️ → Texto**: los números los
 convierte la app al instante (reconocedor local de dígitos, sin red) y el texto el **ayudante de IA**
 (worker en ⚙️ Config), con una lectura provisional en morado que no se guarda hasta que la IA responde.
+
+## Quién agregó cada procedimiento del día (19 de octubre de 2026)
+
+En la lista **🔬 Procedimientos del día** (al pie de la vista Piso) cada fila muestra ahora **👤 quién lo
+agregó en la app y a qué hora** (el nombre con el que esa persona entró). Se guarda al crearlo y no cambia
+al editarlo; los procedimientos de antes de esta versión muestran «?».
 
 ## Vista de escritorio (octubre 2026)
 
