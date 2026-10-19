@@ -234,7 +234,8 @@ jobs:
           unzip -q -o "${TOOLS}/rclone.zip" -d "$TOOLS"
           RCLONE="${TOOLS}/rclone-${DRIVE_RCLONE_VERSION}-linux-amd64/rclone"
           chmod +x "$RCLONE"
-          "$RCLONE" version | head -1
+          # sed lee hasta el final (head -1 cerraría la tubería y rclone moriría por SIGPIPE con pipefail).
+          "$RCLONE" version | sed -n 1p
           CONF="${TOOLS}/rclone.conf"
           umask 077
           printf '%s\n' "$DRIVE_RCLONE_CONF" > "$CONF"
