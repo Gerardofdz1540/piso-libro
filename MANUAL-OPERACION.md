@@ -927,8 +927,8 @@ guarda fuera de Supabase:
   por más de ~3 GB, cambia en `db-backup.yml` el cron a noches alternas (`"20 8 */2 * *"`).
 - **Cómo saber que corrió**: en esa lista debe haber un círculo verde cada día. Si sale rojo, GitHub
   manda el correo de "workflow failed" al dueño del repo; el paso rojo dice la causa (lo más común:
-  cambió la contraseña de la base). El resumen de cada corrida dice el tamaño y cuántas filas tenía
-  cada tabla (sin datos de pacientes).
+  cambió la contraseña de la base). El resumen de cada corrida dice el tamaño y cuántas filas tenían
+  pacientes, notas, labs del robot y bitácora (solo números, nunca datos de pacientes).
 - **Cómo restaurar** (siempre en un proyecto nuevo, nunca sobre producción) y el **simulacro
   mensual**: `scripts/db-restore.md`.
 

@@ -16,11 +16,14 @@ primero revisa `scripts/supabase_restore_note.sql` (la bitácora `audit_log` gua
 ## Qué contiene y qué NO contiene
 
 Contiene (esquema `public`): todas las tablas con sus datos (`patients`, `notes`, `winlab_labs`,
-`audit_log`, `sync_log`, `app_users`, `config`, `rpa_config`, …), funciones, triggers, índices y
-políticas RLS.
+`audit_log`, `app_users`, `config`, `rpa_config`, …), funciones, triggers, índices y políticas RLS.
 
 No contiene (hay que rehacerlo en el proyecto nuevo):
 
+- **Las filas de `sync_log`** (bitácora del censo y registro diario de tamaño): el workflow las
+  excluye (`--exclude-table-data=public.sync_log`) para ahorrar egreso; la tabla se crea vacía y
+  la hoja del censo y el cron `tamano-base-log` la vuelven a llenar solos. No se pierde nada
+  clínico.
 - **Cuentas** (`auth.users`): las personas se vuelven a dar de alta con 👥 Usuarios (la tabla
   `app_users` sí viene en el respaldo, pero apunta a ids de usuarios que no existen en el proyecto
   nuevo; ver paso 6).
@@ -43,8 +46,9 @@ pg_restore --version   # debe decir 17.x o más nuevo (la base está en Postgres
 
 GitHub → repo `piso-libro` → **Actions** → **Respaldo de la base** → la corrida verde del día que
 quieras → al final de la página, **Artifacts** → `respaldo-db-AAAAMMDD-HHMM` (se baja un zip; dentro
-va el `.dump.age`). El resumen de esa corrida dice cuántas filas tenía cada tabla: sirve para
-comparar al final. Si hay copia en Drive, es el mismo archivo.
+va el `.dump.age`). El resumen de esa corrida dice cuántas filas tenían `patients`, `notes`,
+`winlab_labs` y `audit_log`: sirve para comparar al final. Si hay copia en Drive, es el mismo
+archivo.
 
 ## 2. Descifrar
 

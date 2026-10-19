@@ -127,6 +127,7 @@ jobs:
             -c "select 'patients=' || count(*) from public.patients" \
             -c "select 'notes=' || count(*) from public.notes" \
             -c "select 'winlab_labs=' || count(*) from public.winlab_labs" \
+            -c "select 'audit_log=' || count(*) from public.audit_log" \
             -c "select 'db_mb=' || round(pg_database_size(current_database()) / 1048576.0)" \
             | tee "${DIR}/conteos.txt"
           # Una base con 0 pacientes o 0 notas no es producción (URL de otro proyecto o base vaciada):
