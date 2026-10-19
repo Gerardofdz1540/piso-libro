@@ -677,5 +677,85 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   }
 }
 
+// ── 17) Revisión del #191: con exp único, una corrección NORMAL del nombre sigue siendo la misma fila (con su
+//        nota); solo un nombre que prueba que es otra persona cuenta como cama reasignada o bloquea el movimiento.
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i))); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.exp + ":" + p.nombre) : []; };
+  const patches = (calls) => calls.filter((c) => c.m === "PATCH").map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + JSON.stringify(c.body));
+  const touched = (calls) => calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive"));
+  // misma cama: [nombre en Supabase, edad, nombre en la hoja, edad]
+  const fixes = [
+    ["PEREZ DIAS JUAN", 40, "PEREZ DIAZ JUAN", 40], ["GOMEZ GRACIA LUIS", 40, "GOMEZ GARCIA LUIS", 40], ["GARCIA LOPEZ JUNA", 40, "GARCIA LOPEZ JUAN", 40],
+    ["PERES RUIS JUAN", 40, "PEREZ RUIZ JUAN", 40], ["HERNADES RUIZ JUAN", 40, "HERNANDEZ RUIZ JUAN", 40],
+    ["HDZ LOPEZ JUAN", 40, "HERNANDEZ LOPEZ JUAN CARLOS", 40], ["GARCIA LOPEZ J", 40, "GARCIA LOPEZ JUAN", 40],
+    ["PEREZ DELACRUZ JUAN", 40, "PEREZ DE LA CRUZ JUAN", 40], ["DESCONOCIDO MASCULINO", "", "PEREZ LOPEZ JUAN", 40],
+    ["PERES RUIZ JUAN", 45, "PEREZ RUIZ JUAN", 54]
+  ];
+  const kept = fixes.filter(([n1, e1, n2, e2]) => {
+    const a1 = { id: "a1", cama: "3-101", exp: "X", nombre: n1, edad: String(e1), updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "X", { nombre: n2, edad: e2 })]));
+    return !touched(calls) && !calls.some((c) => c.m === "PATCH") && upsertOf(calls).includes("3-101:X:" + n2);
+  });
+  check("T17a exp único, misma cama, nombre corregido (DIAS→DIAZ, GRACIA→GARCIA, JUNA→JUAN, dos letras, HDZ + 2º nombre, J→JUAN, DELACRUZ, DESCONOCIDO→nombre, edad corregida): misma fila, sin archivo",
+    kept.length === fixes.length, JSON.stringify(fixes.filter((f) => !kept.includes(f)).map((f) => f[0] + "→" + f[2])));
+  // cambio de cama + nombre corregido en la misma corrida → se MUEVE (la nota viaja)
+  for (const [n1, n2, dest] of [["DIAS LOPEZ JUAN", "DIAZ LOPEZ JUAN", "3-162"], ["HDZ LOPEZ JUAN", "HERNANDEZ LOPEZ JUAN CARLOS", "UCI 3"]]) {
+    const a1 = { id: "a1", cama: "3-150", exp: "X", nombre: n1, edad: "45", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row(dest, "X", { nombre: n2, edad: 45 })]));
+    const ps = patches(calls);
+    check("T17b cambio de cama 3-150→" + dest + " + nombre corregido (" + n1 + "→" + n2 + "): PATCH de cama sobre a1, sin archivo",
+      ps.length === 1 && ps[0].startsWith("a1:") && ps[0].includes('"cama":"' + dest + '"') && !touched(calls), JSON.stringify(ps));
+  }
+  // cama cambiada desde la app + nombre corregido en la app; la hoja sigue con la cama y la grafía viejas → pin
+  {
+    const a1 = { id: "a1", cama: "3-105", exp: "X", nombre: "DIAZ LOPEZ JUAN", edad: "45", updated_by: "residente", cama_app_ts: "2026-10-19T05:00:00Z", cama_hoja_prev: null };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "X", { nombre: "DIAS LOPEZ JUAN", edad: 45 })]));
+    const ps = patches(calls), up = upsertOf(calls);
+    check("T17c Editar mueve a 3-105 y corrige DIAS→DIAZ; la hoja aún dice 3-101 con DIAS: se fija la cama (cama_hoja_prev=3-101), 3-101 no se duplica",
+      ps.length === 1 && ps[0] === 'a1:{"cama_hoja_prev":"3-101"}' && !up.some((u) => u.startsWith("3-101:")) && !touched(calls), JSON.stringify({ ps, up }));
+  }
+  // el caso real con UN apellido en común y otra edad: nunca se mueve ni se renombra
+  {
+    const b9 = { id: "b9", cama: "3-189", exp: "X", nombre: "PEREZ SOTO MIGUEL", edad: "31", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [b9], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: "PEREZ RUIZ JUAN CARLOS", edad: 44 }), row("3-189", "Y", { nombre: "PEREZ SOTO MIGUEL", edad: 31 })]));
+    const ps = patches(calls);
+    check("T17d exp corregido en 3-189 y el viejo en 3-154 con un apellido en común: b9 solo corrige su exp, no se mueve",
+      ps.length === 1 && ps[0] === 'b9:{"exp":"Y","updated_by":"sheet-sync"}' && !touched(calls), JSON.stringify(ps));
+  }
+  // hermanos (mismos apellidos, otro nombre de pila, otra edad) con el exp copiado en la misma cama → cama reasignada
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "X", nombre: "PEREZ LOPEZ JUAN", edad: "31", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de JUAN" }] } }, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "X", { nombre: "PEREZ LOPEZ MARIA", edad: 44 })]));
+    const arc = calls.find((c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive"));
+    check("T17e mismos apellidos, otro nombre de pila y otra edad (exp copiado): a1 se archiva como cama reasignada, no se renombra",
+      !!arc && arc.body.patient_data.nombre === "PEREZ LOPEZ JUAN" && /CAMA REASIGNADA/.test(arc.body.note_data._egreso), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+  }
+  // nombre parecido en la cama del exp, pero su nombre tal cual está en otra cama (con otro exp): ahí está su fila
+  {
+    const b9 = { id: "b9", cama: "3-189", exp: "X", nombre: "PEREZ LOPEZ JUAN", edad: "40", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [b9], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: "PEREZ LOPEZ MARIA", edad: 40 }), row("3-189", "Y", { nombre: "PEREZ LOPEZ JUAN", edad: 40 })]));
+    const ps = patches(calls);
+    check("T17f su nombre sigue en 3-189 con exp corregido: no se mueve a 3-154 aunque el nombre de ahí se parezca",
+      ps.length === 1 && ps[0] === 'b9:{"exp":"Y","updated_by":"sheet-sync"}' && !touched(calls), JSON.stringify(ps));
+  }
+  // reglas directas
+  {
+    const { sb } = makeSandbox({});
+    const P = (n, e) => ({ nombre: n, edad: e });
+    check("T17g namesCompatible_: errores de dedo, abreviaturas, espacios y no identificados sí; un apellido en común o hermanos con otra edad no",
+      sb.namesCompatible_(P("CRUS LOPEZ ANA", "40"), P("CRUZ LOPEZ ANA", 40)) && sb.namesCompatible_(P("GOMEZ MARIAJOSE", "40"), P("GOMEZ MARIA JOSE", 40))
+      && sb.namesCompatible_(P("RN DE PEREZ", ""), P("GOMEZ PEREZ LUIS", 1)) && sb.namesCompatible_(P("HDZ LOPEZ FCO JAVIER", "40"), P("HERNANDEZ LOPEZ FRANCISCO JAVIER", 40))
+      && !sb.namesCompatible_(P("PEREZ RUIZ JUAN CARLOS", "44"), P("PEREZ SOTO MIGUEL", 31)) && !sb.namesCompatible_(P("GARCIA ANA", "30"), P("LOPEZ ANA", 30))
+      && !sb.namesCompatible_(P("PEREZ LOPEZ JUAN", "31"), P("PEREZ LOPEZ MARIA", 44)) && !sb.namesCompatible_(P("PEREZ", "40"), P("GOMEZ", 40)));
+  }
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

@@ -8363,6 +8363,52 @@ function plExportBackup() {
       var sa = normalizeSexValue(p && p.sexo), sb = normalizeSexValue(q && q.sexo);
       return !(sa && sb && sa !== sb);
     }
+    // ¿Puede ser la MISMA persona con el nombre corregido (DIAS→DIAZ, HDZ→HERNANDEZ + 2º nombre, DESCONOCIDO→nombre
+    // real)? Misma regla que namesCompatible_ del sync de la hoja (expediente único): solo es OTRA persona si casi
+    // no comparten palabras, o si comparten 2+ pero a los dos les sobra alguna distinta y la edad no cuadra (±1).
+    function _plNamesCompatible(p, q) {
+      var EXP = { MA: "MARIA", J: "JOSE", GPE: "GUADALUPE" };
+      var STOP = ["DE", "DEL", "LA", "LAS", "LOS", "Y", "O", "CON", "SIN", "POR", "PARA"];
+      var PH = ["DESCONOCIDO", "DESCONOCIDA", "DESC", "NN", "RN", "RECIEN", "NACIDO", "NACIDA", "IDENTIFICADO", "IDENTIFICADA", "NOMBRE", "PACIENTE", "MASCULINO", "FEMENINO"];
+      var norm = function (s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); };
+      var tok = function (s) { return norm(s).replace(/[^A-Z\s]/g, " ").split(/\s+/).map(function (w) { return EXP[w] || w; }).filter(function (w) { return w.length >= 2 && STOP.indexOf(w) < 0; }); };
+      var a = tok(p && p.nombre), b = tok(q && q.nombre);
+      var ph = function (t) { return t.some(function (w) { return PH.indexOf(w) >= 0; }); };
+      if (!a.length || !b.length || ph(a) || ph(b)) return true;
+      if (norm(p.nombre).replace(/[^A-Z]/g, "") === norm(q.nombre).replace(/[^A-Z]/g, "")) return true;
+      var dist = function (x, y) {   // edición con cruce de dos letras vecinas
+        var p2 = null, pr = [], i, j;
+        for (j = 0; j <= y.length; j++) pr[j] = j;
+        for (i = 1; i <= x.length; i++) {
+          var cu = [i];
+          for (j = 1; j <= y.length; j++) {
+            var v = Math.min(pr[j] + 1, cu[j - 1] + 1, pr[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+            if (i > 1 && j > 1 && x[i - 1] === y[j - 2] && x[i - 2] === y[j - 1]) v = Math.min(v, p2[j - 2] + 1);
+            cu[j] = v;
+          }
+          p2 = pr; pr = cu;
+        }
+        return pr[y.length];
+      };
+      var close = function (t, u) {
+        if (t === u) return true;
+        var sh = t.length <= u.length ? t : u, lo = t.length <= u.length ? u : t;
+        if (sh.length >= 2 && sh.length <= 5 && (sh.match(/[AEIOU]/g) || []).length <= 1 && lo.length > sh.length && sh[0] === lo[0]) {   // abreviatura
+          var k = 0; for (var i = 0; i < lo.length && k < sh.length; i++) if (lo[i] === sh[k]) k++;
+          if (k === sh.length) return true;
+        }
+        if (t.length < 3 || u.length < 3) return false;
+        var d = dist(t, u);
+        return d <= 1 || (d === 2 && t.length >= 7 && u.length >= 7);
+      };
+      var s = a.length <= b.length ? a : b, l = a.length <= b.length ? b : a, used = {}, m = 0;
+      var rest = s.filter(function (t) { for (var i = 0; i < l.length; i++) if (!used[i] && l[i] === t) { used[i] = true; m++; return false; } return true; });
+      rest.forEach(function (t) { for (var j = 0; j < l.length; j++) if (!used[j] && close(t, l[j])) { used[j] = true; m++; return; } });
+      if (m === s.length) return true;
+      if (m < 2) return false;
+      var ea = parseInt(p.edad, 10), eb = parseInt(q.edad, 10);
+      return isNaN(ea) || isNaN(eb) || Math.abs(ea - eb) <= 1;
+    }
     function _winlabCensoNameOk(p, wl) {
       // Si falta nombre normalizable en cualquiera, no se puede verificar por nombre.
       // Conservador y compatible: dejar pasar (siguen aplicando exp + filtro interno por
@@ -11163,8 +11209,11 @@ function plExportBackup() {
           // un import o el sheet-sync), re-enlazar y PATCH; si NO existe, otro dispositivo la egresó
           // o borró → NO re-insertar (antes se re-upserteaba por exp+cama y el paciente "resucitaba"
           // en todos los dispositivos). Sentinel truthy para que el outbox no reintente eternamente.
-          const stale = await _sGet("patients", "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id&limit=1").catch(() => null);
-          if (stale && stale.length && stale[0].id) {
+          // Solo si esa fila es la MISMA persona: el sync de la hoja archiva y recrea la cama cuando el expediente se
+          // copió a OTRA persona en esa cama (mismo exp+cama, otro nombre); re-enlazar ahí le ponía a ella el nombre y
+          // los datos de esta tarjeta.
+          const stale = await _sGet("patients", "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id,nombre,edad&limit=1").catch(() => null);
+          if (stale && stale.length && stale[0].id && _plNamesCompatible(p, stale[0])) {
             _relinkPatientId(p, stale[0].id);
             const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
             return patched || row;
@@ -11183,9 +11232,9 @@ function plExportBackup() {
             // Fallback: si el upsert falla por conflicto, buscar el registro existente y hacer PATCH
             const msg = upsertErr && upsertErr.message ? upsertErr.message : "";
             if (msg.includes("409") || msg.includes("23505")) {
-              const qs = "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id&limit=1";
+              const qs = "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id,nombre,edad&limit=1";
               const existing = await _sGet("patients", qs);
-              if (existing && existing.length && existing[0].id) {
+              if (existing && existing.length && existing[0].id && _plNamesCompatible(p, existing[0])) {
                 _relinkPatientId(p, existing[0].id);
                 const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
                 return patched || row;
@@ -11418,7 +11467,15 @@ function plExportBackup() {
             try {
               const byId = await _sGet("patients", "id=eq." + encodeURIComponent(patientId) + "&select=id");
               if (!byId || !byId.length) {
-                const twin = (p.exp && p.cama) ? await _sGet("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama) + "&select=id") : [];
+                const twin = (p.exp && p.cama) ? await _sGet("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama) + "&select=id,nombre,edad") : [];
+                // Otra persona en esa cama con el mismo exp (el sync archivó esta fila como cama reasignada): esta nota
+                // NO se sube a la suya; se guarda en la Papelera y la tarjeta se retira como un egreso remoto.
+                const other = twin && twin.length && twin[0].id && !_plNamesCompatible(p, twin[0]);
+                if (other) {
+                  _archivePatientRecord(p, nd || noteData[pid(p)], pid(p), "CAMA REASIGNADA (otra persona con el mismo expediente)");
+                  _onPatientGoneRemotely(p, "su cama la tiene otra persona con el mismo expediente");
+                  return null;
+                }
                 if (twin && twin.length && twin[0].id) {
                   _relinkPatientId(p, twin[0].id);
                   lsSavePatients(patients);

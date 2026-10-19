@@ -55,12 +55,20 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
   const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const calls = [];
+  // X17-X18: la fila `goneId` ya no existe en la nube y en su exp+cama hay otra fila (`twin`)
+  let relink = null;
   await page.route('**/vendor/supabase*', r => r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
     let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
     calls.push({ m, url, body });
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+    if (relink) {
+      if (url.startsWith('/rest/v1/notes') && m === 'POST' && body && body.patient_id === relink.goneId) return json(409, { code: '23503', message: 'insert or update on table "notes" violates foreign key constraint "notes_patient_id_fkey"' });
+      if (url.startsWith('/rest/v1/patients?id=eq.' + relink.goneId)) return json(200, []);
+      if (url.startsWith('/rest/v1/patients?exp=eq.') && m === 'GET') return json(200, relink.twin ? [relink.twin] : []);
+      if (url.startsWith('/rest/v1/patients?id=eq.' + (relink.twin && relink.twin.id)) && m === 'PATCH') return json(200, [{ ...relink.twin, ...body }]);
+    }
     if (url.startsWith('/rest/v1/patients')) { if (m === 'GET') return json(200, [C, A, B]); return json(201, [{ id: 'n' + calls.length }]); }
     if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{}]); }
     if (url.startsWith('/rest/v1/ris_estudios')) return json(200, RIS);
@@ -292,6 +300,62 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
   const x16 = await page.evaluate(() => risForPatient(patients.find(p => p.cama === '3-150')).map(r => r.id));
   check('X16 imagen: con exp único, el estudio con patient_id de otro paciente activo (exp recién corregido) no sale en 3-150',
     JSON.stringify(x16) === '[904]', JSON.stringify(x16));
+
+  // ── X17: tarjeta vieja (su fila se archivó como cama reasignada) con una nota sin subir: NO se sube a la fila de
+  //         la OTRA persona que el sync puso en esa cama con el mismo exp; va a la Papelera y la tarjeta se retira ──
+  const relinkCase = async (goneId, twin) => {
+    relink = { goneId, twin }; const from = calls.length;
+    const r = await page.evaluate(async ([goneId]) => {
+      const z = { _supa_id: goneId, cama: '3-170', exp: '26-77777', nombre: 'LUIS GARCIA VEGA', edad: '50', esp: 'CG', estado: 'ESTABLE' };
+      patients.push(z);
+      const k = pid(z); noteData[k] = { ...defaultData(), pendientes: 'PEND DE LUIS' };
+      const out = await supaUpsertNote(goneId, noteData[k]);
+      const still = patients.find(p => p === z);
+      patients = patients.filter(p => p !== z);
+      return { out: out == null ? null : 'ok', still: !!still, supa: z._supa_id };
+    }, [goneId]);
+    relink = null;
+    return { ...r, c: calls.slice(from) };
+  };
+  const x17 = await relinkCase('z1', { id: 'z2', nombre: 'MARIA SOTO RUIZ', edad: '30' });
+  const x17note = x17.c.find(c => c.m === 'POST' && c.url.startsWith('/rest/v1/notes') && c.body && c.body.patient_id === 'z2');
+  const x17arc = x17.c.find(c => c.m === 'POST' && c.url.startsWith('/rest/v1/archive'));
+  check('X17 nota sin subir de una fila archivada: con OTRA persona en su exp+cama no se sube a su fila; se archiva con su nombre y la tarjeta se retira',
+    !x17note && !!x17arc && x17arc.body.patient_data.nombre === 'LUIS GARCIA VEGA' && x17arc.body.note_data.pendientes === 'PEND DE LUIS' && !x17.still, JSON.stringify({ ...x17, c: x17.c.map(c => c.m + ' ' + c.url) }));
+  // ── X18: ...pero si la fila nueva es la MISMA persona (nombre corregido), se re-enlaza y la nota sube ahí ──
+  const x18 = await relinkCase('z3', { id: 'z4', nombre: 'LUIS GARCIA BEGA', edad: '50' });
+  const x18note = x18.c.find(c => c.m === 'POST' && c.url.startsWith('/rest/v1/notes') && c.body && c.body.patient_id === 'z4');
+  check('X18 misma persona con el nombre corregido en la fila nueva: se re-enlaza y la nota sube a esa fila',
+    !!x18note && x18note.body.pendientes === 'PEND DE LUIS' && x18.supa === 'z4' && x18.still && !x18.c.some(c => c.url.startsWith('/rest/v1/archive')), JSON.stringify({ ...x18, c: x18.c.map(c => c.m + ' ' + c.url) }));
+  // ── X19: PATCH de datos censales a una fila que ya no existe: no se copia sobre la de otra persona ──
+  const patchCase = async (goneId, twin) => {
+    relink = { goneId, twin }; const from = calls.length;
+    const r = await page.evaluate(async ([goneId]) => {
+      const z = { _supa_id: goneId, cama: '3-171', exp: '26-77778', nombre: 'LUIS GARCIA VEGA', edad: '50', esp: 'CG', estado: 'ESTABLE', dx: 'DX DE LUIS' };
+      patients.push(z);
+      const out = await supaUpsertPatient(z, ['dx']);
+      patients = patients.filter(p => p !== z);
+      return { out: out && out.__deleted_remotely ? 'gone' : (out ? 'ok' : null), supa: z._supa_id };
+    }, [goneId]);
+    relink = null;
+    return { ...r, c: calls.slice(from) };
+  };
+  const x19 = await patchCase('z5', { id: 'z6', nombre: 'MARIA SOTO RUIZ', edad: '30' });
+  const x19b = await patchCase('z7', { id: 'z8', nombre: 'GARCIA VEGA LUIS', edad: '50' });
+  check('X19 PATCH a una fila borrada: con OTRA persona en su exp+cama no la toca (fila borrada en remoto); con la misma persona se re-enlaza y la actualiza',
+    x19.out === 'gone' && !x19.c.some(c => c.m === 'PATCH' && c.url.includes('id=eq.z6')) && x19b.supa === 'z8' && x19b.c.some(c => c.m === 'PATCH' && c.url.includes('id=eq.z8')),
+    JSON.stringify({ x19: { ...x19, c: x19.c.map(c => c.m + ' ' + c.url) }, x19b: { ...x19b, c: x19b.c.map(c => c.m + ' ' + c.url) } }));
+  // ── X20: la regla de nombre compatible de la app es la misma que la del sync de la hoja ──
+  const x20 = await page.evaluate(() => {
+    const P = (n, e) => ({ nombre: n, edad: e });
+    return [_plNamesCompatible(P('PEREZ DIAS JUAN', '40'), P('PEREZ DIAZ JUAN', '40')), _plNamesCompatible(P('GOMEZ GRACIA LUIS', '40'), P('GOMEZ GARCIA LUIS', '40')),
+      _plNamesCompatible(P('HDZ LOPEZ JUAN', '40'), P('HERNANDEZ LOPEZ JUAN CARLOS', '40')), _plNamesCompatible(P('DESCONOCIDO MASCULINO', ''), P('PEREZ LOPEZ JUAN', '40')),
+      _plNamesCompatible(P('PEREZ DELACRUZ JUAN', '40'), P('PEREZ DE LA CRUZ JUAN', '40')), _plNamesCompatible(P('Pérez Ruíz Juan', '40'), P('PEREZ RUIZ JUAN', '40')),
+      !_plNamesCompatible(P('PEREZ RUIZ JUAN CARLOS', '44'), P('PEREZ SOTO MIGUEL', '31')), !_plNamesCompatible(P('PEREZ LOPEZ JUAN', '31'), P('PEREZ LOPEZ MARIA', '44')),
+      !_plNamesCompatible(P('GARCIA ANA', '30'), P('LOPEZ ANA', '30'))];
+  });
+  check('X20 _plNamesCompatible: correcciones normales (DIAS/DIAZ, GRACIA/GARCIA, HDZ + 2º nombre, DESCONOCIDO, DELACRUZ, acentos) sí; un apellido en común, hermanos con otra edad u otro apellido no',
+    x20.every(Boolean), JSON.stringify(x20));
 
   check('X10 sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   await browser.close();
