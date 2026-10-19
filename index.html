@@ -17887,6 +17887,7 @@ function plExportBackup() {
     function insertTodayStamp(k, field, isCk, label) {
       const sel = isCk ? 'textarea[data-key="' + k + '"][data-ckfield="' + field + '"]' : 'textarea[data-key="' + k + '"][data-field="' + field + '"]';
       const ta = document.querySelector(sel);
+      if (ta && ta.readOnly) ta.readOnly = false;   // «Recibido» es de solo lectura: ➕ Hoy la abre para escribir (como ✏️ Corregir)
       const d = new Date();
       const ini = userInitials();
       // "14/10 GF: " — la fecha y las iniciales de quien escribe, como el color de tinta de cada residente
@@ -18145,7 +18146,7 @@ function plExportBackup() {
       <div class="fc-guardia">
       <div class="fc-guardia-title">
         <span class="fc-guardia-name">🔄 Guardia</span>
-        <span class="fc-guardia-hint">Izquierda: lo que dejo a la siguiente guardia. Derecha: lo que me dejaron a mí.</span>
+        <span class="fc-guardia-hint">📤 Naranja: lo que dejo a la siguiente guardia. 📥 Verde: lo que me dejaron a mí.</span>
         <button type="button" class="gd-btn gd-btn-main" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasa lo que la guardia anterior dejó en «Para la siguiente guardia» a «Recibido», con fecha, hora e iniciales, y deja la caja de entrega vacía para ti" data-testid="gd-recibir">📥 Recibir guardia</button>
       </div>
       <div id="sec-entrega-${ek}" class="fc-anchor entrega-row fc-blk fc-blk-entrega">
@@ -20725,7 +20726,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // todo y escribir encima, pegado que sustituye) deja SIEMPRE un paso en ↩ Regresar con el texto anterior, aunque la
     // caja no llegue a soltar el foco. Como mucho uno cada 5 s por caja, para no llenar la pila al teclear.
     var _bigDelTs = {};
-    function _guardBigDelete(k, f, prev, next, isCk) {
+    function _guardBigDelete(k, f, prev, next, isCk, el) {
       try {
         prev = toSafeString(prev); next = toSafeString(next);
         if (prev.length - next.length < 40) return;
@@ -20733,9 +20734,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (_bigDelTs[id] && now - _bigDelTs[id] < 5000) return;
         _bigDelTs[id] = now;
         var nd = noteData[k]; if (!nd) return;
-        var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd))));
-        if (isCk) { if (!before.checklist) before.checklist = {}; before.checklist[f] = prev; } else before[f] = prev;
-        var keep = noteData[k]; noteData[k] = before; _undoPush(k, "borrado grande en " + _undoFieldLabel(f)); noteData[k] = keep;
+        var pv = isCk ? _ckPrevVals : _fieldPrevVals;   // lo que había al tomar el foco (el paso que subiría al soltar la caja)
+        var snap = function (val, label) {
+          var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd))));
+          if (isCk) { if (!before.checklist) before.checklist = {}; before.checklist[f] = val; } else before[f] = val;
+          var keep = noteData[k]; noteData[k] = before; _undoPush(k, label); noteData[k] = keep;
+        };
+        // Orden correcto en ↩ Regresar: arriba lo que había JUSTO ANTES del borrón; debajo, lo que había al tomar el foco
+        // (si se empujara al soltar la caja quedaría encima y el primer Regresar perdería lo tecleado en la sesión).
+        if (pv[id] !== undefined && toSafeString(pv[id]) !== prev) snap(toSafeString(pv[id]), "texto de " + _undoFieldLabel(f));
+        snap(prev, "borrado grande en " + _undoFieldLabel(f));
+        pv[id] = prev;   // el paso de soltar la caja parte de aquí: mismo contenido que el de arriba, no se duplica
+        try { if (el && el.dataset && el.dataset.beforeValue !== undefined) el.dataset.beforeValue = prev; } catch (_) {}   // onchange pasa beforeValue (del foco): alinearlo también
         _showUndoToast();
       } catch (_) {}
     }
@@ -20743,7 +20753,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       var k = _liveKey(el), f = el.dataset.field;
       if (!noteData[k]) noteData[k] = defaultData();
       if (_fieldPrevVals[k + "|" + f] === undefined) _fieldPrevVals[k + "|" + f] = toSafeString(noteData[k][f]);
-      _guardBigDelete(k, f, noteData[k][f], el.value, false);
+      _guardBigDelete(k, f, noteData[k][f], el.value, false, el);
       noteData[k][f] = el.value;
       // Marcar campo como dirty (editado localmente, pendiente de guardar)
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -20973,7 +20983,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!nd.checklist) nd.checklist = {};
       // Valor previo al primer teclazo (para "Regresar" al soltar el campo); se limpia en updateCkText.
       if (_ckPrevVals[k + "|" + f] === undefined) _ckPrevVals[k + "|" + f] = toSafeString(nd.checklist[f]);
-      _guardBigDelete(k, f, nd.checklist[f], el.value, true);
+      _guardBigDelete(k, f, nd.checklist[f], el.value, true, el);
       nd.checklist[f] = el.value;
       noteData[k] = nd;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -20992,6 +21002,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     const HIST_MAX = 6000;   // tope de letras que guarda el disparador pl_audit por campo de notes (v_max): más largo = versión recortada
     // Texto de una versión tal como llega del RPC. Con fmt >= 2 ya viene en texto plano. Sin fmt (RPC viejo), las sub-llaves
     // del checklist llegaban como el texto JSON sin comillas ("línea 1\nlínea 2" con \n literal): se decodifica si es JSON válido.
+    // ¿Versión recortada? La v3 lo dice (de_cortada, calculado sobre lo almacenado); con v2/v1 se infiere por el largo
+    // (las cajas del checklist se guardan escapadas, así que ahí el largo decodificado puede quedarse corto: por eso la v3).
+    function _histCortada(r, de) { return !!(r && (r.de_cortada === true || (r.de_cortada === undefined && toSafeString(de).length >= HIST_MAX))); }
     function _histTexto(field, r, key) {
       const s = toSafeString(r && r[key]);
       if (!r || Number(r.fmt) >= 2 || field.indexOf("ck:") !== 0 || s.indexOf("\\") < 0) return s;
@@ -21022,10 +21035,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       try {
         const args = { p_patient: p._supa_id, p_campo: field, p_limit: 40 };
         let rows;
-        // v2 devuelve texto plano (fmt = 2); si la base aún no la tiene (404 "function … not found") se cae a la v1 y
-        // _histTexto decodifica las cajas del checklist.
-        try { rows = await _sRpc("pl_historial_caja_v2", args); }
-        catch (e2) { if (!/not (be )?found|does not exist|PGRST202|\b404\b/i.test(String((e2 && e2.message) || e2))) throw e2; rows = await _sRpc("pl_historial_caja", args); }
+        // v3: texto plano (fmt = 3), marcas de_cortada/a_cortada, DX desde patients y solo cuentas activas. Si la base aún no
+        // la tiene (404 "function … not found") se cae a la v2 y luego a la v1 (ahí _histTexto decodifica las cajas del
+        // checklist y la marca «recortada» se infiere por el largo).
+        const missing = e => /not (be )?found|does not exist|PGRST202|\b404\b/i.test(String((e && e.message) || e));
+        try { rows = await _sRpc("pl_historial_caja_v3", args); }
+        catch (e3) {
+          if (!missing(e3)) throw e3;
+          try { rows = await _sRpc("pl_historial_caja_v2", args); }
+          catch (e2) { if (!missing(e2)) throw e2; rows = await _sRpc("pl_historial_caja", args); }
+        }
         if (_histState.k !== k || _histState.field !== field) return;   // el usuario cambió de caja mientras cargaba
         _histState.rows = Array.isArray(rows) ? rows : [];
         renderFieldHistory();
@@ -21042,7 +21061,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!rows.length) html += '<div class="adm-hint" style="margin-top:8px">Sin cambios registrados en esta caja.</div>';
       rows.forEach((r, i) => {
         const de = _histTexto(field, r, "de"), a = _histTexto(field, r, "a");
-        const same = de === cur, cut = de.length >= HIST_MAX;
+        const same = de === cur, cut = _histCortada(r, de);
         html += `<div class="hist-item" data-testid="hist-item"><div class="hist-h"><span class="adm-act-ts">${fmt(r.ts)}</span> <b>${esc(r.nombre || "?")}</b> <span class="adm-mail">${esc(r.dispositivo || "")}</span> · ${de.length} → ${a.length} letras${same ? ' <span class="adm-badge">igual a la actual</span>' : ""}${cut ? ` <span class="adm-badge" style="background:#fef3c7;color:#92400e" data-testid="hist-cut">recortada a ${HIST_MAX} letras</span>` : ""}</div>`
           + (de ? pre(de) : '<div class="adm-hint">(estaba vacía)</div>')
           + (de && !same ? `<div class="adm-row" style="margin-top:4px"><button class="adm-btn" data-i="${i}" onclick="restoreFieldVersion(this.dataset.i)" data-testid="hist-restore">↩ Restaurar esta versión</button></div>` : "")
@@ -21053,7 +21072,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function restoreFieldVersion(i) {
       const k = _histState.k, field = _histState.field, r = _histState.rows[Number(i)]; if (!r) return;
       const txt = _histTexto(field, r, "de");
-      const aviso = txt.length >= HIST_MAX ? " OJO: esta versión está recortada a " + HIST_MAX + " letras (la caja era más larga); lo que sobrepasaba no se puede recuperar desde aquí." : "";
+      const aviso = _histCortada(r, txt) ? " OJO: esta versión está recortada (la caja era más larga que lo que guarda el historial, " + HIST_MAX + " letras); lo que sobrepasaba no se puede recuperar desde aquí." : "";
       if (!confirm("¿Poner este texto en la caja «" + _histLabel(field) + "»? Lo que hay ahora queda en el historial y en ↩ Regresar." + aviso)) return;
       if (field.indexOf("ck:") === 0) updateCkText(k, field.slice(3), txt);
       else updateField(k, field, txt);
@@ -24751,10 +24770,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return null;
       }
     }
+    // Cuerpo del PATCH al editar: SIN added_by (quién lo agregó no cambia al editar; si la copia local no lo trae, tampoco se pisa).
+    function _procPatchBody(proc) { const row = _procToRow(proc); delete row.added_by; return row; }
     async function supaUpdateProc(id, proc) {
-      const op = { key: "proc|patch|" + id, method: "PATCH", table: "procedimientos_dia", match: "id=eq." + id, body: _procToRow(proc) };
+      const op = { key: "proc|patch|" + id, method: "PATCH", table: "procedimientos_dia", match: "id=eq." + id, body: _procPatchBody(proc) };
       if (!navigator.onLine) { _restEnqueue(op); return; }
-      try { await _sPatch("procedimientos_dia", "id=eq." + id, _procToRow(proc)); }
+      try { await _sPatch("procedimientos_dia", "id=eq." + id, _procPatchBody(proc)); }
       catch (e) { safeLog("[PROC] supaUpdateProc:", e); if (_isRetryableSupaError(e)) _restEnqueue(op); }
     }
     async function supaDeleteProc(id) {
@@ -24846,15 +24867,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         dx: document.getElementById("pf-dx").value.trim().toUpperCase(),
         esp: document.getElementById("pf-esp").value,
         adscrito: document.getElementById("pf-adscrito").value.trim().toUpperCase(),
-        residente: document.getElementById("pf-residente").value.trim().toUpperCase(),
-        _addedAt: new Date().toISOString()
+        residente: document.getElementById("pf-residente").value.trim().toUpperCase()
       };
-      if (_procEditIdx < 0) proc.added_by = localStorage.getItem("pl_user_name") || "";   // al editar se conserva el autor original
+      if (_procEditIdx < 0) { proc.added_by = localStorage.getItem("pl_user_name") || ""; proc._addedAt = new Date().toISOString(); }   // autor y hora solo al crear
       if (_procEditIdx >= 0) {
+        // Editar conserva quién lo agregó y a qué hora (el PATCH no lleva added_by: ver _procPatchBody).
         const existingId = procedimientos[_procEditIdx]._id;
-        procedimientos[_procEditIdx] = { ...procedimientos[_procEditIdx], ...proc };
+        const merged = { ...procedimientos[_procEditIdx], ...proc };
+        procedimientos[_procEditIdx] = merged;
         saveProcs();
-        if (existingId) supaUpdateProc(existingId, proc);
+        if (existingId) supaUpdateProc(existingId, merged);
         // Sin _id (la inserción sigue pendiente en el outbox) el POST pendiente toma los datos
         // actuales del proc local al ejecutarse, así que la edición no se pierde.
       } else {

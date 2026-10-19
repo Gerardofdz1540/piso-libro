@@ -112,9 +112,47 @@ begin
   return trim(both '"' from x);
 end $$;
 
--- pl_historial_caja_v2 (migración historial_caja_texto_plano_v2): fmt = 2 → 'de' y 'a' ya vienen en texto plano. La app
--- llama a la v2 y, si no existe (base vieja), cae a pl_historial_caja y decodifica ella misma las 'ck:'. Se creó con otro
--- nombre porque cambiar las columnas que devuelve una función exige DROP (sentencia destructiva que el conector no corre).
+-- Versiones: v2 (migración historial_caja_texto_plano_v2) añadió fmt = 2 y texto plano; se crearon con otro nombre
+-- porque cambiar las columnas que devuelve una función exige DROP (sentencia destructiva que el conector no corre).
+-- v3 (migración historial_caja_v3_recortada_dx_cuentas_activas, tras la revisión adversarial del PR #197). La app llama a
+-- la v3 y cae a v2 y luego a v1 si la base no las tiene (404).
+--  · de_cortada / a_cortada: el disparador guarda hasta v_max letras del texto TAL COMO SE ALMACENA (las sub-llaves del
+--    checklist van como texto JSON, con \n y \" escapados), así que el texto decodificado puede ser más corto que 6000
+--    aunque esté recortado. La marca se calcula aquí sobre lo almacenado.
+--  · DX: la caja DX vive en patients (notes no tiene dx): se leen también las filas con tabla = 'patients' para 'dx'
+--    (ahí v_max es 800).
+--  · Solo cuentas activas: las funciones SECURITY DEFINER no pasaban por la política pl_solo_cuentas_activas; ahora
+--    exigen public.pl_is_active() (una cuenta bloqueada con sesión aún válida no lee nada).
+CREATE OR REPLACE FUNCTION public.pl_historial_caja_v3(p_patient uuid, p_campo text, p_limit int default 30)
+ RETURNS TABLE (id bigint, ts timestamptz, nombre text, dispositivo text, de text, a text, fmt int, de_cortada boolean, a_cortada boolean)
+ LANGUAGE sql
+ SECURITY DEFINER
+ STABLE
+ SET search_path TO 'public'
+AS $$
+  with f as (
+    select a.id, a.ts, a.nombre, a.dispositivo, a.tabla,
+      case when p_campo like 'ck:%' then a.diff -> 'checklist' -> substr(p_campo, 4) ->> 'de' else a.diff -> p_campo ->> 'de' end as rde,
+      case when p_campo like 'ck:%' then a.diff -> 'checklist' -> substr(p_campo, 4) ->> 'a' else a.diff -> p_campo ->> 'a' end as ra
+    from public.audit_log a
+    where auth.role() = 'authenticated' and public.pl_is_active()
+      and a.op = 'UPDATE' and a.record_id = p_patient::text
+      and ((a.tabla = 'notes' and (case when p_campo like 'ck:%' then (a.campos @> array['checklist'] and (a.diff -> 'checklist') ? substr(p_campo, 4)) else a.campos @> array[p_campo] end))
+        or (a.tabla = 'patients' and p_campo = 'dx' and a.campos @> array['dx']))
+    order by a.ts desc
+    limit least(greatest(coalesce(p_limit, 30), 1), 100)
+  )
+  select f.id, f.ts, f.nombre, f.dispositivo,
+    case when p_campo like 'ck:%' then public.pl_json_texto(f.rde) else f.rde end as de,
+    case when p_campo like 'ck:%' then public.pl_json_texto(f.ra) else f.ra end as a,
+    3 as fmt,
+    length(coalesce(f.rde, '')) >= (case when f.tabla = 'notes' then 6000 else 800 end) as de_cortada,
+    length(coalesce(f.ra, '')) >= (case when f.tabla = 'notes' then 6000 else 800 end) as a_cortada
+  from f
+  order by f.ts desc;
+$$;
+
+-- v2 (misma firma): delega en la v3 (mismas reglas de acceso y DX), sin las marcas.
 CREATE OR REPLACE FUNCTION public.pl_historial_caja_v2(p_patient uuid, p_campo text, p_limit int default 30)
  RETURNS TABLE (id bigint, ts timestamptz, nombre text, dispositivo text, de text, a text, fmt int)
  LANGUAGE sql
@@ -122,16 +160,7 @@ CREATE OR REPLACE FUNCTION public.pl_historial_caja_v2(p_patient uuid, p_campo t
  STABLE
  SET search_path TO 'public'
 AS $$
-  select a.id, a.ts, a.nombre, a.dispositivo,
-    case when p_campo like 'ck:%' then public.pl_json_texto(a.diff -> 'checklist' -> substr(p_campo, 4) ->> 'de') else a.diff -> p_campo ->> 'de' end as de,
-    case when p_campo like 'ck:%' then public.pl_json_texto(a.diff -> 'checklist' -> substr(p_campo, 4) ->> 'a') else a.diff -> p_campo ->> 'a' end as a,
-    2 as fmt
-  from public.audit_log a
-  where auth.role() = 'authenticated'
-    and a.tabla = 'notes' and a.op = 'UPDATE' and a.record_id = p_patient::text
-    and (case when p_campo like 'ck:%' then (a.campos @> array['checklist'] and (a.diff -> 'checklist') ? substr(p_campo, 4)) else a.campos @> array[p_campo] end)
-  order by a.ts desc
-  limit least(greatest(coalesce(p_limit, 30), 1), 100);
+  select v.id, v.ts, v.nombre, v.dispositivo, v.de, v.a, 2 as fmt from public.pl_historial_caja_v3(p_patient, p_campo, p_limit) v;
 $$;
 
 -- La v1 (misma firma de siempre) delega en la v2: también devuelve texto plano, sin la columna fmt.
@@ -145,6 +174,8 @@ AS $$
   select v.id, v.ts, v.nombre, v.dispositivo, v.de, v.a from public.pl_historial_caja_v2(p_patient, p_campo, p_limit) v;
 $$;
 
+REVOKE ALL ON FUNCTION public.pl_historial_caja_v3(uuid, text, int) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.pl_historial_caja_v3(uuid, text, int) TO authenticated;
 REVOKE ALL ON FUNCTION public.pl_historial_caja_v2(uuid, text, int) FROM public, anon;
 GRANT EXECUTE ON FUNCTION public.pl_historial_caja_v2(uuid, text, int) TO authenticated;
 REVOKE ALL ON FUNCTION public.pl_historial_caja(uuid, text, int) FROM public, anon;

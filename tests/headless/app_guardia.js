@@ -21,6 +21,8 @@ const HIST = {
   ],
   'ck:recibo': [{ id: 19859, ts: T1, nombre: 'Diego', dispositivo: 'Mac Chrome', de: '— Recibido 18/10 07:30 DG —\nVIGILAR SANGRADO', a: '' }],
   entrega: [{ id: 19900, ts: T1, nombre: 'Diego', dispositivo: 'Mac Chrome', de: 'PENDIENTE TAC DE CONTROL', a: '' }],
+  // texto corto pero la base dice que lo almacenado llegó al tope (sub-llave del checklist escapada): la v3 manda la marca
+  'ck:cultivos': [{ id: 19910, ts: T1, nombre: 'Diego', dispositivo: 'Mac Chrome', de: 'HEMOCULTIVO X2 EN PROCESO', a: '', de_cortada: true }],
 };
 // RPC v1 de una base SIN la v2: las sub-llaves del checklist llegan como texto JSON sin comillas (\n y \" literales) y la
 // app las decodifica; una versión de 6000 letras (tope del disparador) se marca «recortada».
@@ -41,10 +43,13 @@ const HIST_OLD = {
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.startsWith('/rest/v1/rpc/pl_historial_caja')) {
       if (rpcFail) return json(500, { message: 'boom' });
-      const v2 = url.startsWith('/rest/v1/rpc/pl_historial_caja_v2');
-      if (v2 && rpcV2Missing) return json(404, { code: 'PGRST202', message: 'Could not find the function public.pl_historial_caja_v2(p_campo, p_limit, p_patient) in the schema cache' });
-      const rows = ((!v2 && rpcV2Missing) ? HIST_OLD : HIST)[(body && body.p_campo) || ''] || [];
-      return json(200, v2 ? rows.map(r => Object.assign({ fmt: 2 }, r)) : rows);   // la v2 ya devuelve texto plano + fmt
+      const ver = /_v3$/.test(url) ? 3 : (/_v2$/.test(url) ? 2 : 1);
+      // base vieja: ni v3 ni v2 existen (404 PGRST202) y la v1 devuelve las sub-llaves del checklist como texto JSON
+      if (ver > 1 && rpcV2Missing) return json(404, { code: 'PGRST202', message: 'Could not find the function public.pl_historial_caja_v' + ver + '(p_campo, p_limit, p_patient) in the schema cache' });
+      const rows = (rpcV2Missing ? HIST_OLD : HIST)[(body && body.p_campo) || ''] || [];
+      if (ver === 3) return json(200, rows.map(r => Object.assign({ fmt: 3, de_cortada: false, a_cortada: false }, r)));   // v3: texto plano + fmt + marcas
+      if (ver === 2) return json(200, rows.map(r => Object.assign({ fmt: 2 }, r)));
+      return json(200, rows);
     }
     if (url.startsWith('/rest/v1/patients')) {
       if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-183', exp: '26-70001', nombre: 'RUIZ SOTO MATEO', esp: 'CG', estado: 'DELICADO', edad: '58', dx: 'PO LAPE', adscrito: 'DR GARNELO', residente: 'DR FERNÁNDEZ R2' }]);
@@ -110,7 +115,8 @@ const HIST_OLD = {
   check('G3 el selector consulta la caja elegida (ck:recibo y entrega llegan a la función SQL con ese nombre) y un fallo de red se muestra sin romper nada',
     g3.recibo && g3.entrega && rpcCampos.includes('ck:recibo') && rpcCampos.includes('entrega') && /No se pudo cargar/.test(g3b), JSON.stringify({ g3, rpcCampos, g3b: g3b.slice(0, 80) }));
 
-  // ── G3c: base SIN la v2 (404 PGRST202): se cae a la v1; el Recibo guardado como texto JSON se muestra y se restaura decodificado; «recortada» a 6000 ──
+  // ── G3c: base SIN v3 ni v2 (404 PGRST202): se cae a la v1; el Recibo guardado como texto JSON se muestra y se restaura decodificado;
+  //        «recortada» por largo (6000) con la v1 y por la marca de_cortada con la v3 (texto corto pero almacenado al tope) ──
   rpcV2Missing = true;
   const g3c = await page.evaluate(async () => {
     const sel = document.getElementById('hist-field'); sel.value = 'ck:recibo'; sel.dispatchEvent(new Event('change'));
@@ -125,9 +131,18 @@ const HIST_OLD = {
     return { txt, recibo, cut, cutTxt };
   });
   rpcV2Missing = false;
-  const v2Calls = calls.filter(c => c.url.startsWith('/rest/v1/rpc/pl_historial_caja_v2')).length, v1Calls = calls.filter(c => /\/rpc\/pl_historial_caja(\?|$)/.test(c.url)).length;
-  check('G3c base sin la v2 (404): se cae a la v1 y el Recibo guardado como texto JSON se muestra y se restaura con saltos de línea y comillas reales; una versión de 6000 letras lleva la marca «recortada»; la v1 solo se usa en el respaldo',
-    g3c.txt === '— Recibido 18/10 07:30 DG —\nVIGILAR "SANGRADO"' && g3c.recibo === g3c.txt && g3c.cut && /recortada a 6000/.test(g3c.cutTxt) && v2Calls >= 4 && v1Calls === 2, JSON.stringify({ g3c: Object.assign({}, g3c, { cutTxt: g3c.cutTxt.slice(0, 40) }), v2Calls, v1Calls }));
+  const v3Calls = calls.filter(c => /\/rpc\/pl_historial_caja_v3$/.test(c.url)).length, v2Calls = calls.filter(c => /\/rpc\/pl_historial_caja_v2$/.test(c.url)).length, v1Calls = calls.filter(c => /\/rpc\/pl_historial_caja$/.test(c.url)).length;
+  // de vuelta con la v3: la versión corta de Cultivos trae de_cortada = true → marca y aviso al restaurar
+  const g3d = await page.evaluate(async () => {
+    const sel = document.getElementById('hist-field'); sel.value = 'ck:cultivos'; sel.dispatchEvent(new Event('change'));
+    for (let i = 0; i < 40 && !/HEMOCULTIVO/.test((document.getElementById('hist-list') || {}).textContent || ''); i++) await new Promise(r => setTimeout(r, 100));
+    const cut = !!document.querySelector('[data-testid="hist-cut"]'); window.__confirms.length = 0;
+    document.querySelector('[data-testid="hist-restore"]').click(); await new Promise(r => setTimeout(r, 300));
+    return { cut, aviso: /recortada/.test(window.__confirms[0] || ''), cultivos: (getNote(pid(patients[0])).checklist || {}).cultivos };
+  });
+  check('G3c base sin v3 ni v2 (404): se cae a la v1 y el Recibo guardado como texto JSON se muestra y se restaura con saltos de línea y comillas reales; una versión de 6000 letras lleva la marca «recortada»; v2/v1 solo se usan en el respaldo; con la v3 una versión corta marcada de_cortada lleva la marca y avisa al restaurar',
+    g3c.txt === '— Recibido 18/10 07:30 DG —\nVIGILAR "SANGRADO"' && g3c.recibo === g3c.txt && g3c.cut && /recortada a 6000/.test(g3c.cutTxt) && v3Calls >= 5 && v2Calls === 2 && v1Calls === 2
+    && g3d.cut && g3d.aviso && g3d.cultivos === 'HEMOCULTIVO X2 EN PROCESO', JSON.stringify({ g3c: Object.assign({}, g3c, { cutTxt: g3c.cutTxt.slice(0, 40) }), g3d, v3Calls, v2Calls, v1Calls }));
 
   // ── G4: sección 🔄 Guardia: un solo encabezado, «Recibir guardia», Recibido de solo lectura y ✏️ Corregir ──
   const g4 = await page.evaluate(async () => {
@@ -152,20 +167,30 @@ const HIST_OLD = {
     && /^— Recibido \d{2}\/\d{2} \d{2}:\d{2}( [A-ZÁÉÍÓÚÑ]{1,3})? —\nVIGILAR DRENAJE 3\nK 2\.9 EN REPOSICIÓN$/.test(g4.recibo) && g4.entregaVacia && g4.reciboTa === g4.recibo && g4.entregaTa === '' && g4.ro2 === true
     && g4.editable && g4.focused && /Para la siguiente guardia/.test(g4.labels[0]) && /Recibido/.test(g4.labels[1]), JSON.stringify(g4));
 
-  // ── G5: Procedimientos del día muestran quién lo agregó y a qué hora; editar no cambia al autor ──
-  const g5 = await page.evaluate(() => {
+  // ── G5: Procedimientos del día muestran quién lo agregó y a qué hora; EDITAR por el modal no cambia autor ni hora (ni en local ni en el PATCH) ──
+  const from5 = calls.length;
+  const g5 = await page.evaluate(async () => {
     procedimientos = [{ _id: 'p1', cama: '3-183', exp: '26-70001', nombre: 'RUIZ SOTO MATEO', edad: '58', dx: 'LAPE', esp: 'CG', adscrito: 'DR GARNELO', residente: 'DR FERNÁNDEZ', added_by: 'Diego', _addedAt: '2026-10-19T08:15:00' },
       { _id: 'p2', cama: '3-150', exp: '26-70002', nombre: 'LUNA MORA ANA', edad: '40', dx: 'HERNIA', esp: 'CG', adscrito: '', residente: '' }];
-    const html = renderProcSection();
-    const div = document.createElement('div'); div.innerHTML = html;
-    const chips = Array.from(div.querySelectorAll('[data-testid="proc-added-by"]')).map(e => e.textContent.replace(/\s+/g, ' ').trim());
-    const row = _procToRow(procedimientos[0]);
+    const chipsOf = () => { const div = document.createElement('div'); div.innerHTML = renderProcSection(); return Array.from(div.querySelectorAll('[data-testid="proc-added-by"]')).map(e => e.textContent.replace(/\s+/g, ' ').trim()); };
+    const chips = chipsOf();
     const rowNew = _procToRow({ cama: '3-151', nombre: 'X' });
-    procedimientos = [];
-    return { chips, rowBy: row.added_by, rowNewBy: rowNew.added_by };
+    // editar el 1.º por el modal (otro usuario está en sesión): cambia el dx, no el autor ni la hora
+    openProcModal(0); document.getElementById('pf-dx').value = 'LAPE + LAVADO'; saveProcModal(); await new Promise(r => setTimeout(r, 500));
+    const after = procedimientos[0]; const chips2 = chipsOf();
+    // crear uno nuevo por el modal: lleva al usuario actual y la hora de ahora
+    openProcModal(); document.getElementById('pf-cama').value = '3-160'; document.getElementById('pf-nombre').value = 'PEREZ GIL LUIS'; saveProcModal(); await new Promise(r => setTimeout(r, 300));
+    const nuevo = procedimientos[procedimientos.length - 1];
+    const out = { chips, rowNewBy: rowNew.added_by, afterBy: after.added_by, afterAt: after._addedAt, afterDx: after.dx, chip0: chips2[0], nuevoBy: nuevo.added_by, nuevoAtOk: /^\d{4}-\d{2}-\d{2}T/.test(nuevo._addedAt || '') };
+    procedimientos = []; return out;
   });
-  check('G5 procedimientos: cada fila dice 👤 quién lo agregó y la hora; sin dato muestra «?»; al editar, la fila que se sube conserva al autor original y un procedimiento nuevo lleva al usuario actual',
-    g5.chips.length === 2 && /👤 Diego · 08:15/.test(g5.chips[0]) && /👤 \?/.test(g5.chips[1]) && g5.rowBy === 'Diego' && g5.rowNewBy === 'Gerardo Fernández', JSON.stringify(g5));
+  const patch5 = calls.slice(from5).find(c => c.m === 'PATCH' && c.url.startsWith('/rest/v1/procedimientos_dia'));
+  const post5 = calls.slice(from5).find(c => c.m === 'POST' && c.url.startsWith('/rest/v1/procedimientos_dia'));
+  check('G5 procedimientos: cada fila dice 👤 quién lo agregó y la hora; sin dato muestra «?»; editar por el modal cambia el dx pero conserva autor y hora (el chip sigue «Diego · 08:15») y el PATCH no lleva added_by; uno nuevo lleva al usuario actual y la hora, y el POST sí lleva added_by',
+    g5.chips.length === 2 && /👤 Diego · 08:15/.test(g5.chips[0]) && /👤 \?/.test(g5.chips[1]) && g5.rowNewBy === 'Gerardo Fernández'
+    && g5.afterBy === 'Diego' && g5.afterAt === '2026-10-19T08:15:00' && g5.afterDx === 'LAPE + LAVADO' && /👤 Diego · 08:15/.test(g5.chip0)
+    && !!patch5 && patch5.body && !('added_by' in patch5.body) && patch5.body.dx === 'LAPE + LAVADO'
+    && g5.nuevoBy === 'Gerardo Fernández' && g5.nuevoAtOk && !!post5 && post5.body && post5.body.added_by === 'Gerardo Fernández', JSON.stringify({ g5, patch5: patch5 && patch5.body, post5: post5 && post5.body }));
 
   // ── G6: ninguna caja acepta arrastres de texto ni deja sacar texto arrastrando (el incidente: bloques movidos entre cajas) ──
   const g6 = await page.evaluate(() => {
@@ -180,27 +205,37 @@ const HIST_OLD = {
   check('G6 arrastres: dragstart en una caja, dragover y drop sobre cajas e inputs se cancelan (el texto ni sale ni entra); un div normal sigue aceptando drops (zonas de fotos)',
     g6.ds && g6.dov && g6.drop && g6.dropInput && !g6.dropDiv && g6.valDst === 'PEND X', JSON.stringify(g6));
 
-  // ── G7: un borrado grande de golpe en una caja deja paso en ↩ Regresar aunque la caja no suelte el foco ──
-  const g7 = await page.evaluate(async () => {
+  // ── G7: un borrado grande de golpe en una caja deja paso en ↩ Regresar aunque la caja no suelte el foco, en el ORDEN correcto:
+  //        arriba lo que había justo antes del borrón; debajo, lo que había al tomar el foco; soltar la caja no pone lo viejo encima ──
+  const BIG7 = 'LINEA UNO DEL PLAN DEL DIA\nLINEA DOS CON MAS DETALLES\nLINEA TRES'; // 60+ letras
+  const g7 = await page.evaluate(async (big) => {
     const k = pid(patients[0]); const card = document.getElementById('card-' + k);
-    const ta = card.querySelector('textarea[data-field="pendientes"]');
-    const big = 'LINEA UNO DEL PLAN DEL DIA\nLINEA DOS CON MAS DETALLES\nLINEA TRES'; // 60+ letras
+    const ta = card.querySelector('textarea[data-field="pendientes"]'); const p0 = ta.value;
+    ta.focus(); ta.dataset.beforeValue = ta.value;                   // como al tomar el foco (onfocus guarda beforeValue)
     ta.value = big; ta.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 50));
     const n0 = (_undoLoad()[k] || []).length;
     ta.value = ''; ta.dispatchEvent(new Event('input'));            // desaparece todo de golpe (tachadura / sobrescribir)
-    const n1 = (_undoLoad()[k] || []).length;
+    const st1 = _undoLoad()[k] || []; const n1 = st1.length; const top1 = (st1[n1 - 1] || {}).note && st1[n1 - 1].note.pendientes, under1 = (st1[n1 - 2] || {}).note && st1[n1 - 2].note.pendientes;
     const toast = document.getElementById('undo-toast').style.display;
     ta.value = 'X'; ta.dispatchEvent(new Event('input'));            // teclazo normal: no apila otro paso
     const n2 = (_undoLoad()[k] || []).length;
-    const ck = card.querySelector('textarea[data-ckfield="interconsultas"]');
+    ta.dispatchEvent(new Event('change')); ta.blur(); await new Promise(r => setTimeout(r, 80));   // soltar la caja (onchange con beforeValue)
+    const st3 = _undoLoad()[k] || []; const n3 = st3.length; const top3 = st3[n3 - 1].note.pendientes;
+    // sub-caja del checklist: igual (dos pasos: lo de antes del borrón arriba, lo del foco debajo)
+    const ck = card.querySelector('textarea[data-ckfield="interconsultas"]'); const ic0 = ck.value;
     ck.value = 'IC MEDICINA INTERNA VALORADO, SUGIERE AJUSTE DE ANTIBIOTICO'; ck.dispatchEvent(new Event('input'));
-    const c0 = (_undoLoad()[k] || []).length; ck.value = ''; ck.dispatchEvent(new Event('input')); const c1 = (_undoLoad()[k] || []).length;
-    undoLast(k); const afterCk = getNote(k).checklist.interconsultas;   // deshace el borrado de IC…
-    undoLast(k); const after = getNote(k).pendientes;                   // …y luego el de Pendientes (estado anterior a escribir en IC)
-    return { n0, n1, n2, toast, after, afterCk, c0, c1 };
-  });
-  check('G7 borrado grande: al vaciar de golpe una caja (y una sub-caja del checklist) se apila un paso en Regresar y aparece el aviso; un teclazo normal no apila; Regresar devuelve el texto',
-    g7.n1 === g7.n0 + 1 && g7.n2 === g7.n1 && g7.toast === 'flex' && g7.c1 === g7.c0 + 1 && /IC MEDICINA INTERNA/.test(g7.afterCk) && /LINEA UNO DEL PLAN DEL DIA/.test(g7.after), JSON.stringify(g7));
+    const c0 = (_undoLoad()[k] || []).length; ck.value = ''; ck.dispatchEvent(new Event('input'));
+    const stc = _undoLoad()[k] || []; const c1 = stc.length; const topC = stc[c1 - 1].note.checklist.interconsultas, underC = stc[c1 - 2].note.checklist.interconsultas;
+    const u1 = (undoLast(k), getNote(k).checklist.interconsultas);   // 1.º Regresar: la IC tal como estaba antes del borrón
+    const u2 = (undoLast(k), getNote(k).checklist.interconsultas);   // 2.º: como estaba al empezar a escribir en IC
+    const u3 = (undoLast(k), getNote(k).pendientes);                 // 3.º: Pendientes justo antes del borrón
+    const u4 = (undoLast(k), getNote(k).pendientes);                 // 4.º: Pendientes al tomar el foco
+    return { p0, n0, n1, top1, under1, toast, n2, n3, top3, ic0, c0, c1, topC, underC, u1, u2, u3, u4 };
+  }, BIG7);
+  check('G7 borrado grande: al vaciar de golpe una caja se apilan dos pasos (arriba lo de justo antes del borrón, debajo lo del foco) y aparece el aviso; un teclazo normal no apila; soltar la caja no pone lo viejo encima; igual en una sub-caja del checklist; los Regresar devuelven en orden: IC borrada, IC inicial, Pendientes borrado, Pendientes inicial',
+    g7.n1 === g7.n0 + 2 && g7.top1 === BIG7 && g7.under1 === g7.p0 && g7.toast === 'flex' && g7.n2 === g7.n1 && g7.n3 <= g7.n2 + 1 && g7.top3 === BIG7
+    && g7.c1 === g7.c0 + 2 && /IC MEDICINA INTERNA/.test(g7.topC) && g7.underC === g7.ic0
+    && /IC MEDICINA INTERNA/.test(g7.u1) && g7.u2 === g7.ic0 && g7.u3 === BIG7 && g7.u4 === g7.p0, JSON.stringify(g7));
 
   // ── G8: vigilante de Scribble en iPad: cuenta RÁFAGAS (los trazos de una palabra), no trazos; una palabra de 4 trazos cuyo texto
   //        llega después NO avisa; dos ráfagas seguidas sin texto → aviso «Garabatear»; pointercancel y toques cortos no cuentan ──

@@ -331,7 +331,7 @@ sincronizar y hay que esperar al Wi-Fi del hospital; lo escrito no se pierde.
 
 En la cabecera de cada tarjeta aparece **↩ Regresar** cuando hay algo que deshacer. Cada cambio
 que puede doler guarda antes una copia de la tarjeta: texto de una caja al terminar de escribir,
-quitar una cirugía, un drenaje, unos labs o un estudio, "Tomar guardia", auto-llenar, órdenes
+quitar una cirugía, un drenaje, unos labs o un estudio, "Recibir guardia", auto-llenar, órdenes
 rápidas y las novedades automáticas. Regresar vuelve un paso; tocarlo otra vez vuelve otro paso
 más (hasta 20 por paciente) y cada regreso se sube como cualquier edición.
 
@@ -382,7 +382,7 @@ Tres cosas que la hoja de GoodNotes hacía y la app no:
   Se ve en la hoja, en la impresión y en los demás dispositivos. 🤖 Transcribir sigue igual.
 - **Autor por caja**: cada caja de texto muestra un chip con las iniciales de quien hizo el último
   cambio, la fecha y la hora, con un color fijo por persona (el nombre que pusiste al entrar).
-  ➕ Hoy anota `dd/mm GF: ` y Tomar guardia sella `— Recibido dd/mm hh:mm GF —`.
+  ➕ Hoy anota `dd/mm GF: ` y Recibir guardia sella `— Recibido dd/mm hh:mm GF —`.
 
 ## Las cajas de la ficha (octubre 2026)
 
