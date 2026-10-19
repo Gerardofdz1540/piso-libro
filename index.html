@@ -3075,6 +3075,12 @@
     .gd-btn-main:hover { background: #15803d; }
     .gd-recibido[readonly] { background: #f8fafc; color: #1e293b; cursor: default; }
     body.dark .fc-guardia-title { border-top-color: #27415f; } body.dark .fc-guardia-name { color: #e2e8f0; } body.dark .gd-recibido[readonly] { background: #0f2238; color: #e2e8f0; }
+    /* 🕓 Cronología (19 oct 2026): una sola caja a todo el ancho, azul (Pendientes ámbar, Otros verde azulado) */
+    .fc-guardia.fc-crono { grid-template-columns: 1fr; }
+    .fc-crono .fc-blk-entrega { --acc: #0369a1; --tint: #f0f9ff; --line: #7dd3fc; }
+    .fc-crono .gd-btn-main { --acc: #0369a1; --tint: #f0f9ff; background: #0369a1; }
+    .fc-crono .gd-btn-main:hover { background: #075985; }
+    .fc-crono .entrega-row .field-ta { min-height: 120px; }
     .gd-btn { background: #fff; border: 1px solid var(--acc, #94a3b8); color: var(--acc, #334155); border-radius: 8px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap; }
     .gd-btn:hover { background: var(--tint, #f8fafc); }
     body.dark .gd-btn { background: #152e4d; }
@@ -4639,7 +4645,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
           <div class="mf-collapse-body" id="mf-detail-body" style="display:none">
             <div class="modal-field"><label>APP (antecedentes patológicos)</label><textarea class="modal-input" id="mf-app-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('app',this.value)" placeholder="HTA, DM2, cardiopatía..."></textarea></div>
             <div class="modal-field"><label>PA (procedimiento actual / QX)</label><textarea class="modal-input" id="mf-pa-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('pa',this.value)" placeholder="Procedimiento quirúrgico realizado..."></textarea></div>
-            <div class="modal-field"><label>Misceláneo</label><textarea class="modal-input" id="mf-manejo-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('manejo',this.value)" placeholder="Notas varias: lo que no cabe en otra caja..."></textarea></div>
+            <div class="modal-field"><label>Otros (lo que no cabe en otra caja)</label><textarea class="modal-input" id="mf-manejo-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('manejo',this.value)" placeholder="Notas varias: lo que no cabe en otra caja..."></textarea></div>
             <div class="mf-grid" style="grid-template-columns:1fr 2fr">
               <div class="modal-field"><label>Sangrado estimado</label><input class="modal-input" id="mf-sangrado-modal" inputmode="text" autocorrect="off" oninput="liveModalNote('sangrado',this.value)" placeholder="Ej: 200 mL" /></div>
               <div class="modal-field"><label>Drenajes</label>
@@ -5082,7 +5088,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
       <div id="cm-content"></div>
       <div class="cm-btns">
         <button class="cm-btn secondary" onclick="document.getElementById('correc-modal').classList.remove('open')">Cerrar</button>
-        <button class="cm-btn primary" id="cm-insert-btn" onclick="insertCorreccionToField()">📋 Insertar en Misceláneo</button>
+        <button class="cm-btn primary" id="cm-insert-btn" onclick="insertCorreccionToField()">📋 Insertar en Otros</button>
       </div>
     </div>
   </div>
@@ -9610,12 +9616,12 @@ function plExportBackup() {
         _plneCtxLinea("PADECIMIENTO ACTUAL / RESUMEN", nd.pa),
         _plneCtxLinea("FECHA DE INGRESO", p.ingreso),
         _plneCtxLinea("ESTADO EN EL CENSO", p.estado),
-        _plneCtxLinea("MISCELÁNEO (NOTAS LIBRES DE LA TARJETA)", nd.manejo),
+        _plneCtxLinea("OTROS (NOTAS LIBRES DE LA TARJETA)", nd.manejo),
         _plneCtxLinea("PENDIENTES", nd.pendientes),
         _plneCtxLinea("INTERCONSULTAS", ck.interconsultas),
         _plneCtxLinea("CULTIVOS (CAJA)", ck.cultivos),
-        _plneCtxLinea("ENTREGA DE GUARDIA", nd.entrega),
-        _plneCtxLinea("RECIBO DE GUARDIA", ck.recibo),
+        _plneCtxLinea("CRONOLOGÍA DE GUARDIAS", nd.entrega),
+        _plneCtxLinea("RECIBO DE GUARDIA (CAJA ANTIGUA)", ck.recibo),
         _plneCtxLinea("HERIDA QUIRÚRGICA (PASE)", ck.pm_hxqx)
       ].filter(Boolean).join("\n");
     }
@@ -15735,7 +15741,7 @@ function plExportBackup() {
       if (!R.labs) R.alertas.push("Sin laboratorios");
       // 🆕 Nuevo del día: renglones con fecha de hoy/ayer en Pendientes, Manejo, IC, Cultivos y Entrega;
       //    drenajes colocados hoy/ayer; estudios del visor y cultivos recién llegados.
-      [["Pendientes", nd.pendientes], ["Misceláneo", nd.manejo], ["IC", ck.interconsultas], ["Cultivos", ck.cultivos], ["", nd.entrega]].forEach(function (pair) {
+      [["Pendientes", nd.pendientes], ["Otros", nd.manejo], ["IC", ck.interconsultas], ["Cultivos", ck.cultivos], ["", nd.entrega]].forEach(function (pair) {
         _egLineasFechadas(pair[1]).forEach(function (l) {
           if (!esNuevo(l.fecha) || /^✓\s/.test(l.text)) return;
           if (l.auto && /^Labs:/i.test(l.text)) return;          // los labs ya van en 🧪
@@ -16521,7 +16527,7 @@ function plExportBackup() {
         +   '<div class="ff2-zone">' + fbField("APP:", "app", nd.app, 3) + '</div>'
         +   '<div class="ff2-zone">' + fbField("PA:", "pa", nd.pa, 4) + '</div>'
         +   '<div class="ff2-zone">' + fbField("Qx:", "qx", nd.qx, 4) + '</div>'
-        +   '<div class="ff2-zone">' + fbField("Misceláneo:", "manejo", nd.manejo, 3) + '</div>'
+        +   '<div class="ff2-zone">' + fbField("Otros:", "manejo", nd.manejo, 3) + '</div>'
         +   '<div class="ff2-zone">' + fbField("Sangrado:", "sangrado", nd.sangrado, 2) + '</div>'
         + '</div>';
       out += '<div class="ff2-sec" data-sec="labs" style="' + _secStyle("labs") + '">' + labsHtml + '</div>';
@@ -16610,7 +16616,7 @@ function plExportBackup() {
     // ─── MODO HOJA (oct 2026): la ficha como la hoja de visita de GoodNotes ───
     // Cuadrícula fija con todas las cajas abiertas (CSS body.pl-hoja); se recuerda por dispositivo
     // (pl_hoja). ⚙ Cajas permite ocultar bloques en la hoja (pl_hoja_hide). Imprimir = una hoja por cama.
-    const HOJA_BLOCKS = [["labs", "Labs"], ["manejo", "Misceláneo"], ["roles", "MIPs / R1"], ["img", "Estudios de imagen"], ["sug", "Sugerencias"], ["ind", "Indicaciones"], ["diag", "Diagrama"], ["rec", "No olvidar"]];
+    const HOJA_BLOCKS = [["labs", "Labs"], ["manejo", "Otros"], ["roles", "MIPs / R1"], ["img", "Estudios de imagen"], ["sug", "Sugerencias"], ["ind", "Indicaciones"], ["diag", "Diagrama"], ["rec", "No olvidar"]];
     function isHojaMode() { try { return localStorage.getItem("pl_hoja") === "1"; } catch (_) { return false; } }
     function hojaHidden() { try { const a = JSON.parse(localStorage.getItem("pl_hoja_hide") || "[]"); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
     function _applyHojaClasses() {
@@ -16720,8 +16726,8 @@ function plExportBackup() {
         } catch (_) {}
         const nCx = ((ck.cirugias) || []).length;
         const items = [
-          ["dx", "Dx", ""], ["labs", "Labs", labsBadge], ["cx", "Cirugías", cnt(nCx)], ["manejo", "Misceláneo", ""], ["plan", "Plan", cnt(pendOpen)],
-          ["pase", "Pase", ""], ["entrega", "Guardia", ""],
+          ["dx", "Dx", ""], ["labs", "Labs", labsBadge], ["cx", "Cirugías", cnt(nCx)], ["manejo", "Otros", ""], ["plan", "Plan", cnt(pendOpen)],
+          ["pase", "Pase", ""], ["entrega", "Cronología", ""],
           ["historia", "Historia", ""], ["ic", "IC·Cult", ""], ["sug", "Sug.", cnt(cds, cdsCrit)],
           ["ind", "Indic.", indBadge], ["img", "Estudios", cnt(imgCount)], ["diag", "Diagrama", ""], ["rec", "No olvidar", cnt(remOpen)]
         ];
@@ -17056,7 +17062,7 @@ function plExportBackup() {
     /* ── Ayudante de IA (worker /api/ai, visión) como REVISOR: la escritura directa (abajo) convierte al momento con el
        reconocedor local; en los campos de texto la IA revisa después en segundo plano y corrige si leyó distinto. ── */
     function _penTextPrompt(field, ta) {
-      const labels = { pa: "padecimiento actual", app: "antecedentes", dx: "diagnóstico", manejo: "misceláneo (notas varias)", pendientes: "pendientes / plan", entrega: "entrega de guardia", drenajes: "nota de drenajes", "ck:interconsultas": "interconsultas", "ck:cultivos": "cultivos", "ck:recibo": "recibo de guardia", "ck:pendientes_mips": "pendientes de MIPs", "ck:pendientes_r1": "pendientes de R1" };
+      const labels = { pa: "padecimiento actual", app: "antecedentes", dx: "diagnóstico", manejo: "otros (notas varias)", pendientes: "pendientes / plan", entrega: "cronología de guardias", drenajes: "nota de drenajes", "ck:interconsultas": "interconsultas", "ck:cultivos": "cultivos", "ck:recibo": "recibo de guardia", "ck:pendientes_mips": "pendientes de MIPs", "ck:pendientes_r1": "pendientes de R1" };
       let label = labels[field];
       if (!label && field.indexOf("el:") === 0) label = ((ta && (ta.getAttribute("title") || ta.getAttribute("placeholder"))) || "texto").slice(0, 60);
       return "La imagen es texto MANUSCRITO en español, escrito con lápiz por un residente de cirugía general sobre la caja \"" + (label || field) + "\" de la ficha de un paciente. Transcríbelo TAL CUAL, sin agregar, completar ni interpretar nada: conserva números, unidades, signos, abreviaturas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, BH, QS, TAC, IC…) y los saltos de línea. Si algo es ilegible escribe [?]. Devuelve SOLO un JSON con este esquema: {\"texto\":\"…\"}";
@@ -17928,14 +17934,16 @@ function plExportBackup() {
     // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
     // ➕ Hoy en IC / Cultivos / Entrega / Recibo (oct 2026): anota "dd/mm: " al final de la caja, como la
     // fecha que se escribe a mano antes de cada renglón en la hoja de visita. isCk = campo del checklist.
-    function insertTodayStamp(k, field, isCk, label) {
+    function insertTodayStamp(k, field, isCk, label, conHora) {
       const sel = isCk ? 'textarea[data-key="' + k + '"][data-ckfield="' + field + '"]' : 'textarea[data-key="' + k + '"][data-field="' + field + '"]';
       const ta = document.querySelector(sel);
-      if (ta && ta.readOnly) ta.readOnly = false;   // «Recibido» es de solo lectura: ➕ Hoy la abre para escribir (como ✏️ Corregir)
+      if (ta && ta.readOnly) ta.readOnly = false;   // una caja de solo lectura se abre para escribir
       const d = new Date();
       const ini = userInitials();
-      // "14/10 GF: " — la fecha y las iniciales de quien escribe, como el color de tinta de cada residente
-      const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + (ini ? " " + ini : "") + ": ";
+      // "14/10 GF: " — la fecha y las iniciales de quien escribe, como el color de tinta de cada residente.
+      // Con conHora (🕓 Cronología): "14/10 08:15 GF: ".
+      const z = n => String(n).padStart(2, "0");
+      const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + (conHora ? " " + z(d.getHours()) + ":" + z(d.getMinutes()) : "") + (ini ? " " + ini : "") + ": ";
       const nd = getNote(k);
       const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
       const trimmed = cur.replace(/\s+$/, "");
@@ -18138,7 +18146,7 @@ function plExportBackup() {
         const pase = isPaseMode();
         const anchor = function (name, blk) { return `id="sec-${name}-${ek}" class="fc-anchor${blk ? " fc-blk fc-blk-" + blk : ""}"`; };
         const nCx = ((nd.checklist && nd.checklist.cirugias) || []).length;
-        const reciboTxt = toSafeString(nd.checklist && nd.checklist.recibo);
+        _cronoMigrar(k, nd);   // 🕓 lo que quedaba en «Recibido» pasa UNA vez al principio de la cronología (nd.entrega)
         const pendLines = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s); });
         const pendOpen = pendLines.filter(function (s) { return !/^✓\s/.test(s); }).length;
         const cdsHtml = renderCDSSection(p, nd, k);
@@ -18164,7 +18172,7 @@ function plExportBackup() {
       <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}</div>
       <div ${anchor("labs")} style="margin-top:8px">${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
       <div ${anchor("cx", "cx")} style="margin-top:8px">${renderCirugiasSection(nd, k)}</div>
-      <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("🗂️ Misceláneo", nd.manejo, k, "manejo", 3)}</div>
+      <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("🗂️ Otros (lo que no cabe en otra caja)", nd.manejo, k, "manejo", 3)}</div>
       <div ${anchor("plan", "plan")} style="margin-top:8px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
           <span class="field-label" style="margin:0">⚠️ Pendientes / Plan${pendOpen ? ` <span class="fc-cnt">${pendOpen}</span>` : ""}${_byChip(nd, "pendientes")}</span>
@@ -18182,43 +18190,28 @@ function plExportBackup() {
         ${renderFotoStrip(k, "ink:pendientes", _fotoList(nd, "ink:pendientes", false), { add: false })}
         ${renderPendList(nd, k)}
       </div>
-      <!-- 🔄 Guardia (oct 2026): UNA sección con dos cajas. «Para la siguiente guardia» = lo que YO dejo (eventualidades y
-           por hacer; las novedades de labs/imagen/cultivos se anotan solas). «Recibido» = lo que me entregaron: de solo
-           lectura (lo escribió la otra guardia), con fecha, hora e iniciales de cada recepción; ✏️ la abre si hace falta
-           corregir algo. «📥 Recibir guardia» pasa lo que dejó la guardia anterior a «Recibido» y vacía la caja de entrega
-           para esta guardia. (Datos: entrega = nd.entrega; recibido = checklist.recibo.) -->
-      <div class="fc-guardia">
+      <!-- 🕓 Cronología (19 oct 2026): UNA caja donde cada guardia anota, con fecha y hora, lo que pasa y lo que hace
+           (las novedades de labs/imagen/cultivos se anotan solas). La siguiente guardia la lee de arriba abajo; lo por
+           hacer va en ⚠️ Pendientes y lo que no cabe en ninguna, en 🗂️ Otros. Sustituye a Entrega/Recibido: lo que había
+           en «Recibido» pasó delante de lo de Entrega (_cronoMigrar, una vez). Dato: nd.entrega. -->
+      <div class="fc-guardia fc-crono">
       <div class="fc-guardia-title">
-        <span class="fc-guardia-name">🔄 Guardia</span>
-        <span class="fc-guardia-hint">📤 Naranja: lo que dejo a la siguiente guardia. 📥 Verde: lo que me dejaron a mí.</span>
-        <button type="button" class="gd-btn gd-btn-main" data-k="${k}" onclick="tomarGuardia(this.dataset.k)" title="Pasa lo que la guardia anterior dejó en «Para la siguiente guardia» a «Recibido», con fecha, hora e iniciales, y deja la caja de entrega vacía para ti" data-testid="gd-recibir">📥 Recibir guardia</button>
+        <span class="fc-guardia-name">🕓 Cronología</span>
+        <span class="fc-guardia-hint">Lo que pasa y se hace en cada guardia, con fecha y hora. La siguiente guardia lo lee de arriba abajo.</span>
+        <button type="button" class="gd-btn gd-btn-main" data-k="${k}" onclick="cronoInsertNow(this.dataset.k)" title="Agrega un renglón nuevo al final con la fecha, la hora y tus iniciales" data-testid="crono-ahora">➕ Ahora</button>
       </div>
       <div id="sec-entrega-${ek}" class="fc-anchor entrega-row fc-blk fc-blk-entrega">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📤 Para la siguiente guardia${_byChip(nd, "entrega")}</span>
+          <span>🕓 Cronología de guardias${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
-            <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'entrega',false,'Entrega')" title="Anotar la fecha de hoy antes de la evolución del día">➕ Hoy</button>
-            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Escribir o actualizar el resumen de entrega: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (lo escrito a mano no se toca)">✨ Resumen</button>
+            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Escribir o actualizar el resumen del día: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (lo escrito a mano no se toca)">✨ Resumen</button>
             ${histBtn(k, "entrega")}
-            <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Entrega de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
+            <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Cronología de guardias')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
         </div>
-        <textarea class="field-ta" rows="4" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Lo que la siguiente guardia debe saber y hacer: eventualidades, pendientes, qué vigilar…">${esc(nd.entrega || "")}</textarea>
+        <textarea class="field-ta" rows="5" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="19/10 14:30 GF: evento, llamada, lo que se hizo… (➕ Ahora pone la fecha y la hora)">${esc(nd.entrega || "")}</textarea>
         ${renderFotoStrip(k, "ink:entrega", _fotoList(nd, "ink:entrega", false), { add: false })}
         ${cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : ""}
-      </div>
-      <div id="sec-recibo-${ek}" class="fc-anchor recibo-row fc-blk fc-blk-recibo">
-        <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-          <span>📥 Recibido${_byChip(nd, "recibo")}</span>
-          <span style="display:flex;gap:4px;align-items:center">
-            <button type="button" class="pend-tool" style="padding:2px 8px" data-k="${k}" onclick="insertTodayStamp(this.dataset.k,'recibo',true,'Recibo')" title="Anotar la fecha de hoy">➕ Hoy</button>
-            ${histBtn(k, "ck:recibo")}
-            <button type="button" class="field-ink-btn" data-k="${k}" onclick="openInkpadForField(this.dataset.k,'ck:recibo','Recibo de guardia')" title="Escribir a mano con stylus" data-testid="field-ink-ck-recibo">✍️</button>
-            <button type="button" class="pend-tool" style="padding:2px 8px" onclick="guardiaEditarRecibo(this)" title="Lo recibido lo escribió la otra guardia y se guarda tal cual; toca aquí solo si hace falta corregirlo" data-testid="gd-editar-recibo">✏️ Corregir</button>
-          </span>
-        </div>
-        <textarea class="field-ta gd-recibido" rows="4" readonly data-key="${k}" data-ckfield="recibo" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveCkText(this)" onchange="updateCkText(this.dataset.key,'recibo',this.value)" placeholder="Aquí aparece lo que te dejó la guardia anterior cuando pulsas «📥 Recibir guardia»">${esc(reciboTxt)}</textarea>
-        ${renderFotoStrip(k, "ink:ck:recibo", _fotoList(nd, "ink:ck:recibo", false), { add: false })}
       </div>
       </div>
       <div class="fc-secs">
@@ -19634,7 +19627,7 @@ function plExportBackup() {
       // BUG-I1 FIX: Build rich clinical context for AI analysis
       const ck_ai = (nd && nd.checklist) || {};
       const clinCtx = [];
-      if (nd.manejo && nd.manejo.trim()) clinCtx.push("Misceláneo (notas de la tarjeta): " + nd.manejo.trim());
+      if (nd.manejo && nd.manejo.trim()) clinCtx.push("Otros (notas de la tarjeta): " + nd.manejo.trim());
       if (ck_ai.atb && ck_ai.atb_nombre) clinCtx.push("ATB activo: " + ck_ai.atb_nombre + (ck_ai.atb_dias ? " (día " + ck_ai.atb_dias + ")" : ""));
       if (ck_ai.npt) clinCtx.push("NPT activa" + (ck_ai.npt_pct ? " (" + ck_ai.npt_pct + "%)" : "") + (ck_ai.npt_inicio ? " desde " + ck_ai.npt_inicio : ""));
       if (ck_ai.tvp && ck_ai.tvp_tipo) clinCtx.push("TVP: " + ck_ai.tvp_tipo + (ck_ai.tvp_dosis ? " " + ck_ai.tvp_dosis : ""));
@@ -20306,7 +20299,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         { key: "qx",          label: "🔧 Qx / Procedimiento" },
         { key: "sangrado",    label: "🩸 Sangrado" },
         { key: "drenajes",    label: "💧 Drenajes" },
-        { key: "manejo",      label: "🗂️ Misceláneo" },
+        { key: "manejo",      label: "🗂️ Otros" },
         { key: "sv",          label: "📊 SV" },
         { key: "balance",     label: "⚖️ Balance" },
         { key: "pendientes",  label: "⚠️ Pendientes" },
@@ -20615,7 +20608,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       { key: "qx",              label: "🔧 Qx / Procedimiento",  noteKey: "qx"                        },
       { key: "sangrado",        label: "🩸 Sangrado",            noteKey: "sangrado"                   },
       { key: "drenajes",        label: "💧 Drenajes",            noteKey: "drenajes"                   },
-      { key: "manejo",          label: "🗂️ Misceláneo",          noteKey: "manejo"                     },
+      { key: "manejo",          label: "🗂️ Otros",               noteKey: "manejo"                     },
       { key: "sv",              label: "📊 Signos vitales",      noteKey: "sv"                         },
       { key: "balance",         label: "⚖️ Balance hídrico",     noteKey: "balance"                    },
       { key: "pendientes",      label: "⚠️ Pendientes",          noteKey: "pendientes"                 },
@@ -21034,7 +21027,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
     }
     function _undoFieldLabel(f) {
-      return ({ dx: "DX", app: "APP", pa: "PA", qx: "Qx", manejo: "Misceláneo", pendientes: "Pendientes", entrega: "Entrega", drenajes: "nota de drenajes", sangrado: "Sangrado", balance: "Balance", sv: "SV", interconsultas: "Interconsultas", cultivos: "Cultivos", recibo: "Recibo", pendientes_mips: "Pendientes MIPs", pendientes_r1: "Pendientes R1" })[f] || f;
+      return ({ dx: "DX", app: "APP", pa: "PA", qx: "Qx", manejo: "Otros", pendientes: "Pendientes", entrega: "Cronología", drenajes: "nota de drenajes", sangrado: "Sangrado", balance: "Balance", sv: "SV", interconsultas: "Interconsultas", cultivos: "Cultivos", recibo: "Recibido (antiguo)", pendientes_mips: "Pendientes MIPs", pendientes_r1: "Pendientes R1" })[f] || f;
     }
     var _undoToastTimer = null;
     function _showUndoToast(k) {
@@ -21066,7 +21059,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // Cada cambio de cada caja queda en audit_log (texto completo, también la Entrega). Desde la tarjeta, cualquier
     // residente ve las versiones anteriores de UNA caja (función SQL pl_historial_caja) y restaura la que quiera sin
     // pedirlo al administrador. La restauración pasa por updateField/updateCkText: queda en ↩ Regresar y en el historial.
-    const HIST_FIELDS = [["pendientes", "Pendientes / Plan"], ["entrega", "Entrega de guardia"], ["ck:recibo", "Recibo de guardia"], ["manejo", "Misceláneo"],
+    const HIST_FIELDS = [["pendientes", "Pendientes / Plan"], ["entrega", "Cronología de guardias"], ["ck:recibo", "Recibido (caja antigua)"], ["manejo", "Otros (Misceláneo)"],
       ["app", "APP (antecedentes)"], ["pa", "PA (padecimiento actual)"], ["dx", "DX"], ["drenajes", "Nota de drenajes"], ["ck:interconsultas", "Interconsultas"], ["ck:cultivos", "Cultivos"],
       ["ck:pendientes_mips", "Pendientes MIPs"], ["ck:pendientes_r1", "Pendientes R1"], ["sv", "Signos vitales (texto)"], ["balance", "Balance"], ["sangrado", "Sangrado"], ["qx", "Qx (texto)"]];
     function _histLabel(f) { const m = HIST_FIELDS.find(x => x[0] === f); return m ? m[1] : f; }
@@ -27557,37 +27550,30 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (mine && _cxAiBusy.delete(mine)) { try { const l = _cxLocate(k, cid); if (l) _rerenderCardSoft(l.k); } catch (_) {} }
       }
     }
-    // «Recibido» es de solo lectura (lo escribió la otra guardia); ✏️ Corregir la abre para editar.
-    function guardiaEditarRecibo(btn) {
+    // ═══ 🕓 CRONOLOGÍA (19 oct 2026, pedido de Gera: «una caja Pendientes, otra Cronología para ir poniendo lo que se hace
+    // cada guardia, y otra para lo que no entra en ninguna»). Sustituye a Entrega/Recibido (dos cajas que se confundían):
+    // UNA caja por paciente (dato: nd.entrega) donde cada guardia anota con fecha y hora. Lo que había en «Recibido»
+    // (checklist.recibo) se pasa UNA sola vez delante de lo de Entrega (orden cronológico) y la caja de recibo se vacía.
+    // Idempotente: si el texto recibido ya está dentro de la cronología (eco viejo de Realtime), solo se vacía recibo.
+    function _cronoMigrar(k, nd) {
       try {
-        const ta = btn.closest(".fc-blk-recibo").querySelector("textarea[data-ckfield='recibo']");
-        if (!ta) return;
-        ta.readOnly = false; ta.focus();
-        try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {}
-      } catch (_) {}
+        if (!nd || !nd.checklist) return false;
+        const rec = toSafeString(nd.checklist.recibo).replace(/\s+$/, "").replace(/^\s+/, "");
+        if (!rec) return false;
+        const ent = toSafeString(nd.entrega).replace(/\s+$/, "");
+        _undoPush(k, "pasar Recibido a Cronología", ["entrega", "ck:recibo"]);
+        if (ent.indexOf(rec) < 0) nd.entrega = rec + (ent ? "\n\n" + ent : "");
+        nd.checklist.recibo = "";
+        if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+        _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_recibo");
+        noteData[k] = nd;
+        saveNote(k, nd);
+        _dirtyFields[k].delete("entrega"); _dirtyFields[k].delete("ck_recibo");
+        return true;
+      } catch (_) { return false; }
     }
-    // ═══ RECIBIR GUARDIA: lo que el saliente dejó en «Para la siguiente guardia» pasa a mi «Recibido» (con fecha, hora e
-    // iniciales) y la caja de entrega queda vacía para lo que yo entregaré al final de mi guardia.
-    function tomarGuardia(k) {
-      const nd = getNote(k);
-      const ent = toSafeString(nd.entrega).trim();
-      if (!ent) { alert("La caja «Para la siguiente guardia» está vacía: no hay nada que recibir."); return; }
-      if (!confirm("¿Recibir la guardia? Lo que dejó la guardia anterior pasa a «Recibido» (con fecha y hora) y la caja de entrega queda vacía para ti.")) return;
-      _undoPush(k, "tomar guardia (Entrega → Recibo)", ["entrega", "ck:recibo"]);
-      const d = new Date(); const z = n => String(n).padStart(2, "0");
-      const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
-      if (!nd.checklist) nd.checklist = {};
-      const prev = toSafeString(nd.checklist.recibo).replace(/\s+$/, "");
-      nd.checklist.recibo = (prev ? prev + "\n\n" : "") + "— Recibido " + stamp + (userInitials() ? " " + userInitials() : "") + " —\n" + ent;
-      nd.entrega = "";
-      _touchBy(nd, "recibo"); _touchBy(nd, "entrega");
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_recibo");
-      noteData[k] = nd;
-      saveNote(k, nd);
-      _dirtyFields[k].delete("entrega"); _dirtyFields[k].delete("ck_recibo");
-      _rerenderCard(k);
-    }
+    // «➕ Ahora»: un renglón nuevo al final de la cronología con fecha, hora e iniciales (dd/mm hh:mm GF: ).
+    function cronoInsertNow(k) { insertTodayStamp(k, "entrega", false, "Cronología", true); }
 
     // ── 💉 Vasopresores (oct 2026): calculadora de norepinefrina / vasopresina en el checklist ──
     // Con el peso, la dilución (editable) y los mL/h muestra la dosis; con la dosis deseada ("meta"), los mL/h.
@@ -27910,7 +27896,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         `Estado: ${p.estado || "—"}`,
         "",
         cirugiasTexto(nd.checklist, " | ") ? `🔪 Cirugías: ${cirugiasTexto(nd.checklist, " | ")}` : (nd.qx?.trim() ? `🔧 Qx/Proc: ${nd.qx.trim()}` : null),
-        nd.manejo?.trim() ? `🗂️ Misceláneo: ${nd.manejo.trim()}` : null,
+        nd.manejo?.trim() ? `🗂️ Otros: ${nd.manejo.trim()}` : null,
         nd.sv?.trim() ? `📊 SV: ${nd.sv.trim()}` : null,
         (dispositivosTexto(nd.checklist, " | ") || nd.drenajes || balanceTexto(nd)) ? `🩸 Drenajes: ${dispositivosTexto(nd.checklist, " | ") || nd.drenajes || "—"} · Balance: ${balanceTexto(nd) || "—"}` : null,
         labsTexto || null,

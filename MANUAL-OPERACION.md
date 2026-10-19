@@ -398,14 +398,16 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
   reciente). La fecha POP del menú "⋯ Más" ahora es la de la última cirugía.
 - **💉 Manejo médico actual** (verde azulado).
 - **⚠️ Pendientes / Plan** (ámbar).
-- **🔄 Guardia** (19 oct 2026, antes dos cajas sueltas que se confundían): un solo bloque con el botón
-  grande **📥 Recibir guardia** arriba y dos cajas debajo.
-  - **📤 Para la siguiente guardia** (naranja): lo que **yo dejo** al que llega: eventualidades y cosas
-    por hacer. El botón **✨ Resumen** escribe al final un bloque corto con lo que importa (ver "Entrega
-    de guardia que resume"); las novedades de labs críticos, imagen y cultivos se anotan solas con su fecha.
-  - **📥 Recibido** (verde, de solo lectura): lo que **me entregaron** al llegar. **📥 Recibir guardia**
-    pasa el texto de la caja naranja a esta, con fecha, hora y quién recibe, y deja la naranja vacía para
-    mi guardia. Si hay que corregir algo de lo recibido, el botón **✏️ Corregir** la abre para escribir.
+- **🕓 Cronología** (azul; 19 oct 2026, sustituye a «Entrega / Recibo de guardia», que se confundían):
+  UNA sola caja por paciente donde cada guardia anota, con fecha y hora, **lo que pasa y lo que hace**
+  (eventos, llamadas, lo que se hizo). El botón **➕ Ahora** agrega un renglón al final con `dd/mm hh:mm GF: `
+  y deja el cursor ahí. La siguiente guardia la lee de arriba abajo. Las novedades de labs críticos, imagen y
+  cultivos se anotan solas con su fecha, y **✨ Resumen** escribe al final un bloque corto con lo que importa
+  (ver "Entrega de guardia que resume"). Lo que había en la caja antigua «Recibido» pasó una sola vez al
+  principio de la cronología (en orden) y esa caja desapareció; su historial sigue en 🕘 como «Recibido
+  (caja antigua)».
+- Las tres cajas de trabajo quedan así: **⚠️ Pendientes** (lo por hacer), **🕓 Cronología** (lo que se va
+  haciendo cada guardia) y **🗂️ Otros** (lo que no cabe en ninguna; antes se llamaba Misceláneo).
 - **🕘 Historial por caja**: cada caja de texto (Pendientes, Interconsultas, Cultivos, Misceláneo, Guardia…)
   tiene un reloj junto a su título. Abre un diario con las versiones anteriores de ESA caja (quién, cuándo,
   texto completo) y un botón **Restaurar** por versión. Sirve para recuperar lo que alguien borró o lo que un
@@ -810,6 +812,7 @@ lados está en `scripts/SECURITY_NOTES.md`.
 | Token de Cloudflare (`CLOUDFLARE_API_TOKEN` en GitHub) | Publicar la app | El paso "Publicar en Cloudflare Pages" sale en rojo; la app se queda en la versión anterior | Solo si se le puso fecha al crearlo | ________ | Cloudflare → API Tokens → nuevo → GitHub → secret → Run workflow de "Deploy a Cloudflare Pages" |
 | Contraseña de WinLab (`WINLAB_PASS`) | Robot de labs | Corrida en rojo con "Login fallido" | Según el hospital | ________ | WinLab → GitHub secret → "WinLab corrida en seco" |
 | Contraseña del visor (`RIS_PASS`) | Robot de imagen | "RIS Imagen" en rojo al iniciar sesión | Según el hospital | ________ | Visor → Supabase `rpa_config` → "RIS Imagen" con `dry_run` |
+| Contraseña de la base (`SUPABASE_DB_URL` en GitHub) | Respaldo nocturno de la base | "Respaldo de la base" en rojo (correo de GitHub); no hay artifact del día | Cuando alguien hace *Reset database password* en Supabase | — | Supabase → Connect → Session pooler → URI con la contraseña nueva → GitHub → secret `SUPABASE_DB_URL` → Run workflow |
 | Clave de Gemini (`GEMINI_API_KEY` en Cloudflare) | Toda la IA (nota, labs de foto/PDF, lápiz → texto) | Todo lo de IA falla con «Token del Worker inválido o clave del ayudante de IA (Google Gemini) expirada» o con un HTTP 400/403 pelón (el worker devuelve el error de Google tal cual); 🤖 Nota IA cae al borrador sin IA con «La IA no respondió (HTTP …)». «…tuvo un problema» solo sale con errores 5xx (worker o Gemini caídos), no por la clave | No por fecha; lo que sí puede retirarse es el modelo que usa el worker | — | AI Studio → clave nueva → Cloudflare → Deploy; si es el modelo, cambiar `GEMINI_MODEL` en el worker |
 
 Además, sin ser llaves: GitHub apaga los robots tras 60 días sin cambios en el repositorio (se
@@ -849,6 +852,59 @@ completa) hay que pegar el `cloudflare-worker/index.js` actualizado en el worker
    censo (por egreso, por el Excel o por la hoja), cada uno con su nota.
 3. Pulsa **↩ Restaurar** en el paciente. Vuelve al censo con su nota.
 
+## Respaldo nocturno de la base (octubre 2026)
+
+Supabase (plan gratuito) **no guarda copias** de la base: si el proyecto se borra, se pausa sin
+remedio o alguien corre un `UPDATE` equivocado, los pacientes, las notas y los labs se pierden.
+Desde octubre de 2026 el workflow **"Respaldo de la base"** (`.github/workflows/db-backup.yml`)
+hace cada noche a las **02:20 (hora de León)** una copia completa de la base, la **cifra** y la
+guarda fuera de Supabase:
+
+- **Dónde queda**: GitHub → repo → **Actions** → **Respaldo de la base** → corrida del día → al
+  final, **Artifacts** → `respaldo-db-AAAAMMDD-HHMM`. Se conserva **30 días** (cada noche entra uno
+  nuevo y los de más de 30 días se borran solos). Opcional: también en una carpeta privada de Google
+  Drive (ahí se guardan 90 días).
+- **Cifrado**: el archivo solo lo puede abrir el administrador con su **llave privada**. El repo es
+  público, los artifacts solo los ve quien tiene acceso al repo y, aun así, van cifrados: nunca se
+  sube nada en claro.
+- **Cómo saber que corrió**: en esa lista debe haber un círculo verde cada día. Si sale rojo, GitHub
+  manda el correo de "workflow failed" al dueño del repo; el paso rojo dice la causa (lo más común:
+  cambió la contraseña de la base). El resumen de cada corrida dice el tamaño y cuántas filas tenía
+  cada tabla (sin datos de pacientes).
+- **Cómo restaurar** (siempre en un proyecto nuevo, nunca sobre producción) y el **simulacro
+  mensual**: `scripts/db-restore.md`.
+
+**Configuración (una vez, 15 minutos, el administrador en su Mac)**
+
+1. **Llave de cifrado**: en Terminal, `brew install age` y luego
+   `age-keygen -o ~/Documents/piso-libro-llave.txt`. Imprime una línea `Public key: age1…`: esa es
+   la parte **pública** y va a GitHub. El archivo `piso-libro-llave.txt` es la **privada**: cópialo a
+   una USB y a una nota segura (1Password / Notas con candado) y **no lo subas a ningún lado**
+   (ni al repo, ni a GitHub, ni al chat). Sin esa llave los respaldos no se pueden abrir; sin la
+   pública, el workflow no sube nada.
+2. **URL de la base**: Supabase → proyecto → botón **Connect** (arriba) → pestaña **Session pooler**
+   → copia la URI `postgresql://postgres.vkxplmrzyqlamxpbtmes:[YOUR-PASSWORD]@aws-0-….pooler.supabase.com:5432/postgres`
+   y cambia `[YOUR-PASSWORD]` por la **contraseña de la base** (Project Settings → Database →
+   *Database password*; si no la sabes, **Reset database password** ahí mismo). No es la
+   `service_role` key ni la contraseña de tu cuenta. Si la contraseña lleva símbolos (`@`, `#`,
+   `/`…), mejor cámbiala por una solo con letras y números para no tener que codificarla en la URL.
+3. **Secrets en GitHub**: repo → Settings → Secrets and variables → Actions → **New repository
+   secret**: `SUPABASE_DB_URL` (la URI completa del paso 2) y `BACKUP_AGE_PUBLIC_KEY` (la línea
+   `age1…` del paso 1).
+4. **Probar**: Actions → Respaldo de la base → **Run workflow**. En 2-3 minutos debe salir verde y
+   el artifact abajo. Luego sigue los pasos 1 y 2 de `scripts/db-restore.md` para comprobar que tu
+   llave lo abre (si no, repite el paso 1).
+5. **Opcional, copia a Google Drive**: `brew install rclone`, `rclone config` → *New remote*, nombre
+   `gdrive`, tipo `drive`, scope `drive.file` (solo ve los archivos que él mismo sube), inicia sesión
+   en el navegador con la cuenta del administrador. Después `cat ~/.config/rclone/rclone.conf` y pega
+   ese texto completo en el secret `RCLONE_CONFIG`; si quieres otra carpeta, secret
+   `BACKUP_GDRIVE_DIR` = `gdrive:NombreDeLaCarpeta` (por defecto `gdrive:PisoLibro-respaldos`).
+   Sin ese secret el paso se omite y el respaldo de GitHub queda igual.
+
+| Simulacro (primer lunes del mes) | Resultado | Quién |
+|---|---|---|
+| ________ | ________ | ________ |
+
 ## Si algo sale muy mal con las notas de laboratorio
 
 El 9 de octubre de 2026 se hizo una limpieza de valores erróneos (pH y
@@ -872,6 +928,8 @@ from notes_lab_history_backup_20261009 b where b.patient_id = n.patient_id;
 | `.github/workflows/winlab-dryrun.yml` | La corrida en seco del domingo (prueba que el robot aún puede entrar a WinLab) |
 | `.github/workflows/ris-scraper.yml` | El robot de imagen (visor RIS → Supabase) |
 | `.github/workflows/labs-watchdog.yml` | El vigilante que avisa si los labs llevan más de 26 h sin llegar |
+| `.github/workflows/db-backup.yml` | El respaldo nocturno cifrado de la base (02:20 León; artifact de 30 días) |
+| `scripts/db-restore.md` | Cómo abrir y restaurar ese respaldo en un proyecto nuevo, y el simulacro mensual |
 | `.github/workflows/ci.yml` | Las pruebas que corren en cada PR y antes de publicar |
 | `.github/workflows/deploy-pages.yml` | Cómo se publica la app en Cloudflare (solo si pasan las pruebas) |
 | `cloudflare-worker/` | El ayudante de IA (extraer labs de PDF, disparar el robot) |

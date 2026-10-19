@@ -152,13 +152,14 @@ const MOCK = `(() => {
     const nd = getNote(k); const by = (nd.checklist.__pl_note_meta || {}).by || {};
     _rerenderCard(k);
     const icChip = document.querySelector('#card-' + CSS.escape(k) + ' .interconsultas-box .by-chip');
-    nd.entrega = 'PARA LA SIGUIENTE GUARDIA'; noteData[k] = nd;
-    tomarGuardia(k);
+    // 🕓 Cronología (19 oct 2026): «➕ Ahora» agrega "dd/mm hh:mm GF: " al final y marca el autor de la cronología (entrega)
+    nd.entrega = 'EVENTO PREVIO'; noteData[k] = nd; _rerenderCard(k);
+    cronoInsertNow(k); await new Promise(r => setTimeout(r, 150));
     const nd2 = getNote(k); const by2 = (nd2.checklist.__pl_note_meta || {}).by || {};
-    return { byIc: by.interconsultas && by.interconsultas.i, icChip: icChip ? icChip.textContent : null, recibo: nd2.checklist.recibo, byRecibo: by2.recibo && by2.recibo.i, byEntrega: by2.entrega && by2.entrega.i };
+    return { byIc: by.interconsultas && by.interconsultas.i, icChip: icChip ? icChip.textContent : null, entrega: nd2.entrega, byEntrega: by2.entrega && by2.entrega.i };
   });
-  check('F6 updateCkText marca autor en IC (chip GF); Tomar guardia sella "— Recibido dd/mm hh:mm GF —" y marca Recibo/Entrega',
-    f6.byIc === 'GF' && /^GF/.test(f6.icChip || '') && /— Recibido \d{2}\/\d{2} \d{2}:\d{2} GF —\nPARA LA SIGUIENTE GUARDIA/.test(f6.recibo || '') && f6.byRecibo === 'GF' && f6.byEntrega === 'GF', JSON.stringify(f6));
+  check('F6 updateCkText marca autor en IC (chip GF); «➕ Ahora» en la Cronología agrega "dd/mm hh:mm GF: " al final y marca el autor',
+    f6.byIc === 'GF' && /^GF/.test(f6.icChip || '') && /^EVENTO PREVIO\n\d{2}\/\d{2} \d{2}:\d{2} GF: $/.test(f6.entrega || '') && f6.byEntrega === 'GF', JSON.stringify(f6));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-FOTOS: ' + pass + ' passed, ' + fail + ' failed');

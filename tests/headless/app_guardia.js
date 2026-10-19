@@ -68,7 +68,7 @@ const HIST_OLD = {
   // ── G1: botón 🕘 en las cajas y el modal lista las versiones anteriores (quién, cuándo, cuánto) ──
   const g1 = await page.evaluate(async () => {
     const k = pid(patients[0]); const card = document.getElementById('card-' + k);
-    const btns = ['manejo', 'pendientes', 'entrega', 'ck-recibo', 'ck-interconsultas', 'ck-cultivos', 'dx'].map(f => !!card.querySelector('[data-testid="field-hist-' + f + '"]'));
+    const btns = ['manejo', 'pendientes', 'entrega', 'ck-interconsultas', 'ck-cultivos', 'dx'].map(f => !!card.querySelector('[data-testid="field-hist-' + f + '"]'));   // ck-recibo ya no tiene caja (🕓 Cronología)
     card.querySelector('[data-testid="field-hist-manejo"]').click();
     for (let i = 0; i < 40 && !document.querySelector('[data-testid="hist-item"]'); i++) await new Promise(r => setTimeout(r, 100));
     const items = Array.from(document.querySelectorAll('[data-testid="hist-item"]'));
@@ -76,7 +76,7 @@ const HIST_OLD = {
     return { btns, open: modal && modal.style.display === 'flex', n: items.length, first: items[0] ? items[0].textContent.replace(/\s+/g, ' ').trim() : '',
       cur: (document.querySelector('[data-testid="hist-cur"]') || {}).textContent || '', sel: (document.getElementById('hist-field') || {}).value, restoreBtns: document.querySelectorAll('[data-testid="hist-restore"]').length };
   });
-  check('G1 🕘 en Misceláneo, Pendientes, Entrega, Recibo, Interconsultas, Cultivos y DX; el modal muestra la caja actual (vacía) y 2 versiones con autor, dispositivo, hora y letras; «Restaurar» solo en las versiones con texto distinto',
+  check('G1 🕘 en Otros, Pendientes, Cronología, Interconsultas, Cultivos y DX; el modal muestra la caja actual (vacía) y 2 versiones con autor, dispositivo, hora y letras; «Restaurar» solo en las versiones con texto distinto',
     g1.btns.every(Boolean) && g1.open && g1.n === 2 && /Gerardo/.test(g1.first) && /Gera/.test(g1.first) && /PENROSE FID 30 ML SEROSO/.test(g1.first) && /48 → 0 letras/.test(g1.first) && /\(vacía\)/.test(g1.cur) && g1.sel === 'manejo' && g1.restoreBtns === 2, JSON.stringify(g1));
 
   // ── G2: restaurar pone el texto en la caja, lo sube como campo sucio y queda en ↩ Regresar ──
@@ -124,11 +124,12 @@ const HIST_OLD = {
     const pre = document.querySelector('[data-testid="hist-item"] pre'); const txt = pre ? pre.textContent : '';
     const k = pid(patients[0]);
     document.querySelector('[data-testid="hist-restore"]').click(); await new Promise(r => setTimeout(r, 600));
-    const recibo = (getNote(k).checklist || {}).recibo;
+    // 🕓 Cronología: restaurar la caja antigua «Recibido» la deja vacía y su texto pasa al principio de la cronología (entrega)
+    const recibo = (getNote(k).checklist || {}).recibo, entrega = getNote(k).entrega;
     sel.value = 'pendientes'; sel.dispatchEvent(new Event('change'));
     for (let i = 0; i < 40 && !document.querySelector('[data-testid="hist-cut"]'); i++) await new Promise(r => setTimeout(r, 100));
     const cut = !!document.querySelector('[data-testid="hist-cut"]'), cutTxt = (document.querySelector('[data-testid="hist-cut"]') || {}).textContent || '';
-    return { txt, recibo, cut, cutTxt };
+    return { txt, recibo, entrega, cut, cutTxt };
   });
   rpcV2Missing = false;
   const v3Calls = calls.filter(c => /\/rpc\/pl_historial_caja_v3$/.test(c.url)).length, v2Calls = calls.filter(c => /\/rpc\/pl_historial_caja_v2$/.test(c.url)).length, v1Calls = calls.filter(c => /\/rpc\/pl_historial_caja$/.test(c.url)).length;
@@ -141,31 +142,38 @@ const HIST_OLD = {
     return { cut, aviso: /recortada/.test(window.__confirms[0] || ''), cultivos: (getNote(pid(patients[0])).checklist || {}).cultivos };
   });
   check('G3c base sin v3 ni v2 (404): se cae a la v1 y el Recibo guardado como texto JSON se muestra y se restaura con saltos de línea y comillas reales; una versión de 6000 letras lleva la marca «recortada»; v2/v1 solo se usan en el respaldo; con la v3 una versión corta marcada de_cortada lleva la marca y avisa al restaurar',
-    g3c.txt === '— Recibido 18/10 07:30 DG —\nVIGILAR "SANGRADO"' && g3c.recibo === g3c.txt && g3c.cut && /recortada a 6000/.test(g3c.cutTxt) && v3Calls >= 5 && v2Calls === 2 && v1Calls === 2
+    g3c.txt === '— Recibido 18/10 07:30 DG —\nVIGILAR "SANGRADO"' && g3c.recibo === '' && g3c.entrega.indexOf(g3c.txt) === 0 && g3c.cut && /recortada a 6000/.test(g3c.cutTxt) && v3Calls >= 5 && v2Calls === 2 && v1Calls === 2
     && g3d.cut && g3d.aviso && g3d.cultivos === 'HEMOCULTIVO X2 EN PROCESO', JSON.stringify({ g3c: Object.assign({}, g3c, { cutTxt: g3c.cutTxt.slice(0, 40) }), g3d, v3Calls, v2Calls, v1Calls }));
 
-  // ── G4: sección 🔄 Guardia: un solo encabezado, «Recibir guardia», Recibido de solo lectura y ✏️ Corregir ──
+  // ── G4: 🕓 Cronología (19 oct 2026): una sola caja con «➕ Ahora»; lo que quedaba en «Recibido» pasa UNA vez delante de lo de Entrega;
+  //        no hay caja Recibido; Otros es la caja de lo que no cabe en ninguna ──
+  const from4 = calls.length;
   const g4 = await page.evaluate(async () => {
     document.getElementById('hist-modal').style.display = 'none';
-    const k = pid(patients[0]); const card = () => document.getElementById('card-' + k);
+    const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_'); const card = () => document.getElementById('card-' + k);
+    const nd1 = getNote(k); nd1.entrega = 'VIGILAR DRENAJE 3\nK 2.9 EN REPOSICIÓN'; nd1.checklist.recibo = '— Recibido 18/10 07:30 DG —\nLO QUE DEJÓ LA GUARDIA ANTERIOR'; noteData[k] = nd1; renderView();
+    await new Promise(r => setTimeout(r, 200));
     const title = card().querySelector('.fc-guardia-title');
-    const recibo = card().querySelector('textarea[data-ckfield="recibo"]');
-    const ro1 = recibo.readOnly;
-    const nd1 = getNote(k); nd1.entrega = 'VIGILAR DRENAJE 3\nK 2.9 EN REPOSICIÓN'; nd1.checklist.recibo = ''; noteData[k] = nd1; renderView();
-    card().querySelector('[data-testid="gd-recibir"]').click();
-    await new Promise(r => setTimeout(r, 300));
-    const nd2 = getNote(k);
-    const recibo2 = card().querySelector('textarea[data-ckfield="recibo"]'), entrega2 = card().querySelector('textarea[data-field="entrega"]');
-    const ro2 = recibo2 && recibo2.readOnly, reciboTa = recibo2 && recibo2.value, entregaTa = entrega2 && entrega2.value;   // antes de ✏️ Corregir (es el mismo elemento)
-    card().querySelector('[data-testid="gd-editar-recibo"]').click();
-    const recibo3 = card().querySelector('textarea[data-ckfield="recibo"]');
-    return { title: title ? title.textContent.replace(/\s+/g, ' ').trim() : null, inGrid: !!(title && title.parentElement.classList.contains('fc-guardia')), ro1, recibo: nd2.checklist.recibo, entregaVacia: nd2.entrega === '', reciboTa, entregaTa, ro2, editable: recibo3 && !recibo3.readOnly, focused: document.activeElement === recibo3,
-      labels: [card().querySelector('#sec-entrega-' + k.replace(/[^a-zA-Z0-9]/g, '_') + ' .field-label').textContent, card().querySelector('#sec-recibo-' + k.replace(/[^a-zA-Z0-9]/g, '_') + ' .field-label').textContent].map(s => s.replace(/\s+/g, ' ').trim()) };
+    const nd2 = getNote(k); const entrega2 = String(nd2.entrega), recibo2 = String(nd2.checklist.recibo || '');   // copias: la nota es el objeto vivo
+    const reciboTa = card().querySelector('textarea[data-ckfield="recibo"]'), entregaTa = card().querySelector('textarea[data-field="entrega"]');
+    const label = (card().querySelector('#sec-entrega-' + ek + ' .field-label') || {}).textContent || '';
+    renderView(); await new Promise(r => setTimeout(r, 100)); const entrega3 = String(getNote(k).entrega);   // repintar no duplica
+    card().querySelector('[data-testid="crono-ahora"]').click(); await new Promise(r => setTimeout(r, 150));
+    const ta2 = card().querySelector('textarea[data-field="entrega"]');
+    const otros = (card().querySelector('#sec-manejo-' + ek + ' .field-label') || {}).textContent || '';
+    const focused = document.activeElement === ta2; const ahora = String(getNote(k).entrega);
+    await new Promise(r => setTimeout(r, 1600));   // que salga el autoguardado de la migración
+    return { title: title ? title.textContent.replace(/\s+/g, ' ').trim() : null, inGrid: !!(title && title.parentElement.classList.contains('fc-crono')), entrega: entrega2, recibo: recibo2, ahora, focused, reciboTa: !!reciboTa, entregaTa: entregaTa ? entregaTa.value : null, label: label.replace(/\s+/g, ' ').trim(), entrega3,
+      otros: otros.replace(/\s+/g, ' ').trim(), gdRecibir: !!card().querySelector('[data-testid="gd-recibir"]') };
   });
-  check('G4 Guardia: encabezado único «🔄 Guardia» con «📥 Recibir guardia» dentro de la rejilla (modo hoja intacto); Recibido es de solo lectura; recibir pasa el texto con sello a Recibido y vacía la entrega; ✏️ Corregir habilita la caja y la enfoca; etiquetas «Para la siguiente guardia» / «Recibido»',
-    g4.title && /🔄 Guardia/.test(g4.title) && /Recibir guardia/.test(g4.title) && g4.inGrid && g4.ro1 === true
-    && /^— Recibido \d{2}\/\d{2} \d{2}:\d{2}( [A-ZÁÉÍÓÚÑ]{1,3})? —\nVIGILAR DRENAJE 3\nK 2\.9 EN REPOSICIÓN$/.test(g4.recibo) && g4.entregaVacia && g4.reciboTa === g4.recibo && g4.entregaTa === '' && g4.ro2 === true
-    && g4.editable && g4.focused && /Para la siguiente guardia/.test(g4.labels[0]) && /Recibido/.test(g4.labels[1]), JSON.stringify(g4));
+  // la cronología (entrega) viaja en checklist.__pl_note_meta.entrega; el recibo vacío, en checklist.recibo
+  const post4 = calls.slice(from4).filter(c => (c.m === 'POST' || c.m === 'PATCH') && c.url.startsWith('/rest/v1/notes') && c.body && c.body.checklist).map(c => ({ entrega: ((c.body.checklist.__pl_note_meta || {}).entrega), checklist: c.body.checklist }));
+  const MERGED4 = '— Recibido 18/10 07:30 DG —\nLO QUE DEJÓ LA GUARDIA ANTERIOR\n\nVIGILAR DRENAJE 3\nK 2.9 EN REPOSICIÓN';
+  check('G4 🕓 Cronología: encabezado único con «➕ Ahora» (sin «Recibir guardia»); lo de «Recibido» pasa una sola vez al principio de la cronología y la caja Recibido desaparece (se sube con entrega y recibo vacío); repintar no duplica; «➕ Ahora» agrega "dd/mm hh:mm GF: " al final y deja el cursor ahí; etiquetas «Cronología de guardias» y «Otros»',
+    g4.title && /🕓 Cronología/.test(g4.title) && /Ahora/.test(g4.title) && !g4.gdRecibir && g4.inGrid
+    && g4.entrega === MERGED4 && g4.recibo === '' && !g4.reciboTa && g4.entregaTa === MERGED4 && /Cronología de guardias/.test(g4.label) && g4.entrega3 === MERGED4
+    && new RegExp('^' + MERGED4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\n\\d{2}/\\d{2} \\d{2}:\\d{2} GF: $').test(g4.ahora) && g4.focused && /Otros/.test(g4.otros)
+    && post4.some(b => typeof b.entrega === 'string' && b.entrega.indexOf(MERGED4) === 0 && b.checklist && b.checklist.recibo === ''), JSON.stringify({ g4, posts: post4.length }));   // el envío agrupa la migración con el «➕ Ahora» (va dentro del mismo debounce)
 
   // ── G5: Procedimientos del día muestran quién lo agregó y a qué hora; EDITAR por el modal no cambia autor ni hora (ni en local ni en el PATCH) ──
   const from5 = calls.length;
