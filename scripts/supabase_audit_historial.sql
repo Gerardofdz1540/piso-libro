@@ -56,7 +56,7 @@ begin
     for k in select jsonb_object_keys(newj) loop
       ov := oldj -> k; nv := newj -> k;
       if ov is distinct from nv and k not in ('updated_at', 'client_updated_at', 'updated_by', 'synced_at', 'last_seen_at') then
-        v_campos := v_campos || k;
+        v_campos := array_append(v_campos, k);
         if k = 'checklist' and jsonb_typeof(ov) = 'object' and jsonb_typeof(nv) = 'object' then
           select coalesce(jsonb_object_agg(kk, jsonb_build_object('de', left(coalesce((ov -> kk)::text, ''), v_max), 'a', left(coalesce((nv -> kk)::text, ''), v_max))), '{}'::jsonb) into sub
           from (select jsonb_object_keys(ov) as kk union select jsonb_object_keys(nv)) s
@@ -64,7 +64,9 @@ begin
           v_diff := v_diff || jsonb_build_object(k, sub);
           -- Entrega de guardia: vive en checklist.__pl_note_meta.entrega; se registra como campo propio.
           if (ov -> '__pl_note_meta' ->> 'entrega') is distinct from (nv -> '__pl_note_meta' ->> 'entrega') then
-            v_campos := v_campos || 'entrega';
+            -- array_append y no `|| 'entrega'`: el literal se tomaba como arreglo ("malformed array literal") y ABORTABA el
+            -- UPDATE de notes cuando cambiaba la Entrega/Cronología (hotfix pl_audit_hotfix_entrega_array_literal, 19 oct).
+            v_campos := array_append(v_campos, 'entrega'::text);
             v_diff := v_diff || jsonb_build_object('entrega', jsonb_build_object('de', left(coalesce(ov -> '__pl_note_meta' ->> 'entrega', ''), v_max), 'a', left(coalesce(nv -> '__pl_note_meta' ->> 'entrega', ''), v_max)));
           end if;
         elsif jsonb_typeof(ov) = 'array' or jsonb_typeof(nv) = 'array' then
