@@ -1,7 +1,8 @@
 // Cultivos WinLab (formatos reales), novedades automáticas en la entrega de guardia, nota de evolución
 // completa y paciente que reaparece (nota restaurada antes de mostrar la tarjeta).
 //   node tests/headless/app_nota.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const fs = require('fs'); const path = require('path');
 const FIX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture_ego_bh.json'), 'utf8'));
 const MOCK = `(() => {
@@ -16,7 +17,7 @@ const MOCK = `(() => {
 const iso = (d) => d.toISOString().slice(0, 10);
 const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
 (async()=>{
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
+  const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const calls = [];
   // Nota "restaurada" en la nube para el paciente que reaparece (b2): labs + pendientes
@@ -44,7 +45,7 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
   });
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
 
   // ── N1: cultivos en los formatos reales de WinLab (el resultado vive en `valor`) ──

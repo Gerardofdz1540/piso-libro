@@ -10,7 +10,7 @@
 // P5  Misceláneo: la caja se llama así en la ficha, la barra de saltos y ⚙ Cajas; lo escrito no se pierde al cambiar de
 //     tarjeta antes del guardado, ni al ocultar la app sin red (queda en localStorage y en la cola).
 const fs = require('fs'), path = require('path');
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
 const REPO = path.join(__dirname, '..', '..');
 const HTML = process.argv[2] || path.join(REPO, 'index.html');
 const MOCK = `(() => {
@@ -25,7 +25,7 @@ const MOCK = `(() => {
 })();`;
 const TYPES = /^(touchstart|touchmove|touchend|pointerdown|pointermove|pointerup|pointercancel|mousedown)$/;
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await launch();
   const ctx = await browser.newContext({ viewport: { width: 1194, height: 834 }, hasTouch: true });
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));

@@ -11,10 +11,27 @@ on:
     - cron: '7 6 */3 * *'
   workflow_dispatch:   # permite ejecutarlo manualmente desde GitHub Actions
 
+# Permisos mínimos del GITHUB_TOKEN: "actions: write" lo necesita el paso que vuelve a
+# habilitar este mismo workflow (endpoint "enable workflow"); el ping no usa llaves.
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      # GitHub desactiva los workflows programados tras 60 días sin actividad en el repo
+      # (estado "disabled_inactivity"). Este cron es justo el respaldo contra la pausa de
+      # Supabase, así que, igual que los robots y el vigilante, se vuelve a habilitar a sí
+      # mismo en cada corrida: llamar al endpoint "enable" cuenta como actividad y reinicia
+      # el contador. Best-effort: si falla, el ping a Supabase se hace igual.
+      - name: Keepalive del cron (evita disabled_inactivity)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/keepalive.yml/enable"
+
       - name: Ping Supabase (auth health)
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \

@@ -1,7 +1,8 @@
 // Entrega de guardia que RESUME (quirófano, atención, gastos, labs puntuales, lo nuevo del día, pendientes),
 // INR siempre visible (estimado TP ÷ testigo cuando WinLab no lo reporta) y novedades de labs solo críticas.
 //   node tests/headless/app_entrega.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { chromium } = require('playwright');
+const { launch } = require('./_browser');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -13,7 +14,7 @@ const MOCK = `(() => {
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
 (async () => {
-  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
+  const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   const calls = [];
   await page.route('**/vendor/supabase*', r => r.abort());
@@ -31,7 +32,7 @@ const MOCK = `(() => {
   });
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
-  await page.goto('http://127.0.0.1:8771/index.html', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
 
   // ── E1: INR estimado desde TP + TESTIGO (secuencia REAL de WinLab, verificada en la BD el 15-oct-2026) ──

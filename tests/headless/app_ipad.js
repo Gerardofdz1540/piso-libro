@@ -1,4 +1,5 @@
-const { chromium, devices } = require('playwright');
+const { launch } = require('./_browser'); const { devices } = require('playwright');
+const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -15,7 +16,7 @@ const MOCK = `(() => {
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
 (async()=>{
-  const browser=await chromium.launch();
+  const browser=await launch();
   // Viewport/UA de iPad (Chromium: no es WebKit, pero sí reproduce tamaño, touch y UA).
   const ctx=await browser.newContext({ ...devices['iPad Pro 11'] });
   const page=await ctx.newPage();
@@ -36,7 +37,7 @@ const MOCK = `(() => {
   });
   await page.addInitScript(MOCK);
   let pass=0, fail=0; const check=(n,c,x)=>{ if(c){pass++;console.log('PASS '+n);} else {fail++;console.log('FAIL '+n+(x?' :: '+x:''));} };
-  await page.goto('http://127.0.0.1:8771/index.html',{waitUntil:'load',timeout:90000});
+  await page.goto(BASE_URL + '/index.html',{waitUntil:'load',timeout:90000});
   await page.waitForTimeout(5000);
   check('init: sin errores no capturados (viewport iPad)', errors.length===0, errors.join(' | '));
 
