@@ -901,7 +901,8 @@
     .field-hist-btn:hover, .field-hist-btn:focus { opacity: 1; background: rgba(100, 116, 139, 0.25); }
     @media (hover: none) and (pointer: coarse) { .field-hist-btn { opacity: 1; } }
     /* ✍️ aviso: Garabatear apagado en el iPad */
-    #scribble-hint { display: none; position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 9998; max-width: 680px; width: calc(100% - 24px); box-sizing: border-box; background: #fffbeb; color: #78350f; border: 1px solid #fcd34d; border-radius: 12px; padding: 10px 14px; gap: 12px; align-items: center; font-size: 13px; line-height: 1.4; box-shadow: 0 6px 24px rgba(0,0,0,.18); font-family: var(--font); }
+    /* abajo (no tapa la barra fija ni la tira de camas) y por debajo de los modales (9998) */
+    #scribble-hint { display: none; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9500; max-width: 680px; width: calc(100% - 24px); box-sizing: border-box; background: #fffbeb; color: #78350f; border: 1px solid #fcd34d; border-radius: 12px; padding: 10px 14px; gap: 12px; align-items: center; font-size: 13px; line-height: 1.4; box-shadow: 0 6px 24px rgba(0,0,0,.18); font-family: var(--font); }
     #scribble-hint button { background: #b45309; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap; }
     .hist-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px; margin-top: 6px; background: #fff; }
     .hist-cur { background: #f0fdf4; border-color: #86efac; }
@@ -17826,11 +17827,15 @@ function plExportBackup() {
     })();
 
     // ── ✍️ Vigilante de Scribble (iPad, 19 oct 2026) ───────────────────────────────────────────────────────────────
-    // Si el lápiz se mueve sobre una caja de texto como escribiendo (≥ 50 px) y en 1.8 s no entra ningún texto, Garabatear
-    // está apagado en Ajustes: el lápiz entonces selecciona o arrastra como un dedo (así se movieron bloques enteros entre
-    // cajas en una entrega). A la segunda vez se muestra el aviso con el camino exacto. Oyentes PASIVOS: no vuelven
-    // síncronos los toques (Scribble sigue intacto). Estado en window.__plScribbleWatch (pruebas).
-    const SCRIB = { down: null, last: null, strikes: 0, shownTs: 0 };
+    // Si el lápiz se mueve sobre una caja de texto como escribiendo (≥ 50 px) y, tras el ÚLTIMO trazo de la ráfaga, en
+    // 2.2 s no entra ningún texto, Garabatear está apagado en Ajustes: el lápiz entonces selecciona o arrastra como un dedo
+    // (así se movieron bloques enteros entre cajas en una entrega). Una ráfaga son los trazos seguidos de una palabra:
+    // Scribble convierte al hacer pausa, así que el temporizador es UNO solo y se re-arma con cada trazo (contar por trazo
+    // avisaba en iPads que sí escriben). Cualquier texto que entre (Scribble o teclado) descarta la ráfaga y los fallos
+    // previos; un gesto que el sistema se queda (pointercancel: desplazar, seleccionar) no cuenta. Dos fallos en 30 s →
+    // aviso con el camino exacto. Oyentes PASIVOS: no vuelven síncronos los toques (Scribble sigue intacto).
+    // Estado en window.__plScribbleWatch (pruebas; wait ajustable).
+    const SCRIB = { down: null, timer: 0, strikes: 0, strikeTs: 0, shownTs: 0, wait: 2200 };
     window.__plScribbleWatch = SCRIB;
     function _scribEditable(t) {
       if (!t || t.disabled || t.readOnly) return false;
@@ -17851,27 +17856,26 @@ function plExportBackup() {
     (function _scribBind() {
       document.addEventListener("pointerdown", function (e) {
         if (e.pointerType !== "pen" || !_penIsIPad() || !_scribEditable(e.target)) { SCRIB.down = null; return; }
-        SCRIB.down = { el: e.target, x: e.clientX, y: e.clientY, len: 0, typed: false, id: e.pointerId };
+        SCRIB.down = { el: e.target, x: e.clientX, y: e.clientY, len: 0, id: e.pointerId };
       }, { capture: true, passive: true });
       document.addEventListener("pointermove", function (e) {
         const d = SCRIB.down; if (!d || e.pointerId !== d.id) return;
         d.len += Math.hypot(e.clientX - d.x, e.clientY - d.y); d.x = e.clientX; d.y = e.clientY;
       }, { capture: true, passive: true });
-      const typed = function (e) {
-        if (SCRIB.down && e.target === SCRIB.down.el) SCRIB.down.typed = true;
-        if (SCRIB.last && e.target === SCRIB.last.el) SCRIB.last.typed = true;
-        SCRIB.strikes = 0;
-      };
+      // Entró texto (Scribble convirtió la palabra, o teclado): la ráfaga pendiente se descarta y se olvidan los fallos.
+      const typed = function () { if (SCRIB.timer) { clearTimeout(SCRIB.timer); SCRIB.timer = 0; } SCRIB.strikes = 0; };
       ["beforeinput", "input", "compositionstart"].forEach(function (t) { document.addEventListener(t, typed, { capture: true, passive: true }); });
       const up = function (e) {
         const d = SCRIB.down; if (!d || e.pointerId !== d.id) return;
-        SCRIB.down = null; SCRIB.last = d;
-        if (d.len < 50) return;   // toque o gesto corto: poner el cursor, no escribir
-        setTimeout(function () {
-          if (d.typed) { SCRIB.strikes = 0; return; }
-          SCRIB.strikes++;
+        SCRIB.down = null;
+        if (e.type === "pointercancel" || d.len < 50) return;   // el sistema se quedó el gesto (scroll/selección), o toque corto: poner el cursor
+        if (SCRIB.timer) clearTimeout(SCRIB.timer);            // un temporizador por ráfaga: se re-arma con cada trazo
+        SCRIB.timer = setTimeout(function () {
+          SCRIB.timer = 0;
+          const now = Date.now(); if (now - SCRIB.strikeTs > 30000) SCRIB.strikes = 0;   // fallos sueltos muy separados no se suman
+          SCRIB.strikes++; SCRIB.strikeTs = now;
           if (SCRIB.strikes >= 2) _scribShowHint();
-        }, 1800);
+        }, SCRIB.wait);
       };
       document.addEventListener("pointerup", up, { capture: true, passive: true });
       document.addEventListener("pointercancel", up, { capture: true, passive: true });

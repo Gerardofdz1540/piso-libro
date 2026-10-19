@@ -572,8 +572,9 @@ teclado siguen igual.
 
 **Si el lápiz solo selecciona texto en vez de escribir**, Scribble está apagado en el iPad: Ajustes →
 Apple Pencil → **Garabatear** (encendido). Prueba rápida: escribe con el lápiz en el buscador de Safari.
-La app lo detecta sola: si en una caja de texto el lápiz se mueve dos veces sin que entre ninguna letra,
-aparece un aviso arriba con esos pasos (botón «Entendido» para cerrarlo; vuelve a salir si pasa de nuevo).
+La app lo detecta sola: si escribes dos palabras seguidas con el lápiz en una caja de texto y no entra ninguna
+letra, aparece un aviso abajo con esos pasos (botón «Entendido» para cerrarlo; vuelve a salir si pasa de nuevo).
+Mientras Scribble convierta lo escrito, el aviso no sale.
 
 **Protección contra arrastres y borrados** (19 oct 2026): el texto ya no se puede arrastrar ni soltar
 entre cajas (ni con el lápiz ni con el dedo: lo seleccionado se queda donde está). Si una caja pierde

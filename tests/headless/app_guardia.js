@@ -202,29 +202,43 @@ const HIST_OLD = {
   check('G7 borrado grande: al vaciar de golpe una caja (y una sub-caja del checklist) se apila un paso en Regresar y aparece el aviso; un teclazo normal no apila; Regresar devuelve el texto',
     g7.n1 === g7.n0 + 1 && g7.n2 === g7.n1 && g7.toast === 'flex' && g7.c1 === g7.c0 + 1 && /IC MEDICINA INTERNA/.test(g7.afterCk) && /LINEA UNO DEL PLAN DEL DIA/.test(g7.after), JSON.stringify(g7));
 
-  // ── G8: vigilante de Scribble en iPad: dos trazos de lápiz sobre una caja sin que entre texto → aviso «Garabatear»; con texto, nada ──
+  // ── G8: vigilante de Scribble en iPad: cuenta RÁFAGAS (los trazos de una palabra), no trazos; una palabra de 4 trazos cuyo texto
+  //        llega después NO avisa; dos ráfagas seguidas sin texto → aviso «Garabatear»; pointercancel y toques cortos no cuentan ──
   const g8 = await page.evaluate(async () => {
     const k = pid(patients[0]); const card = document.getElementById('card-' + k);
     const ta = card.querySelector('textarea[data-field="manejo"]'); const r = ta.getBoundingClientRect();
-    const S = window.__plScribbleWatch; S.strikes = 0; S.shownTs = 0;
-    const stroke = (el, id, dx) => { const ev = (t, x) => el.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, pointerId: id, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + 12, pressure: 0.5 })); ev('pointerdown', 10); ev('pointermove', 10 + dx / 2); ev('pointermove', 10 + dx); ev('pointerup', 10 + dx); };
+    const S = window.__plScribbleWatch; S.strikes = 0; S.shownTs = 0; S.strikeTs = 0; S.wait = 600;   // espera corta para la prueba
+    let nextId = 30;
+    const stroke = (el, dx, endType) => { const id = nextId++; const ev = (t, x) => el.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, pointerId: id, pointerType: 'pen', isPrimary: true, clientX: r.left + x, clientY: r.top + 12, pressure: 0.5 })); ev('pointerdown', 10); ev('pointermove', 10 + dx / 2); ev('pointermove', 10 + dx); ev(endType || 'pointerup', 10 + dx); };
     const wait = (ms) => new Promise(res => setTimeout(res, ms));
+    const hintShown = () => { const h = document.getElementById('scribble-hint'); return !!h && h.style.display === 'flex'; };
     // fuera del iPad: nada
-    window.__pl_force_ipad = false; stroke(ta, 21, 80); await wait(2100); const noIpad = S.strikes === 0 && !document.getElementById('scribble-hint');
+    window.__pl_force_ipad = false; stroke(ta, 80); await wait(900); const noIpad = S.strikes === 0 && !S.timer && !document.getElementById('scribble-hint');
     window.__pl_force_ipad = true;
-    stroke(ta, 22, 80); await wait(2100); const one = S.strikes === 1 && !(document.getElementById('scribble-hint') && document.getElementById('scribble-hint').style.display === 'flex');
-    stroke(ta, 23, 80); await wait(2100);
-    const hint = document.getElementById('scribble-hint'); const shown = !!hint && hint.style.display === 'flex' && /Garabatear/.test(hint.textContent);
+    // una palabra de 4 trazos (0.3 s) y el texto de Scribble llega 0.2 s después del último: ni fallo ni aviso
+    for (let i = 0; i < 4; i++) { stroke(ta, 80); await wait(100); }
+    await wait(200); ta.dispatchEvent(new Event('input', { bubbles: true })); await wait(900);
+    const wordOk = S.strikes === 0 && !S.timer && !hintShown();
+    // dos gestos que el sistema se queda (pointercancel: desplazar o seleccionar): no cuentan
+    stroke(ta, 80, 'pointercancel'); stroke(ta, 80, 'pointercancel'); await wait(900); const cancelOk = S.strikes === 0 && !S.timer;
+    // ráfaga sin texto → 1 fallo, sin aviso; otra ráfaga sin texto → aviso
+    stroke(ta, 80); await wait(100); stroke(ta, 80); await wait(900); const one = S.strikes === 1 && !hintShown();
+    stroke(ta, 80); await wait(900);
+    const hint = document.getElementById('scribble-hint'); const shown = hintShown() && /Garabatear/.test(hint.textContent);
+    const cs = hint ? getComputedStyle(hint) : {}; const rb = hint ? hint.getBoundingClientRect() : { bottom: 0, top: 0 };
+    const abajo = cs.bottom === '16px' && Math.abs(window.innerHeight - rb.bottom - 16) < 2 && rb.top > 200 && parseInt(cs.zIndex, 10) < 9998;   // abajo del todo, lejos de la barra fija, bajo los modales
     hint.querySelector('button').click(); const dismissed = hint.style.display === 'none';
-    // con texto que entra (Scribble funcionando) no cuenta: el trazo largo seguido de input deja strikes en 0
-    S.strikes = 1; stroke(ta, 24, 80); ta.dispatchEvent(new Event('input', { bubbles: true })); await wait(2100); const typedOk = S.strikes === 0;
+    // con texto que entra (Scribble funcionando) la ráfaga se descarta y los fallos previos se olvidan
+    S.strikes = 1; stroke(ta, 80); ta.dispatchEvent(new Event('input', { bubbles: true })); const typedNow = S.strikes === 0 && !S.timer; await wait(900); const typedOk = typedNow && S.strikes === 0;
     // un toque corto (poner el cursor) no cuenta
-    stroke(ta, 25, 8); await wait(2100); const shortOk = S.strikes === 0;
-    window.__pl_force_ipad = false;
-    return { noIpad, one, shown, dismissed, typedOk, shortOk };
+    stroke(ta, 8); await wait(900); const shortOk = S.strikes === 0 && !S.timer;
+    // un fallo suelto de hace más de 30 s no se suma al nuevo
+    S.strikes = 1; S.strikeTs = Date.now() - 40000; S.shownTs = 0; stroke(ta, 80); await wait(900); const decayOk = S.strikes === 1 && !hintShown();
+    window.__pl_force_ipad = false; S.strikes = 0; S.wait = 2200;
+    return { noIpad, wordOk, cancelOk, one, shown, abajo, dismissed, typedOk, shortOk, decayOk };
   });
-  check('G8 vigilante de Scribble (solo iPad): un trazo largo sin texto cuenta 1; al segundo aparece el aviso con «Ajustes → Apple Pencil → Garabatear» (se cierra con Entendido); si entra texto no cuenta; un toque corto no cuenta; fuera del iPad nunca',
-    g8.noIpad && g8.one && g8.shown && g8.dismissed && g8.typedOk && g8.shortOk, JSON.stringify(g8));
+  check('G8 vigilante de Scribble (solo iPad): una palabra de 4 trazos con texto después no avisa; pointercancel no cuenta; una ráfaga sin texto = 1 fallo, la segunda muestra el aviso «Ajustes → Apple Pencil → Garabatear» abajo (bajo los modales) y se cierra con Entendido; texto que entra descarta la ráfaga y los fallos; toque corto no cuenta; un fallo de hace 30 s no se suma; fuera del iPad nunca',
+    g8.noIpad && g8.wordOk && g8.cancelOk && g8.one && g8.shown && g8.abajo && g8.dismissed && g8.typedOk && g8.shortOk && g8.decayOk, JSON.stringify(g8));
 
   check('final: sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   await browser.close();
