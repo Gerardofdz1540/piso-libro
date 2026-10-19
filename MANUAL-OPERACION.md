@@ -463,6 +463,24 @@ Un encabezado de WinLab con menos nombres de pila que la hoja ahora sí cuenta, 
 nombres en WinLab y tres en la hoja. Solo cuenta si el robot ya validó ese reporte con nombre y edad.
 Otra persona con los mismos apellidos nunca entra.
 
+## Los labs ya no se reescriben en bucle (19 de octubre de 2026)
+
+La bitácora de actividad crecía con miles de filas al día de «labs» que no cambiaban nada: la base
+guarda los analitos en otro orden del que la app los arma, la app lo tomaba como un cambio, volvía a
+subir los labs de todos los pacientes y cada iPad recibía el aviso «📡 Actualización recibida» y
+repetía la pasada. Desde esta fecha:
+
+1. La app compara los labs **analito por analito y valor por valor**, sin importar el orden. Si las
+   cifras son las mismas no guarda nada, no toca la hora de sincronización y no sube la nota.
+2. Cuando el robot sube una fila de WinLab, la app sincroniza **solo a ese paciente** (no a todo el
+   censo) y junta las filas que llegan en 1.5 s en una sola pasada; una corrida de 40 filas es una
+   pasada, no 40.
+3. El aviso «🧪 Labs WinLab actualizados» nombra solo a quien de verdad tiene labs distintos, y el
+   aviso «📡 Actualización recibida» sale solo cuando cambió algo visible de un paciente en pantalla.
+
+Si el ⚙️ Actividad vuelve a mostrar muchas filas de «labs» seguidas del mismo paciente con las mismas
+cifras, probablemente algún iPad sigue con la versión anterior: basta con recargar la app ahí.
+
 ## Cirugías y gastos: todo el texto cabe (16 de octubre de 2026)
 
 Las cajas de Cirugías crecen hasta mostrar todo el procedimiento y los hallazgos. Sangrado y cirujano
@@ -802,6 +820,36 @@ En Supabase → SQL Editor:
 update public.app_users set role = 'admin', status = 'active' where email = 'gfdz1540@gmail.com';
 ```
 
+## 💾 Espacio en la nube (octubre 2026)
+
+La base de datos vive en el plan gratuito de Supabase, que tiene un **tope de 500 MB**. Si se llena,
+Supabase deja la base en solo lectura: la app abre y muestra lo que hay, pero **deja de guardar** lo
+que se escribe. Para que eso no sorprenda a nadie:
+
+- **⚙️ Config → 💾 Espacio en la nube** muestra cuánto ocupa la base ("76 MB de 500 MB", con una
+  barra), lo que más ocupa (laboratorios del robot `winlab_labs`, bitácora/historial `audit_log`,
+  bitácora del censo `sync_log`, notas `notes`) y a qué hora se revisó. El dato lo da la función SQL
+  `pl_tamano_base`; si la base aún no la tiene dice "sin dato".
+- Cuando la base se acerca al tope (nivel **aviso**, amarillo) o ya está muy cerca (nivel **alto**,
+  rojo) aparece una **franja arriba de la app**: "La base de datos va en X MB de 500: avisa al
+  administrador". **Entendido** la oculta 24 horas en ese dispositivo (si sube de aviso a alto vuelve
+  a salir). La app revisa al entrar y cada 6 horas, solo con red, y nunca se bloquea por esto.
+
+Qué hacer el administrador cuando sale el aviso (en este orden):
+
+1. **Correr la purga a mano** (normalmente corre sola de noche): Supabase → SQL Editor →
+   `select jobname, command from cron.job;` muestra los trabajos programados; copia el comando del
+   `audit-log-purge` (borra la bitácora vieja según su tipo: labs/imagen automáticos a los 30 días,
+   cajas de texto a los 365, lo demás a los 180; ver "🕵️ Actividad → Cuánto se guarda") y el del
+   `net-http-response-vacuum` (compacta la tabla de respuestas de pg_net) y ejecútalos. Después
+   vuelve a abrir ⚙️ Config para ver si bajó.
+2. **Revisar la retención de `winlab_labs`** (los laboratorios del robot son lo que más crece: entre
+   100 y 340 renglones por semana). Si pasa de 100 MB, borrar los renglones de pacientes que ya
+   egresaron hace más de 6 meses (antes de borrar, exportar la tabla desde Supabase → Table Editor →
+   Export CSV y guardar el archivo en el Drive del servicio).
+3. Si aun así sigue en aviso, **considerar el plan Pro de Supabase** (8 GB de base; se paga con
+   tarjeta cada mes) o avisar a quien mantiene la app para cambiar el proyecto.
+
 ## Llaves y vencimientos (recordatorio 2 semanas antes)
 
 Varias piezas dejan de funcionar en una fecha, o cuando alguien cambia su contraseña, sin ningún
@@ -869,9 +917,14 @@ guarda fuera de Supabase:
   final, **Artifacts** → `respaldo-db-AAAAMMDD-HHMM`. Se conserva **30 días** (cada noche entra uno
   nuevo y los de más de 30 días se borran solos). Opcional: también en una carpeta privada de Google
   Drive (ahí se guardan 90 días).
-- **Cifrado**: el archivo solo lo puede abrir el administrador con su **llave privada**. El repo es
-  público, los artifacts solo los ve quien tiene acceso al repo y, aun así, van cifrados: nunca se
-  sube nada en claro.
+- **Cifrado**: el archivo solo lo puede abrir el administrador con su **llave privada**. Ojo: el
+  repo es **público**, así que el artifact y el registro de la corrida los puede bajar **cualquiera**
+  con cuenta de GitHub. Lo único que protege los datos es el cifrado: por eso nunca se sube nada en
+  claro, el registro solo muestra números (nunca nombres) y la llave privada no sale de la Mac/USB.
+- **Egreso de Supabase**: cada respaldo saca del proyecto más o menos lo que pesa la base (el plan
+  gratuito da **5 GB al mes**). Por eso el respaldo deja fuera las filas de `sync_log` (bitácora del
+  censo, se regenera sola). Una vez al mes mira Supabase → Settings → **Usage** → *Egress*: si va
+  por más de ~3 GB, cambia en `db-backup.yml` el cron a noches alternas (`"20 8 */2 * *"`).
 - **Cómo saber que corrió**: en esa lista debe haber un círculo verde cada día. Si sale rojo, GitHub
   manda el correo de "workflow failed" al dueño del repo; el paso rojo dice la causa (lo más común:
   cambió la contraseña de la base). El resumen de cada corrida dice el tamaño y cuántas filas tenía
