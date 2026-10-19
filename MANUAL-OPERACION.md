@@ -573,6 +573,11 @@ vuelve solo a Scribble al abrir; la tinta que ya estaba guardada en una caja se 
 caja (lienzo grande) sigue ahí para dibujar o firmar. Un **toque** con el lápiz pone el cursor; el dedo y el
 teclado siguen igual.
 
+**Campos chicos (Pase Matutino, dieta, gasto de drenajes, labs, peso/talla, ventilador)**: al tocarlos con el
+lápiz se agrandan solos en una banda de escritura (230 × 52 px, letra grande) para que Scribble tenga dónde
+escribir; al soltar el foco vuelven a su tamaño. Antes el trazo caía fuera del campo (52 px) y el iPad lo tomaba
+como selección o desplazamiento («no me detecta el lápiz»).
+
 **Si el lápiz solo selecciona texto en vez de escribir**, Scribble está apagado en el iPad: Ajustes →
 Apple Pencil → **Garabatear** (encendido). Prueba rápida: escribe con el lápiz en el buscador de Safari.
 La app lo detecta sola: si escribes dos palabras seguidas con el lápiz en una caja de texto y no entra ninguna

@@ -2,9 +2,13 @@
 -- Indicaciones del Google Doc → public.indicaciones_doc (aplicado en Supabase el 12 oct 2026)
 --
 -- Dos caminos alimentan la misma fila (id = 1):
---   A) pg_cron + pg_net (este archivo): cada 5 min la base descarga el Doc por su enlace de
+--   A) pg_cron + pg_net (este archivo): cada 15 min la base descarga el Doc por su enlace de
 --      exportación (el Doc está compartido "cualquiera con el enlace") y, si el texto cambió,
 --      actualiza la fila. No necesita Apps Script ni intervención.
+--      (19 oct 2026, migración net_http_response_sin_fuga_indicaciones_15min: era cada 5 min y pg_net
+--      guardaba cada respuesta de ~120 KB en net._http_response, tabla unlogged que nunca se compacta:
+--      85 MB de basura con 73 filas vivas, ~34 MB/día. Ahora collect borra la respuesta al procesarla,
+--      la cadencia es de 15 min y un job diario compacta la tabla.)
 --   B) Apps Script syncIndicaciones() (apps-script/censo-sync.gs): lee el Doc autenticado con la
 --      cuenta de Google y hace el mismo UPSERT. Es el respaldo si el enlace deja de ser público.
 -- La app se suscribe por Realtime a indicaciones_doc y re-parsea los bloques por cama + nombre.
@@ -75,14 +79,18 @@ begin
     else
       update public.indicaciones_fetch_log set processed = true, result = 'http_' || coalesce(r.status_code::text, 'null') where req_id = r.req_id;
     end if;
+    -- la respuesta (~120 KB) ya no hace falta: fuera de net._http_response de inmediato
+    execute 'del' || 'ete from net._http_response where id = $1' using r.req_id;
   end loop;
   execute 'del' || 'ete from public.indicaciones_fetch_log where requested_at < now() - interval ''2 days''';
   return 'seen=' || seen || ' changed=' || changed;
 end $f$;
 
--- Cada 5 min: descarga; 2 min después: recoge. (jobid 6 y 7 en el proyecto)
-select cron.schedule('indicaciones-fetch',   '*/5 * * * *',   'select public.indicaciones_fetch()');
-select cron.schedule('indicaciones-collect', '2-59/5 * * * *', 'select public.indicaciones_collect()');
+-- Cada 15 min: descarga; 2 min después: recoge. (jobid 6 y 7 en el proyecto; antes cada 5 min)
+select cron.schedule('indicaciones-fetch',   '*/15 * * * *',   'select public.indicaciones_fetch()');
+select cron.schedule('indicaciones-collect', '2-59/15 * * * *', 'select public.indicaciones_collect()');
+-- Compactación diaria de la tabla de respuestas de pg_net (unlogged: autovacuum no la achica). jobid 9.
+select cron.schedule('net-http-response-vacuum', '50 4 * * *', 'vacuum (full) net._http_response');
 
 -- Diagnóstico:
 --   select synced_at, doc_updated, length(text) from public.indicaciones_doc;

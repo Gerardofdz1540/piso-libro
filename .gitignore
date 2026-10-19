@@ -4,3 +4,6 @@ index.html.*
 *.pre-v*
 node_modules/
 dist/
+
+# worktrees temporales de los agentes de revisión
+.claude/worktrees/

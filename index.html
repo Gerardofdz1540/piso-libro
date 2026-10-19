@@ -3160,6 +3160,17 @@
     .pm-input:focus {
       border-color: #0ea5e9
     }
+    /* Banda de escritura del lápiz (iPad, 19 oct 2026): un campo chico (vitales 52 px, dieta, gasto de un drenaje…) no le
+       da espacio a Scribble y el trazo cae fuera (selecciona o desplaza en vez de escribir). Mientras el lápiz está sobre
+       el campo, se agranda; al soltarlo vuelve a su tamaño. !important: muchos llevan width en línea. */
+    /* (la clase repetida gana a la regla «iOS Safari: evitar auto-zoom» de 16px !important, que es más específica) */
+    input.pen-band, input.pen-band.pen-band.pen-band.pen-band {
+      width: 230px !important; min-width: 230px !important; max-width: 90vw; height: 52px !important; min-height: 52px;
+      font-size: 24px !important; padding: 6px 12px !important; text-align: left !important; border-radius: 10px !important;
+      border: 2px solid #0ea5e9 !important; box-shadow: 0 0 0 4px #bae6fd, 0 8px 24px rgba(2,132,199,.25); background: #fff !important; color: #0f172a !important;
+      position: relative; z-index: 6;
+    }
+    body.dark input.pen-band { background: #0f2238 !important; color: #e2e8f0 !important; }
 
     .pm-label {
       font-size: 9px;
@@ -17887,6 +17898,31 @@ function plExportBackup() {
       };
       document.addEventListener("pointerup", up, { capture: true, passive: true });
       document.addEventListener("pointercancel", up, { capture: true, passive: true });
+    })();
+
+    // ── ✍️ Banda de escritura para campos chicos (iPad, 19 oct 2026) ──────────────────────────────────────────────────
+    // Los campos de una línea (vitales del Pase Matutino de 52 px, dieta, gasto y sitio de un drenaje, labs, peso/talla,
+    // ventilador…) son demasiado chicos para Scribble: el trazo empieza fuera del campo y el sistema lo toma como selección
+    // o desplazamiento ("no me detecta el lápiz"). Al tocar el campo con el lápiz se agranda (input.pen-band) y al soltar
+    // el foco vuelve a su tamaño. Oyentes pasivos; no se intercepta nada (Scribble sigue intacto).
+    const PEN_BAND_MAX_W = 140;   // solo campos más angostos que esto
+    function _penBandTarget(t) {
+      if (!t || t.tagName !== "INPUT" || t.disabled || t.readOnly) return null;
+      if (/^(checkbox|radio|button|submit|file|range|color|date|time|hidden|month|week)$/i.test(t.type || "text")) return null;
+      return t.offsetWidth && t.offsetWidth < PEN_BAND_MAX_W ? t : null;
+    }
+    function _penBandOff() { document.querySelectorAll("input.pen-band").forEach(function (el) { el.classList.remove("pen-band"); }); }
+    (function _penBandBind() {
+      document.addEventListener("pointerdown", function (e) {
+        if (e.pointerType !== "pen" || !_penIsIPad()) return;
+        const t = _penBandTarget(e.target);
+        if (!t) return;
+        if (!t.classList.contains("pen-band")) { _penBandOff(); t.classList.add("pen-band"); }
+      }, { capture: true, passive: true });
+      document.addEventListener("focusout", function (e) {
+        const t = e.target; if (!t || !t.classList || !t.classList.contains("pen-band")) return;
+        setTimeout(function () { if (document.activeElement !== t) t.classList.remove("pen-band"); }, 250);   // Scribble devuelve el foco un instante después
+      }, true);
     })();
 
     // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
