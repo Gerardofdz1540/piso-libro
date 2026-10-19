@@ -757,5 +757,73 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   }
 }
 
+// ── 18) Tercera revisión: la regla de exp único no depende de la edad ni de nombres de otras camas ───────────────
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i), { nombre: "RELLENO " + "ABCDEFGHIJKL"[i] + " SOTO" })); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.exp + ":" + p.nombre) : []; };
+  const patches = (calls) => calls.filter((c) => c.m === "PATCH").map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + JSON.stringify(c.body));
+  const touched = (calls) => calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive"));
+  const sameBed = (n1, n2, extraSheet, e1, e2) => {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: n1, edad: String(e1 == null ? 40 : e1), updated_by: "sheet-sync" };
+    const full = { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de a1" }] } };
+    const { sb, calls } = makeSandbox({ cur: [a1], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "77", { nombre: n2, edad: e2 == null ? 40 : e2 })].concat(extraSheet || [])));
+    return calls;
+  };
+  // correcciones que la versión anterior archivaba
+  const keep = [["PEREZ J", "PEREZ JUAN"], ["JUAN PEREZ", "J PEREZ"], ["J. PEREZ L.", "JUAN PEREZ LOPEZ"], ["DE LA CRUZ ANA", "DELACRUZ ANA MARIA"],
+    ["DELACRUZ ANA", "DE LA CRUS ANA"], ["MONTESDEOCA ANA", "MONTES DE OCA ANA LUISA"], ["MARIA JOSE PEREZ", "MARIAJOSE PERES"], ["ALEJ PEREZ", "ALEJANDRO PEREZ"],
+    ["BAEZ ANA", "VAES ANA"], ["FEMENINA", "PEREZ LOPEZ ANA"], ["NO IDENT.", "PEREZ ANA"], ["XX", "PEREZ JUAN"], ["SIN DATOS", "PEREZ JUAN"], ["DESCONOSIDO", "PEREZ JUAN"],
+    ["N.N.", "PEREZ JUAN"], ["PEREZ LOPEZ J", "PEREZ LOPEZ JUAN", 40, 43]];
+  const lost = keep.filter(([n1, n2, e1, e2]) => { const c = sameBed(n1, n2, [], e1, e2); return touched(c) || !upsertOf(c).includes("3-101:77:" + n2); });
+  check("T18a exp único, misma cama: inicial J, partículas juntas/separadas, palabras pegadas, abreviatura ALEJ, mismo sonido (BAEZ/VAES), no identificados (FEMENINA, NO IDENT., XX, SIN DATOS, DESCONOSIDO, N.N.) y edad cambiada: misma fila, sin archivo",
+    lost.length === 0, JSON.stringify(lost.map((f) => f[0] + "→" + f[1])));
+  // un tocayo en otra cama (con otro exp) ya no hace que una corrección parezca otra persona
+  const namesake = [["PEREZ JOSE", "PEREZ JOSUE", "PEREZ SOTO JOSE"], ["PEREZ DIAS", "PEREZ DIAZ", "PEREZ DIAS ROSA"], ["GARCIA ANA", "GARCIA ANNA", "GARCIA LOPEZ ANA"], ["LOPEZ MARIA", "LOPES MARIA ELENA", "LOPEZ RUIZ MARIA"]];
+  const lost2 = namesake.filter(([n1, n2, other]) => touched(sameBed(n1, n2, [row("3-140", "55", { nombre: other, edad: 70 })])));
+  check("T18b corrección con un tocayo en otra cama (PEREZ JOSE→JOSUE con PEREZ SOTO JOSE en 3-140, etc.): misma fila, sin archivo", lost2.length === 0, JSON.stringify(lost2.map((f) => f[0])));
+  // cambio de cama + inicial completada
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ J", edad: "40", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("UCI 3", "77", { nombre: "PEREZ JUAN", edad: 40 })]));
+    const ps = patches(calls);
+    check("T18c cambio de cama + inicial completada (PEREZ J → PEREZ JUAN en UCI 3): PATCH de cama, la nota viaja", ps.length === 1 && ps[0].includes('"cama":"UCI 3"') && !touched(calls), JSON.stringify(ps));
+  }
+  // otra persona: exp copiado a un conocido → DESCONOCIDO, hermanos JUAN/JUANA y LUIS/LUISA con cualquier edad, dos nombres de pila iguales
+  const other = [["HERNANDEZ LOPEZ MARIA ELENA", "DESCONOCIDO"], ["PEREZ LOPEZ JUAN", "PEREZ LOPEZ JUANA"], ["SOTO LUIS", "SOTO LUISA"], ["PEREZ LOPEZ MARIO", "PEREZ LOPEZ MARIA"],
+    ["LOPEZ PEREZ MARIA GUADALUPE", "SANCHEZ RUIZ MARIA GUADALUPE"], ["TORRES NAVA JUAN CARLOS", "MENDEZ SOLIS JUAN CARLOS"], ["MARIA LOPEZ", "HIJO DE MARIA LOPEZ"]];
+  const renamed = other.filter(([n1, n2]) => {
+    const c = sameBed(n1, n2, [], 40, 40);   // misma edad a propósito: en la hoja suele quedarse la del ocupante anterior
+    const arc = c.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/archive"));
+    return !(arc && arc.body.patient_data.nombre === n1 && /CAMA REASIGNADA/.test(arc.body.note_data._egreso));
+  });
+  check("T18d exp copiado a OTRA persona en la misma cama, aun con la edad del ocupante anterior (DESCONOCIDO, JUANA, LUISA, MARIA, mismos nombres de pila y otros apellidos, HIJO DE…): cama reasignada, nunca se renombra la fila con su nota",
+    renamed.length === 0, JSON.stringify(renamed.map((f) => f[0] + "→" + f[1])));
+  // caso real con un DESCONOCIDO en la 3-189: no se mueve a la cama de la otra persona; solo se le corrige el exp
+  {
+    const b9 = { id: "b9", cama: "3-189", exp: "26-1500", nombre: "DESCONOCIDO", edad: "", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [b9], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "26-1500", { nombre: "TORRES NAVA RAUL", edad: 52 }), row("3-189", "26-1777", { nombre: "DESCONOCIDO" })]));
+    const ps = patches(calls), up = upsertOf(calls);
+    check("T18e exp corregido a un DESCONOCIDO en 3-189 y el viejo en 3-154 (otra persona con nombre): b9 solo corrige su exp, 3-154 entra nueva",
+      ps.length === 1 && ps[0] === 'b9:{"exp":"26-1777","updated_by":"sheet-sync"}' && up.includes("3-154:26-1500:TORRES NAVA RAUL") && !touched(calls), JSON.stringify({ ps, up }));
+    // ...pero un DESCONOCIDO que de verdad cambió de cama (su cama vieja quedó libre) sí se mueve por expediente
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [b9], props: {} });
+    sb2.syncPatients_("svc", fill([row("3-154", "26-1500", { nombre: "DESCONOCIDO" })]));
+    check("T18f DESCONOCIDO que cambia de cama (3-189 → 3-154): se mueve por expediente con su nota", patches(c2).some((p) => p.startsWith("b9:") && p.includes('"cama":"3-154"')) && !touched(c2), JSON.stringify(patches(c2)));
+  }
+  // turnover reescribiendo celdas: primero el exp (se corrige en la misma fila), luego el nombre de OTRA persona → cama reasignada
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "26-1111", nombre: "LOPEZ PEREZ MARIA GUADALUPE", edad: "67", updated_by: "sheet-sync" };
+    const full = { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de MARIA GUADALUPE" }] } };
+    const { sb, calls } = makeSandbox({ cur: [{ ...a1, exp: "26-2222" }], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "26-2222", { nombre: "SANCHEZ RUIZ MARIA GUADALUPE", edad: 67 })]));
+    const arc = calls.find((c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive"));
+    check("T18g cama que se reescribe celda por celda (exp ya corregido, luego el nombre de otra persona con la edad vieja): se archiva la anterior, no se renombra",
+      !!arc && arc.body.patient_data.nombre === "LOPEZ PEREZ MARIA GUADALUPE" && upsertOf(calls).includes("3-101:26-2222:SANCHEZ RUIZ MARIA GUADALUPE"), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+  }
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
