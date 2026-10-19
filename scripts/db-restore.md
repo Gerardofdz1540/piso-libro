@@ -52,9 +52,13 @@ archivo.
 
 ## 2. Descifrar
 
+Trabaja en una carpeta nueva y nombra el archivo exacto: si en Descargas se acumulan los zips de
+simulacros anteriores, un comodín (`respaldo-db-*.zip`) agarra varios y `unzip`/`age` fallan.
+
 ```bash
-cd ~/Downloads && unzip respaldo-db-*.zip
-age -d -i ~/Documents/piso-libro-llave.txt -o pisolibro.dump pisolibro-db-*.dump.age
+mkdir -p ~/Downloads/restaurar && cd ~/Downloads/restaurar
+unzip ~/Downloads/respaldo-db-AAAAMMDD-HHMM.zip          # el zip que bajaste en el paso 1
+age -d -i ~/Documents/piso-libro-llave.txt -o pisolibro.dump pisolibro-db-AAAAMMDD-HHMM.dump.age
 pg_restore --list pisolibro.dump | grep "TABLE DATA"   # lista de tablas con datos
 ```
 
