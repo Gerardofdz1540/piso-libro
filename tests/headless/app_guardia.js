@@ -318,6 +318,28 @@ const HIST_OLD = {
     && g9.c.toastKey === g9.k && g9.c.lastKey === 'zz' && g9.c.pend === g9.p0 && g9.c.manejo === 'MANEJO DEL COLEGA' && post9.length >= 1
     && g9.d.byDrag && g9.d.fromDrop && !g9.d.typing && !g9.d.paste && g9.d.ceSelDrag && !g9.d.ceItemDrag && g9.d.ceDropText && !g9.d.ceDropItem, JSON.stringify({ g9, manejoViejo, posts: post9.length }));
 
+  // ── G10: banda de escritura del lápiz en campos chicos (iPad): FC del Pase Matutino se agranda al tocarlo con el lápiz y vuelve al soltar el foco;
+  //         el dedo no la agranda; fuera del iPad nunca; una caja grande (textarea) no cambia ──
+  const g10 = await page.evaluate(async () => {
+    const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_'); const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    const fc = document.querySelector('#ck-row-' + ek + ' input[data-field="pm_fc"]'); const ta = document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="manejo"]');
+    const w0 = fc.getBoundingClientRect().width;
+    const pd = (el, type) => { const r = el.getBoundingClientRect(); el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 41, pointerType: type, isPrimary: true, clientX: r.left + 5, clientY: r.top + 5, pressure: 0.5 })); };
+    window.__pl_force_ipad = false; pd(fc, 'pen'); const noIpad = !fc.classList.contains('pen-band');
+    window.__pl_force_ipad = true; pd(fc, 'touch'); const finger = !fc.classList.contains('pen-band');
+    pd(fc, 'pen'); fc.focus(); await wait(50);
+    const on = fc.classList.contains('pen-band'); const w1 = fc.getBoundingClientRect().width, h1 = fc.getBoundingClientRect().height, fs = parseFloat(getComputedStyle(fc).fontSize);
+    // otro campo chico con el lápiz: la banda pasa a ese campo
+    const fr = document.querySelector('#ck-row-' + ek + ' input[data-field="pm_fr"]'); pd(fr, 'pen'); fr.focus(); await wait(300);
+    const moved = !fc.classList.contains('pen-band') && fr.classList.contains('pen-band');
+    fr.blur(); await wait(350); const off = !fr.classList.contains('pen-band') && Math.abs(fr.getBoundingClientRect().width - w0) < 2;
+    pd(ta, 'pen'); const taSame = !ta.classList.contains('pen-band');
+    window.__pl_force_ipad = false;
+    return { w0, noIpad, finger, on, w1, h1, fs, moved, off, taSame };
+  });
+  check('G10 banda de escritura (iPad): FC del Pase Matutino pasa de ~52 px a ≥ 200 px, ≥ 48 px de alto y letra ≥ 20 px al tocarlo con el lápiz; el dedo no la activa; fuera del iPad tampoco; al tocar otro campo la banda cambia de campo y al soltar el foco vuelve al tamaño original; una caja grande no cambia',
+    g10.w0 < 80 && g10.noIpad && g10.finger && g10.on && g10.w1 >= 200 && g10.h1 >= 48 && g10.fs >= 20 && g10.moved && g10.off && g10.taSame, JSON.stringify(g10));
+
   check('final: sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   await browser.close();
   console.log('RESULT APP-GUARDIA: ' + pass + ' passed, ' + fail + ' failed');
