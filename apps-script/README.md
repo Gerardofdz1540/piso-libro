@@ -131,12 +131,21 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
   siendo la misma persona si la edad cuadra, si no es el nombre de la otra y si su propio nombre no está
   en otra cama (eso es un cambio de cama). JUAN/JULIAN, ANA/ADRIANA o LUIS/LUISA nunca son "casi iguales". Un nombre incompleto (solo apellidos) que encaja con
   dos personas distintas entra como paciente aparte en vez de juntarlas.
-- **Expediente copiado a otra persona** (18 oct 2026): aun con expediente único, mover una fila por
-  expediente o dejarla en su cama exige que el nombre sea compatible (misma persona, o casi igual con la
-  edad que cuadra). Caso real: a la 3-189 le corrigieron el exp y el viejo quedó solo en la 3-154, de
-  otra persona; antes la fila de la 3-189 se movía a la 3-154 con su nota y recibía el otro nombre. Ahora
-  a la 3-189 solo se le corrige el exp y la 3-154 entra como paciente nuevo. Si en la misma cama aparece
-  otra persona con el mismo exp, la cama cuenta como reasignada (archivo + fila nueva).
+- **Expediente copiado a otra persona** (18 oct 2026): con expediente único sigue mandando el
+  expediente, pero una fila no se mueve ni se queda en su cama si el nombre **prueba** que es otra
+  persona. Caso real: a la 3-189 le corrigieron el exp y el viejo quedó solo en la 3-154, de otra
+  persona; antes la fila de la 3-189 se movía a la 3-154 con su nota y recibía el otro nombre. Ahora a
+  la 3-189 solo se le corrige el exp y la 3-154 entra como paciente nuevo. Si en la misma cama aparece
+  otra persona con el mismo exp, la cama cuenta como reasignada (archivo + fila nueva). Es **otra
+  persona** cuando los nombres comparten menos de 2 palabras (el caso real tenía un solo apellido en
+  común), o comparten 2+ pero a los dos les sobra una distinta y la edad no cuadra (hermanos), o cuando
+  su nombre tal cual sigue en otra cama de la hoja. Las correcciones normales del nombre, en la hoja o en
+  la app, siguen en la misma fila con su nota: errores de dedo (`DIAS`/`DIAZ`, `JUNA`/`JUAN`,
+  `GRACIA`/`GARCIA`, dos letras en palabras largas), abreviaturas (`HDZ`, `FCO`), palabras agregadas,
+  espacios (`DELACRUZ`/`DE LA CRUZ`), un paciente `DESCONOCIDO` o `RN` que se identifica, y la edad
+  corregida. La app usa la misma regla (`_plNamesCompatible`) antes de re-enlazar una tarjeta cuya fila
+  ya no existe a otra fila con su exp y cama: si es otra persona, la nota pendiente va a la Papelera y
+  la tarjeta se retira en vez de subirse a la fila ajena.
 - **Movimiento de cama que falla** (PATCH rechazado): la cama de origen y la de destino quedan fuera
   del upsert de esa corrida, para que la fila que no se movió no reciba el nombre del siguiente
   ocupante.
