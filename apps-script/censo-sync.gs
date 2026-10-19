@@ -293,6 +293,12 @@ function tokenClose_(t, u) {
   }
   return false;
 }
+// ¿El nombre de la fila de Supabase (r) y el de la hoja (s) pueden ser la misma persona? Misma persona,
+// nombre casi igual con la edad que cuadra, o sin nombre verificable en alguno (como antes: por expediente).
+function namesCompatible_(r, s) {
+  if (!s || !nameTokens_(r && r.nombre || '').length || !nameTokens_(s.nombre || '').length) return true;
+  return samePerson_(r.nombre, s.nombre) || closePerson_(r, s);
+}
 // Casi la misma persona: nombre casi igual y la edad no lo contradice (±1 año cuando ambas se conocen).
 function closePerson_(r, s) {
   if (!closeName_(r && r.nombre || '', s && s.nombre || '')) return false;
@@ -400,7 +406,10 @@ function sheetMaps_(payload) {
 function sheetCamaFor_(maps, exp, r) {
   var camas = maps.camasByExp[exp];
   if (!camas || !camas.length) return undefined;
-  if (!expAmbiguous_(maps, exp)) return camas.length === 1 ? camas[0] : undefined;
+  // Exp único: su cama, siempre que el nombre sea compatible (caso real 18 oct: a la 3-189 le corrigieron
+  // el exp y el viejo quedó solo en la 3-154, de OTRA persona; se movía la fila de la 3-189, con su nota, a
+  // la 3-154 y se le ponía el nombre del de la 3-154).
+  if (!expAmbiguous_(maps, exp)) return camas.length === 1 && namesCompatible_(r, maps.rowByCama[camas[0]]) ? camas[0] : undefined;
   var nombre = (r && r.nombre) || '';
   var hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && samePerson_(nombre, sr.nombre || ''); });
   // Varias filas encajan (p. ej. una con solo apellidos): se descartan las ambiguas de la hoja.
@@ -445,7 +454,10 @@ function otherHasName_(maps, exp, selfId, nombre) {
 // "HDZ" → "HERNANDEZ") sigue siendo la misma persona si no es el nombre de la otra.
 function sameOccupant_(maps, r, cama, exp) {
   if (maps.byCama[cama] === undefined || maps.byCama[cama] !== exp) return false;
-  if (!expAmbiguous_(maps, exp) || !String(r.nombre || '').trim()) return true;
+  // Exp único: misma cama + mismo exp basta salvo que el nombre sea claramente de otra persona (exp copiado
+  // a un ingreso nuevo en esa cama): entonces es cama reasignada, nunca renombrar la fila con su nota.
+  if (!expAmbiguous_(maps, exp)) return namesCompatible_(r, maps.rowByCama[cama]);
+  if (!String(r.nombre || '').trim()) return true;
   var sr = maps.rowByCama[cama];
   if (!sr) return false;
   if (samePerson_(r.nombre, sr.nombre || '')) return true;

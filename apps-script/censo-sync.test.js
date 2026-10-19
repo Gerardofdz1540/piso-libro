@@ -634,5 +634,48 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   }
 }
 
+// ── 16) Caso real 18 oct: a la 3-189 le corrigen el exp y el viejo queda solo en la 3-154, de OTRA persona ──────
+//        Antes: la fila de la 3-189 (con su nota) se movía a la 3-154 por expediente y recibía el otro nombre.
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i))); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.exp + ":" + p.nombre) : []; };
+  const patches = (calls) => calls.filter((c) => c.m === "PATCH").map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + JSON.stringify(c.body));
+  const A = "PEREZ RUIZ JUAN CARLOS", B = "LOPEZ SOTO MIGUEL ANGEL";
+  {
+    const b9 = { id: "b9", cama: "3-189", exp: "X", nombre: B, edad: "31", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [b9], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "X", { nombre: A, edad: 44 }), row("3-189", "Y", { nombre: B, edad: 31 })]));
+    const ps = patches(calls), up = upsertOf(calls);
+    check("T16a exp corregido en 3-189 y el viejo solo en 3-154 (otra persona): b9 se queda en 3-189 y solo se le corrige el exp; NUNCA se mueve a 3-154 ni recibe el otro nombre",
+      ps.length === 1 && ps[0] === 'b9:{"exp":"Y","updated_by":"sheet-sync"}' && up.includes("3-154:X:" + A) && up.includes("3-189:Y:" + B)
+      && !calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive")), JSON.stringify({ ps, up }));
+  }
+  // misma cama + mismo exp (único) pero OTRA persona (exp copiado a un ingreso nuevo): cama reasignada, no renombrar
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "X", nombre: A, edad: "44", updated_by: "sheet-sync" };
+    const full = { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de A" }] } };
+    const { sb, calls } = makeSandbox({ cur: [a1], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "X", { nombre: B, edad: 31 })]));
+    const arc = calls.find((c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive"));
+    const iDel = seq(calls, (c) => c.m === "DELETE" && c.u.includes("/patients?id=eq.a1")), iUp = seq(calls, (c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
+    check("T16b exp único copiado a otra persona en la misma cama: a1 (con su nota) se archiva como cama reasignada ANTES de insertar a la otra persona; no se renombra",
+      !!arc && arc.body.patient_data.nombre === A && /CAMA REASIGNADA/.test(arc.body.note_data._egreso) && iDel >= 0 && iUp > iDel && upsertOf(calls).includes("3-101:X:" + B), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+  }
+  // flujo normal: nombre corregido en la hoja (abreviatura/una letra) con exp único → misma persona, sin archivar
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "X", nombre: "GARCIA LOPZ JUAN", edad: "50", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "X", { nombre: "GARCIA LOPEZ JUAN", edad: 50 })]));
+    check("T16c exp único + nombre corregido (LOPZ→LOPEZ): sigue siendo la misma fila (sin archivo, sin PATCH)", !calls.some((c) => c.m === "DELETE" || c.m === "PATCH" || c.u.startsWith("/rest/v1/archive")));
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [{ ...a1, nombre: "JUAN GARCIA" }], props: {} });
+    sb2.syncPatients_("svc", fill([row("3-107", "X", { nombre: "JUAN CARLOS GARCIA LOPEZ", edad: 50 })]));
+    const ps = patches(c2);
+    check("T16d exp único + cambio de cama con nombre más completo: se MUEVE por expediente como siempre", ps.length === 1 && ps[0].includes('"cama":"3-107"'), JSON.stringify(ps));
+    const { sb: sb3, calls: c3 } = makeSandbox({ cur: [{ id: "a1", cama: "3-101", exp: "X", nombre: "", updated_by: "sheet-sync" }], props: {} });
+    sb3.syncPatients_("svc", fill([row("3-107", "X", { nombre: B })]));
+    check("T16e fila sin nombre en Supabase: se decide por expediente como antes", patches(c3).some((p) => p.includes('"cama":"3-107"')), JSON.stringify(patches(c3)));
+  }
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

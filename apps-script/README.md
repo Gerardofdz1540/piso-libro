@@ -103,6 +103,12 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
   siendo la misma persona si la edad cuadra, si no es el nombre de la otra y si su propio nombre no está
   en otra cama (eso es un cambio de cama). JUAN/JULIAN, ANA/ADRIANA o LUIS/LUISA nunca son "casi iguales". Un nombre incompleto (solo apellidos) que encaja con
   dos personas distintas entra como paciente aparte en vez de juntarlas.
+- **Expediente copiado a otra persona** (18 oct 2026): aun con expediente único, mover una fila por
+  expediente o dejarla en su cama exige que el nombre sea compatible (misma persona, o casi igual con la
+  edad que cuadra). Caso real: a la 3-189 le corrigieron el exp y el viejo quedó solo en la 3-154, de
+  otra persona; antes la fila de la 3-189 se movía a la 3-154 con su nota y recibía el otro nombre. Ahora
+  a la 3-189 solo se le corrige el exp y la 3-154 entra como paciente nuevo. Si en la misma cama aparece
+  otra persona con el mismo exp, la cama cuenta como reasignada (archivo + fila nueva).
 - **Movimiento de cama que falla** (PATCH rechazado): la cama de origen y la de destino quedan fuera
   del upsert de esa corrida, para que la fila que no se movió no reciba el nombre del siguiente
   ocupante.
