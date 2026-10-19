@@ -111,5 +111,8 @@ create or replace function public.pl_is_active() returns boolean language sql st
 -- request.headers: x-pl-device, x-pl-user, cf-connecting-ip, user-agent; guarda campos cambiados y de → a)
 -- y disparadores pl_audit_<tabla> AFTER INSERT OR UPDATE OR DELETE en patients, notes, no_olvidar,
 -- procedimientos_dia, guard_info y config. Retención: cron 'audit-log-purge' (180 días).
+-- 19 oct 2026 (scripts/supabase_audit_historial.sql): para notes guarda el texto completo (6000) y la
+-- Entrega; función pl_historial_caja(paciente, caja, límite) (security definer, solo authenticated) con
+-- la que la app muestra y restaura versiones anteriores de una caja (botón 🕘).
 -- Tablas internas sin acceso por API (RLS sin políticas, sin grants a anon/authenticated):
 -- notes_backup_20261014, indicaciones_parts, indicaciones_fetch_log.

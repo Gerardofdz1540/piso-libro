@@ -1,7 +1,7 @@
 // ✍️ Lápiz: tinta por caja (viaja con la nota, tachadura que borra, toque = cursor, dedo no pinta, menú de la esquina),
-// REGLA UNIFICADA en iPad (oct 2026): Scribble escribe en TODAS las cajas (vitales, TA, drenajes, labs, dieta, modales…): la app
-// no intercepta ningún trazo; ✍️ Tinta solo pinta en las cajas grandes de la ficha (textarea con data-key); el botón cicla
-// Scribble ↔ Tinta y un pl_pen_mode "2" (→ Texto) guardado se migra a "0" al leerlo. Fuera del iPad nada cambia: escritura DIRECTA
+// REGLA en iPad (19 oct 2026): SOLO Scribble, sin modos: escribe en TODAS las cajas (vitales, TA, drenajes, labs, dieta, modales…)
+// y la app no intercepta ningún trazo; un pl_pen_mode "1" (Tinta) o "2" (→ Texto) guardado se baja a "0" al leerlo y el botón
+// ✍️ solo explica (Garabatear). Fuera del iPad nada cambia: escritura DIRECTA
 // sobre los campos (sin recuadro): NÚMEROS con el reconocedor local PEN_OCR al momento; TEXTO por IA (la lectura local solo se
 // muestra provisional, nunca se guarda); ciclo Scribble → → Texto → Tinta. + vista iPad: tira de camas en la barra, sin botones flotantes.
 //   node tests/headless/app_pen.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
@@ -336,7 +336,7 @@ const MOCK = `(() => {
   const l10 = await page.evaluate(async () => {
     window.__pl_force_ipad = true; localStorage.setItem('pl_pen_mode', '2'); PEN_LIVE.scribbleHint = false;
     const k = pid(patients[0]); const wait = (ms) => new Promise(r => setTimeout(r, ms));
-    const migrated = penMode() === 'off' && localStorage.getItem('pl_pen_mode') === '0' && !penModeOn() && localStorage.getItem('pl_pen_ipad_v3') === '1';   // deja la marca de "ya migrado"
+    const migrated = penMode() === 'off' && localStorage.getItem('pl_pen_mode') === '0' && !penModeOn();
     renderView(); await wait(150);
     const label = (document.querySelector('.bn-pen') || {}).textContent, btnOff = !document.querySelector('.bn-pen').classList.contains('on');
     const F = __ipadFields(); const missing = [];
@@ -355,59 +355,48 @@ const MOCK = `(() => {
     const fcVal = getNote(k).checklist.pm_fc || '', noHint = PEN_LIVE.scribbleHint === false;
     // volver a poner "2": se migra otra vez (idempotente)
     localStorage.setItem('pl_pen_mode', '2'); const migratedAgain = penMode() === 'off' && localStorage.getItem('pl_pen_mode') === '0';
-    window.__pl_force_ipad = false; localStorage.setItem('pl_pen_mode', '1');
+    window.__pl_force_ipad = false; localStorage.setItem('pl_pen_mode', '1'); penMode(); document.body.classList.toggle('pen-on', penModeOn());   // de vuelta "fuera del iPad": la app vuelve a atender el lápiz
     return { migrated, label, btnOff, missing, probed, notIntercepted, fcLive, noSess, noStrokes, fcVal, noHint, migratedAgain, n: Object.keys(probed).length };
   });
   check('L10 iPad en Scribble: un "2" (→ Texto) guardado se migra a "0" al leerlo y la barra dice «✍️ Scribble»; en los 17 campos de la lista (FC, TA, DxTx, balance, gasto y sitio del drenaje, dieta, días ATB, mL/h, lab, lab extra, sangrado, edad del modal, hallazgos, APP del modal, pendientes, nota de drenajes) ni pointerdown (pen) ni touchstart (stylus) se cancelan y no se abre sesión ni tinta; «95» a mano sobre FC no hace nada (sin sesión, sin trazos, sin valor, sin aviso); volver a poner "2" se migra otra vez',
     l10.migrated && l10.label === '✍️ Scribble' && l10.btnOff && l10.missing.length === 0 && l10.n === 17 && l10.notIntercepted.length === 0 && l10.fcLive === '' && l10.noSess && l10.noStrokes && l10.fcVal === '' && l10.noHint && l10.migratedAgain, JSON.stringify(l10));
 
-  // ── L12: iPad en ✍️ Tinta: SOLO las cajas grandes de la ficha (textarea con data-key) se interceptan y quedan como tinta; todos los inputs y las
-  //        textareas sin data-key siguen siendo de Scribble (sin sesión numérica: ya no existe en iPad); aviso una vez; el botón cicla Scribble ↔ Tinta ──
+  // ── L12: iPad con un "1" (Tinta) guardado: YA NO hay Tinta en iPad (19 oct 2026): se baja a Scribble, NINGUNA caja se intercepta (tampoco
+  //        las grandes de la ficha), un trazo real no deja tinta ni toca el texto, y el botón ✍️ solo explica (Garabatear) sin cambiar nada ──
   const l12 = await page.evaluate(async () => {
-    window.__pl_force_ipad = true; localStorage.setItem('pl_pen_ipad_v3', '1'); localStorage.setItem('pl_pen_mode', '1'); PEN_LIVE.scribbleHint = false;   // con la marca: Tinta elegida a propósito, se respeta
+    window.__pl_force_ipad = true; localStorage.setItem('pl_pen_ipad_v3', '1'); localStorage.setItem('pl_pen_mode', '1'); PEN_LIVE.scribbleHint = false;
     const k = pid(patients[0]); const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    const lowered = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), on: penModeOn() };
     renderView(); await wait(150);
     const F = __ipadFields(); const missing = []; const probed = {};
-    // (a) inputs y textareas SIN data-key: no se cancelan, sin sesión
-    const free = Object.assign({}, F.inputs, F.tas);
-    for (const name of Object.keys(free)) {
-      const el = free[name]; if (!el) { missing.push(name); continue; }
+    const all = Object.assign({}, F.inputs, F.tas, F.inkTas);
+    for (const name of Object.keys(all)) {
+      const el = all[name]; if (!el) { missing.push(name); continue; }
       const r = el.getBoundingClientRect();
       const pd = __pd(el, r.left + 6, r.top + 6), ts = __ts(el, r.left + 6, r.top + 6);
       probed[name] = pd && ts && PEN_LIVE.el === null && PEN_LIVE.active === null && PEN.active === null;
     }
-    const hintAfterFirst = PEN_LIVE.scribbleHint === true;                                  // (e) aviso una vez al tocar una caja que no es de tinta
-    // (b) cajas grandes de la ficha: pointerdown cancelado y tinta activa en esa caja; touchstart cancelado; soltar sin arrastrar → cursor, sin trazo
-    const inkProbe = {};
-    for (const name of Object.keys(F.inkTas)) {
-      const el = F.inkTas[name]; if (!el) { missing.push(name); continue; }
-      const r = el.getBoundingClientRect(); const before = ((getNote(k).checklist.__ink || {})[el.dataset.field] || { s: [] }).s.length;
-      try { el.blur(); } catch (_) {}
-      const pdPrevented = !__pd(el, r.left + 10, r.top + 10); const active = !!(PEN.active && PEN.active.ta === el);
-      __pen(document.body, 'pointerup', r.left + 10, r.top + 10);
-      const focused = document.activeElement === el, noStroke = ((getNote(k).checklist.__ink || {})[el.dataset.field] || { s: [] }).s.length === before, idle = PEN.active === null;
-      const tsPrevented = !__ts(el, r.left + 10, r.top + 10);
-      inkProbe[name] = pdPrevented && active && focused && noStroke && idle && tsPrevented;
-    }
-    // (c) un trazo real sobre pendientes → tinta (checklist.__ink.pendientes), el texto de la caja no cambia
+    // un trazo real sobre pendientes: ni tinta ni cambio de texto (lo escribiría Scribble)
     const ta = F.inkTas.pendientes; const rt = ta.getBoundingClientRect(); const v0 = ta.value; try { ta.blur(); } catch (_) {}
     const ev = (type, x, y) => ta.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: rt.left + x, clientY: rt.top + y, pressure: 0.5 }));
     const pts = [[10, 10], [20, 12], [30, 14], [40, 18], [50, 20], [60, 22]]; ev('pointerdown', pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ev('pointermove', pts[i][0], pts[i][1]); ev('pointerup', 60, 22);
     const inkN = (((getNote(k).checklist.__ink || {}).pendientes || {}).s || []).length, textSame = ta.value === v0, noLive = PEN_LIVE.el === null;
-    // (d) "95" a mano sobre FC: sin sesión ni valor (Scribble)
+    // "95" a mano sobre FC: sin sesión ni valor (Scribble)
     const fc = F.inputs.pm_fc; fc.value = ''; fc.dispatchEvent(new Event('input', { bubbles: true })); fc.scrollIntoView({ block: 'center' }); await wait(120);
     const rf = fc.getBoundingClientRect(); __writeChars('95', rf.left + 4, rf.top + 2, 0.5, 8); const fcLive = fc.value, noSess = PEN_LIVE.el === null && PEN_LIVE.active === null; await wait(1100); const fcVal = getNote(k).checklist.pm_fc || '';
-    // (f) ciclo del botón en iPad: Tinta → Scribble → Tinta, nunca → Texto
+    // el botón ✍️ en iPad: no cambia de modo, solo avisa cómo activar Garabatear
+    const toasts = []; const origToast = window._plToast; window._plToast = function (m) { toasts.push(String(m)); };
     const btn = document.querySelector('.bn-pen');
-    togglePenMode(btn); const s1 = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), txt: btn.textContent, on: document.body.classList.contains('pen-on') };
+    togglePenMode(btn); const s1 = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), txt: btn.textContent, on: document.body.classList.contains('pen-on'), btnOn: btn.classList.contains('on') };
     togglePenMode(btn); const s2 = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), txt: btn.textContent, on: document.body.classList.contains('pen-on') };
-    // limpieza
-    penClear(k, 'pendientes'); window.__pl_force_ipad = false; localStorage.setItem('pl_pen_mode', '1');
-    return { missing, probed, free: Object.keys(probed).filter(n => !probed[n]), nFree: Object.keys(probed).length, hintAfterFirst, inkProbe, inkBad: Object.keys(inkProbe).filter(n => !inkProbe[n]), inkN, textSame, noLive, fcLive, noSess, fcVal, s1, s2 };
+    window._plToast = origToast;
+    // limpieza: de vuelta "fuera del iPad" (la app vuelve a atender el lápiz)
+    window.__pl_force_ipad = false; localStorage.setItem('pl_pen_mode', '1'); penMode(); document.body.classList.toggle('pen-on', penModeOn());
+    return { lowered, missing, probed, bad: Object.keys(probed).filter(n => !probed[n]), n: Object.keys(probed).length, inkN, textSame, noLive, fcLive, noSess, fcVal, s1, s2, toasts };
   });
-  check('L12 iPad en ✍️ Tinta: los 15 inputs y textareas sin data-key (FC, TA, DxTx, balance, drenaje, dieta, ATB, mL/h, labs, sangrado, edad, hallazgos, APP) no se cancelan ni abren sesión (Scribble) y se avisa una vez; pendientes y la nota de drenajes (data-key) sí: pointerdown/touchstart cancelados, tinta activa en esa caja, soltar sin arrastrar = cursor sin trazo; un trazo real en pendientes queda como tinta (texto intacto); «95» sobre FC no hace nada; el botón cicla Tinta → Scribble → Tinta sin pasar por → Texto',
-    l12.missing.length === 0 && l12.nFree === 15 && l12.free.length === 0 && l12.hintAfterFirst && l12.inkBad.length === 0 && l12.inkN === 1 && l12.textSame && l12.noLive && l12.fcLive === '' && l12.noSess && l12.fcVal === ''
-    && l12.s1.mode === 'off' && l12.s1.ls === '0' && l12.s1.txt === '✍️ Scribble' && !l12.s1.on && l12.s2.mode === 'ink' && l12.s2.ls === '1' && l12.s2.txt === '✍️ Tinta' && l12.s2.on, JSON.stringify(l12));
+  check('L12 iPad con "1" (Tinta) guardado: se baja a Scribble ("0", sin pen-on); los 17 campos (inputs, textareas sin data-key y las cajas grandes de la ficha) no se cancelan ni abren sesión ni tinta; un trazo real en pendientes no deja tinta ni cambia el texto; «95» sobre FC no hace nada; ✍️ dos veces sigue en Scribble y solo avisa cómo activar Garabatear',
+    l12.lowered.mode === 'off' && l12.lowered.ls === '0' && !l12.lowered.on && l12.missing.length === 0 && l12.n === 17 && l12.bad.length === 0 && l12.inkN === 0 && l12.textSame && l12.noLive && l12.fcLive === '' && l12.noSess && l12.fcVal === ''
+    && l12.s1.mode === 'off' && l12.s1.ls === '0' && l12.s1.txt === '✍️ Scribble' && !l12.s1.on && !l12.s1.btnOn && l12.s2.mode === 'off' && l12.s2.ls === '0' && l12.s2.txt === '✍️ Scribble' && !l12.s2.on && l12.toasts.length === 2 && /Garabatear/.test(l12.toasts[0]), JSON.stringify(l12));
 
   // limpieza de la preparación iPad (la tabla de labs del body, la cirugía, el drenaje, ATB, labs de la nota, touchType)
   await page.evaluate(() => {
@@ -638,22 +627,20 @@ const MOCK = `(() => {
     const r = fc ? fc.getBoundingClientRect() : { left: 0, top: 0 };
     const pdOk = fc ? fc.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: r.left + 6, clientY: r.top + 6, pressure: 0.5 })) : null;
     const base = { ipad: _penIsIPad(), ls: localStorage.getItem('pl_pen_mode'), mode: penMode(), on: document.body.classList.contains('pen-on'), label: (document.querySelector('.bn-pen') || {}).textContent, btnOn: !!document.querySelector('.bn-pen.on'), pdOk, noSess: PEN_LIVE.el === null && PEN_LIVE.active === null };
-    // Tinta ("1") heredada SIN la marca pl_pen_ipad_v3 (el iPad se quedó en Tinta desde cuando era el modo por defecto): se baja a
-    // Scribble UNA sola vez y deja la marca; la Tinta elegida después con ✍️ se respeta en lecturas sucesivas; y con la marca puesta un
-    // "1" guardado sigue siendo Tinta.
+    // Tinta ("1") heredada (con o sin la marca vieja pl_pen_ipad_v3): en iPad ya no existe → siempre Scribble; ✍️ no la vuelve a encender.
     localStorage.removeItem('pl_pen_ipad_v3'); localStorage.setItem('pl_pen_mode', '1');
-    const inkOnce = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), mark: localStorage.getItem('pl_pen_ipad_v3'), again: penMode() };
+    const inkOnce = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), again: penMode() };
     const btn = document.querySelector('.bn-pen'); togglePenMode(btn);
-    const inkKept = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), again: penMode(), on: document.body.classList.contains('pen-on'), txt: btn.textContent, mark: localStorage.getItem('pl_pen_ipad_v3') };
-    localStorage.setItem('pl_pen_mode', '1'); const inkDirect = penMode();
+    const inkKept = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), again: penMode(), on: document.body.classList.contains('pen-on'), txt: btn.textContent };
+    localStorage.setItem('pl_pen_ipad_v3', '1'); localStorage.setItem('pl_pen_mode', '1'); const inkDirect = penMode();
     togglePenMode(btn); const back = { mode: penMode(), ls: localStorage.getItem('pl_pen_mode'), on: document.body.classList.contains('pen-on') };
     return { base, inkOnce, inkKept, inkDirect, back };
   });
-  check('L16 iPad que se quedó en "2" (→ Texto): al cargar se migra a "0" (Scribble): sin pen-on, la barra dice «✍️ Scribble» y un pointerdown del lápiz sobre FC no se cancela ni abre sesión; un "1" (Tinta) heredado sin la marca se baja a Scribble UNA sola vez (deja pl_pen_ipad_v3); la Tinta elegida con ✍️ después se respeta (y un "1" con la marca también); ✍️ otra vez vuelve a Scribble',
+  check('L16 iPad que se quedó en "2" (→ Texto): al cargar se migra a "0" (Scribble): sin pen-on, la barra dice «✍️ Scribble» y un pointerdown del lápiz sobre FC no se cancela ni abre sesión; un "1" (Tinta) heredado, con o sin la marca vieja, se baja a Scribble siempre y ✍️ no lo vuelve a encender',
     l16.base.ipad === true && l16.base.ls === '0' && l16.base.mode === 'off' && !l16.base.on && l16.base.label === '✍️ Scribble' && !l16.base.btnOn && l16.base.pdOk === true && l16.base.noSess
-    && l16.inkOnce.mode === 'off' && l16.inkOnce.ls === '0' && l16.inkOnce.mark === '1' && l16.inkOnce.again === 'off'
-    && l16.inkKept.mode === 'ink' && l16.inkKept.ls === '1' && l16.inkKept.again === 'ink' && l16.inkKept.on && l16.inkKept.txt === '✍️ Tinta' && l16.inkKept.mark === '1'
-    && l16.inkDirect === 'ink' && l16.back.mode === 'off' && l16.back.ls === '0' && !l16.back.on, JSON.stringify(l16));
+    && l16.inkOnce.mode === 'off' && l16.inkOnce.ls === '0' && l16.inkOnce.again === 'off'
+    && l16.inkKept.mode === 'off' && l16.inkKept.ls === '0' && l16.inkKept.again === 'off' && !l16.inkKept.on && l16.inkKept.txt === '✍️ Scribble'
+    && l16.inkDirect === 'off' && l16.back.mode === 'off' && l16.back.ls === '0' && !l16.back.on, JSON.stringify(l16));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-PEN: ' + pass + ' passed, ' + fail + ' failed');
