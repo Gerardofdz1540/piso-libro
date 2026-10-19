@@ -293,6 +293,121 @@ function tokenClose_(t, u) {
   }
   return false;
 }
+// ── Expediente ÚNICO: ¿la fila de Supabase (r) y la de la hoja (s) son la misma persona? ─────────────────────────
+// Manda el expediente (como siempre) salvo que el nombre PRUEBE que es otra persona:
+//   · MISMA persona si TODAS las palabras de uno de los dos nombres encajan, una a una, en el otro: iguales, mismo
+//     sonido (DIAS/DIAZ, BAEZ/VAES), error de dedo o letras cruzadas (JUAM/JUAN, JUNA/JUAN, GRACIA/GARCIA; dos
+//     letras en palabras de 7+), abreviatura (HDZ, FCO, ALEJ), inicial (J, L) o palabras juntas o separadas
+//     (DELACRUZ / DE LA CRUZ, MONTESDEOCA, MARIAJOSE). Así siguen las correcciones y los nombres que se completan.
+//   · OTRA persona si a LOS DOS nombres les sobra alguna palabra: hermanos (JUAN/MARIA, JUAN/JUANA), un exp copiado a
+//     otro ingreso, el caso real de la 3-154/3-189 (un solo apellido en común).
+//   · La EDAD no cuenta: mientras se reescribe una fila, la hoja conserva la edad del ocupante anterior.
+//   · No identificados (DESCONOCIDO, FEMENINA, N.N., RN, HIJO DE…): el que se identifica sigue siendo él; uno con
+//     nombre que pasa a no identificado es OTRO ingreso. Sin nombre en alguno: decide el expediente.
+function namesCompatible_(r, s) {
+  if (!s) return true;
+  var a = nameWords_(r && r.nombre || ''), b = nameWords_(s.nombre || '');
+  if (!a.length || !b.length || namePlaceholder_(a)) return true;
+  if (namePlaceholder_(b)) return false;
+  var cov = coverWords_(a, b);
+  return cov.a || cov.b;
+}
+// Palabras para namesCompatible_: sin acentos ni signos; DE/DEL/LA/LAS/LOS se pegan a la palabra siguiente
+// (DE LA CRUZ → DELACRUZ, núcleo CRUZ); MA → MARIA, GPE → GUADALUPE; las iniciales (J, L) se quedan.
+var NAME_PARTICLE = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1 };
+var NAME_EXPAND = { MA: 'MARIA', GPE: 'GUADALUPE' };
+function nameWords_(name) {
+  var out = [], pre = '';
+  norm_(name).replace(/[^A-Z\s]/g, ' ').split(/\s+/).forEach(function (w) {
+    if (!w || w === 'Y') return;
+    if (NAME_PARTICLE[w]) { pre += w; return; }
+    w = NAME_EXPAND[w] || w;
+    out.push({ w: pre + w, core: w }); pre = '';
+  });
+  if (pre) out.push({ w: pre, core: pre });
+  return out;
+}
+// Nombre de paciente aún no identificado (DESCONOCIDO, FEMENINA, N.N., RN, HIJO DE…, SIN DATOS, XX).
+var NAME_PLACEHOLDER_RE = /^(DESCON[A-Z]*|DESCO|DESC|NN|RN|RECIEN|NACID[OA]|IDENT|IDENTIFICAD[OA]|NI|NOMBRE|PACIENTE|MASC|MASCULIN[OA]|FEM|FEMENIN[OA]|XX+|DATOS|HIJ[OA]|BEBE|PRODUCTO|MUJER|HOMBRE)$/;
+function namePlaceholder_(words) {
+  return words.some(function (x) { return NAME_PLACEHOLDER_RE.test(x.core); }) || words.every(function (x) { return /^[NX]$/.test(x.core); });
+}
+// ¿Todas las palabras de a (o todas las de b) encajan, una a una, en el otro nombre? → { a, b }
+function coverWords_(a, b) {
+  var ua = a.map(function () { return false; }), ub = b.map(function () { return false; });
+  var pass = function (eq) {
+    a.forEach(function (x, i) {
+      if (ua[i]) return;
+      for (var j = 0; j < b.length; j++) if (!ub[j] && eq(x, b[j])) { ua[i] = ub[j] = true; return; }
+    });
+  };
+  pass(function (x, y) { return x.w === y.w; });
+  pass(function (x, y) { return x.core === y.core || x.w === y.core || x.core === y.w; });
+  pass(function (x, y) { return wordClose_(x.core, y.core) || wordClose_(x.w, y.w); });
+  joinCover_(a, ua, b, ub); joinCover_(b, ub, a, ua);
+  return { a: ua.every(Boolean), b: ub.every(Boolean) };
+}
+// Una palabra que son dos o tres seguidas del otro nombre, pegadas (MONTESDEOCA / MONTES DE OCA, MARIAJOSE / MARIA JOSE).
+function joinCover_(a, ua, b, ub) {
+  a.forEach(function (x, i) {
+    if (ua[i]) return;
+    for (var j = 0; j + 1 < b.length; j++) {
+      for (var k = j + 1; k < b.length && k <= j + 2; k++) {
+        var free = true, s = '', q;
+        for (q = j; q <= k; q++) { if (ub[q]) free = false; s += b[q].w; }
+        if (free && editDistance_(phon_(s), phon_(x.w)) <= 1) { ua[i] = true; for (q = j; q <= k; q++) ub[q] = true; return; }
+      }
+    }
+  });
+}
+// ¿Dos palabras de nombre son la misma con un error de captura?
+function wordClose_(t, u) {
+  if (t === u) return true;
+  if (t.length === 1 || u.length === 1) return t[0] === u[0];                 // inicial: J = JUAN
+  if (genderPair_(t, u)) return false;                                        // JUAN/JUANA, MARIO/MARIA: otro nombre
+  var pt = phon_(t), pu = phon_(u);
+  if (pt === pu || tokenClose_(t, u)) return true;                            // DIAS/DIAZ; una letra (5+); HDZ, FCO
+  var sh = t.length <= u.length ? t : u, lo = t.length <= u.length ? u : t;
+  if (sh.length >= 3 && lo.length >= sh.length + 2 && /[^AEIOU]$/.test(sh) && lo.indexOf(sh) === 0) return true;   // ALEJ
+  var d = editDistance_(pt, pu), n = Math.min(pt.length, pu.length);
+  return (d <= 1 && n >= 4) || (d <= 2 && n >= 7);                           // JUNA/JUAN; HERNADES/HERNANDEZ
+}
+// Masculino/femenino del mismo nombre (JUAN/JUANA, LUIS/LUISA, MARIO/MARIA): son nombres distintos, no un error.
+function genderPair_(t, u) {
+  if (t + 'A' === u || u + 'A' === t) return true;
+  return t.length === u.length && t.slice(0, -1) === u.slice(0, -1) && /[AO]$/.test(t) && /[AO]$/.test(u);
+}
+// Forma "como suena" para errores de captura comunes: V=B, Z=S, CE/CI=SE/SI, LL=Y, sin letras repetidas.
+function phon_(w) {
+  return w.replace(/V/g, 'B').replace(/Z/g, 'S').replace(/C([EI])/g, 'S$1').replace(/LL/g, 'Y').replace(/(.)\1+/g, '$1');
+}
+// Distancia de edición contando como 1 el cruce de dos letras vecinas (Damerau restringida).
+function editDistance_(a, b) {
+  var prev2 = null, prev = [], i, j;
+  for (j = 0; j <= b.length; j++) prev[j] = j;
+  for (i = 1; i <= a.length; i++) {
+    var cur = [i];
+    for (j = 1; j <= b.length; j++) {
+      var v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, prev2[j - 2] + 1);
+      cur[j] = v;
+    }
+    prev2 = prev; prev = cur;
+  }
+  return prev[b.length];
+}
+// Exp único: ¿la fila de la hoja en esa cama es la persona de la fila r de Supabase? (namesCompatible_). Para MOVER a
+// un no identificado (DESCONOCIDO…) a una cama donde la hoja tiene a alguien con nombre, además su propia cama no
+// debe seguir con un no identificado y otro exp: eso es el caso real de la 3-189 (le corrigieron el exp y el viejo
+// quedó en la cama de otra persona); ahí solo se le corrige el exp (caso d).
+function uniqueExpMatch_(maps, r, cama) {
+  var s = maps.rowByCama[cama];
+  if (!namesCompatible_(r, s)) return false;
+  var own = normalizeCama_(r && r.cama), o = maps.rowByCama[own];
+  if (own === cama || !o || !s || String(o.exp || '').trim() === String(s.exp || '').trim()) return true;
+  var ws = nameWords_(s.nombre || '');
+  return !(namePlaceholder_(nameWords_(r && r.nombre || '')) && namePlaceholder_(nameWords_(o.nombre || '')) && ws.length && !namePlaceholder_(ws));
+}
 // Casi la misma persona: nombre casi igual y la edad no lo contradice (±1 año cuando ambas se conocen).
 function closePerson_(r, s) {
   if (!closeName_(r && r.nombre || '', s && s.nombre || '')) return false;
@@ -400,7 +515,10 @@ function sheetMaps_(payload) {
 function sheetCamaFor_(maps, exp, r) {
   var camas = maps.camasByExp[exp];
   if (!camas || !camas.length) return undefined;
-  if (!expAmbiguous_(maps, exp)) return camas.length === 1 ? camas[0] : undefined;
+  // Exp único: su cama, salvo que el nombre sea de otra persona (uniqueExpMatch_; caso real 18 oct: a la 3-189
+  // le corrigieron el exp y el viejo quedó solo en la 3-154, de OTRA persona; se movía la fila de la 3-189,
+  // con su nota, a la 3-154 y se le ponía el nombre del de la 3-154).
+  if (!expAmbiguous_(maps, exp)) return camas.length === 1 && uniqueExpMatch_(maps, r, camas[0]) ? camas[0] : undefined;
   var nombre = (r && r.nombre) || '';
   var hits = camas.filter(function (c) { var sr = maps.rowByCama[c]; return !!sr && samePerson_(nombre, sr.nombre || ''); });
   // Varias filas encajan (p. ej. una con solo apellidos): se descartan las ambiguas de la hoja.
@@ -445,7 +563,10 @@ function otherHasName_(maps, exp, selfId, nombre) {
 // "HDZ" → "HERNANDEZ") sigue siendo la misma persona si no es el nombre de la otra.
 function sameOccupant_(maps, r, cama, exp) {
   if (maps.byCama[cama] === undefined || maps.byCama[cama] !== exp) return false;
-  if (!expAmbiguous_(maps, exp) || !String(r.nombre || '').trim()) return true;
+  // Exp único: misma cama + mismo exp basta salvo que el nombre sea claramente de otra persona (exp copiado
+  // a un ingreso nuevo en esa cama): entonces es cama reasignada, nunca renombrar la fila con su nota.
+  if (!expAmbiguous_(maps, exp)) return uniqueExpMatch_(maps, r, cama);
+  if (!String(r.nombre || '').trim()) return true;
   var sr = maps.rowByCama[cama];
   if (!sr) return false;
   if (samePerson_(r.nombre, sr.nombre || '')) return true;
@@ -606,7 +727,9 @@ function syncPatients_(key, payload) {
       // (d) EXPEDIENTE CORREGIDO — misma cama, MISMA persona (nombre igual), otro exp en la hoja
       //     (typo corregido): PATCH del exp sobre la misma fila; la nota sigue ligada.
       var sr = sheetRowByCama[cama];
-      if (sr && sheetExp && samePerson_(r.nombre || '', sr.nombre || '') && String(r.nombre || '').trim() && String(sr.nombre || '').trim()) {
+      //     Con el MISMO exp esto no aplica (ya decidió sameOccupant_: es otra persona), ni si el nombre de la hoja es
+      //     de un no identificado para alguien con nombre (HIJO DE MARIA LOPEZ en la cama de MARIA LOPEZ).
+      if (sr && sheetExp && sheetExp !== exp && samePerson_(r.nombre || '', sr.nombre || '') && namesCompatible_(r, sr) && String(r.nombre || '').trim() && String(sr.nombre || '').trim()) {
         toFixExp.push({ row: r, from: exp, to: sheetExp });
         return;
       }

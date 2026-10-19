@@ -103,6 +103,34 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
   siendo la misma persona si la edad cuadra, si no es el nombre de la otra y si su propio nombre no está
   en otra cama (eso es un cambio de cama). JUAN/JULIAN, ANA/ADRIANA o LUIS/LUISA nunca son "casi iguales". Un nombre incompleto (solo apellidos) que encaja con
   dos personas distintas entra como paciente aparte en vez de juntarlas.
+- **Expediente copiado a otra persona** (18 oct 2026): con expediente único sigue mandando el
+  expediente, pero una fila no se mueve ni se queda en su cama si el nombre **prueba** que es otra
+  persona (`namesCompatible_`). Caso real: a la 3-189 le corrigieron el exp y el viejo quedó solo en la
+  3-154, de otra persona; antes la fila de la 3-189 se movía a la 3-154 con su nota y recibía el otro
+  nombre. Ahora a la 3-189 solo se le corrige el exp y la 3-154 entra como paciente nuevo. Si en la
+  misma cama aparece otra persona con el mismo exp (también al reescribir la fila celda por celda), la
+  cama cuenta como reasignada (archivo + fila nueva). La regla:
+  - **Misma persona** si **todas** las palabras de uno de los dos nombres encajan, una a una, en el
+    otro: iguales, mismo sonido (`DIAS`/`DIAZ`, `BAEZ`/`VAES`), error de dedo o letras cruzadas
+    (`JUAM`, `JUNA`, `GRACIA`; dos letras en palabras de 7+), abreviatura (`HDZ`, `FCO`, `ALEJ`),
+    inicial (`J`, `L`), palabras juntas o separadas (`DELACRUZ`/`DE LA CRUZ`, `MONTESDEOCA`,
+    `MARIAJOSE`). Así siguen en su fila, con su nota, las correcciones y los nombres que se completan,
+    en la hoja o en la app.
+  - **Otra persona** si a **los dos** nombres les sobra alguna palabra: hermanos (`JUAN`/`MARIA`,
+    `JUAN`/`JUANA`, `LUIS`/`LUISA`), mismos nombres de pila con otros apellidos, o un solo apellido en
+    común (el caso real).
+  - La **edad no cuenta**: mientras se reescribe una fila, la hoja conserva la edad del ocupante
+    anterior.
+  - **No identificados** (`DESCONOCIDO`, `FEMENINA`, `N.N.`, `RN`, `HIJO DE…`, `SIN DATOS`, `XX`): el
+    que se identifica sigue siendo él; alguien con nombre que pasa a no identificado es otro ingreso.
+    Un no identificado no se mueve a la cama de alguien con nombre si su propia cama sigue con un no
+    identificado y otro exp (el caso real con un `DESCONOCIDO`).
+
+  La app usa una copia exacta de la regla (`_plNamesCompatible`; la prueba `app_expdup` X20 compara las
+  dos). La app la aplica antes de re-enlazar una tarjeta a otra fila con su exp y cama, y antes de dar
+  de alta o restaurar de la Papelera un paciente en una cama+exp que la nube ya tiene. Si es otra
+  persona, la nota pendiente va a la Papelera y la tarjeta se retira, o se pide otra cama; nunca se
+  sube a la fila ajena.
 - **Movimiento de cama que falla** (PATCH rechazado): la cama de origen y la de destino quedan fuera
   del upsert de esa corrida, para que la fila que no se movió no reciba el nombre del siguiente
   ocupante.

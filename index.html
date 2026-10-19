@@ -8363,6 +8363,119 @@ function plExportBackup() {
       var sa = normalizeSexValue(p && p.sexo), sb = normalizeSexValue(q && q.sexo);
       return !(sa && sb && sa !== sb);
     }
+    // ¿Puede ser la MISMA persona aunque el nombre se haya corregido? COPIA EXACTA de namesCompatible_ del sync de la
+    // hoja (apps-script/censo-sync.gs; las pruebas comparan las dos): misma persona si TODAS las palabras de uno de los
+    // dos nombres encajan, una a una, en el otro (iguales, mismo sonido DIAS/DIAZ, error de dedo, abreviatura HDZ/FCO/
+    // ALEJ, inicial J, palabras juntas o separadas DELACRUZ); si a los dos les sobra alguna, es otra persona (hermanos,
+    // JUAN/JUANA, exp copiado). La edad no cuenta. Un no identificado (DESCONOCIDO, FEMENINA, RN…) que se identifica
+    // sigue siendo él; alguien con nombre que pasa a no identificado es otro ingreso. Sin nombre en alguno: true.
+    function _plNamesCompatible(p, q) {
+      if (!q) return true;
+      var a = _plNameWords(p && p.nombre), b = _plNameWords(q && q.nombre);
+      if (!a.length || !b.length || _plNamePlaceholder(a)) return true;
+      if (_plNamePlaceholder(b)) return false;
+      var cov = _plCoverWords(a, b);
+      return cov.a || cov.b;
+    }
+    var _PL_NAME_PARTICLE = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1 };
+    var _PL_NAME_EXPAND = { MA: "MARIA", GPE: "GUADALUPE" };
+    var _PL_NAME_PLACEHOLDER_RE = /^(DESCON[A-Z]*|DESCO|DESC|NN|RN|RECIEN|NACID[OA]|IDENT|IDENTIFICAD[OA]|NI|NOMBRE|PACIENTE|MASC|MASCULIN[OA]|FEM|FEMENIN[OA]|XX+|DATOS|HIJ[OA]|BEBE|PRODUCTO|MUJER|HOMBRE)$/;
+    function _plNameWords(name) {
+      var out = [], pre = "";
+      String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z\s]/g, " ").split(/\s+/).forEach(function (w) {
+        if (!w || w === "Y") return;
+        if (_PL_NAME_PARTICLE[w]) { pre += w; return; }
+        w = _PL_NAME_EXPAND[w] || w;
+        out.push({ w: pre + w, core: w }); pre = "";
+      });
+      if (pre) out.push({ w: pre, core: pre });
+      return out;
+    }
+    function _plNamePlaceholder(words) {
+      return words.some(function (x) { return _PL_NAME_PLACEHOLDER_RE.test(x.core); }) || words.every(function (x) { return /^[NX]$/.test(x.core); });
+    }
+    function _plCoverWords(a, b) {
+      var ua = a.map(function () { return false; }), ub = b.map(function () { return false; });
+      var pass = function (eq) {
+        a.forEach(function (x, i) {
+          if (ua[i]) return;
+          for (var j = 0; j < b.length; j++) if (!ub[j] && eq(x, b[j])) { ua[i] = ub[j] = true; return; }
+        });
+      };
+      pass(function (x, y) { return x.w === y.w; });
+      pass(function (x, y) { return x.core === y.core || x.w === y.core || x.core === y.w; });
+      pass(function (x, y) { return _plWordClose(x.core, y.core) || _plWordClose(x.w, y.w); });
+      _plJoinCover(a, ua, b, ub); _plJoinCover(b, ub, a, ua);
+      return { a: ua.every(Boolean), b: ub.every(Boolean) };
+    }
+    function _plJoinCover(a, ua, b, ub) {
+      a.forEach(function (x, i) {
+        if (ua[i]) return;
+        for (var j = 0; j + 1 < b.length; j++) {
+          for (var k = j + 1; k < b.length && k <= j + 2; k++) {
+            var free = true, s = "", q;
+            for (q = j; q <= k; q++) { if (ub[q]) free = false; s += b[q].w; }
+            if (free && _plEditDistance(_plPhon(s), _plPhon(x.w)) <= 1) { ua[i] = true; for (q = j; q <= k; q++) ub[q] = true; return; }
+          }
+        }
+      });
+    }
+    function _plWordClose(t, u) {
+      if (t === u) return true;
+      if (t.length === 1 || u.length === 1) return t[0] === u[0];
+      if (_plGenderPair(t, u)) return false;
+      var pt = _plPhon(t), pu = _plPhon(u);
+      if (pt === pu || _plTokenClose(t, u)) return true;
+      var sh = t.length <= u.length ? t : u, lo = t.length <= u.length ? u : t;
+      if (sh.length >= 3 && lo.length >= sh.length + 2 && /[^AEIOU]$/.test(sh) && lo.indexOf(sh) === 0) return true;
+      var d = _plEditDistance(pt, pu), n = Math.min(pt.length, pu.length);
+      return (d <= 1 && n >= 4) || (d <= 2 && n >= 7);
+    }
+    function _plGenderPair(t, u) {
+      if (t + "A" === u || u + "A" === t) return true;
+      return t.length === u.length && t.slice(0, -1) === u.slice(0, -1) && /[AO]$/.test(t) && /[AO]$/.test(u);
+    }
+    function _plPhon(w) {
+      return w.replace(/V/g, "B").replace(/Z/g, "S").replace(/C([EI])/g, "S$1").replace(/LL/g, "Y").replace(/(.)\1+/g, "$1");
+    }
+    function _plEditDistance(a, b) {
+      var prev2 = null, prev = [], i, j;
+      for (j = 0; j <= b.length; j++) prev[j] = j;
+      for (i = 1; i <= a.length; i++) {
+        var cur = [i];
+        for (j = 1; j <= b.length; j++) {
+          var v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+          if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, prev2[j - 2] + 1);
+          cur[j] = v;
+        }
+        prev2 = prev; prev = cur;
+      }
+      return prev[b.length];
+    }
+    // tokenClose_ del sync: igual, una letra (5+ letras) o abreviatura de apellido (HDZ, FCO)
+    function _plTokenClose(t, u) {
+      if (t === u) return true;
+      if (t.length >= 5 && u.length >= 5 && Math.abs(t.length - u.length) <= 1) {
+        var i = 0, j = 0, diff = 0;
+        while (i < t.length && j < u.length) { if (t[i] === u[j]) { i++; j++; continue; } if (++diff > 1) break; if (t.length > u.length) i++; else if (u.length > t.length) j++; else { i++; j++; } }
+        if (diff <= 1 && diff + (t.length - i) + (u.length - j) <= 1) return true;
+      }
+      var sh = t.length <= u.length ? t : u, lo = t.length <= u.length ? u : t;
+      if (sh.length >= 2 && sh.length <= 5 && (sh.match(/[AEIOU]/g) || []).length <= 1 && lo.length > sh.length && sh[0] === lo[0]) {
+        var k = 0; for (var m = 0; m < lo.length && k < sh.length; m++) if (lo[m] === sh[k]) k++;
+        if (k === sh.length) return true;
+      }
+      return false;
+    }
+    // Fila de la nube con ese exp en esa cama (la que de verdad coincide), con nombre y edad para decidir si es la
+    // misma persona antes de re-enlazar una tarjeta o fusionar con ella. Lanza si falla la red.
+    async function _sRowAtExpCama(exp, cama) {
+      const e = toSafeString(exp).trim(), c = toSafeString(cama).trim();
+      const rows = await _sGet("patients", "exp=eq." + encodeURIComponent(e) + "&cama=eq." + encodeURIComponent(c) + "&select=id,nombre,edad,exp,cama&limit=5");
+      return (rows || []).find(function (r) {
+        return r && r.id && (r.exp == null || toSafeString(r.exp).trim() === e) && (r.cama == null || toSafeString(r.cama).trim() === c);
+      }) || null;
+    }
     function _winlabCensoNameOk(p, wl) {
       // Si falta nombre normalizable en cualquiera, no se puede verificar por nombre.
       // Conservador y compatible: dejar pasar (siguen aplicando exp + filtro interno por
@@ -11163,9 +11276,12 @@ function plExportBackup() {
           // un import o el sheet-sync), re-enlazar y PATCH; si NO existe, otro dispositivo la egresó
           // o borró → NO re-insertar (antes se re-upserteaba por exp+cama y el paciente "resucitaba"
           // en todos los dispositivos). Sentinel truthy para que el outbox no reintente eternamente.
-          const stale = await _sGet("patients", "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id&limit=1").catch(() => null);
-          if (stale && stale.length && stale[0].id) {
-            _relinkPatientId(p, stale[0].id);
+          // Solo si esa fila es la MISMA persona: el sync de la hoja archiva y recrea la cama cuando el expediente se
+          // copió a OTRA persona en esa cama (mismo exp+cama, otro nombre); re-enlazar ahí le ponía a ella el nombre y
+          // los datos de esta tarjeta.
+          const stale = await _sRowAtExpCama(p.exp, p.cama).catch(() => null);
+          if (stale && _plNamesCompatible(p, stale)) {
+            _relinkPatientId(p, stale.id);
             const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
             return patched || row;
           }
@@ -11174,6 +11290,19 @@ function plExportBackup() {
           return { __deleted_remotely: true };
         }
         {
+          // Sin id, el upsert por exp+cama FUSIONA con la fila que ya tenga ese exp en esa cama. Si es OTRA persona (el
+          // sync le dio la cama con el exp copiado; restaurar de la Papelera al ocupante anterior), no se fusiona: su fila
+          // y su nota quedarían con los datos de esta tarjeta. Sin poder verificarlo (red), se reintenta después.
+          if (toSafeString(p.exp).trim() && toSafeString(p.cama).trim()) {
+            let held = null;
+            try { held = await _sRowAtExpCama(p.exp, p.cama); }
+            catch (eHeld) { safeLog("supaUpsertPatient: verificación exp+cama:", eHeld); _lastSyncErrorDetail = eHeld && eHeld.message ? eHeld.message : String(eHeld || ""); return null; }
+            if (held && !_plNamesCompatible(p, held)) {
+              safeWarn("supaUpsertPatient: la cama la tiene otra persona con el mismo expediente; no se fusiona:", p.cama);
+              _lastSyncErrorDetail = "La cama " + p.cama + " ya la tiene otra persona con el mismo expediente";
+              return null;
+            }
+          }
           try {
             const data = await _sUpsert("patients", row, "exp,cama");
             const ins = Array.isArray(data) ? data[0] : data;
@@ -11183,10 +11312,9 @@ function plExportBackup() {
             // Fallback: si el upsert falla por conflicto, buscar el registro existente y hacer PATCH
             const msg = upsertErr && upsertErr.message ? upsertErr.message : "";
             if (msg.includes("409") || msg.includes("23505")) {
-              const qs = "exp=eq." + encodeURIComponent(p.exp || "") + "&cama=eq." + encodeURIComponent(p.cama || "") + "&select=id&limit=1";
-              const existing = await _sGet("patients", qs);
-              if (existing && existing.length && existing[0].id) {
-                _relinkPatientId(p, existing[0].id);
+              const existing = await _sRowAtExpCama(p.exp, p.cama);
+              if (existing && _plNamesCompatible(p, existing)) {
+                _relinkPatientId(p, existing.id);
                 const patched = await _sPatch("patients", "id=eq." + p._supa_id, row);
                 return patched || row;
               }
@@ -11418,7 +11546,16 @@ function plExportBackup() {
             try {
               const byId = await _sGet("patients", "id=eq." + encodeURIComponent(patientId) + "&select=id");
               if (!byId || !byId.length) {
-                const twin = (p.exp && p.cama) ? await _sGet("patients", "exp=eq." + encodeURIComponent(p.exp) + "&cama=eq." + encodeURIComponent(p.cama) + "&select=id") : [];
+                const twinRow = (p.exp && p.cama) ? await _sRowAtExpCama(p.exp, p.cama) : null;
+                const twin = twinRow ? [twinRow] : [];
+                // Otra persona en esa cama con el mismo exp (el sync archivó esta fila como cama reasignada): esta nota
+                // NO se sube a la suya; se guarda en la Papelera y la tarjeta se retira como un egreso remoto.
+                const other = twinRow && !_plNamesCompatible(p, twinRow);
+                if (other) {
+                  _archivePatientRecord(p, nd || noteData[pid(p)], pid(p), "CAMA REASIGNADA (otra persona con el mismo expediente)");
+                  _onPatientGoneRemotely(p, "su cama la tiene otra persona con el mismo expediente");
+                  return null;
+                }
                 if (twin && twin.length && twin[0].id) {
                   _relinkPatientId(p, twin[0].id);
                   lsSavePatients(patients);
@@ -11429,7 +11566,13 @@ function plExportBackup() {
                 _onPatientGoneRemotely(p, "egresado desde otro dispositivo");
                 return null;
               }
-            } catch (eChk) { safeLog("supaUpsertNote: verificación de paciente:", eChk); }
+            } catch (eChk) {
+              // Sin poder verificar quién tiene ahora esa cama (red), NO se recrea por exp+cama: podría fusionarse con la
+              // fila de otra persona. La nota sigue en la cola y se reintenta después.
+              safeLog("supaUpsertNote: verificación de paciente:", eChk);
+              _lastSyncErrorDetail = eChk && eChk.message ? eChk.message : String(eChk || "");
+              return null;
+            }
             safeWarn("supaUpsertNote: FK violation, re-sync patient first", p.nombre || p.cama);
             p._supa_id = null;
             await supaUpsertPatient(p);
@@ -12527,7 +12670,7 @@ function plExportBackup() {
         } else {
           // ¿Es el eco de un alta hecha AQUÍ cuyo id aún no llegó por REST (o creada sin red)? Misma
           // identidad (exp+cama) sin _supa_id → enlazar en vez de duplicar la tarjeta.
-          const twin = patients.find(function (x) { return !x._supa_id && patientIdentityKey(x) === patientIdentityKey(p); });
+          const twin = patients.find(function (x) { return !x._supa_id && patientIdentityKey(x) === patientIdentityKey(p) && _plNamesCompatible(x, p); });
           if (twin) {
             _relinkPatientId(twin, newRow.id);
             lsSavePatients(patients);
@@ -13432,14 +13575,15 @@ function plExportBackup() {
 
       const remoteByKey = {};
       remoteUseful.forEach(function (row) {
-        remoteByKey[patientIdentityKey(row)] = row.id;
+        remoteByKey[patientIdentityKey(row)] = row;
       });
 
       let migrated = 0, errors = 0;
       for (const p of localPts) {
         if (!p._supa_id) {
-          const remoteId = remoteByKey[patientIdentityKey(p)];
-          if (remoteId) p._supa_id = remoteId;
+          // Solo si la fila de la nube con ese exp+cama es la misma persona (el sync pudo darle la cama a otra)
+          const remote = remoteByKey[patientIdentityKey(p)];
+          if (remote && remote.id && _plNamesCompatible(p, remote)) p._supa_id = remote.id;
         }
         let inserted = null;
         try { inserted = await supaUpsertPatient(p); }
@@ -23261,6 +23405,15 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       delete p._supa_id; // Force new Supabase row on save
       delete p._supaArchiveId;
       delete p._deletedRemotely;
+      // Su cama ya la tiene OTRA persona (p. ej. el sync se la dio con el mismo expediente al archivarlo como cama
+      // reasignada): restaurarlo ahí fusionaba las dos tarjetas (el upsert por exp+cama reescribía la fila del otro).
+      const _otraEn = function (c) { return patients.find(function (q) { return q && importKeyNorm(q.cama) === importKeyNorm(c) && !_plNamesCompatible(p, q); }); };
+      if (toSafeString(p.cama).trim() && _otraEn(p.cama)) {
+        const nueva = prompt("La cama " + p.cama + " ya la tiene otra persona. ¿En qué cama restauras a " + (arc.nombre || "este paciente") + "? (vacío = cancelar)");
+        if (!nueva || !toSafeString(nueva).trim()) return;
+        if (_otraEn(nueva)) { alert("La cama " + importKeyNorm(nueva) + " también está ocupada. No se restauró."); return; }
+        p.cama = importKeyNorm(nueva);
+      }
       const restoredNote = _note || defaultData();
       delete restoredNote._egreso; delete restoredNote._egresoFecha; // vuelve al censo activo
       patients.push(p);
@@ -24151,8 +24304,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
            (la creó el sheet-sync u otro dispositivo), se re-enlaza a ese id para que el guardado
            sea un PATCH de cama (antes: DELETE por exp+cama → la nota de la nube se perdía). */
         if (!prev._supa_id && importKeyNorm(oldPt.exp) && importKeyNorm(oldPt.cama)) {
-          cloudOps.push(_sGet("patients", "exp=eq." + encodeURIComponent(toSafeString(oldPt.exp).trim()) + "&cama=eq." + encodeURIComponent(toSafeString(oldPt.cama).trim()) + "&select=id&limit=1")
-            .then(rows => { if (rows && rows[0] && rows[0].id) _relinkPatientId(merged, rows[0].id); })
+          cloudOps.push(_sRowAtExpCama(oldPt.exp, oldPt.cama)
+            .then(row => { if (row && _plNamesCompatible(merged, row)) _relinkPatientId(merged, row.id); })
             .catch(e => safeLog("import moved lookup (exp/cama):", e)));
         }
       });
