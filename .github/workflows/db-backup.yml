@@ -24,7 +24,9 @@ name: Respaldo de la base
 # Cómo restaurar (siempre en un proyecto NUEVO, nunca sobre producción): scripts/db-restore.md.
 # Qué secrets crear y cómo generar la llave: MANUAL-OPERACION.md, "Respaldo nocturno de la base".
 # Hora: 08:20 UTC = 02:20 León (UTC-6, sin horario de verano), fuera del minuto :00 que GitHub
-# retrasa; a esa hora no corre ningún robot (labs 05:00 / 12:30 / 20:07 León).
+# retrasa. A esa hora no corre el robot de labs (05:00 / 12:30 / 20:07 León); el de imagen (RIS)
+# corre a las :23 de cada 2 h, incluida 02:23 León, sin conflicto: pg_dump trabaja sobre una
+# instantánea y el RIS solo escribe en sus tablas.
 on:
   schedule:
     - cron: "20 8 * * *"
