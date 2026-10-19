@@ -757,8 +757,13 @@ calendario del servicio junto con la fecha de cambio de rotación.
 Pestaña **Actividad** del mismo panel: cada cambio guardado en la nube con **quién** (nombre y
 cuenta), **desde dónde** (nombre del dispositivo, navegador e IP) y **qué** (cama, paciente y cada
 campo con "de → a", incluidas las claves del checklist). Filtros por persona, cama y días; lo que
-hacen el robot de labs y la hoja del censo sale como 🤖. Se guardan 180 días (tabla `audit_log`,
-disparadores en pacientes, notas, No olvidar, procedimientos, guardia y configuración).
+hacen el robot de labs y la hoja del censo sale como 🤖. Tabla `audit_log`, disparadores en pacientes,
+notas, No olvidar, procedimientos, guardia y configuración. **Cuánto se guarda** (19 oct 2026,
+`scripts/supabase_audit_acotado.sql`, cron `audit-log-purge`): las versiones de texto de las cajas y del DX,
+**365 días**; las reescrituras automáticas de labs e imagen (solo conteos), **30 días**; todo lo demás,
+**180 días**. Una racha de tecleo de la misma persona en la misma caja (guardados a menos de 5 min, sin
+borrar 40 letras o más) se guarda como UNA versión (de lo que había antes → a lo último); un borrado
+siempre abre una versión nueva, así que el texto previo a un borrado nunca se pierde.
 
 ### 👤 Mi cuenta (todos)
 
