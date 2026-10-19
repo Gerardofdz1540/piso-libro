@@ -13514,9 +13514,17 @@ function plExportBackup() {
     // medias los dejaba borrados unos segundos. Ninguna caja ni campo acepta arrastres ni deja sacar texto arrastrando;
     // copiar y pegar siguen igual. (Captura en document: vale para las cajas que se pintan después.)
     function _esCampoTexto(t) { return !!(t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT")); }
-    document.addEventListener("dragstart", function (e) { if (_esCampoTexto(e.target)) e.preventDefault(); }, true);
-    document.addEventListener("dragover", function (e) { if (_esCampoTexto(e.target)) { e.preventDefault(); try { if (e.dataTransfer) e.dataTransfer.dropEffect = "none"; } catch (_) {} } }, true);
-    document.addEventListener("drop", function (e) { if (_esCampoTexto(e.target)) { e.preventDefault(); e.stopPropagation(); } }, true);
+    // Texto editable sin ser caja (📌 Tablero: contenteditable dentro de un <li draggable>): el arrastre del ÍTEM (dataTransfer
+    // itemId) sigue; el de una SELECCIÓN de texto dentro del ítem, no (también movería texto entre ítems).
+    function _esTextoEditable(t) { try { return !!(t && t.nodeType === 1 && t.isContentEditable); } catch (_) { return false; } }
+    function _arrastraSeleccion(t) { try { const s = window.getSelection(); return !!(s && !s.isCollapsed && s.anchorNode && t.contains(s.anchorNode)); } catch (_) { return false; } }
+    function _traeItem(e) { try { return !!(e.dataTransfer && (e.dataTransfer.getData("itemId") || (e.dataTransfer.types && Array.prototype.indexOf.call(e.dataTransfer.types, "itemId") >= 0))); } catch (_) { return false; } }
+    document.addEventListener("dragstart", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && _arrastraSeleccion(e.target))) e.preventDefault(); }, true);
+    document.addEventListener("dragover", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && !_traeItem(e))) { e.preventDefault(); try { if (e.dataTransfer) e.dataTransfer.dropEffect = "none"; } catch (_) {} } }, true);
+    document.addEventListener("drop", function (e) { if (_esCampoTexto(e.target) || (_esTextoEditable(e.target) && !_traeItem(e))) { e.preventDefault(); e.stopPropagation(); } }, true);
+    // Cinturón y tirantes: si pese a todo el sistema inicia un movimiento de texto (otra app en Split View, un motor que no
+    // respeta dragstart cancelado), las ediciones deleteByDrag / insertFromDrop se cancelan antes de tocar la caja.
+    document.addEventListener("beforeinput", function (e) { if ((e.inputType === "deleteByDrag" || e.inputType === "insertFromDrop") && e.cancelable) e.preventDefault(); }, true);
     // "focus" en captura: corre ANTES del onfocus del textarea (beforeValue para ↩ Regresar ya toma el valor bueno).
     document.addEventListener("focus", function (e) {
       try {
@@ -15579,7 +15587,7 @@ function plExportBackup() {
       if (!item) return;
       const txt = isCustom ? item : item.text;
       const nd = migrateNote(noteData[k] || defaultData());
-      _undoPush(k, "orden rápida en pendientes");
+      _undoPush(k, "orden rápida en pendientes", ["pendientes"]);
       const prev = nd.pendientes || "";
       nd.pendientes = prev ? prev + "\n• " + txt : "• " + txt;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -15880,7 +15888,7 @@ function plExportBackup() {
       const nd = migrateNote(noteData[k] || defaultData());
       const built = entregaResumenTexto(p, nd);
       if (!built) { alert("No hay información para resumir en esta tarjeta."); return; }
-      _undoPush(k, "resumen de entrega");
+      _undoPush(k, "resumen de entrega", ["entrega"]);
       const base = _entregaSinResumen(nd.entrega);
       nd.entrega = (base ? base + "\n\n" : "") + built;
       _touchBy(nd, "entrega");
@@ -15924,7 +15932,7 @@ function plExportBackup() {
         noteData[k] = nd; _saveNoteNow(k, nd, "ck_entrega_auto");
         return 0;
       }
-      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")");
+      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")", ["entrega"]);
       nd.checklist[ENTREGA_AUTO_KEY] = reg;
       nd.entrega = cur ? (cur.replace(/\s+$/, "") + "\n" + lines.join("\n")) : lines.join("\n");
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -17896,7 +17904,7 @@ function plExportBackup() {
       const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
       const trimmed = cur.replace(/\s+$/, "");
       if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
-      _undoPush(k, "fecha de hoy en " + (label || field));
+      _undoPush(k, "fecha de hoy en " + (label || field), [isCk ? "ck:" + field : field]);
       _touchBy(nd, field);
       const next = (trimmed ? trimmed + "\n" : "") + stamp;
       if (ta) {
@@ -17914,7 +17922,7 @@ function plExportBackup() {
       const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
       const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
       if (cur.trim().indexOf(stamp + " —") === 0) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } return; }
-      _undoPush(k, "fecha de hoy en pendientes");
+      _undoPush(k, "fecha de hoy en pendientes", ["pendientes"]);
       _touchBy(getNote(k), "pendientes");
       const next = stamp + " — \n" + cur;
       if (ta) {
@@ -20308,11 +20316,11 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
           // tarjeta (nd.dx || p.dx) seguía mostrando el nd.dx viejo. Igual que updateField("dx").
           const pt = patients.find(pp => pid(pp) === _inkKey);
           if (pt) nd.dx = toSafeString(pt.dx);   // «Regresar» debe volver al DX anterior, no a vacío (borraría el DX en la nube)
-          _undoPush(_inkKey, "transcripción a mano en DX");
+          _undoPush(_inkKey, "transcripción a mano en DX", ["dx"]);
           nd.dx = newVal.toUpperCase();
           if (pt) { pt.dx = nd.dx; _savePtsImmediate(pt, ["dx"]); }
         } else {
-          _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")));
+          _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")), [_inkFieldMode]);
           dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal);
           _touchBy(nd, _inkFieldMode.replace(/^ck:/, ""));
         }
@@ -20738,7 +20746,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         var snap = function (val, label) {
           var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd))));
           if (isCk) { if (!before.checklist) before.checklist = {}; before.checklist[f] = val; } else before[f] = val;
-          var keep = noteData[k]; noteData[k] = before; _undoPush(k, label); noteData[k] = keep;
+          var keep = noteData[k]; noteData[k] = before; _undoPush(k, label, [isCk ? "ck:" + f : f]); noteData[k] = keep;
         };
         // Orden correcto en ↩ Regresar: arriba lo que había JUSTO ANTES del borrón; debajo, lo que había al tomar el foco
         // (si se empujara al soltar la caja quedaría encima y el primer Regresar perdería lo tecleado en la sesión).
@@ -20746,7 +20754,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         snap(prev, "borrado grande en " + _undoFieldLabel(f));
         pv[id] = prev;   // el paso de soltar la caja parte de aquí: mismo contenido que el de arriba, no se duplica
         try { if (el && el.dataset && el.dataset.beforeValue !== undefined) el.dataset.beforeValue = prev; } catch (_) {}   // onchange pasa beforeValue (del foco): alinearlo también
-        _showUndoToast();
+        _showUndoToast(k);
       } catch (_) {}
     }
     function liveUpdate(el) {
@@ -20831,19 +20839,22 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (st[oldKey] && !st[newKey]) { st[newKey] = st[oldKey]; delete st[oldKey]; pair[1](); }
       });
     }
-    function _undoEntry(label, nd) { return { ts: Date.now(), label: String(label || "cambio"), note: JSON.parse(JSON.stringify(_lsNoteCopy(migrateNote(nd)))) }; }
+    // fields (opcional): las cajas que tocó ESE paso ("pendientes", "ck:recibo"…). Con fields, Regresar/Rehacer solo ponen
+    // de vuelta esas cajas y dejan intacto lo que un compañero haya escrito en otras mientras tanto (19 oct 2026: antes se
+    // restauraba la nota completa y un Regresar tras un Realtime ajeno pisaba cajas que no eran del paso).
+    function _undoEntry(label, nd, fields) { const e = { ts: Date.now(), label: String(label || "cambio"), note: JSON.parse(JSON.stringify(_lsNoteCopy(migrateNote(nd)))) }; if (Array.isArray(fields) && fields.length) e.fields = fields.slice(); return e; }
     // Guarda el estado ACTUAL de la nota antes de un cambio. Llamar antes de mutar noteData[k].
-    function _undoPush(k, label) {
+    function _undoPush(k, label, fields) {
       try {
         const nd = noteData[k]; if (!nd || !k) return;
         const st = _undoLoad();
-        const entry = _undoEntry(label, nd);
+        const entry = _undoEntry(label, nd, fields);
         const arr = st[k] || (st[k] = []);
         // Edición nueva después de Regresar: lo que se dejó atrás al regresar no se pierde, queda como paso.
         const rd = _redoLoad();
         if (rd[k] && rd[k].length) {
           const newest = rd[k][rd[k].length - 1];
-          if (JSON.stringify(newest.note) !== JSON.stringify(entry.note)) arr.push({ ts: Date.now(), label: "como estaba antes de regresar «" + newest.label + "»", note: newest.note });
+          if (JSON.stringify(newest.note) !== JSON.stringify(entry.note)) arr.push(Object.assign({ ts: Date.now(), label: "como estaba antes de regresar «" + newest.label + "»", note: newest.note }, newest.fields ? { fields: newest.fields } : {}));
           delete rd[k]; _redoSave();
         }
         const last = arr[arr.length - 1];
@@ -20878,9 +20889,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
     const _UNDO_TEXT_FIELDS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega", "dx", "body_diagram_ant", "body_diagram_post"];
     // Deja la nota del paciente k como en `target` (copia guardada) y sube solo los campos que difieren.
-    function _undoRestore(k, target) {
+    // Con `fields` (paso de una o dos cajas) solo se ponen de vuelta ESAS cajas sobre la nota actual: lo que otro escribió
+    // en las demás mientras tanto (Realtime) se respeta.
+    function _undoRestore(k, target, fields) {
       const cur = migrateNote(noteData[k]);
       const prev = migrateNote(target);
+      if (Array.isArray(fields) && fields.length) {
+        const next = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(cur))));
+        if (!next.checklist) next.checklist = {};
+        const dirtyF = new Set();
+        fields.forEach(function (f) {
+          if (f.indexOf("ck:") === 0) { const sub = f.slice(3); const v = (prev.checklist || {})[sub]; if (v === undefined) delete next.checklist[sub]; else next.checklist[sub] = v; dirtyF.add("checklist"); }
+          else { next[f] = prev[f] === undefined ? "" : prev[f]; dirtyF.add(f); }
+        });
+        noteData[k] = next;
+        if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+        dirtyF.forEach(function (f) { _dirtyFields[k].add(f); });
+        saveNote(k, next);
+        dirtyF.forEach(function (f) { _dirtyFields[k].delete(f); });
+        if (dirtyF.has("dx")) { const p = patients.find(function (pt) { return pid(pt) === k; }); if (p) { p.dx = next.dx; _savePtsImmediate(p, ["dx"]); } }
+        delete labAnalysisCache[k];
+        _rerenderCard(k);
+        return;
+      }
       // PDF inline recortado en la copia: conservar el actual si es la misma fecha.
       (prev.labHistory || []).forEach(function (s) {
         if (s && s.source_file_stripped) { const c = (cur.labHistory || []).find(function (x) { return x && x.fecha === s.fecha && x.source_file; }); if (c) { s.source_file = c.source_file; delete s.source_file_stripped; } }
@@ -20908,13 +20939,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Clave huérfana (paciente re-clavado o egresado): no crear una nota vacía y subirla
       if (!noteData[k] || !_findPatientByKey(k)) { delete st[k]; _undoSave(); return ""; }
       const entry = arr.pop();
-      // Lo que había ANTES de regresar queda en Rehacer, por si el regreso fue el error.
+      // Lo que había ANTES de regresar queda en Rehacer, por si el regreso fue el error (mismas cajas que el paso).
       const rd = _redoLoad();
       const rarr = rd[k] || (rd[k] = []);
-      rarr.push(_undoEntry(entry.label, noteData[k]));
+      rarr.push(_undoEntry(entry.label, noteData[k], entry.fields));
       while (rarr.length > UNDO_PER_PATIENT) rarr.shift();
       _undoSave(); _redoSave();
-      _undoRestore(k, entry.note);
+      _undoRestore(k, entry.note, entry.fields);
       try { _showRTToast("↩ Regresado: " + entry.label); } catch (_) {}
       return entry.label;
     }
@@ -20927,14 +20958,17 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const entry = rarr.pop();
       const st = _undoLoad();
       const arr = st[k] || (st[k] = []);
-      arr.push(_undoEntry(entry.label, noteData[k]));
+      arr.push(_undoEntry(entry.label, noteData[k], entry.fields));
       while (arr.length > UNDO_PER_PATIENT) arr.shift();
       _redoSave(); _undoSave();
-      _undoRestore(k, entry.note);
+      _undoRestore(k, entry.note, entry.fields);
       try { _showRTToast("↪ Rehecho: " + entry.label); } catch (_) {}
       return entry.label;
     }
-    function undoLastField() { if (_lastUndoKey) undoLast(_lastUndoKey); }
+    // Botón ↩ Deshacer del aviso «Cambio guardado»: deshace el paso del paciente que anunció ESE aviso (_toastUndoKey), no el
+    // último _undoPush de cualquier paciente (las novedades automáticas de entrega, la tinta… también apilan pasos).
+    let _toastUndoKey = null;
+    function undoLastField() { const k = _toastUndoKey || _lastUndoKey; if (k) undoLast(k); }
     function updateField(k, field, value, prevValue) {
       if (!noteData[k]) noteData[k] = defaultData();
       if (prevValue === undefined && _fieldPrevVals[k + "|" + field] !== undefined) prevValue = _fieldPrevVals[k + "|" + field];
@@ -20943,8 +20977,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (prev !== toSafeString(value)) {
         // Copia ANTES del cambio con el valor previo del campo (el textarea ya mostraba el nuevo).
         const before = Object.assign({}, noteData[k]); before[field] = prev;
-        const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
-        _showUndoToast();
+        const keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field), [field]); noteData[k] = keep;
+        _showUndoToast(k);
       }
       const _changed = prev !== toSafeString(value);
       noteData[k][field] = value;
@@ -20967,7 +21001,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       return ({ dx: "DX", app: "APP", pa: "PA", qx: "Qx", manejo: "Misceláneo", pendientes: "Pendientes", entrega: "Entrega", drenajes: "nota de drenajes", sangrado: "Sangrado", balance: "Balance", sv: "SV", interconsultas: "Interconsultas", cultivos: "Cultivos", recibo: "Recibo", pendientes_mips: "Pendientes MIPs", pendientes_r1: "Pendientes R1" })[f] || f;
     }
     var _undoToastTimer = null;
-    function _showUndoToast() {
+    function _showUndoToast(k) {
+      _toastUndoKey = k || _lastUndoKey;
       var toast = document.getElementById("undo-toast");
       if (!toast) return;
       toast.style.display = "flex";
@@ -21089,7 +21124,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (prevVal !== toSafeString(value)) {
         // Copia ANTES del cambio (liveCkText ya escribió el nuevo valor en noteData): regresar con el previo.
         var before = migrateNote(JSON.parse(JSON.stringify(_lsNoteCopy(nd)))); before.checklist[field] = prevVal;
-        var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field)); noteData[k] = keep;
+        var keep = noteData[k]; noteData[k] = before; _undoPush(k, "texto de " + _undoFieldLabel(field), ["ck:" + field]); noteData[k] = keep;
       }
       nd.checklist[field] = value;
       if (prevVal !== toSafeString(value)) _touchBy(nd, field);
@@ -27502,7 +27537,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const ent = toSafeString(nd.entrega).trim();
       if (!ent) { alert("La caja «Para la siguiente guardia» está vacía: no hay nada que recibir."); return; }
       if (!confirm("¿Recibir la guardia? Lo que dejó la guardia anterior pasa a «Recibido» (con fecha y hora) y la caja de entrega queda vacía para ti.")) return;
-      _undoPush(k, "tomar guardia (Entrega → Recibo)");
+      _undoPush(k, "tomar guardia (Entrega → Recibo)", ["entrega", "ck:recibo"]);
       const d = new Date(); const z = n => String(n).padStart(2, "0");
       const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
       if (!nd.checklist) nd.checklist = {};

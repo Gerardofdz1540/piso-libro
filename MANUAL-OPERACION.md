@@ -410,6 +410,9 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
   tiene un reloj junto a su título. Abre un diario con las versiones anteriores de ESA caja (quién, cuándo,
   texto completo) y un botón **Restaurar** por versión. Sirve para recuperar lo que alguien borró o lo que un
   arrastre movió de caja: se restaura la versión buena y queda registrado como un cambio más.
+- **↩ Regresar / ↪ Rehacer solo tocan la caja de ese paso** (19 oct 2026): si un compañero escribió en otra caja
+  desde su iPad mientras tanto, un Regresar tuyo ya no se lo pisa. El botón ↩ Deshacer del aviso «Cambio guardado»
+  deshace al paciente que anunció ese aviso.
 - Plegables: **Historia · APP / PA** y **Pendientes MIPs / R1**.
 
 Columna lateral: el **Pase** (dieta, ATB, TVP, herida, NPT, vitales, **drenajes y sondas** con su

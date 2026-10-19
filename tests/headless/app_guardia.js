@@ -275,6 +275,49 @@ const HIST_OLD = {
   check('G8 vigilante de Scribble (solo iPad): una palabra de 4 trazos con texto después no avisa; pointercancel no cuenta; una ráfaga sin texto = 1 fallo, la segunda muestra el aviso «Ajustes → Apple Pencil → Garabatear» abajo (bajo los modales) y se cierra con Entendido; texto que entra descarta la ráfaga y los fallos; toque corto no cuenta; un fallo de hace 30 s no se suma; fuera del iPad nunca',
     g8.noIpad && g8.wordOk && g8.cancelOk && g8.one && g8.shown && g8.abajo && g8.dismissed && g8.typedOk && g8.shortOk && g8.decayOk, JSON.stringify(g8));
 
+  // ── G9: ↩ Regresar / ↪ Rehacer acotados a la caja del paso (no pisan lo que un compañero escribió en otra caja por Realtime);
+  //        el ↩ Deshacer del aviso deshace al paciente que lo anunció; guarda de arrastre: beforeinput deleteByDrag/insertFromDrop y contenteditable ──
+  const from9 = calls.length;
+  const g9 = await page.evaluate(async () => {
+    const k = pid(patients[0]); const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    const p0 = getNote(k).pendientes;
+    updateField(k, 'pendientes', 'PLAN A DEL RESIDENTE');                     // paso propio: solo Pendientes
+    const toastKey = _toastUndoKey;
+    // un compañero cambia Misceláneo desde otro dispositivo (Realtime) después del paso
+    _suppressRealtimeKeys.clear();
+    const nd = getNote(k); const row = { patient_id: 'a1', checklist: JSON.parse(JSON.stringify(nd.checklist || {})), entrega: nd.entrega || '' };
+    ['app', 'pa', 'drenajes', 'qx', 'manejo', 'sangrado', 'sv', 'balance', 'pendientes'].forEach(f => { row[f] = nd[f] || ''; });
+    row.manejo = 'MANEJO DEL COLEGA'; handleNoteChange({ eventType: 'UPDATE', new: row }); await wait(100);
+    const colega = getNote(k).manejo;
+    const uLabel = undoLast(k); await wait(300);                                // ↩ Regresar: solo Pendientes vuelve
+    const a = { pend: getNote(k).pendientes, manejo: getNote(k).manejo, uLabel };
+    redoLast(k); await wait(300);                                              // ↪ Rehacer: solo Pendientes
+    const b = { pend: getNote(k).pendientes, manejo: getNote(k).manejo };
+    // el aviso «Cambio guardado ↩ Deshacer» pertenece a este paciente aunque después se apile un paso de OTRO (novedades automáticas)
+    noteData['zz'] = defaultData(); _undoPush('zz', 'novedades automáticas en entrega (1)', ['entrega']); const lastKey = _lastUndoKey;
+    undoLastField(); await wait(300);
+    const c = { pend: getNote(k).pendientes, manejo: getNote(k).manejo, toastKey, lastKey };
+    delete noteData['zz']; delete _undoLoad()['zz']; _undoSave();
+    redoLast(k); await wait(1500);                                             // dejar Pendientes en PLAN A y que salgan los envíos pendientes
+    // guarda de arrastre: beforeinput de arrastre cancelado, teclear no; contenteditable: selección no se arrastra, ítem sí; drop sin itemId no
+    const ta = document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="manejo"]');
+    const bi = (type) => { const ev = new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: type, data: 'X' }); ta.dispatchEvent(ev); return ev.defaultPrevented; };
+    const d = { byDrag: bi('deleteByDrag'), fromDrop: bi('insertFromDrop'), typing: bi('insertText'), paste: bi('insertFromPaste') };
+    const ce = document.createElement('div'); ce.contentEditable = 'true'; ce.textContent = 'ITEM DEL TABLERO'; document.body.appendChild(ce);
+    const range = document.createRange(); range.selectNodeContents(ce); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    const drag = (type, el, withItem) => { const dt = new DataTransfer(); try { dt.setData('text/plain', 'T'); if (withItem) dt.setData('itemId', '1'); } catch (_) {} const ev = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }); el.dispatchEvent(ev); return ev.defaultPrevented; };
+    d.ceSelDrag = drag('dragstart', ce, false); sel.removeAllRanges(); d.ceItemDrag = drag('dragstart', ce, true);
+    d.ceDropText = drag('drop', ce, false); d.ceDropItem = drag('drop', ce, true); ce.remove();
+    return { k, p0, colega, a, b, c, d };
+  });
+  const post9 = calls.slice(from9).filter(c => (c.m === 'POST' || c.m === 'PATCH') && c.url.startsWith('/rest/v1/notes') && c.body).map(c => c.body);
+  const manejoViejo = post9.some(b => typeof b.manejo === 'string' && b.manejo !== 'MANEJO DEL COLEGA');
+  check('G9 Regresar/Rehacer acotados a la caja del paso: tras un cambio ajeno en Misceláneo (Realtime), Regresar solo devuelve Pendientes y deja el Misceláneo del colega (y ningún envío lleva el Misceláneo viejo); Rehacer igual; el ↩ Deshacer del aviso deshace a ESTE paciente aunque después se apile un paso de otro; beforeinput deleteByDrag/insertFromDrop se cancelan (teclear y pegar no); en contenteditable la selección no se arrastra pero el ítem sí, y un drop de texto sin itemId se cancela',
+    g9.colega === 'MANEJO DEL COLEGA' && g9.a.pend === g9.p0 && g9.a.manejo === 'MANEJO DEL COLEGA' && /Pendientes/.test(g9.a.uLabel) && !manejoViejo
+    && g9.b.pend === 'PLAN A DEL RESIDENTE' && g9.b.manejo === 'MANEJO DEL COLEGA'
+    && g9.c.toastKey === g9.k && g9.c.lastKey === 'zz' && g9.c.pend === g9.p0 && g9.c.manejo === 'MANEJO DEL COLEGA' && post9.length >= 1
+    && g9.d.byDrag && g9.d.fromDrop && !g9.d.typing && !g9.d.paste && g9.d.ceSelDrag && !g9.d.ceItemDrag && g9.d.ceDropText && !g9.d.ceDropItem, JSON.stringify({ g9, manejoViejo, posts: post9.length }));
+
   check('final: sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   await browser.close();
   console.log('RESULT APP-GUARDIA: ' + pass + ' passed, ' + fail + ' failed');
