@@ -757,7 +757,75 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   }
 }
 
-// ── 18) Con la GUARDA puesta (hoja < 10 o > 50 % a borrar) el upsert no le pone a una fila vieja (con su nota)
+// ── 18) Tercera revisión: la regla de exp único no depende de la edad ni de nombres de otras camas ───────────────
+{
+  const fill = (sheet) => { for (let i = 0; i < 12; i++) sheet.push(row("4-" + (10 + i), String(100 + i), { nombre: "RELLENO " + "ABCDEFGHIJKL"[i] + " SOTO" })); return sheet; };
+  const upsertOf = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama + ":" + p.exp + ":" + p.nombre) : []; };
+  const patches = (calls) => calls.filter((c) => c.m === "PATCH").map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + JSON.stringify(c.body));
+  const touched = (calls) => calls.some((c) => c.m === "DELETE" || c.u.startsWith("/rest/v1/archive"));
+  const sameBed = (n1, n2, extraSheet, e1, e2) => {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: n1, edad: String(e1 == null ? 40 : e1), updated_by: "sheet-sync" };
+    const full = { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de a1" }] } };
+    const { sb, calls } = makeSandbox({ cur: [a1], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "77", { nombre: n2, edad: e2 == null ? 40 : e2 })].concat(extraSheet || [])));
+    return calls;
+  };
+  // correcciones que la versión anterior archivaba
+  const keep = [["PEREZ J", "PEREZ JUAN"], ["JUAN PEREZ", "J PEREZ"], ["J. PEREZ L.", "JUAN PEREZ LOPEZ"], ["DE LA CRUZ ANA", "DELACRUZ ANA MARIA"],
+    ["DELACRUZ ANA", "DE LA CRUS ANA"], ["MONTESDEOCA ANA", "MONTES DE OCA ANA LUISA"], ["MARIA JOSE PEREZ", "MARIAJOSE PERES"], ["ALEJ PEREZ", "ALEJANDRO PEREZ"],
+    ["BAEZ ANA", "VAES ANA"], ["FEMENINA", "PEREZ LOPEZ ANA"], ["NO IDENT.", "PEREZ ANA"], ["XX", "PEREZ JUAN"], ["SIN DATOS", "PEREZ JUAN"], ["DESCONOSIDO", "PEREZ JUAN"],
+    ["N.N.", "PEREZ JUAN"], ["PEREZ LOPEZ J", "PEREZ LOPEZ JUAN", 40, 43]];
+  const lost = keep.filter(([n1, n2, e1, e2]) => { const c = sameBed(n1, n2, [], e1, e2); return touched(c) || !upsertOf(c).includes("3-101:77:" + n2); });
+  check("T18a exp único, misma cama: inicial J, partículas juntas/separadas, palabras pegadas, abreviatura ALEJ, mismo sonido (BAEZ/VAES), no identificados (FEMENINA, NO IDENT., XX, SIN DATOS, DESCONOSIDO, N.N.) y edad cambiada: misma fila, sin archivo",
+    lost.length === 0, JSON.stringify(lost.map((f) => f[0] + "→" + f[1])));
+  // un tocayo en otra cama (con otro exp) ya no hace que una corrección parezca otra persona
+  const namesake = [["PEREZ JOSE", "PEREZ JOSUE", "PEREZ SOTO JOSE"], ["PEREZ DIAS", "PEREZ DIAZ", "PEREZ DIAS ROSA"], ["GARCIA ANA", "GARCIA ANNA", "GARCIA LOPEZ ANA"], ["LOPEZ MARIA", "LOPES MARIA ELENA", "LOPEZ RUIZ MARIA"]];
+  const lost2 = namesake.filter(([n1, n2, other]) => touched(sameBed(n1, n2, [row("3-140", "55", { nombre: other, edad: 70 })])));
+  check("T18b corrección con un tocayo en otra cama (PEREZ JOSE→JOSUE con PEREZ SOTO JOSE en 3-140, etc.): misma fila, sin archivo", lost2.length === 0, JSON.stringify(lost2.map((f) => f[0])));
+  // cambio de cama + inicial completada
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "77", nombre: "PEREZ J", edad: "40", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [a1], props: {} });
+    sb.syncPatients_("svc", fill([row("UCI 3", "77", { nombre: "PEREZ JUAN", edad: 40 })]));
+    const ps = patches(calls);
+    check("T18c cambio de cama + inicial completada (PEREZ J → PEREZ JUAN en UCI 3): PATCH de cama, la nota viaja", ps.length === 1 && ps[0].includes('"cama":"UCI 3"') && !touched(calls), JSON.stringify(ps));
+  }
+  // otra persona: exp copiado a un conocido → DESCONOCIDO, hermanos JUAN/JUANA y LUIS/LUISA con cualquier edad, dos nombres de pila iguales
+  const other = [["HERNANDEZ LOPEZ MARIA ELENA", "DESCONOCIDO"], ["PEREZ LOPEZ JUAN", "PEREZ LOPEZ JUANA"], ["SOTO LUIS", "SOTO LUISA"], ["PEREZ LOPEZ MARIO", "PEREZ LOPEZ MARIA"],
+    ["LOPEZ PEREZ MARIA GUADALUPE", "SANCHEZ RUIZ MARIA GUADALUPE"], ["TORRES NAVA JUAN CARLOS", "MENDEZ SOLIS JUAN CARLOS"], ["MARIA LOPEZ", "HIJO DE MARIA LOPEZ"]];
+  const renamed = other.filter(([n1, n2]) => {
+    const c = sameBed(n1, n2, [], 40, 40);   // misma edad a propósito: en la hoja suele quedarse la del ocupante anterior
+    const arc = c.find((x) => x.m === "POST" && x.u.startsWith("/rest/v1/archive"));
+    return !(arc && arc.body.patient_data.nombre === n1 && /CAMA REASIGNADA/.test(arc.body.note_data._egreso));
+  });
+  check("T18d exp copiado a OTRA persona en la misma cama, aun con la edad del ocupante anterior (DESCONOCIDO, JUANA, LUISA, MARIA, mismos nombres de pila y otros apellidos, HIJO DE…): cama reasignada, nunca se renombra la fila con su nota",
+    renamed.length === 0, JSON.stringify(renamed.map((f) => f[0] + "→" + f[1])));
+  // caso real con un DESCONOCIDO en la 3-189: no se mueve a la cama de la otra persona; solo se le corrige el exp
+  {
+    const b9 = { id: "b9", cama: "3-189", exp: "26-1500", nombre: "DESCONOCIDO", edad: "", updated_by: "sheet-sync" };
+    const { sb, calls } = makeSandbox({ cur: [b9], props: {} });
+    sb.syncPatients_("svc", fill([row("3-154", "26-1500", { nombre: "TORRES NAVA RAUL", edad: 52 }), row("3-189", "26-1777", { nombre: "DESCONOCIDO" })]));
+    const ps = patches(calls), up = upsertOf(calls);
+    check("T18e exp corregido a un DESCONOCIDO en 3-189 y el viejo en 3-154 (otra persona con nombre): b9 solo corrige su exp, 3-154 entra nueva",
+      ps.length === 1 && ps[0] === 'b9:{"exp":"26-1777","updated_by":"sheet-sync"}' && up.includes("3-154:26-1500:TORRES NAVA RAUL") && !touched(calls), JSON.stringify({ ps, up }));
+    // ...pero un DESCONOCIDO que de verdad cambió de cama (su cama vieja quedó libre) sí se mueve por expediente
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur: [b9], props: {} });
+    sb2.syncPatients_("svc", fill([row("3-154", "26-1500", { nombre: "DESCONOCIDO" })]));
+    check("T18f DESCONOCIDO que cambia de cama (3-189 → 3-154): se mueve por expediente con su nota", patches(c2).some((p) => p.startsWith("b9:") && p.includes('"cama":"3-154"')) && !touched(c2), JSON.stringify(patches(c2)));
+  }
+  // turnover reescribiendo celdas: primero el exp (se corrige en la misma fila), luego el nombre de OTRA persona → cama reasignada
+  {
+    const a1 = { id: "a1", cama: "3-101", exp: "26-1111", nombre: "LOPEZ PEREZ MARIA GUADALUPE", edad: "67", updated_by: "sheet-sync" };
+    const full = { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de MARIA GUADALUPE" }] } };
+    const { sb, calls } = makeSandbox({ cur: [{ ...a1, exp: "26-2222" }], full, props: {} });
+    sb.syncPatients_("svc", fill([row("3-101", "26-2222", { nombre: "SANCHEZ RUIZ MARIA GUADALUPE", edad: 67 })]));
+    const arc = calls.find((c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive"));
+    check("T18g cama que se reescribe celda por celda (exp ya corregido, luego el nombre de otra persona con la edad vieja): se archiva la anterior, no se renombra",
+      !!arc && arc.body.patient_data.nombre === "LOPEZ PEREZ MARIA GUADALUPE" && upsertOf(calls).includes("3-101:26-2222:SANCHEZ RUIZ MARIA GUADALUPE"), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+  }
+}
+
+// ── 19) Con la GUARDA puesta (hoja < 10 o > 50 % a borrar) el upsert no le pone a una fila vieja (con su nota)
 //        el nombre de otra persona: camas reasignadas, cambios de cama y su destino quedan fuera hasta reconciliar ─
 {
   const upsertCamas = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama) : []; };
@@ -779,14 +847,14 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     const { sb, calls, logs } = makeSandbox({ cur, full, props: {} });
     const r = sb.syncPatients_("svc", sheet);
     const up = upsertCamas(calls);
-    check("T18a recambio masivo (14 reasignadas de 26 → guarda >50 %): se loguea ABORTA y no hay DELETE/archive/PATCH",
+    check("T19a recambio masivo (14 reasignadas de 26 → guarda >50 %): se loguea ABORTA y no hay DELETE/archive/PATCH",
       r === 0 && logs.some((l) => /ABORTA reconciliación, solo upsert/.test(l)) && onlyUpsert(calls), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
-    check("T18b guarda >50 %: ninguna cama REASIGNADA ni de un cambio de cama (origen 5-24/5-25, destino 7-50) va al upsert",
+    check("T19b guarda >50 %: ninguna cama REASIGNADA ni de un cambio de cama (origen 5-24/5-25, destino 7-50) va al upsert",
       retenidas.every((c) => !up.includes(c)), JSON.stringify(up));
-    check("T18c guarda >50 %: las camas que no necesitan reconciliar (misma persona 5-27..5-30, ingresos en camas libres 6-10..6-12) SÍ entran",
+    check("T19c guarda >50 %: las camas que no necesitan reconciliar (misma persona 5-27..5-30, ingresos en camas libres 6-10..6-12) SÍ entran",
       up.length === 7 && ["5-27", "5-28", "5-29", "5-30", "6-10", "6-11", "6-12"].every((c) => up.includes(c)), JSON.stringify(up));
     const sl = guardLog(calls);
-    check("T18d guarda >50 %: aviso en sync_log (guarda_borrado_masivo) con las 17 camas retenidas y log con la lista",
+    check("T19d guarda >50 %: aviso en sync_log (guarda_borrado_masivo) con las 17 camas retenidas y log con la lista",
       sl.length === 1 && sl[0].motivo === "guarda_borrado_masivo" && retenidas.every((c) => sl[0].camas.split(", ").includes(c)) && sl[0].camas.split(", ").length === 17
       && logs.some((l) => /retenida/.test(l) && /5-24/.test(l) && /7-50/.test(l)), JSON.stringify({ sl, logs }));
   }
@@ -799,7 +867,7 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     sb.syncPatients_("svc", small);
     const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
     const sl = guardLog(calls);
-    check("T18e exp copiado a otra persona en hoja de 6 filas (guarda <10): la fila de A (con su nota) NO recibe el nombre de B; las 5 camas libres sí entran; aviso guarda_hoja_chica",
+    check("T19e exp copiado a otra persona en hoja de 6 filas (guarda <10): la fila de A (con su nota) NO recibe el nombre de B; las 5 camas libres sí entran; aviso guarda_hoja_chica",
       !!up && !up.body.some((p) => p.cama === "3-101") && up.body.length === 5 && !up.body.some((p) => p.nombre === B) && onlyUpsert(calls)
       && sl.length === 1 && sl[0].motivo === "guarda_hoja_chica" && sl[0].camas === "3-101" && logs.some((l) => /solo 6 en la hoja/.test(l)), JSON.stringify({ up: up && up.body.map((p) => p.cama + ":" + p.nombre), sl }));
   }
@@ -810,14 +878,14 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     const { sb, calls } = makeSandbox({ cur: [d1], props: {} });
     sb.syncPatients_("svc", small);
     const up = upsertCamas(calls);
-    check("T18f guarda <10 con cambio de cama 3-104→3-107 (libre): 3-107 fuera del upsert, sin PATCH; las otras 4 entran",
+    check("T19f guarda <10 con cambio de cama 3-104→3-107 (libre): 3-107 fuera del upsert, sin PATCH; las otras 4 entran",
       !up.includes("3-107") && up.length === 4 && onlyUpsert(calls), JSON.stringify(up));
   }
   // Guarda sin camas retenidas (todo son camas libres o la misma persona): solo upsert, sin aviso en sync_log (T6 intacto)
   {
     const { sb, calls } = makeSandbox({ cur: [{ id: "k1", cama: "4-11", exp: "101", nombre: "P 101", updated_by: "sheet-sync" }], props: {} });
     sb.syncPatients_("svc", range(1, 5).map((i) => row("4-" + (10 + i), String(100 + i))));
-    check("T18g guarda <10 sin nada que retener: las 5 camas al upsert y ningún POST a sync_log", upsertCamas(calls).length === 5 && guardLog(calls).length === 0);
+    check("T19g guarda <10 sin nada que retener: las 5 camas al upsert y ningún POST a sync_log", upsertCamas(calls).length === 5 && guardLog(calls).length === 0);
   }
   // doSyncForce: salta UNA vez la guarda de >50 % (recambio masivo real) → archiva, mueve y luego upsert completo
   {
@@ -827,15 +895,15 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     const finals = calls.filter((c) => c.m === "PATCH" && c.body.cama && !/#MV-/.test(c.body.cama)).map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + c.body.cama);
     const up = upsertCamas(calls);
     const iLastDel = calls.map((c) => c.m).lastIndexOf("DELETE"), iUp = seq(calls, (c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
-    check("T18h force: las 14 reasignadas se archivan (CAMA REASIGNADA) ANTES del upsert; el intercambio y 5-26→7-50 se mueven por PATCH",
+    check("T19h force: las 14 reasignadas se archivan (CAMA REASIGNADA) ANTES del upsert; el intercambio y 5-26→7-50 se mueven por PATCH",
       r === 14 && arcs.length === 14 && reasignadas.every((c) => arcs.includes(c + "|CAMA REASIGNADA (hoja)")) && iUp > iLastDel
       && finals.includes("x14:5-25") && finals.includes("x15:5-24") && finals.includes("x16:7-50") && finals.length === 3, JSON.stringify({ r, arcs, finals }));
-    check("T18i force: el upsert lleva las 24 camas de la hoja, ningún retiro en gracia se archiva y queda auditoría sync_forzado",
+    check("T19i force: el upsert lleva las 24 camas de la hoja, ningún retiro en gracia se archiva y queda auditoría sync_forzado",
       up.length === 24 && !arcs.some((a) => /RETIRADO/.test(a)) && guardLog(calls).some((q) => q.motivo === "sync_forzado") && logs.some((l) => /doSyncForce/.test(l)), JSON.stringify({ up: up.length, sl: guardLog(calls) }));
     // force NO salta la guarda de hoja < 10 (eso huele a error de lectura, no a recambio)
     const { sb: sb2, calls: c2 } = makeSandbox({ cur, full, props: {} });
     sb2.syncPatients_("svc", sheet.slice(0, 6), { force: true });
-    check("T18j force con hoja de 6 filas: sigue la guarda <10 (sin DELETE/archive/PATCH, camas reasignadas fuera)",
+    check("T19j force con hoja de 6 filas: sigue la guarda <10 (sin DELETE/archive/PATCH, camas reasignadas fuera)",
       onlyUpsert(c2) && upsertCamas(c2).length === 0, JSON.stringify(upsertCamas(c2)));
     // la entrada manual pasa force a doSync con el lock; las automáticas no
     const { sb: sb3 } = makeSandbox({});
@@ -843,7 +911,7 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     sb3.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
     sb3.doSync = (o) => { seen.push(o); return {}; };
     sb3.doSyncForce(); sb3.doSyncScheduled();
-    check("T18k doSyncForce llama doSync({force:true}); doSyncScheduled sin force", seen.length === 2 && seen[0] && seen[0].force === true && !(seen[1] && seen[1].force), JSON.stringify(seen));
+    check("T19k doSyncForce llama doSync({force:true}); doSyncScheduled sin force", seen.length === 2 && seen[0] && seen[0].force === true && !(seen[1] && seen[1].force), JSON.stringify(seen));
   }
 }
 
