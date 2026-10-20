@@ -8,7 +8,7 @@
 //     cancela); solo avisa cómo activar Garabatear. Dos toques seguidos: igual.
 // P3  Tablero (📌): pasar de una nota a otra (lo que hace Scribble al escribir) no destruye la nota en la que se escribe.
 // P4  Ficha (tablero de una tarjeta): tocar la cama/nombre de la cabecera ya no pliega la tarjeta (las cajas no desaparecen).
-// P5  Misceláneo: la caja se llama así en la ficha, la barra de saltos y ⚙ Cajas; lo escrito no se pierde al cambiar de
+// P5  Otros (antes Misceláneo): la caja se llama así en la ficha y la barra de saltos; lo escrito no se pierde al cambiar de
 //     tarjeta antes del guardado, ni al ocultar la app sin red (queda en localStorage y en la cola).
 const fs = require('fs'), path = require('path');
 const { launch } = require('./_browser');
@@ -122,10 +122,11 @@ const TYPES = /^(touchstart|touchmove|touchend|pointerdown|pointermove|pointerup
     await new Promise(r => setTimeout(r, 1800));
     const kept = getNote(k).manejo;
     const ls = JSON.parse(localStorage.getItem('note-' + k) || '{}').manejo;
-    return { labelOk: /Misceláneo/.test(label) && !/Manejo médico actual/.test(label), jumpOk: /Misceláneo/.test(jump) || /Misc/.test(jump), kept, ls };
+    // 19 oct 2026: la caja pasó a llamarse «Otros» (lo que no cabe en otra caja); el dato sigue siendo nd.manejo
+    return { labelOk: /Otros/.test(label) && !/Manejo médico actual/.test(label), jumpOk: /Otros/.test(jump), kept, ls };
   });
   const postMisc = posts.find(b => b && b.manejo === 'MISC ESCRITO ANTES DE CAMBIAR');
-  check('P5 Misceláneo: la caja se llama así (ya no «Manejo médico actual»); lo escrito sobrevive al cambiar de tarjeta, queda en localStorage y se sube',
+  check('P5 Otros (antes Misceláneo): la caja se llama así (ya no «Manejo médico actual»); lo escrito sobrevive al cambiar de tarjeta, queda en localStorage y se sube',
     !p5.noTa && p5.labelOk && p5.kept === 'MISC ESCRITO ANTES DE CAMBIAR' && p5.ls === 'MISC ESCRITO ANTES DE CAMBIAR' && !!postMisc, JSON.stringify({ p5, posted: !!postMisc }));
 
   // P6: sin red, escribir en Misceláneo y ocultar la app: queda en localStorage y en la cola con el campo

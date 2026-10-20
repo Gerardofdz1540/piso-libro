@@ -1,0 +1,268 @@
+name: Respaldo de la base
+
+# Respaldo nocturno CIFRADO de la base de datos (Supabase, proyecto vkxplmrzyqlamxpbtmes) fuera de
+# Supabase. Supabase (plan gratuito) no guarda respaldos propios: si el proyecto se borra, se pausa
+# sin remedio o alguien ejecuta un UPDATE equivocado, lo único que queda es esto.
+#   1. pg_dump del esquema public (tablas, funciones, triggers, políticas, índices) en formato
+#      "custom" (ya comprimido) contra la URL del "Session pooler" (secret SUPABASE_DB_URL).
+#   2. Comprobaciones: pg_dump debe salir con 0, el archivo debe pesar al menos MIN_BYTES y el
+#      índice del volcado debe listar los datos de patients y notes. Si algo falla, el job sale en
+#      ROJO y GitHub manda el correo de "workflow failed" al dueño del repo.
+#   3. Se cifra con age para la llave pública del administrador (secret BACKUP_AGE_PUBLIC_KEY). La
+#      llave privada vive solo con el administrador, fuera de GitHub: nadie más puede leer el
+#      respaldo. El texto plano se borra antes de subir nada.
+#   4. El archivo .age se sube como artifact del repo (30 días). OJO: el repo es PÚBLICO, así que el
+#      artifact y el log del job los puede bajar cualquiera con cuenta de GitHub; lo ÚNICO que protege
+#      los datos es el cifrado age (por eso la llave privada nunca sale de la Mac/USB) y por eso el log
+#      nunca imprime datos de pacientes. Si existe el secret RCLONE_CONFIG, se copia también a una
+#      carpeta privada de Google Drive.
+#   5. Egreso: cada respaldo saca del proyecto más o menos el tamaño de la base (el pooler manda los
+#      datos sin comprimir). El plan gratuito de Supabase tiene 5 GB de egreso al mes: por eso se
+#      excluyen los datos de sync_log (bitácora del censo, regenerable) y conviene vigilar Supabase →
+#      Settings → Usage → Egress; si el mes pasa de ~3 GB, cambiar el cron a noches alternas
+#      ("20 8 */2 * *").
+# Cómo restaurar (siempre en un proyecto NUEVO, nunca sobre producción): scripts/db-restore.md.
+# Qué secrets crear y cómo generar la llave: MANUAL-OPERACION.md, "Respaldo nocturno de la base".
+# Hora: 08:20 UTC = 02:20 León (UTC-6, sin horario de verano), fuera del minuto :00 que GitHub
+# retrasa. A esa hora no corre el robot de labs (05:00 / 12:30 / 20:07 León); el de imagen (RIS)
+# corre a las :23 de cada 2 h, incluida 02:23 León, sin conflicto: pg_dump trabaja sobre una
+# instantánea y el RIS solo escribe en sus tablas.
+on:
+  schedule:
+    - cron: "20 8 * * *"
+  workflow_dispatch:
+
+# Permisos mínimos del GITHUB_TOKEN: "actions: write" para el paso keepalive (endpoint "enable
+# workflow") y para upload-artifact.
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+env:
+  # Versión MAYOR de Postgres del proyecto (Supabase → Project Settings → Infrastructure, o
+  # `select version();` en el SQL Editor). pg_dump debe ser igual o más nuevo que el servidor; si
+  # Supabase sube de versión, subir este número (el error sería "server version mismatch").
+  PG_MAJOR: "17"
+  # Tamaño mínimo aceptable del volcado (bytes). Hoy la base real pesa ~55 MB y el volcado comprimido
+  # varios MB; 100 KB solo detecta un volcado vacío o una conexión a otra base.
+  MIN_BYTES: "102400"
+  # rclone (solo para la copia opcional a Drive), fijado por versión y sha256 del zip oficial
+  # (https://downloads.rclone.org/<versión>/SHA256SUMS). Ojo: rclone lee cualquier variable
+  # RCLONE_* como si fuera un flag (RCLONE_VERSION rompe con "--version"), por eso el prefijo DRIVE_.
+  DRIVE_RCLONE_VERSION: "v1.75.2"
+  DRIVE_RCLONE_SHA256: "349ac8fba6ff65d6247043f1750cdcb518ec5d500ef91463a10d37c0ccdf3702"
+
+jobs:
+  respaldo:
+    name: respaldo
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # GitHub desactiva los workflows programados tras 60 días sin actividad en el repo
+      # (disabled_inactivity). Igual que los robots y el vigilante, este job se vuelve a habilitar a
+      # sí mismo en cada corrida. Best-effort: si falla, el respaldo se hace igual.
+      - name: Keepalive del cron (evita disabled_inactivity)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/db-backup.yml/enable"
+
+      # pg_dump de la misma versión mayor que el servidor, desde el repositorio oficial de Postgres
+      # (apt.postgresql.org; el de Ubuntu trae una versión menor y pg_dump se niega a volcar un
+      # servidor más nuevo). age viene del repositorio de Ubuntu (paquete firmado): cifra para
+      # cualquier llave `age1…` y lo descifra cualquier versión de age (formato estable).
+      - name: Instalar pg_dump ${{ env.PG_MAJOR }} y age
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error --max-time 60 \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            "postgresql-client-${PG_MAJOR}" age
+          PGBIN="/usr/lib/postgresql/${PG_MAJOR}/bin"
+          echo "PGBIN=${PGBIN}" >> "$GITHUB_ENV"
+          "${PGBIN}/pg_dump" --version
+          age --version
+
+      # El volcado se escribe en la carpeta temporal del runner (fuera del workspace: aquí no hay
+      # checkout). La URL va en el secret SUPABASE_DB_URL (Supabase → Connect → Session pooler, con
+      # la contraseña de la base; ver manual). PGSSLMODE=require fuerza TLS aunque la URL no lo diga.
+      - name: Volcar la base (pg_dump)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PGSSLMODE: require
+          PGCONNECT_TIMEOUT: "30"
+        run: |
+          set -euo pipefail
+          # Un secret pegado con salto de línea o espacio al final rompe la URL en silencio.
+          SUPABASE_DB_URL="${SUPABASE_DB_URL//[[:space:]]/}"
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error title=Falta SUPABASE_DB_URL::Crea el secret SUPABASE_DB_URL (Supabase → Connect → Session pooler). Ver MANUAL-OPERACION.md, 'Respaldo nocturno de la base'."
+            exit 1
+          fi
+          case "$SUPABASE_DB_URL" in
+            postgres://*|postgresql://*) ;;
+            *) echo "::error title=SUPABASE_DB_URL inválida::Debe empezar con postgresql:// (la URL del Session pooler), no es la service_role key ni la URL https del proyecto."; exit 1 ;;
+          esac
+          DIR="${RUNNER_TEMP}/respaldo"
+          mkdir -p "$DIR"
+          STAMP="$(date -u +%Y%m%d-%H%M)"
+          OUT="${DIR}/pisolibro-db-${STAMP}.dump"
+          echo "STAMP=${STAMP}" >> "$GITHUB_ENV"
+          echo "DUMP_DIR=${DIR}" >> "$GITHUB_ENV"
+          echo "DUMP_FILE=${OUT}" >> "$GITHUB_ENV"
+
+          # Versión del servidor y conteos (solo números; el log es PÚBLICO: nunca imprimir datos de
+          # pacientes aquí ni en ningún otro paso).
+          "${PGBIN}/psql" "$SUPABASE_DB_URL" --no-psqlrc --quiet --tuples-only --no-align \
+            --set ON_ERROR_STOP=1 \
+            -c "select 'server_version=' || current_setting('server_version')" \
+            -c "select 'patients=' || count(*) from public.patients" \
+            -c "select 'notes=' || count(*) from public.notes" \
+            -c "select 'winlab_labs=' || count(*) from public.winlab_labs" \
+            -c "select 'audit_log=' || count(*) from public.audit_log" \
+            -c "select 'db_mb=' || round(pg_database_size(current_database()) / 1048576.0)" \
+            | tee "${DIR}/conteos.txt"
+          # Una base con 0 pacientes o 0 notas no es producción (URL de otro proyecto o base vaciada):
+          # mejor fallar que guardar 30 días de respaldos vacíos creyendo que todo va bien.
+          if grep -qE '^(patients|notes)=0$' "${DIR}/conteos.txt"; then
+            echo "::error title=Base vacía::patients o notes tiene 0 filas. ¿SUPABASE_DB_URL apunta al proyecto correcto? No se sube un respaldo vacío."
+            exit 1
+          fi
+
+          # --exclude-table-data=public.sync_log: la bitácora del censo es regenerable y es la tabla
+          # que más crece; excluir sus filas (la tabla vacía sí se vuelca) ahorra egreso del plan
+          # gratuito (5 GB/mes) y tiempo. Todo lo demás del esquema public va completo.
+          "${PGBIN}/pg_dump" "$SUPABASE_DB_URL" \
+            --no-owner --no-privileges --schema=public --format=custom \
+            --exclude-table-data=public.sync_log \
+            --file="$OUT"
+
+          SIZE=$(stat -c %s "$OUT")
+          echo "Volcado: ${SIZE} bytes"
+          if [ "$SIZE" -lt "$MIN_BYTES" ]; then
+            echo "::error title=Volcado demasiado chico::pg_dump produjo ${SIZE} bytes (mínimo ${MIN_BYTES}). ¿La URL apunta a la base correcta?"
+            exit 1
+          fi
+          # El índice del volcado debe listar los datos de las tablas clave.
+          "${PGBIN}/pg_restore" --list "$OUT" > "${DIR}/indice.txt"
+          TABLAS=$(grep -c "TABLE DATA public" "${DIR}/indice.txt" || true)
+          echo "Tablas con datos en el volcado: ${TABLAS}"
+          for t in patients notes winlab_labs; do
+            if ! grep -q "TABLE DATA public ${t} " "${DIR}/indice.txt"; then
+              echo "::error title=Volcado incompleto::El índice del volcado no incluye los datos de public.${t}."
+              exit 1
+            fi
+          done
+          echo "DUMP_BYTES=${SIZE}" >> "$GITHUB_ENV"
+          echo "DUMP_TABLAS=${TABLAS}" >> "$GITHUB_ENV"
+
+      # Cifrado con la llave PÚBLICA del administrador. Solo la llave privada (age-keygen, guardada
+      # fuera de GitHub) puede abrir el archivo. El .dump en claro se borra aquí mismo.
+      - name: Cifrar con age
+        env:
+          BACKUP_AGE_PUBLIC_KEY: ${{ secrets.BACKUP_AGE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          # Igual que la URL: sin espacios ni saltos de línea pegados por accidente.
+          BACKUP_AGE_PUBLIC_KEY="${BACKUP_AGE_PUBLIC_KEY//[[:space:]]/}"
+          if [ -z "${BACKUP_AGE_PUBLIC_KEY:-}" ]; then
+            echo "::error title=Falta BACKUP_AGE_PUBLIC_KEY::Genera la llave con 'age-keygen' y guarda la parte pública (age1…) en el secret BACKUP_AGE_PUBLIC_KEY. Sin cifrar no se sube nada."
+            exit 1
+          fi
+          case "$BACKUP_AGE_PUBLIC_KEY" in
+            age1*) ;;
+            *) echo "::error title=BACKUP_AGE_PUBLIC_KEY inválida::Debe ser la llave PÚBLICA (empieza con age1…), no la privada (AGE-SECRET-KEY-…)."; exit 1 ;;
+          esac
+          ENC="${DUMP_FILE}.age"
+          age --encrypt --recipient "$BACKUP_AGE_PUBLIC_KEY" --output "$ENC" "$DUMP_FILE"
+          rm -f "$DUMP_FILE"
+          if ! head -c 20 "$ENC" | grep -q "age-encryption.org"; then
+            echo "::error title=Cifrado fallido::El archivo no tiene cabecera de age."
+            exit 1
+          fi
+          SHA=$(sha256sum "$ENC" | cut -d' ' -f1)
+          echo "ENC_FILE=${ENC}" >> "$GITHUB_ENV"
+          echo "ENC_SHA256=${SHA}" >> "$GITHUB_ENV"
+          echo "Cifrado: $(basename "$ENC") ($(stat -c %s "$ENC") bytes) sha256=${SHA}"
+
+      # Solo se sube el .age (nunca el .dump). compression-level 0: ya va comprimido y cifrado.
+      - name: Subir respaldo cifrado (artifact, 30 días)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: respaldo-db-${{ env.STAMP }}
+          path: ${{ env.ENC_FILE }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      # Copia opcional a Google Drive. Se omite (sin fallar) si no existe el secret RCLONE_CONFIG
+      # (contenido del rclone.conf con un remoto de tipo drive; ver manual). BACKUP_GDRIVE_DIR es el
+      # destino "remoto:carpeta" (opcional; por defecto gdrive:PisoLibro-respaldos). También limpia
+      # ahí los respaldos de más de 90 días (solo archivos pisolibro-db-*.dump.age, sin recursión).
+      - name: Copiar a Google Drive (opcional, si hay RCLONE_CONFIG)
+        env:
+          DRIVE_RCLONE_CONF: ${{ secrets.RCLONE_CONFIG }}
+          BACKUP_GDRIVE_DIR: ${{ secrets.BACKUP_GDRIVE_DIR }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DRIVE_RCLONE_CONF:-}" ]; then
+            echo "Sin secret RCLONE_CONFIG: se omite la copia a Drive (el artifact de GitHub ya quedó)."
+            echo "DRIVE_STATUS=omitida (sin RCLONE_CONFIG)" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          DEST="${BACKUP_GDRIVE_DIR:-gdrive:PisoLibro-respaldos}"
+          case "$DEST" in
+            *:?*) ;;
+            *) echo "::error title=BACKUP_GDRIVE_DIR inválido::Debe ser 'remoto:carpeta' (p. ej. gdrive:PisoLibro-respaldos), nunca la raíz."; exit 1 ;;
+          esac
+          TOOLS="${RUNNER_TEMP}/rclone"
+          mkdir -p "$TOOLS"
+          curl --fail --silent --show-error --location --max-time 120 \
+            -o "${TOOLS}/rclone.zip" \
+            "https://downloads.rclone.org/${DRIVE_RCLONE_VERSION}/rclone-${DRIVE_RCLONE_VERSION}-linux-amd64.zip"
+          echo "${DRIVE_RCLONE_SHA256}  ${TOOLS}/rclone.zip" | sha256sum --check --strict -
+          unzip -q -o "${TOOLS}/rclone.zip" -d "$TOOLS"
+          RCLONE="${TOOLS}/rclone-${DRIVE_RCLONE_VERSION}-linux-amd64/rclone"
+          chmod +x "$RCLONE"
+          # sed lee hasta el final (head -1 cerraría la tubería y rclone moriría por SIGPIPE con pipefail).
+          "$RCLONE" version | sed -n 1p
+          CONF="${TOOLS}/rclone.conf"
+          umask 077
+          printf '%s\n' "$DRIVE_RCLONE_CONF" > "$CONF"
+          "$RCLONE" --config "$CONF" copy "$ENC_FILE" "$DEST"
+          "$RCLONE" --config "$CONF" lsf "$DEST" --include "$(basename "$ENC_FILE")" | grep -q . \
+            || { echo "::error title=Drive::El archivo no aparece en ${DEST} después de copiarlo."; exit 1; }
+          "$RCLONE" --config "$CONF" delete "$DEST" --min-age 90d --max-depth 1 \
+            --include "pisolibro-db-*.dump.age" || echo "::warning title=Drive::No se pudo limpiar los respaldos viejos de Drive (la copia de hoy sí quedó)."
+          rm -f "$CONF"
+          echo "DRIVE_STATUS=copiado a ${DEST}" >> "$GITHUB_ENV"
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "### Respaldo de la base"
+            echo "- Archivo: \`$(basename "${ENC_FILE:-sin archivo}")\` — ${DUMP_BYTES:-?} bytes en claro, ${DUMP_TABLAS:-?} tablas con datos"
+            echo "- sha256 del .age: \`${ENC_SHA256:-?}\`"
+            echo "- Drive: ${DRIVE_STATUS:-no se llegó a ese paso}"
+            echo "- Retención del artifact: 30 días. Restaurar: \`scripts/db-restore.md\`."
+            if [ -f "${DUMP_DIR:-/nonexistent}/conteos.txt" ]; then
+              echo "- Conteos: $(paste -sd ' ' "${DUMP_DIR}/conteos.txt")"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Aviso al fallar (GitHub manda el correo)
+        if: failure()
+        run: |
+          echo "::error title=Respaldo de la base FALLÓ::No hay respaldo de hoy. Abre el paso rojo; lo más común: contraseña de la base cambiada (secret SUPABASE_DB_URL), proyecto pausado o versión de Postgres distinta de PG_MAJOR."
+          exit 1

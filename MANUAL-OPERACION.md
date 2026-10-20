@@ -398,14 +398,16 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
   reciente). La fecha POP del menú "⋯ Más" ahora es la de la última cirugía.
 - **💉 Manejo médico actual** (verde azulado).
 - **⚠️ Pendientes / Plan** (ámbar).
-- **🔄 Guardia** (19 oct 2026, antes dos cajas sueltas que se confundían): un solo bloque con el botón
-  grande **📥 Recibir guardia** arriba y dos cajas debajo.
-  - **📤 Para la siguiente guardia** (naranja): lo que **yo dejo** al que llega: eventualidades y cosas
-    por hacer. El botón **✨ Resumen** escribe al final un bloque corto con lo que importa (ver "Entrega
-    de guardia que resume"); las novedades de labs críticos, imagen y cultivos se anotan solas con su fecha.
-  - **📥 Recibido** (verde, de solo lectura): lo que **me entregaron** al llegar. **📥 Recibir guardia**
-    pasa el texto de la caja naranja a esta, con fecha, hora y quién recibe, y deja la naranja vacía para
-    mi guardia. Si hay que corregir algo de lo recibido, el botón **✏️ Corregir** la abre para escribir.
+- **🕓 Cronología** (azul; 19 oct 2026, sustituye a «Entrega / Recibo de guardia», que se confundían):
+  UNA sola caja por paciente donde cada guardia anota, con fecha y hora, **lo que pasa y lo que hace**
+  (eventos, llamadas, lo que se hizo). El botón **➕ Ahora** agrega un renglón al final con `dd/mm hh:mm GF: `
+  y deja el cursor ahí. La siguiente guardia la lee de arriba abajo. Las novedades de labs críticos, imagen y
+  cultivos se anotan solas con su fecha, y **✨ Resumen** escribe al final un bloque corto con lo que importa
+  (ver "Entrega de guardia que resume"). Lo que había en la caja antigua «Recibido» pasó una sola vez al
+  principio de la cronología (en orden) y esa caja desapareció; su historial sigue en 🕘 como «Recibido
+  (caja antigua)».
+- Las tres cajas de trabajo quedan así: **⚠️ Pendientes** (lo por hacer), **🕓 Cronología** (lo que se va
+  haciendo cada guardia) y **🗂️ Otros** (lo que no cabe en ninguna; antes se llamaba Misceláneo).
 - **🕘 Historial por caja**: cada caja de texto (Pendientes, Interconsultas, Cultivos, Misceláneo, Guardia…)
   tiene un reloj junto a su título. Abre un diario con las versiones anteriores de ESA caja (quién, cuándo,
   texto completo) y un botón **Restaurar** por versión. Sirve para recuperar lo que alguien borró o lo que un
@@ -460,6 +462,24 @@ Ahora hay cuatro protecciones:
 Un encabezado de WinLab con menos nombres de pila que la hoja ahora sí cuenta, por ejemplo dos
 nombres en WinLab y tres en la hoja. Solo cuenta si el robot ya validó ese reporte con nombre y edad.
 Otra persona con los mismos apellidos nunca entra.
+
+## Los labs ya no se reescriben en bucle (19 de octubre de 2026)
+
+La bitácora de actividad crecía con miles de filas al día de «labs» que no cambiaban nada: la base
+guarda los analitos en otro orden del que la app los arma, la app lo tomaba como un cambio, volvía a
+subir los labs de todos los pacientes y cada iPad recibía el aviso «📡 Actualización recibida» y
+repetía la pasada. Desde esta fecha:
+
+1. La app compara los labs **analito por analito y valor por valor**, sin importar el orden. Si las
+   cifras son las mismas no guarda nada, no toca la hora de sincronización y no sube la nota.
+2. Cuando el robot sube una fila de WinLab, la app sincroniza **solo a ese paciente** (no a todo el
+   censo) y junta las filas que llegan en 1.5 s en una sola pasada; una corrida de 40 filas es una
+   pasada, no 40.
+3. El aviso «🧪 Labs WinLab actualizados» nombra solo a quien de verdad tiene labs distintos, y el
+   aviso «📡 Actualización recibida» sale solo cuando cambió algo visible de un paciente en pantalla.
+
+Si el ⚙️ Actividad vuelve a mostrar muchas filas de «labs» seguidas del mismo paciente con las mismas
+cifras, probablemente algún iPad sigue con la versión anterior: basta con recargar la app ahí.
 
 ## Cirugías y gastos: todo el texto cabe (16 de octubre de 2026)
 
@@ -755,8 +775,13 @@ calendario del servicio junto con la fecha de cambio de rotación.
 Pestaña **Actividad** del mismo panel: cada cambio guardado en la nube con **quién** (nombre y
 cuenta), **desde dónde** (nombre del dispositivo, navegador e IP) y **qué** (cama, paciente y cada
 campo con "de → a", incluidas las claves del checklist). Filtros por persona, cama y días; lo que
-hacen el robot de labs y la hoja del censo sale como 🤖. Se guardan 180 días (tabla `audit_log`,
-disparadores en pacientes, notas, No olvidar, procedimientos, guardia y configuración).
+hacen el robot de labs y la hoja del censo sale como 🤖. Tabla `audit_log`, disparadores en pacientes,
+notas, No olvidar, procedimientos, guardia y configuración. **Cuánto se guarda** (19 oct 2026,
+`scripts/supabase_audit_acotado.sql`, cron `audit-log-purge`): las versiones de texto de las cajas y del DX,
+**365 días**; las reescrituras automáticas de labs e imagen (solo conteos), **30 días**; todo lo demás,
+**180 días**. Una racha de tecleo de la misma persona en la misma caja (guardados a menos de 5 min, sin
+borrar 40 letras o más) se guarda como UNA versión (de lo que había antes → a lo último); un borrado
+siempre abre una versión nueva, así que el texto previo a un borrado nunca se pierde.
 
 ### 👤 Mi cuenta (todos)
 
@@ -795,6 +820,36 @@ En Supabase → SQL Editor:
 update public.app_users set role = 'admin', status = 'active' where email = 'gfdz1540@gmail.com';
 ```
 
+## 💾 Espacio en la nube (octubre 2026)
+
+La base de datos vive en el plan gratuito de Supabase, que tiene un **tope de 500 MB**. Si se llena,
+Supabase deja la base en solo lectura: la app abre y muestra lo que hay, pero **deja de guardar** lo
+que se escribe. Para que eso no sorprenda a nadie:
+
+- **⚙️ Config → 💾 Espacio en la nube** muestra cuánto ocupa la base ("76 MB de 500 MB", con una
+  barra), lo que más ocupa (laboratorios del robot `winlab_labs`, bitácora/historial `audit_log`,
+  bitácora del censo `sync_log`, notas `notes`) y a qué hora se revisó. El dato lo da la función SQL
+  `pl_tamano_base`; si la base aún no la tiene dice "sin dato".
+- Cuando la base se acerca al tope (nivel **aviso**, amarillo) o ya está muy cerca (nivel **alto**,
+  rojo) aparece una **franja arriba de la app**: "La base de datos va en X MB de 500: avisa al
+  administrador". **Entendido** la oculta 24 horas en ese dispositivo (si sube de aviso a alto vuelve
+  a salir). La app revisa al entrar y cada 6 horas, solo con red, y nunca se bloquea por esto.
+
+Qué hacer el administrador cuando sale el aviso (en este orden):
+
+1. **Correr la purga a mano** (normalmente corre sola de noche): Supabase → SQL Editor →
+   `select jobname, command from cron.job;` muestra los trabajos programados; copia el comando del
+   `audit-log-purge` (borra la bitácora vieja según su tipo: labs/imagen automáticos a los 30 días,
+   cajas de texto a los 365, lo demás a los 180; ver "🕵️ Actividad → Cuánto se guarda") y el del
+   `net-http-response-vacuum` (compacta la tabla de respuestas de pg_net) y ejecútalos. Después
+   vuelve a abrir ⚙️ Config para ver si bajó.
+2. **Revisar la retención de `winlab_labs`** (los laboratorios del robot son lo que más crece: entre
+   100 y 340 renglones por semana). Si pasa de 100 MB, borrar los renglones de pacientes que ya
+   egresaron hace más de 6 meses (antes de borrar, exportar la tabla desde Supabase → Table Editor →
+   Export CSV y guardar el archivo en el Drive del servicio).
+3. Si aun así sigue en aviso, **considerar el plan Pro de Supabase** (8 GB de base; se paga con
+   tarjeta cada mes) o avisar a quien mantiene la app para cambiar el proyecto.
+
 ## Llaves y vencimientos (recordatorio 2 semanas antes)
 
 Varias piezas dejan de funcionar en una fecha, o cuando alguien cambia su contraseña, sin ningún
@@ -810,6 +865,7 @@ lados está en `scripts/SECURITY_NOTES.md`.
 | Token de Cloudflare (`CLOUDFLARE_API_TOKEN` en GitHub) | Publicar la app | El paso "Publicar en Cloudflare Pages" sale en rojo; la app se queda en la versión anterior | Solo si se le puso fecha al crearlo | ________ | Cloudflare → API Tokens → nuevo → GitHub → secret → Run workflow de "Deploy a Cloudflare Pages" |
 | Contraseña de WinLab (`WINLAB_PASS`) | Robot de labs | Corrida en rojo con "Login fallido" | Según el hospital | ________ | WinLab → GitHub secret → "WinLab corrida en seco" |
 | Contraseña del visor (`RIS_PASS`) | Robot de imagen | "RIS Imagen" en rojo al iniciar sesión | Según el hospital | ________ | Visor → Supabase `rpa_config` → "RIS Imagen" con `dry_run` |
+| Contraseña de la base (`SUPABASE_DB_URL` en GitHub) | Respaldo nocturno de la base | "Respaldo de la base" en rojo (correo de GitHub); no hay artifact del día | Cuando alguien hace *Reset database password* en Supabase | — | Supabase → Connect → Session pooler → URI con la contraseña nueva → GitHub → secret `SUPABASE_DB_URL` → Run workflow |
 | Clave de Gemini (`GEMINI_API_KEY` en Cloudflare) | Toda la IA (nota, labs de foto/PDF, lápiz → texto) | Todo lo de IA falla con «Token del Worker inválido o clave del ayudante de IA (Google Gemini) expirada» o con un HTTP 400/403 pelón (el worker devuelve el error de Google tal cual); 🤖 Nota IA cae al borrador sin IA con «La IA no respondió (HTTP …)». «…tuvo un problema» solo sale con errores 5xx (worker o Gemini caídos), no por la clave | No por fecha; lo que sí puede retirarse es el modelo que usa el worker | — | AI Studio → clave nueva → Cloudflare → Deploy; si es el modelo, cambiar `GEMINI_MODEL` en el worker |
 
 Además, sin ser llaves: GitHub apaga los robots tras 60 días sin cambios en el repositorio (se
@@ -849,6 +905,64 @@ completa) hay que pegar el `cloudflare-worker/index.js` actualizado en el worker
    censo (por egreso, por el Excel o por la hoja), cada uno con su nota.
 3. Pulsa **↩ Restaurar** en el paciente. Vuelve al censo con su nota.
 
+## Respaldo nocturno de la base (octubre 2026)
+
+Supabase (plan gratuito) **no guarda copias** de la base: si el proyecto se borra, se pausa sin
+remedio o alguien corre un `UPDATE` equivocado, los pacientes, las notas y los labs se pierden.
+Desde octubre de 2026 el workflow **"Respaldo de la base"** (`.github/workflows/db-backup.yml`)
+hace cada noche a las **02:20 (hora de León)** una copia completa de la base, la **cifra** y la
+guarda fuera de Supabase:
+
+- **Dónde queda**: GitHub → repo → **Actions** → **Respaldo de la base** → corrida del día → al
+  final, **Artifacts** → `respaldo-db-AAAAMMDD-HHMM`. Se conserva **30 días** (cada noche entra uno
+  nuevo y los de más de 30 días se borran solos). Opcional: también en una carpeta privada de Google
+  Drive (ahí se guardan 90 días).
+- **Cifrado**: el archivo solo lo puede abrir el administrador con su **llave privada**. Ojo: el
+  repo es **público**, así que el artifact y el registro de la corrida los puede bajar **cualquiera**
+  con cuenta de GitHub. Lo único que protege los datos es el cifrado: por eso nunca se sube nada en
+  claro, el registro solo muestra números (nunca nombres) y la llave privada no sale de la Mac/USB.
+- **Egreso de Supabase**: cada respaldo saca del proyecto más o menos lo que pesa la base (el plan
+  gratuito da **5 GB al mes**). Por eso el respaldo deja fuera las filas de `sync_log` (bitácora del
+  censo, se regenera sola). Una vez al mes mira Supabase → Settings → **Usage** → *Egress*: si va
+  por más de ~3 GB, cambia en `db-backup.yml` el cron a noches alternas (`"20 8 */2 * *"`).
+- **Cómo saber que corrió**: en esa lista debe haber un círculo verde cada día. Si sale rojo, GitHub
+  manda el correo de "workflow failed" al dueño del repo; el paso rojo dice la causa (lo más común:
+  cambió la contraseña de la base). El resumen de cada corrida dice el tamaño y cuántas filas tenían
+  pacientes, notas, labs del robot y bitácora (solo números, nunca datos de pacientes).
+- **Cómo restaurar** (siempre en un proyecto nuevo, nunca sobre producción) y el **simulacro
+  mensual**: `scripts/db-restore.md`.
+
+**Configuración (una vez, 15 minutos, el administrador en su Mac)**
+
+1. **Llave de cifrado**: en Terminal, `brew install age` y luego
+   `age-keygen -o ~/Documents/piso-libro-llave.txt`. Imprime una línea `Public key: age1…`: esa es
+   la parte **pública** y va a GitHub. El archivo `piso-libro-llave.txt` es la **privada**: cópialo a
+   una USB y a una nota segura (1Password / Notas con candado) y **no lo subas a ningún lado**
+   (ni al repo, ni a GitHub, ni al chat). Sin esa llave los respaldos no se pueden abrir; sin la
+   pública, el workflow no sube nada.
+2. **URL de la base**: Supabase → proyecto → botón **Connect** (arriba) → pestaña **Session pooler**
+   → copia la URI `postgresql://postgres.vkxplmrzyqlamxpbtmes:[YOUR-PASSWORD]@aws-0-….pooler.supabase.com:5432/postgres`
+   y cambia `[YOUR-PASSWORD]` por la **contraseña de la base** (Project Settings → Database →
+   *Database password*; si no la sabes, **Reset database password** ahí mismo). No es la
+   `service_role` key ni la contraseña de tu cuenta. Si la contraseña lleva símbolos (`@`, `#`,
+   `/`…), mejor cámbiala por una solo con letras y números para no tener que codificarla en la URL.
+3. **Secrets en GitHub**: repo → Settings → Secrets and variables → Actions → **New repository
+   secret**: `SUPABASE_DB_URL` (la URI completa del paso 2) y `BACKUP_AGE_PUBLIC_KEY` (la línea
+   `age1…` del paso 1).
+4. **Probar**: Actions → Respaldo de la base → **Run workflow**. En 2-3 minutos debe salir verde y
+   el artifact abajo. Luego sigue los pasos 1 y 2 de `scripts/db-restore.md` para comprobar que tu
+   llave lo abre (si no, repite el paso 1).
+5. **Opcional, copia a Google Drive**: `brew install rclone`, `rclone config` → *New remote*, nombre
+   `gdrive`, tipo `drive`, scope `drive.file` (solo ve los archivos que él mismo sube), inicia sesión
+   en el navegador con la cuenta del administrador. Después `cat ~/.config/rclone/rclone.conf` y pega
+   ese texto completo en el secret `RCLONE_CONFIG`; si quieres otra carpeta, secret
+   `BACKUP_GDRIVE_DIR` = `gdrive:NombreDeLaCarpeta` (por defecto `gdrive:PisoLibro-respaldos`).
+   Sin ese secret el paso se omite y el respaldo de GitHub queda igual.
+
+| Simulacro (primer lunes del mes) | Resultado | Quién |
+|---|---|---|
+| ________ | ________ | ________ |
+
 ## Si algo sale muy mal con las notas de laboratorio
 
 El 9 de octubre de 2026 se hizo una limpieza de valores erróneos (pH y
@@ -872,6 +986,8 @@ from notes_lab_history_backup_20261009 b where b.patient_id = n.patient_id;
 | `.github/workflows/winlab-dryrun.yml` | La corrida en seco del domingo (prueba que el robot aún puede entrar a WinLab) |
 | `.github/workflows/ris-scraper.yml` | El robot de imagen (visor RIS → Supabase) |
 | `.github/workflows/labs-watchdog.yml` | El vigilante que avisa si los labs llevan más de 26 h sin llegar |
+| `.github/workflows/db-backup.yml` | El respaldo nocturno cifrado de la base (02:20 León; artifact de 30 días) |
+| `scripts/db-restore.md` | Cómo abrir y restaurar ese respaldo en un proyecto nuevo, y el simulacro mensual |
 | `.github/workflows/ci.yml` | Las pruebas que corren en cada PR y antes de publicar |
 | `.github/workflows/deploy-pages.yml` | Cómo se publica la app en Cloudflare (solo si pasan las pruebas) |
 | `cloudflare-worker/` | El ayudante de IA (extraer labs de PDF, disparar el robot) |

@@ -171,7 +171,7 @@ const MOCK = `(() => {
     const closedPase = !histP.open;
     fcJump(k, 'historia');
     const openedByJump = histP.open;
-    const anchors = ['dx','labs','cx','manejo','plan','pase','entrega','recibo','ic','sug','ind','img','diag','rec'].every(n => !!document.getElementById('sec-' + n + '-' + ek));
+    const anchors = ['dx','labs','cx','manejo','plan','pase','entrega','ic','sug','ind','img','diag','rec'].every(n => !!document.getElementById('sec-' + n + '-' + ek));   // 'recibo' ya no existe: 🕓 Cronología (19 oct 2026)
     togglePaseMode(); // → completo
     const histF = document.getElementById('sec-historia-' + ek);
     const stillClosedFull = !histF.open;
@@ -266,30 +266,28 @@ const MOCK = `(() => {
     const noOldBoxes = !card().querySelector('textarea[data-field="qx"]') && !card().querySelector('textarea[data-field="sangrado"]') && !card().querySelector('textarea[data-field="balance"]');
     const drenNote = !!card().querySelector('.dv-note[data-field="drenajes"]');
     const histTitle = (document.getElementById('sec-historia-' + k.replace(/[^a-zA-Z0-9]/g, '_')).querySelector('summary') || {}).textContent || '';
-    const colored = !!card().querySelector('.fc-blk-cx') && !!card().querySelector('.fc-blk-entrega') && !!card().querySelector('.fc-blk-recibo') && !!card().querySelector('.fc-blk-dx');
+    const colored = !!card().querySelector('.fc-blk-cx') && !!card().querySelector('.fc-crono .fc-blk-entrega') && !card().querySelector('.fc-blk-recibo') && !!card().querySelector('.fc-blk-dx');   // 🕓 Cronología: ya no hay caja Recibido
     window.confirm = () => true;
     removeCirugia(k, id1);
     const afterRemove = getNote(k).checklist.cirugias.length;
-    // 3) Entrega → Recibo: "Tomar guardia" pasa el texto con fecha/hora y vacía Entrega
-    const nd1 = getNote(k); nd1.entrega = 'Pendiente TAC control\nK 2.9 en reposición'; nd1.checklist.recibo = ''; noteData[k] = nd1; renderView();
-    tomarGuardia(k);
+    // 3) 🕓 Cronología (19 oct 2026): lo que había en «Recibido» pasa UNA vez delante de lo de Entrega; la caja Recibido desaparece
+    const nd1 = getNote(k); nd1.entrega = 'Pendiente TAC control\nK 2.9 en reposición'; nd1.checklist.recibo = '— Recibido 18/10 07:30 DG —\nVIGILAR SANGRADO'; noteData[k] = nd1; renderView();
     const nd2 = getNote(k);
     const reciboTa = card().querySelector('textarea[data-ckfield="recibo"]');
     const entregaTa = card().querySelector('textarea[data-field="entrega"]');
     const dirty2 = Array.from(_dirtyUnion(k));
-    // sin texto en Entrega no hace nada
-    window.alert = () => {};
-    tomarGuardia(k);
+    renderView();   // segundo repintado: no duplica
+    const nd3 = getNote(k);
     return { migr, legPop, emptyStays, rows, po, dates, pase, txt, qxFechaSigue, dirty, noOldBoxes, drenNote, histTitle, colored, afterRemove,
-      recibo: nd2.checklist.recibo, entregaVacia: nd2.entrega === '', reciboTa: reciboTa ? reciboTa.value : null, entregaTa: entregaTa ? entregaTa.value : null, dirty2, reciboSigue: getNote(k).checklist.recibo === nd2.checklist.recibo };
+      recibo: nd2.checklist.recibo, entrega: nd2.entrega, reciboTa, entregaTa: entregaTa ? entregaTa.value : null, dirty2, entrega3: nd3.entrega, recibo3: nd3.checklist.recibo };
   });
-  check('U11 cirugías con fechas: migra el texto Qx (líneas con fecha + hallazgos + sangrado + fecha POP) una sola vez; lista con PO dN, más reciente primero, línea de pase, texto resumen, POP sigue a la última; sin cajas Qx/Sangrado/Balance (nota de drenajes sigue); bloques con color; Entrega → Recibo con "Tomar guardia"',
+  check('U11 cirugías con fechas: migra el texto Qx (líneas con fecha + hallazgos + sangrado + fecha POP) una sola vez; lista con PO dN, más reciente primero, línea de pase, texto resumen, POP sigue a la última; sin cajas Qx/Sangrado/Balance (nota de drenajes sigue); bloques con color; 🕓 Cronología: lo de «Recibido» pasa una sola vez delante de lo de Entrega y la caja Recibido desaparece',
     u11.migr.length === 2 && u11.migr[0] === '2026-10-10|LAPE + drenaje de colección|hallazgos: colección interasa 300 mL|' && u11.migr[1] === '2026-10-12|Reintervención||400'
     && u11.legPop.length === 1 && u11.legPop[0] === '2026-10-11|Apendicectomía' && u11.emptyStays === 0
     && u11.rows === 2 && u11.po[0] === 'PO d1' && u11.po[1] === 'PO d5' && u11.dates[0] > u11.dates[1]
     && /POP d1 · Reintervención \+ lavado/.test(u11.pase) && /^Reintervención \+ lavado \(.+, PO d1\) \| LAPE \+ drenaje de colección \(.+, PO d5\) sangrado 400 mL$/.test(u11.txt)
     && u11.qxFechaSigue && u11.dirty.includes('ck_cirugias') && u11.noOldBoxes && u11.drenNote && /APP \/ PA/.test(u11.histTitle) && !/Qx/.test(u11.histTitle) && u11.colored && u11.afterRemove === 1
-    && /^— Recibido \d{2}\/\d{2} \d{2}:\d{2}( [A-ZÁÉÍÓÚÑ]{1,3})? —\nPendiente TAC control\nK 2\.9 en reposición$/.test(u11.recibo) && u11.entregaVacia && u11.reciboTa === u11.recibo && u11.entregaTa === '' && u11.dirty2.includes('entrega') && u11.dirty2.includes('ck_recibo') && u11.reciboSigue, JSON.stringify(u11));
+    && u11.entrega === '— Recibido 18/10 07:30 DG —\nVIGILAR SANGRADO\n\nPendiente TAC control\nK 2.9 en reposición' && u11.recibo === '' && u11.reciboTa === null && u11.entregaTa === u11.entrega && u11.dirty2.includes('entrega') && u11.dirty2.includes('ck_recibo') && u11.entrega3 === u11.entrega && u11.recibo3 === '', JSON.stringify(u11));
 
   check('final: sin errores no capturados', errors.length===0, errors.join(' | '));
   console.log('RESULT APP-UI: '+pass+' passed, '+fail+' failed');
