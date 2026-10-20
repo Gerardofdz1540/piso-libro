@@ -67,9 +67,12 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
     && n1.c6 === null, JSON.stringify(n1));
 
   // ── N1b: cultivo parseado del PDF por el robot (rep.cultivo): germen, BLEE, antibiograma S/I/R y reporte íntegro en la tarjeta ──
-  const n1b = await page.evaluate(() => {
+  // Fechas relativas (la Entrega solo anota cultivos de los últimos 10 días; una fecha fija caducaba): muestra hace 2 días, reporte hoy.
+  const _fx = (d) => { const s = iso(d); return { iso: s, cells: s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4), dot: s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) }; };
+  const N1B_D = { c: _fx(new Date(Date.now() - 2 * 86400e3)), r: _fx(new Date()) };
+  const n1b = await page.evaluate((D) => {
     const k = pid(patients[0]); focusGoTo(k);
-    const rep = { __cells: ['', '', '', '09/10/2026 06:00', '11/10/2026 08:00'], __hasLink: true, __target: true,
+    const rep = { __cells: ['', '', '', D.c.cells + ' 06:00', D.r.cells + ' 08:00'], __hasLink: true, __target: true,
       valores: [{ estudio: 'CULTIVO', valor: 'POSITIVO', referencia: 'Sin desarrollo' }],
       cultivo: { v: 2, tipo: 'Urocultivo', muestra: 'ORINA', resultado: 'POSITIVO', germenes: ['Klebsiella pneumoniae (BLEE)'], blee: true, carbapenemasa: false, mrsa: false, ufc: '> 100,000 UFC/ML',
         antibiograma: [{ antibiotico: 'Amikacina', cim: '<=2', interp: 'S' }, { antibiotico: 'Meropenem', cim: '', interp: 'S' }, { antibiotico: 'Ciprofloxacino', cim: '>=4', interp: 'R' }, { antibiotico: 'Nitrofurantoina', cim: '', interp: 'I' }],
@@ -78,7 +81,7 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
             antibiograma: [{ antibiotico: 'Amikacina', cim: '<=2', interp: 'S' }, { antibiotico: 'Meropenem', cim: '', interp: 'S' }, { antibiotico: 'Ciprofloxacino', cim: '>=4', interp: 'R' }, { antibiotico: 'Nitrofurantoina', cim: '', interp: 'I' }] }] },
       cultivo_texto: 'UROCULTIVO\nMICROORGANISMO AISLADO: Klebsiella pneumoniae BLEE\nAMIKACINA <=2 S' };
     const c = extractWinlabCulture(rep);
-    const cults = buildWinlabCultures({ exp: patients[0].exp, paciente: patients[0].nombre, fecha: '2026-10-11', data: { reportes: [rep] } });
+    const cults = buildWinlabCultures({ exp: patients[0].exp, paciente: patients[0].nombre, fecha: D.r.iso, data: { reportes: [rep] } });
     _winlabCultByK[k] = cults;
     _rerenderCard(k);
     const box = document.querySelector('#card-' + CSS.escape(k) + ' .cultivos-box');
@@ -86,16 +89,17 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
     const items = _entregaItemsFromCultures(cults);
     const nota = _plneBuild(patients[0], getNote(k));
     return { nSec: Array.isArray(c) ? c.length : 0, uro: Array.isArray(c) ? c[1] : null, n: cults.length, fechas: cults.map(x => x.fecha), tipos: cults.map(x => x.tipo), chips, pre: !!(box && box.querySelector('.cultivo-chip details pre')), entrega: items.map(i => i.text), nota: /CULTIVOS: [^\n]*/.exec(nota) ? /CULTIVOS: [^\n]*/.exec(nota)[0].slice(0, 400) : '' };
-  });
+  }, N1B_D);
+  const _cDot = N1B_D.c.dot.replace(/\./g, '\\.');
   check('N1b cultivo del PDF (2 muestras): una entrada por muestra; urocultivo con germen + BLEE + UFC y S/I/R en la tarjeta con el reporte completo plegable; hemocultivo negativo a 5 días; la entrega y la nota dicen a qué es sensible y resistente',
     n1b.nSec === 2 && n1b.uro && n1b.uro.positivo && /Klebsiella pneumoniae \(BLEE\)/.test(n1b.uro.organismo) && n1b.uro.germenes[0].sensibles.length === 2 && n1b.uro.germenes[0].resistentes.length === 1
-    && n1b.n === 2 && n1b.fechas.every(f => f === '2026-10-09') && n1b.tipos.includes('Hemocultivo periférico 1') && n1b.tipos.includes('Urocultivo')
+    && n1b.n === 2 && n1b.fechas.every(f => f === N1B_D.c.iso) && n1b.tipos.includes('Hemocultivo periférico 1') && n1b.tipos.includes('Urocultivo')
     && n1b.chips.some(ch => /Urocultivo/.test(ch) && /PDF/.test(ch) && /Klebsiella pneumoniae \(BLEE\)/.test(ch) && /100,000 UFC/.test(ch) && /S: Amikacina <=2, Meropenem/.test(ch) && /I: Nitrofurantoina/.test(ch) && /R: Ciprofloxacino >=4/.test(ch))
     && n1b.chips.some(ch => /Hemocultivo periférico 1/.test(ch) && /Sin desarrollo \(negativo a 5 días\)/.test(ch)) && n1b.pre
     && n1b.entrega.includes('Urocultivo POSITIVO a Klebsiella pneumoniae (BLEE) > 100,000 UFC/ML (S: Amikacina <=2, Meropenem; I: Nitrofurantoina; R: Ciprofloxacino >=4)')
     && n1b.entrega.includes('Hemocultivo periférico 1 sin desarrollo (negativo a 5 días)')
-    && /UROCULTIVO DEL 09\.10\.2026 POSITIVO A KLEBSIELLA PNEUMONIAE \(BLEE\) > 100,000 UFC\/ML \(SENSIBLE A AMIKACINA <=2, MEROPENEM; INTERMEDIO A NITROFURANTOINA; RESISTENTE A CIPROFLOXACINO >=4\)/.test(n1b.nota)
-    && /HEMOCULTIVO PERIFÉRICO 1 DEL 09\.10\.2026 SIN DESARROLLO \(NEGATIVO A 5 DÍAS\)/.test(n1b.nota), JSON.stringify(n1b));
+    && new RegExp('UROCULTIVO DEL ' + _cDot + ' POSITIVO A KLEBSIELLA PNEUMONIAE \\(BLEE\\) > 100,000 UFC/ML \\(SENSIBLE A AMIKACINA <=2, MEROPENEM; INTERMEDIO A NITROFURANTOINA; RESISTENTE A CIPROFLOXACINO >=4\\)').test(n1b.nota)
+    && new RegExp('HEMOCULTIVO PERIFÉRICO 1 DEL ' + _cDot + ' SIN DESARROLLO \\(NEGATIVO A 5 DÍAS\\)').test(n1b.nota), JSON.stringify(n1b));
 
   // ── N2: novedades automáticas en la entrega (labs con alteraciones, RIS, cultivos), idempotentes ──
   const n2 = await page.evaluate(async (ayer) => {
