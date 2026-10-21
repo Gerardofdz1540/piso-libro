@@ -29,12 +29,31 @@
 //   C17b ítem SIN lista con la Guardia IGUAL a la base y un trazo escrito sin red, y un lab → la cola se queda solo con el
 //       trazo (["body_diagram_post"]); un colega escribe W en la Guardia: la carga lo muestra y al reintentar la base
 //       tiene W y el trazo
-//   C18 Guardia en la cola y Realtime pone en memoria la de la base (con una casilla del colega) antes del lab → la cola
-//       conserva lo escrito sin red y al reintentar sube, con la casilla del colega intacta
+//   C18 Guardia en la cola y Realtime trae una casilla del colega antes del lab → la casilla entra y la Guardia de la cola
+//       se queda en pantalla y en la copia local; la cola conserva lo escrito sin red y al reintentar sube, con la casilla
+//       del colega intacta
 //   C19 Guardia en la cola (dirty ["entrega"]) cuya subida falló, un lab y DESPUÉS un colega cambia por Realtime casillas
 //       (atb, npo), signos (pm_fc), Pendientes R1 y Cultivos → el reintento sube el checklist VIGENTE: la base conserva
 //       lo del colega y recibe la Guardia; C19b con dirty ["checklist","entrega"] (sin lab) sigue subiendo el checklist
 //       del ítem: la casilla que este equipo marcó sin red llega a la base
+//   C20 la cola sube y la base guarda la Guardia con un renglón de otro equipo que la subida no traía → pantalla, meta y
+//       copia local con lo de la base, y la siguiente edición lo conserva; C20b si la respuesta llega mientras se escribe
+//       en la Guardia, se queda lo que se escribe
+//   C21 un colega guarda mientras la respuesta de la subida viene en camino (su Realtime llega antes) → la caja suma su
+//       renglón a lo de la cola; la respuesta, más vieja, no regresa la memoria; la nota se relee (aunque haya supresión
+//       y la primera relectura falle); C21b con otro ítem más nuevo
+//       encolado mientras tanto, la memoria se queda con el de la cola y la siguiente subida lo lleva
+//   C21c/C21d lo más nuevo llega por la respuesta de un push directo propio o por una carga antes que la respuesta de la
+//       cola → la memoria no se regresa; se relee la nota
+//   C22 límites de Realtime sobre la cola: con la Guardia en edición se queda lo que se escribe; un ítem sin lista no tapa
+//       lo del colega
+//   C23 la cola sube el ítem VIGENTE: un push directo que ya subió la Guardia (con un renglón más) quita el ítem y la
+//       tanda siguiente no sube la copia vieja; C23b si la subida de la cola llega a la base después de un push directo
+//       más nuevo y lo regresa, la memoria se queda con lo nuevo y se vuelve a subir
+//   C24 con varias notas en la cola, la que ya subió sale de la cola en ese momento: el eco de Realtime con el flush en
+//       curso muestra lo de la base
+//   C25 ítem atorado en la cola y un colega que agrega un renglón a la Guardia por Realtime → la caja muestra los dos (sin
+//       revivir lo que este equipo quitó) y la siguiente edición lo conserva; C21e subida sin cambios ([]) → se relee igual
 //   C13c 📜 Restaurar versión con labHistory marcado y otro diagrama → el diagrama restaurado sube y se queda
 //   C7  aviso de versión nueva (PL_BUILD en index.html y "v" en version.json; window.__PL_BUILD_TEST__ lo enciende en
 //       pruebas): a los 15 s pide ./version.json?ts= con cache no-store; error de red / 404 / archivo raro / sin red /
@@ -120,8 +139,8 @@ function mockSupabase(ctx, store, ctl, calls) {
     if (ctl.offline) return route.abort('internetdisconnected');   // setOffline no corta las peticiones interceptadas
     const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
     let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
-    calls.push({ m, url, body, t: Date.now() });
-    const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+    const call = { m, url, body, t: Date.now() }; calls.push(call);
+    const json = (status, obj) => { call.status = status; return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) }); };
     if (url.startsWith('/rest/v1/patients')) {
       if (m === 'GET') {
         const eq = /id=eq\.([^&]+)/.exec(url);
@@ -132,8 +151,12 @@ function mockSupabase(ctx, store, ctl, calls) {
     if (url.startsWith('/rest/v1/notes')) {
       if (m === 'GET') {
         const eq = /patient_id=eq\.([^&]+)/.exec(url);
+        if (eq && ctl.failGetOnce && ctl.failGetOnce.delete(decodeURIComponent(eq[1]))) return json(500, { message: 'boom' });   // C21: una relectura que falla
         const rows = JSON.parse(JSON.stringify(eq ? [store.notes[decodeURIComponent(eq[1])]].filter(Boolean) : Object.values(store.notes)));   // foto al llegar la petición
         if (!eq && ctl.slowLoadMs) await new Promise(r => setTimeout(r, ctl.slowLoadMs));   // carga lenta (C3b): la foto ya es vieja al llegar
+        // Relectura de una nota (select con updated_at) retenida: la foto es la de cuando llegó la petición (C20).
+        const holdG = eq && ctl.holdGetFor && /updated_at/.test(decodeURIComponent(url)) && ctl.holdGetFor[decodeURIComponent(eq[1])];
+        if (holdG) await holdG;
         // Solo las columnas pedidas (select=…), como PostgREST: sin updated_at en el select la app no lo recibe (C11).
         const sel = /[?&]select=([^&]+)/.exec(url), cols = sel ? decodeURIComponent(sel[1]).split(',').map(c => c.trim()) : null;
         return json(200, cols && !cols.includes('*') ? rows.map(r => Object.fromEntries(cols.filter(c => c in r).map(c => [c, r[c]]))) : rows);
@@ -143,10 +166,31 @@ function mockSupabase(ctx, store, ctl, calls) {
       if (rows.some(r => r && ctl.failPost.has(r.patient_id))) return json(500, { message: 'boom' });
       // Solo falla lo que lleva el checklist (la Guardia) de esos pacientes; un push de solo labs sí sube (C12).
       if (ctl.failGuardia && rows.some(r => r && ctl.failGuardia.has(r.patient_id) && r.checklist !== undefined)) return json(500, { message: 'boom' });
+      const idAntes = ctl.holdNextBeforeWriteFor && rows.map(r => r && r.patient_id).find(id => ctl.holdNextBeforeWriteFor[id]);   // llega a la base tarde (C23b)
+      if (idAntes) { const pr = ctl.holdNextBeforeWriteFor[idAntes]; delete ctl.holdNextBeforeWriteFor[idAntes]; await pr; }
+      const sinCambio = new Set();
       rows.forEach(r => {
-        if (!r || !r.patient_id) return; const cur = store.notes[r.patient_id] || noteRow(r.patient_id, {}); Object.keys(r).forEach(c => { if (c !== 'updated_by') cur[c] = JSON.parse(JSON.stringify(r[c])); }); cur.updated_at = pgTs(); store.notes[r.patient_id] = cur;   // copia: `calls` guarda el cuerpo tal como se envió
+        if (!r || !r.patient_id) return; const cur = store.notes[r.patient_id] || noteRow(r.patient_id, {});
+        const firma = (x) => JSON.stringify(Object.assign({}, x, { updated_at: null }), (kk, v) => (v && typeof v === 'object' && !Array.isArray(v)) ? Object.keys(v).sort().reduce((o, k2) => (o[k2] = v[k2], o), {}) : v), antes = store.notes[r.patient_id] ? firma(cur) : null;
+        Object.keys(r).forEach(c => { if (c !== 'updated_by') cur[c] = JSON.parse(JSON.stringify(r[c])); }); store.notes[r.patient_id] = cur;   // copia: `calls` guarda el cuerpo tal como se envió
+        // Como pl_entrega_protegida con el renglón de otro equipo de hace menos de 15 min (C20): la base lo conserva aunque
+        // la subida no lo traiga.
+        const extraL = ctl.serverAddLine && ctl.serverAddLine[r.patient_id], mt = cur.checklist && cur.checklist.__pl_note_meta;
+        if (extraL && mt && r.checklist !== undefined && String(mt.entrega || '').split('\n').indexOf(extraL) === -1) mt.entrega = (mt.entrega ? mt.entrega + '\n' : '') + extraL;
+        // Como pl_zz_sin_cambios: una subida que no cambia nada no toca updated_at y PostgREST responde sin esa fila ([]).
+        if (antes !== null && firma(cur) === antes) sinCambio.add(r.patient_id); else cur.updated_at = pgTs();
       });
-      return json(201, rows.map(r => ({ patient_id: r && r.patient_id })));
+      call.sinCambio = rows.some(r => r && sinCambio.has(r.patient_id));
+      // La fila completa como queda en la base, como PostgREST con return=representation (21 oct 2026): la app la usa para
+      // dejar en memoria lo que la base tiene tras subir la cola. La copia se toma AL ESCRIBIR (C21: la respuesta se retiene
+      // y mientras tanto otro equipo guarda).
+      const filas = rows.filter(r => r && r.patient_id && !sinCambio.has(r.patient_id)).map(r => JSON.parse(JSON.stringify(store.notes[r.patient_id])));
+      if (ctl.holdPost) await ctl.holdPost;
+      const holdP = ctl.holdPostFor && rows.map(r => r && ctl.holdPostFor[r.patient_id]).find(Boolean);   // solo la de ese paciente (C24)
+      if (holdP) await holdP;
+      const idUno = ctl.holdNextPostFor && rows.map(r => r && r.patient_id).find(id => ctl.holdNextPostFor[id]);   // solo la siguiente de ese paciente (C21c, C21d)
+      if (idUno) { const pr = ctl.holdNextPostFor[idUno]; delete ctl.holdNextPostFor[idUno]; await pr; }
+      return json(201, filas);
     }
     return json(200, []);
   });
@@ -189,7 +233,14 @@ function mockSupabase(ctx, store, ctl, calls) {
   const GB24 = '20/10 07:42 GF: BASE DE LA TARJETA VEINTICUATRO';
   const B25 = '20/10 07:43 GF: BASE DE LA TARJETA VEINTICINCO', D25 = 'data:image/png;base64,VFJBWk9TSU5SRURWRUlOVElDSU5DTw==';
   const B26 = '20/10 07:44 GF: BASE DE LA TARJETA VEINTISÉIS', D26_1 = 'data:image/png;base64,VFJBWk9WSUVKT1ZFSU5USVNFSVM=', D26_2 = 'data:image/png;base64,VFJBWk9DT0xFR0FWRUlOVElTRUlT';
-  const extra = [[11, 'ONCE'], [12, 'DOCE'], [13, 'TRECE'], [14, 'CATORCE'], [15, 'QUINCE'], [16, 'DIECISÉIS'], [17, 'DIECISIETE'], [18, 'DIECIOCHO'], [19, 'DIECINUEVE'], [20, 'VEINTE'], [21, 'VEINTIUNO'], [22, 'VEINTIDÓS'], [23, 'VEINTITRÉS'], [24, 'VEINTICUATRO'], [25, 'VEINTICINCO'], [26, 'VEINTISÉIS']].map(([n, w]) => ({ id: 'g' + n, cama: '3-' + (180 + n), exp: '26-9' + String(180 + n).padStart(4, '0'), nombre: 'PRUEBA FICTICIA ' + w, esp: 'CG', estado: 'ESTABLE' }));
+  // C20, C21 (la cola tras subir: lo que la base tiene vuelve a la memoria, 21 oct 2026).
+  const B27 = '20/10 07:45 GF: BASE DE LA TARJETA VEINTISIETE', B28 = '20/10 07:46 GF: BASE DE LA TARJETA VEINTIOCHO';
+  const B29 = '20/10 07:47 GF: BASE DE LA TARJETA VEINTINUEVE';
+  const B30 = '20/10 07:48 GF: BASE DE LA TARJETA TREINTA', B31 = '20/10 07:49 GF: BASE DE LA TARJETA TREINTA Y UNO';
+  const B32 = '20/10 07:50 GF: BASE DE LA TARJETA TREINTA Y DOS', B33 = '20/10 07:51 GF: BASE DE LA TARJETA TREINTA Y TRES';
+  const B36 = '20/10 07:55 GF: BASE DE LA TARJETA TREINTA Y SEIS';
+  const B34 = '20/10 07:52 GF: BASE DE LA TARJETA TREINTA Y CUATRO', OLD34 = '20/10 07:53 GF: RENGLÓN QUE ESTE EQUIPO BORRÓ SIN RED', B35 = '20/10 07:54 GF: BASE DE LA TARJETA TREINTA Y CINCO';
+  const extra = [[11, 'ONCE'], [12, 'DOCE'], [13, 'TRECE'], [14, 'CATORCE'], [15, 'QUINCE'], [16, 'DIECISÉIS'], [17, 'DIECISIETE'], [18, 'DIECIOCHO'], [19, 'DIECINUEVE'], [20, 'VEINTE'], [21, 'VEINTIUNO'], [22, 'VEINTIDÓS'], [23, 'VEINTITRÉS'], [24, 'VEINTICUATRO'], [25, 'VEINTICINCO'], [26, 'VEINTISÉIS'], [27, 'VEINTISIETE'], [28, 'VEINTIOCHO'], [29, 'VEINTINUEVE'], [30, 'TREINTA'], [31, 'TREINTA Y UNO'], [32, 'TREINTA Y DOS'], [33, 'TREINTA Y TRES'], [34, 'TREINTA Y CUATRO'], [35, 'TREINTA Y CINCO'], [36, 'TREINTA Y SEIS']].map(([n, w]) => ({ id: 'g' + n, cama: '3-' + (180 + n), exp: '26-9' + String(180 + n).padStart(4, '0'), nombre: 'PRUEBA FICTICIA ' + w, esp: 'CG', estado: 'ESTABLE' }));
   const store = {
     patients: [1, 2, 3, 4, 5, 6, 7].map(n => ({ id: 'g' + n, cama: '3-' + (158 + n), exp: '26-9' + String(158 + n).padStart(4, '0'), nombre: 'PRUEBA FICTICIA ' + ['UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE'][n - 1], esp: 'CG', estado: 'ESTABLE' })).concat(extra),
     notes: {
@@ -209,6 +260,16 @@ function mockSupabase(ctx, store, ctl, calls) {
       g24: noteRow('g24', { npo: false, atb: false, pm_fc: '80', __pl_note_meta: { entrega: GB24 } }),
       g25: noteRow('g25', { npo: false, __pl_note_meta: { entrega: B25 } }),
       g26: noteRow('g26', { npo: false, __pl_note_meta: { entrega: B26, body_diagram_post: D26_1 } }),
+      g27: noteRow('g27', { npo: false, __pl_note_meta: { entrega: B27 } }, { pendientes: 'PEND BASE 27' }),
+      g28: noteRow('g28', { npo: false, __pl_note_meta: { entrega: B28 } }),
+      g29: noteRow('g29', { npo: false, atb: false, __pl_note_meta: { entrega: B29 } }, { pendientes: 'PEND BASE 29' }),
+      g30: noteRow('g30', { npo: false, __pl_note_meta: { entrega: B30 } }),
+      g31: noteRow('g31', { npo: false, __pl_note_meta: { entrega: B31 } }),
+      g32: noteRow('g32', { npo: false, __pl_note_meta: { entrega: B32 } }),
+      g33: noteRow('g33', { npo: false, __pl_note_meta: { entrega: B33 } }),
+      g34: noteRow('g34', { npo: false, __pl_note_meta: { entrega: B34 + '\n' + OLD34 } }),
+      g35: noteRow('g35', { npo: false, __pl_note_meta: { entrega: B35 } }),
+      g36: noteRow('g36', { npo: false, __pl_note_meta: { entrega: B36 } }, { pendientes: 'PEND 36' }),
       g1: noteRow('g1', { npo: false, __pl_note_meta: { entrega: L1 } }),
       g2: noteRow('g2', { __pl_note_meta: { entrega: 'BASE G2' } }),
       g3: noteRow('g3', { __pl_note_meta: { entrega: L3 } }),
@@ -226,6 +287,12 @@ function mockSupabase(ctx, store, ctl, calls) {
   await ctxG.route('**/vendor/supabase*', r => r.abort());
   await mockSupabase(ctxG, store, ctl, calls);
   await ctxG.addInitScript(mockScript({ quietAlert: true }));
+  // Subir la cola sin chocar con una subida en curso (el intervalo de 30 s o la de la carga): flushOutbox() devolvía la que
+  // ya corría (su foto de la cola) y la nueva quedaba para después; con la máquina cargada, C2b fallaba a veces.
+  await ctxG.addInitScript(() => {
+    window.__sinFlush = async () => { while (typeof _flushing !== 'undefined' && _flushing) { try { await _flushing; } catch (_) {} } };
+    window.__flushLimpio = async () => { await window.__sinFlush(); try { await flushOutbox(); } catch (_) {} await window.__sinFlush(); };
+  });
   const page = await ctxG.newPage(); watch(page, 'G');
   const ready = (pg, n) => pg.waitForFunction((n) => typeof patients !== 'undefined' && patients.length === n && typeof _noteBaseline !== 'undefined' && !!_noteBaseline.g1 && document.getElementById('card-su-g1'), n, { timeout: 30000 });
   await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
@@ -262,6 +329,9 @@ function mockSupabase(ctx, store, ctl, calls) {
   await page.waitForFunction(() => noteData['su-g7'] && noteData['su-g7'].checklist && noteData['su-g7'].checklist.npo === true, null, { timeout: 15000 }).catch(() => {});
   await page.waitForFunction((L1) => { const ta = document.querySelector('#card-su-g1 textarea[data-field="entrega"]'); return ta && ta.value === L1; }, L1, { timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(500);
+  // Sin la subida periódica de la cola (cada 30 s): cada caso sube la cola cuando le toca (__flushLimpio); si no, a veces se
+  // colaba entre armar la cola y la carga de un caso (C15: la carga ya no veía el ítem y mostraba la foto).
+  await page.evaluate(() => { try { clearInterval(syncInterval); } catch (_) {} });
   const view = (k) => page.evaluate((k) => {
     const nd = noteData[k] || {}; const cl = nd.checklist || {}; const meta = cl.__pl_note_meta || null;
     const entrega = nd.entrega, metaEntrega = meta ? (meta.entrega === undefined ? null : meta.entrega) : 'sin meta';   // antes de getNote (migrateNote rellena)
@@ -305,7 +375,7 @@ function mockSupabase(ctx, store, ctl, calls) {
   // C2b: al volver a poder subir, el POST de g2 lleva la Guardia de la cola.
   ctl.failPost = new Set(['g6', 'g7']);
   calls.length = 0;
-  await page.evaluate(() => flushOutbox());
+  await page.evaluate(() => __flushLimpio());
   const post2 = calls.filter(c => c.m === 'POST' && c.url.startsWith('/rest/v1/notes') && c.body && c.body.patient_id === 'g2').pop();
   const meta2 = post2 && post2.body.checklist && post2.body.checklist.__pl_note_meta;
   const c2b = await view('su-g2');
@@ -438,8 +508,8 @@ function mockSupabase(ctx, store, ctl, calls) {
     const k = 'su-g12';
     const nd = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); nd.entrega = q; _entregaMetaAlign(nd);   // como la dejó la carga (cola encima)
     noteData[k] = nd; lsSaveNote(k, nd);
-    outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
-    await flushOutbox();                                    // la subida de la cola falla (la Guardia no pasa)
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    await __flushLimpio();                                    // la subida de la cola falla (la Guardia no pasa)
     return { q: outboxLoad().length };
   }, Q12);
   calls.length = 0;
@@ -449,13 +519,13 @@ function mockSupabase(ctx, store, ctl, calls) {
     await new Promise(r => setTimeout(r, 1200));            // autoguardado + debounce del push
     for (let i = 0; i < 60 && (_pendingPush.has(k) || pendingSyncs > 0); i++) await new Promise(r => setTimeout(r, 100));
   });
-  const labPosts12 = postsDe('g12').map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
+  const labPosts12 = postsDe('g12').filter(c => c.status !== 500).map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
   const c12b = await vista('su-g12');
   const c12c = await page.evaluate(async () => { const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft(); return true; });
   await page.waitForTimeout(300);
   const c12d = await vista('su-g12');
   ctl.failGuardia.clear(); calls.length = 0;
-  await page.evaluate(() => flushOutbox());
+  await page.evaluate(() => __flushLimpio());
   const post12 = postsDe('g12').pop();
   const c12e = await vista('su-g12');
   check('C12 Guardia en la cola cuya subida falló y, antes del reintento, un lab tecleado en esa tarjeta (push de solo lab_history, con éxito): la Guardia sigue en la cola (dirty ["entrega"]), la siguiente carga la deja en modelo, caja y copia local, y al reintentar sube a la base',
@@ -527,8 +597,8 @@ function mockSupabase(ctx, store, ctl, calls) {
     const k = 'su-g15';
     const nd = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); nd.body_diagram_post = d;   // como la dejó la carga (cola encima)
     noteData[k] = nd; lsSaveNote(k, nd);
-    outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['body_diagram_post'], ts: Date.now() - 60000 }]); updateOutboxBadge();
-    await flushOutbox();                                    // la subida de la cola falla (el checklist no pasa)
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['body_diagram_post'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    await __flushLimpio();                                    // la subida de la cola falla (el checklist no pasa)
     return { q: outboxLoad().length };
   }, D15_COLA);
   calls.length = 0;
@@ -538,14 +608,14 @@ function mockSupabase(ctx, store, ctl, calls) {
     await new Promise(r => setTimeout(r, 1200));            // autoguardado + debounce del push
     for (let i = 0; i < 60 && (_pendingPush.has(k) || pendingSyncs > 0); i++) await new Promise(r => setTimeout(r, 100));
   });
-  const labPosts14 = postsDe('g15').map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
+  const labPosts14 = postsDe('g15').filter(c => c.status !== 500).map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
   const c14b = await diag('su-g15');
   await page.evaluate(async () => { const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft(); });
   await page.waitForTimeout(300);
   const c14c = await diag('su-g15');
   const base14c = store.notes.g15.checklist.__pl_note_meta.body_diagram_post;
   ctl.failGuardia.clear(); calls.length = 0;
-  await page.evaluate(() => flushOutbox());
+  await page.evaluate(() => __flushLimpio());
   const post14d = postsDe('g15').pop();
   const c14d = await diag('su-g15');
   const meta15 = store.notes.g15.checklist.__pl_note_meta;
@@ -567,11 +637,11 @@ function mockSupabase(ctx, store, ctl, calls) {
   const c15a = await page.evaluate(async ({ vieja, dv }) => {
     const k = 'su-g16';
     const loc = { entrega: noteData[k].entrega, post: noteData[k].body_diagram_post, ls: (JSON.parse(localStorage.getItem('note-' + k) || '{}')).entrega };
-    outboxSave([{ type: 'note', key: k, data: { app: '', pa: '', pendientes: '', entrega: vieja, body_diagram_post: dv, labHistory: [], imagenHistory: [], checklist: { npo: true, __pl_note_meta: { entrega: vieja, body_diagram_post: dv } } }, dirty: ['checklist'], ts: Date.now() - 3 * 3600000 }]);
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: { app: '', pa: '', pendientes: '', entrega: vieja, body_diagram_post: dv, labHistory: [], imagenHistory: [], checklist: { npo: true, __pl_note_meta: { entrega: vieja, body_diagram_post: dv } } }, dirty: ['checklist'], ts: Date.now() - 3 * 3600000 }]);
     updateOutboxBadge();
     const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft();   // carga con el ítem en la cola (como al abrir)
     const antes = { entrega: noteData[k].entrega, post: noteData[k].body_diagram_post, npo: noteData[k].checklist.npo };
-    await flushOutbox();
+    await __flushLimpio();
     return { loc, antes, q: outboxLoad().filter(i => i.type === 'note' && i.key === k).length };
   }, { vieja: VIEJA16, dv: D16_VIEJO });
   const post15 = postsDe('g16').pop();
@@ -594,12 +664,12 @@ function mockSupabase(ctx, store, ctl, calls) {
   calls.length = 0;
   const c15b = await page.evaluate(async ({ b, dv }) => {
     const k = 'su-g22';
-    outboxSave([{ type: 'note', key: k, data: { app: '', pa: '', pendientes: '', entrega: b, body_diagram_post: dv, labHistory: [], imagenHistory: [], checklist: { npo: true, __pl_note_meta: { entrega: b, body_diagram_post: dv } } }, dirty: ['checklist'], ts: Date.now() - 3 * 3600000 }]);
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: { app: '', pa: '', pendientes: '', entrega: b, body_diagram_post: dv, labHistory: [], imagenHistory: [], checklist: { npo: true, __pl_note_meta: { entrega: b, body_diagram_post: dv } } }, dirty: ['checklist'], ts: Date.now() - 3 * 3600000 }]);
     updateOutboxBadge();
     const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft();
     const nd = noteData[k];
     const antes = { post: nd.body_diagram_post, metaPost: ((nd.checklist || {}).__pl_note_meta || {}).body_diagram_post, shown: getNote(k).body_diagram_post, npo: nd.checklist.npo };
-    await flushOutbox();
+    await __flushLimpio();
     return { antes, q: outboxLoad().filter(i => i.type === 'note' && i.key === k).length };
   }, { b: B22, dv: D22_VIEJO });
   const post15b = postsDe('g22').pop(), meta22 = store.notes.g22.checklist.__pl_note_meta || {};
@@ -739,10 +809,10 @@ function mockSupabase(ctx, store, ctl, calls) {
   const c17a = await page.evaluate(async (gl) => {
     const k = 'su-g19';
     const loc = { app: '', pa: '', pendientes: '', entrega: gl, body_diagram_ant: '', body_diagram_post: '', labHistory: [], imagenHistory: [], checklist: { npo: false, __pl_note_meta: { entrega: gl } } };
-    outboxSave([{ type: 'note', key: k, data: loc, dirty: null, ts: Date.now() - 60000 }]); updateOutboxBadge();
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: loc, dirty: null, ts: Date.now() - 60000 }]); updateOutboxBadge();
     const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft();   // carga con el ítem en la cola (como al abrir)
     const tras = { ant: noteData[k].body_diagram_ant, entrega: noteData[k].entrega };
-    await flushOutbox();                                    // la subida de la cola falla (el checklist no pasa)
+    await __flushLimpio();                                    // la subida de la cola falla (el checklist no pasa)
     return { tras, q: outboxLoad().filter(i => i.type === 'note' && i.key === k).length };
   }, GL19);
   calls.length = 0;
@@ -752,10 +822,10 @@ function mockSupabase(ctx, store, ctl, calls) {
     await new Promise(r => setTimeout(r, 1200));
     for (let i = 0; i < 60 && (_pendingPush.has(k) || pendingSyncs > 0); i++) await new Promise(r => setTimeout(r, 100));
   });
-  const labPosts17 = postsDe('g19').map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
+  const labPosts17 = postsDe('g19').filter(c => c.status !== 500).map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
   const c17b = await page.evaluate(() => outboxLoad().filter(i => i.type === 'note' && i.key === 'su-g19').map(i => ({ dirty: i.dirty, entrega: i.data && i.data.entrega })));
   ctl.failGuardia.clear(); calls.length = 0;
-  await page.evaluate(() => flushOutbox());
+  await page.evaluate(() => __flushLimpio());
   const post17 = postsDe('g19').pop(), meta19 = Object.assign({}, store.notes.g19.checklist.__pl_note_meta);
   await page.evaluate(async () => { const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft(); });
   await page.waitForTimeout(300);
@@ -778,10 +848,10 @@ function mockSupabase(ctx, store, ctl, calls) {
   const c17ba = await page.evaluate(async ({ b, d }) => {
     const k = 'su-g25';
     const loc = { app: '', pa: '', pendientes: '', entrega: b, body_diagram_ant: '', body_diagram_post: d, labHistory: [], imagenHistory: [], checklist: { npo: false, __pl_note_meta: { entrega: b, body_diagram_post: d } } };
-    outboxSave([{ type: 'note', key: k, data: loc, dirty: null, ts: Date.now() - 60000 }]); updateOutboxBadge();
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: loc, dirty: null, ts: Date.now() - 60000 }]); updateOutboxBadge();
     const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft();   // carga con el ítem en la cola (como al abrir)
     const tras = { post: noteData[k].body_diagram_post, entrega: noteData[k].entrega };
-    await flushOutbox();                                    // la subida de la cola falla (el checklist no pasa)
+    await __flushLimpio();                                    // la subida de la cola falla (el checklist no pasa)
     return { tras, q: outboxLoad().filter(i => i.type === 'note' && i.key === k).length };
   }, { b: B25, d: D25 });
   calls.length = 0;
@@ -791,7 +861,7 @@ function mockSupabase(ctx, store, ctl, calls) {
     await new Promise(r => setTimeout(r, 1200));
     for (let i = 0; i < 60 && (_pendingPush.has(k) || pendingSyncs > 0); i++) await new Promise(r => setTimeout(r, 100));
   });
-  const labPosts17b = postsDe('g25').map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
+  const labPosts17b = postsDe('g25').filter(c => c.status !== 500).map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
   const c17bb = await page.evaluate(() => outboxLoad().filter(i => i.type === 'note' && i.key === 'su-g25').map(i => ({ dirty: i.dirty, post: i.data && i.data.body_diagram_post })));
   store.notes.g25.checklist = { npo: false, __pl_note_meta: { entrega: B25 + '\n' + W25 } }; store.notes.g25.updated_at = pgTs();
   await page.evaluate(async () => { const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft(); });
@@ -799,7 +869,7 @@ function mockSupabase(ctx, store, ctl, calls) {
   const c17bc = await vista('su-g25'), d17bc = await diag('su-g25');
   await esperarFlush();
   ctl.failGuardia.clear(); calls.length = 0;
-  await page.evaluate(() => flushOutbox());
+  await page.evaluate(() => __flushLimpio());
   const post17b = postsDe('g25').pop(), meta25 = Object.assign({}, store.notes.g25.checklist.__pl_note_meta);
   const q17b = await page.evaluate(() => outboxLoad().filter(i => i.type === 'note' && i.key === 'su-g25').length);
   const BW25 = B25 + '\n' + W25;
@@ -812,10 +882,11 @@ function mockSupabase(ctx, store, ctl, calls) {
     JSON.stringify({ c17ba: { q: c17ba.q, entrega: c17ba.tras.entrega, post: String(c17ba.tras.post).slice(-12) }, labPosts17b, c17bb: c17bb.map(i => ({ dirty: i.dirty, post: String(i.post).slice(-12) })), c17bc, d17bc: { post: String(d17bc.post).slice(-12), shown: String(d17bc.shown).slice(-12), ls: String(d17bc.ls).slice(-12) }, meta25: { entrega: meta25.entrega, post: String(meta25.body_diagram_post).slice(-12) }, q17b }));
 
   // C18 (t2 rtlab de la revisión): la Guardia escrita sin red espera en la cola (dirty ["entrega"]) y su subida falla. Un
-  // colega marca una casilla (atb) y Realtime trae su fila: como la Guardia no está sucia en memoria, la nota en memoria
-  // toma la de la base. Después se teclea un lab: el ítem que se queda en la cola debe llevar lo escrito sin red (antes se
-  // rehacía todo con la nota en memoria y la Guardia escrita sin red se perdía) y, al reintentar, subir con la casilla del
-  // colega intacta.
+  // colega marca una casilla (atb) y Realtime trae su fila. 21 oct 2026: la casilla entra, pero la Guardia de la cola se
+  // queda en memoria, en la caja y en la copia local (antes la nota en memoria tomaba la de la base: quien escribía
+  // después en la caja lo hacía sin el renglón escrito sin red, y en CI la siguiente carga a veces la reponía vieja).
+  // Después se teclea un lab: el ítem que se queda en la cola debe llevar lo escrito sin red y, al reintentar, subir con
+  // la casilla del colega intacta.
   const GL20 = GB20 + '\n20/10 08:20 GF: ESCRITO SIN RED, ESPERA EN LA COLA';
   ctl.failGuardia = new Set(['g20']);
   await vista('su-g20');
@@ -823,12 +894,17 @@ function mockSupabase(ctx, store, ctl, calls) {
     const k = 'su-g20';
     const nd = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); nd.entrega = gl; _entregaMetaAlign(nd);   // como la dejó la carga (cola encima)
     noteData[k] = nd; lsSaveNote(k, nd);
-    outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
-    await flushOutbox();                                    // la subida de la cola falla
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    await __flushLimpio();                                    // la subida de la cola falla
     return { q: outboxLoad().length };
   }, GL20);
   store.notes.g20.checklist = Object.assign({}, store.notes.g20.checklist, { atb: true }); store.notes.g20.updated_at = pgTs();
-  const rt18 = await page.evaluate((row) => { if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row }); return { entrega: noteData['su-g20'].entrega, atb: noteData['su-g20'].checklist.atb }; }, JSON.parse(JSON.stringify(store.notes.g20)));
+  const rt18 = await page.evaluate((row) => {
+    if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row });
+    let ls = {}; try { ls = JSON.parse(localStorage.getItem('note-su-g20') || '{}'); } catch (_) {}
+    const nd = noteData['su-g20'];
+    return { entrega: nd.entrega, meta: ((nd.checklist || {}).__pl_note_meta || {}).entrega, ls: ls.entrega, atb: nd.checklist.atb };
+  }, JSON.parse(JSON.stringify(store.notes.g20)));
   await page.evaluate(async () => {
     const k = 'su-g20';
     updateLabHistory(k, todayStr(), getLabKeys()[0], '12.5');
@@ -836,14 +912,15 @@ function mockSupabase(ctx, store, ctl, calls) {
     for (let i = 0; i < 60 && (_pendingPush.has(k) || pendingSyncs > 0); i++) await new Promise(r => setTimeout(r, 100));
   });
   const c18b = await page.evaluate(() => outboxLoad().filter(i => i.type === 'note' && i.key === 'su-g20').map(i => ({ dirty: i.dirty, entrega: i.data && i.data.entrega, meta: ((i.data && i.data.checklist || {}).__pl_note_meta || {}).entrega, atb: (i.data && i.data.checklist || {}).atb })));
+  await esperarFlush();
   ctl.failGuardia.clear(); calls.length = 0;
-  await page.evaluate(() => flushOutbox());
+  await page.evaluate(() => __flushLimpio());
   const base18 = { entrega: store.notes.g20.checklist.__pl_note_meta.entrega, atb: store.notes.g20.checklist.atb };
   await page.evaluate(async () => { const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft(); });
   await page.waitForTimeout(300);
   const c18c = await vista('su-g20');
-  check('C18 Guardia en la cola cuya subida falló, Realtime pone en memoria la de la base (con una casilla de un colega) y se teclea un lab: el ítem que se queda lleva lo escrito sin red (en la nota y en el meta) con la casilla vigente, al reintentar la base tiene esa Guardia y la casilla del colega, y la siguiente carga la muestra',
-    c18a.q === 1 && rt18.entrega === GB20 && rt18.atb === true
+  check('C18 Guardia en la cola cuya subida falló, Realtime trae una casilla de un colega (entra, y la Guardia de la cola se queda en memoria, meta y copia local) y se teclea un lab: el ítem que se queda lleva lo escrito sin red (en la nota y en el meta) con la casilla vigente, al reintentar la base tiene esa Guardia y la casilla del colega, y la siguiente carga la muestra',
+    c18a.q === 1 && rt18.entrega === GL20 && rt18.meta === GL20 && rt18.ls === GL20 && rt18.atb === true
     && c18b.length === 1 && c18b[0].dirty.join() === 'entrega' && c18b[0].entrega === GL20 && c18b[0].meta === GL20 && c18b[0].atb === true
     && base18.entrega === GL20 && base18.atb === true && c18c.entrega === GL20 && c18c.ta === GL20 && c18c.q === 0,
     JSON.stringify({ c18a, rt18, c18b, base18, c18c }));
@@ -863,10 +940,10 @@ function mockSupabase(ctx, store, ctl, calls) {
   const c19a = await page.evaluate(async ({ gl, ck }) => {
     const k = 'su-g23';
     const loc = { app: '', pa: '', pendientes: '', entrega: gl, labHistory: [], imagenHistory: [], checklist: Object.assign({}, ck, { __pl_note_meta: { entrega: gl } }) };
-    outboxSave([{ type: 'note', key: k, data: loc, dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: loc, dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
     const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft();   // carga con el ítem en la cola (como al abrir)
     const tras = noteData[k].entrega;
-    await flushOutbox();                                    // la subida de la cola falla
+    await __flushLimpio();                                    // la subida de la cola falla
     return { tras, q: outboxLoad().filter(i => i.type === 'note' && i.key === k).length };
   }, { gl: GL23, ck: CK23 });
   calls.length = 0;
@@ -876,13 +953,13 @@ function mockSupabase(ctx, store, ctl, calls) {
     await new Promise(r => setTimeout(r, 1200));
     for (let i = 0; i < 60 && (_pendingPush.has(k) || pendingSyncs > 0); i++) await new Promise(r => setTimeout(r, 100));
   });
-  const labPosts19 = postsDe('g23').map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
+  const labPosts19 = postsDe('g23').filter(c => c.status !== 500).map(c => Object.keys(c.body).filter(x => x !== 'patient_id' && x !== 'updated_by').join(','));
   store.notes.g23.checklist = Object.assign({}, store.notes.g23.checklist, COL23); store.notes.g23.updated_at = pgTs();
   const rt19 = await page.evaluate((row) => { if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row }); const c = noteData['su-g23'].checklist || {}; return { npo: c.npo, atb: c.atb, pendientes_r1: c.pendientes_r1, pm_fc: c.pm_fc, cultivos: c.cultivos }; }, JSON.parse(JSON.stringify(store.notes.g23)));
   const c19b = await page.evaluate(() => outboxLoad().filter(i => i.type === 'note' && i.key === 'su-g23').map(i => ({ dirty: i.dirty, entrega: i.data && i.data.entrega })));
   await esperarFlush();
   ctl.failGuardia.clear(); calls.length = 0;
-  await page.evaluate(() => flushOutbox());
+  await page.evaluate(() => __flushLimpio());
   const post19 = postsDe('g23').pop(), base19 = JSON.parse(JSON.stringify(store.notes.g23.checklist));
   await page.evaluate(async () => { const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft(); });
   await page.waitForTimeout(300);
@@ -906,10 +983,10 @@ function mockSupabase(ctx, store, ctl, calls) {
   const c19ba = await page.evaluate(async (gl) => {
     const k = 'su-g24';
     const loc = { app: '', pa: '', pendientes: '', entrega: gl, labHistory: [], imagenHistory: [], checklist: { npo: true, atb: false, pm_fc: '80', __pl_note_meta: { entrega: gl } } };
-    outboxSave([{ type: 'note', key: k, data: loc, dirty: ['checklist', 'entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: loc, dirty: ['checklist', 'entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
     const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderViewSoft();
     const tras = { entrega: noteData[k].entrega, npo: noteData[k].checklist.npo };
-    await flushOutbox();                                    // la subida de la cola falla
+    await __flushLimpio();                                    // la subida de la cola falla
     return { tras, q: outboxLoad().filter(i => i.type === 'note' && i.key === k).length };
   }, GL24);
   store.notes.g24.checklist = Object.assign({}, store.notes.g24.checklist, { atb: true, pm_fc: '118' }); store.notes.g24.updated_at = pgTs();
@@ -917,7 +994,7 @@ function mockSupabase(ctx, store, ctl, calls) {
   const c19bb = await page.evaluate(() => outboxLoad().filter(i => i.type === 'note' && i.key === 'su-g24').map(i => ({ dirty: i.dirty, npo: (i.data && i.data.checklist || {}).npo })));
   await esperarFlush();
   ctl.failGuardia.clear(); calls.length = 0;
-  await page.evaluate(() => flushOutbox());
+  await page.evaluate(() => __flushLimpio());
   const post19b = postsDe('g24').pop(), base19b = JSON.parse(JSON.stringify(store.notes.g24.checklist));
   const q19b = await page.evaluate(() => outboxLoad().filter(i => i.type === 'note' && i.key === 'su-g24').length);
   check('C19b la otra variante, Guardia y una casilla escritas sin red (dirty ["checklist","entrega"]) con la subida fallando y un colega que cambia otra casilla por Realtime: el reintento sigue subiendo el checklist del ítem: la casilla de este equipo (npo) y la Guardia llegan a la base',
@@ -926,6 +1003,337 @@ function mockSupabase(ctx, store, ctl, calls) {
     && !!post19b && post19b.body.checklist && post19b.body.checklist.npo === true && metaDe(post19b).entrega === GL24
     && base19b.npo === true && (base19b.__pl_note_meta || {}).entrega === GL24 && q19b === 0,
     JSON.stringify({ c19ba, rt19b, c19bb, post19b: post19b && { npo: (post19b.body.checklist || {}).npo, atb: (post19b.body.checklist || {}).atb, entrega: metaDe(post19b).entrega }, base19b: { npo: base19b.npo, atb: base19b.atb, pm_fc: base19b.pm_fc, entrega: (base19b.__pl_note_meta || {}).entrega }, q19b }));
+
+  // C20 (21 oct 2026): la Guardia escrita sin red sube por la cola y la base la guarda con un renglón de otro equipo que la
+  // subida no traía (pl_entrega_protegida conserva lo que otro equipo escribió hace menos de 15 min). Modelo, meta, caja y
+  // copia local quedan con lo que la base tiene, y lo que este equipo escribe después en la Guardia lo lleva. Antes la
+  // memoria se quedaba con lo subido y, pasados los 15 min, esa siguiente edición borraba de la base el renglón del colega.
+  const GL27 = B27 + '\n20/10 08:40 GF: ESCRITO SIN RED (VEINTISIETE)', OTRO27 = '20/10 08:41 OE: RENGLÓN QUE LA BASE CONSERVA';
+  const Z27 = '20/10 08:50 GF: DESPUÉS DE SUBIR LA COLA', GO27 = GL27 + '\n' + OTRO27;
+  await vista('su-g27');
+  ctl.serverAddLine = { g27: OTRO27 };
+  let soltarGet27 = null; ctl.holdGetFor = { g27: new Promise(r => { soltarGet27 = r; }) };   // la relectura espera: cuenta lo que se igualó al subir
+  const c20a = await page.evaluate(async (gl) => {
+    const k = 'su-g27';
+    const nd = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); nd.entrega = gl; _entregaMetaAlign(nd);   // como la dejó la carga (cola encima)
+    noteData[k] = nd; lsSaveNote(k, nd);
+    await __sinFlush(); outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    await __flushLimpio();
+    return { q: outboxLoad().filter(i => i.type === 'note' && i.key === k).length };
+  }, GL27);
+  delete ctl.serverAddLine;
+  const subida27 = store.notes.g27.checklist.__pl_note_meta.entrega;
+  await page.waitForTimeout(2200);   // el repintado de la tarjeta espera la calma (_rerenderCardSoft)
+  const c20b = await vista('su-g27'), meta27 = await page.evaluate(() => ((noteData['su-g27'].checklist || {}).__pl_note_meta || {}).entrega);
+  // Mientras la relectura sigue en camino, otro equipo agrega W27 y llega por Realtime; la relectura (foto de antes de
+  // W27) no regresa la caja.
+  const W27 = '20/10 08:45 OE: W27 DESPUÉS DE LA SUBIDA', GOW27 = GO27 + '\n' + W27;
+  const ck27 = JSON.parse(JSON.stringify(store.notes.g27.checklist)); ck27.__pl_note_meta.entrega = GOW27;
+  store.notes.g27 = Object.assign({}, store.notes.g27, { checklist: ck27, updated_at: pgTs(Date.now() + 1000) });
+  await page.evaluate((row) => { if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row }); }, JSON.parse(JSON.stringify(store.notes.g27)));
+  delete ctl.holdGetFor; soltarGet27();
+  await page.waitForTimeout(2500);
+  const c20d = await vista('su-g27');
+  await teclear('su-g27', 'entrega', Z27);
+  const base27 = store.notes.g27.checklist.__pl_note_meta.entrega, pend27 = store.notes.g27.pendientes;
+  check('C20 la Guardia de la cola sube y la base la guarda con un renglón de otro equipo que la subida no traía: modelo, meta, caja y copia local quedan con lo de la base al subir (sin esperar la relectura); una relectura más vieja que un evento de Realtime posterior no regresa la caja, y lo que se escribe después en la Guardia lo conserva todo (Pendientes intacto)',
+    c20a.q === 0 && subida27 === GO27 && [c20b.entrega, c20b.shown, c20b.ta, c20b.ls, meta27].every(v => v === GO27)
+    && [c20d.entrega, c20d.ta].every(v => v === GOW27) && base27 === GOW27 + '\n' + Z27 && pend27 === 'PEND BASE 27',
+    JSON.stringify({ c20a, subida27, c20b, meta27, c20d, base27, pend27 }));
+
+  // C20b: si al llegar la respuesta de la subida de la cola este equipo está escribiendo en la Guardia (campo sucio, sin
+  // soltar la caja), la memoria se queda con lo que se escribe, no con la fila de la respuesta.
+  const GQ27 = GOW27 + '\n' + Z27 + '\n20/10 09:00 GF: EN LA COLA (VEINTISIETE)', TQ27 = GQ27 + '\n20/10 09:01 GF: ESCRIBIENDO SIN SOLTAR LA CAJA';
+  let soltar27 = null; ctl.holdPost = new Promise(r => { soltar27 = r; });
+  await page.evaluate((g) => {
+    const k = 'su-g27', nd = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); nd.entrega = g; _entregaMetaAlign(nd);
+    noteData[k] = nd; lsSaveNote(k, nd);
+    outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    window.__flush27 = __sinFlush().then(() => flushOutbox());
+  }, GQ27);
+  for (let i = 0; i < 80 && store.notes.g27.checklist.__pl_note_meta.entrega !== GQ27; i++) await page.waitForTimeout(100);
+  const escrito27 = store.notes.g27.checklist.__pl_note_meta.entrega === GQ27;
+  await page.evaluate((t) => { const k = 'su-g27'; noteData[k].entrega = t; (_dirtyFields[k] = _dirtyFields[k] || new Set()).add('entrega'); }, TQ27);
+  delete ctl.holdPost; soltar27();
+  const c20c = await page.evaluate(async () => { await window.__flush27; const k = 'su-g27', r = { entrega: noteData[k].entrega, q: outboxLoad().filter(i => i.type === 'note' && i.key === k).length }; if (_dirtyFields[k]) _dirtyFields[k].delete('entrega'); return r; });
+  check('C20b la respuesta de la subida de la cola llega mientras este equipo escribe en la Guardia (sin soltar la caja): la memoria se queda con lo que se escribe; cola vacía',
+    escrito27 && c20c.entrega === TQ27 && c20c.q === 0, JSON.stringify({ escrito27, c20c }));
+
+  // C21 (21 oct 2026): mientras la respuesta de la subida de la cola viene en camino, otro equipo guarda la nota (un
+  // renglón más en la Guardia) y su evento de Realtime llega ANTES que la respuesta. Con el ítem aún en la cola, la caja
+  // conserva lo escrito sin red y suma el renglón del colega (_guardiaConNuevos); la fila de la respuesta es más vieja que
+  // la de Realtime, así que la memoria no se iguala a ella, y al terminar la nota se relee de la base.
+  const GL28 = B28 + '\n20/10 08:45 GF: ESCRITO SIN RED (VEINTIOCHO)', COL28 = '20/10 08:46 OE: RENGLÓN DEL COLEGA DURANTE LA SUBIDA';
+  await vista('su-g28');
+  let soltar28 = null; ctl.holdPost = new Promise(r => { soltar28 = r; });
+  await page.evaluate((gl) => {
+    const k = 'su-g28';
+    const nd = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); nd.entrega = gl; _entregaMetaAlign(nd);
+    noteData[k] = nd; lsSaveNote(k, nd);
+    outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    window.__flush28 = __sinFlush().then(() => flushOutbox());
+  }, GL28);
+  for (let i = 0; i < 80 && store.notes.g28.checklist.__pl_note_meta.entrega !== GL28; i++) await page.waitForTimeout(100);
+  const escrito28 = store.notes.g28.checklist.__pl_note_meta.entrega === GL28;
+  const ck28 = JSON.parse(JSON.stringify(store.notes.g28.checklist)); ck28.__pl_note_meta.entrega = GL28 + '\n' + COL28;
+  store.notes.g28 = Object.assign({}, store.notes.g28, { checklist: ck28, updated_at: pgTs(Date.now() + 1000) });
+  const rt21 = await page.evaluate((row) => { if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row }); return noteData['su-g28'].entrega; }, JSON.parse(JSON.stringify(store.notes.g28)));
+  calls.length = 0;
+  // La relectura llega con una supresión vigente (un lab tecleado en esa tarjeta: suppressKey) y su primera petición falla.
+  await page.evaluate(() => suppressKey('g28', 6000));
+  ctl.failGetOnce = new Set(['g28']);
+  delete ctl.holdPost; soltar28();
+  await page.evaluate(() => window.__flush28);
+  await page.waitForFunction((v) => noteData['su-g28'].entrega === v, GL28 + '\n' + COL28, { timeout: 9000 }).catch(() => {});
+  await page.waitForTimeout(2200);
+  const c21 = await vista('su-g28');
+  const gets21 = calls.filter(c => c.m === 'GET' && c.url.startsWith('/rest/v1/notes') && c.url.indexOf('patient_id=eq.g28') !== -1).length;
+  const GC28 = GL28 + '\n' + COL28;
+  check('C21 un colega guarda mientras la respuesta de la subida de la cola viene en camino y su Realtime llega antes: con el ítem en la cola la caja conserva lo escrito sin red y suma el renglón del colega; la respuesta (más vieja) no regresa la memoria y la nota se relee (aunque haya una supresión vigente y la primera relectura falle): modelo, caja y copia local con los dos renglones, cola vacía',
+    escrito28 && rt21 === GL28 + '\n' + COL28 && gets21 >= 2 && [c21.entrega, c21.shown, c21.ta, c21.ls].every(v => v === GC28) && c21.q === 0,
+    JSON.stringify({ escrito28, rt21, gets21, c21 }));
+
+  // C21b: mientras la respuesta de la subida viene en camino se encola OTRO ítem de esa nota con una Guardia más nueva
+  // (escrita después; su push directo falló). Al llegar la respuesta la memoria se queda con la más nueva, la que espera en
+  // la cola (no con la de la respuesta), y la siguiente subida la lleva a la base.
+  const A28 = GC28 + '\n20/10 08:57 GF: RENGLÓN A (EN LA COLA)', N28 = A28 + '\n20/10 08:58 GF: RENGLÓN B (ESCRITO MIENTRAS SUBÍA)';
+  let soltar28b = null; ctl.holdPost = new Promise(r => { soltar28b = r; });
+  await page.evaluate((a) => {
+    const k = 'su-g28', nd = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); nd.entrega = a; _entregaMetaAlign(nd);
+    noteData[k] = nd; lsSaveNote(k, nd);
+    outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'], ts: Date.now() - 60000 }]); updateOutboxBadge();
+    window.__flush28b = __sinFlush().then(() => flushOutbox());
+  }, A28);
+  for (let i = 0; i < 80 && store.notes.g28.checklist.__pl_note_meta.entrega !== A28; i++) await page.waitForTimeout(100);
+  const escrito28b = store.notes.g28.checklist.__pl_note_meta.entrega === A28;
+  await page.evaluate((n) => {
+    const k = 'su-g28', nd = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); nd.entrega = n; _entregaMetaAlign(nd);
+    noteData[k] = nd; lsSaveNote(k, nd);
+    outboxEnqueue({ type: 'note', key: k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: ['entrega'] });
+  }, N28);
+  delete ctl.holdPost; soltar28b();
+  await page.evaluate(() => window.__flush28b);
+  const c21b1 = await page.evaluate(() => ({ entrega: noteData['su-g28'].entrega, q: outboxLoad().filter(i => i.type === 'note' && i.key === 'su-g28').map(i => i.data && i.data.entrega) }));
+  await esperarFlush();
+  await page.evaluate(() => __flushLimpio());
+  const base28b = store.notes.g28.checklist.__pl_note_meta.entrega;
+  const c21b2 = await vista('su-g28');
+  check('C21b con la respuesta de la subida en camino se encola otro ítem con una Guardia más nueva: al llegar la respuesta la memoria se queda con la más nueva (la de la cola) y la siguiente subida la deja en la base; cola vacía',
+    escrito28b && c21b1.entrega === N28 && c21b1.q.length === 1 && c21b1.q[0] === N28 && base28b === N28 && c21b2.entrega === N28 && c21b2.q === 0,
+    JSON.stringify({ escrito28b, c21b1, base28b, c21b2 }));
+
+  // Notas de la cola armadas como las deja la carga (Guardia escrita sin red encima) y el ítem de cada una.
+  const enCola = (specs) => page.evaluate((specs) => {
+    const t = Date.now() - 60000, q = [];
+    specs.forEach((s, i) => {
+      if (!s.k) { q.push({ type: 'prueba-sin-tipo', key: 'relleno-' + i, ts: t + i }); return; }   // relleno: se descarta sin red
+      const f = s.f || 'entrega', nd = migrateNote(JSON.parse(JSON.stringify(noteData[s.k]))); nd[f] = s.g; _entregaMetaAlign(nd);
+      noteData[s.k] = nd; lsSaveNote(s.k, nd);
+      q.push({ type: 'note', key: s.k, data: _outboxNoteCopy(JSON.parse(JSON.stringify(nd))), dirty: [f], ts: t + i });
+    });
+    outboxSave(q); updateOutboxBadge(); renderView();   // la tarjeta pinta lo de la cola, como tras la carga
+    window.__flushCola = __sinFlush().then(() => flushOutbox());
+  }, specs);
+  const metaEntrega = (id) => ((store.notes[id].checklist || {}).__pl_note_meta || {}).entrega;
+
+  // C23 (revisión del arreglo, 21 oct 2026): la cola sube el ítem VIGENTE. Mientras el flush va en la primera tanda (10 por
+  // tanda; una nota de esa tanda espera respuesta), este equipo escribe L2 en la Guardia de la tarjeta 32: ese push
+  // directo sube y quita su ítem de la cola. Antes la segunda tanda subía igual la copia leída al empezar (sin L2): la
+  // base perdía L2 y, con la memoria tomando lo que devuelve la base, también la pantalla.
+  const GL32 = B32 + '\n20/10 09:05 GF: L1 ESCRITO SIN RED', L2_32 = '20/10 09:06 GF: L2 ESCRITO CON LA COLA SUBIENDO', GL2_32 = GL32 + '\n' + L2_32;
+  const GL33 = B33 + '\n20/10 09:05 GF: OTRA TARJETA EN LA COLA';
+  await vista('su-g32');
+  let soltar33 = null; ctl.holdPostFor = { g33: new Promise(r => { soltar33 = r; }) };
+  await enCola([{ k: 'su-g33', g: GL33 }].concat(Array.from({ length: 9 }, () => ({}))).concat([{ k: 'su-g32', g: GL32 }]));
+  for (let i = 0; i < 80 && metaEntrega('g33') !== GL33; i++) await page.waitForTimeout(100);
+  const escrito33 = metaEntrega('g33') === GL33;
+  await teclear('su-g32', 'entrega', L2_32);
+  const directo32 = metaEntrega('g32'), qDirecto32 = await page.evaluate(() => outboxLoad().filter(i => i.key === 'su-g32').length);
+  delete ctl.holdPostFor; soltar33();
+  await page.evaluate(() => window.__flushCola);
+  await page.waitForTimeout(600);
+  const base32 = metaEntrega('g32'), c23 = await vista('su-g32');
+  check('C23 con la cola subiendo (la tarjeta 32 en la segunda tanda) este equipo escribe L2 en su Guardia y ese push directo sube: la cola ya no sube la copia leída al empezar; base, modelo y caja con L1 y L2; cola vacía',
+    escrito33 && directo32 === GL2_32 && qDirecto32 === 0 && base32 === GL2_32 && c23.entrega === GL2_32 && c23.ta === GL2_32 && c23.q === 0,
+    JSON.stringify({ escrito33, directo32, qDirecto32, base32, c23 }));
+
+  // C21c (revisión del arreglo): la respuesta de la subida de la cola (Guardia X1) se retiene; mientras, este equipo
+  // escribe L4 en esa Guardia y su push directo sube y responde ANTES. Al llegar la respuesta vieja de la cola, la memoria
+  // no se regresa a X1 (la respuesta del push propio es más nueva): se relee la nota y queda X1 + L4. Antes la caja perdía
+  // L4 y la siguiente edición lo borraba de la base.
+  const X1_32 = GL2_32 + '\n20/10 09:20 GF: L3 EN LA COLA', L4_32 = '20/10 09:21 GF: L4 ESCRITO MIENTRAS SUBÍA LA COLA', X14_32 = X1_32 + '\n' + L4_32;
+  await vista('su-g32');
+  let soltar32 = null; ctl.holdNextPostFor = { g32: new Promise(r => { soltar32 = r; }) };
+  await enCola([{ k: 'su-g32', g: X1_32 }]);
+  for (let i = 0; i < 80 && metaEntrega('g32') !== X1_32; i++) await page.waitForTimeout(100);
+  const escritoX1 = metaEntrega('g32') === X1_32;
+  await teclear('su-g32', 'entrega', L4_32);
+  const directoX14 = metaEntrega('g32');
+  soltar32();
+  await page.evaluate(() => window.__flushCola);
+  await page.waitForFunction((v) => noteData['su-g32'].entrega === v, X14_32, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(2200);
+  const c21c = await vista('su-g32');
+  check('C21c la respuesta de la subida de la cola llega DESPUÉS de la de un push directo más nuevo de este equipo (otro renglón en esa Guardia): la memoria no se regresa a lo de la cola; modelo, caja y copia local con los dos renglones, como la base',
+    escritoX1 && directoX14 === X14_32 && metaEntrega('g32') === X14_32 && [c21c.entrega, c21c.ta, c21c.ls].every(v => v === X14_32) && c21c.q === 0,
+    JSON.stringify({ escritoX1, directoX14, base: metaEntrega('g32'), c21c }));
+
+  // C21d (revisión del arreglo): como C21, pero lo más nuevo llega por una CARGA (volver a la app) y no por Realtime: un
+  // colega agrega C a la Guardia mientras la respuesta de la subida de la cola viene en camino. La respuesta (más vieja
+  // que la foto) no regresa la memoria: se relee y queda con los dos renglones.
+  const Y1_33 = GL33 + '\n20/10 09:25 GF: ESCRITO SIN RED (TREINTA Y TRES)', C33 = '20/10 09:26 OE: RENGLÓN DEL COLEGA QUE TRAE LA CARGA', YC33 = Y1_33 + '\n' + C33;
+  await vista('su-g33');
+  let soltarY = null; ctl.holdNextPostFor = { g33: new Promise(r => { soltarY = r; }) };
+  await enCola([{ k: 'su-g33', g: Y1_33 }]);
+  for (let i = 0; i < 80 && metaEntrega('g33') !== Y1_33; i++) await page.waitForTimeout(100);
+  const escritoY1 = metaEntrega('g33') === Y1_33;
+  const ck33 = JSON.parse(JSON.stringify(store.notes.g33.checklist)); ck33.__pl_note_meta.entrega = YC33;
+  store.notes.g33 = Object.assign({}, store.notes.g33, { checklist: ck33, updated_at: pgTs(Date.now() + 1000) });
+  const carga21d = await page.evaluate(async () => { const l = await supaLoadAll(); _applyLoadedNotes(l.notes); return noteData['su-g33'].entrega; });
+  soltarY();
+  await page.evaluate(() => window.__flushCola);
+  await page.waitForFunction((v) => noteData['su-g33'].entrega === v, YC33, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(2200);
+  const c21d = await vista('su-g33');
+  check('C21d lo más nuevo llega por una carga (un colega agregó un renglón) mientras la respuesta de la subida de la cola viene en camino: con el ítem en la cola la carga muestra lo de la cola; la respuesta, más vieja que la foto, no regresa la memoria y la nota se relee: modelo, caja y copia local con los dos renglones',
+    escritoY1 && carga21d === Y1_33 && [c21d.entrega, c21d.ta, c21d.ls].every(v => v === YC33) && c21d.q === 0,
+    JSON.stringify({ escritoY1, carga21d, c21d }));
+
+  // C23b (revisión del arreglo): la subida de la cola (Pendientes X36) sale, pero llega a la base DESPUÉS de un push directo
+  // de este equipo que agregó L36 a esa caja (dos peticiones del mismo equipo; la de la cola, lenta). La base queda con lo
+  // del ítem: la memoria no se regresa (ni al igualar ni al releer) y lo de la caja se vuelve a subir: base y caja con L36.
+  const X36 = 'PEND 36\n20/10 10:00 GF: X36 ESCRITO SIN RED', L36 = '20/10 10:01 GF: L36 ESCRITO MIENTRAS SUBÍA', XL36 = X36 + '\n' + L36;
+  await vista('su-g36');
+  let soltar36 = null; ctl.holdNextBeforeWriteFor = { g36: new Promise(r => { soltar36 = r; }) };
+  calls.length = 0;
+  await enCola([{ k: 'su-g36', f: 'pendientes', g: X36 }]);
+  for (let i = 0; i < 80 && !postsDe('g36').length; i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(300);
+  await teclear('su-g36', 'pendientes', L36);
+  // Que pase también el autoguardado de la caja (900 ms tras teclear): si no, su push repara la base por casualidad.
+  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => !_pendingPush.has('su-g36') && pendingSyncs === 0, null, { timeout: 10000 }).catch(() => {});
+  const directo36 = store.notes.g36.pendientes;
+  soltar36();
+  await page.evaluate(() => window.__flushCola);
+  const tarde36 = store.notes.g36.pendientes;
+  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => !_pendingPush.has('su-g36') && pendingSyncs === 0, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const c23b = await cajas('su-g36'), q23b = await page.evaluate(() => outboxLoad().filter(i => i.key === 'su-g36').length);
+  check('C23b la subida de la cola llega a la base DESPUÉS de un push directo más nuevo de este equipo en esa caja y la regresa: la memoria no se regresa y lo de la caja se vuelve a subir; base, modelo y caja con lo más nuevo, cola vacía',
+    directo36 === XL36 && tarde36 === X36 && c23b.pend === XL36 && c23b.taPend === XL36 && store.notes.g36.pendientes === XL36 && q23b === 0,
+    JSON.stringify({ directo36, tarde36, c23b, base: store.notes.g36.pendientes, q23b }));
+
+  // C24 (revisión del arreglo): dos notas en la cola; la de la tarjeta 30 sube y la base la guarda con un renglón de otro
+  // equipo que la subida no traía, la de la 31 sigue esperando respuesta (el flush no termina). Llega el eco de Realtime de
+  // la subida de la 30: la caja muestra lo de la base. Antes el ítem seguía en la cola hasta el final del flush y el eco
+  // se tapaba con lo del ítem (sin el renglón del colega).
+  const GL30 = B30 + '\n20/10 09:10 GF: ESCRITO SIN RED (TREINTA)', OTRO30 = '20/10 09:09 OE: RENGLÓN QUE LA BASE CONSERVA (TREINTA)', GO30 = GL30 + '\n' + OTRO30;
+  const GL31 = B31 + '\n20/10 09:10 GF: ESCRITO SIN RED (TREINTA Y UNO)';
+  await vista('su-g30');
+  let soltar31 = null; ctl.holdPostFor = { g31: new Promise(r => { soltar31 = r; }) }; ctl.serverAddLine = { g30: OTRO30 };
+  await enCola([{ k: 'su-g31', g: GL31 }, { k: 'su-g30', g: GL30 }]);
+  for (let i = 0; i < 80 && !(metaEntrega('g31') === GL31 && metaEntrega('g30') === GO30); i++) await page.waitForTimeout(100);
+  delete ctl.serverAddLine;
+  await page.waitForFunction(() => noteData['su-g30'].entrega.indexOf('LA BASE CONSERVA') !== -1, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const rt24 = await page.evaluate((row) => {
+    if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row });
+    return { entrega: noteData['su-g30'].entrega, q30: outboxLoad().filter(i => i.key === 'su-g30').length, enCurso: !!_flushing };
+  }, JSON.parse(JSON.stringify(store.notes.g30)));
+  delete ctl.holdPostFor; soltar31();
+  await page.evaluate(() => window.__flushCola);
+  await page.waitForTimeout(2200);
+  const c24 = await vista('su-g30');
+  check('C24 dos notas en la cola: la 30 sube (la base guarda además el renglón de otro equipo) mientras la 31 espera respuesta; el eco de Realtime de la 30 llega con el flush en curso: la 30 ya salió de la cola y modelo, caja y copia local quedan con lo de la base',
+    rt24.enCurso && rt24.q30 === 0 && rt24.entrega === GO30 && [c24.entrega, c24.shown, c24.ta, c24.ls].every(v => v === GO30) && c24.q === 0 && metaEntrega('g31') === GL31,
+    JSON.stringify({ rt24, c24 }));
+
+  // C25 (revisión del arreglo): un ítem de la cola que no logra subir (la base rechaza su checklist), con la Guardia escrita
+  // sin red: este equipo quitó OLD34 y agregó L34. Un colega agrega C34 y llega por Realtime: la caja muestra lo de la
+  // cola más C34, y OLD34 no reaparece. Ya sin falla, este equipo escribe Z34 en la Guardia: el push lleva C34. Antes la
+  // caja tapaba C34 con lo de la cola y, pasados 15 min, esa edición lo borraba de la base.
+  const L34 = '20/10 09:30 GF: L34 ESCRITO SIN RED', C34 = '20/10 09:31 OE: C34 DEL COLEGA', Z34 = '20/10 09:40 GF: Z34 DESPUÉS';
+  const GL34 = B34 + '\n' + L34, GLC34 = GL34 + '\n' + C34;
+  ctl.failGuardia = new Set(['g34']);
+  await vista('su-g34');
+  await enCola([{ k: 'su-g34', g: GL34 }]);
+  await page.evaluate(() => window.__flushCola);   // la subida falla (4 intentos)
+  const ck34 = JSON.parse(JSON.stringify(store.notes.g34.checklist)); ck34.__pl_note_meta.entrega = B34 + '\n' + OLD34 + '\n' + C34;
+  store.notes.g34 = Object.assign({}, store.notes.g34, { checklist: ck34, updated_at: pgTs() });
+  const rt25 = await page.evaluate((row) => {
+    if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row });
+    let ls = {}; try { ls = JSON.parse(localStorage.getItem('note-su-g34') || '{}'); } catch (_) {}
+    return { entrega: noteData['su-g34'].entrega, ls: ls.entrega, q: outboxLoad().filter(i => i.key === 'su-g34').length };
+  }, JSON.parse(JSON.stringify(store.notes.g34)));
+  await page.waitForTimeout(2200);
+  await esperarFlush();
+  ctl.failGuardia.clear();
+  await teclear('su-g34', 'entrega', Z34);
+  await esperarFlush(); await page.evaluate(() => __flushLimpio());
+  const base25 = metaEntrega('g34'), c25 = await vista('su-g34');
+  check('C25 ítem de la cola que no logra subir con la Guardia escrita sin red (un renglón quitado y otro agregado) y un colega que agrega un renglón por Realtime: la caja muestra lo de la cola más el del colega, sin reaparecer el quitado; la siguiente edición de la Guardia lleva el renglón del colega a la base',
+    rt25.entrega === GLC34 && rt25.ls === GLC34 && rt25.q === 1 && base25 === GLC34 + '\n' + Z34 && c25.entrega === base25 && c25.q === 0,
+    JSON.stringify({ rt25, base25, c25 }));
+
+  // C21e (revisión del arreglo): la subida de la cola no cambia nada (Pendientes ya estaba así en la base: PostgREST
+  // responde [] por pl_zz_sin_cambios) y, mientras la respuesta viene en camino, un colega agrega un pendiente que llega por
+  // Realtime (tapado por la cola mientras el ítem sigue ahí). Sin fila en la respuesta no hay con qué igualar: la nota se
+  // relee igual y la caja queda con el pendiente del colega.
+  const P35 = 'PEND 35\n20/10 09:45 GF: YA ESTABA EN LA BASE', X35 = '20/10 09:46 OE: PENDIENTE DEL COLEGA (SUBIDA SIN CAMBIOS)';
+  store.notes.g35 = Object.assign({}, store.notes.g35, { pendientes: P35 });
+  await vista('su-g35');
+  await page.evaluate(async () => { const l = await supaLoadAll(); _applyLoadedNotes(l.notes); renderView(); });
+  let soltar35 = null; ctl.holdNextPostFor = { g35: new Promise(r => { soltar35 = r; }) };
+  calls.length = 0;
+  await enCola([{ k: 'su-g35', f: 'pendientes', g: P35 }]);
+  for (let i = 0; i < 80 && !postsDe('g35').length; i++) await page.waitForTimeout(100);
+  const noop35 = !!postsDe('g35')[0] && postsDe('g35')[0].sinCambio === true;
+  store.notes.g35 = Object.assign({}, store.notes.g35, { pendientes: P35 + '\n' + X35, updated_at: pgTs(Date.now() + 1000) });
+  const rt21e = await page.evaluate((row) => { if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row }); return noteData['su-g35'].pendientes; }, JSON.parse(JSON.stringify(store.notes.g35)));
+  await page.evaluate(() => suppressKey('g35', 20000));   // supresión larga vigente (un guardado propio): la relectura no la espera
+  soltar35();
+  await page.evaluate(() => window.__flushCola);
+  await page.waitForFunction((v) => noteData['su-g35'].pendientes === v, P35 + '\n' + X35, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(2200);
+  const c21e = await cajas('su-g35'), q21e = await page.evaluate(() => outboxLoad().filter(i => i.key === 'su-g35').length);
+  check('C21e la subida de la cola no cambia nada (respuesta [] como con pl_zz_sin_cambios) y un colega agrega un pendiente mientras la respuesta viene en camino: con el ítem en la cola se tapa; al terminar la nota se relee (aunque haya una supresión vigente) y modelo y caja quedan con el pendiente del colega',
+    noop35 && rt21e === P35 && c21e.pend === P35 + '\n' + X35 && c21e.taPend === P35 + '\n' + X35 && q21e === 0,
+    JSON.stringify({ noop35, rt21e, c21e, q21e }));
+
+  // C22 (21 oct 2026): límites de lo que Realtime repone de la cola. (a) Con la Guardia EN EDICIÓN aquí (campo sucio) y
+  // un ítem viejo de la cola con otra Guardia, el evento de un colega no pone en memoria la de la cola: se queda lo que se
+  // está escribiendo (y la casilla del colega entra). (b) Un ítem SIN lista (nota completa) no se repone sobre Realtime:
+  // la casilla y los Pendientes que el colega cambió se ven (sobre la carga sí se repone, como antes).
+  const VIEJA29 = B29 + '\n20/10 08:00 GF: GUARDIA VIEJA EN LA COLA', TECLEO29 = B29 + '\n20/10 08:55 GF: LO QUE SE ESTÁ ESCRIBIENDO';
+  ctl.failGuardia = new Set(['g29']);
+  await vista('su-g29');
+  const rt22 = async (cambios) => {
+    store.notes.g29 = Object.assign({}, store.notes.g29, cambios, { checklist: Object.assign({}, store.notes.g29.checklist, cambios.checklist || {}), updated_at: pgTs() });
+    return page.evaluate((row) => {
+      if (_suppressRealtimeKeys.clear) _suppressRealtimeKeys.clear(); handleNoteChange({ eventType: 'UPDATE', new: row });
+      const nd = noteData['su-g29']; return { entrega: nd.entrega, atb: nd.checklist.atb, npo: nd.checklist.npo, pend: nd.pendientes };
+    }, JSON.parse(JSON.stringify(store.notes.g29)));
+  };
+  await page.evaluate(({ vieja, tecleo }) => {
+    const k = 'su-g29', nd = migrateNote(JSON.parse(JSON.stringify(noteData[k])));
+    const it = migrateNote(JSON.parse(JSON.stringify(nd))); it.entrega = vieja; _entregaMetaAlign(it);
+    outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(it), dirty: ['entrega'], ts: Date.now() - 600000 }]); updateOutboxBadge();
+    nd.entrega = tecleo; noteData[k] = nd; (_dirtyFields[k] = _dirtyFields[k] || new Set()).add('entrega');   // escribiendo, sin soltar la caja
+  }, { vieja: VIEJA29, tecleo: TECLEO29 });
+  const c22a = await rt22({ checklist: { atb: true } });
+  await page.evaluate(() => { const k = 'su-g29'; if (_dirtyFields[k]) _dirtyFields[k].delete('entrega'); outboxSave(outboxLoad().filter(i => i.key !== k)); updateOutboxBadge(); });
+  await page.evaluate(() => {
+    const k = 'su-g29', it = migrateNote(JSON.parse(JSON.stringify(noteData[k]))); it.checklist.npo = false;
+    outboxSave([{ type: 'note', key: k, data: _outboxNoteCopy(it), dirty: null, ts: Date.now() - 60000 }]); updateOutboxBadge();
+  });
+  const c22b = await rt22({ pendientes: 'PEND BASE 29\nPEND DEL COLEGA', checklist: { npo: true } });
+  await page.evaluate(() => { outboxSave(outboxLoad().filter(i => i.key !== 'su-g29')); updateOutboxBadge(); });
+  ctl.failGuardia.clear();
+  check('C22 Realtime y la cola: (a) con la Guardia en edición aquí y un ítem viejo con otra Guardia, el evento de un colega deja lo que se está escribiendo (y su casilla entra); (b) un ítem sin lista (nota completa) no tapa en Realtime la casilla ni los Pendientes del colega',
+    c22a.entrega === TECLEO29 && c22a.atb === true && c22b.npo === true && c22b.pend === 'PEND BASE 29\nPEND DEL COLEGA',
+    JSON.stringify({ c22a, c22b }));
 
   // C13c (d2 de la revisión): 📜 Restaurar versión con labHistory aún marcado y una versión cuyo diagrama es otro: el push
   // debe llevar también el diagrama restaurado (como la Guardia en C13); si no, la siguiente carga (gana la base) lo quita.
@@ -951,7 +1359,7 @@ function mockSupabase(ctx, store, ctl, calls) {
     !!post13c && metaDe(post13c).body_diagram_post === D21_REST && post13c.body.lab_history !== undefined && c13c0.marcas.join() === 'labHistory'
     && meta21.body_diagram_post === D21_REST && meta21.entrega === B21 && [c13c.post, c13c.shown, c13c.ls].every(v => v === D21_REST),
     JSON.stringify({ c13c0, post13c: post13c && Object.keys(post13c.body), meta: metaDe(post13c), meta21, c13c }));
-  check('final C1–C19: sin errores no capturados', errors.length === 0, errors.join(' | '));
+  check('final C1–C25: sin errores no capturados', errors.length === 0, errors.join(' | '));
   await ctxG.close();
 
   // ═══ C7: aviso de versión nueva ═══════════════════════════════════════════════════════════════════════════

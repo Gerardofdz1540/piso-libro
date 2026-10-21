@@ -10503,6 +10503,95 @@ function plExportBackup() {
       }
       return out;
     }
+    // Tras subir un ítem `note` de la cola (21 oct 2026): la nota en memoria toma, de las cajas de texto, la Guardia y los
+    // diagramas que el ítem llevó marcados, lo que la base tiene ahora (la fila que devuelve el upsert, ya con lo que
+    // hicieron los triggers). Si no, la caja seguía con lo que se subió: la siguiente carga lo reponía como «recién tocado
+    // aquí» (_keepRecentLocal) y, si la base había conservado un renglón de otro equipo que la subida no traía, quien
+    // escribía después en la Guardia sobre esa copia lo borraba. Solo un campo que en memoria sigue IGUAL a lo que se
+    // subió (lo que se escribió aquí después, la Guardia unida con la de un colega en Realtime o lo que llegó de otra
+    // forma, no se toca), y no uno en edición, con push pendiente o marcado por otro ítem de la cola de esa nota; nada si
+    // la fila de la respuesta es más vieja que una que este equipo ya tiene (_notaFilaMax) o no trae esa columna. Un
+    // diagrama vacío en la base no borra el trazo de aquí (misma regla que Realtime). Un ítem sin lista (nota completa) no
+    // se iguala: lo que difiere en memoria es más nuevo que el ítem. Tampoco los campos de `despues` (guardados aquí con un
+    // push directo mientras esta subida viajaba). De todos modos _flushOutboxInner relee la nota.
+    function _outboxAlignNoteAfterFlush(k, item, sent, row, despues) {
+      const nd = noteData[k];
+      const dirty = item && Array.isArray(item.dirty) && item.dirty.length ? item.dirty : null;
+      if (!k || !nd || !dirty || !isPlainObject(sent) || !isPlainObject(row)) return;
+      if (_notaFilaMax[k] > _pgTsMicros(row.updated_at)) return;
+      const TEXT = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes"];
+      const sucios = _dirtyUnion(k);
+      let otros = [];
+      try { otros = outboxLoad().filter(function (it) { return it && it.type === "note" && it.key === k && it.ts !== item.ts; }); } catch (_) { return; }
+      if (otros.some(function (it) { return !Array.isArray(it.dirty) || !it.dirty.length; })) return;
+      const rm = readNoteSyncMeta(row.checklist);
+      let cambio = false;
+      TEXT.concat(NOTE_META_FIELDS).forEach(function (f) {
+        if (dirty.indexOf(f) === -1 || toSafeString(nd[f]) !== toSafeString(sent[f])) return;
+        if (sucios.has(f) || (despues && despues.indexOf(f) !== -1) || otros.some(function (it) { return it.dirty.indexOf(f) !== -1; })) return;
+        let v;
+        if (TEXT.indexOf(f) !== -1) { if (typeof row[f] !== "string") return; v = row[f]; }
+        else { if (!rm.exists) return; v = rm[f]; }
+        if (f !== "entrega" && !v && toSafeString(nd[f]).trim()) return;
+        if (toSafeString(nd[f]) === v) return;
+        nd[f] = v; cambio = true;
+      });
+      if (!cambio) return;
+      _entregaMetaAlign(nd);
+      lsSaveNote(k, nd);
+      if (document.getElementById("card-" + k) && _modalCurrentEditKey !== k) _rerenderCardSoft(k);
+    }
+    // El ítem `note` VIGENTE de la cola para uno que _flushOutboxInner leyó al empezar (mismo ts; la clave pudo cambiar a la
+    // del paciente ya sincronizado, `k2`), como ya se hacía con los ítems "patient" (21 oct 2026). null si ya no está: un
+    // push directo que llevó esos campos lo quitó (outboxDropNoteItemsBefore) y subir la copia leída al empezar regresaba
+    // en la base lo que se escribió después. Si quedó reducido (solo la Guardia o los diagramas), es esa versión.
+    function _outboxNoteItemVivo(item, k2) {
+      let q;
+      try { q = outboxLoad(); } catch (_) { return item; }
+      return q.find(function (it) { return it && it.type === "note" && it.ts === item.ts && (it.key === item.key || it.key === k2); }) || null;
+    }
+    // Saca de la cola el ítem `note` que acaba de subir, sin esperar a que termine el flush: mientras siguiera ahí, el eco
+    // de Realtime de esa misma subida (o el cambio de un colega) se tapaba otra vez con lo del ítem (_applyOutboxOverlay).
+    function _outboxQuitarNoteItem(item) {
+      if (!item) return;
+      let q;
+      try { q = outboxLoad(); } catch (_) { return; }
+      const resto = q.filter(function (it) { return !(it && it.type === "note" && it.key === item.key && it.ts === item.ts); });
+      if (resto.length !== q.length) { outboxSave(resto); try { updateOutboxBadge(); } catch (_) {} }
+    }
+    // Una subida de la cola que salió ANTES de un push directo de este equipo puede llegar a la base DESPUÉS y regresar lo
+    // que ese push guardó (dos peticiones del mismo equipo; la de la cola, lenta). Para las cajas de texto de `despues`
+    // (guardadas aquí mientras la subida viajaba) que en la fila de la respuesta quedaron distintas de lo que se ve, se
+    // vuelve a subir lo de la memoria (21 oct 2026). La Guardia no hace falta: esa subida vieja no es deliberada y
+    // pl_entrega_protegida no deja que quite renglones.
+    function _outboxReponerTrasSubida(k, row, despues) {
+      if (!k || !noteData[k] || !isPlainObject(row) || !despues || !despues.length) return;
+      if (_notaFilaMax[k] > _pgTsMicros(row.updated_at)) return;   // el push directo llegó a la base después: no se regresó nada
+      const TEXT = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes"];
+      const campos = despues.filter(function (f) { return TEXT.indexOf(f) !== -1 && typeof row[f] === "string" && row[f] !== toSafeString(noteData[k][f]); });
+      if (!campos.length) return;
+      _pendingDirty[k] = _pendingDirty[k] || new Set();
+      campos.forEach(function (f) { _pendingDirty[k].add(f); });
+      saveNote(k, noteData[k]);
+    }
+    // Relee una nota de la base tras subir la cola (ver _outboxAlignNoteAfterFlush) y la aplica como un evento de Realtime
+    // (respeta lo que se está escribiendo y los campos de `mantener`: guardados aquí mientras la subida viajaba), aunque
+    // haya una supresión vigente por un guardado propio: dejarla para _rtNoteCatchUp podía descartarla como «nuestro eco» y
+    // la caja se quedaba sin lo del colega. Si este equipo ya tiene una fila más nueva, no hace nada; si la red falla,
+    // reintenta (5 veces: 2 s … 32 s).
+    function _releerNota(id, n, mantener) {
+      n = n || 0;
+      _sGet("notes", "patient_id=eq." + encodeURIComponent(id) + "&select=" + NOTES_SELECT_COLS + "&limit=1")
+        .then(function (rows) {
+          const row = rows && rows[0], k = pidBySupaId(id);
+          if (!row || !k || _notaFilaMax[k] > _pgTsMicros(row.updated_at)) return;
+          handleNoteChange({ eventType: "UPDATE", new: row, __releer: true, __mantener: mantener || [] });
+        })
+        .catch(function (e) {
+          safeLog("_releerNota:", e);
+          if (n < 5) setTimeout(function () { _releerNota(id, n + 1, mantener); }, 2000 * Math.pow(2, n));
+        });
+    }
     // Copia de nota para el outbox: sin el PDF inline (`source_file` en base64) cuando ya está en
     // Storage. Un ítem de varios MB llenaba la cuota de localStorage y la cola dejaba de guardarse.
     function _outboxNoteCopy(d) {
@@ -12254,6 +12343,7 @@ function plExportBackup() {
             const memMeta = !!(noteData[k] && rt && rt.t >= _loadStartTs && _pgTsMicros(rt.u) >= _pgTsMicros(sn.updated_at));
             const bPrev = _noteBaseline[row.id];
             _noteBaselineSet(row.id, sn);
+            _notaFilaVista(k, sn.updated_at);
             loadedNotes[k] = _noteFromRemoteRow(sn, localNote);
             if (memMeta) {
               const M = NOTE_SYNC_META_KEY, mem = noteData[k], nd = loadedNotes[k];
@@ -12445,6 +12535,15 @@ function plExportBackup() {
     // updated_at }. Si se aplicó después de que empezó una carga y no es más vieja que la foto, supaLoadAll conserva la
     // Guardia, los diagramas y el meta de la memoria (21 oct 2026).
     const _rtNoteAplicada = {};
+    // La fila de `notes` más nueva que este equipo ya tiene de cada nota (21 oct 2026): updated_at en microsegundos de lo
+    // que aplicó Realtime, de la foto de una carga y de las respuestas de sus propias subidas. Con esto, la respuesta de
+    // una subida de la cola que llega DESPUÉS de algo más nuevo no regresa la memoria (_outboxAlignNoteAfterFlush) y una
+    // relectura más vieja no se aplica (_releerNota).
+    const _notaFilaMax = {};
+    function _notaFilaVista(k, u) {
+      const m = _pgTsMicros(u);
+      if (k && !isNaN(m) && !(_notaFilaMax[k] >= m)) _notaFilaMax[k] = m;
+    }
     function _touchLocalFields(k, fields) {
       if (!k || !fields) return;
       const m = _localFieldTouch[k] || (_localFieldTouch[k] = {}); const t = Date.now();
@@ -12591,6 +12690,7 @@ function plExportBackup() {
               // si se reprodujera después, regresaría el texto a una versión anterior. Salvo la Guardia que este push no
               // llevó (20 oct 2026, ver outboxDropNoteItemsBefore).
               outboxDropNoteItemsBefore(k, pushStart, dirtySnapshot);
+              if (isPlainObject(res)) _notaFilaVista(k, res.updated_at);   // ver _notaFilaMax
             }
             if (pendingSyncs === 0) {
               if (ok) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
@@ -12610,37 +12710,62 @@ function plExportBackup() {
       _noteDebounceMap[key](key, safeData);
     }
 
+    // La Guardia de la cola (`deCola`) más los renglones de `remota` que no están en ella ni estaban en `base` (los que otro
+    // equipo agregó después), al final y en su orden. Renglones iguales = mismo texto sin espacios a los lados.
+    function _guardiaConNuevos(deCola, remota, base) {
+      const g = toSafeString(deCola), lin = function (t) { return toSafeString(t).split("\n").map(function (x) { return x.trim(); }).filter(Boolean); };
+      const ya = new Set(lin(g).concat(lin(base)));
+      const nuevos = lin(remota).filter(function (x) { return !ya.has(x); });
+      return nuevos.length ? (g.trim() ? g.replace(/\s+$/, "") + "\n" : "") + nuevos.join("\n") : g;
+    }
+
     // Aplica datos de notas de Supabase sin perder ediciones dirty en memoria.
     // Úsalo en lugar de `noteData = loadedNotes` para evitar race conditions.
     // Campos escritos sin red que siguen en el outbox (tras recargar la app ya no están en
     // _dirtyFields): la copia remota NO debe pisarlos en pantalla mientras esperan subir. Se aplican
     // sobre las notas cargadas; flushOutbox los sube después con esos mismos valores.
-    function _applyOutboxOverlay(target) {
+    // 21 oct 2026: con `soloClave` lo usa Realtime (handleNoteChange) para esa nota: solo ítems con lista de campos y, de
+    // ellos, las cajas de texto, la Guardia, los diagramas y los ck_* marcados que aquí no están en edición ni con push
+    // pendiente. Antes la fila de un colega (una casilla) reemplazaba en pantalla la Guardia escrita sin red que esperaba
+    // en la cola: quien escribía después en la caja lo hacía sobre la copia sin su renglón y, al subir eso, el ítem viejo
+    // se tiraba de la cola (outboxDropNoteItemsBefore) y el renglón se perdía. En la Guardia, los renglones que el evento
+    // trae y que no estaban en la base de antes del evento (`baseAntes`: los escribió un colega) se agregan a lo de la cola
+    // en vez de taparse, para no borrarlos si aquí se escribe después; lo que este equipo quitó sin red no reaparece.
+    function _applyOutboxOverlay(target, soloClave, baseAntes) {
       let q = [];
       try { q = outboxLoad(); } catch (_) { return; }
+      const enRT = !!soloClave, sucios = enRT ? _dirtyUnion(soloClave) : null;
+      const RT_CAMPOS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes", "entrega", "body_diagram_ant", "body_diagram_post"];
       q.forEach(function (it) {
         if (!it || it.type !== "note" || !it.key || !it.data) return;
+        if (enRT && it.key !== soloClave) return;
         const src = it.data;
         const base = target[it.key];
         if (!base) {
           // La nube aún no tiene nota para este paciente (creado sin red): lo encolado es lo único que hay.
-          if (_findPatientByKey(it.key)) target[it.key] = migrateNote(Object.assign(defaultData(), src));
+          if (!enRT && _findPatientByKey(it.key)) target[it.key] = migrateNote(Object.assign(defaultData(), src));
           return;
         }
         const dirty = Array.isArray(it.dirty) && it.dirty.length ? it.dirty : null;
         if (!dirty) {
+          if (enRT) return;
           // Nota completa encolada (sin lista de campos): lo local pendiente gana.
           target[it.key] = migrateNote(Object.assign({}, base, src));
           return;
         }
         const nd = migrateNote(base);
+        let aplicado = false;
         dirty.forEach(function (f) {
+          if (enRT && (sucios.has(f) || (RT_CAMPOS.indexOf(f) === -1 && f.indexOf("ck_") !== 0))) return;
+          aplicado = true;
           if (f === "labHistory") nd.labHistory = _mergeLabHistory(src.labHistory, nd.labHistory, true);
           else if (f === "imagenHistory") { if (Array.isArray(src.imagenHistory)) nd.imagenHistory = src.imagenHistory; }
           else if (f === "checklist") { nd.checklist = Object.assign({}, nd.checklist || {}, src.checklist || {}); }
           else if (f.indexOf("ck_") === 0) { const ck = f.slice(3); if (!nd.checklist) nd.checklist = {}; if (src.checklist && src.checklist[ck] !== undefined) nd.checklist[ck] = src.checklist[ck]; }
+          else if (enRT && f === "entrega" && src.entrega !== undefined) nd.entrega = _guardiaConNuevos(src.entrega, nd.entrega, baseAntes);
           else if (src[f] !== undefined) nd[f] = src[f];
         });
+        if (enRT && !aplicado) return;
         // La Guardia del ítem solo gana si la trae marcada (20 oct 2026). nd.entrega ya es la de la base salvo con 'entrega'
         // en dirty (solo esa rama del forEach la cambia), pero un ítem viejo con dirty ["checklist"] trae en su checklist
         // el __pl_note_meta de cuando se encoló, con la Guardia de ENTONCES: al copiar el checklist entero la reinstalaba
@@ -13557,7 +13682,8 @@ function plExportBackup() {
 
     function handleNoteChange(payload) {
       const { new: _ncNew } = payload;
-      if (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id))) {
+      // __releer: la relectura tras subir la cola (_releerNota) no se descarta por la supresión.
+      if (!payload.__releer && (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id)))) {
         // Descartado por la supresión tras un guardado propio: revisarlo al terminar (antes se perdía para siempre).
         if (_ncNew && _ncNew.patient_id) _rtNoteMissed.set(_ncNew.patient_id, _ncNew);
         return;
@@ -13568,12 +13694,14 @@ function plExportBackup() {
       // Find patient by _supa_id matching note's patient_id
       const p = patients.find(x => x._supa_id === newRow.patient_id);
       if (!p) return;
+      const _guardiaBaseAntes = readNoteSyncMeta((_noteBaseline[newRow.patient_id] || {}).checklist).entrega;   // ver _applyOutboxOverlay
       _noteBaselineSet(newRow.patient_id, newRow);
       const k = pid(p);
       const existing = noteData[k] || lsGetNote(k) || defaultData();
       // Sucios = en edición + con push programado + push en vuelo: un evento remoto no debe
       // revertir un campo que este dispositivo está a punto de subir (o reintentar por outbox).
       const dirty = _dirtyUnion(k);
+      if (Array.isArray(payload.__mantener)) payload.__mantener.forEach(function (f) { dirty.add(f); });   // ver _releerNota
       const textFields = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes"];
       const nd = migrateNote(existing);
       // Firma de lo que se ve ANTES de aplicar lo remoto (19 oct 2026): un evento que no cambia nada (eco del sync de
@@ -13627,8 +13755,12 @@ function plExportBackup() {
       } else {
         nd.imagenHistory = existing.imagenHistory || [];
       }
-      try { noteData[k] = migrateNote(nd); } catch (e) { safeLog("[RT] migrateNote error for " + k + ":", e); noteData[k] = defaultData(); }
+      // Lo que espera subir en la cola sigue en pantalla (21 oct 2026; ver _applyOutboxOverlay con soloClave).
+      const _rtSobre = {}; _rtSobre[k] = nd;
+      try { _applyOutboxOverlay(_rtSobre, k, _guardiaBaseAntes); } catch (e) { safeLog("[RT] _applyOutboxOverlay:", e); }
+      try { noteData[k] = migrateNote(_rtSobre[k]); } catch (e) { safeLog("[RT] migrateNote error for " + k + ":", e); noteData[k] = defaultData(); }
       _rtNoteAplicada[k] = { t: Date.now(), u: toSafeString(newRow.updated_at) };   // una carga en camino con una foto más vieja no la regresa (supaLoadAll)
+      _notaFilaVista(k, newRow.updated_at);
       lsSaveNote(k, noteData[k]);
       // ¿Cambió algo de lo que se ve? Si no, ni aviso ni repintado (antes cada eco del sync de labs hacía sonar
       // «📡 Actualización recibida» en todos los iPads aunque las cifras fueran las mismas).
@@ -13989,6 +14121,7 @@ function plExportBackup() {
       const q = outboxLoad(); if (!q.length) return;
       const BATCH = 10; // peticiones simultáneas
       const results = new Array(q.length).fill(null);
+      const releer = new Map();   // notas a releer de la base al terminar (_releerNota) → campos que se conservan
       async function withOutboxRetry(taskFn) {
         let last = null;
         const maxAttempts = 4;
@@ -14030,19 +14163,36 @@ function plExportBackup() {
                 // supaUpsertNote devuelve null (no lanza) al fallar: convertirlo en excepción para
                 // que withOutboxRetry reintente de verdad en vez de dejar el ítem "fallido" a la primera.
                 // La Guardia y los diagramas que el ítem no marcó van con los vigentes (_outboxNoteSendData, 20 oct 2026).
+                // Se sube el ítem VIGENTE de la cola, releído en cada intento (_outboxNoteItemVivo, 21 oct 2026); si ya no
+                // está, no se sube nada. Al subir, sale de la cola en ese momento y la memoria toma lo que quedó en la base.
+                let _vivo = item, _omitido = false, _enviado = null, _enviadoTs = 0;
                 const noteRes = await withOutboxRetry(async function(){
-                  const r = await supaUpsertNote(p._supa_id, _outboxNoteSendData(item, pid(p)), Array.isArray(item.dirty) && item.dirty.length ? new Set(item.dirty) : null);
+                  _vivo = _outboxNoteItemVivo(item, pid(p));
+                  if (!_vivo) { _omitido = true; return true; }
+                  _enviado = _outboxNoteSendData(_vivo, pid(p)); _enviadoTs = Date.now();
+                  const r = await supaUpsertNote(p._supa_id, _enviado, Array.isArray(_vivo.dirty) && _vivo.dirty.length ? new Set(_vivo.dirty) : null);
                   if (r === null || r === undefined) throw new Error("upsert note: " + (_lastSyncErrorDetail || "sin detalle"));
                   return r;
                 });
                 // Considerar éxito cualquier valor no-null (incluso {} o true)
                 results[absIdx] = (noteRes !== null && noteRes !== undefined) ? noteRes : false;
-                if (results[absIdx]) {
+                if (results[absIdx] && !_omitido) {
                   try {
                     const _fk = pid(p);
-                    if (Array.isArray(item.dirty)) _touchLocalFields(_fk, item.dirty);
-                    _settlePendingDirty(_fk, item.data, item.dirty);
-                  } catch (_) {}
+                    // Lo que este equipo guardó con un push directo mientras esta subida viajaba es más nuevo que el ítem:
+                    // ni la memoria ni la relectura lo regresan, y si la base quedó con lo del ítem se vuelve a subir.
+                    const _tc = _localFieldTouch[_fk] || {}, _despues = Object.keys(_tc).filter(function (f) { return _tc[f] >= _enviadoTs; });
+                    _outboxQuitarNoteItem(_vivo);
+                    if (Array.isArray(_vivo.dirty)) _touchLocalFields(_fk, _vivo.dirty);
+                    _settlePendingDirty(_fk, _vivo.data, _vivo.dirty);
+                    _outboxAlignNoteAfterFlush(_fk, _vivo, _enviado, noteRes, _despues);
+                    _outboxReponerTrasSubida(_fk, noteRes, _despues);
+                    if (isPlainObject(noteRes)) _notaFilaVista(_fk, noteRes.updated_at);
+                    // Con lista de campos, la nota se relee al terminar: lo que la base tenga (un colega que guardó mientras
+                    // la respuesta venía en camino, una subida sin cambios que responde [] por pl_zz_sin_cambios, la Guardia
+                    // unida en pantalla) llega a la caja como un evento de Realtime. Sin lista, no (ver la función de arriba).
+                    if (Array.isArray(_vivo.dirty) && _vivo.dirty.length) releer.set(p._supa_id, (releer.get(p._supa_id) || []).concat(_despues));
+                  } catch (e) { safeLog("flushOutbox: nota tras subir:", e); }
                 }
               } else results[absIdx] = false;
             } else if (item.type === "patient" && item.patient) {
@@ -14097,6 +14247,7 @@ function plExportBackup() {
       outboxSave(failed);
       updateOutboxBadge();
       if (!failed.length) localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+      releer.forEach(function (mantener, id) { _releerNota(id, 0, mantener); });
     }
 
     // ─── MIGRATION: localStorage → Supabase (one-time) ─────────────────────────────
@@ -27227,7 +27378,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.20-1";
+    const PL_BUILD = "2026.10.21-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
