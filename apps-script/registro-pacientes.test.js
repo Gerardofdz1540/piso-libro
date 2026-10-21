@@ -1,8 +1,13 @@
 // Pruebas offline del registro de pacientes (sin Google, sin Supabase, datos FICTICIOS).
-// Carga registro-pacientes.gs en un sandbox con una hoja de cálculo en memoria (estricta como Google: cuadrícula de
-// 1000×26 al crear una pestaña, fuera de ella getRange falla; en texto plano las cadenas se guardan tal cual) y un
-// Supabase simulado (paginado, con filtros por fecha) y verifica: episodios, pestañas, fusión que nunca borra (Vigente),
-// escritura segura, lecturas incrementales, respaldo semanal y que nada de pacientes llegue al registro de ejecución.
+// Carga registro-pacientes.gs en un sandbox con:
+//   - una hoja de cálculo en memoria estricta como Google: cuadrícula de 1000×26 al crear una pestaña, fuera de ella
+//     getRange falla; en texto plano las cadenas se guardan tal cual;
+//   - un PostgREST simulado: filtros (gte/gt/eq/not.is.null, or=(…) de la paginación por llave, ->>), orden por varias
+//     columnas comparando fechas por valor, tope de 1000 filas por petición, sin offset (si el script lo usa, falla),
+//     errores 4xx/5xx con su código, 57014 (tiempo de la base agotado) y borrados entre dos páginas;
+//   - UrlFetchApp que rechaza las URLs que Google rechaza; un reloj simulado para los presupuestos de tiempo.
+// Verifica: episodios, pestañas, fusión que nunca borra (Vigente), escritura segura e incremental, lecturas por cursor
+// reanudables, WinLab con la regla de identidad de la app, respaldo semanal y que nada de pacientes llegue al registro.
 //   node apps-script/registro-pacientes.test.js
 "use strict";
 const fs = require("fs");
@@ -20,21 +25,27 @@ function makeSpreadsheet(id) {
     sh.getMaxRows = () => sh.maxR; sh.getMaxColumns = () => sh.maxC;
     sh.insertRowsAfter = (after, n) => { sh.maxR += n; return sh; };
     sh.insertColumnsAfter = (after, n) => { sh.maxC += n; return sh; };
+    sh.deleteColumns = (desde, n) => {
+      if (desde < 1 || n < 1 || desde - 1 + n > sh.maxC || desde === 1 && n === sh.maxC) throw new Error("Exception: deleteColumns fuera de la hoja");
+      sh.cells.forEach((r) => { if (r) r.splice(desde - 1, n); }); sh.maxC -= n; return sh;
+    };
     sh.setFrozenRows = () => sh;
     sh.clearContents = () => { sh.cells = []; };
     sh.getRange = (r, c, nr, nc) => {
-      if (r < 1 || c < 1 || r - 1 + nr > sh.maxR || c - 1 + nc > sh.maxC) throw new Error("Exception: The coordinates of the range are outside the dimensions of the sheet.");
+      if (r < 1 || c < 1 || nr < 1 || nc < 1 || r - 1 + nr > sh.maxR || c - 1 + nc > sh.maxC) throw new Error("Exception: The coordinates of the range are outside the dimensions of the sheet.");
       const range = {
         getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => { const row = sh.cells[r - 1 + i] || []; const v = row[c - 1 + j]; return v === undefined ? "" : v; })),
         setNumberFormat: (f) => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) sh.fmt[(r + i) + ":" + (c + j)] = f; return range; },
         setValues: (vals) => {
           if (vals.length !== nr || vals.some((row) => row.length !== nc)) throw new Error("setValues: tamaño distinto al rango");
           if (state0.failWriteOn === sh.name) throw new Error("Exception: Service Spreadsheets timed out");
-          sh.writes++;
+          if (state0.st && state0.st.msPorEscritura) state0.st.reloj += state0.st.msPorEscritura;
+          sh.writes++; sh.filasEscritas = (sh.filasEscritas || 0) + nr;
           vals.forEach((row, i) => { sh.cells[r - 1 + i] = sh.cells[r - 1 + i] || []; row.forEach((v, j) => {
             const texto = sh.fmt[(r + i) + ":" + (c + j)] === "@";
             // Como Google: en texto plano se guarda tal cual; fuera de texto plano «=…» sería fórmula y «'» se quita.
             if (!texto && typeof v === "string" && v[0] === "=") throw new Error("se escribió una fórmula: " + v.slice(0, 20));
+            if (typeof v === "string" && v.length > 50000) throw new Error("Exception: celda de más de 50000 caracteres");
             sh.cells[r - 1 + i][c - 1 + j] = (!texto && typeof v === "string" && v[0] === "'") ? v.slice(1) : v;
           }); });
           return range;
@@ -45,7 +56,9 @@ function makeSpreadsheet(id) {
     };
     return sh;
   }
-  return { sheets, id: id || "libro1", getId() { return this.id; }, getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet(n)) };
+  const ss = { sheets, id: id || "libro1", getId() { return this.id; }, getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => { if (sheets[n]) throw new Error("Exception: ya existe la hoja " + n); return (sheets[n] = makeSheet(n)); } };
+  ss.getSheets = () => Object.values(sheets);
+  return ss;
 }
 const state0 = {};
 // URL que UrlFetchApp acepta: esquema y host simples; ruta y consulta solo con caracteres de RFC 3986 (sin [ ] # en la
@@ -54,30 +67,80 @@ function urlValida(url) {
   const m = /^https:\/\/[A-Za-z0-9.-]+(\/[A-Za-z0-9\-._~!$&'()*+,;=:@\/%]*)(\?[A-Za-z0-9\-._~!$&'()*+,;=:@\/?%]*)?$/.exec(url);
   return !!m && !/%(?![0-9A-Fa-f]{2})/.test(url);
 }
+// Comparación como Postgres: marcas de tiempo por valor (no como texto: «…+00:00» vs «…Z»), números como números.
+function cmpPg(a, b) {
+  const esTs = (x) => typeof x === "string" && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(x);
+  if (esTs(a) && esTs(b)) return Date.parse(a.replace(" ", "T")) - Date.parse(b.replace(" ", "T"));
+  if ((typeof a === "number" || typeof b === "number") && !isNaN(Number(a)) && !isNaN(Number(b))) return Number(a) - Number(b);
+  return String(a) < String(b) ? -1 : (String(a) > String(b) ? 1 : 0);
+}
+// PostgREST simulado sobre state.db (solo lo que usa el script). Devuelve { status, body }.
+function postgrest(state, url) {
+  const u = new URL(url);
+  const tabla = /\/rest\/v1\/([a-z_]+)$/.exec(u.pathname)[1];
+  let sel = "", orden = [], lim = null;
+  const filtros = [];
+  for (const [k, v] of u.searchParams) {
+    if (k === "select") sel = v;
+    else if (k === "order") orden = v.split(",").map((x) => x.replace(/\.asc$/, ""));
+    else if (k === "limit") lim = +v;
+    else if (k === "offset") { state.usoOffset = true; return { status: 400, body: { code: "OFFSET", message: "el script no debe paginar con offset" } }; }
+    else if (k === "or") {
+      const m = /^\(([a-z_]+)\.gt\."([^"]*)",and\(\1\.eq\."([^"]*)",([a-z_]+)\.gt\."([^"]*)"\)\)$/.exec(v);
+      if (!m) return { status: 400, body: { code: "PGRST100", message: "or mal formado" } };
+      filtros.push((x) => cmpPg(x[m[1]], m[2]) > 0 || (cmpPg(x[m[1]], m[3]) === 0 && cmpPg(x[m[4]], m[5]) > 0));
+    } else {
+      const ruta = /^([a-z_]+)->>([a-z_]+)$/.exec(k);
+      const valor = (x) => ruta ? ((x[ruta[1]] || {})[ruta[2]]) : x[k];
+      let m;
+      if (v === "not.is.null") filtros.push((x) => valor(x) !== null && valor(x) !== undefined);
+      else if ((m = /^(gte|gt|eq)\.(.*)$/.exec(v))) filtros.push((x) => { const c = cmpPg(valor(x), m[2]); return valor(x) !== null && valor(x) !== undefined && (m[1] === "gte" ? c >= 0 : m[1] === "gt" ? c > 0 : c === 0); });
+      else return { status: 400, body: { code: "PGRST100", message: "filtro desconocido " + k } };
+    }
+  }
+  if (!sel || !orden.length || lim === null) return { status: 400, body: { code: "PGRST100", message: "falta select/order/limit" } };
+  let filas = (state.db[tabla] || []).filter((x) => filtros.every((f) => f(x)));
+  filas.sort((x, y) => { for (const c of orden) { const d = cmpPg(x[c], y[c]); if (d) return d; } return 0; });
+  filas = filas.slice(0, Math.min(lim, 1000));   // max_rows de Supabase
+  if (/de:patient_data->>_supa_id/.test(sel)) filas = filas.map((a) => ({ id: a.id, de: (a.patient_data || {})._supa_id || null, a: (a.note_data || {})._restaurado_a || null }));
+  else if (/reportes:data->reportes/.test(sel)) filas = filas.map((w) => ({ id: w.id, exp: w.exp, paciente: w.paciente, fecha: w.fecha, scraped_at: w.scraped_at, reportes: (w.data || {}).reportes }));
+  return { status: 200, body: JSON.parse(JSON.stringify(filas)) };
+}
+function makeDate(state) {
+  const R = Date;
+  class D extends R {
+    constructor(...a) { if (!a.length && state.reloj !== undefined) super(state.reloj); else super(...a); }
+    static now() { return state.reloj !== undefined ? state.reloj : R.now(); }
+  }
+  return D;
+}
 
 function makeSandbox(state) {
-  const calls = [], logs = [], triggers = [];
+  const calls = [], logs = [], triggers = state.triggers || (state.triggers = []);
   const ss = state.ss || (state.ss = makeSpreadsheet());
   state.props = state.props || {};
   state.drive = state.drive || { files: [], trashed: [] };
   state0.failWriteOn = state.failWriteOn || null;
+  state0.st = state;
   const sb = {
-    console, JSON, Math, Date, Object, Array, String, Number, RegExp, isNaN, encodeURIComponent, decodeURIComponent,
+    console, JSON, Math, Date: makeDate(state), Object, Array, String, Number, RegExp, isNaN, encodeURIComponent, decodeURIComponent,
     Logger: { log: (m) => logs.push(String(m)) },
     PropertiesService: { getScriptProperties: () => ({
       getProperty: (k) => (k === "SUPABASE_KEY" ? (state.sinLlave ? null : "svc") : (state.props[k] === undefined ? null : state.props[k])),
-      setProperty: (k, v) => { state.props[k] = v; }
+      setProperty: (k, v) => { if (typeof v !== "string") throw new Error("setProperty: valor no es texto"); if (v.length > 9000) throw new Error("Exception: propiedad de más de 9 KB"); state.props[k] = v; },
+      deleteProperty: (k) => { delete state.props[k]; }
     }) },
     LockService: { getScriptLock: () => ({ tryLock: () => !state.ocupado, releaseLock: () => {} }) },
     Session: { getScriptTimeZone: () => "America/Mexico_City" },
     Utilities: { formatDate: () => state.hoy || "2026-10-21" },
     SpreadsheetApp: {
       getActiveSpreadsheet: () => (state.standalone ? null : ss),
-      openById: (id) => { state.abiertoPorId = id; return ss; },
+      openById: (id) => { if (state.idMalo) throw new Error("Exception: Unexpected error while getting the method or property openById on object SpreadsheetApp."); state.abiertoPorId = id; return ss; },
       getUi: () => ({ createMenu: () => { const m = { items: [], addItem: (a, b) => { m.items.push(b); return m; }, addToUi: () => { state.menu = m.items; } }; return m; } })
     },
     DriveApp: {
       getFileById: (id) => {
+        if (state.driveFalla) throw new Error("Exception: Drive no disponible");
         const carpeta = { getFiles: () => { const fs2 = state.drive.files.filter((f) => !f.trashed); let i = 0; return { hasNext: () => i < fs2.length, next: () => fs2[i++] }; } };
         return { getName: () => "Registro de pacientes", getParents: () => { let d = false; return { hasNext: () => !d, next: () => { d = true; return carpeta; } }; },
           makeCopy: (name) => { const f = { name, trashed: false, getName: () => name, setTrashed: (t) => { f.trashed = t; if (t) state.drive.trashed.push(name); } }; state.drive.files.push(f); return f; } };
@@ -88,7 +151,7 @@ function makeSandbox(state) {
       deleteTrigger: (t) => { const i = triggers.indexOf(t); if (i >= 0) triggers.splice(i, 1); },
       newTrigger: (fn) => ({ timeBased: () => ({
         everyDays: (d) => ({ atHour: (h) => ({ create: () => { const t = { fn, d, h, getHandlerFunction: () => fn }; triggers.push(t); return t; } }) }),
-        after: (ms) => ({ create: () => { const t = { fn, after: ms, getHandlerFunction: () => fn }; triggers.push(t); (state.continuaciones = state.continuaciones || []).push(ms); return t; } })
+        after: (ms) => ({ create: () => { if (triggers.length >= 20) throw new Error("Exception: This script has too many triggers."); const t = { fn, after: ms, getHandlerFunction: () => fn }; triggers.push(t); (state.continuaciones = state.continuaciones || []).push(ms); return t; } })
       }) })
     },
     UrlFetchApp: {
@@ -97,19 +160,19 @@ function makeSandbox(state) {
         // la consulta…) o un % mal formado no sale: «Exception: Invalid argument: <url>».
         if (!urlValida(url)) { calls.push({ m: "rechazada", raw: url, u: url }); throw new Error("Exception: Invalid argument: " + url); }
         if (state.rechazaUrl && state.rechazaUrl.test(url)) { calls.push({ m: "rechazada", raw: url, u: url }); throw new Error("Exception: Invalid argument: " + url); }
+        if (state.msPorFetch) state.reloj += state.msPorFetch;
         const u = decodeURIComponent(url.replace(/^https?:\/\/[^/]+/, ""));
         calls.push({ m: (opts && opts.method) || "get", raw: url, u, headers: opts && opts.headers });
         const tabla = /\/rest\/v1\/([a-z_]+)\?/.exec(u)[1];
+        state.nLlamadas = state.nLlamadas || {}; state.nLlamadas[tabla] = (state.nLlamadas[tabla] || 0) + 1;
         if (state.codigo && state.codigo[tabla]) return { getResponseCode: () => 400, getContentText: () => JSON.stringify({ code: state.codigo[tabla], message: "column PACIENTE FICTICIO SECRETO does not exist", details: "000123" }) };
+        if (state.agotado && state.agotado[tabla]) return { getResponseCode: () => 500, getContentText: () => JSON.stringify({ code: "57014", message: "canceling statement due to statement timeout" }) };
         if (state.falla && state.falla[tabla]) return { getResponseCode: () => state.falla[tabla], getContentText: () => JSON.stringify({ message: "detalle con PACIENTE FICTICIO SECRETO" }) };
-        const lim = +/limit=(\d+)/.exec(u)[1], off = +/offset=(\d+)/.exec(u)[1];
+        const lim = +(/[?&]limit=(\d+)/.exec(u) || [0, 0])[1];
         if (state.maxFilas && state.maxFilas[tabla] !== undefined && lim > state.maxFilas[tabla]) throw new Error("Exception: Response too large");
-        let filas = (state.db[tabla] || []).slice();
-        if (/_restaurado_a=not\.is\.null/.test(u)) filas = filas.filter((a) => a.note_data && a.note_data._restaurado_a).map((a) => ({ id: a.id, de: (a.patient_data || {})._supa_id || null, a: a.note_data._restaurado_a }));
-        if (/order=(archived_at|scraped_at)\.asc/.test(u)) { const col = /order=([a-z_]+)\.asc/.exec(u)[1]; filas.sort((x, y) => String(x[col] || "").localeCompare(String(y[col] || "")) || String(x.id).localeCompare(String(y.id))); }
-        const f = /&([a-z_]+)=gte\.([^&]+)/.exec(u);
-        if (f) filas = filas.filter((x) => String(x[f[1]] || "") >= f[2]);
-        return { getResponseCode: () => 200, getContentText: () => JSON.stringify(filas.slice(off, off + lim)) };
+        const r = postgrest(state, url);
+        if (state.alResponder) state.alResponder(tabla, state.nLlamadas[tabla], state.db);
+        return { getResponseCode: () => r.status, getContentText: () => JSON.stringify(r.body) };
       }
     }
   };
@@ -159,9 +222,22 @@ function db() {
     cronologia_respaldo: [{ patient_id: "p3", exp: "000789", nombre: "PRUEBA FICTICIA TRES", cronologia: "02/10 08:00 R2: POSTQX SIN EVENTOS", actualizado: "2026-10-12T06:15:00+00:00" },
       { patient_id: "p1", cronologia: "16/10 08:00 R2: POSTQX INMEDIATO\n15/10 22:00 R1: INGRESA DE URGENCIAS" }],
     procedimientos_dia: [{ id: "x1", fecha_dia: "2026-10-21", cama: "3-201", exp: "000123", nombre: "PRUEBA FICTICIA UNO", dx: "APENDICITIS", esp: "CG", added_by: "R2 FICTICIO" }],
-    winlab_labs: [{ id: 1, exp: "000123", paciente: "PRUEBA FICTICIA UNO", fecha: "2026-10-19", data: { hb: 12.0, leucos: "11.0", vacio: "" }, scraped_at: "2026-10-19T08:00:00+00:00" },
-      { id: 2, exp: "000555", paciente: "PRUEBA FICTICIA CINCO", fecha: "2026-10-01", data: { cr: "2.1" }, scraped_at: "2026-10-01T08:00:00+00:00" }],
-    winlab_cultivos: [{ exp: "000123", cama: "3-201", nombre: "PRUEBA FICTICIA UNO", fecha: "2026-10-17", tipo: "HEMOCULTIVO", germen: "", resultado: "NEGATIVO", texto_origen: "SIN DESARROLLO" }],
+    // winlab_labs con la forma real: data.reportes = encabezados (__hasLink:false, nombre del paciente) y reportes
+    // (__cells = [.., .., folio, toma, resultado, servicio], valores). La búsqueda por apellido trae homónimos.
+    winlab_labs: [
+      { id: 1, exp: "000123", paciente: "PRUEBA FICTICIA UNO", fecha: "2026-10-19", scraped_at: "2026-10-19T08:00:00.123456+00:00", data: { esp: "CG", cama: "3-201", run_id: "r1", headers: ["x"], reportes: [
+        { __hasLink: false, NOMBRE: "UNO", "APELLIDOS COMPLETOS": "PRUEBA FICTICIA", __cells: ["", "PRUEBA FICTICIA", "UNO"] },
+        { __hasLink: true, __target: true, __cells: ["", "", "F100", "18/10/2026 06:10", "18/10/2026 07:00", "CIRUGIA GENERAL"], "APELLIDOS COMPLETOS": "18/10/2026 06:10", NOMBRE: "18/10/2026 07:00", SEXO: "CIRUGIA GENERAL",
+          valores: [{ estudio: "HEMOGLOBINA", valor: "12.0", unidad: "g/dL", referencia: "12-16" }, { estudio: "LEUCOCITOS", valor: "11.0", unidad: "10^3/uL", referencia: "4-10" }] },
+        { __hasLink: true, __cells: ["", "", "F101", "17/10/2026 09:00", "19/10/2026 07:30", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOCULTIVO PERIFERICO", valor: "1", unidad: "DESARROLLO" }, { estudio: "NEGATIVO A", valor: "5", unidad: "DIAS" }] },
+        { __hasLink: true, __cells: ["", "", "F102", "19/10/2026 05:00", "", "CIRUGIA GENERAL"] },
+        { __hasLink: false, NOMBRE: "OTRO HOMONIMO", "APELLIDOS COMPLETOS": "PRUEBA FICTICIA", __cells: ["", "PRUEBA FICTICIA", "OTRO HOMONIMO"] },
+        { __hasLink: true, __cells: ["", "", "F900", "18/10/2026 06:00", "18/10/2026 06:30", "MEDICINA INTERNA"], valores: [{ estudio: "HEMOGLOBINA", valor: "7.0", unidad: "g/dL" }] }
+      ] } },
+      { id: 2, exp: "000555", paciente: "PRUEBA FICTICIA CINCO", fecha: "2026-10-01", scraped_at: "2026-10-01T08:00:00+00:00", data: { reportes: [
+        { __hasLink: true, __cells: ["", "", "F200", "01/10/2026 05:00", "01/10/2026 06:00", "MEDICINA INTERNA"], valores: [{ estudio: "CREATININA", valor: "2.1", unidad: "mg/dL", referencia: "0.6-1.2" }] }
+      ] } }
+    ],
     ris_estudios: [{ id: 10, patient_id: "p1", exp: "000123", paciente: "PRUEBA FICTICIA UNO", fecha: "15/10/2026", hora: "09:00", modalidad: "US", estudios: "USG ABDOMINAL", critico: false, reporte_estado: "listo", reporte: "APÉNDICE ENGROSADO", reporte_url: "https://ris.ejemplo/10", scraped_at: "2026-10-15T10:00:00+00:00" }]
   };
 }
@@ -213,12 +289,18 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
     G.filter((x) => x["ID episodio"] === "p1" && x["Caja"] === "Cronología").map((x) => x["Renglón"]).join("|") === "16/10 08:00 R2: POSTQX INMEDIATO|17/10 08:00 R2: TOLERA VÍA ORAL|15/10 22:00 R1: INGRESA DE URGENCIAS"
     && G.some((x) => x["ID episodio"] === "p3" && x["Renglón"] === "02/10 08:00 R2: POSTQX SIN EVENTOS")
     && G.filter((x) => x["Caja"] === "Guardia vigente").map((x) => x["Renglón"]).join("|") === "20/10 22:00 R1: SIN EVENTOS|20/10 23:00 R1: AFEBRIL", JSON.stringify(G));
-  check("R1n robots: labs de WinLab (sin vacíos, también de un expediente sin episodio), cultivos y RIS con su episodio",
-    tab(ss, "Labs del robot (WinLab)").length === 3 && tab(ss, "Labs del robot (WinLab)").some((x) => x["Expediente"] === "000555" && x["Valor"] === "2.1")
-    && tab(ss, "Cultivos del robot (WinLab)")[0]["Resultado"] === "NEGATIVO" && tab(ss, "Imagen del robot (RIS)")[0]["ID episodio"] === "p1" && tab(ss, "Imagen del robot (RIS)")[0]["Reporte"] === "APÉNDICE ENGROSADO");
+  const W = tab(ss, "Labs del robot (WinLab)"), WC = tab(ss, "Cultivos del robot (WinLab)");
+  const wF100 = W.find((x) => x["Folio"] === "F100");
+  check("R1n WinLab: un renglón por reporte del paciente (sin el homónimo ni el reporte sin valores), con toma, resultado, servicio y valores; también de un expediente sin episodio",
+    W.length === 3 && !W.some((x) => x["Folio"] === "F900" || x["Folio"] === "F102") && wF100 && wF100["Toma"] === "2026-10-18 06:10" && wF100["Resultado"] === "2026-10-18 07:00" && wF100["Servicio"] === "CIRUGIA GENERAL"
+    && wF100["Valores"] === "HEMOGLOBINA: 12.0 g/dL (ref. 12-16)\nLEUCOCITOS: 11.0 10^3/uL (ref. 4-10)" && String(wF100["Estudios"]) === "2" && wF100["Nombre en WinLab"] === "PRUEBA FICTICIA UNO"
+    && /validado por el robot/.test(wF100["Atribución"]) && W.some((x) => x["Expediente"] === "000555" && /^CREATININA: 2\.1 mg\/dL/.test(x["Valores"]) && /Sin encabezado/.test(x["Atribución"])), JSON.stringify(W));
+  check("R1n2 cultivos de WinLab desde el reporte (hemocultivo negativo a 5 días) y RIS con su episodio",
+    WC.length === 1 && WC[0]["Tipo"] === "Hemocultivo" && WC[0]["Resultado"] === "Negativo" && WC[0]["Detalle"] === "Sin desarrollo a 5 días" && WC[0]["Fuente"] === "Tabla del reporte" && WC[0]["Toma"] === "2026-10-17 09:00"
+    && tab(ss, "Imagen del robot (RIS)")[0]["ID episodio"] === "p1" && tab(ss, "Imagen del robot (RIS)")[0]["Reporte"] === "APÉNDICE ENGROSADO", JSON.stringify(WC));
   check("R1o texto que parece fórmula («=SOLO AYUNO», «+ USG») se guarda tal cual en texto plano (sin apóstrofo)", byId.p1["Manejo"] === "=SOLO AYUNO" && byId.p1["Pendientes"] === "+ USG");
   check("R1p solo GET, con la llave, paginado y ordenado; la primera corrida lee todo (sin filtro de fecha)",
-    calls.every((c) => c.m === "get" && c.headers.apikey === "svc") && calls.some((c) => /notes\?.*limit=20&offset=0/.test(c.u)) && calls.every((c) => /order=[a-z_]+\.asc/.test(c.u)) && !calls.some((c) => /gte\./.test(c.u)));
+    calls.every((c) => c.m === "get" && c.headers.apikey === "svc") && calls.some((c) => /notes\?.*limit=20$/.test(c.u)) && !calls.some((c) => /offset/.test(c.u)) && !st.usoOffset && calls.every((c) => /order=[a-z_]+\.asc/.test(c.u)) && !calls.some((c) => /gte\./.test(c.u)));
   check("R1q el registro de ejecución solo tiene conteos (ningún nombre ni expediente)", logs.length >= 1 && logs.every((l) => !nombres.test(l)), logs.join(" | "));
   check("R1s el Diccionario dice cuántas celdas usa y que no hay carga pendiente", /Celdas usadas/.test(JSON.stringify(ss.sheets["Diccionario"].cells)) && /"Carga en curso","No"/.test(JSON.stringify(ss.sheets["Diccionario"].cells)));
   check("R1r respaldo semanal: la primera corrida guarda una copia y anota la fecha", st.drive.files.length === 1 && /^Respaldo — Registro de pacientes — 2026-10-21$/.test(st.drive.files[0].name) && !!st.props.REG_ULTIMO_RESPALDO && !!st.props.REG_ULTIMA_CORRIDA);
@@ -271,12 +353,13 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   delete st.falla;
   // Una escritura que falla a la mitad (Sheets se cae): la pestaña no queda vacía y la siguiente corrida no pierde nada.
   const pacAntes = tab(st.ss, "Pacientes").length;
+  st.db.notes[0].lab_history.push({ fecha: "2026-10-19", labs: { hb: "11.5" } });   // un cambio que Labs sí tiene que escribir
   st.failWriteOn = "Labs";
   let e2 = null; try { makeSandbox(st).sb.actualizarRegistro(); } catch (e) { e2 = String(e.message); }
   st.failWriteOn = null;
   check("R3b una escritura que falla no vacía la pestaña (antes se vaciaba primero)", !!e2 && tab(st.ss, "Labs").length > 0 && tab(st.ss, "Pacientes").length === pacAntes, e2);
   makeSandbox(st).sb.actualizarRegistro();
-  check("R3c y la siguiente corrida sigue completa", tab(st.ss, "Labs").length === 7 && tab(st.ss, "Pacientes").length === 4);
+  check("R3c y la siguiente corrida sigue completa", tab(st.ss, "Labs").length === 8 && tab(st.ss, "Pacientes").length === 4);
   // Primera corrida que lee todo pero falla al escribir: el cursor de la Papelera no avanza y la siguiente lee de nuevo.
   const sc = { db: db(), failWriteOn: "Pacientes" };
   let e6 = null; try { makeSandbox(sc).sb.actualizarRegistro(); } catch (e) { e6 = String(e.message); }
@@ -304,7 +387,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   const d = db(); for (let i = 0; i < 44; i++) { d.patients.push({ id: "q" + i, nombre: "PRUEBA FICTICIA EXTRA " + i, exp: "9" + i }); d.notes.push({ patient_id: "q" + i, pendientes: "P" + i }); }
   const mp = makeSandbox({ db: d, maxFilas: { notes: 6 } });
   mp.sb.actualizarRegistro();
-  check("R3h paginado completo y la página se achica si la respuesta es demasiado grande (20 → 10 → 5)", tab(mp.ss, "Pacientes").length === 48 && mp.calls.some((c) => /notes\?.*limit=5&/.test(c.u)) && !mp.calls.some((c) => /notes\?.*limit=20&offset=5/.test(c.u)));
+  check("R3h paginado completo y la página se achica si la respuesta es demasiado grande (20 → 10 → 5)", tab(mp.ss, "Pacientes").length === 48 && mp.calls.some((c) => /notes\?.*limit=5$/.test(c.u)) && !mp.calls.some((c) => /offset/.test(c.u)));
   const mt = makeSandbox({ db: db(), maxFilas: { archive: 0 } });
   let e5 = null; try { mt.sb.actualizarRegistro(); } catch (e) { e5 = String(e.message); }
   check("R3i una fila que no cabe ni sola: error sin datos y nada escrito", /archive: no se pudo leer/.test(e5 || "") && !nombres.test(e5 || "") && !mt.ss.sheets["Pacientes"], e5);
@@ -357,7 +440,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   const r1 = m1.sb.actualizarRegistro();
   const n1 = tab(st.ss, "Pacientes").length;
   check("R6a con el tope alcanzado escribe lo leído, deja el cursor y programa una continuación en 10 min",
-    r1.ok && r1.pendiente === true && (st.continuaciones || []).includes(600000) && !!st.props.REG_CURSOR_archive && n1 < 4 && /Sí: quedan filas/.test(JSON.stringify(st.ss.sheets["Diccionario"].cells)), JSON.stringify({ r1, n1 }));
+    r1.ok && r1.pendiente === true && (st.continuaciones || []).includes(600000) && !!st.props.REG_SIGUE_archive && !st.props.REG_CURSOR_archive && n1 < 4 && /Sí: quedan filas/.test(JSON.stringify(st.ss.sheets["Diccionario"].cells)), JSON.stringify({ r1, n1 }));
   for (let i = 0; i < 4; i++) { const m = makeSandbox(st); m.sb.REG_CURSORES.archive.tope = 2; m.sb.continuarRegistro(); }
   const P = tab(st.ss, "Pacientes");
   check("R6b las vueltas siguientes completan la carga sin repetir episodios", P.length === 4 && new Set(P.map((x) => x["ID episodio"])).size === 4 && /"Carga en curso","No"/.test(JSON.stringify(st.ss.sheets["Diccionario"].cells)), JSON.stringify(P.map((x) => x["ID episodio"])));
@@ -387,12 +470,11 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   // Respaldos: a los 7 días otra copia; quedan las últimas 5.
   const sr = { db: db(), hoy: "2026-10-01", props: {} };
   for (let i = 0; i < 7; i++) {
-    sr.hoy = "2026-10-" + String(1 + i * 7).padStart(2, "0");
-    sr.props.REG_ULTIMO_RESPALDO = i === 0 ? undefined : new Date(Date.now() - 8 * 86400000).toISOString();
+    sr.hoy = new Date(Date.UTC(2026, 9, 1 + i * 7)).toISOString().slice(0, 10);
     makeSandbox(sr).sb.actualizarRegistro();
   }
   const vivas = sr.drive.files.filter((f) => !f.trashed).map((f) => f.name.slice(-10)).sort();
-  check("R4d un respaldo por semana y quedan los últimos 5 (los viejos a la papelera de Drive)", sr.drive.files.length === 7 && vivas.length === 5 && vivas[0] === "2026-10-15" && sr.drive.trashed.length === 2, JSON.stringify(vivas));
+  check("R4d un respaldo por semana y quedan los últimos 5 (los viejos a la papelera de Drive)", sr.drive.files.length === 7 && vivas.length === 5 && vivas[0] === "2026-10-15" && vivas[4] === "2026-11-12" && sr.drive.trashed.length === 2, JSON.stringify(vivas));
 }
 
 // ─── R8: URLs que Google acepta (21 oct 2026: la primera corrida real falló con «Supabase archive: no se pudo leer
@@ -413,8 +495,8 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
     && m2.calls.some((c) => /archive\?.*&archived_at=gte\.\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2}%3A\d{2}/.test(c.raw)),
     JSON.stringify(todas.filter((c) => !urlValida(c.raw)).map((c) => c.raw).slice(0, 3)));
   check("R8b regUrl_: cada nombre y valor codificado, varios filtros, orden ascendente con desempate",
-    m1.sb.regUrl_("t", "a,b:c->>d", "x,id", "c->>d=not.is.null&f=gte.2026-10-01T00:00:00+00:00", 5, 10)
-      === "https://vkxplmrzyqlamxpbtmes.supabase.co/rest/v1/t?select=a%2Cb%3Ac-%3E%3Ed&c-%3E%3Ed=not.is.null&f=gte.2026-10-01T00%3A00%3A00%2B00%3A00&order=x.asc%2Cid.asc&limit=5&offset=10");
+    m1.sb.regUrl_("t", "a,b:c->>d", "x,id", "c->>d=not.is.null&f=gte.2026-10-01T00:00:00+00:00", 5)
+      === "https://vkxplmrzyqlamxpbtmes.supabase.co/rest/v1/t?select=a%2Cb%3Ac-%3E%3Ed&c-%3E%3Ed=not.is.null&f=gte.2026-10-01T00%3A00%3A00%2B00%3A00&order=x.asc%2Cid.asc&limit=5");
   // Si Google rechaza una URL: falla de inmediato (sin achicar la página 10 veces), dice por qué, sin URL, llave ni datos.
   const sr = { db: db(), rechazaUrl: /restaurado_a/ };
   const mr = makeSandbox(sr); let er = null;
@@ -423,10 +505,151 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
     !!er && /archive: no se pudo leer \(fila 0\): Exception: Invalid argument: \[url\]/.test(er) && mr.calls.filter((c) => c.m === "rechazada").length === 1
     && !/https?:|svc|supabase\.co/.test(er) && !nombres.test(er) && !sr.ss.sheets["Pacientes"], er);
   // Error de PostgREST (p. ej. una columna que no existe): solo el código, nunca su mensaje ni sus detalles.
-  const sc = { db: db(), codigo: { winlab_cultivos: "42703" } };
+  const sc = { db: db(), codigo: { cronologia_respaldo: "42703" } };
   const mc = makeSandbox(sc); let ec = null;
   try { mc.sb.actualizarRegistro(); } catch (e) { ec = String(e.message); }
-  check("R8d HTTP 400 de PostgREST: el error trae el código (42703) y no el mensaje ni los detalles", ec === "Supabase winlab_cultivos HTTP 400 (42703)" && mc.logs.every((l) => !/SECRETO|000123/.test(l)), ec);
+  check("R8d HTTP 400 de PostgREST: el error trae el código (42703) y no el mensaje ni los detalles", ec === "Supabase cronologia_respaldo HTTP 400 (42703)" && mc.logs.every((l) => !/SECRETO|000123/.test(l)), ec);
+}
+
+// ─── R9: WinLab con la regla de identidad de la app y cultivos (copias de index.html) ────────────────────────────
+{
+  const sb = makeSandbox({ db: db() }).sb;
+  const enc = (ap, nom) => ({ __hasLink: false, NOMBRE: nom, "APELLIDOS COMPLETOS": ap, __cells: ["", ap, nom] });
+  const rep = (folio, extra) => Object.assign({ __hasLink: true, __cells: ["", "", folio, "10/10/2026 06:00", "10/10/2026 07:00", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOGLOBINA", valor: "10" }] }, extra || {});
+  const folios = (fila) => sb.regWlDelPaciente(fila).map((x) => x.rep.__cells[2]);
+  const fila = { paciente: "PRUEBA FICTICIA ANA MARIA", reportes: [rep("A0"), enc("PRUEBA FICTICIA", "ANA"), rep("A1"), rep("A2", { __target: true }), enc("PRUEBA FICTICIA", "ANA MARIA"), rep("A3"), enc("PRUEBA FICTICIA", "LUISA"), rep("A4", { __target: true })] };
+  check("R9a identidad: encabezado con el nombre completo entra; con menos nombres solo si el robot lo validó; antes del primer encabezado y de otro paciente no",
+    JSON.stringify(folios(fila)) === JSON.stringify(["A2", "A3"]), JSON.stringify(folios(fila)));
+  check("R9b tolera una letra cambiada por el OCR (FICTISIA ≈ FICTICIA) pero no otro nombre de pila",
+    JSON.stringify(folios({ paciente: "PRUEBA FICTICIA ANA MARIA", reportes: [enc("PRUEBA FICTISIA", "ANA MARIA"), rep("B1"), enc("PRUEBA FICTICIA", "ANA LUISA"), rep("B2")] })) === JSON.stringify(["B1"]));
+  check("R9c sin encabezados (búsqueda de un solo paciente) entra todo; reportes sin valores no", JSON.stringify(folios({ paciente: "X Y Z", reportes: [rep("C1"), rep("C2", { valores: [] })] })) === JSON.stringify(["C1"]));
+  // Mismo reporte en dos capturas: la que trae más valores manda; una posterior con menos no la pisa.
+  const acc = { labs: {}, cultivos: {} };
+  const r1 = rep("D1", { valores: [{ estudio: "HB", valor: "9" }] }), r2 = rep("D1", { valores: [{ estudio: "HB", valor: "9" }, { estudio: "PLT", valor: "150" }] });
+  sb.regWlAcumular(acc, [{ exp: "1", paciente: "X", scraped_at: "2026-10-10T08:00:00Z", reportes: [r1] }, { exp: "1", paciente: "X", scraped_at: "2026-10-11T08:00:00Z", reportes: [r2] }, { exp: "1", paciente: "X", scraped_at: "2026-10-12T08:00:00Z", reportes: [r1] }]);
+  const L = Object.values(acc.labs);
+  check("R9d el mismo reporte en varias capturas es un solo renglón, con la captura de más valores", L.length === 1 && L[0]["Estudios"] === 2 && L[0]["Capturado"] === "2026-10-11T08:00:00Z" && /PLT: 150/.test(L[0]["Valores"]), JSON.stringify(L));
+  // Cultivo del PDF: germen con marcas, antibiograma S/I/R, UFC y texto; una captura posterior solo con la tabla no lo pisa.
+  const pdf = rep("E1", { valores: [{ estudio: "CULTIVO", valor: "POSITIVO", referencia: "Sin desarrollo" }], cultivo_texto: "TEXTO FICTICIO DEL REPORTE",
+    cultivo: { secciones: [{ tipo: "Urocultivo", muestra: "ORINA", resultado: "POSITIVO", germenes: [{ nombre: "Escherichia coli", flags: ["BLEE"], ufc: ">100000", antibiograma: [{ antibiotico: "AMIKACINA", cim: "<=2", interp: "S" }, { antibiotico: "CEFTRIAXONA", interp: "R" }, { antibiotico: "CEFEPIME", interp: "I" }] }] }] } });
+  const soloTabla = rep("E1", { valores: [{ estudio: "CULTIVO", valor: "POSITIVO", referencia: "Sin desarrollo" }] });
+  const ac2 = { labs: {}, cultivos: {} };
+  sb.regWlAcumular(ac2, [{ exp: "2", paciente: "X", scraped_at: "2026-10-10T08:00:00Z", reportes: [pdf] }, { exp: "2", paciente: "X", scraped_at: "2026-10-11T08:00:00Z", reportes: [soloTabla] }]);
+  const C = Object.values(ac2.cultivos);
+  check("R9e cultivo del PDF: positivo con germen y marcas, S/I/R, UFC y texto; la captura posterior solo con la tabla no lo pisa",
+    C.length === 1 && C[0]["Resultado"] === "POSITIVO" && C[0]["Germen"] === "Escherichia coli (BLEE)" && C[0]["Sensibles"] === "AMIKACINA <=2" && C[0]["Intermedios"] === "CEFEPIME" && C[0]["Resistentes"] === "CEFTRIAXONA"
+    && C[0]["UFC"] === ">100000" && C[0]["Tipo"] === "Urocultivo" && C[0]["Muestra"] === "ORINA" && C[0]["Fuente"] === "PDF del reporte" && C[0]["Texto del reporte"] === "TEXTO FICTICIO DEL REPORTE", JSON.stringify(C));
+  const C3 = sb.regWlCultivos(soloTabla), C4 = sb.regWlCultivos(rep("E2", { valores: [{ estudio: "CULTIVO SECRECION", valor: "Klebsiella pneumoniae" }] })), C5 = sb.regWlCultivos(rep("E3"));
+  check("R9f cultivo de la tabla: POSITIVO sin germen, germen en el valor, y un reporte que no es cultivo no da nada",
+    C3.length === 1 && C3[0].positivo && /POSITIVO \(germen/.test(C3[0].organismo) && C4[0].organismo === "Klebsiella pneumoniae" && C4[0].tipo === "Cultivo de herida/secreción" && C5.length === 0, JSON.stringify([C3, C4, C5]));
+  check("R9g valores: sección, unidad y referencia; archivos incrustados fuera", sb.regWlValores({ valores: [{ seccion: "BH", estudio: "HB", valor: "9", unidad: "g/dL", referencia: "12-16" }, { estudio: "PDF", valor: "data:application/pdf;base64,AAAA" }, { estudio: "", valor: "" }] })
+    === "[BH] HB: 9 g/dL (ref. 12-16)\nPDF: [archivo]");
+}
+
+// ─── R10: paginación por llave y cursores (sin offset, sin saltos) ───────────────────────────────────────────────
+{
+  // Un borrado entre dos páginas (un egreso mientras se leen las notas) no se salta la nota siguiente.
+  const d = db(); for (let i = 0; i < 44; i++) { d.patients.push({ id: "q" + String(i).padStart(2, "0"), nombre: "PRUEBA FICTICIA EXTRA " + i, exp: "9" + i }); d.notes.push({ patient_id: "q" + String(i).padStart(2, "0"), pendientes: "P" + i }); }
+  const st = { db: d, alResponder: (tabla, n, base) => { if (tabla === "notes" && n === 1) base.notes = base.notes.filter((x) => x.patient_id !== "q00"); } };
+  makeSandbox(st).sb.actualizarRegistro();
+  const P = Object.fromEntries(tab(st.ss, "Pacientes").map((x) => [x["ID episodio"], x]));
+  const faltan = []; for (let i = 1; i < 44; i++) { const id = "q" + String(i).padStart(2, "0"); if (!P[id] || P[id]["Pendientes"] !== "P" + i) faltan.push(id); }
+  check("R10a un borrado entre dos páginas no salta la fila siguiente (con offset se perdía la nota de otro paciente)", faltan.length === 0 && !st.usoOffset, JSON.stringify(faltan));
+  // Más filas que el tope dentro de 2 días, en varias vueltas: no se salta ninguna (antes el cursor se inflaba).
+  const d2 = db(); d2.archive = [];
+  for (let i = 0; i < 6; i++) d2.archive.push({ id: "z" + i, archived_at: new Date(Date.UTC(2026, 9, 20, i * 3)).toISOString().replace(".000Z", i % 2 ? "Z" : "+00:00"), patient_data: { _supa_id: "e" + i, nombre: "PRUEBA FICTICIA E" + i, exp: "8" + i }, note_data: {} });
+  const s2 = { db: d2 };
+  // Carga inicial: 2 + 2 + 2 filas y una vuelta más que confirma el final (la 3.ª llena el tope y no sabe si quedan).
+  for (let v = 0; v < 4; v++) { const m = makeSandbox(s2); m.sb.REG_CURSORES.archive.tope = 2; v ? m.sb.continuarRegistro() : m.sb.actualizarRegistro(); }
+  const ids = tab(s2.ss, "Pacientes").map((x) => x["ID episodio"]).filter((x) => /^e/.test(x)).sort();
+  check("R10b seis egresos en 15 h con tope 2 por vuelta: entran los seis (con y sin «Z»), sin repetir", JSON.stringify(ids) === JSON.stringify(["e0", "e1", "e2", "e3", "e4", "e5"]) && !s2.props.REG_SIGUE_archive && !!s2.props.REG_CURSOR_archive, JSON.stringify({ ids, props: s2.props }));
+  // Una página más grande que el tope del servidor (1000) no corta la lectura antes de tiempo.
+  const d3 = db(); d3.patients = []; for (let i = 0; i < 2500; i++) d3.patients.push({ id: "m" + String(i).padStart(5, "0"), nombre: "N", exp: "E" });
+  const m3 = makeSandbox({ db: d3 });
+  const r3 = m3.sb.regLeerTabla_("svc", "patients", "id", "id", "", 5000, {});
+  check("R10c páginas de más de 1000 filas (max_rows): se piden de 1000 y se leen las 2500", r3.completa && r3.filas.length === 2500 && m3.calls.every((c) => /limit=1000$/.test(c.u)), JSON.stringify({ n: r3.filas.length, llamadas: m3.calls.length }));
+}
+
+// ─── R11: presupuestos de tiempo (la ejecución de Apps Script se corta a los 6 min) ──────────────────────────────
+{
+  // Lectura: a los 2.5 min las lecturas por cursor se detienen; escribe lo leído y sigue en 10 min.
+  const st = { db: db(), reloj: 0, msPorFetch: 35000 };
+  const r1 = makeSandbox(st).sb.actualizarRegistro();
+  check("R11a lectura lenta: las lecturas por cursor se detienen a los 2.5 min, se escribe lo leído y se programa la continuación",
+    r1.ok && r1.pendiente && (st.continuaciones || []).length === 1 && tab(st.ss, "Pacientes").length === 4 && tab(st.ss, "Labs del robot (WinLab)").length === 0 && !st.props.REG_CURSOR_winlab_labs, JSON.stringify(r1));
+  st.msPorFetch = 0; st.reloj = 0;
+  const r2 = makeSandbox(st).sb.continuarRegistro();
+  check("R11b la continuación termina: WinLab y RIS completos y los cursores guardados", r2.ok && !r2.pendiente && tab(st.ss, "Labs del robot (WinLab)").length === 3 && tab(st.ss, "Imagen del robot (RIS)").length === 1 && !!st.props.REG_CURSOR_winlab_labs && !!st.props.REG_CURSOR_archive, JSON.stringify(r2));
+  // Una lectura de tabla chica que se pasa de 4 min: no escribe nada.
+  const sh = { db: db(), reloj: 0, msPorFetch: 250000 };
+  let eh = null; try { makeSandbox(sh).sb.actualizarRegistro(); } catch (e) { eh = String(e.message); }
+  check("R11c lectura de más de 4 min: falla sin escribir", /pasó de 4 min/.test(eh || "") && !sh.ss.sheets["Pacientes"], eh);
+  // Escritura lenta: después de 5 min 15 s no empieza otra pestaña; los cursores no avanzan y sigue en 10 min.
+  const sw = { db: db(), reloj: 0, msPorEscritura: 100000 };
+  const w1 = makeSandbox(sw).sb.actualizarRegistro();
+  const dic = JSON.stringify(sw.ss.sheets["Diccionario"].cells);
+  check("R11d escritura lenta: se detiene antes de los 6 min, no guarda cursores, avisa y programa la continuación",
+    w1.ok && w1.pendiente && !sw.ss.sheets["Notas de evolución"] && !!sw.ss.sheets["Pacientes"] && !sw.props.REG_CURSOR_archive && !sw.props.REG_ULTIMA_CORRIDA && (sw.continuaciones || []).length === 1 && /Se acabó el tiempo al escribir/.test(dic), JSON.stringify(w1));
+  sw.msPorEscritura = 0; sw.reloj = 0;
+  makeSandbox(sw).sb.continuarRegistro();
+  check("R11e la continuación escribe lo que faltó y guarda los cursores", !!sw.ss.sheets["Imagen del robot (RIS)"] && tab(sw.ss, "Labs del robot (WinLab)").length === 3 && !!sw.props.REG_CURSOR_archive && !!sw.props.REG_ULTIMA_CORRIDA);
+  // Tope de vueltas extra por día (los disparadores de una cuenta personal tienen 90 min al día).
+  const sc = { db: db(), hoy: "2026-10-21", props: { REG_CONTINUACIONES: JSON.stringify({ dia: "2026-10-21", n: 8 }) } };
+  const mc = makeSandbox(sc); mc.sb.REG_CURSORES.archive.tope = 1;
+  const rc = mc.sb.actualizarRegistro();
+  check("R11f con las 8 vueltas del día usadas no programa otra: avisa y sigue en la corrida de la noche",
+    rc.pendiente && !(sc.continuaciones || []).length && /vueltas extra/.test(JSON.stringify(sc.ss.sheets["Diccionario"].cells)) && mc.triggers.every((t) => t.fn !== "continuarRegistro"));
+  const sd = { db: db(), hoy: "2026-10-22", props: { REG_CONTINUACIONES: JSON.stringify({ dia: "2026-10-21", n: 8 }) } };
+  const md = makeSandbox(sd); md.sb.REG_CURSORES.archive.tope = 1; md.sb.actualizarRegistro(); md.sb.actualizarRegistro();
+  check("R11g al día siguiente el contador empieza de nuevo y nunca quedan dos continuaciones programadas", (sd.continuaciones || []).length === 2 && md.triggers.filter((t) => t.fn === "continuarRegistro").length === 1 && JSON.parse(sd.props.REG_CONTINUACIONES).n === 2);
+}
+
+// ─── R12: fuentes que fallan, hoja que no abre, fechas, escritura incremental, capacidad ──────────────────────────
+{
+  // WinLab con la consulta más lenta que la base permite (57014): un solo intento; lo demás se escribe; WinLab no se toca.
+  const st = { db: db(), agotado: { winlab_labs: true } };
+  const m = makeSandbox(st); const r = m.sb.actualizarRegistro();
+  check("R12a una fuente acumulativa que falla (57014) no frena lo demás: un intento, aviso con el código, sus pestañas sin tocar y su cursor sin avanzar",
+    r.ok && st.nLlamadas.winlab_labs === 1 && tab(st.ss, "Pacientes").length === 4 && !st.ss.sheets["Labs del robot (WinLab)"] && !st.props.REG_CURSOR_winlab_labs && !!st.props.REG_CURSOR_ris_estudios
+    && /winlab_labs.*57014/.test(JSON.stringify(st.ss.sheets["Diccionario"].cells)) && m.logs.every((l) => !nombres.test(l)), JSON.stringify({ r, n: st.nLlamadas }));
+  delete st.agotado;
+  makeSandbox(st).sb.actualizarRegistro();
+  check("R12b al día siguiente WinLab entra completo", tab(st.ss, "Labs del robot (WinLab)").length === 3 && !!st.props.REG_CURSOR_winlab_labs);
+  const sp = { db: db(), agotado: { patients: true } };
+  let ep = null; try { makeSandbox(sp).sb.actualizarRegistro(); } catch (e) { ep = String(e.message); }
+  check("R12c el censo con 57014: un intento y error claro, sin escribir", ep === "Supabase patients HTTP 500 (57014)" && sp.nLlamadas.patients === 1 && !sp.ss.sheets["Pacientes"], ep);
+  // Proyecto aparte sin REGISTRO_SHEET_ID, o con un id que no abre: error claro ANTES de leer Supabase.
+  const sa = { db: db(), standalone: true }; const ma = makeSandbox(sa); let ea = null; try { ma.sb.actualizarRegistro(); } catch (e) { ea = String(e.message); }
+  const sb2 = { db: db(), standalone: true, idMalo: true, props: { REGISTRO_SHEET_ID: "id-malo " } }; const mb = makeSandbox(sb2); let eb = null; try { mb.sb.actualizarRegistro(); } catch (e) { eb = String(e.message); }
+  check("R12d sin REGISTRO_SHEET_ID o con uno que no abre: lo dice de inmediato, sin leer Supabase", /Falta REGISTRO_SHEET_ID/.test(ea || "") && ma.calls.length === 0 && /REGISTRO_SHEET_ID no abre/.test(eb || "") && mb.calls.length === 0, JSON.stringify([ea, eb]));
+  // Fechas locales y labs sin marcas internas.
+  const d = db();
+  d.archive.push({ id: "a8", archived_at: "2026-10-12T02:00:00+00:00", patient_data: { _supa_id: "p9", nombre: "PRUEBA FICTICIA NUEVE", exp: "000909", ingreso: "2026-10-10" }, note_data: { labHistory: [{ fecha: "2026-10-11", labs: { hb: "10", fecha_labs: "2026-10-11", hora_labs: "06:00", _src: "x" } }] } });
+  const sf = { db: d }; makeSandbox(sf).sb.actualizarRegistro();
+  const p9 = tab(sf.ss, "Pacientes").find((x) => x["ID episodio"] === "p9");
+  check("R12e fecha de egreso en hora de Ciudad de México (archivado a las 20:00 del 11 = 02:00 UTC del 12) y estancia de 1 día", p9 && p9["Fecha de egreso"] === "2026-10-11" && String(p9["Días de estancia"]) === "1", JSON.stringify(p9));
+  check("R12f Labs sin fecha_labs, hora_labs ni marcas internas", JSON.stringify(tab(sf.ss, "Labs").filter((x) => x["ID episodio"] === "p9").map((x) => x["Estudio"])) === JSON.stringify(["hb"]));
+  const s0 = makeSandbox({ db: db() }).sb;
+  check("R12g regFechaLocal: 05:59 UTC es el día anterior, 06:00 UTC ya es el mismo día; fechas sin hora tal cual",
+    s0.regFechaLocal("2026-10-12T05:59:00Z") === "2026-10-11" && s0.regFechaLocal("2026-10-12T06:00:00+00:00") === "2026-10-12" && s0.regFechaLocal("12/10/2026") === "2026-10-12" && s0.regFechaLocal("2026-10-12") === "2026-10-12");
+  // Respaldo por días de calendario: a los 6 días no, a los 7 sí.
+  const sr = { db: db(), hoy: "2026-10-21", props: { REG_ULTIMO_RESPALDO: "2026-10-15" } }; makeSandbox(sr).sb.actualizarRegistro();
+  const sr2 = { db: db(), hoy: "2026-10-22", props: { REG_ULTIMO_RESPALDO: "2026-10-15T23:59:00.000Z" } }; makeSandbox(sr2).sb.actualizarRegistro();
+  check("R12h respaldo por días de calendario: a los 6 días no se repite; a los 7 sí (aunque la hora sea un poco antes)", sr.drive.files.length === 0 && sr2.drive.files.length === 1 && sr2.props.REG_ULTIMO_RESPALDO === "2026-10-22");
+  const sv = { db: db(), driveFalla: true }; const rv = makeSandbox(sv).sb.actualizarRegistro();
+  check("R12i si Drive falla al respaldar, avisa y escribe de todos modos", rv.ok && tab(sv.ss, "Pacientes").length === 4 && /respaldo semanal/.test(rv.avisos.join(" ")));
+  // Escritura incremental: una corrida igual no reescribe nada; un cambio reescribe solo su renglón.
+  const si = { db: db() }; makeSandbox(si).sb.actualizarRegistro();
+  const escritas = () => Object.fromEntries(Object.entries(si.ss.sheets).map(([n, h]) => [n, h.filasEscritas || 0]));
+  const e0 = escritas(); makeSandbox(si).sb.actualizarRegistro(); const e1 = escritas();
+  const sinCambio = Object.keys(e0).filter((n) => n !== "Diccionario").every((n) => e0[n] === e1[n]);
+  si.db.notes[0].pendientes = "+ USG (HECHO)"; makeSandbox(si).sb.actualizarRegistro(); const e2 = escritas();
+  check("R12j escritura incremental: una corrida sin cambios no reescribe ninguna pestaña; un cambio reescribe solo su renglón",
+    sinCambio && e2["Pacientes"] - e1["Pacientes"] === 1 && e2["Labs"] === e1["Labs"] && tab(si.ss, "Pacientes").find((x) => x["ID episodio"] === "p1")["Pendientes"] === "+ USG (HECHO)", JSON.stringify({ e0, e1, e2 }));
+  // Capacidad: las pestañas nuevas no guardan columnas vacías y la cuenta incluye todas las hojas.
+  const tot = Object.values(si.ss.sheets).reduce((s, h) => s + h.maxR * h.maxC, 0);
+  check("R12k pestañas nuevas sin columnas de sobra y la cuenta de celdas incluye todas las hojas",
+    si.ss.sheets["Labs"].maxC === 8 && si.ss.sheets["Diccionario"].maxC === 2 && si.ss.sheets["Pacientes"].maxC === 43 && JSON.stringify(si.ss.sheets["Diccionario"].cells).includes('"' + tot + ' de 10000000'), String(tot));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");
