@@ -4,6 +4,7 @@
 // recarga, no la pisa la fila remota ni Realtime, y sube con la cama nueva al volver la red (O6-O9). O13: version.json
 // (aviso de versión nueva) nunca sale de la caché del service worker.
 //   node tests/headless/app_offline.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
+const http = require('http');
 const { launch, name: BROWSER } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
@@ -39,33 +40,57 @@ const MOCK = `(() => {
   const remotePatient = { id: 'a1', cama: '3-101', exp: '1', nombre: 'PACIENTE UNO', esp: 'CG', estado: 'ESTABLE', dx: 'X' };
   const patches = [];
   const remoteNote = { patient_id: 'a1', app: '', pa: '', drenajes: '', qx: '', manejo: '', sangrado: '', sv: '', balance: '', pendientes: 'PEND REMOTO', checklist: {}, lab_history: [], imagen_history: [] };
-  // context.route también cubre peticiones que pasan por el service worker (Chromium)
-  await context.route('**/rest/v1/**', async (route) => {
-    if (offline) return route.abort('internetdisconnected');
-    const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
-    const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+  // Supabase simulado: { json: [status, cuerpo] } o { cortar: true } (red caída o que no responde).
+  const rest = (m, url, raw) => {
+    if (offline) return { cortar: true };
+    let body = null; try { body = JSON.parse(raw || 'null'); } catch (_) {}
     if (url.startsWith('/rest/v1/patients')) {
-      if (m === 'GET') return json(200, [Object.assign({}, remotePatient)]);
+      if (m === 'GET') return { json: [200, [Object.assign({}, remotePatient)]] };
       if (m === 'PATCH') {
-        let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
-        if (failPatch) { patches.push({ url, body, failed: true }); return route.abort('timedout'); }
+        if (failPatch) { patches.push({ url, body, failed: true }); return { cortar: true }; }
         patches.push({ url, body });
         if (body && body.cama !== undefined) remotePatient.cama = body.cama;
-        return json(200, [Object.assign({}, remotePatient)]);
+        return { json: [200, [Object.assign({}, remotePatient)]] };
       }
-      return json(201, [{ id: 'a1' }]);
+      return { json: [201, [{ id: 'a1' }]] };
     }
     if (url.startsWith('/rest/v1/notes')) {
-      if (m === 'GET') return json(200, [Object.assign({}, remoteNote)]);
-      let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
+      if (m === 'GET') return { json: [200, [Object.assign({}, remoteNote)]] };
       posts.push(body);
       // Fila de notas también MUTABLE (21 oct 2026): el upsert mezcla las columnas que llegan y responde la fila, como
       // PostgREST; la app relee la nota tras subir la cola y una fila fija regresaba lo escrito sin red.
       (Array.isArray(body) ? body : [body]).forEach((r) => { if (r) Object.keys(r).forEach((c) => { if (c !== 'updated_by' && c !== 'patient_id') remoteNote[c] = JSON.parse(JSON.stringify(r[c])); }); });
-      return json(201, [Object.assign({}, remoteNote)]);
+      return { json: [201, [Object.assign({}, remoteNote)]] };
     }
-    return json(m === 'GET' ? 200 : 201, m === 'GET' ? [] : [{ id: 1 }]);
+    return { json: [m === 'GET' ? 200 : 201, m === 'GET' ? [] : [{ id: 1 }]] };
+  };
+  // Lo atiende un servidor DE VERDAD en 127.0.0.1 (21 oct 2026), no context.route: con la página controlada por el service
+  // worker, Supabase (otro origen) pasa por su fetch sin respondWith y sale directo a la red, y en WebKit Playwright no
+  // intercepta esa salida (iba al proxy muerto de _browser.js: «Could not connect to proxy server», cola sin subir en
+  // O4 y O8-O12). Así la petición recorre el mismo camino que en el iPad (página → service worker → red) en los dos
+  // motores, con CORS como Supabase (preflight OPTIONS; Authorization no entra en el comodín `*`, se devuelve la lista
+  // pedida). Cortar = destruir el socket: el fetch de la app falla como sin red, igual que route.abort.
+  const server = http.createServer((req, res) => {
+    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Headers': req.headers['access-control-request-headers'] || '*' };
+    if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
+    let raw = ''; req.setEncoding('utf8'); req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+      const r = rest(req.method, req.url, raw);
+      if (r.cortar) return req.socket.destroy();
+      res.writeHead(r.json[0], Object.assign({ 'Content-Type': 'application/json' }, cors)); res.end(JSON.stringify(r.json[1]));
+    });
   });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  // La app arma cada URL como SUPA_URL + "/rest/v1/…" (_sFetch); solo se cambia el origen, se lee de la index.html servida.
+  const SUPA_URL = ((await (await fetch(BASE_URL + '/index.html')).text()).match(/const SUPA_URL = "([^"]+)"/) || [])[1];
+  if (!SUPA_URL) throw new Error('index.html sin «const SUPA_URL = "…"»: no se puede apuntar la app al Supabase simulado');
+  await context.addInitScript(([from, to]) => {
+    const f = window.fetch;
+    window.fetch = function (input, init) {
+      const u = typeof input === 'string' ? input : input instanceof URL ? input.href : null;
+      return f.call(window, u !== null && u.indexOf(from) === 0 ? to + u.slice(from.length) : input, init);
+    };
+  }, [SUPA_URL + '/rest/v1/', 'http://127.0.0.1:' + server.address().port + '/rest/v1/']);
   await context.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
 
@@ -345,4 +370,5 @@ const MOCK = `(() => {
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-OFFLINE: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();
+  server.closeAllConnections(); server.close();
 })().catch(e => { console.error('CRASH', e); process.exit(2); });

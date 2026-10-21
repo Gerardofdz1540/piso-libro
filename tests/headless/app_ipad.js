@@ -1,4 +1,4 @@
-const { launch } = require('./_browser'); const { devices } = require('playwright');
+const { launch, touchHelpers } = require('./_browser'); const { devices } = require('playwright');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
@@ -36,6 +36,7 @@ const MOCK = `(() => {
     return json(200, []);
   });
   await page.addInitScript(MOCK);
+  await page.addInitScript(touchHelpers);   // __plTouch / __plTouchEvent: WebKit no construye new Touch() (ver _browser.js)
   let pass=0, fail=0; const check=(n,c,x)=>{ if(c){pass++;console.log('PASS '+n);} else {fail++;console.log('FAIL '+n+(x?' :: '+x:''));} };
   await page.goto(BASE_URL + '/index.html',{waitUntil:'load',timeout:90000});
   await page.waitForTimeout(5000);
@@ -157,8 +158,8 @@ const MOCK = `(() => {
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     window.__S = {
       strip: ()=>document.querySelector('#board-nav .bn-beds'),   // RE-consultar tras cada render: el nodo cambia
-      touch: (el,x,y,id)=>new Touch({ identifier:id||1, target:el, clientX:x, clientY:y }),
-      tev: (type,el,t)=>el.dispatchEvent(new TouchEvent(type,{ bubbles:true, cancelable:true, touches:type==='touchend'?[]:[t], targetTouches:type==='touchend'?[]:[t], changedTouches:[t] })),
+      touch: (el,x,y,id)=>__plTouch(el,x,y,id),
+      tev: (type,el,t)=>el.dispatchEvent(__plTouchEvent(type, type==='touchend'?[]:[t], [t])),
       pen: (type,el,x,y)=>el.dispatchEvent(new PointerEvent(type,{ bubbles:true, cancelable:true, pointerId:7, pointerType:'pen', isPrimary:true, clientX:x, clientY:y, pressure:.5 })),
       raf2: ()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))),
       wait: (ms)=>new Promise(r=>setTimeout(r,ms)),
@@ -381,7 +382,9 @@ const MOCK = `(() => {
   });
   check('I6 repintado del mismo paciente: la sección abierta con fcJump sigue abierta, scrollY igual antes/después (también síncrono) y la tira no se re-centra', i6.icOpen && i6.yBefore >= 300 && i6.yJust === i6.yBefore && i6.yAfter === i6.yBefore && i6.stripBefore > 0 && i6.stripAfter === i6.stripBefore && i6.pidStamp, JSON.stringify(i6));
   // y al CAMBIAR de paciente sí se va arriba y la tira se centra en la cama nueva (regresión):
-  const i6b = await page.evaluate(async () => { const k2 = pid(patients[1]); focusGoTo(k2); await new Promise(r => setTimeout(r, 900)); const cur = document.querySelector('#board-nav .bn-beds .bb-cur'); return { pid: window.__focusPid === k2, y: window.scrollY, curK: cur && cur.dataset.k === k2, curVisible: !!cur && cur.getBoundingClientRect().left >= 0, stamp: document.getElementById('view-piso').dataset.plPid === k2 }; });
+  // Arriba = el scroll SUAVE de focusGoTo terminó: se espera hasta 3 s (21 oct 2026; con la CPU ocupada —CI, WebKit— la
+  // animación pasa de los 900 ms fijos de antes y la prueba leía la página a medio subir).
+  const i6b = await page.evaluate(async () => { const k2 = pid(patients[1]); focusGoTo(k2); await new Promise(r => setTimeout(r, 900)); for (const t0 = Date.now(); window.scrollY !== 0 && Date.now() - t0 < 2100;) await new Promise(r => setTimeout(r, 50)); const cur = document.querySelector('#board-nav .bn-beds .bb-cur'); return { pid: window.__focusPid === k2, y: window.scrollY, curK: cur && cur.dataset.k === k2, curVisible: !!cur && cur.getBoundingClientRect().left >= 0, stamp: document.getElementById('view-piso').dataset.plPid === k2 }; });
   check('I6b al cambiar de paciente: arriba, sello nuevo y la tira centrada en la cama nueva', i6b.pid && i6b.y === 0 && i6b.curK && i6b.curVisible && i6b.stamp, JSON.stringify(i6b));
   await page.evaluate(() => focusGoTo(pid(patients[0])));
 
@@ -390,7 +393,7 @@ const MOCK = `(() => {
   const i7 = await page.evaluate(async () => {
     await new Promise(r => setTimeout(r, 250));
     const before = window.__focusPid;
-    const mk = (type, el, x, y) => { const t = new Touch({ identifier: 11, target: el, clientX: x, clientY: y }); return new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [t], changedTouches: [t], targetTouches: type === 'touchend' ? [] : [t] }); };
+    const mk = (type, el, x, y) => { const t = __plTouch(el, x, y, 11); return __plTouchEvent(type, type === 'touchend' ? [] : [t], [t]); };
     const bb = document.querySelector('#board-nav .bn-beds .bb'); const r = bb.getBoundingClientRect();
     bb.dispatchEvent(mk('touchstart', bb, r.left + 10, r.top + 10)); await new Promise(r => setTimeout(r, 60)); bb.dispatchEvent(mk('touchend', bb, r.left - 120, r.top + 12)); await new Promise(r => setTimeout(r, 50));
     const stripKept = window.__focusPid === before;
@@ -471,13 +474,15 @@ const MOCK = `(() => {
     const wait = (ms) => new Promise(r => setTimeout(r, ms)); const raf2 = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     const k = window.__focusPid; const card = document.getElementById('card-' + k);
     const max = document.documentElement.scrollHeight - innerHeight;
-    let sawScroll = false; const onS = () => { sawScroll = true; }; window.addEventListener('scroll', onS);
+    // renderViewSoft AL LLEGAR el evento scroll (21 oct 2026), no dos cuadros después: el oyente de la app (que anota
+    // _lastScrollTs) va antes que este, y con la CPU ocupada (CI, WebKit) dos cuadros pasaban de los 400 ms de calma
+    // (RENDER_SCROLL_QUIET_MS): la prueba llamaba con el scroll ya «detenido». El repintado de después: hasta 3 s.
+    let sawScroll = false, deferred = false;
+    const onS = () => { if (sawScroll) return; sawScroll = true; _lastInteractTs = 0; renderViewSoft(); deferred = _renderDeferred === true && document.getElementById('card-' + k) === card; };   // sin toques: sólo cuenta el scroll
+    window.addEventListener('scroll', onS);
     window.scrollTo(0, window.scrollY > 250 ? 100 : Math.min(500, max)); await raf2();   // llega el evento scroll de la ventana
     window.removeEventListener('scroll', onS);
-    _lastInteractTs = 0;                                                         // sin toques: sólo cuenta el scroll
-    renderViewSoft();
-    const deferred = _renderDeferred === true && document.getElementById('card-' + k) === card;
-    await wait(900);
+    await wait(900); for (const t0 = Date.now(); _renderDeferred !== false && Date.now() - t0 < 2100;) await wait(50);
     return { sawScroll, deferred, renderedAfter: _renderDeferred === false && document.getElementById('card-' + k) !== card, y: window.scrollY };
   });
   check('I11 con la página desplazándose el repintado suave espera; al detenerse el scroll se repinta', i11.sawScroll && i11.deferred && i11.renderedAfter, JSON.stringify(i11));
