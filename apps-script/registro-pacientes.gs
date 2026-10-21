@@ -95,7 +95,7 @@ function actualizarRegistro() {
     var leerCursor = function (tabla, select, pagina) {
       var c = REG_CURSORES[tabla], previo = props.getProperty('REG_CURSOR_' + tabla) || '';
       var desde = previo ? new Date(Date.parse(previo) - REG_MARGEN_INCREMENTAL_MS).toISOString() : '';
-      var r = regLeerTabla_(key, tabla, select, c.col + ',id', desde ? c.col + '=gte.' + encodeURIComponent(desde) : '', pagina, reloj, c.tope);
+      var r = regLeerTabla_(key, tabla, select, c.col + ',id', desde ? c.col + '=gte.' + desde : '', pagina, reloj, c.tope);
       var max = previo;
       r.filas.forEach(function (f) { var v = regTexto(f[c.col]); if (v && (!max || Date.parse(v) > Date.parse(max))) max = v; });
       // Con tope alcanzado, la siguiente vuelta sigue desde la última fila leída (sin margen, para avanzar).
@@ -151,13 +151,25 @@ function regHoy_() {
 }
 
 // ─── Lectura de Supabase (solo GET, paginado; la página se achica si una respuesta es demasiado grande) ───────────
+/** URL de PostgREST con cada nombre y valor codificado. UrlFetchApp rechaza («Argumento no válido») una URL con
+ *  caracteres como > (21 oct 2026: el filtro note_data->>_restaurado_a sin codificar tumbó la primera corrida real).
+ *  `filtro`: 'campo=operador.valor' SIN codificar (varios separados por &). */
+function regUrl_(tabla, select, orden, filtro, lim, desde) {
+  var q = [['select', select]];
+  regTexto(filtro).split('&').forEach(function (p) { var i = p.indexOf('='); if (i > 0) q.push([p.slice(0, i), p.slice(i + 1)]); });
+  q.push(['order', orden.split(',').map(function (c) { return c + '.asc'; }).join(',')], ['limit', lim], ['offset', desde]);
+  return SUPABASE_URL + '/rest/v1/' + tabla + '?' + q.map(function (kv) { return encodeURIComponent(kv[0]) + '=' + encodeURIComponent(kv[1]); }).join('&');
+}
+/** Causa de un error de UrlFetchApp para el registro, sin la URL (no trae datos de pacientes ni la llave). */
+function regCausa_(e) {
+  return regTexto(e && e.message !== undefined ? e.message : e).replace(/https?:\/\/\S+/g, '[url]').replace(/\s+/g, ' ').trim().slice(0, 160);
+}
 function regLeerTabla_(key, tabla, select, orden, filtro, pagina, reloj, tope) {
   var out = [], desde = 0;
   for (var vuelta = 0; vuelta < 20000; vuelta++) {
     if (tope && out.length >= tope) return { filas: out, completa: false };
     var lim = tope ? Math.min(pagina, tope - out.length) : pagina;
-    var url = SUPABASE_URL + '/rest/v1/' + tabla + '?select=' + encodeURIComponent(select) + (filtro ? '&' + filtro : '')
-      + '&order=' + orden.split(',').map(function (c) { return c + '.asc'; }).join(',') + '&limit=' + lim + '&offset=' + desde;
+    var url = regUrl_(tabla, select, orden, filtro, lim, desde);
     var res = null, code = 0, error = null;
     try {
       res = UrlFetchApp.fetch(url, { method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
@@ -165,10 +177,18 @@ function regLeerTabla_(key, tabla, select, orden, filtro, pagina, reloj, tope) {
     } catch (e) { error = e; }
     if (reloj) reloj();
     // Respuesta demasiado grande (filas con archivos incrustados) o corte de red: se reintenta con la mitad de filas.
-    if ((error || code === 413 || code >= 500) && pagina > 1) { pagina = Math.max(1, Math.floor(pagina / 2)); continue; }
-    // El cuerpo de un error puede traer datos: al registro y al error solo van la tabla, el código y la posición.
-    if (error) throw new Error('Supabase ' + tabla + ': no se pudo leer (fila ' + desde + ')');
-    if (code !== 200) throw new Error('Supabase ' + tabla + ' HTTP ' + code);
+    // Una URL rechazada no mejora con menos filas: falla de inmediato.
+    var causa = error ? regCausa_(error) : '';
+    var urlRechazada = /invalid argument|argumento no v[aá]lido|argumento inv[aá]lido/i.test(causa);
+    if (((error && !urlRechazada) || code === 413 || code >= 500) && pagina > 1) { pagina = Math.max(1, Math.floor(pagina / 2)); continue; }
+    // El cuerpo de un error puede traer datos: al registro y al error solo van la tabla, la posición, la causa sin URL
+    // y el código de error de PostgREST (p. ej. 42703), nunca su mensaje.
+    if (error) throw new Error('Supabase ' + tabla + ': no se pudo leer (fila ' + desde + '): ' + causa);
+    if (code !== 200) {
+      var cod = '';
+      try { var cuerpo = JSON.parse(res.getContentText() || '{}'); cod = /^[A-Z0-9]{5,8}$/.test(regTexto(cuerpo && cuerpo.code)) ? ' (' + cuerpo.code + ')' : ''; } catch (_) {}
+      throw new Error('Supabase ' + tabla + ' HTTP ' + code + cod);
+    }
     var filas = JSON.parse(res.getContentText() || '[]');
     if (!Array.isArray(filas)) throw new Error('Supabase ' + tabla + ': respuesta inesperada');
     out = out.concat(filas);

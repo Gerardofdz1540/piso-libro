@@ -48,6 +48,12 @@ function makeSpreadsheet(id) {
   return { sheets, id: id || "libro1", getId() { return this.id; }, getSheetByName: (n) => sheets[n] || null, insertSheet: (n) => (sheets[n] = makeSheet(n)) };
 }
 const state0 = {};
+// URL que UrlFetchApp acepta: esquema y host simples; ruta y consulta solo con caracteres de RFC 3986 (sin [ ] # en la
+// consulta) y cada % seguido de dos dígitos hexadecimales.
+function urlValida(url) {
+  const m = /^https:\/\/[A-Za-z0-9.-]+(\/[A-Za-z0-9\-._~!$&'()*+,;=:@\/%]*)(\?[A-Za-z0-9\-._~!$&'()*+,;=:@\/?%]*)?$/.exec(url);
+  return !!m && !/%(?![0-9A-Fa-f]{2})/.test(url);
+}
 
 function makeSandbox(state) {
   const calls = [], logs = [], triggers = [];
@@ -87,9 +93,14 @@ function makeSandbox(state) {
     },
     UrlFetchApp: {
       fetch(url, opts) {
+        // Como Google (21 oct 2026, primera corrida real): una URL con caracteres fuera de RFC 3986 (>, espacio, {, |, [ en
+        // la consulta…) o un % mal formado no sale: «Exception: Invalid argument: <url>».
+        if (!urlValida(url)) { calls.push({ m: "rechazada", raw: url, u: url }); throw new Error("Exception: Invalid argument: " + url); }
+        if (state.rechazaUrl && state.rechazaUrl.test(url)) { calls.push({ m: "rechazada", raw: url, u: url }); throw new Error("Exception: Invalid argument: " + url); }
         const u = decodeURIComponent(url.replace(/^https?:\/\/[^/]+/, ""));
-        calls.push({ m: (opts && opts.method) || "get", u, headers: opts && opts.headers });
+        calls.push({ m: (opts && opts.method) || "get", raw: url, u, headers: opts && opts.headers });
         const tabla = /\/rest\/v1\/([a-z_]+)\?/.exec(u)[1];
+        if (state.codigo && state.codigo[tabla]) return { getResponseCode: () => 400, getContentText: () => JSON.stringify({ code: state.codigo[tabla], message: "column PACIENTE FICTICIO SECRETO does not exist", details: "000123" }) };
         if (state.falla && state.falla[tabla]) return { getResponseCode: () => state.falla[tabla], getContentText: () => JSON.stringify({ message: "detalle con PACIENTE FICTICIO SECRETO" }) };
         const lim = +/limit=(\d+)/.exec(u)[1], off = +/offset=(\d+)/.exec(u)[1];
         if (state.maxFilas && state.maxFilas[tabla] !== undefined && lim > state.maxFilas[tabla]) throw new Error("Exception: Response too large");
@@ -382,6 +393,40 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   }
   const vivas = sr.drive.files.filter((f) => !f.trashed).map((f) => f.name.slice(-10)).sort();
   check("R4d un respaldo por semana y quedan los últimos 5 (los viejos a la papelera de Drive)", sr.drive.files.length === 7 && vivas.length === 5 && vivas[0] === "2026-10-15" && sr.drive.trashed.length === 2, JSON.stringify(vivas));
+}
+
+// ─── R8: URLs que Google acepta (21 oct 2026: la primera corrida real falló con «Supabase archive: no se pudo leer
+// (fila 0)» porque el filtro note_data->>_restaurado_a iba sin codificar y UrlFetchApp rechaza el >) ────────────────
+{
+  check("R8 el simulador rechaza lo que Google rechaza", !urlValida("https://x.supabase.co/rest/v1/archive?select=id&note_data->>_a=not.is.null")
+    && !urlValida("https://x.supabase.co/rest/v1/a?select=a b") && !urlValida("https://x.supabase.co/rest/v1/a?x=%G1") && !urlValida("https://x.supabase.co/rest/v1/a?x=[1]")
+    && urlValida("https://x.supabase.co/rest/v1/a?select=id%2Cde%3Ax&order=id.asc&limit=10&offset=0"));
+  // Primera corrida y una incremental (con cursores): cada URL que sale es válida y los filtros van codificados.
+  const st = { db: db() };
+  makeSandbox(st).sb.actualizarRegistro();
+  const m2 = makeSandbox(st); m2.sb.actualizarRegistro();
+  const m1 = makeSandbox({ db: db() }); m1.sb.actualizarRegistro();
+  const todas = m1.calls.concat(m2.calls);
+  check("R8a todas las URLs (primera corrida e incremental) son válidas para UrlFetchApp; el filtro ->> y la fecha del cursor van codificados",
+    todas.length > 10 && todas.every((c) => c.m === "get" && urlValida(c.raw))
+    && todas.some((c) => /archive\?.*&note_data-%3E%3E_restaurado_a=not\.is\.null&/.test(c.raw))
+    && m2.calls.some((c) => /archive\?.*&archived_at=gte\.\d{4}-\d{2}-\d{2}T\d{2}%3A\d{2}%3A\d{2}/.test(c.raw)),
+    JSON.stringify(todas.filter((c) => !urlValida(c.raw)).map((c) => c.raw).slice(0, 3)));
+  check("R8b regUrl_: cada nombre y valor codificado, varios filtros, orden ascendente con desempate",
+    m1.sb.regUrl_("t", "a,b:c->>d", "x,id", "c->>d=not.is.null&f=gte.2026-10-01T00:00:00+00:00", 5, 10)
+      === "https://vkxplmrzyqlamxpbtmes.supabase.co/rest/v1/t?select=a%2Cb%3Ac-%3E%3Ed&c-%3E%3Ed=not.is.null&f=gte.2026-10-01T00%3A00%3A00%2B00%3A00&order=x.asc%2Cid.asc&limit=5&offset=10");
+  // Si Google rechaza una URL: falla de inmediato (sin achicar la página 10 veces), dice por qué, sin URL, llave ni datos.
+  const sr = { db: db(), rechazaUrl: /restaurado_a/ };
+  const mr = makeSandbox(sr); let er = null;
+  try { mr.sb.actualizarRegistro(); } catch (e) { er = String(e.message); }
+  check("R8c URL rechazada: un solo intento, el error dice «Invalid argument» sin la URL, la llave ni datos, y la hoja queda sin tocar",
+    !!er && /archive: no se pudo leer \(fila 0\): Exception: Invalid argument: \[url\]/.test(er) && mr.calls.filter((c) => c.m === "rechazada").length === 1
+    && !/https?:|svc|supabase\.co/.test(er) && !nombres.test(er) && !sr.ss.sheets["Pacientes"], er);
+  // Error de PostgREST (p. ej. una columna que no existe): solo el código, nunca su mensaje ni sus detalles.
+  const sc = { db: db(), codigo: { winlab_cultivos: "42703" } };
+  const mc = makeSandbox(sc); let ec = null;
+  try { mc.sb.actualizarRegistro(); } catch (e) { ec = String(e.message); }
+  check("R8d HTTP 400 de PostgREST: el error trae el código (42703) y no el mensaje ni los detalles", ec === "Supabase winlab_cultivos HTTP 400 (42703)" && mc.logs.every((l) => !/SECRETO|000123/.test(l)), ec);
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");
