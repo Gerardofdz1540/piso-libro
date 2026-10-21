@@ -13,8 +13,14 @@
  *   - v11 (19-oct-2026): SheetJS 0.18.5 → 0.20.3 (la 0.18.5 tenía fallas de seguridad conocidas al leer
  *     un Excel manipulado). Subir VERSION hace que los iPads descarten la caché vieja y bajen el archivo
  *     nuevo; el procedimiento para actualizar cualquier librería está en vendor/README.md.
+ *   - v12 (20-oct-2026): aviso de versión nueva. version.json (raíz del repo, la versión publicada) lo compara la app
+ *     con la suya (PL_BUILD en index.html). version.json va SIEMPRE a la red y nunca se guarda: con el cache-first de
+ *     abajo, pedido sin ?ts= se serviría para siempre la primera respuesta (el aviso no vería jamás una versión nueva) y
+ *     con ?ts= se guardaría una copia por revisión (la caché crecería sin fin). Subir VERSION hace que cada equipo
+ *     instale este SW (y descarte la caché vieja) en la siguiente visita con red. Además, la instalación baja la app del
+ *     servidor sin pasar por la caché HTTP del navegador (ver `fresco`).
  */
-const VERSION = 'pisolibro-v11';
+const VERSION = 'pisolibro-v12';
 const CACHE = VERSION;
 const NAV_TIMEOUT_MS = 4000;
 // Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
@@ -37,11 +43,17 @@ const OPTIONAL = [
   './vendor/docx-8.5.0.umd.js'
 ];
 
+// Precache siempre desde el servidor, sin la caché HTTP del navegador (20 oct 2026): GitHub Pages sirve todo con
+// Cache-Control: max-age=600 y, si este SW se instalaba menos de 10 min después de abrir la app (p. ej. «Actualizar»
+// justo al ver el aviso), guardaba como './' el index.html ANTERIOR: sin red la app abría la versión vieja hasta la
+// siguiente apertura con red. Con Cloudflare/Netlify (_headers: no-cache) no pasaba.
+const fresco = (u) => new Request(u, { cache: 'reload' });
+
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    await cache.addAll(SHELL);
-    await Promise.all(OPTIONAL.map((u) => cache.add(u).catch(() => {})));
+    await cache.addAll(SHELL.map(fresco));
+    await Promise.all(OPTIONAL.map((u) => cache.add(fresco(u)).catch(() => {})));
     await self.skipWaiting();
   })());
 });
@@ -75,6 +87,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   // Solo mismo origen. Supabase / WinLab pasan directo a la red.
   if (url.origin !== self.location.origin) return;
+  // version.json (aviso de versión nueva, 20 oct 2026): sin respondWith el navegador lo pide directo a la red y no pasa
+  // por la caché. Sin red la petición falla y la app no avisa nada (es lo correcto: no hay con qué comparar).
+  if (/\/version\.json$/.test(url.pathname)) return;
 
   const isHTML = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
   if (isHTML) {

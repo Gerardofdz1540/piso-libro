@@ -9,7 +9,9 @@ name: CI
 #   app-webkit  las suites del iPad en WebKit (el motor de Safari). Advisorio (continue-on-error)
 #               hasta que pasen en WebKit: aparece en el PR pero no lo bloquea.
 # Protección de main (GitHub → Settings → Branches → main → "Require status checks to pass"):
-# exigir los checks "unidad" y "app". Las acciones van fijadas por SHA de commit (ver dependabot.yml).
+# exigir los checks "unidad" y "app", y "Require branches to be up to date before merging" (20 oct 2026: si no, dos PR
+# que suben version.json al mismo valor pasan los dos; ver el paso «version.json acompaña a index.html»). Las acciones
+# van fijadas por SHA de commit (ver dependabot.yml).
 on:
   pull_request:
   workflow_call:
@@ -29,8 +31,54 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Historia completa (20 oct 2026): el paso «version.json acompaña a index.html» compara el PR con su rama base, y la
+      # publicación con el commit anterior de main (git diff <base>...HEAD necesita la base y el ancestro común; con la
+      # copia de un solo commit no existen y el paso fallaría en TODOS los PR).
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Aviso de versión nueva (20 oct 2026): la app compara su PL_BUILD (index.html) con "v" de version.json. Si un PR
+      # cambia index.html sin subir version.json, los equipos con la versión anterior nunca ven «Hay una versión nueva».
+      # La igualdad de los dos valores la revisa tests/headless/version_check.js (job app).
+      #   - pull_request: contra la rama base del PR.
+      #   - push (la publicación: deploy-pages.yml llama a este archivo en cada push a main): contra el commit anterior
+      #     de main (github.event.before). Dos PR abiertos a la vez que suben la versión al MISMO valor siguiente pasan
+      #     los dos en su PR y se fusionan sin conflicto: main queda con los cambios del segundo y la "v" del primero, y
+      #     los equipos que ya tenían la del primero nunca ven el aviso. Aquí falla (y Cloudflare no se publica hasta que
+      #     se suba la versión otra vez). Para que no llegue a pasar: «Require branches to be up to date before merging»
+      #     en la protección de main (ver MANUAL-OPERACION.md).
+      - name: version.json acompaña a index.html (PR y publicación)
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        env:
+          EVENTO: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          ANTES: ${{ github.event.before }}
+        run: |
+          if [ "$EVENTO" = "pull_request" ]; then base="origin/${BASE_REF}"; donde="la rama base ${BASE_REF}"
+          else
+            base="$ANTES"; donde="el commit anterior de main (${ANTES})"
+            # Primer push de la rama o historia reescrita (force-push): no hay con qué comparar.
+            if [ -z "${base//0/}" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+              echo "::warning::Sin commit anterior con el que comparar («${base}»): se omite la revisión de version.json."; exit 0
+            fi
+          fi
+          cambios="$(git diff --name-only "${base}...HEAD")"
+          echo "Archivos que cambian respecto a ${donde}:"
+          printf '%s\n' "$cambios"
+          # Sin tubería (grep <<<): GitHub corre los pasos con pipefail, y un grep -q que termina antes que printf daría «no
+          # cambió» por SIGPIPE con una lista larga.
+          if ! grep -qx 'index.html' <<< "$cambios"; then echo "OK: index.html no cambió."; exit 0; fi
+          # También cuenta el valor: un version.json tocado con la misma "v" tampoco hace salir el aviso.
+          v_base="$(git show "${base}:version.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("v",""))' 2>/dev/null || true)"
+          v_pr="$(python3 -c 'import json; print(json.load(open("version.json")).get("v",""))' 2>/dev/null || true)"
+          echo "version.json: base «${v_base}» → ahora «${v_pr}»"
+          if ! grep -qx 'version.json' <<< "$cambios" || [ -z "$v_pr" ] || [ "$v_pr" = "$v_base" ]; then
+            echo "::error file=version.json::index.html cambió y version.json no: sube la versión en los dos (PL_BUILD en index.html y \"v\" en version.json, mismo valor nuevo; ver MANUAL-OPERACION.md)."
+            exit 1
+          fi
+          echo "OK: version.json sube con index.html."
 
       - name: Setup Node 22
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

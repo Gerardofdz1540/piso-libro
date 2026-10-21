@@ -23,6 +23,8 @@ on:
       - sw.js
       - icons/**
       - vendor/**
+      # 21 oct 2026: también se publica (aviso de versión nueva); un push que solo lo cambie debe llegar a Cloudflare.
+      - version.json
       - .github/workflows/deploy-pages.yml
   workflow_dispatch:
 
@@ -55,6 +57,9 @@ jobs:
           cp icons/*.png  dist/icons/
           # Librerías empaquetadas (oct 2026): la app ya no depende de CDNs externos
           cp vendor/*.js  dist/vendor/
+          # Aviso de versión nueva (20 oct 2026): la app compara su PL_BUILD (index.html) con "v" de version.json;
+          # los dos se suben a mano en el mismo PR (ci.yml lo exige) y aquí se publican tal cual.
+          cp version.json dist/version.json
           ls -la dist dist/icons dist/vendor
 
       # OJO: `--branch` NO es la rama de git que se publica (siempre es `main`, ver `on:`), sino la

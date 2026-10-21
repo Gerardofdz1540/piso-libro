@@ -903,6 +903,21 @@
     /* ✍️ aviso: Garabatear apagado en el iPad */
     /* abajo (no tapa la barra fija ni la tira de camas) y por debajo de los modales (9998) */
     #scribble-hint { display: none; position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 9500; max-width: 680px; width: calc(100% - 24px); box-sizing: border-box; background: #fffbeb; color: #78350f; border: 1px solid #fcd34d; border-radius: 12px; padding: 10px 14px; gap: 12px; align-items: center; font-size: 13px; line-height: 1.4; box-shadow: 0 6px 24px rgba(0,0,0,.18); font-family: var(--font); }
+    /* 🔄 versión nueva (20 oct 2026): pequeña, abajo a la izquierda (no tapa la barra ni la tira de camas de arriba);
+       en el teléfono queda arriba de la barra inferior (#rnav). Se esconde mientras se escribe (_plVerPintar), para no
+       tapar el teclado del iPad. z-index 900, DEBAJO de toda ventana de la app (.modal-bg 1000, fichas 4000-4100, Pase de
+       visita 8000): más arriba tapaba «◀ Anterior» del Pase de visita en el iPad vertical y quedaba encima de ✏️ Editar,
+       donde «Actualizar» recargaba sin guardar lo escrito en la ventana. Sigue arriba del contenido y de las barras
+       pegajosas (≤ 95). */
+    #pl-ver-bar { display: none; position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 900; max-width: calc(100% - 24px); box-sizing: border-box; align-items: center; gap: 8px; background: #0f172a; color: #e2e8f0; border: 1px solid rgba(148,163,184,.35); border-radius: 10px; padding: 5px 6px 5px 12px; font-size: 12.5px; line-height: 1.3; box-shadow: 0 4px 16px rgba(0,0,0,.25); font-family: var(--font); }
+    #pl-ver-bar .pl-ver-go { background: #0ea5e9; color: #fff; border: none; border-radius: 7px; padding: 5px 12px; font-weight: 700; font-size: 12.5px; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    #pl-ver-bar .pl-ver-x { background: none; border: none; color: #94a3b8; font-size: 14px; cursor: pointer; padding: 4px 6px; line-height: 1; }
+    @media(max-width:700px) { #pl-ver-bar { bottom: calc(70px + env(safe-area-inset-bottom)); } }
+    /* 20 oct 2026: con 1340 px o más (Mac, laptop, monitor, iPad Pro 12.9" acostado) las camas van en el riel de la
+       izquierda (#board-side, pegajoso hasta abajo) y la barra tapaba sus dos últimas camas → a la derecha; la ficha deja
+       aire abajo (pl-ver-on, _plVerPintar) para que lo último no quede debajo de la barra. */
+    @media(min-width:1340px) { #pl-ver-bar { left: auto; right: 12px; } body.focus-on.pl-ver-on #board-main { padding-bottom: 72px; } }
+    @media print { #pl-ver-bar { display: none !important; } }
     #scribble-hint button { background: #b45309; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 700; cursor: pointer; font-family: var(--font); white-space: nowrap; }
     .hist-item { border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px; margin-top: 6px; background: #fff; }
     .hist-cur { background: #f0fdf4; border-color: #86efac; }
@@ -9269,6 +9284,35 @@ function plExportBackup() {
         body_diagram_post: toSafeString(raw.body_diagram_post).trim()
       };
     }
+    // La Guardia vive dos veces en la nota: nd.entrega (lo que pinta la caja y lo que se sube) y la copia en
+    // checklist.__pl_note_meta.entrega (lo que trae la nube). 20 oct 2026: al reponer encima de la nota cargada un ítem de
+    // la cola (_applyOutboxOverlay) se iguala también la copia del meta; si no, el checklist viejo del ítem reinstalaba su
+    // Guardia en el meta y, con la caja vacía, migrateNote la volvía a sacar a la caja. Lo mismo con los dos diagramas
+    // (21 oct 2026): un ítem viejo de una casilla reinstalaba su trazo de entonces si el de la base venía vacío. Solo toca
+    // un meta que ya existe; copia nueva (el objeto puede venir compartido con la fila remota o con un ítem de la cola).
+    function _entregaMetaAlign(nd) {
+      if (!nd || !isPlainObject(nd.checklist) || !isPlainObject(nd.checklist[NOTE_SYNC_META_KEY])) return;
+      const meta = Object.assign({}, nd.checklist[NOTE_SYNC_META_KEY]);
+      ["entrega", "body_diagram_ant", "body_diagram_post"].forEach(function (f) {
+        const v = toSafeString(nd[f]).trim();
+        if (v) meta[f] = v; else delete meta[f];
+      });
+      nd.checklist = Object.assign({}, nd.checklist);
+      nd.checklist[NOTE_SYNC_META_KEY] = meta;
+    }
+    // Hora de una columna timestamptz como la mandan PostgREST y Realtime ("2026-10-20T10:30:00.123456+00:00"; también
+    // con espacio, sin fracción, con Z o +00), en microsegundos para poder compararlas; NaN si no se reconoce (21 oct 2026).
+    function _pgTsMicros(v) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}(?::?\d{2})?)?$/.exec(toSafeString(v).trim());
+      if (!m) return NaN;
+      let off = 0;
+      if (m[8] && m[8] !== "Z") {
+        const d = m[8].slice(1).replace(":", "");
+        off = (m[8][0] === "-" ? -1 : 1) * (parseInt(d.slice(0, 2), 10) * 60 + parseInt(d.slice(2) || "0", 10));
+      }
+      const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) - off * 60000;
+      return ms * 1000 + parseInt(((m[7] || "") + "000000").slice(0, 6), 10);
+    }
     function buildChecklistForSync(nd) {
       const checklist = isPlainObject(nd && nd.checklist) ? { ...nd.checklist } : {};
       // Los demás metadatos que viven en __pl_note_meta (autor por caja "by", marcas de carga…) se conservan;
@@ -10379,11 +10423,85 @@ function plExportBackup() {
         return false;
       }
     }
+    // Los campos de la nota que viajan en checklist.__pl_note_meta y que, al abrir, toma de la base _noteFromRemoteRow (20 oct
+    // 2026): la Guardia y los dos diagramas.
+    const NOTE_META_FIELDS = ["entrega", "body_diagram_ant", "body_diagram_post"];
     // Quita del outbox los ítems `note` de una clave encolados ANTES de un push directo que ya tuvo éxito.
-    function outboxDropNoteItemsBefore(key, beforeTs) {
+    // 20 oct 2026: ahora que la Guardia y los diagramas de la base ganan al abrir (_noteFromRemoteRow), tirar un ítem con la
+    // Guardia o un trazo del diagrama hechos sin red cuando ese push NO los llevó (un lab tecleado o un PDF de labs en esa
+    // tarjeta: el push lleva solo lab_history) los perdía en la siguiente carga: ni en pantalla, ni en la copia local, ni
+    // en la cola, ni en la base. `sent` = campos que llevó el push; si ninguno viaja en el checklist (Guardia, casillas,
+    // ck_*, diagramas), los ítems de esa clave con la Guardia o un diagrama en dirty se quedan, solo con esos campos y
+    // sobre la nota vigente (lo que se ve; al subirse, el checklist del ítem viejo regresaría casillas). Sin `sent`
+    // (diferencias con la base, donde el checklist viaja si cambió) o con el checklist en el push, se quitan todos, como antes.
+    // 21 oct 2026: (a) un ítem SIN lista (nota completa) se quedaba con los tres campos aunque este equipo no los tocara, y
+    // el reintento subía su diagrama o Guardia vacíos o viejos y borraba de la base los del colega: ahora solo los que el
+    // ítem trae escritos (no vacíos) y distintos de la última fila conocida de la base; los vacíos se tiran como antes.
+    // (b) Lo que se conserva va con el valor del ítem (antes se rehacía todo con la nota en memoria, y si Realtime ya había
+    // puesto ahí la Guardia de la base, lo escrito sin red se perdía); lo demás, de la nota vigente, y el meta igualado.
+    function outboxDropNoteItemsBefore(key, beforeTs, sent) {
       const q = outboxLoad();
-      const kept = q.filter(function (it) { return !(it && it.type === "note" && it.key === key && (it.ts || 0) <= beforeTs); });
-      if (kept.length !== q.length) { outboxSave(kept); updateOutboxBadge(); }
+      const llevaMeta = !sent || !sent.size || Array.from(sent).some(function (f) { return f === "entrega" || f === "checklist" || f.indexOf("ck_") === 0 || f.indexOf("body_diagram_") === 0; });
+      let cambio = false; const kept = [];
+      q.forEach(function (it) {
+        if (!(it && it.type === "note" && it.key === key && (it.ts || 0) <= beforeTs)) { kept.push(it); return; }
+        cambio = true;
+        if (llevaMeta || !noteData[key]) return;
+        const src = isPlainObject(it.data) ? it.data : {};
+        let resto;
+        if (!Array.isArray(it.dirty) || !it.dirty.length) {
+          const p = _findPatientByKey(key), b = p && p._supa_id ? _noteBaseline[p._supa_id] : null;
+          const bm = readNoteSyncMeta(b && b.checklist);
+          resto = NOTE_META_FIELDS.filter(function (f) { const v = toSafeString(src[f]).trim(); return !!v && v !== bm[f]; });
+        } else resto = it.dirty.filter(function (f) { return NOTE_META_FIELDS.indexOf(f) !== -1; });
+        if (!resto.length) return;
+        const data = _outboxNoteCopy(migrateNote(JSON.parse(JSON.stringify(noteData[key]))));
+        resto.forEach(function (f) { data[f] = toSafeString(src[f]); });
+        _entregaMetaAlign(data);
+        kept.push(Object.assign({}, it, { dirty: resto, data: data }));
+      });
+      if (cambio) { outboxSave(kept); updateOutboxBadge(); }
+    }
+    // Nota que el flush sube por un ítem `note` de la cola (20 oct 2026). La Guardia y los diagramas viajan SIEMPRE en
+    // checklist.__pl_note_meta (buildChecklistForSync los arma con nd.entrega y nd.body_diagram_*), también cuando el ítem
+    // solo marcó una casilla: un ítem viejo con dirty ["checklist"] subía así la Guardia de cuando se encoló y
+    // _checklistMergeRemote la tomaba como cambio de este equipo (difiere de la línea base): borraba de la base el renglón
+    // que otro equipo escribió después, y la siguiente carga (gana la base) lo quitaba también de la pantalla. De esos tres,
+    // los que el ítem NO trae marcados van con el valor vigente de este equipo (noteData: lo que se ve, ya con la Guardia de
+    // la base tras la carga o con lo escrito aquí que espera subir). Sin lista (nota completa) o sin la nota en memoria, el
+    // ítem tal cual. Copia: no toca el ítem de la cola.
+    // 21 oct 2026: uno de esos que aquí está VACÍO y en la última fila conocida de la base no, va con el de la base (un
+    // campo que el ítem no marcó nunca borra): la carga con un ítem sin lista deja en memoria su diagrama vacío encima del
+    // del colega y, cuando ese ítem se quedaba con solo la Guardia (outboxDropNoteItemsBefore), el reintento lo borraba.
+    function _outboxNoteSendData(item, key) {
+      const dirty = Array.isArray(item.dirty) && item.dirty.length ? item.dirty : null;
+      const cur = noteData[key];
+      if (!dirty || !cur) return item.data;
+      const p = _findPatientByKey(key), b = p && p._supa_id ? _noteBaseline[p._supa_id] : null;
+      const bm = readNoteSyncMeta(b && b.checklist);
+      const out = Object.assign({}, item.data);
+      NOTE_META_FIELDS.forEach(function (f) {
+        if (dirty.indexOf(f) !== -1) return;
+        const v = toSafeString(cur[f]);
+        out[f] = v.trim() ? v : bm[f];
+      });
+      // 21 oct 2026: un ítem sin 'checklist' ni ck_* en su lista (solo Guardia o diagramas) sube el checklist VIGENTE,
+      // no su foto: _checklistMergeRemote tomaba como «cambiadas aquí» las casillas, signos, Cultivos o R1 que un colega
+      // cambió después de encolar, y el reintento las regresaba en la base. buildChecklistForSync sigue armando el meta
+      // con la Guardia y los diagramas de out.
+      if (!dirty.some(function (f) { return f === "checklist" || f.indexOf("ck_") === 0; }) && isPlainObject(cur.checklist)) {
+        out.checklist = _baselineClone(cur.checklist);
+        // El autor (by) de la Guardia o del diagrama que el ítem trae marcados viaja con ellos: el checklist vigente ya trae
+        // el `by` de la base y el chip «Último cambio» quedaba con la persona anterior.
+        const M = NOTE_SYNC_META_KEY, im = isPlainObject(item.data && item.data.checklist) ? item.data.checklist[M] : null;
+        if (isPlainObject(im) && isPlainObject(im.by)) {
+          const om = Object.assign({}, isPlainObject(out.checklist[M]) ? out.checklist[M] : {});
+          om.by = Object.assign({}, isPlainObject(om.by) ? om.by : {});
+          dirty.forEach(function (f) { if (NOTE_META_FIELDS.indexOf(f) !== -1 && im.by[f]) om.by[f] = im.by[f]; });
+          out.checklist[M] = om;
+        }
+      }
+      return out;
     }
     // Copia de nota para el outbox: sin el PDF inline (`source_file` en base64) cuando ya está en
     // Storage. Un ítem de varios MB llenaba la cuota de localStorage y la cola dejaba de guardarse.
@@ -11894,16 +12012,33 @@ function plExportBackup() {
       }
     }
 
-    // Columnas de `notes` que baja la app (entrega viaja dentro de checklist.__pl_note_meta).
-    const NOTES_SELECT_COLS = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,checklist,lab_history,imagen_history";
+    // Columnas de `notes` que baja la app (entrega viaja dentro de checklist.__pl_note_meta). updated_at (21 oct 2026): la
+    // base la pone en cada UPDATE (trigger trg_notes_updated); supaLoadAll la compara con la de la fila que aplicó Realtime.
+    const NOTES_SELECT_COLS = "patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,checklist,lab_history,imagen_history,updated_at";
     // Fila remota de `notes` → nota de la app, sobre la copia local (mismo mapeo que usa la carga inicial).
     function _noteFromRemoteRow(sn, localNote) {
       const nd = migrateNote(localNote);
+      // Copia local de los diagramas ANTES de mezclar (para la regla de abajo).
+      const localAnt = toSafeString(nd.body_diagram_ant).trim(), localPost = toSafeString(nd.body_diagram_post).trim();
       nd.app = sn.app || ""; nd.pa = sn.pa || ""; nd.drenajes = sn.drenajes || "";
       nd.qx = sn.qx || ""; nd.manejo = sn.manejo || ""; nd.sangrado = sn.sangrado || "";
       nd.sv = sn.sv || ""; nd.balance = sn.balance || ""; nd.pendientes = sn.pendientes || "";
       if (sn.entrega !== undefined) nd.entrega = sn.entrega || nd.entrega || "";
       nd.checklist = { ...(nd.checklist || {}), ...(isPlainObject(sn.checklist) ? sn.checklist : {}) };
+      // 20 oct 2026 (cama 159: la Cronología se veía con renglones repetidos en el iPad y limpia en la Mac): la fila de
+      // `notes` no trae columna entrega, la Guardia viaja en checklist.__pl_note_meta, y migrateNote solo la toma de ahí
+      // si la local está VACÍA → al abrir ganaba la copia local vieja, al revés que todas las demás cajas y que Realtime
+      // (handleNoteChange). Ahora, si la fila remota trae el meta, su Guardia gana aunque la local no esté vacía, y los
+      // diagramas con la misma regla de handleNoteChange (gana el remoto salvo que venga vacío y aquí haya trazo). Lo que
+      // este equipo tiene SIN SUBIR se repone después encima: la cola (_applyOutboxOverlay), los campos sucios y lo
+      // recién guardado aquí (_keepRecentLocal), en _applyLoadedNotes. Sin meta remoto (fila vieja o nota que nunca tuvo
+      // Guardia ni diagrama) se conserva lo local, como antes.
+      const rm = readNoteSyncMeta(sn.checklist);
+      if (rm.exists) {
+        nd.entrega = rm.entrega;
+        nd.body_diagram_ant = (rm.body_diagram_ant === "" && localAnt) ? localAnt : rm.body_diagram_ant;
+        nd.body_diagram_post = (rm.body_diagram_post === "" && localPost) ? localPost : rm.body_diagram_post;
+      }
       nd.labHistory = Array.isArray(sn.lab_history) ? sn.lab_history : (nd.labHistory || []);
       nd.imagenHistory = Array.isArray(sn.imagen_history) ? sn.imagen_history : (nd.imagenHistory || []);
       return migrateNote(nd);
@@ -12106,8 +12241,33 @@ function plExportBackup() {
           }
           const localNote = lsGetNote(k);
           if (sn) {
+            // Realtime aplicó esta nota MIENTRAS la carga viajaba (20 oct 2026): la foto de `notes` se pidió al principio y se
+            // aplica tras WinLab, robot, indicaciones y RIS. Ahora que la Guardia de la base gana al abrir, una foto de antes
+            // quitaba de la caja el renglón que un colega acababa de escribir (y la siguiente subida de este equipo lo
+            // mandaba sin él). 21 oct 2026: solo si esa fila de Realtime es TAN NUEVA o más que la foto (updated_at): un
+            // evento atrasado (el iPad que vuelve con eventos en el búfer del socket) es más viejo que la foto, y quedarse
+            // con la nota en memoria dejaba la caja vieja y la siguiente edición borraba en la base el renglón de un colega.
+            // Aun así la nota se arma con la foto, como siempre; de la memoria solo la Guardia, los diagramas y
+            // __pl_note_meta, y en la línea base el meta de Realtime (el que tiene la nota): si no, la siguiente subida
+            // vería «cambiado aquí» un meta que solo llegó por Realtime y pisaría lo que la base tenga después.
+            const rt = _rtNoteAplicada[k];
+            const memMeta = !!(noteData[k] && rt && rt.t >= _loadStartTs && _pgTsMicros(rt.u) >= _pgTsMicros(sn.updated_at));
+            const bPrev = _noteBaseline[row.id];
             _noteBaselineSet(row.id, sn);
             loadedNotes[k] = _noteFromRemoteRow(sn, localNote);
+            if (memMeta) {
+              const M = NOTE_SYNC_META_KEY, mem = noteData[k], nd = loadedNotes[k];
+              NOTE_META_FIELDS.forEach(function (f) { nd[f] = toSafeString(mem[f]); });
+              const mm = isPlainObject(mem.checklist) ? mem.checklist[M] : null;
+              nd.checklist = Object.assign({}, nd.checklist);
+              if (isPlainObject(mm)) nd.checklist[M] = _baselineClone(mm); else delete nd.checklist[M];
+              loadedNotes[k] = migrateNote(nd);
+              const b = _noteBaseline[row.id], bm = bPrev && isPlainObject(bPrev.checklist) ? bPrev.checklist[M] : null;
+              if (b && isPlainObject(b.checklist)) {
+                b.checklist = Object.assign({}, b.checklist);
+                if (isPlainObject(bm)) b.checklist[M] = _baselineClone(bm); else delete b.checklist[M];
+              }
+            }
           } else {
             loadedNotes[k] = localNote;
           }
@@ -12246,8 +12406,18 @@ function plExportBackup() {
         const snaps = JSON.parse(localStorage.getItem("pl_snap_" + k) || "[]");
         if (!snaps[idx]) { alert("Versión no encontrada."); return; }
         const restored = snaps[idx].data;
+        // 20 oct 2026: con un campo que se quedó marcado en esa tarjeta (labHistory tras un PDF de labs, un trazo del
+        // diagrama…) saveNote no calcula las diferencias con la base y el push lleva solo lo marcado: la Guardia restaurada
+        // no llegaba a la base y, ahora que la de la base gana al abrir, la siguiente carga la quitaba. Solo en ese caso se
+        // marca también 'entrega' (si cambia); sin marcas, las diferencias con la base ya la incluyen (con las demás cajas).
+        // 21 oct 2026: con los dos diagramas, la misma regla (el de la base también gana al abrir).
+        const _marcas = _dirtyFields[k];
+        const _actual = getNote(k);
+        const _marcarMeta = (_marcas && _marcas.size) ? NOTE_META_FIELDS.filter(function (f) { return !_marcas.has(f) && toSafeString(_actual[f]) !== toSafeString(restored && restored[f]); }) : [];
+        _marcarMeta.forEach(function (f) { _marcas.add(f); });
         noteData[k] = restored;
         saveNote(k, restored);
+        _marcarMeta.forEach(function (f) { _marcas.delete(f); });
         const _nhm = document.getElementById("note-hist-modal");
         if (_nhm) _nhm.style.display = "none";
         renderView();
@@ -12271,6 +12441,10 @@ function plExportBackup() {
     // campos sucios (el push terminó), _applyLoadedNotes lo regresaba al valor viejo → la caja «perdía» lo escrito al abrir
     // la app, al volver la red o al regresar a la app. _keepRecentLocal conserva esos campos.
     const _localFieldTouch = {};
+    // Última fila de Realtime que handleNoteChange aplicó a cada nota (20 oct 2026): { t: hora de este equipo, u: su
+    // updated_at }. Si se aplicó después de que empezó una carga y no es más vieja que la foto, supaLoadAll conserva la
+    // Guardia, los diagramas y el meta de la memoria (21 oct 2026).
+    const _rtNoteAplicada = {};
     function _touchLocalFields(k, fields) {
       if (!k || !fields) return;
       const m = _localFieldTouch[k] || (_localFieldTouch[k] = {}); const t = Date.now();
@@ -12414,8 +12588,9 @@ function plExportBackup() {
               outboxEnqueue({ type: "note", key: k, data: _outboxNoteCopy(noteData[k] || d), dirty: dirtySnapshot ? Array.from(dirtySnapshot) : null, who: _outboxNoteWho(k) });
             } else {
               // Lo que quedó encolado ANTES de este push (p. ej. al ocultar la app) ya es viejo:
-              // si se reprodujera después, regresaría el texto a una versión anterior.
-              outboxDropNoteItemsBefore(k, pushStart);
+              // si se reprodujera después, regresaría el texto a una versión anterior. Salvo la Guardia que este push no
+              // llevó (20 oct 2026, ver outboxDropNoteItemsBefore).
+              outboxDropNoteItemsBefore(k, pushStart, dirtySnapshot);
             }
             if (pendingSyncs === 0) {
               if (ok) { _lastSyncErrorDetail = ""; setSyncStatus("synced", "✅ Guardado"); localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString()); }
@@ -12466,6 +12641,12 @@ function plExportBackup() {
           else if (f.indexOf("ck_") === 0) { const ck = f.slice(3); if (!nd.checklist) nd.checklist = {}; if (src.checklist && src.checklist[ck] !== undefined) nd.checklist[ck] = src.checklist[ck]; }
           else if (src[f] !== undefined) nd[f] = src[f];
         });
+        // La Guardia del ítem solo gana si la trae marcada (20 oct 2026). nd.entrega ya es la de la base salvo con 'entrega'
+        // en dirty (solo esa rama del forEach la cambia), pero un ítem viejo con dirty ["checklist"] trae en su checklist
+        // el __pl_note_meta de cuando se encoló, con la Guardia de ENTONCES: al copiar el checklist entero la reinstalaba
+        // en el meta (y migrateNote la sacaba a la caja si la de la base estaba vacía). Se iguala el meta a nd.entrega:
+        // sin 'entrega' en dirty queda el de la base; con 'entrega', el del ítem. La rama sin lista (arriba) no cambia.
+        _entregaMetaAlign(nd);
         target[it.key] = nd;
       });
     }
@@ -12999,7 +13180,14 @@ function plExportBackup() {
             try {
               const rows = await _sGet("notes", "patient_id=eq." + encodeURIComponent(newRow.id) + "&select=" + NOTES_SELECT_COLS);
               const sn = rows && rows[0];
-              if (sn) { _noteBaselineSet(newRow.id, sn); noteData[newK] = _noteFromRemoteRow(sn, lsGetNote(newK)); lsSaveNote(newK, noteData[newK]); }
+              if (sn) {
+                _noteBaselineSet(newRow.id, sn);
+                // La nota de la nube gana (también la Guardia, ver _noteFromRemoteRow, 20 oct 2026); lo que este equipo dejó en
+                // la cola para esta tarjeta se repone encima, como en la carga normal (_applyLoadedNotes), para no esconderlo.
+                const _one = {}; _one[newK] = _noteFromRemoteRow(sn, lsGetNote(newK));
+                try { _applyOutboxOverlay(_one); } catch (e) { safeLog("[RT] cola sobre la nota nueva:", e); }
+                noteData[newK] = _one[newK]; lsSaveNote(newK, noteData[newK]);
+              }
               else noteData[newK] = noteData[newK] || lsGetNote(newK);
             } catch (e) { safeLog("[RT] nota del paciente nuevo:", e); noteData[newK] = noteData[newK] || lsGetNote(newK); }
             finally { _rtInsertPending.delete(newRow.id); }
@@ -13440,6 +13628,7 @@ function plExportBackup() {
         nd.imagenHistory = existing.imagenHistory || [];
       }
       try { noteData[k] = migrateNote(nd); } catch (e) { safeLog("[RT] migrateNote error for " + k + ":", e); noteData[k] = defaultData(); }
+      _rtNoteAplicada[k] = { t: Date.now(), u: toSafeString(newRow.updated_at) };   // una carga en camino con una foto más vieja no la regresa (supaLoadAll)
       lsSaveNote(k, noteData[k]);
       // ¿Cambió algo de lo que se ve? Si no, ni aviso ni repintado (antes cada eco del sync de labs hacía sonar
       // «📡 Actualización recibida» en todos los iPads aunque las cifras fueran las mismas).
@@ -13840,8 +14029,9 @@ function plExportBackup() {
                 // dirty: campos que cambiaron cuando se encoló → merge por campo (no pisar lo ajeno).
                 // supaUpsertNote devuelve null (no lanza) al fallar: convertirlo en excepción para
                 // que withOutboxRetry reintente de verdad en vez de dejar el ítem "fallido" a la primera.
+                // La Guardia y los diagramas que el ítem no marcó van con los vigentes (_outboxNoteSendData, 20 oct 2026).
                 const noteRes = await withOutboxRetry(async function(){
-                  const r = await supaUpsertNote(p._supa_id, item.data, Array.isArray(item.dirty) && item.dirty.length ? new Set(item.dirty) : null);
+                  const r = await supaUpsertNote(p._supa_id, _outboxNoteSendData(item, pid(p)), Array.isArray(item.dirty) && item.dirty.length ? new Set(item.dirty) : null);
                   if (r === null || r === undefined) throw new Error("upsert note: " + (_lastSyncErrorDetail || "sin detalle"));
                   return r;
                 });
@@ -27023,8 +27213,147 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       renderView();
     }
 
+    // ─── 🔄 AVISO DE VERSIÓN NUEVA (20 oct 2026) ─────────────────────────────────────
+    // Varios equipos seguían con versiones viejas de la app sin saberlo (una PC con Windows reescribía labs en bucle con
+    // una versión anterior a ese arreglo; un iPad abierto días no recarga nunca). La app se publica TAL CUAL, sin paso de
+    // construcción, en tres lugares: GitHub Pages sirve la raíz de main, y Cloudflare Pages (deploy-pages.yml) y el espejo
+    // de Netlify (netlify.toml) copian los archivos a dist/. Por eso la versión va escrita a mano en DOS lugares que deben
+    // ser iguales: PL_BUILD aquí y "v" en version.json (raíz del repo). Cada cambio de este archivo sube las dos (ci.yml
+    // lo exige en el PR y tests/headless/version_check.js revisa que coincidan; ver MANUAL-OPERACION.md).
+    // La app pide version.json a los 15 s de abrir, cada 3 min con la pestaña visible y al volver a primer plano (mínimo
+    // 60 s entre revisiones). Si la publicada es otra sale una barra pequeña abajo a la izquierda (a la derecha con
+    // 1340 px o más, donde las camas van en el riel de la izquierda), que se esconde mientras se escribe (teclado del
+    // iPad), queda debajo de las ventanas de la app (con una abierta «Actualizar» no recarga y pide guardarla o cerrarla)
+    // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
+    // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
+    // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
+    const PL_BUILD = "2026.10.20-1";
+    const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
+    // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
+    const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
+    const PL_VER_TXT = "🔄 Hay una versión nueva de la app ·";
+    let _plVerUltima = 0, _plVerNueva = "", _plVerOculta = false, _plVerActualizando = false;
+    function _plVerActiva() {
+      try { if (window.__PL_BUILD_TEST__) return true; } catch (_) {}
+      try {
+        if (navigator.webdriver) return false;
+        const h = location.hostname;
+        return !(location.protocol === "file:" || !h || h === "localhost" || h === "127.0.0.1" || h === "[::1]");
+      } catch (_) { return false; }
+    }
+    async function _plVersionRevisar() {
+      if (!_plVerActiva() || navigator.onLine === false) return null;
+      _plVerUltima = Date.now();
+      let v = "";
+      try {
+        const res = await fetch("./version.json?ts=" + Date.now(), { cache: "no-store" });
+        if (!res || !res.ok) return null;
+        const j = await res.json();
+        v = toSafeString(j && j.v).trim();
+      } catch (_) { return null; }   // sin red, 404 o archivo raro: no hacer nada
+      if (!v) return null;
+      _plVerNueva = v !== PL_BUILD ? v : "";
+      _plVerOculta = false;          // el ✕ dura solo hasta esta revisión
+      _plVerPintar();
+      return v;
+    }
+    // Revisión automática (a los 15 s, cada 3 min, al volver a primer plano): solo con la pestaña visible y con 60 s o más
+    // desde la anterior.
+    function _plVersionAuto() {
+      try {
+        if (document.visibilityState === "hidden" || Date.now() - _plVerUltima < PL_VER_MIN_MS) return;
+        _plVersionRevisar().catch(function () {});
+      } catch (_) {}
+    }
+    function _plVerPintar() {
+      let bar = document.getElementById("pl-ver-bar");
+      const ver = !!_plVerNueva && !_plVerOculta && (_plVerActualizando || !_isTypingNow());
+      try { document.body.classList.toggle("pl-ver-on", ver); } catch (_) {}
+      if (!ver) { if (bar) bar.style.display = "none"; return; }
+      if (!bar) {
+        bar = document.createElement("div");
+        bar.id = "pl-ver-bar"; bar.className = "no-print";
+        bar.setAttribute("role", "status"); bar.setAttribute("data-testid", "ver-bar");
+        bar.innerHTML = '<span class="pl-ver-txt">' + PL_VER_TXT + '</span>'
+          + '<button type="button" class="pl-ver-go" data-testid="ver-actualizar" onclick="plVersionActualizar()">Actualizar</button>'
+          + '<button type="button" class="pl-ver-x" data-testid="ver-ocultar" aria-label="Ocultar" title="Ocultar hasta la siguiente revisión" onclick="plVersionOcultar()">✕</button>';
+        document.body.appendChild(bar);
+      }
+      bar.style.display = "flex";
+    }
+    function plVersionOcultar() { _plVerOculta = true; _plVerPintar(); }
+    // ¿Hay una ventana de la app abierta que puede tener algo escrito sin guardar (✏️ Editar, cirugía, labs a mano,
+    // Config…, el Pase de visita)? Lo que tiene esa ventana todavía no está en noteData ni en la cola: recargar lo perdía.
+    function _plVerVentanaAbierta() {
+      try {
+        if (_swipeModalOpen()) return true;
+        return !!document.querySelector("#rondas-overlay.open, .ficha-backdrop, .rpac-backdrop, .resid-sheet-backdrop");
+      } catch (_) { return false; }
+    }
+    // «Actualizar»: (1) todo lo escrito a la cola, como al ocultar la app (persistBeforeExit: campos sucios, guardados
+    // con espera y subidas en vuelo); (2) subir la cola y esperar los guardados en curso, con tope de ~8 s; si queda algo,
+    // avisar que se quedó en el equipo (la cola vive en localStorage y se sube al abrir); (3) service worker nuevo y
+    // recarga. La recarga pide index.html a la red (el SW es network-first para la página).
+    async function plVersionActualizar() {
+      if (_plVerActualizando) return;
+      // La barra queda DEBAJO de las ventanas (z-index), pero con teclado (Tab) aún se puede llegar al botón.
+      if (_plVerVentanaAbierta()) { alert("Guarda o cierra la ventana abierta y vuelve a tocar «Actualizar»."); return; }
+      if (navigator.onLine === false) { alert("Sin conexión: toca «Actualizar» cuando vuelva la red."); return; }
+      _plVerActualizando = true;
+      const dormir = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+      try {
+        const txt = document.querySelector("#pl-ver-bar .pl-ver-txt");
+        if (txt) txt.textContent = "⏳ Subiendo lo pendiente…";
+        try { const ae = document.activeElement; if (ae && ae !== document.body && ae.blur) ae.blur(); } catch (_) {}
+        try { persistBeforeExit(); } catch (_) {}
+        const hasta = Date.now() + PL_VER_SUBIR_MS;
+        try { await Promise.race([flushOutbox().catch(function () {}), dormir(PL_VER_SUBIR_MS)]); } catch (_) {}
+        while (Date.now() < hasta && (pendingSyncs > 0 || _pendingPush.size > 0)) await dormir(200);
+        let quedan = 0;
+        try { quedan = outboxLoad().length + ((pendingSyncs > 0 || _pendingPush.size > 0) ? 1 : 0); } catch (_) {}
+        if (quedan) alert("Algo no se alcanzó a subir: se quedó guardado en este equipo y se subirá solo al abrir la app.");
+        try {
+          const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
+          if (reg && reg.update) {
+            await Promise.race([reg.update(), dormir(4000)]);
+            // Publicación con otro sw.js (20 oct 2026): hay un SW nuevo instalándose o en espera. Recargar mientras se
+            // activa (su skipWaiting + clients.claim) hacía que WebKit (iPad) cerrara el SW viejo a media navegación: la
+            // recarga se caía y la página se quedaba en «⏳ Subiendo lo pendiente…». Se espera a que el nuevo tome el
+            // control (controllerchange, tope ~8 s) y entonces se recarga; esa navegación ya la atiende el SW nuevo.
+            if (reg.installing || reg.waiting) {
+              const cambio = new Promise(function (r) { navigator.serviceWorker.addEventListener("controllerchange", r, { once: true }); });
+              if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+              await Promise.race([cambio, dormir(PL_VER_SW_MS)]);
+            }
+          }
+        } catch (_) {}
+      } finally {
+        // Red de seguridad (20 oct 2026): si la recarga no ocurre (se cayó la navegación), a los ~15 s la barra vuelve a su
+        // texto y «Actualizar» se puede tocar otra vez (antes se quedaba en «⏳ Subiendo lo pendiente…» para siempre).
+        setTimeout(function () {
+          _plVerActualizando = false;
+          const t = document.querySelector("#pl-ver-bar .pl-ver-txt");
+          if (t) t.textContent = PL_VER_TXT;
+          _plVerPintar();
+        }, PL_VER_RESCATE_MS);
+        location.reload();
+      }
+    }
+    function _plVersionIniciar() {
+      if (!_plVerActiva()) return;
+      setTimeout(_plVersionAuto, PL_VER_PRIMERA_MS);
+      setInterval(_plVersionAuto, PL_VER_CADA_MS);
+      document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") _plVersionAuto(); });
+      // Regreso desde la caché de páginas del navegador (atrás/adelante): ahí no corre el arranque ni hay visibilitychange.
+      window.addEventListener("pageshow", function (e) { if (e && e.persisted) _plVersionAuto(); });
+      // Mientras se escribe la barra se esconde (el teclado del iPad sube desde abajo) y vuelve al soltar la caja.
+      document.addEventListener("focusin", function () { if (_plVerNueva) _plVerPintar(); }, true);
+      document.addEventListener("focusout", function () { if (_plVerNueva) setTimeout(_plVerPintar, 60); }, true);
+    }
+
     // ─── START ───────────────────────────────────────────────────────────────────────
     init();
+    try { _plVersionIniciar(); } catch (e) { safeLog("[versión] init:", e); }
 
     // ─── Iconos "ph-*" → emoji ─────────────────────────────────────────────────
     // La fuente Phosphor (CDN) ya no se carga: la app debe abrir en cualquier red y sin
