@@ -56,9 +56,13 @@ const MOCK = `(() => {
       return json(201, [{ id: 'a1' }]);
     }
     if (url.startsWith('/rest/v1/notes')) {
-      if (m === 'GET') return json(200, [remoteNote]);
+      if (m === 'GET') return json(200, [Object.assign({}, remoteNote)]);
       let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
-      posts.push(body); return json(201, [{ patient_id: 'a1' }]);
+      posts.push(body);
+      // Fila de notas también MUTABLE (21 oct 2026): el upsert mezcla las columnas que llegan y responde la fila, como
+      // PostgREST; la app relee la nota tras subir la cola y una fila fija regresaba lo escrito sin red.
+      (Array.isArray(body) ? body : [body]).forEach((r) => { if (r) Object.keys(r).forEach((c) => { if (c !== 'updated_by' && c !== 'patient_id') remoteNote[c] = JSON.parse(JSON.stringify(r[c])); }); });
+      return json(201, [Object.assign({}, remoteNote)]);
     }
     return json(m === 'GET' ? 200 : 201, m === 'GET' ? [] : [{ id: 1 }]);
   });
