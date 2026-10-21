@@ -40,6 +40,7 @@ function makeSpreadsheet(id) {
           if (vals.length !== nr || vals.some((row) => row.length !== nc)) throw new Error("setValues: tamaño distinto al rango");
           if (state0.failWriteOn === sh.name) throw new Error("Exception: Service Spreadsheets timed out");
           if (state0.st && state0.st.msPorEscritura) state0.st.reloj += state0.st.msPorEscritura;
+          if (state0.st && state0.st.alEscribir) state0.st.alEscribir(sh.name, nr);
           sh.writes++; sh.filasEscritas = (sh.filasEscritas || 0) + nr;
           vals.forEach((row, i) => { sh.cells[r - 1 + i] = sh.cells[r - 1 + i] || []; row.forEach((v, j) => {
             const texto = sh.fmt[(r + i) + ":" + (c + j)] === "@";
@@ -94,6 +95,7 @@ function postgrest(state, url) {
       const valor = (x) => ruta ? ((x[ruta[1]] || {})[ruta[2]]) : x[k];
       let m;
       if (v === "not.is.null") filtros.push((x) => valor(x) !== null && valor(x) !== undefined);
+      else if ((m = /^in\.\((.*)\)$/.exec(v))) { const lista = m[1].split(",").map((x) => x.replace(/^"|"$/g, "")); filtros.push((x) => lista.includes(String(valor(x)))); }
       else if ((m = /^(gte|gt|eq)\.(.*)$/.exec(v))) filtros.push((x) => { const c = cmpPg(valor(x), m[2]); return valor(x) !== null && valor(x) !== undefined && (m[1] === "gte" ? c >= 0 : m[1] === "gt" ? c > 0 : c === 0); });
       else return { status: 400, body: { code: "PGRST100", message: "filtro desconocido " + k } };
     }
@@ -159,6 +161,7 @@ function makeSandbox(state) {
         // Como Google (21 oct 2026, primera corrida real): una URL con caracteres fuera de RFC 3986 (>, espacio, {, |, [ en
         // la consulta…) o un % mal formado no sale: «Exception: Invalid argument: <url>».
         if (!urlValida(url)) { calls.push({ m: "rechazada", raw: url, u: url }); throw new Error("Exception: Invalid argument: " + url); }
+        if (url.length > 2048) { calls.push({ m: "rechazada", raw: url, u: url }); throw new Error("Exception: Limit Exceeded: URLFetch URL Length."); }
         if (state.rechazaUrl && state.rechazaUrl.test(url)) { calls.push({ m: "rechazada", raw: url, u: url }); throw new Error("Exception: Invalid argument: " + url); }
         if (state.msPorFetch) state.reloj += state.msPorFetch;
         const u = decodeURIComponent(url.replace(/^https?:\/\/[^/]+/, ""));
@@ -167,6 +170,7 @@ function makeSandbox(state) {
         state.nLlamadas = state.nLlamadas || {}; state.nLlamadas[tabla] = (state.nLlamadas[tabla] || 0) + 1;
         if (state.codigo && state.codigo[tabla]) return { getResponseCode: () => 400, getContentText: () => JSON.stringify({ code: state.codigo[tabla], message: "column PACIENTE FICTICIO SECRETO does not exist", details: "000123" }) };
         if (state.agotado && state.agotado[tabla]) return { getResponseCode: () => 500, getContentText: () => JSON.stringify({ code: "57014", message: "canceling statement due to statement timeout" }) };
+        if (state.cortada && state.cortada[tabla]) return { getResponseCode: () => 200, getContentText: () => '[{"nombre":"PRUEBA FICTICIA SECRETA","exp":"000123"' };
         if (state.falla && state.falla[tabla]) return { getResponseCode: () => state.falla[tabla], getContentText: () => JSON.stringify({ message: "detalle con PACIENTE FICTICIO SECRETO" }) };
         const lim = +(/[?&]limit=(\d+)/.exec(u) || [0, 0])[1];
         if (state.maxFilas && state.maxFilas[tabla] !== undefined && lim > state.maxFilas[tabla]) throw new Error("Exception: Response too large");
@@ -226,15 +230,17 @@ function db() {
     // (__cells = [.., .., folio, toma, resultado, servicio], valores). La búsqueda por apellido trae homónimos.
     winlab_labs: [
       { id: 1, exp: "000123", paciente: "PRUEBA FICTICIA UNO", fecha: "2026-10-19", scraped_at: "2026-10-19T08:00:00.123456+00:00", data: { esp: "CG", cama: "3-201", run_id: "r1", headers: ["x"], reportes: [
-        { __hasLink: false, NOMBRE: "UNO", "APELLIDOS COMPLETOS": "PRUEBA FICTICIA", __cells: ["", "PRUEBA FICTICIA", "UNO"] },
+        { __hasLink: false, NOMBRE: "UNO", "APELLIDOS COMPLETOS": "PRUEBA FICTICIA", __cells: ["", "", "000123", "PRUEBA FICTICIA", "UNO", "MASCULINO", "15/03/1992"] },
         { __hasLink: true, __target: true, __cells: ["", "", "F100", "18/10/2026 06:10", "18/10/2026 07:00", "CIRUGIA GENERAL"], "APELLIDOS COMPLETOS": "18/10/2026 06:10", NOMBRE: "18/10/2026 07:00", SEXO: "CIRUGIA GENERAL",
           valores: [{ estudio: "HEMOGLOBINA", valor: "12.0", unidad: "g/dL", referencia: "12-16" }, { estudio: "LEUCOCITOS", valor: "11.0", unidad: "10^3/uL", referencia: "4-10" }] },
-        { __hasLink: true, __cells: ["", "", "F101", "17/10/2026 09:00", "19/10/2026 07:30", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOCULTIVO PERIFERICO", valor: "1", unidad: "DESARROLLO" }, { estudio: "NEGATIVO A", valor: "5", unidad: "DIAS" }] },
+        { __hasLink: true, __target: true, __cells: ["", "", "F101", "17/10/2026 09:00", "19/10/2026 07:30", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOCULTIVO PERIFERICO", valor: "1", unidad: "DESARROLLO" }, { estudio: "NEGATIVO A", valor: "5", unidad: "DIAS" }] },
         { __hasLink: true, __cells: ["", "", "F102", "19/10/2026 05:00", "", "CIRUGIA GENERAL"] },
-        { __hasLink: false, NOMBRE: "OTRO HOMONIMO", "APELLIDOS COMPLETOS": "PRUEBA FICTICIA", __cells: ["", "PRUEBA FICTICIA", "OTRO HOMONIMO"] },
+        { __hasLink: false, NOMBRE: "OTRO HOMONIMO", "APELLIDOS COMPLETOS": "PRUEBA FICTICIA", __cells: ["", "", "000124", "PRUEBA FICTICIA", "OTRO HOMONIMO", "MASCULINO", "02/02/1960"] },
         { __hasLink: true, __cells: ["", "", "F900", "18/10/2026 06:00", "18/10/2026 06:30", "MEDICINA INTERNA"], valores: [{ estudio: "HEMOGLOBINA", valor: "7.0", unidad: "g/dL" }] }
       ] } },
+      // Captura anterior al 9 oct (sin __target): el registro aplica la regla del robot (encabezado con el nombre).
       { id: 2, exp: "000555", paciente: "PRUEBA FICTICIA CINCO", fecha: "2026-10-01", scraped_at: "2026-10-01T08:00:00+00:00", data: { reportes: [
+        { __hasLink: false, __cells: ["", "", "000555", "PRUEBA FICTICIA", "CINCO", "FEMENINO", "10/10/1950"] },
         { __hasLink: true, __cells: ["", "", "F200", "01/10/2026 05:00", "01/10/2026 06:00", "MEDICINA INTERNA"], valores: [{ estudio: "CREATININA", valor: "2.1", unidad: "mg/dL", referencia: "0.6-1.2" }] }
       ] } }
     ],
@@ -294,7 +300,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   check("R1n WinLab: un renglón por reporte del paciente (sin el homónimo ni el reporte sin valores), con toma, resultado, servicio y valores; también de un expediente sin episodio",
     W.length === 3 && !W.some((x) => x["Folio"] === "F900" || x["Folio"] === "F102") && wF100 && wF100["Toma"] === "2026-10-18 06:10" && wF100["Resultado"] === "2026-10-18 07:00" && wF100["Servicio"] === "CIRUGIA GENERAL"
     && wF100["Valores"] === "HEMOGLOBINA: 12.0 g/dL (ref. 12-16)\nLEUCOCITOS: 11.0 10^3/uL (ref. 4-10)" && String(wF100["Estudios"]) === "2" && wF100["Nombre en WinLab"] === "PRUEBA FICTICIA UNO"
-    && /validado por el robot/.test(wF100["Atribución"]) && W.some((x) => x["Expediente"] === "000555" && /^CREATININA: 2\.1 mg\/dL/.test(x["Valores"]) && /Sin encabezado/.test(x["Atribución"])), JSON.stringify(W));
+    && /Marcado por el robot/.test(wF100["Atribución"]) && W.some((x) => x["Expediente"] === "000555" && /^CREATININA: 2\.1 mg\/dL/.test(x["Valores"]) && /Regla del robot aplicada por el registro/.test(x["Atribución"]) && x["Nombre en WinLab"] === "PRUEBA FICTICIA CINCO"), JSON.stringify(W));
   check("R1n2 cultivos de WinLab desde el reporte (hemocultivo negativo a 5 días) y RIS con su episodio",
     WC.length === 1 && WC[0]["Tipo"] === "Hemocultivo" && WC[0]["Resultado"] === "Negativo" && WC[0]["Detalle"] === "Sin desarrollo a 5 días" && WC[0]["Fuente"] === "Tabla del reporte" && WC[0]["Toma"] === "2026-10-17 09:00"
     && tab(ss, "Imagen del robot (RIS)")[0]["ID episodio"] === "p1" && tab(ss, "Imagen del robot (RIS)")[0]["Reporte"] === "APÉNDICE ENGROSADO", JSON.stringify(WC));
@@ -511,39 +517,81 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   check("R8d HTTP 400 de PostgREST: el error trae el código (42703) y no el mensaje ni los detalles", ec === "Supabase cronologia_respaldo HTTP 400 (42703)" && mc.logs.every((l) => !/SECRETO|000123/.test(l)), ec);
 }
 
-// ─── R9: WinLab con la regla de identidad de la app y cultivos (copias de index.html) ────────────────────────────
+// ─── R9: WinLab con la regla de identidad del ROBOT (rpa/lib.js) y cultivos (copias de index.html) ──────────────
 {
   const sb = makeSandbox({ db: db() }).sb;
-  const enc = (ap, nom) => ({ __hasLink: false, NOMBRE: nom, "APELLIDOS COMPLETOS": ap, __cells: ["", ap, nom] });
+  // Encabezado real: 7 celdas (…, APELLIDOS, NOMBRE, SEXO, NACIMIENTO); en italiano el sexo dice MASCHIO/FEMMINA.
+  const enc = (ap, nom, nac, sexo) => ({ __hasLink: false, __cells: ["", "", "X", ap, nom, sexo || "FEMENINO", nac || "01/02/1986"] });
   const rep = (folio, extra) => Object.assign({ __hasLink: true, __cells: ["", "", folio, "10/10/2026 06:00", "10/10/2026 07:00", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOGLOBINA", valor: "10" }] }, extra || {});
-  const folios = (fila) => sb.regWlDelPaciente(fila).map((x) => x.rep.__cells[2]);
-  const fila = { paciente: "PRUEBA FICTICIA ANA MARIA", reportes: [rep("A0"), enc("PRUEBA FICTICIA", "ANA"), rep("A1"), rep("A2", { __target: true }), enc("PRUEBA FICTICIA", "ANA MARIA"), rep("A3"), enc("PRUEBA FICTICIA", "LUISA"), rep("A4", { __target: true })] };
-  check("R9a identidad: encabezado con el nombre completo entra; con menos nombres solo si el robot lo validó; antes del primer encabezado y de otro paciente no",
-    JSON.stringify(folios(fila)) === JSON.stringify(["A2", "A3"]), JSON.stringify(folios(fila)));
-  check("R9b tolera una letra cambiada por el OCR (FICTISIA ≈ FICTICIA) pero no otro nombre de pila",
-    JSON.stringify(folios({ paciente: "PRUEBA FICTICIA ANA MARIA", reportes: [enc("PRUEBA FICTISIA", "ANA MARIA"), rep("B1"), enc("PRUEBA FICTICIA", "ANA LUISA"), rep("B2")] })) === JSON.stringify(["B1"]));
-  check("R9c sin encabezados (búsqueda de un solo paciente) entra todo; reportes sin valores no", JSON.stringify(folios({ paciente: "X Y Z", reportes: [rep("C1"), rep("C2", { valores: [] })] })) === JSON.stringify(["C1"]));
+  const folios = (fila, ctx, acc) => sb.regWlDelPaciente(Object.assign({ exp: "1", scraped_at: "2026-10-05T08:00:00Z" }, fila), ctx || {}, acc).map((x) => x.rep.__cells[2]);
+  // Capturas SIN marca (antes del 9 oct): la regla del robot.
+  const sinMarca = { paciente: "PRUEBA FICTICIA ANA MARIA", reportes: [rep("A0"), enc("PRUEBA FICTICIA", "ANA"), rep("A1"), enc("PRUEBA FICTICIA", "ANA MARIA"), rep("A3"), enc("PRUEBA FICTICIA", "LUISA"), rep("A4")] };
+  check("R9a sin marca: entra el encabezado con el nombre completo; el parcial no compite si hay uno completo; antes del primer encabezado y de otra persona no",
+    JSON.stringify(folios(sinMarca)) === JSON.stringify(["A3"]), JSON.stringify(folios(sinMarca)));
+  const soloParcial = { paciente: "PRUEBA FICTICIA ANA MARIA", reportes: [enc("PRUEBA FICTICIA", "ANA", "01/02/1986"), rep("P1")] };
+  check("R9b encabezado con menos nombres: entra si la edad cuadra (40 años) o no se conoce; no si no cuadra",
+    folios(soloParcial, { "1": { edad: "40" } }).length === 1 && folios(soloParcial, {}).length === 1 && folios(soloParcial, { "1": { edad: "70" } }).length === 0);
+  check("R9c una letra del OCR (FICTISIA) sí; variante A/O (MARIO/MARIA) no; FCO. = FRANCISCO; encabezado en italiano (MASCHIO)",
+    folios({ paciente: "PRUEBA FICTICIA ANA MARIA", reportes: [enc("PRUEBA FICTISIA", "ANA MARIA"), rep("B1")] }).length === 1
+    && folios({ paciente: "MARIO PRUEBA FICTICIA", reportes: [enc("PRUEBA FICTICIA", "MARIA"), rep("B2")] }).length === 0
+    && folios({ paciente: "FCO. JAVIER PRUEBA FICTICIA", reportes: [enc("PRUEBA FICTICIA", "FRANCISCO JAVIER", null, "MASCHIO"), rep("B3")] }).length === 1);
+  check("R9d alias «nombre en WinLab» de la app: el encabezado con el alias entra",
+    folios({ paciente: "NOMBRE DEL CENSO DISTINTO", reportes: [enc("PRUEBA FICTICIA", "ALIAS"), rep("C1")] }, { "1": { alias: "PRUEBA FICTICIA ALIAS" } }).length === 1
+    && folios({ paciente: "NOMBRE DEL CENSO DISTINTO", reportes: [enc("PRUEBA FICTICIA", "ALIAS"), rep("C1")] }, {}).length === 0);
+  // Homónimos: dos personas con el mismo nombre (otra fecha de nacimiento) → decide la edad; sin edad no se copia nada.
+  const homonimos = { paciente: "PRUEBA FICTICIA UNO", reportes: [enc("PRUEBA FICTICIA", "UNO", "01/02/1990"), rep("H1"), enc("PRUEBA FICTICIA", "UNO", "05/06/1950"), rep("H2")] };
+  const acc = { ambiguos: 0 };
+  check("R9e homónimos con el mismo nombre: la edad del censo elige (36 → el de 1990); sin edad no se copia ninguno y se cuenta",
+    JSON.stringify(folios(homonimos, { "1": { edad: "36" } })) === JSON.stringify(["H1"]) && folios(homonimos, {}, acc).length === 0 && acc.ambiguos === 2);
+  check("R9f el mismo paciente registrado dos veces con el año mal escrito (mismo día y mes): entran los dos",
+    folios({ paciente: "PRUEBA FICTICIA UNO", reportes: [enc("PRUEBA FICTICIA", "UNO", "01/02/1990"), rep("Y1"), enc("PRUEBA FICTICIA", "UNO", "01/02/1909"), rep("Y2")] }, { "1": { edad: "36" } }).length === 2);
+  const tres = { paciente: "PRUEBA FICTICIA UNO", reportes: [enc("PRUEBA FICTICIA", "UNO", "01/02/1990"), rep("Z1"), enc("PRUEBA FICTICIA", "UNO", "01/02/1909"), rep("Z2"), enc("PRUEBA FICTICIA", "UNO", "05/06/1950"), rep("Z3")] };
+  check("R9f2 con un homónimo de verdad además: la edad elige y el registro con el año mal escrito se rescata; el homónimo no",
+    JSON.stringify(folios(tres, { "1": { edad: "36" } })) === JSON.stringify(["Z1", "Z2"]), JSON.stringify(folios(tres, { "1": { edad: "36" } })));
+  // Capturas CON marca (desde el 9 oct): solo lo que marcó el robot, aunque el encabezado no coincida (alias, FCO…).
+  const conMarca = { paciente: "PRUEBA FICTICIA UNO", reportes: [enc("OTRA PERSONA", "ALIAS"), rep("M1", { __target: true }), enc("PRUEBA FICTICIA", "UNO"), rep("M2")] };
+  check("R9g con marca del robot: solo los reportes marcados (__target), aunque el encabezado no coincida", JSON.stringify(folios(conMarca)) === JSON.stringify(["M1"]));
+  check("R9h contexto de edad y alias: del censo (y su nota) y de la Papelera", (() => {
+    const c = sb.regWlContexto([{ id: "p1", exp: "000123", edad: "34" }], [{ patient_id: "p1", checklist: { winlab_alias: "PRUEBA, ALIAS" } }], [{ archived_at: "2026-10-01", patient_data: { exp: "000789", edad: "61" }, note_data: { checklist: { winlab_alias: "OTRO, ALIAS" } } }]);
+    return c["000123"].edad === "34" && c["000123"].alias === "PRUEBA, ALIAS" && c["000789"].edad === "61" && c["000789"].alias === "OTRO, ALIAS";
+  })());
   // Mismo reporte en dos capturas: la que trae más valores manda; una posterior con menos no la pisa.
-  const acc = { labs: {}, cultivos: {} };
-  const r1 = rep("D1", { valores: [{ estudio: "HB", valor: "9" }] }), r2 = rep("D1", { valores: [{ estudio: "HB", valor: "9" }, { estudio: "PLT", valor: "150" }] });
-  sb.regWlAcumular(acc, [{ exp: "1", paciente: "X", scraped_at: "2026-10-10T08:00:00Z", reportes: [r1] }, { exp: "1", paciente: "X", scraped_at: "2026-10-11T08:00:00Z", reportes: [r2] }, { exp: "1", paciente: "X", scraped_at: "2026-10-12T08:00:00Z", reportes: [r1] }]);
-  const L = Object.values(acc.labs);
-  check("R9d el mismo reporte en varias capturas es un solo renglón, con la captura de más valores", L.length === 1 && L[0]["Estudios"] === 2 && L[0]["Capturado"] === "2026-10-11T08:00:00Z" && /PLT: 150/.test(L[0]["Valores"]), JSON.stringify(L));
-  // Cultivo del PDF: germen con marcas, antibiograma S/I/R, UFC y texto; una captura posterior solo con la tabla no lo pisa.
-  const pdf = rep("E1", { valores: [{ estudio: "CULTIVO", valor: "POSITIVO", referencia: "Sin desarrollo" }], cultivo_texto: "TEXTO FICTICIO DEL REPORTE",
-    cultivo: { secciones: [{ tipo: "Urocultivo", muestra: "ORINA", resultado: "POSITIVO", germenes: [{ nombre: "Escherichia coli", flags: ["BLEE"], ufc: ">100000", antibiograma: [{ antibiotico: "AMIKACINA", cim: "<=2", interp: "S" }, { antibiotico: "CEFTRIAXONA", interp: "R" }, { antibiotico: "CEFEPIME", interp: "I" }] }] }] } });
-  const soloTabla = rep("E1", { valores: [{ estudio: "CULTIVO", valor: "POSITIVO", referencia: "Sin desarrollo" }] });
+  const ac1 = { labs: {}, cultivos: {} };
+  const r1 = rep("D1", { __target: true, valores: [{ estudio: "HB", valor: "9" }] }), r2 = rep("D1", { __target: true, valores: [{ estudio: "HB", valor: "9" }, { estudio: "PLT", valor: "150" }] });
+  sb.regWlAcumular(ac1, [{ exp: "1", paciente: "X", scraped_at: "2026-10-10T08:00:00Z", reportes: [r1] }, { exp: "1", paciente: "X", scraped_at: "2026-10-11T08:00:00Z", reportes: [r2] }, { exp: "1", paciente: "X", scraped_at: "2026-10-12T08:00:00Z", reportes: [r1] }]);
+  const L = Object.values(ac1.labs);
+  check("R9i el mismo reporte en varias capturas es un solo renglón, con la captura de más valores", L.length === 1 && L[0]["Estudios"] === 2 && L[0]["Capturado"] === "2026-10-11T08:00:00Z" && /PLT: 150/.test(L[0]["Valores"]), JSON.stringify(L));
+  // Cultivo del PDF: el robot repite el antibiograma en la sección y en el germen: no se duplica.
+  const ab = [{ antibiotico: "AMIKACINA", cim: "<=2", interp: "S" }, { antibiotico: "CEFTRIAXONA", interp: "R" }, { antibiotico: "CEFEPIME", interp: "I" }];
+  const pdf = rep("E1", { __target: true, valores: [{ estudio: "CULTIVO", valor: "POSITIVO", referencia: "Sin desarrollo" }], cultivo_texto: "TEXTO FICTICIO DEL REPORTE",
+    cultivo: { secciones: [{ tipo: "Urocultivo", muestra: "ORINA", resultado: "POSITIVO", antibiograma: ab, germenes: [{ nombre: "Escherichia coli", flags: ["BLEE"], ufc: ">100000", antibiograma: ab }] }] } });
+  const soloTabla = rep("E1", { __target: true, valores: [{ estudio: "CULTIVO", valor: "POSITIVO", referencia: "Sin desarrollo" }] });
   const ac2 = { labs: {}, cultivos: {} };
   sb.regWlAcumular(ac2, [{ exp: "2", paciente: "X", scraped_at: "2026-10-10T08:00:00Z", reportes: [pdf] }, { exp: "2", paciente: "X", scraped_at: "2026-10-11T08:00:00Z", reportes: [soloTabla] }]);
   const C = Object.values(ac2.cultivos);
-  check("R9e cultivo del PDF: positivo con germen y marcas, S/I/R, UFC y texto; la captura posterior solo con la tabla no lo pisa",
+  check("R9j cultivo del PDF: germen con marcas, S/I/R sin duplicar, UFC y texto; la captura posterior solo con la tabla no lo pisa",
     C.length === 1 && C[0]["Resultado"] === "POSITIVO" && C[0]["Germen"] === "Escherichia coli (BLEE)" && C[0]["Sensibles"] === "AMIKACINA <=2" && C[0]["Intermedios"] === "CEFEPIME" && C[0]["Resistentes"] === "CEFTRIAXONA"
     && C[0]["UFC"] === ">100000" && C[0]["Tipo"] === "Urocultivo" && C[0]["Muestra"] === "ORINA" && C[0]["Fuente"] === "PDF del reporte" && C[0]["Texto del reporte"] === "TEXTO FICTICIO DEL REPORTE", JSON.stringify(C));
+  const poli = sb.regWlCultivosPdf({ cultivo: { secciones: [{ tipo: "Cultivo de herida", resultado: "POSITIVO", germenes: [
+    { nombre: "Escherichia coli", antibiograma: [{ antibiotico: "CEFTRIAXONA", interp: "S" }] }, { nombre: "Klebsiella pneumoniae", antibiograma: [{ antibiotico: "CEFTRIAXONA", interp: "R" }] }] }] } });
+  check("R9k polimicrobiano: el antibiograma va con el nombre de cada germen (un antibiótico puede ser S para uno y R para otro)",
+    poli[0].sensibles.join(poli[0].separador) === "Escherichia coli: CEFTRIAXONA" && poli[0].resistentes.join(poli[0].separador) === "Klebsiella pneumoniae: CEFTRIAXONA", JSON.stringify(poli));
   const C3 = sb.regWlCultivos(soloTabla), C4 = sb.regWlCultivos(rep("E2", { valores: [{ estudio: "CULTIVO SECRECION", valor: "Klebsiella pneumoniae" }] })), C5 = sb.regWlCultivos(rep("E3"));
-  check("R9f cultivo de la tabla: POSITIVO sin germen, germen en el valor, y un reporte que no es cultivo no da nada",
+  check("R9l cultivo de la tabla: POSITIVO sin germen, germen en el valor, y un reporte que no es cultivo no da nada",
     C3.length === 1 && C3[0].positivo && /POSITIVO \(germen/.test(C3[0].organismo) && C4[0].organismo === "Klebsiella pneumoniae" && C4[0].tipo === "Cultivo de herida/secreción" && C5.length === 0, JSON.stringify([C3, C4, C5]));
-  check("R9g valores: sección, unidad y referencia; archivos incrustados fuera", sb.regWlValores({ valores: [{ seccion: "BH", estudio: "HB", valor: "9", unidad: "g/dL", referencia: "12-16" }, { estudio: "PDF", valor: "data:application/pdf;base64,AAAA" }, { estudio: "", valor: "" }] })
+  check("R9m valores: sección, unidad y referencia; archivos incrustados fuera", sb.regWlValores({ valores: [{ seccion: "BH", estudio: "HB", valor: "9", unidad: "g/dL", referencia: "12-16" }, { estudio: "PDF", valor: "data:application/pdf;base64,AAAA" }, { estudio: "", valor: "" }] })
     === "[BH] HB: 9 g/dL (ref. 12-16)\nPDF: [archivo]");
+  // Entre corridas: una captura posterior más pobre no pisa lo que ya está en la hoja.
+  const d = db(); const st = { db: d }; makeSandbox(st).sb.actualizarRegistro();
+  const w = d.winlab_labs[0]; w.scraped_at = "2026-10-20T08:00:00+00:00"; w.data.reportes[1].valores = [{ estudio: "HEMOGLOBINA", valor: "12.0", unidad: "g/dL" }];
+  w.data.reportes[2] = { __hasLink: true, __target: true, __cells: ["", "", "F101", "17/10/2026 09:00", "19/10/2026 07:30", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOCULTIVO PERIFERICO", valor: "1", unidad: "DESARROLLO" }, { estudio: "NEGATIVO A", valor: "5", unidad: "DIAS" }],
+    cultivo: { secciones: [{ tipo: "Hemocultivo", muestra: "PERIFERICO", resultado: "NEGATIVO", detalle: "a 5 días" }] } };
+  makeSandbox(st).sb.actualizarRegistro();
+  w.scraped_at = "2026-10-21T08:00:00+00:00"; delete w.data.reportes[2].cultivo;
+  makeSandbox(st).sb.actualizarRegistro();
+  const W = tab(st.ss, "Labs del robot (WinLab)").find((x) => x["Folio"] === "F100"), WC = tab(st.ss, "Cultivos del robot (WinLab)");
+  check("R9n entre corridas: una captura con menos valores no pisa el reporte completo, y la tabla no pisa el cultivo del PDF",
+    String(W["Estudios"]) === "2" && /LEUCOCITOS/.test(W["Valores"]) && WC.length === 1 && WC[0]["Fuente"] === "PDF del reporte" && WC[0]["Muestra"] === "PERIFERICO", JSON.stringify([W, WC]));
 }
 
 // ─── R10: paginación por llave y cursores (sin offset, sin saltos) ───────────────────────────────────────────────
@@ -573,7 +621,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
 // ─── R11: presupuestos de tiempo (la ejecución de Apps Script se corta a los 6 min) ──────────────────────────────
 {
   // Lectura: a los 2.5 min las lecturas por cursor se detienen; escribe lo leído y sigue en 10 min.
-  const st = { db: db(), reloj: 0, msPorFetch: 35000 };
+  const st = { db: db(), reloj: 0, msPorFetch: 25000 };
   const r1 = makeSandbox(st).sb.actualizarRegistro();
   check("R11a lectura lenta: las lecturas por cursor se detienen a los 2.5 min, se escribe lo leído y se programa la continuación",
     r1.ok && r1.pendiente && (st.continuaciones || []).length === 1 && tab(st.ss, "Pacientes").length === 4 && tab(st.ss, "Labs del robot (WinLab)").length === 0 && !st.props.REG_CURSOR_winlab_labs, JSON.stringify(r1));
@@ -593,15 +641,19 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   sw.msPorEscritura = 0; sw.reloj = 0;
   makeSandbox(sw).sb.continuarRegistro();
   check("R11e la continuación escribe lo que faltó y guarda los cursores", !!sw.ss.sheets["Imagen del robot (RIS)"] && tab(sw.ss, "Labs del robot (WinLab)").length === 3 && !!sw.props.REG_CURSOR_archive && !!sw.props.REG_ULTIMA_CORRIDA);
-  // Tope de vueltas extra por día (los disparadores de una cuenta personal tienen 90 min al día).
-  const sc = { db: db(), hoy: "2026-10-21", props: { REG_CONTINUACIONES: JSON.stringify({ dia: "2026-10-21", n: 8 }) } };
+  // Tope de vueltas extra: 8 en 24 h corridas (los disparadores de una cuenta personal tienen 90 min al día).
+  const ahora = Date.UTC(2026, 9, 21, 23, 30);
+  const sc = { db: db(), reloj: ahora, props: { REG_CONTINUACIONES: JSON.stringify(Array.from({ length: 8 }, (_, i) => ahora - (i + 1) * 3600000)) } };
   const mc = makeSandbox(sc); mc.sb.REG_CURSORES.archive.tope = 1;
   const rc = mc.sb.actualizarRegistro();
-  check("R11f con las 8 vueltas del día usadas no programa otra: avisa y sigue en la corrida de la noche",
+  check("R11f con 8 vueltas extra en las últimas 24 h no programa otra (aunque haya cambiado el día): avisa y sigue en la corrida de la noche",
     rc.pendiente && !(sc.continuaciones || []).length && /vueltas extra/.test(JSON.stringify(sc.ss.sheets["Diccionario"].cells)) && mc.triggers.every((t) => t.fn !== "continuarRegistro"));
-  const sd = { db: db(), hoy: "2026-10-22", props: { REG_CONTINUACIONES: JSON.stringify({ dia: "2026-10-21", n: 8 }) } };
+  const sd = { db: db(), reloj: ahora, props: { REG_CONTINUACIONES: JSON.stringify(Array.from({ length: 8 }, (_, i) => ahora - 25 * 3600000 - i)) } };
   const md = makeSandbox(sd); md.sb.REG_CURSORES.archive.tope = 1; md.sb.actualizarRegistro(); md.sb.actualizarRegistro();
-  check("R11g al día siguiente el contador empieza de nuevo y nunca quedan dos continuaciones programadas", (sd.continuaciones || []).length === 2 && md.triggers.filter((t) => t.fn === "continuarRegistro").length === 1 && JSON.parse(sd.props.REG_CONTINUACIONES).n === 2);
+  check("R11g las de hace más de 24 h ya no cuentan, y nunca quedan dos continuaciones programadas", (sd.continuaciones || []).length === 2 && md.triggers.filter((t) => t.fn === "continuarRegistro").length === 1 && JSON.parse(sd.props.REG_CONTINUACIONES).length === 2);
+  // Si la corrida de la noche termina la carga, la continuación que quedaba programada se borra (no corre de más).
+  md.sb.REG_CURSORES.archive.tope = 400; md.sb.actualizarRegistro();
+  check("R11h al terminar la carga se borra cualquier continuación pendiente", md.triggers.every((t) => t.fn !== "continuarRegistro") && /"Carga en curso","No"/.test(JSON.stringify(sd.ss.sheets["Diccionario"].cells)));
 }
 
 // ─── R12: fuentes que fallan, hoja que no abre, fechas, escritura incremental, capacidad ──────────────────────────
@@ -650,6 +702,108 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   const tot = Object.values(si.ss.sheets).reduce((s, h) => s + h.maxR * h.maxC, 0);
   check("R12k pestañas nuevas sin columnas de sobra y la cuenta de celdas incluye todas las hojas",
     si.ss.sheets["Labs"].maxC === 8 && si.ss.sheets["Diccionario"].maxC === 2 && si.ss.sheets["Pacientes"].maxC === 43 && JSON.stringify(si.ss.sheets["Diccionario"].cells).includes('"' + tot + ' de 10000000'), String(tot));
+}
+
+// ─── R13: una respuesta cortada no cuela datos al error ──────────────────────────────────────────────────────────
+{
+  const st = { db: db(), cortada: { patients: true } };
+  let e = null; try { makeSandbox(st).sb.actualizarRegistro(); } catch (x) { e = String(x.message); }
+  const sr = { db: db(), cortada: { ris_estudios: true } }; const r = makeSandbox(sr).sb.actualizarRegistro();
+  check("R13 respuesta cortada (JSON inválido): el error y el aviso no citan el texto recibido",
+    e === "Supabase patients: la respuesta no es JSON válido (fila 0)" && r.ok && /ris_estudios/.test(r.avisos.join(" ")) && !nombres.test(r.avisos.join(" ")) && !nombres.test(e), JSON.stringify([e, r.avisos]));
+}
+
+// ─── R14: la hoja es del investigador también: columnas por nombre, filas en su renglón ─────────────────────────
+{
+  const colDe = (sh, nombre) => sh.cells[0].indexOf(nombre);
+  // Columna del investigador a la derecha y, después, una versión del script con una columna más.
+  const st = { db: db() }; makeSandbox(st).sb.actualizarRegistro();
+  const sh = st.ss.sheets["Pacientes"], nc = sh.cells[0].length;
+  sh.maxC = nc + 1; sh.cells[0][nc] = "Grupo del estudio";
+  for (let i = 1; i < sh.cells.length; i++) if (sh.cells[i] && sh.cells[i][0]) sh.cells[i][nc] = "GRUPO-" + sh.cells[i][0];
+  const m2 = makeSandbox(st); m2.sb.REG_PESTANAS[0].columnas.splice(5, 0, "Columna nueva de la versión siguiente");
+  st.db.notes[0].pendientes = "CAMBIO DEL DÍA";
+  const r2 = m2.sb.actualizarRegistro();
+  const P = tab(st.ss, "Pacientes");
+  check("R14a una versión con una columna más: la del investigador sigue con sus valores en su fila; la nueva va al final y se avisa",
+    colDe(sh, "Grupo del estudio") === nc && colDe(sh, "Columna nueva de la versión siguiente") === nc + 1 && P.every((x) => x["Grupo del estudio"] === "GRUPO-" + x["ID episodio"])
+    && P.find((x) => x["ID episodio"] === "p1")["Pendientes"] === "CAMBIO DEL DÍA" && /Columna nueva/.test(r2.avisos.join(" ")), JSON.stringify(sh.cells[0].slice(-3)));
+  // Un encabezado renombrado (no clave): sus datos siguen en la columna renombrada; la del registro se agrega al final.
+  const s3 = { db: db() }; makeSandbox(s3).sb.actualizarRegistro();
+  const h3 = s3.ss.sheets["Pacientes"]; h3.cells[0][colDe(h3, "Diagnóstico")] = "Dx";
+  const d3 = db(); d3.archive = d3.archive.filter((a) => a.id !== "a1" && a.id !== "a2"); s3.db = d3;   // p3 ya no se lee
+  const r3 = makeSandbox(s3).sb.actualizarRegistro();
+  const p3 = tab(s3.ss, "Pacientes").find((x) => x["ID episodio"] === "p3");
+  check("R14b encabezado renombrado: lo que tenía sigue en la columna renombrada (nada en blanco) y se avisa", p3 && p3["Dx"] === "HERNIA INGUINAL" && /Diagnóstico/.test(r3.avisos.join(" ")), JSON.stringify(p3 && { dx: p3["Dx"], diag: p3["Diagnóstico"] }));
+  // Un renglón sin clave en medio y una columna del investigador: ninguna fila se recorre.
+  const s4 = { db: db() }; makeSandbox(s4).sb.actualizarRegistro();
+  const h4 = s4.ss.sheets["Pacientes"], n4 = h4.cells[0].length;
+  h4.maxC = n4 + 1; h4.cells[0][n4] = "Incluido";
+  h4.cells.splice(2, 0, Array(n4).fill("")); h4.cells[2][1] = "NOTA SUELTA DEL INVESTIGADOR";
+  for (let i = 1; i < h4.cells.length; i++) if (h4.cells[i] && h4.cells[i][0]) h4.cells[i][n4] = "SI-" + h4.cells[i][0];
+  s4.db.notes[0].pendientes = "OTRO CAMBIO"; s4.db.patients.push({ id: "p9", nombre: "PRUEBA FICTICIA NUEVA", exp: "000999X", cama: "3-250" });
+  makeSandbox(s4).sb.actualizarRegistro();
+  const P4 = tab(s4.ss, "Pacientes");
+  check("R14c con un renglón sin clave en medio: cada fila sigue junto a su marca del investigador, la nota suelta intacta y la nueva al final",
+    P4.filter((x) => x["ID episodio"] && x["ID episodio"] !== "p9").every((x) => x["Incluido"] === "SI-" + x["ID episodio"]) && h4.cells[2][1] === "NOTA SUELTA DEL INVESTIGADOR"
+    && P4[P4.length - 1]["ID episodio"] === "p9" && P4.find((x) => x["ID episodio"] === "p1")["Pendientes"] === "OTRO CAMBIO", JSON.stringify(P4.map((x) => [x["ID episodio"], x["Incluido"]])));
+  // Una columna borrada en medio: se agrega de nuevo al final; nada se recorre sobre la del investigador.
+  const s5 = { db: db() }; makeSandbox(s5).sb.actualizarRegistro();
+  const h5 = s5.ss.sheets["Pacientes"], n5 = h5.cells[0].length, cm = colDe(h5, "Misceláneo");
+  h5.maxC = n5 + 1; h5.cells[0][n5] = "Grupo";
+  for (let i = 1; i < h5.cells.length; i++) if (h5.cells[i] && h5.cells[i][0]) h5.cells[i][n5] = "G-" + h5.cells[i][0];
+  h5.deleteColumns(cm + 1, 1);
+  makeSandbox(s5).sb.actualizarRegistro();
+  const P5 = tab(s5.ss, "Pacientes");
+  check("R14d una columna borrada en medio: se vuelve a agregar al final y la del investigador sigue intacta", P5.every((x) => x["Grupo"] === "G-" + x["ID episodio"]) && colDe(h5, "Misceláneo") === n5, JSON.stringify(h5.cells[0].slice(-3)));
+  // Escritura cortada a la mitad de una pestaña (6 min): nada se revuelve; la siguiente vuelta completa.
+  // Empieza la pestaña a los 5 min 10 s; el encabezado tarda 40 s; antes de escribir las filas (5 min 50 s) se corta.
+  // Justo después de escribir el encabezado de Pacientes el reloj salta a 5 min 50 s: las filas ya no se escriben.
+  const s6 = { db: db(), reloj: 0 };
+  s6.alEscribir = (hoja, n) => { if (hoja === "Pacientes" && n === 1 && s6.reloj < 300000) s6.reloj = 350000; };
+  const r6 = makeSandbox(s6).sb.actualizarRegistro();
+  const aMedias = s6.ss.sheets["Pacientes"].cells.length === 1 && /Se acabó el tiempo/.test(r6.avisos.join(" ")) && !s6.props.REG_CURSOR_archive;
+  delete s6.alEscribir; s6.reloj = 0;
+  makeSandbox(s6).sb.continuarRegistro();
+  const s7 = { db: db() }; makeSandbox(s7).sb.actualizarRegistro();
+  const igual = ["Pacientes", "Labs", "Cirugías", "Labs del robot (WinLab)"].every((n) => JSON.stringify(tab(s6.ss, n)) === JSON.stringify(tab(s7.ss, n)));
+  check("R14e una escritura cortada a la mitad de una pestaña no revuelve nada: tras la vuelta siguiente la hoja queda igual que sin corte", aMedias && igual, JSON.stringify({ aMedias, igual }));
+  // Pasados los 5 min 15 s no empieza otra pestaña, aunque aún no llegue al corte de dentro de la pestaña (5 min 40 s).
+  const s8 = { db: db(), reloj: 0 };
+  s8.alEscribir = (hoja, n) => { if (hoja === "Pacientes" && n > 1) s8.reloj = 320000; };
+  makeSandbox(s8).sb.actualizarRegistro();
+  check("R14f pasados los 5 min 15 s no empieza otra pestaña", !!s8.ss.sheets["Pacientes"] && tab(s8.ss, "Pacientes").length === 4 && !s8.ss.sheets["Cirugías"]);
+}
+
+// ─── R15: todas las copias de la Papelera de un episodio, y «Carga en curso» fiel ────────────────────────────────
+{
+  // Día 1: p3 con sus dos copias. Día 2: la Papelera incremental ya no trae la vieja (a1), pero p3 vuelve a aparecer
+  // con una copia nueva (a9): la unión sigue viendo las tres, así que lo que solo traía a1 no se pierde ni se marca «No».
+  const d = db(); d.archive[0].note_data.labHistory = [{ fecha: "2026-10-03", labs: { hb: "12" } }]; d.archive[0].patient_data.adscrito = "DR. SOLO EN LA COPIA VIEJA";
+  const st = { db: d }; makeSandbox(st).sb.actualizarRegistro();
+  st.props.REG_CURSOR_archive = "2026-10-20T00:00:00+00:00";
+  d.archive.push({ id: "a9", archived_at: "2026-10-21T10:00:00+00:00", patient_data: { _supa_id: "p3", nombre: "PRUEBA FICTICIA TRES", exp: "000789" }, note_data: { _egreso: "alta médica", pendientes: "COPIA NUEVA" } });
+  const m = makeSandbox(st); m.sb.actualizarRegistro();
+  const p3 = tab(st.ss, "Pacientes").find((x) => x["ID episodio"] === "p3");
+  const l3 = tab(st.ss, "Labs").filter((x) => x["ID episodio"] === "p3");
+  check("R15a una copia nueva en la Papelera se une con TODAS las anteriores del episodio (no solo las de la ventana incremental)",
+    p3["Pendientes"] === "COPIA NUEVA" && p3["Adscrito"] === "DR. SOLO EN LA COPIA VIEJA" && l3.length === 2 && l3.every((x) => x["Vigente"] === "Sí") && m.calls.some((c) => /archive\?.*patient_data->>_supa_id=in\.\(/.test(c.u)), JSON.stringify({ p3, l3 }));
+  // Una fuente opcional falla a mitad de su primera carga: la carga sigue «en curso» y se programa otra vuelta.
+  const s2 = { db: db() }; const m1 = makeSandbox(s2); m1.sb.REG_CURSORES.winlab_labs.tope = 1; m1.sb.actualizarRegistro();
+  const sigue = !!s2.props.REG_SIGUE_winlab_labs; s2.continuaciones = [];
+  s2.agotado = { winlab_labs: true };
+  const r2 = makeSandbox(s2).sb.continuarRegistro();
+  check("R15b WinLab falla a la mitad de su primera carga: el Diccionario dice que la carga sigue y se programa otra vuelta",
+    sigue && r2.pendiente && s2.continuaciones.length === 1 && /"Carga en curso","Sí/.test(JSON.stringify(s2.ss.sheets["Diccionario"].cells)) && !!s2.props.REG_SIGUE_winlab_labs);
+}
+
+// ─── R16: URLs de 2 KB como máximo (límite de UrlFetchApp), con un censo grande de ids uuid ─────────────────────
+{
+  const d = db(); const uuid = (i) => "8f0c2a4e-" + String(1000 + i) + "-4b7a-9c1d-" + String(100000000000 + i);
+  for (let i = 0; i < 60; i++) { d.patients.push({ id: uuid(i), nombre: "PRUEBA FICTICIA U" + i, exp: "U" + i }); d.archive.push({ id: "c" + i, archived_at: "2026-10-1" + (i % 9) + "T10:00:00+00:00", patient_data: { _supa_id: uuid(i), nombre: "PRUEBA FICTICIA U" + i, exp: "U" + i }, note_data: { pendientes: "COPIA " + i } }); }
+  const st = { db: d }; const m = makeSandbox(st); const r = m.sb.actualizarRegistro();
+  const largo = Math.max.apply(null, m.calls.map((c) => c.raw.length));
+  check("R16 con 60 episodios las URLs miden menos de 2 KB (las copias de la Papelera van de 20 en 20) y todo se lee", r.ok && largo < 2048 && m.calls.filter((c) => /_supa_id%3E/.test(c.raw) || /_supa_id=in/.test(c.u)).length >= 3 && tab(st.ss, "Pacientes").find((x) => x["ID episodio"] === uuid(59))["Pendientes"] === "COPIA 59", String(largo));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");

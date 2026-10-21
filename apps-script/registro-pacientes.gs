@@ -44,7 +44,6 @@ var REG_CELDAS_MAX = 10000000, REG_CELDAS_AVISO = 0.7;
 var REG_RESPALDO_DIAS = 7, REG_RESPALDOS = 5;
 var REG_UTC_OFFSET_MIN = -360;     // America/Mexico_City: UTC-6 todo el año (sin horario de verano desde oct 2022)
 var REG_BLOQUE = 4000;             // filas por setValues
-var REG_MAX_BLOQUES = 200;         // más bloques sueltos que esto: se reescribe la pestaña entera
 var REG_SEP = '␟';
 
 // Pestañas: columnas (orden de la hoja), clave de cada fila, modo de fusión y, si sale de una sola tabla, su fuente:
@@ -66,8 +65,8 @@ var REG_PESTANAS = [
   { nombre: 'Notas de evolución', modo: 'acumula', clave: ['ID episodio', 'Fecha y hora'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha y hora', 'Autor', 'Con IA', 'Texto'] },
   { nombre: 'Guardia y cronología', modo: 'vigente', clave: ['ID episodio', 'Caja', 'Renglón'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Caja', 'Orden', 'Renglón', 'Vigente'] },
   { nombre: 'Procedimientos programados', modo: 'acumula', fuente: 'procedimientos_dia', clave: ['ID'], columnas: ['ID', 'Fecha', 'Cama', 'Expediente', 'Nombre', 'Edad', 'Diagnóstico', 'Especialidad', 'Adscrito', 'Residente', 'Agregado por'] },
-  { nombre: 'Labs del robot (WinLab)', modo: 'acumula', fuente: 'winlab_labs', clave: ['Expediente', 'Reporte'], columnas: ['Expediente', 'Paciente', 'Nombre en WinLab', 'Atribución', 'Reporte', 'Folio', 'Toma', 'Resultado', 'Servicio', 'Estudios', 'Valores', 'Capturado'] },
-  { nombre: 'Cultivos del robot (WinLab)', modo: 'acumula', fuente: 'winlab_labs', clave: ['Expediente', 'Reporte', 'N'], columnas: ['Expediente', 'Paciente', 'Reporte', 'N', 'Toma', 'Tipo', 'Muestra', 'Resultado', 'Germen', 'Sensibles', 'Intermedios', 'Resistentes', 'UFC', 'Detalle', 'Fuente', 'Texto del reporte', 'Atribución', 'Capturado'] },
+  { nombre: 'Labs del robot (WinLab)', modo: 'acumula', fuente: 'winlab_labs', preferirViejo: regWlPreferirViejo, clave: ['Expediente', 'Reporte'], columnas: ['Expediente', 'Paciente', 'Nombre en WinLab', 'Atribución', 'Reporte', 'Folio', 'Toma', 'Resultado', 'Servicio', 'Estudios', 'Valores', 'Capturado'] },
+  { nombre: 'Cultivos del robot (WinLab)', modo: 'acumula', fuente: 'winlab_labs', filtrarNuevas: regWlFiltrarCultivos, clave: ['Expediente', 'Reporte', 'N'], columnas: ['Expediente', 'Paciente', 'Reporte', 'N', 'Toma', 'Tipo', 'Muestra', 'Resultado', 'Germen', 'Sensibles', 'Intermedios', 'Resistentes', 'UFC', 'Detalle', 'Fuente', 'Texto del reporte', 'Atribución', 'Capturado'] },
   { nombre: 'Imagen del robot (RIS)', modo: 'acumula', fuente: 'ris_estudios', clave: ['ID'], columnas: ['ID', 'ID episodio', 'Expediente', 'Paciente', 'Fecha', 'Hora', 'Modalidad', 'Estudios', 'Crítico', 'Estado del reporte', 'Reporte', 'Enlace del reporte', 'Capturado'] }
 ];
 
@@ -132,28 +131,39 @@ function actualizarRegistro() {
       try { return fn(); } catch (e) {
         if (e && e.regTiempo) throw e;
         omitidas[fuente] = true; delete cursores[fuente];
+        // Si la fuente iba a la mitad de su primera carga, la carga sigue en curso (y se programa otra vuelta).
+        if (props.getProperty('REG_SIGUE_' + fuente)) pendiente = true;
         avisos.push('No se pudo leer ' + fuente + ' (' + regCausa_(e) + '): sus pestañas no se tocaron en esta corrida.');
         return [];
       }
     };
-    var winlab = { labs: {}, cultivos: {} };
-    var datos = {
-      patients: leer('patients', 'id,cama,nombre,exp,dx,edad,esp,seccion,adscrito,residente,ingreso,estado,created_at,updated_at', 'id', '', 200),
-      notes: leer('notes', 'patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,checklist,lab_history,imagen_history,misc,cronologia,updated_at', 'patient_id', '', 20),
-      archive: leerCursor('archive', 'id,patient_data,note_data,archived_at', 10),
-      restauraciones: leer('archive', 'id,de:patient_data->>_supa_id,a:note_data->>_restaurado_a', 'id', 'note_data->>_restaurado_a=not.is.null', 1000),
-      cronologias: leer('cronologia_respaldo', 'patient_id,exp,nombre,cronologia,actualizado', 'patient_id', '', 200),
-      procedimientos: opcional('procedimientos_dia', function () { return leer('procedimientos_dia', 'id,cama,exp,nombre,edad,dx,esp,adscrito,residente,fecha_dia,added_by', 'id', '', 500); }),
-      // WinLab: cada fila trae TODOS los reportes de la búsqueda (también de homónimos) y se repite cada día; se procesa
-      // página por página (sin guardar el JSON crudo) y queda un renglón por reporte del paciente.
-      winlab: (opcional('winlab_labs', function () {
-        return leerCursor('winlab_labs', 'id,exp,paciente,fecha,scraped_at,reportes:data->reportes', 100, function (filas) { regWlAcumular(winlab, filas); });
-      }), winlab),
-      ris: opcional('ris_estudios', function () { return leerCursor('ris_estudios', 'id,patient_id,exp,paciente,fecha,hora,modalidad,estudios,critico,reporte_estado,reporte,reporte_url,scraped_at', 200); })
-    };
+    var datos = {};
+    datos.patients = leer('patients', 'id,cama,nombre,exp,dx,edad,esp,seccion,adscrito,residente,ingreso,estado,created_at,updated_at', 'id', '', 200);
+    datos.notes = leer('notes', 'patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,checklist,lab_history,imagen_history,misc,cronologia,updated_at', 'patient_id', '', 20);
+    datos.archive = leerCursor('archive', 'id,patient_data,note_data,archived_at', 10);
+    // TODAS las copias de la Papelera de cada episodio que hoy está en la base (censo o Papelera leída hoy): así la unión
+    // de copias no depende de cuáles cayeron en la ventana incremental (si no, lo que solo traía una copia vieja quedaba
+    // en blanco o marcado «Vigente: No» al día siguiente).
+    datos.archive = regUnirPorId_(datos.archive, regLeerCopias_(leer, regIdsEpisodios_(datos.patients, datos.archive)));
+    datos.restauraciones = leer('archive', 'id,de:patient_data->>_supa_id,a:note_data->>_restaurado_a', 'id', 'note_data->>_restaurado_a=not.is.null', 1000);
+    datos.cronologias = leer('cronologia_respaldo', 'patient_id,exp,nombre,cronologia,actualizado', 'patient_id', '', 200);
+    datos.procedimientos = opcional('procedimientos_dia', function () { return leer('procedimientos_dia', 'id,cama,exp,nombre,edad,dx,esp,adscrito,residente,fecha_dia,added_by', 'id', '', 500); });
+    // WinLab: cada fila trae TODOS los reportes de la búsqueda (también de homónimos) y se repite cada día; se procesa
+    // página por página (sin guardar el JSON crudo) y queda un renglón por reporte del paciente. La edad y el alias del
+    // censo y de la Papelera sirven para aplicar la regla del robot a las capturas que no traen su marca (__target).
+    var winlab = { labs: {}, cultivos: {}, contexto: regWlContexto(datos.patients, datos.notes, datos.archive), ambiguos: 0 };
+    opcional('winlab_labs', function () {
+      return leerCursor('winlab_labs', 'id,exp,paciente,fecha,scraped_at,reportes:data->reportes', 100, function (filas) { regWlAcumular(winlab, filas); });
+    });
+    datos.winlab = winlab;
+    if (winlab.ambiguos) avisos.push('WinLab: ' + winlab.ambiguos + ' reporte(s) de capturas viejas no se copiaron porque hay homónimos con el mismo nombre y no se conoce la edad del paciente.');
+    datos.ris = opcional('ris_estudios', function () { return leerCursor('ris_estudios', 'id,patient_id,exp,paciente,fecha,hora,modalidad,estudios,critico,reporte_estado,reporte,reporte_url,scraped_at', 200); });
     var nuevo = regConstruir(datos, hoy);
     try { regRespaldoSemanal_(libro, props, hoy); } catch (e) { avisos.push('No se pudo guardar el respaldo semanal (' + regCausa_(e) + ').'); }
     var cuentas = {}, cortado = false;
+    // Dentro de una pestaña, ningún setValues empieza después de 5 min 40 s (escribir a medias es seguro: cada fila va a
+    // su renglón por clave y la siguiente vuelta completa lo que falte).
+    var corte = function () { return transcurrido() > REG_LIMITE_MS + 25000; };
     REG_PESTANAS.forEach(function (cfg) {
       if (cortado || (cfg.fuente && omitidas[cfg.fuente])) return;
       if (transcurrido() > REG_LIMITE_MS) { cortado = true; return; }
@@ -161,7 +171,13 @@ function actualizarRegistro() {
       if (!hoja) { hoja = libro.insertSheet(cfg.nombre); regAjustarColumnas_(hoja, cfg.columnas.length); }
       var previo = regLeerPestana_(hoja, cfg);
       var filas = regFusionar(previo.filas, nuevo[cfg.nombre] || [], cfg, nuevo.episodiosHoy, hoy, nuevo.relacion);
-      regEscribirPestana_(hoja, cfg.columnas, filas, previo);
+      try {
+        var r = regEscribirPestana_(hoja, cfg, filas, previo, corte);
+        if (r.aviso) avisos.push(r.aviso);
+      } catch (e) {
+        if (!(e && e.regCorte)) throw e;
+        cortado = true; return;
+      }
       cuentas[cfg.nombre] = filas.length;
     });
     if (cortado) { pendiente = true; avisos.push('Se acabó el tiempo al escribir: lo que faltó se escribe en la siguiente vuelta.'); }
@@ -172,11 +188,16 @@ function actualizarRegistro() {
       Object.keys(cursores).forEach(function (t) { regGuardarCursor_(props, t, cursores[t]); });
       props.setProperty('REG_ULTIMA_CORRIDA', new Date(inicio).toISOString());
     }
-    if (pendiente && !regProgramarContinuacion_(props, hoy)) avisos.push('Quedan filas por leer; hoy ya se usaron las ' + REG_CONTINUACIONES_DIA + ' vueltas extra: sigue en la corrida de la noche.');
-    regEscribirDiccionario_(dic, hoy, cuentas, celdas, pendiente, avisos);
+    if (pendiente) {
+      if (!regProgramarContinuacion_(props)) avisos.push('Quedan filas por leer; ya se usaron las ' + REG_CONTINUACIONES_DIA + ' vueltas extra de las últimas 24 h: sigue en la corrida de la noche.');
+    } else {
+      ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'continuarRegistro') ScriptApp.deleteTrigger(t); });
+    }
+    var enCurso = pendiente || Object.keys(REG_CURSORES).some(function (t) { return !!props.getProperty('REG_SIGUE_' + t); });
+    regEscribirDiccionario_(dic, hoy, cuentas, celdas, enCurso, avisos);
     // Solo conteos y avisos en el registro de ejecución: nada de nombres ni expedientes.
     Logger.log('Registro actualizado ' + hoy + ': ' + JSON.stringify(cuentas) + (avisos.length ? ' · Avisos: ' + avisos.join(' | ') : ''));
-    return { ok: true, cuentas: cuentas, pendiente: pendiente, avisos: avisos };
+    return { ok: true, cuentas: cuentas, pendiente: enCurso, avisos: avisos };
   } finally {
     lock.releaseLock();
   }
@@ -214,16 +235,39 @@ function regGuardarCursor_(props, tabla, c) {
     props.setProperty('REG_SIGUE_' + tabla, JSON.stringify({ v: r.ultima[0], id: r.ultima[1], max: max }));
   }
 }
-/** Programa una vuelta extra en 10 min (como mucho REG_CONTINUACIONES_DIA al día: los disparadores de una cuenta personal
- *  tienen 90 min diarios, compartidos con el script del censo). */
-function regProgramarContinuacion_(props, hoy) {
+/** Programa una vuelta extra en 10 min: como mucho REG_CONTINUACIONES_DIA en 24 h corridas (los disparadores de una cuenta
+ *  personal tienen 90 min diarios, compartidos con el script del censo, que corre cada 5 min). Nunca deja dos. */
+function regProgramarContinuacion_(props) {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'continuarRegistro') ScriptApp.deleteTrigger(t); });
-  var c = regJson_(props.getProperty('REG_CONTINUACIONES')) || {};
-  var n = c.dia === hoy ? (+c.n || 0) : 0;
-  if (n >= REG_CONTINUACIONES_DIA) return false;
+  var ahora = Date.now(), lista = regJson_(props.getProperty('REG_CONTINUACIONES'));
+  lista = (Array.isArray(lista) ? lista : []).filter(function (t) { return typeof t === 'number' && ahora - t < 86400000 && t <= ahora; });
+  if (lista.length >= REG_CONTINUACIONES_DIA) { props.setProperty('REG_CONTINUACIONES', JSON.stringify(lista)); return false; }
   ScriptApp.newTrigger('continuarRegistro').timeBased().after(10 * 60 * 1000).create();
-  props.setProperty('REG_CONTINUACIONES', JSON.stringify({ dia: hoy, n: n + 1 }));
+  lista.push(ahora);
+  props.setProperty('REG_CONTINUACIONES', JSON.stringify(lista));
   return true;
+}
+/** Ids de episodio que hoy están en la base: los del censo y los de las copias de la Papelera leídas hoy. */
+function regIdsEpisodios_(patients, archive) {
+  var ids = {};
+  regArr(patients).forEach(function (p) { if (p && p.id) ids[regTexto(p.id)] = true; });
+  regArr(archive).forEach(function (a) { var id = regTexto(a && regObj(a.patient_data)._supa_id); if (id) ids[id] = true; });
+  return Object.keys(ids);
+}
+/** Todas las copias de la Papelera de esos episodios, de 20 en 20 ids por petición (UrlFetchApp no acepta URLs de más
+ *  de 2 KB: 20 uuid entre comillas, codificados, son ~0.9 KB). */
+function regLeerCopias_(leer, ids) {
+  var out = [];
+  for (var i = 0; i < ids.length; i += 20) {
+    var lista = ids.slice(i, i + 20).map(function (id) { return '"' + String(id).replace(/"/g, '') + '"'; }).join(',');
+    out = out.concat(leer('archive', 'id,patient_data,note_data,archived_at', 'id', 'patient_data->>_supa_id=in.(' + lista + ')', 10));
+  }
+  return out;
+}
+function regUnirPorId_(a, b) {
+  var ya = {}, out = [];
+  regArr(a).concat(regArr(b)).forEach(function (x) { if (x && !ya[x.id]) { ya[x.id] = true; out.push(x); } });
+  return out;
 }
 
 // ─── Lectura de Supabase (solo GET; paginada por llave; la página se achica si una respuesta es demasiado grande) ──
@@ -279,7 +323,9 @@ function regLeerTabla_(key, tabla, select, orden, filtro, pagina, op) {
     if (achicar && pagina > 1) { pagina = Math.max(1, Math.floor(pagina / 2)); seguidas = 0; continue; }
     if (error) throw new Error('Supabase ' + tabla + ': no se pudo leer (fila ' + n + '): ' + causa);
     if (code !== 200) throw new Error('Supabase ' + tabla + ' HTTP ' + code + (codPg ? ' (' + codPg + ')' : ''));
-    var filas = JSON.parse(res.getContentText() || '[]');
+    // El error de JSON.parse de V8 cita un pedazo del texto (podría traer datos): se reemplaza por uno sin contenido.
+    var filas;
+    try { filas = JSON.parse(res.getContentText() || '[]'); } catch (_) { throw new Error('Supabase ' + tabla + ': la respuesta no es JSON válido (fila ' + n + ')'); }
     if (!Array.isArray(filas)) throw new Error('Supabase ' + tabla + ': respuesta inesperada');
     n += filas.length;
     if (cols.length > 1) filas.forEach(function (r) { max = regMasReciente_(max, r[cols[0]]); });
@@ -394,20 +440,21 @@ function regUnirNotas(principal, otra) {
 }
 function regSiNo(v) { return v === true ? 'Sí' : (v === false ? '' : regTexto(v)); }
 
-// ─── WinLab (copia de la lógica de la app, index.html: buildWinlabLabSnapshots / buildWinlabCultures) ───────────
+// ─── WinLab: identidad con la regla del ROBOT (copia de rpa/lib.js: normNameTokens, patientHeaderMatchKind,
+// findSexIdx, extractHeaderName, extractHeaderBirthDate, ageFromBirthDate, parseCensusAge, sameBirthdayOtherYear,
+// possiblySameWinlabPerson, looksLikeReportLinkRow, selectTargetRows; mantener SINCRONIZADO) ───────────────────────
 // Cada fila de winlab_labs trae TODOS los reportes de la búsqueda por apellido (también de homónimos) y se vuelve a
-// guardar cada día. Un reporte es del paciente si su encabezado trae el nombre completo del censo («full»), o si el
-// encabezado trae menos nombres de pila pero el robot ya lo validó por nombre y edad (__target, «partial»). Blobs viejos
-// sin encabezados son de un solo paciente. Mantener SINCRONIZADO con index.html (_winlabNormalizeName y vecinas).
-function regWlNorm(name) {
+// guardar cada día. Desde el 9 oct 2026 el robot marca con __target los reportes del paciente (nombre, alias, edad,
+// homónimos): esa marca manda. Las capturas anteriores no la traen: se les aplica la misma regla del robot con la edad
+// y el alias del censo o de la Papelera. Encabezados en español o italiano (se leen de __cells: APELLIDOS, NOMBRE,
+// SEXO, NACIMIENTO). Precisión > recall: si hay homónimos y no se conoce la edad, esos reportes no se copian.
+function regWlTokens(name) {
   if (!name) return [];
   var s = String(name).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/\./g, ' ').replace(/[^A-Z\s]/g, ' ')
-    .replace(/\bMA\b/g, 'MARIA').replace(/\bJ\b/g, 'JOSE').replace(/\bGPE\b/g, 'GUADALUPE');
-  return s.split(/\s+/).filter(function (w) {
-    if (w.length < 3) return false;
-    return ['DEL', 'LAS', 'LOS', 'CON', 'SIN', 'POR', 'PARA', 'Y', 'O'].indexOf(w) < 0;
-  });
+    .replace(/\bMA\b/g, 'MARIA').replace(/\bJ\b/g, 'JOSE').replace(/\bGPE\b/g, 'GUADALUPE')
+    .replace(/\bFCO\b/g, 'FRANCISCO').replace(/\bFCA\b/g, 'FRANCISCA');
+  return s.split(/\s+/).filter(function (w) { return w.length >= 3 && ['DEL', 'LAS', 'LOS', 'CON', 'SIN', 'POR', 'PARA', 'Y', 'O'].indexOf(w) < 0; });
 }
 function regWlJaro(a, b) {
   if (a === b) return 1;
@@ -430,48 +477,163 @@ function regWlJW(a, b) {
   while (p < l && a[p] === b[p]) p++;
   return j + p * 0.1 * (1 - j);
 }
+/** ANTONIO/ANTONIA, MARIO/MARIA: difieren solo en la vocal final A/O → personas distintas. */
+function regWlVarianteGenero(t1, t2) {
+  if (t1.length !== t2.length || t1.length < 4) return false;
+  var a = t1[t1.length - 1], b = t2[t2.length - 1];
+  return a !== b && 'AO'.indexOf(a) >= 0 && 'AO'.indexOf(b) >= 0 && t1.slice(0, -1) === t2.slice(0, -1);
+}
 function regWlTokenIgual(t1, t2) {
   if (t1 === t2) return true;
+  if (regWlVarianteGenero(t1, t2)) return false;
   if (t1.length >= 5 && t2.length >= 5) return regWlJW(t1, t2) >= 0.88;
   return false;
 }
-function regWlCoinciden(n1, n2) {
-  var w1 = regWlNorm(n1), w2 = regWlNorm(n2);
-  if (!w1.length || !w2.length) return 0;
-  var used = new Array(w2.length).fill(false), common = 0;
-  for (var i = 0; i < w1.length; i++) {
-    for (var j = 0; j < w2.length; j++) { if (!used[j] && regWlTokenIgual(w1[i], w2[j])) { used[j] = true; common++; break; } }
+function regWlTodosEn(needles, haystack) {
+  var used = new Array(haystack.length).fill(false);
+  for (var i = 0; i < needles.length; i++) {
+    var hit = false;
+    for (var j = 0; j < haystack.length; j++) { if (!used[j] && regWlTokenIgual(needles[i], haystack[j])) { used[j] = true; hit = true; break; } }
+    if (!hit) return false;
   }
-  return common;
+  return true;
 }
-function regWlEncabezado(paciente, rep, tokens) {
-  if (!tokens || !tokens.length) return 'full';
-  var h = ((rep['APELLIDOS COMPLETOS'] || '') + ' ' + (rep.NOMBRE || '')).trim();
-  if (regWlCoinciden(paciente, h) >= tokens.length) return 'full';
-  var hTok = regWlNorm(h);
-  if (hTok.length >= 3 && regWlCoinciden(h, paciente) >= hTok.length) return 'partial';
-  return false;
+/** 'full': todos los nombres del censo están en el encabezado; 'partial': el encabezado (≥ 3 tokens) está todo en el censo. */
+function regWlCoincide(encabezado, nombre) {
+  var t = regWlTokens(nombre), h = regWlTokens(encabezado);
+  if (!t.length || !h.length) return '';
+  if (regWlTodosEn(t, h)) return 'full';
+  return h.length >= 3 && regWlTodosEn(h, t) ? 'partial' : '';
 }
-function regWlEsFecha(s) { return /^\s*\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/.test(String(s || '')); }
-function regWlEsEncabezado(rep) {
-  return !!(rep && rep.__hasLink === false && rep.NOMBRE && !regWlEsFecha(rep.NOMBRE) && rep['APELLIDOS COMPLETOS'] && !regWlEsFecha(rep['APELLIDOS COMPLETOS']));
+var REG_WL_SEXO = /^(FEMENIN[OA]|MASCULIN[OA]|FEMMIN[A-Z]*|MASCHI[A-Z]*|FEMALE|MALE|DONNA|UOMO|MUJER|HOMBRE|[FM])$/;
+function regWlIdxSexo(cells) {
+  if (!Array.isArray(cells)) return -1;
+  for (var i = 0; i < cells.length; i++) { if (REG_WL_SEXO.test(String(cells[i] || '').toUpperCase().trim())) return i; }
+  // Idioma desconocido: celda corta alfabética seguida de la fecha de nacimiento y precedida por dos celdas de nombre.
+  for (var k = 2; k < cells.length - 1; k++) {
+    var s = String(cells[k] || '').trim();
+    if (!s || s.length > 12 || !/^[A-Za-zÀ-ÿ]+$/.test(s)) continue;
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(cells[k + 1] || '').trim())) continue;
+    if (!/^[A-ZÁÉÍÓÚÜÑ' .-]{2,}$/i.test(String(cells[k - 1] || '').trim()) || !/^[A-ZÁÉÍÓÚÜÑ' .-]{2,}$/i.test(String(cells[k - 2] || '').trim())) continue;
+    return k;
+  }
+  return -1;
 }
-/** Reportes con valores que son del paciente de la fila: [{ rep, atribucion, encabezado }]. */
-function regWlDelPaciente(fila) {
+function regWlNombreEncabezado(cells) {
+  var sx = regWlIdxSexo(cells);
+  return sx >= 2 && cells[sx - 2] ? String(cells[sx - 2]) + ' ' + String(cells[sx - 1] || '') : '';
+}
+function regWlNacimiento(cells) {
+  var sx = regWlIdxSexo(cells);
+  if (sx < 0) return '';
+  var m = String(cells[sx + 1] || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? m[0] : '';
+}
+function regWlEdadDe(ddmmyyyy, hoy) {
+  var m = String(ddmmyyyy || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return null;
+  var d = +m[1], mo = +m[2], y = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || y < 1900) return null;
+  var age = hoy.getUTCFullYear() - y, tm = hoy.getUTCMonth() + 1, td = hoy.getUTCDate();
+  if (tm < mo || (tm === mo && td < d)) age--;
+  return age >= 0 && age <= 120 ? age : null;
+}
+/** Edad del censo en años ('52', '52a', '52 años'); meses, días u otro formato → null (desconocida). */
+function regWlEdadCenso(edad) {
+  var s = String(edad === null || edad === undefined ? '' : edad).trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  var m = s.match(/^(\d{1,3})\s*(A|ANOS|ANO|Y)?\.?$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function regWlMismoCumple(a, b) {
+  var ma = String(a || '').match(/^(\d{2}\/\d{2})\/(\d{4})$/), mb = String(b || '').match(/^(\d{2}\/\d{2})\/(\d{4})$/);
+  return !!(ma && mb && ma[1] === mb[1] && ma[2] !== mb[2] && ma[1] !== '01/01');
+}
+function regWlMismaPersona(a, b) {
+  if (!a || !b || String(a.label || '') !== String(b.label || '')) return false;
+  var fa = String(a.fnac || ''), fb = String(b.fnac || '');
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fa) || !/^\d{2}\/\d{2}\/\d{4}$/.test(fb)) return true;
+  return fa === fb || regWlMismoCumple(fa, fb);
+}
+function regWlEsReporte(cells) {
+  return Array.isArray(cells) && cells.some(function (c) { var s = String(c === null || c === undefined ? '' : c).trim(); return !!s && (/\b\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}\b/.test(s) || /(^|\D)\d{8,}(\D|$)/.test(s)); });
+}
+/** selectTargetRows del robot. paciente = { nombre, edad, alias }; hoy = fecha de la captura (para la edad). Devuelve
+ *  { idx: {i: encabezado}, parcial, multi, edadConocida }. */
+function regWlObjetivo(rows, paciente, hoy) {
+  var tolerancia = 2, edadCenso = regWlEdadCenso(paciente && paciente.edad);
+  var alias = String((paciente && paciente.alias) || '').trim(), blocks = [], cur = null;
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i] || {}, cells = row.__cells, hdr = regWlNombreEncabezado(cells);
+    if (hdr) {
+      var sxi = regWlIdxSexo(cells);
+      var label = sxi >= 2 ? String(cells[sxi - 2] || '').trim() + ', ' + String(cells[sxi - 1] || '').trim() : hdr;
+      var kN = regWlCoincide(hdr, paciente && paciente.nombre), kA = alias ? regWlCoincide(hdr, alias) : '';
+      var full = kN === 'full' || kA === 'full', nameOk = full || !!kN || !!kA;
+      var fnac = regWlNacimiento(cells);
+      var hdrAge = nameOk && edadCenso !== null ? regWlEdadDe(fnac, hoy) : null;
+      cur = { hdr: hdr, label: label.toUpperCase(), fnac: fnac, nameOk: nameOk, partial: nameOk && !full,
+        ageOk: !(nameOk && hdrAge !== null && Math.abs(hdrAge - edadCenso) > tolerancia), links: [] };
+      blocks.push(cur);
+    }
+    if (row.__hasLink && regWlEsReporte(cells) && cur) cur.links.push(i);
+  }
+  if (blocks.some(function (b) { return b.nameOk && !b.partial; })) blocks.forEach(function (b) { if (b.partial) b.nameOk = false; });
+  var nameBlocks = blocks.filter(function (b) { return b.nameOk; }), multi = false;
+  for (var x = 0; x < nameBlocks.length && !multi; x++) for (var y = x + 1; y < nameBlocks.length; y++) if (!regWlMismaPersona(nameBlocks[x], nameBlocks[y])) { multi = true; break; }
+  if (!multi) nameBlocks.forEach(function (b) { if (!b.partial) b.ageOk = true; });
+  var accepted = blocks.filter(function (b) { return b.nameOk && b.ageOk; });
+  blocks.forEach(function (b) {
+    if (!b.nameOk || b.ageOk) return;
+    if (accepted.some(function (a) { return a.label === b.label && regWlMismoCumple(a.fnac, b.fnac); })) b.ageOk = true;
+  });
+  var idx = {}, parcial = false, primero = true;
+  blocks.forEach(function (b) {
+    if (!b.nameOk || !b.ageOk) return;
+    b.links.forEach(function (i) { idx[i] = b.hdr; });
+    if (primero) { parcial = !!b.partial; primero = false; }
+  });
+  return { idx: idx, parcial: parcial, multi: multi, edadConocida: edadCenso !== null };
+}
+/** Edad y alias por expediente (censo y Papelera) para aplicar la regla del robot a capturas sin __target. */
+function regWlContexto(patients, notes, archive) {
+  var porExp = {}, aliasPorId = {};
+  var poner = function (exp, edad, alias) {
+    exp = regTexto(exp).trim(); if (!exp) return;
+    var c = porExp[exp] || (porExp[exp] = { edad: '', alias: '' });
+    if (regTexto(edad).trim()) c.edad = regTexto(edad).trim();
+    if (regTexto(alias).trim()) c.alias = regTexto(alias).trim();
+  };
+  regArr(notes).forEach(function (n) { if (n && n.patient_id) aliasPorId[n.patient_id] = regObj(n.checklist).winlab_alias; });
+  regArr(archive).slice().sort(function (a, b) { return regTexto(a && a.archived_at).localeCompare(regTexto(b && b.archived_at)); }).forEach(function (a) {
+    if (!a) return;
+    var pd = regObj(a.patient_data), ck = regObj(regObj(a.note_data).checklist);
+    poner(pd.exp, pd.edad, ck.winlab_alias);
+  });
+  regArr(patients).forEach(function (p) { if (p) poner(p.exp, p.edad, aliasPorId[p.id]); });
+  return porExp;
+}
+/** Reportes con valores del paciente de la fila: [{ rep, atribucion, encabezado }]. */
+function regWlDelPaciente(fila, contexto, acc) {
   var reps = regArr(fila && fila.reportes), out = [];
-  var tokens = regWlNorm(fila && fila.paciente);
-  var hayEnc = reps.some(regWlEsEncabezado);
-  var cur = (!hayEnc || !tokens.length) ? 'full' : false, enc = '';
-  reps.forEach(function (rep) {
+  var conMarca = reps.some(function (r) { return r && r.__target === true; });
+  var enc = '', idx = null, info = null;
+  if (!conMarca) {
+    var ctx = regObj(regObj(contexto)[regTexto(fila && fila.exp).trim()]);
+    var hoy = new Date(Date.parse(regTexto(fila && fila.scraped_at)) || Date.parse(regTexto(fila && fila.fecha)) || Date.now());
+    info = regWlObjetivo(reps, { nombre: fila && fila.paciente, edad: ctx.edad, alias: ctx.alias }, hoy);
+    idx = info.idx;
+  }
+  reps.forEach(function (rep, i) {
     if (!rep || typeof rep !== 'object') return;
-    if (hayEnc && regWlEsEncabezado(rep)) { cur = regWlEncabezado(fila.paciente, rep, tokens); enc = ((rep['APELLIDOS COMPLETOS'] || '') + ' ' + (rep.NOMBRE || '')).trim(); return; }
+    var h = regWlNombreEncabezado(rep.__cells); if (h) enc = h;
     if (!Array.isArray(rep.valores) || !rep.valores.length) return;
-    if (!cur) return;                                       // reporte de OTRO paciente del mismo apellido
-    if (cur === 'partial' && rep.__target !== true) return; // encabezado con menos nombres: solo si el robot lo validó
-    var atribucion = !hayEnc ? 'Sin encabezado (búsqueda de un solo paciente)' : !tokens.length ? 'Sin nombre de búsqueda'
-      : cur === 'partial' ? 'Encabezado parcial validado por el robot (nombre y edad)'
-      : (rep.__target === true ? 'Encabezado con el nombre completo; validado por el robot' : 'Encabezado con el nombre completo');
-    out.push({ rep: rep, atribucion: atribucion, encabezado: hayEnc ? enc : '' });
+    if (conMarca) {
+      if (rep.__target === true) out.push({ rep: rep, atribucion: 'Marcado por el robot al capturar (nombre, alias y edad)', encabezado: enc });
+      return;
+    }
+    if (!(i in idx)) return;
+    if (info.multi && !info.edadConocida) { if (acc) acc.ambiguos = (acc.ambiguos || 0) + 1; return; }   // homónimos sin edad: no se puede decidir
+    out.push({ rep: rep, atribucion: 'Regla del robot aplicada por el registro (captura sin marca; ' + (info.parcial ? 'encabezado con menos nombres, validado por edad' : 'nombre completo') + (info.multi ? ', homónimos separados por edad' : '') + ')', encabezado: idx[i] });
   });
   return out;
 }
@@ -486,10 +648,10 @@ function regWlReporte(rep) {
   var cells = Array.isArray(rep.__cells) ? rep.__cells.map(function (c) { return regTexto(c).trim(); }) : [];
   var clave = cells.length ? cells.filter(Boolean).join(' | ') : JSON.stringify([rep.NOMBRE, rep['APELLIDOS COMPLETOS'], rep['CODIGO PACIENTE'], rep.SEXO]);
   return {
-    clave: clave, folio: cells[2] || regTexto(rep['CODIGO PACIENTE']),
+    clave: clave, folio: cells[2] || regTexto(rep['CODIGO PACIENTE'] || rep.CODICEPAZIENTE),
     toma: regWlFechaHora(cells[3]) || regWlFechaHora(rep['APELLIDOS COMPLETOS']),
     resultado: regWlFechaHora(cells[4]) || regWlFechaHora(rep.NOMBRE),
-    servicio: regTexto(rep.SEXO) || (cells.length ? cells[cells.length - 1] : '')
+    servicio: cells.length ? cells[cells.length - 1] : regTexto(rep.SEXO)
   };
 }
 /** Un renglón por valor: «[sección] ESTUDIO: valor unidad (ref. …)». */
@@ -503,7 +665,7 @@ function regWlValores(rep) {
     return (sec ? '[' + sec + '] ' : '') + est + ': ' + val + (uni ? ' ' + uni : '') + (ref ? ' (ref. ' + ref + ')' : '');
   }).filter(Boolean).join('\n');
 }
-// Cultivos: copia de extractWinlabCulture / _cultFromPdf de la app.
+// Cultivos: copia de extractWinlabCulture / _cultFromPdf de la app (index.html).
 var REG_WL_ORG = /\b(escherichia|klebsiella|candida|staphylococ\w*|streptococ\w*|pseudomonas|enterococ\w*|acinetobacter|proteus|enterobacter|serratia|morganella|citrobacter|stenotrophomonas|salmonella|shigella|haemophilus|providencia)\b/i;
 var REG_WL_NEG = /sin\s+desarrollo|no\s+desarrollo|sin\s+crecimiento|desarrollo\s+negativo/i;
 var REG_WL_POS = /\bPOSITIV[OA]\b|\bDESARROLLO\s+DE\b|\bSE\s+AISL/i;
@@ -533,12 +695,18 @@ function regWlCultivosPdf(rep) {
     var pend = s.resultado === 'PENDIENTE' || s.resultado === 'SIN MUESTRA';
     var organismo = pos ? (germs.map(function (g) { return g.nombre + (g.flags.length ? ' (' + g.flags.join(', ') + ')' : ''); }).join(' + ') || 'POSITIVO (germen en el reporte)')
       : (s.resultado === 'SIN MUESTRA' ? 'Sin muestra' : (pend ? 'En proceso' : ('Sin desarrollo' + (s.detalle && /\d/.test(s.detalle) ? ' (' + s.detalle + ')' : ''))));
-    var l2 = regWlAntibiograma(s.antibiograma);
-    var unir = function (k) { return l2[k].concat.apply(l2[k], germs.map(function (g) { return g[k]; })); };
+    // Antibiograma: el de cada germen (con varios germenes, con su nombre: un antibiótico puede ser S para uno y R para
+    // otro); el de la sección solo si ningún germen trae el suyo (no se suman: el robot repite la lista en los dos).
+    var conLista = germs.filter(function (g) { return g.sensibles.length || g.intermedios.length || g.resistentes.length; });
+    var lista = function (k) {
+      if (!conLista.length) return regWlAntibiograma(s.antibiograma)[k];
+      if (conLista.length === 1) return conLista[0][k];
+      return conLista.filter(function (g) { return g[k].length; }).map(function (g) { return g.nombre + ': ' + g[k].join(', '); });
+    };
     return {
       tipo: s.tipo || c.tipo || 'Cultivo', organismo: organismo, muestra: s.muestra || '', positivo: pos, pendiente: pend, detalle: s.detalle || '',
-      ufc: (germs.map(function (g) { return g.ufc; }).filter(Boolean)[0]) || '', sensibles: unir('sensibles'), intermedios: unir('intermedios'), resistentes: unir('resistentes'),
-      texto: texto, fuente: 'PDF del reporte'
+      ufc: (germs.map(function (g) { return g.ufc; }).filter(Boolean)[0]) || '', sensibles: lista('sensibles'), intermedios: lista('intermedios'), resistentes: lista('resistentes'),
+      separador: conLista.length > 1 ? ' | ' : ', ', texto: texto, fuente: 'PDF del reporte'
     };
   });
 }
@@ -578,38 +746,50 @@ function regWlCultivos(rep) {
     : /HERIDA|SECRECION/.test(hay) ? 'Cultivo de herida/secreción'
     : 'Cultivo';
   return [{ tipo: tipo, organismo: organismo || ('Sin desarrollo' + (negDias || '')), muestra: muestra || '', positivo: !!pos, pendiente: false, detalle: '',
-    ufc: '', sensibles: [], intermedios: [], resistentes: [], texto: '', fuente: 'Tabla del reporte' }];
+    ufc: '', sensibles: [], intermedios: [], resistentes: [], separador: ', ', texto: '', fuente: 'Tabla del reporte' }];
 }
-/** Acumula filas de winlab_labs (en orden de captura) en { labs: {clave: renglón}, cultivos: {clave: renglón} }: un
- *  renglón por reporte del paciente (la captura más nueva con más valores manda) y uno por muestra de cultivo (la del
- *  PDF manda sobre la de la tabla). */
+/** Acumula filas de winlab_labs (en orden de captura) en acc = { labs: {clave: renglón}, cultivos: {clave: renglón},
+ *  contexto }: un renglón por reporte del paciente (la captura con más valores manda; empate: la más nueva) y uno por
+ *  muestra de cultivo (la del PDF manda sobre la de la tabla). Entre corridas, lo mismo lo cuida regFusionar. */
 function regWlAcumular(acc, filas) {
+  acc.labs = acc.labs || {}; acc.cultivos = acc.cultivos || {}; acc.cultivosPdf = acc.cultivosPdf || {};
   regArr(filas).forEach(function (f) {
     if (!f) return;
     var exp = regTexto(f.exp).trim();
-    regWlDelPaciente(f).forEach(function (x) {
+    regWlDelPaciente(f, acc.contexto, acc).forEach(function (x) {
       var rep = x.rep, r = regWlReporte(rep), k = exp + REG_SEP + r.clave;
       var nVal = regArr(rep.valores).length, prev = acc.labs[k];
-      if (!prev || nVal >= prev.__n) {
+      if (!prev || nVal >= prev['Estudios']) {
         acc.labs[k] = { 'Expediente': exp, 'Paciente': regTexto(f.paciente), 'Nombre en WinLab': x.encabezado, 'Atribución': x.atribucion, 'Reporte': r.clave,
-          'Folio': r.folio, 'Toma': r.toma, 'Resultado': r.resultado, 'Servicio': r.servicio, 'Estudios': nVal, 'Valores': regWlValores(rep), 'Capturado': regTexto(f.scraped_at), __n: nVal };
+          'Folio': r.folio, 'Toma': r.toma, 'Resultado': r.resultado, 'Servicio': r.servicio, 'Estudios': nVal, 'Valores': regWlValores(rep), 'Capturado': regTexto(f.scraped_at) };
       }
       var cults = regWlCultivos(rep);
       if (!cults.length) return;
-      var pdf = cults[0].fuente === 'PDF del reporte', yaPdf = acc.cultivosPdf && acc.cultivosPdf[k];
-      if (yaPdf && !pdf) return;
-      acc.cultivosPdf = acc.cultivosPdf || {};
+      var pdf = cults[0].fuente === 'PDF del reporte';
+      if (acc.cultivosPdf[k] && !pdf) return;
       if (pdf) acc.cultivosPdf[k] = true;
       Object.keys(acc.cultivos).forEach(function (ck) { if (ck.indexOf(k + REG_SEP) === 0) delete acc.cultivos[ck]; });
       cults.forEach(function (c, i) {
         var res = c.positivo ? 'POSITIVO' : (c.pendiente ? (c.organismo === 'Sin muestra' ? 'Sin muestra' : 'En proceso') : 'Negativo');
         acc.cultivos[k + REG_SEP + (i + 1)] = { 'Expediente': exp, 'Paciente': regTexto(f.paciente), 'Reporte': r.clave, 'N': i + 1, 'Toma': r.toma, 'Tipo': c.tipo, 'Muestra': c.muestra,
-          'Resultado': res, 'Germen': c.positivo ? c.organismo : '', 'Sensibles': c.sensibles.join(', '), 'Intermedios': c.intermedios.join(', '), 'Resistentes': c.resistentes.join(', '),
+          'Resultado': res, 'Germen': c.positivo ? c.organismo : '', 'Sensibles': c.sensibles.join(c.separador), 'Intermedios': c.intermedios.join(c.separador), 'Resistentes': c.resistentes.join(c.separador),
           'UFC': c.ufc, 'Detalle': c.positivo ? c.detalle : (c.detalle || (c.pendiente ? '' : c.organismo)), 'Fuente': c.fuente, 'Texto del reporte': c.texto, 'Atribución': x.atribucion, 'Capturado': regTexto(f.scraped_at) };
       });
     });
   });
   return acc;
+}
+/** Entre corridas: una captura de WinLab con menos valores no pisa el renglón que ya tiene más (empate: la nueva). */
+function regWlPreferirViejo(viejo, nuevo) {
+  var a = Number(regTexto(viejo['Estudios'])), b = Number(regTexto(nuevo['Estudios']));
+  return !isNaN(a) && !isNaN(b) && a > b;
+}
+/** Entre corridas: si un reporte ya tiene su cultivo del PDF en la hoja, las filas de hoy que solo vienen de la tabla
+ *  de ese reporte no se escriben (pisarían el germen y el antibiograma con «POSITIVO»). */
+function regWlFiltrarCultivos(viejas, nuevas) {
+  var conPdf = {};
+  regArr(viejas).forEach(function (r) { if (regTexto(r['Fuente']) === 'PDF del reporte') conPdf[regTexto(r['Expediente']).trim() + REG_SEP + regTexto(r['Reporte']).trim()] = true; });
+  return regArr(nuevas).filter(function (r) { return !(r['Fuente'] === 'Tabla del reporte' && conPdf[regTexto(r['Expediente']).trim() + REG_SEP + regTexto(r['Reporte']).trim()]); });
 }
 
 /** Episodios (una hospitalización por id de paciente de la base) y filas de cada pestaña (objetos por columna). */
@@ -787,6 +967,7 @@ function regClaveDe(fila, cfg) { return cfg.clave.map(function (c) { return regT
  *  'vigente', marcadas «No» si su episodio sí está hoy en la base; en 'pacientes', «Salió de la base…» si seguían
  *  hospitalizadas). Nunca devuelve menos filas (claves distintas) de las que había. */
 function regFusionar(viejas, nuevas, cfg, episodiosHoy, hoy, relacion) {
+  if (cfg.filtrarNuevas) nuevas = cfg.filtrarNuevas(viejas, nuevas);
   var hoyPorClave = {}, ordenHoy = [];
   nuevas.forEach(function (r) { var k = regClaveDe(r, cfg); if (!hoyPorClave[k]) ordenHoy.push(k); hoyPorClave[k] = r; });
   var out = [], vistas = {}, nViejas = 0;
@@ -794,7 +975,8 @@ function regFusionar(viejas, nuevas, cfg, episodiosHoy, hoy, relacion) {
     var k = regClaveDe(r, cfg);
     if (vistas[k]) return;
     vistas[k] = true; nViejas++;
-    if (hoyPorClave[k]) { var h = Object.assign({}, hoyPorClave[k]); if (r.__fila) h.__fila = r.__fila; out.push(h); return; }
+    if (hoyPorClave[k] && !(cfg.preferirViejo && cfg.preferirViejo(r, hoyPorClave[k]))) { var h = Object.assign({}, hoyPorClave[k]); if (r.__fila) h.__fila = r.__fila; out.push(h); return; }
+    if (hoyPorClave[k]) { out.push(Object.assign({}, r)); return; }
     var c = Object.assign({}, r);
     if (cfg.modo === 'pacientes' && c['Estado en registro'] === 'Hospitalizado') c['Estado en registro'] = 'Salió de la base sin egreso registrado';
     if (cfg.modo === 'vigente' && episodiosHoy && episodiosHoy[regTexto(c['ID episodio'])]) c['Vigente'] = 'No';
@@ -811,18 +993,21 @@ function regFusionar(viejas, nuevas, cfg, episodiosHoy, hoy, relacion) {
 }
 
 // ─── Hoja ────────────────────────────────────────────────────────────────────────────────────────────────────────
-/** Filas de la pestaña como objetos por nombre de columna, cada una con su renglón (__fila), y si el encabezado es
- *  exactamente el de esta versión (si no, se reescribe la pestaña entera para alinearla). Si tiene datos pero le falta
- *  una columna de la clave (se renombró el encabezado), se detiene: escribir sin leerla bien borraría su historia. */
+/** Filas de la pestaña como objetos por nombre de columna, cada una con su renglón (__fila), y dónde está cada columna
+ *  (por nombre: el orden de la hoja no importa). Si tiene datos pero le falta una columna de la clave (se renombró el
+ *  encabezado), se detiene: escribir sin leerla bien borraría su historia. */
 function regLeerPestana_(hoja, cfg) {
   var n = hoja.getLastRow(), m = hoja.getLastColumn();
-  if (n < 1 || m < 1) return { filas: [], porFila: {}, encabezadoOk: false };
+  var vacio = { filas: [], porFila: {}, mapa: {}, conDatos: false };
+  if (n < 1 || m < 1) return vacio;
   var vals = hoja.getRange(1, 1, n, m).getValues();
   var enc = vals[0].map(function (h) { return regTexto(h).trim(); });
   var conDatos = vals.slice(1).some(function (f) { return f.some(function (v) { return regTexto(v).trim(); }); });
   if (conDatos && cfg.clave.some(function (c) { return enc.indexOf(c) === -1; })) {
     throw new Error('La pestaña «' + cfg.nombre + '» no tiene la columna «' + cfg.clave.filter(function (c) { return enc.indexOf(c) === -1; })[0] + '» en la fila 1: no se actualizó nada para no perder datos (regrese el encabezado).');
   }
+  var mapa = {};
+  enc.forEach(function (h, j) { if (h && !mapa[h]) mapa[h] = j + 1; });
   var filas = [], porFila = {};
   vals.slice(1).forEach(function (fila, i) {
     var o = {};
@@ -830,7 +1015,7 @@ function regLeerPestana_(hoja, cfg) {
     if (!regClaveDe(o, cfg).replace(new RegExp(REG_SEP, 'g'), '').trim()) return;
     o.__fila = i + 2; porFila[i + 2] = o; filas.push(o);
   });
-  return { filas: filas, porFila: porFila, encabezadoOk: cfg.columnas.every(function (c, i) { return enc[i] === c; }) };
+  return { filas: filas, porFila: porFila, mapa: mapa, conDatos: conDatos };
 }
 /** Texto para una celda (la columna es de texto plano: no se interpreta como fórmula ni fecha), recortado al límite. */
 function regCelda(v) {
@@ -840,54 +1025,57 @@ function regCelda(v) {
   return s;
 }
 function regAsegurarFilas_(hoja, n) { if (hoja.getMaxRows() < n) hoja.insertRowsAfter(hoja.getMaxRows(), n - hoja.getMaxRows()); }
-function regEscribirBloques_(hoja, fila, datos, nc) {
-  for (var i = 0; i < datos.length; i += REG_BLOQUE) {
-    var b = datos.slice(i, i + REG_BLOQUE);
-    hoja.getRange(fila + i, 1, b.length, nc).setNumberFormat('@').setValues(b);
-  }
-}
 /** Pestaña nueva: sin las columnas vacías de sobra (Sheets crea 26 y cuentan para el límite de celdas). */
 function regAjustarColumnas_(hoja, nc) { if (hoja.getMaxColumns() > nc) hoja.deleteColumns(nc + 1, hoja.getMaxColumns() - nc); }
-/** Escribe solo lo que cambió: las filas cuya clave ya estaba se actualizan en su renglón si algo cambió y las nuevas
- *  se agregan al final. Si el encabezado no es el de esta versión (o hay demasiados cambios sueltos) reescribe toda la
- *  pestaña encima (sin vaciar antes) y limpia solo lo que sobre abajo. Las columnas agregadas a la derecha se respetan. */
-function regEscribirPestana_(hoja, columnas, filas, previo) {
-  var nc = columnas.length;
-  var celdasDe = function (r) { return columnas.map(function (c) { return regCelda(r[c]); }); };
+/** Escribe solo lo que cambió, cada fila en SU renglón (__fila) y cada valor en la columna con SU nombre; las filas nuevas
+ *  van al final. Nunca reescribe ni recorre otras filas, y no toca las columnas que no son del registro (las que agregue
+ *  un investigador, en cualquier lugar). Si a la hoja le falta una columna del registro (versión nueva, o se renombró
+ *  una), se agrega al final con su encabezado y se avisa. `corte()` → se detiene (lanza regCorte) antes de otro setValues.
+ *  Devuelve { escritas, aviso }. */
+function regEscribirPestana_(hoja, cfg, filas, previo, corte) {
+  var columnas = cfg.columnas, mapa = Object.assign({}, previo.mapa), aviso = '';
+  var faltan = columnas.filter(function (c) { return !mapa[c]; });
+  if (faltan.length) {
+    var desde = hoja.getLastColumn() + 1;
+    if (hoja.getMaxColumns() < desde - 1 + faltan.length) hoja.insertColumnsAfter(hoja.getMaxColumns(), desde - 1 + faltan.length - hoja.getMaxColumns());
+    regAsegurarFilas_(hoja, 1);
+    hoja.getRange(1, desde, 1, faltan.length).setNumberFormat('@').setValues([faltan]);
+    faltan.forEach(function (c, i) { mapa[c] = desde + i; });
+    if (desde === 1) hoja.setFrozenRows(1);
+    if (previo.conDatos) aviso = 'La pestaña «' + cfg.nombre + '» no tenía la(s) columna(s) «' + faltan.join('», «') + '»: se agregaron al final (si se renombró una, sus datos siguen en la columna renombrada).';
+  }
+  // Columnas del registro agrupadas en tramos contiguos de la hoja (normalmente uno solo).
+  var orden = columnas.map(function (c) { return { c: c, col: mapa[c] }; }).sort(function (a, b) { return a.col - b.col; });
+  var tramos = [];
+  orden.forEach(function (x) { var t = tramos[tramos.length - 1]; if (t && x.col === t.col + t.cols.length) t.cols.push(x.c); else tramos.push({ col: x.col, cols: [x.c] }); });
+  var celdasDe = function (r) { return orden.map(function (x) { return regCelda(r[x.c]); }); };
   var igual = function (a, b) { for (var i = 0; i < a.length; i++) { if (String(a[i]) !== String(b[i])) return false; } return true; };
-  if (hoja.getMaxColumns() < nc) hoja.insertColumnsAfter(hoja.getMaxColumns(), nc - hoja.getMaxColumns());
-  var completo = !previo || !previo.encabezadoOk, cambios = [], nuevas = [];
-  if (!completo) {
-    filas.forEach(function (r) {
-      var c = celdasDe(r);
-      if (r.__fila) { var v = previo.porFila[r.__fila]; if (!v || !igual(c, celdasDe(v))) cambios.push([r.__fila, c]); }
-      else nuevas.push(c);
-    });
-    cambios.sort(function (a, b) { return a[0] - b[0]; });
-    var bloques = cambios.filter(function (x, i) { return !i || x[0] !== cambios[i - 1][0] + 1; }).length;
-    if (bloques > REG_MAX_BLOQUES) completo = true;
-  }
-  if (completo) {
-    var datos = [columnas].concat(filas.map(celdasDe));
-    regAsegurarFilas_(hoja, datos.length);
-    regEscribirBloques_(hoja, 1, datos, nc);
-    var sobra = hoja.getLastRow() - datos.length;
-    if (sobra > 0) hoja.getRange(datos.length + 1, 1, sobra, nc).clearContent();
-    hoja.setFrozenRows(1);
-    return { modo: 'completo', escritas: filas.length };
-  }
+  var cambios = [], nuevas = [];
+  filas.forEach(function (r) {
+    var c = celdasDe(r);
+    if (r.__fila) { var v = previo.porFila[r.__fila]; if (!v || !igual(c, celdasDe(v))) cambios.push({ fila: r.__fila, celdas: c }); }
+    else nuevas.push(c);
+  });
+  cambios.sort(function (a, b) { return a.fila - b.fila; });
+  var primeraNueva = Math.max(hoja.getLastRow(), 1) + 1;
+  nuevas.forEach(function (c, i) { cambios.push({ fila: primeraNueva + i, celdas: c }); });
+  if (nuevas.length) regAsegurarFilas_(hoja, primeraNueva - 1 + nuevas.length);
+  // Bloques de renglones contiguos; cada bloque se escribe por tramo de columnas.
+  var escritas = 0;
   for (var i = 0; i < cambios.length;) {
     var j = i;
-    while (j + 1 < cambios.length && cambios[j + 1][0] === cambios[j][0] + 1) j++;
-    regEscribirBloques_(hoja, cambios[i][0], cambios.slice(i, j + 1).map(function (x) { return x[1]; }), nc);
+    while (j + 1 < cambios.length && cambios[j + 1].fila === cambios[j].fila + 1 && j + 1 - i < REG_BLOQUE) j++;
+    var bloque = cambios.slice(i, j + 1), base = 0;
+    tramos.forEach(function (t) {
+      if (corte && corte()) { var e = new Error('corte'); e.regCorte = true; throw e; }
+      var datos = bloque.map(function (x) { return x.celdas.slice(base, base + t.cols.length); });
+      hoja.getRange(bloque[0].fila, t.col, bloque.length, t.cols.length).setNumberFormat('@').setValues(datos);
+      base += t.cols.length;
+    });
+    escritas += bloque.length;
     i = j + 1;
   }
-  if (nuevas.length) {
-    var desde = hoja.getLastRow() + 1;
-    regAsegurarFilas_(hoja, desde - 1 + nuevas.length);
-    regEscribirBloques_(hoja, desde, nuevas, nc);
-  }
-  return { modo: 'incremental', escritas: cambios.length + nuevas.length };
+  return { escritas: escritas, aviso: aviso };
 }
 /** Celdas de la cuadrícula de TODAS las hojas del libro (lo que cuenta para el límite de Sheets). */
 function regCeldas_(libro) {
@@ -915,12 +1103,12 @@ function regEscribirDiccionario_(hoja, hoy, cuentas, celdas, pendiente, avisos) 
     ['Días de estancia', 'Desde la fecha de ingreso hasta el egreso (o hasta hoy si sigue hospitalizado).'],
     ['Vigente', 'Sí: está en la tarjeta en la última copia. No: estuvo y ya no (corregido, borrado o movido); se conserva.'],
     ['Signos vitales y Notas de evolución', 'La app guarda 14 días de signos y 10 notas; aquí se acumulan todos.'],
-    ['Labs del robot (WinLab)', 'Un renglón por reporte de WinLab del paciente (con la misma regla de identidad de la app: encabezado con su nombre o validado por el robot por nombre y edad; nunca de homónimos). Valores: un renglón por estudio «ESTUDIO: valor unidad (ref. …)». Toma y Resultado: fecha y hora del reporte.'],
+    ['Labs del robot (WinLab)', 'Un renglón por reporte de WinLab del paciente, con la regla de identidad del robot: lo que el robot marcó (nombre, alias, edad, homónimos) o, en capturas anteriores al 9 oct 2026, esa misma regla aplicada aquí; nunca de homónimos (si no se puede decidir, no se copia). Valores: un renglón por estudio «ESTUDIO: valor unidad (ref. …)». Toma y Resultado: fecha y hora del reporte.'],
     ['Cultivos del robot (WinLab)', 'Un renglón por muestra de cultivo de esos reportes: del PDF del reporte cuando el robot lo leyó (germen y antibiograma S/I/R) o de la tabla del reporte.'],
     ['Imagen del robot (RIS)', 'Lo que capturó el robot de RIS, por expediente y episodio.'],
     ['Nota / Checklist completo (JSON)', 'Todo lo demás de la tarjeta, sin archivos incrustados.'],
     ['Respaldo', 'Cada 7 días se guarda una copia de esta hoja en la misma carpeta (las últimas ' + REG_RESPALDOS + ').'],
-    ['Cuidado', 'Se pueden agregar columnas a la DERECHA y usar filtros; no insertar columnas en medio ni renombrar la fila 1.']
+    ['Cuidado', 'Se pueden agregar columnas propias y usar filtros: el registro no las toca. No renombrar los encabezados del registro (si falta uno, se agrega al final; si falta una columna clave, el registro se detiene y avisa).']
   ];
   if (hoja.getMaxColumns() < 2) hoja.insertColumnsAfter(hoja.getMaxColumns(), 2 - hoja.getMaxColumns());
   regAsegurarFilas_(hoja, filas.length);
