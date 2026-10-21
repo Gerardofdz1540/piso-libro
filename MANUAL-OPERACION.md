@@ -121,6 +121,59 @@ piso, cualquiera con acceso a Cloudflare la regresa en un minuto:
    este paso, el rollback solo dura hasta la próxima publicación.
 5. Avisa en el grupo qué versión quedó y mándame el síntoma (sin pacientes).
 
+## 🔄 Aviso de versión nueva (20 de octubre de 2026)
+
+Había equipos trabajando con versiones viejas de la app sin saberlo (un iPad o una PC que se quedan abiertos días no
+se recargan nunca). Ahora cada equipo revisa si hay otra versión publicada: a los 15 segundos de abrir, cada 3 minutos
+mientras la app está a la vista y al volver a la app (como mucho una revisión por minuto). Si la hay, abajo a la
+izquierda sale una barra pequeña: **«🔄 Hay una versión nueva de la app · Actualizar»** (en la Mac, laptop o pantalla
+ancha sale abajo a la derecha, para no tapar la lista de camas de la izquierda).
+
+**Qué hacer ante el aviso:**
+
+- **Toca «Actualizar»** cuando termines lo que estás escribiendo. La app sube primero lo pendiente (espera hasta unos
+  8 segundos) y se recarga con la versión nueva. Si algo no alcanzó a subirse lo avisa: se quedó guardado en el
+  equipo y se sube solo al abrir la app con red. Si la versión nueva cambia también el service worker, espera unos
+  segundos más a que se instale antes de recargar (así el iPad no se queda a medias). Si a los ~15 segundos no se
+  recargó, la barra vuelve a «Hay una versión nueva»: tócala otra vez o cierra y abre la app.
+- La app **nunca se recarga sola**. La **✕** esconde la barra hasta la siguiente revisión (3 minutos como máximo).
+- Mientras escribes la barra se esconde (para no tapar el teclado del iPad) y regresa al soltar la caja.
+- La barra queda **debajo** de las ventanas de la app (✏️ Editar, Pase de visita, cirugías…): no tapa sus botones.
+  Si tienes una ventana abierta, «Actualizar» no recarga y te pide guardarla o cerrarla primero.
+- Sin red no sale nada (no hay con qué comparar).
+- También sale tras un regreso a la versión anterior (rollback): tocar «Actualizar» deja el equipo en la que quedó
+  publicada.
+
+**Una sola vez, a mano:** los equipos que siguen con una versión anterior a este aviso no lo tienen. **Ciérralos del
+todo y ábrelos una vez con red** (en el iPad, deslizar la app hacia arriba para cerrarla; en la PC, cerrar la pestaña o
+el navegador) — desde ahí avisan solos. Si sospechas que un equipo trae una versión vieja y la barra no aparece, haz lo
+mismo. En una PC con Chrome que usa `gerardofdz1540.github.io`: GitHub Pages deja la página guardada 10 minutos en el
+navegador, así que si la abriste hace menos de 10 minutos, cerrar y abrir puede seguir mostrando la versión anterior;
+**recarga con F5 (o Ctrl+R)** con la app abierta, o espera 10 minutos. En el iPad y en `pisolibro.pages.dev` no pasa.
+
+**Cómo funciona y qué hacer en cada cambio de `index.html`:** la app se publica tal cual, sin paso de construcción
+(GitHub Pages sirve la raíz de `main`; Cloudflare Pages con `deploy-pages.yml` y el espejo de Netlify con
+`netlify.toml` copian los archivos), así que la versión va escrita a mano en dos lugares que deben ser iguales:
+
+1. En `index.html`: `const PL_BUILD = "2026.10.20-1";`
+2. En `version.json` (raíz del repositorio): `{"v":"2026.10.20-1"}`
+
+En **cada** PR que cambie `index.html`, sube las dos con un valor nuevo: la fecha y un consecutivo del día
+(`2026.10.20-1` → `2026.10.20-2` → `2026.10.21-1`). Las pruebas lo vigilan: `tests/headless/version_check.js` falla si
+los dos valores no son iguales, y en el PR el paso «version.json acompaña a index.html» de `ci.yml` falla si
+`index.html` cambió y `version.json` no (o trae el mismo valor). Si se olvidara, los equipos con la versión anterior
+no verían el aviso; si los dos valores no coincidieran, todos lo verían siempre. El service worker (`sw.js`, versión
+`pisolibro-v12`) nunca guarda `version.json`: siempre lo pide a la red; y al instalarse baja la app del servidor sin
+usar la copia que el navegador tenga guardada.
+
+**Dos PR abiertos a la vez que cambian `index.html`:** los dos suben la versión al mismo valor siguiente (p. ej.
+`-1` → `-2`), el paso pasa en cada PR y GitHub los fusiona sin conflicto; `main` queda con los cambios del segundo y la
+`"v"` del primero, y los equipos que ya tenían la del primero nunca verían el aviso del segundo. Para que no pase:
+en GitHub → Settings → Branches → `main`, activa **«Require branches to be up to date before merging»** (obliga a
+traer `main` al PR y vuelve a correr el paso, que entonces falla hasta que subas la versión otra vez). Si aun así se
+cuela, la publicación lo detecta: en cada push a `main` el mismo paso compara con el commit anterior de `main`, falla y
+**Cloudflare no se publica** (GitHub Pages y Netlify sí); sube la versión otra vez (las dos) en un PR nuevo y se publica.
+
 ## Cómo moverse por la ficha del paciente (iPad)
 
 - La barra oscura de arriba de la ficha queda pegada al desplazar. Tiene las
@@ -415,6 +468,18 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
 - **↩ Regresar / ↪ Rehacer solo tocan la caja de ese paso** (19 oct 2026): si un compañero escribió en otra caja
   desde su iPad mientras tanto, un Regresar tuyo ya no se lo pisa. El botón ↩ Deshacer del aviso «Cambio guardado»
   deshace al paciente que anunció ese aviso.
+- **Al abrir, cada equipo toma la 🕓 Cronología (Guardia) de la base** (20 oct 2026). Antes, al abrir o recargar,
+  cada equipo se quedaba con SU copia guardada de esa caja: se limpiaron en la base renglones repetidos de varias
+  camas y la Mac ya los veía limpios, pero el iPad seguía mostrando los repetidos aunque se cerrara y abriera. Ahora
+  gana lo de la base, como en las demás cajas (y como ya pasaba con los cambios en vivo); los diagramas corporales
+  siguen la misma regla (un diagrama vacío en la base no borra el trazo del equipo). Lo que ese equipo escribió y aún
+  no sube (sin red, en la cola de envío, o lo que estás escribiendo en ese momento) se queda en pantalla y se sube,
+  también si mientras espera se guarda un lab en esa tarjeta. Un renglón que otro equipo escribe mientras la app está
+  cargando (al abrirla o al volver a ella) tampoco desaparece, y 📜 Restaurar versión sube la Cronología restaurada.
+- **Al abrir la app, deja pasar unos segundos antes de escribir en la Cronología.** Mientras termina de cargar y de
+  subir lo pendiente del equipo, la tarjeta puede mostrar la copia guardada en el equipo (p. ej. con los renglones
+  repetidos); al terminar se repinta con la de la base. Si escribes en ese momento, la caja se queda con lo que veías
+  más lo tuyo, y eso es lo que se sube.
 - Plegables: **Historia · APP / PA** y **Pendientes MIPs / R1**.
 
 Columna lateral: el **Pase** (dieta, ATB, TVP, herida, NPT, vitales, **drenajes y sondas** con su
@@ -980,6 +1045,7 @@ from notes_lab_history_backup_20261009 b where b.patient_id = n.patient_id;
 | Carpeta / archivo | Qué es |
 |---|---|
 | `index.html` | Toda la app (un solo archivo) |
+| `version.json` | La versión publicada; la compara el aviso 🔄 con `PL_BUILD` de `index.html` (se suben juntas en cada cambio) |
 | `apps-script/censo-sync.gs` | El programa de la hoja del censo (se pega a mano en Google) |
 | `rpa/` | El robot de laboratorios (WinLab → Supabase) |
 | `.github/workflows/winlab-scraper.yml` | Los horarios y la configuración del robot |

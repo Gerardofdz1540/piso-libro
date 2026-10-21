@@ -1,9 +1,10 @@
 // Abrir sin red y sin perder nada (oct 2026): service worker con copia de la app, sesión guardada sin
 // red, texto escrito sin conexión que sobrevive a recargar y se sube al volver la red sin que la
 // copia remota lo pise, el botón ↩ Regresar, y la cama cambiada sin red (✏️ Editar) que sobrevive a la
-// recarga, no la pisa la fila remota ni Realtime, y sube con la cama nueva al volver la red (O6-O9).
+// recarga, no la pisa la fila remota ni Realtime, y sube con la cama nueva al volver la red (O6-O9). O13: version.json
+// (aviso de versión nueva) nunca sale de la caché del service worker.
 //   node tests/headless/app_offline.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { launch } = require('./_browser');
+const { launch, name: BROWSER } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   const KEY='__mock_session';
@@ -309,6 +310,33 @@ const MOCK = `(() => {
     !o12a.online && o12a.estado === 'GRAVE' && Array.isArray(o12a.dirty) && o12a.dirty.join() === 'estado'
     && o12.cama === '3-121' && o12.estado === 'GRAVE' && o12.qPt === 0 && okPatches12.length >= 1 && okPatches12.every(s => s === '3-121|GRAVE' || s === 'undefined|GRAVE') && remotePatient.cama === '3-121',
     JSON.stringify({ o12a, o12, okPatches12, remote: remotePatient.cama }));
+
+  // 13) version.json (aviso de versión nueva, 20 oct 2026) va SIEMPRE a la red: el service worker no lo guarda ni lo
+  //     sirve de su caché (con el cache-first de los assets el aviso nunca vería una versión nueva) y sin red falla (la
+  //     app entonces no avisa nada). La caché es la de esta versión del SW (pisolibro-v12), sin restos de la anterior.
+  let verBody = { v: 'aaa1111' };
+  await context.route('**/version.json*', (r) => offline ? r.abort('internetdisconnected') : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(verBody) }));
+  const o13a = await page2.evaluate(async () => { const r = await fetch('./version.json', { cache: 'no-store' }); return { ctrl: !!navigator.serviceWorker.controller, v: (await r.json()).v }; });
+  verBody = { v: 'bbb2222' };
+  const o13b = await page2.evaluate(async () => {
+    const v = (await (await fetch('./version.json', { cache: 'no-store' })).json()).v;
+    const v2 = (await (await fetch('./version.json?ts=' + Date.now(), { cache: 'no-store' })).json()).v;
+    const names = await caches.keys(); let cached = 0;
+    for (const n of names) { const c = await caches.open(n); cached += (await c.keys()).filter(q => /version\.json/.test(q.url)).length; }
+    return { v, v2, cached, names };
+  });
+  offline = true; await page2.context().setOffline(true); await page2.waitForTimeout(300);
+  const o13c = await page2.evaluate(async () => { try { const r = await fetch('./version.json', { cache: 'no-store' }); return { failed: false, status: r.status }; } catch (e) { return { failed: true }; } });
+  offline = false; await page2.context().setOffline(false);
+  // WebKit (20 oct 2026): context.route no intercepta lo que el service worker deja pasar sin respondWith; ahí llega el
+  // version.json real del servidor en las tres lecturas (no 'aaa1111'/'bbb2222'). Es del arnés, no de la app: en WebKit
+  // se comprueba lo demás (nada en la caché, caché v12 sola, sin red falla) y se informa.
+  const o13Ruta = o13a.v === 'aaa1111' && o13b.v === 'bbb2222' && o13b.v2 === 'bbb2222';
+  const o13WebkitSinRuta = BROWSER === 'webkit' && !!o13a.v && o13a.v !== 'aaa1111' && o13b.v === o13a.v && o13b.v2 === o13a.v;
+  if (o13WebkitSinRuta) console.log('INFO O13 (WebKit): la ruta no intercepta version.json pedido desde la página controlada por el service worker (llegó el del servidor, «' + o13a.v + '»); se comprobó lo demás');
+  check('O13 version.json siempre a la red: con el service worker controlando la página cada petición trae lo publicado (aunque sea la misma URL), nada de version.json en la caché, sin red falla (no se sirve copia guardada) y la caché es pisolibro-v12 sola',
+    o13a.ctrl && (o13Ruta || o13WebkitSinRuta) && o13b.cached === 0 && o13b.names.includes('pisolibro-v12') && o13b.names.filter(n => /^pisolibro-v/.test(n)).length === 1 && o13c.failed,
+    JSON.stringify({ o13a, o13b, o13c }));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-OFFLINE: ' + pass + ' passed, ' + fail + ' failed');
