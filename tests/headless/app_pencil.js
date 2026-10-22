@@ -3,7 +3,8 @@
 //   node tests/headless/app_pencil.js
 // P1  iPad + ✍️ Scribble: NINGÚN oyente táctil/de puntero NO pasivo en document (en WebKit cada uno hace que el toque espere
 //     al hilo principal antes de que arranque el reconocedor de Scribble → el lápiz «solo selecciona»); el lápiz sobre una
-//     caja grande no se cancela.
+//     caja grande no se cancela. Los oyentes se cuentan con un registro de add/removeEventListener (P0 lo prueba; en
+//     Chromium además se contrasta con DOMDebugger.getEventListeners de CDP, que WebKit no tiene).
 // P2  ✍️ en iPad (19 oct 2026, ya sin Tinta): el botón NO cambia de modo ni pone oyentes (sigue Scribble, el lápiz no se
 //     cancela); solo avisa cómo activar Garabatear. Dos toques seguidos: igual.
 // P3  Tablero (📌): pasar de una nota a otra (lo que hace Scribble al escribir) no destruye la nota en la que se escribe.
@@ -11,7 +12,7 @@
 // P5  Otros (antes Misceláneo): la caja se llama así en la ficha y la barra de saltos; lo escrito no se pierde al cambiar de
 //     tarjeta antes del guardado, ni al ocultar la app sin red (queda en localStorage y en la cola).
 const fs = require('fs'), path = require('path');
-const { launch } = require('./_browser');
+const { launch, name: BROWSER } = require('./_browser');
 const REPO = path.join(__dirname, '..', '..');
 const HTML = process.argv[2] || path.join(REPO, 'index.html');
 const MOCK = `(() => {
@@ -54,6 +55,25 @@ const TYPES = /^(touchstart|touchmove|touchend|pointerdown|pointermove|pointerup
   });
   await page.addInitScript(MOCK);
   await page.addInitScript(() => { localStorage.setItem('pl_pen_mode', '0'); localStorage.setItem('pl_pen_ipad_v3', '1'); window.__pl_force_ipad = true; });
+  // Registro de los oyentes de document (21 oct 2026: WebKit no tiene CDP). Corre antes que la app y anota cada
+  // add/removeEventListener con su pasivo EFECTIVO, el que reporta CDP: el `passive` pedido o, si no se pidió, el de fábrica
+  // (touchstart/touchmove/wheel en document son pasivos en los dos motores; lo demás no).
+  await page.addInitScript(() => {
+    const reg = []; window.__plDocListeners = reg;
+    const cap = (o) => typeof o === 'boolean' ? o : !!(o && o.capture);
+    const add = EventTarget.prototype.addEventListener, rem = EventTarget.prototype.removeEventListener;
+    EventTarget.prototype.addEventListener = function (type, fn, o) {
+      if (this === document && fn && !reg.some(l => l.type === type && l.fn === fn && l.capture === cap(o))) {
+        const passive = o && typeof o === 'object' && typeof o.passive === 'boolean' ? o.passive : /^(touchstart|touchmove|wheel|mousewheel)$/.test(type);
+        reg.push({ type, fn, capture: cap(o), passive });
+      }
+      return add.call(this, type, fn, o);
+    };
+    EventTarget.prototype.removeEventListener = function (type, fn, o) {
+      if (this === document) { const i = reg.findIndex(l => l.type === type && l.fn === fn && l.capture === cap(o)); if (i !== -1) reg.splice(i, 1); }
+      return rem.call(this, type, fn, o);
+    };
+  });
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
   await page.goto('http://pen.local/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(4000);
@@ -61,12 +81,28 @@ const TYPES = /^(touchstart|touchmove|touchend|pointerdown|pointermove|pointerup
   await page.evaluate(() => { const k = pid(patients[0]); focusGoTo(k); });
   await page.waitForTimeout(500);
 
-  const cdp = await ctx.newCDPSession(page);
+  // Oyentes táctiles/de puntero NO pasivos en document según el registro (también los on<tipo> = fn). En Chromium la lista
+  // de CDP debe ser la misma: si no, la vía de WebKit estaría ciega y la prueba falla con las dos listas.
+  const cdp = BROWSER === 'chromium' ? await ctx.newCDPSession(page) : null;
   const nonPassive = async () => {
+    const reg = await page.evaluate((src) => { const re = new RegExp(src); return window.__plDocListeners.filter(l => re.test(l.type) && !l.passive).map(l => l.type)
+      .concat(['ontouchstart', 'ontouchmove', 'ontouchend', 'onpointerdown', 'onpointermove', 'onpointerup', 'onpointercancel', 'onmousedown'].filter(p => typeof document[p] === 'function').map(p => p.slice(2))); }, TYPES.source);
+    if (!cdp) return reg;
     const { result } = await cdp.send('Runtime.evaluate', { expression: 'document' });
     const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId });
-    return listeners.filter(l => TYPES.test(l.type) && !l.passive).map(l => l.type);
+    const viaCdp = listeners.filter(l => TYPES.test(l.type) && !l.passive).map(l => l.type);
+    return viaCdp.slice().sort().join() === reg.slice().sort().join() ? viaCdp : ['registro≠CDP', 'cdp:' + viaCdp.join('+'), 'registro:' + reg.join('+')];
   };
+  // P0: el registro ve un oyente no pasivo (y uno pasivo no), y lo suelta al quitarlo; si no, P1/P2 pasarían sin mirar.
+  //     Relativo a lo que ya hay: lo que pongan los oyentes de la app lo juzga P1.
+  const p0base = await nonPassive();
+  await page.evaluate(() => { window.__p0 = () => {}; document.addEventListener('pointerdown', window.__p0, { capture: true }); document.addEventListener('touchmove', window.__p0); });
+  const p0a = await nonPassive();
+  await page.evaluate(() => { document.removeEventListener('pointerdown', window.__p0, true); document.removeEventListener('touchmove', window.__p0); });
+  const p0b = await nonPassive();
+  const same = (x, y) => x.slice().sort().join() === y.slice().sort().join();
+  check('P0 registro de oyentes de document' + (cdp ? ' (igual a CDP)' : ' (WebKit, sin CDP)') + ': ve el pointerdown no pasivo de prueba (no el touchmove, pasivo de fábrica) y lo suelta al quitarlo',
+    !p0base.includes('registro≠CDP') && same(p0a, p0base.concat('pointerdown')) && same(p0b, p0base), JSON.stringify({ p0base, p0a, p0b }));
   const penDown = () => page.evaluate(() => {
     const ta = document.querySelector('textarea.field-ta[data-key][data-field="pendientes"]'); if (!ta) return 'sin caja';
     const r = ta.getBoundingClientRect();
