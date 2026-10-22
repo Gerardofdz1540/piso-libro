@@ -2,7 +2,7 @@
 
 Copia diaria de **todo lo que la app y los robots tienen de cada paciente** a una hoja de cálculo privada en Google
 Drive, para estudios y ensayos clínicos futuros. Entran los pacientes del censo, los egresados que guarda la Papelera, la
-cronología, los labs y cultivos de WinLab, los estudios de RIS y los procedimientos programados.
+cronología, los reportes y cultivos de WinLab, los estudios de RIS y los procedimientos programados.
 
 ```
 Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──► hoja «Registro de pacientes» en la carpeta privada
@@ -28,12 +28,25 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Notas de evolución | nota | fecha y hora, autor, con IA o no, texto. La app guarda 10; aquí se acumulan. |
 | Guardia y cronología | renglón | Cronología (de la nota y del respaldo de la base) y Guardia vigente · **Vigente** |
 | Procedimientos programados | procedimiento | la lista del día de la app |
-| Labs del robot (WinLab) | expediente, fecha y estudio | lo que capturó el robot, aunque no haya llegado a la tarjeta |
-| Cultivos del robot (WinLab) | cultivo | tipo, germen, resultado |
+| Labs del robot (WinLab) | reporte de WinLab del paciente | folio, toma, resultado, servicio y **valores** (un renglón por estudio: «ESTUDIO: valor unidad (ref. …)»), aunque no hayan llegado a la tarjeta · **Atribución** |
+| Cultivos del robot (WinLab) | muestra de cultivo de esos reportes | tipo, muestra, resultado, germen, antibiograma S/I/R, UFC, texto del reporte (del PDF cuando el robot lo leyó; si no, de la tabla) |
 | Imagen del robot (RIS) | estudio | modalidad, estudios, crítico, reporte, enlace (con su episodio) |
 | Diccionario | — | qué es cada columna, última actualización, conteos y avisos |
 
 - **Episodio:** el id del paciente en la base. Un reingreso crea otro id y por lo tanto otro episodio.
+- **WinLab:** cada fila de `winlab_labs` trae todos los reportes de la búsqueda por apellido (también de homónimos) y se
+  vuelve a guardar cada día. Entra un reporte solo si es del paciente, con **la regla del robot** (`rpa/lib.js`):
+  - Desde el 9 oct 2026 el robot marca los reportes del paciente (`__target`) por nombre, alias, edad y homónimos; esa
+    marca manda.
+  - Las capturas anteriores no traen la marca: el registro les aplica la misma regla del robot. Usa la edad y el alias
+    («nombre en WinLab») del censo o de la Papelera; lee encabezados en español o italiano; acepta una letra cambiada
+    por el OCR, FCO = FRANCISCO y similares. Las variantes A/O (MARIO/MARIA) son otra persona. Con homónimos del mismo
+    nombre decide la edad; si no se conoce, esos reportes no se copian y queda un aviso.
+  - El mismo reporte capturado varios días es un solo renglón: manda la captura con más valores, y el cultivo leído del
+    PDF manda sobre el de la tabla, también entre corridas.
+  - La columna «Atribución» dice por qué entró.
+- **Papelera:** cada noche se juntan **todas** las copias de la Papelera de cada episodio que está en la base, no solo
+  las de los últimos días. Así lo que solo traía una copia vieja no se pierde ni se marca «Vigente: No».
 - **Restaurar desde la Papelera** crea otro id. La columna «Episodio relacionado» une las dos partes («Continúa en …» /
   «Viene de …»).
 - **Censo y Papelera:** si el mismo episodio está en los dos, manda el censo y la Papelera rellena lo que le falte.
@@ -54,21 +67,46 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
   - Escribe encima sin vaciar antes; si Sheets falla a la mitad, la pestaña no queda vacía.
   - Agranda la cuadrícula si hace falta.
   - Si alguien renombró la columna clave de la fila 1, se detiene sin tocar nada y avisa.
-- **Respaldo semanal:** antes de escribir, cada 7 días guarda una copia de toda la hoja en la misma carpeta y conserva
-  las últimas 5. Las más viejas van a la papelera de Drive, que las guarda 30 días.
+- **Respaldo semanal:** antes de escribir, cada 7 días de calendario guarda una copia de toda la hoja en la misma carpeta
+  y conserva las últimas 5. Las más viejas van a la papelera de Drive, que las guarda 30 días.
+- **Escribe solo lo que cambió, cada cosa en su lugar:**
+  - Cada fila se actualiza en **su** renglón si algo cambió, y cada valor va a la columna con **su** nombre; las filas
+    nuevas van al final.
+  - Nunca recorre filas ni reescribe la pestaña entera, y no toca las columnas que no son del registro.
+  - Si a la hoja le falta una columna del registro (una versión nueva, o se renombró o borró una), la agrega al final
+    con su encabezado y lo avisa en el Diccionario. La columna renombrada conserva lo que tenía.
+  - Si se corta a la mitad (6 min), la siguiente vuelta completa lo que faltó.
 - **Lecturas incrementales y reanudables:**
-  - La Papelera, WinLab y RIS se leen por cursor, desde 2 días antes de lo último leído. Hay un tope por corrida (400,
-    5000 y 3000 filas). Si quedan filas, escribe lo leído y programa una continuación en 10 min, así la primera carga
-    termina en varias vueltas.
+  - La Papelera, WinLab y RIS se leen por cursor (fecha de captura + id), desde 2 días antes de lo último leído. Hay un
+    tope por corrida (400, 1500 y 3000 filas). Si quedan filas, escribe lo leído, guarda la posición exacta y programa
+    una continuación en 10 min, así la primera carga termina en varias vueltas.
+  - Se pagina por llave, no por posición: si alguien borra una fila mientras se lee, no se salta la siguiente.
   - Los cursores avanzan solo cuando lo leído ya quedó escrito.
-  - El censo, las notas, la cronología, los cultivos y los procedimientos se leen completos.
-  - Si la lectura pasa de 4.5 min, no escribe nada y lo reintenta.
+  - El censo, las notas, la cronología y los procedimientos se leen completos.
+  - WinLab se procesa página por página, sin guardar el JSON crudo en memoria.
   - Si una respuesta es demasiado grande (archivos incrustados), pide menos filas por página.
-- **Capacidad:** Sheets admite 10 millones de celdas por libro. El Diccionario muestra cuántas se usan y avisa al pasar
-  del 70%. A ese ritmo, en aproximadamente un año habrá que pasar lo viejo a un libro histórico.
+- **Tiempo** (Apps Script corta cada ejecución a los 6 min):
+  - Las lecturas por cursor se detienen a los 2.5 min y siguen en otra vuelta.
+  - Las demás lecturas, si pasan de 4 min, fallan sin escribir nada y se reintentan en la siguiente corrida.
+  - Después de 5 min 15 s no empieza otra pestaña, y dentro de una pestaña no empieza otra escritura después de
+    5 min 40 s. Lo que faltó se escribe en la siguiente vuelta, y los cursores no avanzan.
+  - Como mucho 8 vueltas extra en 24 h corridas. Los disparadores de una cuenta personal de Google tienen 90 min al día,
+    compartidos con el script del censo, que corre cada 5 min. Al terminar la carga se borra cualquier vuelta pendiente.
+  - Las URL miden menos de 2 KB (límite de UrlFetchApp): las copias de la Papelera se piden de 20 en 20 episodios.
+- **Si una fuente falla:** si WinLab, RIS o los procedimientos no se pueden leer, sus pestañas no se tocan ese día y lo
+  demás sí se escribe. El aviso queda en el Diccionario («Avisos de la última corrida»). Si fallan el censo, las notas,
+  la Papelera o la cronología, no se escribe nada.
+- **Índices en la base** (`scripts/supabase_registro_indices.sql`): (fecha de captura, id) en `winlab_labs`,
+  `ris_estudios` y `archive`. Sin ellos, cada página de WinLab tardaba 3.9 s (PostgREST corta a los 8 s); con ellos,
+  26 ms.
+- **Capacidad:** Sheets admite 10 millones de celdas por libro.
+  - Las pestañas nuevas se crean sin las columnas vacías de sobra.
+  - El Diccionario cuenta las celdas de todas las hojas y avisa al pasar del 70%. Entonces habrá que pasar lo viejo a un
+    libro histórico.
 - **Al usar la hoja:**
-  - Se pueden agregar columnas **a la derecha** y usar filtros; esas columnas se respetan.
-  - No insertes columnas en medio ni renombres la fila 1.
+  - Se pueden agregar columnas propias (grupo del estudio, inclusión…) y usar filtros; el registro no las toca.
+  - No renombres los encabezados del registro. Si cambia el de una columna clave («ID episodio», «Expediente»,
+    «Reporte»…), el registro se detiene sin escribir y avisa.
   - Para analizar, mejor trabaja en una copia.
 
 ## Instalación (una vez, ~5 min)
@@ -84,9 +122,15 @@ Supabase.
    - **Propiedades del script:**
      - `SUPABASE_KEY` = la *service_role key* (la misma que usa el script del censo).
      - `REGISTRO_SHEET_ID` = el id de la hoja del registro: lo que va entre `/d/` y `/edit` en su dirección.
-4. En el editor elige `instalarRegistroDiario` → **Ejecutar** → autoriza (Sheets, Drive y conexión externa).
-   Crea la actualización diaria (entre 23:00 y 24:00) y hace la primera copia completa, que puede tardar unos minutos.
+4. En el editor elige `instalarRegistroDiario` → **Ejecutar** → autoriza (Sheets, Drive y conexión externa). Si sale
+   «Google no ha verificado esta app»: Configuración avanzada → Ir a «Registro de pacientes» (no seguro) → Permitir.
+   - Crea la actualización diaria (entre 23:00 y 24:00) y hace la primera copia.
+   - La primera carga de WinLab (todos los reportes desde abril) se completa sola en algunas vueltas de 10 min. El
+     Diccionario dice «Carga en curso: Sí» mientras falte.
+   - Si el script falla antes de leer, revisa `REGISTRO_SHEET_ID`: el error lo dice.
 5. Para copiar en cualquier momento, ejecuta `actualizarRegistro` desde el editor.
+6. **Para actualizar el script** a una versión nueva: abre el proyecto, borra todo `Código.gs`, pega el archivo nuevo y
+   guarda. Las Propiedades del script y la actualización diaria se conservan; no hace falta volver a instalar.
 
 Opcionalmente, el script se puede ligar a la hoja (Extensiones → Apps Script, sin `REGISTRO_SHEET_ID`). Eso agrega el
 menú **Registro → Actualizar ahora**, pero cualquiera con permiso de **editor** en la hoja podría ver la llave. En ese
