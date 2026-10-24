@@ -53,9 +53,37 @@ En cada corrida el script compara la hoja con `patients` y:
   "Cargar desde nube") con `archived_by = sheet-sync` y la etiqueta de egreso en la nota; **solo
   si el archivo tuvo éxito** borra la nota y la fila. Si falla, la fila se queda y se reintenta en
   la siguiente corrida.
-- **Guardas:** si la hoja parsea < 10 pacientes o habría que borrar > 50 % del censo, no borra ni
-  mueve nada (solo upsert). Solo retira filas que el propio sync creó (`updated_by = sheet-sync`);
-  los pacientes agregados a mano en la app no se tocan.
+- **Guardas:** si la hoja parsea < 10 pacientes o habría que borrar > 50 % del censo, no archiva,
+  borra ni mueve nada. Solo retira filas que el propio sync creó (`updated_by = sheet-sync`); los
+  pacientes agregados a mano en la app no se tocan. Con la guarda puesta **solo se upsertean las camas
+  que no necesitan reconciliar** (19 oct 2026): camas libres en Supabase y camas donde sigue la misma
+  persona. Se **retienen** las camas con otra persona (reasignadas), el origen y el destino de cada
+  cambio de cama y los expedientes corregidos. Antes iban al upsert: `ON CONFLICT (cama)` le ponía a la
+  fila vieja el nombre del nuevo, su nota quedaba pegada a otra persona y desde la corrida siguiente esa
+  fila contaba como "sigue igual" (cruce permanente). Las camas retenidas quedan en **Ver → Registros**
+  y en `sync_log` (`guarda_hoja_chica` o `guarda_borrado_masivo`, con la lista de camas; una vez cada 6 h).
+
+### Trade-off de la guarda y `doSyncForce`
+
+Mientras la guarda esté puesta, **el paciente nuevo de una cama retenida no aparece en la app**: se
+sigue viendo al anterior, con su nota y su nombre, hasta que la guarda deje de saltar. Es a propósito:
+mostrar al paciente nuevo con la nota del anterior es peor que mostrarlo tarde. Los ingresos en camas
+libres y los pacientes que no cambiaron sí se actualizan.
+
+Si hay un **recambio masivo real** (p. ej. el sync estuvo caído el fin de semana y hoy medio piso es
+gente nueva), la guarda de > 50 % saltaría en cada corrida y esos pacientes no aparecerían nunca. Para
+eso está `doSyncForce`:
+
+1. Ejecuta **`testParseOnly`** y revisa en **Ver → Registros** que el número de pacientes cuadre con la
+   hoja (si la hoja se está leyendo mal, forzar archivaría a medio piso).
+2. Ejecuta **`doSyncForce`** (una sola corrida, sin guarda de > 50 %): archiva las camas reasignadas y
+   aplica los cambios de cama; deja una fila `sync_forzado` en `sync_log`.
+3. Si el registro aún dice "periodo de gracia", vuelve a ejecutarlo pasados 12 min: los retiros (ya no
+   están en la hoja) siguen esperando su gracia, y si son > 50 % la corrida automática volvería a
+   detenerse.
+
+`doSyncForce` **no** salta la guarda de hoja < 10: eso huele a error de lectura, no a recambio. Cada
+archivo queda en la Papelera de la app y es restaurable.
 
 ## Watchdog de laboratorios
 
@@ -183,8 +211,10 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
    **▶ Ejecutar**.
 6. Sale una ventana de permisos de Google → **Revisar permisos** → elige tu cuenta → **Permitir**.
 
-Listo: quedan 4 triggers: `onEdit` (instalable), sync cada 5 min, watchdog de labs cada 4 h e
-indicaciones (Doc) cada 5 min. `createTriggers` también hace la primera subida del Doc.
+Listo: quedan los triggers de sync cada 5 min, watchdog de labs cada 4 h e indicaciones (Doc)
+cada 5 min; `onEdit` se instala si el archivo lo admite. `createTriggers` conserva los triggers
+de otros módulos y los anteriores si falla la creación de un reloj obligatorio. También hace
+la primera subida del Doc.
 
 ## Actualizar el script (cada vez que cambie `censo-sync.gs` en el repo)
 
@@ -198,7 +228,8 @@ indicaciones (Doc) cada 5 min. `createTriggers` también hace la primera subida 
 ## Probar sin escribir nada
 
 En el selector de función elige **`testParseOnly`** → **▶ Ejecutar** → menú **Ver → Registros**:
-verás cuántos pacientes parseó y qué expedientes repetidos hay, sin tocar Supabase.
+verás cuántos pacientes parseó y qué expedientes repetidos hay, sin tocar Supabase. (`doSyncForce` sí
+escribe; ver "Trade-off de la guarda".)
 
 Pruebas offline de la reconciliación (sin Google ni Supabase, con stubs):
 
@@ -212,3 +243,16 @@ node apps-script/censo-sync.test.js
   script bypassa RLS para escribir; la app pública sigue protegida por RLS (anon ciego).
 - `sync_log` recibe cada aviso de expediente repetido/duplicado **una vez cada 6 h** (antes se repetía en cada corrida
   de 5 min y la tabla pasó de 29 000 filas).
+
+## Comprobación en producción
+
+El 24 de octubre se cotejó el censo vigente con Supabase: 45 identidades coincidentes por cama
++ expediente, sin pacientes faltantes. El proyecto activo de Apps Script abrió el archivo de
+Drive y completó sus ejecuciones programadas, aunque Drive lo identifica como Excel. Por eso no
+se cambia el archivo ni se amplían los permisos de Drive para convertirlo.
+
+Después de actualizar, ejecuta `testParseOnly()` y coteja el total con el censo vigente; luego
+`createTriggers()` y `doSyncScheduled()`. Si el `gid` cambió, se busca una sola pestaña con
+CAMA/NOMBRE/EXPEDIENTE; con cero o varias candidatas se aborta sin escribir en Supabase.
+Si Supabase rechaza la lectura de pacientes, la ejecución falla con el código HTTP y no anuncia
+un `Sync OK` falso ni realiza un upsert sin comprobar la identidad.

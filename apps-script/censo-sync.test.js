@@ -1114,5 +1114,160 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   }
 }
 
+// ── 20) Con la GUARDA puesta (hoja < 10 o > 50 % a borrar) el upsert no le pone a una fila vieja (con su nota)
+//        el nombre de otra persona: camas reasignadas, cambios de cama y su destino quedan fuera hasta reconciliar ─
+{
+  const upsertCamas = (calls) => { const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama")); return up && Array.isArray(up.body) ? up.body.map((p) => p.cama) : []; };
+  const onlyUpsert = (calls) => !calls.some((c) => c.m !== "GET" && !c.u.startsWith("/rest/v1/patients?on_conflict=cama") && !c.u.startsWith("/rest/v1/sync_log"));
+  const guardLog = (calls) => calls.filter((c) => c.m === "POST" && c.u.startsWith("/rest/v1/sync_log")).flatMap((c) => c.body);
+  const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  // Supabase: 26 pacientes en 5-10..5-35 (exp 500..525).
+  const cur = range(0, 25).map((i) => ({ id: "x" + i, cama: "5-" + (10 + i), exp: String(500 + i), nombre: "P " + (500 + i), updated_by: "sheet-sync" }));
+  const full = Object.fromEntries(cur.map((r) => [r.id, { ...r, notes: [{ patient_id: r.id, pendientes: "nota de " + r.id }] }]));
+  // Hoja: 14 camas con gente nueva (5-10..5-23), intercambio 5-24↔5-25, 5-26 pasa a 7-50 (vacía en Supabase),
+  // 5-27..5-30 igual, 3 ingresos en camas libres (6-10..6-12); 5-31..5-35 ya no están (gracia).
+  const reasignadas = range(10, 23).map((n) => "5-" + n);
+  const sheet = reasignadas.map((c, i) => row(c, String(900 + i)))
+    .concat([row("5-24", "515"), row("5-25", "514"), row("7-50", "516")])
+    .concat(range(27, 30).map((n) => row("5-" + n, String(490 + n))))
+    .concat([row("6-10", "950"), row("6-11", "951"), row("6-12", "952")]);
+  const retenidas = reasignadas.concat(["5-24", "5-25", "7-50"]);
+  {
+    const { sb, calls, logs } = makeSandbox({ cur, full, props: {} });
+    const r = sb.syncPatients_("svc", sheet);
+    const up = upsertCamas(calls);
+    check("T20a recambio masivo (14 reasignadas de 26 → guarda >50 %): se loguea ABORTA y no hay DELETE/archive/PATCH",
+      r === 0 && logs.some((l) => /ABORTA reconciliación, solo upsert/.test(l)) && onlyUpsert(calls), JSON.stringify(calls.map((c) => c.m + " " + c.u)));
+    check("T20b guarda >50 %: ninguna cama REASIGNADA ni de un cambio de cama (origen 5-24/5-25, destino 7-50) va al upsert",
+      retenidas.every((c) => !up.includes(c)), JSON.stringify(up));
+    check("T20c guarda >50 %: las camas que no necesitan reconciliar (misma persona 5-27..5-30, ingresos en camas libres 6-10..6-12) SÍ entran",
+      up.length === 7 && ["5-27", "5-28", "5-29", "5-30", "6-10", "6-11", "6-12"].every((c) => up.includes(c)), JSON.stringify(up));
+    const sl = guardLog(calls);
+    check("T20d guarda >50 %: aviso en sync_log (guarda_borrado_masivo) con las 17 camas retenidas y log con la lista",
+      sl.length === 1 && sl[0].motivo === "guarda_borrado_masivo" && retenidas.every((c) => sl[0].camas.split(", ").includes(c)) && sl[0].camas.split(", ").length === 17
+      && logs.some((l) => /retenida/.test(l) && /5-24/.test(l) && /7-50/.test(l)), JSON.stringify({ sl, logs }));
+  }
+  // Caso T16b (misma cama, mismo exp único, OTRA persona) en una hoja de 6 filas → guarda de hoja < 10
+  {
+    const A = "PEREZ RUIZ JUAN CARLOS", B = "LOPEZ SOTO MIGUEL ANGEL";
+    const a1 = { id: "a1", cama: "3-101", exp: "X", nombre: A, edad: "44", updated_by: "sheet-sync" };
+    const small = [row("3-101", "X", { nombre: B, edad: 31 })].concat(range(1, 5).map((i) => row("4-" + (10 + i), String(100 + i))));
+    const { sb, calls, logs } = makeSandbox({ cur: [a1], full: { a1: { ...a1, notes: [{ patient_id: "a1", pendientes: "nota de A" }] } }, props: {} });
+    sb.syncPatients_("svc", small);
+    const up = calls.find((c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
+    const sl = guardLog(calls);
+    check("T20e exp copiado a otra persona en hoja de 6 filas (guarda <10): la fila de A (con su nota) NO recibe el nombre de B; las 5 camas libres sí entran; aviso guarda_hoja_chica",
+      !!up && !up.body.some((p) => p.cama === "3-101") && up.body.length === 5 && !up.body.some((p) => p.nombre === B) && onlyUpsert(calls)
+      && sl.length === 1 && sl[0].motivo === "guarda_hoja_chica" && sl[0].camas === "3-101" && logs.some((l) => /solo 6 en la hoja/.test(l)), JSON.stringify({ up: up && up.body.map((p) => p.cama + ":" + p.nombre), sl }));
+  }
+  // Hoja < 10 con un cambio de cama hacia una cama LIBRE: el destino tampoco entra (crearía una copia vacía del paciente)
+  {
+    const d1 = { id: "d1", cama: "3-104", exp: "4", nombre: "P 4", updated_by: "sheet-sync" };
+    const small = [row("3-107", "4")].concat(range(1, 4).map((i) => row("4-" + (10 + i), String(100 + i))));
+    const { sb, calls } = makeSandbox({ cur: [d1], props: {} });
+    sb.syncPatients_("svc", small);
+    const up = upsertCamas(calls);
+    check("T20f guarda <10 con cambio de cama 3-104→3-107 (libre): 3-107 fuera del upsert, sin PATCH; las otras 4 entran",
+      !up.includes("3-107") && up.length === 4 && onlyUpsert(calls), JSON.stringify(up));
+  }
+  // Guarda sin camas retenidas (todo son camas libres o la misma persona): solo upsert, sin aviso en sync_log (T6 intacto)
+  {
+    const { sb, calls } = makeSandbox({ cur: [{ id: "k1", cama: "4-11", exp: "101", nombre: "P 101", updated_by: "sheet-sync" }], props: {} });
+    sb.syncPatients_("svc", range(1, 5).map((i) => row("4-" + (10 + i), String(100 + i))));
+    check("T20g guarda <10 sin nada que retener: las 5 camas al upsert y ningún POST a sync_log", upsertCamas(calls).length === 5 && guardLog(calls).length === 0);
+  }
+  // doSyncForce: salta UNA vez la guarda de >50 % (recambio masivo real) → archiva, mueve y luego upsert completo
+  {
+    const { sb, calls, logs } = makeSandbox({ cur, full, props: {} });
+    const r = sb.syncPatients_("svc", sheet, { force: true });
+    const arcs = calls.filter((c) => c.m === "POST" && c.u.startsWith("/rest/v1/archive")).map((c) => c.body.patient_data.cama + "|" + c.body.note_data._egreso);
+    const finals = calls.filter((c) => c.m === "PATCH" && c.body.cama && !/#MV-/.test(c.body.cama)).map((c) => c.u.match(/id=eq\.(\w+)/)[1] + ":" + c.body.cama);
+    const up = upsertCamas(calls);
+    const iLastDel = calls.map((c) => c.m).lastIndexOf("DELETE"), iUp = seq(calls, (c) => c.u.startsWith("/rest/v1/patients?on_conflict=cama"));
+    check("T20h force: las 14 reasignadas se archivan (CAMA REASIGNADA) ANTES del upsert; el intercambio y 5-26→7-50 se mueven por PATCH",
+      r === 14 && arcs.length === 14 && reasignadas.every((c) => arcs.includes(c + "|CAMA REASIGNADA (hoja)")) && iUp > iLastDel
+      && finals.includes("x14:5-25") && finals.includes("x15:5-24") && finals.includes("x16:7-50") && finals.length === 3, JSON.stringify({ r, arcs, finals }));
+    check("T20i force: el upsert lleva las 24 camas de la hoja, ningún retiro en gracia se archiva y queda auditoría sync_forzado",
+      up.length === 24 && !arcs.some((a) => /RETIRADO/.test(a)) && guardLog(calls).some((q) => q.motivo === "sync_forzado") && logs.some((l) => /doSyncForce/.test(l)), JSON.stringify({ up: up.length, sl: guardLog(calls) }));
+    // force NO salta la guarda de hoja < 10 (eso huele a error de lectura, no a recambio)
+    const { sb: sb2, calls: c2 } = makeSandbox({ cur, full, props: {} });
+    sb2.syncPatients_("svc", sheet.slice(0, 6), { force: true });
+    check("T20j force con hoja de 6 filas: sigue la guarda <10 (sin DELETE/archive/PATCH, camas reasignadas fuera)",
+      onlyUpsert(c2) && upsertCamas(c2).length === 0, JSON.stringify(upsertCamas(c2)));
+    // la entrada manual pasa force a doSync con el lock; las automáticas no
+    const { sb: sb3 } = makeSandbox({});
+    const seen = [];
+    sb3.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
+    sb3.doSync = (o) => { seen.push(o); return {}; };
+    sb3.doSyncForce(); sb3.doSyncScheduled();
+    check("T20k doSyncForce llama doSync({force:true}); doSyncScheduled sin force", seen.length === 2 && seen[0] && seen[0].force === true && !(seen[1] && seen[1].force), JSON.stringify(seen));
+  }
+}
+
+// ── 21) Selección de la pestaña: nunca leer a ciegas una portada u otro censo ──────────────────
+{
+  const header = [["CAMA", "EXPEDIENTE", "NOMBRE"], ["3-101", "26-10001", "PACIENTE DE PRUEBA"]];
+  const sheet = (id, rows) => ({ getSheetId: () => id, getDataRange: () => ({ getValues: () => rows }) });
+  const { sb, calls } = makeSandbox({});
+  sb.SpreadsheetApp = { openById: () => ({ getSheets: () => [sheet(7, header), sheet(sb.CENSO_GID, header)] }) };
+  check("T21 usa el gid configurado incluso con otros censos en el archivo", sb.readCensoRows_() === header);
+  sb.SpreadsheetApp = { openById: () => ({ getSheets: () => [sheet(7, [["PORTADA"]]), sheet(8, header)] }) };
+  check("T21b gid cambiado: encuentra censo aunque no sea la primera pestaña", sb.readCensoRows_() === header);
+  sb.SpreadsheetApp = { openById: () => ({ getSheets: () => [sheet(7, header), sheet(8, header)] }) };
+  let error = ""; try { sb.doSync(); } catch (e) { error = String(e); }
+  check("T21c dos censos posibles: aborta sin escrituras", /encontradas: 2/.test(error) && !calls.length);
+  sb.SpreadsheetApp = { openById: () => ({ getSheets: () => [sheet(7, [["PORTADA"]])] }) };
+  error = ""; try { sb.doSync(); } catch (e) { error = String(e); }
+  check("T21d sin pestaña censal: aborta sin escrituras", /encontradas: 0/.test(error) && !calls.length);
+}
+
+// ── 22) Reinstalación: Excel no bloquea el reloj ni elimina triggers de otros módulos ─────────
+{
+  const trigger = (handler) => ({ getHandlerFunction: () => handler });
+  function installer(failAt) {
+    const { sb } = makeSandbox({});
+    const unrelated = trigger("registroScheduled"), old = trigger("doSyncScheduled");
+    let active = [unrelated, old];
+    sb.ScriptApp = {
+      getProjectTriggers: () => active.slice(),
+      deleteTrigger: (t) => { active = active.filter((q) => q !== t); },
+      newTrigger: (handler) => {
+        const builder = {
+          timeBased: () => builder, everyMinutes: () => builder, everyHours: () => builder,
+          forSpreadsheet: () => builder, onEdit: () => builder,
+          create: () => {
+            if (handler === failAt || handler === "onCensoEdit") throw new Error("Trigger rechazado");
+            const t = trigger(handler); active.push(t); return t;
+          }
+        };
+        return builder;
+      }
+    };
+    sb.syncIndicaciones = () => {};
+    return { sb, unrelated, old, active: () => active };
+  }
+  {
+    const env = installer(); env.sb.createTriggers();
+    const active = env.active();
+    check("T22 Excel sin onEdit: tres relojes instalados; conserva registroScheduled", active.length === 4 && active.includes(env.unrelated) && !active.includes(env.old) && ["doSyncScheduled", "checkLabsFreshness", "syncIndicacionesScheduled"].every((h) => active.some((t) => t.getHandlerFunction() === h)));
+    env.sb.createTriggers();
+    check("T22b reinstalar no duplica triggers y conserva módulos ajenos", env.active().length === 4 && env.active().includes(env.unrelated));
+  }
+  {
+    const env = installer("checkLabsFreshness");
+    let error = ""; try { env.sb.createTriggers(); } catch (e) { error = String(e); }
+    check("T22c falla reloj obligatorio: elimina solo nuevos y conserva todos los anteriores", /se conservaron los anteriores/.test(error) && env.active().length === 2 && env.active().includes(env.old) && env.active().includes(env.unrelated));
+  }
+}
+
+// ── 23) No anunciar éxito si Supabase rechazó la lectura de identidad ─────────────────────────
+{
+  const { sb, calls, logs } = makeSandbox({ handler: (m, u) => m === "GET" && u.startsWith("/rest/v1/patients?") ? { code: 403, body: "Forbidden" } : null });
+  sb.readCensoRows_ = () => [];
+  sb.parseCenso_ = () => [row("3-101", "26-10001")];
+  let error = ""; try { sb.doSync(); } catch (e) { error = String(e); }
+  check("T23 GET 403: ejecución fallida visible, sin Sync OK y sin escrituras", /GET patients HTTP 403/.test(error) && calls.every((c) => c.m === "GET") && !logs.some((s) => /Sync OK/.test(s)), error);
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
