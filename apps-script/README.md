@@ -212,3 +212,7 @@ node apps-script/censo-sync.test.js
   script bypassa RLS para escribir; la app pública sigue protegida por RLS (anon ciego).
 - `sync_log` recibe cada aviso de expediente repetido/duplicado **una vez cada 6 h** (antes se repetía en cada corrida
   de 5 min y la tabla pasó de 29 000 filas).
+
+## Si el censo de Drive es un Excel (.xlsx)
+
+`SpreadsheetApp.openById` no abre un `.xlsx`. `censo-sync.gs` lo detecta y convierte una copia temporal a Hoja de Google, pero necesita el servicio avanzado **Drive**: Editor de Apps Script → Servicios (+) → *Drive API* → Agregar. Después pega el script actualizado, corre `testParseOnly()` (debe parsear ~44 pacientes) y `createTriggers()`. Con un `.xlsx` no existe el disparador al editar; el sync corre cada 5 min.

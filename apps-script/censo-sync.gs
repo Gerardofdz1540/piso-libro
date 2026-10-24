@@ -110,13 +110,39 @@ function doSync() {
   return { upserts: dd.rows.length, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
 }
 
-/** Lee todas las filas de la pestana del censo (por gid). */
+/**
+ * Lee todas las filas de la pestana del censo (por gid).
+ * El censo puede ser una Hoja de Google nativa o un EXCEL (.xlsx) subido a Drive (oct 2026: "CENSO FERNÁNDEZ
+ * dd.mm.aaaa.xlsx"). SpreadsheetApp.openById NO abre un .xlsx (lanza "Unexpected error…") y cada corrida moría ahí:
+ * ningún paciente nuevo del Drive llegaba a la app. Si no abre, se convierte una copia temporal a Hoja de Google con
+ * el servicio avanzado Drive (Servicios → + → Drive API), se lee y se manda a la papelera.
+ */
 function readCensoRows_() {
-  var ss = SpreadsheetApp.openById(CENSO_SHEET_ID);
-  var sheet = null, sheets = ss.getSheets();
-  for (var i = 0; i < sheets.length; i++) { if (sheets[i].getSheetId() === CENSO_GID) { sheet = sheets[i]; break; } }
-  if (!sheet) sheet = ss.getSheets()[0];
-  return sheet.getDataRange().getValues();
+  var ss = null, temp = null;
+  try { ss = SpreadsheetApp.openById(CENSO_SHEET_ID); }
+  catch (e) { temp = convertXlsxToSheet_(CENSO_SHEET_ID, e); ss = SpreadsheetApp.openById(temp); }
+  try {
+    var sheet = null, sheets = ss.getSheets();
+    for (var i = 0; i < sheets.length; i++) { if (sheets[i].getSheetId() === CENSO_GID) { sheet = sheets[i]; break; } }
+    if (!sheet) sheet = ss.getSheets()[0];
+    return sheet.getDataRange().getValues();
+  } finally {
+    if (temp) { try { DriveApp.getFileById(temp).setTrashed(true); } catch (_) {} }
+  }
+}
+
+/** Copia temporal (Hoja de Google) de un .xlsx de Drive. Devuelve el id de la copia. */
+function convertXlsxToSheet_(fileId, cause) {
+  var blob;
+  try { blob = DriveApp.getFileById(fileId).getBlob(); }
+  catch (e) { throw new Error('No se pudo abrir el censo (' + cause + ') ni leer el archivo de Drive (' + e + ')'); }
+  var title = 'tmp-censo-sync-' + Date.now(), made;
+  if (typeof Drive === 'undefined' || !Drive.Files) {
+    throw new Error('El censo es un archivo Excel (.xlsx) y falta el servicio avanzado Drive: Editor de Apps Script → Servicios (+) → Drive API → Agregar. Error original: ' + cause);
+  }
+  if (Drive.Files.create) made = Drive.Files.create({ name: title, mimeType: 'application/vnd.google-apps.spreadsheet' }, blob);        // Drive API v3
+  else made = Drive.Files.insert({ title: title, mimeType: 'application/vnd.google-apps.spreadsheet' }, blob, { convert: true });       // Drive API v2
+  return made.id;
 }
 
 /**
@@ -1345,7 +1371,9 @@ function toISODate_(v) {
 /** Ejecuta esto UNA vez para instalar los 3 triggers (pide OAuth la primera vez; vuelve a correrlo al actualizar el script). */
 function createTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger('onCensoEdit').forSpreadsheet(CENSO_SHEET_ID).onEdit().create();
+  // El onEdit solo existe para Hojas de Google nativas; con un .xlsx no se puede y basta el sync de cada 5 min.
+  try { ScriptApp.newTrigger('onCensoEdit').forSpreadsheet(CENSO_SHEET_ID).onEdit().create(); }
+  catch (e) { Logger.log('onEdit no instalado (¿el censo es un .xlsx?): ' + e); }
   ScriptApp.newTrigger('doSyncScheduled').timeBased().everyMinutes(5).create();
   ScriptApp.newTrigger('checkLabsFreshness').timeBased().everyHours(4).create();
   ScriptApp.newTrigger('syncIndicacionesScheduled').timeBased().everyMinutes(5).create();
