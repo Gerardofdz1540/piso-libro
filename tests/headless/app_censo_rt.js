@@ -12,7 +12,7 @@ const base = (id, extra={}) => ({id,cama:'3-101',exp:'26-10001',nombre:'ANA LOPE
 (async()=>{
   const browser=await launch(); const page=await browser.newPage();
   const errors=[]; page.on('pageerror',e=>errors.push(String(e)));
-  let rows=[base('a1')], noteDelay=0, gate=null, noteStarted=null;
+  let rows=[base('a1')], noteDelay=0, gate=null, noteStarted=null, keepaliveStatus=200;
   const calls=[];
   await page.route('**/vendor/supabase*',r=>r.abort());
   await page.route('**/rest/v1/**',async route=>{
@@ -20,6 +20,7 @@ const base = (id, extra={}) => ({id,cama:'3-101',exp:'26-10001',nombre:'ANA LOPE
     calls.push({path:u.pathname,query:u.search,m});
     const json=data=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
     if(m!=='GET') return json([]);
+    if(u.pathname.endsWith('/guard_info') && keepaliveStatus!==200) return route.fulfill({status:keepaliveStatus,contentType:'application/json',body:JSON.stringify({message:'Service unavailable'})});
     if(u.pathname.endsWith('/patients')) {
       const id=u.searchParams.get('id');
       return json(rows.filter(r=>!id || id==='eq.'+r.id || id.startsWith('in.')&&id.slice(4,-1).split(',').includes(r.id)));
@@ -92,6 +93,11 @@ const base = (id, extra={}) => ({id,cama:'3-101',exp:'26-10001',nombre:'ANA LOPE
   check('C7 carga lenta no regresa cama ni revive egresado',loaded.pts?.length===1&&loaded.pts[0].cama==='3-130'&&loaded.pts[0].dx==='VIGENTE',loaded);
   check('C8 se libera la memoria de eventos al terminar la carga',loaded.pending===0&&loaded.cached===0,loaded);
   check('C9 sin errores de ejecución',errors.length===0,errors);
+  const paused=await page.evaluate(()=>({service:isSupabasePausedError(new Error('GET guard_info HTTP 503')),explicit:isSupabasePausedError(new Error('project is paused'))}));
+  check('C10 un HTTP 503 no afirma que el proyecto está pausado',!paused.service&&paused.explicit,paused);
+  keepaliveStatus=503;
+  const unavailable=await page.evaluate(async()=>({ok:await supaKeepAlive(),label:document.getElementById('sync-label').textContent}));
+  check('C11 un keepalive rechazado queda como error de conexión, sin anunciar guardado ni pausa',!unavailable.ok&&unavailable.label.includes('Sin conexión con la base'),unavailable);
   console.log('RESULT APP-CENSO-RT: '+passed+' passed, '+failed+' failed');
   await browser.close(); process.exitCode=failed?1:0;
 })().catch(e=>{console.error('CRASH',e);process.exit(2)});

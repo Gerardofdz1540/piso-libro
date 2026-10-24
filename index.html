@@ -10843,7 +10843,9 @@ function plExportBackup() {
           setSupabasePausedStatus(e && e.message ? e.message : "");
           return false;
         }
-        return !isLikelyNetworkError(e);
+        _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
+        setSyncStatus("error", "Sin conexión con la base — reintentando");
+        return false;
       }
     }
 
@@ -10890,8 +10892,7 @@ function plExportBackup() {
         msg.includes("project is paused") ||
         msg.includes("database is paused") ||
         msg.includes("restoring your project") ||
-        msg.includes("http 540") ||
-        msg.includes("http 503")
+        msg.includes("http 540")
       );
     }
     async function retryNetwork(fn, retries = 1, baseDelayMs = 350) {
@@ -27991,7 +27992,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           <div class="cx-r2">
             <textarea class="cx-in cx-in-hal" rows="${_cxRows(c.hallazgos, 60)}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Hallazgos / técnica / complicaciones" data-ck="${k}" data-id="${id}" data-f="hallazgos" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)">${esc(c.hallazgos || "")}</textarea>
             <input class="cx-in cx-sang" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
-            <input class="cx-in cx-cir" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(c.cirujano || "")}" placeholder="Cirujano" title="${esc(c.cirujano || "Cirujano")}" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>
+            <textarea class="cx-in cx-cir" rows="${_cxRows(c.cirujano, 22)}" autocorrect="off" autocapitalize="words" spellcheck="false" placeholder="Cirujano" title="${esc(c.cirujano || "Cirujano")}" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)">${esc(c.cirujano || "")}</textarea>
           </div>
           ${renderFotoStrip(k, "cx:" + String(c.id || ""), c.fotos, { add: true, label: "Foto de la nota postquirúrgica (cámara o galería): la IA llena los campos vacíos", tail: _cxAiTail(k, c) })}
         </div>`;
