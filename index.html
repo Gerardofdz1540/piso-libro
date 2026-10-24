@@ -2976,6 +2976,7 @@
     .dv-name { font-size: 11px; font-weight: 800; color: #5b21b6; background: #f3e8ff; border: none; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-family: var(--font); min-width: 0; text-align: left; min-height: 26px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dv-name b { color: #dc2626; }
     .dv-in { min-height: 26px; }
+    textarea.dv-in { resize: none; overflow: hidden; line-height: 1.35; }
     .dv-day { font-size: 10px; font-weight: 700; color: #6d28d9; background: #ede9fe; border: none; border-radius: 6px; padding: 0 7px; min-height: 26px; cursor: pointer; font-family: var(--mono); }
     .dv-day.on { background: #5b21b6; color: #fff; }
     .dv-x { width: 26px; height: 26px; border: none; border-radius: 50%; background: #fee2e2; color: #991b1b; font-weight: 800; cursor: pointer; }
@@ -28462,7 +28463,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const id = esc(String(d.id || ""));
         return `<div class="dv-row">
           <button type="button" class="dv-name" data-ck="${k}" data-id="${id}" onclick="toggleDispositivoLado(this.dataset.ck,this.dataset.id)" title="Toca para cambiar el lado (D / I / sin lado)">${esc(d.tipo || "Dispositivo")}${d.lado ? ` <b>${esc(d.lado)}</b>` : ""}</button>
-          <input class="pm-input dv-in dv-sitio" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.sitio || "")}" placeholder="sitio / región" data-ck="${k}" data-id="${id}" data-f="sitio" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="${esc(d.sitio || "Sitio / región")}"/>
+          <textarea class="pm-input dv-in dv-sitio" rows="${_cxRows(d.sitio, 22)}" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="sitio / región" data-ck="${k}" data-id="${id}" data-f="sitio" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)" title="${esc(d.sitio || "Sitio / región")}">${esc(d.sitio || "")}</textarea>
           <input class="pm-input dv-in dv-gasto" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.gasto || "")}" placeholder="mL/24 h" data-ck="${k}" data-id="${id}" data-f="gasto" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Gasto mL/24 h${d.gasto ? ": " + esc(d.gasto) : ""}"/>
           <input class="pm-input dv-in dv-carac" autocorrect="off" autocapitalize="sentences" spellcheck="false" value="${esc(d.carac || "")}" placeholder="seroso, hemático, fecal, fuga…" data-ck="${k}" data-id="${id}" data-f="carac" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="${esc(d.carac || "Características")}"/>
           <button type="button" class="dv-day${dias !== null ? " on" : ""}" data-ck="${k}" data-id="${id}" onclick="setDispositivoFecha(this.dataset.ck,this.dataset.id)" title="${dias !== null ? "Colocado el " + esc(d.fi) + " · toca para cambiar" : "Fecha de colocación"}">${dias !== null ? "d" + dias : "📅"}</button>
@@ -28914,7 +28915,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       (root || document).querySelectorAll('textarea.field-ta').forEach(_autoResizeTA);
       // Cirugías (oct 2026): procedimiento y hallazgos crecen a TODO su texto. Una caja oculta (sección cerrada) mide 0:
       // se deja con sus renglones y se ajusta al abrirse (evento toggle, abajo).
-      (root || document).querySelectorAll('textarea.cx-in').forEach(function (el) { if (el.getClientRects().length) _autoResizeTA(el); });
+      (root || document).querySelectorAll('textarea.cx-in, textarea.dv-in').forEach(function (el) { if (el.getClientRects().length) _autoResizeTA(el); });
       fitInputsIn(root);
     }
     // ─── Que el NÚMERO/TEXTO quepa en su cuadro (oct 2026) ───────────────────────────────────────────────────────────
@@ -28976,8 +28977,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
           m.addedNodes.forEach(function (node) {
             if (node.nodeType !== 1) return;
             if (node.classList && node.classList.contains('field-ta')) need = true;
-            else if (node.matches && node.matches(FIT_SEL + ', textarea.cx-in')) need = true;
-            else if (node.querySelector && node.querySelector('textarea.field-ta, textarea.cx-in, ' + FIT_SEL)) need = true;
+            else if (node.matches && node.matches(FIT_SEL + ', textarea.cx-in, textarea.dv-in')) need = true;
+            else if (node.querySelector && node.querySelector('textarea.field-ta, textarea.cx-in, textarea.dv-in, ' + FIT_SEL)) need = true;
           });
         });
         if (need) {
