@@ -2976,6 +2976,7 @@
     .dv-name { font-size: 11px; font-weight: 800; color: #5b21b6; background: #f3e8ff; border: none; border-radius: 6px; padding: 3px 6px; cursor: pointer; font-family: var(--font); min-width: 0; text-align: left; min-height: 26px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dv-name b { color: #dc2626; }
     .dv-in { min-height: 26px; }
+    textarea.dv-in { resize: none; overflow: hidden; line-height: 1.35; }
     .dv-day { font-size: 10px; font-weight: 700; color: #6d28d9; background: #ede9fe; border: none; border-radius: 6px; padding: 0 7px; min-height: 26px; cursor: pointer; font-family: var(--mono); }
     .dv-day.on { background: #5b21b6; color: #fff; }
     .dv-x { width: 26px; height: 26px; border: none; border-radius: 50%; background: #fee2e2; color: #991b1b; font-weight: 800; cursor: pointer; }
@@ -6416,11 +6417,21 @@ function plExportBackup() {
     let _realtimeSubs = [];  // active Realtime subscriptions
     let _suppressRealtimeKeys = new Set(); // per-patient suppression (use "__all__" for global)
     const _rtNoteMissed = new Map(); // patient_id → última fila de `notes` descartada durante una supresión
+    const _rtPatientMissed = new Map(); // cambios censales recibidos mientras se guarda/importa
+    const _rtPatientChanges = new Map(); // protege las cargas en vuelo contra una foto censal más vieja
+    const _rtPatientLoads = new Set(); // soltar las filas Realtime al terminar la última carga
+    let _rtPatientVersion = 0;
+    const _suppressRealtimeUntil = new Map();
     function suppressKey(k, ms) {
+      const until = Date.now() + (ms || 3000);
+      _suppressRealtimeUntil.set(k, until);
       _suppressRealtimeKeys.add(k);
       setTimeout(function () {
+        if (_suppressRealtimeUntil.get(k) !== until) return;
+        _suppressRealtimeUntil.delete(k);
         _suppressRealtimeKeys.delete(k);
         try { if (typeof _rtNoteCatchUp === "function") _rtNoteCatchUp(k); } catch (_) {}
+        try { if (typeof _rtPatientCatchUp === "function") _rtPatientCatchUp(k); } catch (_) {}
       }, ms || 3000);
     }
     const EXCEL_TEMPLATE_KEY = "hgl-export-template-b64";
@@ -10833,7 +10844,9 @@ function plExportBackup() {
           setSupabasePausedStatus(e && e.message ? e.message : "");
           return false;
         }
-        return !isLikelyNetworkError(e);
+        _lastSyncErrorDetail = e && e.message ? e.message : String(e || "");
+        setSyncStatus("error", "Sin conexión con la base — reintentando");
+        return false;
       }
     }
 
@@ -10880,8 +10893,7 @@ function plExportBackup() {
         msg.includes("project is paused") ||
         msg.includes("database is paused") ||
         msg.includes("restoring your project") ||
-        msg.includes("http 540") ||
-        msg.includes("http 503")
+        msg.includes("http 540")
       );
     }
     async function retryNetwork(fn, retries = 1, baseDelayMs = 350) {
@@ -12223,9 +12235,11 @@ function plExportBackup() {
       _lastSyncErrorDetail = "";
       setSyncStatus("syncing", "Cargando...");
       const _loadStartTs = Date.now();   // lo guardado/subido aquí DESPUÉS de esta hora puede no venir en la foto (ver _keepRecentLocal)
+      const _patientLoad = { version: _rtPatientVersion };
+      _rtPatientLoads.add(_patientLoad);
       try {
         // Primero pacientes, luego notas filtradas por sus IDs (menor payload)
-        const pts = await retryNetwork(() => _sGet("patients", "order=cama"), 2, 200);
+        let pts = await retryNetwork(() => _sGet("patients", "order=cama"), 2, 200);
         let nts = [];
         if (Array.isArray(pts) && pts.length) {
           const ids = pts.map(r => r.id).join(",");
@@ -12270,6 +12284,18 @@ function plExportBackup() {
           if (sinLabs.length) await _winlabFetchForPatients(sinLabs);
         } catch (e) { console.warn("winlab_labs (sin ventana):", e?.message || e); }
 
+        // Las consultas de notas/robot pueden tardar: conservar los movimientos del censo que Realtime
+        // recibió después de iniciar esta carga, sin revivir egresos ni regresar una cama a su foto anterior.
+        const freshPts = new Map(pts.map(function (p) { return [p.id, p]; }));
+        _rtPatientChanges.forEach(function (change, id) {
+          if (change.version <= _patientLoad.version) return;
+          const snapshot = freshPts.get(id);
+          if (!change.row) { freshPts.delete(id); return; }
+          const ru = _pgTsMicros(change.row.updated_at), su = _pgTsMicros(snapshot && snapshot.updated_at);
+          if (snapshot && !isNaN(ru) && !isNaN(su) && ru < su) return;
+          freshPts.set(id, change.row);
+        });
+        pts = Array.from(freshPts.values());
         const loadedPatients = [];
         const loadedNotes = {};
         const localPts = lsGetPatients() || [];
@@ -12413,6 +12439,9 @@ function plExportBackup() {
         _lastSyncErrorDetail = msg;
         setSyncStatus("error", "Error al conectar");
         return null;
+      } finally {
+        _rtPatientLoads.delete(_patientLoad);
+        if (!_rtPatientLoads.size) _rtPatientChanges.clear();
       }
     }
 
@@ -13255,14 +13284,45 @@ function plExportBackup() {
       } catch (e) { safeLog("[RT] ris_estudios subscription failed:", e); }
     }
 
-    const _rtInsertPending = new Set(); // ids de patients cuyo INSERT Realtime está bajando su nota
+    const _rtInsertPending = new Map(); // id → fila vigente mientras el INSERT baja su nota
+    function _rtPatientCatchUp(k, attempt) {
+      const ids = k === "__all__" ? Array.from(_rtPatientMissed.keys()) : (_rtPatientMissed.has(k) ? [k] : []);
+      const pending = ids.filter(function (id) { return !_suppressRealtimeKeys.has(id) && !_suppressRealtimeKeys.has("__all__"); });
+      if (!pending.length) return;
+      const missed = new Map(pending.map(function (id) { return [id, _rtPatientMissed.get(id)]; }));
+      _sGet("patients", "id=in.(" + pending.map(encodeURIComponent).join(",") + ")")
+        .then(function (rows) {
+          if (!Array.isArray(rows)) throw new Error("Respuesta censal inesperada");
+          const current = new Map(rows.map(function (row) { return [row.id, row]; }));
+          pending.forEach(function (id) {
+            if (_suppressRealtimeKeys.has(id) || _suppressRealtimeKeys.has("__all__") || _rtPatientMissed.get(id) !== missed.get(id)) return;
+            _rtPatientMissed.delete(id);
+            const row = current.get(id);
+            handlePatientChange(row ? { eventType: "UPDATE", new: row } : { eventType: "DELETE", old: { id: id } });
+          });
+        }).catch(function (e) {
+          safeLog("_rtPatientCatchUp:", e);
+          if ((attempt || 0) < 2) setTimeout(function () { _rtPatientCatchUp(k, (attempt || 0) + 1); }, 3000);
+        });
+    }
     function handlePatientChange(payload) {
       const { new: _chkNew, old: _chkOld } = payload;
       const _chkId = (_chkNew && _chkNew.id) || (_chkOld && _chkOld.id);
+      if (_chkId && _rtPatientLoads.size) _rtPatientChanges.set(_chkId, { version: ++_rtPatientVersion, row: payload.eventType === "DELETE" ? null : _chkNew });
       // Un DELETE nunca se suprime: si se descartaba mientras aquí se escribía la nota de ese
       // paciente, quedaba un fantasma local y el siguiente push lo re-insertaba (resucitaba al egresado).
-      if (_suppressRealtimeKeys.has("__all__") || (_chkId && _suppressRealtimeKeys.has(_chkId) && payload.eventType !== "DELETE")) return;
+      if (payload.eventType !== "DELETE" && (_suppressRealtimeKeys.has("__all__") || (_chkId && _suppressRealtimeKeys.has(_chkId)))) {
+        if (_chkId) _rtPatientMissed.set(_chkId, payload);
+        return;
+      }
       const { eventType, new: newRow, old: oldRow } = payload;
+      const waiting = _chkId && _rtInsertPending.get(_chkId);
+      if (waiting) {
+        if (eventType === "DELETE") { waiting.deleted = true; _rtInsertPending.delete(_chkId); }
+        else if (newRow) waiting.row = newRow;
+      }
+      // Invalida una relectura anterior: un evento nuevo recibido mientras viajaba ya es la versión vigente.
+      if (_chkId) _rtPatientMissed.delete(_chkId);
 
       if (eventType === "INSERT") {
         if (!newRow) return;
@@ -13300,30 +13360,35 @@ function plExportBackup() {
           // la tarjeta nacía vacía y el primer sync de WinLab subía un labHistory parcial que PISABA
           // la restauración. También se traen sus labs de WinLab sin la ventana de 4 días.
           if (_rtInsertPending.has(newRow.id)) return;
-          _rtInsertPending.add(newRow.id);
+          const insertState = { row: newRow, deleted: false };
+          _rtInsertPending.set(newRow.id, insertState);
           (async function () {
+            let sn = null;
             try {
               const rows = await _sGet("notes", "patient_id=eq." + encodeURIComponent(newRow.id) + "&select=" + NOTES_SELECT_COLS);
-              const sn = rows && rows[0];
-              if (sn) {
-                _noteBaselineSet(newRow.id, sn);
-                // La nota de la nube gana (también la Guardia, ver _noteFromRemoteRow, 20 oct 2026); lo que este equipo dejó en
-                // la cola para esta tarjeta se repone encima, como en la carga normal (_applyLoadedNotes), para no esconderlo.
-                const _one = {}; _one[newK] = _noteFromRemoteRow(sn, lsGetNote(newK));
-                try { _applyOutboxOverlay(_one); } catch (e) { safeLog("[RT] cola sobre la nota nueva:", e); }
-                noteData[newK] = _one[newK]; lsSaveNote(newK, noteData[newK]);
-              }
-              else noteData[newK] = noteData[newK] || lsGetNote(newK);
-            } catch (e) { safeLog("[RT] nota del paciente nuevo:", e); noteData[newK] = noteData[newK] || lsGetNote(newK); }
-            finally { _rtInsertPending.delete(newRow.id); }
+              sn = rows && rows[0];
+            } catch (e) { safeLog("[RT] nota del paciente nuevo:", e); }
+            finally { if (_rtInsertPending.get(newRow.id) === insertState) _rtInsertPending.delete(newRow.id); }
+            if (insertState.deleted) return;
             if (patients.some(x => x._supa_id === newRow.id)) return;
-            patients.push(p);
+            const latest = supaRowToPatient(insertState.row);
+            const pendingPatient = _outboxPatientItemFor(newRow.id);
+            if (pendingPatient) _applyOutboxPatientFields(latest, pendingPatient);
+            const latestKey = pid(latest);
+            if (sn) {
+              _noteBaselineSet(newRow.id, sn);
+              // Usar la identidad vigente: puede cambiar la cama/exp mientras se descarga la nota.
+              const _one = {}; _one[latestKey] = _noteFromRemoteRow(sn, lsGetNote(latestKey));
+              try { _applyOutboxOverlay(_one); } catch (e) { safeLog("[RT] cola sobre la nota nueva:", e); }
+              noteData[latestKey] = _one[latestKey]; lsSaveNote(latestKey, noteData[latestKey]);
+            } else noteData[latestKey] = noteData[latestKey] || lsGetNote(latestKey);
+            patients.push(latest);
             lsSavePatients(patients);
             buildEspFilters(); renderViewSoft();
             safeInfo("[RT] Patient inserted:", p.nombre);
             try {
-              _winlabFetchForPatients([p]).then(function (n) { return n ? applyWinlabSyncToPatients({ verbose: false, only: [p] }) : null; })
-                .then(function (st) { if (st) _rerenderCardSoft(newK); }).catch(function (e) { safeLog("[RT] winlab paciente nuevo:", e); });
+              _winlabFetchForPatients([latest]).then(function (n) { return n ? applyWinlabSyncToPatients({ verbose: false, only: [latest] }) : null; })
+                .then(function (st) { if (st) _rerenderCardSoft(latestKey); }).catch(function (e) { safeLog("[RT] winlab paciente nuevo:", e); });
             } catch (_) {}
           })();
           return;
@@ -13334,7 +13399,7 @@ function plExportBackup() {
       else if (eventType === "UPDATE") {
         if (!newRow) return;
         const idx = patients.findIndex(p => p._supa_id === newRow.id);
-        if (idx === -1) return;
+        if (idx === -1) { handlePatientChange({ eventType: "INSERT", new: newRow }); return; }
         const oldKey = pid(patients[idx]);
         const updated = supaRowToPatient(newRow);
         updated._supa_id = newRow.id;
@@ -27378,7 +27443,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.21-1";
+    const PL_BUILD = "2026.10.24-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -27928,7 +27993,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           <div class="cx-r2">
             <textarea class="cx-in cx-in-hal" rows="${_cxRows(c.hallazgos, 60)}" autocorrect="off" autocapitalize="sentences" spellcheck="false" placeholder="Hallazgos / técnica / complicaciones" data-ck="${k}" data-id="${id}" data-f="hallazgos" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)">${esc(c.hallazgos || "")}</textarea>
             <input class="cx-in cx-sang" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
-            <input class="cx-in cx-cir" autocorrect="off" autocapitalize="words" spellcheck="false" value="${esc(c.cirujano || "")}" placeholder="Cirujano" title="${esc(c.cirujano || "Cirujano")}" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>
+            <textarea class="cx-in cx-cir" rows="${_cxRows(c.cirujano, 22)}" autocorrect="off" autocapitalize="words" spellcheck="false" placeholder="Cirujano" title="${esc(c.cirujano || "Cirujano")}" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)">${esc(c.cirujano || "")}</textarea>
           </div>
           ${renderFotoStrip(k, "cx:" + String(c.id || ""), c.fotos, { add: true, label: "Foto de la nota postquirúrgica (cámara o galería): la IA llena los campos vacíos", tail: _cxAiTail(k, c) })}
         </div>`;
@@ -28398,7 +28463,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const id = esc(String(d.id || ""));
         return `<div class="dv-row">
           <button type="button" class="dv-name" data-ck="${k}" data-id="${id}" onclick="toggleDispositivoLado(this.dataset.ck,this.dataset.id)" title="Toca para cambiar el lado (D / I / sin lado)">${esc(d.tipo || "Dispositivo")}${d.lado ? ` <b>${esc(d.lado)}</b>` : ""}</button>
-          <input class="pm-input dv-in dv-sitio" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.sitio || "")}" placeholder="sitio / región" data-ck="${k}" data-id="${id}" data-f="sitio" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="${esc(d.sitio || "Sitio / región")}"/>
+          <textarea class="pm-input dv-in dv-sitio" rows="${_cxRows(d.sitio, 22)}" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="sitio / región" data-ck="${k}" data-id="${id}" data-f="sitio" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)" title="${esc(d.sitio || "Sitio / región")}">${esc(d.sitio || "")}</textarea>
           <input class="pm-input dv-in dv-gasto" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(d.gasto || "")}" placeholder="mL/24 h" data-ck="${k}" data-id="${id}" data-f="gasto" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Gasto mL/24 h${d.gasto ? ": " + esc(d.gasto) : ""}"/>
           <input class="pm-input dv-in dv-carac" autocorrect="off" autocapitalize="sentences" spellcheck="false" value="${esc(d.carac || "")}" placeholder="seroso, hemático, fecal, fuga…" data-ck="${k}" data-id="${id}" data-f="carac" oninput="updateDispositivo(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="${esc(d.carac || "Características")}"/>
           <button type="button" class="dv-day${dias !== null ? " on" : ""}" data-ck="${k}" data-id="${id}" onclick="setDispositivoFecha(this.dataset.ck,this.dataset.id)" title="${dias !== null ? "Colocado el " + esc(d.fi) + " · toca para cambiar" : "Fecha de colocación"}">${dias !== null ? "d" + dias : "📅"}</button>
@@ -28850,7 +28915,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       (root || document).querySelectorAll('textarea.field-ta').forEach(_autoResizeTA);
       // Cirugías (oct 2026): procedimiento y hallazgos crecen a TODO su texto. Una caja oculta (sección cerrada) mide 0:
       // se deja con sus renglones y se ajusta al abrirse (evento toggle, abajo).
-      (root || document).querySelectorAll('textarea.cx-in').forEach(function (el) { if (el.getClientRects().length) _autoResizeTA(el); });
+      (root || document).querySelectorAll('textarea.cx-in, textarea.dv-in').forEach(function (el) { if (el.getClientRects().length) _autoResizeTA(el); });
       fitInputsIn(root);
     }
     // ─── Que el NÚMERO/TEXTO quepa en su cuadro (oct 2026) ───────────────────────────────────────────────────────────
@@ -28912,8 +28977,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
           m.addedNodes.forEach(function (node) {
             if (node.nodeType !== 1) return;
             if (node.classList && node.classList.contains('field-ta')) need = true;
-            else if (node.matches && node.matches(FIT_SEL + ', textarea.cx-in')) need = true;
-            else if (node.querySelector && node.querySelector('textarea.field-ta, textarea.cx-in, ' + FIT_SEL)) need = true;
+            else if (node.matches && node.matches(FIT_SEL + ', textarea.cx-in, textarea.dv-in')) need = true;
+            else if (node.querySelector && node.querySelector('textarea.field-ta, textarea.cx-in, textarea.dv-in, ' + FIT_SEL)) need = true;
           });
         });
         if (need) {
