@@ -78,10 +78,24 @@ function doSyncScheduled() {
   try { doSync(); } finally { lock.releaseLock(); }
 }
 
+/**
+ * MANUAL (editor → doSyncForce → ▶ Ejecutar): una corrida que salta UNA vez la guarda de ">50 % a borrar",
+ * para un recambio masivo REAL (p. ej. el sync estuvo caído el fin de semana y hoy medio piso es gente
+ * nueva). Mientras esa guarda salta, los pacientes nuevos de camas reasignadas no entran a la app (ver
+ * guardUpsert_). Antes corre testParseOnly y confirma que la hoja se lee bien: esta corrida SÍ archiva y
+ * retira. La guarda de hoja < 10 sigue puesta (eso huele a error de lectura, no a recambio) y los retiros
+ * siguen esperando su gracia de RETIRO_GRACIA_MIN.
+ */
+function doSyncForce() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) { Logger.log('doSyncForce: hay otro sync corriendo; vuelve a ejecutarlo en un minuto.'); return null; }
+  try { return doSync({ force: true }); } finally { lock.releaseLock(); }
+}
+
 // --- NUCLEO -------------------------------------------------------------------------------------
 
-/** Lee la hoja, parsea, deduplica/cuarentena y hace UPSERT column-scoped a Supabase. */
-function doSync() {
+/** Lee la hoja, parsea, deduplica/cuarentena y hace UPSERT column-scoped a Supabase. opts.force: ver doSyncForce. */
+function doSync(opts) {
   var key = PropertiesService.getScriptProperties().getProperty('SUPABASE_KEY');
   if (!key) { Logger.log('FALTA Script Property SUPABASE_KEY'); throw new Error('Falta SUPABASE_KEY en Script Properties'); }
 
@@ -103,20 +117,31 @@ function doSync() {
   //        (la queja "el 83 ya no es Claudio"). NO toca pacientes agregados a mano en la app.
   //    (b) REASIGNACIÓN — misma cama con OTRO exp → borra fila+nota vieja para que el nuevo
   //        ocupante NO herede la nota clínica del anterior (fuga clínica del upsert-por-cama).
-  //    GUARDAS anti-catástrofe dentro de syncPatients_ (hoja <10 o borrar >50% → solo upsert).
-  var retired = syncPatients_(key, dd.rows);
+  //    GUARDAS anti-catástrofe dentro de syncPatients_ (hoja <10 o borrar >50% → solo upsert de las
+  //    camas que no necesitan reconciliar; las demás se retienen y se avisa en sync_log).
+  var retired = syncPatients_(key, dd.rows, opts);
 
   Logger.log('Sync OK: ' + dd.rows.length + ' upserts, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.avisos.length + ' avisos de expediente repetido.');
   return { upserts: dd.rows.length, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
 }
 
-/** Lee todas las filas de la pestana del censo (por gid). */
+/** Lee el censo por gid; si cambió el gid, exige una única pestaña con encabezados censales. */
 function readCensoRows_() {
-  var ss = SpreadsheetApp.openById(CENSO_SHEET_ID);
-  var sheet = null, sheets = ss.getSheets();
-  for (var i = 0; i < sheets.length; i++) { if (sheets[i].getSheetId() === CENSO_GID) { sheet = sheets[i]; break; } }
-  if (!sheet) sheet = ss.getSheets()[0];
-  return sheet.getDataRange().getValues();
+  var ss = SpreadsheetApp.openById(CENSO_SHEET_ID), sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getSheetId() === CENSO_GID) return sheets[i].getDataRange().getValues();
+  }
+  var candidates = [];
+  sheets.forEach(function (sheet) {
+    var rows = sheet.getDataRange().getValues();
+    var hasHeader = rows.slice(0, 8).some(function (row) {
+      var up = row.map(norm_);
+      return up.indexOf('CAMA') >= 0 && contains_(up, 'NOMBRE') && contains_(up, 'EXPEDIENTE');
+    });
+    if (hasHeader) candidates.push(rows);
+  });
+  if (candidates.length !== 1) throw new Error('Censo: se esperaba una sola pestaña con CAMA/NOMBRE/EXPEDIENTE; encontradas: ' + candidates.length + '. No se sincronizó.');
+  return candidates[0];
 }
 
 /**
@@ -567,8 +592,9 @@ function toPatientRow_(p) {
  *   (e) CAMA CAMBIADA DESDE LA APP (16 oct 2026) — ver appBedDecisions_: la cama que un residente
  *       fijó en la app se RESPETA hasta que la hoja la cambie; mientras tanto la fila de la hoja con
  *       ese exp en la cama vieja no entra al upsert (si no, on_conflict=cama lo duplicaba allí).
- * GUARDAS: si la hoja parseó <10 o habría que borrar >50% del censo → NO reconcilia (solo upsert),
- * para que un error de lectura nunca borre el piso. Devuelve cuántas filas retiró.
+ * GUARDAS: si la hoja parseó <10 o habría que borrar >50% del censo → NO reconcilia (ni archiva ni
+ * mueve), para que un error de lectura nunca borre el piso; solo upsertea las camas que no lo necesitan
+ * (guardUpsert_). opts.force (doSyncForce) salta la de >50 %. Devuelve cuántas filas retiró.
  */
 // Periodo de GRACIA antes de retirar (13 oct 2026). El trigger onEdit sincroniza en CADA tecla: al
 // cortar/pegar una fila para cambiar de cama (o al reescribir un expediente) la hoja pasa por un
@@ -779,7 +805,8 @@ function appBedDecisions_(cur, maps) {
   return out;
 }
 
-function syncPatients_(key, payload) {
+function syncPatients_(key, payload, opts) {
+  var force = !!(opts && opts.force === true);   // estricto: un objeto de evento de trigger nunca fuerza
   if (!payload.length) { Logger.log('syncPatients: payload vacío → no se toca nada.'); return 0; }
   var maps = sheetMaps_(payload);
   var nSheet = Object.keys(maps.byCama).length;   // tamaño REAL de la hoja (antes de excluir nada) para la guarda
@@ -791,7 +818,7 @@ function syncPatients_(key, payload) {
   // Sin el estado actual NO se upsertea a ciegas: con camas fijadas desde la app (caso e) la fila de la
   // hoja en la cama vieja caería sobre OTRO paciente que la app puso ahí (intercambio, cama liberada) y su
   // nota quedaría bajo otro nombre, o duplicaría al paciente. Mejor una corrida perdida (≤ 5 min) que dato ajeno.
-  if (res.getResponseCode() !== 200) { Logger.log('syncPatients: GET HTTP ' + res.getResponseCode() + ' → NO se sincroniza esta corrida (sin estado actual un upsert por cama podía pisar camas fijadas desde la app)'); return 0; }
+  if (res.getResponseCode() !== 200) throw new Error('syncPatients: GET patients HTTP ' + res.getResponseCode() + '. No se sincronizó: no se puede comprobar la identidad de los pacientes. Revisa SUPABASE_KEY y los permisos del proyecto.');
   var cur = JSON.parse(res.getContentText() || '[]');
   // Expedientes ambiguos vistos desde Supabase (ver expAmbiguous_) y sus filas, para decidir por nombre.
   var curAmbig = ambiguousExps_(cur), curByExp = {}, ties = {}, appHold = {}, appMove = {};
@@ -981,10 +1008,18 @@ function syncPatients_(key, payload) {
   // GUARDAS anti-catástrofe (los movimientos no borran nada, pero tampoco se aplican con una
   // hoja sospechosa: la cama destino podría ser basura). Con hoja sospechosa tampoco se anota
   // cama_hoja_prev (podría ser basura y haría "ganar" a la hoja en la siguiente corrida buena).
-  if (nSheet < 10) { Logger.log('syncPatients: solo ' + nSheet + ' en la hoja (posible error) → solo upsert, sin borrar.'); upsertPatients_(key, safePayload); return 0; }
+  var stats = 'hoja ' + nSheet + ', supabase ' + cur.length + ', a retirar ' + toDelete.length;
+  if (nSheet < 10) {
+    Logger.log('syncPatients: solo ' + nSheet + ' en la hoja (posible error) → solo upsert, sin borrar.');
+    return guardUpsert_(key, 'guarda_hoja_chica', safePayload, cur, stayCamas, toMove, stats);
+  }
   if (toDelete.length > Math.max(10, Math.floor(cur.length * 0.5))) {
-    Logger.log('syncPatients: ' + toDelete.length + ' a borrar (>50%) → ABORTA reconciliación, solo upsert.');
-    upsertPatients_(key, safePayload); return 0;
+    if (!force) {
+      Logger.log('syncPatients: ' + toDelete.length + ' a borrar (>50%) → ABORTA reconciliación, solo upsert.');
+      return guardUpsert_(key, 'guarda_borrado_masivo', safePayload, cur, stayCamas, toMove, stats);
+    }
+    Logger.log('syncPatients: ' + toDelete.length + ' a borrar (>50%) → doSyncForce: se reconcilia igual (guarda saltada a mano).');
+    try { logQuarantine_(key, [{ exp: '', camas: toDelete.map(function (d) { return normalizeCama_(d.row.cama); }).join(', '), nombres: stats, motivo: 'sync_forzado' }]); } catch (_) {}
   }
 
   // 1) Retiros/reasignaciones: ARCHIVAR (paciente + nota → public.archive, la papelera de la app)
@@ -1028,6 +1063,34 @@ function syncPatients_(key, payload) {
   }
   upsertPatients_(key, finalPayload);   // ahora sin filas conflictivas → reasignados entran limpios
   return retired;
+}
+
+/**
+ * Upsert con la GUARDA puesta (19 oct 2026). Sin reconciliar no se archiva ni se mueve nada, así que solo
+ * entran las camas que no lo necesitan: sin ocupante en Supabase o con la misma persona (stayCamas).
+ * Una cama reasignada (otra persona), el origen o destino de un cambio de cama o un expediente corregido
+ * se RETIENEN: on_conflict=cama reescribía la fila vieja con el nombre del nuevo, su nota quedaba pegada a
+ * otra persona y desde la corrida siguiente esa fila contaba como "sigue igual" (cruce permanente; al
+ * archivarla después, el trigger de restaurar nota se la podía dar a quien tuviera ese nombre y exp).
+ * El destino LIBRE de un cambio de cama también se retiene: crearía una copia vacía del paciente.
+ * Avisa en sync_log (throttle de 6 h) para que alguien arregle la hoja o corra doSyncForce.
+ */
+function guardUpsert_(key, motivo, payload, cur, stayCamas, toMove, stats) {
+  var occupied = {}, moving = {};
+  cur.forEach(function (r) { occupied[normalizeCama_(r.cama)] = true; });
+  toMove.forEach(function (m) { moving[m.from] = true; moving[m.to] = true; });
+  var held = [];
+  var rows = payload.filter(function (p) {
+    var ok = !moving[p.cama] && (!occupied[p.cama] || !!stayCamas[p.cama]);
+    if (!ok) held.push(p.cama);
+    return ok;
+  });
+  if (held.length) {
+    Logger.log('syncPatients: guarda → ' + held.length + ' cama(s) retenida(s) hasta reconciliar (otra persona o cambio de cama; el upsert le pondría a la fila vieja, con su nota, otro nombre): ' + held.join(', '));
+    try { logQuarantine_(key, [{ exp: '', camas: held.join(', '), nombres: stats || '', motivo: motivo }]); } catch (_) {}
+  }
+  upsertPatients_(key, rows);
+  return 0;
 }
 
 /** PATCH de columnas sobre una fila de patients por id. true si 2xx. */
@@ -1342,14 +1405,25 @@ function toISODate_(v) {
 
 // --- INSTALACION / DIAGNOSTICO (se ejecutan a mano una vez) -------------------------------------
 
-/** Ejecuta esto UNA vez para instalar los 3 triggers (pide OAuth la primera vez; vuelve a correrlo al actualizar el script). */
+/** Reinstala solo los triggers de este sincronizador; conserva los de otros módulos del proyecto. */
 function createTriggers() {
-  ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger('onCensoEdit').forSpreadsheet(CENSO_SHEET_ID).onEdit().create();
-  ScriptApp.newTrigger('doSyncScheduled').timeBased().everyMinutes(5).create();
-  ScriptApp.newTrigger('checkLabsFreshness').timeBased().everyHours(4).create();
-  ScriptApp.newTrigger('syncIndicacionesScheduled').timeBased().everyMinutes(5).create();
-  Logger.log('Triggers creados: onEdit (instalable) + sync cada 5 min + watchdog de labs cada 4 h + indicaciones (Doc) cada 5 min.');
+  var handlers = ['onCensoEdit', 'doSyncScheduled', 'checkLabsFreshness', 'syncIndicacionesScheduled'];
+  var previous = ScriptApp.getProjectTriggers().filter(function (t) { return handlers.indexOf(t.getHandlerFunction()) >= 0; });
+  var created = [], onEdit = false;
+  // Crear primero: si Google rechaza un trigger obligatorio, los anteriores siguen funcionando.
+  try {
+    created.push(ScriptApp.newTrigger('doSyncScheduled').timeBased().everyMinutes(5).create());
+    created.push(ScriptApp.newTrigger('checkLabsFreshness').timeBased().everyHours(4).create());
+    created.push(ScriptApp.newTrigger('syncIndicacionesScheduled').timeBased().everyMinutes(5).create());
+    // Si Google rechaza onEdit para este archivo, conserva el sync de cada 5 min.
+    try { created.push(ScriptApp.newTrigger('onCensoEdit').forSpreadsheet(CENSO_SHEET_ID).onEdit().create()); onEdit = true; }
+    catch (e) { Logger.log('onEdit no instalado (el censo puede ser Excel): ' + e); }
+  } catch (e) {
+    created.forEach(function (t) { ScriptApp.deleteTrigger(t); });
+    throw new Error('No se pudieron instalar los triggers; se conservaron los anteriores. ' + e);
+  }
+  previous.forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  Logger.log('Triggers creados: sync cada 5 min + watchdog de labs cada 4 h + indicaciones cada 5 min' + (onEdit ? ' + onEdit instalable.' : ' (sin onEdit).'));
   // Primera subida del Doc de indicaciones ahora mismo (si falla, el trigger reintenta en 5 min).
   try { syncIndicaciones(true); } catch (e) { Logger.log('indicaciones: primera subida falló: ' + e); }
 }
