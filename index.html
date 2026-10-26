@@ -21327,6 +21327,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (_fieldPrevVals[k + "|" + f] === undefined) _fieldPrevVals[k + "|" + f] = toSafeString(noteData[k][f]);
       _guardBigDelete(k, f, noteData[k][f], el.value, false, el);
       noteData[k][f] = el.value;
+      // 🕓 Cronología (24 oct 2026, «cuando pongo algo se repite varias veces el mismo texto incompleto»): el autoguardado
+      // sube lo escrito a medias mientras se teclea. Si no renueva by.entrega.t, pl_entrega_protegida lo toma como copia
+      // vieja (no deliberada) y conserva cada versión a medias del renglón («Hola mu», «Hola mundo»…). Cada tecla renueva
+      // el sello: la base reemplaza el renglón en vez de juntar versiones.
+      if (f === "entrega") _touchBy(noteData[k], "entrega");
       // Marcar campo como dirty (editado localmente, pendiente de guardar)
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       _dirtyFields[k].add(f);
@@ -26253,16 +26258,6 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Palabras que aparecen en el PDF pero NO son parte del nombre del paciente
       var NON_NAME_TOKENS = new Set(["HEMOCULTIVO", "UROCULTIVO", "COPROCULTIVO", "MICROCULTIVO", "LABORATORIO", "CULTIVO"]);
 
-      // Whitelist de especialidades de Cirugía General y subespecialidades
-      var CG_ESPS = new Set(["CG", "CCR", "CV", "CPR", "CT", "CTV", "CMF", "URO", "CG/GYO", "CG/CV", "GYO/CG", "CV/CG"]);
-      function isCGEsp(esp) {
-        var e = String(esp || "").toUpperCase().trim();
-        if (!e) return false;
-        if (CG_ESPS.has(e)) return true;
-        if (/(^|[\/\s])CG([\/\s]|$)/.test(e)) return true;
-        return false;
-      }
-
       // Lista global de ambigüedades para mostrar en un cuadro al final
       window.__bulkAmbiguities = [];
 
@@ -26326,24 +26321,31 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return { isCultivo: isCultivo };
       }
 
+      // Tokens del nombre, IGUALES en el PDF y en el censo (24 oct 2026, «Labs masivo no identifica a los pacientes»):
+      // antes el censo contaba «DE», «LA», «MA» y el PDF no, así que «MA. DE LA LUZ …» pedía más coincidencias de las
+      // posibles. Se expanden las abreviaturas de nombre de pila (como el robot) y se quitan partículas.
+      var NAME_ABBR = { MA: "MARIA", FCO: "FRANCISCO", FCA: "FRANCISCA", J: "JOSE", GPE: "GUADALUPE", GUADPE: "GUADALUPE" };
+      var NAME_STOP = new Set(["DE", "DEL", "LA", "LAS", "LOS", "Y", "VDA", "VIUDA"]);
+      function nameTokens(s) {
+        return normName(s).split(" ").map(function (t) { return NAME_ABBR[t] || t; })
+          .filter(function (t) { return t.length > 2 && !NAME_STOP.has(t) && !NON_NAME_TOKENS.has(t); });
+      }
+
       function matchPatient(extractedName) {
         if (!extractedName) return null;
-        var en = normName(extractedName);
-        var enTokens = en.split(" ").filter(function(t){ return t.length > 2 && !NON_NAME_TOKENS.has(t); });
+        var enTokens = nameTokens(extractedName);
         if (enTokens.length < 2) return null; // Necesitamos al menos 2 tokens (apellido + nombre o 2 apellidos)
 
-        // Considerar pacientes de CG + co-manejo reclamado (override de servicio v50, svcMine).
-        var cgPatients = patients.filter(function(p) {
-          if (isCGEsp(p.esp)) return true;
-          var _nd = noteData[pid(p)];
-          return !!(_nd && _nd.checklist && _nd.checklist.svcMine);
-        });
+        // Todo el censo (24 oct 2026): antes solo Cirugía General y subespecialidades, y los pacientes de Neurocirugía
+        // (NCX) u otro servicio del piso nunca se identificaban. La regla estricta de abajo (todos los tokens del nombre
+        // más corto) sigue protegiendo contra asignar al paciente equivocado.
+        var cgPatients = patients.slice();
         if (!cgPatients.length) return null;
 
         // Matching con score estricto por posición de apellidos
         var candidates = [];
         cgPatients.forEach(function(p) {
-          var pTokens = normName(p.nombre).split(" ").filter(function(t){ return t.length > 1; });
+          var pTokens = nameTokens(p.nombre);
           if (pTokens.length < 2) return;
           var common = enTokens.filter(function(t){ return pTokens.indexOf(t) >= 0; });
 
@@ -27378,7 +27380,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.21-1";
+    const PL_BUILD = "2026.10.24-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

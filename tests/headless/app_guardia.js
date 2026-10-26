@@ -348,6 +348,21 @@ const HIST_OLD = {
   check('G10 banda de escritura (iPad): FC del Pase Matutino pasa de ~52 px a ≥ 200 px, ≥ 48 px de alto y letra ≥ 20 px al tocarlo con el lápiz; el dedo no la activa; fuera del iPad tampoco; al tocar otro campo la banda cambia de campo y al soltar el foco vuelve al tamaño original; una caja grande no cambia',
     g10.w0 < 80 && g10.noIpad && g10.finger && g10.on && g10.w1 >= 200 && g10.h1 >= 48 && g10.fs >= 20 && g10.moved && g10.off && g10.taSame, JSON.stringify(g10));
 
+  // ── G11 (24 oct 2026, «en Cronología se repite varias veces el mismo texto incompleto»): cada autoguardado que sube lo
+  //    escrito a medias lleva el sello de autor RENOVADO (by.entrega.t). Sin él, pl_entrega_protegida lo toma como copia
+  //    vieja y conserva cada versión a medias del renglón. ──
+  const n0 = calls.length, t0 = Date.now();
+  await page.evaluate(() => { const ta = document.getElementById('card-' + pid(patients[0])).querySelector('textarea[data-field="entrega"]'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); });
+  await page.keyboard.type('\nRENGLON NUEVO', { delay: 30 }); await page.waitForTimeout(3500);
+  const t1 = Date.now();
+  await page.keyboard.type(' COMPLETO', { delay: 30 }); await page.waitForTimeout(3500);
+  const sube = calls.slice(n0).filter(c => c.m === 'POST' && /^\/rest\/v1\/notes/.test(c.url) && c.body).map(c => Array.isArray(c.body) ? c.body[0] : c.body)
+    .map(b => { const mt = (b.checklist || {}).__pl_note_meta || {}; return { e: mt.entrega || '', t: Date.parse(((mt.by || {}).entrega || {}).t || '') }; })
+    .filter(x => /RENGLON NUEVO/.test(x.e));
+  const ultima = sube[sube.length - 1] || {};
+  check('G11 Cronología: cada autoguardado de lo que se va escribiendo lleva el sello de autor renovado (la base reemplaza el renglón y no junta versiones a medias)',
+    sube.length >= 2 && sube.every(x => x.t >= t0 - 1000) && /RENGLON NUEVO COMPLETO/.test(ultima.e) && ultima.t >= t1 - 1000, JSON.stringify(sube.map(x => ({ e: x.e.slice(-30), dt: x.t - t0 }))));
+
   check('final: sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   await browser.close();
   console.log('RESULT APP-GUARDIA: ' + pass + ' passed, ' + fail + ' failed');

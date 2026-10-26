@@ -205,6 +205,11 @@ programa de la hoja (Apps Script, `syncIndicaciones`) hace el mismo trabajo con 
 
 - El cruce es por **cama + nombre**. Si un paciente cambió de cama, lo encuentra por nombre. Si en
   el Doc hay varias fechas del mismo paciente, muestra la más reciente.
+- **Pestañas del Doc** (24 oct 2026): el Doc tiene varias pestañas. La descarga de la base trae
+  todas. El respaldo de Apps Script antes leía solo la primera y, al subirla, tapaba el texto
+  completo: en la app quedaban tres bloques para todo el piso. Ya lee todas las pestañas y sus
+  subpestañas. Si algún día vuelve a faltar una cama que en el Doc sí está, ejecuta
+  `testIndicacionesOnly` en Apps Script: dice cuántas letras, bloques y camas ve.
 - Si en el Doc la cama tiene indicaciones a nombre de **otra persona** (el paciente anterior),
   la tarjeta avisa en rojo y no las muestra como propias hasta que toques "Ver de todos modos".
 - En la cabecera del bloque: 📄 abre el Doc; 🔄 lo trae ahora mismo sin esperar los 5 minutos.
@@ -287,6 +292,12 @@ entrar) y nada automático llega. Qué hacer:
      pacientes del censo, página por página → **Imprime Reportes** → se baja un PDF.
    - En la app: **📦 Labs Masivo** (barra del tablero) → suelta el PDF → revisa a quién se asignó
      cada hoja y confirma.
+   - El reparto es por **nombre, contra todo el censo** (24 oct 2026: antes solo miraba Cirugía
+     General y sus subespecialidades, así que los pacientes de Neurocirugía y demás nunca se
+     identificaban). Los nombres se comparan igual en los dos lados: «MA.» es MARIA, «FCO.» es
+     FRANCISCO, y «DE»/«LA» no cuentan. Para asignar siguen haciendo falta **todos** los nombres
+     del lado más corto, así que una hoja de alguien que no está en el censo queda **sin asignar**
+     en vez de caer en la tarjeta equivocada.
    - Al terminar, **borra el marcador** de esa PC: contiene los nombres de los pacientes. Al día
      siguiente se genera otro (el censo cambia).
 4. **Un paciente suelto**: en su tarjeta, sección de labs, 📄 PDF / 📷 Foto lee la hoja impresa o

@@ -268,6 +268,16 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   const d = mk("2026-10-11T19:30:00Z");
   const r4 = d.sb.syncIndicaciones(true);
   check("T9d force=true sube aunque no haya cambios", r4.ok === true && !r4.skipped);
+  // T9e (24 oct 2026): Doc con PESTAÑAS (una por día o por grupo de camas). getBody() solo trae la primera y las demás
+  // camas no llegaban a la app; ahora se leen todas, también las subpestañas.
+  const tab = (txt, hijas) => ({ asDocumentTab: () => ({ getBody: () => ({ getText: () => txt }) }), getChildTabs: () => hijas || [] });
+  const DOC2 = "INDICACIONES MÉDICAS DE PACIENTE DOS\nPACIENTE DOS | CAMA 3-151\n", DOC3 = "INDICACIONES MÉDICAS DE PACIENTE TRES\nPACIENTE TRES | CAMA 3-152\n";
+  const e = mk("2026-10-11T20:00:00Z");
+  e.sb.DocumentApp = { openById: () => ({ getBody: () => ({ getText: () => DOC }), getTabs: () => [tab(DOC), tab(DOC2, [tab(DOC3)])] }) };
+  const r5 = e.sb.syncIndicaciones(true);
+  const up5 = e.calls.find((c2) => c2.m === "POST" && c2.u.startsWith("/rest/v1/indicaciones_doc"));
+  check("T9e Doc con pestañas y subpestañas: sube el texto de TODAS (3 bloques, 3 camas), no solo la primera",
+    r5.ok === true && r5.tabs === 3 && r5.bloques === 3 && up5 && /CAMA 3-150/.test(up5.body.text) && /CAMA 3-151/.test(up5.body.text) && /CAMA 3-152/.test(up5.body.text), JSON.stringify(r5));
 }
 
 // ── 10) Salas de otros servicios: se capta a NUESTRO paciente quirúrgico, no a los de ese servicio ─

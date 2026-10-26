@@ -1281,7 +1281,7 @@ function syncIndicaciones(force) {
   var last = props.getProperty('IND_LAST_UPDATED');
   if (!force && last && last === updatedIso) { Logger.log('indicaciones: sin cambios desde ' + last); return { ok: true, skipped: true, docUpdated: updatedIso }; }
 
-  var text = DocumentApp.openById(INDICACIONES_DOC_ID).getBody().getText() || '';
+  var leido = indTextoDoc_(INDICACIONES_DOC_ID), text = leido.text;
   var hash = indHash_(text);
   var row = { id: 1, doc_id: INDICACIONES_DOC_ID, text: text, text_hash: hash, doc_updated: updatedIso, synced_at: new Date().toISOString() };
   var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/indicaciones_doc?on_conflict=id', {
@@ -1293,8 +1293,23 @@ function syncIndicaciones(force) {
   if (code < 200 || code >= 300) { Logger.log('indicaciones: UPSERT HTTP ' + code + ' ' + res.getContentText()); return { ok: false, reason: 'http_' + code }; }
   props.setProperty('IND_LAST_UPDATED', updatedIso);
   var bloques = (text.match(/INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/gi) || []).length;
-  Logger.log('indicaciones: subidas ' + text.length + ' letras, ~' + bloques + ' bloques (Doc editado ' + updatedIso + ')');
-  return { ok: true, chars: text.length, bloques: bloques, docUpdated: updatedIso, hash: hash };
+  Logger.log('indicaciones: subidas ' + text.length + ' letras de ' + leido.tabs + ' pestaña(s), ~' + bloques + ' bloques (Doc editado ' + updatedIso + ')');
+  return { ok: true, chars: text.length, tabs: leido.tabs, bloques: bloques, docUpdated: updatedIso, hash: hash };
+}
+/** Texto de TODAS las pestañas del Doc (24 oct 2026: «hay indicaciones de algunas camas que en el Drive sí aparecen pero
+ *  no en la app»). Con pestañas, getBody() devuelve solo la PRIMERA: el Doc de 326 KB subía 2 337 letras (3 bloques
+ *  para 43 pacientes). Se recorren las pestañas y sus subpestañas en orden; sin pestañas (o sin la API) queda getBody(). */
+function indTextoDoc_(id) {
+  var doc = DocumentApp.openById(id), partes = [];
+  var recorrer = function (tabs) {
+    (tabs || []).forEach(function (t) {
+      try { partes.push(t.asDocumentTab().getBody().getText() || ''); } catch (_) {}
+      try { recorrer(t.getChildTabs()); } catch (_) {}
+    });
+  };
+  try { if (typeof doc.getTabs === 'function') recorrer(doc.getTabs()); } catch (_) { partes = []; }
+  if (!partes.length) return { text: doc.getBody().getText() || '', tabs: 1 };
+  return { text: partes.join('\n\n'), tabs: partes.length };
 }
 function syncIndicacionesScheduled() {
   var lock = LockService.getScriptLock();
@@ -1305,7 +1320,7 @@ function syncIndicacionesScheduled() {
 function syncIndicacionesForce() { return syncIndicaciones(true); }
 /** Diagnóstico sin escribir nada: cuántos bloques y camas detecta en el Doc. */
 function testIndicacionesOnly() {
-  var text = DocumentApp.openById(INDICACIONES_DOC_ID).getBody().getText() || '';
+  var text = indTextoDoc_(INDICACIONES_DOC_ID).text;
   var bloques = (text.match(/INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/gi) || []).length;
   var camas = (text.match(/CAMA\s*[:#\-]?\s*\d+-\d{2,4}/gi) || []).length;
   Logger.log('Doc: ' + text.length + ' letras · ~' + bloques + ' bloques de indicaciones · ' + camas + ' menciones de cama');
