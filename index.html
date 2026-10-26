@@ -7816,6 +7816,14 @@ function plExportBackup() {
       /\bAEROBIO|ANAEROBIO\b/i,
     ];
 
+    function _wlBloodUnitName(nm, unidad) {
+      const n = String(nm || "").toUpperCase().trim(), u = String(unidad || "").toUpperCase().replace(/\s+/g, "");
+      if (!u) return false;
+      if (n === "HEMOGLOBINA") return /^G\/DL$/.test(u);
+      if (n === "LEUCOCITOS") return /10\^?3|10E3|MILES|K\/[UΜ]L|\/MM3/.test(u);
+      if (n === "ERITROCITOS") return /10\^?6|10E6|MILLONES|M\/[UΜ]L/.test(u);
+      return false;
+    }
     function isWinlabNonBloodValue(v) {
       if (!v) return false;
       const haystack = `${v.unidad || ""} ${v.referencia || ""} ${v.valor || ""}`;
@@ -7860,6 +7868,9 @@ function plExportBackup() {
           if (WINLAB_URINE_MARKERS.test(_nm)) _panelMode = "urine";
           else if (WINLAB_CULTURE_MARKERS.test(_nm)) _panelMode = "culture";
           else if (WINLAB_BLOOD_MARKERS.test(_nm)) _panelMode = "blood";
+          // EGO listado ANTES que la BH en el mismo reporte: HEMOGLOBINA/LEUCOCITOS/ERITROCITOS con unidad de sangre
+          // (g/dL, 10^3/µL, 10^6/µL) regresan a sangre; los de orina vienen en /campo, Leu/µL, mg/dL…
+          else if (_panelMode === "urine" && _wlBloodUnitName(_nm, v && v.unidad)) _panelMode = "blood";
           if (_panelMode === "culture") continue;
           // Guarda CRÍTICA: si el valor proviene de orina/cultivo/drenaje, NO
           // mapearlo a aliases sanguíneos. Esto previene que LEUCOCITOS de
@@ -7979,7 +7990,8 @@ function plExportBackup() {
         .replace(/[^A-Z\s]/g, " ")
         .replace(/\bMA\b/g, "MARIA")
         .replace(/\bJ\b/g, "JOSE")
-        .replace(/\bGPE\b/g, "GUADALUPE");
+        .replace(/\bGPE\b/g, "GUADALUPE")
+        .replace(/\bFCO\b/g, "FRANCISCO").replace(/\bFCA\b/g, "FRANCISCA");   // igual que el robot (normNameTokens)
       return s.split(/\s+/).filter(function (w) {
         if (w.length < 3) return false;
         if (["DEL", "LAS", "LOS", "CON", "SIN", "POR", "PARA", "Y", "O"].indexOf(w) >= 0) return false;
@@ -8012,8 +8024,15 @@ function plExportBackup() {
     }
     // Dos tokens "coinciden" si son iguales, o (ambos ≥5 chars) muy similares por JW (typo OCR).
     // Los tokens cortos exigen igualdad exacta (JW poco fiable en 3-4 letras).
+    // ANTONIO/ANTONIA, MARIO/MARIA: solo cambia la vocal final A/O → otra persona (JW los daba ≥ 0.9). Igual que el robot.
+    function _winlabGenderVariant(t1, t2) {
+      if (t1.length !== t2.length || t1.length < 4) return false;
+      var a = t1[t1.length - 1], b = t2[t2.length - 1];
+      return a !== b && "AO".indexOf(a) >= 0 && "AO".indexOf(b) >= 0 && t1.slice(0, -1) === t2.slice(0, -1);
+    }
     function _winlabTokenMatch(t1, t2) {
       if (t1 === t2) return true;
+      if (_winlabGenderVariant(t1, t2)) return false;
       if (t1.length >= 5 && t2.length >= 5) return _winlabJaroWinkler(t1, t2) >= 0.88;
       return false;
     }
@@ -8142,33 +8161,101 @@ function plExportBackup() {
     // que la hoja, p. ej. 3 nombres en el censo y 2 en WinLab; mismo criterio que el robot); false = otra persona.
     function _winlabHeaderMatchKind(paciente, rep, targetTokens) {
       if (!targetTokens || !targetTokens.length) return "full";
-      const hName = ((rep["APELLIDOS COMPLETOS"] || "") + " " + (rep.NOMBRE || "")).trim();
-      if (_winlabNameMatchScore(paciente, hName) >= targetTokens.length) return "full";
+      return _winlabHeaderKindByName(paciente, _wlHeaderName(rep));
+    }
+    function _winlabHeaderKindByName(paciente, hName) {
+      if (!_winlabNormalizeName(paciente || "").length) return "full";
+      const tTok = _winlabNormalizeName(paciente);
+      if (_winlabNameMatchScore(paciente, hName) >= tTok.length) return "full";
       const hTok = _winlabNormalizeName(hName);
       if (hTok.length >= 3 && _winlabNameMatchScore(hName, paciente) >= hTok.length) return "partial";
       return false;
     }
-    function buildWinlabCultures(winlabRow) {
+    // ── Fila-encabezado de WinLab (26 oct 2026) ──────────────────────────────────────────────────────────────
+    // Antes solo se reconocía por las llaves en español (NOMBRE / APELLIDOS COMPLETOS). Con WinLab en italiano (desde
+    // el 11 oct) no se reconocía ninguna: se usaban TODOS los reportes de la búsqueda, también los de otra persona del
+    // mismo apellido o del otro paciente con el mismo expediente. Ahora, como el robot (findSexIdx/extractHeaderName):
+    // por la celda de sexo (ES/IT/EN) o la forma [.., APELLIDOS, NOMBRE, sexo, dd/mm/aaaa].
+    const _WL_SEX_RE = /^(FEMENIN[OA]|MASCULIN[OA]|FEMMIN[A-Z]*|MASCHI[A-Z]*|FEMALE|MALE|DONNA|UOMO|MUJER|HOMBRE|[FM])$/;
+    function _wlFindSexIdx(cells) {
+      if (!Array.isArray(cells)) return -1;
+      const sx = cells.findIndex(function (c) { return _WL_SEX_RE.test(String(c || "").toUpperCase().trim()); });
+      if (sx >= 0) return sx;
+      const nameRe = /^[A-ZÁÉÍÓÚÜÑ' .-]{2,}$/i;
+      for (let i = 2; i < cells.length - 1; i++) {
+        const c = String(cells[i] || "").trim();
+        if (!c || c.length > 12 || !/^[A-Za-zÀ-ÿ]+$/.test(c)) continue;
+        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(cells[i + 1] || "").trim())) continue;
+        if (!nameRe.test(String(cells[i - 1] || "").trim()) || !nameRe.test(String(cells[i - 2] || "").trim())) continue;
+        return i;
+      }
+      return -1;
+    }
+    // "APELLIDOS NOMBRE" si el renglón es una fila-encabezado de paciente; "" si es un reporte.
+    function _wlHeaderName(rep) {
+      if (!rep || rep.__hasLink !== false) return "";
+      const isDate = function (x) { return /^\s*\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/.test(String(x || "")); };
+      if (rep.NOMBRE && !isDate(rep.NOMBRE) && rep["APELLIDOS COMPLETOS"] && !isDate(rep["APELLIDOS COMPLETOS"]))
+        return (String(rep["APELLIDOS COMPLETOS"]) + " " + String(rep.NOMBRE)).trim();
+      const c = rep.__cells, sx = _wlFindSexIdx(c);
+      return sx >= 2 && String(c[sx - 2] || "").trim() ? (String(c[sx - 2]).trim() + " " + String(c[sx - 1] || "").trim()).trim() : "";
+    }
+    // Identidad de un paciente del censo para atribuir reportes: su nombre, su «nombre en WinLab» (alias que fija la
+    // app y con el que busca el robot) y los nombres de los OTROS pacientes con su mismo expediente.
+    function _wlIdent(p) {
+      if (!p) return null;
+      const nd = (typeof noteData !== "undefined" && noteData) ? noteData[pid(p)] : null;
+      const alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
+      return { names: [toSafeString(p.nombre).trim(), alias].filter(Boolean), twins: _plExpTwins(p).map(function (q) { return toSafeString(q.nombre).trim(); }).filter(Boolean) };
+    }
+    // ¿Este encabezado es del paciente? "full"/"partial"/false. Con expediente repetido, un encabezado que también
+    // encaja con el otro paciente no es de nadie (precisión > recall).
+    function _wlHeaderKindFor(hName, ident, paciente) {
+      const names = ident && ident.names.length ? ident.names : [paciente || ""];
+      let best = false;
+      for (const n of names) { const k = _winlabHeaderKindByName(n, hName); if (k === "full") { best = "full"; break; } if (k && !best) best = k; }
+      if (best && ident && ident.twins.some(function (t) { return !!_winlabHeaderKindByName(t, hName) && _winlabNormalizeName(t).length; })) return false;
+      return best;
+    }
+    // Reglas comunes de atribución de una fila del robot (labs y cultivos). Devuelve una función rep → ¿usar?:
+    //  · encabezado (cualquier idioma) → decide el bloque que sigue;
+    //  · el encabezado debe ser del paciente (nombre del censo o «nombre en WinLab»), aunque el robot lo haya marcado:
+    //    otra persona con los mismos apellidos nunca entra;
+    //  · si la fila trae __target (robot ≥ 9 oct: nombre + edad validados), además solo cuentan esos reportes;
+    //  · coincidencia parcial de nombre exige __target;
+    //  · expediente repetido sin encabezados: solo la fila que es de una sola persona.
+    function _wlReportFilter(winlabRow, ident) {
+      const reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
+      const hasHeaders = reportes.some(function (r) { return !!_wlHeaderName(r); });
+      const anyTarget = reportes.some(function (r) { return r && r.__target === true; });
+      const names = ident && ident.names.length ? ident.names : [winlabRow.paciente || ""];
+      const hasTarget = names.some(function (n) { return _winlabNormalizeName(n).length > 0; });
+      const aliases = Array.isArray(winlabRow.data.aliases) ? winlabRow.data.aliases.filter(Boolean) : [];
+      const twins = !!(ident && ident.twins.length);
+      let cur = !hasHeaders || !hasTarget;
+      if (!hasHeaders && twins) cur = aliases.length <= 1;
+      const f = function (rep) {
+        const h = _wlHeaderName(rep);
+        if (hasHeaders && h) { cur = _wlHeaderKindFor(h, ident, winlabRow.paciente); return false; }
+        if (!cur) return false;
+        if (anyTarget && rep.__target !== true) return false;
+        if (cur === "partial" && rep.__target !== true) return false;
+        return true;
+      };
+      f.namePositive = (hasHeaders && hasTarget) || anyTarget;
+      return f;
+    }
+    function buildWinlabCultures(winlabRow, ident) {
       if (!winlabRow || !winlabRow.data) return [];
       var reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
       var fallbackFecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : "");
-      var targetTokens = _winlabNormalizeName(winlabRow.paciente || "");
-      var isDate = function (s) { return /^\s*\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/.test(String(s || "")); };
-      var isHeader = function (rep) {
-        return rep && rep.__hasLink === false
-          && rep.NOMBRE && !isDate(rep.NOMBRE)
-          && rep["APELLIDOS COMPLETOS"] && !isDate(rep["APELLIDOS COMPLETOS"]);
-      };
-      var headerMatches = function (rep) { return _winlabHeaderMatchKind(winlabRow.paciente, rep, targetTokens); };
-      var hasHeaders = reportes.some(isHeader);
-      var curMatches = !hasHeaders || !targetTokens.length;
+      var usar = _wlReportFilter(winlabRow, ident || null);   // mismas reglas que buildWinlabLabSnapshots
       var out = [], seen = {};
       for (var i = 0; i < reportes.length; i++) {
         var rep = reportes[i];
-        if (hasHeaders && isHeader(rep)) { curMatches = headerMatches(rep); continue; }
+        if (!rep) continue;
+        if (!usar(rep)) continue;   // encabezado, o reporte de OTRA persona
         if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
-        if (!curMatches) continue;   // reporte de OTRO paciente del mismo apellido → ignorar
-        if (curMatches === "partial" && rep.__target !== true) continue;   // ver buildWinlabLabSnapshots
         var cultRes = extractWinlabCulture(rep);
         if (!cultRes) continue;
         var fecha = extractReportDate(rep) || fallbackFecha || "";
@@ -8183,7 +8270,8 @@ function plExportBackup() {
       return out;
     }
 
-    function buildWinlabLabSnapshots(winlabRow, targetEspCanon) {
+    // ident (opcional, _wlIdent(p)): a quién se atribuye; sin él, al nombre que trae la fila (formato viejo).
+    function buildWinlabLabSnapshots(winlabRow, targetEspCanon, ident) {
       if (!winlabRow || !winlabRow.data) return [];
       const reportes = Array.isArray(winlabRow.data.reportes) ? winlabRow.data.reportes : [];
       const fallbackFecha = winlabRow.fecha || (winlabRow.scraped_at ? String(winlabRow.scraped_at).slice(0, 10) : null);
@@ -8198,28 +8286,15 @@ function plExportBackup() {
       // Precisión > recall: ante la duda NO se incluye (seguridad del paciente —
       // jamás mostrar labs de otro). Compat: si el blob no trae encabezados o no
       // hay nombre objetivo, no se filtra (formato viejo de 1 solo paciente).
-      const _wlTargetTokens = _winlabNormalizeName(winlabRow.paciente || "");
-      const _wlIsDate = function (s) { return /^\s*\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/.test(String(s || "")); };
-      const _wlIsHeader = function (rep) {
-        return rep && rep.__hasLink === false
-          && rep.NOMBRE && !_wlIsDate(rep.NOMBRE)
-          && rep["APELLIDOS COMPLETOS"] && !_wlIsDate(rep["APELLIDOS COMPLETOS"]);
-      };
-      const _wlHeaderMatches = function (rep) { return _winlabHeaderMatchKind(winlabRow.paciente, rep, _wlTargetTokens); };
-      const _wlHasHeaders = reportes.some(_wlIsHeader);
-      let _wlCurMatches = !_wlHasHeaders || !_wlTargetTokens.length;
-      // ¿Hay match de identidad por NOMBRE de encabezado disponible? (blob con
-      // encabezados Y nombre objetivo normalizable). Si lo hay, el nombre es la
-      // identidad AUTORITATIVA y la guardia de servicio NO debe vetar nada encima.
-      const _wlNamePositive = _wlHasHeaders && _wlTargetTokens.length > 0;
+      // Reglas en _wlReportFilter (encabezados en cualquier idioma, __target del robot, expediente repetido).
+      const _wlUsar = _wlReportFilter(winlabRow, ident || null);
+      // ¿Hay identidad por NOMBRE de encabezado (o el robot ya marcó __target)? Entonces es la identidad AUTORITATIVA
+      // y la guardia de servicio NO veta nada encima.
+      const _wlNamePositive = _wlUsar.namePositive;
 
       for (const rep of reportes) {
-        if (_wlHasHeaders && _wlIsHeader(rep)) { _wlCurMatches = _wlHeaderMatches(rep); continue; }
+        if (!rep || !_wlUsar(rep)) continue; // encabezado, o reporte de OTRO paciente del mismo apellido → ignorar
         if (!Array.isArray(rep.valores) || !rep.valores.length) continue;
-        if (!_wlCurMatches) continue; // reporte de OTRO paciente del mismo apellido → ignorar
-        // Encabezado con MENOS nombres que el censo (3 nombres de pila en la hoja, 2 en WinLab): solo si el robot ya
-        // validó ese reporte como del paciente (nombre + edad → __target). Así nunca entra un homónimo de apellidos.
-        if (_wlCurMatches === "partial" && rep.__target !== true) continue;
         // GUARDIA DE SERVICIO — solo como señal de identidad de RESPALDO.
         // FIX-v53 (jun 2026): el "servicio" del reporte WinLab (rep.SEXO / última celda)
         // es el servicio de la ORDEN del panel, NO el servicio quirúrgico del paciente —
@@ -8272,7 +8347,7 @@ function plExportBackup() {
           // Nombre de ORIGEN del blob WinLab. Permite re-validar después que el
           // snapshot pertenece al paciente (retracción autoritativa por nombre,
           // inmune a colisiones de exp). NUNCA borrar sin actualizar migrateNote.
-          winlab_paciente: winlabRow.paciente || "",
+          winlab_paciente: (ident && ident.names[0]) || winlabRow.paciente || "",
           synced_at: new Date().toISOString(),
           scraped_at: winlabRow.scraped_at || null,
         });
@@ -8723,11 +8798,25 @@ function plExportBackup() {
       // Si falta nombre normalizable en cualquiera, no se puede verificar por nombre.
       // Conservador y compatible: dejar pasar (siguen aplicando exp + filtro interno por
       // encabezado). El caso de fuga reportado SIEMPRE tiene nombre completo en ambos.
-      var ok = _winlabNamesMatch(p && p.nombre, wl && wl.paciente);
+      // Nombres de la fila: el suyo y, cuando el robot juntó en una fila a los dos pacientes de un expediente repetido
+      // (misma exp y fecha), los de data.aliases. La fila trae los reportes de los dos y cada uno se separa por su
+      // encabezado (_wlReportFilter); antes solo contaba el primero y el segundo nunca recibía labs (3-160).
+      var wlNames = [wl && wl.paciente].concat(wl && wl.data && Array.isArray(wl.data.aliases) ? wl.data.aliases : [])
+        .map(function (n) { return toSafeString(n).trim(); }).filter(function (n, i, a) { return n && a.indexOf(n) === i; });
+      var mine = (_wlIdent(p) || { names: [] }).names;
+      if (!mine.length) mine = [p && p.nombre];
+      var matchMe = function (n) {
+        var r = mine.map(function (m) { return _winlabNamesMatch(m, n); });
+        return r.indexOf(true) >= 0 ? true : (r.every(function (x) { return x === null; }) ? null : false);
+      };
       var twins = _plExpTwins(p);
-      if (!twins.length) return ok !== false;
-      // Expediente repetido: solo si el nombre es de ESTE paciente y no también del otro.
-      return ok === true && !twins.some(function (q) { return _winlabNamesMatch(q.nombre, wl && wl.paciente) === true; });
+      if (!twins.length) {
+        if (!wlNames.length) return true;
+        var rs = wlNames.map(matchMe);
+        return rs.indexOf(true) >= 0 || rs.every(function (x) { return x === null; });
+      }
+      // Expediente repetido: solo si alguno de los nombres es de ESTE paciente y no también del otro.
+      return wlNames.some(function (n) { return matchMe(n) === true && !twins.some(function (q) { return _winlabNamesMatch(q.nombre, n) === true; }); });
     }
 
     function findWinlabRowForPatient(p) {
@@ -8867,7 +8956,7 @@ function plExportBackup() {
           // CULTIVOS-WINLAB-v56: cultivos del paciente (ya pasó exp + _winlabCensoNameOk;
           // buildWinlabCultures re-aplica el guard de nombre por encabezado internamente).
           try {
-            _winlabCultByK[pid(p)] = buildWinlabCultures(wl);
+            _winlabCultByK[pid(p)] = buildWinlabCultures(wl, _wlIdent(p));
             // Cultivos nuevos → línea con fecha en la entrega de guardia (una sola vez por cultivo).
             if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(pid(p), _entregaItemsFromCultures(_winlabCultByK[pid(p)]));
           } catch (_) {}
@@ -8875,13 +8964,13 @@ function plExportBackup() {
           // para soportar 3 días previos del scraper.
           // Fechas de TODAS las filas del robot cargadas para este exp (4 días + las viejas del respaldo). Repone las
           // fechas que un guardado con copia vieja le quitó a la nota.
-          const _espCanon = normalizeEspImport(p.esp);
+          const _espCanon = normalizeEspImport(p.esp), _ident = _wlIdent(p);
           const _byFecha = {};
           _winlabAllRowsForPatient(p, wl).forEach(function (row) {
             if (row !== wl && !_winlabCensoNameOk(p, row)) return;
             // Por analito: la fila más nueva gana; las viejas solo rellenan huecos (una búsqueda reciente puede traer
             // ese día incompleto).
-            buildWinlabLabSnapshots(row, _espCanon).forEach(function (sn) {
+            buildWinlabLabSnapshots(row, _espCanon, _ident).forEach(function (sn) {
               const prev = _byFecha[sn.fecha];
               _byFecha[sn.fecha] = prev ? Object.assign({}, sn, { labs: Object.assign({}, prev.labs, sn.labs) }) : sn;
             });
@@ -13218,7 +13307,7 @@ function plExportBackup() {
             if (entregaEl && row.entrega !== undefined && !_anyGiFocus) entregaEl.value = row.entrega;
             if (recibeEl && row.recibe !== undefined && !_anyGiFocus) recibeEl.value = row.recibe;
             try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify({ fecha: row.fecha, entrega: row.entrega, recibe: row.recibe })); } catch (_) {}
-            safeLog("[RT] guard_info updated:", row);
+            safeInfo("[RT] guard_info updated");
           })
           .subscribe(_makeSubCallback("guard_info"));
         _realtimeSubs.push(giSub);
@@ -13646,12 +13735,15 @@ function plExportBackup() {
       const exp = String(newRow.exp).trim();
       if (!exp) return;
       const prev = winlabByExp[exp];
-      if (prev && prev.scraped_at && newRow.scraped_at && newRow.scraped_at <= prev.scraped_at) return;
+      // El robot usa UN scraped_at por corrida: la misma exp se reescribe en la corrida (fila de expediente repetido,
+      // flush reintentado) con el mismo sello. Solo se ignora lo más viejo; con el mismo sello gana la fecha más nueva.
+      if (prev && prev.scraped_at && newRow.scraped_at && (newRow.scraped_at < prev.scraped_at || (newRow.scraped_at === prev.scraped_at && String(newRow.fecha || "") < String(prev.fecha || "")))) return;
       winlabByExp[exp] = newRow;
       { const list = winlabRowsByExp[exp] = (winlabRowsByExp[exp] || []).filter(function (x) { return x.fecha !== newRow.fecha; }); list.push(newRow); list.sort(function (a, b) { return String(a.scraped_at || "").localeCompare(String(b.scraped_at || "")); }); }
       _winlabExpIndex = null; // el índice por variantes de exp se cachea por identidad de winlabByExp (mutado en sitio)
-      // Con expediente repetido, la fila es solo de la persona cuyo nombre trae (aviso y repintado solo de esa).
-      const affected = patients.filter(function(p) { return findWinlabRowForPatient(p) === newRow && (!_plExpTwins(p).length || _winlabCensoNameOk(p, newRow)); });
+      // Con expediente repetido la fila puede traer a los dos (el robot los junta por exp y fecha): se sincronizan todos
+      // los de ese expediente y cada uno toma solo los reportes de su encabezado; el aviso sale solo si a alguien le cambió algo.
+      const affected = patients.filter(function(p) { return findWinlabRowForPatient(p) === newRow; });
       if (!affected.length) return;
       safeInfo("[RT] winlab_labs updated for exp=" + exp);
       affected.forEach(function (p) { _wlRtPending.add(pid(p)); });
@@ -16459,6 +16551,8 @@ function plExportBackup() {
     function _entregaFmtFecha(iso) {
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
       if (m) return m[3] + "-" + m[2] + "-" + m[1];
+      const dm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(iso || ""));   // fecha del RIS sin normalizar
+      if (dm) return dm[1].padStart(2, "0") + "-" + dm[2].padStart(2, "0") + "-" + dm[3];
       const d = new Date(); return String(d.getDate()).padStart(2, "0") + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + d.getFullYear();
     }
     // items: [{ id, fecha (AAAA-MM-DD), text }] → líneas nuevas agregadas (0 si nada)
@@ -18967,6 +19061,22 @@ function plExportBackup() {
     // ─── ESTUDIOS DE IMAGEN del robot RIS (tabla ris_estudios) ──────────────────────────────
     const RIS_SELECT = "id,exp,patient_id,paciente,fecha,hora,sede,estudios,modalidad,procedencia,critico,reporte,reporte_url,imagen_url,reporte_estado,reporte_motivo,scraped_at";
     function _risKey(exp) { return String(exp == null ? "" : exp).trim(); }
+    // El robot guarda la fecha del RIS tal cual (DD/MM/AAAA). Todo lo demás (orden, filtro de 14 días de la entrega,
+    // fechas de las líneas automáticas, nota) compara AAAA-MM-DD: se normaliza al recibir la fila y se conserva la
+    // original en fecha_ris. Sin esto el orden saltaba entre meses y la entrega dejaba fuera los estudios del 1 al 20.
+    function _risFechaISO(f) {
+      const s = String(f == null ? "" : f).trim();
+      const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);
+      return m ? m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0") : s;
+    }
+    function _risNorm(r) {
+      if (!r || typeof r !== "object") return r;
+      const iso = _risFechaISO(r.fecha);
+      return iso === r.fecha ? r : Object.assign({}, r, { fecha: iso, fecha_ris: r.fecha });
+    }
+    function _risFechaVer(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || "")); return m ? m[3] + "/" + m[2] + "/" + m[1] : String(iso || ""); }
+    // Solo http(s): el robot copia el href del visor tal cual y una nota puede llegar de la nube con cualquier cosa.
+    function _safeHref(u) { const s = String(u == null ? "" : u).trim(); return /^https?:\/\//i.test(s) ? s : ""; }
     async function _loadRisEstudios(pts) {
       const exps = new Set();
       (pts || []).forEach(p => { const e = _risKey(p && p.exp); if (e && /^[\w\-.\/]+$/.test(e)) exps.add(e); });
@@ -18975,7 +19085,7 @@ function plExportBackup() {
       if (exps.size <= 600) q += "&exp=in.(" + Array.from(exps).map(encodeURIComponent).join(",") + ")";
       const rows = await retryNetwork(() => _sGet("ris_estudios", q), 2, 200);
       const next = {};
-      (rows || []).forEach(r => { const e = _risKey(r.exp); if (!e) return; (next[e] = next[e] || []).push(r); });
+      (rows || []).forEach(r => { const e = _risKey(r && r.exp); if (!e) return; (next[e] = next[e] || []).push(_risNorm(r)); });
       risByExp = next;
     }
     function risForPatient(p) {
@@ -18988,7 +19098,7 @@ function plExportBackup() {
       // corregir un expediente repetido, hasta que el robot lo vuelva a guardar con el exp nuevo).
       list = list.filter(r => !_risOtherOwner(p, r));
       if (_plExpTwins(p).length) list = list.filter(r => _risIsFor(p, r));
-      return list.slice().sort((a, b) => (String(b.fecha) + String(b.hora)).localeCompare(String(a.fecha) + String(a.hora)));
+      return list.slice().sort((a, b) => (_risFechaISO(b.fecha) + " " + String(b.hora || "")).localeCompare(_risFechaISO(a.fecha) + " " + String(a.hora || "")));
     }
     function _risOtherOwner(p, r) {
       const id = r && r.patient_id ? String(r.patient_id) : "";
@@ -19002,16 +19112,31 @@ function plExportBackup() {
     function handleRisChange(payload) {
       try {
         const { eventType, new: row, old: oldRow } = payload || {};
-        const r = row || oldRow; if (!r) return;
-        const e = _risKey(r.exp); if (!e) return;
-        const list = risByExp[e] || (risByExp[e] = []);
-        const i = list.findIndex(x => String(x.id) === String(r.id));
-        if (eventType === "DELETE") { if (i >= 0) list.splice(i, 1); }
-        else if (i >= 0) list[i] = row; else list.push(row);
-        const affected = patients.filter(p => _risKey(p.exp) === e && (eventType === "DELETE" || (!_risOtherOwner(p, r) && (!_plExpTwins(p).length || _risIsFor(p, r)))));
-        affected.forEach(p => { const k = pid(p); if (document.getElementById("card-" + k)) _rerenderCardSoft(k); });   // en calma, conserva sección/scroll
-        if (affected.length && eventType !== "DELETE") _showRTToast("🩻 Estudio de imagen " + (row && row.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
-        if (eventType !== "DELETE") _entregaAutoFromRis(affected);
+        // En un DELETE Supabase manda new = {} (verdadero) y old solo con el id: el registro es el que traiga id.
+        const r = (row && row.id != null) ? row : oldRow; if (!r || r.id == null) return;
+        const del = eventType === "DELETE";
+        const nr = del ? null : _risNorm(row);
+        // Quitar la copia anterior de TODOS los expedientes: si el robot corrigió el expediente (o reasignó el estudio
+        // al gemelo) la fila cambia de lugar y la vieja se quedaba en el otro paciente hasta recargar.
+        let prev = null; const tocados = new Set();
+        Object.keys(risByExp).forEach(ek => {
+          const L = risByExp[ek], i = L.findIndex(x => x && String(x.id) === String(r.id));
+          if (i >= 0) { prev = L[i]; L.splice(i, 1); tocados.add(ek); }
+        });
+        const e = nr ? _risKey(nr.exp) : "";
+        if (nr && e) { (risByExp[e] = risByExp[e] || []).push(nr); tocados.add(e); }
+        if (!tocados.size) return;
+        // Cada pasada del robot reescribe todas las filas: sin cambios reales no se repinta ni se avisa.
+        const igual = prev && nr && ["exp", "patient_id", "fecha", "hora", "modalidad", "estudios", "reporte", "reporte_estado", "reporte_url", "imagen_url", "critico"].every(f => String(prev[f] == null ? "" : prev[f]) === String(nr[f] == null ? "" : nr[f]));
+        if (igual) return;
+        const repaint = patients.filter(p => tocados.has(_risKey(p.exp)));
+        repaint.forEach(p => { const k = pid(p); if (document.getElementById("card-" + k)) _rerenderCardSoft(k); });   // en calma, conserva sección/scroll
+        const affected = nr ? patients.filter(p => _risKey(p.exp) === e && !_risOtherOwner(p, nr) && (!_plExpTwins(p).length || _risIsFor(p, nr))) : [];
+        if (affected.length) {
+          const nuevoRep = nr.reporte && !(prev && prev.reporte);
+          if (!prev || nuevoRep || !!nr.critico !== !!(prev && prev.critico)) _showRTToast("🩻 Estudio de imagen " + (nr.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
+          _entregaAutoFromRis(affected);
+        }
         _refreshJumpBar();
       } catch (err) { safeLog("handleRisChange:", err); }
     }
@@ -19031,11 +19156,12 @@ function plExportBackup() {
       if (!list.length) return "";
       const ek = k.replace(/[^a-zA-Z0-9_-]/g, "_");
       const items = list.map((r, i) => {
-        const when = esc((r.fecha || "") + (r.hora ? " " + String(r.hora).slice(0, 5) : ""));
+        const when = esc(_risFechaVer(r.fecha) + (r.hora ? " " + String(r.hora).slice(0, 5) : ""));
         const titulo = esc([r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" · ") || "Estudio");
         const rep = toSafeString(r.reporte).trim();
         const rid = ek + "_ris_" + i;
-        const links = (r.reporte_url ? `<a href="${esc(r.reporte_url)}" target="_blank" rel="noopener" class="ris-link">📄 Reporte</a>` : "") + (r.imagen_url ? `<a href="${esc(r.imagen_url)}" target="_blank" rel="noopener" class="ris-link">🖼 Imagen</a>` : "");
+        const uRep = _safeHref(r.reporte_url), uImg = _safeHref(r.imagen_url);
+        const links = (uRep ? `<a href="${esc(uRep)}" target="_blank" rel="noopener" class="ris-link">📄 Reporte</a>` : "") + (uImg ? `<a href="${esc(uImg)}" target="_blank" rel="noopener" class="ris-link">🖼 Imagen</a>` : "");
         // Estado del reporte que escribe el robot (oct 2026): 'pendiente_ris' = el RIS aún no lo
         // transcribió; 'pendiente_descarga' = el reporte ya existe en el visor pero el robot no pudo
         // bajarlo (sesión/presupuesto) y lo reintenta en la siguiente pasada. Sin estado → texto de siempre.
@@ -19077,7 +19203,7 @@ function plExportBackup() {
         let attachHtml = "";
         if (est.file && isImg) {
           attachHtml = `<div class="imagen-preview" style="margin-top:5px">
-        <img src="data:${est.file_type};base64,${est.file}" onclick="openEstudioFile('${k}','${activeFecha}',${i})" style="max-width:100%;max-height:140px;border-radius:5px;cursor:pointer;display:block"/>
+        <img src="data:${esc(est.file_type)};base64,${esc(est.file)}" onclick="openEstudioFile('${k}','${activeFecha}',${i})" style="max-width:100%;max-height:140px;border-radius:5px;cursor:pointer;display:block"/>
         <button class="img-del-btn" onclick="removeEstudioFile('${k}','${activeFecha}',${i})">✕</button></div>`;
         } else if (est.file && isPdf) {
           attachHtml = `<div class="imagen-pdf-chip" onclick="openEstudioFile('${k}','${activeFecha}',${i})">
@@ -19087,7 +19213,8 @@ function plExportBackup() {
         let linkHtml = "";
         if (est.link) {
           const disp = est.link.length > 40 ? est.link.slice(0, 40) + "…" : est.link;
-          linkHtml = `<div class="imagen-link-chip">🔗 <a href="${esc(est.link)}" target="_blank">${esc(disp)}</a>
+          const href = _safeHref(est.link);
+          linkHtml = `<div class="imagen-link-chip">🔗 ${href ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(disp)}</a>` : esc(disp)}
         <button class="link-del-btn" onclick="removeEstudioLink('${k}','${activeFecha}',${i})">✕</button></div>`;
         }
         const tipoOpts = TIPOS.map(t => `<option ${t === est.tipo ? 'selected' : ''}>${t}</option>`).join("");
@@ -19151,7 +19278,9 @@ function plExportBackup() {
     function addEstudio(k, fecha) {
       const nd = getNote(k);
       const entry = nd.imagenHistory.find(e => e.fecha === fecha);
-      if (!entry || entry.estudios.length >= 3) return;
+      if (!entry) return;
+      if (!Array.isArray(entry.estudios)) entry.estudios = [];
+      if (entry.estudios.length >= 3) return;
       entry.estudios.push({ tipo: "RX", descripcion: "", file: "", file_type: "", file_name: "", link: "" });
       noteData[k] = nd;
       saveNote(k, nd);
@@ -19261,7 +19390,7 @@ function plExportBackup() {
       if (est.file_type && est.file_type.startsWith('image/')) {
         const w = window.open('', '_blank');
         if (!w) { alert("El navegador bloqueó la ventana emergente. Permite popups para ver el archivo."); return; }
-        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${est.file_type};base64,${est.file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
+        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${esc(est.file_type)};base64,${esc(est.file)}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
         w.document.close();
       } else {
         const bytes = atob(est.file); const arr = new Uint8Array(bytes.length);
@@ -21782,6 +21911,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
     function setActiveLabDate(k, fecha) {
       activeLabDate[k] = fecha;
+      // Repintar la sección completa: antes solo se cambiaban valor y color de cada casilla, y la flecha de tendencia
+      // (↓2.0), las sugerencias («Anemia moderada (8.0)») y el INR estimado se quedaban con los de la fecha anterior.
+      var secEl = document.getElementById("labs-sec-" + k);
+      if (secEl && typeof renderLabSection === "function") {
+        try { secEl.outerHTML = renderLabSection(migrateNote(noteData[k] || defaultData()), k); return; } catch (e) { safeLog("setActiveLabDate:", e); }
+      }
       var nd = noteData[k] || defaultData();
       var snap = (nd.labHistory || []).find(function (s) { return s.fecha === fecha; });
       var labs = snap ? (snap.labs || {}) : {};
@@ -21959,7 +22094,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (fileType.startsWith("image/")) {
         const w = window.open("", "_blank");
         if (!w) { alert("El navegador bloqueó la ventana emergente. Permite popups para ver el archivo."); return; }
-        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${fileType};base64,${snap.source_file}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
+        w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="data:${esc(fileType)};base64,${esc(snap.source_file)}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
         w.document.close();
         return;
       }
@@ -22943,11 +23078,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             const _p = (typeof patients !== "undefined" ? patients.find(pt => pid(pt) === k) : null);
             const ptName = (_p && _p.nombre) || nd.nombre || nd.name || k;
             const cama = (_p && _p.cama) || nd.cama || nd.room || "";
-            const pendPt = reminders.filter(r => !r.done);
+            // Posición en la lista COMPLETA (togglePtReminder la usa así; con uno ya hecho antes se marcaba otro).
+            const pendPt = reminders.map((r, i) => ({ r, i })).filter(x => x.r && !x.r.done);
             if (pendPt.length === 0) continue;
-            const rows = pendPt.map((r, idx) => `
+            const rows = pendPt.map(({ r, i: idx }) => `
               <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px">
-                <button onclick="togglePtReminder(${JSON.stringify(k)},${idx})"
+                <button onclick="togglePtReminder(${esc(JSON.stringify(k))},${idx})"
                   style="flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid #94a3b8;background:#fff;cursor:pointer;font-size:12px;padding:0">
                 </button>
                 <span style="font-size:13px;color:#1e293b;word-break:break-word;flex:1">${esc(r.text)}</span>
@@ -27380,7 +27516,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.24-1";
+    const PL_BUILD = "2026.10.26-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -28613,8 +28749,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
             el.style.display = "none";
           }
         });
-        closeNoteModal && closeNoteModal();
-        closeCredHud && closeCredHud();
+        // closeNoteModal ya no existe: llamarla lanzaba ReferenceError en CADA Esc y cortaba closeCredHud.
+        if (typeof closeCredHud === "function") closeCredHud();
         return;
       }
 

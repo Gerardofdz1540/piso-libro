@@ -247,6 +247,16 @@ actualiza al instante con un aviso. Las credenciales del visor viven en la tabla
 Supabase (no en el código); si cambian, se actualizan ahí. Para lanzarlo a mano: Actions → "RIS
 Imagen" → Run workflow.
 
+- **Fechas y orden** (26 oct 2026): el visor da la fecha como DD/MM/AAAA y la app la comparaba
+  como texto: el orden se revolvía entre meses, la Entrega y el Proyector dejaban fuera los estudios
+  del día 1 al 20 y las líneas automáticas salían con la fecha de hoy. Ahora la app la convierte al
+  recibirla: el estudio más reciente va arriba y cada línea lleva la fecha del estudio.
+- Si el robot corrige el expediente de un estudio o el visor lo borra, la tarjeta se ajusta sola
+  (antes quedaba una copia en el paciente anterior hasta recargar). Las pasadas del robot sin
+  cambios ya no repintan ni avisan.
+- Solo se abren enlaces `http`/`https`; cualquier otro (p. ej. `javascript:`) se muestra como
+  texto, en el bloque del visor y en la caja Imagen manual.
+
 ## Alertas y laboratorios en el tablero
 
 La hoja de labs críticos, labs nuevos y "sin laboratorios de hoy" ya no ocupa la parte de arriba:
@@ -254,6 +264,22 @@ está en el botón **🔔** de la barra del paciente (muestra los contadores: ro
 🧪 = labs nuevos, 📭 = sin labs de hoy). Se abre como panel lateral; tocar un renglón cierra el
 panel y abre la tarjeta de ese paciente, resaltada. En el carril de camas, un punto rojo marca
 labs críticos sin reconocer y uno ámbar labs atrasados.
+
+## A quién se le asigna cada laboratorio (26 oct 2026)
+
+- **Expediente repetido** (p. ej. 3-159 y 3-160): el robot guarda una fila por expediente y fecha,
+  así que junta a los dos pacientes en la misma fila. La app ahora separa cada reporte por el
+  encabezado de su paciente: cada cama recibe solo lo suyo. Antes la segunda cama nunca recibía
+  labs y, con WinLab en italiano, la primera recibía también los de la otra. Si la fila no trae
+  encabezados no se asigna a ninguna de las dos.
+- WinLab en **italiano** (NOME/COGNOME): los encabezados ya se reconocen; antes se tiraban labs de
+  NCX/URO pedidos por Cirugía General.
+- El encabezado de WinLab se coteja con el nombre del censo **y** con el «✏️ Nombre en WinLab»
+  (apellido de casada, etc.). Los reportes que el robot descartó (homónimo, edad que no cuadra) no
+  entran nunca, y otra persona con los mismos apellidos tampoco aunque el robot la marque.
+- **FCO./FCA.** del censo = FRANCISCO/FRANCISCA; ANTONIO y ANTONIA son personas distintas.
+- Al tocar otra fecha de labs, la flecha de tendencia, las sugerencias y el INR estimado son los
+  de esa fecha (antes se quedaban los de la fecha anterior).
 
 ## Si los laboratorios no llegan
 
