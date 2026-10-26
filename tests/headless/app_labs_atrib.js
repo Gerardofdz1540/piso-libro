@@ -141,7 +141,7 @@ const PTS = [
   }).catch(e => ({ err: String(e) }));
   check('W10 chip de fecha: valores, tendencia, sugerencias e INR estimado son los de la fecha elegida', chips.after && chips.after.hb.value === '12.0' && !/[↓↑]/.test(chips.after.hb.text) && !/1[.,]5/.test(chips.after.inr.ph + chips.after.inr.value) && !chips.after.anemia && (/[↓↑]/.test(chips.before.hb.text) || /1[.,]5/.test(chips.before.inr.ph + chips.before.inr.value) || chips.before.anemia), J(chips));
   check('final: sin errores de JavaScript en la página', errors.length === 0 && !res.err && !chips.err, J([res.err, chips.err, errors.slice(0, 3)]));
-  console.log(`\n${pass} pass, ${fail} fail`);
+  console.log('RESULT APP-LABS-ATRIB: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('CRASH', e); process.exit(2); });

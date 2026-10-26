@@ -103,7 +103,7 @@ const DMY_RECENT = dmy(recent);
   }).catch(e => ({ err: String(e) }));
   check('R10 Esc no lanza error y 📌 No olvidar marca el recordatorio correcto', no.r0 === true && no.r1 === true && !errors.some(e => /closeNoteModal|Unexpected end/.test(e)), JSON.stringify([no, errors.slice(0, 2)]));
   check('final: sin errores de JavaScript en la página', errors.length === 0 && !r.err, JSON.stringify([r.err, errors.slice(0, 3)]));
-  console.log(`\n${pass} pass, ${fail} fail`);
+  console.log('RESULT APP-RIS: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error('CRASH', e); process.exit(2); });
