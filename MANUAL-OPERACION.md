@@ -743,8 +743,8 @@ una copia: además trae pestañas listas para estadística.
 - **Imagen (RIS) cada 2 h de verdad.** GitHub lanzaba el robot de imagen cada 4-6 h aunque estaba programado cada 2.
   Ahora Supabase lo dispara a hora exacta cada 2 h (minuto 41, cron `ris-scrape-cada-2h`;
   `scripts/supabase_ris_dispatch.sql`, ya aplicado) por una ruta nueva del worker (`/api/scrape-ris`).
-  - **Falta un paso tuyo:** pega el `cloudflare-worker/index.js` nuevo (v5) en el worker `piso-libro-ai` (Cloudflare →
-    Workers → piso-libro-ai → Edit code → pegar → Deploy).
+  - **Falta un paso tuyo:** pega el `cloudflare-worker/index.js` nuevo (v6, que ya incluye lo de v5) en el worker
+    `piso-libro-ai` (Cloudflare → Workers → piso-libro-ai → Edit code → pegar → Deploy). Ver "Worker v6" abajo.
   - Hasta entonces, esa ruta responde 404 (queda anotado en `winlab_dispatch_log`, sin efecto) y el cron de GitHub
     sigue como respaldo.
 - **Vigilante de todo el sistema.** `labs-watchdog.yml` + `scripts/vigilante.py` revisa cada 2 h (antes cada 6 y solo
@@ -758,6 +758,9 @@ una copia: además trae pestañas listas para estadística.
   | Descarga del Doc de indicaciones | 2 h |
   | Censo | 18 h sin ningún cambio |
   | Tamaño de la base | — |
+  | Disparos desde Supabase (labs y RIS) | la última respuesta del worker debe ser 200 (un 404 del RIS solo avisa: worker sin pegar) |
+  | Protecciones de la base | todas puestas (`pl_salud_catalogo`, 59 revisiones: triggers de notas y pacientes, RLS, políticas, pg_cron, canales privados, que nadie pueda cambiarse el rol) |
+  | Versión de los dos Apps Script | igual a la del repositorio (solo avisa) |
 
   Si algo se atrasa, el job sale en rojo con el qué revisar y GitHub te manda el correo. Solo imprime horas y conteos.
 - **📦 Labs Masivo descarta valores imposibles.** Si la IA lee mal una cifra (Hb 125, K 40…), ya no se guarda, igual que
@@ -1048,13 +1051,18 @@ hoja del censo no cambian (usan la llave de servicio).
 Botón **👥 Usuarios** en la cabecera (solo lo ve el administrador).
 
 - **➕ Dar acceso a alguien**: correo, nombre y rol → se crea la cuenta y aparece una **contraseña
-  temporal** una sola vez (12 caracteres, ya copiada): mándasela por WhatsApp. Entra con su correo y
-  esa contraseña y la cambia en 👤 Mi cuenta.
+  temporal** una sola vez (12 caracteres, ya copiada): mándasela por WhatsApp y borra el mensaje después.
+  Entra con su correo y esa contraseña y **la app le pide una nueva antes de seguir** (la ventana 🔑 no se puede
+  cerrar hasta cambiarla; desde el 27 oct 2026).
 - Por cuenta: **🔑 Contraseña temporal** (la anterior deja de servir), **🔗 Enlace** (copia un enlace de
   recuperación que vale 1 hora: al abrirlo la app pide la contraseña nueva), **📧 Correo** (Supabase
   manda ese enlace por correo; ver SMTP abajo), **✏️ Nombre**, **⬆️ Hacer admin / ⬇️ Quitar admin**,
-  **⛔ Bloquear / 🔓 Activar** (bloqueado no puede ni iniciar sesión) y **🗑 Borrar** (su actividad
-  anterior se conserva).
+  **⛔ Bloquear / 🔓 Activar** (bloqueado no puede ni iniciar sesión), **📅 Fin de rotación** (fecha hasta la que
+  tiene acceso) y **🗑 Borrar** (su actividad anterior se conserva).
+- Avisos en la lista (27 oct 2026): **rotación terminada** (ya pasó su 📅), **sin uso 30+ días** y **🔑 contraseña
+  temporal** (aún no la cambia). Arriba aparece un recuadro con cuántas hay que revisar.
+- Nadie puede cambiarse a sí mismo el rol ni el estado desde fuera del panel: la base solo deja que cada cuenta
+  cambie su nombre (antes una cuenta podía hacerse administradora con una petición directa; se cerró el 27 oct 2026).
 - El administrador no puede bloquearse, borrarse ni quitarse el rol a sí mismo.
 - **Sin registro**: cuentas creadas a mano en el panel de Supabase; aparecen con **✅ Dar acceso**.
 
@@ -1078,8 +1086,8 @@ El mismo día, el administrador:
 
 ### Cuando alguien llega
 
-1. 👥 Usuarios → **➕ Dar acceso**: correo, nombre y rol; mandarle la contraseña temporal; que la
-   cambie en 👤 Mi cuenta al entrar.
+1. 👥 Usuarios → **➕ Dar acceso**: correo, nombre y rol; mandarle la contraseña temporal (la app le pide una
+   nueva al entrar) y ponerle su **📅 Fin de rotación**.
 2. Explicarle **tres reglas**: código de bloqueo en el iPad y el celular; la cuenta es personal y
    no se presta; no se mandan capturas de pantalla con pacientes por WhatsApp.
 3. Enseñarle dónde está este manual (`MANUAL-OPERACION.md` en GitHub) y las secciones "Si los
@@ -1088,9 +1096,9 @@ El mismo día, el administrador:
 
 ### Revisión mensual de cuentas
 
-Una vez al mes, y en cada cambio de rotación, el administrador abre 👥 Usuarios y mira "Último
-acceso": **bloquea** las cuentas con más de 30 días sin entrar y las creadas hace más de una
-semana que nunca han entrado (🔓 Activar las repone si la persona regresa). Ponerlo en el
+Una vez al mes, y en cada cambio de rotación, el administrador abre 👥 Usuarios: el recuadro de arriba y las
+etiquetas **rotación terminada** y **sin uso 30+ días** dicen a quién revisar. **Bloquea** esas cuentas y las
+creadas hace más de una semana que nunca han entrado (🔓 Activar las repone si la persona regresa). Ponerlo en el
 calendario del servicio junto con la fecha de cambio de rotación.
 
 ### 🕵️ Actividad
@@ -1189,11 +1197,61 @@ lados está en `scripts/SECURITY_NOTES.md`.
 | Contraseña de WinLab (`WINLAB_PASS`) | Robot de labs | Corrida en rojo con "Login fallido" | Según el hospital | ________ | WinLab → GitHub secret → "WinLab corrida en seco" |
 | Contraseña del visor (`RIS_PASS`) | Robot de imagen | "RIS Imagen" en rojo al iniciar sesión | Según el hospital | ________ | Visor → Supabase `rpa_config` → "RIS Imagen" con `dry_run` |
 | Contraseña de la base (`SUPABASE_DB_URL` en GitHub) | Respaldo nocturno de la base | "Respaldo de la base" en rojo (correo de GitHub); no hay artifact del día | Cuando alguien hace *Reset database password* en Supabase | — | Supabase → Connect → Session pooler → URI con la contraseña nueva → GitHub → secret `SUPABASE_DB_URL` → Run workflow |
-| Clave de Gemini (`GEMINI_API_KEY` en Cloudflare) | Toda la IA (nota, labs de foto/PDF, lápiz → texto) | Todo lo de IA falla con «Token del Worker inválido o clave del ayudante de IA (Google Gemini) expirada» o con un HTTP 400/403 pelón (el worker devuelve el error de Google tal cual); 🤖 Nota IA cae al borrador sin IA con «La IA no respondió (HTTP …)». «…tuvo un problema» solo sale con errores 5xx (worker o Gemini caídos), no por la clave | No por fecha; lo que sí puede retirarse es el modelo que usa el worker | — | AI Studio → clave nueva → Cloudflare → Deploy; si es el modelo, cambiar `GEMINI_MODEL` en el worker |
+| Clave de Gemini (`GEMINI_API_KEY` en Cloudflare) | Toda la IA (nota, labs de foto/PDF, lápiz → texto) | Todo lo de IA falla con «Token del Worker inválido o clave del ayudante de IA (Google Gemini) expirada» o con un HTTP 400/403 pelón (el worker devuelve el error de Google tal cual); 🤖 Nota IA cae al borrador sin IA con «La IA no respondió (HTTP …)». «…tuvo un problema» solo sale con errores 5xx (worker o Gemini caídos), no por la clave | No por fecha; lo que sí puede retirarse es el modelo que usa el worker | — | AI Studio → clave nueva → Cloudflare → Deploy. Si Google retira un modelo, el worker v6 usa solo el de respaldo; para cambiarlo sin tocar el código: Cloudflare → worker → Settings → Variables → `GEMINI_MODEL` (principal), `GEMINI_MODEL_RAPIDO` (lápiz) o `GEMINI_MODEL_RESPALDO` → Deploy. Antes de mover la clave a otra cuenta de Google, probar en el proyecto nuevo que el modelo responde |
 
 Además, sin ser llaves: GitHub apaga los robots tras 60 días sin cambios en el repositorio (se
 mantienen despiertos solos) y Supabase pausa el proyecto tras 7 días sin tráfico (hay un ping cada
 3 días).
+
+## Seguridad de cuentas, canales en vivo y versiones (27 de octubre de 2026)
+
+- **Nadie puede hacerse administrador por su cuenta.** La regla «cada quien edita su fila» dejaba cambiar cualquier
+  columna (rol, estado) con una petición directa a la base. Ahora cada cuenta solo cambia su nombre, su última
+  conexión y la marca de contraseña temporal; rol y estado solo desde 👥 Usuarios. Se revisó: un solo administrador,
+  el original. `scripts/supabase_cuentas_y_canales_27oct.sql`.
+- **Respaldo del 20 oct sin candado.** Una tabla de respaldo con 7 notas tenía apagado RLS: cualquier sesión podía
+  leerla o vaciarla. Ya está cerrada; junto con otros avisos del asesor de Supabase (funciones internas que se podían
+  llamar desde fuera, funciones sin ruta fija). `scripts/supabase_seguridad_asesor_27oct.sql`.
+- **Contraseña temporal obligatoria** y **📅 fin de rotación**: ver "Cuentas, permisos y registro de actividad".
+  Ya está desplegada la función `admin-users` nueva (versión 3).
+- **Canales en vivo privados.** El aviso de quién edita cada tarjeta, la guardia y el aviso de No olvidar viajaban por
+  canales públicos. Desde la versión 2026.10.27-6 la app los abre privados y solo entran cuentas activas (si el
+  privado falla, vuelve al público en esa sesión para no perder los avisos).
+  - **Paso tuyo, cuando todos los iPads ya tengan la versión 2026.10.27-6** (aviso «versión nueva» aceptado):
+    Supabase → Realtime → Settings → apagar **«Allow public access»** → Save. Mientras esté prendido, los canales
+    públicos siguen existiendo para los iPads viejos.
+- **Contraseñas filtradas.** El asesor de Supabase sugiere prender «Prevent use of leaked passwords» (Authentication →
+  Sign In / Providers → Email), que rechaza contraseñas que ya aparecieron en filtraciones públicas. En el plan gratuito
+  Supabase no lo ofrece (es de Pro); mientras, siguen el mínimo de 12 caracteres y la contraseña temporal obligatoria.
+- **Protecciones vigiladas.** El vigilante (cada 2 h) revisa que sigan puestas las 59 protecciones de la base y queda
+  en rojo si falta una (`scripts/supabase_salud_catalogo.sql`). Si se agrega o quita una protección a propósito,
+  actualizar las listas de esa función.
+- **Versión de los Apps Script.** `censo-sync.gs` y `registro-pacientes.gs` tienen una constante de versión
+  (`CENSO_SYNC_VERSION`, `REGISTRO_VERSION`) que reportan a la base una vez al día; el vigilante avisa en amarillo si
+  la instalada no es la del repositorio («falta pegar») o si un script deja de reportar. **Al cambiar uno de esos
+  archivos, sube su constante.**
+- **Bitácora del censo con plazo.** `sync_log` (avisos del script del censo: expediente, camas y nombres) se guarda 90
+  días (`sync-log-purge`, 04:47). La Papelera y los archivos (PDF, fotos) se conservan a propósito: la Papelera
+  alimenta el registro de investigación y lo que se borre ahí queda en `archive_eliminados`.
+
+### Worker v6: modelo de IA por tarea y de respaldo
+
+- Leer lo escrito con el lápiz (una palabra o un número) usa un modelo **rápido** (`gemini-2.5-flash`, sin
+  razonamiento); notas, documentos, fotos de notas y Labs masivo siguen en el **grande** (`gemini-2.5-pro`).
+- Si un modelo responde que fue retirado (404), que se acabó la cuota (429), que está saturado (5xx) o que no admite
+  la configuración (400), el worker reintenta **una vez** con el otro. Una llave rechazada (401/403) no se reintenta.
+- Los modelos se cambian sin tocar el código: variables `GEMINI_MODEL`, `GEMINI_MODEL_RAPIDO`, `GEMINI_MODEL_RESPALDO`.
+- También deja usar la IA desde el espejo de Netlify (`https://pisocirugiahgl.netlify.app`).
+- Incluye la ruta `/api/scrape-ris` de v5. **Paso tuyo:** pegar `cloudflare-worker/index.js` en `piso-libro-ai` →
+  Deploy. Probar: ✍️ escribir un número con el lápiz y 🤖 Nota IA en un paciente.
+
+### Estudio de imagen de otra persona: «🚫 No es de este paciente»
+
+Si el robot del RIS trae a una tarjeta un estudio que no es de ese paciente (nombre parecido, expediente corregido),
+el botón **🚫 No es de este paciente** de ese estudio lo oculta de la tarjeta, de la vista 📤 Entrega y de la nota. No
+se borra: **👁 Mostrar ocultos** lo enseña atenuado y **↩ Sí es de este paciente** lo regresa. La lista viaja con la
+nota a todos los iPads y deja un paso en ↩ Regresar. Para los labs de WinLab de otra persona: ponle a la tarjeta su
+**nombre en WinLab** (el robot deja de traer los del homónimo) y quita los labs equivocados con ✕ en esa fecha.
 
 ## Plan B si los robots no pueden entrar, y la cuenta que usan (27 de octubre de 2026)
 

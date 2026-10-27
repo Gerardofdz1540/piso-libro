@@ -6839,7 +6839,7 @@ function plExportBackup() {
     async function _loadMyProfile() {
       const uid = myUserId(); if (!uid) return true;
       let rows = null;
-      try { rows = await _sGet("app_users", "select=id,email,nombre,role,status&id=eq." + encodeURIComponent(uid)); }
+      try { rows = await _sGet("app_users", "select=id,email,nombre,role,status,debe_cambiar_pwd,acceso_hasta&id=eq." + encodeURIComponent(uid)); }
       catch (e) {
         // Sin red (o 401 ya manejado): seguir con la copia local; el servidor rechaza igual a los bloqueados.
         safeLog("app_users:", e);
@@ -6851,6 +6851,9 @@ function plExportBackup() {
       if (me.nombre) { try { if ((localStorage.getItem("pl_user_name") || "") !== me.nombre) localStorage.setItem("pl_user_name", me.nombre); } catch (_) {} }
       _renderAdminButton();
       _sPatch("app_users", "id=eq." + encodeURIComponent(uid), { last_seen_at: new Date().toISOString() }).catch(() => {});
+      // Contraseña dada por el administrador (27 oct 2026, hallazgo 77): se pide una nueva antes de seguir; la ventana no se
+      // cierra hasta cambiarla. El enlace de recuperación ya abre la misma ventana (_handleRecoveryLink).
+      if (me.debe_cambiar_pwd && !_recoveryPending) setTimeout(function () { try { openNewPasswordDialog("temporal"); } catch (_) {} }, 300);
       return true;
     }
     async function _accessDenied(reason) {
@@ -6901,7 +6904,7 @@ function plExportBackup() {
       let m = document.getElementById("pwd-modal");
       if (!m) {
         m = document.createElement("div"); m.id = "pwd-modal"; m.className = "modal-bg"; m.style.display = "none"; m.style.zIndex = "100000";
-        m.innerHTML = '<div class="modal-box" style="max-width:420px"><div class="modal-header"><div class="modal-title">🔑 Contraseña nueva</div><button class="modal-close" onclick="closeNewPasswordDialog()">✕</button></div>'
+        m.innerHTML = '<div class="modal-box" style="max-width:420px"><div class="modal-header"><div class="modal-title">🔑 Contraseña nueva</div><button class="modal-close" id="pwd-close" onclick="closeNewPasswordDialog()">✕</button></div>'
           + '<p id="pwd-hint" style="font-size:12.5px;color:#64748b;margin:0 0 10px"></p>'
           + '<input id="pwd-new" type="password" autocomplete="new-password" placeholder="Nueva contraseña (mínimo 12 caracteres)" class="modal-input" style="width:100%;margin-bottom:8px;box-sizing:border-box" data-testid="pwd-new"/>'
           + '<input id="pwd-new2" type="password" autocomplete="new-password" placeholder="Repite la contraseña" class="modal-input" style="width:100%;margin-bottom:10px;box-sizing:border-box" data-testid="pwd-new2" onkeydown="if(event.key===\'Enter\')saveNewPassword()"/>'
@@ -6910,8 +6913,12 @@ function plExportBackup() {
         document.body.appendChild(m);
       }
       const hint = document.getElementById("pwd-hint");
-      if (hint) hint.textContent = fromRecovery ? "Entraste con el enlace de recuperación. Escribe tu contraseña nueva para terminar." : "Escribe tu contraseña nueva. Solo cambia la de tu cuenta.";
-      m.dataset.recovery = fromRecovery ? "1" : "";
+      const temporal = fromRecovery === "temporal";
+      if (hint) hint.textContent = temporal ? "Entraste con una contraseña temporal que te dio el administrador. Escribe una nueva (solo tú la sabrás) para seguir usando la app."
+        : fromRecovery ? "Entraste con el enlace de recuperación. Escribe tu contraseña nueva para terminar." : "Escribe tu contraseña nueva. Solo cambia la de tu cuenta.";
+      m.dataset.recovery = fromRecovery && !temporal ? "1" : "";
+      m.dataset.temporal = temporal ? "1" : "";
+      const cerrar = document.getElementById("pwd-close"); if (cerrar) cerrar.style.display = temporal ? "none" : "";
       document.getElementById("pwd-err").textContent = ""; document.getElementById("pwd-new").value = ""; document.getElementById("pwd-new2").value = "";
       m.style.display = "flex";
       setTimeout(() => { try { document.getElementById("pwd-new").focus(); } catch (_) {} }, 50);
@@ -6927,6 +6934,11 @@ function plExportBackup() {
         const { error } = await _supa.auth.updateUser({ password: p1 });
         if (error) throw error;
         const m = document.getElementById("pwd-modal"); const rec = !!(m && m.dataset.recovery === "1");
+        // Ya no es temporal: se apaga la marca (la persona solo puede cambiar la suya; si falla, se vuelve a pedir al entrar).
+        if (_myProfile && _myProfile.debe_cambiar_pwd) {
+          _myProfile.debe_cambiar_pwd = false;
+          const uid = myUserId(); if (uid) _sPatch("app_users", "id=eq." + encodeURIComponent(uid), { debe_cambiar_pwd: false }).catch(function (e) { safeLog("debe_cambiar_pwd:", e); });
+        }
         closeNewPasswordDialog();
         alert("✅ Contraseña guardada." + (rec ? " Ya puedes usar la app con ella." : ""));
       } catch (e) { if (err) err.textContent = "No se pudo cambiar: " + ((e && e.message) || e); }
@@ -6949,7 +6961,7 @@ function plExportBackup() {
       m.innerHTML = '<div class="modal-box adm-box"><div class="modal-header"><div class="modal-title">👥 Usuarios y actividad</div><button class="modal-close" onclick="closeAdminPanel()">✕</button></div>'
         + '<div class="adm-tabs"><button class="adm-tab active" data-tab="usuarios" onclick="adminTab(\'usuarios\')">👥 Usuarios</button><button class="adm-tab" data-tab="actividad" onclick="adminTab(\'actividad\')" data-testid="adm-tab-actividad">🕵️ Actividad</button></div>'
         + '<div id="adm-usuarios">'
-        +   '<div class="adm-invite"><b>➕ Dar acceso a alguien</b><div class="adm-row"><input id="adm-inv-email" type="email" placeholder="correo@ejemplo.com" class="modal-input" autocomplete="off" data-testid="adm-inv-email"/><input id="adm-inv-nombre" placeholder="Nombre (p. ej. Dra. López R2)" class="modal-input" autocomplete="off" data-testid="adm-inv-nombre"/><select id="adm-inv-role" class="modal-input" data-no-sheet="1"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select><button class="btn-save" onclick="adminInvite()" data-testid="adm-invite">Crear cuenta</button></div><div class="adm-hint">Se crea la cuenta con una contraseña temporal que verás aquí una sola vez: mándasela por WhatsApp. La persona entra con su correo y esa contraseña, y puede cambiarla en 👤 Mi cuenta.</div><div id="adm-inv-result" class="adm-result" style="display:none"></div></div>'
+        +   '<div class="adm-invite"><b>➕ Dar acceso a alguien</b><div class="adm-row"><input id="adm-inv-email" type="email" placeholder="correo@ejemplo.com" class="modal-input" autocomplete="off" data-testid="adm-inv-email"/><input id="adm-inv-nombre" placeholder="Nombre (p. ej. Dra. López R2)" class="modal-input" autocomplete="off" data-testid="adm-inv-nombre"/><select id="adm-inv-role" class="modal-input" data-no-sheet="1"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select><button class="btn-save" onclick="adminInvite()" data-testid="adm-invite">Crear cuenta</button></div><div class="adm-hint">Se crea la cuenta con una contraseña temporal que verás aquí una sola vez: mándasela por WhatsApp. La persona entra con su correo y esa contraseña, y la app le pide una nueva al entrar. Pon su 📅 fin de rotación para que el panel te avise cuando se vaya.</div><div id="adm-inv-result" class="adm-result" style="display:none"></div></div>'
         +   '<div id="adm-list" class="adm-list">Cargando…</div>'
         + '</div>'
         + '<div id="adm-actividad" style="display:none">'
@@ -6977,9 +6989,18 @@ function plExportBackup() {
         const data = await _adminCall("list");
         _adminUsers = Array.isArray(data.users) ? data.users : [];
         const meId = myUserId();
+        let nVencidas = 0, nSinUso = 0;
         const rows = _adminUsers.map(u => {
           const self = u.id === meId; const blocked = u.status === "blocked"; const sinReg = u.status === "sin_registro";
           const est = sinReg ? '<span class="adm-badge adm-warn">sin registro</span>' : blocked ? '<span class="adm-badge adm-bad">bloqueado</span>' : '<span class="adm-badge adm-ok">activo</span>';
+          // Rotación (27 oct 2026, hallazgo 62): fin de rotación ya pasado y cuentas activas sin uso en 30 días → revisar si se bloquean.
+          const activo = !blocked && !sinReg;
+          const vencida = activo && !!u.acceso_hasta && String(u.acceso_hasta).slice(0, 10) < todayStr();
+          const ult = u.last_seen_at || u.last_sign_in_at; const sinUso = activo && !self && (!ult || (Date.now() - new Date(ult).getTime()) > 30 * 86400e3);
+          if (vencida) nVencidas++; if (sinUso) nSinUso++;
+          const avisos = (vencida ? ' <span class="adm-badge adm-bad" data-testid="adm-vencida">rotación terminada</span>' : "")
+            + (sinUso ? ' <span class="adm-badge adm-warn" data-testid="adm-sin-uso">sin uso 30+ días</span>' : "")
+            + (activo && u.debe_cambiar_pwd ? ' <span class="adm-badge adm-warn" data-testid="adm-temporal">🔑 contraseña temporal</span>' : "");
           const rol = u.role === "admin" ? '<span class="adm-badge adm-adm">admin</span>' : '<span class="adm-badge">usuario</span>';
           const acts = sinReg
             ? `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('activar_registro', this.dataset.id)">✅ Dar acceso</button>`
@@ -6987,12 +7008,15 @@ function plExportBackup() {
               + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('recovery_link', this.dataset.id)" title="Copia un enlace para que ponga su contraseña (vale 1 hora)">🔗 Enlace</button>`
               + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('recovery_email', this.dataset.id)" title="Supabase le manda el enlace por correo (requiere SMTP configurado)">📧 Correo</button>`
               + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('set_nombre', this.dataset.id)">✏️ Nombre</button>`
+              + `<button class="adm-btn" data-id="${esc(u.id)}" onclick="adminAct('set_acceso_hasta', this.dataset.id)" title="Fecha en que termina su rotación: el panel avisa cuando pase" data-testid="adm-hasta">📅 Fin de rotación</button>`
               + (self ? "" : `<button class="adm-btn" data-id="${esc(u.id)}" data-role="${u.role === "admin" ? "usuario" : "admin"}" onclick="adminAct('set_role', this.dataset.id, {role:this.dataset.role})">${u.role === "admin" ? "⬇️ Quitar admin" : "⬆️ Hacer admin"}</button>`
                 + `<button class="adm-btn${blocked ? "" : " adm-danger"}" data-id="${esc(u.id)}" data-status="${blocked ? "active" : "blocked"}" onclick="adminAct('set_status', this.dataset.id, {status:this.dataset.status})" data-testid="adm-block">${blocked ? "🔓 Activar" : "⛔ Bloquear"}</button>`
                 + `<button class="adm-btn adm-danger" data-id="${esc(u.id)}" onclick="adminAct('delete_user', this.dataset.id)">🗑 Borrar</button>`));
-          return `<div class="adm-user${blocked ? " adm-blocked" : ""}" data-testid="adm-user" data-uid="${esc(u.id)}"><div class="adm-u-main"><b>${esc(u.nombre || "(sin nombre)")}</b> <span class="adm-mail">${esc(u.email || "")}</span> ${rol} ${est}${self ? ' <span class="adm-badge adm-self">tú</span>' : ""}<div class="adm-meta">Último acceso: ${_admFecha(u.last_seen_at || u.last_sign_in_at)} · Alta: ${_admFecha(u.created_at)}</div></div><div class="adm-u-acts">${acts}</div></div>`;
+          const hasta = u.acceso_hasta ? " · Acceso hasta: " + esc(String(u.acceso_hasta).slice(8, 10) + "/" + String(u.acceso_hasta).slice(5, 7) + "/" + String(u.acceso_hasta).slice(0, 4)) : "";
+          return `<div class="adm-user${blocked ? " adm-blocked" : ""}" data-testid="adm-user" data-uid="${esc(u.id)}"><div class="adm-u-main"><b>${esc(u.nombre || "(sin nombre)")}</b> <span class="adm-mail">${esc(u.email || "")}</span> ${rol} ${est}${self ? ' <span class="adm-badge adm-self">tú</span>' : ""}${avisos}<div class="adm-meta">Último acceso: ${_admFecha(u.last_seen_at || u.last_sign_in_at)} · Alta: ${_admFecha(u.created_at)}${hasta}</div></div><div class="adm-u-acts">${acts}</div></div>`;
         });
-        host.innerHTML = rows.join("") || '<div class="adm-hint">No hay cuentas.</div>';
+        const aviso = (nVencidas || nSinUso) ? `<div class="adm-hint" data-testid="adm-rotacion" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 8px;color:#92400e">⚠️ ${nVencidas ? nVencidas + " cuenta(s) con la rotación terminada" : ""}${nVencidas && nSinUso ? " y " : ""}${nSinUso ? nSinUso + " sin uso hace más de 30 días" : ""}: revisa si hay que bloquearlas (⛔ Bloquear). Al irse alguien, quítalo también de la hoja del censo y del Doc de indicaciones.</div>` : "";
+        host.innerHTML = aviso + (rows.join("") || '<div class="adm-hint">No hay cuentas.</div>');
         const sel = document.getElementById("adm-act-user");
         if (sel) { const cur = sel.value; sel.innerHTML = '<option value="">Todas las personas</option>' + _adminUsers.map(u => `<option value="${esc(u.id)}">${esc(u.nombre || u.email || u.id)}</option>`).join("") + '<option value="__robot">🤖 Robot / hoja del censo</option>'; sel.value = cur; }
       } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar la lista: ' + esc((e && e.message) || e) + '</div>'; }
@@ -7006,7 +7030,7 @@ function plExportBackup() {
       try {
         const r = await _adminCall("invite", { email, nombre, role });
         out.style.display = "";
-        out.innerHTML = `✅ Cuenta creada para <b>${esc(email)}</b>. Contraseña temporal: <code class="adm-pass" data-testid="adm-temp-pass">${esc(r.temp_password || "")}</code> <button class="adm-btn" data-p="${esc(r.temp_password || "")}" onclick="_copyTxt(this.dataset.p)">Copiar</button><div class="adm-hint">Mándasela por WhatsApp. Al entrar puede cambiarla en 👤 Mi cuenta.</div>`;
+        out.innerHTML = `✅ Cuenta creada para <b>${esc(email)}</b>. Contraseña temporal: <code class="adm-pass" data-testid="adm-temp-pass">${esc(r.temp_password || "")}</code> <button class="adm-btn" data-p="${esc(r.temp_password || "")}" onclick="_copyTxt(this.dataset.p)">Copiar</button><div class="adm-hint">Mándasela por WhatsApp y borra el mensaje después. Al entrar, la app le pedirá una contraseña nueva.</div>`;
         document.getElementById("adm-inv-email").value = ""; document.getElementById("adm-inv-nombre").value = "";
         adminLoadUsers();
       } catch (e) { out.style.display = ""; out.innerHTML = '<span class="adm-err">❌ ' + esc((e && e.message) || e) + '</span>'; }
@@ -7020,8 +7044,18 @@ function plExportBackup() {
         if (action === "set_status" && params.status === "blocked" && !confirm("¿Bloquear a " + who + "? No podrá entrar ni ver nada hasta que lo actives.")) return;
         if (action === "delete_user" && !confirm("¿Borrar la cuenta de " + who + "? Sus cambios anteriores siguen en el registro de actividad.")) return;
         if (action === "temp_password" && !confirm("¿Generar una contraseña temporal para " + who + "? La anterior deja de servir.")) return;
+        if (action === "set_acceso_hasta") {
+          const cur = u.acceso_hasta ? String(u.acceso_hasta).slice(8, 10) + "/" + String(u.acceso_hasta).slice(5, 7) + "/" + String(u.acceso_hasta).slice(0, 4) : "";
+          const t = prompt("¿Hasta qué fecha tiene acceso " + who + " (fin de su rotación)? dd/mm/aaaa. Déjalo vacío para quitar la fecha.", cur);
+          if (t === null) return;
+          const v = String(t).trim(); let m;
+          if (!v) params.fecha = "";
+          else if ((m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/.exec(v))) params.fecha = m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+          else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) params.fecha = v;
+          else { alert("Fecha no válida. Escríbela como dd/mm/aaaa (por ejemplo 28/02/2027)."); return; }
+        }
         const r = await _adminCall(action, Object.assign({ id }, params));
-        if (action === "temp_password") { _copyTxt(r.temp_password); alert("🔑 Contraseña temporal de " + who + " (ya está copiada):\n\n" + r.temp_password + "\n\nMándasela por WhatsApp; puede cambiarla en 👤 Mi cuenta."); }
+        if (action === "temp_password") { _copyTxt(r.temp_password); alert("🔑 Contraseña temporal de " + who + " (ya está copiada):\n\n" + r.temp_password + "\n\nMándasela por WhatsApp y borra el mensaje después. Al entrar, la app le pedirá una contraseña nueva."); }
         else if (action === "recovery_link") { _copyTxt(r.link || ""); alert("🔗 Enlace de recuperación copiado (vale 1 hora). Mándaselo a " + who + ": al abrirlo le pide su contraseña nueva."); }
         else if (action === "recovery_email") { alert("📧 Correo de recuperación enviado a " + (u.email || who) + "."); }
         adminLoadUsers();
@@ -13582,6 +13616,9 @@ function plExportBackup() {
       _realtimeSubs = [];
       if (_realtimeRestartTimer) { clearTimeout(_realtimeRestartTimer); _realtimeRestartTimer = null; }
 
+      // Los canales privados (pl-guard-info, pl-presence, pl-no-olvidar) se autorizan con el token de la sesión: se pasa
+      // antes de suscribir (al recargar con sesión guardada el SDK podía no tenerlo aún y el canal privado se rechazaba).
+      try { if (_userAccessToken && _supa.realtime && typeof _supa.realtime.setAuth === "function") _supa.realtime.setAuth(_userAccessToken); } catch (_) {}
       // Guard info broadcast (sin cambio de schema, canal efímero)
       initGuardInfoSync();
 
@@ -15064,6 +15101,19 @@ function plExportBackup() {
       } catch (e) { safeLog("_supaUpsertGuardInfo:", e); }
     }, 500);
 
+    // Canales en vivo PRIVADOS (27 oct 2026, hallazgo 78): quién edita (pl-presence), la guardia (pl-guard-info) y el aviso
+    // de No olvidar (pl-no-olvidar) eran públicos: cualquiera con la llave pública podía escucharlos. Ahora se abren con
+    // private:true y la base solo deja entrar a cuentas activas (políticas pl_realtime_* en realtime.messages). Si el canal
+    // privado no se puede abrir (CHANNEL_ERROR: sin red al suscribir, token aún no puesto), se vuelve a los públicos en esta
+    // sesión para no perder los avisos; los datos de las tablas nunca pasan por estos canales.
+    let _plCanalPrivado = true;
+    function _plCanalCfg(cfg) { return _plCanalPrivado ? Object.assign({}, cfg || {}, { private: true }) : (cfg || {}); }
+    function _plCanalEstado(status) {
+      if (!_plCanalPrivado || status !== "CHANNEL_ERROR") return;
+      _plCanalPrivado = false;
+      safeLog("[realtime] canal privado rechazado: se usan los públicos en esta sesión");
+      setTimeout(function () { try { initGuardInfoSync(); } catch (_) {} try { initPresence(); } catch (_) {} try { initNoOlvidarSync(); } catch (_) {} }, 0);
+    }
     // Inicia (o reinicia) la suscripción al canal broadcast de guard info.
     // Llamado desde startRealtime() para que comparta el mismo ciclo de vida.
     function initGuardInfoSync() {
@@ -15073,7 +15123,7 @@ function plExportBackup() {
         _guardInfoChannel = null;
       }
       try {
-        _guardInfoChannel = window._supaClient.channel("pl-guard-info")
+        _guardInfoChannel = window._supaClient.channel("pl-guard-info", { config: _plCanalCfg() })
           .on("broadcast", { event: "update" }, function (payload) {
             if (!payload || !payload.payload) return;
             const gi = payload.payload;
@@ -15089,7 +15139,7 @@ function plExportBackup() {
             // Persistir localmente sin re-emitir (evita eco)
             try { localStorage.setItem(GUARD_INFO_KEY, JSON.stringify(gi)); } catch (_) {}
           })
-          .subscribe();
+          .subscribe(_plCanalEstado);
       } catch (_) { /* Broadcast opcional — funciona sin él */ }
     }
 
@@ -15252,11 +15302,11 @@ function plExportBackup() {
         _presenceChannel = null;
       }
       try {
-        _presenceChannel = window._supaClient.channel("pl-presence", { config: { presence: { key: _presenceTabId } } })
+        _presenceChannel = window._supaClient.channel("pl-presence", { config: _plCanalCfg({ presence: { key: _presenceTabId } }) })
           .on("presence", { event: "sync" }, _onPresenceSync)
           .on("presence", { event: "join" }, _onPresenceSync)
           .on("presence", { event: "leave" }, _onPresenceSync)
-          .subscribe(function (status) { if (status === "SUBSCRIBED") _presenceTrack(); });
+          .subscribe(function (status) { if (status === "SUBSCRIBED") _presenceTrack(); else _plCanalEstado(status); });
       } catch (e) { safeLog("[PRESENCE] init:", e); }
     }
 
@@ -18127,7 +18177,8 @@ function plExportBackup() {
       const ctl = new AbortController(); const tm = setTimeout(function () { ctl.abort(); }, 45000);
       let resp;
       try {
-        resp = await fetch(proxyUrl + "/api/ai", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: prompt }] }] }), signal: ctl.signal });
+        // tarea "transcribir" (worker v6): una palabra o un número va al modelo rápido; el worker viejo la ignora.
+        resp = await fetch(proxyUrl + "/api/ai", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ model: "claude-sonnet-4-6", tarea: "transcribir", max_tokens: 800, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: prompt }] }] }), signal: ctl.signal });
         if (!resp.ok) throw new Error("HTTP " + resp.status);
         var data = await resp.json();   // el cuerpo también dentro del timeout: un cuerpo que no termina de llegar se aborta
       } finally { clearTimeout(tm); }
@@ -19566,7 +19617,14 @@ function plExportBackup() {
       (rows || []).forEach(r => { const e = _risKey(r && r.exp); if (!e) return; (next[e] = next[e] || []).push(_risNorm(r)); });
       risByExp = next;
     }
-    function risForPatient(p) {
+    // «🚫 No es de este paciente» (27 oct 2026, hallazgo 75): un estudio que el robot atribuyó mal se oculta en ESTA tarjeta
+    // (lista checklist.ris_ocultos, viaja con la nota a todos los iPads). No se borra nada: «Mostrar ocultos» lo enseña y se
+    // puede regresar. Todo lo que lee la imagen del paciente (tarjeta, Entrega, nota, Proyector) pasa por risForPatient.
+    function _risOcultos(p) {
+      try { const nd = p ? noteData[pid(p)] : null; const l = nd && nd.checklist && nd.checklist.ris_ocultos; return new Set(Array.isArray(l) ? l.map(String) : []); } catch (_) { return new Set(); }
+    }
+    const _risVerOcultos = {};
+    function risForPatient(p, conOcultos) {
       let list = risByExp[_risKey(p && p.exp)] || [];
       // Expediente repetido en el censo: el robot guarda cada estudio bajo el expediente, así que se separa
       // por el paciente al que el robot lo asignó (patient_id) o, en filas viejas, por el nombre del RIS
@@ -19576,6 +19634,7 @@ function plExportBackup() {
       // corregir un expediente repetido, hasta que el robot lo vuelva a guardar con el exp nuevo).
       list = list.filter(r => !_risOtherOwner(p, r));
       if (_plExpTwins(p).length) list = list.filter(r => _risIsFor(p, r));
+      if (!conOcultos) { const oc = _risOcultos(p); if (oc.size) list = list.filter(r => !oc.has(String(r.id))); }
       return list.slice().sort((a, b) => (_risFechaISO(b.fecha) + " " + String(b.hora || "")).localeCompare(_risFechaISO(a.fecha) + " " + String(a.hora || "")));
     }
     function _risOtherOwner(p, r) {
@@ -19628,11 +19687,28 @@ function plExportBackup() {
         if (nb) { bar.replaceWith(nb); if (sl) nb.scrollLeft = sl; }
       } catch (_) {}
     }
+    function risOcultar(k, id, ocultar) {
+      const p = patients.find(function (x) { return pid(x) === k; }); if (!p) return;
+      if (ocultar && !confirm("¿Ocultar este estudio de la tarjeta? Úsalo si el robot lo trajo de otra persona. No se borra: «Mostrar ocultos» lo vuelve a enseñar.")) return;
+      const nd = getNote(k); if (!nd.checklist) nd.checklist = {};
+      _undoPush(k, ocultar ? "ocultar estudio de imagen" : "mostrar estudio de imagen", ["ck:ris_ocultos"]);
+      const s = new Set(Array.isArray(nd.checklist.ris_ocultos) ? nd.checklist.ris_ocultos.map(String) : []);
+      if (ocultar) s.add(String(id)); else s.delete(String(id));
+      nd.checklist.ris_ocultos = Array.from(s);
+      noteData[k] = nd;
+      _saveNoteNow(k, nd, "ck_ris_ocultos");
+      _rerenderCard(k);
+    }
+    function risVerOcultos(k) { _risVerOcultos[k] = !_risVerOcultos[k]; _rerenderCard(k); }
     function renderRisEstudios(p, k) {
-      const list = risForPatient(p);
-      if (!list.length) return "";
+      const visibles = risForPatient(p);
+      const oc = _risOcultos(p);
+      const ocultos = oc.size ? risForPatient(p, true).filter(r => oc.has(String(r.id))) : [];
+      const list = _risVerOcultos[k] ? visibles.concat(ocultos) : visibles;
+      if (!list.length && !ocultos.length) return "";
       const ek = k.replace(/[^a-zA-Z0-9_-]/g, "_");
       const items = list.map((r, i) => {
+        const oculto = oc.has(String(r.id));
         const when = esc(_risFechaVer(r.fecha) + (r.hora ? " " + String(r.hora).slice(0, 5) : ""));
         const titulo = esc([r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" · ") || "Estudio");
         const rep = toSafeString(r.reporte).trim();
@@ -19646,13 +19722,15 @@ function plExportBackup() {
         const sinRep = estado === "pendiente_descarga"
           ? `Reporte disponible en el visor · el robot lo descarga en la siguiente pasada${r.reporte_motivo ? ` (${esc(String(r.reporte_motivo).slice(0, 80))})` : ""}`
           : `Sin reporte todavía · estudio realizado (${esc(r.modalidad || "imagen")})${estado === "pendiente_ris" ? " · el RIS aún no lo transcribe" : ""}`;
-        return `<div class="ris-item${r.critico ? " ris-crit" : ""}${rep ? " ris-has-rep" : ""}">
-          <div class="ris-head"><span class="ris-when">${when}</span><span class="ris-title">${titulo}</span>${r.critico ? '<span class="ris-badge-crit">CRÍTICO</span>' : ""}${r.sede ? `<span class="ris-sede">${esc(r.sede)}</span>` : ""}${links}</div>
+        const btnOculto = `<button class="ris-link" style="border:none;background:none;cursor:pointer;color:#94a3b8;font-size:11px" data-k="${esc(k)}" data-rid="${esc(String(r.id))}" onclick="risOcultar(this.dataset.k, this.dataset.rid, ${oculto ? "false" : "true"})" data-testid="ris-${oculto ? "mostrar" : "ocultar"}" title="${oculto ? "Volver a mostrar este estudio en la tarjeta" : "El robot lo trajo de otra persona: ocultarlo de esta tarjeta (no se borra)"}">${oculto ? "↩ Sí es de este paciente" : "🚫 No es de este paciente"}</button>`;
+        return `<div class="ris-item${r.critico && !oculto ? " ris-crit" : ""}${rep ? " ris-has-rep" : ""}"${oculto ? ' style="opacity:.5" data-oculto="1"' : ""}>
+          <div class="ris-head"><span class="ris-when">${when}</span><span class="ris-title">${titulo}</span>${r.critico ? '<span class="ris-badge-crit">CRÍTICO</span>' : ""}${r.sede ? `<span class="ris-sede">${esc(r.sede)}</span>` : ""}${links}${btnOculto}</div>
           ${rep ? `<details class="ris-rep" id="${rid}"><summary>Reporte transcrito · ${esc(String(rep.length))} letras</summary><div class="ris-rep-txt">${esc(rep)}</div></details>` : `<div class="ris-norep">${sinRep}</div>`}
         </div>`;
       }).join("");
-      const last = list[0] && list[0].scraped_at ? new Date(list[0].scraped_at) : null;
-      return `<div class="ris-box"><div class="ris-box-h">🩻 Estudios del visor (RIS) · ${list.length}${last ? ` <span class="ris-ago">· robot ${esc(_labNewsAgo(last.getTime()))}</span>` : ""}</div>${items}</div>`;
+      const last = visibles[0] && visibles[0].scraped_at ? new Date(visibles[0].scraped_at) : null;
+      const pie = ocultos.length ? `<button class="ris-link" style="border:none;background:none;cursor:pointer;color:#64748b;font-size:11px;margin-top:2px" data-k="${esc(k)}" onclick="risVerOcultos(this.dataset.k)" data-testid="ris-ver-ocultos">${_risVerOcultos[k] ? "🙈 Esconder ocultos" : "👁 Mostrar ocultos (" + ocultos.length + ")"}</button>` : "";
+      return `<div class="ris-box"><div class="ris-box-h">🩻 Estudios del visor (RIS) · ${visibles.length}${last ? ` <span class="ris-ago">· robot ${esc(_labNewsAgo(last.getTime()))}</span>` : ""}</div>${items}${pie}</div>`;
     }
 
     function renderImagenField(nd, k) {
@@ -23498,14 +23576,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         _noOlvidarChannel = null;
       }
       try {
-        _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
+        _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar", { config: _plCanalCfg() })
           // El aviso entre iPads ya no trae la lista: si el emisor tenía una copia vieja (dormido toda la noche), todos la
           // copiaban. Ahora solo dice «algo cambió» y cada iPad baja la lista de la nube (que conserva lo suyo sin subir).
           .on("broadcast", { event: "update" }, function() {
             clearTimeout(_noOlvidarRecargaTimer);
             _noOlvidarRecargaTimer = setTimeout(function () { _recargarListasCompartidas(); }, 800);
           })
-          .subscribe();
+          .subscribe(_plCanalEstado);
       } catch (_) {}
     }
     let _noOlvidarRecargaTimer = null;
@@ -28118,7 +28196,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.27-5";
+    const PL_BUILD = "2026.10.27-6";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

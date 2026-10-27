@@ -172,7 +172,9 @@ function makeSandbox(state) {
         if (state.rechazaUrl && state.rechazaUrl.test(url)) { calls.push({ m: "rechazada", raw: url, u: url }); throw new Error("Exception: Invalid argument: " + url); }
         if (state.msPorFetch) state.reloj += state.msPorFetch;
         const u = decodeURIComponent(url.replace(/^https?:\/\/[^/]+/, ""));
-        calls.push({ m: (opts && opts.method) || "get", raw: url, u, headers: opts && opts.headers });
+        calls.push({ m: (opts && opts.method) || "get", raw: url, u, headers: opts && opts.headers, body: opts && opts.payload });
+        // Reporte de la versión instalada (27 oct 2026): una llamada a una función de la base, no una lectura de tabla.
+        if (u === "/rest/v1/rpc/pl_reportar_version") { state.versiones = (state.versiones || 0) + 1; return { getResponseCode: () => (state.versionFalla || 200), getContentText: () => '"ok"' }; }
         const tabla = /\/rest\/v1\/([a-z_]+)\?/.exec(u)[1];
         state.nLlamadas = state.nLlamadas || {}; state.nLlamadas[tabla] = (state.nLlamadas[tabla] || 0) + 1;
         if (state.codigo && state.codigo[tabla]) return { getResponseCode: () => 400, getContentText: () => JSON.stringify({ code: state.codigo[tabla], message: "column PACIENTE FICTICIO SECRETO does not exist", details: "000123" }) };
@@ -313,7 +315,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
     && tab(ss, "Imagen del robot (RIS)")[0]["ID episodio"] === "p1" && tab(ss, "Imagen del robot (RIS)")[0]["Reporte"] === "APÉNDICE ENGROSADO", JSON.stringify(WC));
   check("R1o texto que parece fórmula («=SOLO AYUNO», «+ USG») se guarda tal cual en texto plano (sin apóstrofo)", byId.p1["Manejo"] === "=SOLO AYUNO" && byId.p1["Pendientes"] === "+ USG");
   check("R1p solo GET, con la llave, paginado y ordenado; la primera corrida lee todo (sin filtro de fecha)",
-    calls.every((c) => c.m === "get" && c.headers.apikey === "svc") && calls.some((c) => /notes\?.*limit=20$/.test(c.u)) && !calls.some((c) => /offset/.test(c.u)) && !st.usoOffset && calls.every((c) => /order=[a-z_]+\.asc/.test(c.u)) && !calls.some((c) => /gte\./.test(c.u)));
+    ((lect) => lect.every((c) => c.m === "get" && c.headers.apikey === "svc") && lect.some((c) => /notes\?.*limit=20$/.test(c.u)) && !lect.some((c) => /offset/.test(c.u)) && !st.usoOffset && lect.every((c) => /order=[a-z_]+\.asc/.test(c.u)) && !lect.some((c) => /gte\./.test(c.u)))(calls.filter((c) => !/\/rpc\/pl_reportar_version$/.test(c.u))));
   check("R1q el registro de ejecución solo tiene conteos (ningún nombre ni expediente)", logs.length >= 1 && logs.every((l) => !nombres.test(l)), logs.join(" | "));
   check("R1s el Diccionario dice cuántas celdas usa y que no hay carga pendiente", /Celdas usadas/.test(JSON.stringify(ss.sheets["Diccionario"].cells)) && /"Carga en curso","No"/.test(JSON.stringify(ss.sheets["Diccionario"].cells)));
   check("R1r una sola hoja: la corrida NO crea copias en la carpeta (el respaldo es el historial de versiones de Sheets)", st.drive.files.length === 0 && !st.props.REG_ULTIMO_RESPALDO && !!st.props.REG_COPIAS_QUITADAS && !!st.props.REG_ULTIMA_CORRIDA);
@@ -504,7 +506,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   makeSandbox(st).sb.actualizarRegistro();
   const m2 = makeSandbox(st); m2.sb.actualizarRegistro();
   const m1 = makeSandbox({ db: db() }); m1.sb.actualizarRegistro();
-  const todas = m1.calls.concat(m2.calls);
+  const todas = m1.calls.concat(m2.calls).filter((c) => !/\/rpc\/pl_reportar_version$/.test(c.u));
   check("R8a todas las URLs (primera corrida e incremental) son válidas para UrlFetchApp; el filtro ->> y la fecha del cursor van codificados",
     todas.length > 10 && todas.every((c) => c.m === "get" && urlValida(c.raw))
     && todas.some((c) => /archive\?.*&note_data-%3E%3E_restaurado_a=not\.is\.null&/.test(c.raw))
@@ -1091,5 +1093,20 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
   const e1 = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K.e1);
   check("R24g si el episodio siguiente empieza antes del egreso (se traslapan), «Reingreso a 30 días» queda vacío y se explica", e1["Reingreso a 30 días"] === "" && /se traslapan/.test(e1["Calidad de datos"]), JSON.stringify([e1["Reingreso a 30 días"], e1["Calidad de datos"]]));
 }
+// ─── R25: versión instalada (27 oct 2026, hallazgo 58): una vez al día, después de escribir; si falla no detiene nada ──
+{
+  const st = { db: db() };
+  const r1 = makeSandbox(st); r1.sb.actualizarRegistro();
+  const r2 = makeSandbox(st); r2.sb.actualizarRegistro();
+  const rpc = r1.calls.concat(r2.calls).filter((c) => /\/rpc\/pl_reportar_version$/.test(c.u));
+  const cuerpo = rpc[0] ? JSON.parse(rpc[0].body) : {};
+  check("R25a versión: se reporta una sola vez al día (dos corridas el mismo día → una llamada) con la constante del archivo y la llave",
+    st.versiones === 1 && rpc.length === 1 && rpc[0].m === "post" && cuerpo.p_pieza === "registro" && cuerpo.p_version === r1.sb.REGISTRO_VERSION && rpc[0].headers.apikey === "svc", JSON.stringify({ n: st.versiones, cuerpo }));
+  const st2 = { db: db(), versionFalla: 404 };
+  const r3 = makeSandbox(st2); const res = r3.sb.actualizarRegistro();
+  check("R25b si la base aún no tiene la función (404) el registro se escribe igual y se reintenta en la siguiente corrida",
+    res && res.ok === true && !st2.props.REG_VERSION_REPORTADA && st2.versiones === 1, JSON.stringify({ ok: res && res.ok }));
+}
+
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

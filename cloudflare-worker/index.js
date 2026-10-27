@@ -1,4 +1,11 @@
-// piso-libro-ai Worker — v5 (27 oct 2026)
+// piso-libro-ai Worker — v6 (27 oct 2026)
+// Cambios v6:
+//   ⚡ Modelo de IA por tarea: la app marca {tarea:"transcribir"} al leer lo escrito con el lápiz (una palabra o un
+//      número) y eso va a un modelo rápido sin razonamiento; notas, documentos y labs siguen en el modelo grande.
+//   🛟 Modelo de respaldo: si el modelo responde 404 (retirado), 429 (cuota), 5xx (saturado) o 400 (no admite la
+//      configuración), se reintenta una vez con el otro. Los modelos se cambian sin tocar el código con las variables
+//      GEMINI_MODEL, GEMINI_MODEL_RAPIDO y GEMINI_MODEL_RESPALDO (Settings → Variables).
+//   ➕ CORS: https://pisocirugiahgl.netlify.app (el espejo de Netlify ya no queda sin IA).
 // Cambios v5:
 //   ➕ /api/scrape-ris: Supabase dispara el robot del RIS cada 2 h (antes solo el cron de GitHub, cada 4-6 h)
 // Cambios v4:
@@ -25,8 +32,47 @@
 //   GITHUB_TOKEN     (encrypted) — token de GitHub con permiso "actions: write" en el repo
 //                    piso-libro; lo usa /api/scrape para disparar el robot WinLab (sin él,
 //                    el botón de la app y el cron de Supabase responden 503 "no configurado")
+// Opcionales (texto, v6): GEMINI_MODEL (principal), GEMINI_MODEL_RAPIDO (lápiz), GEMINI_MODEL_RESPALDO.
 
-const GEMINI_MODEL = "gemini-2.5-pro";
+const GEMINI_MODEL = "gemini-2.5-pro";          // principal: notas, documentos, fotos de notas, labs
+const GEMINI_MODEL_RAPIDO = "gemini-2.5-flash"; // tarea "transcribir": lo escrito con el lápiz
+const GEMINI_REINTENTA = new Set([400, 404, 408, 429, 500, 502, 503, 504]);   // 401/403 = llave: el respaldo no ayuda
+
+// Orden de modelos para una tarea: el que toca y, si es distinto, el de respaldo.
+function modelosPara(env, tarea) {
+  const principal = (env && env.GEMINI_MODEL) || GEMINI_MODEL;
+  const rapido = (env && env.GEMINI_MODEL_RAPIDO) || GEMINI_MODEL_RAPIDO;
+  const primero = tarea === "transcribir" ? rapido : principal;
+  const respaldo = (env && env.GEMINI_MODEL_RESPALDO) || (primero === principal ? rapido : principal);
+  return primero === respaldo ? [primero] : [primero, respaldo];
+}
+// Los modelos "flash" permiten apagar el razonamiento (thinkingBudget 0) y bastan unos pocos tokens; los "pro" no lo
+// permiten: sus tokens de razonamiento cuentan contra maxOutputTokens, así que se acota el razonamiento y se deja techo.
+function generacionPara(modelo, maxTokens) {
+  if (/flash/i.test(modelo)) return { maxOutputTokens: Math.min(16384, Math.max(1024, 2 * (Number(maxTokens) || 2048))), thinkingConfig: { thinkingBudget: 0 } };
+  return { maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 8192 } };
+}
+// Llama a Gemini con el primer modelo y, si falla de una forma que el otro puede resolver, con el de respaldo.
+async function geminiConRespaldo(env, modelos, armarCuerpo, etiqueta) {
+  let ultimo = { ok: false, status: 502, data: {}, model: modelos[0] };
+  for (const modelo of modelos) {
+    let resp;
+    try {
+      resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${env.GEMINI_API_KEY}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(armarCuerpo(modelo)) });
+    } catch (e) {
+      console.error(`[${etiqueta}] ${modelo}: fetch falló:`, e && e.message);
+      ultimo = { ok: false, status: 502, data: {}, model: modelo };
+      continue;
+    }
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok) return { ok: true, status: 200, data, model: modelo };
+    console.error(`[${etiqueta}] ${modelo}: HTTP ${resp.status}`, JSON.stringify(data).slice(0, 500));
+    ultimo = { ok: false, status: resp.status, data, model: modelo };
+    if (!GEMINI_REINTENTA.has(resp.status)) break;
+  }
+  return ultimo;
+}
 
 // Orígenes permitidos para CORS. Agrega aquí cualquier URL adicional desde donde
 // llames al Worker (localhost para dev, Cloudflare Pages para prod, etc.)
@@ -37,6 +83,7 @@ const ALLOWED_ORIGINS = new Set([
   "https://pisolibro.pages.dev",       // prod actual (Cloudflare Pages, proyecto pisolibro)
   "https://piso-libro.pages.dev",      // URL vieja (transición)
   "https://gerardofdz1540.github.io",  // si usas GitHub Pages
+  "https://pisocirugiahgl.netlify.app", // espejo de Netlify (v6)
 ]);
 
 function buildCorsHeaders(request) {
@@ -202,38 +249,18 @@ async function handleAiRoute(request, env, cors) {
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
   ];
 
-  const geminiBody = {
+  // FIX (jun 2026): gemini-2.5-pro es un modelo de RAZONAMIENTO; sus "thinking tokens" cuentan contra
+  // maxOutputTokens. Con 8192 y un documento, el thinking consumía TODO el presupuesto → salida VACÍA,
+  // finishReason=MAX_TOKENS → "La IA no devolvió JSON". Por eso el techo alto y el razonamiento acotado (generacionPara).
+  const tarea = String((payload && payload.tarea) || "").toLowerCase();
+  const r = await geminiConRespaldo(env, modelosPara(env, tarea), (modelo) => ({
     contents: geminiContents,
     safetySettings,
-    // FIX (jun 2026): gemini-2.5-pro es un modelo de RAZONAMIENTO; sus "thinking tokens"
-    // cuentan contra maxOutputTokens. Con 8192 y un documento, el thinking consumía TODO
-    // el presupuesto → salida VACÍA, finishReason=MAX_TOKENS → "La IA no devolvió JSON"
-    // (Leer Doc / lectura inteligente). Solución: subir maxOutputTokens y ACOTAR el
-    // thinking para que SIEMPRE quede espacio de salida.
-    generationConfig: {
-      maxOutputTokens: 65536,
-      temperature: 0.1,
-      thinkingConfig: { thinkingBudget: 8192 }
-    }
-  };
-
-  let upstream;
-  try {
-    upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody) }
-    );
-  } catch (e) {
-    console.error("[GEMINI] Upstream fetch failed:", e.message);
-    return json({ error: "Upstream fetch failed" }, 502, cors);
-  }
-
-  const upstreamData = await upstream.json().catch(() => ({}));
-  if (!upstream.ok) {
-    // 🔒 FIX MEDIO: NO devolver upstream data al cliente (puede tener info sensible)
-    console.error("[GEMINI] API error:", JSON.stringify(upstreamData).slice(0, 500));
-    return json({ error: "Gemini API error" }, upstream.status, cors);
-  }
+    generationConfig: { temperature: 0.1, ...generacionPara(modelo, payload && payload.max_tokens) }
+  }), "GEMINI");
+  // 🔒 FIX MEDIO: NO devolver upstream data al cliente (puede tener info sensible)
+  if (!r.ok) return json({ error: "Gemini API error" }, r.status, cors);
+  const upstreamData = r.data, GEMINI_USADO = r.model;
 
   const cand = upstreamData.candidates?.[0];
   const outText = (cand?.content?.parts || []).map(p => p.text || "").join("");
@@ -245,7 +272,7 @@ async function handleAiRoute(request, env, cors) {
       id: "gemini-" + Date.now(),
       type: "message",
       role: "assistant",
-      model: GEMINI_MODEL,
+      model: GEMINI_USADO,
       content: [{ type: "text", text: "[Respuesta vacía del modelo. Revisa los logs del Worker para más detalle.]" }],
       stop_reason: cand?.finishReason || "stop"
     }, 200, cors);
@@ -255,7 +282,7 @@ async function handleAiRoute(request, env, cors) {
     id: "gemini-" + Date.now(),
     type: "message",
     role: "assistant",
-    model: GEMINI_MODEL,
+    model: GEMINI_USADO,
     content: [{ type: "text", text: outText }],
     stop_reason: cand?.finishReason || "end_turn"
   }, 200, cors);
@@ -278,7 +305,9 @@ async function handleLabsExtractRoute(request, env, cors) {
     return json({ error: "PDF demasiado grande (>10MB)" }, 413, cors);
   }
 
-  const geminiBody = {
+  // Leer labs de un PDF: siempre el modelo grande (la exactitud de los valores importa más que la velocidad); el
+  // respaldo solo entra si el grande falla.
+  const r = await geminiConRespaldo(env, modelosPara(env, "documento"), (modelo) => ({
     contents: [{
       role: "user",
       parts: [
@@ -292,37 +321,18 @@ async function handleLabsExtractRoute(request, env, cors) {
       { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
       { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
     ],
-    generationConfig: {
-      // FIX (jun 2026): mismo problema de thinking-tokens que /api/ai. Subir el techo y
-      // acotar el thinking para que la extracción de labs no quede vacía/truncada.
-      maxOutputTokens: 65536,
-      temperature: 0.0,
-      responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 8192 }
-    }
-  };
-
-  let upstream;
-  try {
-    upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(geminiBody) }
-    );
-  } catch (e) {
-    console.error("[GEMINI/extract] Upstream fetch failed:", e.message);
-    return json({ error: "Upstream fetch failed" }, 502, cors);
-  }
-
-  const upstreamData = await upstream.json().catch(() => ({}));
-  if (!upstream.ok) {
+    // FIX (jun 2026): mismo problema de thinking-tokens que /api/ai (techo alto y razonamiento acotado).
+    generationConfig: { temperature: 0.0, responseMimeType: "application/json", ...generacionPara(modelo, 0) }
+  }), "GEMINI/extract");
+  if (!r.ok) {
     // 🔒 FIX MEDIO: log server-side, no exponer upstream al cliente
-    console.error("[GEMINI/extract] API error:", JSON.stringify(upstreamData).slice(0, 500));
     return json({
       error: "Gemini API error",
       patients: [],
       warnings: ["Error del proveedor IA. Revisa logs del Worker."]
-    }, upstream.status, cors);
+    }, r.status, cors);
   }
+  const upstreamData = r.data;
 
   const cand = upstreamData.candidates?.[0];
   const outText = (cand?.content?.parts || []).map(p => p.text || "").join("");

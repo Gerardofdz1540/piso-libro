@@ -18,7 +18,8 @@ const MOCK = `(() => {
   window.__sent=[]; window.__subs=[];
   const auth={ getSession: async()=>({ data:{ session: JSON.parse(sessionStorage.getItem(KEY)) }, error:null }), onAuthStateChange: (cb)=>{ listeners.push(cb); return { data:{ subscription:{ unsubscribe(){} } } }; }, refreshSession: async()=>({ data:{ session:null }, error:{ message:'no' } }), signInWithPassword: async()=>({ data:{}, error:{ message:'n/a' } }), signOut: async()=>({ error:null }) };
   const chan={ on(){ return chan; }, subscribe(cb){ if (typeof cb === 'function') window.__subs.push(cb); return chan; }, unsubscribe(){ return Promise.resolve('ok'); }, send(p){ window.__sent.push(p); return Promise.resolve('ok'); } };
-  window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
+  window.__chans=[]; window.__rtAuth=[];
+  window.supabase={ createClient:()=>({ auth, channel:(name, opts)=>{ window.__chans.push({ name, opts: opts || null, auth: window.__rtAuth.length }); return chan; }, realtime:{ setAuth(t){ window.__rtAuth.push(t); } }, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
 const hace = (h) => new Date(Date.now() - h * 3600e3).toISOString();
 const store = {
@@ -340,6 +341,22 @@ const store = {
   });
   check('S21 cultivos de WinLab: si el servidor falla, la caja lo dice y se programa el reintento; al volver, el aviso se va y aparecen los cultivos',
     s21a.reint === 1 && /cultivos-lab-error/.test(s21a.html) && /se reintenta/.test(s21a.html) && s21b.reint === 0 && !s21b.aviso && s21b.caja, JSON.stringify({ s21a, s21b }));
+
+  // ── S22: canales en vivo privados (hallazgo 78) con vuelta a los públicos si la base los rechaza ──
+  const s22 = await page.evaluate(async () => {
+    const vivos = ['pl-guard-info', 'pl-presence', 'pl-no-olvidar'];
+    const ult = (n) => window.__chans.filter(c => c.name === n).slice(-1)[0];
+    const antes = vivos.map(n => { const c = ult(n); return { n, priv: !!(c && c.opts && c.opts.config && c.opts.config.private), conToken: !!(c && c.auth > 0) }; });
+    const tablaPriv = window.__chans.filter(c => /-changes$/.test(c.name)).some(c => c.opts && c.opts.config && c.opts.config.private);
+    const presKey = !!(ult('pl-presence').opts.config.presence && ult('pl-presence').opts.config.presence.key);
+    const n0 = window.__chans.length;
+    _plCanalEstado('CHANNEL_ERROR'); await new Promise(r => setTimeout(r, 50));
+    const despues = vivos.map(n => { const c = window.__chans.slice(n0).filter(x => x.name === n).slice(-1)[0]; return { n, reabierto: !!c, priv: !!(c && c.opts && c.opts.config && c.opts.config.private) }; });
+    const n1 = window.__chans.length; _plCanalEstado('CHANNEL_ERROR'); await new Promise(r => setTimeout(r, 50));
+    return { antes, tablaPriv, presKey, despues, otraVez: window.__chans.length - n1 };
+  });
+  check('S22 canales en vivo: quién edita, guardia y No olvidar se abren PRIVADOS y con el token de la sesión ya puesto (las tablas siguen igual); si la base rechaza el privado se reabren públicos una sola vez',
+    s22.antes.every(x => x.priv && x.conToken) && !s22.tablaPriv && s22.presKey && s22.despues.every(x => x.reabierto && !x.priv) && s22.otraVez === 0, JSON.stringify(s22));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-SYNC2: ' + pass + ' passed, ' + fail + ' failed');
