@@ -681,8 +681,13 @@ export function selectTargetRows(rows, paciente, opts = {}) {
     if (b.ageOk) { for (const i of b.links) targetIdxs.push(i); if (!matchedHeader) { matchedHeader = b.hdrName; partialMatch = !!b.partial; } }
     else ageRejected.push({ idx: b.idx, headerAge: b.hdrAge, censusAge });
   }
+  // Edad que NO cuadra en un bloque aceptado (27 oct 2026): con una sola persona con ese nombre en WinLab el nombre manda
+  // (#434) y se aceptan sus labs, pero la tarjeta debe avisarlo («WinLab: 61 años · censo: 39»): o la edad del censo está
+  // mal, o es otra persona con el mismo nombre completo. Con un rescate por año mal escrito no se avisa.
+  const edadNoCuadra = blocks.filter((b) => b.nameOk && b.ageOk && b.hdrAge != null && censusAge != null && Math.abs(b.hdrAge - censusAge) > tolerance
+    && !ageRescued.some((r) => r.idx === b.idx)).map((b) => ({ headerAge: b.hdrAge, censusAge }));
   // partialMatch: el objetivo se identificó por coincidencia PARCIAL (WinLab lista menos nombres que el censo).
-  return { targetIdxs, linkIdxs, ageRejected, ageRescued, censusAge, tolerance, seenNames: seenNames.slice(0, 8), matchedHeader, partialMatch };
+  return { targetIdxs, linkIdxs, ageRejected, ageRescued, censusAge, tolerance, seenNames: seenNames.slice(0, 8), matchedHeader, partialMatch, edadNoCuadra };
 }
 
 // Expediente normalizado para comparar objetivos (WL_TARGET_EXP) con el censo: "26-00001",
@@ -717,4 +722,72 @@ export function isNoResultsText(rawText) {
 // Combinacion: ¿es esta tabla irrelevante para resultados?
 export function isIrrelevantTable(rawText) {
   return isMenuTableText(rawText) || isFormTableText(rawText);
+}
+
+// ─── Tope de tiempo para operaciones del navegador (27 oct 2026) ─────────────────────────────────────────────────
+// Dos corridas se quedaron pasmadas ~55 min tras un error de WinLab («interrupted by another navigation») hasta que
+// GitHub las cortó: subPage.close() o ctx.newPage() no respondían y nada les ponía límite. conTope rechaza con
+// { atasco: true } si la promesa no termina en `ms` (la promesa original sigue, pero ya nadie la espera).
+export function conTope(promesa, ms, etiqueta) {
+  let t = null;
+  const limite = new Promise((_, rej) => {
+    t = setTimeout(() => rej(Object.assign(new Error(`${etiqueta}: sin respuesta en ${ms} ms`), { atasco: true })), ms);
+  });
+  return Promise.race([Promise.resolve(promesa), limite]).finally(() => clearTimeout(t));
+}
+
+// Errores de navegación pasajeros (la página navegó mientras se usaba): se reintenta una vez tras esperar la carga.
+export function esNavegacionPasajera(msg) {
+  return /Execution context was destroyed|Target closed|Navigation failed|interrupted by another navigation|frame was detached/i.test(String(msg || ""));
+}
+
+// El navegador o su contexto ya no sirven: hay que reiniciarlo (no basta con pasar al siguiente paciente).
+export function esNavegadorCaido(msg) {
+  return /browser has been closed|context.*has been closed|Target page.*has been closed|Browser.*disconnected/i.test(String(msg || ""));
+}
+
+// ─── Privacidad de las bitácoras (27 oct 2026) ───────────────────────────────────────────────────────────────────
+// El repositorio es PÚBLICO y las bitácoras de GitHub Actions también: ningún nombre de paciente ni expediente completo
+// puede salir ahí. Los robots imprimían nombres del censo y de WinLab/RIS (homónimos, casi-coincidencias, «encontrado
+// como»…). Ahora: iniciales y los 3 últimos dígitos del expediente; y una red de seguridad en console.* oculta cualquier
+// nombre entre comillas que se escape (texto en mayúsculas con 2 o más palabras).
+const _PARTICULAS = new Set(["DE", "DEL", "LA", "LAS", "LOS", "Y"]);
+export function iniciales(nombre) {
+  const ws = String(nombre || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().split(/[^A-ZÑ]+/).filter((w) => w && !_PARTICULAS.has(w));
+  return ws.length ? ws.map((w) => w[0]).join(".") + "." : "(sin nombre)";
+}
+export function expOculto(exp) {
+  const s = String(exp == null ? "" : exp).trim();
+  return s ? "…" + s.slice(-3) : "(sin exp)";
+}
+// Texto entre comillas ("…", «…», '…') que parece un nombre: solo letras, espacios, puntos y comas, en MAYÚSCULAS, con 2
+// o más palabras. «exp=1234567» → «exp=…567».
+export function sanearLog(texto) {
+  return String(texto)
+    .replace(/(["«'])([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ.,]*(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ.,]*)+)(["»'])/g, (m, a, n, b) => a + iniciales(n) + b)
+    .replace(/\bexp=(\S+)/g, (m, e) => "exp=" + expOculto(e));
+}
+export function instalarLogSeguro(consola = console) {
+  if (consola.__logSeguro) return;
+  for (const k of ["log", "error", "warn", "info"]) {
+    const orig = consola[k].bind(consola);
+    consola[k] = (...a) => orig(...a.map((x) => (typeof x === "string" ? sanearLog(x) : x)));
+  }
+  consola.__logSeguro = true;
+}
+
+// Objetivo de una corrida dirigida (WL_TARGET_EXP): «ID-<uuid>» (id del paciente en la base; lo que manda la app desde
+// el 27 oct 2026, porque el dato de la corrida es público) o expedientes, separados por comas o espacios.
+export function parseObjetivo(texto) {
+  const toks = String(texto || "").split(/[,\s]+/).map((t) => t.trim()).filter(Boolean);
+  const esId = (t) => /^ID-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t);
+  return { ids: toks.filter(esId).map((t) => t.slice(3).toLowerCase()), exps: toks.filter((t) => !esId(t)).map(normExp).filter(Boolean) };
+}
+
+// Firma del contenido de una fila de winlab_labs (27 oct 2026): sin run_id, hora de captura ni contadores de la corrida.
+// Si la fila de HOY ya tiene la misma firma en la base, no se reescribe: cada reescritura mandaba un aviso en vivo a
+// todos los iPads («🧪 Labs WinLab actualizados») y un repintado, aunque nada hubiera cambiado.
+export function firmaFilaLabs(data) {
+  const d = data || {};
+  return JSON.stringify({ cama: d.cama || null, esp: d.esp || null, reportes: d.reportes || [] });
 }

@@ -1,5 +1,5 @@
-// Cultivos WinLab (formatos reales), novedades automáticas en la entrega de guardia, nota de evolución
-// completa y paciente que reaparece (nota restaurada antes de mostrar la tarjeta).
+// Cultivos WinLab (formatos reales), la Cronología sin nada automático (labs, RIS, cultivos, ✨ Resumen), nota de
+// evolución completa y paciente que reaparece (nota restaurada antes de mostrar la tarjeta).
 //   node tests/headless/app_nota.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
 const { launch } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
@@ -86,7 +86,7 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
     _rerenderCard(k);
     const box = document.querySelector('#card-' + CSS.escape(k) + ' .cultivos-box');
     const chips = box ? Array.from(box.querySelectorAll('.cultivo-chip')).map(x => x.textContent.replace(/\s+/g, ' ')) : [];
-    const items = _entregaItemsFromCultures(cults);
+    const items = cults.map(x => ({ text: _cultTexto(x, false) }));
     const nota = _plneBuild(patients[0], getNote(k));
     return { nSec: Array.isArray(c) ? c.length : 0, uro: Array.isArray(c) ? c[1] : null, n: cults.length, fechas: cults.map(x => x.fecha), tipos: cults.map(x => x.tipo), chips, pre: !!(box && box.querySelector('.cultivo-chip details pre')), entrega: items.map(i => i.text), nota: /CULTIVOS: [^\n]*/.exec(nota) ? /CULTIVOS: [^\n]*/.exec(nota)[0].slice(0, 400) : '' };
   }, N1B_D);
@@ -101,36 +101,44 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
     && new RegExp('UROCULTIVO DEL ' + _cDot + ' POSITIVO A KLEBSIELLA PNEUMONIAE \\(BLEE\\) > 100,000 UFC/ML \\(SENSIBLE A AMIKACINA <=2, MEROPENEM; INTERMEDIO A NITROFURANTOINA; RESISTENTE A CIPROFLOXACINO >=4\\)').test(n1b.nota)
     && new RegExp('HEMOCULTIVO PERIFÉRICO 1 DEL ' + _cDot + ' SIN DESARROLLO \\(NEGATIVO A 5 DÍAS\\)').test(n1b.nota), JSON.stringify(n1b));
 
-  // ── N2: novedades automáticas en la entrega (labs con alteraciones, RIS, cultivos), idempotentes ──
-  const n2 = await page.evaluate(async (ayer) => {
-    const k = pid(patients[0]); focusGoTo(k);
-    const nd = getNote(k); nd.entrega = 'PENDIENTE TRANSFUSIÓN'; noteData[k] = nd;
-    const before = []; const after = [{ fecha: ayer, labs: { hb: '6.2', leucos: '41.73', cr: '1.0', k: '6.3', na: '138' } }];
-    const items = _entregaItemsFromLabs(after, before);
-    const added1 = _entregaAutoAppend(k, items);
-    const added2 = _entregaAutoAppend(k, _entregaItemsFromLabs(after, before));           // mismo sync otra vez
-    const added3 = _entregaAutoAppend(k, _entregaItemsFromLabs(after, after));            // nada cambió
-    // Un analito nuevo el mismo día → solo ese (lactato crítico; la PCT alta ya no es «crítica»: es alterada)
-    const after2 = [{ fecha: ayer, labs: { hb: '6.2', leucos: '41.73', cr: '1.0', k: '6.3', na: '138', pct: '7.21', lac: '5.1' } }];
-    const added4 = _entregaAutoAppend(k, _entregaItemsFromLabs(after2, after));
-    const risItems = _entregaItemsFromRis([{ id: 77, fecha: ayer, modalidad: 'CT', estudios: 'TAC ABDOMEN CONTRASTADA', reporte: 'TOMOGRAFIA DE ABDOMEN. HALLAZGOS: ... CONCLUSIÓN: DERRAME PLEURAL BILATERAL Y COLECCIONES INTRAABDOMINALES. ATENTAMENTE DR RADIOLOGO', scraped_at: new Date().toISOString() },
-      { id: 78, fecha: ayer, modalidad: 'US', estudios: '*', reporte: null, scraped_at: new Date().toISOString() },
-      { id: 79, fecha: '2026-09-01', modalidad: 'RX', estudios: 'TORAX', reporte: 'x', scraped_at: new Date(Date.now() - 10 * 86400e3).toISOString() }]);
-    const added5 = _entregaAutoAppend(k, risItems);
-    const added6 = _entregaAutoAppend(k, _entregaItemsFromCultures([{ fecha: ayer, tipo: 'Urocultivo', organismo: 'Klebsiella pneumoniae', positivo: true }, { fecha: ayer, tipo: 'Hemocultivo', organismo: 'Sin desarrollo a 5 días', positivo: false }]));
-    const txt = getNote(k).entrega;
+  // ── N2: la app NO escribe nada sola en la Cronología (27 oct 2026, pedido de Gera: «no quiero que pongas nada en las
+  //        cajitas de manera automática»). Antes los labs críticos de WinLab, los estudios del RIS y los cultivos se
+  //        anotaban solos como «dd-mm-aaaa: …» y ✨ Resumen escribía un bloque al final. Ahora: labs, cultivos y RIS llegan
+  //        por los caminos reales (sync de WinLab y Realtime del RIS) y la caja no cambia; ✨ Resumen solo se muestra. ──
+  const cAyer = ayer.slice(8, 10) + '/' + ayer.slice(5, 7) + '/' + ayer.slice(0, 4);
+  const wlN2 = { exp: '24-99901', paciente: 'RUIZ SOTO MATEO', fecha: ayer, scraped_at: new Date().toISOString(),
+    data: { headers: [], reportes: [
+      { __cells: ['', '', '', cAyer + ' 06:10', cAyer + ' 08:00', '', ''], __hasLink: true, valores: FIX.valores.map(v => v.estudio === 'HEMOGLOBINA' ? { ...v, valor: '6.2' } : v.estudio === 'POTASIO' ? { ...v, valor: '6.3' } : v) },
+      { __cells: ['', '', '', cAyer + ' 07:00', cAyer + ' 09:00'], __hasLink: true, valores: [{ estudio: 'CULTIVO', valor: 'POSITIVO', referencia: 'Sin desarrollo' }],
+        cultivo: { v: 2, tipo: 'Urocultivo', muestra: 'ORINA', resultado: 'POSITIVO', germenes: ['Klebsiella pneumoniae'], ufc: '> 100,000 UFC/ML', antibiograma: [{ antibiotico: 'Amikacina', cim: '<=2', interp: 'S' }] } }] } };
+  const nCalls0 = calls.length;
+  const n2 = await page.evaluate(async (a) => {
+    const p = patients[0]; const k = pid(p); focusGoTo(k);
+    const nd = getNote(k); nd.entrega = 'PENDIENTE TRANSFUSIÓN'; noteData[k] = nd; _rerenderCard(k);
+    const sinFunciones = typeof _entregaAutoAppend === 'undefined' && typeof _entregaAutoFromRis === 'undefined';
+    winlabByExp[a.wl.exp] = a.wl; (winlabRowsByExp[a.wl.exp] = winlabRowsByExp[a.wl.exp] || []).push(a.wl); _winlabExpIndex = null;
+    const st = await applyWinlabSyncToPatients({ only: [p] });
+    handleRisChange({ eventType: 'INSERT', new: { id: 777, exp: p.exp, patient_id: p._supa_id, paciente: p.nombre, fecha: a.ayer, hora: '10:00', modalidad: 'CT', estudios: 'TAC ABDOMEN CONTRASTADA',
+      reporte: 'HALLAZGOS: ... CONCLUSIÓN: DERRAME PLEURAL BILATERAL. ATENTAMENTE DR RADIOLOGO', critico: false, scraped_at: new Date().toISOString() } });
+    await new Promise(r => setTimeout(r, 400));
+    const btn = document.querySelector('#card-' + CSS.escape(k) + ' .pase-inteligente-btn'); if (btn) btn.click();
+    await new Promise(r => setTimeout(r, 200));
+    const ov = document.getElementById('resumen-overlay');
+    const resumen = (document.getElementById('resumen-texto') || {}).textContent || '';
     const ta = document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="entrega"]');
-    return { added1, added2, added3, added4, added5, added6, txt, taVal: ta ? ta.value : null, reg: (getNote(k).checklist.__entrega_auto || []).length };
-  }, ayer);
-  const dAyer = ayer.split('-').reverse().join('-');
-  check('N2 entrega automática: labs alterados (crítico primero, nombre de la alteración + valor), estudio RIS con CONCLUSIÓN recortada, estudio sin reporte, cultivos; una sola vez (ids + texto), sin tocar lo escrito a mano; la caja se actualiza',
-    n2.added1 === 1 && n2.added2 === 0 && n2.added3 === 0 && n2.added4 === 1 && n2.added5 === 2 && n2.added6 === 2
-    && n2.txt.startsWith('PENDIENTE TRANSFUSIÓN\n') && n2.txt.includes(dAyer + ': Labs: Anemia grave (Hb 6.2)') && /Leucocitosis extrema \(Leuc 41\.73\)/.test(n2.txt) && /Hiperkalemia[^\n]*\(K 6\.3\)/i.test(n2.txt) && !/Na 138/.test(n2.txt)
-    && /Lactato ≥4[^\n]*\(Lac 5\.1\)/.test(n2.txt) && !/PCT 7\.21/.test(n2.txt)
-    && n2.txt.includes(dAyer + ': CT TAC ABDOMEN CONTRASTADA (RIS): DERRAME PLEURAL BILATERAL Y COLECCIONES INTRAABDOMINALES') && !/ATENTAMENTE/.test(n2.txt) && !/HALLAZGOS/.test(n2.txt)
-    && n2.txt.includes(dAyer + ': US (RIS): estudio realizado, reporte pendiente') && !/TORAX/.test(n2.txt)
-    && n2.txt.includes(dAyer + ': Urocultivo POSITIVO a Klebsiella pneumoniae') && n2.txt.includes(dAyer + ': Hemocultivo sin desarrollo a 5 días')
-    && n2.taVal === n2.txt && n2.reg === 6, JSON.stringify(n2));
+    const snap = (getNote(k).labHistory || []).find(s => s.fecha === a.ayer) || { labs: {} };
+    const out = { sinFunciones, matched: st.matched, hb: snap.labs.hb, k: snap.labs.k, cult: (_winlabCultByK[k] || []).map(c => c.tipo + ':' + (c.positivo ? 'POS' : 'NEG')),
+      ris: risForPatient(p).some(r => r.id === 777), entrega: getNote(k).entrega, taVal: ta ? ta.value : null, ovVisible: !!(ov && ov.style.display === 'flex'), resumen };
+    if (ov) ov.style.display = 'none';
+    return out;
+  }, { wl: wlN2, ayer });
+  await page.waitForTimeout(1500);
+  const notasN2 = calls.slice(nCalls0).filter(c => c.url.startsWith('/rest/v1/notes') && c.m !== 'GET').map(c => JSON.stringify(c.body || ''));
+  check('N2 la Cronología no recibe nada automático: llegan labs críticos (Hb 6.2, K 6.3) y un urocultivo positivo por el sync de WinLab y una TAC con reporte por Realtime, y la caja sigue igual (ni en pantalla ni en lo que se sube); ✨ Resumen abre una ventana de solo lectura y no escribe',
+    n2.sinFunciones && n2.matched === 1 && n2.hb === '6.2' && n2.k === '6.3' && n2.cult.includes('Urocultivo:POS') && n2.ris
+    && n2.entrega === 'PENDIENTE TRANSFUSIÓN' && n2.taVal === 'PENDIENTE TRANSFUSIÓN'
+    && n2.ovVisible && /^— Resumen \d{2}\/\d{2}/.test(n2.resumen) && /Hb 6\.2/.test(n2.resumen)
+    && !notasN2.some(b => /: Labs: |\(RIS\)|— Resumen|POSITIVO a Klebsiella/.test(b)), JSON.stringify({ n2, notasN2: notasN2.map(b => b.slice(0, 300)) }));
 
   // ── N3: nota de evolución completa (formato CG, todo en mayúsculas) ──
   const n3 = await page.evaluate((ayer) => {

@@ -21,7 +21,7 @@
 //       fuera), con tope RIS_MAX_WINDOWS.
 // ════════════════════════════════════════════════════════════════════════
 
-import { normNameTokens, parseCensusAge, jaroWinkler } from "./lib.js";
+import { normNameTokens, parseCensusAge, jaroWinkler, iniciales } from "./lib.js";
 
 export const RIS_AGE_TOLERANCE_DEFAULT = 2;   // ±2 años: cruces débiles (2 tokens, letra cambiada, extras a ambos lados)
 export const RIS_AGE_TOLERANCE_WIDE = 5;      // ±5 años: cruces por subconjunto de ≥ 3 tokens
@@ -336,8 +336,8 @@ export function nearMisses(estudios, censo, matchedExps) {
   for (const p of censo || []) {
     if (matchedExps.has(p.exp)) continue;
     const near = (estudios || []).filter((e) => nameCoverage(p.nombre, e.nombre).common >= 2).slice(0, 3)
-      .map((e) => `"${e.nombre}" ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad}`);
-    if (near.length) out.push(`cama ${p.cama} (${p.edad || "?"} a, "${p.nombre}") ≈ ${near.join(" | ")}`);
+      .map((e) => `${iniciales(e.nombre)} ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad}`);
+    if (near.length) out.push(`cama ${p.cama} (${p.edad || "?"} a, ${iniciales(p.nombre)}) ≈ ${near.join(" | ")}`);
   }
   return out;
 }

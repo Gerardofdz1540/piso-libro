@@ -36,6 +36,10 @@ function makeSpreadsheet(id) {
       const range = {
         getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => { const row = sh.cells[r - 1 + i] || []; const v = row[c - 1 + j]; return v === undefined ? "" : v; })),
         setNumberFormat: (f) => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) sh.fmt[(r + i) + ":" + (c + j)] = f; return range; },
+        setNumberFormats: (m) => {
+          if (!Array.isArray(m) || m.length !== nr || m.some((row) => !Array.isArray(row) || row.length !== nc || row.some((f) => typeof f !== "string" || !f))) throw new Error("setNumberFormats: tamaño o formato inválido");
+          for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) sh.fmt[(r + i) + ":" + (c + j)] = m[i][j]; return range;
+        },
         setValues: (vals) => {
           if (vals.length !== nr || vals.some((row) => row.length !== nc)) throw new Error("setValues: tamaño distinto al rango");
           if (state0.failWriteOn === sh.name) throw new Error("Exception: Service Spreadsheets timed out");
@@ -134,7 +138,10 @@ function makeSandbox(state) {
     }) },
     LockService: { getScriptLock: () => ({ tryLock: () => !state.ocupado, releaseLock: () => {} }) },
     Session: { getScriptTimeZone: () => "America/Mexico_City" },
-    Utilities: { formatDate: () => state.hoy || "2026-10-21" },
+    // computeDigest como Google: arreglo de bytes CON signo (-128..127).
+    Utilities: { formatDate: () => state.hoy || "2026-10-21", getUuid: () => "uuid-" + (state.nUuid = (state.nUuid || 0) + 1),
+      DigestAlgorithm: { SHA_256: "SHA_256" }, Charset: { UTF_8: "UTF_8" },
+      computeDigest: (alg, texto, cs) => { if (alg !== "SHA_256" || cs !== "UTF_8" || typeof texto !== "string") throw new Error("computeDigest: argumentos"); return Array.from(require("crypto").createHash("sha256").update(texto, "utf8").digest()).map((b) => (b > 127 ? b - 256 : b)); } },
     SpreadsheetApp: {
       getActiveSpreadsheet: () => (state.standalone ? null : ss),
       openById: (id) => { if (state.idMalo) throw new Error("Exception: Unexpected error while getting the method or property openById on object SpreadsheetApp."); state.abiertoPorId = id; return ss; },
@@ -809,5 +816,280 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   check("R16 con 60 episodios las URLs miden menos de 2 KB (las copias de la Papelera van de 20 en 20) y todo se lee", r.ok && largo < 2048 && m.calls.filter((c) => /_supa_id%3E/.test(c.raw) || /_supa_id=in/.test(c.u)).length >= 3 && tab(st.ss, "Pacientes").find((x) => x["ID episodio"] === uuid(59))["Pendientes"] === "COPIA 59", String(largo));
 }
 
+// ─── R17–R22: pestañas de análisis para investigación (27 oct 2026) ──────────────────────────────────────────────
+// Datos FICTICIOS con cada caso de precisión: hospitalización restaurada desde la Papelera (dos ids), reingreso, dos
+// personas con el mismo expediente, copia técnica que no tapa el alta, duplicado, valores rechazados/imposibles/sin
+// unidad/con «<», clave vieja (hto), identificadores dentro de labs, signos con texto y fuera de rango, cultivos.
+const AN = ["Análisis · Episodios", "Análisis · Labs", "Análisis · Signos vitales", "Análisis · Cultivos"];
+function dbAn() {
+  return {
+    patients: [
+      { id: "q2", cama: "3-301", nombre: "PRUEBA FICTICIA RESTAURADA", exp: "0001111", edad: "8 meses", ingreso: "2026-10-12", estado: "ESTABLE", esp: "CG" },
+      { id: "v1", cama: "3-302", nombre: "PRUEBA FICTICIA VALORES", exp: "0004444", edad: "70", ingreso: "2026-10-18", estado: "GRAVE", dx: "PERITONITIS", esp: "CG" },
+      { id: "w1", cama: "3-303", nombre: "PRUEBA FICTICIA SALIO", exp: "0005555", edad: "40", ingreso: "2026-10-15", estado: "ESTABLE" }
+    ],
+    notes: [
+      { patient_id: "q2", checklist: { sexo: "Femenino" }, lab_history: [{ fecha: "2026-10-11", source: "winlab", labs: { hb: "10.2", k: "4.0" } }, { fecha: "2026-10-12", source: "winlab", labs: { hb: "9.5" } }] },
+      { patient_id: "v1", checklist: { sexo: "F", atb: true, atb_nombre: "MEROPENEM",
+          cirugias: [{ id: "c1", fecha: "2026-10-19", procedimiento: "LAPAROTOMIA", sangrado: "MÍNIMO" }, { id: "c2", fecha: "2026-10-20", procedimiento: "LAVADO QUIRURGICO", sangrado: "100 ML" }],
+          pm_hist: [{ fecha: "2026-10-19", fc: "400", fr: "20 rpm", temp: "36,5", sao2: "95%", o2l: "AA", ta: "80/120", uresis: "1,200", dxtx: "HI", iu: "4", balance: "-300" }] },
+        lab_history: [{ fecha: "2026-10-19", source: "winlab", labs: { hb: "RECHAZADA", k: "6.3", na: "REVISAR UNIDAD (MEQ/24H)", pct: "<0.05", cr: "1,4", leucos: "ABUNDANTES", hto: "31", plaq: "125000",
+          paciente: "PRUEBA FICTICIA VALORES", ego_nitri: "NEGATIVO", glu: "45" }, extra: [{ nombre: "LIPASA SERICA", valor: "80" }] }] },
+      { patient_id: "w1", checklist: {} }
+    ],
+    archive: [
+      { id: "b1", archived_at: "2026-10-12T15:00:00+00:00", patient_data: { _supa_id: "q1", nombre: "PRUEBA FICTICIA RESTAURADA", exp: "0001111", ingreso: "2026-10-10", edad: "8 meses" },
+        note_data: { _egreso: "RETIRADO DEL CENSO (hoja)", _restaurado_a: "q2", labHistory: [{ fecha: "2026-10-11", source: "winlab", labs: { hb: "10.2", k: "4.4" } }] } },
+      { id: "b2", archived_at: "2026-09-10T18:00:00+00:00", patient_data: { _supa_id: "r1", nombre: "PRUEBA FICTICIA REINGRESO", exp: "0002222", ingreso: "2026-09-01", edad: "55" }, note_data: { _egreso: "alta médica", _egresoFecha: "10/09/2026" } },
+      { id: "b3", archived_at: "2026-10-03T10:00:00+00:00", patient_data: { _supa_id: "r2", nombre: "PRUEBA FICTICIA REINGRSO", exp: "0002222", ingreso: "2026-09-25", edad: "55", estado: "DEFUNCIÓN" }, note_data: {} },
+      { id: "b4", archived_at: "2026-09-08T10:00:00+00:00", patient_data: { _supa_id: "s1", nombre: "OTRA PERSONA FICTICIA", exp: "0002222", ingreso: "2026-09-05" }, note_data: { _egreso: "RETIRADO DEL CENSO (hoja)" } },
+      { id: "b5", archived_at: "2026-10-05T12:00:00+00:00", patient_data: { _supa_id: "t1", nombre: "PRUEBA FICTICIA RESCATE", exp: "0003333", ingreso: "2026-10-01" }, note_data: { _egreso: "alta médica", _egresoFecha: "05/10/2026" } },
+      { id: "b6", archived_at: "2026-10-07T12:00:00+00:00", patient_data: { _supa_id: "t1", nombre: "PRUEBA FICTICIA RESCATE", exp: "0003333" }, note_data: { _egreso: "CAMBIOS DE ESTE iPad SIN SUBIR (alta en otro dispositivo)", _egresoFecha: "07/10/2026" } },
+      { id: "b7", archived_at: "2026-10-02T12:00:00+00:00", patient_data: { _supa_id: "d1", nombre: "PRUEBA FICTICIA RESCATE", exp: "0003333", ingreso: "2026-10-01" }, note_data: { _egreso: "DUPLICADO (eliminado a mano)" } }
+    ],
+    cronologia_respaldo: [], procedimientos_dia: [], ris_estudios: [],
+    winlab_labs: [
+      { id: 50, exp: "0004444", paciente: "PRUEBA FICTICIA VALORES", fecha: "2026-10-19", scraped_at: "2026-10-19T08:00:00+00:00", data: { reportes: [
+        { __hasLink: true, __target: true, __cells: ["", "", "F500", "17/10/2026 23:00", "19/10/2026 07:00", "CIRUGIA GENERAL"], valores: [{ estudio: "UROCULTIVO", valor: "POSITIVO" }],
+          cultivo: { secciones: [{ tipo: "Urocultivo", muestra: "ORINA", resultado: "POSITIVO", germenes: [{ nombre: "Escherichia coli", flags: ["BLEE"], ufc: ">100,000", antibiograma: [{ antibiotico: "AMIKACINA", interp: "S" }, { antibiotico: "CEFTRIAXONA", interp: "R" }] }] }] } }] } },
+      { id: 51, exp: "0004444", paciente: "OTRA PERSONA FICTICIA", fecha: "2026-10-19", scraped_at: "2026-10-19T09:00:00+00:00", data: { reportes: [
+        { __hasLink: true, __target: true, __cells: ["", "", "F501", "19/10/2026 06:00", "19/10/2026 08:00", "MEDICINA INTERNA"], valores: [{ estudio: "HEMOCULTIVO", valor: "1", unidad: "DESARROLLO" }, { estudio: "NEGATIVO A", valor: "5", unidad: "DIAS" }] }] } }
+    ]
+  };
+}
+const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|000789|000999/;
+{
+  const st = { db: dbAn(), hoy: "2026-10-21" };
+  const r = makeSandbox(st).sb.actualizarRegistro();
+  const E = tab(st.ss, AN[0]), L = tab(st.ss, AN[1]), S = tab(st.ss, AN[2]), C = tab(st.ss, AN[3]), K = tab(st.ss, "Clave de seudónimos");
+  const cod = Object.fromEntries(K.map((x) => [x["ID episodio"], x]));
+  const ep = (id) => E.find((x) => x["ID episodio"] === cod[id]["ID episodio (análisis)"]);
+  check("R17a corre sin avisos y crea la clave, las cuatro pestañas de análisis y el diccionario de variables",
+    r.ok && !r.avisos.length && AN.concat(["Clave de seudónimos", "Diccionario de variables"]).every((n) => st.ss.sheets[n] && st.ss.sheets[n].cells.length > 1), JSON.stringify(r.avisos));
+  const todoAn = JSON.stringify(AN.concat(["Diccionario de variables"]).map((n) => st.ss.sheets[n].cells));
+  check("R17b ningún nombre ni expediente en las pestañas de análisis (tampoco el «paciente» que venía dentro de los labs)", !fichas.test(todoAn), (todoAn.match(fichas) || [])[0]);
+  check("R17c seudónimos con formato fijo (P-/E-/C- + 12 hexadecimales) y la sal guardada en las propiedades del script",
+    E.every((x) => /^E-[0-9A-F]{12}$/.test(x["ID episodio"]) && /^P-[0-9A-F]{12}$/.test(x["ID paciente"])) && C.every((x) => /^C-[0-9A-F]{12}$/.test(x["ID cultivo"])) && /^uuid-/.test(st.props.REG_SAL || ""));
+  check("R17d restaurada desde la Papelera (q1 → q2): UN episodio con 2 partes, ingreso más antiguo, sigue hospitalizado, misma clave en las dos partes",
+    E.length === 8 && cod.q1["ID episodio (análisis)"] === cod.q2["ID episodio (análisis)"] && ep("q2")["Partes del registro"] === 2 && ep("q2")["Fecha de ingreso"] === "2026-10-10"
+    && ep("q2")["Estado"] === "Hospitalizado" && ep("q2")["Egreso observado"] === 0 && ep("q2")["Tipo de egreso"] === "" && ep("q2")["Defunción"] === "" && /2 partes/.test(ep("q2")["Calidad de datos"])
+    && ep("q2")["Edad (años)"] === 0.67 && ep("q2")["Sexo"] === "F" && ep("q2")["Días de estancia"] === 11, JSON.stringify(ep("q2")));
+  const lq = L.filter((x) => x["ID episodio"] === cod.q2["ID episodio (análisis)"]);
+  check("R17e labs de las dos partes en un solo episodio; el mismo día con dos valores distintos se dice en Observaciones (gana la parte más reciente)",
+    lq.length === 2 && lq[0]["Fecha"] === "2026-10-11" && lq[0]["Hemoglobina (g/dL)"] === 10.2 && lq[0]["Potasio (mmol/L)"] === 4 && /Potasio: otra parte del episodio decía 4\.4 \(se tomó 4\.0, la más reciente\)/.test(lq[0]["Observaciones"])
+    && lq[1]["Hemoglobina (g/dL)"] === 9.5 && lq[0]["Día de estancia"] === 1 && lq[1]["Día de estancia"] === 2, JSON.stringify(lq));
+  check("R17f reingreso: misma persona aunque el nombre tenga un error de una letra; 15 días entre egreso e ingreso; defunción en el segundo",
+    cod.r1["ID paciente (análisis)"] === cod.r2["ID paciente (análisis)"] && ep("r1")["N.º de episodio del paciente"] === 1 && ep("r1")["Reingreso a 30 días"] === 1 && ep("r1")["Tipo de egreso"] === "Alta" && ep("r1")["Defunción"] === 0
+    && ep("r2")["N.º de episodio del paciente"] === 2 && ep("r2")["Días desde el egreso previo"] === 15 && ep("r2")["Es reingreso (≤30 días)"] === 1 && ep("r2")["Tipo de egreso"] === "Defunción"
+    && ep("r2")["Defunción"] === 1 && ep("r2")["Reingreso a 30 días"] === "" && ep("r2")["Fecha de egreso"] === "2026-10-03", JSON.stringify([ep("r1"), ep("r2")]));
+  check("R17g otra persona con el MISMO expediente: otro ID paciente, no entra en la serie de reingresos del primero; las dos dicen «expediente compartido»",
+    cod.s1["ID paciente (análisis)"] !== cod.r1["ID paciente (análisis)"] && ep("s1")["N.º de episodio del paciente"] === 1 && ep("r2")["N.º de episodio del paciente"] === 2
+    && cod.s1["Identidad del paciente por"] === "Expediente + nombre (expediente compartido)" && cod.r1["Identidad del paciente por"] === "Expediente + nombre (expediente compartido)"
+    && ep("s1")["Tipo de egreso"] === "Motivo no registrado" && ep("s1")["Defunción"] === "", JSON.stringify(K));
+  const pt1 = tab(st.ss, "Pacientes").find((x) => x["ID episodio"] === "t1");
+  check("R17h una copia técnica más nueva (rescate de cambios sin subir) NO tapa el alta real ni su fecha (en Pacientes y en Análisis)",
+    pt1["Motivo de egreso"] === "alta médica" && pt1["Fecha de egreso"] === "2026-10-05" && ep("t1")["Tipo de egreso"] === "Alta" && ep("t1")["Días de estancia"] === 4, JSON.stringify(pt1));
+  check("R17i duplicado eliminado a mano: Excluir = 1, sin egreso observado y fuera de la serie de reingresos",
+    ep("d1")["Excluir (duplicado)"] === 1 && ep("d1")["Egreso observado"] === 0 && ep("d1")["N.º de episodio del paciente"] === "" && ep("t1")["N.º de episodio del paciente"] === 1 && ep("t1")["Excluir (duplicado)"] === 0);
+  const lv = L.find((x) => x["ID episodio"] === cod.v1["ID episodio (análisis)"]);
+  check("R17j labs: rechazada, unidad no reconocida, texto e imposible quedan VACÍOS y explicados; «<0.05» → 0.05; «1,4» → 1.4; hto → Hematocrito; cualitativo como texto; otros estudios aparte",
+    lv["Hemoglobina (g/dL)"] === "" && lv["Sodio (mmol/L)"] === "" && lv["Leucocitos (k/µL)"] === "" && lv["Plaquetas (k/µL)"] === "" && lv["Procalcitonina (ng/mL)"] === 0.05 && lv["Creatinina (mg/dL)"] === 1.4
+    && lv["Hematocrito (%)"] === 31 && lv["Orina: nitritos"] === "NEGATIVO" && lv["Otros estudios"] === "LIPASA SERICA: 80"
+    && ["Hemoglobina: muestra rechazada", "Sodio: unidad no reconocida (MEQ/24H)", "Leucocitos: «ABUNDANTES» no es un número", "Plaquetas: 125000 fuera de lo posible", "Procalcitonina: <0.05 (se anotó 0.05)"].every((t) => lv["Observaciones"].indexOf(t) !== -1),
+    JSON.stringify(lv));
+  check("R17k valores críticos con la tabla única de la app (glucosa ≤50, potasio ≥6) y su cuenta en el episodio; resumen del episodio",
+    lv["Valores críticos"] === "Glucosa 45; Potasio 6.3" && ep("v1")["Valores críticos (n)"] === 2 && ep("v1")["Potasio máximo (mmol/L)"] === 6.3 && ep("v1")["Creatinina inicial (mg/dL)"] === 1.4 && ep("v1")["Hb mínima (g/dL)"] === "", JSON.stringify(ep("v1")));
+  const sv = S.find((x) => x["ID episodio"] === cod.v1["ID episodio (análisis)"]);
+  check("R17l signos: «36,5» → 36.5, «95%» → 95, «AA» → 0 L/min, «1,200» mL → 1200, «-300» → -300, unidad escrita aceptada; FC 400, DxTx «HI» y TA 80/120 vacíos y explicados",
+    sv["Temperatura (°C)"] === 36.5 && sv["SaO2 (%)"] === 95 && sv["O2 (L/min)"] === 0 && sv["Uresis (mL)"] === 1200 && sv["Balance (mL)"] === -300 && sv["FR (rpm)"] === 20 && sv["Insulina (UI)"] === 4
+    && sv["FC (lpm)"] === "" && sv["Glucemia capilar (mg/dL)"] === "" && sv["TA sistólica (mmHg)"] === "" && /FC 400 fuera de lo posible/.test(sv["Observaciones"]) && /DxTx «HI»/.test(sv["Observaciones"]) && /TA «80\/120» no interpretable/.test(sv["Observaciones"]), JSON.stringify(sv));
+  check("R17m cirugías: dos fechas, días a la primera; un sangrado «MÍNIMO» deja el total vacío y lo dice",
+    ep("v1")["Cirugías (n)"] === 2 && ep("v1")["Primera cirugía"] === "2026-10-19" && ep("v1")["Días ingreso a 1.ª cirugía"] === 1 && ep("v1")["Sangrado total (mL)"] === "" && /sangrado sin número en 1/.test(ep("v1")["Calidad de datos"])
+    && ep("v1")["Antibiótico (registrado)"] === 1 && ep("v1")["Procedimientos"] === "2026-10-19 LAPAROTOMIA | 2026-10-20 LAVADO QUIRURGICO");
+  const cv = C.find((x) => x["ID episodio"] === cod.v1["ID episodio (análisis)"]), co = C.find((x) => x["ID episodio"] === "");
+  check("R17n cultivo tomado en urgencias (1 día antes del ingreso) va al episodio con su germen y antibiograma; el de OTRA persona con ese expediente no, y con otro ID paciente",
+    C.length === 2 && cv && cv["Día de estancia"] === -1 && cv["Positivo"] === 1 && cv["Germen"] === "Escherichia coli (BLEE)" && cv["Sensibles"] === "AMIKACINA" && cv["Resistentes"] === "CEFTRIAXONA" && cv["Hora de toma"] === "23:00"
+    && ep("v1")["Cultivos (n)"] === 1 && ep("v1")["Cultivos positivos (n)"] === 1 && ep("v1")["Gérmenes aislados"] === "Escherichia coli"
+    && co && co["ID paciente"] !== cod.v1["ID paciente (análisis)"] && co["Positivo"] === 0, JSON.stringify(C));
+  const sh = st.ss.sheets[AN[1]], h = sh.cells[0], col = (n) => h.indexOf(n) + 1;
+  check("R17o números guardados como número con formato numérico (no texto); fechas y textos en texto plano",
+    sh.fmt["2:" + col("Hemoglobina (g/dL)")] === "0.0#####" && sh.fmt["2:" + col("Día de estancia")] === "0" && sh.fmt["2:" + col("Fecha")] === "@" && sh.fmt["2:" + col("Observaciones")] === "@"
+    && typeof lv["Potasio (mmol/L)"] === "number" && typeof ep("v1")["Días de estancia"] === "number" && typeof ep("v1")["Fecha de ingreso"] === "string");
+
+  // Día 2: w1 sale de la base sin pasar por la Papelera; se corrige (borra) el lab del 19/10 de v1. Sin la sal (otro
+  // proyecto de Apps Script): los seudónimos se conservan por la clave guardada.
+  const d2 = dbAn(); d2.patients = d2.patients.filter((p) => p.id !== "w1"); d2.notes[1].lab_history = [];
+  st.db = d2; st.hoy = "2026-10-22"; const salVieja = st.props.REG_SAL; delete st.props.REG_SAL;
+  const r2 = makeSandbox(st).sb.actualizarRegistro();
+  const E2 = tab(st.ss, AN[0]), L2 = tab(st.ss, AN[1]), K2 = tab(st.ss, "Clave de seudónimos");
+  const ew = E2.find((x) => x["ID episodio"] === cod.w1["ID episodio (análisis)"]);
+  check("R18a salió de la base sin egreso: «Sin egreso registrado», estancia hasta el último día visto, censurado (egreso observado 0) y defunción desconocida",
+    r2.ok && ew["Estado"] === "Sin egreso registrado" && ew["Días de estancia"] === 6 && ew["Egreso observado"] === 0 && ew["Tipo de egreso"] === "Motivo no registrado" && ew["Defunción"] === "", JSON.stringify(ew));
+  const lv2 = L2.find((x) => x["ID episodio"] === cod.v1["ID episodio (análisis)"]);
+  check("R18b un lab corregido en la tarjeta: la fila de análisis de ese día queda marcada Vigente = No (no se borra) y deja de contar en el episodio",
+    lv2 && lv2["Vigente"] === "No" && L2.length === L.length && E2.find((x) => x["ID episodio"] === cod.v1["ID episodio (análisis)"])["Valores críticos (n)"] === 0);
+  check("R18c sin la sal (otro proyecto): los seudónimos de la clave guardada se conservan; la sal nueva no cambia nada de lo ya escrito",
+    !!st.props.REG_SAL && st.props.REG_SAL !== salVieja && K2.every((x) => cod[x["ID episodio"]] && cod[x["ID episodio"]]["ID paciente (análisis)"] === x["ID paciente (análisis)"] && cod[x["ID episodio"]]["ID episodio (análisis)"] === x["ID episodio (análisis)"])
+    && E2.length === E.length && E2.every((x) => x["Vigente"] === "Sí"), JSON.stringify(K2));
+  const antes = snap(st.ss); makeSandbox(st).sb.actualizarRegistro();
+  check("R18d idempotente: otra corrida con los mismos datos deja todo igual (análisis incluido)", snap(st.ss) === antes);
+}
+{
+  // R19: la sal sí importa: con otra sal (libro nuevo) cambian todos los seudónimos.
+  const a = { db: dbAn(), hoy: "2026-10-21", props: { REG_SAL: "sal-uno" } }, b = { db: dbAn(), hoy: "2026-10-21", props: { REG_SAL: "sal-dos" } };
+  makeSandbox(a).sb.actualizarRegistro(); makeSandbox(b).sb.actualizarRegistro();
+  const ka = tab(a.ss, "Clave de seudónimos"), kb = tab(b.ss, "Clave de seudónimos");
+  check("R19 con otra sal los seudónimos son otros (sin la sal no se puede volver al expediente)", ka.length === kb.length && ka.every((x) => !kb.some((y) => y["ID paciente (análisis)"] === x["ID paciente (análisis)"] || (x["ID episodio (análisis)"] && y["ID episodio (análisis)"] === x["ID episodio (análisis)"]))));
+}
+{
+  // R20: si el análisis falla, el registro se escribe igual y se avisa; si no alcanza el tiempo, se pospone.
+  const st = { db: dbAn(), hoy: "2026-10-21" };
+  const m = makeSandbox(st); m.sb.Utilities.computeDigest = () => { throw new Error("Exception: Service unavailable"); };
+  const r = m.sb.actualizarRegistro();
+  check("R20a una falla del análisis no detiene el registro: Pacientes escrito y aviso en el Diccionario", r.ok && tab(st.ss, "Pacientes").length === 9 && r.avisos.some((a) => /pestañas de análisis/.test(a)) && !st.ss.sheets[AN[0]]
+    && /pestañas de análisis/.test(JSON.stringify(st.ss.sheets["Diccionario"].cells)), JSON.stringify(r.avisos));
+  const s2 = { db: dbAn(), reloj: 0 };
+  s2.alEscribir = (hoja) => { if (hoja === "Imagen del robot (RIS)") s2.reloj = 320000; };
+  s2.db.ris_estudios = [{ id: 10, patient_id: "v1", exp: "0004444", paciente: "PRUEBA FICTICIA VALORES", fecha: "19/10/2026", modalidad: "TC", estudios: "TC ABDOMEN", scraped_at: "2026-10-19T10:00:00+00:00" }];
+  const r2 = makeSandbox(s2).sb.actualizarRegistro();
+  check("R20b pasados los 5 min 15 s no empieza el análisis: se avisa y se hace en la siguiente corrida", r2.ok && !s2.ss.sheets[AN[0]] && r2.avisos.some((a) => /No alcanzó el tiempo para las pestañas de análisis/.test(a)) && !!s2.ss.sheets["Imagen del robot (RIS)"], JSON.stringify(r2.avisos));
+}
+{
+  // R21: la tabla de labs del registro es COPIA de la de la app (index.html): clave, unidad, rangos, críticos e imposibles.
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const ini = html.indexOf("const LAB_GROUPS = ["), fin = html.indexOf("];", html.indexOf("id: \"lipidos_otros\""));
+  const grupos = vm.runInNewContext("(" + html.slice(ini + "const LAB_GROUPS = ".length, fin + 1) + ")");
+  const campos = grupos.flatMap((g) => g.fields);
+  const imp = vm.runInNewContext("(" + /const LAB_IMPOSIBLE = (\{[\s\S]*?\});/.exec(html)[1] + ")");
+  const { sb } = makeSandbox({ db: dbAn() });
+  const meta = sb.REG_LAB_META, porK = Object.fromEntries(meta.map((m) => [m.k, m]));
+  const malos = campos.filter((f) => { const m = porK[f.key]; const nn = (x) => (x === undefined || x === null ? null : x);
+    return !m || m.u !== f.unit || nn(m.lo) !== nn(f.low) || nn(m.hi) !== nn(f.high) || nn(m.cl) !== nn(f.cl) || nn(m.ch) !== nn(f.ch) || (m.t === "texto") !== (f.low === null && f.high === null); });
+  const sobran = meta.filter((m) => !m.extra && !campos.some((f) => f.key === m.k));
+  check("R21a REG_LAB_META = LAB_FIELDS de la app (" + campos.length + " estudios: clave, unidad, referencia, críticos, cualitativos)", campos.length > 70 && !malos.length && !sobran.length, JSON.stringify(malos.map((f) => f.key).concat(sobran.map((m) => m.k))));
+  check("R21b REG_LAB_IMPOSIBLE = LAB_IMPOSIBLE de la app", JSON.stringify(sb.REG_LAB_IMPOSIBLE) === JSON.stringify(imp));
+  const dup = sb.REG_ANALISIS.filter((cfg) => new Set(cfg.columnas).size !== cfg.columnas.length);
+  check("R21c columnas únicas en cada pestaña de análisis y la clave de cada una está entre sus columnas", !dup.length && sb.REG_ANALISIS.every((cfg) => cfg.clave.every((c) => cfg.columnas.indexOf(c) !== -1)) && sb.REG_ANALISIS.every((cfg) => cfg.columnas.indexOf("Vigente") !== -1));
+  // Cada columna de cada pestaña de análisis está definida en el diccionario de variables (por su nombre exacto).
+  const vars = sb.regVariables_().slice(1);
+  const falta = [];
+  sb.REG_ANALISIS.forEach((cfg) => cfg.columnas.forEach((c) => { if (!vars.some((v) => (v[0] === cfg.nombre || v[0] === "Todas") && v[1].split(" · ").indexOf(c) !== -1)) falta.push(cfg.nombre + " / " + c); }));
+  check("R21d el diccionario de variables define TODAS las columnas de las pestañas de análisis", !falta.length, falta.join(" | "));
+}
+{
+  // R22: funciones puras de precisión.
+  const { sb } = makeSandbox({ db: dbAn() });
+  const n = (v, op) => { const x = sb.regNumero(v, op); return x ? x.n + (x.comp ? "/" + x.comp : "") : null; };
+  check("R22a regNumero: limpio o nada (nunca el primer número de un texto)",
+    n("7.4") === "7.4" && n("7,4") === "7.4" && n("<0.05") === "0.05/<" && n(".5") === "0.5" && n("1,200") === null && n("0,125") === "0.125" && n("12,5") === "12.5" && n("1,200", { miles: true }) === "1200" && n("12 mg") === null && n("12 mg", { unidad: /^MG$/ }) === "12"
+    && n("7.4 aprox") === null && n("3-4") === null && n("1.2.3") === null && n("") === null && n("-0") === "0" && n(5) === "5");
+  check("R22b edad, sexo y expediente",
+    sb.regEdadAnios("34") === 34 && sb.regEdadAnios("34 AÑOS") === 34 && sb.regEdadAnios("6 meses") === 0.5 && sb.regEdadAnios("10 días") === 0.027 && sb.regEdadAnios("130") === "" && sb.regEdadAnios("ADULTO") === ""
+    && sb.regSexo("masculino") === "M" && sb.regSexo("Mujer") === "F" && sb.regSexo("X") === "" && sb.regExpValido(" 000-1234 ") === "0001234" && sb.regExpValido("S/N") === "" && sb.regExpValido("0000") === "");
+  check("R22c misma persona con el mismo expediente: palabras del nombre más corto en el otro, un error de una letra, no identificados",
+    sb.regMismaPersona("PRUEBA FICTICIA UNO", "PRUEBA FICTICIA") && sb.regMismaPersona("PRUEBA FICTICIA REINGRESO", "PRUEBA FICTICIA REINGRSO") && sb.regMismaPersona("DESCONOCIDO", "PRUEBA FICTICIA")
+    && !sb.regMismaPersona("PRUEBA FICTICIA UNO", "OTRA PERSONA FICTICIA") && !sb.regMismaPersona("JUAN FICTICIO", "JUANA FICTICIO"));
+  check("R22d tipo de egreso: la etiqueta de la hoja no es alta ni defunción; DEFUNCIÓN por estado; duplicado y borrado aparte",
+    sb.regEgresoTipo("RETIRADO DEL CENSO (hoja)", "ESTABLE") === "Motivo no registrado" && sb.regEgresoTipo("EGRESO", "") === "Motivo no registrado" && sb.regEgresoTipo("DEFUNCIÓN", "") === "Defunción"
+    && sb.regEgresoTipo("", "DEFUNCION") === "Defunción" && sb.regEgresoTipo("alta médica", "") === "Alta" && sb.regEgresoTipo("ALTA MÉDICA", "") === "Alta" && sb.regEgresoTipo("TRASLADO", "") === "Traslado"
+    && sb.regEgresoTipo("DUPLICADO (import)", "") === "Duplicado (no es otro episodio)" && sb.regEgresoTipo("BORRADO EN BD (service_role)", "") === "Borrado en la base (revisar)" && sb.regEgresoTipo("CAMA REASIGNADA (hoja)", "") === "Motivo no registrado");
+}
+
+{
+  // R23: el motivo del egreso registrado en la app (Papelera) llega al registro aunque la copia sea vieja, y manda.
+  const st = { db: dbAn(), hoy: "2026-10-21" };
+  makeSandbox(st).sb.actualizarRegistro();
+  st.props.REG_CURSOR_archive = "2026-10-20T00:00:00+00:00";   // la ventana incremental ya no ve las copias de septiembre
+  const s1 = st.db.archive.find((a) => a.id === "b4");          // RETIRADO DEL CENSO (hoja), archivada el 8 sep
+  // La clasifica alguien hoy (la base pone la hora UTC sin milésimas); ninguna otra copia de s1 entra en la ventana.
+  s1.note_data._egreso_tipo = "defuncion"; s1.note_data._egreso_tipo_por = "R2 FICTICIO"; s1.note_data._egreso_tipo_ts = new Date().toISOString().slice(0, 19) + "Z";
+  const m = makeSandbox(st); m.sb.actualizarRegistro();
+  const leida = m.calls.filter((c) => /archive\?.*note_data->>_egreso_tipo_ts=gte\./.test(c.u));
+  const motivo = () => tab(st.ss, "Pacientes").find((x) => x["ID episodio"] === "s1")["Motivo de egreso"];
+  const k = tab(st.ss, "Clave de seudónimos").find((x) => x["ID episodio"] === "s1");
+  const es1 = () => tab(st.ss, AN[0]).find((x) => x["ID episodio"] === k["ID episodio (análisis)"]);
+  check("R23a una copia vieja (fuera de la ventana) clasificada hoy en la Papelera se relee: Defunción en Pacientes y en Análisis",
+    leida.length === 1 && motivo() === "Defunción (registrado en la app)" && es1()["Tipo de egreso"] === "Defunción" && es1()["Defunción"] === 1, JSON.stringify([leida.length, motivo()]));
+  // Después llega una copia más nueva del mismo episodio con la etiqueta de la hoja: no tapa el motivo registrado.
+  st.db.archive.push({ id: "b8", archived_at: "2026-10-21T16:00:00+00:00", patient_data: { _supa_id: "s1", nombre: "OTRA PERSONA FICTICIA", exp: "0002222" }, note_data: { _egreso: "RETIRADO DEL CENSO (hoja)" } });
+  makeSandbox(st).sb.actualizarRegistro();
+  check("R23a2 una copia más nueva con «RETIRADO DEL CENSO (hoja)» no tapa el motivo registrado en la app", motivo() === "Defunción (registrado en la app)" && es1()["Defunción"] === 1, motivo());
+  const { sb } = m;
+  check("R23b los cuatro motivos de la app se traducen a su tipo (alta, defunción, traslado, alta voluntaria)",
+    ["alta", "defuncion", "traslado", "alta_voluntaria"].map((t) => sb.regEgresoTipo(sb.REG_EGRESO_APP[t] + " (registrado en la app)", "")).join("|") === "Alta|Defunción|Traslado|Alta voluntaria"
+    && sb.regEgresoPeso("Defunción (registrado en la app)", "") > sb.regEgresoPeso("alta médica", ""));
+}
+{
+  // R24: hallazgos de la revisión independiente (27 oct 2026), cada uno con su caso.
+  // a) Una persona que aparece DESPUÉS con un ingreso ANTERIOR y el mismo expediente no se queda con el código de otra.
+  const base = () => ({ patients: [], notes: [], cronologia_respaldo: [], procedimientos_dia: [], ris_estudios: [], winlab_labs: [], archive: [] });
+  const d = base();
+  d.patients.push({ id: "pa", cama: "3-401", nombre: "PRUEBA FICTICIA ALFA", exp: "0007777", ingreso: "2026-10-15" });
+  const st = { db: d, hoy: "2026-10-21" }; makeSandbox(st).sb.actualizarRegistro();
+  const pa1 = tab(st.ss, "Clave de seudónimos").find((x) => x["ID episodio"] === "pa")["ID paciente (análisis)"];
+  d.archive.push({ id: "z1", archived_at: "2026-10-20T10:00:00+00:00", patient_data: { _supa_id: "pb", nombre: "OTRA FICTICIA BETA", exp: "0007777", ingreso: "2026-09-01" }, note_data: { _egreso: "RETIRADO DEL CENSO (hoja)" } });
+  makeSandbox(st).sb.actualizarRegistro();
+  const K = tab(st.ss, "Clave de seudónimos"), pa2 = K.find((x) => x["ID episodio"] === "pa")["ID paciente (análisis)"], pb = K.find((x) => x["ID episodio"] === "pb")["ID paciente (análisis)"];
+  check("R24a dos personas con el mismo expediente nunca comparten ID paciente, aunque la segunda llegue después con un ingreso anterior; la primera conserva el suyo",
+    pa1 === pa2 && pb !== pa2 && /^P-[0-9A-F]{12}$/.test(pb), JSON.stringify({ pa1, pa2, pb }));
+}
+{
+  // b) En la tarjeta restaurada (q2) se borra el potasio del 11/10 y una cirugía: no vuelven desde la copia vieja (q1).
+  const d = dbAn();
+  d.archive[0].note_data.checklist = { cirugias: [{ id: "x1", fecha: "2026-10-10", procedimiento: "LAPAROTOMIA" }] };
+  d.notes[0].checklist.cirugias = [{ id: "x1", fecha: "2026-10-10", procedimiento: "LAPAROTOMIA" }];
+  const st = { db: d, hoy: "2026-10-21" }; makeSandbox(st).sb.actualizarRegistro();
+  d.notes[0].lab_history[0].labs = { hb: "10.2" }; d.notes[0].checklist.cirugias = [];
+  makeSandbox(st).sb.actualizarRegistro();
+  const k = tab(st.ss, "Clave de seudónimos").find((x) => x["ID episodio"] === "q2")["ID episodio (análisis)"];
+  const l = tab(st.ss, AN[1]).find((x) => x["ID episodio"] === k && x["Fecha"] === "2026-10-11" && x["Vigente"] === "Sí");
+  const e = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === k);
+  const kq1 = tab(st.ss, "Labs").find((x) => x["ID episodio"] === "q1" && x["Estudio"] === "k");
+  check("R24b un valor y una cirugía borrados en la tarjeta restaurada no reviven desde la copia vieja de la Papelera (aunque esa copia siga «Vigente: Sí»)",
+    kq1 && kq1["Vigente"] === "Sí" && l && l["Potasio (mmol/L)"] === "" && /no se usaron: k/.test(l["Observaciones"]) && e["Cirugías (n)"] === 0, JSON.stringify({ kq1, l: l && [l["Potasio (mmol/L)"], l["Observaciones"]], cx: e && e["Cirugías (n)"] }));
+}
+{
+  // c) Un cultivo del paciente con tarjeta duplicada va al episodio real, no al duplicado.
+  const d = dbAn();
+  d.winlab_labs.push({ id: 60, exp: "0003333", paciente: "PRUEBA FICTICIA RESCATE", fecha: "2026-10-02", scraped_at: "2026-10-02T08:00:00+00:00", data: { reportes: [
+    { __hasLink: true, __target: true, __cells: ["", "", "F600", "01/10/2026 10:00", "02/10/2026 07:00", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOCULTIVO", valor: "1", unidad: "DESARROLLO" }, { estudio: "NEGATIVO A", valor: "5", unidad: "DIAS" }] }] } });
+  const st = { db: d, hoy: "2026-10-21" }; makeSandbox(st).sb.actualizarRegistro();
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const c = tab(st.ss, AN[3]).find((x) => x["Fecha de toma"] === "2026-10-01");
+  const E = Object.fromEntries(tab(st.ss, AN[0]).map((x) => [x["ID episodio"], x]));
+  check("R24c el cultivo va al episodio real y no a la tarjeta duplicada (Excluir = 1)", c && c["ID episodio"] === K.t1 && E[K.t1]["Cultivos (n)"] === 1 && E[K.d1]["Cultivos (n)"] === 0, JSON.stringify({ c: c && c["ID episodio"], t1: K.t1, d1: K.d1 }));
+}
+{
+  // d) «1,500 ML» de sangrado son 1500 mL; «1,250» en un laboratorio es ambiguo: vacío y explicado.
+  const d = dbAn();
+  d.notes[1].checklist.cirugias = [{ id: "c1", fecha: "2026-10-19", procedimiento: "LAPAROTOMIA", sangrado: "1,500 ML" }];
+  d.notes[1].lab_history[0].labs.ck = "1,250";
+  const st = { db: d, hoy: "2026-10-21" }; makeSandbox(st).sb.actualizarRegistro();
+  const k = tab(st.ss, "Clave de seudónimos").find((x) => x["ID episodio"] === "v1")["ID episodio (análisis)"];
+  const e = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === k), l = tab(st.ss, AN[1]).find((x) => x["ID episodio"] === k);
+  check("R24d sangrado «1,500 ML» = 1500 mL; CK «1,250» queda vacía con «ambiguo (¿miles o decimales?)»",
+    e["Sangrado total (mL)"] === 1500 && l["CK (U/L)"] === "" && /CK: «1,250» es ambiguo/.test(l["Observaciones"]), JSON.stringify([e["Sangrado total (mL)"], l["CK (U/L)"], l["Observaciones"]]));
+}
+{
+  // e) Sin la sal (otro proyecto de Apps Script): los cultivos conservan su ID (no se duplica la pestaña).
+  const st = { db: dbAn(), hoy: "2026-10-21" }; makeSandbox(st).sb.actualizarRegistro();
+  const antes = tab(st.ss, AN[3]).map((x) => x["ID cultivo"]).sort();
+  delete st.props.REG_SAL; makeSandbox(st).sb.actualizarRegistro();
+  const despues = tab(st.ss, AN[3]);
+  check("R24e sin la sal los cultivos conservan su ID y la pestaña no se duplica", JSON.stringify(despues.map((x) => x["ID cultivo"]).sort()) === JSON.stringify(antes) && despues.every((x) => x["Vigente"] === "Sí"), JSON.stringify({ antes, despues: despues.map((x) => x["ID cultivo"] + ":" + x["Vigente"]) }));
+}
+{
+  // f) Una copia de rescate («… (alta en otro dispositivo)») no es un alta; g) episodios traslapados: reingreso sin calcular.
+  const { sb } = makeSandbox({ db: dbAn() });
+  check("R24f «CAMBIOS DE ESTE iPad SIN SUBIR (alta en otro dispositivo)» y «CAMA REASIGNADA (otra persona…)» no se cuentan como Alta",
+    sb.regEgresoTipo("CAMBIOS DE ESTE iPad SIN SUBIR (alta en otro dispositivo)", "") === "Motivo no registrado" && sb.regEgresoTipo("CAMA REASIGNADA (otra persona con el mismo expediente)", "ESTABLE") === "Motivo no registrado");
+  const d = { patients: [], notes: [], cronologia_respaldo: [], procedimientos_dia: [], ris_estudios: [], winlab_labs: [], archive: [
+    { id: "o1", archived_at: "2026-08-12T18:00:00+00:00", patient_data: { _supa_id: "e1", nombre: "PRUEBA FICTICIA TRASLAPE", exp: "0008888", ingreso: "2026-08-01" }, note_data: { _egreso: "alta médica", _egresoFecha: "12/08/2026" } },
+    { id: "o2", archived_at: "2026-08-20T18:00:00+00:00", patient_data: { _supa_id: "e2", nombre: "PRUEBA FICTICIA TRASLAPE", exp: "0008888", ingreso: "2026-08-10" }, note_data: { _egreso: "alta médica", _egresoFecha: "20/08/2026" } }] };
+  const st = { db: d, hoy: "2026-10-21" }; makeSandbox(st).sb.actualizarRegistro();
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const e1 = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K.e1);
+  check("R24g si el episodio siguiente empieza antes del egreso (se traslapan), «Reingreso a 30 días» queda vacío y se explica", e1["Reingreso a 30 días"] === "" && /se traslapan/.test(e1["Calidad de datos"]), JSON.stringify([e1["Reingreso a 30 días"], e1["Calidad de datos"]]));
+}
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

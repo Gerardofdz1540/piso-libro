@@ -1083,6 +1083,7 @@
     /* Muestra rechazada / unidad desconocida (oct 2026): no es un número que se pueda juzgar. */
     .lab-cell.lab-aviso .lab-input { color: #b45309; font-size: 9px; font-weight: 800; letter-spacing: -.2px; }
     .lab-aviso-tag { color: #b45309; font-weight: 800; margin-left: 2px; }
+    .lab-ia-tag { font-size: 9px; margin-left: 2px; }
     .lab-input.abn {
       color: #92400e
     }
@@ -1846,7 +1847,7 @@
     body.dark .pl-foto-add, body.dark .pl-foto-file { background: #0f1b2d; color: #cbd5e1; }
     @media print { .pl-foto-x, .pl-foto-add { display: none !important; } .pl-foto { width: 120px; height: 120px; } }
     /* Pase matutino con fecha e historial (oct 2026) */
-    .pm-date { font-size: 10px; font-weight: 800; border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
+    .pm-date { font-size: calc(12px * var(--pl-fs-scale, 1)); font-weight: 800; border-radius: 999px; padding: 1px 7px; margin-right: 4px; }
     .pm-date:empty { display: none; }
     .pm-date.ok { background: #dcfce7; color: #166534; }
     .pm-date.old { background: #fef3c7; color: #92400e; }
@@ -2250,6 +2251,12 @@
     .days-no-labs.alert { background:#ef4444;color:#fff }
 
     /* Guardián de labs críticos */
+    #sync-status.offline.viejo, #sync-status.offline.viejo #sync-label { color: #dc2626 !important; font-weight: 700; }
+    #pl-datos-viejos { position: fixed; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); max-width: calc(100vw - 24px); z-index: 9990; background: #fef3c7; color: #78350f; border: 1px solid #f59e0b; border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.18); font-size: 12.5px; font-weight: 600; text-align: center; padding: 6px 14px; pointer-events: none; }
+    .badge-parecido { background: #fde68a; color: #78350f; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .caja-conflicto { margin: 4px 0 6px; padding: 6px 10px; background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px; font-size: 12.5px; color: #7c2d12; }
+    .caja-conflicto button { margin-left: 4px; border: 1px solid #fdba74; background: #fff; color: #9a3412; border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .lab-acks-line { font-size: 11.5px; color: #64748b; margin: 2px 0 6px; padding: 3px 8px; background: #f8fafc; border-left: 3px solid #cbd5e1; border-radius: 4px; }
     .lab-guardian-banner {
       background:#fef2f2;border:1.5px solid #fca5a5;border-radius:8px;
       padding:8px 12px;margin-bottom:10px;
@@ -2412,7 +2419,7 @@
       input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
       select,
       textarea {
-        font-size: 16px !important;
+        font-size: calc(16px * var(--pl-fs-scale, 1)) !important;   /* 🔠 Letra (⋯ Más) agranda; nunca < 16px (zoom de iOS) */
       }
     }
 
@@ -3907,7 +3914,7 @@ body.dark .ris-rep-txt { background:#0b1727; }
     .ff-labs{margin:10px 0}
     .ff-labs-h{font-size:11.5px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #1e3a5f;padding-bottom:2px;display:inline-block;margin-bottom:6px}
     .ff-labs-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px}
-    .ff-labtable{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.5px}
+    .ff-labtable{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:calc(12.5px * var(--pl-fs-scale, 1))}
     .ff-labtable th,.ff-labtable td{padding:3px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid #eef2f7}
     .ff-labtable thead th{font-size:11px;color:#1e3a5f;font-weight:800;background:#f8fafc;position:sticky;top:0}
     .ff-labtable td.ff-an,.ff-labtable th.ff-an{text-align:left;font-family:var(--font);font-weight:700;color:#475569;position:sticky;left:0;background:#fff}
@@ -3929,7 +3936,11 @@ body.dark .ris-rep-txt { background:#0b1727; }
     body.dark .ff-labtable td.ff-hi{color:#f87171}
     body.dark .ff-labtable td.ff-crit{color:#fff !important;background:#b91c1c !important}
     /* v52 · Δ tendencia: flecha sutil junto al valor (no pisa el color del valor) */
-    .ff-labtable td .ff-trend{font-size:9px;margin-left:3px;vertical-align:middle;opacity:.7;font-weight:700}
+    .ff-labtable td .ff-trend{font-size:11px;margin-left:3px;vertical-align:middle;opacity:.7;font-weight:700}
+    /* Alterado no solo por color (27 oct 2026): A = alto, B = bajo, ! = crítico (daltonismo, impresión en gris, sol). */
+    .ff-labtable td.ff-hi::after{content:"A";font-size:.62em;margin-left:2px;vertical-align:super;font-weight:900}
+    .ff-labtable td.ff-lo::after{content:"B";font-size:.62em;margin-left:2px;vertical-align:super;font-weight:900}
+    .ff-labtable td.ff-crit::after{content:"!";font-size:.75em;margin-left:2px;font-weight:900}
     .ff-labtable td .ff-trend-up{color:#dc2626}
     .ff-labtable td .ff-trend-dn{color:#1d4ed8}
     .ff-labtable td.ff-crit .ff-trend{color:#fff;opacity:.9}
@@ -4367,7 +4378,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
         <button class="btn-green" onclick="exportCensoFormatoDrive()" title="Exportar censo con formato idéntico al Google Drive">📊 Exportar</button>
         <button class="btn-blue" onclick="window.print()">🖨 Imprimir</button>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
-        <button id="winlab-refresh-pill" onclick="refreshWinlabLabs()" title="Recargar labs de WinLab desde Supabase. El scraper corre solo todos los dias 13:15. Si necesitas forzar un scraping ahora, click derecho aqui."
+        <button id="winlab-refresh-pill" onclick="refreshWinlabLabs()" title="Recargar labs de WinLab desde Supabase. El robot corre solo a las 05:00, 12:30 y 20:07. Si necesitas forzar un scraping ahora, click derecho aqui."
           oncontextmenu="event.preventDefault(); openWinlabScrape();"
           style="background:rgba(14,165,233,.18);border:1px solid rgba(14,165,233,.4);color:#0369a1;padding:4px 9px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
           <span id="winlab-pill-icon">🧪</span> <span id="winlab-pill-lbl">Labs</span>
@@ -4382,6 +4393,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
         <div class="hc-more-wrap">
           <button id="hc-more-btn" onclick="toggleHeaderMore(event)" title="Más herramientas">⋯ Más</button>
           <div id="hc-more-menu" style="display:none">
+            <button id="pl-fs-btn" onclick="cambiarLetra()" title="Tamaño de la letra de la ficha (cajas, labs, fechas). Se guarda en este iPad." style="background:#f1f5f9;border:1px solid #cbd5e1;color:#0f172a;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:var(--font)">🔠 Letra: normal</button>
             <div class="hcm-sec">Herramientas</div>
             <div class="quick-access-group">
               <button class="qa-btn qa-lab" onclick="openSystem('lab')" title="Abrir Laboratorio">🧪 Labs (sistema)</button>
@@ -4729,7 +4741,17 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
       <div style="font-size:18px;font-weight:700;color:#dc2626;margin-bottom:8px">🚪 Dar de alta / Eliminar</div>
       <div style="font-size:14px;color:#374151;margin-bottom:4px">¿Confirmas dar de alta a:</div>
       <div style="font-size:15px;font-weight:700;margin-bottom:4px" id="confirm-name"></div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:16px" id="confirm-sub"></div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:12px" id="confirm-sub"></div>
+      <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:12px">Motivo del egreso
+        <select id="confirm-egreso-tipo" data-testid="confirm-egreso-tipo" style="display:block;width:100%;margin-top:4px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:var(--font)">
+          <option value="">— Sin especificar —</option>
+          <option value="alta">Alta a domicilio</option>
+          <option value="defuncion">Defunción</option>
+          <option value="traslado">Traslado a otra unidad</option>
+          <option value="alta_voluntaria">Alta voluntaria</option>
+        </select>
+        <span style="display:block;font-weight:400;color:#64748b;font-size:11px;margin-top:3px">Queda en el registro de pacientes para estudios (mortalidad, reingresos). Se puede poner o corregir después en la Papelera.</span>
+      </label>
       <div
         style="font-size:12px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:20px">
         ⚠️ El paciente se <strong>archivará</strong> — saldrá del censo activo pero sus notas, labs e imágenes quedan
@@ -7088,6 +7110,22 @@ function plExportBackup() {
     function initFontSize() {
       const saved = localStorage.getItem("pl_font_size") || "M";
       setFontSize(saved);
+      _aplicarLetra(parseFloat(localStorage.getItem("pl_fs_scale") || "1") || 1);
+    }
+    // 🔠 Letra (27 oct 2026): agranda cajas, tabla de labs y fechas de toda la ficha (normal → grande → más grande).
+    const PL_FS_ESCALAS = [1, 1.12, 1.25];
+    function _aplicarLetra(x) {
+      const v = PL_FS_ESCALAS.indexOf(x) >= 0 ? x : 1;
+      document.documentElement.style.setProperty("--pl-fs-scale", String(v));
+      try { localStorage.setItem("pl_fs_scale", String(v)); } catch (_) {}
+      const b = document.getElementById("pl-fs-btn"); if (b) b.textContent = "🔠 Letra: " + (v === 1 ? "normal" : (v < 1.2 ? "grande" : "más grande"));
+      return v;
+    }
+    function cambiarLetra() {
+      const cur = parseFloat(localStorage.getItem("pl_fs_scale") || "1") || 1;
+      const i = PL_FS_ESCALAS.indexOf(cur);
+      _aplicarLetra(PL_FS_ESCALAS[(i + 1) % PL_FS_ESCALAS.length]);
+      try { if (typeof autoResizeAll === "function") autoResizeAll(); } catch (_) {}
     }
 
     // ── THEME TOGGLE (Light/Dark) ─────────────────────────────────────────────
@@ -8553,11 +8591,15 @@ function plExportBackup() {
       const btnAlias = `<button class="rb-btn" data-k="${k}" onclick="setWinlabAlias(this.dataset.k)" data-testid="robot-alias" title="Cómo está escrito el nombre en WinLab (cuando la hoja trae un error de dedo o el orden es otro)">✏️ ${alias ? "Nombre en WinLab: " + esc(alias) : "Nombre en WinLab"}</button>`;
       const btnBuscar = `<button class="rb-btn rb-go" data-k="${k}" onclick="robotBuscarAhora(this.dataset.k)" data-testid="robot-go" title="El robot busca SOLO a este paciente en WinLab (2-4 min). Necesita internet.">🔎 Buscar ahora</button>`;
       const ok = !!(m && m.status === "ok");
-      if (ok && !alias && !_robotPending[exp]) return ""; // todo en orden: no estorbar
+      // Edad que no cuadra (27 oct 2026): el robot aceptó los labs porque en WinLab solo hay una persona con ese nombre,
+      // pero su edad no coincide con la del censo: o el censo trae mal la edad, o los labs son de otra persona.
+      const edadMal = ok && /edad en WinLab \d+/.test(String(m.detalle || "")) ? (/edad en WinLab (\d+) años · censo (\d+)/.exec(String(m.detalle)) || []) : null;
+      if (ok && !alias && !_robotPending[exp] && !edadMal) return ""; // todo en orden: no estorbar
       if (ok) {
-        return `<div class="rb-line rb-ok" data-testid="robot-line">🤖 Robot: encontrado${m.encontrado_como ? ` como «${esc(m.encontrado_como)}»` : ""}${alias ? " (nombre en WinLab fijado en la app)" : ""} · ${_robotFecha(m.checked_at)} ${pend}<div class="rb-acts">${btnAlias}</div></div>`;
+        const aviso = edadMal ? `<div class="rb-sub" data-testid="robot-edad" style="color:#92400e;font-weight:700">⚠️ WinLab: ${esc(edadMal[1] || "?")} años · censo: ${esc(edadMal[2] || "?")}. Confirma que los labs son de este paciente (corrige la edad en la hoja del censo o fija el nombre en WinLab).</div>` : "";
+        return `<div class="rb-line ${edadMal ? "rb-warn" : "rb-ok"}" data-testid="robot-line">🤖 Robot: encontrado${m.encontrado_como ? ` como «${esc(m.encontrado_como)}»` : ""}${alias ? " (nombre en WinLab fijado en la app)" : ""} · ${_robotFecha(m.checked_at)} ${pend}<div class="rb-acts">${btnAlias}</div>${aviso}</div>`;
       }
-      const why = !m ? (hasWl ? "" : "El robot aún no ha buscado a este paciente (corre a las 4:07, 13:15 y 20:07).")
+      const why = !m ? (hasWl ? "" : "El robot aún no ha buscado a este paciente (corre a las 05:00, 12:30 y 20:07).")
         : m.status === "sin_registro" ? "El robot no encontró a este paciente en WinLab."
         : m.status === "homonimos" ? "WinLab devolvió otras personas y ninguna coincide con el nombre del censo."
         : m.status === "error" ? "El robot tuvo un error con este paciente" + (m.detalle ? " (" + esc(String(m.detalle).slice(0, 80)) + ")" : "") + "."
@@ -8590,9 +8632,12 @@ function plExportBackup() {
       if (!exp) { alert("Este paciente no tiene expediente en el censo; el robot busca por nombre y guarda por expediente."); return; }
       const proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : "";
       if (!proxyUrl) { alert("⚙️ Falta la URL del worker en Configuración (es la que dispara al robot)."); return; }
-      if (navigator.onLine === false) { alert("📴 Sin internet no se puede pedir al robot. El nombre en WinLab que fijes se guarda y se usa en la siguiente corrida (4:07, 13:15 y 20:07)."); return; }
+      if (navigator.onLine === false) { alert("📴 Sin internet no se puede pedir al robot. El nombre en WinLab que fijes se guarda y se usa en la siguiente corrida (05:00, 12:30 y 20:07)."); return; }
       try {
-        const r = await _sFetch(proxyUrl + "/api/scrape", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ exp }) });
+        // El dato de la corrida dirigida es PÚBLICO en GitHub (27 oct 2026): se manda el id del paciente en la base (un uuid
+        // que no identifica a nadie) y el robot lo busca en el censo; el expediente solo si aún no tiene id.
+        const objetivo = /^[0-9a-f-]{36}$/i.test(String(p._supa_id || "")) ? "ID-" + p._supa_id : exp;
+        const r = await _sFetch(proxyUrl + "/api/scrape", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ exp: objetivo }) });
         let data = {}; try { data = await r.json(); } catch (_) {}
         if (r.ok && data.dispatched) {
           _robotPending[exp] = "pedido " + _robotFecha(new Date().toISOString());
@@ -8600,7 +8645,7 @@ function plExportBackup() {
           _robotWatch(exp, k);
         } else if (r.ok && data.reason === "already_pending") {
           _robotPending[exp] = "en cola";
-          _plToast("🔄 Ya hay una corrida del robot en cola; incluirá a este paciente (y usará el nombre en WinLab si lo fijaste).", "#0369a1", 9000);
+          _plToast("🔄 El robot ya tiene una corrida en cola o en curso. Si es la del piso completo, incluye a este paciente; si es la búsqueda de otro paciente, pulsa 🔎 otra vez cuando termine. La tarjeta se actualiza sola.", "#0369a1", 11000);
           _robotWatch(exp, k);
         } else if (r.status === 503) {
           _plToast("⚠️ El worker no tiene GITHUB_TOKEN; no puede disparar al robot.", "#b45309", 9000);
@@ -8616,7 +8661,8 @@ function plExportBackup() {
       const every = intervalMs || 30000; const start = Date.now();
       const prev = (winlabMatchByExp[exp] || {}).checked_at || "";
       const tick = async () => {
-        if (Date.now() - start > 12 * 60000) { delete _robotPending[exp]; _rerenderCardSoft(k); return; }
+        // 45 min: la corrida del piso completo tarda 25-32 min (antes se dejaba de vigilar a los 12 y los labs llegaban sin aviso).
+        if (Date.now() - start > 45 * 60000) { delete _robotPending[exp]; _rerenderCardSoft(k); return; }
         try {
           const p = patients.find(x => pid(x) === k);
           await _loadWinlabMatch(p ? [p] : [], true);
@@ -9063,8 +9109,6 @@ function plExportBackup() {
           // buildWinlabCultures re-aplica el guard de nombre por encabezado internamente).
           try {
             _winlabCultByK[pid(p)] = buildWinlabCultures(wl, _wlIdent(p));
-            // Cultivos nuevos → línea con fecha en la entrega de guardia (una sola vez por cultivo).
-            if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(pid(p), _entregaItemsFromCultures(_winlabCultByK[pid(p)]));
           } catch (_) {}
           // Cambio mayo 2026: ahora procesamos MÚLTIPLES snapshots (uno por fecha)
           // para soportar 3 días previos del scraper.
@@ -9158,8 +9202,6 @@ function plExportBackup() {
             // de WinLab) no es "labs nuevos" ni va a la entrega de guardia.
             const _recentHist = hist.filter(function (s) { return s && s.fecha && s.fecha >= _wlRecentCut; });
             try { _labNewsAdd(k, _recentHist, _histBefore); } catch (_) {} // aviso "labs nuevos" en tablero, rail y tarjeta
-            // Alteraciones de los labs nuevos → línea con fecha en la entrega de guardia (idempotente).
-            try { if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(k, _entregaItemsFromLabs(_recentHist, _histBefore)); } catch (_) {}
             // Solo labHistory viaja a la nube (fila parcial). Antes cada arranque re-subía la nota
             // COMPLETA de todos los pacientes con match aunque nada cambiara → ~45 eventos Realtime
             // (toasts y re-renders) en cada dispositivo y riesgo de pisar texto ajeno con la copia local.
@@ -9283,18 +9325,13 @@ function plExportBackup() {
         4500
       );
       // Actualizar UI del botón si existe
-      const btn = document.getElementById("winlab-autosync-btn");
-      if (btn) {
-        btn.innerHTML = nowOn ? "💧 Auto ON" : "💧 Auto OFF";
-        btn.style.background = nowOn ? "rgba(16,185,129,.25)" : "rgba(100,116,139,.25)";
-        btn.style.borderColor = nowOn ? "rgba(16,185,129,.6)" : "rgba(100,116,139,.45)";
-      }
+      if (typeof window._winlabBtnPaint === "function") window._winlabBtnPaint();
       // Si lo encendieron, correr sync una vez ya
       if (nowOn) runWinlabSyncNow();
     }
 
     // ─── WINLAB: refresh manual + abrir GH Action ─────────────────────────────────
-    // El scraper corre solo todos los dias 13:15 CST (cron). Estos handlers
+    // El robot corre solo a las 05:00, 12:30 y 20:07 (hora de León, pg_cron). Estos handlers
     // permiten al usuario:
     //   - click izq:    recargar winlab_labs desde Supabase (rapido, sin esperar cron)
     //   - click derecho: abrir el workflow en GitHub para forzar scraping ahora
@@ -9345,7 +9382,7 @@ function plExportBackup() {
       const url = "https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml";
       const ok = confirm(
         "Abrir GitHub Actions para forzar scraping ahora?\n\n" +
-        "El scraper corre solo todos los dias a las 13:15 CST.\n" +
+        "El robot corre solo a las 05:00, 12:30 y 20:07 (hora de León).\n" +
         "Si necesitas datos AHORA:\n" +
         "  1. Click OK (se abre GitHub).\n" +
         "  2. Click 'Run workflow' (boton verde arriba a la derecha).\n" +
@@ -9355,6 +9392,25 @@ function plExportBackup() {
       if (ok) window.open(url, "_blank", "noopener,noreferrer");
     }
 
+    // Antigüedad de lo que se ve (27 oct 2026): sin red o con Supabase caído la app muestra la última copia del iPad y solo
+    // decía «Sin conexión». pl_last_supabase_sync_ts se escribía en 10 lugares y nunca se leía.
+    const PL_DATOS_VIEJOS_MS = 2 * 3600000;
+    function _datosEdad() {
+      let ts = 0; try { ts = parseInt(localStorage.getItem("pl_last_supabase_sync_ts") || "0", 10) || 0; } catch (_) {}
+      if (!ts) return { ts: 0, txt: "copia de este iPad", viejo: true };
+      const d = new Date(ts), z = function (n) { return String(n).padStart(2, "0"); };
+      const hoy = new Date(); hoy.setHours(0, 0, 0, 0); const dia = new Date(ts); dia.setHours(0, 0, 0, 0);
+      const dd = Math.round((hoy - dia) / 86400000), hm = z(d.getHours()) + ":" + z(d.getMinutes());
+      const txt = "datos de " + (dd === 0 ? "hoy " + hm : (dd === 1 ? "ayer " + hm : z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + hm));
+      return { ts: ts, txt: txt, viejo: Date.now() - ts > PL_DATOS_VIEJOS_MS };
+    }
+    function _avisoDatosViejos(mostrar, edad) {
+      let b = document.getElementById("pl-datos-viejos");
+      if (!mostrar) { if (b) b.remove(); return; }
+      if (!b) { b = document.createElement("div"); b.id = "pl-datos-viejos"; b.setAttribute("data-testid", "datos-viejos"); document.body.appendChild(b); }
+      const h = edad.ts ? Math.max(1, Math.round((Date.now() - edad.ts) / 3600000)) : 0;
+      b.textContent = "📴 Sin conexión con la nube: estás viendo los " + edad.txt + (h ? " (hace " + h + " h)" : "") + ". Lo que escribas se guarda en este iPad y sube al volver la red.";
+    }
     function setSyncStatus(state, label) {
       const el = document.getElementById("sync-status");
       const lbl = document.getElementById("sync-label");
@@ -9362,6 +9418,12 @@ function plExportBackup() {
       clearTimeout(_syncFadeTimer);
       el.className = "" + state;
       const dot = el.querySelector(".sync-dot"); if (dot) dot.className = "sync-dot" + (state === "syncing" ? " spin" : "");
+      if (state === "offline") {
+        const ed = _datosEdad();
+        label = String(label || "Sin conexión") + " · " + ed.txt;
+        if (ed.viejo) el.className += " viejo";
+        _avisoDatosViejos(ed.viejo, ed);
+      } else if (state === "synced") _avisoDatosViejos(false);
       lbl.textContent = label;
       el.title = "";
       el.style.cursor = "";
@@ -10379,8 +10441,7 @@ function plExportBackup() {
           if(!f) return "";
           var n = parseFloat(String(raw).replace(/[<>]/g, "").replace(",", "."));
           if(isNaN(n)) return "";               // texto (Positivo, +++, etc.) → sin color
-          if(f.ch != null && n > f.ch) return "ff-crit";
-          if(f.cl != null && n < f.cl) return "ff-crit";
+          if(typeof labCritOf === "function" ? labCritOf(key, n) : ((f.ch != null && n >= f.ch) || (f.cl != null && n <= f.cl))) return "ff-crit";   // tabla única (≤ cl / ≥ ch)
           if(f.high != null && n > f.high) return "ff-hi";
           if(f.low  != null && n < f.low)  return "ff-lo";
           return "";
@@ -12213,6 +12274,74 @@ function plExportBackup() {
       if (Object.keys(om).length) out[M] = om; else delete out[M];
       return out;
     }
+    // ── Dos personas en la MISMA caja (27 oct 2026) ──
+    // Cada caja se guarda completa y gana la última. Antes, si un colega cambiaba la caja que aquí se estaba escribiendo,
+    // su texto se ignoraba en silencio y desaparecía al guardar. Ahora: aviso en la tarjeta con su versión y un botón para
+    // unir las dos (sus renglones nuevos al final, marcados con su nombre). Lo reemplazado sigue en 🕘 Historial de la caja.
+    const _NOTA_TXT_COLS = ["app", "pa", "drenajes", "qx", "manejo", "sangrado", "sv", "balance", "pendientes"];
+    const _enviadosRecientes = {};   // patient_id|col → [{ v, t }] últimos valores que ESTE iPad subió (sus ecos no son conflicto)
+    const PL_CONFLICTO_VENTANA_MS = 10 * 60 * 1000;   // «estoy escribiendo esta caja» = la subí en los últimos 10 min
+    function _notaRecordarEnviado(pidSupa, row) {
+      _NOTA_TXT_COLS.forEach(function (c) {
+        if (row[c] === undefined) return;
+        const kk = pidSupa + "|" + c, l = _enviadosRecientes[kk] || (_enviadosRecientes[kk] = []);
+        l.push({ v: toSafeString(row[c]), t: Date.now() }); if (l.length > 12) l.shift();
+      });
+    }
+    const _conflictosCaja = {};   // k → { campo: { remoto, mio, por, ts } }
+    // Revisa una fila remota (llegue en vivo, silenciada por un guardado propio o en la relectura) ANTES de aplicarla:
+    // conflicto = un colega cambió una caja que ESTE iPad cambió/subió en los últimos 10 min y su texto no es el nuestro.
+    // Se guardan las dos versiones (mio = lo de aquí) para «Unir» o «Quedarme con la mía». → true si hubo alguno nuevo.
+    function _detectarConflictosCaja(newRow) {
+      try {
+        if (!newRow || !newRow.patient_id) return false;
+        const p = patients.find(function (x) { return x._supa_id === newRow.patient_id; }); if (!p) return false;
+        const k = pid(p), local = noteData[k] || {}, base = _noteBaseline[newRow.patient_id] || {}, ahora = Date.now();
+        const dirty = _dirtyUnion(k); let nuevo = false;
+        _NOTA_TXT_COLS.forEach(function (f) {
+          if (newRow[f] === undefined) return;
+          const remoto = toSafeString(newRow[f]), mio = toSafeString(local[f]);
+          const ecos = _enviadosRecientes[newRow.patient_id + "|" + f] || [];
+          if (remoto === mio || remoto === toSafeString(base[f]) || ecos.some(function (e) { return e.v === remoto; })) return;
+          const editadoAqui = dirty.has(f) || ecos.some(function (e) { return ahora - e.t < PL_CONFLICTO_VENTANA_MS; });
+          if (!editadoAqui) return;
+          const prev = (_conflictosCaja[k] || {})[f];
+          if (prev && prev.remoto === remoto) return;
+          (_conflictosCaja[k] = _conflictosCaja[k] || {})[f] = { remoto: remoto, mio: prev ? prev.mio : mio, por: toSafeString(newRow.updated_by), ts: ahora };
+          nuevo = true;
+        });
+        if (nuevo) { try { _rerenderCardSoft(k); } catch (_) {} }   // el aviso sale al dejar de escribir (no roba el foco)
+        return nuevo;
+      } catch (e) { safeLog("_detectarConflictosCaja:", e); return false; }
+    }
+    function renderConflictosCaja(k) {
+      const c = _conflictosCaja[k]; if (!c || !Object.keys(c).length) return "";
+      return Object.keys(c).map(function (f) {
+        const x = c[f], lbl = (typeof _histLabel === "function" ? _histLabel(f) : f);
+        return `<div class="caja-conflicto" data-testid="caja-conflicto" data-f="${esc(f)}">✋ <b>${esc(x.por || "Otra persona")}</b> cambió «${esc(lbl)}» mientras escribías aquí.` +
+          ` <button type="button" data-k="${esc(k)}" data-f="${esc(f)}" onclick="verConflictoCaja(this.dataset.k,this.dataset.f)">Ver su versión</button>` +
+          ` <button type="button" data-k="${esc(k)}" data-f="${esc(f)}" onclick="unirConflictoCaja(this.dataset.k,this.dataset.f)">Unir las dos</button>` +
+          ` <button type="button" data-k="${esc(k)}" data-f="${esc(f)}" onclick="descartarConflictoCaja(this.dataset.k,this.dataset.f)" title="Quedarse con lo de aquí (lo suyo sigue en 🕘 Historial de la caja)">Quedarme con la mía</button></div>`;
+      }).join("");
+    }
+    function verConflictoCaja(k, f) { const x = (_conflictosCaja[k] || {})[f]; if (x) alert("Versión de " + (x.por || "otra persona") + ":\n\n" + (x.remoto || "(vacía)")); }
+    // «Quedarme con la mía»: si en pantalla ya quedó lo del colega, se regresa lo de aquí (lo suyo sigue en el historial).
+    function descartarConflictoCaja(k, f) {
+      const x = (_conflictosCaja[k] || {})[f]; if (!x) return;
+      if (toSafeString(getNote(k)[f]) !== x.mio) updateField(k, f, x.mio);
+      delete _conflictosCaja[k][f]; _rerenderCard(k);
+    }
+    // «Unir las dos»: lo de aquí + los renglones del colega que no están, marcados con su nombre.
+    function unirConflictoCaja(k, f) {
+      const x = (_conflictosCaja[k] || {})[f]; if (!x) return;
+      const mio = x.mio;
+      const mias = new Set(mio.split("\n").map(function (l) { return l.trim(); }).filter(Boolean));
+      const nuevas = x.remoto.split("\n").filter(function (l) { return l.trim() && !mias.has(l.trim()); });
+      const unido = nuevas.length ? (mio ? mio.replace(/\s+$/, "") + "\n" : "") + "— de " + (x.por || "otra persona") + ":\n" + nuevas.join("\n") : mio;
+      if (toSafeString(getNote(k)[f]) !== unido) updateField(k, f, unido);
+      delete _conflictosCaja[k][f];
+      _rerenderCard(k);
+    }
     async function supaUpsertNote(patientId, nd, dirtyFieldNames) {
       if (!patientId) return null;
       const buildFullRow = (pid) => ({
@@ -12273,6 +12402,7 @@ function plExportBackup() {
         // Sin este parámetro, _sPost inserta una fila nueva en cada guardado.
         const row = buildRow(patientId);
         if (!row) return true; // idéntica a la fila remota conocida: nada que subir
+        _notaRecordarEnviado(patientId, row);
         // checklist: solo las llaves cambiadas AQUÍ van sobre la fila remota vigente (ver _checklistMergeRemote).
         const _ckLocal = row.checklist;
         if (_ckLocal) row.checklist = await _checklistMergeRemote(patientId, _ckLocal);
@@ -12504,43 +12634,39 @@ function plExportBackup() {
       const _patientLoad = { version: _rtPatientVersion };
       _rtPatientLoads.add(_patientLoad);
       try {
-        // Primero pacientes, luego notas filtradas por sus IDs (menor payload)
+        // Primero pacientes; después notas, labs WinLab, resultado del robot, indicaciones y RIS AL MISMO TIEMPO (27 oct
+        // 2026: antes iban una tras otra y con wifi malo el arranque sumaba los tiempos de las 6 consultas).
         let pts = await retryNetwork(() => _sGet("patients", "order=cama"), 2, 200);
-        let nts = [];
-        if (Array.isArray(pts) && pts.length) {
-          const ids = pts.map(r => r.id).join(",");
-          // order=updated_at.desc garantiza que si existen duplicados históricos
-          // (bug de INSERT sin on_conflict ya corregido), el noteMap[patient_id]
-          // siempre termine con la nota MÁS RECIENTE. limit=500 evita timeout.
-          // Nota: entrega se sincroniza vía checklist.__pl_note_meta, no como columna separada.
-          nts = await retryNetwork(() => _sGet("notes", "patient_id=in.(" + ids + ")&select=" + NOTES_SELECT_COLS + "&order=updated_at.desc&limit=500"), 2, 200);
-        }
-
         if (!Array.isArray(pts)) throw new Error("Respuesta inesperada de Supabase");
-
-        // Labs WinLab scrapeados por GitHub Action (tabla winlab_labs).
-        // Indexa por exp; para cada paciente conserva el scraped_at mas reciente.
-        try {
-          const wlRows = await retryNetwork(() => _sGet("winlab_labs", _winlabRowsQuery(pts)), 2, 200);
-          const _ix = _winlabIndexRows(wlRows);
-          winlabByExp = _ix.latest; winlabRowsByExp = _ix.all;
-          _winlabLoadedOnce = true;
-        } catch (e) {
-          // Si la tabla no existe o no hay permisos, continuamos sin labs WinLab.
-          console.warn("winlab_labs no disponible:", e?.message || e);
-          // Corte de red / timeout / 5xx: conservar lo que ya estaba en memoria (antes la sección WinLab y los cultivos
-          // del robot desaparecían de todas las tarjetas hasta la siguiente carga buena).
-          if (!(isLikelyNetworkError(e) || /HTTP (5\d\d|429)/.test(String((e && e.message) || "")))) { winlabByExp = {}; winlabRowsByExp = {}; }
-          _winlabLoadedOnce = true;
-        }
-        // Resultado del robot por paciente (winlab_match): no bloquea la carga.
-        try { await _loadWinlabMatch(pts, false); } catch (e) { console.warn("winlab_match:", e?.message || e); }
-
-        // Doc de indicaciones (Apps Script → indicaciones_doc). No bloquea la carga: si falla, quedan
-        // los bloques ya guardados en localStorage.
-        try { await refreshIndicacionesDoc(false); _startIndicacionesDocPolling(); } catch (e) { console.warn("indicaciones_doc:", e?.message || e); }
-        // Estudios de imagen (robot RIS → ris_estudios). No bloquea la carga.
-        try { await _loadRisEstudios(pts); } catch (e) { console.warn("ris_estudios:", e?.message || e); }
+        // order=updated_at.desc garantiza que si existen duplicados históricos (bug de INSERT sin on_conflict ya corregido),
+        // el noteMap[patient_id] termine con la nota MÁS RECIENTE. limit=500 evita timeout. Nota: entrega se sincroniza vía
+        // checklist.__pl_note_meta, no como columna separada.
+        const _pNotas = pts.length
+          ? retryNetwork(() => _sGet("notes", "patient_id=in.(" + pts.map(r => r.id).join(",") + ")&select=" + NOTES_SELECT_COLS + "&order=updated_at.desc&limit=500"), 2, 200)
+          : Promise.resolve([]);
+        // Labs WinLab scrapeados por GitHub Action (tabla winlab_labs). Indexa por exp; para cada paciente conserva el
+        // scraped_at más reciente.
+        const _pWinlab = (async function () {
+          try {
+            const wlRows = await retryNetwork(() => _sGet("winlab_labs", _winlabRowsQuery(pts)), 2, 200);
+            const _ix = _winlabIndexRows(wlRows);
+            winlabByExp = _ix.latest; winlabRowsByExp = _ix.all;
+            _winlabLoadedOnce = true;
+          } catch (e) {
+            // Si la tabla no existe o no hay permisos, continuamos sin labs WinLab.
+            console.warn("winlab_labs no disponible:", e?.message || e);
+            // Corte de red / timeout / 5xx: conservar lo que ya estaba en memoria (antes la sección WinLab y los cultivos
+            // del robot desaparecían de todas las tarjetas hasta la siguiente carga buena).
+            if (!(isLikelyNetworkError(e) || /HTTP (5\d\d|429)/.test(String((e && e.message) || "")))) { winlabByExp = {}; winlabRowsByExp = {}; }
+            _winlabLoadedOnce = true;
+          }
+        })();
+        // Resultado del robot por paciente (winlab_match), Doc de indicaciones y estudios de imagen: no bloquean la carga.
+        const _pMatch = (async function () { try { await _loadWinlabMatch(pts, false); } catch (e) { console.warn("winlab_match:", e?.message || e); } })();
+        const _pInd = (async function () { try { await refreshIndicacionesDoc(false); _startIndicacionesDocPolling(); } catch (e) { console.warn("indicaciones_doc:", e?.message || e); } })();
+        const _pRis = (async function () { try { await _loadRisEstudios(pts); } catch (e) { console.warn("ris_estudios:", e?.message || e); } })();
+        let nts = await _pNotas;
+        await Promise.all([_pWinlab, _pMatch, _pInd, _pRis]);
 
         const noteMap = {};
         (nts || []).forEach(n => { noteMap[n.patient_id] = n; });
@@ -13118,7 +13244,7 @@ function plExportBackup() {
     // (pt-exp-cama) ya no encuentra su tarjeta, nunca se resuelve por exp+cama a ciegas sobre la fila de otra persona.
     function _outboxNoteWho(k) {
       const p = patients.find(function (x) { return pid(x) === k; });
-      return p ? { nombre: toSafeString(p.nombre) } : null;
+      return p ? { nombre: toSafeString(p.nombre), exp: toSafeString(p.exp), cama: toSafeString(p.cama) } : null;
     }
     // Quita de la cola los ítems "patient" de `p` encolados hasta `uptoTs`: un supaUpsertPatient(p) que ACABA de
     // subir ya los incluye (sube la fila censal completa desde la copia local, que tiene esos valores u otros más
@@ -13400,7 +13526,9 @@ function plExportBackup() {
     // ─── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────────
     // Track si ya hay un restart de Realtime programado (evita múltiples reintentos)
     let _realtimeRestartTimer = null;
+    let _rtHuboCaida = false, _rtRecargaTimer = null;
     function _scheduleRealtimeRestart(reason) {
+      _rtHuboCaida = true;
       if (_realtimeRestartTimer) return; // ya hay uno pendiente
       safeWarn("[RT] Canal en estado " + reason + " — reiniciando Realtime en 5s");
       _realtimeRestartTimer = setTimeout(function() {
@@ -13414,6 +13542,13 @@ function plExportBackup() {
     // Genera callback de estado para cada canal: detecta CHANNEL_ERROR y TIMED_OUT
     function _makeSubCallback(name) {
       return function(status) {
+        // Canales de nuevo arriba después de una caída: lo que pasó durante el corte no se repite por el canal →
+        // recarga completa (una sola, aunque se reconecten varios canales).
+        if (status === "SUBSCRIBED" && _rtHuboCaida) {
+          _rtHuboCaida = false;
+          clearTimeout(_rtRecargaTimer);
+          _rtRecargaTimer = setTimeout(function () { _recargaCompleta("reconexión"); }, 2000);
+        }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           _scheduleRealtimeRestart(name + ":" + status);
         }
@@ -13709,15 +13844,11 @@ function plExportBackup() {
         const idx = patients.findIndex(p => p._supa_id === id);
         if (idx === -1) return;
         const k = pid(patients[idx]);
-        // Si el modal está abierto para este paciente, cerrarlo con aviso
-        if (_modalCurrentEditKey === k || modalOrigKey === k) {
-          closeModal();
-          var _ghostWarn = document.createElement("div");
-          _ghostWarn.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#dc2626;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.3)";
-          _ghostWarn.textContent = "⚠️ Este paciente fue dado de alta desde otro dispositivo.";
-          document.body.appendChild(_ghostWarn);
-          setTimeout(function(){ if (_ghostWarn.parentNode) _ghostWarn.parentNode.removeChild(_ghostWarn); }, 4000);
-        }
+        // Cambios de este iPad que no habían subido → Papelera antes de quitarlo; aviso siempre (antes solo con el modal abierto).
+        const _rescatado = _rescatarCambiosLocales(patients[idx], k, "alta en otro dispositivo");
+        if (_modalCurrentEditKey === k || modalOrigKey === k) closeModal();
+        if (_rescatado || currentView === "focus" || (typeof _focusKey !== "undefined" && _focusKey === k)) _avisoAltaRemota(patients[idx].nombre, _rescatado, "");
+        outboxDropNoteKeys([k]);
         patients.splice(idx, 1);
         delete noteData[k];
         localStorage.removeItem(NOTES_PREFIX + k);
@@ -13729,17 +13860,43 @@ function plExportBackup() {
     }
     // El paciente ya no existe en la nube (egresado desde otro dispositivo y el DELETE no llegó):
     // retirarlo localmente con aviso, como hace el DELETE Realtime, en vez de re-insertarlo.
+    // Alta desde otro dispositivo con cambios de ESTE iPad que no habían subido (27 oct 2026): antes se borraban sin copia
+    // (lo de los últimos segundos o, peor, todo lo escrito sin red). Ahora esa versión va a la Papelera (local y nube)
+    // como «CAMBIOS DE ESTE iPad SIN SUBIR» antes de quitar al paciente. Llamar ANTES de sacarlo de `patients`.
+    // → true si había algo sin subir y quedó a salvo.
+    function _rescatarCambiosLocales(p, k, por) {
+      try {
+        let nd = noteData[k];
+        if (!nd) { try { nd = JSON.parse(localStorage.getItem(NOTES_PREFIX + k) || "null"); } catch (_) { nd = null; } }
+        if (!nd) return false;
+        const enCola = outboxLoad().some(function (it) { return it && it.type === "note" && it.key === k; });
+        const pend = (typeof _pendingDirty !== "undefined" && _pendingDirty[k] && _pendingDirty[k].size) ? Array.from(_pendingDirty[k]) : [];
+        const dif = _noteDirtyFromBaseline(k, nd) || [];
+        if (!enCola && !pend.length && !dif.length) return false;
+        const copia = JSON.parse(JSON.stringify(migrateNote(nd)));
+        copia._cambiosLocales = { campos: Array.from(new Set(pend.concat(dif))), en_cola: enCola, por: String(por || ""), ts: new Date().toISOString() };
+        _archivePatientRecord(p, copia, k, "CAMBIOS DE ESTE iPad SIN SUBIR (" + (por || "alta en otro dispositivo") + ")");
+        return true;
+      } catch (e) { safeLog("_rescatarCambiosLocales:", e); return false; }
+    }
+    function _avisoAltaRemota(nombre, rescatado, why) {
+      const warn = document.createElement("div");
+      warn.setAttribute("data-testid", "aviso-alta-remota");
+      warn.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);max-width:92vw;background:#dc2626;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.3)";
+      warn.textContent = "⚠️ " + (nombre ? nombre + ": " : "") + "dado de alta desde otro dispositivo" + (why ? " (" + why + ")" : "") + "." +
+        (rescatado ? " Lo que este iPad no había subido quedó en la 🗑️ Papelera («cambios de este iPad sin subir»)." : " Revisa la Papelera.");
+      document.body.appendChild(warn);
+      setTimeout(function () { if (warn.parentNode) warn.parentNode.removeChild(warn); }, rescatado ? 10000 : 6000);
+    }
     function _onPatientGoneRemotely(p, why) {
       try {
         const idx = patients.indexOf(p);
         if (idx === -1) return;
         const k = pid(p);
         if (_modalCurrentEditKey === k || modalOrigKey === k) closeModal();
-        const warn = document.createElement("div");
-        warn.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#dc2626;color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.3)";
-        warn.textContent = "⚠️ Este paciente fue dado de alta desde otro dispositivo (" + (why || "") + "). Revisa la Papelera.";
-        document.body.appendChild(warn);
-        setTimeout(function () { if (warn.parentNode) warn.parentNode.removeChild(warn); }, 6000);
+        const rescatado = _rescatarCambiosLocales(p, k, why || "alta en otro dispositivo");
+        outboxDropNoteKeys([k]);
+        _avisoAltaRemota(p.nombre, rescatado, why);
         patients.splice(idx, 1);
         delete noteData[k];
         localStorage.removeItem(NOTES_PREFIX + k);
@@ -14019,6 +14176,8 @@ function plExportBackup() {
       // __releer: la relectura tras subir la cola (_releerNota) no se descarta por la supresión.
       if (!payload.__releer && (_suppressRealtimeKeys.has("__all__") || (_ncNew && _suppressRealtimeKeys.has(_ncNew.patient_id)))) {
         // Descartado por la supresión tras un guardado propio: revisarlo al terminar (antes se perdía para siempre).
+        // Pero un colega que cambió la MISMA caja se detecta YA (al revisarlo después, uno de los dos textos ya se perdió).
+        _detectarConflictosCaja(_ncNew);
         if (_ncNew && _ncNew.patient_id) _rtNoteMissed.set(_ncNew.patient_id, _ncNew);
         return;
       }
@@ -14028,7 +14187,20 @@ function plExportBackup() {
       // Find patient by _supa_id matching note's patient_id
       const p = patients.find(x => x._supa_id === newRow.patient_id);
       if (!p) return;
+      // Aviso en vivo RECORTADO (27 oct 2026): Supabase manda los cambios de hasta 1 MB; con una nota más grande (mucha tinta)
+      // llegan solo las columnas chicas y las demás FALTAN (undefined). Antes eso se leía como «caja vacía» y se guardaba
+      // así de base. Ahora, si falta alguna columna de la nota, se baja la fila completa y se aplica esa.
+      // Solo eventos del canal real (traen commit_timestamp; Supabase además marca errors «413 Payload Too Large»).
+      const _recortado = !payload.__completa && ((Array.isArray(payload.errors) && payload.errors.some(function (e) { return /413|too large/i.test(String(e)); }))
+        || (!!payload.commit_timestamp && NOTES_SELECT_COLS.split(",").some(function (c) { return c !== "updated_at" && !(c in newRow); })));
+      if (_recortado) {
+        _sGet("notes", "patient_id=eq." + encodeURIComponent(newRow.patient_id) + "&select=" + NOTES_SELECT_COLS + "&limit=1")
+          .then(function (rows) { if (rows && rows[0]) handleNoteChange({ eventType: "UPDATE", new: rows[0], __completa: true, __releer: payload.__releer, __mantener: payload.__mantener }); })
+          .catch(function (e) { safeLog("handleNoteChange fila completa:", e); });
+        return;
+      }
       const _guardiaBaseAntes = readNoteSyncMeta((_noteBaseline[newRow.patient_id] || {}).checklist).entrega;   // ver _applyOutboxOverlay
+      _detectarConflictosCaja(newRow);   // antes de fijar la base nueva
       _noteBaselineSet(newRow.patient_id, newRow);
       const k = pid(p);
       const existing = noteData[k] || lsGetNote(k) || defaultData();
@@ -14231,6 +14403,7 @@ function plExportBackup() {
           lsSavePatients(patients);
           buildEspFilters(); renderViewSoft();
           localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+          _limpiarNotasHuerfanas();
         }
         // Arranque sin red: init no suscribe Realtime (y TOKEN_REFRESHED/SIGNED_IN, que lo reintentan, pueden tardar) →
         // sin cambios en vivo de colegas ni labs del robot. Al volver la red con carga exitosa y sesión, suscribir si falta.
@@ -14238,6 +14411,7 @@ function plExportBackup() {
         if (loaded && _userAccessToken && !_realtimeSubs.length) { try { startRealtime(); } catch (e) { safeLog("online startRealtime:", e); } }
         _enqueuePendingMisc();
         await flushOutbox();
+        _recargarListasCompartidas();
         try { await _fotosRetryPending(); } catch (e) { safeLog("fotos pendientes:", e); } // fotos guardadas sin red → Storage
         try { _cxAiQueueRun(); } catch (_) {} // notas postquirúrgicas fotografiadas sin red → IA (no se espera)
         const repair = loaded ? await recoverPendingNoteSync(loaded.remoteNotePatientIds || []) : { synced: 0, failed: [] };
@@ -14253,6 +14427,92 @@ function plExportBackup() {
     // desactualizados sin ninguna indicación. Solo refresca si pasaron >60s
     // desde el último sync para evitar recargas innecesarias al tabear rápido.
     let _lastVisibleRefreshTs = 0;
+    // «No olvidar» y procedimientos del día desde la nube (27 oct 2026): antes solo al arrancar, así que un iPad que estuvo
+    // dormido o sin red se quedaba con la lista vieja (y la mandaba a los demás). Se conserva lo creado sin red que aún
+    // no subió (id temporal) y lo que está en la cola.
+    function _recargarListasCompartidas() {
+      if (!navigator.onLine) return Promise.resolve();
+      const a = supaLoadNoOlvidar().then(function(items) {
+        if (!items) return;
+        const temp = lsGetNoOlvidar().filter(function (i) { return i && i._tempId; });
+        const next = temp.concat(items.filter(function (i) { return !temp.some(function (t) { return t.id === i.id; }); }));
+        if (JSON.stringify(next) !== JSON.stringify(lsGetNoOlvidar())) { lsSaveNoOlvidar(next); if (currentView === "noOlvidar") renderNoOlvidar(); }
+      }).catch(function(e) { safeLog("[NO] carga en segundo plano falló:", e); });
+      const b = supaLoadProcedimientos().then(function(procs) {
+        if (!procs) return;
+        // Conservar los procedimientos creados sin red que aún no tienen id de la nube.
+        procedimientos = procs.concat((procedimientos || []).filter(function (p) { return p && !p._id; }));
+        saveProcs();
+        renderViewSoft();
+      }).catch(function(e) { safeLog("[PROC] carga en segundo plano falló:", e); });
+      return Promise.all([a, b]);
+    }
+    // Notas de pacientes que ya no están en el censo (27 oct 2026): al recargar el censo, el paciente se iba de la lista pero
+    // su «note-…» se quedaba en el iPad para siempre (≈24 KB cada una; la memoria del iPad se llenaba en semanas). Se
+    // borran solo si llevan más de 24 h fuera del censo (un censo incompleto por un error no basta) y no tienen nada en la
+    // cola. Llamar solo después de una carga del censo que SÍ llegó de la nube.
+    const PL_HUERFANAS_KEY = "pl_notas_huerfanas_v1", PL_HUERFANAS_MS = 24 * 3600000;
+    function _limpiarNotasHuerfanas() {
+      try {
+        if (!Array.isArray(patients) || patients.length < 3) return 0;
+        const vivas = new Set(patients.map(function (p) { return pid(p); }));
+        const q = outboxLoad(); q.forEach(function (it) { if (it && it.key) vivas.add(it.key); if (it && it.patient) vivas.add(pid(it.patient)); });
+        let vistas = {}; try { vistas = JSON.parse(localStorage.getItem(PL_HUERFANAS_KEY) || "{}") || {}; } catch (_) { vistas = {}; }
+        const ahora = Date.now(), sigue = {}; let borradas = 0;
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const lk = localStorage.key(i); if (!lk || lk.indexOf(NOTES_PREFIX) !== 0) continue;
+          const k = lk.slice(NOTES_PREFIX.length);
+          if (vivas.has(k) || (typeof _pendingDirty !== "undefined" && _pendingDirty[k] && _pendingDirty[k].size)) continue;
+          const desde = vistas[k] || ahora;
+          if (ahora - desde >= PL_HUERFANAS_MS) { localStorage.removeItem(lk); delete noteData[k]; borradas++; }
+          else sigue[k] = desde;
+        }
+        localStorage.setItem(PL_HUERFANAS_KEY, JSON.stringify(sigue));
+        if (borradas) safeInfo("[LS] notas de pacientes egresados borradas del iPad:", borradas);
+        return borradas;
+      } catch (e) { safeLog("_limpiarNotasHuerfanas:", e); return 0; }
+    }
+    // Recarga completa (censo, notas y listas compartidas) sin pisar lo propio: primero sube la cola, después baja.
+    // La usan: volver a la app, reconexión de los canales en vivo y la recarga ligera periódica.
+    let _recargando = null;
+    function _recargaCompleta(motivo) {
+      if (_recargando || !navigator.onLine) return _recargando || Promise.resolve(false);
+      _lastVisibleRefreshTs = Date.now();
+      _recargando = (async function () {
+        try {
+          if (outboxLoad().length > 0) await flushOutbox();
+          const loaded = await supaLoadAll();
+          if (loaded) {
+            patients = _applyOutboxPatientOverlay(sanitizePatients(loaded.patients)); // el flush previo pudo fallar: lo encolado sigue mandando
+            _applyLoadedNotes(loaded.notes);
+            lsSavePatients(patients);
+            buildEspFilters(); renderViewSoft();
+            localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
+            _limpiarNotasHuerfanas();
+            if (outboxLoad().length > 0) flushOutbox().catch(e => safeLog("recarga (" + motivo + ") outbox:", e));
+          }
+          await _recargarListasCompartidas();
+          return !!loaded;
+        } catch (e) { safeLog("recarga (" + motivo + "):", e); return false; }
+        finally { _recargando = null; }
+      })();
+      return _recargando;
+    }
+    // ¿Alguien está escribiendo? (una caja, un campo o un texto editable con el foco): la recarga ligera espera.
+    function _alguienEscribe() {
+      const a = document.activeElement;
+      return !!(a && (a.tagName === "TEXTAREA" || (a.tagName === "INPUT" && !/^(button|checkbox|radio|submit)$/i.test(a.type || "")) || a.isContentEditable));
+    }
+    // Recarga ligera cada 10 min con la app en pantalla y nadie escribiendo: los cambios que el canal en vivo no trajo
+    // (por ejemplo un censo editado mientras se escribía, o eventos perdidos en un corte corto de Wi-Fi) llegan solos.
+    const PL_RECARGA_LIGERA_MS = 10 * 60 * 1000;
+    setInterval(function () {
+      try {
+        if (document.visibilityState !== "visible" || !navigator.onLine || !_userAccessToken) return;
+        if (Date.now() - _lastVisibleRefreshTs < PL_RECARGA_LIGERA_MS || _alguienEscribe()) return;
+        _recargaCompleta("periódica");
+      } catch (_) {}
+    }, 60 * 1000);
     // ¿El usuario está escribiendo en un campo ahora mismo?
     function _isTypingNow() {
       const ae = document.activeElement;
@@ -14420,24 +14680,9 @@ function plExportBackup() {
         return;
       }
       if (!navigator.onLine) return;
-      const now = Date.now();
-      if (now - _lastVisibleRefreshTs < 10000) return;
-      _lastVisibleRefreshTs = now;
-      try {
-        // Push any pending local changes BEFORE loading from Supabase so they
-        // are not overwritten by stale server data.
-        if (outboxLoad().length > 0) await flushOutbox();
-        const loaded = await supaLoadAll();
-        if (loaded) {
-          patients = _applyOutboxPatientOverlay(sanitizePatients(loaded.patients)); // el flush previo pudo fallar: lo encolado sigue mandando
-          _applyLoadedNotes(loaded.notes);
-          lsSavePatients(patients);
-          buildEspFilters(); renderViewSoft();
-          localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
-          // Flush again in case the outbox grew while we were loading
-          if (outboxLoad().length > 0) flushOutbox().catch(e => safeLog("visibilitychange outbox:", e));
-        }
-      } catch (e) { safeLog("visibilitychange refresh error:", e); }
+      if (Date.now() - _lastVisibleRefreshTs < 10000) return;
+      // Sube lo pendiente ANTES de bajar de la nube (no lo pisa lo remoto) y recarga también «No olvidar» y procedimientos.
+      await _recargaCompleta("volver a la app");
     });
 
     // Mutex: online/visibilitychange/interval/init pueden disparar flushes solapados que se pisaban
@@ -14488,7 +14733,19 @@ function plExportBackup() {
               // descartar nota huérfana para que no quede atascada indefinidamente. Si su ítem "patient" sigue en la
               // cola (la subida se rechazó: la cama la tiene otra persona), la nota espera con él: al cambiarle la
               // cama o al subirlo, _outboxRekeyPatient/_relinkPatientId la re-clavan y entonces sí sube.
-              if (!p) { results[absIdx] = !_qp; return; }
+              if (!p) {
+                // Nota de un paciente que ya no está en el censo (lo dieron de alta en otro dispositivo mientras este iPad
+                // estaba sin red): antes se tiraba en silencio. Ahora va a la Papelera como «cambios de este iPad sin subir».
+                if (!_qp) {
+                  try {
+                    const w = item.who || {};
+                    const copia = Object.assign({}, item.data, { _cambiosLocales: { campos: Array.isArray(item.dirty) ? item.dirty : [], en_cola: true, por: "el paciente ya no estaba en el censo al volver la red", ts: new Date().toISOString() } });
+                    _archivePatientRecord({ nombre: toSafeString(w.nombre) || "(sin nombre)", exp: toSafeString(w.exp), cama: toSafeString(w.cama) }, copia, item.key, "CAMBIOS DE ESTE iPad SIN SUBIR (el paciente ya no estaba en el censo)");
+                    _avisoAltaRemota(toSafeString(w.nombre), true, "");
+                  } catch (e) { safeLog("flushOutbox rescate:", e); }
+                }
+                results[absIdx] = !_qp; return;
+              }
               // Si el paciente no tiene _supa_id, intentar sincronizarlo primero antes
               // de descartar la nota — evita notas atascadas en el outbox indefinidamente.
               if (!p._supa_id) await withOutboxRetry(async function(){ return await supaUpsertPatient(p); });
@@ -15088,13 +15345,8 @@ function plExportBackup() {
       // vista definitiva). Antes había 2 launchers distintos auto-abriéndose = fragmentación.
       // Init del botón WinLab Auto-sync (refleja estado del feature flag)
       try {
-        const btn = document.getElementById("winlab-autosync-btn");
-        if (btn) {
-          const on = isWinlabAutoSyncEnabled();
-          btn.innerHTML = on ? "💧 Auto ON" : "💧 Auto OFF";
-          btn.style.background = on ? "rgba(16,185,129,.25)" : "rgba(100,116,139,.25)";
-          btn.style.borderColor = on ? "rgba(16,185,129,.6)" : "rgba(100,116,139,.45)";
-        }
+        // Antes se reescribía el botón con «💧 Auto ON» y se borraba el indicador del robot (nunca funcionaba).
+        if (typeof window._winlabBtnPaint === "function") window._winlabBtnPaint();
       } catch (_) {}
 
       // ── Render inmediato desde localStorage: pacientes visibles antes de esperar red ──
@@ -15147,6 +15399,7 @@ function plExportBackup() {
         patients.forEach(p => { lsSaveNote(pid(p), noteData[pid(p)] || defaultData()); });
         localStorage.setItem("pl_last_supabase_sync_ts", Date.now().toString());
         localStorage.setItem("pl_last_save_ts", Date.now().toString());
+        _limpiarNotasHuerfanas();
         const repair = await recoverPendingNoteSync(loaded.remoteNotePatientIds || []);
         startRealtime();
         setTimeout(function () { try { _fotosRetryPending().catch(function () {}); } catch (_) {} }, 8000); // fotos que quedaron sin subir en otra sesión
@@ -15212,9 +15465,6 @@ function plExportBackup() {
       updateCourseCountdown();
       initNoOlvidarSync();
 
-      // Estudios del visor RIS de las últimas 72 h → novedades en la entrega de guardia (idempotente).
-      try { if (patients && patients.length) _entregaAutoFromRis(patients); } catch (e) { safeLog("[entrega auto RIS init]", e); }
-
       // ── WinLab Auto-sync inicial ──────────────────────────────────────────
       // Si el feature flag está activo, en cuanto patients + winlabByExp estén
       // cargados, aplicamos sync para que las tarjetas aparezcan ya con labs
@@ -15236,23 +15486,7 @@ function plExportBackup() {
       }
 
       // Cargar no_olvidar y procedimientos desde DB en segundo plano (no bloquea el render inicial)
-      if (navigator.onLine) {
-        supaLoadNoOlvidar().then(function(items) {
-          if (!items) return;
-          // Conservar lo creado sin red que aún no subió (id temporal): antes la carga reemplazaba
-          // la lista entera y esos recordatorios desaparecían al recargar.
-          const temp = lsGetNoOlvidar().filter(function (i) { return i && i._tempId; });
-          lsSaveNoOlvidar(temp.concat(items.filter(function (i) { return !temp.some(function (t) { return t.id === i.id; }); })));
-          if (currentView === "noOlvidar") renderNoOlvidar();
-        }).catch(function(e) { safeLog("[NO] carga en segundo plano falló:", e); });
-        supaLoadProcedimientos().then(function(procs) {
-          if (!procs) return;
-          // Conservar los procedimientos creados sin red que aún no tienen id de la nube.
-          procedimientos = procs.concat((procedimientos || []).filter(function (p) { return p && !p._id; }));
-          saveProcs();
-          renderViewSoft();
-        }).catch(function(e) { safeLog("[PROC] carga en segundo plano falló:", e); });
-      }
+      if (navigator.onLine) _recargarListasCompartidas();
 
       // Re-encolar recordatorios/procedimientos creados sin red (el interval de abajo los sube).
       try { _enqueuePendingMisc(); } catch (e) { safeLog("_enqueuePendingMisc:", e); }
@@ -15478,7 +15712,12 @@ function plExportBackup() {
       if ((m = c.match(/^4\D*(\d+)/))) return [4, parseInt(m[1])];   // MI (piso 4)
       return [5, anyNum()];                                          // resto al final
     }
+    let _alertsRondaN = 0;
     function renderPiso(pts, showFreeInline) {
+      _alertsRonda = ++_alertsRondaN;   // el botón y el panel de alertas comparten un solo cálculo en este repintado
+      try { return _renderPisoInner(pts, showFreeInline); } finally { _alertsRonda = 0; }
+    }
+    function _renderPisoInner(pts, showFreeInline) {
       // Avisos operativos también en el tablero (antes solo se pintaban en el modo lista, que ya no
       // tiene entrada): "scraper WinLab caído / labs viejos" y camas/pacientes duplicados.
       try { renderStaleLabsBanner(); renderDupBanner(detectDuplicateBeds(patients)); renderDupPatientBanner(detectDuplicatePatients(patients)); } catch (e) { safeLog("banners:", e); }
@@ -15854,7 +16093,16 @@ function plExportBackup() {
       if (day === 4) return "jueves";
       return "";
     }
+    // Un solo cálculo por repintado del tablero (27 oct 2026): el botón de alertas y el panel lo pedían dos veces en cada
+    // cambio de paciente, sobre los 40+ pacientes. renderPiso abre una «ronda» (_alertsRonda) y dentro de ella se reutiliza.
+    let _alertsRonda = 0, _alertsMemo = { ronda: -1, list: null, data: null };
     function collectSpecialAlertsData(list) {
+      if (_alertsRonda && _alertsMemo.ronda === _alertsRonda && _alertsMemo.list === list && _alertsMemo.data) return _alertsMemo.data;
+      const _d = _collectSpecialAlertsData(list);
+      _alertsMemo = { ronda: _alertsRonda, list: list, data: _d };
+      return _d;
+    }
+    function _collectSpecialAlertsData(list) {
       const today = todayStr();
       const nptDay = isNptReminderDay();
       const nptPending = [];
@@ -16192,9 +16440,22 @@ function plExportBackup() {
       });
     }
 
+    // Línea discreta con los críticos YA reconocidos del último control: «K 2.7 ✓ JG 07:40».
+    function renderLabAcksLine(nd) {
+      const snap = getLatestLabSnapshot(nd); if (!snap) return "";
+      const acks = (nd.checklist && nd.checklist._labAcks) || {};
+      const items = getCriticalLabItemsFromSnapshot(snap).filter(function (c) { const a = acks[c.key]; return a && a.value === c.value && (!a.fecha || !snap.fecha || a.fecha === snap.fecha); });
+      if (!items.length) return "";
+      const z = function (n) { return String(n).padStart(2, "0"); };
+      const txt = items.map(function (c) {
+        const a = acks[c.key]; const d = a.ts ? new Date(a.ts) : null;
+        return esc(c.label + " " + c.value) + " ✓ " + esc(a.by || "?") + (d && !isNaN(d.getTime()) ? " " + z(d.getHours()) + ":" + z(d.getMinutes()) : "");
+      }).join(" · ");
+      return `<div class="lab-acks-line" data-testid="lab-acks" title="Valores críticos reconocidos (quién y a qué hora)">🔕 Reconocidos: ${txt}</div>`;
+    }
     function renderLabGuardianBanner(nd, k) {
       const items = getUnackedCriticals(nd);
-      if (!items.length) return "";
+      if (!items.length) return renderLabAcksLine(nd);
       const itemsHtml = items.map(c =>
         `<span class="lgb-item">${c.label}: ${c.value}${c.unit ? " "+c.unit : ""}</span>`
       ).join("");
@@ -16212,8 +16473,10 @@ function plExportBackup() {
       const criticals = getCriticalLabItemsFromSnapshot(snap);
       if (!nd.checklist) nd.checklist = {};
       if (!nd.checklist._labAcks) nd.checklist._labAcks = {};
+      // Quién y a qué hora (27 oct 2026): antes la alerta se quitaba en todos los iPads sin dejar rastro en la tarjeta.
+      const by = (typeof userInitials === "function" ? userInitials() : "") || "", byName = localStorage.getItem("pl_user_name") || "";
       criticals.forEach(c => {
-        nd.checklist._labAcks[c.key] = { value: c.value, ts: Date.now(), fecha: snap.fecha || "" };
+        nd.checklist._labAcks[c.key] = { value: c.value, ts: Date.now(), fecha: snap.fecha || "", by: by, by_name: byName };
       });
       _saveNoteNow(k, nd);
       _rerenderCard(k);
@@ -16546,7 +16809,7 @@ function plExportBackup() {
     // La entrega NO transcribe la tarjeta. Solo lo que la siguiente guardia necesita de un vistazo:
     // si pasó a quirófano, los gastos, labs PUNTUALES (críticos, cambios grandes, INR), lo NUEVO del
     // día (lo que se agregó, pidió o llegó hoy/ayer) y los pendientes abiertos. Mismo resumen para el
-    // botón ✨ Resumen de la tarjeta (texto) y para la vista 📤 Entrega (ficha por paciente).
+    // botón ✨ Resumen de la tarjeta (ventana de solo lectura) y para la vista 📤 Entrega (ficha por paciente).
     const ENTREGA_RESUMEN_HDR = /^— Resumen \d{2}\/\d{2}[^\n]*—\s*$/;
     function _egIsoOffset(n) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + (n || 0)); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
     function _egDdMm(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || "")); return m ? m[3] + "/" + m[2] : String(iso || ""); }
@@ -16807,122 +17070,47 @@ function plExportBackup() {
       if (R.pend.length) lines.push("📋 Pendientes: " + R.pend.join(" · "));
       return lines.length > 1 ? lines.join("\n") : "";
     }
-    // Quita el bloque "— Resumen … —" (hasta la línea en blanco o el final) para no duplicarlo ni contarlo como novedad.
-    function _entregaSinResumen(text) {
-      const out = []; let skip = false;
-      toSafeString(text).split("\n").forEach(function (l) {
-        if (ENTREGA_RESUMEN_HDR.test(l.trim())) { skip = true; return; }
-        if (skip) { if (l.trim() === "") skip = false; return; }
-        out.push(l);
-      });
-      return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
-    }
-    // ✨ Resumen: escribe (o reemplaza) el bloque de resumen al final de la Entrega; lo escrito a mano no se toca.
+    // ✨ Resumen (27 oct 2026, pedido de Gera: «no quiero que pongas nada en las cajitas de manera automática»): antes
+    // escribía el bloque «— Resumen …» al final de la Cronología. Ahora solo lo MUESTRA en una ventana (con 📋 Copiar por
+    // si alguien lo quiere pegar); la caja no se toca. La base ya descartaba ese bloque, así que solo se veía en el iPad
+    // que lo pidió y luego desaparecía.
     function applyPaseInteligente(k) {
       const p = patients.find(function (x) { return pid(x) === k; });
       if (!p) return;
       const nd = migrateNote(noteData[k] || defaultData());
       const built = entregaResumenTexto(p, nd);
       if (!built) { alert("No hay información para resumir en esta tarjeta."); return; }
-      _undoPush(k, "resumen de entrega", ["entrega"]);
-      const base = _entregaSinResumen(nd.entrega);
-      nd.entrega = (base ? base + "\n\n" : "") + built;
-      _touchBy(nd, "entrega");
-      noteData[k] = nd;
-      _saveNoteNow(k, nd, "entrega");   // marca y desmarca "entrega" (antes quedaba sucio: no llegaba la Entrega de otros y ocultar la app re-subía la vieja)
-      _rerenderCard(k);
-      if (typeof _plToast === "function") _plToast("✨ Resumen de entrega actualizado", "#059669", 1800);
+      let ov = document.getElementById("resumen-overlay");
+      if (!ov) {
+        ov = document.createElement("div");
+        ov.id = "resumen-overlay";
+        ov.className = "modal-bg";
+        ov.style.zIndex = "10000";
+        ov.onclick = function (ev) { if (ev.target === ov) ov.style.display = "none"; };
+        ov.innerHTML = `<div class="modal" style="max-width:640px;width:96%">
+          <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center"><div class="modal-title" style="margin:0">✨ Resumen del día <span id="resumen-cama" style="font-weight:500;color:#64748b"></span></div><button class="modal-close" onclick="document.getElementById('resumen-overlay').style.display='none'" data-testid="resumen-cerrar">✕</button></div>
+          <div style="font-size:11px;color:#64748b;margin:2px 0 8px">Solo para leer: no se escribe en la Cronología.</div>
+          <pre id="resumen-texto" data-testid="resumen-texto" style="white-space:pre-wrap;font:inherit;font-size:13px;line-height:1.45;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;max-height:60vh;overflow:auto;margin:0"></pre>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn-cancel" onclick="_resumenCopiar()" data-testid="resumen-copiar">📋 Copiar</button><button class="btn-save" onclick="document.getElementById('resumen-overlay').style.display='none'">Cerrar</button></div>
+        </div>`;
+        document.body.appendChild(ov);
+      }
+      document.getElementById("resumen-texto").textContent = built;
+      document.getElementById("resumen-cama").textContent = p.cama ? "· cama " + p.cama : "";
+      ov.style.display = "flex";
+    }
+    function _resumenCopiar() {
+      const t = (document.getElementById("resumen-texto") || {}).textContent || "";
+      const ok = function () { if (typeof _plToast === "function") _plToast("📋 Resumen copiado", "#059669", 1600); };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, function () { if (typeof _plToast === "function") _plToast("No se pudo copiar: selecciona el texto y cópialo", "#d97706", 2500); });
+      } catch (_) {}
     }
 
-    // ── NOVEDADES AUTOMÁTICAS EN LA ENTREGA DE GUARDIA (13 oct 2026) ───────────────────
-    // Todo lo nuevo que llega solo (labs de WinLab con alteraciones, estudios del visor RIS,
-    // cultivos) se anota en la caja "Entrega de guardia" como "dd-mm-aaaa: texto", una sola vez.
-    // Idempotente entre dispositivos: cada novedad lleva un id que se guarda en
-    // checklist.__entrega_auto (viaja con la nota) y además se omite si la línea ya está escrita.
-    const ENTREGA_AUTO_KEY = "__entrega_auto";
-    function _entregaFmtFecha(iso) {
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
-      if (m) return m[3] + "-" + m[2] + "-" + m[1];
-      const dm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(iso || ""));   // fecha del RIS sin normalizar
-      if (dm) return dm[1].padStart(2, "0") + "-" + dm[2].padStart(2, "0") + "-" + dm[3];
-      const d = new Date(); return String(d.getDate()).padStart(2, "0") + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + d.getFullYear();
-    }
-    // items: [{ id, fecha (AAAA-MM-DD), text }] → líneas nuevas agregadas (0 si nada)
-    function _entregaAutoAppend(k, items) {
-      if (!k || !Array.isArray(items) || !items.length) return 0;
-      const nd = getNote(k);
-      if (!nd.checklist) nd.checklist = {};
-      const reg = Array.isArray(nd.checklist[ENTREGA_AUTO_KEY]) ? nd.checklist[ENTREGA_AUTO_KEY].slice() : [];
-      const cur = toSafeString(nd.entrega);
-      const lines = [];
-      items.forEach(function (it) {
-        if (!it || !it.id || !it.text) return;
-        if (reg.indexOf(it.id) >= 0) return;
-        const line = _entregaFmtFecha(it.fecha) + ": " + String(it.text).replace(/\s+/g, " ").trim();
-        reg.push(it.id);
-        if (cur.indexOf(line) >= 0 || lines.indexOf(line) >= 0) return;
-        lines.push(line);
-      });
-      if (reg.length > 150) reg.splice(0, reg.length - 150);
-      if (!lines.length) {
-        // Solo cambió el registro de ids: guardar sin tocar el texto.
-        nd.checklist[ENTREGA_AUTO_KEY] = reg;
-        noteData[k] = nd; _saveNoteNow(k, nd, "ck_entrega_auto");
-        return 0;
-      }
-      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")", ["entrega"]);
-      nd.checklist[ENTREGA_AUTO_KEY] = reg;
-      nd.entrega = cur ? (cur.replace(/\s+$/, "") + "\n" + lines.join("\n")) : lines.join("\n");
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_entrega_auto");
-      noteData[k] = nd;
-      saveNote(k, nd);
-      _dirtyFields[k].delete("entrega"); _dirtyFields[k].delete("ck_entrega_auto");
-      try {
-        const card = document.getElementById("card-" + k);
-        if (card && !card.contains(document.activeElement)) {
-          const ta = card.querySelector("textarea[data-field='entrega']");
-          if (ta) ta.value = nd.entrega;
-        }
-      } catch (_) {}
-      return lines.length;
-    }
-    // Labs: valores CRÍTICOS (tabla única de LAB_FIELDS) de los analitos NUEVOS o que cambiaron en el sync.
-    function _entregaItemsFromLabs(histAfter, histBefore) {
-      const before = {};
-      (histBefore || []).forEach(function (s) { if (s && s.fecha) before[s.fecha] = s.labs || {}; });
-      const labelMap = {};
-      if (typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)) LAB_FIELDS.forEach(function (f) { labelMap[f.key] = f.label; });
-      const out = [];
-      (histAfter || []).forEach(function (s) {
-        if (!s || !s.fecha || !s.labs) return;
-        const b = before[s.fecha] || {};
-        const found = [];
-        Object.keys(s.labs).forEach(function (key) {
-          if (key.indexOf("micro_") === 0 || key.indexOf("ego_") === 0 || key === "fecha_labs") return;
-          const v = s.labs[key];
-          if (v === undefined || v === null || String(v).trim() === "") return;
-          if (String(b[key] === undefined || b[key] === null ? "" : b[key]) === String(v)) return; // ya estaba igual
-          const num = parseLabNumber(v);
-          // Solo lo PUNTUAL (oct 2026): valores críticos. Lo "anormal" ya se ve en la tabla; aquí estorbaba.
-          if (!Number.isFinite(num) || !labCritOf(key, num)) return;
-          const q = labQuick(key, num);
-          found.push({ key: key, sev: "crit", title: String((q && q.title) || "Valor crítico").replace(/\s*[—-]\s*.*$/, "").trim(), val: String(v).trim() });
-        });
-        // INR que WinLab no reporta: estimado TP ÷ testigo ≥ 1.5 (decide cirugías), una vez por valor.
-        try {
-          const io = inrOf(s.labs), bio = inrOf(b);
-          if (io && io.est && io.v >= 1.5 && !(bio && bio.txt === io.txt)) found.push({ key: "inr", sev: labCritOf("inr", io.v) ? "crit" : "abn", title: "INR estimado " + io.txt + " (TP ÷ testigo)", val: "", plain: true });
-        } catch (_) {}
-        if (!found.length) return;
-        found.sort(function (a, b2) { return (a.sev === "crit" ? 0 : 1) - (b2.sev === "crit" ? 0 : 1); });
-        const shown = found.slice(0, 4).map(function (f) { return f.plain ? f.title : f.title + " (" + (labelMap[f.key] || f.key) + " " + f.val + ")"; });
-        const extra = found.length - shown.length;
-        out.push({ id: "lab:" + s.fecha + ":" + found.map(function (f) { return f.key; }).sort().join(","), fecha: s.fecha,
-          text: "Labs: " + shown.join(", ") + (extra > 0 ? " y " + extra + " más" : "") });
-      });
-      return out;
-    }
+    // Novedades automáticas en la Cronología: QUITADAS (27 oct 2026, pedido de Gera: «no quiero que pongas nada en las
+    // cajitas de manera automática»). Antes los labs críticos, los estudios del RIS y los cultivos nuevos se anotaban solos
+    // como «dd-mm-aaaa: …» en nd.entrega. Ahora la app nunca escribe en una caja por su cuenta: esas novedades se ven en su
+    // sección de la tarjeta, en los avisos y en la vista 📤 Entrega. La base también las rechaza (pl_entrega_protegida).
     function _risConclusion(txt) {
       const t = String(txt || "").replace(/\s+/g, " ").trim();
       if (!t) return "";
@@ -16930,21 +17118,6 @@ function plExportBackup() {
       let c = m ? t.slice(m.index + m[0].length) : t;
       c = c.replace(/\b(ATENTAMENTE\b.*|DR[A]?\.?\s+[A-ZÁÉÍÓÚÑ]{2,}.*|M[EÉ]DICO RADI[OÓ]LOGO.*|C[EÉ]DULA.*)$/i, "").trim();
       return c.length > 240 ? c.slice(0, 237).replace(/\s+\S*$/, "") + "…" : c;
-    }
-    // Estudios del visor RIS: nuevos (robot en las últimas 72 h) y los que acaban de recibir reporte.
-    function _entregaItemsFromRis(list) {
-      const since = Date.now() - 72 * 3600e3;
-      const out = [];
-      (list || []).forEach(function (r) {
-        if (!r || !r.id) return;
-        const sc = r.scraped_at ? new Date(r.scraped_at).getTime() : 0;
-        if (!sc || sc < since) return;
-        const titulo = [r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" ") || "Estudio de imagen";
-        const rep = toSafeString(r.reporte).trim();
-        if (rep) out.push({ id: "ris:" + r.id + ":rep", fecha: r.fecha, text: titulo + " (RIS): " + _risConclusion(rep) });
-        else out.push({ id: "ris:" + r.id, fecha: r.fecha, text: titulo + " (RIS): estudio realizado, reporte pendiente" });
-      });
-      return out;
     }
     // Texto de un cultivo para la entrega / la nota: "Urocultivo POSITIVO a Klebsiella oxytoca (carbapenemasa KPC)
     // (S: Amikacina; R: Ertapenem, Meropenem)"; con varios gérmenes, cada uno con su antibiograma entre corchetes.
@@ -16967,20 +17140,6 @@ function plExportBackup() {
         body = c.organismo + (c.ufc ? " " + c.ufc : "") + (a ? " (" + a + ")" : "");
       }
       return c.tipo + " POSITIVO a " + body;
-    }
-    function _entregaItemsFromCultures(cults) {
-      const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
-      return (cults || []).filter(function (c) { return c && c.fecha && c.fecha >= since && !c.pendiente; }).map(function (c) {
-        const txt = _cultTexto(c, false);
-        const hasAb = /\bS: |\bR: /.test(txt);
-        // El id incluye el antibiograma: cuando el PDF llega después del "POSITIVO" de la tabla, se anota la línea completa.
-        return { id: "cult:" + c.fecha + "|" + c.tipo + "|" + c.organismo + (hasAb ? "|ab" : ""), fecha: c.fecha, text: txt };
-      });
-    }
-    function _entregaAutoFromRis(pts) {
-      (pts || patients || []).forEach(function (p) {
-        try { const items = _entregaItemsFromRis(risForPatient(p)); if (items.length) _entregaAutoAppend(pid(p), items); } catch (e) { safeLog("entrega auto RIS:", e); }
-      });
     }
 
     // ── No olvidar por paciente ────────────────────────────────────────
@@ -18990,6 +19149,32 @@ function plExportBackup() {
     function enterBoardMode(){ window.__viewMode = "board"; window.__focusPid = null; renderView(); }
     function enterListMode(){ window.__viewMode = "list"; window.__focusPid = null; document.body.classList.remove("focus-on"); renderView(); }
 
+    // Nombres parecidos (27 oct 2026): el censo guarda NOMBRE(S) APELLIDO_P APELLIDO_M; dos pacientes con el mismo apellido
+    // paterno se confunden en el pase, las indicaciones o los labs. Etiqueta en la tarjeta con la cama del otro.
+    let _npCache = { sig: "", map: {} };
+    function _apellidoPaterno(nombre) {
+      const t = toSafeString(nombre).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z ]/g, " ")
+        .split(/\s+/).filter(function (w) { return w && !/^(DE|DEL|LA|LAS|LOS|Y|MA|MARIA|JOSE|J)$/.test(w); });
+      if (t.length < 2) return "";
+      return t.length >= 3 ? t[t.length - 2] : t[t.length - 1];
+    }
+    function _nombresParecidos() {
+      const sig = (patients || []).map(function (p) { return pid(p) + "|" + toSafeString(p.nombre); }).join("~");
+      if (sig === _npCache.sig) return _npCache.map;
+      const porAp = {}, map = {};
+      (patients || []).forEach(function (p) { const a = _apellidoPaterno(p.nombre); if (a && a.length >= 3) (porAp[a] = porAp[a] || []).push(p); });
+      Object.keys(porAp).forEach(function (a) {
+        const g = porAp[a]; if (g.length < 2) return;
+        g.forEach(function (p) { map[pid(p)] = g.filter(function (o) { return o !== p; }).map(function (o) { return toSafeString(o.cama) || "?"; }); });
+      });
+      _npCache = { sig: sig, map: map };
+      return map;
+    }
+    function _badgeNombreParecido(p) {
+      const otros = _nombresParecidos()[pid(p)];
+      if (!otros || !otros.length) return "";
+      return `<span class="badge-parecido" data-testid="badge-parecido" title="Otro paciente con el mismo apellido paterno: cama ${esc(otros.join(", "))}. Confirma cama y expediente antes de indicar o anotar.">👥 Apellido igual: ${esc(otros.join(", "))}</span>`;
+    }
     function renderFullCard(p, nd, k) {
       const ec = ESP_COLORS[p.esp] || "#333333";
       const sc = ESTADO_COLORS[p.estado] || "#95a5a6";
@@ -19007,6 +19192,7 @@ function plExportBackup() {
         <div class="card-badges">
           ${renderStatusDot(nd, k)}
           ${noEnCenso ? `<span class="badge-fuera">⚠️ Sin censo</span>` : ''}
+          ${_badgeNombreParecido(p)}
           ${esIngreso ? `<span class="badge-ingreso">🆕 INGRESO</span>` : ''}
           <span class="badge-estado" style="background:${sc}">${esc(p.estado)}</span>
           <span class="badge-esp">${esc(p.esp)}</span>
@@ -19049,6 +19235,7 @@ function plExportBackup() {
       </div>`: ''}
 
       ${renderLabGuardianBanner(nd, k)}
+      ${renderConflictosCaja(k)}
 
       <!-- ═══ BENTO 2 COLUMNAS (jul 2026, rediseño de distribución pedido por Gera):
            IZQUIERDA = trabajo clínico (DX, labs, nota, pendientes, entrega).
@@ -19111,7 +19298,7 @@ function plExportBackup() {
         ${renderPendList(nd, k)}
       </div>
       <!-- 🕓 Cronología (19 oct 2026): UNA caja donde cada guardia anota, con fecha y hora, lo que pasa y lo que hace
-           (las novedades de labs/imagen/cultivos se anotan solas). La siguiente guardia la lee de arriba abajo; lo por
+           (solo lo que escribe la gente: desde el 27 oct 2026 la app no anota nada sola). La siguiente guardia la lee de arriba abajo; lo por
            hacer va en ⚠️ Pendientes y lo que no cabe en ninguna, en 🗂️ Otros. Sustituye a Entrega/Recibido: lo que había
            en «Recibido» pasó delante de lo de Entrega (_cronoMigrar, una vez). Dato: nd.entrega. -->
       <div class="fc-guardia fc-crono">
@@ -19124,7 +19311,7 @@ function plExportBackup() {
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
           <span>🕓 Cronología de guardias${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
-            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Escribir o actualizar el resumen del día: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (lo escrito a mano no se toca)">✨ Resumen</button>
+            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Ver el resumen del día: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (solo se muestra; no se escribe en la caja)">✨ Resumen</button>
             ${histBtn(k, "entrega")}
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Cronología de guardias')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
@@ -19426,7 +19613,6 @@ function plExportBackup() {
         if (affected.length) {
           const nuevoRep = nr.reporte && !(prev && prev.reporte);
           if (!prev || nuevoRep || !!nr.critico !== !!(prev && prev.critico)) _showRTToast("🩻 Estudio de imagen " + (nr.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
-          _entregaAutoFromRis(affected);
         }
         _refreshJumpBar();
       } catch (err) { safeLog("handleRisChange:", err); }
@@ -19832,6 +20018,20 @@ function plExportBackup() {
     // paciente en rojo. Lo demás fuera de rango es «alterado» (amarillo). Validar con la lista oficial de valores
     // críticos del laboratorio del HGL (NOM-007-SSA3-2011) y ajustar SOLO aquí.
     const LAB_FIELD_BY_KEY = LAB_FIELDS.reduce(function (m, f) { m[f.key] = f; return m; }, {});
+    // Valores fisiológicamente imposibles (en las unidades de la tabla): un número así viene de una mala lectura (IA de
+    // foto, unidad cambiada, columna corrida) y nunca debe guardarse. → [{ key, txt }]
+    const LAB_IMPOSIBLE = { hb: [1, 25], hct: [3, 75], leucos: [0.05, 500], plaq: [1, 3000], na: [90, 200], k: [0.8, 12], cl: [50, 160], cr: [0.05, 40],
+      glu: [5, 2500], ca: [2, 25], mg: [0.2, 12], p: [0.2, 25], alb: [0.3, 8], bt: [0, 80], tp: [5, 200], ttp: [10, 300], inr: [0.5, 25], ph: [6.5, 8],
+      pco2: [5, 200], hco3: [1, 70], lac: [0, 40], fibrinogeno: [10, 2000] };
+    function _labsImposibles(labs) {
+      const out = [];
+      Object.keys(LAB_IMPOSIBLE).forEach(function (k) {
+        const v = labs && labs[k]; if (v === undefined || v === null || String(v).trim() === "") return;
+        const n = parseLabNumber(v), r = LAB_IMPOSIBLE[k];
+        if (Number.isFinite(n) && (n < r[0] || n > r[1])) out.push({ key: k, txt: ((LAB_FIELD_BY_KEY[k] || {}).label || k) + " " + v });
+      });
+      return out;
+    }
     function labCritOf(key, num) {
       const lf = LAB_FIELD_BY_KEY[key];
       return !!(lf && Number.isFinite(num) && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)));
@@ -20276,6 +20476,7 @@ function plExportBackup() {
 
     // est (oct 2026): { v, txt, est:true } de inrOf → cuando la celda está vacía se muestra el INR ESTIMADO (TP ÷ testigo)
     // como marca de agua "≈1.59" con su color; al escribir un INR real, el estimado desaparece.
+    var _labCellSnapIa = null;   // ia_keys del control que se está pintando (renderLabSection)
     function labCellHtml(lf, val, k, fecha, prevVal, est) {
       const estOn = !val && !!(est && est.est && est.txt);
       const num = parseLabNumber(estOn ? est.txt : val);
@@ -20286,6 +20487,8 @@ function plExportBackup() {
       const hasAlert = (crit || abn) && LAB_QUICK[lf.key];
       // Muestra rechazada (WinLab: coagulada, mal aforada…) o unidad que la app no reconoce: aviso, nunca un número.
       const rech = labEsRechazada(val), revU = /^REVISAR UNIDAD/i.test(String(val || ""));
+      const _snapIa = (typeof _labCellSnapIa !== "undefined" && _labCellSnapIa) ? _labCellSnapIa : null;
+      const esIa = !!(val && _snapIa && _snapIa.indexOf(lf.key) >= 0);
       const avisoTxt = rech ? "Muestra rechazada por el laboratorio (coagulada, mal aforada o insuficiente): el número de WinLab no es un resultado. Repetir la toma."
         : (revU ? "WinLab mandó este estudio en una unidad que la app no reconoce: revisa el valor y la unidad en WinLab." : "");
       const tid = ("tip-" + k + "-" + lf.key).replace(/[^a-zA-Z0-9]/g, "_");
@@ -20309,7 +20512,7 @@ function plExportBackup() {
       }
 
       return `<div class='lab-cell ${cls}${estOn ? " lab-est" : ""}${avisoTxt ? " lab-aviso" : ""}' ${hasAlert ? `onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"` : ""}>` +
-        `<div class='lab-key'>${lf.label}${estOn ? "<span class='lab-est-tag' title='INR estimado = TP ÷ testigo con ISI ≈ 1 (WinLab no reporta INR): suele quedar por DEBAJO del real. No usarlo para decidir cirugía: pedir INR.'>≈</span>" : ""}${avisoTxt ? "<span class='lab-aviso-tag' title='" + esc(avisoTxt) + "'>⚠</span>" : ""}</div>` +
+        `<div class='lab-key'>${lf.label}${estOn ? "<span class='lab-est-tag' title='INR estimado = TP ÷ testigo con ISI ≈ 1 (WinLab no reporta INR): suele quedar por DEBAJO del real. No usarlo para decidir cirugía: pedir INR.'>≈</span>" : ""}${avisoTxt ? "<span class='lab-aviso-tag' title='" + esc(avisoTxt) + "'>⚠</span>" : ""}${esIa ? "<span class='lab-ia-tag' title='Leído por la IA de una foto o PDF: confirma contra el documento'>🤖</span>" : ""}</div>` +
         `<input class='lab-input ${cls}' value='${esc(val)}' placeholder='${estOn ? "≈" + esc(est.txt) : "—"}'${estOn ? " title='INR estimado = TP ÷ testigo con ISI ≈ 1 (WinLab no reporta INR): suele quedar por DEBAJO del real. No usarlo para decidir cirugía: pedir INR. Escribe el INR real si lo tienes.'" : (avisoTxt ? " title='" + esc(avisoTxt) + "'" : "")}` +
         ` data-key='${k}' data-labkey='${lf.key}' data-fecha='${fecha}'` +
         ` oninput="liveLabUpdate(this)" onchange="updateLabHistory(this.dataset.key,this.dataset.fecha,this.dataset.labkey,this.value)"/>` +
@@ -20425,6 +20628,7 @@ function plExportBackup() {
         // INR (oct 2026): si WinLab no lo trajo, la celda muestra el estimado TP ÷ testigo (≈) con su color.
         const _inrCur = (typeof inrOf === "function") ? inrOf(labs) : null;
         const _inrPrev = (prevFecha && typeof inrOf === "function") ? inrOf(prevLabs) : null;
+        _labCellSnapIa = (snap && Array.isArray(snap.ia_keys)) ? snap.ia_keys : null;   // celdas leídas por la IA → 🤖
         const _cell = lf => labCellHtml(lf, labs[lf.key] || "", k, activeFecha,
           prevFecha ? (lf.key === "inr" ? ((_inrPrev && Number.isFinite(_inrPrev.v)) ? _inrPrev.txt : undefined) : (prevLabs[lf.key] ?? undefined)) : undefined,
           lf.key === "inr" ? _inrCur : null);
@@ -21161,10 +21365,10 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             "ck:interconsultas": "interconsultas solicitadas y sus respuestas", "ck:cultivos": "cultivos (tipo, fecha, germen y antibiograma)", "ck:recibo": "recibo de guardia"
           };
           const fieldDescr = labels[_inkFieldMode] || _inkFieldMode;
-          prompt = `Eres un asistente médico quirúrgico. Esta imagen contiene texto manuscrito escrito por un residente de cirugía general sobre el apartado "${fieldDescr}" de un paciente. Transcribe TODO el texto que veas interpretando abreviaturas médicas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, etc.) y devuelve SOLO un JSON con este esquema exacto:
+          prompt = `Eres un asistente médico quirúrgico. Esta imagen contiene texto manuscrito escrito por un residente de cirugía general sobre el apartado "${fieldDescr}" de un paciente. Transcribe TODO el texto que veas TAL CUAL, conservando las abreviaturas médicas como están escritas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, etc.), sin agregar, completar ni interpretar nada; lo ilegible va entre [corchetes]. Devuelve SOLO un JSON con este esquema exacto:
 {"texto":"el texto transcrito completo, bien puntuado, respetando saltos de línea si los hay"}`;
         } else {
-          prompt = `Eres un asistente médico quirúrgico. Esta es una foto del lienzo donde un residente de cirugía general escribió a mano notas sobre un paciente durante el pase de visita. Transcribe TODO el texto manuscrito que veas, interpretando con sentido clínico las abreviaturas (DM2=Diabetes tipo 2, HAS=Hipertensión, POP=postoperatorio, LAPE=laparotomía exploradora, ATB=antibiótico, TVP=trombosis venosa profunda, NPT=nutrición parenteral, etc.).
+          prompt = `Eres un asistente médico quirúrgico. Esta es una foto del lienzo donde un residente de cirugía general escribió a mano notas sobre un paciente durante el pase de visita. Transcribe TODO el texto manuscrito que veas TAL CUAL, conservando las abreviaturas como están escritas (DM2, HAS, POP, LAPE, ATB, TVP, NPT, etc.), sin agregar, completar ni interpretar nada; lo ilegible va entre [corchetes].
 
 Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
 {
@@ -22478,12 +22682,25 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         })();
         const valuesRaw = first.values && typeof first.values === "object" ? first.values : first;
         const sanitizedExtracted = sanitizeExtractedLabs(valuesRaw);
+        // Revisión antes de guardar (27 oct 2026): antes los números que leyó la IA entraban directo a la tabla y al Dx.
+        // Se descartan los imposibles (K 50, Hb 150…) y se pide confirmar la lista; la celda queda marcada como «IA foto».
+        const _imposibles = _labsImposibles(sanitizedExtracted);
+        _imposibles.forEach(function (x) { delete sanitizedExtracted[x.key]; });
+        const _leidos = getLabKeys().filter(function (f) { return sanitizedExtracted[f] && String(sanitizedExtracted[f]).trim() !== ""; });
+        if (_leidos.length) {
+          const _lbl = function (f) { const lf = LAB_FIELD_BY_KEY[f]; return (lf ? lf.label : f) + " " + sanitizedExtracted[f] + (lf && lf.unit ? " " + lf.unit : ""); };
+          const _ok = confirm("🤖 La IA leyó estos valores de «" + (file && file.name ? file.name : "el archivo") + "»" + (first.fecha_labs ? " (fecha " + first.fecha_labs + ")" : "") + ":\n\n" +
+            _leidos.map(_lbl).join(" · ") + (_imposibles.length ? "\n\nDescartados por imposibles: " + _imposibles.map(function (x) { return x.txt; }).join(", ") : "") +
+            "\n\nCompáralos con el documento. ¿Guardarlos en la tabla?");
+          if (!_ok) throw { __identityBlock: true };
+        }
         // Save to active date (or create new snapshot with extracted date)
         const nd = getNote(k);
         const targetFecha = first.fecha_labs || sanitizedExtracted.fecha_labs || activeLabDate[k] || todayStr();
         const targetHora = first.hora_labs || "";
         let snap = nd.labHistory.find(s => s.fecha === targetFecha);
         if (!snap) { snap = { fecha: targetFecha, labs: {}, extra: [], source: "manual", source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" }; nd.labHistory.push(snap); }
+        snap.ia_keys = Array.from(new Set((Array.isArray(snap.ia_keys) ? snap.ia_keys : []).concat(_leidos)));   // celdas que vienen de la IA (foto/PDF)
         // Defensa: si el snap ya existía sin source explícito, marcarlo manual
         // (porque acaba de ser actualizado por subida manual de PDF)
         if (!snap.source) snap.source = "manual";
@@ -22617,6 +22834,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       input.focus(); input.select();
       function commit() {
         const newCama = input.value.trim().toUpperCase();
+        const _ocupa = newCama && newCama !== p.cama ? _camaOcupadaPor(newCama, p) : null;
+        if (_ocupa) { _avisoCamaOcupada(newCama, _ocupa); renderView(); return; }
         if (newCama && newCama !== p.cama) {
           const oldKey = pid(p);
           p.cama = newCama;
@@ -23107,7 +23326,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     </div>
     ${sectionsHtml}
     ${(function() {
-      const altasPendientes = lsGetAltas().filter(function(a){ return !a.completado; });
+      // Altas programadas (solo de este iPad, sin botón desde oct 2026): solo las de pacientes que siguen en el censo; antes
+      // la Entrega proyectaba altas viejas de pacientes que ya se fueron.
+      const altasPendientes = lsGetAltas().filter(function(a){ return !a.completado && patients.some(function (p) { return toSafeString(p.cama).trim().toUpperCase() === toSafeString(a.cama).trim().toUpperCase(); }); });
       if (!altasPendientes.length) return '';
       const altasCards = altasPendientes.map(function(a) {
         return `<div class="eg-c" style="border-left:4px solid #27ae60">
@@ -23278,21 +23499,20 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       try {
         _noOlvidarChannel = window._supaClient.channel("pl-no-olvidar")
-          .on("broadcast", { event: "update" }, function(payload) {
-            if (payload.payload && Array.isArray(payload.payload.items)) {
-              const incoming = JSON.stringify(payload.payload.items);
-              if (incoming !== JSON.stringify(lsGetNoOlvidar())) {
-                lsSaveNoOlvidar(payload.payload.items);
-                if (currentView === "noOlvidar") renderNoOlvidar();
-              }
-            }
+          // El aviso entre iPads ya no trae la lista: si el emisor tenía una copia vieja (dormido toda la noche), todos la
+          // copiaban. Ahora solo dice «algo cambió» y cada iPad baja la lista de la nube (que conserva lo suyo sin subir).
+          .on("broadcast", { event: "update" }, function() {
+            clearTimeout(_noOlvidarRecargaTimer);
+            _noOlvidarRecargaTimer = setTimeout(function () { _recargarListasCompartidas(); }, 800);
           })
           .subscribe();
       } catch (_) {}
     }
-    function syncNoOlvidarBroadcast(items) {
+    let _noOlvidarRecargaTimer = null;
+    function syncNoOlvidarBroadcast() {
+      // Solo un aviso (sin la lista): las versiones anteriores ignoran un aviso sin `items`.
       if (_noOlvidarChannel) {
-        try { _noOlvidarChannel.send({ type: "broadcast", event: "update", payload: { items } }); }
+        try { _noOlvidarChannel.send({ type: "broadcast", event: "update", payload: { ts: Date.now() } }); }
         catch (_) {}
       }
     }
@@ -24372,9 +24592,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Camas no censables (EXT, AMB, PASILLO, etc.) se permiten duplicar por diseño
       if (modalMode === "add" && !isNonCensableBed(cama)) {
         const camaOcupada = patients.find(pt => pt.cama && pt.cama.toUpperCase() === cama);
-        if (camaOcupada) {
-          if (!confirm(`⚠️ CAMA DUPLICADA\n\nLa cama ${cama} ya tiene paciente:\n${camaOcupada.nombre} (Exp: ${camaOcupada.exp})\n\n¿Agregar de todas formas?`)) return;
-        }
+        // Una cama con número admite UN paciente en la nube: «agregar de todas formas» dejaba al nuevo atorado en la cola.
+        if (camaOcupada) { _avisoCamaOcupada(cama, camaOcupada); return; }
       }
       // Validar formato fecha de ingreso (DD/MM/AA o DD/MM/AAAA)
       const ingresoVal = document.getElementById("mf-ingreso").value.trim();
@@ -24535,6 +24754,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       document.getElementById("confirm-name").textContent = p.nombre;
       document.getElementById("confirm-sub").textContent = `Cama ${p.cama} · ${p.esp} · Exp: ${p.exp}`;
       document.getElementById("confirm-btn").onclick = () => { dischargePatient(k); };
+      const tipoSel = document.getElementById("confirm-egreso-tipo"); if (tipoSel) tipoSel.value = "";
       document.getElementById("confirm-modal").style.display = "flex";
     }
     // Persistir la papelera local con manejo de cuota (compartido por egreso, import y outbox).
@@ -24579,6 +24799,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Archivar (papelera local + nube, también sin red) ANTES de quitarlo del censo activo.
       // La etiqueta ALTA/DEFUNCIÓN ya viene en la nota cuando el egreso sale del modal.
       const nd = noteData[k] || defaultData();
+      // Motivo del egreso (27 oct 2026, registro para investigación): sin él no se puede saber si fue alta o defunción.
+      const tipoSel = document.getElementById("confirm-egreso-tipo"), tipo = tipoSel ? tipoSel.value : "";
+      if (PL_EGRESO_TIPOS[tipo]) _marcarEgresoTipo(nd, tipo);
       _archivePatientRecord(p, nd, k, "EGRESO");
       // Quitar del censo activo
       patients = patients.filter(pt => pid(pt) !== k);
@@ -24646,6 +24869,45 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       else alert("No se encontraron registros adicionales en la nube.");
     }
 
+    // ─── Motivo del egreso (27 oct 2026) ─────────────────────────────────────────────────────────────────────────
+    // Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO (hoja)») sin decir si fue alta o defunción,
+    // y el registro de pacientes no podía calcular mortalidad. Se registra al dar de alta en la app o después, en la
+    // Papelera. En la nube va con la función archive_set_egreso (une el dato a note_data sin pisar la nota).
+    const PL_EGRESO_TIPOS = { alta: "Alta a domicilio", defuncion: "Defunción", traslado: "Traslado a otra unidad", alta_voluntaria: "Alta voluntaria" };
+    function _marcarEgresoTipo(nd, tipo) {
+      if (!nd) return;
+      if (PL_EGRESO_TIPOS[tipo]) { nd._egreso_tipo = tipo; nd._egreso_tipo_por = localStorage.getItem("pl_user_name") || ""; }
+      else { delete nd._egreso_tipo; delete nd._egreso_tipo_por; }
+      nd._egreso_tipo_ts = new Date().toISOString().slice(0, 19) + "Z";
+    }
+    // Copias técnicas (rescates, duplicados, cama dada a otra persona): no son un egreso que clasificar.
+    function _egresoTecnico(arc) { return /CAMBIOS DE ESTE iPad|DUPLICADO|CAMA REASIGNADA \(otra persona/i.test(String((arc && arc._note && arc._note._egreso) || "")); }
+    function _egresoSinMotivo(arc) {
+      const nd = arc && arc._note, est = String((arc && arc.estado) || "").toUpperCase(), lab = String((nd && nd._egreso) || "").toUpperCase();
+      if (_egresoTecnico(arc) || (nd && PL_EGRESO_TIPOS[nd._egreso_tipo])) return false;
+      return !/^(ALTA|DEFUNCI)/.test(est) && !/^(ALTA|DEFUNCI)/.test(lab);
+    }
+    async function setEgresoTipo(idx, sel) {
+      const arc = archivados[idx]; if (!arc || !sel) return;
+      const previo = (arc._note && arc._note._egreso_tipo) || "", tipo = sel.value;
+      if (tipo === previo) return;
+      if (!arc._supaArchiveId) { alert("Este egreso todavía no sube a la nube (sin red). Inténtalo en un momento."); sel.value = previo; return; }
+      if (tipo === "defuncion" && !confirm("¿Registrar DEFUNCIÓN de " + (arc.nombre || "este paciente") + "?")) { sel.value = previo; return; }
+      sel.disabled = true;
+      try {
+        const r = await _sRpc("archive_set_egreso", { p_id: arc._supaArchiveId, p_tipo: PL_EGRESO_TIPOS[tipo] ? tipo : "", p_por: localStorage.getItem("pl_user_name") || "" });
+        if (r !== "ok") throw new Error(r === "no-encontrado" ? "ya no está en la nube" : String(r));
+        arc._note = arc._note || {};
+        _marcarEgresoTipo(arc._note, tipo);
+        _persistArchivados();
+        setSyncStatus("synced", "✅ Motivo del egreso guardado");
+      } catch (e) {
+        safeLog("archive_set_egreso:", e);
+        alert("No se pudo guardar el motivo del egreso (" + String((e && e.message) || e).slice(0, 80) + "). Revisa la red e inténtalo de nuevo.");
+        sel.value = previo;
+      } finally { sel.disabled = false; renderPapelera(); }
+    }
+
     function renderPapelera() {
       const el = document.getElementById("view-papelera");
       if (!el) return;
@@ -24666,8 +24928,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           </div>
           <button onclick="syncArchiveFromCloud()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">☁️ Cargar desde nube</button>
         </div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">Puedes restaurar cualquier paciente al censo activo con el botón "↩ Restaurar".</div>
-        <div style="display:flex;flex-direction:column;gap:8px">`;
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">Puedes restaurar cualquier paciente al censo activo con el botón "↩ Restaurar".</div>`;
+      const sinMotivo = archivados.filter(_egresoSinMotivo).length;
+      if (sinMotivo) html += `<div data-testid="egresos-sin-motivo" style="font-size:12px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:8px;margin-bottom:10px">
+          📋 <strong>${sinMotivo} egreso${sinMotivo !== 1 ? "s" : ""} sin motivo registrado.</strong> Elige el motivo en cada uno (alta, defunción, traslado, alta voluntaria): sin él, el registro de pacientes no puede calcular mortalidad.</div>`;
+      html += `<div style="display:flex;flex-direction:column;gap:8px">`;
       archivados.forEach(function (arc, idx) {
         const fecha = arc._archivedAt ? new Date(arc._archivedAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
         html += `<div style="border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden">
@@ -24680,6 +24945,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             <span style="font-size:12px;color:#64748b">Exp: ${esc(arc.exp || "—")}</span>
             <span style="font-size:12px;color:#64748b">· ${esc(arc.esp || "—")}</span>
             ${arc.dx ? `<span style="font-size:12px;color:#64748b">· ${esc(arc.dx.slice(0, 60))}</span>` : ""}
+            ${_egresoTecnico(arc) ? "" : (function () {
+              const t = (arc._note && arc._note._egreso_tipo) || "", falta = _egresoSinMotivo(arc);
+              return `<label style="font-size:12px;color:${falta ? "#92400e" : "#64748b"};display:flex;align-items:center;gap:4px">Motivo:
+                <select data-testid="egreso-tipo-${idx}" onchange="setEgresoTipo(${idx}, this)" style="font-size:12px;padding:2px 4px;border:1px solid ${falta ? "#f59e0b" : "#cbd5e1"};border-radius:5px;font-family:var(--font)">
+                  <option value=""${t ? "" : " selected"}>${falta ? "— elegir —" : "—"}</option>
+                  ${Object.keys(PL_EGRESO_TIPOS).map(function (k) { return `<option value="${k}"${t === k ? " selected" : ""}>${PL_EGRESO_TIPOS[k]}</option>`; }).join("")}
+                </select></label>`;
+            })()}
             <div style="margin-left:auto;display:flex;gap:6px">
               <button onclick="restorePatient(${idx})" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">↩ Restaurar</button>
               <button onclick="deleteArchivedPermanently(${idx})" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑 Eliminar</button>
@@ -24724,8 +24997,15 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       noteData[pid(p)] = restoredNote;
       archivados.splice(arcIdx, 1);
       _persistArchivados();
-      // Limpiar el registro en la tabla archive de Supabase
-      if (_supaArchiveId) _sDelete("archive", "id=eq." + _supaArchiveId).catch(e => safeLog("archive restore delete:", e));
+      // La copia de la Papelera en la nube se borra SOLO cuando el paciente ya subió (tiene _supa_id). Antes se borraba
+      // antes del INSERT: si la cama estaba ocupada o no había red, el restaurado solo vivía en este iPad.
+      if (_supaArchiveId) {
+        const _borrarCopia = function (n) {
+          if (p._supa_id) { _sDelete("archive", "id=eq." + _supaArchiveId).catch(e => safeLog("archive restore delete:", e)); return; }
+          if (n < 30) setTimeout(function () { _borrarCopia(n + 1); }, 2000);   // sin subir en 1 min: la copia se queda de respaldo
+        };
+        setTimeout(function () { _borrarCopia(0); }, 1500);
+      }
       _savePtsImmediate(p); // solo este paciente: INSERT → asigna _supa_id y re-clava su nota
       saveNote(pid(p), noteData[pid(p)]);
       buildEspFilters();
@@ -25764,6 +26044,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
 
     // ── Supabase CRUD para procedimientos_dia ─────────────────────────────────────
+    // Día del procedimiento: se fija al crearlo y no cambia al editarlo ni al subirlo (27 oct 2026: antes era «hoy» en
+    // cada edición o subida, y uno editado o subido después de medianoche pasaba al día siguiente).
+    function _procDia(proc) {
+      if (proc && /^\d{4}-\d{2}-\d{2}$/.test(String(proc.fecha_dia || ""))) return proc.fecha_dia;
+      const t = proc && proc._addedAt ? new Date(proc._addedAt) : null;
+      if (t && !isNaN(t.getTime())) return t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" + String(t.getDate()).padStart(2, "0");
+      return todayStr();
+    }
     function _procToRow(proc) {
       return {
         cama:      proc.cama      || "",
@@ -25774,7 +26062,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         esp:       proc.esp       || "CG",
         adscrito:  proc.adscrito  || "",
         residente: proc.residente || "",
-        fecha_dia: todayStr(),
+        fecha_dia: _procDia(proc),
         // quien lo AGREGÓ (se conserva al editar; antes cada edición ponía al editor como autor)
         added_by:  proc.added_by || localStorage.getItem("pl_user_name") || ""
       };
@@ -25787,7 +26075,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           return { _id: r.id, cama: r.cama || "", exp: r.exp || "", nombre: r.nombre || "",
             edad: r.edad || "", dx: r.dx || "", esp: r.esp || "CG",
             adscrito: r.adscrito || "", residente: r.residente || "", added_by: r.added_by || "",
-            _addedAt: r.added_at || new Date().toISOString() };
+            fecha_dia: r.fecha_dia || "", _addedAt: r.added_at || new Date().toISOString() };
         });
       } catch (e) { safeLog("[PROC] supaLoadProcedimientos:", e); return null; }
     }
@@ -25840,7 +26128,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           procedimientos.push({ _id: newRow.id, cama: newRow.cama || "", exp: newRow.exp || "",
             nombre: newRow.nombre || "", edad: newRow.edad || "", dx: newRow.dx || "",
             esp: newRow.esp || "CG", adscrito: newRow.adscrito || "", residente: newRow.residente || "", added_by: newRow.added_by || "",
-            _addedAt: newRow.added_at || new Date().toISOString() });
+            fecha_dia: newRow.fecha_dia || "", _addedAt: newRow.added_at || new Date().toISOString() });
         }
         saveProcs(); renderViewSoft();
       } else if (eventType === "UPDATE" && newRow) {
@@ -25904,7 +26192,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         adscrito: document.getElementById("pf-adscrito").value.trim().toUpperCase(),
         residente: document.getElementById("pf-residente").value.trim().toUpperCase()
       };
-      if (_procEditIdx < 0) { proc.added_by = localStorage.getItem("pl_user_name") || ""; proc._addedAt = new Date().toISOString(); }   // autor y hora solo al crear
+      if (_procEditIdx < 0) { proc.added_by = localStorage.getItem("pl_user_name") || ""; proc._addedAt = new Date().toISOString(); proc.fecha_dia = todayStr(); }   // autor, hora y día solo al crear
       if (_procEditIdx >= 0) {
         // Editar conserva quién lo agregó y a qué hora (el PATCH no lleva added_by: ver _procPatchBody).
         const existingId = procedimientos[_procEditIdx]._id;
@@ -26731,6 +27019,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           Object.keys(ex).forEach(function(ek) {
             if (!CULTIVO_ONLY_KEYS.has(ek) && ek !== "paciente" && ek !== "nombre" && ek !== "fecha_labs" && ek !== "fecha") labsToMerge[ek] = ex[ek];
           });
+          // Valores imposibles leídos por la IA (27 oct 2026, igual que la hoja de una sola persona): no se guardan y se dicen.
+          var _imposibles = typeof _labsImposibles === "function" ? _labsImposibles(labsToMerge) : [];
+          _imposibles.forEach(function (x) { delete labsToMerge[x.key]; delete ex[x.key]; });
           snap.labs = mergeLabsPerAnalyte(snap.labs, labsToMerge);
         }
         if (r && r.fileObj && !snap.source_file_name) {
@@ -26749,7 +27040,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         // Solo lab_history viaja (parcial): antes iba la nota COMPLETA desde la copia local y pisaba texto ajeno
         _saveNoteNow(k, nd, "labHistory");
         mergeLabsIntoDx(targetP, snap.labs || {}, fecha, ex.hora_labs || "");
-        return { isCultivo: isCultivo };
+        return { isCultivo: isCultivo, descartados: (typeof _imposibles !== "undefined" && _imposibles ? _imposibles.map(function (x) { return x.txt; }) : []) };
       }
 
       // Tokens del nombre, IGUALES en el PDF y en el censo (24 oct 2026, «Labs masivo no identifica a los pacientes»):
@@ -26916,6 +27207,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               var rowClr2 = isCultivo ? "#0369a1" : "#15803d";
               var rowIcon = isCultivo ? "🔬" : "✅";
               var rowExtra = isCultivo ? "Cultivo: " + esc(ex.tipo_cultivo || "") + (ex.cultivo_organismo ? " → " + esc(ex.cultivo_organismo) : "") : "";
+              if (info.descartados && info.descartados.length) rowExtra += (rowExtra ? "<br>" : "") + "<span data-testid='bulk-descartados' style='color:#b91c1c;font-weight:700'>⚠️ No se guardaron (valor imposible, revisa la hoja): " + esc(info.descartados.join(", ")) + "</span>";
               rows += "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:" + rowBg + ";border:1px solid " + rowBdr + ";margin-bottom:4px;margin-left:8px;font-size:12px'>" +
                 "<span style='font-size:16px'>" + rowIcon + "</span>" +
                 "<div><div style='font-weight:700;color:" + rowClr + "'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div>" +
@@ -27775,11 +28067,26 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (arrow) arrow.textContent = open ? "▸" : "▾";
     }
 
+    // ¿La cama la ocupa otro paciente? (27 oct 2026) La nube acepta UN paciente por cama: mover a una cama ocupada se
+    // quedaba reintentando para siempre (en un intercambio, nunca se liberaba) sin decir por qué. Camas sin número
+    // (URGENCIAS, EXT, PASILLO…) sí admiten varios.
+    function _camaOcupadaPor(cama, p) {
+      const c = toSafeString(cama).trim().toUpperCase();
+      if (!c || (typeof MULTI_BED !== "undefined" && MULTI_BED.has(c))) return null;
+      return patients.find(function (q) { return q && q !== p && toSafeString(q.cama).trim().toUpperCase() === c; }) || null;
+    }
+    function _avisoCamaOcupada(cama, otro) {
+      alert("La cama " + toSafeString(cama).toUpperCase() + " la ocupa " + (otro.nombre || "otro paciente") + (otro.exp ? " (exp " + otro.exp + ")" : "") + ".\n\n" +
+        "La nube solo acepta un paciente por cama: primero mueve a esa persona a otra cama (o dala de alta) y luego mueve a este paciente. " +
+        "Para intercambiar dos camas, usa una cama libre de paso.");
+    }
     function promptChangeBed(k) {
       const p = patients.find(pt => pid(pt) === k);
       if (!p) return;
       const newCama = prompt(`Cambiar cama para:\n${p.nombre}\nCama actual: ${p.cama}\n\nNueva cama:`, p.cama);
       if (!newCama || newCama.trim() === "" || newCama.trim().toUpperCase() === p.cama.toUpperCase()) return;
+      const _ocupa = _camaOcupadaPor(newCama, p);
+      if (_ocupa) { _avisoCamaOcupada(newCama, _ocupa); return; }
       const oldKey = pid(p);
       p.cama = newCama.trim().toUpperCase();
       const newKey = pid(p);
@@ -27811,7 +28118,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.27-2";
+    const PL_BUILD = "2026.10.27-5";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -28428,10 +28735,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       return "Eres residente de Cirugía General en un hospital de México. " +
         (nPag > 1 ? "Las " + nPag + " imágenes son las páginas, en orden, de UNA sola nota postquirúrgica" : "La imagen es una nota postquirúrgica") +
         " (nota operatoria, hoja quirúrgica o reporte de procedimiento) de un paciente hospitalizado. Puede estar impresa o escrita a mano y la foto puede estar chueca, cortada o con sombras.\n" +
-        "Lee TODO y extrae SOLO lo que está escrito. NO inventes, NO completes y NO supongas: si un dato no aparece o es ilegible, déjalo vacío (\"\"), o null en sangrado_ml. Conserva las abreviaturas médicas usuales (LAPE, CCL, POP, ATB, etc.). No incluyas el nombre del paciente.\n" +
+        "Lee TODO y extrae SOLO lo que está escrito. NO inventes, NO completes y NO supongas: si un dato no aparece o es ilegible, déjalo vacío (\"\"), o null en sangrado_ml. Conserva las abreviaturas médicas usuales (LAPE, CCL, POP, ATB, etc.). El nombre y el expediente del paciente van SOLO en paciente_nombre y paciente_exp (sirven para verificar que la nota es de este paciente; no se guardan); no los pongas en ningún otro campo.\n" +
         "Hoy es " + todayStr() + ". Las fechas vienen como día/mes/año (05/10/26 = 2026-10-05); si no traen año usa el de hoy. La fecha que se pide es la de la CIRUGÍA, no la de ingreso ni la de impresión.\n" +
         "Responde ÚNICAMENTE con un objeto JSON válido, sin markdown y sin texto antes ni después, con exactamente estas claves:\n" +
-        "{\"es_nota_quirurgica\": true, \"fecha\": \"AAAA-MM-DD\", \"procedimiento\": \"procedimiento(s) realizado(s), conciso\", \"diagnostico_postqx\": \"diagnóstico postoperatorio\", \"hallazgos\": \"hallazgos transoperatorios relevantes, breve\", \"tecnica\": \"técnica o pasos clave en 1-2 líneas (abordaje, resección, anastomosis, cierre)\", \"drenajes\": \"drenajes, sondas o estomas dejados (tipo y sitio)\", \"complicaciones\": \"incidentes o complicaciones transoperatorias; vacío si no se mencionan\", \"importante\": \"lo más importante para el manejo en piso, máximo 2 líneas\", \"sangrado_ml\": null, \"cirujano\": \"cirujano principal tal como aparece\"}\n" +
+        "{\"es_nota_quirurgica\": true, \"paciente_nombre\": \"nombre del paciente tal como aparece, o vacío\", \"paciente_exp\": \"número de expediente tal como aparece, o vacío\", \"fecha\": \"AAAA-MM-DD\", \"procedimiento\": \"procedimiento(s) realizado(s), conciso\", \"diagnostico_postqx\": \"diagnóstico postoperatorio\", \"hallazgos\": \"hallazgos transoperatorios relevantes, breve\", \"tecnica\": \"técnica o pasos clave en 1-2 líneas (abordaje, resección, anastomosis, cierre)\", \"drenajes\": \"drenajes, sondas o estomas dejados (tipo y sitio)\", \"complicaciones\": \"incidentes o complicaciones transoperatorias; vacío si no se mencionan\", \"importante\": \"lo más importante para el manejo en piso, máximo 2 líneas\", \"sangrado_ml\": null, \"cirujano\": \"cirujano principal tal como aparece\"}\n" +
         "sangrado_ml es un número entero de mL (ej. 150). Si dice \"escaso\" o \"mínimo\" sin cifra, pon null y anótalo en hallazgos.\n" +
         "Si las imágenes NO son una nota quirúrgica, responde {\"es_nota_quirurgica\": false} con las demás claves vacías.";
     }
@@ -28559,11 +28866,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       } catch (_) {}
     }
     // Llena SOLO lo vacío en la cirugía VIGENTE (se vuelve a buscar: pudo cambiar mientras la IA leía).
+    // Nombre/expediente que leyó la IA vs el paciente de la tarjeta → texto del otro paciente si NO coincide · "" si coincide
+    // o si la nota no los trae (notas a mano sin encabezado). Regla tolerante (notas a mano, abreviaturas): basta que
+    // coincida el expediente o dos palabras del nombre; no coincide si el expediente es otro o no comparte ningún apellido.
+    function _cxNotaDeOtro(raw, p) {
+      if (!raw || !p) return "";
+      const nom = toSafeString(raw.paciente_nombre).trim(), exp = toSafeString(raw.paciente_exp).replace(/[^0-9]/g, "");
+      const expP = toSafeString(p.exp).replace(/[^0-9]/g, "");
+      if (exp.length >= 4 && expP.length >= 4) return exp === expP ? "" : ("expediente " + raw.paciente_exp);
+      if (!nom) return "";
+      const n = function (t) { return toSafeString(t).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z ]/g, " ").split(/\s+/).filter(function (w) { return w.length >= 3 && !/^(DEL|LAS|LOS)$/.test(w); }); };
+      const a = n(p.nombre), b = n(nom);
+      const comunes = b.filter(function (w) { return a.indexOf(w) >= 0; }).length;
+      return comunes >= Math.min(2, b.length) ? "" : nom;
+    }
     function _cxAplicar(k, cid, raw) {
       const loc = _cxLocate(k, cid);
       if (!loc) { _plToast("🤖 Se leyó la nota, pero esa cirugía ya no está en la ficha. No se cambió nada.", "#b45309", 6500); return; }
       const v = _cxNormalizar(raw);
       if (!v.esNota) { _plToast("📷 La foto quedó guardada, pero no parece una nota quirúrgica: no se llenó nada.", "#b45309", 6500); return; }
+      // ¿Es de ESTE paciente? (27 oct 2026) Antes se llenaba la tarjeta donde se tomó la foto sin revisar de quién era la nota.
+      const _pId = patients.find(function (x) { return pid(x) === loc.k; });
+      const _otro = _cxNotaDeOtro(raw, _pId);
+      if (_otro) { _plToast("⚠️ La nota parece de OTRO paciente (" + _otro + "). No se llenó nada: revisa que la foto sea de la cama " + ((_pId && _pId.cama) || "") + ". La foto quedó guardada.", "#b91c1c", 12000); return; }
       const cambios = {}, noTocados = [];
       CX_CAMPOS.forEach(function (f) {
         const nuevo = v[f]; if (!nuevo) return;
@@ -30753,9 +31078,57 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         }
       }
 
+      // 📌 Tablero COMPARTIDO (27 oct 2026): antes vivía solo en el iPad donde se escribía. Ahora se guarda también en la
+      // nube (config, key «tablero_v1») y se une por renglón: cada renglón lleva la hora de su último cambio (ts) y los
+      // borrados dejan una marca (_borrados, 7 días) para que otro iPad no los resucite. Sin red se guarda aquí y sube después.
+      const TABLERO_NUBE_KEY = "tablero_v1", TABLERO_BORRADOS_MS = 7 * 86400000;
+      function _tabIndex(d) {
+        const m = {};
+        QUADRANTS.forEach(function (q) { ((d && d[q.id]) || []).forEach(function (it) { if (it && it.id) m[it.id] = { it: it, q: q.id }; }); });
+        return m;
+      }
+      function _tabMerge(a, b) {
+        const tomb = {};
+        [b, a].forEach(function (d) { const t = (d && d._borrados) || {}; Object.keys(t).forEach(function (id) { tomb[id] = Math.max(tomb[id] || 0, +t[id] || 0); }); });
+        const all = {};
+        [b, a].forEach(function (d, i) {   // i = 1 → local (gana el empate)
+          const ix = _tabIndex(d);
+          Object.keys(ix).forEach(function (id) { const cur = all[id], x = ix[id]; if (!cur || (+x.it.ts || 0) > (+cur.it.ts || 0) || (i === 1 && (+x.it.ts || 0) === (+cur.it.ts || 0))) all[id] = x; });
+        });
+        const out = {}; QUADRANTS.forEach(function (q) { out[q.id] = []; });
+        Object.keys(all).forEach(function (id) { const x = all[id]; if (tomb[id] && tomb[id] >= (+x.it.ts || 0)) return; out[x.q].push(x.it); });
+        QUADRANTS.forEach(function (q) { out[q.id].sort(function (x, y) { return String(x.createdAt || "").localeCompare(String(y.createdAt || "")); }); });
+        const ahora = Date.now(); out._borrados = {};
+        Object.keys(tomb).forEach(function (id) { if (ahora - tomb[id] < TABLERO_BORRADOS_MS) out._borrados[id] = tomb[id]; });
+        return out;
+      }
+      let _tabPushTimer = null, _tabPullTs = 0;
+      async function _tabSync(subir) {
+        if (!navigator.onLine || typeof _sGet !== "function" || !_userAccessToken) return false;
+        try {
+          const rows = await _sGet("config", "key=eq." + TABLERO_NUBE_KEY + "&select=value");
+          const remoto = (rows && rows[0] && rows[0].value) || {};
+          const local = tableroLoad();
+          const unido = _tabMerge(local, remoto);
+          const cambioLocal = JSON.stringify(unido) !== JSON.stringify(local);
+          if (cambioLocal) localStorage.setItem(TABLERO_KEY, JSON.stringify(unido));
+          if (subir || JSON.stringify(unido) !== JSON.stringify(_tabMerge(remoto, {}))) await _sUpsert("config", { key: TABLERO_NUBE_KEY, value: unido }, "key");
+          return cambioLocal;
+        } catch (e) { console.warn("[Tablero] sync:", e); return false; }
+      }
       function tableroSave(data) {
         try {
+          // Hora del cambio por renglón y marcas de borrado (comparando con lo que había).
+          const antes = _tabIndex(tableroLoad()), ahora = Date.now(), nuevo = _tabIndex(data);
+          data._borrados = Object.assign({}, (tableroLoad() || {})._borrados || {}, data._borrados || {});
+          Object.keys(nuevo).forEach(function (id) {
+            const x = nuevo[id], y = antes[id];
+            if (!y || y.q !== x.q || JSON.stringify(Object.assign({}, y.it, { ts: 0 })) !== JSON.stringify(Object.assign({}, x.it, { ts: 0 }))) x.it.ts = ahora;
+          });
+          Object.keys(antes).forEach(function (id) { if (!nuevo[id]) data._borrados[id] = ahora; });
           localStorage.setItem(TABLERO_KEY, JSON.stringify(data));
+          clearTimeout(_tabPushTimer);
+          _tabPushTimer = setTimeout(function () { _tabSync(true); }, 1500);
         } catch (e) {
           console.warn("[Tablero] No se pudo guardar:", e);
         }
@@ -31097,56 +31470,73 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       // Consulta el último scrape en winlab_labs cada 60s y actualiza el
       // botón del toolbar con estado: fresh (<24h) / stale (1-3d) / error (>3d).
       //
+      // Horario del robot de WinLab (pg_cron, UTC): 11:00, 18:30 y 02:07 = 05:00, 12:30 y 20:07 en León.
+      const WL_ROBOT_UTC = [[11, 0], [18, 30], [2, 7]];
+      // Última corrida programada que ya debió terminar (con 2 h de margen) → Date · null
+      function _wlUltimaProgramada(ahora) {
+        const t = ahora || Date.now(); let mejor = null;
+        for (let d = 0; d <= 2; d++) {
+          WL_ROBOT_UTC.forEach(function (hm) {
+            const x = new Date(t); x.setUTCDate(x.getUTCDate() - d); x.setUTCHours(hm[0], hm[1], 0, 0);
+            if (x.getTime() + 2 * 3600000 <= t && (!mejor || x > mejor)) mejor = x;
+          });
+        }
+        return mejor;
+      }
+      window._wlRobotEstado = window._wlRobotEstado || null;   // { last: Date|null, status, txt, title }
+      // Pinta el botón SIN borrar el punto y el texto del indicador (antes init/alternar los reemplazaban por «💧 Auto ON»).
+      function _winlabBtnPaint() {
+        const btn = document.getElementById("winlab-autosync-btn"); if (!btn) return;
+        let dot = document.getElementById("scraper-status-dot"), txt = document.getElementById("scraper-status-text");
+        if (!dot || !txt) {
+          btn.innerHTML = '<span id="scraper-status-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span><span id="scraper-status-text"></span>';
+          dot = document.getElementById("scraper-status-dot"); txt = document.getElementById("scraper-status-text");
+        }
+        const on = typeof isWinlabAutoSyncEnabled === "function" ? isWinlabAutoSyncEnabled() : true;
+        const e = window._wlRobotEstado;
+        txt.textContent = (e ? e.txt : "💧 Robot") + (on ? "" : " · ⏸");
+        btn.setAttribute("data-scraper-status", e ? e.status : "");
+        btn.title = (e ? e.title + "\n" : "") + "Click: traer los labs ahora. Click derecho: " + (on ? "pausar" : "reanudar") + " la sincronización automática en este iPad (hoy: " + (on ? "activa" : "en pausa") + ").";
+      }
+      window._winlabBtnPaint = _winlabBtnPaint;   // init y «alternar» viven fuera de este bloque
+      window._wlUltimaProgramada = _wlUltimaProgramada;
       async function checkScraperStatus() {
-        const btn = document.getElementById("winlab-autosync-btn");
-        const dot = document.getElementById("scraper-status-dot");
-        const txt = document.getElementById("scraper-status-text");
-        if (!btn || !dot || !txt) return;
-
         try {
-          // Usar el cliente Supabase global ya inicializado
-          if (typeof supabase === "undefined" || !supabase) return;
-          const { data, error } = await supabase
-            .from("winlab_labs")
-            .select("scraped_at")
-            .order("scraped_at", { ascending: false })
-            .limit(1);
-          if (error) throw error;
-          if (!data || !data.length) {
-            btn.setAttribute("data-scraper-status", "error");
-            txt.textContent = "💧 Sin sync";
-            btn.title = "El scraper nunca ha corrido. Click izq: sync manual. Click der: toggle auto.";
-            return;
+          if (typeof _sGet !== "function" || !_userAccessToken) return;   // antes usaba la librería (supabase.from) y nunca corría
+          let last = null;
+          const r1 = await _sGet("winlab_match", "select=checked_at&checked_at=not.is.null&order=checked_at.desc&limit=1").catch(function () { return null; });
+          if (Array.isArray(r1) && r1[0] && r1[0].checked_at) last = new Date(r1[0].checked_at);
+          if (!last) {
+            const r2 = await _sGet("winlab_labs", "select=scraped_at&order=scraped_at.desc&limit=1");
+            if (Array.isArray(r2) && r2[0] && r2[0].scraped_at) last = new Date(r2[0].scraped_at);
           }
-          const last = new Date(data[0].scraped_at);
-          const ageH = (Date.now() - last.getTime()) / 3600000;
-          const fmt = (d) => {
-            const today = new Date();
-            const diffD = Math.floor((today - d) / 86400000);
-            if (diffD === 0) return "hoy " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-            if (diffD === 1) return "ayer " + d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
-            return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short" });
+          const z = function (n) { return String(n).padStart(2, "0"); };
+          const fmt = function (d) {
+            const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+            const dia = new Date(d); dia.setHours(0, 0, 0, 0);
+            const diffD = Math.round((hoy - dia) / 86400000);
+            const hm = z(d.getHours()) + ":" + z(d.getMinutes());
+            return diffD === 0 ? "hoy " + hm : (diffD === 1 ? "ayer " + hm : z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + hm);
           };
-          if (ageH < 24) {
-            btn.setAttribute("data-scraper-status", "fresh");
-            txt.textContent = "💧 " + fmt(last);
-            btn.title = `Scraper OK. Última corrida: ${last.toLocaleString("es-MX")}. Click: sync manual.`;
-          } else if (ageH < 72) {
-            btn.setAttribute("data-scraper-status", "stale");
-            txt.textContent = "💧 " + fmt(last);
-            btn.title = `Scraper algo viejo. Última corrida: ${last.toLocaleString("es-MX")}. Click: sync manual.`;
+          if (!last || isNaN(last.getTime())) {
+            window._wlRobotEstado = { last: null, status: "error", txt: "💧 Robot sin datos", title: "El robot de WinLab no ha registrado ninguna corrida." };
           } else {
-            btn.setAttribute("data-scraper-status", "error");
-            txt.textContent = "💧 " + fmt(last) + " ⚠";
-            btn.title = `Scraper desactualizado >72h. Última corrida: ${last.toLocaleString("es-MX")}. Click: sync manual.`;
+            const prog = _wlUltimaProgramada();
+            const atrasado = prog && last < prog;
+            window._wlRobotEstado = {
+              last: last, status: atrasado ? "error" : "fresh",
+              txt: "💧 Robot: " + fmt(last) + (atrasado ? " ⚠" : ""),
+              title: "Última corrida del robot de WinLab: " + last.toLocaleString("es-MX") + "." + (atrasado ? " ⚠️ No corrió a las " + z(prog.getHours()) + ":" + z(prog.getMinutes()) + " (hora programada): revisa GitHub Actions / el worker." : " Corre a las 05:00, 12:30 y 20:07.")
+            };
           }
         } catch (e) {
           console.warn("[ScraperStatus]", e);
-          btn.setAttribute("data-scraper-status", "error");
-          txt.textContent = "💧 Sin conexión";
+          window._wlRobotEstado = { last: null, status: "error", txt: "💧 Robot ?", title: "No se pudo consultar el estado del robot (sin conexión)." };
         }
+        _winlabBtnPaint();
       }
 
+      window.checkScraperStatus = checkScraperStatus;
       // Verificar al cargar (con delay para que supabase esté listo) + cada 60s
       function startScraperWatcher() {
         setTimeout(checkScraperStatus, 2000);
@@ -31163,6 +31553,14 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         const data = tableroLoad();
         const container = document.getElementById("view-tablero");
         if (!container) return;
+        // Bajar lo de los demás iPads (como mucho cada 20 s); si cambió algo y nadie escribe en el tablero, se repinta.
+        if (Date.now() - _tabPullTs > 20000) {
+          _tabPullTs = Date.now();
+          _tabSync(false).then(function (cambio) {
+            const a = document.activeElement;
+            if (cambio && !(a && a.classList && a.classList.contains("tablero-text")) && document.getElementById("view-tablero")) window.renderTablero();
+          });
+        }
 
         const today = new Date().toLocaleDateString("es-MX", {
           weekday: "long", year: "numeric", month: "long", day: "numeric"
@@ -31966,6 +32364,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       cultivosByExp = map;
       cultivosLoaded = true;
       cultivosError = null;
+      window.__cultivosReintentos = 0;
       // Refrescar la vista UNA vez, sin clobberear edición activa ni modales abiertos.
       try {
         var modalOpen = !!document.querySelector(".modal[style*='flex'], .modal-overlay[style*='flex']");
@@ -31978,6 +32377,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       var _cNet = typeof isLikelyNetworkError === "function" && isLikelyNetworkError(e);
       cultivosLoaded = !_cNet; // error real del servidor: no reintentar en loop
       if (_cNet) setTimeout(function () { loadCultivos(false); }, 60000);
+      // Error del servidor (p. ej. la consulta se pasó del tiempo): antes no se reintentaba nunca y la caja quedaba vacía
+      // sin aviso toda la sesión. Ahora 3 reintentos espaciados (5 min) y la tarjeta lo dice.
+      else if ((window.__cultivosReintentos = (window.__cultivosReintentos || 0) + 1) <= 3) setTimeout(function () { loadCultivos(true); }, 5 * 60000);
+      try { if (!_cNet && !document.querySelector(".modal[style*='flex'], .modal-overlay[style*='flex']") && typeof renderViewSoft === "function") renderViewSoft(); } catch (_) {}
       try { console.warn("[v29] loadCultivos:", cultivosError); } catch (_) {}
     }
   }
@@ -31987,6 +32390,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     try {
       if (!p || !p.exp) return "";
       var rows = cultivosByExp[plNormExp(p.exp)];
+      // Solo errores del servidor (cultivosLoaded queda en true); sin red no se avisa en cada tarjeta: ya se reintenta solo.
+      if ((!rows || !rows.length) && cultivosError && cultivosLoaded) return "<div data-testid='cultivos-lab-error' style='font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:4px 8px;margin:4px 0'>🧫 No se pudieron cargar los cultivos de WinLab" + ((window.__cultivosReintentos || 0) <= 3 ? " (se reintenta en unos minutos)" : "") + ". Los del PDF siguen en 🦠 Cultivos.</div>";
       if (!rows || !rows.length) return "";
       // Expediente repetido en el censo: la vista une los cultivos por expediente y los repite para cada
       // cama, sin decir de cuál de las dos personas es cada uno (los días anteriores pueden ser de la otra).
@@ -32333,6 +32738,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
 
   /* ─── Exposición global (para onclick y para renderFullCard) ──────────────── */
   window.renderCultivosLabSection = renderCultivosLabSection;
+  window.loadCultivos = loadCultivos;
   window.openPendientesImport = openPendientesImport;
   window.closePendientesImport = closePendientesImport;
   window.plHandlePendientesFile = plHandlePendientesFile;

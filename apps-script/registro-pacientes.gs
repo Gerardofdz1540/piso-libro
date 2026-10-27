@@ -9,6 +9,11 @@
  * versiones de Google Sheets (Archivo → Historial de versiones), y las copias «Respaldo — …» que hizo antes se mandan a la
  * papelera de Drive (30 días para recuperarlas).
  *
+ * ANÁLISIS (27 oct 2026): además de la copia fiel, cada noche recalcula desde la hoja las pestañas «Análisis · Episodios /
+ * Labs / Signos vitales / Cultivos» para estadística: sin nombres (ID seudónimo con SHA-256 y sal secreta), números como
+ * números en las unidades de la app, fechas ISO, reingresos, desenlace con «desconocido» cuando no se registró, y todo lo
+ * que no se pudo usar como dato vacío y explicado. Cada columna está en «Diccionario de variables».
+ *
  * PRIVACIDAD: la hoja tiene nombres y expedientes (datos de salud identificables). Debe quedarse en la carpeta privada.
  * El script solo LEE Supabase (GET) y en el registro de ejecuciones solo escribe conteos y avisos sin datos de pacientes.
  *
@@ -142,6 +147,11 @@ function actualizarRegistro() {
     datos.patients = leer('patients', 'id,cama,nombre,exp,dx,edad,esp,seccion,adscrito,residente,ingreso,estado,created_at,updated_at', 'id', '', 200);
     datos.notes = leer('notes', 'patient_id,app,pa,drenajes,qx,manejo,sangrado,sv,balance,pendientes,checklist,lab_history,imagen_history,misc,cronologia,updated_at', 'patient_id', '', 20);
     datos.archive = leerCursor('archive', 'id,patient_data,note_data,archived_at', 10);
+    // Copias de la Papelera a las que alguien les registró el motivo del egreso después (pueden ser viejas: la ventana de
+    // archived_at no las ve). _egreso_tipo_ts es UTC con formato fijo: se compara como texto.
+    var ultima = props.getProperty('REG_ULTIMA_CORRIDA') || '';
+    var desdeTipo = ultima && !isNaN(Date.parse(ultima)) ? new Date(Date.parse(ultima) - REG_MARGEN_INCREMENTAL_MS).toISOString().slice(0, 19) + 'Z' : '';
+    datos.archive = regUnirPorId_(datos.archive, leer('archive', 'id,patient_data,note_data,archived_at', 'id', desdeTipo ? 'note_data->>_egreso_tipo_ts=gte.' + desdeTipo : 'note_data->>_egreso_tipo_ts=not.is.null', 10));
     // TODAS las copias de la Papelera de cada episodio que hoy está en la base (censo o Papelera leída hoy): así la unión
     // de copias no depende de cuáles cayeron en la ventana incremental (si no, lo que solo traía una copia vieja quedaba
     // en blanco o marcado «Vigente: No» al día siguiente).
@@ -161,12 +171,18 @@ function actualizarRegistro() {
     datos.ris = opcional('ris_estudios', function () { return leerCursor('ris_estudios', 'id,patient_id,exp,paciente,fecha,hora,modalidad,estudios,critico,reporte_estado,reporte,reporte_url,scraped_at', 200); });
     var nuevo = regConstruir(datos, hoy);
     try { regQuitarCopiasViejas_(libro, props); } catch (e) { avisos.push('No se pudieron quitar las copias de respaldo viejas (' + regCausa_(e) + ').'); }
-    var cuentas = {}, cortado = false;
+    var cuentas = {}, cortado = false, fusionadas = {};
     // Dentro de una pestaña, ningún setValues empieza después de 5 min 40 s (escribir a medias es seguro: cada fila va a
     // su renglón por clave y la siguiente vuelta completa lo que falte).
     var corte = function () { return transcurrido() > REG_LIMITE_MS + 25000; };
     REG_PESTANAS.forEach(function (cfg) {
-      if (cortado || (cfg.fuente && omitidas[cfg.fuente])) return;
+      if (cortado) return;
+      if (cfg.fuente && omitidas[cfg.fuente]) {
+        // No se tocan hoy, pero lo que ya tienen sí cuenta para las pestañas de análisis.
+        var h = libro.getSheetByName(cfg.nombre);
+        fusionadas[cfg.nombre] = h ? regLeerPestana_(h, cfg).filas : [];
+        return;
+      }
       if (transcurrido() > REG_LIMITE_MS) { cortado = true; return; }
       var hoja = libro.getSheetByName(cfg.nombre);
       if (!hoja) { hoja = libro.insertSheet(cfg.nombre); regAjustarColumnas_(hoja, cfg.columnas.length); }
@@ -180,8 +196,20 @@ function actualizarRegistro() {
         cortado = true; return;
       }
       cuentas[cfg.nombre] = filas.length;
+      fusionadas[cfg.nombre] = filas;
     });
     if (cortado) { pendiente = true; avisos.push('Se acabó el tiempo al escribir: lo que faltó se escribe en la siguiente vuelta.'); }
+    // Pestañas de análisis (sin nombres, números como números): solo con el registro completo de esta corrida. Si fallan,
+    // el registro ya quedó escrito: se avisa y se recalculan en la siguiente corrida.
+    else if (transcurrido() > REG_LIMITE_MS) avisos.push('No alcanzó el tiempo para las pestañas de análisis: se actualizan en la siguiente corrida.');
+    else {
+      try { regEscribirAnalisis_(libro, props, fusionadas, nuevo.restauraciones, hoy, corte, cuentas).forEach(function (a) { avisos.push(a); }); }
+      catch (e) {
+        if (e && e.regTiempo) throw e;
+        avisos.push(e && e.regCorte ? 'Se acabó el tiempo al escribir las pestañas de análisis: se completan en la siguiente corrida.'
+          : 'No se pudieron actualizar las pestañas de análisis (' + regCausa_(e) + '): el registro sí quedó escrito.');
+      }
+    }
     var dic = regHojaDiccionario_(libro), celdas = regCeldas_(libro);
     if (celdas > REG_CELDAS_AVISO * REG_CELDAS_MAX) avisos.push('El registro usa el ' + Math.round(100 * celdas / REG_CELDAS_MAX) + '% de las celdas que admite Sheets: hay que pasar lo viejo a un libro histórico.');
     // Los cursores avanzan solo cuando todo lo leído ya quedó escrito.
@@ -810,11 +838,16 @@ function regConstruir(datos, hoy) {
       if (!regTexto(pd.nombre).trim() && !regTexto(pd.exp).trim()) return;
       var id = regTexto(pd._supa_id || pd.id || ('archivo-' + a.id));
       var nd = regUnirNotas(nd0, nd0._copia_base);
-      var motivo = regTexto(nd0._egreso || (/^(ALTA|DEFUNCI[OÓ]N)$/i.test(regTexto(pd.estado)) ? pd.estado : '') || 'EGRESO');
+      var motivo = REG_EGRESO_APP[regTexto(nd0._egreso_tipo)] ? REG_EGRESO_APP[regTexto(nd0._egreso_tipo)] + ' (registrado en la app)'
+        : regTexto(nd0._egreso || (/^(ALTA|DEFUNCI[OÓ]N)$/i.test(regTexto(pd.estado)) ? pd.estado : '') || 'EGRESO');
+      var egreso = regFecha(nd0._egresoFecha) || regFechaLocal(a.archived_at);
       var previo = episodios[id];
+      // Una copia técnica más nueva (rescate de cambios sin subir, cama reasignada a otra persona, borrado en la base) no
+      // tapa el motivo ni la fecha del egreso real que dejó una copia anterior (27 oct 2026: para estudios).
+      if (previo && regEgresoPeso(motivo, pd.estado) < regEgresoPeso(previo.motivo, previo.p.estado)) { motivo = previo.motivo; egreso = previo.egreso; }
       var p = previo ? Object.assign({}, previo.p) : {};
       Object.keys(pd).forEach(function (k) { if (!regVacio(pd[k])) p[k] = pd[k]; });
-      agregar(id, { id: id, p: p, n: previo ? regUnirNotas(nd, previo.n) : nd, estado: 'Egresado', motivo: motivo, egreso: regFecha(nd0._egresoFecha) || regFechaLocal(a.archived_at), fuente: 'Papelera (archive)' });
+      agregar(id, { id: id, p: p, n: previo ? regUnirNotas(nd, previo.n) : nd, estado: 'Egresado', motivo: motivo, egreso: egreso, fuente: 'Papelera (archive)' });
     });
   // En el censo ahora: el censo manda; lo que traiga la Papelera del mismo id rellena lo que le falte.
   regArr(datos.patients).forEach(function (p) {
@@ -824,14 +857,15 @@ function regConstruir(datos, hoy) {
     agregar(id, { id: id, p: p, n: previo ? regUnirNotas(regObj(notasPorId[p.id]), previo.n) : regObj(notasPorId[p.id]), estado: 'Hospitalizado', motivo: '', egreso: '', fuente: 'Censo (patients)' });
   });
   // Restaurar desde la Papelera crea otro id: «Episodio relacionado» une las dos partes de la misma hospitalización.
-  var relacion = {};
+  var relacion = {}, restauraciones = [];
   regArr(datos.restauraciones).forEach(function (r) {
     var de = regTexto(r && r.de), a = regTexto(r && r.a);
     if (!de || !a || de === a) return;
     relacion[de] = 'Continúa en ' + a;
     relacion[a] = 'Viene de ' + de;
+    restauraciones.push([de, a]);
   });
-  var out = { episodiosHoy: {}, relacion: relacion };
+  var out = { episodiosHoy: {}, relacion: relacion, restauraciones: restauraciones };
   REG_PESTANAS.forEach(function (cfg) { out[cfg.nombre] = []; });
   function fila(pestana, o) { out[pestana].push(o); }
 
@@ -981,6 +1015,8 @@ function regFusionar(viejas, nuevas, cfg, episodiosHoy, hoy, relacion) {
     var c = Object.assign({}, r);
     if (cfg.modo === 'pacientes' && c['Estado en registro'] === 'Hospitalizado') c['Estado en registro'] = 'Salió de la base sin egreso registrado';
     if (cfg.modo === 'vigente' && episodiosHoy && episodiosHoy[regTexto(c['ID episodio'])]) c['Vigente'] = 'No';
+    // Pestañas de análisis: se recalculan completas; lo que hoy ya no se genera se conserva marcado.
+    if (cfg.modo === 'derivada') c['Vigente'] = 'No';
     out.push(c);
   });
   ordenHoy.forEach(function (k) { if (!vistas[k]) { vistas[k] = true; var h = Object.assign({}, hoyPorClave[k]); delete h.__fila; out.push(h); } });
@@ -991,6 +1027,771 @@ function regFusionar(viejas, nuevas, cfg, episodiosHoy, hoy, relacion) {
     var c = Object.assign({}, r); c['Episodio relacionado'] = rel; return c;
   });
   return out;
+}
+
+// ─── Análisis para investigación (27 oct 2026) ───────────────────────────────────────────────────────────────────
+// Las pestañas de arriba son la copia FIEL de la app (texto tal cual, con nombres). Las «Análisis · …» son su versión
+// para estadística: se recalculan en cada corrida desde lo que YA está en la hoja (así incluyen a todos los egresados
+// de siempre, no solo lo que trae la base hoy), sin nombres ni expedientes (ID seudónimo), con números como números en
+// las unidades de la app, fechas ISO (AAAA-MM-DD), códigos fijos y una columna de observaciones con todo lo que no se
+// pudo tomar como dato (muestra rechazada, unidad desconocida, valor imposible, texto). Nada se adivina: lo dudoso
+// queda vacío y dicho. Una hospitalización restaurada desde la Papelera (otro id en la base) es UN episodio.
+var REG_FMT_DEC = '0.0#####', REG_FMT_ENT = '0';
+var REG_AN_EPISODIOS = 'Análisis · Episodios', REG_AN_LABS = 'Análisis · Labs', REG_AN_SIGNOS = 'Análisis · Signos vitales', REG_AN_CULTIVOS = 'Análisis · Cultivos';
+var REG_CLAVE = { nombre: 'Clave de seudónimos', modo: 'acumula', clave: ['ID episodio'],
+  columnas: ['ID episodio', 'Expediente', 'Nombre', 'ID paciente (análisis)', 'ID episodio (análisis)', 'Identidad del paciente por'] };
+
+// Laboratorio: COPIA de LAB_FIELDS de la app (index.html; la prueba compara clave, unidad, rangos y críticos) con el
+// nombre completo para el encabezado. t: 'texto' = cualitativo (la app no le pone rango). extra: claves que la app
+// guarda pero no están en su tabla (sin rango; la unidad es la del reporte de WinLab).
+var REG_LAB_META = [
+  { k: 'hb', n: 'Hemoglobina', u: 'g/dL', lo: 12, hi: 17, cl: 7, ch: 20 },
+  { k: 'hct', n: 'Hematocrito', u: '%', lo: 36, hi: 48, cl: 20 },
+  { k: 'leucos', n: 'Leucocitos', u: 'k/µL', lo: 4, hi: 10, cl: 2, ch: 30 },
+  { k: 'neu_abs', n: 'Neutrófilos absolutos', u: 'k/µL', lo: 1.5, hi: 6.6, cl: 0.5 },
+  { k: 'neu_pct', n: 'Neutrófilos', u: '%', lo: 40, hi: 75 },
+  { k: 'lin_abs', n: 'Linfocitos absolutos', u: 'k/µL', lo: 1.0, hi: 3.5 },
+  { k: 'lin_pct', n: 'Linfocitos', u: '%', lo: 20, hi: 45 },
+  { k: 'mon_abs', n: 'Monocitos absolutos', u: 'k/µL', lo: 0.1, hi: 1.0 },
+  { k: 'mon_pct', n: 'Monocitos', u: '%', lo: 2, hi: 12 },
+  { k: 'eos_abs', n: 'Eosinófilos absolutos', u: 'k/µL', lo: 0, hi: 0.7 },
+  { k: 'eos_pct', n: 'Eosinófilos', u: '%', lo: 0, hi: 6 },
+  { k: 'bas_abs', n: 'Basófilos absolutos', u: 'k/µL', lo: 0, hi: 0.2 },
+  { k: 'bas_pct', n: 'Basófilos', u: '%', lo: 0, hi: 2 },
+  { k: 'plaq', n: 'Plaquetas', u: 'k/µL', lo: 100, hi: 400, cl: 50, ch: 1000 },
+  { k: 'mcv', n: 'VCM', u: 'fL', lo: 80, hi: 95 },
+  { k: 'mch', n: 'HCM', u: 'pg', lo: 27, hi: 31 },
+  { k: 'mchc', n: 'CHCM', u: 'g/dL', lo: 32, hi: 36 },
+  { k: 'rdw', n: 'RDW', u: '%', lo: 12, hi: 16 },
+  { k: 'mpv', n: 'VPM', u: 'fL', lo: 9, hi: 13 },
+  { k: 'erit', n: 'Eritrocitos', u: '', extra: true },
+  { k: 'glu', n: 'Glucosa', u: 'mg/dL', lo: 70, hi: 110, cl: 50, ch: 400 },
+  { k: 'hba1c', n: 'Hemoglobina glucosilada', u: '%', extra: true },
+  { k: 'urea', n: 'Urea', u: 'mg/dL', lo: 0, hi: 43 },
+  { k: 'bun', n: 'BUN', u: 'mg/dL', lo: 7, hi: 20 },
+  { k: 'cr', n: 'Creatinina', u: 'mg/dL', lo: 0, hi: 1.25 },
+  { k: 'urico', n: 'Ácido úrico', u: 'mg/dL', lo: 2.5, hi: 7 },
+  { k: 'na', n: 'Sodio', u: 'mmol/L', lo: 135, hi: 145, cl: 120, ch: 160 },
+  { k: 'k', n: 'Potasio', u: 'mmol/L', lo: 3.5, hi: 5.1, cl: 2.8, ch: 6.0 },
+  { k: 'cl', n: 'Cloro', u: 'mmol/L', lo: 98, hi: 107 },
+  { k: 'ca', n: 'Calcio', u: 'mg/dL', lo: 8.5, hi: 10.5, cl: 6.5, ch: 13.0 },
+  { k: 'mg', n: 'Magnesio', u: 'mg/dL', lo: 1.7, hi: 2.4, cl: 1.0, ch: 4.9 },
+  { k: 'p', n: 'Fósforo', u: 'mg/dL', lo: 2.5, hi: 4.5, cl: 1.0 },
+  { k: 'alb', n: 'Albúmina', u: 'g/dL', lo: 3.5, hi: 5.0 },
+  { k: 'ptot', n: 'Proteínas totales', u: 'g/dL', lo: 6.0, hi: 8.3 },
+  { k: 'glob', n: 'Globulinas', u: 'g/dL', lo: 2.0, hi: 3.5 },
+  { k: 'pcr', n: 'Proteína C reactiva', u: 'mg/L', lo: 0, hi: 10 },
+  { k: 'pct', n: 'Procalcitonina', u: 'ng/mL', lo: 0, hi: 0.5 },
+  { k: 'vsg', n: 'VSG', u: 'mm/h', lo: 0, hi: 20 },
+  { k: 'lac', n: 'Lactato', u: 'mmol/L', lo: 0, hi: 2, ch: 4 },
+  { k: 'tp', n: 'TP', u: 'seg', lo: 11, hi: 14 },
+  { k: 'tp_testigo', n: 'TP testigo', u: 'seg', extra: true },
+  { k: 'inr', n: 'INR', u: '', lo: 0, hi: 1.2, ch: 3 },
+  { k: 'ttp', n: 'TTP', u: 'seg', lo: 25, hi: 35, ch: 100 },
+  { k: 'fibrinogeno', n: 'Fibrinógeno', u: 'mg/dL', lo: 200, hi: 400, cl: 100 },
+  { k: 'dimero_d', n: 'Dímero D', u: 'ng/mL', lo: 0, hi: 500 },
+  { k: 'ast', n: 'AST', u: 'U/L', lo: 0, hi: 40 },
+  { k: 'alt', n: 'ALT', u: 'U/L', lo: 0, hi: 40 },
+  { k: 'bt', n: 'Bilirrubina total', u: 'mg/dL', lo: 0, hi: 1.2 },
+  { k: 'bd', n: 'Bilirrubina directa', u: 'mg/dL', lo: 0, hi: 0.3 },
+  { k: 'bi', n: 'Bilirrubina indirecta', u: 'mg/dL', lo: 0, hi: 0.8 },
+  { k: 'ggt', n: 'GGT', u: 'U/L', lo: 0, hi: 61 },
+  { k: 'fa', n: 'Fosfatasa alcalina', u: 'U/L', lo: 44, hi: 147 },
+  { k: 'amilasa', n: 'Amilasa', u: 'U/L', lo: 0, hi: 100 },
+  { k: 'lipasa', n: 'Lipasa', u: 'U/L', lo: 0, hi: 60 },
+  { k: 'ph', n: 'pH', u: '', lo: 7.35, hi: 7.45, cl: 7.2, ch: 7.6 },
+  { k: 'pco2', n: 'pCO2', u: 'mmHg', lo: 35, hi: 45, cl: 20, ch: 70 },
+  { k: 'po2', n: 'pO2', u: 'mmHg', lo: 80, hi: 100, cl: 40 },
+  { k: 'hco3', n: 'HCO3', u: 'mEq/L', lo: 22, hi: 26, cl: 10, ch: 40 },
+  { k: 'be', n: 'Exceso de base', u: 'mEq/L', lo: -2, hi: 2 },
+  { k: 'sato2', n: 'SatO2 (gasometría)', u: '%', lo: 95, hi: 100, cl: 85 },
+  { k: 'tropI', n: 'Troponina I', u: 'pg/mL', lo: 0, hi: 40, ch: 100 },
+  { k: 'tropT', n: 'Troponina T', u: 'ng/mL', lo: 0, hi: 0.014, ch: 0.05 },
+  { k: 'ck', n: 'CK', u: 'U/L', lo: 0, hi: 170, ch: 5000 },
+  { k: 'ck_mb', n: 'CK-MB', u: 'U/L', lo: 0, hi: 25 },
+  { k: 'ldh', n: 'LDH', u: 'U/L', lo: 140, hi: 280 },
+  { k: 'bnp', n: 'BNP', u: 'pg/mL', lo: 0, hi: 100 },
+  { k: 'nt_probnp', n: 'NT-proBNP', u: 'pg/mL', lo: 0, hi: 125 },
+  { k: 'mioglobina', n: 'Mioglobina', u: 'ng/mL', lo: 0, hi: 90 },
+  { k: 'ferritina', n: 'Ferritina', u: 'ng/mL', lo: 30, hi: 300 },
+  { k: 'colest', n: 'Colesterol total', u: 'mg/dL', lo: 0, hi: 200 },
+  { k: 'hdl', n: 'HDL', u: 'mg/dL', lo: 40, hi: 100 },
+  { k: 'ldl', n: 'LDL', u: 'mg/dL', lo: 0, hi: 130 },
+  { k: 'vldl', n: 'VLDL', u: 'mg/dL', lo: 0, hi: 30 },
+  { k: 'trig', n: 'Triglicéridos', u: 'mg/dL', lo: 0, hi: 150, ch: 1000 },
+  { k: 'tsh', n: 'TSH', u: 'µUI/mL', lo: 0.4, hi: 4.0 },
+  { k: 'ego_color', n: 'Orina: color', u: '', t: 'texto' },
+  { k: 'ego_asp', n: 'Orina: aspecto', u: '', t: 'texto' },
+  { k: 'ego_dens', n: 'Orina: densidad', u: '', lo: 1.005, hi: 1.030 },
+  { k: 'ego_ph', n: 'Orina: pH', u: '', lo: 5, hi: 8 },
+  { k: 'ego_leuco', n: 'Orina: leucocitos', u: 'u/µL', lo: 0, hi: 10 },
+  { k: 'ego_hem', n: 'Orina: hematíes', u: 'u/µL', lo: 0, hi: 5 },
+  { k: 'ego_nitri', n: 'Orina: nitritos', u: '', t: 'texto' },
+  { k: 'ego_bact', n: 'Orina: bacterias', u: '', t: 'texto' },
+  { k: 'ego_prot', n: 'Orina: proteínas', u: '', t: 'texto' },
+  { k: 'ego_glu', n: 'Orina: glucosa', u: '', t: 'texto' }
+];
+// Claves viejas de la app (antes de la tabla actual) → la de hoy.
+var REG_LAB_ALIAS = { neutro_abs: 'neu_abs', neutro_pct: 'neu_pct', linfo_abs: 'lin_abs', linfo_pct: 'lin_pct', mono_abs: 'mon_abs', hcm: 'mch', hto: 'hct', vcm: 'mcv' };
+// Claves que no son estudios (identificadores o marcas de la entrada): nunca pasan al análisis.
+var REG_LAB_NO_ESTUDIO = /^(paciente|nombre|exp|expediente|cama|fecha_labs|hora_labs|winlab_paciente|edad|sexo)$|^_/i;
+// COPIA de LAB_IMPOSIBLE de la app (valores fisiológicamente imposibles en las unidades de la tabla).
+var REG_LAB_IMPOSIBLE = { hb: [1, 25], hct: [3, 75], leucos: [0.05, 500], plaq: [1, 3000], na: [90, 200], k: [0.8, 12], cl: [50, 160], cr: [0.05, 40],
+  glu: [5, 2500], ca: [2, 25], mg: [0.2, 12], p: [0.2, 25], alb: [0.3, 8], bt: [0, 80], tp: [5, 200], ttp: [10, 300], inr: [0.5, 25], ph: [6.5, 8],
+  pco2: [5, 200], hco3: [1, 70], lac: [0, 40], fibrinogeno: [10, 2000] };
+var REG_LAB_POR_CLAVE = {};
+REG_LAB_META.forEach(function (m) { REG_LAB_POR_CLAVE[m.k] = m; });
+function regLabColumna(m) { return m.n + (m.u ? ' (' + m.u + ')' : ''); }
+// Resúmenes de laboratorio por episodio: [clave, 'min' | 'max' | 'primero', encabezado].
+var REG_LAB_RESUMEN = [
+  ['hb', 'min', 'Hb mínima (g/dL)'], ['leucos', 'max', 'Leucocitos máximos (k/µL)'], ['plaq', 'min', 'Plaquetas mínimas (k/µL)'],
+  ['cr', 'primero', 'Creatinina inicial (mg/dL)'], ['cr', 'max', 'Creatinina máxima (mg/dL)'], ['na', 'min', 'Sodio mínimo (mmol/L)'],
+  ['na', 'max', 'Sodio máximo (mmol/L)'], ['k', 'max', 'Potasio máximo (mmol/L)'], ['glu', 'max', 'Glucosa máxima (mg/dL)'],
+  ['alb', 'primero', 'Albúmina inicial (g/dL)'], ['pcr', 'max', 'PCR máxima (mg/L)'], ['pct', 'max', 'Procalcitonina máxima (ng/mL)'],
+  ['lac', 'max', 'Lactato máximo (mmol/L)'], ['bt', 'max', 'Bilirrubina total máxima (mg/dL)'], ['inr', 'max', 'INR máximo']
+];
+// Signos vitales: [clave de la pestaña «Signos vitales», encabezado, mínimo posible, máximo posible, unidades que se
+// aceptan escritas después del número, ¿coma de miles?]. Fuera del rango posible → vacío y observación.
+var REG_SV = [
+  ['FC', 'FC (lpm)', 20, 250, /^(LPM|X'?|POR MIN(UTO)?)$/],
+  ['FR', 'FR (rpm)', 4, 80, /^(RPM|X'?|POR MIN(UTO)?)$/],
+  ['Temp', 'Temperatura (°C)', 30, 45, /^[°º]?\s*C$|^[°º]$/],
+  ['SaO2', 'SaO2 (%)', 30, 100, /^%$/],
+  ['O2 L/min', 'O2 (L/min)', 0, 80, /^(L|LT|LTS|LPM|L\/MIN|LITROS?)$/],
+  ['Uresis', 'Uresis (mL)', 0, 15000, /^(ML|CC)$/, true],
+  ['DxTx', 'Glucemia capilar (mg/dL)', 10, 1500, /^MG(\/DL)?$/],
+  ['IU', 'Insulina (UI)', 0, 300, /^(UI|U|UNIDADES)$/],
+  ['Balance', 'Balance (mL)', -20000, 20000, /^(ML|CC)$/, true]
+];
+
+function regEpisodiosColumnas_() {
+  return ['ID episodio', 'ID paciente', 'Partes del registro', 'N.º de episodio del paciente', 'Días desde el egreso previo', 'Es reingreso (≤30 días)', 'Reingreso a 30 días',
+    'Edad (años)', 'Sexo', 'Especialidad', 'Sección', 'Fecha de ingreso', 'Fecha de egreso', 'Días de estancia', 'Estado', 'Egreso observado', 'Tipo de egreso',
+    'Defunción', 'Motivo de egreso (app)', 'Excluir (duplicado)', 'Diagnóstico', 'Cirugías (n)', 'Primera cirugía', 'Días ingreso a 1.ª cirugía', 'Sangrado total (mL)',
+    'Procedimientos', 'Antibiótico (registrado)', 'NPT (registrada)', 'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)',
+    'Fechas con labs (n)', 'Valores críticos (n)']
+    .concat(REG_LAB_RESUMEN.map(function (r) { return r[2]; }))
+    .concat(['Cultivos (n)', 'Cultivos positivos (n)', 'Gérmenes aislados', 'Calidad de datos', 'Vigente']);
+}
+var REG_EP_ENTEROS = ['Partes del registro', 'N.º de episodio del paciente', 'Días desde el egreso previo', 'Es reingreso (≤30 días)', 'Reingreso a 30 días', 'Días de estancia',
+  'Egreso observado', 'Defunción', 'Excluir (duplicado)', 'Cirugías (n)', 'Días ingreso a 1.ª cirugía', 'Antibiótico (registrado)', 'NPT (registrada)',
+  'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)', 'Fechas con labs (n)', 'Valores críticos (n)', 'Cultivos (n)', 'Cultivos positivos (n)'];
+function regFormatos_(enteros, decimales) {
+  var f = {};
+  enteros.forEach(function (c) { f[c] = REG_FMT_ENT; });
+  decimales.forEach(function (c) { f[c] = REG_FMT_DEC; });
+  return f;
+}
+var REG_ANALISIS = [
+  { nombre: REG_AN_EPISODIOS, modo: 'derivada', clave: ['ID episodio'], columnas: regEpisodiosColumnas_(),
+    formatos: regFormatos_(REG_EP_ENTEROS, ['Edad (años)', 'Sangrado total (mL)'].concat(REG_LAB_RESUMEN.map(function (r) { return r[2]; }))) },
+  { nombre: REG_AN_LABS, modo: 'derivada', clave: ['ID episodio', 'Fecha'],
+    columnas: ['ID episodio', 'ID paciente', 'Fecha', 'Día de estancia', 'Fuente'].concat(REG_LAB_META.map(regLabColumna)).concat(['Otros estudios', 'Valores críticos', 'Observaciones', 'Vigente']),
+    formatos: regFormatos_(['Día de estancia'], REG_LAB_META.filter(function (m) { return m.t !== 'texto'; }).map(regLabColumna)) },
+  { nombre: REG_AN_SIGNOS, modo: 'derivada', clave: ['ID episodio', 'Fecha'],
+    columnas: ['ID episodio', 'ID paciente', 'Fecha', 'Día de estancia'].concat(REG_SV.slice(0, 5).map(function (s) { return s[1]; }))
+      .concat(['TA sistólica (mmHg)', 'TA diastólica (mmHg)', 'PAM (mmHg)']).concat(REG_SV.slice(5).map(function (s) { return s[1]; })).concat(['Observaciones', 'Vigente']),
+    formatos: regFormatos_(['Día de estancia'], REG_SV.map(function (s) { return s[1]; }).concat(['TA sistólica (mmHg)', 'TA diastólica (mmHg)', 'PAM (mmHg)'])) },
+  { nombre: REG_AN_CULTIVOS, modo: 'derivada', clave: ['ID cultivo'],
+    columnas: ['ID cultivo', 'ID episodio', 'ID paciente', 'Fecha de toma', 'Hora de toma', 'Día de estancia', 'Tipo', 'Muestra', 'Resultado', 'Positivo', 'Germen',
+      'Sensibles', 'Intermedios', 'Resistentes', 'UFC', 'Fuente', 'Vigente'],
+    formatos: regFormatos_(['Día de estancia', 'Positivo'], []) }
+];
+
+/** Número de un texto: '7.4', '7,4', '<0.05', '+500', '1,200' (con miles: true), con una unidad permitida al final.
+ *  → { n, comp } o null si no es un número limpio (nunca toma el primer número de un texto cualquiera). */
+function regNumero(v, op) {
+  op = op || {};
+  if (typeof v === 'number') return isFinite(v) ? { n: v, comp: '' } : null;
+  var s = regTexto(v).trim().toUpperCase();
+  if (op.prefijo) s = s.replace(op.prefijo, '').trim();
+  var m = /^([<>≤≥])?\s*([+-])?\s*(\d[\d.,]*|[.,]\d+)\s*(.*)$/.exec(s);
+  if (!m) return null;
+  var resto = m[4].trim();
+  if (resto && !(op.unidad && op.unidad.test(resto))) return null;
+  var c = m[3];
+  if (op.miles && /^\d{1,3}(,\d{3})+$/.test(c)) c = c.replace(/,/g, '');
+  else if (/^[1-9]\d{0,2},\d{3}$/.test(c)) return null;   // «1,250»: ¿miles o decimales? No se adivina.
+  else if (/^\d+,\d+$/.test(c)) c = c.replace(',', '.');
+  else if (/^[.,]\d+$/.test(c)) c = '0.' + c.slice(1);
+  if (!/^\d+(\.\d+)?$/.test(c)) return null;
+  var n = parseFloat(c);
+  if (m[2] === '-') n = -n;
+  return isFinite(n) ? { n: n === 0 ? 0 : n, comp: m[1] || '' } : null;
+}
+/** Días de `desde` a `hasta` (fechas ISO), con signo; '' si falta alguna. */
+function regDiasSigno(desde, hasta) {
+  var a = regFecha(desde), b = regFecha(hasta);
+  if (!a || !b) return '';
+  return Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10)) - Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10))) / 86400000);
+}
+/** Edad en años desde el texto del censo: '34', '34 años', '8 meses' (0.67), '15 días' (0.041); '' si no se entiende. */
+function regEdadAnios(v) {
+  var s = regTexto(v).trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (!s) return '';
+  var m = /^(\d{1,3}(?:[.,]\d+)?)\s*(A|ANOS?|ANIOS?|Y)?\.?$/.exec(s), n = '';
+  if (m) n = parseFloat(m[1].replace(',', '.'));
+  else if ((m = /^(\d{1,2})\s*(M|MES|MESES)\.?$/.exec(s))) n = Math.round(parseInt(m[1], 10) / 12 * 100) / 100;
+  else if ((m = /^(\d{1,3})\s*(D|DIAS?)\.?$/.exec(s))) n = Math.round(parseInt(m[1], 10) / 365.25 * 1000) / 1000;
+  return n !== '' && isFinite(n) && n >= 0 && n <= 120 ? n : '';
+}
+/** Sexo con la regla de la app (PLCDS.getSex): 'M', 'F' o ''. */
+function regSexo(v) {
+  var s = regTexto(v).trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (['M', 'MASC', 'MASCULINO', 'H', 'HOMBRE', 'VARON'].indexOf(s) >= 0) return 'M';
+  if (['F', 'FEM', 'FEMENINO', 'MUJER'].indexOf(s) >= 0) return 'F';
+  return '';
+}
+/** Expediente normalizado como la app (_plExpNorm); '' si no parece un expediente (sin 4 dígitos, o solo ceros). */
+function regExpValido(v) {
+  var e = regTexto(v).replace(/[\s\-]/g, '').toUpperCase();
+  return /\d{4,}/.test(e) && !/^0+$/.test(e) ? e : '';
+}
+var REG_PARTICULAS = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1, Y: 1 };
+var REG_SIN_NOMBRE = /^(DESCON[A-Z]*|NN|RN|RECIEN|NACID[OA]|IDENTIF[A-Z]*|IGNORAD[OA]|ANONIM[OA]|PACIENTE|MASCULIN[OA]|FEMENIN[OA]|XX+)$/;
+function regPalabrasNombre(n) {
+  return regTexto(n).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z\s]/g, ' ').split(/\s+/)
+    .filter(function (w) { return w.length >= 2 && !REG_PARTICULAS[w]; });
+}
+function regUnaLetra(x, y) {
+  if (Math.abs(x.length - y.length) > 1) return false;
+  var i = 0, j = 0, d = 0;
+  while (i < x.length && j < y.length) {
+    if (x[i] === y[j]) { i++; j++; continue; }
+    if (++d > 1) return false;
+    if (x.length > y.length) i++; else if (y.length > x.length) j++; else { i++; j++; }
+  }
+  return d + (x.length - i) + (y.length - j) <= 1;
+}
+/** ¿Dos nombres con el MISMO expediente pueden ser la misma persona? Todas las palabras del más corto están en el otro
+ *  (una sola puede diferir en una letra, si las dos tienen 5 o más). Sin nombre o no identificado (DESCONOCIDO…): sí.
+ *  Si no, son dos personas que comparten expediente (error de captura) y tienen ID paciente distinto. */
+function regMismaPersona(a, b) {
+  var x = regPalabrasNombre(a), y = regPalabrasNombre(b);
+  if (!x.length || !y.length) return true;
+  var sinNombre = function (w) { return REG_SIN_NOMBRE.test(w); };
+  if (x.some(sinNombre) || y.some(sinNombre)) return true;
+  var corto = x.length <= y.length ? x : y, largo = (x.length <= y.length ? y : x).slice(), dif = 0;
+  return corto.every(function (w) {
+    var i = largo.indexOf(w);
+    if (i >= 0) { largo.splice(i, 1); return true; }
+    if (dif || w.length < 5) return false;
+    for (var j = 0; j < largo.length; j++) if (largo[j].length >= 5 && regUnaLetra(w, largo[j])) { largo.splice(j, 1); dif++; return true; }
+    return false;
+  });
+}
+/** Tipo de egreso desde la etiqueta de la app y el estado clínico. La mayoría de los egresos salen del censo de la hoja
+ *  («RETIRADO DEL CENSO (hoja)», «CAMA REASIGNADA (hoja)») sin decir si fue alta o defunción: «Motivo no registrado». */
+// Motivo que una persona registra en la app (Papelera o al dar de alta; función archive_set_egreso de la base).
+var REG_EGRESO_APP = { alta: 'Alta a domicilio', defuncion: 'Defunción', traslado: 'Traslado a otra unidad', alta_voluntaria: 'Alta voluntaria' };
+function regEgresoTipo(motivo, estado) {
+  var m = regTexto(motivo).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  var s = m + ' ' + regTexto(estado).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (/DUPLICADO/.test(m)) return 'Duplicado (no es otro episodio)';
+  if (/BORRADO EN BD/.test(m)) return 'Borrado en la base (revisar)';
+  // Copias de rescate («CAMBIOS DE ESTE iPad SIN SUBIR (alta en otro dispositivo)», cama dada a otra persona): no dicen
+  // el motivo, aunque la etiqueta traiga la palabra «alta».
+  if (/CAMBIOS DE ESTE IPAD|CAMA REASIGNADA \(OTRA PERSONA/.test(m)) return 'Motivo no registrado';
+  if (/DEFUNCI|FALLEC/.test(s)) return 'Defunción';
+  if (/ALTA VOLUNTARIA/.test(s)) return 'Alta voluntaria';
+  if (/TRASLADO/.test(s)) return 'Traslado';
+  if (/(^|[^A-Z])ALTA([^A-Z]|$)/.test(s)) return 'Alta';
+  return 'Motivo no registrado';
+}
+/** Peso de una etiqueta de egreso entre copias del mismo episodio: una copia técnica (rescate de cambios sin subir,
+ *  cama reasignada a otra persona, borrado en la base) nunca tapa el motivo real que dejó otra copia. */
+function regEgresoPeso(motivo, estado) {
+  var m = regTexto(motivo).toUpperCase();
+  if (!m.trim()) return 0;
+  if (/\(REGISTRADO EN LA APP\)$/.test(m)) return 4;   // lo eligió una persona (Papelera o al dar de alta): manda
+  if (/CAMBIOS DE ESTE IPAD|CAMA REASIGNADA \(OTRA PERSONA|BORRADO EN BD/.test(m)) return 1;
+  var t = regEgresoTipo(motivo, estado);
+  return (t === 'Motivo no registrado' || t === 'Duplicado (no es otro episodio)') ? 2 : 3;
+}
+function regNumCelda(n) { return typeof n === 'number' && isFinite(n) ? n : ''; }
+function regRedondear(n, d) { var f = Math.pow(10, d); return Math.round(n * f) / f; }
+
+/** Todas las pestañas de análisis desde las filas del registro (`fus`: pestaña → filas, como quedaron en la hoja),
+ *  la clave de seudónimos que ya existe (`clave`: sus filas), las restauraciones ([de, a]) y una función
+ *  codigo(prefijo, identidad) que da el seudónimo. Función pura (sin Google): se prueba en registro-pacientes.test.js. */
+function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
+  var out = {}, avisos = [];
+  out[REG_CLAVE.nombre] = [];
+  REG_ANALISIS.forEach(function (cfg) { out[cfg.nombre] = []; });
+  var porId = function (filas) { var m = {}; regArr(filas).forEach(function (r) { var id = regTexto(r && r['ID episodio']).trim(); if (id) (m[id] = m[id] || []).push(r); }); return m; };
+  var P = {}, ids = [];
+  regArr(fus['Pacientes']).forEach(function (r) { var id = regTexto(r && r['ID episodio']).trim(); if (id && !P[id]) { P[id] = r; ids.push(id); } });
+  var labsDe = porId(fus['Labs']), signosDe = porId(fus['Signos vitales']), cxDe = porId(fus['Cirugías']);
+  var claveDe = {};
+  regArr(clave).forEach(function (r) { var id = regTexto(r && r['ID episodio']).trim(); if (id) claveDe[id] = r; });
+
+  // 1) Partes de una misma hospitalización: restaurar desde la Papelera crea otro id («Continúa en» / «Viene de»).
+  var padre = {}, sig = {}, conAnterior = {};
+  ids.forEach(function (id) { padre[id] = id; });
+  var raiz = function (x) { var r = x; while (padre[r] !== r) r = padre[r]; while (padre[x] !== r) { var n = padre[x]; padre[x] = r; x = n; } return r; };
+  var unir = function (de, a) {
+    de = regTexto(de).trim(); a = regTexto(a).trim();
+    if (!P[de] || !P[a] || de === a) return;
+    sig[de] = sig[de] || [];
+    if (sig[de].indexOf(a) === -1) sig[de].push(a);
+    conAnterior[a] = true;
+    var x = raiz(de), y = raiz(a);
+    if (x !== y) padre[y] = x;
+  };
+  regArr(restauraciones).forEach(function (par) { if (par) unir(par[0], par[1]); });
+  ids.forEach(function (id) {
+    var rel = regTexto(P[id]['Episodio relacionado']).trim(), m;
+    if ((m = /^Continúa en (.+)$/.exec(rel))) unir(id, m[1]);
+    else if ((m = /^Viene de (.+)$/.exec(rel))) unir(m[1], id);
+  });
+  var ingresoDe = function (id) { return regFecha(P[id]['Fecha de ingreso']); };
+  var porIngreso = function (a, b) { return (ingresoDe(a) || '9999').localeCompare(ingresoDe(b) || '9999') || a.localeCompare(b); };
+  var miembros = {};
+  ids.forEach(function (id) { var r = raiz(id); (miembros[r] = miembros[r] || []).push(id); });
+  var grupos = Object.keys(miembros).map(function (r) {
+    var ms = miembros[r].slice().sort(porIngreso), orden = [], visto = {};
+    var cola = ms.filter(function (id) { return !conAnterior[id]; });
+    if (!cola.length) cola = [ms[0]];
+    while (cola.length) {
+      var x = cola.shift();
+      if (visto[x]) continue;
+      visto[x] = true; orden.push(x);
+      (sig[x] || []).slice().sort(porIngreso).forEach(function (y) { if (!visto[y] && miembros[r].indexOf(y) !== -1) cola.push(y); });
+      if (!cola.length) ms.forEach(function (id) { if (!visto[id] && !cola.length) cola.push(id); });
+    }
+    // La parte que manda para el desenlace: la que sigue en el censo; si no, la del egreso más reciente.
+    var ultima = orden[orden.length - 1];
+    var enCenso = orden.filter(function (id) { return P[id]['Estado en registro'] === 'Hospitalizado'; });
+    if (enCenso.length) ultima = enCenso[enCenso.length - 1];
+    else orden.forEach(function (id) {
+      var f = regFecha(P[id]['Fecha de egreso']) || regFecha(P[id]['Última vez en la base']), fu = regFecha(P[ultima]['Fecha de egreso']) || regFecha(P[ultima]['Última vez en la base']);
+      if (f && (!fu || f > fu)) ultima = id;
+    });
+    var ingresos = orden.map(ingresoDe).filter(Boolean).sort();
+    var exp = regExpValido(P[ultima]['Expediente']);
+    if (!exp) orden.some(function (id) { exp = regExpValido(P[id]['Expediente']); return !!exp; });
+    return { raiz: orden[0], partes: orden, ultima: ultima, ingreso: ingresos[0] || '', exp: exp, nombre: regTexto(P[ultima]['Nombre']) || regTexto(P[orden[0]]['Nombre']) };
+  }).sort(function (a, b) { return (a.ingreso || '9999').localeCompare(b.ingreso || '9999') || a.raiz.localeCompare(b.raiz); });
+
+  // 2) Personas: mismo expediente y nombre compatible = la misma persona (dos personas con el mismo expediente por error
+  //    de captura quedan separadas). El seudónimo de la clave ya guardada se conserva (aunque cambie la sal).
+  var personas = {}, listaPersonas = [];
+  grupos.forEach(function (g) {
+    var llave, por;
+    if (g.exp) { llave = 'EXP|' + g.exp; por = 'Expediente'; }
+    else if (regPalabrasNombre(g.nombre).length) { llave = 'NOMBRE|' + regPalabrasNombre(g.nombre).join(' '); por = 'Nombre (sin expediente válido)'; }
+    else { llave = 'EPISODIO|' + g.raiz; por = 'Episodio (sin expediente ni nombre)'; }
+    var lista = personas[llave] || (personas[llave] = []);
+    var p = null;
+    for (var i = 0; i < lista.length && !p; i++) if (lista[i].nombres.some(function (n) { return regMismaPersona(n, g.nombre); })) p = lista[i];
+    if (!p) {
+      p = { ident: lista.length ? llave + '|' + regPalabrasNombre(g.nombre).join(' ') : llave, por: por, nombres: [], grupos: [] };
+      lista.push(p); listaPersonas.push(p);
+    }
+    if (lista.length > 1) lista.forEach(function (q) { if (q.por === 'Expediente') q.por = 'Expediente + nombre (expediente compartido)'; });
+    p.nombres.push(g.nombre); p.grupos.push(g); g.persona = p;
+  });
+  // Un seudónimo nunca lo tienen dos: primero se respetan los ya guardados en la clave (el del episodio más antiguo, si
+  // dos lo traen), después los nuevos; uno nuevo que choca con uno ocupado se vuelve a sacar con «#1», «#2»…
+  // (27 oct 2026: una persona que llega después con un ingreso anterior ya no se queda con el código de otra).
+  var usados = {};
+  var asignar = function (items, previoDe, pre, identDe) {
+    items.forEach(function (x) {
+      var c = previoDe(x).filter(function (c) { return !usados[c]; })[0];
+      if (c) { usados[c] = true; x.codigo = c; }
+    });
+    items.forEach(function (x) {
+      if (x.codigo) return;
+      var c, k = 0;
+      do { c = codigo(pre, identDe(x) + (k ? '#' + k : '')); k++; } while (usados[c]);
+      usados[c] = true; x.codigo = c;
+    });
+  };
+  asignar(listaPersonas, function (p) {
+    var cs = [];
+    p.grupos.forEach(function (g) { g.partes.forEach(function (id) { var c = regTexto(claveDe[id] && claveDe[id]['ID paciente (análisis)']).trim(); if (c && cs.indexOf(c) === -1) cs.push(c); }); });
+    return cs;
+  }, 'P', function (p) { return p.ident; });
+  asignar(grupos, function (g) {
+    var cs = [];
+    g.partes.forEach(function (id) { var c = regTexto(claveDe[id] && claveDe[id]['ID episodio (análisis)']).trim(); if (c && cs.indexOf(c) === -1) cs.push(c); });
+    return cs;
+  }, 'E', function (g) { return 'EP|' + g.raiz; });
+  grupos.forEach(function (g) {
+    g.partes.forEach(function (id) {
+      out[REG_CLAVE.nombre].push({ 'ID episodio': id, 'Expediente': regTexto(P[id]['Expediente']), 'Nombre': regTexto(P[id]['Nombre']),
+        'ID paciente (análisis)': g.persona.codigo, 'ID episodio (análisis)': g.codigo, 'Identidad del paciente por': g.persona.por });
+    });
+  });
+
+  // 3) Fechas del episodio y desenlace.
+  grupos.forEach(function (g) {
+    var u = P[g.ultima], estado = regTexto(u['Estado en registro']);
+    g.estado = estado === 'Hospitalizado' ? 'Hospitalizado' : (estado === 'Egresado' ? 'Egresado' : 'Sin egreso registrado');
+    g.egreso = g.estado === 'Egresado' ? regFecha(u['Fecha de egreso']) : '';
+    g.fin = g.egreso || (g.estado === 'Hospitalizado' ? hoy : (regFecha(u['Última vez en la base']) || hoy));
+    g.motivo = g.estado === 'Egresado' ? regTexto(u['Motivo de egreso']) : '';
+    g.tipo = g.estado === 'Egresado' ? regEgresoTipo(g.motivo, u['Estado clínico']) : (g.estado === 'Hospitalizado' ? '' : 'Motivo no registrado');
+    g.excluir = g.tipo === 'Duplicado (no es otro episodio)' ? 1 : (g.tipo === 'Borrado en la base (revisar)' ? '' : 0);
+    g.calidad = [];
+    if (g.partes.length > 1) g.calidad.push(g.partes.length + ' partes en el registro (restaurado desde la Papelera): se cuentan como un episodio');
+    // La base restaura la nota si el mismo paciente vuelve al censo hasta 10 días después: casi siempre es un cambio de
+    // cama o un hueco del censo (horas), pero si la parte siguiente entró 2 días o más después puede ser un reingreso.
+    g.partes.forEach(function (id, i) {
+      if (!i) return;
+      var d = regDiasSigno(P[g.partes[i - 1]]['Fecha de egreso'], regFechaLocal(P[id]['Alta en la app']));
+      if (d !== '' && d >= 2) g.calidad.push('la parte ' + (i + 1) + ' entró ' + d + ' días después del egreso de la anterior: confirmar que no fue reingreso');
+    });
+    if (!g.ingreso) g.calidad.push('sin fecha de ingreso');
+    if (g.persona.por !== 'Expediente') g.calidad.push('paciente identificado por: ' + g.persona.por);
+  });
+
+  // 4) Laboratorio: una fila por episodio y fecha; una columna por estudio (en la unidad de la app).
+  var LABS_COLS = REG_LAB_META.map(regLabColumna);
+  grupos.forEach(function (g) {
+    var dias = {}, fechas = [];
+    // Por fecha y estudio manda la parte MÁS RECIENTE del episodio: si en la tarjeta restaurada se corrigió o borró un
+    // valor (Vigente: No), el de la copia vieja de la Papelera no vuelve. Un valor distinto en una parte anterior se dice.
+    var ultimoDe = {}, ordenK = [];
+    g.partes.forEach(function (id) {
+      regArr(labsDe[id]).forEach(function (r) {
+        var k0 = regTexto(r['Estudio']).trim(), f = regFecha(r['Fecha']) || ('?' + regTexto(r['Fecha']));
+        if (!k0 || REG_LAB_NO_ESTUDIO.test(k0) || !regTexto(r['Valor']).trim()) return;
+        var kk = f + REG_SEP + k0, prev = ultimoDe[kk];
+        if (!prev) ordenK.push(kk);
+        ultimoDe[kk] = { r: r, antes: prev ? (prev.antes || []).concat([prev.r]) : [] };
+      });
+    });
+    ordenK.forEach(function (kk) {
+      var u = ultimoDe[kk];
+      (function (r, antes) {
+        var vig = regTexto(r['Vigente']) !== 'No', f = regFecha(r['Fecha']);
+        var k0 = regTexto(r['Estudio']).trim(), v = regTexto(r['Valor']).trim();
+        if (!f) { g.calidad.push('labs con fecha no reconocida («' + regTexto(r['Fecha']).slice(0, 20) + '»): no se usaron'); return; }
+        var d = dias[f];
+        if (!d) { d = dias[f] = { valores: {}, textos: {}, otros: [], obs: [], criticos: [], fuentes: [], excluidos: [] }; fechas.push(f); }
+        if (!vig) { d.excluidos.push(k0); return; }
+        var distinto = antes.filter(function (a) { return regTexto(a['Vigente']) !== 'No' && regTexto(a['Valor']).trim() !== v; }).map(function (a) { return regTexto(a['Valor']).trim(); });
+        if (distinto.length) d.obs.push(((REG_LAB_POR_CLAVE[REG_LAB_ALIAS[k0] || k0] || {}).n || k0) + ': otra parte del episodio decía ' + distinto.join(', ') + ' (se tomó ' + v + ', la más reciente)');
+        var o = regTexto(r['Origen']).trim() || 'sin registro';
+        if (d.fuentes.indexOf(o) === -1) d.fuentes.push(o);
+        var k = REG_LAB_ALIAS[k0] || k0, m = REG_LAB_POR_CLAVE[k];
+        if (!m) { d.otros.push(k0 + ': ' + v); return; }
+        if (m.t === 'texto') { d.textos[k] = v; return; }
+        if (/^RECHAZADA$/i.test(v)) { d.obs.push(m.n + ': muestra rechazada'); return; }
+        if (/^REVISAR UNIDAD/i.test(v)) { d.obs.push(m.n + ': unidad no reconocida (' + v.replace(/^REVISAR UNIDAD\s*/i, '').replace(/[()]/g, '') + ')'); return; }
+        if (/^[<>≤≥]?\s*[1-9]\d{0,2},\d{3}$/.test(v)) { d.obs.push(m.n + ': «' + v + '» es ambiguo (¿miles o decimales?): se dejó vacío'); return; }
+        var x = regNumero(v);
+        if (!x) { d.obs.push(m.n + ': «' + v.slice(0, 30) + '» no es un número'); return; }
+        var imp = REG_LAB_IMPOSIBLE[k];
+        if (imp && (x.n < imp[0] || x.n > imp[1])) { d.obs.push(m.n + ': ' + v + ' fuera de lo posible (se dejó vacío)'); return; }
+        // Dos claves para el mismo estudio el mismo día (la vieja y la de hoy, p. ej. hto y hct) con valores distintos.
+        if (d.valores[k] !== undefined && d.valores[k] !== x.n) d.obs.push(m.n + ': dos valores el mismo día (' + d.valores[k] + ' y ' + x.n + '; se tomó ' + x.n + ')');
+        d.valores[k] = x.n;
+        if (x.comp) d.obs.push(m.n + ': ' + x.comp + x.n + ' (se anotó ' + x.n + ')');
+      })(u.r, u.antes);
+    });
+    fechas.sort();
+    g.labs = { fechas: 0, criticos: 0, resumen: {} };
+    fechas.forEach(function (f) {
+      var d = dias[f], fila = { 'ID episodio': g.codigo, 'ID paciente': g.persona.codigo, 'Fecha': f, 'Día de estancia': regNumCelda(regDiasSigno(g.ingreso, f)), 'Fuente': d.fuentes.join(', ') };
+      var hay = false;
+      REG_LAB_META.forEach(function (m, i) {
+        var c = LABS_COLS[i];
+        if (m.t === 'texto') { fila[c] = d.textos[m.k] || ''; if (fila[c]) hay = true; return; }
+        var n = d.valores[m.k];
+        fila[c] = regNumCelda(n);
+        if (n === undefined) return;
+        hay = true;
+        if ((m.cl !== undefined && n <= m.cl) || (m.ch !== undefined && n >= m.ch)) d.criticos.push(m.n + ' ' + n);
+      });
+      if (!hay && !d.otros.length && !d.obs.length) return;
+      if (d.excluidos.length) d.obs.push('ya no están en la tarjeta (corregidos o borrados), no se usaron: ' + d.excluidos.join(', '));
+      fila['Otros estudios'] = d.otros.join('; ');
+      fila['Valores críticos'] = d.criticos.join('; ');
+      fila['Observaciones'] = d.obs.join('; ');
+      fila['Vigente'] = 'Sí';
+      out[REG_AN_LABS].push(fila);
+      g.labs.fechas++;
+      g.labs.criticos += d.criticos.length;
+      REG_LAB_RESUMEN.forEach(function (r, i) {
+        var n = d.valores[r[0]];
+        if (n === undefined) return;
+        var prev = g.labs.resumen[i];
+        if (prev === undefined || (r[1] === 'min' && n < prev) || (r[1] === 'max' && n > prev)) g.labs.resumen[i] = n;
+      });
+    });
+  });
+
+  // 5) Signos vitales: números limpios; TA en sistólica, diastólica y PAM.
+  grupos.forEach(function (g) {
+    var porFecha = {}, fechas = [];
+    g.partes.forEach(function (id) {
+      regArr(signosDe[id]).forEach(function (r) {
+        var f = regFecha(r['Fecha']);
+        if (!f) return;
+        if (!porFecha[f]) fechas.push(f);
+        porFecha[f] = r;   // la parte más reciente manda
+      });
+    });
+    fechas.sort().forEach(function (f) {
+      var r = porFecha[f], obs = [], fila = { 'ID episodio': g.codigo, 'ID paciente': g.persona.codigo, 'Fecha': f, 'Día de estancia': regNumCelda(regDiasSigno(g.ingreso, f)) };
+      REG_SV.forEach(function (s) {
+        var v = regTexto(r[s[0]]).trim(), x = null;
+        fila[s[1]] = '';
+        if (!v) return;
+        if (s[0] === 'O2 L/min' && /^(AA|AIRE( AMBIENTE)?)$/i.test(v)) x = { n: 0, comp: '' };
+        else x = regNumero(v, { unidad: s[4], miles: !!s[5] });
+        if (!x || x.comp) { obs.push(s[0] + ' «' + v.slice(0, 30) + '» no es un número'); return; }
+        if (x.n < s[2] || x.n > s[3]) { obs.push(s[0] + ' ' + v + ' fuera de lo posible (se dejó vacío)'); return; }
+        fila[s[1]] = x.n;
+      });
+      var ta = regTexto(r['TA']).trim(), m = /^(\d{2,3})\s*[\/\\-]\s*(\d{2,3})\s*(MMHG)?$/i.exec(ta);
+      fila['TA sistólica (mmHg)'] = ''; fila['TA diastólica (mmHg)'] = ''; fila['PAM (mmHg)'] = '';
+      if (ta && (!m || +m[1] < +m[2] || +m[1] < 40 || +m[1] > 300 || +m[2] < 10 || +m[2] > 200)) obs.push('TA «' + ta.slice(0, 30) + '» no interpretable');
+      else if (m) { fila['TA sistólica (mmHg)'] = +m[1]; fila['TA diastólica (mmHg)'] = +m[2]; fila['PAM (mmHg)'] = regRedondear((+m[1] + 2 * +m[2]) / 3, 1); }
+      fila['Observaciones'] = obs.join('; ');
+      fila['Vigente'] = 'Sí';
+      out[REG_AN_SIGNOS].push(fila);
+    });
+  });
+
+  // 6) Cultivos del robot: por expediente y nombre, al episodio cuya estancia (desde 2 días antes del ingreso: muestras
+  //    de urgencias) contiene la toma. Sin el texto del PDF (trae el nombre del paciente).
+  var gruposPorExp = {}, sinEpisodio = {};
+  grupos.forEach(function (g) { if (g.exp) (gruposPorExp[g.exp] = gruposPorExp[g.exp] || []).push(g); g.cultivos = { n: 0, pos: 0, germenes: [] }; });
+  regArr(fus['Cultivos del robot (WinLab)']).forEach(function (r) {
+    var exp = regExpValido(r['Expediente']), toma = regTexto(r['Toma']).trim(), f = regFecha(toma), hora = (/\d{1,2}:\d{2}$/.exec(toma) || [''])[0];
+    if (!exp) return;
+    var candidatos = regArr(gruposPorExp[exp]).filter(function (g) { return g.excluir !== 1 && regMismaPersona(g.nombre, r['Paciente']); });
+    var g = null;
+    if (f) candidatos.forEach(function (c) { var d1 = regDiasSigno(c.ingreso, f), d2 = regDiasSigno(f, c.fin); if (d1 !== '' && d1 >= -2 && d2 !== '' && d2 >= 0 && (!g || c.ingreso > g.ingreso)) g = c; });
+    // Sin episodio: la persona del registro con ese expediente y nombre; si no la hay (o el expediente es de OTRA persona,
+    // con nombre incompatible), un seudónimo propio que se guarda en la clave (fila «sin episodio|…») para que no cambie.
+    var persona = g ? g.persona.codigo : (candidatos.length ? candidatos[candidatos.length - 1].persona.codigo : '');
+    if (!persona) {
+      var idSin = 'sin episodio|' + exp + '|' + regPalabrasNombre(r['Paciente']).join(' ');
+      if (!sinEpisodio[idSin]) {
+        var prev = regTexto(claveDe[idSin] && claveDe[idSin]['ID paciente (análisis)']).trim(), c, k = 0;
+        if (prev && !usados[prev]) c = prev;
+        else do { c = codigo('P', (gruposPorExp[exp] ? 'EXP|' + exp + '|' + regPalabrasNombre(r['Paciente']).join(' ') : 'EXP|' + exp) + (k ? '#' + k : '')); k++; } while (usados[c]);
+        usados[c] = true; sinEpisodio[idSin] = c;
+        out[REG_CLAVE.nombre].push({ 'ID episodio': idSin, 'Expediente': regTexto(r['Expediente']), 'Nombre': regTexto(r['Paciente']), 'ID paciente (análisis)': c,
+          'ID episodio (análisis)': '', 'Identidad del paciente por': 'Cultivo sin episodio en el registro' });
+      }
+      persona = sinEpisodio[idSin];
+    }
+    var res = regTexto(r['Resultado']).trim(), pos = res === 'POSITIVO' ? 1 : (res === 'Negativo' ? 0 : '');
+    // ID del cultivo: del seudónimo (no del expediente) y del reporte, sin la sal: así no cambia si la sal se pierde (los
+    // seudónimos se conservan por la clave) y no lleva al expediente.
+    var idCult = codigo('C', (g ? g.codigo : persona) + '|' + regTexto(r['Reporte']).trim() + '|' + regTexto(r['N']).trim(), true);
+    out[REG_AN_CULTIVOS].push({ 'ID cultivo': idCult, 'ID episodio': g ? g.codigo : '', 'ID paciente': persona,
+      'Fecha de toma': f, 'Hora de toma': hora, 'Día de estancia': g ? regNumCelda(regDiasSigno(g.ingreso, f)) : '', 'Tipo': regTexto(r['Tipo']), 'Muestra': regTexto(r['Muestra']),
+      'Resultado': res, 'Positivo': pos, 'Germen': regTexto(r['Germen']), 'Sensibles': regTexto(r['Sensibles']), 'Intermedios': regTexto(r['Intermedios']),
+      'Resistentes': regTexto(r['Resistentes']), 'UFC': regTexto(r['UFC']), 'Fuente': regTexto(r['Fuente']), 'Vigente': 'Sí' });
+    if (!g) return;
+    g.cultivos.n++;
+    if (pos === 1) {
+      g.cultivos.pos++;
+      regTexto(r['Germen']).split(/\s*\+\s*/).forEach(function (x) {
+        x = x.replace(/\s*\(.*\)\s*$/, '').trim();
+        if (x && !/^POSITIVO/i.test(x) && g.cultivos.germenes.indexOf(x) === -1) g.cultivos.germenes.push(x);
+      });
+    }
+  });
+
+  // 7) Reingresos por persona (sin los duplicados): hacia atrás (¿este es un reingreso?) y hacia adelante (¿reingresó
+  //    en 30 días? vacío si murió, sigue hospitalizado o aún no pasan 30 días desde el egreso).
+  listaPersonas.forEach(function (p) {
+    var serie = p.grupos.filter(function (g) { return g.excluir !== 1 && g.ingreso; }).sort(function (a, b) { return a.ingreso.localeCompare(b.ingreso) || a.raiz.localeCompare(b.raiz); });
+    serie.forEach(function (g, i) {
+      g.numero = i + 1;
+      var prev = serie[i - 1], next = serie[i + 1];
+      g.diasPrevio = ''; g.esReingreso = ''; g.reingreso30 = '';
+      if (prev && prev.egreso) {
+        g.diasPrevio = regDiasSigno(prev.egreso, g.ingreso);
+        g.esReingreso = g.diasPrevio === '' ? '' : (g.diasPrevio >= 0 && g.diasPrevio <= 30 ? 1 : (g.diasPrevio > 30 ? 0 : ''));
+        if (g.diasPrevio !== '' && g.diasPrevio < 0) g.calidad.push('el ingreso es anterior al egreso del episodio previo (se traslapan)');
+      }
+      if (g.egreso && g.tipo !== 'Defunción') {
+        var dn = next ? regDiasSigno(g.egreso, next.ingreso) : '';
+        if (dn !== '' && dn < 0) g.calidad.push('el episodio siguiente empieza antes de este egreso (se traslapan): reingreso sin calcular');
+        else if (dn !== '' && dn <= 30) g.reingreso30 = 1;
+        else if ((dn !== '' && dn > 30) || (dn === '' && regDiasSigno(g.egreso, hoy) >= 30)) g.reingreso30 = 0;
+      }
+    });
+  });
+
+  // 8) Una fila por episodio.
+  grupos.forEach(function (g) {
+    var u = P[g.ultima], primero = P[g.partes[0]];
+    var edadTxt = regTexto(primero['Edad']) || regTexto(u['Edad']), edad = regEdadAnios(edadTxt);
+    if (edad === '') g.calidad.push(edadTxt.trim() ? 'edad no interpretable' : 'sin edad registrada');
+    var sexo = '';
+    g.partes.some(function (id) { sexo = regSexo(P[id]['Sexo']); return !!sexo; });
+    if (!sexo) g.calidad.push('sin sexo registrado');
+    var estancia = regDiasSigno(g.ingreso, g.fin);
+    if (estancia !== '' && estancia < 0) { g.calidad.push('el egreso es anterior al ingreso'); estancia = ''; }
+    // Cirugías vigentes de todas las partes, sin repetir (la parte restaurada trae las mismas).
+    // Cirugías de todas las partes, sin repetir: por fecha y procedimiento manda la parte más reciente (una cirugía
+    // borrada en la tarjeta restaurada no vuelve desde la copia vieja).
+    var cxs = [], cxUltima = {}, cxOrden = [];
+    g.partes.forEach(function (id) {
+      regArr(cxDe[id]).forEach(function (c) {
+        var proc = regTexto(c['Procedimiento']).trim(), f = regFecha(c['Fecha']);
+        if (!proc && !f) return;
+        var k = f + '|' + proc.toUpperCase();
+        if (!cxUltima[k]) cxOrden.push(k);
+        cxUltima[k] = c;
+      });
+    });
+    cxOrden.forEach(function (k) {
+      var c = cxUltima[k];
+      if (regTexto(c['Vigente']) === 'No') return;
+      cxs.push({ f: regFecha(c['Fecha']), proc: regTexto(c['Procedimiento']).trim(), sangrado: regTexto(c['Sangrado']).trim() });
+    });
+    var fechasCx = cxs.map(function (c) { return c.f; }).filter(Boolean).sort();
+    var sangrado = 0, conSangrado = 0, sinNumero = 0;
+    cxs.forEach(function (c) {
+      if (!c.sangrado) return;
+      var x = regNumero(c.sangrado, { unidad: /^(ML|CC)$/, prefijo: /^(APROX(IMADAMENTE|\.)?|CA\.)\s*/, miles: true });
+      if (x && !x.comp && x.n >= 0 && x.n <= 50000) { sangrado += x.n; conSangrado++; } else sinNumero++;
+    });
+    if (sinNumero) g.calidad.push('sangrado sin número en ' + sinNumero + ' cirugía(s): el total queda vacío');
+    var si = function (col) { return regTexto(u[col]).trim() ? 1 : 0; };
+    var siMarca = function (col) { return /^Sí/.test(regTexto(u[col]).trim()) ? 1 : 0; };
+    var fila = {
+      'ID episodio': g.codigo, 'ID paciente': g.persona.codigo, 'Partes del registro': g.partes.length, 'N.º de episodio del paciente': g.numero || '',
+      'Días desde el egreso previo': regNumCelda(g.diasPrevio), 'Es reingreso (≤30 días)': regNumCelda(g.esReingreso), 'Reingreso a 30 días': regNumCelda(g.reingreso30),
+      'Edad (años)': edad, 'Sexo': sexo, 'Especialidad': regTexto(u['Especialidad']), 'Sección': regTexto(u['Sección']),
+      'Fecha de ingreso': g.ingreso, 'Fecha de egreso': g.egreso, 'Días de estancia': regNumCelda(estancia), 'Estado': g.estado,
+      'Egreso observado': g.estado === 'Egresado' && g.excluir !== 1 && g.egreso ? 1 : 0, 'Tipo de egreso': g.tipo,
+      'Defunción': g.tipo === 'Defunción' ? 1 : (['Alta', 'Alta voluntaria', 'Traslado'].indexOf(g.tipo) >= 0 ? 0 : ''),
+      'Motivo de egreso (app)': g.motivo, 'Excluir (duplicado)': g.excluir, 'Diagnóstico': regTexto(u['Diagnóstico']),
+      'Cirugías (n)': cxs.length, 'Primera cirugía': fechasCx[0] || '', 'Días ingreso a 1.ª cirugía': fechasCx[0] ? regNumCelda(regDiasSigno(g.ingreso, fechasCx[0])) : '',
+      'Sangrado total (mL)': conSangrado && !sinNumero ? sangrado : '', 'Procedimientos': cxs.map(function (c) { return (c.f ? c.f + ' ' : '') + c.proc; }).join(' | '),
+      'Antibiótico (registrado)': si('Antibiótico'), 'NPT (registrada)': siMarca('NPT'), 'Ventilación mecánica (registrada)': siMarca('Ventilación'),
+      'Vasopresor (registrado)': si('Vasopresores'), 'Tromboprofilaxis (registrada)': siMarca('TVP'),
+      'Fechas con labs (n)': g.labs.fechas, 'Valores críticos (n)': g.labs.criticos,
+      'Cultivos (n)': g.cultivos.n, 'Cultivos positivos (n)': g.cultivos.pos, 'Gérmenes aislados': g.cultivos.germenes.join('; '),
+      'Calidad de datos': g.calidad.filter(function (x, i, a) { return a.indexOf(x) === i; }).join('; '), 'Vigente': 'Sí'
+    };
+    REG_LAB_RESUMEN.forEach(function (r, i) { fila[r[2]] = regNumCelda(g.labs.resumen[i]); });
+    out[REG_AN_EPISODIOS].push(fila);
+  });
+  out.avisos = avisos;
+  return out;
+}
+
+/** Seudónimo: SHA-256 de (sal secreta + identidad), 12 caracteres hexadecimales. La sal vive en las propiedades del
+ *  script (REG_SAL, se crea sola): sin ella no se puede volver del seudónimo al expediente. */
+function regSal_(props) {
+  var s = regTexto(props.getProperty('REG_SAL')).trim();
+  if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); props.setProperty('REG_SAL', s); }
+  return s;
+}
+function regHash_(sal, texto) {
+  var b = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, sal + '|' + texto, Utilities.Charset.UTF_8), s = '';
+  for (var i = 0; i < 6; i++) s += ('0' + (b[i] & 255).toString(16)).slice(-2);
+  return s.toUpperCase();
+}
+/** Calcula y escribe la clave de seudónimos y las pestañas de análisis (solo lo que cambió). `fus`: filas de cada pestaña
+ *  del registro tal como quedaron escritas en esta corrida. Devuelve los avisos. */
+function regEscribirAnalisis_(libro, props, fus, restauraciones, hoy, corte, cuentas) {
+  var sal = regSal_(props), cache = {};
+  var codigo = function (pre, ident, sinSal) { var k = pre + '|' + (sinSal ? '1' : '0') + '|' + ident; return cache[k] || (cache[k] = pre + '-' + regHash_(sinSal ? 'registro' : sal, ident)); };
+  var hojaDe = function (cfg) {
+    var h = libro.getSheetByName(cfg.nombre);
+    if (!h) { h = libro.insertSheet(cfg.nombre); regAjustarColumnas_(h, cfg.columnas.length); }
+    return h;
+  };
+  var hClave = hojaDe(REG_CLAVE), pClave = regLeerPestana_(hClave, REG_CLAVE);
+  var an = regAnalisis(fus, pClave.filas, restauraciones, hoy, codigo), avisos = an.avisos || [];
+  [REG_CLAVE].concat(REG_ANALISIS).forEach(function (cfg) {
+    var hoja = cfg === REG_CLAVE ? hClave : hojaDe(cfg);
+    var previo = cfg === REG_CLAVE ? pClave : regLeerPestana_(hoja, cfg);
+    var filas = regFusionar(previo.filas, an[cfg.nombre] || [], cfg, null, hoy, null);
+    var r = regEscribirPestana_(hoja, cfg, filas, previo, corte);
+    if (r.aviso) avisos.push(r.aviso);
+    cuentas[cfg.nombre] = filas.length;
+  });
+  regEscribirVariables_(libro);
+  return avisos;
+}
+
+// ─── Diccionario de variables (codebook) de las pestañas de análisis ─────────────────────────────────────────────
+function regVariables_() {
+  var v = [['Pestaña', 'Variable', 'Tipo', 'Unidad', 'Definición']];
+  var add = function (p, n, t, u, d) { v.push([p, n, t, u, d]); };
+  var E = REG_AN_EPISODIOS, L = REG_AN_LABS, S = REG_AN_SIGNOS, C = REG_AN_CULTIVOS;
+  add('Todas', 'Privacidad', '', '', 'Las pestañas «Análisis · …» no tienen nombres ni expedientes: son SEUDONIMIZADAS (no anónimas: fechas, diagnóstico y procedimientos pueden ayudar a reconocer a alguien). Compartir solo esas pestañas (Archivo → Descargar → CSV, una por una) y solo dentro de un protocolo aprobado por el Comité de Ética en Investigación. NUNCA compartir «Clave de seudónimos» ni las pestañas con nombres.');
+  add('Todas', 'Vigente', 'texto', '', 'Sí: la fila sale de los datos actuales del registro. No: la generó una corrida anterior y ya no se genera (se corrigió un dato o cambió una regla); se conserva para trazabilidad. Para analizar, filtrar Vigente = Sí.');
+  add('Todas', 'ID paciente', 'texto', '', 'Seudónimo de la persona (P-…): SHA-256 del expediente con una sal secreta. Mismo expediente con nombres incompatibles = dos personas (error de captura); sin expediente válido se usa el nombre. La correspondencia está en «Clave de seudónimos».');
+  add('Todas', 'ID episodio', 'texto', '', 'Seudónimo de la hospitalización (E-…). Si una tarjeta se restauró desde la Papelera (otro id en la base), las partes son UN episodio.');
+  add('Todas', 'Fecha', 'texto AAAA-MM-DD', '', 'Todas las fechas son ISO (AAAA-MM-DD, hora de Ciudad de México).');
+  add('Todas', 'Día de estancia', 'entero', 'días', 'Días desde la fecha de ingreso del episodio (0 = día del ingreso; negativo = antes del ingreso, p. ej. urgencias).');
+  add(E, 'Partes del registro', 'entero', '', 'Cuántos ids de la base forman el episodio (más de 1 = restaurado desde la Papelera).');
+  add(E, 'N.º de episodio del paciente', 'entero', '', 'Orden del episodio entre los del mismo paciente (por fecha de ingreso; sin duplicados ni episodios sin fecha de ingreso).');
+  add(E, 'Días desde el egreso previo', 'entero', 'días', 'Del egreso del episodio anterior del paciente a este ingreso. Vacío en el primero o si el anterior no tiene egreso.');
+  add(E, 'Es reingreso (≤30 días)', '0/1', '', '1 si este ingreso ocurrió 0–30 días después del egreso anterior; 0 si después; vacío si no hay episodio anterior registrado (el registro empezó en 2026: los primeros pueden ser reingresos de antes).');
+  add(E, 'Reingreso a 30 días', '0/1', '', '1 si el paciente volvió a ingresar a este servicio 0–30 días después de este egreso; 0 si no y ya pasaron 30 días; vacío si sigue hospitalizado, murió o aún no pasan 30 días. Solo ve reingresos a los servicios que usan la app.');
+  add(E, 'Edad (años)', 'número', 'años', 'Edad del censo al ingreso (meses y días convertidos a fracción de año). Vacío si no se entiende.');
+  add(E, 'Sexo', 'texto', '', 'F, M o vacío (sin registrar), con la misma regla que la app.');
+  add(E, 'Especialidad · Sección', 'texto', '', 'Del censo, en la última parte del episodio.');
+  add(E, 'Fecha de ingreso', 'texto AAAA-MM-DD', '', 'Fecha de ingreso del censo (la más antigua de las partes).');
+  add(E, 'Fecha de egreso', 'texto AAAA-MM-DD', '', 'Fecha del egreso en la app o, si no la hay, la fecha en que se archivó. Vacío si sigue hospitalizado o salió sin registro.');
+  add(E, 'Días de estancia', 'entero', 'días', 'Egreso − ingreso. Si no hay egreso: hasta hoy (hospitalizado) o hasta el último día que estuvo en la base. Usar con «Egreso observado» (0 = dato censurado).');
+  add(E, 'Estado', 'texto', '', 'Hospitalizado, Egresado o Sin egreso registrado (salió de la base sin pasar por la Papelera).');
+  add(E, 'Egreso observado', '0/1', '', '1 si se registró el egreso con fecha (y no es duplicado). Para análisis de supervivencia: 0 = censurado.');
+  add(E, 'Tipo de egreso', 'texto', '', 'Alta, Defunción, Traslado, Alta voluntaria, Motivo no registrado, Duplicado (no es otro episodio) o Borrado en la base (revisar). Casi todos los egresos salen del censo de la hoja sin decir si fue alta o defunción: hasta que se registre el motivo, «Defunción» NO permite calcular mortalidad.');
+  add(E, 'Defunción', '0/1', '', '1 = registrada como defunción; 0 = alta, alta voluntaria o traslado; vacío = desconocido (motivo no registrado, hospitalizado). NUNCA tratar vacío como 0.');
+  add(E, 'Motivo de egreso (app)', 'texto', '', 'Etiqueta original del egreso en la app (p. ej. «RETIRADO DEL CENSO (hoja)»).');
+  add(E, 'Excluir (duplicado)', '0/1', '', '1 = tarjeta duplicada (no es otro episodio): excluir. Vacío = borrado en la base por mantenimiento: revisar. 0 = episodio real.');
+  add(E, 'Diagnóstico', 'texto', '', 'Diagnóstico del censo en la última parte del episodio (texto libre, sin codificar).');
+  add(E, 'Cirugías (n) · Primera cirugía · Días ingreso a 1.ª cirugía', 'entero / fecha / entero', '', 'Cirugías vigentes de la tarjeta (sin repetir entre partes); fecha de la primera y días desde el ingreso.');
+  add(E, 'Sangrado total (mL)', 'número', 'mL', 'Suma del sangrado de las cirugías. Vacío si alguna tiene un sangrado que no es número (p. ej. «MÍNIMO»).');
+  add(E, 'Procedimientos', 'texto', '', 'Fecha y procedimiento de cada cirugía, separados por « | » (texto libre, sin codificar).');
+  add(E, 'Antibiótico (registrado) · NPT (registrada) · Ventilación mecánica (registrada) · Vasopresor (registrado) · Tromboprofilaxis (registrada)', '0/1', '', '1 = marcado en la última copia de la tarjeta; 0 = no marcado (NO prueba que no lo recibió; la app no guarda fechas de inicio y fin).');
+  add(E, 'Fechas con labs (n) · Valores críticos (n)', 'entero', '', 'Días con laboratorio y número de valores críticos (tabla única de la app: ≤ crítico bajo o ≥ crítico alto).');
+  REG_LAB_RESUMEN.forEach(function (r) { add(E, r[2], 'número', (REG_LAB_POR_CLAVE[r[0]] || {}).u || '', (r[1] === 'min' ? 'Mínimo' : r[1] === 'max' ? 'Máximo' : 'Primer valor (fecha más antigua)') + ' del episodio, de «' + L + '». Un «<x» / «>x» cuenta como x.'); });
+  add(E, 'Cultivos (n) · Cultivos positivos (n) · Gérmenes aislados', 'entero / texto', '', 'Cultivos de WinLab del paciente tomados desde 2 días antes del ingreso hasta el egreso.');
+  add(E, 'Calidad de datos', 'texto', '', 'Todo lo que falta o no se pudo usar en el episodio.');
+  add(L, 'Fila', '', '', 'Una fila por episodio y fecha; una columna por estudio en la unidad de la app (WinLab ya convertido). Vacío = no se midió o no se pudo usar (ver Observaciones). Ojo con lo anterior al 27 oct 2026: la app no revisaba la unidad de WinLab (troponina I en ng/mL, glucosa en mmol/L, fibrinógeno en g/L) y antes de oct 2026 el examen de orina pudo caer en la biometría: revisar valores atípicos antes de analizar.');
+  add(L, 'Fuente', 'texto', '', 'Origen de los valores del día: winlab (robot), manual, sin registro (capturas viejas).');
+  REG_LAB_META.forEach(function (m) {
+    var rango = m.t === 'texto' ? 'Cualitativo (texto tal cual).' : (m.extra ? 'Sin rango en la app; unidad del reporte de WinLab.' : ('Referencia ' + m.lo + '–' + m.hi + (m.cl !== undefined ? '; crítico ≤ ' + m.cl : '') + (m.ch !== undefined ? '; crítico ≥ ' + m.ch : '') + '.'));
+    var imp = REG_LAB_IMPOSIBLE[m.k];
+    add(L, regLabColumna(m), m.t === 'texto' ? 'texto' : 'número', m.u, 'Clave en la app: ' + m.k + '. ' + rango + (imp ? ' Valores < ' + imp[0] + ' o > ' + imp[1] + ' se consideran imposibles y se dejan vacíos.' : ''));
+  });
+  add(L, 'Otros estudios', 'texto', '', 'Estudios que no están en la tabla de la app («clave: valor»), sin unidad normalizada.');
+  add(L, 'Valores críticos', 'texto', '', 'Estudios del día en rango crítico.');
+  add(L, 'Observaciones', 'texto', '', 'Muestra rechazada, unidad no reconocida, valor que no es número o imposible, «<x»/«>x» (se anota x), dos valores el mismo día, valores ya corregidos en la tarjeta.');
+  REG_SV.forEach(function (s) { add(S, s[1], 'número', '', 'Del pase de visita («' + s[0] + '»). Posible: ' + s[2] + ' a ' + s[3] + '; fuera de eso o con texto → vacío y Observaciones.' + (s[0] === 'O2 L/min' ? ' «AA» (aire ambiente) = 0.' : '')); });
+  add(S, 'TA sistólica (mmHg) · TA diastólica (mmHg) · PAM (mmHg)', 'número', 'mmHg', 'De «TA» (sistólica/diastólica). PAM = (sistólica + 2 × diastólica) / 3, a un decimal.');
+  add(S, 'Observaciones', 'texto', '', 'Signos que no se pudieron usar (texto, fuera de lo posible, TA no interpretable).');
+  add(C, 'ID cultivo', 'texto', '', 'Seudónimo de la muestra (C-…): una fila por muestra de cultivo de WinLab (robot), sin el texto del reporte (trae el nombre).');
+  add(C, 'Fecha de toma · Hora de toma', 'texto', '', 'Fecha (AAAA-MM-DD) y hora (HH:MM) de la toma según WinLab.');
+  add(C, 'Tipo · Muestra', 'texto', '', 'Tipo de cultivo y muestra como los lee el robot (p. ej. Hemocultivo, Urocultivo; ORINA).');
+  add(C, 'Resultado · Positivo', 'texto / 0/1', '', 'POSITIVO (1), Negativo (0), En proceso o Sin muestra (vacío).');
+  add(C, 'Germen', 'texto', '', 'Germen(es) aislado(s) con sus marcas (p. ej. BLEE); vacío si no es positivo.');
+  add(C, 'Sensibles · Intermedios · Resistentes', 'texto', '', 'Antibiograma del PDF (S/I/R), como en «Cultivos del robot (WinLab)».');
+  add(C, 'UFC · Fuente', 'texto', '', 'Cuenta de colonias si la hay; de dónde salió el resultado (PDF del reporte o tabla del reporte).');
+  add(C, 'ID episodio', 'texto', '', 'Vacío si la toma no cae en ningún episodio del registro (desde 2 días antes del ingreso hasta el egreso).');
+  return v;
+}
+function regEscribirVariables_(libro) {
+  var hoja = libro.getSheetByName('Diccionario de variables');
+  if (!hoja) { hoja = libro.insertSheet('Diccionario de variables'); regAjustarColumnas_(hoja, 5); }
+  var filas = regVariables_().map(function (r) { return r.map(regCelda); });
+  if (hoja.getMaxColumns() < 5) hoja.insertColumnsAfter(hoja.getMaxColumns(), 5 - hoja.getMaxColumns());
+  // Solo si cambió (una versión nueva del script): igual que las demás pestañas, una corrida sin cambios no reescribe.
+  var n = hoja.getLastRow();
+  if (n === filas.length && JSON.stringify(hoja.getRange(1, 1, n, 5).getValues().map(function (r) { return r.map(regTexto); })) === JSON.stringify(filas)) return;
+  regAsegurarFilas_(hoja, filas.length);
+  hoja.getRange(1, 1, filas.length, 5).setNumberFormat('@').setValues(filas);
+  var sobra = hoja.getLastRow() - filas.length;
+  if (sobra > 0) hoja.getRange(filas.length + 1, 1, sobra, 5).clearContent();
+  hoja.setFrozenRows(1);
 }
 
 // ─── Hoja ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1050,6 +1851,9 @@ function regEscribirPestana_(hoja, cfg, filas, previo, corte) {
   var tramos = [];
   orden.forEach(function (x) { var t = tramos[tramos.length - 1]; if (t && x.col === t.col + t.cols.length) t.cols.push(x.c); else tramos.push({ col: x.col, cols: [x.c] }); });
   var celdasDe = function (r) { return orden.map(function (x) { return regCelda(r[x.c]); }); };
+  // Formato por columna: texto plano ('@') salvo las numéricas de las pestañas de análisis (cfg.formatos), que se
+  // guardan como número para que Sheets y el CSV las tomen como tales.
+  var formatosDe = function (t) { return t.cols.map(function (c) { return (cfg.formatos && cfg.formatos[c]) || '@'; }); };
   var igual = function (a, b) { for (var i = 0; i < a.length; i++) { if (String(a[i]) !== String(b[i])) return false; } return true; };
   var cambios = [], nuevas = [];
   filas.forEach(function (r) {
@@ -1070,7 +1874,9 @@ function regEscribirPestana_(hoja, cfg, filas, previo, corte) {
     tramos.forEach(function (t) {
       if (corte && corte()) { var e = new Error('corte'); e.regCorte = true; throw e; }
       var datos = bloque.map(function (x) { return x.celdas.slice(base, base + t.cols.length); });
-      hoja.getRange(bloque[0].fila, t.col, bloque.length, t.cols.length).setNumberFormat('@').setValues(datos);
+      var rango = hoja.getRange(bloque[0].fila, t.col, bloque.length, t.cols.length);
+      if (cfg.formatos) { var f = formatosDe(t); rango.setNumberFormats(bloque.map(function () { return f; })); } else rango.setNumberFormat('@');
+      rango.setValues(datos);
       base += t.cols.length;
     });
     escritas += bloque.length;
@@ -1095,7 +1901,7 @@ function regEscribirDiccionario_(hoja, hoy, cuentas, celdas, pendiente, avisos) 
     ['Celdas usadas', String(celdas || 0) + ' de ' + REG_CELDAS_MAX + ' que admite Sheets (' + Math.round(100 * (celdas || 0) / REG_CELDAS_MAX) + '%)' + ((celdas || 0) > REG_CELDAS_AVISO * REG_CELDAS_MAX ? ' — AVISO: hay que pasar lo viejo a un libro histórico.' : '')],
     ['Carga en curso', pendiente ? 'Sí: quedan filas por leer o escribir; sigue en otra vuelta.' : 'No'],
     ['Avisos de la última corrida', (avisos && avisos.length) ? avisos.join('\n') : 'Ninguno'],
-    ['Privacidad', 'Contiene nombres y expedientes. Mantener en la carpeta privada; compartir solo como lector y solo con personas autorizadas por el protocolo aprobado por el Comité de Ética en Investigación.'],
+    ['Privacidad', 'Contiene nombres y expedientes. Mantener en la carpeta privada; compartir solo como lector y solo con personas autorizadas por el protocolo aprobado por el Comité de Ética en Investigación. Para un análisis, compartir solo las pestañas «Análisis · …» (Archivo → Descargar → CSV, una por una) y el Diccionario de variables.'],
     ['ID episodio', 'Id del paciente en la base (una hospitalización). Un reingreso es otro episodio.'],
     ['Estado en registro', 'Hospitalizado (en el censo), Egresado (en la Papelera) o «Salió de la base sin egreso registrado».'],
     ['Motivo de egreso', 'Etiqueta del egreso en la app (ALTA, DEFUNCIÓN, alta médica, EGRESO, CAMA REASIGNADA…).'],
@@ -1108,6 +1914,8 @@ function regEscribirDiccionario_(hoja, hoy, cuentas, celdas, pendiente, avisos) 
     ['Cultivos del robot (WinLab)', 'Un renglón por muestra de cultivo de esos reportes: del PDF del reporte cuando el robot lo leyó (germen y antibiograma S/I/R) o de la tabla del reporte.'],
     ['Imagen del robot (RIS)', 'Lo que capturó el robot de RIS, por expediente y episodio.'],
     ['Nota / Checklist completo (JSON)', 'Todo lo demás de la tarjeta, sin archivos incrustados.'],
+    ['Pestañas «Análisis · …»', 'Versión para estadística de todo lo anterior, recalculada cada noche: sin nombres ni expedientes (ID seudónimo), números como números, fechas AAAA-MM-DD, una fila por episodio / por día de labs / por día de signos / por cultivo. Cada columna está definida en «Diccionario de variables». Lo que no se pudo tomar como dato queda vacío y explicado. Una hospitalización restaurada desde la Papelera es UN episodio.'],
+    ['Clave de seudónimos', 'ID episodio de la base → ID paciente / ID episodio de análisis. Es la llave para volver a los datos con nombre: NO compartirla. La sal del seudónimo está en las propiedades del script (REG_SAL).'],
     ['Respaldo', 'Una sola hoja: el respaldo es su historial de versiones (Archivo → Historial de versiones). El registro nunca borra renglones.'],
     ['Cuidado', 'Se pueden agregar columnas propias y usar filtros: el registro no las toca. No renombrar los encabezados del registro (si falta uno, se agrega al final; si falta una columna clave, el registro se detiene y avisa).']
   ];

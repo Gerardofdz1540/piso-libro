@@ -101,15 +101,15 @@ const MATCH = [{ exp: X, cama: '3-154', alias: null, status: 'homonimos', buscad
   check('X2 imagen: 3-154 ve su TC de tórax (y el RX cuyo patient_id ya no existe, por su nombre); 3-189 su RX de abdomen y el TC que el robot le asignó por patient_id aunque el nombre del RIS no coincida; el estudio sin nombre no va a ninguno; 3-150 (exp único) igual que siempre',
     JSON.stringify(x2.a) === '[901,906]' && JSON.stringify(x2.b) === '[902,905]' && JSON.stringify(x2.c) === '[904]', JSON.stringify(x2));
 
-  // ── X3: la entrega automática no guarda en la nota de uno el estudio del otro ──
+  // ── X3: los estudios del RIS ya no se anotan solos en la Cronología de nadie (27 oct 2026, «no quiero que pongas nada en
+  //        las cajitas de manera automática»); antes aquí se probaba que la anotación automática no cruzara gemelos ──
   const x3 = await page.evaluate(async () => {
     const a = patients.find(p => p.cama === '3-154'), b = patients.find(p => p.cama === '3-189');
-    _entregaAutoFromRis([a, b]);
     await new Promise(r => setTimeout(r, 300));
-    return { ea: toSafeString(getNote(pid(a)).entrega), eb: toSafeString(getNote(pid(b)).entrega) };
+    return { sinFn: typeof _entregaAutoFromRis === 'undefined', ris: risForPatient(a).length + risForPatient(b).length, ea: toSafeString(getNote(pid(a)).entrega), eb: toSafeString(getNote(pid(b)).entrega) };
   });
-  check('X3 entrega automática: la de 3-154 lleva su CT de tórax y no el RX de abdomen; la de 3-189 al revés; ninguna lleva el estudio sin nombre',
-    /CT TORAX/.test(x3.ea) && !/ABDOMEN/.test(x3.ea) && /RX ABDOMEN/.test(x3.eb) && !/TORAX/.test(x3.eb) && !/HIGADO/.test(x3.ea + x3.eb), JSON.stringify(x3));
+  check('X3 imagen: con sus estudios del RIS cargados, la Cronología de 3-154 y la de 3-189 siguen vacías (nada automático)',
+    x3.sinFn && x3.ris === 4 && x3.ea === '' && x3.eb === '', JSON.stringify(x3));
 
   // ── X4: caja «Cultivos (lab)»: solo en la tarjeta de quien el robot encontró en WinLab, una vez ──
   const x4 = await page.evaluate(async () => {

@@ -28,7 +28,7 @@ import { createClient } from "@supabase/supabase-js";
 import { PDFParse } from "pdf-parse";
 import ws from "ws";
 import fs from "node:fs";
-import { todayISO } from "./lib.js";
+import { todayISO, iniciales, instalarLogSeguro } from "./lib.js";
 import {
   filterCenso, buildWindows, oldestIngreso, rowToEstudio, estudioKey, dedupEstudios,
   matchCensoDetailed, resolveHomonyms, nearMisses,
@@ -52,6 +52,8 @@ const NAV_TIMEOUT_MS = 45000;
 const SEL_TIMEOUT_MS = 20000;
 const MATCH_OPTS = { ageTolerance: RIS_AGE_TOLERANCE, ageToleranceWide: RIS_AGE_TOLERANCE_WIDE_ENV };
 
+// Bitácora pública: ningún nombre de paciente sale a GitHub Actions (ver instalarLogSeguro en lib.js).
+instalarLogSeguro();
 function log(...a) { console.log(...a); }
 function abs(base, u) { if (!u) return ""; try { return new URL(u, base).toString(); } catch (_) { return ""; } }
 function cleanText(s) { return String(s || "").replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim(); }
@@ -318,12 +320,13 @@ async function upsertRis(supa, batch) {
     log(`       estudios en el rango: ${estudios.length} · con ícono de reporte: ${conReporte.length}`);
 
     if (RIS_MODE === "explore") {
-      log(`[EXPL] 3 filas con reporte: ${JSON.stringify(conReporte.slice(0, 3).map((e) => ({ doc: e.documento, fecha: e.fecha, mod: e.modalidad, links: e.links })))}`);
+      log(`[EXPL] 3 filas con reporte: ${JSON.stringify(conReporte.slice(0, 3).map((e) => ({ doc: e.documento ? "…" + String(e.documento).slice(-3) : "", fecha: e.fecha, mod: e.modalidad, links: (e.links || []).length })))}`);
       log(`[EXPL] tipos de enlace: ${JSON.stringify(estudios.flatMap((e) => e.links.map((l) => l.kind + ":" + (l.html.match(/class=\\"[^\\"]*\\"/) || [""])[0])).reduce((m, k) => (m[k] = (m[k] || 0) + 1, m), {}))}`);
       if (conReporte.length) {
         const e = conReporte[0];
         const rep = await fetchReporte(page, ctx, cfg, e);
-        log(`[EXPL reporte] doc=${e.documento} url=${rep.url} ct=${rep.ct || ""} chars=${rep.text.length} motivo=${rep.motivo || ""} texto=${JSON.stringify(rep.text.slice(0, 1200))}`);
+        // Sin el texto del reporte ni el documento completo: el encabezado del reporte trae el nombre del paciente.
+        log(`[EXPL reporte] doc=…${String(e.documento || "").slice(-3)} ct=${rep.ct || ""} chars=${rep.text.length} motivo=${rep.motivo || ""} usable=${!!(rep.text && rep.text.length > 50)}`);
       }
       fs.writeFileSync(`ris-explorer-${Date.now()}.json`, JSON.stringify({ headers: tabla.headers, sample: estudios.slice(0, 20) }, null, 2));
       log(`DONE explore · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
@@ -335,17 +338,17 @@ async function upsertRis(supa, batch) {
     let ambiguos = 0, homonimosProbables = 0;
     for (const e of estudios) {
       const { m, descartados } = matchCensoGuarded(e, censo);
-      for (const c of descartados) { homonimosProbables++; log(`       no cruzado: "${e.nombre}" ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad} ≈ cama ${c.p.cama} (${c.p.edad || "?"} a): subconjunto exacto con edad incompatible (homónimo probable)`); }
+      for (const c of descartados) { homonimosProbables++; log(`       no cruzado: ${iniciales(e.nombre)} ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad} ≈ cama ${c.p.cama} (${c.p.edad || "?"} a): subconjunto exacto con edad incompatible (homónimo probable)`); }
       if (!m) continue;
       // Empate COMPLETO entre dos pacientes del censo con expediente distinto (mismo nombre, misma edad,
       // mismo nivel): el estudio solo puede escribirse bajo un exp (clave documento|fecha|hora|modalidad)
       // y asignarlo al primero acierta el 50 %. No se asigna: queda en el log hasta que se corrija el
       // censo o se ponga alias; la siguiente corrida lo vuelve a intentar.
-      if (m.ambiguous) { ambiguos++; log(`       ambiguo: "${e.nombre}" ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad} empata por completo entre camas ${m.candidates.slice(0, 2).map((c) => c.p.cama).join(" y ")} → NO se asigna (corrige el censo o pon alias «Nombre en WinLab»)`); continue; }
+      if (m.ambiguous) { ambiguos++; log(`       ambiguo: ${iniciales(e.nombre)} ${e.edad} ${e.tipoEdad} ${e.fecha} ${e.modalidad} empata por completo entre camas ${m.candidates.slice(0, 2).map((c) => c.p.cama).join(" y ")} → NO se asigna (corrige el censo o pon alias «Nombre en WinLab»)`); continue; }
       matchedRaw.push({ e, p: m.p, level: m.level, label: m.label, diff: m.diff, via: m.via });
     }
     const { kept: matched, dropped, ambiguous } = resolveHomonyms(matchedRaw, MATCH_OPTS);
-    for (const d of dropped) log(`       homónimo descartado: cama ${d.p.cama} ← "${d.e.nombre}" ${d.e.edad} ${d.e.tipoEdad} ${d.e.fecha} ${d.e.modalidad} · ${d.motivo}`);
+    for (const d of dropped) log(`       homónimo descartado: cama ${d.p.cama} ← ${iniciales(d.e.nombre)} ${d.e.edad} ${d.e.tipoEdad} ${d.e.fecha} ${d.e.modalidad} · ${d.motivo}`);
     for (const a of ambiguous) log(`       cama ${a.cama}: ${a.motivo} (${a.personas.join(" | ")})`);
     const pacientes = new Set(matched.map((m) => m.p.exp));
     log(`[3/4] cruce por nombre: ${matched.length} estudios de ${pacientes.size}/${censo.length} pacientes del censo` +
@@ -403,7 +406,7 @@ async function upsertRis(supa, batch) {
         log(`       reporte ✓ cama ${it.p.cama} ${it.e.modalidad} ${it.e.fecha} (${r.text.length} letras, ${r.ct || ""})`);
       } else if (cls.estado === REPORTE_ESTADO.PENDIENTE_DESCARGA && r.attempted) {
         fallidos++;
-        log(`       reporte ✗ cama ${it.p.cama} ${it.e.modalidad} ${it.e.fecha} (${r.url || "sin url"}) · ${cls.motivo}`);
+        log(`       reporte ✗ cama ${it.p.cama} ${it.e.modalidad} ${it.e.fecha} (${r.url ? "con url" : "sin url"}) · ${cls.motivo}`);
       }
     }
     const presupuesto = items.filter((it) => it.result && it.result.budgetExhausted).length;
@@ -414,7 +417,7 @@ async function upsertRis(supa, batch) {
       for (const batch of [withRep, noRep]) { if (batch.length) await upsertRis(supa, batch); }
       log(`       upsert ${payload.length} filas (${withRep.length} con reporte nuevo)`);
     } else if (DRY_RUN) {
-      log(`[dry-run] no se escribe. Muestra: ${JSON.stringify(items.slice(0, 3).map((it) => ({ cama: it.p.cama, nivel: it.level, fecha: it.row.fecha, mod: it.row.modalidad, est: it.row.estudios, estado: it.row.reporte_estado, rep: (it.row.reporte || "").slice(0, 200) })))}`);
+      log(`[dry-run] no se escribe. Muestra: ${JSON.stringify(items.slice(0, 3).map((it) => ({ cama: it.p.cama, nivel: it.level, fecha: it.row.fecha, mod: it.row.modalidad, est: it.row.estudios, estado: it.row.reporte_estado, rep: (it.row.reporte || "").length + " letras" })))}`);
     }
     log(`DONE. Estudios del censo: ${payload.length} (${pacientes.size}/${censo.length} pacientes) · reportes nuevos ${bajados} · estados ${JSON.stringify(porEstado)} · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     await browser.close(); process.exit(0);

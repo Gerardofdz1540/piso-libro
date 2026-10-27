@@ -425,7 +425,7 @@ sincronizar y hay que esperar al Wi-Fi del hospital; lo escrito no se pierde.
 En la cabecera de cada tarjeta aparece **↩ Regresar** cuando hay algo que deshacer. Cada cambio
 que puede doler guarda antes una copia de la tarjeta: texto de una caja al terminar de escribir,
 quitar una cirugía, un drenaje, unos labs o un estudio, "Recibir guardia", auto-llenar, órdenes
-rápidas y las novedades automáticas. Regresar vuelve un paso; tocarlo otra vez vuelve otro paso
+rápidas. Regresar vuelve un paso; tocarlo otra vez vuelve otro paso
 más (hasta 20 por paciente) y cada regreso se sube como cualquier edición.
 
 Si el regreso fue el error, aparece **↪ Rehacer**: vuelve a dejar la tarjeta como estaba antes
@@ -494,9 +494,10 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
 - **🕓 Cronología** (azul; 19 oct 2026, sustituye a «Entrega / Recibo de guardia», que se confundían):
   UNA sola caja por paciente donde cada guardia anota, con fecha y hora, **lo que pasa y lo que hace**
   (eventos, llamadas, lo que se hizo). El botón **➕ Ahora** agrega un renglón al final con `dd/mm hh:mm GF: `
-  y deja el cursor ahí. La siguiente guardia la lee de arriba abajo. Las novedades de labs críticos, imagen y
-  cultivos se anotan solas con su fecha, y **✨ Resumen** escribe al final un bloque corto con lo que importa
-  (ver "Entrega de guardia que resume"). Lo que había en la caja antigua «Recibido» pasó una sola vez al
+  y deja el cursor ahí. La siguiente guardia la lee de arriba abajo. **Solo tiene lo que escribe la gente**:
+  desde el 27 oct 2026 la app no anota nada sola (ver "Nada automático en las cajas"). **✨ Resumen** muestra en
+  una ventana un resumen corto con lo que importa, sin escribirlo en la caja (ver "Entrega de guardia que
+  resume"). Lo que había en la caja antigua «Recibido» pasó una sola vez al
   principio de la cronología (en orden) y esa caja desapareció; su historial sigue en 🕘 como «Recibido
   (caja antigua)».
 - Las tres cajas de trabajo quedan así: **⚠️ Pendientes** (lo por hacer), **🕓 Cronología** (lo que se va
@@ -579,6 +580,9 @@ temporal a disco y la base la cortaba a los 8 s (la caja no recibía nada). 5 GB
 - Se reescribió (`scripts/supabase_winlab_cultivos_rapida.sql`, aplicada en producción): mismo resultado
   (147 de 147 cultivos idénticos), ahora en ~1 s, solo con los días y pacientes pedidos y sin tocar disco.
   Reconoce también los encabezados de WinLab en italiano.
+- Si aun así la consulta falla en el servidor, la tarjeta ya no se queda callada: muestra «No se pudieron cargar
+  los cultivos de WinLab (se reintenta en unos minutos)» y la app lo vuelve a intentar 3 veces, cada 5 min. Los
+  cultivos del PDF siguen en 🦠 Cultivos. Sin red no se avisa: se reintenta solo al volver la conexión.
 - Indicaciones: la app revisa primero la huella del Doc y solo baja el texto completo (≈136 000 letras)
   si cambió.
 - `scripts/supabase_indicaciones_sin_vaiven.sql` (aplicada en producción): la descarga de la base y el Apps
@@ -649,6 +653,129 @@ del hospital su lista oficial de valores críticos y ajustar la tabla (solo en `
 - Sugerencia «Lesión renal aguda KDIGO»: solo con una creatinina previa más baja, y nunca con ERC o diálisis en el
   diagnóstico.
 
+## Sincronización entre iPads y datos (27 de octubre de 2026)
+
+- **Alta desde otro dispositivo con cambios sin subir:** si la hoja del censo u otro iPad da de alta a un paciente
+  mientras este iPad tiene cambios que aún no suben (los últimos segundos, o todo lo escrito sin red), esa versión va a la
+  🗑️ Papelera (local y nube) como «CAMBIOS DE ESTE iPad SIN SUBIR» y sale un aviso. Lo mismo con una nota que estaba en
+  la cola de un paciente que ya no está en el censo al volver la red (antes se tiraba en silencio).
+- **Dos personas en la misma caja:** si un colega cambia la caja que estás escribiendo, la tarjeta avisa
+  «✋ … cambió «Pendientes» mientras escribías» con **Ver su versión**, **Unir las dos** (tus renglones + los suyos
+  nuevos, marcados con su nombre) y **Quedarme con la mía**. Lo reemplazado siempre queda en 🕘 Historial de la caja.
+- **«No olvidar»:** el aviso entre iPads ya no manda la lista; cada iPad la baja de la nube (un iPad que estuvo dormido
+  ya no impone su lista vieja). También se recarga al volver a la app y al volver la red.
+- **Recargas:** al volver los canales en vivo después de un corte, una recarga completa (censo, notas, «No olvidar»,
+  procedimientos); y cada 10 min con la app en pantalla y nadie escribiendo, una recarga ligera.
+- **Nota muy grande:** si el aviso en vivo llega recortado (más de 1 MB), se baja la nota completa en vez de vaciar cajas.
+- **Sin red:** la barra dice de cuándo son los datos («Sin conexión · datos de hoy 06:10») y, con más de 2 h, en rojo
+  con un aviso abajo.
+- **Memoria del iPad:** las notas de pacientes que llevan más de 24 h fuera del censo se borran del iPad (siguen en la nube
+  y en la Papelera).
+- **Camas:** mover a alguien a una cama con número que ya ocupa otro paciente avisa quién la ocupa y no hace nada (la nube
+  acepta uno por cama; para intercambiar usa una cama libre de paso). Restaurar de la Papelera ya no borra la copia de la
+  nube hasta que el paciente sube.
+- **Procedimientos del día:** el día se fija al crearlo; editarlo o subirlo después de medianoche ya no lo cambia de día.
+- **Críticos reconocidos:** «✓ Reconocer» guarda quién y a qué hora; la tarjeta lo muestra («🔕 Reconocidos: K 6.4 ✓ GF 07:40»).
+- **Indicador del robot** (botón 💧 de arriba): «Robot: hoy 05:12» con la última corrida; en rojo con ⚠ si no corrió a la
+  hora programada (05:00, 12:30 y 20:07, con 2 h de margen). Antes nunca funcionaba.
+- **Nombres parecidos:** etiqueta «👥 Apellido igual: 3-115» en la tarjeta de dos pacientes con el mismo apellido paterno.
+- **Fotos y PDF con IA:** la nota postquirúrgica de otro paciente (nombre o expediente distinto) no llena nada; los labs
+  leídos de foto/PDF se muestran para confirmar antes de guardarse, los imposibles (K 50, Hb 150) se descartan y la celda
+  queda marcada 🤖.
+- **📌 Tablero:** ahora se comparte entre iPads (se une renglón por renglón; un borrado no resucita). La Entrega ya no
+  proyecta «altas programadas» de pacientes que ya se fueron.
+- **🔠 Letra** (⋯ Más): normal → grande → más grande, en cajas, tabla de labs y fechas. En la tabla de labs, además del color,
+  «A» = alto, «B» = bajo, «!» = crítico.
+- **Arranque:** después del censo, notas, labs, robot, indicaciones e imagen se piden al mismo tiempo.
+
+## Registro de pacientes para investigación: pestañas de análisis y motivo del egreso (27 de octubre de 2026)
+
+El registro de Google Sheets (`apps-script/registro-pacientes.gs`; detalle en `apps-script/REGISTRO.md`) ya no es solo
+una copia: además trae pestañas listas para estadística.
+
+- **Pestañas «Análisis · Episodios / Labs / Signos vitales / Cultivos».**
+  - No tienen nombres ni expedientes: usan ID seudónimos.
+  - Los números van como números, en la unidad de la app; las fechas como AAAA-MM-DD.
+  - Lo que no se pudo usar como dato (muestra rechazada, unidad desconocida, valor imposible, texto) queda vacío y
+    explicado.
+  - «Diccionario de variables» define cada columna.
+  - Para compartir un análisis: Archivo → Descargar → CSV de esas pestañas, una por una. **Nunca** se comparte la
+    «Clave de seudónimos».
+- **Una hospitalización restaurada desde la Papelera cuenta como UN episodio** (antes parecía un egreso y un reingreso
+  falsos). Si la segunda parte entró 2 días o más después, «Calidad de datos» pide confirmar que no fue reingreso.
+- **Motivo del egreso.** Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO (hoja)») sin decir si fue
+  alta o defunción. Por eso el registro no podía calcular mortalidad. Ahora:
+  - al dar de alta en la app (🚪 Alta), el cuadro pide el motivo: alta a domicilio, defunción, traslado o alta
+    voluntaria;
+  - en la **Papelera**, cada egreso tiene su selector «Motivo», y arriba aparece cuántos egresos no lo tienen;
+  - el motivo se guarda en la nube con la función `archive_set_egreso` (`scripts/supabase_archive_egreso.sql`, ya
+    aplicada); se une a la copia sin pisar la nota;
+  - el registro lo toma aunque la copia sea vieja.
+
+  **Pide al equipo que llene el motivo de los egresos.** Sin él, en el registro la defunción queda «desconocida».
+- **Para que el registro tenga las pestañas nuevas:** abre el proyecto «Registro de pacientes» en script.google.com,
+  borra todo `Código.gs`, pega el `apps-script/registro-pacientes.gs` nuevo y guarda. No hay que tocar nada más: la
+  propiedad `REG_SAL` (la sal del seudónimo) se crea sola en la siguiente corrida.
+
+## Privacidad de las bitácoras de los robots y robot que se congelaba (27 de octubre de 2026)
+
+- **Bitácoras sin nombres.** El repositorio es público y las bitácoras de GitHub Actions también.
+  - Los robots de WinLab y del RIS imprimían nombres de pacientes (homónimos, casi-coincidencias, «encontrado como»).
+  - Ahora imprimen solo la cama, las iniciales y los 3 últimos dígitos del expediente.
+  - Una red de seguridad (`rpa/lib.js`: `instalarLogSeguro`) oculta cualquier nombre que se escape.
+  - Una prueba revisa que ninguna línea de bitácora imprima un nombre.
+- **Sin adjuntos con datos.** Ya no se suben capturas de pantalla ni volcados de WinLab/RIS como adjuntos de la corrida:
+  cualquiera con cuenta de GitHub podía descargarlos.
+- **Limpieza de lo que ya estaba publicado.** El flujo «Limpiar bitácoras con datos de pacientes»
+  (`.github/workflows/limpiar-bitacoras.yml`) borra las bitácoras de todas las corridas anteriores de los robots. Corre
+  solo al llegar a main y se puede relanzar a mano. Las corridas siguen listadas, sin su texto.
+- **«🔎 Buscar ahora» ya no publica el expediente.** La app manda al robot el id interno del paciente (`ID-<uuid>`, que no
+  identifica a nadie) y el robot lo busca en el censo. No hubo que cambiar el worker.
+- **Robot que se quedaba pasmado ~55 min.** Ninguna operación del navegador queda sin tope:
+  - abrir o cerrar la pestaña de un paciente: 15 s;
+  - guardar en Supabase: 90 s.
+
+  Si el navegador no responde, el robot guarda lo capturado, entra otra vez a WinLab y sigue con el siguiente paciente
+  (hasta 3 veces por corrida). El error «interrupted by another navigation» se reintenta. Cada intento del flujo tiene 45
+  min, así el segundo intento sí cabe en los 90.
+- **Respaldo diario sin trabajo repetido.** La corrida diaria del cron de GitHub es solo respaldo de las tres de Supabase.
+  Si en las últimas 8 h el robot ya revisó al menos al 80 % del censo, termina en segundos; si no, corre completa.
+- **Imagen (RIS) cada 2 h de verdad.** GitHub lanzaba el robot de imagen cada 4-6 h aunque estaba programado cada 2.
+  Ahora Supabase lo dispara a hora exacta cada 2 h (minuto 41, cron `ris-scrape-cada-2h`;
+  `scripts/supabase_ris_dispatch.sql`, ya aplicado) por una ruta nueva del worker (`/api/scrape-ris`).
+  - **Falta un paso tuyo:** pega el `cloudflare-worker/index.js` nuevo (v5) en el worker `piso-libro-ai` (Cloudflare →
+    Workers → piso-libro-ai → Edit code → pegar → Deploy).
+  - Hasta entonces, esa ruta responde 404 (queda anotado en `winlab_dispatch_log`, sin efecto) y el cron de GitHub
+    sigue como respaldo.
+- **Vigilante de todo el sistema.** `labs-watchdog.yml` + `scripts/vigilante.py` revisa cada 2 h (antes cada 6 y solo
+  labs) la última señal de vida de cada pieza:
+
+  | Pieza | Límite |
+  |---|---|
+  | Robot de labs | 11 h (avisa antes de la visita si falló la corrida de las 05:00) |
+  | Labs guardados | 26 h |
+  | Imagen del RIS | 10 h |
+  | Descarga del Doc de indicaciones | 2 h |
+  | Censo | 18 h sin ningún cambio |
+  | Tamaño de la base | — |
+
+  Si algo se atrasa, el job sale en rojo con el qué revisar y GitHub te manda el correo. Solo imprime horas y conteos.
+- **📦 Labs Masivo descarta valores imposibles.** Si la IA lee mal una cifra (Hb 125, K 40…), ya no se guarda, igual que
+  en la hoja de una sola persona; el resultado lo dice en rojo («No se guardaron… revisa la hoja»). Probado además: el
+  mismo PDF dos veces no duplica; con labs de WinLab del mismo día se suman sin pisar; un PDF que falla no detiene a los
+  demás; un nombre que encaja con dos pacientes no se escribe hasta confirmarlo.
+- **El robot ya no reescribe lo que no cambió.** Si la fila de hoy de un paciente ya está igual en la base (mismos reportes,
+  cama y especialidad), no se vuelve a guardar. Antes cada corrida mandaba un aviso en vivo a todos los iPads («🧪 Labs
+  WinLab actualizados») y repintaba las tarjetas aunque nada cambiara. El resultado de la búsqueda (`winlab_match`) sí
+  se actualiza siempre (de ahí leen el indicador del robot y el vigilante).
+- **Edad que no cuadra con WinLab.** Si en WinLab solo hay una persona con ese nombre, el robot acepta sus labs aunque la
+  edad no coincida (para no perder labs por una edad mal capturada en la hoja). Ahora la tarjeta lo avisa en amarillo
+  («WinLab: 61 años · censo: 39»): corrige la edad en la hoja del censo o, si son de otra persona, fija el «Nombre en
+  WinLab».
+- **«🔎 Buscar ahora» con la cola ocupada.** El aviso ya no promete que «incluirá a este paciente»: dice que, si lo que
+  está en cola es la búsqueda de otro paciente, hay que pulsar 🔎 otra vez. La tarjeta vigila el resultado 45 min
+  (antes 12), porque la corrida completa tarda 25-32.
+
 ## Los labs ya no se reescriben en bucle (19 de octubre de 2026)
 
 La bitácora de actividad crecía con miles de filas al día de «labs» que no cambiaban nada: la base
@@ -718,7 +845,7 @@ registrado. Empieza en la cama 150 y sigue el orden del tablero (piso 3
 por número, luego UCI, UTI y piso 2); con **Ir a cama** se elige desde dónde empezar, y ◀ ▶ (o las
 flechas del teclado) avanzan. La ficha se ajusta sola al tamaño de la pantalla para que no se corte.
 
-El botón **✨ Resumen** de la caja Entrega sigue escribiendo el resumen completo, que además incluye:
+El botón **✨ Resumen** de la Cronología muestra el resumen completo en una ventana de solo lectura, que además incluye:
 
 - **🔪 Quirófano**: si pasó a quirófano hoy o ayer (procedimiento, hallazgos, sangrado, cirujano);
   si no, el día POP de la última cirugía y cuántas previas hay. Cruce quirúrgico si está activo.
@@ -730,24 +857,34 @@ El botón **✨ Resumen** de la caja Entrega sigue escribiendo el resumen comple
   > 2, con flecha de tendencia y el valor anterior. Máximo seis; el resto se cuenta. Nada de
   transcribir todos los analitos.
 - **🆕 Nuevo del día**: lo que se agregó, pidió o llegó hoy o ayer. Se reconoce por los sellos de
-  fecha que ya usa la app (➕ Hoy, el encabezado del día en Pendientes, las novedades automáticas)
+  fecha que ya usa la app (➕ Hoy, el encabezado del día en Pendientes)
   en Pendientes, Manejo, IC, Cultivos y Entrega; además los drenajes colocados hoy/ayer, los
   estudios del visor recién llegados (con su conclusión) y los cultivos de los últimos dos días.
   Por eso conviene tocar ➕ Hoy antes de escribir: lo que no tiene fecha no se puede saber si es nuevo.
 - **📋 Pendientes** abiertos (sin ✓) y los "No olvidar" del paciente.
 
-✨ Resumen agrega el bloque `— Resumen dd/mm hh:mm GF —` al final de la caja; si ya había uno, lo
-reemplaza (lo escrito a mano no se toca). Lo escrito en la caja Entrega se ve en la tarjeta, ya no en
-la vista 📤 Entrega.
+✨ Resumen abre una ventana con el texto (encabezado `— Resumen dd/mm hh:mm GF —`) y un botón **📋 Copiar** por
+si alguien lo quiere pegar en algún lado. **No escribe en la Cronología.** Lo escrito en la Cronología se ve en
+la tarjeta, no en la vista 📤 Entrega.
 
-### Novedades automáticas
+### Nada automático en las cajas (27 oct 2026)
 
-Todo lo que llega solo se anota en la caja **Entrega de guardia**, una línea por novedad con su fecha
-(`13-10-2026: …`): laboratorios nuevos **con valores críticos** (por ejemplo "Anemia severa (Hb 6.2),
-Hiperkalemia severa (K 6.3)"; lo solo "anormal" ya no se anota, se ve en la tabla) y el INR estimado
-cuando es ≥ 1.5, estudios del visor (con la conclusión del reporte, o "reporte pendiente") y cultivos
-(positivo con germen, o sin desarrollo). Cada novedad se escribe una sola vez aunque la app esté
-abierta en varios iPads; lo escrito a mano no se toca.
+Pedido de Gera: «no quiero que pongas nada en las cajitas de manera automática». Antes la app anotaba sola en la
+Cronología una línea por novedad (`13-10-2026: Labs: …`, estudios del RIS, cultivos) y ✨ Resumen escribía su
+bloque al final. Desde la versión 2026.10.27-5:
+
+- La app **ya no escribe nada por su cuenta en ninguna caja**. Los labs críticos, los estudios de imagen y los
+  cultivos se siguen viendo en su sección de la tarjeta, en los avisos («labs nuevos», 🩻) y en la vista 📤 Entrega.
+- ✨ Resumen solo muestra (ver arriba).
+- Las 14 líneas automáticas que ya había (10 pacientes) se quitaron de la base; lo escrito por la gente no se tocó.
+  Cada línea quitada quedó registrada en `guardia_cortes` (motivo «borrado») y en la bitácora (`audit_log`).
+  El script es `scripts/supabase_quitar_auto_cronologia.sql`.
+- La base ya rechazaba esas líneas si alguien las mandaba (`pl_entrega_protegida` → `pl_es_auto_entrega`), así
+  que un iPad con la versión anterior que todavía las agregue solo las ve un momento hasta que se actualiza
+  (la app avisa cuando hay versión nueva).
+- Lo que **sí** sigue escribiendo la app es lo que pide la persona con un botón: ➕ Ahora / ➕ Hoy (fecha y
+  hora), órdenes rápidas, importar el censo o el PDF, la transcripción del lápiz o de una foto que la persona
+  manda convertir. Y la caja antigua «Recibido» pasó una sola vez a la Cronología (texto de la propia gente).
 
 ## INR: siempre visible (octubre 2026)
 
@@ -1057,6 +1194,27 @@ lados está en `scripts/SECURITY_NOTES.md`.
 Además, sin ser llaves: GitHub apaga los robots tras 60 días sin cambios en el repositorio (se
 mantienen despiertos solos) y Supabase pausa el proyecto tras 7 días sin tráfico (hay un ping cada
 3 días).
+
+## Plan B si los robots no pueden entrar, y la cuenta que usan (27 de octubre de 2026)
+
+**La cuenta.** El robot de labs entra a WinLab y el de imagen al RIS con el usuario de una persona. WinLab usa los
+secrets `WINLAB_USER` y `WINLAB_PASS` de GitHub; el RIS usa `RIS_USER` y `RIS_PASS` en la tabla `rpa_config` de
+Supabase. Para cada búsqueda, el hospital ve a esa persona.
+- Anota en un lugar privado de quién es cada cuenta y cuándo vence su contraseña.
+- Pide por escrito a Informática una cuenta solo de consulta para el robot, a nombre del servicio. Si no la dan, que
+  el dueño de la cuenta y la jefatura firmen que se usa así, y revísalo en cada rotación.
+- **El día que cambie la contraseña**, cámbiala en el mismo lugar (GitHub → Settings → Secrets, o `rpa_config`) y lanza
+  una corrida de prueba. Si el robot dice «Login fallido», casi siempre es eso.
+
+**Si el hospital cierra el acceso desde fuera.** Los robots corren en computadoras de GitHub, fuera del hospital, y
+entran por internet. Si un día no pueden entrar (el vigilante avisa por correo):
+1. Mientras tanto, cada tarjeta tiene **📄 PDF / 📷 Foto**: lee la hoja de laboratorio con IA y la guarda. Para varios a
+   la vez, **⋯ Más → 📦 Labs Masivo**.
+2. Habla con Informática: pregunta si el acceso externo seguirá permitido o si prefieren que el robot corra dentro de
+   la red del hospital.
+3. Si lo prefieren dentro: una computadora del servicio siempre encendida puede ser el «runner» propio de GitHub (la
+   máquina que corre el robot). Se registra en GitHub → Settings → Actions → Runners y se cambia `runs-on` en los dos
+   flujos de los robots. Pruébala primero con una corrida en seco (`winlab-dryrun.yml`).
 
 ## Si un paciente no tiene labs: el nombre no coincide con WinLab (octubre 2026)
 
