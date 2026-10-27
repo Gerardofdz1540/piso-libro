@@ -4741,7 +4741,17 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
       <div style="font-size:18px;font-weight:700;color:#dc2626;margin-bottom:8px">🚪 Dar de alta / Eliminar</div>
       <div style="font-size:14px;color:#374151;margin-bottom:4px">¿Confirmas dar de alta a:</div>
       <div style="font-size:15px;font-weight:700;margin-bottom:4px" id="confirm-name"></div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:16px" id="confirm-sub"></div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:12px" id="confirm-sub"></div>
+      <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:12px">Motivo del egreso
+        <select id="confirm-egreso-tipo" data-testid="confirm-egreso-tipo" style="display:block;width:100%;margin-top:4px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:var(--font)">
+          <option value="">— Sin especificar —</option>
+          <option value="alta">Alta a domicilio</option>
+          <option value="defuncion">Defunción</option>
+          <option value="traslado">Traslado a otra unidad</option>
+          <option value="alta_voluntaria">Alta voluntaria</option>
+        </select>
+        <span style="display:block;font-weight:400;color:#64748b;font-size:11px;margin-top:3px">Queda en el registro de pacientes para estudios (mortalidad, reingresos). Se puede poner o corregir después en la Papelera.</span>
+      </label>
       <div
         style="font-size:12px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:20px">
         ⚠️ El paciente se <strong>archivará</strong> — saldrá del censo activo pero sus notas, labs e imágenes quedan
@@ -8581,9 +8591,13 @@ function plExportBackup() {
       const btnAlias = `<button class="rb-btn" data-k="${k}" onclick="setWinlabAlias(this.dataset.k)" data-testid="robot-alias" title="Cómo está escrito el nombre en WinLab (cuando la hoja trae un error de dedo o el orden es otro)">✏️ ${alias ? "Nombre en WinLab: " + esc(alias) : "Nombre en WinLab"}</button>`;
       const btnBuscar = `<button class="rb-btn rb-go" data-k="${k}" onclick="robotBuscarAhora(this.dataset.k)" data-testid="robot-go" title="El robot busca SOLO a este paciente en WinLab (2-4 min). Necesita internet.">🔎 Buscar ahora</button>`;
       const ok = !!(m && m.status === "ok");
-      if (ok && !alias && !_robotPending[exp]) return ""; // todo en orden: no estorbar
+      // Edad que no cuadra (27 oct 2026): el robot aceptó los labs porque en WinLab solo hay una persona con ese nombre,
+      // pero su edad no coincide con la del censo: o el censo trae mal la edad, o los labs son de otra persona.
+      const edadMal = ok && /edad en WinLab \d+/.test(String(m.detalle || "")) ? (/edad en WinLab (\d+) años · censo (\d+)/.exec(String(m.detalle)) || []) : null;
+      if (ok && !alias && !_robotPending[exp] && !edadMal) return ""; // todo en orden: no estorbar
       if (ok) {
-        return `<div class="rb-line rb-ok" data-testid="robot-line">🤖 Robot: encontrado${m.encontrado_como ? ` como «${esc(m.encontrado_como)}»` : ""}${alias ? " (nombre en WinLab fijado en la app)" : ""} · ${_robotFecha(m.checked_at)} ${pend}<div class="rb-acts">${btnAlias}</div></div>`;
+        const aviso = edadMal ? `<div class="rb-sub" data-testid="robot-edad" style="color:#92400e;font-weight:700">⚠️ WinLab: ${esc(edadMal[1] || "?")} años · censo: ${esc(edadMal[2] || "?")}. Confirma que los labs son de este paciente (corrige la edad en la hoja del censo o fija el nombre en WinLab).</div>` : "";
+        return `<div class="rb-line ${edadMal ? "rb-warn" : "rb-ok"}" data-testid="robot-line">🤖 Robot: encontrado${m.encontrado_como ? ` como «${esc(m.encontrado_como)}»` : ""}${alias ? " (nombre en WinLab fijado en la app)" : ""} · ${_robotFecha(m.checked_at)} ${pend}<div class="rb-acts">${btnAlias}</div>${aviso}</div>`;
       }
       const why = !m ? (hasWl ? "" : "El robot aún no ha buscado a este paciente (corre a las 05:00, 12:30 y 20:07).")
         : m.status === "sin_registro" ? "El robot no encontró a este paciente en WinLab."
@@ -8620,7 +8634,10 @@ function plExportBackup() {
       if (!proxyUrl) { alert("⚙️ Falta la URL del worker en Configuración (es la que dispara al robot)."); return; }
       if (navigator.onLine === false) { alert("📴 Sin internet no se puede pedir al robot. El nombre en WinLab que fijes se guarda y se usa en la siguiente corrida (05:00, 12:30 y 20:07)."); return; }
       try {
-        const r = await _sFetch(proxyUrl + "/api/scrape", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ exp }) });
+        // El dato de la corrida dirigida es PÚBLICO en GitHub (27 oct 2026): se manda el id del paciente en la base (un uuid
+        // que no identifica a nadie) y el robot lo busca en el censo; el expediente solo si aún no tiene id.
+        const objetivo = /^[0-9a-f-]{36}$/i.test(String(p._supa_id || "")) ? "ID-" + p._supa_id : exp;
+        const r = await _sFetch(proxyUrl + "/api/scrape", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ exp: objetivo }) });
         let data = {}; try { data = await r.json(); } catch (_) {}
         if (r.ok && data.dispatched) {
           _robotPending[exp] = "pedido " + _robotFecha(new Date().toISOString());
@@ -8628,7 +8645,7 @@ function plExportBackup() {
           _robotWatch(exp, k);
         } else if (r.ok && data.reason === "already_pending") {
           _robotPending[exp] = "en cola";
-          _plToast("🔄 Ya hay una corrida del robot en cola; incluirá a este paciente (y usará el nombre en WinLab si lo fijaste).", "#0369a1", 9000);
+          _plToast("🔄 El robot ya tiene una corrida en cola o en curso. Si es la del piso completo, incluye a este paciente; si es la búsqueda de otro paciente, pulsa 🔎 otra vez cuando termine. La tarjeta se actualiza sola.", "#0369a1", 11000);
           _robotWatch(exp, k);
         } else if (r.status === 503) {
           _plToast("⚠️ El worker no tiene GITHUB_TOKEN; no puede disparar al robot.", "#b45309", 9000);
@@ -8644,7 +8661,8 @@ function plExportBackup() {
       const every = intervalMs || 30000; const start = Date.now();
       const prev = (winlabMatchByExp[exp] || {}).checked_at || "";
       const tick = async () => {
-        if (Date.now() - start > 12 * 60000) { delete _robotPending[exp]; _rerenderCardSoft(k); return; }
+        // 45 min: la corrida del piso completo tarda 25-32 min (antes se dejaba de vigilar a los 12 y los labs llegaban sin aviso).
+        if (Date.now() - start > 45 * 60000) { delete _robotPending[exp]; _rerenderCardSoft(k); return; }
         try {
           const p = patients.find(x => pid(x) === k);
           await _loadWinlabMatch(p ? [p] : [], true);
@@ -24848,6 +24866,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       document.getElementById("confirm-name").textContent = p.nombre;
       document.getElementById("confirm-sub").textContent = `Cama ${p.cama} · ${p.esp} · Exp: ${p.exp}`;
       document.getElementById("confirm-btn").onclick = () => { dischargePatient(k); };
+      const tipoSel = document.getElementById("confirm-egreso-tipo"); if (tipoSel) tipoSel.value = "";
       document.getElementById("confirm-modal").style.display = "flex";
     }
     // Persistir la papelera local con manejo de cuota (compartido por egreso, import y outbox).
@@ -24892,6 +24911,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Archivar (papelera local + nube, también sin red) ANTES de quitarlo del censo activo.
       // La etiqueta ALTA/DEFUNCIÓN ya viene en la nota cuando el egreso sale del modal.
       const nd = noteData[k] || defaultData();
+      // Motivo del egreso (27 oct 2026, registro para investigación): sin él no se puede saber si fue alta o defunción.
+      const tipoSel = document.getElementById("confirm-egreso-tipo"), tipo = tipoSel ? tipoSel.value : "";
+      if (PL_EGRESO_TIPOS[tipo]) _marcarEgresoTipo(nd, tipo);
       _archivePatientRecord(p, nd, k, "EGRESO");
       // Quitar del censo activo
       patients = patients.filter(pt => pid(pt) !== k);
@@ -24959,6 +24981,45 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       else alert("No se encontraron registros adicionales en la nube.");
     }
 
+    // ─── Motivo del egreso (27 oct 2026) ─────────────────────────────────────────────────────────────────────────
+    // Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO (hoja)») sin decir si fue alta o defunción,
+    // y el registro de pacientes no podía calcular mortalidad. Se registra al dar de alta en la app o después, en la
+    // Papelera. En la nube va con la función archive_set_egreso (une el dato a note_data sin pisar la nota).
+    const PL_EGRESO_TIPOS = { alta: "Alta a domicilio", defuncion: "Defunción", traslado: "Traslado a otra unidad", alta_voluntaria: "Alta voluntaria" };
+    function _marcarEgresoTipo(nd, tipo) {
+      if (!nd) return;
+      if (PL_EGRESO_TIPOS[tipo]) { nd._egreso_tipo = tipo; nd._egreso_tipo_por = localStorage.getItem("pl_user_name") || ""; }
+      else { delete nd._egreso_tipo; delete nd._egreso_tipo_por; }
+      nd._egreso_tipo_ts = new Date().toISOString().slice(0, 19) + "Z";
+    }
+    // Copias técnicas (rescates, duplicados, cama dada a otra persona): no son un egreso que clasificar.
+    function _egresoTecnico(arc) { return /CAMBIOS DE ESTE iPad|DUPLICADO|CAMA REASIGNADA \(otra persona/i.test(String((arc && arc._note && arc._note._egreso) || "")); }
+    function _egresoSinMotivo(arc) {
+      const nd = arc && arc._note, est = String((arc && arc.estado) || "").toUpperCase(), lab = String((nd && nd._egreso) || "").toUpperCase();
+      if (_egresoTecnico(arc) || (nd && PL_EGRESO_TIPOS[nd._egreso_tipo])) return false;
+      return !/^(ALTA|DEFUNCI)/.test(est) && !/^(ALTA|DEFUNCI)/.test(lab);
+    }
+    async function setEgresoTipo(idx, sel) {
+      const arc = archivados[idx]; if (!arc || !sel) return;
+      const previo = (arc._note && arc._note._egreso_tipo) || "", tipo = sel.value;
+      if (tipo === previo) return;
+      if (!arc._supaArchiveId) { alert("Este egreso todavía no sube a la nube (sin red). Inténtalo en un momento."); sel.value = previo; return; }
+      if (tipo === "defuncion" && !confirm("¿Registrar DEFUNCIÓN de " + (arc.nombre || "este paciente") + "?")) { sel.value = previo; return; }
+      sel.disabled = true;
+      try {
+        const r = await _sRpc("archive_set_egreso", { p_id: arc._supaArchiveId, p_tipo: PL_EGRESO_TIPOS[tipo] ? tipo : "", p_por: localStorage.getItem("pl_user_name") || "" });
+        if (r !== "ok") throw new Error(r === "no-encontrado" ? "ya no está en la nube" : String(r));
+        arc._note = arc._note || {};
+        _marcarEgresoTipo(arc._note, tipo);
+        _persistArchivados();
+        setSyncStatus("synced", "✅ Motivo del egreso guardado");
+      } catch (e) {
+        safeLog("archive_set_egreso:", e);
+        alert("No se pudo guardar el motivo del egreso (" + String((e && e.message) || e).slice(0, 80) + "). Revisa la red e inténtalo de nuevo.");
+        sel.value = previo;
+      } finally { sel.disabled = false; renderPapelera(); }
+    }
+
     function renderPapelera() {
       const el = document.getElementById("view-papelera");
       if (!el) return;
@@ -24979,8 +25040,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           </div>
           <button onclick="syncArchiveFromCloud()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">☁️ Cargar desde nube</button>
         </div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">Puedes restaurar cualquier paciente al censo activo con el botón "↩ Restaurar".</div>
-        <div style="display:flex;flex-direction:column;gap:8px">`;
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">Puedes restaurar cualquier paciente al censo activo con el botón "↩ Restaurar".</div>`;
+      const sinMotivo = archivados.filter(_egresoSinMotivo).length;
+      if (sinMotivo) html += `<div data-testid="egresos-sin-motivo" style="font-size:12px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:8px;margin-bottom:10px">
+          📋 <strong>${sinMotivo} egreso${sinMotivo !== 1 ? "s" : ""} sin motivo registrado.</strong> Elige el motivo en cada uno (alta, defunción, traslado, alta voluntaria): sin él, el registro de pacientes no puede calcular mortalidad.</div>`;
+      html += `<div style="display:flex;flex-direction:column;gap:8px">`;
       archivados.forEach(function (arc, idx) {
         const fecha = arc._archivedAt ? new Date(arc._archivedAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
         html += `<div style="border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden">
@@ -24993,6 +25057,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             <span style="font-size:12px;color:#64748b">Exp: ${esc(arc.exp || "—")}</span>
             <span style="font-size:12px;color:#64748b">· ${esc(arc.esp || "—")}</span>
             ${arc.dx ? `<span style="font-size:12px;color:#64748b">· ${esc(arc.dx.slice(0, 60))}</span>` : ""}
+            ${_egresoTecnico(arc) ? "" : (function () {
+              const t = (arc._note && arc._note._egreso_tipo) || "", falta = _egresoSinMotivo(arc);
+              return `<label style="font-size:12px;color:${falta ? "#92400e" : "#64748b"};display:flex;align-items:center;gap:4px">Motivo:
+                <select data-testid="egreso-tipo-${idx}" onchange="setEgresoTipo(${idx}, this)" style="font-size:12px;padding:2px 4px;border:1px solid ${falta ? "#f59e0b" : "#cbd5e1"};border-radius:5px;font-family:var(--font)">
+                  <option value=""${t ? "" : " selected"}>${falta ? "— elegir —" : "—"}</option>
+                  ${Object.keys(PL_EGRESO_TIPOS).map(function (k) { return `<option value="${k}"${t === k ? " selected" : ""}>${PL_EGRESO_TIPOS[k]}</option>`; }).join("")}
+                </select></label>`;
+            })()}
             <div style="margin-left:auto;display:flex;gap:6px">
               <button onclick="restorePatient(${idx})" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">↩ Restaurar</button>
               <button onclick="deleteArchivedPermanently(${idx})" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑 Eliminar</button>
@@ -27059,6 +27131,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           Object.keys(ex).forEach(function(ek) {
             if (!CULTIVO_ONLY_KEYS.has(ek) && ek !== "paciente" && ek !== "nombre" && ek !== "fecha_labs" && ek !== "fecha") labsToMerge[ek] = ex[ek];
           });
+          // Valores imposibles leídos por la IA (27 oct 2026, igual que la hoja de una sola persona): no se guardan y se dicen.
+          var _imposibles = typeof _labsImposibles === "function" ? _labsImposibles(labsToMerge) : [];
+          _imposibles.forEach(function (x) { delete labsToMerge[x.key]; delete ex[x.key]; });
           snap.labs = mergeLabsPerAnalyte(snap.labs, labsToMerge);
         }
         if (r && r.fileObj && !snap.source_file_name) {
@@ -27077,7 +27152,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         // Solo lab_history viaja (parcial): antes iba la nota COMPLETA desde la copia local y pisaba texto ajeno
         _saveNoteNow(k, nd, "labHistory");
         mergeLabsIntoDx(targetP, snap.labs || {}, fecha, ex.hora_labs || "");
-        return { isCultivo: isCultivo };
+        return { isCultivo: isCultivo, descartados: (typeof _imposibles !== "undefined" && _imposibles ? _imposibles.map(function (x) { return x.txt; }) : []) };
       }
 
       // Tokens del nombre, IGUALES en el PDF y en el censo (24 oct 2026, «Labs masivo no identifica a los pacientes»):
@@ -27244,6 +27319,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               var rowClr2 = isCultivo ? "#0369a1" : "#15803d";
               var rowIcon = isCultivo ? "🔬" : "✅";
               var rowExtra = isCultivo ? "Cultivo: " + esc(ex.tipo_cultivo || "") + (ex.cultivo_organismo ? " → " + esc(ex.cultivo_organismo) : "") : "";
+              if (info.descartados && info.descartados.length) rowExtra += (rowExtra ? "<br>" : "") + "<span data-testid='bulk-descartados' style='color:#b91c1c;font-weight:700'>⚠️ No se guardaron (valor imposible, revisa la hoja): " + esc(info.descartados.join(", ")) + "</span>";
               rows += "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:" + rowBg + ";border:1px solid " + rowBdr + ";margin-bottom:4px;margin-left:8px;font-size:12px'>" +
                 "<span style='font-size:16px'>" + rowIcon + "</span>" +
                 "<div><div style='font-weight:700;color:" + rowClr + "'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div>" +
@@ -28154,7 +28230,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.27-3";
+    const PL_BUILD = "2026.10.27-4";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

@@ -1,0 +1,47 @@
+# Limpieza de bitácoras con datos de pacientes (27 oct 2026).
+# El repositorio es PÚBLICO y las bitácoras de GitHub Actions también. Hasta el 27 oct 2026 los robots de WinLab y del RIS
+# imprimían nombres de pacientes (homónimos, casi-coincidencias, «encontrado como»…) y el robot en seco listaba
+# expedientes y nombres. Desde ese día solo imprimen iniciales y los 3 últimos dígitos del expediente (rpa/lib.js:
+# iniciales, expOculto, instalarLogSeguro). Este flujo borra las bitácoras de TODAS las corridas anteriores de esos
+# robots (las corridas siguen listadas; solo se quita su texto). Corre solo al llegar a main y se puede volver a lanzar
+# a mano (Actions → «Limpiar bitácoras…» → Run workflow); borrar una bitácora que ya no existe no es error.
+name: Limpiar bitácoras con datos de pacientes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/limpiar-bitacoras.yml']
+
+permissions:
+  actions: write
+
+concurrency:
+  group: limpiar-bitacoras
+  cancel-in-progress: false
+
+jobs:
+  limpiar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Borrar las bitácoras de las corridas anteriores de los robots
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # Solo corridas terminadas y creadas antes de esta (las nuevas ya salen sin nombres).
+          hasta="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          total=0
+          for wf in winlab-scraper.yml ris-scraper.yml winlab-dryrun.yml; do
+            ids="$(gh api --paginate "repos/$REPO/actions/workflows/$wf/runs?per_page=100&status=completed" \
+                    --jq ".workflow_runs[] | select(.created_at < \"$hasta\") | .id" 2>/dev/null || true)"
+            n=0; f=0
+            for id in $ids; do
+              if gh api -X DELETE "repos/$REPO/actions/runs/$id/logs" >/dev/null 2>&1; then n=$((n+1)); else f=$((f+1)); fi
+            done
+            echo "$wf: bitácoras borradas $n (sin bitácora o ya borradas: $f)"
+            total=$((total+n))
+          done
+          echo "Total de bitácoras borradas: $total"

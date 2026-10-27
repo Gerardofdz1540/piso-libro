@@ -15,9 +15,12 @@ import ws from "ws";
 import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
-         selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport } from "./lib.js";
+         selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport,
+         conTope, esNavegacionPasajera, esNavegadorCaido, iniciales, expOculto, instalarLogSeguro, parseObjetivo, firmaFilaLabs } from "./lib.js";
 import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
 import { orderDrillCandidates, isPendingCulture } from "./drill-order.js";
+// Bitácora pública: ningún nombre de paciente sale a GitHub Actions (ver instalarLogSeguro en lib.js).
+instalarLogSeguro();
 
 // ── ENV (todo via process.env, cero hard-code) ─────────────────────────
 const ENV = (k, def) => {
@@ -59,7 +62,11 @@ const SUPABASE_CENSO_SELECT   = ENV("SUPABASE_CENSO_SELECT", "id,cama,exp,nombre
 const SUPABASE_MATCH_TABLE    = ENV("SUPABASE_MATCH_TABLE", "winlab_match");
 // Corrida dirigida a uno o varios expedientes (coma): la pide la app con "🔎 Buscar ahora".
 // Con objetivo no aplica la cobertura mínima (1 paciente sin labs no es una corrida fallida).
-const WL_TARGET_EXP           = ENV("WL_TARGET_EXP", "").split(/[,\s]+/).map(normExp).filter(Boolean);
+// Corrida dirigida: «ID-<uuid>» (id del paciente en la base, lo que manda la app desde el 27 oct 2026: el dato de la
+// corrida es público y un uuid no identifica a nadie) o expedientes (como antes).
+const _WL_OBJETIVO = parseObjetivo(ENV("WL_TARGET_EXP", ""));
+const WL_TARGET_IDS           = _WL_OBJETIVO.ids;
+const WL_TARGET_EXP           = _WL_OBJETIVO.exps.concat(WL_TARGET_IDS.map((id) => "ID-" + id));
 
 // Dry-run: recorre todo el flujo de WinLab (login → búsqueda → drill-down)
 // pero NO escribe en Supabase. Actívalo con DRY_RUN=1 o el argumento --dry-run.
@@ -123,6 +130,22 @@ const WL_DRILLDOWN_TIMEOUT      = parseInt(ENV("WL_DRILLDOWN_TIMEOUT", "20000"),
 // Pausa entre pacientes (ms) para no saturar WinLab con requests rapidos.
 // WinLab throttlea/resetea la conexion si recibe demasiadas busquedas seguidas.
 const WL_INTER_PATIENT_DELAY_MS = parseInt(ENV("WL_INTER_PATIENT_DELAY_MS", "5000"), 10);
+// Robot congelado (27 oct 2026): dos corridas se quedaron ~55 min sin avanzar tras un error de WinLab, hasta que GitHub
+// las cortó. Ninguna operación del navegador queda sin tope: abrir o cerrar la pestaña del paciente (15 s), guardar en
+// Supabase (90 s). Si el navegador no responde, se guarda lo capturado, se reinicia (entra otra vez a WinLab) y se
+// sigue con el siguiente paciente; como mucho WL_MAX_REINICIOS veces por corrida.
+const WL_PAGE_OP_MS       = parseInt(ENV("WL_PAGE_OP_MS", "15000"), 10);
+const WL_FLUSH_TOPE_MS    = parseInt(ENV("WL_FLUSH_TOPE_MS", "90000"), 10);
+const WL_REINICIO_TOPE_MS = parseInt(ENV("WL_REINICIO_TOPE_MS", "180000"), 10);
+const WL_MAX_REINICIOS    = parseInt(ENV("WL_MAX_REINICIOS", "3"), 10);
+// Pestañas que abre el propio robot: el «page» del contexto que llega mientras se abren no es la ventana de un reporte
+// (un drill abandonado por tiempo ya no puede quedarse con la pestaña del paciente siguiente).
+let _abriendoPestanaPropia = 0;
+async function abrirPestana(ctx) {
+  _abriendoPestanaPropia++;
+  try { return await conTope(ctx.newPage(), WL_PAGE_OP_MS, "abrir la pestaña del paciente"); }
+  finally { _abriendoPestanaPropia--; }
+}
 
 // Flag para mostrar diagnóstico __cells solo una vez por ejecución.
 let _firstCellsDumped = false;
@@ -284,8 +307,8 @@ async function loadCenso(supa) {
   }
   // Corrida dirigida (oct 2026): solo los expedientes pedidos.
   if (WL_TARGET_EXP.length) {
-    filtrados = filtrados.filter((p) => WL_TARGET_EXP.includes(normExp(p.exp)));
-    console.log(`       [objetivo] WL_TARGET_EXP=${WL_TARGET_EXP.join(",")} → ${filtrados.length} paciente(s) del censo`);
+    filtrados = filtrados.filter((p) => WL_TARGET_EXP.includes(normExp(p.exp)) || WL_TARGET_IDS.includes(String(p.id || "").toLowerCase()));
+    console.log(`       [objetivo] ${WL_TARGET_EXP.map((t) => (/^ID-/.test(t) ? "id …" + t.slice(-6) : "exp " + expOculto(t))).join(", ")} → ${filtrados.length} paciente(s) del censo`);
     if (!filtrados.length) {
       console.log("       [objetivo] ninguno de esos expedientes está en el censo; nada que hacer.");
       process.exit(0);
@@ -333,10 +356,10 @@ async function captureSearchUrl(page) {
 async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = {}) {
   const candidates = buildSearchCandidatesWithAlias(paciente.nombre, paciente.alias);
   if (!candidates.length) {
-    console.log(`       [skip] Sin apellidos extraíbles para: "${paciente.nombre || "(sin nombre)"}"`);
+    console.log(`       [skip] Sin apellidos extraíbles para: ${iniciales(paciente.nombre)}`);
     return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true, tried: [], seenNames: [] };
   }
-  if (paciente.alias) console.log(`       [alias] nombre en WinLab fijado en la app: "${paciente.alias}"`);
+  if (paciente.alias) console.log(`       [alias] nombre en WinLab fijado en la app: ${iniciales(paciente.alias)}`);
   // 7 intentos (antes 6): con el candidato "invertido apellidos solos" (oct 2026) la escalera de un
   // nombre de 5 palabras con Ñ llega a 7. El presupuesto por paciente sigue mandando (abajo) y cada
   // NINGÚN REGISTRO es rápido. Caso real: cama 3-181 (corrida #419) con el paterno mal escrito en la
@@ -414,7 +437,7 @@ async function doSingleSearch(page, searchUrl, paciente, params, deadlineTs) {
     } catch (e) {
       lastErr = e;
       const msg = e?.message || "";
-      if (attempt === 0 && /Execution context was destroyed|Target closed|Navigation failed/.test(msg)) {
+      if (attempt === 0 && esNavegacionPasajera(msg)) {
         console.log(`       (retry tras: ${msg.split("\n")[0]})`);
         // Pequena pausa explicita para dejar que la navegacion termine.
         await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
@@ -723,11 +746,16 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // Para la app (winlab_match): nombres que WinLab listó y con cuál se identificó al objetivo.
   result.seenNames = sel.seenNames || [];
   if (sel.matchedHeader && targetIdxs.length) result.encontradoComo = sel.matchedHeader;
+  if (targetIdxs.length && (sel.edadNoCuadra || []).length) {
+    const e = sel.edadNoCuadra[0];
+    result.edadNoCuadra = `edad en WinLab ${e.headerAge} años · censo ${e.censusAge}`;
+    console.log(`       [age-guard] único registro con ese nombre en WinLab: se aceptó aunque la edad no cuadra (WinLab ${e.headerAge} vs censo ${e.censusAge}); la tarjeta lo avisa`);
+  }
   // Coincidencia PARCIAL (oct 2026): WinLab lista menos nombres de pila que el censo (3 vs 2). Queda
   // en el log y en winlab_match.detalle para vigilar que la regla no cuele homónimos.
   if (sel.partialMatch && targetIdxs.length) {
     result.partialMatch = true;
-    console.log(`       [targeting] coincidencia PARCIAL con «${sel.matchedHeader}» (WinLab lista menos nombres que el censo)`);
+    console.log(`       [targeting] coincidencia PARCIAL con ${iniciales(sel.matchedHeader)} (WinLab lista menos nombres que el censo)`);
   }
   // Marcar las filas del objetivo: la fusión entre corridas (y la app) solo confían en __target.
   for (const i of targetIdxs) result.rows[i].__target = true;
@@ -883,7 +911,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
   // capturar en 3 corridas). WinLab tarda a veces 5–10 s en abrir la ventana cuando está cargado.
   const POPUP_TIMEOUT_MS = Number(process.env.WL_POPUP_TIMEOUT_MS || 12000);
   const pagesBefore = new Set(ctx.pages());
-  const popupPromise = ctx.waitForEvent("page", { timeout: POPUP_TIMEOUT_MS }).catch(() => null);
+  const popupPromise = ctx.waitForEvent("page", { timeout: POPUP_TIMEOUT_MS, predicate: () => _abriendoPestanaPropia === 0 }).catch(() => null);
 
   // Click del link de detalle.
   try {
@@ -899,6 +927,8 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
 
   // Race: popup vs postback. Resolver cuál tipo de instalación es.
   const popup = await popupPromise;
+  // La pestaña del paciente se cerró mientras se esperaba (se acabó su tiempo): este drill ya no es de nadie.
+  if (page.isClosed()) throw new Error("la pestaña del paciente se cerró (tiempo agotado)");
   // Último intento: una ventana nueva que el evento no entregó (ya estaba abierta al suscribirse).
   const popupFound = popup || ctx.pages().find((pg) => pg !== page && !pagesBefore.has(pg) && !pg.isClosed()) || null;
   let detailPage;
@@ -1292,8 +1322,9 @@ async function loadParsedByExp(supa, censo, fechaToday) {
     const { data, error } = await supa.from(SUPABASE_TABLE).select("exp,fecha,data").in("exp", exps).gte("fecha", ayer);
     if (error) throw new Error(error.message);
     const runId = process.env.GITHUB_RUN_ID || "";
-    const doneThisRun = new Set();
+    const doneThisRun = new Set(), firmaHoy = new Map();
     for (const row of data || []) {
+      if (row.fecha === fechaToday && row.data) firmaHoy.set(String(row.exp || "").trim(), firmaFilaLabs(row.data));
       const m = byExp.get(row.exp) || new Map();
       for (const [k, v] of indexParsedReportes([row])) if (!m.has(k)) m.set(k, v);
       byExp.set(row.exp, m);
@@ -1302,6 +1333,7 @@ async function loadParsedByExp(supa, censo, fechaToday) {
       if (runId && row.fecha === fechaToday && row.data && String(row.data.run_id || "") === runId) doneThisRun.add(String(row.exp || "").trim());
     }
     byExp.doneThisRun = doneThisRun;
+    byExp.firmaHoy = firmaHoy;
     const total = Array.from(byExp.values()).reduce((n, m) => n + m.size, 0);
     console.log(`       Valores previos reutilizables: ${total} referto(s) en ${byExp.size} paciente(s) (fecha ≥ ${ayer})${doneThisRun.size ? ` · ${doneThisRun.size} ya guardados por este job` : ""}`);
   } catch (e) {
@@ -1316,12 +1348,12 @@ async function loadParsedByExp(supa, censo, fechaToday) {
 // evitar fuga de memoria. Circuit breaker: 45s por paciente. Si el
 // browser entero colapsa, abortamos el bucle (el contexto/proceso de
 // Chrome esta muerto y no se va a recuperar).
-async function scrapeForCenso(page, searchUrl, censo, supa) {
+async function scrapeForCenso(page, searchUrl, censo, supa, opts = {}) {
   console.log(`[4/5] Buscando labs paciente por paciente (${censo.length} pacientes)...`);
   const records = [];
   const fechaToday = todayISO();
   const scraped_at = new Date().toISOString();
-  const ctx = page.context();
+  let ctx = page.context(), reinicios = 0;
   const parsedByExp = await loadParsedByExp(supa, censo, fechaToday);
   // Reintento del mismo job (retry tras timeout): los pacientes ya guardados por este run van al
   // FINAL. Antes el 2º intento recorría todo el censo en el mismo orden (~20 s de búsqueda por
@@ -1340,13 +1372,14 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
   // Resultado de la búsqueda por paciente (oct 2026) → tabla winlab_match (la app lo muestra).
   const matchRecords = [];
   let pendingMatch = [];
-  let flushed = 0, flushing = null, aborted = false;
+  let flushed = 0, flushing = null, aborted = false, sinCambios = 0;
   const flush = (why) => {
     if (flushing) return flushing;
     const keys = new Set(pendingExps); pendingExps.clear();
     const matchBatch = pendingMatch; pendingMatch = [];
     if (!keys.size && !matchBatch.length) return Promise.resolve();
-    const batch = dedupRecords(records, SUPABASE_CONFLICT).filter((r) => keys.has(r.exp));
+    // Las filas iguales a las que ya están en la base no se reescriben (ver firmaFilaLabs).
+    const batch = dedupRecords(records, SUPABASE_CONFLICT).filter((r) => keys.has(r.exp) && !r.__sinCambios).map((r) => { const { __sinCambios, ...fila } = r; return fila; });
     flushing = (async () => {
       try { if (batch.length) flushed += await upsert(supa, batch, why); }
       catch (e) { console.error(`       [flush] fallo (${why}): ${e.message}`); for (const k of keys) pendingExps.add(k); }
@@ -1379,11 +1412,11 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
 
   for (let i = 0; i < censo.length; i++) {
     const p = censo[i];
-    const tag = `[${i + 1}/${censo.length}] exp=${p.exp} ${String(p.nombre || "").slice(0, 40)}`;
-    let subPage = null;
+    const tag = `[${i + 1}/${censo.length}] cama ${p.cama || "?"} exp=${expOculto(p.exp)} ${iniciales(p.nombre)}`;
+    let subPage = null, necesitaReinicio = false;
     try {
       // Aislamiento: nueva Page por paciente, hereda cookies/sesion del contexto.
-      subPage = await ctx.newPage();
+      subPage = await abrirPestana(ctx);
       subPage.setDefaultNavigationTimeout(PER_PATIENT_BUDGET_MS);
       subPage.setDefaultTimeout(SEL_TIMEOUT_MS);
 
@@ -1401,13 +1434,13 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
       const tag2 = res.noTarget ? `${matched} reportes [SIN OBJETIVO: solo homónimos / edad incompatible]`
         : res.noResults ? `${matched} reportes [NINGUN REGISTRO]` : `${matched} reportes`;
       console.log(`       ${tag}: ${tag2} (tablas=${res.tableCount}, headers=[${res.headers.slice(0, 6).join(", ")}${res.headers.length > 6 ? ", ..." : ""}])`);
-      if (res.encontradoComo) console.log(`       [identidad] encontrado como "${res.encontradoComo}"${p.alias ? " (alias fijado en la app)" : ""}`);
-      else if (!matched && (res.seenNames || []).length) console.log(`       [parecidos] WinLab listó: ${res.seenNames.slice(0, 5).join(" | ")}`);
+      if (res.encontradoComo) console.log(`       [identidad] encontrado como ${iniciales(res.encontradoComo)}${p.alias ? " (alias fijado en la app)" : ""}`);
+      else if (!matched && (res.seenNames || []).length) console.log(`       [parecidos] WinLab listó: ${res.seenNames.slice(0, 5).map(iniciales).join(" | ")}`);
       const mrec = {
         exp: String(p.exp).slice(0, 64), cama: p.cama || null, nombre_censo: p.nombre || null, alias: p.alias || null,
         status: matched > 0 ? "ok" : (res.noTarget ? "homonimos" : "sin_registro"),
         buscado: res.tried || [], candidatos: (res.seenNames || []).slice(0, 8), encontrado_como: res.encontradoComo || null,
-        reportes: matched, detalle: res.partialMatch ? "coincidencia parcial: WinLab lista menos nombres de pila que el censo" : null,
+        reportes: matched, detalle: [res.edadNoCuadra, res.partialMatch ? "coincidencia parcial: WinLab lista menos nombres de pila que el censo" : ""].filter(Boolean).join(" · ") || null,
         checked_at: new Date().toISOString(), run_id: process.env.GITHUB_RUN_ID || null,
       };
       matchRecords.push(mrec); pendingMatch.push(mrec);
@@ -1429,7 +1462,7 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
         firstDiagDumped = true;
         console.log("       <<<DIAG>>> headers vacios o genericos. Dump de tablas:");
         try {
-          const tablesDump = await subPage.evaluate(() => {
+          const tablesDump = await conTope(subPage.evaluate(() => {
             return Array.from(document.querySelectorAll("table")).slice(0, 8).map((t, idx) => ({
               idx,
               rows: t.rows.length,
@@ -1441,12 +1474,13 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
               secondRowText: Array.from(t.rows[1]?.children || [])
                 .map((c) => (c.innerText || "").trim().slice(0, 40)).slice(0, 10),
             }));
-          });
+          }), WL_PAGE_OP_MS, "diagnóstico de tablas");
           tablesDump.forEach((tb) => console.log(`       <<<DIAG TABLE ${tb.idx}>>> ${JSON.stringify(tb)}`));
         } catch (_) { /* dump best-effort */ }
       }
 
       if (matched > 0) {
+        const _firmaPrevia = parsedByExp && parsedByExp.firmaHoy ? parsedByExp.firmaHoy.get(String(p.exp).slice(0, 64).trim()) : null;
         records.push({
           exp: String(p.exp).slice(0, 64),
           paciente: p.nombre || null,
@@ -1462,8 +1496,13 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
           },
           scraped_at,
         });
+        const _rec = records[records.length - 1];
+        if (_firmaPrevia && _firmaPrevia === firmaFilaLabs(_rec.data)) { _rec.__sinCambios = true; sinCambios++; }
         pendingExps.add(String(p.exp).slice(0, 64));
-        if (pendingExps.size >= WL_FLUSH_EVERY) await flush(`cada ${WL_FLUSH_EVERY} pacientes`);
+        if (pendingExps.size >= WL_FLUSH_EVERY) {
+          await conTope(flush(`cada ${WL_FLUSH_EVERY} pacientes`), WL_FLUSH_TOPE_MS, "guardar en Supabase")
+            .catch((e) => console.error(`       [flush] ${e.message} (se reintenta en el siguiente guardado)`));
+        }
       }
       consecutiveErrors = 0;
     } catch (err) {
@@ -1475,14 +1514,9 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
         checked_at: new Date().toISOString(), run_id: process.env.GITHUB_RUN_ID || null };
       matchRecords.push(erec); pendingMatch.push(erec);
 
-      // Manejo de fallo CRITICO: el navegador o contexto colapso. No tiene
-      // sentido seguir intentando con los demas pacientes; hay que abortar
-      // y dejar que el outer retry del workflow re-lance todo.
-      if (/browser has been closed|context.*has been closed|Target page.*has been closed|Browser.*disconnected/i.test(msg)) {
-        console.error(`       [CRITICO] Navegador colapsado. Abortando bucle (${i + 1}/${censo.length}).`);
-        aborted = true;
-        break;
-      }
+      // El navegador o el contexto ya no responden (colapsó, o abrir la pestaña se atascó): se reinicia en el finally y
+      // se sigue con el siguiente paciente. Sin forma de reiniciar, se aborta y el reintento del workflow relanza todo.
+      if (esNavegadorCaido(msg) || err?.atasco) necesitaReinicio = true;
       // Tolerancia a errores transientes: 10 seguidos -> abort.
       if (consecutiveErrors >= 10) {
         console.error(`       [CRITICO] 10 fallos seguidos. Abortando bucle.`);
@@ -1490,15 +1524,36 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
         break;
       }
     } finally {
-      // SIEMPRE destruir la subPage para liberar memoria, exitosa o no.
+      // SIEMPRE destruir la subPage para liberar memoria, exitosa o no (con tope: aquí se quedó pasmado el robot). Cerrarla
+      // también detiene el trabajo abandonado por tiempo (sus operaciones sobre esa pestaña fallan).
       if (subPage) {
-        try { await subPage.close(); } catch (_) { /* ignore */ }
+        try { await conTope(subPage.close(), WL_PAGE_OP_MS, "cerrar la pestaña del paciente"); }
+        catch (e) { if (e && e.atasco) { console.error(`       ${e.message}`); necesitaReinicio = true; } }
+      }
+      if (necesitaReinicio && !aborted) {
+        if (opts.reiniciar && reinicios < WL_MAX_REINICIOS) {
+          reinicios++;
+          console.error(`       [reinicio ${reinicios}/${WL_MAX_REINICIOS}] el navegador no responde: se guarda lo capturado y se entra otra vez a WinLab.`);
+          await conTope(flush("antes de reiniciar el navegador"), WL_FLUSH_TOPE_MS, "guardar en Supabase").catch((e) => console.error(`       [flush] ${e.message}`));
+          try {
+            const r = await conTope(opts.reiniciar(), WL_REINICIO_TOPE_MS, "reiniciar el navegador");
+            ctx = r.page.context(); searchUrl = r.searchUrl; consecutiveErrors = 0;
+            console.error(`       [reinicio ${reinicios}] listo: sigue con el paciente ${i + 2}/${censo.length}.`);
+          } catch (e) {
+            console.error(`       [CRITICO] no se pudo reiniciar el navegador (${e.message}). Abortando bucle (${i + 1}/${censo.length}).`);
+            aborted = true;
+          }
+        } else {
+          console.error(`       [CRITICO] Navegador colapsado${reinicios ? ` (ya se reinició ${reinicios} vez/veces)` : ""}. Abortando bucle (${i + 1}/${censo.length}).`);
+          aborted = true;
+        }
       }
       // Pausa entre pacientes para no saturar WinLab (throttle prevention).
-      if (i < censo.length - 1 && WL_INTER_PATIENT_DELAY_MS > 0) {
+      if (!aborted && i < censo.length - 1 && WL_INTER_PATIENT_DELAY_MS > 0) {
         await new Promise((r) => setTimeout(r, WL_INTER_PATIENT_DELAY_MS));
       }
     }
+    if (aborted) break;
   }
   // Flush final acotado: si Supabase no responde, cada intento re-encola; sin tope sería un
   // bucle infinito. Lo que no se pudo guardar cuenta como corrida abortada (salida ≠ 0).
@@ -1509,7 +1564,7 @@ async function scrapeForCenso(page, searchUrl, censo, supa) {
   }
   process.off("SIGTERM", onSigterm);
   process.off("SIGINT", onSigint);
-  console.log(`       OK busqueda. Pacientes con labs: ${records.length}/${censo.length} · filas upserteadas: ${flushed}${aborted ? " · corrida ABORTADA" : ""}`);
+  console.log(`       OK busqueda. Pacientes con labs: ${records.length}/${censo.length} · filas upserteadas: ${flushed} · sin cambios (no se reescriben): ${sinCambios}${aborted ? " · corrida ABORTADA" : ""}`);
   const sinLabs = matchRecords.filter((m) => m.status !== "ok");
   if (sinLabs.length) console.log(`       Sin labs esta corrida: ${sinLabs.map((m) => `${m.cama || "?"} (${m.status})`).join(", ")}`);
   return { records, flushed, aborted, matchRecords };
@@ -1577,7 +1632,7 @@ function dryRunReport(records) {
     const estado = reportes.length > 0
       ? `✓ ${reportes.length} reporte(s) | ${totalValores} valor(es) drill-down`
       : `✗ 0 reportes`;
-    console.log(`[DRY-RUN]  exp=${String(r.exp).padEnd(12)} "${r.paciente || ""}"  →  ${estado}`);
+    console.log(`[DRY-RUN]  exp=${expOculto(r.exp).padEnd(12)} ${iniciales(r.paciente)}  →  ${estado}`);
     for (const rep of conValores.slice(0, 3)) {
       const muestra = rep.valores.slice(0, 4).map(v => `${v.estudio}=${v.valor}${v.unidad ? " " + v.unidad : ""}`).join("  |  ");
       const extra = rep.valores.length > 4 ? ` (+${rep.valores.length - 4} más)` : "";
@@ -1693,16 +1748,28 @@ async function explorePage(page) {
     console.log(`${"═".repeat(60)}\n`);
   }
 
-  const browser = await chromium.launch({ headless: true });
-  const ctx = await browser.newContext({
+  const CTX_OPTS = {
     locale: "es-MX",
     timezoneId: "America/Mexico_City",
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  });
-  const page = await ctx.newPage();
+  };
+  let browser = await chromium.launch({ headless: true });
+  let page = await (await browser.newContext(CTX_OPTS)).newPage();
   page.setDefaultTimeout(SEL_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
+  // Navegador atascado a media corrida: se cierra (con tope; si no responde se abandona), se abre otro y se vuelve a
+  // entrar a WinLab. Devuelve la página nueva y la URL de búsqueda.
+  const reiniciar = async () => {
+    const viejo = browser;
+    await conTope(viejo.close(), WL_PAGE_OP_MS, "cerrar el navegador").catch((e) => console.error(`       ${e.message}`));
+    browser = await chromium.launch({ headless: true });
+    page = await (await browser.newContext(CTX_OPTS)).newPage();
+    page.setDefaultTimeout(SEL_TIMEOUT_MS);
+    page.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
+    await login(page);
+    return { page, searchUrl: await captureSearchUrl(page) };
+  };
 
   try {
     const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
@@ -1713,7 +1780,7 @@ async function explorePage(page) {
     await login(page);
     const censo = await loadCenso(supa);
     const searchUrl = await captureSearchUrl(page);
-    const { records, flushed, aborted } = await scrapeForCenso(page, searchUrl, censo, supa);
+    const { records, flushed, aborted } = await scrapeForCenso(page, searchUrl, censo, supa, { reiniciar });
 
     if (!records.length) {
       // 0 pacientes con labs: casi seguro un cambio de layout/sesión en WinLab. Dump de la
@@ -1724,7 +1791,7 @@ async function explorePage(page) {
     if (DRY_RUN) dryRunReport(records);
 
     const coverage = censo.length ? records.length / censo.length : 0;
-    const resumen = `Pacientes con labs: ${records.length}/${censo.length} (${(coverage * 100).toFixed(0)} %) · filas upserteadas: ${flushed}${aborted ? " · corrida ABORTADA" : ""}${WL_TARGET_EXP.length ? ` · objetivo ${WL_TARGET_EXP.join(",")}` : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`;
+    const resumen = `Pacientes con labs: ${records.length}/${censo.length} (${(coverage * 100).toFixed(0)} %) · filas upserteadas: ${flushed}${aborted ? " · corrida ABORTADA" : ""}${WL_TARGET_EXP.length ? ` · objetivo ${WL_TARGET_EXP.length} paciente(s)` : ""} · ${((Date.now() - t0) / 1000).toFixed(1)}s`;
     await writeStepSummary(resumen, records, censo);
     console.log(`DONE. ${resumen}`);
     await browser.close();

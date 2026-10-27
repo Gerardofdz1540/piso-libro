@@ -37,8 +37,8 @@ const EXP = '26-00001';
     let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
     calls.push({ m, url, body });
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
-    if (url.startsWith('/rest/v1/patients')) { if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-181', exp: EXP, nombre: 'ADRIAN HERNADNEZ CASTRO', esp: 'CT', estado: 'DELICADO', edad: '36', ingreso: '2026-10-13' }]); return json(201, [{ id: 'a1' }]); }
-    if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: 'a1' }]); }
+    if (url.startsWith('/rest/v1/patients')) { if (m === 'GET') return json(200, [{ id: '8f0c2a4e-1111-4b7a-9c1d-000000000001', cama: '3-181', exp: EXP, nombre: 'ADRIAN HERNADNEZ CASTRO', esp: 'CT', estado: 'DELICADO', edad: '36', ingreso: '2026-10-13' }]); return json(201, [{ id: '8f0c2a4e-1111-4b7a-9c1d-000000000001' }]); }
+    if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: '8f0c2a4e-1111-4b7a-9c1d-000000000001' }]); }
     if (url.startsWith('/rest/v1/winlab_match')) return json(200, matchRow ? [matchRow] : []);
     if (url.startsWith('/rest/v1/winlab_labs')) return json(200, []);
     return json(200, []);
@@ -91,8 +91,8 @@ const EXP = '26-00001';
     const line = document.querySelector('[data-testid="robot-line"]');
     return { pending: _robotPending['26-00001'] || null, line: line ? line.textContent.replace(/\s+/g, ' ').trim() : null, ok: !!(line && line.classList.contains('rb-ok')), toast: (document.getElementById('__pl_toast') || {}).textContent || '', go: !!document.querySelector('[data-testid="robot-go"]') };
   });
-  check('R3 🔎 Buscar ahora: manda {exp} al worker con el token, marca "robot en camino" y avisa; cuando winlab_match trae un resultado nuevo con status ok, quita la marca, muestra «encontrado como …» (alias fijado), avisa y deja solo ✏️',
-    sc && sc.body && sc.body.exp === '26-00001' && sc.headers['x-piso-token'] === 'tok' && /^pedido /.test(r3.pending || '') && /robot en camino/.test(r3.pendShown || '') && /Robot en camino para la cama 3-181/.test(r3.toast)
+  check('R3 🔎 Buscar ahora: manda al worker el id del paciente («ID-<uuid>», no el expediente: el dato de la corrida es público) con el token, marca "robot en camino" y avisa; cuando winlab_match trae un resultado nuevo con status ok, quita la marca, muestra «encontrado como …» (alias fijado), avisa y deja solo ✏️',
+    sc && sc.body && sc.body.exp === 'ID-8f0c2a4e-1111-4b7a-9c1d-000000000001' && sc.headers['x-piso-token'] === 'tok' && /^pedido /.test(r3.pending || '') && /robot en camino/.test(r3.pendShown || '') && /Robot en camino para la cama 3-181/.test(r3.toast)
     && r3b.pending === null && r3b.ok && /encontrado como «HERNANDEZ CASTRO ADRIAN» \(nombre en WinLab fijado en la app\)/.test(r3b.line) && /El robot encontró a la cama 3-181/.test(r3b.toast) && !r3b.go, JSON.stringify({ sc: sc && sc.body, r3, r3b }));
 
   // ── R4: corrida en cola y sin internet ──
@@ -107,8 +107,8 @@ const EXP = '26-00001';
     Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
     return { pend, toast, alerts: window.__alerts.slice(n0) };
   });
-  check('R4 ya hay corrida en cola → "en cola" y aviso de que la incluirá; sin internet → aviso claro y no se manda nada',
-    r4.pend === 'en cola' && /en cola/.test(r4.toast) && scrapes.length === 2 && r4.alerts.length === 1 && /Sin internet/.test(r4.alerts[0]), JSON.stringify({ r4, scrapes: scrapes.length }));
+  check('R4 ya hay corrida en cola → "en cola" y aviso honesto (si es la del piso lo incluye; si es la de otro paciente, volver a pulsar); sin internet → aviso claro y no se manda nada',
+    r4.pend === 'en cola' && /en cola/.test(r4.toast) && /otro paciente, pulsa 🔎 otra vez/.test(r4.toast) && scrapes.length === 2 && r4.alerts.length === 1 && /Sin internet/.test(r4.alerts[0]), JSON.stringify({ r4, scrapes: scrapes.length }));
 
   // ── R5: ✏️ Nombre en WinLab a mano (se normaliza), quitarlo, y si el robot ya lo encontró sin alias no estorba ──
   const r5 = await page.evaluate(async () => {
@@ -124,6 +124,17 @@ const EXP = '26-00001';
   });
   check('R5 ✏️ a mano: mayúsculas y espacios normalizados; vacío lo quita; con el robot en «ok» y sin alias la sección no muestra nada; cancelar no cambia nada',
     r5.a1 === 'GARCIA LOPEZ, JUAN' && r5.a2 === '' && r5.lineGone && r5.cancel && r5.prompts === 3, JSON.stringify(r5));
+
+  // ── R6: encontrado, pero la edad de WinLab no cuadra con la del censo → aviso amarillo en la tarjeta ──
+  const r6 = await page.evaluate(() => {
+    const p = patients[0], k = pid(p), nd = getNote(k);
+    const linea = (det) => { const h = _renderRobotLineBody(p, nd, k, p.exp, { status: 'ok', encontrado_como: 'HERNANDEZ CASTRO, ADRIAN', checked_at: new Date().toISOString(), detalle: det }, '', true); const d = document.createElement('div'); d.innerHTML = h; return d; };
+    const con = linea('edad en WinLab 61 años · censo 36'), sin = linea(null);
+    const av = con.querySelector('[data-testid="robot-edad"]');
+    return { aviso: av ? av.textContent : '', warn: !!con.querySelector('.rb-warn'), sinNada: sin.innerHTML === '' };
+  });
+  check('R6 el robot aceptó los labs pero la edad de WinLab no cuadra con el censo: la tarjeta lo avisa en amarillo (y sin discrepancia no muestra nada)',
+    /WinLab: 61 años · censo: 36/.test(r6.aviso) && /Confirma que los labs son de este paciente/.test(r6.aviso) && r6.warn && r6.sinNada, JSON.stringify(r6));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-ROBOT: ' + pass + ' passed, ' + fail + ' failed');

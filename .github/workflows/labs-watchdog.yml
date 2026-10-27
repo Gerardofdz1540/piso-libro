@@ -1,13 +1,12 @@
-name: Vigilante de laboratorios
+name: Vigilante de laboratorios y del sistema
 
-# Comprueba cada 6 h que el scraper de WinLab sigue guardando labs. Si el último
-# scrape (winlab_labs.scraped_at) tiene más de 26 h, el job termina en ROJO y GitHub
-# manda el correo de "workflow failed" al dueño del repo (no requiere Apps Script ni
-# llaves nuevas: usa el mismo secret SUPABASE_SERVICE_KEY del scraper).
-# Hora León (UTC-6): 00:37, 06:37, 12:37 y 18:37.
+# Cada 2 h revisa la última señal de vida de cada pieza (scripts/vigilante.py): robot de labs (≤ 11 h: avisa antes de la
+# visita si falló la corrida de las 05:00), labs guardados (≤ 26 h), imagen del RIS (≤ 10 h), descarga del Doc de
+# indicaciones (≤ 2 h), censo (≤ 18 h sin ningún cambio) y tamaño de la base. Si algo se atrasó, el job termina en ROJO y
+# GitHub manda el correo de "workflow failed" al dueño del repo (usa el mismo secret SUPABASE_SERVICE_KEY del scraper).
 on:
   schedule:
-    - cron: "37 */6 * * *"
+    - cron: "37 */2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -28,35 +27,13 @@ jobs:
           gh api -X PUT "repos/${{ github.repository }}/actions/workflows/labs-watchdog.yml/enable"
           gh api -X PUT "repos/${{ github.repository }}/actions/workflows/winlab-scraper.yml/enable"
 
-      - name: Último scrape en Supabase
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Todas las piezas, no solo los labs (27 oct 2026): robot de labs, labs guardados, imagen (RIS), Doc de indicaciones,
+      # censo y tamaño de la base. Solo horas y conteos en la bitácora (es pública).
+      - name: Vigilar el sistema
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          MAX_HOURS: "26"
-        run: |
-          set -euo pipefail
-          resp=$(curl -sS --max-time 30 \
-            "$SUPABASE_URL/rest/v1/winlab_labs?select=scraped_at&order=scraped_at.desc&limit=1" \
-            -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY")
-          last=$(echo "$resp" | python3 -c 'import sys,json; r=json.load(sys.stdin); print(r[0]["scraped_at"] if r else "")')
-          if [ -z "$last" ]; then
-            echo "::error title=Sin laboratorios::winlab_labs está vacía o no respondió: $resp"
-            exit 1
-          fi
-          age=$(python3 - "$last" <<'PY'
-          import sys, datetime
-          s = sys.argv[1].replace("Z", "+00:00")
-          if "." in s and "+" in s:
-              head, tail = s.split("+", 1); s = head.split(".")[0] + "+" + tail
-          t = datetime.datetime.fromisoformat(s)
-          print(round((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() / 3600, 1))
-          PY
-          )
-          echo "Último scrape: $last  (hace $age h)"
-          echo "### Vigilante de laboratorios" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Último scrape: \`$last\` (hace **$age h**)" >> "$GITHUB_STEP_SUMMARY"
-          if python3 -c "import sys; sys.exit(0 if float('$age') > float('$MAX_HOURS') else 1)"; then
-            echo "::error title=Laboratorios atrasados::No hay labs nuevos desde hace $age h (límite $MAX_HOURS h). Revisa https://github.com/${{ github.repository }}/actions/workflows/winlab-scraper.yml — si dice 'This scheduled workflow is disabled' pulsa Enable workflow y luego Run workflow."
-            exit 1
-          fi
-          echo "OK: labs al día."
+        run: python3 scripts/vigilante.py

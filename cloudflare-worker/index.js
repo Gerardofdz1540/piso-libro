@@ -1,4 +1,6 @@
-// piso-libro-ai Worker — v4 (jun 2026)
+// piso-libro-ai Worker — v5 (27 oct 2026)
+// Cambios v5:
+//   ➕ /api/scrape-ris: Supabase dispara el robot del RIS cada 2 h (antes solo el cron de GitHub, cada 4-6 h)
 // Cambios v4:
 //   ➕ CORS: agregado https://pisolibro.pages.dev (URL nueva de Cloudflare Pages)
 // Cambios v3 (mayo 2026):
@@ -12,8 +14,10 @@
 // Rutas:
 //   POST /api/ai            → endpoint existente (formato Anthropic Messages)
 //   POST /api/labs/extract  → para Labs Masivo (extrae pacientes+labs de PDF)
-//   POST /api/scrape        → dispara el robot WinLab; con cuerpo {"exp":"26-23836"} busca solo a
-//                             ese paciente (oct 2026, botón «🔎 Buscar ahora» de la tarjeta)
+//   POST /api/scrape        → dispara el robot WinLab; con cuerpo {"exp":"ID-<uuid>"} (o un expediente) busca
+//                             solo a ese paciente (oct 2026, botón «🔎 Buscar ahora» de la tarjeta)
+//   POST /api/scrape-ris    → dispara el robot del RIS (imagen). Lo llama Supabase cada 2 h (pg_cron, 27 oct 2026):
+//                             el cron de GitHub lo lanzaba cada 4-6 h y los estudios llegaban tarde.
 //
 // Variables de entorno requeridas (Cloudflare Workers → Settings → Variables):
 //   ACCESS_TOKEN     (encrypted) — token compartido con el frontend
@@ -92,7 +96,13 @@ export default {
     // ─── RUTA 3: /api/scrape — dispara el scraper WinLab (con dedup anti-cruce) ──
     if (url.pathname === "/api/scrape") {
       if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: cors });
-      return handleScrapeRoute(request, env, cors);
+      return handleScrapeRoute(request, env, cors, "winlab-scraper.yml");
+    }
+
+    // ─── RUTA 4: /api/scrape-ris — dispara el robot del RIS (mismo control de cola, sin corrida dirigida) ──
+    if (url.pathname === "/api/scrape-ris") {
+      if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: cors });
+      return handleScrapeRoute(request, env, cors, "ris-scraper.yml");
     }
 
     return json({ error: "Not Found" }, 404, cors);
@@ -105,16 +115,17 @@ export default {
 // importes varios censos seguidos, nunca hay más de 1 corriendo + 1 en cola, y la
 // última siempre toma tu censo final. El workflow ya tiene cancel-in-progress:false,
 // así que una corrida nueva se ENCOLA (no reinicia ni cancela la que ya corre).
-async function handleScrapeRoute(request, env, cors) {
+async function handleScrapeRoute(request, env, cors, wf) {
   if (!env.GITHUB_TOKEN) {
     return json({ dispatched: false, error: "GITHUB_TOKEN no configurado en el worker" }, 503, cors);
   }
-  const OWNER = "Gerardofdz1540", REPO = "piso-libro", WF = "winlab-scraper.yml", REF = "main";
+  const OWNER = "Gerardofdz1540", REPO = "piso-libro", WF = wf || "winlab-scraper.yml", REF = "main";
+  const dirigible = WF === "winlab-scraper.yml";   // solo el robot de WinLab acepta una corrida dirigida (input exp)
   // Corrida dirigida (oct 2026): la app manda {exp} ("🔎 Buscar ahora" en la tarjeta) y el robot
   // busca SOLO a ese paciente (input `exp` del workflow → WL_TARGET_EXP). Sin exp: censo completo.
   let body = {};
   try { body = await request.json(); } catch (_) { body = {}; }
-  const exp = String((body && body.exp) || "").trim().replace(/[^\w\-.,\/ ]/g, "").slice(0, 80);
+  const exp = dirigible ? String((body && body.exp) || "").trim().replace(/[^\w\-.,\/ ]/g, "").slice(0, 80) : "";
   const gh = (path, init) => fetch("https://api.github.com/repos/" + OWNER + "/" + REPO + path, {
     ...(init || {}),
     headers: {

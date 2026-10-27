@@ -11,7 +11,9 @@ import {
   todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
   normNameTokens, expandNomeAbbrev,
   isGarbageCell, looksLikeReportLinkRow, patientHeaderMatchKind,
+  conTope, esNavegacionPasajera, esNavegadorCaido, iniciales, expOculto, sanearLog, instalarLogSeguro, parseObjetivo, firmaFilaLabs,
 } from "./lib.js";
+import fs from "node:fs";
 
 let pass = 0, fail = 0;
 function assert(cond, name) {
@@ -393,6 +395,12 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   const sel3 = selectTargetRows(rows, { nombre: "JUAN PEREZ LOPEZ", edad: "" }, { today: TODAY });
   assert(deepEq(sel3.targetIdxs, [1, 2, 4, 5]) && sel3.censusAge === null, "target: sin edad en censo -> ambos bloques homónimos (legacy)");
 
+  // Único registro con ese nombre y edad que no cuadra (27 oct 2026): se acepta (el nombre manda, #434) pero se avisa.
+  const selEdad = selectTargetRows([hdr("PEREZ LOPEZ", "JUAN", "MASCULINO", "01/01/1965"), rep("1")], { nombre: "JUAN PEREZ LOPEZ", edad: "39" }, { ageTolerance: 2, today: TODAY });
+  assert(deepEq(selEdad.targetIdxs, [1]) && selEdad.edadNoCuadra.length === 1 && selEdad.edadNoCuadra[0].headerAge === 61 && selEdad.edadNoCuadra[0].censusAge === 39,
+    "target: único registro con edad que no cuadra → se aceptan sus labs y queda el aviso (WinLab 61 · censo 39)");
+  assert(sel2.edadNoCuadra.length === 0 && sel.edadNoCuadra.length === 0, "target: con edad compatible (o el homónimo descartado) no hay aviso de edad");
+
   // Encabezado sin fecha de nacimiento (6 celdas) → no se puede verificar → se mantiene el match por nombre.
   const sel4 = selectTargetRows([{ __cells: ["", "", "", "PEREZ LOPEZ", "JUAN", "MASCULINO"], __hasLink: false }, rep("1")], paciente, { today: TODAY });
   assert(deepEq(sel4.targetIdxs, [1]), "target: encabezado sin fnac -> match por nombre se mantiene");
@@ -739,6 +747,58 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
     { __cells: ["", "RECORDTROVATI : 1", "", "INIZIO PAGINA"], __hasLink: true },
   ], { nombre: "MARIA ELISA HERNANDEZ", edad: "49" }, { today: TODAY });
   assert(deepEq(selIt.targetIdxs, [1]) && deepEq(selIt.linkIdxs, [1]), "selectTargetRows paginación: reporte real en italiano (fecha-hora) sigue siendo objetivo; el pie IT no");
+}
+
+// ─── Robot congelado (27 oct 2026): tope de tiempo y errores que se reintentan o reinician ───
+{
+  const nunca = new Promise(() => {});
+  const t0 = Date.now();
+  const r1 = await conTope(nunca, 50, "cerrar la pestaña").then(() => null, (e) => e);
+  assert(r1 && r1.atasco === true && /cerrar la pestaña: sin respuesta en 50 ms/.test(r1.message) && Date.now() - t0 < 1000, "conTope: una promesa que nunca responde se corta con { atasco } en su tope");
+  const r2 = await conTope(Promise.resolve(7), 50, "x");
+  assert(r2 === 7, "conTope: la que responde a tiempo devuelve su valor");
+  const r3 = await conTope(Promise.reject(new Error("falla propia")), 50, "x").then(() => null, (e) => e);
+  assert(r3 && !r3.atasco && r3.message === "falla propia", "conTope: el error propio pasa tal cual (no es un atasco)");
+  assert(esNavegacionPasajera("page.goto: Navigation to \"x\" is interrupted by another navigation to \"y\"") && esNavegacionPasajera("Execution context was destroyed, most likely because of a navigation")
+    && !esNavegacionPasajera("timeout 90000ms"), "esNavegacionPasajera: «interrupted by another navigation» se reintenta como «context destroyed» (corridas #415 y #449)");
+  assert(esNavegadorCaido("Target page, context or browser has been closed") && esNavegadorCaido("Browser has been disconnected") && !esNavegadorCaido("timeout 90000ms"), "esNavegadorCaido: navegador o contexto cerrados piden reinicio");
+}
+
+// ─── Privacidad: las bitácoras de GitHub Actions son públicas (27 oct 2026) ───
+{
+  assert(iniciales("PRUEBA FICTICIA DE LA ROSA") === "P.F.R." && iniciales("") === "(sin nombre)" && iniciales("María Ñúñez") === "M.N.", "iniciales: solo la primera letra de cada palabra (sin partículas ni acentos)");
+  assert(expOculto("0012345") === "…345" && expOculto("") === "(sin exp)", "expOculto: solo los 3 últimos dígitos del expediente");
+  const linea = 'homónimo descartado: cama 3-176 ← "PRUEBA FICTICIA UNO" 2 Días · se conservó «OTRA PERSONA FICTICIA» 53 a · exp=0012345 · "Execution context was destroyed"';
+  const sana = sanearLog(linea);
+  assert(!/PRUEBA FICTICIA|OTRA PERSONA|0012345/.test(sana) && /"P\.F\.U\."/.test(sana) && /«O\.P\.F\.»/.test(sana) && /exp=…345/.test(sana) && /cama 3-176/.test(sana) && /Execution context was destroyed/.test(sana),
+    "sanearLog: nombres entre comillas → iniciales, expediente recortado; la cama y los mensajes de error en minúsculas se conservan");
+  const salida = []; const consola = { log: (...a) => salida.push(a.join(" ")), error: (...a) => salida.push(a.join(" ")), warn: (...a) => salida.push(a.join(" ")), info: (...a) => salida.push(a.join(" ")) };
+  instalarLogSeguro(consola); consola.log('casi-coincidencia: "PRUEBA FICTICIA DOS" 40 Años'); consola.error("exp=7654321 falló");
+  assert(salida.join("|") === 'casi-coincidencia: "P.F.D." 40 Años|exp=…321 falló', "instalarLogSeguro: la red de seguridad sanea todo lo que pasa por console");
+  // Ninguna línea de bitácora de los robots interpola un nombre sin iniciales() (revisión del código fuente).
+  const fuentes = ["scraper.js", "ris-scraper.js", "ris-lib.js"].map((f) => [f, fs.readFileSync(new URL("./" + f, import.meta.url), "utf8")]);
+  const malas = [];
+  for (const [f, src] of fuentes) src.split("\n").forEach((l, i) => {
+    if (!/console\.(log|error|warn|info)\(|\blog\(|out\.push\(/.test(l)) return;
+    const m = l.match(/\$\{[^}]*\b(nombre|alias|encontradoComo|seenNames|matchedHeader|paciente\.nombre|winlab_paciente)\b[^}]*\}/g) || [];
+    m.forEach((x) => { if (!/iniciales\(|\.length|\bmap\(iniciales\)|\balias\s*\?/.test(x)) malas.push(f + ":" + (i + 1) + " " + x); });
+  });
+  assert(!malas.length, "ninguna línea de bitácora de los robots imprime un nombre sin iniciales(): " + malas.join(" ; "));
+}
+
+{
+  const o = parseObjetivo("ID-8F0C2A4E-1111-4B7A-9C1D-000000000001, 26-00001 0012345");
+  assert(JSON.stringify(o) === JSON.stringify({ ids: ["8f0c2a4e-1111-4b7a-9c1d-000000000001"], exps: ["2600001", "0012345"] }) && parseObjetivo("").ids.length === 0 && parseObjetivo("ID-corto").exps[0] === "IDCORTO",
+    "parseObjetivo: «ID-<uuid>» de la app (no público el expediente) y expedientes viejos, juntos");
+}
+
+{
+  const rep = [{ __cells: ["", "", "F1", "27/10/2026 06:00"], __target: true, valores: [{ estudio: "HEMOGLOBINA", valor: "12.1" }] }];
+  const a = firmaFilaLabs({ cama: "3-301", esp: "CG", run_id: "1", age_guard: { x: 1 }, merge: { reused_valores: 3 }, headers: ["A"], reportes: rep });
+  const b = firmaFilaLabs({ cama: "3-301", esp: "CG", run_id: "2", age_guard: null, merge: { reused_valores: 0 }, headers: ["B"], reportes: JSON.parse(JSON.stringify(rep)) });
+  const c = firmaFilaLabs({ cama: "3-302", esp: "CG", reportes: rep });
+  const d = firmaFilaLabs({ cama: "3-301", esp: "CG", reportes: [{ ...rep[0], valores: [{ estudio: "HEMOGLOBINA", valor: "11.0" }] }] });
+  assert(a === b && a !== c && a !== d, "firmaFilaLabs: misma fila sin cambios aunque cambien run_id, contadores y encabezados; un valor o la cama nuevos sí cambian la firma");
 }
 
 console.log(`\n${pass} pass · ${fail} fail`);

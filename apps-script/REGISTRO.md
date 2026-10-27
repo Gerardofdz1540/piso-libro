@@ -32,6 +32,12 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Cultivos del robot (WinLab) | muestra de cultivo de esos reportes | tipo, muestra, resultado, germen, antibiograma S/I/R, UFC, texto del reporte (del PDF cuando el robot lo leyó; si no, de la tabla) |
 | Imagen del robot (RIS) | estudio | modalidad, estudios, crítico, reporte, enlace (con su episodio) |
 | Diccionario | — | qué es cada columna, última actualización, conteos y avisos |
+| Clave de seudónimos | parte de un episodio | ID episodio de la base → ID paciente / ID episodio de análisis (la llave: **no se comparte**) |
+| Análisis · Episodios | hospitalización | sin nombres: edad, sexo, fechas, estancia, desenlace, reingresos, cirugías, resúmenes de labs, cultivos, calidad de datos |
+| Análisis · Labs | episodio y día | una columna por estudio, en número y en la unidad de la app; críticos y observaciones |
+| Análisis · Signos vitales | episodio y día | números limpios; TA en sistólica, diastólica y PAM |
+| Análisis · Cultivos | muestra | toma, tipo, resultado (0/1), germen, antibiograma |
+| Diccionario de variables | variable | definición, tipo y unidad de cada columna de análisis (codebook) |
 
 - **Episodio:** el id del paciente en la base. Un reingreso crea otro id y por lo tanto otro episodio.
 - **WinLab:** cada fila de `winlab_labs` trae todos los reportes de la búsqueda por apellido (también de homónimos) y se
@@ -56,6 +62,56 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
   - Una caja vacía toma la de la base.
   - Labs, imagen, cirugías, signos y notas se unen.
   - No reviven los labs borrados a propósito.
+
+## Pestañas de análisis (27 oct 2026)
+
+Las pestañas de arriba son la copia **fiel** de la app: texto tal cual, con nombres. Las «Análisis · …» son su versión
+para estadística. Cada noche se recalculan desde lo que ya está en la hoja, así que incluyen a todos los egresados de
+siempre. Cada columna está definida en «Diccionario de variables».
+
+- **Sin nombres ni expedientes.**
+  - ID paciente (`P-…`) e ID episodio (`E-…`) son seudónimos: SHA-256 del expediente con una sal secreta, que vive en
+    las propiedades del script (`REG_SAL`, se crea sola).
+  - La correspondencia está en «Clave de seudónimos», que no se comparte.
+  - Si se pierde la sal (otro proyecto de Apps Script), los seudónimos ya escritos se conservan por la clave guardada.
+- **Una persona, aunque el expediente se repita.** Mismo expediente con nombres incompatibles son dos personas (error de
+  captura). Un error de una letra en el nombre sigue siendo la misma persona.
+- **Un episodio, aunque se haya restaurado.** Restaurar desde la Papelera crea otro id en la base: las dos partes son
+  UN episodio, con el ingreso más antiguo y el desenlace de la última parte. Antes eran un egreso y un reingreso falsos
+  (49 de 291 copias de la Papelera son restauraciones).
+- **Números como números.**
+  - Van en la unidad de la app (WinLab ya convertido), con formato numérico; las fechas van como AAAA-MM-DD.
+  - Nunca se toma «el primer número» de un texto. Una muestra rechazada, una unidad que no se reconoce, un texto
+    («ABUNDANTES») o un valor imposible quedan **vacíos** y se explican en «Observaciones».
+  - «<0.05» se anota 0.05 y se dice. Las claves viejas de la app (hto, vcm…) van a su columna de hoy.
+  - Lo que vino dentro de los labs y no es un estudio (un nombre, la fecha) nunca pasa.
+- **Desenlace honesto.**
+  - Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO (hoja)») sin decir si fue alta o defunción:
+    quedan como «Motivo no registrado».
+  - En esos casos, «Defunción» queda **vacío**, no 0.
+  - Una copia técnica más nueva (rescate de cambios sin subir, cama reasignada a otra persona) ya no tapa el alta real.
+  - Un duplicado se marca «Excluir = 1».
+  - **Mientras el motivo de egreso no se registre, el registro no permite calcular mortalidad.**
+  - Desde el 27 oct 2026 la app pide el motivo al dar de alta y lo deja poner o corregir en la Papelera (alta a
+    domicilio, defunción, traslado, alta voluntaria). Lo guarda la función `archive_set_egreso` dentro de la copia
+    (`_egreso_tipo`, con quién y cuándo).
+  - El registro lo toma aunque la copia sea vieja: relee cada noche las copias clasificadas desde la corrida anterior.
+    Ese motivo manda sobre cualquier etiqueta y aparece como «… (registrado en la app)».
+- **Reingresos.**
+  - «Es reingreso (≤30 días)» mira hacia atrás.
+  - «Reingreso a 30 días» mira hacia adelante: queda vacío si sigue hospitalizado, si murió o si aún no pasan 30 días.
+  - Solo ve reingresos a los servicios que usan la app.
+- **Datos censurados.** Sin egreso, la estancia llega hasta hoy (hospitalizado) o hasta el último día en la base, con
+  «Egreso observado = 0».
+- **Vigente.** Lo que una corrida anterior generó y hoy ya no (un lab corregido) se conserva con «Vigente = No». Para
+  analizar, filtra «Vigente = Sí».
+- **Valores anteriores al 27 oct 2026.**
+  - La app no revisaba la unidad de WinLab: troponina I en ng/mL, glucosa en mmol/L, fibrinógeno en g/L.
+  - Antes de oct 2026, el examen de orina pudo caer en la biometría.
+  - Revisa los valores atípicos antes de analizar.
+- **Tamaño.** Con unos 240 egresos al mes:
+  - las pestañas de análisis suman unas 0.9 millones de celdas al año;
+  - todo el libro suma unos 4.6 millones al año, de 10 millones posibles.
 
 ## Nunca borra
 
@@ -150,5 +206,7 @@ Si una corrida falla, el registro de ejecuciones muestra solo el error y la hoja
   - Marco: Reglamento de la Ley General de Salud en Materia de Investigación para la Salud; NOM-012-SSA3-2012.
   - El protocolo cubre el consentimiento informado, o su dispensa en estudios retrospectivos, y el resguardo de los
     datos personales sensibles (ley de protección de datos personales aplicable a la institución).
-  - Lo usual es analizar una copia **seudonimizada** (sin nombre ni expediente) y guardar la llave aparte.
+  - Para un análisis, comparte solo las pestañas «Análisis · …» y el «Diccionario de variables» (Archivo → Descargar →
+    CSV, una por una). Están seudonimizadas, no son anónimas: fechas, diagnóstico y procedimientos pueden ayudar a
+    reconocer a alguien. La llave («Clave de seudónimos» y la sal `REG_SAL`) se queda con el responsable.
 - La *service_role key* da acceso total a la base: solo va en Propiedades del script, nunca en la hoja ni en el código.

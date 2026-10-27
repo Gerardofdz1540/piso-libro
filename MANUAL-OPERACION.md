@@ -684,6 +684,94 @@ del hospital su lista oficial de valores críticos y ajustar la tabla (solo en `
   «A» = alto, «B» = bajo, «!» = crítico.
 - **Arranque:** después del censo, notas, labs, robot, indicaciones e imagen se piden al mismo tiempo.
 
+## Registro de pacientes para investigación: pestañas de análisis y motivo del egreso (27 de octubre de 2026)
+
+El registro de Google Sheets (`apps-script/registro-pacientes.gs`; detalle en `apps-script/REGISTRO.md`) ya no es solo
+una copia: además trae pestañas listas para estadística.
+
+- **Pestañas «Análisis · Episodios / Labs / Signos vitales / Cultivos».**
+  - No tienen nombres ni expedientes: usan ID seudónimos.
+  - Los números van como números, en la unidad de la app; las fechas como AAAA-MM-DD.
+  - Lo que no se pudo usar como dato (muestra rechazada, unidad desconocida, valor imposible, texto) queda vacío y
+    explicado.
+  - «Diccionario de variables» define cada columna.
+  - Para compartir un análisis: Archivo → Descargar → CSV de esas pestañas, una por una. **Nunca** se comparte la
+    «Clave de seudónimos».
+- **Una hospitalización restaurada desde la Papelera cuenta como UN episodio** (antes parecía un egreso y un reingreso
+  falsos). Si la segunda parte entró 2 días o más después, «Calidad de datos» pide confirmar que no fue reingreso.
+- **Motivo del egreso.** Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO (hoja)») sin decir si fue
+  alta o defunción. Por eso el registro no podía calcular mortalidad. Ahora:
+  - al dar de alta en la app (🚪 Alta), el cuadro pide el motivo: alta a domicilio, defunción, traslado o alta
+    voluntaria;
+  - en la **Papelera**, cada egreso tiene su selector «Motivo», y arriba aparece cuántos egresos no lo tienen;
+  - el motivo se guarda en la nube con la función `archive_set_egreso` (`scripts/supabase_archive_egreso.sql`, ya
+    aplicada); se une a la copia sin pisar la nota;
+  - el registro lo toma aunque la copia sea vieja.
+
+  **Pide al equipo que llene el motivo de los egresos.** Sin él, en el registro la defunción queda «desconocida».
+- **Para que el registro tenga las pestañas nuevas:** abre el proyecto «Registro de pacientes» en script.google.com,
+  borra todo `Código.gs`, pega el `apps-script/registro-pacientes.gs` nuevo y guarda. No hay que tocar nada más: la
+  propiedad `REG_SAL` (la sal del seudónimo) se crea sola en la siguiente corrida.
+
+## Privacidad de las bitácoras de los robots y robot que se congelaba (27 de octubre de 2026)
+
+- **Bitácoras sin nombres.** El repositorio es público y las bitácoras de GitHub Actions también.
+  - Los robots de WinLab y del RIS imprimían nombres de pacientes (homónimos, casi-coincidencias, «encontrado como»).
+  - Ahora imprimen solo la cama, las iniciales y los 3 últimos dígitos del expediente.
+  - Una red de seguridad (`rpa/lib.js`: `instalarLogSeguro`) oculta cualquier nombre que se escape.
+  - Una prueba revisa que ninguna línea de bitácora imprima un nombre.
+- **Sin adjuntos con datos.** Ya no se suben capturas de pantalla ni volcados de WinLab/RIS como adjuntos de la corrida:
+  cualquiera con cuenta de GitHub podía descargarlos.
+- **Limpieza de lo que ya estaba publicado.** El flujo «Limpiar bitácoras con datos de pacientes»
+  (`.github/workflows/limpiar-bitacoras.yml`) borra las bitácoras de todas las corridas anteriores de los robots. Corre
+  solo al llegar a main y se puede relanzar a mano. Las corridas siguen listadas, sin su texto.
+- **«🔎 Buscar ahora» ya no publica el expediente.** La app manda al robot el id interno del paciente (`ID-<uuid>`, que no
+  identifica a nadie) y el robot lo busca en el censo. No hubo que cambiar el worker.
+- **Robot que se quedaba pasmado ~55 min.** Ninguna operación del navegador queda sin tope:
+  - abrir o cerrar la pestaña de un paciente: 15 s;
+  - guardar en Supabase: 90 s.
+
+  Si el navegador no responde, el robot guarda lo capturado, entra otra vez a WinLab y sigue con el siguiente paciente
+  (hasta 3 veces por corrida). El error «interrupted by another navigation» se reintenta. Cada intento del flujo tiene 45
+  min, así el segundo intento sí cabe en los 90.
+- **Respaldo diario sin trabajo repetido.** La corrida diaria del cron de GitHub es solo respaldo de las tres de Supabase.
+  Si en las últimas 8 h el robot ya revisó al menos al 80 % del censo, termina en segundos; si no, corre completa.
+- **Imagen (RIS) cada 2 h de verdad.** GitHub lanzaba el robot de imagen cada 4-6 h aunque estaba programado cada 2.
+  Ahora Supabase lo dispara a hora exacta cada 2 h (minuto 41, cron `ris-scrape-cada-2h`;
+  `scripts/supabase_ris_dispatch.sql`, ya aplicado) por una ruta nueva del worker (`/api/scrape-ris`).
+  - **Falta un paso tuyo:** pega el `cloudflare-worker/index.js` nuevo (v5) en el worker `piso-libro-ai` (Cloudflare →
+    Workers → piso-libro-ai → Edit code → pegar → Deploy).
+  - Hasta entonces, esa ruta responde 404 (queda anotado en `winlab_dispatch_log`, sin efecto) y el cron de GitHub
+    sigue como respaldo.
+- **Vigilante de todo el sistema.** `labs-watchdog.yml` + `scripts/vigilante.py` revisa cada 2 h (antes cada 6 y solo
+  labs) la última señal de vida de cada pieza:
+
+  | Pieza | Límite |
+  |---|---|
+  | Robot de labs | 11 h (avisa antes de la visita si falló la corrida de las 05:00) |
+  | Labs guardados | 26 h |
+  | Imagen del RIS | 10 h |
+  | Descarga del Doc de indicaciones | 2 h |
+  | Censo | 18 h sin ningún cambio |
+  | Tamaño de la base | — |
+
+  Si algo se atrasa, el job sale en rojo con el qué revisar y GitHub te manda el correo. Solo imprime horas y conteos.
+- **📦 Labs Masivo descarta valores imposibles.** Si la IA lee mal una cifra (Hb 125, K 40…), ya no se guarda, igual que
+  en la hoja de una sola persona; el resultado lo dice en rojo («No se guardaron… revisa la hoja»). Probado además: el
+  mismo PDF dos veces no duplica; con labs de WinLab del mismo día se suman sin pisar; un PDF que falla no detiene a los
+  demás; un nombre que encaja con dos pacientes no se escribe hasta confirmarlo.
+- **El robot ya no reescribe lo que no cambió.** Si la fila de hoy de un paciente ya está igual en la base (mismos reportes,
+  cama y especialidad), no se vuelve a guardar. Antes cada corrida mandaba un aviso en vivo a todos los iPads («🧪 Labs
+  WinLab actualizados») y repintaba las tarjetas aunque nada cambiara. El resultado de la búsqueda (`winlab_match`) sí
+  se actualiza siempre (de ahí leen el indicador del robot y el vigilante).
+- **Edad que no cuadra con WinLab.** Si en WinLab solo hay una persona con ese nombre, el robot acepta sus labs aunque la
+  edad no coincida (para no perder labs por una edad mal capturada en la hoja). Ahora la tarjeta lo avisa en amarillo
+  («WinLab: 61 años · censo: 39»): corrige la edad en la hoja del censo o, si son de otra persona, fija el «Nombre en
+  WinLab».
+- **«🔎 Buscar ahora» con la cola ocupada.** El aviso ya no promete que «incluirá a este paciente»: dice que, si lo que
+  está en cola es la búsqueda de otro paciente, hay que pulsar 🔎 otra vez. La tarjeta vigila el resultado 45 min
+  (antes 12), porque la corrida completa tarda 25-32.
+
 ## Los labs ya no se reescriben en bucle (19 de octubre de 2026)
 
 La bitácora de actividad crecía con miles de filas al día de «labs» que no cambiaban nada: la base
@@ -1092,6 +1180,27 @@ lados está en `scripts/SECURITY_NOTES.md`.
 Además, sin ser llaves: GitHub apaga los robots tras 60 días sin cambios en el repositorio (se
 mantienen despiertos solos) y Supabase pausa el proyecto tras 7 días sin tráfico (hay un ping cada
 3 días).
+
+## Plan B si los robots no pueden entrar, y la cuenta que usan (27 de octubre de 2026)
+
+**La cuenta.** El robot de labs entra a WinLab y el de imagen al RIS con el usuario de una persona. WinLab usa los
+secrets `WINLAB_USER` y `WINLAB_PASS` de GitHub; el RIS usa `RIS_USER` y `RIS_PASS` en la tabla `rpa_config` de
+Supabase. Para cada búsqueda, el hospital ve a esa persona.
+- Anota en un lugar privado de quién es cada cuenta y cuándo vence su contraseña.
+- Pide por escrito a Informática una cuenta solo de consulta para el robot, a nombre del servicio. Si no la dan, que
+  el dueño de la cuenta y la jefatura firmen que se usa así, y revísalo en cada rotación.
+- **El día que cambie la contraseña**, cámbiala en el mismo lugar (GitHub → Settings → Secrets, o `rpa_config`) y lanza
+  una corrida de prueba. Si el robot dice «Login fallido», casi siempre es eso.
+
+**Si el hospital cierra el acceso desde fuera.** Los robots corren en computadoras de GitHub, fuera del hospital, y
+entran por internet. Si un día no pueden entrar (el vigilante avisa por correo):
+1. Mientras tanto, cada tarjeta tiene **📄 PDF / 📷 Foto**: lee la hoja de laboratorio con IA y la guarda. Para varios a
+   la vez, **⋯ Más → 📦 Labs Masivo**.
+2. Habla con Informática: pregunta si el acceso externo seguirá permitido o si prefieren que el robot corra dentro de
+   la red del hospital.
+3. Si lo prefieren dentro: una computadora del servicio siempre encendida puede ser el «runner» propio de GitHub (la
+   máquina que corre el robot). Se registra en GitHub → Settings → Actions → Runners y se cambia `runs-on` en los dos
+   flujos de los robots. Pruébala primero con una corrida en seco (`winlab-dryrun.yml`).
 
 ## Si un paciente no tiene labs: el nombre no coincide con WinLab (octubre 2026)
 

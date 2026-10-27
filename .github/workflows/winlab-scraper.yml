@@ -23,7 +23,7 @@ on:
         default: false
         type: boolean
       exp:
-        description: "Corrida dirigida: expediente(s) separados por coma (p. ej. 26-23836). Solo busca a esos pacientes (2-4 min). Lo manda la app con «🔎 Buscar ahora»."
+        description: "Corrida dirigida: «ID-<uuid>» del paciente (lo manda la app con «🔎 Buscar ahora»; este dato es público, por eso no va el expediente) o expediente(s) separados por coma. Solo busca a esos pacientes (2-4 min)."
         required: false
         default: ""
         type: string
@@ -61,7 +61,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/winlab-scraper.yml/enable"
 
+      # Respaldo diario sin trabajo repetido (27 oct 2026): la corrida del cron de GitHub es solo RESPALDO de las tres de
+      # Supabase (05:00, 12:30, 20:07). Si en las últimas 8 h el robot ya revisó al menos al 80 % del censo (winlab_match),
+      # no hay nada que respaldar y termina en segundos; si no (Supabase o el worker fallaron), corre completa.
+      - name: ¿Hace falta el respaldo?
+        id: respaldo
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          set -uo pipefail
+          desde="$(date -u -d '8 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+          cuenta() { curl -fsS -o /dev/null -D - -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+                       -H "Prefer: count=exact" -H "Range: 0-0" "$SUPABASE_URL/rest/v1/$1" | tr -d '\r' | sed -n 's#^[Cc]ontent-[Rr]ange: .*/\([0-9]*\)$#\1#p'; }
+          censo="$(cuenta 'patients?select=id' || true)"; vistos="$(cuenta "winlab_match?select=exp&checked_at=gte.$desde" || true)"
+          echo "Censo: ${censo:-?} · revisados por el robot desde $desde: ${vistos:-?}"
+          if [ -n "${censo:-}" ] && [ -n "${vistos:-}" ] && [ "$censo" -gt 0 ] && [ $((vistos * 100)) -ge $((censo * 80)) ]; then
+            echo "saltar=1" >> "$GITHUB_OUTPUT"
+            echo "### WinLab Scraper (respaldo)" >> "$GITHUB_STEP_SUMMARY"
+            echo "No hizo falta: en las últimas 8 h el robot ya revisó $vistos de $censo pacientes." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Setup Node 22
+        if: steps.respaldo.outputs.saltar != '1'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
@@ -69,6 +93,7 @@ jobs:
           cache-dependency-path: rpa/package-lock.json
 
       - name: Cache Playwright browsers
+        if: steps.respaldo.outputs.saltar != '1'
         id: pw-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -76,6 +101,7 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-v1
 
       - name: Install dependencies
+        if: steps.respaldo.outputs.saltar != '1'
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ${{ steps.pw-cache.outputs.cache-hit == 'true' && '1' || '0' }}
         # npm ci: instala EXACTAMENTE lo que fija package-lock.json (antes npm install resolvía
@@ -87,6 +113,7 @@ jobs:
       # que aquí solo AVISAN: una prueba rota no debe dejar al piso sin labs. continue-on-error deja
       # el paso en rojo con su aviso, pero la corrida sigue.
       - name: Tests offline (solo aviso; bloquean en ci.yml, no aquí)
+        if: steps.respaldo.outputs.saltar != '1'
         continue-on-error: true
         run: |
           if ! (node scraper.test.js && node drilldown.test.js && node pdf-extract.test.js); then
@@ -95,31 +122,33 @@ jobs:
           fi
 
       - name: Ensure Chromium present
-        if: steps.pw-cache.outputs.cache-hit == 'true'
+        if: steps.respaldo.outputs.saltar != '1' && steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install --with-deps chromium
 
-      # Reintento coherente con el timeout del job (90 min): 60 min para el primer intento y lo que
-      # quede para el segundo. Antes era 85 min × 2 intentos → el segundo nunca cabía. Se reintenta
+      # Reintento coherente con el timeout del job (90 min): 45 min por intento (una corrida completa tarda 25-32 min),
+      # así el segundo intento sí cabe (27 oct 2026: con 60 min casi nunca cabía; además el robot ya no se queda pasmado:
+      # cada operación del navegador tiene tope y se reinicia solo). Antes era 85 min × 2 intentos → el segundo nunca cabía. Se reintenta
       # tanto por error como por tiempo agotado: con el flush incremental lo ya guardado no se
       # pierde y el reintento reutiliza los reportes ya parseados, así que solo gasta tiempo en lo
       # que falta.
       # Bucle propio en bash (oct 2026): antes era nick-fields/retry@v3, una acción de terceros que
-      # recibía WINLAB_PASS y SUPABASE_SERVICE_KEY. Mismos 2 intentos, 60 min por intento y 30 s de
+      # recibía WINLAB_PASS y SUPABASE_SERVICE_KEY. Mismos 2 intentos, 45 min por intento y 30 s de
       # espera. `timeout` manda SIGTERM a todo el grupo de procesos (npm y node), así el scraper
       # alcanza a volcar lo capturado; --kill-after remata si no sale solo.
       - name: Run scraper (con reintentos)
+        if: steps.respaldo.outputs.saltar != '1'
         run: |
           rc=1
           for intento in 1 2; do
-            echo "::group::Intento $intento de 2 (tope 60 min)"
+            echo "::group::Intento $intento de 2 (tope 45 min)"
             set +e
-            timeout --kill-after=60s 60m npm run scrape
+            timeout --kill-after=60s 45m npm run scrape
             rc=$?
             set -e
             echo "::endgroup::"
             if [ "$rc" -eq 0 ]; then break; fi
             if [ "$rc" -eq 124 ]; then
-              echo "::warning title=WinLab Scraper::Intento $intento agotó los 60 min."
+              echo "::warning title=WinLab Scraper::Intento $intento agotó los 45 min."
             else
               echo "::warning title=WinLab Scraper::Intento $intento falló (código $rc)."
             fi
@@ -159,19 +188,11 @@ jobs:
           # Corrida dirigida a uno o varios expedientes (oct 2026): vacío = censo completo.
           WL_TARGET_EXP:            ${{ inputs.exp || '' }}
 
-      - name: Upload diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: failure-screenshot
-          path: |
-            rpa/failure-*.png
-            rpa/explorer-*.json
-          if-no-files-found: ignore
-          retention-days: 7
-
+      # Sin adjuntos de diagnóstico (27 oct 2026): el repositorio es público y las capturas de WinLab/RIS y los volcados
+      # de la pantalla traen nombres de pacientes; cualquiera con cuenta de GitHub podía descargarlos. El diagnóstico
+      # queda en la bitácora, que ya no lleva nombres (iniciales y expediente recortado, ver rpa/lib.js).
       - name: Notify failure (GitHub envia email automaticamente)
         if: failure()
         run: |
-          echo "::error title=WinLab Scraper FAIL::El scraping fallo tras 2 intentos. Revisa el log, el resumen del job y el artifact de screenshot."
+          echo "::error title=WinLab Scraper FAIL::El scraping falló tras 2 intentos. Revisa la bitácora y el resumen del job (sin capturas: el repositorio es público)."
           exit 1

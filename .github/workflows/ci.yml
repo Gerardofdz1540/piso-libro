@@ -96,6 +96,9 @@ jobs:
       - name: Pruebas del Apps Script (registro de pacientes, datos ficticios)
         run: node apps-script/registro-pacientes.test.js
 
+      - name: Pruebas del worker (rutas que disparan a los robots, sin red)
+        run: node cloudflare-worker/worker.test.mjs
+
       # Lint de index.html (funciones duplicadas, etc.): node tools/lint-index.js, sin dependencias.
       # Solo si existe package.json en la raíz (lo trae el PR que añade el lint).
       - name: Lint de index.html (si hay package.json raíz)

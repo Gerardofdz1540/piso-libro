@@ -4,7 +4,7 @@
 // · reconexión de los canales → recarga completa; aviso recortado (>1 MB) → fila completa; día del procedimiento fijo;
 // · críticos reconocidos con quién y hora; indicador del robot; antigüedad de los datos sin red; notas de egresados;
 // · nombres parecidos; cama ocupada; dos personas en la misma caja; nota postquirúrgica de otro paciente; labs imposibles;
-// · Tablero compartido; tamaño de letra; altas programadas viejas fuera de la Entrega.
+// · Tablero compartido; tamaño de letra; altas programadas viejas fuera de la Entrega; motivo del egreso.
 // node tests/headless/app_sync2.js   (ver run_all.sh)
 const { launch } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
@@ -31,6 +31,7 @@ const store = {
   noOlvidar: [{ id: 11, texto: 'NUBE 1', author: 'A', fecha: '2026-10-27', done: false, created_at: new Date().toISOString() }],
   config: {},
   match: [{ checked_at: hace(1) }],
+  rpc: [],
 };
 (async () => {
   const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
@@ -44,6 +45,8 @@ const store = {
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.startsWith('/rest/v1/patients')) return m === 'GET' ? json(200, store.patients) : json(200, [{}]);
     if (url.startsWith('/rest/v1/notes')) {
+      // Desde S20 la nota de s1 se guarda como en la base real (lo que sube un iPad es lo que relee el otro).
+      if (m !== 'GET' && store.persistirNotas) [].concat(body || []).forEach((r) => { if (r && r.patient_id === 's1') Object.keys(r).forEach((f) => { if (f !== 'patient_id') store.noteFull[f] = r[f]; }); });
       if (m === 'GET' && /patient_id=eq\.s1/.test(url)) return json(200, [store.noteFull]);
       return m === 'GET' ? json(200, []) : json(201, [{}]);
     }
@@ -54,6 +57,7 @@ const store = {
     }
     if (url.startsWith('/rest/v1/winlab_match')) return json(200, store.match);
     if (url.startsWith('/rest/v1/archive')) return m === 'POST' ? json(201, [{ id: 501 }]) : json(200, []);
+    if (url.startsWith('/rest/v1/rpc/archive_set_egreso')) { store.rpc.push(body); return json(200, store.rpcFalla ? 'no-encontrado' : 'ok'); }
     return json(200, []);
   });
   await page.addInitScript(MOCK);
@@ -247,6 +251,77 @@ const store = {
   });
   check('S17 🔠 Letra: normal → grande → más grande → normal (variable --pl-fs-scale)', s17.out[0] === '1.12|🔠 Letra: grande' && s17.out[1] === '1.25' && s17.out[2] === '1', JSON.stringify(s17));
   check('S18 Entrega: las altas programadas de pacientes que ya no están en el censo no se proyectan', !s17.vieja, JSON.stringify(s17));
+
+  // ── S19: motivo del egreso (registro de pacientes para investigación) ──
+  const n19 = calls.length;
+  const s19a = await page.evaluate(async () => {
+    const p = patients.find(x => x._supa_id === 's2'); const k = pid(p);
+    openConfirm(k);
+    const sel = document.querySelector('[data-testid="confirm-egreso-tipo"]'); const limpio = sel.value === '';
+    sel.value = 'defuncion';
+    document.getElementById('confirm-btn').click();
+    await new Promise(r => setTimeout(r, 600));
+    const a = archivados.find(x => x._archiveKey === k) || {};
+    return { limpio, tipo: (a._note || {})._egreso_tipo, por: (a._note || {})._egreso_tipo_por, ts: (a._note || {})._egreso_tipo_ts, fuera: !patients.some(x => x._supa_id === 's2') };
+  });
+  const post19 = calls.slice(n19).find(c => c.m === 'POST' && c.url.startsWith('/rest/v1/archive') && (c.body || {}).note_data);
+  check('S19a al dar de alta se elige el motivo (empieza vacío) y viaja en la copia de la Papelera con quién y hora UTC',
+    s19a.limpio && s19a.fuera && s19a.tipo === 'defuncion' && s19a.por === 'Tester Uno' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(s19a.ts || '') && post19 && post19.body.note_data._egreso_tipo === 'defuncion', JSON.stringify({ s19a, post: post19 && post19.body.note_data._egreso_tipo }));
+  const s19b = await page.evaluate(async () => {
+    archivados.unshift(
+      { nombre: 'RETIRO SIN MOTIVO', cama: '3-310', exp: '26-70010', estado: 'ESTABLE', _archivedAt: new Date().toISOString(), _archiveKey: 'k10', _supaArchiveId: 'aaaa-10', _note: { _egreso: 'RETIRADO DEL CENSO (hoja)' } },
+      { nombre: 'SIN SUBIR AUN', cama: '3-311', exp: '26-70011', estado: 'ESTABLE', _archivedAt: new Date().toISOString(), _archiveKey: 'k11', _note: { _egreso: 'EGRESO' } },
+      { nombre: 'COPIA DE RESCATE', cama: '3-312', exp: '26-70012', _archivedAt: new Date().toISOString(), _archiveKey: 'k12', _supaArchiveId: 'aaaa-12', _note: { _egreso: 'CAMBIOS DE ESTE iPad SIN SUBIR (x)' } });
+    renderPapelera();
+    const banner = () => ((document.querySelector('[data-testid="egresos-sin-motivo"]') || {}).textContent || '');
+    const antes = banner();
+    const sel0 = document.querySelector('[data-testid="egreso-tipo-0"]'); sel0.value = 'alta'; await setEgresoTipo(0, sel0);
+    const despues = banner();
+    const sel1 = document.querySelector('[data-testid="egreso-tipo-1"]'); sel1.value = 'traslado'; await setEgresoTipo(1, sel1);
+    const sel1b = document.querySelector('[data-testid="egreso-tipo-1"]');
+    return { antes, despues, tipo0: archivados[0]._note._egreso_tipo, tipo1: archivados[1]._note._egreso_tipo || '', sel1: sel1b && sel1b.value,
+      rescate: !document.querySelector('[data-testid="egreso-tipo-2"]'), alerta: window.__alerts.slice(-1)[0] || '' };
+  });
+  check('S19b Papelera: aviso de egresos sin motivo; elegir uno lo guarda en la nube (archive_set_egreso con id, tipo y quién) y el aviso baja',
+    /egresos? sin motivo/.test(s19b.antes) && s19b.tipo0 === 'alta' && store.rpc.length === 1 && store.rpc[0].p_id === 'aaaa-10' && store.rpc[0].p_tipo === 'alta' && store.rpc[0].p_por === 'Tester Uno'
+    && (parseInt(s19b.antes.replace(/\D+/g, ' ').trim(), 10) - 1 === (parseInt(s19b.despues.replace(/\D+/g, ' ').trim(), 10) || 0)), JSON.stringify({ s19b, rpc: store.rpc }));
+  check('S19c sin copia en la nube todavía: no se guarda a medias (aviso y el selector vuelve); las copias de rescate no se clasifican',
+    s19b.tipo1 === '' && s19b.sel1 === '' && /todavía no sube/.test(s19b.alerta) && s19b.rescate && store.rpc.length === 1, JSON.stringify(s19b));
+  store.rpcFalla = true;
+  const s19d = await page.evaluate(async () => {
+    const sel = document.querySelector('[data-testid="egreso-tipo-0"]'); sel.value = 'defuncion'; await setEgresoTipo(0, sel);
+    return { tipo: archivados[0]._note._egreso_tipo, sel: document.querySelector('[data-testid="egreso-tipo-0"]').value, alerta: window.__alerts.slice(-1)[0] || '' };
+  });
+  check('S19d si la nube no lo guarda, la app no lo da por guardado (sigue el motivo anterior y avisa)', s19d.tipo === 'alta' && s19d.sel === 'alta' && /No se pudo guardar el motivo/.test(s19d.alerta), JSON.stringify(s19d));
+
+  // ── S20: ida y vuelta entre dos iPads en la misma caja: nada se duplica ni se borra ──
+  // La base simulada guarda lo que sube este iPad; «el otro iPad» escribe directo en la base y manda su aviso en vivo.
+  store.persistirNotas = true;
+  const esperarCalma = () => page.evaluate(async () => { for (let i = 0; i < 120 && (_suppressRealtimeKeys.has('s1') || _suppressRealtimeKeys.has('__all__')); i++) await new Promise(r => setTimeout(r, 100)); await new Promise(r => setTimeout(r, 400)); });
+  const aviso = (cambios) => page.evaluate((c) => { const row = Object.assign({}, c, { patient_id: 's1', updated_at: new Date().toISOString() }); handleNoteChange({ eventType: 'UPDATE', new: row }); handleNoteChange({ eventType: 'UPDATE', new: row }); }, cambios);
+  const otroIpad = (f, v) => { store.noteFull[f] = v; store.noteFull.updated_at = new Date().toISOString(); };
+  const leer = () => page.evaluate(() => { const k = pid(patients.find(x => x._supa_id === 's1')); const n = getNote(k); return { pend: n.pendientes, manejo: n.manejo }; });
+  const dup = (t) => { const l = String(t || '').split('\n').filter(Boolean); return new Set(l).size !== l.length; };
+  // 1) Este iPad escribe y guarda; llega su propio eco (la misma fila) dos veces.
+  await page.evaluate(() => { const k = pid(patients.find(x => x._supa_id === 's1')); updateField(k, 'pendientes', 'RX DE TORAX'); });
+  await page.waitForTimeout(2500);
+  await aviso(Object.assign({}, store.noteFull, { pendientes: 'RX DE TORAX' }));
+  await esperarCalma();
+  const r1 = await leer();
+  // 2) El otro iPad agrega un renglón: llega en vivo (el mismo aviso dos veces) sin repetirse.
+  otroIpad('pendientes', 'RX DE TORAX\nTAC DE ABDOMEN');
+  await aviso(store.noteFull); await esperarCalma();
+  const r2 = await leer();
+  // 3) Mientras este iPad escribe en Manejo, el otro cambia Pendientes: Manejo no se toca, Pendientes sí; al subir, la base
+  //    queda con las dos cosas.
+  await page.evaluate(() => { const k = pid(patients.find(x => x._supa_id === 's1')); updateField(k, 'manejo', 'AYUNO\nSOLUCIONES'); });
+  otroIpad('pendientes', 'RX DE TORAX\nTAC DE ABDOMEN\nIC A CARDIOLOGIA');
+  await aviso(store.noteFull); await page.waitForTimeout(2500); await esperarCalma();
+  const r3 = await leer();
+  check('S20 dos iPads en la misma tarjeta: el eco propio (repetido) no duplica, lo del otro iPad llega en vivo sin repetirse, no pisa la caja que se está escribiendo y la base termina con las dos cosas',
+    r1.pend === 'RX DE TORAX' && r2.pend === 'RX DE TORAX\nTAC DE ABDOMEN' && r3.manejo === 'AYUNO\nSOLUCIONES' && r3.pend === 'RX DE TORAX\nTAC DE ABDOMEN\nIC A CARDIOLOGIA'
+    && store.noteFull.manejo === 'AYUNO\nSOLUCIONES' && store.noteFull.pendientes === 'RX DE TORAX\nTAC DE ABDOMEN\nIC A CARDIOLOGIA' && ![r1, r2, r3].some((r) => dup(r.pend) || dup(r.manejo)),
+    JSON.stringify({ r1, r2, r3, base: { pend: store.noteFull.pendientes, manejo: store.noteFull.manejo } }));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-SYNC2: ' + pass + ' passed, ' + fail + ' failed');
