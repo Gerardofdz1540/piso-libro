@@ -649,6 +649,41 @@ del hospital su lista oficial de valores críticos y ajustar la tabla (solo en `
 - Sugerencia «Lesión renal aguda KDIGO»: solo con una creatinina previa más baja, y nunca con ERC o diálisis en el
   diagnóstico.
 
+## Sincronización entre iPads y datos (27 de octubre de 2026)
+
+- **Alta desde otro dispositivo con cambios sin subir:** si la hoja del censo u otro iPad da de alta a un paciente
+  mientras este iPad tiene cambios que aún no suben (los últimos segundos, o todo lo escrito sin red), esa versión va a la
+  🗑️ Papelera (local y nube) como «CAMBIOS DE ESTE iPad SIN SUBIR» y sale un aviso. Lo mismo con una nota que estaba en
+  la cola de un paciente que ya no está en el censo al volver la red (antes se tiraba en silencio).
+- **Dos personas en la misma caja:** si un colega cambia la caja que estás escribiendo, la tarjeta avisa
+  «✋ … cambió «Pendientes» mientras escribías» con **Ver su versión**, **Unir las dos** (tus renglones + los suyos
+  nuevos, marcados con su nombre) y **Quedarme con la mía**. Lo reemplazado siempre queda en 🕘 Historial de la caja.
+- **«No olvidar»:** el aviso entre iPads ya no manda la lista; cada iPad la baja de la nube (un iPad que estuvo dormido
+  ya no impone su lista vieja). También se recarga al volver a la app y al volver la red.
+- **Recargas:** al volver los canales en vivo después de un corte, una recarga completa (censo, notas, «No olvidar»,
+  procedimientos); y cada 10 min con la app en pantalla y nadie escribiendo, una recarga ligera.
+- **Nota muy grande:** si el aviso en vivo llega recortado (más de 1 MB), se baja la nota completa en vez de vaciar cajas.
+- **Sin red:** la barra dice de cuándo son los datos («Sin conexión · datos de hoy 06:10») y, con más de 2 h, en rojo
+  con un aviso abajo.
+- **Memoria del iPad:** las notas de pacientes que llevan más de 24 h fuera del censo se borran del iPad (siguen en la nube
+  y en la Papelera).
+- **Camas:** mover a alguien a una cama con número que ya ocupa otro paciente avisa quién la ocupa y no hace nada (la nube
+  acepta uno por cama; para intercambiar usa una cama libre de paso). Restaurar de la Papelera ya no borra la copia de la
+  nube hasta que el paciente sube.
+- **Procedimientos del día:** el día se fija al crearlo; editarlo o subirlo después de medianoche ya no lo cambia de día.
+- **Críticos reconocidos:** «✓ Reconocer» guarda quién y a qué hora; la tarjeta lo muestra («🔕 Reconocidos: K 6.4 ✓ GF 07:40»).
+- **Indicador del robot** (botón 💧 de arriba): «Robot: hoy 05:12» con la última corrida; en rojo con ⚠ si no corrió a la
+  hora programada (05:00, 12:30 y 20:07, con 2 h de margen). Antes nunca funcionaba.
+- **Nombres parecidos:** etiqueta «👥 Apellido igual: 3-115» en la tarjeta de dos pacientes con el mismo apellido paterno.
+- **Fotos y PDF con IA:** la nota postquirúrgica de otro paciente (nombre o expediente distinto) no llena nada; los labs
+  leídos de foto/PDF se muestran para confirmar antes de guardarse, los imposibles (K 50, Hb 150) se descartan y la celda
+  queda marcada 🤖.
+- **📌 Tablero:** ahora se comparte entre iPads (se une renglón por renglón; un borrado no resucita). La Entrega ya no
+  proyecta «altas programadas» de pacientes que ya se fueron.
+- **🔠 Letra** (⋯ Más): normal → grande → más grande, en cajas, tabla de labs y fechas. En la tabla de labs, además del color,
+  «A» = alto, «B» = bajo, «!» = crítico.
+- **Arranque:** después del censo, notas, labs, robot, indicaciones e imagen se piden al mismo tiempo.
+
 ## Los labs ya no se reescriben en bucle (19 de octubre de 2026)
 
 La bitácora de actividad crecía con miles de filas al día de «labs» que no cambiaban nada: la base
