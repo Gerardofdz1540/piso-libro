@@ -57,6 +57,7 @@ const store = {
     }
     if (url.startsWith('/rest/v1/winlab_match')) return json(200, store.match);
     if (url.startsWith('/rest/v1/archive')) return m === 'POST' ? json(201, [{ id: 501 }]) : json(200, []);
+    if (url.startsWith('/rest/v1/winlab_cultivos')) return store.cultivos500 ? json(500, { code: '57014', message: 'canceling statement due to statement timeout' }) : json(200, store.cultivos || []);
     if (url.startsWith('/rest/v1/rpc/archive_set_egreso')) { store.rpc.push(body); return json(200, store.rpcFalla ? 'no-encontrado' : 'ok'); }
     return json(200, []);
   });
@@ -322,6 +323,23 @@ const store = {
     r1.pend === 'RX DE TORAX' && r2.pend === 'RX DE TORAX\nTAC DE ABDOMEN' && r3.manejo === 'AYUNO\nSOLUCIONES' && r3.pend === 'RX DE TORAX\nTAC DE ABDOMEN\nIC A CARDIOLOGIA'
     && store.noteFull.manejo === 'AYUNO\nSOLUCIONES' && store.noteFull.pendientes === 'RX DE TORAX\nTAC DE ABDOMEN\nIC A CARDIOLOGIA' && ![r1, r2, r3].some((r) => dup(r.pend) || dup(r.manejo)),
     JSON.stringify({ r1, r2, r3, base: { pend: store.noteFull.pendientes, manejo: store.noteFull.manejo } }));
+
+  // ── S21: la consulta de cultivos de WinLab falla en el servidor: la caja lo dice y se reintenta (antes, vacía y en silencio) ──
+  store.cultivos500 = true;
+  const s21a = await page.evaluate(async () => {
+    window.__cultivosReintentos = 0; await window.loadCultivos(true);
+    const p = patients.find(x => x._supa_id === 's1');
+    return { reint: window.__cultivosReintentos, html: window.renderCultivosLabSection(p, getNote(pid(p)), pid(p)) };
+  });
+  store.cultivos500 = false; store.cultivos = [{ exp: '26-70001', cama: '3-301', nombre: 'JUAN PEREZ SOTO', fecha: new Date().toISOString().slice(0, 10), tipo: 'Hemocultivo', germen: null, resultado: 'Negativo', texto_origen: 'HEMOCULTIVO DESARROLLO NEGATIVO', busqueda: 'JUAN PEREZ SOTO' }];
+  const s21b = await page.evaluate(async () => {
+    await window.loadCultivos(true);
+    const p = patients.find(x => x._supa_id === 's1');
+    const h = window.renderCultivosLabSection(p, getNote(pid(p)), pid(p));
+    return { reint: window.__cultivosReintentos, aviso: /cultivos-lab-error/.test(h), caja: /Cultivos \(lab\)/.test(h) };
+  });
+  check('S21 cultivos de WinLab: si el servidor falla, la caja lo dice y se programa el reintento; al volver, el aviso se va y aparecen los cultivos',
+    s21a.reint === 1 && /cultivos-lab-error/.test(s21a.html) && /se reintenta/.test(s21a.html) && s21b.reint === 0 && !s21b.aviso && s21b.caja, JSON.stringify({ s21a, s21b }));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-SYNC2: ' + pass + ' passed, ' + fail + ' failed');

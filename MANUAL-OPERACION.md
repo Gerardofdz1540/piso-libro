@@ -579,6 +579,9 @@ temporal a disco y la base la cortaba a los 8 s (la caja no recibía nada). 5 GB
 - Se reescribió (`scripts/supabase_winlab_cultivos_rapida.sql`, aplicada en producción): mismo resultado
   (147 de 147 cultivos idénticos), ahora en ~1 s, solo con los días y pacientes pedidos y sin tocar disco.
   Reconoce también los encabezados de WinLab en italiano.
+- Si aun así la consulta falla en el servidor, la tarjeta ya no se queda callada: muestra «No se pudieron cargar
+  los cultivos de WinLab (se reintenta en unos minutos)» y la app lo vuelve a intentar 3 veces, cada 5 min. Los
+  cultivos del PDF siguen en 🦠 Cultivos. Sin red no se avisa: se reintenta solo al volver la conexión.
 - Indicaciones: la app revisa primero la huella del Doc y solo baja el texto completo (≈136 000 letras)
   si cambió.
 - `scripts/supabase_indicaciones_sin_vaiven.sql` (aplicada en producción): la descarga de la base y el Apps

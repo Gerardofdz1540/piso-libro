@@ -32476,6 +32476,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       cultivosByExp = map;
       cultivosLoaded = true;
       cultivosError = null;
+      window.__cultivosReintentos = 0;
       // Refrescar la vista UNA vez, sin clobberear edición activa ni modales abiertos.
       try {
         var modalOpen = !!document.querySelector(".modal[style*='flex'], .modal-overlay[style*='flex']");
@@ -32488,6 +32489,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       var _cNet = typeof isLikelyNetworkError === "function" && isLikelyNetworkError(e);
       cultivosLoaded = !_cNet; // error real del servidor: no reintentar en loop
       if (_cNet) setTimeout(function () { loadCultivos(false); }, 60000);
+      // Error del servidor (p. ej. la consulta se pasó del tiempo): antes no se reintentaba nunca y la caja quedaba vacía
+      // sin aviso toda la sesión. Ahora 3 reintentos espaciados (5 min) y la tarjeta lo dice.
+      else if ((window.__cultivosReintentos = (window.__cultivosReintentos || 0) + 1) <= 3) setTimeout(function () { loadCultivos(true); }, 5 * 60000);
+      try { if (!_cNet && !document.querySelector(".modal[style*='flex'], .modal-overlay[style*='flex']") && typeof renderViewSoft === "function") renderViewSoft(); } catch (_) {}
       try { console.warn("[v29] loadCultivos:", cultivosError); } catch (_) {}
     }
   }
@@ -32497,6 +32502,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     try {
       if (!p || !p.exp) return "";
       var rows = cultivosByExp[plNormExp(p.exp)];
+      // Solo errores del servidor (cultivosLoaded queda en true); sin red no se avisa en cada tarjeta: ya se reintenta solo.
+      if ((!rows || !rows.length) && cultivosError && cultivosLoaded) return "<div data-testid='cultivos-lab-error' style='font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:4px 8px;margin:4px 0'>🧫 No se pudieron cargar los cultivos de WinLab" + ((window.__cultivosReintentos || 0) <= 3 ? " (se reintenta en unos minutos)" : "") + ". Los del PDF siguen en 🦠 Cultivos.</div>";
       if (!rows || !rows.length) return "";
       // Expediente repetido en el censo: la vista une los cultivos por expediente y los repite para cada
       // cama, sin decir de cuál de las dos personas es cada uno (los días anteriores pueden ser de la otra).
@@ -32843,6 +32850,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
 
   /* ─── Exposición global (para onclick y para renderFullCard) ──────────────── */
   window.renderCultivosLabSection = renderCultivosLabSection;
+  window.loadCultivos = loadCultivos;
   window.openPendientesImport = openPendientesImport;
   window.closePendientesImport = closePendientesImport;
   window.plHandlePendientesFile = plHandlePendientesFile;
