@@ -581,8 +581,10 @@ temporal a disco y la base la cortaba a los 8 s (la caja no recibía nada). 5 GB
   Reconoce también los encabezados de WinLab en italiano.
 - Indicaciones: la app revisa primero la huella del Doc y solo baja el texto completo (≈136 000 letras)
   si cambió.
-- Pendiente de aprobar en Supabase: `scripts/supabase_indicaciones_sin_vaiven.sql`, que evita que la
-  descarga de la base y el Apps Script se sobrescriban el Doc mutuamente (~95 reescrituras de 136 KB al día).
+- `scripts/supabase_indicaciones_sin_vaiven.sql` (aplicada en producción): la descarga de la base y el Apps
+  Script ya no se sobrescriben el Doc mutuamente (~95 reescrituras de 136 KB al día) y una revisión sin cambios no
+  toca la fila. Si el Apps Script sube una lectura parcial (la versión vieja que leía solo la primera pestaña), la
+  base la ignora mientras su propia descarga funcione.
 - Para revisarlo: Supabase → Settings → Infrastructure → Disk IO, o Reports → Database (por hora).
 
 ## Los labs ya no se reescriben en bucle (19 de octubre de 2026)

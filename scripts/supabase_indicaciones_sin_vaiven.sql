@@ -1,4 +1,5 @@
--- 27 oct 2026 · aplicado en producción (migración indicaciones_sin_vaiven). Parte del ajuste por el aviso de Supabase
+-- 27 oct 2026 · aplicado en producción (migración indicaciones_sin_vaiven; verificado: una reescritura sin cambios
+-- deja 0 filas escritas y la versión de la fila igual). Parte del ajuste por el aviso de Supabase
 -- «running out of Disk IO Budget» (24 oct).
 -- La fila única de indicaciones_doc (≈136 000 letras) tenía dos escritores que se pisaban:
 --   · la base (pg_cron indicaciones-fetch/collect, cada 15 min) descarga el Doc COMPLETO por su enlace público;
