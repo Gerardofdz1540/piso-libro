@@ -568,6 +568,23 @@ Un encabezado de WinLab con menos nombres de pila que la hoja ahora sí cuenta, 
 nombres en WinLab y tres en la hoja. Solo cuenta si el robot ya validó ese reporte con nombre y edad.
 Otra persona con los mismos apellidos nunca entra.
 
+## Aviso de Supabase «Disk IO Budget» (27 de octubre de 2026)
+
+El 24 de octubre Supabase avisó que el proyecto estaba agotando su presupuesto de **lectura/escritura de
+disco** (no de espacio: la base pesa ~100 MB de 500). La causa era la vista `winlab_cultivos` (caja
+«Cultivos (lab)»): por cómo estaba escrita, en cada consulta armaba la lista de **todos** los reportes de
+todos los días de laboratorios antes de filtrar por paciente, tardaba más de 60 s, escribía ~120 MB de archivo
+temporal a disco y la base la cortaba a los 8 s (la caja no recibía nada). 5 GB de temporales en 2.5 días.
+
+- Se reescribió (`scripts/supabase_winlab_cultivos_rapida.sql`, aplicada en producción): mismo resultado
+  (147 de 147 cultivos idénticos), ahora en ~1 s, solo con los días y pacientes pedidos y sin tocar disco.
+  Reconoce también los encabezados de WinLab en italiano.
+- Indicaciones: la app revisa primero la huella del Doc y solo baja el texto completo (≈136 000 letras)
+  si cambió.
+- Pendiente de aprobar en Supabase: `scripts/supabase_indicaciones_sin_vaiven.sql`, que evita que la
+  descarga de la base y el Apps Script se sobrescriban el Doc mutuamente (~95 reescrituras de 136 KB al día).
+- Para revisarlo: Supabase → Settings → Infrastructure → Disk IO, o Reports → Database (por hora).
+
 ## Los labs ya no se reescriben en bucle (19 de octubre de 2026)
 
 La bitácora de actividad crecía con miles de filas al día de «labs» que no cambiaban nada: la base

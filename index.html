@@ -5783,6 +5783,11 @@ const PLIndicaciones = (function() {
     importPasted(row.text, { docHash: hash, docUpdated: row.doc_updated || null, syncedAt: row.synced_at || null, docId: row.doc_id || null });
     return true;
   }
+  // ¿El texto del Doc con esta huella ya está importado? (para no bajar 136 000 letras en cada revisión)
+  function docIsCurrent(hash) {
+    const meta = getMeta();
+    return !!(hash && meta && meta.docHash === hash && loadBlocks().length);
+  }
   function docInfo() {
     const m = getMeta();
     return (m && m.docHash) ? { docUpdated: m.docUpdated, syncedAt: m.syncedAt, docId: m.docId } : null;
@@ -5835,7 +5840,7 @@ const PLIndicaciones = (function() {
   }
 
   return {
-    parsePasted: parsePasted, importPasted: importPasted, importFromDoc: importFromDoc, docInfo: docInfo, getForPatient: getForPatient,
+    parsePasted: parsePasted, importPasted: importPasted, importFromDoc: importFromDoc, docInfo: docInfo, docIsCurrent: docIsCurrent, getForPatient: getForPatient,
     matchPatient: matchPatient, diagnose: diagnose, freshness: freshness, getMeta: getMeta,
     loadBlocks: loadBlocks, normalizeName: normalizeName, normalizeCama: normalizeCama,
     nameMatchScore: nameMatchScore
@@ -5976,6 +5981,13 @@ async function refreshIndicacionesDoc(force) {
   if (typeof _sGet !== "function" || !navigator.onLine) return false;
   _indDocBusy = true;
   try {
+    // Revisión de rutina (cada 10 min por iPad): primero solo la huella; el texto completo (≈136 000 letras) solo si
+    // cambió. Antes cada revisión bajaba el Doc entero aunque fuera el mismo (tráfico del plan gratuito de Supabase).
+    if (!force && typeof PLIndicaciones.docIsCurrent === "function") {
+      const hrows = await _sGet("indicaciones_doc", "select=text_hash&id=eq.1");
+      const h = Array.isArray(hrows) && hrows[0] ? hrows[0].text_hash : null;
+      if (h && PLIndicaciones.docIsCurrent(h)) return false;
+    }
     const rows = await _sGet("indicaciones_doc", "select=doc_id,text,text_hash,doc_updated,synced_at&id=eq.1");
     const row = Array.isArray(rows) ? rows[0] : null;
     if (!row) { if (force) _showRTToast("📄 El Doc de indicaciones aún no se ha subido (Apps Script)."); return false; }

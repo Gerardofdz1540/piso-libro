@@ -25,13 +25,17 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
   const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
   let docRow = { doc_id: 'DOCID', text: DOC_V1, text_hash: 'h1', doc_updated: new Date(Date.now() - 30 * 60000).toISOString(), synced_at: new Date().toISOString() };
-  let indGets = 0;
+  let indGets = 0; const indUrls = [];
   await page.route('**/vendor/supabase*', r => r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.startsWith('/rest/v1/patients')) { if (m === 'GET') return json(200, [{ id: 'a1', cama: '3-101', exp: '1', nombre: 'PACIENTE UNO', esp: 'CG', estado: 'ESTABLE', dx: 'X' }, { id: 'a2', cama: '3-105', exp: '2', nombre: 'PACIENTE DOS', esp: 'CG', estado: 'ESTABLE', dx: 'Y' }, { id: 'a3', cama: '3-107', exp: '3', nombre: 'PACIENTE TRES', esp: 'CG', estado: 'ESTABLE', dx: 'Z' }]); return json(200, [{ id: 'a1' }]); }
-    if (url.startsWith('/rest/v1/indicaciones_doc')) { indGets++; return json(200, [docRow]); }
+    if (url.startsWith('/rest/v1/indicaciones_doc')) {
+      indGets++; indUrls.push(decodeURIComponent(url));
+      const onlyHash = /select=text_hash(&|$)/.test(decodeURIComponent(url));
+      return json(200, [onlyHash ? { text_hash: docRow.text_hash } : docRow]);
+    }
     if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: 'a1' }]); }
     return json(200, []);
   });
@@ -99,6 +103,18 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     return { same, r, blocks: PLIndicaciones.loadBlocks().length };
   });
   check('I5 mismo hash no re-importa; 🔄 consulta la tabla y mantiene los bloques', i5.same === false && i5.r === false && i5.blocks === 3 && indGets === before + 1, JSON.stringify({ i5, gets: indGets - before }));
+
+  // Revisión de rutina (cada 10 min, 27 oct 2026): con la misma huella solo se pide text_hash; con huella nueva, el texto.
+  const u0 = indUrls.length;
+  const i5b1 = await page.evaluate(async () => ({ r: await refreshIndicacionesDoc(false), hash: PLIndicaciones.getMeta().docHash }));
+  const urls1 = indUrls.slice(u0);
+  docRow = Object.assign({}, docRow, { text: DOC_V1, text_hash: 'h3', doc_updated: new Date().toISOString() });
+  const u1 = indUrls.length;
+  const i5b2 = await page.evaluate(async () => ({ r: await refreshIndicacionesDoc(false), hash: PLIndicaciones.getMeta().docHash }));
+  const urls2 = indUrls.slice(u1);
+  check('I5b revisión de rutina: misma huella → una consulta solo de text_hash; huella nueva → baja el texto y re-importa',
+    i5b1.r === false && urls1.length === 1 && /select=text_hash$/.test(urls1[0].split('&id=')[0]) && i5b2.r === true && i5b2.hash === 'h3' && urls2.length === 2 && /select=doc_id,text,/.test(urls2[1]),
+    JSON.stringify({ i5b1, urls1, i5b2, urls2 }));
 
   // Pegado manual sigue funcionando y pierde la marca "auto" (freshness por import)
   const i6 = await page.evaluate(() => { PLIndicaciones.importPasted('INDICACIONES MÉDICAS DE PACIENTE TRES\nPACIENTE TRES 40 AÑOS | CAMA 3-107\nDIETA\nLIBRE\n'); const f = PLIndicaciones.freshness(); return { label: f.label, doc: PLIndicaciones.docInfo() }; });
