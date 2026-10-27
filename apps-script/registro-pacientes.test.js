@@ -309,7 +309,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
     calls.every((c) => c.m === "get" && c.headers.apikey === "svc") && calls.some((c) => /notes\?.*limit=20$/.test(c.u)) && !calls.some((c) => /offset/.test(c.u)) && !st.usoOffset && calls.every((c) => /order=[a-z_]+\.asc/.test(c.u)) && !calls.some((c) => /gte\./.test(c.u)));
   check("R1q el registro de ejecución solo tiene conteos (ningún nombre ni expediente)", logs.length >= 1 && logs.every((l) => !nombres.test(l)), logs.join(" | "));
   check("R1s el Diccionario dice cuántas celdas usa y que no hay carga pendiente", /Celdas usadas/.test(JSON.stringify(ss.sheets["Diccionario"].cells)) && /"Carga en curso","No"/.test(JSON.stringify(ss.sheets["Diccionario"].cells)));
-  check("R1r respaldo semanal: la primera corrida guarda una copia y anota la fecha", st.drive.files.length === 1 && /^Respaldo — Registro de pacientes — 2026-10-21$/.test(st.drive.files[0].name) && !!st.props.REG_ULTIMO_RESPALDO && !!st.props.REG_ULTIMA_CORRIDA);
+  check("R1r una sola hoja: la corrida NO crea copias en la carpeta (el respaldo es el historial de versiones de Sheets)", st.drive.files.length === 0 && !st.props.REG_ULTIMO_RESPALDO && !!st.props.REG_COPIAS_QUITADAS && !!st.props.REG_ULTIMA_CORRIDA);
 }
 
 // ─── R2: segunda corrida — nunca borra, Vigente, incremental ─────────────────────────────────────────────────────
@@ -344,7 +344,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   const S = tab(st.ss, "Signos vitales").filter((x) => x["ID episodio"] === "p1").map((x) => x["Fecha"] + "=" + x["FC"]).sort();
   check("R2i Signos se acumulan: el día que la app ya soltó (20/10) sigue; el 21 toma el valor del historial; el 22 entra", JSON.stringify(S) === JSON.stringify(["2026-10-20=96", "2026-10-21=80", "2026-10-22=76"]), JSON.stringify(S));
   check("R2j robots acumulan: lo de WinLab y RIS de ayer sigue aunque hoy no venga", tab(st.ss, "Labs del robot (WinLab)").length === 3 && tab(st.ss, "Imagen del robot (RIS)").length === 1);
-  check("R2k el respaldo semanal no se repite antes de 7 días", st.drive.files.length === 1);
+  check("R2k la segunda corrida tampoco crea copias (una sola hoja)", st.drive.files.length === 0);
 }
 
 // ─── R3: seguridad de la escritura y de la lectura ───────────────────────────────────────────────────────────────
@@ -473,14 +473,17 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   const sa = { db: db(), standalone: true, props: { REGISTRO_SHEET_ID: "hoja-del-registro" } };
   makeSandbox(sa).sb.actualizarRegistro();
   check("R4c proyecto aparte: abre la hoja por REGISTRO_SHEET_ID", sa.abiertoPorId === "hoja-del-registro" && tab(sa.ss, "Pacientes").length === 4);
-  // Respaldos: a los 7 días otra copia; quedan las últimas 5.
-  const sr = { db: db(), hoy: "2026-10-01", props: {} };
-  for (let i = 0; i < 7; i++) {
-    sr.hoy = new Date(Date.UTC(2026, 9, 1 + i * 7)).toISOString().slice(0, 10);
-    makeSandbox(sr).sb.actualizarRegistro();
-  }
-  const vivas = sr.drive.files.filter((f) => !f.trashed).map((f) => f.name.slice(-10)).sort();
-  check("R4d un respaldo por semana y quedan los últimos 5 (los viejos a la papelera de Drive)", sr.drive.files.length === 7 && vivas.length === 5 && vivas[0] === "2026-10-15" && vivas[4] === "2026-11-12" && sr.drive.trashed.length === 2, JSON.stringify(vivas));
+  // Una sola hoja (27 oct 2026): las copias «Respaldo — …» que hizo la versión anterior van UNA vez a la papelera; ninguna nueva.
+  const copia = (name) => { const f = { name, trashed: false, getName: () => name, setTrashed: (t) => { f.trashed = t; if (t) sr.drive.trashed.push(name); } }; return f; };
+  const sr = { db: db(), hoy: "2026-10-27", props: { REG_ULTIMO_RESPALDO: "2026-10-20" }, drive: { files: [], trashed: [] } };
+  sr.drive.files.push(copia("Respaldo — Registro de pacientes — 2026-10-13"), copia("Respaldo — Registro de pacientes — 2026-10-20"), copia("LÉEME — Cómo activar el registro"), copia("Respaldo — Otra hoja — 2026-10-20"));
+  makeSandbox(sr).sb.actualizarRegistro();
+  const quitadas1 = sr.drive.trashed.slice();
+  sr.drive.files.push(copia("Respaldo — Registro de pacientes — 2026-11-03"));   // apareció otra después: ya no se busca (una sola vez)
+  for (let i = 0; i < 3; i++) { sr.hoy = new Date(Date.UTC(2026, 9, 28 + i * 7)).toISOString().slice(0, 10); makeSandbox(sr).sb.actualizarRegistro(); }
+  check("R4d una sola hoja: las copias viejas de ESTE registro van a la papelera una vez (no el LÉEME ni las de otra hoja) y nunca se crean copias nuevas",
+    JSON.stringify(quitadas1) === JSON.stringify(["Respaldo — Registro de pacientes — 2026-10-13", "Respaldo — Registro de pacientes — 2026-10-20"]) && sr.drive.trashed.length === 2
+    && sr.drive.files.length === 5 && !sr.props.REG_ULTIMO_RESPALDO && !!sr.props.REG_COPIAS_QUITADAS, JSON.stringify({ quitadas1, t: sr.drive.trashed, n: sr.drive.files.length }));
 }
 
 // ─── R8: URLs que Google acepta (21 oct 2026: la primera corrida real falló con «Supabase archive: no se pudo leer
@@ -684,12 +687,12 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   const s0 = makeSandbox({ db: db() }).sb;
   check("R12g regFechaLocal: 05:59 UTC es el día anterior, 06:00 UTC ya es el mismo día; fechas sin hora tal cual",
     s0.regFechaLocal("2026-10-12T05:59:00Z") === "2026-10-11" && s0.regFechaLocal("2026-10-12T06:00:00+00:00") === "2026-10-12" && s0.regFechaLocal("12/10/2026") === "2026-10-12" && s0.regFechaLocal("2026-10-12") === "2026-10-12");
-  // Respaldo por días de calendario: a los 6 días no, a los 7 sí.
-  const sr = { db: db(), hoy: "2026-10-21", props: { REG_ULTIMO_RESPALDO: "2026-10-15" } }; makeSandbox(sr).sb.actualizarRegistro();
-  const sr2 = { db: db(), hoy: "2026-10-22", props: { REG_ULTIMO_RESPALDO: "2026-10-15T23:59:00.000Z" } }; makeSandbox(sr2).sb.actualizarRegistro();
-  check("R12h respaldo por días de calendario: a los 6 días no se repite; a los 7 sí (aunque la hora sea un poco antes)", sr.drive.files.length === 0 && sr2.drive.files.length === 1 && sr2.props.REG_ULTIMO_RESPALDO === "2026-10-22");
+  // Ya no hay respaldo semanal: ni a los 7 días ni después se crea una copia.
+  const sr = { db: db(), hoy: "2026-10-21", props: { REG_ULTIMO_RESPALDO: "2026-10-01" } }; makeSandbox(sr).sb.actualizarRegistro();
+  const sr2 = { db: db(), hoy: "2026-12-22", props: {} }; makeSandbox(sr2).sb.actualizarRegistro();
+  check("R12h sin respaldo semanal: aunque hayan pasado 7 días o más no se crea ninguna copia (la carpeta queda con una sola hoja)", sr.drive.files.length === 0 && sr2.drive.files.length === 0 && !sr.props.REG_ULTIMO_RESPALDO);
   const sv = { db: db(), driveFalla: true }; const rv = makeSandbox(sv).sb.actualizarRegistro();
-  check("R12i si Drive falla al respaldar, avisa y escribe de todos modos", rv.ok && tab(sv.ss, "Pacientes").length === 4 && /respaldo semanal/.test(rv.avisos.join(" ")));
+  check("R12i si Drive falla al quitar las copias viejas, avisa y escribe de todos modos (y lo vuelve a intentar la próxima vez)", rv.ok && tab(sv.ss, "Pacientes").length === 4 && /copias de respaldo viejas/.test(rv.avisos.join(" ")) && !sv.props.REG_COPIAS_QUITADAS);
   // Escritura incremental: una corrida igual no reescribe nada; un cambio reescribe solo su renglón.
   const si = { db: db() }; makeSandbox(si).sb.actualizarRegistro();
   const escritas = () => Object.fromEntries(Object.entries(si.ss.sheets).map(([n, h]) => [n, h.filasEscritas || 0]));

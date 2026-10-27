@@ -110,8 +110,8 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
     const added1 = _entregaAutoAppend(k, items);
     const added2 = _entregaAutoAppend(k, _entregaItemsFromLabs(after, before));           // mismo sync otra vez
     const added3 = _entregaAutoAppend(k, _entregaItemsFromLabs(after, after));            // nada cambió
-    // Un analito nuevo el mismo día (K corregido) → solo ese
-    const after2 = [{ fecha: ayer, labs: { hb: '6.2', leucos: '41.73', cr: '1.0', k: '6.3', na: '138', pct: '7.21' } }];
+    // Un analito nuevo el mismo día → solo ese (lactato crítico; la PCT alta ya no es «crítica»: es alterada)
+    const after2 = [{ fecha: ayer, labs: { hb: '6.2', leucos: '41.73', cr: '1.0', k: '6.3', na: '138', pct: '7.21', lac: '5.1' } }];
     const added4 = _entregaAutoAppend(k, _entregaItemsFromLabs(after2, after));
     const risItems = _entregaItemsFromRis([{ id: 77, fecha: ayer, modalidad: 'CT', estudios: 'TAC ABDOMEN CONTRASTADA', reporte: 'TOMOGRAFIA DE ABDOMEN. HALLAZGOS: ... CONCLUSIÓN: DERRAME PLEURAL BILATERAL Y COLECCIONES INTRAABDOMINALES. ATENTAMENTE DR RADIOLOGO', scraped_at: new Date().toISOString() },
       { id: 78, fecha: ayer, modalidad: 'US', estudios: '*', reporte: null, scraped_at: new Date().toISOString() },
@@ -125,8 +125,8 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
   const dAyer = ayer.split('-').reverse().join('-');
   check('N2 entrega automática: labs alterados (crítico primero, nombre de la alteración + valor), estudio RIS con CONCLUSIÓN recortada, estudio sin reporte, cultivos; una sola vez (ids + texto), sin tocar lo escrito a mano; la caja se actualiza',
     n2.added1 === 1 && n2.added2 === 0 && n2.added3 === 0 && n2.added4 === 1 && n2.added5 === 2 && n2.added6 === 2
-    && n2.txt.startsWith('PENDIENTE TRANSFUSIÓN\n') && n2.txt.includes(dAyer + ': Labs: Anemia severa (Hb 6.2)') && /Leucocitosis marcada \(Leuc 41\.73\)/.test(n2.txt) && /Hiperkalemia[^\n]*\(K 6\.3\)/i.test(n2.txt) && !/Na 138/.test(n2.txt)
-    && /PCT alta[^\n]*\(PCT 7\.21\)/.test(n2.txt)
+    && n2.txt.startsWith('PENDIENTE TRANSFUSIÓN\n') && n2.txt.includes(dAyer + ': Labs: Anemia grave (Hb 6.2)') && /Leucocitosis extrema \(Leuc 41\.73\)/.test(n2.txt) && /Hiperkalemia[^\n]*\(K 6\.3\)/i.test(n2.txt) && !/Na 138/.test(n2.txt)
+    && /Lactato ≥4[^\n]*\(Lac 5\.1\)/.test(n2.txt) && !/PCT 7\.21/.test(n2.txt)
     && n2.txt.includes(dAyer + ': CT TAC ABDOMEN CONTRASTADA (RIS): DERRAME PLEURAL BILATERAL Y COLECCIONES INTRAABDOMINALES') && !/ATENTAMENTE/.test(n2.txt) && !/HALLAZGOS/.test(n2.txt)
     && n2.txt.includes(dAyer + ': US (RIS): estudio realizado, reporte pendiente') && !/TORAX/.test(n2.txt)
     && n2.txt.includes(dAyer + ': Urocultivo POSITIVO a Klebsiella pneumoniae') && n2.txt.includes(dAyer + ': Hemocultivo sin desarrollo a 5 días')
@@ -157,14 +157,14 @@ const today = iso(new Date()); const ayer = iso(new Date(Date.now() - 86400e3));
     && / HRS\n\nPACIENTE MASCULINO EN LA SEXTA DÉCADA DE LA VIDA HOSPITALIZADO CON EL SIGUIENTE DIAGNÓSTICO: CHOQUE SÉPTICO DE ORIGEN ABDOMINAL \+ PO LAPE \+ DRENAJE DE COLECCIÓN \+ DM2 \+ HAS\./.test(n3)
     && /AL PASE DE VISITA EL PACIENTE REFIERE DOLOR EN SITIO DE HERIDA QUIRÚRGICA, NIEGA NÁUSEA Y VÓMITO\./.test(n3)
     && /PACIENTE MASCULINO, CON FC 103 LPM, FR 16 RPM, TEMPERATURA 36\.4 °C, SATURACIÓN DE OXÍGENO DE 96 % CON OXÍGENO SUPLEMENTARIO POR PUNTAS NASALES A 4 LITROS POR MINUTO, TA 110\/70 MMHG\. CONSCIENTE, ORIENTADO/.test(n3)
-    && /DRENAJE TIPO PENROSE DERECHO CON GASTO DE 50 ML DE CARACTERÍSTICAS SEROSO, DRENAJE TIPO PENROSE IZQUIERDO CON GASTO DE 45 ML/.test(n3) && /FOLEY PERMEABLE A DERIVACIÓN CON URESIS CUANTIFICADA DE 900 ML/.test(n3)
+    && /DRENAJE TIPO PENROSE DERECHO CON GASTO DE 50 ML DE CARACTERÍSTICAS SEROSO, DRENAJE TIPO PENROSE IZQUIERDO CON GASTO DE 45 ML/.test(n3) && /FOLEY \[¿PERMEABLE A DERIVACIÓN\?\] CON URESIS CUANTIFICADA DE 900 ML/.test(n3)
     && n3.includes('LABORATORIOS DEL ' + dAyerP + ': GLUCOSA 139, UREA 104.9, BUN 49, CREATININA 0.94, SODIO 136, POTASIO 4.38, CLORO 98.7, CALCIO 8.0, FÓSFORO 3.5, MAGNESIO 1.4, LEUCOCITOS 28.34, NEUTRÓFILOS 91.2, HEMOGLOBINA 7.7, HEMATOCRITO 23.7, VCM 78.2, RDW 23.3, PLAQUETAS 233, TP 16.2, TTP 25.5.')
     && /LABORATORIOS DEL 11\.10\.2026: LEUCOCITOS 41\.73, HEMOGLOBINA 6\.2, PCR 230\.7, PROCALCITONINA 7\.21, AMILASA 95, LIPASA 54, ALBÚMINA 2\.6\./.test(n3) && !/11\.10\.2026: [^\n]*GLUCOSA 150/.test(n3)
     && /HEMODINÁMICO: CHOQUE SÉPTICO EN RESOLUCIÓN/.test(n3) && /RENAL: CREATININA EN MEJORÍA/.test(n3)
-    && /SE MANTIENE EN AYUNO\./.test(n3) && /SE MANTIENE MANEJO ANTIMICROBIANO CON CEFTRIAXONA \+ METRONIDAZOL \(DÍA 3\)/.test(n3) && /TROMBOPROFILAXIS CON ENOXAPARINA 40 MG SUBCUTÁNEA CADA 24 HORAS\./.test(n3)
+    && /SE MANTIENE EN AYUNO\./.test(n3) && /SE MANTIENE MANEJO ANTIMICROBIANO CON CEFTRIAXONA \+ METRONIDAZOL \(DÍA 3\)/.test(n3) && /TROMBOPROFILAXIS CON ENOXAPARINA 40 MG SUBCUTÁNEA\./.test(n3) && !/CADA 24 HORAS|DURACIÓN GUIADA/.test(n3)
     && n3.includes('CT TAC ABDOMEN DEL ' + dAyerP + ' CON REPORTE: COLECCIONES INTRAABDOMINALES Y DERRAME PLEURAL BILATERAL.')
     && /PLAN: RETIRO PROGRESIVO DEL VASOPRESOR/.test(n3) && /SE SOLICITAN \/ PENDIENTES: BH, QS, ES; REPORTE DE TAC\./.test(n3)
-    && /ESTADO DE SALUD DELICADO, CON PRONÓSTICO RESERVADO A EVOLUCIÓN\.\nDR GARNELO MBCG \| DR FERNÁNDEZ R2CG$/.test(n3)
+    && /ESTADO DE SALUD DELICADO, CON PRONÓSTICO \[PRONÓSTICO\]\.\nDR GARNELO MBCG \| DR FERNÁNDEZ R2CG$/.test(n3)
     && n3 === n3.toUpperCase(), n3);
 
   // ── N4: paciente que REAPARECE por Realtime: baja su nota (restaurada por el trigger) antes de mostrar la tarjeta

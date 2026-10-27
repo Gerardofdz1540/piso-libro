@@ -5,7 +5,9 @@
  * (patients + notes), los egresados de la Papelera (archive), el respaldo de la cronología, los reportes y cultivos de
  * WinLab (sacados de winlab_labs con la misma regla de identidad de la app), los estudios de RIS y los procedimientos
  * programados. NUNCA borra: lo que ya no está en la base se conserva (en las pestañas de la tarjeta, marcado «Vigente:
- * No»), y cada semana guarda una copia de la hoja en la misma carpeta.
+ * No»). UNA sola hoja (27 oct 2026): ya no guarda copias semanales en la carpeta; el respaldo es el historial de
+ * versiones de Google Sheets (Archivo → Historial de versiones), y las copias «Respaldo — …» que hizo antes se mandan a la
+ * papelera de Drive (30 días para recuperarlas).
  *
  * PRIVACIDAD: la hoja tiene nombres y expedientes (datos de salud identificables). Debe quedarse en la carpeta privada.
  * El script solo LEE Supabase (GET) y en el registro de ejecuciones solo escribe conteos y avisos sin datos de pacientes.
@@ -41,7 +43,6 @@ var REG_CURSORES = {
 };
 var REG_CONTINUACIONES_DIA = 8;
 var REG_CELDAS_MAX = 10000000, REG_CELDAS_AVISO = 0.7;
-var REG_RESPALDO_DIAS = 7, REG_RESPALDOS = 5;
 var REG_UTC_OFFSET_MIN = -360;     // America/Mexico_City: UTC-6 todo el año (sin horario de verano desde oct 2022)
 var REG_BLOQUE = 4000;             // filas por setValues
 var REG_SEP = '␟';
@@ -159,7 +160,7 @@ function actualizarRegistro() {
     if (winlab.ambiguos) avisos.push('WinLab: ' + winlab.ambiguos + ' reporte(s) de capturas viejas no se copiaron porque hay homónimos con el mismo nombre y no se conoce la edad del paciente.');
     datos.ris = opcional('ris_estudios', function () { return leerCursor('ris_estudios', 'id,patient_id,exp,paciente,fecha,hora,modalidad,estudios,critico,reporte_estado,reporte,reporte_url,scraped_at', 200); });
     var nuevo = regConstruir(datos, hoy);
-    try { regRespaldoSemanal_(libro, props, hoy); } catch (e) { avisos.push('No se pudo guardar el respaldo semanal (' + regCausa_(e) + ').'); }
+    try { regQuitarCopiasViejas_(libro, props); } catch (e) { avisos.push('No se pudieron quitar las copias de respaldo viejas (' + regCausa_(e) + ').'); }
     var cuentas = {}, cortado = false;
     // Dentro de una pestaña, ningún setValues empieza después de 5 min 40 s (escribir a medias es seguro: cada fila va a
     // su renglón por clave y la siguiente vuelta completa lo que falte).
@@ -1107,7 +1108,7 @@ function regEscribirDiccionario_(hoja, hoy, cuentas, celdas, pendiente, avisos) 
     ['Cultivos del robot (WinLab)', 'Un renglón por muestra de cultivo de esos reportes: del PDF del reporte cuando el robot lo leyó (germen y antibiograma S/I/R) o de la tabla del reporte.'],
     ['Imagen del robot (RIS)', 'Lo que capturó el robot de RIS, por expediente y episodio.'],
     ['Nota / Checklist completo (JSON)', 'Todo lo demás de la tarjeta, sin archivos incrustados.'],
-    ['Respaldo', 'Cada 7 días se guarda una copia de esta hoja en la misma carpeta (las últimas ' + REG_RESPALDOS + ').'],
+    ['Respaldo', 'Una sola hoja: el respaldo es su historial de versiones (Archivo → Historial de versiones). El registro nunca borra renglones.'],
     ['Cuidado', 'Se pueden agregar columnas propias y usar filtros: el registro no las toca. No renombrar los encabezados del registro (si falta uno, se agrega al final; si falta una columna clave, el registro se detiene y avisa).']
   ];
   if (hoja.getMaxColumns() < 2) hoja.insertColumnsAfter(hoja.getMaxColumns(), 2 - hoja.getMaxColumns());
@@ -1116,20 +1117,17 @@ function regEscribirDiccionario_(hoja, hoy, cuentas, celdas, pendiente, avisos) 
   var sobra = hoja.getLastRow() - filas.length;
   if (sobra > 0) hoja.getRange(filas.length + 1, 1, sobra, 2).clearContent();
 }
-/** Copia de toda la hoja en su carpeta cada 7 días de calendario, ANTES de escribir (guarda el estado anterior); quedan
- *  las últimas 5. */
-function regRespaldoSemanal_(libro, props, hoy) {
-  var ultima = regFecha(props.getProperty('REG_ULTIMO_RESPALDO') || '');
-  var dias = ultima ? regDias(ultima, hoy) : '';
-  if (dias !== '' && dias < REG_RESPALDO_DIAS) return;
+/** UNA sola hoja (27 oct 2026): antes, cada 7 días se guardaba una copia completa en la carpeta («Respaldo — <hoja> — fecha»)
+ *  y la carpeta tenía dos o más «bases». Ya no se copia: el respaldo es el historial de versiones de Sheets. Las copias que
+ *  hizo este script (solo las que llevan ese prefijo exacto, en la carpeta de la hoja) van UNA vez a la papelera de Drive. */
+function regQuitarCopiasViejas_(libro, props) {
+  if (props.getProperty('REG_COPIAS_QUITADAS')) return;
   var archivo = DriveApp.getFileById(libro.getId());
   var padres = archivo.getParents();
-  if (!padres.hasNext()) return;
-  var carpeta = padres.next(), prefijo = 'Respaldo — ' + archivo.getName() + ' — ';
-  archivo.makeCopy(prefijo + hoy, carpeta);
-  var copias = [], it = carpeta.getFiles();
-  while (it.hasNext()) { var f = it.next(); if (f.getName().indexOf(prefijo) === 0) copias.push(f); }
-  copias.sort(function (a, b) { return b.getName().localeCompare(a.getName()); });
-  copias.slice(REG_RESPALDOS).forEach(function (f) { f.setTrashed(true); });
-  props.setProperty('REG_ULTIMO_RESPALDO', hoy);
+  if (padres.hasNext()) {
+    var carpeta = padres.next(), prefijo = 'Respaldo — ' + archivo.getName() + ' — ', it = carpeta.getFiles();
+    while (it.hasNext()) { var f = it.next(); if (f.getName().indexOf(prefijo) === 0) f.setTrashed(true); }
+  }
+  props.setProperty('REG_COPIAS_QUITADAS', new Date().toISOString());
+  props.deleteProperty('REG_ULTIMO_RESPALDO');
 }

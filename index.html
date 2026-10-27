@@ -1080,6 +1080,9 @@
     /* INR estimado (TP ÷ testigo) como marca de agua cuando WinLab no lo reporta */
     .lab-cell.lab-est .lab-input::placeholder { color: inherit; opacity: .9; font-weight: 800; }
     .lab-est-tag { color: #9d174d; font-weight: 800; margin-left: 2px; }
+    /* Muestra rechazada / unidad desconocida (oct 2026): no es un número que se pueda juzgar. */
+    .lab-cell.lab-aviso .lab-input { color: #b45309; font-size: 9px; font-weight: 800; letter-spacing: -.2px; }
+    .lab-aviso-tag { color: #b45309; font-weight: 800; margin-left: 2px; }
     .lab-input.abn {
       color: #92400e
     }
@@ -5268,15 +5271,17 @@ const PLCDS = (function() {
         return {sev:sev,value:hb,unit:"g/dL",display:"Hb "+hb};}},
     { id:"aki", name:"Lesión renal aguda KDIGO", keywords:/(lesi[oó]n\s+renal\s+aguda|LRA|AKI|injuria\s+renal|kdigo)/i,
       critical:true, criticalIf:function(r){return r.stage===3;},
-      check:function(labs,labHistory){ const cr=num(labs.cr); if(!isFinite(cr)) return null;
+      // KDIGO necesita una creatinina PREVIA más baja: sin basal, o con ERC/diálisis en el diagnóstico, no se sugiere LRA
+      // (antes Cr ≥4 sin basal = etapa 3 crítica, y los pacientes en hemodiálisis salían siempre en rojo). Cr ≥4 cuenta
+      // como etapa 3 solo si subió ≥0.3 mg/dL contra la basal.
+      check:function(labs,labHistory,p,nd){ const cr=num(labs.cr); if(!isFinite(cr)) return null;
+        const dxTxt=String((nd&&nd.dx)||(p&&p.dx)||"")+" "+String((nd&&nd.app)||"");
+        if(/\b(ERC|ERCT|IRC|ERC\s*KDIGO|ENFERMEDAD\s+RENAL\s+CR[OÓ]NICA|INSUFICIENCIA\s+RENAL\s+CR[OÓ]NICA|HEMODI[AÁ]LISIS|DI[AÁ]LISIS|DPCA|TRASPLANTE\s+RENAL)\b/i.test(dxTxt)) return null;
         const basal=getBaselineCr(labHistory);
-        if(basal===null){
-          if(cr>=4.0) return {stage:3,sev:"stage3",value:cr,basal:null,ratio:null,display:"Cr "+cr+" mg/dL (sin basal)"};
-          return null;
-        }
+        if(basal===null||!(cr>basal)) return null;
         const ratio=cr/basal; const delta=cr-basal;
         let stage=null;
-        if(cr>=4.0||ratio>=3.0) stage=3;
+        if((cr>=4.0&&delta>=0.3)||ratio>=3.0) stage=3;
         else if(ratio>=2.0) stage=2;
         else if(ratio>=1.5||delta>=0.3) stage=1;
         if(!stage) return null;
@@ -7870,9 +7875,72 @@ function plExportBackup() {
       ego_dens:  /^densidad/i,
     };
 
+    // MUESTRA RECHAZADA (oct 2026): WinLab pega el motivo al nombre del estudio ("TIEMPO DE PROTROMBINA MUESTRA MAL
+    // AFORADA", "HEMOGLOBINA MUESTRA COAGULADA", "… SIN MUESTRA") y en "valor" deja el límite bajo del rango de
+    // referencia (TP 11.00, TTP 26.00): NUNCA es un resultado. Antes el TP salía "normal" e INR ≈0.9 (13 reportes de
+    // sep-oct 2026). La llave queda en WL_RECHAZADA si el reporte no trae un valor real de ese estudio.
+    const WINLAB_RECHAZO_RX = /\s*\b(?:MUESTRA\s+(?:COAGULADA|MAL\s*AFORADA|HEMOLIZADA|INADECUADA|INSUFICIENTE|LIPEMICA|RECHAZADA)|MALAFORADA|SIN\s+MUESTRA|NUEVA\s+MUESTRA)\b.*$/i;
+    const WL_RECHAZADA = "RECHAZADA";
+    function labEsRechazada(v) { return String(v === undefined || v === null ? "" : v).trim().toUpperCase() === WL_RECHAZADA; }
+    // UNIDADES (oct 2026): el lector solo miraba el nombre. Troponina I llegó en ng/mL (may-jul 2026) y se pintaba como
+    // pg/mL normal; "GLUCOSA" en MINUTOS (horario de la curva de tolerancia) caía en glu; "-OH" es de la 25-OH vitamina D
+    // pegada a fibrinógeno/TTP; P/µL y AUSENTES son cristales de orina. Unidades medidas en winlab_labs (conteos).
+    //   ok: se guarda tal cual · conv: [regex, factor] se convierte a la unidad de la tabla · lo demás → REVISAR UNIDAD.
+    //   Sin unidad o "-": se guarda (formato viejo). Solo se vigilan los analitos donde la unidad cambia la decisión.
+    const _WL_U_10_3 = /^(?:X?10\^?3|10³|K)\/(?:UL|MM3)$|^MILES/;
+    const WINLAB_UNIT_RULES = {
+      hb: { ok: /^G\/DL$/ },
+      leucos: { ok: _WL_U_10_3 },
+      plaq: { ok: _WL_U_10_3 },
+      glu: { ok: /^MG\/DL$/, conv: [[/^MMOL\/L$/, 18]] },
+      na: { ok: /^(MMOL|MEQ)\/L$/ },
+      k: { ok: /^(MMOL|MEQ)\/L$/ },
+      cr: { ok: /^MG\/DL$/, conv: [[/^UMOL\/L$/, 1 / 88.4]] },
+      ca: { ok: /^MG\/DL$/, conv: [[/^MMOL\/L$/, 4.008]] },
+      mg: { ok: /^MG\/DL$/, conv: [[/^MMOL\/L$/, 2.43]] },
+      p: { ok: /^MG\/DL$/, conv: [[/^MMOL\/L$/, 3.097]] },
+      tropI: { ok: /^(PG\/ML|NG\/L)$/, conv: [[/^(NG\/ML|UG\/L)$/, 1000]] },
+      tropT: { ok: /^NG\/ML$/, conv: [[/^(NG\/L|PG\/ML)$/, 1 / 1000]] },
+      tp: { ok: /^(SEG|SEGUNDOS?|S)$/ },
+      tp_testigo: { ok: /^(SEG|SEGUNDOS?|S)$/ },
+      ttp: { ok: /^(SEG|SEGUNDOS?|S)$/ },
+      fibrinogeno: { ok: /^MG\/DL$/, conv: [[/^G\/L$/, 100]] },
+      dimero_d: { ok: /^NG\/ML(FEU)?$/, conv: [[/^(UG\/ML|MG\/L)(FEU)?$/, 1000]] }
+    };
+    // Unidades que NUNCA son de un analito de sangre (se descarta el valor sin aviso): 25-OH, cristales y sedimento
+    // de orina (p/µL, Ausentes, "-1", "-10CPO", "XC", "/CAMPO", "<", "A", "X").
+    const _WL_UNIT_TIEMPO = /^(MIN|MINUTOS?|HRS?|HORAS?)$/;
+    const _WL_UNIT_BASURA = /^-?OH$|^P\/UL$|^AUSENTES?$|^-\d+(CPO)?$|^X?C(PO)?$|CAMPO|^[<>]$|^[AX]$/;
+    function _wlUnitNorm(u) { return String(u || "").toUpperCase().replace(/[ΜμµU](?=[GL\/])/g, "U").replace(/\s+/g, ""); }
+    // → { v: valor a guardar } · null = descartar · { v: "REVISAR UNIDAD (…)" } = unidad desconocida (no se juzga el número)
+    function _wlUnitFix(key, rawVal, unidad) {
+      const val = String(rawVal).trim();
+      const u = _wlUnitNorm(unidad);
+      if (!u || u === "-" || u === "VERIFICADO") return { v: val };
+      if (_WL_UNIT_BASURA.test(u)) return null;
+      if (_WL_UNIT_TIEMPO.test(u) && key !== "vsg") return null;
+      const r = WINLAB_UNIT_RULES[key];
+      if (!r || r.ok.test(u)) return { v: val };
+      for (const c of (r.conv || [])) {
+        if (!c[0].test(u)) continue;
+        const m = /^([<>≤≥]?\s*)(-?\d+(?:[.,]\d+)?)$/.exec(val);
+        if (!m) return { v: val };
+        const n = parseFloat(m[2].replace(",", ".")) * c[1];
+        const dec = Math.abs(n) >= 100 ? 0 : (Math.abs(n) >= 1 ? 2 : 3);
+        return { v: m[1] + String(Math.round(n * Math.pow(10, dec)) / Math.pow(10, dec)) };
+      }
+      return { v: "REVISAR UNIDAD (" + String(unidad).trim().slice(0, 12) + ")" };
+    }
+    // Primera llave de WINLAB_ALIASES que corresponde a un nombre ya normalizado (sin mirar si ya está en labs).
+    function _wlAliasKey(name) {
+      for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) { if (patterns.some(rx => rx.test(name))) return key; }
+      return null;
+    }
+
     function mapWinlabReportesToLabs(reportes) {
       const labs = {};
       if (!Array.isArray(reportes)) return labs;
+      const rechazadas = {};
       for (const rep of reportes) {
         const valores = Array.isArray(rep?.valores) ? rep.valores : [];
         // Contexto de PANEL (oct 2026). El scraper no persiste bucket/seccion y WinLab junta
@@ -7903,6 +7971,12 @@ function plExportBackup() {
           if (!name) continue;
           // Defense in depth: rechazar si parece basura (fecha, código, servicio)
           if (isWinlabGarbageEstudio(name)) continue;
+          // Muestra rechazada: el número es el rango de referencia, no un resultado. Se recuerda la llave (solo sangre).
+          const _rej = WINLAB_RECHAZO_RX.exec(name);
+          if (_rej) {
+            if (_panelMode !== "urine") { const _rk = _wlAliasKey(name.slice(0, _rej.index).trim()); if (_rk && _rk.indexOf("ego_") !== 0) rechazadas[_rk] = true; }
+            continue;
+          }
           // Guarda ORINA/EGO (jun 2026): un valor de orina (creatinina en orina,
           // hemoglobina libre, micción, urocultivo, EGO, o bucket "urine") NUNCA
           // debe llenar una llave de sangre/química. Solo puede llenar ego_*.
@@ -7931,12 +8005,16 @@ function plExportBackup() {
             if (key in labs) continue; // ya mapeado, no sobreescribir
             if (_isUrine && key.indexOf("ego_") !== 0) continue; // orina solo → ego_*
             if (patterns.some(rx => rx.test(name))) {
-              labs[key] = String(rawVal).trim();
+              const fix = key.indexOf("ego_") === 0 ? { v: String(rawVal).trim() } : _wlUnitFix(key, rawVal, v && v.unidad);
+              // Sin número en una llave de sangre (GLUCOSA "NEGATIVO" del EGO): no ocupa la llave.
+              if (fix && key.indexOf("ego_") !== 0 && !/^REVISAR UNIDAD/.test(fix.v) && !Number.isFinite(parseLabNumber(fix.v))) break;
+              if (fix) labs[key] = fix.v;
               break;
             }
           }
         }
       }
+      Object.keys(rechazadas).forEach(function (k) { if (!(k in labs)) labs[k] = WL_RECHAZADA; });
       return labs;
     }
 
@@ -8093,9 +8171,11 @@ function plExportBackup() {
     // (texto íntegro del reporte). Tiene prioridad sobre la tabla, que solo dice "POSITIVO".
     // Devuelve UNA entrada por muestra del reporte (hemocultivo periférico/central, urocultivo…); el
     // formato v1 (sin `secciones`) se convierte a una sola entrada.
+    // SDD (sensible dependiente de dosis) va con los sensibles PERO conserva la advertencia: solo sirve a dosis alta o
+    // con intervalos más cortos. Antes se mostraba como sensible a secas en la tarjeta, la nota y la entrega.
     function _abLists(ab) {
       var list = Array.isArray(ab) ? ab.filter(function (a) { return a && a.antibiotico; }) : [];
-      var fmt = function (a) { return a.antibiotico + (a.cim ? " " + a.cim : ""); };
+      var fmt = function (a) { return a.antibiotico + (a.interp === "SDD" ? " (SDD: dosis alta)" : "") + (a.cim ? " " + a.cim : ""); };
       return {
         sensibles: list.filter(function (a) { return a.interp === "S" || a.interp === "SDD"; }).map(fmt),
         intermedios: list.filter(function (a) { return a.interp === "I"; }).map(fmt),
@@ -8354,6 +8434,9 @@ function plExportBackup() {
             const _newer = _tomaTs > (prev._tomaTs == null ? -Infinity : prev._tomaTs);
             for (const [k, v] of Object.entries(labs)) {
               if (!(k in prev.labs)) { prev.labs[k] = v; continue; }   // hueco → llenar siempre
+              // Muestra rechazada: un resultado real del mismo día siempre gana; el rechazo nunca tapa un resultado.
+              if (labEsRechazada(v) && !labEsRechazada(prev.labs[k])) continue;
+              if (labEsRechazada(prev.labs[k]) && !labEsRechazada(v)) { prev.labs[k] = v; continue; }
               if (_newer) prev.labs[k] = v;                              // toma más nueva → pisa
             }
             if (_newer) prev._tomaTs = _tomaTs;
@@ -9608,7 +9691,7 @@ function plExportBackup() {
     function _plneInjectCSS(){
       if (document.getElementById("plne-styles")) return;
       var s = document.createElement("style"); s.id = "plne-styles";
-      s.textContent = ".plne-back{position:fixed;inset:0;background:rgba(10,22,40,.55);display:none;align-items:flex-start;justify-content:center;padding:18px;z-index:99999;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.plne-back.show{display:flex}.plne-modal{background:#fff;max-width:880px;width:100%;border-radius:10px;box-shadow:0 12px 32px rgba(10,22,40,.4);overflow:hidden;margin:auto}.plne-top{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:#0a1628;color:#fff}.plne-top h3{font-size:14px;font-weight:800;margin:0}.plne-x{background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px}.plne-body{padding:14px 16px;max-height:82vh;overflow:auto;color:#334155}.plne-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.plne-chip{font-size:11px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:20px;padding:2px 9px;color:#065f46}.plne-chip b{color:#047857;font-weight:800;margin-right:3px}.plne-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.plne-field{display:flex;flex-direction:column}.plne-field.plne-full{grid-column:1/-1}.plne-field label,.plne-vit label,.plne-sysrow label{font-size:10px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}.plne-back textarea,.plne-back input{width:100%;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12.5px;color:#334155;padding:5px 7px;resize:none;line-height:1.4;box-sizing:border-box}.plne-back textarea{overflow:hidden;min-height:30px}.plne-back textarea:focus,.plne-back input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.12)}.plne-sech{font-size:11.5px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 7px;padding-bottom:3px;border-bottom:2px solid #1e3a5f}.plne-sech span{font-size:9.5px;font-weight:600;color:#64748b;text-transform:none;letter-spacing:0}.plne-vit{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.plne-vit>div{display:flex;flex-direction:column}.plne-vit input{font-family:ui-monospace,Menlo,monospace;text-align:center}.plne-sysrow{display:grid;grid-template-columns:130px 1fr;gap:7px;align-items:start;margin-bottom:5px}.plne-sysrow.plne-extra{grid-template-columns:130px 1fr 28px}.plne-sysrow label{padding-top:6px}.plne-extra-lbl{font-weight:700}.plne-del{background:#fee2e2;border:none;color:#dc2626;border-radius:5px;cursor:pointer;font-size:12px;height:30px}.plne-addsys{margin-top:4px;background:#e8eef6;border:1px dashed #3b5d8a;color:#1e3a5f;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}.plne-actions{display:flex;gap:10px;margin:16px 0 0}.plne-gen{background:#059669;color:#fff;border:none;border-radius:6px;padding:10px 18px;font-size:13.5px;font-weight:800;cursor:pointer}.plne-close2{background:#f1f5f9;color:#334155;border:none;border-radius:6px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer}.plne-out{display:none;margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}.plne-out-top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0}.plne-copy{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer}.plne-out-text{padding:16px 18px;margin:0;white-space:pre-wrap;font-family:'Times New Roman',Georgia,serif;font-size:13.5px;line-height:1.55;color:#1a1a1a;max-height:50vh;overflow:auto}.plne-gen.plne-ai{background:#7c3aed}.plne-gen.plne-draft{background:#475569}.plne-gen:disabled{opacity:.6;cursor:wait}.plne-actions{flex-wrap:wrap}.plne-out-btns{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.plne-edit{background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}.plne-edit.on{background:#fef3c7;border-color:#f59e0b;color:#92400e}.plne-pasar{background:#0a1628;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer}.plne-hist{font-size:11.5px;border:1px solid #cbd5e1;border-radius:6px;padding:4px 6px;max-width:220px;color:#334155;background:#fff}.plne-warn{padding:8px 12px;background:#fef3c7;border-bottom:1px solid #fcd34d;color:#78350f;font-size:12px}.plne-out-text[contenteditable=true]{outline:2px solid #f59e0b;background:#fffbeb}@media(max-width:640px){.plne-out-top{flex-direction:column;align-items:flex-start;gap:6px}}";
+      s.textContent = ".plne-back{position:fixed;inset:0;background:rgba(10,22,40,.55);display:none;align-items:flex-start;justify-content:center;padding:18px;z-index:99999;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.plne-back.show{display:flex}.plne-modal{background:#fff;max-width:880px;width:100%;border-radius:10px;box-shadow:0 12px 32px rgba(10,22,40,.4);overflow:hidden;margin:auto}.plne-top{display:flex;justify-content:space-between;align-items:center;padding:11px 16px;background:#0a1628;color:#fff}.plne-top h3{font-size:14px;font-weight:800;margin:0}.plne-x{background:rgba(255,255,255,.15);border:none;color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px}.plne-body{padding:14px 16px;max-height:82vh;overflow:auto;color:#334155}.plne-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.plne-chip{font-size:11px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:20px;padding:2px 9px;color:#065f46}.plne-chip b{color:#047857;font-weight:800;margin-right:3px}.plne-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.plne-field{display:flex;flex-direction:column}.plne-field.plne-full{grid-column:1/-1}.plne-field label,.plne-vit label,.plne-sysrow label{font-size:10px;font-weight:800;color:#1e3a5f;text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}.plne-back textarea,.plne-back input{width:100%;border:1px solid #e2e8f0;border-radius:5px;font-family:inherit;font-size:12.5px;color:#334155;padding:5px 7px;resize:none;line-height:1.4;box-sizing:border-box}.plne-back textarea{overflow:hidden;min-height:30px}.plne-back textarea:focus,.plne-back input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.12)}.plne-sech{font-size:11.5px;font-weight:800;color:#0a1628;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 7px;padding-bottom:3px;border-bottom:2px solid #1e3a5f}.plne-sech span{font-size:9.5px;font-weight:600;color:#64748b;text-transform:none;letter-spacing:0}.plne-vit{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.plne-vit>div{display:flex;flex-direction:column}.plne-vit input{font-family:ui-monospace,Menlo,monospace;text-align:center}.plne-sysrow{display:grid;grid-template-columns:130px 1fr;gap:7px;align-items:start;margin-bottom:5px}.plne-sysrow.plne-extra{grid-template-columns:130px 1fr 28px}.plne-sysrow label{padding-top:6px}.plne-extra-lbl{font-weight:700}.plne-del{background:#fee2e2;border:none;color:#dc2626;border-radius:5px;cursor:pointer;font-size:12px;height:30px}.plne-addsys{margin-top:4px;background:#e8eef6;border:1px dashed #3b5d8a;color:#1e3a5f;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}.plne-actions{display:flex;gap:10px;margin:16px 0 0}.plne-gen{background:#059669;color:#fff;border:none;border-radius:6px;padding:10px 18px;font-size:13.5px;font-weight:800;cursor:pointer}.plne-close2{background:#f1f5f9;color:#334155;border:none;border-radius:6px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer}.plne-out{display:none;margin-top:14px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}.plne-out-top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0}.plne-copy{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer}.plne-out-text{padding:16px 18px;margin:0;white-space:pre-wrap;font-family:'Times New Roman',Georgia,serif;font-size:13.5px;line-height:1.55;color:#1a1a1a;max-height:50vh;overflow:auto}.plne-gen.plne-ai{background:#7c3aed}.plne-gen.plne-draft{background:#475569}.plne-gen:disabled{opacity:.6;cursor:wait}.plne-actions{flex-wrap:wrap}.plne-out-btns{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.plne-edit{background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}.plne-edit.on{background:#fef3c7;border-color:#f59e0b;color:#92400e}.plne-pasar{background:#0a1628;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12.5px;font-weight:800;cursor:pointer}.plne-hist{font-size:11.5px;border:1px solid #cbd5e1;border-radius:6px;padding:4px 6px;max-width:220px;color:#334155;background:#fff}.plne-warn{padding:8px 12px;background:#fef3c7;border-bottom:1px solid #fcd34d;color:#78350f;font-size:12px}.plne-out-text[contenteditable=true]{outline:2px solid #f59e0b;background:#fffbeb}.plne-out-text mark.plne-nuevo{background:#fde68a;color:inherit;border-radius:2px;cursor:pointer;box-shadow:0 0 0 1px #f59e0b}.plne-out-text mark.plne-falta{background:#fbcfe8;color:inherit;border-radius:2px}@media(max-width:640px){.plne-out-top{flex-direction:column;align-items:flex-start;gap:6px}}";
       document.head.appendChild(s);
     }
     function _plneEl(){
@@ -9799,7 +9882,8 @@ function plExportBackup() {
         var dias=(typeof _dispositivoDias==="function")?_dispositivoDias(d.fi):null;
         var gasto=_plneVal2(d.gasto); var gastoTxt=gasto?(" CON GASTO DE "+gasto+(/^[\d.,]+$/.test(gasto)?" ML":"")):"";
         var carac=_plneVal2(d.carac)?(" DE CARACTERÍSTICAS "+_plneVal2(d.carac)):"";
-        if(/foley|vesical|cistostom/i.test(tipo)){ foley=tipo+" PERMEABLE A DERIVACIÓN"+(_plneVal2(ck.pm_uresis)?" CON URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":""):"")+(carac||"")+(dias!==null?" (DÍA "+dias+")":""); return; }
+        // La permeabilidad no se captura en la tarjeta: queda entre corchetes para que el residente la confirme.
+        if(/foley|vesical|cistostom/i.test(tipo)){ foley=tipo+" [¿PERMEABLE A DERIVACIÓN?]"+(_plneVal2(ck.pm_uresis)?" CON URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":""):"")+(carac||"")+(dias!==null?" (DÍA "+dias+")":""); return; }
         var base=/estoma|ileostom|colostom|yeyunostom|gastrostom|fístula|fistula/i.test(tipo)?tipo:("DRENAJE TIPO "+tipo);
         if(/^(sng|sonda|cmp|cvc|catéter|cateter|tpn)/i.test(tipo)) base=tipo;
         out.push(base+(d.lado?" "+_plneLado(d.lado):"")+(_plneVal2(d.sitio)?" EN "+_plneVal2(d.sitio):"")+gastoTxt+carac+(dias!==null?" (DÍA "+dias+")":""));
@@ -9873,8 +9957,10 @@ function plExportBackup() {
       var mx=[];
       if(ck.npo) mx.push("SE MANTIENE EN AYUNO"+(_plneVal2(ck.npo_dias)?" (DÍA "+_plneVal2(ck.npo_dias)+")":"")); else if(_plneVal2(ck.dieta)) mx.push("CON DIETA "+_plneVal2(ck.dieta));
       if(ck.npt) mx.push("NUTRICIÓN PARENTERAL"+(_plneVal2(ck.npt_pct)?" AL "+_plneVal2(ck.npt_pct)+" %":"")+(_plneVal2(ck.npt_fecha)?" DESDE EL "+_plneFnPunto(ck.npt_fecha):""));
-      if(ck.atb) mx.push("SE MANTIENE MANEJO ANTIMICROBIANO CON "+(_plneVal2(ck.atb_nombre)||"[ANTIBIÓTICO]")+(_plneVal2(ck.atb_dias)?" (DÍA "+_plneVal2(ck.atb_dias)+")":"")+" CON DURACIÓN GUIADA POR EVOLUCIÓN CLÍNICA Y MARCADORES INFLAMATORIOS");
-      if(ck.tvp) mx.push("TROMBOPROFILAXIS CON "+(ck.tvp_tipo==="enoxaparina"?("ENOXAPARINA "+(_plneVal2(ck.tvp_dosis)||"40 MG")+" SUBCUTÁNEA CADA 24 HORAS"):(_plneVal2(ck.tvp_otro)||_plneVal2(ck.tvp_tipo)||"[TIPO]")));
+      // Sin dosis ni decisiones que nadie capturó (oct 2026): antes ponía enoxaparina «40 MG CADA 24 HORAS», «DURACIÓN
+      // GUIADA POR…» y «PRONÓSTICO RESERVADO A EVOLUCIÓN» por defecto. Lo que falta va entre corchetes.
+      if(ck.atb) mx.push("SE MANTIENE MANEJO ANTIMICROBIANO CON "+(_plneVal2(ck.atb_nombre)||"[ANTIBIÓTICO]")+(_plneVal2(ck.atb_dias)?" (DÍA "+_plneVal2(ck.atb_dias)+")":""));
+      if(ck.tvp) mx.push("TROMBOPROFILAXIS CON "+(ck.tvp_tipo==="enoxaparina"?("ENOXAPARINA "+(_plneVal2(ck.tvp_dosis)||"[DOSIS Y FRECUENCIA]")+" SUBCUTÁNEA"):(_plneVal2(ck.tvp_otro)||_plneVal2(ck.tvp_tipo)||"[TIPO]")));
       if(ck.cur_necesita||ck.cur_realizada) mx.push("CURACIÓN DIARIA DE HERIDA QUIRÚRGICA");
       var cults=[];
       var wlC=(typeof _winlabCultByK!=="undefined"&&_winlabCultByK[pid(p)])?_winlabCultByK[pid(p)]:[];
@@ -9895,7 +9981,7 @@ function plExportBackup() {
       var plan=_plneVal2(ck.nota_plan); if(plan) an.push(_plneOra("PLAN: "+plan.replace(/\s+/g," ")));
       var pend=_plneLineas(nd.pendientes); if(pend.length) an.push("SE SOLICITAN / PENDIENTES: "+pend.join("; ")+".");
       var estado=_plneVal2(ck.nota_estado)||_plneVal2(p.estado); var prono=_plneVal2(ck.nota_prono);
-      an.push("ESTADO DE SALUD "+(estado||"[ESTADO]")+", CON PRONÓSTICO "+(prono||"RESERVADO A EVOLUCIÓN")+".");
+      an.push("ESTADO DE SALUD "+(estado||"[ESTADO]")+", CON PRONÓSTICO "+(prono||"[PRONÓSTICO]")+".");
       out.push(an.join(" "));
       var firma=[_plneVal2(ck.nota_adscrito)||_plneVal2(p.adscrito), _plneVal2(ck.nota_residente)||_plneVal2(p.residente)].filter(Boolean).join(" | ");
       out.push(firma||"[ADSCRITO] | [RESIDENTE]");
@@ -9917,6 +10003,7 @@ function plExportBackup() {
     }
     function copyNotaEvo(){
       var t=_plneTextoActual(); if(!t) return;
+      if(!_plneConfirmarCopia()) return;
       if(_plneKey) _plneGuardarHist(_plneKey, t, _plneLastIa);
       _plneCopiarTexto(t, _plneCopied);
     }
@@ -9970,7 +10057,7 @@ function plExportBackup() {
         "(línea en blanco)",
         "PÁRRAFO 4: \"LABORATORIOS DEL dd.mm.aaaa: ...\" copiando los valores y los nombres EXACTOS del borrador, en el mismo orden, y después los del control previo si vienen en el borrador.",
         "(línea en blanco)",
-        "PÁRRAFO 5: ANÁLISIS Y PLAN en UN SOLO PÁRRAFO corrido, como en las notas del servicio: empieza con \"PACIENTE <SEXO> EN EL POSTOPERATORIO <INMEDIATO/MEDIATO/TARDÍO> DE <CIRUGÍA> (DÍA N) ...\" o, si no hay cirugía, con el diagnóstico de base; sigue con la evolución de cada problema interpretando los datos (hemodinámico y sepsis con marcadores inflamatorios y lactato; respiratorio; renal e hidroelectrolítico; hematológico con umbral transfusional; metabólico y glucemia; nutricional; herida, drenajes y fuga; infeccioso con antibiótico, día de tratamiento, duración planeada y cultivos) y el plan de cada uno con METAS numéricas (PAM ≥ 65 MMHG, URESIS ≥ 0.5 ML/KG/H, GLUCEMIA 140-180 MG/DL, HEMOGLOBINA UMBRAL 7 G/DL, PRESIÓN MESETA < 30 CMH2O, VOLUMEN TIDAL 6-8 ML/KG DE PESO PREDICHO), justificando con MEDICINA BASADA EN EVIDENCIA y citando la guía por nombre y año SOLO cuando aplique al problema: SURVIVING SEPSIS CAMPAIGN 2021, WSES 2021 Y SURGICAL INFECTION SOCIETY 2024 (infección intraabdominal), ESPEN 2023 (nutrición en cirugía y paciente crítico), KDIGO 2012 (lesión renal aguda), AABB 2023 (transfusión restrictiva), ADA 2025 (glucemia hospitalaria), ERAS 2019, ASH/CHEST (tromboprofilaxis), ARDSNET (ventilación protectora), TOKYO 2018 (colangitis y colecistitis), WSES 2020 (pancreatitis). Incluye las medidas de soporte (tromboprofilaxis, profilaxis de úlcera por estrés, analgesia multimodal, curación de herida, movilización temprana, fisioterapia pulmonar), los estudios solicitados y pendientes y las interconsultas. Termina el párrafo con \"ESTADO DE SALUD <ESTADO>, CON PRONÓSTICO <PRONÓSTICO>.\"",
+        "PÁRRAFO 5: ANÁLISIS Y PLAN en UN SOLO PÁRRAFO corrido, como en las notas del servicio: empieza con \"PACIENTE <SEXO> EN EL POSTOPERATORIO <INMEDIATO/MEDIATO/TARDÍO> DE <CIRUGÍA> (DÍA N) ...\" o, si no hay cirugía, con el diagnóstico de base; sigue con la evolución de cada problema QUE APARECE EN EL BORRADOR O EN EL CONTEXTO, interpretando los datos que sí vienen (hemodinámico y sepsis con marcadores inflamatorios y lactato; respiratorio; renal e hidroelectrolítico; hematológico; metabólico y glucemia; nutricional; herida, drenajes y fuga; infeccioso con antibiótico, día de tratamiento y cultivos) y el plan de cada uno TAL COMO VIENE en el borrador. Cuando el dato existe puedes compararlo con su meta (PAM ≥ 65 MMHG, URESIS ≥ 0.5 ML/KG/H, GLUCEMIA 140-180 MG/DL, HEMOGLOBINA UMBRAL 7 G/DL; PRESIÓN MESETA < 30 CMH2O y VOLUMEN TIDAL 6-8 ML/KG DE PESO PREDICHO solo si está en ventilación mecánica) y nombrar la guía que respalda una decisión que YA está en el borrador (por ejemplo SURVIVING SEPSIS CAMPAIGN 2021, KDIGO, AABB 2023, ADA 2025, ESPEN, ERAS), sin agregar indicaciones nuevas. NO agregues medidas de soporte, medicamentos, profilaxis, dietas, estudios ni interconsultas que no estén en el borrador o en el contexto: por ejemplo, no escribas protección gástrica, profilaxis de úlcera por estrés, tromboprofilaxis, analgesia multimodal, movilización o fisioterapia si no aparecen. Incluye los estudios solicitados y pendientes y las interconsultas que sí vienen. Termina el párrafo con \"ESTADO DE SALUD <ESTADO>, CON PRONÓSTICO <PRONÓSTICO>.\" copiados del borrador (si vienen entre corchetes, déjalos entre corchetes).",
         "(línea en blanco)",
         "ÚLTIMA LÍNEA: la firma del borrador SIN CAMBIOS.",
         "",
@@ -9982,6 +10069,7 @@ function plExportBackup() {
         "5. Lenguaje médico formal en español de México, oraciones completas; escribe las abreviaturas de forma completa la primera vez (POSTOPERATORIO, LAPAROTOMÍA EXPLORADORA, NUTRICIÓN PARENTERAL).",
         "6. Extensión total de 350 a 750 palabras; el párrafo de análisis y plan es el más largo.",
         "7. Devuelve ÚNICAMENTE la nota, sin comentarios antes ni después.",
+        "8. Si un medicamento, una dosis, una medida o un pronóstico no está en el borrador ni en el contexto, NO lo escribas: el sistema compara tu nota contra el borrador y resalta todo lo que no venía para que el residente lo revise.",
         "",
         "(A) BORRADOR:",
         String(draft||""),
@@ -10008,12 +10096,86 @@ function plExportBackup() {
       if(!/ESTADO DE SALUD/.test(body)){ var m=/ESTADO DE SALUD[^\n]*?\./.exec(String(draft||"").toUpperCase()); if(m) body+=(body?" ":"")+m[0]; }
       return [head1, head2, "", body, "", firma].join("\n");
     }
-    function _plneMostrar(txt, title, warnTxt){
+    /* Revisión de la nota con IA (oct 2026, seguridad clínica): la IA puede escribir cifras, medicamentos o medidas que no
+       venían en la tarjeta (el prompt viejo le PEDÍA agregar profilaxis y analgesia). Su nota se compara contra el borrador
+       + el contexto: lo que no venía se RESALTA en amarillo (toca cada uno para marcarlo como revisado) y los [corchetes]
+       (datos que faltan) en rosa. «Copiar» y «↗ Pasar a la página» piden confirmación mientras quede alguno. */
+    var PLNE_NUM_OK = { "65": 1, "0.5": 1, "140": 1, "180": 1, "7": 1, "6": 1, "8": 1, "30": 1 };   // metas que el prompt permite
+    var PLNE_VIGILAR = ["PROFILAXIS DE ULCERA POR ESTRES", "PROTECCION GASTRICA", "GASTROPROTECCION", "INHIBIDOR DE BOMBA DE PROTONES", "TROMBOPROFILAXIS",
+      "ANALGESIA MULTIMODAL", "FISIOTERAPIA PULMONAR", "FISIOTERAPIA", "MOVILIZACION TEMPRANA", "DEAMBULACION", "ESPIROMETRIA INCENTIVA", "MEDIAS DE COMPRESION",
+      "COMPRESION NEUMATICA", "NUTRICION ENTERAL", "NUTRICION PARENTERAL", "TRANSFUSION", "CONCENTRADO ERITROCITARIO", "PLASMA FRESCO", "CRIOPRECIPITADO",
+      "OMEPRAZOL", "PANTOPRAZOL", "ESOMEPRAZOL", "RANITIDINA", "ENOXAPARINA", "HEPARINA", "FONDAPARINUX", "RIVAROXABAN", "APIXABAN", "WARFARINA", "ACENOCUMARINA",
+      "PARACETAMOL", "METAMIZOL", "KETOROLACO", "DICLOFENACO", "IBUPROFENO", "TRAMADOL", "BUPRENORFINA", "MORFINA", "FENTANILO", "NALBUFINA", "OXICODONA",
+      "ONDANSETRON", "METOCLOPRAMIDA", "CEFTRIAXONA", "METRONIDAZOL", "MEROPENEM", "ERTAPENEM", "IMIPENEM", "PIPERACILINA", "TAZOBACTAM", "VANCOMICINA",
+      "LINEZOLID", "CIPROFLOXACINO", "LEVOFLOXACINO", "MOXIFLOXACINO", "AMIKACINA", "GENTAMICINA", "CEFEPIMA", "CEFAZOLINA", "CEFUROXIMA", "CEFTAZIDIMA",
+      "CEFOTAXIMA", "AMPICILINA", "SULBACTAM", "AMOXICILINA", "CLINDAMICINA", "TIGECICLINA", "COLISTINA", "AZTREONAM", "FLUCONAZOL", "CASPOFUNGINA",
+      "ANIDULAFUNGINA", "VORICONAZOL", "NITROFURANTOINA", "TRIMETOPRIM", "INSULINA", "GLARGINA", "METFORMINA", "NOREPINEFRINA", "VASOPRESINA", "DOBUTAMINA",
+      "ADRENALINA", "EPINEFRINA", "FUROSEMIDA", "ESPIRONOLACTONA", "ALBUMINA HUMANA", "HIDROCORTISONA", "DEXAMETASONA", "METILPREDNISOLONA", "PREDNISONA",
+      "CLORURO DE POTASIO", "SULFATO DE MAGNESIO", "GLUCONATO DE CALCIO", "BICARBONATO DE SODIO", "OCTREOTIDA", "SOMATOSTATINA", "LACTULOSA", "RIFAXIMINA",
+      "HALOPERIDOL", "QUETIAPINA", "MIDAZOLAM", "PROPOFOL", "DEXMEDETOMIDINA", "SALBUTAMOL", "IPRATROPIO", "BUDESONIDA", "ACIDO TRANEXAMICO", "VITAMINA K",
+      "FITOMENADIONA", "ACIDO ACETILSALICILICO", "CLOPIDOGREL", "ATORVASTATINA", "LOSARTAN", "ENALAPRIL", "AMLODIPINO", "METOPROLOL", "HIDRALAZINA", "LABETALOL"];
+    // Mayúsculas sin acentos conservando la POSICIÓN de cada letra (para resaltar sobre el texto original).
+    function _plneNorm(t) { return String(t || "").split("").map(function (c) { var d = c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase(); return d.length === 1 ? d : c.toUpperCase().charAt(0) || c; }).join(""); }
+    function _plneNumNorm(x) { var c = String(x).replace(/(\d),(?=\d{3}(?!\d))/g, "$1").replace(",", "."); var n = parseFloat(c); return isFinite(n) ? String(n) : c; }
+    // → [{ i, f, t }]: tramos de la nota que no venían en la fuente (borrador + contexto).
+    function _plneRevisar(nota, fuente) {
+      var txt = String(nota || ""), N = _plneNorm(txt), src = _plneNorm(fuente), out = [], m;
+      var nums = {}; (src.match(/\d+(?:[.,]\d+)*/g) || []).forEach(function (x) { nums[_plneNumNorm(x)] = 1; });
+      var rn = /\d+(?:[.,]\d+)*/g;
+      while ((m = rn.exec(N))) {
+        if (/[A-Z]/.test(N.charAt(m.index - 1)) || /[A-Z]/.test(N.charAt(m.index + m[0].length))) continue;   // CMH2O, FIO2, PO2…
+        var v = _plneNumNorm(m[0]); if (!nums[v] && !PLNE_NUM_OK[v] && !/^20\d\d$/.test(v)) out.push({ i: m.index, f: m.index + m[0].length, t: txt.slice(m.index, m.index + m[0].length) });
+      }
+      PLNE_VIGILAR.forEach(function (w) {
+        if (src.indexOf(w) >= 0) return;
+        var rw = new RegExp("\\b" + w.replace(/ /g, "\\s+") + "\\b", "g");
+        while ((m = rw.exec(N))) out.push({ i: m.index, f: m.index + m[0].length, t: txt.slice(m.index, m.index + m[0].length) });
+      });
+      // Estado y pronóstico que el residente no capturó (el borrador los deja entre corchetes).
+      [["CON PRONOSTICO [PRONOSTICO]", /CON PRONOSTICO\s+(?!\[)([^.\n]+)/g], ["ESTADO DE SALUD [ESTADO]", /ESTADO DE SALUD\s+(?!\[)([^,.\n]+)/g]].forEach(function (par) {
+        if (src.indexOf(par[0]) < 0) return;
+        while ((m = par[1].exec(N))) { var ini = m.index + m[0].length - m[1].length; out.push({ i: ini, f: m.index + m[0].length, t: txt.slice(ini, m.index + m[0].length) }); }
+      });
+      out.sort(function (a, b) { return a.i - b.i || b.f - a.f; });
+      return out;
+    }
+    function _plneHtml(txt, marcas) {
+      var t = String(txt || ""), spans = [], m, rb = /\[[^\]\n]{1,120}\]/g;
+      while ((m = rb.exec(t))) spans.push({ i: m.index, f: m.index + m[0].length, c: "plne-falta", tt: "Dato que falta: complétalo antes de pegar la nota" });
+      (marcas || []).forEach(function (x) { spans.push({ i: x.i, f: x.f, c: "plne-nuevo", tt: "La IA escribió esto y NO venía en la tarjeta. Revísalo; toca para marcarlo como revisado." }); });
+      spans.sort(function (a, b) { return a.i - b.i || b.f - a.f; });
+      var h = "", pos = 0;
+      spans.forEach(function (sp) { if (sp.i < pos) return; h += esc(t.slice(pos, sp.i)) + '<mark class="' + sp.c + '" title="' + esc(sp.tt) + '">' + esc(t.slice(sp.i, sp.f)) + "</mark>"; pos = sp.f; });
+      return h + esc(t.slice(pos));
+    }
+    function _plnePendientes(){
+      var pre=document.getElementById("plne-out-text"); var t=_plneTextoActual();
+      return { corch: (t.match(/\[[^\]\n]{1,120}\]/g) || []).length, nuevos: pre ? pre.querySelectorAll("mark.plne-nuevo").length : 0 };
+    }
+    // true = se puede copiar. Mientras queden [corchetes] o datos nuevos de la IA sin revisar pide confirmación.
+    function _plneConfirmarCopia(){
+      var r=_plnePendientes(); if(!r.corch && !r.nuevos) return true;
+      var partes=[]; if(r.corch) partes.push(r.corch+" dato(s) entre [corchetes] por completar"); if(r.nuevos) partes.push(r.nuevos+" dato(s) que escribió la IA y no venían en la tarjeta (en amarillo)");
+      return confirm("Antes de pegar la nota en el expediente revisa:\n\n• "+partes.join("\n• ")+"\n\n¿Ya lo revisaste? «Aceptar» copia la nota de todos modos.");
+    }
+    var _plneWarnRevision=false;
+    function _plneAvisoRevision(){
+      if(!_plneWarnRevision) return; var w=document.getElementById("plne-warn"); var n=_plnePendientes().nuevos; if(!w) return;
+      if(!n){ w.textContent=""; w.style.display="none"; _plneWarnRevision=false; return; }
+      w.textContent="⚠️ La IA escribió "+n+" dato(s) que no venían en la tarjeta (en amarillo): medicamentos, cifras, medidas o pronóstico. Revísalos y toca cada uno cuando lo confirmes; corrígelos con ✏️ Editar.";
+    }
+    document.addEventListener("click", function(e){
+      var mk=e.target&&e.target.closest?e.target.closest("#plne-out-text mark.plne-nuevo"):null; if(!mk) return;
+      var pre=document.getElementById("plne-out-text"); if(pre&&pre.contentEditable==="true") return;
+      mk.replaceWith(document.createTextNode(mk.textContent)); _plneAvisoRevision();
+    });
+    function _plneMostrar(txt, title, warnTxt, marcas){
       var out=document.getElementById("plne-out"); var pre=document.getElementById("plne-out-text"); if(!out||!pre) return;
-      pre.textContent=String(txt||""); pre.contentEditable="false";
+      pre.innerHTML=_plneHtml(txt, marcas); pre.contentEditable="false"; _plneWarnRevision=!!(marcas&&marcas.length&&!warnTxt);
       var eb=document.getElementById("plne-editbtn"); if(eb){ eb.classList.remove("on"); eb.textContent="✏️ Editar"; }
       var t=document.getElementById("plne-out-title"); if(t) t.textContent=title||"Nota generada — revisa antes de pegar";
-      var w=document.getElementById("plne-warn"); if(w){ w.textContent=warnTxt||""; w.style.display=warnTxt?"block":"none"; }
+      var w=document.getElementById("plne-warn"); if(w){ w.textContent=warnTxt||""; w.style.display=(warnTxt||_plneWarnRevision)?"block":"none"; }
+      _plneAvisoRevision();
       _plneRenderHist();
       out.style.display="block";
       try{ out.scrollIntoView({behavior:"smooth",block:"nearest"}); }catch(_){ }
@@ -10068,7 +10230,7 @@ function plExportBackup() {
         if(!proxyUrl){ _plneMostrar(draft, "Borrador sin IA — revisa antes de pegar", "⚙️ No hay URL del ayudante de IA en Configuración: se muestra el borrador estructurado."); return; }
         if(typeof navigator!=="undefined"&&navigator.onLine===false){ _plneMostrar(draft, "Borrador sin IA — revisa antes de pegar", "📴 Sin red: se muestra el borrador estructurado. Con red vuelve a tocar 🤖."); return; }
         _plneBusy=true; if(btn){ btn.disabled=true; btn.dataset.txt=btn.textContent; btn.textContent="⏳ Redactando con IA…"; }
-        var prompt=_plnePrompt(draft, _plneContexto(p, nd));
+        var ctxIA=_plneContexto(p, nd); var prompt=_plnePrompt(draft, ctxIA);
         var ctl=new AbortController(); var tm=setTimeout(function(){ try{ ctl.abort(); }catch(_){ } }, 90000);
         var resp;
         try{
@@ -10084,7 +10246,7 @@ function plExportBackup() {
         if(nota.split(/\s+/).length<80) throw new Error("la IA devolvió una nota demasiado corta");
         _plneLastIa=true;
         _plneGuardarHist(k, nota, true);
-        _plneMostrar(nota, "Nota redactada con IA — revisa antes de pegar", "");
+        _plneMostrar(nota, "Nota redactada con IA — revisa antes de pegar", "", _plneRevisar(nota, draft+"\n"+ctxIA));
       }catch(e){
         try{
           var p2=patients.find(function(x){return pid(x)===_plneKey;}); var nd2=_plneKey?getNote(_plneKey):null;
@@ -10107,6 +10269,7 @@ function plExportBackup() {
     }
     function pasarNotaAPagina(){
       var t=_plneTextoActual(); if(!t){ alert("Primero genera la nota."); return; }
+      if(!_plneConfirmarCopia()) return;
       var url=String(getConfig().notes_url||"").trim();
       if(!url){
         var u=prompt("Dirección (URL) de la página de notas de evolución. Se guarda para todos los dispositivos:", "https://");
@@ -10137,7 +10300,9 @@ function plExportBackup() {
     function vpVasoDosis(u, ml, mlh){ var c=vpVasoConc(u, ml); mlh=vpNum(mlh); if(!(c>0)||!(mlh>=0)) return null; return c*mlh/60; }          // U/min
     function vpVasoRate(u, ml, dosis){ var c=vpVasoConc(u, ml); dosis=vpNum(dosis); if(!(c>0)||!(dosis>=0)) return null; return dosis*60/c; }   // mL/h
     function vpPam(ta){ var m=/(\d{2,3})\s*[\/\\-]\s*(\d{2,3})/.exec(String(ta||"")); if(!m) return null; var s=+m[1], d=+m[2]; if(!(s>0&&d>0&&s>=d)) return null; return Math.round((s+2*d)/3); }
-    function vmPbw(tallaCm, sexo){ var t=vpNum(tallaCm); if(!(t>100&&t<250)) return null; var fem=/^F/i.test(String(sexo||"")); return Math.max(20, (fem?45.5:50)+0.91*(t-152.4)); }
+    // Sin sexo NO se calcula (oct 2026): antes usaba la fórmula de hombre y en una mujer de 160 cm daba 56.9 kg en vez de
+    // 52.4 (el VT por kg parecía protector sin serlo).
+    function vmPbw(tallaCm, sexo){ var t=vpNum(tallaCm); if(!(t>100&&t<250)) return null; var sx=String(sexo||""); var fem=/^F/i.test(sx), masc=/^M/i.test(sx); if(!fem&&!masc) return null; return Math.max(20, (fem?45.5:50)+0.91*(t-152.4)); }
     function vmVtKg(vt, pbw){ vt=vpNum(vt); if(!(vt>0)||!(pbw>0)) return null; return vt/pbw; }
     function vmDrivingP(pplat, peep){ pplat=vpNum(pplat); peep=vpNum(peep); if(!isFinite(pplat)||!isFinite(peep)) return null; return pplat-peep; }
     function _vpDefaults(cl, item){
@@ -14527,12 +14692,16 @@ function plExportBackup() {
     // se ESTIMA como TP ÷ testigo (ISI ≈ 1) y se marca como estimado ("≈"). Es de los analitos que deciden
     // una cirugía, por eso se muestra SIEMPRE (tabla, línea de pase, nota, entrega).
     //   → { v: número, txt: texto a mostrar, est: true si es estimado } · null si no hay cómo saberlo
+    // ISI del reactivo de TP del laboratorio del HGL: INR = (TP ÷ testigo)^ISI. Con ISI ≈ 1 el estimado queda POR DEBAJO
+    // del real cuando el reactivo tiene ISI > 1 (1.4^1.3 ≈ 1.55). Cuando el laboratorio informe el ISI del lote, cambiarlo
+    // AQUÍ. El estimado se marca «≈» y no sirve para decidir una cirugía: pedir INR.
+    var PL_INR_ISI = 1.0;
     function inrOf(labs) {
       if (!labs) return null;
       const raw = labs.inr;
       if (raw !== undefined && raw !== null && String(raw).trim() !== "") return { v: parseLabNumber(raw), txt: String(raw).trim(), est: false };
       const tp = parseLabNumber(labs.tp), tg = parseLabNumber(labs.tp_testigo);
-      if (Number.isFinite(tp) && Number.isFinite(tg) && tp > 0 && tg > 0) { const r = Math.round(tp / tg * 100) / 100; return { v: r, txt: r.toFixed(2), est: true }; }
+      if (Number.isFinite(tp) && Number.isFinite(tg) && tp > 0 && tg > 0) { const r = Math.round(Math.pow(tp / tg, PL_INR_ISI || 1) * 100) / 100; return { v: r, txt: r.toFixed(2), est: true }; }
       return null;
     }
     function setSyncProblemStatus() {
@@ -15647,13 +15816,18 @@ function plExportBackup() {
       if (!snap || !snap.labs || !Array.isArray(LAB_FIELDS)) return critical;
       const fields = allowedKeys ? LAB_FIELDS.filter(lf => allowedKeys.includes(lf.key)) : LAB_FIELDS;
       fields.forEach(lf => {
-        const raw = snap.labs[lf.key];
+        let raw = snap.labs[lf.key];
+        // INR que WinLab no reporta: el estimado (TP ÷ testigo) también cuenta, marcado con «≈».
+        if ((raw === undefined || raw === null || String(raw).trim() === "") && lf.key === "inr") {
+          const io = inrOf(snap.labs);
+          if (io && io.est && Number.isFinite(io.v)) raw = "≈" + io.txt;
+        }
         if (raw === undefined || raw === null || String(raw).trim() === "") return;
-        const num = parseLabNumber(raw);
+        const num = parseLabNumber(String(raw).replace(/^≈/, ""));
         if (!Number.isFinite(num)) return;
-        const quick = LAB_QUICK && LAB_QUICK[lf.key] ? LAB_QUICK[lf.key](num) : null;
-        const byThreshold = (lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch);
-        if ((quick && quick.sev === "crit") || byThreshold) {
+        // Tabla única de valores críticos (LAB_FIELDS cl/ch); el texto viene de LAB_QUICK.
+        if (labCritOf(lf.key, num)) {
+          const quick = labQuick(lf.key, num);
           critical.push({
             key: lf.key,
             label: lf.label,
@@ -15666,7 +15840,8 @@ function plExportBackup() {
       return critical;
     }
     // Keys usados en el panel de alertas inicial: solo Hb, plaquetas y electrolitos
-    const CRITICAL_ALERT_KEYS = ["hb", "plaq", "na", "k", "mg", "ca", "p", "cl", "alb", "bt", "fa", "amilasa", "lipasa", "dimero_d"];
+    // Panel de alertas del tablero: los MISMOS críticos que el semáforo y el banner (tabla única de LAB_FIELDS).
+    const CRITICAL_ALERT_KEYS = null;
     function isNptReminderDay(dateObj) {
       const d = dateObj || new Date();
       const day = d.getDay();
@@ -15698,7 +15873,7 @@ function plExportBackup() {
         }
 
         const latestSnap = getLatestLabSnapshot(nd);
-        const critLabs = getCriticalLabItemsFromSnapshot(latestSnap, CRITICAL_ALERT_KEYS);
+        const critLabs = getCriticalLabItemsFromSnapshot(latestSnap, CRITICAL_ALERT_KEYS || undefined);
         if (critLabs.length) {
           criticalCases.push({ k, p, fecha: latestSnap ? latestSnap.fecha : "", labs: critLabs });
         }
@@ -16112,8 +16287,6 @@ function plExportBackup() {
         const cur = getLabVal(snap, "na");
         html = `<div class="cm-field"><label>Na⁺ actual (mmol/L)</label>
           <input type="number" id="cm-na-val" step="1" value="${cur !== null ? cur : ""}" oninput="calcCorrec()" placeholder="ej. 128"></div>
-          <div class="cm-field"><label>Meta Na⁺ (mmol/L)</label>
-          <input type="number" id="cm-na-meta" step="1" value="140" oninput="calcCorrec()"></div>
           <div class="cm-field"><label>Peso del paciente (kg)</label>
           <input type="number" id="cm-na-peso" step="1" placeholder="ej. 70" oninput="calcCorrec()"></div>
           <div class="cm-result cm-result-na"></div>`;
@@ -16134,8 +16307,8 @@ function plExportBackup() {
         const cur = getLabVal(snap, "hb");
         html = `<div class="cm-field"><label>Hb actual (g/dL)</label>
           <input type="number" id="cm-hb-val" step="0.1" value="${cur !== null ? cur : ""}" oninput="calcCorrec()" placeholder="ej. 7.2"></div>
-          <div class="cm-field"><label>Meta Hb (g/dL)</label>
-          <input type="number" id="cm-hb-meta" step="0.1" value="10" oninput="calcCorrec()"></div>
+          <div class="cm-field"><label>Meta Hb (g/dL) — decide según clínica y sangrado</label>
+          <input type="number" id="cm-hb-meta" step="0.1" value="8" oninput="calcCorrec()"></div>
           <div class="cm-field"><label>Peso del paciente (kg)</label>
           <input type="number" id="cm-hb-peso" step="1" placeholder="ej. 70" oninput="calcCorrec()"></div>
           <div class="cm-result cm-result-hb"></div>`;
@@ -16144,42 +16317,66 @@ function plExportBackup() {
       calcCorrec();
     }
 
+    // Sexo del paciente de la calculadora (para el agua corporal total): "M" | "F" | "".
+    function _correcSexo() {
+      try {
+        const p = patients.find(function (x) { return pid(x) === _correcKey; });
+        const nd = _correcKey ? noteData[_correcKey] : null;
+        return (typeof PLCDS !== "undefined" && PLCDS.getSex) ? PLCDS.getSex(p, nd) : "";
+      } catch (_) { return ""; }
+    }
+    // Calculadora de corrección (oct 2026, revisión de seguridad clínica):
+    //  · Sin peso NO calcula déficit ni unidades (antes suponía 70 kg sin decirlo) y lo pide.
+    //  · Na: clasificación estándar (leve 130-134, moderada 125-129, grave <125); ya no calcula un «déficit hasta 140»
+    //    sino cuánto sube 1 L de cada solución (Adrogué-Madias) con el límite de 8-10 mmol/L en 24 h.
+    //    Agua corporal total: 0.6 × kg en hombre, 0.5 × kg en mujer (sin sexo se avisa y se usa 0.5, el valor prudente).
+    //  · Hb: unidades ≈ (meta − Hb) × peso ÷ 70 (1 CE sube ~1 g/dL en 70 kg); antes la fórmula daba decenas de
+    //    unidades (Hb 6 → 10 en 70 kg = 86). Meta por defecto 8 g/dL y umbral restrictivo de 7 (AABB 2023).
     function calcCorrec() {
       const t = _correcTab;
       const res = document.querySelector(`.cm-result-${t}`);
       if (!res) return;
       let txt = "";
+      const pesoDe = function (id) { const w = parseFloat(String(document.getElementById(id)?.value || "").replace(",", ".")); return (w > 0 && w < 400) ? w : NaN; };
       try {
         if (t === "k") {
           const k = parseFloat(document.getElementById("cm-k-val")?.value || "");
-          const w = parseFloat(document.getElementById("cm-k-peso")?.value || "");
+          const w = pesoDe("cm-k-peso");
           if (!isNaN(k) && k < 3.5) {
-            const def = (3.5 - k) * (w || 70) * 0.4;
-            const mEq = Math.round(def * 10) / 10;
-            if (k < 2.5) {
-              txt = `K⁺ ${k} mmol/L — HIPOCALEMIA GRAVE\n• Reponer ${mEq} mEq KCl IV lento (máx 20 mEq/h)\n• Monitoreo continuo de FC y ECG\n• Repetir K⁺ post-corrección`;
+            const def = isNaN(w) ? "" : `• Déficit estimado: ~${Math.round((3.5 - k) * w * 0.4)} mEq (aproximado; reponer por partes y medir)\n`;
+            const falta = isNaN(w) ? "• Captura el peso para estimar el déficit\n" : "";
+            if (k <= 2.8) {
+              txt = `K⁺ ${k} mmol/L — HIPOKALEMIA GRAVE\n${def}${falta}• KCl IV con monitoreo cardiaco: máx. 10 mEq/h periférica, 20 mEq/h central\n• Medir y corregir Mg\n• Repetir K⁺ en 2-4 h`;
             } else {
-              txt = `K⁺ ${k} mmol/L — Hipocalemia\n• Reponer ${mEq} mEq KCl IV o VO\n• Repetir control en 4-6h`;
+              txt = `K⁺ ${k} mmol/L — Hipokalemia\n${def}${falta}• Reponer VO si tolera, o IV a ≤10 mEq/h por vía periférica\n• Corregir Mg si está bajo\n• Repetir K⁺ en 4-6 h`;
             }
-          } else if (!isNaN(k) && k > 5.5) {
-            txt = `K⁺ ${k} mmol/L — HIPERCALEMIA\n• Suspender aportes de K⁺\n• Gluconato de calcio 10% 10mL IV si cambios en ECG\n• Insulina 10U + glucosa 50% 50mL IV\n• Kayexalato 15g VO si función renal conservada`;
+          } else if (!isNaN(k) && k >= 6) {
+            txt = `K⁺ ${k} mmol/L — HIPERKALEMIA GRAVE\n• ECG inmediato; descartar muestra hemolizada\n• Con cambios en el ECG: gluconato de calcio 10% IV\n• Insulina rápida + dextrosa (vigilar glucemia)\n• Suspender aportes de K⁺; diálisis si es refractaria`;
+          } else if (!isNaN(k) && k > 5.1) {
+            txt = `K⁺ ${k} mmol/L — Hiperkalemia\n• Descartar hemólisis\n• Suspender aportes de K⁺, IECA/ARA2, espironolactona\n• ECG y K⁺ de control`;
           } else if (!isNaN(k)) {
             txt = `K⁺ ${k} mmol/L — dentro de rango normal`;
           }
         } else if (t === "na") {
           const na = parseFloat(document.getElementById("cm-na-val")?.value || "");
-          const meta = parseFloat(document.getElementById("cm-na-meta")?.value || "140");
-          const w = parseFloat(document.getElementById("cm-na-peso")?.value || "");
+          const w = pesoDe("cm-na-peso");
           if (!isNaN(na)) {
-            const acWater = (w || 70) * 0.6;
-            if (na < 130) {
-              const def = acWater * (meta - na);
-              txt = `Na⁺ ${na} mmol/L — HIPONATREMIA GRAVE\n• Déficit estimado: ${Math.round(def)} mmol\n• Corregir LENTO: máx 8-10 mmol/L/24h\n• Considerar Solución Salina 3% si sintomático\n• Control de Na⁺ cada 4-6h`;
-            } else if (na < 135) {
-              txt = `Na⁺ ${na} mmol/L — Hiponatremia leve\n• Restricción hídrica 800-1000 mL/día\n• Tratar causa subyacente\n• Control en 24h`;
-            } else if (na > 150) {
-              const excWater = acWater * (1 - 140/na);
-              txt = `Na⁺ ${na} mmol/L — HIPERNATREMIA\n• Déficit de agua libre: ${Math.round(excWater*10)/10} L\n• Reponer con agua libre VO o SF 0.45% IV LENTO\n• Máx corrección: 10 mmol/L/24h`;
+            const sx = _correcSexo();
+            const act = isNaN(w) ? NaN : w * (sx === "M" ? 0.6 : 0.5);
+            const actTxt = isNaN(w) ? "• Captura el peso para calcular el efecto de cada solución\n"
+              : `• Agua corporal total: ${Math.round(act * 10) / 10} L (${sx === "M" ? "hombre 0.6" : (sx === "F" ? "mujer 0.5" : "sin sexo registrado: se usa 0.5")} × ${w} kg)\n`;
+            const sube = function (naInf) { return isNaN(act) ? "" : (Math.round((naInf - na) / (act + 1) * 10) / 10); };
+            if (na < 135) {
+              const grado = na < 125 ? "HIPONATREMIA GRAVE" : (na < 130 ? "Hiponatremia moderada" : "Hiponatremia leve");
+              txt = `Na⁺ ${na} mmol/L — ${grado}\n${actTxt}` +
+                (isNaN(act) ? "" : `• 1 L de SS 3% sube ≈ ${sube(513)} mmol/L · 1 L de SS 0.9% sube ≈ ${sube(154)} mmol/L (Adrogué-Madias)\n`) +
+                (na < 125 ? "• Síntomas graves: SS 3% 150 mL IV en 20 min, repetir hasta +5 mmol/L\n" : "• Clasificar por volemia: hipovolémica (SS 0.9%), SIADH (restricción hídrica), hipervolémica (restricción + diurético)\n") +
+                "• Límite: no subir más de 8-10 mmol/L en 24 h (desmielinización)\n• Na⁺ de control cada " + (na < 125 ? "2-4" : "6-12") + " h";
+            } else if (na > 145) {
+              const def = isNaN(act) ? null : act * (na / 140 - 1);
+              txt = `Na⁺ ${na} mmol/L — ${na >= 155 ? "HIPERNATREMIA GRAVE" : "Hipernatremia"}\n${actTxt}` +
+                (def === null ? "" : `• Déficit de agua libre: ${Math.round(def * 10) / 10} L\n`) +
+                "• Reponer con agua libre VO/SNG o SG 5% IV\n• Bajar ≤10 mmol/L en 24 h si es crónica\n• Na⁺ de control cada 4-6 h";
             } else {
               txt = `Na⁺ ${na} mmol/L — dentro de rango normal`;
             }
@@ -16188,9 +16385,11 @@ function plExportBackup() {
           const mg = parseFloat(document.getElementById("cm-mg-val")?.value || "");
           if (!isNaN(mg)) {
             if (mg < 1.2) {
-              txt = `Mg²⁺ ${mg} mg/dL — HIPOMAGNESEMIA GRAVE\n• MgSO4 2g IV en 15 min, luego 6g en 24h\n• Monitorizar reflejos y FR\n• Corregir K⁺ y Ca²⁺ concomitantemente`;
+              txt = `Mg²⁺ ${mg} mg/dL — HIPOMAGNESEMIA GRAVE\n• MgSO4 1-2 g IV en 15-60 min y luego 4-6 g en 12-24 h (más rápido solo con arritmia o convulsión)\n• REDUCIR la dosis en falla renal\n• Vigilar reflejos y FR; corregir K⁺ y Ca²⁺`;
             } else if (mg < 1.7) {
-              txt = `Mg²⁺ ${mg} mg/dL — Hipomagnesemia\n• MgSO4 1-2g IV en 1h o Mg VO 300mg c/12h\n• Controlar en 24-48h`;
+              txt = `Mg²⁺ ${mg} mg/dL — Hipomagnesemia\n• MgSO4 1-2 g IV en 1-2 h o Mg VO, ajustado a función renal\n• Control en 24-48 h`;
+            } else if (mg > 2.4) {
+              txt = `Mg²⁺ ${mg} mg/dL — Hipermagnesemia\n• Suspender aportes de Mg\n• Revisar función renal${mg >= 4.9 ? "\n• Con bradicardia o hiporreflexia: gluconato de calcio 10% IV" : ""}`;
             } else {
               txt = `Mg²⁺ ${mg} mg/dL — dentro de rango normal`;
             }
@@ -16204,28 +16403,39 @@ function plExportBackup() {
               caCorr = ca + 0.8 * (4 - alb); // mg/dL: Ca corregido = Ca + 0.8 × (4 − albúmina)
               caCorr = Math.round(caCorr * 100) / 100;
             }
-            if (caCorr < 7.0) {
-              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — HIPOCALCEMIA GRAVE\n• Gluconato de calcio 1g IV en 10 min\n• Seguido de infusión 0.5-1.5 mg/kg/h\n• ECG continuo, control de reflejos`;
+            const sinAlb = isNaN(alb) ? "\n• Sin albúmina: captúrala o mide Ca iónico antes de tratar" : "";
+            if (caCorr <= 6.5) {
+              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — HIPOCALCEMIA GRAVE\n• Con síntomas o QT largo: gluconato de calcio 10% 10-20 mL IV en 10 min\n• Después infusión según protocolo\n• Corregir Mg; ECG${sinAlb}`;
             } else if (caCorr < 8.5) {
-              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — Hipocalcemia\n• Carbonato de calcio 500-1000mg VO c/8h\n• + Vitamina D si deficiencia\n• Control en 48-72h`;
+              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — Hipocalcemia\n• Calcio VO ± calcitriol si persiste\n• Corregir Mg; evaluar PTH y vitamina D\n• Control en 48-72 h${sinAlb}`;
             } else if (caCorr > 10.5) {
-              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — HIPERCALCEMIA\n• Hidratación IV SF 0.9% 200-500 mL/h\n• Furosemida 20-40mg IV\n• Considerar bifosfonatos si hipercalcemia de malignidad`;
+              txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — ${caCorr >= 13 ? "HIPERCALCEMIA GRAVE" : "Hipercalcemia"}\n• Hidratación IV con SS 0.9% vigilando volemia\n• Furosemida solo después de hidratar\n• Bisfosfonato/calcitonina según protocolo si es grave`;
             } else {
               txt = `Ca²⁺ ${ca} mg/dL (corregido: ${caCorr}) — dentro de rango normal`;
             }
           }
         } else if (t === "hb") {
           const hb = parseFloat(document.getElementById("cm-hb-val")?.value || "");
-          const meta = parseFloat(document.getElementById("cm-hb-meta")?.value || "10");
-          const w = parseFloat(document.getElementById("cm-hb-peso")?.value || "");
+          const meta = parseFloat(document.getElementById("cm-hb-meta")?.value || "8");
+          const w = pesoDe("cm-hb-peso");
           if (!isNaN(hb)) {
-            if (hb < 7) {
-              const units = w ? Math.ceil(((meta - hb) * (w * 0.07)) / 0.23) : "—";
-              txt = `Hb ${hb} g/dL — ANEMIA GRAVE (indicación transfusional)\n• CE calculados para Hb meta ${meta}: ${units} unidades\n• Valorar transfundir 1-2 CE, controlar post-transfusión`;
+            const umbral = "Umbral restrictivo 7 g/dL (8 en cardiopatía isquémica, cirugía cardiaca u ortopédica — AABB 2023)";
+            let calc = "";
+            if (hb < meta) {
+              if (isNaN(w)) calc = "• Captura el peso para estimar los CE\n";
+              else {
+                const u = Math.max(1, Math.round((meta - hb) * w / 70));
+                calc = `• CE estimados para Hb meta ${meta}: ~${u} (1 CE sube ~1 g/dL en 70 kg)\n` +
+                  (u > 4 ? "• ⚠️ Más de 4 CE: revisa la meta y el peso; en sangrado activo esta regla no aplica\n" : "") +
+                  "• Transfundir de 1 en 1 y reevaluar con Hb de control\n";
+              }
+            }
+            if (hb <= 7) {
+              txt = `Hb ${hb} g/dL — ANEMIA GRAVE (bajo el umbral transfusional)\n${calc}• ${umbral}`;
             } else if (hb < 8) {
-              txt = `Hb ${hb} g/dL — Anemia moderada\n• Considerar transfusión según clínica y comorbilidades\n• Corregir deficiencias: Fe, B12, folato`;
+              txt = `Hb ${hb} g/dL — Anemia moderada-grave\n• Transfundir solo si hay síntomas, sangrado activo o cardiopatía\n${calc}• ${umbral}`;
             } else if (hb < 10) {
-              txt = `Hb ${hb} g/dL — Anemia leve\n• Hierro VO 300mg/día (ferropenia)\n• Corregir causa subyacente`;
+              txt = `Hb ${hb} g/dL — Anemia moderada\n• Sin criterio transfusional en la mayoría\n• Buscar causa (Fe, B12, folato, sangrado)`;
             } else {
               txt = `Hb ${hb} g/dL — Sin criterio transfusional`;
             }
@@ -16372,8 +16582,8 @@ function plExportBackup() {
     const _EG_LAB_ORDER = ["hb", "k", "na", "cr", "leucos", "plaq", "lac", "pct", "pcr", "inr", "glu", "bt", "alb", "mg", "ca", "p", "tp", "ttp", "amilasa", "lipasa", "urea", "bun", "cl", "hct", "fibrinogeno", "dimero_d", "ph", "hco3", "pco2", "po2", "sato2", "be", "ast", "alt", "fa", "ggt", "ldh", "tropI", "tropT", "ck"];
     function _egNum(v) { const n = parseLabNumber(v); return Number.isFinite(n) ? n : null; }
     function _egCut(s, n) { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1).replace(/\s+\S*$/, "") + "…" : s; }
-    // 🧪 Labs puntuales del último control: críticos (LAB_QUICK), cambios grandes contra el previo, INR ≥ 1.3
-    // (el real o el estimado TP ÷ testigo) y lactato > 2. Máximo 6; el resto se cuenta.
+    // 🧪 Labs puntuales del último control: críticos (tabla única de LAB_FIELDS), cambios grandes contra el previo,
+    // INR ≥ 1.3 (el real o el estimado TP ÷ testigo), lactato > 2 y muestras rechazadas. Máximo 6; el resto se cuenta.
     function _egLabsPuntuales(nd) {
       const snap = (typeof getLatestLabSnapshot === "function") ? getLatestLabSnapshot(nd) : null;
       if (!snap || !snap.labs || !_snapHasBloodValues(snap)) return null;
@@ -16384,6 +16594,12 @@ function plExportBackup() {
       const items = []; let extra = 0;
       keys.forEach(function (key) {
         if (/^(ego_|micro_)/.test(key) || key === "fecha_labs" || key === "tp_testigo" || (typeof LAB_META_KEYS !== "undefined" && LAB_META_KEYS.has(key))) return;
+        // Muestra rechazada por el laboratorio: se entrega para que se repita (no tiene número que juzgar).
+        if (labEsRechazada(snap.labs[key])) {
+          if (items.length >= 6) { extra++; return; }
+          items.push({ key: key, crit: false, text: (labelMap[key] || key.toUpperCase()) + " muestra rechazada — repetir" });
+          return;
+        }
         let n, txt, pn, est = false, pTxt = "";
         if (key === "inr") {
           const io = inrOf(snap.labs); if (!io || !Number.isFinite(io.v)) return;
@@ -16392,8 +16608,7 @@ function plExportBackup() {
           n = _egNum(snap.labs[key]); if (n === null) return;
           txt = String(snap.labs[key]).trim(); pn = _egNum(prev[key]); pTxt = pn === null ? "" : String(prev[key]).trim();
         }
-        const q = (typeof LAB_QUICK !== "undefined" && LAB_QUICK[key]) ? LAB_QUICK[key](n) : null;
-        const crit = !!(q && q.sev === "crit");
+        const crit = labCritOf(key, n);
         const delta = pn !== null && _EG_DELTA[key] != null && Math.abs(n - pn) >= _EG_DELTA[key];
         const inrAlto = key === "inr" && n >= 1.3;
         const lacAlto = key === "lac" && n > 2;
@@ -16672,7 +16887,7 @@ function plExportBackup() {
       } catch (_) {}
       return lines.length;
     }
-    // Labs: alteraciones (LAB_QUICK crit/abn) de los analitos NUEVOS o que cambiaron en el sync.
+    // Labs: valores CRÍTICOS (tabla única de LAB_FIELDS) de los analitos NUEVOS o que cambiaron en el sync.
     function _entregaItemsFromLabs(histAfter, histBefore) {
       const before = {};
       (histBefore || []).forEach(function (s) { if (s && s.fecha) before[s.fecha] = s.labs || {}; });
@@ -16689,16 +16904,15 @@ function plExportBackup() {
           if (v === undefined || v === null || String(v).trim() === "") return;
           if (String(b[key] === undefined || b[key] === null ? "" : b[key]) === String(v)) return; // ya estaba igual
           const num = parseLabNumber(v);
-          if (!Number.isFinite(num) || typeof LAB_QUICK === "undefined" || !LAB_QUICK[key]) return;
-          const q = LAB_QUICK[key](num);
           // Solo lo PUNTUAL (oct 2026): valores críticos. Lo "anormal" ya se ve en la tabla; aquí estorbaba.
-          if (!q || q.sev !== "crit") return;
-          found.push({ key: key, sev: q.sev, title: String(q.title || "").replace(/\s*[—-]\s*.*$/, "").trim(), val: String(v).trim() });
+          if (!Number.isFinite(num) || !labCritOf(key, num)) return;
+          const q = labQuick(key, num);
+          found.push({ key: key, sev: "crit", title: String((q && q.title) || "Valor crítico").replace(/\s*[—-]\s*.*$/, "").trim(), val: String(v).trim() });
         });
         // INR que WinLab no reporta: estimado TP ÷ testigo ≥ 1.5 (decide cirugías), una vez por valor.
         try {
           const io = inrOf(s.labs), bio = inrOf(b);
-          if (io && io.est && io.v >= 1.5 && !(bio && bio.txt === io.txt)) found.push({ key: "inr", sev: io.v >= 3 ? "crit" : "abn", title: "INR estimado " + io.txt + " (TP ÷ testigo)", val: "", plain: true });
+          if (io && io.est && io.v >= 1.5 && !(bio && bio.txt === io.txt)) found.push({ key: "inr", sev: labCritOf("inr", io.v) ? "crit" : "abn", title: "INR estimado " + io.txt + " (TP ÷ testigo)", val: "", plain: true });
         } catch (_) {}
         if (!found.length) return;
         found.sort(function (a, b2) { return (a.sev === "crit" ? 0 : 1) - (b2.sev === "crit" ? 0 : 1); });
@@ -19484,37 +19698,37 @@ function plExportBackup() {
     const LAB_GROUPS = [
       {
         id: "basico", label: "🩸 Biometría / Función renal", fields: [
-          { key: "hb", label: "Hb", unit: "g/dL", low: 12, high: 17, cl: 8 },
-          { key: "leucos", label: "Leuc", unit: "k/µL", low: 4, high: 10, ch: 15 },
-          { key: "plaq", label: "Plaq", unit: "k/µL", low: 100, high: 400, cl: 50 },
-          { key: "cr", label: "Cr", unit: "mg/dL", low: 0, high: 1.25, ch: 3 },
+          { key: "hb", label: "Hb", unit: "g/dL", low: 12, high: 17, cl: 7, ch: 20 },
+          { key: "leucos", label: "Leuc", unit: "k/µL", low: 4, high: 10, cl: 2, ch: 30 },
+          { key: "plaq", label: "Plaq", unit: "k/µL", low: 100, high: 400, cl: 50, ch: 1000 },
+          { key: "cr", label: "Cr", unit: "mg/dL", low: 0, high: 1.25 },
           { key: "urea", label: "Urea", unit: "mg/dL", low: 0, high: 43 },
           { key: "bun", label: "BUN", unit: "mg/dL", low: 7, high: 20 }, /* FIX-v47 */
           { key: "urico", label: "Ác. úrico", unit: "mg/dL", low: 2.5, high: 7 }, /* FIX-v47 */
-          { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110 },
-          { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145 },
+          { key: "glu", label: "Glu", unit: "mg/dL", low: 70, high: 110, cl: 50, ch: 400 },
+          { key: "na", label: "Na", unit: "mmol/L", low: 135, high: 145, cl: 120, ch: 160 },
           { key: "k", label: "K", unit: "mmol/L", low: 3.5, high: 5.1, cl: 2.8, ch: 6.0 },
-          { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0, cl: 2.5 },
+          { key: "alb", label: "Alb", unit: "g/dL", low: 3.5, high: 5.0 },
           { key: "pcr", label: "PCR", unit: "mg/L", low: 0, high: 10 },
-          { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5, ch: 2 },
+          { key: "pct", label: "PCT", unit: "ng/mL", low: 0, high: 0.5 },
           { key: "lac", label: "Lac", unit: "mmol/L", low: 0, high: 2, ch: 4 }
         ]
       },
       {
         id: "bh_ext", label: "🔬 Biometría hemática completa", fields: [
-          { key: "hct",     label: "Hto",   unit: "%",     low: 36,   high: 48,  cl: 25 },
+          { key: "hct",     label: "Hto",   unit: "%",     low: 36,   high: 48,  cl: 20 },
           { key: "mcv",     label: "VCM",   unit: "fL",    low: 80,   high: 95 },
           { key: "mch",     label: "HCM",   unit: "pg",    low: 27,   high: 31 },
           { key: "mchc",    label: "CHCM",  unit: "g/dL",  low: 32,   high: 36 },
           { key: "rdw",     label: "RDW",   unit: "%",     low: 12,   high: 16 },
           { key: "mpv",     label: "VPM",   unit: "fL",    low: 9,    high: 13 },
-          { key: "neu_pct", label: "Neu",   unit: "%",     low: 40,   high: 75,  ch: 90 },
-          { key: "lin_pct", label: "Linf",  unit: "%",     low: 20,   high: 45,  cl: 10 },
+          { key: "neu_pct", label: "Neu",   unit: "%",     low: 40,   high: 75 },
+          { key: "lin_pct", label: "Linf",  unit: "%",     low: 20,   high: 45 },
           { key: "mon_pct", label: "Mono",  unit: "%",     low: 2,    high: 12 },
           { key: "eos_pct", label: "Eos",   unit: "%",     low: 0,    high: 6 },
           { key: "bas_pct", label: "Bas",   unit: "%",     low: 0,    high: 2 },
-          { key: "neu_abs", label: "Neu#",  unit: "k/µL",  low: 1.5,  high: 6.6, ch: 15 },
-          { key: "lin_abs", label: "Lin#",  unit: "k/µL",  low: 1.0,  high: 3.5, cl: 0.5 },
+          { key: "neu_abs", label: "Neu#",  unit: "k/µL",  low: 1.5,  high: 6.6, cl: 0.5 },
+          { key: "lin_abs", label: "Lin#",  unit: "k/µL",  low: 1.0,  high: 3.5 },
           { key: "mon_abs", label: "Mon#",  unit: "k/µL",  low: 0.1,  high: 1.0 },
           { key: "eos_abs", label: "Eos#",  unit: "k/µL",  low: 0,    high: 0.7 },
           { key: "bas_abs", label: "Bas#",  unit: "k/µL",  low: 0,    high: 0.2 }
@@ -19523,46 +19737,46 @@ function plExportBackup() {
       {
         id: "electrolitos", label: "⚡ Electrolitos extendidos", fields: [
           // Unidades de WinLab HGL (mg/dL): con umbrales en mmol/L un Ca 7.6 mg/dL salía como "Hipercalcemia severa".
-          { key: "mg", label: "Mg", unit: "mg/dL", low: 1.7, high: 2.4, cl: 1.2, ch: 4.0 },
-          { key: "ca", label: "Ca", unit: "mg/dL", low: 8.5, high: 10.5, cl: 7.0, ch: 13.0 },
-          { key: "p", label: "P", unit: "mg/dL", low: 2.5, high: 4.5, cl: 1.0, ch: 7.0 },
+          { key: "mg", label: "Mg", unit: "mg/dL", low: 1.7, high: 2.4, cl: 1.0, ch: 4.9 },
+          { key: "ca", label: "Ca", unit: "mg/dL", low: 8.5, high: 10.5, cl: 6.5, ch: 13.0 },
+          { key: "p", label: "P", unit: "mg/dL", low: 2.5, high: 4.5, cl: 1.0 },
           { key: "cl", label: "Cl", unit: "mmol/L", low: 98, high: 107 }
         ]
       },
       {
         id: "coagulacion", label: "🩺 Coagulación", fields: [
-          { key: "tp", label: "TP", unit: "seg", low: 11, high: 14, ch: 20 },
-          { key: "ttp", label: "TTP", unit: "seg", low: 25, high: 35, ch: 60 },
+          { key: "tp", label: "TP", unit: "seg", low: 11, high: 14 },
+          { key: "ttp", label: "TTP", unit: "seg", low: 25, high: 35, ch: 100 },
           { key: "inr", label: "INR", unit: "", low: 0, high: 1.2, ch: 3 },
           // WinLab reporta FIBRINOGENO CLAUSS en mg/dL y DIMERO D en ng/mL (ref 0-500)
           { key: "fibrinogeno", label: "Fibri", unit: "mg/dL", low: 200, high: 400, cl: 100 },
-          { key: "dimero_d", label: "Dím-D", unit: "ng/mL", low: 0, high: 500, ch: 5000 }
+          { key: "dimero_d", label: "Dím-D", unit: "ng/mL", low: 0, high: 500 }
         ]
       },
       {
         id: "hepatico", label: "🫀 Función hepática", fields: [
-          { key: "ast", label: "AST", unit: "U/L", low: 0, high: 40, ch: 200 },
-          { key: "alt", label: "ALT", unit: "U/L", low: 0, high: 40, ch: 200 },
-          { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2, ch: 2 },
-          { key: "bd", label: "BD", unit: "mg/dL", low: 0, high: 0.3, ch: 3 },
+          { key: "ast", label: "AST", unit: "U/L", low: 0, high: 40 },
+          { key: "alt", label: "ALT", unit: "U/L", low: 0, high: 40 },
+          { key: "bt", label: "BT", unit: "mg/dL", low: 0, high: 1.2 },
+          { key: "bd", label: "BD", unit: "mg/dL", low: 0, high: 0.3 },
           { key: "bi", label: "BI", unit: "mg/dL", low: 0, high: 0.8 }, /* FIX-v47 */
           { key: "ggt", label: "GGT", unit: "U/L", low: 0, high: 61 },
-          { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147, ch: 500 }
+          { key: "fa", label: "FA", unit: "U/L", low: 44, high: 147 }
         ]
       },
       {
         id: "pancreatico", label: "🫁 Enzimas pancreáticas", fields: [
-          { key: "amilasa", label: "Amilasa", unit: "U/L", low: 0, high: 100, ch: 300 },
-          { key: "lipasa",  label: "Lipasa",  unit: "U/L", low: 0, high: 60,  ch: 180 }
+          { key: "amilasa", label: "Amilasa", unit: "U/L", low: 0, high: 100 },
+          { key: "lipasa",  label: "Lipasa",  unit: "U/L", low: 0, high: 60 }
         ]
       },
       {
         id: "gasometria", label: "💨 Gasometría", fields: [
-          { key: "ph", label: "pH", unit: "", low: 7.35, high: 7.45, cl: 7.2, ch: 7.55 },
+          { key: "ph", label: "pH", unit: "", low: 7.35, high: 7.45, cl: 7.2, ch: 7.6 },
           { key: "pco2", label: "pCO₂", unit: "mmHg", low: 35, high: 45, cl: 20, ch: 70 },
-          { key: "po2", label: "pO₂", unit: "mmHg", low: 80, high: 100, cl: 55 },
-          { key: "hco3", label: "HCO₃", unit: "mEq/L", low: 22, high: 26, cl: 10 },
-          { key: "be", label: "BE", unit: "mEq/L", low: -2, high: 2, cl: -8, ch: 8 },
+          { key: "po2", label: "pO₂", unit: "mmHg", low: 80, high: 100, cl: 40 },
+          { key: "hco3", label: "HCO₃", unit: "mEq/L", low: 22, high: 26, cl: 10, ch: 40 },
+          { key: "be", label: "BE", unit: "mEq/L", low: -2, high: 2 },
           { key: "sato2", label: "SatO₂", unit: "%", low: 95, high: 100, cl: 85 }
         ]
       },
@@ -19584,12 +19798,12 @@ function plExportBackup() {
         id: "cardiaco", label: "🫀 Cardíaco / Enzimas", fields: [
           { key: "tropI",     label: "TropI",      unit: "pg/mL", low: 0,   high: 40,    ch: 100 }, // WinLab: TROPONINA I en pg/mL
           { key: "tropT",     label: "TropT",      unit: "ng/mL", low: 0,   high: 0.014, ch: 0.05 },
-          { key: "ck",        label: "CK",         unit: "U/L",   low: 0,   high: 170,   ch: 500 },
-          { key: "ck_mb",     label: "CK-MB",      unit: "U/L",   low: 0,   high: 25,    ch: 75 },
-          { key: "ldh",       label: "LDH",        unit: "U/L",   low: 140, high: 280,   ch: 800 },
-          { key: "bnp",       label: "BNP",        unit: "pg/mL", low: 0,   high: 100,   ch: 400 },
-          { key: "nt_probnp", label: "NT-proBNP",  unit: "pg/mL", low: 0,   high: 125,   ch: 900 },
-          { key: "mioglobina",label: "Mioglob",    unit: "ng/mL", low: 0,   high: 90,    ch: 300 },
+          { key: "ck",        label: "CK",         unit: "U/L",   low: 0,   high: 170,   ch: 5000 },
+          { key: "ck_mb",     label: "CK-MB",      unit: "U/L",   low: 0,   high: 25 },
+          { key: "ldh",       label: "LDH",        unit: "U/L",   low: 140, high: 280 },
+          { key: "bnp",       label: "BNP",        unit: "pg/mL", low: 0,   high: 100 },
+          { key: "nt_probnp", label: "NT-proBNP",  unit: "pg/mL", low: 0,   high: 125 },
+          { key: "mioglobina",label: "Mioglob",    unit: "ng/mL", low: 0,   high: 90 },
           { key: "ferritina", label: "Ferritina",  unit: "ng/mL", low: 30,  high: 300 }
         ]
       },
@@ -19598,20 +19812,36 @@ function plExportBackup() {
         // LAB_GROUPS → se perdían en el render (invisibles). Aquí entran a la lista de labs.
         // VSG y TSH son nuevos (alias agregado arriba). Rangos estándar de adulto.
         id: "lipidos_otros", label: "🧴 Lípidos / Proteínas / Otros", fields: [
-          { key: "colest", label: "Colest", unit: "mg/dL",  low: 0,   high: 200, ch: 240 },
+          { key: "colest", label: "Colest", unit: "mg/dL",  low: 0,   high: 200 },
           { key: "hdl",    label: "HDL",    unit: "mg/dL",  low: 40,  high: 100 }, // sin cl: HDL bajo no es "crítico"
-          { key: "ldl",    label: "LDL",    unit: "mg/dL",  low: 0,   high: 130, ch: 190 },
+          { key: "ldl",    label: "LDL",    unit: "mg/dL",  low: 0,   high: 130 },
           { key: "vldl",   label: "VLDL",   unit: "mg/dL",  low: 0,   high: 30 },
-          { key: "trig",   label: "Trig",   unit: "mg/dL",  low: 0,   high: 150, ch: 500 },
+          { key: "trig",   label: "Trig",   unit: "mg/dL",  low: 0,   high: 150, ch: 1000 },
           { key: "ptot",   label: "Prot.T", unit: "g/dL",   low: 6.0, high: 8.3 },
           { key: "glob",   label: "Glob",   unit: "g/dL",   low: 2.0, high: 3.5 },
-          { key: "vsg",    label: "VSG",    unit: "mm/h",   low: 0,   high: 20,  ch: 50 },
-          { key: "tsh",    label: "TSH",    unit: "µUI/mL", low: 0.4, high: 4.0, cl: 0.1, ch: 10 }
+          { key: "vsg",    label: "VSG",    unit: "mm/h",   low: 0,   high: 20 },
+          { key: "tsh",    label: "TSH",    unit: "µUI/mL", low: 0.4, high: 4.0 }
         ]
       }
     ];
     // Flat list for export / compat
     const LAB_FIELDS = LAB_GROUPS.flatMap(g => g.fields);
+    // VALOR CRÍTICO (rojo) = cl/ch de LAB_FIELDS (≤ cl o ≥ ch), UNA sola tabla para toda la app (oct 2026): celda de la
+    // tabla, semáforo, banner «Labs críticos sin reconocer», Entrega, novedades y Análisis IA. Antes LAB_QUICK marcaba
+    // «crit» glucosa >200, leucos ≥15, PCR >150, Hb <8, Alb <2.5, BT ≥2… y casi la mitad de los reportes ponían al
+    // paciente en rojo. Lo demás fuera de rango es «alterado» (amarillo). Validar con la lista oficial de valores
+    // críticos del laboratorio del HGL (NOM-007-SSA3-2011) y ajustar SOLO aquí.
+    const LAB_FIELD_BY_KEY = LAB_FIELDS.reduce(function (m, f) { m[f.key] = f; return m; }, {});
+    function labCritOf(key, num) {
+      const lf = LAB_FIELD_BY_KEY[key];
+      return !!(lf && Number.isFinite(num) && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)));
+    }
+    // Mensaje rápido de un analito con la severidad de la tabla única: { sev:"crit"|"abn", title, rec } · null.
+    function labQuick(key, num) {
+      if (!Number.isFinite(num) || typeof LAB_QUICK === "undefined" || !LAB_QUICK[key]) return null;
+      const r = LAB_QUICK[key](num);
+      return r ? Object.assign({}, r, { sev: labCritOf(key, num) ? "crit" : "abn" }) : null;
+    }
     const LAB_EXTRACTION_HINTS = {
       hb: "hemoglobina",
       leucos: "leucocitos/WBC",
@@ -19829,210 +20059,217 @@ function plExportBackup() {
     }
 
     // ─── LOCAL QUICK RECOMMENDATIONS ───────────────────────────────────────────────
+    // Mensajes rápidos por analito (oct 2026, revisión de seguridad clínica): ORIENTAN, no ordenan. "Considerar" en vez
+    // de "indicado", sin dosis fijas que dependan de peso, función renal o anticoagulación, y con las MISMAS unidades
+    // que LAB_FIELDS (mg/dL para Mg/Ca/P y fibrinógeno, ng/mL para dímero D). La severidad (rojo/amarillo) NO sale de
+    // aquí: la pone labQuick() con la tabla única de valores críticos (cl/ch de LAB_FIELDS). Revisar con un adscrito
+    // cada año; guías citadas: AABB 2023, ADA 2025, ESE/ERA-EDTA hiponatremia, Atlanta 2012, WATERFALL 2022, ACG 2024.
     const LAB_QUICK = {
       hb: (v) => {
-        if (v < 8) return { sev: "crit", title: "Anemia severa — Umbral transfusional", rec: "Transfusión CE indicada (umbral <8 g/dL en quirúrgico). Investigar causa. Solicitar reticulocitos, frotis, ferritina, B12, folato." };
-        if (v < 10) return { sev: "abn", title: "Anemia moderada (OMS)", rec: "Investigar causa (ferropénica, inflamatoria, hemolítica, B12/folato). Suplementación según etiología. Considerar transfusión si sintomático o preQx." };
-        if (v < 12) return { sev: "abn", title: "Anemia leve (OMS <12 g/dL)", rec: "Clasificar por VCM: microcítica (ferropénica, talasemia), normocítica (inflamatoria, ERC), macrocítica (B12/folato). Optimizar antes de Qx electiva." };
-        if (v > 17) return { sev: "abn", title: "Policitemia", rec: "Descartar causa secundaria: hipoxia crónica, tabaquismo, neoplasia (policitemia vera). BH completa + EPO sérica." };
+        if (v <= 7) return { sev: "crit", title: "Anemia grave — bajo el umbral transfusional restrictivo", rec: "Considerar transfundir 1 CE y reevaluar con Hb de control (umbral 7 g/dL en la mayoría; 8 g/dL en cardiopatía isquémica, cirugía cardiaca u ortopédica — AABB 2023). Buscar sangrado activo. Estudiar causa (reticulocitos, ferritina, B12, folato) según el caso." };
+        if (v < 8) return { sev: "abn", title: "Anemia moderada-grave", rec: "Transfusión solo si hay síntomas, sangrado activo o cardiopatía (umbral 8 g/dL en esos casos — AABB 2023). Buscar la causa y vigilar tendencia." };
+        if (v < 10) return { sev: "abn", title: "Anemia moderada (OMS)", rec: "Investigar causa (ferropénica, inflamatoria, hemolítica, B12/folato). Suplementación según etiología. Optimizar antes de cirugía electiva." };
+        if (v < 12) return { sev: "abn", title: "Anemia leve (OMS <12 g/dL)", rec: "Clasificar por VCM: microcítica (ferropénica, talasemia), normocítica (inflamatoria, ERC), macrocítica (B12/folato). Optimizar antes de cirugía electiva." };
+        if (v > 17) return { sev: "abn", title: "Policitemia", rec: "Descartar hemoconcentración y causa secundaria (hipoxia crónica, tabaquismo, neoplasia). BH completa de control." };
         return null;
       },
       leucos: (v) => {
-        if (v >= 15) return { sev: "crit", title: "Leucocitosis marcada", rec: "Alta sospecha de infección bacteriana severa o respuesta inflamatoria sistémica. Hemocultivos + cobertura antibiótica." };
-        if (v > 10) return { sev: "abn", title: "Leucocitosis", rec: "Evaluar foco infeccioso, estrés fisiológico, corticoides, tabaquismo. Revisar fórmula diferencial." };
-        if (v < 2) return { sev: "crit", title: "Leucopenia severa", rec: "Alto riesgo de infección oportunista. Suspender fármacos mielotóxicos. Aislamiento protector. Hemato urgente." };
-        if (v < 4) return { sev: "abn", title: "Leucopenia", rec: "Evaluar: infección viral, fármacos (quimio, AINEs, antibióticos), enfermedades autoinmunes. Fórmula diferencial." };
+        if (v >= 30) return { sev: "crit", title: "Leucocitosis extrema", rec: "Descartar sepsis grave, colitis por C. difficile, isquemia intestinal o proceso hematológico (frotis). Hemocultivos y buscar foco." };
+        if (v > 10) return { sev: "abn", title: "Leucocitosis", rec: "Evaluar foco infeccioso, estrés quirúrgico, corticoides. Revisar fórmula diferencial y tendencia." };
+        if (v <= 2) return { sev: "crit", title: "Leucopenia grave", rec: "Riesgo alto de infección. Revisar neutrófilos absolutos y fármacos mielotóxicos. Valorar aislamiento protector e interconsulta a Hematología." };
+        if (v < 4) return { sev: "abn", title: "Leucopenia", rec: "Evaluar infección viral, fármacos, enfermedad autoinmune. Fórmula diferencial." };
         return null;
       },
       plaq: (v) => {
-        if (v < 50) return { sev: "crit", title: "Trombocitopenia severa", rec: "Riesgo hemorrágico alto. Evitar procedimientos invasivos. Transfusión si <10k o sangrado activo. Descartar CID, HIT, TTP." };
-        if (v < 100) return { sev: "abn", title: "Trombocitopenia", rec: "Investigar: hiperesplenismo, fármacos (heparina → HIT), sepsis, CID. Precaución en procedimientos." };
-        if (v > 600) return { sev: "abn", title: "Trombocitosis", rec: "Si reactiva: infección, inflamación, esplenectomía. Si primaria: descartar trombocitemia esencial." };
+        if (v <= 50) return { sev: "crit", title: "Trombocitopenia grave", rec: "Riesgo hemorrágico alto: evitar procedimientos invasivos sin corregir. Transfusión de plaquetas si <10 k, sangrado activo o procedimiento (umbral según el procedimiento). Descartar CID, trombocitopenia por heparina, PTT." };
+        if (v < 100) return { sev: "abn", title: "Trombocitopenia", rec: "Investigar sepsis, CID, fármacos (heparina → descartar trombocitopenia inducida por heparina), hiperesplenismo. Precaución en procedimientos." };
+        if (v > 600) return { sev: "abn", title: "Trombocitosis", rec: "Si es reactiva: infección, inflamación, esplenectomía. Si persiste sin causa: descartar trombocitemia esencial." };
         return null;
       },
       cr: (v) => {
-        if (v >= 3) return { sev: "crit", title: "LRA severa / ERC avanzada", rec: "Nefrología urgente. Ajustar dosis de fármacos nefrotóxicos. Evaluar necesidad de TSR. Balance hídrico estricto." };
-        if (v > 1.25) return { sev: "abn", title: "Creatinina elevada", rec: "Clasificar LRA (KDIGO). Identificar causa: prerrenal, renal (NTA, GN), postrenal. Suspender AINES/IECA/nefrotóxicos. Hidratación." };
+        if (v >= 3) return { sev: "abn", title: "Creatinina muy elevada", rec: "Comparar con la creatinina previa: lesión renal aguda (KDIGO) vs enfermedad renal crónica. Ajustar fármacos a la función renal, suspender nefrotóxicos, balance estricto. Nefrología si hay indicación de terapia de reemplazo." };
+        if (v > 1.25) return { sev: "abn", title: "Creatinina elevada", rec: "Clasificar con la basal (KDIGO). Causa prerrenal, renal o postrenal. Suspender AINE y nefrotóxicos; ajustar dosis." };
         return null;
       },
       urea: (v) => {
-        if (v > 100) return { sev: "crit", title: "Uremia severa", rec: "Evaluar síntomas urémicos. Corregir causa. Considerar diálisis si hay indicación (encefalopatía, pericarditis, hiperK refractaria)." };
-        if (v > 43) return { sev: "abn", title: "Urea elevada", rec: "Evaluar función renal. Descartar sangrado GI (urea desproporcionada a creatinina), hipercatabolismo, deshidratación." };
+        if (v > 100) return { sev: "abn", title: "Urea muy elevada", rec: "Evaluar síntomas urémicos y función renal. Urea desproporcionada a la creatinina: sangrado digestivo, hipercatabolismo, deshidratación." };
+        if (v > 43) return { sev: "abn", title: "Urea elevada", rec: "Evaluar función renal, volumen y sangrado digestivo." };
         return null;
       },
       glu: (v) => {
-        if (v < 60) return { sev: "crit", title: "Hipoglucemia severa", rec: "Dextrosa IV 25g (50 mL D50%). Monitorizar cada 15 min. Identificar causa: insulina, hipoglucemiantes, ayuno, sepsis." };
-        if (v < 70) return { sev: "abn", title: "Hipoglucemia", rec: "Administrar glucosa oral o IV según estado. Identificar causa y ajustar tratamiento hipoglucemiante." };
-        if (v > 200) return { sev: "crit", title: "Hiperglucemia severa", rec: "Descartar CAD/SHHNC. Iniciar protocolo de insulina IV. Control glucémico horario. Evaluar estado de hidratación." };
-        if (v > 140) return { sev: "abn", title: "Hiperglucemia", rec: "Ajustar esquema insulínico. Meta glucemia 140-180 mg/dL en paciente crítico. Revisar aporte de dextrosa." };
+        if (v <= 50) return { sev: "crit", title: "Hipoglucemia grave", rec: "Tratar de inmediato (dextrosa IV o glucosa oral si está alerta y tolera) y repetir glucemia en 15 min. Buscar la causa: insulina, hipoglucemiantes, ayuno, sepsis, insuficiencia hepática." };
+        if (v < 70) return { sev: "abn", title: "Hipoglucemia", rec: "Glucosa oral o IV según estado y repetir en 15 min. Revisar el esquema de insulina o hipoglucemiantes." };
+        if (v >= 400) return { sev: "crit", title: "Hiperglucemia grave", rec: "Descartar cetoacidosis o estado hiperosmolar (cetonas, gasometría, osmolaridad). Si se confirman: protocolo institucional de insulina IV e hidratación." };
+        if (v > 180) return { sev: "abn", title: "Hiperglucemia", rec: "Meta 140-180 mg/dL en el hospitalizado (ADA 2025). Ajustar insulina basal-bolo o de corrección; revisar aporte de dextrosa y esteroides. Si >250 con malestar: descartar cetoacidosis." };
+        if (v > 140) return { sev: "abn", title: "Glucemia arriba de la meta", rec: "Vigilar tendencia; ajustar corrección si persiste por arriba de 180 mg/dL." };
         return null;
       },
       na: (v) => {
-        if (v < 120) return { sev: "crit", title: "Hiponatremia severa", rec: "Tx: NaCl 3% 100-150mL IV en 20min si convulsión/coma. Meta +5mEq/L en 1h; luego max 8-10mEq/L/24h total. Restricción hídrica. No exceder 10mEq/día (mielinólisis). Nefrología urgente." };
-        if (v < 135) return { sev: "abn", title: "Hiponatremia", rec: "Tx — Hipovolémica: SF 0.9% IV; SIADH: restricción hídrica 800mL/día ± tolvaptán; Hipervolémica (ICC/cirrosis): restricción + furosemida. Velocidad máx 8mEq/L/24h." };
-        if (v > 155) return { sev: "crit", title: "Hipernatremia severa", rec: "Tx: Déficit agua libre = 0.6×Peso×(Na/140-1) L. Reponer SG5% IV o agua VO. Max 10mEq/L/24h. DI central: desmopresina 1-2mcg SC. Control Na c/4-6h." };
-        if (v > 145) return { sev: "abn", title: "Hipernatremia", rec: "Tx: Aumentar agua libre VO o SG5% IV. Déficit = 0.6×Peso×(Na/140-1) L. Corregir en 48-72h. Causas: diabetes insípida, diarrea osmótica, sudoración. Control Na c/6-8h." };
+        if (v < 125) return { sev: "crit", title: "Hiponatremia grave", rec: "Con síntomas graves (convulsión, coma): SS 3% 150 mL IV en 20 min, repetir hasta que suba 5 mmol/L (ESE/ERA-EDTA). Límite de corrección: 8-10 mmol/L en 24 h (riesgo de desmielinización). Clasificar por volemia y osmolaridad; Na de control cada 2-4 h." };
+        if (v < 130) return { sev: "abn", title: "Hiponatremia moderada", rec: "Clasificar por volemia: hipovolémica (SS 0.9%), SIADH (restricción hídrica), hipervolémica (restricción + diurético). No corregir más de 8-10 mmol/L en 24 h." };
+        if (v < 135) return { sev: "abn", title: "Hiponatremia leve", rec: "Buscar causa (soluciones hipotónicas, fármacos, SIADH, volemia) y vigilar tendencia." };
+        if (v >= 155) return { sev: "abn", title: "Hipernatremia grave", rec: "Déficit de agua libre = ACT × (Na/140 − 1). Reponer con agua libre VO/SNG o SG 5% IV; bajar ≤10 mmol/L en 24 h si es crónica. Na de control cada 4-6 h." };
+        if (v > 145) return { sev: "abn", title: "Hipernatremia", rec: "Aumentar agua libre (VO o SG 5% IV). Causas: pérdidas insensibles, diarrea osmótica, diuréticos, diabetes insípida. Control de Na cada 6-8 h." };
         return null;
       },
       k: (v) => {
-        if (v <= 2.8) return { sev: "crit", title: "Hipokalemia severa", rec: "Tx: KCl IV 20-40mEq/h vía central con monitoreo cardiaco. Total: ~3-4mEq/kg del déficit. Corregir Mg si <0.8mmol/L (MgSO4 2g IV — necesario para que K responda). Control K c/2-4h." };
-        if (v < 3.5) return { sev: "abn", title: "Hipokalemia", rec: "Tx: Oral — KCl 40-80mEq/día en dosis divididas si tolera VO. IV — 10mEq/h periférica (20mEq/h central). Verificar Mg y corregirlo primero si bajo. Control K en 4-6h." };
-        if (v >= 6) return { sev: "crit", title: "Hiperkalemia severa", rec: "Tx: 1) Gluconato Ca 10% 10mL IV en 2-5min (protege membrana, efecto inmediato). 2) Insulina R 10U + Dextrosa 50g IV (baja K en 15-30min). 3) Bicarbonato 50mEq si acidosis. 4) Kayexalato 30g VO. 5) Diálisis si refractario. ECG continuo." };
-        if (v > 5.1) return { sev: "abn", title: "Hiperkalemia", rec: "Tx: Restricción K <2g/día. Suspender IECA/ARA2/heparina. Furosemida si función renal tolera. Kayexalato 15g c/6h VO. ECG basal. Control K en 6h." };
+        if (v <= 2.8) return { sev: "crit", title: "Hipokalemia grave", rec: "Reposición IV con monitoreo cardiaco: máx. 10 mEq/h por vía periférica y 20 mEq/h por vía central según protocolo. Medir y corregir magnesio (Mg <1.7 mg/dL). K de control en 2-4 h." };
+        if (v < 3.5) return { sev: "abn", title: "Hipokalemia", rec: "Reposición VO si tolera (KCl en dosis divididas) o IV a ≤10 mEq/h periférica. Corregir Mg si está bajo. K de control en 4-6 h." };
+        if (v >= 6) return { sev: "crit", title: "Hiperkalemia grave", rec: "ECG inmediato. Descartar muestra hemolizada. Si hay cambios en el ECG: gluconato de calcio 10% IV. Desplazar K: insulina rápida con dextrosa (vigilar glucemia). Suspender aportes de K y fármacos que lo suben. Diálisis si es refractaria o hay falla renal." };
+        if (v > 5.1) return { sev: "abn", title: "Hiperkalemia", rec: "Descartar hemólisis. Suspender aportes de K, IECA/ARA2, espironolactona, heparina si aplica. ECG y K de control." };
         return null;
       },
       alb: (v) => {
-        if (v < 2.5) return { sev: "crit", title: "Hipoalbuminemia severa", rec: "Marcador de desnutrición severa e inflamación. Evaluar soporte nutricional intensivo (NPT/NE). Riesgo aumentado de complicaciones postoperatorias. Corrección con albúmina IV solo en PBE o cirrosis con criterios específicos." };
-        if (v < 3.5) return { sev: "abn", title: "Hipoalbuminemia", rec: "Evaluar estado nutricional. Optimizar ingesta proteica. Considerar nutrición enteral/parenteral. Investigar causa inflamatoria." };
+        if (v < 2.5) return { sev: "abn", title: "Hipoalbuminemia grave", rec: "Marcador de desnutrición e inflamación; riesgo de complicaciones postoperatorias. Evaluación nutricional y soporte (enteral de preferencia). La albúmina IV no corrige la desnutrición." };
+        if (v < 3.5) return { sev: "abn", title: "Hipoalbuminemia", rec: "Evaluar estado nutricional y aporte proteico; investigar causa inflamatoria." };
         return null;
       },
       pcr: (v) => {
-        if (v > 150) return { sev: "crit", title: "PCR muy elevada", rec: "Inflamación severa/sepsis. Correlacionar con clínica. Optimizar antibioticoterapia. Valorar TAC/cultivos si no se ha identificado foco." };
-        if (v > 10) return { sev: "abn", title: "PCR elevada", rec: "Marcador de inflamación. No específico. Correlacionar con cuadro clínico. Tendencia (subida/bajada) más útil que valor aislado." };
+        if (v > 150) return { sev: "abn", title: "PCR muy elevada", rec: "Inflamación importante: correlacionar con clínica, buscar foco (colección, fuga, neumonía) y revisar el antibiótico. La tendencia vale más que un valor aislado." };
+        if (v > 10) return { sev: "abn", title: "PCR elevada", rec: "Marcador inespecífico de inflamación. Comparar con la tendencia." };
         return null;
       },
       pct: (v) => {
-        if (v >= 2) return { sev: "crit", title: "PCT alta — Sepsis bacteriana probable", rec: "Alta probabilidad de infección bacteriana sistémica/sepsis. Hemocultivos, cubrir amplio espectro. Guiar desescalada antibiótica con tendencia." };
-        if (v >= 0.5) return { sev: "abn", title: "PCT elevada", rec: "Posible infección bacteriana. Evaluar en contexto clínico. Repetir en 24-48h para tendencia. PCT <0.5 orienta a desescalada." };
+        if (v >= 2) return { sev: "abn", title: "PCT alta — infección bacteriana probable", rec: "Correlacionar con clínica; hemocultivos y búsqueda de foco. La tendencia ayuda a decidir la desescalada." };
+        if (v >= 0.5) return { sev: "abn", title: "PCT elevada", rec: "Posible infección bacteriana en contexto clínico. Repetir en 24-48 h para tendencia." };
         return null;
       },
       inr: (v) => {
-        if (v >= 3) return { sev: "crit", title: "Coagulopatía severa", rec: "Riesgo hemorrágico alto. Vitamina K IV 10mg. Si sangrado activo: PFC 15 mL/kg. Evaluar complejo protrombínico. Hepatología si no hay anticoagulación." };
-        if (v > 1.2) return { sev: "abn", title: "INR elevado", rec: "Evaluar anticoagulación activa vs coagulopatía. Si no en anticoagulantes: vitamina K oral, evaluar función hepática." };
+        if (v >= 3) return { sev: "crit", title: "Coagulopatía grave", rec: "Riesgo hemorrágico alto. Preguntar SIEMPRE si toma anticoagulante (warfarina/acenocumarina) y por qué: con válvula mecánica o trombosis reciente, NO revertir sin hablar con el servicio tratante. Con sangrado o cirugía urgente: vitamina K IV y complejo protrombínico o PFC según protocolo. Sin anticoagulante: hepatopatía, déficit de vitamina K, CID." };
+        if (v > 1.2) return { sev: "abn", title: "INR elevado", rec: "Evaluar anticoagulación vs coagulopatía (hepatopatía, déficit de vitamina K, CID). Antes de un procedimiento: confirmar con INR del laboratorio." };
         return null;
       },
-      // Mg / Ca / P en mg/dL (unidades de WinLab HGL). Antes los umbrales estaban en mmol/L y
-      // cualquier Ca normal (9 mg/dL) salía como "Hipercalcemia severa".
+      // Mg / Ca / P en mg/dL (unidades de WinLab HGL).
       mg: (v) => {
-        if (v < 1.2) return { sev: "crit", title: "Hipomagnesemia severa", rec: "Tx: MgSO4 4-8g IV en 4-8h, luego 1-2g/h mantenimiento. Vigilar reflejos rotulianos (suspender si ausentes), FR y diuresis. PREREQUISITO para que K y Ca respondan a reposición. ECG." };
-        if (v < 1.7) return { sev: "abn", title: "Hipomagnesemia", rec: "Tx: Oral — óxido/cloruro Mg 400mg c/8h. IV — MgSO4 2g en 1h c/6-8h. Corregir SIEMPRE antes o junto con K (K refractario si Mg bajo). Causas: diuréticos de asa, IBP crónicos, diarrea, alcohol." };
-        if (v >= 4.0) return { sev: "crit", title: "Hipermagnesemia severa", rec: "Tx: Suspender todo aporte de Mg. Gluconato Ca 10% 10mL IV (antagonista directo). Furosemida + SF para excreción renal. IR severa: diálisis. Monitorear reflejos, FR y ECG." };
-        if (v > 2.4) return { sev: "abn", title: "Hipermagnesemia", rec: "Tx: Suspender suplementos Mg. Si severa (≥4 mg/dL): Gluconato Ca 10% 10mL IV (antagonista directo). Furosemida + SF para excreción renal. IR severa: diálisis. Monitorear reflejos, FR y ECG." };
+        if (v < 1.2) return { sev: "crit", title: "Hipomagnesemia grave", rec: "Sulfato de magnesio IV (por ejemplo 1-2 g en 15-60 min y después 4-6 g en 12-24 h; más rápido solo si hay arritmia o convulsión) — REDUCIR la dosis en falla renal. Vigilar reflejos y FR. Necesario para que respondan K y Ca." };
+        if (v < 1.7) return { sev: "abn", title: "Hipomagnesemia", rec: "Reposición VO o IV (1-2 g IV en 1-2 h) ajustada a la función renal. Corregir junto con K y Ca. Causas: diuréticos, IBP, diarrea, alcohol." };
+        if (v >= 4.9) return { sev: "crit", title: "Hipermagnesemia grave", rec: "Suspender todo aporte de Mg. Con bradicardia, hiporreflexia o depresión respiratoria: gluconato de calcio 10% IV. Diuresis con furosemida si la función renal lo permite; diálisis en falla renal." };
+        if (v > 2.4) return { sev: "abn", title: "Hipermagnesemia", rec: "Suspender suplementos y antiácidos con Mg. Revisar función renal." };
         return null;
       },
       ca: (v) => {
-        if (v < 7.0) return { sev: "crit", title: "Hipocalcemia severa", rec: "Tx: Gluconato Ca 10% 10-20mL IV en 10min, luego 0.5-2mg/kg/h de Ca elemental. Corregir Mg si bajo. ECG continuo. Meta Ca iónico >1.1mmol/L. Repetir nivel c/4h." };
-        if (v < 8.5) return { sev: "abn", title: "Hipocalcemia", rec: "Tx: Carbonato Ca 1-3g/día VO + calcitriol 0.25-0.5mcg/día. Corregir Mg si bajo (hipocalcemia refractaria sin Mg corregido). Corregir por albúmina (Ca + 0.8×(4−alb)). Evaluar PTH y vitamina D. Control Ca en 48-72h." };
-        if (v >= 13.0) return { sev: "crit", title: "Hipercalcemia severa", rec: "Tx: 1) SF 200-500mL/h IV. 2) Furosemida 20-40mg IV tras hidratar bien. 3) Zoledrónico 4mg IV en 15min o pamidronato 60-90mg en 2-4h. 4) Calcitonina 4UI/kg IM c/12h (efecto en horas). Diálisis si refractario." };
-        if (v > 10.5) return { sev: "abn", title: "Hipercalcemia", rec: "Tx: Hidratación IV/VO abundante. Suspender Ca/Vit D. Si neoplásica: bisfosfonato oral. Furosemida solo si bien hidratado. Causas: hiperPTH primario, neoplasia (PTHrP), sarcoidosis, tiazidas." };
+        if (v <= 6.5) return { sev: "crit", title: "Hipocalcemia grave", rec: "Corregir por albúmina (Ca + 0.8 × (4 − alb)) o medir Ca iónico. Con síntomas o QT largo: gluconato de calcio 10% IV en 10 min y luego infusión según protocolo. Corregir Mg. ECG." };
+        if (v < 8.5) return { sev: "abn", title: "Hipocalcemia", rec: "Corregir por albúmina antes de tratar. Si persiste: calcio VO ± calcitriol; corregir Mg; evaluar PTH y vitamina D." };
+        if (v >= 13.0) return { sev: "crit", title: "Hipercalcemia grave", rec: "Hidratación IV con SS 0.9% vigilando volemia; calcitonina y bisfosfonato según protocolo; furosemida solo después de hidratar. Buscar causa (hiperparatiroidismo, neoplasia)." };
+        if (v > 10.5) return { sev: "abn", title: "Hipercalcemia", rec: "Hidratación; suspender calcio, vitamina D y tiazidas. Causas: hiperparatiroidismo primario, neoplasia (PTHrP), inmovilización." };
         return null;
       },
       p: (v) => {
-        if (v < 1.0) return { sev: "crit", title: "Hipofosfatemia severa", rec: "Tx: Fosfato K o Na IV 0.08-0.16mmol/kg en 6h. Monitorizar Ca durante reposición (riesgo hipocalcemia). Sínd. realimentación: restringir glucosa + fosfato lento. Control P c/6h hasta >2.5 mg/dL." };
-        if (v < 2.5) return { sev: "abn", title: "Hipofosfatemia", rec: "Tx: Oral — Neutraphos 250-500mg c/6-8h con comidas. IV si no tolera: 0.08mmol/kg en 6h. Suspender antiácidos con Al/Mg. Corregir vitamina D si deficiente. Control en 24-48h." };
-        if (v >= 7.0) return { sev: "crit", title: "Hiperfosfatemia severa", rec: "Riesgo de hipocalcemia y calcificación. Hidratación, quelantes (carbonato de Ca / sevelamer), evaluar diálisis si IR. Buscar lisis tumoral / rabdomiólisis." };
-        if (v > 4.5) return { sev: "abn", title: "Hiperfosfatemia", rec: "Restricción dietética de fósforo. Quelantes intestinales (carbonato de Ca). Evaluar función renal." };
+        if (v <= 1.0) return { sev: "crit", title: "Hipofosfatemia grave", rec: "Reposición IV según protocolo (vigilar Ca durante la reposición). Pensar en síndrome de realimentación en pacientes desnutridos al iniciar nutrición." };
+        if (v < 2.5) return { sev: "abn", title: "Hipofosfatemia", rec: "Reposición VO si tolera o IV si no. Revisar realimentación, antiácidos y vitamina D." };
+        if (v > 4.5) return { sev: "abn", title: "Hiperfosfatemia", rec: "Revisar función renal; buscar lisis tumoral o rabdomiólisis si es aguda. Restricción y quelantes según el caso." };
         return null;
       },
       cl: (v) => {
-        if (v < 90) return { sev: "crit", title: "Hipocloremia severa", rec: "Evaluar en contexto de alcalosis metabólica (vómitos, SNG, diuréticos). Reponer con NaCl. Descartar insuficiencia suprarrenal." };
-        if (v < 98) return { sev: "abn", title: "Hipocloremia", rec: "Generalmente acompaña hiponatremia o alcalosis. Tratar causa subyacente. Reposición con soluciones cloradas." };
-        if (v > 115) return { sev: "crit", title: "Hipercloremia severa", rec: "Evaluar acidosis metabólica hiperclorémica. Revisar aportes de NaCl/soluciones cloradas. Puede requerir bicarbonato." };
-        if (v > 107) return { sev: "abn", title: "Hipercloremia", rec: "Evaluar acidosis hiperclorémica. Revisar aportes IV. Preferir soluciones balanceadas (Ringer lactato) sobre SF 0.9%." };
+        if (v < 90) return { sev: "abn", title: "Hipocloremia marcada", rec: "Suele acompañar alcalosis metabólica (vómito, SNG, diuréticos). Reponer volumen con soluciones cloradas." };
+        if (v < 98) return { sev: "abn", title: "Hipocloremia", rec: "Acompaña hiponatremia o alcalosis. Tratar la causa." };
+        if (v > 115) return { sev: "abn", title: "Hipercloremia marcada", rec: "Acidosis metabólica hiperclorémica por exceso de SS 0.9%: preferir soluciones balanceadas." };
+        if (v > 107) return { sev: "abn", title: "Hipercloremia", rec: "Revisar aporte de SS 0.9%; preferir soluciones balanceadas (Hartmann)." };
         return null;
       },
       tp: (v) => {
-        if (v > 20) return { sev: "crit", title: "TP muy prolongado", rec: "Coagulopatía severa. Vitamina K IV, PFC. Evaluar CID (con TTP, fibrinógeno, dímero D). Hepatología si por hepatopatía." };
-        if (v > 14) return { sev: "abn", title: "TP prolongado", rec: "Evaluar anticoagulación activa, hepatopatía, déficit Vit K. Vitamina K oral si no anticoagulado." };
+        if (v > 20) return { sev: "abn", title: "TP muy prolongado", rec: "Calcular o pedir INR. Evaluar anticoagulación, hepatopatía, déficit de vitamina K y CID (con TTP, fibrinógeno y plaquetas)." };
+        if (v > 14) return { sev: "abn", title: "TP prolongado", rec: "Evaluar anticoagulación, hepatopatía, déficit de vitamina K. Confirmar con INR antes de procedimientos." };
         return null;
       },
       ttp: (v) => {
-        if (v > 60) return { sev: "crit", title: "TTP muy prolongado", rec: "Evaluar heparina, déficit factores VIII/IX (hemofilia), inhibidores. En CID puede estar prolongado junto con TP." };
-        if (v > 35) return { sev: "abn", title: "TTP prolongado", rec: "Investigar: heparina no fraccionada, anticoagulante lúpico, déficit factor. Repetir sin heparina en muestra." };
+        if (v >= 100) return { sev: "crit", title: "TTP muy prolongado", rec: "Riesgo hemorrágico: revisar heparina no fraccionada (dosis, horario de la muestra), CID, déficit de factores o inhibidor. Repetir si la muestra salió de una vía con heparina." };
+        if (v > 35) return { sev: "abn", title: "TTP prolongado", rec: "Heparina no fraccionada, anticoagulante lúpico, déficit de factor. Repetir con muestra sin heparina." };
         return null;
       },
+      // Fibrinógeno en mg/dL (WinLab: FIBRINOGENO CLAUSS). Antes los cortes estaban en g/L y 80 mg/dL decía «elevado».
       fibrinogeno: (v) => {
-        if (v < 1) return { sev: "crit", title: "Fibrinogenopenia severa", rec: "Alta sospecha CID. Crioprecipitado 10 U. Corregir causa (sepsis, trauma, obstetrica). Monitorizar dímero D y plaquetas." };
-        if (v < 2) return { sev: "abn", title: "Fibrinógeno bajo", rec: "Evaluar CID, hepatopatía severa, deficiencia congénita. Transfundir crioprecipitado si <1.5 g/L con sangrado." };
-        if (v > 4) return { sev: "abn", title: "Fibrinógeno elevado", rec: "Reactante de fase aguda: infección, inflamación, neoplasia, embarazo. No requiere tratamiento específico." };
+        if (v <= 100) return { sev: "crit", title: "Fibrinógeno críticamente bajo — sospecha de CID o sangrado", rec: "Si sangra o va a procedimiento: considerar crioprecipitado o concentrado de fibrinógeno (meta >150-200 mg/dL). Evaluar CID con plaquetas, TP, TTP y dímero D." };
+        if (v < 200) return { sev: "abn", title: "Fibrinógeno bajo", rec: "Evaluar consumo (CID, sangrado), hepatopatía o dilución. Repetir y correlacionar con TP, TTP y plaquetas." };
+        if (v > 400) return { sev: "abn", title: "Fibrinógeno elevado (reactante de fase aguda)", rec: "Inflamación, infección, cirugía reciente, embarazo. No requiere tratamiento específico." };
         return null;
       },
       ast: (v) => {
-        if (v >= 200) return { sev: "crit", title: "Elevación marcada AST", rec: "Hepatitis aguda severa vs isquemia hepática ('shock liver'). Evaluar ALT, BT, coagulación. Hepatología urgente." };
-        if (v > 40) return { sev: "abn", title: "AST elevada", rec: "Daño hepatocelular o muscular. Correlacionar con ALT (relación >2:1 orienta a alcohol). Evaluar CK para descartar origen muscular." };
+        if (v >= 200) return { sev: "abn", title: "Elevación marcada de AST", rec: "Hepatitis aguda vs isquemia hepática; valorar origen muscular (CK). Revisar ALT, bilirrubinas, INR." };
+        if (v > 40) return { sev: "abn", title: "AST elevada", rec: "Daño hepatocelular o muscular. Relación AST/ALT >2 orienta a alcohol." };
         return null;
       },
       alt: (v) => {
-        if (v >= 200) return { sev: "crit", title: "Elevación marcada ALT", rec: "Hepatitis aguda severa (viral, tóxica, isquémica). Suspender hepatotóxicos. Hepatología. Solicitar serologías virales." };
-        if (v > 40) return { sev: "abn", title: "ALT elevada", rec: "Marcador más específico de daño hepático que AST. Descartar: hepatitis viral, NASH, fármacos (estatinas, paracetamol), alcohol." };
+        if (v >= 200) return { sev: "abn", title: "Elevación marcada de ALT", rec: "Hepatitis aguda (viral, tóxica, isquémica). Suspender hepatotóxicos; INR y bilirrubinas." };
+        if (v > 40) return { sev: "abn", title: "ALT elevada", rec: "Daño hepático: fármacos, hígado graso, virus, alcohol." };
         return null;
       },
       bt: (v) => {
-        if (v >= 2) return { sev: "crit", title: "Hiperbilirrubinemia — Ictericia clínica", rec: "BT ≥2 mg/dL: ictericia clínicamente significativa. Evaluar fracción directa/indirecta. Ecografía hepatobiliar urgente. Descartar obstrucción, hepatitis, hemólisis. Hepatología si no hay causa evidente." };
-        if (v > 1.2) return { sev: "abn", title: "Bilirrubina total elevada", rec: "Si BI predomina: hemólisis, Gilbert, transfusión. Si BD predomina: colestasis (obstructiva o hepática). Ecografía abdominal." };
+        if (v >= 2) return { sev: "abn", title: "Hiperbilirrubinemia — ictericia", rec: "Separar directa e indirecta. Ultrasonido hepatobiliar para descartar obstrucción; hemólisis si predomina la indirecta." };
+        if (v > 1.2) return { sev: "abn", title: "Bilirrubina total elevada", rec: "Si predomina la indirecta: hemólisis, Gilbert, transfusión. Si la directa: colestasis." };
         return null;
       },
       bd: (v) => {
-        if (v >= 3) return { sev: "crit", title: "Colestasis severa", rec: "Obstrucción biliar o hepatitis colestásica severa. Ecografía urgente. Evaluar CPRE si obstrucción mecánica (coledocolitiasis, neoplasia)." };
-        if (v > 0.3) return { sev: "abn", title: "Bilirrubina directa elevada", rec: "Colestasis intra o extrahepática. Ecografía hepática. Evaluar fármacos colestásicos, hepatitis virales con colestasis." };
+        if (v >= 3) return { sev: "abn", title: "Colestasis importante", rec: "Obstrucción biliar o colestasis intrahepática. Ultrasonido; CPRE si hay obstrucción mecánica." };
+        if (v > 0.3) return { sev: "abn", title: "Bilirrubina directa elevada", rec: "Colestasis intra o extrahepática. Ultrasonido y revisar fármacos colestásicos." };
         return null;
       },
       ggt: (v) => {
-        if (v > 200) return { sev: "crit", title: "GGT muy elevada", rec: "Colestasis severa, daño hepático por alcohol u obstrucción biliar. Correlacionar con fosfatasa alcalina y BT." };
-        if (v > 61) return { sev: "abn", title: "GGT elevada", rec: "Sensible para hepatopatía alcohólica y colestasis. Verificar consumo de alcohol, fármacos inductores (anticonvulsivantes)." };
+        if (v > 200) return { sev: "abn", title: "GGT muy elevada", rec: "Colestasis, alcohol u obstrucción biliar. Correlacionar con FA y bilirrubinas." };
+        if (v > 61) return { sev: "abn", title: "GGT elevada", rec: "Colestasis, alcohol, fármacos inductores." };
         return null;
       },
       fa: (v) => {
-        if (v >= 500) return { sev: "crit", title: "Fosfatasa alcalina muy elevada (>500 U/L)", rec: "Patrón colestásico marcado u origen óseo activo. Correlacionar con GGT/BT/BD. Solicitar US hepatobiliar urgente. Descartar obstrucción biliar, metástasis óseas o hepáticas." };
-        if (v > 147) return { sev: "abn", title: "Fosfatasa alcalina elevada", rec: "Sugerente de colestasis o patología ósea. Diferenciar con GGT (hepático) y clínica." };
+        if (v >= 500) return { sev: "abn", title: "Fosfatasa alcalina muy elevada", rec: "Patrón colestásico marcado u origen óseo. Correlacionar con GGT y bilirrubinas; ultrasonido hepatobiliar." };
+        if (v > 147) return { sev: "abn", title: "Fosfatasa alcalina elevada", rec: "Colestasis u origen óseo; diferenciar con GGT." };
         return null;
       },
+      // Pancreatitis (oct 2026): el diagnóstico pide 2 de 3 criterios y la GRAVEDAD la da la falla orgánica, no la cifra.
       amilasa: (v) => {
-        if (v >= 300) return { sev: "crit", title: "Amilasa muy elevada — Pancreatitis aguda grave", rec: "≥3× VN: altamente sugestivo de pancreatitis aguda. Completar con lipasa (más específica). Monitorizar por criterios de Ranson/BISAP. NPO, hidratación agresiva IV, analgesia, monitoreo de complicaciones." };
-        if (v > 100) return { sev: "abn", title: "Amilasa elevada", rec: "Evaluar en contexto clínico: pancreatitis aguda, parotiditis, obstrucción biliar, macroamilasemia. Correlacionar con lipasa para mayor especificidad." };
+        if (v >= 300) return { sev: "abn", title: "Amilasa ≥3 veces lo normal — compatible con pancreatitis", rec: "Diagnóstico con 2 de 3: dolor típico, lipasa o amilasa ≥3 veces lo normal, imagen (Atlanta 2012). La gravedad la define la falla orgánica, no la cifra. Hidratación moderada con Hartmann guiada por metas (WATERFALL 2022, ACG 2024); evitar la hidratación agresiva." };
+        if (v > 100) return { sev: "abn", title: "Amilasa elevada", rec: "Pancreatitis, obstrucción biliar, parotiditis, macroamilasemia. La lipasa es más específica." };
         return null;
       },
       lipasa: (v) => {
-        if (v >= 180) return { sev: "crit", title: "Lipasa muy elevada — Pancreatitis aguda grave", rec: "≥3× VN: criterio diagnóstico de pancreatitis aguda (mayor especificidad que amilasa). Clasificar severidad (leve/moderada/grave). NPO estricto, hidratación IV agresiva (Ringer lactato preferible), analgesia, considerar CPRE si etiología biliar." };
-        if (v > 60) return { sev: "abn", title: "Lipasa elevada", rec: "Sugerente de pancreatitis aguda o patología pancreática. Más específica que amilasa. Correlacionar con clínica, amilasa y US/TAC." };
+        if (v >= 180) return { sev: "abn", title: "Lipasa ≥3 veces lo normal — compatible con pancreatitis", rec: "Diagnóstico con 2 de 3: dolor típico, lipasa ≥3 veces lo normal, imagen (Atlanta 2012). La gravedad la define la falla orgánica (no la cifra): vigilar función renal, respiratoria y hemodinámica. Hidratación moderada con Hartmann guiada por metas (WATERFALL 2022, ACG 2024); analgesia; CPRE solo si hay colangitis u obstrucción." };
+        if (v > 60) return { sev: "abn", title: "Lipasa elevada", rec: "Sugiere patología pancreática; correlacionar con clínica e imagen." };
         return null;
       },
       ph: (v) => {
-        if (v < 7.2) return { sev: "crit", title: "Acidemia severa", rec: "Identificar tipo: metabólica (HCO3 bajo), respiratoria (pCO2 alto) o mixta. Si metabólica severa: bicarbonato si pH<7.1. Tratar causa." };
-        if (v < 7.35) return { sev: "abn", title: "Acidosis", rec: "Calcular anion gap. Si AG elevado: MUDPILES (metanol, uremia, DKA, propilen, isoniazida, lactato, etilenglicol, salicilatos). Tratar causa." };
-        if (v > 7.55) return { sev: "crit", title: "Alcalemia severa", rec: "Riesgo de arritmia y convulsiones. Si metabólica: reponer Cl y K. Si respiratoria: tratar hiperventilación. Evaluar causa." };
-        if (v > 7.45) return { sev: "abn", title: "Alcalosis", rec: "Si metabólica: evaluar vómitos, diuréticos, corticoides, contracción de volumen. Si respiratoria: hipocapnia por hiperventilación." };
+        if (v <= 7.2) return { sev: "crit", title: "Acidemia grave", rec: "Identificar tipo con HCO3 y pCO2 (metabólica, respiratoria o mixta). Anion gap y lactato. Tratar la causa; bicarbonato solo en casos seleccionados." };
+        if (v < 7.35) return { sev: "abn", title: "Acidosis", rec: "Calcular anion gap y compensación. Buscar lactato, cetonas, falla renal, pérdidas digestivas." };
+        if (v >= 7.6) return { sev: "crit", title: "Alcalemia grave", rec: "Riesgo de arritmia y convulsiones. Metabólica: reponer volumen, Cl y K. Respiratoria: tratar la hiperventilación." };
+        if (v > 7.45) return { sev: "abn", title: "Alcalosis", rec: "Metabólica: vómito, SNG, diuréticos, contracción de volumen. Respiratoria: dolor, ansiedad, sepsis, TEP." };
         return null;
       },
       pco2: (v) => {
-        if (v < 20) return { sev: "crit", title: "Hipocapnia severa", rec: "Alcalosis respiratoria severa. Evaluar causas: sepsis, TEP, ACV, hepatopatía, hiperventilación. Riesgo de broncoespasmo y arritmia." };
-        if (v < 35) return { sev: "abn", title: "Hipocapnia", rec: "Alcalosis respiratoria o compensación de acidosis metabólica. Calcular pCO2 esperado (1.5×HCO3+8±2). Si concordante: compensación adecuada." };
-        if (v > 70) return { sev: "crit", title: "Hipercapnia severa — Falla respiratoria", rec: "Acidosis respiratoria severa. Evaluar necesidad de VMI o VMNI. Tratar causa: EPOC exacerbado, neumonía, obstrucción." };
-        if (v > 45) return { sev: "abn", title: "Hipercapnia", rec: "Acidosis respiratoria o compensación de alcalosis metabólica. Evaluar hipoventilación. EPOC, sedación excesiva, debilidad muscular." };
+        if (v <= 20) return { sev: "crit", title: "Hipocapnia grave", rec: "Hiperventilación importante: sepsis, TEP, acidosis metabólica grave (compensación), neurológico." };
+        if (v < 35) return { sev: "abn", title: "Hipocapnia", rec: "Alcalosis respiratoria o compensación de acidosis metabólica (pCO2 esperado = 1.5 × HCO3 + 8 ± 2)." };
+        if (v >= 70) return { sev: "crit", title: "Hipercapnia grave", rec: "Falla ventilatoria: valorar ventilación no invasiva o intubación según estado. Revisar sedación y opioides." };
+        if (v > 45) return { sev: "abn", title: "Hipercapnia", rec: "Hipoventilación (sedación, EPOC, debilidad) o compensación de alcalosis metabólica." };
         return null;
       },
       po2: (v) => {
-        if (v < 55) return { sev: "crit", title: "Hipoxemia severa", rec: "Criterio de insuficiencia respiratoria. Oxígeno de alto flujo o VMI según estado. Gasometría con FiO2 conocida para calcular P/F." };
-        if (v < 80) return { sev: "abn", title: "Hipoxemia", rec: "Calcular gradiente A-a. Evaluar: neumonía, TEP, atelectasia, derrame, SDRA. Titular O2 para SatO2 92-96%." };
+        if (v <= 40) return { sev: "crit", title: "Hipoxemia grave", rec: "Oxígeno de alto flujo o soporte ventilatorio según estado. Con FiO2 conocida, calcular PaO2/FiO2." };
+        if (v < 80) return { sev: "abn", title: "Hipoxemia", rec: "Calcular gradiente A-a. Neumonía, atelectasia, derrame, TEP, SDRA. Titular O2 a SatO2 92-96%." };
         return null;
       },
       hco3: (v) => {
-        if (v < 10) return { sev: "crit", title: "Bicarbonato muy bajo", rec: "Acidosis metabólica severa. Calcular anion gap y osmol gap. Bicarbonato IV si pH<7.1 y HCO3<10. Tratar causa urgente." };
-        if (v < 22) return { sev: "abn", title: "Bicarbonato bajo", rec: "Acidosis metabólica. Calcular anión gap (Na-Cl-HCO3). AG normal: pérdidas GI o renales de HCO3. AG elevado: causas MUDPILES." };
-        if (v > 30) return { sev: "crit", title: "Bicarbonato muy elevado", rec: "Alcalosis metabólica severa. Reponer Cl, K, volumen. Evaluar vómitos, aspirado gástrico, diuréticos, exceso mineralocorticoides." };
-        if (v > 26) return { sev: "abn", title: "Bicarbonato elevado", rec: "Alcalosis metabólica o compensación de acidosis respiratoria crónica. Evaluar clínica y pCO2 para diferenciar." };
+        if (v <= 10) return { sev: "crit", title: "Bicarbonato muy bajo", rec: "Acidosis metabólica grave: anion gap, lactato, cetonas, función renal. Tratar la causa." };
+        if (v < 22) return { sev: "abn", title: "Bicarbonato bajo", rec: "Acidosis metabólica: anion gap (Na − Cl − HCO3). Normal: pérdidas digestivas o renales; elevado: lactato, cetonas, uremia, tóxicos." };
+        if (v >= 40) return { sev: "crit", title: "Bicarbonato muy elevado", rec: "Alcalosis metabólica grave: reponer volumen, Cl y K; revisar diuréticos y pérdidas por SNG." };
+        if (v > 26) return { sev: "abn", title: "Bicarbonato elevado", rec: "Alcalosis metabólica o compensación de acidosis respiratoria crónica." };
         return null;
       },
       be: (v) => {
-        if (v < -8) return { sev: "crit", title: "Exceso de base muy negativo", rec: "Acidosis metabólica severa. Misma interpretación que HCO3 bajo. Reponer con bicarbonato si pH<7.1 y BE<-10." };
-        if (v < -2) return { sev: "abn", title: "Base excess negativo", rec: "Acidosis metabólica. Cuantifica el déficit de bases. BE < -4 habitualmente requiere evaluación activa de causa." };
-        if (v > 8) return { sev: "crit", title: "Exceso de base muy positivo", rec: "Alcalosis metabólica severa. Reponer Cl y K. Evaluar vómitos, diuréticos, exceso de bicarbonato administrado." };
-        if (v > 2) return { sev: "abn", title: "Base excess positivo", rec: "Alcalosis metabólica o compensación de acidosis respiratoria crónica. Correlacionar con pH y pCO2." };
+        if (v < -2) return { sev: "abn", title: "Exceso de base negativo", rec: "Acidosis metabólica; interpretar junto con pH, HCO3 y lactato." };
+        if (v > 2) return { sev: "abn", title: "Exceso de base positivo", rec: "Alcalosis metabólica o compensación; correlacionar con pH y pCO2." };
         return null;
       },
       sato2: (v) => {
-        if (v < 85) return { sev: "crit", title: "Desaturación severa", rec: "Emergencia respiratoria. O2 de alto flujo o VMI inmediato. Evaluar vía aérea. Correlacionar con pO2 y curva de disociación." };
-        if (v < 95) return { sev: "abn", title: "Desaturación", rec: "Titular O2 para meta SatO2 92-96% (88-92% en EPOC). Evaluar causa de hipoxemia. Evaluar pO2 para confirmar." };
+        if (v <= 85) return { sev: "crit", title: "Desaturación grave", rec: "Asegurar vía aérea y oxígeno de alto flujo; valorar soporte ventilatorio. Correlacionar con pO2." };
+        if (v < 95) return { sev: "abn", title: "Desaturación", rec: "Titular O2 a SatO2 92-96% (88-92% en EPOC). Buscar la causa." };
         return null;
       },
+      // Dímero D en ng/mL (unidad de la tabla, ref <500). Sirve para DESCARTAR trombosis, no para confirmarla.
       dimero_d: (v) => {
-        if (v >= 1) return { sev: "crit", title: "Dímero D muy elevado — TEP/TVP probable", rec: "Dímero D ≥1 µg/mL: alta probabilidad de evento tromboembólico (TEP, TVP) o CID activa. Solicitar angioTAC de tórax o US Doppler según sospecha clínica. Evaluar anticoagulación. Correlacionar con TP, TTP, fibrinógeno y plaquetas para descartar CID." };
-        if (v > 0.5) return { sev: "abn", title: "Dímero D elevado", rec: "Dímero D >0.5 µg/mL: marcador sensible pero no específico. Evaluar probabilidad pretest (Wells score). Puede elevarse por cirugía reciente, inflamación, neoplasia, embarazo. Si sospecha de TEP/TVP: imagen urgente." };
+        if (v > 0 && v < 10) return { sev: "abn", title: "Dímero D — revisa la unidad", rec: "La tabla usa ng/mL (500 ng/mL = 0.5 µg/mL). Si el reporte viene en µg/mL o mg/L FEU, multiplica por 1000 antes de capturarlo." };
+        if (v > 500) return { sev: "abn", title: "Dímero D elevado", rec: "Un dímero D normal ayuda a DESCARTAR TEP/TVP cuando la probabilidad clínica es baja; elevado NO lo confirma: casi siempre sube después de operar, con infección o cáncer. Decidir imagen (angioTAC, US Doppler) por la probabilidad clínica (Wells)." };
         return null;
       },
       lac: (v) => {
-        if (v >= 4) return { sev: "crit", title: "Lactato crítico — Hipoperfusión severa / Shock", rec: "Lactato ≥4 mmol/L: criterio de shock metabólico. Resucitación agresiva con cristaloides (30 mL/kg). Evaluar necesidad de vasopresores. Identificar causa (séptico, cardiogénico, hemorrágico, isquémico). Medir lactato de control en 2h. UCI." };
-        if (v > 2) return { sev: "abn", title: "Hiperlactatemia — Perfusión tisular comprometida", rec: "Lactato 2-4 mmol/L: hiperlactatemia moderada. Evaluar causa: sepsis, hipoperfusión, isquemia mesentérica, hepatopatía, fármacos (metformina, epinefrina). Hidratación y control en 2-4h. Tratar causa subyacente." };
+        if (v >= 4) return { sev: "crit", title: "Lactato ≥4 — hipoperfusión / choque", rec: "Evaluar perfusión y causa (séptica, hemorrágica, cardiogénica, isquemia mesentérica). En sepsis con hipoperfusión: considerar cristaloide 30 mL/kg en las primeras 3 h y vasopresor para PAM ≥65 (SSC 2021). Lactato de control en 2 h." };
+        if (v > 2) return { sev: "abn", title: "Hiperlactatemia", rec: "Lactato 2-4 mmol/L: buscar hipoperfusión, sepsis, isquemia, hepatopatía o fármacos (metformina, adrenalina). Control en 2-4 h." };
         return null;
       }
     };
@@ -20047,6 +20284,10 @@ function plExportBackup() {
       const abn = has && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
       const cls = crit ? "crit" : abn ? "abn" : "";
       const hasAlert = (crit || abn) && LAB_QUICK[lf.key];
+      // Muestra rechazada (WinLab: coagulada, mal aforada…) o unidad que la app no reconoce: aviso, nunca un número.
+      const rech = labEsRechazada(val), revU = /^REVISAR UNIDAD/i.test(String(val || ""));
+      const avisoTxt = rech ? "Muestra rechazada por el laboratorio (coagulada, mal aforada o insuficiente): el número de WinLab no es un resultado. Repetir la toma."
+        : (revU ? "WinLab mandó este estudio en una unidad que la app no reconoce: revisa el valor y la unidad en WinLab." : "");
       const tid = ("tip-" + k + "-" + lf.key).replace(/[^a-zA-Z0-9]/g, "_");
 
       // ── Tendencia Δ ──────────────────────────────────────────────────────────
@@ -20067,9 +20308,9 @@ function plExportBackup() {
         }
       }
 
-      return `<div class='lab-cell ${cls}${estOn ? " lab-est" : ""}' ${hasAlert ? `onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"` : ""}>` +
-        `<div class='lab-key'>${lf.label}${estOn ? "<span class='lab-est-tag' title='INR estimado = TP ÷ testigo (WinLab no reporta INR)'>≈</span>" : ""}</div>` +
-        `<input class='lab-input ${cls}' value='${esc(val)}' placeholder='${estOn ? "≈" + esc(est.txt) : "—"}'${estOn ? " title='INR estimado = TP ÷ testigo (WinLab no reporta INR). Escribe el INR real si lo tienes.'" : ""}` +
+      return `<div class='lab-cell ${cls}${estOn ? " lab-est" : ""}${avisoTxt ? " lab-aviso" : ""}' ${hasAlert ? `onmouseenter="showLabTip('${tid}')" onmouseleave="hideLabTip('${tid}')" onclick="showLabTip('${tid}',true)"` : ""}>` +
+        `<div class='lab-key'>${lf.label}${estOn ? "<span class='lab-est-tag' title='INR estimado = TP ÷ testigo con ISI ≈ 1 (WinLab no reporta INR): suele quedar por DEBAJO del real. No usarlo para decidir cirugía: pedir INR.'>≈</span>" : ""}${avisoTxt ? "<span class='lab-aviso-tag' title='" + esc(avisoTxt) + "'>⚠</span>" : ""}</div>` +
+        `<input class='lab-input ${cls}' value='${esc(val)}' placeholder='${estOn ? "≈" + esc(est.txt) : "—"}'${estOn ? " title='INR estimado = TP ÷ testigo con ISI ≈ 1 (WinLab no reporta INR): suele quedar por DEBAJO del real. No usarlo para decidir cirugía: pedir INR. Escribe el INR real si lo tienes.'" : (avisoTxt ? " title='" + esc(avisoTxt) + "'" : "")}` +
         ` data-key='${k}' data-labkey='${lf.key}' data-fecha='${fecha}'` +
         ` oninput="liveLabUpdate(this)" onchange="updateLabHistory(this.dataset.key,this.dataset.fecha,this.dataset.labkey,this.value)"/>` +
         `<div class='lab-unit'>${lf.unit}</div>` +
@@ -20079,7 +20320,7 @@ function plExportBackup() {
     }
 
     function renderLabTipHtml(tid, lf, val, num, crit) {
-      const rec = LAB_QUICK[lf.key] ? LAB_QUICK[lf.key](num) : null;
+      const rec = labQuick(lf.key, num);
       if (!rec) return "";
       return `<div class='lab-tip' id='${tid}'>` +
         `<div style='font-size:9px;color:#94a3b8;margin-bottom:4px;letter-spacing:.3px'>📋 CONTEXTO CLÍNICO · Evaluar con criterio y situación del paciente</div>` +
@@ -20330,40 +20571,16 @@ function plExportBackup() {
         if (extras.length) labLines.push("Otros/Cultivos: " + extras.join(", "));
       }
 
-      const labRefRanges = [
-        "Hb: H<7 g/dL CRITICA, <10 MODERADA, >16 alta",
-        "Leucos: <4 o >10 k/µL anormal, >15 CRITICO",
-        "Plaq: <50 k/µL CRITICA, <100 MODERADA (trombocitopenia), >600 trombocitosis",
-        "Cr: >1.25 mg/dL anormal, >3 CRITICO",
-        "Urea: >43 mg/dL anormal",
-        "Glu: <70 hipoglucemia, >110 hiperglucemia",
-        "Na: <135 hiponatremia, >145 hipernatremia, <120 CRITICO, >155 CRITICO",
-        "K: <3.5 HIPOKALEMIA (anormal), <2.8 CRITICA, >5.1 hiperkalemia, >6.0 CRITICA",
-        "Alb: <3.5 g/dL hipoalbuminemia, <2.0 SEVERA",
-        "PCR: >10 mg/L elevada",
-        "PCT: >0.5 ng/mL elevada, >2 sepsis probable",
-        "INR: >1.5 coagulopatía, >2.5 SEVERA",
-        "Mg: <0.7 hipomagnesemia, <0.5 SEVERA",
-        "Ca: <2.1 hipocalcemia, <1.75 SEVERA, >2.6 hipercalcemia",
-        "P: <0.81 hipofosfatemia, <0.5 SEVERA",
-        "BT/BD/BI: >2 mg/dL hiperbilirrubinemia",
-        "TGO/TGP: >40 U/L elevadas",
-        "FA (fosfatasa alcalina): >120 U/L elevada, >400 CRITICA",
-        "GGT: >50 U/L elevada",
-        "LDH: >250 U/L elevada",
-        "CPK: >200 U/L elevada",
-        "pH: <7.35 acidosis, >7.45 alcalosis",
-        "pCO2: <35 hipocapnia, >45 hipercapnia",
-        "Lac (Lactato): >2 mmol/L elevado, >4 CRITICO (shock/hipoperfusión severa)",
-        "EGO pH: normal 5-8",
-        "EGO densidad: normal 1.005-1.030",
-        "EGO esterasa leucocitaria: >10 u/µL anormal (ITU probable)",
-        "EGO nitritos: positivo = infección bacteriana",
-        "EGO bacterias: negativo=normal, +/++/+++ = infección",
-        "EGO proteínas: negativo=normal, presencia = proteinuria",
-        "EGO glucosuria: negativo=normal, positivo = hiperglucemia o tubulopatía",
-        "EGO hematíes: <5 u/µL normal, >5 hematuria",
-      ].join("\n");
+      // Rangos y valores críticos de la MISMA tabla que la app (LAB_FIELDS, unidades de WinLab HGL). Antes iban escritos
+      // a mano y Ca/Mg/P estaban en mmol/L con valores en mg/dL: un Ca de 7.6 mg/dL se leía como «hipercalcemia».
+      const labRefRanges = LAB_FIELDS.filter(function (lf) { return lf.key.indexOf("ego_") !== 0 && (lf.low != null || lf.high != null); }).map(function (lf) {
+        const u = lf.unit ? " " + lf.unit : "";
+        const crit = [lf.cl != null ? "≤" + lf.cl : "", lf.ch != null ? "≥" + lf.ch : ""].filter(Boolean).join(" o ");
+        return lf.label + " (" + (lf.unit || "sin unidad") + "): normal " + (lf.low != null ? lf.low : "") + "–" + (lf.high != null ? lf.high : "") + u + (crit ? "; CRÍTICO " + crit + u : "");
+      }).concat([
+        "EGO esterasa leucocitaria: >10 u/µL anormal; nitritos positivos = bacteriuria; hematíes >5 u/µL = hematuria",
+        "TP RECHAZADA (o cualquier estudio RECHAZADA): muestra rechazada por el laboratorio, NO es un resultado: recomendar repetir la toma"
+      ]).join("\n");
 
       // BUG-I1 FIX: Build rich clinical context for AI analysis
       const ck_ai = (nd && nd.checklist) || {};
@@ -20382,16 +20599,17 @@ ESPECIALIDAD: ${p?.esp || "Cirugía General"}
 FECHA DE LABS: ${fecha}
 CONTEXTO CLÍNICO ADICIONAL: ${clinCtxStr}
 
-RANGOS DE REFERENCIA (usa EXACTAMENTE estos para clasificar):
+RANGOS DE REFERENCIA Y VALORES CRÍTICOS DEL HOSPITAL (usa EXACTAMENTE estos para clasificar; "critica" SOLO si el valor está en el rango CRÍTICO de esta lista):
 ${labRefRanges}
 
 LABORATORIOS DEL PACIENTE (revisa CADA UNO contra los rangos):
 ${labLines.join("\n")}
 
 INSTRUCCIÓN CRÍTICA: Si CUALQUIER valor está fuera del rango normal (aunque sea levemente), DEBES incluirlo en "alteraciones". No omitas ninguna alteración aunque parezca leve. K<3.5 ES hipokalemia. Plaq<100 ES trombocitopenia.
+RECOMENDACIONES: no conoces el peso, la función renal completa, las alergias ni los anticoagulantes del paciente, así que NO escribas dosis. Da sugerencias para CONSIDERAR (qué evaluar, qué estudio pedir, qué medida valorar según el protocolo del servicio) y nunca indiques tratamientos como obligatorios.
 
 Responde ÚNICAMENTE con JSON compacto (sin markdown, sin saltos de línea innecesarios):
-{"alteraciones":[{"nombre":"nombre","severidad":"critica|moderada|leve","valor":"valor+unidad","interpretacion":"interpretación clínica breve","recomendacion":"tratamiento específico con dosis"}],"resumen":"resumen breve","prioridad":"alta|media|baja"}
+{"alteraciones":[{"nombre":"nombre","severidad":"critica|moderada|leve","valor":"valor+unidad","interpretacion":"interpretación clínica breve","recomendacion":"sugerencia para considerar, sin dosis"}],"resumen":"resumen breve","prioridad":"alta|media|baja"}
 Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
 
 
@@ -27593,7 +27811,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.27-1";
+    const PL_BUILD = "2026.10.27-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -28499,7 +28717,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (pbw) chips.push(`<span class="vm-chip" title="Peso predicho (Devine) con la talla y el sexo">PP ${vpFmt(pbw, 1)} kg</span>`);
       const vtkg = vmVtKg(cl.pm_vent_vt, pbw);
       if (vtkg !== null) chips.push(`<span class="vm-chip${vtkg > 8 ? " vm-hi" : ""}" title="Volumen tidal por kg de peso predicho (meta 6-8 mL/kg, ARDSNet)">VT ${vpFmt(vtkg, 1)} mL/kg</span>`);
-      else if (vpNum(cl.pm_vent_vt) > 0 && !pbw) chips.push(`<span class="vm-chip vm-na" title="Anota la talla (y el sexo en ✏️ Editar) para calcular los mL/kg de peso predicho">📏 falta talla</span>`);
+      else if (vpNum(cl.pm_vent_vt) > 0 && !pbw) chips.push(vpNum(cl.pm_talla) > 100
+        ? `<span class="vm-chip vm-na" title="Registra el sexo en ✏️ Editar: el peso predicho de mujer y de hombre es distinto">⚥ falta sexo</span>`
+        : `<span class="vm-chip vm-na" title="Anota la talla (y el sexo en ✏️ Editar) para calcular los mL/kg de peso predicho">📏 falta talla</span>`);
       const dp = vmDrivingP(cl.pm_vent_pplat, cl.pm_vent_peep);
       if (dp !== null) chips.push(`<span class="vm-chip${dp > 15 ? " vm-hi" : ""}" title="Presión de distensión = Pplat − PEEP (meta ≤ 15 cmH₂O)">ΔP ${vpFmt(dp, 0)}</span>`);
       if (vpNum(cl.pm_vent_pplat) > 30) chips.push(`<span class="vm-chip vm-hi" title="Presión meseta por encima de 30 cmH₂O">Pplat > 30</span>`);
@@ -28565,7 +28785,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           `<option value="enoxaparina"${tvpTipo === "enoxaparina" ? " selected" : ""}>Enoxaparina</option>` +
           `<option value="otro"${tvpTipo === "otro" ? " selected" : ""}>Otro</option>` +
           `</select>` +
-          (tvpTipo === "enoxaparina" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.tvp_dosis || "")}" placeholder="Dosis (ej: 40mg)" data-ck="${k}" data-field="tvp_dosis" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Dosis de Enoxaparina" style="width:100px"/>` : "") +
+          (tvpTipo === "enoxaparina" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.tvp_dosis || "")}" placeholder="Dosis y frecuencia (ej: 40 mg c/24 h)" data-ck="${k}" data-field="tvp_dosis" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Dosis y frecuencia de enoxaparina (pasa tal cual a la nota)" style="width:150px"/>` : "") +
           (tvpTipo === "otro" ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.tvp_otro || "")}" placeholder="Especificar..." data-ck="${k}" data-field="tvp_otro" oninput="updateTvpField(this.dataset.ck,this.dataset.field,this.value)" title="Otra profilaxis TVP" style="width:140px"/>` : "") : "");
 
       // ── Row 2: Herida Qx + NPT ──
