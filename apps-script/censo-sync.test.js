@@ -1279,5 +1279,60 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   check("T23 GET 403: ejecución fallida visible, sin Sync OK y sin escrituras", /GET patients HTTP 403/.test(error) && calls.every((c) => c.m === "GET") && !logs.some((s) => /Sync OK/.test(s)), error);
 }
 
+// ── 24) Un censo idéntico no genera escrituras ni oculta cambios hechos desde la app ────────
+{
+  const original = row('3-101', '26-10001', { edad: '45', dx: 'DX', esp: 'CG', adscrito: 'A', residente: 'R', ingreso: '2026-10-20', dias: 4, estado: 'ESTABLE', seccion: 'PISO', updated_by: 'sheet-sync' });
+  const { sb, calls } = makeSandbox({ cur: [Object.assign({ id: 'a1' }, original)] });
+  sb.syncPatients_('svc', [Object.assign({}, original)]);
+  check('T24 censo idéntico: cero POST de patients y una fila sin cambios', !calls.some(c => c.m === 'POST' && c.u.startsWith('/rest/v1/patients')) && sb._censoWriteStats_.unchanged === 1);
+  calls.length = 0;
+  sb.syncPatients_('svc', [Object.assign({}, original, { dx: 'DX CORREGIDO' })]);
+  check('T24b corrección de captura: se envía solo la fila modificada', calls.some(c => c.m === 'POST' && c.body.length === 1 && c.body[0].dx === 'DX CORREGIDO'));
+  calls.length = 0;
+  sb.syncPatients_('svc', [Object.assign({}, original, { residente: '' })]);
+  check('T24c vaciar una celda también es un cambio', calls.some(c => c.m === 'POST' && c.body[0].residente === ''));
+  const env = makeSandbox({ cur: [Object.assign({ id: 'a1' }, original, { updated_by: 'residente' })] });
+  env.sb.syncPatients_('svc', [Object.assign({}, original)]);
+  check('T24d la propiedad censal sheet-sync se conserva aunque solo cambie updated_by', env.calls.some(c => c.m === 'POST' && c.body[0].updated_by === 'sheet-sync'));
+  const fresh = makeSandbox({ cur: [] });
+  fresh.sb.syncPatients_('svc', [Object.assign({}, original)]);
+  check('T24e un ingreso nuevo nunca se omite por comparación', fresh.calls.some(c => c.m === 'POST' && c.body[0].exp === original.exp));
+}
+
+// ── 25) Una fecha imposible no bloquea el lote ni hereda la fecha de otra persona ──────────
+{
+  const { sb } = makeSandbox({});
+  check('T25 calendario: rechaza día/mes inexistentes y año cero', ['31/02/2026', '29/02/2025', '31/04/26', '2026-13-01', '2026-00-10', '2026-01-00', '0000-01-01'].every(x => sb.toISODate_(x) === ''));
+  check('T25b calendario: acepta bisiestos y años cortos', sb.toISODate_('29/02/2024') === '2024-02-29' && sb.toISODate_('24/10/26') === '2026-10-24' && sb.toISODate_('2000-02-29') === '2000-02-29' && sb.toISODate_('1900-02-29') === '');
+  const header = ['CAMA', 'EXPEDIENTE', 'NOMBRE', 'INGRESO', 'ESPECIALIDAD'];
+  const parsed = sb.parseCenso_([header, ['3-101', '26-10001', 'ANA LOPEZ', '31/02/2026', 'CG']]);
+  const input = sb.toPatientRow_(parsed[0]);
+  check('T25c fecha inválida queda marcada internamente y no se envía a Postgres', input.ingreso === null && input._invalidIngreso && !JSON.stringify(input).includes('_invalidIngreso'));
+  const old = Object.assign({ id: 'a1' }, input, { ingreso: '2026-10-20' });
+  const env = makeSandbox({ cur: [old] });
+  env.sb.syncPatients_('svc', [input]);
+  check('T25d paciente existente: conserva ingreso válido sin reescribir si nada más cambió', input.ingreso === '2026-10-20' && !env.calls.some(c => c.m === 'POST' && c.u.startsWith('/rest/v1/patients')));
+  const newInput = sb.toPatientRow_(parsed[0]);
+  const fresh = makeSandbox({ cur: [] });
+  fresh.sb.syncPatients_('svc', [newInput]);
+  check('T25e nuevo paciente: sincroniza con ingreso null, sin columnas internas', fresh.calls.some(c => c.m === 'POST' && c.body[0].ingreso === null && !('_invalidIngreso' in c.body[0])));
+  const cleared = sb.toPatientRow_(sb.parseCenso_([header, ['3-101', '26-10001', 'ANA LOPEZ', '', 'CG']])[0]);
+  const blank = makeSandbox({ cur: [old] });
+  blank.sb.syncPatients_('svc', [cleared]);
+  check('T25f celda vaciada voluntariamente se envía como null', blank.calls.some(c => c.m === 'POST' && c.body[0].ingreso === null));
+  const fillers = Array.from({length:12}, (_,i)=>row('4-'+(101+i), String(20000+i)));
+  const moved = sb.toPatientRow_(parsed[0]); moved.cama = '3-120';
+  const moveEnv = makeSandbox({cur:[old]});
+  moveEnv.sb.syncPatients_('svc', [moved].concat(fillers));
+  check('T25g cambio de cama conserva ingreso del mismo id, aunque la celda sea inválida', moveEnv.calls.some(c=>c.m==='PATCH'&&c.body.cama==='3-120') && moveEnv.calls.some(c=>c.m==='POST'&&c.u.startsWith('/rest/v1/patients')&&c.body.some(p=>p.cama==='3-120'&&p.ingreso==='2026-10-20')));
+  const other = Object.assign({},old,{exp:'26-99999',nombre:'PEDRO ANTERIOR'});
+  const reassigned = makeSandbox({cur:[other],full:{a1:Object.assign({},other,{notes:[]})}});
+  reassigned.sb.syncPatients_('svc', [sb.toPatientRow_(parsed[0])].concat(fillers));
+  check('T25h cama reasignada nunca hereda ingreso del ocupante anterior', reassigned.calls.some(c=>c.m==='DELETE') && reassigned.calls.some(c=>c.m==='POST'&&c.u.startsWith('/rest/v1/patients')&&c.body.some(p=>p.cama==='3-101'&&p.ingreso===null)));
+  sb.Session.getScriptTimeZone=()=> 'America/Mexico_City';
+  sb.Utilities.formatDate=()=> '2026-10-24';
+  check('T25i fecha nativa de Sheets sigue siendo válida', sb.toISODate_(new Date('2026-10-24T06:00:00Z'))==='2026-10-24');
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

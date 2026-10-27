@@ -322,7 +322,7 @@ const MOCK = `(() => {
       const ek = k.replace(/[^a-zA-Z0-9]/g, '_'); const row = '#ck-row-' + ek + ' ', card = '#card-' + CSS.escape(k) + ' '; const q = (s) => document.querySelector(s);
       return {
         inputs: { pm_fc: q(row + 'input[data-field="pm_fc"]'), pm_ta: q(row + 'input[data-field="pm_ta"]'), pm_dxtx: q(row + 'input[data-field="pm_dxtx"]'), pm_balance: q(row + 'input[data-field="pm_balance"]'),
-          dv_gasto: q(row + 'input.dv-in[data-f="gasto"]'), dv_sitio: q(row + 'input.dv-in[data-f="sitio"]'), dieta: q(row + 'input.ck-dieta[placeholder^="blanda"]'), atb_dias: q(row + 'input[data-field="atb_dias"]'),
+          dv_gasto: q(row + 'input.dv-in[data-f="gasto"]'), dv_sitio: q(row + ':is(input,textarea).dv-in[data-f="sitio"]'), dieta: q(row + 'input.ck-dieta[placeholder^="blanda"]'), atb_dias: q(row + 'input[data-field="atb_dias"]'),
           vp_nore_mlh: q(row + 'input[data-field="vp_nore_mlh"]'), lab: q('#pen-lab-holder input.lab-input'), lab_extra: q('#pen-lab-holder input.lab-extra-val'), cx_sangrado: q(card + 'input.cx-in[data-f="sangrado"]'), mf_edad: q('#mf-edad') },
         tas: { cx_hal: q(card + 'textarea.cx-in-hal'), mf_app: q('#mf-app-modal') },                                   // textareas SIN data-key
         inkTas: { pendientes: q(card + 'textarea[data-field="pendientes"]'), dv_note: q(card + 'textarea.dv-note') } };   // cajas grandes de la ficha (data-key)

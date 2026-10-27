@@ -11,6 +11,17 @@ Editas la hoja → Apps Script (onEdit + cada 5 min) → UPSERT a Supabase (solo
 - **Hoja:** `1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T`, pestaña gid `14179734`
 - **Tabla destino:** `public.patients` (UPSERT por `cama`)
 
+Desde el 24 de octubre, cada corrida compara todas las columnas censales con la lectura actual de
+Supabase y envía únicamente las filas distintas. Un censo idéntico genera **cero UPSERT de pacientes**;
+las correcciones, celdas vaciadas e ingresos nuevos siguen enviándose. Se compara también `updated_by`
+para conservar las reglas de reconciliación. No se usa una caché de la hoja que oculte cambios hechos
+desde la app. Los registros distinguen `capturados`, `upserts` reales y `sin cambios`.
+
+Las fechas imposibles (por ejemplo, `31/02/2026`) ya no invalidan todo el lote. Se conserva el ingreso
+anterior cuando la reconciliación confirmó que es la misma persona; un ingreso nuevo o reasignado se
+sincroniza sin fecha y deja un aviso en los registros. Una celda vaciada expresamente sigue enviando
+`null`. Las notas y la identidad del paciente conservan las protecciones descritas abajo.
+
 ## Regla de oro (lo que NUNCA toca)
 
 El script **solo** escribe columnas censales: `cama, nombre, exp, edad, dx, esp, adscrito,
