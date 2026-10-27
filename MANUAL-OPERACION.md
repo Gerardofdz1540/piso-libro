@@ -425,7 +425,7 @@ sincronizar y hay que esperar al Wi-Fi del hospital; lo escrito no se pierde.
 En la cabecera de cada tarjeta aparece **↩ Regresar** cuando hay algo que deshacer. Cada cambio
 que puede doler guarda antes una copia de la tarjeta: texto de una caja al terminar de escribir,
 quitar una cirugía, un drenaje, unos labs o un estudio, "Recibir guardia", auto-llenar, órdenes
-rápidas y las novedades automáticas. Regresar vuelve un paso; tocarlo otra vez vuelve otro paso
+rápidas. Regresar vuelve un paso; tocarlo otra vez vuelve otro paso
 más (hasta 20 por paciente) y cada regreso se sube como cualquier edición.
 
 Si el regreso fue el error, aparece **↪ Rehacer**: vuelve a dejar la tarjeta como estaba antes
@@ -494,9 +494,10 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
 - **🕓 Cronología** (azul; 19 oct 2026, sustituye a «Entrega / Recibo de guardia», que se confundían):
   UNA sola caja por paciente donde cada guardia anota, con fecha y hora, **lo que pasa y lo que hace**
   (eventos, llamadas, lo que se hizo). El botón **➕ Ahora** agrega un renglón al final con `dd/mm hh:mm GF: `
-  y deja el cursor ahí. La siguiente guardia la lee de arriba abajo. Las novedades de labs críticos, imagen y
-  cultivos se anotan solas con su fecha, y **✨ Resumen** escribe al final un bloque corto con lo que importa
-  (ver "Entrega de guardia que resume"). Lo que había en la caja antigua «Recibido» pasó una sola vez al
+  y deja el cursor ahí. La siguiente guardia la lee de arriba abajo. **Solo tiene lo que escribe la gente**:
+  desde el 27 oct 2026 la app no anota nada sola (ver "Nada automático en las cajas"). **✨ Resumen** muestra en
+  una ventana un resumen corto con lo que importa, sin escribirlo en la caja (ver "Entrega de guardia que
+  resume"). Lo que había en la caja antigua «Recibido» pasó una sola vez al
   principio de la cronología (en orden) y esa caja desapareció; su historial sigue en 🕘 como «Recibido
   (caja antigua)».
 - Las tres cajas de trabajo quedan así: **⚠️ Pendientes** (lo por hacer), **🕓 Cronología** (lo que se va
@@ -844,7 +845,7 @@ registrado. Empieza en la cama 150 y sigue el orden del tablero (piso 3
 por número, luego UCI, UTI y piso 2); con **Ir a cama** se elige desde dónde empezar, y ◀ ▶ (o las
 flechas del teclado) avanzan. La ficha se ajusta sola al tamaño de la pantalla para que no se corte.
 
-El botón **✨ Resumen** de la caja Entrega sigue escribiendo el resumen completo, que además incluye:
+El botón **✨ Resumen** de la Cronología muestra el resumen completo en una ventana de solo lectura, que además incluye:
 
 - **🔪 Quirófano**: si pasó a quirófano hoy o ayer (procedimiento, hallazgos, sangrado, cirujano);
   si no, el día POP de la última cirugía y cuántas previas hay. Cruce quirúrgico si está activo.
@@ -856,24 +857,34 @@ El botón **✨ Resumen** de la caja Entrega sigue escribiendo el resumen comple
   > 2, con flecha de tendencia y el valor anterior. Máximo seis; el resto se cuenta. Nada de
   transcribir todos los analitos.
 - **🆕 Nuevo del día**: lo que se agregó, pidió o llegó hoy o ayer. Se reconoce por los sellos de
-  fecha que ya usa la app (➕ Hoy, el encabezado del día en Pendientes, las novedades automáticas)
+  fecha que ya usa la app (➕ Hoy, el encabezado del día en Pendientes)
   en Pendientes, Manejo, IC, Cultivos y Entrega; además los drenajes colocados hoy/ayer, los
   estudios del visor recién llegados (con su conclusión) y los cultivos de los últimos dos días.
   Por eso conviene tocar ➕ Hoy antes de escribir: lo que no tiene fecha no se puede saber si es nuevo.
 - **📋 Pendientes** abiertos (sin ✓) y los "No olvidar" del paciente.
 
-✨ Resumen agrega el bloque `— Resumen dd/mm hh:mm GF —` al final de la caja; si ya había uno, lo
-reemplaza (lo escrito a mano no se toca). Lo escrito en la caja Entrega se ve en la tarjeta, ya no en
-la vista 📤 Entrega.
+✨ Resumen abre una ventana con el texto (encabezado `— Resumen dd/mm hh:mm GF —`) y un botón **📋 Copiar** por
+si alguien lo quiere pegar en algún lado. **No escribe en la Cronología.** Lo escrito en la Cronología se ve en
+la tarjeta, no en la vista 📤 Entrega.
 
-### Novedades automáticas
+### Nada automático en las cajas (27 oct 2026)
 
-Todo lo que llega solo se anota en la caja **Entrega de guardia**, una línea por novedad con su fecha
-(`13-10-2026: …`): laboratorios nuevos **con valores críticos** (por ejemplo "Anemia severa (Hb 6.2),
-Hiperkalemia severa (K 6.3)"; lo solo "anormal" ya no se anota, se ve en la tabla) y el INR estimado
-cuando es ≥ 1.5, estudios del visor (con la conclusión del reporte, o "reporte pendiente") y cultivos
-(positivo con germen, o sin desarrollo). Cada novedad se escribe una sola vez aunque la app esté
-abierta en varios iPads; lo escrito a mano no se toca.
+Pedido de Gera: «no quiero que pongas nada en las cajitas de manera automática». Antes la app anotaba sola en la
+Cronología una línea por novedad (`13-10-2026: Labs: …`, estudios del RIS, cultivos) y ✨ Resumen escribía su
+bloque al final. Desde la versión 2026.10.27-5:
+
+- La app **ya no escribe nada por su cuenta en ninguna caja**. Los labs críticos, los estudios de imagen y los
+  cultivos se siguen viendo en su sección de la tarjeta, en los avisos («labs nuevos», 🩻) y en la vista 📤 Entrega.
+- ✨ Resumen solo muestra (ver arriba).
+- Las 14 líneas automáticas que ya había (10 pacientes) se quitaron de la base; lo escrito por la gente no se tocó.
+  Cada línea quitada quedó registrada en `guardia_cortes` (motivo «borrado») y en la bitácora (`audit_log`).
+  El script es `scripts/supabase_quitar_auto_cronologia.sql`.
+- La base ya rechazaba esas líneas si alguien las mandaba (`pl_entrega_protegida` → `pl_es_auto_entrega`), así
+  que un iPad con la versión anterior que todavía las agregue solo las ve un momento hasta que se actualiza
+  (la app avisa cuando hay versión nueva).
+- Lo que **sí** sigue escribiendo la app es lo que pide la persona con un botón: ➕ Ahora / ➕ Hoy (fecha y
+  hora), órdenes rápidas, importar el censo o el PDF, la transcripción del lápiz o de una foto que la persona
+  manda convertir. Y la caja antigua «Recibido» pasó una sola vez a la Cronología (texto de la propia gente).
 
 ## INR: siempre visible (octubre 2026)
 

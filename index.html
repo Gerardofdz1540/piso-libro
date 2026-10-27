@@ -9109,8 +9109,6 @@ function plExportBackup() {
           // buildWinlabCultures re-aplica el guard de nombre por encabezado internamente).
           try {
             _winlabCultByK[pid(p)] = buildWinlabCultures(wl, _wlIdent(p));
-            // Cultivos nuevos → línea con fecha en la entrega de guardia (una sola vez por cultivo).
-            if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(pid(p), _entregaItemsFromCultures(_winlabCultByK[pid(p)]));
           } catch (_) {}
           // Cambio mayo 2026: ahora procesamos MÚLTIPLES snapshots (uno por fecha)
           // para soportar 3 días previos del scraper.
@@ -9204,8 +9202,6 @@ function plExportBackup() {
             // de WinLab) no es "labs nuevos" ni va a la entrega de guardia.
             const _recentHist = hist.filter(function (s) { return s && s.fecha && s.fecha >= _wlRecentCut; });
             try { _labNewsAdd(k, _recentHist, _histBefore); } catch (_) {} // aviso "labs nuevos" en tablero, rail y tarjeta
-            // Alteraciones de los labs nuevos → línea con fecha en la entrega de guardia (idempotente).
-            try { if (typeof _entregaAutoAppend === "function") _entregaAutoAppend(k, _entregaItemsFromLabs(_recentHist, _histBefore)); } catch (_) {}
             // Solo labHistory viaja a la nube (fila parcial). Antes cada arranque re-subía la nota
             // COMPLETA de todos los pacientes con match aunque nada cambiara → ~45 eventos Realtime
             // (toasts y re-renders) en cada dispositivo y riesgo de pisar texto ajeno con la copia local.
@@ -15469,9 +15465,6 @@ function plExportBackup() {
       updateCourseCountdown();
       initNoOlvidarSync();
 
-      // Estudios del visor RIS de las últimas 72 h → novedades en la entrega de guardia (idempotente).
-      try { if (patients && patients.length) _entregaAutoFromRis(patients); } catch (e) { safeLog("[entrega auto RIS init]", e); }
-
       // ── WinLab Auto-sync inicial ──────────────────────────────────────────
       // Si el feature flag está activo, en cuanto patients + winlabByExp estén
       // cargados, aplicamos sync para que las tarjetas aparezcan ya con labs
@@ -16816,7 +16809,7 @@ function plExportBackup() {
     // La entrega NO transcribe la tarjeta. Solo lo que la siguiente guardia necesita de un vistazo:
     // si pasó a quirófano, los gastos, labs PUNTUALES (críticos, cambios grandes, INR), lo NUEVO del
     // día (lo que se agregó, pidió o llegó hoy/ayer) y los pendientes abiertos. Mismo resumen para el
-    // botón ✨ Resumen de la tarjeta (texto) y para la vista 📤 Entrega (ficha por paciente).
+    // botón ✨ Resumen de la tarjeta (ventana de solo lectura) y para la vista 📤 Entrega (ficha por paciente).
     const ENTREGA_RESUMEN_HDR = /^— Resumen \d{2}\/\d{2}[^\n]*—\s*$/;
     function _egIsoOffset(n) { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + (n || 0)); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
     function _egDdMm(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || "")); return m ? m[3] + "/" + m[2] : String(iso || ""); }
@@ -17077,122 +17070,47 @@ function plExportBackup() {
       if (R.pend.length) lines.push("📋 Pendientes: " + R.pend.join(" · "));
       return lines.length > 1 ? lines.join("\n") : "";
     }
-    // Quita el bloque "— Resumen … —" (hasta la línea en blanco o el final) para no duplicarlo ni contarlo como novedad.
-    function _entregaSinResumen(text) {
-      const out = []; let skip = false;
-      toSafeString(text).split("\n").forEach(function (l) {
-        if (ENTREGA_RESUMEN_HDR.test(l.trim())) { skip = true; return; }
-        if (skip) { if (l.trim() === "") skip = false; return; }
-        out.push(l);
-      });
-      return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
-    }
-    // ✨ Resumen: escribe (o reemplaza) el bloque de resumen al final de la Entrega; lo escrito a mano no se toca.
+    // ✨ Resumen (27 oct 2026, pedido de Gera: «no quiero que pongas nada en las cajitas de manera automática»): antes
+    // escribía el bloque «— Resumen …» al final de la Cronología. Ahora solo lo MUESTRA en una ventana (con 📋 Copiar por
+    // si alguien lo quiere pegar); la caja no se toca. La base ya descartaba ese bloque, así que solo se veía en el iPad
+    // que lo pidió y luego desaparecía.
     function applyPaseInteligente(k) {
       const p = patients.find(function (x) { return pid(x) === k; });
       if (!p) return;
       const nd = migrateNote(noteData[k] || defaultData());
       const built = entregaResumenTexto(p, nd);
       if (!built) { alert("No hay información para resumir en esta tarjeta."); return; }
-      _undoPush(k, "resumen de entrega", ["entrega"]);
-      const base = _entregaSinResumen(nd.entrega);
-      nd.entrega = (base ? base + "\n\n" : "") + built;
-      _touchBy(nd, "entrega");
-      noteData[k] = nd;
-      _saveNoteNow(k, nd, "entrega");   // marca y desmarca "entrega" (antes quedaba sucio: no llegaba la Entrega de otros y ocultar la app re-subía la vieja)
-      _rerenderCard(k);
-      if (typeof _plToast === "function") _plToast("✨ Resumen de entrega actualizado", "#059669", 1800);
+      let ov = document.getElementById("resumen-overlay");
+      if (!ov) {
+        ov = document.createElement("div");
+        ov.id = "resumen-overlay";
+        ov.className = "modal-bg";
+        ov.style.zIndex = "10000";
+        ov.onclick = function (ev) { if (ev.target === ov) ov.style.display = "none"; };
+        ov.innerHTML = `<div class="modal" style="max-width:640px;width:96%">
+          <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center"><div class="modal-title" style="margin:0">✨ Resumen del día <span id="resumen-cama" style="font-weight:500;color:#64748b"></span></div><button class="modal-close" onclick="document.getElementById('resumen-overlay').style.display='none'" data-testid="resumen-cerrar">✕</button></div>
+          <div style="font-size:11px;color:#64748b;margin:2px 0 8px">Solo para leer: no se escribe en la Cronología.</div>
+          <pre id="resumen-texto" data-testid="resumen-texto" style="white-space:pre-wrap;font:inherit;font-size:13px;line-height:1.45;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;max-height:60vh;overflow:auto;margin:0"></pre>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn-cancel" onclick="_resumenCopiar()" data-testid="resumen-copiar">📋 Copiar</button><button class="btn-save" onclick="document.getElementById('resumen-overlay').style.display='none'">Cerrar</button></div>
+        </div>`;
+        document.body.appendChild(ov);
+      }
+      document.getElementById("resumen-texto").textContent = built;
+      document.getElementById("resumen-cama").textContent = p.cama ? "· cama " + p.cama : "";
+      ov.style.display = "flex";
+    }
+    function _resumenCopiar() {
+      const t = (document.getElementById("resumen-texto") || {}).textContent || "";
+      const ok = function () { if (typeof _plToast === "function") _plToast("📋 Resumen copiado", "#059669", 1600); };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, function () { if (typeof _plToast === "function") _plToast("No se pudo copiar: selecciona el texto y cópialo", "#d97706", 2500); });
+      } catch (_) {}
     }
 
-    // ── NOVEDADES AUTOMÁTICAS EN LA ENTREGA DE GUARDIA (13 oct 2026) ───────────────────
-    // Todo lo nuevo que llega solo (labs de WinLab con alteraciones, estudios del visor RIS,
-    // cultivos) se anota en la caja "Entrega de guardia" como "dd-mm-aaaa: texto", una sola vez.
-    // Idempotente entre dispositivos: cada novedad lleva un id que se guarda en
-    // checklist.__entrega_auto (viaja con la nota) y además se omite si la línea ya está escrita.
-    const ENTREGA_AUTO_KEY = "__entrega_auto";
-    function _entregaFmtFecha(iso) {
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
-      if (m) return m[3] + "-" + m[2] + "-" + m[1];
-      const dm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(iso || ""));   // fecha del RIS sin normalizar
-      if (dm) return dm[1].padStart(2, "0") + "-" + dm[2].padStart(2, "0") + "-" + dm[3];
-      const d = new Date(); return String(d.getDate()).padStart(2, "0") + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + d.getFullYear();
-    }
-    // items: [{ id, fecha (AAAA-MM-DD), text }] → líneas nuevas agregadas (0 si nada)
-    function _entregaAutoAppend(k, items) {
-      if (!k || !Array.isArray(items) || !items.length) return 0;
-      const nd = getNote(k);
-      if (!nd.checklist) nd.checklist = {};
-      const reg = Array.isArray(nd.checklist[ENTREGA_AUTO_KEY]) ? nd.checklist[ENTREGA_AUTO_KEY].slice() : [];
-      const cur = toSafeString(nd.entrega);
-      const lines = [];
-      items.forEach(function (it) {
-        if (!it || !it.id || !it.text) return;
-        if (reg.indexOf(it.id) >= 0) return;
-        const line = _entregaFmtFecha(it.fecha) + ": " + String(it.text).replace(/\s+/g, " ").trim();
-        reg.push(it.id);
-        if (cur.indexOf(line) >= 0 || lines.indexOf(line) >= 0) return;
-        lines.push(line);
-      });
-      if (reg.length > 150) reg.splice(0, reg.length - 150);
-      if (!lines.length) {
-        // Solo cambió el registro de ids: guardar sin tocar el texto.
-        nd.checklist[ENTREGA_AUTO_KEY] = reg;
-        noteData[k] = nd; _saveNoteNow(k, nd, "ck_entrega_auto");
-        return 0;
-      }
-      _undoPush(k, "novedades automáticas en entrega (" + lines.length + ")", ["entrega"]);
-      nd.checklist[ENTREGA_AUTO_KEY] = reg;
-      nd.entrega = cur ? (cur.replace(/\s+$/, "") + "\n" + lines.join("\n")) : lines.join("\n");
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("entrega"); _dirtyFields[k].add("ck_entrega_auto");
-      noteData[k] = nd;
-      saveNote(k, nd);
-      _dirtyFields[k].delete("entrega"); _dirtyFields[k].delete("ck_entrega_auto");
-      try {
-        const card = document.getElementById("card-" + k);
-        if (card && !card.contains(document.activeElement)) {
-          const ta = card.querySelector("textarea[data-field='entrega']");
-          if (ta) ta.value = nd.entrega;
-        }
-      } catch (_) {}
-      return lines.length;
-    }
-    // Labs: valores CRÍTICOS (tabla única de LAB_FIELDS) de los analitos NUEVOS o que cambiaron en el sync.
-    function _entregaItemsFromLabs(histAfter, histBefore) {
-      const before = {};
-      (histBefore || []).forEach(function (s) { if (s && s.fecha) before[s.fecha] = s.labs || {}; });
-      const labelMap = {};
-      if (typeof LAB_FIELDS !== "undefined" && Array.isArray(LAB_FIELDS)) LAB_FIELDS.forEach(function (f) { labelMap[f.key] = f.label; });
-      const out = [];
-      (histAfter || []).forEach(function (s) {
-        if (!s || !s.fecha || !s.labs) return;
-        const b = before[s.fecha] || {};
-        const found = [];
-        Object.keys(s.labs).forEach(function (key) {
-          if (key.indexOf("micro_") === 0 || key.indexOf("ego_") === 0 || key === "fecha_labs") return;
-          const v = s.labs[key];
-          if (v === undefined || v === null || String(v).trim() === "") return;
-          if (String(b[key] === undefined || b[key] === null ? "" : b[key]) === String(v)) return; // ya estaba igual
-          const num = parseLabNumber(v);
-          // Solo lo PUNTUAL (oct 2026): valores críticos. Lo "anormal" ya se ve en la tabla; aquí estorbaba.
-          if (!Number.isFinite(num) || !labCritOf(key, num)) return;
-          const q = labQuick(key, num);
-          found.push({ key: key, sev: "crit", title: String((q && q.title) || "Valor crítico").replace(/\s*[—-]\s*.*$/, "").trim(), val: String(v).trim() });
-        });
-        // INR que WinLab no reporta: estimado TP ÷ testigo ≥ 1.5 (decide cirugías), una vez por valor.
-        try {
-          const io = inrOf(s.labs), bio = inrOf(b);
-          if (io && io.est && io.v >= 1.5 && !(bio && bio.txt === io.txt)) found.push({ key: "inr", sev: labCritOf("inr", io.v) ? "crit" : "abn", title: "INR estimado " + io.txt + " (TP ÷ testigo)", val: "", plain: true });
-        } catch (_) {}
-        if (!found.length) return;
-        found.sort(function (a, b2) { return (a.sev === "crit" ? 0 : 1) - (b2.sev === "crit" ? 0 : 1); });
-        const shown = found.slice(0, 4).map(function (f) { return f.plain ? f.title : f.title + " (" + (labelMap[f.key] || f.key) + " " + f.val + ")"; });
-        const extra = found.length - shown.length;
-        out.push({ id: "lab:" + s.fecha + ":" + found.map(function (f) { return f.key; }).sort().join(","), fecha: s.fecha,
-          text: "Labs: " + shown.join(", ") + (extra > 0 ? " y " + extra + " más" : "") });
-      });
-      return out;
-    }
+    // Novedades automáticas en la Cronología: QUITADAS (27 oct 2026, pedido de Gera: «no quiero que pongas nada en las
+    // cajitas de manera automática»). Antes los labs críticos, los estudios del RIS y los cultivos nuevos se anotaban solos
+    // como «dd-mm-aaaa: …» en nd.entrega. Ahora la app nunca escribe en una caja por su cuenta: esas novedades se ven en su
+    // sección de la tarjeta, en los avisos y en la vista 📤 Entrega. La base también las rechaza (pl_entrega_protegida).
     function _risConclusion(txt) {
       const t = String(txt || "").replace(/\s+/g, " ").trim();
       if (!t) return "";
@@ -17200,21 +17118,6 @@ function plExportBackup() {
       let c = m ? t.slice(m.index + m[0].length) : t;
       c = c.replace(/\b(ATENTAMENTE\b.*|DR[A]?\.?\s+[A-ZÁÉÍÓÚÑ]{2,}.*|M[EÉ]DICO RADI[OÓ]LOGO.*|C[EÉ]DULA.*)$/i, "").trim();
       return c.length > 240 ? c.slice(0, 237).replace(/\s+\S*$/, "") + "…" : c;
-    }
-    // Estudios del visor RIS: nuevos (robot en las últimas 72 h) y los que acaban de recibir reporte.
-    function _entregaItemsFromRis(list) {
-      const since = Date.now() - 72 * 3600e3;
-      const out = [];
-      (list || []).forEach(function (r) {
-        if (!r || !r.id) return;
-        const sc = r.scraped_at ? new Date(r.scraped_at).getTime() : 0;
-        if (!sc || sc < since) return;
-        const titulo = [r.modalidad, r.estudios && r.estudios !== "*" ? r.estudios : ""].filter(Boolean).join(" ") || "Estudio de imagen";
-        const rep = toSafeString(r.reporte).trim();
-        if (rep) out.push({ id: "ris:" + r.id + ":rep", fecha: r.fecha, text: titulo + " (RIS): " + _risConclusion(rep) });
-        else out.push({ id: "ris:" + r.id, fecha: r.fecha, text: titulo + " (RIS): estudio realizado, reporte pendiente" });
-      });
-      return out;
     }
     // Texto de un cultivo para la entrega / la nota: "Urocultivo POSITIVO a Klebsiella oxytoca (carbapenemasa KPC)
     // (S: Amikacina; R: Ertapenem, Meropenem)"; con varios gérmenes, cada uno con su antibiograma entre corchetes.
@@ -17237,20 +17140,6 @@ function plExportBackup() {
         body = c.organismo + (c.ufc ? " " + c.ufc : "") + (a ? " (" + a + ")" : "");
       }
       return c.tipo + " POSITIVO a " + body;
-    }
-    function _entregaItemsFromCultures(cults) {
-      const since = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
-      return (cults || []).filter(function (c) { return c && c.fecha && c.fecha >= since && !c.pendiente; }).map(function (c) {
-        const txt = _cultTexto(c, false);
-        const hasAb = /\bS: |\bR: /.test(txt);
-        // El id incluye el antibiograma: cuando el PDF llega después del "POSITIVO" de la tabla, se anota la línea completa.
-        return { id: "cult:" + c.fecha + "|" + c.tipo + "|" + c.organismo + (hasAb ? "|ab" : ""), fecha: c.fecha, text: txt };
-      });
-    }
-    function _entregaAutoFromRis(pts) {
-      (pts || patients || []).forEach(function (p) {
-        try { const items = _entregaItemsFromRis(risForPatient(p)); if (items.length) _entregaAutoAppend(pid(p), items); } catch (e) { safeLog("entrega auto RIS:", e); }
-      });
     }
 
     // ── No olvidar por paciente ────────────────────────────────────────
@@ -19409,7 +19298,7 @@ function plExportBackup() {
         ${renderPendList(nd, k)}
       </div>
       <!-- 🕓 Cronología (19 oct 2026): UNA caja donde cada guardia anota, con fecha y hora, lo que pasa y lo que hace
-           (las novedades de labs/imagen/cultivos se anotan solas). La siguiente guardia la lee de arriba abajo; lo por
+           (solo lo que escribe la gente: desde el 27 oct 2026 la app no anota nada sola). La siguiente guardia la lee de arriba abajo; lo por
            hacer va en ⚠️ Pendientes y lo que no cabe en ninguna, en 🗂️ Otros. Sustituye a Entrega/Recibido: lo que había
            en «Recibido» pasó delante de lo de Entrega (_cronoMigrar, una vez). Dato: nd.entrega. -->
       <div class="fc-guardia fc-crono">
@@ -19422,7 +19311,7 @@ function plExportBackup() {
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
           <span>🕓 Cronología de guardias${_byChip(nd, "entrega")}</span>
           <span style="display:flex;gap:4px;align-items:center">
-            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Escribir o actualizar el resumen del día: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (lo escrito a mano no se toca)">✨ Resumen</button>
+            <button class="pase-inteligente-btn" style="margin:0" data-pikey="${k}" onclick="applyPaseInteligente(this.dataset.pikey)" title="Ver el resumen del día: quirófano, gastos, labs puntuales, lo nuevo del día y pendientes (solo se muestra; no se escribe en la caja)">✨ Resumen</button>
             ${histBtn(k, "entrega")}
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Cronología de guardias')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
@@ -19724,7 +19613,6 @@ function plExportBackup() {
         if (affected.length) {
           const nuevoRep = nr.reporte && !(prev && prev.reporte);
           if (!prev || nuevoRep || !!nr.critico !== !!(prev && prev.critico)) _showRTToast("🩻 Estudio de imagen " + (nr.reporte ? "con reporte" : "nuevo") + ": " + affected.map(p => p.cama || p.exp).join(", "));
-          _entregaAutoFromRis(affected);
         }
         _refreshJumpBar();
       } catch (err) { safeLog("handleRisChange:", err); }
@@ -28230,7 +28118,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.27-4";
+    const PL_BUILD = "2026.10.27-5";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

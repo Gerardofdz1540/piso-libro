@@ -90,7 +90,7 @@ const MOCK = `(() => {
     && e2.inrRowEmpty === 'INR—' && e2.tpHidden
     && e2.cellPh === '≈1.59' && e2.cellCls === 'lab-input abn' && /INR estimado/.test(e2.cellTitle) && /↑0\.4/.test(e2.cellTrend), JSON.stringify(e2));
 
-  // ── E3: resumen de entrega — construcción, texto, botón ✨ Resumen idempotente ──
+  // ── E3: resumen de entrega — construcción, texto, botón ✨ Resumen (solo se muestra; no escribe en la Cronología) ──
   const e3 = await page.evaluate(() => {
     const k = pid(patients[0]); const nd = getNote(k); const ck = nd.checklist;
     const hoy = _egIsoOffset(0), ayer = _egIsoOffset(-1);
@@ -115,11 +115,17 @@ const MOCK = `(() => {
     const lines = _egLineasFechadas(nd.pendientes);
     const R = buildEntregaResumen(patients[0], nd);
     const txt = entregaResumenTexto(patients[0], nd);
+    _rerenderCard(k);
     const btn = document.querySelector('#card-' + CSS.escape(k) + ' .pase-inteligente-btn');
+    // ✨ Resumen (27 oct 2026): solo se MUESTRA en una ventana; la Cronología no se toca.
     applyPaseInteligente(k); const e1 = getNote(k).entrega;
+    const ov = document.getElementById('resumen-overlay'); const vis = !!(ov && ov.style.display === 'flex');
+    const shown = (document.getElementById('resumen-texto') || {}).textContent || '';
+    if (ov) ov.style.display = 'none';
     applyPaseInteligente(k); const e2 = getNote(k).entrega;
+    if (ov) ov.style.display = 'none';
     const ta = document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="entrega"]');
-    return { hoy, ayer, dmH: dm(hoy), dmA: dm(ayer), lines, R, txt, orig, e1, e2, taVal: ta ? ta.value : null, sin: _entregaSinResumen(e2), btn: btn ? btn.textContent.trim() : null, alerts: window.__alerts.length };
+    return { hoy, ayer, dmH: dm(hoy), dmA: dm(ayer), lines, R, txt, orig, e1, e2, vis, shown, taVal: ta ? ta.value : null, btn: btn ? btn.textContent.trim() : null, alerts: window.__alerts.length };
   });
   await page.waitForTimeout(1200);
   const tl = e3.txt.split('\n');
@@ -139,13 +145,13 @@ const MOCK = `(() => {
     txtNuevo: tl[5] === '🆕 Nuevo: ' + e3.dmH + ' Pendientes: TAC de control · ' + e3.dmH + ' IC: IC a nefrología por LRA · ' + e3.dmA + ' se solicitó TAC de control · ' + e3.dmA + ' US (RIS): estudio realizado, reporte pendiente · ' + e3.dmH + ' se colocó Saratoga I · ' + e3.dmH + ' CT TAC ABDOMEN: COLECCIÓN SUBFRÉNICA DE 6 CM.',
     txtPend: tl[6] === '📋 Pendientes: TAC de control · Valoración por nutrición · No olvidar: Pedir CE',
     btn: e3.btn === '✨ Resumen',
-    apply1: e3.e1.startsWith(e3.orig + '\n\n— Resumen ') && e3.e1.split('\n').slice(-6).join('\n') === tl.slice(1).join('\n'),
-    idem: (e3.e2.match(/— Resumen /g) || []).length === 1 && e3.e2.startsWith(e3.orig + '\n\n— Resumen ') && e3.sin === e3.orig && e3.taVal === e3.e2 && e3.alerts === 0,
-    // la Entrega viaja dentro de checklist.__pl_note_meta (buildChecklistForSync), no como columna propia
-    posted: calls.some(c => (c.m === 'POST' || c.m === 'PATCH') && /\/rest\/v1\/notes/.test(c.url) && (function (b) { b = Array.isArray(b) ? b[0] : b; const m = b && b.checklist && b.checklist.__pl_note_meta; return !!(m && typeof m.entrega === 'string' && /— Resumen /.test(m.entrega)); })(c.body))
+    soloVer: e3.vis && e3.shown === e3.txt && e3.e1 === e3.orig,
+    sinEscribir: e3.e2 === e3.orig && e3.taVal === e3.orig && e3.alerts === 0,
+    // la Entrega viaja dentro de checklist.__pl_note_meta (buildChecklistForSync), no como columna propia: el resumen NO se sube
+    noSubido: !calls.some(c => (c.m === 'POST' || c.m === 'PATCH') && /\/rest\/v1\/notes/.test(c.url) && (function (b) { b = Array.isArray(b) ? b[0] : b; const m = b && b.checklist && b.checklist.__pl_note_meta; return !!(m && typeof m.entrega === 'string' && /— Resumen /.test(m.entrega)); })(c.body))
   };
   const bad3 = Object.keys(c3).filter(x => !c3[x]);
-  check('E3 resumen de entrega: renglones por fecha (sellos ➕ Hoy / "dd/mm —"), 🔪 HOY pasó a quirófano (hallazgos, sangrado, cirujano, +1 previa), ⚠️ norepinefrina en mcg/kg/h + ayuno, 💧 gastos (drenajes con característica y día, uresis, balance), 🧪 labs PUNTUALES (crítico, cambio grande, lactato, INR estimado con tendencia y valor previo; nada de transcribir todo), 🆕 nuevo del día (pendiente, IC, lo pedido ayer, RIS, drenaje colocado hoy, TAC con conclusión), 📋 pendientes abiertos + No olvidar; botón ✨ Resumen escribe el bloque al final sin tocar lo escrito y al repetirlo lo REEMPLAZA (uno solo); se guarda en la nube',
+  check('E3 resumen de entrega: renglones por fecha (sellos ➕ Hoy / "dd/mm —"), 🔪 HOY pasó a quirófano (hallazgos, sangrado, cirujano, +1 previa), ⚠️ norepinefrina en mcg/kg/h + ayuno, 💧 gastos (drenajes con característica y día, uresis, balance), 🧪 labs PUNTUALES (crítico, cambio grande, lactato, INR estimado con tendencia y valor previo; nada de transcribir todo), 🆕 nuevo del día (pendiente, IC, lo pedido ayer, RIS, drenaje colocado hoy, TAC con conclusión), 📋 pendientes abiertos + No olvidar; botón ✨ Resumen lo muestra en una ventana de solo lectura y la Cronología queda igual (en pantalla y en la nota)',
     bad3.length === 0, 'fallan: ' + bad3.join(', ') + ' :: ' + JSON.stringify({ R: e3.R, txt: e3.txt, e2: e3.e2, lines: e3.lines, notesCalls: calls.filter(c => /\/rest\/v1\/notes/.test(c.url)).map(c => c.m + ' ' + c.url + ' ' + JSON.stringify(c.body || null).slice(0, 300)) }));
 
   // ── E4: vista 📤 Entrega — SOLO Diagnóstico, signos vitales, gastos, laboratorios, cultivos e imagen ──
@@ -186,17 +192,8 @@ const MOCK = `(() => {
   check('E4 vista Entrega: SOLO 🩺 Diagnóstico + ❤️ signos vitales del pase (TA con PAM, FC, FR, T, SaO₂ con O₂; si hoy no hay, los del último día del historial con su fecha; si nada, "sin registro") + 💧 gastos + 🧪 laboratorios puntuales (chips) + 🦠 cultivos + 🩻 estudios de imagen con conclusión; nada de quirófano, avisos, novedades, pendientes ni caja escrita; sin tabla de analitos',
     bad4.length === 0, 'fallan: ' + bad4.join(', ') + ' :: ' + JSON.stringify(e4));
 
-  // ── E5: novedades automáticas de labs: solo CRÍTICOS (+ INR estimado ≥ 1.5), idempotente ──
-  const e5 = await page.evaluate(() => {
-    const ayer = _egIsoOffset(-1);
-    const before = []; const after = [{ fecha: ayer, labs: { hb: '6.2', glu: '160', k: '5.5', tp: '19.8', tp_testigo: '13' } }];
-    const items = _entregaItemsFromLabs(after, before);
-    const again = _entregaItemsFromLabs(after, after);
-    const soloAbn = _entregaItemsFromLabs([{ fecha: ayer, labs: { glu: '160', k: '5.5', tp: '15', tp_testigo: '13' } }], []);
-    return { items: items.map(i => i.text), again: again.length, soloAbn: soloAbn.length };
-  });
-  check('E5 novedades automáticas de labs: anota los críticos ("Anemia grave (Hb 6.2)") y el INR estimado ≥ 1.5; los solo anormales (glucosa 160, K 5.5, INR 1.15) ya no ensucian la entrega; nada cambió → nada',
-    e5.items.length === 1 && e5.items[0] === 'Labs: Anemia grave (Hb 6.2), INR estimado 1.52 (TP ÷ testigo)' && e5.again === 0 && e5.soloAbn === 0, JSON.stringify(e5));
+  // (E5 probaba las novedades automáticas de labs en la Cronología; se quitaron el 27 oct 2026 por pedido de Gera. Que la
+  //  caja ya no reciba nada solo lo prueba app_nota N2 por los caminos reales: sync de WinLab, Realtime del RIS y ✨ Resumen.)
 
   // ── E6: 📽 Modo Proyector — empieza en la cama 150 (no en UCI), selector para empezar en otra, ficha encuadrada
   //        (no se corta) con los bloques de Entrega y TODOS los laboratorios del último control ──
