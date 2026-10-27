@@ -1334,5 +1334,20 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   check('T25i fecha nativa de Sheets sigue siendo válida', sb.toISODate_(new Date('2026-10-24T06:00:00Z'))==='2026-10-24');
 }
 
+// ── T26: versión instalada (27 oct 2026, hallazgo 58): se reporta una vez al día y nunca detiene el sync ──
+{
+  const st = { props: {}, handler: (m, u) => (u === '/rest/v1/rpc/pl_reportar_version' ? { code: 200, body: '"ok"' } : null) };
+  const r = makeSandbox(st);
+  r.sb.reportarVersion_('svc', 'censo-sync', r.sb.CENSO_SYNC_VERSION);
+  r.sb.reportarVersion_('svc', 'censo-sync', r.sb.CENSO_SYNC_VERSION);   // misma corrida del día: no repite
+  const rpc = r.calls.filter(c => c.u === '/rest/v1/rpc/pl_reportar_version');
+  check('T26a versión: una sola llamada al día a pl_reportar_version con la constante del archivo',
+    rpc.length === 1 && rpc[0].m === 'POST' && rpc[0].body.p_pieza === 'censo-sync' && /^\d{4}\.\d{2}\.\d{2}/.test(rpc[0].body.p_version) && rpc[0].body.p_version === r.sb.CENSO_SYNC_VERSION, JSON.stringify(rpc));
+  const st2 = { props: {}, handler: (m, u) => (u === '/rest/v1/rpc/pl_reportar_version' ? { code: 404, body: 'no existe' } : null) };
+  const r2 = makeSandbox(st2);
+  let lanzo = false; try { r2.sb.reportarVersion_('svc', 'censo-sync', 'x'); } catch (_) { lanzo = true; }
+  check('T26b si Supabase aún no tiene la función (404): no lanza, no marca el día (reintenta en la siguiente corrida)', !lanzo && !st2.props.VERSION_REPORTADA, JSON.stringify(st2.props));
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

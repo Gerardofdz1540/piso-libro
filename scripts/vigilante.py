@@ -7,10 +7,12 @@ pacientes (la bitácora de GitHub Actions es pública).
 
 Límites (horas): el robot de labs corre a las 05:00, 12:30 y 20:07 (hueco máximo 8 h 53 min + la corrida); el del RIS
 cada 2 h (respaldo de GitHub cada 4-6 h); la descarga del Doc de indicaciones cada 15 min; el censo cambia varias veces
-al día (si nada cambia en 18 h, el script del censo probablemente se detuvo)."""
+al día (si nada cambia en 18 h, el script del censo probablemente se detuvo). Además: la última respuesta del worker a
+cada disparo de Supabase (winlab_dispatch_log) y que sigan puestas las protecciones de la base (pl_salud_catalogo)."""
 import datetime as dt
 import json
 import os
+import re
 import sys
 import urllib.request
 
@@ -58,6 +60,104 @@ def edad_horas(ts):
     return round((AHORA - t).total_seconds() / 3600, 1)
 
 
+def revisar_disparos(filas):
+    """Último disparo de cada robot desde Supabase (winlab_dispatch_log). El worker responde 200 con dispatched:true o
+    already_pending; cualquier otra cosa (401 token, 502 GitHub rechazó: GITHUB_TOKEN vencido, 503 sin token) es ROJO.
+    Para el RIS un 404 solo avisa: es el worker viejo sin /api/scrape-ris (el cron de GitHub sigue de respaldo)."""
+    errores = 0
+    for nombre, filtro in (("Disparo del robot de labs", "not.like.RIS*"), ("Disparo del robot del RIS", "like.RIS*")):
+        try:
+            # checked_at: ya se recogió la respuesta (winlab_dispatch_collect, cada 15 min); sin status_code = timeout.
+            r = get(f"/rest/v1/winlab_dispatch_log?select=ts,reason,status_code,response,error_msg&reason={filtro}"
+                    "&checked_at=not.is.null&order=ts.desc&limit=1")
+        except Exception as e:
+            filas.append((nombre, f"no se pudo leer ({type(e).__name__})", "", "⚠️"))
+            continue
+        if not r:
+            filas.append((nombre, "sin disparos registrados", "", "⚠️" if "RIS" in nombre else "❌"))
+            if "RIS" not in nombre:
+                errores += 1
+                print(f"::error title={nombre}::No hay disparos con respuesta en winlab_dispatch_log.")
+            continue
+        d = r[0]
+        cod, resp = d.get("status_code"), str(d.get("response") or "")
+        ok = cod == 200 and ('"dispatched":true' in resp.replace(" ", "") or "already_pending" in resp)
+        h = edad_horas(d.get("ts")) if d.get("ts") else None
+        estado = (f"HTTP {cod}" if cod is not None else f"sin respuesta ({d.get('error_msg') or '?'})") + f" hace {h} h"
+        if ok:
+            filas.append((nombre, estado, "HTTP 200", "✅"))
+        elif "RIS" in nombre and cod == 404:
+            filas.append((nombre, estado, "HTTP 200", "⚠️"))
+            print(f"::warning title={nombre}::El worker publicado no tiene /api/scrape-ris (HTTP 404). "
+                  "Pega cloudflare-worker/index.js en Cloudflare (worker piso-libro-ai). Mientras, sigue el cron de GitHub.")
+        else:
+            errores += 1
+            filas.append((nombre, estado, "HTTP 200", "❌"))
+            print(f"::error title={nombre} falló::{estado}. 401 = token del worker (config.worker_config); "
+                  "502/503 = GITHUB_TOKEN del worker vencido o sin permiso actions:write. Ver «Llaves y vencimientos» en el manual.")
+    return errores
+
+
+def revisar_catalogo(filas):
+    """Protecciones de la base (pl_salud_catalogo): triggers de notas y pacientes, RLS, políticas y trabajos de pg_cron."""
+    try:
+        r = post("/rest/v1/rpc/pl_salud_catalogo", {}) or {}
+    except Exception as e:
+        filas.append(("Protecciones de la base", f"no se pudo revisar ({type(e).__name__})", "", "⚠️"))
+        return 0
+    faltan = r.get("faltan") or []
+    if r.get("ok") and not faltan:
+        filas.append(("Protecciones de la base", f"{r.get('revisados', '?')} revisadas", "todas puestas", "✅"))
+        return 0
+    filas.append(("Protecciones de la base", f"faltan {len(faltan)}", "todas puestas", "❌"))
+    print("::error title=Falta una protección de la base::" + "; ".join(str(x) for x in faltan)[:900]
+          + ". Revisa los scripts/*.sql del repo (cada uno dice qué instala) antes de seguir usando la app.")
+    return 1
+
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Pieza (como la reporta pl_reportar_version) → archivo del repo y la constante con su versión.
+APPS_SCRIPT = [("censo-sync", "apps-script/censo-sync.gs", "CENSO_SYNC_VERSION", "el script del censo («Proyecto sin título»)", 2),
+               ("registro", "apps-script/registro-pacientes.gs", "REGISTRO_VERSION", "el script «Registro de pacientes»", 3)]
+
+
+def version_repo(archivo, constante):
+    try:
+        with open(os.path.join(RAIZ, archivo), encoding="utf-8") as f:
+            m = re.search(r"var\s+" + constante + r"\s*=\s*'([^']+)'", f.read())
+        return m.group(1) if m else None
+    except OSError:
+        return None
+
+
+def revisar_versiones(filas):
+    """Los Apps Script se pegan a mano (hallazgo 58): cada uno reporta su versión una vez al día (config «versiones»).
+    Si no coincide con la del repositorio, falta pegarlo; si no reporta en días, quizá se detuvo. Solo avisa (amarillo)."""
+    try:
+        r = get("/rest/v1/config?select=value&key=eq.versiones")
+        vers = (r[0].get("value") if r else None) or {}
+    except Exception as e:
+        filas.append(("Versiones de los Apps Script", f"no se pudo leer ({type(e).__name__})", "", "⚠️"))
+        return
+    for pieza, archivo, constante, quien, dias in APPS_SCRIPT:
+        esperada = version_repo(archivo, constante)
+        d = vers.get(pieza) or {}
+        instalada, visto = d.get("version"), d.get("visto")
+        h = edad_horas(visto) if visto else None
+        nombre = f"Versión de {archivo.split('/')[-1]}"
+        if not instalada:
+            filas.append((nombre, "aún no la reporta", esperada or "?", "⚠️"))
+            print(f"::warning title={nombre}::{quien} todavía no reporta su versión: pega {archivo} del repositorio (versión {esperada}).")
+        elif esperada and instalada != esperada:
+            filas.append((nombre, f"instalada {instalada}", esperada, "⚠️"))
+            print(f"::warning title={nombre} vieja::{quien} tiene la versión {instalada} y el repositorio la {esperada}: pega {archivo}.")
+        elif h is not None and h > 24 * dias:
+            filas.append((nombre, f"{instalada}, sin reportar hace {h} h", esperada or "?", "⚠️"))
+            print(f"::warning title={nombre} sin reportar::{quien} no reporta desde hace {h} h: revisa sus ejecuciones y sus activadores.")
+        else:
+            filas.append((nombre, instalada, esperada or "?", "✅"))
+
+
 def main():
     if not URL or not KEY:
         print("::error title=Vigilante::Faltan SUPABASE_URL o SUPABASE_SERVICE_KEY")
@@ -88,6 +188,9 @@ def main():
             print(f"::warning title=Base creciendo::{mb} MB de {lim}. Ver «Espacio en la nube» en el manual.")
     except Exception as e:
         filas.append(("Tamaño de la base", f"no se pudo leer ({type(e).__name__})", "", "⚠️"))
+    errores += revisar_disparos(filas)
+    errores += revisar_catalogo(filas)
+    revisar_versiones(filas)
     resumen = "### Vigilante del sistema\n\n| Pieza | Última señal | Límite | |\n|---|---|---|---|\n" + "\n".join(f"| {a} | {b} | {c} | {d} |" for a, b, c, d in filas) + "\n"
     print(resumen)
     if os.environ.get("GITHUB_STEP_SUMMARY"):

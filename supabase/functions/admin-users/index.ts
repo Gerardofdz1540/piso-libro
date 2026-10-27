@@ -2,7 +2,9 @@
 // Panel de usuarios de la app. Solo responde a cuentas con role='admin' y status='active' en public.app_users.
 // Usa la service_role key que Supabase inyecta en las Edge Functions (nunca sale al navegador).
 // Acciones: list, invite, activar_registro, set_role, set_status, set_nombre, temp_password,
-//           recovery_link, recovery_email, delete_user. Todas quedan en public.audit_log.
+//           recovery_link, recovery_email, delete_user, set_acceso_hasta. Todas quedan en public.audit_log.
+// 27 oct 2026: una contraseña dada por el administrador (al crear la cuenta o «🔑 Contraseña temporal») marca la cuenta
+// con debe_cambiar_pwd y la app pide una nueva al entrar. acceso_hasta = fin de rotación (el panel avisa cuando pasa).
 // Desplegada en el proyecto vkxplmrzyqlamxpbtmes con verify_jwt=true (Supabase → Edge Functions → admin-users).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.46.1";
@@ -66,7 +68,7 @@ Deno.serve(async (req: Request) => {
     const { data } = await admin.from("app_users").select("email").eq("id", uid).maybeSingle();
     return data?.email ?? null;
   };
-  const needsId = ["activar_registro", "set_role", "set_status", "set_nombre", "temp_password", "recovery_link", "recovery_email", "delete_user"];
+  const needsId = ["activar_registro", "set_role", "set_status", "set_nombre", "temp_password", "recovery_link", "recovery_email", "delete_user", "set_acceso_hasta"];
   if (needsId.includes(action) && !isUuid(id)) return json(400, { error: "Falta el id de la cuenta" });
 
   try {
@@ -97,7 +99,7 @@ Deno.serve(async (req: Request) => {
         const { data: created, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { nombre } });
         if (error || !created?.user) return json(400, { error: error?.message || "No se pudo crear la cuenta" });
         const uid = created.user.id;
-        const { error: e2 } = await admin.from("app_users").upsert({ id: uid, email, nombre, role, status: "active", created_by: caller.id, updated_at: now() });
+        const { error: e2 } = await admin.from("app_users").upsert({ id: uid, email, nombre, role, status: "active", debe_cambiar_pwd: true, created_by: caller.id, updated_at: now() });
         if (e2) throw e2;
         await audit("ADMIN:invitar", { id: uid, email }, { role });
         return json(200, { ok: true, id: uid, email, temp_password: password });
@@ -148,6 +150,7 @@ Deno.serve(async (req: Request) => {
         const email = await targetEmail(id);
         const { error } = await admin.auth.admin.updateUserById(id, { password });
         if (error) return json(400, { error: error.message });
+        await admin.from("app_users").update({ debe_cambiar_pwd: true, updated_at: now() }).eq("id", id);
         await audit("ADMIN:contrasena temporal", { id, email });
         return json(200, { ok: true, temp_password: password });
       }
@@ -175,6 +178,15 @@ Deno.serve(async (req: Request) => {
         const { error } = await admin.auth.admin.deleteUser(id);
         if (error) return json(400, { error: error.message });
         await audit("ADMIN:borrar cuenta", { id, email });
+        return json(200, { ok: true });
+      }
+      case "set_acceso_hasta": {
+        const fecha = clean(body.fecha, 10);
+        if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return json(400, { error: "Fecha inválida (AAAA-MM-DD)" });
+        const email = await targetEmail(id);
+        const { error } = await admin.from("app_users").update({ acceso_hasta: fecha || null, updated_at: now() }).eq("id", id);
+        if (error) throw error;
+        await audit("ADMIN:acceso hasta", { id, email }, { acceso_hasta: fecha || null });
         return json(200, { ok: true });
       }
       default:

@@ -34,7 +34,7 @@ const mockScript = (uid, email, extra) => `(() => {
 const ADMIN_UID = 'u-admin-1', ADMIN_EMAIL = 'admin@t.t';
 const USERS = [
   { id: ADMIN_UID, email: ADMIN_EMAIL, nombre: 'Dr. Fernández R2', role: 'admin', status: 'active', created_at: '2026-05-22T14:17:24Z', last_sign_in_at: '2026-10-14T18:35:36Z', last_seen_at: '2026-10-14T19:00:00Z' },
-  { id: 'u-2', email: 'residente2@t.t', nombre: 'Dra. López', role: 'usuario', status: 'active', created_at: '2026-06-14T02:09:24Z', last_sign_in_at: null },
+  { id: 'u-2', email: 'residente2@t.t', nombre: 'Dra. López', role: 'usuario', status: 'active', created_at: '2026-06-14T02:09:24Z', last_sign_in_at: null, acceso_hasta: '2026-10-01', debe_cambiar_pwd: true },
   { id: 'u-3', email: 'bloqueado@t.t', nombre: '', role: 'usuario', status: 'blocked', created_at: '2026-06-14T02:09:24Z', last_sign_in_at: '2026-06-15T02:14:16Z' },
   { id: 'u-4', email: 'nuevo@t.t', nombre: '', role: 'usuario', status: 'sin_registro', created_at: '2026-10-01T00:00:00Z', last_sign_in_at: null }
 ];
@@ -109,6 +109,17 @@ const AUDIT = [
     && a3.rows[3].acts.length === 1 && /Dar acceso/.test(a3.rows[3].acts[0]) && a3.rows[1].acts.some(t => /Bloquear/.test(t)) && a3.rows[2].acts.some(t => /Activar/.test(t)) && !a3.selfBlock
     && listCall && /^Bearer eyJ/.test(listCall.headers['authorization']) && listCall.headers['x-pl-device'] && listCall.body.redirect_to === BASE_URL + '/index.html', JSON.stringify({ a3, listHdr: listCall && listCall.headers }));
 
+  // ── A3b: rotación y contraseña temporal (27 oct 2026, hallazgos 62 y 77) ──
+  const a3b = await page.evaluate(() => {
+    const r2 = document.querySelector('[data-uid="u-2"]'), r1 = document.querySelector('[data-uid="u-admin-1"]'), r3 = document.querySelector('[data-uid="u-3"]');
+    const banner = document.querySelector('[data-testid="adm-rotacion"]');
+    return { banner: banner ? banner.textContent.replace(/\s+/g, ' ') : '', venc: !!r2.querySelector('[data-testid="adm-vencida"]'), sinUso: !!r2.querySelector('[data-testid="adm-sin-uso"]'), temp: !!r2.querySelector('[data-testid="adm-temporal"]'),
+      meta: r2.querySelector('.adm-meta').textContent, adminLimpio: !r1.querySelector('[data-testid="adm-vencida"],[data-testid="adm-sin-uso"],[data-testid="adm-temporal"]'),
+      bloqueadoSinAvisos: !r3.querySelector('[data-testid="adm-vencida"],[data-testid="adm-sin-uso"]'), btn: !!r2.querySelector('[data-testid="adm-hasta"]') };
+  });
+  check('A3b panel: la cuenta con la rotación terminada y sin uso sale marcada (y con 🔑 contraseña temporal); arriba un aviso para revisar si se bloquea; las bloqueadas y la propia no se marcan; botón 📅 Fin de rotación',
+    a3b.venc && a3b.sinUso && a3b.temp && /Acceso hasta: 01\/10\/2026/.test(a3b.meta) && /1 cuenta\(s\) con la rotación terminada y 1 sin uso hace más de 30 días/.test(a3b.banner) && a3b.adminLimpio && a3b.bloqueadoSinAvisos && a3b.btn, JSON.stringify(a3b));
+
   const a4 = await page.evaluate(async () => {
     document.getElementById('adm-inv-email').value = 'Nueva@Hospital.MX'; document.getElementById('adm-inv-nombre').value = 'Dra. Nueva R1'; document.getElementById('adm-inv-role').value = 'usuario';
     await adminInvite(); await new Promise(r => setTimeout(r, 300));
@@ -139,6 +150,18 @@ const AUDIT = [
     && acts[3].action === 'set_role' && acts[3].role === 'admin' && acts[4].action === 'set_nombre' && acts[4].nombre === 'Dra. López Ruiz'
     && acts[5].action === 'activar_registro' && acts[5].id === 'u-4' && acts[5].nombre === 'Nuevo Usuario' && acts[6].action === 'delete_user' && acts[6].id === 'u-3'
     && a5.alerts.some(t => /No puedes bloquearte a ti mismo/.test(t)), JSON.stringify({ acts, a5 }));
+
+  const a5b = await page.evaluate(async () => {
+    const n0 = window.__alerts.length;
+    window.__promptAnswer = '28/2/2027'; await adminAct('set_acceso_hasta', 'u-2');
+    window.__promptAnswer = ''; await adminAct('set_acceso_hasta', 'u-2');
+    window.__promptAnswer = 'el viernes'; await adminAct('set_acceso_hasta', 'u-2');
+    window.__promptAnswer = 'Tester';
+    return { alerts: window.__alerts.slice(n0) };
+  });
+  const hastas = fn.filter(c => c.body && c.body.action === 'set_acceso_hasta').map(c => c.body);
+  check('A5b 📅 Fin de rotación: dd/mm/aaaa → AAAA-MM-DD a la función; vacío la quita; una fecha que no se entiende no se manda y se avisa',
+    hastas.length === 2 && hastas[0].id === 'u-2' && hastas[0].fecha === '2027-02-28' && hastas[1].fecha === '' && a5b.alerts.some(t => /Fecha no válida/.test(t)), JSON.stringify({ hastas, a5b }));
 
   const a6 = await page.evaluate(async () => {
     adminTab('actividad');
@@ -225,6 +248,28 @@ const AUDIT = [
     d1.before.hash === '' && d1.before.modal === 'flex' && /enlace de recuperación/.test(d1.before.hint) && d1.before.overlay === 'none' && d1.before.set.length === 1 && d1.before.set[0] === 'eyJhbGciOi'
     && d1.upd.length === 1 && d1.upd[0] === 'NuevaClave2026' && /Ya puedes usar la app/.test(d1.alert), JSON.stringify(d1));
   await ctxD.close();
+
+  // ── Escenario E: entra con una contraseña temporal (27 oct 2026, hallazgo 77) ──
+  const ctxE = await browser.newContext({ viewport: { width: 1194, height: 834 } }); const pageE = await ctxE.newPage();
+  const wE = await wire(pageE, { profile: { id: 'u-5', email: 'temporal@t.t', nombre: 'Dr. Temporal', role: 'usuario', status: 'active', debe_cambiar_pwd: true } });
+  await pageE.addInitScript(mockScript('u-5', 'temporal@t.t'));
+  await pageE.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+  await pageE.waitForTimeout(4500);
+  const e1 = await pageE.evaluate(async () => {
+    const m = document.getElementById('pwd-modal');
+    const antes = { modal: m ? m.style.display : 'no', hint: (document.getElementById('pwd-hint') || {}).textContent || '', sinCerrar: (document.getElementById('pwd-close') || {}).style ? document.getElementById('pwd-close').style.display === 'none' : false, overlay: document.getElementById('login-overlay').style.display };
+    document.getElementById('pwd-new').value = 'MiClaveNueva2026'; document.getElementById('pwd-new2').value = 'MiClaveNueva2026'; await saveNewPassword(); await new Promise(r => setTimeout(r, 300));
+    const despues = { modal: m.style.display, upd: window.__auth.filter(a => a[0] === 'updateUser').map(a => a[1].password) };
+    openNewPasswordDialog(false); const cerrarNormal = document.getElementById('pwd-close').style.display !== 'none'; closeNewPasswordDialog();
+    return { antes, despues, cerrarNormal };
+  });
+  const apagar = wE.calls.find(c => c.m === 'PATCH' && /app_users\?id=eq\.u-5/.test(c.url) && c.body && c.body.debe_cambiar_pwd === false);
+  const perfilGet = wE.calls.find(c => c.m === 'GET' && /app_users\?/.test(c.url));
+  check('E1 contraseña temporal: al entrar se abre 🔑 Contraseña nueva sin ✕ (no se puede saltar) y explica por qué; al guardarla llama a updateUser y apaga la marca en app_users; en uso normal la ventana sí se cierra',
+    e1.antes.modal === 'flex' && e1.antes.sinCerrar && /contraseña temporal/.test(e1.antes.hint) && e1.antes.overlay === 'none'
+    && e1.despues.modal === 'none' && e1.despues.upd.length === 1 && e1.despues.upd[0] === 'MiClaveNueva2026' && !!apagar && e1.cerrarNormal
+    && perfilGet && /debe_cambiar_pwd/.test(decodeURIComponent(perfilGet.url)), JSON.stringify({ e1, apagar: !!apagar }));
+  await ctxE.close();
 
   check('final: sin errores no capturados', errorsAll.length === 0, errorsAll.join(' | '));
   console.log('RESULT APP-ADMIN: ' + pass + ' passed, ' + fail + ' failed');

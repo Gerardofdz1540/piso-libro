@@ -37,12 +37,13 @@ const DMY_RECENT = dmy(recent);
 (async () => {
   const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+  const notesW = [];
   await page.route('**/vendor/supabase*', r => r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
     const json = (s, o) => route.fulfill({ status: s, contentType: 'application/json', body: JSON.stringify(o) });
     if (url.startsWith('/rest/v1/patients')) return m === 'GET' ? json(200, [A, B]) : json(201, [{ id: 'n' }]);
-    if (url.startsWith('/rest/v1/notes')) return m === 'GET' ? json(200, []) : json(201, [{}]);
+    if (url.startsWith('/rest/v1/notes')) { if (m !== 'GET') notesW.push(req.postData() || ''); return m === 'GET' ? json(200, []) : json(201, [{}]); }
     if (url.startsWith('/rest/v1/ris_estudios')) return json(200, RIS);
     return json(200, []);
   });
@@ -103,6 +104,31 @@ const DMY_RECENT = dmy(recent);
     return { r0: r[0].done, r1: r[1].done };
   }).catch(e => ({ err: String(e) }));
   check('R10 Esc no lanza error y 📌 No olvidar marca el recordatorio correcto', no.r0 === true && no.r1 === true && !errors.some(e => /closeNoteModal|Unexpected end/.test(e)), JSON.stringify([no, errors.slice(0, 2)]));
+  // ── R11: «🚫 No es de este paciente» (hallazgo 75): oculta el estudio en esta tarjeta (y en la Entrega), no lo borra, se
+  //        guarda en la nota (viaja a todos los iPads) y «Mostrar ocultos» / «Sí es de este paciente» lo regresan ──
+  const n0 = notesW.length;
+  const o = await page.evaluate(async () => {
+    const a = patients.find(p => p.cama === '3-101'); const k = pid(a);
+    _rerenderCard(k);
+    const card = () => document.getElementById('card-' + k);
+    const ids0 = risForPatient(a).map(x => x.id);
+    const btn = card().querySelector('[data-testid="ris-ocultar"][data-rid="3"]');
+    if (!btn) return { err: 'sin botón ocultar' };
+    btn.click(); await new Promise(r => setTimeout(r, 1800));   // deja subir el cambio antes de regresarlo
+    const ids1 = risForPatient(a).map(x => x.id), conOcultos = risForPatient(a, true).map(x => x.id);
+    const eg = _egImagen(a, migrateNote(noteData[k] || defaultData())).join(' ');
+    const ver = card().querySelector('[data-testid="ris-ver-ocultos"]'); const verTxt = ver ? ver.textContent : '';
+    ver.click(); await new Promise(r => setTimeout(r, 100));
+    const dim = card().querySelectorAll('.ris-item[data-oculto="1"]').length;
+    card().querySelector('[data-testid="ris-mostrar"][data-rid="3"]').click(); await new Promise(r => setTimeout(r, 200));
+    return { ids0, ids1, conOcultos, eg, verTxt, dim, ids2: risForPatient(a).map(x => x.id), lista: noteData[k].checklist.ris_ocultos, undo: _undoCount(k) };
+  }).catch(e => ({ err: String(e) }));
+  await page.waitForTimeout(1500);
+  const subidas = notesW.slice(n0).map(b => { try { const x = JSON.parse(b); return JSON.stringify((Array.isArray(x) ? x[0] : x).checklist && (Array.isArray(x) ? x[0] : x).checklist.ris_ocultos); } catch (_) { return ''; } });
+  check('R11 «🚫 No es de este paciente»: el estudio sale de la tarjeta y de la Entrega pero no se borra (risForPatient con ocultos lo trae); «👁 Mostrar ocultos (1)» lo enseña atenuado; «↩ Sí es de este paciente» lo regresa; la lista viaja en la nota; queda un paso en Regresar',
+    !o.err && o.ids0.includes(3) && !o.ids1.includes(3) && o.conOcultos.includes(3) && !/VIA BILIAR/.test(o.eg) && /Mostrar ocultos \(1\)/.test(o.verTxt) && o.dim === 1
+    && o.ids2.includes(3) && Array.isArray(o.lista) && o.lista.length === 0 && o.undo >= 2 && subidas.some(x => x === '["3"]') && subidas.some(x => x === '[]'), JSON.stringify({ o, subidas }));
+
   check('final: sin errores de JavaScript en la página', errors.length === 0 && !r.err, JSON.stringify([r.err, errors.slice(0, 3)]));
   console.log('RESULT APP-RIS: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();

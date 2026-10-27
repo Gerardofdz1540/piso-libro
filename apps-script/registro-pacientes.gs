@@ -31,6 +31,9 @@
  * cambió); los disparadores de una cuenta personal tienen 90 min al día compartidos con el script del censo (la carga
  * inicial se reparte en pocas vueltas cortas, con tope diario).
  */
+// Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
+// compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
+var REGISTRO_VERSION = '2026.10.27';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -226,10 +229,25 @@ function actualizarRegistro() {
     regEscribirDiccionario_(dic, hoy, cuentas, celdas, enCurso, avisos);
     // Solo conteos y avisos en el registro de ejecución: nada de nombres ni expedientes.
     Logger.log('Registro actualizado ' + hoy + ': ' + JSON.stringify(cuentas) + (avisos.length ? ' · Avisos: ' + avisos.join(' | ') : ''));
+    regReportarVersion_(props, key);
     return { ok: true, cuentas: cuentas, pendiente: enCurso, avisos: avisos };
   } finally {
     lock.releaseLock();
   }
+}
+
+// Reporta la versión instalada (una vez al día; si falla, se reintenta en la siguiente corrida y nunca detiene el registro).
+function regReportarVersion_(props, key) {
+  try {
+    var marca = REGISTRO_VERSION + '|' + new Date().toISOString().slice(0, 10);
+    if (props.getProperty('REG_VERSION_REPORTADA') === marca) return;
+    var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/rpc/pl_reportar_version', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { apikey: key, Authorization: 'Bearer ' + key },
+      payload: JSON.stringify({ p_pieza: 'registro', p_version: REGISTRO_VERSION })
+    });
+    if (res.getResponseCode() >= 200 && res.getResponseCode() < 300) props.setProperty('REG_VERSION_REPORTADA', marca);
+  } catch (e) { Logger.log('regReportarVersion_: ' + regCausa_(e)); }
 }
 
 function regLibro_(props) {

@@ -25,6 +25,10 @@
  ***************************************************************************************************/
 
 // --- CONFIG -------------------------------------------------------------------------------------
+// Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones», función
+// pl_reportar_version) y el vigilante la compara con la del repositorio: si no coinciden, falta pegar esta versión.
+// Cambiarla en cada cambio del archivo.
+var CENSO_SYNC_VERSION = '2026.10.27';
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
@@ -124,7 +128,23 @@ function doSync(opts) {
   var retired = syncPatients_(key, dd.rows, opts);
 
   Logger.log('Sync OK: ' + dd.rows.length + ' capturados, ' + _censoWriteStats_.upserts + ' upserts, ' + _censoWriteStats_.unchanged + ' sin cambios, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.avisos.length + ' avisos de expediente repetido.');
+  reportarVersion_(key, 'censo-sync', CENSO_SYNC_VERSION);
   return { capturados: dd.rows.length, upserts: _censoWriteStats_.upserts, sin_cambios: _censoWriteStats_.unchanged, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
+}
+
+/** Reporta la versión instalada (una vez al día; si falla, se reintenta en la siguiente corrida y nunca detiene el sync). */
+function reportarVersion_(key, pieza, version) {
+  try {
+    var ps = PropertiesService.getScriptProperties();
+    var marca = version + '|' + new Date().toISOString().slice(0, 10);
+    if (ps.getProperty('VERSION_REPORTADA') === marca) return;
+    var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/rpc/pl_reportar_version', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { apikey: key, Authorization: 'Bearer ' + key },
+      payload: JSON.stringify({ p_pieza: pieza, p_version: version })
+    });
+    if (res.getResponseCode() >= 200 && res.getResponseCode() < 300) ps.setProperty('VERSION_REPORTADA', marca);
+  } catch (e) { Logger.log('reportarVersion_: ' + e); }
 }
 
 /** Lee el censo por gid; si cambió el gid, exige una única pestaña con encabezados censales. */
