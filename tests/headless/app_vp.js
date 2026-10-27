@@ -181,7 +181,7 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**RUIZ SOTO MATEO |
     for (let i = 0; i < 80; i++) { await new Promise(r => setTimeout(r, 100)); const t = document.getElementById('plne-out-title'); if (t && /redactada con IA/.test(t.textContent)) break; }
     const txt = document.getElementById('plne-out-text').textContent;
     const draft = _plneBuild(patients[0], getNote(k));
-    return { menuBtn, early, shown: document.getElementById('plne-back').classList.contains('show'), title: document.getElementById('plne-out-title').textContent, txt, draftHead: draft.split('\n').slice(0, 2), draftFirma: draft.split('\n').pop(), hist: (getNote(k).checklist.nota_hist || []).map(h => ({ ia: h.ia, by: h.by, n: h.txt.length })), warn: document.getElementById('plne-warn').style.display, sel: document.getElementById('plne-hist').style.display, btn: document.getElementById('plne-aibtn').disabled, ms: Date.now() - t0 };
+    return { menuBtn, early, shown: document.getElementById('plne-back').classList.contains('show'), title: document.getElementById('plne-out-title').textContent, txt, draftHead: draft.split('\n').slice(0, 2), draftFirma: draft.split('\n').pop(), hist: (getNote(k).checklist.nota_hist || []).map(h => ({ ia: h.ia, by: h.by, n: h.txt.length })), warn: document.getElementById('plne-warn').style.display, warnTxt: document.getElementById('plne-warn').textContent, marks: Array.from(document.querySelectorAll('#plne-out-text mark.plne-nuevo')).map(m => m.textContent), faltan: Array.from(document.querySelectorAll('#plne-out-text mark.plne-falta')).map(m => m.textContent), sel: document.getElementById('plne-hist').style.display, btn: document.getElementById('plne-aibtn').disabled, ms: Date.now() - t0 };
   });
   const l5 = v5.txt.split('\n'); const noHora = (s) => String(s || '').replace(/\d{2}:\d{2} HRS$/, ''); const ai0 = aiBodies[0] || { text: '' };
   const c5 = {
@@ -189,12 +189,35 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**RUIZ SOTO MATEO |
     title: /redactada con IA/.test(v5.title), head1: l5[0] === v5.draftHead[0], head2: noHora(l5[1]) === noHora(v5.draftHead[1]), firma: l5[l5.length - 1] === v5.draftFirma, blancos: l5[2] === '' && l5[l5.length - 2] === '',
     sinMarkdown: !/[#*`]/.test(v5.txt), mayusculas: v5.txt === v5.txt.toUpperCase(), decada: /PACIENTE MASCULINO EN LA SEXTA DÉCADA/.test(v5.txt), sscNota: /SURVIVING SEPSIS CAMPAIGN 2021/.test(v5.txt), corchete: /\[EXPLORACIÓN DE TÓRAX\]/.test(v5.txt), estado: /ESTADO DE SALUD DELICADO, CON PRONÓSTICO RESERVADO A EVOLUCIÓN\./.test(v5.txt),
     encabezadoUnaVez: (v5.txt.match(/NOTA DE EVOLUCIÓN CIRUGÍA GENERAL/g) || []).length === 1, firmaUnaVez: (v5.txt.match(/DR GARNELO MBCG/g) || []).length === 1, idUnaVez: !/EDAD 58 AÑOS[\s\S]*EDAD 58 AÑOS/.test(v5.txt),
-    hist: v5.hist.length === 1 && v5.hist[0].ia === true && v5.hist[0].by === 'GF', warn: v5.warn === 'none', sel: v5.sel !== 'none', btn: v5.btn === false,
+    hist: v5.hist.length === 1 && v5.hist[0].ia === true && v5.hist[0].by === 'GF', warn: v5.warn === 'block' && /La IA escribió \d+ dato/.test(v5.warnTxt),
+    // Lo que la IA inventó (no venía en la tarjeta) queda resaltado; las metas permitidas, las cifras del borrador y los años de las guías no.
+    inventos: ['PROFILAXIS DE ÚLCERA POR ESTRÉS', 'INHIBIDOR DE BOMBA DE PROTONES', 'ANALGESIA MULTIMODAL', 'RESERVADO A EVOLUCIÓN'].every(x => v5.marks.includes(x)),
+    sinFalsos: !v5.marks.some(x => /^(65|0\.5|140|180|2021|2023|2025|6\.4|12|103|11\.4|0\.19|0\.03|96|40|8|420|110|70|83)$/.test(x)),
+    corchetes: v5.faltan.includes('[EXPLORACIÓN DE TÓRAX]') && v5.faltan.includes('[FN]'), sel: v5.sel !== 'none', btn: v5.btn === false,
     aiUna: aiBodies.length === 1, modelo: ai0.model === 'claude-sonnet-4-6', borrador: /\(A\) BORRADOR:\nNOTA DE EVOLUCIÓN CIRUGÍA GENERAL/.test(ai0.text), app: /DM2 de 10 años/.test(ai0.text), pend: /PENDIENTES: TAC de control/.test(ai0.text), reglas: /NO inventes datos/.test(ai0.text), sscPrompt: /SURVIVING SEPSIS CAMPAIGN 2021/.test(ai0.text), vpPrompt: /BAJO APOYO VASOPRESOR CON NOREPINEFRINA A 11\.4 MCG\/KG\/H \(0\.19 MCG\/KG\/MIN\)/.test(ai0.text)
   };
   const bad5 = Object.keys(c5).filter(x => !c5[x]);
   check('V5 🤖 Nota IA en un clic desde la tarjeta: abre el modal, muestra el borrador mientras redacta, manda borrador + contexto (APP, pendientes, reglas) al worker, limpia la respuesta (sin markdown ni ```, mayúsculas), encabezado y firma del borrador una sola vez, "ESTADO DE SALUD", guarda en notas previas con iniciales',
     bad5.length === 0, 'fallan: ' + bad5.join(', ') + ' :: ' + JSON.stringify({ ...v5, txt: v5.txt }) + ' :: PROMPT ' + ai0.text.slice(-900));
+
+  // ── V5b: revisar lo resaltado antes de copiar ──
+  const v5b = await page.evaluate(async () => {
+    const pre = document.getElementById('plne-out-text'); const n0 = pre.querySelectorAll('mark.plne-nuevo').length; const clip0 = window.__clip.length;
+    let asked = ''; window.confirm = function (m) { asked = String(m); return false; };
+    copyNotaEvo(); await new Promise(r => setTimeout(r, 150));
+    const bloqueado = window.__clip.length === clip0;
+    pre.querySelector('mark.plne-nuevo').click();
+    const n1 = pre.querySelectorAll('mark.plne-nuevo').length; const warn1 = document.getElementById('plne-warn').textContent;
+    pre.querySelectorAll('mark.plne-nuevo').forEach(m => m.click());
+    const warnFin = document.getElementById('plne-warn').style.display;
+    window.confirm = function (m) { asked = String(m); return true; };
+    copyNotaEvo(); await new Promise(r => setTimeout(r, 150));
+    const copiado = window.__clip.length === clip0 + 1 && window.__clip[window.__clip.length - 1] === _plneTextoActual();
+    window.__clip = [];   // V7 cuenta sus propias copias
+    return { n0, n1, asked, bloqueado, warn1, warnFin, copiado };
+  });
+  check('V5b nota con IA: «Copiar» pide confirmación mientras queden [corchetes] o datos que la IA agregó; tocar un resaltado lo marca como revisado (baja la cuenta y al final se va el aviso); al aceptar se copia el texto tal cual',
+    v5b.n0 >= 4 && v5b.n1 === v5b.n0 - 1 && /corchetes/.test(v5b.asked) && v5b.bloqueado && new RegExp('escribió ' + v5b.n1 + ' dato').test(v5b.warn1) && v5b.warnFin === 'none' && v5b.copiado, JSON.stringify(v5b));
 
   // ── V6: la IA falla → borrador con aviso, sin perder nada ──
   aiMode = 'fail';

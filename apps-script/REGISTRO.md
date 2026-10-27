@@ -67,8 +67,10 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
   - Escribe encima sin vaciar antes; si Sheets falla a la mitad, la pestaña no queda vacía.
   - Agranda la cuadrícula si hace falta.
   - Si alguien renombró la columna clave de la fila 1, se detiene sin tocar nada y avisa.
-- **Respaldo semanal:** antes de escribir, cada 7 días de calendario guarda una copia de toda la hoja en la misma carpeta
-  y conserva las últimas 5. Las más viejas van a la papelera de Drive, que las guarda 30 días.
+- **Una sola hoja (27 oct 2026):** ya no guarda copias semanales en la carpeta (antes quedaban dos o más «bases»). El
+  respaldo es el historial de versiones de la hoja (Archivo → Historial de versiones). La primera corrida de esta versión
+  manda a la papelera de Drive, una sola vez, las copias «Respaldo — <hoja> — fecha» que hizo la versión anterior (Drive
+  las guarda 30 días). No toca otros archivos de la carpeta.
 - **Escribe solo lo que cambió, cada cosa en su lugar:**
   - Cada fila se actualiza en **su** renglón si algo cambió, y cada valor va a la columna con **su** nombre; las filas
     nuevas van al final.

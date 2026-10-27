@@ -128,7 +128,7 @@ const MOCK = `(() => {
     qx: JSON.stringify(e3.R.qx) === JSON.stringify(['HOY pasó a quirófano: Relaparotomía + lavado · Absceso subfrénico 200 mL · sangrado 150 mL · Dr. X', '+1 cirugía previa']),
     alertas: JSON.stringify(e3.R.alertas) === JSON.stringify(['Norepinefrina 5.7 mcg/kg/h a 10 mL/h', 'Ayuno d2']),
     gastos: e3.R.gastos.length === 3 && /^Penrose D \(FID\) 50 mL seroso d\d+ · Saratoga I 120 mL hemático d0 · Foley$/.test(e3.R.gastos[0]) && e3.R.gastos[1] === 'Uresis 900 mL' && e3.R.gastos[2] === 'Balance +450',
-    labs: e3.R.labs && e3.R.labs.fecha === e3.hoy && e3.R.labs.extra === 0 && e3.R.labs.dias === 0 && JSON.stringify(e3.R.labs.items.map(i => i.text)) === JSON.stringify(['Hb 7.4▼ (de 9.1)', 'K 6.1▲ (de 4.0)', 'Lac 3.1', 'INR ≈1.52▲ (de 1.20)']) && JSON.stringify(e3.R.labs.items.map(i => i.crit)) === JSON.stringify([true, true, false, false]),
+    labs: e3.R.labs && e3.R.labs.fecha === e3.hoy && e3.R.labs.extra === 0 && e3.R.labs.dias === 0 && JSON.stringify(e3.R.labs.items.map(i => i.text)) === JSON.stringify(['Hb 7.4▼ (de 9.1)', 'K 6.1▲ (de 4.0)', 'Lac 3.1', 'INR ≈1.52▲ (de 1.20)']) && JSON.stringify(e3.R.labs.items.map(i => i.crit)) === JSON.stringify([false, true, false, false]),
     nuevo: JSON.stringify(e3.R.nuevo) === JSON.stringify([e3.dmH + ' Pendientes: TAC de control', e3.dmH + ' IC: IC a nefrología por LRA', e3.dmA + ' se solicitó TAC de control', e3.dmA + ' US (RIS): estudio realizado, reporte pendiente', e3.dmH + ' se colocó Saratoga I', e3.dmH + ' CT TAC ABDOMEN: COLECCIÓN SUBFRÉNICA DE 6 CM.']),
     pend: JSON.stringify(e3.R.pend) === JSON.stringify(['TAC de control', 'Valoración por nutrición', 'No olvidar: Pedir CE']),
     txtHdr: tl.length === 7 && /^— Resumen \d{2}\/\d{2} \d{2}:\d{2} GF —$/.test(tl[0]),
@@ -175,7 +175,7 @@ const MOCK = `(() => {
     dx: /CHOQUE SÉPTICO/.test((r4.rows['🩺 Diagnóstico'] || [])[0] || ''),
     vit: (r4.rows['❤️ Signos vitales'] || [])[0] === 'TA 110/70 (PAM 83) · FC 98 · FR 20 · T 37.8 °C · SaO₂ 93 % con O₂ 3 L' && r4.labels[1] === '❤️ Signos vitales',
     gastos: (r4.rows['💧 Gastos'] || []).length === 3 && r4.rows['💧 Gastos'][1] === 'Uresis 900 mL' && r4.rows['💧 Gastos'][2] === 'Balance +450',
-    labs: /^🧪 Laboratorios · /.test(r4.labels[3]) && JSON.stringify(r4.chips) === JSON.stringify(['Hb 7.4▼ (de 9.1)!', 'K 6.1▲ (de 4.0)!', 'Lac 3.1', 'INR ≈1.52▲ (de 1.20)']),
+    labs: /^🧪 Laboratorios · /.test(r4.labels[3]) && JSON.stringify(r4.chips) === JSON.stringify(['Hb 7.4▼ (de 9.1)', 'K 6.1▲ (de 4.0)!', 'Lac 3.1', 'INR ≈1.52▲ (de 1.20)']),
     cult: JSON.stringify(r4.rows['🦠 Cultivos']) === JSON.stringify(['01/10 hemocultivos tomados']),
     img: (r4.rows['🩻 Estudios de imagen'] || []).length === 1 && / CT TAC ABDOMEN: COLECCIÓN SUBFRÉNICA DE 6 CM\.$/.test(r4.rows['🩻 Estudios de imagen'][0]),
     li: r4.li === 5,
@@ -195,8 +195,8 @@ const MOCK = `(() => {
     const soloAbn = _entregaItemsFromLabs([{ fecha: ayer, labs: { glu: '160', k: '5.5', tp: '15', tp_testigo: '13' } }], []);
     return { items: items.map(i => i.text), again: again.length, soloAbn: soloAbn.length };
   });
-  check('E5 novedades automáticas de labs: anota los críticos ("Anemia severa (Hb 6.2)") y el INR estimado ≥ 1.5; los solo anormales (glucosa 160, K 5.5, INR 1.15) ya no ensucian la entrega; nada cambió → nada',
-    e5.items.length === 1 && e5.items[0] === 'Labs: Anemia severa (Hb 6.2), INR estimado 1.52 (TP ÷ testigo)' && e5.again === 0 && e5.soloAbn === 0, JSON.stringify(e5));
+  check('E5 novedades automáticas de labs: anota los críticos ("Anemia grave (Hb 6.2)") y el INR estimado ≥ 1.5; los solo anormales (glucosa 160, K 5.5, INR 1.15) ya no ensucian la entrega; nada cambió → nada',
+    e5.items.length === 1 && e5.items[0] === 'Labs: Anemia grave (Hb 6.2), INR estimado 1.52 (TP ÷ testigo)' && e5.again === 0 && e5.soloAbn === 0, JSON.stringify(e5));
 
   // ── E6: 📽 Modo Proyector — empieza en la cama 150 (no en UCI), selector para empezar en otra, ficha encuadrada
   //        (no se corta) con los bloques de Entrega y TODOS los laboratorios del último control ──
@@ -208,7 +208,7 @@ const MOCK = `(() => {
     extra.forEach(function (p) { patients.push(p); });
     // Muchos labs en el paciente base para comprobar que se ven TODOS y que la ficha cabe
     const k0 = pid(base); const nd0 = getNote(k0);
-    const many = { hb: '7.4', leucos: '18', plaq: '45', cr: '2.1', urea: '80', glu: '160', na: '131', k: '6.1', cl: '99', ca: '7.9', mg: '1.6', p: '2.1', alb: '2.2', bt: '1.9', ast: '88', alt: '95', fa: '210', ggt: '150', ldh: '400', pcr: '210', pct: '4.1', lac: '3.1', tp: '19.8', tp_testigo: '13', ttp: '40', fibrinogeno: '150', ph: '7.29', hco3: '17', pco2: '33', po2: '80', zz_raro: '12' };
+    const many = { hb: '6.8', leucos: '18', plaq: '45', cr: '2.1', urea: '80', glu: '160', na: '131', k: '6.1', cl: '99', ca: '7.9', mg: '1.6', p: '2.1', alb: '2.2', bt: '1.9', ast: '88', alt: '95', fa: '210', ggt: '150', ldh: '400', pcr: '210', pct: '4.1', lac: '3.1', tp: '19.8', tp_testigo: '13', ttp: '40', fibrinogeno: '150', ph: '7.29', hco3: '17', pco2: '33', po2: '80', zz_raro: '12' };
     nd0.labHistory = [{ fecha: _egIsoOffset(0), labs: many, extra: [{ nombre: 'Amonio', valor: '60' }] }];
     // RIS: un estudio con reporte (su conclusión sale) y otro sin reporte (no sale: solo conclusiones)
     risByExp[_risKey(base.exp)] = [

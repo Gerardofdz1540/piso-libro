@@ -586,6 +586,68 @@ temporal a disco y la base la cortaba a los 8 s (la caja no recibía nada). 5 GB
   toca la fila. Si el Apps Script sube una lectura parcial (la versión vieja que leía solo la primera pestaña), la
   base la ignora mientras su propia descarga funcione.
 - Para revisarlo: Supabase → Settings → Infrastructure → Disk IO, o Reports → Database (por hora).
+- `scripts/supabase_indicaciones_sin_reenvio.sql` (aplicada en producción): con el Apps Script nuevo los dos traen el
+  Doc completo pero con otro formato, y la base reescribía la fila 30 min después de cada edición. Ahora la base
+  recuerda desde cuándo el Doc está en cada versión: si el Apps Script ya la subió no escribe nada («api_vigente» en
+  `indicaciones_fetch_log`); solo la sube ella si el Apps Script no siguió el cambio en 30 min.
+
+## Seguridad clínica de la app (27 de octubre de 2026)
+
+**Valores críticos (rojo): una sola tabla.** El rojo de la celda, el semáforo, el banner «Labs críticos sin
+reconocer», la Entrega, las novedades y el 🧠 Análisis IA usan los mismos cortes: los `cl`/`ch` de `LAB_FIELDS` en
+`index.html` (≤ crítico bajo, ≥ crítico alto). Lo demás fuera de rango es **amarillo**. Hoy:
+
+| Estudio | Crítico | Estudio | Crítico |
+|---|---|---|---|
+| Hb | ≤7 o ≥20 g/dL | Na | ≤120 o ≥160 mmol/L |
+| Leucocitos | ≤2 o ≥30 k/µL | K | ≤2.8 o ≥6.0 mmol/L |
+| Neutrófilos absolutos | ≤0.5 k/µL | Ca | ≤6.5 o ≥13 mg/dL |
+| Plaquetas | ≤50 o ≥1000 k/µL | Mg | ≤1.0 o ≥4.9 mg/dL |
+| Hematocrito | ≤20 % | P | ≤1.0 mg/dL |
+| Glucosa | ≤50 o ≥400 mg/dL | INR (real o estimado) | ≥3 |
+| Lactato | ≥4 mmol/L | TTP | ≥100 s |
+| Fibrinógeno | ≤100 mg/dL | pH | ≤7.2 o ≥7.6 |
+| pCO₂ | ≤20 o ≥70 mmHg | pO₂ | ≤40 mmHg |
+| HCO₃ | ≤10 o ≥40 mEq/L | SatO₂ | ≤85 % |
+| Troponina I | ≥100 pg/mL | CK | ≥5000 U/L |
+| Triglicéridos | ≥1000 mg/dL | | |
+
+Glucosa 210, leucocitos 15, PCR 200, Hb 7.5, albúmina 2.2, bilirrubina 2.5, lipasa 500, creatinina 3.4 o PCT 4 ya
+**no** son rojo (antes casi la mitad de los reportes ponían al paciente en rojo). **Pendiente:** pedir al laboratorio
+del hospital su lista oficial de valores críticos y ajustar la tabla (solo en `LAB_FIELDS`).
+
+**WinLab: muestras rechazadas y unidades.**
+- Cuando el laboratorio rechaza la muestra («TIEMPO DE PROTROMBINA MUESTRA MAL AFORADA», «HEMOGLOBINA MUESTRA
+  COAGULADA», «… SIN MUESTRA»), WinLab pone como valor el límite del rango (TP 11.00). La celda ahora dice
+  **RECHAZADA** con ⚠ (repetir la toma), no hay INR estimado y la Entrega dice «TP muestra rechazada — repetir». Si el
+  mismo día hay un resultado real, gana el real.
+- La troponina I en ng/mL se convierte a pg/mL (×1000). «GLUCOSA» en MINUTOS (curva de tolerancia), la 25-OH vitamina D
+  pegada a fibrinógeno/TTP y los cristales de orina ya no ocupan la llave. Si llega una unidad que la app no reconoce
+  en un estudio clave (Hb, K, Na, glucosa, Cr, Ca/Mg/P, TP/TTP, fibrinógeno, dímero D, troponina), la celda dice
+  **REVISAR UNIDAD (…)**: revisar el valor en WinLab.
+
+**Mensajes y calculadoras.**
+- Los mensajes de cada laboratorio orientan («considerar»), sin dosis fijas que dependan de peso, función renal o
+  anticoagulación. Fibrinógeno en mg/dL (antes 80 decía «elevado»); dímero D en ng/mL y sin «TEP probable» (sirve
+  para descartar, no para confirmar); pancreatitis: la gravedad la da la falla orgánica, hidratación moderada.
+- ⚡ Corrección: los CE se estiman como (meta − Hb) × peso ÷ 70 (antes Hb 6 → 10 en 70 kg daba 86 unidades); meta por
+  defecto 8 g/dL con el umbral restrictivo de 7. Sin peso no calcula déficit ni unidades: lo pide. Na con la
+  clasificación estándar (leve 130-134, moderada 125-129, grave <125) y cuánto sube 1 L de cada solución.
+- 🫁 Peso predicho: sin sexo no se calcula (antes suponía hombre); el chip dice «⚥ falta sexo».
+- INR estimado = (TP ÷ testigo)^ISI. El ISI está en `PL_INR_ISI` (hoy 1.0): cuando el laboratorio informe el ISI del
+  reactivo, cambiarlo ahí. El estimado nunca sustituye al INR para decidir una cirugía.
+- Antibiograma: «sensible dependiente de dosis» se muestra como «(SDD: dosis alta)» en la tarjeta, la nota y la entrega.
+
+**Nota de evolución.**
+- El borrador ya no escribe datos que nadie capturó: enoxaparina sin dosis → `[DOSIS Y FRECUENCIA]`, sin pronóstico →
+  `[PRONÓSTICO]`, Foley → `[¿PERMEABLE A DERIVACIÓN?]`.
+- 🤖 Nota con IA: el prompt ya no pide agregar profilaxis, analgesia ni fisioterapia que no estén en la tarjeta. La
+  app compara la nota con el borrador: lo que la IA escribió y no venía (medicamentos, cifras, medidas, pronóstico)
+  sale **en amarillo** (toca cada uno cuando lo revises) y los `[corchetes]` en rosa. «Copiar» y «↗ Pasar a la página»
+  piden confirmación mientras quede alguno.
+- 🧠 Análisis IA: los rangos salen de la misma tabla (Ca/Mg/P en mg/dL) y pide sugerencias sin dosis.
+- Sugerencia «Lesión renal aguda KDIGO»: solo con una creatinina previa más baja, y nunca con ERC o diálisis en el
+  diagnóstico.
 
 ## Los labs ya no se reescriben en bucle (19 de octubre de 2026)
 
