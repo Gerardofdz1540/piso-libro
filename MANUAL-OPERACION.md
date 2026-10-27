@@ -54,8 +54,11 @@ en GitHub (el aviso lo da el PR). Son 2 minutos:
    `https://github.com/Gerardofdz1540/piso-libro/blob/main/apps-script/censo-sync.gs`.
 2. Pulsa el botón **Raw** (arriba a la derecha del archivo). Se abre texto
    plano. Selecciona todo (`Ctrl+A`) y copia (`Ctrl+C`).
-3. Abre la hoja del censo en Google Sheets.
-4. Menú **Extensiones → Apps Script**. Se abre el editor.
+3. Abre https://script.google.com (con tu cuenta) y entra al proyecto del censo: es el que se llama
+   **«Proyecto sin título»** (el censo de Drive es un `.xlsx`, así que el programa no cuelga del menú
+   Extensiones de la hoja; es un proyecto aparte). El otro proyecto, «Registro de pacientes», es el
+   registro de investigación y se actualiza igual con `apps-script/registro-pacientes.gs`.
+4. Se abre el editor.
 5. En la lista de la izquierda pulsa `Código.gs`. En el cuadro grande
    selecciona todo (`Ctrl+A`), borra, y pega (`Ctrl+V`) lo que copiaste.
 6. Pulsa el icono de **guardar** (disquete) o `Ctrl+S`.
@@ -205,6 +208,11 @@ programa de la hoja (Apps Script, `syncIndicaciones`) hace el mismo trabajo con 
 
 - El cruce es por **cama + nombre**. Si un paciente cambió de cama, lo encuentra por nombre. Si en
   el Doc hay varias fechas del mismo paciente, muestra la más reciente.
+- **Pestañas del Doc** (24 oct 2026): el Doc tiene varias pestañas. La descarga de la base trae
+  todas. El respaldo de Apps Script antes leía solo la primera y, al subirla, tapaba el texto
+  completo: en la app quedaban tres bloques para todo el piso. Ya lee todas las pestañas y sus
+  subpestañas. Si algún día vuelve a faltar una cama que en el Doc sí está, ejecuta
+  `testIndicacionesOnly` en Apps Script: dice cuántas letras, bloques y camas ve.
 - Si en el Doc la cama tiene indicaciones a nombre de **otra persona** (el paciente anterior),
   la tarjeta avisa en rojo y no las muestra como propias hasta que toques "Ver de todos modos".
 - En la cabecera del bloque: 📄 abre el Doc; 🔄 lo trae ahora mismo sin esperar los 5 minutos.
@@ -242,6 +250,16 @@ actualiza al instante con un aviso. Las credenciales del visor viven en la tabla
 Supabase (no en el código); si cambian, se actualizan ahí. Para lanzarlo a mano: Actions → "RIS
 Imagen" → Run workflow.
 
+- **Fechas y orden** (26 oct 2026): el visor da la fecha como DD/MM/AAAA y la app la comparaba
+  como texto: el orden se revolvía entre meses, la Entrega y el Proyector dejaban fuera los estudios
+  del día 1 al 20 y las líneas automáticas salían con la fecha de hoy. Ahora la app la convierte al
+  recibirla: el estudio más reciente va arriba y cada línea lleva la fecha del estudio.
+- Si el robot corrige el expediente de un estudio o el visor lo borra, la tarjeta se ajusta sola
+  (antes quedaba una copia en el paciente anterior hasta recargar). Las pasadas del robot sin
+  cambios ya no repintan ni avisan.
+- Solo se abren enlaces `http`/`https`; cualquier otro (p. ej. `javascript:`) se muestra como
+  texto, en el bloque del visor y en la caja Imagen manual.
+
 ## Alertas y laboratorios en el tablero
 
 La hoja de labs críticos, labs nuevos y "sin laboratorios de hoy" ya no ocupa la parte de arriba:
@@ -249,6 +267,22 @@ está en el botón **🔔** de la barra del paciente (muestra los contadores: ro
 🧪 = labs nuevos, 📭 = sin labs de hoy). Se abre como panel lateral; tocar un renglón cierra el
 panel y abre la tarjeta de ese paciente, resaltada. En el carril de camas, un punto rojo marca
 labs críticos sin reconocer y uno ámbar labs atrasados.
+
+## A quién se le asigna cada laboratorio (26 oct 2026)
+
+- **Expediente repetido** (p. ej. 3-159 y 3-160): el robot guarda una fila por expediente y fecha,
+  así que junta a los dos pacientes en la misma fila. La app ahora separa cada reporte por el
+  encabezado de su paciente: cada cama recibe solo lo suyo. Antes la segunda cama nunca recibía
+  labs y, con WinLab en italiano, la primera recibía también los de la otra. Si la fila no trae
+  encabezados no se asigna a ninguna de las dos.
+- WinLab en **italiano** (NOME/COGNOME): los encabezados ya se reconocen; antes se tiraban labs de
+  NCX/URO pedidos por Cirugía General.
+- El encabezado de WinLab se coteja con el nombre del censo **y** con el «✏️ Nombre en WinLab»
+  (apellido de casada, etc.). Los reportes que el robot descartó (homónimo, edad que no cuadra) no
+  entran nunca, y otra persona con los mismos apellidos tampoco aunque el robot la marque.
+- **FCO./FCA.** del censo = FRANCISCO/FRANCISCA; ANTONIO y ANTONIA son personas distintas.
+- Al tocar otra fecha de labs, la flecha de tendencia, las sugerencias y el INR estimado son los
+  de esa fecha (antes se quedaban los de la fecha anterior).
 
 ## Si los laboratorios no llegan
 
@@ -287,6 +321,12 @@ entrar) y nada automático llega. Qué hacer:
      pacientes del censo, página por página → **Imprime Reportes** → se baja un PDF.
    - En la app: **📦 Labs Masivo** (barra del tablero) → suelta el PDF → revisa a quién se asignó
      cada hoja y confirma.
+   - El reparto es por **nombre, contra todo el censo** (24 oct 2026: antes solo miraba Cirugía
+     General y sus subespecialidades, así que los pacientes de Neurocirugía y demás nunca se
+     identificaban). Los nombres se comparan igual en los dos lados: «MA.» es MARIA, «FCO.» es
+     FRANCISCO, y «DE»/«LA» no cuentan. Para asignar siguen haciendo falta **todos** los nombres
+     del lado más corto, así que una hoja de alguien que no está en el censo queda **sin asignar**
+     en vez de caer en la tarjeta equivocada.
    - Al terminar, **borra el marcador** de esa PC: contiene los nombres de los pacientes. Al día
      siguiente se genera otro (el censo cambia).
 4. **Un paciente suelto**: en su tarjeta, sección de labs, 📄 PDF / 📷 Foto lee la hoja impresa o
@@ -527,6 +567,25 @@ Ahora hay cuatro protecciones:
 Un encabezado de WinLab con menos nombres de pila que la hoja ahora sí cuenta, por ejemplo dos
 nombres en WinLab y tres en la hoja. Solo cuenta si el robot ya validó ese reporte con nombre y edad.
 Otra persona con los mismos apellidos nunca entra.
+
+## Aviso de Supabase «Disk IO Budget» (27 de octubre de 2026)
+
+El 24 de octubre Supabase avisó que el proyecto estaba agotando su presupuesto de **lectura/escritura de
+disco** (no de espacio: la base pesa ~100 MB de 500). La causa era la vista `winlab_cultivos` (caja
+«Cultivos (lab)»): por cómo estaba escrita, en cada consulta armaba la lista de **todos** los reportes de
+todos los días de laboratorios antes de filtrar por paciente, tardaba más de 60 s, escribía ~120 MB de archivo
+temporal a disco y la base la cortaba a los 8 s (la caja no recibía nada). 5 GB de temporales en 2.5 días.
+
+- Se reescribió (`scripts/supabase_winlab_cultivos_rapida.sql`, aplicada en producción): mismo resultado
+  (147 de 147 cultivos idénticos), ahora en ~1 s, solo con los días y pacientes pedidos y sin tocar disco.
+  Reconoce también los encabezados de WinLab en italiano.
+- Indicaciones: la app revisa primero la huella del Doc y solo baja el texto completo (≈136 000 letras)
+  si cambió.
+- `scripts/supabase_indicaciones_sin_vaiven.sql` (aplicada en producción): la descarga de la base y el Apps
+  Script ya no se sobrescriben el Doc mutuamente (~95 reescrituras de 136 KB al día) y una revisión sin cambios no
+  toca la fila. Si el Apps Script sube una lectura parcial (la versión vieja que leía solo la primera pestaña), la
+  base la ignora mientras su propia descarga funcione.
+- Para revisarlo: Supabase → Settings → Infrastructure → Disk IO, o Reports → Database (por hora).
 
 ## Los labs ya no se reescriben en bucle (19 de octubre de 2026)
 

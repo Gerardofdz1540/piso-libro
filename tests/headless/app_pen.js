@@ -5,7 +5,7 @@
 // sobre los campos (sin recuadro): NÚMEROS con el reconocedor local PEN_OCR al momento; TEXTO por IA (la lectura local solo se
 // muestra provisional, nunca se guarda); ciclo Scribble → → Texto → Tinta. + vista iPad: tira de camas en la barra, sin botones flotantes.
 //   node tests/headless/app_pen.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
-const { launch } = require('./_browser');
+const { launch, touchHelpers, name: BROWSER } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
@@ -21,7 +21,14 @@ const MOCK = `(() => {
 })();`;
 (async () => {
   const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
-  const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+  // WebKit (21 oct 2026): el fetch que la navegación de L16 corta a medio vuelo (un guardado de la tarjeta) lo registra como
+  // error de consola «Fetch API cannot load … due to access control checks» y Playwright lo entrega como pageerror, aunque
+  // no es una excepción de la app (Chromium lo cancela en silencio). Solo ese mensaje y solo mientras navega la prueba.
+  let navigating = false, cancelledByNav = 0;
+  const errors = []; page.on('pageerror', e => {
+    if (navigating && BROWSER === 'webkit' && /^Fetch API cannot load .+ due to access control checks/.test(String(e))) { cancelledByNav++; return; }
+    errors.push(String((e && e.stack) || e).slice(0, 300));
+  });
   const calls = [];
   // Ayudante de IA simulado para ✍️ → Texto: devuelve "TEXTO n" (o falla con 500)
   let aiN = 0, aiMode = 'ok', aiDelay = 150; const aiBodies = [];
@@ -50,6 +57,7 @@ const MOCK = `(() => {
     return json(200, []);
   });
   await page.addInitScript(MOCK);
+  await page.addInitScript(touchHelpers);   // __plTouch / __plTouchEvent: WebKit no construye new Touch() (ver _browser.js)
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
   await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
   await page.waitForTimeout(5000);
@@ -156,8 +164,11 @@ const MOCK = `(() => {
     const k = pid(patients[0]); const p = patients[0];
     const nd = getNote(k); nd.checklist.__ink = { manejo: { w: 600, s: [{ c: '#1d4ed8', p: [[10, 10, 0.5], [40, 20, 0.5]] }] } }; noteData[k] = nd;
     document.getElementById('card-' + k).outerHTML = renderFullCard(p, nd, k);     // sin pasar por _rerenderCard
-    await new Promise(r => setTimeout(r, 150));
-    const cv = document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="manejo"] + canvas.pl-ink-cv');
+    // La capa se monta en el cuadro de render siguiente (rAF tras el MutationObserver): con la CPU ocupada (CI, WebKit)
+    // llega después de los 150 ms fijos de antes (21 oct 2026). Se espera a que aparezca, con tope de 3 s.
+    const find = () => document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="manejo"] + canvas.pl-ink-cv');
+    for (const t0 = Date.now(); !find() && Date.now() - t0 < 3000;) await new Promise(r => setTimeout(r, 50));
+    const cv = find();
     return { after: !!cv, w: cv ? cv.style.width : null };
   });
   check('L4 si la tarjeta se repinta directo (Realtime, RIS, fotos…) la capa de tinta se vuelve a montar sola (MutationObserver)', l4.after === true && /px$/.test(l4.w || ''), JSON.stringify(l4));
@@ -166,6 +177,10 @@ const MOCK = `(() => {
   // Helpers inyectados en la página: pen(el, tipo, x, y), strokeAt(P), writeChars(str, x0, y0, s, gap) (altura ≈ 90·s px),
   // tap(el). Los trazos van a document.elementFromPoint, como en el iPad (los que se salen del cuadro caen donde caigan).
   await page.evaluate(() => {
+    // La caja quieta antes de tomar su rect (21 oct 2026): el evento scroll de scrollIntoView —y con él la cabecera que se
+    // encoge (hdr-min, ~170 px)— llega en el siguiente cuadro de render, que con la CPU ocupada (CI, WebKit) tarda más que
+    // la espera fija; el rect se tomaba antes del encogimiento y los trazos siguientes caían en la caja de abajo (L5).
+    window.__settle = async (el) => { let last = null; for (let i = 0, still = 0; i < 40 && still < 2; i++) { await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0))); const t = el.getBoundingClientRect().top; still = last !== null && Math.abs(t - last) < 0.5 ? still + 1 : 0; last = t; } };
     window.__pen = (el, type, x, y, id, ptype) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id || 7, pointerType: ptype || 'pen', isPrimary: true, clientX: x, clientY: y, pressure: 0.5 }));
     // forceEl: dispatch el pointerdown del PRIMER trazo en ese elemento (para cajas 0×0 en headless, como los modales).
     window.__strokeAt = (P, forceEl) => { const el0 = forceEl || document.elementFromPoint(P[0][0], P[0][1]) || document.body; __pen(el0, 'pointerdown', P[0][0], P[0][1]); P.slice(1).forEach(p => __pen(document.body, 'pointermove', p[0], p[1])); __pen(document.body, 'pointerup', P[P.length - 1][0], P[P.length - 1][1]); };
@@ -190,7 +205,7 @@ const MOCK = `(() => {
     localStorage.setItem('pl_pen_mode', '2');
     const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]';
     const ta = document.querySelector(sel); ta.value = ''; noteData[k].pendientes = '';
-    ta.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120));
+    ta.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120)); await __settle(ta);
     const r = ta.getBoundingClientRect();
     __writeChars('HAS', r.left + 8, r.top + 6, 0.4, 6);
     const live = ta.value, liveCls = ta.classList.contains('pl-pen-live'), glass = document.querySelector('canvas.pl-pen-glass'), sess = PEN_LIVE.el === ta && PEN_LIVE.strokes.length === 6;   // H (3 trazos) + A (2) + S (1)
@@ -237,7 +252,7 @@ const MOCK = `(() => {
     localStorage.setItem('pl_pen_mode', '2'); PEN_OCR.forget(); PEN_LIVE.learnMs = 60;
     const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_');
     const q = (f) => document.querySelector('#ck-row-' + ek + ' input[data-field="' + f + '"]');
-    const prep = async (el) => { el.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120)); return el.getBoundingClientRect(); };
+    const prep = async (el) => { el.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120)); await __settle(el); return el.getBoundingClientRect(); };
     const wait = (ms) => new Promise(r => setTimeout(r, ms));
     // FC: "95" de 36 px de alto, más ancho que el cuadro (el "5" cae fuera) → lectura al momento, sin foco; tras 0.9 s se guarda; tinta verde que se desvanece; aprende 2 plantillas
     const fc = q('pm_fc'); let r = await prep(fc);
@@ -293,7 +308,7 @@ const MOCK = `(() => {
   const l8 = await page.evaluate(async () => {
     openAddModal();
     const ta = document.getElementById('mf-app-modal'); ta.value = '';
-    ta.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120));
+    ta.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120)); await __settle(ta);
     const r = ta.getBoundingClientRect();
     __writeChars('HAS', (r.left || 20) + 8, (r.top || 20) + 6, 0.4, 6, { el: ta });   // el modal es 0×0 en headless: forzamos el destino del lápiz
     const live = ta.value, key = _penField(ta), kind = PEN_LIVE.kind, noLayer = !(ta.nextElementSibling && ta.nextElementSibling.classList.contains('pl-ink-cv'));
@@ -322,13 +337,13 @@ const MOCK = `(() => {
       const ek = k.replace(/[^a-zA-Z0-9]/g, '_'); const row = '#ck-row-' + ek + ' ', card = '#card-' + CSS.escape(k) + ' '; const q = (s) => document.querySelector(s);
       return {
         inputs: { pm_fc: q(row + 'input[data-field="pm_fc"]'), pm_ta: q(row + 'input[data-field="pm_ta"]'), pm_dxtx: q(row + 'input[data-field="pm_dxtx"]'), pm_balance: q(row + 'input[data-field="pm_balance"]'),
-          dv_gasto: q(row + 'input.dv-in[data-f="gasto"]'), dv_sitio: q(row + 'input.dv-in[data-f="sitio"]'), dieta: q(row + 'input.ck-dieta[placeholder^="blanda"]'), atb_dias: q(row + 'input[data-field="atb_dias"]'),
+          dv_gasto: q(row + 'input.dv-in[data-f="gasto"]'), dv_sitio: q(row + ':is(input,textarea).dv-in[data-f="sitio"]'), dieta: q(row + 'input.ck-dieta[placeholder^="blanda"]'), atb_dias: q(row + 'input[data-field="atb_dias"]'),
           vp_nore_mlh: q(row + 'input[data-field="vp_nore_mlh"]'), lab: q('#pen-lab-holder input.lab-input'), lab_extra: q('#pen-lab-holder input.lab-extra-val'), cx_sangrado: q(card + 'input.cx-in[data-f="sangrado"]'), mf_edad: q('#mf-edad') },
         tas: { cx_hal: q(card + 'textarea.cx-in-hal'), mf_app: q('#mf-app-modal') },                                   // textareas SIN data-key
         inkTas: { pendientes: q(card + 'textarea[data-field="pendientes"]'), dv_note: q(card + 'textarea.dv-note') } };   // cajas grandes de la ficha (data-key)
     };
     window.__pd = (el, x, y) => el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'pen', isPrimary: true, clientX: x, clientY: y, pressure: 0.5 }));
-    window.__ts = (el, x, y) => { const t = new Touch({ identifier: 1, target: el, clientX: x, clientY: y }); return el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [t], targetTouches: [t], changedTouches: [t] })); };
+    window.__ts = (el, x, y) => { const t = __plTouch(el, x, y, 1); return el.dispatchEvent(__plTouchEvent('touchstart', [t], [t])); };
   });
 
   // ── L10: iPad en Scribble: la app NO intercepta el lápiz en NINGUNA caja (vitales, TA, DxTx, balance, gasto y sitio del drenaje, dieta,
@@ -349,7 +364,7 @@ const MOCK = `(() => {
     }
     const notIntercepted = Object.keys(probed).filter(n => !probed[n]);
     // "95" a mano sobre FC: la app no hace nada (ni sesión ni trazos ni valor); Scribble lo escribiría
-    const fc = F.inputs.pm_fc; fc.value = ''; fc.dispatchEvent(new Event('input', { bubbles: true })); fc.scrollIntoView({ block: 'center' }); await wait(120);
+    const fc = F.inputs.pm_fc; fc.value = ''; fc.dispatchEvent(new Event('input', { bubbles: true })); fc.scrollIntoView({ block: 'center' }); await wait(120); await __settle(fc);
     const rf = fc.getBoundingClientRect(); __writeChars('95', rf.left + 4, rf.top + 2, 0.5, 8);
     const fcLive = fc.value, noSess = PEN_LIVE.el === null && PEN_LIVE.active === null, noStrokes = PEN_LIVE.strokes.length === 0; await wait(1100);
     const fcVal = getNote(k).checklist.pm_fc || '', noHint = PEN_LIVE.scribbleHint === false;
@@ -382,7 +397,7 @@ const MOCK = `(() => {
     const pts = [[10, 10], [20, 12], [30, 14], [40, 18], [50, 20], [60, 22]]; ev('pointerdown', pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ev('pointermove', pts[i][0], pts[i][1]); ev('pointerup', 60, 22);
     const inkN = (((getNote(k).checklist.__ink || {}).pendientes || {}).s || []).length, textSame = ta.value === v0, noLive = PEN_LIVE.el === null;
     // "95" a mano sobre FC: sin sesión ni valor (Scribble)
-    const fc = F.inputs.pm_fc; fc.value = ''; fc.dispatchEvent(new Event('input', { bubbles: true })); fc.scrollIntoView({ block: 'center' }); await wait(120);
+    const fc = F.inputs.pm_fc; fc.value = ''; fc.dispatchEvent(new Event('input', { bubbles: true })); fc.scrollIntoView({ block: 'center' }); await wait(120); await __settle(fc);
     const rf = fc.getBoundingClientRect(); __writeChars('95', rf.left + 4, rf.top + 2, 0.5, 8); const fcLive = fc.value, noSess = PEN_LIVE.el === null && PEN_LIVE.active === null; await wait(1100); const fcVal = getNote(k).checklist.pm_fc || '';
     // el botón ✍️ en iPad: no cambia de modo, solo avisa cómo activar Garabatear
     const toasts = []; const origToast = window._plToast; window._plToast = function (m) { toasts.push(String(m)); };
@@ -412,12 +427,12 @@ const MOCK = `(() => {
   const l11 = await page.evaluate(async () => {
     const savedCfg = localStorage.getItem('hgl-worker-config'); localStorage.removeItem('hgl-worker-config'); localStorage.setItem('pl_pen_mode', '2');
     const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_');
-    const dieta = document.querySelector('#ck-row-' + ek + ' input.ck-dieta'); const before = dieta.value, savedBefore = getNote(k).checklist.dieta; dieta.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120));
+    const dieta = document.querySelector('#ck-row-' + ek + ' input.ck-dieta'); const before = dieta.value, savedBefore = getNote(k).checklist.dieta; dieta.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 120)); await __settle(dieta);
     const r = dieta.getBoundingClientRect(); __writeChars('HAS', r.left + 4, r.top + 2, 0.36, 6); const live = dieta.value;
     await new Promise(r2 => setTimeout(r2, 1600));
     const after = dieta.value, savedAfter = getNote(k).checklist.dieta, prov = dieta.classList.contains('pl-pen-prov');
     // número: sigue funcionando sin IA
-    const fr = document.querySelector('#ck-row-' + ek + ' input[data-field="pm_fr"]'); fr.scrollIntoView({ block: 'center' }); await new Promise(r2 => setTimeout(r2, 120));
+    const fr = document.querySelector('#ck-row-' + ek + ' input[data-field="pm_fr"]'); fr.scrollIntoView({ block: 'center' }); await new Promise(r2 => setTimeout(r2, 120)); await __settle(fr);
     const rf = fr.getBoundingClientRect(); __writeChars('8', rf.left + 4, rf.top + 2, 0.4, 8); await new Promise(r2 => setTimeout(r2, 1100)); const frVal = getNote(k).checklist.pm_fr;
     localStorage.setItem('hgl-worker-config', savedCfg); localStorage.setItem('pl_pen_mode', '1');
     return { before, live, after, savedBefore, savedAfter, prov, frVal };
@@ -431,7 +446,7 @@ const MOCK = `(() => {
     localStorage.setItem('pl_pen_mode', '2'); window.__pl_force_ipad = false;
     const k = pid(patients[0]); const ta = document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]');
     const wait = (ms) => new Promise(r => setTimeout(r, ms));
-    ta.scrollIntoView({ block: 'center' }); await wait(120); const r = ta.getBoundingClientRect(); const v0 = ta.value, s0 = getNote(k).pendientes;
+    ta.scrollIntoView({ block: 'center' }); await wait(120); await __settle(ta); const r = ta.getBoundingClientRect(); const v0 = ta.value, s0 = getNote(k).pendientes;
     __writeChars('HAS', r.left + 8, r.top + 6, 0.4, 6, { el: ta });
     await wait(1400);                                                    // pausa → lote 1 a la IA (tarda 2 s): provisional, sin guardar
     const a = { v: ta.value, s: getNote(k).pendientes, prov: ta.classList.contains('pl-pen-prov'), pend: PEN_LIVE.pendingAi.length, closed: PEN_LIVE.el === null };
@@ -466,7 +481,7 @@ const MOCK = `(() => {
     const wait = (ms) => new Promise(r => setTimeout(r, ms));
     const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_');
     const ta = document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]');
-    ta.scrollIntoView({ block: 'center' }); await wait(120); let r = ta.getBoundingClientRect(); const v0 = ta.value, s0 = getNote(k).pendientes;
+    ta.scrollIntoView({ block: 'center' }); await wait(120); await __settle(ta); let r = ta.getBoundingClientRect(); const v0 = ta.value, s0 = getNote(k).pendientes;
     __writeChars('TAC', r.left + 8, r.top + 6, 0.4, 6, { el: ta }); await wait(1400);           // provisional; la IA (1.5 s) en camino
     const a = { v: ta.value, prov: ta.classList.contains('pl-pen-prov'), s: getNote(k).pendientes, activeBefore: (document.activeElement || {}).tagName + ':' + ((document.activeElement || {}).dataset || {}).field };
     let fired = 0; const probe = (ev) => { if (ev.target === ta) fired++; }; document.addEventListener('focus', probe, true);
@@ -488,7 +503,7 @@ const MOCK = `(() => {
     // repintado mientras la IA tarda: con una cirugía (su fecha es el primer input[data-ck] de la ficha) la dieta repintada sigue siendo la dieta
     const cxId = addCirugia(k); try { document.activeElement.blur(); } catch (_) {}
     updateDieta(k, 'LIQUIDOS'); _rerenderCard(k); await wait(150);
-    const dieta = document.querySelector('#ck-row-' + ek + ' input.ck-dieta'); dieta.scrollIntoView({ block: 'center' }); await wait(120);
+    const dieta = document.querySelector('#ck-row-' + ek + ' input.ck-dieta'); dieta.scrollIntoView({ block: 'center' }); await wait(120); await __settle(dieta);
     r = dieta.getBoundingClientRect(); __writeChars('BLANDA', r.left + 4, r.top + 2, 0.36, 6); await wait(1400);
     const fechaDe = () => (getNote(k).checklist.cirugias.find(c => String(c.id) === String(cxId)) || {}).fecha;
     const g = { v: dieta.value, prov: dieta.classList.contains('pl-pen-prov'), fecha: fechaDe() };
@@ -527,7 +542,7 @@ const MOCK = `(() => {
     const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_'); const sel = '#ck-row-' + ek + ' input.ck-dieta';
     try { if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); } catch (_) {}
     updateDieta(k, 'LIQUIDOS'); _rerenderCard(k); await wait(150);
-    const dieta = document.querySelector(sel); dieta.scrollIntoView({ block: 'center' }); await wait(250);
+    const dieta = document.querySelector(sel); dieta.scrollIntoView({ block: 'center' }); await wait(250); await __settle(dieta);
     const r = dieta.getBoundingClientRect(); const nd = () => getNote(k).checklist.dieta;
     __writeChars('HAS', r.left + 4, r.top + 2, 0.36, 6); await wait(1400);                       // lote 1 provisional; su IA tarda 2 s
     const a = { v: dieta.value, prov: dieta.classList.contains('pl-pen-prov'), pend: PEN_LIVE.pendingAi.length, s: nd() };
@@ -619,7 +634,10 @@ const MOCK = `(() => {
 
   // ── L16: migración AL CARGAR en iPad: un dispositivo que se quedó en "2" (→ Texto) arranca en Scribble (sin pen-on, etiqueta, nada se intercepta) ──
   await page.addInitScript(() => { localStorage.setItem('pl_pen_mode', '2'); window.__pl_force_ipad = true; });   // después del MOCK (que pone "1"): gana el "2"
+  navigating = true;
   await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+  navigating = false;
+  if (cancelledByNav) console.log('INFO L16 (WebKit): ' + cancelledByNav + ' fetch cortado(s) por la navegación (guardado en vuelo de la página anterior), no es error de la app');
   await page.waitForTimeout(5000);
   const l16 = await page.evaluate(async () => {
     const k = pid(patients[0]); focusGoTo(k); await new Promise(r => setTimeout(r, 150));

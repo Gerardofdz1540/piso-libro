@@ -28,6 +28,7 @@
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
+var _censoWriteStats_ = { upserts: 0, unchanged: 0 };
 // Google Doc "INDICACIONES HOSPITALIZACION": su texto completo se empuja a Supabase
 // (tabla indicaciones_doc, una sola fila) y la app lo cruza por cama + nombre en cada tarjeta.
 var INDICACIONES_DOC_ID = '1gRCydpjiByBjMxp5edTbuiEwrzHTh8Ir2IvgYqZY73A';
@@ -96,6 +97,7 @@ function doSyncForce() {
 
 /** Lee la hoja, parsea, deduplica/cuarentena y hace UPSERT column-scoped a Supabase. opts.force: ver doSyncForce. */
 function doSync(opts) {
+  _censoWriteStats_ = { upserts: 0, unchanged: 0 };
   var key = PropertiesService.getScriptProperties().getProperty('SUPABASE_KEY');
   if (!key) { Logger.log('FALTA Script Property SUPABASE_KEY'); throw new Error('Falta SUPABASE_KEY en Script Properties'); }
 
@@ -121,8 +123,8 @@ function doSync(opts) {
   //    camas que no necesitan reconciliar; las demás se retienen y se avisa en sync_log).
   var retired = syncPatients_(key, dd.rows, opts);
 
-  Logger.log('Sync OK: ' + dd.rows.length + ' upserts, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.avisos.length + ' avisos de expediente repetido.');
-  return { upserts: dd.rows.length, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
+  Logger.log('Sync OK: ' + dd.rows.length + ' capturados, ' + _censoWriteStats_.upserts + ' upserts, ' + _censoWriteStats_.unchanged + ' sin cambios, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.avisos.length + ' avisos de expediente repetido.');
+  return { capturados: dd.rows.length, upserts: _censoWriteStats_.upserts, sin_cambios: _censoWriteStats_.unchanged, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
 }
 
 /** Lee el censo por gid; si cambió el gid, exige una única pestaña con encabezados censales. */
@@ -188,6 +190,7 @@ function parseCenso_(rows) {
         adscrito:  cell_(row, col.adscrito),
         residente: cell_(row, col.residente),
         ingreso:   toISODate_(row[col.ingreso]),
+        _invalidIngreso: String(row[col.ingreso] == null ? '' : row[col.ingreso]).trim() !== '' && !toISODate_(row[col.ingreso]),
         dias:      toInt_(cell_(row, col.dias)),
         estado:    cell_(row, col.estado),
         seccion:   section
@@ -572,13 +575,16 @@ function dedupByCama_(rows, key) {
 
 /** Convierte un registro parseado a la fila censal que se manda a Supabase (incluye es_mio calculado). */
 function toPatientRow_(p) {
-  return {
+  var result = {
     cama: normalizeCama_(p.cama), nombre: p.nombre, exp: p.exp, edad: p.edad || '', dx: p.dx || '',
     esp: p.esp || '', adscrito: p.adscrito || '', residente: p.residente || '',
     ingreso: p.ingreso || null, dias: (p.dias === '' ? null : p.dias),
     estado: p.estado || '', seccion: p.seccion || '', es_mio: computeEsMio_(p.esp),
     updated_by: 'sheet-sync'
   };
+  // Marca interna: nunca se envía como columna a PostgREST.
+  if (p._invalidIngreso) Object.defineProperty(result, '_invalidIngreso', { value: true });
+  return result;
 }
 
 /**
@@ -812,7 +818,7 @@ function syncPatients_(key, payload, opts) {
   var nSheet = Object.keys(maps.byCama).length;   // tamaño REAL de la hoja (antes de excluir nada) para la guarda
 
   // Estado actual en Supabase
-  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev,edad,ingreso', {
+  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev,edad,ingreso,dx,esp,adscrito,residente,dias,estado,seccion,es_mio', {
     method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true
   });
   // Sin el estado actual NO se upsertea a ciegas: con camas fijadas desde la app (caso e) la fila de la
@@ -842,10 +848,13 @@ function syncPatients_(key, payload, opts) {
   var sheetByCama = maps.byCama, sheetRowByCama = maps.rowByCama;
 
   // Camas que se quedan tal cual (misma persona en la misma cama): nadie puede moverse ahí.
-  var stayCamas = {};
+  var stayCamas = {}, ingresoByCama = {};
   cur.forEach(function (r) {
     var cama = normalizeCama_(r.cama);
-    if (sameOccupant_(maps, r, cama, String(r.exp || '').trim())) stayCamas[cama] = true;
+    if (sameOccupant_(maps, r, cama, String(r.exp || '').trim())) {
+      stayCamas[cama] = true;
+      ingresoByCama[cama] = r.ingreso;
+    }
   });
 
   var toDelete = [], toMove = [], toFixExp = [], toClear = [], enConflicto = [], enEmpate = [], moveTargets = {}, holdLoop = {}, appMoveHold = {};
@@ -1009,6 +1018,7 @@ function syncPatients_(key, payload, opts) {
   // hoja sospechosa: la cama destino podría ser basura). Con hoja sospechosa tampoco se anota
   // cama_hoja_prev (podría ser basura y haría "ganar" a la hoja en la siguiente corrida buena).
   var stats = 'hoja ' + nSheet + ', supabase ' + cur.length + ', a retirar ' + toDelete.length;
+  preserveInvalidIngresos_(safePayload, ingresoByCama);
   if (nSheet < 10) {
     Logger.log('syncPatients: solo ' + nSheet + ' en la hoja (posible error) → solo upsert, sin borrar.');
     return guardUpsert_(key, 'guarda_hoja_chica', safePayload, cur, stayCamas, toMove, stats);
@@ -1040,10 +1050,12 @@ function syncPatients_(key, payload, opts) {
   // destino quedan fuera del upsert esta corrida. Si no, la fila que no se movió recibía el nombre del
   // siguiente ocupante de su cama (con su nota) y en la de destino se creaba una copia vacía.
   mv.failed.forEach(function (m) { skipCamas[m.from] = true; skipCamas[m.to] = true; });
+  toMove.forEach(function (m) { if (!skipCamas[m.to]) ingresoByCama[m.to] = m.row.ingreso; });
   // 2b) Expediente corregido (misma persona, misma cama): PATCH del exp antes del upsert.
   var fixed = 0;
   toFixExp.forEach(function (f) { if (patchPatient_(key, f.row.id, { exp: f.to, updated_by: 'sheet-sync' })) fixed++; });
   if (toFixExp.length) Logger.log('syncPatients: expedientes corregidos ' + fixed + '/' + toFixExp.length + ': ' + toFixExp.map(function (f) { return normalizeCama_(f.row.cama) + ' ' + f.from + '→' + f.to; }).join(', '));
+  toFixExp.forEach(function (f) { ingresoByCama[normalizeCama_(f.row.cama)] = f.row.ingreso; });
   // 2c) (e) Camas fijadas desde la app: anotar la cama que hoy dice la hoja (1ª divergencia) y
   //     limpiar las columnas de control cuando la hoja ya coincide con la app.
   var pinnedOk = 0;
@@ -1061,7 +1073,8 @@ function syncPatients_(key, payload, opts) {
   if (finalPayload.length !== safePayload.length) {
     Logger.log('syncPatients: ' + (safePayload.length - finalPayload.length) + ' cama(s) sin archivar aún, se reintentan en la próxima corrida: ' + Object.keys(skipCamas).join(', '));
   }
-  upsertPatients_(key, finalPayload);   // ahora sin filas conflictivas → reasignados entran limpios
+  preserveInvalidIngresos_(finalPayload, ingresoByCama);
+  upsertPatients_(key, finalPayload, cur);   // solo diferencias reales; reasignados entran limpios
   return retired;
 }
 
@@ -1089,7 +1102,7 @@ function guardUpsert_(key, motivo, payload, cur, stayCamas, toMove, stats) {
     Logger.log('syncPatients: guarda → ' + held.length + ' cama(s) retenida(s) hasta reconciliar (otra persona o cambio de cama; el upsert le pondría a la fila vieja, con su nota, otro nombre): ' + held.join(', '));
     try { logQuarantine_(key, [{ exp: '', camas: held.join(', '), nombres: stats || '', motivo: motivo }]); } catch (_) {}
   }
-  upsertPatients_(key, rows);
+  upsertPatients_(key, rows, cur);
   return 0;
 }
 
@@ -1190,7 +1203,26 @@ function noteForArchive_(n, motivo) {
 }
 
 /** UPSERT column-scoped en lotes. Prefer: resolution=merge-duplicates -> ON CONFLICT(cama) DO UPDATE. */
-function upsertPatients_(key, payload) {
+function preserveInvalidIngresos_(payload, known) {
+  payload.forEach(function (p) {
+    if (!p._invalidIngreso) return;
+    p.ingreso = known[p.cama] || null;
+    Logger.log('Censo: fecha de ingreso inválida en cama ' + p.cama + (p.ingreso ? '; se conserva la fecha previa.' : '; se sincroniza sin fecha.'));
+  });
+}
+
+function upsertPatients_(key, payload, current) {
+  var byCama = {};
+  (current || []).forEach(function (r) { byCama[normalizeCama_(r.cama)] = r; });
+  // Se compara la foto actual, nunca un hash de la hoja: una edición en la app también se detecta.
+  payload = payload.filter(function (p) {
+    var old = byCama[p.cama];
+    var same = old && Object.keys(p).every(function (k) {
+      return Object.prototype.hasOwnProperty.call(old, k) && old[k] === p[k];
+    });
+    if (same) _censoWriteStats_.unchanged++;
+    return !same;
+  });
   if (!payload.length) return;
   var url = SUPABASE_URL + '/rest/v1/patients?on_conflict=cama';
   var CHUNK = 200;
@@ -1203,6 +1235,7 @@ function upsertPatients_(key, payload) {
     });
     var code = res.getResponseCode();
     if (code < 200 || code >= 300) throw new Error('UPSERT patients HTTP ' + code + ': ' + res.getContentText());
+    _censoWriteStats_.upserts += batch.length;
   }
 }
 
@@ -1281,7 +1314,7 @@ function syncIndicaciones(force) {
   var last = props.getProperty('IND_LAST_UPDATED');
   if (!force && last && last === updatedIso) { Logger.log('indicaciones: sin cambios desde ' + last); return { ok: true, skipped: true, docUpdated: updatedIso }; }
 
-  var text = DocumentApp.openById(INDICACIONES_DOC_ID).getBody().getText() || '';
+  var leido = indTextoDoc_(INDICACIONES_DOC_ID), text = leido.text;
   var hash = indHash_(text);
   var row = { id: 1, doc_id: INDICACIONES_DOC_ID, text: text, text_hash: hash, doc_updated: updatedIso, synced_at: new Date().toISOString() };
   var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/indicaciones_doc?on_conflict=id', {
@@ -1293,8 +1326,23 @@ function syncIndicaciones(force) {
   if (code < 200 || code >= 300) { Logger.log('indicaciones: UPSERT HTTP ' + code + ' ' + res.getContentText()); return { ok: false, reason: 'http_' + code }; }
   props.setProperty('IND_LAST_UPDATED', updatedIso);
   var bloques = (text.match(/INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/gi) || []).length;
-  Logger.log('indicaciones: subidas ' + text.length + ' letras, ~' + bloques + ' bloques (Doc editado ' + updatedIso + ')');
-  return { ok: true, chars: text.length, bloques: bloques, docUpdated: updatedIso, hash: hash };
+  Logger.log('indicaciones: subidas ' + text.length + ' letras de ' + leido.tabs + ' pestaña(s), ~' + bloques + ' bloques (Doc editado ' + updatedIso + ')');
+  return { ok: true, chars: text.length, tabs: leido.tabs, bloques: bloques, docUpdated: updatedIso, hash: hash };
+}
+/** Texto de TODAS las pestañas del Doc (24 oct 2026: «hay indicaciones de algunas camas que en el Drive sí aparecen pero
+ *  no en la app»). Con pestañas, getBody() devuelve solo la PRIMERA: el Doc de 326 KB subía 2 337 letras (3 bloques
+ *  para 43 pacientes). Se recorren las pestañas y sus subpestañas en orden; sin pestañas (o sin la API) queda getBody(). */
+function indTextoDoc_(id) {
+  var doc = DocumentApp.openById(id), partes = [];
+  var recorrer = function (tabs) {
+    (tabs || []).forEach(function (t) {
+      try { partes.push(t.asDocumentTab().getBody().getText() || ''); } catch (_) {}
+      try { recorrer(t.getChildTabs()); } catch (_) {}
+    });
+  };
+  try { if (typeof doc.getTabs === 'function') recorrer(doc.getTabs()); } catch (_) { partes = []; }
+  if (!partes.length) return { text: doc.getBody().getText() || '', tabs: 1 };
+  return { text: partes.join('\n\n'), tabs: partes.length };
 }
 function syncIndicacionesScheduled() {
   var lock = LockService.getScriptLock();
@@ -1305,7 +1353,7 @@ function syncIndicacionesScheduled() {
 function syncIndicacionesForce() { return syncIndicaciones(true); }
 /** Diagnóstico sin escribir nada: cuántos bloques y camas detecta en el Doc. */
 function testIndicacionesOnly() {
-  var text = DocumentApp.openById(INDICACIONES_DOC_ID).getBody().getText() || '';
+  var text = indTextoDoc_(INDICACIONES_DOC_ID).text;
   var bloques = (text.match(/INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/gi) || []).length;
   var camas = (text.match(/CAMA\s*[:#\-]?\s*\d+-\d{2,4}/gi) || []).length;
   Logger.log('Doc: ' + text.length + ' letras · ~' + bloques + ' bloques de indicaciones · ' + camas + ' menciones de cama');
@@ -1397,10 +1445,17 @@ function toISODate_(v) {
   if (m) {
     var d = ('0' + m[1]).slice(-2), mo = ('0' + m[2]).slice(-2), y = m[3];
     if (y.length === 2) y = (parseInt(y, 10) > 50 ? '19' : '20') + y;
-    return y + '-' + mo + '-' + d;
+    return validISODate_(y + '-' + mo + '-' + d);
   }
   var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return iso ? iso[0] : '';
+  return iso ? validISODate_(iso[0]) : '';
+}
+
+function validISODate_(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+  var y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
+  var days = [31, y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return y > 0 && m >= 1 && m <= 12 && d >= 1 && d <= days[m - 1] ? s : '';
 }
 
 // --- INSTALACION / DIAGNOSTICO (se ejecutan a mano una vez) -------------------------------------
