@@ -54,8 +54,11 @@ en GitHub (el aviso lo da el PR). Son 2 minutos:
    `https://github.com/Gerardofdz1540/piso-libro/blob/main/apps-script/censo-sync.gs`.
 2. Pulsa el botón **Raw** (arriba a la derecha del archivo). Se abre texto
    plano. Selecciona todo (`Ctrl+A`) y copia (`Ctrl+C`).
-3. Abre la hoja del censo en Google Sheets.
-4. Menú **Extensiones → Apps Script**. Se abre el editor.
+3. Abre https://script.google.com (con tu cuenta) y entra al proyecto del censo: es el que se llama
+   **«Proyecto sin título»** (el censo de Drive es un `.xlsx`, así que el programa no cuelga del menú
+   Extensiones de la hoja; es un proyecto aparte). El otro proyecto, «Registro de pacientes», es el
+   registro de investigación y se actualiza igual con `apps-script/registro-pacientes.gs`.
+4. Se abre el editor.
 5. En la lista de la izquierda pulsa `Código.gs`. En el cuadro grande
    selecciona todo (`Ctrl+A`), borra, y pega (`Ctrl+V`) lo que copiaste.
 6. Pulsa el icono de **guardar** (disquete) o `Ctrl+S`.
