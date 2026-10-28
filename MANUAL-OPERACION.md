@@ -199,9 +199,12 @@ cuela, la publicación lo detecta: en cada push a `main` el mismo paso compara c
 
 ## 🔎 Filtrar las camas (28 de octubre de 2026)
 
-En el tablero (una cama a la vez) la barra de búsqueda de arriba no se ve. El botón **🔎 Filtros** de la barra del
-paciente abre una fila con:
+En la pestaña **🏥 Piso Libro** (una cama a la vez) la barra de búsqueda de arriba no se ve. El botón **🔎 Filtrar camas**
+(borde amarillo, en la barra oscura de la ficha, junto a 📊 Planes) abre una fila con:
 
+- **Cama o nombre** (28 oct 2026): escribe «3-15» (camas 3-150 a 3-159), «UCI», un apellido o un expediente; la lista se
+  ajusta al dejar de escribir y el cursor se queda en el campo. «✕» la quita.
+- **Residente** (además de adscrito).
 - **Especialidad** (CG, CCR, URO…), **Adscrito** y **Servicio**: el servicio es la sala del censo donde está el
   paciente (Piso, UCIA, Pediatría, Medicina Interna, Oncología/Ginecología…). Cada opción dice cuántos pacientes
   tiene. Un paciente agregado a mano, sin sala del censo, toma el servicio de su cama (UCI → UCIA, 3-xxx → Piso).
@@ -210,12 +213,16 @@ paciente abre una fila con:
   «+ Agregar paciente» (abre el alta con la cama puesta; al guardar, el tablero regresa a las fichas y abre al
   paciente nuevo). Respeta el filtro de servicio (p. ej. solo las camas libres de UCIA). «✕ Ver pacientes» regresa.
   La lista de camas se cambia en «⚙️ Configurar camas».
-- **✕ Quitar filtros** deja todo como estaba. El botón dice cuántos filtros hay puestos («🔎 Filtros · 2») para que no
-  se olviden: con filtros, las flechas ← → y el carril de camas recorren solo los pacientes filtrados.
+- **✕ Quitar filtros** deja todo como estaba. El botón dice cuántos filtros hay puestos para que no
+  se olviden («🔎 Filtrar camas · 2»; se pone ámbar): con filtros, las flechas ← → y el carril de camas recorren solo los
+  pacientes filtrados.
 
 Los filtros son de cada dispositivo, no cambian datos y también aplican al Censo y a la impresión (son los mismos que
 el Censo ya tenía para residente y adscrito). Si con los filtros no queda nadie, la pantalla lo dice y los filtros
 siguen a la mano. Si «🩺 Solo míos» está prendido aparece en la fila para poder apagarlo.
+
+Si no ves «🔎 Filtrar camas», ese dispositivo tiene una versión vieja de la app: toca «Actualizar» en el aviso de versión
+nueva o recarga la página (el administrador lo ve en 👥 Usuarios → 📱 Versiones).
 
 ## ✏️ Corregir un laboratorio mal transcrito (28 de octubre de 2026)
 
@@ -550,7 +557,12 @@ Tres cosas que la hoja de GoodNotes hacía y la app no:
 
 Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, de arriba abajo:
 
-- **🔴 DX / Motivo de ingreso** (rojo).
+- **🔴 DX / Motivo de ingreso** (rojo). Debajo (28 oct 2026, para el registro):
+  - **🩺 Dx principal**: un menú con la lista corta del servicio (apendicitis, colecistitis, pancreatitis, oclusión,
+    hernia, cáncer colorrectal…) y su grupo CIE-10. El DX de arriba no cambia. Si el DX lo dice, aparece un botón
+    **«¿Apendicitis aguda?»**: tocarlo lo elige. **Nada se elige solo**. ↩ Regresar lo quita.
+  - **📋 Falta para el registro**: una línea gris con lo que le falta a la tarjeta (APP, peso, talla, sexo, dx principal,
+    cirugías sin urgencia/abordaje/Clavien). No bloquea nada y desaparece cuando está completo. No sale al imprimir.
 - **🧪 Laboratorios**.
 - **🔪 Cirugías / Procedimientos** (morado). Una fila por intervención con su **fecha** (calendario),
   **PO día N** calculado solo, procedimiento, hallazgos, **sangrado** y cirujano. Botón
@@ -558,6 +570,11 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
   sustituye a las antiguas "Qx / Procedimiento", "Drenajes" y "Sangrado": el texto que ya existía se
   convirtió solo a la lista (una fila por línea con fecha; el sangrado quedó en la cirugía más
   reciente). La fecha POP del menú "⋯ Más" ahora es la de la última cirugía.
+  - **Urgencia / electiva, abordaje y complicación** (28 oct 2026): tres menús bajo cada cirugía. Abordaje: abierta,
+    laparoscópica, laparoscópica convertida a abierta, endoscópica / percutánea u otro. Complicación: la escala de
+    **Clavien-Dindo** con el grado más alto hasta hoy (sin complicación, I, II, IIIa, IIIb, IVa, IVb, V). Si hubo
+    complicación aparece **«¿Cuál?»** para escribirla (fuga, ISQ, sangrado…). Con esto el registro calcula urgencias,
+    conversiones y complicación mayor (≥ IIIa).
   - **🔎 ¿Cirugía sin registrar?** (28 oct 2026). Si el DX («PO LAPE 26/10»), la Cronología («pasa a quirófano para
     colecistectomía») o la fecha POP dicen que hubo una cirugía que no está en la lista, la caja lo avisa en un renglón
     discreto (máximo 3; no sale al imprimir). **Nada se escribe solo**:
@@ -785,7 +802,8 @@ una copia: además trae pestañas listas para estadística.
   alta o defunción. Por eso el registro no podía calcular mortalidad. Ahora:
   - al dar de alta en la app (🚪 Alta), el cuadro pide el motivo (desde el 28 oct: alta a domicilio, defunción, cambio
     de servicio, contrarreferencia, traslado a otro hospital, alta voluntaria, fuga / abandono, otro motivo o «no fue
-    egreso (error del censo)»);
+    egreso (error del censo)»). **Es obligatorio** (28 oct 2026): sin elegirlo, el botón avisa y abre el menú. Al cambiar
+    el estado a ALTA o DEFUNCIÓN, ese estado ya es el motivo;
   - **aviso discreto «🚪 Egreso sin motivo»** (28 oct 2026): cuando un paciente ya no aparece en el censo (alta en la app o
     retirado por la hoja) y nadie dijo el motivo, una tarjeta pequeña abajo a la izquierda pregunta «3-160 · NOMBRE ya no
     aparece en el censo. ¿Cuál fue el motivo del egreso?» con el menú. No bloquea nada:
@@ -824,6 +842,17 @@ una copia: además trae pestañas listas para estadística.
   - **Labs corregidos a mano** (✏️ Corregir): la pestaña «Labs» dice quién corrigió, cuándo y qué decía antes.
   - **Para que el registro sea completo, en la app:** llenen **APP**, **peso y talla** (fila Clínico del Pase), las
     **horas de la uresis**, el **motivo del egreso** (🚪) y pasen las cirugías a la caja (🔎 ➕ Registrar).
+- **Pestañas nuevas del registro** (registro 2026.10.28-2):
+  - **«Por completar»**: la lista de trabajo del equipo, **con nombres** (no se comparte). Trae a los hospitalizados y a
+    los egresados de los últimos 30 días a los que les falta algo: motivo del egreso, sexo, edad, APP, peso, talla,
+    dx principal, cirugías por pasar a la caja o sin urgencia/abordaje/Clavien. Al completarlo, la fila queda «Vigente:
+    No». Sugerencia: que el jefe de residentes la revise una vez por semana.
+  - **«Resumen mensual»**: solo cuentas, sin nombres. Por mes: ingresos, egresos, defunciones y **mortalidad sobre los
+    egresos con desenlace conocido** (y cuántos no tienen motivo), estancia mediana y media, pacientes operados,
+    cirugías, % de urgencias, % laparoscópico, conversiones, complicación mayor (Clavien ≥ IIIa), reintervenciones,
+    reingresos a 30 días, cultivos positivos y los 5 dx, cirugías y gérmenes más frecuentes.
+  - En «Análisis · Episodios»: dx principal con su CIE-10 y de dónde salió (elegido o inferido del DX), urgencia y
+    abordaje de la 1.ª cirugía, conversión, Clavien-Dindo máximo, complicación mayor y cirugías sin clasificar.
 - **Para que el registro tenga las pestañas nuevas:** abre el proyecto «Registro de pacientes» en script.google.com,
   borra todo `Código.gs`, pega el `apps-script/registro-pacientes.gs` nuevo y guarda. No hay que tocar nada más: la
   propiedad `REG_SAL` (la sal del seudónimo) se crea sola en la siguiente corrida.
@@ -1182,6 +1211,13 @@ Botón **👥 Usuarios** en la cabecera (solo lo ve el administrador).
   cambie su nombre (antes una cuenta podía hacerse administradora con una petición directa; se cerró el 27 oct 2026).
 - El administrador no puede bloquearse, borrarse ni quitarse el rol a sí mismo.
 - **Sin registro**: cuentas creadas a mano en el panel de Supabase; aparecen con **✅ Dar acceso**.
+- **📱 Versiones** (28 oct 2026): cada iPad, celular o computadora reporta la versión de la app que tiene, al abrirla y
+  cada hora: quién, qué equipo («iPad · Safari 17.6 · ícono»), versión y cuándo. Arriba dice si **todos los
+  dispositivos usados en los últimos 7 días** tienen la versión publicada o cuántos siguen con una vieja.
+  - **Úsalo antes de apagar el acceso público de Realtime:** solo cuando diga ✅.
+  - Uno con versión vieja: ábrelo y toca «Actualizar» en el aviso de versión nueva, o recarga.
+  - No guarda nada de pacientes. La tabla es `pl_dispositivos` (`scripts/supabase_dispositivos.sql`, ya aplicada) y
+    solo la lee el administrador.
 
 ### Cuando alguien se va del servicio (rotación, egreso)
 

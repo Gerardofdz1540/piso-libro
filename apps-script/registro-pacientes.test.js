@@ -717,7 +717,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   // Capacidad: las pestañas nuevas no guardan columnas vacías y la cuenta incluye todas las hojas.
   const tot = Object.values(si.ss.sheets).reduce((s, h) => s + h.maxR * h.maxC, 0);
   check("R12k pestañas nuevas sin columnas de sobra y la cuenta de celdas incluye todas las hojas",
-    si.ss.sheets["Labs"].maxC === 9 && si.ss.sheets["Diccionario"].maxC === 2 && si.ss.sheets["Pacientes"].maxC === 45 && JSON.stringify(si.ss.sheets["Diccionario"].cells).includes('"' + tot + ' de 10000000'), String(tot));
+    si.ss.sheets["Labs"].maxC === 9 && si.ss.sheets["Diccionario"].maxC === 2 && si.ss.sheets["Pacientes"].maxC === 48 && JSON.stringify(si.ss.sheets["Diccionario"].cells).includes('"' + tot + ' de 10000000'), String(tot));
 }
 
 // ─── R13: una respuesta cortada no cuela datos al error ──────────────────────────────────────────────────────────
@@ -1260,6 +1260,85 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
     JSON.stringify([E1["Peso (kg)"], E1["Talla (m)"], E1["IMC (kg/m²)"], E1["Hipertensión"], E1["Comorbilidades (n)"], E1["Índice urinario mínimo (mL/kg/h)"], E1["Días con oliguria (IU < 0.5)"], E2["Hipertensión"], E2["Calidad de datos"]]));
   const E9 = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K.p9) || {};
   check("R28g IMC ≥ 30 en un adulto marca Obesidad aunque no haya APP (el conteo sigue vacío)", E9["IMC (kg/m²)"] === 39.1 && E9["Obesidad"] === 1 && E9["Diabetes"] === "" && E9["Comorbilidades (n)"] === "", JSON.stringify([E9["IMC (kg/m²)"], E9["Obesidad"], E9["Comorbilidades (n)"]]));
+}
+
+// ─── R29: cirugía estructurada, Dx principal, «Por completar» y «Resumen mensual» (28 oct 2026) ──
+{
+  const arch = (id, sid, nombre, exp, ingreso, archivado, dx, tipo, extra) => ({ id, archived_at: archivado + "T18:00:00+00:00",
+    patient_data: Object.assign({ _supa_id: sid, cama: "3-6" + id.slice(-2), nombre, exp, ingreso, dx, edad: "50" }, extra || {}),
+    note_data: Object.assign({ _egreso: "RETIRADO DEL CENSO (hoja)" }, tipo ? { _egreso_tipo: tipo, _egreso_tipo_ts: archivado + "T18:00:00Z" } : {}) });
+  const d = { cronologia_respaldo: [], ris_estudios: [], winlab_labs: [], procedimientos_dia: [],
+    patients: [
+      { id: "h1", cama: "3-601", nombre: "PRUEBA FICTICIA COMPLETA", exp: "000611", dx: "APENDICITIS AGUDA", edad: "30", ingreso: "2026-10-20", estado: "ESTABLE" },
+      { id: "h2", cama: "3-602", nombre: "PRUEBA FICTICIA INCOMPLETA", exp: "000612", dx: "OCLUSION INTESTINAL POR BRIDAS", edad: "70", ingreso: "2026-10-22", estado: "DELICADO" }
+    ],
+    notes: [
+      { patient_id: "h1", app: "NIEGA CRONICODEGENERATIVOS", checklist: { sexo: "F", pm_peso: "60", pm_talla: "160", dx_cat: "apendicitis",
+        cirugias: [{ id: "a1", fecha: "2026-10-21", procedimiento: "APENDICECTOMIA LAPAROSCOPICA", tipo: "urgencia", abordaje: "laparoscopica", clavien: "0" }] } },
+      { patient_id: "h2", app: "", checklist: { sexo: "M",
+        cirugias: [{ id: "b1", fecha: "2026-10-23", procedimiento: "LAPE + RESECCION INTESTINAL", tipo: "urgencia", abordaje: "convertida", clavien: "IIIb", complicacion: "FUGA DE ANASTOMOSIS" },
+          { id: "b2", fecha: "2026-10-26", procedimiento: "RELAPE + LAVADO", tipo: "urgencia", abordaje: "abierta", clavien: "ZZ", complicacion: "NO DEBE SALIR" }] } }
+    ],
+    archive: [
+      arch("z01", "e1", "PRUEBA FICTICIA DEFUNCION", "000621", "2026-10-01", "2026-10-10", "PANCREATITIS AGUDA GRAVE", "defuncion"),
+      arch("z02", "e2", "PRUEBA FICTICIA SIN MOTIVO", "000622", "2026-10-12", "2026-10-15", "HERNIA INGUINAL", ""),
+      arch("z03", "e3", "PRUEBA FICTICIA VIEJA", "000623", "2026-09-01", "2026-09-10", "COLECISTITIS", "")
+    ] };
+  const st = { db: d, hoy: "2026-10-28" }; makeSandbox(st).sb.actualizarRegistro();
+  const P = Object.fromEntries(tab(st.ss, "Pacientes").map((x) => [x["ID episodio"], x]));
+  check("R29a Pacientes: Dx principal elegido (con CIE-10) o inferido del DX, y de dónde salió",
+    P.h1["Dx principal"] === "Apendicitis aguda" && P.h1["CIE-10 (grupo)"] === "K35" && P.h1["Dx principal (fuente)"] === "Elegido en la app"
+    && P.h2["Dx principal"] === "Oclusión intestinal" && P.h2["Dx principal (fuente)"] === "Inferido del DX" && P.e1["Dx principal"] === "Pancreatitis aguda",
+    JSON.stringify([P.h1["Dx principal"], P.h1["CIE-10 (grupo)"], P.h1["Dx principal (fuente)"], P.h2["Dx principal"], P.h2["Dx principal (fuente)"], P.e1 && P.e1["Dx principal"]]));
+  const C = tab(st.ss, "Cirugías").filter((x) => x["ID episodio"] === "h2");
+  const b1 = C.find((x) => /RESECCION/.test(x["Procedimiento"])) || {}, b2 = C.find((x) => /RELAPE/.test(x["Procedimiento"])) || {};
+  check("R29b Cirugías: urgencia, abordaje, Clavien y complicación como se eligieron; un grado inventado queda vacío (y su complicación también)",
+    b1["Tipo"] === "Urgencia" && b1["Abordaje"] === "Convertida (laparoscópica → abierta)" && b1["Clavien-Dindo"] === "IIIb" && b1["Complicación"] === "FUGA DE ANASTOMOSIS"
+    && b2["Abordaje"] === "Abierta" && b2["Clavien-Dindo"] === "" && b2["Complicación"] === "", JSON.stringify(C));
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const E = (id) => tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K[id]) || {};
+  const e2 = E("h2"), e1 = E("h1");
+  check("R29c Análisis · Episodios: urgencia, abordaje, conversión, Clavien máximo, complicación mayor y cirugías sin clasificar",
+    e2["Urgencia (1.ª cirugía)"] === 1 && e2["Abordaje (1.ª cirugía)"] === "Convertida (laparoscópica → abierta)" && e2["Conversión"] === 1 && e2["Clavien-Dindo máximo"] === "IIIb"
+    && e2["Complicación mayor (Clavien ≥ IIIa)"] === 1 && e2["Cirugías sin clasificar (n)"] === 1 && e2["Dx principal (fuente)"] === "Inferido del DX"
+    && e1["Conversión"] === 0 && e1["Clavien-Dindo máximo"] === "Sin complicación" && e1["Complicación mayor (Clavien ≥ IIIa)"] === 0 && e1["Cirugías sin clasificar (n)"] === 0 && E("e1")["Urgencia (1.ª cirugía)"] === "",
+    JSON.stringify([e2["Urgencia (1.ª cirugía)"], e2["Abordaje (1.ª cirugía)"], e2["Conversión"], e2["Clavien-Dindo máximo"], e2["Complicación mayor (Clavien ≥ IIIa)"], e2["Cirugías sin clasificar (n)"], e1["Conversión"], e1["Clavien-Dindo máximo"]]));
+  const PC = Object.fromEntries(tab(st.ss, "Por completar").map((x) => [x["ID episodio"], x]));
+  check("R29d Por completar: el hospitalizado incompleto (con nombre y cama) y los egresados de los últimos 30 días; ni el completo ni el egreso de hace 48 días",
+    !PC.h1 && !PC.e3 && PC.h2 && PC.h2["Nombre"] === "PRUEBA FICTICIA INCOMPLETA" && PC.h2["Cama"] === "3-602"
+    && PC.h2["Falta"] === "APP · peso · talla · dx principal · 1 cirugía sin urgencia/abordaje/Clavien" && PC.h2["Faltantes (n)"] === 5
+    && PC.e2 && /^motivo del egreso · /.test(PC.e2["Falta"]) && PC.e1 && !/motivo del egreso/.test(PC.e1["Falta"]),
+    JSON.stringify(Object.values(PC).map((x) => x["ID episodio"] + ": " + x["Falta"])));
+  const R = Object.fromEntries(tab(st.ss, "Resumen mensual").map((x) => [x["Mes"], x]));
+  const o = R["2026-10"] || {}, se = R["2026-09"] || {};
+  const esperado = { "Ingresos (n)": 4, "Egresos (n)": 2, "Egresos con desenlace conocido (n)": 1, "Defunciones (n)": 1, "Mortalidad (%)": 100, "Egresos sin motivo (n)": 1,
+    "Estancia mediana (días)": 6, "Estancia media (días)": 6, "Pacientes operados (n)": 2, "Cirugías (n)": 3, "Cirugías de urgencia (%)": 100, "Abordaje laparoscópico (%)": 66.7,
+    "Conversiones (n)": 1, "Complicación mayor (Clavien ≥ IIIa) (n)": 1, "Reintervenciones (n)": 0, "Ingresos con datos incompletos (n)": 3,
+    "Dx principales (más frecuentes)": "Apendicitis aguda (1); Hernia de pared (1); Oclusión intestinal (1); Pancreatitis aguda (1)" };
+  const dif = Object.keys(esperado).filter((k) => o[k] !== esperado[k]).map((k) => k + ": " + JSON.stringify(o[k]) + " ≠ " + JSON.stringify(esperado[k]));
+  check("R29e Resumen mensual de octubre: ingresos, egresos, mortalidad sobre desenlace conocido, estancia, cirugías, urgencias, laparoscopía, conversiones, Clavien ≥ IIIa, dx",
+    !dif.length && se["Ingresos (n)"] === 1 && se["Egresos (n)"] === 1 && se["Mortalidad (%)"] === "" && se["Cirugías (n)"] === 0, JSON.stringify(dif.length ? dif : se));
+  const sinNombres = JSON.stringify(st.ss.sheets["Resumen mensual"].cells);
+  check("R29f el Resumen mensual no tiene nombres ni expedientes", !/FICTICIA|00061|00062/.test(sinNombres));
+  // Al completar la tarjeta, su fila de «Por completar» queda «Vigente: No» (resuelta).
+  Object.assign(d.notes[1], { app: "HAS" });
+  Object.assign(d.notes[1].checklist, { pm_peso: "80", pm_talla: "170", dx_cat: "oclusion" });
+  d.notes[1].checklist.cirugias[1].clavien = "IIIb";
+  makeSandbox(st).sb.actualizarRegistro();
+  const h2b = tab(st.ss, "Por completar").find((x) => x["ID episodio"] === "h2") || {};
+  check("R29g al completar la tarjeta, su fila de «Por completar» queda Vigente: No (resuelta)", h2b["Vigente"] === "No", JSON.stringify(h2b));
+}
+{
+  // Umbral de complicación mayor: IIIa sí (≥ IIIa), II no.
+  const pt = (id, cl) => ({ id, cama: "3-7" + id.slice(-1), nombre: "PRUEBA FICTICIA GRADO " + id, exp: "00071" + id.slice(-1), dx: "HERNIA", edad: "40", ingreso: "2026-10-20" });
+  const nt = (id, cl) => ({ patient_id: id, app: "NIEGA", checklist: { sexo: "F", cirugias: [{ id: "c" + id, fecha: "2026-10-21", procedimiento: "HERNIOPLASTIA", tipo: "electiva", abordaje: "abierta", clavien: cl }] } });
+  const d = { cronologia_respaldo: [], ris_estudios: [], winlab_labs: [], procedimientos_dia: [], archive: [], patients: [pt("g1"), pt("g2")], notes: [nt("g1", "IIIa"), nt("g2", "II")] };
+  const st = { db: d, hoy: "2026-10-28" }; makeSandbox(st).sb.actualizarRegistro();
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const E = (id) => tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K[id]) || {};
+  check("R29h Clavien IIIa = complicación mayor (1); II = no (0); electiva = 0 en «Urgencia»",
+    E("g1")["Clavien-Dindo máximo"] === "IIIa" && E("g1")["Complicación mayor (Clavien ≥ IIIa)"] === 1 && E("g2")["Complicación mayor (Clavien ≥ IIIa)"] === 0 && E("g2")["Urgencia (1.ª cirugía)"] === 0,
+    JSON.stringify([E("g1")["Clavien-Dindo máximo"], E("g1")["Complicación mayor (Clavien ≥ IIIa)"], E("g2")["Complicación mayor (Clavien ≥ IIIa)"]]));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");

@@ -20,8 +20,8 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 
 | Pestaña | Una fila por… | Contenido |
 |---|---|---|
-| Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos.<br>**Peso y talla** (28 oct 2026). |
-| Cirugías | cirugía | fecha, procedimiento, hallazgos, sangrado, cirujano, **Grupo**, **Fuente** · **Vigente**. Desde el 28 oct 2026 también las que no están en la caja: fecha POP, texto Qx anterior, Cronología, DX y programación del día (ver abajo) |
+| Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos.<br>**Peso y talla**; **Dx principal**, su grupo CIE-10 y su fuente (28 oct 2026). |
+| Cirugías | cirugía | fecha, procedimiento, hallazgos, sangrado, cirujano, **Grupo**, **Fuente** · **Vigente** · **Tipo** (urgencia/electiva), **Abordaje**, **Clavien-Dindo**, **Complicación**. Desde el 28 oct 2026 también las que no están en la caja: fecha POP, texto Qx anterior, Cronología, DX y programación del día (ver abajo) |
 | Labs | fecha y estudio | valor como está en la tarjeta · **Vigente** · **Corregido a mano** (quién, cuándo y qué decía antes) |
 | Imagen | estudio | fecha, tipo, descripción, enlace (solo http) · **Vigente** |
 | Signos vitales | día | FC, FR, temp, SaO2, O2, TA, uresis, DxTx, IU (insulina), balance, horas de uresis. La app guarda 14 días; aquí se acumulan todos. |
@@ -38,6 +38,8 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Análisis · Signos vitales | episodio y día | números limpios; TA en sistólica, diastólica y PAM; horas de uresis e índice urinario (mL/kg/h) |
 | Análisis · Cultivos | muestra | toma, tipo, resultado (0/1), germen, antibiograma |
 | Diccionario de variables | variable | definición, tipo y unidad de cada columna de análisis (codebook) |
+| Resumen mensual | mes | solo cuentas: ingresos, egresos, mortalidad sobre desenlace conocido, estancia, cirugías, urgencias, laparoscopía, conversiones, Clavien ≥ IIIa, reintervenciones, reingresos, cultivos y lo más frecuente |
+| Por completar | episodio | **con nombres** (no se comparte): hospitalizados y egresados de los últimos 30 días y lo que le falta a cada tarjeta |
 
 - **Episodio:** el id del paciente en la base. Un reingreso crea otro id y por lo tanto otro episodio.
 - **WinLab:** cada fila de `winlab_labs` trae todos los reportes de la búsqueda por apellido (también de homónimos) y se
@@ -118,6 +120,11 @@ siempre. Cada columna está definida en «Diccionario de variables».
   - La programación del día entra «sin confirmar» solo si no hay otra cirugía esos días, y no se cuenta como hecha.
   - Si alguien la pasa después a la caja, la inferida queda «Vigente = No».
   - La app avisa en la caja Cirugías («🔎 ¿Cirugía sin registrar?») para que el residente la registre con un toque.
+- **Dx principal** (28 oct 2026): el que se eligió en la app (🩺, lista corta con CIE-10) o, si no, el inferido del DX con
+  la misma tabla (el término que aparece primero), marcado «Inferido del DX». La tabla es idéntica en la app y aquí (una
+  prueba lo verifica).
+- **Cirugía estructurada** (28 oct 2026): urgencia/electiva, abordaje y Clavien-Dindo solo si se eligieron en la caja;
+  lo inferido no los trae. Complicación mayor = Clavien ≥ IIIa.
 - **Comorbilidades** (28 oct 2026) desde APP y DX, con negación. Sin APP quedan vacías (desconocidas); el DX solo puede
   marcar 1. Es texto libre: revisar una muestra antes de publicar.
 - **Índice urinario** = uresis ÷ peso del episodio ÷ horas (columna «Horas» del Pase, o «900/12 H»; sin horas, 24 h
