@@ -284,9 +284,13 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
     /"app":"HAS"/.test(byId.p1["Nota completa (JSON)"]) && !/lab_history|base64/.test(byId.p1["Nota completa (JSON)"]) && /"dieta":"LÍQUIDOS"/.test(byId.p1["Checklist completo (JSON)"])
     && !/base64|pm_hist|nota_hist|__pl_note_meta|__ink/.test(byId.p1["Checklist completo (JSON)"]) && /\[archivo\]/.test(byId.p1["Checklist completo (JSON)"]), byId.p1["Checklist completo (JSON)"].slice(0, 300));
   const C = tab(ss, "Cirugías");
-  check("R1h Cirugías: las de la caja (sin las vacías), la Qx de texto de p4 y la de p3; todas vigentes",
-    C.length === 3 && C.every((x) => x["Vigente"] === "Sí") && C.some((x) => x["ID episodio"] === "p1" && x["Procedimiento"] === "APENDICECTOMÍA LAPAROSCÓPICA" && x["Fecha"] === "2026-10-16")
+  const Cc = C.filter((x) => x["Fuente"] !== "Programación del día (sin confirmar)");
+  check("R1h Cirugías: las de la caja (sin las vacías), la Qx de texto de p4 y la de p3; todas vigentes; la POSTQX de la Cronología no se repite",
+    Cc.length === 3 && C.every((x) => x["Vigente"] === "Sí") && !C.some((x) => /Cronología/.test(x["Fuente"])) && C.some((x) => x["ID episodio"] === "p1" && x["Procedimiento"] === "APENDICECTOMÍA LAPAROSCÓPICA" && x["Fecha"] === "2026-10-16")
     && C.some((x) => x["ID episodio"] === "p4" && x["Sangrado"] === "500 ML") && C.some((x) => x["ID episodio"] === "p3" && x["Procedimiento"] === "PLASTIA INGUINAL"), JSON.stringify(C));
+  check("R1h2 la programación del día de p1 (21/10, 5 días después de su cirugía) entra sin confirmar, con el dx y sin grupo inventado",
+    C.length === 4 && C.some((x) => x["ID episodio"] === "p1" && x["Fecha"] === "2026-10-21" && x["Fuente"] === "Programación del día (sin confirmar)" && x["Procedimiento"] === "Programada — dx: APENDICITIS" && x["Grupo"] === "Cirugía (procedimiento no especificado)")
+    && /\[Programación del día \(sin confirmar\)\]/.test(byId.p1["Cirugías (resumen)"]) && byId.p4["Cirugías (resumen)"] === "LAPAROTOMÍA EXPLORADORA", JSON.stringify(C));
   const L = tab(ss, "Labs");
   const lp1 = L.filter((x) => x["ID episodio"] === "p1").map((x) => x["Fecha"] + " " + x["Estudio"] + "=" + x["Valor"]).sort();
   check("R1i Labs: una fila por fecha y estudio (sin vacíos, con extra y números), sin el PDF",
@@ -346,7 +350,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   check("R2c nunca borra: p3 y p4 (ya no los trae la Papelera incremental) siguen con sus datos", byId.p3 && byId.p3["Motivo de egreso"] === "alta médica" && byId.p3["Última vez en la base"] === "2026-10-21" && byId.p4 && byId.p4["Estado en registro"] === "Egresado");
   check("R2d p2 salió del censo sin egreso: se conserva y queda marcado", byId.p2 && byId.p2["Estado en registro"] === "Salió de la base sin egreso registrado" && byId.p2["Última vez en la base"] === "2026-10-21");
   check("R2e lo presente se actualiza (p1: días 7, última vez hoy) sin duplicar filas", P.length === 4 && String(byId.p1["Días de estancia"]) === "7" && byId.p1["Última vez en la base"] === "2026-10-22");
-  const C = tab(st.ss, "Cirugías").filter((x) => x["ID episodio"] === "p1");
+  const C = tab(st.ss, "Cirugías").filter((x) => x["ID episodio"] === "p1" && x["Fuente"] === "Caja Cirugías");
   check("R2f cirugía corregida: la nueva Vigente Sí y la de antes se conserva con Vigente No", C.length === 2 && C.some((x) => /CORREGIDA/.test(x["Procedimiento"]) && x["Vigente"] === "Sí") && C.some((x) => x["Procedimiento"] === "APENDICECTOMÍA LAPAROSCÓPICA" && x["Vigente"] === "No"), JSON.stringify(C));
   check("R2g las cirugías y labs de los egresados (episodio fuera de la base hoy) siguen Vigente Sí", tab(st.ss, "Cirugías").filter((x) => x["ID episodio"] !== "p1").every((x) => x["Vigente"] === "Sí") && tab(st.ss, "Labs").filter((x) => x["ID episodio"] === "p3").length === 1);
   check("R2h Labs de p1: el nuevo se agrega, los anteriores siguen", tab(st.ss, "Labs").filter((x) => x["ID episodio"] === "p1").length === 6);
@@ -713,7 +717,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   // Capacidad: las pestañas nuevas no guardan columnas vacías y la cuenta incluye todas las hojas.
   const tot = Object.values(si.ss.sheets).reduce((s, h) => s + h.maxR * h.maxC, 0);
   check("R12k pestañas nuevas sin columnas de sobra y la cuenta de celdas incluye todas las hojas",
-    si.ss.sheets["Labs"].maxC === 8 && si.ss.sheets["Diccionario"].maxC === 2 && si.ss.sheets["Pacientes"].maxC === 43 && JSON.stringify(si.ss.sheets["Diccionario"].cells).includes('"' + tot + ' de 10000000'), String(tot));
+    si.ss.sheets["Labs"].maxC === 9 && si.ss.sheets["Diccionario"].maxC === 2 && si.ss.sheets["Pacientes"].maxC === 45 && JSON.stringify(si.ss.sheets["Diccionario"].cells).includes('"' + tot + ' de 10000000'), String(tot));
 }
 
 // ─── R13: una respuesta cortada no cuela datos al error ──────────────────────────────────────────────────────────
@@ -1106,6 +1110,156 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
   const r3 = makeSandbox(st2); const res = r3.sb.actualizarRegistro();
   check("R25b si la base aún no tiene la función (404) el registro se escribe igual y se reintenta en la siguiente corrida",
     res && res.ok === true && !st2.props.REG_VERSION_REPORTADA && st2.versiones === 1, JSON.stringify({ ok: res && res.ok }));
+}
+
+// ─── R26: motivos de egreso nuevos (28 oct 2026, aviso «🚪 Egreso sin motivo» de la app) ──
+{
+  const mk = (id, tipo, dia) => ({ id: "x" + id, archived_at: "2026-10-" + dia + "T18:00:00+00:00", patient_data: { _supa_id: "m" + id, nombre: "PRUEBA FICTICIA MOTIVO " + id, exp: "00077" + id, ingreso: "2026-10-01" }, note_data: { _egreso: "RETIRADO DEL CENSO (hoja)", _egreso_tipo: tipo, _egreso_tipo_ts: "2026-10-" + dia + "T18:00:00Z" } });
+  const d = { patients: [], notes: [], cronologia_respaldo: [], procedimientos_dia: [], ris_estudios: [], winlab_labs: [],
+    archive: [mk(1, "cambio_servicio", "10"), mk(2, "contrarreferencia", "11"), mk(3, "fuga", "12"), mk(4, "otro", "13"), mk(5, "no_egreso", "14"), mk(6, "traslado", "15")] };
+  const st = { db: d, hoy: "2026-10-28" }; makeSandbox(st).sb.actualizarRegistro();
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const ep = (n) => tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K["m" + n]) || {};
+  const r = [1, 2, 3, 4, 5, 6].map((n) => [ep(n)["Tipo de egreso"], ep(n)["Defunción"], ep(n)["Egreso observado"]]);
+  check("R26 motivos nuevos: cambio de servicio, contrarreferencia, fuga y traslado = salió vivo (Defunción 0); «otro» = desconocido; «no fue egreso» no cuenta como egreso observado",
+    JSON.stringify(r) === JSON.stringify([["Cambio de servicio", 0, 1], ["Contrarreferencia", 0, 1], ["Fuga", 0, 1], ["Otro", "", 1], ["No fue egreso", "", 0], ["Traslado", 0, 1]]), JSON.stringify(r));
+}
+
+// ─── R27: cirugías desde donde estén marcadas (28 oct 2026): DX, Cronología, fecha POP, programación del día ──
+{
+  const pt = (id, extra) => Object.assign({ id, cama: "3-5" + id.slice(1), nombre: "PRUEBA FICTICIA CX " + id.toUpperCase(), exp: "00055" + id.slice(1), ingreso: "2026-10-20", estado: "ESTABLE" }, extra);
+  const nt = (id, extra, ck) => Object.assign({ patient_id: id, updated_at: "2026-10-27T10:00:00+00:00", checklist: Object.assign({ sexo: "F" }, ck || {}) }, extra);
+  const d = { cronologia_respaldo: [], ris_estudios: [], winlab_labs: [], archive: [],
+    patients: [
+      pt("c1", { dx: "PO LAPE 25/10 + ABSCESO RESIDUAL" }),                                   // solo en el DX, con fecha
+      pt("c2", { dx: "COLECISTITIS AGUDA" }),                                                  // solo en la Cronología
+      pt("c3", { dx: "COLECISTITIS LITIASICA" }),                                              // caja + Cronología el mismo día → una
+      pt("c4", { dx: "OCLUSION INTESTINAL" }),                                                 // solo fecha POP
+      pt("c5", { dx: "HERNIA INGUINAL. PROGRAMADO PARA HERNIOPLASTIA" }),                     // plan: no es cirugía
+      pt("c6", { dx: "PIE DIABETICO" }),                                                       // solo programación del día
+      pt("c7", { dx: "ABSCESO PERIANAL, AMERITA DRENAJE DE ABSCESO" }),                         // nombra el procedimiento sin decir que se hizo
+      pt("c8", { dx: "PO APENDICECTOMIA 02/03 + PO COLECISTECTOMIA 2019 + ANTECEDENTE DE PO HERNIOPLASTIA INGUINAL + POP FISTULECTOMIA DE ANO 21/10" }),  // tres de antes y una del episodio
+      pt("c9", { dx: "PO LAPE 24/10 POR OCLUSION" }),                                           // caja con texto sin grupo el mismo día
+      pt("c10", { dx: "OCLUSION INTESTINAL. PO LAPE + RESECCION INTESTINAL" })                  // la LAPE es el abordaje de la resección
+    ],
+    notes: [
+      nt("c1", { cronologia: "26/10 08:00 R2: TOLERA DIETA" }),
+      nt("c2", { cronologia: "24/10 14:00 R3: PASA A QUIRÓFANO PARA COLECISTECTOMÍA LAPAROSCÓPICA\n25/10 08:00 R1: SE REALIZA CURACIÓN DE HERIDA" }),
+      nt("c3", { cronologia: "24/10 15:00 R3: SE REALIZA COLECISTECTOMIA LAPAROSCOPICA SIN INCIDENTES" }, { cirugias: [{ id: "k1", fecha: "2026-10-24", procedimiento: "COLECISTECTOMÍA LAPAROSCÓPICA", sangrado: "30 ML" }] }),
+      nt("c4", {}, { qx_fecha: "2026-10-23" }),
+      nt("c5", { cronologia: "27/10 09:00 R2: SE COMENTA CON ADSCRITO, PENDIENTE QUIRÓFANO\n27/10 13:00 R2: PASA A QUIRÓFANO MAÑANA PARA HERNIOPLASTIA" }),
+      nt("c6", {}), nt("c7", {}), nt("c8", {}),
+      nt("c9", {}, { cirugias: [{ id: "k5", fecha: "2026-10-24", procedimiento: "CIRUGÍA DE URGENCIA" }] }),
+      nt("c10", {}, { cirugias: [{ id: "k6", fecha: "2026-10-22", procedimiento: "RESECCIÓN INTESTINAL + ENTEROENTEROANASTOMOSIS" }] })
+    ],
+    procedimientos_dia: [
+      { id: "y6", fecha_dia: "2026-10-26", cama: "3-56", exp: "000556", nombre: "PRUEBA FICTICIA CX C6", dx: "PIE DIABETICO - AMPUTACION SUPRACONDILEA", esp: "CG" },
+      { id: "y3", fecha_dia: "2026-10-24", cama: "3-53", exp: "000553", nombre: "PRUEBA FICTICIA CX C3", dx: "COLECISTITIS", esp: "CG" },
+      { id: "yx", fecha_dia: "2026-10-22", cama: "3-56", exp: "000556", nombre: "OTRA PERSONA DISTINTA", dx: "HERNIA", esp: "CG" }
+    ] };
+  const st = { db: d, hoy: "2026-10-28" }; makeSandbox(st).sb.actualizarRegistro();
+  const C = tab(st.ss, "Cirugías"), de = (id) => C.filter((x) => x["ID episodio"] === id);
+  const P = Object.fromEntries(tab(st.ss, "Pacientes").map((x) => [x["ID episodio"], x]));
+  const c1 = de("c1")[0] || {}, c2 = de("c2")[0] || {}, c4 = de("c4")[0] || {}, c6 = de("c6")[0] || {};
+  check("R27a DX «PO LAPE 25/10»: una cirugía del 25/10, grupo Laparotomía exploradora, Fuente «DX (inferida)»",
+    de("c1").length === 1 && c1["Fecha"] === "2026-10-25" && c1["Grupo"] === "Laparotomía exploradora" && c1["Fuente"] === "DX (inferida)" && c1["Vigente"] === "Sí", JSON.stringify(de("c1")));
+  check("R27b Cronología «pasa a quirófano para colecistectomía»: cirugía del 24/10 (Colecistectomía); «se realiza curación» no cuenta",
+    de("c2").length === 1 && c2["Fecha"] === "2026-10-24" && c2["Grupo"] === "Colecistectomía" && c2["Fuente"] === "Cronología (inferida)", JSON.stringify(de("c2")));
+  check("R27c lo que ya está en la caja no se repite (ni la Cronología ni la programación del mismo día)",
+    de("c3").length === 1 && de("c3")[0]["Fuente"] === "Caja Cirugías" && de("c3")[0]["Sangrado"] === "30 ML" && P.c3["Cirugías (resumen)"] === "2026-10-24 COLECISTECTOMÍA LAPAROSCÓPICA", JSON.stringify(de("c3")));
+  check("R27d solo la fecha POP de la tarjeta: cirugía del 23/10 sin procedimiento especificado",
+    de("c4").length === 1 && c4["Fecha"] === "2026-10-23" && c4["Fuente"] === "Fecha POP de la tarjeta" && c4["Grupo"] === "Cirugía (procedimiento no especificado)", JSON.stringify(de("c4")));
+  check("R27e «PROGRAMADO PARA…», «PENDIENTE QUIRÓFANO» o «pasa a quirófano mañana» no es una cirugía hecha", de("c5").length === 0, JSON.stringify(de("c5")));
+  check("R27f programación del día: entra sin confirmar con su grupo (Amputación); la de otra persona con el mismo expediente no",
+    de("c6").length === 1 && c6["Fuente"] === "Programación del día (sin confirmar)" && c6["Grupo"] === "Amputación" && c6["Fecha"] === "2026-10-26" && /\[Programación del día \(sin confirmar\)\]/.test(P.c6["Cirugías (resumen)"]), JSON.stringify(de("c6")));
+  check("R27f2 «amerita drenaje» (sin «PO» ni fecha) no es cirugía; «PO … 02/03», «… 2019» y «ANTECEDENTE DE…» son de antes; la del episodio sí («ANO» no es «AÑO»)",
+    de("c7").length === 0 && de("c8").length === 1 && de("c8")[0]["Fecha"] === "2026-10-21" && de("c8")[0]["Grupo"] === "Anorrectal", JSON.stringify(de("c7").concat(de("c8"))));
+  check("R27f3 la caja con un procedimiento sin grupo («CIRUGÍA DE URGENCIA», Otro) empata con «PO LAPE 24/10» del DX: una sola cirugía",
+    de("c9").length === 1 && de("c9")[0]["Fuente"] === "Caja Cirugías", JSON.stringify(de("c9")));
+  check("R27f4 «PO LAPE + RESECCIÓN INTESTINAL» con la resección en la caja: la LAPE es su abordaje, no otra cirugía",
+    de("c10").length === 1 && de("c10")[0]["Fuente"] === "Caja Cirugías", JSON.stringify(de("c10")));
+  check("R27g el resumen marca la fuente de lo inferido", P.c1["Cirugías (resumen)"] === "2026-10-25 PO LAPE 25/10 [DX (inferida)]" && /\[Cronología \(inferida\)\]/.test(P.c2["Cirugías (resumen)"]), JSON.stringify([P.c1["Cirugías (resumen)"], P.c2["Cirugías (resumen)"]]));
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const E = (id) => tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K[id]) || {};
+  const r = ["c1", "c2", "c3", "c4", "c5", "c6"].map((id) => [E(id)["Cirugías (n)"], E(id)["Grupo de la 1.ª cirugía"], E(id)["Cirugías inferidas (n)"], E(id)["Programadas sin confirmar (n)"], E(id)["Reintervención"]]);
+  check("R27h análisis: las inferidas cuentan como cirugía (y se avisa en Calidad de datos); la programada sin confirmar no",
+    JSON.stringify(r) === JSON.stringify([[1, "Laparotomía exploradora", 1, 0, 0], [1, "Colecistectomía", 1, 0, 0], [1, "Colecistectomía", 0, 0, 0], [1, "Cirugía (procedimiento no especificado)", 1, 0, 0], [0, "", 0, 0, ""], [0, "", 0, 1, ""]])
+    && /tomada de otra caja/.test(E("c1")["Calidad de datos"]) && /programación del día/.test(E("c6")["Calidad de datos"]), JSON.stringify(r));
+  // Al día siguiente el residente pasa la cirugía de c1 a la caja: la inferida queda Vigente No y no se cuenta doble.
+  d.notes[0].checklist.cirugias = [{ id: "k9", fecha: "2026-10-25", procedimiento: "LAPAROTOMÍA EXPLORADORA", hallazgos: "ABSCESO PÉLVICO" }];
+  st.hoy = "2026-10-29"; makeSandbox(st).sb.actualizarRegistro();
+  const c1b = tab(st.ss, "Cirugías").filter((x) => x["ID episodio"] === "c1");
+  const e1 = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K.c1) || {};
+  check("R27i cuando se pasa a la caja: la fila de la caja Vigente Sí, la inferida Vigente No; el análisis cuenta una sola cirugía",
+    c1b.length === 2 && c1b.some((x) => x["Fuente"] === "Caja Cirugías" && x["Vigente"] === "Sí") && c1b.some((x) => x["Fuente"] === "DX (inferida)" && x["Vigente"] === "No")
+    && e1["Cirugías (n)"] === 1 && e1["Cirugías inferidas (n)"] === 0, JSON.stringify([c1b, e1["Cirugías (n)"], e1["Cirugías inferidas (n)"]]));
+}
+
+// ─── R28: comorbilidades (APP + DX, con negación), peso/talla/IMC e índice urinario (28 oct 2026) ──
+{
+  const { sb } = makeSandbox({ db: db() });
+  const C = (app, dx) => { const o = sb.regComorbilidades(app, dx || ""); return Object.keys(o).filter((k) => o[k] === 1).join(",") || (Object.values(o).every((v) => v === "") ? "?" : "-"); };
+  const casos = [
+    ["DM2 DE 10 AÑOS EN TRATAMIENTO CON METFORMINA, HAS NEGADA", "", "Diabetes"],
+    ["NIEGA DM, HAS, ERC", "", "-"],
+    ["NIEGA ALERGIAS, DM2 DX HACE 5 AÑOS", "", "Diabetes"],
+    ["NIEGA ALERGIAS, DM2 EN TRATAMIENTO CON INSULINA, HAS", "", "Diabetes,Hipertensión"],
+    ["CRONICODEGENERATIVOS NEGADOS", "", "-"],
+    ["HAS EN TRATAMIENTO CON LOSARTÁN Y NIEGA DM", "", "Hipertensión"],
+    ["TABAQUISMO NEGADO. CA DE COLON EN QT", "", "Cáncer"],
+    ["TABAQUISMO POSITIVO IT 20. EPOC", "", "EPOC / asma,Tabaquismo"],
+    ["SIN ANTECEDENTES DE IMPORTANCIA", "HIPERTENSIÓN PORTAL POR CIRROSIS", "Cirrosis / hepatopatía crónica"],
+    ["ERC KDIGO 5 EN HEMODIÁLISIS. CARDIOPATÍA ISQUÉMICA", "", "Enfermedad renal crónica,Cardiopatía"],
+    ["SIN DM", "", "-"],
+    ["VIH NEGATIVO. OBESIDAD GRADO II", "", "Obesidad"],
+    ["", "PIE DIABÉTICO", "Diabetes"],
+    ["", "", "?"],
+    ["DMO BAJA, ADM", "", "-"]
+  ];
+  const r = casos.map(([a, d]) => C(a, d)), esperado = casos.map((c) => c[2]);
+  check("R28a comorbilidades con negación («NIEGA DM, HAS», «HAS NEGADA», «SIN DM»), lo que afirma después de negar («NIEGA ALERGIAS, DM2 DX HACE 5 AÑOS») y sin falsos («HIPERTENSIÓN PORTAL», «DMO»)",
+    JSON.stringify(r) === JSON.stringify(esperado), JSON.stringify(r.map((x, i) => x === esperado[i] ? "ok" : x + " ≠ " + esperado[i])));
+  const sinApp = sb.regComorbilidades("", "PIE DIABÉTICO");
+  check("R28b sin APP: el DX solo pone 1 (diabetes); lo demás queda vacío (desconocido), no 0", sinApp["Diabetes"] === 1 && sinApp["Hipertensión"] === "" && sb.regComorbilidades("NIEGA TODO", "")["Hipertensión"] === 0);
+  const pt = (peso, talla, json) => sb.regPesoTalla({ "Peso (kg)": peso, "Talla": talla, "Checklist completo (JSON)": json || "" });
+  check("R28c peso y talla: «165» cm → 1.65 m, «1.70 M» m; IMC a un decimal; imposibles vacíos; filas viejas desde el JSON del checklist",
+    JSON.stringify(pt("70", "165")) === JSON.stringify({ peso: 70, talla: 1.65, imc: 25.7 }) && JSON.stringify(pt("80 KG", "1.70 M")) === JSON.stringify({ peso: 80, talla: 1.7, imc: 27.7 })
+    && JSON.stringify(pt("70 KG.", "1.65 M.")) === JSON.stringify({ peso: 70, talla: 1.65, imc: 25.7 }) && JSON.stringify(pt("700", "3")) === JSON.stringify({ peso: "", talla: "", imc: "" }) && JSON.stringify(pt("", "", '{"pm_peso":"95","pm_talla":"160"}')) === JSON.stringify({ peso: 95, talla: 1.6, imc: 37.1 }),
+    JSON.stringify([pt("70", "165"), pt("80 KG", "1.70 M"), pt("700", "3"), pt("", "", '{"pm_peso":"95","pm_talla":"160"}')]));
+
+  // Corrida completa: p1 con APP «HAS», peso y talla, y uresis de tres días (con horas, «/12 H» y sin horas).
+  const d = db();
+  const ck = d.notes[0].checklist;
+  ck.pm_peso = "75"; ck.pm_talla = "170";
+  ck.pm_hist = [{ fecha: "2026-10-19", uresis: "900", uresis_h: "12" }, { fecha: "2026-10-20", fc: "96", uresis: "300/12 H" }];
+  ck.pm_fecha = "2026-10-21"; ck.pm_uresis = "1200"; ck.pm_uresis_h = "";
+  d.patients.push({ id: "p9", cama: "3-209", nombre: "PRUEBA FICTICIA NUEVE", exp: "000909", edad: "50", ingreso: "2026-10-18" });
+  d.notes.push({ patient_id: "p9", app: "", checklist: { pm_peso: "100", pm_talla: "160" } });
+  d.notes[0].lab_history[1].labs.k = "4.3"; d.notes[0].lab_history[1].manual_keys = ["k"];
+  d.notes[0].lab_history[1].manual_by = { k: { u: "R2 FICTICIO", t: "2026-10-18T09:30:00.000Z", antes: "43" } };
+  const st = { db: d, hoy: "2026-10-21" }; makeSandbox(st).sb.actualizarRegistro();
+  const P1 = tab(st.ss, "Pacientes").find((x) => x["ID episodio"] === "p1");
+  const Lk = tab(st.ss, "Labs").filter((x) => x["ID episodio"] === "p1" && x["Fecha"] === "2026-10-18");
+  check("R28h Labs: la corrección a mano dice quién, cuándo y qué decía antes; lo demás queda vacío",
+    Lk.find((x) => x["Estudio"] === "k")["Corregido a mano"] === "Sí · R2 FICTICIO · 2026-10-18 09:30 · antes: 43" && Lk.find((x) => x["Estudio"] === "hb")["Corregido a mano"] === "", JSON.stringify(Lk));
+  const SV = tab(st.ss, "Signos vitales").filter((x) => x["ID episodio"] === "p1");
+  check("R28d Pacientes guarda Peso y Talla; Signos vitales guarda «Horas de uresis»",
+    P1["Peso (kg)"] === "75" && P1["Talla"] === "170" && SV.find((x) => x["Fecha"] === "2026-10-19")["Horas de uresis"] === "12", JSON.stringify(SV));
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const AS = tab(st.ss, AN[2]).filter((x) => x["ID episodio"] === K.p1), dia = (f) => AS.find((x) => x["Fecha"] === f) || {};
+  check("R28e índice urinario por día: 900 ÷ 75 ÷ 12 = 1; «300/12 H» = 0.33 (horas de la uresis); 1200 sin horas = 0.67 con 24 h y aviso",
+    dia("2026-10-19")["Índice urinario (mL/kg/h)"] === 1 && dia("2026-10-19")["Horas de uresis (h)"] === 12
+    && dia("2026-10-20")["Uresis (mL)"] === 300 && dia("2026-10-20")["Índice urinario (mL/kg/h)"] === 0.33
+    && dia("2026-10-21")["Índice urinario (mL/kg/h)"] === 0.67 && dia("2026-10-21")["Horas de uresis (h)"] === 24 && /24 h/.test(dia("2026-10-21")["Observaciones"]),
+    JSON.stringify(AS.map((x) => [x["Fecha"], x["Uresis (mL)"], x["Horas de uresis (h)"], x["Índice urinario (mL/kg/h)"], x["Observaciones"]])));
+  const E1 = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K.p1) || {}, E2 = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K.p2) || {};
+  check("R28f episodio: peso, talla, IMC, HAS = 1 desde el APP, comorbilidades 1, IU mínimo 0.33 y 1 día con oliguria; sin APP (p2) comorbilidades vacías y se avisa",
+    E1["Peso (kg)"] === 75 && E1["Talla (m)"] === 1.7 && E1["IMC (kg/m²)"] === 26 && E1["Hipertensión"] === 1 && E1["Diabetes"] === 0 && E1["Comorbilidades (n)"] === 1
+    && E1["Índice urinario mínimo (mL/kg/h)"] === 0.33 && E1["Días con oliguria (IU < 0.5)"] === 1
+    && E2["Hipertensión"] === "" && E2["Comorbilidades (n)"] === "" && /sin antecedentes \(APP\)/.test(E2["Calidad de datos"]) && /sin peso registrado/.test(E2["Calidad de datos"]),
+    JSON.stringify([E1["Peso (kg)"], E1["Talla (m)"], E1["IMC (kg/m²)"], E1["Hipertensión"], E1["Comorbilidades (n)"], E1["Índice urinario mínimo (mL/kg/h)"], E1["Días con oliguria (IU < 0.5)"], E2["Hipertensión"], E2["Calidad de datos"]]));
+  const E9 = tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K.p9) || {};
+  check("R28g IMC ≥ 30 en un adulto marca Obesidad aunque no haya APP (el conteo sigue vacío)", E9["IMC (kg/m²)"] === 39.1 && E9["Obesidad"] === 1 && E9["Diabetes"] === "" && E9["Comorbilidades (n)"] === "", JSON.stringify([E9["IMC (kg/m²)"], E9["Obesidad"], E9["Comorbilidades (n)"]]));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");

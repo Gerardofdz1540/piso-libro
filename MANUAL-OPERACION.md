@@ -197,6 +197,75 @@ cuela, la publicación lo detecta: en cada push a `main` el mismo paso compara c
 - Dieta, Ayuno, ATB y TVP se cambian con un toque en la primera fila del
   checklist (antes solo desde el modal de editar).
 
+## 🔎 Filtrar las camas (28 de octubre de 2026)
+
+En el tablero (una cama a la vez) la barra de búsqueda de arriba no se ve. El botón **🔎 Filtros** de la barra del
+paciente abre una fila con:
+
+- **Especialidad** (CG, CCR, URO…), **Adscrito** y **Servicio**: el servicio es la sala del censo donde está el
+  paciente (Piso, UCIA, Pediatría, Medicina Interna, Oncología/Ginecología…). Cada opción dice cuántos pacientes
+  tiene. Un paciente agregado a mano, sin sala del censo, toma el servicio de su cama (UCI → UCIA, 3-xxx → Piso).
+- **🆕 Ingresos**: los que ingresaron hoy o ayer.
+- **🛏 Libres**: en lugar de las fichas muestra las camas libres agrupadas por servicio, cada una con
+  «+ Agregar paciente» (abre el alta con la cama puesta; al guardar, el tablero regresa a las fichas y abre al
+  paciente nuevo). Respeta el filtro de servicio (p. ej. solo las camas libres de UCIA). «✕ Ver pacientes» regresa.
+  La lista de camas se cambia en «⚙️ Configurar camas».
+- **✕ Quitar filtros** deja todo como estaba. El botón dice cuántos filtros hay puestos («🔎 Filtros · 2») para que no
+  se olviden: con filtros, las flechas ← → y el carril de camas recorren solo los pacientes filtrados.
+
+Los filtros son de cada dispositivo, no cambian datos y también aplican al Censo y a la impresión (son los mismos que
+el Censo ya tenía para residente y adscrito). Si con los filtros no queda nadie, la pantalla lo dice y los filtros
+siguen a la mano. Si «🩺 Solo míos» está prendido aparece en la fila para poder apagarlo.
+
+## ✏️ Corregir un laboratorio mal transcrito (28 de octubre de 2026)
+
+En la tabla de labs de la ficha, **✏️ Corregir** abre todos los analitos de una fecha (botones de fecha arriba;
+«＋» para otra fecha). Se cambia solo lo que está mal y **💾 Guardar correcciones**:
+
+- El valor corregido se queda: el siguiente sync del robot de WinLab ya no lo cambia (tampoco regresa un valor que se
+  borró a propósito dejando la casilla vacía). Lo demás de esa fecha sí se sigue actualizando.
+- En la tabla, el valor corregido lleva **✎**; al tocarlo dice quién lo corrigió y qué decía antes.
+- Si el número está fuera de lo posible (K 44.3, Na 1330…) pregunta por el punto decimal antes de guardar.
+- **↩ Regresar** de la tarjeta deshace la corrección.
+- Sin labs (el robot no encontró al paciente) el botón dice **✏️ Capturar** y sirve para escribirlos a mano.
+
+## 💧 Índice urinario (28 de octubre de 2026)
+
+En el **Pase Matutino**, junto a **Uresis**, la casilla **Horas** y el **Índice urinario** calculado como en el
+servicio: uresis total (mL) ÷ peso (kg) ÷ horas = mL/kg/h. Horas vacías = 24 h (o las que diga la uresis, p. ej.
+«900/12 h»); la uresis puede ir en litros («1.5 L») o con comas («1,200»). El peso es el de la fila Clínico (el mismo
+del vasopresor); sin peso dice «⚖️ falta el peso». Colores KDIGO: verde ≥ 0.5, ámbar < 0.5 (oliguria), rojo < 0.3.
+El índice sale en la nota de evolución y en el resumen de gastos; **no se escribe en ninguna caja**. Las horas pasan
+al historial del pase con la uresis de ese día.
+
+## 💡 Sugerencias clínicas: solo lo que cambia el manejo (28 de octubre de 2026)
+
+Antes la caja proponía «Agregar al dx: Leucocitosis severa» o «PCR elevada severa»: un hallazgo de laboratorio no es
+un diagnóstico, y se quitó. La caja ya no toca el DX. Ahora cruza los labs con las **indicaciones del Doc**, la tarjeta
+(ATB, TVP, NPT, ayuno, peso, edad, sexo, vitales, uresis) y los **cultivos de WinLab**, y solo sugiere ajustes de
+manejo:
+
+| Tipo | Qué revisa |
+|---|---|
+| 🦠 Antibiograma | El antibiótico en uso contra el antibiograma: **RESISTENTE** o intermedio (urgente si es hemocultivo o muestra estéril), no probado, resistencia natural que el antibiograma no muestra (Enterococcus con cefalosporinas, Pseudomonas con ceftriaxona, BLEE, SAMR, carbapenemasa), S. aureus sensible con vancomicina, BLEE con piperacilina/tazobactam (MERINO), desescalar cuando hay opciones de menor espectro, cultivo positivo sin tratamiento, Candida en orina (colonización) y posible contaminante en un hemocultivo. Siempre dice a qué es sensible. |
+| 🩸 Transfusión | Hb contra el umbral que le toca (7 g/dL la mayoría; 8 con cardiopatía o cirugía ortopédica/cardiaca; síndrome coronario agudo hasta 10 — AABB 2023, MINT 2023), edad, sangrado activo o choque (decisión clínica), cruce vigente y CE estimados con el peso. Caída de Hb ≥ 2 g/dL en ≤ 3 días (buscar sangrado, anticoagulante en uso). Plaquetas < 10 k, < 50 k con heparina o sangrado, caída ≥ 50 % con heparina (TIH, escala 4T), linezolid. |
+| ⚡ Electrolitos | Hipo/hiperkalemia (vía y velocidad, Mg primero, fármacos que lo bajan o suben, KCl en soluciones), hipo/hipernatremia (límite de corrección, Na corregido por glucosa, soluciones hipotónicas, déficit de agua libre con el peso), Mg, Ca corregido por albúmina, fósforo y síndrome de realimentación con NPT, acidosis con brecha aniónica (SS 0.9 % → Hartmann), lactato. |
+| 💉 Insulina | En diabéticos: hipoglucemia (y sulfonilurea), glucosa < 100 con basal, glucosas > 180 sin insulina, solo con esquema de corrección o con basal insuficiente (subir 10-20 %), ayuno con prandial, esteroide, NPT; dosis inicial en U/kg (ADA 2025) con el peso. Metformina con función renal baja o lactato alto; iSGLT2 en ayuno o cirugía. Usa la glucosa del laboratorio y el Dxtx del pase (de hoy y ayer). |
+| 💊 Interacciones | AINE + anticoagulante (con enoxaparina profiláctica, sin plaquetas bajas ni sangrado, queda como «baja»: es frecuente en el POP), anticoagulante + antiagregante, serotoninérgicos (tramadol, linezolid + ISRS), carbapenémico + ácido valproico, warfarina/acenocumarol + fármacos que suben el INR, clopidogrel + omeprazol, vancomicina + piperacilina/tazobactam, dos nefrotóxicos, opioide + benzodiacepina, nalbufina/buprenorfina + otro opioide, varios fármacos que prolongan el QT (más grave con K o Mg bajos). |
+| ♻️ Duplicados | Dos IBP, IBP + anti-H2, dos AINE, dos anticoagulantes, dos betalactámicos, doble cobertura anaerobia (metronidazol con pip/tazo o carbapenémico), dos quinolonas o aminoglucósidos, el mismo fármaco dos veces (paracetamol: máx. 4 g/día). |
+| 🫘 Riñón | Lesión renal aguda KDIGO (creatinina de la última semana contra la basal) nombrando los nefrotóxicos en uso; oliguria por índice urinario; ClCr (Cockcroft-Gault con edad, peso y sexo; sin peso, CKD-EPI) < 50 con fármacos que requieren ajuste. Con ERC o diálisis no sugiere LRA. |
+| Otras | PCR ≥ 150 en el POP día 3-5 (buscar fuga o colección), PCT baja con antibiótico (valorar suspender), ayuno ≥ 5 días sin nutrición, indicaciones sin profilaxis de TVP. |
+
+- Cada sugerencia dice **«Por qué»**: los datos y de dónde salieron (p. ej. «indicaciones del 28 oct», «ATB de la
+  tarjeta», el cultivo y su fecha). Si las indicaciones del Doc no coinciden con certeza con el paciente, no se usan.
+- Los labs que se usan son de hoy o ayer (los cultivos, de los últimos 14 días): no se sugiere sobre un potasio de hace
+  una semana. Un renglón de indicaciones con «SUSPENDER» o «SUSP.» no cuenta como fármaco en uso.
+- **➕ A pendientes** agrega un renglón «• …» al final de ⚠️ Pendientes / Plan, solo si la persona lo toca (no lo
+  repite y ↩ Regresar lo quita). **🔇 Ignorar** la oculta hasta que cambien los datos.
+- Son para **considerar**: la app no conoce alergias, peso real ni todo el contexto. Las cifras son de guías citadas
+  (umbrales de Hb, límites de corrección, U/kg de la ADA, déficit de agua); no escribe dosis de fármacos.
+- Se ven 6 (las urgentes primero); «Ver las N» muestra el resto.
+
 ## Indicaciones del Google Doc en cada tarjeta
 
 Las indicaciones se escriben donde siempre, en el Doc "INDICACIONES HOSPITALIZACION". La base de
@@ -489,6 +558,15 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
   sustituye a las antiguas "Qx / Procedimiento", "Drenajes" y "Sangrado": el texto que ya existía se
   convirtió solo a la lista (una fila por línea con fecha; el sangrado quedó en la cirugía más
   reciente). La fecha POP del menú "⋯ Más" ahora es la de la última cirugía.
+  - **🔎 ¿Cirugía sin registrar?** (28 oct 2026). Si el DX («PO LAPE 26/10»), la Cronología («pasa a quirófano para
+    colecistectomía») o la fecha POP dicen que hubo una cirugía que no está en la lista, la caja lo avisa en un renglón
+    discreto (máximo 3; no sale al imprimir). **Nada se escribe solo**:
+    - **➕ Registrar** agrega la cirugía con su fecha y el procedimiento sin «PO», la hora ni «pasa a quirófano para»;
+      revísalo y completa hallazgos, sangrado y cirujano. **↩ Regresar** la quita.
+    - **✕** deja de avisar esa en todos los iPads (no es de este internamiento).
+    - No avisa lo planeado («programada», «pendiente», «mañana»), los antecedentes («antecedente de…», fechas de antes
+      del ingreso) ni lo que ya está en la lista ese día («PO LAPE + RESECCIÓN» con la resección ya anotada: la LAPE es
+      su abordaje).
 - **💉 Manejo médico actual** (verde azulado).
 - **⚠️ Pendientes / Plan** (ámbar).
 - **🕓 Cronología** (azul; 19 oct 2026, sustituye a «Entrega / Recibo de guardia», que se confundían):
@@ -705,14 +783,47 @@ una copia: además trae pestañas listas para estadística.
   falsos). Si la segunda parte entró 2 días o más después, «Calidad de datos» pide confirmar que no fue reingreso.
 - **Motivo del egreso.** Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO (hoja)») sin decir si fue
   alta o defunción. Por eso el registro no podía calcular mortalidad. Ahora:
-  - al dar de alta en la app (🚪 Alta), el cuadro pide el motivo: alta a domicilio, defunción, traslado o alta
-    voluntaria;
+  - al dar de alta en la app (🚪 Alta), el cuadro pide el motivo (desde el 28 oct: alta a domicilio, defunción, cambio
+    de servicio, contrarreferencia, traslado a otro hospital, alta voluntaria, fuga / abandono, otro motivo o «no fue
+    egreso (error del censo)»);
+  - **aviso discreto «🚪 Egreso sin motivo»** (28 oct 2026): cuando un paciente ya no aparece en el censo (alta en la app o
+    retirado por la hoja) y nadie dijo el motivo, una tarjeta pequeña abajo a la izquierda pregunta «3-160 · NOMBRE ya no
+    aparece en el censo. ¿Cuál fue el motivo del egreso?» con el menú. No bloquea nada:
+    - se esconde mientras escribes o hay una ventana abierta;
+    - «Después» la pospone 3 horas en ese dispositivo; «✕» la cierra hasta recargar;
+    - el chip **🚪 N** de la barra del paciente dice cuántos faltan y la vuelve a abrir;
+    - solo pregunta por los egresos de los últimos 7 días (los más viejos se clasifican en la Papelera);
+    - lo que elija cualquiera queda para todos; «Defunción» pide confirmar;
+    - si el paciente volvió al censo, no pregunta;
   - en la **Papelera**, cada egreso tiene su selector «Motivo», y arriba aparece cuántos egresos no lo tienen;
   - el motivo se guarda en la nube con la función `archive_set_egreso` (`scripts/supabase_archive_egreso.sql`, ya
     aplicada); se une a la copia sin pisar la nota;
   - el registro lo toma aunque la copia sea vieja.
 
   **Pide al equipo que llene el motivo de los egresos.** Sin él, en el registro la defunción queda «desconocida».
+- **Mortalidad con los motivos nuevos** (registro 2026.10.28): «Defunción» = 1; alta, alta voluntaria, traslado,
+  contrarreferencia, fuga y cambio de servicio = 0 (salió vivo del servicio; en cambio de servicio no se conoce el
+  desenlace posterior en el hospital); «otro motivo» y «no fue egreso» quedan vacíos (y «no fue egreso» no cuenta como
+  egreso observado).
+- **Cirugías desde donde estén marcadas** (registro 2026.10.28). La pestaña «Cirugías» ya no depende solo de la caja:
+  si una cirugía no está ahí, se toma de la fecha POP, del texto Qx anterior, de la Cronología («pasa a quirófano…») o
+  del DX («PO LAPE 25/10»), sin repetir la que ya está en la caja (mismo día). Cada fila dice su **Fuente** y su
+  **Grupo** (laparotomía, colecistectomía, apendicectomía, plastia, resección intestinal…). La programación del día
+  entra como «sin confirmar» y no cuenta como cirugía hecha. Si después alguien la pasa a la caja, la inferida queda
+  «Vigente: No» y no se cuenta doble. «Análisis · Episodios» suma «Grupo de la 1.ª cirugía», «Reintervención»,
+  «Cirugías inferidas (n)» y «Programadas sin confirmar (n)»; «Calidad de datos» pide pasar las inferidas a la caja.
+- **Datos que antes se perdían** (registro 2026.10.28):
+  - **Peso y talla** del Pase Matutino (Pacientes) e **IMC** (Análisis · Episodios; las filas viejas los toman del
+    checklist guardado).
+  - **Comorbilidades** desde los Antecedentes (APP) y el DX, con negación («NIEGA DM, HAS» = 0): diabetes,
+    hipertensión, ERC, cirrosis, cardiopatía, EPOC/asma, obesidad (también por IMC ≥ 30), cáncer, inmunosupresión y
+    tabaquismo; «Comorbilidades (n)». Sin APP quedan vacías (desconocidas), no 0. Es texto libre: revisar una muestra
+    antes de publicar.
+  - **Horas de uresis** e **índice urinario** por día (Análisis · Signos vitales) e «Índice urinario mínimo» y «Días
+    con oliguria (IU < 0.5)» por episodio.
+  - **Labs corregidos a mano** (✏️ Corregir): la pestaña «Labs» dice quién corrigió, cuándo y qué decía antes.
+  - **Para que el registro sea completo, en la app:** llenen **APP**, **peso y talla** (fila Clínico del Pase), las
+    **horas de la uresis**, el **motivo del egreso** (🚪) y pasen las cirugías a la caja (🔎 ➕ Registrar).
 - **Para que el registro tenga las pestañas nuevas:** abre el proyecto «Registro de pacientes» en script.google.com,
   borra todo `Código.gs`, pega el `apps-script/registro-pacientes.gs` nuevo y guarda. No hay que tocar nada más: la
   propiedad `REG_SAL` (la sal del seudónimo) se crea sola en la siguiente corrida.
@@ -888,8 +999,12 @@ bloque al final. Desde la versión 2026.10.27-5:
   un momento hasta que se actualiza (la app avisa cuando hay versión nueva; una pestaña que lleva días abierta conviene
   recargarla).
 - Lo que **sí** sigue escribiendo la app es lo que pide la persona con un botón: ➕ Ahora / ➕ Hoy (fecha y
-  hora), órdenes rápidas, importar el censo o el PDF, la transcripción del lápiz o de una foto que la persona
-  manda convertir. Y la caja antigua «Recibido» pasó una sola vez a la Cronología (texto de la propia gente).
+  hora), órdenes rápidas, ➕ A pendientes de una sugerencia, importar el censo o el PDF, la transcripción del lápiz
+  o de una foto que la persona manda convertir. Y la caja antigua «Recibido» pasó una sola vez a la Cronología
+  (texto de la propia gente).
+- Desde la versión 2026.10.28-1, subir un PDF o una foto de labs **ya no agrega la línea «[LABS dd/mm …]» al final
+  del DX**; los valores quedan en la tabla de labs. Las líneas que ya existían en algún DX no se tocaron (se borran a
+  mano si estorban).
 
 ## INR: siempre visible (octubre 2026)
 

@@ -1,7 +1,10 @@
 -- 27 oct 2026 · aplicado en producción (migración archive_egreso_tipo).
+-- 28 oct 2026 · aplicado en producción (migración archive_egreso_tipos_v2): + cambio_servicio, contrarreferencia, fuga,
+-- otro y no_egreso (aviso «🚪 Egreso sin motivo» de la app). Misma firma: la versión anterior de la app sigue funcionando.
 -- Motivo del egreso para investigación. Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO
 -- (hoja)») sin decir si fue alta o defunción: el registro de pacientes no podía calcular mortalidad. Desde la Papelera
--- (o al dar de alta en la app) se registra el tipo: alta, defuncion, traslado o alta_voluntaria ('' lo borra).
+-- (o al dar de alta en la app, o en el aviso «🚪 Egreso sin motivo») se registra el tipo: alta, defuncion, cambio_servicio,
+-- contrarreferencia, traslado, alta_voluntaria, fuga, otro o no_egreso ('' lo borra).
 -- Se guarda DENTRO de note_data (se une con ||: no pisa la nota ni la _copia_base que agregó la base) con quién y
 -- cuándo. _egreso_tipo_ts (UTC, formato fijo) le dice al registro qué copias releer aunque sean viejas.
 -- SECURITY INVOKER: corre con la sesión del usuario, así que aplican las políticas de archive (solo cuentas activas).
@@ -13,7 +16,8 @@ create or replace function public.archive_set_egreso(p_id uuid, p_tipo text, p_p
 as $function$
 declare n int; ts text := to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');
 begin
-  if p_tipo is null or p_tipo not in ('', 'alta', 'defuncion', 'traslado', 'alta_voluntaria') then
+  if p_tipo is null or p_tipo not in ('', 'alta', 'defuncion', 'cambio_servicio', 'contrarreferencia', 'traslado',
+                                      'alta_voluntaria', 'fuga', 'otro', 'no_egreso') then
     raise exception 'tipo de egreso no válido';
   end if;
   update public.archive set note_data = case
