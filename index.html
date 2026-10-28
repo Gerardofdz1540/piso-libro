@@ -3155,6 +3155,15 @@
     body.dark .cx-in, body.dark .cx-date { background: #0e2138; color: #e2e8f0; border-color: #3b2a66; }
     body.dark .cx-proc { color: #e9d5ff; }
     body.dark .cx-add { background: #0f1c2e; color: #c4b5fd; }
+    /* 🔎 Cirugía marcada en otra caja (DX, Cronología, fecha POP): un renglón discreto, solo se registra al tocar ➕ */
+    .cx-det-box { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 5px; }
+    .cx-det { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #6d28d9; background: #faf5ff; border: 1px dashed #d8b4fe; border-radius: 8px; padding: 2px 4px 2px 8px; }
+    .cx-det-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cx-det-b, .cx-det-x { font-size: 11px; font-weight: 800; min-height: 26px; padding: 0 8px; border-radius: 10px; border: 1px solid #c4b5fd; background: #fff; color: #6d28d9; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    .cx-det-x { border-color: transparent; background: transparent; color: #a78bfa; padding: 0 6px; }
+    body.dark .cx-det { background: #1a1333; border-color: #4c1d95; color: #c4b5fd; }
+    body.dark .cx-det-b { background: #0f1c2e; color: #c4b5fd; border-color: #4c1d95; }
+    @media print { .cx-det-box { display: none !important; } }
 
     .ck-sep {
       color: #cbd5e1;
@@ -4250,6 +4259,22 @@ body.dark .pl-ink-pop button{ background:#152e4d; border-color:#2f4f79; color:#e
 #board-nav .bn-idx:hover{ background:#122339; }
 /* ═══ Ficha compacta (oct 2026): barra de saltos, secciones plegables, labs en dos mitades, cabecera que se encoge ═══ */
 #board-nav{ flex-wrap:wrap; row-gap:4px; top:calc(var(--hdr-h, 0px) + 6px); }
+/* 🚪 Egresos sin motivo (28 oct 2026): tarjeta discreta abajo a la izquierda + chip en la barra */
+#board-nav .bn-egreso{ font-size:13px; font-weight:800; padding:5px 9px; min-height:36px; border:none; border-radius:6px; background:#92400e; color:#fff; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+#egreso-card{ display:none; position:fixed; left:12px; bottom:calc(12px + env(safe-area-inset-bottom)); z-index:9000; width:min(330px, calc(100vw - 24px)); box-sizing:border-box; background:#fff; color:#334155; border:1px solid #fcd34d; border-left:4px solid #f59e0b; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.18); padding:7px 10px 9px; font-size:12px; font-family:var(--font); }
+#egreso-card.show{ display:block; }
+body.pl-ver-on #egreso-card{ bottom:calc(78px + env(safe-area-inset-bottom)); }
+#egreso-card .eg-h{ display:flex; align-items:center; justify-content:space-between; font-size:10.5px; font-weight:800; color:#92400e; text-transform:uppercase; letter-spacing:.3px; }
+#egreso-card .eg-x{ background:none; border:none; color:#94a3b8; font-size:14px; min-width:32px; min-height:28px; cursor:pointer; }
+#egreso-card .eg-t{ line-height:1.35; margin:2px 0 7px; }
+#egreso-card .eg-a{ display:flex; gap:6px; align-items:center; }
+#egreso-card .eg-l{ flex:1; min-width:0; }
+#egreso-card .eg-sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+#egreso-card select, #egreso-card .resid-select{ width:100%; min-height:34px; font-size:12px; }
+#egreso-card .eg-d{ min-height:34px; padding:5px 10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc; color:#475569; font-size:12px; font-weight:700; cursor:pointer; font-family:var(--font); }
+body.dark #egreso-card{ background:#0f1c2e; color:#e2e8f0; border-color:#92400e; }
+body.dark #egreso-card .eg-d{ background:#152e4d; border-color:#2f4f79; color:#cbd5e1; }
+@media print{ #egreso-card{ display:none !important; } }
 /* 🔎 Filtros del tablero (28 oct 2026): especialidad, adscrito, servicio, ingresos y camas libres */
 #board-nav .bn-flt-btn.on{ background:#b45309; }
 #board-nav .bn-flt{ flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; padding:6px 2px 2px; border-top:1px solid rgba(255,255,255,.14); }
@@ -4815,10 +4840,6 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
       <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:12px">Motivo del egreso
         <select id="confirm-egreso-tipo" data-testid="confirm-egreso-tipo" style="display:block;width:100%;margin-top:4px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:var(--font)">
           <option value="">— Sin especificar —</option>
-          <option value="alta">Alta a domicilio</option>
-          <option value="defuncion">Defunción</option>
-          <option value="traslado">Traslado a otra unidad</option>
-          <option value="alta_voluntaria">Alta voluntaria</option>
         </select>
         <span style="display:block;font-weight:400;color:#64748b;font-size:11px;margin-top:3px">Queda en el registro de pacientes para estudios (mortalidad, reingresos). Se puede poner o corregir después en la Papelera.</span>
       </label>
@@ -13371,6 +13392,7 @@ function plExportBackup() {
         const _pRis = (async function () { try { await _loadRisEstudios(pts); } catch (e) { console.warn("ris_estudios:", e?.message || e); } })();
         let nts = await _pNotas;
         await Promise.all([_pWinlab, _pMatch, _pInd, _pRis]);
+        try { _egresosIniciar(); } catch (_) {}   // 🚪 egresos sin motivo (aviso discreto)
 
         const noteMap = {};
         (nts || []).forEach(n => { noteMap[n.patient_id] = n; });
@@ -14558,6 +14580,7 @@ function plExportBackup() {
         if (_rescatado || currentView === "focus" || (typeof _focusKey !== "undefined" && _focusKey === k)) _avisoAltaRemota(patients[idx].nombre, _rescatado, "");
         outboxDropNoteKeys([k]);
         patients.splice(idx, 1);
+        try { _egresosRevisarPronto(); } catch (_) {}   // salió del censo: en 20 s se pregunta el motivo (si nadie lo dio)
         delete noteData[k];
         localStorage.removeItem(NOTES_PREFIX + k);
         _cleanupPatientCache(k);
@@ -16602,6 +16625,7 @@ function plExportBackup() {
             + `<button class="bn-mode bn-pen${(typeof penModeOn === "function" && penModeOn()) ? " on" : ""}" onclick="togglePenMode(this)" title="Lápiz (toca para cambiar). iPad: Scribble = el iPad convierte tu letra en texto en cualquier caja (vitales, TA, drenajes, labs…) · Tinta = en las cajas grandes lo escrito se queda como tinta (tachar borra) y lo demás sigue siendo Scribble. Fuera del iPad: → Texto = la app convierte lo escrito (números al instante, texto por IA)">${(typeof _penModeLabel === "function") ? _penModeLabel(penMode()) : "✍️ Lápiz"}</button>`
             + `<button class="bn-mode" onclick="openPendientesImport()" title="Importar pendientes / planes desde el Excel del censo">📊 Planes</button>`
             + _fltBtnHtml()
+            + _egresoChipHtml()
             + renderAlertsNavBtn()
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
             + _fltPanelHtml()
@@ -25767,7 +25791,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       document.getElementById("confirm-name").textContent = p.nombre;
       document.getElementById("confirm-sub").textContent = `Cama ${p.cama} · ${p.esp} · Exp: ${p.exp}`;
       document.getElementById("confirm-btn").onclick = () => { dischargePatient(k); };
-      const tipoSel = document.getElementById("confirm-egreso-tipo"); if (tipoSel) tipoSel.value = "";
+      const tipoSel = document.getElementById("confirm-egreso-tipo"); if (tipoSel) { tipoSel.innerHTML = _egresoOpcionesHtml("", "— Sin especificar —"); tipoSel.value = ""; }
       document.getElementById("confirm-modal").style.display = "flex";
     }
     // Persistir la papelera local con manejo de cuota (compartido por egreso, import y outbox).
@@ -25886,7 +25910,14 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO (hoja)») sin decir si fue alta o defunción,
     // y el registro de pacientes no podía calcular mortalidad. Se registra al dar de alta en la app o después, en la
     // Papelera. En la nube va con la función archive_set_egreso (une el dato a note_data sin pisar la nota).
-    const PL_EGRESO_TIPOS = { alta: "Alta a domicilio", defuncion: "Defunción", traslado: "Traslado a otra unidad", alta_voluntaria: "Alta voluntaria" };
+    // 28 oct 2026: + cambio de servicio, contrarreferencia, fuga, otro y «no fue egreso» (pedido de Gera). El orden es el
+    // del menú. Las claves son las que acepta archive_set_egreso (scripts/supabase_archive_egreso.sql) y lee el registro.
+    const PL_EGRESO_TIPOS = { alta: "Alta a domicilio", defuncion: "Defunción", cambio_servicio: "Cambio de servicio",
+      contrarreferencia: "Contrarreferencia", traslado: "Traslado a otro hospital", alta_voluntaria: "Alta voluntaria",
+      fuga: "Fuga / abandono", otro: "Otro motivo", no_egreso: "No fue egreso (error del censo)" };
+    function _egresoOpcionesHtml(sel, vacio) {
+      return `<option value=""${sel ? "" : " selected"}>${vacio}</option>` + Object.keys(PL_EGRESO_TIPOS).map(function (k) { return `<option value="${k}"${sel === k ? " selected" : ""}>${PL_EGRESO_TIPOS[k]}</option>`; }).join("");
+    }
     function _marcarEgresoTipo(nd, tipo) {
       if (!nd) return;
       if (PL_EGRESO_TIPOS[tipo]) { nd._egreso_tipo = tipo; nd._egreso_tipo_por = localStorage.getItem("pl_user_name") || ""; }
@@ -25921,6 +25952,148 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       } finally { sel.disabled = false; renderPapelera(); }
     }
 
+    // ─── 🚪 Egresos sin motivo: aviso discreto (28 oct 2026, pedido de Gera) ─────────────────────────────────────
+    // Cuando un paciente ya no aparece en el censo (alta en la app o retirado por la hoja) y nadie dijo el motivo, una
+    // tarjeta pequeña abajo a la izquierda pregunta «¿Cuál fue el motivo del egreso?» con un menú. No bloquea nada: se
+    // esconde mientras se escribe o hay una ventana abierta, «Después» la pospone 3 h en este dispositivo y «✕» la cierra
+    // hasta recargar (el chip 🚪 de la barra la vuelve a abrir). Solo egresos de los últimos 7 días; los más viejos se
+    // clasifican en la Papelera. Lo que alguien elige se guarda en la nube (archive_set_egreso) y deja de salir en todos.
+    let _egresosPend = [], _egresoCerradaSesion = false, _egresoTimer = 0, _egresoPronto = 0, _egresoGuardando = false;
+    const EGRESO_SNOOZE_KEY = "pl_egreso_snooze";
+    function _egresoSnoozes() { try { const o = JSON.parse(localStorage.getItem(EGRESO_SNOOZE_KEY) || "{}"); return (o && typeof o === "object") ? o : {}; } catch (_) { return {}; } }
+    function _egresoPospuesto(it) { const t = _egresoSnoozes()[it.clave]; return !!(t && Date.now() < t); }
+    function _egresoNombreNorm(s) { return toSafeString(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z ]/g, " ").replace(/\s+/g, " ").trim(); }
+    async function _egresosRevisar() {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      try {
+        const desde = new Date(Date.now() - 7 * 86400e3).toISOString();
+        // Solo las columnas que hacen falta (la nota completa del egreso pesa): nombre, cama, expediente y motivo.
+        const rows = await _sGet("archive", "select=id,archived_at,nombre:patient_data->>nombre,cama:patient_data->>cama,exp:patient_data->>exp,estado:patient_data->>estado,tipo:note_data->>_egreso_tipo,etiqueta:note_data->>_egreso&archived_at=gte." + encodeURIComponent(desde) + "&order=archived_at.desc&limit=80");
+        const grupos = {}, orden = [];
+        (Array.isArray(rows) ? rows : []).forEach(function (r) {
+          if (!r || !r.id) return;
+          const nombre = toSafeString(r.nombre).trim(), exp = toSafeString(r.exp).trim();
+          if (!nombre && !exp) return;
+          // La misma persona puede tener varias copias (rescate, cama reasignada): se pregunta una vez y se guarda en todas.
+          const clave = exp + "|" + _egresoNombreNorm(nombre);
+          if (!grupos[clave]) { grupos[clave] = { clave: clave, ids: [], nombre: nombre, cama: toSafeString(r.cama).trim(), exp: exp, fecha: r.archived_at, conMotivo: false, tecnico: true }; orden.push(clave); }
+          const g = grupos[clave]; g.ids.push(r.id);
+          const arc = { estado: r.estado, _note: { _egreso: r.etiqueta, _egreso_tipo: r.tipo } };
+          if (_egresoTecnico(arc)) return;
+          g.tecnico = false;
+          if (!_egresoSinMotivo(arc)) g.conMotivo = true;   // ya tiene motivo (o el censo decía ALTA/DEFUNCIÓN)
+        });
+        // Si volvió al censo (restaurado, error de la hoja), ya no es un egreso.
+        const enCenso = function (g) {
+          return patients.some(function (q) {
+            if (!q) return false;
+            if (g.exp && toSafeString(q.exp).trim() === g.exp) return _plNamesCompatible(q, { nombre: g.nombre });
+            return !!g.nombre && _egresoNombreNorm(q.nombre) === _egresoNombreNorm(g.nombre);
+          });
+        };
+        _egresosPend = orden.map(function (c) { return grupos[c]; }).filter(function (g) { return !g.tecnico && !g.conMotivo && !enCenso(g); });
+        _egresosRender();
+      } catch (e) { safeLog("egresos sin motivo:", e); }
+    }
+    function _egresosRevisarPronto() { clearTimeout(_egresoPronto); _egresoPronto = setTimeout(_egresosRevisar, 20000); }
+    function _egresosIniciar() {
+      if (_egresoTimer) { _egresosRevisarPronto(); return; }
+      setTimeout(_egresosRevisar, 6000);
+      _egresoTimer = setInterval(function () { if (document.visibilityState === "visible") _egresosRevisar(); }, 10 * 60 * 1000);
+      document.addEventListener("focusin", function (ev) {
+        const t = ev.target;
+        // El buscador del menú (hoja) no es «escribir en una caja»: la hoja ya cuenta como ocupado y su foco llega 320 ms
+        // después de abrirla, a veces cuando ya se eligió (en Safari escondía la tarjeta para siempre).
+        if (!t || (t.closest && (t.closest("#egreso-card") || t.closest(".resid-sheet-backdrop")))) return;
+        if (!(t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        const c = document.getElementById("egreso-card"); if (c) c.classList.remove("show");
+        // Safari no avisa (focusout) cuando el campo enfocado se quita del DOM (tarjeta repintada): se vigila aquí.
+        const iv = setInterval(function () {
+          if (t.isConnected && document.activeElement === t) return;
+          clearInterval(iv);
+          setTimeout(function () { if (!_egresoOcupado()) _egresosRender(); }, 700);
+        }, 1000);
+      });
+      document.addEventListener("focusout", function () { setTimeout(function () { if (!_egresoOcupado()) _egresosRender(); }, 700); });
+    }
+    function _egresoVisibles() { return _egresosPend.filter(function (it) { return !_egresoPospuesto(it); }); }
+    // ¿La persona está escribiendo o tiene una ventana abierta? Entonces la tarjeta espera.
+    function _egresoOcupado() {
+      const ae = document.activeElement;
+      if (ae && ae !== document.body && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable) && !(ae.closest && ae.closest("#egreso-card"))) return true;
+      if (document.querySelector(".resid-sheet-backdrop.rs-open")) return true;
+      return Array.prototype.some.call(document.querySelectorAll(".modal-bg"), function (m) { try { return getComputedStyle(m).display !== "none"; } catch (_) { return false; } });
+    }
+    function _egresoChipHtml() {
+      const n = _egresosPend.length;
+      if (!n) return "";
+      return `<button type="button" class="bn-egreso" data-testid="egreso-chip" onclick="_egresoAbrir()" title="${n} egreso${n === 1 ? "" : "s"} de los últimos 7 días sin motivo: toca para elegirlo">🚪 ${n}</button>`;
+    }
+    function _egresoChipRefresh() {
+      try {
+        const nav = document.getElementById("board-nav"); if (!nav) return;
+        const old = nav.querySelector(".bn-egreso"), html = _egresoChipHtml();
+        if (old) { if (html) old.outerHTML = html; else old.remove(); }
+        else if (html) { const al = nav.querySelector(".bn-alerts"); if (al) al.insertAdjacentHTML("beforebegin", html); }
+      } catch (_) {}
+    }
+    function _egresoAbrir() {
+      _egresoCerradaSesion = false;
+      const o = _egresoSnoozes(); _egresosPend.forEach(function (it) { delete o[it.clave]; });
+      try { localStorage.setItem(EGRESO_SNOOZE_KEY, JSON.stringify(o)); } catch (_) {}
+      _egresosRender(true);
+    }
+    function _egresosRender(forzar) {
+      _egresoChipRefresh();
+      let card = document.getElementById("egreso-card");
+      const lista = _egresoVisibles();
+      if (!lista.length || _egresoCerradaSesion || (!forzar && _egresoOcupado())) { if (card) card.classList.remove("show"); return; }
+      const it = lista[0];
+      if (card && card.classList.contains("show") && card.dataset.clave === it.clave && !forzar) return;   // ya está a la vista
+      if (!card) { card = document.createElement("div"); card.id = "egreso-card"; card.setAttribute("role", "status"); card.setAttribute("data-testid", "egreso-card"); document.body.appendChild(card); }
+      const f = it.fecha ? new Date(it.fecha) : null;
+      const cuando = f && !isNaN(f) ? f.toLocaleDateString("es-MX", { day: "numeric", month: "short" }) : "";
+      card.dataset.clave = it.clave;
+      card.innerHTML = `<div class="eg-h"><span>🚪 Egreso sin motivo${lista.length > 1 ? " · 1 de " + lista.length : ""}</span><button type="button" class="eg-x" onclick="_egresoCerrar()" title="Cerrar (el chip 🚪 de la barra la vuelve a abrir)" aria-label="Cerrar">✕</button></div>`
+        + `<div class="eg-t" data-testid="egreso-texto"><b>${esc(it.cama || "S/C")} · ${esc(it.nombre || "Sin nombre")}</b> ya no aparece en el censo${cuando ? " (" + esc(cuando) + ")" : ""}. ¿Cuál fue el motivo del egreso?</div>`
+        + `<div class="eg-a"><label class="eg-l"><span class="eg-sr">Motivo del egreso</span><select data-testid="egreso-card-select" onchange="_egresoElegir(this)">${_egresoOpcionesHtml("", "— elegir —")}</select></label>`
+        + `<button type="button" class="eg-d" data-testid="egreso-despues" onclick="_egresoDespues()" title="Volver a preguntar en 3 horas">Después</button></div>`;
+      card.classList.add("show");
+    }
+    function _egresoActual() { const card = document.getElementById("egreso-card"); return card ? _egresosPend.find(function (x) { return x.clave === card.dataset.clave; }) : null; }
+    function _egresoDespues() {
+      const it = _egresoActual(); if (!it) return;
+      const o = _egresoSnoozes(); o[it.clave] = Date.now() + 3 * 3600e3;
+      try { localStorage.setItem(EGRESO_SNOOZE_KEY, JSON.stringify(o)); } catch (_) {}
+      _egresosRender(true);
+    }
+    function _egresoCerrar() { _egresoCerradaSesion = true; const c = document.getElementById("egreso-card"); if (c) c.classList.remove("show"); }
+    async function _egresoElegir(sel) {
+      const it = _egresoActual(); if (!it || !sel) return;
+      const tipo = sel.value; if (!PL_EGRESO_TIPOS[tipo]) return;
+      if (tipo === "defuncion" && !confirm("¿Registrar DEFUNCIÓN de " + (it.nombre || "este paciente") + "?")) { sel.value = ""; return; }
+      if (_egresoGuardando) return;
+      _egresoGuardando = true; sel.disabled = true;
+      try {
+        for (let i = 0; i < it.ids.length; i++) {
+          const r = await _sRpc("archive_set_egreso", { p_id: it.ids[i], p_tipo: tipo, p_por: localStorage.getItem("pl_user_name") || "" });
+          if (r !== "ok" && r !== "no-encontrado") throw new Error(String(r));
+        }
+        // La Papelera de este dispositivo queda igual que la nube.
+        let cambio = false;
+        archivados.forEach(function (a) { if (a && a._supaArchiveId && it.ids.indexOf(a._supaArchiveId) >= 0) { a._note = a._note || {}; _marcarEgresoTipo(a._note, tipo); cambio = true; } });
+        if (cambio) _persistArchivados();
+        _egresosPend = _egresosPend.filter(function (x) { return x !== it; });
+        try { _showRTToast("✅ Motivo del egreso: " + PL_EGRESO_TIPOS[tipo]); } catch (_) {}
+        if (currentView === "papelera") renderPapelera();
+        _egresosRender(true);
+      } catch (e) {
+        safeLog("egreso motivo:", e);
+        try { _showRTToast("No se pudo guardar el motivo del egreso: revisa la red e inténtalo otra vez"); } catch (_) {}
+        sel.value = "";
+      } finally { _egresoGuardando = false; sel.disabled = false; }
+    }
+
     function renderPapelera() {
       const el = document.getElementById("view-papelera");
       if (!el) return;
@@ -25944,7 +26117,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">Puedes restaurar cualquier paciente al censo activo con el botón "↩ Restaurar".</div>`;
       const sinMotivo = archivados.filter(_egresoSinMotivo).length;
       if (sinMotivo) html += `<div data-testid="egresos-sin-motivo" style="font-size:12px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:8px;margin-bottom:10px">
-          📋 <strong>${sinMotivo} egreso${sinMotivo !== 1 ? "s" : ""} sin motivo registrado.</strong> Elige el motivo en cada uno (alta, defunción, traslado, alta voluntaria): sin él, el registro de pacientes no puede calcular mortalidad.</div>`;
+          📋 <strong>${sinMotivo} egreso${sinMotivo !== 1 ? "s" : ""} sin motivo registrado.</strong> Elige el motivo en cada uno (alta, defunción, cambio de servicio, contrarreferencia, traslado…): sin él, el registro de pacientes no puede calcular mortalidad.</div>`;
       html += `<div style="display:flex;flex-direction:column;gap:8px">`;
       archivados.forEach(function (arc, idx) {
         const fecha = arc._archivedAt ? new Date(arc._archivedAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
@@ -25962,8 +26135,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               const t = (arc._note && arc._note._egreso_tipo) || "", falta = _egresoSinMotivo(arc);
               return `<label style="font-size:12px;color:${falta ? "#92400e" : "#64748b"};display:flex;align-items:center;gap:4px">Motivo:
                 <select data-testid="egreso-tipo-${idx}" onchange="setEgresoTipo(${idx}, this)" style="font-size:12px;padding:2px 4px;border:1px solid ${falta ? "#f59e0b" : "#cbd5e1"};border-radius:5px;font-family:var(--font)">
-                  <option value=""${t ? "" : " selected"}>${falta ? "— elegir —" : "—"}</option>
-                  ${Object.keys(PL_EGRESO_TIPOS).map(function (k) { return `<option value="${k}"${t === k ? " selected" : ""}>${PL_EGRESO_TIPOS[k]}</option>`; }).join("")}
+                  ${_egresoOpcionesHtml(PL_EGRESO_TIPOS[t] ? t : "", falta ? "— elegir —" : "—")}
                 </select></label>`;
             })()}
             <div style="margin-left:auto;display:flex;gap:6px">
@@ -29711,6 +29883,123 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       list.splice(i, 1);
       _saveCirugias(k, nd); _rerenderCard(k);
     }
+    // ═══ 🔎 CIRUGÍA MARCADA EN OTRA CAJA (28 oct 2026) ═══════════════════════════════════════════════════════════════
+    // Si el DX («PO LAPE 25/10»), la Cronología («pasa a quirófano para…») o la fecha POP dicen que hubo una cirugía que no
+    // está en la lista, la caja lo avisa en un renglón discreto. NADA se escribe solo: «➕ Registrar» la agrega (↩ Regresar
+    // la quita) y «✕» deja de avisar en todos los iPads (checklist.cx_det_no). Mismas reglas que el registro (regCirugias).
+    const CX_DET_GRUPOS = [
+      ["Relaparotomía", /\bRE ?LAPE\b|RELAPAROTOM/], ["Laparotomía exploradora", /\bLAPE\b|LAPAROTOMIA/], ["Colecistectomía", /COLECISTECTOM|\bCOLE ?LAP\b/],
+      ["Apendicectomía", /APENDICECTOM|APENDICETOM/], ["Vía biliar", /EXPLORACION DE (LA )?VIAS? BILIAR|COLEDOCOTOM|DERIVACION BILIODIGESTIVA|HEPATICOYEYUNO|COLEDOCOYEYUNO|COLEDOCODUODENO/],
+      ["Plastia de pared / hernia", /HERNIOPLAST|HERNIORRAF|EVENTROPLAST|PLASTIA (INGUINAL|UMBILICAL|DE PARED|VENTRAL|INCISIONAL|FEMORAL|EPIGASTRICA)|LICHTENSTEIN|\bRIVES\b|SEPARACION DE COMPONENTES/],
+      ["Funduplicatura", /FUNDUPLICA|FUNDOPLICA|NISSEN|TOUPET|HIATOPLAST/], ["Cirugía gástrica", /GASTRECTOM|GASTROYEYUNO|GASTROSTOM|GASTRORRAF|PILOROPLAST|PARCHE DE GRAHAM|MANGA GASTRICA|BYPASS GASTRICO/],
+      ["Resección intestinal", /RESECCION INTESTINAL|ENTERECTOM|RESECCION (DE )?(ILEON|YEYUNO|INTESTINO)|ENTEROENTERO|ENTERORRAF|ADHERENCIOLISIS|LISIS DE ADHERENCIAS/],
+      ["Colectomía", /COLECTOM|SIGMOIDECTOM|HARTMANN|PROCTOCOLECTOM|RESECCION ANTERIOR/], ["Estoma", /ILEOSTOM|COLOSTOM|YEYUNOSTOM|CIERRE DE (ESTOMA|ILEOSTOMIA|COLOSTOMIA)|RESTITUCION (DEL )?TRANSITO/],
+      ["Lavado / desbridamiento", /LAVADO (DE CAVIDAD|PERITONEAL|QUIRURGICO)|ASEO QUIRURGICO|DESBRIDAM|DEBRIDA|NECROSECTOM/], ["Drenaje", /DRENAJE (DE |DEL )?(ABSCESO|COLECCION|HEMATOMA|PSEUDOQUISTE)/],
+      ["Amputación", /AMPUTACION/], ["Tórax", /TORACOTOM|TORACOSCOP|DECORTICACION|PLEUROSTOM|LOBECTOM|SONDA ENDOPLEURAL/], ["Tiroides", /TIROIDECTOM|PARATIROIDECTOM/],
+      ["Esplenectomía", /ESPLENECTOM/], ["Páncreas", /PANCREATECTOM|PANCREATODUODENECTOM|WHIPPLE|CISTOYEYUNO|CISTOGASTRO/], ["Hígado", /HEPATECTOM|SEGMENTECTOMIA HEPATICA|DESTECHAMIENTO/],
+      ["Anorrectal", /HEMORROIDECTOM|FISTULECTOM|FISTULOTOM|ESFINTEROTOM/], ["Mama", /MASTECTOM/], ["Vascular", /TROMBECTOM|EMBOLECTOM|FASCIOTOM|ANGIOPLAST|BYPASS (FEMORO|AORTO)/],
+      ["Traqueostomía", /TRAQUEOSTOM/], ["Endoscopia / CPRE", /\bCPRE\b|PANENDOSCOP|COLONOSCOP/], ["Laparoscopia", /LAPAROSCOP/]
+    ];
+    const CX_DET_PLAN = /PROGRAMAD|SE PROGRAMA|PENDIENTE|\bPLAN\b|PLANEA|PROBABLE|CANDIDAT|PROPUEST|DIFERID|SE SOLICITA|SE COMENTA|VALORAR|DESCARTAR|\bMANANA\b/;
+    const CX_DET_ANTES = /ANTECEDENTE|\bHACE\b|\bANOS\b|\bPREVI[AO]S?\b|\bAPP\b|\bAPQX\b/;
+    const CX_DET_MARCA = /\b(PO|POP|P\.\s?O\.?|POSTOPERAD[OA]|POSTQUIRURGIC[OA]|POST ?QX|PQX|S\/P|OPERAD[OA])\b/;
+    const CX_DET_HECHO = /PASA A (QUIROFANO|QX|SALA)|INGRESA A (QUIROFANO|QX|SALA)|SE (LE )?REALIZ[AO]|SE INTERVIENE|SE INTERVINO|EN QUIROFANO|CIRUGIA REALIZADA|\bQX:|POSTQX INMEDIATO|POSTQUIRURGICO INMEDIATO/;
+    function _cxNorm(t) { return toSafeString(t).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); }
+    function _cxGrupo(t) { const s = _cxNorm(t); for (let i = 0; i < CX_DET_GRUPOS.length; i++) if (CX_DET_GRUPOS[i][1].test(s)) return CX_DET_GRUPOS[i][0]; return ""; }
+    function _cxDias(a, b) { if (!/^\d{4}-\d{2}-\d{2}$/.test(a || "") || !/^\d{4}-\d{2}-\d{2}$/.test(b || "")) return null; return Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10)) - Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10))) / 86400000); }
+    // dd/mm(/aa) de un texto en el año que la deja dentro del internamiento (ingreso − 2 días … hoy); "" si no cae.
+    function _cxFechaTexto(t, ing, fin) {
+      const m = /(?:^|[^\d])(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2}|\d{4}))?(?!\d)/.exec(toSafeString(t));
+      if (!m || +m[2] < 1 || +m[2] > 12 || +m[1] < 1 || +m[1] > 31) return "";
+      const dd = ("0" + m[1]).slice(-2), mm = ("0" + m[2]).slice(-2);
+      const anios = m[3] ? [m[3].length === 2 ? "20" + m[3] : m[3]] : [toSafeString(fin || ing).slice(0, 4), toSafeString(ing).slice(0, 4)];
+      for (const a of anios) {
+        if (!/^\d{4}$/.test(a)) continue;
+        const f = a + "-" + mm + "-" + dd, antes = ing ? _cxDias(f, ing) : null, despues = fin ? _cxDias(fin, f) : null;
+        if ((antes === null || antes <= 2) && (despues === null || despues <= 0)) return f;
+      }
+      return "";
+    }
+    function _cxDetectadas(k, nd) {
+      const ck = (nd && nd.checklist) || {};
+      const p = patients.find(x => pid(x) === k) || {};
+      let ing = null; try { ing = ingresoToISO(p.ingreso); } catch (_) {}
+      const fin = todayStr(), out = [], NOESP = "Cirugía";
+      const lista = (Array.isArray(ck.cirugias) ? ck.cirugias : []).filter(c => c && (toSafeString(c.procedimiento).trim() || c.fecha))
+        .map(c => ({ fecha: /^\d{4}-\d{2}-\d{2}$/.test(c.fecha || "") ? c.fecha : "", grupo: _cxGrupo(c.procedimiento) }));
+      const cerca = (a, b) => { if (!a || !b) return true; const d = _cxDias(a, b); return d === null || Math.abs(d) <= 2; };
+      // Sin grupo reconocido, o solo el abordaje («PO LAPE + RESECCIÓN INTESTINAL»: la LAPE es la vía de esa resección),
+      // empata con cualquier cirugía de esos días.
+      const comodin = (g) => !g || g === NOESP || g === "Laparotomía exploradora" || g === "Laparoscopia";
+      const misma = (c, x) => cerca(c.fecha, x.fecha) && (comodin(c.grupo) || comodin(x.grupo) || c.grupo === x.grupo);
+      const no = Array.isArray(ck.cx_det_no) ? ck.cx_det_no : [];
+      const agregar = (x) => {
+        x.key = (x.fuente + "|" + _cxNorm(x.texto).replace(/\s+/g, " ").trim()).slice(0, 100);
+        if (no.indexOf(x.key) >= 0 || lista.some(c => misma(c, x)) || out.some(c => misma(c, x))) return;
+        out.push(x);
+      };
+      // Fecha de cirugía (POP) sin ninguna cirugía en la lista.
+      const qf = toSafeString(ck.qx_fecha).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(qf) && !lista.length) agregar({ fecha: qf, proc: "", grupo: NOESP, fuente: "Fecha de cirugía", texto: "POP " + qf });
+      // Cronología: renglones que dicen que pasó a quirófano o que se operó.
+      toSafeString(nd && nd.cronologia).split("\n").forEach(l => {
+        const s = _cxNorm(l);
+        if (!s.trim() || CX_DET_PLAN.test(s) || !CX_DET_HECHO.test(s)) return;
+        const g = _cxGrupo(s);
+        if (!g && !/QUIROFANO|\bQX\b|CIRUGIA|INTERVIENE|INTERVINO/.test(s)) return;
+        const proc = toSafeString(l).replace(/^\s*\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+\d{1,2}:\d{2}\s*[^:]{0,30}:\s*/, "")
+          .replace(/^.*?(PASA A (QUIR[OÓ]FANO|QX|SALA)|INGRESA A (QUIR[OÓ]FANO|QX|SALA)|SE (LE )?REALIZ[AÓO]|SE INTERVIN[OI]E?|EN QUIR[OÓ]FANO( PARA)?|CIRUG[IÍ]A REALIZADA:?|QX:)\s*(PARA |DE |A )?/i, "").trim();
+        agregar({ fecha: _cxFechaTexto(l, ing, fin), proc: g ? proc.slice(0, 120) : "", grupo: g || NOESP, fuente: "Cronología", texto: toSafeString(l).trim() });
+      });
+      // DX: «PO LAPE 25/10», «POP COLECISTECTOMÍA», «S/P APENDICECTOMÍA» (no «programado», «antecedente», ni fechas de antes).
+      toSafeString(p.dx).split(/\s*(?:\+|;|\n|\/\/)\s*/).forEach(seg => {
+        const s = _cxNorm(seg);
+        if (!s.trim() || CX_DET_PLAN.test(s) || CX_DET_ANTES.test(s)) return;
+        const g = _cxGrupo(s); if (!g) return;
+        const fecha = _cxFechaTexto(seg, ing, fin);
+        const conFecha = /(?:^|[^\d])\d{1,2}[\/.-]\d{1,2}(?!\d)/.test(seg), anio = /\b(19|20)\d{2}\b/.exec(s);
+        if ((conFecha && !fecha) || (anio && anio[0] !== fin.slice(0, 4) && anio[0] !== toSafeString(ing).slice(0, 4))) return;
+        if (!CX_DET_MARCA.test(s) && !fecha) return;
+        const proc = toSafeString(seg).replace(/(?:^|[^\d])\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?(?!\d)/g, " ")
+          .replace(/^\s*(PO|POP|P\.\s?O\.?|POSTOPERAD[OA]|POSTQUIR[UÚ]RGIC[OA]|POST ?QX|PQX|S\/P|OPERAD[OA])\b\.?\s*(DE\s+)?/i, "").replace(/\s{2,}/g, " ").trim();
+        agregar({ fecha, proc: proc.slice(0, 120), grupo: g, fuente: "DX", texto: toSafeString(seg).trim() });
+      });
+      return out.slice(0, 3);
+    }
+    function _cxDetHtml(nd, k) {
+      let det = []; try { det = _cxDetectadas(k, nd); } catch (e) { safeLog("_cxDetectadas:", e); return ""; }
+      if (!det.length) return "";
+      return `<div class="cx-det-box" data-testid="cx-det-box">${det.map(d => {
+        const t = d.texto.length > 70 ? d.texto.slice(0, 68) + "…" : d.texto;
+        const f = d.fecha ? " · " + (typeof fmtDateChip === "function" ? fmtDateChip(d.fecha) : d.fecha) : "";
+        return `<div class="cx-det" data-testid="cx-det"><span class="cx-det-t" title="${esc("Marcada en " + d.fuente + ": " + d.texto + (d.fecha ? " (" + d.fecha + ")" : "") + ". No está en la lista de cirugías: regístrala para que cuente en el registro.")}">🔎 ¿Cirugía sin registrar? ${esc(d.fuente)}: «${esc(t)}»${esc(f)}</span>`
+          + `<button type="button" class="cx-det-b" data-ck="${k}" data-key="${esc(d.key)}" onclick="cxDetRegistrar(this.dataset.ck,this.dataset.key)" data-testid="cx-det-add" title="Agregar esta cirugía a la lista (revisa el procedimiento; ↩ Regresar la quita)">➕ Registrar</button>`
+          + `<button type="button" class="cx-det-x" data-ck="${k}" data-key="${esc(d.key)}" onclick="cxDetNo(this.dataset.ck,this.dataset.key)" data-testid="cx-det-no" title="No es una cirugía de este internamiento: dejar de avisar">✕</button></div>`;
+      }).join("")}</div>`;
+    }
+    function cxDetRegistrar(k, key) {
+      const nd = getNote(k);
+      const d = _cxDetectadas(k, nd).find(x => x.key === key); if (!d) { _rerenderCard(k); return; }
+      _undoPush(k, "registrar cirugía de " + d.fuente);
+      if (!nd.checklist) nd.checklist = {};
+      if (!Array.isArray(nd.checklist.cirugias)) nd.checklist.cirugias = [];
+      // Sin fecha y con la caja vacía, toma la fecha POP de la tarjeta (si no, _saveCirugias la dejaría vacía).
+      const qf = toSafeString(nd.checklist.qx_fecha).trim();
+      const fecha = d.fecha || (!nd.checklist.cirugias.filter(Boolean).length && /^\d{4}-\d{2}-\d{2}$/.test(qf) ? qf : "");
+      const c = { id: _cirugiaId(), fecha, procedimiento: d.proc || "", hallazgos: "", sangrado: "", cirujano: "" };
+      nd.checklist.cirugias.push(c);
+      _saveCirugias(k, nd); _rerenderCard(k);
+      try { _showRTToast("🔪 Cirugía agregada desde " + d.fuente + (c.fecha ? "" : ": falta la fecha") + " · revisa el procedimiento y completa hallazgos, sangrado y cirujano"); } catch (_) {}
+      try { const el = document.querySelector('#card-' + CSS.escape(k) + ' .cx-row[data-id="' + c.id + '"] ' + (c.fecha ? '.cx-proc' : '.cx-date')); if (el) el.focus(); } catch (_) {}
+    }
+    function cxDetNo(k, key) {
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      const arr = Array.isArray(nd.checklist.cx_det_no) ? nd.checklist.cx_det_no.slice() : [];
+      if (arr.indexOf(key) < 0) arr.push(key);
+      nd.checklist.cx_det_no = arr.slice(-30);
+      _saveNoteNow(k, nd, "ck_cx_det_no"); _rerenderCard(k);
+    }
     // Renglones iniciales de una caja de Cirugías según TODO su texto (antes tope de 4 y 3: el resto quedaba oculto).
     function _cxRows(txt, perLine) { return Math.max(1, Math.min(40, toSafeString(txt).split("\n").reduce(function (n, l) { return n + Math.max(1, Math.ceil(l.length / perLine)); }, 0))); }
     function renderCirugiasSection(nd, k) {
@@ -29742,6 +30031,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             <button type="button" class="cx-add" data-ck="${k}" onclick="addCirugia(this.dataset.ck)" title="Agregar una cirugía o procedimiento con su fecha">+ Agregar cirugía</button>
           </span>
         </div>
+        ${_cxDetHtml(nd, k)}
         ${rows ? `<div class="cx-list">${rows}</div>` : `<div class="cx-empty">Sin cirugías registradas · toca "+ Agregar cirugía" (una por intervención, con su fecha)</div>`}
       </div>`;
     }

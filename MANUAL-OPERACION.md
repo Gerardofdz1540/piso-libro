@@ -558,6 +558,15 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
   sustituye a las antiguas "Qx / Procedimiento", "Drenajes" y "Sangrado": el texto que ya existía se
   convirtió solo a la lista (una fila por línea con fecha; el sangrado quedó en la cirugía más
   reciente). La fecha POP del menú "⋯ Más" ahora es la de la última cirugía.
+  - **🔎 ¿Cirugía sin registrar?** (28 oct 2026). Si el DX («PO LAPE 26/10»), la Cronología («pasa a quirófano para
+    colecistectomía») o la fecha POP dicen que hubo una cirugía que no está en la lista, la caja lo avisa en un renglón
+    discreto (máximo 3; no sale al imprimir). **Nada se escribe solo**:
+    - **➕ Registrar** agrega la cirugía con su fecha y el procedimiento sin «PO», la hora ni «pasa a quirófano para»;
+      revísalo y completa hallazgos, sangrado y cirujano. **↩ Regresar** la quita.
+    - **✕** deja de avisar esa en todos los iPads (no es de este internamiento).
+    - No avisa lo planeado («programada», «pendiente», «mañana»), los antecedentes («antecedente de…», fechas de antes
+      del ingreso) ni lo que ya está en la lista ese día («PO LAPE + RESECCIÓN» con la resección ya anotada: la LAPE es
+      su abordaje).
 - **💉 Manejo médico actual** (verde azulado).
 - **⚠️ Pendientes / Plan** (ámbar).
 - **🕓 Cronología** (azul; 19 oct 2026, sustituye a «Entrega / Recibo de guardia», que se confundían):
@@ -774,14 +783,47 @@ una copia: además trae pestañas listas para estadística.
   falsos). Si la segunda parte entró 2 días o más después, «Calidad de datos» pide confirmar que no fue reingreso.
 - **Motivo del egreso.** Casi todos los egresos salen del censo de la hoja («RETIRADO DEL CENSO (hoja)») sin decir si fue
   alta o defunción. Por eso el registro no podía calcular mortalidad. Ahora:
-  - al dar de alta en la app (🚪 Alta), el cuadro pide el motivo: alta a domicilio, defunción, traslado o alta
-    voluntaria;
+  - al dar de alta en la app (🚪 Alta), el cuadro pide el motivo (desde el 28 oct: alta a domicilio, defunción, cambio
+    de servicio, contrarreferencia, traslado a otro hospital, alta voluntaria, fuga / abandono, otro motivo o «no fue
+    egreso (error del censo)»);
+  - **aviso discreto «🚪 Egreso sin motivo»** (28 oct 2026): cuando un paciente ya no aparece en el censo (alta en la app o
+    retirado por la hoja) y nadie dijo el motivo, una tarjeta pequeña abajo a la izquierda pregunta «3-160 · NOMBRE ya no
+    aparece en el censo. ¿Cuál fue el motivo del egreso?» con el menú. No bloquea nada:
+    - se esconde mientras escribes o hay una ventana abierta;
+    - «Después» la pospone 3 horas en ese dispositivo; «✕» la cierra hasta recargar;
+    - el chip **🚪 N** de la barra del paciente dice cuántos faltan y la vuelve a abrir;
+    - solo pregunta por los egresos de los últimos 7 días (los más viejos se clasifican en la Papelera);
+    - lo que elija cualquiera queda para todos; «Defunción» pide confirmar;
+    - si el paciente volvió al censo, no pregunta;
   - en la **Papelera**, cada egreso tiene su selector «Motivo», y arriba aparece cuántos egresos no lo tienen;
   - el motivo se guarda en la nube con la función `archive_set_egreso` (`scripts/supabase_archive_egreso.sql`, ya
     aplicada); se une a la copia sin pisar la nota;
   - el registro lo toma aunque la copia sea vieja.
 
   **Pide al equipo que llene el motivo de los egresos.** Sin él, en el registro la defunción queda «desconocida».
+- **Mortalidad con los motivos nuevos** (registro 2026.10.28): «Defunción» = 1; alta, alta voluntaria, traslado,
+  contrarreferencia, fuga y cambio de servicio = 0 (salió vivo del servicio; en cambio de servicio no se conoce el
+  desenlace posterior en el hospital); «otro motivo» y «no fue egreso» quedan vacíos (y «no fue egreso» no cuenta como
+  egreso observado).
+- **Cirugías desde donde estén marcadas** (registro 2026.10.28). La pestaña «Cirugías» ya no depende solo de la caja:
+  si una cirugía no está ahí, se toma de la fecha POP, del texto Qx anterior, de la Cronología («pasa a quirófano…») o
+  del DX («PO LAPE 25/10»), sin repetir la que ya está en la caja (mismo día). Cada fila dice su **Fuente** y su
+  **Grupo** (laparotomía, colecistectomía, apendicectomía, plastia, resección intestinal…). La programación del día
+  entra como «sin confirmar» y no cuenta como cirugía hecha. Si después alguien la pasa a la caja, la inferida queda
+  «Vigente: No» y no se cuenta doble. «Análisis · Episodios» suma «Grupo de la 1.ª cirugía», «Reintervención»,
+  «Cirugías inferidas (n)» y «Programadas sin confirmar (n)»; «Calidad de datos» pide pasar las inferidas a la caja.
+- **Datos que antes se perdían** (registro 2026.10.28):
+  - **Peso y talla** del Pase Matutino (Pacientes) e **IMC** (Análisis · Episodios; las filas viejas los toman del
+    checklist guardado).
+  - **Comorbilidades** desde los Antecedentes (APP) y el DX, con negación («NIEGA DM, HAS» = 0): diabetes,
+    hipertensión, ERC, cirrosis, cardiopatía, EPOC/asma, obesidad (también por IMC ≥ 30), cáncer, inmunosupresión y
+    tabaquismo; «Comorbilidades (n)». Sin APP quedan vacías (desconocidas), no 0. Es texto libre: revisar una muestra
+    antes de publicar.
+  - **Horas de uresis** e **índice urinario** por día (Análisis · Signos vitales) e «Índice urinario mínimo» y «Días
+    con oliguria (IU < 0.5)» por episodio.
+  - **Labs corregidos a mano** (✏️ Corregir): la pestaña «Labs» dice quién corrigió, cuándo y qué decía antes.
+  - **Para que el registro sea completo, en la app:** llenen **APP**, **peso y talla** (fila Clínico del Pase), las
+    **horas de la uresis**, el **motivo del egreso** (🚪) y pasen las cirugías a la caja (🔎 ➕ Registrar).
 - **Para que el registro tenga las pestañas nuevas:** abre el proyecto «Registro de pacientes» en script.google.com,
   borra todo `Código.gs`, pega el `apps-script/registro-pacientes.gs` nuevo y guarda. No hay que tocar nada más: la
   propiedad `REG_SAL` (la sal del seudónimo) se crea sola en la siguiente corrida.

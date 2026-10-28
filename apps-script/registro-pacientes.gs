@@ -33,7 +33,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.10.27';
+var REGISTRO_VERSION = '2026.10.28';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -66,11 +66,12 @@ var REG_PESTANAS = [
     'Días de estancia', 'Diagnóstico', 'Estado clínico', 'Antecedentes (APP)', 'Padecimiento (PA)', 'Manejo', 'Pendientes',
     'Drenajes y dispositivos', 'Antibiótico', 'Cultivos', 'Interconsultas', 'Dieta y NPO', 'TVP', 'NPT', 'Ventilación',
     'Vasopresores', 'Cirugías (resumen)', 'Imagen (resumen)', 'Labs (fechas)', 'Guardia vigente', 'Cronología', 'Misceláneo',
-    'Nota completa (JSON)', 'Checklist completo (JSON)', 'Alta en la app', 'Última modificación en la app', 'Fuente', 'Última vez en la base'] },
-  { nombre: 'Cirugías', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Procedimiento'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Procedimiento', 'Hallazgos', 'Sangrado', 'Cirujano', 'Vigente'] },
-  { nombre: 'Labs', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Estudio'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Estudio', 'Valor', 'Origen', 'Vigente'] },
+    'Nota completa (JSON)', 'Checklist completo (JSON)', 'Alta en la app', 'Última modificación en la app', 'Fuente', 'Última vez en la base',
+    'Peso (kg)', 'Talla'] },
+  { nombre: 'Cirugías', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Procedimiento'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Procedimiento', 'Hallazgos', 'Sangrado', 'Cirujano', 'Grupo', 'Fuente', 'Vigente'] },
+  { nombre: 'Labs', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Estudio'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Estudio', 'Valor', 'Origen', 'Vigente', 'Corregido a mano'] },
   { nombre: 'Imagen', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Tipo', 'Descripción'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Tipo', 'Descripción', 'Enlace', 'Vigente'] },
-  { nombre: 'Signos vitales', modo: 'acumula', clave: ['ID episodio', 'Fecha'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'FC', 'FR', 'Temp', 'SaO2', 'O2 L/min', 'TA', 'Uresis', 'DxTx', 'IU', 'Balance'] },
+  { nombre: 'Signos vitales', modo: 'acumula', clave: ['ID episodio', 'Fecha'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'FC', 'FR', 'Temp', 'SaO2', 'O2 L/min', 'TA', 'Uresis', 'DxTx', 'IU', 'Balance', 'Horas de uresis'] },
   { nombre: 'Notas de evolución', modo: 'acumula', clave: ['ID episodio', 'Fecha y hora'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha y hora', 'Autor', 'Con IA', 'Texto'] },
   { nombre: 'Guardia y cronología', modo: 'vigente', clave: ['ID episodio', 'Caja', 'Renglón'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Caja', 'Orden', 'Renglón', 'Vigente'] },
   { nombre: 'Procedimientos programados', modo: 'acumula', fuente: 'procedimientos_dia', clave: ['ID'], columnas: ['ID', 'Fecha', 'Cama', 'Expediente', 'Nombre', 'Edad', 'Diagnóstico', 'Especialidad', 'Adscrito', 'Residente', 'Agregado por'] },
@@ -897,12 +898,16 @@ function regConstruir(datos, hoy) {
     function con(o) { var r = Object.assign({}, base); Object.keys(o).forEach(function (k) { r[k] = o[k]; }); return r; }
     var ingreso = regFecha(p.ingreso);
 
-    // Cirugías (caja nueva) o el texto Qx de antes.
+    // Cirugías: la caja Cirugías manda; lo que no esté ahí se toma de donde sí está marcado (28 oct 2026, pedido del servicio):
+    // fecha POP de la tarjeta, texto Qx de la caja anterior, Cronología («pasa a quirófano…»), DX («PO LAPE 25/10») y la
+    // programación del día. Cada fila dice su «Fuente» y su «Grupo»; no se repite una cirugía que ya está en la caja.
     var cxs = regArr(ck.cirugias).filter(function (c) { return c && (regTexto(c.procedimiento).trim() || regTexto(c.fecha).trim() || regTexto(c.hallazgos).trim()); });
-    cxs.forEach(function (c) {
-      fila('Cirugías', con({ 'Fecha': regFecha(c.fecha) || regTexto(c.fecha), 'Procedimiento': regTexto(c.procedimiento), 'Hallazgos': regTexto(c.hallazgos), 'Sangrado': regTexto(c.sangrado), 'Cirujano': regTexto(c.cirujano), 'Vigente': 'Sí' }));
+    var cronoCx = regLineas(n.cronologia).concat(regLineas(cronoPorId[id])).concat(regLineas(n.entrega || meta.entrega));
+    var cxTodas = regCirugias({ caja: cxs, qx: regTexto(n.qx), sangrado: regTexto(n.sangrado), qxFecha: regTexto(ck.qx_fecha), dx: regTexto(n.dx || p.dx), crono: cronoCx,
+      programadas: regProgramadasDe(datos.procedimientos, p, ingreso, ep.egreso || hoy), ingreso: ingreso, fin: ep.egreso || hoy });
+    cxTodas.forEach(function (c) {
+      fila('Cirugías', con({ 'Fecha': c.fecha, 'Procedimiento': c.proc, 'Hallazgos': c.hallazgos, 'Sangrado': c.sangrado, 'Cirujano': c.cirujano, 'Grupo': c.grupo, 'Fuente': c.fuente, 'Vigente': 'Sí' }));
     });
-    if (!cxs.length && regTexto(n.qx).trim()) fila('Cirugías', con({ 'Fecha': '', 'Procedimiento': regTexto(n.qx), 'Hallazgos': '', 'Sangrado': regTexto(n.sangrado), 'Cirujano': '', 'Vigente': 'Sí' }));
 
     // Labs: una fila por fecha y estudio; sin los PDF incrustados ni las marcas internas (fecha_labs, hora_labs, _…).
     var fechasLab = [];
@@ -910,18 +915,20 @@ function regConstruir(datos, hoy) {
       if (!e) return;
       var f = regFecha(e.fecha) || regTexto(e.fecha);
       var origen = typeof e.source === 'string' ? e.source : (typeof e.origen === 'string' ? e.origen : '');
-      var hubo = false;
+      var hubo = false, manual = regObj(e.manual_by);
+      // Corrección a mano desde la app (✏️ Corregir, 28 oct 2026): quién, cuándo y qué decía antes.
+      var corregido = function (k) { var m = regObj(manual[k]); return Object.keys(m).length ? ['Sí', regTexto(m.u), regTexto(m.t).slice(0, 16).replace('T', ' '), regTexto(m.antes) ? 'antes: ' + regTexto(m.antes) : ''].filter(function (x) { return x.trim(); }).join(' · ') : ''; };
       Object.keys(regObj(e.labs)).forEach(function (k) {
         var v = e.labs[k];
         if (/^(fecha_labs|hora_labs)$|^_/.test(k)) return;
         if (v === null || v === undefined || regTexto(v).trim() === '' || regEsArchivo(v)) return;
-        fila('Labs', con({ 'Fecha': f, 'Estudio': k, 'Valor': regTexto(v), 'Origen': origen, 'Vigente': 'Sí' })); hubo = true;
+        fila('Labs', con({ 'Fecha': f, 'Estudio': k, 'Valor': regTexto(v), 'Origen': origen, 'Vigente': 'Sí', 'Corregido a mano': corregido(k) })); hubo = true;
       });
       regArr(e.extra).forEach(function (x) {
         if (!x || typeof x !== 'object') return;
         var k = regTexto(x.nombre || x.name || x.label || x.k || x.estudio), v = x.valor !== undefined ? x.valor : (x.value !== undefined ? x.value : x.v);
         if (!k || v === undefined || regTexto(v).trim() === '' || regEsArchivo(v)) return;
-        fila('Labs', con({ 'Fecha': f, 'Estudio': k, 'Valor': regTexto(v), 'Origen': origen, 'Vigente': 'Sí' })); hubo = true;
+        fila('Labs', con({ 'Fecha': f, 'Estudio': k, 'Valor': regTexto(v), 'Origen': origen, 'Vigente': 'Sí', 'Corregido a mano': '' })); hubo = true;
       });
       if (hubo && fechasLab.indexOf(f) === -1) fechasLab.push(f);
     });
@@ -945,12 +952,12 @@ function regConstruir(datos, hoy) {
 
     // Signos vitales: los días que guarda la app (pm_hist, 14) y el pase de hoy (pm_*): se acumulan en el registro.
     var signos = regArr(ck.pm_hist).slice();
-    if (regTexto(ck.pm_fecha).trim()) signos.push({ fecha: ck.pm_fecha, fc: ck.pm_fc, fr: ck.pm_fr, temp: ck.pm_temp, sao2: ck.pm_sao2, o2l: ck.pm_o2l, ta: ck.pm_ta, uresis: ck.pm_uresis, dxtx: ck.pm_dxtx, iu: ck.pm_iu, balance: ck.pm_balance });
+    if (regTexto(ck.pm_fecha).trim()) signos.push({ fecha: ck.pm_fecha, fc: ck.pm_fc, fr: ck.pm_fr, temp: ck.pm_temp, sao2: ck.pm_sao2, o2l: ck.pm_o2l, ta: ck.pm_ta, uresis: ck.pm_uresis, uresis_h: ck.pm_uresis_h, dxtx: ck.pm_dxtx, iu: ck.pm_iu, balance: ck.pm_balance });
     signos.forEach(function (s) {
       if (!s || !regFecha(s.fecha)) return;
-      var vals = ['fc', 'fr', 'temp', 'sao2', 'o2l', 'ta', 'uresis', 'dxtx', 'iu', 'balance'].map(function (k) { return regTexto(s[k]); });
+      var vals = ['fc', 'fr', 'temp', 'sao2', 'o2l', 'ta', 'uresis', 'dxtx', 'iu', 'balance', 'uresis_h'].map(function (k) { return regTexto(s[k]); });
       if (!vals.some(function (v) { return v.trim(); })) return;
-      fila('Signos vitales', con({ 'Fecha': regFecha(s.fecha), 'FC': vals[0], 'FR': vals[1], 'Temp': vals[2], 'SaO2': vals[3], 'O2 L/min': vals[4], 'TA': vals[5], 'Uresis': vals[6], 'DxTx': vals[7], 'IU': vals[8], 'Balance': vals[9] }));
+      fila('Signos vitales', con({ 'Fecha': regFecha(s.fecha), 'FC': vals[0], 'FR': vals[1], 'Temp': vals[2], 'SaO2': vals[3], 'O2 L/min': vals[4], 'TA': vals[5], 'Uresis': vals[6], 'DxTx': vals[7], 'IU': vals[8], 'Balance': vals[9], 'Horas de uresis': vals[10] }));
     });
 
     // Notas de evolución (la app guarda las últimas 10).
@@ -988,12 +995,13 @@ function regConstruir(datos, hoy) {
       'NPT': ck.npt ? une(['Sí', ck.npt_pct ? regTexto(ck.npt_pct) + '%' : '', regTexto(ck.npt_fecha)]) : '',
       'Ventilación': ck.pm_vent ? une(['Sí', regTexto(ck.pm_vent_modo), ck.pm_vent_fio2 ? 'FiO2 ' + regTexto(ck.pm_vent_fio2) : '', ck.pm_vent_peep ? 'PEEP ' + regTexto(ck.pm_vent_peep) : '']) : '',
       'Vasopresores': une([ck.vp_nore_on ? 'Norepinefrina' + (ck.vp_nore_mlh ? ' ' + regTexto(ck.vp_nore_mlh) + ' mL/h' : '') : '', ck.vp_vaso_on ? 'Vasopresina' + (ck.vp_vaso_mlh ? ' ' + regTexto(ck.vp_vaso_mlh) + ' mL/h' : '') : '']),
-      'Cirugías (resumen)': cxs.map(function (c) { return [regFecha(c.fecha) || regTexto(c.fecha), regTexto(c.procedimiento)].filter(Boolean).join(' '); }).join(' | ') || regTexto(n.qx),
+      'Cirugías (resumen)': cxTodas.map(function (c) { return [c.fecha, c.proc, REG_CX_DIRECTAS.indexOf(c.fuente) === -1 ? '[' + c.fuente + ']' : ''].filter(Boolean).join(' '); }).join(' | '),
       'Imagen (resumen)': resumenImg.join(' | '), 'Labs (fechas)': fechasLab.sort().join(', '),
       'Guardia vigente': entrega, 'Cronología': crono.join('\n'), 'Misceláneo': regTexto(n.misc),
       'Nota completa (JSON)': regJsonLimpio(n, ['checklist', 'labHistory', 'lab_history', 'imagenHistory', 'imagen_history', 'body_diagram_ant', 'body_diagram_post']),
       'Checklist completo (JSON)': regJsonLimpio(ck, ['__pl_note_meta', 'cirugias', 'pm_hist', 'nota_hist', '__ink']),
-      'Alta en la app': regTexto(p.created_at), 'Última modificación en la app': regTexto(n.updated_at || p.updated_at), 'Fuente': ep.fuente, 'Última vez en la base': hoy
+      'Alta en la app': regTexto(p.created_at), 'Última modificación en la app': regTexto(n.updated_at || p.updated_at), 'Fuente': ep.fuente, 'Última vez en la base': hoy,
+      'Peso (kg)': regTexto(ck.pm_peso), 'Talla': regTexto(ck.pm_talla)
     });
   });
 
@@ -1182,18 +1190,73 @@ var REG_SV = [
   ['Balance', 'Balance (mL)', -20000, 20000, /^(ML|CC)$/, true]
 ];
 
+// Comorbilidades desde APP + DX (28 oct 2026). [columna, patrón sobre el texto sin acentos y en mayúsculas].
+var REG_COMORB = [
+  ['Diabetes', /\bDIABET|\bDM ?(T ?)?(1|2|I|II)?\b|\bDT ?2\b|\bDMT?2\b|\bDMII\b/],
+  ['Hipertensión', /\bHAS\b|\bHTA\b|\bHAS ?SISTEMICA|HIPERTENSION ARTERIAL|\bHIPERTENS[OA]\b/],
+  ['Enfermedad renal crónica', /\bERC\b|\bIRC\b|ENFERMEDAD RENAL CRONICA|INSUFICIENCIA RENAL CRONICA|HEMODIALISIS|DIALISIS PERITONEAL|\bTSFR\b|TERAPIA SUSTITUTIVA/],
+  ['Cirrosis / hepatopatía crónica', /CIRROSIS|HEPATOPATIA CRONICA|CHILD[- ]PUGH|\bCHILD [ABC]\b/],
+  ['Cardiopatía', /CARDIOPATIA|INSUFICIENCIA CARDIACA|\bICC\b|INFARTO (AGUDO )?(DEL |AL )?MIOCARDIO|\bIAM\b|FIBRILACION AURICULAR|\bFANV\b|VALVULOPATIA|\bANGINA\b|STENT CORONARIO|REVASCULARIZACION CORONARIA|MARCAPASOS/],
+  ['EPOC / asma', /\bEPOC\b|ENFISEMA|BRONQUITIS CRONICA|\bASMA\b/],
+  ['Obesidad', /OBESIDAD|\bOBES[OA]\b/],
+  ['Cáncer', /CANCER|\bCA (DE |DEL )?(MAMA|COLON|RECTO|GASTRICO|ESTOMAGO|PANCREAS|CERVICO|CU\b|PROSTATA|PULMON|OVARIO|ENDOMETRIO|TIROIDES|HIGADO|VESICULA|VIAS? BILIAR|ESOFAGO|RINON|VEJIGA|TESTICULO|PIEL)|CARCINOMA|LINFOMA|LEUCEMIA|MIELOMA|SARCOMA|MELANOMA|NEOPLASIA MALIGNA|METASTA|QUIMIOTERAPIA|RADIOTERAPIA/],
+  ['Inmunosupresión', /\bVIH\b|\bSIDA\b|TRASPLANT|INMUNOSUPRES|TACROLIMUS|MICOFENOLATO|AZATIOPRINA|CICLOSPORINA|ESTEROIDE[S]? CRONIC|PREDNISONA CRONIC/],
+  ['Tabaquismo', /TABAQUISMO|FUMADOR|INDICE TABAQUICO|\bIT ?[:=]? ?\d/]
+];
+// Negación: «NIEGA…», «… NEGADA», «SIN…», «NO REFIERE…». Un renglón que empieza con negación niega la lista que sigue
+// («NIEGA DM, HAS») hasta un dato que la contradice («… EN TRATAMIENTO», «DX HACE 5 AÑOS»).
+var REG_NEG = /\bNIEGA|\bNEGAD[OA]S?\b|\bNEGATIV[OA]S?\b|\bNO (REFIERE|PADECE|TIENE|CONOCID)|\bDESCONOCE|^\s*SIN\b|\bINTERROGAD[OA]S? Y NEGAD/;
+var REG_AFIRMA = /TRATAMIENTO|\bTX\b|\bDX\b|DIAGNOSTIC|\bHACE\b|\bDESDE\b|CONTROL|\bCON\b|\bEN MANEJO|\d/;
+/** Banderas de comorbilidad desde APP y DX: 1 = mencionada; 0 = hay APP y no la menciona (o la niega); '' = sin APP
+ *  (el DX solo puede poner 1: casi nunca enlista las comorbilidades). */
+function regComorbilidades(app, dx) {
+  var texto = [regTexto(app), regTexto(dx)].filter(function (t) { return t.trim(); });
+  var out = {}, hayApp = !!regTexto(app).trim();
+  REG_COMORB.forEach(function (c) { out[c[0]] = hayApp ? 0 : ''; });
+  if (!texto.length) return out;
+  texto.join('\n').split(/[.\n;]+/).forEach(function (oracion) {
+    var o = regNorm_(oracion);
+    if (!o.trim()) return;
+    var negando = REG_NEG.test(o.replace(/,.*$/, '')) && /^\s*(NIEGA|NEGAD|NEGATIV|SIN\b|NO\b|INTERROGAD|DESCONOCE|ANTECEDENTES? (PERSONALES )?(PATOLOGICOS )?NEGAD|CRONICO ?DEGENERATIVOS NEGAD|APP:? ?(NIEGA|NEGAD))/.test(o);
+    o.split(/,|\bY\b|\bE\b|\//).forEach(function (cl, i) {
+      if (!cl.trim()) return;
+      var neg = REG_NEG.test(cl), afirma = REG_AFIRMA.test(cl.replace(/\b(DM|DT|DMT|ERC|KDIGO|IT)\s*:?\s*\d+/g, ''));
+      if (i > 0 && afirma && !neg) negando = false;
+      REG_COMORB.forEach(function (c) {
+        if (!c[1].test(cl)) return;
+        if (neg || (negando && !afirma)) return;
+        out[c[0]] = 1;
+      });
+    });
+  });
+  return out;
+}
+/** Peso (kg, 0.4–400) y talla (m; «165» cm o «1.65» m) de la fila de Pacientes; si las columnas están vacías (filas de
+ *  antes del 28 oct 2026) se toman del «Checklist completo (JSON)». */
+function regPesoTalla(row) {
+  var ck = {};
+  try { ck = JSON.parse(regTexto(row && row['Checklist completo (JSON)']) || '{}') || {}; } catch (e) { ck = {}; }
+  var p = regNumero(regTexto(row && row['Peso (kg)']).trim() || regTexto(ck.pm_peso), { unidad: /^(KG|KGS|KILOS?)\.?$/ });
+  var t = regNumero(regTexto(row && row['Talla']).trim() || regTexto(ck.pm_talla), { unidad: /^(M|MTS?|CM|CMS)\.?$/ });
+  var peso = p && !p.comp && p.n >= 0.4 && p.n <= 400 ? p.n : '';
+  var talla = '';
+  if (t && !t.comp) talla = t.n >= 0.3 && t.n <= 2.5 ? t.n : (t.n >= 30 && t.n <= 250 ? regRedondear(t.n / 100, 2) : '');
+  return { peso: peso, talla: talla, imc: peso !== '' && talla !== '' ? regRedondear(peso / (talla * talla), 1) : '' };
+}
 function regEpisodiosColumnas_() {
   return ['ID episodio', 'ID paciente', 'Partes del registro', 'N.º de episodio del paciente', 'Días desde el egreso previo', 'Es reingreso (≤30 días)', 'Reingreso a 30 días',
     'Edad (años)', 'Sexo', 'Especialidad', 'Sección', 'Fecha de ingreso', 'Fecha de egreso', 'Días de estancia', 'Estado', 'Egreso observado', 'Tipo de egreso',
-    'Defunción', 'Motivo de egreso (app)', 'Excluir (duplicado)', 'Diagnóstico', 'Cirugías (n)', 'Primera cirugía', 'Días ingreso a 1.ª cirugía', 'Sangrado total (mL)',
-    'Procedimientos', 'Antibiótico (registrado)', 'NPT (registrada)', 'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)',
-    'Fechas con labs (n)', 'Valores críticos (n)']
+    'Defunción', 'Motivo de egreso (app)', 'Excluir (duplicado)', 'Diagnóstico', 'Peso (kg)', 'Talla (m)', 'IMC (kg/m²)']
+    .concat(REG_COMORB.map(function (c) { return c[0]; })).concat(['Comorbilidades (n)', 'Cirugías (n)', 'Primera cirugía', 'Días ingreso a 1.ª cirugía', 'Sangrado total (mL)',
+    'Procedimientos', 'Grupo de la 1.ª cirugía', 'Reintervención', 'Cirugías inferidas (n)', 'Programadas sin confirmar (n)', 'Antibiótico (registrado)', 'NPT (registrada)', 'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)',
+    'Fechas con labs (n)', 'Valores críticos (n)', 'Índice urinario mínimo (mL/kg/h)', 'Días con oliguria (IU < 0.5)'])
     .concat(REG_LAB_RESUMEN.map(function (r) { return r[2]; }))
     .concat(['Cultivos (n)', 'Cultivos positivos (n)', 'Gérmenes aislados', 'Calidad de datos', 'Vigente']);
 }
 var REG_EP_ENTEROS = ['Partes del registro', 'N.º de episodio del paciente', 'Días desde el egreso previo', 'Es reingreso (≤30 días)', 'Reingreso a 30 días', 'Días de estancia',
-  'Egreso observado', 'Defunción', 'Excluir (duplicado)', 'Cirugías (n)', 'Días ingreso a 1.ª cirugía', 'Antibiótico (registrado)', 'NPT (registrada)',
-  'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)', 'Fechas con labs (n)', 'Valores críticos (n)', 'Cultivos (n)', 'Cultivos positivos (n)'];
+  'Egreso observado', 'Defunción', 'Excluir (duplicado)', 'Cirugías (n)', 'Días ingreso a 1.ª cirugía', 'Reintervención', 'Cirugías inferidas (n)', 'Programadas sin confirmar (n)', 'Antibiótico (registrado)', 'NPT (registrada)',
+  'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)', 'Fechas con labs (n)', 'Valores críticos (n)', 'Cultivos (n)', 'Cultivos positivos (n)',
+  'Comorbilidades (n)', 'Días con oliguria (IU < 0.5)'].concat(REG_COMORB.map(function (c) { return c[0]; }));
 function regFormatos_(enteros, decimales) {
   var f = {};
   enteros.forEach(function (c) { f[c] = REG_FMT_ENT; });
@@ -1202,14 +1265,14 @@ function regFormatos_(enteros, decimales) {
 }
 var REG_ANALISIS = [
   { nombre: REG_AN_EPISODIOS, modo: 'derivada', clave: ['ID episodio'], columnas: regEpisodiosColumnas_(),
-    formatos: regFormatos_(REG_EP_ENTEROS, ['Edad (años)', 'Sangrado total (mL)'].concat(REG_LAB_RESUMEN.map(function (r) { return r[2]; }))) },
+    formatos: regFormatos_(REG_EP_ENTEROS, ['Edad (años)', 'Sangrado total (mL)', 'Peso (kg)', 'Talla (m)', 'IMC (kg/m²)', 'Índice urinario mínimo (mL/kg/h)'].concat(REG_LAB_RESUMEN.map(function (r) { return r[2]; }))) },
   { nombre: REG_AN_LABS, modo: 'derivada', clave: ['ID episodio', 'Fecha'],
     columnas: ['ID episodio', 'ID paciente', 'Fecha', 'Día de estancia', 'Fuente'].concat(REG_LAB_META.map(regLabColumna)).concat(['Otros estudios', 'Valores críticos', 'Observaciones', 'Vigente']),
     formatos: regFormatos_(['Día de estancia'], REG_LAB_META.filter(function (m) { return m.t !== 'texto'; }).map(regLabColumna)) },
   { nombre: REG_AN_SIGNOS, modo: 'derivada', clave: ['ID episodio', 'Fecha'],
     columnas: ['ID episodio', 'ID paciente', 'Fecha', 'Día de estancia'].concat(REG_SV.slice(0, 5).map(function (s) { return s[1]; }))
-      .concat(['TA sistólica (mmHg)', 'TA diastólica (mmHg)', 'PAM (mmHg)']).concat(REG_SV.slice(5).map(function (s) { return s[1]; })).concat(['Observaciones', 'Vigente']),
-    formatos: regFormatos_(['Día de estancia'], REG_SV.map(function (s) { return s[1]; }).concat(['TA sistólica (mmHg)', 'TA diastólica (mmHg)', 'PAM (mmHg)'])) },
+      .concat(['TA sistólica (mmHg)', 'TA diastólica (mmHg)', 'PAM (mmHg)']).concat(REG_SV.slice(5).map(function (s) { return s[1]; })).concat(['Horas de uresis (h)', 'Índice urinario (mL/kg/h)', 'Observaciones', 'Vigente']),
+    formatos: regFormatos_(['Día de estancia'], REG_SV.map(function (s) { return s[1]; }).concat(['TA sistólica (mmHg)', 'TA diastólica (mmHg)', 'PAM (mmHg)', 'Horas de uresis (h)', 'Índice urinario (mL/kg/h)'])) },
   { nombre: REG_AN_CULTIVOS, modo: 'derivada', clave: ['ID cultivo'],
     columnas: ['ID cultivo', 'ID episodio', 'ID paciente', 'Fecha de toma', 'Hora de toma', 'Día de estancia', 'Tipo', 'Muestra', 'Resultado', 'Positivo', 'Germen',
       'Sensibles', 'Intermedios', 'Resistentes', 'UFC', 'Fuente', 'Vigente'],
@@ -1301,7 +1364,12 @@ function regMismaPersona(a, b) {
 /** Tipo de egreso desde la etiqueta de la app y el estado clínico. La mayoría de los egresos salen del censo de la hoja
  *  («RETIRADO DEL CENSO (hoja)», «CAMA REASIGNADA (hoja)») sin decir si fue alta o defunción: «Motivo no registrado». */
 // Motivo que una persona registra en la app (Papelera o al dar de alta; función archive_set_egreso de la base).
-var REG_EGRESO_APP = { alta: 'Alta a domicilio', defuncion: 'Defunción', traslado: 'Traslado a otra unidad', alta_voluntaria: 'Alta voluntaria' };
+// 28 oct 2026: + cambio de servicio, contrarreferencia, fuga, otro y «no fue egreso» (aviso discreto de la app).
+var REG_EGRESO_APP = { alta: 'Alta a domicilio', defuncion: 'Defunción', cambio_servicio: 'Cambio de servicio', contrarreferencia: 'Contrarreferencia',
+  traslado: 'Traslado a otro hospital', alta_voluntaria: 'Alta voluntaria', fuga: 'Fuga / abandono', otro: 'Otro motivo', no_egreso: 'No fue egreso (error del censo)' };
+// Tipos con los que el paciente salió VIVO del servicio (Defunción = 0). En «Cambio de servicio» el desenlace posterior en
+// el hospital no se conoce: cuenta para la mortalidad del servicio, no para la hospitalaria.
+var REG_EGRESO_VIVO = ['Alta', 'Alta voluntaria', 'Traslado', 'Contrarreferencia', 'Cambio de servicio', 'Fuga'];
 function regEgresoTipo(motivo, estado) {
   var m = regTexto(motivo).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   var s = m + ' ' + regTexto(estado).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -1311,6 +1379,11 @@ function regEgresoTipo(motivo, estado) {
   // el motivo, aunque la etiqueta traiga la palabra «alta».
   if (/CAMBIOS DE ESTE IPAD|CAMA REASIGNADA \(OTRA PERSONA/.test(m)) return 'Motivo no registrado';
   if (/DEFUNCI|FALLEC/.test(s)) return 'Defunción';
+  if (/NO FUE EGRESO/.test(m)) return 'No fue egreso';
+  if (/CAMBIO DE SERVICIO/.test(m)) return 'Cambio de servicio';
+  if (/CONTRARREFERENCIA/.test(m)) return 'Contrarreferencia';
+  if (/FUGA|ABANDONO/.test(m)) return 'Fuga';
+  if (/^OTRO MOTIVO/.test(m)) return 'Otro';
   if (/ALTA VOLUNTARIA/.test(s)) return 'Alta voluntaria';
   if (/TRASLADO/.test(s)) return 'Traslado';
   if (/(^|[^A-Z])ALTA([^A-Z]|$)/.test(s)) return 'Alta';
@@ -1325,6 +1398,135 @@ function regEgresoPeso(motivo, estado) {
   if (/CAMBIOS DE ESTE IPAD|CAMA REASIGNADA \(OTRA PERSONA|BORRADO EN BD/.test(m)) return 1;
   var t = regEgresoTipo(motivo, estado);
   return (t === 'Motivo no registrado' || t === 'Duplicado (no es otro episodio)') ? 2 : 3;
+}
+// ─── Cirugías desde donde estén marcadas (28 oct 2026) ───────────────────────────────────────────────────────────────
+// Grupo del procedimiento (el orden importa: relaparotomía antes que laparotomía).
+var REG_CX_GRUPOS = [
+  ['Relaparotomía', /\bRE ?LAPE\b|RELAPAROTOM/],
+  ['Laparotomía exploradora', /\bLAPE\b|LAPAROTOMIA/],
+  ['Colecistectomía', /COLECISTECTOM|\bCOLE ?LAP\b/],
+  ['Apendicectomía', /APENDICECTOM|APENDICETOM/],
+  ['Vía biliar (exploración / derivación)', /EXPLORACION DE (LA )?VIAS? BILIAR|COLEDOCOTOM|DERIVACION BILIODIGESTIVA|HEPATICOYEYUNO|COLEDOCOYEYUNO|COLEDOCODUODENO/],
+  ['Plastia de pared / hernia', /HERNIOPLAST|HERNIORRAF|EVENTROPLAST|PLASTIA (INGUINAL|UMBILICAL|DE PARED|VENTRAL|INCISIONAL|FEMORAL|EPIGASTRICA)|LICHTENSTEIN|\bRIVES\b|SEPARACION DE COMPONENTES/],
+  ['Funduplicatura / hiatoplastia', /FUNDUPLICA|FUNDOPLICA|NISSEN|TOUPET|HIATOPLAST/],
+  ['Cirugía gástrica', /GASTRECTOM|GASTROYEYUNO|GASTROSTOM|GASTRORRAF|PILOROPLAST|PARCHE DE GRAHAM|MANGA GASTRICA|BYPASS GASTRICO/],
+  ['Resección intestinal', /RESECCION INTESTINAL|ENTERECTOM|RESECCION (DE )?(ILEON|YEYUNO|INTESTINO)|ENTEROENTERO|ENTERORRAF|ADHERENCIOLISIS|LISIS DE ADHERENCIAS/],
+  ['Colectomía', /COLECTOM|SIGMOIDECTOM|HARTMANN|PROCTOCOLECTOM|RESECCION ANTERIOR/],
+  ['Estoma (formación o cierre)', /ILEOSTOM|COLOSTOM|YEYUNOSTOM|CIERRE DE (ESTOMA|ILEOSTOMIA|COLOSTOMIA)|RESTITUCION (DEL )?TRANSITO/],
+  ['Lavado / desbridamiento', /LAVADO (DE CAVIDAD|PERITONEAL|QUIRURGICO)|ASEO QUIRURGICO|DESBRIDAM|DEBRIDA|NECROSECTOM/],
+  ['Drenaje de absceso / colección', /DRENAJE (DE |DEL )?(ABSCESO|COLECCION|HEMATOMA|PSEUDOQUISTE)/],
+  ['Amputación', /AMPUTACION/],
+  ['Cirugía de tórax', /TORACOTOM|TORACOSCOP|DECORTICACION|PLEUROSTOM|LOBECTOM|SONDA ENDOPLEURAL/],
+  ['Tiroides / paratiroides', /TIROIDECTOM|PARATIROIDECTOM/],
+  ['Esplenectomía', /ESPLENECTOM/],
+  ['Páncreas', /PANCREATECTOM|PANCREATODUODENECTOM|WHIPPLE|CISTOYEYUNO|CISTOGASTRO/],
+  ['Hígado', /HEPATECTOM|SEGMENTECTOMIA HEPATICA|DESTECHAMIENTO/],
+  ['Anorrectal', /HEMORROIDECTOM|FISTULECTOM|FISTULOTOM|ESFINTEROTOM/],
+  ['Mama', /MASTECTOM/],
+  ['Vascular', /TROMBECTOM|EMBOLECTOM|FASCIOTOM|ANGIOPLAST|BYPASS (FEMORO|AORTO)/],
+  ['Traqueostomía', /TRAQUEOSTOM/],
+  ['Endoscopia / CPRE', /\bCPRE\b|PANENDOSCOP|COLONOSCOP/],
+  ['Laparoscopia', /LAPAROSCOP/]
+];
+var REG_CX_NO_ESPECIFICADA = 'Cirugía (procedimiento no especificado)';
+// Fuentes que son cajas de la app (no inferidas): en el resumen no llevan marca.
+var REG_CX_DIRECTAS = ['Caja Cirugías', 'Texto Qx (caja anterior)'];
+function regNorm_(t) { return regTexto(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); }
+function regCxGrupo(t) {
+  var s = regNorm_(t);
+  for (var i = 0; i < REG_CX_GRUPOS.length; i++) if (REG_CX_GRUPOS[i][1].test(s)) return REG_CX_GRUPOS[i][0];
+  return '';
+}
+/** Fecha dd/mm(/aa) de un texto, en el año que la deja dentro del episodio (ingreso − 2 días … fin). */
+function regCxFechaTexto(t, ingreso, fin) {
+  var m = /(?:^|[^\d])(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2}|\d{4}))?(?!\d)/.exec(regTexto(t));
+  if (!m || +m[2] < 1 || +m[2] > 12 || +m[1] < 1 || +m[1] > 31) return '';
+  var dd = ('0' + m[1]).slice(-2), mm = ('0' + m[2]).slice(-2);
+  var anios = m[3] ? [m[3].length === 2 ? '20' + m[3] : m[3]] : [regTexto(fin || ingreso).slice(0, 4), regTexto(ingreso).slice(0, 4)];
+  for (var i = 0; i < anios.length; i++) {
+    if (!/^\d{4}$/.test(anios[i])) continue;
+    var f = anios[i] + '-' + mm + '-' + dd;
+    var antes = ingreso ? regDiasSigno(f, ingreso) : '', despues = fin ? regDiasSigno(fin, f) : '';
+    if ((antes === '' || antes <= 2) && (despues === '' || despues <= 0)) return f;
+  }
+  return '';
+}
+var REG_CX_PLAN = /PROGRAMAD|SE PROGRAMA|PENDIENTE|\bPLAN\b|PLANEA|PROBABLE|CANDIDAT|PROPUEST|DIFERID|SE SOLICITA|SE COMENTA|VALORAR|DESCARTAR|\bMANANA\b/;
+// Antecedente quirúrgico (no es de este episodio): «ANTECEDENTE DE…», «HACE 3 AÑOS», «PREVIA», «APP».
+var REG_CX_ANTES = /ANTECEDENTE|\bHACE\b|\bANOS\b|\bPREVI[AO]S?\b|\bAPP\b|\bAPQX\b/;   // «AÑO» sin tilde = «ANO»: solo el plural
+/** Del DX: segmentos con marca de postoperatorio («PO», «POP», «POSTOPERADO DE», «S/P») o con fecha del episodio. */
+function regCxDeDx(dx, ingreso, fin) {
+  var out = [];
+  regTexto(dx).split(/\s*(?:\+|;|\n|\/\/)\s*/).forEach(function (seg) {
+    var s = regNorm_(seg);
+    if (!s.trim() || REG_CX_PLAN.test(s) || REG_CX_ANTES.test(s)) return;
+    var grupo = regCxGrupo(s); if (!grupo) return;
+    var marca = /\b(PO|POP|P\.\s?O\.?|POSTOPERAD[OA]|POSTQUIRURGIC[OA]|POST ?QX|PQX|S\/P|OPERAD[OA])\b/.test(s);
+    var fecha = regCxFechaTexto(seg, ingreso, fin);
+    // Con una fecha que cae fuera del episodio (o un año distinto) es una cirugía de antes: no se cuenta.
+    var conFecha = /(?:^|[^\d])\d{1,2}[\/.-]\d{1,2}(?!\d)/.test(seg), anio = /\b(19|20)\d{2}\b/.exec(s);
+    if ((conFecha && !fecha) || (anio && anio[0] !== regTexto(fin || ingreso).slice(0, 4) && anio[0] !== regTexto(ingreso).slice(0, 4))) return;
+    if (!marca && !fecha) return;
+    out.push({ fecha: fecha, grupo: grupo, texto: seg.trim() });
+  });
+  return out;
+}
+/** De la Cronología / Guardia: renglones que dicen que pasó a quirófano o que se realizó un procedimiento. */
+function regCxDeCronologia(lineas, ingreso, fin) {
+  var out = [];
+  regArr(lineas).forEach(function (l) {
+    var s = regNorm_(l);
+    if (REG_CX_PLAN.test(s)) return;
+    var hecho = /PASA A (QUIROFANO|QX|SALA)|INGRESA A (QUIROFANO|QX|SALA)|SE (LE )?REALIZ[AO]|SE INTERVIENE|SE INTERVINO|EN QUIROFANO|CIRUGIA REALIZADA|\bQX:|POSTQX INMEDIATO|POSTQUIRURGICO INMEDIATO/.test(s);
+    if (!hecho) return;
+    var grupo = regCxGrupo(s);
+    if (!grupo && !/QUIROFANO|\bQX\b|CIRUGIA|INTERVIENE|INTERVINO/.test(s)) return;   // «se realiza curación» no es cirugía
+    out.push({ fecha: regCxFechaTexto(l, ingreso, fin), grupo: grupo || REG_CX_NO_ESPECIFICADA, texto: regTexto(l).trim() });
+  });
+  return out;
+}
+/** Programación del día (procedimientos_dia) del paciente dentro del episodio: mismo expediente y nombre compatible. */
+function regProgramadasDe(procs, p, ingreso, fin) {
+  var exp = regTexto(p && p.exp).trim(), nom = regNorm_(p && p.nombre).split(/\s+/).filter(function (w) { return w.length > 2; });
+  if (!exp) return [];
+  return regArr(procs).filter(function (x) {
+    if (!x || regTexto(x.exp).trim() !== exp) return false;
+    var f = regFecha(x.fecha_dia); if (!f) return false;
+    if (ingreso && regDiasSigno(ingreso, f) !== '' && regDiasSigno(ingreso, f) < -1) return false;
+    if (fin && regDiasSigno(f, fin) !== '' && regDiasSigno(f, fin) < 0) return false;
+    var otros = regNorm_(x.nombre).split(/\s+/).filter(function (w) { return w.length > 2; });
+    return !otros.length || !nom.length || otros.filter(function (w) { return nom.indexOf(w) !== -1; }).length >= Math.min(2, otros.length, nom.length);
+  }).map(function (x) { return { fecha: regFecha(x.fecha_dia), texto: regTexto(x.dx).trim() }; });
+}
+/** Todas las cirugías del episodio sin repetir: caja → fecha POP → texto Qx → Cronología → DX → programación del día. */
+function regCirugias(o) {
+  var out = [];
+  var cerca = function (a, b) { if (!a || !b) return true; var d = regDiasSigno(a, b); return d === '' || Math.abs(d) <= 2; };
+  // Un procedimiento sin grupo reconocido («CIRUGÍA DE URGENCIA» = «Otro») o solo el abordaje («PO LAPE + RESECCIÓN
+  // INTESTINAL»: la LAPE es la vía de esa resección) empata con cualquier cirugía de esos días.
+  var comodin = function (g) { return !g || g === REG_CX_NO_ESPECIFICADA || g === 'Otro' || g === 'Laparotomía exploradora' || g === 'Laparoscopia'; };
+  var misma = function (c, x) { return cerca(c.fecha, x.fecha) && (c.grupo === x.grupo || comodin(c.grupo) || comodin(x.grupo)); };
+  var agregar = function (x) {
+    var ya = out.filter(function (c) { return misma(c, x); })[0];
+    if (ya) { if (!ya.fecha && x.fecha && ya.fuente !== 'Caja Cirugías') ya.fecha = x.fecha; return; }
+    out.push(x);
+  };
+  regArr(o.caja).forEach(function (c) {
+    out.push({ fecha: regFecha(c.fecha) || regTexto(c.fecha), proc: regTexto(c.procedimiento), hallazgos: regTexto(c.hallazgos), sangrado: regTexto(c.sangrado), cirujano: regTexto(c.cirujano),
+      grupo: regCxGrupo(c.procedimiento) || (regTexto(c.procedimiento).trim() ? 'Otro' : ''), fuente: 'Caja Cirugías' });
+  });
+  var qx = regTexto(o.qx).trim();
+  if (regFecha(o.qxFecha)) agregar({ fecha: regFecha(o.qxFecha), proc: qx || (regCxDeDx(o.dx, o.ingreso, o.fin)[0] || {}).texto || REG_CX_NO_ESPECIFICADA, hallazgos: '', sangrado: qx ? regTexto(o.sangrado) : '', cirujano: '',
+    grupo: regCxGrupo(qx) || regCxGrupo((regCxDeDx(o.dx, o.ingreso, o.fin)[0] || {}).texto) || REG_CX_NO_ESPECIFICADA, fuente: 'Fecha POP de la tarjeta' });
+  if (qx) agregar({ fecha: '', proc: qx, hallazgos: '', sangrado: regTexto(o.sangrado), cirujano: '', grupo: regCxGrupo(qx) || 'Otro', fuente: 'Texto Qx (caja anterior)' });
+  regCxDeCronologia(o.crono, o.ingreso, o.fin).forEach(function (x) { agregar({ fecha: x.fecha, proc: x.texto, hallazgos: '', sangrado: '', cirujano: '', grupo: x.grupo, fuente: 'Cronología (inferida)' }); });
+  regCxDeDx(o.dx, o.ingreso, o.fin).forEach(function (x) { agregar({ fecha: x.fecha, proc: x.texto, hallazgos: '', sangrado: '', cirujano: '', grupo: x.grupo, fuente: 'DX (inferida)' }); });
+  // La programación del día solo cuenta si no hay otra cirugía en esos días (casi siempre es la misma).
+  regArr(o.programadas).forEach(function (x) {
+    if (out.some(function (c) { return c.fecha && cerca(c.fecha, x.fecha); })) return;
+    out.push({ fecha: x.fecha, proc: 'Programada' + (x.texto ? ' — dx: ' + x.texto : ''), hallazgos: '', sangrado: '', cirujano: '', grupo: regCxGrupo(x.texto) || REG_CX_NO_ESPECIFICADA, fuente: 'Programación del día (sin confirmar)' });
+  });
+  return out;
 }
 function regNumCelda(n) { return typeof n === 'number' && isFinite(n) ? n : ''; }
 function regRedondear(n, d) { var f = Math.pow(10, d); return Math.round(n * f) / f; }
@@ -1541,9 +1743,18 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     });
   });
 
-  // 5) Signos vitales: números limpios; TA en sistólica, diastólica y PAM.
+  // 5) Signos vitales: números limpios; TA en sistólica, diastólica y PAM; índice urinario = uresis ÷ peso ÷ horas
+  //    (como la app: sin horas se toman las que diga la uresis, «900/12 H», o 24 h y se avisa).
+  var pesoDe = function (g) {
+    if (g.pt) return g.pt;
+    var r = { peso: '', talla: '', imc: '' };
+    g.partes.slice().reverse().some(function (id) { var x = regPesoTalla(P[id]); if (x.peso !== '' && r.peso === '') { r.peso = x.peso; r.talla = x.talla; r.imc = x.imc; } return r.peso !== ''; });
+    if (r.talla === '') g.partes.slice().reverse().some(function (id) { var x = regPesoTalla(P[id]); if (x.talla !== '') { r.talla = x.talla; r.imc = r.peso !== '' ? regRedondear(r.peso / (x.talla * x.talla), 1) : ''; } return r.talla !== ''; });
+    return (g.pt = r);
+  };
   grupos.forEach(function (g) {
     var porFecha = {}, fechas = [];
+    g.iu = { min: '', oliguria: 0 };
     g.partes.forEach(function (id) {
       regArr(signosDe[id]).forEach(function (r) {
         var f = regFecha(r['Fecha']);
@@ -1554,9 +1765,14 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     });
     fechas.sort().forEach(function (f) {
       var r = porFecha[f], obs = [], fila = { 'ID episodio': g.codigo, 'ID paciente': g.persona.codigo, 'Fecha': f, 'Día de estancia': regNumCelda(regDiasSigno(g.ingreso, f)) };
+      var horasUresis = '';
       REG_SV.forEach(function (s) {
         var v = regTexto(r[s[0]]).trim(), x = null;
         fila[s[1]] = '';
+        if (s[0] === 'Uresis') {
+          var mh = /\s*(?:\/|\bEN\s*)(\d{1,2}(?:[.,]5)?)\s*(?:H|HR|HRS|HORAS?)\b\.?\s*$/i.exec(v);
+          if (mh) { horasUresis = parseFloat(mh[1].replace(',', '.')); v = v.slice(0, mh.index).trim(); }
+        }
         if (!v) return;
         if (s[0] === 'O2 L/min' && /^(AA|AIRE( AMBIENTE)?)$/i.test(v)) x = { n: 0, comp: '' };
         else x = regNumero(v, { unidad: s[4], miles: !!s[5] });
@@ -1568,6 +1784,23 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
       fila['TA sistólica (mmHg)'] = ''; fila['TA diastólica (mmHg)'] = ''; fila['PAM (mmHg)'] = '';
       if (ta && (!m || +m[1] < +m[2] || +m[1] < 40 || +m[1] > 300 || +m[2] < 10 || +m[2] > 200)) obs.push('TA «' + ta.slice(0, 30) + '» no interpretable');
       else if (m) { fila['TA sistólica (mmHg)'] = +m[1]; fila['TA diastólica (mmHg)'] = +m[2]; fila['PAM (mmHg)'] = regRedondear((+m[1] + 2 * +m[2]) / 3, 1); }
+      // Índice urinario.
+      var hTxt = regTexto(r['Horas de uresis']).trim(), hx = hTxt ? regNumero(hTxt, { unidad: /^(H|HR|HRS|HORAS?)$/ }) : null;
+      var horas = hx && !hx.comp && hx.n > 0 && hx.n <= 72 ? hx.n : horasUresis;
+      if (hTxt && !(hx && !hx.comp && hx.n > 0 && hx.n <= 72)) obs.push('Horas de uresis «' + hTxt.slice(0, 20) + '» no interpretables');
+      fila['Horas de uresis (h)'] = ''; fila['Índice urinario (mL/kg/h)'] = '';
+      if (fila['Uresis (mL)'] !== '') {
+        var pt = pesoDe(g);
+        if (horas === '') { horas = 24; obs.push('uresis sin horas: índice urinario con 24 h'); }
+        fila['Horas de uresis (h)'] = horas;
+        if (pt.peso === '') obs.push('sin peso: sin índice urinario');
+        else {
+          var iu = regRedondear(fila['Uresis (mL)'] / pt.peso / horas, 2);
+          fila['Índice urinario (mL/kg/h)'] = iu;
+          if (g.iu.min === '' || iu < g.iu.min) g.iu.min = iu;
+          if (iu < 0.5) g.iu.oliguria++;
+        }
+      }
       fila['Observaciones'] = obs.join('; ');
       fila['Vigente'] = 'Sí';
       out[REG_AN_SIGNOS].push(fila);
@@ -1653,7 +1886,7 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     // Cirugías vigentes de todas las partes, sin repetir (la parte restaurada trae las mismas).
     // Cirugías de todas las partes, sin repetir: por fecha y procedimiento manda la parte más reciente (una cirugía
     // borrada en la tarjeta restaurada no vuelve desde la copia vieja).
-    var cxs = [], cxUltima = {}, cxOrden = [];
+    var cxs = [], cxUltima = {}, cxOrden = [], cxInferidas = 0, cxProgramadas = 0;
     g.partes.forEach(function (id) {
       regArr(cxDe[id]).forEach(function (c) {
         var proc = regTexto(c['Procedimiento']).trim(), f = regFecha(c['Fecha']);
@@ -1666,8 +1899,14 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     cxOrden.forEach(function (k) {
       var c = cxUltima[k];
       if (regTexto(c['Vigente']) === 'No') return;
-      cxs.push({ f: regFecha(c['Fecha']), proc: regTexto(c['Procedimiento']).trim(), sangrado: regTexto(c['Sangrado']).trim() });
+      var fuente = regTexto(c['Fuente']);
+      // La programación del día sin confirmar no cuenta como cirugía hecha (va en su propia columna).
+      if (/^Programaci/.test(fuente)) { cxProgramadas++; return; }
+      if (/inferida|Fecha POP|Texto Qx/.test(fuente)) cxInferidas++;
+      cxs.push({ f: regFecha(c['Fecha']), proc: regTexto(c['Procedimiento']).trim(), sangrado: regTexto(c['Sangrado']).trim(), grupo: regTexto(c['Grupo']).trim() });
     });
+    if (cxInferidas) g.calidad.push(cxInferidas + ' cirugía' + (cxInferidas === 1 ? '' : 's') + ' tomada' + (cxInferidas === 1 ? '' : 's') + ' de otra caja (DX, Cronología, fecha POP o texto Qx): conviene pasarla' + (cxInferidas === 1 ? '' : 's') + ' a la caja Cirugías');
+    if (cxProgramadas) g.calidad.push(cxProgramadas + ' cirugía' + (cxProgramadas === 1 ? '' : 's') + ' solo en la programación del día (sin confirmar)');
     var fechasCx = cxs.map(function (c) { return c.f; }).filter(Boolean).sort();
     var sangrado = 0, conSangrado = 0, sinNumero = 0;
     cxs.forEach(function (c) {
@@ -1676,6 +1915,14 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
       if (x && !x.comp && x.n >= 0 && x.n <= 50000) { sangrado += x.n; conSangrado++; } else sinNumero++;
     });
     if (sinNumero) g.calidad.push('sangrado sin número en ' + sinNumero + ' cirugía(s): el total queda vacío');
+    // Peso, talla, IMC y comorbilidades (APP y DX de todas las partes; obesidad también por IMC ≥ 30 en adultos).
+    var pt = pesoDe(g);
+    if (pt.peso === '') g.calidad.push('sin peso registrado');
+    var appTxt = g.partes.map(function (id) { return regTexto(P[id]['Antecedentes (APP)']); }).filter(function (t, i, a) { return t.trim() && a.indexOf(t) === i; }).join('\n');
+    var dxTxt = g.partes.map(function (id) { return regTexto(P[id]['Diagnóstico']); }).filter(function (t, i, a) { return t.trim() && a.indexOf(t) === i; }).join('\n');
+    var com = regComorbilidades(appTxt, dxTxt);
+    if (pt.imc !== '' && pt.imc >= 30 && (edad === '' || edad >= 18)) com['Obesidad'] = 1;
+    if (!appTxt.trim()) g.calidad.push('sin antecedentes (APP) registrados: comorbilidades ' + (dxTxt.trim() ? 'solo desde el DX' : 'desconocidas'));
     var si = function (col) { return regTexto(u[col]).trim() ? 1 : 0; };
     var siMarca = function (col) { return /^Sí/.test(regTexto(u[col]).trim()) ? 1 : 0; };
     var fila = {
@@ -1683,18 +1930,26 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
       'Días desde el egreso previo': regNumCelda(g.diasPrevio), 'Es reingreso (≤30 días)': regNumCelda(g.esReingreso), 'Reingreso a 30 días': regNumCelda(g.reingreso30),
       'Edad (años)': edad, 'Sexo': sexo, 'Especialidad': regTexto(u['Especialidad']), 'Sección': regTexto(u['Sección']),
       'Fecha de ingreso': g.ingreso, 'Fecha de egreso': g.egreso, 'Días de estancia': regNumCelda(estancia), 'Estado': g.estado,
-      'Egreso observado': g.estado === 'Egresado' && g.excluir !== 1 && g.egreso ? 1 : 0, 'Tipo de egreso': g.tipo,
-      'Defunción': g.tipo === 'Defunción' ? 1 : (['Alta', 'Alta voluntaria', 'Traslado'].indexOf(g.tipo) >= 0 ? 0 : ''),
+      'Egreso observado': g.estado === 'Egresado' && g.excluir !== 1 && g.egreso && g.tipo !== 'No fue egreso' ? 1 : 0, 'Tipo de egreso': g.tipo,
+      'Defunción': g.tipo === 'Defunción' ? 1 : (REG_EGRESO_VIVO.indexOf(g.tipo) >= 0 ? 0 : ''),
       'Motivo de egreso (app)': g.motivo, 'Excluir (duplicado)': g.excluir, 'Diagnóstico': regTexto(u['Diagnóstico']),
+      'Peso (kg)': pt.peso, 'Talla (m)': pt.talla, 'IMC (kg/m²)': pt.imc,
       'Cirugías (n)': cxs.length, 'Primera cirugía': fechasCx[0] || '', 'Días ingreso a 1.ª cirugía': fechasCx[0] ? regNumCelda(regDiasSigno(g.ingreso, fechasCx[0])) : '',
       'Sangrado total (mL)': conSangrado && !sinNumero ? sangrado : '', 'Procedimientos': cxs.map(function (c) { return (c.f ? c.f + ' ' : '') + c.proc; }).join(' | '),
+      'Grupo de la 1.ª cirugía': (cxs.slice().sort(function (a, b) { return (a.f || '9999').localeCompare(b.f || '9999'); })[0] || {}).grupo || '',
+      'Reintervención': cxs.length ? ((cxs.length >= 2 || cxs.some(function (c) { return c.grupo === 'Relaparotomía'; })) ? 1 : 0) : '',
+      'Cirugías inferidas (n)': cxInferidas, 'Programadas sin confirmar (n)': cxProgramadas,
       'Antibiótico (registrado)': si('Antibiótico'), 'NPT (registrada)': siMarca('NPT'), 'Ventilación mecánica (registrada)': siMarca('Ventilación'),
       'Vasopresor (registrado)': si('Vasopresores'), 'Tromboprofilaxis (registrada)': siMarca('TVP'),
       'Fechas con labs (n)': g.labs.fechas, 'Valores críticos (n)': g.labs.criticos,
+      'Índice urinario mínimo (mL/kg/h)': g.iu ? g.iu.min : '', 'Días con oliguria (IU < 0.5)': g.iu && g.iu.min !== '' ? g.iu.oliguria : '',
       'Cultivos (n)': g.cultivos.n, 'Cultivos positivos (n)': g.cultivos.pos, 'Gérmenes aislados': g.cultivos.germenes.join('; '),
       'Calidad de datos': g.calidad.filter(function (x, i, a) { return a.indexOf(x) === i; }).join('; '), 'Vigente': 'Sí'
     };
     REG_LAB_RESUMEN.forEach(function (r, i) { fila[r[2]] = regNumCelda(g.labs.resumen[i]); });
+    var nCom = 0;
+    REG_COMORB.forEach(function (c) { fila[c[0]] = com[c[0]]; if (com[c[0]] === 1 && c[0] !== 'Tabaquismo') nCom++; });
+    fila['Comorbilidades (n)'] = appTxt.trim() ? nCom : '';   // sin APP el conteo no es confiable (el DX no las enlista)
     out[REG_AN_EPISODIOS].push(fila);
   });
   out.avisos = avisos;
@@ -1761,12 +2016,20 @@ function regVariables_() {
   add(E, 'Días de estancia', 'entero', 'días', 'Egreso − ingreso. Si no hay egreso: hasta hoy (hospitalizado) o hasta el último día que estuvo en la base. Usar con «Egreso observado» (0 = dato censurado).');
   add(E, 'Estado', 'texto', '', 'Hospitalizado, Egresado o Sin egreso registrado (salió de la base sin pasar por la Papelera).');
   add(E, 'Egreso observado', '0/1', '', '1 si se registró el egreso con fecha (y no es duplicado). Para análisis de supervivencia: 0 = censurado.');
-  add(E, 'Tipo de egreso', 'texto', '', 'Alta, Defunción, Traslado, Alta voluntaria, Motivo no registrado, Duplicado (no es otro episodio) o Borrado en la base (revisar). Casi todos los egresos salen del censo de la hoja sin decir si fue alta o defunción: hasta que se registre el motivo, «Defunción» NO permite calcular mortalidad.');
-  add(E, 'Defunción', '0/1', '', '1 = registrada como defunción; 0 = alta, alta voluntaria o traslado; vacío = desconocido (motivo no registrado, hospitalizado). NUNCA tratar vacío como 0.');
+  add(E, 'Tipo de egreso', 'texto', '', 'Alta, Defunción, Cambio de servicio, Contrarreferencia, Traslado, Alta voluntaria, Fuga, Otro, No fue egreso, Motivo no registrado, Duplicado (no es otro episodio) o Borrado en la base (revisar). Casi todos los egresos salen del censo de la hoja sin decir si fue alta o defunción: hasta que se registre el motivo, «Defunción» NO permite calcular mortalidad.');
+  add(E, 'Defunción', '0/1', '', '1 = registrada como defunción; 0 = salió vivo del servicio (alta, alta voluntaria, traslado, contrarreferencia, fuga o cambio de servicio; en cambio de servicio el desenlace posterior en el hospital no se conoce); vacío = desconocido (motivo no registrado, «otro motivo», «no fue egreso», hospitalizado). NUNCA tratar vacío como 0.');
   add(E, 'Motivo de egreso (app)', 'texto', '', 'Etiqueta original del egreso en la app (p. ej. «RETIRADO DEL CENSO (hoja)»).');
   add(E, 'Excluir (duplicado)', '0/1', '', '1 = tarjeta duplicada (no es otro episodio): excluir. Vacío = borrado en la base por mantenimiento: revisar. 0 = episodio real.');
   add(E, 'Diagnóstico', 'texto', '', 'Diagnóstico del censo en la última parte del episodio (texto libre, sin codificar).');
-  add(E, 'Cirugías (n) · Primera cirugía · Días ingreso a 1.ª cirugía', 'entero / fecha / entero', '', 'Cirugías vigentes de la tarjeta (sin repetir entre partes); fecha de la primera y días desde el ingreso.');
+  add(E, 'Peso (kg) · Talla (m) · IMC (kg/m²)', 'número', 'kg / m / kg/m²', 'Peso y talla del Pase Matutino (fila Clínico). Talla en cm se pasa a metros. IMC = peso ÷ talla². Vacío si no se registró o no es posible (peso 0.4–400 kg, talla 0.3–2.5 m).');
+  add(E, REG_COMORB.map(function (c) { return c[0]; }).join(' · '), '0/1', '', 'Desde los Antecedentes (APP) y el diagnóstico de todas las partes del episodio, con negación («NIEGA DM, HAS», «HAS NEGADA» = 0). 1 = mencionada (en APP o DX); 0 = hay APP y no la menciona (o la niega); vacío = sin APP (desconocida). Obesidad también = 1 con IMC ≥ 30 en adultos. Es texto libre: revisar una muestra antes de publicar.');
+  add(E, 'Comorbilidades (n)', 'entero', '', 'Cuántas comorbilidades hay en 1 (sin contar tabaquismo). Vacío si no hay APP (el conteo no sería confiable).');
+  add(E, 'Índice urinario mínimo (mL/kg/h) · Días con oliguria (IU < 0.5)', 'número / entero', 'mL/kg/h / días', 'De «' + S + '»: el índice urinario más bajo del episodio y cuántos días quedó < 0.5 mL/kg/h (KDIGO). Vacío si no hubo uresis con peso.');
+  add(E, 'Cirugías (n) · Primera cirugía · Días ingreso a 1.ª cirugía', 'entero / fecha / entero', '', 'Cirugías del episodio (sin repetir entre partes): las de la caja Cirugías y, si no estaban ahí, las tomadas de la fecha POP, el texto Qx, la Cronología o el DX (ver «Fuente» en la pestaña Cirugías). No cuenta la programación del día sin confirmar. Fecha de la primera y días desde el ingreso.');
+  add(E, 'Grupo de la 1.ª cirugía', 'texto', '', 'Grupo del procedimiento (Laparotomía exploradora, Colecistectomía, Apendicectomía, Plastia de pared / hernia, Resección intestinal, Colectomía, Estoma, Lavado / desbridamiento…) de la primera cirugía por fecha.');
+  add(E, 'Reintervención', '0/1', '', '1 = dos o más cirugías en el episodio o una relaparotomía; 0 = una sola cirugía; vacío = sin cirugía.');
+  add(E, 'Cirugías inferidas (n)', 'entero', '', 'Cuántas de las cirugías se tomaron de otra caja (DX, Cronología, fecha POP o texto Qx) porque no estaban en la caja Cirugías: conviene pasarlas a la caja.');
+  add(E, 'Programadas sin confirmar (n)', 'entero', '', 'Cirugías que solo aparecen en la programación del día (sin otra cirugía en esos días): no se cuentan como hechas.');
   add(E, 'Sangrado total (mL)', 'número', 'mL', 'Suma del sangrado de las cirugías. Vacío si alguna tiene un sangrado que no es número (p. ej. «MÍNIMO»).');
   add(E, 'Procedimientos', 'texto', '', 'Fecha y procedimiento de cada cirugía, separados por « | » (texto libre, sin codificar).');
   add(E, 'Antibiótico (registrado) · NPT (registrada) · Ventilación mecánica (registrada) · Vasopresor (registrado) · Tromboprofilaxis (registrada)', '0/1', '', '1 = marcado en la última copia de la tarjeta; 0 = no marcado (NO prueba que no lo recibió; la app no guarda fechas de inicio y fin).');
@@ -1786,7 +2049,8 @@ function regVariables_() {
   add(L, 'Observaciones', 'texto', '', 'Muestra rechazada, unidad no reconocida, valor que no es número o imposible, «<x»/«>x» (se anota x), dos valores el mismo día, valores ya corregidos en la tarjeta.');
   REG_SV.forEach(function (s) { add(S, s[1], 'número', '', 'Del pase de visita («' + s[0] + '»). Posible: ' + s[2] + ' a ' + s[3] + '; fuera de eso o con texto → vacío y Observaciones.' + (s[0] === 'O2 L/min' ? ' «AA» (aire ambiente) = 0.' : '')); });
   add(S, 'TA sistólica (mmHg) · TA diastólica (mmHg) · PAM (mmHg)', 'número', 'mmHg', 'De «TA» (sistólica/diastólica). PAM = (sistólica + 2 × diastólica) / 3, a un decimal.');
-  add(S, 'Observaciones', 'texto', '', 'Signos que no se pudieron usar (texto, fuera de lo posible, TA no interpretable).');
+  add(S, 'Horas de uresis (h) · Índice urinario (mL/kg/h)', 'número', 'h / mL/kg/h', 'Horas de la uresis (columna «Horas» del Pase Matutino desde el 28 oct 2026, o las que diga la uresis, «900/12 H»; sin horas se toman 24 h y se avisa). Índice urinario = uresis ÷ peso del episodio ÷ horas, como en la app.');
+  add(S, 'Observaciones', 'texto', '', 'Signos que no se pudieron usar (texto, fuera de lo posible, TA no interpretable) y avisos del índice urinario.');
   add(C, 'ID cultivo', 'texto', '', 'Seudónimo de la muestra (C-…): una fila por muestra de cultivo de WinLab (robot), sin el texto del reporte (trae el nombre).');
   add(C, 'Fecha de toma · Hora de toma', 'texto', '', 'Fecha (AAAA-MM-DD) y hora (HH:MM) de la toma según WinLab.');
   add(C, 'Tipo · Muestra', 'texto', '', 'Tipo de cultivo y muestra como los lee el robot (p. ej. Hemocultivo, Urocultivo; ORINA).');

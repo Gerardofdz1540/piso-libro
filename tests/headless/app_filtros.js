@@ -65,7 +65,10 @@ const wlRow = () => ({ exp: '26-70001', paciente: 'ANA DIAZ RIOS', fecha: TODAY,
 
   // Los <select> los sustituye el menú de la app (botón + hoja); se elige como lo haría una persona.
   const elegir = async (testid, texto) => {
-    await page.evaluate((id) => { const sel = document.querySelector('[data-testid="' + id + '"]'); (sel.__trig || sel.nextElementSibling).click(); }, testid);
+    // El menú sustituye al <select> en el siguiente cuadro (requestAnimationFrame): en CI, más lento, la prueba llegaba
+    // antes. Se espera a su botón (y se fuerza el barrido si hace falta).
+    await page.waitForFunction((id) => { const s = document.querySelector('[data-testid="' + id + '"]'); if (s && !s.__trig && window.residSyncSelects) window.residSyncSelects(); return !!(s && s.__trig && s.__trig.isConnected); }, testid, { timeout: 15000 });
+    await page.evaluate((id) => { const sel = document.querySelector('[data-testid="' + id + '"]'); sel.__trig.click(); }, testid);
     await page.waitForSelector('.resid-sheet-backdrop.rs-open .resid-sheet-row');
     await page.evaluate((t) => { const r = Array.from(document.querySelectorAll('.resid-sheet-backdrop.rs-open .resid-sheet-row')).find(x => x.querySelector('.rs-tx').textContent.trim().indexOf(t) === 0); r.click(); }, texto);
     await page.waitForTimeout(400);

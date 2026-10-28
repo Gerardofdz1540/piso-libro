@@ -20,11 +20,11 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 
 | Pestaña | Una fila por… | Contenido |
 |---|---|---|
-| Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos. |
-| Cirugías | cirugía | fecha, procedimiento, hallazgos, sangrado, cirujano · **Vigente** |
-| Labs | fecha y estudio | valor como está en la tarjeta · **Vigente** |
+| Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos.<br>**Peso y talla** (28 oct 2026). |
+| Cirugías | cirugía | fecha, procedimiento, hallazgos, sangrado, cirujano, **Grupo**, **Fuente** · **Vigente**. Desde el 28 oct 2026 también las que no están en la caja: fecha POP, texto Qx anterior, Cronología, DX y programación del día (ver abajo) |
+| Labs | fecha y estudio | valor como está en la tarjeta · **Vigente** · **Corregido a mano** (quién, cuándo y qué decía antes) |
 | Imagen | estudio | fecha, tipo, descripción, enlace (solo http) · **Vigente** |
-| Signos vitales | día | FC, FR, temp, SaO2, O2, TA, uresis, DxTx, IU, balance. La app guarda 14 días; aquí se acumulan todos. |
+| Signos vitales | día | FC, FR, temp, SaO2, O2, TA, uresis, DxTx, IU (insulina), balance, horas de uresis. La app guarda 14 días; aquí se acumulan todos. |
 | Notas de evolución | nota | fecha y hora, autor, con IA o no, texto. La app guarda 10; aquí se acumulan. |
 | Guardia y cronología | renglón | Cronología (de la nota y del respaldo de la base) y Guardia vigente · **Vigente** |
 | Procedimientos programados | procedimiento | la lista del día de la app |
@@ -33,9 +33,9 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Imagen del robot (RIS) | estudio | modalidad, estudios, crítico, reporte, enlace (con su episodio) |
 | Diccionario | — | qué es cada columna, última actualización, conteos y avisos |
 | Clave de seudónimos | parte de un episodio | ID episodio de la base → ID paciente / ID episodio de análisis (la llave: **no se comparte**) |
-| Análisis · Episodios | hospitalización | sin nombres: edad, sexo, fechas, estancia, desenlace, reingresos, cirugías, resúmenes de labs, cultivos, calidad de datos |
+| Análisis · Episodios | hospitalización | sin nombres: edad, sexo, peso, talla, IMC, comorbilidades, fechas, estancia, desenlace, reingresos, cirugías (grupo, reintervención), índice urinario mínimo, resúmenes de labs, cultivos, calidad de datos |
 | Análisis · Labs | episodio y día | una columna por estudio, en número y en la unidad de la app; críticos y observaciones |
-| Análisis · Signos vitales | episodio y día | números limpios; TA en sistólica, diastólica y PAM |
+| Análisis · Signos vitales | episodio y día | números limpios; TA en sistólica, diastólica y PAM; horas de uresis e índice urinario (mL/kg/h) |
 | Análisis · Cultivos | muestra | toma, tipo, resultado (0/1), germen, antibiograma |
 | Diccionario de variables | variable | definición, tipo y unidad de cada columna de análisis (codebook) |
 
@@ -109,6 +109,19 @@ siempre. Cada columna está definida en «Diccionario de variables».
   - La app no revisaba la unidad de WinLab: troponina I en ng/mL, glucosa en mmol/L, fibrinógeno en g/L.
   - Antes de oct 2026, el examen de orina pudo caer en la biometría.
   - Revisa los valores atípicos antes de analizar.
+- **Cirugías desde donde estén marcadas** (28 oct 2026). La caja Cirugías manda. Lo que no esté ahí se toma, en este
+  orden, de la fecha POP de la tarjeta, del texto Qx anterior, de la Cronología («pasa a quirófano para…», «se realiza
+  LAPE») y del DX («PO LAPE 25/10», «S/P colecistectomía»):
+  - No cuenta lo planeado («programado», «pendiente», «mañana»), los antecedentes («antecedente de…», «hace 3 años») ni
+    una fecha de antes del ingreso.
+  - No se repite: misma fecha ±2 días y mismo grupo (o un procedimiento sin grupo reconocido) es la misma cirugía.
+  - La programación del día entra «sin confirmar» solo si no hay otra cirugía esos días, y no se cuenta como hecha.
+  - Si alguien la pasa después a la caja, la inferida queda «Vigente = No».
+  - La app avisa en la caja Cirugías («🔎 ¿Cirugía sin registrar?») para que el residente la registre con un toque.
+- **Comorbilidades** (28 oct 2026) desde APP y DX, con negación. Sin APP quedan vacías (desconocidas); el DX solo puede
+  marcar 1. Es texto libre: revisar una muestra antes de publicar.
+- **Índice urinario** = uresis ÷ peso del episodio ÷ horas (columna «Horas» del Pase, o «900/12 H»; sin horas, 24 h
+  con aviso), igual que la app.
 - **Tamaño.** Con unos 240 egresos al mes:
   - las pestañas de análisis suman unas 0.9 millones de celdas al año;
   - todo el libro suma unos 4.6 millones al año, de 10 millones posibles.
