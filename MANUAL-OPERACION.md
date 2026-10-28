@@ -882,9 +882,11 @@ bloque al final. Desde la versión 2026.10.27-5:
 - Las 14 líneas automáticas que ya había (10 pacientes) se quitaron de la base; lo escrito por la gente no se tocó.
   Cada línea quitada quedó registrada en `guardia_cortes` (motivo «borrado») y en la bitácora (`audit_log`).
   El script es `scripts/supabase_quitar_auto_cronologia.sql`.
-- La base ya rechazaba esas líneas si alguien las mandaba (`pl_entrega_protegida` → `pl_es_auto_entrega`), así
-  que un iPad con la versión anterior que todavía las agregue solo las ve un momento hasta que se actualiza
-  (la app avisa cuando hay versión nueva).
+- La base rechaza esas líneas si alguien las manda, al editar una nota (`pl_entrega_protegida`) y, desde el 28 oct,
+  también al crear la primera nota de un paciente nuevo (`pl_entrega_sin_auto_insert`; ese día una pestaña de Chrome
+  con la versión vieja coló una línea así y se quitó). Un iPad o una computadora con la versión anterior solo las ve
+  un momento hasta que se actualiza (la app avisa cuando hay versión nueva; una pestaña que lleva días abierta conviene
+  recargarla).
 - Lo que **sí** sigue escribiendo la app es lo que pide la persona con un botón: ➕ Ahora / ➕ Hoy (fecha y
   hora), órdenes rápidas, importar el censo o el PDF, la transcripción del lápiz o de una foto que la persona
   manda convertir. Y la caja antigua «Recibido» pasó una sola vez a la Cronología (texto de la propia gente).

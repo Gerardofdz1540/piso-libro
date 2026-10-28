@@ -1,4 +1,5 @@
--- 27 oct 2026 · aplicado en producción (migraciones pl_salud_catalogo y pl_salud_catalogo_v2).
+-- 27 oct 2026 · aplicado en producción (migraciones pl_salud_catalogo, pl_salud_catalogo_v2 y, el 28 oct,
+-- pl_salud_catalogo_v3 con el trigger pl_entrega_sin_auto_insert).
 -- Chequeo diario, solo de lectura, de que siguen puestas las protecciones de la base: los triggers que guardan notas y
 -- pacientes (archivar antes de borrar, restaurar nota, Cronología protegida, bitácora…), RLS en todas las tablas de
 -- public, la política «solo cuentas activas» y los trabajos de pg_cron. Lo llama el vigilante (scripts/vigilante.py,
@@ -18,7 +19,7 @@ declare
     'notes.notes_archive_before_delete', 'notes.notes_preserve_lab_history', 'notes.notes_sin_cambios_labs',
     'notes.pl_audit_notes', 'notes.pl_borrado_masivo', 'notes.pl_by_monotono', 'notes.pl_checklist_sin_perdidas',
     'notes.pl_cronologia_guardar_copia', 'notes.pl_cronologia_reponer', 'notes.pl_entrega_protegida',
-    'notes.pl_restaurada_protegida', 'notes.pl_zz_sin_cambios', 'notes.trg_notes_updated',
+    'notes.pl_restaurada_protegida', 'notes.pl_zz_sin_cambios', 'notes.trg_notes_updated', 'notes.pl_entrega_sin_auto_insert',
     'patients.patients_archive_before_delete', 'patients.patients_restore_note_after_insert',
     'patients.patients_suppress_redundant_updates', 'patients.pl_audit_patients', 'patients.pl_borrado_masivo',
     'patients.trg_patients_updated', 'archive.pl_archive_eliminados', 'no_olvidar.pl_audit_no_olvidar',
