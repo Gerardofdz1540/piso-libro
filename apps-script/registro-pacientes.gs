@@ -33,7 +33,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.10.28';
+var REGISTRO_VERSION = '2026.10.28-2';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -67,8 +67,8 @@ var REG_PESTANAS = [
     'Drenajes y dispositivos', 'Antibiótico', 'Cultivos', 'Interconsultas', 'Dieta y NPO', 'TVP', 'NPT', 'Ventilación',
     'Vasopresores', 'Cirugías (resumen)', 'Imagen (resumen)', 'Labs (fechas)', 'Guardia vigente', 'Cronología', 'Misceláneo',
     'Nota completa (JSON)', 'Checklist completo (JSON)', 'Alta en la app', 'Última modificación en la app', 'Fuente', 'Última vez en la base',
-    'Peso (kg)', 'Talla'] },
-  { nombre: 'Cirugías', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Procedimiento'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Procedimiento', 'Hallazgos', 'Sangrado', 'Cirujano', 'Grupo', 'Fuente', 'Vigente'] },
+    'Peso (kg)', 'Talla', 'Dx principal', 'CIE-10 (grupo)', 'Dx principal (fuente)'] },
+  { nombre: 'Cirugías', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Procedimiento'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Procedimiento', 'Hallazgos', 'Sangrado', 'Cirujano', 'Grupo', 'Fuente', 'Vigente', 'Tipo', 'Abordaje', 'Clavien-Dindo', 'Complicación'] },
   { nombre: 'Labs', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Estudio'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Estudio', 'Valor', 'Origen', 'Vigente', 'Corregido a mano'] },
   { nombre: 'Imagen', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Tipo', 'Descripción'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Tipo', 'Descripción', 'Enlace', 'Vigente'] },
   { nombre: 'Signos vitales', modo: 'acumula', clave: ['ID episodio', 'Fecha'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'FC', 'FR', 'Temp', 'SaO2', 'O2 L/min', 'TA', 'Uresis', 'DxTx', 'IU', 'Balance', 'Horas de uresis'] },
@@ -906,7 +906,8 @@ function regConstruir(datos, hoy) {
     var cxTodas = regCirugias({ caja: cxs, qx: regTexto(n.qx), sangrado: regTexto(n.sangrado), qxFecha: regTexto(ck.qx_fecha), dx: regTexto(n.dx || p.dx), crono: cronoCx,
       programadas: regProgramadasDe(datos.procedimientos, p, ingreso, ep.egreso || hoy), ingreso: ingreso, fin: ep.egreso || hoy });
     cxTodas.forEach(function (c) {
-      fila('Cirugías', con({ 'Fecha': c.fecha, 'Procedimiento': c.proc, 'Hallazgos': c.hallazgos, 'Sangrado': c.sangrado, 'Cirujano': c.cirujano, 'Grupo': c.grupo, 'Fuente': c.fuente, 'Vigente': 'Sí' }));
+      fila('Cirugías', con({ 'Fecha': c.fecha, 'Procedimiento': c.proc, 'Hallazgos': c.hallazgos, 'Sangrado': c.sangrado, 'Cirujano': c.cirujano, 'Grupo': c.grupo, 'Fuente': c.fuente, 'Vigente': 'Sí',
+        'Tipo': c.tipo || '', 'Abordaje': c.abordaje || '', 'Clavien-Dindo': c.clavien || '', 'Complicación': c.complicacion || '' }));
     });
 
     // Labs: una fila por fecha y estudio; sin los PDF incrustados ni las marcas internas (fecha_labs, hora_labs, _…).
@@ -981,6 +982,7 @@ function regConstruir(datos, hoy) {
     var drenajes = [regTexto(n.drenajes)].concat(disp).filter(function (x) { return x.trim(); }).join(' | ');
     var atb = ck.atb ? [regTexto(ck.atb_nombre), ck.atb_dias ? regTexto(ck.atb_dias) + ' días' : ''].filter(Boolean).join(', ') || 'Sí' : '';
     var une = function (partes) { return partes.filter(function (x) { return regTexto(x).trim(); }).join(' · '); };
+    var dxP = regDxPrincipal(ck.dx_cat, regTexto(p.dx) || regTexto(n.dx));
 
     fila('Pacientes', {
       'ID episodio': id, 'Estado en registro': ep.estado, 'Motivo de egreso': ep.motivo, 'Nombre': nombre, 'Expediente': exp,
@@ -1001,7 +1003,8 @@ function regConstruir(datos, hoy) {
       'Nota completa (JSON)': regJsonLimpio(n, ['checklist', 'labHistory', 'lab_history', 'imagenHistory', 'imagen_history', 'body_diagram_ant', 'body_diagram_post']),
       'Checklist completo (JSON)': regJsonLimpio(ck, ['__pl_note_meta', 'cirugias', 'pm_hist', 'nota_hist', '__ink']),
       'Alta en la app': regTexto(p.created_at), 'Última modificación en la app': regTexto(n.updated_at || p.updated_at), 'Fuente': ep.fuente, 'Última vez en la base': hoy,
-      'Peso (kg)': regTexto(ck.pm_peso), 'Talla': regTexto(ck.pm_talla)
+      'Peso (kg)': regTexto(ck.pm_peso), 'Talla': regTexto(ck.pm_talla),
+      'Dx principal': dxP.label, 'CIE-10 (grupo)': dxP.cie, 'Dx principal (fuente)': dxP.fuente
     });
   });
 
@@ -1064,6 +1067,11 @@ function regFusionar(viejas, nuevas, cfg, episodiosHoy, hoy, relacion) {
 // queda vacío y dicho. Una hospitalización restaurada desde la Papelera (otro id en la base) es UN episodio.
 var REG_FMT_DEC = '0.0#####', REG_FMT_ENT = '0';
 var REG_AN_EPISODIOS = 'Análisis · Episodios', REG_AN_LABS = 'Análisis · Labs', REG_AN_SIGNOS = 'Análisis · Signos vitales', REG_AN_CULTIVOS = 'Análisis · Cultivos';
+var REG_AN_RESUMEN = 'Resumen mensual', REG_POR_COMPLETAR = 'Por completar';
+var REG_RESUMEN_COLUMNAS = ['Mes', 'Ingresos (n)', 'Egresos (n)', 'Egresos con desenlace conocido (n)', 'Defunciones (n)', 'Mortalidad (%)', 'Egresos sin motivo (n)',
+  'Estancia mediana (días)', 'Estancia media (días)', 'Pacientes operados (n)', 'Cirugías (n)', 'Cirugías de urgencia (%)', 'Abordaje laparoscópico (%)', 'Conversiones (n)',
+  'Complicación mayor (Clavien ≥ IIIa) (n)', 'Reintervenciones (n)', 'Reingresos a 30 días (n)', 'Reingreso a 30 días (%)', 'Cultivos positivos (n)',
+  'Dx principales (más frecuentes)', 'Cirugías por grupo (más frecuentes)', 'Gérmenes (más frecuentes)', 'Ingresos con datos incompletos (n)', 'Vigente'];
 var REG_CLAVE = { nombre: 'Clave de seudónimos', modo: 'acumula', clave: ['ID episodio'],
   columnas: ['ID episodio', 'Expediente', 'Nombre', 'ID paciente (análisis)', 'ID episodio (análisis)', 'Identidad del paciente por'] };
 
@@ -1190,6 +1198,54 @@ var REG_SV = [
   ['Balance', 'Balance (mL)', -20000, 20000, /^(ML|CC)$/, true]
 ];
 
+// ─── Diagnóstico principal de una lista corta y cirugía estructurada (28 oct 2026) ─────────────────────────────────
+// La misma tabla que la app (DX_CATS en index.html): clave, nombre, grupo CIE-10 y patrón sobre el DX sin acentos.
+var REG_DX_CATS = [
+  ['apendicitis', 'Apendicitis aguda', 'K35', /APENDIC/],
+  ['colecistitis', 'Colecistitis / colelitiasis', 'K80–K81', /COLECIST|COLELIT|LITIASIS VESICULAR|PIOCOLECIST|HIDROCOLECIST/],
+  ['coledoco', 'Coledocolitiasis / colangitis', 'K80.3–K80.5, K83.0', /COLEDOCOLIT|COLANGITIS|ICTERICIA OBSTRUCTIVA/],
+  ['pancreatitis', 'Pancreatitis aguda', 'K85', /PANCREATITIS/],
+  ['oclusion', 'Oclusión intestinal', 'K56', /OCLUSION|OBSTRUCCION INTESTINAL|VOLVULO|\bBRIDAS\b/],
+  ['hernia', 'Hernia de pared', 'K40–K46', /HERNIA|EVENTRACION/],
+  ['perforacion', 'Perforación de víscera hueca', 'K25–K28, K63.1', /PERFORAD|PERFORACION|NEUMOPERITONEO/],
+  ['diverticulitis', 'Diverticulitis', 'K57', /DIVERTICUL/],
+  ['isquemia', 'Isquemia mesentérica', 'K55', /ISQUEMIA (MESENTERICA|INTESTINAL)|TROMBOSIS MESENTERICA/],
+  ['hemorragia', 'Hemorragia digestiva', 'K92.2', /\bSTD[AB]\b|SANGRADO DE TUBO|HEMORRAGIA DIGESTIVA|MELENA|HEMATEMESIS|HEMATOQUECIA/],
+  ['trauma_abd', 'Trauma abdominal', 'S36', /TRAUMA (CERRADO |PENETRANTE )?(ABDOMINAL|DE ABDOMEN)|\bHPAF\b|\bHPPC\b|HERIDA POR (ARMA|PROYECTIL)|PUNZOCORTANTE/],
+  ['trauma_otro', 'Trauma (otro)', 'T14', /TRAUMA|POLICONTUNDID|FRACTURA|\bTCE\b/],
+  ['ca_colorrectal', 'Cáncer colorrectal', 'C18–C20', /(\bCA\b|CANCER|ADENOCARCINOMA|TUMOR|NEOPLASIA) (MALIGNA )?(DE |DEL )?(COLON|RECTO|SIGMOIDES|CIEGO|COLORRECTAL|UNION RECTOSIGMOIDEA)/],
+  ['ca_gastrico', 'Cáncer gástrico', 'C16', /(\bCA\b|CANCER|ADENOCARCINOMA|TUMOR|NEOPLASIA) (MALIGNA )?(DE |DEL )?(ESTOMAGO|GASTRIC)/],
+  ['ca_hbp', 'Cáncer de hígado, vía biliar o páncreas', 'C22–C25', /COLANGIOCARCINOMA|HEPATOCARCINOMA|KLATSKIN|(\bCA\b|CANCER|ADENOCARCINOMA|TUMOR|NEOPLASIA) (MALIGNA )?(DE |DEL )?(LA )?(CABEZA DE )?(PANCREAS|HIGADO|VESICULA|VIA BILIAR|AMPULA)/],
+  ['ca_mama', 'Cáncer de mama', 'C50', /(\bCA\b|CANCER|TUMOR|NEOPLASIA) (MALIGNA )?(DE |DEL )?(LA )?MAMA/],
+  ['ca_otro', 'Otro cáncer', 'C00–C97', /\bCA\b|CANCER|CARCINOMA|NEOPLASIA|LINFOMA|SARCOMA|MELANOMA|METASTA/],
+  ['pie_diabetico', 'Pie diabético', 'E11.5, L97', /PIE DIABETICO/],
+  ['anorrectal', 'Anorrectal / pilonidal', 'K60–K64, L05', /HEMORROID|FISTULA (PERIANAL|ANAL)|FISURA ANAL|ABSCESO (PERIANAL|ISQUIORRECTAL|ANORRECTAL)|PILONIDAL/],
+  ['absceso_abd', 'Absceso intraabdominal / peritonitis', 'K65, K75.0', /ABSCESO (HEPATICO|INTRAABDOMINAL|RESIDUAL|PELVICO|SUBFRENICO|ESPLENICO)|PERITONITIS|SEPSIS ABDOMINAL/],
+  ['tejidos_blandos', 'Infección de piel y tejidos blandos', 'L02–L03, M72.6', /ABSCESO|CELULITIS|FASCITIS|FOURNIER|PIOMIOSITIS|ERISIPELA|INFECCION DE TEJIDOS/],
+  ['complicacion_qx', 'Complicación de una cirugía previa', 'T81', /\bFUGA\b|DEHISCENCIA|EVISCERACION|INFECCION DE (SITIO|HERIDA) QUIRURGICA|\bISQ\b|FISTULA (ENTEROCUTANEA|POSTQUIRURGICA)/],
+  ['vascular', 'Vascular periférico', 'I70–I74', /ISQUEMIA (ARTERIAL|CRITICA|AGUDA) (DE |DEL )?(MIEMBRO|EXTREMIDAD|PIERNA)|INSUFICIENCIA ARTERIAL|OCLUSION ARTERIAL|ANEURISMA|TROMBOSIS ARTERIAL/],
+  ['tiroides', 'Tiroides / paratiroides', 'E04–E05, E21', /TIROID|BOCIO|PARATIROID/],
+  ['abdomen_agudo', 'Abdomen agudo en estudio', 'R10.0', /ABDOMEN AGUDO|DOLOR ABDOMINAL/],
+  ['otro', 'Otro', '', null]
+];
+var REG_DX_POR_CLAVE = {}; REG_DX_CATS.forEach(function (c) { REG_DX_POR_CLAVE[c[0]] = c; });
+/** Categoría del DX: la que aparece primero en el texto; en empate, la de la lista (lo específico antes que lo genérico). */
+function regDxCategoria(dx) {
+  var s = regNorm_(dx), mejor = '', pos = Infinity;
+  REG_DX_CATS.forEach(function (c) { if (!c[3]) return; var m = c[3].exec(s); if (m && m.index < pos) { pos = m.index; mejor = c[0]; } });
+  return mejor;
+}
+/** Dx principal: el elegido en la app (checklist.dx_cat) o, si no hay, el inferido del DX (marcado). */
+function regDxPrincipal(clave, dx) {
+  var c = REG_DX_POR_CLAVE[regTexto(clave)];
+  if (c) return { label: c[1], cie: c[2], fuente: 'Elegido en la app' };
+  c = REG_DX_POR_CLAVE[regDxCategoria(dx)];
+  return c ? { label: c[1], cie: c[2], fuente: 'Inferido del DX' } : { label: '', cie: '', fuente: '' };
+}
+var REG_CX_TIPO_TXT = { urgencia: 'Urgencia', electiva: 'Electiva' };
+var REG_CX_ABORDAJE_TXT = { abierta: 'Abierta', laparoscopica: 'Laparoscópica', convertida: 'Convertida (laparoscópica → abierta)', endoscopica: 'Endoscópica / percutánea', otro: 'Otro' };
+var REG_CLAVIEN_TXT = { '0': 'Sin complicación', 'I': 'I', 'II': 'II', 'IIIa': 'IIIa', 'IIIb': 'IIIb', 'IVa': 'IVa', 'IVb': 'IVb', 'V': 'V' };
+var REG_CLAVIEN_ORDEN = ['Sin complicación', 'I', 'II', 'IIIa', 'IIIb', 'IVa', 'IVb', 'V'];
 // Comorbilidades desde APP + DX (28 oct 2026). [columna, patrón sobre el texto sin acentos y en mayúsculas].
 var REG_COMORB = [
   ['Diabetes', /\bDIABET|\bDM ?(T ?)?(1|2|I|II)?\b|\bDT ?2\b|\bDMT?2\b|\bDMII\b/],
@@ -1246,9 +1302,10 @@ function regPesoTalla(row) {
 function regEpisodiosColumnas_() {
   return ['ID episodio', 'ID paciente', 'Partes del registro', 'N.º de episodio del paciente', 'Días desde el egreso previo', 'Es reingreso (≤30 días)', 'Reingreso a 30 días',
     'Edad (años)', 'Sexo', 'Especialidad', 'Sección', 'Fecha de ingreso', 'Fecha de egreso', 'Días de estancia', 'Estado', 'Egreso observado', 'Tipo de egreso',
-    'Defunción', 'Motivo de egreso (app)', 'Excluir (duplicado)', 'Diagnóstico', 'Peso (kg)', 'Talla (m)', 'IMC (kg/m²)']
+    'Defunción', 'Motivo de egreso (app)', 'Excluir (duplicado)', 'Diagnóstico', 'Dx principal', 'CIE-10 (grupo)', 'Dx principal (fuente)', 'Peso (kg)', 'Talla (m)', 'IMC (kg/m²)']
     .concat(REG_COMORB.map(function (c) { return c[0]; })).concat(['Comorbilidades (n)', 'Cirugías (n)', 'Primera cirugía', 'Días ingreso a 1.ª cirugía', 'Sangrado total (mL)',
-    'Procedimientos', 'Grupo de la 1.ª cirugía', 'Reintervención', 'Cirugías inferidas (n)', 'Programadas sin confirmar (n)', 'Antibiótico (registrado)', 'NPT (registrada)', 'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)',
+    'Procedimientos', 'Grupo de la 1.ª cirugía', 'Reintervención', 'Cirugías inferidas (n)', 'Programadas sin confirmar (n)',
+    'Urgencia (1.ª cirugía)', 'Abordaje (1.ª cirugía)', 'Conversión', 'Clavien-Dindo máximo', 'Complicación mayor (Clavien ≥ IIIa)', 'Cirugías sin clasificar (n)', 'Antibiótico (registrado)', 'NPT (registrada)', 'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)',
     'Fechas con labs (n)', 'Valores críticos (n)', 'Índice urinario mínimo (mL/kg/h)', 'Días con oliguria (IU < 0.5)'])
     .concat(REG_LAB_RESUMEN.map(function (r) { return r[2]; }))
     .concat(['Cultivos (n)', 'Cultivos positivos (n)', 'Gérmenes aislados', 'Calidad de datos', 'Vigente']);
@@ -1256,7 +1313,7 @@ function regEpisodiosColumnas_() {
 var REG_EP_ENTEROS = ['Partes del registro', 'N.º de episodio del paciente', 'Días desde el egreso previo', 'Es reingreso (≤30 días)', 'Reingreso a 30 días', 'Días de estancia',
   'Egreso observado', 'Defunción', 'Excluir (duplicado)', 'Cirugías (n)', 'Días ingreso a 1.ª cirugía', 'Reintervención', 'Cirugías inferidas (n)', 'Programadas sin confirmar (n)', 'Antibiótico (registrado)', 'NPT (registrada)',
   'Ventilación mecánica (registrada)', 'Vasopresor (registrado)', 'Tromboprofilaxis (registrada)', 'Fechas con labs (n)', 'Valores críticos (n)', 'Cultivos (n)', 'Cultivos positivos (n)',
-  'Comorbilidades (n)', 'Días con oliguria (IU < 0.5)'].concat(REG_COMORB.map(function (c) { return c[0]; }));
+  'Comorbilidades (n)', 'Días con oliguria (IU < 0.5)', 'Urgencia (1.ª cirugía)', 'Conversión', 'Complicación mayor (Clavien ≥ IIIa)', 'Cirugías sin clasificar (n)'].concat(REG_COMORB.map(function (c) { return c[0]; }));
 function regFormatos_(enteros, decimales) {
   var f = {};
   enteros.forEach(function (c) { f[c] = REG_FMT_ENT; });
@@ -1276,7 +1333,14 @@ var REG_ANALISIS = [
   { nombre: REG_AN_CULTIVOS, modo: 'derivada', clave: ['ID cultivo'],
     columnas: ['ID cultivo', 'ID episodio', 'ID paciente', 'Fecha de toma', 'Hora de toma', 'Día de estancia', 'Tipo', 'Muestra', 'Resultado', 'Positivo', 'Germen',
       'Sensibles', 'Intermedios', 'Resistentes', 'UFC', 'Fuente', 'Vigente'],
-    formatos: regFormatos_(['Día de estancia', 'Positivo'], []) }
+    formatos: regFormatos_(['Día de estancia', 'Positivo'], []) },
+  // Resumen mensual: solo cuentas (sin nombres ni seudónimos).
+  { nombre: REG_AN_RESUMEN, modo: 'derivada', clave: ['Mes'], columnas: REG_RESUMEN_COLUMNAS,
+    formatos: regFormatos_(REG_RESUMEN_COLUMNAS.filter(function (c) { return / \(n\)$/.test(c); }), REG_RESUMEN_COLUMNAS.filter(function (c) { return /\(%\)$|\(días\)$/.test(c); })) },
+  // Por completar: CON NOMBRES (para que el equipo complete la tarjeta). No se comparte.
+  { nombre: REG_POR_COMPLETAR, modo: 'derivada', clave: ['ID episodio'],
+    columnas: ['ID episodio', 'Estado', 'Cama', 'Nombre', 'Expediente', 'Fecha de ingreso', 'Fecha de egreso', 'Falta', 'Faltantes (n)', 'Vigente'],
+    formatos: regFormatos_(['Faltantes (n)'], []) }
 ];
 
 /** Número de un texto: '7.4', '7,4', '<0.05', '+500', '1,200' (con miles: true), con una unidad permitida al final.
@@ -1513,6 +1577,7 @@ function regCirugias(o) {
   };
   regArr(o.caja).forEach(function (c) {
     out.push({ fecha: regFecha(c.fecha) || regTexto(c.fecha), proc: regTexto(c.procedimiento), hallazgos: regTexto(c.hallazgos), sangrado: regTexto(c.sangrado), cirujano: regTexto(c.cirujano),
+      tipo: REG_CX_TIPO_TXT[c.tipo] || '', abordaje: REG_CX_ABORDAJE_TXT[c.abordaje] || '', clavien: REG_CLAVIEN_TXT[c.clavien] || '', complicacion: REG_CLAVIEN_TXT[c.clavien] && c.clavien !== '0' ? regTexto(c.complicacion) : '',
       grupo: regCxGrupo(c.procedimiento) || (regTexto(c.procedimiento).trim() ? 'Otro' : ''), fuente: 'Caja Cirugías' });
   });
   var qx = regTexto(o.qx).trim();
@@ -1542,6 +1607,7 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
   var P = {}, ids = [];
   regArr(fus['Pacientes']).forEach(function (r) { var id = regTexto(r && r['ID episodio']).trim(); if (id && !P[id]) { P[id] = r; ids.push(id); } });
   var labsDe = porId(fus['Labs']), signosDe = porId(fus['Signos vitales']), cxDe = porId(fus['Cirugías']);
+  var resumenEps = [], resumenCxs = [];
   var claveDe = {};
   regArr(clave).forEach(function (r) { var id = regTexto(r && r['ID episodio']).trim(); if (id) claveDe[id] = r; });
 
@@ -1903,7 +1969,8 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
       // La programación del día sin confirmar no cuenta como cirugía hecha (va en su propia columna).
       if (/^Programaci/.test(fuente)) { cxProgramadas++; return; }
       if (/inferida|Fecha POP|Texto Qx/.test(fuente)) cxInferidas++;
-      cxs.push({ f: regFecha(c['Fecha']), proc: regTexto(c['Procedimiento']).trim(), sangrado: regTexto(c['Sangrado']).trim(), grupo: regTexto(c['Grupo']).trim() });
+      cxs.push({ f: regFecha(c['Fecha']), proc: regTexto(c['Procedimiento']).trim(), sangrado: regTexto(c['Sangrado']).trim(), grupo: regTexto(c['Grupo']).trim(),
+        tipo: regTexto(c['Tipo']).trim(), abordaje: regTexto(c['Abordaje']).trim(), clavien: regTexto(c['Clavien-Dindo']).trim(), caja: fuente === 'Caja Cirugías' });
     });
     if (cxInferidas) g.calidad.push(cxInferidas + ' cirugía' + (cxInferidas === 1 ? '' : 's') + ' tomada' + (cxInferidas === 1 ? '' : 's') + ' de otra caja (DX, Cronología, fecha POP o texto Qx): conviene pasarla' + (cxInferidas === 1 ? '' : 's') + ' a la caja Cirugías');
     if (cxProgramadas) g.calidad.push(cxProgramadas + ' cirugía' + (cxProgramadas === 1 ? '' : 's') + ' solo en la programación del día (sin confirmar)');
@@ -1923,6 +1990,15 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     var com = regComorbilidades(appTxt, dxTxt);
     if (pt.imc !== '' && pt.imc >= 30 && (edad === '' || edad >= 18)) com['Obesidad'] = 1;
     if (!appTxt.trim()) g.calidad.push('sin antecedentes (APP) registrados: comorbilidades ' + (dxTxt.trim() ? 'solo desde el DX' : 'desconocidas'));
+    // Cirugía estructurada (urgencia, abordaje, Clavien-Dindo): solo lo que se eligió en la caja; lo inferido no la trae.
+    var cxOrd = cxs.slice().sort(function (a, b) { return (a.f || '9999').localeCompare(b.f || '9999'); }), cx1 = cxOrd[0] || {};
+    var conLap = cxs.filter(function (c) { return /^Laparosc|^Convertida/.test(c.abordaje); });
+    var grados = cxs.map(function (c) { return REG_CLAVIEN_ORDEN.indexOf(c.clavien); }).filter(function (i) { return i >= 0; });
+    var gradoMax = grados.length ? Math.max.apply(null, grados) : -1;
+    var sinClas = cxs.filter(function (c) { return c.caja && (!c.tipo || !c.abordaje || !c.clavien); }).length;
+    // Dx principal: el de la tarjeta (elegido o inferido al construir Pacientes); filas viejas sin la columna → del DX.
+    var dxP = { label: regTexto(u['Dx principal']).trim(), cie: regTexto(u['CIE-10 (grupo)']).trim(), fuente: regTexto(u['Dx principal (fuente)']).trim() };
+    if (!dxP.label) dxP = regDxPrincipal('', regTexto(u['Diagnóstico']));
     var si = function (col) { return regTexto(u[col]).trim() ? 1 : 0; };
     var siMarca = function (col) { return /^Sí/.test(regTexto(u[col]).trim()) ? 1 : 0; };
     var fila = {
@@ -1933,12 +2009,17 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
       'Egreso observado': g.estado === 'Egresado' && g.excluir !== 1 && g.egreso && g.tipo !== 'No fue egreso' ? 1 : 0, 'Tipo de egreso': g.tipo,
       'Defunción': g.tipo === 'Defunción' ? 1 : (REG_EGRESO_VIVO.indexOf(g.tipo) >= 0 ? 0 : ''),
       'Motivo de egreso (app)': g.motivo, 'Excluir (duplicado)': g.excluir, 'Diagnóstico': regTexto(u['Diagnóstico']),
+      'Dx principal': dxP.label, 'CIE-10 (grupo)': dxP.cie, 'Dx principal (fuente)': dxP.fuente,
       'Peso (kg)': pt.peso, 'Talla (m)': pt.talla, 'IMC (kg/m²)': pt.imc,
       'Cirugías (n)': cxs.length, 'Primera cirugía': fechasCx[0] || '', 'Días ingreso a 1.ª cirugía': fechasCx[0] ? regNumCelda(regDiasSigno(g.ingreso, fechasCx[0])) : '',
       'Sangrado total (mL)': conSangrado && !sinNumero ? sangrado : '', 'Procedimientos': cxs.map(function (c) { return (c.f ? c.f + ' ' : '') + c.proc; }).join(' | '),
       'Grupo de la 1.ª cirugía': (cxs.slice().sort(function (a, b) { return (a.f || '9999').localeCompare(b.f || '9999'); })[0] || {}).grupo || '',
       'Reintervención': cxs.length ? ((cxs.length >= 2 || cxs.some(function (c) { return c.grupo === 'Relaparotomía'; })) ? 1 : 0) : '',
       'Cirugías inferidas (n)': cxInferidas, 'Programadas sin confirmar (n)': cxProgramadas,
+      'Urgencia (1.ª cirugía)': cx1.tipo === 'Urgencia' ? 1 : (cx1.tipo === 'Electiva' ? 0 : ''), 'Abordaje (1.ª cirugía)': cx1.abordaje || '',
+      'Conversión': conLap.length ? (conLap.some(function (c) { return /^Convertida/.test(c.abordaje); }) ? 1 : 0) : '',
+      'Clavien-Dindo máximo': gradoMax >= 0 ? REG_CLAVIEN_ORDEN[gradoMax] : '', 'Complicación mayor (Clavien ≥ IIIa)': gradoMax >= 0 ? (gradoMax >= 3 ? 1 : 0) : '',
+      'Cirugías sin clasificar (n)': sinClas,
       'Antibiótico (registrado)': si('Antibiótico'), 'NPT (registrada)': siMarca('NPT'), 'Ventilación mecánica (registrada)': siMarca('Ventilación'),
       'Vasopresor (registrado)': si('Vasopresores'), 'Tromboprofilaxis (registrada)': siMarca('TVP'),
       'Fechas con labs (n)': g.labs.fechas, 'Valores críticos (n)': g.labs.criticos,
@@ -1951,9 +2032,74 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     REG_COMORB.forEach(function (c) { fila[c[0]] = com[c[0]]; if (com[c[0]] === 1 && c[0] !== 'Tabaquismo') nCom++; });
     fila['Comorbilidades (n)'] = appTxt.trim() ? nCom : '';   // sin APP el conteo no es confiable (el DX no las enlista)
     out[REG_AN_EPISODIOS].push(fila);
+
+    // Por completar (con nombres, para el equipo): hospitalizados y egresados de los últimos 30 días.
+    var falta = [];
+    if (g.estado === 'Egresado' && fila['Defunción'] === '' && g.tipo !== 'No fue egreso') falta.push('motivo del egreso');
+    if (!sexo) falta.push('sexo');
+    if (edad === '') falta.push('edad');
+    if (!appTxt.trim()) falta.push('APP');
+    if (pt.peso === '') falta.push('peso');
+    if (pt.talla === '') falta.push('talla');
+    if (dxP.fuente !== 'Elegido en la app') falta.push('dx principal');
+    if (cxInferidas) falta.push(cxInferidas + (cxInferidas === 1 ? ' cirugía por pasar a la caja Cirugías' : ' cirugías por pasar a la caja Cirugías'));
+    if (sinClas) falta.push(sinClas + (sinClas === 1 ? ' cirugía sin urgencia/abordaje/Clavien' : ' cirugías sin urgencia/abordaje/Clavien'));
+    var dEgreso = g.egreso ? regDiasSigno(g.egreso, hoy) : '';
+    if (falta.length && g.excluir !== 1 && (g.estado === 'Hospitalizado' || (dEgreso !== '' && dEgreso >= 0 && dEgreso <= 30))) {
+      out[REG_POR_COMPLETAR].push({ 'ID episodio': g.ultima, 'Estado': g.estado, 'Cama': regTexto(u['Cama']), 'Nombre': regTexto(u['Nombre']), 'Expediente': regTexto(u['Expediente']),
+        'Fecha de ingreso': g.ingreso, 'Fecha de egreso': g.egreso, 'Falta': falta.join(' · '), 'Faltantes (n)': falta.length, 'Vigente': 'Sí' });
+    }
+    // Para el resumen mensual.
+    resumenEps.push({ ingreso: g.ingreso, egreso: fila['Egreso observado'] === 1 ? g.egreso : '', defuncion: fila['Defunción'], estancia: fila['Días de estancia'],
+      reint: fila['Reintervención'], re30: fila['Reingreso a 30 días'], dx: dxP.label, incompleto: falta.length > 0, excluir: g.excluir });
+    if (g.excluir !== 1) cxs.forEach(function (c) { resumenCxs.push({ f: c.f, grupo: c.grupo, tipo: c.tipo, abordaje: c.abordaje, clavien: c.clavien, ep: g.codigo }); });
   });
+  out[REG_AN_RESUMEN] = regResumenMensual(resumenEps, resumenCxs, out[REG_AN_CULTIVOS]);
   out.avisos = avisos;
   return out;
+}
+
+/** Resumen mensual del servicio: ingresos por mes de ingreso; egresos, mortalidad, estancia y reingresos por mes de
+ *  egreso; cirugías por mes de la cirugía; cultivos por mes de toma. Sin duplicados (Excluir = 1). Solo cuentas. */
+function regResumenMensual(eps, cxs, cultivos) {
+  var meses = {}, mes = function (f) { f = regFecha(f); return f ? f.slice(0, 7) : ''; };
+  var M = function (m) { return meses[m] || (meses[m] = { ing: 0, egr: [], cx: [], cult: [], dx: {}, incompletos: 0 }); };
+  regArr(eps).forEach(function (e) {
+    if (e.excluir === 1) return;
+    var mi = mes(e.ingreso), me = mes(e.egreso);
+    if (mi) { var a = M(mi); a.ing++; if (e.dx) a.dx[e.dx] = (a.dx[e.dx] || 0) + 1; if (e.incompleto) a.incompletos++; }
+    if (me) M(me).egr.push(e);
+  });
+  regArr(cxs).forEach(function (c) { var m = mes(c.f); if (m) M(m).cx.push(c); });
+  regArr(cultivos).forEach(function (c) { var m = mes(c['Fecha de toma']); if (m && regTexto(c['ID episodio']).trim()) M(m).cult.push(c); });
+  var pct = function (n, d) { return d ? regRedondear(100 * n / d, 1) : ''; };
+  var top = function (mapa) { return Object.keys(mapa).sort(function (a, b) { return mapa[b] - mapa[a] || a.localeCompare(b); }).slice(0, 5).map(function (k) { return k + ' (' + mapa[k] + ')'; }).join('; '); };
+  var cuenta = function (lista, f) { var m = {}; lista.forEach(function (x) { f(x).forEach(function (k) { if (k) m[k] = (m[k] || 0) + 1; }); }); return m; };
+  return Object.keys(meses).sort().map(function (m) {
+    var a = meses[m];
+    var conDes = a.egr.filter(function (e) { return e.defuncion === 0 || e.defuncion === 1; }), def = a.egr.filter(function (e) { return e.defuncion === 1; }).length;
+    var est = a.egr.map(function (e) { return e.estancia; }).filter(function (x) { return typeof x === 'number' && isFinite(x); }).sort(function (x, y) { return x - y; });
+    var med = est.length ? (est.length % 2 ? est[(est.length - 1) / 2] : (est[est.length / 2 - 1] + est[est.length / 2]) / 2) : '';
+    var conTipo = a.cx.filter(function (c) { return c.tipo; }), conAb = a.cx.filter(function (c) { return c.abordaje; });
+    var re = a.egr.filter(function (e) { return e.re30 === 0 || e.re30 === 1; });
+    var pos = a.cult.filter(function (c) { return c['Positivo'] === 1; });
+    return {
+      'Mes': m, 'Ingresos (n)': a.ing, 'Egresos (n)': a.egr.length, 'Egresos con desenlace conocido (n)': conDes.length, 'Defunciones (n)': def,
+      'Mortalidad (%)': pct(def, conDes.length), 'Egresos sin motivo (n)': a.egr.length - conDes.length,
+      'Estancia mediana (días)': med, 'Estancia media (días)': est.length ? regRedondear(est.reduce(function (x, y) { return x + y; }, 0) / est.length, 1) : '',
+      'Pacientes operados (n)': Object.keys(cuenta(a.cx, function (c) { return [c.ep]; })).length, 'Cirugías (n)': a.cx.length,
+      'Cirugías de urgencia (%)': pct(conTipo.filter(function (c) { return c.tipo === 'Urgencia'; }).length, conTipo.length),
+      'Abordaje laparoscópico (%)': pct(conAb.filter(function (c) { return /^Laparosc|^Convertida/.test(c.abordaje); }).length, conAb.length),
+      'Conversiones (n)': a.cx.filter(function (c) { return /^Convertida/.test(c.abordaje); }).length,
+      'Complicación mayor (Clavien ≥ IIIa) (n)': a.cx.filter(function (c) { return REG_CLAVIEN_ORDEN.indexOf(c.clavien) >= 3; }).length,
+      'Reintervenciones (n)': a.egr.filter(function (e) { return e.reint === 1; }).length,
+      'Reingresos a 30 días (n)': re.filter(function (e) { return e.re30 === 1; }).length, 'Reingreso a 30 días (%)': pct(re.filter(function (e) { return e.re30 === 1; }).length, re.length),
+      'Cultivos positivos (n)': pos.length,
+      'Dx principales (más frecuentes)': top(a.dx), 'Cirugías por grupo (más frecuentes)': top(cuenta(a.cx, function (c) { return [c.grupo]; })),
+      'Gérmenes (más frecuentes)': top(cuenta(pos, function (c) { return regTexto(c['Germen']).split(/\s*\+\s*/).map(function (x) { return x.replace(/\s*\(.*\)\s*$/, '').trim(); }).filter(function (x) { return x && !/^POSITIVO/i.test(x); }); })),
+      'Ingresos con datos incompletos (n)': a.incompletos, 'Vigente': 'Sí'
+    };
+  });
 }
 
 /** Seudónimo: SHA-256 de (sal secreta + identidad), 12 caracteres hexadecimales. La sal vive en las propiedades del
@@ -2021,6 +2167,11 @@ function regVariables_() {
   add(E, 'Motivo de egreso (app)', 'texto', '', 'Etiqueta original del egreso en la app (p. ej. «RETIRADO DEL CENSO (hoja)»).');
   add(E, 'Excluir (duplicado)', '0/1', '', '1 = tarjeta duplicada (no es otro episodio): excluir. Vacío = borrado en la base por mantenimiento: revisar. 0 = episodio real.');
   add(E, 'Diagnóstico', 'texto', '', 'Diagnóstico del censo en la última parte del episodio (texto libre, sin codificar).');
+  add(E, 'Dx principal · CIE-10 (grupo) · Dx principal (fuente)', 'texto', '', 'Diagnóstico principal de una lista corta del servicio (apendicitis, colecistitis, pancreatitis, oclusión, hernia, cáncer colorrectal…) con su grupo CIE-10. Fuente: «Elegido en la app» (🩺 Dx principal, bajo la caja DX) o «Inferido del DX» (la misma tabla sobre el texto del DX: el término que aparece primero). Para publicar, preferir los elegidos o revisar los inferidos.');
+  add(E, 'Urgencia (1.ª cirugía) · Abordaje (1.ª cirugía)', '0/1 · texto', '', 'De la primera cirugía por fecha, como se eligió en la caja Cirugías: 1 = urgencia, 0 = electiva, vacío = no se registró. Abordaje: Abierta, Laparoscópica, Convertida (laparoscópica → abierta), Endoscópica / percutánea u Otro.');
+  add(E, 'Conversión', '0/1', '', '1 = alguna cirugía laparoscópica se convirtió a abierta; 0 = hubo laparoscopía sin conversión; vacío = sin abordaje laparoscópico registrado.');
+  add(E, 'Clavien-Dindo máximo · Complicación mayor (Clavien ≥ IIIa)', 'texto · 0/1', '', 'El grado más alto de complicación postoperatoria registrado en las cirugías del episodio (Sin complicación, I, II, IIIa, IIIb, IVa, IVb, V; Dindo, Ann Surg 2004). Complicación mayor: 1 si ≥ IIIa; vacío si ninguna cirugía tiene grado.');
+  add(E, 'Cirugías sin clasificar (n)', 'entero', '', 'Cirugías de la caja sin urgencia/electiva, abordaje o Clavien-Dindo: conviene completarlas (ver «Por completar»).');
   add(E, 'Peso (kg) · Talla (m) · IMC (kg/m²)', 'número', 'kg / m / kg/m²', 'Peso y talla del Pase Matutino (fila Clínico). Talla en cm se pasa a metros. IMC = peso ÷ talla². Vacío si no se registró o no es posible (peso 0.4–400 kg, talla 0.3–2.5 m).');
   add(E, REG_COMORB.map(function (c) { return c[0]; }).join(' · '), '0/1', '', 'Desde los Antecedentes (APP) y el diagnóstico de todas las partes del episodio, con negación («NIEGA DM, HAS», «HAS NEGADA» = 0). 1 = mencionada (en APP o DX); 0 = hay APP y no la menciona (o la niega); vacío = sin APP (desconocida). Obesidad también = 1 con IMC ≥ 30 en adultos. Es texto libre: revisar una muestra antes de publicar.');
   add(E, 'Comorbilidades (n)', 'entero', '', 'Cuántas comorbilidades hay en 1 (sin contar tabaquismo). Vacío si no hay APP (el conteo no sería confiable).');
@@ -2037,6 +2188,24 @@ function regVariables_() {
   REG_LAB_RESUMEN.forEach(function (r) { add(E, r[2], 'número', (REG_LAB_POR_CLAVE[r[0]] || {}).u || '', (r[1] === 'min' ? 'Mínimo' : r[1] === 'max' ? 'Máximo' : 'Primer valor (fecha más antigua)') + ' del episodio, de «' + L + '». Un «<x» / «>x» cuenta como x.'); });
   add(E, 'Cultivos (n) · Cultivos positivos (n) · Gérmenes aislados', 'entero / texto', '', 'Cultivos de WinLab del paciente tomados desde 2 días antes del ingreso hasta el egreso.');
   add(E, 'Calidad de datos', 'texto', '', 'Todo lo que falta o no se pudo usar en el episodio.');
+  var R = REG_AN_RESUMEN, PC = REG_POR_COMPLETAR;
+  add(R, 'Privacidad', '', '', 'Solo cuentas por mes: no tiene nombres ni seudónimos. Se puede compartir dentro del servicio.');
+  add(R, 'Mes', 'texto AAAA-MM', '', 'Mes calendario. Ingresos por mes de ingreso; egresos, mortalidad, estancia, reintervenciones y reingresos por mes de egreso; cirugías por mes de la cirugía; cultivos por mes de toma. Sin duplicados (Excluir = 1).');
+  add(R, 'Ingresos (n) · Egresos (n) · Egresos con desenlace conocido (n) · Defunciones (n) · Egresos sin motivo (n)', 'entero', '', 'Egresos = egresos observados (con fecha). Con desenlace conocido = Defunción 0 o 1 (motivo registrado). Sin motivo = egresos que nadie clasificó.');
+  add(R, 'Mortalidad (%)', 'número', '%', 'Defunciones ÷ egresos con desenlace conocido × 100. Vacío si ningún egreso del mes tiene motivo. Mientras haya muchos «Egresos sin motivo», la cifra no representa al servicio.');
+  add(R, 'Estancia mediana (días) · Estancia media (días)', 'número', 'días', 'De los egresos del mes.');
+  add(R, 'Pacientes operados (n) · Cirugías (n)', 'entero', '', 'Cirugías con fecha en el mes (de la caja y las inferidas; no la programación sin confirmar) y cuántos episodios distintos.');
+  add(R, 'Cirugías de urgencia (%) · Abordaje laparoscópico (%)', 'número', '%', 'Sobre las cirugías del mes que tienen el dato (urgencia/electiva; abordaje). Laparoscópico incluye las convertidas.');
+  add(R, 'Conversiones (n) · Complicación mayor (Clavien ≥ IIIa) (n)', 'entero', '', 'Cirugías del mes convertidas de laparoscópica a abierta y con Clavien-Dindo ≥ IIIa.');
+  add(R, 'Reintervenciones (n)', 'entero', '', 'Egresos del mes con «Reintervención» = 1.');
+  add(R, 'Reingresos a 30 días (n) · Reingreso a 30 días (%)', 'entero · número', '%', 'Egresos del mes que reingresaron en 30 días, sobre los que ya tienen el dato (0/1).');
+  add(R, 'Cultivos positivos (n) · Gérmenes (más frecuentes)', 'entero · texto', '', 'Cultivos de WinLab de pacientes del servicio tomados en el mes; los 5 gérmenes más frecuentes con su número.');
+  add(R, 'Dx principales (más frecuentes) · Cirugías por grupo (más frecuentes)', 'texto', '', 'Los 5 más frecuentes del mes con su número (dx principal de los ingresos; grupo de las cirugías).');
+  add(R, 'Ingresos con datos incompletos (n)', 'entero', '', 'Ingresos del mes a los que les falta algo de «Por completar» (motivo, sexo, edad, APP, peso, talla, dx principal o cirugías).');
+  add(PC, 'Privacidad', '', '', 'TIENE NOMBRES: es la lista de trabajo del equipo para completar las tarjetas. No se comparte ni se descarga para estudios.');
+  add(PC, 'ID episodio', 'texto', '', 'Id del paciente en la base (no es seudónimo): el de la tarjeta en la app.');
+  add(PC, 'Estado · Cama · Nombre · Expediente · Fecha de ingreso · Fecha de egreso', 'texto', '', 'Del censo y de la Papelera (la última parte del episodio). Entran los hospitalizados y los egresados de los últimos 30 días.');
+  add(PC, 'Falta · Faltantes (n)', 'texto · entero', '', 'Lo que le falta a la tarjeta para el registro: motivo del egreso, sexo, edad, APP, peso, talla, dx principal, cirugías por pasar a la caja y cirugías sin urgencia/abordaje/Clavien. Cuando se completa, la fila queda «Vigente: No» (resuelta).');
   add(L, 'Fila', '', '', 'Una fila por episodio y fecha; una columna por estudio en la unidad de la app (WinLab ya convertido). Vacío = no se midió o no se pudo usar (ver Observaciones). Ojo con lo anterior al 27 oct 2026: la app no revisaba la unidad de WinLab (troponina I en ng/mL, glucosa en mmol/L, fibrinógeno en g/L) y antes de oct 2026 el examen de orina pudo caer en la biometría: revisar valores atípicos antes de analizar.');
   add(L, 'Fuente', 'texto', '', 'Origen de los valores del día: winlab (robot), manual, sin registro (capturas viejas).');
   REG_LAB_META.forEach(function (m) {

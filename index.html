@@ -3155,6 +3155,20 @@
     body.dark .cx-in, body.dark .cx-date { background: #0e2138; color: #e2e8f0; border-color: #3b2a66; }
     body.dark .cx-proc { color: #e9d5ff; }
     body.dark .cx-add { background: #0f1c2e; color: #c4b5fd; }
+    /* 🩺 Dx principal y 📋 Por completar, bajo la caja DX: discretos */
+    .dxp-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; font-size: 11.5px; }
+    .dxp-l { font-weight: 800; color: #991b1b; white-space: nowrap; }
+    .dxp-row .dxp-sel, .dxp-row .resid-select { flex: 0 1 280px; min-width: 0; font-size: 11.5px; min-height: 28px; border: 1px solid #fecaca; border-radius: 6px; background: #fff; color: #7f1d1d; font-family: var(--font); }
+    .dxp-sug { font-size: 11px; font-weight: 700; min-height: 26px; padding: 0 8px; border-radius: 10px; border: 1px dashed #fca5a5; background: #fff; color: #b91c1c; cursor: pointer; font-family: var(--font); }
+    .pcomp { margin-top: 3px; font-size: 10.5px; color: #64748b; }
+    body.dark .dxp-row .dxp-sel, body.dark .dxp-row .resid-select, body.dark .dxp-sug { background: #0e2138; color: #fecaca; border-color: #7f1d1d; }
+    body.dark .pcomp { color: #94a3b8; }
+    @media print { .dxp-sug, .pcomp { display: none !important; } }
+    /* Datos estructurados de la cirugía: tres menús compactos y «¿Cuál?» si hubo complicación */
+    .cx-r3 { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+    .cx-r3 .cx-sel, .cx-r3 .resid-select { flex: 1 1 140px; min-width: 0; max-width: 100%; font-size: 11.5px; min-height: 28px; border: 1px solid #e9d5ff; border-radius: 6px; background: #fff; color: #3b0764; font-family: var(--font); }
+    .cx-r3 .cx-compl { flex: 2 1 220px; }
+    body.dark .cx-r3 .cx-sel, body.dark .cx-r3 .resid-select { background: #0e2138; color: #e9d5ff; border-color: #3b2a66; }
     /* 🔎 Cirugía marcada en otra caja (DX, Cronología, fecha POP): un renglón discreto, solo se registra al tocar ➕ */
     .cx-det-box { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 5px; }
     .cx-det { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #6d28d9; background: #faf5ff; border: 1px dashed #d8b4fe; border-radius: 8px; padding: 2px 4px 2px 8px; }
@@ -4276,7 +4290,10 @@ body.dark #egreso-card{ background:#0f1c2e; color:#e2e8f0; border-color:#92400e;
 body.dark #egreso-card .eg-d{ background:#152e4d; border-color:#2f4f79; color:#cbd5e1; }
 @media print{ #egreso-card{ display:none !important; } }
 /* 🔎 Filtros del tablero (28 oct 2026): especialidad, adscrito, servicio, ingresos y camas libres */
-#board-nav .bn-flt-btn.on{ background:#b45309; }
+#board-nav .bn-flt-btn{ background:transparent; border:1.5px solid #fbbf24; color:#fde68a; }
+#board-nav .bn-flt-btn.open{ background:rgba(251,191,36,.18); }
+#board-nav .bn-flt-btn.on{ background:#b45309; border-color:#b45309; color:#fff; }
+#board-nav .bn-flt .flt-q input{ font-size:12px; padding:5px 8px; min-height:34px; width:170px; max-width:46vw; border-radius:6px; border:1px solid #3b5d8a; background:#fff; color:#0a1628; font-family:var(--font); }
 #board-nav .bn-flt{ flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; padding:6px 2px 2px; border-top:1px solid rgba(255,255,255,.14); }
 #board-nav .bn-flt .flt-f{ display:inline-flex; align-items:center; gap:5px; color:#cfe0f5; font-size:11px; font-weight:700; }
 #board-nav .bn-flt select{ font-size:12px; padding:5px 6px; min-height:34px; max-width:200px; border-radius:6px; border:1px solid #3b5d8a; background:#fff; color:#0a1628; font-family:var(--font); }
@@ -4841,7 +4858,8 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
         <select id="confirm-egreso-tipo" data-testid="confirm-egreso-tipo" style="display:block;width:100%;margin-top:4px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:var(--font)">
           <option value="">— Sin especificar —</option>
         </select>
-        <span style="display:block;font-weight:400;color:#64748b;font-size:11px;margin-top:3px">Queda en el registro de pacientes para estudios (mortalidad, reingresos). Se puede poner o corregir después en la Papelera.</span>
+        <span id="confirm-egreso-err" data-testid="confirm-egreso-err" style="display:none;font-weight:700;color:#dc2626;font-size:12px;margin-top:4px">Elige el motivo del egreso. Si no fue un egreso, elige «No fue egreso (error del censo)».</span>
+        <span style="display:block;font-weight:400;color:#64748b;font-size:11px;margin-top:3px">Obligatorio: queda en el registro de pacientes para estudios (mortalidad, reingresos). Se puede corregir después en la Papelera.</span>
       </label>
       <div
         style="font-size:12px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:20px">
@@ -7639,7 +7657,7 @@ function plExportBackup() {
       if (m) return m;
       m = document.createElement("div"); m.id = "admin-modal"; m.className = "modal-bg"; m.style.display = "none";
       m.innerHTML = '<div class="modal-box adm-box"><div class="modal-header"><div class="modal-title">👥 Usuarios y actividad</div><button class="modal-close" onclick="closeAdminPanel()">✕</button></div>'
-        + '<div class="adm-tabs"><button class="adm-tab active" data-tab="usuarios" onclick="adminTab(\'usuarios\')">👥 Usuarios</button><button class="adm-tab" data-tab="actividad" onclick="adminTab(\'actividad\')" data-testid="adm-tab-actividad">🕵️ Actividad</button></div>'
+        + '<div class="adm-tabs"><button class="adm-tab active" data-tab="usuarios" onclick="adminTab(\'usuarios\')">👥 Usuarios</button><button class="adm-tab" data-tab="actividad" onclick="adminTab(\'actividad\')" data-testid="adm-tab-actividad">🕵️ Actividad</button><button class="adm-tab" data-tab="versiones" onclick="adminTab(\'versiones\')" data-testid="adm-tab-versiones">📱 Versiones</button></div>'
         + '<div id="adm-usuarios">'
         +   '<div class="adm-invite"><b>➕ Dar acceso a alguien</b><div class="adm-row"><input id="adm-inv-email" type="email" placeholder="correo@ejemplo.com" class="modal-input" autocomplete="off" data-testid="adm-inv-email"/><input id="adm-inv-nombre" placeholder="Nombre (p. ej. Dra. López R2)" class="modal-input" autocomplete="off" data-testid="adm-inv-nombre"/><select id="adm-inv-role" class="modal-input" data-no-sheet="1"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select><button class="btn-save" onclick="adminInvite()" data-testid="adm-invite">Crear cuenta</button></div><div class="adm-hint">Se crea la cuenta con una contraseña temporal que verás aquí una sola vez: mándasela por WhatsApp. La persona entra con su correo y esa contraseña, y la app le pide una nueva al entrar. Pon su 📅 fin de rotación para que el panel te avise cuando se vaya.</div><div id="adm-inv-result" class="adm-result" style="display:none"></div></div>'
         +   '<div id="adm-list" class="adm-list">Cargando…</div>'
@@ -7648,7 +7666,8 @@ function plExportBackup() {
         +   '<div class="adm-row adm-filters"><select id="adm-act-user" class="modal-input" data-no-sheet="1" onchange="adminLoadActivity()"><option value="">Todas las personas</option></select><input id="adm-act-cama" class="modal-input" placeholder="Cama (p. ej. 3-170)" style="width:130px" onchange="adminLoadActivity()" data-testid="adm-act-cama"/><select id="adm-act-dias" class="modal-input" data-no-sheet="1" onchange="adminLoadActivity()"><option value="1">Hoy</option><option value="7" selected>7 días</option><option value="30">30 días</option><option value="180">180 días</option></select><button class="btn-cancel" onclick="adminLoadActivity()" title="Actualizar">↺</button></div>'
         +   '<div class="adm-hint">Cada cambio guardado en la nube: quién (cuenta y nombre), desde dónde (dispositivo, navegador, IP) y qué cambió (de → a). Lo que hacen el robot de labs y la hoja del censo aparece como 🤖 robot.</div>'
         +   '<div id="adm-act-list" class="adm-list">Cargando…</div>'
-        + '</div></div>';
+        + '</div>'
+        + '<div id="adm-versiones" style="display:none"><div id="adm-ver-list" class="adm-list">Cargando…</div></div></div>';
       document.body.appendChild(m);
       return m;
     }
@@ -7659,7 +7678,69 @@ function plExportBackup() {
       m.querySelectorAll(".adm-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === t));
       document.getElementById("adm-usuarios").style.display = t === "usuarios" ? "" : "none";
       document.getElementById("adm-actividad").style.display = t === "actividad" ? "" : "none";
-      if (t === "usuarios") adminLoadUsers(); else adminLoadActivity();
+      document.getElementById("adm-versiones").style.display = t === "versiones" ? "" : "none";
+      if (t === "usuarios") adminLoadUsers(); else if (t === "versiones") adminLoadVersiones(); else adminLoadActivity();
+    }
+    // ── 📱 Versión de la app en cada dispositivo (28 oct 2026) ─────────────────────────
+    // Antes de apagar el acceso público de Realtime hay que saber que TODOS los iPads ya tienen la versión nueva. Cada
+    // dispositivo (id al azar en su navegador) la reporta al abrir y cada hora (pl_reportar_dispositivo,
+    // scripts/supabase_dispositivos.sql); el administrador la ve aquí. Nada de pacientes: cuenta, equipo, versión y hora.
+    const PL_DISP_KEY = "pl_dispositivo_id";
+    let _plDispUlt = 0;
+    function _plDispositivoId() {
+      let id = ""; try { id = localStorage.getItem(PL_DISP_KEY) || ""; } catch (_) {}
+      if (!/^[a-z0-9-]{8,64}$/.test(id)) {
+        id = "d-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+        try { localStorage.setItem(PL_DISP_KEY, id); } catch (_) {}
+      }
+      return id;
+    }
+    function _plEquipo() {
+      const ua = String(navigator.userAgent || "");
+      const ipad = /iPad/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+      const tipo = ipad ? "iPad" : /iPhone/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "Otro";
+      const nav = /EdgA?\//.test(ua) ? "Edge" : /CriOS|Chrome\//.test(ua) ? "Chrome" : /FxiOS|Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "";
+      const v = /OS (\d+)[_.](\d+)/.exec(ua) || /Version\/(\d+)\.(\d+)/.exec(ua);
+      let app = false; try { app = !!(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches)); } catch (_) {}
+      return (tipo + (nav ? " · " + nav : "") + (v ? " " + v[1] + "." + v[2] : "") + (app ? " · ícono" : "")).slice(0, 60);
+    }
+    function _plReportarDispositivo(forzar) {
+      if (!_userAccessToken || (typeof navigator !== "undefined" && navigator.onLine === false)) return;
+      if (!forzar && Date.now() - _plDispUlt < 55 * 60e3) return;
+      _plDispUlt = Date.now();
+      _sRpc("pl_reportar_dispositivo", { p_dispositivo: _plDispositivoId(), p_build: PL_BUILD, p_equipo: _plEquipo() }).catch(function (e) { _plDispUlt = 0; safeLog("pl_reportar_dispositivo:", e); });
+    }
+    try {
+      document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") _plReportarDispositivo(false); });
+      setInterval(function () { if (document.visibilityState === "visible") _plReportarDispositivo(false); }, 60 * 60e3);
+    } catch (_) {}
+    function _admHace(iso) {
+      const t = new Date(iso).getTime(); if (!isFinite(t)) return "—";
+      const m = Math.round((Date.now() - t) / 60000);
+      return m < 2 ? "ahora" : m < 60 ? "hace " + m + " min" : m < 48 * 60 ? "hace " + Math.round(m / 60) + " h" : "hace " + Math.round(m / 1440) + " días";
+    }
+    async function adminLoadVersiones() {
+      const host = document.getElementById("adm-ver-list"); if (!host) return;
+      host.textContent = "Cargando…";
+      let actual = PL_BUILD; try { if (_plVerNueva) actual = _plVerNueva; } catch (_) {}   // la versión publicada (version.json) si ya se conoce
+      try {
+        const desde = new Date(Date.now() - 30 * 86400e3).toISOString();
+        const rows = await _sGet("pl_dispositivos", "select=dispositivo,nombre,equipo,build,visto,primer_visto&visto=gte." + encodeURIComponent(desde) + "&order=visto.desc&limit=300");
+        const lista = Array.isArray(rows) ? rows : [];
+        const semana = lista.filter(r => Date.now() - new Date(r.visto).getTime() <= 7 * 86400e3);
+        const viejos = semana.filter(r => r.build !== actual);
+        const resumen = !lista.length
+          ? '<div class="adm-hint" data-testid="adm-ver-vacio">Todavía ningún dispositivo ha reportado su versión. Cada iPad la reporta al abrir la app con esta versión o una más nueva.</div>'
+          : (viejos.length
+            ? `<div class="adm-hint" data-testid="adm-ver-resumen" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 8px;color:#92400e">⚠️ ${viejos.length} de ${semana.length} dispositivo(s) usados en los últimos 7 días NO tienen la versión ${esc(actual)}. Ábrelos y toca «Actualizar» (o recarga). No apagues el acceso público de Realtime hasta que todos estén al día.</div>`
+            : `<div class="adm-hint" data-testid="adm-ver-resumen" style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:6px;padding:6px 8px;color:#065f46">✅ Los ${semana.length} dispositivo(s) usados en los últimos 7 días tienen la versión ${esc(actual)}.</div>`);
+        const filas = lista.map(r => {
+          const ok = r.build === actual, reciente = Date.now() - new Date(r.visto).getTime() <= 7 * 86400e3;
+          const badge = ok ? '<span class="adm-badge adm-ok">al día</span>' : `<span class="adm-badge ${reciente ? "adm-bad" : "adm-warn"}">versión vieja</span>`;
+          return `<div class="adm-user${reciente ? "" : " adm-blocked"}" data-testid="adm-ver-row"><div class="adm-u-main"><b>${esc(r.nombre || "(sin nombre)")}</b> <span class="adm-mail">${esc(r.equipo || "")}</span> <code>${esc(r.build || "—")}</code> ${badge}<div class="adm-meta">Última vez: ${_admFecha(r.visto)} (${_admHace(r.visto)}) · Primera vez: ${_admFecha(r.primer_visto)}</div></div></div>`;
+        });
+        host.innerHTML = resumen + `<div class="adm-hint">Versión publicada: <code>${esc(actual)}</code>. Este dispositivo: <code>${esc(PL_BUILD)}</code>. Se muestran los últimos 30 días; en gris, los que no se usan hace más de 7.</div>` + filas.join("");
+      } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar: ' + esc((e && e.message) || e) + '</div>'; }
     }
     function _admFecha(iso) { if (!iso) return "—"; const d = new Date(iso); if (isNaN(d.getTime())) return String(iso); const z = n => String(n).padStart(2, "0"); return z(d.getDate()) + "/" + z(d.getMonth() + 1) + "/" + String(d.getFullYear()).slice(2) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
     async function adminLoadUsers() {
@@ -16057,6 +16138,7 @@ function plExportBackup() {
       try { _bindStickyResize(); _syncStickyOffsets(); } catch (_) {}
       loadSharedConfig().catch(() => {}); // Non-blocking: pull proxy URL from Supabase for other devices
       try { _espacioIniciar(); } catch (e) { safeLog("[espacio] init:", e); }   // 💾 tamaño de la base: al entrar y cada 6 h, sin bloquear
+      try { _plReportarDispositivo(true); } catch (e) { safeLog("[dispositivo]:", e); }   // 📱 versión de este dispositivo (👥 Usuarios → 📱 Versiones)
 
       // Limpiar plantilla Excel de versiones anteriores que sí la guardaban en localStorage
       // (puede ocupar hasta 2 MB en base64; ahora se mantiene solo en memoria)
@@ -16491,9 +16573,20 @@ function plExportBackup() {
     function toggleFiltroIngresos() { showSoloIngresos = !showSoloIngresos; if (showSoloIngresos) showLibres = false; renderView(); }
     function toggleFiltroLibres() { showLibres = !showLibres; if (showLibres) showSoloIngresos = false; renderView(); }
     function quitarBusqueda() { const s = document.getElementById("search"); if (s) s.value = ""; renderView(); }
+    // Buscar cama o nombre desde el panel (28 oct 2026): en «Piso Libro» la barra de búsqueda de arriba no se ve. Usa la
+    // misma búsqueda (#search). El tablero se repinta al dejar de escribir y el cursor se queda en el campo.
+    function fltBuscar(el) {
+      const s = document.getElementById("search"); if (s) s.value = el.value;
+      clearTimeout(window.__fltBuscarT);
+      window.__fltBuscarT = setTimeout(function () {
+        renderView();
+        const n = document.querySelector('[data-testid="flt-buscar"]');
+        if (n) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (_) {} }
+      }, 450);
+    }
     function _fltBtnHtml() {
       const n = _filtrosActivos();
-      return `<button type="button" class="bn-mode bn-flt-btn${n ? " on" : ""}" data-testid="flt-btn" onclick="toggleFiltrosTablero()" title="Filtrar las camas por especialidad, adscrito, servicio, ingresos o camas libres">🔎 Filtros${n ? " · " + n : ""}</button>`;
+      return `<button type="button" class="bn-mode bn-flt-btn${n ? " on" : ""}${window.__fltOpen ? " open" : ""}" data-testid="flt-btn" onclick="toggleFiltrosTablero()" title="Filtrar las camas por cama o nombre, especialidad, adscrito, residente, servicio, ingresos o camas libres">🔎 Filtrar camas${n ? " · " + n : ""}</button>`;
     }
     function _fltPanelHtml() {
       if (!window.__fltOpen) return "";
@@ -16508,14 +16601,15 @@ function plExportBackup() {
       const nLib = ALL_BEDS.length ? getFreeBeds().length : 0;
       const busq = (function () { const s = document.getElementById("search"); return s ? toSafeString(s.value).trim() : ""; })();
       return `<div class="bn-flt" data-testid="flt-panel">`
+        + `<label class="flt-f flt-q"><span>Cama o nombre</span><input type="search" data-testid="flt-buscar" value="${esc(busq)}" placeholder="3-15, UCI, apellido…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="fltBuscar(this)" onkeydown="if(event.key==='Enter'){clearTimeout(window.__fltBuscarT);renderView();}"/></label>`
         + sel("esp", "Especialidad", selectedEsp, cuenta(function (p) { return p.esp || ""; }))
         + sel("adscrito", "Adscrito", selectedAdscrito, cuenta(function (p) { return toSafeString(p.adscrito).trim(); }))
+        + sel("residente", "Residente", selectedResidente, cuenta(function (p) { return toSafeString(p.residente).trim(); }))
         + sel("servicio", "Servicio", selectedServicio, cuenta(servicioDe), servicioLabel)
         + `<button type="button" class="flt-t${showSoloIngresos ? " on" : ""}" data-testid="flt-ingresos" onclick="toggleFiltroIngresos()" title="Solo los que ingresaron hoy o ayer">🆕 Ingresos (${nIng})</button>`
         + (ALL_BEDS.length ? `<button type="button" class="flt-t${showLibres ? " on" : ""}" data-testid="flt-libres" onclick="toggleFiltroLibres()" title="Ver las camas libres para asignar un paciente">🛏 Libres (${nLib})</button>` : "")
         + (_soloMios ? `<button type="button" class="flt-t on" data-testid="flt-mios" onclick="toggleSoloMios()" title="Se ocultan los pacientes de Urología, Neurocirugía y Trasplantes. Toca para ver todo el piso.">🩺 Solo míos ✕</button>` : "")
-        + (selectedResidente !== "ALL" ? `<button type="button" class="flt-t on" onclick="setFiltroTablero('residente','ALL')" title="Filtro de residente puesto en el Censo">👤 ${esc(selectedResidente)} ✕</button>` : "")
-        + (busq ? `<button type="button" class="flt-t on" onclick="quitarBusqueda()" title="Búsqueda escrita en la barra de arriba">🔍 «${esc(busq.slice(0, 20))}» ✕</button>` : "")
+        + (busq ? `<button type="button" class="flt-t on" data-testid="flt-buscar-x" onclick="quitarBusqueda()" title="Quitar la búsqueda">🔍 «${esc(busq.slice(0, 20))}» ✕</button>` : "")
         + (_filtrosActivos() ? `<button type="button" class="flt-t flt-x" data-testid="flt-limpiar" onclick="quitarFiltrosTodo()">✕ Quitar filtros</button>` : "")
         + `</div>`;
     }
@@ -16827,9 +16921,12 @@ function plExportBackup() {
 
     function openAddModalWithBed(bed) {
       openAddModal();
+      // La cama va de inmediato (antes solo tras 80 ms: en un iPad ocupado se alcanzaba a ver el campo vacío) y se
+      // vuelve a poner con el foco por si el cuadro termina de armarse después.
+      const el0 = document.getElementById("mf-cama"); if (el0) el0.value = bed;
       setTimeout(() => {
         const el = document.getElementById("mf-cama");
-        if (el) { el.value = bed; el.focus(); }
+        if (el) { if (el.value !== bed && !toSafeString(el.value).trim()) el.value = bed; el.focus(); }
       }, 80);
     }
 
@@ -20134,7 +20231,7 @@ function plExportBackup() {
         const _dOpen = !!(window.__drainsOpen && window.__drainsOpen[k]);
         return `<div class="fc-bento">
       <div class="fc-main">
-      <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}</div>
+      <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}${(function () { try { return _dxPrincipalHtml(p, nd, k); } catch (_) { return ""; } })()}${_porCompletarHtml(p, nd, k)}</div>
       <div ${anchor("labs")} style="margin-top:8px">${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
       <div ${anchor("cx", "cx")} style="margin-top:8px">${renderCirugiasSection(nd, k)}</div>
       <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("🗂️ Otros (lo que no cabe en otra caja)", nd.manejo, k, "manejo", 3)}</div>
@@ -23841,7 +23938,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           noteData[pk]._egreso = sel.value;
           noteData[pk]._egresoFecha = new Date().toLocaleDateString("es-MX");
         }
-        dischargePatient(pk);
+        dischargePatient(pk, sel.value === "ALTA" ? "alta" : "defuncion");
         return;
       }
       p.estado = sel.value;
@@ -25773,8 +25870,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           }
           buildEspFilters();
           closeModal();
-          // dischargePatient maneja su propio guardado y renderView
-          dischargePatient(savedKey);
+          // dischargePatient maneja su propio guardado y renderView; el estado elegido ES el motivo del egreso.
+          dischargePatient(savedKey, p.estado === "ALTA" ? "alta" : "defuncion");
           return;
         }
         // Usuario canceló → guardar normalmente sin egresar
@@ -25790,8 +25887,20 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const p = patients.find(p => pid(p) === k); if (!p) return;
       document.getElementById("confirm-name").textContent = p.nombre;
       document.getElementById("confirm-sub").textContent = `Cama ${p.cama} · ${p.esp} · Exp: ${p.exp}`;
-      document.getElementById("confirm-btn").onclick = () => { dischargePatient(k); };
-      const tipoSel = document.getElementById("confirm-egreso-tipo"); if (tipoSel) { tipoSel.innerHTML = _egresoOpcionesHtml("", "— Sin especificar —"); tipoSel.value = ""; }
+      // Motivo obligatorio (28 oct 2026): sin él la mortalidad del registro queda «desconocida». Un toque; si no fue
+      // egreso, «No fue egreso». Las altas desde Editar o el estado ALTA/DEFUNCIÓN ya traen su motivo.
+      const tipoSel = document.getElementById("confirm-egreso-tipo"); if (tipoSel) { tipoSel.innerHTML = _egresoOpcionesHtml("", "— Elige el motivo —"); tipoSel.value = ""; }
+      const err = document.getElementById("confirm-egreso-err"); if (err) err.style.display = "none";
+      if (tipoSel && !tipoSel.__egErrBind) { tipoSel.__egErrBind = true; tipoSel.addEventListener("change", function () { const e = document.getElementById("confirm-egreso-err"); if (e && PL_EGRESO_TIPOS[tipoSel.value]) e.style.display = "none"; }); }
+      document.getElementById("confirm-btn").onclick = () => {
+        const sel = document.getElementById("confirm-egreso-tipo"), tipo = sel ? sel.value : "";
+        if (sel && !PL_EGRESO_TIPOS[tipo]) {
+          const e = document.getElementById("confirm-egreso-err"); if (e) e.style.display = "block";
+          try { if (sel.__trig) sel.__trig.click(); else sel.focus(); } catch (_) {}
+          return;
+        }
+        dischargePatient(k, tipo);
+      };
       document.getElementById("confirm-modal").style.display = "flex";
     }
     // Persistir la papelera local con manejo de cuota (compartido por egreso, import y outbox).
@@ -25829,7 +25938,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         })
         .catch(function (e) { safeLog("archive supabase error:", e); return isLikelyNetworkError(e) ? queue() : null; });
     }
-    function dischargePatient(k) {
+    // tipo: motivo del egreso (claves de PL_EGRESO_TIPOS) que eligió quien da el alta; sin él la copia queda sin motivo
+    // y lo pregunta el aviso «🚪 Egreso sin motivo». Ya no se lee el menú del cuadro aquí: podía traer el de un alta anterior.
+    function dischargePatient(k, tipo) {
       const p = patients.find(pt => pid(pt) === k);
       if (!p) { document.getElementById("confirm-modal").style.display = "none"; return; }
       suppressKey(p._supa_id || "__all__");
@@ -25837,7 +25948,6 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // La etiqueta ALTA/DEFUNCIÓN ya viene en la nota cuando el egreso sale del modal.
       const nd = noteData[k] || defaultData();
       // Motivo del egreso (27 oct 2026, registro para investigación): sin él no se puede saber si fue alta o defunción.
-      const tipoSel = document.getElementById("confirm-egreso-tipo"), tipo = tipoSel ? tipoSel.value : "";
       if (PL_EGRESO_TIPOS[tipo]) _marcarEgresoTipo(nd, tipo);
       _archivePatientRecord(p, nd, k, "EGRESO");
       // Quitar del censo activo
@@ -29303,7 +29413,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.28-1";
+    const PL_BUILD = "2026.10.28-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -29859,9 +29969,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function updateCirugia(k, id, field, val) {
       const nd = getNote(k); const c = _findCirugia(nd, id); if (!c) return;
       if (field === "fecha" && val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) return;
+      if ((field === "tipo" && val && !CX_TIPOS[val]) || (field === "abordaje" && val && !CX_ABORDAJES[val]) || (field === "clavien" && val && !CX_CLAVIEN[val])) return;
       c[field] = val;
       _saveCirugias(k, nd);
-      if (field === "fecha") _rerenderCard(k);
+      if (field === "fecha" || field === "clavien") _rerenderCard(k);   // clavien: muestra u oculta «¿Cuál?»
       else if (field === "procedimiento") _refreshPaseLine(k, nd);
     }
     // Repinta solo la línea de pase de la cabecera (sin tocar los campos en edición).
@@ -30000,6 +30111,109 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       nd.checklist.cx_det_no = arr.slice(-30);
       _saveNoteNow(k, nd, "ck_cx_det_no"); _rerenderCard(k);
     }
+    // ═══ 🩺 Diagnóstico principal de una lista corta (28 oct 2026, registro para investigación) ════════════════════════
+    // El DX es texto libre; para contar por diagnóstico se elige uno de esta lista (checklist.dx_cat). La app solo
+    // SUGIERE (botón «¿Apendicitis aguda?» según el DX): nada se elige solo. El registro pone el grupo CIE-10 y, si nadie
+    // eligió, lo infiere del DX con la misma tabla (y lo marca como inferido).
+    const DX_CATS = [
+      ["apendicitis", "Apendicitis aguda", "K35", /APENDIC/],
+      ["colecistitis", "Colecistitis / colelitiasis", "K80–K81", /COLECIST|COLELIT|LITIASIS VESICULAR|PIOCOLECIST|HIDROCOLECIST/],
+      ["coledoco", "Coledocolitiasis / colangitis", "K80.3–K80.5, K83.0", /COLEDOCOLIT|COLANGITIS|ICTERICIA OBSTRUCTIVA/],
+      ["pancreatitis", "Pancreatitis aguda", "K85", /PANCREATITIS/],
+      ["oclusion", "Oclusión intestinal", "K56", /OCLUSION|OBSTRUCCION INTESTINAL|VOLVULO|\bBRIDAS\b/],
+      ["hernia", "Hernia de pared", "K40–K46", /HERNIA|EVENTRACION/],
+      ["perforacion", "Perforación de víscera hueca", "K25–K28, K63.1", /PERFORAD|PERFORACION|NEUMOPERITONEO/],
+      ["diverticulitis", "Diverticulitis", "K57", /DIVERTICUL/],
+      ["isquemia", "Isquemia mesentérica", "K55", /ISQUEMIA (MESENTERICA|INTESTINAL)|TROMBOSIS MESENTERICA/],
+      ["hemorragia", "Hemorragia digestiva", "K92.2", /\bSTD[AB]\b|SANGRADO DE TUBO|HEMORRAGIA DIGESTIVA|MELENA|HEMATEMESIS|HEMATOQUECIA/],
+      ["trauma_abd", "Trauma abdominal", "S36", /TRAUMA (CERRADO |PENETRANTE )?(ABDOMINAL|DE ABDOMEN)|\bHPAF\b|\bHPPC\b|HERIDA POR (ARMA|PROYECTIL)|PUNZOCORTANTE/],
+      ["trauma_otro", "Trauma (otro)", "T14", /TRAUMA|POLICONTUNDID|FRACTURA|\bTCE\b/],
+      ["ca_colorrectal", "Cáncer colorrectal", "C18–C20", /(\bCA\b|CANCER|ADENOCARCINOMA|TUMOR|NEOPLASIA) (MALIGNA )?(DE |DEL )?(COLON|RECTO|SIGMOIDES|CIEGO|COLORRECTAL|UNION RECTOSIGMOIDEA)/],
+      ["ca_gastrico", "Cáncer gástrico", "C16", /(\bCA\b|CANCER|ADENOCARCINOMA|TUMOR|NEOPLASIA) (MALIGNA )?(DE |DEL )?(ESTOMAGO|GASTRIC)/],
+      ["ca_hbp", "Cáncer de hígado, vía biliar o páncreas", "C22–C25", /COLANGIOCARCINOMA|HEPATOCARCINOMA|KLATSKIN|(\bCA\b|CANCER|ADENOCARCINOMA|TUMOR|NEOPLASIA) (MALIGNA )?(DE |DEL )?(LA )?(CABEZA DE )?(PANCREAS|HIGADO|VESICULA|VIA BILIAR|AMPULA)/],
+      ["ca_mama", "Cáncer de mama", "C50", /(\bCA\b|CANCER|TUMOR|NEOPLASIA) (MALIGNA )?(DE |DEL )?(LA )?MAMA/],
+      ["ca_otro", "Otro cáncer", "C00–C97", /\bCA\b|CANCER|CARCINOMA|NEOPLASIA|LINFOMA|SARCOMA|MELANOMA|METASTA/],
+      ["pie_diabetico", "Pie diabético", "E11.5, L97", /PIE DIABETICO/],
+      ["anorrectal", "Anorrectal / pilonidal", "K60–K64, L05", /HEMORROID|FISTULA (PERIANAL|ANAL)|FISURA ANAL|ABSCESO (PERIANAL|ISQUIORRECTAL|ANORRECTAL)|PILONIDAL/],
+      ["absceso_abd", "Absceso intraabdominal / peritonitis", "K65, K75.0", /ABSCESO (HEPATICO|INTRAABDOMINAL|RESIDUAL|PELVICO|SUBFRENICO|ESPLENICO)|PERITONITIS|SEPSIS ABDOMINAL/],
+      ["tejidos_blandos", "Infección de piel y tejidos blandos", "L02–L03, M72.6", /ABSCESO|CELULITIS|FASCITIS|FOURNIER|PIOMIOSITIS|ERISIPELA|INFECCION DE TEJIDOS/],
+      ["complicacion_qx", "Complicación de una cirugía previa", "T81", /\bFUGA\b|DEHISCENCIA|EVISCERACION|INFECCION DE (SITIO|HERIDA) QUIRURGICA|\bISQ\b|FISTULA (ENTEROCUTANEA|POSTQUIRURGICA)/],
+      ["vascular", "Vascular periférico", "I70–I74", /ISQUEMIA (ARTERIAL|CRITICA|AGUDA) (DE |DEL )?(MIEMBRO|EXTREMIDAD|PIERNA)|INSUFICIENCIA ARTERIAL|OCLUSION ARTERIAL|ANEURISMA|TROMBOSIS ARTERIAL/],
+      ["tiroides", "Tiroides / paratiroides", "E04–E05, E21", /TIROID|BOCIO|PARATIROID/],
+      ["abdomen_agudo", "Abdomen agudo en estudio", "R10.0", /ABDOMEN AGUDO|DOLOR ABDOMINAL/],
+      ["otro", "Otro", "", null]
+    ];
+    const DX_CAT_MAP = {}; DX_CATS.forEach(function (c) { DX_CAT_MAP[c[0]] = c; });
+    // La categoría cuyo término aparece PRIMERO en el DX (el diagnóstico principal suele ir primero); en empate, la de
+    // la lista (lo específico antes que lo genérico: «CA DE COLON» → colorrectal, no «otro cáncer»).
+    function _dxCatSugerida(dx) {
+      const s = toSafeString(dx).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+      let mejor = "", pos = Infinity;
+      DX_CATS.forEach(function (c) { if (!c[3]) return; const m = c[3].exec(s); if (m && m.index < pos) { pos = m.index; mejor = c[0]; } });
+      return mejor;
+    }
+    function _dxPrincipalHtml(p, nd, k) {
+      const ck = (nd && nd.checklist) || {}, cur = DX_CAT_MAP[ck.dx_cat] ? ck.dx_cat : "";
+      const sug = cur ? "" : _dxCatSugerida((nd && nd.dx) || (p && p.dx));
+      const opts = '<option value="">— elegir —</option>' + DX_CATS.map(function (c) { return `<option value="${c[0]}"${c[0] === cur ? " selected" : ""}>${esc(c[1])}${c[2] ? " · " + esc(c[2]) : ""}</option>`; }).join("");
+      return `<div class="dxp-row" data-testid="dxp-row"><span class="dxp-l" title="Para el registro: el diagnóstico principal de una lista corta (con su grupo CIE-10). El DX de arriba no cambia.">🩺 Dx principal</span>`
+        + `<select class="dxp-sel" data-k="${k}" data-testid="dxp-sel" onchange="setDxPrincipal(this.dataset.k,this.value)">${opts}</select>`
+        + (sug ? `<button type="button" class="dxp-sug" data-k="${k}" data-v="${sug}" data-testid="dxp-sug" onclick="setDxPrincipal(this.dataset.k,this.dataset.v)" title="Sugerido por el DX: tócalo para elegirlo">¿${esc(DX_CAT_MAP[sug][1])}?</button>` : "")
+        + `</div>`;
+    }
+    function setDxPrincipal(k, v) {
+      if (v && !DX_CAT_MAP[v]) return;
+      const nd = getNote(k); if (!nd.checklist) nd.checklist = {};
+      if ((nd.checklist.dx_cat || "") === v) return;
+      _undoPush(k, "dx principal");
+      nd.checklist.dx_cat = v;
+      _saveNoteNow(k, nd, "ck_dx_cat"); _rerenderCard(k);
+    }
+    // ═══ 📋 Por completar (28 oct 2026): lo que le falta a la tarjeta para el registro, en una línea discreta ════════════
+    // No bloquea nada (los ingresos llegan de la hoja del censo; obligar a llenar detendría la guardia): solo lo hace
+    // visible. Desaparece cuando está completo. La misma lista, por paciente, está en la pestaña «Por completar».
+    function _porCompletar(p, nd) {
+      const ck = (nd && nd.checklist) || {}, falta = [];
+      if (!toSafeString(nd && nd.app).trim()) falta.push("APP");
+      if (!(vpNum(ck.pm_peso) > 0)) falta.push("peso");
+      if (!(vpNum(ck.pm_talla) > 0)) falta.push("talla");
+      if (!toSafeString(ck.sexo || (p && p.sexo)).trim()) falta.push("sexo");
+      if (!DX_CAT_MAP[ck.dx_cat]) falta.push("dx principal");
+      const cx = (Array.isArray(ck.cirugias) ? ck.cirugias : []).filter(function (c) { return c && (toSafeString(c.procedimiento).trim() || c.fecha); });
+      const sinClas = cx.filter(function (c) { return !CX_TIPOS[c.tipo] || !CX_ABORDAJES[c.abordaje] || !CX_CLAVIEN[c.clavien]; }).length;
+      if (sinClas) falta.push(sinClas === 1 ? "1 cirugía sin urgencia/abordaje/Clavien" : sinClas + " cirugías sin urgencia/abordaje/Clavien");
+      return falta;
+    }
+    function _porCompletarHtml(p, nd, k) {
+      let falta = []; try { falta = _porCompletar(p, nd); } catch (_) { return ""; }
+      if (!falta.length) return "";
+      return `<div class="pcomp" data-testid="por-completar" title="Para el registro de pacientes (estadística del servicio). No bloquea nada.">📋 Falta para el registro: ${esc(falta.join(" · "))}</div>`;
+    }
+    // ═══ Datos estructurados de cada cirugía (28 oct 2026, registro para investigación) ═══════════════════════════════
+    // Urgencia/electiva, abordaje y complicación (Clavien-Dindo, Ann Surg 2004) en tres menús por cirugía. Solo se llenan
+    // al elegir (nada automático); viajan en checklist.cirugias[] y el registro los cuenta (urgencias, conversión,
+    // complicación mayor ≥ IIIa).
+    const CX_TIPOS = { urgencia: "Urgencia", electiva: "Electiva (programada)" };
+    const CX_ABORDAJES = { abierta: "Abierta", laparoscopica: "Laparoscópica", convertida: "Laparoscópica convertida a abierta", endoscopica: "Endoscópica / percutánea", otro: "Otro abordaje" };
+    const CX_CLAVIEN = {
+      "0": "Sin complicación", "I": "I · desviación sin tratamiento específico (analgésico, antiemético, curación en cama)",
+      "II": "II · requirió fármacos, transfusión o NPT", "IIIa": "IIIa · reintervención o procedimiento sin anestesia general",
+      "IIIb": "IIIb · reintervención bajo anestesia general", "IVa": "IVa · falla de un órgano (UCI, incluye diálisis)",
+      "IVb": "IVb · falla orgánica múltiple (UCI)", "V": "V · muerte"
+    };
+    function _cxOpts(cat, val, vacio) {
+      return `<option value="">${esc(vacio)}</option>` + Object.keys(cat).map(function (k) { return `<option value="${esc(k)}"${k === val ? " selected" : ""}>${esc(cat[k])}</option>`; }).join("");
+    }
+    function _cxEstructuraHtml(k, c) {
+      const id = esc(String(c.id || "")), cl = toSafeString(c.clavien);
+      const con = cl && cl !== "0";
+      return `<div class="cx-r3" data-testid="cx-estructura">
+            <select class="cx-sel" data-ck="${k}" data-id="${id}" data-testid="cx-tipo" title="¿Urgencia o electiva?" onchange="updateCirugia(this.dataset.ck,this.dataset.id,'tipo',this.value)">${_cxOpts(CX_TIPOS, toSafeString(c.tipo), "Urgencia / electiva")}</select>
+            <select class="cx-sel" data-ck="${k}" data-id="${id}" data-testid="cx-abordaje" title="Abordaje" onchange="updateCirugia(this.dataset.ck,this.dataset.id,'abordaje',this.value)">${_cxOpts(CX_ABORDAJES, toSafeString(c.abordaje), "Abordaje")}</select>
+            <select class="cx-sel" data-ck="${k}" data-id="${id}" data-testid="cx-clavien" title="Complicación postoperatoria (Clavien-Dindo): el grado más alto hasta hoy" onchange="updateCirugia(this.dataset.ck,this.dataset.id,'clavien',this.value)">${_cxOpts(CX_CLAVIEN, cl, "Complicación (Clavien-Dindo)")}</select>
+            ${con ? `<input class="cx-in cx-compl" data-ck="${k}" data-id="${id}" data-f="complicacion" data-testid="cx-complicacion" value="${esc(c.complicacion || "")}" placeholder="¿Cuál? (fuga, ISQ, sangrado, absceso…)" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)"/>` : ""}
+          </div>`;
+    }
     // Renglones iniciales de una caja de Cirugías según TODO su texto (antes tope de 4 y 3: el resto quedaba oculto).
     function _cxRows(txt, perLine) { return Math.max(1, Math.min(40, toSafeString(txt).split("\n").reduce(function (n, l) { return n + Math.max(1, Math.ceil(l.length / perLine)); }, 0))); }
     function renderCirugiasSection(nd, k) {
@@ -30020,6 +30234,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             <input class="cx-in cx-sang" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(c.sangrado || "")}" placeholder="Sangrado mL" data-ck="${k}" data-id="${id}" data-f="sangrado" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value)" title="Sangrado transoperatorio"/>
             <textarea class="cx-in cx-cir" rows="${_cxRows(c.cirujano, 22)}" autocorrect="off" autocapitalize="words" spellcheck="false" placeholder="Cirujano" title="${esc(c.cirujano || "Cirujano")}" data-ck="${k}" data-id="${id}" data-f="cirujano" oninput="updateCirugia(this.dataset.ck,this.dataset.id,this.dataset.f,this.value);_autoResizeTA(this)">${esc(c.cirujano || "")}</textarea>
           </div>
+          ${_cxEstructuraHtml(k, c)}
           ${renderFotoStrip(k, "cx:" + String(c.id || ""), c.fotos, { add: true, label: "Foto de la nota postquirúrgica (cámara o galería): la IA llena los campos vacíos", tail: _cxAiTail(k, c) })}
         </div>`;
       }).join("");
