@@ -8,7 +8,7 @@
   },
   "scripts": {
     "all": "bash run_all.sh ../..",
-    "webkit": "BROWSER=webkit bash run_all.sh ../.. app_ipad app_pen app_pencil app_offline app_cajas app_sync2 app_botones",
+    "webkit": "BROWSER=webkit bash run_all.sh ../.. app_ipad app_pen app_pencil app_offline app_cajas app_sync2 app_botones app_filtros",
     "suite": "bash run_all.sh ../.."
   },
   "devDependencies": {

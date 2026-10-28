@@ -164,9 +164,11 @@ const PTS = [
     ck.dispositivos = [{ id: 'd1', tipo: 'Foley', lado: '', sitio: '', gasto: '', carac: '', fi: '' }];
     const draft = _plneBuild(p, nd);
     const aki = (pt, hist) => { const n = defaultData(); n.labHistory = hist; n.dx = pt.dx; return PLCDS.evaluate(pt, n).filter(s => s.ruleId === 'aki').map(s => s.result.stage + (s.critical ? '!' : '')); };
-    const sinBasal = aki(patients[0], [{ fecha: '2026-10-27', labs: { cr: '4.5' } }]);
-    const conBasal = aki(patients[0], [{ fecha: '2026-10-20', labs: { cr: '1.0' } }, { fecha: '2026-10-27', labs: { cr: '4.5' } }]);
-    const erc = aki(patients[1], [{ fecha: '2026-10-20', labs: { cr: '5.0' } }, { fecha: '2026-10-27', labs: { cr: '7.5' } }]);
+    // Fechas relativas a hoy: la LRA solo usa la creatinina de la última semana (28 oct 2026).
+    const dia = (d) => { const t = new Date(); t.setDate(t.getDate() - d); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+    const sinBasal = aki(patients[0], [{ fecha: dia(1), labs: { cr: '4.5' } }]);
+    const conBasal = aki(patients[0], [{ fecha: dia(8), labs: { cr: '1.0' } }, { fecha: dia(1), labs: { cr: '4.5' } }]);
+    const erc = aki(patients[1], [{ fecha: dia(8), labs: { cr: '5.0' } }, { fecha: dia(1), labs: { cr: '7.5' } }]);
     return { draft, sinBasal, conBasal, erc };
   });
   check('C7 borrador: enoxaparina sin dosis → [DOSIS Y FRECUENCIA] (ya no «40 MG CADA 24 HORAS»), pronóstico → [PRONÓSTICO], Foley → [¿PERMEABLE A DERIVACIÓN?], sin «DURACIÓN GUIADA…»; LRA: Cr 4.5 sin basal no se sugiere, con basal 1.0 es etapa 3, con ERC en hemodiálisis no se sugiere',

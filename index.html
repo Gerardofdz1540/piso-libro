@@ -1924,6 +1924,17 @@
       padding: 16px
     }
 
+    /* 28 oct 2026: los modales con class="modal" (🔔 Recordar, marcador WinLab, log de importación, ✨ Resumen) solo
+       tenían caja en modo oscuro; en modo claro el contenido flotaba sobre la página. Misma caja que .modal-box. */
+    .modal-bg > .modal {
+      background: #fff;
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
+      max-height: 92vh;
+      overflow-y: auto
+    }
+
     .modal-box {
       background: #fff;
       border-radius: 14px;
@@ -3003,6 +3014,16 @@
     .vp-res { font-size: 11px; font-weight: 800; color: #9d174d; white-space: nowrap; padding: 1px 7px; border-radius: 10px; background: #fce7f3; border: 1px solid #f9a8d4; }
     .vp-res.vp-hi, .vm-chip.vm-hi { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
     .vp-res.vp-na, .vm-chip.vm-na { background: #f1f5f9; border-color: #cbd5e1; color: #64748b; font-weight: 600; }
+    /* Índice urinario (28 oct 2026) */
+    .iu-res { font-size: 11px; font-weight: 800; white-space: nowrap; padding: 1px 7px; border-radius: 10px; margin-left: 2px; }
+    .iu-res.iu-ok { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
+    .iu-res.iu-lo { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
+    .iu-res.iu-crit { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+    .iu-res.vp-na { background: #f1f5f9; border: 1px solid #cbd5e1; color: #64748b; font-weight: 600; }
+    body.dark .iu-res.iu-ok { background: #0f2a1e; border-color: #166534; color: #86efac; }
+    body.dark .iu-res.iu-lo { background: #3a2a06; border-color: #92400e; color: #fcd34d; }
+    body.dark .iu-res.iu-crit { background: #450a0a; border-color: #b91c1c; color: #fca5a5; }
+    body.dark .iu-res.vp-na { background: #152e4d; border-color: #2f4f79; color: #9fb4d0; }
     .vp-hint { font-size: 9.5px; font-weight: 700; color: #9d174d; white-space: nowrap; }
     .vp-hint.vp-ssc { white-space: normal; flex-basis: 100%; }
     .vm-chips { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
@@ -3836,6 +3857,15 @@
 .cds-btn-apply:hover { background:#0a1628; }
 .cds-btn-ignore { background:#e2e8f0; color:#475569; }
 .cds-btn-ignore:hover { background:#cbd5e1; }
+/* Sugerencias de manejo (28 oct 2026) */
+.cds-cat { font-size:10px; font-weight:700; color:#475569; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; padding:1px 6px; white-space:nowrap; }
+.cds-why { font-size:10.5px; color:#64748b; margin:-2px 0 5px; line-height:1.35; }
+.cds-foot { font-size:10px; color:#92400e; margin-top:6px; line-height:1.35; }
+.cds-section.cds-empty .cds-foot { color:#047857; margin-top:0; }
+.cds-btn-more { margin-top:6px; background:#fff7ed; color:#9a3412; border:1px solid #fdba74; }
+.cds-btn { min-height:28px; }
+body.dark .cds-cat { background:#0f1c2e; border-color:#334155; color:#cbd5e1; }
+body.dark .cds-why { color:#94a3b8; }
 
 /* ─── Indicaciones ─── */
 .ind-section { background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%); border:1.5px solid #3b82f6; border-radius:10px; padding:10px 12px; margin-top:10px; }
@@ -4220,6 +4250,27 @@ body.dark .pl-ink-pop button{ background:#152e4d; border-color:#2f4f79; color:#e
 #board-nav .bn-idx:hover{ background:#122339; }
 /* ═══ Ficha compacta (oct 2026): barra de saltos, secciones plegables, labs en dos mitades, cabecera que se encoge ═══ */
 #board-nav{ flex-wrap:wrap; row-gap:4px; top:calc(var(--hdr-h, 0px) + 6px); }
+/* 🔎 Filtros del tablero (28 oct 2026): especialidad, adscrito, servicio, ingresos y camas libres */
+#board-nav .bn-flt-btn.on{ background:#b45309; }
+#board-nav .bn-flt{ flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; padding:6px 2px 2px; border-top:1px solid rgba(255,255,255,.14); }
+#board-nav .bn-flt .flt-f{ display:inline-flex; align-items:center; gap:5px; color:#cfe0f5; font-size:11px; font-weight:700; }
+#board-nav .bn-flt select{ font-size:12px; padding:5px 6px; min-height:34px; max-width:200px; border-radius:6px; border:1px solid #3b5d8a; background:#fff; color:#0a1628; font-family:var(--font); }
+#board-nav .bn-flt .flt-t{ font-size:12px; font-weight:700; padding:6px 10px; min-height:34px; border-radius:6px; border:1px solid #3b5d8a; background:transparent; color:#cfe0f5; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+#board-nav .bn-flt .flt-t.on{ background:#0e7490; border-color:#0e7490; color:#fff; }
+#board-nav .bn-flt .flt-x{ border-color:#f59e0b; color:#fde68a; }
+.fl-wrap{ padding:4px 2px 12px; }
+.fl-note{ font-size:12px; color:#64748b; margin:4px 0 10px; }
+.fl-grp{ margin-bottom:14px; }
+.fl-grp-h{ font-size:12px; font-weight:800; color:#334155; text-transform:uppercase; letter-spacing:.4px; margin-bottom:6px; }
+.fl-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; }
+.fl-bed{ display:flex; flex-direction:column; gap:6px; padding:10px; border:1.5px dashed #86efac; border-radius:10px; background:#f0fdf4; }
+.fl-cama{ font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:15px; font-weight:800; color:#166534; }
+.fl-add{ min-height:36px; padding:6px 8px; border:none; border-radius:7px; background:#059669; color:#fff; font-size:12px; font-weight:700; cursor:pointer; font-family:var(--font); }
+.fl-cfg{ background:none; border:1px solid #cbd5e1; border-radius:6px; padding:5px 10px; font-size:11px; color:#475569; cursor:pointer; font-family:var(--font); }
+.fl-foot{ margin-top:6px; }
+body.dark .fl-bed{ background:#0f2a1e; border-color:#166534; }
+body.dark .fl-cama{ color:#86efac; }
+body.dark .fl-grp-h{ color:#cbd5e1; }
 /* Botón de alertas en la barra + panel lateral (oct 2026) */
 #board-nav .bn-alerts{ display:inline-flex; align-items:center; gap:3px; font-size:14px; padding:5px 9px; min-height:36px; border:none; border-radius:6px; background:#2c4d77; color:#fff; cursor:pointer; font-family:var(--font); white-space:nowrap; }
 #board-nav .bn-alerts.has-crit{ background:#7f1d1d; box-shadow:0 0 0 2px rgba(220,38,38,.45); }
@@ -4532,6 +4583,25 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
     @media(max-width:560px){.hl-grid{grid-template-columns:repeat(2,1fr);gap:12px}.hl-greet{font-size:17px}}
     .ff-chart-btn{font-size:11px;font-weight:600;padding:2px 9px;border-radius:7px;border:1px solid #bae6fd;background:#f0f9ff;color:#0369a1;cursor:pointer;margin-left:8px;font-family:var(--font)}
     .ff-chart-btn:hover{background:#e0f2fe}
+    /* ✏️ Corregir labs (28 oct 2026) */
+    .ff-man{font-size:9px;color:#7c3aed;font-weight:800;margin-left:2px;vertical-align:super;cursor:help}
+    .le-dates{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 4px}
+    .le-date{font-size:12px;font-weight:700;padding:5px 10px;min-height:32px;border-radius:7px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;gap:4px}
+    .le-date.on{background:#0369a1;border-color:#0369a1;color:#fff}
+    .le-date input{font-size:12px;border:none;background:transparent;font-family:var(--font);max-width:130px}
+    .le-hint{font-size:11px;color:#64748b;margin:4px 0 8px;line-height:1.4}
+    .le-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 12px;max-height:56vh;overflow:auto;padding:2px}
+    .le-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 0;border-bottom:1px dashed #e2e8f0}
+    .le-k{flex:0 0 64px;font-size:12px;font-weight:700;color:#334155}
+    .le-in{width:84px;font-size:14px;padding:5px 7px;min-height:34px;border:1px solid #cbd5e1;border-radius:6px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+    .le-in.le-chg{border-color:#7c3aed;background:#f5f3ff;box-shadow:0 0 0 2px rgba(124,58,237,.18)}
+    .le-u{font-size:10px;color:#94a3b8}
+    .le-man{flex-basis:100%;font-size:10px;color:#7c3aed;font-weight:600}
+    body.dark .le-date{background:#0f1c2e;border-color:#334155;color:#cbd5e1}
+    body.dark .le-date.on{background:#0369a1;color:#fff}
+    body.dark .le-k{color:#cbd5e1}
+    body.dark .le-in{background:#0f1c2e;border-color:#334155;color:#e2e8f0}
+    body.dark .le-in.le-chg{background:#2e1065;border-color:#a78bfa}
     .lc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
     .lc-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:6px 8px}
     body.dark .lc-card{background:#16181d;border-color:#374151}
@@ -5267,202 +5337,784 @@ const PLCDS = (function() {
     if (["F","FEM","FEMENINO","MUJER"].indexOf(s) >= 0) return "F";
     return "";
   }
-  const RULES = [
-    { id:"hipoNa", name:"Hiponatremia", keywords:/hipo[\s-]?natremia/i,
-      check:function(labs){ const na=num(labs.na); if(!isFinite(na)||na>=135) return null;
-        const sev=na<125?"severa":(na<130?"moderada":"leve");
-        return {sev:sev,value:na,unit:"mEq/L",display:"Na "+na};}},
-    { id:"hiperNa", name:"Hipernatremia", keywords:/hiper[\s-]?natremia/i,
-      check:function(labs){ const na=num(labs.na); if(!isFinite(na)||na<145) return null;
-        const sev=na>=160?"severa":(na>=150?"moderada":"leve");
-        return {sev:sev,value:na,unit:"mEq/L",display:"Na "+na};}},
-    { id:"hipoK", name:"Hipokalemia", keywords:/hipo[\s-]?kale?mia|hipo[\s-]?potasemia/i,
-      check:function(labs){ const k=num(labs.k); if(!isFinite(k)||k>=3.5) return null;
-        const sev=k<2.5?"severa":(k<3.0?"moderada":"leve");
-        return {sev:sev,value:k,unit:"mEq/L",display:"K "+k};}},
-    { id:"hiperK", name:"Hiperkalemia", keywords:/hiper[\s-]?kale?mia|hiper[\s-]?potasemia/i,
-      critical:true, criticalIf:function(r){return r.value>=6.5;},
-      check:function(labs){ const k=num(labs.k); if(!isFinite(k)||k<5.5) return null;
-        const sev=k>=6.5?"severa":(k>=6.0?"moderada":"leve");
-        return {sev:sev,value:k,unit:"mEq/L",display:"K "+k};}},
-    { id:"anemia", name:"Anemia", keywords:/anemia/i,
-      check:function(labs,_h,p,nd){ const hb=num(labs.hb); if(!isFinite(hb)) return null;
-        const sex=getSex(p,nd); const threshold=sex==="F"?12:13;
-        if(hb>=threshold) return null;
-        let sev; if(hb<8) sev="severa"; else if(hb<11) sev="moderada"; else sev="leve";
-        return {sev:sev,value:hb,unit:"g/dL",display:"Hb "+hb};}},
-    { id:"aki", name:"Lesión renal aguda KDIGO", keywords:/(lesi[oó]n\s+renal\s+aguda|LRA|AKI|injuria\s+renal|kdigo)/i,
-      critical:true, criticalIf:function(r){return r.stage===3;},
-      // KDIGO necesita una creatinina PREVIA más baja: sin basal, o con ERC/diálisis en el diagnóstico, no se sugiere LRA
-      // (antes Cr ≥4 sin basal = etapa 3 crítica, y los pacientes en hemodiálisis salían siempre en rojo). Cr ≥4 cuenta
-      // como etapa 3 solo si subió ≥0.3 mg/dL contra la basal.
-      check:function(labs,labHistory,p,nd){ const cr=num(labs.cr); if(!isFinite(cr)) return null;
-        const dxTxt=String((nd&&nd.dx)||(p&&p.dx)||"")+" "+String((nd&&nd.app)||"");
-        if(/\b(ERC|ERCT|IRC|ERC\s*KDIGO|ENFERMEDAD\s+RENAL\s+CR[OÓ]NICA|INSUFICIENCIA\s+RENAL\s+CR[OÓ]NICA|HEMODI[AÁ]LISIS|DI[AÁ]LISIS|DPCA|TRASPLANTE\s+RENAL)\b/i.test(dxTxt)) return null;
-        const basal=getBaselineCr(labHistory);
-        if(basal===null||!(cr>basal)) return null;
-        const ratio=cr/basal; const delta=cr-basal;
-        let stage=null;
-        if((cr>=4.0&&delta>=0.3)||ratio>=3.0) stage=3;
-        else if(ratio>=2.0) stage=2;
-        else if(ratio>=1.5||delta>=0.3) stage=1;
-        if(!stage) return null;
-        return {stage:stage,sev:"stage"+stage,value:cr,basal:basal,ratio:ratio.toFixed(2),
-          display:"Cr "+cr+" (basal "+basal+", x"+ratio.toFixed(2)+")"};}},
-    { id:"trombo", name:"Trombocitopenia", keywords:/trombocitopen|plaquetopen/i,
-      check:function(labs){ const p=num(labs.plaq); if(!isFinite(p)||p>=150) return null;
-        const sev=p<50?"severa":(p<100?"moderada":"leve");
-        return {sev:sev,value:p,unit:"x10^3/uL",display:"Plaq "+p+"k"};}},
-    { id:"hipoalb", name:"Hipoalbuminemia", keywords:/hipoalbumin/i,
-      check:function(labs){ const a=num(labs.alb); if(!isFinite(a)||a>=3.5) return null;
-        const sev=a<2.5?"severa":(a<3.0?"moderada":"leve");
-        return {sev:sev,value:a,unit:"g/dL",display:"Alb "+a};}},
-    { id:"acidosis", name:"Acidosis metabólica", keywords:/acidosis\s+metab/i,
-      check:function(labs){ const hco3=num(labs.hco3); const ph=num(labs.ph);
-        if(!isFinite(hco3)||hco3>=22) return null;
-        if(isFinite(ph)&&ph>=7.45) return null;
-        const sev=hco3<15?"severa":(hco3<18?"moderada":"leve");
-        return {sev:sev,value:hco3,unit:"mEq/L",display:"HCO3 "+hco3};}},
-    { id:"hiperbil", name:"Hiperbilirrubinemia", keywords:/(hiperbilirrubin|ict[eé]ric)/i,
-      check:function(labs){ const bt=num(labs.bt); if(!isFinite(bt)||bt<=1.2) return null;
-        const sev=bt>5?"severa":(bt>3?"moderada":"leve");
-        return {sev:sev,value:bt,unit:"mg/dL",display:"Bil total "+bt};}},
-
-    /* ════════ v27 — REGLAS AMPLIADAS ════════
-     * Claves tomadas del contrato WINLAB_ALIASES (no inventadas).
-     * Umbrales = guías estándar. UNIDADES asumidas del HGL: leucos x10³/µL,
-     * glu/ca/mg/p mg/dL, lactato mmol/L. ‹‹ VALIDAR clínicamente y por unidad. */
-    { id:"leucocitosis", name:"Leucocitosis", keywords:/leucocitosis/i,
-      critical:true, criticalIf:function(r){return r.value>=20;},
-      check:function(labs){ const x=num(labs.leucos); if(!isFinite(x)||x<11) return null;
-        const sev=x>=20?"severa":(x>=15?"moderada":"leve");
-        return {sev:sev,value:x,unit:"x10\u00B3/\u00B5L",display:"Leu "+x};}},
-    { id:"leucopenia", name:"Leucopenia", keywords:/leucopenia/i,
-      critical:true, criticalIf:function(r){return r.value<1;},
-      check:function(labs){ const x=num(labs.leucos); if(!isFinite(x)||x>=4) return null;
-        const sev=x<1?"severa":(x<2?"moderada":"leve");
-        return {sev:sev,value:x,unit:"x10\u00B3/\u00B5L",display:"Leu "+x};}},
-    { id:"hiperglucemia", name:"Hiperglucemia", keywords:/hiperglucemia/i,
-      check:function(labs){ const x=num(labs.glu); if(!isFinite(x)||x<=180) return null;
-        const sev=x>400?"severa":(x>250?"moderada":"leve");
-        return {sev:sev,value:x,unit:"mg/dL",display:"Glu "+x};}},
-    { id:"hipoglucemia", name:"Hipoglucemia", keywords:/hipoglucemia/i,
-      critical:true, criticalIf:function(r){return r.value<54;},
-      check:function(labs){ const x=num(labs.glu); if(!isFinite(x)||x>=70) return null;
-        const sev=x<40?"severa":(x<54?"moderada":"leve");
-        return {sev:sev,value:x,unit:"mg/dL",display:"Glu "+x};}},
-    { id:"hiperlactatemia", name:"Hiperlactatemia", keywords:/(hiperlactat|lactato\s+elevad|acidosis\s+l[\u00E1a]ctic)/i,
-      critical:true, criticalIf:function(r){return r.value>=4;},
-      check:function(labs){ const x=num(labs.lac); if(!isFinite(x)||x<2) return null;
-        const sev=x>=4?"severa":(x>=3?"moderada":"leve");
-        return {sev:sev,value:x,unit:"mmol/L",display:"Lactato "+x};}},
-    { id:"inrelev", name:"INR prolongado", keywords:/(inr\s+prolongad|coagulopat[\u00EDi]a)/i,
-      check:function(labs){ const x=num(labs.inr); if(!isFinite(x)||x<=1.5) return null;
-        const sev=x>3?"severa":(x>2?"moderada":"leve");
-        return {sev:sev,value:x,unit:"",display:"INR "+x};}},
-    { id:"hipocalcemia", name:"Hipocalcemia", keywords:/hipocalcemia/i,
-      critical:true, criticalIf:function(r){return r.value<7;},
-      check:function(labs){ const ca=num(labs.ca); if(!isFinite(ca)) return null;
-        const alb=num(labs.alb); let val=ca, disp="Ca "+ca;
-        if(isFinite(alb)){ val=Math.round((ca+0.8*(4.0-alb))*100)/100; disp="Ca corr "+val+" (Ca "+ca+", Alb "+alb+")"; }
-        if(val>=8.5) return null;
-        const sev=val<7?"severa":(val<7.5?"moderada":"leve");
-        return {sev:sev,value:val,unit:"mg/dL",display:disp};}},
-    { id:"hipercalcemia", name:"Hipercalcemia", keywords:/hipercalcemia/i,
-      critical:true, criticalIf:function(r){return r.value>=14;},
-      check:function(labs){ const ca=num(labs.ca); if(!isFinite(ca)||ca<=10.5) return null;
-        const sev=ca>=14?"severa":(ca>=12?"moderada":"leve");
-        return {sev:sev,value:ca,unit:"mg/dL",display:"Ca "+ca};}},
-    { id:"hipomagnesemia", name:"Hipomagnesemia", keywords:/hipomagnesemia/i,
-      check:function(labs){ const x=num(labs.mg); if(!isFinite(x)||x>=1.7) return null;
-        const sev=x<1?"severa":(x<1.4?"moderada":"leve");
-        return {sev:sev,value:x,unit:"mg/dL",display:"Mg "+x};}},
-    { id:"hipofosfatemia", name:"Hipofosfatemia", keywords:/hipofosfatemia/i,
-      check:function(labs){ const x=num(labs.p); if(!isFinite(x)||x>=2.5) return null;
-        const sev=x<1?"severa":(x<2?"moderada":"leve");
-        return {sev:sev,value:x,unit:"mg/dL",display:"P "+x};}},
-    { id:"hepatocelular", name:"Elevaci\u00F3n de transaminasas", keywords:/(hipertransaminas|lesi[\u00F3o]n\s+hepatocelular|elevaci[\u00F3o]n.*transaminas)/i,
-      check:function(labs){ const ast=num(labs.ast); const alt=num(labs.alt);
-        const v=Math.max(isFinite(ast)?ast:0, isFinite(alt)?alt:0); if(v<120) return null;
-        const sev=v>=400?"severa":(v>=200?"moderada":"leve");
-        const disp=(isFinite(alt)?"ALT "+alt:"")+(isFinite(ast)?((isFinite(alt)?" / ":"")+"AST "+ast):"");
-        return {sev:sev,value:v,unit:"U/L",display:disp};}},
-    { id:"hiperamilasemia", name:"Hiperamilasemia", keywords:/(hiperamilasemia|amilasa\s+elevad)/i,
-      check:function(labs){ const x=num(labs.amilasa); if(!isFinite(x)||x<=110) return null;
-        const sev=x>=550?"severa":(x>=330?"moderada":"leve");
-        return {sev:sev,value:x,unit:"U/L",display:"Amilasa "+x};}},
-    { id:"hiperlipasemia", name:"Hiperlipasemia", keywords:/(hiperlipasemia|lipasa\s+elevad|pancreatitis)/i,
-      check:function(labs){ const x=num(labs.lipasa); if(!isFinite(x)||x<=300) return null;
-        const sev=x>=1500?"severa":(x>=900?"moderada":"leve");
-        return {sev:sev,value:x,unit:"U/L",display:"Lipasa "+x};}},
-    { id:"pcrElevada", name:"PCR elevada", keywords:/(pcr\s+elevad|prote[\u00EDi]na\s+c\s+reactiva)/i,
-      check:function(labs){ const x=num(labs.pcr); if(!isFinite(x)||x<50) return null;
-        const sev=x>=100?"severa":"moderada";
-        return {sev:sev,value:x,unit:"mg/L",display:"PCR "+x};}}
-  ];
-  function buildSuggestion(rule,result,dx){
-    if(!rule.keywords) return null;
-    const dxStr=(dx||"").toString();
-    const grade_re=/(leve|moderada|moderado|severa|severo|grave)/i;
-    const matchKw=dxStr.match(rule.keywords);
-    if(matchKw){
-      const around=dxStr.slice(Math.max(0,matchKw.index-5),Math.min(dxStr.length,matchKw.index+matchKw[0].length+40));
-      const gm=around.match(grade_re);
-      const currentGrade=gm?gm[0].toLowerCase():null;
-      const norm=function(g){
-        if(!g) return null; g=g.toLowerCase();
-        if(g==="moderado") return "moderada";
-        if(g==="severo"||g==="grave") return "severa";
-        return g;
-      };
-      const cur=norm(currentGrade); const tgt=norm(result.sev);
-      if(cur&&tgt&&cur!==tgt){
-        return {type:"reclasify",
-          text:"Reclasificar "+rule.name.toLowerCase()+" "+cur+" -> "+tgt+" ("+(result.display||result.value)+")",
-          from:cur,to:tgt};
-      }
-      if(!cur&&tgt){
-        return {type:"specify",
-          text:"Especificar grado: "+rule.name.toLowerCase()+" "+tgt+" ("+(result.display||result.value)+")",
-          to:tgt};
-      }
-      return null;
+  /* ════ Sugerencias de MANEJO (28 oct 2026, pedido de Gera) ════
+   * Antes cada regla repetía un laboratorio y proponía «Agregar al dx: Leucocitosis severa» o «PCR elevada severa»
+   * (un hallazgo de laboratorio no es un diagnóstico). Ahora solo sale lo que cambia el manejo, cruzando los labs con
+   * las indicaciones del Doc, la tarjeta (ATB, TVP, NPT, ayuno, peso, vitales, uresis) y los cultivos de WinLab:
+   *   · antibiograma contra el antibiótico en uso (resistencia, sin cobertura, desescalar);
+   *   · transfusión según Hb, edad, cardiopatía, sangrado y choque; caída de Hb; plaquetas con heparina;
+   *   · corrección de electrolitos con su contexto (Mg, fármacos, soluciones, pérdidas, límites de corrección);
+   *   · insulina en diabéticos (hipoglucemia, solo esquema, basal insuficiente, ayuno, esteroide, NPT, orales);
+   *   · interacciones y duplicados de las indicaciones; ajuste renal; LRA con nefrotóxicos; oliguria por índice urinario.
+   * Todo dice «considerar»: la app no conoce alergias ni todo el contexto. Las cifras son de guías citadas (umbrales de Hb,
+   * límites de corrección, U/kg de la ADA, déficit de agua); no se escriben dosis de fármacos. */
+  function N(s) { return String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase(); }
+  function hoy() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function fechaD(f) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f || "")); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; }
+  function diasDesde(f) { const a = fechaD(f); if (!a) return null; const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((t - a) / 86400000); }
+  function diasEntre(f1, f2) { const a = fechaD(f1), b = fechaD(f2); return (a && b) ? Math.round((b - a) / 86400000) : null; }
+  const MES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  function fc(f) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(f || "")); return m ? (+m[3]) + " " + MES[+m[2] - 1] : ""; }
+  function r1(n) { return String(Math.round(n * 10) / 10); }
+  function r2(n) { return String(Math.round(n * 100) / 100); }
+  function lista(arr) { arr = arr.filter(Boolean); if (arr.length <= 1) return arr.join(""); return arr.slice(0, -1).join(", ") + " y " + arr[arr.length - 1]; }
+  // ¿Lo menciona sin negarlo? («sin sangrado activo», «niega melena» no cuentan)
+  function menciona(re, s) {
+    const g = new RegExp(re.source, "g"); let m;
+    while ((m = g.exec(s))) {
+      const antes = s.slice(Math.max(0, m.index - 16), m.index);
+      if (!/\b(SIN|NIEGA|NO|NI|DESCART\w*|NEGATIV\w*)\s+(\w+\s+)?$/.test(antes)) return true;
+      if (g.lastIndex === m.index) g.lastIndex++;
     }
-    return {type:"add",
-      text:"Agregar al dx: "+rule.name+" "+result.sev+" ("+(result.display||result.value)+")",
-      to:result.sev};
+    return false;
   }
-  function valueHash(result){
-    if(!result) return "";
-    if(typeof result.value==="number") return String(Math.round(result.value*10)/10);
-    if(result.stage) return "stage"+result.stage+":"+result.ratio;
+  function labsConFecha(nd) {
+    const hist = ((nd && nd.labHistory) || []).filter(function (s) { return s && s.labs && s.fecha; }).slice().sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
+    const out = {};
+    hist.forEach(function (s) { Object.keys(s.labs).forEach(function (key) { if (out[key]) return; const v = s.labs[key]; if (v === undefined || v === null || String(v).trim() === "") return; out[key] = { v: v, f: s.fecha }; }); });
+    return out;
+  }
+  function serie(nd, key) {
+    return ((nd && nd.labHistory) || []).filter(function (s) { return s && s.labs && s.fecha && isFinite(num(s.labs[key])); })
+      .map(function (s) { return { f: s.fecha, n: num(s.labs[key]) }; }).sort(function (a, b) { return String(a.f).localeCompare(String(b.f)); });
+  }
+
+  // ── Catálogo de fármacos (texto de indicaciones en mayúsculas, sin acentos) ──
+  // cls: atb antibacteriano · afung antifúngico · pen/ceph1-4/bli/carba/mono betalactámicos · anaer cubre anaerobios ·
+  // renal requiere ajuste renal · nefro nefrotóxico · qt prolonga QT · seroto serotoninérgico · kup sube K · kdown baja K.
+  const D = [
+    ["ampi_sulb", "ampicilina/sulbactam", /AMPICILINA\s*(\/|-|CON|Y)?\s*SULBACTAM|\bUNASYNA?\b/, "atb bli anaer renal"],
+    ["amox_clav", "amoxicilina/clavulanato", /AMOXICILINA\s*(\/|-|CON|Y)?\s*(AC(IDO)?\.?\s*)?CLAVUL|\bAMOX\w*\s*\/\s*CLAV|CLAVULANATO|\bAUGMENTIN\b/, "atb bli anaer"],
+    ["ampicilina", "ampicilina", /\bAMPICILINA\b(?!\s*(\/|-|CON|Y)?\s*SULBACTAM)/, "atb pen renal"],
+    ["amoxicilina", "amoxicilina", /\bAMOXICILINA\b(?!\s*(\/|-|CON|Y)?\s*(AC(IDO)?\.?\s*)?CLAVUL)/, "atb pen"],
+    ["oxacilina", "oxacilina/dicloxacilina", /\bOXACILINA\b|DICLOXACILINA/, "atb pen"],
+    ["penicilina", "penicilina", /\bPENICILINA\b|BENCILPENICILINA/, "atb pen"],
+    ["pip_tazo", "piperacilina/tazobactam", /PIPERACILINA|TAZOBACTAM|\bPIP\s*(\/|-)?\s*TAZ/, "atb bli anaer amplio renal"],
+    ["cefazolina", "cefazolina", /CEFAZOLINA/, "atb ceph1 renal"],
+    ["cefalotina", "cefalotina", /CEFALOTINA|CEFALEXINA/, "atb ceph1"],
+    ["cefoxitina", "cefoxitina", /CEFOXITINA/, "atb ceph2"],
+    ["cefuroxima", "cefuroxima", /CEFUROXIMA/, "atb ceph2 renal"],
+    ["ceftriaxona", "ceftriaxona", /CEFTRIAXONA/, "atb ceph3"],
+    ["cefotaxima", "cefotaxima", /CEFOTAXIMA/, "atb ceph3"],
+    ["ceftaz_avi", "ceftazidima/avibactam", /AVIBACTAM/, "atb amplio renal"],
+    ["ceftazidima", "ceftazidima", /CEFTAZIDIMA(?!\s*(\/|-|CON|Y)?\s*AVIBACTAM)/, "atb ceph3 amplio renal"],
+    ["cefepime", "cefepime", /CEFEPIM[AE]?\b/, "atb ceph4 amplio renal"],
+    ["ertapenem", "ertapenem", /ERTAPENEM/, "atb carba anaer renal"],
+    ["meropenem", "meropenem", /MEROPENEM/, "atb carba anaer amplio renal"],
+    ["imipenem", "imipenem", /IMIPENEM/, "atb carba anaer amplio renal"],
+    ["aztreonam", "aztreonam", /AZTREONAM/, "atb mono renal"],
+    ["vancomicina", "vancomicina", /VANCOMICINA/, "atb glyco mrsa nefro renal"],
+    ["teicoplanina", "teicoplanina", /TEICOPLANINA/, "atb glyco mrsa renal"],
+    ["linezolid", "linezolid", /LINEZOLID/, "atb mrsa seroto"],
+    ["daptomicina", "daptomicina", /DAPTOMICINA/, "atb mrsa renal"],
+    ["ciprofloxacino", "ciprofloxacino", /CIPROFLOXACIN[OA]/, "atb fq qt renal"],
+    ["levofloxacino", "levofloxacino", /LEVOFLOXACIN[OA]/, "atb fq qt renal"],
+    ["moxifloxacino", "moxifloxacino", /MOXIFLOXACIN[OA]/, "atb fq qt anaer"],
+    ["amikacina", "amikacina", /AMIKACINA/, "atb amg nefro renal"],
+    ["gentamicina", "gentamicina", /GENTAMICINA/, "atb amg nefro renal"],
+    ["clindamicina", "clindamicina", /CLINDAMICINA/, "atb anaer"],
+    ["metronidazol", "metronidazol", /METRONIDAZOL/, "atb anaer"],
+    ["tmp_smx", "trimetoprim/sulfametoxazol", /TRIMETOPRIM|SULFAMETOXAZOL|\bTMP\s*(\/|-)?\s*SMX|\bBACTRIM\b/, "atb kup renal"],
+    ["nitrofurantoina", "nitrofurantoína", /NITROFURANTOINA/, "atb renal"],
+    ["fosfomicina", "fosfomicina", /FOSFOMICINA/, "atb"],
+    ["tigeciclina", "tigeciclina", /TIGECICLINA/, "atb anaer"],
+    ["colistina", "colistina", /COLISTINA|POLIMIXINA/, "atb nefro renal"],
+    ["doxiciclina", "doxiciclina", /DOXICICLINA|MINOCICLINA/, "atb"],
+    ["azitromicina", "azitromicina", /AZITROMICINA/, "atb qt"],
+    ["claritromicina", "claritromicina", /CLARITROMICINA/, "atb qt"],
+    ["eritromicina", "eritromicina", /ERITROMICINA/, "atb qt"],
+    ["fluconazol", "fluconazol", /FLUCONAZOL/, "afung qt renal"],
+    ["voriconazol", "voriconazol", /VORICONAZOL/, "afung qt"],
+    ["equinocandina", "equinocandina", /CASPOFUNGINA|MICAFUNGINA|ANIDULAFUNGINA/, "afung"],
+    ["anfotericina", "anfotericina B", /ANFOTERICINA/, "afung nefro kdown"],
+    ["aciclovir", "aciclovir", /ACICLOVIR|GANCICLOVIR/, "nefro renal"],
+    ["omeprazol", "omeprazol", /\bOMEPRAZOL/, "ibp"],
+    ["esomeprazol", "esomeprazol", /ESOMEPRAZOL/, "ibp"],
+    ["pantoprazol", "pantoprazol", /PANTOPRAZOL/, "ibp"],
+    ["lansoprazol", "lansoprazol", /LANSOPRAZOL|RABEPRAZOL/, "ibp"],
+    ["ranitidina", "ranitidina", /RANITIDINA|FAMOTIDINA/, "h2 renal"],
+    ["ketorolaco", "ketorolaco", /KETOROLACO/, "aine nefro"],
+    ["diclofenaco", "diclofenaco", /DICLOFENACO/, "aine nefro"],
+    ["ibuprofeno", "ibuprofeno", /IBUPROFENO/, "aine nefro"],
+    ["naproxeno", "naproxeno", /NAPROXENO/, "aine nefro"],
+    ["ketoprofeno", "ketoprofeno", /KETOPROFENO/, "aine nefro"],
+    ["meloxicam", "meloxicam", /MELOXICAM|PIROXICAM/, "aine nefro"],
+    ["indometacina", "indometacina", /INDOMETACINA/, "aine nefro"],
+    ["coxib", "coxib", /CELECOXIB|PARECOXIB|ETORICOXIB/, "aine nefro"],
+    ["metamizol", "metamizol", /METAMIZOL|DIPIRONA/, "analg"],
+    ["paracetamol", "paracetamol", /PARACETAMOL|ACETAMINOFEN/, "paracetamol"],
+    ["enoxaparina", "enoxaparina", /ENOXAPARINA|CLEXANE|HEPARINA\s+DE\s+BAJO\s+PESO/, "anticoag hep renal"],
+    ["heparina", "heparina no fraccionada", /\bHEPARINA\b(?!\s+DE\s+BAJO)/, "anticoag hep kup"],
+    ["fondaparinux", "fondaparinux", /FONDAPARINUX/, "anticoag renal"],
+    ["rivaroxaban", "rivaroxabán", /RIVAROXABAN/, "anticoag renal"],
+    ["apixaban", "apixabán", /APIXABAN/, "anticoag renal"],
+    ["dabigatran", "dabigatrán", /DABIGATRAN/, "anticoag renal"],
+    ["warfarina", "warfarina", /WARFARINA/, "anticoag avk"],
+    ["acenocumarol", "acenocumarol", /ACENOCUMAR/, "anticoag avk"],
+    ["aspirina", "ácido acetilsalicílico", /\bASPIRINA\b|ACIDO\s+ACETILSALICILICO|\bAAS\b/, "antiag"],
+    ["clopidogrel", "clopidogrel", /CLOPIDOGREL/, "antiag"],
+    ["nalbufina", "nalbufina", /NALBUFINA/, "opioide opmix"],
+    ["buprenorfina", "buprenorfina", /BUPRENORFINA/, "opioide opmix"],
+    ["morfina", "morfina", /\bMORFINA\b/, "opioide renal"],
+    ["tramadol", "tramadol", /TRAMADOL/, "opioide seroto renal"],
+    ["fentanilo", "fentanilo", /FENTANIL/, "opioide seroto"],
+    ["oxicodona", "oxicodona", /OXICODONA/, "opioide"],
+    ["hidromorfona", "hidromorfona", /HIDROMORFONA/, "opioide"],
+    ["metadona", "metadona", /METADONA/, "opioide qt seroto"],
+    ["tapentadol", "tapentadol", /TAPENTADOL/, "opioide seroto"],
+    ["midazolam", "midazolam", /MIDAZOLAM/, "benzo"],
+    ["diazepam", "diazepam", /DIAZEPAM/, "benzo"],
+    ["lorazepam", "lorazepam", /LORAZEPAM/, "benzo"],
+    ["clonazepam", "clonazepam", /CLONAZEPAM/, "benzo"],
+    ["alprazolam", "alprazolam", /ALPRAZOLAM/, "benzo"],
+    ["ondansetron", "ondansetrón", /ONDANSETRON/, "a5ht3 qt"],
+    ["granisetron", "granisetrón", /GRANISETRON|PALONOSETRON/, "a5ht3"],
+    ["metoclopramida", "metoclopramida", /METOCLOPRAMIDA/, "adop renal"],
+    ["haloperidol", "haloperidol", /HALOPERIDOL/, "adop qt"],
+    ["droperidol", "droperidol", /DROPERIDOL/, "adop qt"],
+    ["quetiapina", "quetiapina", /QUETIAPINA/, "qt"],
+    ["domperidona", "domperidona", /DOMPERIDONA/, "qt"],
+    ["amiodarona", "amiodarona", /AMIODARONA/, "qt"],
+    ["hidroxicloroquina", "hidroxicloroquina", /HIDROXICLOROQUINA/, "qt"],
+    ["sertralina", "sertralina", /SERTRALINA/, "isrs seroto"],
+    ["fluoxetina", "fluoxetina", /FLUOXETINA/, "isrs seroto"],
+    ["paroxetina", "paroxetina", /PAROXETINA/, "isrs seroto"],
+    ["citalopram", "citalopram", /CITALOPRAM/, "isrs seroto qt"],
+    ["venlafaxina", "venlafaxina", /VENLAFAXINA|DULOXETINA|DESVENLAFAXINA/, "isrs seroto"],
+    ["digoxina", "digoxina", /DIGOXINA/, "digox renal"],
+    ["valproato", "ácido valproico", /VALPRO/, "valpro"],
+    ["gabapentina", "gabapentina/pregabalina", /GABAPENTINA|PREGABALINA/, "renal"],
+    ["ieca", "IECA", /ENALAPRIL|CAPTOPRIL|LISINOPRIL|RAMIPRIL|PERINDOPRIL/, "ieca kup nefro"],
+    ["ara2", "ARA II", /LOSARTAN|VALSARTAN|TELMISARTAN|IRBESARTAN|CANDESARTAN|OLMESARTAN/, "ieca kup nefro"],
+    ["espironolactona", "espironolactona", /ESPIRONOLACTONA|EPLERENONA/, "kup renal"],
+    ["furosemida", "furosemida", /FUROSEMIDA|BUMETANIDA/, "diurasa kdown"],
+    ["tiazida", "tiazida", /HIDROCLOROTIAZIDA|CLORTALIDONA|INDAPAMIDA/, "kdown"],
+    ["kcl", "potasio (KCl)", /\bKCL\b|CLORURO\s+DE\s+POTASIO|FOSFATO\s+DE\s+POTASIO|\bK\s*\d{1,2}\s*MEQ/, "kcl kup"],
+    ["metformina", "metformina", /METFORMINA/, "metformina"],
+    ["sulfonilurea", "sulfonilurea", /GLIBENCLAMIDA|GLIMEPIRIDA|GLIPIZIDA|GLICLAZIDA/, "sulfonil"],
+    ["isglt2", "iSGLT2", /EMPAGLIFLOZINA|DAPAGLIFLOZINA|CANAGLIFLOZINA/, "isglt2"],
+    ["idpp4", "iDPP-4", /SITAGLIPTINA|LINAGLIPTINA|SAXAGLIPTINA|VILDAGLIPTINA/, "oral_dm"],
+    ["esteroide", "esteroide", /DEXAMETASONA|HIDROCORTISONA|METILPREDNISOLONA|PREDNISONA|PREDNISOLONA/, "esteroide"]
+  ].map(function (r) { return { id: r[0], n: r[1], re: r[2], cls: r[3].split(" ") }; });
+  const DRUG = {}; D.forEach(function (d) { DRUG[d.id] = d; });
+  function tiene(d, c) { return !!(d && d.cls.indexOf(c) >= 0); }
+  const SUSP = /\bSUSP(\b|\.|END)|\bRETIRA(R|DO|DA)?\b|\bYA NO\b/;   // «SUSPENSIÓN» es forma farmacéutica: no cuenta
+  function atbId(s) {
+    const t = N(s).replace(/\(SDD[^)]*\)/g, " ");
+    for (let i = 0; i < D.length; i++) { if ((tiene(D[i], "atb") || tiene(D[i], "afung")) && D[i].re.test(t)) return D[i].id; }
+    return "";
+  }
+
+  // ── Lo que recibe el paciente: indicaciones del Doc (si coinciden con certeza) + ATB/TVP de la tarjeta ──
+  function medsDe(p, nd, ck) {
+    const out = [];
+    let ind = null;
+    try { ind = (typeof PLIndicaciones !== "undefined" && p) ? PLIndicaciones.getForPatient(p) : null; } catch (_) { ind = null; }
+    if (ind && !ind._matchWarn) {
+      const src = "indicaciones" + (ind.fecha ? " del " + fc(ind.fecha) : "");
+      ["MEDICAMENTOS", "ANTIBIÓTICOS", "SOLUCIONES"].forEach(function (sec) {
+        (Array.isArray(ind[sec]) ? ind[sec] : []).forEach(function (t) { if (t && !SUSP.test(N(t))) out.push({ txt: String(t), sec: sec, src: src, doc: true }); });
+      });
+    }
+    if (ck.atb && String(ck.atb_nombre || "").trim()) out.push({ txt: String(ck.atb_nombre), sec: "ANTIBIÓTICOS", src: "ATB de la tarjeta" });
+    if (ck.tvp && ck.tvp_tipo === "enoxaparina") out.push({ txt: "ENOXAPARINA " + String(ck.tvp_dosis || ""), sec: "MEDICAMENTOS", src: "TVP de la tarjeta" });
+    if (ck.tvp && ck.tvp_tipo === "otro" && String(ck.tvp_otro || "").trim()) out.push({ txt: String(ck.tvp_otro), sec: "MEDICAMENTOS", src: "TVP de la tarjeta" });
+    const medidas = (ind && !ind._matchWarn && Array.isArray(ind["MEDIDAS GENERALES"])) ? ind["MEDIDAS GENERALES"].join(" | ") : "";
+    return { lineas: out, hayDoc: out.some(function (m) { return m.doc; }), medidas: N(medidas) };
+  }
+  // Familias: en el texto va el fármaco que de verdad dice la indicación («enalapril», no «IECA»).
+  const FAMILIA = { ieca: 1, ara2: 1, sulfonilurea: 1, isglt2: 1, idpp4: 1, esteroide: 1, tiazida: 1, coxib: 1, meloxicam: 1, lansoprazol: 1, ranitidina: 1, equinocandina: 1, venlafaxina: 1, gabapentina: 1, granisetron: 1, espironolactona: 1, furosemida: 1, doxiciclina: 1, colistina: 1, cefalotina: 1, oxacilina: 1, aciclovir: 1 };
+  function drogasDe(lineas) {
+    const vistos = {}, docVeces = {}, out = [];
+    lineas.forEach(function (m) {
+      const t = N(m.txt);
+      D.forEach(function (d) {
+        const mt = t.match(d.re); if (!mt) return;
+        if (m.doc) docVeces[d.id] = (docVeces[d.id] || 0) + 1;
+        if (vistos[d.id]) return;
+        vistos[d.id] = 1; out.push({ id: d.id, d: d, n: FAMILIA[d.id] ? mt[0].toLowerCase() : d.n, src: m.src, linea: m.txt });
+      });
+    });
+    return { lista: out, docVeces: docVeces };
+  }
+  function insulinaDe(lineas) {
+    const r = { basal: false, prandial: false, escala: false, any: false };
+    lineas.forEach(function (m) {
+      const t = N(m.txt);
+      if (!/INSULINA|GLARGINA|\bNPH\b|DETEMIR|DEGLUDEC|LISPRO|ASPART|GLULISINA|LANTUS|TOUJEO|LEVEMIR|TRESIBA|HUMALOG|NOVORAPID|APIDRA|HUMULIN|ACTRAPID/.test(t)) return;
+      r.any = true;
+      if (/GLARGINA|DETEMIR|DEGLUDEC|\bNPH\b|INTERMEDIA|LANTUS|TOUJEO|LEVEMIR|TRESIBA|HUMULIN\s*N\b/.test(t)) r.basal = true;
+      if (/ESQUEMA|ESCALA|SEGUN\s+(LA\s+)?(DXTX|DEXTROSTIX|DESTROSTIX|GLUCOMETR\w*|GLUCEMIA|GLUCOSA|CAPILAR)|CORRECCION|MOVIL|RESCATE/.test(t)) r.escala = true;
+      else if (/LISPRO|ASPART|GLULISINA|HUMALOG|NOVORAPID|APIDRA|RAPIDA|REGULAR|HUMULIN\s*R\b|ACTRAPID/.test(t) && /PREPRANDIAL|ANTES\s+DE|CON\s+(EL\s+)?(DESAYUNO|COMIDA|CENA|ALIMENTOS?)|C\/\s*ALIMENTO|PRANDIAL/.test(t)) r.prandial = true;
+      else if (!r.basal && !/GLARGINA|DETEMIR|DEGLUDEC|NPH/.test(t)) r.escala = true;   // «insulina rápida» sin horario fijo ≈ corrección
+    });
+    return r;
+  }
+
+  // ── Contexto del paciente ──
+  function ctxDe(p, nd) {
+    const ck = (nd && nd.checklist) || {};
+    const L = labsConFecha(nd);
+    const lab = function (key, maxDias) {
+      const e = L[key]; if (!e) return null; const n = num(e.v); if (!isFinite(n)) return null;
+      const d = diasDesde(e.f); if (maxDias != null && d !== null && d > maxDias) return null;
+      return { n: n, f: e.f, d: d };
+    };
+    const dx = N((nd && nd.dx) || (p && p.dx) || "");
+    const txt = dx + " \n " + N((nd && nd.app) || "") + " \n " + N((nd && nd.pa) || "");
+    const clin = N(((nd && nd.pendientes) || "") + " \n " + ((nd && nd.manejo) || ""));
+    const actual = dx + " \n " + N((nd && nd.pa) || "") + " \n " + clin;   // lo de ESTE internamiento (sin APP: un STDA de hace años no cuenta)
+    const ed = parseInt(String((p && p.edad) || "").replace(/[^\d]/g, ""), 10);
+    const pe = num(ck.pm_peso);
+    const meds = medsDe(p, nd, ck);
+    const dr = drogasDe(meds.lineas);
+    let k = ""; try { k = (typeof pid === "function" && p) ? pid(p) : ""; } catch (_) {}
+    let pop = null; try { pop = (typeof popDays === "function") ? popDays(nd) : null; } catch (_) {}
+    const ta = /(\d{2,3})\s*[\/\\-]\s*(\d{2,3})/.exec(String(ck.pm_ta || ""));
+    const vitHoy = !ck.pm_fecha || ck.pm_fecha === hoy();
+    return {
+      p: p, nd: nd, ck: ck, L: L, lab: lab, dx: dx, txt: txt, clin: clin, k: k, pop: pop,
+      edad: (isFinite(ed) && ed > 0 && ed < 120) ? ed : null, peso: (pe >= 2 && pe <= 400) ? pe : null, sexo: getSex(p, nd),
+      actual: actual, meds: meds.lineas, hayDoc: meds.hayDoc, medidas: meds.medidas, drogas: dr.lista, docVeces: dr.docVeces, ins: insulinaDe(meds.lineas),
+      sis: (ta && vitHoy) ? +ta[1] : null, fcar: vitHoy ? num(ck.pm_fc) : NaN,
+      choque: !!(ck.vp_nore_on || ck.vp_vaso_on),
+      dm: /\bDM\s*(1|2|I{1,2}|T1|T2|TIPO)?\b|DIABET/.test(txt) && !/INSIPIDA/.test(txt),
+      cirros: /CIRROSIS|HEPATOPATIA|INSUFICIENCIA HEPATICA|ALCOHOLISMO|ETILISMO/.test(txt)
+    };
+  }
+  function con(ctx, c) { return ctx.drogas.filter(function (x) { return tiene(x.d, c); }); }
+  function conId(ctx, ids) { return ctx.drogas.filter(function (x) { return ids.indexOf(x.id) >= 0; }); }
+  function nombres(arr) { return lista(arr.map(function (x) { return x.n || x.d.n; })); }
+  function fuentes(arr) { const s = []; arr.forEach(function (x) { if (s.indexOf(x.src) < 0) s.push(x.src); }); return s.join(" + "); }
+  // Función renal: Cockcroft-Gault con peso real; sin peso, CKD-EPI 2021. Sin sexo se usa el factor femenino (más bajo).
+  function funcionRenal(ctx, cr) {
+    if (!(cr > 0) || !ctx.edad) return null;
+    const fem = ctx.sexo !== "M";
+    if (ctx.peso) return { v: (140 - ctx.edad) * ctx.peso / (72 * cr) * (fem ? 0.85 : 1), m: "ClCr (Cockcroft-Gault" + (ctx.sexo ? "" : ", sin sexo: factor femenino") + ")" };
+    const kk = fem ? 0.7 : 0.9, a = fem ? -0.241 : -0.302;
+    const v = 142 * Math.pow(Math.min(cr / kk, 1), a) * Math.pow(Math.max(cr / kk, 1), -1.2) * Math.pow(0.9938, ctx.edad) * (fem ? 1.012 : 1);
+    return { v: v, m: "TFGe (CKD-EPI 2021" + (ctx.sexo ? "" : ", sin sexo: fórmula femenina") + ")" };
+  }
+  function iuHoy(ctx) {
+    try {
+      if (typeof iuCalc !== "function") return null;
+      if (ctx.ck.pm_fecha && ctx.ck.pm_fecha !== hoy()) return null;
+      return iuCalc(ctx.ck.pm_uresis, ctx.ck.pm_peso, ctx.ck.pm_uresis_h);
+    } catch (_) { return null; }
+  }
+  // sug(): una sugerencia. id único por regla (+ detalle), cat = etiqueta corta del tipo, texto = qué considerar, por = datos.
+  function sug(ruleId, cat, nombre, sev, texto, por, corto, hash, critical, result) {
+    return { ruleId: ruleId, ruleName: nombre, cat: cat, severity: sev, critical: !!critical, result: result || {},
+      suggestion: { type: "manejo", text: texto, why: por || "", short: corto || nombre }, valueHash: String(hash == null ? "" : hash).replace(/[^\w:.,|>+-]/g, "_") };
+  }
+
+  // ════ 🦠 Cultivos y antibiograma ════
+  function partir(s) { return String(s || "").split(/[,;\n]+/).map(function (x) { return x.trim(); }).filter(Boolean); }
+  function cultivosDe(ctx) {
+    const res = [], vistos = {};
+    const add = function (c) { const key = N(c.tipo + "|" + c.germen + "|" + c.fecha); if (vistos[key]) return; vistos[key] = 1; res.push(c); };
+    let wl = [];
+    try { wl = (typeof _winlabCultByK !== "undefined" && ctx.k && _winlabCultByK[ctx.k]) ? _winlabCultByK[ctx.k] : []; } catch (_) { wl = []; }
+    (wl || []).forEach(function (c) {
+      if (!c || !c.positivo) return;
+      const d = diasDesde(c.fecha); if (d !== null && d > 14) return;
+      const germs = (Array.isArray(c.germenes) && c.germenes.length) ? c.germenes : [{ nombre: c.organismo, flags: [] }];
+      germs.forEach(function (g) {
+        const propio = (g.sensibles || []).length || (g.resistentes || []).length || (g.intermedios || []).length;
+        const src = propio ? g : (germs.length === 1 ? c : g);
+        add({ tipo: c.tipo || "Cultivo", muestra: c.muestra || "", fecha: c.fecha || "", germen: String(g.nombre || c.organismo || ""),
+          flags: (Array.isArray(g.flags) ? g.flags : []).concat(/BLEE|ESBL/i.test(String(c.organismo || "")) ? ["BLEE"] : []).filter(function (f, i, a) { return a.indexOf(f) === i; }),
+          S: src.sensibles || [], I: src.intermedios || [], R: src.resistentes || [] });
+      });
+    });
+    ((ctx.nd && ctx.nd.labHistory) || []).forEach(function (s) {
+      const l = s && s.labs; if (!l || !l.micro_organismo) return;
+      const d = diasDesde(s.fecha); if (d !== null && d > 14) return;
+      if (/SIN\s+DESARROLLO|NO\s+DESARROLLO|NEGATIV/.test(N(l.micro_organismo))) return;
+      add({ tipo: l.micro_tipo_cultivo || "Cultivo", muestra: l.micro_muestra || "", fecha: s.fecha || "", germen: String(l.micro_organismo), flags: [],
+        S: partir(l.micro_sensibilidades), I: [], R: partir(l.micro_resistencias) });
+    });
+    // Solo gérmenes con nombre (el «POSITIVO» sin germen espera a que el robot capture el PDF).
+    return res.filter(function (c) { return c.germen && !/^POSITIVO/.test(N(c.germen)); });
+  }
+  function abMapa(cu) {
+    const m = {};
+    const put = function (arr, v) { arr.forEach(function (x) { const id = atbId(x); if (id && !m[id]) m[id] = { v: v, sdd: /SDD/i.test(String(x)) }; }); };
+    put(cu.R, "R"); put(cu.I, "I"); put(cu.S, "S");
+    return m;
+  }
+  const HONGO = /CANDIDA|LEVADURA|ASPERGILL|CRYPTOCOC|HONGO/;
+  // Resistencia natural o por mecanismo que el antibiograma puede no mostrar (EUCAST «expected resistant phenotypes»).
+  function resistenciaInferida(germen, flags, id) {
+    const g = N(germen), F = N((flags || []).join(" ") + " " + germen), d = DRUG[id]; if (!d) return "";
+    const bl = d.cls.some(function (c) { return /^(pen|ceph|bli|carba|mono)/.test(c); });
+    if (HONGO.test(g)) {
+      if (tiene(d, "atb")) return "los antibacterianos no cubren hongos";
+      if (/KRUSEI|KUDRIAVZEVII/.test(g) && id === "fluconazol") return "C. krusei es resistente natural a fluconazol";
+      if (/AURIS/.test(g) && id === "fluconazol") return "C. auris suele ser resistente a fluconazol";
+      return "";
+    }
+    if (tiene(d, "afung")) return "un antifúngico no cubre bacterias";
+    if (/MRSA|SAMR|METICILINO?\s*-?\s*RESIST|OXACILINA\s+RESIST/.test(F) && bl) return "SAMR: resistente a betalactámicos";
+    if (/CARBAPENEMASA|\bKPC\b|\bNDM\b|OXA-?48|\bVIM\b/.test(F) && tiene(d, "carba")) return "productor de carbapenemasa";
+    if (/\bBLEE\b|\bESBL\b/.test(F) && (d.cls.some(function (c) { return /^(pen|ceph)/.test(c); }) || id === "aztreonam")) return "BLEE: penicilinas, cefalosporinas y aztreonam no son confiables";
+    if (/ENTEROCOC/.test(g) && (d.cls.some(function (c) { return /^ceph/.test(c); }) || ["aztreonam", "clindamicina", "tmp_smx", "ertapenem"].indexOf(id) >= 0)) return "resistencia natural de Enterococcus";
+    if (/PSEUDOMONAS/.test(g) && ["ampicilina", "amoxicilina", "amox_clav", "ampi_sulb", "cefazolina", "cefalotina", "cefuroxima", "cefoxitina", "ceftriaxona", "cefotaxima", "ertapenem", "tmp_smx", "tigeciclina", "doxiciclina", "nitrofurantoina"].indexOf(id) >= 0) return "resistencia natural de Pseudomonas";
+    if (/STENOTROPHOMONAS/.test(g) && (tiene(d, "carba") || tiene(d, "amg"))) return "resistencia natural de Stenotrophomonas";
+    if (/ACINETOBACTER/.test(g) && ["ampicilina", "amoxicilina", "amox_clav", "cefazolina", "cefalotina", "ceftriaxona", "cefotaxima", "aztreonam", "ertapenem", "fosfomicina"].indexOf(id) >= 0) return "resistencia natural de Acinetobacter";
+    if (/ENTEROBACTER|CITROBACTER\s+FREUNDII|SERRATIA|MORGANELLA|PROVIDENCIA|HAFNIA|KLEBSIELLA\s+AEROGENES/.test(g) && ["ampicilina", "amoxicilina", "amox_clav", "ampi_sulb", "cefazolina", "cefalotina", "cefoxitina"].indexOf(id) >= 0) return "resistencia natural (AmpC cromosómica)";
+    if (/KLEBSIELLA/.test(g) && (id === "ampicilina" || id === "amoxicilina")) return "resistencia natural de Klebsiella";
+    if (/PROTEUS|MORGANELLA|PROVIDENCIA/.test(g) && ["nitrofurantoina", "tigeciclina", "colistina", "doxiciclina"].indexOf(id) >= 0) return "resistencia natural de " + (/PROTEUS/.test(g) ? "Proteus" : "este germen");
+    return "";
+  }
+  // Más estrecho primero: para desescalar se propone el primero sensible de esta lista.
+  const ESTRECHOS = ["penicilina", "ampicilina", "amoxicilina", "oxacilina", "cefazolina", "cefalotina", "amox_clav", "ampi_sulb", "cefuroxima", "tmp_smx", "ceftriaxona", "cefotaxima", "ciprofloxacino", "levofloxacino"];
+  function germenCorto(cu) { return String(cu.germen).replace(/\s+/g, " ").trim() + ((cu.flags || []).length && !/BLEE|ESBL|SAMR|MRSA/i.test(cu.germen) ? " (" + cu.flags.join(", ") + ")" : ""); }
+  function reglasCultivos(ctx) {
+    const out = [];
+    const cults = cultivosDe(ctx); if (!cults.length) return out;
+    const usados = ctx.drogas.filter(function (x) { return tiene(x.d, "atb") || tiene(x.d, "afung"); });
+    cults.forEach(function (cu) {
+      const sitio = N(cu.tipo + " " + cu.muestra);
+      const hongo = HONGO.test(N(cu.germen));
+      const esteril = /HEMOCULT|SANGRE|CATETER|LIQUIDO\s+(PERITONEAL|PLEURAL|CEFALO|ARTICULAR|ASCITIS)|\bLCR\b|BIOPSIA|HUESO|ABSCESO/.test(sitio);
+      const hemo = /HEMOCULT|SANGRE/.test(sitio);
+      const uro = /UROCULT|ORINA|URINARI/.test(sitio);
+      const contam = hemo && /STAPHYLOCOCCUS\s+(EPIDERMIDIS|HOMINIS|HAEMOLYTICUS|CAPITIS|WARNERI)|COAGULASA\s*NEG|CORYNEBACTER|BACILLUS|MICROCOCC|CUTIBACTER|PROPIONIBACT/.test(N(cu.germen));
+      const ab = abMapa(cu);
+      const sens = Object.keys(ab).filter(function (id) { return ab[id].v === "S" && !resistenciaInferida(cu.germen, cu.flags, id); });
+      const opc = sens.length ? " Sensible a: " + sens.map(function (id) { return DRUG[id].n + (ab[id].sdd ? " (SDD: dosis alta)" : ""); }).join(", ") + "." : "";
+      const etiq = cu.tipo + (cu.fecha ? " del " + fc(cu.fecha) : "") + ": " + germenCorto(cu);
+      const por = etiq + (usados.length ? " · en uso: " + nombres(usados) + " (" + fuentes(usados) + ")" : " · sin antibiótico registrado");
+      const base = "atb:" + N(cu.tipo + cu.germen + cu.fecha);
+      const rel = usados.filter(function (u) { return hongo ? tiene(u.d, "afung") : tiene(u.d, "atb"); });
+      if (!rel.length) {
+        let t;
+        if (hongo) t = uro ? "Candida en orina: casi siempre es colonización (sobre todo con sonda). Cambiar o retirar la sonda; tratar solo si hay síntomas, neutropenia o procedimiento urológico (IDSA 2016)."
+          : "Hongo en " + (cu.muestra || cu.tipo) + " sin antifúngico en uso: si es infección (no colonización), valorar antifúngico (equinocandina en candidemia — IDSA 2016)" + (hemo ? "; candidemia: retirar catéter central y fondo de ojo." : ".");
+        else if (contam) t = "Germen que suele ser contaminante de piel en un solo hemocultivo: confirmar con un segundo hemocultivo antes de tratar.";
+        else t = "Cultivo positivo sin antibiótico en la tarjeta ni en indicaciones: valorar si es infección (vs. colonización) y, si se trata, dirigirlo al antibiograma." + opc;
+        out.push(sug("cult_sin_atb", "🦠 Cultivo", "Cultivo positivo sin tratamiento dirigido", (esteril && !contam) ? "severa" : "moderada", t, por, "Cultivo positivo (" + germenCorto(cu) + "): definir tratamiento", base + ":sin", esteril && !contam && !hongo));
+        return;
+      }
+      const est = rel.map(function (u) {
+        const inf = resistenciaInferida(cu.germen, cu.flags, u.id);
+        const a = ab[u.id];
+        if (inf) return { u: u, v: "R", why: inf };
+        if (a) return { u: u, v: a.v, why: a.v === "S" && a.sdd ? "SDD: solo a dosis alta" : "" };
+        return { u: u, v: "?", why: "" };
+      });
+      const cubre = est.filter(function (e) { return e.v === "S"; });
+      if (cubre.length) {
+        const F = N((cu.flags || []).join(" ") + " " + cu.germen);
+        if (/\bBLEE\b|\bESBL\b/.test(F) && cubre.every(function (e) { return e.u.id === "pip_tazo"; }) && esteril)
+          out.push(sug("cult_blee_piptazo", "🦠 Antibiograma", "BLEE con piperacilina/tazobactam", "moderada", "Infección grave por " + germenCorto(cu) + " (BLEE) tratada con piperacilina/tazobactam: aunque salga sensible, en bacteriemia por BLEE se prefiere un carbapenémico (ensayo MERINO, IDSA 2023).", por, "BLEE: valorar carbapenémico", base + ":blee"));
+        if (/ENTEROBACTER|CITROBACTER\s+FREUNDII|KLEBSIELLA\s+AEROGENES/.test(N(cu.germen)) && cubre.every(function (e) { return e.u.id === "ceftriaxona" || e.u.id === "cefotaxima"; }))
+          out.push(sug("cult_ampc", "🦠 Antibiograma", "AmpC inducible con cefalosporina de 3.ª", "leve", germenCorto(cu) + " puede desreprimir AmpC durante el tratamiento con ceftriaxona/cefotaxima: en infección grave se prefiere cefepime (IDSA 2023).", por, "AmpC: valorar cefepime", base + ":ampc"));
+        if (/STAPHYLOCOCCUS\s+AUREUS/.test(N(cu.germen)) && cubre.some(function (e) { return e.u.id === "vancomicina"; }) && sens.some(function (id) { return id === "oxacilina" || tiene(DRUG[id], "ceph1"); }))
+          out.push(sug("cult_mssa", "🦠 Antibiograma", "S. aureus sensible a meticilina con vancomicina", "moderada", "S. aureus sensible a oxacilina (SAMS) tratado con vancomicina: un betalactámico antiestafilocócico (cefazolina/cefalotina u oxacilina/dicloxacilina) es más eficaz; considerar el cambio.", por, "SAMS: cambiar vancomicina por betalactámico", base + ":mssa"));
+        else {
+          const amplio = cubre.some(function (e) { return tiene(e.u.d, "amplio") || tiene(e.u.d, "carba"); });
+          const alt = ESTRECHOS.filter(function (id) { return sens.indexOf(id) >= 0 && !rel.some(function (u) { return u.id === id; }); });
+          if (amplio && alt.length && !/\bBLEE\b|\bESBL\b|CARBAPENEMASA/.test(F))
+            out.push(sug("cult_desescalar", "🦠 Antibiograma", "Desescalar antibiótico", "leve", germenCorto(cu) + " es sensible a antibióticos de menor espectro (" + alt.slice(0, 3).map(function (id) { return DRUG[id].n; }).join(", ") + "): si el paciente mejoró y no hay otro foco, considerar desescalar " + nombres(cubre.map(function (e) { return e.u; })) + ".", por, "Desescalar según antibiograma", base + ":des"));
+        }
+        return;
+      }
+      const res = est.filter(function (e) { return e.v === "R"; }), inter = est.filter(function (e) { return e.v === "I"; }), nop = est.filter(function (e) { return e.v === "?"; });
+      if (res.length || inter.length) {
+        const r = res.map(function (e) { return (e.u.n || e.u.d.n) + (e.why ? " (" + e.why + ")" : ""); });
+        const i = inter.map(function (e) { return e.u.n || e.u.d.n; });
+        const t = germenCorto(cu) + " " + (r.length ? "RESISTENTE a " + lista(r) : "") + (r.length && i.length ? " e " : "") + (i.length ? "INTERMEDIO a " + lista(i) : "") +
+          " (en uso). Considerar cambiar el antibiótico según el antibiograma." + opc + (esteril ? " Es una muestra estéril: cambio prioritario." : "") + " Valorar con Infectología.";
+        out.push(sug("cult_resistente", "🦠 Antibiograma", "Antibiótico sin cobertura según antibiograma", "severa", t, por, "Cambiar ATB según antibiograma (" + germenCorto(cu) + ")", base + ":r:" + rel.map(function (u) { return u.id; }).join(","), esteril || hemo));
+      } else if (nop.length) {
+        out.push(sug("cult_no_probado", "🦠 Antibiograma", "Antibiótico no probado en el antibiograma", "moderada", nombres(nop.map(function (e) { return e.u; })) + " no aparece en el antibiograma de " + germenCorto(cu) + ": confirmar que lo cubre." + opc, por, "Confirmar cobertura del ATB (" + germenCorto(cu) + ")", base + ":?"));
+      }
+    });
+    return out;
+  }
+
+  // ════ 🩸 Hb, transfusión y plaquetas ════
+  function reglasSangre(ctx) {
+    const out = [];
+    const s = serie(ctx.nd, "hb");
+    const sangra = menciona(/SANGRADO ACTIVO|HEMORRAGIA|\bSTD[AB]\b|MELENA|HEMATEMESIS|HEMATOQUECIA|RECTORRAGIA|HEMOPERITONEO|CHOQUE HIPOVOLEMICO/, ctx.actual);
+    const inestable = ctx.choque || (ctx.sis !== null && ctx.sis < 90);
+    const anticoag = con(ctx, "anticoag");
+    if (s.length) {
+      const u = s[s.length - 1]; const d = diasDesde(u.f);
+      if (d === null || d <= 2) {
+        const hb = u.n;
+        const sca = /\bSICA\b|SINDROME CORONARIO AGUDO|\bIAM(CEST|SEST)?\b|INFARTO AGUDO/.test(ctx.dx);
+        const cardio = sca || /CARDIOPAT|ISQUEMI|INFARTO|\bIAM\b|ANGINA|\bSICA\b|CORONARI|INSUFICIENCIA CARDIACA|\bICC\b|REVASCULARIZ|VALVULOPAT|ENFERMEDAD ARTERIAL|\bEVC\b/.test(ctx.txt);
+        const orto = /ORTOPED|FRACTURA DE CADERA|ARTROPLAST|CIRUGIA CARDIACA|CAMBIO VALVULAR/.test(ctx.txt);
+        let umbral = 7, motivo = "la mayoría de hospitalizados, sepsis y sangrado digestivo — AABB 2023";
+        if (cardio || orto) { umbral = 8; motivo = cardio ? "enfermedad cardiovascular — AABB 2023" : "cirugía ortopédica o cardiaca — AABB 2023"; }
+        if (sca) motivo = "síndrome coronario agudo: el ensayo MINT 2023 favorece una meta más liberal, cercana a 10 g/dL";
+        if (hb < umbral || ((sangra || inestable) && hb < 9)) {
+          let calc = "";
+          if (ctx.peso) { const meta = sca ? 10 : umbral + 1; const n = Math.max(1, Math.round((meta - hb) * ctx.peso / 70)); calc = " Estimado para Hb " + meta + ": ~" + n + " CE (1 CE sube ~1 g/dL en 70 kg; en sangrado activo no aplica)."; }
+          const t = "Hb " + r1(hb) + " (" + fc(u.f) + ")" + (hb < umbral ? " por debajo del umbral de " + umbral + " g/dL (" + motivo + ")" : " con " + (sangra ? "sangrado activo" : "inestabilidad hemodinámica")) +
+            ": considerar transfundir concentrado eritrocitario de 1 en 1 y revalorar con Hb control." +
+            ((sangra || inestable) ? " Con sangrado o choque la decisión es clínica, no por la cifra; protocolo de transfusión masiva si aplica." : "") +
+            (ctx.edad >= 65 ? " Tiene " + ctx.edad + " años: menor reserva, vigilar síntomas (taquicardia, hipotensión, disnea, dolor torácico, delirium)." : "") +
+            (ctx.ck.cruce_activo ? " Hay cruce vigente." : " Solicitar cruce.") + calc;
+          const por = "Hb " + r1(hb) + " · " + (ctx.edad ? ctx.edad + " años · " : "") + (cardio ? "cardiopatía en APP/dx · " : "") + (sangra ? "sangrado en dx/pendientes · " : "") + (inestable ? (ctx.choque ? "vasopresor · " : "TAS " + ctx.sis + " · ") : "") + "umbral " + umbral;
+          out.push(sug("transfusion", "🩸 Transfusión", "Valorar transfusión", (hb < 6 || sangra || inestable) ? "severa" : "moderada", t, por, "Valorar transfusión (Hb " + r1(hb) + ")", "hb:" + r1(hb) + ":" + umbral, hb < 6 || ((sangra || inestable) && hb < 8), { value: hb, umbral: umbral }));
+        }
+        if (s.length >= 2) {
+          const pr = s[s.length - 2]; const dd = diasEntre(pr.f, u.f);
+          if (dd !== null && dd <= 3 && pr.n - hb >= 2) {
+            const t = "La Hb bajó de " + r1(pr.n) + " a " + r1(hb) + " en " + (dd || 1) + " día" + ((dd || 1) === 1 ? "" : "s") + ": buscar sangrado (herida, drenajes, tubo digestivo, hematoma" + (ctx.pop !== null && ctx.pop <= 7 ? "; POP día " + ctx.pop : "") + "), Hb control en 6-8 h" +
+              (anticoag.length ? " y valorar suspender el anticoagulante (" + nombres(anticoag) + ")" : "") + ".";
+            out.push(sug("hb_caida", "🩸 Hb", "Caída de hemoglobina", hb < 8 ? "severa" : "moderada", t, "Hb " + r1(pr.n) + " (" + fc(pr.f) + ") → " + r1(hb) + " (" + fc(u.f) + ")", "Buscar sangrado (Hb " + r1(pr.n) + " → " + r1(hb) + ")", "hbc:" + r1(pr.n) + ">" + r1(hb), hb < 8, { value: hb }));
+          }
+        }
+      }
+    }
+    const pl = ctx.lab("plaq", 2);
+    if (pl) {
+      const hep = con(ctx, "hep");
+      if (pl.n < 10) out.push(sug("plaq_transf", "🩸 Plaquetas", "Plaquetas < 10 000", "severa", "Plaquetas " + r1(pl.n) + " k: considerar transfusión profiláctica de plaquetas (< 10 k sin sangrado; < 50 k si sangra o va a procedimiento; < 100 k en neurocirugía — AABB/ICTMG)." + (hep.length ? " Suspender " + nombres(hep) + "." : ""), "Plaq " + r1(pl.n) + " k (" + fc(pl.f) + ")", "Plaquetas < 10 k: valorar transfusión", "pl:" + r1(pl.n), true, { value: pl.n }));
+      else if (pl.n < 50 && (sangra || hep.length)) out.push(sug("plaq_bajas", "🩸 Plaquetas", "Plaquetas < 50 000", "severa", "Plaquetas " + r1(pl.n) + " k" + (sangra ? " con sangrado: considerar transfundir plaquetas (meta > 50 k)." : ".") + (hep.length ? " Con " + nombres(hep) + ": valorar suspender la profilaxis farmacológica y usar compresión mecánica." : ""), "Plaq " + r1(pl.n) + " k" + (hep.length ? " · " + nombres(hep) + " (" + fuentes(hep) + ")" : ""), "Plaquetas < 50 k: revisar heparina / transfusión", "pl:" + r1(pl.n), sangra, { value: pl.n }));
+      const sp = serie(ctx.nd, "plaq").filter(function (x) { const dd = diasEntre(x.f, pl.f); return dd !== null && dd <= 10; });
+      const max = sp.reduce(function (m, x) { return Math.max(m, x.n); }, 0);
+      if (hep.length && max > 0 && pl.n <= max * 0.5 && pl.n < 150)
+        out.push(sug("tih", "🩸 Plaquetas", "Posible trombocitopenia inducida por heparina", "severa", "Las plaquetas bajaron ≥ 50 % (" + r1(max) + " → " + r1(pl.n) + " k) con " + nombres(hep) + ": calcular la escala 4T; si es intermedia o alta, suspender toda heparina, iniciar un anticoagulante no heparínico y pedir anticuerpos anti-PF4 (ASH 2018).", "Plaq " + r1(max) + " → " + r1(pl.n) + " k en ≤ 10 días", "Descartar TIH (4T)", "tih:" + r1(pl.n), false, { value: pl.n }));
+      if (pl.n < 100 && conId(ctx, ["linezolid"]).length) out.push(sug("plaq_linezolid", "💊 Fármaco", "Linezolid y plaquetas", "leve", "Linezolid puede bajar las plaquetas (sobre todo después de 10-14 días): vigilar BH y valorar alternativa si siguen bajando.", "Plaq " + r1(pl.n) + " k · linezolid", "Linezolid: vigilar plaquetas", "lzd:" + r1(pl.n)));
+    }
+    return out;
+  }
+
+  // ════ ⚡ Electrolitos y ácido-base ════
+  function perdidasGI(ctx) {
+    const disp = Array.isArray(ctx.ck.dispositivos) ? ctx.ck.dispositivos : [];
+    const alto = disp.filter(function (x) { return /ILEOST|YEYUNOST|ESTOMA|FISTULA|SNG|SONDA NASOGASTRICA|COLOST/.test(N(x.tipo)) && num(x.gasto) >= 800; });
+    if (num(ctx.ck.pm_estoma_gasto) >= 800) alto.push({ tipo: "estoma", gasto: ctx.ck.pm_estoma_gasto });
+    return alto.map(function (x) { return String(x.tipo) + " " + String(x.gasto) + " mL"; });
+  }
+  function reglasElectrolitos(ctx) {
+    const out = [];
+    const K = ctx.lab("k", 2), Na = ctx.lab("na", 2), Mg = ctx.lab("mg", 3), Ca = ctx.lab("ca", 2), P = ctx.lab("p", 2), Alb = ctx.lab("alb", 7), Cr = ctx.lab("cr", 3), Glu = ctx.lab("glu", 2);
+    const gi = perdidasGI(ctx);
+    const sol = ctx.meds.filter(function (m) { return m.sec === "SOLUCIONES"; }).map(function (m) { return N(m.txt); }).join(" | ");
+    const kcl = conId(ctx, ["kcl"]).length || /KCL|POTASIO/.test(sol) || (ctx.ck.npt ? 1 : 0);
+    // Potasio
+    if (K && K.n < 3.5) {
+      const mgTxt = Mg ? (Mg.n < 1.7 ? " Mg " + r1(Mg.n) + " también bajo: corregir el magnesio primero (sin eso la hipokalemia no responde)." : "") : " Medir Mg (si está bajo, la hipokalemia no responde).";
+      const causas = con(ctx, "kdown").concat(conId(ctx, ["esteroide"]));
+      const t = (K.n < 3 ? "K " + r1(K.n) + ": reposición IV con monitoreo cardiaco (≤ 10 mEq/h por vía periférica, ≤ 20 mEq/h por vía central) y ECG." : "K " + r1(K.n) + ": reponer por vía oral si tolera (KCl en dosis divididas) o IV ≤ 10 mEq/h por vía periférica; cada 10 mEq suben ~0.1 mEq/L.") +
+        mgTxt + (causas.length ? " Fármacos que lo bajan en uso: " + nombres(causas) + "." : "") + (gi.length ? " Pérdidas digestivas altas (" + gi.join(", ") + "): reponer también lo que se pierde." : "") +
+        (Cr && Cr.n > 1.5 ? " Cr " + r1(Cr.n) + ": reponer con cautela." : "") + (conId(ctx, ["digoxina"]).length ? " Con digoxina el riesgo de arritmia es mayor." : "") + " K control en 4-6 h.";
+      out.push(sug("hipoK", "⚡ Electrolitos", "Hipokalemia", K.n < 3 ? "severa" : "moderada", t, "K " + r1(K.n) + " (" + fc(K.f) + ")" + (Mg ? " · Mg " + r1(Mg.n) : ""), "Reponer K (" + r1(K.n) + ")", "k:" + r1(K.n), K.n < 2.5, { value: K.n }));
+    }
+    if (K && K.n >= 5.5) {
+      const sube = con(ctx, "kup").concat(con(ctx, "aine")).filter(function (x, i, a) { return a.indexOf(x) === i; });
+      const t = "K " + r1(K.n) + ": descartar muestra hemolizada y tomar ECG." + (K.n >= 6 ? " Si hay cambios en el ECG o K ≥ 6.5: gluconato de calcio 10 % IV, insulina rápida con dextrosa (vigilar glucemia), salbutamol nebulizado; quelante o diálisis si no baja o hay falla renal." : "") +
+        (kcl ? " Suspender el aporte de potasio (" + (ctx.ck.npt ? "NPT/" : "") + "soluciones/KCl)." : "") + (sube.length ? " Fármacos que suben el K en uso: " + nombres(sube) + " — valorar suspenderlos." : "") + " K control en 2-4 h.";
+      out.push(sug("hiperK", "⚡ Electrolitos", "Hiperkalemia", K.n >= 6 ? "severa" : "moderada", t, "K " + r1(K.n) + " (" + fc(K.f) + ")" + (sube.length ? " · " + nombres(sube) : ""), "Hiperkalemia " + r1(K.n) + ": ECG y quitar aportes", "k:" + r1(K.n), K.n >= 6.5, { value: K.n }));
+    }
+    // Sodio (con la corrección por glucosa)
+    if (Na && Na.n < 133) {
+      const pseudo = Glu && Glu.n > 200 ? " Glucosa " + Math.round(Glu.n) + ": Na corregido ≈ " + r1(Na.n + 1.6 * (Glu.n - 100) / 100) + "-" + r1(Na.n + 2.4 * (Glu.n - 100) / 100) + " (hiponatremia por hiperglucemia: tratar la glucosa)." : "";
+      const riesgo = (K && K.n < 3.5) || ctx.cirros || /DESNUTRI/.test(ctx.txt) || (Alb && Alb.n < 2.5) || Na.n <= 105;
+      const hipot = /GLUCOSAD[OA]\s*(AL\s*)?5|\bSG\s*5|DEXTROSA\s*5|\bD5W?\b|MIXTA|SOLUCION\s+0\.45|SALINA\s+(AL\s+)?0\.45/.test(sol);
+      const fx = con(ctx, "isrs").concat(conId(ctx, ["tiazida"]));
+      const t = "Na " + r1(Na.n) + ": clasificar por volemia y osmolaridad (sérica y urinaria). Subirlo no más de " + (riesgo ? "8" : "10") + " mEq/L en 24 h" + (riesgo ? " (riesgo alto de desmielinización: hipokalemia, alcoholismo/hepatopatía o desnutrición)" : "") + "." +
+        (Na.n < 125 ? " Con síntomas graves (convulsión, somnolencia): SS 3 % 150 mL IV en 20 min, hasta 2 veces (guía europea 2014), con Na control c/2-4 h." : "") +
+        (hipot ? " Recibe soluciones hipotónicas: valorar cambiarlas por isotónicas." : "") + (fx.length ? " Fármacos que la favorecen: " + nombres(fx) + "." : "") + pseudo;
+      out.push(sug("hipoNa", "⚡ Electrolitos", "Hiponatremia", Na.n < 125 ? "severa" : "moderada", t, "Na " + r1(Na.n) + " (" + fc(Na.f) + ")" + (Glu ? " · glucosa " + Math.round(Glu.n) : ""), "Hiponatremia " + r1(Na.n) + ": volemia, osm, límite de corrección", "na:" + r1(Na.n), Na.n < 120, { value: Na.n }));
+    }
+    if (Na && Na.n > 145) {
+      let def = "";
+      if (ctx.peso) { const f = ctx.sexo === "M" ? (ctx.edad >= 65 ? 0.5 : 0.6) : (ctx.edad >= 65 ? 0.45 : 0.5); def = " Déficit de agua libre ≈ " + r1(f * ctx.peso * (Na.n / 140 - 1)) + " L (ACT " + f + " × " + r1(ctx.peso) + " kg" + (ctx.sexo ? "" : ", sin sexo: factor femenino") + ")."; }
+      else def = " Con el peso se calcula el déficit de agua libre.";
+      const ss = /SALINA\s*(AL\s*)?0\.9|\bSS\s*0?\.9|FISIOLOGICA|HARTMANN|RINGER/.test(sol);
+      const t = "Na " + r1(Na.n) + ": reponer agua libre (VO/SNG o SG 5 % IV); bajarlo ≤ 10 mEq/L en 24 h si es crónica." + def + (ss ? " Recibe soluciones con sodio: aportan más sodio." : "") + " Na control c/4-6 h; buscar la causa (pérdidas, diuréticos, diabetes insípida).";
+      out.push(sug("hiperNa", "⚡ Electrolitos", "Hipernatremia", Na.n >= 155 ? "severa" : "moderada", t, "Na " + r1(Na.n) + " (" + fc(Na.f) + ")" + (ctx.peso ? " · " + r1(ctx.peso) + " kg" : ""), "Hipernatremia " + r1(Na.n) + ": agua libre", "na:" + r1(Na.n), Na.n >= 160, { value: Na.n }));
+    }
+    // Magnesio
+    if (Mg && Mg.n < 1.7) {
+      const ibp = con(ctx, "ibp"), diu = conId(ctx, ["furosemida", "tiazida"]);
+      const t = "Mg " + r1(Mg.n) + ": reponer sulfato de magnesio IV según protocolo" + ((K && K.n < 3.5) || (Ca && Ca.n < 8.5) ? " (prioridad: sin magnesio no se corrigen el K ni el Ca)" : "") + "." +
+        ((ibp.length || diu.length) ? " Fármacos que lo bajan en uso: " + nombres(ibp.concat(diu)) + "." : "") + (gi.length ? " Pérdidas digestivas altas (" + gi.join(", ") + ")." : "") + (con(ctx, "qt").length ? " Hay fármacos que prolongan el QT: mantener Mg ≥ 2." : "");
+      out.push(sug("hipoMg", "⚡ Electrolitos", "Hipomagnesemia", Mg.n < 1.2 ? "severa" : "moderada", t, "Mg " + r1(Mg.n) + " (" + fc(Mg.f) + ")", "Reponer Mg (" + r1(Mg.n) + ")", "mg:" + r1(Mg.n), Mg.n < 1, { value: Mg.n }));
+    }
+    // Calcio corregido por albúmina
+    if (Ca) {
+      const caC = Alb ? Math.round((Ca.n + 0.8 * (4 - Alb.n)) * 100) / 100 : Ca.n;
+      const disp = "Ca " + r1(Ca.n) + (Alb ? " (corregido " + r1(caC) + " con Alb " + r1(Alb.n) + ")" : "");
+      if (caC < 8) {
+        const tir = /TIROIDECTOM|PARATIROIDECTOM/.test(ctx.txt) || /TIROIDECTOM|PARATIROIDECTOM/.test(N(JSON.stringify(ctx.ck.cirugias || [])));
+        const t = disp + ": si hay síntomas (parestesias, Chvostek/Trousseau, QT largo) o Ca corregido < 7.5, gluconato de calcio IV; medir calcio iónico (la corrección por albúmina es imprecisa)." +
+          (Mg && Mg.n < 1.7 ? " Corregir primero el Mg (" + r1(Mg.n) + ")." : (!Mg ? " Medir Mg." : "")) + (tir ? " Postiroidectomía: hipoparatiroidismo; PTH y Ca c/12 h." : "") + (/PANCREATITIS/.test(ctx.txt) ? " En pancreatitis es marcador de gravedad." : "");
+        out.push(sug("hipoCa", "⚡ Electrolitos", "Hipocalcemia", caC < 7.5 ? "severa" : "moderada", t, disp + " (" + fc(Ca.f) + ")", "Hipocalcemia: Ca iónico y reponer", "ca:" + r1(caC), caC < 7, { value: caC }));
+      } else if (caC > 10.5) {
+        const fx = conId(ctx, ["tiazida"]);
+        out.push(sug("hiperCa", "⚡ Electrolitos", "Hipercalcemia", caC >= 12 ? "severa" : "leve", disp + ": hidratación con SS 0.9 % vigilando la volemia; furosemida solo después de hidratar; suspender calcio, vitamina D" + (fx.length ? " y " + nombres(fx) : " y tiazidas") + ". Buscar la causa (PTH, neoplasia).", disp + " (" + fc(Ca.f) + ")", "Hipercalcemia: hidratar y buscar causa", "cah:" + r1(caC), caC >= 14, { value: caC }));
+      }
+    }
+    // Fósforo y síndrome de realimentación
+    const nutre = !!ctx.ck.npt || ctx.meds.some(function (m) { return /\bNPT\b|NUTRICION\s+(PARENTERAL|ENTERAL)|ENTERAL/.test(N(m.txt)); });
+    const bajoP = P && P.n < 2.5, bajoK = K && K.n < 3.5, bajoMg = Mg && Mg.n < 1.7;
+    if (nutre && (bajoP || (bajoK && bajoMg))) {
+      const vals = [bajoP ? "P " + r1(P.n) : "", bajoK ? "K " + r1(K.n) : "", bajoMg ? "Mg " + r1(Mg.n) : ""].filter(Boolean).join(", ");
+      out.push(sug("realimentacion", "⚡ Electrolitos", "Síndrome de realimentación", (P && P.n < 1.5) ? "severa" : "moderada", "Nutrición " + (ctx.ck.npt ? "parenteral" : "enteral/parenteral") + " con " + vals + ": patrón de síndrome de realimentación. Reponer P, K y Mg; tiamina antes de la glucosa; avanzar el aporte despacio y vigilar diario P/K/Mg los primeros 3-5 días (ASPEN 2020).", vals + " · NPT/nutrición en curso", "Realimentación: reponer P/K/Mg + tiamina", "ref:" + vals, P && P.n < 1));
+    } else if (bajoP) {
+      out.push(sug("hipoP", "⚡ Electrolitos", "Hipofosfatemia", P.n < 1 ? "severa" : "leve", "P " + r1(P.n) + ": reponer fosfato" + (P.n < 1 ? " IV (con síntomas o < 1 mg/dL: debilidad, falla respiratoria, hemólisis)" : " VO si tolera") + "; revisar K y Mg.", "P " + r1(P.n) + " (" + fc(P.f) + ")", "Reponer fósforo (" + r1(P.n) + ")", "p:" + r1(P.n), P.n < 1, { value: P.n }));
+    }
+    // Acidosis metabólica con brecha aniónica
+    const H = ctx.lab("hco3", 2), Cl = ctx.lab("cl", 2), Lac = ctx.lab("lac", 1), ph = ctx.lab("ph", 2);
+    if (H && H.n < 18 && !(ph && ph.n >= 7.45)) {
+      let t = "HCO3 " + r1(H.n) + (ph ? " (pH " + r2(ph.n) + ")" : "") + ": acidosis metabólica.";
+      if (Na && Cl) {
+        const ba = Na.n - (Cl.n + H.n); const bac = Alb ? ba + 2.5 * (4 - Alb.n) : ba;
+        t += " Brecha aniónica " + r1(ba) + (Alb ? " (corregida por albúmina " + r1(bac) + ")" : "") + ".";
+        if (bac > 12) t += " Brecha alta: buscar lactato" + (Lac ? " (" + r1(Lac.n) + ")" : "") + ", cetonas, uremia y tóxicos.";
+        else t += " Brecha normal (hiperclorémica): exceso de SS 0.9 %, pérdidas digestivas bajas (diarrea, ileostomía, fístula) o acidosis tubular." + (/SALINA\s*(AL\s*)?0\.9|\bSS\s*0?\.9|FISIOLOGICA/.test(sol) ? " Recibe SS 0.9 %: considerar solución balanceada (Hartmann)." : "");
+      } else t += " Con Na y Cl de la misma muestra se calcula la brecha aniónica.";
+      out.push(sug("acidosis", "⚡ Ácido-base", "Acidosis metabólica", H.n < 12 ? "severa" : "moderada", t, "HCO3 " + r1(H.n) + (Na && Cl ? " · Na " + r1(Na.n) + " · Cl " + r1(Cl.n) : "") + " (" + fc(H.f) + ")", "Acidosis: brecha aniónica y causa", "hco3:" + r1(H.n), H.n < 10 || (ph && ph.n < 7.1)));
+    }
+    if (Lac && Lac.n >= 2) {
+      const abd = ctx.pop !== null && ctx.pop <= 10;
+      const met = conId(ctx, ["metformina"]);
+      const t = "Lactato " + r1(Lac.n) + ": " + ((ctx.choque || (ctx.sis !== null && ctx.sis < 90)) ? "con hipotensión/vasopresor: reanimación guiada por lactato, remedir en 2-4 h (SSC 2021)." : "buscar hipoperfusión (TA, llenado capilar, uresis) y remedir en 2-4 h.") +
+        (abd ? " POP día " + ctx.pop + ": descartar isquemia intestinal, fuga anastomótica o colección." : "") + (met.length ? " Recibe metformina: suspender." : "");
+      out.push(sug("lactato", "⚡ Ácido-base", "Hiperlactatemia", Lac.n >= 4 ? "severa" : "moderada", t, "Lactato " + r1(Lac.n) + " (" + fc(Lac.f) + ")", "Lactato " + r1(Lac.n) + ": perfusión y remedir", "lac:" + r1(Lac.n), Lac.n >= 4, { value: Lac.n }));
+    }
+    return out;
+  }
+
+  // ════ 💉 Glucosa e insulina ════
+  function glucosas(ctx) {
+    const out = [];
+    serie(ctx.nd, "glu").forEach(function (x) { const d = diasDesde(x.f); if (d === null || d <= 2) out.push({ n: x.n, f: x.f, c: false }); });
+    const cap = function (s, f) { (String(s || "").match(/\d{2,3}/g) || []).forEach(function (v) { const n = +v; if (n >= 20 && n <= 800) out.push({ n: n, f: f, c: true }); }); };
+    if (!ctx.ck.pm_fecha || diasDesde(ctx.ck.pm_fecha) <= 2) cap(ctx.ck.pm_dxtx, ctx.ck.pm_fecha || hoy());
+    (Array.isArray(ctx.ck.pm_hist) ? ctx.ck.pm_hist : []).forEach(function (h) { if (h && h.fecha && diasDesde(h.fecha) <= 2) cap(h.dxtx, h.fecha); });
+    return out.sort(function (a, b) { return String(a.f).localeCompare(String(b.f)); });
+  }
+  function dosisInsulina(ctx) {
+    if (!ctx.peso) return " Con el peso se estima la dosis inicial.";
+    const crd = ctx.lab("cr", 3); const fr = crd ? funcionRenal(ctx, crd.n) : null;
+    const bajo = (ctx.edad !== null && ctx.edad >= 65) || (fr && fr.v < 45) || !!ctx.ck.npo;
+    const lo = bajo ? 0.1 : 0.3, hi = bajo ? 0.25 : 0.5;
+    return " Dosis total diaria inicial habitual: " + lo + "-" + hi + " U/kg/día ≈ " + Math.round(lo * ctx.peso) + "-" + Math.round(hi * ctx.peso) + " U, la mitad como basal" + (bajo ? " (rango bajo por " + [ctx.edad >= 65 ? "edad ≥ 65" : "", fr && fr.v < 45 ? "función renal baja" : "", ctx.ck.npo ? "ayuno" : ""].filter(Boolean).join(", ") + ")" : "") + " (ADA 2025; ajustar al protocolo del servicio).";
+  }
+  function reglasGlucosa(ctx) {
+    const out = [];
+    const g = glucosas(ctx);
+    const ins = ctx.ins;
+    const sulf = conId(ctx, ["sulfonilurea"]), orales = conId(ctx, ["metformina", "sulfonilurea", "idpp4", "isglt2"]), est = conId(ctx, ["esteroide"]);
+    if (g.length) {
+      const min = g.reduce(function (m, x) { return Math.min(m, x.n); }, 999);
+      const altos = g.filter(function (x) { return x.n > 180; }), muy = g.filter(function (x) { return x.n >= 300; });
+      const txtG = g.slice(-5).map(function (x) { return Math.round(x.n) + (x.c ? " cap" : ""); }).join(", ");
+      if (min < 70) {
+        const t = "Glucosa " + Math.round(min) + ": tratar ya (15-20 g de glucosa VO, o dextrosa IV si no tolera la vía oral) y repetir en 15 min." +
+          (ins.any ? " Bajar la insulina " + (ins.basal ? "basal " : "") + "10-20 % y revisar el esquema (ADA 2025)." : "") +
+          (sulf.length ? " Recibe " + nombres(sulf) + ": suspender en el hospital (hipoglucemia prolongada)." : "") + (ctx.ck.npo ? " Está en ayuno: ajustar la insulina al ayuno." : "");
+        out.push(sug("hipoglucemia", "💉 Glucosa", "Hipoglucemia", "severa", t, "Glucosas: " + txtG, "Hipoglucemia: tratar y bajar insulina", "hipo:" + Math.round(min), min < 54, { value: min }));
+      } else if (min < 100 && ins.basal) {
+        out.push(sug("glu_baja_basal", "💉 Insulina", "Glucosa < 100 con insulina basal", "leve", "Glucosa " + Math.round(min) + " con insulina basal: reevaluar la dosis para prevenir hipoglucemia (ADA 2025).", "Glucosas: " + txtG, "Revisar dosis de basal (glucosa < 100)", "gb:" + Math.round(min)));
+      }
+      if (min >= 70 && (altos.length >= 2 || muy.length >= 1)) {
+        let t, id, sev = "moderada";
+        if (!ctx.dm && !ins.any) { id = "hiperglucemia"; sev = "leve"; t = "Hiperglucemia sin diagnóstico de diabetes (" + txtG + "): pedir HbA1c; si sigue > 180, insulina de corrección (ADA 2025)."; }
+        else if (!ins.any) { id = "insulina_iniciar"; t = "Diabético con glucosas > 180 (" + txtG + ") sin insulina en las indicaciones: considerar insulina basal" + (ctx.ck.npo ? " + corrección (está en ayuno)" : " + prandial/corrección si come") + "; meta 140-180 mg/dL." + dosisInsulina(ctx) + (orales.length ? " Los orales (" + nombres(orales) + ") por lo general se suspenden en el hospital." : ""); }
+        else if (ins.escala && !ins.basal) { id = "insulina_basal"; t = "Solo esquema de corrección con glucosas > 180 (" + txtG + "): la ADA desaconseja usarlo como único tratamiento; agregar insulina basal (± prandial si come)." + dosisInsulina(ctx); }
+        else if (ins.basal) { id = "insulina_titular"; t = "Glucosas > 180 con insulina basal (" + txtG + "): subir la basal 10-20 % cada 1-2 días hasta la meta 140-180 (ADA 2025)" + (ins.prandial ? "; si la alta es posprandial, ajustar la prandial" : "") + "."; }
+        else { id = "insulina_revisar"; t = "Glucosas > 180 (" + txtG + ") con la insulina indicada: revisar el esquema (basal + prandial/corrección) para llegar a 140-180."; }
+        if (est.length) t += " Recibe " + nombres(est) + ": la hiperglucemia es sobre todo vespertina; NPH en la mañana en proporción a la dosis del esteroide.";
+        if (ctx.ck.npt) t += " Con NPT: insulina regular en la bolsa o esquema, y revisar la carga de glucosa.";
+        if (muy.length) t += " Glucosa ≥ 300: descartar cetoacidosis o estado hiperosmolar (cetonas, gasometría, osmolaridad).";
+        out.push(sug(id, "💉 Insulina", ctx.dm ? "Ajustar insulina (diabético)" : "Hiperglucemia", sev, t, "Glucosas: " + txtG + (ins.any ? " · insulina " + [ins.basal ? "basal" : "", ins.prandial ? "prandial" : "", ins.escala ? "esquema" : ""].filter(Boolean).join(" + ") : " · sin insulina"), id === "insulina_titular" ? "Subir basal 10-20 %" : (id === "hiperglucemia" ? "Hiperglucemia: HbA1c y corrección" : "Ajustar esquema de insulina"), id + ":" + altos.length + ":" + Math.round(g[g.length - 1].n), false, { value: g[g.length - 1].n }));
+      }
+    }
+    if (ctx.ck.npo && ins.prandial) out.push(sug("insulina_ayuno", "💉 Insulina", "Insulina prandial en ayuno", "moderada", "Está en ayuno con insulina prandial: suspender la prandial y dejar basal (reducida ~20-25 %) + corrección (ADA 2025).", "Ayuno + insulina prandial en indicaciones", "Ayuno: suspender insulina prandial", "npo:pr"));
+    const met = conId(ctx, ["metformina"]);
+    if (met.length) {
+      const crd = ctx.lab("cr", 3); const fr = crd ? funcionRenal(ctx, crd.n) : null; const lac = ctx.lab("lac", 2);
+      if ((fr && fr.v < 30) || (lac && lac.n >= 2) || ctx.choque) out.push(sug("metformina", "💊 Fármaco", "Metformina contraindicada", "severa", "Metformina con " + [fr && fr.v < 30 ? fr.m + " ≈ " + Math.round(fr.v) + " mL/min" : "", lac && lac.n >= 2 ? "lactato " + r1(lac.n) : "", ctx.choque ? "vasopresor" : ""].filter(Boolean).join(", ") + ": suspender (riesgo de acidosis láctica). En el hospital se prefiere insulina.", nombres(met) + " (" + fuentes(met) + ")", "Suspender metformina", "met:" + (fr ? Math.round(fr.v) : "") + ":" + (lac ? lac.n : "")));
+    }
+    const sg = conId(ctx, ["isglt2"]);
+    if (sg.length && (ctx.ck.npo || (ctx.pop !== null && ctx.pop <= 3) || ctx.choque)) out.push(sug("isglt2", "💊 Fármaco", "iSGLT2 en ayuno o cirugía", "moderada", nombres(sg) + " con ayuno, cirugía reciente o enfermedad aguda: suspender (cetoacidosis euglucémica; se suspende 3-4 días antes de una cirugía programada — FDA/ADA).", nombres(sg) + (ctx.ck.npo ? " · ayuno" : "") + (ctx.pop !== null ? " · POP día " + ctx.pop : ""), "Suspender iSGLT2", "sglt2"));
+    return out;
+  }
+
+  // ════ 💊 Interacciones y duplicados ════
+  function reglasInteracciones(ctx) {
+    const out = [];
+    const par = function (id, nombre, a, b, sev, texto, corto) {
+      if (!a.length || !b.length) return;
+      const todos = a.concat(b).filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+      if (todos.length < 2) return;
+      out.push(sug("int_" + id, "💊 Interacción", nombre, sev, texto(a, b), nombres(todos) + " (" + fuentes(todos) + ")", corto, "int:" + id + ":" + todos.map(function (x) { return x.id; }).sort().join(",")));
+    };
+    const aine = con(ctx, "aine"), anticoag = con(ctx, "anticoag"), antiag = con(ctx, "antiag");
+    // Dosis terapéutica: anticoagulante oral o fondaparinux, heparina en infusión/bolo/UI por kg, enoxaparina 1 mg/kg o c/12 h.
+    const terapeutica = anticoag.some(function (x) {
+      const t = N(x.linea);
+      if (tiene(x.d, "avk") || ["rivaroxaban", "apixaban", "dabigatran"].indexOf(x.id) >= 0) return true;
+      if (x.id === "heparina") return /INFUSION|BOLO|UI\s*\/\s*KG|U\s*\/\s*KG\s*\/\s*H|PERFUSION/.test(t);
+      if (x.id === "enoxaparina") return /1\s*MG\s*\/\s*KG|1\.5\s*MG\s*\/\s*KG|C\s*\/\s*12|CADA\s*12|TERAPEUTIC|ANTICOAGULACION/.test(t);
+      return false;
+    });
+    const plA = ctx.lab("plaq", 2), sangraA = menciona(/SANGRADO ACTIVO|HEMORRAGIA|\bSTD[AB]\b|MELENA|HEMATEMESIS|HEMATOQUECIA|HEMOPERITONEO/, ctx.actual);
+    const riesgoA = terapeutica || (plA && plA.n < 100) || sangraA;
+    // En el piso quirúrgico ketorolaco + enoxaparina profiláctica es frecuente: sin plaquetas bajas, sangrado ni dosis
+    // terapéutica queda como «baja» para no tapar lo importante.
+    par("aine_anticoag", "AINE + anticoagulante", aine, anticoag, riesgoA ? "moderada" : "leve", function (a, b) { return nombres(a) + " con " + nombres(b) + (terapeutica ? " a dosis terapéutica" : "") + ": más riesgo de sangrado" + (plA && plA.n < 100 ? " (plaquetas " + r1(plA.n) + " k)" : "") + (sangraA ? " con sangrado documentado" : "") + ". Considerar analgesia sin AINE (paracetamol, metamizol) o vigilar sangrado."; }, "AINE + anticoagulante: riesgo de sangrado");
+    par("anticoag_antiag", "Anticoagulante + antiagregante", anticoag.filter(function (x) { return x.id !== "enoxaparina" || /\b(1\s*MG\s*\/\s*KG|C\s*\/\s*12|CADA\s*12)\b/.test(N(x.linea)); }), antiag, "moderada", function (a, b) { return nombres(a) + " con " + nombres(b) + ": riesgo de sangrado alto; confirmar que ambos siguen indicados."; }, "Anticoagulante + antiagregante");
+    const isrs = con(ctx, "isrs"), lzd = conId(ctx, ["linezolid"]), seroOp = conId(ctx, ["tramadol", "metadona", "fentanilo", "tapentadol"]);
+    par("serotonina", "Riesgo de síndrome serotoninérgico", isrs.concat(lzd), seroOp.concat(lzd), lzd.length ? "severa" : "moderada", function (a, b) { return nombres(a.concat(b).filter(function (x, i, arr) { return arr.indexOf(x) === i; })) + ": riesgo de síndrome serotoninérgico (agitación, temblor, clonus, hipertermia)" + (lzd.length ? "; el linezolid es un IMAO débil: evitar la combinación si hay alternativa" : "") + "."; }, "Riesgo serotoninérgico");
+    par("carba_valpro", "Carbapenémico + ácido valproico", con(ctx, "carba"), conId(ctx, ["valproato"]), "severa", function (a) { return nombres(a) + " baja el ácido valproico a niveles sin efecto en 24 h (riesgo de crisis convulsivas): cambiar el antibiótico o el antiepiléptico (con Neurología)."; }, "Carbapenémico anula el valproato");
+    par("avk", "Anticoagulante oral + fármaco que sube el INR", con(ctx, "avk"), conId(ctx, ["ciprofloxacino", "levofloxacino", "tmp_smx", "metronidazol", "fluconazol", "voriconazol", "amiodarona", "claritromicina", "eritromicina"]), "moderada", function (a, b) { return nombres(b) + " sube el INR con " + nombres(a) + ": INR control en 3-5 días y ajustar."; }, "Vigilar INR (interacción con AVK)");
+    par("clopi_ibp", "Clopidogrel + omeprazol", conId(ctx, ["clopidogrel"]), conId(ctx, ["omeprazol", "esomeprazol"]), "leve", function (a, b) { return nombres(b) + " reduce el efecto del clopidogrel: preferir pantoprazol."; }, "Clopidogrel: cambiar a pantoprazol");
+    par("vanco_pt", "Vancomicina + piperacilina/tazobactam", conId(ctx, ["vancomicina"]), conId(ctx, ["pip_tazo"]), "moderada", function () { return "Vancomicina + piperacilina/tazobactam: más lesión renal que con cefepime o meropenem; Cr diaria y niveles de vancomicina (o valorar cambiar el betalactámico)."; }, "Vanco + pip/tazo: vigilar riñón");
+    par("nefro_amg", "Dos nefrotóxicos", conId(ctx, ["vancomicina", "colistina", "anfotericina"]).concat(aine), con(ctx, "amg"), "moderada", function (a, b) { return nombres(a) + " + " + nombres(b) + ": suman nefrotoxicidad; Cr diaria, niveles y la menor duración posible."; }, "Dos nefrotóxicos: vigilar Cr");
+    par("amg_furo", "Aminoglucósido + furosemida", con(ctx, "amg"), conId(ctx, ["furosemida"]), "leve", function () { return "Aminoglucósido + furosemida: más oto y nefrotoxicidad."; }, "Aminoglucósido + furosemida");
+    par("opio_benzo", "Opioide + benzodiacepina", con(ctx, "opioide"), con(ctx, "benzo"), "moderada", function (a, b) { return nombres(a) + " con " + nombres(b) + ": depresión respiratoria (alerta de la FDA); la menor dosis, oximetría y vigilar la sedación."; }, "Opioide + benzodiacepina: vigilar FR");
+    const mix = con(ctx, "opmix"), puros = con(ctx, "opioide").filter(function (x) { return !tiene(x.d, "opmix"); });
+    par("opio_mixto", "Opioide agonista-antagonista + agonista", mix, puros, "moderada", function (a, b) { return nombres(a) + " antagoniza a " + nombres(b) + " (menos analgesia, puede causar abstinencia): usar uno solo."; }, "Nalbufina/buprenorfina + opioide: usar uno");
+    par("dopa", "Dos antidopaminérgicos", conId(ctx, ["metoclopramida"]), conId(ctx, ["haloperidol", "droperidol"]), "leve", function () { return "Metoclopramida + haloperidol/droperidol: más extrapiramidalismo y QT; dejar uno."; }, "Dos antidopaminérgicos");
+    par("digox_amio", "Digoxina + amiodarona", conId(ctx, ["digoxina"]), conId(ctx, ["amiodarona"]), "moderada", function () { return "La amiodarona sube la digoxina: reducir la dosis de digoxina y medir niveles."; }, "Digoxina + amiodarona: niveles");
+    const ieca = conId(ctx, ["ieca", "ara2"]), diu = conId(ctx, ["furosemida", "tiazida", "espironolactona"]);
+    if (aine.length && ieca.length && diu.length) out.push(sug("int_triple", "💊 Interacción", "AINE + IECA/ARA + diurético", "moderada", "AINE + IECA/ARA II + diurético («triple golpe»): alto riesgo de lesión renal aguda; suspender el AINE o vigilar Cr.", nombres(aine.concat(ieca, diu)), "Triple golpe renal: suspender AINE", "int:triple"));
+    // QT
+    const qt = con(ctx, "qt");
+    if (qt.length >= 2) {
+      const K = ctx.lab("k", 2), Mg = ctx.lab("mg", 3);
+      const bajo = (K && K.n < 3.5) || (Mg && Mg.n < 1.7);
+      out.push(sug("int_qt", "💊 Interacción", "Varios fármacos que prolongan el QT", bajo ? "severa" : "moderada", qt.length + " fármacos que prolongan el QT (" + nombres(qt) + "): ECG con QTc; mantener K ≥ 4 y Mg ≥ 2" + (bajo ? " (hoy " + [K && K.n < 3.5 ? "K " + r1(K.n) : "", Mg && Mg.n < 1.7 ? "Mg " + r1(Mg.n) : ""].filter(Boolean).join(", ") + ": corregir)" : "") + "; suspender el que no sea indispensable.", nombres(qt) + " (" + fuentes(qt) + ")", "QT: ECG y K/Mg", "qt:" + qt.map(function (x) { return x.id; }).sort().join(","), false));
+    }
+    // Duplicados
+    const dup = function (id, nombre, arr, sev, texto, corto) {
+      const u = arr.filter(function (x, i, a) { return a.indexOf(x) === i; });
+      if (u.length < 2) return;
+      out.push(sug("dup_" + id, "♻️ Duplicado", nombre, sev, texto(u), nombres(u) + " (" + fuentes(u) + ")", corto, "dup:" + id + ":" + u.map(function (x) { return x.id; }).sort().join(",")));
+    };
+    dup("ibp", "Dos inhibidores de bomba", con(ctx, "ibp"), "leve", function (u) { return nombres(u) + ": basta un IBP."; }, "Dos IBP: dejar uno");
+    if (con(ctx, "ibp").length && con(ctx, "h2").length) dup("ibp_h2", "IBP + anti-H2", con(ctx, "ibp").concat(con(ctx, "h2")), "leve", function (u) { return nombres(u) + ": doble supresión ácida sin beneficio; dejar uno."; }, "IBP + anti-H2: dejar uno");
+    dup("aine", "Dos AINE", aine, "moderada", function (u) { return nombres(u) + ": dos AINE suman sangrado y daño renal sin más analgesia; dejar uno (se puede combinar con paracetamol o metamizol)."; }, "Dos AINE: dejar uno");
+    dup("anticoag", "Dos anticoagulantes", anticoag, "severa", function (u) { return nombres(u) + ": dos anticoagulantes a la vez. Si es puente con warfarina/acenocumarol, suspender la heparina al llegar al INR meta; si no, dejar uno."; }, "Dos anticoagulantes: revisar");
+    dup("benzo", "Dos benzodiacepinas", con(ctx, "benzo"), "leve", function (u) { return nombres(u) + ": dos benzodiacepinas; dejar una."; }, "Dos benzodiacepinas");
+    dup("a5ht3", "Dos antagonistas 5-HT3", con(ctx, "a5ht3"), "leve", function (u) { return nombres(u) + ": misma familia; dejar uno."; }, "Dos antieméticos 5-HT3");
+    dup("opioide", "Dos opioides agonistas", puros, "leve", function (u) { return nombres(u) + ": revisar si es intencional (basal + rescate); vigilar sedación y frecuencia respiratoria."; }, "Dos opioides: revisar");
+    const bl = ctx.drogas.filter(function (x) { return x.d.cls.some(function (c) { return /^(pen|ceph\d|bli|carba|mono)$/.test(c); }); });
+    dup("betalact", "Dos betalactámicos", bl, "moderada", function (u) { return nombres(u) + ": dos betalactámicos no suman cobertura; dejar uno según el cultivo."; }, "Dos betalactámicos: dejar uno");
+    const anaer = conId(ctx, ["metronidazol", "clindamicina"]), cubreAn = ctx.drogas.filter(function (x) { return tiene(x.d, "anaer") && x.id !== "metronidazol" && x.id !== "clindamicina"; });
+    if (anaer.length && cubreAn.length) out.push(sug("dup_anaerobios", "♻️ Duplicado", "Doble cobertura anaerobia", "leve", nombres(cubreAn) + " ya cubre anaerobios: considerar suspender " + nombres(anaer) + " (salvo C. difficile o absceso amebiano).", nombres(anaer.concat(cubreAn)) + " (" + fuentes(anaer.concat(cubreAn)) + ")", "Doble cobertura anaerobia", "dup:anaer:" + anaer.concat(cubreAn).map(function (x) { return x.id; }).sort().join(",")));
+    dup("fq", "Dos quinolonas", con(ctx, "fq"), "leve", function (u) { return nombres(u) + ": dos quinolonas; dejar una."; }, "Dos quinolonas");
+    dup("amg", "Dos aminoglucósidos", con(ctx, "amg"), "moderada", function (u) { return nombres(u) + ": dos aminoglucósidos (más nefro y ototoxicidad); dejar uno."; }, "Dos aminoglucósidos");
+    dup("mrsa", "Doble cobertura contra SAMR", con(ctx, "mrsa"), "leve", function (u) { return nombres(u) + ": doble cobertura contra SAMR; dejar uno."; }, "Doble cobertura SAMR");
+    Object.keys(ctx.docVeces).forEach(function (id) {
+      if (ctx.docVeces[id] < 2 || ["kcl"].indexOf(id) >= 0) return;
+      const d = DRUG[id];
+      out.push(sug("dup_mismo", "♻️ Duplicado", d.n + " dos veces", id === "paracetamol" ? "moderada" : "leve", d.n + " aparece " + ctx.docVeces[id] + " veces en las indicaciones: confirmar dosis y vía" + (id === "paracetamol" ? "; no pasar de 4 g/día (2-3 g con hepatopatía, desnutrición o alcoholismo)" : "") + ".", d.n + " ×" + ctx.docVeces[id] + " (indicaciones)", d.n + " repetido en indicaciones", "dupm:" + id + ":" + ctx.docVeces[id]));
+    });
+    return out;
+  }
+
+  // ════ 🫘 Riñón ════
+  function reglasRenal(ctx) {
+    const out = [];
+    const crL = ctx.lab("cr", 7);   // creatinina de la última semana (no se sugiere LRA sobre un control viejo)
+    const iu = iuHoy(ctx);
+    const erc = /\b(ERC|ERCT|IRC|ERC\s*KDIGO|ENFERMEDAD\s+RENAL\s+CRONICA|INSUFICIENCIA\s+RENAL\s+CRONICA|HEMODIALISIS|DIALISIS|DPCA|TRASPLANTE\s+RENAL)\b/.test(ctx.txt);
+    const nefro = ctx.drogas.filter(function (x) { return tiene(x.d, "nefro"); });
+    // LRA KDIGO: necesita una creatinina PREVIA más baja; con ERC o diálisis no se sugiere (antes Cr ≥ 4 sin basal salía
+    // como etapa 3 y los de hemodiálisis siempre en rojo). Cr ≥ 4 cuenta como etapa 3 solo si subió ≥ 0.3 contra la basal.
+    if (crL && !erc) {
+      const cr = crL.n, basal = getBaselineCr(ctx.nd && ctx.nd.labHistory);
+      if (basal !== null && cr > basal) {
+        const ratio = cr / basal, delta = cr - basal;
+        let stage = null;
+        if ((cr >= 4.0 && delta >= 0.3) || ratio >= 3.0) stage = 3; else if (ratio >= 2.0) stage = 2; else if (ratio >= 1.5 || delta >= 0.3) stage = 1;
+        if (stage) {
+          const t = "LRA KDIGO " + stage + " (Cr " + r2(cr) + " contra basal " + r2(basal) + ", ×" + ratio.toFixed(2) + "): revisar volemia y uresis" + (iu ? " (IU " + r2(iu.v) + " mL/kg/h)" : "") + "; " +
+            (nefro.length ? "suspender o ajustar los nefrotóxicos en uso: " + nombres(nefro) + "; " : "evitar nefrotóxicos (AINE, aminoglucósidos, contraste IV); ") +
+            "ajustar dosis a la función renal; si hay oliguria, descartar obstrucción (permeabilidad de la sonda, USG renal)" + (stage === 3 ? "; valorar Nefrología (criterios de terapia de reemplazo)" : "") + ".";
+          out.push(sug("aki", "🫘 Riñón", "Lesión renal aguda (KDIGO " + stage + ")", "stage" + stage, t, "Cr " + r2(basal) + " → " + r2(cr) + (nefro.length ? " · " + nombres(nefro) : ""), "LRA KDIGO " + stage + ": nefrotóxicos y volemia", "stage" + stage + ":" + ratio.toFixed(2), stage === 3,
+            { stage: stage, sev: "stage" + stage, value: cr, basal: basal, ratio: ratio.toFixed(2), display: "Cr " + cr + " (basal " + basal + ", x" + ratio.toFixed(2) + ")" }));
+        }
+      }
+    }
+    if (iu && iu.v < 0.5) {
+      out.push(sug("oliguria", "🫘 Riñón", "Oliguria", iu.v < 0.3 ? "severa" : "moderada", "Índice urinario " + r2(iu.v) + " mL/kg/h (" + Math.round(iu.u) + " mL ÷ " + r1(iu.p) + " kg ÷ " + r1(iu.h) + " h): valorar volemia (reto de líquidos si hay hipovolemia), permeabilidad de la sonda y nefrotóxicos; Cr control (KDIGO: < 0.5 mL/kg/h por 6-12 h = etapa 1-2; < 0.3 por 24 h = etapa 3).", "IU " + r2(iu.v) + " mL/kg/h" + (iu.h24 ? " (24 h supuestas)" : ""), "Oliguria (IU " + r2(iu.v) + ")", "iu:" + r2(iu.v), iu.v < 0.3, { value: iu.v }));
+    }
+    const crR = ctx.lab("cr", 3);
+    if (crR) {
+      const fr = funcionRenal(ctx, crR.n);
+      const ajustar = ctx.drogas.filter(function (x) { return tiene(x.d, "renal"); });
+      const evitar = ctx.drogas.filter(function (x) { return tiene(x.d, "aine") || (fr && fr.v < 30 && (x.id === "metformina" || x.id === "nitrofurantoina")); });
+      if (fr && fr.v < 50 && (ajustar.length || evitar.length)) {
+        out.push(sug("ajuste_renal", "🫘 Riñón", "Ajustar dosis a la función renal", fr.v < 30 ? "moderada" : "leve",
+          fr.m + " ≈ " + Math.round(fr.v) + " mL/min (Cr " + r2(crR.n) + (ctx.edad ? ", " + ctx.edad + " años" : "") + (ctx.peso ? ", " + r1(ctx.peso) + " kg" : "") + ")" + (ajustar.length ? ": revisar la dosis de " + nombres(ajustar) : "") + (evitar.length ? (ajustar.length ? "; " : ": ") + "evitar o suspender " + nombres(evitar) + " con esta función renal" : "") + ".",
+          nombres(ajustar.concat(evitar)) + " (" + fuentes(ajustar.concat(evitar)) + ")", "Ajuste renal de fármacos (ClCr " + Math.round(fr.v) + ")", "renal:" + Math.round(fr.v / 5) + ":" + ajustar.concat(evitar).map(function (x) { return x.id; }).sort().join(",")));
+      }
+    }
+    return out;
+  }
+
+  // ════ 🧫 Infección, nutrición y profilaxis ════
+  function reglasOtras(ctx) {
+    const out = [];
+    const pcr = ctx.lab("pcr", 1);
+    if (pcr && ctx.pop !== null && ctx.pop >= 3 && ctx.pop <= 5 && pcr.n >= 150)
+      out.push(sug("pcr_pop", "🧫 Infección", "PCR alta en el POP 3-5", "moderada", "PCR " + Math.round(pcr.n) + " mg/L en el POP día " + ctx.pop + ": predice complicación infecciosa (fuga anastomótica, colección, infección de herida). Correlacionar con la clínica y valorar TAC con contraste (metaanálisis: PCR > 150-170 en el POP 3).", "PCR " + Math.round(pcr.n) + " · POP día " + ctx.pop, "PCR alta POP: buscar complicación", "pcrpop:" + Math.round(pcr.n / 10) + ":" + ctx.pop));
+    const atb = ctx.drogas.filter(function (x) { return tiene(x.d, "atb"); });
+    const sp = serie(ctx.nd, "pct");
+    if (atb.length && sp.length) {
+      const u = sp[sp.length - 1]; const d = diasDesde(u.f);
+      const max = sp.filter(function (x) { const dd = diasEntre(x.f, u.f); return dd !== null && dd <= 7; }).reduce(function (m, x) { return Math.max(m, x.n); }, 0);
+      const dias = num(ctx.ck.atb_dias);
+      if ((d === null || d <= 1) && (isFinite(dias) ? dias >= 3 : true) && (u.n < 0.5 || (max >= 1 && u.n <= max * 0.2)))
+        out.push(sug("pct_suspender", "🧫 Infección", "Procalcitonina baja con antibiótico", "leve", "PCT " + r2(u.n) + (max > u.n ? " (máximo " + r2(max) + ")" : "") + " con " + nombres(atb) + (isFinite(dias) ? " (día " + dias + ")" : "") + ": si la clínica mejoró, considerar suspender o acortar el antibiótico (PCT < 0.5 o caída ≥ 80 %).", "PCT " + r2(u.n) + " (" + fc(u.f) + ")", "PCT baja: valorar suspender ATB", "pct:" + r2(u.n)));
+    }
+    const npoD = num(ctx.ck.npo_dias);
+    if (ctx.ck.npo && npoD >= 5 && !ctx.ck.npt && !ctx.meds.some(function (m) { return /\bNPT\b|NUTRICION|ENTERAL/.test(N(m.txt)); })) {
+      const alb = ctx.lab("alb", 7);
+      out.push(sug("nutricion", "🍽 Nutrición", "Ayuno prolongado sin soporte nutricional", npoD >= 7 ? "moderada" : "leve", "Ayuno de " + npoD + " días sin nutrición" + (alb ? " (Alb " + r1(alb.n) + ")" : "") + ": si no tolerará la vía oral pronto, valorar nutrición enteral (de preferencia) o parenteral (ESPEN: antes de 7 días si está desnutrido o en UCI).", "Ayuno día " + npoD + (alb ? " · Alb " + r1(alb.n) : ""), "Ayuno prolongado: soporte nutricional", "npo:" + npoD));
+    }
+    if (ctx.hayDoc && !ctx.ck.tvp && !con(ctx, "anticoag").length) {
+      const pl = ctx.lab("plaq", 3);
+      const sangra = menciona(/SANGRADO ACTIVO|HEMORRAGIA|\bSTD[AB]\b|MELENA|HEMATEMESIS|HEMOPERITONEO/, ctx.actual);
+      const mecanica = /MEDIAS|COMPRESION|VENDAJE\s+(ELASTICO|COMPRESIVO)/.test(ctx.medidas);
+      if (!sangra && !mecanica && !(pl && pl.n < 50))
+        out.push(sug("tvp_sin", "🩹 Profilaxis", "Sin profilaxis de TVP registrada", "leve", "No hay profilaxis de TVP en las indicaciones ni en la tarjeta: valorar el riesgo (Caprini/Padua) y profilaxis farmacológica (HBPM) o mecánica si hay riesgo de sangrado.", "Indicaciones sin heparina/anticoagulante · TVP sin marcar", "Valorar profilaxis de TVP", "tvp"));
+    }
+    return out;
+  }
+
+  function valueHash(result) {
+    if (!result) return "";
+    if (typeof result.value === "number") return String(Math.round(result.value * 10) / 10);
+    if (result.stage) return "stage" + result.stage + ":" + result.ratio;
     return JSON.stringify(result);
   }
-  function evaluate(p,nd){
+  function evaluate(p, nd) {
     try {
-      const out=[]; const labs=getActiveLabs(nd);
-      const labHist=(nd&&nd.labHistory)||[];
-      const dx=((nd&&nd.dx)||(p&&p.dx)||"").toString();
-      RULES.forEach(function(rule){
-        try {
-          const result=rule.check(labs,labHist,p,nd); if(!result) return;
-          const sug=buildSuggestion(rule,result,dx); if(!sug) return;
-          const isCritical=rule.critical&&rule.criticalIf&&rule.criticalIf(result);
-          out.push({ruleId:rule.id,ruleName:rule.name,severity:result.sev,
-            critical:!!isCritical,result:result,suggestion:sug,valueHash:valueHash(result)});
-        } catch(e) { console.warn('PLCDS rule '+rule.id+' error:', e); }
+      const ctx = ctxDe(p, nd);
+      const out = [];
+      [reglasCultivos, reglasSangre, reglasElectrolitos, reglasGlucosa, reglasInteracciones, reglasRenal, reglasOtras].forEach(function (fn) {
+        try { fn(ctx).forEach(function (s) { if (s) { if (!s.valueHash) s.valueHash = valueHash(s.result); out.push(s); } }); }
+        catch (e) { console.warn("PLCDS " + (fn.name || "regla") + " error:", e); }
       });
       return out;
-    } catch(e) { console.warn('PLCDS.evaluate error:', e); return []; }
+    } catch (e) { console.warn('PLCDS.evaluate error:', e); return []; }
   }
-  const SEV_ORDER={stage3:0,severa:1,stage2:2,moderada:3,stage1:4,leve:5,info:6};
-  function sortBySeverity(suggestions){
-    return suggestions.slice().sort(function(a,b){
-      const va=SEV_ORDER[a.severity]; const vb=SEV_ORDER[b.severity];
-      return (va===undefined?99:va)-(vb===undefined?99:vb);
+  const SEV_ORDER = { stage3: 0, severa: 1, stage2: 2, moderada: 3, stage1: 4, leve: 5, info: 6 };
+  function sortBySeverity(suggestions) {
+    return suggestions.slice().sort(function (a, b) {
+      if (!!b.critical !== !!a.critical) return b.critical ? 1 : -1;
+      const va = SEV_ORDER[a.severity]; const vb = SEV_ORDER[b.severity];
+      return (va === undefined ? 99 : va) - (vb === undefined ? 99 : vb);
     });
   }
-  return {evaluate:evaluate, sortBySeverity:sortBySeverity, getActiveLabs:getActiveLabs, getSex:getSex};
+  return { evaluate: evaluate, sortBySeverity: sortBySeverity, getActiveLabs: getActiveLabs, getSex: getSex,
+    _t: { ctxDe: ctxDe, atbId: atbId, resistenciaInferida: resistenciaInferida, funcionRenal: funcionRenal, insulinaDe: insulinaDe, drogasDe: drogasDe } };
 })();
 
 const PLCDSStore = (function() {
@@ -5887,61 +6539,66 @@ function renderCDSSection(p, nd, k) {
     if (!filtered.length) {
       return '<div class="cds-section cds-empty" id="cds-' + escInd(k) + '">' +
         '<div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas</span>' +
-        '<span class="cds-status-ok">✓ Sin pendientes</span></div></div>';
+        '<span class="cds-status-ok">✓ Sin pendientes</span></div>' +
+        '<div class="cds-foot">Revisa antibiograma contra antibiótico, transfusión, electrolitos, insulina, interacciones, duplicados y ajuste renal con los labs, las indicaciones del Doc, la tarjeta y los cultivos.</div></div>';
     }
-    const items = filtered.slice(0, 5).map(function(s) {
+    // 28 oct 2026: sugerencias de MANEJO (ya no «Agregar al dx»). Se ven 6; «Ver todas» muestra el resto.
+    const todas = !!(window.__cdsAll && window.__cdsAll[k]);
+    const shown = todas ? filtered : filtered.slice(0, 6);
+    const items = shown.map(function(s) {
       const sevSimple = (s.severity || "info").replace(/\d/g, "");
-      const sevLabel = (s.severity || "").replace("stage", "KDIGO ").toUpperCase();
+      const sevLabel = s.critical ? "URGENTE" : (/^stage/.test(s.severity || "") ? String(s.severity).replace("stage", "KDIGO ") : ({ severa: "ALTA", moderada: "MEDIA", leve: "BAJA", info: "INFO" }[s.severity] || String(s.severity || "").toUpperCase()));
       const valHash = escInd(s.valueHash);
-      return '<div class="cds-item' + (s.critical ? ' cds-critical' : '') + ' cds-sev-' + sevSimple + '">' +
-        '<div class="cds-item-row"><span class="cds-badge cds-badge-' + sevSimple + '">' + escInd(sevLabel) + '</span>' +
+      const sg = s.suggestion || {};
+      return '<div class="cds-item' + (s.critical ? ' cds-critical' : '') + ' cds-sev-' + sevSimple + '" data-testid="cds-item" data-rule="' + escInd(s.ruleId) + '">' +
+        '<div class="cds-item-row"><span class="cds-badge cds-badge-' + (s.critical ? 'severa' : sevSimple) + '">' + escInd(sevLabel) + '</span>' +
+        (s.cat ? '<span class="cds-cat">' + escInd(s.cat) + '</span>' : '') +
         '<span class="cds-rule-name">' + escInd(s.ruleName) + '</span></div>' +
-        '<div class="cds-suggestion">' + escInd(s.suggestion.text) + '</div>' +
+        '<div class="cds-suggestion">' + escInd(sg.text || "") + '</div>' +
+        (sg.why ? '<div class="cds-why">Por qué: ' + escInd(sg.why) + '</div>' : '') +
         '<div class="cds-actions">' +
-          '<button class="cds-btn cds-btn-apply" onclick="cdsApplySuggestion(\'' + escInd(k) + '\',\'' + escInd(s.ruleId) + '\')">✏️ Aplicar al dx</button>' +
-          '<button class="cds-btn cds-btn-ignore" onclick="cdsIgnoreSuggestion(\'' + escInd(k) + '\',\'' + escInd(s.ruleId) + '\',\'' + valHash + '\')">🔇 Ignorar</button>' +
+          '<button class="cds-btn cds-btn-apply" data-testid="cds-pend" onclick="cdsAddToPendientes(\'' + escInd(k) + '\',\'' + escInd(s.ruleId) + '\',\'' + valHash + '\')" title="Agrega un renglón a ⚠️ Pendientes / Plan (solo si tú lo tocas)">➕ A pendientes</button>' +
+          '<button class="cds-btn cds-btn-ignore" onclick="cdsIgnoreSuggestion(\'' + escInd(k) + '\',\'' + escInd(s.ruleId) + '\',\'' + valHash + '\')" title="Ocultar hasta que cambien los datos">🔇 Ignorar</button>' +
         '</div></div>';
     }).join("");
+    const mas = filtered.length > 6 ? '<button class="cds-btn cds-btn-more" data-testid="cds-mas" onclick="cdsVerTodas(\'' + escInd(k) + '\')">' + (todas ? "Ver menos" : "Ver las " + filtered.length) + '</button>' : "";
     const critCount = filtered.filter(function(s) { return s.critical; }).length;
-    const critBadge = critCount ? '<span class="cds-crit-count">⚠️ ' + critCount + ' crítica' + (critCount > 1 ? 's' : '') + '</span>' : "";
+    const critBadge = critCount ? '<span class="cds-crit-count">⚠️ ' + critCount + ' urgente' + (critCount > 1 ? 's' : '') + '</span>' : "";
     return '<div class="cds-section" id="cds-' + escInd(k) + '">' +
       '<div class="cds-header"><span class="cds-title">💡 Sugerencias clínicas <span class="cds-count">(' + filtered.length + ')</span></span>' + critBadge + '</div>' +
-      '<div class="cds-items">' + items + '</div></div>';
+      '<div class="cds-items">' + items + '</div>' + mas +
+      '<div class="cds-foot">Para considerar: no sustituyen el juicio clínico (no conocen alergias ni todo el contexto). Datos: labs, indicaciones del Doc, la tarjeta y cultivos de WinLab.</div></div>';
   } catch (e) {
     console.warn("renderCDSSection error:", e);
     return '';
   }
 }
-
-function cdsApplySuggestion(patientKey, ruleId) {
+function cdsVerTodas(k) {
+  window.__cdsAll = window.__cdsAll || {};
+  window.__cdsAll[k] = !window.__cdsAll[k];
+  if (typeof _rerenderCard === "function") _rerenderCard(k);
+}
+// ➕ A pendientes: SOLO cuando la persona lo toca, agrega un renglón «• <acción>» al final de ⚠️ Pendientes / Plan (se
+// puede regresar con ↩ Regresar). Nada se escribe solo.
+function cdsAddToPendientes(patientKey, ruleId, vhash) {
   try {
     if (typeof patients === "undefined" || typeof getNote !== "function") return;
     const p = patients.find(function(pt) { return pid(pt) === patientKey; });
+    if (!p) return;
     const nd = getNote(patientKey);
-    if (!p || !nd) return;
-    const suggestions = PLCDS.evaluate(p, nd);
-    const s = suggestions.find(function(x) { return x.ruleId === ruleId; });
+    const s = PLCDS.evaluate(p, nd).find(function(x) { return x.ruleId === ruleId && (!vhash || x.valueHash === vhash); });
     if (!s) return;
-    const currentDx = (nd.dx || p.dx || "").toString();
-    if (s.suggestion.type === "reclasify" && s.suggestion.from && s.suggestion.to) {
-      const reGrade = new RegExp("(" + s.ruleName + ".*?)" + s.suggestion.from, "i");
-      if (reGrade.test(currentDx)) {
-        const newDx = currentDx.replace(reGrade, "$1" + s.suggestion.to);
-        if (confirm("Reemplazar en dx:\n\n" + currentDx + "\n\n→\n\n" + newDx + "\n\n¿Confirmar?")) {
-          nd.dx = newDx; saveNote(patientKey, nd);
-          if (p) p.dx = newDx;
-          if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
-        }
-        return;
-      }
-    }
-    if (confirm("Agregar al dx:\n\n" + s.suggestion.text + "\n\n¿Confirmar?")) {
-      nd.dx = currentDx + "\n📋 " + s.suggestion.text;
-      saveNote(patientKey, nd);
-      p.dx = nd.dx; if (typeof _savePtsImmediate === "function") _savePtsImmediate(p, ["dx"]);   // antes solo quedaba en la nota local: no llegaba a la nube ni a la Entrega (lee p.dx)
-      if (typeof _rerenderCard === "function") _rerenderCard(patientKey);
-    }
-  } catch (e) { console.warn("cdsApplySuggestion:", e); }
+    const line = "• " + ((s.suggestion && s.suggestion.short) || s.ruleName);
+    const ta = document.querySelector('textarea[data-key="' + patientKey + '"][data-field="pendientes"]');
+    const cur = ta ? ta.value : toSafeString(nd.pendientes);
+    if (cur.indexOf(line) >= 0) { try { _showRTToast("Ya está en pendientes: " + line.slice(2)); } catch (_) {} return; }
+    _undoPush(patientKey, "sugerencia a pendientes", ["pendientes"]);
+    const base = cur.replace(/\s+$/, "");
+    const next = (base ? base + "\n" : "") + line;
+    if (ta) { ta.value = next; liveUpdate(ta); _touchBy(noteData[patientKey], "pendientes"); }
+    else { nd.pendientes = next; _touchBy(nd, "pendientes"); _saveNoteNow(patientKey, nd, "pendientes"); if (typeof _rerenderCard === "function") _rerenderCard(patientKey); }
+    try { _showRTToast("➕ A pendientes: " + line.slice(2)); } catch (_) {}
+  } catch (e) { console.warn("cdsAddToPendientes:", e); }
 }
 
 function cdsIgnoreSuggestion(patientKey, ruleId, vhash) {
@@ -6542,7 +7199,9 @@ function plExportBackup() {
     let selectedResidente = "ALL";
     let selectedAdscrito = "ALL";
     let showSoloIngresos = false;
-    let _soloMios = (function () { try { return localStorage.getItem("pl_solo_mios") === "1"; } catch (_) { return false; } })();
+    let selectedServicio = "ALL";   // sala del censo (patients.seccion): Piso, UCIA, Pediatría… (filtros del tablero, 28 oct 2026)
+    let showLibres = false;         // el tablero muestra las camas libres en vez de las fichas
+    let _soloMios =(function () { try { return localStorage.getItem("pl_solo_mios") === "1"; } catch (_) { return false; } })();
     let modalMode = "add";
     let modalOrigKey = null;
     let _modalCurrentEditKey = null; // clave del paciente que se edita actualmente en el modal (null si add o modal cerrado)
@@ -9192,9 +9851,11 @@ function plExportBackup() {
                 // Snapshot manual: hacer merge no destructivo (preserva edición manual).
                 // Solo rellena keys vacíos con el sync de winlab.
                 const newLabs = { ...exLabs };
+                const _borrados = isPlainObject(ex.manual_by) ? ex.manual_by : {};   // ✏️ Corregir: vaciado a propósito
                 for (const [labKey, labVal] of Object.entries(snap.labs)) {
                   const curVal = exLabs[labKey];
                   if (curVal === undefined || curVal === null || String(curVal).trim() === "") {
+                    if (_borrados[labKey]) continue;
                     newLabs[labKey] = labVal;
                   }
                 }
@@ -9215,6 +9876,7 @@ function plExportBackup() {
                 const mergedLabs = { ...snap.labs };
                 manualKeys.forEach(function (mk) {
                   if (exLabs[mk] !== undefined && exLabs[mk] !== null && String(exLabs[mk]).trim() !== "") mergedLabs[mk] = exLabs[mk];
+                  else if (isPlainObject(ex.manual_by) && ex.manual_by[mk]) delete mergedLabs[mk];   // borrado a propósito en ✏️ Corregir
                 });
                 hist[existingIdx] = {
                   ...ex, labs: mergedLabs,
@@ -9506,7 +10168,7 @@ function plExportBackup() {
         labs: { hb: "", leucos: "", plaq: "", cr: "", glu: "", na: "", k: "", alb: "", pcr: "", pct: "", inr: "", urea: "", fecha_labs: "" },
         labHistory: [], imagenHistory: [],
         checklist: { npo: false, npo_dias: "", atb: false, atb_nombre: "", atb_dias: "", tvp: false, tvp_tipo: "", tvp_dosis: "", tvp_otro: "", dieta: "", dren: false, cur_necesita: false, cur_realizada: false, npt: false, npt_pct: "", npt_fecha: "", sexo: "", pendientes_mips: "", pendientes_r1: "", interconsultas: "", cultivos: "",
-          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_dxtx: "", pm_iu: "", /* FIX-v47 */
+          pm_fc: "", pm_fr: "", pm_temp: "", pm_sao2: "", pm_o2l: "", pm_ta: "", pm_uresis: "", pm_uresis_h: "", pm_dxtx: "", pm_iu: "", /* FIX-v47 · pm_uresis_h: horas de la uresis (índice urinario) */
           pm_fecha: "", pm_hist: [], /* oct 2026: fecha de los vitales del pase e historial por día */
           pm_sng: false, pm_sng_desc: "", pm_prs1: false, pm_prs1_desc: "", pm_prs2: false, pm_prs2_desc: "", pm_prs3: false, pm_prs3_desc: "",
           pm_estoma: false, pm_estoma_desc: "", pm_estoma_tipo: "", pm_estoma_gasto: "", pm_balance: "", pm_sep: false, pm_sep_gasto: "", pm_sep_fuga: false, pm_sep_fuga_grado: "", pm_hxqx: "",
@@ -9713,7 +10375,9 @@ function plExportBackup() {
             source_file_stripped: s.source_file_stripped === true && !toSafeString(s.source_file).trim() ? true : undefined,
             // Analitos capturados/corregidos a mano sobre un snapshot de WinLab: el reemplazo total
             // del siguiente sync los conserva (antes el Lac/gaso tecleado desaparecía en el siguiente sync).
-            manual_keys: Array.isArray(s.manual_keys) && s.manual_keys.length ? s.manual_keys.map(function (x) { return toSafeString(x); }).filter(Boolean) : undefined
+            manual_keys: Array.isArray(s.manual_keys) && s.manual_keys.length ? s.manual_keys.map(function (x) { return toSafeString(x); }).filter(Boolean) : undefined,
+            // ✏️ Corregir labs (28 oct 2026): quién corrigió cada analito, cuándo y qué decía antes.
+            manual_by: _sanitizeManualBy(s.manual_by)
           };
         });
       nd.labs = sanitizeLabsMap(nd.labs);
@@ -9979,7 +10643,7 @@ function plExportBackup() {
         var gasto=_plneVal2(d.gasto); var gastoTxt=gasto?(" CON GASTO DE "+gasto+(/^[\d.,]+$/.test(gasto)?" ML":"")):"";
         var carac=_plneVal2(d.carac)?(" DE CARACTERÍSTICAS "+_plneVal2(d.carac)):"";
         // La permeabilidad no se captura en la tarjeta: queda entre corchetes para que el residente la confirme.
-        if(/foley|vesical|cistostom/i.test(tipo)){ foley=tipo+" [¿PERMEABLE A DERIVACIÓN?]"+(_plneVal2(ck.pm_uresis)?" CON URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":""):"")+(carac||"")+(dias!==null?" (DÍA "+dias+")":""); return; }
+        if(/foley|vesical|cistostom/i.test(tipo)){ foley=tipo+" [¿PERMEABLE A DERIVACIÓN?]"+(_plneVal2(ck.pm_uresis)?" CON URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":"")+_iuTextoNota(ck):"")+(carac||"")+(dias!==null?" (DÍA "+dias+")":""); return; }
         var base=/estoma|ileostom|colostom|yeyunostom|gastrostom|fístula|fistula/i.test(tipo)?tipo:("DRENAJE TIPO "+tipo);
         if(/^(sng|sonda|cmp|cvc|catéter|cateter|tpn)/i.test(tipo)) base=tipo;
         out.push(base+(d.lado?" "+_plneLado(d.lado):"")+(_plneVal2(d.sitio)?" EN "+_plneVal2(d.sitio):"")+gastoTxt+carac+(dias!==null?" (DÍA "+dias+")":""));
@@ -10022,7 +10686,7 @@ function plExportBackup() {
       var disp=_plneDispositivos(ck);
       var obj="PACIENTE "+SX+(vit.length?", CON "+vit.join(", "):"")+". "+(o?_plneOra(o):"[EXPLORACIÓN FÍSICA: ESTADO DE ALERTA, MUCOSAS, TÓRAX, PRECORDIO, ABDOMEN, HERIDA QUIRÚRGICA, EXTREMIDADES].");
       if(disp.lista.length) obj+=" "+_plneOra(disp.lista.join(", "));
-      if(disp.foley) obj+=" "+_plneOra(disp.foley); else if(_plneVal2(ck.pm_uresis)) obj+=" URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":"")+".";
+      if(disp.foley) obj+=" "+_plneOra(disp.foley); else if(_plneVal2(ck.pm_uresis)) obj+=" URESIS CUANTIFICADA DE "+_plneVal2(ck.pm_uresis)+(/^[\d.,]+$/.test(_plneVal2(ck.pm_uresis))?" ML":"")+_iuTextoNota(ck)+".";
       var bal=_plneVal2(ck.pm_balance||nd.balance); if(bal) obj+=" BALANCE HÍDRICO "+bal+".";
       var _cxList=(typeof cirugiasOrdenadas==="function")?cirugiasOrdenadas(ck):[];
       var sang=_plneVal2(nd.sangrado); if(sang && !_cxList.some(function(c){ return _plneVal2(c.sangrado); })) obj+=" SANGRADO: "+_plneOra(sang);
@@ -10411,6 +11075,8 @@ function plExportBackup() {
       if(ck.vp_vaso_on){ var v=vpVasoDosis(ck.vp_vaso_u, ck.vp_vaso_ml, ck.vp_vaso_mlh); var dv=(vpNum(ck.vp_vaso_u)>0&&vpNum(ck.vp_vaso_ml)>0&&vpNum(ck.vp_vaso_mlh)>=0)?(" ("+vpFmt(vpNum(ck.vp_vaso_u))+" U EN "+vpFmt(vpNum(ck.vp_vaso_ml))+" ML A "+vpFmt(vpNum(ck.vp_vaso_mlh))+" ML/H)"):""; partes.push("VASOPRESINA A "+(v!==null?vpFmt(v):"[__]")+" U/MIN"+dv); }
       return partes.length?("BAJO APOYO VASOPRESOR CON "+partes.join(" Y ")):"";
     }
+    // Índice urinario calculado (uresis ÷ peso ÷ horas) para la nota: solo si hay uresis numérica y peso.
+    function _iuTextoNota(ck){ try{ var r=iuCalc(ck.pm_uresis, ck.pm_peso, ck.pm_uresis_h); return r?(" (ÍNDICE URINARIO "+vpFmt(r.v,2)+" ML/KG/H"+(toSafeString(ck.pm_uresis_h).trim()?" EN "+vpFmt(r.h,1)+" H":"")+")"):""; }catch(_){ return ""; } }
     function _vmTextoNota(ck, p, nd){
       var v=function(x){ return _plneVal2(x); }; var vm=[];
       if(v(ck.pm_vent_modo)) vm.push("MODO "+v(ck.pm_vent_modo));
@@ -10452,15 +11118,15 @@ function plExportBackup() {
         var _robotHtml = "";
         try { _robotHtml = renderRobotLine(patients.find(function(x){ return pid(x) === k; }), nd, k); } catch (_) {}
         if(!dates.length){
-          return '<div class="ff-labs"><div class="ff-labs-h">Labs</div>' + _robotHtml + '<div class="ff-labs-empty">Sin laboratorios (los trae el robot de WinLab)</div></div>';
+          return '<div class="ff-labs"><div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" data-testid="lab-corregir" onclick="openLabEditor(\'' + k + '\')" title="Capturar laboratorios a mano">✏️ Capturar</button></div>' + _robotHtml + '<div class="ff-labs-empty">Sin laboratorios (los trae el robot de WinLab)</div></div>';
         }
         /* FIX-v48: como el papel — cronológico, la más reciente a la DERECHA.
            Ficha compacta (oct 2026): 3 fechas en modo Pase / 4 en Completo para que la tabla quepa
            partida en dos mitades lado a lado (ver abajo); las demás fechas siguen en 📈 Gráficas. */
         var _paseCols = (typeof isPaseMode === "function") && isPaseMode();
         var shown = dates.slice(0, _paseCols ? 3 : 4).reverse();
-        var byDate = {};
-        history.forEach(function(s){ byDate[s.fecha] = s.labs || {}; });
+        var byDate = {}, manByDate = {};
+        history.forEach(function(s){ byDate[s.fecha] = s.labs || {}; manByDate[s.fecha] = (s.manual_by && typeof s.manual_by === "object") ? s.manual_by : {}; });
         // INR (oct 2026): WinLab no lo reporta; si falta se ESTIMA TP ÷ testigo y se marca "≈". La fila INR siempre se muestra.
         var inrEst = {};
         shown.forEach(function(d){ var io = (typeof inrOf === "function") ? inrOf(byDate[d]) : null; if (io && io.est) inrEst[d] = io.txt; });
@@ -10507,7 +11173,11 @@ function plExportBackup() {
             var v = (raw === undefined || raw === null || String(raw).trim() === "") ? "—" : String(raw).trim();
             var cls = (v === "—") ? "" : labClass(key, v);
             var tr = (v === "—") ? "" : trendMark(key, idx);
-            return '<td' + (cls ? ' class="' + cls + '"' : '') + (est ? ' title="INR estimado = TP ÷ testigo (WinLab no reporta INR)"' : '') + '>' + (est ? '≈' : '') + esc(v) + tr + '</td>';
+            // ✎ Corregido a mano en «✏️ Corregir» (28 oct 2026): quién y qué decía antes.
+            var man = (manByDate[d] || {})[key];
+            var manTag = man ? '<span class="ff-man" onclick="_labManInfo(this)" title="Corregido a mano' + (man.u ? ' por ' + esc(man.u) : '') + (man.antes ? ' · antes: ' + esc(man.antes) : ' · antes vacío') + '">✎</span>' : '';
+            if (man && v === "—" && !est) return '<td title="Borrado a mano' + (man.u ? ' por ' + esc(man.u) : '') + (man.antes ? ' · decía: ' + esc(man.antes) : '') + '">—' + manTag + '</td>';
+            return '<td' + (cls ? ' class="' + cls + '"' : '') + (est ? ' title="INR estimado = TP ÷ testigo (WinLab no reporta INR)"' : '') + '>' + (est ? '≈' : '') + esc(v) + tr + manTag + '</td>';
           }).join('');
           return '<tr><td class="ff-an">' + esc(label) + '</td>' + tds + '</tr>';
         }
@@ -10573,7 +11243,7 @@ function plExportBackup() {
         if(otherRows || extraRows){
           otros = '<tr class="ff-otros-h"><td colspan="' + (shown.length + 1) + '">Otros</td></tr>' + otherRows + extraRows;
         }
-        var hdr = '<div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(\'' + k + '\')">📈 Gráficas</button></div>' + _robotHtml;
+        var hdr = '<div class="ff-labs-h">Labs <button type="button" class="ff-chart-btn" onclick="openLabCharts(\'' + k + '\')">📈 Gráficas</button> <button type="button" class="ff-chart-btn" data-testid="lab-corregir" onclick="openLabEditor(\'' + k + '\')" title="Corregir un valor mal transcrito (el robot ya no lo cambia) o capturar uno que falta">✏️ Corregir</button></div>' + _robotHtml;
         function tbl(rows){ return '<div class="ff-labs-wrap"><table class="ff-labtable"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>'; }
         // Ficha compacta: con muchas filas, dos mitades lado a lado (misma cabecera) → la mitad de alto.
         // En pantallas angostas el CSS apila las mitades (.ff-labs-split).
@@ -12737,7 +13407,8 @@ function plExportBackup() {
             estado: row.estado || "",
             es_mio: (typeof row.es_mio === "boolean" ? row.es_mio : computeEsMio(row.esp)),
             ingreso: row.ingreso ? fmtDateFromISO(row.ingreso) : "",
-            cama_app_ts: row.cama_app_ts || null
+            cama_app_ts: row.cama_app_ts || null,
+            seccion: row.seccion || ""   // sala del censo: filtro de servicio del tablero
           };
           // Si los campos de identidad llegaron vacíos desde Supabase, intentar
           // restaurarlos desde el caché local (mismo _supa_id)
@@ -14351,7 +15022,8 @@ function plExportBackup() {
         dx: row.dx || "", edad: row.edad || "", esp: row.esp || "",
         adscrito: row.adscrito || "", residente: row.residente || "",
         estado: row.estado || "", es_mio: (typeof row.es_mio === "boolean" ? row.es_mio : computeEsMio(row.esp)), ingreso: fmtDateFromISO(row.ingreso),
-        cama_app_ts: row.cama_app_ts || null
+        cama_app_ts: row.cama_app_ts || null,
+        seccion: row.seccion || ""   // sala del censo (la pone el sheet-sync; la app solo la lee para el filtro de servicio)
       };
     }
     // La app cambió la cama de este paciente (Editar, cama en línea, 🛏 Cambiar cama, mover por expediente): se marca con
@@ -15615,6 +16287,7 @@ function plExportBackup() {
         const rm = selectedResidente === "ALL" || (p.residente || "") === selectedResidente;
         const am = selectedAdscrito === "ALL" || (p.adscrito || "") === selectedAdscrito;
         const im = !showSoloIngresos || isRecentIngreso(p.ingreso);
+        const svm = selectedServicio === "ALL" || servicioDe(p) === selectedServicio;
         // "Solo míos": oculta en PRESENTACIÓN a los de servicio ajeno (URO/NCX/TYO puros).
         // Nunca borra datos; co-manejo y desconocidos cuentan como míos.
         const mm = !_soloMios || _esMioVal(p) !== false;
@@ -15623,7 +16296,7 @@ function plExportBackup() {
           const haystack = normSearch(p.nombre) + normSearch(p.cama) + normSearch(p.exp || "") + normSearch(p.adscrito || "") + normSearch(p.residente || "");
           sm = searchTokens.every(tok => haystack.includes(tok));
         }
-        return em && sm && rm && am && im && mm;
+        return em && sm && rm && am && im && mm && svm;
       });
       const _cb = document.getElementById("count-badge");
       if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
@@ -15632,7 +16305,7 @@ function plExportBackup() {
         if (_ve) _ve.style.display = currentView === v ? "" : "none";
       });
       if (currentView === "piso") {
-        const _noFilter = searchTokens.length === 0 && selectedEsp === "ALL" && selectedResidente === "ALL" && selectedAdscrito === "ALL" && !showSoloIngresos;
+        const _noFilter = searchTokens.length === 0 && selectedEsp === "ALL" && selectedResidente === "ALL" && selectedAdscrito === "ALL" && selectedServicio === "ALL" && !showSoloIngresos;
         renderPiso(filtered, _noFilter);
       }
       if (currentView === "census") {
@@ -15738,9 +16411,105 @@ function plExportBackup() {
     // "Sin pacientes" por especialidad, "solo ingresos" o "solo míos" activos.
     function quitarFiltrosTodo() {
       const s = document.getElementById("search"); if (s) s.value = "";
-      selectedEsp = "ALL"; selectedResidente = "ALL"; selectedAdscrito = "ALL"; showSoloIngresos = false;
+      selectedEsp = "ALL"; selectedResidente = "ALL"; selectedAdscrito = "ALL"; selectedServicio = "ALL"; showSoloIngresos = false; showLibres = false;
       if (typeof _soloMios !== "undefined" && _soloMios) { _soloMios = false; try { localStorage.setItem("pl_solo_mios", "0"); } catch (_) {} }
       buildEspFilters(); renderView();
+    }
+
+    // ─── FILTROS DEL TABLERO (28 oct 2026, pedido de Gera) ───────────────────────────
+    // En el tablero (una cama a la vez) la barra de filtros de arriba está oculta. El botón 🔎 Filtros de la barra de
+    // camas abre especialidad, adscrito, servicio (la sala del censo: Piso, UCIA, Pediatría…), ingresos y camas libres.
+    // Son los mismos filtros de siempre (selectedEsp/selectedAdscrito/showSoloIngresos): también aplican al censo y a la
+    // impresión. Solo cambian lo que se ve; nunca tocan datos.
+    const _SERV_PALABRA = { PISO: "Piso", RECUPERACION: "Recuperación", PEDIATRIA: "Pediatría", MEDICINA: "Medicina", INTERNA: "Interna",
+      ONCOLOGIA: "Oncología", GINECOLOGIA: "Ginecología", HEMATOLOGIA: "Hematología", CIRUGIA: "Cirugía", GENERAL: "General",
+      URGENCIAS: "Urgencias", TERAPIA: "Terapia", INTENSIVA: "Intensiva", INTERMEDIA: "Intermedia", OTRAS: "Otras camas" };
+    function _servNorm(s) { return toSafeString(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim(); }
+    // Sala que corresponde a una cama sin sala del censo (paciente agregado a mano, cama libre).
+    function _servicioDeCama(cama) {
+      const c = _servNorm(cama);
+      if (!c) return "";
+      if (/^(UCI|UTI)/.test(c)) return "UCIA";
+      if (/^RECU/.test(c)) return "RECUPERACION";
+      if (/^\d+\s*-\s*\d+/.test(c)) return "PISO";
+      return "";
+    }
+    function servicioDe(p) { return _servNorm(p && p.seccion) || _servicioDeCama(p && p.cama); }
+    function servicioLabel(s) {
+      if (!s) return "Sin servicio";
+      if (/^(UCIA?|UTI|UCIN|UCIP)$/.test(s)) return s;
+      return s.split(/(\s+|\/)/).map(function (w) { return _SERV_PALABRA[w] || (/^[A-Z]{2,}$/.test(w) ? w.charAt(0) + w.slice(1).toLowerCase() : w); }).join("");
+    }
+    function _filtrosActivos() {
+      let n = 0;
+      if (selectedEsp !== "ALL") n++;
+      if (selectedAdscrito !== "ALL") n++;
+      if (selectedServicio !== "ALL") n++;
+      if (selectedResidente !== "ALL") n++;
+      if (showSoloIngresos) n++;
+      if (showLibres) n++;
+      if (_soloMios) n++;
+      const s = document.getElementById("search"); if (s && toSafeString(s.value).trim()) n++;
+      return n;
+    }
+    function toggleFiltrosTablero(force) {
+      window.__fltOpen = (typeof force === "boolean") ? force : !window.__fltOpen;
+      renderView();
+    }
+    function setFiltroTablero(id, v) {
+      v = toSafeString(v) || "ALL";
+      if (id === "esp") selectedEsp = v;
+      else if (id === "adscrito") selectedAdscrito = v;
+      else if (id === "servicio") selectedServicio = v;
+      else if (id === "residente") selectedResidente = v;
+      if (id === "esp") buildEspFilters();   // las pastillas de especialidad de la barra de arriba siguen al filtro
+      renderView();
+    }
+    function toggleFiltroIngresos() { showSoloIngresos = !showSoloIngresos; if (showSoloIngresos) showLibres = false; renderView(); }
+    function toggleFiltroLibres() { showLibres = !showLibres; if (showLibres) showSoloIngresos = false; renderView(); }
+    function quitarBusqueda() { const s = document.getElementById("search"); if (s) s.value = ""; renderView(); }
+    function _fltBtnHtml() {
+      const n = _filtrosActivos();
+      return `<button type="button" class="bn-mode bn-flt-btn${n ? " on" : ""}" data-testid="flt-btn" onclick="toggleFiltrosTablero()" title="Filtrar las camas por especialidad, adscrito, servicio, ingresos o camas libres">🔎 Filtros${n ? " · " + n : ""}</button>`;
+    }
+    function _fltPanelHtml() {
+      if (!window.__fltOpen) return "";
+      const cuenta = function (fn) { const o = {}; patients.forEach(function (p) { const v = fn(p); if (v) o[v] = (o[v] || 0) + 1; }); return o; };
+      const sel = function (id, label, cur, counts, lbl) {
+        const keys = Object.keys(counts).sort(function (a, b) { return a.localeCompare(b, "es"); });
+        if (cur !== "ALL" && keys.indexOf(cur) < 0) keys.unshift(cur);   // lo elegido sigue en la lista aunque ya nadie lo tenga
+        return `<label class="flt-f"><span>${label}</span><select data-testid="flt-${id}" onchange="setFiltroTablero('${id}', this.value)"><option value="ALL"${cur === "ALL" ? " selected" : ""}>Todos</option>`
+          + keys.map(function (v) { return `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(lbl ? lbl(v) : v)} (${counts[v] || 0})</option>`; }).join("") + `</select></label>`;
+      };
+      const nIng = patients.filter(function (p) { return isRecentIngreso(p.ingreso); }).length;
+      const nLib = ALL_BEDS.length ? getFreeBeds().length : 0;
+      const busq = (function () { const s = document.getElementById("search"); return s ? toSafeString(s.value).trim() : ""; })();
+      return `<div class="bn-flt" data-testid="flt-panel">`
+        + sel("esp", "Especialidad", selectedEsp, cuenta(function (p) { return p.esp || ""; }))
+        + sel("adscrito", "Adscrito", selectedAdscrito, cuenta(function (p) { return toSafeString(p.adscrito).trim(); }))
+        + sel("servicio", "Servicio", selectedServicio, cuenta(servicioDe), servicioLabel)
+        + `<button type="button" class="flt-t${showSoloIngresos ? " on" : ""}" data-testid="flt-ingresos" onclick="toggleFiltroIngresos()" title="Solo los que ingresaron hoy o ayer">🆕 Ingresos (${nIng})</button>`
+        + (ALL_BEDS.length ? `<button type="button" class="flt-t${showLibres ? " on" : ""}" data-testid="flt-libres" onclick="toggleFiltroLibres()" title="Ver las camas libres para asignar un paciente">🛏 Libres (${nLib})</button>` : "")
+        + (_soloMios ? `<button type="button" class="flt-t on" data-testid="flt-mios" onclick="toggleSoloMios()" title="Se ocultan los pacientes de Urología, Neurocirugía y Trasplantes. Toca para ver todo el piso.">🩺 Solo míos ✕</button>` : "")
+        + (selectedResidente !== "ALL" ? `<button type="button" class="flt-t on" onclick="setFiltroTablero('residente','ALL')" title="Filtro de residente puesto en el Censo">👤 ${esc(selectedResidente)} ✕</button>` : "")
+        + (busq ? `<button type="button" class="flt-t on" onclick="quitarBusqueda()" title="Búsqueda escrita en la barra de arriba">🔍 «${esc(busq.slice(0, 20))}» ✕</button>` : "")
+        + (_filtrosActivos() ? `<button type="button" class="flt-t flt-x" data-testid="flt-limpiar" onclick="quitarFiltrosTodo()">✕ Quitar filtros</button>` : "")
+        + `</div>`;
+    }
+    // Vista de camas libres del tablero: agrupadas por servicio (sala de la cama) y en el orden del tablero.
+    function _libresTableroHtml() {
+      if (!ALL_BEDS.length) return `<div class="fl-wrap"><div class="fl-note">No hay camas configuradas. <button type="button" class="fl-cfg" onclick="openBedManager()">⚙️ Configurar camas</button></div></div>`;
+      const free = getFreeBeds().filter(function (b) { return selectedServicio === "ALL" || (_servicioDeCama(b) || "OTRAS") === selectedServicio; });
+      free.sort(function (a, b) { const pa = pisoBedPriority(a), pb = pisoBedPriority(b); return (pa[0] - pb[0]) || (pa[1] - pb[1]) || toSafeString(a).localeCompare(toSafeString(b)); });
+      const groups = {}, order = [];
+      free.forEach(function (b) { const s = _servicioDeCama(b) || "OTRAS"; if (!groups[s]) { groups[s] = []; order.push(s); } groups[s].push(b); });
+      const avisos = (selectedEsp !== "ALL" || selectedAdscrito !== "ALL") ? `<div class="fl-note">Las camas libres no tienen especialidad ni adscrito: esos filtros no aplican aquí.</div>` : "";
+      const body = free.length ? order.map(function (s) {
+        return `<div class="fl-grp"><div class="fl-grp-h">${esc(servicioLabel(s))} · ${groups[s].length}</div><div class="fl-grid">`
+          + groups[s].map(function (b) { return `<div class="fl-bed" data-testid="libre-bed" data-cama="${esc(b)}"><span class="fl-cama">🛏 ${esc(b)}</span><button type="button" class="fl-add" data-bed="${esc(b)}" onclick="openAddModalWithBed(this.dataset.bed)">+ Agregar paciente</button></div>`; }).join("")
+          + `</div></div>`;
+      }).join("") : `<div class="fl-note">✅ No hay camas libres${selectedServicio !== "ALL" ? " en " + esc(servicioLabel(selectedServicio)) : ""}.</div>`;
+      return `<div class="fl-wrap" data-testid="libres-view">${avisos}${body}<div class="fl-foot"><button type="button" class="fl-cfg" onclick="openBedManager()">⚙️ Configurar camas</button></div></div>`;
     }
 
     // ─── PISO VIEW ───────────────────────────────────────────────────────────────────
@@ -15777,10 +16546,20 @@ function plExportBackup() {
       if (window.__viewMode !== "list") {
         const _ordered = orderPisoPatients(pts);
         window.__boardOrder = _ordered.map(x => pid(x));
+        // 🛏 Camas libres (filtro del tablero): en lugar de la ficha, las camas sin paciente con «+ Agregar paciente».
+        if (showLibres) {
+          document.body.classList.add("focus-on");   // misma vista de tablero (sin la barra de búsqueda/Excel de arriba)
+          const _vpl = document.getElementById("view-piso");
+          _vpl.innerHTML = `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">🛏 ${getFreeBeds().length} camas libres</span>`
+            + _fltBtnHtml() + `<button type="button" class="bn-idx" data-testid="libres-salir" onclick="toggleFiltroLibres()">✕ Ver pacientes</button>` + _fltPanelHtml()
+            + `</div><div id="piso-grid">${_libresTableroHtml()}</div></div></div>`;
+          _vpl.dataset.plPid = "";
+          return;
+        }
         if (!window.__boardOrder.length) {
           document.body.classList.remove("focus-on");
           document.getElementById("view-piso").innerHTML =
-            `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">Sin pacientes en esta vista</span><button class="bn-idx" onclick="quitarFiltrosTodo()">✕ Limpiar filtros</button></div><div style="padding:24px;color:#64748b;font-size:13px">No hay pacientes con la búsqueda o filtros activos. Toca «✕ Limpiar filtros» para ver todo.</div></div></div>`;
+            `<div id="board-wrap"><div id="board-main"><div id="board-nav"><span class="bn-pos">Sin pacientes en esta vista</span>${_fltBtnHtml()}<button class="bn-idx" onclick="quitarFiltrosTodo()">✕ Limpiar filtros</button>${_fltPanelHtml()}</div><div style="padding:24px;color:#64748b;font-size:13px">No hay pacientes con la búsqueda o filtros activos. Cambia los filtros (🔎) o toca «✕ Limpiar filtros» para ver todo.</div></div></div>`;
           document.getElementById("view-piso").dataset.plPid = "";   // nada que restaurar sobre «Sin pacientes»
           return;
         }
@@ -15822,8 +16601,10 @@ function plExportBackup() {
             + (isHojaMode() ? renderHojaCfg() : "")
             + `<button class="bn-mode bn-pen${(typeof penModeOn === "function" && penModeOn()) ? " on" : ""}" onclick="togglePenMode(this)" title="Lápiz (toca para cambiar). iPad: Scribble = el iPad convierte tu letra en texto en cualquier caja (vitales, TA, drenajes, labs…) · Tinta = en las cajas grandes lo escrito se queda como tinta (tachar borra) y lo demás sigue siendo Scribble. Fuera del iPad: → Texto = la app convierte lo escrito (números al instante, texto por IA)">${(typeof _penModeLabel === "function") ? _penModeLabel(penMode()) : "✍️ Lápiz"}</button>`
             + `<button class="bn-mode" onclick="openPendientesImport()" title="Importar pendientes / planes desde el Excel del censo">📊 Planes</button>`
+            + _fltBtnHtml()
             + renderAlertsNavBtn()
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
+            + _fltPanelHtml()
             + _beds
             + (isSimpleEsp(fp.esp, fnd) ? "" : _fcJumpBar(fp, fnd, fk))
             + `</div>`;
@@ -16005,6 +16786,8 @@ function plExportBackup() {
       if (currentView !== "piso") {
         setView("piso", document.querySelector('.tab'));
       }
+      // Tablero (una cama a la vez): no hay panel al pie; se abre la vista 🛏 Libres del filtro.
+      if (window.__viewMode !== "list") { showLibres = true; showSoloIngresos = false; renderView(); return; }
       const panel = document.getElementById("free-beds-panel");
       if (!panel) return;
       // Open the panel if collapsed
@@ -16964,7 +17747,7 @@ function plExportBackup() {
       const dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " · ", false) : "";
       if (dt) R.gastos.push(dt);
       if (toSafeString(nd.drenajes).trim()) R.gastos.push(_egCut(nd.drenajes, 120));
-      if (toSafeString(ck.pm_uresis).trim()) R.gastos.push("Uresis " + toSafeString(ck.pm_uresis).trim() + (/^[\d.,]+$/.test(toSafeString(ck.pm_uresis).trim()) ? " mL" : ""));
+      if (toSafeString(ck.pm_uresis).trim()) { const _iu = iuCalc(ck.pm_uresis, ck.pm_peso, ck.pm_uresis_h); R.gastos.push("Uresis " + toSafeString(ck.pm_uresis).trim() + (/^[\d.,]+$/.test(toSafeString(ck.pm_uresis).trim()) ? " mL" : "") + (_iu ? " (IU " + vpFmt(_iu.v, 2) + " mL/kg/h)" : "")); }
       const bal = (typeof balanceTexto === "function") ? balanceTexto(nd) : "";
       if (bal) R.gastos.push("Balance " + bal);
       // 🧪 Labs puntuales
@@ -17137,7 +17920,7 @@ function plExportBackup() {
         ov.className = "modal-bg";
         ov.style.zIndex = "10000";
         ov.onclick = function (ev) { if (ev.target === ov) ov.style.display = "none"; };
-        ov.innerHTML = `<div class="modal" style="max-width:640px;width:96%">
+        ov.innerHTML = `<div class="modal-box" style="max-width:640px;width:96%;padding:16px 18px">
           <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center"><div class="modal-title" style="margin:0">✨ Resumen del día <span id="resumen-cama" style="font-weight:500;color:#64748b"></span></div><button class="modal-close" onclick="document.getElementById('resumen-overlay').style.display='none'" data-testid="resumen-cerrar">✕</button></div>
           <div style="font-size:11px;color:#64748b;margin:2px 0 8px">Solo para leer: no se escribe en la Cronología.</div>
           <pre id="resumen-texto" data-testid="resumen-texto" style="white-space:pre-wrap;font:inherit;font-size:13px;line-height:1.45;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;max-height:60vh;overflow:auto;margin:0"></pre>
@@ -20283,8 +21066,11 @@ function plExportBackup() {
       const stamp = [fecha || todayStr(), hora || ""].filter(Boolean).join(" ");
       return "[LABS " + stamp + "] " + pieces.join(" · ");
     }
+    // 28 oct 2026: APAGADO. Subir un PDF/foto de labs escribía sola una línea «[LABS dd/mm …]» al final del DX; nada se
+    // escribe solo en las cajas (pedido de Gera, 27 oct 2026). Los labs ya quedan en la tabla. Las líneas viejas no se tocan.
+    const MERGE_LABS_EN_DX = false;
     function mergeLabsIntoDx(patientObj, values, fecha, hora) {
-      if (!patientObj) return;
+      if (!MERGE_LABS_EN_DX || !patientObj) return;
       const suffix = buildDxLabsSuffix(values, fecha, hora);
       if (!suffix) return;
       const baseDx = toSafeString(patientObj.dx || "");
@@ -22176,6 +22962,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         fields.forEach(function (f) {
           if (f.indexOf("ck:") === 0) { const sub = f.slice(3); const v = (prev.checklist || {})[sub]; if (v === undefined) delete next.checklist[sub]; else next.checklist[sub] = v; dirtyF.add("checklist"); }
           else { next[f] = prev[f] === undefined ? "" : prev[f]; dirtyF.add(f); }
+          // Labs regresados (✏️ Corregir): hora nueva por fecha, si no la unión con la nube (gana el más reciente por
+          // fecha) volvía a subir la versión que se acaba de deshacer.
+          if (f === "labHistory" && Array.isArray(next.labHistory)) next.labHistory.forEach(function (sn) { if (sn) sn.client_updated_at = Date.now(); });
         });
         noteData[k] = next;
         if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -22462,6 +23251,150 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           }
         }
       }
+    }
+    // ─── ✏️ CORREGIR LABS A MANO (28 oct 2026, pedido de Gera) ─────────────────────
+    // Un valor mal transcrito (WinLab, PDF o foto leída por IA) se corrige desde «✏️ Corregir» de la tabla de labs.
+    // Cada analito corregido entra a manual_keys (el siguiente sync del robot NO lo pisa: ver el reemplazo total de
+    // WinLab) y queda en snapshot.manual_by[analito] = {u: quién, t: cuándo, antes: lo que decía}. La tabla lo marca ✎.
+    // Se puede regresar con ↩ Regresar de la tarjeta.
+    function _sanitizeManualBy(o) {
+      if (!isPlainObject(o)) return undefined;
+      const out = {};
+      Object.keys(o).forEach(function (key) {
+        const e = o[key]; if (!key || !isPlainObject(e)) return;
+        out[toSafeString(key).slice(0, 40)] = { u: toSafeString(e.u).slice(0, 40), t: toSafeString(e.t).slice(0, 40), antes: toSafeString(e.antes).slice(0, 60) };
+      });
+      return Object.keys(out).length ? out : undefined;
+    }
+    let _labEd = null;   // { k, fecha } del editor abierto
+    function _labEdKeys(snap) {
+      const meta = (typeof LAB_META_KEYS !== "undefined" && LAB_META_KEYS) ? LAB_META_KEYS : null;
+      const labs = (snap && snap.labs) || {};
+      const keys = [], seen = {};
+      const add = function (key) { if (!key || seen[key]) return; if (meta && meta.has && meta.has(key)) return; if (key.indexOf("micro_") === 0) return; seen[key] = 1; keys.push(key); };
+      (typeof FOCUS_LAB_ORDER !== "undefined" ? FOCUS_LAB_ORDER : []).forEach(function (p) { add(p[1]); });
+      LAB_FIELDS.forEach(function (f) { const v = labs[f.key]; if (v !== undefined && v !== null && String(v).trim() !== "") add(f.key); });
+      Object.keys(labs).forEach(function (key) { const v = labs[key]; if (v !== undefined && v !== null && String(v).trim() !== "") add(key); });
+      return keys;
+    }
+    // Límites de lo posible en sangre (unidades de la tabla): fuera de ellos casi siempre es el punto decimal (K 44.3 por
+    // 4.43, Na 1330 por 133.0). Solo analitos de rango estrecho: PCR, PCT, transaminasas o amilasa suben de verdad 100 veces.
+    const _LAB_POSIBLE = { k: [1, 10], na: [95, 200], cl: [60, 150], ca: [2, 20], mg: [0.2, 10], p: [0.2, 20], hb: [1.5, 25], hct: [5, 75],
+      glu: [10, 2500], cr: [0.05, 30], urea: [2, 600], bun: [1, 280], alb: [0.5, 7], plaq: [1, 2500], leucos: [0.05, 600], inr: [0.5, 20],
+      ph: [6.5, 8], hco3: [2, 60], lac: [0.1, 35], tp: [5, 200], ttp: [10, 250] };
+    function _labImposible(key, v) {
+      const r = _LAB_POSIBLE[key]; if (!r) return false;
+      const n = parseLabNumber(v); if (!isFinite(n)) return false;
+      return n < r[0] || n > r[1];
+    }
+    function openLabEditor(k, fecha) {
+      const nd = getNote(k);
+      const dates = (nd.labHistory || []).filter(function (s) { return s && s.fecha; }).map(function (s) { return s.fecha; }).sort(function (a, b) { return b.localeCompare(a); });
+      _labEd = { k: k, fecha: fecha || dates[0] || todayStr() };
+      let ov = document.getElementById("labedit-overlay");
+      if (!ov) {
+        ov = document.createElement("div");
+        ov.id = "labedit-overlay";
+        ov.className = "modal-bg";
+        ov.style.zIndex = "10000";
+        ov.onclick = function (ev) { if (ev.target === ov) closeLabEditor(); };
+        document.body.appendChild(ov);
+      }
+      _labEdRender();
+      ov.style.display = "flex";
+    }
+    // En el iPad el «title» no se ve al tocar: la ✎ de la tabla muestra el aviso con quién corrigió y qué decía.
+    function _labManInfo(el) { try { _showRTToast("✎ " + (el && el.title ? el.title : "Corregido a mano")); } catch (_) {} }
+    function closeLabEditor() { const ov = document.getElementById("labedit-overlay"); if (ov) ov.style.display = "none"; _labEd = null; }
+    function labEditorFecha(f) {
+      if (!_labEd) return;
+      f = toSafeString(f).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) return;
+      if (_labEdHayCambios() && !confirm("Tienes correcciones sin guardar en esta fecha. ¿Cambiar de fecha y descartarlas?")) { _labEdRender(); return; }
+      _labEd.fecha = f; _labEdRender();
+    }
+    function _labEdHayCambios() {
+      let any = false;
+      document.querySelectorAll("#labedit-overlay .le-in").forEach(function (inp) { if (inp.value.trim() !== (inp.dataset.orig || "")) any = true; });
+      return any;
+    }
+    function _labEdRender() {
+      const ov = document.getElementById("labedit-overlay"); if (!ov || !_labEd) return;
+      const k = _labEd.k, fecha = _labEd.fecha;
+      const p = patients.find(function (x) { return pid(x) === k; });
+      const nd = getNote(k);
+      const snap = (nd.labHistory || []).find(function (s) { return s && s.fecha === fecha; }) || null;
+      const labs = (snap && snap.labs) || {};
+      const mby = (snap && snap.manual_by) || {};
+      const dates = (nd.labHistory || []).filter(function (s) { return s && s.fecha; }).map(function (s) { return s.fecha; }).sort(function (a, b) { return b.localeCompare(a); });
+      const byKey = {}; LAB_FIELDS.forEach(function (f) { byKey[f.key] = f; });
+      const fuente = !snap ? "fecha nueva: lo que escribas se guarda como captura manual"
+        : (snap.source === "winlab" ? "traídos por el robot de WinLab" : ((snap.source_file || snap.source_storage_path) ? "leídos de un PDF o foto" : "capturados a mano"));
+      const chips = dates.map(function (d) { return `<button type="button" class="le-date${d === fecha ? " on" : ""}" onclick="labEditorFecha('${d}')">${esc(fmtDateChip(d))}</button>`; }).join("")
+        + `<label class="le-date le-otra" title="Corregir o capturar otra fecha">＋ <input type="date" value="${dates.indexOf(fecha) < 0 ? esc(fecha) : ""}" onchange="labEditorFecha(this.value)" data-testid="lab-editor-otra"></label>`;
+      const rows = _labEdKeys(snap).map(function (key) {
+        const lf = byKey[key];
+        const v = toSafeString(labs[key]);
+        const m = mby[key];
+        const z = function (n) { return String(n).padStart(2, "0"); };
+        const d = m && m.t ? new Date(m.t) : null;
+        const cuando = d && !isNaN(d) ? z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes()) : "";
+        const marca = m ? `<span class="le-man" title="Corregido a mano${m.u ? " por " + esc(m.u) : ""}${cuando ? " el " + cuando : ""}">✎ ${esc(m.u || "a mano")}${cuando ? " · " + cuando : ""}${m.antes ? " · antes: " + esc(m.antes) : " · antes vacío"}</span>` : "";
+        const num = v === "" || isFinite(parseLabNumber(v));
+        return `<div class="le-row"><span class="le-k">${esc(lf ? lf.label : key.toUpperCase())}</span>`
+          + `<input class="le-in" data-labkey="${esc(key)}" data-orig="${esc(v)}" value="${esc(v)}" inputmode="${num ? "decimal" : "text"}" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="—" oninput="this.classList.toggle('le-chg', this.value.trim() !== (this.dataset.orig || ''))">`
+          + `<span class="le-u">${esc(lf ? lf.unit || "" : "")}</span>${marca}</div>`;
+      }).join("");
+      ov.innerHTML = `<div class="modal-box" style="max-width:760px;width:96%;padding:16px 18px" data-testid="lab-editor">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center"><div class="modal-title" style="margin:0">✏️ Corregir laboratorios <span style="font-weight:500;color:#64748b">${p && p.cama ? "· cama " + esc(p.cama) : ""}</span></div><button class="modal-close" onclick="closeLabEditor()" data-testid="lab-editor-cerrar">✕</button></div>
+        <div class="le-dates">${chips}</div>
+        <div class="le-hint">${esc(fmtDateChip(fecha))} · ${esc(fuente)}. Corrige solo lo que esté mal: el robot ya no cambia los valores que corrijas aquí. Queda tu nombre y lo que decía antes; ↩ Regresar de la tarjeta lo deshace.</div>
+        <div class="le-grid">${rows}</div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button class="btn-cancel" onclick="closeLabEditor()">Cancelar</button><button class="btn-save" onclick="labEditorSave()" data-testid="lab-editor-guardar">💾 Guardar correcciones</button></div>
+      </div>`;
+    }
+    function labEditorSave() {
+      const st = _labEd; if (!st) return;
+      const k = st.k, fecha = st.fecha;
+      const changes = [];
+      document.querySelectorAll("#labedit-overlay .le-in").forEach(function (inp) {
+        const v = inp.value.trim(), o = inp.dataset.orig || "";
+        if (v !== o) changes.push({ key: inp.dataset.labkey, v: v, o: o });
+      });
+      if (!changes.length) { closeLabEditor(); return; }
+      const raros = changes.filter(function (c) { return _labImposible(c.key, c.v); });
+      if (raros.length) {
+        const lbl = function (key) { const lf = LAB_FIELDS.find(function (f) { return f.key === key; }); return lf ? lf.label : key; };
+        if (!confirm("Revisa el punto decimal: " + raros.map(function (c) { return lbl(c.key) + " " + c.v; }).join(", ") + " está muy lejos de lo posible.\n\n¿Guardar así de todos modos?")) return;
+      }
+      const nd = getNote(k);
+      _undoPush(k, "corregir labs del " + fmtDateChip(fecha), ["labHistory"]);
+      let snap = (nd.labHistory || []).find(function (s) { return s && s.fecha === fecha; });
+      if (!snap) {
+        snap = { fecha: fecha, labs: {}, extra: [], source: "manual", source_file: "", source_file_type: "", source_file_name: "", source_storage_bucket: "", source_storage_path: "" };
+        nd.labHistory = (nd.labHistory || []).concat([snap]);
+      }
+      if (!snap.labs) snap.labs = {};
+      const mby = isPlainObject(snap.manual_by) ? snap.manual_by : (snap.manual_by = {});
+      const mk = new Set(Array.isArray(snap.manual_keys) ? snap.manual_keys : []);
+      let name = ""; try { name = (localStorage.getItem("pl_user_name") || "").trim(); } catch (_) {}
+      const ahora = new Date().toISOString();
+      changes.forEach(function (c) {
+        if (c.v === "") delete snap.labs[c.key]; else snap.labs[c.key] = c.v;
+        // Lo que decía ANTES de la primera corrección (si se corrige dos veces, se conserva el original del robot).
+        const prevAntes = mby[c.key] ? mby[c.key].antes : c.o;
+        mby[c.key] = { u: name.slice(0, 40), t: ahora, antes: toSafeString(prevAntes).slice(0, 60) };
+        mk.add(c.key);
+      });
+      snap.manual_keys = Array.from(mk);
+      snap.client_updated_at = Date.now();   // gana sobre una copia más vieja de la misma fecha (unión LWW por fecha)
+      const dates = nd.labHistory.map(function (s) { return s.fecha; }).sort(function (a, b) { return b.localeCompare(a); });
+      if (fecha === dates[0]) nd.labs = Object.assign({}, snap.labs);
+      delete labAnalysisCache[k];
+      _saveNoteNow(k, nd, "labHistory");
+      closeLabEditor();
+      try { _rerenderCard(k); } catch (_) {}
+      try { _showRTToast("✏️ " + changes.length + " valor" + (changes.length === 1 ? "" : "es") + " corregido" + (changes.length === 1 ? "" : "s") + " · " + fmtDateChip(fecha)); } catch (_) {}
     }
     // Legacy alias (used by PDF extractor)
     function updateLab(k, labKey, value) {
@@ -24762,6 +25695,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const newKey = pid(p);
         noteData[newKey] = applyModalExtraToNote(defaultData(), _modalExtra);
         saveNote(newKey, noteData[newKey]);
+        // Agregado desde 🛏 Libres: el tablero vuelve a las fichas y abre al paciente nuevo.
+        if (showLibres) { showLibres = false; window.__focusPid = newKey; }
       } else {
         const newKey = pid(p);
         patients = patients.map(pt => pid(pt) === modalOrigKey ? p : pt);
@@ -28196,7 +29131,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
     // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.27-6";
+    const PL_BUILD = "2026.10.28-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -28446,7 +29381,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // Pase matutino con FECHA (oct 2026): los vitales llevan el día en que se tomaron (pm_fecha). Al primer
     // dato de un día nuevo, los del día anterior pasan al historial (pm_hist, 14 días) y la fila queda
     // limpia para el pase de hoy, como en la hoja de GoodNotes donde cada día tiene su renglón.
-    const PM_DAILY = ["pm_fc", "pm_fr", "pm_temp", "pm_sao2", "pm_o2l", "pm_ta", "pm_uresis", "pm_dxtx", "pm_iu", "pm_balance"];
+    const PM_DAILY = ["pm_fc", "pm_fr", "pm_temp", "pm_sao2", "pm_o2l", "pm_ta", "pm_uresis", "pm_uresis_h", "pm_dxtx", "pm_iu", "pm_balance"];
     function _pmRollover(k, cl) {
       const today = todayStr();
       if (cl.pm_fecha === today) return false;
@@ -28474,6 +29409,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       _saveNoteNow(k, nd);
       if (PM_DAILY.indexOf(field) >= 0) _refreshPmRow(k, rolled ? field : null);
       if (field === "pm_peso" || field === "pm_talla" || field.indexOf("pm_vent_") === 0) _refreshVpRow(k);
+      if (field === "pm_uresis" || field === "pm_uresis_h" || field === "pm_peso") _refreshIu(k);
     }
     // Refresca el chip de fecha y el historial del pase sin repintar la tarjeta (no roba el foco al escribir).
     function _refreshPmRow(k, keepField) {
@@ -28493,17 +29429,64 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         ? `<span class="pm-date ok" title="Vitales tomados hoy">hoy</span>`
         : `<span class="pm-date old" title="Estos vitales son del ${esc(f)}: al escribir los de hoy pasan al historial">de ${esc(fmtDateChip(f))}</span>`;
     }
-    function _pmHistLine(h) {
+    function _pmHistLine(h, peso) {
       const parts = [];
       const add = function (lbl, v, suf) { v = toSafeString(v).trim(); if (v) parts.push(lbl + " " + v + (suf || "")); };
-      add("FC", h.fc); add("FR", h.fr); add("T", h.temp); add("SaO₂", h.sao2, "%"); add("O₂", h.o2l, " L"); add("TA", h.ta); add("Uresis", h.uresis); add("Dxtx", h.dxtx); add("IU", h.iu); add("Bal", h.balance);
+      add("FC", h.fc); add("FR", h.fr); add("T", h.temp); add("SaO₂", h.sao2, "%"); add("O₂", h.o2l, " L"); add("TA", h.ta);
+      add("Uresis", h.uresis, toSafeString(h.uresis_h).trim() ? " en " + toSafeString(h.uresis_h).trim() + " h" : "");
+      add("Dxtx", h.dxtx);
+      if (toSafeString(h.iu).trim()) add("IU", h.iu);
+      else { const iu = iuCalc(h.uresis, peso, h.uresis_h); if (iu) parts.push("IU " + vpFmt(iu.v, 2) + " mL/kg/h"); }
+      add("Bal", h.balance);
       return parts.join(" · ");
     }
     function _pmHistHtml(cl) {
       const hist = (cl && Array.isArray(cl.pm_hist)) ? cl.pm_hist.filter(function (h) { return !!h; }) : [];
       if (!hist.length) return `<div class="pm-hist" style="display:none"></div>`;
       const last = hist.slice(-3).reverse();
-      return `<div class="pm-hist" title="Pases de días anteriores (se guardan 14 días)">` + last.map(function (h) { return `<span class="pm-hist-d">${h.fecha ? esc(fmtDateChip(h.fecha)) : "antes"}:</span> ${esc(_pmHistLine(h))}`; }).join("<br>") + `</div>`;
+      return `<div class="pm-hist" title="Pases de días anteriores (se guardan 14 días)">` + last.map(function (h) { return `<span class="pm-hist-d">${h.fecha ? esc(fmtDateChip(h.fecha)) : "antes"}:</span> ${esc(_pmHistLine(h, cl.pm_peso))}`; }).join("<br>") + `</div>`;
+    }
+    // ─── ÍNDICE URINARIO (28 oct 2026, pedido de Gera) ──────────────────────────────
+    // Como se calcula en el servicio: uresis total (mL) ÷ peso (kg) ÷ horas = mL/kg/h. Horas vacías = 24 h (o las que
+    // diga la uresis: «1200/12 h»). KDIGO: < 0.5 mL/kg/h sostenido = oliguria; < 0.3 = grave. Solo se calcula y se
+    // muestra: no se escribe en ninguna caja.
+    function _iuMl(s) {
+      let t = toSafeString(s).trim().toLowerCase();
+      if (!t) return NaN;
+      if (/^\d{1,3}(,\d{3})+(\.\d+)?\b/.test(t)) t = t.replace(/,/g, "");      // 1,200 = mil doscientos
+      const m = /(\d+(?:[.,]\d+)?)/.exec(t); if (!m) return NaN;
+      let n = parseFloat(m[1].replace(",", "."));
+      if (/\d\s*(l|lt|lts|litros?)\b/.test(t) && n < 20) n *= 1000;             // «1.2 L»
+      return n;
+    }
+    function _iuHorasDe(uresis) { const m = /(?:\/|\ben\s*)(\d{1,2}(?:[.,]5)?)\s*(?:h|hr|hrs|horas?)\b/i.exec(toSafeString(uresis)); return m ? parseFloat(m[1].replace(",", ".")) : NaN; }
+    function iuCalc(uresis, peso, horas) {
+      const u = _iuMl(uresis), p = vpNum(peso);
+      const hTxt = toSafeString(horas).trim();
+      let h = hTxt ? vpNum(hTxt) : _iuHorasDe(uresis);
+      const horasSupuestas = !hTxt && !isFinite(h);
+      if (horasSupuestas) h = 24;
+      if (!(u >= 0) || !(p >= 2 && p <= 400) || !(h > 0 && h <= 72)) return null;
+      return { v: u / p / h, u: u, p: p, h: h, h24: horasSupuestas };
+    }
+    function _iuRes(cl) {
+      const u = toSafeString(cl && cl.pm_uresis).trim();
+      if (!u) return { txt: "IU —", cls: "vp-na", title: "Índice urinario: escribe la uresis (mL), las horas y el peso" };
+      if (!(vpNum(cl.pm_peso) > 0)) return { txt: "IU: ⚖️ falta el peso", cls: "vp-na", title: "Anota el peso (fila Clínico o Vasopresor) para calcular el índice urinario" };
+      const r = iuCalc(cl.pm_uresis, cl.pm_peso, cl.pm_uresis_h);
+      if (!r) return { txt: "IU —", cls: "vp-na", title: "Revisa la uresis, las horas (1-72) y el peso" };
+      const cls = r.v < 0.3 ? "iu-crit" : (r.v < 0.5 ? "iu-lo" : "iu-ok");
+      const que = r.v < 0.3 ? " · oliguria grave (< 0.3)" : (r.v < 0.5 ? " · oliguria (< 0.5 mL/kg/h)" : "");
+      return { txt: "IU " + vpFmt(r.v, 2) + " mL/kg/h" + (r.h24 ? " (24 h)" : ""), cls: cls,
+        title: "Índice urinario = " + vpFmt(r.u, 0) + " mL ÷ " + vpFmt(r.p, 1) + " kg ÷ " + vpFmt(r.h, 1) + " h" + (r.h24 ? " (sin horas: se toman 24 h)" : "") + que + ". KDIGO: < 0.5 mL/kg/h sostenido = oliguria." };
+    }
+    function _iuSpan(cl, ek) { const r = _iuRes(cl); return `<span class="iu-res ${r.cls}" id="iu-res-${ek}" data-testid="iu-res" title="${esc(r.title)}">${esc(r.txt)}</span>`; }
+    function _refreshIu(k) {
+      try {
+        const ek = k.replace(/[^a-zA-Z0-9]/g, "_"); const el = document.getElementById("iu-res-" + ek); if (!el) return;
+        const r = _iuRes(getNote(k).checklist || {});
+        el.textContent = r.txt; el.className = "iu-res " + r.cls; el.title = r.title;
+      } catch (_) {}
     }
 
     function toggleSvcMine(k) {
@@ -29222,6 +30205,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         `<div class="pm-field"><span class="pm-label">c/L O₂</span>${pmInp("o2l")}</div>` +
         `<div class="pm-field"><span class="pm-label">TA</span>${pmInp("ta", "70px")}</div>` +
         `<div class="pm-field"><span class="pm-label">Uresis</span>${pmInp("uresis", "70px")}</div>` +
+        // Índice urinario = uresis ÷ peso ÷ horas (28 oct 2026). Horas vacías = 24 h.
+        `<div class="pm-field" data-testid="iu-calc"><span class="pm-label" title="Horas en que se juntó la uresis (vacío = 24 h)">Horas</span><input class="pm-input" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_uresis_h || "")}" placeholder="24" data-ck="${k}" data-field="pm_uresis_h" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px" title="Horas en que se juntó la uresis (vacío = 24 h)"/></div>` +
+        `<div class="pm-field pm-iu"><span class="pm-label" title="Índice urinario = uresis ÷ peso ÷ horas">Índice urinario</span>${_iuSpan(cl, ek)}</div>` +
         `<div class="pm-field"><span class="pm-label">DxTx</span>${pmInp("dxtx")}</div>`;
 
       // ── Row 4 (oct 2026): Drenajes y sondas PERSONALIZABLES por paciente ──
