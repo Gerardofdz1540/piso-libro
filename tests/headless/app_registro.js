@@ -32,7 +32,7 @@ const DISP = [
 (async () => {
   const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
-  const rpcs = [], archivos = []; let disp = [];
+  const rpcs = [], archivos = [], cuentasUrl = []; let disp = [], cuentas = [];
   await page.route('**/vendor/supabase*', r => r.abort());
   // Panel 👥 Usuarios: la lista de cuentas viene de la Edge Function admin-users (aquí, vacía).
   await page.route('**/functions/v1/admin-users', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ users: [] }) }));
@@ -42,6 +42,7 @@ const DISP = [
     if (url.startsWith('/rest/v1/patients') && m === 'GET') return json(200, PTS);
     if (url.startsWith('/rest/v1/rpc/')) { rpcs.push({ name: url.slice('/rest/v1/rpc/'.length).split('?')[0], body: JSON.parse(req.postData() || '{}') }); return json(200, 'ok'); }
     if (url.startsWith('/rest/v1/pl_dispositivos') && m === 'GET') return json(200, disp);
+    if (url.startsWith('/rest/v1/app_users') && m === 'GET' && /last_seen_at=gte\./.test(url)) { cuentasUrl.push(url); return json(200, cuentas); }
     if (url.startsWith('/rest/v1/archive') && m === 'POST') { archivos.push(JSON.parse(req.postData() || '{}')); return json(201, [{ id: '00000000-0000-0000-0000-00000000000' + archivos.length }]); }
     if (m !== 'GET') return json(200, [{}]);
     return json(200, []);
@@ -71,6 +72,18 @@ const DISP = [
   await page.evaluate(() => adminTab('versiones')); await page.waitForTimeout(500);
   const ver2 = await page.evaluate(() => (document.querySelector('[data-testid="adm-ver-resumen"]') || {}).textContent || '');
   check('V4 con todos los de la semana al día dice ✅ (el viejo de hace 12 días no cuenta)', /✅ Los 1 dispositivo\(s\) usados en los últimos 7 días tienen la versión/.test(ver2), ver2);
+  // Punto ciego: cuentas que abrieron la app en la semana sin que ningún dispositivo suyo reportara (versión anterior).
+  disp = disp.map(d => Object.assign({}, d, { user_id: d.dispositivo === 'd-a2' ? 'u-r2' : 'u-r3' }));
+  cuentas = [{ id: 'u-r2', nombre: 'R2 FICTICIO', email: 'r2@ficticio.test', last_seen_at: new Date(Date.now() - 900e3).toISOString() },
+    { id: 'u-r4', nombre: 'R4 FICTICIO SIN REPORTE', email: 'r4@ficticio.test', last_seen_at: new Date(Date.now() - 2 * 86400e3).toISOString() },
+    { id: 'u-r3', nombre: 'R3 FICTICIO', email: 'r3@ficticio.test', last_seen_at: new Date(Date.now() - 86400e3).toISOString() }];
+  await page.evaluate(() => adminTab('versiones'));
+  await page.waitForSelector('[data-testid="adm-ver-sin-reporte"]', { timeout: 8000 }).catch(() => {});
+  const ver3 = await page.evaluate(() => ({ res: (document.querySelector('[data-testid="adm-ver-resumen"]') || {}).textContent || '', sin: Array.from(document.querySelectorAll('[data-testid="adm-ver-sin-reporte"]')).map(r => r.textContent.replace(/\s+/g, ' ')) }));
+  check('V5 📱 Versiones: las cuentas activas que abrieron la app en la semana sin reportar (R4, y R3 cuyo único equipo no se usa hace 12 días) salen como «sin reporte · versión anterior»; R2 (reporta) no',
+    /2 cuenta\(s\) usaron la app en los últimos 7 días sin reportar su versión/.test(ver3.res) && /barra azul/.test(ver3.res) && ver3.sin.length === 2
+    && /R4 FICTICIO SIN REPORTE.*sin reporte · versión anterior/.test(ver3.sin.join('|')) && /R3 FICTICIO/.test(ver3.sin.join('|')) && !/R2 FICTICIO/.test(ver3.sin.join('|'))
+    && cuentasUrl.length >= 1 && /status=eq\.active/.test(cuentasUrl[cuentasUrl.length - 1]), JSON.stringify({ ver3, cuentasUrl }));
   await page.evaluate(() => closeAdminPanel());
 
   // Ayudante: deja la nota del paciente i vacía (o con lo que se pase) y pinta su tarjeta.

@@ -909,9 +909,10 @@
        visita 8000): más arriba tapaba «◀ Anterior» del Pase de visita en el iPad vertical y quedaba encima de ✏️ Editar,
        donde «Actualizar» recargaba sin guardar lo escrito en la ventana. Sigue arriba del contenido y de las barras
        pegajosas (≤ 95). */
-    #pl-ver-bar { display: none; position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 900; max-width: calc(100% - 24px); box-sizing: border-box; align-items: center; gap: 8px; background: #0f172a; color: #e2e8f0; border: 1px solid rgba(148,163,184,.35); border-radius: 10px; padding: 5px 6px 5px 12px; font-size: 12.5px; line-height: 1.3; box-shadow: 0 4px 16px rgba(0,0,0,.25); font-family: var(--font); }
-    #pl-ver-bar .pl-ver-go { background: #0ea5e9; color: #fff; border: none; border-radius: 7px; padding: 5px 12px; font-weight: 700; font-size: 12.5px; cursor: pointer; font-family: var(--font); white-space: nowrap; }
-    #pl-ver-bar .pl-ver-x { background: none; border: none; color: #94a3b8; font-size: 14px; cursor: pointer; padding: 4px 6px; line-height: 1; }
+    /* 29 oct 2026: más visible (azul con letra blanca y botón blanco); mismo tamaño y lugar. */
+    #pl-ver-bar { display: none; position: fixed; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 900; max-width: calc(100% - 24px); box-sizing: border-box; align-items: center; gap: 8px; background: #0369a1; color: #fff; border: 1px solid #075985; border-radius: 10px; padding: 5px 6px 5px 12px; font-size: 13px; font-weight: 600; line-height: 1.3; box-shadow: 0 4px 18px rgba(3,105,161,.45); font-family: var(--font); }
+    #pl-ver-bar .pl-ver-go { background: #fff; color: #075985; border: none; border-radius: 7px; padding: 6px 14px; font-weight: 800; font-size: 13px; cursor: pointer; font-family: var(--font); white-space: nowrap; }
+    #pl-ver-bar .pl-ver-x { background: none; border: none; color: #bae6fd; font-size: 14px; cursor: pointer; padding: 4px 6px; line-height: 1; }
     @media(max-width:700px) { #pl-ver-bar { bottom: calc(70px + env(safe-area-inset-bottom)); } }
     /* 20 oct 2026: con 1340 px o más (Mac, laptop, monitor, iPad Pro 12.9" acostado) las camas van en el riel de la
        izquierda (#board-side, pegajoso hasta abajo) y la barra tapaba sus dos últimas camas → a la derecha; la ficha deja
@@ -7724,22 +7725,33 @@ function plExportBackup() {
       host.textContent = "Cargando…";
       let actual = PL_BUILD; try { if (_plVerNueva) actual = _plVerNueva; } catch (_) {}   // la versión publicada (version.json) si ya se conoce
       try {
-        const desde = new Date(Date.now() - 30 * 86400e3).toISOString();
-        const rows = await _sGet("pl_dispositivos", "select=dispositivo,nombre,equipo,build,visto,primer_visto&visto=gte." + encodeURIComponent(desde) + "&order=visto.desc&limit=300");
+        const desde = new Date(Date.now() - 30 * 86400e3).toISOString(), semanaIso = new Date(Date.now() - 7 * 86400e3).toISOString();
+        const rows = await _sGet("pl_dispositivos", "select=dispositivo,user_id,nombre,equipo,build,visto,primer_visto&visto=gte." + encodeURIComponent(desde) + "&order=visto.desc&limit=300");
         const lista = Array.isArray(rows) ? rows : [];
         const semana = lista.filter(r => Date.now() - new Date(r.visto).getTime() <= 7 * 86400e3);
         const viejos = semana.filter(r => r.build !== actual);
-        const resumen = !lista.length
-          ? '<div class="adm-hint" data-testid="adm-ver-vacio">Todavía ningún dispositivo ha reportado su versión. Cada iPad la reporta al abrir la app con esta versión o una más nueva.</div>'
-          : (viejos.length
-            ? `<div class="adm-hint" data-testid="adm-ver-resumen" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 8px;color:#92400e">⚠️ ${viejos.length} de ${semana.length} dispositivo(s) usados en los últimos 7 días NO tienen la versión ${esc(actual)}. Ábrelos y toca «Actualizar» (o recarga). No apagues el acceso público de Realtime hasta que todos estén al día.</div>`
+        // Punto ciego (29 oct 2026): las versiones anteriores al 28 oct no reportan. Una cuenta activa que abrió la app en
+        // los últimos 7 días (last_seen_at, lo anota cualquier versión al entrar) sin ningún dispositivo reportado en esos
+        // días usa una versión vieja (o no ha vuelto a abrir desde que salió la nueva).
+        let cuentas = [];
+        try { const c = await _sGet("app_users", "select=id,nombre,email,last_seen_at&status=eq.active&last_seen_at=gte." + encodeURIComponent(semanaIso) + "&order=last_seen_at.desc&limit=300"); cuentas = Array.isArray(c) ? c : []; } catch (_) {}
+        const conReporte = new Set(semana.map(r => r.user_id).filter(Boolean));
+        const sinReporte = cuentas.filter(u => u && u.id && !conReporte.has(u.id));
+        const partes = [];
+        if (viejos.length) partes.push(`${viejos.length} de ${semana.length} dispositivo(s) usados en los últimos 7 días NO tienen la versión ${esc(actual)}`);
+        if (sinReporte.length) partes.push(`${sinReporte.length} cuenta(s) usaron la app en los últimos 7 días sin reportar su versión (tienen una anterior al 28 oct)`);
+        const resumen = partes.length
+          ? `<div class="adm-hint" data-testid="adm-ver-resumen" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 8px;color:#92400e">⚠️ ${partes.join(" y ")}. Pídeles que abran la app y toquen «Actualizar» en la barra azul de abajo (o que recarguen). No apagues el acceso público de Realtime hasta que todos estén al día.</div>`
+          : (!lista.length
+            ? '<div class="adm-hint" data-testid="adm-ver-vacio">Todavía ningún dispositivo ha reportado su versión. Cada iPad la reporta al abrir la app con esta versión o una más nueva.</div>'
             : `<div class="adm-hint" data-testid="adm-ver-resumen" style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:6px;padding:6px 8px;color:#065f46">✅ Los ${semana.length} dispositivo(s) usados en los últimos 7 días tienen la versión ${esc(actual)}.</div>`);
+        const filasSin = sinReporte.map(u => `<div class="adm-user" data-testid="adm-ver-sin-reporte"><div class="adm-u-main"><b>${esc(u.nombre || u.email || "(sin nombre)")}</b> <span class="adm-badge adm-bad">sin reporte · versión anterior</span><div class="adm-meta">Abrió la app: ${_admFecha(u.last_seen_at)} (${_admHace(u.last_seen_at)})</div></div></div>`);
         const filas = lista.map(r => {
           const ok = r.build === actual, reciente = Date.now() - new Date(r.visto).getTime() <= 7 * 86400e3;
           const badge = ok ? '<span class="adm-badge adm-ok">al día</span>' : `<span class="adm-badge ${reciente ? "adm-bad" : "adm-warn"}">versión vieja</span>`;
           return `<div class="adm-user${reciente ? "" : " adm-blocked"}" data-testid="adm-ver-row"><div class="adm-u-main"><b>${esc(r.nombre || "(sin nombre)")}</b> <span class="adm-mail">${esc(r.equipo || "")}</span> <code>${esc(r.build || "—")}</code> ${badge}<div class="adm-meta">Última vez: ${_admFecha(r.visto)} (${_admHace(r.visto)}) · Primera vez: ${_admFecha(r.primer_visto)}</div></div></div>`;
         });
-        host.innerHTML = resumen + `<div class="adm-hint">Versión publicada: <code>${esc(actual)}</code>. Este dispositivo: <code>${esc(PL_BUILD)}</code>. Se muestran los últimos 30 días; en gris, los que no se usan hace más de 7.</div>` + filas.join("");
+        host.innerHTML = resumen + `<div class="adm-hint">Versión publicada: <code>${esc(actual)}</code>. Este dispositivo: <code>${esc(PL_BUILD)}</code>. Se muestran los últimos 30 días; en gris, los que no se usan hace más de 7. Al volver a la app después de 30 min, cada equipo se actualiza solo si no hay nada pendiente.</div>` + filasSin.join("") + filas.join("");
       } catch (e) { host.innerHTML = '<div class="adm-err">No se pudo cargar: ' + esc((e && e.message) || e) + '</div>'; }
     }
     function _admFecha(iso) { if (!iso) return "—"; const d = new Date(iso); if (isNaN(d.getTime())) return String(iso); const z = n => String(n).padStart(2, "0"); return z(d.getDate()) + "/" + z(d.getMonth() + 1) + "/" + String(d.getFullYear()).slice(2) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
@@ -29410,15 +29422,21 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // 60 s entre revisiones). Si la publicada es otra sale una barra pequeña abajo a la izquierda (a la derecha con
     // 1340 px o más, donde las camas van en el riel de la izquierda), que se esconde mientras se escribe (teclado del
     // iPad), queda debajo de las ventanas de la app (con una abierta «Actualizar» no recarga y pide guardarla o cerrarla)
-    // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. NUNCA
-    // recarga sola. Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
+    // y cuya ✕ la oculta hasta la siguiente revisión. «Actualizar» sube primero lo pendiente y luego recarga. Mientras se
+    // usa, NUNCA recarga sola. Única excepción (29 oct 2026, para que los equipos viejos se pongan al día sin que nadie toque
+    // nada): al volver a la app después de 30 min o más oculta (iPad bloqueado, otra app), si hay versión nueva y es
+    // seguro —con red, sin ventanas abiertas, sin escribir, sin nada en la cola ni subiendo y sin haber tocado nada desde
+    // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
+    // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.28-2";
+    const PL_BUILD = "2026.10.29-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
+    const PL_VER_AUTO_MS = 30 * 60000;   // oculta al menos esto → al volver puede actualizarse sola (ver arriba)
     const PL_VER_TXT = "🔄 Hay una versión nueva de la app ·";
     let _plVerUltima = 0, _plVerNueva = "", _plVerOculta = false, _plVerActualizando = false;
+    let _plVerOcultaDesde = 0, _plVerToque = 0;
     function _plVerActiva() {
       try { if (window.__PL_BUILD_TEST__) return true; } catch (_) {}
       try {
@@ -29480,16 +29498,20 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // con espera y subidas en vuelo); (2) subir la cola y esperar los guardados en curso, con tope de ~8 s; si queda algo,
     // avisar que se quedó en el equipo (la cola vive en localStorage y se sube al abrir); (3) service worker nuevo y
     // recarga. La recarga pide index.html a la red (el SW es network-first para la página).
-    async function plVersionActualizar() {
+    // auto = true: la actualización sola al volver (_plVersionAutoActualizar): sin avisos y, si algo no se sube, no recarga.
+    async function plVersionActualizar(auto) {
+      auto = auto === true;
       if (_plVerActualizando) return;
       // La barra queda DEBAJO de las ventanas (z-index), pero con teclado (Tab) aún se puede llegar al botón.
-      if (_plVerVentanaAbierta()) { alert("Guarda o cierra la ventana abierta y vuelve a tocar «Actualizar»."); return; }
-      if (navigator.onLine === false) { alert("Sin conexión: toca «Actualizar» cuando vuelva la red."); return; }
+      if (_plVerVentanaAbierta()) { if (!auto) alert("Guarda o cierra la ventana abierta y vuelve a tocar «Actualizar»."); return; }
+      if (navigator.onLine === false) { if (!auto) alert("Sin conexión: toca «Actualizar» cuando vuelva la red."); return; }
       _plVerActualizando = true;
+      _plVerPintar();
       const dormir = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+      let recargar = true;
       try {
         const txt = document.querySelector("#pl-ver-bar .pl-ver-txt");
-        if (txt) txt.textContent = "⏳ Subiendo lo pendiente…";
+        if (txt) txt.textContent = auto ? "⏳ Actualizando a la versión nueva…" : "⏳ Subiendo lo pendiente…";
         try { const ae = document.activeElement; if (ae && ae !== document.body && ae.blur) ae.blur(); } catch (_) {}
         try { persistBeforeExit(); } catch (_) {}
         const hasta = Date.now() + PL_VER_SUBIR_MS;
@@ -29497,6 +29519,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         while (Date.now() < hasta && (pendingSyncs > 0 || _pendingPush.size > 0)) await dormir(200);
         let quedan = 0;
         try { quedan = outboxLoad().length + ((pendingSyncs > 0 || _pendingPush.size > 0) ? 1 : 0); } catch (_) {}
+        if (quedan && auto) { recargar = false; return; }   // sola, nunca con algo sin subir: queda la barra
         if (quedan) alert("Algo no se alcanzó a subir: se quedó guardado en este equipo y se subirá solo al abrir la app.");
         try {
           const reg = navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null;
@@ -29516,20 +29539,43 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       } finally {
         // Red de seguridad (20 oct 2026): si la recarga no ocurre (se cayó la navegación), a los ~15 s la barra vuelve a su
         // texto y «Actualizar» se puede tocar otra vez (antes se quedaba en «⏳ Subiendo lo pendiente…» para siempre).
-        setTimeout(function () {
+        const rescatar = function () {
           _plVerActualizando = false;
           const t = document.querySelector("#pl-ver-bar .pl-ver-txt");
           if (t) t.textContent = PL_VER_TXT;
           _plVerPintar();
-        }, PL_VER_RESCATE_MS);
-        location.reload();
+        };
+        if (!recargar) rescatar();
+        else { setTimeout(rescatar, PL_VER_RESCATE_MS); location.reload(); }
       }
+    }
+    // Al volver después de PL_VER_AUTO_MS o más: revisa ya (sin el mínimo de 60 s) y, si hay versión nueva y es seguro, se
+    // actualiza sola. `vuelta`: cuándo volvió; si desde entonces se tocó algo (dedo, lápiz o tecla), no.
+    function _plVersionAutoActualizar(vuelta) {
+      try {
+        if (!_plVerNueva || _plVerActualizando || navigator.onLine === false || document.visibilityState !== "visible") return false;
+        if (_plVerToque >= vuelta || _plVerVentanaAbierta() || _isTypingNow()) return false;
+        if (pendingSyncs > 0 || _pendingPush.size > 0 || outboxLoad().length) return false;
+      } catch (_) { return false; }
+      plVersionActualizar(true);
+      return true;
+    }
+    function _plVersionAlVolver() {
+      const largo = _plVerOcultaDesde > 0 && Date.now() - _plVerOcultaDesde >= PL_VER_AUTO_MS;
+      _plVerOcultaDesde = 0;
+      if (!largo) { _plVersionAuto(); return; }
+      const vuelta = Date.now();
+      _plVersionRevisar().then(function (v) { if (v) _plVersionAutoActualizar(vuelta); }).catch(function () {});
     }
     function _plVersionIniciar() {
       if (!_plVerActiva()) return;
       setTimeout(_plVersionAuto, PL_VER_PRIMERA_MS);
       setInterval(_plVersionAuto, PL_VER_CADA_MS);
-      document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") _plVersionAuto(); });
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") { if (!_plVerOcultaDesde) _plVerOcultaDesde = Date.now(); }
+        else if (document.visibilityState === "visible") _plVersionAlVolver();
+      });
+      ["pointerdown", "keydown"].forEach(function (ev) { document.addEventListener(ev, function () { _plVerToque = Date.now(); }, true); });
       // Regreso desde la caché de páginas del navegador (atrás/adelante): ahí no corre el arranque ni hay visibilitychange.
       window.addEventListener("pageshow", function (e) { if (e && e.persisted) _plVersionAuto(); });
       // Mientras se escribe la barra se esconde (el teclado del iPad sube desde abajo) y vuelve al soltar la caja.

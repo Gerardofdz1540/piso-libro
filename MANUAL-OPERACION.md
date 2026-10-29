@@ -139,7 +139,14 @@ ancha sale abajo a la derecha, para no tapar la lista de camas de la izquierda).
   equipo y se sube solo al abrir la app con red. Si la versión nueva cambia también el service worker, espera unos
   segundos más a que se instale antes de recargar (así el iPad no se queda a medias). Si a los ~15 segundos no se
   recargó, la barra vuelve a «Hay una versión nueva»: tócala otra vez o cierra y abre la app.
-- La app **nunca se recarga sola**. La **✕** esconde la barra hasta la siguiente revisión (3 minutos como máximo).
+- Mientras la usas, la app **nunca se recarga sola**. La **✕** esconde la barra hasta la siguiente revisión (3 minutos
+  como máximo).
+- **Actualización sola al volver (29 oct 2026).** Si la app estuvo oculta 30 minutos o más (iPad bloqueado, otra app)
+  y al volver hay versión nueva, se actualiza sola («⏳ Actualizando a la versión nueva…», 1–2 segundos). Solo lo hace
+  si es seguro: con red, sin ventanas abiertas, sin estar escribiendo, sin nada en la cola ni subiendo y sin que
+  hayas tocado nada desde que volviste. Si al subir algo falla, no recarga y queda la barra para «Actualizar». Así los
+  equipos se ponen al día sin que nadie toque el botón.
+- Desde el 29 oct la barra es **azul con letra blanca** (antes era gris oscuro y pasaba desapercibida).
 - Mientras escribes la barra se esconde (para no tapar el teclado del iPad) y regresa al soltar la caja.
 - La barra queda **debajo** de las ventanas de la app (✏️ Editar, Pase de visita, cirugías…): no tapa sus botones.
   Si tienes una ventana abierta, «Actualizar» no recarga y te pide guardarla o cerrarla primero.
@@ -856,6 +863,18 @@ una copia: además trae pestañas listas para estadística.
 - **Para que el registro tenga las pestañas nuevas:** abre el proyecto «Registro de pacientes» en script.google.com,
   borra todo `Código.gs`, pega el `apps-script/registro-pacientes.gs` nuevo y guarda. No hay que tocar nada más: la
   propiedad `REG_SAL` (la sal del seudónimo) se crea sola en la siguiente corrida.
+- **Sexo desde WinLab** (registro 2026.10.29-1). Si la tarjeta no tiene el sexo, el registro lo toma del encabezado de
+  WinLab del paciente («MASCULINO/FEMENINO») y lo marca **«de WinLab»** en la columna «Sexo (fuente)» de Pacientes y de
+  Análisis · Episodios («Tarjeta» si lo escribió la app).
+  - Solo de reportes ya atribuidos al paciente con la regla del robot, con su expediente y un nombre compatible: si dos
+    personas comparten expediente, cada una toma el suyo.
+  - Si WinLab trae los dos sexos para la persona, no se usa. Si la tarjeta y WinLab no coinciden, manda la tarjeta y
+    se anota en «Calidad de datos» para revisar.
+  - «Labs del robot (WinLab)» guarda el sexo de cada reporte (columna «Sexo en WinLab»).
+  - «Por completar» ya no pide el sexo que llegó de WinLab.
+  - **Al instalarlo:** pega el `.gs` nuevo y corre **Actualizar ahora** una vez. Esa primera corrida vuelve a leer WinLab
+    completo **una sola vez** (unas 4 vueltas de 10 minutos que se programan solas) para llenar a los pacientes de antes.
+    El Diccionario lo avisa.
 
 ## Privacidad de las bitácoras de los robots y robot que se congelaba (27 de octubre de 2026)
 
@@ -1216,6 +1235,10 @@ Botón **👥 Usuarios** en la cabecera (solo lo ve el administrador).
   dispositivos usados en los últimos 7 días** tienen la versión publicada o cuántos siguen con una vieja.
   - **Úsalo antes de apagar el acceso público de Realtime:** solo cuando diga ✅.
   - Uno con versión vieja: ábrelo y toca «Actualizar» en el aviso de versión nueva, o recarga.
+  - **Cuentas sin reporte** (29 oct 2026): las versiones anteriores al 28 oct no reportan. Por eso el panel también
+    lista las cuentas activas que abrieron la app en los últimos 7 días sin que ningún equipo suyo reportara («sin
+    reporte · versión anterior»). Pídeles que abran la app y toquen «Actualizar» en la barra azul de abajo, o que
+    recarguen. Mientras haya alguna, el panel no dice ✅.
   - No guarda nada de pacientes. La tabla es `pl_dispositivos` (`scripts/supabase_dispositivos.sql`, ya aplicada) y
     solo la lee el administrador.
 
@@ -1365,6 +1388,11 @@ mantienen despiertos solos) y Supabase pausa el proyecto tras 7 días sin tráfi
 - **Respaldo del 20 oct sin candado.** Una tabla de respaldo con 7 notas tenía apagado RLS: cualquier sesión podía
   leerla o vaciarla. Ya está cerrada; junto con otros avisos del asesor de Supabase (funciones internas que se podían
   llamar desde fuera, funciones sin ruta fija). `scripts/supabase_seguridad_asesor_27oct.sql`.
+- **Limpieza del 29 oct** (`scripts/supabase_limpieza_29oct.sql`, ya aplicada):
+  - las reglas de `app_users` evalúan `auth.uid()` una vez por consulta, no por fila;
+  - se quitó `notes_patient_id_key`, que repetía la llave primaria de notes;
+  - se borraron 7 respaldos de emergencia del 9 al 20 oct que ya nadie usaba (la base quedó en 108 MB).
+  - El catálogo de salud siguió completo (60 de 60) y el asesor de rendimiento ya solo marca índices sin uso.
 - **Contraseña temporal obligatoria** y **📅 fin de rotación**: ver "Cuentas, permisos y registro de actividad".
   Ya está desplegada la función `admin-users` nueva (versión 3).
 - **Canales en vivo privados.** El aviso de quién edita cada tarjeta, la guardia y el aviso de No olvidar viajaban por
@@ -1521,14 +1549,13 @@ guarda fuera de Supabase:
 ## Si algo sale muy mal con las notas de laboratorio
 
 El 9 de octubre de 2026 se hizo una limpieza de valores erróneos (pH y
-hemoglobina de orina guardados como sangre). Antes de tocar nada se guardó una
-copia completa en la tabla `notes_lab_history_backup_20261009` de Supabase.
-Para volver a como estaba, en Supabase → SQL Editor:
-
-```sql
-update notes n set lab_history = b.lab_history
-from notes_lab_history_backup_20261009 b where b.patient_id = n.patient_id;
-```
+hemoglobina de orina guardados como sangre), con una copia previa en
+`notes_lab_history_backup_20261009`. Esa copia y los demás respaldos de
+emergencia del 9 al 20 de octubre se borraron el 29 de octubre
+(`scripts/supabase_limpieza_29oct.sql`): ya nadie los usaba. Hoy, para volver
+atrás, sirven el botón 🕘 de cada caja (bitácora), el respaldo de cada hora
+(`respaldo_hora`) y el respaldo nocturno cifrado (ver «Respaldo nocturno de la
+base»).
 
 ## ¿Dónde vive cada cosa en el repositorio?
 
