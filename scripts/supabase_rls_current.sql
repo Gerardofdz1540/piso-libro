@@ -115,4 +115,5 @@ create or replace function public.pl_is_active() returns boolean language sql st
 -- Entrega; función pl_historial_caja(paciente, caja, límite) (security definer, solo authenticated) con
 -- la que la app muestra y restaura versiones anteriores de una caja (botón 🕘).
 -- Tablas internas sin acceso por API (RLS sin políticas, sin grants a anon/authenticated):
--- notes_backup_20261014, indicaciones_parts, indicaciones_fetch_log.
+-- indicaciones_parts, indicaciones_fetch_log (notes_backup_20261014 se borró el 29 oct:
+-- scripts/supabase_limpieza_29oct.sql).

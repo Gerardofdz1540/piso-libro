@@ -229,6 +229,7 @@ language sql immutable as $fn$
   select u.ord::int, btrim(u.l) from unnest(string_to_array(public.pl_entrega_sin_auto(txt), E'\n')) with ordinality u(l, ord) where btrim(u.l) <> ''
 $fn$;
 
+-- (Respaldo de un solo uso; se borró el 29 oct con scripts/supabase_limpieza_29oct.sql.)
 create table if not exists public.notes_entrega_respaldo_20261020 (
   patient_id uuid primary key, entrega_antes text, respaldado_en timestamptz default now()
 );

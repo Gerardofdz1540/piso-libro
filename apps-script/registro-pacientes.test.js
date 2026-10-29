@@ -717,7 +717,7 @@ const nombres = /FICTICI|000123|000456|000789|000999/;
   // Capacidad: las pestañas nuevas no guardan columnas vacías y la cuenta incluye todas las hojas.
   const tot = Object.values(si.ss.sheets).reduce((s, h) => s + h.maxR * h.maxC, 0);
   check("R12k pestañas nuevas sin columnas de sobra y la cuenta de celdas incluye todas las hojas",
-    si.ss.sheets["Labs"].maxC === 9 && si.ss.sheets["Diccionario"].maxC === 2 && si.ss.sheets["Pacientes"].maxC === 48 && JSON.stringify(si.ss.sheets["Diccionario"].cells).includes('"' + tot + ' de 10000000'), String(tot));
+    si.ss.sheets["Labs"].maxC === 9 && si.ss.sheets["Diccionario"].maxC === 2 && si.ss.sheets["Pacientes"].maxC === 49 && JSON.stringify(si.ss.sheets["Diccionario"].cells).includes('"' + tot + ' de 10000000'), String(tot));
 }
 
 // ─── R13: una respuesta cortada no cuela datos al error ──────────────────────────────────────────────────────────
@@ -1339,6 +1339,87 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
   check("R29h Clavien IIIa = complicación mayor (1); II = no (0); electiva = 0 en «Urgencia»",
     E("g1")["Clavien-Dindo máximo"] === "IIIa" && E("g1")["Complicación mayor (Clavien ≥ IIIa)"] === 1 && E("g2")["Complicación mayor (Clavien ≥ IIIa)"] === 0 && E("g2")["Urgencia (1.ª cirugía)"] === 0,
     JSON.stringify([E("g1")["Clavien-Dindo máximo"], E("g1")["Complicación mayor (Clavien ≥ IIIa)"], E("g2")["Complicación mayor (Clavien ≥ IIIa)"]]));
+}
+
+// ─── R30: sexo de WinLab cuando la tarjeta no lo tiene, marcado «de WinLab» (29 oct 2026) ─────────────────────────
+{
+  const { sb } = makeSandbox({ db: db() });
+  const enc = (sx) => ["", "", "x", "PRUEBA FICTICIA", "NOMBRE", sx, "01/01/1980"];
+  check("R30a sexo del encabezado de WinLab en español, italiano o inglés; sin celda de sexo o desconocido → vacío",
+    sb.regWlSexoDe(enc("FEMENINO")) === "F" && sb.regWlSexoDe(enc("MASCULINO")) === "M" && sb.regWlSexoDe(enc("FEMMINILE")) === "F" && sb.regWlSexoDe(enc("MASCHILE")) === "M"
+    && sb.regWlSexoDe(enc("DONNA")) === "F" && sb.regWlSexoDe(enc("MALE")) === "M" && sb.regWlSexoDe(enc("FEMALE")) === "F" && sb.regWlSexoDe(enc("F")) === "F"
+    && sb.regWlSexoDe(enc("XYZ")) === "" && sb.regWlSexoDe(["", "", "F100", "27/10/2026 06:00", "", "CIRUGIA"]) === "" && sb.regWlSexoDe(null) === "");
+}
+{
+  const wl = (id, exp, paciente, nom, sexo, folio, nVal, scraped) => ({ id, exp, paciente, fecha: "2026-10-27", scraped_at: scraped || "2026-10-27T08:00:00+00:00", data: { reportes: [
+    { __hasLink: false, __cells: ["", "", exp, "PRUEBA FICTICIA", nom, sexo, "01/01/1980"] },
+    { __hasLink: true, __target: true, __cells: ["", "", folio, "27/10/2026 06:00", "27/10/2026 07:00", "CIRUGIA GENERAL"],
+      valores: [{ estudio: "HEMOGLOBINA", valor: "12.0" }, { estudio: "LEUCOCITOS", valor: "9.0" }, { estudio: "PLAQUETAS", valor: "250" }].slice(0, nVal) }] } });
+  const pt = (id, nombre, exp) => ({ id, cama: "3-8" + id.slice(-2), nombre, exp, dx: "HERNIA INGUINAL", edad: "45", ingreso: "2026-10-25", estado: "ESTABLE" });
+  const d = { cronologia_respaldo: [], ris_estudios: [], procedimientos_dia: [], archive: [],
+    patients: [pt("s01", "PRUEBA FICTICIA SINSEXO", "000811"), pt("s02", "PRUEBA FICTICIA TARJETA", "000812"), pt("s03", "PRUEBA FICTICIA GEMELA UNO", "000813"),
+      pt("s04", "PRUEBA FICTICIA DOBLE", "000814"), pt("s06", "PRUEBA FICTICIA SEXTA", "000816")],
+    notes: [{ patient_id: "s02", checklist: { sexo: "M" } }],
+    winlab_labs: [
+      wl(1, "000811", "PRUEBA FICTICIA SINSEXO", "SINSEXO", "FEMENINO", "F811", 3),
+      wl(2, "000812", "PRUEBA FICTICIA TARJETA", "TARJETA", "FEMENINO", "F812", 3),
+      // Expediente compartido por dos personas: el renglón de la otra (MASCULINO) no cuenta para la gemela.
+      wl(3, "000813", "PRUEBA FICTICIA GEMELA UNO", "GEMELA UNO", "FEMENINO", "F813", 3),
+      wl(4, "000813", "OTRA FICTICIA DISTINTA", "OTRA DISTINTA", "MASCULINO", "F913", 3),
+      // La misma persona con los dos sexos en WinLab: no se usa ninguno.
+      wl(5, "000814", "PRUEBA FICTICIA DOBLE", "DOBLE", "FEMENINO", "F814", 3),
+      wl(6, "000814", "PRUEBA FICTICIA DOBLE", "DOBLE", "MASCULINO", "F815", 3)
+    ] };
+  const st = { db: d, hoy: "2026-10-29" }; makeSandbox(st).sb.actualizarRegistro();
+  const P = () => Object.fromEntries(tab(st.ss, "Pacientes").map((x) => [x["ID episodio"], x]));
+  const p = P();
+  check("R30b Pacientes: sin sexo en la tarjeta → el de WinLab, marcado «de WinLab»; con sexo en la tarjeta → el de la tarjeta («Tarjeta»)",
+    p.s01["Sexo"] === "F" && p.s01["Sexo (fuente)"] === "de WinLab" && p.s02["Sexo"] === "M" && p.s02["Sexo (fuente)"] === "Tarjeta",
+    JSON.stringify([p.s01["Sexo"], p.s01["Sexo (fuente)"], p.s02["Sexo"], p.s02["Sexo (fuente)"]]));
+  check("R30c expediente compartido: solo cuenta el renglón de WinLab de la misma persona; con los dos sexos en WinLab queda vacío",
+    p.s03["Sexo"] === "F" && p.s03["Sexo (fuente)"] === "de WinLab" && p.s04["Sexo"] === "" && p.s04["Sexo (fuente)"] === "" && p.s06["Sexo"] === "" && p.s06["Sexo (fuente)"] === "",
+    JSON.stringify([p.s03["Sexo"], p.s04["Sexo"], p.s04["Sexo (fuente)"], p.s06["Sexo"]]));
+  const W = tab(st.ss, "Labs del robot (WinLab)");
+  check("R30d «Labs del robot» guarda el sexo del encabezado de cada reporte", W.length === 6 && W.find((x) => x["Folio"] === "F811")["Sexo en WinLab"] === "F" && W.find((x) => x["Folio"] === "F913")["Sexo en WinLab"] === "M",
+    JSON.stringify(W.map((x) => x["Folio"] + ":" + x["Sexo en WinLab"])));
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const E = (id) => tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K[id]) || {};
+  check("R30e Análisis: sexo y su fuente; la tarjeta manda y si WinLab dice otro se anota; los dos sexos en WinLab se anotan y no se usan",
+    E("s01")["Sexo"] === "F" && E("s01")["Sexo (fuente)"] === "de WinLab" && !/sin sexo/.test(E("s01")["Calidad de datos"])
+    && E("s02")["Sexo"] === "M" && E("s02")["Sexo (fuente)"] === "Tarjeta" && /el sexo de la tarjeta \(M\) no coincide con el de WinLab \(F\)/.test(E("s02")["Calidad de datos"])
+    && E("s04")["Sexo"] === "" && /WinLab trae los dos sexos/.test(E("s04")["Calidad de datos"]) && /sin sexo registrado/.test(E("s04")["Calidad de datos"]),
+    JSON.stringify([E("s01")["Sexo (fuente)"], E("s02")["Calidad de datos"], E("s04")["Calidad de datos"]]));
+  const PC = Object.fromEntries(tab(st.ss, "Por completar").map((x) => [x["ID episodio"], x["Falta"]]));
+  check("R30f «Por completar» ya no pide el sexo que vino de WinLab (sí el que falta en los dos lados)", !/sexo/.test(PC.s01) && /sexo/.test(PC.s04) && /sexo/.test(PC.s06), JSON.stringify(PC));
+  // Una fila de una corrida anterior (versión sin «Sexo en WinLab») con MÁS valores se conserva, pero el sexo se llena.
+  const hW = st.ss.sheets["Labs del robot (WinLab)"], cS = hW.cells[0].indexOf("Sexo en WinLab"), fila = hW.cells.findIndex((r) => r && r.includes("F811"));
+  hW.cells[fila][cS] = "";
+  // s06 sale de la base sin egreso y su expediente aparece en WinLab: su fila conservada también toma el sexo.
+  d.patients = d.patients.filter((x) => x.id !== "s06");
+  d.winlab_labs = [wl(7, "000811", "PRUEBA FICTICIA SINSEXO", "SINSEXO", "FEMENINO", "F811", 2, "2026-10-28T08:00:00+00:00"),
+    wl(8, "000816", "PRUEBA FICTICIA SEXTA", "SEXTA", "MASCULINO", "F816", 1, "2026-10-28T08:00:00+00:00")];
+  makeSandbox(st).sb.actualizarRegistro();
+  const W2 = tab(st.ss, "Labs del robot (WinLab)"), f811 = W2.find((x) => x["Folio"] === "F811"), p2 = P();
+  check("R30g la fila con más valores se conserva y aun así toma el sexo; la fila conservada de quien salió de la base también",
+    String(f811["Estudios"]) === "3" && f811["Sexo en WinLab"] === "F" && p2.s06["Sexo"] === "M" && p2.s06["Sexo (fuente)"] === "de WinLab"
+    && p2.s06["Estado en registro"] === "Salió de la base sin egreso registrado" && p2.s01["Sexo"] === "F",
+    JSON.stringify([f811["Estudios"], f811["Sexo en WinLab"], p2.s06["Sexo"], p2.s06["Sexo (fuente)"]]));
+  // Si la tarjeta luego trae el sexo, manda la tarjeta.
+  d.notes.push({ patient_id: "s01", checklist: { sexo: "M" } });
+  makeSandbox(st).sb.actualizarRegistro();
+  check("R30h cuando la tarjeta trae el sexo, reemplaza al de WinLab («Tarjeta»)", P().s01["Sexo"] === "M" && P().s01["Sexo (fuente)"] === "Tarjeta", JSON.stringify(P().s01["Sexo (fuente)"]));
+}
+{
+  // Relectura única: un registro que ya había leído WinLab (cursor guardado) lo vuelve a leer completo una sola vez.
+  const st = { db: db(), hoy: "2026-10-29", props: { REG_CURSOR_winlab_labs: "2026-10-28T08:00:00.000Z", REG_SIGUE_winlab_labs: '{"v":"2026-10-01","id":1}' } };
+  const m1 = makeSandbox(st), r1 = m1.sb.actualizarRegistro();
+  const leyoTodo = m1.calls.some((c) => /winlab_labs\?/.test(c.u) && !/scraped_at=gte\./.test(c.u) && !/or=/.test(c.u));
+  const m2 = makeSandbox(st), r2 = m2.sb.actualizarRegistro();
+  check("R30i la primera corrida de esta versión vuelve a leer WinLab desde el principio (con aviso) y la siguiente ya es incremental",
+    leyoTodo && r1.avisos.some((a) => /WinLab se vuelve a leer completo/.test(a)) && st.props.REG_WL_RELECTURA === m1.sb.REG_WL_RELECTURA
+    && tab(st.ss, "Labs del robot (WinLab)").some((x) => x["Sexo en WinLab"] === "M")
+    && m2.calls.some((c) => /winlab_labs\?.*scraped_at=gte\./.test(c.u)) && !r2.avisos.some((a) => /se vuelve a leer/.test(a)),
+    JSON.stringify({ leyoTodo, a1: r1.avisos, a2: r2.avisos }));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");

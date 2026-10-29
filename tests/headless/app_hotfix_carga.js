@@ -60,13 +60,15 @@
 //       misma versión → nada; sin el gancho (navigator.webdriver, 127.0.0.1) no revisa; con el version.json real del
 //       repo → sin barra; visibilitychange y pageshow con mínimo de 60 s; cada 3 min solo con la pestaña visible;
 //       barra que se esconde al escribir y ✕ hasta la siguiente revisión; debajo del Pase de visita y de ✏️ Editar (con
-//       una ventana abierta «Actualizar» no recarga); nunca recarga sola; «Actualizar» sube la cola y lo escrito sin
+//       una ventana abierta «Actualizar» no recarga); mientras se usa nunca recarga sola; «Actualizar» sube la cola y lo escrito sin
 //       soltar la caja ANTES de recargar y, si no pudo, avisa; con 1340 px o más no tapa el riel de camas (C7k);
 //       C7l lo que publican deploy-pages.yml y netlify.toml lleva version.json igual a PL_BUILD (C7l2: y cada archivo que
 //       copia deploy-pages.yml está en sus on.push.paths, version.json incluido); C7m el paso de ci.yml
 //       falla si un PR (o la publicación por push) cambia index.html sin subir version.json, y su job trae la historia;
 //       C7g registration.update() + SKIP_WAITING + controllerchange antes de irse; C7h2 subida colgada → tope ~8 s;
-//       C7o sin red solo avisa; C7p si la recarga no llega, a los ~15 s la barra se rescata
+//       C7o sin red solo avisa; C7p si la recarga no llega, a los ~15 s la barra se rescata; C7q al volver tras 30 min
+//       o más oculta se actualiza sola solo si es seguro (no con ausencia corta, algo en la cola, una subida que falla,
+//       una ventana abierta ni si se tocó algo al volver), sin avisos
 //   C8  service worker REAL con otra VERSION en sw.js: «Actualizar» recarga después de que el SW nuevo toma el control
 //   C9  service worker REAL con caché HTTP de GitHub Pages (max-age=600): el SW nuevo guarda la app nueva, no la de la caché
 //   node tests/headless/app_hotfix_carga.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
@@ -1367,14 +1369,15 @@ function mockSupabase(ctx, store, ctl, calls) {
   let repoVer = null; try { repoVer = JSON.parse(fs.readFileSync(path.join(REPO, 'version.json'), 'utf8')); } catch (_) {}
   const vstore = { patients: [{ id: 'v1', cama: '3-170', exp: '26-90170', nombre: 'PRUEBA FICTICIA VERSION', esp: 'CG', estado: 'ESTABLE' }], notes: { v1: noteRow('v1', { npo: false }, { pendientes: 'PEND BASE' }) } };
   const vctl = { failPost: new Set() }, vcalls = [];
-  let verMode = 'fail';
+  let verMode = 'fail', verDelay = 0;
   const verReqs = [], verReqsMarca = [];
   const ctxV = await browser.newContext({ viewport: { width: 1194, height: 834 } });
   await guardSupa(ctxV);
   await ctxV.route('**/vendor/supabase*', r => r.abort());
   await mockSupabase(ctxV, vstore, vctl, vcalls);
-  await ctxV.route('**/version.json*', (route) => {
+  await ctxV.route('**/version.json*', async (route) => {
     verReqs.push({ url: route.request().url(), t: Date.now(), mode: verMode });
+    if (verDelay) await new Promise(r => setTimeout(r, verDelay));   // C7q4: tiempo para tocar algo mientras revisa
     if (verMode === 'fail') return route.abort('internetdisconnected');
     if (verMode === '404') return route.fulfill({ status: 404, contentType: 'text/plain', body: 'no' });
     if (verMode === 'raro') return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>portal cautivo</title>' });
@@ -1670,6 +1673,76 @@ function mockSupabase(ctx, store, ctl, calls) {
   check('C7p la recarga de «Actualizar» no llega: mientras tanto «⏳ Subiendo lo pendiente…»; a los ~15 s la barra vuelve a «🔄 Hay una versión nueva de la app ·» y «Actualizar» se puede volver a tocar',
     colgadasP >= 1 && !!c7pA && c7pA.act === true && /Subiendo lo pendiente/.test(c7pA.txt) && !!c7pB && c7pB.txt === '🔄 Hay una versión nueva de la app ·' && c7pB.vis && dtP >= 14000 && dtP < 22000,
     JSON.stringify({ colgadasP, c7pA, c7pB, dtP }));
+
+  // C7q (29 oct 2026): al volver a la app después de 30 min o más oculta, con versión nueva y si es seguro, se actualiza
+  // sola. Nunca: ausencia corta, algo en la cola, una ventana abierta o si se tocó algo al volver.
+  await pv.waitForTimeout(1500);
+  const volver = (min, escribir) => pv.evaluate(([m, txt]) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    delete document.visibilityState;
+    // escribir: algo queda escrito (campo sucio, sin cola ni subida en curso) DESPUÉS de que la app guardó al ocultarse.
+    if (txt) { const ta = document.querySelector('textarea[data-key][data-field="pendientes"]'); ta.value = txt; liveUpdate(ta); }
+    _plVerOcultaDesde = Date.now() - m * 60000; _plVerUltima = Date.now() - 61000;
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, [min, escribir || '']);
+  const estadoQ = () => pv.evaluate(() => { const r = { q: outboxLoad().length, act: _plVerActualizando, auto: window.__vioAuto, bar: (document.getElementById('pl-ver-bar') || {}).style ? getComputedStyle(document.getElementById('pl-ver-bar')).display : 'sin barra' }; window.__vioAuto = false; return r; });
+  // ¿Llegó a intentar la actualización sola? (su texto en la barra); estadoQ lo lee y lo reinicia en cada paso.
+  await pv.evaluate(() => {
+    window.__vioAuto = false;
+    setInterval(() => { const t = document.querySelector('#pl-ver-bar .pl-ver-txt'); if (t && /Actualizando a la versión nueva/.test(t.textContent)) window.__vioAuto = true; }, 40);
+  });
+  const dlgQ = dialogs.length;
+  // 1) 10 min oculta: solo revisa (sale la barra) y no recarga.
+  let navsQ = navs.length;
+  await volver(10); await pv.waitForTimeout(2000);
+  const q1 = Object.assign(await estadoQ(), { navs: navs.length - navsQ });
+  // 2) 40 min oculta con algo que no se ha podido subir: no recarga ni avisa; la barra sigue y lo pendiente también.
+  vctl.failPost.add('v1');
+  await pv.evaluate(() => { const k = pid(patients[0]); outboxEnqueue({ type: 'note', key: k, data: Object.assign(migrateNote(JSON.parse(JSON.stringify(noteData[k]))), { pendientes: 'PENDIENTE AL VOLVER' }), dirty: ['pendientes'] }); });
+  await pv.waitForTimeout(800);
+  navsQ = navs.length;
+  await volver(40); await pv.waitForTimeout(2500);
+  const q2 = Object.assign(await estadoQ(), { navs: navs.length - navsQ });
+  // 2b) La revisión previa pasa (nada en la cola) pero al subir lo escrito la base falla: tampoco recarga ni avisa.
+  await pv.evaluate(() => { outboxSave([]); updateOutboxBadge(); window.__vioAuto = false; });
+  navsQ = navs.length;
+  await volver(40, 'ESCRITO ANTES DE VOLVER');
+  await pv.waitForTimeout(800);
+  await pv.waitForFunction(() => !_plVerActualizando, null, { timeout: 15000 }).catch(() => {});
+  await pv.waitForTimeout(500);
+  const q2b = Object.assign(await estadoQ().catch(() => ({ auto: 'recargó' })), { navs: navs.length - navsQ });
+  vctl.failPost.clear();
+  await pv.evaluate(() => flushOutbox().catch(() => {}));
+  await pv.waitForFunction(() => outboxLoad().length === 0 && pendingSyncs === 0 && _pendingPush.size === 0, null, { timeout: 30000 }).catch(() => {});
+  // 3) 40 min oculta con ✏️ Editar abierto: no recarga.
+  await pv.evaluate(() => openEditModal(pid(patients[0])));
+  navsQ = navs.length;
+  await volver(40); await pv.waitForTimeout(2000);
+  const q3 = Object.assign(await estadoQ(), { navs: navs.length - navsQ, modal: await pv.evaluate(() => document.getElementById('patient-modal').style.display) });
+  await pv.evaluate(() => { try { closeModal(); } catch (_) {} });
+  await pv.waitForTimeout(300);
+  // 4) 40 min oculta pero tocó la pantalla mientras se revisaba la versión: no recarga.
+  verDelay = 900;
+  navsQ = navs.length;
+  await volver(40);
+  await pv.waitForTimeout(150);
+  await pv.evaluate(() => document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+  await pv.waitForTimeout(2500);
+  const q4 = Object.assign(await estadoQ(), { navs: navs.length - navsQ });
+  verDelay = 0;
+  // 5) 40 min oculta, sin nada pendiente, sin ventanas y sin tocar: se actualiza sola (SW y recarga), sin avisos.
+  navsQ = navs.length;
+  const tQ5 = Date.now();
+  const cargoQ5 = await Promise.all([pv.waitForEvent('load', { timeout: 30000 }).then(() => true).catch(() => false), volver(40)]).then(r => r[0]);
+  await pv.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 1, null, { timeout: 30000 });
+  const evQ5 = await swEventos(pv, tQ5);
+  check('C7q al volver: 10 min oculta → solo la barra; 40 min con algo sin subir, con una ventana abierta o tocando al volver → no recarga; 40 min y todo en orden → se actualiza sola (SW nuevo y recarga) sin ningún aviso',
+    q1.navs === 0 && q1.bar === 'flex' && q1.auto === false && q2.navs === 0 && q2.auto === false && q2.q >= 1 && q2.bar === 'flex' && q2.act === false
+    && q2b.navs === 0 && q2b.auto === true && q2b.q >= 1 && q2b.act === false && q2b.bar === 'flex'
+    && q3.navs === 0 && q3.auto === false && q3.modal !== 'none' && q4.navs === 0 && q4.auto === false
+    && cargoQ5 && navs.length > navsQ && evQ5.some(x => x.e === 'update') && dialogs.length === dlgQ,
+    JSON.stringify({ q1, q2, q2b, q3, q4, cargoQ5, navs: navs.length - navsQ, sw: evQ5.map(x => x.e), dialogs: dialogs.slice(dlgQ) }));
   check('final C7: sin errores no capturados', errors.length === 0, errors.join(' | '));
   await ctxV.close();
 

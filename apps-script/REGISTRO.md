@@ -20,7 +20,7 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 
 | Pestaña | Una fila por… | Contenido |
 |---|---|---|
-| Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos.<br>**Peso y talla**; **Dx principal**, su grupo CIE-10 y su fuente (28 oct 2026). |
+| Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos.<br>**Peso y talla**; **Dx principal**, su grupo CIE-10 y su fuente (28 oct 2026).<br>**Sexo (fuente)**: «Tarjeta» o «de WinLab» (29 oct 2026). |
 | Cirugías | cirugía | fecha, procedimiento, hallazgos, sangrado, cirujano, **Grupo**, **Fuente** · **Vigente** · **Tipo** (urgencia/electiva), **Abordaje**, **Clavien-Dindo**, **Complicación**. Desde el 28 oct 2026 también las que no están en la caja: fecha POP, texto Qx anterior, Cronología, DX y programación del día (ver abajo) |
 | Labs | fecha y estudio | valor como está en la tarjeta · **Vigente** · **Corregido a mano** (quién, cuándo y qué decía antes) |
 | Imagen | estudio | fecha, tipo, descripción, enlace (solo http) · **Vigente** |
@@ -28,12 +28,12 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Notas de evolución | nota | fecha y hora, autor, con IA o no, texto. La app guarda 10; aquí se acumulan. |
 | Guardia y cronología | renglón | Cronología (de la nota y del respaldo de la base) y Guardia vigente · **Vigente** |
 | Procedimientos programados | procedimiento | la lista del día de la app |
-| Labs del robot (WinLab) | reporte de WinLab del paciente | folio, toma, resultado, servicio y **valores** (un renglón por estudio: «ESTUDIO: valor unidad (ref. …)»), aunque no hayan llegado a la tarjeta · **Atribución** |
+| Labs del robot (WinLab) | reporte de WinLab del paciente | folio, toma, resultado, servicio y **valores** (un renglón por estudio: «ESTUDIO: valor unidad (ref. …)»), aunque no hayan llegado a la tarjeta · **Atribución** · **Sexo en WinLab** (F/M del encabezado) |
 | Cultivos del robot (WinLab) | muestra de cultivo de esos reportes | tipo, muestra, resultado, germen, antibiograma S/I/R, UFC, texto del reporte (del PDF cuando el robot lo leyó; si no, de la tabla) |
 | Imagen del robot (RIS) | estudio | modalidad, estudios, crítico, reporte, enlace (con su episodio) |
 | Diccionario | — | qué es cada columna, última actualización, conteos y avisos |
 | Clave de seudónimos | parte de un episodio | ID episodio de la base → ID paciente / ID episodio de análisis (la llave: **no se comparte**) |
-| Análisis · Episodios | hospitalización | sin nombres: edad, sexo, peso, talla, IMC, comorbilidades, fechas, estancia, desenlace, reingresos, cirugías (grupo, reintervención), índice urinario mínimo, resúmenes de labs, cultivos, calidad de datos |
+| Análisis · Episodios | hospitalización | sin nombres: edad, sexo (y su fuente), peso, talla, IMC, comorbilidades, fechas, estancia, desenlace, reingresos, cirugías (grupo, reintervención), índice urinario mínimo, resúmenes de labs, cultivos, calidad de datos |
 | Análisis · Labs | episodio y día | una columna por estudio, en número y en la unidad de la app; críticos y observaciones |
 | Análisis · Signos vitales | episodio y día | números limpios; TA en sistólica, diastólica y PAM; horas de uresis e índice urinario (mL/kg/h) |
 | Análisis · Cultivos | muestra | toma, tipo, resultado (0/1), germen, antibiograma |
@@ -125,6 +125,15 @@ siempre. Cada columna está definida en «Diccionario de variables».
   prueba lo verifica).
 - **Cirugía estructurada** (28 oct 2026): urgencia/electiva, abordaje y Clavien-Dindo solo si se eligieron en la caja;
   lo inferido no los trae. Complicación mayor = Clavien ≥ IIIa.
+- **Sexo desde WinLab** (29 oct 2026). Si la tarjeta no tiene el sexo, se toma del encabezado de WinLab del paciente
+  («MASCULINO/FEMENINO», también en italiano o inglés) y se marca **«de WinLab»** en «Sexo (fuente)»:
+  - Solo cuentan los reportes ya atribuidos al paciente con la regla del robot, con su mismo expediente y un nombre
+    compatible. Si dos personas comparten expediente, cada una toma solo el suyo.
+  - Si WinLab trae los dos sexos para la persona, no se usa y se anota en «Calidad de datos».
+  - Lo que escribe la app manda. Si la tarjeta y WinLab no coinciden, queda el de la tarjeta y se anota para revisar.
+  - «Por completar» deja de pedir el sexo que llegó de WinLab.
+  - Para llenar a los pacientes de antes, la primera corrida de esta versión vuelve a leer WinLab completo **una sola
+    vez** (marca `REG_WL_RELECTURA`; unas 4 vueltas de 10 min) y avisa en el Diccionario.
 - **Comorbilidades** (28 oct 2026) desde APP y DX, con negación. Sin APP quedan vacías (desconocidas); el DX solo puede
   marcar 1. Es texto libre: revisar una muestra antes de publicar.
 - **Índice urinario** = uresis ÷ peso del episodio ÷ horas (columna «Horas» del Pase, o «900/12 H»; sin horas, 24 h

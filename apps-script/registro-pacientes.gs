@@ -33,7 +33,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.10.28-2';
+var REGISTRO_VERSION = '2026.10.29-1';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -54,6 +54,11 @@ var REG_CELDAS_MAX = 10000000, REG_CELDAS_AVISO = 0.7;
 var REG_UTC_OFFSET_MIN = -360;     // America/Mexico_City: UTC-6 todo el año (sin horario de verano desde oct 2022)
 var REG_BLOQUE = 4000;             // filas por setValues
 var REG_SEP = '␟';
+var REG_WL_LABS = 'Labs del robot (WinLab)';
+// Sexo: el de la tarjeta; si no lo tiene, el del encabezado de WinLab del paciente (29 oct 2026), con esta marca.
+var REG_SEXO_TARJETA = 'Tarjeta', REG_SEXO_WL = 'de WinLab';
+// WinLab se vuelve a leer completo UNA vez cuando cambia esta marca (29 oct 2026: para tomar el sexo de los encabezados).
+var REG_WL_RELECTURA = 'sexo-2026-10-29';
 
 // Pestañas: columnas (orden de la hoja), clave de cada fila, modo de fusión y, si sale de una sola tabla, su fuente:
 //   'pacientes' una fila por episodio; si deja de estar en la base se conserva («Salió de la base…» si seguía hospitalizado)
@@ -67,7 +72,8 @@ var REG_PESTANAS = [
     'Drenajes y dispositivos', 'Antibiótico', 'Cultivos', 'Interconsultas', 'Dieta y NPO', 'TVP', 'NPT', 'Ventilación',
     'Vasopresores', 'Cirugías (resumen)', 'Imagen (resumen)', 'Labs (fechas)', 'Guardia vigente', 'Cronología', 'Misceláneo',
     'Nota completa (JSON)', 'Checklist completo (JSON)', 'Alta en la app', 'Última modificación en la app', 'Fuente', 'Última vez en la base',
-    'Peso (kg)', 'Talla', 'Dx principal', 'CIE-10 (grupo)', 'Dx principal (fuente)'] },
+    'Peso (kg)', 'Talla', 'Dx principal', 'CIE-10 (grupo)', 'Dx principal (fuente)', 'Sexo (fuente)'],
+    completar: regCompletarSexoWl },
   { nombre: 'Cirugías', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Procedimiento'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Procedimiento', 'Hallazgos', 'Sangrado', 'Cirujano', 'Grupo', 'Fuente', 'Vigente', 'Tipo', 'Abordaje', 'Clavien-Dindo', 'Complicación'] },
   { nombre: 'Labs', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Estudio'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Estudio', 'Valor', 'Origen', 'Vigente', 'Corregido a mano'] },
   { nombre: 'Imagen', modo: 'vigente', clave: ['ID episodio', 'Fecha', 'Tipo', 'Descripción'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha', 'Tipo', 'Descripción', 'Enlace', 'Vigente'] },
@@ -75,7 +81,7 @@ var REG_PESTANAS = [
   { nombre: 'Notas de evolución', modo: 'acumula', clave: ['ID episodio', 'Fecha y hora'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha y hora', 'Autor', 'Con IA', 'Texto'] },
   { nombre: 'Guardia y cronología', modo: 'vigente', clave: ['ID episodio', 'Caja', 'Renglón'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Caja', 'Orden', 'Renglón', 'Vigente'] },
   { nombre: 'Procedimientos programados', modo: 'acumula', fuente: 'procedimientos_dia', clave: ['ID'], columnas: ['ID', 'Fecha', 'Cama', 'Expediente', 'Nombre', 'Edad', 'Diagnóstico', 'Especialidad', 'Adscrito', 'Residente', 'Agregado por'] },
-  { nombre: 'Labs del robot (WinLab)', modo: 'acumula', fuente: 'winlab_labs', preferirViejo: regWlPreferirViejo, clave: ['Expediente', 'Reporte'], columnas: ['Expediente', 'Paciente', 'Nombre en WinLab', 'Atribución', 'Reporte', 'Folio', 'Toma', 'Resultado', 'Servicio', 'Estudios', 'Valores', 'Capturado'] },
+  { nombre: REG_WL_LABS, modo: 'acumula', fuente: 'winlab_labs', preferirViejo: regWlPreferirViejo, completarVacias: ['Sexo en WinLab'], clave: ['Expediente', 'Reporte'], columnas: ['Expediente', 'Paciente', 'Nombre en WinLab', 'Atribución', 'Reporte', 'Folio', 'Toma', 'Resultado', 'Servicio', 'Estudios', 'Valores', 'Capturado', 'Sexo en WinLab'] },
   { nombre: 'Cultivos del robot (WinLab)', modo: 'acumula', fuente: 'winlab_labs', filtrarNuevas: regWlFiltrarCultivos, clave: ['Expediente', 'Reporte', 'N'], columnas: ['Expediente', 'Paciente', 'Reporte', 'N', 'Toma', 'Tipo', 'Muestra', 'Resultado', 'Germen', 'Sensibles', 'Intermedios', 'Resistentes', 'UFC', 'Detalle', 'Fuente', 'Texto del reporte', 'Atribución', 'Capturado'] },
   { nombre: 'Imagen del robot (RIS)', modo: 'acumula', fuente: 'ris_estudios', clave: ['ID'], columnas: ['ID', 'ID episodio', 'Expediente', 'Paciente', 'Fecha', 'Hora', 'Modalidad', 'Estudios', 'Crítico', 'Estado del reporte', 'Reporte', 'Enlace del reporte', 'Capturado'] }
 ];
@@ -115,6 +121,15 @@ function actualizarRegistro() {
     // La hoja se abre ANTES de leer: un REGISTRO_SHEET_ID que falta o está mal se dice de inmediato.
     var libro = regLibro_(props);
     var hoy = regHoy_(), avisos = [], omitidas = {};
+    // Relectura única de WinLab si ya se había leído algo (la marca se guarda de inmediato: si esta corrida falla, la
+    // siguiente también empieza desde el principio porque el cursor ya no está). En una instalación nueva no hace falta.
+    if (props.getProperty('REG_WL_RELECTURA') !== REG_WL_RELECTURA) {
+      if (props.getProperty('REG_CURSOR_winlab_labs') || props.getProperty('REG_SIGUE_winlab_labs')) {
+        props.deleteProperty('REG_CURSOR_winlab_labs'); props.deleteProperty('REG_SIGUE_winlab_labs');
+        avisos.push('WinLab se vuelve a leer completo una sola vez para tomar el sexo de sus encabezados (puede tardar varias vueltas).');
+      }
+      props.setProperty('REG_WL_RELECTURA', REG_WL_RELECTURA);
+    }
     var transcurrido = function () { return Date.now() - inicio; };
     var reloj = function () {
       if (transcurrido() <= REG_LECTURA_DURA_MS) return;
@@ -176,6 +191,12 @@ function actualizarRegistro() {
     var nuevo = regConstruir(datos, hoy);
     try { regQuitarCopiasViejas_(libro, props); } catch (e) { avisos.push('No se pudieron quitar las copias de respaldo viejas (' + regCausa_(e) + ').'); }
     var cuentas = {}, cortado = false, fusionadas = {};
+    // Lo de WinLab (hoja + hoy) se lee ANTES de Pacientes para tomar de ahí el sexo que la tarjeta no trae; esa lectura
+    // sirve también al escribir su pestaña (nada la toca en medio).
+    var previos = {}, hojaWl = libro.getSheetByName(REG_WL_LABS), cfgWl = REG_PESTANAS.filter(function (c) { return c.nombre === REG_WL_LABS; })[0];
+    // Si su encabezado está dañado, aquí no se detiene nada: la pestaña falla en su turno, como siempre.
+    try { if (hojaWl) previos[REG_WL_LABS] = regLeerPestana_(hojaWl, cfgWl); } catch (e) { delete previos[REG_WL_LABS]; }
+    var ctx = { sexosWl: regWlSexosMapa((previos[REG_WL_LABS] ? previos[REG_WL_LABS].filas : []).concat(nuevo[REG_WL_LABS] || [])) };
     // Dentro de una pestaña, ningún setValues empieza después de 5 min 40 s (escribir a medias es seguro: cada fila va a
     // su renglón por clave y la siguiente vuelta completa lo que falte).
     var corte = function () { return transcurrido() > REG_LIMITE_MS + 25000; };
@@ -184,14 +205,15 @@ function actualizarRegistro() {
       if (cfg.fuente && omitidas[cfg.fuente]) {
         // No se tocan hoy, pero lo que ya tienen sí cuenta para las pestañas de análisis.
         var h = libro.getSheetByName(cfg.nombre);
-        fusionadas[cfg.nombre] = h ? regLeerPestana_(h, cfg).filas : [];
+        fusionadas[cfg.nombre] = previos[cfg.nombre] ? previos[cfg.nombre].filas : (h ? regLeerPestana_(h, cfg).filas : []);
         return;
       }
       if (transcurrido() > REG_LIMITE_MS) { cortado = true; return; }
       var hoja = libro.getSheetByName(cfg.nombre);
       if (!hoja) { hoja = libro.insertSheet(cfg.nombre); regAjustarColumnas_(hoja, cfg.columnas.length); }
-      var previo = regLeerPestana_(hoja, cfg);
+      var previo = previos[cfg.nombre] || regLeerPestana_(hoja, cfg);
       var filas = regFusionar(previo.filas, nuevo[cfg.nombre] || [], cfg, nuevo.episodiosHoy, hoy, nuevo.relacion);
+      if (cfg.completar) filas = cfg.completar(filas, ctx);
       try {
         var r = regEscribirPestana_(hoja, cfg, filas, previo, corte);
         if (r.aviso) avisos.push(r.aviso);
@@ -571,6 +593,15 @@ function regWlNombreEncabezado(cells) {
   var sx = regWlIdxSexo(cells);
   return sx >= 2 && cells[sx - 2] ? String(cells[sx - 2]) + ' ' + String(cells[sx - 1] || '') : '';
 }
+/** Sexo del encabezado de WinLab: 'F', 'M' o '' (sin celda de sexo o en un idioma que no se reconoce). */
+function regWlSexoDe(cells) {
+  var sx = regWlIdxSexo(cells);
+  if (sx < 0) return '';
+  var s = String(cells[sx] || '').toUpperCase().trim();
+  if (/^(FEM|DONNA|MUJER)/.test(s) || s === 'F') return 'F';
+  if (/^(MASC|MALE|UOMO|HOMBRE)/.test(s) || s === 'M') return 'M';
+  return '';
+}
 function regWlNacimiento(cells) {
   var sx = regWlIdxSexo(cells);
   if (sx < 0) return '';
@@ -660,11 +691,12 @@ function regWlContexto(patients, notes, archive) {
   regArr(patients).forEach(function (p) { if (p) poner(p.exp, p.edad, aliasPorId[p.id]); });
   return porExp;
 }
-/** Reportes con valores del paciente de la fila: [{ rep, atribucion, encabezado }]. */
+/** Reportes con valores del paciente de la fila: [{ rep, atribucion, encabezado, sexo }] (sexo: el del encabezado del
+ *  bloque del reporte). */
 function regWlDelPaciente(fila, contexto, acc) {
   var reps = regArr(fila && fila.reportes), out = [];
   var conMarca = reps.some(function (r) { return r && r.__target === true; });
-  var enc = '', idx = null, info = null;
+  var enc = '', sexo = '', idx = null, info = null;
   if (!conMarca) {
     var ctx = regObj(regObj(contexto)[regTexto(fila && fila.exp).trim()]);
     var hoy = new Date(Date.parse(regTexto(fila && fila.scraped_at)) || Date.parse(regTexto(fila && fila.fecha)) || Date.now());
@@ -673,15 +705,15 @@ function regWlDelPaciente(fila, contexto, acc) {
   }
   reps.forEach(function (rep, i) {
     if (!rep || typeof rep !== 'object') return;
-    var h = regWlNombreEncabezado(rep.__cells); if (h) enc = h;
+    var h = regWlNombreEncabezado(rep.__cells); if (h) { enc = h; sexo = regWlSexoDe(rep.__cells); }
     if (!Array.isArray(rep.valores) || !rep.valores.length) return;
     if (conMarca) {
-      if (rep.__target === true) out.push({ rep: rep, atribucion: 'Marcado por el robot al capturar (nombre, alias y edad)', encabezado: enc });
+      if (rep.__target === true) out.push({ rep: rep, atribucion: 'Marcado por el robot al capturar (nombre, alias y edad)', encabezado: enc, sexo: sexo });
       return;
     }
     if (!(i in idx)) return;
     if (info.multi && !info.edadConocida) { if (acc) acc.ambiguos = (acc.ambiguos || 0) + 1; return; }   // homónimos sin edad: no se puede decidir
-    out.push({ rep: rep, atribucion: 'Regla del robot aplicada por el registro (captura sin marca; ' + (info.parcial ? 'encabezado con menos nombres, validado por edad' : 'nombre completo') + (info.multi ? ', homónimos separados por edad' : '') + ')', encabezado: idx[i] });
+    out.push({ rep: rep, atribucion: 'Regla del robot aplicada por el registro (captura sin marca; ' + (info.parcial ? 'encabezado con menos nombres, validado por edad' : 'nombre completo') + (info.multi ? ', homónimos separados por edad' : '') + ')', encabezado: idx[i], sexo: sexo });
   });
   return out;
 }
@@ -809,7 +841,8 @@ function regWlAcumular(acc, filas) {
       var nVal = regArr(rep.valores).length, prev = acc.labs[k];
       if (!prev || nVal >= prev['Estudios']) {
         acc.labs[k] = { 'Expediente': exp, 'Paciente': regTexto(f.paciente), 'Nombre en WinLab': x.encabezado, 'Atribución': x.atribucion, 'Reporte': r.clave,
-          'Folio': r.folio, 'Toma': r.toma, 'Resultado': r.resultado, 'Servicio': r.servicio, 'Estudios': nVal, 'Valores': regWlValores(rep), 'Capturado': regTexto(f.scraped_at) };
+          'Folio': r.folio, 'Toma': r.toma, 'Resultado': r.resultado, 'Servicio': r.servicio, 'Estudios': nVal, 'Valores': regWlValores(rep), 'Capturado': regTexto(f.scraped_at),
+          'Sexo en WinLab': x.sexo || '' };
       }
       var cults = regWlCultivos(rep);
       if (!cults.length) return;
@@ -838,6 +871,48 @@ function regWlFiltrarCultivos(viejas, nuevas) {
   var conPdf = {};
   regArr(viejas).forEach(function (r) { if (regTexto(r['Fuente']) === 'PDF del reporte') conPdf[regTexto(r['Expediente']).trim() + REG_SEP + regTexto(r['Reporte']).trim()] = true; });
   return regArr(nuevas).filter(function (r) { return !(r['Fuente'] === 'Tabla del reporte' && conPdf[regTexto(r['Expediente']).trim() + REG_SEP + regTexto(r['Reporte']).trim()]); });
+}
+/** Sexo de WinLab por expediente: { exp: [{ paciente, nombreWl, sexo }] } desde los renglones de «Labs del robot» (los
+ *  de la hoja y los de hoy). Solo reportes ya atribuidos al paciente con la regla del robot. */
+function regWlSexosMapa(filas) {
+  var mapa = {}, visto = {};
+  regArr(filas).forEach(function (r) {
+    var exp = regExpValido(r && r['Expediente']), sexo = regSexo(r && r['Sexo en WinLab']);
+    if (!exp || !sexo) return;
+    var x = { paciente: regTexto(r['Paciente']).trim(), nombreWl: regTexto(r['Nombre en WinLab']).trim(), sexo: sexo };
+    var k = exp + REG_SEP + x.paciente + REG_SEP + x.nombreWl + REG_SEP + sexo;
+    if (visto[k]) return;
+    visto[k] = true; (mapa[exp] = mapa[exp] || []).push(x);
+  });
+  return mapa;
+}
+/** Sexo de WinLab de UNA persona: los renglones de su expediente cuyo paciente (o nombre en WinLab) es compatible con su
+ *  nombre (dos personas pueden compartir expediente). 'F', 'M', '?' (WinLab trae los dos: no se usa) o ''. */
+function regWlSexoPaciente(mapa, exp, nombre) {
+  var e = regExpValido(exp), vistos = {};
+  if (!e) return '';
+  regArr(regObj(mapa)[e]).forEach(function (x) {
+    if (regMismaPersona(x.paciente, nombre) || (regPalabrasNombre(x.nombreWl).length && regMismaPersona(x.nombreWl, nombre))) vistos[x.sexo] = true;
+  });
+  var s = Object.keys(vistos);
+  return s.length === 1 ? s[0] : (s.length > 1 ? '?' : '');
+}
+/** Pacientes: «Sexo (fuente)» = Tarjeta si la tarjeta trae el sexo; si no, el de WinLab marcado «de WinLab». Un sexo que
+ *  ya se tomó de WinLab se vuelve a revisar (si WinLab ahora trae los dos, se quita); lo que escribió la app no se toca. */
+function regCompletarSexoWl(filas, ctx) {
+  var mapa = regObj(ctx && ctx.sexosWl);
+  return regArr(filas).map(function (r) {
+    var deWl = regTexto(r['Sexo (fuente)']).trim() === REG_SEXO_WL, sexo = regTexto(r['Sexo']), fuente;
+    if (!deWl && sexo.trim()) fuente = REG_SEXO_TARJETA;
+    else {
+      var w = regWlSexoPaciente(mapa, r['Expediente'], r['Nombre']);
+      if (w === 'F' || w === 'M') { sexo = w; fuente = REG_SEXO_WL; }
+      else if (w === '?' || !deWl) { sexo = ''; fuente = ''; }
+      else fuente = REG_SEXO_WL;   // tomado de WinLab en otra corrida y hoy sin renglones que lo contradigan: se conserva
+    }
+    if (regTexto(r['Sexo']) === sexo && regTexto(r['Sexo (fuente)']) === fuente) return r;
+    var c = Object.assign({}, r); c['Sexo'] = sexo; c['Sexo (fuente)'] = fuente; return c;
+  });
 }
 
 /** Episodios (una hospitalización por id de paciente de la base) y filas de cada pestaña (objetos por columna). */
@@ -986,7 +1061,8 @@ function regConstruir(datos, hoy) {
 
     fila('Pacientes', {
       'ID episodio': id, 'Estado en registro': ep.estado, 'Motivo de egreso': ep.motivo, 'Nombre': nombre, 'Expediente': exp,
-      'Edad': regTexto(p.edad), 'Sexo': regTexto(ck.sexo || p.sexo), 'Especialidad': regTexto(p.esp), 'Sección': regTexto(p.seccion), 'Adscrito': regTexto(p.adscrito),
+      'Edad': regTexto(p.edad), 'Sexo': regTexto(ck.sexo || p.sexo), 'Sexo (fuente)': regTexto(ck.sexo || p.sexo).trim() ? REG_SEXO_TARJETA : '',
+      'Especialidad': regTexto(p.esp), 'Sección': regTexto(p.seccion), 'Adscrito': regTexto(p.adscrito),
       'Residente': regTexto(p.residente), 'Cama': regTexto(p.cama), 'Fecha de ingreso': ingreso, 'Fecha de egreso': ep.egreso,
       'Días de estancia': regDias(ingreso, ep.egreso || hoy), 'Diagnóstico': regTexto(p.dx), 'Estado clínico': regTexto(p.estado),
       'Antecedentes (APP)': regTexto(n.app), 'Padecimiento (PA)': regTexto(n.pa), 'Manejo': regTexto(n.manejo),
@@ -1014,7 +1090,7 @@ function regConstruir(datos, hoy) {
   });
   // WinLab: ya acumulado por regWlAcumular (un renglón por reporte del paciente y uno por muestra de cultivo).
   var wl = datos.winlab || {};
-  Object.keys(regObj(wl.labs)).forEach(function (k) { fila('Labs del robot (WinLab)', wl.labs[k]); });
+  Object.keys(regObj(wl.labs)).forEach(function (k) { fila(REG_WL_LABS, wl.labs[k]); });
   Object.keys(regObj(wl.cultivos)).forEach(function (k) { fila('Cultivos del robot (WinLab)', wl.cultivos[k]); });
   regArr(datos.ris).forEach(function (r) {
     if (!r || r.id === undefined || r.id === null) return;
@@ -1040,7 +1116,12 @@ function regFusionar(viejas, nuevas, cfg, episodiosHoy, hoy, relacion) {
     if (vistas[k]) return;
     vistas[k] = true; nViejas++;
     if (hoyPorClave[k] && !(cfg.preferirViejo && cfg.preferirViejo(r, hoyPorClave[k]))) { var h = Object.assign({}, hoyPorClave[k]); if (r.__fila) h.__fila = r.__fila; out.push(h); return; }
-    if (hoyPorClave[k]) { out.push(Object.assign({}, r)); return; }
+    if (hoyPorClave[k]) {
+      // Se queda la fila de la hoja, pero las columnas nuevas que ella aún no tiene se llenan con lo de hoy.
+      var v = Object.assign({}, r), nueva = hoyPorClave[k];
+      regArr(cfg.completarVacias).forEach(function (col) { if (!regTexto(v[col]).trim() && regTexto(nueva[col]).trim()) v[col] = nueva[col]; });
+      out.push(v); return;
+    }
     var c = Object.assign({}, r);
     if (cfg.modo === 'pacientes' && c['Estado en registro'] === 'Hospitalizado') c['Estado en registro'] = 'Salió de la base sin egreso registrado';
     if (cfg.modo === 'vigente' && episodiosHoy && episodiosHoy[regTexto(c['ID episodio'])]) c['Vigente'] = 'No';
@@ -1301,7 +1382,7 @@ function regPesoTalla(row) {
 }
 function regEpisodiosColumnas_() {
   return ['ID episodio', 'ID paciente', 'Partes del registro', 'N.º de episodio del paciente', 'Días desde el egreso previo', 'Es reingreso (≤30 días)', 'Reingreso a 30 días',
-    'Edad (años)', 'Sexo', 'Especialidad', 'Sección', 'Fecha de ingreso', 'Fecha de egreso', 'Días de estancia', 'Estado', 'Egreso observado', 'Tipo de egreso',
+    'Edad (años)', 'Sexo', 'Sexo (fuente)', 'Especialidad', 'Sección', 'Fecha de ingreso', 'Fecha de egreso', 'Días de estancia', 'Estado', 'Egreso observado', 'Tipo de egreso',
     'Defunción', 'Motivo de egreso (app)', 'Excluir (duplicado)', 'Diagnóstico', 'Dx principal', 'CIE-10 (grupo)', 'Dx principal (fuente)', 'Peso (kg)', 'Talla (m)', 'IMC (kg/m²)']
     .concat(REG_COMORB.map(function (c) { return c[0]; })).concat(['Comorbilidades (n)', 'Cirugías (n)', 'Primera cirugía', 'Días ingreso a 1.ª cirugía', 'Sangrado total (mL)',
     'Procedimientos', 'Grupo de la 1.ª cirugía', 'Reintervención', 'Cirugías inferidas (n)', 'Programadas sin confirmar (n)',
@@ -1607,6 +1688,7 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
   var P = {}, ids = [];
   regArr(fus['Pacientes']).forEach(function (r) { var id = regTexto(r && r['ID episodio']).trim(); if (id && !P[id]) { P[id] = r; ids.push(id); } });
   var labsDe = porId(fus['Labs']), signosDe = porId(fus['Signos vitales']), cxDe = porId(fus['Cirugías']);
+  var sexosWl = regWlSexosMapa(fus[REG_WL_LABS]);
   var resumenEps = [], resumenCxs = [];
   var claveDe = {};
   regArr(clave).forEach(function (r) { var id = regTexto(r && r['ID episodio']).trim(); if (id) claveDe[id] = r; });
@@ -1944,8 +2026,19 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     var u = P[g.ultima], primero = P[g.partes[0]];
     var edadTxt = regTexto(primero['Edad']) || regTexto(u['Edad']), edad = regEdadAnios(edadTxt);
     if (edad === '') g.calidad.push(edadTxt.trim() ? 'edad no interpretable' : 'sin edad registrada');
-    var sexo = '';
-    g.partes.some(function (id) { sexo = regSexo(P[id]['Sexo']); return !!sexo; });
+    // Sexo: el de la tarjeta (cualquier parte); si no, el de WinLab, y se dice. WinLab con los dos sexos no se usa.
+    var sexo = '', sexoFuente = '', wlSexo = regWlSexoPaciente(sexosWl, g.exp, g.nombre);
+    var deWl = function (id) { return regTexto(P[id]['Sexo (fuente)']).trim() === REG_SEXO_WL; };
+    g.partes.some(function (id) { sexo = deWl(id) ? '' : regSexo(P[id]['Sexo']); return !!sexo; });
+    if (sexo) {
+      sexoFuente = REG_SEXO_TARJETA;
+      if ((wlSexo === 'F' || wlSexo === 'M') && wlSexo !== sexo) g.calidad.push('el sexo de la tarjeta (' + sexo + ') no coincide con el de WinLab (' + wlSexo + '): revisar');
+    } else if (wlSexo !== '?') {
+      sexo = wlSexo;
+      if (!sexo) g.partes.some(function (id) { sexo = deWl(id) ? regSexo(P[id]['Sexo']) : ''; return !!sexo; });
+      if (sexo) sexoFuente = REG_SEXO_WL;
+    }
+    if (wlSexo === '?') g.calidad.push('WinLab trae los dos sexos para este expediente y nombre: no se usó');
     if (!sexo) g.calidad.push('sin sexo registrado');
     var estancia = regDiasSigno(g.ingreso, g.fin);
     if (estancia !== '' && estancia < 0) { g.calidad.push('el egreso es anterior al ingreso'); estancia = ''; }
@@ -2004,7 +2097,7 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     var fila = {
       'ID episodio': g.codigo, 'ID paciente': g.persona.codigo, 'Partes del registro': g.partes.length, 'N.º de episodio del paciente': g.numero || '',
       'Días desde el egreso previo': regNumCelda(g.diasPrevio), 'Es reingreso (≤30 días)': regNumCelda(g.esReingreso), 'Reingreso a 30 días': regNumCelda(g.reingreso30),
-      'Edad (años)': edad, 'Sexo': sexo, 'Especialidad': regTexto(u['Especialidad']), 'Sección': regTexto(u['Sección']),
+      'Edad (años)': edad, 'Sexo': sexo, 'Sexo (fuente)': sexoFuente, 'Especialidad': regTexto(u['Especialidad']), 'Sección': regTexto(u['Sección']),
       'Fecha de ingreso': g.ingreso, 'Fecha de egreso': g.egreso, 'Días de estancia': regNumCelda(estancia), 'Estado': g.estado,
       'Egreso observado': g.estado === 'Egresado' && g.excluir !== 1 && g.egreso && g.tipo !== 'No fue egreso' ? 1 : 0, 'Tipo de egreso': g.tipo,
       'Defunción': g.tipo === 'Defunción' ? 1 : (REG_EGRESO_VIVO.indexOf(g.tipo) >= 0 ? 0 : ''),
@@ -2155,7 +2248,7 @@ function regVariables_() {
   add(E, 'Es reingreso (≤30 días)', '0/1', '', '1 si este ingreso ocurrió 0–30 días después del egreso anterior; 0 si después; vacío si no hay episodio anterior registrado (el registro empezó en 2026: los primeros pueden ser reingresos de antes).');
   add(E, 'Reingreso a 30 días', '0/1', '', '1 si el paciente volvió a ingresar a este servicio 0–30 días después de este egreso; 0 si no y ya pasaron 30 días; vacío si sigue hospitalizado, murió o aún no pasan 30 días. Solo ve reingresos a los servicios que usan la app.');
   add(E, 'Edad (años)', 'número', 'años', 'Edad del censo al ingreso (meses y días convertidos a fracción de año). Vacío si no se entiende.');
-  add(E, 'Sexo', 'texto', '', 'F, M o vacío (sin registrar), con la misma regla que la app.');
+  add(E, 'Sexo · Sexo (fuente)', 'texto', '', 'F, M o vacío (sin registrar), con la misma regla que la app. Fuente: «Tarjeta» (lo escrito en la app) o «de WinLab» (la tarjeta no lo tiene: se tomó del encabezado de laboratorio de los reportes del paciente, con la regla de identidad del robot y su mismo expediente y nombre). Si WinLab trae los dos sexos para la persona no se usa; si la tarjeta y WinLab no coinciden manda la tarjeta y se anota en «Calidad de datos».');
   add(E, 'Especialidad · Sección', 'texto', '', 'Del censo, en la última parte del episodio.');
   add(E, 'Fecha de ingreso', 'texto AAAA-MM-DD', '', 'Fecha de ingreso del censo (la más antigua de las partes).');
   add(E, 'Fecha de egreso', 'texto AAAA-MM-DD', '', 'Fecha del egreso en la app o, si no la hay, la fecha en que se archivó. Vacío si sigue hospitalizado o salió sin registro.');
@@ -2361,7 +2454,8 @@ function regEscribirDiccionario_(hoja, hoy, cuentas, celdas, pendiente, avisos) 
     ['Días de estancia', 'Desde la fecha de ingreso hasta el egreso (o hasta hoy si sigue hospitalizado).'],
     ['Vigente', 'Sí: está en la tarjeta en la última copia. No: estuvo y ya no (corregido, borrado o movido); se conserva.'],
     ['Signos vitales y Notas de evolución', 'La app guarda 14 días de signos y 10 notas; aquí se acumulan todos.'],
-    ['Labs del robot (WinLab)', 'Un renglón por reporte de WinLab del paciente, con la regla de identidad del robot: lo que el robot marcó (nombre, alias, edad, homónimos) o, en capturas anteriores al 9 oct 2026, esa misma regla aplicada aquí; nunca de homónimos (si no se puede decidir, no se copia). Valores: un renglón por estudio «ESTUDIO: valor unidad (ref. …)». Toma y Resultado: fecha y hora del reporte.'],
+    ['Labs del robot (WinLab)', 'Un renglón por reporte de WinLab del paciente, con la regla de identidad del robot: lo que el robot marcó (nombre, alias, edad, homónimos) o, en capturas anteriores al 9 oct 2026, esa misma regla aplicada aquí; nunca de homónimos (si no se puede decidir, no se copia). Valores: un renglón por estudio «ESTUDIO: valor unidad (ref. …)». Toma y Resultado: fecha y hora del reporte. Sexo en WinLab: F o M del encabezado del paciente.'],
+    ['Sexo (fuente)', 'En Pacientes: «Tarjeta» si el sexo lo escribió la app; «de WinLab» si la tarjeta no lo tenía y se tomó del encabezado de WinLab del paciente (mismo expediente y nombre compatible). Si WinLab trae los dos sexos para la persona, no se usa.'],
     ['Cultivos del robot (WinLab)', 'Un renglón por muestra de cultivo de esos reportes: del PDF del reporte cuando el robot lo leyó (germen y antibiograma S/I/R) o de la tabla del reporte.'],
     ['Imagen del robot (RIS)', 'Lo que capturó el robot de RIS, por expediente y episodio.'],
     ['Nota / Checklist completo (JSON)', 'Todo lo demás de la tarjeta, sin archivos incrustados.'],
