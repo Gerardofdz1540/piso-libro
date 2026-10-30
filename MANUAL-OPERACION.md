@@ -1521,6 +1521,25 @@ usa el input `exp` del workflow `winlab-scraper.yml` (`WL_TARGET_EXP`), que el w
 app llama `/api/scrape` con `{"exp": "…"}`. Para que el botón dispare la corrida dirigida (y no una
 completa) hay que pegar el `cloudflare-worker/index.js` actualizado en el worker `piso-libro-ai`.
 
+## 🛏 Pacientes en camas sin número: EXT, recuperación (30 de octubre de 2026)
+
+En la hoja del censo, quirófano / recuperación no tiene camas numeradas y los pacientes se anotan como **EXT**. La base
+de la app guarda **un paciente por cama**: con varios «EXT» a la vez, el programa de la hoja solo subía al último y los
+demás no aparecían en la app (en `sync_log` quedaba «cama_duplicada_en_hoja").
+
+Desde el programa de la hoja **2026.10.30** (`censo-sync.gs`), cada paciente en una cama sin número entra con una cama
+única que lleva su expediente: **«EXT (26-12345)»**. Lo mismo con RECU, PASILLO u otra cama sin número, y con una fila
+que tenga expediente y nombre pero la cama vacía («SIN CAMA (expediente)»). En la hoja se sigue escribiendo solo
+«EXT»: no hay que cambiar nada. Cuando el paciente pasa a una cama con número (3-150, UCI 2), es un cambio de cama
+normal: su tarjeta y su nota se van con él. UCI y UTI sin número («UCI AIS», «UTI AISL») son camas reales y no cambian.
+
+En la app pasa lo mismo: al agregar a un paciente o cambiarle la cama a «EXT» (o RECU, PASILLO…), la cama queda como
+«EXT (expediente)». Antes el segundo paciente en EXT se quedaba atorado en la cola sin subir.
+
+Para que entre en vigor hay que **pegar la versión nueva de `censo-sync.gs`** en el proyecto del censo (ver «Paso a paso:
+actualizar el programa de la hoja»). Recuerda que **🩺 Solo míos** (si está prendido en ese dispositivo) oculta a los
+pacientes de Urología, Neurocirugía y Trasplantes, también los de EXT.
+
 ## Si un paciente desapareció del censo
 
 1. En la app, abre la pestaña **Papelera**.

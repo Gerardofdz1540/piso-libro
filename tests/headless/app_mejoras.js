@@ -5,6 +5,7 @@
 // · 🔎 Búsqueda dentro de las cajas (DX, Cirugías, Pendientes, Otros, APP/PA) que lleva directo a la caja.
 // · ⬆ Punto por cama con cambios sin subir.
 // · 🕘 Qué cambió: lo escrito en las últimas horas con su autor; solo se muestra (no escribe nada).
+// · 🛏 Camas sin número (EXT = quirófano/recuperación): cada paciente en «EXT (expediente)», como el sync de la hoja.
 // node tests/headless/app_mejoras.js   (ver run_all.sh)
 const { launch } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
@@ -31,12 +32,13 @@ const PTS = [
 (async () => {
   const browser = await launch(); const page = await browser.newPage({ viewport: { width: 1194, height: 834 } });
   const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
-  const escrituras = [];
+  const escrituras = [], pacientesPost = [];
   await page.route('**/vendor/supabase*', r => r.abort());
   await page.route('**/rest/v1/**', async (route) => {
     const req = route.request(); const url = decodeURIComponent(req.url().replace(/^https?:\/\/[^/]+/, '')); const m = req.method();
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (m !== 'GET' && url.startsWith('/rest/v1/notes')) escrituras.push({ m, url, t: Date.now() });
+    if (m !== 'GET' && url.startsWith('/rest/v1/patients')) { try { [].concat(JSON.parse(req.postData() || 'null') || []).forEach((b) => pacientesPost.push(b)); } catch (_) {} }
     if (url.startsWith('/rest/v1/patients') && m === 'GET') return json(200, PTS);
     if (m !== 'GET') return json(200, [{}]);
     return json(200, []);
@@ -169,6 +171,47 @@ const PTS = [
     JSON.stringify(m5));
   check('M5b tocar una caja lleva a la tarjeta y resalta lo que cambió; solo se muestra: no escribe ni encola nada; al cerrar se quita el resaltado',
     m5.foco && m5.hl && m5.igual && m5.cola === 0 && escrituras.length === n0 && m5.cerrado, JSON.stringify({ m5, escrituras: escrituras.slice(n0) }));
+
+  // ── M7: 🛏 camas sin número (EXT): varios pacientes a la vez, cada uno con su cama única ──
+  const m7 = await page.evaluate(async () => {
+    const f = camaUnicaSinNumero, espera = () => new Promise((r) => setTimeout(r, 400));
+    const casos = [f('EXT', '26-90011'), f('ext.', '26-90012'), f('EXT (26-90011)', '26-90013'), f('UCI AIS', '26-1'), f('3.150', '26-2'), f('RECU', ''), f(' pasillo ', '26-3')];
+    const n0 = patients.length;
+    const agregar = (exp, nombre) => { openAddModal(); document.getElementById('mf-cama').value = 'EXT'; document.getElementById('mf-exp').value = exp; document.getElementById('mf-nombre').value = nombre; document.getElementById('mf-esp').value = 'URO'; saveModal(); };
+    agregar('26-90021', 'GINA FICTICIA SIETE'); await espera();
+    agregar('26-90022', 'HUGO FICTICIO OCHO'); await espera();
+    const ext = patients.filter((p) => /^EXT \(/.test(p.cama)).map((p) => p.cama).sort();
+    renderView();
+    const enTablero = (window.__boardOrder || []).filter((k) => /EXT/.test((patients.find((p) => pid(p) === k) || {}).cama || '')).length;
+    const prevPrompt = window.prompt; window.prompt = () => 'recu';
+    promptChangeBed(pid(patients.find((x) => x.exp === '26-90021'))); await espera();
+    window.prompt = prevPrompt;
+    return { casos, n: patients.length - n0, ext, enTablero, movido: (patients.find((x) => x.exp === '26-90021') || {}).cama };
+  });
+  await page.waitForTimeout(600);
+  check('M7 camas sin número: «EXT» → «EXT (expediente)» (igual que el sync de la hoja); dos pacientes en EXT entran los dos, al tablero y a la nube; cambiar a «RECU» → «RECU (expediente)»; UCI AIS y camas con número no cambian',
+    JSON.stringify(m7.casos) === JSON.stringify(['EXT (26-90011)', 'EXT (26-90012)', 'EXT (26-90013)', 'UCI AIS', '3-150', 'RECU', 'PASILLO (26-3)'])
+    && m7.n === 2 && JSON.stringify(m7.ext) === JSON.stringify(['EXT (26-90021)', 'EXT (26-90022)']) && m7.enTablero >= 1 && m7.movido === 'RECU (26-90021)'
+    && pacientesPost.some((b) => b && b.cama === 'EXT (26-90022)') && pacientesPost.some((b) => b && b.cama === 'RECU (26-90021)'),
+    JSON.stringify({ m7, posts: pacientesPost.map((b) => b && b.cama) }));
+
+  // ── M8: importar el Excel del censo desde la app con varias filas EXT: cada una con su cama única ──
+  const m8 = await page.evaluate(async () => {
+    await _libLoad('xlsx');
+    const H = ['CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DÍAS', 'ESTADO'];
+    const fila = (c, e, n) => [c, e, n, '50', 'DX FICTICIO', 'CG', 'ADS', 'RES', '29/10/26', '1', 'ESTABLE'];
+    const ws = XLSX.utils.aoa_to_sheet([H, fila('3-701', '26-90041', 'KARLA FICTICIA ONCE'), ['QUIRÓFANO / RECUPERACION'], fila('EXT', '26-90042', 'LUIS FICTICIO DOCE'), fila('EXT', '26-90043', 'MARIA FICTICIA TRECE')]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'CENSO');
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    pendingImport = null;
+    handleXlsxImport({ files: [new File([buf], 'censo.xlsx')], value: '' });
+    for (let i = 0; i < 60 && !pendingImport; i++) await new Promise((r) => setTimeout(r, 100));
+    const camas = pendingImport ? pendingImport.newPts.map((p) => p.cama).sort() : null;
+    try { closeImportModal(); } catch (_) {}
+    pendingImport = null;
+    return camas;
+  });
+  check('M8 importar el Excel con dos filas EXT: las dos entran, cada una en «EXT (expediente)»', JSON.stringify(m8) === JSON.stringify(['3-701', 'EXT (26-90042)', 'EXT (26-90043)']), JSON.stringify(m8));
 
   check('M6 sin errores de JavaScript', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-MEJORAS: ' + pass + ' passed, ' + fail + ' failed');

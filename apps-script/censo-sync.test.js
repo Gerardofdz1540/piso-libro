@@ -1349,5 +1349,62 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   check('T26b si Supabase aún no tiene la función (404): no lanza, no marca el día (reintenta en la siguiente corrida)', !lanzo && !st2.props.VERSION_REPORTADA, JSON.stringify(st2.props));
 }
 
+// ── 27) Camas SIN número (EXT = quirófano/recuperación) (30 oct 2026): todos entran, cada uno con su cama única ─────
+{
+  const H = ['', 'CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DÍAS', 'ESTADO'];
+  const pr = (cama, exp, nombre, esp) => ['', cama, exp, nombre, '50', 'DX FICTICIO', esp, 'ADSC', 'RES', '29/10/2026', '1', 'ESTABLE'];
+  const piso = []; for (let i = 0; i < 12; i++) piso.push(pr('3-1' + (50 + i), '26-8' + (1000 + i), 'PACIENTE FICTICIO PISO ' + i, 'CG'));
+  const rows = [['CENSO 30/10/2026'], H].concat(piso).concat([
+    [' QUIRÓFANO / RECUPERACION'],
+    pr('EXT', '26-90001', 'ANA FICTICIA UNO', 'URO '),
+    pr('EXT', '26-900002', 'BETO FICTICIO DOS', 'NCX '),
+    pr('EXT', '26-90003', 'CARLOS FICTICIO TRES', 'URO '),
+    ['UCIA'],
+    pr('UCI 1 ', '26-90004', 'DANIEL FICTICIO CUATRO', 'NCX '),
+    pr('UCI AIS ', '26-90005', 'ELENA FICTICIA CINCO', 'NCX '),
+    ['ALTAS'],
+    pr('EXT', '26-90006', 'FIDEL FICTICIO ALTA', 'CG'),
+  ]);
+  const { sb } = makeSandbox({});
+  const parsed = sb.parseCenso_(rows);
+  const filas = sb.camasUnicas_(parsed.map(sb.toPatientRow_));
+  const camas = filas.map((r) => r.cama);
+  const dd = sb.dedupByCama_(filas, null);
+  check('T27 EXT: los tres pacientes de quirófano/recuperación entran, cada uno en «EXT (expediente)»; UCI 1 y UCI AIS no cambian; ALTAS sigue fuera',
+    ['EXT (26-90001)', 'EXT (26-900002)', 'EXT (26-90003)', 'UCI 1', 'UCI AIS'].every((c) => camas.includes(c)) && !camas.includes('EXT')
+    && dd.dups === 0 && dd.rows.length === filas.length && filas.length === 17
+    && filas.find((r) => r.cama === 'EXT (26-90001)').seccion === 'QUIROFANO / RECUPERACION', JSON.stringify(camas));
+  check('T27b camaUnica_: idempotente y solo para camas sin número (RECU, PASILLO, EXT., vacía); con número o UCI/UTI igual que antes',
+    sb.camaUnica_('EXT (26-90001)', '26-90001') === 'EXT (26-90001)' && sb.camaUnica_('RECU', '26-1') === 'RECU (26-1)' && sb.camaUnica_(' pasillo ', '26-2') === 'PASILLO (26-2)'
+    && sb.camaUnica_('EXT.', '26-3') === 'EXT (26-3)' && sb.camaUnica_('', '26-4') === 'SIN CAMA (26-4)' && sb.camaUnica_('3.150', '26-5') === '3-150'
+    && sb.camaUnica_('UTI AISL', '26-6') === 'UTI AISL' && sb.camaUnica_('UCI AIS', '26-7') === 'UCI AIS' && sb.camaUnica_('EXT', '') === 'EXT',
+    JSON.stringify(['RECU', ' pasillo ', 'EXT.', '', '3.150', 'UTI AISL'].map((c) => sb.camaUnica_(c, '26-9'))));
+  // Mismo expediente para dos personas (error de captura) en EXT: las dos entran, distinguidas por sus iniciales.
+  const gem = sb.camasUnicas_([sb.toPatientRow_({ cama: 'EXT', exp: '26-9', nombre: 'ANA FICTICIA UNO' }), sb.toPatientRow_({ cama: 'EXT', exp: '26-9', nombre: 'BETO FICTICIO DOS' })]);
+  check('T27c mismo expediente, dos personas en EXT: dos camas distintas (con iniciales)', gem[0].cama === 'EXT (26-9 AFU)' && gem[1].cama === 'EXT (26-9 BFD)', JSON.stringify(gem.map((r) => r.cama)));
+  // Corrida completa: en Supabase había UNO en «EXT» (el último, el único que entraba). Ahora se MUEVE a su cama única
+  // (PATCH, su nota sigue ligada) y los otros dos entran; nada se archiva ni se borra y ya no hay «cama duplicada».
+  const cur = piso.map((r, i) => ({ id: 'p' + i, cama: r[1], exp: r[2], nombre: r[3], updated_by: 'sheet-sync' }))
+    .concat([{ id: 'x3', cama: 'EXT', exp: '26-90003', nombre: 'CARLOS FICTICIO TRES', updated_by: 'sheet-sync' }]);
+  const env = makeSandbox({ cur, props: {} });
+  env.sb.readCensoRows_ = () => rows;
+  env.sb.doSync();
+  const patch = env.calls.filter((c) => c.m === 'PATCH' && c.u.includes('id=eq.x3'));
+  const ups = [].concat(...env.calls.filter((c) => c.m === 'POST' && c.u.startsWith('/rest/v1/patients?on_conflict=cama')).map((c) => c.body));
+  const logs = [].concat(...env.calls.filter((c) => c.m === 'POST' && c.u.startsWith('/rest/v1/sync_log')).map((c) => c.body));
+  check('T27d corrida completa: el EXT que ya estaba se mueve a «EXT (26-90003)» sin perder su nota; los otros dos se suben; sin archivo, sin DELETE y sin «cama duplicada»',
+    patch.length === 1 && patch[0].body.cama === 'EXT (26-90003)'
+    && ups.some((r) => r.cama === 'EXT (26-90001)' && r.exp === '26-90001') && ups.some((r) => r.cama === 'EXT (26-900002)')
+    && !env.calls.some((c) => c.m === 'DELETE' || c.u.startsWith('/rest/v1/archive')) && !logs.some((l) => l.motivo === 'cama_duplicada_en_hoja'),
+    JSON.stringify({ patch: patch.map((c) => c.body), ups: ups.map((r) => r.cama), logs }));
+  // Sale de recuperación a una cama con número: cambio de cama normal (PATCH), no retiro.
+  const cur2 = cur.filter((r) => r.id !== 'x3').concat([{ id: 'x1', cama: 'EXT (26-90001)', exp: '26-90001', nombre: 'ANA FICTICIA UNO', updated_by: 'sheet-sync' }]);
+  const sheet2 = piso.map((r) => sb.toPatientRow_({ cama: r[1], exp: r[2], nombre: r[3] })).concat([sb.toPatientRow_({ cama: '3-190', exp: '26-90001', nombre: 'ANA FICTICIA UNO' })]);
+  const env2 = makeSandbox({ cur: cur2, props: {} });
+  env2.sb.syncPatients_('svc', sheet2);
+  const p2 = env2.calls.filter((c) => c.m === 'PATCH' && c.u.includes('id=eq.x1'));
+  check('T27e de EXT a 3-190: la fila se mueve (PATCH de cama), sin archivo ni DELETE', p2.length === 1 && p2[0].body.cama === '3-190' && !env2.calls.some((c) => c.m === 'DELETE' || c.u.startsWith('/rest/v1/archive')), JSON.stringify(p2));
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
