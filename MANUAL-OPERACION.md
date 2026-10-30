@@ -209,8 +209,11 @@ cuela, la publicación lo detecta: en cada push a `main` el mismo paso compara c
 En la pestaña **🏥 Piso Libro** (una cama a la vez) la barra de búsqueda de arriba no se ve. El botón **🔎 Filtrar camas**
 (borde amarillo, en la barra oscura de la ficha, junto a 📊 Planes) abre una fila con:
 
-- **Cama o nombre** (28 oct 2026): escribe «3-15» (camas 3-150 a 3-159), «UCI», un apellido o un expediente; la lista se
+- **Buscar** (28 oct 2026): escribe «3-15» (camas 3-150 a 3-159), «UCI», un apellido o un expediente; la lista se
   ajusta al dejar de escribir y el cursor se queda en el campo. «✕» la quita.
+  **Dentro de las cajas** (30 oct 2026): con 3 letras o más también busca en **DX, Cirugías, Pendientes, Otros y APP/PA**
+  («CPRE», «LAPE», «drenaje»). La ficha lleva sola a la primera caja donde está (una vez por búsqueda) y abajo de la barra
+  dice dónde lo encontró: «🔎 «cpre» en: Cirugías»; cada botón lleva a esa caja. La barra de búsqueda de arriba hace lo mismo.
 - **Residente** (además de adscrito).
 - **Especialidad** (CG, CCR, URO…), **Adscrito** y **Servicio**: el servicio es la sala del censo donde está el
   paciente (Piso, UCIA, Pediatría, Medicina Interna, Oncología/Ginecología…). Cada opción dice cuántos pacientes
@@ -253,6 +256,28 @@ fila Clínico y del vasopresor (escribirlo en cualquiera de los tres cambia los 
 Colores KDIGO: verde ≥ 0.5, ámbar < 0.5 (oliguria), rojo < 0.3.
 El índice sale en la nota de evolución y en el resumen de gastos; **no se escribe en ninguna caja**. Las horas pasan
 al historial del pase con la uresis de ese día.
+
+## 🧪 Labs hoy, 📅 días automáticos, ⬆ sin subir y 🕘 qué cambió (30 de octubre de 2026)
+
+En la barra oscura de la ficha (la de 🔎 Filtrar camas):
+
+- **🧪 Labs hoy · n** (borde ámbar; solo aparece si hay alguien): las camas con **labs diarios** que todavía no tienen labs
+  de hoy. Labs diarios: colangitis, pancreatitis, intubado (🫁 VM o «IOT» en el DX), **NPT**, **vasopresor** encendido,
+  **sepsis** (en el DX; «sin sepsis» no cuenta) y **LRA** («LRA», «lesión renal aguda», «AKI» en el DX). Cada renglón
+  dice cama, nombre, expediente y motivo, y lleva a la tabla de labs de esa cama. **📋 Copiar lista** la copia para mandarla
+  o pegarla en la solicitud. La tarjeta sigue diciendo «🧪 Labs diarios» como antes.
+- **📅 Días que se cuentan solos**: junto a **ATB**, **Ayuno** y **NPT** hay una fecha de inicio (📅). Con la fecha puesta la
+  app dice «día N» (el día de inicio es el día 1) y ya no hay que cambiar los días a mano cada mañana; la nota de evolución,
+  la entrega y el resumen usan ese día. Sin fecha, los días escritos a mano siguen como antes. El registro guarda
+  «desde AAAA-MM-DD».
+- **⬆ Cambios sin subir**: un círculo naranja junto a la cama (carril de camas) cuando ese paciente tiene cambios de este
+  equipo que aún no suben a la nube (cola sin red o un guardado que falló). Se quita solo al subir. El total sigue en
+  «📤 n pendientes» arriba.
+- **🕘 Cambios · n**: qué se escribió en las cajas en las últimas **12 h** (o 6 h / 24 h): por cama, cada caja con las
+  iniciales y la hora de quien la escribió, lo más reciente arriba. Tocar una caja lleva a esa tarjeta, y mientras la lista
+  está abierta las cajas que cambiaron se marcan con un borde morado. **Solo se muestra: no escribe nada.** Cuenta lo que
+  lleva autor (cajas de texto, DX, Cirugías, Pendientes, Cronología, Interconsultas, Cultivos, fotos y tinta); los signos
+  del pase no llevan autor.
 
 ## 💡 Sugerencias clínicas: solo lo que cambia el manejo (28 de octubre de 2026)
 
@@ -771,6 +796,10 @@ del hospital su lista oficial de valores críticos y ajustar la tabla (solo en `
   mientras este iPad tiene cambios que aún no suben (los últimos segundos, o todo lo escrito sin red), esa versión va a la
   🗑️ Papelera (local y nube) como «CAMBIOS DE ESTE iPad SIN SUBIR» y sale un aviso. Lo mismo con una nota que estaba en
   la cola de un paciente que ya no está en el censo al volver la red (antes se tiraba en silencio).
+  Desde el 30 oct 2026 esa copia se guarda **una sola vez**: el iPad olvida lo pendiente de ese paciente (ocultar la app ya
+  no lo vuelve a encolar) y una copia con el mismo contenido no se repite (antes un iPad con versión vieja dejó 30 copias
+  iguales de una misma persona en 7 minutos). Además, si la app está abierta en dos pestañas o ventanas del mismo equipo,
+  solo una sube la cola a la vez.
 - **Dos personas en la misma caja:** si un colega cambia la caja que estás escribiendo, la tarjeta avisa
   «✋ … cambió «Pendientes» mientras escribías» con **Ver su versión**, **Unir las dos** (tus renglones + los suyos
   nuevos, marcados con su nombre) y **Quedarme con la mía**. Lo reemplazado siempre queda en 🕘 Historial de la caja.
