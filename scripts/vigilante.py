@@ -31,7 +31,7 @@ CHEQUEOS = [
     ("Descarga del Doc de indicaciones", "indicaciones_fetch_log", "requested_at", 2,
      "Revisa los trabajos de pg_cron de indicaciones en Supabase."),
     ("Censo (último cambio de un paciente)", "patients", "updated_at", 18,
-     "El script del censo (Apps Script «Proyecto sin título») pudo detenerse: ábrelo y revisa sus ejecuciones."),
+     "El script del censo (Apps Script «PisoLibro – Sync Censo») pudo detenerse: ábrelo y revisa sus ejecuciones."),
 ]
 
 
@@ -117,7 +117,7 @@ def revisar_catalogo(filas):
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Pieza (como la reporta pl_reportar_version) → archivo del repo y la constante con su versión.
-APPS_SCRIPT = [("censo-sync", "apps-script/censo-sync.gs", "CENSO_SYNC_VERSION", "el script del censo («Proyecto sin título»)", 2),
+APPS_SCRIPT = [("censo-sync", "apps-script/censo-sync.gs", "CENSO_SYNC_VERSION", "el script del censo («PisoLibro – Sync Censo»)", 2),
                ("registro", "apps-script/registro-pacientes.gs", "REGISTRO_VERSION", "el script «Registro de pacientes»", 3)]
 
 

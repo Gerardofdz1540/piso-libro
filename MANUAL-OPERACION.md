@@ -55,9 +55,9 @@ en GitHub (el aviso lo da el PR). Son 2 minutos:
 2. Pulsa el botón **Raw** (arriba a la derecha del archivo). Se abre texto
    plano. Selecciona todo (`Ctrl+A`) y copia (`Ctrl+C`).
 3. Abre https://script.google.com (con tu cuenta) y entra al proyecto del censo: es el que se llama
-   **«Proyecto sin título»** (el censo de Drive es un `.xlsx`, así que el programa no cuelga del menú
-   Extensiones de la hoja; es un proyecto aparte). El otro proyecto, «Registro de pacientes», es el
-   registro de investigación y se actualiza igual con `apps-script/registro-pacientes.gs`.
+   **«PisoLibro – Sync Censo»** (antes «Proyecto sin título»). El censo de Drive es un `.xlsx`, así que el
+   programa no cuelga del menú Extensiones de la hoja; es un proyecto aparte. El otro proyecto, «Registro de
+   pacientes», es el registro de investigación y se actualiza igual con `apps-script/registro-pacientes.gs`.
 4. Se abre el editor.
 5. En la lista de la izquierda pulsa `Código.gs`. En el cuadro grande
    selecciona todo (`Ctrl+A`), borra, y pega (`Ctrl+V`) lo que copiaste.
@@ -68,6 +68,10 @@ en GitHub (el aviso lo da el PR). Son 2 minutos:
 8. Para comprobar: elige **`checkLabsFreshness`**, pulsa **▶ Ejecutar** y
    abre **Ver → Registros**. Debe decir la hora del último laboratorio
    descargado.
+9. **¿Quedó pegada la versión nueva?** En Supabase, `config` → «versiones» → `censo-sync` dice la versión y a qué
+   hora la reportó (`visto`). La versión solo cambia cuando el programa **corre** después de pegarlo (cada 5 min, o
+   al ejecutar `doSync`): mira la hora del reporte, no solo el número. Si alguien revisa antes de esa corrida verá la
+   versión anterior aunque el código ya esté guardado. El registro reporta la suya en su corrida de la noche.
 
 Listo. A partir de ahora, si el robot de laboratorios se detiene más de un
 día, recibes un correo con las instrucciones para reactivarlo.
