@@ -33,7 +33,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.10.29-1';
+var REGISTRO_VERSION = '2026.10.30-1';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -2134,7 +2134,8 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     if (!appTxt.trim()) falta.push('APP');
     if (pt.peso === '') falta.push('peso');
     if (pt.talla === '') falta.push('talla');
-    if (dxP.fuente !== 'Elegido en la app') falta.push('dx principal');
+    // 30 oct 2026: el que la app pone sola con el DX («Inferido del DX») ya cuenta; solo falta si el DX no coincide con ninguno.
+    if (!dxP.label) falta.push('dx principal');
     if (cxInferidas) falta.push(cxInferidas + (cxInferidas === 1 ? ' cirugía por pasar a la caja Cirugías' : ' cirugías por pasar a la caja Cirugías'));
     if (sinClas) falta.push(sinClas + (sinClas === 1 ? ' cirugía sin urgencia/abordaje/Clavien' : ' cirugías sin urgencia/abordaje/Clavien'));
     var dEgreso = g.egreso ? regDiasSigno(g.egreso, hoy) : '';
@@ -2260,7 +2261,7 @@ function regVariables_() {
   add(E, 'Motivo de egreso (app)', 'texto', '', 'Etiqueta original del egreso en la app (p. ej. «RETIRADO DEL CENSO (hoja)»).');
   add(E, 'Excluir (duplicado)', '0/1', '', '1 = tarjeta duplicada (no es otro episodio): excluir. Vacío = borrado en la base por mantenimiento: revisar. 0 = episodio real.');
   add(E, 'Diagnóstico', 'texto', '', 'Diagnóstico del censo en la última parte del episodio (texto libre, sin codificar).');
-  add(E, 'Dx principal · CIE-10 (grupo) · Dx principal (fuente)', 'texto', '', 'Diagnóstico principal de una lista corta del servicio (apendicitis, colecistitis, pancreatitis, oclusión, hernia, cáncer colorrectal…) con su grupo CIE-10. Fuente: «Elegido en la app» (🩺 Dx principal, bajo la caja DX) o «Inferido del DX» (la misma tabla sobre el texto del DX: el término que aparece primero). Para publicar, preferir los elegidos o revisar los inferidos.');
+  add(E, 'Dx principal · CIE-10 (grupo) · Dx principal (fuente)', 'texto', '', 'Diagnóstico principal de una lista corta del servicio (apendicitis, colecistitis, pancreatitis, oclusión, hernia, cáncer colorrectal…) con su grupo CIE-10. Fuente: «Elegido en la app» (alguien eligió otro en 🩺 Dx principal, bajo la caja DX) o «Inferido del DX» (el que la app muestra sola desde el 30 oct 2026: la misma tabla sobre el texto del DX del censo, el término que aparece primero). Para publicar, revisar una muestra de los inferidos.');
   add(E, 'Urgencia (1.ª cirugía) · Abordaje (1.ª cirugía)', '0/1 · texto', '', 'De la primera cirugía por fecha, como se eligió en la caja Cirugías: 1 = urgencia, 0 = electiva, vacío = no se registró. Abordaje: Abierta, Laparoscópica, Convertida (laparoscópica → abierta), Endoscópica / percutánea u Otro.');
   add(E, 'Conversión', '0/1', '', '1 = alguna cirugía laparoscópica se convirtió a abierta; 0 = hubo laparoscopía sin conversión; vacío = sin abordaje laparoscópico registrado.');
   add(E, 'Clavien-Dindo máximo · Complicación mayor (Clavien ≥ IIIa)', 'texto · 0/1', '', 'El grado más alto de complicación postoperatoria registrado en las cirugías del episodio (Sin complicación, I, II, IIIa, IIIb, IVa, IVb, V; Dindo, Ann Surg 2004). Complicación mayor: 1 si ≥ IIIa; vacío si ninguna cirugía tiene grado.');
@@ -2298,7 +2299,7 @@ function regVariables_() {
   add(PC, 'Privacidad', '', '', 'TIENE NOMBRES: es la lista de trabajo del equipo para completar las tarjetas. No se comparte ni se descarga para estudios.');
   add(PC, 'ID episodio', 'texto', '', 'Id del paciente en la base (no es seudónimo): el de la tarjeta en la app.');
   add(PC, 'Estado · Cama · Nombre · Expediente · Fecha de ingreso · Fecha de egreso', 'texto', '', 'Del censo y de la Papelera (la última parte del episodio). Entran los hospitalizados y los egresados de los últimos 30 días.');
-  add(PC, 'Falta · Faltantes (n)', 'texto · entero', '', 'Lo que le falta a la tarjeta para el registro: motivo del egreso, sexo, edad, APP, peso, talla, dx principal, cirugías por pasar a la caja y cirugías sin urgencia/abordaje/Clavien. Cuando se completa, la fila queda «Vigente: No» (resuelta).');
+  add(PC, 'Falta · Faltantes (n)', 'texto · entero', '', 'Lo que le falta a la tarjeta para el registro: motivo del egreso, sexo, edad, APP, peso, talla, dx principal (solo si el DX no coincide con ninguno de la lista), cirugías por pasar a la caja y cirugías sin urgencia/abordaje/Clavien. Cuando se completa, la fila queda «Vigente: No» (resuelta).');
   add(L, 'Fila', '', '', 'Una fila por episodio y fecha; una columna por estudio en la unidad de la app (WinLab ya convertido). Vacío = no se midió o no se pudo usar (ver Observaciones). Ojo con lo anterior al 27 oct 2026: la app no revisaba la unidad de WinLab (troponina I en ng/mL, glucosa en mmol/L, fibrinógeno en g/L) y antes de oct 2026 el examen de orina pudo caer en la biometría: revisar valores atípicos antes de analizar.');
   add(L, 'Fuente', 'texto', '', 'Origen de los valores del día: winlab (robot), manual, sin registro (capturas viejas).');
   REG_LAB_META.forEach(function (m) {

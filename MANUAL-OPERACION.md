@@ -245,10 +245,12 @@ En la tabla de labs de la ficha, **✏️ Corregir** abre todos los analitos de 
 
 ## 💧 Índice urinario (28 de octubre de 2026)
 
-En el **Pase Matutino**, junto a **Uresis**, la casilla **Horas** y el **Índice urinario** calculado como en el
-servicio: uresis total (mL) ÷ peso (kg) ÷ horas = mL/kg/h. Horas vacías = 24 h (o las que diga la uresis, p. ej.
-«900/12 h»); la uresis puede ir en litros («1.5 L») o con comas («1,200»). El peso es el de la fila Clínico (el mismo
-del vasopresor); sin peso dice «⚖️ falta el peso». Colores KDIGO: verde ≥ 0.5, ámbar < 0.5 (oliguria), rojo < 0.3.
+En el **Pase Matutino** hay una calculadora con todo en el mismo lugar (30 oct 2026, como la del vasopresor):
+**Uresis** (mL) · **en** (horas) · **⚖️** (peso en kg) **→ Índice urinario**, calculado como en el servicio: uresis
+total (mL) ÷ peso (kg) ÷ horas = mL/kg/h, al instante mientras escribes. Horas vacías = 24 h (o las que diga la uresis,
+p. ej. «900/12 h»); la uresis puede ir en litros («1.5 L») o con comas («1,200»). El peso es uno solo: el mismo de la
+fila Clínico y del vasopresor (escribirlo en cualquiera de los tres cambia los tres). Sin peso dice «⚖️ falta el peso».
+Colores KDIGO: verde ≥ 0.5, ámbar < 0.5 (oliguria), rojo < 0.3.
 El índice sale en la nota de evolución y en el resumen de gastos; **no se escribe en ninguna caja**. Las horas pasan
 al historial del pase con la uresis de ese día.
 
@@ -566,10 +568,18 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
 
 - **🔴 DX / Motivo de ingreso** (rojo). Debajo (28 oct 2026, para el registro):
   - **🩺 Dx principal**: un menú con la lista corta del servicio (apendicitis, colecistitis, pancreatitis, oclusión,
-    hernia, cáncer colorrectal…) y su grupo CIE-10. El DX de arriba no cambia. Si el DX lo dice, aparece un botón
-    **«¿Apendicitis aguda?»**: tocarlo lo elige. **Nada se elige solo**. ↩ Regresar lo quita.
-  - **📋 Falta para el registro**: una línea gris con lo que le falta a la tarjeta (APP, peso, talla, sexo, dx principal,
-    cirugías sin urgencia/abordaje/Clavien). No bloquea nada y desaparece cuando está completo. No sale al imprimir.
+    hernia, cáncer colorrectal…) y su grupo CIE-10. El DX de arriba no cambia.
+    - **Se selecciona solo** con el DX del censo (30 oct 2026) y lo dice: «auto · del DX». Si el DX cambia, cambia con él.
+      No escribe nada en la base mientras sea automático.
+    - Si no es el correcto, elige otro en el menú: ese se guarda y manda. **«↺ Automático»** (o ↩ Regresar) lo regresa
+      al del DX.
+    - Si el DX no coincide con ninguno, dice «el DX no coincide: elige uno» y aparece en «Falta para el registro».
+  - **🧪 Labs diarios** (30 oct 2026): con **colangitis** o **pancreatitis** (en el DX o como dx principal) o
+    **intubado** (🫁 VM marcada en el Pase, o IOT/intubado en el DX, y no extubado), sale «🧪 Labs diarios» en el
+    encabezado de la tarjeta y «Pedir labs todos los días (motivo)» arriba de la caja Labs. Se pone ✓ cuando ya hay labs
+    con la fecha de hoy. Es solo un recordatorio: no escribe nada en ninguna caja.
+  - **📋 Falta para el registro**: una línea gris con lo que le falta a la tarjeta (APP, peso, talla, sexo, dx principal
+    solo si el DX no coincide con ninguno, cirugías sin urgencia/abordaje/Clavien). No bloquea nada y desaparece cuando está completo. No sale al imprimir.
 - **🧪 Laboratorios**.
 - **🔪 Cirugías / Procedimientos** (morado). Una fila por intervención con su **fecha** (calendario),
   **PO día N** calculado solo, procedimiento, hallazgos, **sangrado** y cirujano. Botón
@@ -852,7 +862,8 @@ una copia: además trae pestañas listas para estadística.
 - **Pestañas nuevas del registro** (registro 2026.10.28-2):
   - **«Por completar»**: la lista de trabajo del equipo, **con nombres** (no se comparte). Trae a los hospitalizados y a
     los egresados de los últimos 30 días a los que les falta algo: motivo del egreso, sexo, edad, APP, peso, talla,
-    dx principal, cirugías por pasar a la caja o sin urgencia/abordaje/Clavien. Al completarlo, la fila queda «Vigente:
+    dx principal (desde el registro 2026.10.30-1, solo si el DX no coincide con ninguno de la lista), cirugías por pasar
+    a la caja o sin urgencia/abordaje/Clavien. Al completarlo, la fila queda «Vigente:
     No». Sugerencia: que el jefe de residentes la revise una vez por semana.
   - **«Resumen mensual»**: solo cuentas, sin nombres. Por mes: ingresos, egresos, defunciones y **mortalidad sobre los
     egresos con desenlace conocido** (y cuántos no tienen motivo), estancia mediana y media, pacientes operados,

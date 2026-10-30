@@ -205,6 +205,17 @@ const wlRow = () => ({ exp: '26-70001', paciente: 'ANA DIAZ RIOS', fecha: TODAY,
     /IU 0.78/.test(iu.litros) && /IU 0.63/.test(iu.miles) && /IU 0.94 mL\/kg\/h \|/.test(iu.texto), JSON.stringify(iu));
   check('I3 la nota y el resumen llevan el índice urinario calculado (no se escribe en ninguna caja)',
     /ÍNDICE URINARIO 0.31 ML\/KG\/H/.test(iu.nota) && /IU 0.31 mL\/kg\/h/.test(iu.resumen), JSON.stringify(iu));
+  // I4 (30 oct 2026): la calculadora trae su propio ⚖️ peso junto a la uresis y las horas; al escribirlo calcula ahí mismo.
+  await page.evaluate((k) => updatePmField(k, 'pm_peso', ''), K);
+  const calcSel = '[id="card-' + K + '"] [data-testid="iu-calc"]';
+  const grupo = await page.evaluate((s) => { const g = document.querySelector(s); return g ? Array.from(g.querySelectorAll('input')).map((i) => i.dataset.field).join(',') + ' | ' + g.querySelector('[data-testid="iu-res"]').textContent : 'SIN'; }, calcSel);
+  await page.fill(calcSel + ' [data-testid="iu-peso"]', '60');
+  await page.waitForTimeout(200);
+  const i4 = await page.evaluate(([s, k]) => ({ res: document.querySelector(s + ' [data-testid="iu-res"]').textContent, peso: getNote(k).checklist.pm_peso,
+    otros: Array.from(document.querySelectorAll('#card-' + CSS.escape(k) + ' input[data-field="pm_peso"]:not([data-testid="iu-peso"])')).map((i) => i.value) }), [calcSel, K]);
+  check('I4 uresis, horas, ⚖️ peso y resultado en el mismo lugar; sin peso dice «falta el peso» y al escribirlo ahí (60 kg) sale el IU (0.42) y se copia al peso de la fila Clínico',
+    grupo === 'pm_uresis,pm_uresis_h,pm_peso | IU: ⚖️ falta el peso' && i4.res === 'IU 0.42 mL/kg/h (24 h)' && i4.peso === '60' && i4.otros.length >= 1 && i4.otros.every((v) => v === '60'),
+    JSON.stringify({ grupo, i4 }));
 
   check('sin errores de página', errors.length === 0, errors.join(' | '));
   console.log(`\n${pass} passed, ${fail} failed`);

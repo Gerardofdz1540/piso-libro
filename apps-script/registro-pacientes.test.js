@@ -1306,7 +1306,7 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
   const PC = Object.fromEntries(tab(st.ss, "Por completar").map((x) => [x["ID episodio"], x]));
   check("R29d Por completar: el hospitalizado incompleto (con nombre y cama) y los egresados de los últimos 30 días; ni el completo ni el egreso de hace 48 días",
     !PC.h1 && !PC.e3 && PC.h2 && PC.h2["Nombre"] === "PRUEBA FICTICIA INCOMPLETA" && PC.h2["Cama"] === "3-602"
-    && PC.h2["Falta"] === "APP · peso · talla · dx principal · 1 cirugía sin urgencia/abordaje/Clavien" && PC.h2["Faltantes (n)"] === 5
+    && PC.h2["Falta"] === "APP · peso · talla · 1 cirugía sin urgencia/abordaje/Clavien" && PC.h2["Faltantes (n)"] === 4
     && PC.e2 && /^motivo del egreso · /.test(PC.e2["Falta"]) && PC.e1 && !/motivo del egreso/.test(PC.e1["Falta"]),
     JSON.stringify(Object.values(PC).map((x) => x["ID episodio"] + ": " + x["Falta"])));
   const R = Object.fromEntries(tab(st.ss, "Resumen mensual").map((x) => [x["Mes"], x]));
@@ -1420,6 +1420,21 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
     && tab(st.ss, "Labs del robot (WinLab)").some((x) => x["Sexo en WinLab"] === "M")
     && m2.calls.some((c) => /winlab_labs\?.*scraped_at=gte\./.test(c.u)) && !r2.avisos.some((a) => /se vuelve a leer/.test(a)),
     JSON.stringify({ leyoTodo, a1: r1.avisos, a2: r2.avisos }));
+}
+
+// ─── R31: dx principal automático (30 oct 2026): el inferido del DX ya no se pide en «Por completar» ─────────────
+{
+  const pt = (id, dx) => ({ id, cama: "3-9" + id.slice(-2), nombre: "PRUEBA FICTICIA DX " + id, exp: "00091" + id.slice(-1), dx, edad: "40", ingreso: "2026-10-28", estado: "ESTABLE" });
+  const d = { cronologia_respaldo: [], ris_estudios: [], winlab_labs: [], procedimientos_dia: [], archive: [],
+    patients: [pt("x1", "PANCREATITIS AGUDA BILIAR"), pt("x2", "ESTADO POSTERIOR A NADA"), pt("x3", "COLECISTITIS")],
+    notes: [{ patient_id: "x3", checklist: { dx_cat: "otro" } }] };
+  const st = { db: d, hoy: "2026-10-30" }; makeSandbox(st).sb.actualizarRegistro();
+  const P = Object.fromEntries(tab(st.ss, "Pacientes").map((x) => [x["ID episodio"], x]));
+  const PC = Object.fromEntries(tab(st.ss, "Por completar").map((x) => [x["ID episodio"], x["Falta"]]));
+  check("R31 dx principal: el inferido del DX (pancreatitis) no se pide; un DX sin coincidencia sí; el elegido en la app manda sobre el DX",
+    P.x1["Dx principal"] === "Pancreatitis aguda" && P.x1["Dx principal (fuente)"] === "Inferido del DX" && !/dx principal/.test(PC.x1)
+    && P.x2["Dx principal"] === "" && /dx principal/.test(PC.x2) && P.x3["Dx principal"] === "Otro" && P.x3["Dx principal (fuente)"] === "Elegido en la app" && !/dx principal/.test(PC.x3),
+    JSON.stringify({ x1: [P.x1["Dx principal"], P.x1["Dx principal (fuente)"]], x2: P.x2["Dx principal"], x3: [P.x3["Dx principal"], P.x3["Dx principal (fuente)"]], PC }));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");
