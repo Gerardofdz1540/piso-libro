@@ -100,8 +100,9 @@ const DISP = [
     window.__card = function (i) {
       const k = pid(patients[i]), c = document.getElementById('card-' + k);
       const q = (s) => c && c.querySelector(s);
-      return { hay: !!c, sug: q('[data-testid="dxp-sug"]') ? q('[data-testid="dxp-sug"]').textContent : '', sel: q('[data-testid="dxp-sel"]') ? q('[data-testid="dxp-sel"]').value : null,
-        falta: q('[data-testid="por-completar"]') ? q('[data-testid="por-completar"]').textContent : '', ck: JSON.parse(JSON.stringify((noteData[k] || {}).checklist || {})) };
+      return { hay: !!c, auto: q('[data-testid="dxp-auto"]') ? q('[data-testid="dxp-auto"]').textContent : '', sel: q('[data-testid="dxp-sel"]') ? q('[data-testid="dxp-sel"]').value : null,
+        falta: q('[data-testid="por-completar"]') ? q('[data-testid="por-completar"]').textContent : '', ck: JSON.parse(JSON.stringify((noteData[k] || {}).checklist || {})),
+        labsBadge: q('[data-testid="labs-diarios"]') ? q('[data-testid="labs-diarios"]').textContent : '', labsLinea: q('[data-testid="labs-diarios-linea"]') ? q('[data-testid="labs-diarios-linea"]').textContent : '' };
     };
   });
   const pon = (i, o) => page.evaluate(([i, o]) => window.__pon(i, o), [i, o]);
@@ -115,30 +116,68 @@ const DISP = [
     await page.waitForTimeout(500);
   };
 
-  // ── D: diagnóstico principal ──
+  // ── D: diagnóstico principal (30 oct 2026: se selecciona solo con el DX del censo; no se guarda nada hasta que alguien elige otro) ──
   const k0 = await pon(0);
   let c = await card(0);
-  check('D1 bajo la caja DX: «🩺 Dx principal» vacío y la sugerencia «¿Apendicitis aguda?» del DX; nada se eligió solo',
-    c.hay && c.sel === '' && c.sug === '¿Apendicitis aguda?' && !c.ck.dx_cat, JSON.stringify(c));
-  await page.click('#card-' + k0 + ' [data-testid="dxp-sug"]'); await page.waitForTimeout(300);
+  check('D1 bajo la caja DX: «🩺 Dx principal» ya seleccionado con el DX del censo (apendicitis), marcado «auto · del DX», sin guardar nada',
+    c.hay && c.sel === 'apendicitis' && /auto · del DX/.test(c.auto) && !c.ck.dx_cat && !/dx principal/.test(c.falta), JSON.stringify(c));
+  // Cambia el DX (como al editar la caja): el automático lo sigue sin repintar la tarjeta.
+  await page.evaluate((k) => updateField(k, 'dx', 'PANCREATITIS AGUDA BILIAR'), k0); await page.waitForTimeout(300);
   c = await card(0);
-  check('D2 al tocar la sugerencia se elige (apendicitis) y la sugerencia desaparece', c.ck.dx_cat === 'apendicitis' && c.sel === 'apendicitis' && c.sug === '', JSON.stringify(c));
+  check('D2 al cambiar el DX, el dx principal automático lo sigue (pancreatitis) y sigue sin guardarse', c.sel === 'pancreatitis' && /auto/.test(c.auto) && !c.ck.dx_cat, JSON.stringify(c));
+  await elegir('#card-' + k0 + ' [data-testid="dxp-sel"]', 'Colecistitis / colelitiasis');
+  c = await card(0);
+  check('D3 elegir otro en el menú lo guarda y manda (ya no dice «auto»)', c.ck.dx_cat === 'colecistitis' && c.sel === 'colecistitis' && !c.auto, JSON.stringify(c));
   const etq = await page.evaluate((k) => undoLast(k), k0);
   c = await card(0);
-  check('D3 ↩ Regresar la quita', /dx principal/.test(etq) && !c.ck.dx_cat && c.sug === '¿Apendicitis aguda?', JSON.stringify({ etq, c }));
+  check('D4 ↩ Regresar lo quita y vuelve al automático', /dx principal/.test(etq) && !c.ck.dx_cat && c.sel === 'pancreatitis' && /auto/.test(c.auto), JSON.stringify({ etq, c }));
   await elegir('#card-' + k0 + ' [data-testid="dxp-sel"]', 'Pancreatitis aguda');
+  await page.evaluate((k) => setDxPrincipal(k, 'pancreatitis'), k0);   // aunque llegue la elección (teclado, otro navegador)
   c = await card(0);
-  check('D4 también se elige del menú (cualquier categoría de la lista, con su CIE-10)', c.ck.dx_cat === 'pancreatitis' && c.sug === '', JSON.stringify(c.ck.dx_cat));
+  check('D5 elegir el mismo que ya se ve en automático no guarda nada', !c.ck.dx_cat && c.sel === 'pancreatitis' && /auto/.test(c.auto), JSON.stringify(c));
+  await elegir('#card-' + k0 + ' [data-testid="dxp-sel"]', 'Hernia de pared');
+  await elegir('#card-' + k0 + ' [data-testid="dxp-sel"]', '↺ Automático');
+  c = await card(0);
+  check('D6 «↺ Automático» borra lo elegido y regresa al del DX', !c.ck.dx_cat && c.sel === 'pancreatitis' && /auto/.test(c.auto), JSON.stringify(c));
   const sug = await page.evaluate(() => ['OCLUSION INTESTINAL POR BRIDAS', 'PO LAPE + CA DE COLON SIGMOIDES', 'CA DE RECTO + OCLUSION', 'ABSCESO PERIANAL', 'PIE DIABETICO WAGNER 4', 'COLEDOCOLITIASIS', 'DOLOR ABDOMINAL EN ESTUDIO', 'HPAF EN ABDOMEN', 'ESTADO POSTERIOR A NADA'].map(_dxCatSugerida));
-  check('D5 sugerencia: el término que aparece primero; lo específico antes que lo genérico («CA DE COLON» → colorrectal)',
+  check('D7 el automático toma el término que aparece primero; lo específico antes que lo genérico («CA DE COLON» → colorrectal)',
     JSON.stringify(sug) === JSON.stringify(['oclusion', 'ca_colorrectal', 'ca_colorrectal', 'anorrectal', 'pie_diabetico', 'coledoco', 'abdomen_agudo', 'trauma_abd', '']), JSON.stringify(sug));
+  await page.evaluate((k) => setDxPrincipal(k, 'hernia'), k0);
   const malo = await page.evaluate((k) => { setDxPrincipal(k, 'inventada'); return noteData[k].checklist.dx_cat; }, k0);
-  check('D6 un valor fuera de la lista no se guarda', malo === 'pancreatitis', malo);
+  check('D8 un valor fuera de la lista no se guarda', malo === 'hernia', malo);
+  await pon(0, { nd: { dx: 'ESTADO POSTERIOR A NADA' } });
+  c = await card(0);
+  check('D9 un DX que no coincide con ninguno: «— elegir —», el aviso «el DX no coincide» y «dx principal» en lo que falta', c.sel === '' && /no coincide/.test(c.auto) && /dx principal/.test(c.falta), JSON.stringify(c));
+
+  // ── L: 🧪 labs diarios (colangitis, pancreatitis o intubado) ──
+  await pon(0, { nd: { dx: 'COLANGITIS AGUDA GRADO II' } });
+  c = await card(0);
+  const sinHoy = c;
+  // «Hoy» como lo cuenta la tarjeta (fecha local del equipo, igual que «días sin labs»).
+  const hoyLocal = await page.evaluate(() => { const d = new Date(), z = (n) => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); });
+  await pon(0, { nd: { dx: 'COLANGITIS AGUDA GRADO II', labHistory: [{ fecha: hoyLocal, labs: { hb: '12' } }] } });
+  const conHoy = await card(0);
+  await pon(0, { nd: { dx: 'HERNIA INGUINAL' } });
+  const nada = await card(0);
+  await page.evaluate((k) => toggleChecklist(k, 'pm_vent'), k0); await page.waitForTimeout(200);
+  const vm = await card(0);
+  const cajas = await page.evaluate((k) => ['pendientes', 'manejo', 'entrega', 'dx'].map((f) => noteData[k][f] || '').join('|'), k0);
+  await page.evaluate((k) => toggleChecklist(k, 'pm_vent'), k0); await page.waitForTimeout(200);
+  const sinVm = await card(0);
+  const mot = await page.evaluate(() => ['PANCREATITIS AGUDA SEVERA', 'PO LAPE + IOT', 'PACIENTE INTUBADO', 'PO LAPE, IOT 28/10, EXTUBADO HOY', 'COLECISTITIS'].map((dx) => _labsDiariosMotivos({ dx }, { checklist: {} }).join(',')));
+  check('L1 colangitis: «🧪 Labs diarios» en el encabezado y «Pedir labs todos los días» en la caja Labs; con labs de hoy, ✓',
+    /🧪 Labs diarios/.test(sinHoy.labsBadge) && !/✓/.test(sinHoy.labsBadge) && /Pedir labs todos los días \(colangitis\)/.test(sinHoy.labsLinea) && /hoy todavía no hay labs/.test(sinHoy.labsLinea)
+    && /✓/.test(conHoy.labsBadge) && /hoy ya hay labs/.test(conHoy.labsLinea), JSON.stringify({ sinHoy: [sinHoy.labsBadge, sinHoy.labsLinea], conHoy: [conHoy.labsBadge, conHoy.labsLinea] }));
+  check('L2 sin colangitis, pancreatitis ni intubación no sale; al marcar 🫁 VM sale sin repintar la tarjeta y al quitarla se va; no escribe nada en ninguna caja',
+    !nada.labsBadge && !nada.labsLinea && /Labs diarios/.test(vm.labsBadge) && /intubado/.test(vm.labsLinea) && !sinVm.labsBadge && !sinVm.labsLinea
+    && cajas === '|||HERNIA INGUINAL', JSON.stringify({ nada: nada.labsBadge, vm: [vm.labsBadge, vm.labsLinea], sinVm: sinVm.labsBadge, cajas }));
+  check('L3 motivos desde el DX: pancreatitis, IOT/intubado; «extubado» no cuenta; colecistitis no',
+    JSON.stringify(mot) === JSON.stringify(['pancreatitis', 'intubado', 'intubado', '', '']), JSON.stringify(mot));
 
   // ── P: por completar ──
   await pon(1);
   c = await card(1);
-  check('P1 «📋 Falta para el registro» enlista APP, peso, talla, sexo y dx principal', /APP · peso · talla · sexo · dx principal/.test(c.falta), c.falta);
+  check('P1 «📋 Falta para el registro» enlista APP, peso, talla y sexo; el dx principal ya salió solo del DX (oclusión)', /APP · peso · talla · sexo$/.test(c.falta) && c.sel === 'oclusion', c.falta);
   await pon(1, { nd: { app: 'DM2 EN TRATAMIENTO' }, ck: { pm_peso: '70', pm_talla: '165', sexo: 'M', dx_cat: 'oclusion', cirugias: [{ id: 'q1', fecha: '2026-10-20', procedimiento: 'LAPE + ADHERENCIOLISIS', hallazgos: '', sangrado: '', cirujano: '' }] } });
   c = await card(1);
   check('P2 con todo lleno solo queda la cirugía sin urgencia/abordaje/Clavien', c.falta === '📋 Falta para el registro: 1 cirugía sin urgencia/abordaje/Clavien', c.falta);

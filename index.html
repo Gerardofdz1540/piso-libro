@@ -2261,6 +2261,13 @@
     }
     .days-no-labs.warn  { background:#f59e0b;color:#fff }
     .days-no-labs.alert { background:#ef4444;color:#fff }
+    /* 🧪 Labs diarios (30 oct 2026): colangitis, pancreatitis o intubado */
+    .badge-labsdia { font-size:9px;font-weight:800;padding:1px 6px;border-radius:4px;white-space:nowrap;cursor:default;background:#fde68a;color:#78350f;border:1px solid #f59e0b }
+    .badge-labsdia.ok { background:#dcfce7;color:#166534;border-color:#86efac }
+    .labsdia-line { font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:3px 8px;margin-bottom:4px }
+    .labsdia-line.ok { color:#166534;background:#f0fdf4;border-color:#86efac }
+    body.dark .labsdia-line { background:#3a2a06;border-color:#92400e;color:#fcd34d }
+    body.dark .labsdia-line.ok { background:#0f2a1e;border-color:#166534;color:#86efac }
 
     /* Guardián de labs críticos */
     #sync-status.offline.viejo, #sync-status.offline.viejo #sync-label { color: #dc2626 !important; font-weight: 700; }
@@ -3015,7 +3022,9 @@
     .vp-res { font-size: 11px; font-weight: 800; color: #9d174d; white-space: nowrap; padding: 1px 7px; border-radius: 10px; background: #fce7f3; border: 1px solid #f9a8d4; }
     .vp-res.vp-hi, .vm-chip.vm-hi { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
     .vp-res.vp-na, .vm-chip.vm-na { background: #f1f5f9; border-color: #cbd5e1; color: #64748b; font-weight: 600; }
-    /* Índice urinario (28 oct 2026) */
+    /* Índice urinario (28 oct 2026); 30 oct: uresis, horas, peso y resultado en un mismo grupo, en renglón */
+    .pm-field.pm-iu-calc { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px; padding: 2px 5px; border: 1px dashed #5eead4; border-radius: 8px; }
+    body.dark .pm-field.pm-iu-calc { border-color: #0f766e; }
     .iu-res { font-size: 11px; font-weight: 800; white-space: nowrap; padding: 1px 7px; border-radius: 10px; margin-left: 2px; }
     .iu-res.iu-ok { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
     .iu-res.iu-lo { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
@@ -3161,10 +3170,14 @@
     .dxp-l { font-weight: 800; color: #991b1b; white-space: nowrap; }
     .dxp-row .dxp-sel, .dxp-row .resid-select { flex: 0 1 280px; min-width: 0; font-size: 11.5px; min-height: 28px; border: 1px solid #fecaca; border-radius: 6px; background: #fff; color: #7f1d1d; font-family: var(--font); }
     .dxp-sug { font-size: 11px; font-weight: 700; min-height: 26px; padding: 0 8px; border-radius: 10px; border: 1px dashed #fca5a5; background: #fff; color: #b91c1c; cursor: pointer; font-family: var(--font); }
+    .dxp-auto { font-size: 10px; font-weight: 700; white-space: nowrap; padding: 1px 7px; border-radius: 10px; color: #0f766e; background: #f0fdfa; border: 1px solid #99f6e4; }
+    .dxp-auto.dxp-auto-no { color: #92400e; background: #fffbeb; border-color: #fcd34d; }
     .pcomp { margin-top: 3px; font-size: 10.5px; color: #64748b; }
     body.dark .dxp-row .dxp-sel, body.dark .dxp-row .resid-select, body.dark .dxp-sug { background: #0e2138; color: #fecaca; border-color: #7f1d1d; }
+    body.dark .dxp-auto { background: #062a26; border-color: #0f766e; color: #5eead4; }
+    body.dark .dxp-auto.dxp-auto-no { background: #3a2a06; border-color: #92400e; color: #fcd34d; }
     body.dark .pcomp { color: #94a3b8; }
-    @media print { .dxp-sug, .pcomp { display: none !important; } }
+    @media print { .dxp-sug, .dxp-auto, .pcomp { display: none !important; } }
     /* Datos estructurados de la cirugía: tres menús compactos y «¿Cuál?» si hubo complicación */
     .cx-r3 { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
     .cx-r3 .cx-sel, .cx-r3 .resid-select { flex: 1 1 140px; min-width: 0; max-width: 100%; font-size: 11.5px; min-height: 28px; border: 1px solid #e9d5ff; border-radius: 6px; background: #fff; color: #3b0764; font-family: var(--font); }
@@ -20165,6 +20178,7 @@ function plExportBackup() {
           <span class="badge-esp">${esc(p.esp)}</span>
           <span class="badge-day">Día ${days}</span>
           ${renderDiasSinLabsBadge(nd)}
+          ${_labsDiariosBadge(p, nd)}
           ${renderLabNewsBadge(nd, k)}
           ${renderCruceBadge(nd, k)}
           ${(isSimpleEsp(p.esp) && nd && nd.checklist && nd.checklist.svcMine) ? `<button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Quitar de mi servicio">↩️</button>` : ''}
@@ -20244,7 +20258,7 @@ function plExportBackup() {
         return `<div class="fc-bento">
       <div class="fc-main">
       <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}${(function () { try { return _dxPrincipalHtml(p, nd, k); } catch (_) { return ""; } })()}${_porCompletarHtml(p, nd, k)}</div>
-      <div ${anchor("labs")} style="margin-top:8px">${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
+      <div ${anchor("labs")} style="margin-top:8px">${_labsDiariosLinea(p, nd)}${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
       <div ${anchor("cx", "cx")} style="margin-top:8px">${renderCirugiasSection(nd, k)}</div>
       <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("🗂️ Otros (lo que no cabe en otra caja)", nd.manejo, k, "manejo", 3)}</div>
       <div ${anchor("plan", "plan")} style="margin-top:8px">
@@ -20371,6 +20385,7 @@ function plExportBackup() {
         <span class="badge-esp">${esc(p.esp)}</span>
         <span class="badge-day">Día ${dias}</span>
         ${renderDiasSinLabsBadge(nd)}
+        ${_labsDiariosBadge(p, nd)}
         ${curPendiente ? `<span style="background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;white-space:nowrap">🩹 Cur</span>` : ''}
         ${renderCruceBadge(nd, k)}
         <button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Es de mi servicio (expandir + buscar labs)">🩺</button>
@@ -23192,6 +23207,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (field === "dx") {
         const p = patients.find(function(pt){ return pid(pt) === k; });
         if (p) { p.dx = value; _savePtsImmediate(p, ["dx"]); } // inmediato: dx puede cambiar justo antes de cerrar la app; sin red el ítem lleva solo el dx
+        if (_changed) _refreshDxDerivados(k);
       }
     }
     function _undoFieldLabel(f) {
@@ -29429,7 +29445,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.29-1";
+    const PL_BUILD = "2026.10.30-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -29652,6 +29668,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (container) {
         container.outerHTML = renderChecklist(nd, k);
       }
+      if (item === "pm_vent") _refreshLabsDiarios(k);   // 🧪 Labs diarios (intubado)
     }
 
     function updateDieta(k, val) {
@@ -29800,7 +29817,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function _iuRes(cl) {
       const u = toSafeString(cl && cl.pm_uresis).trim();
       if (!u) return { txt: "IU —", cls: "vp-na", title: "Índice urinario: escribe la uresis (mL), las horas y el peso" };
-      if (!(vpNum(cl.pm_peso) > 0)) return { txt: "IU: ⚖️ falta el peso", cls: "vp-na", title: "Anota el peso (fila Clínico o Vasopresor) para calcular el índice urinario" };
+      if (!(vpNum(cl.pm_peso) > 0)) return { txt: "IU: ⚖️ falta el peso", cls: "vp-na", title: "Escribe el peso en ⚖️, aquí al lado, para calcular el índice urinario" };
       const r = iuCalc(cl.pm_uresis, cl.pm_peso, cl.pm_uresis_h);
       if (!r) return { txt: "IU —", cls: "vp-na", title: "Revisa la uresis, las horas (1-72) y el peso" };
       const cls = r.v < 0.3 ? "iu-crit" : (r.v < 0.5 ? "iu-lo" : "iu-ok");
@@ -30158,9 +30175,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       _saveNoteNow(k, nd, "ck_cx_det_no"); _rerenderCard(k);
     }
     // ═══ 🩺 Diagnóstico principal de una lista corta (28 oct 2026, registro para investigación) ════════════════════════
-    // El DX es texto libre; para contar por diagnóstico se elige uno de esta lista (checklist.dx_cat). La app solo
-    // SUGIERE (botón «¿Apendicitis aguda?» según el DX): nada se elige solo. El registro pone el grupo CIE-10 y, si nadie
-    // eligió, lo infiere del DX con la misma tabla (y lo marca como inferido).
+    // El DX es texto libre; para contar por diagnóstico va uno de esta lista. Desde el 30 oct 2026 (pedido de Gera) se
+    // SELECCIONA SOLO con el DX del censo («auto»): se muestra elegido y sigue al DX si este cambia, sin escribir nada en
+    // la base. Si alguien elige otro, ese se guarda (checklist.dx_cat) y manda; «↺ Automático» lo regresa al del DX. El
+    // registro hace lo mismo con la misma tabla (marca «Inferido del DX» o «Elegido en la app»).
     const DX_CATS = [
       ["apendicitis", "Apendicitis aguda", "K35", /APENDIC/],
       ["colecistitis", "Colecistitis / colelitiasis", "K80–K81", /COLECIST|COLELIT|LITIASIS VESICULAR|PIOCOLECIST|HIDROCOLECIST/],
@@ -30198,19 +30216,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       DX_CATS.forEach(function (c) { if (!c[3]) return; const m = c[3].exec(s); if (m && m.index < pos) { pos = m.index; mejor = c[0]; } });
       return mejor;
     }
+    // { cat, auto }: el elegido en la app (auto false) o, si no hay, el del DX del censo (auto true); cat "" si ninguno.
+    function _dxPrincipalDe(p, nd) {
+      const ck = (nd && nd.checklist) || {};
+      if (DX_CAT_MAP[ck.dx_cat]) return { cat: ck.dx_cat, auto: false };
+      return { cat: _dxCatSugerida((nd && nd.dx) || (p && p.dx)), auto: true };
+    }
     function _dxPrincipalHtml(p, nd, k) {
-      const ck = (nd && nd.checklist) || {}, cur = DX_CAT_MAP[ck.dx_cat] ? ck.dx_cat : "";
-      const sug = cur ? "" : _dxCatSugerida((nd && nd.dx) || (p && p.dx));
-      const opts = '<option value="">— elegir —</option>' + DX_CATS.map(function (c) { return `<option value="${c[0]}"${c[0] === cur ? " selected" : ""}>${esc(c[1])}${c[2] ? " · " + esc(c[2]) : ""}</option>`; }).join("");
+      const d = _dxPrincipalDe(p, nd), cur = d.cat;
+      const vacio = (d.auto && !cur) ? "— elegir —" : "↺ Automático (según el DX)";
+      const opts = `<option value=""${d.auto && !cur ? " selected" : ""}>${vacio}</option>` + DX_CATS.map(function (c) { return `<option value="${c[0]}"${c[0] === cur ? " selected" : ""}>${esc(c[1])}${c[2] ? " · " + esc(c[2]) : ""}</option>`; }).join("");
       return `<div class="dxp-row" data-testid="dxp-row"><span class="dxp-l" title="Para el registro: el diagnóstico principal de una lista corta (con su grupo CIE-10). El DX de arriba no cambia.">🩺 Dx principal</span>`
         + `<select class="dxp-sel" data-k="${k}" data-testid="dxp-sel" onchange="setDxPrincipal(this.dataset.k,this.value)">${opts}</select>`
-        + (sug ? `<button type="button" class="dxp-sug" data-k="${k}" data-v="${sug}" data-testid="dxp-sug" onclick="setDxPrincipal(this.dataset.k,this.dataset.v)" title="Sugerido por el DX: tócalo para elegirlo">¿${esc(DX_CAT_MAP[sug][1])}?</button>` : "")
+        + (d.auto && cur ? `<span class="dxp-auto" data-testid="dxp-auto" title="Se eligió solo con el DX del censo y cambia si cambia el DX. Si no es el correcto, elige otro en la lista.">auto · del DX</span>` : "")
+        + (d.auto && !cur ? `<span class="dxp-auto dxp-auto-no" data-testid="dxp-auto" title="El DX no coincide con ninguno de la lista: elige uno (u «Otro»)">el DX no coincide: elige uno</span>` : "")
         + `</div>`;
     }
+    // v "": vuelve al automático (borra lo elegido). Elegir en la lista el mismo que ya se ve en automático no guarda nada.
     function setDxPrincipal(k, v) {
       if (v && !DX_CAT_MAP[v]) return;
       const nd = getNote(k); if (!nd.checklist) nd.checklist = {};
-      if ((nd.checklist.dx_cat || "") === v) return;
+      const p = (typeof patients !== "undefined" && Array.isArray(patients)) ? patients.find(function (x) { return pid(x) === k; }) : null;
+      const d = _dxPrincipalDe(p, nd);
+      if ((nd.checklist.dx_cat || "") === v || (d.auto && v === d.cat)) { _rerenderCard(k); return; }
       _undoPush(k, "dx principal");
       nd.checklist.dx_cat = v;
       _saveNoteNow(k, nd, "ck_dx_cat"); _rerenderCard(k);
@@ -30224,7 +30252,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (!(vpNum(ck.pm_peso) > 0)) falta.push("peso");
       if (!(vpNum(ck.pm_talla) > 0)) falta.push("talla");
       if (!toSafeString(ck.sexo || (p && p.sexo)).trim()) falta.push("sexo");
-      if (!DX_CAT_MAP[ck.dx_cat]) falta.push("dx principal");
+      if (!_dxPrincipalDe(p, nd).cat) falta.push("dx principal");   // el automático (del DX) cuenta como completo
       const cx = (Array.isArray(ck.cirugias) ? ck.cirugias : []).filter(function (c) { return c && (toSafeString(c.procedimiento).trim() || c.fecha); });
       const sinClas = cx.filter(function (c) { return !CX_TIPOS[c.tipo] || !CX_ABORDAJES[c.abordaje] || !CX_CLAVIEN[c.clavien]; }).length;
       if (sinClas) falta.push(sinClas === 1 ? "1 cirugía sin urgencia/abordaje/Clavien" : sinClas + " cirugías sin urgencia/abordaje/Clavien");
@@ -30234,6 +30262,59 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       let falta = []; try { falta = _porCompletar(p, nd); } catch (_) { return ""; }
       if (!falta.length) return "";
       return `<div class="pcomp" data-testid="por-completar" title="Para el registro de pacientes (estadística del servicio). No bloquea nada.">📋 Falta para el registro: ${esc(falta.join(" · "))}</div>`;
+    }
+    // ═══ 🧪 Labs diarios (30 oct 2026, pedido de Gera) ═══════════════════════════════════════════════════════════════
+    // Colangitis o pancreatitis (en el DX o elegida como dx principal) o intubado (🫁 VM en el Pase, o IOT/intubado en el
+    // DX y no extubado) → pedir laboratorios todos los días. Solo se pinta (encabezado de la tarjeta y caja Labs): no
+    // escribe nada en ninguna caja. «✓» cuando ya hay labs con la fecha de hoy.
+    function _labsDiariosMotivos(p, nd) {
+      const ck = (nd && nd.checklist) || {}, m = [];
+      const dx = toSafeString((nd && nd.dx) || (p && p.dx)).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+      if (/COLANGITIS/.test(dx)) m.push("colangitis");
+      if (/PANCREATITIS/.test(dx) || ck.dx_cat === "pancreatitis") m.push("pancreatitis");
+      const iotDx = /\bINTUBAD[OA]\b|\bIOT\b|\bVMI\b|VENTILACION MECANICA/.test(dx) && !/EXTUBAD|EXTUBACION|\bNO INTUBAD|\bSIN IOT\b/.test(dx);
+      if (ck.pm_vent || iotDx) m.push("intubado");
+      return m;
+    }
+    function _labsDiariosEstado(p, nd) {
+      let m = []; try { m = _labsDiariosMotivos(p, nd); } catch (_) { return null; }
+      if (!m.length) return null;
+      let hoy = false; try { hoy = getDiasSinLabs(nd) === 0; } catch (_) {}
+      return { motivos: m, hoy: hoy };
+    }
+    function _labsDiariosBadge(p, nd) {
+      const e = _labsDiariosEstado(p, nd); if (!e) return "";
+      return `<span class="badge-labsdia${e.hoy ? " ok" : ""}" data-testid="labs-diarios" title="${esc("Pedir laboratorios todos los días (" + e.motivos.join(", ") + "). " + (e.hoy ? "Hoy ya hay labs." : "Hoy todavía no hay labs."))}">🧪 Labs diarios${e.hoy ? " ✓" : ""}</span>`;
+    }
+    function _labsDiariosLinea(p, nd) {
+      const e = _labsDiariosEstado(p, nd); if (!e) return "";
+      return `<div class="labsdia-line${e.hoy ? " ok" : ""}" data-testid="labs-diarios-linea">🧪 <b>Pedir labs todos los días</b> (${esc(e.motivos.join(", "))}) · ${e.hoy ? "✓ hoy ya hay labs" : "hoy todavía no hay labs"}</div>`;
+    }
+    function _ptDe(k) { return (typeof patients !== "undefined" && Array.isArray(patients)) ? (patients.find(function (x) { return pid(x) === k; }) || null) : null; }
+    // Sin repintar la tarjeta (no roba el foco): el recordatorio sigue a 🫁 VM y al DX.
+    function _refreshLabsDiarios(k) {
+      try {
+        const card = document.getElementById("card-" + k); if (!card) return;
+        const p = _ptDe(k), nd = getNote(k);
+        const b = card.querySelector('[data-testid="labs-diarios"]'), bh = _labsDiariosBadge(p, nd);
+        if (b) b.outerHTML = bh; else if (bh) { const day = card.querySelector(".card-badges .badge-day"); if (day) day.insertAdjacentHTML("afterend", bh); }
+        const l = card.querySelector('[data-testid="labs-diarios-linea"]'), lh = _labsDiariosLinea(p, nd);
+        if (l) l.outerHTML = lh; else if (lh) { const sec = document.getElementById("sec-labs-" + k.replace(/[^a-zA-Z0-9]/g, "_")); if (sec) sec.insertAdjacentHTML("afterbegin", lh); }
+      } catch (_) {}
+    }
+    // Al cambiar el DX: el dx principal automático, la línea «Falta para el registro» y los labs diarios lo siguen.
+    function _refreshDxDerivados(k) {
+      try {
+        const card = document.getElementById("card-" + k); if (!card) return;
+        const p = _ptDe(k), nd = getNote(k);
+        const row = card.querySelector('[data-testid="dxp-row"]');
+        if (row && !row.contains(document.activeElement)) row.outerHTML = _dxPrincipalHtml(p, nd, k);
+        const pc = card.querySelector('[data-testid="por-completar"]'), pcHtml = _porCompletarHtml(p, nd, k);
+        if (pc) pc.outerHTML = pcHtml;
+        else if (pcHtml) { const r2 = card.querySelector('[data-testid="dxp-row"]'); if (r2) r2.insertAdjacentHTML("afterend", pcHtml); }
+        _refreshLabsDiarios(k);
+        if (typeof window.residSyncSelects === "function") window.residSyncSelects();
+      } catch (_) {}
     }
     // ═══ Datos estructurados de cada cirugía (28 oct 2026, registro para investigación) ═══════════════════════════════
     // Urgencia/electiva, abordaje y complicación (Clavien-Dindo, Ann Surg 2004) en tres menús por cirugía. Solo se llenan
@@ -30755,10 +30836,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         `<div class="pm-field"><span class="pm-label">SaO₂%</span>${pmInp("sao2")}</div>` +
         `<div class="pm-field"><span class="pm-label">c/L O₂</span>${pmInp("o2l")}</div>` +
         `<div class="pm-field"><span class="pm-label">TA</span>${pmInp("ta", "70px")}</div>` +
-        `<div class="pm-field"><span class="pm-label">Uresis</span>${pmInp("uresis", "70px")}</div>` +
-        // Índice urinario = uresis ÷ peso ÷ horas (28 oct 2026). Horas vacías = 24 h.
-        `<div class="pm-field" data-testid="iu-calc"><span class="pm-label" title="Horas en que se juntó la uresis (vacío = 24 h)">Horas</span><input class="pm-input" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_uresis_h || "")}" placeholder="24" data-ck="${k}" data-field="pm_uresis_h" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px" title="Horas en que se juntó la uresis (vacío = 24 h)"/></div>` +
-        `<div class="pm-field pm-iu"><span class="pm-label" title="Índice urinario = uresis ÷ peso ÷ horas">Índice urinario</span>${_iuSpan(cl, ek)}</div>` +
+        // Calculadora del índice urinario (28 oct; 30 oct 2026 con el peso aquí mismo, como la del vasopresor): uresis (mL)
+        // en tantas horas (vacío = 24 h) y el peso (el mismo pm_peso de la fila Clínico) → IU al instante.
+        `<div class="pm-field pm-iu-calc" data-testid="iu-calc"><span class="pm-label">Uresis</span>${pmInp("uresis", "64px")}` +
+        `<span class="pm-label" title="Horas en que se juntó la uresis (vacío = 24 h)">mL en</span><input class="pm-input" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_uresis_h || "")}" placeholder="24" data-ck="${k}" data-field="pm_uresis_h" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:38px" title="Horas en que se juntó la uresis (vacío = 24 h)"/><span class="pm-label">h ·</span>` +
+        `<span class="pm-label">⚖️</span><input class="pm-input" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.pm_peso || "")}" placeholder="kg" data-ck="${k}" data-field="pm_peso" data-testid="iu-peso" oninput="updatePmField(this.dataset.ck,this.dataset.field,this.value)" style="width:44px" title="Peso en kg (el mismo de la fila Clínico y del vasopresor)"/><span class="pm-label">kg →</span>` +
+        `<span class="pm-iu" title="Índice urinario = uresis ÷ peso ÷ horas">${_iuSpan(cl, ek)}</span></div>` +
         `<div class="pm-field"><span class="pm-label">DxTx</span>${pmInp("dxtx")}</div>`;
 
       // ── Row 4 (oct 2026): Drenajes y sondas PERSONALIZABLES por paciente ──

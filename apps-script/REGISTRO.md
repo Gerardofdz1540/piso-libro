@@ -122,7 +122,8 @@ siempre. Cada columna está definida en «Diccionario de variables».
   - La app avisa en la caja Cirugías («🔎 ¿Cirugía sin registrar?») para que el residente la registre con un toque.
 - **Dx principal** (28 oct 2026): el que se eligió en la app (🩺, lista corta con CIE-10) o, si no, el inferido del DX con
   la misma tabla (el término que aparece primero), marcado «Inferido del DX». La tabla es idéntica en la app y aquí (una
-  prueba lo verifica).
+  prueba lo verifica). Desde el 30 oct 2026 la app muestra el inferido ya seleccionado («auto · del DX»), así que
+  «Por completar» (registro 2026.10.30-1) solo pide el dx principal cuando el DX no coincide con ninguno.
 - **Cirugía estructurada** (28 oct 2026): urgencia/electiva, abordaje y Clavien-Dindo solo si se eligieron en la caja;
   lo inferido no los trae. Complicación mayor = Clavien ≥ IIIa.
 - **Sexo desde WinLab** (29 oct 2026). Si la tarjeta no tiene el sexo, se toma del encabezado de WinLab del paciente

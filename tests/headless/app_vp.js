@@ -83,7 +83,7 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**RUIZ SOTO MATEO |
     set('pm_peso', '70');
     toggleChecklist(k, 'vp_nore_on');
     const def = [getNote(k).checklist.vp_nore_mg, getNote(k).checklist.vp_nore_ml];
-    // ⚖️ el peso también está en la fila del vasopresor (mismo pm_peso) y los dos campos se siguen
+    // ⚖️ el peso también está en la fila del vasopresor y en la calculadora del índice urinario (mismo pm_peso): los tres campos se siguen
     const pesoInputs = document.querySelectorAll('#ck-row-' + ek + ' input[data-field="pm_peso"]').length;
     const pesoVp = document.querySelector('#ck-row-' + ek + ' .ck-r-vaso input[data-field="pm_peso"]');
     const pesoVpVal0 = pesoVp ? pesoVp.value : null;
@@ -91,6 +91,7 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**RUIZ SOTO MATEO |
     const pesoClin80 = q('pm_peso').value; const pesoSaved80 = getNote(k).checklist.pm_peso;
     set('pm_peso', '70');
     const pesoVp70 = pesoVp ? pesoVp.value : null;
+    const pesoIu70 = (document.querySelector('#ck-row-' + ek + ' [data-testid="iu-peso"]') || {}).value;
     set('vp_nore_mlh', '10');
     const res1 = document.getElementById('vp-nore-res-' + ek).textContent;
     set('vp_nore_meta', '6');                     // meta en mcg/kg/h
@@ -116,12 +117,12 @@ const AI_NOTE = '```\n# NOTA DE EVOLUCIÓN CIRUGÍA GENERAL\n**RUIZ SOTO MATEO |
     const after = { mg: q('vp_nore_mg').value, mlh: q('vp_nore_mlh').value, res: document.getElementById('vp-nore-res-' + ek).textContent, resV: document.getElementById('vp-vaso-res-' + ek).textContent };
     await new Promise(r => setTimeout(r, 900));
     const s = getNote(k).checklist;
-    return { row0, noInputs0, def, pesoInputs, pesoVpVal0, pesoClin80, pesoSaved80, pesoVp70, res1, meta1, metaPh, res2, hi, ssc, sscShown, sscHidden, defV, resV, hiV, noPeso, after, saved: { on: s.vp_nore_on, mg: s.vp_nore_mg, mlh: s.vp_nore_mlh, von: s.vp_vaso_on, vmlh: s.vp_vaso_mlh, peso: s.pm_peso } };
+    return { row0, noInputs0, def, pesoInputs, pesoVpVal0, pesoClin80, pesoSaved80, pesoVp70, pesoIu70, res1, meta1, metaPh, res2, hi, ssc, sscShown, sscHidden, defV, resV, hiV, noPeso, after, saved: { on: s.vp_nore_on, mg: s.vp_nore_mg, mlh: s.vp_nore_mlh, von: s.vp_vaso_on, vmlh: s.vp_vaso_mlh, peso: s.pm_peso } };
   });
   const vpPosted = calls.some(c => c.m === 'POST' && /\/rest\/v1\/notes/.test(c.url) && c.body && c.body.checklist && c.body.checklist.vp_nore_mlh === '10' && c.body.checklist.vp_vaso_mlh === '9');
   check('V2 💉 fila de vasopresores: chips apagados sin campos; al encender norepinefrina propone 4 mg/100 mL y muestra el ⚖️ peso en la misma fila (sigue al de Clínico y viceversa); con 70 kg y 10 mL/h → 5.7 mcg/kg/h (0.095 mcg/kg/min); meta 6 mcg/kg/h → 10.5 mL/h; 8 mg/100 → 11.4 mcg/kg/h; 80 mL/h → rojo + sugerencia SSC en mcg/kg/h (se oculta al bajar); vasopresina 20 U/100 mL a 9 mL/h → 0.03 U/min (1.8 U/h), 15 mL/h → rojo; sin peso avisa; sobrevive al repintado; se guarda en la nube',
     v2.row0 && v2.noInputs0 && v2.def[0] === '4' && v2.def[1] === '100'
-    && v2.pesoInputs === 2 && v2.pesoVpVal0 === '70' && v2.pesoClin80 === '80' && v2.pesoSaved80 === '80' && v2.pesoVp70 === '70'
+    && v2.pesoInputs === 3 && v2.pesoVpVal0 === '70' && v2.pesoClin80 === '80' && v2.pesoSaved80 === '80' && v2.pesoVp70 === '70' && v2.pesoIu70 === '70'
     && v2.res1 === '5.7 mcg/kg/h (0.095 mcg/kg/min)' && v2.meta1 === '= 10.5 mL/h' && v2.metaPh === 'mcg/kg/h' && v2.res2 === '11.4 mcg/kg/h (0.19 mcg/kg/min)'
     && /vp-hi/.test(v2.hi) && /SSC 2021: con norepinefrina ≥ 15 mcg\/kg\/h/.test(v2.ssc) && v2.sscShown && v2.sscHidden
     && v2.defV[0] === '20' && v2.defV[1] === '100' && v2.resV === '0.03 U/min (1.8 U/h)' && /vp-hi/.test(v2.hiV) && /falta el peso/.test(v2.noPeso)
