@@ -2265,6 +2265,10 @@
     .badge-labsdia { font-size:9px;font-weight:800;padding:1px 6px;border-radius:4px;white-space:nowrap;cursor:default;background:#fde68a;color:#78350f;border:1px solid #f59e0b }
     .badge-labsdia.ok { background:#dcfce7;color:#166534;border-color:#86efac }
     .labsdia-line { font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:3px 8px;margin-bottom:4px }
+    .ck-inicio { display:inline-flex;align-items:center;gap:2px;font-size:11px;color:#64748b;white-space:nowrap }
+    .ck-inicio input[type="date"] { font-size:11px;padding:2px 4px;min-height:26px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#0a1628;max-width:128px }
+    .ck-dian { font-size:11px;font-weight:800;color:#0e7490;white-space:nowrap }
+    body.dark .ck-inicio input[type="date"] { background:#1e293b;color:#e2e8f0;border-color:#475569 }
     .labsdia-line.ok { color:#166534;background:#f0fdf4;border-color:#86efac }
     body.dark .labsdia-line { background:#3a2a06;border-color:#92400e;color:#fcd34d }
     body.dark .labsdia-line.ok { background:#0f2a1e;border-color:#166534;color:#86efac }
@@ -4314,6 +4318,27 @@ body.dark #egreso-card .eg-d{ background:#152e4d; border-color:#2f4f79; color:#c
 #board-nav .bn-flt .flt-t{ font-size:12px; font-weight:700; padding:6px 10px; min-height:34px; border-radius:6px; border:1px solid #3b5d8a; background:transparent; color:#cfe0f5; cursor:pointer; font-family:var(--font); white-space:nowrap; }
 #board-nav .bn-flt .flt-t.on{ background:#0e7490; border-color:#0e7490; color:#fff; }
 #board-nav .bn-flt .flt-x{ border-color:#f59e0b; color:#fde68a; }
+/* 🧪 Labs hoy · 🕘 Qué cambió · 🔎 búsqueda en cajas · ⬆ sin subir (30 oct 2026) */
+#board-nav .bn-labshoy{ background:transparent; border:1.5px solid #f59e0b; color:#fde68a; }
+#board-nav .bn-labshoy.open{ background:rgba(245,158,11,.22); }
+#board-nav .bn-qc-btn{ background:transparent; border:1.5px solid #c084fc; color:#e9d5ff; }
+#board-nav .bn-qc-btn.on{ background:#7e22ce; border-color:#7e22ce; color:#fff; }
+#board-nav .bn-lh, #board-nav .bn-qc{ flex-basis:100%; padding:6px 2px 2px; border-top:1px solid rgba(255,255,255,.14); color:#e2e8f0; font-size:12px; }
+#board-nav .lh-h{ display:flex; align-items:center; gap:8px; font-weight:800; margin-bottom:4px; flex-wrap:wrap; }
+#board-nav .lh-h select{ font-size:12px; padding:3px 4px; border-radius:5px; border:1px solid #3b5d8a; background:#fff; color:#0a1628; }
+#board-nav .lh-copy, #board-nav .lh-x{ font-size:12px; font-weight:700; padding:5px 10px; min-height:32px; border-radius:6px; border:1px solid #3b5d8a; background:transparent; color:#cfe0f5; cursor:pointer; font-family:var(--font); }
+#board-nav .lh-x{ margin-left:auto; }
+#board-nav .lh-list{ display:flex; flex-direction:column; gap:3px; max-height:38vh; overflow-y:auto; }
+#board-nav .lh-row, #board-nav .qc-pt, #board-nav .qc-c{ text-align:left; font-size:12px; padding:5px 8px; min-height:32px; border-radius:6px; border:1px solid #3b5d8a; background:rgba(255,255,255,.06); color:#e2e8f0; cursor:pointer; font-family:var(--font); }
+#board-nav .lh-exp{ color:#94a3b8; font-size:11px; }
+#board-nav .lh-mot{ color:#fde68a; font-weight:700; }
+#board-nav .lh-vacio{ color:#94a3b8; font-size:12px; }
+#board-nav .qc-row{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+#board-nav .qc-c .by-chip{ margin-left:4px; }
+#board-nav .bn-busq{ flex-basis:100%; display:flex; flex-wrap:wrap; gap:4px; align-items:center; font-size:12px; color:#cfe0f5; padding-top:4px; }
+#board-nav .bn-busq button{ font-size:12px; font-weight:700; padding:4px 10px; min-height:30px; border-radius:6px; border:1px solid #22d3ee; background:transparent; color:#a5f3fc; cursor:pointer; font-family:var(--font); }
+.qc-hl{ box-shadow:0 0 0 2px #c084fc; border-radius:8px; }
+#board-side .bs-up, #board-nav .bn-beds .bb .bs-up{ display:inline-block; width:8px; height:8px; border-radius:50%; border:2px solid #ea580c; background:#fff; box-sizing:border-box; margin-right:3px; vertical-align:middle; flex:0 0 auto; }
 .fl-wrap{ padding:4px 2px 12px; }
 .fl-note{ font-size:12px; color:#64748b; margin:4px 0 10px; }
 .fl-grp{ margin-bottom:14px; }
@@ -4616,7 +4641,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
 
     <!-- FILTER BAR -->
     <div id="filterbar">
-      <input id="search" placeholder="🔍 Nombre, cama o expediente..." oninput="debouncedSearch()" />
+      <input id="search" placeholder="🔍 Nombre, cama, expediente, DX, cirugía…" oninput="debouncedSearch()" />
       <div class="esp-filters" id="esp-filters"></div>
       <span class="count-badge" id="count-badge">0 pacientes</span>
       <button class="btn-pink" onclick="openAddModal()">➕ Nuevo paciente</button>
@@ -6122,11 +6147,11 @@ const PLCDS = (function() {
     if (atb.length && sp.length) {
       const u = sp[sp.length - 1]; const d = diasDesde(u.f);
       const max = sp.filter(function (x) { const dd = diasEntre(x.f, u.f); return dd !== null && dd <= 7; }).reduce(function (m, x) { return Math.max(m, x.n); }, 0);
-      const dias = num(ctx.ck.atb_dias);
+      const dias = num(typeof _ckDia === "function" ? _ckDia(ctx.ck, "atb") : ctx.ck.atb_dias);
       if ((d === null || d <= 1) && (isFinite(dias) ? dias >= 3 : true) && (u.n < 0.5 || (max >= 1 && u.n <= max * 0.2)))
         out.push(sug("pct_suspender", "🧫 Infección", "Procalcitonina baja con antibiótico", "leve", "PCT " + r2(u.n) + (max > u.n ? " (máximo " + r2(max) + ")" : "") + " con " + nombres(atb) + (isFinite(dias) ? " (día " + dias + ")" : "") + ": si la clínica mejoró, considerar suspender o acortar el antibiótico (PCT < 0.5 o caída ≥ 80 %).", "PCT " + r2(u.n) + " (" + fc(u.f) + ")", "PCT baja: valorar suspender ATB", "pct:" + r2(u.n)));
     }
-    const npoD = num(ctx.ck.npo_dias);
+    const npoD = num(typeof _ckDia === "function" ? _ckDia(ctx.ck, "npo") : ctx.ck.npo_dias);
     if (ctx.ck.npo && npoD >= 5 && !ctx.ck.npt && !ctx.meds.some(function (m) { return /\bNPT\b|NUTRICION|ENTERAL/.test(N(m.txt)); })) {
       const alb = ctx.lab("alb", 7);
       out.push(sug("nutricion", "🍽 Nutrición", "Ayuno prolongado sin soporte nutricional", npoD >= 7 ? "moderada" : "leve", "Ayuno de " + npoD + " días sin nutrición" + (alb ? " (Alb " + r1(alb.n) + ")" : "") + ": si no tolerará la vía oral pronto, valorar nutrición enteral (de preferencia) o parenteral (ESPEN: antes de 7 días si está desnutrido o en UCI).", "Ayuno día " + npoD + (alb ? " · Alb " + r1(alb.n) : ""), "Ayuno prolongado: soporte nutricional", "npo:" + npoD));
@@ -10842,11 +10867,11 @@ function plExportBackup() {
       PLNE_SIS.forEach(function(sis){ var v=_plneVal2(ck["nota_sis_"+sis[0]]); if(v) an.push(_plneOra(sis[1].toUpperCase()+": "+v)); });
       try{ var ex=JSON.parse(ck.nota_sis_extra||"[]"); if(Array.isArray(ex)) ex.forEach(function(it){ if(it&&_plneVal2(it.txt)) an.push(_plneOra((_plneVal2(it.etq)||"OTRO").toUpperCase()+": "+_plneVal2(it.txt))); }); }catch(_){ }
       var mx=[];
-      if(ck.npo) mx.push("SE MANTIENE EN AYUNO"+(_plneVal2(ck.npo_dias)?" (DÍA "+_plneVal2(ck.npo_dias)+")":"")); else if(_plneVal2(ck.dieta)) mx.push("CON DIETA "+_plneVal2(ck.dieta));
-      if(ck.npt) mx.push("NUTRICIÓN PARENTERAL"+(_plneVal2(ck.npt_pct)?" AL "+_plneVal2(ck.npt_pct)+" %":"")+(_plneVal2(ck.npt_fecha)?" DESDE EL "+_plneFnPunto(ck.npt_fecha):""));
+      if(ck.npo) mx.push("SE MANTIENE EN AYUNO"+(_plneVal2(_ckDia(ck,"npo"))?" (DÍA "+_plneVal2(_ckDia(ck,"npo"))+")":"")); else if(_plneVal2(ck.dieta)) mx.push("CON DIETA "+_plneVal2(ck.dieta));
+      if(ck.npt) mx.push("NUTRICIÓN PARENTERAL"+(_plneVal2(ck.npt_pct)?" AL "+_plneVal2(ck.npt_pct)+" %":"")+(_ckDia(ck,"npt")?" (DÍA "+_ckDia(ck,"npt")+")":(_plneVal2(ck.npt_fecha)?" DESDE EL "+_plneFnPunto(ck.npt_fecha):"")));
       // Sin dosis ni decisiones que nadie capturó (oct 2026): antes ponía enoxaparina «40 MG CADA 24 HORAS», «DURACIÓN
       // GUIADA POR…» y «PRONÓSTICO RESERVADO A EVOLUCIÓN» por defecto. Lo que falta va entre corchetes.
-      if(ck.atb) mx.push("SE MANTIENE MANEJO ANTIMICROBIANO CON "+(_plneVal2(ck.atb_nombre)||"[ANTIBIÓTICO]")+(_plneVal2(ck.atb_dias)?" (DÍA "+_plneVal2(ck.atb_dias)+")":""));
+      if(ck.atb) mx.push("SE MANTIENE MANEJO ANTIMICROBIANO CON "+(_plneVal2(ck.atb_nombre)||"[ANTIBIÓTICO]")+(_plneVal2(_ckDia(ck,"atb"))?" (DÍA "+_plneVal2(_ckDia(ck,"atb"))+")":""));
       if(ck.tvp) mx.push("TROMBOPROFILAXIS CON "+(ck.tvp_tipo==="enoxaparina"?("ENOXAPARINA "+(_plneVal2(ck.tvp_dosis)||"[DOSIS Y FRECUENCIA]")+" SUBCUTÁNEA"):(_plneVal2(ck.tvp_otro)||_plneVal2(ck.tvp_tipo)||"[TIPO]")));
       if(ck.cur_necesita||ck.cur_realizada) mx.push("CURACIÓN DIARIA DE HERIDA QUIRÚRGICA");
       var cults=[];
@@ -11894,6 +11919,7 @@ function plExportBackup() {
     }
     function updateOutboxBadge() {
       const q = outboxLoad();
+      _marcarSinSubir(q);   // ⬆ punto por cama con cambios sin subir
       const badge = document.getElementById("outbox-badge");
       if (!badge) return;
       if (!q.length) { badge.textContent = ""; badge.onclick = null; badge.style.cursor = ""; return; }
@@ -14725,6 +14751,43 @@ function plExportBackup() {
       document.body.appendChild(warn);
       setTimeout(function () { if (warn.parentNode) warn.parentNode.removeChild(warn); }, rescatado ? 10000 : 6000);
     }
+    // Rescates de la cola sin repetir (30 oct 2026): una nota en la cola de un paciente que ya no está en el censo va a la
+    // Papelera una sola vez. Antes sus campos seguían «sucios»: cada vez que se ocultaba la app persistBeforeExit la volvía a
+    // encolar y al volver la red se archivaba otra copia idéntica (un iPad viejo dejó 30 copias de la misma persona en 7 min).
+    // Ahora: (1) se olvidan sus pendientes en memoria y (2) una copia con el mismo contenido ya rescatada en este equipo (7 días,
+    // compartido entre pestañas) no se vuelve a archivar.
+    const PL_RESCATES_KEY = "pl_rescates", PL_RESCATES_MS = 7 * 24 * 3600000;
+    function _huellaNota(k, d) {
+      const fuera = { _cambiosLocales: 1, _egreso: 1, _egresoFecha: 1 };
+      const norm = function (v) {
+        if (Array.isArray(v)) return v.map(norm);
+        if (!v || typeof v !== "object") return v;
+        const o = {};
+        Object.keys(v).sort().forEach(function (x) { if (x.indexOf("__") !== 0 && !fuera[x]) o[x] = norm(v[x]); });
+        return o;
+      };
+      let s = String(k || "") + "|"; try { s += JSON.stringify(norm(d || {})); } catch (_) {}
+      let h = 0x811c9dc5;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+      return h.toString(36) + "." + s.length.toString(36);
+    }
+    function _olvidarPendientesDe(k) {
+      delete _dirtyFields[k]; delete _pendingDirty[k]; delete _inflightDirty[k]; _pendingPush.delete(k);
+    }
+    function _rescatarCambiosSinPaciente(item) {
+      const k = item.key, w = item.who || {};
+      _olvidarPendientesDe(k);
+      const huella = _huellaNota(k, item.data), ahora = Date.now();
+      let vistos = {}; try { vistos = JSON.parse(localStorage.getItem(PL_RESCATES_KEY) || "{}") || {}; } catch (_) { vistos = {}; }
+      Object.keys(vistos).forEach(function (h) { if (!(ahora - vistos[h] < PL_RESCATES_MS)) delete vistos[h]; });
+      if (vistos[huella]) return false;
+      vistos[huella] = ahora;
+      try { localStorage.setItem(PL_RESCATES_KEY, JSON.stringify(vistos)); } catch (_) {}
+      const copia = Object.assign({}, item.data, { _cambiosLocales: { campos: Array.isArray(item.dirty) ? item.dirty : [], en_cola: true, por: "el paciente ya no estaba en el censo al volver la red", ts: new Date().toISOString() } });
+      _archivePatientRecord({ nombre: toSafeString(w.nombre) || "(sin nombre)", exp: toSafeString(w.exp), cama: toSafeString(w.cama) }, copia, k, "CAMBIOS DE ESTE iPad SIN SUBIR (el paciente ya no estaba en el censo)");
+      _avisoAltaRemota(toSafeString(w.nombre), true, "");
+      return true;
+    }
     function _onPatientGoneRemotely(p, why) {
       try {
         const idx = patients.indexOf(p);
@@ -14883,9 +14946,9 @@ function plExportBackup() {
         const _qxTxt = (_ucx && toSafeString(_ucx.procedimiento).trim()) || toSafeString(nd.qx).trim().split("\n")[0];
         if (pop !== null) parts.push("🔪 POP d" + pop + (_qxTxt ? " · " + _qxTxt.slice(0, 34) : ""));
         else if (_qxTxt) parts.push("🔪 " + _qxTxt.slice(0, 34));
-        if (ck.npo) parts.push("⛔ Ayuno" + (ck.npo_dias ? " d" + ck.npo_dias : ""));
+        if (ck.npo) parts.push("⛔ Ayuno" + (_ckDia(ck, "npo") ? " d" + _ckDia(ck, "npo") : ""));
         else if (ck.dieta) parts.push("🍽 " + ck.dieta);
-        if (ck.atb) parts.push("💊 ATB" + (ck.atb_nombre ? " " + ck.atb_nombre : "") + (ck.atb_dias ? " d" + ck.atb_dias : ""));
+        if (ck.atb) parts.push("💊 ATB" + (ck.atb_nombre ? " " + ck.atb_nombre : "") + (_ckDia(ck, "atb") ? " d" + _ckDia(ck, "atb") : ""));
         if (ck.tvp) parts.push("🩸 TVP " + (ck.tvp_tipo === "enoxaparina" ? "enoxa" + (ck.tvp_dosis ? " " + ck.tvp_dosis : "") : (ck.tvp_otro || ck.tvp_tipo || "")));
         if (ck.npt) parts.push("🧃 NPT" + (ck.npt_pct ? " " + ck.npt_pct : ""));
         const dispTxt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " · ", true) : "";
@@ -15525,10 +15588,32 @@ function plExportBackup() {
 
     // Mutex: online/visibilitychange/interval/init pueden disparar flushes solapados que se pisaban
     // la cola entre sí (read-modify-write). Si llega otro durante el flush, se repite al terminar.
+    // Entre pestañas/ventanas del mismo equipo (30 oct 2026): comparten la cola (localStorage) y subían la misma a la vez, cada
+    // una con su copia. Con Web Locks solo una sube; la otra reintenta en 3 s. Si el candado lleva 30 s ocupado (una pestaña
+    // congelada a media subida), se toma igual. Sin Web Locks (navegadores viejos), como antes.
+    let _flushOcupadoDesde = 0, _flushReintento = null;
+    function _flushConCandado() {
+      if (!(navigator.locks && typeof navigator.locks.request === "function")) return _flushOutboxInner();
+      const robar = _flushOcupadoDesde && Date.now() - _flushOcupadoDesde > 30000;
+      let subida = null;
+      return navigator.locks.request("pl-outbox-flush", robar ? { steal: true } : { ifAvailable: true }, function (lock) {
+        if (!lock) {
+          if (!_flushOcupadoDesde) _flushOcupadoDesde = Date.now();
+          if (!_flushReintento) _flushReintento = setTimeout(function () { _flushReintento = null; flushOutbox().catch(function () {}); }, 3000);
+          return;
+        }
+        _flushOcupadoDesde = 0;
+        return (subida = _flushOutboxInner());
+      }).catch(function (e) {
+        // Otra pestaña tomó el candado a la fuerza: esta subida sigue; se espera a que termine (el mutex de la pestaña no se rompe).
+        if (subida) return subida;
+        throw e;
+      });
+    }
     let _flushing = null, _flushAgain = false;
     async function flushOutbox() {
       if (_flushing) { _flushAgain = true; return _flushing; }
-      _flushing = _flushOutboxInner().finally(function () {
+      _flushing = _flushConCandado().finally(function () {
         _flushing = null;
         if (_flushAgain) { _flushAgain = false; flushOutbox().catch(function () {}); }
       });
@@ -15573,14 +15658,10 @@ function plExportBackup() {
               // cama o al subirlo, _outboxRekeyPatient/_relinkPatientId la re-clavan y entonces sí sube.
               if (!p) {
                 // Nota de un paciente que ya no está en el censo (lo dieron de alta en otro dispositivo mientras este iPad
-                // estaba sin red): antes se tiraba en silencio. Ahora va a la Papelera como «cambios de este iPad sin subir».
+                // estaba sin red): antes se tiraba en silencio. Ahora va a la Papelera como «cambios de este iPad sin subir»,
+                // una sola vez por contenido (_rescatarCambiosSinPaciente).
                 if (!_qp) {
-                  try {
-                    const w = item.who || {};
-                    const copia = Object.assign({}, item.data, { _cambiosLocales: { campos: Array.isArray(item.dirty) ? item.dirty : [], en_cola: true, por: "el paciente ya no estaba en el censo al volver la red", ts: new Date().toISOString() } });
-                    _archivePatientRecord({ nombre: toSafeString(w.nombre) || "(sin nombre)", exp: toSafeString(w.exp), cama: toSafeString(w.cama) }, copia, item.key, "CAMBIOS DE ESTE iPad SIN SUBIR (el paciente ya no estaba en el censo)");
-                    _avisoAltaRemota(toSafeString(w.nombre), true, "");
-                  } catch (e) { safeLog("flushOutbox rescate:", e); }
+                  try { _rescatarCambiosSinPaciente(item); } catch (e) { safeLog("flushOutbox rescate:", e); }
                 }
                 results[absIdx] = !_qp; return;
               }
@@ -16412,6 +16493,7 @@ function plExportBackup() {
       function normSearch(s) { return toSafeString(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[\s\-]/g, ""); }
       const searchNorm = normSearch(search);
       const searchTokens = searchNorm ? searchNorm.split(/\s+/).filter(Boolean) : [];
+      const _enCajas = {};   // 🔎 búsqueda dentro de las cajas (30 oct 2026): clave → cajas donde está el texto
       const filtered = patients.filter(p => {
         const em = selectedEsp === "ALL" || p.esp === selectedEsp;
         const rm = selectedResidente === "ALL" || (p.residente || "") === selectedResidente;
@@ -16425,9 +16507,13 @@ function plExportBackup() {
         if (searchTokens.length > 0) {
           const haystack = normSearch(p.nombre) + normSearch(p.cama) + normSearch(p.exp || "") + normSearch(p.adscrito || "") + normSearch(p.residente || "");
           sm = searchTokens.every(tok => haystack.includes(tok));
+          // Si no está en cama/nombre/expediente/adscrito/residente, se busca en DX, Cirugías, Pendientes, Otros y APP/PA
+          // (3 letras o más: «CPRE», «LAPE»). El resultado lleva directo a esa caja (_busqCajasHtml/_busqCajasSaltar).
+          if (!sm && searchNorm.length >= 3) { const cs = _buscarEnCajas(p, searchNorm, normSearch); if (cs.length) { sm = true; _enCajas[pid(p)] = cs; } }
         }
         return em && sm && rm && am && im && mm && svm;
       });
+      window.__busqCajas = _enCajas; window.__busqTexto = search.trim();
       const _cb = document.getElementById("count-badge");
       if (_cb) _cb.innerHTML = filtered.length + " pacientes" + (ALL_BEDS.length ? ` · <a href="#" onclick="event.preventDefault();scrollToFreeBeds()" style="color:#059669;text-decoration:underline;cursor:pointer;font-weight:700" title="Ver camas libres">${getFreeBeds().length} camas libres 🛏</a>` : "");
       ["piso", "census", "print", "noOlvidar", "altas", "pendientes", "tablero", "papelera"].forEach(v => {
@@ -16609,9 +16695,100 @@ function plExportBackup() {
         if (n) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (_) {} }
       }, 450);
     }
+    // 🔎 Búsqueda dentro de las cajas (30 oct 2026): ¿en qué cajas de esta persona está el texto? (texto ya normalizado)
+    const PL_BUSQ_CAJAS = [["dx", "DX"], ["cx", "Cirugías"], ["plan", "Pendientes"], ["manejo", "Otros"], ["historia", "APP/PA"]];
+    function _buscarEnCajas(p, term, norm) {
+      const nd = noteData[pid(p)] || {}, ck = nd.checklist || {};
+      const txt = {
+        dx: [p.dx, nd.dx], plan: [nd.pendientes], manejo: [nd.manejo], historia: [nd.app, nd.pa],
+        cx: [nd.qx].concat((Array.isArray(ck.cirugias) ? ck.cirugias : []).map(function (c) { return c ? [c.procedimiento, c.hallazgos].join(" ") : ""; }))
+      };
+      return PL_BUSQ_CAJAS.filter(function (s) { return txt[s[0]].some(function (v) { return norm(v).indexOf(term) !== -1; }); }).map(function (s) { return { sec: s[0], label: s[1] }; });
+    }
+    function _busqCajasHtml(k) {
+      const cs = (window.__busqCajas || {})[k]; if (!cs || !cs.length) return "";
+      return `<div class="bn-busq" data-testid="busq-cajas">🔎 «${esc(window.__busqTexto || "")}» en: ` + cs.map(function (c) {
+        return `<button type="button" data-k="${esc(k)}" data-sec="${c.sec}" onclick="fcJump(this.dataset.k,this.dataset.sec)">${c.label}</button>`;
+      }).join("") + `</div>`;
+    }
+    // Lleva a la primera caja con el texto, una vez por búsqueda y paciente (los repintados de Realtime no vuelven a mover la vista).
+    function _busqCajasSaltar(k) {
+      const cs = (window.__busqCajas || {})[k]; if (!cs || !cs.length) return;
+      const marca = (window.__busqTexto || "") + "|" + k; if (window.__busqSaltado === marca) return;
+      window.__busqSaltado = marca;
+      setTimeout(function () { if (window.__focusPid === k) fcJump(k, cs[0].sec); }, 80);
+    }
+    // ⬆ Cambios sin subir por paciente (30 oct 2026): en la cola de este equipo o pendientes de un guardado que falló.
+    function _clavesSinSubir(q) {
+      const s = new Set();
+      try { (q || outboxLoad()).forEach(function (it) { if (!it) return; if (it.type === "note" && it.key) s.add(it.key); else if (it.type === "patient" && it.patient) s.add(pid(it.patient)); }); } catch (_) {}
+      try { Object.keys(_pendingDirty).forEach(function (k) { if (_pendingDirty[k] && _pendingDirty[k].size) s.add(k); }); } catch (_) {}
+      return s;
+    }
+    function _sinSubirDot(k, set) { return set.has(k) ? `<span class="bs-up" data-testid="sin-subir" title="Cambios de este equipo que aún no suben a la nube"></span>` : ""; }
+    function _marcarSinSubir(q) {
+      try {
+        const set = _clavesSinSubir(q);
+        document.querySelectorAll("#board-side .bs-btn[data-k], #board-nav .bn-beds .bb[data-k]").forEach(function (b) {
+          const dot = b.querySelector(".bs-up"), want = set.has(b.dataset.k);
+          if (want && !dot) b.insertAdjacentHTML("afterbegin", _sinSubirDot(b.dataset.k, set));
+          else if (!want && dot) dot.remove();
+        });
+      } catch (_) {}
+    }
+    // 🕘 Qué cambió en mi guardia (30 oct 2026): lo escrito en las últimas horas en cada tarjeta, con su autor (checklist.__pl_note_meta.by).
+    // Solo se muestra; no escribe nada.
+    const PL_QC_SEC = { dx: "dx", pendientes: "plan", manejo: "manejo", entrega: "entrega", app: "historia", pa: "historia", cirugias: "cx", qx: "cx", sangrado: "cx",
+      pendientes_mips: "roles", pendientes_r1: "roles", interconsultas: "ic", cultivos: "ic" };
+    function _qcHoras() { const h = +window.__qcHoras; return h === 6 || h === 24 ? h : 12; }
+    function _cambiosDe(nd, desde) {
+      const meta = nd && nd.checklist && nd.checklist[NOTE_SYNC_META_KEY];
+      const by = meta && isPlainObject(meta.by) ? meta.by : {}, out = [];
+      Object.keys(by).forEach(function (f) {
+        const b = by[f], t = b && b.t ? Date.parse(b.t) : NaN;
+        if (!(t >= desde) || f === "winlab_alias") return;
+        const lbl = _undoFieldLabel(f);
+        out.push({ f: f, sec: PL_QC_SEC[f] || "pase", label: lbl === f ? f.replace(/_/g, " ") : lbl, u: toSafeString(b.u || b.i), i: toSafeString(b.i || toSafeString(b.u).slice(0, 2).toUpperCase()), t: t });
+      });
+      return out.sort(function (a, b) { return b.t - a.t; });
+    }
+    function _qcHora(t) { const d = new Date(t), z = function (n) { return String(n).padStart(2, "0"); }; return z(d.getHours()) + ":" + z(d.getMinutes()); }
+    function _qcLista(pts) {
+      const desde = Date.now() - _qcHoras() * 3600000, out = [];
+      (pts || []).forEach(function (p) { const k = pid(p), c = _cambiosDe(noteData[k], desde); if (c.length) out.push({ k: k, p: p, cambios: c }); });
+      return out.sort(function (a, b) { return b.cambios[0].t - a.cambios[0].t; });
+    }
+    function _qcBtnHtml(lista) {
+      return `<button type="button" class="bn-mode bn-qc-btn${window.__qcOpen ? " on" : ""}" data-testid="qc-btn" onclick="toggleQueCambio()" title="Qué cambió en las últimas horas: las cajas escritas, con quién y a qué hora (solo se muestra)">🕘 Cambios${lista.length ? " · " + lista.length : ""}</button>`;
+    }
+    function _qcPanelHtml(lista) {
+      if (!window.__qcOpen) return "";
+      const h = _qcHoras();
+      const sel = `<select data-testid="qc-horas" onchange="window.__qcHoras=+this.value;renderView()">` + [6, 12, 24].map(function (x) { return `<option value="${x}"${x === h ? " selected" : ""}>${x} h</option>`; }).join("") + `</select>`;
+      const filas = lista.length ? lista.map(function (x) {
+        return `<div class="qc-row" data-testid="qc-row" data-k="${esc(x.k)}"><button type="button" class="qc-pt" data-k="${esc(x.k)}" onclick="focusGoTo(this.dataset.k)"><b>${esc(x.p.cama || "S/C")}</b> ${esc(x.p.nombre || "")}</button>`
+          + x.cambios.map(function (c) { return `<button type="button" class="qc-c" data-k="${esc(x.k)}" data-sec="${c.sec}" onclick="qcIr(this.dataset.k,this.dataset.sec)" title="${esc(c.label + " · " + c.u + " · " + _qcHora(c.t))}">${esc(c.label)} <span class="by-chip" style="background:${_byColor(c.u || c.i)}">${esc(c.i)} · ${_qcHora(c.t)}</span></button>`; }).join("")
+          + `</div>`;
+      }).join("") : `<span class="lh-vacio">Nada escrito en las cajas en las últimas ${h} h.</span>`;
+      return `<div class="bn-qc" data-testid="qc-panel"><div class="lh-h">🕘 Qué cambió · últimas ${sel}<button type="button" class="lh-x" onclick="toggleQueCambio()" title="Cerrar">✕</button></div><div class="lh-list">${filas}</div></div>`;
+    }
+    function toggleQueCambio() { window.__qcOpen = !window.__qcOpen; renderView(); }
+    function qcIr(k, sec) { if (window.__focusPid !== k) focusGoTo(k); setTimeout(function () { fcJump(k, sec); }, 60); }
+    // Con «🕘 Cambios» abierto, las cajas de la tarjeta en foco escritas en la ventana se resaltan (quién y a qué hora en el título).
+    function _qcMarcar(k) {
+      if (!window.__qcOpen || !k) return;
+      try {
+        const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
+        _cambiosDe(noteData[k], Date.now() - _qcHoras() * 3600000).forEach(function (c) {
+          const el = document.getElementById("sec-" + c.sec + "-" + ek); if (!el) return;
+          el.classList.add("qc-hl");
+          if (!el.dataset.qc) el.dataset.qc = c.label + " · " + c.u + " " + _qcHora(c.t);
+        });
+      } catch (_) {}
+    }
     function _fltBtnHtml() {
       const n = _filtrosActivos();
-      return `<button type="button" class="bn-mode bn-flt-btn${n ? " on" : ""}${window.__fltOpen ? " open" : ""}" data-testid="flt-btn" onclick="toggleFiltrosTablero()" title="Filtrar las camas por cama o nombre, especialidad, adscrito, residente, servicio, ingresos o camas libres">🔎 Filtrar camas${n ? " · " + n : ""}</button>`;
+      return `<button type="button" class="bn-mode bn-flt-btn${n ? " on" : ""}${window.__fltOpen ? " open" : ""}" data-testid="flt-btn" onclick="toggleFiltrosTablero()" title="Filtrar las camas por cama, nombre o texto de las cajas (DX, cirugías, pendientes), especialidad, adscrito, residente, servicio, ingresos o camas libres">🔎 Filtrar camas${n ? " · " + n : ""}</button>`;
     }
     function _fltPanelHtml() {
       if (!window.__fltOpen) return "";
@@ -16626,7 +16803,7 @@ function plExportBackup() {
       const nLib = ALL_BEDS.length ? getFreeBeds().length : 0;
       const busq = (function () { const s = document.getElementById("search"); return s ? toSafeString(s.value).trim() : ""; })();
       return `<div class="bn-flt" data-testid="flt-panel">`
-        + `<label class="flt-f flt-q"><span>Cama o nombre</span><input type="search" data-testid="flt-buscar" value="${esc(busq)}" placeholder="3-15, UCI, apellido…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="fltBuscar(this)" onkeydown="if(event.key==='Enter'){clearTimeout(window.__fltBuscarT);renderView();}"/></label>`
+        + `<label class="flt-f flt-q"><span>Buscar</span><input type="search" data-testid="flt-buscar" value="${esc(busq)}" placeholder="3-15, apellido, CPRE, LAPE…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" oninput="fltBuscar(this)" onkeydown="if(event.key==='Enter'){clearTimeout(window.__fltBuscarT);renderView();}"/></label>`
         + sel("esp", "Especialidad", selectedEsp, cuenta(function (p) { return p.esp || ""; }))
         + sel("adscrito", "Adscrito", selectedAdscrito, cuenta(function (p) { return toSafeString(p.adscrito).trim(); }))
         + sel("residente", "Residente", selectedResidente, cuenta(function (p) { return toSafeString(p.residente).trim(); }))
@@ -16718,6 +16895,7 @@ function plExportBackup() {
           let fcard;
           try { fcard = isSimpleEsp(fp.esp, fnd) ? renderSimpleCard(fp, fnd, fk) : (typeof renderFocusBoard === "function" ? renderFocusBoard(fp, fnd, fk) : renderFullCard(fp, fnd, fk)); }
           catch (e) { fcard = `<div class="full-card" style="padding:16px;color:#b91c1c">⚠️ Error al renderizar este paciente.</div>`; }
+          const _sinSubir = _clavesSinSubir(), _lh = _labsHoyPendientes(_ordered), _qc = _qcLista(_ordered);
           const _side = `<div id="board-side"><div class="bs-h">Camas</div>` + _ordered.map(pp => {
             const kk = pid(pp);
             const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
@@ -16726,14 +16904,14 @@ function plExportBackup() {
             // Punto de estado: rojo = lab crítico sin reconocer; ámbar = sin labs de hoy / viejos
             let _dot = "";
             try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}" title="${_st === "red" ? "Lab crítico" : "Sin labs recientes"}"></span>`; } catch (_) {}
-            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
+            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_sinSubirDot(kk, _sinSubir)}${_dot}${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
           }).join("") + `</div>`;
           // Carril de camas HORIZONTAL (oct 2026, pedido de Gera): en el iPad el riel lateral estorbaba a las cajas.
           // En pantallas < 1340 px las camas van en esta tira deslizable dentro de la barra pegajosa (#board-side se oculta por CSS).
           const _beds = `<div class="bn-beds" data-testid="bn-beds">` + _ordered.map(pp => {
             const kk = pid(pp); const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
             let _dot = ""; try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}"></span>`; } catch (_) {}
-            return `<button type="button" class="bb${kk === fk ? " bb-cur" : ""}" data-k="${esc(kk)}" data-cama="${esc(pp.cama || "")}" onclick="focusGoTo(this.dataset.k)" style="border-top-color:${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_dot}${_labNewsFor(kk) ? "🧪" : ""}${esc(pp.cama || "S/C")}</button>`;
+            return `<button type="button" class="bb${kk === fk ? " bb-cur" : ""}" data-k="${esc(kk)}" data-cama="${esc(pp.cama || "")}" onclick="focusGoTo(this.dataset.k)" style="border-top-color:${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_sinSubirDot(kk, _sinSubir)}${_dot}${_labNewsFor(kk) ? "🧪" : ""}${esc(pp.cama || "S/C")}</button>`;
           }).join("") + `</div>`;
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
@@ -16744,12 +16922,17 @@ function plExportBackup() {
             + `<button class="bn-mode bn-pen${(typeof penModeOn === "function" && penModeOn()) ? " on" : ""}" onclick="togglePenMode(this)" title="Lápiz (toca para cambiar). iPad: Scribble = el iPad convierte tu letra en texto en cualquier caja (vitales, TA, drenajes, labs…) · Tinta = en las cajas grandes lo escrito se queda como tinta (tachar borra) y lo demás sigue siendo Scribble. Fuera del iPad: → Texto = la app convierte lo escrito (números al instante, texto por IA)">${(typeof _penModeLabel === "function") ? _penModeLabel(penMode()) : "✍️ Lápiz"}</button>`
             + `<button class="bn-mode" onclick="openPendientesImport()" title="Importar pendientes / planes desde el Excel del censo">📊 Planes</button>`
             + _fltBtnHtml()
+            + _labsHoyBtnHtml(_lh)
+            + _qcBtnHtml(_qc)
             + _egresoChipHtml()
             + renderAlertsNavBtn()
             + `<button class="bn-btn" onclick="focusNext()" ${_idx >= _tot - 1 ? "disabled" : ""} title="Siguiente (flecha derecha)">→</button>`
             + _fltPanelHtml()
+            + _labsHoyPanelHtml(_lh)
+            + _qcPanelHtml(_qc)
             + _beds
             + (isSimpleEsp(fp.esp, fnd) ? "" : _fcJumpBar(fp, fnd, fk))
+            + _busqCajasHtml(fk)
             + `</div>`;
           _bindBoardSwipe();
           _bindHeaderMin();
@@ -16780,6 +16963,8 @@ function plExportBackup() {
           _vp.dataset.plPid = fk;                                                            // sellos para _viewStateCapture/_viewStateRestore
           _vp.dataset.plMode = (isHojaMode() ? "h" : "") + (isPaseMode() ? "p" : "f");
           _bedStripCenter();                                                    // mismo cuadro: sin parpadeo a scrollLeft 0
+          _qcMarcar(fk);                                                        // 🕘 cajas escritas en las últimas horas
+          _busqCajasSaltar(fk);                                                 // 🔎 directo a la caja donde está lo buscado
           try { requestAnimationFrame(_bedStripCenter); } catch (_) {}          // idempotente (segunda pasada tras layout)
           return;
         }
@@ -17888,7 +18073,7 @@ function plExportBackup() {
       if (ck.vp_vaso_on) { const v = vpVasoDosis(ck.vp_vaso_u, ck.vp_vaso_ml, ck.vp_vaso_mlh); R.alertas.push("Vasopresina" + (v !== null ? " " + vpFmt(v) + " U/min" : "")); }
       if (ck.pm_vent) R.alertas.push("Ventilación mecánica" + (toSafeString(ck.pm_vent_modo).trim() ? " " + toSafeString(ck.pm_vent_modo).trim() : "") + (toSafeString(ck.pm_vent_fio2).trim() ? " FiO2 " + toSafeString(ck.pm_vent_fio2).trim() + " %" : ""));
       if (ck.npt) R.alertas.push("NPT" + (toSafeString(ck.npt_pct).trim() ? " " + toSafeString(ck.npt_pct).trim() : ""));
-      if (ck.npo) R.alertas.push("Ayuno" + (toSafeString(ck.npo_dias).trim() ? " d" + toSafeString(ck.npo_dias).trim() : ""));
+      if (ck.npo) R.alertas.push("Ayuno" + (_ckDia(ck, "npo") ? " d" + _ckDia(ck, "npo") : ""));
       // 💧 Gastos: drenajes y sondas con gasto, nota de drenajes, uresis y balance.
       const dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " · ", false) : "";
       if (dt) R.gastos.push(dt);
@@ -18486,7 +18671,7 @@ function plExportBackup() {
       var alerts = []; try { alerts = (typeof computeAlerts === "function") ? computeAlerts(p, nd) : []; } catch (e) {}
       var alertBadges = ""; try { alertBadges = (typeof renderAlertBadges === "function") ? renderAlertBadges(alerts) : ""; } catch (e) {}
       var atbOn = !!ck.atb;
-      var atbTxt = atbOn ? ("ATB" + (ck.atb_nombre ? " · " + _fbEsc(ck.atb_nombre) : "") + (ck.atb_dias ? " · d" + _fbEsc(ck.atb_dias) : "")) : "";
+      var atbTxt = atbOn ? ("ATB" + (ck.atb_nombre ? " · " + _fbEsc(ck.atb_nombre) : "") + (_ckDia(ck, "atb") ? " · d" + _fbEsc(_ckDia(ck, "atb")) : "")) : "";
 
       // textarea editable ligada a un campo de nivel superior de nd (mismos handlers que la lista)
       function fbField(label, field, value, rows){
@@ -21802,8 +21987,8 @@ function plExportBackup() {
       const ck_ai = (nd && nd.checklist) || {};
       const clinCtx = [];
       if (nd.manejo && nd.manejo.trim()) clinCtx.push("Otros (notas de la tarjeta): " + nd.manejo.trim());
-      if (ck_ai.atb && ck_ai.atb_nombre) clinCtx.push("ATB activo: " + ck_ai.atb_nombre + (ck_ai.atb_dias ? " (día " + ck_ai.atb_dias + ")" : ""));
-      if (ck_ai.npt) clinCtx.push("NPT activa" + (ck_ai.npt_pct ? " (" + ck_ai.npt_pct + "%)" : "") + (ck_ai.npt_inicio ? " desde " + ck_ai.npt_inicio : ""));
+      if (ck_ai.atb && ck_ai.atb_nombre) clinCtx.push("ATB activo: " + ck_ai.atb_nombre + (_ckDia(ck_ai, "atb") ? " (día " + _ckDia(ck_ai, "atb") + ")" : ""));
+      if (ck_ai.npt) clinCtx.push("NPT activa" + (ck_ai.npt_pct ? " (" + ck_ai.npt_pct + "%)" : "") + (_ckDia(ck_ai, "npt") ? " (día " + _ckDia(ck_ai, "npt") + ")" : ""));
       if (ck_ai.tvp && ck_ai.tvp_tipo) clinCtx.push("TVP: " + ck_ai.tvp_tipo + (ck_ai.tvp_dosis ? " " + ck_ai.tvp_dosis : ""));
       { const _cxs = (typeof cirugiasTexto === "function") ? cirugiasTexto(ck_ai, " | ") : ""; if (_cxs) clinCtx.push("Cirugías: " + _cxs); else if (nd.qx && nd.qx.trim()) clinCtx.push("Qx/Procedimiento: " + nd.qx.trim()); }
       const clinCtxStr = clinCtx.length ? clinCtx.join(" | ") : "No especificado";
@@ -29445,7 +29630,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.30-1";
+    const PL_BUILD = "2026.10.30-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -29668,7 +29853,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (container) {
         container.outerHTML = renderChecklist(nd, k);
       }
-      if (item === "pm_vent") _refreshLabsDiarios(k);   // 🧪 Labs diarios (intubado)
+      if (/^(pm_vent|npt|vp_nore_on|vp_vaso_on)$/.test(item)) _refreshLabsDiarios(k);   // 🧪 Labs diarios (intubado, NPT, vasopresor)
     }
 
     function updateDieta(k, val) {
@@ -29872,6 +30057,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const p = fi.split("-"); const d = new Date(+p[0], +p[1] - 1, +p[2]); const t = new Date(); t.setHours(0, 0, 0, 0);
       const n = Math.round((t - d) / 86400000);
       return n >= 0 ? n : null;
+    }
+    // Días que se cuentan solos (30 oct 2026): antibiótico, ayuno y NPT con fecha de inicio (ck.<x>_inicio, AAAA-MM-DD). El día
+    // de inicio es el día 1. Sin fecha, los días escritos a mano (atb_dias, npo_dias), como antes. → texto ("" si no hay).
+    const PL_DIAS_TX = { atb: "atb_dias", npo: "npo_dias", npt: "" };
+    function _ckDia(ck, x) {
+      ck = ck || {};
+      const n = _dispositivoDias(toSafeString(ck[x + "_inicio"]));
+      if (n !== null) return String(n + 1);
+      return PL_DIAS_TX[x] ? toSafeString(ck[PL_DIAS_TX[x]]).trim() : "";
+    }
+    function _inicioTxHtml(cl, k, x) {
+      const fi = toSafeString(cl[x + "_inicio"]), dia = _dispositivoDias(fi);
+      return `<label class="ck-inicio" title="Fecha de inicio: la app cuenta los días sola (el día de inicio es el día 1)">📅<input type="date" data-testid="inicio-${x}" value="${esc(fi)}" data-ck="${k}" onchange="setInicioTx(this.dataset.ck,'${x}',this.value)"/></label>`
+        + (dia !== null ? `<b class="ck-dian" data-testid="dia-${x}">día ${dia + 1}</b>` : "");
+    }
+    function setInicioTx(k, x, val) {
+      if (!PL_DIAS_TX.hasOwnProperty(x)) return;
+      const nd = getNote(k);
+      if (!nd.checklist) nd.checklist = {};
+      nd.checklist[x + "_inicio"] = /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : "";
+      _saveNoteNow(k, nd);
+      const c = document.getElementById("ck-row-" + k.replace(/[^a-zA-Z0-9]/g, "_"));
+      if (c) c.outerHTML = renderChecklist(nd, k);
     }
     // Texto resumen: "Saratoga D (FID) 30 mL seroso d3 | SNG 200 mL | Estoma 400 mL fecal"
     function dispositivosTexto(cl, sep, corto) {
@@ -30274,7 +30482,49 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (/PANCREATITIS/.test(dx) || ck.dx_cat === "pancreatitis") m.push("pancreatitis");
       const iotDx = /\bINTUBAD[OA]\b|\bIOT\b|\bVMI\b|VENTILACION MECANICA/.test(dx) && !/EXTUBAD|EXTUBACION|\bNO INTUBAD|\bSIN IOT\b/.test(dx);
       if (ck.pm_vent || iotDx) m.push("intubado");
+      // 30 oct 2026 (pedido del servicio): también NPT, vasopresor, sepsis y lesión renal aguda.
+      if (ck.npt) m.push("NPT");
+      if (ck.vp_nore_on || ck.vp_vaso_on) m.push("vasopresor");
+      if (/SEPSIS|SEPTICO|SEPTICA/.test(dx) && !/SIN (DATOS DE )?SEPSIS|NO SEPSIS|DESCARTA\w* SEPSIS/.test(dx)) m.push("sepsis");
+      if (/\bLRA\b|\bAKI\b|LESION RENAL AGUDA|(FALLA|INSUFICIENCIA) RENAL AGUDA/.test(dx)) m.push("LRA");
       return m;
+    }
+    // 🧪 Pedir labs hoy (30 oct 2026): camas con labs diarios que todavía no tienen labs de hoy, en la vista actual del tablero.
+    function _labsHoyPendientes(pts) {
+      const out = [];
+      (pts || []).forEach(function (p) {
+        const k = pid(p), e = _labsDiariosEstado(p, noteData[k] || defaultData());
+        if (e && !e.hoy) out.push({ k: k, p: p, motivos: e.motivos });
+      });
+      return out;
+    }
+    function _labsHoyTexto(lista) {
+      const d = new Date(), z = function (n) { return String(n).padStart(2, "0"); };
+      return "🧪 Pedir labs hoy (" + z(d.getDate()) + "/" + z(d.getMonth() + 1) + "):\n" + lista.map(function (x) {
+        return toSafeString(x.p.cama || "S/C") + " · " + toSafeString(x.p.nombre) + (x.p.exp ? " · EXP " + toSafeString(x.p.exp) : "") + " · " + x.motivos.join(", ");
+      }).join("\n");
+    }
+    function _labsHoyBtnHtml(lista) {
+      if (!lista.length && !window.__labsHoyOpen) return "";
+      return `<button type="button" class="bn-mode bn-labshoy${window.__labsHoyOpen ? " open" : ""}" data-testid="labs-hoy-btn" onclick="toggleLabsHoy()" title="Camas con labs diarios (colangitis, pancreatitis, intubado, NPT, vasopresor, sepsis, LRA) que todavía no tienen labs de hoy">🧪 Labs hoy · ${lista.length}</button>`;
+    }
+    function _labsHoyPanelHtml(lista) {
+      if (!window.__labsHoyOpen) return "";
+      const filas = lista.length ? lista.map(function (x) {
+        return `<button type="button" class="lh-row" data-testid="labs-hoy-row" data-k="${esc(x.k)}" onclick="labsHoyIr(this.dataset.k)"><b>${esc(x.p.cama || "S/C")}</b> ${esc(x.p.nombre || "")}${x.p.exp ? ` <span class="lh-exp">EXP ${esc(x.p.exp)}</span>` : ""} <span class="lh-mot">${esc(x.motivos.join(", "))}</span></button>`;
+      }).join("") : `<span class="lh-vacio">✓ Todas las camas con labs diarios ya tienen labs de hoy.</span>`;
+      return `<div class="bn-lh" data-testid="labs-hoy-panel"><div class="lh-h">🧪 Pedir labs hoy · ${lista.length}${lista.length ? ` <button type="button" class="lh-copy" data-testid="labs-hoy-copiar" onclick="labsHoyCopiar(this)">📋 Copiar lista</button>` : ""}<button type="button" class="lh-x" onclick="toggleLabsHoy()" title="Cerrar">✕</button></div><div class="lh-list">${filas}</div></div>`;
+    }
+    function toggleLabsHoy() { window.__labsHoyOpen = !window.__labsHoyOpen; renderView(); }
+    function labsHoyIr(k) { focusGoTo(k); setTimeout(function () { fcJump(k, "labs"); }, 60); }
+    function labsHoyCopiar(btn) {
+      const lista = _labsHoyPendientes((window.__boardOrder || []).map(_ptDe).filter(Boolean));
+      const txt = _labsHoyTexto(lista);
+      const ok = function () { if (btn) { btn.textContent = "✓ Copiada"; setTimeout(function () { if (btn.isConnected) btn.textContent = "📋 Copiar lista"; }, 1800); } };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(ok, function () { window.prompt("Copia la lista:", txt); }); return; }
+      } catch (_) {}
+      window.prompt("Copia la lista:", txt);
     }
     function _labsDiariosEstado(p, nd) {
       let m = []; try { m = _labsDiariosMotivos(p, nd); } catch (_) { return null; }
@@ -30790,11 +31040,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const dieta = esc(cl.dieta || "");
 
       const npoHtml = `<span id="ck-${ek}-npo" class="ck-item${npoOn ? " ck-on" : ""}" data-ck="${k}" data-item="npo" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Ayuno / Nada Por vía Oral"><span class="ck-label">${npoOn ? "✓ " : ""}Ayuno</span></span>` +
-        (npoOn ? `<input class="ck-dieta" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno" style="width:100px"/>` : "");
+        (npoOn ? (_dispositivoDias(toSafeString(cl.npo_inicio)) === null ? `<input class="ck-dieta" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.npo_dias || "")}" placeholder="Días de ayuno" data-ck="${k}" data-field="npo_dias" oninput="updateNpoField(this.dataset.ck,this.dataset.field,this.value)" title="Días de ayuno (o pon la fecha de inicio 📅 y la app los cuenta)" style="width:100px"/>` : "") + _inicioTxHtml(cl, k, "npo") : "");
 
       const atbHtml = `<span id="ck-${ek}-atb" class="ck-item${atbOn ? " ck-on" : ""}" data-ck="${k}" data-item="atb" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Antibioticoterapia activa"><span class="ck-label">${atbOn ? "✓ " : ""}ATB</span></span>` +
         (atbOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.atb_nombre || "")}" placeholder="Antibiótico..." data-ck="${k}" data-field="atb_nombre" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Nombre del antibiótico" style="width:120px"/>` +
-          `<input class="ck-dieta" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento" style="width:48px"/>` : "");
+          (_dispositivoDias(toSafeString(cl.atb_inicio)) === null ? `<input class="ck-dieta" inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false" value="${esc(cl.atb_dias || "")}" placeholder="Días" data-ck="${k}" data-field="atb_dias" oninput="updateAtbField(this.dataset.ck,this.dataset.field,this.value)" title="Días de tratamiento (o pon la fecha de inicio 📅 y la app los cuenta)" style="width:48px"/>` : "") + _inicioTxHtml(cl, k, "atb") : "");
 
       const tvpTipo = cl.tvp_tipo || "";
       const tvpHtml = `<span id="ck-${ek}-tvp" class="ck-item${tvpOn ? " ck-on" : ""}" data-ck="${k}" data-item="tvp" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Profilaxis TVP (HBPM/compresión)"><span class="ck-label">${tvpOn ? "✓ " : ""}TVP</span></span>` +
@@ -30821,7 +31071,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       const nptFecha = esc(cl.npt_fecha || "");
       const nptHtml = `<span id="ck-${ek}-npt" class="ck-item${nptOn ? " ck-on ck-npt-on" : ""}" data-ck="${k}" data-item="npt" onclick="toggleChecklist(this.dataset.ck,this.dataset.item)" title="Nutrición Parenteral Total"><span class="ck-label">${nptOn ? "✓ " : ""}NPT</span></span>` +
         (nptOn ? `<input class="ck-dieta" autocorrect="off" autocapitalize="off" spellcheck="false" value="${nptPct}" placeholder="% (ej: 80%)" data-ck="${k}" oninput="updateNptField(this.dataset.ck,'npt_pct',this.value)" style="width:80px;font-weight:700;${nptPct ? "color:#7c3aed" : ""}"/>` +
-          (nptFecha ? `<span style="font-size:9px;color:#94a3b8;white-space:nowrap" title="Última actualización del %">🕐 ${nptFecha}</span>` : "") : "");
+          (nptFecha ? `<span style="font-size:9px;color:#94a3b8;white-space:nowrap" title="Última actualización del %">🕐 ${nptFecha}</span>` : "") + _inicioTxHtml(cl, k, "npt") : "");
 
       // ── Row 3: Pase Matutino — Signos Vitales ──
       function pmInp(field, w) {

@@ -1408,6 +1408,11 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
   d.notes.push({ patient_id: "s01", checklist: { sexo: "M" } });
   makeSandbox(st).sb.actualizarRegistro();
   check("R30h cuando la tarjeta trae el sexo, reemplaza al de WinLab («Tarjeta»)", P().s01["Sexo"] === "M" && P().s01["Sexo (fuente)"] === "Tarjeta", JSON.stringify(P().s01["Sexo (fuente)"]));
+  // La fila conservada de quien salió de la base (s06, M «de WinLab») se vuelve a revisar: si WinLab ahora trae los dos sexos, se quita.
+  d.winlab_labs = [wl(9, "000816", "PRUEBA FICTICIA SEXTA", "SEXTA", "FEMENINO", "F818", 1, "2026-10-29T09:00:00+00:00")];
+  makeSandbox(st).sb.actualizarRegistro();
+  check("R30j fila conservada con sexo «de WinLab»: si WinLab trae después el otro sexo de la misma persona, el sexo se quita (no se adivina)",
+    P().s06["Sexo"] === "" && P().s06["Sexo (fuente)"] === "" && P().s06["Estado en registro"] === "Salió de la base sin egreso registrado", JSON.stringify([P().s06["Sexo"], P().s06["Sexo (fuente)"]]));
 }
 {
   // Relectura única: un registro que ya había leído WinLab (cursor guardado) lo vuelve a leer completo una sola vez.
@@ -1435,6 +1440,67 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
     P.x1["Dx principal"] === "Pancreatitis aguda" && P.x1["Dx principal (fuente)"] === "Inferido del DX" && !/dx principal/.test(PC.x1)
     && P.x2["Dx principal"] === "" && /dx principal/.test(PC.x2) && P.x3["Dx principal"] === "Otro" && P.x3["Dx principal (fuente)"] === "Elegido en la app" && !/dx principal/.test(PC.x3),
     JSON.stringify({ x1: [P.x1["Dx principal"], P.x1["Dx principal (fuente)"]], x2: P.x2["Dx principal"], x3: [P.x3["Dx principal"], P.x3["Dx principal (fuente)"]], PC }));
+}
+
+// ─── R32: copias de rescate de un iPad sin id de la base (30 oct 2026: 30 copias de una persona inflaban los egresos) ───
+{
+  const ETQ = "CAMBIOS DE ESTE iPad SIN SUBIR (el paciente ya no estaba en el censo)";
+  const resc = (id, t, pd, nd) => ({ id, archived_at: t, patient_data: pd, note_data: Object.assign({ _egreso: ETQ, _egresoFecha: "30/10/2026", _cambiosLocales: { en_cola: true } }, nd) });
+  const HOSP = { nombre: "PRUEBA FICTICIA HOSP", exp: "000771", cama: "3-169" };
+  const h1 = { id: "h1", cama: "3-169", nombre: "PRUEBA FICTICIA HOSP", exp: "000771", dx: "COLECISTITIS", edad: "50", ingreso: "2026-10-25", estado: "ESTABLE" };
+  const h9 = { id: "h9", cama: "3-170", nombre: "PRUEBA FICTICIA OTRA CAMA", exp: "000779", dx: "HERNIA", edad: "40", ingreso: "2026-10-25", estado: "ESTABLE" };
+  const r2 = resc("r2", "2026-10-30T11:26:00+00:00", HOSP, { pendientes: "VIEJO DEL IPAD", labHistory: [{ fecha: "2026-10-26", labs: { hb: "10.5" } }] });
+  // Corrida anterior (sin el paciente en el censo): la copia quedó en la hoja como un episodio propio «archivo-r2».
+  const d = { cronologia_respaldo: [], ris_estudios: [], winlab_labs: [], procedimientos_dia: [], patients: [h9], notes: [], archive: [r2] };
+  const st = { db: d, hoy: "2026-10-30" }; makeSandbox(st).sb.actualizarRegistro();
+  const antes = tab(st.ss, "Pacientes").map((x) => x["ID episodio"]);
+  d.patients = [h1, h9];
+  d.notes = [{ patient_id: "h1", pendientes: "EN TARJETA", manejo: "", lab_history: [{ fecha: "2026-10-28", labs: { hb: "12" } }] }];
+  d.archive = [
+    // Egreso anterior de la misma persona (reingresó): la copia del iPad se une a la hospitalización actual, no a esta.
+    // (Capturada dentro de la ventana de lectura de la Papelera; su egreso fue el 15/10.)
+    { id: "e0", archived_at: "2026-10-29T10:00:00+00:00", patient_data: { _supa_id: "h0", nombre: "PRUEBA FICTICIA HOSP", exp: "000771", cama: "3-150", ingreso: "2026-10-10", estado: "ESTABLE" }, note_data: { _egreso: "EGRESO", _egreso_tipo: "alta", _egresoFecha: "15/10/2026" } },
+    { id: "e1", archived_at: "2026-10-29T18:00:00+00:00", patient_data: { _supa_id: "e1", nombre: "PRUEBA FICTICIA EGRESO", exp: "000772", cama: "3-185", ingreso: "2026-10-20", estado: "ESTABLE" }, note_data: { _egreso: "EGRESO", _egreso_tipo: "alta", _egresoFecha: "29/10/2026" } },
+    resc("r1", "2026-10-30T11:25:00+00:00", HOSP, { pendientes: "VIEJO DEL IPAD", manejo: "SOLO EN LA COPIA", labHistory: [{ fecha: "2026-10-27", labs: { hb: "11" } }] }),
+    r2,
+    resc("r3", "2026-10-30T11:27:00+00:00", { nombre: "PRUEBA FICTICIA EGRESO", exp: "000772", cama: "3-185" }, { pendientes: "DEL EGRESADO" }),
+    resc("r4", "2026-10-30T11:28:00+00:00", { nombre: "PRUEBA FICTICIA SIN BASE", exp: "", cama: "" }, { pendientes: "A" }),
+    resc("r5", "2026-10-30T11:29:00+00:00", { nombre: "PRUEBA FICTICIA SIN BASE", exp: "", cama: "" }, { pendientes: "B" }),
+    resc("r6", "2026-10-30T11:30:00+00:00", { nombre: "OTRA PERSONA DISTINTA", exp: "000771", cama: "3-171" }, { pendientes: "C" })
+  ];
+  makeSandbox(st).sb.actualizarRegistro();
+  const P = Object.fromEntries(tab(st.ss, "Pacientes").map((x) => [x["ID episodio"], x]));
+  const L = tab(st.ss, "Labs");
+  check("R32a la copia de un iPad sin id se une a la tarjeta de la misma persona (mismo expediente y nombre): solo rellena; la tarjeta manda",
+    antes.includes("archivo-r2") && P.h1["Estado en registro"] === "Hospitalizado" && P.h1["Pendientes"] === "EN TARJETA" && P.h1["Manejo"] === "SOLO EN LA COPIA" && P.h0["Manejo"] === "" && P.h0["Estado en registro"] === "Egresado"
+    && L.some((x) => x["ID episodio"] === "h1" && x["Fecha"] === "2026-10-27" && x["Vigente"] === "Sí") && L.some((x) => x["ID episodio"] === "h1" && x["Fecha"] === "2026-10-26"),
+    JSON.stringify({ antes, h1: [P.h1["Pendientes"], P.h1["Manejo"]], L: L.map((x) => x["ID episodio"] + ":" + x["Fecha"] + ":" + x["Vigente"]) }));
+  check("R32b ya no hay un episodio por copia: unidas (r1, r2, r3) o juntas por persona (r4 + r5); con el mismo expediente y otro nombre (r6) no se une; el egreso real conserva su motivo",
+    !P["archivo-r1"] && !P["archivo-r3"] && !P["archivo-r5"] && P["archivo-r4"] && P["archivo-r6"] && /^Alta a domicilio/.test(P.e1["Motivo de egreso"])
+    && L.filter((x) => x["ID episodio"] === "archivo-r2").every((x) => x["Vigente"] === "No") && L.some((x) => x["ID episodio"] === "archivo-r2"),
+    JSON.stringify({ ids: Object.keys(P), e1: P.e1["Motivo de egreso"], r2: L.filter((x) => x["ID episodio"] === "archivo-r2") }));
+  const K = Object.fromEntries(tab(st.ss, "Clave de seudónimos").map((x) => [x["ID episodio"], x["ID episodio (análisis)"]]));
+  const E = (id) => tab(st.ss, AN[0]).find((x) => x["ID episodio"] === K[id]) || {};
+  const observados = tab(st.ss, AN[0]).filter((x) => String(x["Egreso observado"]) === "1").length;
+  const R = tab(st.ss, "Resumen mensual").find((x) => String(x["Mes"]).indexOf("2026-10") === 0) || {};
+  check("R32c en el análisis las copias sin episodio (también la fila vieja «archivo-r2») son «Duplicado» y se excluyen: en el mes, solo los dos egresos reales",
+    ["archivo-r2", "archivo-r4", "archivo-r6"].every((id) => E(id)["Tipo de egreso"] === "Duplicado (no es otro episodio)" && String(E(id)["Excluir (duplicado)"]) === "1")
+    && E("e1")["Tipo de egreso"] === "Alta" && E("h0")["Tipo de egreso"] === "Alta" && observados === 2 && String(R["Egresos (n)"]) === "2",
+    JSON.stringify({ r2: E("archivo-r2")["Tipo de egreso"], r4: E("archivo-r4")["Tipo de egreso"], r6: E("archivo-r6")["Tipo de egreso"], e1: E("e1")["Tipo de egreso"], observados, R }));
+}
+
+// ─── R33: días que la app cuenta sola (30 oct 2026): con fecha de inicio el registro anota «desde AAAA-MM-DD» ───
+{
+  const pt = (id) => ({ id, cama: "3-7" + id.slice(-2), nombre: "PRUEBA FICTICIA DIAS " + id, exp: "00073" + id.slice(-1), dx: "COLANGITIS", edad: "40", ingreso: "2026-10-25", estado: "ESTABLE" });
+  const d = { cronologia_respaldo: [], ris_estudios: [], winlab_labs: [], procedimientos_dia: [], archive: [], patients: [pt("y1"), pt("y2")],
+    notes: [{ patient_id: "y1", checklist: { atb: true, atb_nombre: "CEFTRIAXONA", atb_dias: "9", atb_inicio: "2026-10-27", npo: true, npo_inicio: "2026-10-28", npt: true, npt_pct: "80", npt_inicio: "2026-10-26" } },
+      { patient_id: "y2", checklist: { atb: true, atb_nombre: "MEROPENEM", atb_dias: "3", npo: true, npo_dias: "2" } }] };
+  const st = { db: d, hoy: "2026-10-30" }; makeSandbox(st).sb.actualizarRegistro();
+  const P = Object.fromEntries(tab(st.ss, "Pacientes").map((x) => [x["ID episodio"], x]));
+  check("R33 con fecha de inicio: «desde AAAA-MM-DD» (sin los días escritos a mano); sin ella, los días escritos como antes",
+    P.y1["Antibiótico"] === "CEFTRIAXONA, desde 2026-10-27" && P.y1["Dieta y NPO"] === "NPO desde 2026-10-28" && P.y1["NPT"] === "Sí · 80% · desde 2026-10-26"
+    && P.y2["Antibiótico"] === "MEROPENEM, 3 días" && P.y2["Dieta y NPO"] === "NPO 2 días",
+    JSON.stringify([P.y1["Antibiótico"], P.y1["Dieta y NPO"], P.y1["NPT"], P.y2["Antibiótico"], P.y2["Dieta y NPO"]]));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");

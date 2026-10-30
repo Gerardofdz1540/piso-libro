@@ -137,6 +137,8 @@ siempre. Cada columna está definida en «Diccionario de variables».
     vez** (marca `REG_WL_RELECTURA`; unas 4 vueltas de 10 min) y avisa en el Diccionario.
 - **Comorbilidades** (28 oct 2026) desde APP y DX, con negación. Sin APP quedan vacías (desconocidas); el DX solo puede
   marcar 1. Es texto libre: revisar una muestra antes de publicar.
+- **Antibiótico, NPO y NPT** (30 oct 2026): si en la app se puso la fecha de inicio, se anota «desde AAAA-MM-DD» en lugar
+  de los días escritos a mano (los días dependen del corte del estudio).
 - **Índice urinario** = uresis ÷ peso del episodio ÷ horas (columna «Horas» del Pase, o «900/12 H»; sin horas, 24 h
   con aviso), igual que la app.
 - **Tamaño.** Con unos 240 egresos al mes:
@@ -149,6 +151,12 @@ siempre. Cada columna está definida en «Diccionario de variables».
   - **Vigente: No.** Lo que ya no está en la tarjeta (una cirugía corregida, un renglón quitado) se queda marcado así.
   - **Egresado depurado de la Papelera:** se queda con sus datos y con la fecha de la «Última vez en la base».
   - **Salió del censo sin pasar por la Papelera:** queda como «Salió de la base sin egreso registrado».
+  - **Copias de rescate de un iPad sin id de la base (30 oct 2026, versión 2026.10.30-2):** «CAMBIOS DE ESTE iPad SIN
+    SUBIR (el paciente ya no estaba en el censo)» no es otra hospitalización. Se une, solo para rellenar (la tarjeta
+    manda), al episodio de la misma persona (mismo expediente y nombre compatible; si hay varios, el que sigue en el censo
+    o el último egreso hasta el día del rescate). Sin pareja, las copias de una persona son **un** episodio con el tipo
+    «Duplicado (no es otro episodio)» (Excluir = 1). Las filas que corridas anteriores ya escribieron con el id de cada
+    copia («archivo-…») quedan «Vigente: No» y su tipo también es «Duplicado»: ya no inflan egresos ni mortalidad.
 - **Escritura segura:**
   - Escribe encima sin vaciar antes; si Sheets falla a la mitad, la pestaña no queda vacía.
   - Agranda la cuadrícula si hace falta.

@@ -94,6 +94,47 @@ const store = {
   check('S2 nota en la cola de un paciente que ya no está en el censo: ya no se tira, va a la Papelera y sale de la cola',
     s2.nuevo && s2.pend === 'NOTA HUERFANA' && s2.cama === '3-399' && s2.cola === 0, JSON.stringify(s2));
 
+  // ── S2b: el rescate no se repite (30 oct 2026: un iPad viejo dejó 30 copias iguales de la misma persona) ──
+  const s2b = await page.evaluate(async () => {
+    const k = 'pt-26-79998-3-398', who = { nombre: 'ANA NADIE ROJO', exp: '26-79998', cama: '3-398' };
+    const d = Object.assign(defaultData(), { pendientes: 'NOTA HUERFANA 2' });
+    noteData[k] = d; _pendingDirty[k] = new Set(['pendientes']); _pendingPush.add(k); _dirtyFields[k] = new Set(['pendientes']);
+    const antes = archivados.length;
+    outboxSave([{ type: 'note', key: k, data: JSON.parse(JSON.stringify(d)), dirty: ['pendientes'], who, ts: Date.now() }]);
+    await flushOutbox();
+    const tras1 = archivados.length - antes;
+    persistBeforeExit();                                   // al ocultar la app: antes la volvía a encolar
+    const cola1 = outboxLoad().filter(i => i.key === k).length;
+    const sucio = !!(_pendingDirty[k] || _dirtyFields[k] || _inflightDirty[k] || _pendingPush.has(k));
+    // Otra pestaña que aún la tenía pendiente la encola otra vez (con otro meta de autor/hora): no hay copia nueva.
+    outboxEnqueue({ type: 'note', key: k, data: Object.assign(JSON.parse(JSON.stringify(d)), { __pl_note_meta: { by: { pendientes: { i: 'XX', t: Date.now() } } } }), dirty: ['pendientes'], who });
+    await flushOutbox();
+    const tras2 = archivados.length - antes;
+    // Con contenido distinto sí es otra copia.
+    outboxEnqueue({ type: 'note', key: k, data: Object.assign(JSON.parse(JSON.stringify(d)), { pendientes: 'OTRA COSA DISTINTA' }), dirty: ['pendientes'], who });
+    await flushOutbox();
+    return { tras1, cola1, sucio, tras2, tras3: archivados.length - antes, cola: outboxLoad().length, huellas: Object.keys(JSON.parse(localStorage.getItem('pl_rescates') || '{}')).length };
+  });
+  await page.waitForTimeout(600);
+  const s2bPosts = (t) => calls.filter(c => c.m === 'POST' && c.url.startsWith('/rest/v1/archive') && JSON.stringify(c.body || {}).includes(t)).length;
+  check('S2b el rescate de la cola se archiva una sola vez: se olvidan sus pendientes (ocultar la app ya no la re-encola) y otra copia igual no se archiva; con otro contenido, sí',
+    s2b.tras1 === 1 && s2b.cola1 === 0 && !s2b.sucio && s2b.tras2 === 1 && s2b.tras3 === 2 && s2b.cola === 0 && s2bPosts('NOTA HUERFANA 2') === 1 && s2bPosts('OTRA COSA DISTINTA') === 1 && s2b.huellas >= 3,
+    JSON.stringify({ s2b, p1: s2bPosts('NOTA HUERFANA 2'), p2: s2bPosts('OTRA COSA DISTINTA') }));
+
+  // ── S2c: una sola pestaña sube la cola a la vez (Web Locks) ──
+  const s2c = await page.evaluate(async () => {
+    if (!(navigator.locks && navigator.locks.request)) return { sinLocks: true };
+    let soltar; await new Promise(r => navigator.locks.request('pl-outbox-flush', () => new Promise(s => { soltar = s; r(); })));
+    outboxSave([{ type: 'rest', key: 'proc|delete|999', method: 'DELETE', table: 'procedimientos_dia', match: 'id=eq.999', ts: Date.now() }]);
+    await flushOutbox();
+    const conCandado = outboxLoad().length;
+    soltar();
+    await new Promise(r => setTimeout(r, 4000));
+    return { conCandado, despues: outboxLoad().length };
+  });
+  check('S2c con el candado en manos de otra pestaña esta no sube la cola; al soltarlo, la sube sola a los 3 s',
+    s2c.conCandado === 1 && s2c.despues === 0, JSON.stringify(s2c));
+
   // ── S3: «No olvidar» ──
   const s3 = await page.evaluate(async () => {
     lsSaveNoOlvidar([{ id: 'tmp-1', _tempId: true, texto: 'CREADO SIN RED', author: 'T', fecha: '2026-10-27', done: false }, { id: 50, texto: 'VIEJA DE ESTE IPAD', author: 'T', fecha: '2026-10-20', done: false }]);

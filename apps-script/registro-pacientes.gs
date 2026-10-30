@@ -33,7 +33,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.10.30-1';
+var REGISTRO_VERSION = '2026.10.30-2';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -915,12 +915,41 @@ function regCompletarSexoWl(filas, ctx) {
   });
 }
 
+/** Copias de rescate de un iPad sin id de la base (ver regConstruir, 30 oct 2026). Cada una se une, solo para rellenar (la
+ *  tarjeta manda), al episodio de la misma persona: mismo expediente y nombre compatible (regMismaPersona); si hay varios,
+ *  el que sigue en el censo o, si no, el último egreso hasta el día del rescate. Sin pareja, las copias de una misma persona
+ *  son UN episodio con el tipo «Duplicado (no es otro episodio)»: se ve en el registro pero no cuenta en egresos ni en
+ *  mortalidad. Devuelve los ids «archivo-…» que ya no son episodio propio (sus filas de corridas anteriores: «Vigente: No»). */
+var REG_RESCATE = /CAMBIOS DE ESTE IPAD SIN SUBIR/i, REG_RESCATE_SIN_EPISODIO = /YA NO ESTABA EN EL CENSO|COPIA DE RESCATE SIN EPISODIO/i;
+function regUnirRescates(rescates, episodios, orden, agregar) {
+  var absorbidos = [], sinPareja = {};
+  rescates.forEach(function (r) {
+    var pd = r.pd, exp = regTexto(pd.exp).trim(), dia = regFechaLocal(r.a.archived_at), idCopia = 'archivo-' + r.a.id;
+    var cands = exp ? orden.filter(function (id) { var ep = episodios[id]; return regTexto(ep.p.exp).trim() === exp && regMismaPersona(ep.p.nombre, pd.nombre); }) : [];
+    var destino = cands.filter(function (id) { return episodios[id].estado === 'Hospitalizado'; })[0];
+    if (!destino && cands.length) {
+      var hasta = cands.filter(function (id) { return !dia || !episodios[id].egreso || episodios[id].egreso <= dia; });
+      destino = (hasta.length ? hasta : cands).slice().sort(function (x, y) { return regTexto(episodios[x].egreso).localeCompare(regTexto(episodios[y].egreso)); }).pop();
+    }
+    if (destino) { episodios[destino].n = regUnirNotas(episodios[destino].n, r.nd); absorbidos.push(idCopia); return; }
+    var clave = exp || regPalabrasNombre(pd.nombre).sort().join(' '), g = sinPareja[clave];
+    var motivo = regTexto(r.nd._egreso) + (REG_RESCATE_SIN_EPISODIO.test(regTexto(r.nd._egreso)) ? '' : ' · copia de rescate sin episodio en la base');
+    var egreso = regFecha(r.nd._egresoFecha) || dia;
+    if (!g) { sinPareja[clave] = idCopia; agregar(idCopia, { id: idCopia, p: Object.assign({}, pd), n: r.nd, estado: 'Egresado', motivo: motivo, egreso: egreso, fuente: 'Papelera (archive)' }); return; }
+    var ep = episodios[g];
+    Object.keys(pd).forEach(function (k) { if (!regVacio(pd[k])) ep.p[k] = pd[k]; });
+    ep.n = regUnirNotas(r.nd, ep.n); ep.egreso = egreso;
+    absorbidos.push(idCopia);
+  });
+  return absorbidos;
+}
+
 /** Episodios (una hospitalización por id de paciente de la base) y filas de cada pestaña (objetos por columna). */
 function regConstruir(datos, hoy) {
   var notasPorId = {}, cronoPorId = {};
   regArr(datos.notes).forEach(function (n) { if (n && n.patient_id) notasPorId[n.patient_id] = n; });
   regArr(datos.cronologias).forEach(function (c) { if (c && c.patient_id) cronoPorId[c.patient_id] = regTexto(c.cronologia); });
-  var episodios = {}, orden = [];
+  var episodios = {}, orden = [], rescates = [];
   function agregar(id, ep) { if (!episodios[id]) orden.push(id); episodios[id] = ep; }
 
   // Egresados y archivados (la Papelera), del más viejo al más nuevo: la copia más reciente de cada episodio manda y las
@@ -930,8 +959,12 @@ function regConstruir(datos, hoy) {
       if (!a) return;
       var pd = regObj(a.patient_data), nd0 = regObj(a.note_data);
       if (!regTexto(pd.nombre).trim() && !regTexto(pd.exp).trim()) return;
-      var id = regTexto(pd._supa_id || pd.id || ('archivo-' + a.id));
       var nd = regUnirNotas(nd0, nd0._copia_base);
+      // Copia de rescate de un iPad SIN id de la base (30 oct 2026: «…el paciente ya no estaba en el censo»): no es otra
+      // hospitalización. Se une al final con el episodio de la misma persona (regUnirRescates); antes cada copia era un
+      // egreso nuevo («archivo-…») y un iPad viejo que repitió 30 copias inflaba egresos y mortalidad.
+      if (!regTexto(pd._supa_id || pd.id).trim() && REG_RESCATE.test(regTexto(nd0._egreso))) { rescates.push({ a: a, pd: pd, nd: nd }); return; }
+      var id = regTexto(pd._supa_id || pd.id || ('archivo-' + a.id));
       var motivo = REG_EGRESO_APP[regTexto(nd0._egreso_tipo)] ? REG_EGRESO_APP[regTexto(nd0._egreso_tipo)] + ' (registrado en la app)'
         : regTexto(nd0._egreso || (/^(ALTA|DEFUNCI[OÓ]N)$/i.test(regTexto(pd.estado)) ? pd.estado : '') || 'EGRESO');
       var egreso = regFecha(nd0._egresoFecha) || regFechaLocal(a.archived_at);
@@ -950,6 +983,7 @@ function regConstruir(datos, hoy) {
     var id = regTexto(p.id), previo = episodios[id];
     agregar(id, { id: id, p: p, n: previo ? regUnirNotas(regObj(notasPorId[p.id]), previo.n) : regObj(notasPorId[p.id]), estado: 'Hospitalizado', motivo: '', egreso: '', fuente: 'Censo (patients)' });
   });
+  var absorbidos = regUnirRescates(rescates, episodios, orden, agregar);
   // Restaurar desde la Papelera crea otro id: «Episodio relacionado» une las dos partes de la misma hospitalización.
   var relacion = {}, restauraciones = [];
   regArr(datos.restauraciones).forEach(function (r) {
@@ -960,6 +994,8 @@ function regConstruir(datos, hoy) {
     restauraciones.push([de, a]);
   });
   var out = { episodiosHoy: {}, relacion: relacion, restauraciones: restauraciones };
+  // Las filas que dejaron corridas anteriores con el id de una copia de rescate ya unida quedan «Vigente: No».
+  absorbidos.forEach(function (id) { out.episodiosHoy[id] = true; });
   REG_PESTANAS.forEach(function (cfg) { out[cfg.nombre] = []; });
   function fila(pestana, o) { out[pestana].push(o); }
 
@@ -1055,7 +1091,9 @@ function regConstruir(datos, hoy) {
         .map(function (k) { return d[k] === true ? k : regTexto(d[k]); }).join(' ');
     }).filter(function (x) { return x.trim(); });
     var drenajes = [regTexto(n.drenajes)].concat(disp).filter(function (x) { return x.trim(); }).join(' | ');
-    var atb = ck.atb ? [regTexto(ck.atb_nombre), ck.atb_dias ? regTexto(ck.atb_dias) + ' días' : ''].filter(Boolean).join(', ') || 'Sí' : '';
+    // Días que la app cuenta sola (30 oct 2026): con fecha de inicio se anota «desde AAAA-MM-DD» (los días dependen del corte).
+    var desde = function (x) { var f = regFecha(ck[x + '_inicio']); return f ? 'desde ' + f : ''; };
+    var atb = ck.atb ? [regTexto(ck.atb_nombre), ck.atb_dias && !desde('atb') ? regTexto(ck.atb_dias) + ' días' : '', desde('atb')].filter(Boolean).join(', ') || 'Sí' : '';
     var une = function (partes) { return partes.filter(function (x) { return regTexto(x).trim(); }).join(' · '); };
     var dxP = regDxPrincipal(ck.dx_cat, regTexto(p.dx) || regTexto(n.dx));
 
@@ -1068,9 +1106,9 @@ function regConstruir(datos, hoy) {
       'Antecedentes (APP)': regTexto(n.app), 'Padecimiento (PA)': regTexto(n.pa), 'Manejo': regTexto(n.manejo),
       'Pendientes': regTexto(n.pendientes), 'Drenajes y dispositivos': drenajes, 'Antibiótico': atb, 'Cultivos': regTexto(ck.cultivos),
       'Interconsultas': regTexto(ck.interconsultas),
-      'Dieta y NPO': une([regTexto(ck.dieta), ck.npo ? 'NPO' + (ck.npo_dias ? ' ' + regTexto(ck.npo_dias) + ' días' : '') : '']),
+      'Dieta y NPO': une([regTexto(ck.dieta), ck.npo ? 'NPO' + (desde('npo') ? ' ' + desde('npo') : (ck.npo_dias ? ' ' + regTexto(ck.npo_dias) + ' días' : '')) : '']),
       'TVP': ck.tvp ? une(['Sí', regTexto(ck.tvp_tipo), regTexto(ck.tvp_dosis), regTexto(ck.tvp_otro)]) : '',
-      'NPT': ck.npt ? une(['Sí', ck.npt_pct ? regTexto(ck.npt_pct) + '%' : '', regTexto(ck.npt_fecha)]) : '',
+      'NPT': ck.npt ? une(['Sí', ck.npt_pct ? regTexto(ck.npt_pct) + '%' : '', desde('npt') || regTexto(ck.npt_fecha)]) : '',
       'Ventilación': ck.pm_vent ? une(['Sí', regTexto(ck.pm_vent_modo), ck.pm_vent_fio2 ? 'FiO2 ' + regTexto(ck.pm_vent_fio2) : '', ck.pm_vent_peep ? 'PEEP ' + regTexto(ck.pm_vent_peep) : '']) : '',
       'Vasopresores': une([ck.vp_nore_on ? 'Norepinefrina' + (ck.vp_nore_mlh ? ' ' + regTexto(ck.vp_nore_mlh) + ' mL/h' : '') : '', ck.vp_vaso_on ? 'Vasopresina' + (ck.vp_vaso_mlh ? ' ' + regTexto(ck.vp_vaso_mlh) + ' mL/h' : '') : '']),
       'Cirugías (resumen)': cxTodas.map(function (c) { return [c.fecha, c.proc, REG_CX_DIRECTAS.indexOf(c.fuente) === -1 ? '[' + c.fuente + ']' : ''].filter(Boolean).join(' '); }).join(' | '),
@@ -1520,6 +1558,9 @@ function regEgresoTipo(motivo, estado) {
   var s = m + ' ' + regTexto(estado).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   if (/DUPLICADO/.test(m)) return 'Duplicado (no es otro episodio)';
   if (/BORRADO EN BD/.test(m)) return 'Borrado en la base (revisar)';
+  // Copia de un iPad de alguien que ya no estaba en el censo (30 oct 2026): su episodio real es otro. También las filas que
+  // corridas anteriores ya escribieron con el id de cada copia («archivo-…»).
+  if (/CAMBIOS DE ESTE IPAD/.test(m) && REG_RESCATE_SIN_EPISODIO.test(m)) return 'Duplicado (no es otro episodio)';
   // Copias de rescate («CAMBIOS DE ESTE iPad SIN SUBIR (alta en otro dispositivo)», cama dada a otra persona): no dicen
   // el motivo, aunque la etiqueta traiga la palabra «alta».
   if (/CAMBIOS DE ESTE IPAD|CAMA REASIGNADA \(OTRA PERSONA/.test(m)) return 'Motivo no registrado';
