@@ -28,7 +28,7 @@
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones», función
 // pl_reportar_version) y el vigilante la compara con la del repositorio: si no coinciden, falta pegar esta versión.
 // Cambiarla en cada cambio del archivo.
-var CENSO_SYNC_VERSION = '2026.10.27';
+var CENSO_SYNC_VERSION = '2026.10.30';
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
@@ -115,7 +115,8 @@ function doSync(opts) {
   // un upsert ON CONFLICT(cama) con ambos revienta con "cannot affect row a second time" y
   // TODA la sincronización falla. Quitamos el duplicado (gana el de más abajo en la hoja) y
   // lo logueamos a sync_log para que sea visible.
-  var dd = dedupByCama_(result.keep.map(toPatientRow_), key);
+  //    Antes, cada paciente en cama sin número (EXT…) recibe su cama única (camasUnicas_): ya no chocan entre sí.
+  var dd = dedupByCama_(camasUnicas_(result.keep.map(toPatientRow_)), key);
 
   // 2) RECONCILIACIÓN identidad-segura (Supabase REFLEJA la hoja, no solo acumula):
   //    (a) RETIRO — paciente que ya NO está en la hoja (alta/defunción) y cuya fila vino del
@@ -572,6 +573,32 @@ function editDistance1_(a, b) {
 // (3.183 ≠ 3-183) → el paciente viejo nunca se reemplaza y aparece stale en la app.
 function normalizeCama_(c) {
   return String(c == null ? '' : c).trim().toUpperCase().replace(/\./g, '-').replace(/\s+/g, ' ');
+}
+
+// Camas SIN número (30 oct 2026): «EXT» (quirófano / recuperación), RECU, PASILLO… o vacía. Ahí puede haber varios
+// pacientes a la vez y la base guarda UNO por cama (on_conflict=cama): dedupByCama_ se quedaba con el último y los
+// demás no entraban a la app. Cada uno recibe una cama ÚNICA y ESTABLE con su expediente, «EXT (26-12345)», la misma
+// que pone la app (camaUnicaSinNumero en index.html). Pasar de ahí a una cama con número es un cambio de cama normal
+// (la fila se mueve con su nota). UCI/UTI sin número («UCI AIS», «UTI AISL») son camas reales y no cambian.
+function camaSinNumero_(cama) {
+  var c = normalizeCama_(cama);
+  return !/\d/.test(c) && !/^(UCI|UTI)\b/.test(c);
+}
+function camaUnica_(cama, exp, extra) {
+  var c = normalizeCama_(cama), e = String(exp == null ? '' : exp).trim();
+  if (!e || !camaSinNumero_(c)) return c;
+  return (c.replace(/[\s-]+$/, '') || 'SIN CAMA') + ' (' + e + (extra ? ' ' + extra : '') + ')';
+}
+// A cada fila (ya con toPatientRow_) en cama sin número le pone su cama única. Si dos personas con el MISMO expediente
+// (error de captura) están en la misma área, se distinguen además por sus iniciales; así ninguna se queda fuera.
+function camasUnicas_(rows) {
+  var base = rows.map(function (r) { return camaUnica_(r.cama, r.exp); }), n = {};
+  base.forEach(function (c) { n[c] = (n[c] || 0) + 1; });
+  rows.forEach(function (r, i) {
+    var ini = norm_(r.nombre).split(/\s+/).filter(Boolean).map(function (w) { return w.charAt(0); }).join('');
+    r.cama = n[base[i]] > 1 && ini ? camaUnica_(r.cama, r.exp, ini) : base[i];
+  });
+  return rows;
 }
 
 // Quita filas con CAMA repetida (la hoja a veces lista el mismo cuarto 2 veces, o dos pacientes

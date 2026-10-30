@@ -7225,6 +7225,18 @@ function plExportBackup() {
       if (!/\d/.test(c)) return true;
       return false;
     }
+    // Camas sin número (EXT = quirófano / recuperación, RECU, PASILLO…; 30 oct 2026): ahí puede haber varios pacientes y
+    // la nube guarda UNO por cama: el segundo se quedaba atorado en la cola y el sync de la hoja solo subía al último. Cada
+    // paciente queda en «EXT (expediente)»: única, estable y la misma que pone el sync de la hoja (camaUnica_ en
+    // apps-script/censo-sync.gs). UCI/UTI sin número («UCI AIS») son camas reales y no cambian.
+    function camaUnicaSinNumero(cama, exp) {
+      const c = toSafeString(cama).trim().toUpperCase().replace(/\./g, "-").replace(/\s+/g, " "), e = toSafeString(exp).trim();
+      if (!e) return c;
+      const m = /^([^\d(]*?)\s*\(([^)]*)\)$/.exec(c);   // ya era «EXT (exp)»: se rehace con el expediente actual
+      const area = (m ? m[1] : c).replace(/[\s-]+$/, "");
+      if ((!m && /\d/.test(c)) || /\d/.test(area) || /^(UCI|UTI)\b/.test(area)) return c;
+      return (area || "SIN CAMA") + " (" + e + ")";
+    }
 
     // Listado completo de camas físicas del servicio
     // (para calcular camas libres; editable en Config)
@@ -24178,7 +24190,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       td.appendChild(input);
       input.focus(); input.select();
       function commit() {
-        const newCama = input.value.trim().toUpperCase();
+        const newCama = input.value.trim() ? camaUnicaSinNumero(input.value, p.exp) : "";
         const _ocupa = newCama && newCama !== p.cama ? _camaOcupadaPor(newCama, p) : null;
         if (_ocupa) { _avisoCamaOcupada(newCama, _ocupa); renderView(); return; }
         if (newCama && newCama !== p.cama) {
@@ -25929,8 +25941,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       renderView();
     }
     function saveModal() {
-      const cama = document.getElementById("mf-cama").value.trim().toUpperCase();
       const exp = document.getElementById("mf-exp").value.trim();
+      // Cama sin número (EXT, RECU…): «EXT (expediente)», igual que el sync de la hoja (camaUnicaSinNumero).
+      const cama = camaUnicaSinNumero(document.getElementById("mf-cama").value.trim().toUpperCase(), exp);
       const nombre = document.getElementById("mf-nombre").value.trim().toUpperCase();
       if (!cama || !exp || !nombre) { alert("Cama, nombre y expediente son obligatorios"); return; }
       // Validar cama duplicada al agregar (no al editar el mismo paciente)
@@ -26698,6 +26711,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             cama = importKeyNorm(cama); // mismo canon que sheet-sync/modal ("3.183" → "3-183")
             const nombre = String(r[iNombre] || "").trim().toUpperCase();
             const exp = String(r[iExp] || "").trim();
+            if (cama) cama = camaUnicaSinNumero(cama, exp);   // EXT, RECU… → «EXT (expediente)», como el sync de la hoja
             if (!cama || !nombre || cama.length < 2) {
               importLog.push({
                 row: i + 1, action: "omitida",
@@ -29591,7 +29605,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function promptChangeBed(k) {
       const p = patients.find(pt => pid(pt) === k);
       if (!p) return;
-      const newCama = prompt(`Cambiar cama para:\n${p.nombre}\nCama actual: ${p.cama}\n\nNueva cama:`, p.cama);
+      const _camaIn = prompt(`Cambiar cama para:\n${p.nombre}\nCama actual: ${p.cama}\n\nNueva cama:`, p.cama);
+      const newCama = _camaIn && _camaIn.trim() ? camaUnicaSinNumero(_camaIn, p.exp) : _camaIn;
       if (!newCama || newCama.trim() === "" || newCama.trim().toUpperCase() === p.cama.toUpperCase()) return;
       const _ocupa = _camaOcupadaPor(newCama, p);
       if (_ocupa) { _avisoCamaOcupada(newCama, _ocupa); return; }
@@ -29630,7 +29645,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.30-2";
+    const PL_BUILD = "2026.10.30-3";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
