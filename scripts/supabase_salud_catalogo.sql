@@ -1,5 +1,6 @@
 -- 27 oct 2026 · aplicado en producción (migraciones pl_salud_catalogo, pl_salud_catalogo_v2 y, el 28 oct,
--- pl_salud_catalogo_v3 con el trigger pl_entrega_sin_auto_insert).
+-- pl_salud_catalogo_v3 con el trigger pl_entrega_sin_auto_insert; el 2 nov, pl_salud_catalogo_v4 con los triggers
+-- pl_fila_version de winlab_labs y ris_estudios: sin ellos la app guardaría copias que no sabe cuándo cambiaron).
 -- Chequeo diario, solo de lectura, de que siguen puestas las protecciones de la base: los triggers que guardan notas y
 -- pacientes (archivar antes de borrar, restaurar nota, Cronología protegida, bitácora…), RLS en todas las tablas de
 -- public, la política «solo cuentas activas» y los trabajos de pg_cron. Lo llama el vigilante (scripts/vigilante.py,
@@ -24,7 +25,8 @@ declare
     'patients.patients_suppress_redundant_updates', 'patients.pl_audit_patients', 'patients.pl_borrado_masivo',
     'patients.trg_patients_updated', 'archive.pl_archive_eliminados', 'no_olvidar.pl_audit_no_olvidar',
     'no_olvidar.pl_borrados_otros', 'procedimientos_dia.pl_audit_procedimientos_dia',
-    'procedimientos_dia.pl_borrados_otros', 'indicaciones_doc.pl_indicaciones_guard'];
+    'procedimientos_dia.pl_borrados_otros', 'indicaciones_doc.pl_indicaciones_guard',
+    'winlab_labs.pl_fila_version', 'ris_estudios.pl_fila_version'];
   activas constant text[] := array['patients', 'notes', 'archive', 'config', 'guard_info', 'imagen_entries',
     'indicaciones_doc', 'lab_entries', 'no_olvidar', 'procedimientos_dia', 'ris_estudios', 'sync_log',
     'winlab_dispatch_log', 'winlab_labs', 'winlab_match', 'winlab_reports'];
