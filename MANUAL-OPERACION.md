@@ -736,6 +736,39 @@ temporal a disco y la base la cortaba a los 8 s (la caja no recibía nada). 5 GB
   recuerda desde cuándo el Doc está en cada versión: si el Apps Script ya la subió no escribe nada («api_vigente» en
   `indicaciones_fetch_log`); solo la sube ella si el Apps Script no siguió el cambio en 30 min.
 
+## 📉 Aviso de Supabase por transferencia «egress» (2 de noviembre de 2026)
+
+Supabase avisó que el proyecto pasaba la **transferencia** del plan gratuito (5 GB al mes de datos que *salen* de la
+base hacia la app, los robots y los respaldos). **No era espacio**: la base ocupa ~100 MB de 500 y no se borró nada.
+Dos causas, medidas en los registros de Supabase:
+
+1. **Cada recarga de la app bajaba todo otra vez.** Al volver a la pestaña, cada 10 min y al reconectar (~500 veces
+   al día entre todos los equipos) la app bajaba completos los labs del robot de los últimos 4 días (~8 MB), las notas
+   y la imagen, aunque nada hubiera cambiado.
+2. **El respaldo nocturno volcaba la base entera** (~210 MB sin comprimir cada noche ≈ 6 GB al mes él solo).
+
+Qué cambió (versión 2026.11.03-1 y respaldo del 2 nov):
+
+- **La app baja solo lo que cambió.** Antes de bajar labs, notas o imagen pide la lista de «versiones» (unos KB) y
+  toma de su copia local lo que ya tiene; solo viajan las filas nuevas o cambiadas. Lo que se ve es exactamente lo
+  mismo que antes (las pruebas lo comparan renglón por renglón). La copia vive en el propio equipo (se borra al
+  cerrar sesión) y cada renglón se vuelve a bajar completo al menos una vez al día por seguridad. Si algo no cuadra,
+  la app hace la descarga completa de siempre.
+- La base pone una **versión** (`updated_at`) en cada renglón de labs del robot y de imagen cada vez que cambia
+  (`scripts/supabase_version_filas.sql`, aplicado). El chequeo diario de protecciones vigila que siga puesta.
+- **Respaldo**: cada noche un respaldo **«base»** (~15 MB: pacientes, notas, archivo y todo lo demás) y los domingos
+  uno **«completo»** (también labs del robot, bitácora y copias de cada hora). Ver «Respaldo nocturno de la base».
+
+Cómo revisarlo: Supabase → **Settings → Usage** (o Organization → Usage) → *Egress*. Con los cambios debería quedar
+muy por debajo de 5 GB al mes; la cuenta del mes no baja de golpe (lo ya gastado se queda), pero la línea diaria sí.
+
+Si algún equipo se comportara raro con labs, notas o imagen después de esta versión: en ese equipo, ⚙️ → consola o
+Safari → *Inspeccionar* → `localStorage.setItem("pl_dc_off","1")` y recargar: vuelve a la descarga completa de antes
+(para quitarlo, `localStorage.removeItem("pl_dc_off")`). Avisar a quien mantiene la app.
+
+Si el aviso regresara, lo siguiente en la lista: el robot de imagen (RIS) reescribe todos sus renglones cada 2 h
+aunque no cambien, y cada reescritura viaja en vivo a cada equipo abierto.
+
 ## Seguridad clínica de la app (27 de octubre de 2026)
 
 **Valores críticos (rojo): una sola tabla.** El rojo de la celda, el semáforo, el banner «Labs críticos sin
@@ -962,7 +995,7 @@ una copia: además trae pestañas listas para estadística.
   | Censo | 18 h sin ningún cambio |
   | Tamaño de la base | — |
   | Disparos desde Supabase (labs y RIS) | la última respuesta del worker debe ser 200 (un 404 del RIS solo avisa: worker sin pegar) |
-  | Protecciones de la base | todas puestas (`pl_salud_catalogo`, 59 revisiones: triggers de notas y pacientes, RLS, políticas, pg_cron, canales privados, que nadie pueda cambiarse el rol) |
+  | Protecciones de la base | todas puestas (`pl_salud_catalogo`, 62 revisiones: triggers de notas y pacientes, versión de labs e imagen, RLS, políticas, pg_cron, canales privados, que nadie pueda cambiarse el rol) |
   | Versión de los dos Apps Script | igual a la del repositorio (solo avisa) |
 
   Si algo se atrasa, el job sale en rojo con el qué revisar y GitHub te manda el correo. Solo imprime horas y conteos.
@@ -1556,21 +1589,30 @@ pacientes de Urología, Neurocirugía y Trasplantes, también los de EXT.
 Supabase (plan gratuito) **no guarda copias** de la base: si el proyecto se borra, se pausa sin
 remedio o alguien corre un `UPDATE` equivocado, los pacientes, las notas y los labs se pierden.
 Desde octubre de 2026 el workflow **"Respaldo de la base"** (`.github/workflows/db-backup.yml`)
-hace cada noche a las **02:20 (hora de León)** una copia completa de la base, la **cifra** y la
-guarda fuera de Supabase:
+hace cada noche a las **02:20 (hora de León)** una copia de la base, la **cifra** y la guarda fuera
+de Supabase. Desde el 2 de noviembre de 2026 hay dos tipos (para no pasar la transferencia del plan,
+ver «📉 Aviso de Supabase por transferencia»):
 
+- **«base»** (lunes a sábado, ~15 MB): pacientes, notas, archivo, cuentas, configuración y todo lo
+  demás, **menos los renglones** de tres tablas grandes y secundarias: labs del robot
+  (`winlab_labs`; los labs ya están copiados en cada nota), bitácora de actividad (`audit_log`) y
+  copias de cada hora de las notas (`respaldo_hora`).
+- **«completo»** (domingos, ~210 MB): todo, incluidas esas tres. También se puede pedir a mano:
+  Actions → Respaldo de la base → **Run workflow** → marcar **completo**.
+- Para restaurar se usan los dos (el «base» más reciente y, encima, las tres tablas del «completo»
+  más reciente): `scripts/db-restore.md`, pasos 4 y 4b.
 - **Dónde queda**: GitHub → repo → **Actions** → **Respaldo de la base** → corrida del día → al
-  final, **Artifacts** → `respaldo-db-AAAAMMDD-HHMM`. Se conserva **30 días** (cada noche entra uno
-  nuevo y los de más de 30 días se borran solos). Opcional: también en una carpeta privada de Google
-  Drive (ahí se guardan 90 días).
+  final, **Artifacts** → `respaldo-db-base-AAAAMMDD-HHMM` o `respaldo-db-completo-AAAAMMDD-HHMM`. Se
+  conserva **30 días** (cada noche entra uno nuevo y los de más de 30 días se borran solos).
+  Opcional: también en una carpeta privada de Google Drive (ahí se guardan 90 días).
 - **Cifrado**: el archivo solo lo puede abrir el administrador con su **llave privada**. Ojo: el
   repo es **público**, así que el artifact y el registro de la corrida los puede bajar **cualquiera**
   con cuenta de GitHub. Lo único que protege los datos es el cifrado: por eso nunca se sube nada en
   claro, el registro solo muestra números (nunca nombres) y la llave privada no sale de la Mac/USB.
-- **Egreso de Supabase**: cada respaldo saca del proyecto más o menos lo que pesa la base (el plan
-  gratuito da **5 GB al mes**). Por eso el respaldo deja fuera las filas de `sync_log` (bitácora del
-  censo, se regenera sola). Una vez al mes mira Supabase → Settings → **Usage** → *Egress*: si va
-  por más de ~3 GB, cambia en `db-backup.yml` el cron a noches alternas (`"20 8 */2 * *"`).
+- **Transferencia (egress) de Supabase**: cada respaldo saca del proyecto lo que vuelca, sin
+  comprimir (el plan gratuito da **5 GB al mes**). Con «base» diario y «completo» semanal son ~1.3 GB
+  al mes (antes ~6 GB). Ninguno lleva las filas de `sync_log` (bitácora del censo, se regenera sola).
+  Una vez al mes mira Supabase → Settings → **Usage** → *Egress*.
 - **Cómo saber que corrió**: en esa lista debe haber un círculo verde cada día. Si sale rojo, GitHub
   manda el correo de "workflow failed" al dueño del repo; el paso rojo dice la causa (lo más común:
   cambió la contraseña de la base). El resumen de cada corrida dice el tamaño y cuántas filas tenían
@@ -1632,7 +1674,7 @@ base»).
 | `.github/workflows/winlab-dryrun.yml` | La corrida en seco del domingo (prueba que el robot aún puede entrar a WinLab) |
 | `.github/workflows/ris-scraper.yml` | El robot de imagen (visor RIS → Supabase) |
 | `.github/workflows/labs-watchdog.yml` | El vigilante que avisa si los labs llevan más de 26 h sin llegar |
-| `.github/workflows/db-backup.yml` | El respaldo nocturno cifrado de la base (02:20 León; artifact de 30 días) |
+| `.github/workflows/db-backup.yml` | El respaldo nocturno cifrado de la base (02:20 León; «base» cada noche y «completo» los domingos; artifact de 30 días) |
 | `scripts/db-restore.md` | Cómo abrir y restaurar ese respaldo en un proyecto nuevo, y el simulacro mensual |
 | `.github/workflows/ci.yml` | Las pruebas que corren en cada PR y antes de publicar |
 | `.github/workflows/deploy-pages.yml` | Cómo se publica la app en Cloudflare (solo si pasan las pruebas) |

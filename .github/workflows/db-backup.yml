@@ -16,11 +16,17 @@ name: Respaldo de la base
 #      los datos es el cifrado age (por eso la llave privada nunca sale de la Mac/USB) y por eso el log
 #      nunca imprime datos de pacientes. Si existe el secret RCLONE_CONFIG, se copia también a una
 #      carpeta privada de Google Drive.
-#   5. Egreso: cada respaldo saca del proyecto más o menos el tamaño de la base (el pooler manda los
-#      datos sin comprimir). El plan gratuito de Supabase tiene 5 GB de egreso al mes: por eso se
-#      excluyen los datos de sync_log (bitácora del censo, regenerable) y conviene vigilar Supabase →
-#      Settings → Usage → Egress; si el mes pasa de ~3 GB, cambiar el cron a noches alternas
-#      ("20 8 */2 * *").
+#   5. Egreso: cada respaldo saca del proyecto lo que vuelca, SIN comprimir (el pooler manda el texto
+#      tal cual). El plan gratuito de Supabase da 5 GB de egreso al mes y el volcado completo ya pesaba
+#      ~210 MB (≈6 GB al mes él solo: noviembre 2026, Supabase avisó que el proyecto pasaba la cuota).
+#      Desde el 2 nov 2026 hay dos tipos de respaldo:
+#        · «base», cada noche (~15 MB): todo el esquema y todos los datos MENOS las filas de cuatro
+#          tablas secundarias: winlab_labs (copias del robot de WinLab, ~150 MB; los labs ya viven en
+#          las notas), audit_log (bitácora de actividad), respaldo_hora (copias de cada hora de las
+#          notas, que ya van completas en la base) y sync_log (bitácora del censo, regenerable).
+#        · «completo», los domingos (o a mano: Run workflow → «completo»): todo menos sync_log.
+#      Restaurar = el «base» más reciente + las filas de esas tablas del «completo» más reciente
+#      (scripts/db-restore.md). Egreso del respaldo: ~1.3 GB al mes en vez de ~6 GB.
 # Cómo restaurar (siempre en un proyecto NUEVO, nunca sobre producción): scripts/db-restore.md.
 # Qué secrets crear y cómo generar la llave: MANUAL-OPERACION.md, "Respaldo nocturno de la base".
 # Hora: 08:20 UTC = 02:20 León (UTC-6, sin horario de verano), fuera del minuto :00 que GitHub
@@ -31,6 +37,11 @@ on:
   schedule:
     - cron: "20 8 * * *"
   workflow_dispatch:
+    inputs:
+      completo:
+        description: "Respaldo COMPLETO (también labs del robot, bitácora y copias de cada hora). Sin marcar: el «base» de cada noche."
+        type: boolean
+        default: false
 
 # Permisos mínimos del GITHUB_TOKEN: "actions: write" para el paso keepalive (endpoint "enable
 # workflow") y para upload-artifact.
@@ -101,6 +112,8 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           PGSSLMODE: require
           PGCONNECT_TIMEOUT: "30"
+          # true solo cuando alguien pide el completo a mano (en las corridas programadas viene vacío).
+          PEDIDO_COMPLETO: ${{ inputs.completo }}
         run: |
           set -euo pipefail
           # Un secret pegado con salto de línea o espacio al final rompe la URL en silencio.
@@ -116,7 +129,12 @@ jobs:
           DIR="${RUNNER_TEMP}/respaldo"
           mkdir -p "$DIR"
           STAMP="$(date -u +%Y%m%d-%H%M)"
-          OUT="${DIR}/pisolibro-db-${STAMP}.dump"
+          # «completo» los domingos (08:20 UTC del domingo = 02:20 León del domingo) o si se pidió a
+          # mano; «base» las demás noches (ver la cabecera, punto 5).
+          if [ "$(date -u +%u)" = "7" ] || [ "${PEDIDO_COMPLETO:-}" = "true" ]; then MODO=completo; else MODO=base; fi
+          echo "Tipo de respaldo: ${MODO}"
+          OUT="${DIR}/pisolibro-db-${MODO}-${STAMP}.dump"
+          echo "MODO=${MODO}" >> "$GITHUB_ENV"
           echo "STAMP=${STAMP}" >> "$GITHUB_ENV"
           echo "DUMP_DIR=${DIR}" >> "$GITHUB_ENV"
           echo "DUMP_FILE=${OUT}" >> "$GITHUB_ENV"
@@ -139,12 +157,17 @@ jobs:
             exit 1
           fi
 
-          # --exclude-table-data=public.sync_log: la bitácora del censo es regenerable y es la tabla
-          # que más crece; excluir sus filas (la tabla vacía sí se vuelca) ahorra egreso del plan
-          # gratuito (5 GB/mes) y tiempo. Todo lo demás del esquema public va completo.
+          # --exclude-table-data=public.sync_log: la bitácora del censo es regenerable; excluir sus
+          # filas (la tabla vacía sí se vuelca) ahorra egreso del plan gratuito (5 GB/mes) y tiempo.
+          # En el «base» tampoco van las filas de winlab_labs, audit_log y respaldo_hora (≈95 % del
+          # volumen; sus tablas vacías sí): esas van en el «completo» de cada domingo.
+          SIN_DATOS=(--exclude-table-data=public.sync_log)
+          if [ "$MODO" = "base" ]; then
+            SIN_DATOS+=(--exclude-table-data=public.winlab_labs --exclude-table-data=public.audit_log --exclude-table-data=public.respaldo_hora)
+          fi
           "${PGBIN}/pg_dump" "$SUPABASE_DB_URL" \
             --no-owner --no-privileges --schema=public --format=custom \
-            --exclude-table-data=public.sync_log \
+            "${SIN_DATOS[@]}" \
             --file="$OUT"
 
           SIZE=$(stat -c %s "$OUT")
@@ -153,11 +176,14 @@ jobs:
             echo "::error title=Volcado demasiado chico::pg_dump produjo ${SIZE} bytes (mínimo ${MIN_BYTES}). ¿La URL apunta a la base correcta?"
             exit 1
           fi
-          # El índice del volcado debe listar los datos de las tablas clave.
+          # El índice del volcado debe listar los datos de las tablas clave (en el completo, también los
+          # de las tablas grandes que el «base» deja fuera).
           "${PGBIN}/pg_restore" --list "$OUT" > "${DIR}/indice.txt"
           TABLAS=$(grep -c "TABLE DATA public" "${DIR}/indice.txt" || true)
           echo "Tablas con datos en el volcado: ${TABLAS}"
-          for t in patients notes winlab_labs; do
+          CLAVE="patients notes archive"
+          if [ "$MODO" = "completo" ]; then CLAVE="$CLAVE winlab_labs audit_log respaldo_hora"; fi
+          for t in $CLAVE; do
             if ! grep -q "TABLE DATA public ${t} " "${DIR}/indice.txt"; then
               echo "::error title=Volcado incompleto::El índice del volcado no incluye los datos de public.${t}."
               exit 1
@@ -199,7 +225,7 @@ jobs:
       - name: Subir respaldo cifrado (artifact, 30 días)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: respaldo-db-${{ env.STAMP }}
+          name: respaldo-db-${{ env.MODO }}-${{ env.STAMP }}
           path: ${{ env.ENC_FILE }}
           if-no-files-found: error
           retention-days: 30
@@ -251,7 +277,8 @@ jobs:
         if: always()
         run: |
           {
-            echo "### Respaldo de la base"
+            echo "### Respaldo de la base (${MODO:-?})"
+            echo "- Tipo: **${MODO:-?}** (base = cada noche, sin filas de winlab_labs/audit_log/respaldo_hora; completo = domingos o a mano)"
             echo "- Archivo: \`$(basename "${ENC_FILE:-sin archivo}")\` — ${DUMP_BYTES:-?} bytes en claro, ${DUMP_TABLAS:-?} tablas con datos"
             echo "- sha256 del .age: \`${ENC_SHA256:-?}\`"
             echo "- Drive: ${DRIVE_STATUS:-no se llegó a ese paso}"

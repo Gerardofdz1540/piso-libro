@@ -410,6 +410,10 @@ function mockSupabase(ctx, store, ctl, calls) {
 
   // C3b: carga lenta (la foto de la nube se toma al pedirla); mientras viaja, aquí se guarda y SUBE otra Guardia. Al
   // aplicar la carga ya no hay campos sucios: solo _keepRecentLocal sabe que lo de este equipo es más nuevo.
+  // Descargas por diferencia (3 nov 2026): la foto vieja ahora llega de la COPIA LOCAL (la lista lenta trae la versión que
+  // este equipo ya tiene y la nota no viaja; si viajara, se pediría después de guardar y llegaría nueva). Se calienta la
+  // copia con la versión actual para que C3b siga probando el caso real.
+  await page.evaluate(async () => { await supaLoadAll(); });
   ctl.slowLoadMs = 2500;
   const NEW3B = TYPED + '\n20/10 10:20 GF: GUARDADO MIENTRAS LLEGABA LA CARGA';
   const c3b = await page.evaluate(async (nv) => {

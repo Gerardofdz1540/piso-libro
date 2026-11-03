@@ -7570,6 +7570,8 @@ function plExportBackup() {
 
     async function logout() {
       try { if (_supa) await _supa.auth.signOut({ scope: "local" }); } catch (e) { console.warn("signOut:", e); }
+      // Copia local de las descargas por diferencia (labs, notas, imagen): la siguiente sesión baja todo de nuevo.
+      try { await _dcBorrar(); } catch (_) {}
       // onAuthStateChange (SIGNED_OUT) muestra el overlay; recargamos para limpiar estado in-memory de la SPA.
       location.reload();
     }
@@ -9397,7 +9399,9 @@ function plExportBackup() {
     // Antes bajaban las 500 filas más nuevas COMPLETAS (≈11,6 MB medidos: 127 expedientes cuando el
     // censo necesita ~45) en cada arranque, cada vuelta a la pestaña y cada clic del pill. Lo
     // anterior a 4 días ya vive en labHistory (tabla notes), así que no se pierde nada.
-    function _winlabRowsQuery(rows) {
+    const WL_SELECT = "exp,paciente,fecha,scraped_at,data";
+    // sel: columnas (por defecto las de siempre); las descargas por diferencia piden primero solo id,updated_at.
+    function _winlabRowsQuery(rows, sel) {
       const vars = new Set();
       (rows || []).forEach(p => getExpVariants(p && p.exp).forEach(v => {
         const s = String(v || "").trim();
@@ -9406,7 +9410,7 @@ function plExportBackup() {
       // Ventana de 4 días para la carga normal (todo el historial del censo pesa ≈11 MB de JSON). Las fechas más
       // viejas las repone _winlabBackfillOlder en segundo plano, una vez por paciente y dispositivo.
       const since = new Date(Date.now() - 4 * 86400000).toISOString();
-      let q = "select=exp,paciente,fecha,scraped_at,data&scraped_at=gte." + encodeURIComponent(since) + "&order=scraped_at.desc&limit=500";
+      let q = "select=" + (sel || WL_SELECT) + "&scraped_at=gte." + encodeURIComponent(since) + "&order=scraped_at.desc&limit=500";
       if (vars.size && vars.size <= 600) q += "&exp=in.(" + Array.from(vars).map(encodeURIComponent).join(",") + ")";
       return q;
     }
@@ -13417,8 +13421,10 @@ function plExportBackup() {
       const vars = new Set();
       (rows || []).forEach(p => getExpVariants(p && p.exp).forEach(v => { const s = String(v || "").trim(); if (s && /^[\w\-.\/]+$/.test(s)) vars.add(s); }));
       if (!vars.size || vars.size > 300) return 0;
-      const q = "select=exp,paciente,fecha,scraped_at,data&order=scraped_at.desc&limit=200&exp=in.(" + Array.from(vars).map(encodeURIComponent).join(",") + ")";
-      const wl = await retryNetwork(() => _sGet("winlab_labs", q), 2, 200);
+      const expIn = "&exp=in.(" + Array.from(vars).map(encodeURIComponent).join(",") + ")";
+      const wl = await _dcConsulta({ st: "wl", tabla: "winlab_labs", id: "id", ver: "updated_at", cols: WL_SELECT,
+        q: function (sel) { return "select=" + sel + "&order=scraped_at.desc&limit=200" + expIn; },
+        ids: function (lote) { return "id=in.(" + lote.map(encodeURIComponent).join(",") + ")"; } });
       let added = 0;
       winlabByExp = winlabByExp || {};
       (wl || []).forEach(r => {
@@ -13495,6 +13501,179 @@ function plExportBackup() {
       return { rows: total, inserted: inserted };
     }
 
+    // ─── 📉 DESCARGAS POR DIFERENCIA (2 nov 2026) ────────────────────────────────────────────────────────────────────
+    // Supabase avisó que el proyecto pasó la transferencia del plan (5 GB/mes). Una causa: cada recarga de la app (volver a
+    // la pestaña, cada 10 min, reconexión: ~500 al día entre todos los equipos) bajaba COMPLETAS las filas de WinLab de 4
+    // días (≈8 MB), las notas y la imagen aunque nada hubiera cambiado. Ahora primero se pide la LISTA de versiones
+    // (id + updated_at: unos KB) con el mismo filtro, orden y límite de siempre; las filas cuya versión ya está en este
+    // equipo salen de la copia local y solo se bajan las nuevas o cambiadas. El resultado es el mismo arreglo, en el mismo
+    // orden y con las mismas columnas que daba la consulta completa.
+    //  · Versión = updated_at, que la base pone en CADA escritura (notes: trg_notes_updated; winlab_labs y ris_estudios:
+    //    pl_fila_version, scripts/supabase_version_filas.sql). Fila cambiada → versión nueva → se baja.
+    //  · Red de seguridad: cada fila guardada se vuelve a bajar entera al menos cada 20 h; las que dejan de aparecer se
+    //    olvidan a los 3 días.
+    //  · Ante cualquier cosa rara (la lista trae otras columnas o sin versión, falta una fila pedida, error que no es de
+    //    red) se hace la consulta completa de antes: nunca se arma una respuesta a medias.
+    //  · La copia vive en IndexedDB (sobrevive a cerrar la app) y en memoria; si IndexedDB no responde (Safari a veces),
+    //    sigue solo en memoria. Guarda texto JSON: lo que la app haga después con las filas no altera la copia.
+    //  · localStorage "pl_dc_off" = "1" la apaga (diagnóstico). Al cerrar sesión se borra.
+    const PL_DC_EDAD_MAX = 20 * 3600000, PL_DC_OLVIDO = 3 * 86400000, PL_DC_VISTO = 12 * 3600000, PL_DC_LOTE = 50;
+    const PL_DC_STORES = ["wl", "nt", "ris"];
+    const _dcMem = {}, _dcCarga = {};
+    const _dcStats = { listas: 0, cache: 0, red: 0, completas: 0 };   // diagnóstico y pruebas (window.__plDc)
+    let _dcDbProm = null;
+    function _dcActivo() { try { return localStorage.getItem("pl_dc_off") !== "1"; } catch (_) { return true; } }
+    function _dcAbrir() {
+      if (_dcDbProm) return _dcDbProm;
+      _dcDbProm = new Promise(function (res) {
+        let listo = false;
+        const fin = function (db) {
+          if (listo) { if (db) { try { db.close(); } catch (_) {} } return; }
+          listo = true; res(db || null);
+        };
+        try {
+          if (typeof indexedDB === "undefined" || !indexedDB) return fin(null);
+          const rq = indexedDB.open("pl_cache", 1);
+          rq.onupgradeneeded = function () {
+            const db = rq.result;
+            PL_DC_STORES.forEach(function (s) { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: "id" }); });
+          };
+          rq.onsuccess = function () {
+            const db = rq.result;
+            db.onversionchange = function () { try { db.close(); } catch (_) {} _dcDbProm = null; };
+            fin(db);
+          };
+          rq.onerror = function () { fin(null); };
+          rq.onblocked = function () { fin(null); };
+          setTimeout(function () { fin(null); }, 2500);   // Safari a veces no contesta: se sigue solo con memoria
+        } catch (_) { fin(null); }
+      });
+      return _dcDbProm;
+    }
+    // Copia en memoria de un almacén (la primera vez se llena desde IndexedDB). Map id → {id, v, t, s, j}:
+    // v = versión, t = cuándo se bajó, s = última vez que apareció en una lista, j = la fila en JSON.
+    function _dcTabla(st) {
+      if (_dcMem[st]) return Promise.resolve(_dcMem[st]);
+      if (!_dcCarga[st]) _dcCarga[st] = _dcAbrir().then(function (db) {
+        return new Promise(function (res) {
+          const m = _dcMem[st] || new Map();
+          let listo = false;
+          const fin = function () { if (!listo) { listo = true; _dcMem[st] = m; res(m); } };
+          if (!db) return fin();
+          try {
+            const rq = db.transaction(st, "readonly").objectStore(st).getAll();
+            rq.onsuccess = function () {
+              (rq.result || []).forEach(function (r) {
+                // Si la lectura llegó tarde (después del tiempo límite), lo que ya se bajó en esta sesión gana.
+                if (r && r.id != null && typeof r.v === "string" && typeof r.j === "string" && !m.has(String(r.id))) m.set(String(r.id), r);
+              });
+              fin();
+            };
+            rq.onerror = function () { fin(); };
+          } catch (_) { fin(); }
+          setTimeout(fin, 3000);
+        });
+      });
+      return _dcCarga[st];
+    }
+    function _dcGuardar(st, poner, quitar) {
+      if (!(poner && poner.length) && !(quitar && quitar.length)) return;
+      _dcAbrir().then(function (db) {
+        if (!db) return;
+        try {
+          const tx = db.transaction(st, "readwrite"), os = tx.objectStore(st);
+          tx.onerror = function (e) { try { e.preventDefault(); } catch (_) {} };   // sin espacio: queda en memoria
+          (poner || []).forEach(function (r) { os.put(r); });
+          (quitar || []).forEach(function (k) { os.delete(k); });
+        } catch (_) {}
+      });
+    }
+    function _dcBorrar() {
+      PL_DC_STORES.forEach(function (s) { _dcMem[s] = new Map(); _dcCarga[s] = null; });
+      return _dcAbrir().then(function (db) {
+        if (!db) return;
+        return new Promise(function (res) {
+          try {
+            const tx = db.transaction(PL_DC_STORES, "readwrite");
+            PL_DC_STORES.forEach(function (s) { tx.objectStore(s).clear(); });
+            tx.oncomplete = tx.onerror = tx.onabort = function () { res(); };
+          } catch (_) { res(); }
+          setTimeout(res, 1500);
+        });
+      });
+    }
+    // Error que la consulta completa también tendría (sin red, 5xx, 429): se propaga igual que antes.
+    function _dcErrorDeRed(e) { return isLikelyNetworkError(e) || /HTTP (5\d\d|429)/.test(String((e && e.message) || "")); }
+    // cfg: { st: almacén, tabla, id: columna llave, ver: columna de versión, cols: el select de siempre,
+    //        q: function (select) → la consulta de siempre con ese select, ids: function (lote) → filtro por llaves }
+    async function _dcConsulta(cfg) {
+      const completa = function () {
+        _dcStats.completas++;
+        return retryNetwork(function () { return _sGet(cfg.tabla, cfg.q(cfg.cols)); }, 2, 200);
+      };
+      if (!_dcActivo()) return completa();
+      const colsBase = cfg.cols.split(",");
+      const extra = [cfg.id, cfg.ver].filter(function (c) { return colsBase.indexOf(c) < 0; });
+      const colsCon = cfg.cols + (extra.length ? "," + extra.join(",") : "");
+      const recortar = function (f) { if (!extra.length) return f; const o = Object.assign({}, f); extra.forEach(function (c) { delete o[c]; }); return o; };
+      const conVersion = function (f) { return f && f[cfg.id] != null && typeof f[cfg.ver] === "string" && f[cfg.ver] !== ""; };
+      let lista;
+      try { lista = await retryNetwork(function () { return _sGet(cfg.tabla, cfg.q(cfg.id + "," + cfg.ver)); }, 2, 200); }
+      catch (e) { if (_dcErrorDeRed(e)) throw e; return completa(); }   // p. ej. la base aún sin la columna de versión
+      _dcStats.listas++;
+      // Solo una lista con exactamente las dos columnas pedidas (así responde PostgREST): otra cosa → consulta completa.
+      if (!Array.isArray(lista) || !lista.every(function (r) { return conVersion(r) && Object.keys(r).length === 2; })) return completa();
+      const m = await _dcTabla(cfg.st), ahora = Date.now(), poner = [];
+      const faltan = lista.filter(function (r) {
+        const c = m.get(String(r[cfg.id]));
+        return !(c && c.v === r[cfg.ver] && ahora - c.t < PL_DC_EDAD_MAX);
+      }).map(function (r) { return r[cfg.id]; });
+      const guardarFila = function (f) {
+        const fila = recortar(f), k = String(f[cfg.id]);
+        const rec = { id: k, v: f[cfg.ver], t: ahora, s: ahora, j: JSON.stringify(fila) };
+        m.set(k, rec); poner.push(rec); _dcStats.red++;
+        return fila;
+      };
+      const podar = function () {
+        const quitar = [];
+        m.forEach(function (c, k) { if (ahora - c.s > PL_DC_OLVIDO) { m.delete(k); quitar.push(k); } });
+        _dcGuardar(cfg.st, poner, quitar);
+      };
+      let salida;
+      try {
+        if (faltan.length > 2 * PL_DC_LOTE && faltan.length * 2 > lista.length) {
+          // Copia vacía o vieja (primer arranque, más de 20 h sin abrir): UNA consulta completa, ahora con la versión.
+          const filas = await retryNetwork(function () { return _sGet(cfg.tabla, cfg.q(colsCon)); }, 2, 200);
+          if (!Array.isArray(filas) || !filas.every(conVersion)) return completa();
+          salida = filas.map(guardarFila);
+        } else {
+          const lotes = [];
+          for (let i = 0; i < faltan.length; i += PL_DC_LOTE) lotes.push(faltan.slice(i, i + PL_DC_LOTE));
+          const res = await Promise.all(lotes.map(function (lote) {
+            return retryNetwork(function () { return _sGet(cfg.tabla, cfg.ids(lote) + "&select=" + colsCon); }, 2, 200);
+          }));
+          const porId = new Map();
+          for (const filas of res) {
+            if (!Array.isArray(filas) || !filas.every(conVersion)) return completa();
+            filas.forEach(function (f) { porId.set(String(f[cfg.id]), f); });
+          }
+          salida = [];
+          for (const r of lista) {
+            const k = String(r[cfg.id]), f = porId.get(k);
+            if (f) { salida.push(guardarFila(f)); continue; }
+            const c = m.get(k);
+            if (!(c && c.v === r[cfg.ver])) return completa();   // se pidió y no llegó (¿borrada entre las dos consultas?)
+            if (ahora - c.s > PL_DC_VISTO) poner.push(c);           // «sigue en uso»: se anota a lo más dos veces al día
+            c.s = ahora;
+            salida.push(JSON.parse(c.j)); _dcStats.cache++;
+          }
+        }
+      } catch (e) { if (_dcErrorDeRed(e)) throw e; return completa(); }
+      podar();
+      return salida;
+    }
+    window.__plDc = { stats: _dcStats, borrar: _dcBorrar };
+
     // ─── SUPABASE: LOAD ALL ─────────────────────────────────────────────────────────
     async function supaLoadAll() {
       _lastSyncErrorDetail = "";
@@ -13510,14 +13689,19 @@ function plExportBackup() {
         // order=updated_at.desc garantiza que si existen duplicados históricos (bug de INSERT sin on_conflict ya corregido),
         // el noteMap[patient_id] termine con la nota MÁS RECIENTE. limit=500 evita timeout. Nota: entrega se sincroniza vía
         // checklist.__pl_note_meta, no como columna separada.
+        // Notas, WinLab e imagen se bajan «por diferencia» (_dcConsulta): mismo resultado, solo viaja lo que cambió.
         const _pNotas = pts.length
-          ? retryNetwork(() => _sGet("notes", "patient_id=in.(" + pts.map(r => r.id).join(",") + ")&select=" + NOTES_SELECT_COLS + "&order=updated_at.desc&limit=500"), 2, 200)
+          ? _dcConsulta({ st: "nt", tabla: "notes", id: "patient_id", ver: "updated_at", cols: NOTES_SELECT_COLS,
+              q: function (sel) { return "patient_id=in.(" + pts.map(r => r.id).join(",") + ")&select=" + sel + "&order=updated_at.desc&limit=500"; },
+              ids: function (lote) { return "patient_id=in.(" + lote.map(encodeURIComponent).join(",") + ")"; } })
           : Promise.resolve([]);
         // Labs WinLab scrapeados por GitHub Action (tabla winlab_labs). Indexa por exp; para cada paciente conserva el
         // scraped_at más reciente.
         const _pWinlab = (async function () {
           try {
-            const wlRows = await retryNetwork(() => _sGet("winlab_labs", _winlabRowsQuery(pts)), 2, 200);
+            const wlRows = await _dcConsulta({ st: "wl", tabla: "winlab_labs", id: "id", ver: "updated_at", cols: WL_SELECT,
+              q: function (sel) { return _winlabRowsQuery(pts, sel); },
+              ids: function (lote) { return "id=in.(" + lote.map(encodeURIComponent).join(",") + ")"; } });
             const _ix = _winlabIndexRows(wlRows);
             winlabByExp = _ix.latest; winlabRowsByExp = _ix.all;
             _winlabLoadedOnce = true;
@@ -20738,9 +20922,10 @@ function plExportBackup() {
       const exps = new Set();
       (pts || []).forEach(p => { const e = _risKey(p && p.exp); if (e && /^[\w\-.\/]+$/.test(e)) exps.add(e); });
       if (!exps.size) { risByExp = {}; return; }
-      let q = "select=" + RIS_SELECT + "&order=fecha.desc,hora.desc&limit=800";
-      if (exps.size <= 600) q += "&exp=in.(" + Array.from(exps).map(encodeURIComponent).join(",") + ")";
-      const rows = await retryNetwork(() => _sGet("ris_estudios", q), 2, 200);
+      const expIn = exps.size <= 600 ? "&exp=in.(" + Array.from(exps).map(encodeURIComponent).join(",") + ")" : "";
+      const rows = await _dcConsulta({ st: "ris", tabla: "ris_estudios", id: "id", ver: "updated_at", cols: RIS_SELECT,
+        q: function (sel) { return "select=" + sel + "&order=fecha.desc,hora.desc&limit=800" + expIn; },
+        ids: function (lote) { return "id=in.(" + lote.map(encodeURIComponent).join(",") + ")"; } });
       const next = {};
       (rows || []).forEach(r => { const e = _risKey(r && r.exp); if (!e) return; (next[e] = next[e] || []).push(_risNorm(r)); });
       risByExp = next;
@@ -29645,7 +29830,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.10.30-3";
+    const PL_BUILD = "2026.11.03-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
