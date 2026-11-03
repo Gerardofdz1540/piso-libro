@@ -178,9 +178,13 @@ jobs:
   # motor de Safari: lo que usan los iPads. Bloquea el PR y la publicación (deploy-pages.yml llama a
   # este archivo), como unidad y app. Lo que en WebKit se hace distinto está en tests/headless/README.md
   # («Motor: Chromium o WebKit»).
+  # Ubuntu fijo (3 nov 2026): GitHub pasó ubuntu-latest a Ubuntu 26.04 y el WebKit de Playwright 1.64 (compilado para
+  # 24.04) ya no abría ahí: las 13 suites morían en browserType.launch antes de cargar la app, también en main. Con
+  # 24.04 vuelve a ser el mismo WebKit de siempre; al subir Playwright a una versión que soporte 26.04 se puede quitar
+  # (y cambiar el sufijo de la llave del caché para no reusar el binario viejo).
   app-webkit:
     name: app-webkit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
       run:
@@ -203,7 +207,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-webkit-${{ runner.os }}-${{ hashFiles('tests/headless/package-lock.json') }}
+          key: playwright-webkit-ubuntu-24.04-${{ hashFiles('tests/headless/package-lock.json') }}
 
       - name: Instalar WebKit
         run: npx playwright install --with-deps webkit
