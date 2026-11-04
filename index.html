@@ -1843,7 +1843,9 @@
     .cx-ai-btn:hover { background: #ede9fe; }
     .cx-ai-busy { display: inline-block; font-size: 11px; font-weight: 800; color: #6d28d9; background: #f5f3ff; border: 1px dashed #a78bfa; border-radius: 12px; padding: 6px 10px; white-space: nowrap; }
     body.dark .cx-ai-btn, body.dark .cx-ai-busy { background: #1e1b4b; color: #c4b5fd; border-color: #6d28d9; }
-    @media print { .cx-ai-btn, .cx-ai-busy, .cx-nota { display: none !important; } }
+    .cx-ai-saldo { display: inline-block; margin-left: 6px; font-size: 10.5px; font-weight: 700; color: #92400e; white-space: nowrap; vertical-align: middle; }
+    body.dark .cx-ai-saldo { color: #fbbf24; }
+    @media print { .cx-ai-btn, .cx-ai-busy, .cx-ai-saldo, .cx-nota { display: none !important; } }
     .by-chip { display: inline-block; font-size: 9.5px; font-weight: 800; color: #fff; border-radius: 999px; padding: 1px 7px; margin-left: 6px; letter-spacing: .02em; white-space: nowrap; vertical-align: middle; }
     body.dark .pl-foto-add, body.dark .pl-foto-file { background: #0f1b2d; color: #cbd5e1; }
     @media print { .pl-foto-x, .pl-foto-add { display: none !important; } .pl-foto { width: 120px; height: 120px; } }
@@ -10393,6 +10395,12 @@ function plExportBackup() {
       if (token) h["X-Piso-Token"] = token;
       return h;
     }
+    // IA sin saldo (4 nov 2026): Google responde 402 cuando se acaban los créditos prepagados de la cuenta de Gemini (el
+    // worker v7 también convierte en 402 el 429 «prepayment credits are depleted» y manda {motivo:"sin_saldo"}). No es la
+    // red ni la app: hasta que se recargue saldo en Google AI Studio ninguna lectura con IA funciona, con ningún modelo.
+    var AI_SIN_SALDO_TXT = "la IA (Gemini) se quedó sin saldo: hay que recargar créditos en Google AI Studio (Facturación)";
+    function _aiSinSaldo(status, body) { return status === 402 || /"motivo"\s*:\s*"sin_saldo"/.test(String(body || "")); }
+    function _aiErrTxt(status, body) { return "HTTP " + status + (_aiSinSaldo(status, body) ? " · " + AI_SIN_SALDO_TXT : ""); }
     async function apiFetch(path, options = {}) {
       const url = getProxyUrl();
       if (!url) return null;
@@ -11245,7 +11253,7 @@ function plExportBackup() {
           resp=await fetch(proxyUrl+"/api/ai", { method:"POST", headers: apiHeaders(), body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:6000, messages:[{ role:"user", content:[{ type:"text", text:prompt }] }] }), signal: ctl.signal });
         }catch(ne){ if(ne&&ne.name==="AbortError") throw new Error("la IA tardó más de 90 s"); throw ne; }
         finally{ clearTimeout(tm); }
-        if(!resp.ok){ var tt=await resp.text().catch(function(){ return ""; }); throw new Error("HTTP "+resp.status+(tt?": "+tt.slice(0,160):"")); }
+        if(!resp.ok){ var tt=await resp.text().catch(function(){ return ""; }); throw new Error(_aiSinSaldo(resp.status, tt) ? _aiErrTxt(resp.status, tt) : "HTTP "+resp.status+(tt?": "+tt.slice(0,160):"")); }
         var data=await resp.json();
         if(_plneKey!==k) return; // se cambió de paciente mientras respondía
         var raw=(data&&data.content&&data.content[0]&&data.content[0].text)||"";
@@ -19569,7 +19577,7 @@ function plExportBackup() {
       try {
         // tarea "transcribir" (worker v6): una palabra o un número va al modelo rápido; el worker viejo la ignora.
         resp = await fetch(proxyUrl + "/api/ai", { method: "POST", headers: { ...apiHeaders() }, body: JSON.stringify({ model: "claude-sonnet-4-6", tarea: "transcribir", max_tokens: 800, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: prompt }] }] }), signal: ctl.signal });
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        if (!resp.ok) { const tt = await resp.text().catch(function () { return ""; }); throw new Error(_aiErrTxt(resp.status, tt)); }
         var data = await resp.json();   // el cuerpo también dentro del timeout: un cuerpo que no termina de llegar se aborta
       } finally { clearTimeout(tm); }
       const raw = String((data && data.content && data.content[0] && data.content[0].text) || "").replace(/```json|```/g, "").trim();
@@ -21725,7 +21733,7 @@ function plExportBackup() {
       } finally { clearTimeout(_lxTimer); }
       if (!resp.ok) {
         const errTxt = await resp.text().catch(function(){ return ""; });
-        throw new Error("Worker HTTP " + resp.status + ": " + errTxt.slice(0, 250));
+        throw new Error("Worker HTTP " + resp.status + (_aiSinSaldo(resp.status, errTxt) ? " · " + AI_SIN_SALDO_TXT : ": " + errTxt.slice(0, 250)));
       }
       const data = await resp.json();
       const list = Array.isArray(data.patients) ? data.patients : [];
@@ -22303,7 +22311,7 @@ Si no hay alteraciones: {"alteraciones":[],"resumen":"...","prioridad":"baja"}`;
             signal: _aiAbort.signal
           });
         } finally { clearTimeout(_aiTimeout); }
-        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        if (!resp.ok) { const tt = await resp.text().catch(() => ""); throw new Error(_aiErrTxt(resp.status, tt)); }
         const data = await resp.json();
         var _raw = (data.content?.[0]?.text || "{}").replace(/```json/g, "").replace(/```/g, "").trim();
         // Extract JSON object robustly — find outermost { }
@@ -22886,7 +22894,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         } finally { clearTimeout(_ikTimer); }
         if (!resp.ok) {
           const t = await resp.text().catch(() => "");
-          throw new Error("HTTP " + resp.status + (t ? ": " + t.slice(0, 200) : ""));
+          throw new Error(_aiSinSaldo(resp.status, t) ? _aiErrTxt(resp.status, t) : "HTTP " + resp.status + (t ? ": " + t.slice(0, 200) : ""));
         }
         const data = await resp.json();
         if (_inkKey !== _ikKey || _inkFieldMode !== _ikMode) return;
@@ -23201,7 +23209,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           const errTxt = await resp.text().catch(() => "");
           console.error("[doc-intake] Worker response error:", resp.status, errTxt);
           let hint = "";
-          if (resp.status === 401 || resp.status === 403) hint = " (⚠️ Token del Worker inválido o clave del ayudante de IA (Google Gemini) expirada)";
+          if (_aiSinSaldo(resp.status, errTxt)) hint = " (⚠️ " + AI_SIN_SALDO_TXT + ")";
+          else if (resp.status === 401 || resp.status === 403) hint = " (⚠️ Token del Worker inválido o clave del ayudante de IA (Google Gemini) expirada)";
           else if (resp.status === 404) hint = " (⚠️ La URL del Worker es incorrecta o la ruta /api/ai no existe)";
           else if (resp.status === 413) hint = " (⚠️ Archivo muy grande — intenta con PDF más pequeño o foto comprimida)";
           else if (resp.status === 429) hint = " (⚠️ Límite de requests alcanzado — espera unos minutos)";
@@ -29910,7 +29919,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.03-2";
+    const PL_BUILD = "2026.11.04-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -30951,7 +30960,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (_cxAiBusy && _cxAiBusy.has(k + "|" + cid)) return '<span class="cx-ai-busy">⏳ Leyendo nota…</span>';
         const hasImg = Array.isArray(c && c.fotos) && c.fotos.some(function (f) { return f && (f.b64 || f.path) && (/^image\//.test(f.type || "") || !!f.b64); });
         if (!hasImg || !cid) return "";
-        return '<button type="button" class="cx-ai-btn" data-ck="' + esc(k) + '" data-id="' + esc(cid) + '" onclick="cxLeerNota(this.dataset.ck,this.dataset.id)" title="Leer con IA las fotos de la nota postquirúrgica y llenar SOLO los campos vacíos">🤖 Transcribir</button>';
+        const sinSaldo = _cxAiQueueLoad().some(function (x) { return x && x.cid === cid && x.motivo === "sin_saldo"; });
+        return '<button type="button" class="cx-ai-btn" data-ck="' + esc(k) + '" data-id="' + esc(cid) + '" onclick="cxLeerNota(this.dataset.ck,this.dataset.id)" title="Leer con IA las fotos de la nota postquirúrgica y llenar SOLO los campos vacíos">🤖 Transcribir</button>' +
+          (sinSaldo ? '<span class="cx-ai-saldo" title="La IA (Gemini) se quedó sin saldo. La nota se transcribe sola cuando se recarguen créditos en Google AI Studio.">💳 en espera de saldo</span>' : "");
       } catch (_) { return ""; }
     }
     function _cxNotaPrompt(nPag) {
@@ -31042,6 +31053,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return { ok: false, retry: true, error: (e && e.name === "AbortError") ? "se agotó el tiempo (" + Math.round(CX_AI_TIMEOUT_MS / 1000) + " s)" : "sin conexión con el Worker" };
       } finally { clearTimeout(tm); }
       if (status < 200 || status >= 300) {
+        // Sin saldo: se reintenta (cola) porque se arregla solo al recargar, pero sin avisos repetidos (ver cxLeerNota).
+        if (_aiSinSaldo(status, text)) return { ok: false, retry: true, sinSaldo: true, error: _aiErrTxt(status, text) };
         const hint = (status === 401 || status === 403) ? "token del Worker inválido (⚙️ Config API)" : status === 404 ? "URL del Worker incorrecta (⚙️ Config API)" : status === 413 ? "fotos demasiado grandes" : status === 429 ? "límite de la IA, espera unos minutos" : status >= 500 ? "el Worker o la IA tuvo un problema" : "";
         return { ok: false, retry: status === 429 || status >= 500, error: "HTTP " + status + (hint ? " · " + hint : "") };
       }
@@ -31141,16 +31154,18 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // Cola local (este dispositivo) de lecturas pendientes por falta de red o error temporal del worker.
     function _cxAiQueueLoad() { try { const q = JSON.parse(localStorage.getItem(CX_AI_QUEUE_KEY) || "[]"); return Array.isArray(q) ? q : []; } catch (_) { return []; } }
     function _cxAiQueueSave(q) { try { localStorage.setItem(CX_AI_QUEUE_KEY, JSON.stringify(q.slice(-30))); } catch (_) {} }
-    function _cxAiQueueAdd(k, cid) {
+    function _cxAiQueueAdd(k, cid, motivo) {
       const q = _cxAiQueueLoad(); const prev = q.find(function (x) { return x && x.cid === cid; });
       const rest = q.filter(function (x) { return x && x.cid !== cid; });
-      rest.push({ k: k, cid: cid, ts: (prev && prev.ts) || Date.now() });
+      const it = { k: k, cid: cid, ts: (prev && prev.ts) || Date.now() };
+      if (motivo) it.motivo = motivo;                                   // "sin_saldo": 💳 en la fila (sin repetir avisos)
+      rest.push(it);
       _cxAiQueueSave(rest);
     }
     function _cxAiQueueDel(cid) { const q = _cxAiQueueLoad(); const r = q.filter(function (x) { return x && x.cid !== cid; }); if (r.length !== q.length) _cxAiQueueSave(r); }
     async function _cxAiQueueRun() {
       if (_cxAiQueueRunning || !navigator.onLine || !getProxyUrl()) return;
-      _cxAiQueueRunning = true;
+      _cxAiQueueRunning = true; _cxAiQueueUltima = Date.now();
       try {
         const q = _cxAiQueueLoad();
         for (let i = 0; i < q.length; i++) {
@@ -31158,10 +31173,24 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           if (!it || !it.cid) continue;
           if (Date.now() - (Number(it.ts) || 0) > 3 * 86400000) { _cxAiQueueDel(it.cid); continue; }   // > 3 días: se descarta (la foto sigue)
           if (!navigator.onLine) break;
-          await cxLeerNota(it.k, it.cid, null, { auto: true });
+          // Sin saldo: las demás fallarían igual; se intenta de nuevo en la próxima pasada (1 llamada por pasada, no N).
+          if (await cxLeerNota(it.k, it.cid, null, { auto: true }) === "sin_saldo") break;
         }
       } catch (e) { safeWarn("cx IA cola:", e); } finally { _cxAiQueueRunning = false; }
     }
+    // Además de al abrir la app y al volver la red: al regresar a la app (el iPad se queda abierto días), una pasada si
+    // hay pendientes, como mucho cada 10 min. Solo con la ficha cargada: sin notas, _cxLocate no hallaría la cirugía y la
+    // sacaría de la cola.
+    var _cxAiQueueUltima = 0;
+    try {
+      document.addEventListener("visibilitychange", function () {
+        try {
+          if (document.visibilityState !== "visible" || Date.now() - _cxAiQueueUltima < 600000) return;
+          if (!_userAccessToken || !patients.length || !Object.keys(noteData).length || !_cxAiQueueLoad().length) return;
+          _cxAiQueueRun();
+        } catch (_) {}
+      });
+    } catch (_) {}
     // Lee con IA la nota postquirúrgica de una cirugía. imgs = JPEG base64 ya reducidos (recién tomados); sin imgs usa las
     // fotos guardadas en la cirugía. Nunca lanza y nunca toca las fotos.
     async function cxLeerNota(k, cid, imgs, opts) {
@@ -31192,9 +31221,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (!auto) _plToast("🤖 Leyendo la nota postquirúrgica… (20-60 s, puedes seguir trabajando)", "#7c3aed", 5000);
         const res = await _cxAiCall(proxyUrl, imgs.slice(0, CX_AI_MAX_IMGS));
         if (!res.ok) {
-          if (res.retry) _cxAiQueueAdd(loc.k, cid); else _cxAiQueueDel(cid);
-          _plToast("⚠️ No se pudo leer la nota: " + res.error + "\nLa foto quedó guardada en la cirugía" + (res.retry ? "; se reintenta sola al volver la red, o toca 🤖 Transcribir." : "; toca 🤖 Transcribir para reintentar."), "#dc2626", 9000);
-          return;
+          if (res.retry) _cxAiQueueAdd(loc.k, cid, res.sinSaldo ? "sin_saldo" : ""); else _cxAiQueueDel(cid);
+          // Desde la cola (auto) no se avisa: la fila conserva 🤖 Transcribir (y 💳 si falta saldo) y se reintenta sola.
+          if (!auto) _plToast("⚠️ No se pudo leer la nota: " + res.error + "\nLa foto quedó guardada en la cirugía" + (res.sinSaldo ? "; la nota se transcribe sola cuando haya saldo, o toca 🤖 Transcribir después de recargar." : res.retry ? "; se reintenta sola al volver la red, o toca 🤖 Transcribir." : "; toca 🤖 Transcribir para reintentar."), "#dc2626", res.sinSaldo ? 12000 : 9000);
+          return res.sinSaldo ? "sin_saldo" : undefined;
         }
         _cxAiQueueDel(cid);
         _cxAplicar(loc.k, cid, res.data);

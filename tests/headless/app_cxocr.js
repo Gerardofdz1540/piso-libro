@@ -37,11 +37,17 @@ const MOCK = `(() => {
       return route.fulfill({ status: 404, body: '' });
     }
     if (url.startsWith('https://mock.local/')) return route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 });
+    if (url.startsWith('https://worker.local/api/labs/extract')) {
+      if (aiMode === '402') return route.fulfill({ status: 402, contentType: 'application/json', body: '{"error":"Gemini sin saldo","motivo":"sin_saldo","patients":[],"warnings":["sin saldo"]}' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"patients":[],"warnings":[]}' });
+    }
     if (url.startsWith('https://worker.local/api/ai')) {
       let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
-      const content = (body && body.messages && body.messages[0] && body.messages[0].content) || [];
+      let content = (body && body.messages && body.messages[0] && body.messages[0].content) || [];
+      if (!Array.isArray(content)) content = [{ type: 'text', text: String(content) }];   // Análisis IA manda texto, no lista
       aiCalls.push({ images: content.filter(c => c.type === 'image').length, mt: (content[0] && content[0].source && content[0].source.media_type), hasPrompt: content.some(c => c.type === 'text' && /JSON/.test(c.text)) });
       if (aiMode === '500') return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"x"}' });
+      if (aiMode === '402') return route.fulfill({ status: 402, contentType: 'application/json', body: '{"error":"Gemini sin saldo","motivo":"sin_saldo"}' });
       const out = { es_nota_quirurgica: true, fecha: '15/10/2026', procedimiento: 'LAPE + drenaje de absceso', diagnostico_postqx: 'Absceso residual', hallazgos: 'Absceso pélvico 200 mL', tecnica: 'Línea media', drenajes: 'Penrose', complicaciones: '', importante: 'Vigilar gasto', sangrado_ml: 150, cirujano: 'Dr. Cirujano' };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: [{ type: 'text', text: '```json\n' + JSON.stringify(out) + '\n```' }] }) });
     }
@@ -128,6 +134,68 @@ const MOCK = `(() => {
   // T5: viewer in-page
   const t5 = await page.evaluate(async () => { const k = pid(patients[0]); const c = getNote(k).checklist.cirugias.find(x => x.id === 'c1'); await fotoOpen(k, 'cx:c1', c.fotos[0].id); const ov = document.getElementById('pl-foto-viewer'); const im = document.getElementById('pl-foto-viewer-img'); return { shown: ov && ov.style.display === 'flex', src: im && im.getAttribute('src') }; });
   check('T5 visor dentro de la app con URL firmada 1 h', t5.shown && /signed\/pl-fotos\/.*\?s=3600/.test(t5.src || ''), JSON.stringify(t5));
+  // T6: IA sin saldo (402, créditos prepagados de Gemini agotados) — caso real de nov 2026
+  aiMode = '402'; aiCalls = [];
+  const toastTxt = () => page.evaluate(() => (document.getElementById('__pl_toast') || {}).textContent || '');
+  const t6 = await page.evaluate(async () => {
+    const k = pid(patients[0]); const l = getNote(k).checklist.cirugias; const last = l[l.length - 1]; const c1 = l.find(x => x.id === 'c1');
+    last.cirujano = ''; c1.cirujano = ''; _saveNoteNow(k, getNote(k), 'ck_cirugias');
+    localStorage.removeItem('pl_cx_ai_queue_v1');
+    await cxLeerNota(k, last.id);
+    const toast = (document.getElementById('__pl_toast') || {}).textContent || '';
+    await cxLeerNota(k, 'c1');
+    _rerenderCard(k);
+    const q = JSON.parse(localStorage.getItem('pl_cx_ai_queue_v1') || '[]');
+    return { toast, q, fotos: (last.fotos || []).length, saldo: document.querySelectorAll('#card-' + CSS.escape(k) + ' .cx-ai-saldo').length, btn: !!document.querySelector('.cx-row[data-id="c1"] .cx-ai-btn') };
+  });
+  check('T6 402: aviso dice que la IA se quedó sin saldo y que se transcribe sola al recargar (no «espera unos minutos»)', /HTTP 402/.test(t6.toast) && /se quedó sin saldo/.test(t6.toast) && /Google AI Studio/.test(t6.toast) && /cuando haya saldo/.test(t6.toast) && !/espera unos minutos/.test(t6.toast), t6.toast);
+  check('T6 402: fotos intactas y las 2 notas en cola marcadas «sin_saldo»', t6.fotos === 2 && t6.q.length === 2 && t6.q.every(x => x.motivo === 'sin_saldo'), JSON.stringify(t6.q));
+  check('T6 402: la fila muestra «💳 en espera de saldo» junto a 🤖 Transcribir', t6.saldo === 2 && t6.btn, JSON.stringify(t6));
+  aiCalls = [];
+  await page.evaluate(() => { const el = document.getElementById('__pl_toast'); if (el) el.textContent = ''; });
+  await page.evaluate(async () => { await _cxAiQueueRun(); });
+  const t6b = { calls: aiCalls.length, toast: await toastTxt(), q: await page.evaluate(() => JSON.parse(localStorage.getItem('pl_cx_ai_queue_v1') || '[]').length) };
+  check('T6 cola sin saldo: 1 sola llamada por pasada (no N), sin aviso repetido y las notas siguen en cola', t6b.calls === 1 && !/No se pudo leer/.test(t6b.toast) && t6b.q === 2, JSON.stringify(t6b));
+  const t6c = await page.evaluate(async () => {
+    const r = {};
+    r.pen = await _penRecognize('iVBORw0KGgo=', 'p').then(() => 'ok', e => String(e && e.message));
+    r.a = _aiSinSaldo(402, ''); r.b = _aiSinSaldo(429, '{"error":"Gemini sin saldo","motivo":"sin_saldo"}'); r.c = _aiSinSaldo(429, '{"error":"Gemini API error"}'); r.d = _aiErrTxt(500, '');
+    return r;
+  });
+  check('T6 lápiz y helpers: 402 o motivo sin_saldo → «sin saldo»; 429 normal y 500 no', /HTTP 402 · la IA \(Gemini\) se quedó sin saldo/.test(t6c.pen) && t6c.a && t6c.b && !t6c.c && t6c.d === 'HTTP 500', JSON.stringify(t6c));
+  // T7: los demás usos de la IA dicen lo mismo con 402 (Labs masivo, Análisis IA, 🤖 Nota IA, documento)
+  const t7 = await page.evaluate(async () => {
+    const k = pid(patients[0]); const r = {};
+    r.labs = await callLabsExtractionWorker(new File([new Uint8Array(300)], 'l.pdf', { type: 'application/pdf' }), 'bulk').then(() => 'ok', e => String(e && e.message));
+    const nd = getNote(k); nd.labHistory = (nd.labHistory || []).concat([{ fecha: '2026-11-04', labs: { hb: '10.1', k: '3.1' }, extra: [] }]);
+    await analyzeLabsAI(k, '2026-11-04'); r.analisis = (labAnalysisCache[k] && labAnalysisCache[k].html) || '';
+    try { openNotaEvo(k); await generarNotaIA(); } catch (e) { r.notaErr = String(e && e.message); }
+    r.nota = ((document.getElementById('plne-warn') || {}).textContent) || '';
+    try { closeNotaEvo && closeNotaEvo(); } catch (_) {}
+    try { await handleDocIntakeFile(new File([new Uint8Array(400)], 'doc.png', { type: 'image/png' })); } catch (e) { r.docErr = String(e && e.message); }
+    r.doc = ((document.getElementById('di-error-msg') || {}).textContent) || '';
+    try { openInkpad(k); _inkStrokes.push({ tool: 'pen', color: '#111', alpha: 1, points: [{ x: 5, y: 5 }, { x: 40, y: 40 }] }); window.__alerts = []; await inkTranscribe(); } catch (e) { r.inkErr = String(e && e.message); }
+    r.ink = (window.__alerts || []).join(' | ');
+    try { closeInkpad && closeInkpad(); } catch (_) {}
+    return r;
+  });
+  check('T7 Labs masivo con 402: «Worker HTTP 402 · la IA (Gemini) se quedó sin saldo…»', /^Worker HTTP 402 · la IA \(Gemini\) se quedó sin saldo/.test(t7.labs), t7.labs);
+  check('T7 Análisis IA con 402 dice «sin saldo»', /HTTP 402 · la IA \(Gemini\) se quedó sin saldo/.test(t7.analisis), t7.analisis.slice(0, 200));
+  check('T7 🤖 Nota IA con 402 cae al borrador y dice «sin saldo»', /La IA no respondió \(HTTP 402 · la IA \(Gemini\) se quedó sin saldo/.test(t7.nota), JSON.stringify(t7).slice(0, 400));
+  check('T7 ✍️ Inkpad con 402 dice «sin saldo»', /Error transcribiendo: HTTP 402 · la IA \(Gemini\) se quedó sin saldo/.test(t7.ink), JSON.stringify(t7).slice(0, 400));
+  check('T7 documento con 402 dice «sin saldo»', /HTTP 402 \(⚠️ la IA \(Gemini\) se quedó sin saldo/.test(t7.doc), t7.doc.slice(0, 200));
+
+  // Se recarga el saldo. La pasada de la cola de T6 dejó su hora: regresar a la app enseguida NO repite la pasada
+  // (como mucho una cada 10 min); pasado ese tiempo, regresar a la app transcribe las notas en espera sin tocar nada.
+  aiMode = 'ok'; aiCalls = [];
+  await page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForTimeout(800);
+  const throttled = aiCalls.length;
+  await page.evaluate(() => { _cxAiQueueUltima = 0; document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForTimeout(3000);
+  const t6d = await page.evaluate(() => { const k = pid(patients[0]); const l = getNote(k).checklist.cirugias; _rerenderCard(k); return { last: l[l.length - 1].cirujano, c1: l.find(x => x.id === 'c1').cirujano, q: JSON.parse(localStorage.getItem('pl_cx_ai_queue_v1') || '[]').length, saldo: document.querySelectorAll('.cx-ai-saldo').length }; });
+  check('T6 al recargar saldo: regresar a la app transcribe las notas en espera (no más de 1 pasada cada 10 min)', throttled === 0 && t6d.last === 'Dr. Cirujano' && t6d.c1 === 'Dr. Cirujano' && t6d.q === 0 && t6d.saldo === 0 && aiCalls.length === 2, JSON.stringify({ throttled, t6d, calls: aiCalls.length }));
+
   check('final sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('alerts:', JSON.stringify(await page.evaluate(() => window.__alerts || [])));
   console.log('RESULT APP-CXOCR: ' + pass + ' passed, ' + fail + ' failed');
