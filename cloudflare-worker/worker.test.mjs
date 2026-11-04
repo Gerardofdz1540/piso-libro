@@ -11,8 +11,8 @@ globalThis.fetch = async (url, init) => {
   const u = String(url); llamadas.push({ u, m: (init && init.method) || "GET", body: init && init.body ? JSON.parse(init.body) : null });
   const mg = /models\/([^:]+):generateContent/.exec(u);
   if (mg) {
-    const st = gemini[mg[1]] || 200;
-    if (st !== 200) return new Response(JSON.stringify({ error: { code: st, message: "simulado" } }), { status: st });
+    const g = gemini[mg[1]]; const st = (g && typeof g === "object") ? g.st : (g || 200);   // número o { st, msg }
+    if (st !== 200) return new Response(JSON.stringify({ error: { code: st, message: (g && g.msg) || "simulado" } }), { status: st });
     const cuerpo = JSON.parse(init.body);   // Labs masivo pide JSON; /api/ai, texto
     const texto = cuerpo.generationConfig.responseMimeType === "application/json" ? '{"patients":[{"nombre":"PRUEBA"}],"warnings":[]}' : "ok de " + mg[1];
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: texto }] }, finishReason: "STOP" }] }), { status: 200 });
@@ -86,6 +86,27 @@ const msg = [{ role: "user", content: [{ type: "text", text: "hola" }] }];
   llamadas = []; gemini = { "gemini-2.5-pro": 429, "gemini-2.5-flash": 429 };
   const r = await pedirAi({ messages: msg });
   check("IA sin cuota en los dos: responde el error (429) después de 2 intentos, no se queda reintentando", r.status === 429 && aiLlamadas().length === 2);
+}
+{
+  llamadas = []; gemini = { "gemini-2.5-pro": 402 };
+  const r = await pedirAi({ messages: msg }); const d = await r.json();
+  check("IA sin saldo (402, créditos prepagados agotados): no gasta el respaldo y avisa 402 con motivo «sin_saldo», sin el detalle de Google", r.status === 402 && aiLlamadas().length === 1 && d.motivo === "sin_saldo" && !JSON.stringify(d).includes("simulado"), JSON.stringify(d));
+}
+{
+  llamadas = []; gemini = { "gemini-2.5-flash": { st: 429, msg: "Your prepayment credits are depleted. Please go to AI Studio to manage your project and billing." } };
+  const r = await pedirAi({ tarea: "transcribir", messages: msg }); const d = await r.json();
+  check("IA sin saldo que Google manda como 429 «prepayment credits are depleted»: la app recibe 402 sin_saldo y no se prueba el otro modelo", r.status === 402 && d.motivo === "sin_saldo" && aiLlamadas().length === 1, JSON.stringify({ d, a: aiLlamadas() }));
+}
+{
+  llamadas = []; gemini = { "gemini-2.5-pro": { st: 429, msg: "You exceeded your current quota, please check your plan and billing details." } };
+  const r = await pedirAi({ messages: msg }); const d = await r.json();
+  check("IA 429 de cuota normal (menciona «billing» pero no créditos agotados): sí prueba el respaldo y contesta", r.status === 200 && d.model === "gemini-2.5-flash" && aiLlamadas().length === 2, JSON.stringify(d));
+}
+{
+  llamadas = []; gemini = { "gemini-2.5-pro": 402 };
+  const r = await worker.fetch(new Request("https://w.ejemplo/api/labs/extract", { method: "POST", headers: { "x-piso-token": "tok", "content-type": "application/json" }, body: JSON.stringify({ file_base64: "JVBERi0xLjQK".repeat(20), prompt: "extrae" }) }), ENV);
+  const d = await r.json();
+  check("Labs masivo sin saldo: 402 con motivo y aviso legible, sin respaldo", r.status === 402 && d.motivo === "sin_saldo" && /sin saldo/.test(d.warnings[0]) && Array.isArray(d.patients) && aiLlamadas().length === 1, JSON.stringify(d));
 }
 {
   llamadas = []; gemini = {};

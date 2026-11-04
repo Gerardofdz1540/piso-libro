@@ -1,4 +1,8 @@
-// piso-libro-ai Worker — v6 (27 oct 2026)
+// piso-libro-ai Worker — v7 (4 nov 2026)
+// Cambios v7:
+//   💳 Sin saldo: Google responde 402 cuando se acaban los créditos prepagados (Prepay) de la cuenta de Gemini; a veces
+//      llega como 429 «prepayment credits are depleted». Es de la cuenta, no del modelo: ya no se prueba el de respaldo
+//      (fallaría igual) y la app recibe 402 con {motivo:"sin_saldo"} para decir qué pasa en lugar de «espera unos minutos».
 // Cambios v6:
 //   ⚡ Modelo de IA por tarea: la app marca {tarea:"transcribir"} al leer lo escrito con el lápiz (una palabra o un
 //      número) y eso va a un modelo rápido sin razonamiento; notas, documentos y labs siguen en el modelo grande.
@@ -37,6 +41,14 @@
 const GEMINI_MODEL = "gemini-2.5-pro";          // principal: notas, documentos, fotos de notas, labs
 const GEMINI_MODEL_RAPIDO = "gemini-2.5-flash"; // tarea "transcribir": lo escrito con el lápiz
 const GEMINI_REINTENTA = new Set([400, 404, 408, 429, 500, 502, 503, 504]);   // 401/403 = llave: el respaldo no ayuda
+// ¿Se acabó el saldo prepagado de la cuenta de Gemini? 402 siempre; 429 solo con el mensaje de créditos agotados (un 429
+// de cuota por minuto o por día SÍ se reintenta con el otro modelo, que tiene su propia cuota).
+function sinSaldoGemini(status, data) {
+  if (status === 402) return true;
+  const m = String((data && data.error && data.error.message) || "");
+  return status === 429 && /prepay|credits?\s+(are|is|have been)?\s*(depleted|exhausted)/i.test(m);
+}
+const SIN_SALDO = { error: "Gemini sin saldo", motivo: "sin_saldo" };
 
 // Orden de modelos para una tarea: el que toca y, si es distinto, el de respaldo.
 function modelosPara(env, tarea) {
@@ -68,6 +80,7 @@ async function geminiConRespaldo(env, modelos, armarCuerpo, etiqueta) {
     const data = await resp.json().catch(() => ({}));
     if (resp.ok) return { ok: true, status: 200, data, model: modelo };
     console.error(`[${etiqueta}] ${modelo}: HTTP ${resp.status}`, JSON.stringify(data).slice(0, 500));
+    if (sinSaldoGemini(resp.status, data)) return { ok: false, status: 402, data, model: modelo, sinSaldo: true };   // v7: sin respaldo
     ultimo = { ok: false, status: resp.status, data, model: modelo };
     if (!GEMINI_REINTENTA.has(resp.status)) break;
   }
@@ -259,7 +272,7 @@ async function handleAiRoute(request, env, cors) {
     generationConfig: { temperature: 0.1, ...generacionPara(modelo, payload && payload.max_tokens) }
   }), "GEMINI");
   // 🔒 FIX MEDIO: NO devolver upstream data al cliente (puede tener info sensible)
-  if (!r.ok) return json({ error: "Gemini API error" }, r.status, cors);
+  if (!r.ok) return json(r.sinSaldo ? SIN_SALDO : { error: "Gemini API error" }, r.status, cors);
   const upstreamData = r.data, GEMINI_USADO = r.model;
 
   const cand = upstreamData.candidates?.[0];
@@ -326,7 +339,7 @@ async function handleLabsExtractRoute(request, env, cors) {
   }), "GEMINI/extract");
   if (!r.ok) {
     // 🔒 FIX MEDIO: log server-side, no exponer upstream al cliente
-    return json({
+    return json(r.sinSaldo ? { ...SIN_SALDO, patients: [], warnings: ["La cuenta de Gemini se quedó sin saldo (créditos prepagados): recárgala en Google AI Studio."] } : {
       error: "Gemini API error",
       patients: [],
       warnings: ["Error del proveedor IA. Revisa logs del Worker."]

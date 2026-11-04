@@ -1523,6 +1523,27 @@ mantienen despiertos solos) y Supabase pausa el proyecto tras 7 días sin tráfi
 - Incluye la ruta `/api/scrape-ris` de v5. **Paso tuyo:** pegar `cloudflare-worker/index.js` en `piso-libro-ai` →
   Deploy. Probar: ✍️ escribir un número con el lápiz y 🤖 Nota IA en un paciente.
 
+### «HTTP 402 · la IA (Gemini) se quedó sin saldo» (4 de noviembre de 2026, versión 2026.11.04-1, worker v7)
+
+Google responde **402** cuando se acaban los **créditos prepagados** (Prepay) de la cuenta de facturación de Gemini.
+No es la red, ni la app, ni el modelo: con ese saldo en cero **ninguna** lectura con IA funciona (nota postquirúrgica,
+🤖 Nota IA, lápiz → texto, Análisis IA, documentos y Labs masivo), con ningún modelo, y reintentar no sirve hasta
+recargar.
+
+- **Qué hacer:** entrar a Google AI Studio con la cuenta dueña de la clave → **Facturación (Billing)** → agregar
+  créditos o activar la **recarga automática** (auto-reload). Si el saldo se ve con dinero y sigue el 402, puede ser un
+  retraso de Google al sincronizar el pago: esperar unos minutos o escribir a soporte de Google AI Studio.
+- **Qué hace la app (2026.11.04-1):** todos los avisos dicen «la IA (Gemini) se quedó sin saldo» en lugar de un
+  «HTTP 402» pelón o de «espera unos minutos». En 📷 Nota postquirúrgica la foto queda guardada y la nota espera en la
+  cola con un discreto **💳 en espera de saldo** junto a 🤖 Transcribir; se transcribe sola (solo los campos vacíos)
+  cuando ya hay saldo: al abrir la app, al volver la red o al regresar a la app (como mucho una vez cada 10 min). La cola
+  hace una sola llamada por pasada mientras no haya saldo y no repite avisos. Lo que quede más de 3 días en la cola se
+  suelta (la foto sigue y 🤖 Transcribir sigue en la fila).
+- **Worker v7 (opcional, recomendado):** a veces Google manda lo mismo como 429 «prepayment credits are depleted»; el
+  v7 lo convierte en 402 para que la app no diga «espera unos minutos», y ya no prueba el modelo de respaldo cuando falta
+  saldo (fallaría igual). **Paso tuyo:** pegar `cloudflare-worker/index.js` en `piso-libro-ai` → Deploy. Sin pegarlo,
+  el 402 ya se avisa bien.
+
 ### Estudio de imagen de otra persona: «🚫 No es de este paciente»
 
 Si el robot del RIS trae a una tarjeta un estudio que no es de ese paciente (nombre parecido, expediente corregido),
