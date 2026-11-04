@@ -335,6 +335,26 @@ programa de la hoja (Apps Script, `syncIndicaciones`) hace el mismo trabajo con 
   hace que también tu cuenta de Google suba el Doc; solo hace falta si el enlace deja de ser
   público.
 
+**«No se están actualizando las indicaciones» (3 de noviembre de 2026, versión 2026.11.03-2).** La base y el Apps
+Script estaban al día (el texto guardado coincidía renglón por renglón con el Doc); lo que fallaba era la app al leerlo.
+Con el Doc y el censo de ese día solo 24 de 47 pacientes veían sus indicaciones; ahora 28, y ninguna tarjeta mezcla las
+de dos pacientes:
+
+- **Dos pacientes en una tarjeta.** Un bloque que empezaba con «INDICACIONES PARA HOSPITALIZACIÓN…» o «INDICACIONES
+  POSTQUIRÚRGICAS…» no se reconocía como paciente nuevo y se pegaba al de arriba: la tarjeta de la 185 mostraba también
+  las indicaciones de la 186 (y la 153 las de la 154). Ahora cualquier renglón que empiece con «INDICACIONES» abre bloque.
+- **Nombre que no se leía**: «NOMBRE / EXPE: 26-…», el nombre escrito en el mismo renglón del encabezado, o un
+  diagnóstico en mayúsculas antes del nombre. La tarjeta lo escondía tras el aviso «no coincide».
+- **Fecha**: se lee también «FECHA 03/11/2026», «03 /11/2026» y «03.11.2026»; con dos bloques del mismo paciente gana el
+  más reciente.
+- **iPad con la memoria llena**: guardar las indicaciones fallaba sin avisar y la tarjeta se quedaba con la versión
+  anterior. Ahora usa la versión nueva igual y, al reabrir la app, la vuelve a bajar.
+- El aviso **«no coincide con este paciente»** ahora dice la fecha del bloque ajeno («a nombre de X (del 20/10)»): casi
+  siempre es el paciente anterior de esa cama que sigue en el Doc. Eso se arregla **en el Doc**: escribir las
+  indicaciones del paciente actual en esa cama (o borrar el bloque viejo). El 3 de noviembre pasaba en 7 camas.
+- Para que la app encuentre a cada paciente: en cada bloque, el renglón «INDICACIONES …», debajo el **nombre completo como
+  en el censo** y su cama («CAMA: 3-151»). Sin cama la app solo puede cruzar por nombre (necesita 2 palabras iguales).
+
 ## Drenajes, sondas y estomas por paciente
 
 En el checklist de la tarjeta, la fila **Drenajes y sondas** es una lista libre: botones rápidos
