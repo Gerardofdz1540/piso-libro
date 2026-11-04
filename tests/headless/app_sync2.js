@@ -184,7 +184,7 @@ const store = {
   check('S7 reconocer un crítico guarda quién (iniciales y nombre) y la tarjeta muestra «K 6.4 ✓ TU hh:mm»',
     s7.by === 'TU' && s7.by_name === 'Tester Uno' && /Reconocidos: K 6\.4 ✓ TU \d\d:\d\d/.test(s7.linea), JSON.stringify(s7));
 
-  // ── S8: indicador del robot ──
+  // ── S8: indicador del robot ── (la corrida «de hace 1 h» cae AYER si la suite corre entre las 00:00 y la 01:00: también vale)
   const s8a = await page.evaluate(async () => {
     const prog = window._wlUltimaProgramada(Date.UTC(2026, 9, 27, 15, 0)).toISOString();
     await window.checkScraperStatus();
@@ -195,7 +195,7 @@ const store = {
   const s8b = await page.evaluate(async () => { await window.checkScraperStatus(); const b = document.getElementById('winlab-autosync-btn'); return { txt: b.textContent, st: b.getAttribute('data-scraper-status'), title: b.title }; });
   store.match = [{ checked_at: hace(1) }];
   check('S8 indicador del robot: dice la última corrida («Robot: hoy hh:mm», verde) y se pone en rojo con ⚠ si no corrió a la hora programada (05:00, 12:30, 20:07 + 2 h); ya no lo borra «Auto ON»',
-    s8a.prog === '2026-10-27T11:00:00.000Z' && /Robot: hoy \d\d:\d\d/.test(s8a.txt) && s8a.st === 'fresh' && s8a.dot && /⚠/.test(s8b.txt) && s8b.st === 'error' && /No corrió/.test(s8b.title), JSON.stringify({ s8a, s8b }));
+    s8a.prog === '2026-10-27T11:00:00.000Z' && /Robot: (hoy|ayer) \d\d:\d\d/.test(s8a.txt) && s8a.st === 'fresh' && s8a.dot && /⚠/.test(s8b.txt) && s8b.st === 'error' && /No corrió/.test(s8b.title), JSON.stringify({ s8a, s8b }));
 
   // ── S9: sin red, de cuándo son los datos ──
   const s9 = await page.evaluate(() => {

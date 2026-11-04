@@ -6285,23 +6285,42 @@ const PLIndicaciones = (function() {
   }
 
   // ─── STORAGE ────────────────────────────────────────────────────────────────
+  // 3 nov 2026 («no se están actualizando las indicaciones»): los bloques solo vivían en localStorage y, con la memoria
+  // del iPad llena, guardarlos fallaba SIN aviso: la tarjeta seguía con la versión anterior y, si la huella sí se
+  // alcanzaba a guardar, el equipo se daba por «al día» y ya no volvía a bajar el Doc. Ahora la copia de trabajo vive en
+  // memoria (siempre la última que se bajó) y localStorage es solo para abrir sin red; si los bloques no caben, la huella
+  // NO se guarda, así que al reabrir la app se vuelve a bajar el Doc en lugar de quedarse con el viejo.
+  // La memoria vale mientras localStorage siga igual a como esta pestaña lo dejó (o lo vio): si otra pestaña importó un Doc
+  // más nuevo, se lee de ahí; si el guardado de esta falló, se sigue con la memoria (que es la versión nueva).
+  let _memBlocks = null, _lsVisto, _memMeta, _metaVisto;   // undefined = aún no leído
+  function _lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function loadBlocks() {
-    try { const r = localStorage.getItem(KEY_BLOCKS); return r ? JSON.parse(r) : []; }
-    catch (e) { return []; }
+    const r = _lsGet(KEY_BLOCKS);
+    if (_memBlocks && r === _lsVisto) return _memBlocks;
+    try { _memBlocks = r ? JSON.parse(r) : []; } catch (e) { _memBlocks = []; }
+    if (!Array.isArray(_memBlocks)) _memBlocks = [];
+    _lsVisto = r;
+    return _memBlocks;
   }
   function saveBlocks(blocks) {
-    try { localStorage.setItem(KEY_BLOCKS, JSON.stringify(blocks)); } catch (e) {}
+    _memBlocks = blocks;
+    const j = JSON.stringify(blocks);
+    try { localStorage.setItem(KEY_BLOCKS, j); _lsVisto = j; return true; }
+    catch (e) { _lsVisto = _lsGet(KEY_BLOCKS); return false; }
   }
-  function setMeta(ts, stats, docInfo) {
-    try {
-      const m = { importedAt: ts, stats: stats || {} };
-      if (docInfo) { m.docHash = docInfo.docHash; m.docUpdated = docInfo.docUpdated; m.syncedAt = docInfo.syncedAt; m.docId = docInfo.docId; }
-      localStorage.setItem(KEY_META, JSON.stringify(m));
-    } catch (e) {}
+  function setMeta(ts, stats, docInfo, blocksSaved) {
+    const m = { importedAt: ts, stats: stats || {} };
+    if (docInfo) { m.docHash = docInfo.docHash; m.docUpdated = docInfo.docUpdated; m.syncedAt = docInfo.syncedAt; m.docId = docInfo.docId; }
+    _memMeta = m;
+    const g = JSON.stringify(blocksSaved === false ? Object.assign({}, m, { docHash: null, sinCopia: true }) : m);
+    try { localStorage.setItem(KEY_META, g); _metaVisto = g; } catch (e) { _metaVisto = _lsGet(KEY_META); }
   }
   function getMeta() {
-    try { const r = localStorage.getItem(KEY_META); return r ? JSON.parse(r) : null; }
-    catch (e) { return null; }
+    const r = _lsGet(KEY_META);
+    if (_memMeta !== undefined && r === _metaVisto) return _memMeta;
+    try { _memMeta = r ? JSON.parse(r) : null; } catch (e) { _memMeta = null; }
+    _metaVisto = r;
+    return _memMeta;
   }
   function hoursSinceImport() {
     const m = getMeta();
@@ -6329,17 +6348,30 @@ const PLIndicaciones = (function() {
   function parsePasted(text) {
     if (!text) return { blocks: [], debug: { totalLines: 0, anchorLines: 0, headersInd: 0, blocksDetected: 0, blocksWithCama: 0, blocksWithName: 0 } };
     const fullText = String(text);
-    const lines = fullText.split(/\r?\n/);
+    // \r suelto también parte renglón (3 nov 2026): el Doc trae «… | CAMA 3-186\r03.11.2026 08:00» dentro de un renglón.
+    const lines = fullText.split(/\r\n|\r|\n/);
     const debug = { totalLines: lines.length, anchorLines: 0, headersInd: 0, blocksDetected: 0, blocksWithCama: 0, blocksWithName: 0 };
 
     const ANCHOR_AGE_RE = /\b\d{1,3}\s*A[ÑN]OS?\b/i;
     const ANCHOR_ID_RE = /(EXP|CURP|FOLIO)/i;
     const INDICACIONES_RE = /INDICACIONES\s+(DE\s+|M[EÉ]DICAS)/i;
+    // 3 nov 2026: «INDICACIONES PARA HOSPITALIZACIÓN…», «INDICACIONES POSTQUIRÚRGICAS…» no eran ancla y ese paciente se
+    // pegaba al bloque del anterior: la tarjeta de la cama 185 mostraba también las indicaciones de la 186. Ahora cualquier
+    // renglón que EMPIECE con «INDICACIONES» abre bloque, siempre que en sus 4 renglones siguientes haya identidad
+    // (expediente, años, FN, cama o fecha): un renglón del cuerpo que diga «Indicaciones…» no parte el bloque.
+    const HDR_START_RE = /^[\s\u00A0\u2022*#\-–]*INDICACIONES\b/i;
+    const ID_NEAR_RE = /\b(EXP(?:EDIENTE|ED|E|D)?|CURP|FOLIO|FN|CAMA)\b|A[ÑN]OS\b|\b\d{2}-\d{4,}\b|\d{1,2}\s*[\/.]\s*\d{1,2}\s*[\/.]\s*\d{4}/i;
+    function esEncabezado(i) {
+      if (INDICACIONES_RE.test(lines[i])) return true;
+      if (!HDR_START_RE.test(lines[i])) return false;
+      for (let j = i; j <= i + 4 && j < lines.length; j++) if (ID_NEAR_RE.test(lines[j])) return true;
+      return false;
+    }
 
     const anchorsRaw = [];
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (INDICACIONES_RE.test(line)) {
+      if (esEncabezado(i)) {
         anchorsRaw.push({ lineIdx: i, type: "header" });
         debug.headersInd++;
       } else if (ANCHOR_AGE_RE.test(line) && ANCHOR_ID_RE.test(line)) {
@@ -6386,18 +6418,29 @@ const PLIndicaciones = (function() {
     // ════ EXTRACTOR DE NOMBRE v25 — adelante + corte en separador ════
     // El nombre real va DEBAJO del header "INDICACIONES" y comparte renglón
     // con EXP/AÑOS/FN tras un "|". Cortamos en el primer separador y validamos.
+    // Palabras que nunca son parte de un nombre (encabezado, servicio, secciones): un candidato que traiga alguna
+    // («… DE CIRUGÍA GENERAL», «HOSPITALIZACIÓN PISO») no es el nombre del paciente.
+    const NO_NOMBRE = ["INDICACIONES", "MEDICAS", "CIRUGIA", "GENERAL", "HOSPITALIZACION", "SERVICIO", "PISO", "PARA",
+      "POSTQUIRURGICAS", "POSTQUIRURGICA", "PREQUIRURGICAS", "PREQUIRURGICA", "INGRESO", "URGENCIAS", "DIETA", "SOLUCIONES",
+      "MEDICAMENTOS", "ANTIBIOTICOS", "MEDIDAS", "GENERALES"];
+    const _sinAcento = function (w) { return String(w).toUpperCase().normalize("NFD").replace(/[\u0300-\u036F]/g, ""); };
     function cleanNameCandidate(rawLine) {
       let s = (rawLine || "").replace(/\u00A0/g, " ");
       s = s.split("|")[0];                                  // cortar en "|"
-      s = s.split(/\b(EXP|CURP|FOLIO|EDAD|FN)\b/i)[0];       // o en metadata
+      s = s.split(/\s\/|\/\s/)[0];                           // o en « / » (3 nov 2026: «NOMBRE / EXPE: 26-…», «NOMBRE / 54 AÑOS»)
+      s = s.replace(/^\s*(NOMBRE|PACIENTE)\s*[:：]\s*/i, "");
+      s = s.split(/\b(EXP(?:EDIENTE|ED|E|D)?|CURP|FOLIO|EDAD|FN|NSS)\b/i)[0];   // o en metadata (EXP, EXPE, EXPEDIENTE…)
+      s = s.replace(/\s+[A-ZÁÉÍÓÚÑa-záéíóúñ.]{1,12}\s*[:：].*$/, "");  // « REG: 26-…» y otras etiquetas con dos puntos
       s = s.replace(/\b\d{1,3}\s*A[ÑN]OS?.*/i, "");          // "X AÑOS ..." sin "|"
       s = s.replace(/^[\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*0-9.\s\-]+/, "").trim();
       if (!s || s.length < 4) return "";
       if (/\d/.test(s)) return "";                           // dígitos residuales → no es nombre
+      if (/[:：+]/.test(s)) return "";                       // «DX: …», «COLECISTITIS + …»: diagnóstico, no nombre
       const words = s.split(/\s+/).filter(function(w) {
         return w.length >= 2 && /[A-ZÁÉÍÓÚÑa-záéíóúñ]/.test(w);
       });
       if (words.length < 2) return "";
+      if (words.some(function (w) { return NO_NOMBRE.indexOf(_sinAcento(w).replace(/[^A-Z]/g, "")) >= 0; })) return "";
       const upper = (s.match(/[A-ZÁÉÍÓÚÑ]/g) || []).length;
       const letters = (s.match(/[A-Za-zÁÉÍÓÚÑáéíóúñ]/g) || []).length;
       if (letters > 0 && upper / letters >= 0.6) return s;
@@ -6408,17 +6451,43 @@ const PLIndicaciones = (function() {
       if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(t)) return true;
       if (/^(MASCULINO|FEMENINO)\s+DE\s+\d/i.test(t)) return true;
       if (/^FECHA\b/i.test(t)) return true;
+      if (/^(DX|DIAGN[OÓ]STICO|ALERGIAS?|PESO|TALLA|SERVICIO|CAMA|PISO)\b/i.test(t)) return true;
       return false;
     }
+    // Nombre escrito en el MISMO renglón del encabezado («INDICACIONES MÉDICAS CIRUGÍA GENERAL | NOMBRE | 03.11.2026»):
+    // antes ese renglón se saltaba entero y el bloque quedaba sin nombre (o con el de otro renglón).
+    // Cada palabra del encabezado debe terminar en espacio, «|» o fin (si no, «DE» se comería el inicio de «DELGADO»);
+    // la única excepción es «GENERAL» pegado al nombre («CIRUGÍA GENERALJUAN …»), que sí se ha visto en el Doc.
+    const HDR_FRASE_RE = /^[^A-Za-zÁÉÍÓÚÑáéíóúñ]*INDICACIONES(?:\s+(?:M[EÉ]DICAS?|PARA|DE|DEL|LA|EN|POSTQUIR[UÚ]RGICAS?|PREQUIR[UÚ]RGICAS?|POSTOPERATORIAS?|PREOPERATORIAS?|HOSPITALIZACI[OÓ]N|INGRESO|CIRUG[IÍ]A|SERVICIO|CG|GENERAL)(?=[\s|]|$))*(?:\s+GENERAL(?=[A-ZÁÉÍÓÚÑ]))?\s*/i;
+    function headerNameCandidate(t) {
+      const parts = t.replace(HDR_FRASE_RE, "").split("|").map(function (x) { return x.trim(); }).filter(Boolean);
+      for (let j = 0; j < parts.length; j++) { const c = cleanNameCandidate(parts[j]); if (c) return c; }
+      return "";
+    }
+    // Renglón con identidad (EXP, AÑOS, FN, expediente o fecha): su candidato gana a uno «suelto», que puede ser un
+    // diagnóstico escrito en mayúsculas antes del renglón del nombre.
+    const IDENT_RE = /\b(EXP(?:EDIENTE|ED|E|D)?|CURP|FOLIO|EDAD|FN|NSS)\b|A[ÑN]OS\b|\b\d{2}-\d{4,}\b|\d{1,2}\s*[\/.]\s*\d{1,2}\s*[\/.]\s*\d{4}/i;
 
     let nombre = "";
-    // 1) HACIA ADELANTE — layout real: nombre justo debajo del header
+    // 1) HACIA ADELANTE — layout real: nombre justo debajo del header (o en el renglón del header).
+    // Preferencia: renglón con identidad > renglón suelto debajo del header > lo que venga en el propio header (último
+    // recurso: «INDICACIONES PARA <palabra> DE …» deja restos que no son nombre).
+    let nombreSuelto = "", nombreHeader = "";
     for (let i = anchorIdx; i <= anchorIdx + 5 && i < segLines.length && !nombre; i++) {
       const t = (segLines[i] || "").replace(/\u00A0/g, " ").trim();
-      if (!t || skipNameLine(t)) continue;
+      if (!t) continue;
+      if (i === anchorIdx && /INDICACIONES/i.test(t)) {
+        const hc = headerNameCandidate(t);
+        if (hc && IDENT_RE.test(t)) nombre = hc; else if (hc) nombreHeader = hc;
+        continue;
+      }
+      if (skipNameLine(t)) continue;
       const cand = cleanNameCandidate(t);
-      if (cand) nombre = cand;
+      if (!cand) continue;
+      if (IDENT_RE.test(t)) nombre = cand;
+      else if (!nombreSuelto) nombreSuelto = cand;
     }
+    if (!nombre) nombre = nombreSuelto || nombreHeader;
     // 2) FALLBACK HACIA ATRÁS — layouts donde el nombre va antes del ancla
     if (!nombre) {
       let scanned = 0;
@@ -6473,9 +6542,15 @@ const PLIndicaciones = (function() {
     let fecha = "";
     for (let i = anchorIdx; i <= anchorIdx + 8 && i < segLines.length && !fecha; i++) {
       const t = (segLines[i] || "").replace(/\u00A0/g, " ").replace(/\*\*/g, "").trim();
-      if (/A[ÑN]OS|\bFN\b|NAC/i.test(t)) continue;
-      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
-      if (m && +m[3] >= 2000 && +m[2] >= 1 && +m[2] <= 12) fecha = m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+      if (/A[ÑN]OS|\bFN\b|\bF\.\s?N\.|NAC/i.test(t)) continue;
+      // 3 nov 2026: también «FECHA 03/11/2026», «03 /11/2026», «03.11.2026» y la fecha como tramo entre «|» del renglón
+      // («INDICACIONES … | NOMBRE | 03.11.2026 |»). Antes 45 de 65 bloques del Doc quedaban sin fecha y, con dos bloques del
+      // mismo paciente, podía ganar el viejo.
+      const tramos = [t].concat(t.split(/\||\t/).map(function (x) { return x.trim(); }));
+      for (let j = 0; j < tramos.length && !fecha; j++) {
+        const m = tramos[j].match(/^(?:FECHA\s*[:.]?\s*)?(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{4})\b/i);
+        if (m && +m[3] >= 2000 && +m[2] >= 1 && +m[2] <= 12 && +m[1] >= 1 && +m[1] <= 31) fecha = m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+      }
     }
 
     // SECCIONES (ANTIBIÓTICOS aparte de MEDICAMENTOS; "MEDIAS GENERALES" es errata frecuente de MEDIDAS)
@@ -6520,13 +6595,14 @@ const PLIndicaciones = (function() {
 
   function importPasted(text, docInfo) {
     const r = parsePasted(text);
-    saveBlocks(r.blocks);
+    const guardado = saveBlocks(r.blocks);
     const stats = {
       total: r.blocks.length,
       withName: r.blocks.filter(function(b){return !!b.nombre}).length,
       withCama: r.blocks.filter(function(b){return !!b.cama}).length
     };
-    setMeta(Date.now(), stats, docInfo || null);
+    if (!guardado) stats.sinCopia = true;   // la memoria del equipo no alcanzó: se usa la versión nueva igual (ver STORAGE)
+    setMeta(Date.now(), stats, docInfo || null, guardado);
     return { blocks: r.blocks, debug: r.debug, stats: stats };
   }
 
@@ -6569,9 +6645,13 @@ const PLIndicaciones = (function() {
       }
     }
     if (best) {
-      best._matchMethod = bestR.method;
-      best._matchScore = bestScore;
-      best._matchWarn = !!bestR.warn;   // "cama-sola": mismo cuarto, nombre distinto → NO mostrar como propias
+      // Copia completa (listas incluidas): los bloques ahora se comparten en memoria entre tarjetas (antes cada lectura los
+      // re-armaba del almacenamiento); quien modifique lo que recibe no toca la copia de las demás.
+      best = Object.assign(JSON.parse(JSON.stringify(best)), {
+        _matchMethod: bestR.method,
+        _matchScore: bestScore,
+        _matchWarn: !!bestR.warn   // "cama-sola": mismo cuarto, nombre distinto → NO mostrar como propias
+      });
     }
     return best;
   }
@@ -6719,7 +6799,7 @@ function renderIndicacionesSection(p, nd, k) {
     // "cama-sola": en el Doc hay un bloque para este cuarto pero con OTRO nombre (paciente anterior o
     // error de captura). Nunca mostrarlo como si fuera de este paciente: aviso y contenido oculto.
     const warn = data._matchWarn
-      ? '<div class="ind-warn">⚠️ En el Doc, la cama ' + escInd(p.cama || data.cama || '') + ' tiene indicaciones a nombre de <b>' + escInd(data.nombre || '(sin nombre)') + '</b>, que no coincide con este paciente. Verifica el Doc antes de usarlas. ' +
+      ? '<div class="ind-warn">⚠️ En el Doc, la cama ' + escInd(p.cama || data.cama || '') + ' tiene indicaciones a nombre de <b>' + escInd(data.nombre || '(sin nombre)') + '</b>' + (data.fecha ? ' (del ' + escInd((typeof fmtDateChip === "function") ? fmtDateChip(data.fecha) : data.fecha) + ')' : '') + ', que no coincide con este paciente. Verifica el Doc antes de usarlas. ' +
         '<button type="button" class="ind-import-btn" onclick="var c=this.closest(\'.ind-section\').querySelector(\'.ind-content\');c.style.display=c.style.display===\'none\'?\'\':\'none\'">Ver de todos modos</button></div>'
       : '';
     return '<div class="ind-section ind-fresh-' + fresh.state + (data._matchWarn ? ' ind-mismatch' : '') + '" id="ind-' + escInd(k) + '">' +
@@ -29830,7 +29910,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.03-1";
+    const PL_BUILD = "2026.11.03-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
