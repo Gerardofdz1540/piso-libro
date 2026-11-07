@@ -137,11 +137,12 @@ const PATS = [
     { const nd = getNote(pidDe('3-205')); nd.checklist = nd.checklist || {}; nd.checklist.winlab_alias = 'LOPEZ DIAS ANA MARIA'; noteData[pidDe('3-205')] = nd; }
     c = await correr([{ paciente: 'LOPEZ DIAS, ANA MARIA', fecha_labs: '2026-10-28', values: { hb: '8.1' } }]);
     out.l11 = { b: (snapDe('3-205', '2026-10-28')[0] || { labs: {} }).labs.hb, a: snapDe('3-204', '2026-10-28').length, txt: c.txt.slice(0, 200) };
-    // L12: dos palabras distintas (RUIS/SOTU) y sin expediente → nada sugerido ni escrito; a mano sí se puede asignar.
-    c = await correr([{ paciente: 'RUIS SOTU, MATEO', fecha_labs: '2026-10-29', values: { hb: '11.9' } }]);
-    out.l12 = { sel: c.sel, antes: snapDe('3-201', '2026-10-29').length };
-    if (c.cards[0]) { await asignar(c.cards[0], ''); out.l12.sinElegir = window.__alerts.slice(-1)[0]; await asignar(c.cards[0], pidDe('3-201')); }
-    out.l12.despues = (snapDe('3-201', '2026-10-29')[0] || { labs: {} }).labs.hb;
+    // L12: DOS palabras con una letra distinta cada una (PERES/PEREZ y GOMES/GOMEZ) y sin expediente → nada sugerido ni
+    //      escrito (a lo más UNA palabra parecida); a mano sí se puede asignar.
+    c = await correr([{ paciente: 'PERES GOMES, MARIA DE LA LUZ', fecha_labs: '2026-10-31', values: { hb: '11.9' } }]);
+    out.l12 = { sel: c.sel, antes: snapDe('3-202', '2026-10-31').length };
+    if (c.cards[0]) { await asignar(c.cards[0], ''); out.l12.sinElegir = window.__alerts.slice(-1)[0]; await asignar(c.cards[0], pidDe('3-202')); }
+    out.l12.despues = (snapDe('3-202', '2026-10-31')[0] || { labs: {} }).labs.hb;
     // L13: mismo expediente pero nombre que no encaja (expediente copiado / otra persona) → solo sugerencia, nada escrito.
     c = await correr([{ paciente: 'PERSONA DISTINTA, OTRO NOMBRE', expediente: '26-90002', fecha_labs: '2026-10-29', values: { hb: '6.6' } }]);
     out.l13 = { sel: c.sel, esperado: pidDe('3-202'), escrito: snapDe('3-202', '2026-10-29').length, txt: c.txt.slice(0, 200) };
@@ -157,7 +158,7 @@ const PATS = [
     r3.l9.antes === 0 && r3.l9.sel[0] === r3.l9.esperado && /¿Es este paciente\? \(nombre parecido\)/.test(r3.l9.txt) && r3.l9.despues === '9.9' && r3.l9.confirm.length === 1 && r3.l9.done, JSON.stringify(r3.l9));
   check('L10 una letra distinta + la cama del PDF igual: se asigna solo y nadie más recibe nada', r3.l10.hb === '12.7' && r3.l10.otros[0] === 0 && r3.l10.otros[1] === 0 && /Identificado por cama/.test(r3.l10.txt), JSON.stringify(r3.l10));
   check('L11 el PDF trae el «nombre en WinLab» fijado en la tarjeta: se asigna solo a esa tarjeta', r3.l11.b === '8.1' && r3.l11.a === 0 && /Identificado por nombre en WinLab/.test(r3.l11.txt), JSON.stringify(r3.l11));
-  check('L12 dos palabras distintas: nada sugerido ni escrito; sin elegir avisa; eligiendo el paciente a mano sí se carga',
+  check('L12 dos palabras con una letra distinta cada una: nada sugerido ni escrito; sin elegir avisa; eligiendo el paciente a mano sí se carga',
     r3.l12.sel[0] === '' && r3.l12.antes === 0 && /Elige el paciente/.test(r3.l12.sinElegir || '') && r3.l12.despues === '11.9', JSON.stringify(r3.l12));
   check('L13 mismo expediente con otro nombre (expediente copiado): solo se sugiere, no se escribe', r3.l13.sel[0] === r3.l13.esperado && r3.l13.escrito === 0 && /mismo expediente, nombre distinto/.test(r3.l13.txt), JSON.stringify(r3.l13));
   check('L14 parecido que no tiene respaldo propio (la cama es de otro): no se asigna solo; queda sugerido el que encaja', r3.l14.sel[0] === r3.l14.esperado && r3.l14.a === 0 && r3.l14.b === 0, JSON.stringify(r3.l14));

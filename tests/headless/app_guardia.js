@@ -181,10 +181,13 @@ const HIST_OLD = {
   const g4b = await page.evaluate(async () => {
     const k = pid(patients[0]); const card = () => document.getElementById('card-' + k);
     const nd = getNote(k); const antes = { entrega: nd.entrega, pendientes: nd.pendientes };   // se restauran al final (G6 usa Pendientes)
-    nd.entrega = '05/11 08:00 AB: VIEJO 1\n06/11 09:00 AB: VIEJO 2'; nd.pendientes = 'PEND 1'; noteData[k] = nd; _rerenderCard(k);
+    const relleno = Array.from({ length: 40 }, (_, i) => '04/11 07:' + String(i).padStart(2, '0') + ' AB: RENGLON ' + i).join('\n');
+    nd.entrega = relleno + '\n05/11 08:00 AB: VIEJO 1\n06/11 09:00 AB: VIEJO 2'; nd.pendientes = 'PEND 1'; noteData[k] = nd; _rerenderCard(k);
+    { const t0 = card().querySelector('textarea[data-field="entrega"]'); t0.style.height = '120px'; t0.scrollTop = t0.scrollHeight; }   // caja larga, vista hasta abajo
+    const bajado = card().querySelector('textarea[data-field="entrega"]').scrollTop;
     card().querySelector('[data-testid="crono-ahora"]').click(); await new Promise(r => setTimeout(r, 120));
     const ta = card().querySelector('textarea[data-field="entrega"]');
-    const r = { v1: ta.value, caret: ta.selectionStart, stampLen: (ta.value.split('\n')[0] || '').length, top: ta.scrollTop, focused: document.activeElement === ta };
+    const r = { v1: ta.value, caret: ta.selectionStart, stampLen: (ta.value.split('\n')[0] || '').length, top: ta.scrollTop, bajado, focused: document.activeElement === ta };
     card().querySelector('[data-testid="crono-ahora"]').click(); await new Promise(r2 => setTimeout(r2, 120));
     r.v2 = card().querySelector('textarea[data-field="entrega"]').value;
     // lienzo ✍️ en modo campo: Cronología → arriba; Pendientes → al final
@@ -202,8 +205,8 @@ const HIST_OLD = {
   });
   const g4bStamp = /^\d{2}\/\d{2} \d{2}:\d{2} GF: $/;
   check('G4b 🕓 lo nuevo arriba: ➕ Ahora pone el renglón al principio, con el cursor en él y la caja arriba; doble toque no duplica; ✍️ «Agregar arriba» en la Cronología y «Agregar al final» en las demás',
-    g4bStamp.test(g4b.v1.split('\n')[0] + ' '.slice(1)) && /\n05\/11 08:00 AB: VIEJO 1\n06\/11 09:00 AB: VIEJO 2$/.test(g4b.v1) && g4b.caret === g4b.stampLen && g4b.top === 0 && g4b.focused
-    && g4b.v2 === g4b.v1 && g4b.lblEntrega === 'Agregar arriba' && /^DEL LIENZO\n\d{2}\/\d{2} \d{2}:\d{2} GF: ?\n05\/11/.test(g4b.vInk)
+    g4bStamp.test(g4b.v1.split('\n')[0] + ' '.slice(1)) && /\n05\/11 08:00 AB: VIEJO 1\n06\/11 09:00 AB: VIEJO 2$/.test(g4b.v1) && g4b.caret === g4b.stampLen && g4b.bajado > 50 && g4b.top === 0 && g4b.focused
+    && g4b.v2 === g4b.v1 && g4b.lblEntrega === 'Agregar arriba' && /^DEL LIENZO\n\d{2}\/\d{2} \d{2}:\d{2} GF: ?\n04\/11 07:00 AB: RENGLON 0\n/.test(g4b.vInk)
     && g4b.lblPend === 'Agregar al final' && g4b.pend === 'PEND 1\nPEND 2', JSON.stringify(g4b));
 
   // ── G5: Procedimientos del día muestran quién lo agregó y a qué hora; EDITAR por el modal no cambia autor ni hora (ni en local ni en el PATCH) ──
