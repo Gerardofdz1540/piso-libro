@@ -121,7 +121,7 @@ const MOCK = `(() => {
     const noRecibo = !document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-ckfield="recibo"]');
     return { stamp, ic: nd.checklist.interconsultas, cult: nd.checklist.cultivos, entrega: nd.entrega, dirty, btns, ahoraBtn, noRecibo };
   });
-  check('H4 ➕ Hoy: anota "dd/mm INI: " al final de IC (sin duplicar) y Cultivos; 🕓 «➕ Ahora» anota "dd/mm hh:mm INI: " al final de la Cronología; campos sucios; botones presentes; ya no hay caja Recibido',
+  check('H4 ➕ Hoy: anota "dd/mm INI: " al final de IC (sin duplicar) y Cultivos; 🕓 «➕ Ahora» anota "dd/mm hh:mm INI: " arriba de la Cronología; campos sucios; botones presentes; ya no hay caja Recibido',
     h4.ic === 'MI: valorado\n' + h4.stamp && h4.cult === h4.stamp && /^\d{2}\/\d{2} \d{2}:\d{2}( \S+)?: $/.test(h4.entrega)
     && h4.dirty.includes('ck_interconsultas') && h4.dirty.includes('ck_cultivos') && h4.dirty.includes('entrega') && h4.btns.every(Boolean) && h4.ahoraBtn && h4.noRecibo, JSON.stringify(h4));
 

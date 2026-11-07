@@ -654,8 +654,9 @@ Cada caja tiene un color propio para ubicarla de un vistazo. Columna principal, 
 - **⚠️ Pendientes / Plan** (ámbar).
 - **🕓 Cronología** (azul; 19 oct 2026, sustituye a «Entrega / Recibo de guardia», que se confundían):
   UNA sola caja por paciente donde cada guardia anota, con fecha y hora, **lo que pasa y lo que hace**
-  (eventos, llamadas, lo que se hizo). El botón **➕ Ahora** agrega un renglón al final con `dd/mm hh:mm GF: `
-  y deja el cursor ahí. La siguiente guardia la lee de arriba abajo. **Solo tiene lo que escribe la gente**:
+  (eventos, llamadas, lo que se hizo). El botón **➕ Ahora** agrega un renglón **arriba** con `dd/mm hh:mm GF: `
+  y deja el cursor ahí (7 nov 2026: lo más reciente primero, se ve sin bajar; antes iba al final). El lienzo ✍️ en
+  la Cronología también agrega arriba. Lo que ya estaba escrito no se reordena. **Solo tiene lo que escribe la gente**:
   desde el 27 oct 2026 la app no anota nada sola (ver "Nada automático en las cajas"). **✨ Resumen** muestra en
   una ventana un resumen corto con lo que importa, sin escribirlo en la caja (ver "Entrega de guardia que
   resume"). Lo que había en la caja antigua «Recibido» pasó una sola vez al
@@ -1023,6 +1024,17 @@ una copia: además trae pestañas listas para estadística.
   en la hoja de una sola persona; el resultado lo dice en rojo («No se guardaron… revisa la hoja»). Probado además: el
   mismo PDF dos veces no duplica; con labs de WinLab del mismo día se suman sin pisar; un PDF que falla no detiene a los
   demás; un nombre que encaja con dos pacientes no se escribe hasta confirmarlo.
+- **📦 Labs Masivo: «No encontrado en censo» aunque el paciente sí está** (7 nov 2026, versión 2026.11.07-1). La regla
+  exacta pedía que TODAS las palabras del nombre fueran idénticas; si la IA leía mal una sola letra del PDF (I/J, N/M…)
+  el paciente salía «no encontrado», y el expediente y la cama que la IA ya leía se tiraban. Ahora, solo cuando la regla
+  exacta no encuentra a nadie, hay un segundo intento: cada palabra puede ser igual o diferir en una letra (palabras de
+  5+ letras) o ser abreviatura, a lo más una así, y también se compara con el «nombre en WinLab» de la tarjeta.
+  - **Se asigna solo** cuando hay UN solo candidato y lo respalda algo más: el mismo **expediente**, la misma **cama** o
+    el «nombre en WinLab» tal cual. El renglón verde lo dice («Identificado por expediente…»).
+  - **Si no hay respaldo**, el paciente queda **sugerido** («¿Es este paciente? (nombre parecido)») con el selector ya
+    puesto en él: revisa y toca **✓ Asignar** (pide confirmación). Nada se escribe antes.
+  - **Si no se parece a nadie**, el mismo selector deja **elegir a mano** cualquier paciente del censo. Un expediente
+    igual con otro nombre (expediente copiado) solo se sugiere, nunca se asigna solo.
 - **El robot ya no reescribe lo que no cambió.** Si la fila de hoy de un paciente ya está igual en la base (mismos reportes,
   cama y especialidad), no se vuelve a guardar. Antes cada corrida mandaba un aviso en vivo a todos los iPads («🧪 Labs
   WinLab actualizados») y repintaba las tarjetas aunque nada cambiara. El resultado de la búsqueda (`winlab_match`) sí
