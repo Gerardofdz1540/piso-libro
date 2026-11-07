@@ -169,11 +169,45 @@ const HIST_OLD = {
   // la cronología (entrega) viaja en checklist.__pl_note_meta.entrega; el recibo vacío, en checklist.recibo
   const post4 = calls.slice(from4).filter(c => (c.m === 'POST' || c.m === 'PATCH') && c.url.startsWith('/rest/v1/notes') && c.body && c.body.checklist).map(c => ({ entrega: ((c.body.checklist.__pl_note_meta || {}).entrega), checklist: c.body.checklist }));
   const MERGED4 = '— Recibido 18/10 07:30 DG —\nLO QUE DEJÓ LA GUARDIA ANTERIOR\n\nVIGILAR DRENAJE 3\nK 2.9 EN REPOSICIÓN';
-  check('G4 🕓 Cronología: encabezado único con «➕ Ahora» (sin «Recibir guardia»); lo de «Recibido» pasa una sola vez al principio de la cronología y la caja Recibido desaparece (se sube con entrega y recibo vacío); repintar no duplica; «➕ Ahora» agrega "dd/mm hh:mm GF: " al final y deja el cursor ahí; etiquetas «Cronología de guardias» y «Otros»',
+  check('G4 🕓 Cronología: encabezado único con «➕ Ahora» (sin «Recibir guardia»); lo de «Recibido» pasa una sola vez al principio de la cronología y la caja Recibido desaparece (se sube con entrega y recibo vacío); repintar no duplica; «➕ Ahora» agrega "dd/mm hh:mm GF: " ARRIBA y deja el cursor ahí; etiquetas «Cronología de guardias» y «Otros»',
     g4.title && /🕓 Cronología/.test(g4.title) && /Ahora/.test(g4.title) && !g4.gdRecibir && g4.inGrid
     && g4.entrega === MERGED4 && g4.recibo === '' && !g4.reciboTa && g4.entregaTa === MERGED4 && /Cronología de guardias/.test(g4.label) && g4.entrega3 === MERGED4
-    && new RegExp('^' + MERGED4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\n\\d{2}/\\d{2} \\d{2}:\\d{2} GF: $').test(g4.ahora) && g4.focused && /Otros/.test(g4.otros)
-    && post4.some(b => typeof b.entrega === 'string' && b.entrega.indexOf(MERGED4) === 0 && b.checklist && b.checklist.recibo === ''), JSON.stringify({ g4, posts: post4.length }));   // el envío agrupa la migración con el «➕ Ahora» (va dentro del mismo debounce)
+    && new RegExp('^\\d{2}/\\d{2} \\d{2}:\\d{2} GF: \\n' + MERGED4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$').test(g4.ahora) && g4.focused && /Otros/.test(g4.otros)
+    && post4.some(b => typeof b.entrega === 'string' && b.entrega.indexOf(MERGED4) >= 0 && b.checklist && b.checklist.recibo === ''), JSON.stringify({ g4, posts: post4.length }));   // el envío agrupa la migración con el «➕ Ahora» (va dentro del mismo debounce)
+
+  // ── G4b: 🕓 lo nuevo ARRIBA (7 nov 2026, «que aparezca luego luego arriba, no hasta abajo»): ➕ Ahora pone el renglón al
+  // principio con el cursor ahí y la caja en su parte de arriba; un doble toque no duplica; el lienzo ✍️ «Agregar arriba»
+  // pone lo transcrito al principio de la Cronología y en otras cajas sigue al final; ➕ Hoy de Interconsultas sigue al final.
+  const g4b = await page.evaluate(async () => {
+    const k = pid(patients[0]); const card = () => document.getElementById('card-' + k);
+    const nd = getNote(k); const antes = { entrega: nd.entrega, pendientes: nd.pendientes };   // se restauran al final (G6 usa Pendientes)
+    const relleno = Array.from({ length: 40 }, (_, i) => '04/11 07:' + String(i).padStart(2, '0') + ' AB: RENGLON ' + i).join('\n');
+    nd.entrega = relleno + '\n05/11 08:00 AB: VIEJO 1\n06/11 09:00 AB: VIEJO 2'; nd.pendientes = 'PEND 1'; noteData[k] = nd; _rerenderCard(k);
+    { const t0 = card().querySelector('textarea[data-field="entrega"]'); t0.style.height = '120px'; t0.scrollTop = t0.scrollHeight; }   // caja larga, vista hasta abajo
+    const bajado = card().querySelector('textarea[data-field="entrega"]').scrollTop;
+    card().querySelector('[data-testid="crono-ahora"]').click(); await new Promise(r => setTimeout(r, 120));
+    const ta = card().querySelector('textarea[data-field="entrega"]');
+    const r = { v1: ta.value, caret: ta.selectionStart, stampLen: (ta.value.split('\n')[0] || '').length, top: ta.scrollTop, bajado, focused: document.activeElement === ta };
+    card().querySelector('[data-testid="crono-ahora"]').click(); await new Promise(r2 => setTimeout(r2, 120));
+    r.v2 = card().querySelector('textarea[data-field="entrega"]').value;
+    // lienzo ✍️ en modo campo: Cronología → arriba; Pendientes → al final
+    const viaLienzo = async (field, texto) => {
+      openInkpadForField(k, field, field); _inkTranscription = { texto: texto }; _renderInkpadFieldSingle({ texto: texto }, field);
+      const lbl = (document.querySelector('input[name="ink-mode"][value="append"]') || {}).parentElement;
+      const t = lbl ? lbl.textContent.trim() : ''; inkApplyTranscription(); await new Promise(r3 => setTimeout(r3, 80)); return t;
+    };
+    r.lblEntrega = await viaLienzo('entrega', 'DEL LIENZO');
+    r.vInk = String(getNote(k).entrega);
+    r.lblPend = await viaLienzo('pendientes', 'PEND 2');
+    r.pend = String(getNote(k).pendientes);
+    const nd3 = getNote(k); nd3.entrega = antes.entrega; nd3.pendientes = antes.pendientes; noteData[k] = nd3; _rerenderCard(k);
+    return r;
+  });
+  const g4bStamp = /^\d{2}\/\d{2} \d{2}:\d{2} GF: $/;
+  check('G4b 🕓 lo nuevo arriba: ➕ Ahora pone el renglón al principio, con el cursor en él y la caja arriba; doble toque no duplica; ✍️ «Agregar arriba» en la Cronología y «Agregar al final» en las demás',
+    g4bStamp.test(g4b.v1.split('\n')[0] + ' '.slice(1)) && /\n05\/11 08:00 AB: VIEJO 1\n06\/11 09:00 AB: VIEJO 2$/.test(g4b.v1) && g4b.caret === g4b.stampLen && g4b.bajado > 50 && g4b.top === 0 && g4b.focused
+    && g4b.v2 === g4b.v1 && g4b.lblEntrega === 'Agregar arriba' && /^DEL LIENZO\n\d{2}\/\d{2} \d{2}:\d{2} GF: ?\n04\/11 07:00 AB: RENGLON 0\n/.test(g4b.vInk)
+    && g4b.lblPend === 'Agregar al final' && g4b.pend === 'PEND 1\nPEND 2', JSON.stringify(g4b));
 
   // ── G5: Procedimientos del día muestran quién lo agregó y a qué hora; EDITAR por el modal no cambia autor ni hora (ni en local ni en el PATCH) ──
   const from5 = calls.length;

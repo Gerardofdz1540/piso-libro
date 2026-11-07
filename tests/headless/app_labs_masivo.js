@@ -105,6 +105,64 @@ const PATS = [
   check('L7 nombre que encaja igual con dos pacientes: pendiente, nadie recibe nada hasta confirmar; al confirmar va SOLO al elegido',
     r2.l7.pend === 1 && r2.l7antes[0] === 0 && r2.l7antes[1] === 0 && ((r2.l7.bCama === '3-205' && r2.l7.b[0] === '8.8' && !r2.l7.a.length) || (r2.l7.bCama === '3-204' && r2.l7.a[0] === '8.8' && !r2.l7.b.length)), JSON.stringify(r2.l7));
 
+  // ── L8–L14 (7 nov 2026, «me aparece que no lo reconoce, pero sí está»): segundo intento cuando la regla exacta no
+  //    encuentra a nadie (una letra distinta, nombre en WinLab, expediente y cama del PDF) y asignación a mano ──
+  const r3 = await page.evaluate(async () => {
+    const snapDe = (cama, fecha) => { const p = patients.find(x => x.cama === cama); const nd = noteData[pid(p)] || {}; return (nd.labHistory || []).filter(x => x.fecha === fecha); };
+    const pidDe = (cama) => pid(patients.find(x => x.cama === cama));
+    const correr = async (lista) => {
+      window.callLabsExtractionWorker = async function () { return { raw: {}, base64: '', patients: lista }; };
+      openBulkLabsModal(); window.__confirms = [];
+      handleBulkLabsFiles([new File(['%PDF-1.4'], 'x.pdf', { type: 'application/pdf' })]);
+      for (let i = 0; i < 100; i++) { await new Promise(r => setTimeout(r, 100)); if (/asignados/.test(document.getElementById('bulk-labs-progress').textContent)) break; }
+      await new Promise(r => setTimeout(r, 300));
+      const cards = Array.from(document.querySelectorAll('#bulk-labs-results [data-testid="bulk-manual"]'));
+      return { txt: document.getElementById('bulk-labs-results').textContent.replace(/\s+/g, ' '), sel: cards.map(c => c.querySelector('select').value), cards };
+    };
+    const asignar = async (card, id) => { const sel = card.querySelector('select'); if (id !== undefined) sel.value = id; card.querySelector('[data-testid="bulk-manual-ok"]').click(); await new Promise(r => setTimeout(r, 400)); };
+    const out = {};
+    // L8: una letra distinta en el nombre (MATEU/MATEO) + el expediente del PDF igual al del censo → se asigna solo, con aviso.
+    let c = await correr([{ paciente: 'RUIZ SOTO, MATEU', expediente: '26-90001', fecha_labs: '2026-10-27', values: { hb: '10.5' } }]);
+    out.l8 = { hb: (snapDe('3-201', '2026-10-27')[0] || { labs: {} }).labs.hb, txt: c.txt.slice(0, 300), cards: c.cards.length, keys: Object.keys((snapDe('3-201', '2026-10-27')[0] || { labs: {} }).labs) };
+    // L9: una letra distinta (PERES/PEREZ) sin expediente ni cama → SUGERIDO (preseleccionado), nada escrito hasta ✓ Asignar.
+    c = await correr([{ paciente: 'PERES GOMEZ, MARIA DE LA LUZ', fecha_labs: '2026-10-27', values: { hb: '9.9' } }]);
+    out.l9 = { antes: snapDe('3-202', '2026-10-27').length, sel: c.sel, txt: c.txt.slice(0, 300), esperado: pidDe('3-202') };
+    if (c.cards[0]) await asignar(c.cards[0]);
+    out.l9.despues = (snapDe('3-202', '2026-10-27')[0] || { labs: {} }).labs.hb; out.l9.confirm = window.__confirms.slice();
+    out.l9.done = !!document.querySelector('#bulk-labs-results [data-testid="bulk-manual-done"]');
+    // L10: una letra distinta (JAVIEL/JAVIER) + la cama del PDF igual → se asigna solo.
+    c = await correr([{ paciente: 'LOPEZ DIAZ, FRANCISCO JAVIEL', cama: '203', fecha_labs: '2026-10-27', values: { hb: '12.7' } }]);
+    out.l10 = { hb: (snapDe('3-203', '2026-10-27')[0] || { labs: {} }).labs.hb, otros: [snapDe('3-204', '2026-10-27').length, snapDe('3-205', '2026-10-27').length], txt: c.txt.slice(0, 200) };
+    // L11: el PDF trae el «nombre en WinLab» que se fijó en la tarjeta (aunque el del censo sea otro) → se asigna solo.
+    { const nd = getNote(pidDe('3-205')); nd.checklist = nd.checklist || {}; nd.checklist.winlab_alias = 'LOPEZ DIAS ANA MARIA'; noteData[pidDe('3-205')] = nd; }
+    c = await correr([{ paciente: 'LOPEZ DIAS, ANA MARIA', fecha_labs: '2026-10-28', values: { hb: '8.1' } }]);
+    out.l11 = { b: (snapDe('3-205', '2026-10-28')[0] || { labs: {} }).labs.hb, a: snapDe('3-204', '2026-10-28').length, txt: c.txt.slice(0, 200) };
+    // L12: DOS palabras con una letra distinta cada una (PERES/PEREZ y GOMES/GOMEZ) y sin expediente → nada sugerido ni
+    //      escrito (a lo más UNA palabra parecida); a mano sí se puede asignar.
+    c = await correr([{ paciente: 'PERES GOMES, MARIA DE LA LUZ', fecha_labs: '2026-10-31', values: { hb: '11.9' } }]);
+    out.l12 = { sel: c.sel, antes: snapDe('3-202', '2026-10-31').length };
+    if (c.cards[0]) { await asignar(c.cards[0], ''); out.l12.sinElegir = window.__alerts.slice(-1)[0]; await asignar(c.cards[0], pidDe('3-202')); }
+    out.l12.despues = (snapDe('3-202', '2026-10-31')[0] || { labs: {} }).labs.hb;
+    // L13: mismo expediente pero nombre que no encaja (expediente copiado / otra persona) → solo sugerencia, nada escrito.
+    c = await correr([{ paciente: 'PERSONA DISTINTA, OTRO NOMBRE', expediente: '26-90002', fecha_labs: '2026-10-29', values: { hb: '6.6' } }]);
+    out.l13 = { sel: c.sel, esperado: pidDe('3-202'), escrito: snapDe('3-202', '2026-10-29').length, txt: c.txt.slice(0, 200) };
+    // L14: una letra distinta que encaja con DOS pacientes (ANA SOFIX ≈ ANA SOFIA; ANA MARIX ≈ ANA MARIA no) y la cama de
+    //      otro → no se asigna solo; queda sugerido el que encaja.
+    c = await correr([{ paciente: 'LOPEZ DIAZ, ANA SOFIX', cama: '205', fecha_labs: '2026-10-30', values: { hb: '7.7' } }]);
+    out.l14 = { sel: c.sel, esperado: pidDe('3-204'), a: snapDe('3-204', '2026-10-30').length, b: snapDe('3-205', '2026-10-30').length };
+    return out;
+  });
+  check('L8 una letra distinta en el nombre + mismo expediente en el PDF: se asigna solo a su tarjeta y lo dice; el expediente no entra a los labs',
+    r3.l8.hb === '10.5' && /Identificado por expediente/.test(r3.l8.txt) && r3.l8.cards === 0 && r3.l8.keys.every(k => !/expediente|cama/.test(k)), JSON.stringify(r3.l8));
+  check('L9 una letra distinta sin expediente ni cama: queda sugerido (preseleccionado) y no se escribe hasta ✓ Asignar con confirmación',
+    r3.l9.antes === 0 && r3.l9.sel[0] === r3.l9.esperado && /¿Es este paciente\? \(nombre parecido\)/.test(r3.l9.txt) && r3.l9.despues === '9.9' && r3.l9.confirm.length === 1 && r3.l9.done, JSON.stringify(r3.l9));
+  check('L10 una letra distinta + la cama del PDF igual: se asigna solo y nadie más recibe nada', r3.l10.hb === '12.7' && r3.l10.otros[0] === 0 && r3.l10.otros[1] === 0 && /Identificado por cama/.test(r3.l10.txt), JSON.stringify(r3.l10));
+  check('L11 el PDF trae el «nombre en WinLab» fijado en la tarjeta: se asigna solo a esa tarjeta', r3.l11.b === '8.1' && r3.l11.a === 0 && /Identificado por nombre en WinLab/.test(r3.l11.txt), JSON.stringify(r3.l11));
+  check('L12 dos palabras con una letra distinta cada una: nada sugerido ni escrito; sin elegir avisa; eligiendo el paciente a mano sí se carga',
+    r3.l12.sel[0] === '' && r3.l12.antes === 0 && /Elige el paciente/.test(r3.l12.sinElegir || '') && r3.l12.despues === '11.9', JSON.stringify(r3.l12));
+  check('L13 mismo expediente con otro nombre (expediente copiado): solo se sugiere, no se escribe', r3.l13.sel[0] === r3.l13.esperado && r3.l13.escrito === 0 && /mismo expediente, nombre distinto/.test(r3.l13.txt), JSON.stringify(r3.l13));
+  check('L14 parecido que no tiene respaldo propio (la cama es de otro): no se asigna solo; queda sugerido el que encaja', r3.l14.sel[0] === r3.l14.esperado && r3.l14.a === 0 && r3.l14.b === 0, JSON.stringify(r3.l14));
+
   check('final: sin errores de JavaScript en la página', errors.length === 0, JSON.stringify(errors.slice(0, 3)));
   await browser.close();
   console.log('RESULT APP-LABS-MASIVO: ' + pass + ' passed, ' + fail + ' failed');

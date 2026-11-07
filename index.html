@@ -20462,7 +20462,9 @@ function plExportBackup() {
     // "➕ Hoy": encabezado con fecha al inicio de Pendientes/Plan (evolución cronológica, como en GoodNotes)
     // ➕ Hoy en IC / Cultivos / Entrega / Recibo (oct 2026): anota "dd/mm: " al final de la caja, como la
     // fecha que se escribe a mano antes de cada renglón en la hoja de visita. isCk = campo del checklist.
-    function insertTodayStamp(k, field, isCk, label, conHora) {
+    // arriba (🕓 Cronología, 7 nov 2026, pedido de Gera: «que lo nuevo aparezca luego luego arriba, no hasta abajo»): el
+    // renglón nuevo va al PRINCIPIO de la caja y el cursor queda ahí, así se ve sin bajar. Las demás cajas siguen al final.
+    function insertTodayStamp(k, field, isCk, label, conHora, arriba) {
       const sel = isCk ? 'textarea[data-key="' + k + '"][data-ckfield="' + field + '"]' : 'textarea[data-key="' + k + '"][data-field="' + field + '"]';
       const ta = document.querySelector(sel);
       if (ta && ta.readOnly) ta.readOnly = false;   // una caja de solo lectura se abre para escribir
@@ -20475,13 +20477,18 @@ function plExportBackup() {
       const nd = getNote(k);
       const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
       const trimmed = cur.replace(/\s+$/, "");
-      if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
+      const lead = cur.replace(/^\s+/, ""), l0 = lead.split("\n")[0];
+      if (arriba) {
+        // Ya hay un renglón vacío de ahora arriba (doble toque): solo poner el cursor en él.
+        if (l0.trim() === stamp.trim()) { if (ta) { const pos = cur.length - lead.length + l0.length; ta.focus(); try { ta.setSelectionRange(pos, pos); ta.scrollTop = 0; } catch (_) {} } return; }
+      } else if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
       _undoPush(k, "fecha de hoy en " + (label || field), [isCk ? "ck:" + field : field]);
       _touchBy(nd, field);
-      const next = (trimmed ? trimmed + "\n" : "") + stamp;
+      const next = arriba ? stamp + (lead.trim() ? "\n" + lead : "") : (trimmed ? trimmed + "\n" : "") + stamp;
+      const caret = arriba ? stamp.length : next.length;
       if (ta) {
         ta.value = next; if (isCk) liveCkText(ta); else liveUpdate(ta); ta.focus();
-        try { ta.setSelectionRange(next.length, next.length); } catch (_) {}
+        try { ta.setSelectionRange(caret, caret); if (arriba) ta.scrollTop = 0; } catch (_) {}
       } else if (isCk) {
         if (!nd.checklist) nd.checklist = {}; nd.checklist[field] = next; _saveNoteNow(k, nd, "ck_" + field); _rerenderCard(k);
       } else {
@@ -20748,14 +20755,14 @@ function plExportBackup() {
         ${renderPendList(nd, k)}
       </div>
       <!-- 🕓 Cronología (19 oct 2026): UNA caja donde cada guardia anota, con fecha y hora, lo que pasa y lo que hace
-           (solo lo que escribe la gente: desde el 27 oct 2026 la app no anota nada sola). La siguiente guardia la lee de arriba abajo; lo por
+           (solo lo que escribe la gente: desde el 27 oct 2026 la app no anota nada sola). Lo más reciente va arriba (➕ Ahora, desde el 7 nov 2026); lo por
            hacer va en ⚠️ Pendientes y lo que no cabe en ninguna, en 🗂️ Otros. Sustituye a Entrega/Recibido: lo que había
            en «Recibido» pasó delante de lo de Entrega (_cronoMigrar, una vez). Dato: nd.entrega. -->
       <div class="fc-guardia fc-crono">
       <div class="fc-guardia-title">
         <span class="fc-guardia-name">🕓 Cronología</span>
-        <span class="fc-guardia-hint">Lo que pasa y se hace en cada guardia, con fecha y hora. La siguiente guardia lo lee de arriba abajo.</span>
-        <button type="button" class="gd-btn gd-btn-main" data-k="${k}" onclick="cronoInsertNow(this.dataset.k)" title="Agrega un renglón nuevo al final con la fecha, la hora y tus iniciales" data-testid="crono-ahora">➕ Ahora</button>
+        <span class="fc-guardia-hint">Lo que pasa y se hace en cada guardia, con fecha y hora. Lo más reciente va arriba.</span>
+        <button type="button" class="gd-btn gd-btn-main" data-k="${k}" onclick="cronoInsertNow(this.dataset.k)" title="Agrega un renglón nuevo arriba con la fecha, la hora y tus iniciales" data-testid="crono-ahora">➕ Ahora</button>
       </div>
       <div id="sec-entrega-${ek}" class="fc-anchor entrega-row fc-blk fc-blk-entrega">
         <div class="field-label" style="display:flex;align-items:center;justify-content:space-between;gap:6px">
@@ -22929,7 +22936,7 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
           <b>⚠️ El campo ya tiene contenido.</b> Elige cómo combinarlo:
         </div>
         <div style="display:flex;gap:6px;margin-top:6px">
-          <label style="font-size:12px;flex:1;padding:6px;background:#f8fafc;border-radius:5px;border:1px solid #e2e8f0;cursor:pointer"><input type="radio" name="ink-mode" value="append" checked> Agregar al final</label>
+          <label style="font-size:12px;flex:1;padding:6px;background:#f8fafc;border-radius:5px;border:1px solid #e2e8f0;cursor:pointer"><input type="radio" name="ink-mode" value="append" checked> ${fieldKey === "entrega" ? "Agregar arriba" : "Agregar al final"}</label>
           <label style="font-size:12px;flex:1;padding:6px;background:#f8fafc;border-radius:5px;border:1px solid #e2e8f0;cursor:pointer"><input type="radio" name="ink-mode" value="replace"> Reemplazar</label>
         </div>`;
       }
@@ -22995,7 +23002,8 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
           if (pt) { pt.dx = nd.dx; _savePtsImmediate(pt, ["dx"]); }
         } else {
           _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")), [_inkFieldMode]);
-          dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (currentVal + "\n" + newVal) : newVal);
+          // 🕓 Cronología: lo nuevo va arriba (7 nov 2026), como ➕ Ahora; las demás cajas, al final.
+          dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (_inkFieldMode === "entrega" ? newVal + "\n" + currentVal : currentVal + "\n" + newVal) : newVal);
           _touchBy(nd, _inkFieldMode.replace(/^ck:/, ""));
         }
         // Persist per-field strokes
@@ -28759,6 +28767,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       var done = 0;
       var results = [];
       window.__bulkAmbiguities = []; // reset al iniciar cada carga
+      window.__bulkManual = [];      // PDFs sin paciente claro: se asignan a mano (7 nov 2026)
 
       function updateProgress() {
         var pct = Math.round(done / arr.length * 100);
@@ -28913,6 +28922,85 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return best.p;
       }
 
+      // Segundo intento (7 nov 2026, «me aparece que no lo reconoce, pero sí está»): SOLO cuando la regla exacta de
+      // arriba no encontró a nadie. La IA lee el nombre del PDF y a veces cambia UNA letra (I/J, N/M…) o abrevia; además
+      // trae el expediente y la cama, que antes se tiraban. Aquí cada palabra puede ser igual o «cercana» (_plTokenClose:
+      // una letra en palabras de 5+ letras, abreviatura de apellido), a lo más UNA cercana, también contra el «nombre en
+      // WinLab» de la tarjeta. Se asigna solo si el candidato es ÚNICO y lo respalda el expediente, la cama o el nombre en
+      // WinLab tal cual; si no, queda SUGERIDO y la persona confirma con un toque. Nunca se asigna solo por parecido.
+      function _bulkDigits(s) { return toSafeString(s).replace(/\D/g, ""); }
+      function _bulkCamaNum(s) { var m = toSafeString(s).match(/(\d+)\s*$/); return m ? String(parseInt(m[1], 10)) : ""; }
+      function _bulkTokFit(en, pt) {
+        var used = {}, exact = 0, close = 0;
+        en.forEach(function (t) {
+          for (var i = 0; i < pt.length; i++) if (!used[i] && pt[i] === t) { used[i] = 1; exact++; return; }
+          for (var j = 0; j < pt.length; j++) if (!used[j] && _plTokenClose(t, pt[j])) { used[j] = 1; close++; return; }
+        });
+        var need = Math.min(en.length, pt.length);
+        return { ok: exact >= 1 && exact + close >= 2 && exact + close >= need && close <= 1, close: close };
+      }
+      function _bulkSegundoIntento(nombrePdf, expPdf, camaPdf) {
+        var en = nameTokens(nombrePdf), expD = _bulkDigits(expPdf), camaN = _bulkCamaNum(camaPdf);
+        var fuertes = [], porExp = [];
+        patients.forEach(function (p) {
+          var nd = noteData[pid(p)];
+          var alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
+          var fit = null, viaAlias = false;
+          [[p.nombre, false], [alias, true]].forEach(function (par) {
+            if (!par[0] || en.length < 2) return;
+            var pt = nameTokens(par[0]); if (pt.length < 2) return;
+            var f = _bulkTokFit(en, pt);
+            if (f.ok && (!fit || f.close < fit.close)) { fit = f; viaAlias = par[1]; }
+          });
+          var expOk = expD.length >= 4 && _bulkDigits(p.exp) === expD;
+          var camaOk = !!camaN && _bulkCamaNum(p.cama) === camaN;
+          if (fit) fuertes.push({ p: p, close: fit.close, expOk: expOk, camaOk: camaOk, aliasExacto: viaAlias && fit.close === 0 });
+          else if (expOk) porExp.push({ p: p });
+        });
+        if (fuertes.length === 1) {
+          var c = fuertes[0];
+          var motivo = c.aliasExacto ? "nombre en WinLab" : (c.expOk ? "expediente" : (c.camaOk ? "cama" : ""));
+          if (motivo) return { p: c.p, auto: true, motivo: motivo };
+          return { sugerido: c.p, motivo: "nombre parecido" };
+        }
+        if (fuertes.length > 1) {
+          fuertes.sort(function (a, b) { return (b.aliasExacto - a.aliasExacto) || (b.expOk - a.expOk) || (b.camaOk - a.camaOk) || (a.close - b.close); });
+          return { sugerido: fuertes[0].p, motivo: "hay varios parecidos" };
+        }
+        if (porExp.length === 1) return { sugerido: porExp[0].p, motivo: "mismo expediente, nombre distinto" };
+        return { sugerido: null, motivo: "" };
+      }
+      // Renglón verde/azul de un PDF ya asignado (el mismo para la regla exacta y para el segundo intento).
+      function _bulkOkRow(matched, ex, info, nota) {
+        var isCultivo = info.isCultivo;
+        var rowBg = isCultivo ? "#f0f9ff" : "#f0fdf4";
+        var rowBdr = isCultivo ? "#7dd3fc" : "#86efac";
+        var rowClr = isCultivo ? "#0c4a6e" : "#166534";
+        var rowClr2 = isCultivo ? "#0369a1" : "#15803d";
+        var rowIcon = isCultivo ? "🔬" : "✅";
+        var rowExtra = isCultivo ? "Cultivo: " + esc(ex.tipo_cultivo || "") + (ex.cultivo_organismo ? " → " + esc(ex.cultivo_organismo) : "") : "";
+        if (info.descartados && info.descartados.length) rowExtra += (rowExtra ? "<br>" : "") + "<span data-testid='bulk-descartados' style='color:#b91c1c;font-weight:700'>⚠️ No se guardaron (valor imposible, revisa la hoja): " + esc(info.descartados.join(", ")) + "</span>";
+        if (nota) rowExtra += (rowExtra ? "<br>" : "") + "<span data-testid='bulk-nota' style='color:#92400e'>" + esc(nota) + "</span>";
+        return "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:" + rowBg + ";border:1px solid " + rowBdr + ";margin-bottom:4px;margin-left:8px;font-size:12px'>" +
+          "<span style='font-size:16px'>" + rowIcon + "</span>" +
+          "<div><div style='font-weight:700;color:" + rowClr + "'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div>" +
+          "<div style='color:" + rowClr2 + ";font-size:11px'>" + (ex.paciente ? "PDF: " + esc(ex.paciente) : "") + (ex.fecha_labs ? " &middot; " + esc(ex.fecha_labs) : "") + (rowExtra ? "<br>" + rowExtra : "") + "</div></div></div>";
+      }
+      // Tarjeta para elegir el paciente a mano (sugerido preseleccionado si lo hay); nada se escribe hasta ✓ Asignar.
+      function _bulkManualCard(mIdx, pdfName, seg) {
+        var lista = patients.slice().sort(function (a, b) { return String(a.cama || "").localeCompare(String(b.cama || ""), "es", { numeric: true }); });
+        var sugId = seg && seg.sugerido ? pid(seg.sugerido) : "";
+        var opts = "<option value=''>— Elige el paciente del censo —</option>" + lista.map(function (p) {
+          var id = pid(p); return "<option value='" + esc(id) + "'" + (id === sugId ? " selected" : "") + ">" + esc((p.cama || "?") + " · " + (p.nombre || "")) + "</option>";
+        }).join("");
+        return "<div data-testid='bulk-manual' style='padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:4px;margin-left:8px;font-size:11px'>" +
+          "<div><b style='color:#92400e'>⚠️ " + (sugId ? "¿Es este paciente? (" + esc(seg.motivo) + ")" : "No se identificó solo en el censo") + ":</b> PDF: " + esc(pdfName || "(sin nombre)") + "</div>" +
+          "<div style='display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center'>" +
+          "<select data-testid='bulk-manual-sel' style='flex:1;min-width:200px;padding:5px;border:1px solid #fcd34d;border-radius:5px;font-size:12px'>" + opts + "</select>" +
+          "<button type='button' data-testid='bulk-manual-ok' onclick='resolveBulkManual(" + mIdx + ", this)' style='background:#2563eb;color:#fff;border:none;padding:6px 12px;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer'>✓ Asignar</button>" +
+          "</div></div>";
+      }
+
       function processFile(file) {
         return new Promise(async function(resolve) {
           try {
@@ -28927,12 +29015,15 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
                 tipo: entry.tipo || "labs",
                 confidence: entry.confidence || 0,
                 source_excerpt: entry.source_excerpt || "",
-                ...values
+                ...values,
+                // Para el segundo intento de identificar al paciente (7 nov 2026); antes se perdían aquí.
+                expediente_pdf: toSafeString(entry.expediente || entry.exp || (values && (values.expediente || values.exp)) || "").trim(),
+                cama_pdf: toSafeString(entry.cama || (values && values.cama) || "").trim()
               };
             }).filter(function(e) {
               if (!e.paciente && !e.nombre) return false;
               var hasAnyValue = Object.keys(e).some(function(k) {
-                if (["paciente","nombre","fecha_labs","hora_labs","tipo","confidence","source_excerpt"].indexOf(k) >= 0) return false;
+                if (["paciente","nombre","fecha_labs","hora_labs","tipo","confidence","source_excerpt","expediente_pdf","cama_pdf","expediente","exp","cama"].indexOf(k) >= 0) return false;
                 var v = e[k];
                 return v != null && String(v).trim().length > 0;
               });
@@ -28995,22 +29086,21 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
             }
             if (matched) {
               var info = await applyBulkEntryToPatient(matched, ex, r);
-              var isCultivo = info.isCultivo;
               successCount++;
-              var rowBg = isCultivo ? "#f0f9ff" : "#f0fdf4";
-              var rowBdr = isCultivo ? "#7dd3fc" : "#86efac";
-              var rowClr = isCultivo ? "#0c4a6e" : "#166534";
-              var rowClr2 = isCultivo ? "#0369a1" : "#15803d";
-              var rowIcon = isCultivo ? "🔬" : "✅";
-              var rowExtra = isCultivo ? "Cultivo: " + esc(ex.tipo_cultivo || "") + (ex.cultivo_organismo ? " → " + esc(ex.cultivo_organismo) : "") : "";
-              if (info.descartados && info.descartados.length) rowExtra += (rowExtra ? "<br>" : "") + "<span data-testid='bulk-descartados' style='color:#b91c1c;font-weight:700'>⚠️ No se guardaron (valor imposible, revisa la hoja): " + esc(info.descartados.join(", ")) + "</span>";
-              rows += "<div style='display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:" + rowBg + ";border:1px solid " + rowBdr + ";margin-bottom:4px;margin-left:8px;font-size:12px'>" +
-                "<span style='font-size:16px'>" + rowIcon + "</span>" +
-                "<div><div style='font-weight:700;color:" + rowClr + "'>" + esc(matched.cama) + " &middot; " + esc(matched.nombre) + "</div>" +
-                "<div style='color:" + rowClr2 + ";font-size:11px'>" + (ex.paciente ? "PDF: " + esc(ex.paciente) : "") + (ex.fecha_labs ? " &middot; " + esc(ex.fecha_labs) : "") + (rowExtra ? "<br>" + rowExtra : "") + "</div></div></div>";
+              rows += _bulkOkRow(matched, ex, info, "");
             } else {
-              unmatchedCount++;
-              rows += "<div style='padding:6px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fcd34d;margin-bottom:4px;margin-left:8px;font-size:11px'><b style='color:#92400e'>⚠️ No encontrado en censo:</b> " + esc((ex && (ex.paciente || ex.nombre)) || "(sin nombre)") + "</div>";
+              var pdfName = (ex && (ex.paciente || ex.nombre)) || "";
+              var seg = _bulkSegundoIntento(pdfName, ex_raw && ex_raw.expediente_pdf, ex_raw && ex_raw.cama_pdf);
+              if (seg.auto && seg.p) {
+                var info2 = await applyBulkEntryToPatient(seg.p, ex, r);
+                successCount++;
+                rows += _bulkOkRow(seg.p, ex, info2, "Identificado por " + seg.motivo + " (el nombre del PDF no es idéntico al del censo)");
+              } else {
+                unmatchedCount++;
+                var mIdx = window.__bulkManual.length;
+                window.__bulkManual.push({ ex: ex, r: r, apply: applyBulkEntryToPatient, pdfName: pdfName });
+                rows += _bulkManualCard(mIdx, pdfName, seg);
+              }
             }
           }
         }
@@ -29067,6 +29157,27 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
       runBatch(0);
     }
+
+    // Asignar a mano un PDF que no se identificó solo (7 nov 2026): se escribe SOLO al tocar ✓ Asignar y confirmar.
+    window.resolveBulkManual = async function (idx, btn) {
+      var it = (window.__bulkManual || [])[idx];
+      if (!it || it.__resolved) return;
+      var card = btn && btn.closest ? btn.closest("[data-testid='bulk-manual']") : null;
+      var sel = card ? card.querySelector("select") : null;
+      var id = sel ? sel.value : "";
+      if (!id) { alert("Elige el paciente del censo al que pertenece este PDF."); return; }
+      var target = patients.find(function (p) { return pid(p) === id; });
+      if (!target) { alert("Ese paciente ya no está en el censo."); return; }
+      if (!confirm("¿Cargar los labs del PDF (" + (it.pdfName || "sin nombre") + ") en la cama " + (target.cama || "?") + " · " + (target.nombre || "") + "?")) return;
+      it.__resolved = true;
+      try { await it.apply(target, it.ex, it.r); }
+      catch (e) { it.__resolved = false; alert("No se pudo asignar: " + ((e && e.message) || e)); return; }
+      if (card) {
+        card.style.background = "#dcfce7"; card.style.borderColor = "#16a34a";
+        card.innerHTML = "<div data-testid='bulk-manual-done' style='color:#15803d;font-weight:700;font-size:12px'>✓ Asignado a: " + esc((target.cama || "?") + " · " + (target.nombre || "")) + " (PDF: " + esc(it.pdfName || "") + ")</div>";
+      }
+      renderView();
+    };
 
     // Resolver ambigüedad de matching: confirmar A, cambiar a B, o ninguno.
     // DEFER-WRITE (jun 2026): los labs ambiguos NO se escribieron en finish(); aquí
@@ -29919,7 +30030,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.04-1";
+    const PL_BUILD = "2026.11.07-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -31257,8 +31368,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         return true;
       } catch (_) { return false; }
     }
-    // «➕ Ahora»: un renglón nuevo al final de la cronología con fecha, hora e iniciales (dd/mm hh:mm GF: ).
-    function cronoInsertNow(k) { insertTodayStamp(k, "entrega", false, "Cronología", true); }
+    // «➕ Ahora»: un renglón nuevo ARRIBA de la cronología con fecha, hora e iniciales (dd/mm hh:mm GF: ); lo más reciente
+    // queda primero (7 nov 2026; antes iba al final y en el iPad había que bajar para verlo).
+    function cronoInsertNow(k) { insertTodayStamp(k, "entrega", false, "Cronología", true, true); }
 
     // ── 💉 Vasopresores (oct 2026): calculadora de norepinefrina / vasopresina en el checklist ──
     // Con el peso, la dilución (editable) y los mL/h muestra la dosis; con la dosis deseada ("meta"), los mL/h.
