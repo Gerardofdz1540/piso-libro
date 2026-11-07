@@ -8,7 +8,7 @@ import { dirname, join } from "path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const scraperSource = readFileSync(join(__dirname, "scraper.js"), "utf8");
 const pdfExtractSource = readFileSync(join(__dirname, "pdf-extract.js"), "utf8");
-import { orderDrillCandidates, isPendingCulture, isPendingReport, DRILL_EXTRA_CULTIVOS } from "./drill-order.js";
+import { orderDrillCandidates, isPendingCulture, isPendingReport, isCultureInProcess, DRILL_EXTRA_CULTIVOS, DRILL_REVISAR_CULTIVOS, CULTIVO_REVISAR_DIAS } from "./drill-order.js";
 import { looksLikeCultureReport } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -242,13 +242,13 @@ function assert(cond, name) {
   const opts = { max: 12, looksLikeCultureReport };
 
   // Regression guards: scraper.js usa el módulo en vez del slice ciego.
-  assert(/import \{ orderDrillCandidates, isPendingCulture \} from ".\/drill-order\.js"/.test(scraperSource),
-    "cultivos primero: scraper importa orderDrillCandidates/isPendingCulture de drill-order.js");
+  assert(/import \{ orderDrillCandidates, isPendingCulture, isCultureInProcess \} from ".\/drill-order\.js"/.test(scraperSource),
+    "cultivos primero: scraper importa orderDrillCandidates/isPendingCulture/isCultureInProcess de drill-order.js");
   assert(/orderDrillCandidates\(result\.rows, targetIdxs, \{ max: WL_DRILLDOWN_MAX, looksLikeCultureReport \}\)/.test(scraperSource),
     "cultivos primero: el drill usa orderDrillCandidates con WL_DRILLDOWN_MAX y looksLikeCultureReport por parámetro");
   assert(!/pendientes\.slice\(0, WL_DRILLDOWN_MAX\)/.test(scraperSource),
     "cultivos primero: el slice ciego de pendientes ya no existe");
-  assert(/drilleando \$\{drillIdxs\.length\} \(\$\{nCultivos\} cultivos primero\)/.test(scraperSource),
+  assert(/drilleando \$\{drillIdxs\.length\} \(\$\{nCultivos\} cultivos primero\$\{nRevisar \?/.test(scraperSource),
     "cultivos primero: log '[targeting] … drilleando N (M cultivos primero)'");
   // WL_DRILLDOWN_MAX saneado en la definición: una env mal puesta ("abc", negativa) vuelve al 12, así el
   // drill del objetivo y el fallback legacy comparten tope y ninguno queda en 0 drills ni "sin tope".
@@ -313,6 +313,41 @@ function assert(cond, name) {
   // 8. `max` inválido (env mal puesta) → sin tope para no-cultivo; el soft-deadline sigue acotando.
   assert(orderDrillCandidates(r2, allIdx(r2), { ...opts, max: NaN }).length === 7, "max no finito → sin tope (7 pendientes)");
   assert(deepEq(orderDrillCandidates(r2, allIdx(r2), { ...opts, max: 0 }), [5, 6]), "max=0 → solo cultivos pendientes");
+
+  // 9. Cultivos EN PROCESO ya leídos (7 nov 2026): se vuelven a abrir AL FINAL, máx. 4 por paciente, solo ≤ 21 días.
+  const HOY = Date.UTC(2026, 10, 7, 12);   // 07/11/2026
+  const cultP = (code, fecha, texto, cultivo) => ({ __cells: ["", "", code, `${fecha} 06:16`, `${fecha} 06:34`, "CIRUGIA GENERAL"], __hasLink: true, __target: true,
+    valores: [{ estudio: "CULTIVO", valor: "EN PROCESO" }], cultivo_texto: texto, cultivo });
+  const pend = { v: 9, resultado: "PENDIENTE", pendiente: true, secciones: [{ nombre: "Urocultivo", resultado: "PENDIENTE" }] };
+  const fin = { v: 9, resultado: "POSITIVO", pendiente: false, secciones: [{ nombre: "Urocultivo", resultado: "POSITIVO" }] };
+  const mix = { v: 9, resultado: "POSITIVO", pendiente: false, secciones: [{ nombre: "Hemocultivo central", resultado: "POSITIVO" }, { nombre: "Hemocultivo periferico", resultado: "PENDIENTE" }] };
+  const sinM = { v: 9, resultado: "PENDIENTE", pendiente: true, secciones: [{ nombre: "Cultivo", resultado: "SIN MUESTRA" }] };
+  assert(CULTIVO_REVISAR_DIAS === 21 && DRILL_REVISAR_CULTIVOS === 4, "en proceso: constantes 21 días / 4 por paciente");
+  assert(isCultureInProcess(cultP("A", "05/11/2026", "UROCULTIVO EN PROCESO", pend), HOY) === true, "en proceso: sección PENDIENTE → se revisa");
+  assert(isCultureInProcess(cultP("A", "05/11/2026", "UROCULTIVO: ESCHERICHIA COLI", fin), HOY) === false, "en proceso: cultivo final POSITIVO → no se revisa");
+  assert(isCultureInProcess(cultP("A", "05/11/2026", "HEMOCULTIVO CENTRAL POSITIVO", mix), HOY) === true, "en proceso: un frasco positivo y otro PENDIENTE → se revisa");
+  assert(isCultureInProcess(cultP("A", "05/11/2026", "CULTIVO SIN MUESTRA", sinM), HOY) === false, "en proceso: SIN MUESTRA no cuenta (no va a cambiar)");
+  assert(isCultureInProcess(cultP("A", "05/11/2026", "CULTIVO POSITIVO · ANTIBIOGRAMA EN PROCESO", fin), HOY) === true, "en proceso: texto «EN PROCESO» → se revisa aunque el resumen sea POSITIVO");
+  assert(isCultureInProcess(cultP("A", "05/11/2026", "Reporte PRELIMINAR: cocos gram positivos", null), HOY) === true, "en proceso: texto «PRELIMINAR» → se revisa");
+  assert(isCultureInProcess(cultP("A", "05/11/2026", "SIN DESARROLLO", { v: 9, resultado: "PENDIENTE" }), HOY) === true, "en proceso: sin secciones usa el resumen PENDIENTE");
+  assert(isCultureInProcess(cultP("A", "17/10/2026", "UROCULTIVO EN PROCESO", pend), HOY) === true, "en proceso: 21 días exactos → todavía se revisa");
+  assert(isCultureInProcess(cultP("A", "16/10/2026", "UROCULTIVO EN PROCESO", pend), HOY) === false, "en proceso: más de 21 días → ya no se revisa");
+  assert(isCultureInProcess({ ...cultP("A", "05/11/2026", "", pend) }, HOY) === false, "en proceso: sin texto del PDF → no (eso es isPendingCulture)");
+  assert(isCultureInProcess(null, HOY) === false && isCultureInProcess("x", HOY) === false, "en proceso: fila nula → false");
+  assert(isCultureInProcess({ ...cultP("A", "05/11/2026", "UROCULTIVO EN PROCESO", pend), __cells: ["", "", "A"] }, HOY) === true, "en proceso: fila sin fecha → se revisa (no hay cómo acotarla)");
+  // Orden: nuevos → cultivos pendientes primero, luego el resto; los en proceso AL FINAL y fuera del tope de los nuevos.
+  const r9 = [row("90", "new"), cultP("91", "05/11/2026", "EN PROCESO", pend), row("92", "cult"), row("93", "lab"), cultP("94", "06/11/2026", "EN PROCESO", pend), row("95", "new")];
+  assert(deepEq(orderDrillCandidates(r9, allIdx(r9), { ...opts, hoy: HOY }), [2, 0, 5, 1, 4]), "en proceso: van al final, después de cultivos sin texto y nuevos");
+  assert(deepEq(orderDrillCandidates(r9, allIdx(r9), { ...opts, max: 1, extraCultivos: 0, hoy: HOY }), [2, 1, 4]), "en proceso: no les quitan lugar a los nuevos ni cuentan en su tope");
+  const r9b = Array.from({ length: 7 }, (_, i) => cultP(`8${i}`, "06/11/2026", "EN PROCESO", pend));
+  assert(deepEq(orderDrillCandidates(r9b, allIdx(r9b), { ...opts, hoy: HOY }), [0, 1, 2, 3]), "en proceso: máximo 4 por paciente y corrida (los más recientes)");
+  assert(deepEq(orderDrillCandidates(r9b, allIdx(r9b), { ...opts, hoy: HOY, revisarCultivos: 0 }), []), "en proceso: revisarCultivos=0 los apaga");
+  assert(deepEq(orderDrillCandidates(r9b, [6, 6, 2], { ...opts, hoy: HOY }), [6, 2]), "en proceso: solo índices del objetivo, sin duplicados");
+  const r9c = [cultP("70", "01/10/2026", "EN PROCESO", pend), cultP("71", "05/11/2026", "ESCHERICHIA COLI", fin)];
+  assert(deepEq(orderDrillCandidates(r9c, allIdx(r9c), { ...opts, hoy: HOY }), []), "en proceso: viejos (>21 d) y finales no se vuelven a abrir");
+  assert(/isCultureInProcess\(result\.rows\[i\]\)/.test(scraperSource), "en proceso: el log del scraper cuenta los que se vuelven a revisar");
+  // Al volver a abrirlo, el resultado nuevo REEMPLAZA cultivo y texto (no se acumula): mismo espacio en la base.
+  assert(/row\.cultivo = rep\.cultivo;\s*row\.cultivo_texto = rep\.text \|\| "";/.test(scraperSource), "en proceso: el drill reemplaza cultivo/cultivo_texto (no agrega)");
 }
 
 console.log(`\n${pass} pass · ${fail} fail`);

@@ -233,6 +233,36 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
   check('I14 otra pestaña guardó un Doc más nuevo: esta pestaña lo lee (la copia en memoria no se queda con lo viejo)',
     i14.n === 1 && JSON.stringify(i14.meds) === '["OTRA PESTAÑA 1 GR"]', JSON.stringify(i14));
 
+  // Exclusividad (7 nov 2026): un bloque del Doc es de UN paciente del censo. Pacientes y Doc ficticios.
+  const i15 = await page.evaluate(() => {
+    const blq = (cama, nombre, fecha, med) => ({ cama, nombre, fecha, DIETA: ['LIBRE'], SOLUCIONES: [], MEDICAMENTOS: [med], 'ANTIBIÓTICOS': [], 'MEDIDAS GENERALES': [] });
+    localStorage.setItem('pl_ind_v23_blocks', JSON.stringify([
+      blq('156', 'BRUNO PEREZ LARA', '2026-11-07', 'MED DE BRUNO'),        // de la 3-156 (cama + nombre)
+      blq('153', 'OTRO ANTERIOR NAVA', '2026-11-04', 'MED DEL ANTERIOR'),  // cama 3-153 con otro nombre (paciente anterior)
+      blq('199', 'DIANA SOTO MORA', '2026-11-06', 'MED DE DIANA'),         // encaja igual con dos pacientes (solo apellidos)
+    ]));
+    const censo = [
+      { cama: '3-156', nombre: 'BRUNO PEREZ LARA' }, { cama: '3-153', nombre: 'CARLOS PEREZ LARA' },
+      { cama: '3-120', nombre: 'ELSA SOTO MORA' }, { cama: '3-121', nombre: 'FELIX SOTO MORA' },
+    ];
+    const r = (p, c) => { const b = PLIndicaciones.getForPatient(p, c); return b ? { med: b.MEDICAMENTOS[0], warn: b._matchWarn, method: b._matchMethod } : null; };
+    const out = {
+      bruno: r(censo[0], censo), carlos: r(censo[1], censo), elsa: r(censo[2], censo), felix: r(censo[3], censo),
+      carlosSinCenso: r(censo[1], []),
+    };
+    // Por defecto usa el censo de la app (patients): mismo resultado sin pasarlo.
+    const old = patients.slice(); patients.length = 0; censo.forEach(p => patients.push(Object.assign({ id: 'x' + p.cama, exp: p.cama, esp: 'CG', estado: 'ESTABLE' }, p)));
+    out.carlosDefault = r(patients[1]); out.brunoDefault = r(patients[0]);
+    out.htmlElsa = renderIndicacionesSection(patients[2], {}, 'k-i15');
+    patients.length = 0; old.forEach(p => patients.push(p));
+    return out;
+  });
+  check('I15 exclusividad: la 3-153 (comparte dos apellidos con la 3-156) ya NO muestra como propias las indicaciones de la 3-156; le queda el bloque viejo de su cama, oculto con aviso. La 3-156 conserva las suyas. Si dos pacientes encajan igual, ninguno las ve como propias («compartido», oculto con aviso). Sin censo se comporta como antes; por defecto usa el censo de la app',
+    i15.bruno && i15.bruno.med === 'MED DE BRUNO' && !i15.bruno.warn && i15.carlos && i15.carlos.med === 'MED DEL ANTERIOR' && i15.carlos.warn === true && i15.carlos.method === 'cama-sola'
+    && i15.elsa && i15.elsa.warn === true && i15.elsa.method === 'compartido' && i15.felix && i15.felix.warn === true && i15.felix.med === 'MED DE DIANA'
+    && i15.carlosSinCenso && i15.carlosSinCenso.med === 'MED DE BRUNO' && i15.carlosDefault && i15.carlosDefault.med === 'MED DEL ANTERIOR' && i15.carlosDefault.warn && i15.brunoDefault && !i15.brunoDefault.warn
+    && /encajan igual con otro paciente del censo/.test(i15.htmlElsa) && /ind-content" style="display:none"/.test(i15.htmlElsa) && /DIANA SOTO MORA/.test(i15.htmlElsa), JSON.stringify(Object.assign({}, i15, { htmlElsa: (i15.htmlElsa.match(/ind-warn">[^]*?<\/div>/) || [''])[0].slice(0, 300) })));
+
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-IND: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();

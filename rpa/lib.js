@@ -42,6 +42,18 @@ export function isAllowedEsp(esp) {
   return true;
 }
 
+// Servicios que el robot NO revisa (7 nov 2026, Gera: «no revises laboratorios ni cultivos ni estudios de imagen de los
+// servicios de NCX neurocirugía ni de urología, del resto de servicios y pacientes sí»). Excluye solo si TODOS los
+// servicios anotados en `esp` son NCX/Urología: «NCX», «URO», «NEUROCX», «Urología»… quedan fuera; «CG/URO» o
+// «CG / NCX» (compartido con CG) y esp vacío SÍ se revisan. La app tiene una copia exacta (_plSinRobot en
+// index.html, probada contra esta). No borra nada: lo ya guardado de esos pacientes se queda en la base.
+const SERVICIOS_SIN_ROBOT = new Set(["NCX", "NEUROCX", "NEUROCIRUGIA", "NEURO", "URO", "UROLOGIA"]);
+export function esServicioSinRobot(esp) {
+  const toks = String(esp == null ? "" : esp).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .split(/[\s\/,;+&|-]+/).map((t) => t.replace(/[^A-Z]/g, "")).filter(Boolean);
+  return toks.length > 0 && toks.every((t) => SERVICIOS_SIN_ROBOT.has(t));
+}
+
 export function formatDate(date, fmt = "dd/MM/yyyy") {
   const dd = String(date.getDate()).padStart(2, "0");
   const mm = String(date.getMonth() + 1).padStart(2, "0");

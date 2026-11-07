@@ -2,7 +2,7 @@
 // Corre con: `node rpa/scraper.test.js` — no usa red ni Playwright.
 
 import {
-  dedupRecords, isAllowedEsp, formatDate,
+  dedupRecords, isAllowedEsp, esServicioSinRobot, formatDate,
   isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
   isMeaningfulReportRow, extractApellidos, expVariants,
   stripAccentsKeepEnie, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
@@ -103,6 +103,33 @@ assert(isAllowedEsp("CT/URO") === true,    "isAllowedEsp: CT/URO -> true");
 assert(isAllowedEsp("CG/CT") === true,     "isAllowedEsp: CG/CT -> true");
 assert(isAllowedEsp("NCX/CG") === true,    "isAllowedEsp: NCX/CG -> true");
 assert(isAllowedEsp("URO/GYO") === true,   "isAllowedEsp: URO/GYO -> true (todos)");
+// 7b. NCX y Urología fuera del robot (7 nov 2026): solo si TODOS los servicios anotados son NCX/URO.
+for (const e of ["NCX", "URO", "ncx", " Uro ", "NEUROCX", "Neurocirugía", "UROLOGIA", "Urología", "NCX/URO", "URO / NCX", "NCX-URO", "NEURO"]) {
+  assert(esServicioSinRobot(e) === true, `esServicioSinRobot: ${JSON.stringify(e)} → no se revisa`);
+}
+for (const e of ["CG", "CG/URO", "URO/CG", "CG / NCX", "NCX/CG", "CT/URO", "URO/GYO", "CCR", "CP", "CPR", "CMF", "CT", "CG/GYO", "", null, undefined, "  ", "/", "UROCG", "NCXX", "GINECOURO"]) {
+  assert(esServicioSinRobot(e) === false, `esServicioSinRobot: ${JSON.stringify(e)} → sí se revisa`);
+}
+{
+  const src = fs.readFileSync(new URL("./scraper.js", import.meta.url), "utf8");
+  assert(/isAllowedEsp\(p\.esp\) && !esServicioSinRobot\(p\.esp\)/.test(src), "loadCenso: quita NCX/Urología del censo del robot de labs");
+  assert(/NCX\/Urología: el robot no revisa este servicio · \$\{sinRobot\.length\} cama\(s\) omitida\(s\): \$\{sinRobot\.map\(\(p\) => p\.cama/.test(src), "loadCenso: registra por cama (sin nombres) los omitidos de NCX/Urología");
+  const nSalidas = (src.match(/\[objetivo\] es de NCX\/Urología: el robot no revisa labs ni cultivos de ese servicio; nada que hacer\."\);\s*process\.exit\(0\);/g) || []).length;
+  assert(nSalidas === 2, "loadCenso: corrida dirigida a un paciente de NCX/Urología termina limpia (exit 0) con aviso");
+}
+// 7c. El «respaldo» diario de GitHub cuenta solo el censo que el robot revisa: se ejecuta el mismo node -e del workflow.
+{
+  const { execFileSync } = await import("node:child_process");
+  const yml = fs.readFileSync(new URL("../.github/workflows/winlab-scraper.yml", import.meta.url), "utf8");
+  const m = /node --input-type=module -e '([^']+)'/.exec(yml);
+  assert(!!m && /import \{ esServicioSinRobot \} from "\.\/lib\.js"/.test(m[1]), "workflow respaldo: cuenta el censo con esServicioSinRobot de lib.js");
+  assert(/\[ -n "\$\{censo:-\}" \] \|\| censo="\$\(cuenta 'patients\?select=id' \|\| true\)"/.test(yml), "workflow respaldo: si no se puede contar así, usa el censo completo");
+  if (m) {
+    const run = (input) => { try { return execFileSync(process.execPath, ["--input-type=module", "-e", m[1]], { cwd: new URL(".", import.meta.url), input, encoding: "utf8" }).trim(); } catch (_) { return "ERROR"; } };
+    assert(run(JSON.stringify([{ esp: "CG" }, { esp: "NCX" }, { esp: "URO" }, { esp: null }, { esp: "CG/URO" }, { esp: "Urología" }])) === "3", "workflow respaldo: 6 del censo, 3 NCX/URO → cuenta 3");
+    assert(run('{"message":"JWT expired"}') === "ERROR" && run("no json") === "ERROR", "workflow respaldo: respuesta rara → falla (y el paso usa el censo completo)");
+  }
+}
 assert(isAllowedEsp("NCX") === true,       "isAllowedEsp: NCX -> true (todos)");
 
 // ── 8. formatDate ─────────────────────────────────────────────────────

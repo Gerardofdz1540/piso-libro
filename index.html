@@ -4512,7 +4512,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
         <button class="btn-green" onclick="exportCensoFormatoDrive()" title="Exportar censo con formato idéntico al Google Drive">📊 Exportar</button>
         <button class="btn-blue" onclick="window.print()">🖨 Imprimir</button>
         <div id="sync-status" class="offline"><span class="sync-dot"></span><span id="sync-label">Sin sync</span></div>
-        <button id="winlab-refresh-pill" onclick="refreshWinlabLabs()" title="Recargar labs de WinLab desde Supabase. El robot corre solo a las 05:00, 12:30 y 20:07. Si necesitas forzar un scraping ahora, click derecho aqui."
+        <button id="winlab-refresh-pill" onclick="refreshWinlabLabs()" title="Recargar labs de WinLab desde Supabase. El robot corre solo a las 05:00, 12:30 y 20:07 (sábado y domingo también 13:00). Si necesitas forzar un scraping ahora, click derecho aqui."
           oncontextmenu="event.preventDefault(); openWinlabScrape();"
           style="background:rgba(14,165,233,.18);border:1px solid rgba(14,165,233,.4);color:#0369a1;padding:4px 9px;border-radius:14px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">
           <span id="winlab-pill-icon">🧪</span> <span id="winlab-pill-lbl">Labs</span>
@@ -6629,14 +6629,33 @@ const PLIndicaciones = (function() {
   }
 
   function _fechaOf(b) { return (b && b.fecha) || ""; }
-  function getForPatient(p) {
+  // Censo actual de la app (la lista de la que salen las tarjetas). En pruebas aisladas no existe: sin exclusividad.
+  function _censoActual() {
+    try { return (typeof patients !== "undefined" && Array.isArray(patients)) ? patients : null; } catch (e) { return null; }
+  }
+  function _mismoPaciente(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    if (a._supa_id && b._supa_id) return String(a._supa_id) === String(b._supa_id);
+    return normalizeCama(a.cama) === normalizeCama(b.cama) && normalizeName(a.nombre).join(" ") === normalizeName(b.nombre).join(" ");
+  }
+  // EXCLUSIVIDAD (7 nov 2026, cama 3-153 con las indicaciones de la 3-156): un bloque del Doc es de UN paciente. Si otro
+  // paciente del censo encaja con él con MÁS certeza (p. ej. su cama + nombre, contra solo dos apellidos en común), el
+  // bloque es de ese otro y aquí se salta. Empate con otro paciente = no se sabe de quién es: se marca para verificar
+  // (_matchWarn, igual que «cama-sola»), nunca se muestra como propio. `censo` opcional (por defecto, el de la app).
+  function getForPatient(p, censo) {
     if (!p) return null;
     const blocks = loadBlocks();
     if (!blocks.length) return null;
-    let best = null, bestScore = 0, bestR = null;
+    const otros = (Array.isArray(censo) ? censo : (_censoActual() || [])).filter(function (q) { return q && !_mismoPaciente(q, p); });
+    let best = null, bestScore = 0, bestR = null, bestEmpate = false;
     for (let i = 0; i < blocks.length; i++) {
       const r = matchPatient(p, blocks[i]);
       if (!r.matched) continue;
+      let mejorOtro = 0;
+      for (let j = 0; j < otros.length; j++) { const m = matchPatient(otros[j], blocks[i]); if (m.matched && m.score > mejorOtro) mejorOtro = m.score; }
+      if (mejorOtro > r.score) continue;   // es de otro paciente del censo
+      const empate = mejorOtro === r.score;
       // Mismo nivel de certeza (p. ej. dos días del mismo paciente): gana la fecha más reciente;
       // sin fecha, el que aparece primero en el Doc.
       const better = r.score > bestScore || (r.score === bestScore && best && _fechaOf(blocks[i]) > _fechaOf(best));
@@ -6644,15 +6663,17 @@ const PLIndicaciones = (function() {
         best = blocks[i];
         bestScore = r.score;
         bestR = r;
+        bestEmpate = empate;
       }
     }
     if (best) {
       // Copia completa (listas incluidas): los bloques ahora se comparten en memoria entre tarjetas (antes cada lectura los
       // re-armaba del almacenamiento); quien modifique lo que recibe no toca la copia de las demás.
       best = Object.assign(JSON.parse(JSON.stringify(best)), {
-        _matchMethod: bestR.method,
+        _matchMethod: bestEmpate ? "compartido" : bestR.method,
         _matchScore: bestScore,
-        _matchWarn: !!bestR.warn   // "cama-sola": mismo cuarto, nombre distinto → NO mostrar como propias
+        // "cama-sola": mismo cuarto, nombre distinto; "compartido": otro paciente del censo encaja igual → NO mostrar como propias
+        _matchWarn: !!bestR.warn || bestEmpate
       });
     }
     return best;
@@ -6800,8 +6821,12 @@ function renderIndicacionesSection(p, nd, k) {
     const matchInfo = data._matchMethod ? ' · ' + escInd(data._matchMethod) : '';
     // "cama-sola": en el Doc hay un bloque para este cuarto pero con OTRO nombre (paciente anterior o
     // error de captura). Nunca mostrarlo como si fuera de este paciente: aviso y contenido oculto.
+    // "compartido" (7 nov 2026): el bloque encaja igual con otro paciente del censo; no se sabe de quién es.
+    const warnTxt = data._matchMethod === "compartido"
+      ? '⚠️ En el Doc hay indicaciones a nombre de <b>' + escInd(data.nombre || '(sin nombre)') + '</b>' + (data.cama ? ' (cama ' + escInd(data.cama) + ' en el Doc)' : '') + (data.fecha ? ' del ' + escInd((typeof fmtDateChip === "function") ? fmtDateChip(data.fecha) : data.fecha) : '') + ' que encajan igual con otro paciente del censo. Verifica de quién son antes de usarlas. '
+      : '⚠️ En el Doc, la cama ' + escInd(p.cama || data.cama || '') + ' tiene indicaciones a nombre de <b>' + escInd(data.nombre || '(sin nombre)') + '</b>' + (data.fecha ? ' (del ' + escInd((typeof fmtDateChip === "function") ? fmtDateChip(data.fecha) : data.fecha) + ')' : '') + ', que no coincide con este paciente. Verifica el Doc antes de usarlas. ';
     const warn = data._matchWarn
-      ? '<div class="ind-warn">⚠️ En el Doc, la cama ' + escInd(p.cama || data.cama || '') + ' tiene indicaciones a nombre de <b>' + escInd(data.nombre || '(sin nombre)') + '</b>' + (data.fecha ? ' (del ' + escInd((typeof fmtDateChip === "function") ? fmtDateChip(data.fecha) : data.fecha) + ')' : '') + ', que no coincide con este paciente. Verifica el Doc antes de usarlas. ' +
+      ? '<div class="ind-warn">' + warnTxt +
         '<button type="button" class="ind-import-btn" onclick="var c=this.closest(\'.ind-section\').querySelector(\'.ind-content\');c.style.display=c.style.display===\'none\'?\'\':\'none\'">Ver de todos modos</button></div>'
       : '';
     return '<div class="ind-section ind-fresh-' + fresh.state + (data._matchWarn ? ' ind-mismatch' : '') + '" id="ind-' + escInd(k) + '">' +
@@ -9513,10 +9538,22 @@ function plExportBackup() {
       winlabMatchByExp = next;
       return (rowsM || []).length;
     }
+    // NCX y Urología (7 nov 2026): los robots NO revisan labs, cultivos ni imagen de esos servicios. Copia EXACTA de
+    // esServicioSinRobot (rpa/lib.js; tests/headless/app_robot_ncx.js las compara): fuera solo si TODOS los servicios de
+    // `esp` son NCX/Urología; «CG/URO», «CG / NCX» y esp vacío sí se revisan.
+    const _PL_SERVICIOS_SIN_ROBOT = new Set(["NCX", "NEUROCX", "NEUROCIRUGIA", "NEURO", "URO", "UROLOGIA"]);
+    function _plSinRobot(esp) {
+      const toks = String(esp == null ? "" : esp).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .split(/[\s\/,;+&|-]+/).map((t) => t.replace(/[^A-Z]/g, "")).filter(Boolean);
+      return toks.length > 0 && toks.every((t) => _PL_SERVICIOS_SIN_ROBOT.has(t));
+    }
+    window._plSinRobot = _plSinRobot;
     const _robotPending = {}; // exp -> texto del estado ("pedido 13:40", "en cola") mientras el robot corre
     function _robotFecha(iso) { if (!iso) return ""; const d = new Date(iso); if (isNaN(d.getTime())) return ""; const z = n => String(n).padStart(2, "0"); return z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
     function renderRobotLine(p, nd, k) {
       const exp = String((p && p.exp) || "").trim(); if (!exp) return "";
+      // NCX/Urología: una línea discreta, sin 🔎 ni sugerencias (el robot no los busca). Lo ya guardado se sigue viendo.
+      if (_plSinRobot(p && p.esp)) return `<div class="rb-sub" data-testid="robot-sinrobot" style="color:#64748b;font-size:11px;margin:2px 0">🤖 NCX/Urología: el robot no revisa labs, cultivos ni imagen de este servicio. Lo ya guardado se queda; 📄 PDF / 📷 Foto siguen disponibles.</div>`;
       let m = winlabMatchByExp[exp] || null;
       const alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
       const hasWl = !!(winlabByExp[exp] && winlabByExp[exp].data);
@@ -9542,7 +9579,7 @@ function plExportBackup() {
         const aviso = edadMal ? `<div class="rb-sub" data-testid="robot-edad" style="color:#92400e;font-weight:700">⚠️ WinLab: ${esc(edadMal[1] || "?")} años · censo: ${esc(edadMal[2] || "?")}. Confirma que los labs son de este paciente (corrige la edad en la hoja del censo o fija el nombre en WinLab).</div>` : "";
         return `<div class="rb-line ${edadMal ? "rb-warn" : "rb-ok"}" data-testid="robot-line">🤖 Robot: encontrado${m.encontrado_como ? ` como «${esc(m.encontrado_como)}»` : ""}${alias ? " (nombre en WinLab fijado en la app)" : ""} · ${_robotFecha(m.checked_at)} ${pend}<div class="rb-acts">${btnAlias}</div>${aviso}</div>`;
       }
-      const why = !m ? (hasWl ? "" : "El robot aún no ha buscado a este paciente (corre a las 05:00, 12:30 y 20:07).")
+      const why = !m ? (hasWl ? "" : "El robot aún no ha buscado a este paciente (corre a las 05:00, 12:30 y 20:07; sábado y domingo también a las 13:00).")
         : m.status === "sin_registro" ? "El robot no encontró a este paciente en WinLab."
         : m.status === "homonimos" ? "WinLab devolvió otras personas y ninguna coincide con el nombre del censo."
         : m.status === "error" ? "El robot tuvo un error con este paciente" + (m.detalle ? " (" + esc(String(m.detalle).slice(0, 80)) + ")" : "") + "."
@@ -9572,10 +9609,11 @@ function plExportBackup() {
     async function robotBuscarAhora(k) {
       const p = patients.find(x => pid(x) === k); if (!p) return;
       const exp = String(p.exp || "").trim();
+      if (_plSinRobot(p.esp)) { _plToast("🤖 NCX/Urología: el robot no revisa labs, cultivos ni imagen de este servicio.", "#64748b", 6000); return; }
       if (!exp) { alert("Este paciente no tiene expediente en el censo; el robot busca por nombre y guarda por expediente."); return; }
       const proxyUrl = (typeof getProxyUrl === "function") ? getProxyUrl() : "";
       if (!proxyUrl) { alert("⚙️ Falta la URL del worker en Configuración (es la que dispara al robot)."); return; }
-      if (navigator.onLine === false) { alert("📴 Sin internet no se puede pedir al robot. El nombre en WinLab que fijes se guarda y se usa en la siguiente corrida (05:00, 12:30 y 20:07)."); return; }
+      if (navigator.onLine === false) { alert("📴 Sin internet no se puede pedir al robot. El nombre en WinLab que fijes se guarda y se usa en la siguiente corrida (05:00, 12:30 y 20:07; sábado y domingo también 13:00)."); return; }
       try {
         // El dato de la corrida dirigida es PÚBLICO en GitHub (27 oct 2026): se manda el id del paciente en la base (un uuid
         // que no identifica a nadie) y el robot lo busca en el censo; el expediente solo si aún no tiene id.
@@ -10277,7 +10315,7 @@ function plExportBackup() {
     }
 
     // ─── WINLAB: refresh manual + abrir GH Action ─────────────────────────────────
-    // El robot corre solo a las 05:00, 12:30 y 20:07 (hora de León, pg_cron). Estos handlers
+    // El robot corre solo a las 05:00, 12:30 y 20:07 (sábado y domingo también 13:00; hora de León, pg_cron). Estos handlers
     // permiten al usuario:
     //   - click izq:    recargar winlab_labs desde Supabase (rapido, sin esperar cron)
     //   - click derecho: abrir el workflow en GitHub para forzar scraping ahora
@@ -10328,7 +10366,7 @@ function plExportBackup() {
       const url = "https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml";
       const ok = confirm(
         "Abrir GitHub Actions para forzar scraping ahora?\n\n" +
-        "El robot corre solo a las 05:00, 12:30 y 20:07 (hora de León).\n" +
+        "El robot corre solo a las 05:00, 12:30 y 20:07; sábado y domingo también a las 13:00 (hora de León).\n" +
         "Si necesitas datos AHORA:\n" +
         "  1. Click OK (se abre GitHub).\n" +
         "  2. Click 'Run workflow' (boton verde arriba a la derecha).\n" +
@@ -16375,15 +16413,31 @@ function plExportBackup() {
       try { var n = (localStorage.getItem("pl_user_name") || "").trim(); if (n) return n; } catch (_) {}
       return "Alguien";
     }
-    function _presenceTrack() {
+    // Freno (7 nov 2026): cada cambio de campo disparaba 2 track() (focusout + focusin) y Supabase cerraba el canal con
+    // «ClientPresenceRateLimitReached». Ahora solo se manda si cambió el paciente que se edita, y como mucho uno cada
+    // PL_PRESENCE_MIN_MS (el último cambio se manda al cumplirse el plazo). force = canal recién suscrito.
+    var PL_PRESENCE_MIN_MS = 2000;
+    var _presenceSentKey;             // lo último que se mandó (undefined = nada en este canal)
+    var _presenceLastSent = 0, _presenceTimer = null;
+    function _presenceTrack(force) {
       if (!_presenceChannel) return;
+      var key = _presenceEditingKey || "";
+      if (!force && key === _presenceSentKey) return;
+      var wait = PL_PRESENCE_MIN_MS - (Date.now() - _presenceLastSent);
+      if (!force && wait > 0) {
+        if (!_presenceTimer) _presenceTimer = setTimeout(function () { _presenceTimer = null; _presenceTrack(); }, wait);
+        return;
+      }
+      if (_presenceTimer) { clearTimeout(_presenceTimer); _presenceTimer = null; }
+      _presenceLastSent = Date.now(); _presenceSentKey = key;
       try {
-        _presenceChannel.track({
+        var pr = _presenceChannel.track({
           name: _presenceLabel(),
-          editing: _presenceEditingKey || "",
+          editing: key,
           tab: _presenceTabId,
           ts: Date.now()
         });
+        if (pr && typeof pr.catch === "function") pr.catch(function (e) { safeLog("[PRESENCE] track:", e); });
       } catch (e) { safeLog("[PRESENCE] track:", e); }
     }
     function _presenceSetEditing(k) {
@@ -16467,12 +16521,14 @@ function plExportBackup() {
         try { _presenceChannel.unsubscribe(); } catch (_) {}
         _presenceChannel = null;
       }
+      _presenceSentKey = undefined;
+      if (_presenceTimer) { clearTimeout(_presenceTimer); _presenceTimer = null; }
       try {
         _presenceChannel = window._supaClient.channel("pl-presence", { config: _plCanalCfg({ presence: { key: _presenceTabId } }) })
           .on("presence", { event: "sync" }, _onPresenceSync)
           .on("presence", { event: "join" }, _onPresenceSync)
           .on("presence", { event: "leave" }, _onPresenceSync)
-          .subscribe(function (status) { if (status === "SUBSCRIBED") _presenceTrack(); else _plCanalEstado(status); });
+          .subscribe(function (status) { if (status === "SUBSCRIBED") _presenceTrack(true); else _plCanalEstado(status); });
       } catch (e) { safeLog("[PRESENCE] init:", e); }
     }
 
@@ -17575,9 +17631,11 @@ function plExportBackup() {
         }
         // Sin labs recientes: nunca (null) o >=2 días desde el último lab
         const _dias = getDiasSinLabs(nd);
-        if (_dias === null || _dias >= 2) noRecentLabs.push({ k, p, dias: _dias });
+        // NCX/Urología (7 nov 2026): el robot no les trae labs, así que «sin labs» sería una falsa alarma. Sus críticos sí se avisan (arriba).
+        const _sinRobot = _plSinRobot(p && p.esp);
+        if (!_sinRobot && (_dias === null || _dias >= 2)) noRecentLabs.push({ k, p, dias: _dias });
         // Sin labs DE HOY (pedido oct 2026): todo paciente cuyo último estudio con sangre no es de hoy
-        if (!(nd.labHistory || []).some(s => s && s.fecha === today && _snapHasBloodValues(s))) noLabsToday.push({ k, p, dias: _dias });
+        if (!_sinRobot && !(nd.labHistory || []).some(s => s && s.fecha === today && _snapHasBloodValues(s))) noLabsToday.push({ k, p, dias: _dias });
       });
 
       noLabsToday.sort((a, b) => {
@@ -30030,7 +30088,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.07-1";
+    const PL_BUILD = "2026.11.07-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -30893,6 +30951,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function _labsHoyPendientes(pts) {
       const out = [];
       (pts || []).forEach(function (p) {
+        if (_plSinRobot(p && p.esp)) return;   // NCX/Urología: sin robot de labs (7 nov 2026), no se recuerda aquí
         const k = pid(p), e = _labsDiariosEstado(p, noteData[k] || defaultData());
         if (e && !e.hoy) out.push({ k: k, p: p, motivos: e.motivos });
       });
@@ -33840,14 +33899,16 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       // Consulta el último scrape en winlab_labs cada 60s y actualiza el
       // botón del toolbar con estado: fresh (<24h) / stale (1-3d) / error (>3d).
       //
-      // Horario del robot de WinLab (pg_cron, UTC): 11:00, 18:30 y 02:07 = 05:00, 12:30 y 20:07 en León.
-      const WL_ROBOT_UTC = [[11, 0], [18, 30], [2, 7]];
+      // Horario del robot de WinLab (pg_cron, UTC): 11:00, 18:30 y 02:07 = 05:00, 12:30 y 20:07 en León; sábado y domingo
+      // también 19:00 UTC = 13:00 León (7 nov 2026, cron 'winlab-scrape-1300-finde' '0 19 * * 0,6'; el día UTC es el de León).
+      const WL_ROBOT_UTC = [[11, 0], [18, 30], [2, 7], [19, 0, [0, 6]]];
       // Última corrida programada que ya debió terminar (con 2 h de margen) → Date · null
       function _wlUltimaProgramada(ahora) {
         const t = ahora || Date.now(); let mejor = null;
         for (let d = 0; d <= 2; d++) {
           WL_ROBOT_UTC.forEach(function (hm) {
             const x = new Date(t); x.setUTCDate(x.getUTCDate() - d); x.setUTCHours(hm[0], hm[1], 0, 0);
+            if (hm[2] && hm[2].indexOf(x.getUTCDay()) < 0) return;   // corrida solo de ciertos días (fin de semana)
             if (x.getTime() + 2 * 3600000 <= t && (!mejor || x > mejor)) mejor = x;
           });
         }
@@ -33896,7 +33957,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
             window._wlRobotEstado = {
               last: last, status: atrasado ? "error" : "fresh",
               txt: "💧 Robot: " + fmt(last) + (atrasado ? " ⚠" : ""),
-              title: "Última corrida del robot de WinLab: " + last.toLocaleString("es-MX") + "." + (atrasado ? " ⚠️ No corrió a las " + z(prog.getHours()) + ":" + z(prog.getMinutes()) + " (hora programada): revisa GitHub Actions / el worker." : " Corre a las 05:00, 12:30 y 20:07.")
+              title: "Última corrida del robot de WinLab: " + last.toLocaleString("es-MX") + "." + (atrasado ? " ⚠️ No corrió a las " + z(prog.getHours()) + ":" + z(prog.getMinutes()) + " (hora programada): revisa GitHub Actions / el worker." : " Corre a las 05:00, 12:30 y 20:07; sábado y domingo también a las 13:00.")
             };
           }
         } catch (e) {

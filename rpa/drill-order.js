@@ -29,6 +29,35 @@ export function isPendingCulture(row, looksLikeCultureReport) {
   return !row.cultivo_texto && looksLikeCultureReport(row) === true;
 }
 
+// Cultivo ya leído pero AÚN EN PROCESO en el laboratorio (7 nov 2026, «no se están actualizando los cultivos»). Antes,
+// en cuanto el PDF tenía texto, el referto dejaba de ser pendiente y el robot ya no volvía a abrirlo: si WinLab lo tenía
+// «en proceso» (o con un frasco positivo y otro en proceso, o con el germen preliminar y el antibiograma pendiente), el
+// resultado final nunca llegaba a la app. En proceso = alguna sección del lector quedó PENDIENTE (o el resumen, si no hay
+// secciones) o el texto dice «en proceso / en curso / preliminar». «SIN MUESTRA» no cuenta: no va a cambiar. Solo los
+// recientes (≤ CULTIVO_REVISAR_DIAS por la primera fecha de la fila): uno que nunca se cierra no se revisa para siempre.
+export const CULTIVO_REVISAR_DIAS = 21;
+export const DRILL_REVISAR_CULTIVOS = 4;   // por paciente y corrida, DESPUÉS de los refertos nuevos (no les quita lugar)
+const EN_PROCESO_RE = /EN\s+PROCESO|EN\s+CURSO|PRELIMINAR/i;
+function fechaFila(row) {
+  for (const c of (row && Array.isArray(row.__cells)) ? row.__cells : []) {
+    const m = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(c || ""));
+    if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1]);
+  }
+  return null;
+}
+export function isCultureInProcess(row, hoy = Date.now()) {
+  if (!row || typeof row !== "object" || !row.cultivo_texto) return false;
+  const c = row.cultivo && typeof row.cultivo === "object" ? row.cultivo : null;
+  const secs = c && Array.isArray(c.secciones) ? c.secciones : [];
+  const enProceso = (secs.length ? secs.some((s) => s && s.resultado === "PENDIENTE") : !!(c && c.resultado === "PENDIENTE"))
+    || EN_PROCESO_RE.test(String(row.cultivo_texto));
+  if (!enProceso) return false;
+  const f = fechaFila(row);
+  if (f === null) return true;
+  const dias = Math.floor(hoy / 86400000) - Math.floor(f / 86400000);   // días de calendario, no horas
+  return dias <= CULTIVO_REVISAR_DIAS;
+}
+
 // Pendiente de drill = sin valores, o cultivo sin texto del PDF.
 export function isPendingReport(row, looksLikeCultureReport) {
   if (!row || typeof row !== "object") return false;
@@ -48,15 +77,19 @@ export function orderDrillCandidates(rows, targetIdxs, opts = {}) {
   const extra = Number.isFinite(opts.extraCultivos) ? Math.max(0, Math.floor(opts.extraCultivos)) : DRILL_EXTRA_CULTIVOS;
   const absMax = max + extra;
   const list = Array.isArray(rows) ? rows : [];
-  const cultivos = [], otros = [];
+  const revisar = Number.isFinite(opts.revisarCultivos) ? Math.max(0, Math.floor(opts.revisarCultivos)) : DRILL_REVISAR_CULTIVOS;
+  const hoy = Number.isFinite(opts.hoy) ? opts.hoy : Date.now();
+  const cultivos = [], otros = [], enProceso = [];
   const seen = new Set();
   for (const i of Array.isArray(targetIdxs) ? targetIdxs : []) {
     if (!Number.isInteger(i) || i < 0 || i >= list.length || seen.has(i)) continue;
     seen.add(i);
     const row = list[i];
+    if (isCultureInProcess(row, hoy)) { enProceso.push(i); continue; }
     if (!isPendingReport(row, looksLikeCultureReport)) continue;
     if (isPendingCulture(row, looksLikeCultureReport)) cultivos.push(i);
     else otros.push(i);
   }
-  return cultivos.concat(otros.slice(0, max)).slice(0, absMax);
+  // Los cultivos en proceso se revisan al final: un referto nuevo nunca pierde su lugar por ellos (y dentro del tope total).
+  return cultivos.concat(otros.slice(0, max)).slice(0, absMax).concat(enProceso.slice(0, revisar));
 }
