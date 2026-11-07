@@ -39,6 +39,8 @@ const PTS = [
     const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.startsWith('/rest/v1/patients')) { if (m === 'GET') return json(200, PTS); return json(201, [{ id: PTS[0].id }]); }
     if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: PTS[0].id }]); }
+    // Indicador del robot: última corrida = ahora (al día).
+    if (url.startsWith('/rest/v1/winlab_match') && /select=checked_at&/.test(decodeURIComponent(url))) return json(200, [{ checked_at: new Date().toISOString() }]);
     return json(200, []);
   });
   await page.addInitScript(MOCK);
@@ -98,16 +100,18 @@ const PTS = [
     JSON.stringify(n4.noHoy) === '["3-201","3-204"]' && JSON.stringify(n4.noRec) === '["3-201","3-204"]' && JSON.stringify(n4.crit) === '["3-203"]' && JSON.stringify(n4.lh) === '["3-201","3-204"]', JSON.stringify(n4));
 
   // ── N5: indicador del robot · la corrida de 13:00 León (19:00 UTC) solo existe sábado y domingo ──
-  const n5 = await page.evaluate(() => {
+  const n5 = await page.evaluate(async () => {
+    await checkScraperStatus();
+    const est = window._wlRobotEstado || {};
     const iso = (t) => { const x = _wlUltimaProgramada(Date.parse(t)); return x ? x.toISOString() : null; };
     return {
       sab: iso('2026-11-07T21:30:00Z'), dom: iso('2026-11-08T21:05:00Z'), vie: iso('2026-11-06T21:30:00Z'),
       sabAntes: iso('2026-11-07T20:59:00Z'), lun: iso('2026-11-09T21:30:00Z'),
-      texto: /sábado y domingo también a las 13:00/.test(document.documentElement.innerHTML)
+      titulo: est.title || '', status: est.status || ''
     };
   });
-  check('N5 indicador del robot: sábado y domingo la última corrida esperada a las 21:30 UTC es la de 19:00 UTC (13:00 León); viernes y lunes sigue siendo la de 18:30 UTC (12:30); antes de las 2 h de margen tampoco cuenta; los textos dicen el horario nuevo',
-    n5.sab === '2026-11-07T19:00:00.000Z' && n5.dom === '2026-11-08T19:00:00.000Z' && n5.vie === '2026-11-06T18:30:00.000Z' && n5.lun === '2026-11-09T18:30:00.000Z' && n5.sabAntes === '2026-11-07T18:30:00.000Z' && n5.texto, JSON.stringify(n5));
+  check('N5 indicador del robot: sábado y domingo la última corrida esperada a las 21:30 UTC es la de 19:00 UTC (13:00 León); viernes y lunes sigue siendo la de 18:30 UTC (12:30); antes de las 2 h de margen tampoco cuenta; el indicador (al día) dice el horario nuevo',
+    n5.sab === '2026-11-07T19:00:00.000Z' && n5.dom === '2026-11-08T19:00:00.000Z' && n5.vie === '2026-11-06T18:30:00.000Z' && n5.lun === '2026-11-09T18:30:00.000Z' && n5.sabAntes === '2026-11-07T18:30:00.000Z' && n5.status === 'fresh' && /Corre a las 05:00, 12:30 y 20:07; sábado y domingo también a las 13:00\./.test(n5.titulo), JSON.stringify(n5));
 
   // ── N6: presencia con freno ──
   const n6 = await page.evaluate(async () => {

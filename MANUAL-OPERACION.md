@@ -14,6 +14,11 @@ Imagina una fábrica con cuatro máquinas que trabajan solas:
 2. **La hoja del censo** (Google Sheets). Un pequeño programa (Apps Script)
    la lee cada 5 minutos y copia los pacientes a la base de datos. Si cambias
    una cama en la hoja, en 5 minutos la app lo refleja, con su nota intacta.
+   **Altas:** un paciente que sale de la hoja (o pasa a ALTAS) se retira de la app
+   a los **12 minutos**, no antes: así no desaparece nadie mientras se mueve una
+   fila. **Diagnóstico, servicio, estado, nombre y expediente los manda la hoja:**
+   si se cambian solo en la app, la siguiente pasada pone otra vez lo que dice la
+   hoja. Corrígelos en la hoja.
 3. **El robot de laboratorios** (GitHub Actions, carpeta `rpa/`). Tres veces al
    día entra a WinLab, busca a cada paciente del censo, descarga sus
    laboratorios y los guarda en la base de datos. Horarios (hora de León):
