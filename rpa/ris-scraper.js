@@ -81,7 +81,7 @@ async function loadCenso(supa) {
   if (error) throw new Error("censo: " + error.message);
   const { censo, skipped } = filterCenso(data || []);
   const ajenos = censo.filter((p) => p.es_mio === false).length;
-  log(`[censo] ${censo.length} pacientes (todas las especialidades; de otros servicios es_mio=false: ${ajenos})` +
+  log(`[censo] ${censo.length} pacientes (todas las especialidades menos NCX/Urología; de otros servicios es_mio=false: ${ajenos})` +
     (skipped.length ? ` · omitidos ${skipped.length}: ${skipped.map((s) => `cama ${s.cama} (${s.motivo})`).join(", ")}` : ""));
   // Alias "nombre en WinLab" fijado desde la app (notes.checklist.winlab_alias): también identifica en el RIS.
   try {

@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
-  filterCenso, addDaysISO, oldestIngreso, buildWindows, rowToEstudio, estudioKey, dedupEstudios,
+  filterCenso, MOTIVO_SIN_ROBOT, addDaysISO, oldestIngreso, buildWindows, rowToEstudio, estudioKey, dedupEstudios,
   risAgeYears, ageDiff, lev1, isGenderVariant, tokenSimilar, nameCoverage,
   scoreMatchByName, scoreMatch, ageCompat, matchCensoDetailed, matchCenso, resolveHomonyms, nearMisses,
   looksLikeLoginPage, isUsableReportText, buildHaveSet, classifyReporte, splitPayload,
@@ -44,9 +44,12 @@ const pac = (exp, nombre, edad, extra = {}) => ({ id: "id-" + exp, exp, nombre, 
     { id: "z", exp: "113", nombre: "DE LA", edad: "40", cama: "3-902", esp: "CG" }, // sin tokens útiles
   ];
   const { censo, skipped } = filterCenso(raw);
-  assert(censo.length === 11, "filterCenso: entran los 11 pacientes con nombre+exp (CG, NCX, URO, CG/URO, CG / NCX, CT, CPR, CCR, CV, esp vacío, esp null)");
-  assert(censo.some((p) => p.es_mio === false && p.esp === "NCX") && censo.some((p) => p.esp === "URO"), "filterCenso: es_mio=false (NCX/URO) NO se excluye");
-  assert(skipped.length === 3 && skipped.some((s) => s.cama === "3-900" && /expediente/.test(s.motivo)) && skipped.filter((s) => /sin nombre/.test(s.motivo)).length === 2, "filterCenso: omite sin exp / sin nombre y dice por qué");
+  assert(censo.length === 9, "filterCenso: entran los 9 pacientes con nombre+exp que no son solo NCX/URO (CG, CG/URO, CG / NCX, CT, CPR, CCR, CV, esp vacío, esp null)");
+  assert(!censo.some((p) => p.esp === "NCX" || p.esp === "URO"), "filterCenso: NCX y URO solos NO entran (7 nov 2026: el robot no revisa esos servicios)");
+  assert(censo.some((p) => p.esp === "CG/URO") && censo.some((p) => p.esp === "CG / NCX"), "filterCenso: compartidos con CG (CG/URO, CG / NCX) sí entran");
+  assert(skipped.length === 5 && skipped.some((s) => s.cama === "3-900" && /expediente/.test(s.motivo)) && skipped.filter((s) => /sin nombre/.test(s.motivo)).length === 2, "filterCenso: omite sin exp / sin nombre y dice por qué");
+  assert(skipped.filter((s) => s.motivo === MOTIVO_SIN_ROBOT).length === 2 && MOTIVO_SIN_ROBOT === "NCX/Urología: el robot no revisa este servicio", "filterCenso: NCX/URO omitidos con motivo «NCX/Urología: el robot no revisa este servicio»");
+  assert(skipped.filter((s) => s.motivo === MOTIVO_SIN_ROBOT).every((s) => s.cama && !("nombre" in s)), "filterCenso: el omitido se registra por cama, sin nombre");
   assert(filterCenso(null).censo.length === 0 && filterCenso([null]).censo.length === 0, "filterCenso: tolera null");
 }
 

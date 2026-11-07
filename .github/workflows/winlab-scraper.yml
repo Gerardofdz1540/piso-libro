@@ -6,6 +6,8 @@ name: WinLab Scraper (Visita Medica 14:00)
 #   05:00 León = 11:00 UTC  (labs de la madrugada / nocturnos; antes 04:07)
 #   12:30 León = 18:30 UTC  (visita medica — run principal, listo antes de las 14:00; antes 13:15)
 #   20:07 León = 02:07 UTC  (labs de la tarde/noche)
+#   13:00 León = 19:00 UTC  SOLO sábado y domingo (7 nov 2026; si la de 12:30 sigue corriendo, se encola y corre al terminar)
+# NCX y Urología no se revisan (7 nov 2026; rpa/lib.js esServicioSinRobot).
 # Quien dispara esas 3 corridas A LA HORA EXACTA es Supabase (pg_cron → worker /api/scrape →
 # workflow_dispatch; ver scripts/supabase_pg_cron_dispatch.sql). El cron de GitHub en este repo
 # llega con 3–9 h de retraso, así que aquí queda UNA sola corrida diaria de RESPALDO (si Supabase
@@ -62,7 +64,8 @@ jobs:
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/winlab-scraper.yml/enable"
 
       # Respaldo diario sin trabajo repetido (27 oct 2026): la corrida del cron de GitHub es solo RESPALDO de las tres de
-      # Supabase (05:00, 12:30, 20:07). Si en las últimas 8 h el robot ya revisó al menos al 80 % del censo (winlab_match),
+      # Supabase (05:00, 12:30, 20:07; sábado y domingo también 13:00). Si en las últimas 8 h el robot ya revisó al menos al
+      # 80 % del censo que le toca (sin NCX/Urología; winlab_match),
       # no hay nada que respaldar y termina en segundos; si no (Supabase o el worker fallaron), corre completa.
       - name: ¿Hace falta el respaldo?
         id: respaldo
@@ -76,7 +79,12 @@ jobs:
           desde="$(date -u -d '8 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
           cuenta() { curl -fsS -o /dev/null -D - -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
                        -H "Prefer: count=exact" -H "Range: 0-0" "$SUPABASE_URL/rest/v1/$1" | tr -d '\r' | sed -n 's#^[Cc]ontent-[Rr]ange: .*/\([0-9]*\)$#\1#p'; }
-          censo="$(cuenta 'patients?select=id' || true)"; vistos="$(cuenta "winlab_match?select=exp&checked_at=gte.$desde" || true)"
+          # Censo que el robot SÍ revisa (7 nov 2026): sin NCX/Urología (misma regla que el robot, esServicioSinRobot de
+          # lib.js, que no importa nada). Si no se puede contar así, se usa el censo completo como antes.
+          censo="$(curl -fsS -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" "$SUPABASE_URL/rest/v1/patients?select=esp" \
+                   | node --input-type=module -e 'import { esServicioSinRobot } from "./lib.js"; let s = ""; process.stdin.on("data", (d) => { s += d; }).on("end", () => { const a = JSON.parse(s); if (!Array.isArray(a)) process.exit(1); console.log(a.filter((p) => !esServicioSinRobot(p && p.esp)).length); });' || true)"
+          [ -n "${censo:-}" ] || censo="$(cuenta 'patients?select=id' || true)"
+          vistos="$(cuenta "winlab_match?select=exp&checked_at=gte.$desde" || true)"
           echo "Censo: ${censo:-?} · revisados por el robot desde $desde: ${vistos:-?}"
           if [ -n "${censo:-}" ] && [ -n "${vistos:-}" ] && [ "$censo" -gt 0 ] && [ $((vistos * 100)) -ge $((censo * 80)) ]; then
             echo "saltar=1" >> "$GITHUB_OUTPUT"

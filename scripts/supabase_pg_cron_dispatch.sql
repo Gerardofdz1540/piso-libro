@@ -9,7 +9,7 @@
 -- duplica (ve la corrida en cola) o la segunda se encola y reutiliza lo ya parseado.
 --
 -- CÓMO FUNCIONA
---   cron.job (3 horarios UTC = León + 6 h)
+--   cron.job (3 horarios UTC = León + 6 h, más 13:00 León sábado y domingo)
 --     └─ public.winlab_dispatch_scrape(motivo)
 --          ├─ lee config.worker_config (url + token, los mismos que usa la app)
 --          ├─ net.http_post(<url>/api/scrape, X-Piso-Token) — asíncrono
@@ -110,5 +110,10 @@ grant execute on function public.winlab_dispatch_scrape(text) to authenticated;
 select cron.schedule('winlab-scrape-0407-leon', '0 11 * * *',  $$select public.winlab_dispatch_scrape('cron 05:00 León')$$);
 select cron.schedule('winlab-scrape-1315-leon', '30 18 * * *', $$select public.winlab_dispatch_scrape('cron 12:30 León')$$);
 select cron.schedule('winlab-scrape-2007-leon', '7 2 * * *',   $$select public.winlab_dispatch_scrape('cron 20:07 León')$$);
+-- 7-nov-2026: corrida EXTRA solo sábado y domingo a las 13:00 León (19:00 UTC; el día UTC es el mismo que en León a esa
+-- hora). Aplicada en producción (jobid 17). Si la de 12:30 sigue corriendo, el worker no la ve «en cola» y la despacha:
+-- GitHub la encola (concurrency winlab-scraper, sin cancelar) y corre al terminar la otra, reutilizando lo ya leído.
+-- No agrega filas: el upsert (exp,fecha) reemplaza la del día y se salta si no cambió nada.
+select cron.schedule('winlab-scrape-1300-finde', '0 19 * * 0,6', $$select public.winlab_dispatch_scrape('cron 13:00 León fin de semana')$$);
 select cron.schedule('winlab-dispatch-collect', '*/15 * * * *', $$select public.winlab_dispatch_collect()$$);
 select cron.schedule('cron-history-purge', '23 4 * * *', $$delete from cron.job_run_details where end_time < now() - interval '14 days'$$);

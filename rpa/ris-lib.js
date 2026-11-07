@@ -4,9 +4,10 @@
 // funciones no arranque el scraper (ris-scraper.js ejecuta su main() al cargarse).
 //
 // Qué resuelve (corrida #22, 16 oct 2026: 2 193 estudios en 27 días, 29/46 pacientes cruzados):
-//   (a) filterCenso: TODO el censo entra al cruce (es_mio=false, NCX, URO, CT, CPR, CCR, CV,
-//       "CG/URO", "CG / NCX", esp vacío…). Solo se omite, y se registra, quien no tiene nombre o
-//       expediente (sin exp la tarjeta no puede ligar el estudio).
+//   (a) filterCenso: entra al cruce todo el censo (es_mio=false, CT, CPR, CCR, CV, "CG/URO",
+//       "CG / NCX", esp vacío…) MENOS NCX y Urología solos (7 nov 2026: el robot no revisa esos
+//       servicios). Se omite, y se registra, quien no tiene nombre o expediente (sin exp la tarjeta
+//       no puede ligar el estudio) o es de NCX/Urología.
 //   (b) scoreMatch/matchCensoDetailed: cruce nombre ↔ censo por cobertura de tokens en AMBOS
 //       sentidos (el RIS puede traer un nombre de más o de menos que el censo), con la edad como
 //       guarda graduada y, entre dos candidatos, como desempate ("la edad manda"). resolveHomonyms
@@ -21,7 +22,7 @@
 //       fuera), con tope RIS_MAX_WINDOWS.
 // ════════════════════════════════════════════════════════════════════════
 
-import { normNameTokens, parseCensusAge, jaroWinkler, iniciales } from "./lib.js";
+import { normNameTokens, parseCensusAge, jaroWinkler, iniciales, esServicioSinRobot } from "./lib.js";
 
 export const RIS_AGE_TOLERANCE_DEFAULT = 2;   // ±2 años: cruces débiles (2 tokens, letra cambiada, extras a ambos lados)
 export const RIS_AGE_TOLERANCE_WIDE = 5;      // ±5 años: cruces por subconjunto de ≥ 3 tokens
@@ -39,11 +40,13 @@ export const REPORTE_ESTADO = Object.freeze({
 export const RIS_OPTIONAL_COLS = ["reporte_estado", "reporte_motivo", "patient_id"];
 
 // ── (a) Censo elegible ──────────────────────────────────────────────────
-// NO filtra por especialidad ni por es_mio: el usuario quiere imagen de TODOS los del censo.
+// No filtra por es_mio. Por especialidad solo quita NCX/Urología (esServicioSinRobot, la misma regla del robot de labs).
+export const MOTIVO_SIN_ROBOT = "NCX/Urología: el robot no revisa este servicio";
 export function filterCenso(censoRaw) {
   const censo = [], skipped = [];
   for (const p of censoRaw || []) {
     if (!p) continue;
+    if (esServicioSinRobot(p.esp)) { skipped.push({ cama: p.cama || "?", exp: String(p.exp || "").trim(), motivo: MOTIVO_SIN_ROBOT }); continue; }
     const nombre = String(p.nombre || "").replace(/\s+/g, " ").trim();
     const exp = String(p.exp || "").trim();
     if (!normNameTokens(nombre).length) { skipped.push({ cama: p.cama || "?", exp, motivo: "sin nombre" }); continue; }

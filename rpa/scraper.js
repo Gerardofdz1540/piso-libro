@@ -12,13 +12,13 @@
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
-import { N, todayISO, isAllowedEsp, formatDate as _formatDate, daysAgo, dedupRecords,
+import { N, todayISO, isAllowedEsp, esServicioSinRobot, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
          selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport,
          conTope, esNavegacionPasajera, esNavegadorCaido, iniciales, expOculto, instalarLogSeguro, parseObjetivo, firmaFilaLabs } from "./lib.js";
 import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
-import { orderDrillCandidates, isPendingCulture } from "./drill-order.js";
+import { orderDrillCandidates, isPendingCulture, isCultureInProcess } from "./drill-order.js";
 // Bitácora pública: ningún nombre de paciente sale a GitHub Actions (ver instalarLogSeguro en lib.js).
 instalarLogSeguro();
 
@@ -300,14 +300,27 @@ async function loadCenso(supa) {
   if (error) throw new Error(`Lectura de censo fallo: ${error.message}`);
 
   const total = data?.length || 0;
-  let filtrados = (data || []).filter((p) => isAllowedEsp(p.esp));
+  // NCX y Urología fuera (7 nov 2026): ni labs ni cultivos. Se registra por cama, sin nombres.
+  const sinRobot = (data || []).filter((p) => esServicioSinRobot(p.esp));
+  let filtrados = (data || []).filter((p) => isAllowedEsp(p.esp) && !esServicioSinRobot(p.esp));
   console.log(`       Censo total=${total}, despues de filtro especialidad=${filtrados.length}`);
+  if (sinRobot.length) console.log(`       NCX/Urología: el robot no revisa este servicio · ${sinRobot.length} cama(s) omitida(s): ${sinRobot.map((p) => p.cama || "?").join(", ")}`);
+  const esObjetivo = (p) => WL_TARGET_EXP.includes(normExp(p.exp)) || WL_TARGET_IDS.includes(String(p.id || "").toLowerCase());
   if (!filtrados.length) {
-    throw new Error(`Censo vacio o sin pacientes de las especialidades permitidas (CG/CT/CV/CCR/CPR/CMF/URG). Revisa la columna 'esp' en ${SUPABASE_CENSO_TABLE}.`);
+    // Una corrida dirigida a un paciente de NCX/Urología no es una falla: termina limpia más abajo.
+    if (WL_TARGET_EXP.length && sinRobot.some(esObjetivo)) {
+      console.log("       [objetivo] es de NCX/Urología: el robot no revisa labs ni cultivos de ese servicio; nada que hacer.");
+      process.exit(0);
+    }
+    throw new Error(`Censo vacio o sin pacientes que revisar (NCX/Urología no se revisan). Revisa la columna 'esp' en ${SUPABASE_CENSO_TABLE}.`);
   }
   // Corrida dirigida (oct 2026): solo los expedientes pedidos.
   if (WL_TARGET_EXP.length) {
-    filtrados = filtrados.filter((p) => WL_TARGET_EXP.includes(normExp(p.exp)) || WL_TARGET_IDS.includes(String(p.id || "").toLowerCase()));
+    filtrados = filtrados.filter(esObjetivo);
+    if (!filtrados.length && sinRobot.some(esObjetivo)) {
+      console.log("       [objetivo] es de NCX/Urología: el robot no revisa labs ni cultivos de ese servicio; nada que hacer.");
+      process.exit(0);
+    }
     console.log(`       [objetivo] ${WL_TARGET_EXP.map((t) => (/^ID-/.test(t) ? "id …" + t.slice(-6) : "exp " + expOculto(t))).join(", ")} → ${filtrados.length} paciente(s) del censo`);
     if (!filtrados.length) {
       console.log("       [objetivo] ninguno de esos expedientes está en el censo; nada que hacer.");
@@ -810,7 +823,8 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
       // drill-order.js: cultivos pendientes → resto por recencia; el tope aplica a los no-cultivo.
       drillIdxs = orderDrillCandidates(result.rows, targetIdxs, { max: WL_DRILLDOWN_MAX, looksLikeCultureReport });
       const nCultivos = drillIdxs.filter((i) => isPendingCulture(result.rows[i], looksLikeCultureReport)).length;
-      console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; ${result.reusedValores || 0} con valores de corridas previas; drilleando ${drillIdxs.length} (${nCultivos} cultivos primero)`);
+      const nRevisar = drillIdxs.filter((i) => isCultureInProcess(result.rows[i])).length;
+      console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; ${result.reusedValores || 0} con valores de corridas previas; drilleando ${drillIdxs.length} (${nCultivos} cultivos primero${nRevisar ? `, ${nRevisar} cultivo(s) en proceso que se vuelven a revisar al final` : ""})`);
     } else if (WL_BLIND_FALLBACK === 1) {
       drillIdxs = linkIdxs.slice(0, WL_DRILLDOWN_MAX);
       console.log(`       [targeting] objetivo no identificado por encabezado → fallback LEGACY (WL_BLIND_FALLBACK=1): primeros ${drillIdxs.length}`);

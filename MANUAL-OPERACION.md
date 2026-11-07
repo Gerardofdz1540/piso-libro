@@ -14,10 +14,17 @@ Imagina una fábrica con cuatro máquinas que trabajan solas:
 2. **La hoja del censo** (Google Sheets). Un pequeño programa (Apps Script)
    la lee cada 5 minutos y copia los pacientes a la base de datos. Si cambias
    una cama en la hoja, en 5 minutos la app lo refleja, con su nota intacta.
+   **Altas:** un paciente que sale de la hoja (o pasa a ALTAS) se retira de la app
+   a los **12 minutos**, no antes: así no desaparece nadie mientras se mueve una
+   fila. **Diagnóstico, servicio, estado, nombre y expediente los manda la hoja:**
+   si se cambian solo en la app, la siguiente pasada pone otra vez lo que dice la
+   hoja. Corrígelos en la hoja.
 3. **El robot de laboratorios** (GitHub Actions, carpeta `rpa/`). Tres veces al
    día entra a WinLab, busca a cada paciente del censo, descarga sus
    laboratorios y los guarda en la base de datos. Horarios (hora de León):
-   05:00, 12:30 y 20:07. Quien lo despierta a la hora exacta es la base de
+   05:00, 12:30 y 20:07; sábado y domingo también a las 13:00 (tarea
+   `winlab-scrape-1300-finde`, desde el 7 de noviembre de 2026). **No revisa a los pacientes
+   de NCX (Neurocirugía) ni de Urología** (ver «Servicios que los robots no revisan»). Quien lo despierta a la hora exacta es la base de
    datos (Supabase, tarea programada `winlab-scrape-*`), porque el reloj de
    GitHub llega con 3 a 9 horas de retraso; el de GitHub queda como respaldo.
    Para ver si despertó: tabla `winlab_dispatch_log` en Supabase (una fila por
@@ -369,8 +376,8 @@ entrega. Los chips antiguos (SNG, PRS 1-3, Estoma, SEP) se convirtieron solos a 
 ## Estudios de imagen (tomografías, ultrasonidos, rayos X) en cada tarjeta
 
 Un robot (`.github/workflows/ris-scraper.yml`) entra cada 2 horas al visor radiológico
-(consultas-pisos), lee el censo completo (también NCX, URO, CT y los pacientes que no son
-nuestros), pide los estudios en ventanas de 14 días desde hoy hasta el ingreso más antiguo del
+(consultas-pisos), lee el censo (también CT, CPR, CCR, «CG/URO» y los pacientes que no son
+nuestros; **NCX y Urología no**, desde el 7 de noviembre de 2026), pide los estudios en ventanas de 14 días desde hoy hasta el ingreso más antiguo del
 censo (hasta 5 ventanas = 70 días) y cruza cada uno por nombre (y edad) con el censo; si dos
 pacientes del censo se parecen, decide la edad, y el alias «✏️ Nombre en WinLab» también sirve
 para identificarlo. En la tarjeta, dentro de **Estudios de imagen**, aparece el bloque "Estudios
@@ -422,7 +429,8 @@ labs críticos sin reconocer y uno ámbar labs atrasados.
 
 1. Abre https://github.com/Gerardofdz1540/piso-libro/actions/workflows/winlab-scraper.yml
 2. Mira la lista de corridas. Cada día debe haber tres (05:00, 12:30 y 20:07
-   hora de León). Un círculo verde es éxito; rojo es error.
+   hora de León); sábado y domingo, una más a las 13:00. Si la de 12:30 sigue
+   corriendo, la de 13:00 espera en la cola y corre al terminar. Un círculo verde es éxito; rojo es error.
 3. Si arriba aparece un aviso amarillo que dice **"This scheduled workflow is
    disabled"**: pulsa **Enable workflow**. (GitHub apaga el robot si el
    repositorio pasa 60 días sin cambios; el robot ya se "mantiene despierto"
@@ -1601,7 +1609,7 @@ error de dedo (cama 3-181: dos letras invertidas en el apellido paterno), WinLab
 3. **🔎 Buscar ahora** (también en el menú ⋯ de la tarjeta: 🤖 Pedir labs al robot) pide al robot
    una corrida solo para ese paciente: tarda 2-4 minutos y la tarjeta se actualiza sola ("encontrado
    como …"). Necesita internet; sin red, el nombre fijado se usa en la siguiente corrida automática
-   (5:00, 12:30 y 20:07). Sirve desde el iPad, que no puede abrir la página de WinLab.
+   (5:00, 12:30 y 20:07; sábado y domingo también 13:00). Sirve desde el iPad, que no puede abrir la página de WinLab.
 4. **Mientras tanto**: 📄 PDF / 📷 Foto en la sección de labs lee la hoja impresa o la pantalla con
    IA y guarda los valores en la tarjeta.
 
@@ -1610,6 +1618,49 @@ vistos, "encontrado como", hora); el alias vive en `notes.checklist.winlab_alias
 usa el input `exp` del workflow `winlab-scraper.yml` (`WL_TARGET_EXP`), que el worker manda cuando la
 app llama `/api/scrape` con `{"exp": "…"}`. Para que el botón dispare la corrida dirigida (y no una
 completa) hay que pegar el `cloudflare-worker/index.js` actualizado en el worker `piso-libro-ai`.
+
+## 🤖 Servicios que los robots no revisan: NCX y Urología (7 de noviembre de 2026)
+
+Por indicación del servicio, el robot de **laboratorios y cultivos** (WinLab) y el de **imagen** (RIS) ya no buscan a
+los pacientes de **NCX (Neurocirugía)** ni de **Urología**. Del resto de los servicios y pacientes sí.
+
+- La regla mira la columna **esp** del censo: se omite al paciente solo si todo lo anotado es NCX o Urología
+  («NCX», «URO», «NEUROCX», «Urología»…). Si el servicio es compartido con Cirugía General («CG/URO», «CG / NCX») o
+  está vacío, **sí** se revisa. La misma regla vive en el robot (`rpa/lib.js`, `esServicioSinRobot`) y en la app
+  (`_plSinRobot`); una prueba comprueba que las dos digan lo mismo.
+- **No se borra nada**: lo que ya estaba guardado de esos pacientes (labs, cultivos, estudios) se sigue viendo.
+- En la tarjeta, en lugar de «🔎 Buscar ahora», aparece una línea gris discreta: «🤖 NCX/Urología: el robot no revisa
+  labs, cultivos ni imagen de este servicio». 📄 PDF / 📷 Foto siguen funcionando para cargar labs a mano.
+- Esos pacientes no cuentan en «📭 sin labs de hoy» ni en «🧪 Labs hoy» (serían falsas alarmas). Si tienen un lab
+  crítico ya guardado, la alerta de crítico sí aparece.
+- En la bitácora de cada corrida queda cuántas camas se omitieron y cuáles (solo la cama, sin nombres).
+- El «respaldo» diario de GitHub (10:37) compara contra el censo que el robot sí revisa; antes contaba a todos y,
+  sin NCX/Urología, habría corrido completo todos los días sin necesidad.
+
+Para volver a incluir un servicio: quitarlo de `SERVICIOS_SIN_ROBOT` en `rpa/lib.js` y de `_PL_SERVICIOS_SIN_ROBOT`
+en `index.html` (la prueba avisa si quedan distintos).
+
+## 🧫 Cultivos que siguen «en proceso» (7 de noviembre de 2026)
+
+**Qué pasaba:** en cuanto el robot leía el PDF de un cultivo, ya no lo volvía a abrir. Si ese día WinLab lo tenía
+«en proceso» (o con un frasco positivo y otro en proceso, o con el germen preliminar y el antibiograma pendiente), el
+resultado final nunca llegaba a la app.
+
+**Ahora:** en cada corrida, después de los reportes nuevos (sin quitarles lugar), el robot vuelve a abrir hasta **4
+cultivos en proceso por paciente**, de los últimos **21 días**. «En proceso» = alguna parte del cultivo quedó pendiente,
+o el texto dice «en proceso», «en curso» o «preliminar». «Sin muestra» no cuenta. Al volver a leerlo, el resultado nuevo
+**reemplaza** al anterior (no se acumulan copias: la base no crece). Ajustes en `rpa/drill-order.js`
+(`CULTIVO_REVISAR_DIAS`, `DRILL_REVISAR_CULTIVOS`).
+
+## 💊 Indicaciones: un bloque del Doc es de un solo paciente (7 de noviembre de 2026)
+
+Una cama mostraba como propias las indicaciones de otro paciente que compartía dos apellidos (el otro estaba en su
+cama correcta en el Doc). Ahora, si otro paciente del censo encaja con el bloque con más certeza (por ejemplo, cama y
+nombre contra solo dos apellidos), el bloque es de ese otro y no se muestra aquí. Si los dos encajan igual, no se sabe de
+quién es: la tarjeta lo oculta con el aviso «⚠️ … encajan igual con otro paciente del censo. Verifica de quién son», con
+el botón «Ver de todos modos». Las camas sin indicaciones casi siempre son pacientes que no están en el Doc de Cirugía
+General (NCX, Urología, UCI u otros servicios). Si una fecha del Doc está mal escrita (p. ej. «07/10/2026» por
+«07/11/2026»), la app toma la que dice el Doc: corrígela en el Doc.
 
 ## 🛏 Pacientes en camas sin número: EXT, recuperación (30 de octubre de 2026)
 
