@@ -264,6 +264,167 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     && i15.carlosSinCenso && i15.carlosSinCenso.med === 'MED DE BRUNO' && i15.carlosDefault && i15.carlosDefault.med === 'MED DEL ANTERIOR' && i15.carlosDefault.warn && i15.carlosCopia && i15.carlosCopia.med === 'MED DEL ANTERIOR' && i15.brunoDefault && !i15.brunoDefault.warn
     && /encajan igual con otro paciente del censo/.test(i15.htmlElsa) && /ind-content" style="display:none"/.test(i15.htmlElsa) && /DIANA SOTO MORA/.test(i15.htmlElsa), JSON.stringify(Object.assign({}, i15, { htmlElsa: (i15.htmlElsa.match(/ind-warn">[^]*?<\/div>/) || [''])[0].slice(0, 300) })));
 
+  // 🔎 Revisor de indicaciones (11 nov 2026): reglas sin IA que cruzan el bloque del Doc con la tarjeta. Paciente y Doc ficticios.
+  const i16 = await page.evaluate(() => {
+    const z = n => String(n).padStart(2, '0');
+    const f = d => d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+    const hoyD = new Date(); const hoyS = f(hoyD);
+    const man = new Date(); man.setDate(man.getDate() + 1); const manS = f(man);
+    const ayer = new Date(); ayer.setDate(ayer.getDate() - 2); const ayerS = f(ayer);
+    const p = patients.find(x => x.cama === '3-107'); const k = pid(p);
+    const blq = (extra) => Object.assign({ cama: '107', nombre: 'PACIENTE TRES', fecha: hoyS, DIETA: ['DIETA BLANDA'], SOLUCIONES: [], MEDICAMENTOS: ['OMEPRAZOL 40 MG IV C/24 H'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H'], 'MEDIDAS GENERALES': ['PREPARAR PARA QUIRÓFANO Y PASAR AL SOLICITAR', 'SIGNOS VITALES POR TURNO'], firma: '' }, extra || {});
+    const poner = (b) => localStorage.setItem('pl_ind_v23_blocks', JSON.stringify([b]));
+    const nd = getNote(k); nd.checklist = nd.checklist || {};
+    const reglas = () => PLCDS.evaluate(p, getNote(k)).filter(s => /^ind_/.test(s.ruleId)).map(s => s.ruleId).sort();
+    const r = {};
+    // A: drenaje sin cuantificar, quirófano sin cirugía, ATB sin FI, sin firma
+    nd.checklist.dispositivos = [{ id: 'd1', tipo: 'Saratoga', lado: 'D', fi: hoyS }]; nd.checklist.cirugias = []; nd.checklist.npo = false; nd.checklist.npt = false; noteData[k] = nd;
+    poner(blq()); r.A = reglas();
+    // B: todo corregido + cirugía mañana sin ayuno
+    nd.checklist.cirugias = [{ id: 'c1', fecha: manS, procedimiento: 'COLECISTECTOMÍA' }];
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO DE DRENAJES POR TURNO', 'PREPARAR PARA QUIRÓFANO'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H FI 08/11/2026 (4)'], firma: 'DR X MBCG | DRA Y R1CG' }));
+    r.B = reglas();
+    // B2: con ayuno ya no avisa; la profilaxis (dosis única) no necesita FI ni días
+    poner(blq({ DIETA: ['AYUNO A PARTIR DE LAS 00:00 HRS'], 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO DE DRENAJES POR TURNO'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H FI 08/11/2026 (4)', 'CEFAZOLINA 2 G IV DOSIS ÚNICA PROFILÁCTICA'], firma: 'DR X MBCG' }));
+    r.B2 = reglas();
+    // C: dieta y ayuno a la vez; con horario no
+    nd.checklist.cirugias = []; nd.checklist.dispositivos = [];
+    poner(blq({ DIETA: ['AYUNO', 'DIETA LÍQUIDA'], 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' }));
+    r.C = reglas();
+    poner(blq({ DIETA: ['AYUNO', 'DIETA LÍQUIDA A PARTIR DE LAS 18 HRS'], 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' }));
+    r.C2 = reglas();
+    // C3: la tarjeta en ayuno y el Doc con dieta
+    nd.checklist.npo = true; poner(blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.C3 = reglas(); nd.checklist.npo = false;
+    // D: NPT sin labs; con labs de hoy no
+    nd.checklist.npt = true; nd.labHistory = [];
+    poner(blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.D = reglas();
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '4.1', na: '138', trig: '180' } }]; r.D2 = reglas();
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '4.1', na: '138' } }]; r.D3 = PLCDS.evaluate(p, getNote(k)).filter(s => s.ruleId === 'ind_npt_labs').map(s => s.suggestion.text); nd.checklist.npt = false; nd.labHistory = [];
+    // E: bloque viejo / sin fecha / sin sección; firma ausente en bloque de versión anterior (sin llave) no se juzga
+    poner(blq({ fecha: ayerS, 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.E = reglas();
+    // con la hora fija (sin depender del reloj del equipo): a las 9:00 todavía no avisa; a las 12:00 sí
+    const _gh = Date.prototype.getHours;
+    try { Date.prototype.getHours = function () { return 9; }; r.E9 = reglas(); Date.prototype.getHours = function () { return 12; }; r.E12 = reglas(); } finally { Date.prototype.getHours = _gh; }
+    poner(blq({ fecha: '', 'MEDIDAS GENERALES': [], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.E2 = reglas();
+    const vieja = blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [] }); delete vieja.firma; poner(vieja); r.E3 = reglas();
+    // F: la sección de indicaciones muestra la revisión plegada; ignorar en Sugerencias la quita
+    nd.checklist.dispositivos = [{ id: 'd1', tipo: 'Penrose', fi: hoyS }]; poner(blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' }));
+    r.htmlF = renderIndicacionesSection(p, getNote(k), k);
+    const s = PLCDS.evaluate(p, getNote(k)).find(x => x.ruleId === 'ind_dren_gasto');
+    PLCDSStore.ignore(k, s.ruleId, s.valueHash);
+    r.htmlF2 = renderIndicacionesSection(p, getNote(k), k);
+    // G: el lector del Doc guarda la firma («» si no hay)
+    const txt = ['💯 3-120', '', 'INDICACIONES MÉDICAS DE PACIENTE SIETE', 'PACIENTE SIETE 40 AÑOS | CAMA 3-120', hoyD.getDate() + '/' + (hoyD.getMonth() + 1) + '/' + hoyD.getFullYear() + ' 8:00 am', '', 'DIETA', 'DIETA BLANDA', '', 'MEDICAMENTOS', 'PARACETAMOL 1 G IV C/8 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'GRACIAS', 'DR PRUEBA MBCG | DRA OTRA R1CG', '',
+      'INDICACIONES MÉDICAS DE PACIENTE OCHO', 'PACIENTE OCHO 50 AÑOS | CAMA 3-121', hoyD.getDate() + '/' + (hoyD.getMonth() + 1) + '/' + hoyD.getFullYear() + ' 8:00 am', '', 'DIETA', 'AYUNO', '', 'MEDICAMENTOS', 'OMEPRAZOL 40 MG IV C/24 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'GRACIAS'].join('\n');
+    const pb = PLIndicaciones.parsePasted(txt).blocks;
+    r.G = pb.map(b => ({ cama: b.cama, firma: b.firma, medidas: b['MEDIDAS GENERALES'] }));
+    nd.checklist.dispositivos = []; noteData[k] = nd;
+    return r;
+  });
+  const has = (arr, ...ids) => ids.every(id => arr.indexOf(id) >= 0);
+  const hora = new Date().getHours();
+  check('I16 revisor de indicaciones: (A) drenaje en la tarjeta sin «cuantificar gasto», «preparar para quirófano» sin cirugía programada, antibiótico sin FI ni días y sin firma → los 4 avisos; (B) corregido y con cirugía mañana → solo «cirugía mañana sin ayuno»; con ayuno (y una profilaxis de dosis única sin FI) → nada',
+    JSON.stringify(i16.A) === JSON.stringify(['ind_atb_sin_fi', 'ind_dren_gasto', 'ind_firma', 'ind_qx_sin_programar']) && JSON.stringify(i16.B) === JSON.stringify(['ind_cx_sin_ayuno']) && i16.B2.length === 0, JSON.stringify({ A: i16.A, B: i16.B, B2: i16.B2 }));
+  check('I17 revisor de indicaciones: dieta y ayuno a la vez avisa, con horario («a partir de las 18 hrs») no; tarjeta en ayuno con dieta en el Doc avisa; NPT sin electrolitos ni triglicéridos avisa, con electrolitos pero sin triglicéridos pide solo triglicéridos, y con labs de hoy no',
+    JSON.stringify(i16.C) === JSON.stringify(['ind_dieta_ayuno']) && i16.C2.length === 0 && JSON.stringify(i16.C3) === JSON.stringify(['ind_npo_dieta']) && JSON.stringify(i16.D) === JSON.stringify(['ind_npt_labs']) && i16.D2.length === 0 && i16.D3.length === 1 && /triglicéridos/.test(i16.D3[0]) && !/electrolitos/.test(i16.D3[0]),
+    JSON.stringify({ C: i16.C, C2: i16.C2, C3: i16.C3, D: i16.D, D2: i16.D2, D3: i16.D3 }));
+  check('I18 revisor de indicaciones: bloque de hace 2 días (después de las 11:00) avisa «no hay de hoy»; sin fecha y sin medidas avisa; un bloque guardado por la versión anterior (sin la llave firma) no se juzga por la firma',
+    (hora >= 11 ? JSON.stringify(i16.E) === JSON.stringify(['ind_vieja']) : i16.E.length === 0) && i16.E9.length === 0 && JSON.stringify(i16.E12) === JSON.stringify(['ind_vieja'])
+    && has(i16.E2, 'ind_sin_fecha', 'ind_seccion') && i16.E3.length === 0, JSON.stringify({ hora, E: i16.E, E9: i16.E9, E12: i16.E12, E2: i16.E2, E3: i16.E3 }));
+  check('I19 la sección 💊 Indicaciones muestra «🔎 Revisión de indicaciones · 1 por revisar» plegada con el aviso del drenaje; al ignorarlo en Sugerencias desaparece',
+    /data-testid="ind-rev"/.test(i16.htmlF) && /Revisión de indicaciones · <b>1<\/b> por revisar/.test(i16.htmlF) && /Drenaje sin «cuantificar gasto»/.test(i16.htmlF) && !/data-testid="ind-rev"/.test(i16.htmlF2),
+    (i16.htmlF.match(/<details class="ind-rev[^]*?<\/details>/) || [''])[0].slice(0, 300));
+  check('I20 el lector del Doc guarda la firma del equipo y no la mete en medidas; un bloque sin firma queda con firma «»',
+    i16.G.length === 2 && i16.G[0].firma === 'DR PRUEBA MBCG | DRA OTRA R1CG' && JSON.stringify(i16.G[0].medidas) === '["SIGNOS VITALES POR TURNO"]' && i16.G[1].firma === '', JSON.stringify(i16.G));
+
+  // 🔎 Revisión adversarial del 11 nov 2026: falsos avisos y avisos perdidos con textos reales del Doc (todo ficticio).
+  const i21 = await page.evaluate(() => {
+    const z = n => String(n).padStart(2, '0');
+    const f = d => d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+    const hoyS = f(new Date()); const man = new Date(); man.setDate(man.getDate() + 1); const manS = f(man); const ay = new Date(); ay.setDate(ay.getDate() - 1); const ayerS = f(ay);
+    const p = patients.find(x => x.cama === '3-107'); const k = pid(p);
+    const blq = (extra) => Object.assign({ cama: '107', nombre: 'PACIENTE TRES', fecha: hoyS, DIETA: ['DIETA BLANDA'], SOLUCIONES: [], MEDICAMENTOS: ['OMEPRAZOL 40 MG IV C/24 H'], 'ANTIBIÓTICOS': [], 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], firma: 'DR X MBCG' }, extra || {});
+    const poner = (b) => localStorage.setItem('pl_ind_v23_blocks', JSON.stringify([b]));
+    const nd = getNote(k); nd.checklist = nd.checklist || {}; const ck = nd.checklist;
+    const reglas = () => PLCDS.evaluate(p, getNote(k)).filter(s => /^ind_/.test(s.ruleId)).map(s => s.ruleId).sort();
+    const r = {};
+    ck.dispositivos = []; ck.cirugias = []; ck.npo = false; ck.npt = false; nd.labHistory = []; noteData[k] = nd;
+    // R0: POP 1 con ayuno postoperatorio → no es «quirófano sin cirugía»; «ayuno para cirugía» sin cirugía programada sí
+    ck.cirugias = [{ id: 'c0', fecha: ayerS, procedimiento: 'LAPE' }];
+    poner(blq({ DIETA: ['AYUNO POST QX'] })); r.qxPost = reglas();
+    poner(blq({ DIETA: ['AYUNO 24 HRS POSTERIOR A CIRUGÍA'] })); r.qxPost2 = reglas();
+    poner(blq({ DIETA: ['AYUNO PARA CIRUGÍA'] })); r.qxPre = reglas();
+    // R1: cirugía mañana; «antes del desayuno» / «VO en ayuno» de un fármaco no es ayuno; «con el desayuno» no es ayuno en DIETA
+    ck.cirugias = [{ id: 'c1', fecha: manS, procedimiento: 'COLECISTECTOMÍA' }];
+    poner(blq({ DIETA: ['DIETA PARA DIABÉTICO'], MEDICAMENTOS: ['INSULINA NPH 20 UI SC ANTES DEL DESAYUNO', 'LEVOTIROXINA 100 MCG VO EN AYUNO'] })); r.cxDesayuno = reglas();
+    ck.cirugias = [];
+    poner(blq({ DIETA: ['DIETA BLANDA', 'SUPLEMENTO ENSURE CON EL DESAYUNO'] })); r.dietaDesayuno = reglas();
+    // R2/R3: la Foley no es drenaje; «CUANTIFICAR DRENAJES» sí cuenta
+    ck.dispositivos = [{ id: 'd1', tipo: 'Saratoga', lado: 'D', fi: hoyS }];
+    poner(blq({ 'MEDIDAS GENERALES': ['CUIDADOS DE SONDA FOLEY POR TURNO', 'VIGILAR SONDA FOLEY Y CUANTIFICAR URESIS'] })); r.foley = reglas();
+    ck.dispositivos = [{ id: 'd2', tipo: 'Penrose', fi: hoyS }];
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR DRENAJES'] })); r.cuantDren = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICACIÓN DE URESIS Y DRENAJES'] })); r.cuantDren2 = reglas();
+    ck.dispositivos = [];
+    // R4: lo que el Doc manda suspender no se juzga
+    poner(blq({ 'ANTIBIÓTICOS': ['SUSPENDER CEFTRIAXONA'], 'MEDIDAS GENERALES': ['SE SUSPENDE NPT', 'SIGNOS VITALES POR TURNO'] })); r.susp = reglas();
+    // R5: K alto con KCl en las soluciones del Doc → aparece en la revisión; sin KCl en el Doc, no
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '6.1' } }];
+    poner(blq({ SOLUCIONES: ['SOL MIXTA 1000 CC + KCL 20 MEQ P/24 HRS'] })); r.revK = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    poner(blq({ SOLUCIONES: ['SOL HARTMANN 1000 CC P/24 HRS'] })); r.revSinK = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    nd.labHistory = [];
+    // ronda 2: «ayuno para CPRE» no es quirófano; «ayuno previo a cirugía» / «por qx» sí; verbos débiles y gasto urinario no
+    // cuentan como cuantificar el drenaje; los choques con labs del Doc salen con fármacos de varias clases
+    ck.cirugias = [];
+    poner(blq({ DIETA: ['AYUNO PARA PROCEDIMIENTO ENDOSCÓPICO (CPRE)'] })); r.cpre = reglas();
+    poner(blq({ DIETA: ['AYUNO 8 HRS PREVIO A CIRUGÍA'] })); r.previo = reglas();
+    poner(blq({ DIETA: ['AYUNO DESDE LAS 00:00 HRS POR QX'] })); r.porQx = reglas();
+    poner(blq({ DIETA: ['AYUNO, MANEJO CONSERVADOR SIN CIRUGÍA'] })); r.conserv = reglas();
+    poner(blq({ DIETA: ['AYUNO EN POSTOPERATORIO INMEDIATO POR QX'] })); r.postPor = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['PREPARAR A QUIRÓFANO', 'SIGNOS VITALES POR TURNO'] })); r.prepA = reglas();
+    poner(blq({ DIETA: ['AYUNO PARA PASE A QUIRÓFANO'] })); r.pase = reglas();
+    poner(blq({ DIETA: ['AYUNO EN ESPERA DE QUIRÓFANO'] })); r.espera = reglas();
+    poner(blq({ DIETA: ['AYUNO, MANEJO CONSERVADOR, VALORAR PASE A QUIRÓFANO'] })); r.valorarPase = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['SE DIFIERE PASE A QUIRÓFANO', 'SIGNOS VITALES POR TURNO'] })); r.difierePase = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['PASA A QUIRÓFANO HOY', 'SIGNOS VITALES POR TURNO'] })); r.pasaHoy = reglas();
+    poner(blq({ DIETA: ['AYUNO POR PANCREATITIS, VALORADO POR CIRUGÍA'] })); r.valorado = reglas();
+    ck.dispositivos = [{ id: 'd3', tipo: 'Saratoga', fi: hoyS }];
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTOS URINARIOS POR TURNO'] })); r.urinarios = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTO DE SONDA FOLEY'] })); r.regFoley = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTOS URINARIOS Y DE DRENAJES POR TURNO'] })); r.regAmbos = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTOS URINARIOS, CUIDADOS DE DRENAJE'] })); r.regComa = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['REPORTAR SANGRADO POR DRENAJE'] })); r.reportar = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO URINARIO POR SONDA FOLEY'] })); r.urinario = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTO DE DRENAJE POR TURNO'] })); r.registrar = reglas();
+    ck.dispositivos = [];
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '6.1' } }];
+    poner(blq({ MEDICAMENTOS: ['KCL 20 MEQ VO C/12 H'] })); r.revKmed = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    poner(blq({ MEDICAMENTOS: ['ENALAPRIL 10 MG VO C/12 H'] })); r.revEnal = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    nd.labHistory = [{ fecha: hoyS, labs: { plaq: '40' } }];
+    poner(blq({ MEDICAMENTOS: ['ENOXAPARINA 40 MG SC C/24 H'] })); r.revEnox = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    nd.labHistory = [];
+    // R6: firma pegada al encabezado del siguiente paciente (sin renglón vacío)
+    const d0 = new Date(); const fh = d0.getDate() + '/' + (d0.getMonth() + 1) + '/' + d0.getFullYear() + ' 8:00 am';
+    const txt = ['💯 3-120', '', 'INDICACIONES MÉDICAS DE PACIENTE SIETE', 'PACIENTE SIETE 40 AÑOS | CAMA 3-120', fh, '', 'DIETA', 'DIETA BLANDA', '', 'MEDICAMENTOS', 'PARACETAMOL 1 G IV C/8 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'DR PRUEBA MBCG | DRA OTRA R1CG',
+      'INDICACIONES MÉDICAS DE PACIENTE OCHO', 'PACIENTE OCHO 50 AÑOS | CAMA 3-121', fh, '', 'DIETA', 'AYUNO', '', 'MEDICAMENTOS', 'OMEPRAZOL 40 MG IV C/24 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'DR TERCERO MBCG'].join('\n');
+    r.parse = PLIndicaciones.parsePasted(txt).blocks.map(b => ({ firma: b.firma, medidas: b['MEDIDAS GENERALES'] }));
+    noteData[k] = nd;
+    return r;
+  });
+  check('I21 revisión adversarial: el ayuno postoperatorio no es «quirófano sin cirugía» (el de «para cirugía» sí); «antes del desayuno»/«VO en ayuno» de un fármaco no tapa «cirugía mañana sin ayuno» y «con el desayuno» no es ayuno; la Foley no cuenta como cuantificar el drenaje y «CUANTIFICAR DRENAJES» sí; lo suspendido no se juzga; KCl del Doc con K alto aparece en la revisión; la firma pegada al siguiente encabezado se conserva',
+    i21.qxPost.indexOf('ind_qx_sin_programar') < 0 && i21.qxPost2.indexOf('ind_qx_sin_programar') < 0 && i21.qxPre.indexOf('ind_qx_sin_programar') >= 0
+    && i21.cxDesayuno.indexOf('ind_cx_sin_ayuno') >= 0 && i21.dietaDesayuno.indexOf('ind_dieta_ayuno') < 0
+    && i21.foley.indexOf('ind_dren_gasto') >= 0 && i21.cuantDren.indexOf('ind_dren_gasto') < 0 && i21.cuantDren2.indexOf('ind_dren_gasto') < 0
+    && i21.susp.indexOf('ind_atb_sin_fi') < 0 && i21.susp.indexOf('ind_npt_labs') < 0
+    && i21.revK.indexOf('hiperK') >= 0 && i21.revSinK.indexOf('hiperK') < 0
+    && i21.cpre.indexOf('ind_qx_sin_programar') < 0 && i21.previo.indexOf('ind_qx_sin_programar') >= 0 && i21.porQx.indexOf('ind_qx_sin_programar') >= 0
+    && i21.conserv.indexOf('ind_qx_sin_programar') < 0 && i21.postPor.indexOf('ind_qx_sin_programar') < 0 && i21.prepA.indexOf('ind_qx_sin_programar') >= 0 && i21.pase.indexOf('ind_qx_sin_programar') >= 0 && i21.espera.indexOf('ind_qx_sin_programar') >= 0
+    && i21.regAmbos.indexOf('ind_dren_gasto') < 0 && i21.regComa.indexOf('ind_dren_gasto') >= 0
+    && i21.valorarPase.indexOf('ind_qx_sin_programar') < 0 && i21.difierePase.indexOf('ind_qx_sin_programar') < 0 && i21.pasaHoy.indexOf('ind_qx_sin_programar') >= 0 && i21.valorado.indexOf('ind_qx_sin_programar') < 0 && i21.urinarios.indexOf('ind_dren_gasto') >= 0 && i21.regFoley.indexOf('ind_dren_gasto') >= 0
+    && i21.reportar.indexOf('ind_dren_gasto') >= 0 && i21.urinario.indexOf('ind_dren_gasto') >= 0 && i21.registrar.indexOf('ind_dren_gasto') < 0
+    && i21.revKmed.indexOf('hiperK') >= 0 && i21.revEnal.indexOf('hiperK') >= 0 && i21.revEnox.indexOf('plaq_bajas') >= 0
+    && i21.parse.length === 2 && i21.parse[0].firma === 'DR PRUEBA MBCG | DRA OTRA R1CG' && JSON.stringify(i21.parse[0].medidas) === '["SIGNOS VITALES POR TURNO"]' && i21.parse[1].firma === 'DR TERCERO MBCG', JSON.stringify(i21));
+
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-IND: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();

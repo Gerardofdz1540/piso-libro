@@ -1652,6 +1652,77 @@ o el texto dice «en proceso», «en curso» o «preliminar». «Sin muestra» n
 **reemplaza** al anterior (no se acumulan copias: la base no crece). Ajustes en `rpa/drill-order.js`
 (`CULTIVO_REVISAR_DIAS`, `DRILL_REVISAR_CULTIVOS`).
 
+## 🔎 Revisión automática de indicaciones (11 de noviembre de 2026, versión 2026.11.11-1)
+
+En cada paciente, dentro de **💊 Indicaciones**, aparece plegado «🔎 Revisión de indicaciones · N por revisar» cuando el
+bloque del Doc tiene algo que corregir. No usa IA ni gasta créditos: cruza el Doc con la tarjeta y los labs. Avisa:
+
+- **Drenaje sin «cuantificar gasto»**: la tarjeta tiene un drenaje, sonda o estoma (Saratoga, Penrose, SEP, SNG, estoma…) y
+  el Doc no pide cuantificar su gasto. «Cuantificar drenajes» sí cuenta; los cuidados de la sonda Foley o la uresis no.
+- **Quirófano sin cirugía programada**: el Doc dice «preparar/pasar a quirófano» (o «ayuno para cirugía») y la tarjeta no
+  tiene una cirugía con fecha de hoy en adelante en 🔪 Cirugías. El ayuno postoperatorio («ayuno post qx») no cuenta. Al
+  revés: **cirugía mañana sin ayuno** (el ayuno se busca en DIETA y MEDIDAS: «antes del desayuno» o «VO en ayuno» de un
+  medicamento no es ayuno). El ayuno por sí solo no se marca (es correcto en pancreatitis, oclusión, etc.).
+- Lo que el Doc manda **suspender** («suspender ceftriaxona», «se suspende NPT») no se juzga.
+- **Antibiótico sin fecha de inicio**: falta «FI dd/mm» o el día («(3)»). Las dosis únicas o profilácticas no cuentan.
+- **Dieta y ayuno a la vez** sin horario («a partir de las 18 h» sí vale), o la tarjeta en ayuno con dieta en el Doc.
+- **NPT sin labs de control**: sin electrolitos de las últimas 48 h o triglicéridos de los últimos 7 días.
+- **El bloque**: sin fecha, sin el de hoy (después de las 11:00), sin DIETA, MEDICAMENTOS o MEDIDAS GENERALES, o sin firma.
+
+También junta ahí lo que ya revisaban las 💡 Sugerencias clínicas con las indicaciones del Doc: antibiótico que el
+antibiograma reporta resistente, KCl con potasio alto, heparina con plaquetas bajas, insulina con glucosa baja y
+duplicados (dos IBP, dos AINE). Para ignorar un aviso o pasarlo a pendientes: 💡 Sugerencias clínicas (🔇 / ➕).
+El código está en `PLCDS` (`reglasIndicaciones`) y el lector del Doc guarda ahora la firma del bloque.
+
+## ✍️ Firma y color por renglón en las cajas (11 de noviembre de 2026, versión 2026.11.11-1)
+
+Todo lo que se escribe en **Pendientes / Plan, Cronología, Otros, Interconsultas, Cultivos, Pendientes MIPs, Pendientes R1 y
+la nota de drenajes** queda firmado: al **soltar la caja** (tocar fuera), cada renglón **nuevo** recibe
+`Gerardo 11.11.26 05:04 - ` (primer nombre de la cuenta, fecha y hora) y se pinta con el color de esa persona. Mientras
+se escribe no se toca el texto: el retroceso, Cmd+Z, el dictado y Scribble funcionan como siempre.
+
+- Solo se firma lo que se acaba de escribir en ese equipo. Lo que ya estaba, un renglón corregido (aunque se le agregue
+  texto), un renglón movido o partido con Enter, lo que se restaura con 🕘 o se regresa con ↩ no se toca. Un renglón que
+  empieza con sangría continúa al de arriba (misma firma y mismo color); un renglón sin firma ni sangría no toma el color de
+  nadie. Un **pegado** de más de 6 renglones (o una transcripción larga del lienzo) lleva una sola firma y los demás
+  renglones quedan con sangría, como continuación de esa firma. Lo escrito a mano lleva una firma por renglón. Una viñeta
+  sola («- ») o un renglón sin letras no se firma. Lo que cambia por código con la caja abierta (un botón, el lápiz, un
+  colega) no se firma con el nombre de quien escribe.
+- **➕ Hoy** y **➕ Ahora** ponen la misma firma. Si arriba (o al final, en IC y Cultivos) ya hay una firma vacía de la misma
+  persona, no se apila otra: se cambia por la de ahora. La excepción: si esa firma vacía es de otro día y tiene debajo
+  renglones sin firma (los está fechando, como encabezado), se queda y la de hoy va arriba. La firma sola no cuenta como
+  pendiente, y las firmas no pasan a la nota de evolución, la nota de alta, la entrega ni el formato de cirugía.
+- La escritura con lápiz, el lienzo ✍️, las 📋 órdenes rápidas y ➕ Cultivo también firman lo que agregan.
+- El color es una capa encima de la caja: no se puede tocar ni copiar, y no se imprime. El texto guardado es el mismo.
+- Los renglones viejos (`14/10 08:15 GF:`) se siguen reconociendo y la 🕘 Entrega de guardia lee las dos formas.
+- Sin nombre en la cuenta no se firma (poner el nombre en 👤 Cuenta).
+
+## 🛡 Tarjetas que se quedaban «editadas aquí» (11 de noviembre de 2026, versión 2026.11.11-1)
+
+La revisión integral del 11 de noviembre encontró la causa de las sobrescrituras del 8 de noviembre (dos sesiones de Mac
+Chrome subieron copias viejas del checklist de varias camas): **«➕ Cultivo», «Eliminar labs», el diagrama corporal (trazo
+y 🗑) y la carga de labs por PDF/foto** guardaban, pero dejaban la tarjeta marcada como «editada aquí» para siempre. Con esa
+marca el equipo no veía lo que los demás escribían en esa caja y, al ocultarse o despertar, volvía a subir su copia vieja.
+Ahora la marca se quita en cuanto el guardado sale (solo la que puso esa acción). La carga de labs por PDF/foto además
+guarda sobre la nota vigente: lo que se escribió en la tarjeta mientras subía el archivo ya no se pierde.
+
+**Recuperado en la base ese día** (sin borrar nada de lo actual; antes de cada cambio se guardó una copia en la tabla
+`restauraciones_respaldo`):
+- **3-163, 3-150, 3-190 y la nota que hoy está en 3-182**: el pase de mañana del 8 de noviembre y su historial (unión por
+  fecha); en 3-163 además el dispositivo y los pendientes de MIPs y R1 («(recuperado del 08.11) …»).
+- **3-150, 3-182 y 3-157**: reversiones más viejas (30 oct – 7 nov) que seguían vigentes: el registro de cirugía del 5
+  de noviembre de 3-150 (y su fecha POP), interconsultas y pendientes de MIPs/R1. Lo recuperado va abajo de lo actual con
+  «— Recuperado (se borró por error el dd.mm) —».
+- **3-175**: el expediente se había corregido después del alta y la nota anterior no se fusionó. Volvieron APP, PA, manejo y
+  el checklist; los pendientes anteriores quedaron abajo bajo «— Recuperado de la nota anterior (10.11) —».
+- **3-168**: la hoja tiene en la columna NOMBRE un texto de diagnóstico; por eso el censo la tomó como otra persona y la
+  creó vacía. La nota volvió. **Falta corregir el nombre en la hoja**: al corregirlo, la nota se conserva sola (ver abajo).
+
+**Dos protecciones nuevas en la base** (`scripts/db/supabase_restore_cadena_20261111.sql`):
+- Si el **expediente** de un paciente se corrige después del alta, su nota archivada se fusiona igual que en un alta.
+- Si un paciente se recrea con el nombre dañado y luego se corrige, la nota escrita mientras tanto también vuelve
+  (la base reconoce que esa fila había recibido la nota de la misma persona).
+
 ## 💊 Indicaciones: un bloque del Doc es de un solo paciente (7 de noviembre de 2026)
 
 Una cama mostraba como propias las indicaciones de otro paciente que compartía dos apellidos (el otro estaba en su

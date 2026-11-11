@@ -142,8 +142,8 @@ const MOCK = `(() => {
   });
   await page.waitForTimeout(1300);
   const postApp = posts.find(b => b && 'app' in b);
-  check('F5 autor por caja: updateField marca by.app = GF y sube checklist junto con app; chip GF en la ficha; ➕ Hoy lleva iniciales; buildChecklistForSync conserva "by" y quita entrega vacía',
-    f5.ini === 'GF' && f5.byApp === 'GF' && f5.byUser === 'Gerardo Fernández' && f5.chips.some(c => /^GF/.test(c)) && f5.entrega === f5.stamp && f5.keepBy && f5.keepEntregaDropped && !!postApp && ('checklist' in postApp) && postApp.checklist.__pl_note_meta && postApp.checklist.__pl_note_meta.by && postApp.checklist.__pl_note_meta.by.app, JSON.stringify({ f5, postKeys: postApp ? Object.keys(postApp) : null }));
+  check('F5 autor por caja: updateField marca by.app = GF y sube checklist junto con app; chip GF en la ficha; ➕ Hoy lleva la firma con nombre; buildChecklistForSync conserva "by" y quita entrega vacía',
+    f5.ini === 'GF' && f5.byApp === 'GF' && f5.byUser === 'Gerardo Fernández' && f5.chips.some(c => /^GF/.test(c)) && /^Gerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - $/.test(f5.entrega) && f5.keepBy && f5.keepEntregaDropped && !!postApp && ('checklist' in postApp) && postApp.checklist.__pl_note_meta && postApp.checklist.__pl_note_meta.by && postApp.checklist.__pl_note_meta.by.app, JSON.stringify({ f5, postKeys: postApp ? Object.keys(postApp) : null }));
 
   // F6
   const f6 = await page.evaluate(async () => {
@@ -158,8 +158,8 @@ const MOCK = `(() => {
     const nd2 = getNote(k); const by2 = (nd2.checklist.__pl_note_meta || {}).by || {};
     return { byIc: by.interconsultas && by.interconsultas.i, icChip: icChip ? icChip.textContent : null, entrega: nd2.entrega, byEntrega: by2.entrega && by2.entrega.i };
   });
-  check('F6 updateCkText marca autor en IC (chip GF); «➕ Ahora» en la Cronología agrega "dd/mm hh:mm GF: " arriba (lo más reciente primero) y marca el autor',
-    f6.byIc === 'GF' && /^GF/.test(f6.icChip || '') && /^\d{2}\/\d{2} \d{2}:\d{2} GF: \nEVENTO PREVIO$/.test(f6.entrega || '') && f6.byEntrega === 'GF', JSON.stringify(f6));
+  check('F6 updateCkText marca autor en IC (chip GF); «➕ Ahora» en la Cronología agrega «Gerardo dd.mm.aa hh:mm - » arriba (lo más reciente primero) y marca el autor',
+    f6.byIc === 'GF' && /^GF/.test(f6.icChip || '') && /^Gerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - \nEVENTO PREVIO$/.test(f6.entrega || '') && f6.byEntrega === 'GF', JSON.stringify(f6));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-FOTOS: ' + pass + ' passed, ' + fail + ' failed');

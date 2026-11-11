@@ -799,6 +799,9 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   const sana = sanearLog(linea);
   assert(!/PRUEBA FICTICIA|OTRA PERSONA|0012345/.test(sana) && /"P\.F\.U\."/.test(sana) && /«O\.P\.F\.»/.test(sana) && /exp=…345/.test(sana) && /cama 3-176/.test(sana) && /Execution context was destroyed/.test(sana),
     "sanearLog: nombres entre comillas → iniciales, expediente recortado; la cama y los mensajes de error en minúsculas se conservan");
+  const ext = sanearLog("[3/30] cama EXT (26-12345) exp=…345 P.F. · cama EXT (26-12345 P.F.) sin labs · cama UCI (2026-10-30) · cama 3-150 (5) · reporte ✓ (1234 letras, ok)");
+  assert(!/12345/.test(ext) && /cama EXT \(…345\)/.test(ext) && /cama EXT \(…345 P\.F\.\)/.test(ext) && /\(2026-10-30\)/.test(ext) && /\(5\)/.test(ext) && /\(1234 letras, ok\)/.test(ext),
+    "sanearLog: la cama sin número con expediente entre paréntesis («EXT (26-12345)») sale recortada; fechas, conteos y textos entre paréntesis se conservan");
   const salida = []; const consola = { log: (...a) => salida.push(a.join(" ")), error: (...a) => salida.push(a.join(" ")), warn: (...a) => salida.push(a.join(" ")), info: (...a) => salida.push(a.join(" ")) };
   instalarLogSeguro(consola); consola.log('casi-coincidencia: "PRUEBA FICTICIA DOS" 40 Años'); consola.error("exp=7654321 falló");
   assert(salida.join("|") === 'casi-coincidencia: "P.F.D." 40 Años|exp=…321 falló', "instalarLogSeguro: la red de seguridad sanea todo lo que pasa por console");

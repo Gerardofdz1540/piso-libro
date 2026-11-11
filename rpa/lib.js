@@ -774,10 +774,14 @@ export function expOculto(exp) {
 }
 // Texto entre comillas ("…", «…», '…') que parece un nombre: solo letras, espacios, puntos y comas, en MAYÚSCULAS, con 2
 // o más palabras. «exp=1234567» → «exp=…567».
+// 11 nov 2026: las camas sin número llevan el expediente entre paréntesis («EXT (26-12345)», «EXT (26-12345 A.B.)»; ver
+// camaUnica_ en censo-sync.gs) y se imprimían tal cual. Cualquier «(número de 4 o más cifras …)» que no sea una fecha
+// sale como «(…345 …)».
 export function sanearLog(texto) {
   return String(texto)
     .replace(/(["«'])([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ.,]*(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ.,]*)+)(["»'])/g, (m, a, n, b) => a + iniciales(n) + b)
-    .replace(/\bexp=(\S+)/g, (m, e) => "exp=" + expOculto(e));
+    .replace(/\bexp=(\S+)/g, (m, e) => "exp=" + expOculto(e))
+    .replace(/\((?!\d{4}-\d{2}-\d{2}\b)(\d[\d\s/-]{2,}\d)((?:\s+[A-ZÁÉÍÓÚÜÑ.]{1,12})*)\)/g, (m, e, extra) => (e.replace(/\D/g, "").length >= 4 ? "(" + expOculto(e) + extra + ")" : m));
 }
 export function instalarLogSeguro(consola = console) {
   if (consola.__logSeguro) return;

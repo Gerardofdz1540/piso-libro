@@ -7,6 +7,10 @@
 //   node tests/headless/app_pen.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh)
 const { launch, touchHelpers, name: BROWSER } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
+// 11 nov 2026: cada renglón nuevo de Pendientes/Manejo/… lleva la firma «Nombre dd.mm.aa hh:mm - ». Las pruebas del lápiz
+// comparan el texto transcrito; la firma se quita aquí (FIRMA_RE) y L5b comprueba aparte que sí se puso.
+const FIRMA_RE = /(^|\n)(✓ )?\p{L}[\p{L}.'-]{0,24} \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - /gu;
+const sinFirma = (o) => typeof o === 'string' ? o.replace(FIRMA_RE, '$1$2') : Array.isArray(o) ? o.map(sinFirma) : (o && typeof o === 'object') ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, sinFirma(v)])) : o;
 const MOCK = `(() => {
   try{ navigator.serviceWorker.register=function(){ return Promise.resolve({}); }; }catch(_){}
   const KEY='__mock_session'; const listeners=[];
@@ -201,7 +205,7 @@ const MOCK = `(() => {
 
   // ── L5: caja grande en ✍️ → Texto: lo escrito se vuelve texto AL MOMENTO (local), queda con autor y la IA revisa en segundo plano ──
   aiDelay = 400;                                                        // margen holgado: la IA simulada contesta a ~1.7 s; el lote cierra a 1.3 s y se mide a 1.35 s
-  const l5 = await page.evaluate(async () => {
+  const l5Firmado = await page.evaluate(async () => {
     localStorage.setItem('pl_pen_mode', '2');
     const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]';
     const ta = document.querySelector(sel); ta.value = ''; noteData[k].pendientes = '';
@@ -227,16 +231,20 @@ const MOCK = `(() => {
   });
   aiDelay = 150;
   const ai0 = aiBodies[0] || {}; const c0 = ((ai0.messages || [])[0] || {}).content || [];
-  const textPosted = calls.some(c => (c.m === 'POST' || c.m === 'PATCH') && /\/rest\/v1\/notes/.test(c.url) && c.body && typeof c.body.pendientes === 'string' && /^(HAS|TEXTO 1)/.test(c.body.pendientes));
+  const textPosted = calls.some(c => (c.m === 'POST' || c.m === 'PATCH') && /\/rest\/v1\/notes/.test(c.url) && c.body && typeof c.body.pendientes === 'string' && /^(HAS|TEXTO 1)/.test(sinFirma(c.body.pendientes)));
+  const l5 = sinFirma(l5Firmado);
   check('L5 ✍️ → Texto en una caja grande (fuera del iPad): «HAS» a mano aparece al momento como lectura PROVISIONAL (sin recuadro, sin robar el foco; tinta en el cristal, caja marcada); tras 1.3 s sigue provisional (morada, SIN guardar) mientras la IA transcribe; el texto de la IA (TEXTO 1) es el que se guarda, con autor y sin tinta; la tinta se desvanece; otro renglón → salto de línea; mismo renglón → espacio; viaja a la nube',
     l5.live === 'HAS' && l5.liveCls && l5.glass && l5.sess && l5.notFocused && l5.v1 === 'HAS' && l5.nd1 === '' && l5.prov && l5.closed && !l5.inkSaved && l5.v1b === 'TEXTO 1' && l5.nd1b === 'TEXTO 1' && l5.provOff && l5.faded
     && l5.live2 === 'TEXTO 1\nDM2' && l5.v2 === 'TEXTO 1\nTEXTO 2' && l5.v3 === 'TEXTO 1\nTEXTO 2 TEXTO 3' && l5.by && l5.by.i === 'GF' && l5.taStill
     && aiBodies.length === 3 && c0[0] && c0[0].type === 'image' && c0[0].source && c0[0].source.media_type === 'image/png' && c0[0].source.data.length > 100 && c0[1] && /pendientes \/ plan/.test(c0[1].text) && /SOLO un JSON/.test(c0[1].text) && ai0.max_tokens === 800
     && textPosted, JSON.stringify({ l5, nAi: aiBodies.length, textPosted }));
 
+  check('L5b firma por renglón: lo transcrito del lápiz en Pendientes lleva «Gerardo dd.mm.aa hh:mm - » en cada renglón nuevo (el que sigue en el mismo renglón no repite firma)',
+    /^Gerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - TEXTO 1\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - TEXTO 2 TEXTO 3$/.test(l5Firmado.v3) && /^Gerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - TEXTO 1$/.test(l5Firmado.nd1b), JSON.stringify({ v3: l5Firmado.v3, nd1b: l5Firmado.nd1b }));
+
   // ── L6: si la IA falla (HTTP 500), lo leído localmente se queda tal cual (sin alert, sin tinta pendiente) ──
   aiMode = 'fail';
-  const l6 = await page.evaluate(async () => {
+  const l6Firmado = await page.evaluate(async () => {
     const k = pid(patients[0]); const sel = '#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]'; const ta = document.querySelector(sel);
     const r = ta.getBoundingClientRect();
     __writeChars('TAC', r.left + 8, r.top + 8, 0.4, 6);              // encima del texto que ya hay (otro renglón que el último lote)
@@ -244,6 +252,7 @@ const MOCK = `(() => {
     return { val: ta.value, nd: getNote(k).pendientes, alerts: window.__alerts.length, closed: PEN_LIVE.el === null, prov: ta.classList.contains('pl-pen-prov'), menuHidden: !ta.nextElementSibling || !ta.nextElementSibling.nextElementSibling || ta.nextElementSibling.nextElementSibling.style.display === 'none' };
   });
   aiMode = 'ok';
+  const l6 = sinFirma(l6Firmado);
   check('L6 la IA falla (HTTP 500): la lectura local NO se guarda (letras no fiables): la caja vuelve a lo que tenía, sin provisional, sin alert ni tinta pendiente ni botón ✍️ (aviso)',
     l6.val === 'TEXTO 1\nTEXTO 2 TEXTO 3' && l6.nd === l6.val && !l6.prov && l6.alerts === 0 && l6.closed && l6.menuHidden, JSON.stringify(l6));
 
@@ -442,7 +451,7 @@ const MOCK = `(() => {
 
   // ── L13: fuera del iPad, una palabra tras otra en la misma caja mientras la IA (lenta, 2 s) aún no respondió: cada lote entra DETRÁS del anterior, en orden; nada se pierde ──
   aiDelay = 2000; const n0 = aiN;
-  const l13 = await page.evaluate(async () => {
+  const l13Firmado = await page.evaluate(async () => {
     localStorage.setItem('pl_pen_mode', '2'); window.__pl_force_ipad = false;
     const k = pid(patients[0]); const ta = document.querySelector('#card-' + CSS.escape(k) + ' textarea[data-field="pendientes"]');
     const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -464,6 +473,7 @@ const MOCK = `(() => {
   });
   aiDelay = 150;
   const T = (n) => 'TEXTO ' + (n0 + n);
+  const l13 = sinFirma(l13Firmado);
   check('L13 fuera del iPad, IA lenta (2 s): «HAS» queda provisional (sin guardar); «DM2» escrito antes de que vuelva la IA NO lo cancela (sigue provisional, la caja muestra ambos); vuelve la IA del 1 → se guarda y la base de lo que se escribe («POP») se corrige; al final los tres lotes quedan en orden (TEXTO n+1, n+2, n+3), guardados, sin provisional',
     l13.a.v === l13.v0 + '\nHAS' && l13.a.s === l13.s0 && l13.a.prov && l13.a.pend === 1 && l13.a.closed
     && l13.b.v === l13.v0 + '\nHAS\nDM2' && l13.b.open && l13.b.base === l13.v0 + '\nHAS' && l13.b.pend === 1
@@ -476,7 +486,7 @@ const MOCK = `(() => {
   //        se agrega detrás al llegar; una sesión abierta se cierra con la tecla. Repintado mientras la IA tarda: el texto cae en la MISMA caja
   //        (la dieta solo lleva data-ck, igual que la fecha de una cirugía, que va antes en la ficha) ──
   aiDelay = 1500; const n14 = aiN;
-  const l14 = await page.evaluate(async () => {
+  const l14Firmado = await page.evaluate(async () => {
     localStorage.setItem('pl_pen_mode', '2'); window.__pl_force_ipad = false;
     const wait = (ms) => new Promise(r => setTimeout(r, ms));
     const k = pid(patients[0]); const ek = k.replace(/[^a-zA-Z0-9]/g, '_');
@@ -517,6 +527,7 @@ const MOCK = `(() => {
   });
   aiDelay = 150;
   const T14 = (n) => 'TEXTO ' + (n14 + n);
+  const l14 = sinFirma(l14Firmado);
   check('L14 teclado sobre un provisional: con «TAC» provisional (sin guardar), el FOCO lo quita (la caja vuelve a lo confirmado) y lo tecleado se guarda sin él; la IA llega y se agrega detrás; con la sesión abierta («IC»), una TECLA la cierra sin mezclar el provisional con lo tecleado; repintado con una cirugía delante: la dieta repintada recibe «BLANDA» y la fecha de la cirugía no se toca',
     l14.a.v === l14.v0 + '\nTAC' && l14.a.prov && l14.a.s === l14.s0
     && l14.b.v === l14.v0 && !l14.b.prov && !l14.b.live && l14.b.focused && l14.b.pend === 1

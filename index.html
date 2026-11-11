@@ -3944,6 +3944,17 @@ body.dark .ris-title, body.dark .ris-rep-txt { color:#e2e8f0; }
 body.dark .ris-rep-txt { background:#0b1727; }
 .ind-warn { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; border-radius:6px; padding:6px 8px; font-size:11px; line-height:1.4; margin-bottom:6px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
 .ind-section.ind-mismatch { border-color:#dc2626; }
+/* 🔎 Revisión automática de indicaciones (11 nov 2026): discreta, plegada; se abre al tocarla */
+.ind-rev { background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:4px 8px; margin:0 0 6px; font-size:11px; color:#78350f; }
+.ind-rev > summary { cursor:pointer; list-style:none; font-weight:600; }
+.ind-rev > summary::-webkit-details-marker { display:none; }
+.ind-rev-list { margin:4px 0 2px; padding-left:4px; list-style:none; }
+.ind-rev-it { margin:3px 0; line-height:1.35; }
+.ind-rev-it.ind-rev-moderada, .ind-rev-it.ind-rev-severa { color:#92400e; }
+.ind-rev-foot { color:#a16207; font-size:10px; margin-top:2px; }
+body.dark .ind-rev { background:#3b2f12; border-color:#854d0e; color:#fde68a; }
+body.dark .ind-rev-it.ind-rev-moderada, body.dark .ind-rev-it.ind-rev-severa { color:#fcd34d; }
+body.dark .ind-rev-foot { color:#facc15; }
 .ind-content { display:flex; flex-direction:column; gap:6px; }
 .ind-block { background:white; border-radius:6px; padding:6px 10px; border:1px solid #93c5fd; }
 .ind-block-title { font-size:11px; font-weight:700; color:#1e40af; margin-bottom:3px; }
@@ -4267,6 +4278,9 @@ body.focus-on #board-main{ padding-bottom:160px; }
 }
 /* ✍️ Lápiz directo sobre las cajas: la capa de tinta no atrapa el dedo (pointer-events:none); el botón ✍️ de la esquina sí. */
 .pl-ink-cv{ position:absolute; pointer-events:none; z-index:2; }
+/* ✍️ Color por autor (11 nov 2026): capa encima de la caja, sin eventos; copia la letra y el acomodo de la caja */
+.pl-st-bd{ position:absolute; pointer-events:none; z-index:1; overflow:hidden; white-space:pre-wrap; overflow-wrap:break-word; color:transparent !important; margin:0; -webkit-user-select:none; user-select:none; background:transparent; }
+@media print { .pl-st-bd{ display:none !important; } }
 .pl-ink-menu{ position:absolute; z-index:3; width:26px; height:22px; padding:0; font-size:12px; line-height:1; border-radius:6px; background:rgba(124,58,237,.12); border:1px solid rgba(124,58,237,.35); color:#7c3aed; cursor:pointer; }
 .pl-ink-pop{ position:absolute; z-index:60; display:grid; gap:4px; padding:6px; background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 8px 24px rgba(15,23,42,.18); }
 .pl-ink-pop button{ font:600 12px var(--font); color:#0f172a; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 10px; cursor:pointer; text-align:left; white-space:nowrap; }
@@ -5116,7 +5130,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
           <div class="config-section" style="margin-top:8px">
             <h3>🔑 Token de Acceso</h3>
             <div class="proxy-input-wrap">
-              <input id="proxy-token-input" placeholder="ej: hgl2026" type="password" autocomplete="off" />
+              <input id="proxy-token-input" placeholder="token de acceso del equipo" type="password" autocomplete="off" />
               <button class="btn-save" onclick="saveConfig()">Guardar</button>
             </div>
             <div class="proxy-status warn" id="proxy-status-box" style="display:none">Sin configurar.</div>
@@ -5600,7 +5614,7 @@ const PLCDS = (function() {
     if (ck.tvp && ck.tvp_tipo === "enoxaparina") out.push({ txt: "ENOXAPARINA " + String(ck.tvp_dosis || ""), sec: "MEDICAMENTOS", src: "TVP de la tarjeta" });
     if (ck.tvp && ck.tvp_tipo === "otro" && String(ck.tvp_otro || "").trim()) out.push({ txt: String(ck.tvp_otro), sec: "MEDICAMENTOS", src: "TVP de la tarjeta" });
     const medidas = (ind && !ind._matchWarn && Array.isArray(ind["MEDIDAS GENERALES"])) ? ind["MEDIDAS GENERALES"].join(" | ") : "";
-    return { lineas: out, hayDoc: out.some(function (m) { return m.doc; }), medidas: N(medidas) };
+    return { lineas: out, hayDoc: out.some(function (m) { return m.doc; }), medidas: N(medidas), ind: (ind && !ind._matchWarn) ? ind : null };
   }
   // Familias: en el texto va el fármaco que de verdad dice la indicación («enalapril», no «IECA»).
   const FAMILIA = { ieca: 1, ara2: 1, sulfonilurea: 1, isglt2: 1, idpp4: 1, esteroide: 1, tiazida: 1, coxib: 1, meloxicam: 1, lansoprazol: 1, ranitidina: 1, equinocandina: 1, venlafaxina: 1, gabapentina: 1, granisetron: 1, espironolactona: 1, furosemida: 1, doxiciclina: 1, colistina: 1, cefalotina: 1, oxacilina: 1, aciclovir: 1 };
@@ -5655,7 +5669,7 @@ const PLCDS = (function() {
     return {
       p: p, nd: nd, ck: ck, L: L, lab: lab, dx: dx, txt: txt, clin: clin, k: k, pop: pop,
       edad: (isFinite(ed) && ed > 0 && ed < 120) ? ed : null, peso: (pe >= 2 && pe <= 400) ? pe : null, sexo: getSex(p, nd),
-      actual: actual, meds: meds.lineas, hayDoc: meds.hayDoc, medidas: meds.medidas, drogas: dr.lista, docVeces: dr.docVeces, ins: insulinaDe(meds.lineas),
+      actual: actual, meds: meds.lineas, hayDoc: meds.hayDoc, medidas: meds.medidas, ind: meds.ind, drogas: dr.lista, docVeces: dr.docVeces, ins: insulinaDe(meds.lineas),
       sis: (ta && vitHoy) ? +ta[1] : null, fcar: vitHoy ? num(ck.pm_fc) : NaN,
       choque: !!(ck.vp_nore_on || ck.vp_vaso_on),
       dm: /\bDM\s*(1|2|I{1,2}|T1|T2|TIPO)?\b|DIABET/.test(txt) && !/INSIPIDA/.test(txt),
@@ -6168,6 +6182,108 @@ const PLCDS = (function() {
     return out;
   }
 
+  // ════ 📝 Revisor de indicaciones (11 nov 2026, pedido de Gera tras «preparar a quirófano» en un paciente que no era
+  // quirúrgico y un drenaje sin «cuantificar gasto»). Cruza el bloque del Doc de indicaciones del paciente con su tarjeta
+  // (dispositivos, cirugías con fecha, ayuno, NPT, labs) y avisa, discreto y sin IA, lo que conviene corregir en el Doc.
+  // Solo con un bloque que sea de este paciente con certeza (ctx.ind, nunca el de «cama-sola» o «compartido»).
+  // Lo que ya revisan otras reglas no se repite aquí: antibiótico contra antibiograma (cult_*), KCl/potasio (hiperK),
+  // heparina/plaquetas (plaq_bajas), insulina/glucosa (hipoglucemia, glu_baja_basal), duplicados (dup_*).
+  const IND_DREN_RE = /SARATOGA|ENDOPLEURAL|\bSEP\b|\bCMP\b|PIGTAIL|PENROSE|\bJP\b|JACKSON|BLAKE|HEMOVAC|DRENOVAC|BIOVAC|\bSNG\b|NASOGASTRIC|ESTOMA|ILEOST|COLOST|YEYUNOST|FISTULA|NEFROSTOM|KEHR|SONDA EN T|DRENAJE|\bDREN\b/;
+  // Qué cuenta como «cuantificar el gasto» (11 nov 2026, revisión): un verbo de medir seguido del drenaje o del gasto
+  // («CUANTIFICAR DRENAJES», «CUANTIFICACIÓN DE GASTO DE PENROSE»), o «vigilar/cuidados … drenaje … gasto/ml», o «gasto
+  // por/de los drenajes». La sonda Foley NO es drenaje: «CUIDADOS DE SONDA FOLEY POR TURNO» o «CUANTIFICAR URESIS» no cuentan.
+  const IND_GASTO_NO_FOLEY = "GASTOS?\\b(?!\\s+(URINARIOS?|(DE|POR)\\s+(LA\\s+)?(SONDA\\s+)?FOLEY))";   // el gasto urinario no es del drenaje
+  const IND_DREN_PAL = "(" + IND_GASTO_NO_FOLEY + "|DRENAJES?|DRENES|\\bDREN\\b|PENROSE|SARATOGA|BLAKE|JACKSON|\\bJP\\b|HEMOVAC|DRENOVAC|BIOVAC|PIGTAIL|ENDOPLEURAL|ESTOMAS?|ILEOST\\w*|COLOST\\w*|YEYUNOST\\w*|NEFROSTOM\\w*|KEHR|SONDA\\s+EN\\s+T|SONDA\\s+(NASO\\w*|ENDOPLEURAL|PLEURAL)|\\bSEP\\b|\\bSNG\\b|\\bCMP\\b|FISTULA)";
+  // «Reportar sangrado por drenaje» o «cuidados del drenaje» NO es cuantificar: con esos verbos se pide además gasto/ml.
+  const IND_GASTO_RE = new RegExp("(CUANTIFIC\\w*|MEDIR|MEDICION|CONTABILIZ\\w*)[^|.]{0,40}" + IND_DREN_PAL +
+    "|(REGISTR\\w*|ANOTAR|REPORTAR|VIGILAR|CUIDADOS)[^|]{0,60}" + IND_DREN_PAL + "[^|]{0,40}(GASTO|CUANTIF|\\bML\\b|CC\\b)" +
+    "|(REGISTR\\w*|ANOTAR|REPORTAR)[^|.]{0,30}(" + IND_GASTO_NO_FOLEY + "|GASTOS?\\b[^|.,]{0,25}\\bY\\s+(DE|POR|DEL|EN)\\s+(LOS\\s+|LAS\\s+|LA\\s+|EL\\s+)?" + IND_DREN_PAL + ")" +
+    "|GASTOS?\\s+(DE|POR|DEL|EN)\\s+(LOS\\s+|LAS\\s+|LA\\s+|EL\\s+)?" + IND_DREN_PAL);
+  const IND_QX_RE = /PREPARA\w*\s+((PARA|A)\s+)?(EL\s+|SU\s+)?(QUIROFANO|\bQX\b|CIRUGIA|PASE\s+A\s+QUIROFANO|PROCEDIMIENTO\s+QUIRURGICO)|(?:^|\|)(?:(?!\bNO\b|\bSIN\b|VALORA|DIFIER|DIFERI|SUSP|CANDIDAT|CONSERVADOR|\bPOST|DESPUES|\bTRAS\b)[^|])*PAS(AR|A|E)\s+A\s+(QUIROFANO|\bQX\b)|\bAYUNO\b(?:(?!\bPOST|\bPOS(OP|Q)|DESPUES|\bTRAS\b|\bSIN\b|\bNO\b|VALORA|DIFIER|DIFERI|CONSERVADOR|CANDIDAT)[^|]){0,50}((PARA|PREVI[OA]\s+A|ANTES\s+DE|POR|ESPERA\s+DE|LISTA\s+DE)\s+(EL\s+|LA\s+|SU\s+)?(PASE\s+A\s+)?(QUIROFANO|CIRUGIA|\bQX\b|PROCEDIMIENTO\s+QUIRURGICO)|PREQUIRURGIC|PREOPERATORI)/;   // «ayuno post qx», «ayuno para CPRE» no
+  const IND_AYUNO_RE = /\bAYUN(O|AS)\b|NADA\s+POR\s+VIA\s+ORAL|\bNVO\b|\bNPO\b|SUSPENDER\s+(LA\s+)?VIA\s+ORAL/;   // «DESAYUNO» no
+  const IND_DIETA_RE = /DIETA\s+(LIQUIDA|BLANDA|NORMAL|LIBRE|POLIMERICA|COMPLETA|ASTRINGENTE|HIPO\w*|HIPER\w*|BAJA|RICA|PARA|DE\s|EN\s|BASE|SEMI\w*|PAPILLA|PICADA|COLADA|NORMO\w*)|LIQUIDOS\s+CLAROS|VIA\s+ORAL\s+A\s+TOLERANCIA|DIETA\s*:?\s*$|^DIETA\s+[A-Z]/;
+  const IND_SECUENCIA_RE = /POSTERIOR|DESPUES|LUEGO|A\s+PARTIR|AL\s+TERMINO|\bTRAS\b|HASTA|PREVI[OA]|INICIAR|INICIO\s+DE|PROGRESAR|SI\s+TOLERA|CUANDO|POR\s+LA\s+(MAÑANA|MANANA|TARDE|NOCHE)|\d{1,2}\s*:\s*\d{2}|\d{1,2}\s*(HRS?|HORAS)\b/;
+  const IND_ATB_MARCA_RE = /\bF\s*\.?\s*I\b\.?|FECHA\s+DE\s+INICIO|\bINICIO\b|\(\s*\d{1,2}\s*\)|\bDIA\s*#?\s*\d{1,2}|\bD\s?\d{1,2}\b|\b\d{1,2}\s*\/\s*\d{1,2}(\s*\/\s*\d{2,4})?\b|\b\d{1,2}\.\d{1,2}\.\d{2,4}\b/;
+  const IND_ATB_UNICA_RE = /DOSIS\s+UNICA|PROFILA|PREVIO\s+A|PREQUIRURGIC|PREOPERATORI|EN\s+QUIROFANO|INDUCCION/;
+  function _sumarDias(f, n) { const d = fechaD(f); if (!d) return ""; d.setDate(d.getDate() + n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function reglasIndicaciones(ctx) {
+    const out = [];
+    const ind = ctx.ind;
+    if (!ind) return out;
+    const sec = function (s) { return (Array.isArray(ind[s]) ? ind[s] : []).map(function (x) { return N(x); }).filter(Boolean); };
+    const vigentes = function (arr) { return arr.filter(function (l) { return !SUSP.test(l); }); };   // «SUSPENDER CEFTRIAXONA» no se juzga
+    const dieta = sec("DIETA"), sol = vigentes(sec("SOLUCIONES")), meds = vigentes(sec("MEDICAMENTOS")), atbs = vigentes(sec("ANTIBIÓTICOS")), medidas = sec("MEDIDAS GENERALES");
+    const todo = dieta.concat(sol, meds, atbs, medidas).join(" | ");
+    const del = "indicaciones" + (ind.fecha ? " del " + fc(ind.fecha) : "");
+    const hoyS = hoy();
+    // 1. Drenaje en la tarjeta y el Doc no pide cuantificar su gasto.
+    const disp = (Array.isArray(ctx.ck.dispositivos) ? ctx.ck.dispositivos : []).filter(function (d) { return d && IND_DREN_RE.test(N(d.tipo)); });
+    if (disp.length && !IND_GASTO_RE.test(todo)) {
+      const lst = disp.map(function (d) { return String(d.tipo).trim() + (d.lado ? " " + String(d.lado).trim() : ""); }).join(", ");
+      out.push(sug("ind_dren_gasto", "📝 Indicaciones", "Drenaje sin «cuantificar gasto»", "moderada",
+        "La tarjeta tiene " + lst + " y las indicaciones no piden cuantificar el gasto: agregar en medidas generales «cuantificar gasto de drenajes por turno».",
+        lst + " (tarjeta) · " + del, "Indicar cuantificar gasto de drenajes", "dren:" + disp.map(function (d) { return N(d.tipo); }).sort().join(",")));
+    }
+    // 2. Quirófano: lo pide el Doc sin cirugía programada en la tarjeta, o hay cirugía mañana y el Doc no indica ayuno.
+    const cx = (Array.isArray(ctx.ck.cirugias) ? ctx.ck.cirugias : []).filter(function (c) { return c && /^\d{4}-\d{2}-\d{2}/.test(String(c.fecha || "")); });
+    const futuras = cx.filter(function (c) { return String(c.fecha).slice(0, 10) >= hoyS; });
+    if (IND_QX_RE.test(todo) && !futuras.length)
+      out.push(sug("ind_qx_sin_programar", "📝 Indicaciones", "Quirófano sin cirugía programada", "moderada",
+        "Las indicaciones piden preparar o pasar a quirófano, pero la tarjeta no tiene una cirugía programada (🔪 Cirugías con fecha de hoy o después): confirmar si sí va a quirófano; si no, quitarlo del Doc.",
+        del + " · sin cirugía programada en la tarjeta", "Confirmar quirófano o quitarlo del Doc", "qx:" + (ind.fecha || "")));
+    const manana = _sumarDias(hoyS, 1);
+    const cxManana = futuras.filter(function (c) { return String(c.fecha).slice(0, 10) === manana; });
+    if (cxManana.length && !IND_AYUNO_RE.test(dieta.concat(medidas).join(" | "))) {   // el ayuno va en DIETA o MEDIDAS (no «VO en ayuno» de un fármaco)
+      const proc = cxManana.map(function (c) { return String(c.procedimiento || "cirugía").trim() || "cirugía"; }).join(", ");
+      out.push(sug("ind_cx_sin_ayuno", "📝 Indicaciones", "Cirugía mañana sin ayuno", "moderada",
+        "Cirugía programada para mañana (" + proc + ") y las indicaciones no indican ayuno: agregar ayuno desde las 00:00 y la preparación prequirúrgica.",
+        "Cirugía " + fc(manana) + " (tarjeta) · " + del, "Indicar ayuno prequirúrgico", "cxay:" + manana));
+    }
+    // 3. Antibiótico sin fecha de inicio ni días (lo que no cubre el antibiograma ya lo avisan las reglas de cultivos).
+    const atbLineas = atbs.slice();
+    meds.forEach(function (l) { if (D.some(function (d) { return tiene(d, "atb") && d.re.test(l); }) && atbLineas.indexOf(l) < 0) atbLineas.push(l); });
+    const sinFi = atbLineas.filter(function (l) { return D.some(function (d) { return (tiene(d, "atb") || tiene(d, "afung")) && d.re.test(l); }) && !IND_ATB_MARCA_RE.test(l) && !IND_ATB_UNICA_RE.test(l); });
+    if (sinFi.length) {
+      const nom = sinFi.map(function (l) { const d = D.find(function (x) { return (tiene(x, "atb") || tiene(x, "afung")) && x.re.test(l); }); return d ? d.n : l.slice(0, 30); });
+      out.push(sug("ind_atb_sin_fi", "📝 Indicaciones", "Antibiótico sin fecha de inicio", "leve",
+        lista(nom) + " sin fecha de inicio ni día de tratamiento en las indicaciones: anotar «FI dd/mm» y el día (p. ej. «(3)»).",
+        del, "Anotar FI y días del antibiótico", "atbfi:" + nom.slice().sort().join(",")));
+    }
+    // 4. Dieta y ayuno a la vez (en el Doc, o la tarjeta en ayuno y el Doc con dieta).
+    const dietaTxt = dieta.join(" | ");
+    const docAyuno = dieta.some(function (l) { return IND_AYUNO_RE.test(l); });
+    const docDieta = dieta.some(function (l) { return IND_DIETA_RE.test(l) && !IND_AYUNO_RE.test(l); });
+    if (docAyuno && docDieta && !IND_SECUENCIA_RE.test(dietaTxt))
+      out.push(sug("ind_dieta_ayuno", "📝 Indicaciones", "Dieta y ayuno a la vez", "leve",
+        "La sección DIETA trae ayuno y una dieta al mismo tiempo, sin decir desde cuándo cambia: dejar solo una o anotar el horario.",
+        del, "Aclarar dieta o ayuno", "dieta_ayuno:" + (ind.fecha || "")));
+    else if (ctx.ck.npo && docDieta && !docAyuno)
+      out.push(sug("ind_npo_dieta", "📝 Indicaciones", "La tarjeta dice ayuno y el Doc da dieta", "leve",
+        "La tarjeta marca ayuno y las indicaciones dan dieta: actualizar la tarjeta o el Doc.",
+        "Ayuno (tarjeta) · " + del, "Ayuno o dieta: actualizar", "npo_dieta:" + (ind.fecha || "")));
+    // 5. NPT sin labs de control (electrolitos ≤ 48 h, triglicéridos ≤ 7 días).
+    if (ctx.ck.npt || dieta.concat(sol, meds, atbs, medidas).some(function (l) { return /\bNPT\b|NUTRICION\s+PARENTERAL/.test(l) && !SUSP.test(l); })) {
+      const falta = [];
+      if (!ctx.lab("k", 2) && !ctx.lab("na", 2)) falta.push("electrolitos (≤ 48 h)");
+      if (!ctx.lab("trig", 7)) falta.push("triglicéridos (≤ 7 días)");
+      if (falta.length)
+        out.push(sug("ind_npt_labs", "📝 Indicaciones", "NPT sin labs de control", "leve",
+          "Con nutrición parenteral faltan " + lista(falta) + ": solicitarlos (QS, ES con P y Mg, PFH y triglicéridos).",
+          "NPT · " + del, "Labs de control de NPT", "nptlab:" + falta.join(",")));
+    }
+    // 6. El bloque mismo: de otra fecha, sin fecha, sin sección o sin firma.
+    if (!ind.fecha)
+      out.push(sug("ind_sin_fecha", "📝 Indicaciones", "Bloque sin fecha", "leve", "El bloque del Doc no tiene fecha: no se puede saber si son las de hoy.", del, "Poner fecha al bloque del Doc", "sinfecha"));
+    else if (ind.fecha < hoyS && new Date().getHours() >= 11)
+      out.push(sug("ind_vieja", "📝 Indicaciones", "No hay indicaciones de hoy", "leve", "El bloque más reciente del Doc es del " + fc(ind.fecha) + ": falta el de hoy.", del, "Actualizar indicaciones de hoy", "vieja:" + ind.fecha));
+    const faltan = [["DIETA", dieta], ["MEDICAMENTOS", meds.concat(atbs)], ["MEDIDAS GENERALES", medidas]].filter(function (x) { return !x[1].length; }).map(function (x) { return x[0]; });
+    if (faltan.length && (dieta.length || meds.length || medidas.length || sol.length))
+      out.push(sug("ind_seccion", "📝 Indicaciones", "Falta una sección", "leve", "El bloque no trae " + lista(faltan) + ".", del, "Completar " + faltan.join(", "), "sec:" + faltan.join(",")));
+    if (ind.firma === "")
+      out.push(sug("ind_firma", "📝 Indicaciones", "Sin firma", "leve", "El bloque no trae la firma del equipo (adscrito, R2, R1) al final.", del, "Firmar las indicaciones", "firma:" + (ind.fecha || "")));
+    return out;
+  }
+
   function valueHash(result) {
     if (!result) return "";
     if (typeof result.value === "number") return String(Math.round(result.value * 10) / 10);
@@ -6178,7 +6294,7 @@ const PLCDS = (function() {
     try {
       const ctx = ctxDe(p, nd);
       const out = [];
-      [reglasCultivos, reglasSangre, reglasElectrolitos, reglasGlucosa, reglasInteracciones, reglasRenal, reglasOtras].forEach(function (fn) {
+      [reglasCultivos, reglasSangre, reglasElectrolitos, reglasGlucosa, reglasInteracciones, reglasRenal, reglasOtras, reglasIndicaciones].forEach(function (fn) {
         try { fn(ctx).forEach(function (s) { if (s) { if (!s.valueHash) s.valueHash = valueHash(s.result); out.push(s); } }); }
         catch (e) { console.warn("PLCDS " + (fn.name || "regla") + " error:", e); }
       });
@@ -6193,7 +6309,16 @@ const PLCDS = (function() {
       return (va === undefined ? 99 : va) - (vb === undefined ? 99 : vb);
     });
   }
-  return { evaluate: evaluate, sortBySeverity: sortBySeverity, getActiveLabs: getActiveLabs, getSex: getSex,
+  // Qué fármacos trae el bloque del Doc (solo los vigentes, no los «suspender»): lo usa 🔎 Revisión de indicaciones para
+  // mostrar los choques con labs que vienen del Doc (KCl con K alto, insulina con glucosa baja, heparina con plaquetas…).
+  function docInfo(p, nd) {
+    const ck = (nd && nd.checklist) || {};
+    const lin = medsDe(p, nd, ck).lineas.filter(function (m) { return m.doc; });
+    const dr = drogasDe(lin).lista;
+    return { ids: dr.map(function (x) { return x.id; }), cls: " " + dr.map(function (x) { return [].concat(x.d.cls || []).join(" "); }).join(" ") + " ",
+      insulina: insulinaDe(lin).any, sol: lin.filter(function (m) { return m.sec === "SOLUCIONES"; }).map(function (m) { return N(m.txt); }).join(" | ") };
+  }
+  return { evaluate: evaluate, sortBySeverity: sortBySeverity, getActiveLabs: getActiveLabs, getSex: getSex, docInfo: docInfo,
     _t: { ctxDe: ctxDe, atbId: atbId, resistenciaInferida: resistenciaInferida, funcionRenal: funcionRenal, insulinaDe: insulinaDe, drogasDe: drogasDe } };
 })();
 
@@ -6401,7 +6526,10 @@ const PLIndicaciones = (function() {
       const anchor = anchors[i];
       const prevAnchorIdx = i > 0 ? anchors[i - 1].lineIdx : -1;
       const blockStart = Math.max(0, prevAnchorIdx + 1, anchor.lineIdx - 25);
-      const blockEnd = i + 1 < anchors.length ? anchors[i + 1].lineIdx - 1 : lines.length;
+      // El renglón justo antes del siguiente encabezado suele ser la cama del siguiente (💯 3-120) y se deja para él; si es la
+      // firma del equipo de ESTE bloque (sin renglón vacío en medio), se queda aquí (11 nov 2026).
+      const sigIdx = i + 1 < anchors.length ? anchors[i + 1].lineIdx : -1;
+      const blockEnd = sigIdx < 0 ? lines.length : (_indEsFirma(String(lines[sigIdx - 1] || "").replace(/^[\s\d.\-\*]+/, "").trim()) ? sigIdx : sigIdx - 1);
       const segLines = lines.slice(blockStart, blockEnd);
       try {
         const parsed = parseBlock(segLines, anchor.lineIdx - blockStart);
@@ -6416,6 +6544,10 @@ const PLIndicaciones = (function() {
     return { blocks: blocks, debug: debug };
   }
 
+  // Firma del equipo al final del bloque ("DR. X MBCG / DRA. Y R2 CG | MIP Z"): no es una indicación.
+  function _indEsFirma(t) {
+    return /^(dra?\.?|dr\.?|mip\d?)\b/i.test(t) && (/\//.test(t) || /\b(MB\s?C[GT]|R\d\s?C?G?|MIP\d?|CG|CT|MBMF)\b/i.test(t));
+  }
   function parseBlock(segLines, anchorIdx) {
     // ════ EXTRACTOR DE NOMBRE v25 — adelante + corte en separador ════
     // El nombre real va DEBAJO del header "INDICACIONES" y comparte renglón
@@ -6557,6 +6689,7 @@ const PLIndicaciones = (function() {
 
     // SECCIONES (ANTIBIÓTICOS aparte de MEDICAMENTOS; "MEDIAS GENERALES" es errata frecuente de MEDIDAS)
     const sections = { DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], "ANTIBIÓTICOS": [], "MEDIDAS GENERALES": [] };
+    const firma = [];   // renglón(es) de firma del equipo (11 nov 2026: el revisor de indicaciones avisa si falta)
     let current = null;
     const SECTION_RE = /^[\s\u00A0\u2022\u25E6\u00B7\u25CF\u25AA\u25C6\u25CA\u25CB\*#0-9.\-]*(DIETA|SOLUCIONES|MEDICAMENTOS|ANTIBI[OÓÒ]TICOS?|MEDI(?:DA|A)S\s+GENERALES)\s*[:：]?\s*$/i;
     for (let i = anchorIdx + 1; i < segLines.length; i++) {
@@ -6575,7 +6708,7 @@ const PLIndicaciones = (function() {
         const cleanedItem = line.replace(/^[\s\d.\-\*]+/, "").trim();
         if (/^(gracias|fecha)/i.test(cleanedItem)) continue;
         // Firma del equipo ("DR. X MBCG / DRA. Y R2 CG | MIP Z"): no es una indicación
-        if (/^(dra?\.?|dr\.?|mip\d?)\b/i.test(cleanedItem) && (/\//.test(cleanedItem) || /\b(MB\s?C[GT]|R\d\s?C?G?|MIP\d?|CG|CT|MBMF)\b/i.test(cleanedItem))) continue;
+        if (_indEsFirma(cleanedItem)) { firma.push(cleanedItem); continue; }
         if (cleanedItem.length < 2) continue;
         sections[current].push(cleanedItem);
       }
@@ -6589,7 +6722,9 @@ const PLIndicaciones = (function() {
       SOLUCIONES: sections.SOLUCIONES,
       MEDICAMENTOS: sections.MEDICAMENTOS,
       "ANTIBIÓTICOS": sections["ANTIBIÓTICOS"],
-      "MEDIDAS GENERALES": sections["MEDIDAS GENERALES"]
+      "MEDIDAS GENERALES": sections["MEDIDAS GENERALES"],
+      // "" = el bloque no trae firma. Los bloques guardados por versiones anteriores no tienen la llave (undefined): no se juzgan.
+      firma: firma.join(" | ")
     };
   }
   const ANCHOR_AGE_RE = /\b\d{1,3}\s*A[ÑN]OS?\b/i;
@@ -6789,6 +6924,47 @@ function cdsIgnoreSuggestion(patientKey, ruleId, vhash) {
   } catch (e) { console.warn("cdsIgnore:", e); }
 }
 
+// Reglas que revisan el bloque del Doc. Las ind_* siempre; las demás solo cuando su dato sale de las indicaciones del Doc.
+const IND_REV_DOC_RULES = /^(cult_resistente|cult_no_probado|cult_blee_piptazo|cult_ampc|cult_mssa|hiperK|plaq_bajas|plaq_linezolid|tih|hipoglucemia|glu_baja_basal|insulina_ayuno|metformina|isglt2|ajuste_renal|dup_.*|int_.*)$/;
+// ¿La sugerencia viene del Doc? Las de duplicados e interacciones dicen la fuente («indicaciones del …»); los choques con
+// labs (hiperK, hipoglucemia, plaquetas…) no la dicen: cuentan si el fármaco que los provoca está en el bloque del Doc.
+function _indRevDelDoc(s, di) {
+  if (/indicaciones/i.test(String((s.suggestion && s.suggestion.why) || ""))) return true;
+  if (!di) return false;
+  const id = s.ruleId, cls = function (c) { return di.cls.indexOf(" " + c + " ") >= 0; }, tiene = function (x) { return di.ids.indexOf(x) >= 0; };
+  if (id === "hiperK") return cls("kup") || cls("kcl") || /\bKCL\b|POTASIO/.test(di.sol);
+  if (id === "hipoglucemia" || id === "glu_baja_basal" || id === "insulina_ayuno") return di.insulina || cls("sulfonil");
+  if (id === "plaq_bajas" || id === "tih") return cls("hep");
+  if (id === "plaq_linezolid") return tiene("linezolid");
+  if (id === "isglt2") return cls("isglt2");
+  if (id === "metformina") return tiene("metformina");
+  if (id === "ajuste_renal") return cls("renal");
+  if (/^cult_/.test(id)) return cls("atb") || cls("afung");
+  if (id === "int_triple") return cls("aine") || cls("ieca") || cls("diurasa");
+  return false;
+}
+function _indRevisionItems(p, nd, k) {
+  try {
+    if (typeof PLCDS === "undefined" || !p) return [];
+    const todas = PLCDS.sortBySeverity(PLCDS.evaluate(p, nd || {}));
+    let di = null; try { di = PLCDS.docInfo ? PLCDS.docInfo(p, nd || {}) : null; } catch (_) { di = null; }
+    return todas.filter(function (s) {
+      if (typeof PLCDSStore !== "undefined" && PLCDSStore.isIgnored(k, s.ruleId, s.valueHash)) return false;
+      if (/^ind_/.test(s.ruleId)) return true;
+      return IND_REV_DOC_RULES.test(s.ruleId) && _indRevDelDoc(s, di);
+    });
+  } catch (e) { console.warn("revisión de indicaciones:", e); return []; }
+}
+function _indRevisionHtml(p, nd, k) {
+  const items = _indRevisionItems(p, nd, k);
+  if (!items.length) return "";
+  const li = items.map(function (s) {
+    const sg = s.suggestion || {};
+    return '<li class="ind-rev-it ind-rev-' + escInd(String(s.severity || "leve").replace(/\d/g, "")) + '" data-testid="ind-rev-item" data-rule="' + escInd(s.ruleId) + '">⚠ <b>' + escInd(s.ruleName) + ':</b> ' + escInd(sg.text || "") + '</li>';
+  }).join("");
+  return '<details class="ind-rev" data-testid="ind-rev"><summary>🔎 Revisión de indicaciones · <b>' + items.length + '</b> por revisar</summary><ul class="ind-rev-list">' + li + '</ul>' +
+    '<div class="ind-rev-foot">Revisión automática (sin IA) del bloque del Doc contra la tarjeta y los labs. Para ignorar uno o pasarlo a pendientes: 💡 Sugerencias clínicas.</div></details>';
+}
 function renderIndicacionesSection(p, nd, k) {
   try {
     const data = PLIndicaciones.getForPatient(p);
@@ -6829,10 +7005,14 @@ function renderIndicacionesSection(p, nd, k) {
       ? '<div class="ind-warn">' + warnTxt +
         '<button type="button" class="ind-import-btn" onclick="var c=this.closest(\'.ind-section\').querySelector(\'.ind-content\');c.style.display=c.style.display===\'none\'?\'\':\'none\'">Ver de todos modos</button></div>'
       : '';
+    // 🔎 Revisión automática (11 nov 2026): lo que el revisor de indicaciones (PLCDS, reglas ind_*) y las reglas que usan el
+    // Doc (antibiograma, potasio, plaquetas, insulina, duplicados) encuentran en ESTE bloque. Discreto: solo si hay algo, y
+    // respeta lo que se ignoró en 💡 Sugerencias. Nada se escribe solo: «➕ A pendientes» y «🔇 Ignorar» van en Sugerencias.
+    const revision = data._matchWarn ? "" : _indRevisionHtml(p, nd, k);
     return '<div class="ind-section ind-fresh-' + fresh.state + (data._matchWarn ? ' ind-mismatch' : '') + '" id="ind-' + escInd(k) + '">' +
       '<div class="ind-header"><span class="ind-title">💊 Indicaciones</span>' +
       '<span class="ind-fresh">⏱ ' + escInd(fresh.label) + fechaTxt + matchInfo + (doc && doc.syncedAt ? ' · auto' : '') + '</span>' +
-      '<span style="display:flex;gap:4px">' + docBtns + '</span></div>' + warn +
+      '<span style="display:flex;gap:4px">' + docBtns + '</span></div>' + warn + revision +
       '<div class="ind-content"' + (data._matchWarn ? ' style="display:none"' : '') + '>' + (content || '<div class="ind-empty-msg">Bloque sin secciones.</div>') + '</div></div>';
   } catch (e) {
     console.warn("renderIndicacionesSection error:", e);
@@ -10945,7 +11125,7 @@ function plExportBackup() {
       return { lista: out, foley: foley };
     }
     function _plneSplitDx(dx){ return String(dx||"").split(/\n|;|\s\+\s|,(?!\d)/).map(function(s){ return s.replace(/^[\s•\-\d.)]+/,"").trim(); }).filter(Boolean); }
-    function _plneLineas(t){ return String(t||"").split("\n").map(function(s){ return s.replace(/^[\s•\-*☐☑✓]+/,"").replace(/^\d{2}\/\d{2}\s—\s*/,"").trim(); }).filter(function(s){ return s && !/^✓/.test(s); }); }
+    function _plneLineas(t){ return String(t||"").split("\n").map(function(s){ return plSinFirma(s).replace(/^[\s•\-*☐☑✓]+/,"").replace(/^\d{2}\/\d{2}\s—\s*/,"").trim(); }).filter(function(s){ return s && !/^✓/.test(s); }); }
     function _plneOra(s){ s=String(s||"").trim(); if(!s) return ""; return /[.!?]$/.test(s)?s:(s+"."); }
     function _plneBuild(p, nd){
       var ck=nd.checklist||{}; var sexo=_plneSex(p,nd); var fem=sexo==="Femenino";
@@ -11030,7 +11210,7 @@ function plExportBackup() {
         mx.push(tit.toUpperCase()+" DEL "+_plneFechaPunto(r0.fecha)+(conc?" CON REPORTE: "+conc:" PENDIENTE DE REPORTE")); }
       (nd.imagenHistory||[]).slice().sort(function(a,b){ return String(b.fecha||"").localeCompare(String(a.fecha||"")); }).slice(0,1).forEach(function(e){ (e.estudios||[]).forEach(function(est){ if(_plneVal2(est.descripcion)) mx.push((est.tipo||"ESTUDIO")+" DEL "+_plneFechaPunto(e.fecha)+": "+_plneVal2(est.descripcion)); }); });
       var ic=_plneLineas(ck.interconsultas); if(ic.length) mx.push("INTERCONSULTAS: "+ic.join("; "));
-      var man=_plneVal2(nd.manejo); if(man) mx.push("MISCELÁNEO: "+man.replace(/\s+/g," "));
+      var man=_plneVal2(plTextoSinFirmas(nd.manejo)); if(man) mx.push("MISCELÁNEO: "+man.replace(/\s+/g," "));
       if(mx.length) an.push(mx.map(_plneOra).join(" "));
       var plan=_plneVal2(ck.nota_plan); if(plan) an.push(_plneOra("PLAN: "+plan.replace(/\s+/g," ")));
       var pend=_plneLineas(nd.pendientes); if(pend.length) an.push("SE SOLICITAN / PENDIENTES: "+pend.join("; ")+".");
@@ -11074,8 +11254,9 @@ function plExportBackup() {
        Cada nota generada o copiada se guarda en checklist.nota_hist (máx. 10) para volver a verla. */
     var PLNE_HIST_MAX = 10;
     var _plneBusy = false, _plneLastIa = false;
-    function _plneCtxLinea(label, txt){
-      var lines=String(txt===undefined||txt===null?"":txt).split("\n").map(function(s){ return s.replace(/^[\s•\-*☐▪·]+/,"").trim(); }).filter(Boolean);
+    function _plneCtxLinea(label, txt, firmas){
+      var base=(txt===undefined||txt===null?"":txt);
+      var lines=String(firmas==="fecha" ? plTextoConFecha(base) : firmas ? plTextoSinFirmas(base) : base).split("\n").map(function(s){ return s.replace(/^[\s•\-*☐▪·]+/,"").trim(); }).filter(Boolean);
       return lines.length?(label+": "+lines.join(" | ")):"";
     }
     function _plneContexto(p, nd){
@@ -11085,11 +11266,11 @@ function plExportBackup() {
         _plneCtxLinea("PADECIMIENTO ACTUAL / RESUMEN", nd.pa),
         _plneCtxLinea("FECHA DE INGRESO", p.ingreso),
         _plneCtxLinea("ESTADO EN EL CENSO", p.estado),
-        _plneCtxLinea("OTROS (NOTAS LIBRES DE LA TARJETA)", nd.manejo),
-        _plneCtxLinea("PENDIENTES", nd.pendientes),
-        _plneCtxLinea("INTERCONSULTAS", ck.interconsultas),
-        _plneCtxLinea("CULTIVOS (CAJA)", ck.cultivos),
-        _plneCtxLinea("CRONOLOGÍA DE GUARDIAS", nd.entrega),
+        _plneCtxLinea("OTROS (NOTAS LIBRES DE LA TARJETA)", nd.manejo, true),
+        _plneCtxLinea("PENDIENTES", nd.pendientes, true),
+        _plneCtxLinea("INTERCONSULTAS", ck.interconsultas, true),
+        _plneCtxLinea("CULTIVOS (CAJA)", ck.cultivos, true),
+        _plneCtxLinea("CRONOLOGÍA DE GUARDIAS", nd.entrega, "fecha"),
         _plneCtxLinea("RECIBO DE GUARDIA (CAJA ANTIGUA)", ck.recibo),
         _plneCtxLinea("HERIDA QUIRÚRGICA (PASE)", ck.pm_hxqx)
       ].filter(Boolean).join("\n");
@@ -12627,6 +12808,9 @@ function plExportBackup() {
       return ini.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
     }
     function _byColor(name) {
+      // Mismo color que los renglones firmados de esa persona (por su primer nombre); sin nombre, el de antes.
+      const primero = toSafeString(name).trim().split(/\s+/)[0] || "";
+      if (primero && typeof plAuthorColor === "function") { const c = plAuthorColor(primero); if (c) return c; }
       let h = 0; const s = toSafeString(name).toLowerCase();
       for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
       return "hsl(" + (h % 360) + ", 55%, 40%)";
@@ -12652,6 +12836,330 @@ function plExportBackup() {
         return `<span class="by-chip" style="background:${_byColor(b.u || b.i)}" title="Último cambio: ${esc(b.u || b.i)}${when ? " · " + when : ""}">${esc(b.i || b.u.slice(0, 2).toUpperCase())}${when ? " · " + when : ""}</span>`;
       } catch (_) { return ""; }
     }
+    // ═══ ✍️ FIRMA Y COLOR POR RENGLÓN EN LAS CAJAS (11 nov 2026, pedido de Gera: «que tenga fecha todo lo que pongamos,
+    // Ej. Gerardo 10.11.26 23:50 - Cambiar apósitos», con el color de quien lo escribió) ═══
+    // · Al soltar una caja (change), cada renglón NUEVO que no traiga ya una firma recibe «Nombre dd.mm.aa hh:mm - ». Los
+    //   renglones que ya estaban, los editados y los que se restauran o se regresan (↩, 🕘) no se tocan: solo se firma lo que
+    //   la persona acaba de escribir en este equipo. Un renglón con sangría continúa al de arriba; un pegado grande
+    //   (> 6 renglones) lleva una sola firma.
+    // · El nombre es el primer nombre de la cuenta (pl_user_name). Sin nombre no se firma.
+    // · Color: cada firma pinta su renglón (y los que la continúan) con el color de esa persona, como la tinta de cada
+    //   residente en la hoja de papel. Es una capa encima de la caja que no se puede tocar ni copiar; el texto es el mismo.
+    const PL_STAMP_FIELDS = { pendientes: 1, entrega: 1, manejo: 1, drenajes: 1, "ck:interconsultas": 1, "ck:cultivos": 1, "ck:pendientes_mips": 1, "ck:pendientes_r1": 1 };
+    const PL_STAMP_RE = /^\s*(?:✓\s*)?(\p{L}[\p{L}.'-]{0,24})\s+\d{1,2}\.\d{1,2}\.\d{2,4}\s+\d{1,2}:\d{2}(?:\s*[ap]\.?\s?m\.?)?\s*[-–—]\s?/iu;
+    const PL_STAMP_OLD_RE = /^\s*(?:✓\s*)?\d{1,2}\/\d{1,2}(?:\s+\d{1,2}:\d{2})?(?:\s+(\p{Lu}{1,4}))?\s*:\s?/u;
+    const PL_ST_PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#db2777", "#65a30d", "#4f46e5", "#b45309", "#0d9488", "#be123c"];
+    function plStampField(ta) {
+      if (!ta || ta.tagName !== "TEXTAREA" || !ta.dataset || !ta.dataset.key) return "";
+      const f = ta.dataset.ckfield ? "ck:" + ta.dataset.ckfield : (ta.dataset.field || "");
+      return PL_STAMP_FIELDS[f] ? f : "";
+    }
+    function plStampName() {
+      let n = ""; try { n = (localStorage.getItem("pl_user_name") || "").trim(); } catch (_) {}
+      const w = n.split(/\s+/).filter(Boolean)[0] || "";
+      const limpio = w.replace(/[^\p{L}.'-]/gu, "").slice(0, 20);
+      return limpio ? limpio.charAt(0).toUpperCase() + limpio.slice(1) : "";
+    }
+    // «Gerardo 10.11.26 23:50 - » ("" si la cuenta no tiene nombre)
+    function plStampNow(d) {
+      const name = plStampName(); if (!name) return "";
+      d = d || new Date(); const z = function (n) { return String(n).padStart(2, "0"); };
+      return name + " " + z(d.getDate()) + "." + z(d.getMonth() + 1) + "." + String(d.getFullYear()).slice(2) + " " + z(d.getHours()) + ":" + z(d.getMinutes()) + " - ";
+    }
+    // ¿El renglón empieza con una firma? → {name, len, old}. También las de antes («14/10 08:15 GF: »).
+    function plStampAuthor(line) {
+      let m = PL_STAMP_RE.exec(String(line || ""));
+      if (m) return { name: m[1], len: m[0].length };
+      m = PL_STAMP_OLD_RE.exec(String(line || ""));
+      if (m) return { name: m[1] || "", len: m[0].length, old: true };
+      return null;
+    }
+    function plAuthorColor(name) {
+      const s = String(name || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+      if (!s) return "";
+      let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return PL_ST_PALETTE[h % PL_ST_PALETTE.length];
+    }
+    // Firma los renglones NUEVOS de `after` respecto a `before` (diff por renglones, LCS). Dentro de cada tramo cambiado,
+    // cada renglón borrado se empareja con el insertado que MÁS se le parece (corregir «TAC» → «TAC abdominal» es editar);
+    // el resto de lo insertado es nuevo. No es nuevo lo que solo se movió (idéntico a uno borrado) ni la mitad de un
+    // renglón partido con Enter (está dentro de uno borrado). Solo se firma un renglón con letras o números.
+    // Devuelve el texto firmado (o `after` tal cual); nunca cambia el número de renglones.
+    function _stNorm(t) { const au = plStampAuthor(t); return String(au && !au.old ? String(t).slice(au.len) : t).replace(/^[\s✓•·*-]+/, "").replace(/\s+/g, " ").trim().toLowerCase(); }
+    function _stParecido(x, y, barato) {
+      if (!x || !y) return 0;
+      if (x === y) return 1;
+      if (y.indexOf(x) === 0 || x.indexOf(y) === 0) return 0.9;   // se agregó o quitó texto al final: editar
+      if ((x.length >= 3 && y.indexOf(x) >= 0) || (y.length >= 3 && x.indexOf(y) >= 0)) return 0.9;
+      const n = x.length, m = y.length; if (barato || n * m > 40000) return 0;
+      let prev = new Array(m + 1); for (let j = 0; j <= m; j++) prev[j] = j;
+      for (let i = 1; i <= n; i++) { const cur = [i]; for (let j = 1; j <= m; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1)); prev = cur; }
+      return 1 - prev[m] / Math.max(n, m);
+    }
+    function plStampNewLines(before, after, stamp, opts) {
+      after = String(after == null ? "" : after);
+      if (!stamp) return after;
+      const a = String(before == null ? "" : before).split("\n"), b = after.split("\n");
+      const n = a.length, m = b.length;
+      if (after === a.join("\n") || n * m > 400000) return after;
+      const L = new Array(n + 1);
+      for (let i = 0; i <= n; i++) L[i] = new Uint16Array(m + 1);
+      for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+      const tramos = []; let dl = [], il = [];
+      const cerrar = function () { if (dl.length || il.length) tramos.push({ d: dl, i: il }); dl = []; il = []; };
+      let i = 0, j = 0;
+      while (i < n || j < m) {
+        if (i < n && j < m && a[i] === b[j]) { cerrar(); i++; j++; }
+        else if (j < m && (i >= n || L[i][j + 1] >= L[i + 1][j])) { il.push(j); j++; }
+        else { if (a[i].trim()) dl.push(i); i++; }   // llenar un renglón vacío no es editar: es escribir algo nuevo
+      }
+      cerrar();
+      const borrados = []; tramos.forEach(function (t) { t.d.forEach(function (x) { borrados.push(_stNorm(a[x])); }); });
+      const nuevo = new Array(m).fill(false);
+      tramos.forEach(function (t) {
+        const cand = t.i.filter(function (y) {
+          const ny = _stNorm(b[y]);
+          if (!ny) return false;
+          if (opts && opts.ajenas && opts.ajenas.has(String(b[y]).trim())) return false;   // lo puso el código, no la persona
+          return !borrados.some(function (bx) { return bx === ny || (ny.length >= 3 && bx.indexOf(ny) >= 0); });
+        });
+        const usado = {}, nc = {}; cand.forEach(function (y) { nc[y] = _stNorm(b[y]); });
+        const barato = t.d.length * cand.length > 150;   // tramo enorme (pegar sobre un bloque): solo igual / prefijo / contenido
+        t.d.forEach(function (x) {
+          const nx = _stNorm(a[x]); let mejor = -1, val = 0.5;
+          cand.forEach(function (y) { if (usado[y]) return; const v = _stParecido(nx, nc[y], barato); if (v >= val) { val = v; mejor = y; } });
+          if (mejor >= 0) usado[mejor] = true;
+        });
+        cand.forEach(function (y) { if (!usado[y]) nuevo[y] = true; });
+      });
+      const out = b.slice();
+      for (let x = 0; x < m;) {
+        if (!nuevo[x]) { x++; continue; }
+        let y = x; while (y < m && nuevo[y]) y++;
+        const llenos = []; for (let t = x; t < y; t++) if (/[\p{L}\d]/u.test(b[t])) llenos.push(t);
+        // Un PEGADO (o una transcripción del lienzo) de más de 6 renglones lleva una sola firma; los demás renglones van con
+        // sangría para que sigan el color y la fecha de esa firma. Lo escrito a mano lleva una firma por renglón.
+        const pegado = !!(opts && opts.pegado) && llenos.filter(function (t) { return !plStampAuthor(b[t]); }).length > 6;
+        let primero = true;
+        llenos.forEach(function (t) {
+          const line = b[t];
+          if (plStampAuthor(line)) { primero = false; return; }
+          if (!primero && (pegado || /^\s/.test(line))) { if (pegado && !/^\s/.test(line)) out[t] = "  " + line; return; }   // continúa el de arriba
+          out[t] = stamp + line.replace(/^\s*[-•·*]\s+/, "").replace(/^\s+/, "");
+          primero = false;
+        });
+        x = y;
+      }
+      return out.join("\n");
+    }
+    // ¿El renglón es solo una firma, sin texto? («Gerardo 11.11.26 10:00 - »)
+    function plSoloFirma(line) { const t = String(line || "").trim(); const au = plStampAuthor(t); return !!(au && !au.old && !t.slice(au.len).trim()); }
+    // El texto del renglón sin la firma nueva (conserva «✓ »).
+    // Bitácoras fechadas (Cronología, nota de drenajes): la firma se acorta a «11.11 03:10: texto» (sin el nombre).
+    function plTextoConFecha(t) {
+      return String(t == null ? "" : t).split("\n").map(function (l) {
+        const m = /^(\s*(?:✓\s*)?)\p{L}[\p{L}.'-]{0,24}\s+(\d{1,2}\.\d{1,2})\.\d{2,4}\s+(\d{1,2}:\d{2})(?:\s*[ap]\.?\s?m\.?)?\s*[-–—]\s?/iu.exec(l);
+        return m ? m[1] + m[2] + " " + m[3] + ": " + l.slice(m[0].length) : l;
+      }).join("\n");
+    }
+    function plTextoSinFirmas(t) { return String(t == null ? "" : t).split("\n").filter(function (l) { return !plSoloFirma(l); }).map(plSinFirma).join("\n"); }
+    function plSinFirma(line) {
+      const s0 = String(line == null ? "" : line); const m = /^\s*✓\s*/.exec(s0); const resto = m ? s0.slice(m[0].length) : s0;
+      const au = plStampAuthor(resto); return (m ? "✓ " : "") + (au && !au.old ? resto.slice(au.len) : resto);
+    }
+    // ¿Este renglón es una firma vacía de quien firma ahora (de cualquier hora o día)? Para no apilar renglones vacíos.
+    // ¿Se puede cambiar esa firma vacía por la de ahora? Solo si es del mismo día o si no tiene debajo renglones sin firma que
+    // dependan de ella como encabezado (si los tiene, se pone la firma nueva arriba y la vieja se queda).
+    function plFirmaVaciaReusable(lineas, idx, stamp) {
+      if (!plFirmaVaciaMia(lineas[idx], stamp)) return false;
+      const fecha = function (l) { const m = /(\d{1,2}\.\d{1,2}\.\d{2,4})/.exec(String(l || "")); return m ? m[1] : ""; };
+      if (fecha(lineas[idx]) === fecha(stamp)) return true;
+      for (let j = idx + 1; j < lineas.length; j++) {
+        const l = lineas[j]; if (!l.trim()) continue;
+        return !!plStampAuthor(l) || /^\s*(\d{2}\/\d{2}\s*—|—\s*Recibido)/.test(l);   // un renglón sin firma debajo depende de ella
+      }
+      return true;
+    }
+    function plFirmaVaciaMia(line, stamp) {
+      const t = String(line || "").trim(); if (!t || !stamp) return false;
+      if (t === String(stamp).trim()) return true;
+      if (!plSoloFirma(t)) return false;
+      const a = plStampAuthor(t), b = plStampAuthor(stamp);
+      return !!(a && b && !b.old && String(a.name).toLowerCase() === String(b.name).toLowerCase());
+    }
+    // ── Capa de color por autor (encima de la caja, sin eventos) ──
+    function _stRgba(hex, a) { const h = String(hex).replace("#", ""); const v = parseInt(h.length === 3 ? h.split("").map(function (c) { return c + c; }).join("") : h, 16); return "rgba(" + ((v >> 16) & 255) + "," + ((v >> 8) & 255) + "," + (v & 255) + "," + a + ")"; }
+    function _stEsc(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    function plStColorHtml(text) {
+      const dark = document.body && document.body.classList.contains("dark");
+      const aF = dark ? 0.42 : 0.26, aT = dark ? 0.2 : 0.1;
+      let col = "";
+      const lines = String(text == null ? "" : text).split("\n").map(function (ln) {
+        const au = plStampAuthor(ln);
+        if (au) col = plAuthorColor(au.name) || "#64748b";
+        else if (!ln.trim() || !/^\s/.test(ln)) col = "";   // un renglón sin firma y sin sangría no es de nadie
+        if (!col) return _stEsc(ln);
+        if (au) return '<span style="background:' + _stRgba(col, aF) + ';border-radius:3px">' + _stEsc(ln.slice(0, au.len)) + '</span><span style="background:' + _stRgba(col, aT) + '">' + _stEsc(ln.slice(au.len)) + '</span>';
+        return '<span style="background:' + _stRgba(col, aT) + '">' + _stEsc(ln) + '</span>';
+      });
+      return lines.join("\n") + "\n ";
+    }
+    function _stHasStamp(text) { return String(text || "").split("\n").some(function (l) { return !!plStampAuthor(l); }); }
+    function plStMount(ta) {
+      try {
+        if (!plStampField(ta) || !ta.isConnected) return;
+        let bd = ta.previousElementSibling;
+        if (!(bd && bd.classList && bd.classList.contains("pl-st-bd") && bd._ta === ta)) bd = null;
+        if (!_stHasStamp(ta.value)) { if (bd) bd.remove(); return; }
+        if (!bd) {
+          const par = ta.parentElement; if (!par) return;
+          if (getComputedStyle(par).position === "static") par.style.position = "relative";
+          bd = document.createElement("div"); bd.className = "pl-st-bd"; bd.setAttribute("aria-hidden", "true"); bd._ta = ta;
+          ta.insertAdjacentElement("beforebegin", bd);
+          if (!ta._stWired) {
+            ta._stWired = true;
+            ta.addEventListener("input", function () { plStRefresh(ta); });
+            ta.addEventListener("scroll", function () { const b = ta.previousElementSibling; if (b && b._ta === ta) b.scrollTop = ta.scrollTop; });
+            // Tamaño de la caja y de su contenedor (si cambia lo de arriba, la caja se mueve sin cambiar de tamaño).
+            try { const ro = new ResizeObserver(function () { plStRefresh(ta); }); ro.observe(ta); if (ta.parentElement) ro.observe(ta.parentElement); ta._stRo = ro; } catch (_) {}
+          }
+        } else if (bd._val === ta.value && bd._w === ta.offsetWidth && bd._h === ta.offsetHeight && bd._t === ta.offsetTop && bd._l === ta.offsetLeft) return;   // sin cambios: no recalcular
+        plStRefresh(ta, bd);
+      } catch (e) { console.warn("color por autor:", e); }
+    }
+    function plStRefresh(ta, bd) {
+      try {
+        bd = bd || ta.previousElementSibling;
+        if (!(bd && bd._ta === ta)) { plStMount(ta); return; }
+        if (!_stHasStamp(ta.value)) { bd.remove(); return; }
+        const cs = getComputedStyle(ta);
+        const st = bd.style;
+        ["fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "wordSpacing", "textTransform", "textIndent", "tabSize",
+          "paddingTop", "paddingLeft", "paddingBottom", "boxSizing", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "wordBreak", "borderRadius"].forEach(function (k) { st[k] = cs[k]; });
+        st.borderStyle = "solid"; st.borderColor = "transparent";
+        const bl = parseFloat(cs.borderLeftWidth) || 0, br = parseFloat(cs.borderRightWidth) || 0;
+        const barra = Math.max(0, ta.offsetWidth - ta.clientWidth - bl - br);   // ancho de la barra de desplazamiento (escritorio)
+        st.paddingRight = ((parseFloat(cs.paddingRight) || 0) + barra) + "px";
+        st.left = ta.offsetLeft + "px"; st.top = ta.offsetTop + "px";
+        // Medidas exactas (con decimales) y en px de CSS: con las redondeadas, un renglón al borde cortaba distinto.
+        st.width = /px$/.test(cs.width) ? cs.width : ta.offsetWidth + "px"; st.height = /px$/.test(cs.height) ? cs.height : ta.offsetHeight + "px";
+        st.display = (ta.offsetWidth && ta.offsetHeight) ? "" : "none";
+        const html = plStColorHtml(ta.value);
+        if (bd._html !== html) { bd.innerHTML = html; bd._html = html; }
+        bd._val = ta.value; bd._w = ta.offsetWidth; bd._h = ta.offsetHeight; bd._t = ta.offsetTop; bd._l = ta.offsetLeft;
+        bd.scrollTop = ta.scrollTop;
+      } catch (_) {}
+    }
+    function plStMountAll(root) {
+      try {
+        (root || document).querySelectorAll("textarea[data-key][data-field], textarea[data-key][data-ckfield]").forEach(function (ta) { if (plStampField(ta)) plStMount(ta); });
+        document.querySelectorAll(".pl-st-bd").forEach(function (bd) { if (!bd._ta || !bd._ta.isConnected || bd.nextElementSibling !== bd._ta) bd.remove(); });
+      } catch (_) {}
+    }
+    window.plStampNewLines = plStampNewLines; window.plSoloFirma = plSoloFirma; window.plSinFirma = plSinFirma; window.plTextoSinFirmas = plTextoSinFirmas; window.plTextoConFecha = plTextoConFecha; window.plFirmaVaciaMia = plFirmaVaciaMia; window.plStampNow = plStampNow; window.plStampAuthor = plStampAuthor; window.plAuthorColor = plAuthorColor; window.plStMountAll = plStMountAll;
+    (function () {
+      // Base = lo que tenía la caja al entrar. Al SOLTARLA (change) se firman los renglones nuevos, antes de que el onchange
+      // de la caja guarde (estos escuchas van en captura, en document: corren antes). Mientras se escribe no se toca el texto:
+      // el deshacer, el retroceso, el dictado y Scribble funcionan como siempre (11 nov 2026, segunda revisión: firmar con
+      // cada tecla rompía el retroceso y Cmd+Z). Si algo cambió la caja por código con el foco puesto (botón, lápiz, Realtime),
+      // ese texto pasa a la base: no se firma con el nombre de quien escribe. Solo eventos de la persona (isTrusted).
+      const firmar = function (t) {
+        if (t.__stBase === undefined) return false;
+        const st = plStampNow(); if (!st) return false;
+        const v = t.value, nv = plStampNewLines(t.__stBase, v, st, { pegado: !!t.__stPegado, ajenas: t.__stAjenas });
+        if (nv === v) return false;
+        // Si la caja sigue con el foco (al ocultar la app, o Chromium al cambiar de ventana), el cursor se queda en su renglón:
+        // plStampNewLines nunca cambia el número de renglones, solo antepone la firma o la sangría.
+        const conFoco = document.activeElement === t;
+        const s0 = conFoco ? t.selectionStart : 0, s1 = conFoco ? t.selectionEnd : 0, dir = conFoco ? t.selectionDirection : "none";
+        t.value = nv;
+        if (conFoco) {
+          const vl = v.split("\n"), nl = nv.split("\n");
+          const mapa = function (pos) {
+            let acc = 0, accN = 0;
+            for (let x = 0; x < vl.length; x++) {
+              if (pos <= acc + vl[x].length) return accN + Math.max(0, Math.min(nl[x].length, pos - acc + nl[x].length - vl[x].length));
+              acc += vl[x].length + 1; accN += nl[x].length + 1;
+            }
+            return nv.length;
+          };
+          if (vl.length === nl.length) { try { t.setSelectionRange(mapa(s0), mapa(s1), dir || "none"); } catch (_) {} }
+        }
+        return true;
+      };
+      document.addEventListener("focusin", function (e) {
+        const t = e.target; if (!plStampField(t)) return;
+        // Vuelve la ventana o la pestaña con la caja intacta: misma base. Si la caja cambió mientras tanto, base nueva.
+        if (t.__stSigue && t.value === t.__stUlt && t.__stBase !== undefined) { t.__stSigue = false; return; }
+        t.__stSigue = false;
+        t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+      }, true);
+      // ¿Se fue la VENTANA o la PESTAÑA (la caja sigue activa) y no la persona de la caja? Entonces se firma pero se conserva la
+      // base de cuando entró: lo que termine de escribir al volver se compara contra eso (11 nov 2026, quinta revisión).
+      const sigue = function (t) { if (document.activeElement !== t) return false; t.__stUlt = t.value; t.__stSigue = true; plStMount(t); return true; };
+      // Renglones que el CÓDIGO metió en la caja con el foco puesto (no los de la persona): no se firman con su nombre.
+      const ajenas = function (t) {
+        if (t.__stUlt === undefined || t.value === t.__stUlt) return;
+        const antes = {}; String(t.__stUlt).split("\n").forEach(function (l) { const k = l.trim(); antes[k] = (antes[k] || 0) + 1; });
+        String(t.value).split("\n").forEach(function (l) { const k = l.trim(); if (!k) return; if (antes[k]) antes[k]--; else (t.__stAjenas = t.__stAjenas || new Set()).add(k); });
+        t.__stUlt = t.value;
+      };
+      document.addEventListener("beforeinput", function (e) {
+        const t = e.target; if (!plStampField(t) || t.__stBase === undefined) return;
+        ajenas(t);
+        if (/^insertFrom(Paste|Drop)/.test(e.inputType || "")) t.__stPegado = true;    // un pegado largo lleva una sola firma
+      }, true);
+      document.addEventListener("input", function (e) { const t = e.target; if (e.isTrusted && plStampField(t)) t.__stUlt = t.value; }, true);
+      document.addEventListener("change", function (e) {
+        const t = e.target; if (!e.isTrusted || !plStampField(t)) return;
+        ajenas(t);
+        if (firmar(t)) { try { if (typeof _autoResizeTA === "function") _autoResizeTA(t); } catch (_) {} }
+        if (sigue(t)) return;
+        t.__stSigue = false; t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+        plStMount(t);
+      }, true);
+      // Safari no dispara «change» al soltar si el último cambio vino del código (p. ej. el lápiz después de teclear): al perder
+      // el foco se firma lo que quede sin firma y se avisa a la caja (input + change) para que lo guarde como siempre.
+      document.addEventListener("focusout", function (e) {
+        const t = e.target; if (!e.isTrusted || !plStampField(t) || !t.isConnected || t.__stBase === undefined) return;
+        ajenas(t);
+        if (firmar(t)) {
+          try { t.dispatchEvent(new Event("input", { bubbles: true })); t.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+          try { if (typeof _autoResizeTA === "function") _autoResizeTA(t); } catch (_) {}
+        }
+        if (sigue(t)) return;
+        t.__stSigue = false; t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+        plStMount(t);
+      }, true);
+      // Al salir (cerrar, recargar, cambiar de app) no llega el «change»: se firma la caja que tiene el foco antes de guardar.
+      window.__plStFirmarActiva = function () {
+        try {
+          const t = document.activeElement; if (!plStampField(t)) return;
+          ajenas(t);
+          if (!firmar(t)) return;
+          try { t.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) {}   // el oninput de la caja actualiza la nota
+          // La base sigue siendo la de cuando se entró a la caja (lo firmado ya no se refirma): al volver, lo que se termine de
+          // escribir se compara contra lo de antes, no contra este estado a medias.
+          t.__stUlt = t.value;
+        } catch (_) {}
+      };
+      // Tras cada repintado (vista, tarjeta, Realtime) se vuelve a poner la capa de color.
+      try {
+        let raf = 0;
+        const propio = function (n) { return n.nodeType === 1 && n.classList && (n.classList.contains("pl-st-bd") || n.classList.contains("pl-ink-cv") || n.classList.contains("pl-ink-menu") || n.classList.contains("pl-ink-pop") || n.classList.contains("pl-pen-glass")); };
+        const otro = function (list) { return Array.prototype.some.call(list, function (n) { return !propio(n); }); };
+        const arrancar = function () {
+          new MutationObserver(function (recs) {
+            if (!recs.some(function (r) { return otro(r.addedNodes) || otro(r.removedNodes); })) return;
+            if (raf) return;
+            raf = requestAnimationFrame(function () { raf = 0; plStMountAll(); });
+          }).observe(document.body, { childList: true, subtree: true });
+          plStMountAll();
+        };
+        if (document.body) arrancar(); else document.addEventListener("DOMContentLoaded", arrancar);
+        window.addEventListener("resize", function () { document.querySelectorAll(".pl-st-bd").forEach(function (bd) { if (bd._ta) plStRefresh(bd._ta, bd); }); });
+      } catch (_) {}
+    })();
     function sanitizeStoragePathSegment(v) {
       return toSafeString(v)
         .normalize("NFD")
@@ -14228,6 +14736,18 @@ function plExportBackup() {
       saveNote(k, nd);
       _dirtyFields[k].delete(f);
     }
+    // Guarda con varias marcas y las quita al terminar (11 nov 2026). saveNote ya las pasó a la subida en curso (_pendingDirty);
+    // si se quedaban en _dirtyFields, la tarjeta seguía «editada aquí» para siempre: no veía lo que escribían los colegas en
+    // esas cajas y, al ocultarse o despertar el equipo, volvía a subir su copia vieja encima (pérdidas del 8 nov). Solo se
+    // quitan las marcas que puso esta acción: si la persona ya tenía algo sin guardar en esa caja, su marca se queda.
+    function _saveNoteFlags(k, nd, flags) {
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      const nuevas = (flags || []).filter(function (f) { return !_dirtyFields[k].has(f); });
+      (flags || []).forEach(function (f) { _dirtyFields[k].add(f); });
+      noteData[k] = nd;
+      saveNote(k, nd);
+      nuevas.forEach(function (f) { _dirtyFields[k].delete(f); });
+    }
     function saveNote(key, data) {
       _saveNoteSnapshot(key);
       if (_dirtyFields[key] && _dirtyFields[key].size) {
@@ -14503,6 +15023,36 @@ function plExportBackup() {
             nd.checklist[ckField] = v;
           } else if (TEXT.indexOf(field) !== -1 && prevNd[field] !== undefined) {
             nd[field] = prevNd[field];
+          } else if ((field === "body_diagram_ant" || field === "body_diagram_post") && prevNd[field] !== undefined) {
+            // 11 nov 2026: el diagrama, los labs del PDF y las fechas borradas ya no dejan la marca de «editado aquí»; si la
+            // carga empezó antes de guardarlos, la foto de la nube es de antes y los regresaba. Se conserva lo de este equipo.
+            nd[field] = prevNd[field];
+          } else if (field === "labHistory") {
+            // Lápidas: la copia de la nube se filtra con las de los dos lados; la de ESTE equipo solo con las que puso otro
+            // equipo (una fecha borrada aquí pudo volver a llenarse aquí). Una fecha regresada o editada aquí después de que
+            // empezó la carga (↩ Regresar, corrección) no se filtra.
+            const locB = new Set(((prevNd.checklist || {}).__lab_deleted) || []);
+            const recientes = new Set((prevNd.labHistory || []).filter(function (x) { return x && (x.client_updated_at || 0) >= sinceTs; }).map(function (x) { return x.fecha; }));
+            const remB = (((nd.checklist || {}).__lab_deleted) || []).filter(function (f) { return !recientes.has(f); });
+            const borradas = new Set([].concat(Array.from(locB), remB));
+            const ajenas = new Set(remB.filter(function (f) { return !locB.has(f); }));
+            nd.labHistory = _mergeLabHistory((prevNd.labHistory || []).filter(function (x) { return !(x && ajenas.has(x.fecha)); }),
+              (nd.labHistory || []).filter(function (x) { return !(x && borradas.has(x.fecha)); }), true);
+          } else if (field === "checklist") {
+            // Lápidas de labs: se SUMAN las de este equipo a las de la nube (no se reemplazan: la de otro equipo se respeta).
+            const pc = prevNd.checklist || {}; if (!nd.checklist) nd.checklist = {}; const rc = nd.checklist;
+            const recientes = new Set((prevNd.labHistory || []).filter(function (x) { return x && (x.client_updated_at || 0) >= sinceTs; }).map(function (x) { return x.fecha; }));
+            const locL = Array.isArray(pc.__lab_deleted) ? pc.__lab_deleted : [];
+            const rem = (Array.isArray(rc.__lab_deleted) ? rc.__lab_deleted : []).filter(function (f) { return !recientes.has(f) || locL.indexOf(f) >= 0; });
+            rc.__lab_deleted = rem.concat(locL.filter(function (f) { return rem.indexOf(f) < 0; })).slice(-100);
+            // Valores de lo borrado: se unen y lo de este equipo gana (es lo más nuevo).
+            const nubeDl = (rc.__lab_deleted_labs && typeof rc.__lab_deleted_labs === "object") ? rc.__lab_deleted_labs : {};
+            const locDl = (pc.__lab_deleted_labs && typeof pc.__lab_deleted_labs === "object") ? pc.__lab_deleted_labs : {};
+            const dl = Object.assign({}, locDl, nubeDl);   // gana la nube, salvo lo que este equipo borró durante la carga
+            const borrLoc = window._labBorradoLocalTs || {};
+            Object.keys(locDl).forEach(function (f) { if ((borrLoc[k + "|" + f] || 0) >= sinceTs) dl[f] = locDl[f]; });
+            Object.keys(dl).forEach(function (f) { if (rc.__lab_deleted.indexOf(f) < 0) delete dl[f]; });
+            if (Object.keys(dl).length || rc.__lab_deleted_labs) rc.__lab_deleted_labs = dl;
           }
         });
       });
@@ -15575,6 +16125,7 @@ function plExportBackup() {
 
     // ─── EXIT GUARD: persistir y encolar notas pendientes antes de cerrar/suspender ──
     function persistBeforeExit() {
+      try { if (window.__plStFirmarActiva) window.__plStFirmarActiva(); } catch (_) {}
       try {
         Object.keys(noteData).forEach(function (k) {
           try { lsSaveNote(k, noteData[k]); } catch (_) {}
@@ -18289,7 +18840,8 @@ function plExportBackup() {
       const nd = migrateNote(noteData[k] || defaultData());
       _undoPush(k, "orden rápida en pendientes", ["pendientes"]);
       const prev = nd.pendientes || "";
-      nd.pendientes = prev ? prev + "\n• " + txt : "• " + txt;
+      const fr = plStampNow();   // 11 nov 2026: lo que agrega un botón también lleva la firma de quien lo toca
+      nd.pendientes = (prev ? prev + "\n" : "") + (fr ? fr + txt : "• " + txt);
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       noteData[k] = nd;
       _saveNoteNow(k, nd, "pendientes");   // marca y desmarca: un flag que se quedaba bloqueaba Realtime y re-subía la copia vieja al ocultar la app
@@ -18331,15 +18883,28 @@ function plExportBackup() {
     // y "— Recibido dd/mm hh:mm GF —" (Tomar guardia). Lo que sigue a un encabezado hereda su fecha; lo
     // que no tiene fecha queda con fecha null. El bloque "— Resumen … —" anterior se ignora.
     function _egLineasFechadas(text) {
-      const out = []; let cur = null;
+      const out = []; let cur = null, firmaF = null;
       toSafeString(text).split("\n").forEach(function (line) {
         const t = line.trim();
-        if (t === "") { if (cur === "resumen") cur = null; return; }
+        if (t === "") { if (cur === "resumen") cur = null; firmaF = null; return; }
         if (ENTREGA_RESUMEN_HDR.test(t)) { cur = "resumen"; return; }
         if (cur === "resumen") return;
         let m;
         if ((m = /^(\d{2})\/(\d{2})\s*—\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
         if ((m = /^—\s*Recibido\s+(\d{2})\/(\d{2})[^—]*—\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
+        // Firma de renglón (11 nov 2026): «Gerardo 10.11.26 23:50 - texto» (también «✓ Gerardo …» ya hecho). Se entrega con el nombre.
+        // La fecha es SOLO de ese renglón y de los que lo continúan con sangría: en la Cronología lo nuevo va arriba y lo de
+        // abajo es más viejo. Una firma sola (sin texto, como el «➕ Hoy» de Pendientes) sí es encabezado del día.
+        if ((m = /^(✓\s*)?(\p{L}[\p{L}.'-]{0,24})\s+(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+\d{1,2}:\d{2}(?:\s*[ap]\.?\s?m\.?)?\s*[-–—]\s*(.*)$/iu.exec(t))) {
+          const f = (m[5].length === 2 ? "20" + m[5] : m[5]) + "-" + m[4].padStart(2, "0") + "-" + m[3].padStart(2, "0");
+          if (m[6].trim()) { out.push({ fecha: f, text: (m[1] ? "✓ " : "") + m[2] + ": " + m[6].trim() }); firmaF = f; }
+          else { cur = f; firmaF = null; }
+          return;
+        }
+        if (firmaF && /^\s/.test(line)) { out.push({ fecha: firmaF, text: t.replace(/^[-•·*]\s*/, "") }); return; }
+        firmaF = null;
+        // Sello de «➕ Ahora» de antes: «09/11 22:15 GF: texto».
+        if ((m = /^(\d{2})\/(\d{2})\s+\d{1,2}:\d{2}(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
         if ((m = /^(\d{2})-(\d{2})-(\d{4}):\s*(.*)$/.exec(t))) { out.push({ fecha: m[3] + "-" + m[2] + "-" + m[1], text: m[4].trim(), auto: true }); return; }
         if ((m = /^(\d{2})\/(\d{2})(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*(.*)$/.exec(t))) { cur = _egIsoFromDdMm(m[1], m[2]); if (m[3].trim()) out.push({ fecha: cur, text: m[3].trim() }); return; }
         out.push({ fecha: cur, text: t.replace(/^[-•·*]\s*/, "") });
@@ -18419,7 +18984,7 @@ function plExportBackup() {
       // 💧 Gastos: drenajes y sondas con gasto, nota de drenajes, uresis y balance.
       const dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " · ", false) : "";
       if (dt) R.gastos.push(dt);
-      if (toSafeString(nd.drenajes).trim()) R.gastos.push(_egCut(nd.drenajes, 120));
+      if (toSafeString(nd.drenajes).trim()) R.gastos.push(_egCut(plTextoConFecha(nd.drenajes), 120));
       if (toSafeString(ck.pm_uresis).trim()) { const _iu = iuCalc(ck.pm_uresis, ck.pm_peso, ck.pm_uresis_h); R.gastos.push("Uresis " + toSafeString(ck.pm_uresis).trim() + (/^[\d.,]+$/.test(toSafeString(ck.pm_uresis).trim()) ? " mL" : "") + (_iu ? " (IU " + vpFmt(_iu.v, 2) + " mL/kg/h)" : "")); }
       const bal = (typeof balanceTexto === "function") ? balanceTexto(nd) : "";
       if (bal) R.gastos.push("Balance " + bal);
@@ -18461,8 +19026,8 @@ function plExportBackup() {
       if (R.nuevo.length > 8) { const n = R.nuevo.length - 8; R.nuevo = R.nuevo.slice(0, 8); R.nuevo.push("+" + n + " más en la tarjeta"); }
       // 📋 Pendientes abiertos (sin ✓, sin encabezados de fecha) + No olvidar del paciente.
       const pendOpen = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); })
-        .filter(function (s) { return s && !/^\d{2}\/\d{2}\s*—/.test(s) && !/^✓\s/.test(s); })
-        .map(function (s) { return s.replace(/^\d{2}\/\d{2}(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*/, "").replace(/^[-•·*]\s*/, "").trim(); }).filter(Boolean);
+        .filter(function (s) { return s && !/^\d{2}\/\d{2}\s*—/.test(s) && !/^✓\s/.test(s) && !plSoloFirma(s); })
+        .map(function (s) { return plSinFirma(s).replace(/^\d{2}\/\d{2}(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*/, "").replace(/^[-•·*]\s*/, "").trim(); }).filter(Boolean);
       pendOpen.slice(0, 6).forEach(function (s) { R.pend.push(_egCut(s, 90)); });
       if (pendOpen.length > 6) R.pend.push("+" + (pendOpen.length - 6) + " más");
       (Array.isArray(ck._ptReminders) ? ck._ptReminders : []).filter(function (r) { return r && !r.done && toSafeString(r.text).trim(); }).slice(0, 3).forEach(function (r) { R.pend.push("No olvidar: " + _egCut(r.text, 80)); });
@@ -18898,12 +19463,9 @@ function plExportBackup() {
       _undoPush(k, "agregar cultivo " + tipo);
       const prev = nd.checklist.cultivos || "";
       const date = todayStr();
-      const line = (prev ? "\n" : "") + tipo + " " + date + " — ";
+      const line = (prev ? "\n" : "") + (plStampNow() || "") + tipo + " " + date + " — ";
       nd.checklist.cultivos = prev + line;
-      noteData[k] = nd;
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("ck_cultivos");
-      saveNote(k, nd);
+      _saveNoteFlags(k, nd, ["ck_cultivos"]);
       // Refresh solo la sección de cultivos
       const card = document.getElementById("card-" + k);
       if (card) {
@@ -19296,7 +19858,7 @@ function plExportBackup() {
         nd = migrateNote(nd);
         const ck = nd.checklist || {};
         const cnt = function (n, crit) { return n ? `<span class="bj-n${crit ? " bj-crit" : ""}">${n}</span>` : ""; };
-        const pendOpen = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s) && !/^✓\s/.test(s); }).length;
+        const pendOpen = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s) && !/^✓\s/.test(s) && !plSoloFirma(s); }).length;
         const dias = getDiasSinLabs(nd);
         const labsBadge = dias === null ? '<span class="bj-n bj-crit">sin</span>' : (dias >= 2 ? `<span class="bj-n bj-crit">${dias}d</span>` : (dias === 0 ? '<span class="bj-n bj-ok">hoy</span>' : ""));
         const imgCount = (nd.imagenHistory || []).reduce(function (n, e) { return n + ((e && e.estudios) || []).length; }, 0) + ((typeof risForPatient === "function") ? risForPatient(p).length : 0);
@@ -19678,8 +20240,12 @@ function plExportBackup() {
       }
       const nd = getNote(k);
       const cur = toSafeString(_inkFieldGet(nd, field));
-      const next = cur.trim() ? (cur.replace(/\s+$/, "") + (sep || "\n") + texto) : texto;
+      // ✍️ Renglón nuevo (caja vacía o separado por salto) en una caja con firma: lleva «Nombre dd.mm.aa hh:mm - ».
+      const nuevoRenglon = !cur.trim() || /\n/.test(sep || "\n");
+      const firma = (PL_STAMP_FIELDS[field] && nuevoRenglon && !plStampAuthor(texto)) ? plStampNow() : "";
+      const next = cur.trim() ? (cur.replace(/\s+$/, "") + (sep || "\n") + firma + texto) : firma + texto;
       if (ta) {
+        ta.__stUlt = next;    // lo del lápiz ya va firmado (el «change» no refirma un renglón firmado); lo tecleado sigue contra la base
         ta.value = next;
         if (field.indexOf("ck:") === 0) { liveCkText(ta); updateCkText(k, field.slice(3), next); }
         else { liveUpdate(ta); updateField(k, field, next, cur); }
@@ -20427,7 +20993,7 @@ function plExportBackup() {
       // cambio de nodos en la vista vuelve a montar las capas de tinta (los nodos propios de la tinta no cuentan).
       try {
         const host = document.getElementById("view-piso") || document.body; let raf = 0;
-        const isPenEl = function (n) { return n.nodeType === 1 && (n.classList.contains("pl-ink-cv") || n.classList.contains("pl-ink-menu") || n.classList.contains("pl-ink-pop") || n.classList.contains("pl-pen-glass")); };
+        const isPenEl = function (n) { return n.nodeType === 1 && (n.classList.contains("pl-ink-cv") || n.classList.contains("pl-ink-menu") || n.classList.contains("pl-ink-pop") || n.classList.contains("pl-pen-glass") || n.classList.contains("pl-st-bd")); };
         const other = function (list) { return Array.prototype.some.call(list, function (n) { return !isPenEl(n); }); };
         new MutationObserver(function (recs) {
           if (!recs.some(function (r) { return other(r.addedNodes) || other(r.removedNodes); })) return;
@@ -20531,7 +21097,8 @@ function plExportBackup() {
       // "14/10 GF: " — la fecha y las iniciales de quien escribe, como el color de tinta de cada residente.
       // Con conHora (🕓 Cronología): "14/10 08:15 GF: ".
       const z = n => String(n).padStart(2, "0");
-      const stamp = z(d.getDate()) + "/" + z(d.getMonth() + 1) + (conHora ? " " + z(d.getHours()) + ":" + z(d.getMinutes()) : "") + (ini ? " " + ini : "") + ": ";
+      // 11 nov 2026: la firma de todos los renglones «Gerardo 10.11.26 23:50 - » (sin nombre en la cuenta, la de antes).
+      const stamp = plStampNow(d) || (z(d.getDate()) + "/" + z(d.getMonth() + 1) + (conHora ? " " + z(d.getHours()) + ":" + z(d.getMinutes()) : "") + (ini ? " " + ini : "") + ": ");
       const nd = getNote(k);
       const cur = ta ? ta.value : toSafeString(isCk ? (nd.checklist || {})[field] : nd[field]);
       const trimmed = cur.replace(/\s+$/, "");
@@ -20540,6 +21107,21 @@ function plExportBackup() {
         // Ya hay un renglón vacío de ahora arriba (doble toque): solo poner el cursor en él.
         if (l0.trim() === stamp.trim()) { if (ta) { const pos = cur.length - lead.length + l0.length; ta.focus(); try { ta.setSelectionRange(pos, pos); ta.scrollTop = 0; } catch (_) {} } return; }
       } else if (trimmed.slice(-stamp.trim().length) === stamp.trim()) { if (ta) { ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} } return; }
+      // Un renglón de firma vacío de esta persona de otra hora u otro día (11 nov 2026): se cambia por la firma de ahora en vez
+      // de apilar otro renglón vacío (lo que se escriba ahí lleva la hora de ahora).
+      const ultimo = trimmed.split("\n").pop();
+      const vacio = arriba ? plFirmaVaciaReusable(lead.split("\n"), 0, stamp) : plFirmaVaciaMia(ultimo, stamp);
+      if (vacio) {
+        _undoPush(k, "fecha de hoy en " + (label || field), [isCk ? "ck:" + field : field]);
+        _touchBy(nd, field);
+        const nx = arriba ? cur.slice(0, cur.length - lead.length) + stamp + lead.slice(l0.length)
+                          : trimmed.slice(0, trimmed.length - ultimo.length) + stamp;
+        const pos = arriba ? cur.length - lead.length + stamp.length : nx.length;
+        if (ta) { ta.value = nx; if (isCk) liveCkText(ta); else liveUpdate(ta); ta.focus(); try { ta.setSelectionRange(pos, pos); if (arriba) ta.scrollTop = 0; } catch (_) {} }
+        else if (isCk) { if (!nd.checklist) nd.checklist = {}; nd.checklist[field] = nx; _saveNoteNow(k, nd, "ck_" + field); _rerenderCard(k); }
+        else { nd[field] = nx; _saveNoteNow(k, nd, field); _rerenderCard(k); }
+        return;
+      }
       _undoPush(k, "fecha de hoy en " + (label || field), [isCk ? "ck:" + field : field]);
       _touchBy(nd, field);
       const next = arriba ? stamp + (lead.trim() ? "\n" + lead : "") : (trimmed ? trimmed + "\n" : "") + stamp;
@@ -20556,15 +21138,31 @@ function plExportBackup() {
     function pendInsertToday(k) {
       const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]');
       const d = new Date();
-      const stamp = String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0");
+      // 11 nov 2026: renglón nuevo arriba con la firma «Gerardo 10.11.26 23:50 - » (sin nombre en la cuenta: «dd/mm — »).
+      const firma = plStampNow(d);
+      const stamp = firma ? firma.replace(/\s+$/, "") : String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + " —";
       const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
-      if (cur.trim().indexOf(stamp + " —") === 0) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } return; }
+      // Ya hay arriba un renglón de firma vacío de esta persona: no se apila otro. Si es de otra hora u otro día, se cambia por
+      // la firma de ahora (lo que se escriba ahí lleva la fecha de hoy); si es la misma, solo se pone el cursor ahí.
+      const lineas = cur.split("\n"), prim = lineas[0];
+      const mismaFirma = prim.trim() === stamp;
+      if (mismaFirma || (firma && plFirmaVaciaReusable(lineas, 0, firma))) {
+        if (!mismaFirma) {
+          _undoPush(k, "fecha de hoy en pendientes", ["pendientes"]);
+          _touchBy(getNote(k), "pendientes");
+          lineas[0] = stamp + " ";
+          const nx = lineas.join("\n");
+          if (ta) { ta.value = nx; liveUpdate(ta); } else { const nd0 = getNote(k); nd0.pendientes = nx; _saveNoteNow(k, nd0, "pendientes"); _rerenderCard(k); }
+        }
+        if (ta) { ta.focus(); try { ta.setSelectionRange(stamp.length + 1, stamp.length + 1); } catch (_) {} }
+        return;
+      }
       _undoPush(k, "fecha de hoy en pendientes", ["pendientes"]);
       _touchBy(getNote(k), "pendientes");
-      const next = stamp + " — \n" + cur;
+      const next = stamp + " \n" + cur;
       if (ta) {
         ta.value = next; liveUpdate(ta); ta.focus();
-        try { ta.setSelectionRange(stamp.length + 3, stamp.length + 3); } catch (_) {}
+        try { ta.setSelectionRange(stamp.length + 1, stamp.length + 1); } catch (_) {}
       } else {
         const nd = getNote(k); nd.pendientes = next; _saveNoteNow(k, nd, "pendientes"); _rerenderCard(k);
       }
@@ -20583,7 +21181,7 @@ function plExportBackup() {
         if (!t) return "";
         const done = /^✓\s/.test(t);
         const txt = t.replace(/^✓\s*/, "").replace(/^[-•·\[\]\s]+/, "");
-        if (/^\d{2}\/\d{2}\s—/.test(t)) return `<div class="pend-date">${esc(t)}</div>`;
+        if (/^\d{2}\/\d{2}\s—/.test(t) || (PL_STAMP_RE.test(t) && !t.replace(PL_STAMP_RE, "").trim())) return `<div class="pend-date">${esc(t)}</div>`;
         return `<button type="button" class="pend-row${done ? " done" : ""}" data-k="${esc(k)}" data-i="${i}" onclick="togglePendLine(this.dataset.k, +this.dataset.i)"><span class="pend-box">${done ? "☑" : "☐"}</span><span class="pend-txt">${esc(txt)}</span></button>`;
       }).join("");
       return `<div class="pend-list">${rows || '<div class="pend-date">Sin pendientes</div>'}</div>`;
@@ -20769,7 +21367,7 @@ function plExportBackup() {
         const anchor = function (name, blk) { return `id="sec-${name}-${ek}" class="fc-anchor${blk ? " fc-blk fc-blk-" + blk : ""}"`; };
         const nCx = ((nd.checklist && nd.checklist.cirugias) || []).length;
         _cronoMigrar(k, nd);   // 🕓 lo que quedaba en «Recibido» pasa UNA vez al principio de la cronología (nd.entrega)
-        const pendLines = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s); });
+        const pendLines = toSafeString(nd.pendientes).split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s && !/^\d{2}\/\d{2}\s—/.test(s) && !plSoloFirma(s); });
         const pendOpen = pendLines.filter(function (s) { return !/^✓\s/.test(s); }).length;
         const cdsHtml = renderCDSSection(p, nd, k);
         const cdsCount = (function () { const m = /cds-count">\((\d+)\)/.exec(cdsHtml); return m ? +m[1] : 0; })();
@@ -20831,7 +21429,7 @@ function plExportBackup() {
             <button class="field-ink-btn" onclick="openInkpadForField('${k}','entrega','Cronología de guardias')" title="Escribir a mano con stylus" data-testid="field-ink-entrega">✍️</button>
           </span>
         </div>
-        <textarea class="field-ta" rows="5" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="19/10 14:30 GF: evento, llamada, lo que se hizo… (➕ Ahora pone la fecha y la hora)">${esc(nd.entrega || "")}</textarea>
+        <textarea class="field-ta" rows="5" data-key="${k}" data-field="entrega" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" onfocus="this.dataset.beforeValue=this.value" oninput="liveUpdate(this)" onchange="updateField(this.dataset.key,this.dataset.field,this.value,this.dataset.beforeValue)" placeholder="Evento, llamada, lo que se hizo… (al soltar la caja cada renglón nuevo queda firmado: «Gerardo 10.11.26 23:50 - …»)">${esc(nd.entrega || "")}</textarea>
         ${renderFotoStrip(k, "ink:entrega", _fotoList(nd, "ink:entrega", false), { add: false })}
         ${cruceText ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:3px;padding:3px 6px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">${esc(cruceText)}</div>` : ""}
       </div>
@@ -23061,7 +23659,9 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
         } else {
           _undoPush(_inkKey, "transcripción a mano en " + _undoFieldLabel(_inkFieldMode.replace(/^ck:/, "")), [_inkFieldMode]);
           // 🕓 Cronología: lo nuevo va arriba (7 nov 2026), como ➕ Ahora; las demás cajas, al final.
-          dirtyFlag = _inkFieldSet(nd, _inkFieldMode, (mode === "append" && currentVal) ? (_inkFieldMode === "entrega" ? newVal + "\n" + currentVal : currentVal + "\n" + newVal) : newVal);
+          const _compuesto = (mode === "append" && currentVal) ? (_inkFieldMode === "entrega" ? newVal + "\n" + currentVal : currentVal + "\n" + newVal) : newVal;
+          // ✍️ Lo transcrito es nuevo: en una caja con firma cada renglón nuevo lleva «Nombre dd.mm.aa hh:mm - ».
+          dirtyFlag = _inkFieldSet(nd, _inkFieldMode, PL_STAMP_FIELDS[_inkFieldMode] ? plStampNewLines(currentVal, _compuesto, plStampNow(), { pegado: true }) : _compuesto);
           _touchBy(nd, _inkFieldMode.replace(/^ck:/, ""));
         }
         // Persist per-field strokes
@@ -23096,7 +23696,8 @@ Devuelve SOLO un JSON con este esquema (deja "" si el campo no aparece):
           const pt = patients.find(pp => pid(pp) === _inkKey);
           if (pt) pt.dx = v.toUpperCase();
         } else {
-          nd[f] = (nd[f] ? nd[f].trim() + "\n" : "") + v;
+          const fr = /^(pendientes|manejo|drenajes)$/.test(f) ? plStampNow() : "";   // firma por renglón (11 nov 2026)
+          nd[f] = (nd[f] ? nd[f].trim() + "\n" : "") + (fr ? plStampNewLines("", v, fr, { pegado: true }) : v);
           (_dirtyFields[_inkKey] = _dirtyFields[_inkKey] || new Set()).add(f);
         }
         applied++;
@@ -23637,6 +24238,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // Deja la nota del paciente k como en `target` (copia guardada) y sube solo los campos que difieren.
     // Con `fields` (paso de una o dos cajas) solo se ponen de vuelta ESAS cajas sobre la nota actual: lo que otro escribió
     // en las demás mientras tanto (Realtime) se respeta.
+    // ¿Esta fecha de labs es distinta (o no existe) en la nota actual? Sin contar la hora de edición.
+    function _labSnapCambia(sn, actuales) {
+      const sinHora = function (x) { const c = Object.assign({}, x); delete c.client_updated_at; return JSON.stringify(c); };
+      const igual = (Array.isArray(actuales) ? actuales : []).find(function (x) { return x && x.fecha === sn.fecha; });
+      return !igual || sinHora(igual) !== sinHora(sn);
+    }
     function _undoRestore(k, target, fields) {
       const cur = migrateNote(noteData[k]);
       const prev = migrateNote(target);
@@ -23649,7 +24256,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           else { next[f] = prev[f] === undefined ? "" : prev[f]; dirtyF.add(f); }
           // Labs regresados (✏️ Corregir): hora nueva por fecha, si no la unión con la nube (gana el más reciente por
           // fecha) volvía a subir la versión que se acaba de deshacer.
-          if (f === "labHistory" && Array.isArray(next.labHistory)) next.labHistory.forEach(function (sn) { if (sn) sn.client_updated_at = Date.now(); });
+          // Solo las fechas que este Regresar cambia (una igual a la actual no cuenta como «editada aquí» al unir lápidas).
+          if (f === "labHistory" && Array.isArray(next.labHistory)) next.labHistory.forEach(function (sn) { if (sn && _labSnapCambia(sn, cur.labHistory)) sn.client_updated_at = Date.now(); });
         });
         noteData[k] = next;
         if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -23670,7 +24278,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (JSON.stringify(cur.checklist || {}) !== JSON.stringify(prev.checklist || {})) dirty.add("checklist");
       if (JSON.stringify(cur.labHistory || []) !== JSON.stringify(prev.labHistory || [])) dirty.add("labHistory");
       if (JSON.stringify(cur.imagenHistory || []) !== JSON.stringify(prev.imagenHistory || [])) dirty.add("imagenHistory");
-      (prev.labHistory || []).forEach(function (s) { if (s) s.client_updated_at = Date.now(); });
+      (prev.labHistory || []).forEach(function (s) { if (s && _labSnapCambia(s, cur.labHistory)) s.client_updated_at = Date.now(); });
       noteData[k] = prev;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       dirty.forEach(function (f) { _dirtyFields[k].add(f); });
@@ -24145,6 +24753,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
     }
 
+    var _labBorradoLocalTs = window._labBorradoLocalTs = window._labBorradoLocalTs || {};   // «k|fecha» → hora en que ESTE equipo borró esos labs
     function deleteLabDate(k, fecha) {
       if (!confirm("Eliminar labs del " + fmtDateChip(fecha) + "?\n(Se puede regresar con el botón ↩ Regresar de la tarjeta.)")) return;
       var nd = getNote(k);
@@ -24154,6 +24763,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         deleteLabSourceFromStorage(snapToDelete.source_storage_bucket || LAB_STORAGE_BUCKET, snapToDelete.source_storage_path);
       }
       nd.labHistory = (nd.labHistory || []).filter(function (s) { return s.fecha !== fecha; });
+      _labBorradoLocalTs[k + "|" + fecha] = Date.now();
       // Borrado EXPLÍCITO: la fecha va a checklist.__lab_deleted para que ni la unión con la nube ni el trigger de la base
       // la regresen (lo demás nunca se quita al guardar).
       if (!nd.checklist || typeof nd.checklist !== "object") nd.checklist = {};
@@ -24163,13 +24773,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         dl[fecha] = (snapToDelete && isPlainObject(snapToDelete.labs)) ? Object.assign({}, snapToDelete.labs) : {};
         Object.keys(dl).forEach(function (f) { if (nd.checklist.__lab_deleted.indexOf(f) === -1) delete dl[f]; });
         nd.checklist.__lab_deleted_labs = dl; }
-      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
-      _dirtyFields[k].add("labHistory"); _dirtyFields[k].add("checklist");
       if (activeLabDate[k] === fecha) {
         var rem = (nd.labHistory || []).map(function (s) { return s.fecha; }).sort(function (a, b) { return b.localeCompare(a); });
         activeLabDate[k] = rem[0] || null;
       }
-      noteData[k] = nd; saveNote(k, nd);
+      _saveNoteFlags(k, nd, ["labHistory", "checklist"]);
       var labsEl = document.getElementById("labs-sec-" + k);
       if (labsEl) labsEl.outerHTML = renderLabSection(nd, k);
     }
@@ -24323,6 +24931,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     }
     async function handleLabPDF(k, input) {
       const file = input.files[0]; if (!file) return;
+      const _pObj = patients.find(function (pt) { return pid(pt) === k; });   // el paciente, aunque su clave cambie a media carga
       input.value = "";
 
       const proxyUrl = getProxyUrl();
@@ -24416,16 +25025,38 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const hasValues = getLabKeys().some(f => sanitizedExtracted[f] && sanitizedExtracted[f].trim() !== "");
         // Marcar labHistory como sucio ANTES de la subida a Storage (segundos): un Realtime del mismo
         // paciente durante el await reemplazaba nd.labHistory y los labs extraídos caían en un objeto huérfano.
+        const _labsYaSucio = !!(_dirtyFields[k] && _dirtyFields[k].has("labHistory"));
         if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
         _dirtyFields[k].add("labHistory");
         snap.client_updated_at = Date.now();
         await attachLabSourceToSnap(k, targetFecha, snap, file, parsed.base64 || "");
-        snap.labs = mergeLabsPerAnalyte(snap.labs, labsFromExtract);
-        snap.client_updated_at = Date.now();
-        activeLabDate[k] = targetFecha;
-        noteData[k] = nd;
-        saveNote(k, nd);
-        const currentPatient = patients.find(function(pt){ return pid(pt) === k; });
+        // Si durante la subida la tarjeta recibió su id de la base (pt-… → su-…), se sigue con la clave vigente: con la vieja
+        // getNote daba una nota en blanco que se subía encima de la del paciente.
+        const kV = _pObj ? pid(_pObj) : k;
+        // 11 nov 2026: durante la subida (segundos) la nota pudo re-armarse (autoguardado al teclear en esta tarjeta, Realtime).
+        // Se guarda sobre la nota VIGENTE, no sobre la copia de antes: con la de antes se perdía lo escrito en esos segundos y,
+        // si la fecha ya era otro objeto, los labs y el enlace al archivo caían en una copia suelta.
+        const ndVivo = getNote(kV);
+        if (!Array.isArray(ndVivo.labHistory)) ndVivo.labHistory = [];
+        let snapVivo = ndVivo.labHistory.find(function (s) { return s && s.fecha === targetFecha; });
+        if (!snapVivo) { ndVivo.labHistory.push(snap); snapVivo = snap; }
+        else if (snapVivo !== snap) {
+          // El enlace al archivo va completo (la subida acaba de fijarlo todo): si cayó al respaldo dentro de la nota, la ruta
+          // vieja de esa fecha se borra en vez de quedarse apuntando al reporte anterior.
+          ["source_file", "source_file_type", "source_file_name", "source_storage_bucket", "source_storage_path"].forEach(function (f) { snapVivo[f] = snap[f] || ""; });
+          if (snap.source) snapVivo.source = snap.source;
+          delete snapVivo.source_file_stripped;
+          snapVivo.ia_keys = Array.from(new Set((Array.isArray(snapVivo.ia_keys) ? snapVivo.ia_keys : []).concat(Array.isArray(snap.ia_keys) ? snap.ia_keys : [])));
+        }
+        snapVivo.labs = mergeLabsPerAnalyte(snapVivo.labs, labsFromExtract);
+        snapVivo.client_updated_at = Date.now();
+        activeLabDate[kV] = targetFecha;
+        if (kV !== k) { (_dirtyFields[kV] = _dirtyFields[kV] || new Set()).add("labHistory"); if (_dirtyFields[k]) _dirtyFields[k].delete("labHistory"); }
+        noteData[kV] = ndVivo;
+        saveNote(kV, ndVivo);
+        // Ya va en la subida (_pendingDirty): quitar la marca que puso esta carga (no la de una edición a mano en curso).
+        if (!_labsYaSucio && _dirtyFields[kV]) _dirtyFields[kV].delete("labHistory");
+        const currentPatient = _pObj || patients.find(function(pt){ return pid(pt) === kV; });
         mergeLabsIntoDx(currentPatient, labsFromExtract, targetFecha, targetHora);
         if (!hasValues) {
           alert("⚠️ El PDF se procesó pero no se encontraron valores de laboratorio.\n\nVerifica que el PDF sea un reporte de WinLab con resultados y no una solicitud vacía.");
@@ -24439,9 +25070,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // Actualizar solo sección de labs — NO re-render completo del card para no perder texto en edición.
       // Solo re-renderizar si el usuario NO está editando labs manualmente (_dirtyFields labHistory),
       // para evitar sobreescribir ediciones manuales mientras el PDF se procesaba en background.
-      const labsEl2 = document.getElementById("labs-sec-" + k);
-      const _labsDirty = _dirtyFields[k] && _dirtyFields[k].has("labHistory");
-      if (labsEl2 && !_labsDirty) labsEl2.outerHTML = renderLabSection(getNote(k), k);
+      const _pFin = _pObj ? pid(_pObj) : k;
+      labLoadingSet.delete(_pFin);
+      const labsEl2 = document.getElementById("labs-sec-" + _pFin);
+      const _labsDirty = _dirtyFields[_pFin] && _dirtyFields[_pFin].has("labHistory");
+      if (labsEl2 && !_labsDirty) labsEl2.outerHTML = renderLabSection(getNote(_pFin), _pFin);
       else if (!labsEl2 && !_labsDirty) renderView();
     }
     // ─── CENSUS VIEW ─────────────────────────────────────────────────────────────────
@@ -25415,7 +26048,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       ${fmtF("fqx_incidentes", "Incidentes / Accidentes", "NINGUNO")}
       ${fmtF("fqx_estado_post", "Estado postqx inmediato", "ESTABLE", false, "select").replace("</select>", `<option>ESTABLE</option><option>INESTABLE</option><option>GRAVE</option></select>`)}
       ${fmtF("fqx_pronostico_post", "Pronóstico postqx", "RESERVADO PARA LA VIDA Y LA FUNCIÓN", false, "select").replace("</select>", `<option>RESERVADO PARA LA VIDA Y LA FUNCIÓN</option><option>BUENO PARA LA VIDA Y LA FUNCIÓN</option><option>MALO PARA LA VIDA Y LA FUNCIÓN</option></select>`)}
-      ${fmtF("fqx_plan_post", "Plan y tratamiento inmediato", nd.pendientes || "", true, "textarea")}
+      ${fmtF("fqx_plan_post", "Plan y tratamiento inmediato", plTextoSinFirmas(nd.pendientes || ""), true, "textarea")}
     </div>
     <div class="fmt-actions">
       <button class="fmt-btn fmt-btn-print" onclick="printPrePostQx()">🖨 Imprimir formato institucional</button>
@@ -25913,7 +26546,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         mkRow("DX INGRESO", p.dx || ""),
         mkRow("DX EGRESO", ad.dx_egreso || p.dx || ""),
         mkRow("EVOLUCIÓN Y ESTADO", ad.evolucion || ""),
-        mkRow("PROBLEMAS PENDIENTES", ad.pendientes || nd.pendientes || ""),
+        mkRow("PROBLEMAS PENDIENTES", ad.pendientes || plTextoSinFirmas(nd.pendientes || "")),
         mkRow("PLAN Y TRATAMIENTO", ad.tratamiento || ""),
         mkRow("RECOMENDACIONES", ad.recomendaciones || ""),
         mkRow("PRONÓSTICO", ad.pronostico || "RESERVADO"),
@@ -25967,7 +26600,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         `<tr><td colspan="2" style="padding:4px 8px;background:#e8f0fb;color:#001746;font-weight:700;font-size:10pt;font-family:Calibri,sans-serif;border:1px solid #999">RESUMEN CLÍNICO</td></tr>`,
         tr("ANTECEDENTES DE IMPORTANCIA", esc(ad.antecedentes || nd.app || "")),
         tr("EVOLUCIÓN, MANEJO Y ESTADO ACTUAL", esc(ad.evolucion || "")),
-        tr("PROBLEMAS CLÍNICOS PENDIENTES", esc(ad.pendientes || nd.pendientes || "")),
+        tr("PROBLEMAS CLÍNICOS PENDIENTES", esc(ad.pendientes || plTextoSinFirmas(nd.pendientes || ""))),
         tr("PLAN DE MANEJO Y TRATAMIENTO", esc(ad.tratamiento || "")),
         tr("RECOMENDACIONES PARA VIGILANCIA AMBULATORIA", esc(ad.recomendaciones || "")),
         tr("PRONÓSTICO", esc(ad.pronostico || "RESERVADO")),
@@ -30088,7 +30721,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.07-2";
+    const PL_BUILD = "2026.11.11-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -31951,12 +32584,9 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       const nd = noteData[k] || defaultData();
       if (side === 'ant') nd.body_diagram_ant = dataUrl;
       else nd.body_diagram_post = dataUrl;
-      noteData[k] = nd;
       // Marcar solo el diagrama como sucio: el push sube el checklist (donde viaja el dibujo) y no
       // la nota completa (antes un trazo re-subía todo el texto local y pisaba cambios de colegas).
-      _dirtyFields[k] = _dirtyFields[k] || new Set();
-      _dirtyFields[k].add(side === 'ant' ? 'body_diagram_ant' : 'body_diagram_post');
-      saveNote(k, nd);
+      _saveNoteFlags(k, nd, [side === 'ant' ? 'body_diagram_ant' : 'body_diagram_post']);
     }
 
     function bdClear(k, side) {
@@ -31968,10 +32598,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       const nd = noteData[k] || defaultData();
       if (side === 'ant') nd.body_diagram_ant = '';
       else nd.body_diagram_post = '';
-      noteData[k] = nd;
-      _dirtyFields[k] = _dirtyFields[k] || new Set();
-      _dirtyFields[k].add(side === 'ant' ? 'body_diagram_ant' : 'body_diagram_post');
-      saveNote(k, nd);
+      _saveNoteFlags(k, nd, [side === 'ant' ? 'body_diagram_ant' : 'body_diagram_post']);
     }
 
     function bdSetColor(k, side, color) {
