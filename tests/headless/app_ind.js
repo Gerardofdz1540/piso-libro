@@ -369,6 +369,23 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     poner(blq({ SOLUCIONES: ['SOL MIXTA 1000 CC + KCL 20 MEQ P/24 HRS'] })); r.revK = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
     poner(blq({ SOLUCIONES: ['SOL HARTMANN 1000 CC P/24 HRS'] })); r.revSinK = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
     nd.labHistory = [];
+    // ronda 2: «ayuno para CPRE» no es quirófano; «ayuno previo a cirugía» / «por qx» sí; verbos débiles y gasto urinario no
+    // cuentan como cuantificar el drenaje; los choques con labs del Doc salen con fármacos de varias clases
+    ck.cirugias = [];
+    poner(blq({ DIETA: ['AYUNO PARA PROCEDIMIENTO ENDOSCÓPICO (CPRE)'] })); r.cpre = reglas();
+    poner(blq({ DIETA: ['AYUNO 8 HRS PREVIO A CIRUGÍA'] })); r.previo = reglas();
+    poner(blq({ DIETA: ['AYUNO DESDE LAS 00:00 HRS POR QX'] })); r.porQx = reglas();
+    ck.dispositivos = [{ id: 'd3', tipo: 'Saratoga', fi: hoyS }];
+    poner(blq({ 'MEDIDAS GENERALES': ['REPORTAR SANGRADO POR DRENAJE'] })); r.reportar = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO URINARIO POR SONDA FOLEY'] })); r.urinario = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTO DE DRENAJE POR TURNO'] })); r.registrar = reglas();
+    ck.dispositivos = [];
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '6.1' } }];
+    poner(blq({ MEDICAMENTOS: ['KCL 20 MEQ VO C/12 H'] })); r.revKmed = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    poner(blq({ MEDICAMENTOS: ['ENALAPRIL 10 MG VO C/12 H'] })); r.revEnal = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    nd.labHistory = [{ fecha: hoyS, labs: { plaq: '40' } }];
+    poner(blq({ MEDICAMENTOS: ['ENOXAPARINA 40 MG SC C/24 H'] })); r.revEnox = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    nd.labHistory = [];
     // R6: firma pegada al encabezado del siguiente paciente (sin renglón vacío)
     const d0 = new Date(); const fh = d0.getDate() + '/' + (d0.getMonth() + 1) + '/' + d0.getFullYear() + ' 8:00 am';
     const txt = ['💯 3-120', '', 'INDICACIONES MÉDICAS DE PACIENTE SIETE', 'PACIENTE SIETE 40 AÑOS | CAMA 3-120', fh, '', 'DIETA', 'DIETA BLANDA', '', 'MEDICAMENTOS', 'PARACETAMOL 1 G IV C/8 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'DR PRUEBA MBCG | DRA OTRA R1CG',
@@ -383,6 +400,9 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     && i21.foley.indexOf('ind_dren_gasto') >= 0 && i21.cuantDren.indexOf('ind_dren_gasto') < 0 && i21.cuantDren2.indexOf('ind_dren_gasto') < 0
     && i21.susp.indexOf('ind_atb_sin_fi') < 0 && i21.susp.indexOf('ind_npt_labs') < 0
     && i21.revK.indexOf('hiperK') >= 0 && i21.revSinK.indexOf('hiperK') < 0
+    && i21.cpre.indexOf('ind_qx_sin_programar') < 0 && i21.previo.indexOf('ind_qx_sin_programar') >= 0 && i21.porQx.indexOf('ind_qx_sin_programar') >= 0
+    && i21.reportar.indexOf('ind_dren_gasto') >= 0 && i21.urinario.indexOf('ind_dren_gasto') >= 0 && i21.registrar.indexOf('ind_dren_gasto') < 0
+    && i21.revKmed.indexOf('hiperK') >= 0 && i21.revEnal.indexOf('hiperK') >= 0 && i21.revEnox.indexOf('plaq_bajas') >= 0
     && i21.parse.length === 2 && i21.parse[0].firma === 'DR PRUEBA MBCG | DRA OTRA R1CG' && JSON.stringify(i21.parse[0].medidas) === '["SIGNOS VITALES POR TURNO"]' && i21.parse[1].firma === 'DR TERCERO MBCG', JSON.stringify(i21));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));

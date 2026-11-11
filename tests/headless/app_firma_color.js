@@ -44,7 +44,8 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     r.igual = plStampNewLines('a\nb', 'a\nb', st);
     r.yaFirmado = plStampNewLines('', 'Ana 10.11.26 22:00 - lo puso Ana', st);
     r.sangria = plStampNewLines('', 'Plan:\n  continuar ATB\n- retirar sonda', st);
-    r.pegado = plStampNewLines('', ['1', '2', '3', '4', '5', '6', '7', '8'].map(x => 'renglón ' + x).join('\n'), st);
+    r.pegado = plStampNewLines('', ['1', '2', '3', '4', '5', '6', '7', '8'].map(x => 'renglón ' + x).join('\n'), st, { pegado: true });
+    r.escritos = plStampNewLines('', ['1', '2', '3', '4', '5', '6', '7', '8'].map(x => 'renglón ' + x).join('\n'), st);
     r.arriba = plStampNewLines('Gerardo 09.11.26 08:00 - viejo', 'nuevo arriba\nGerardo 09.11.26 08:00 - viejo', st);
     r.sinNombre = plStampNewLines('', 'x', '');
     r.ahora = plStampNow(new Date(2026, 10, 10, 23, 50));
@@ -57,7 +58,8 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     f1.vacia === 'Gerardo 10.11.26 23:50 - Cambiar apósitos' && f1.agrega === 'Gerardo 09.11.26 08:00 - Ayuno\nGerardo 10.11.26 23:50 - Retirar SNG'
     && f1.edita === 'texto viejo sin firma corregido' && f1.igual === 'a\nb' && f1.yaFirmado === 'Ana 10.11.26 22:00 - lo puso Ana'
     && f1.sangria === 'Gerardo 10.11.26 23:50 - Plan:\n  continuar ATB\nGerardo 10.11.26 23:50 - retirar sonda'
-    && f1.pegado.split('\n').filter(l => l.startsWith('Gerardo')).length === 1 && f1.pegado.startsWith('Gerardo 10.11.26 23:50 - renglón 1')
+    && f1.pegado.split('\n').filter(l => l.startsWith('Gerardo')).length === 1 && f1.pegado.startsWith('Gerardo 10.11.26 23:50 - renglón 1') && f1.pegado.split('\n').slice(1).every(l => /^  renglón \d$/.test(l))
+    && f1.escritos.split('\n').every(l => l.startsWith('Gerardo 10.11.26 23:50 - renglón '))
     && f1.arriba === 'Gerardo 10.11.26 23:50 - nuevo arriba\nGerardo 09.11.26 08:00 - viejo' && f1.sinNombre === 'x'
     && f1.ahora === 'Gerardo 10.11.26 23:50 - ' && f1.autor && f1.autor.name === 'Gerardo' && f1.autorViejo && f1.autorViejo.name === 'GF' && f1.color, JSON.stringify(f1));
 
@@ -154,6 +156,8 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     r.vineta = plStampNewLines('Pedir BH', 'Pedir BH\n- ', st);
     r.signo = plStampNewLines('Pedir BH', 'Pedir BH\n?', st);
     r.libre = _egLineasFechadas('Gerardo 11.11.26 10:00 - Se pasó 1 PG\nTEXTO LIBRE VIEJO');
+    r.sinFirmas = plTextoSinFirmas('Gerardo 11.11.26 10:00 - \nGerardo 11.11.26 10:01 - Pedir TAC\n✓ Ana 10.11.26 08:00 - BH\nTexto suelto');
+    r.ctx = _plneCtxLinea('PENDIENTES', 'Gerardo 11.11.26 10:00 - \nGerardo 11.11.26 10:01 - Pedir TAC');
     r.cambia = plStampNewLines('Pedir BH', 'Llamar a nefrología', st);
     r.solo = [plSoloFirma('Gerardo 11.11.26 10:00 - '), plSoloFirma('Gerardo 11.11.26 10:00 - TAC'), plSoloFirma('11/11 —')];
     r.sin = plSinFirma('✓ Gerardo 11.11.26 10:00 - TAC');
@@ -163,56 +167,75 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
   });
   check('F6 revisión adversarial (lógica): el renglón nuevo arriba de uno editado se firma y el editado no; mover o partir un renglón no lo firma; corregir «TAC»→«TC» es editar; una viñeta sola no se firma; reemplazar el texto por otro distinto sí; la firma sola no cuenta como pendiente ni pasa a la nota; la Cronología vieja no hereda la fecha de una firma nueva',
     f6.arribaEdita === 'Gerardo 11.11.26 10:00 - Llamar a cirugía\nPendiente TAC abdominal' && f6.medioEdita === 'L1\nGerardo 11.11.26 10:00 - NUEVO\nL2 editado\nL3'
-    && f6.mover === 'B dos\nC tres\nA uno' && f6.partir === 'Ana 10.11.26 23:50 - Penrose 30cc,\nBlake 20cc' && f6.corto === 'TC' && f6.vineta === 'Pedir BH\n- ' && f6.signo === 'Pedir BH\n?' && f6.libre.length === 2 && f6.libre[1].fecha === null
+    && f6.mover === 'B dos\nC tres\nA uno' && f6.partir === 'Ana 10.11.26 23:50 - Penrose 30cc,\nBlake 20cc' && f6.corto === 'TC' && f6.vineta === 'Pedir BH\n- ' && f6.signo === 'Pedir BH\n?' && f6.libre.length === 2 && f6.libre[1].fecha === null && f6.sinFirmas === 'Pedir TAC\n✓ BH\nTexto suelto' && f6.ctx === 'PENDIENTES: Pedir TAC'
     && f6.cambia === 'Gerardo 11.11.26 10:00 - Llamar a nefrología' && JSON.stringify(f6.solo) === '[true,false,false]' && f6.sin === '✓ TAC'
     && JSON.stringify(f6.nota) === '["Pedir TAC","IC nefro"]'
     && f6.crono.length === 4 && f6.crono[0].fecha === '2026-11-11' && /Fiebre/.test(f6.crono[1].text) && /-11-09$/.test(f6.crono[1].fecha) && /-11-08$/.test(f6.crono[2].fecha) && f6.crono[3].fecha === f6.crono[2].fecha, JSON.stringify(f6));
 
-  // ── F7: en la tarjeta: se firma AL ESCRIBIR (el autoguardado ya sube el renglón firmado); ➕ Hoy no apila firmas vacías ni
-  // reusa la de otro día; ➕ Hoy de IC tampoco; lo que cambia por código con la caja abierta no se firma con el nombre de
-  // quien escribe; un renglón sin firma y sin sangría no toma el color de la firma de arriba ──
+  // ── F7: en la tarjeta se firma AL SOLTAR la caja (mientras se escribe no se toca el texto: el retroceso y Cmd+Z funcionan);
+  // lo que cambia por código con la caja abierta no se firma con el nombre de quien escribe; un pegado largo lleva una firma y
+  // sangría; ➕ Hoy no apila firmas vacías: cambia la de otro día solo si no hace de encabezado; la capa de color sigue a la
+  // sangría ──
   const k7 = await page.evaluate(async () => { const k = pid(patients[0]); const nd = getNote(k); nd.pendientes = 'Pedir BH'; noteData[k] = nd; _rerenderCard(k); await new Promise(r => setTimeout(r, 300)); return k; });
-  posts.length = 0;
   const sel7 = 'textarea[data-key="' + k7 + '"][data-field="pendientes"]';
-  await page.click(sel7); await page.keyboard.press('End'); await page.keyboard.press('Control+End');
-  await page.keyboard.press('Enter'); await page.keyboard.type('Retirar SNG', { delay: 15 });
-  await page.waitForTimeout(1600);
-  const f7a = await page.evaluate((sel) => { const ta = document.querySelector(sel); return { val: ta.value, caret: ta.selectionStart, len: ta.value.length }; }, sel7);
-  const subidas7 = posts.filter(b => b && typeof b.pendientes === 'string').map(b => b.pendientes);
-  // renglón nuevo ARRIBA: al firmar con la primera letra, el cursor se queda en ese renglón (lo demás se escribe ahí)
-  await page.keyboard.press('Control+Home'); await page.keyboard.press('Enter'); await page.keyboard.press('ArrowUp');
-  await page.keyboard.type('Arriba', { delay: 15 });
-  const f7arriba = await page.evaluate((sel) => document.querySelector(sel).value.split('\n')[0], sel7);
-  // cambio por código con la caja abierta (otra pestaña / botón): «DE OTRO» no se firma con el nombre de quien escribe
+  const valor7 = () => page.evaluate((sel) => document.querySelector(sel).value, sel7);
+  const soltar7 = async () => { await page.evaluate(() => document.activeElement && document.activeElement.blur()); await page.waitForTimeout(150); };
+  // (a) Retroceso: escribir «\nx» y borrarlo deja la caja como estaba, sin restos de firma
+  await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('x');
+  const f7durante = await valor7();
+  for (let i = 0; i < 2; i++) await page.keyboard.press('Backspace');
+  const f7borrado = await valor7(); await soltar7(); const f7borradoFin = await valor7();
+  // (b) Cmd/Ctrl+Z: lo escrito se deshace sin dejar firmas
+  await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Retirar SNG', { delay: 10 });
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Control+z');
+  const f7undo = await valor7(); await soltar7();
+  // (c) renglones nuevos (también arriba) se firman al soltar, cada uno con su firma
+  await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Retirar SNG', { delay: 10 });
+  await page.keyboard.press('Control+Home'); await page.keyboard.press('Enter'); await page.keyboard.press('ArrowUp'); await page.keyboard.type('Arriba', { delay: 10 });
+  await soltar7(); const f7c1 = await valor7();
+  // (d) cambio por código con la caja abierta: «DE OTRO» no se firma con mi nombre; lo que tecleo después sí
+  await page.click(sel7);
   await page.evaluate((sel) => { const ta = document.querySelector(sel); ta.value = ta.value + '\nDE OTRO'; }, sel7);
-  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Mío', { delay: 15 });
-  const f7b = await page.evaluate((sel) => document.querySelector(sel).value, sel7);
-  await page.evaluate(() => document.activeElement && document.activeElement.blur());
-  const f7c = await page.evaluate(async (k) => {
+  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Mío', { delay: 10 });
+  await soltar7(); const f7d = await valor7();
+  // (e) pegado de 8 renglones: una firma y los demás con sangría
+  await page.evaluate((k) => { const nd = getNote(k); nd.pendientes = 'Pedir BH'; noteData[k] = nd; _rerenderCard(k); }, k7); await page.waitForTimeout(200);
+  await page.click(sel7); await page.keyboard.press('Control+End');
+  await page.evaluate((sel) => { const ta = document.querySelector(sel); ta.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', bubbles: true, cancelable: true })); }, sel7);
+  await page.keyboard.insertText('\nHb 9.1\nLeucos 14\nPlaq 210\nNa 136\nK 4.1\nCr 0.9\nPCR 12\nLactato 1.1');
+  await soltar7(); const f7e = await valor7();
+  const f7f = await page.evaluate(async (k) => {
     const r = {};
     const nd = getNote(k);
-    nd.pendientes = 'Gerardo 10.11.26 08:00 - \nPedir BH'; noteData[k] = nd; _rerenderCard(k); await new Promise(x => setTimeout(x, 200));
-    pendInsertToday(k); r.hoy1 = getNote(k).pendientes; pendInsertToday(k); r.hoy2 = getNote(k).pendientes;
-    const nd2 = getNote(k); nd2.checklist = nd2.checklist || {}; nd2.checklist.interconsultas = 'MI: valorado\nGerardo 10.11.26 08:00 - '; noteData[k] = nd2; _rerenderCard(k); await new Promise(x => setTimeout(x, 200));
+    // ➕ Hoy: firma vacía de ayer con un renglón firmado debajo → se cambia por la de hoy (no se apila)
+    nd.pendientes = 'Gerardo 10.11.26 08:00 - \nGerardo 10.11.26 08:05 - Pedir BH'; noteData[k] = nd; _rerenderCard(k); await new Promise(x => setTimeout(x, 200));
+    pendInsertToday(k); r.hoyA = getNote(k).pendientes; pendInsertToday(k); r.hoyA2 = getNote(k).pendientes;
+    // ➕ Hoy: firma vacía de ayer que hace de encabezado de un renglón sin firma → se pone la de hoy arriba y la vieja se queda
+    const nd2 = getNote(k); nd2.pendientes = 'Gerardo 10.11.26 08:00 - \nPedir BH'; noteData[k] = nd2; _rerenderCard(k); await new Promise(x => setTimeout(x, 200));
+    pendInsertToday(k); r.hoyB = getNote(k).pendientes;
+    const nd3 = getNote(k); nd3.checklist = nd3.checklist || {}; nd3.checklist.interconsultas = 'MI: valorado\nGerardo 10.11.26 08:00 - '; noteData[k] = nd3; _rerenderCard(k); await new Promise(x => setTimeout(x, 200));
     insertTodayStamp(k, 'interconsultas', true, 'Interconsultas'); r.ic1 = getNote(k).checklist.interconsultas;
     insertTodayStamp(k, 'interconsultas', true, 'Interconsultas'); r.ic2 = getNote(k).checklist.interconsultas;
     document.activeElement && document.activeElement.blur();
-    const nd3 = getNote(k); nd3.pendientes = 'Gerardo 11.11.26 10:00 - Nuevo\n  sigue el nuevo\nPedir BH viejo'; noteData[k] = nd3; _rerenderCard(k); await new Promise(x => setTimeout(x, 300));
+    const nd4 = getNote(k); nd4.pendientes = 'Gerardo 11.11.26 10:00 - Nuevo\n  sigue el nuevo\nPedir BH viejo'; noteData[k] = nd4; _rerenderCard(k); await new Promise(x => setTimeout(x, 300));
     plStMountAll();
     const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]'); const bd = ta && ta.previousElementSibling;
     r.capa = bd && bd.classList.contains('pl-st-bd') ? bd.innerHTML.split('\n').map(l => /background/.test(l)) : null;
-    nd3.pendientes = ''; noteData[k] = nd3; _rerenderCard(k);
+    nd4.pendientes = ''; noteData[k] = nd4; _rerenderCard(k);
     return r;
   }, k7);
   const z7 = n => String(n).padStart(2, '0'); const h7 = new Date(); const fe7 = z7(h7.getDate()) + '\\.' + z7(h7.getMonth() + 1) + '\\.' + String(h7.getFullYear()).slice(2);
-  const firmaHoy = new RegExp('^Gerardo ' + fe7 + ' \\d{2}:\\d{2} - ');
-  check('F7 en la tarjeta: al escribir un renglón nuevo se firma desde la primera letra (con el cursor al final y sin que se suba nunca sin firma); lo que cambió por código con la caja abierta no se firma con el nombre de quien escribe; ➕ Hoy cambia una firma vacía de ayer por la de hoy y no apila otra (igual en IC); un renglón sin firma ni sangría no toma el color de la firma de arriba',
-    /^Pedir BH\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Retirar SNG$/.test(f7a.val) && f7a.caret === f7a.len && subidas7.length > 0 && subidas7.every(v => !/\nRetirar SNG$/.test(v) && !/\nR$/.test(v))
-    && /^Gerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Arriba$/.test(f7arriba)
-    && /\nDE OTRO\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Mío$/.test(f7b)
-    && firmaHoy.test(f7c.hoy1) && /\nPedir BH$/.test(f7c.hoy1) && f7c.hoy1.split('\n').length === 2 && f7c.hoy2 === f7c.hoy1
-    && /^MI: valorado\n/.test(f7c.ic1) && firmaHoy.test(f7c.ic1.split('\n')[1]) && f7c.ic1.split('\n').length === 2 && f7c.ic2 === f7c.ic1
-    && JSON.stringify(f7c.capa && f7c.capa.slice(0, 3)) === '[true,true,false]', JSON.stringify({ f7a, subidas7, f7arriba, f7b, f7c }));
+  const fh = '^Gerardo ' + fe7 + ' \\d{2}:\\d{2} - ';
+  const F = (re) => new RegExp(re);
+  check('F7 en la tarjeta: al escribir no se toca el texto (Retroceso y Cmd+Z funcionan, sin restos de firma); al soltar se firma cada renglón nuevo (también el de arriba); lo cambiado por código no lleva mi firma; un pegado largo lleva una firma y sangría; ➕ Hoy cambia la firma vacía de ayer si no es encabezado y si lo es pone la de hoy arriba (IC igual); la capa sigue a la sangría',
+    f7durante === 'Pedir BH\nx' && f7borrado === 'Pedir BH' && f7borradoFin === 'Pedir BH' && f7undo === 'Pedir BH'
+    && F(fh + 'Arriba\nPedir BH\nGerardo \\d{2}\\.\\d{2}\\.\\d{2} \\d{2}:\\d{2} - Retirar SNG$').test(f7c1)
+    && /\nDE OTRO\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Mío$/.test(f7d)
+    && F('^Pedir BH\\nGerardo \\d{2}\\.\\d{2}\\.\\d{2} \\d{2}:\\d{2} - Hb 9\\.1\\n  Leucos 14\\n  Plaq 210\\n  Na 136\\n  K 4\\.1\\n  Cr 0\\.9\\n  PCR 12\\n  Lactato 1\\.1$').test(f7e)
+    && F(fh).test(f7f.hoyA) && f7f.hoyA.split('\n').length === 2 && f7f.hoyA2 === f7f.hoyA
+    && F(fh).test(f7f.hoyB) && f7f.hoyB.split('\n').length === 3 && /\nGerardo 10\.11\.26 08:00 - \nPedir BH$/.test(f7f.hoyB)
+    && /^MI: valorado\n/.test(f7f.ic1) && F(fh).test(f7f.ic1.split('\n')[1]) && f7f.ic1.split('\n').length === 2 && f7f.ic2 === f7f.ic1
+    && JSON.stringify(f7f.capa && f7f.capa.slice(0, 3)) === '[true,true,false]', JSON.stringify({ f7durante, f7borrado, f7borradoFin, f7undo, f7c1, f7d, f7e, f7f }));
 
   // ── F8: sin la marca «editado aquí», lo que este equipo guardó DESPUÉS de que empezó una carga (diagrama, labs del PDF,
   // fecha de labs borrada) no lo regresa la foto vieja de la nube ──
@@ -223,7 +246,8 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     _dirtyFields[k] = new Set(); delete _pendingDirty[k]; delete _inflightDirty[k];
     _touchLocalFields(k, ['body_diagram_ant', 'labHistory', 'checklist']);
     const vieja = JSON.parse(JSON.stringify(nd)); vieja.body_diagram_ant = 'data:image/png;base64,VIEJA';
-    vieja.labHistory = [{ fecha: '2026-11-01', labs: { hb: '7' }, client_updated_at: 1 }]; vieja.checklist.__lab_deleted = [];
+    vieja.labHistory = [{ fecha: '2026-11-01', labs: { hb: '7' }, client_updated_at: 1 }, { fecha: '2026-11-05', labs: { hb: '8' }, client_updated_at: 1 }]; vieja.checklist.__lab_deleted = ['2026-11-07'];
+    nd.labHistory.push({ fecha: '2026-11-07', labs: { hb: '6' }, client_updated_at: Date.now() });   // otro equipo borró el 07: no revive
     const cargada = {}; cargada[k] = vieja; cargada.__loadStartTs = t0;
     _applyLoadedNotes(cargada);
     const v = noteData[k];
@@ -231,8 +255,8 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     v.body_diagram_ant = ''; v.labHistory = []; v.checklist.__lab_deleted = []; delete cargada.__loadStartTs;
     return r;
   });
-  check('F8 una carga que empezó antes de guardar no regresa el diagrama, no revive la fecha de labs borrada y no quita los labs del PDF',
-    f8.diag === 'data:image/png;base64,LOCAL' && JSON.stringify(f8.fechas) === '["2026-11-10"]' && JSON.stringify(f8.del) === '["2026-11-01"]', JSON.stringify(f8));
+  check('F8 una carga que empezó antes de guardar no regresa el diagrama, no revive la fecha de labs borrada (ni la que borró otro equipo), conserva los labs del PDF y los de otro equipo, y SUMA las lápidas',
+    f8.diag === 'data:image/png;base64,LOCAL' && JSON.stringify(f8.fechas.slice().sort()) === '["2026-11-05","2026-11-10"]' && JSON.stringify(f8.del.slice().sort()) === '["2026-11-01","2026-11-07"]', JSON.stringify(f8));
 
   // ── F9: PDF de labs cuando la tarjeta cambia de clave a media subida, y cuando la subida a Storage cae al respaldo ──
   const f9 = await page.evaluate(async () => {
