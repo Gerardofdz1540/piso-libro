@@ -80,6 +80,19 @@ jobs:
           fi
           echo "OK: version.json sube con index.html."
 
+      # 11 nov 2026: un enlace simbólico (tests/headless/node_modules → carpeta local de la máquina) entró al repositorio
+      # en un commit automático y GitHub Pages dejó de publicar («No such file or directory … node_modules»): los equipos
+      # que abren la app desde github.io se quedaron en la versión anterior sin aviso. Ningún enlace simbólico ni
+      # node_modules debe estar en el repositorio.
+      - name: Sin enlaces simbólicos ni node_modules en el repositorio
+        run: |
+          malos="$(git ls-files -s | awk '$1 == "120000" { print $4 }'; git ls-files | grep -E '(^|/)node_modules(/|$)' || true)"
+          if [ -n "$malos" ]; then
+            printf '::error::Estos archivos no deben estar en el repositorio (rompen GitHub Pages):\n%s\n' "$malos"
+            exit 1
+          fi
+          echo "OK: sin enlaces simbólicos ni node_modules."
+
       - name: Setup Node 22
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
