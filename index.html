@@ -13062,18 +13062,20 @@ function plExportBackup() {
         const t = e.target; if (!plStampField(t) || t.__stBase === undefined) return;
         if (t.__stUlt !== undefined && t.value !== t.__stUlt) t.__stBase = t.value;   // cambió por código: es la nueva base
       }, true);
+      // Solo la escritura de la persona (teclado, dictado, Scribble: eventos «isTrusted») firma. Un evento que dispara el
+      // propio código (guardar, repintar, otra pestaña) no firma nada: su texto pasa a la base en el siguiente beforeinput.
       document.addEventListener("input", function (e) {
-        const t = e.target; if (!plStampField(t) || document.activeElement !== t) return;
+        const t = e.target; if (!e.isTrusted || !plStampField(t) || document.activeElement !== t) return;
         if (e.isComposing) { t.__stUlt = t.value; return; }   // dictado / texto marcado: se firma al terminar (compositionend)
         firmar(t); plStMount(t);
       }, true);
       document.addEventListener("compositionend", function (e) {
-        const t = e.target; if (!plStampField(t) || document.activeElement !== t) return;
+        const t = e.target; if (!e.isTrusted || !plStampField(t) || document.activeElement !== t) return;
         if (firmar(t)) { plStMount(t); try { t.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) {} }
       }, true);
       // Red de seguridad al soltar (por si un renglón llegó sin evento input): firma antes de que el onchange lo guarde.
       document.addEventListener("change", function (e) {
-        const t = e.target; if (!plStampField(t)) return;
+        const t = e.target; if (!e.isTrusted || !plStampField(t)) return;
         if (firmar(t)) { try { if (typeof _autoResizeTA === "function") _autoResizeTA(t); } catch (_) {} }
         if (t.__stBase !== undefined) t.__stBase = t.value;
         plStMount(t);
