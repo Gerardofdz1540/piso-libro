@@ -363,6 +363,40 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     !f9.err && f9.alerts.length === 0 && f9.claveCambio && !f9.vieja && f9.pend === 'NO SE PIERDE' && f9.hb === '10.2' && f9.marcas.indexOf('labHistory') < 0
     && f9.ruta === '' && f9.archivo === 'nuevo.pdf' && f9.inline && f9.na === '139' && f9.hb2 === '10.2', JSON.stringify(f9));
 
+  // ── F10: ✏️ Editar (ventana del paciente): lo escrito ahí en Pendientes / Otros / Drenajes también se firma al guardar;
+  //    lo que ya estaba no; APP no es caja con firma; cerrar sin «Guardar» también sube lo escrito firmado. ──
+  const f10 = await page.evaluate(async () => {
+    const r = {};
+    try {
+      const k = pid(patients[0]); const nd = getNote(k);
+      nd.pendientes = 'Ana 09.11.26 08:00 - ya estaba'; nd.manejo = ''; nd.app = ''; noteData[k] = nd; _dirtyFields[k] = new Set();
+      openEditModal(k);
+      const pe = document.getElementById('mf-pendientes-modal'), ap = document.getElementById('mf-app-modal'), dr = document.getElementById('mf-drenajes-modal');
+      pe.value = pe.value + '\nRetirar sonda Foley'; liveModalNote('pendientes', pe.value);
+      ap.value = 'DM2'; liveModalNote('app', ap.value);
+      dr.value = 'Penrose 30 ml seroso'; liveModalNote('drenajes', dr.value);
+      saveModal();
+      await new Promise(res => setTimeout(res, 300));
+      const n1 = getNote(k);
+      r.pend = n1.pendientes; r.app = n1.app; r.dren = n1.drenajes; r.abierto = document.getElementById('patient-modal').style.display;
+      // cerrar con ✕ sin guardar: lo escrito en Otros se sube firmado
+      openEditModal(k);
+      const ma = document.getElementById('mf-manejo-modal');
+      ma.value = 'Valorar retiro de SNG'; liveModalNote('manejo', ma.value);
+      closeModal();
+      r.otros = getNote(k).manejo;
+      // abrir y guardar sin tocar nada: no cambia ni se refirma
+      openEditModal(k); saveModal(); await new Promise(res => setTimeout(res, 200));
+      const n3 = getNote(k); r.igual = n3.pendientes === r.pend && n3.manejo === r.otros;
+      nd.pendientes = ''; nd.manejo = ''; nd.app = ''; nd.drenajes = ''; noteData[k] = nd; _dirtyFields[k] = new Set();
+    } catch (e) { r.err = String(e && e.stack || e).slice(0, 300); }
+    return r;
+  });
+  const stRe = /^Gerardo \d\d\.\d\d\.\d\d \d\d:\d\d - /;
+  check('F10 ✏️ Editar: un renglón nuevo en Pendientes y lo escrito en Drenajes se guardan firmados y lo que ya estaba no se toca; APP no lleva firma; cerrar sin «Guardar» sube Otros firmado; guardar sin cambios no refirma',
+    !f10.err && f10.abierto === 'none' && f10.pend.split('\n')[0] === 'Ana 09.11.26 08:00 - ya estaba' && stRe.test(f10.pend.split('\n')[1]) && /Retirar sonda Foley$/.test(f10.pend)
+    && f10.app === 'DM2' && stRe.test(f10.dren) && /Penrose 30 ml seroso$/.test(f10.dren) && stRe.test(f10.otros || '') && /Valorar retiro de SNG$/.test(f10.otros) && f10.igual, JSON.stringify(f10));
+
   if (SHOT) {
     await page.evaluate(() => { const k = pid(patients[0]); const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]'); ta.value = 'Ana 10.11.26 22:10 - Revisar herida\n  y retirar puntos alternos\n' + ta.value + '\nTexto viejo sin firma'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.scrollIntoView({ block: 'center' }); });
     await page.waitForTimeout(500);

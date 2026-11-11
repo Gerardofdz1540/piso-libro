@@ -26840,6 +26840,29 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (sR) sR.innerHTML = rOpts;
     }
     var _modalNoteSnapshot = null; // nota al abrir el modal de edición (para guardar solo lo que cambió)
+    // ✍️ Firma por renglón también en ✏️ Editar (11 nov 2026): Pendientes, Otros y Drenajes se pueden escribir en esta
+    // ventana y se guardaban sin «Nombre dd.mm.aa hh:mm - ». Al guardar (o al cerrarla, que también guarda lo escrito)
+    // cada renglón NUEVO respecto a lo que había al abrirla recibe la firma, con las mismas reglas que en la tarjeta
+    // (plStampNewLines: lo que ya estaba, lo editado o lo movido no se toca; un pegado grande lleva una sola firma).
+    // Devuelve los campos que cambiaron.
+    const _MODAL_FIRMA = [["mf-pendientes-modal", "pendientes"], ["mf-manejo-modal", "manejo"], ["mf-drenajes-modal", "drenajes"]];
+    function _modalFirmarCampos() {
+      const st = plStampNow(); if (!st) return [];
+      const hechos = [];
+      _MODAL_FIRMA.forEach(function (par) {
+        const el = document.getElementById(par[0]); if (!el || !PL_STAMP_FIELDS[par[1]]) return;
+        const base = _modalNoteSnapshot ? _modalNoteSnapshot[par[1]] : "";
+        const nv = plStampNewLines(base, el.value, st, { pegado: !!el.__stPegado });
+        if (nv !== el.value) { el.value = nv; hechos.push(par[1]); }
+      });
+      return hechos;
+    }
+    try {
+      _MODAL_FIRMA.forEach(function (par) {
+        const el = document.getElementById(par[0]); if (!el) return;
+        el.addEventListener("beforeinput", function (e) { if (e.isTrusted && /^insertFrom(Paste|Drop)/.test(e.inputType || "")) el.__stPegado = true; });
+      });
+    } catch (_) {}
     function openEditModal(k) {
       const p = patients.find(p => pid(p) === k); if (!p) return;
       modalMode = "edit"; modalOrigKey = k; _modalCurrentEditKey = k;
@@ -26873,6 +26896,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       var _se = document.getElementById("mf-sangrado-modal"); if (_se) _se.value = _nd_e.sangrado || "";
       var _de = document.getElementById("mf-drenajes-modal"); if (_de) _de.value = _nd_e.drenajes || "";
       var _pde = document.getElementById("mf-pendientes-modal"); if (_pde) _pde.value = _nd_e.pendientes || "";
+      _MODAL_FIRMA.forEach(function (par) { var el = document.getElementById(par[0]); if (el) el.__stPegado = false; });
       // Auto-expandir el detalle clínico si el paciente ya trae algo capturado
       _toggleModalDetail(!!(_nd_e.app || _nd_e.pa || _nd_e.manejo || _nd_e.sangrado || _nd_e.drenajes || _nd_e.pendientes));
       _fillDL();
@@ -26883,6 +26907,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // cierre por egreso remoto): ya viven en noteData/localStorage, así que si no se suben la
       // tarjeta los muestra pero la nube no los tiene y la siguiente recarga los borra. Subirlos.
       const _ck = _modalCurrentEditKey;
+      // Lo escrito en Pendientes / Otros / Drenajes y no guardado con «Guardar» también se sube firmado.
+      if (_ck && _dirtyFields[_ck] && noteData[_ck]) {
+        try {
+          _modalFirmarCampos().forEach(function (f) {
+            if (!_dirtyFields[_ck].has(f)) return;
+            const el = document.getElementById(_MODAL_FIRMA.find(function (par) { return par[1] === f; })[0]);
+            if (el) noteData[_ck][f] = el.value;
+          });
+        } catch (e) { safeLog("closeModal firma:", e); }
+      }
       if (_ck && _dirtyFields[_ck] && _dirtyFields[_ck].size && noteData[_ck] && _findPatientByKey(_ck)) {
         try { saveNote(_ck, noteData[_ck]); } catch (e) { safeLog("closeModal saveNote:", e); }
       }
@@ -27001,6 +27035,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // del outbox si el PATCH falla sin red → al subir solo esos pisan la fila remota. Alta: null (fila completa).
       const _pDirty = existingPatient ? PATIENT_SYNC_FIELDS.filter(function (f) { return toSafeString(p[f]).trim() !== toSafeString(existingPatient[f]).trim(); }) : null;
       if (_pDirty && _pDirty.indexOf("cama") !== -1) _markCamaApp(p);
+      try { _modalFirmarCampos(); } catch (e) { safeLog("saveModal firma:", e); }
       var _modalExtra = {
         app: (document.getElementById("mf-app-modal") || {}).value || "",
         pa: (document.getElementById("mf-pa-modal") || {}).value || "",
@@ -30721,7 +30756,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.11-1";
+    const PL_BUILD = "2026.11.11-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
