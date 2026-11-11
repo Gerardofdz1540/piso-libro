@@ -6197,9 +6197,9 @@ const PLCDS = (function() {
   // «Reportar sangrado por drenaje» o «cuidados del drenaje» NO es cuantificar: con esos verbos se pide además gasto/ml.
   const IND_GASTO_RE = new RegExp("(CUANTIFIC\\w*|MEDIR|MEDICION|CONTABILIZ\\w*)[^|.]{0,40}" + IND_DREN_PAL +
     "|(REGISTR\\w*|ANOTAR|REPORTAR|VIGILAR|CUIDADOS)[^|]{0,60}" + IND_DREN_PAL + "[^|]{0,40}(GASTO|CUANTIF|\\bML\\b|CC\\b)" +
-    "|(REGISTR\\w*|ANOTAR|REPORTAR)[^|.]{0,30}" + IND_GASTO_NO_FOLEY +
+    "|(REGISTR\\w*|ANOTAR|REPORTAR)[^|.]{0,30}(" + IND_GASTO_NO_FOLEY + "|GASTOS?\\b[^|.]{0,40}" + IND_DREN_PAL + ")" +
     "|GASTOS?\\s+(DE|POR|DEL|EN)\\s+(LOS\\s+|LAS\\s+|LA\\s+|EL\\s+)?" + IND_DREN_PAL);
-  const IND_QX_RE = /PREPARA\w*\s+(PARA\s+)?(EL\s+|SU\s+)?(QUIROFANO|\bQX\b|CIRUGIA|PASE\s+A\s+QUIROFANO|PROCEDIMIENTO\s+QUIRURGICO)|PASAR\s+A\s+(QUIROFANO|\bQX\b)|\bAYUNO\b(?:(?!\bPOST|\bPOS(OP|Q)|DESPUES|\bTRAS\b|\bSIN\b|\bNO\b|VALORA|DIFIER|DIFERI|CONSERVADOR|CANDIDAT)[^|]){0,50}((PARA|PREVI[OA]\s+A|ANTES\s+DE|POR)\s+(EL\s+|LA\s+|SU\s+)?(QUIROFANO|CIRUGIA|\bQX\b|PROCEDIMIENTO\s+QUIRURGICO)|PREQUIRURGIC|PREOPERATORI)/;   // «ayuno post qx», «ayuno para CPRE» no
+  const IND_QX_RE = /PREPARA\w*\s+((PARA|A)\s+)?(EL\s+|SU\s+)?(QUIROFANO|\bQX\b|CIRUGIA|PASE\s+A\s+QUIROFANO|PROCEDIMIENTO\s+QUIRURGICO)|PAS(AR|A|E)\s+A\s+(QUIROFANO|\bQX\b)|\bAYUNO\b(?:(?!\bPOST|\bPOS(OP|Q)|DESPUES|\bTRAS\b|\bSIN\b|\bNO\b|VALORA|DIFIER|DIFERI|CONSERVADOR|CANDIDAT)[^|]){0,50}((PARA|PREVI[OA]\s+A|ANTES\s+DE|POR|ESPERA\s+DE|LISTA\s+DE)\s+(EL\s+|LA\s+|SU\s+)?(PASE\s+A\s+)?(QUIROFANO|CIRUGIA|\bQX\b|PROCEDIMIENTO\s+QUIRURGICO)|PREQUIRURGIC|PREOPERATORI)/;   // «ayuno post qx», «ayuno para CPRE» no
   const IND_AYUNO_RE = /\bAYUN(O|AS)\b|NADA\s+POR\s+VIA\s+ORAL|\bNVO\b|\bNPO\b|SUSPENDER\s+(LA\s+)?VIA\s+ORAL/;   // «DESAYUNO» no
   const IND_DIETA_RE = /DIETA\s+(LIQUIDA|BLANDA|NORMAL|LIBRE|POLIMERICA|COMPLETA|ASTRINGENTE|HIPO\w*|HIPER\w*|BAJA|RICA|PARA|DE\s|EN\s|BASE|SEMI\w*|PAPILLA|PICADA|COLADA|NORMO\w*)|LIQUIDOS\s+CLAROS|VIA\s+ORAL\s+A\s+TOLERANCIA|DIETA\s*:?\s*$|^DIETA\s+[A-Z]/;
   const IND_SECUENCIA_RE = /POSTERIOR|DESPUES|LUEGO|A\s+PARTIR|AL\s+TERMINO|\bTRAS\b|HASTA|PREVI[OA]|INICIAR|INICIO\s+DE|PROGRESAR|SI\s+TOLERA|CUANDO|POR\s+LA\s+(MAÑANA|MANANA|TARDE|NOCHE)|\d{1,2}\s*:\s*\d{2}|\d{1,2}\s*(HRS?|HORAS)\b/;
@@ -13068,7 +13068,23 @@ function plExportBackup() {
         const st = plStampNow(); if (!st) return false;
         const v = t.value, nv = plStampNewLines(t.__stBase, v, st, { pegado: !!t.__stPegado, ajenas: t.__stAjenas });
         if (nv === v) return false;
+        // Si la caja sigue con el foco (al ocultar la app, o Chromium al cambiar de ventana), el cursor se queda en su renglón:
+        // plStampNewLines nunca cambia el número de renglones, solo antepone la firma o la sangría.
+        const conFoco = document.activeElement === t;
+        const s0 = conFoco ? t.selectionStart : 0, s1 = conFoco ? t.selectionEnd : 0, dir = conFoco ? t.selectionDirection : "none";
         t.value = nv;
+        if (conFoco) {
+          const vl = v.split("\n"), nl = nv.split("\n");
+          const mapa = function (pos) {
+            let acc = 0, accN = 0;
+            for (let x = 0; x < vl.length; x++) {
+              if (pos <= acc + vl[x].length) return accN + Math.max(0, Math.min(nl[x].length, pos - acc + nl[x].length - vl[x].length));
+              acc += vl[x].length + 1; accN += nl[x].length + 1;
+            }
+            return nv.length;
+          };
+          if (vl.length === nl.length) { try { t.setSelectionRange(mapa(s0), mapa(s1), dir || "none"); } catch (_) {} }
+        }
         return true;
       };
       document.addEventListener("focusin", function (e) { const t = e.target; if (plStampField(t)) { t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null; } }, true);
@@ -13111,7 +13127,9 @@ function plExportBackup() {
           ajenas(t);
           if (!firmar(t)) return;
           try { t.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) {}   // el oninput de la caja actualiza la nota
-          t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+          // La base sigue siendo la de cuando se entró a la caja (lo firmado ya no se refirma): al volver, lo que se termine de
+          // escribir se compara contra lo de antes, no contra este estado a medias.
+          t.__stUlt = t.value;
         } catch (_) {}
       };
       // Tras cada repintado (vista, tarjeta, Realtime) se vuelve a poner la capa de color.
@@ -15019,7 +15037,9 @@ function plExportBackup() {
             // Valores de lo borrado: se unen y lo de este equipo gana (es lo más nuevo).
             const nubeDl = (rc.__lab_deleted_labs && typeof rc.__lab_deleted_labs === "object") ? rc.__lab_deleted_labs : {};
             const locDl = (pc.__lab_deleted_labs && typeof pc.__lab_deleted_labs === "object") ? pc.__lab_deleted_labs : {};
-            const dl = Object.assign({}, nubeDl, locDl);
+            const dl = Object.assign({}, locDl, nubeDl);   // gana la nube, salvo lo que este equipo borró durante la carga
+            const borrLoc = window._labBorradoLocalTs || {};
+            Object.keys(locDl).forEach(function (f) { if ((borrLoc[k + "|" + f] || 0) >= sinceTs) dl[f] = locDl[f]; });
             Object.keys(dl).forEach(function (f) { if (rc.__lab_deleted.indexOf(f) < 0) delete dl[f]; });
             if (Object.keys(dl).length || rc.__lab_deleted_labs) rc.__lab_deleted_labs = dl;
           }
@@ -24207,6 +24227,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // Deja la nota del paciente k como en `target` (copia guardada) y sube solo los campos que difieren.
     // Con `fields` (paso de una o dos cajas) solo se ponen de vuelta ESAS cajas sobre la nota actual: lo que otro escribió
     // en las demás mientras tanto (Realtime) se respeta.
+    // ¿Esta fecha de labs es distinta (o no existe) en la nota actual? Sin contar la hora de edición.
+    function _labSnapCambia(sn, actuales) {
+      const sinHora = function (x) { const c = Object.assign({}, x); delete c.client_updated_at; return JSON.stringify(c); };
+      const igual = (Array.isArray(actuales) ? actuales : []).find(function (x) { return x && x.fecha === sn.fecha; });
+      return !igual || sinHora(igual) !== sinHora(sn);
+    }
     function _undoRestore(k, target, fields) {
       const cur = migrateNote(noteData[k]);
       const prev = migrateNote(target);
@@ -24219,7 +24245,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           else { next[f] = prev[f] === undefined ? "" : prev[f]; dirtyF.add(f); }
           // Labs regresados (✏️ Corregir): hora nueva por fecha, si no la unión con la nube (gana el más reciente por
           // fecha) volvía a subir la versión que se acaba de deshacer.
-          if (f === "labHistory" && Array.isArray(next.labHistory)) next.labHistory.forEach(function (sn) { if (sn) sn.client_updated_at = Date.now(); });
+          // Solo las fechas que este Regresar cambia (una igual a la actual no cuenta como «editada aquí» al unir lápidas).
+          if (f === "labHistory" && Array.isArray(next.labHistory)) next.labHistory.forEach(function (sn) { if (sn && _labSnapCambia(sn, cur.labHistory)) sn.client_updated_at = Date.now(); });
         });
         noteData[k] = next;
         if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
@@ -24240,7 +24267,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       if (JSON.stringify(cur.checklist || {}) !== JSON.stringify(prev.checklist || {})) dirty.add("checklist");
       if (JSON.stringify(cur.labHistory || []) !== JSON.stringify(prev.labHistory || [])) dirty.add("labHistory");
       if (JSON.stringify(cur.imagenHistory || []) !== JSON.stringify(prev.imagenHistory || [])) dirty.add("imagenHistory");
-      (prev.labHistory || []).forEach(function (s) { if (s) s.client_updated_at = Date.now(); });
+      (prev.labHistory || []).forEach(function (s) { if (s && _labSnapCambia(s, cur.labHistory)) s.client_updated_at = Date.now(); });
       noteData[k] = prev;
       if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
       dirty.forEach(function (f) { _dirtyFields[k].add(f); });
@@ -24715,6 +24742,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
     }
 
+    var _labBorradoLocalTs = window._labBorradoLocalTs = window._labBorradoLocalTs || {};   // «k|fecha» → hora en que ESTE equipo borró esos labs
     function deleteLabDate(k, fecha) {
       if (!confirm("Eliminar labs del " + fmtDateChip(fecha) + "?\n(Se puede regresar con el botón ↩ Regresar de la tarjeta.)")) return;
       var nd = getNote(k);
@@ -24724,6 +24752,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         deleteLabSourceFromStorage(snapToDelete.source_storage_bucket || LAB_STORAGE_BUCKET, snapToDelete.source_storage_path);
       }
       nd.labHistory = (nd.labHistory || []).filter(function (s) { return s.fecha !== fecha; });
+      _labBorradoLocalTs[k + "|" + fecha] = Date.now();
       // Borrado EXPLÍCITO: la fecha va a checklist.__lab_deleted para que ni la unión con la nube ni el trigger de la base
       // la regresen (lo demás nunca se quita al guardar).
       if (!nd.checklist || typeof nd.checklist !== "object") nd.checklist = {};
