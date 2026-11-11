@@ -453,7 +453,42 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     const out = { cama: q.cama, pend: n.pendientes, app: n.app, n: patients.filter(x => x.exp === p.exp).length };
     _moveExistingPatient(q, { cama: camaAntes }); return out;
   }, kF);
-  await page.evaluate((k) => { const nd = getNote(k); nd.pendientes = ''; nd.manejo = ''; nd.drenajes = ''; nd.app = ''; noteData[k] = nd; _dirtyFields[k] = new Set(); }, kF);
+  // h) Esc y tocar la tarjeta en seguida (sin esperar el repintado): lo escrito en la ventana no se pierde
+  await page.evaluate((k) => { const nd = getNote(k); nd.pendientes = 'Ana 09.11.26 08:00 - ya estaba'; noteData[k] = nd; _dirtyFields[k] = new Set(); _rerenderCard(k); }, kF);
+  await page.waitForTimeout(300);
+  await page.evaluate((k) => openEditModal(k), kF);
+  await page.focus('#mf-pendientes-modal'); await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter'); await page.keyboard.type('Pedir BH', { delay: 5 });
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  await page.click(pendCard); await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter'); await page.keyboard.type('TAC control', { delay: 5 });
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.waitForTimeout(300);
+  r11.rapido = await page.evaluate((k) => getNote(k).pendientes, kF);
+  // i) ocultar la app con el cursor a media caja: el cursor se queda en su renglón (no salta al final)
+  await page.evaluate((k) => { const nd = getNote(k); nd.pendientes = 'Ana 10.11.26 08:00 - Pedir BH\nAna 10.11.26 08:01 - Pedir QS'; noteData[k] = nd; _dirtyFields[k] = new Set(); openEditModal(k); }, kF);
+  await page.focus('#mf-pendientes-modal'); await page.keyboard.press('Control+Home');
+  await page.keyboard.press('Enter'); await page.keyboard.press('ArrowUp'); await page.keyboard.type('Llamar a ciru', { delay: 5 });
+  await page.evaluate(() => persistBeforeExit());
+  await page.keyboard.type('gía', { delay: 5 });
+  await page.$eval('#modal-save-btn', b => b.click()); await page.waitForTimeout(300);
+  r11.cursor = await page.evaluate((k) => getNote(k).pendientes, kF);
+  // j-k) «Mover» con Sangrado y PA: Sangrado de varios renglones sobrevive a guardar la ventana; «LAPE» no se omite por estar dentro de «LAPE + lavado»
+  r11.mover2 = await page.evaluate(async (k) => {
+    const p = patients.find(x => pid(x) === k); const camaAntes = p.cama; const nd = getNote(k);
+    nd.sangrado = '200'; nd.pa = 'LAPE + lavado'; noteData[k] = nd; _dirtyFields[k] = new Set();
+    openAddModal();
+    document.getElementById('mf-cama').value = '3-398'; document.getElementById('mf-exp').value = p.exp; document.getElementById('mf-nombre').value = p.nombre;
+    document.getElementById('mf-sangrado-modal').value = '350'; document.getElementById('mf-pa-modal').value = 'LAPE';
+    saveModal(); await new Promise(r => setTimeout(r, 300));
+    const q = patients.find(x => x.exp === p.exp); const k2 = pid(q); const n = getNote(k2);
+    const out = { sangrado: n.sangrado, pa: n.pa };
+    openEditModal(k2); _setEstadoPill('DELICADO'); saveModal(); await new Promise(r => setTimeout(r, 200));
+    out.sangradoTras = getNote(k2).sangrado;
+    openEditModal(k2); _setEstadoPill('ESTABLE'); saveModal(); await new Promise(r => setTimeout(r, 200));
+    _moveExistingPatient(q, { cama: camaAntes }); return out;
+  }, kF);
+  await page.evaluate((k) => { const nd = getNote(k); nd.pendientes = ''; nd.manejo = ''; nd.drenajes = ''; nd.app = ''; nd.pa = ''; nd.sangrado = ''; noteData[k] = nd; _dirtyFields[k] = new Set(); }, kF);
   const lin = (s) => String(s || '').split('\n');
   check('F11a ✏️ Editar cerrada con ✕: la tarjeta muestra lo escrito ya firmado y lo que se escribe después en la tarjeta se suma sin borrarlo',
     lin(r11.cardTrasCerrar)[0] === 'Ana 09.11.26 08:00 - ya estaba' && stRe.test(lin(r11.cardTrasCerrar)[1]) && /Retirar sonda Foley$/.test(r11.cardTrasCerrar)
@@ -465,6 +500,12 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     && r11.salir && stRe.test(lin(r11.salir.a)[1] || '') && /Interconsulta a nutrición$/.test(r11.salir.a) && r11.salir.b === r11.salir.a, JSON.stringify(r11));
   check('F11f-g la marca de pegado no pasa a la siguiente ventana y un alta compara contra nada; ➕ Agregar que termina en «Mover» suma lo escrito a la nota (Pendientes firmado, APP tal cual) sin duplicar al paciente',
     r11.pegado === true && r11.mover && r11.mover.cama === '3-399' && r11.mover.n === 1 && stRe.test(lin(r11.mover.pend).slice(-1)[0]) && /Ver TAC de abdomen$/.test(r11.mover.pend) && r11.mover.app === 'HAS', JSON.stringify(r11));
+
+  check('F11h-i Esc y tocar la tarjeta en seguida no borra lo escrito en la ventana; ocultar la app a media caja deja el cursor en su renglón (lo que se sigue escribiendo no cae en el renglón de otra persona)',
+    lin(r11.rapido).length === 3 && lin(r11.rapido)[0] === 'Ana 09.11.26 08:00 - ya estaba' && stRe.test(lin(r11.rapido)[1]) && /Pedir BH$/.test(lin(r11.rapido)[1]) && /TAC control$/.test(lin(r11.rapido)[2])
+    && lin(r11.cursor).length === 3 && stRe.test(lin(r11.cursor)[0]) && /- Llamar a cirugía$/.test(lin(r11.cursor)[0]) && lin(r11.cursor)[1] === 'Ana 10.11.26 08:00 - Pedir BH' && lin(r11.cursor)[2] === 'Ana 10.11.26 08:01 - Pedir QS', JSON.stringify(r11));
+  check('F11j-k «Mover»: Sangrado de dos renglones sobrevive a guardar la ventana (ya no es un campo de un renglón); «LAPE» se suma aunque «LAPE + lavado» lo contenga',
+    r11.mover2 && r11.mover2.sangrado === '200\n350' && r11.mover2.sangradoTras === '200\n350' && r11.mover2.pa === 'LAPE + lavado\nLAPE', JSON.stringify(r11.mover2));
 
   if (SHOT) {
     await page.evaluate(() => { const k = pid(patients[0]); const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]'); ta.value = 'Ana 10.11.26 22:10 - Revisar herida\n  y retirar puntos alternos\n' + ta.value + '\nTexto viejo sin firma'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.scrollIntoView({ block: 'center' }); });

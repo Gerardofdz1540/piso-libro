@@ -4854,7 +4854,7 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
             <div class="modal-field"><label>PA (procedimiento actual / QX)</label><textarea class="modal-input" id="mf-pa-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('pa',this.value)" placeholder="Procedimiento quirúrgico realizado..."></textarea></div>
             <div class="modal-field"><label>Otros (lo que no cabe en otra caja)</label><textarea class="modal-input" id="mf-manejo-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('manejo',this.value)" placeholder="Notas varias: lo que no cabe en otra caja..."></textarea></div>
             <div class="mf-grid" style="grid-template-columns:1fr 2fr">
-              <div class="modal-field"><label>Sangrado estimado</label><input class="modal-input" id="mf-sangrado-modal" inputmode="text" autocorrect="off" oninput="liveModalNote('sangrado',this.value)" placeholder="Ej: 200 mL" /></div>
+              <div class="modal-field"><label>Sangrado estimado</label><textarea class="modal-input" id="mf-sangrado-modal" rows="1" inputmode="text" autocorrect="off" spellcheck="false" oninput="liveModalNote('sangrado',this.value)" placeholder="Ej: 200 mL"></textarea></div>
               <div class="modal-field"><label>Drenajes</label>
                 <div style="display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap">
                   <input class="modal-input" id="mf-dr-tipo" inputmode="text" autocorrect="off" placeholder="Tipo (Penrose, Blake, JP...)" style="flex:2;min-width:110px" onkeydown="if(event.key==='Enter'){event.preventDefault();appendDrain();}" />
@@ -12899,6 +12899,28 @@ function plExportBackup() {
       for (let i = 1; i <= n; i++) { const cur = [i]; for (let j = 1; j <= m; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1)); prev = cur; }
       return 1 - prev[m] / Math.max(n, m);
     }
+    // Pone en la caja el texto ya firmado. Si la caja tiene el foco (al ocultar la app, o Chromium al cambiar de ventana), el
+    // cursor se queda en su renglón: plStampNewLines nunca cambia el número de renglones, solo antepone la firma o la sangría.
+    function plStPonerValor(t, nv) {
+      const v = t.value;
+      if (nv === v) return false;
+      const conFoco = document.activeElement === t;
+      const s0 = conFoco ? t.selectionStart : 0, s1 = conFoco ? t.selectionEnd : 0, dir = conFoco ? t.selectionDirection : "none";
+      t.value = nv;
+      if (conFoco) {
+        const vl = v.split("\n"), nl = nv.split("\n");
+        const mapa = function (pos) {
+          let acc = 0, accN = 0;
+          for (let x = 0; x < vl.length; x++) {
+            if (pos <= acc + vl[x].length) return accN + Math.max(0, Math.min(nl[x].length, pos - acc + nl[x].length - vl[x].length));
+            acc += vl[x].length + 1; accN += nl[x].length + 1;
+          }
+          return nv.length;
+        };
+        if (vl.length === nl.length) { try { t.setSelectionRange(mapa(s0), mapa(s1), dir || "none"); } catch (_) {} }
+      }
+      return true;
+    }
     function plStampNewLines(before, after, stamp, opts) {
       after = String(after == null ? "" : after);
       if (!stamp) return after;
@@ -13070,25 +13092,7 @@ function plExportBackup() {
         if (t.__stBase === undefined) return false;
         const st = plStampNow(); if (!st) return false;
         const v = t.value, nv = plStampNewLines(t.__stBase, v, st, { pegado: !!t.__stPegado, ajenas: t.__stAjenas });
-        if (nv === v) return false;
-        // Si la caja sigue con el foco (al ocultar la app, o Chromium al cambiar de ventana), el cursor se queda en su renglón:
-        // plStampNewLines nunca cambia el número de renglones, solo antepone la firma o la sangría.
-        const conFoco = document.activeElement === t;
-        const s0 = conFoco ? t.selectionStart : 0, s1 = conFoco ? t.selectionEnd : 0, dir = conFoco ? t.selectionDirection : "none";
-        t.value = nv;
-        if (conFoco) {
-          const vl = v.split("\n"), nl = nv.split("\n");
-          const mapa = function (pos) {
-            let acc = 0, accN = 0;
-            for (let x = 0; x < vl.length; x++) {
-              if (pos <= acc + vl[x].length) return accN + Math.max(0, Math.min(nl[x].length, pos - acc + nl[x].length - vl[x].length));
-              acc += vl[x].length + 1; accN += nl[x].length + 1;
-            }
-            return nv.length;
-          };
-          if (vl.length === nl.length) { try { t.setSelectionRange(mapa(s0), mapa(s1), dir || "none"); } catch (_) {} }
-        }
-        return true;
+        return plStPonerValor(t, nv);   // con foco, el cursor se queda en su renglón
       };
       document.addEventListener("focusin", function (e) {
         const t = e.target; if (!plStampField(t)) return;
@@ -26860,7 +26864,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const el = document.getElementById(par[0]); if (!el || !PL_STAMP_FIELDS[par[1]]) return;
         const base = _modalNoteSnapshot ? _modalNoteSnapshot[par[1]] : "";
         const nv = plStampNewLines(base, el.value, st, { pegado: !!el.__stPegado });
-        if (nv !== el.value) { el.value = nv; hechos.push(par[1]); }
+        if (plStPonerValor(el, nv)) hechos.push(par[1]);   // con la ventana abierta y la caja con foco, el cursor no salta
       });
       return hechos;
     }
@@ -26899,8 +26903,13 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (!v) return;
         const cur = toSafeString(next[f]).replace(/\s+$/, "");
         if (!cur.trim()) next[f] = v;
-        else if (cur.indexOf(v) < 0) next[f] = cur + "\n" + v;
-        else return;
+        else {
+          // Se omiten solo los renglones que ya estaban COMPLETOS (sin contar la firma): «500 mL» no es «1500 mL».
+          const ya = new Set(cur.split("\n").map(_stNorm).filter(Boolean));
+          const nuevos = v.split("\n").filter(function (l) { const n = _stNorm(l); return !n || !ya.has(n); });
+          if (!nuevos.some(function (l) { return !!_stNorm(l); })) return;
+          next[f] = cur + "\n" + nuevos.join("\n").replace(/^\s*\n+|\n+\s*$/g, "");
+        }
         cambio.push(f);
       });
       const sx = normalizeSexValue((document.getElementById("mf-sexo") || {}).value);
@@ -26963,13 +26972,26 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // cierre por egreso remoto): ya viven en noteData/localStorage, así que si no se suben la
       // tarjeta los muestra pero la nube no los tiene y la siguiente recarga los borra. Subirlos.
       const _ck = _modalCurrentEditKey;
+      // Un campo de la ventana con el foco (Esc, o un toque en ✕ en el iPad, que no se lleva el foco) seguía «escribiendo»
+      // ya oculto, y el repintado de la tarjeta esperaba por él: se le quita el foco antes de esconderla.
+      try { const _ae = document.activeElement, _mm = document.getElementById("patient-modal"); if (_ae && _mm && _mm.contains(_ae) && _ae.blur) _ae.blur(); } catch (_) {}
       // Lo escrito en Pendientes / Otros / Drenajes y no guardado con «Guardar» también se sube firmado.
       try { _modalFirmarANota(_ck); } catch (e) { safeLog("closeModal firma:", e); }
       if (_ck && _dirtyFields[_ck] && _dirtyFields[_ck].size && noteData[_ck] && _findPatientByKey(_ck)) {
+        const _guardados = MODAL_NOTE_FIELDS.filter(function (f) { return _dirtyFields[_ck].has(f); });
         try { saveNote(_ck, noteData[_ck]); } catch (e) { safeLog("closeModal saveNote:", e); }
         // La tarjeta seguía mostrando el texto de antes de abrir la ventana (nadie la repintaba): no se veía lo escrito y
-        // lo siguiente que se escribiera en esa caja subía «texto viejo + lo nuevo» y borraba lo de la ventana. Repintar
-        // (en calma) y, mientras tanto, al enfocar la caja se le pone el valor del modelo (_cardSoftPending).
+        // lo siguiente que se escribiera en esa caja subía «texto viejo + lo nuevo» y borraba lo de la ventana. Las cajas
+        // de esos campos toman YA lo guardado (con la ventana encima no pudieron editarse) y la tarjeta se repinta en calma.
+        _guardados.forEach(function (f) {
+          document.querySelectorAll('textarea[data-key="' + _ck + '"][data-field="' + f + '"]').forEach(function (ta) {
+            const nv = toSafeString(noteData[_ck][f]);
+            if (ta.value === nv) return;
+            ta.value = nv;
+            try { _autoResizeTA(ta); } catch (_) {}
+            try { plStRefresh(ta); } catch (_) {}
+          });
+        });
         try { _rerenderCardSoft(_ck); } catch (_) {}
       }
       _MODAL_FIRMA.forEach(function (par) { var el = document.getElementById(par[0]); if (el) el.__stPegado = false; });

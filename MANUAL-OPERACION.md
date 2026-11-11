@@ -1698,11 +1698,11 @@ se escribe no se toca el texto: el retroceso, Cmd+Z, el dictado y Scribble funci
 - Sin nombre en la cuenta no se firma (poner el nombre en 👤 Cuenta).
 - **✏️ Editar** (versión 2026.11.11-2): lo que se escribe en Pendientes, Otros y Drenajes dentro de la ventana del paciente
   también se firma, con las mismas reglas, al tocar «✓ Guardar cambios» o al cerrarla con ✕, Cancelar o Esc (cerrar también
-  guarda lo escrito, y la tarjeta se actualiza en cuanto se deja de tocar la pantalla); si la app se oculta o se cierra con
-  la ventana abierta, lo escrito se firma igual. APP, PA, sangrado y diagnóstico no llevan firma. Drenajes ahora es una caja
-  de varios renglones (antes un campo de un renglón que, al guardar la ventana, unía la nota de drenajes en uno solo) y ➕
+  guarda lo escrito, y las cajas de la tarjeta lo muestran al instante); si la app se oculta o se cierra con la ventana
+  abierta, lo escrito se firma igual y el cursor se queda donde estaba. APP, PA, sangrado y diagnóstico no llevan firma. Drenajes y Sangrado ahora son
+  cajas de varios renglones (antes campos de un renglón que, al guardar la ventana, unían la nota en uno solo) y ➕
   agrega cada drenaje en su propio renglón. Si ➕ Agregar termina en «Mover» (la persona ya estaba en otra cama), lo escrito
-  en la ventana se suma a su nota sin pisar nada (antes se perdía).
+  en la ventana se suma a su nota sin pisar nada (antes se perdía); solo se omite un renglón que ya estaba completo.
 - **Para verlo hay que tener la versión nueva.** Cada equipo se queda con la versión que abrió hasta que toca
   **«🔄 Hay una versión nueva · Actualizar»** (barra pequeña abajo) o recarga la página (Mac: Cmd+R; si sigue igual,
   Cmd+Shift+R); en el iPad o el iPhone, cerrar la app y volver a abrirla. Admin → 📱 Versiones muestra la versión de
