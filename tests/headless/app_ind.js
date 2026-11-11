@@ -302,6 +302,9 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     nd.labHistory = [{ fecha: hoyS, labs: { k: '4.1', na: '138' } }]; r.D3 = PLCDS.evaluate(p, getNote(k)).filter(s => s.ruleId === 'ind_npt_labs').map(s => s.suggestion.text); nd.checklist.npt = false; nd.labHistory = [];
     // E: bloque viejo / sin fecha / sin sección; firma ausente en bloque de versión anterior (sin llave) no se juzga
     poner(blq({ fecha: ayerS, 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.E = reglas();
+    // con la hora fija (sin depender del reloj del equipo): a las 9:00 todavía no avisa; a las 12:00 sí
+    const _gh = Date.prototype.getHours;
+    try { Date.prototype.getHours = function () { return 9; }; r.E9 = reglas(); Date.prototype.getHours = function () { return 12; }; r.E12 = reglas(); } finally { Date.prototype.getHours = _gh; }
     poner(blq({ fecha: '', 'MEDIDAS GENERALES': [], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.E2 = reglas();
     const vieja = blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [] }); delete vieja.firma; poner(vieja); r.E3 = reglas();
     // F: la sección de indicaciones muestra la revisión plegada; ignorar en Sugerencias la quita
@@ -326,7 +329,8 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     JSON.stringify(i16.C) === JSON.stringify(['ind_dieta_ayuno']) && i16.C2.length === 0 && JSON.stringify(i16.C3) === JSON.stringify(['ind_npo_dieta']) && JSON.stringify(i16.D) === JSON.stringify(['ind_npt_labs']) && i16.D2.length === 0 && i16.D3.length === 1 && /triglicéridos/.test(i16.D3[0]) && !/electrolitos/.test(i16.D3[0]),
     JSON.stringify({ C: i16.C, C2: i16.C2, C3: i16.C3, D: i16.D, D2: i16.D2, D3: i16.D3 }));
   check('I18 revisor de indicaciones: bloque de hace 2 días (después de las 11:00) avisa «no hay de hoy»; sin fecha y sin medidas avisa; un bloque guardado por la versión anterior (sin la llave firma) no se juzga por la firma',
-    (hora >= 11 ? JSON.stringify(i16.E) === JSON.stringify(['ind_vieja']) : i16.E.length === 0) && has(i16.E2, 'ind_sin_fecha', 'ind_seccion') && i16.E3.length === 0, JSON.stringify({ hora, E: i16.E, E2: i16.E2, E3: i16.E3 }));
+    (hora >= 11 ? JSON.stringify(i16.E) === JSON.stringify(['ind_vieja']) : i16.E.length === 0) && i16.E9.length === 0 && JSON.stringify(i16.E12) === JSON.stringify(['ind_vieja'])
+    && has(i16.E2, 'ind_sin_fecha', 'ind_seccion') && i16.E3.length === 0, JSON.stringify({ hora, E: i16.E, E9: i16.E9, E12: i16.E12, E2: i16.E2, E3: i16.E3 }));
   check('I19 la sección 💊 Indicaciones muestra «🔎 Revisión de indicaciones · 1 por revisar» plegada con el aviso del drenaje; al ignorarlo en Sugerencias desaparece',
     /data-testid="ind-rev"/.test(i16.htmlF) && /Revisión de indicaciones · <b>1<\/b> por revisar/.test(i16.htmlF) && /Drenaje sin «cuantificar gasto»/.test(i16.htmlF) && !/data-testid="ind-rev"/.test(i16.htmlF2),
     (i16.htmlF.match(/<details class="ind-rev[^]*?<\/details>/) || [''])[0].slice(0, 300));

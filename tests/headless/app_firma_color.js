@@ -69,8 +69,8 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     const k = pid(patients[0]); focusGoTo(k);
     await new Promise(r => setTimeout(r, 400));
     const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]');
-    ta.focus(); ta.value = 'SINTETICO'; ta.dispatchEvent(new Event('input', { bubbles: true }));
-    window.__sint = ta.value; ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.blur();
+    ta.focus(); ta.value = 'SINTETICO'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.dispatchEvent(new Event('change', { bubbles: true }));
+    window.__sint = ta.value; ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.dispatchEvent(new Event('change', { bubbles: true })); ta.blur();
     ta.scrollIntoView({ block: 'center' });
     return k;
   });
