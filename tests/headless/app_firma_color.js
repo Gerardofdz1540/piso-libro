@@ -160,6 +160,7 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     r.ctx = _plneCtxLinea('PENDIENTES', 'Gerardo 11.11.26 10:00 - \nGerardo 11.11.26 10:01 - Pedir TAC', true);
     r.ctxPa = _plneCtxLinea('PA', 'Ingresa 10.11.26 23:50 - por urgencias con dolor abdominal');
     r.ctxCrono = _plneCtxLinea('CRONOLOGÍA', 'Gerardo 11.11.26 03:10 - Fiebre 38.9\nAna 10.11.26 22:00 - ', 'fecha');
+    r.ctxTodo = _plneContexto({ ingreso: '', estado: '' }, { app: 'Ingresa 10.11.26 23:50 - por urgencias', pa: '', manejo: 'Gerardo 11.11.26 10:00 - Vigilar', pendientes: '', entrega: 'Gerardo 11.11.26 03:10 - Fiebre 38.9', checklist: {} });
     r.cambia = plStampNewLines('Pedir BH', 'Llamar a nefrología', st);
     r.solo = [plSoloFirma('Gerardo 11.11.26 10:00 - '), plSoloFirma('Gerardo 11.11.26 10:00 - TAC'), plSoloFirma('11/11 —')];
     r.sin = plSinFirma('✓ Gerardo 11.11.26 10:00 - TAC');
@@ -169,7 +170,7 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
   });
   check('F6 revisión adversarial (lógica): el renglón nuevo arriba de uno editado se firma y el editado no; mover o partir un renglón no lo firma; corregir «TAC»→«TC» es editar; una viñeta sola no se firma; reemplazar el texto por otro distinto sí; la firma sola no cuenta como pendiente ni pasa a la nota; la Cronología vieja no hereda la fecha de una firma nueva',
     f6.arribaEdita === 'Gerardo 11.11.26 10:00 - Llamar a cirugía\nPendiente TAC abdominal' && f6.medioEdita === 'L1\nGerardo 11.11.26 10:00 - NUEVO\nL2 editado\nL3'
-    && f6.mover === 'B dos\nC tres\nA uno' && f6.partir === 'Ana 10.11.26 23:50 - Penrose 30cc,\nBlake 20cc' && f6.corto === 'TC' && f6.vineta === 'Pedir BH\n- ' && f6.signo === 'Pedir BH\n?' && f6.libre.length === 2 && f6.libre[1].fecha === null && f6.sinFirmas === 'Pedir TAC\n✓ BH\nTexto suelto' && f6.ctx === 'PENDIENTES: Pedir TAC' && f6.ctxPa === 'PA: Ingresa 10.11.26 23:50 - por urgencias con dolor abdominal' && f6.ctxCrono === 'CRONOLOGÍA: 11.11 03:10: Fiebre 38.9 | 10.11 22:00:'
+    && f6.mover === 'B dos\nC tres\nA uno' && f6.partir === 'Ana 10.11.26 23:50 - Penrose 30cc,\nBlake 20cc' && f6.corto === 'TC' && f6.vineta === 'Pedir BH\n- ' && f6.signo === 'Pedir BH\n?' && f6.libre.length === 2 && f6.libre[1].fecha === null && f6.sinFirmas === 'Pedir TAC\n✓ BH\nTexto suelto' && f6.ctx === 'PENDIENTES: Pedir TAC' && f6.ctxPa === 'PA: Ingresa 10.11.26 23:50 - por urgencias con dolor abdominal' && f6.ctxCrono === 'CRONOLOGÍA: 11.11 03:10: Fiebre 38.9 | 10.11 22:00:' && /CRONOLOGÍA DE GUARDIAS: 11\.11 03:10: Fiebre 38\.9/.test(f6.ctxTodo) && /OTROS[^\n]*: Vigilar/.test(f6.ctxTodo) && /: Ingresa 10\.11\.26 23:50 - por urgencias/.test(f6.ctxTodo)
     && f6.cambia === 'Gerardo 11.11.26 10:00 - Llamar a nefrología' && JSON.stringify(f6.solo) === '[true,false,false]' && f6.sin === '✓ TAC'
     && JSON.stringify(f6.nota) === '["Pedir TAC","IC nefro"]'
     && f6.crono.length === 4 && f6.crono[0].fecha === '2026-11-11' && /Fiebre/.test(f6.crono[1].text) && /-11-09$/.test(f6.crono[1].fecha) && /-11-08$/.test(f6.crono[2].fecha) && f6.crono[3].fecha === f6.crono[2].fecha, JSON.stringify(f6));
@@ -191,6 +192,11 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
   await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Retirar SNG', { delay: 10 });
   for (let i = 0; i < 6; i++) await page.keyboard.press('Control+z');
   const f7undo = await valor7(); await soltar7();
+  // (b2) un «change» que dispara el código no firma (aunque haya algo escrito por la persona)
+  await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Sin firma aun', { delay: 10 });
+  const f7sint = await page.evaluate((sel) => { const ta = document.querySelector(sel); ta.dispatchEvent(new Event('change', { bubbles: true })); return ta.value; }, sel7);
+  for (let i = 0; i < 14; i++) await page.keyboard.press('Backspace');
+  await soltar7();
   // (c) renglones nuevos (también arriba) se firman al soltar, cada uno con su firma
   await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Retirar SNG', { delay: 10 });
   await page.keyboard.press('Control+Home'); await page.keyboard.press('Enter'); await page.keyboard.press('ArrowUp'); await page.keyboard.type('Arriba', { delay: 10 });
@@ -243,7 +249,7 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
   const fh = '^Gerardo ' + fe7 + ' \\d{2}:\\d{2} - ';
   const F = (re) => new RegExp(re);
   check('F7 en la tarjeta: al escribir no se toca el texto (Retroceso y Cmd+Z funcionan, sin restos de firma); al soltar se firma cada renglón nuevo (también el de arriba); lo cambiado por código no lleva mi firma; un pegado largo lleva una firma y sangría; ➕ Hoy cambia la firma vacía de ayer si no es encabezado y si lo es pone la de hoy arriba (IC igual); la capa sigue a la sangría',
-    f7durante === 'Pedir BH\nx' && f7borrado === 'Pedir BH' && f7borradoFin === 'Pedir BH' && f7undo === 'Pedir BH'
+    f7sint === 'Pedir BH\nSin firma aun' && f7durante === 'Pedir BH\nx' && f7borrado === 'Pedir BH' && f7borradoFin === 'Pedir BH' && f7undo === 'Pedir BH'
     && F(fh + 'Arriba\nPedir BH\nGerardo \\d{2}\\.\\d{2}\\.\\d{2} \\d{2}:\\d{2} - Retirar SNG$').test(f7c1)
     && /\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Antes\nDE OTRO\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Mío$/.test(f7d) && /\nOTRO SOLO$/.test(f7d2)
     && /\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Tecleado\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - DEL LAPIZ$/.test(f7d3)
@@ -252,7 +258,7 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     && F(fh).test(f7f.hoyA) && f7f.hoyA.split('\n').length === 2 && f7f.hoyA2 === f7f.hoyA
     && F(fh).test(f7f.hoyB) && f7f.hoyB.split('\n').length === 3 && /\nGerardo 10\.11\.26 08:00 - \nPedir BH$/.test(f7f.hoyB)
     && /^MI: valorado\n/.test(f7f.ic1) && F(fh).test(f7f.ic1.split('\n')[1]) && f7f.ic1.split('\n').length === 2 && f7f.ic2 === f7f.ic1
-    && JSON.stringify(f7f.capa && f7f.capa.slice(0, 3)) === '[true,true,false]', JSON.stringify({ f7durante, f7borrado, f7borradoFin, f7undo, f7c1, f7d, f7d2, f7d3, f7d4, f7e, f7f }));
+    && JSON.stringify(f7f.capa && f7f.capa.slice(0, 3)) === '[true,true,false]', JSON.stringify({ f7sint, f7durante, f7borrado, f7borradoFin, f7undo, f7c1, f7d, f7d2, f7d3, f7d4, f7e, f7f }));
 
   // ── F8: sin la marca «editado aquí», lo que este equipo guardó DESPUÉS de que empezó una carga (diagrama, labs del PDF,
   // fecha de labs borrada) no lo regresa la foto vieja de la nube ──
@@ -261,6 +267,7 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     const nd = getNote(k); nd.checklist = nd.checklist || {};
     nd.body_diagram_ant = 'data:image/png;base64,LOCAL'; nd.labHistory = [{ fecha: '2026-11-10', labs: { hb: '9' }, client_updated_at: Date.now() }]; nd.checklist.__lab_deleted = ['2026-11-01']; noteData[k] = nd;
     _dirtyFields[k] = new Set(); delete _pendingDirty[k]; delete _inflightDirty[k];
+    const colaAntes = outboxLoad(); outboxSave([]);   // la superposición de la cola taparía la foto de la nube
     _touchLocalFields(k, ['body_diagram_ant', 'labHistory', 'checklist']);
     const vieja = JSON.parse(JSON.stringify(nd)); vieja.body_diagram_ant = 'data:image/png;base64,VIEJA';
     vieja.labHistory = [{ fecha: '2026-11-01', labs: { hb: '7' }, client_updated_at: 1 }, { fecha: '2026-11-05', labs: { hb: '8' }, client_updated_at: 1 }]; vieja.checklist.__lab_deleted = ['2026-11-07'];
@@ -270,13 +277,24 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     vieja.checklist.__lab_deleted = ['2026-11-07', '2026-11-09'];
     const cargada = {}; cargada[k] = vieja; cargada.__loadStartTs = t0;
     _applyLoadedNotes(cargada);
+    outboxSave(colaAntes);
     const v = noteData[k];
     const r = { diag: v.body_diagram_ant, fechas: (v.labHistory || []).map(x => x.fecha), del: (v.checklist || {}).__lab_deleted };
-    v.body_diagram_ant = ''; v.labHistory = []; v.checklist.__lab_deleted = []; delete cargada.__loadStartTs;
+    // (b) solo se tocaron los labs (no el checklist): una fecha que otro equipo borró y que aquí se volvió a llenar después
+    // de que empezó la carga se queda
+    const nd2 = noteData[k]; nd2.checklist = nd2.checklist || {}; nd2.checklist.__lab_deleted = [];
+    nd2.labHistory = [{ fecha: '2026-11-08', labs: { hb: '13' }, client_updated_at: Date.now() }]; noteData[k] = nd2;
+    if (_localFieldTouch[k]) { delete _localFieldTouch[k].checklist; delete _localFieldTouch[k].body_diagram_ant; }
+    _touchLocalFields(k, ['labHistory']);
+    const vieja2 = JSON.parse(JSON.stringify(nd2)); vieja2.labHistory = []; vieja2.checklist.__lab_deleted = ['2026-11-08'];
+    const cargada2 = {}; cargada2[k] = vieja2; cargada2.__loadStartTs = Date.now() - 5000;
+    const cola2 = outboxLoad(); outboxSave([]); _applyLoadedNotes(cargada2); outboxSave(cola2);
+    r.soloLabs = (noteData[k].labHistory || []).map(x => x.fecha);
+    const v2 = noteData[k]; v2.body_diagram_ant = ''; v2.labHistory = []; v2.checklist.__lab_deleted = []; delete cargada.__loadStartTs; delete cargada2.__loadStartTs;
     return r;
   });
   check('F8 una carga que empezó antes de guardar no regresa el diagrama, no revive la fecha de labs borrada (ni la que borró otro equipo), conserva los labs del PDF y los de otro equipo, y SUMA las lápidas',
-    f8.diag === 'data:image/png;base64,LOCAL' && JSON.stringify(f8.fechas.slice().sort()) === '["2026-11-01","2026-11-05","2026-11-09","2026-11-10"]' && JSON.stringify(f8.del.slice().sort()) === '["2026-11-01","2026-11-07"]', JSON.stringify(f8));
+    f8.diag === 'data:image/png;base64,LOCAL' && JSON.stringify(f8.fechas.slice().sort()) === '["2026-11-01","2026-11-05","2026-11-09","2026-11-10"]' && JSON.stringify(f8.del.slice().sort()) === '["2026-11-01","2026-11-07"]' && JSON.stringify(f8.soloLabs) === '["2026-11-08"]', JSON.stringify(f8));
 
   // ── F9: PDF de labs cuando la tarjeta cambia de clave a media subida, y cuando la subida a Storage cae al respaldo ──
   const f9 = await page.evaluate(async () => {

@@ -380,6 +380,7 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     poner(blq({ DIETA: ['AYUNO 8 HRS PREVIO A CIRUGÍA'] })); r.previo = reglas();
     poner(blq({ DIETA: ['AYUNO DESDE LAS 00:00 HRS POR QX'] })); r.porQx = reglas();
     poner(blq({ DIETA: ['AYUNO, MANEJO CONSERVADOR SIN CIRUGÍA'] })); r.conserv = reglas();
+    poner(blq({ DIETA: ['AYUNO EN POSTOPERATORIO INMEDIATO POR QX'] })); r.postPor = reglas();
     poner(blq({ DIETA: ['AYUNO POR PANCREATITIS, VALORADO POR CIRUGÍA'] })); r.valorado = reglas();
     ck.dispositivos = [{ id: 'd3', tipo: 'Saratoga', fi: hoyS }];
     poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTOS URINARIOS POR TURNO'] })); r.urinarios = reglas();
@@ -409,7 +410,7 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     && i21.susp.indexOf('ind_atb_sin_fi') < 0 && i21.susp.indexOf('ind_npt_labs') < 0
     && i21.revK.indexOf('hiperK') >= 0 && i21.revSinK.indexOf('hiperK') < 0
     && i21.cpre.indexOf('ind_qx_sin_programar') < 0 && i21.previo.indexOf('ind_qx_sin_programar') >= 0 && i21.porQx.indexOf('ind_qx_sin_programar') >= 0
-    && i21.conserv.indexOf('ind_qx_sin_programar') < 0 && i21.valorado.indexOf('ind_qx_sin_programar') < 0 && i21.urinarios.indexOf('ind_dren_gasto') >= 0 && i21.regFoley.indexOf('ind_dren_gasto') >= 0
+    && i21.conserv.indexOf('ind_qx_sin_programar') < 0 && i21.postPor.indexOf('ind_qx_sin_programar') < 0 && i21.valorado.indexOf('ind_qx_sin_programar') < 0 && i21.urinarios.indexOf('ind_dren_gasto') >= 0 && i21.regFoley.indexOf('ind_dren_gasto') >= 0
     && i21.reportar.indexOf('ind_dren_gasto') >= 0 && i21.urinario.indexOf('ind_dren_gasto') >= 0 && i21.registrar.indexOf('ind_dren_gasto') < 0
     && i21.revKmed.indexOf('hiperK') >= 0 && i21.revEnal.indexOf('hiperK') >= 0 && i21.revEnox.indexOf('plaq_bajas') >= 0
     && i21.parse.length === 2 && i21.parse[0].firma === 'DR PRUEBA MBCG | DRA OTRA R1CG' && JSON.stringify(i21.parse[0].medidas) === '["SIGNOS VITALES POR TURNO"]' && i21.parse[1].firma === 'DR TERCERO MBCG', JSON.stringify(i21));
