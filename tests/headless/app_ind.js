@@ -264,6 +264,74 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     && i15.carlosSinCenso && i15.carlosSinCenso.med === 'MED DE BRUNO' && i15.carlosDefault && i15.carlosDefault.med === 'MED DEL ANTERIOR' && i15.carlosDefault.warn && i15.carlosCopia && i15.carlosCopia.med === 'MED DEL ANTERIOR' && i15.brunoDefault && !i15.brunoDefault.warn
     && /encajan igual con otro paciente del censo/.test(i15.htmlElsa) && /ind-content" style="display:none"/.test(i15.htmlElsa) && /DIANA SOTO MORA/.test(i15.htmlElsa), JSON.stringify(Object.assign({}, i15, { htmlElsa: (i15.htmlElsa.match(/ind-warn">[^]*?<\/div>/) || [''])[0].slice(0, 300) })));
 
+  // 🔎 Revisor de indicaciones (11 nov 2026): reglas sin IA que cruzan el bloque del Doc con la tarjeta. Paciente y Doc ficticios.
+  const i16 = await page.evaluate(() => {
+    const z = n => String(n).padStart(2, '0');
+    const f = d => d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+    const hoyD = new Date(); const hoyS = f(hoyD);
+    const man = new Date(); man.setDate(man.getDate() + 1); const manS = f(man);
+    const ayer = new Date(); ayer.setDate(ayer.getDate() - 2); const ayerS = f(ayer);
+    const p = patients.find(x => x.cama === '3-107'); const k = pid(p);
+    const blq = (extra) => Object.assign({ cama: '107', nombre: 'PACIENTE TRES', fecha: hoyS, DIETA: ['DIETA BLANDA'], SOLUCIONES: [], MEDICAMENTOS: ['OMEPRAZOL 40 MG IV C/24 H'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H'], 'MEDIDAS GENERALES': ['PREPARAR PARA QUIRÓFANO Y PASAR AL SOLICITAR', 'SIGNOS VITALES POR TURNO'], firma: '' }, extra || {});
+    const poner = (b) => localStorage.setItem('pl_ind_v23_blocks', JSON.stringify([b]));
+    const nd = getNote(k); nd.checklist = nd.checklist || {};
+    const reglas = () => PLCDS.evaluate(p, getNote(k)).filter(s => /^ind_/.test(s.ruleId)).map(s => s.ruleId).sort();
+    const r = {};
+    // A: drenaje sin cuantificar, quirófano sin cirugía, ATB sin FI, sin firma
+    nd.checklist.dispositivos = [{ id: 'd1', tipo: 'Saratoga', lado: 'D', fi: hoyS }]; nd.checklist.cirugias = []; nd.checklist.npo = false; nd.checklist.npt = false; noteData[k] = nd;
+    poner(blq()); r.A = reglas();
+    // B: todo corregido + cirugía mañana sin ayuno
+    nd.checklist.cirugias = [{ id: 'c1', fecha: manS, procedimiento: 'COLECISTECTOMÍA' }];
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO DE DRENAJES POR TURNO', 'PREPARAR PARA QUIRÓFANO'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H FI 08/11/2026 (4)'], firma: 'DR X MBCG | DRA Y R1CG' }));
+    r.B = reglas();
+    // B2: con ayuno ya no avisa
+    poner(blq({ DIETA: ['AYUNO A PARTIR DE LAS 00:00 HRS'], 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO DE DRENAJES POR TURNO'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H FI 08/11/2026 (4)'], firma: 'DR X MBCG' }));
+    r.B2 = reglas();
+    // C: dieta y ayuno a la vez; con horario no
+    nd.checklist.cirugias = []; nd.checklist.dispositivos = [];
+    poner(blq({ DIETA: ['AYUNO', 'DIETA LÍQUIDA'], 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' }));
+    r.C = reglas();
+    poner(blq({ DIETA: ['AYUNO', 'DIETA LÍQUIDA A PARTIR DE LAS 18 HRS'], 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' }));
+    r.C2 = reglas();
+    // C3: la tarjeta en ayuno y el Doc con dieta
+    nd.checklist.npo = true; poner(blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.C3 = reglas(); nd.checklist.npo = false;
+    // D: NPT sin labs; con labs de hoy no
+    nd.checklist.npt = true; nd.labHistory = [];
+    poner(blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.D = reglas();
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '4.1', na: '138', trig: '180' } }]; r.D2 = reglas(); nd.checklist.npt = false; nd.labHistory = [];
+    // E: bloque viejo / sin fecha / sin sección; firma ausente en bloque de versión anterior (sin llave) no se juzga
+    poner(blq({ fecha: ayerS, 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.E = reglas();
+    poner(blq({ fecha: '', 'MEDIDAS GENERALES': [], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.E2 = reglas();
+    const vieja = blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [] }); delete vieja.firma; poner(vieja); r.E3 = reglas();
+    // F: la sección de indicaciones muestra la revisión plegada; ignorar en Sugerencias la quita
+    nd.checklist.dispositivos = [{ id: 'd1', tipo: 'Penrose', fi: hoyS }]; poner(blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' }));
+    r.htmlF = renderIndicacionesSection(p, getNote(k), k);
+    const s = PLCDS.evaluate(p, getNote(k)).find(x => x.ruleId === 'ind_dren_gasto');
+    PLCDSStore.ignore(k, s.ruleId, s.valueHash);
+    r.htmlF2 = renderIndicacionesSection(p, getNote(k), k);
+    // G: el lector del Doc guarda la firma («» si no hay)
+    const txt = ['💯 3-120', '', 'INDICACIONES MÉDICAS DE PACIENTE SIETE', 'PACIENTE SIETE 40 AÑOS | CAMA 3-120', hoyD.getDate() + '/' + (hoyD.getMonth() + 1) + '/' + hoyD.getFullYear() + ' 8:00 am', '', 'DIETA', 'DIETA BLANDA', '', 'MEDICAMENTOS', 'PARACETAMOL 1 G IV C/8 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'GRACIAS', 'DR PRUEBA MBCG | DRA OTRA R1CG', '',
+      'INDICACIONES MÉDICAS DE PACIENTE OCHO', 'PACIENTE OCHO 50 AÑOS | CAMA 3-121', hoyD.getDate() + '/' + (hoyD.getMonth() + 1) + '/' + hoyD.getFullYear() + ' 8:00 am', '', 'DIETA', 'AYUNO', '', 'MEDICAMENTOS', 'OMEPRAZOL 40 MG IV C/24 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'GRACIAS'].join('\n');
+    const pb = PLIndicaciones.parsePasted(txt).blocks;
+    r.G = pb.map(b => ({ cama: b.cama, firma: b.firma, medidas: b['MEDIDAS GENERALES'] }));
+    nd.checklist.dispositivos = []; noteData[k] = nd;
+    return r;
+  });
+  const has = (arr, ...ids) => ids.every(id => arr.indexOf(id) >= 0);
+  const hora = new Date().getHours();
+  check('I16 revisor de indicaciones: (A) drenaje en la tarjeta sin «cuantificar gasto», «preparar para quirófano» sin cirugía programada, antibiótico sin FI ni días y sin firma → los 4 avisos; (B) corregido y con cirugía mañana → solo «cirugía mañana sin ayuno»; con ayuno → nada',
+    JSON.stringify(i16.A) === JSON.stringify(['ind_atb_sin_fi', 'ind_dren_gasto', 'ind_firma', 'ind_qx_sin_programar']) && JSON.stringify(i16.B) === JSON.stringify(['ind_cx_sin_ayuno']) && i16.B2.length === 0, JSON.stringify({ A: i16.A, B: i16.B, B2: i16.B2 }));
+  check('I17 revisor de indicaciones: dieta y ayuno a la vez avisa, con horario («a partir de las 18 hrs») no; tarjeta en ayuno con dieta en el Doc avisa; NPT sin electrolitos ni triglicéridos avisa y con labs de hoy no',
+    JSON.stringify(i16.C) === JSON.stringify(['ind_dieta_ayuno']) && i16.C2.length === 0 && JSON.stringify(i16.C3) === JSON.stringify(['ind_npo_dieta']) && JSON.stringify(i16.D) === JSON.stringify(['ind_npt_labs']) && i16.D2.length === 0,
+    JSON.stringify({ C: i16.C, C2: i16.C2, C3: i16.C3, D: i16.D, D2: i16.D2 }));
+  check('I18 revisor de indicaciones: bloque de hace 2 días (después de las 11:00) avisa «no hay de hoy»; sin fecha y sin medidas avisa; un bloque guardado por la versión anterior (sin la llave firma) no se juzga por la firma',
+    (hora >= 11 ? JSON.stringify(i16.E) === JSON.stringify(['ind_vieja']) : i16.E.length === 0) && has(i16.E2, 'ind_sin_fecha', 'ind_seccion') && i16.E3.length === 0, JSON.stringify({ hora, E: i16.E, E2: i16.E2, E3: i16.E3 }));
+  check('I19 la sección 💊 Indicaciones muestra «🔎 Revisión de indicaciones · 1 por revisar» plegada con el aviso del drenaje; al ignorarlo en Sugerencias desaparece',
+    /data-testid="ind-rev"/.test(i16.htmlF) && /Revisión de indicaciones · <b>1<\/b> por revisar/.test(i16.htmlF) && /Drenaje sin «cuantificar gasto»/.test(i16.htmlF) && !/data-testid="ind-rev"/.test(i16.htmlF2),
+    (i16.htmlF.match(/<details class="ind-rev[^]*?<\/details>/) || [''])[0].slice(0, 300));
+  check('I20 el lector del Doc guarda la firma del equipo y no la mete en medidas; un bloque sin firma queda con firma «»',
+    i16.G.length === 2 && i16.G[0].firma === 'DR PRUEBA MBCG | DRA OTRA R1CG' && JSON.stringify(i16.G[0].medidas) === '["SIGNOS VITALES POR TURNO"]' && i16.G[1].firma === '', JSON.stringify(i16.G));
+
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-IND: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();
