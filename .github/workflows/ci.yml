@@ -154,9 +154,18 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/headless/package-lock.json') }}
 
-      # Con el navegador ya en caché solo instala las librerías del sistema (--with-deps).
+      # Con el navegador ya en caché solo instala las librerías del sistema. Los espejos de Ubuntu del runner a veces no
+      # responden (11 nov 2026: «Temporary failure resolving archive.ubuntu.com» varias horas): se reintenta con apt al día
+      # y, si aun así falla, se sigue con las librerías de la imagen; si de verdad falta algo, las suites lo dirán al abrir.
       - name: Instalar Chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          echo 'Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-reintentos > /dev/null
+          npx playwright install chromium
+          for i in 1 2 3; do
+            npx playwright install-deps chromium && exit 0
+            echo "::warning::librerías del sistema para Chromium: falló el intento $i"; sleep 20; sudo apt-get update -qq || true
+          done
+          echo "::warning::no se instalaron todas las librerías del sistema; se sigue con las de la imagen del runner"
 
       # run_all.sh deja el log de cada suite en $TMPDIR/suite_<nombre>.log; lo apuntamos a la carpeta
       # temporal del runner para poder subirlo si algo falla.
@@ -209,8 +218,16 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-webkit-ubuntu-24.04-${{ hashFiles('tests/headless/package-lock.json') }}
 
+      # Igual que Chromium: reintentos si los espejos de Ubuntu fallan (si faltan librerías, WebKit no abrirá y se verá).
       - name: Instalar WebKit
-        run: npx playwright install --with-deps webkit
+        run: |
+          echo 'Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-reintentos > /dev/null
+          npx playwright install webkit
+          for i in 1 2 3; do
+            npx playwright install-deps webkit && exit 0
+            echo "::warning::librerías del sistema para WebKit: falló el intento $i"; sleep 20; sudo apt-get update -qq || true
+          done
+          echo "::warning::no se instalaron todas las librerías del sistema; se sigue con las de la imagen del runner"
 
       - name: Suites del iPad (WebKit)
         env:
