@@ -90,3 +90,11 @@ revoke all on public.restauraciones_respaldo from anon, authenticated;
 --          fecha (máx. 14); y las cajas que seguían vacías (3-163: dispositivos, pendientes MIPs/R1, estas dos con el
 --          prefijo «(recuperado del 08.11) »). Camas: 3-150, 3-163, 3-190 y la nota que hoy está en 3-182.
 --          Las demás camas de esos eventos ya egresaron: su nota quedó en el archivo con lo que tenía al egresar.
+--   Reversiones más viejas que seguían vigentes (verificación independiente; solo cajas que nadie tocó después,
+--   con respaldo previo y por unión, nunca reemplazando):
+--          3-150: el registro de cirugía del 05.11 (quitado el 06.11 22:03 por una copia del 31.10) y qx_fecha 11-05;
+--                 interconsultas y nota_* vaciadas el 04.11.
+--          3-182: interconsultas (30.10) y pendientes R1 (31.10).   3-157: pendientes MIPs (31.10).
+--          Lo recuperado de texto va abajo de lo actual con «— Recuperado (se borró por error el dd.mm) —».
+--   NO se tocó (decisión clínica, se avisó al equipo): 3-157 NPT/curación marcadas en falso el 31.10 y la
+--          «Colostomía» del 10.11 borrada por un choque de ediciones (la Mac luego cambió Drenovac por Penrose).

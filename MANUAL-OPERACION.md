@@ -1699,6 +1699,9 @@ guarda sobre la nota vigente: lo que se escribió en la tarjeta mientras subía 
 `restauraciones_respaldo`):
 - **3-163, 3-150, 3-190 y la nota que hoy está en 3-182**: el pase de mañana del 8 de noviembre y su historial (unión por
   fecha); en 3-163 además el dispositivo y los pendientes de MIPs y R1 («(recuperado del 08.11) …»).
+- **3-150, 3-182 y 3-157**: reversiones más viejas (30 oct – 7 nov) que seguían vigentes: el registro de cirugía del 5
+  de noviembre de 3-150 (y su fecha POP), interconsultas y pendientes de MIPs/R1. Lo recuperado va abajo de lo actual con
+  «— Recuperado (se borró por error el dd.mm) —».
 - **3-175**: el expediente se había corregido después del alta y la nota anterior no se fusionó. Volvieron APP, PA, manejo y
   el checklist; los pendientes anteriores quedaron abajo bajo «— Recuperado de la nota anterior (10.11) —».
 - **3-168**: la hoja tiene en la columna NOMBRE un texto de diagnóstico; por eso el censo la tomó como otra persona y la
