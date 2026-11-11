@@ -11,8 +11,11 @@
 --
 -- H3 (cama 3-175): el expediente se corrigió con UPDATE después del alta. restore_note_from_archive solo corre al
 --   INSERTAR, así que la nota vieja (27 KB) no se fusionó.
---   → Trigger AFTER UPDATE OF exp: si el expediente cambia a uno con nota archivada compatible, se fusiona igual que en
---     el alta (sin pisar nada: texto solo si está vacío, checklist por llave con prioridad a lo actual, labs por unión).
+--   → Trigger AFTER UPDATE OF exp: si el expediente cambia al de una nota archivada de la MISMA persona (nombre
+--     normalizado idéntico), se fusiona igual que en el alta (sin pisar nada: texto solo si está vacío, checklist por llave
+--     con prioridad a lo actual, labs por unión), con copia previa en restauraciones_respaldo.
+-- Revisión adversarial (11 nov): la cadena exige que el nombre de la fila archivada NO se parezca al de origen (el caso del
+-- nombre dañado) y que el origen tenga nombre; así no se vuelve transitiva la compatibilidad por subconjunto de nombres.
 --
 -- restore_note_from_archive_id(p_id, p_archive): solo para uso manual (service role), cuando ya se comprobó por
 --   expediente, cama y hora que el archivo es del mismo paciente aunque el nombre esté dañado. Exige el mismo exp.
@@ -20,6 +23,12 @@
 -- Se aplica sobre la función viva (con N5, _copia_base, R4…) reemplazando solo la condición de búsqueda, para no
 -- copiar a mano 150 líneas. Cada replace() se comprueba: si el texto no aparece, aborta sin cambiar nada.
 -- ═══════════════════════════════════════════════════════════════════════════════════════
+
+-- Tabla de respaldo previo a cualquier restauración manual (solo service role).
+create table if not exists public.restauraciones_respaldo (
+  id bigserial primary key, patient_id uuid, cama text, motivo text, note jsonb, created_at timestamptz not null default now());
+alter table public.restauraciones_respaldo enable row level security;
+revoke all on public.restauraciones_respaldo from anon, authenticated;
 
 do $mig$
 declare d text; d2 text; d3 text;
@@ -30,16 +39,30 @@ declare d text; d2 text; d3 text;
           or exists (select 1 from archive r
                       where r.note_data->>'_restaurado_a' = archive.patient_data->>'_supa_id'
                         and btrim(coalesce(r.patient_data->>'exp','')) = btrim(p.exp)
+                        and public.pl_name_norm(r.patient_data->>'nombre') <> ''
+                        -- la fila archivada (A) traía un nombre dañado: no se parece al de la persona de la que recibió la nota
+                        and not public.pl_same_person(r.patient_data->>'nombre', archive.patient_data->>'nombre')
                         and public.pl_same_person(r.patient_data->>'nombre', p.nombre)))
    order by archived_at desc limit 1;$w$;
   id_where text := $w$  select * into a from archive
    where id = p_archive and btrim(coalesce(patient_data->>'exp','')) = btrim(p.exp);$w$;
 begin
   d := pg_get_functiondef('public.restore_note_from_archive(uuid)'::regprocedure);
-  if position(old_where in d) = 0 then raise exception 'restore_note_from_archive: no se encontró la condición esperada'; end if;
-  if position('or exists (select 1 from archive r' in d) > 0 then raise notice 'cadena ya aplicada'; else
+  -- Se puede volver a correr: si la cadena ya está (estricta o la primera versión), no se toca aquí.
+  if position('or exists (select 1 from archive r' in d) > 0 then raise notice 'cadena ya aplicada';
+  elsif position(old_where in d) = 0 then raise exception 'restore_note_from_archive: no se encontró la condición esperada';
+  else
     d2 := replace(d, old_where, new_where);
     execute d2;
+  end if;
+  -- Si quedó la primera versión de la cadena (11 nov, antes de la revisión adversarial), se endurece.
+  d := pg_get_functiondef('public.restore_note_from_archive(uuid)'::regprocedure);
+  if position('la fila archivada (A) traía un nombre dañado' in d) = 0 then
+    execute replace(d, $w$                        and public.pl_same_person(r.patient_data->>'nombre', p.nombre)))$w$,
+      $w$                        and public.pl_name_norm(r.patient_data->>'nombre') <> ''
+                        -- la fila archivada (A) traía un nombre dañado: no se parece al de la persona de la que recibió la nota
+                        and not public.pl_same_person(r.patient_data->>'nombre', archive.patient_data->>'nombre')
+                        and public.pl_same_person(r.patient_data->>'nombre', p.nombre)))$w$);
   end if;
   -- Variante manual por id de archivo (sin la regla del nombre; mismo exp obligatorio).
   d3 := pg_get_functiondef('public.restore_note_from_archive(uuid)'::regprocedure);
@@ -54,10 +77,24 @@ revoke all on function public.restore_note_from_archive_id(uuid, uuid) from publ
 
 create or replace function public.patients_restore_note_after_exp_update() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare r text;
+declare r text; aid uuid;
 begin
   begin
-    r := public.restore_note_from_archive(NEW.id);
+    -- Solo si en la Papelera está la MISMA persona con ese expediente (nombre normalizado idéntico, ninguno «no
+    -- identificado»): un expediente tecleado por error que coincide con el de otro paciente no mezcla notas.
+    if public.pl_name_norm(NEW.nombre) = '' or public.pl_name_placeholder(NEW.nombre) then return NEW; end if;
+    select a.id into aid from archive a
+     where btrim(coalesce(a.patient_data->>'exp','')) = btrim(NEW.exp)
+       and a.archived_at > now() - interval '10 days'
+       and (a.note_data->>'_restaurado_a') is null
+       and (a.patient_data->>'_supa_id') is distinct from NEW.id::text
+       and public.pl_name_norm(a.patient_data->>'nombre') = public.pl_name_norm(NEW.nombre)
+     order by a.archived_at desc limit 1;
+    if aid is null then return NEW; end if;
+    insert into restauraciones_respaldo (patient_id, cama, motivo, note)
+      select n.patient_id, NEW.cama, 'antes de fusionar por cambio de expediente (archivo ' || aid::text || ')', to_jsonb(n)
+        from notes n where n.patient_id = NEW.id;
+    r := public.restore_note_from_archive_id(NEW.id, aid);
     if r like 'restaurado:%' then raise notice 'nota fusionada tras cambio de exp para % (%): %', NEW.cama, NEW.exp, r; end if;
   exception when others then
     raise warning 'patients_restore_note_after_exp_update: % (se permite el update)', sqlerrm;
@@ -72,11 +109,6 @@ create or replace trigger patients_restore_note_after_exp_update
   when (nullif(btrim(coalesce(NEW.exp,'')),'') is not null and btrim(coalesce(OLD.exp,'')) is distinct from btrim(NEW.exp))
   execute function public.patients_restore_note_after_exp_update();
 
--- Tabla de respaldo previo a cualquier restauración manual (solo service role).
-create table if not exists public.restauraciones_respaldo (
-  id bigserial primary key, patient_id uuid, cama text, motivo text, note jsonb, created_at timestamptz not null default now());
-alter table public.restauraciones_respaldo enable row level security;
-revoke all on public.restauraciones_respaldo from anon, authenticated;
 
 -- Aplicado 11 nov 2026:
 --   3-175: respaldo id 1 → restore_note_from_archive → restaurado (APP, PA, manejo, checklist 105 llaves); los

@@ -1658,10 +1658,12 @@ En cada paciente, dentro de **💊 Indicaciones**, aparece plegado «🔎 Revisi
 bloque del Doc tiene algo que corregir. No usa IA ni gasta créditos: cruza el Doc con la tarjeta y los labs. Avisa:
 
 - **Drenaje sin «cuantificar gasto»**: la tarjeta tiene un drenaje, sonda o estoma (Saratoga, Penrose, SEP, SNG, estoma…) y
-  el Doc no pide cuantificar su gasto.
+  el Doc no pide cuantificar su gasto. «Cuantificar drenajes» sí cuenta; los cuidados de la sonda Foley o la uresis no.
 - **Quirófano sin cirugía programada**: el Doc dice «preparar/pasar a quirófano» (o «ayuno para cirugía») y la tarjeta no
-  tiene una cirugía con fecha de hoy en adelante en 🔪 Cirugías. Al revés: **cirugía mañana sin ayuno**. El ayuno por sí
-  solo no se marca (es correcto en pancreatitis, oclusión, etc.).
+  tiene una cirugía con fecha de hoy en adelante en 🔪 Cirugías. El ayuno postoperatorio («ayuno post qx») no cuenta. Al
+  revés: **cirugía mañana sin ayuno** (el ayuno se busca en DIETA y MEDIDAS: «antes del desayuno» o «VO en ayuno» de un
+  medicamento no es ayuno). El ayuno por sí solo no se marca (es correcto en pancreatitis, oclusión, etc.).
+- Lo que el Doc manda **suspender** («suspender ceftriaxona», «se suspende NPT») no se juzga.
 - **Antibiótico sin fecha de inicio**: falta «FI dd/mm» o el día («(3)»). Las dosis únicas o profilácticas no cuentan.
 - **Dieta y ayuno a la vez** sin horario («a partir de las 18 h» sí vale), o la tarjeta en ayuno con dieta en el Doc.
 - **NPT sin labs de control**: sin electrolitos de las últimas 48 h o triglicéridos de los últimos 7 días.
@@ -1675,13 +1677,18 @@ El código está en `PLCDS` (`reglasIndicaciones`) y el lector del Doc guarda ah
 ## ✍️ Firma y color por renglón en las cajas (11 de noviembre de 2026, versión 2026.11.11-1)
 
 Todo lo que se escribe en **Pendientes / Plan, Cronología, Otros, Interconsultas, Cultivos, Pendientes MIPs, Pendientes R1 y
-la nota de drenajes** queda firmado: al soltar la caja (tocar fuera), cada renglón **nuevo** recibe
-`Gerardo 11.11.26 05:04 - ` (primer nombre de la cuenta, fecha y hora) y se pinta con el color de esa persona.
+la nota de drenajes** queda firmado: con la **primera letra** de cada renglón nuevo aparece `Gerardo 11.11.26 05:04 - `
+(primer nombre de la cuenta, fecha y hora) y el renglón se pinta con el color de esa persona. Como la firma se pone al
+escribir, lo que se guarda y ven los demás ya va firmado.
 
-- Solo se firma lo que se acaba de escribir en ese equipo. Lo que ya estaba, un renglón corregido, lo que se restaura con
-  🕘 o se regresa con ↩ no se toca. Un renglón que empieza con sangría continúa al de arriba (misma firma). Un pegado de más
-  de 6 renglones lleva una sola firma.
-- **➕ Hoy** y **➕ Ahora** ponen la misma firma. La escritura con lápiz y el lienzo ✍️ también firman lo nuevo.
+- Solo se firma lo que se acaba de escribir en ese equipo. Lo que ya estaba, un renglón corregido (aunque se le agregue
+  texto), un renglón movido o partido con Enter, lo que se restaura con 🕘 o se regresa con ↩ no se toca. Un renglón que
+  empieza con sangría continúa al de arriba (misma firma y mismo color); un renglón sin firma ni sangría no toma el color de
+  nadie. Un pegado de más de 6 renglones lleva una sola firma. Una viñeta sola («- ») no se firma hasta que lleva texto.
+- **➕ Hoy** y **➕ Ahora** ponen la misma firma. Si arriba (o al final, en IC y Cultivos) ya hay una firma vacía de la misma
+  persona, no se apila otra: se cambia por la de ahora (lo que se escriba ahí lleva la fecha de hoy). La firma sola no
+  cuenta como pendiente ni pasa a la nota de evolución.
+- La escritura con lápiz, el lienzo ✍️, las 📋 órdenes rápidas y ➕ Cultivo también firman lo que agregan.
 - El color es una capa encima de la caja: no se puede tocar ni copiar, y no se imprime. El texto guardado es el mismo.
 - Los renglones viejos (`14/10 08:15 GF:`) se siguen reconociendo y la 🕘 Entrega de guardia lee las dos formas.
 - Sin nombre en la cuenta no se firma (poner el nombre en 👤 Cuenta).

@@ -333,6 +333,58 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
   check('I20 el lector del Doc guarda la firma del equipo y no la mete en medidas; un bloque sin firma queda con firma «»',
     i16.G.length === 2 && i16.G[0].firma === 'DR PRUEBA MBCG | DRA OTRA R1CG' && JSON.stringify(i16.G[0].medidas) === '["SIGNOS VITALES POR TURNO"]' && i16.G[1].firma === '', JSON.stringify(i16.G));
 
+  // 🔎 Revisión adversarial del 11 nov 2026: falsos avisos y avisos perdidos con textos reales del Doc (todo ficticio).
+  const i21 = await page.evaluate(() => {
+    const z = n => String(n).padStart(2, '0');
+    const f = d => d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+    const hoyS = f(new Date()); const man = new Date(); man.setDate(man.getDate() + 1); const manS = f(man); const ay = new Date(); ay.setDate(ay.getDate() - 1); const ayerS = f(ay);
+    const p = patients.find(x => x.cama === '3-107'); const k = pid(p);
+    const blq = (extra) => Object.assign({ cama: '107', nombre: 'PACIENTE TRES', fecha: hoyS, DIETA: ['DIETA BLANDA'], SOLUCIONES: [], MEDICAMENTOS: ['OMEPRAZOL 40 MG IV C/24 H'], 'ANTIBIÓTICOS': [], 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], firma: 'DR X MBCG' }, extra || {});
+    const poner = (b) => localStorage.setItem('pl_ind_v23_blocks', JSON.stringify([b]));
+    const nd = getNote(k); nd.checklist = nd.checklist || {}; const ck = nd.checklist;
+    const reglas = () => PLCDS.evaluate(p, getNote(k)).filter(s => /^ind_/.test(s.ruleId)).map(s => s.ruleId).sort();
+    const r = {};
+    ck.dispositivos = []; ck.cirugias = []; ck.npo = false; ck.npt = false; nd.labHistory = []; noteData[k] = nd;
+    // R0: POP 1 con ayuno postoperatorio → no es «quirófano sin cirugía»; «ayuno para cirugía» sin cirugía programada sí
+    ck.cirugias = [{ id: 'c0', fecha: ayerS, procedimiento: 'LAPE' }];
+    poner(blq({ DIETA: ['AYUNO POST QX'] })); r.qxPost = reglas();
+    poner(blq({ DIETA: ['AYUNO 24 HRS POSTERIOR A CIRUGÍA'] })); r.qxPost2 = reglas();
+    poner(blq({ DIETA: ['AYUNO PARA CIRUGÍA'] })); r.qxPre = reglas();
+    // R1: cirugía mañana; «antes del desayuno» / «VO en ayuno» de un fármaco no es ayuno; «con el desayuno» no es ayuno en DIETA
+    ck.cirugias = [{ id: 'c1', fecha: manS, procedimiento: 'COLECISTECTOMÍA' }];
+    poner(blq({ DIETA: ['DIETA PARA DIABÉTICO'], MEDICAMENTOS: ['INSULINA NPH 20 UI SC ANTES DEL DESAYUNO', 'LEVOTIROXINA 100 MCG VO EN AYUNO'] })); r.cxDesayuno = reglas();
+    ck.cirugias = [];
+    poner(blq({ DIETA: ['DIETA BLANDA', 'SUPLEMENTO ENSURE CON EL DESAYUNO'] })); r.dietaDesayuno = reglas();
+    // R2/R3: la Foley no es drenaje; «CUANTIFICAR DRENAJES» sí cuenta
+    ck.dispositivos = [{ id: 'd1', tipo: 'Saratoga', lado: 'D', fi: hoyS }];
+    poner(blq({ 'MEDIDAS GENERALES': ['CUIDADOS DE SONDA FOLEY POR TURNO', 'VIGILAR SONDA FOLEY Y CUANTIFICAR URESIS'] })); r.foley = reglas();
+    ck.dispositivos = [{ id: 'd2', tipo: 'Penrose', fi: hoyS }];
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR DRENAJES'] })); r.cuantDren = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICACIÓN DE URESIS Y DRENAJES'] })); r.cuantDren2 = reglas();
+    ck.dispositivos = [];
+    // R4: lo que el Doc manda suspender no se juzga
+    poner(blq({ 'ANTIBIÓTICOS': ['SUSPENDER CEFTRIAXONA'], 'MEDIDAS GENERALES': ['SE SUSPENDE NPT', 'SIGNOS VITALES POR TURNO'] })); r.susp = reglas();
+    // R5: K alto con KCl en las soluciones del Doc → aparece en la revisión; sin KCl en el Doc, no
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '6.1' } }];
+    poner(blq({ SOLUCIONES: ['SOL MIXTA 1000 CC + KCL 20 MEQ P/24 HRS'] })); r.revK = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    poner(blq({ SOLUCIONES: ['SOL HARTMANN 1000 CC P/24 HRS'] })); r.revSinK = _indRevisionItems(p, getNote(k), k).map(x => x.ruleId);
+    nd.labHistory = [];
+    // R6: firma pegada al encabezado del siguiente paciente (sin renglón vacío)
+    const d0 = new Date(); const fh = d0.getDate() + '/' + (d0.getMonth() + 1) + '/' + d0.getFullYear() + ' 8:00 am';
+    const txt = ['💯 3-120', '', 'INDICACIONES MÉDICAS DE PACIENTE SIETE', 'PACIENTE SIETE 40 AÑOS | CAMA 3-120', fh, '', 'DIETA', 'DIETA BLANDA', '', 'MEDICAMENTOS', 'PARACETAMOL 1 G IV C/8 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'DR PRUEBA MBCG | DRA OTRA R1CG',
+      'INDICACIONES MÉDICAS DE PACIENTE OCHO', 'PACIENTE OCHO 50 AÑOS | CAMA 3-121', fh, '', 'DIETA', 'AYUNO', '', 'MEDICAMENTOS', 'OMEPRAZOL 40 MG IV C/24 H', '', 'MEDIDAS GENERALES', 'SIGNOS VITALES POR TURNO', 'DR TERCERO MBCG'].join('\n');
+    r.parse = PLIndicaciones.parsePasted(txt).blocks.map(b => ({ firma: b.firma, medidas: b['MEDIDAS GENERALES'] }));
+    noteData[k] = nd;
+    return r;
+  });
+  check('I21 revisión adversarial: el ayuno postoperatorio no es «quirófano sin cirugía» (el de «para cirugía» sí); «antes del desayuno»/«VO en ayuno» de un fármaco no tapa «cirugía mañana sin ayuno» y «con el desayuno» no es ayuno; la Foley no cuenta como cuantificar el drenaje y «CUANTIFICAR DRENAJES» sí; lo suspendido no se juzga; KCl del Doc con K alto aparece en la revisión; la firma pegada al siguiente encabezado se conserva',
+    i21.qxPost.indexOf('ind_qx_sin_programar') < 0 && i21.qxPost2.indexOf('ind_qx_sin_programar') < 0 && i21.qxPre.indexOf('ind_qx_sin_programar') >= 0
+    && i21.cxDesayuno.indexOf('ind_cx_sin_ayuno') >= 0 && i21.dietaDesayuno.indexOf('ind_dieta_ayuno') < 0
+    && i21.foley.indexOf('ind_dren_gasto') >= 0 && i21.cuantDren.indexOf('ind_dren_gasto') < 0 && i21.cuantDren2.indexOf('ind_dren_gasto') < 0
+    && i21.susp.indexOf('ind_atb_sin_fi') < 0 && i21.susp.indexOf('ind_npt_labs') < 0
+    && i21.revK.indexOf('hiperK') >= 0 && i21.revSinK.indexOf('hiperK') < 0
+    && i21.parse.length === 2 && i21.parse[0].firma === 'DR PRUEBA MBCG | DRA OTRA R1CG' && JSON.stringify(i21.parse[0].medidas) === '["SIGNOS VITALES POR TURNO"]' && i21.parse[1].firma === 'DR TERCERO MBCG', JSON.stringify(i21));
+
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-IND: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();

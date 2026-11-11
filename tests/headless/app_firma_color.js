@@ -134,6 +134,128 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
   const f5 = await page.evaluate(() => _egLineasFechadas('Gerardo 10.11.26 23:50 - Cambiar apósitos\n✓ Ana 09.11.26 08:00 - TAC\n  sigue sin firma\nGerardo 11.11.26 07:00 - '));
   check('F5 _egLineasFechadas: la firma nueva da la fecha del renglón y «Nombre: texto» (✓ se conserva; la continuación hereda la fecha; la firma sola no crea renglón)',
     JSON.stringify(f5) === JSON.stringify([{ fecha: '2026-11-10', text: 'Gerardo: Cambiar apósitos' }, { fecha: '2026-11-09', text: '✓ Ana: TAC' }, { fecha: '2026-11-09', text: 'sigue sin firma' }]), JSON.stringify(f5));
+  // ── F6: revisión adversarial del 11 nov 2026 ──
+  const f6 = await page.evaluate(() => {
+    const st = 'Gerardo 11.11.26 10:00 - ';
+    const r = {};
+    r.arribaEdita = plStampNewLines('Pendiente TAC', 'Llamar a cirugía\nPendiente TAC abdominal', st);
+    r.medioEdita = plStampNewLines('L1\nL2\nL3', 'L1\nNUEVO\nL2 editado\nL3', st);
+    r.mover = plStampNewLines('A uno\nB dos\nC tres', 'B dos\nC tres\nA uno', st);
+    r.partir = plStampNewLines('Ana 10.11.26 23:50 - Penrose 30cc, Blake 20cc', 'Ana 10.11.26 23:50 - Penrose 30cc,\nBlake 20cc', st);
+    r.corto = plStampNewLines('TAC', 'TC', st);
+    r.vineta = plStampNewLines('Pedir BH', 'Pedir BH\n- ', st);
+    r.cambia = plStampNewLines('Pedir BH', 'Llamar a nefrología', st);
+    r.solo = [plSoloFirma('Gerardo 11.11.26 10:00 - '), plSoloFirma('Gerardo 11.11.26 10:00 - TAC'), plSoloFirma('11/11 —')];
+    r.sin = plSinFirma('✓ Gerardo 11.11.26 10:00 - TAC');
+    r.nota = _plneLineas('Gerardo 11.11.26 10:00 - \nGerardo 11.11.26 10:01 - Pedir TAC\n11/11 — \n• IC nefro');
+    r.crono = _egLineasFechadas('Gerardo 11.11.26 10:00 - Se pasó 1 PG\n09/11 22:15 GF: Fiebre 38.5, hemocultivos\n08/11 07:30 AB: Ingresa de urgencias\nVIGILAR DRENAJE 3');
+    return r;
+  });
+  check('F6 revisión adversarial (lógica): el renglón nuevo arriba de uno editado se firma y el editado no; mover o partir un renglón no lo firma; corregir «TAC»→«TC» es editar; una viñeta sola no se firma; reemplazar el texto por otro distinto sí; la firma sola no cuenta como pendiente ni pasa a la nota; la Cronología vieja no hereda la fecha de una firma nueva',
+    f6.arribaEdita === 'Gerardo 11.11.26 10:00 - Llamar a cirugía\nPendiente TAC abdominal' && f6.medioEdita === 'L1\nGerardo 11.11.26 10:00 - NUEVO\nL2 editado\nL3'
+    && f6.mover === 'B dos\nC tres\nA uno' && f6.partir === 'Ana 10.11.26 23:50 - Penrose 30cc,\nBlake 20cc' && f6.corto === 'TC' && f6.vineta === 'Pedir BH\n- '
+    && f6.cambia === 'Gerardo 11.11.26 10:00 - Llamar a nefrología' && JSON.stringify(f6.solo) === '[true,false,false]' && f6.sin === '✓ TAC'
+    && JSON.stringify(f6.nota) === '["Pedir TAC","IC nefro"]'
+    && f6.crono.length === 4 && f6.crono[0].fecha === '2026-11-11' && /Fiebre/.test(f6.crono[1].text) && /-11-09$/.test(f6.crono[1].fecha) && /-11-08$/.test(f6.crono[2].fecha) && f6.crono[3].fecha === f6.crono[2].fecha, JSON.stringify(f6));
+
+  // ── F7: en la tarjeta: se firma AL ESCRIBIR (el autoguardado ya sube el renglón firmado); ➕ Hoy no apila firmas vacías ni
+  // reusa la de otro día; ➕ Hoy de IC tampoco; lo que cambia por código con la caja abierta no se firma con el nombre de
+  // quien escribe; un renglón sin firma y sin sangría no toma el color de la firma de arriba ──
+  const k7 = await page.evaluate(async () => { const k = pid(patients[0]); const nd = getNote(k); nd.pendientes = 'Pedir BH'; noteData[k] = nd; _rerenderCard(k); await new Promise(r => setTimeout(r, 300)); return k; });
+  posts.length = 0;
+  const sel7 = 'textarea[data-key="' + k7 + '"][data-field="pendientes"]';
+  await page.click(sel7); await page.keyboard.press('End'); await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter'); await page.keyboard.type('Retirar SNG', { delay: 15 });
+  await page.waitForTimeout(1600);
+  const f7a = await page.evaluate((sel) => { const ta = document.querySelector(sel); return { val: ta.value, caret: ta.selectionStart, len: ta.value.length }; }, sel7);
+  const subidas7 = posts.filter(b => b && typeof b.pendientes === 'string').map(b => b.pendientes);
+  // cambio por código con la caja abierta (otra pestaña / botón): «DE OTRO» no se firma con el nombre de quien escribe
+  await page.evaluate((sel) => { const ta = document.querySelector(sel); ta.value = ta.value + '\nDE OTRO'; }, sel7);
+  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Mío', { delay: 15 });
+  const f7b = await page.evaluate((sel) => document.querySelector(sel).value, sel7);
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  const f7c = await page.evaluate(async (k) => {
+    const r = {};
+    const nd = getNote(k);
+    nd.pendientes = 'Gerardo 10.11.26 08:00 - \nPedir BH'; noteData[k] = nd; _rerenderCard(k); await new Promise(x => setTimeout(x, 200));
+    pendInsertToday(k); r.hoy1 = getNote(k).pendientes; pendInsertToday(k); r.hoy2 = getNote(k).pendientes;
+    const nd2 = getNote(k); nd2.checklist = nd2.checklist || {}; nd2.checklist.interconsultas = 'MI: valorado\nGerardo 10.11.26 08:00 - '; noteData[k] = nd2; _rerenderCard(k); await new Promise(x => setTimeout(x, 200));
+    insertTodayStamp(k, 'interconsultas', true, 'Interconsultas'); r.ic1 = getNote(k).checklist.interconsultas;
+    insertTodayStamp(k, 'interconsultas', true, 'Interconsultas'); r.ic2 = getNote(k).checklist.interconsultas;
+    document.activeElement && document.activeElement.blur();
+    const nd3 = getNote(k); nd3.pendientes = 'Gerardo 11.11.26 10:00 - Nuevo\n  sigue el nuevo\nPedir BH viejo'; noteData[k] = nd3; _rerenderCard(k); await new Promise(x => setTimeout(x, 300));
+    plStMountAll();
+    const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]'); const bd = ta && ta.previousElementSibling;
+    r.capa = bd && bd.classList.contains('pl-st-bd') ? bd.innerHTML.split('\n').map(l => /background/.test(l)) : null;
+    nd3.pendientes = ''; noteData[k] = nd3; _rerenderCard(k);
+    return r;
+  }, k7);
+  const z7 = n => String(n).padStart(2, '0'); const h7 = new Date(); const fe7 = z7(h7.getDate()) + '\\.' + z7(h7.getMonth() + 1) + '\\.' + String(h7.getFullYear()).slice(2);
+  const firmaHoy = new RegExp('^Gerardo ' + fe7 + ' \\d{2}:\\d{2} - ');
+  check('F7 en la tarjeta: al escribir un renglón nuevo se firma desde la primera letra (con el cursor al final y sin que se suba nunca sin firma); lo que cambió por código con la caja abierta no se firma con el nombre de quien escribe; ➕ Hoy cambia una firma vacía de ayer por la de hoy y no apila otra (igual en IC); un renglón sin firma ni sangría no toma el color de la firma de arriba',
+    /^Pedir BH\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Retirar SNG$/.test(f7a.val) && f7a.caret === f7a.len && subidas7.length > 0 && subidas7.every(v => !/\nRetirar SNG$/.test(v) && !/\nR$/.test(v))
+    && /\nDE OTRO\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Mío$/.test(f7b)
+    && firmaHoy.test(f7c.hoy1) && /\nPedir BH$/.test(f7c.hoy1) && f7c.hoy1.split('\n').length === 2 && f7c.hoy2 === f7c.hoy1
+    && /^MI: valorado\n/.test(f7c.ic1) && firmaHoy.test(f7c.ic1.split('\n')[1]) && f7c.ic1.split('\n').length === 2 && f7c.ic2 === f7c.ic1
+    && JSON.stringify(f7c.capa && f7c.capa.slice(0, 3)) === '[true,true,false]', JSON.stringify({ f7a, subidas7, f7b, f7c }));
+
+  // ── F8: sin la marca «editado aquí», lo que este equipo guardó DESPUÉS de que empezó una carga (diagrama, labs del PDF,
+  // fecha de labs borrada) no lo regresa la foto vieja de la nube ──
+  const f8 = await page.evaluate(() => {
+    const k = pid(patients[0]); const t0 = Date.now() - 5000;
+    const nd = getNote(k); nd.checklist = nd.checklist || {};
+    nd.body_diagram_ant = 'data:image/png;base64,LOCAL'; nd.labHistory = [{ fecha: '2026-11-10', labs: { hb: '9' }, client_updated_at: Date.now() }]; nd.checklist.__lab_deleted = ['2026-11-01']; noteData[k] = nd;
+    _dirtyFields[k] = new Set(); delete _pendingDirty[k]; delete _inflightDirty[k];
+    _touchLocalFields(k, ['body_diagram_ant', 'labHistory', 'checklist']);
+    const vieja = JSON.parse(JSON.stringify(nd)); vieja.body_diagram_ant = 'data:image/png;base64,VIEJA';
+    vieja.labHistory = [{ fecha: '2026-11-01', labs: { hb: '7' }, client_updated_at: 1 }]; vieja.checklist.__lab_deleted = [];
+    const cargada = {}; cargada[k] = vieja; cargada.__loadStartTs = t0;
+    _applyLoadedNotes(cargada);
+    const v = noteData[k];
+    const r = { diag: v.body_diagram_ant, fechas: (v.labHistory || []).map(x => x.fecha), del: (v.checklist || {}).__lab_deleted };
+    v.body_diagram_ant = ''; v.labHistory = []; v.checklist.__lab_deleted = []; delete cargada.__loadStartTs;
+    return r;
+  });
+  check('F8 una carga que empezó antes de guardar no regresa el diagrama, no revive la fecha de labs borrada y no quita los labs del PDF',
+    f8.diag === 'data:image/png;base64,LOCAL' && JSON.stringify(f8.fechas) === '["2026-11-10"]' && JSON.stringify(f8.del) === '["2026-11-01"]', JSON.stringify(f8));
+
+  // ── F9: PDF de labs cuando la tarjeta cambia de clave a media subida, y cuando la subida a Storage cae al respaldo ──
+  const f9 = await page.evaluate(async () => {
+    const p = patients[0]; const k0 = pid(p); const id0 = p._supa_id || p.id; const hoyS = todayStr();
+    const orig = { gp: window.getProxyUrl, cw: window.callLabsExtractionWorker, at: window.attachLabSourceToSnap, al: window.alert };
+    const r = { alerts: [] };
+    window.getProxyUrl = () => 'https://proxy.test'; window.alert = (m) => { r.alerts.push(String(m).slice(0, 80)); };
+    window.callLabsExtractionWorker = async () => ({ patients: [{ paciente: p.nombre, fecha_labs: hoyS, hb: '10.2' }] });
+    try {
+      // (a) la tarjeta recibe otro id durante la subida
+      const nd = getNote(k0); nd.pendientes = 'NO SE PIERDE'; nd.labHistory = []; noteData[k0] = nd; _dirtyFields[k0] = new Set();
+      const idNuevo = '7b000000-0000-4000-8000-0000000000aa';
+      window.attachLabSourceToSnap = async () => { _relinkPatientId(p, idNuevo); };
+      await handleLabPDF(k0, { files: [new File(['%PDF-1.4 x'], 'a.pdf', { type: 'application/pdf' })], value: 'x' });
+      const k1 = pid(p);
+      r.claveCambio = k1 !== k0; r.vieja = !!noteData[k0];
+      const v1 = getNote(k1); r.pend = v1.pendientes; r.hb = ((v1.labHistory || []).find(x => x.fecha === hoyS) || { labs: {} }).labs.hb;
+      r.marcas = Array.from(_dirtyFields[k1] || []);
+      _relinkPatientId(p, id0);
+      // (b) la nota se re-arma durante la subida y Storage falla (respaldo dentro de la nota): no queda la ruta del PDF anterior
+      const k2 = pid(p); const nd2 = getNote(k2);
+      nd2.labHistory = [{ fecha: hoyS, labs: { na: '139' }, source: 'manual', source_storage_bucket: 'labs', source_storage_path: 'X/viejo.pdf', source_file_name: 'viejo.pdf' }]; noteData[k2] = nd2;
+      window.attachLabSourceToSnap = async (kk, fecha, snap) => {
+        noteData[kk] = JSON.parse(JSON.stringify(getNote(kk)));
+        snap.source_storage_bucket = ''; snap.source_storage_path = ''; snap.source_file = 'data:application/pdf;base64,NUEVO'; snap.source_file_name = 'nuevo.pdf'; snap.source_file_type = 'application/pdf';
+      };
+      await handleLabPDF(k2, { files: [new File(['%PDF-1.4 y'], 'nuevo.pdf', { type: 'application/pdf' })], value: 'x' });
+      const s2 = (getNote(k2).labHistory || []).find(x => x.fecha === hoyS) || {};
+      r.ruta = s2.source_storage_path; r.archivo = s2.source_file_name; r.inline = /NUEVO/.test(s2.source_file || ''); r.na = (s2.labs || {}).na; r.hb2 = (s2.labs || {}).hb;
+    } catch (e) { r.err = String(e && e.stack || e).slice(0, 300); }
+    Object.assign(window, { getProxyUrl: orig.gp, callLabsExtractionWorker: orig.cw, attachLabSourceToSnap: orig.at, alert: orig.al });
+    const kf = pid(p); _dirtyFields[kf] = new Set(); const ndf = getNote(kf); ndf.pendientes = ''; ndf.labHistory = []; noteData[kf] = ndf;
+    return r;
+  });
+  check('F9 PDF de labs: si la tarjeta cambia de clave a media subida, los labs entran a la nota del paciente sin vaciarla ni dejar una nota en blanco ni la marca; si Storage falla, el enlace queda en el archivo nuevo (no en la ruta del PDF anterior)',
+    !f9.err && f9.alerts.length === 0 && f9.claveCambio && !f9.vieja && f9.pend === 'NO SE PIERDE' && f9.hb === '10.2' && f9.marcas.indexOf('labHistory') < 0
+    && f9.ruta === '' && f9.archivo === 'nuevo.pdf' && f9.inline && f9.na === '139' && f9.hb2 === '10.2', JSON.stringify(f9));
+
   if (SHOT) {
     await page.evaluate(() => { const k = pid(patients[0]); const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]'); ta.value = 'Ana 10.11.26 22:10 - Revisar herida\n  y retirar puntos alternos\n' + ta.value + '\nTexto viejo sin firma'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.scrollIntoView({ block: 'center' }); });
     await page.waitForTimeout(500);
