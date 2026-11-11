@@ -6192,13 +6192,14 @@ const PLCDS = (function() {
   // Qué cuenta como «cuantificar el gasto» (11 nov 2026, revisión): un verbo de medir seguido del drenaje o del gasto
   // («CUANTIFICAR DRENAJES», «CUANTIFICACIÓN DE GASTO DE PENROSE»), o «vigilar/cuidados … drenaje … gasto/ml», o «gasto
   // por/de los drenajes». La sonda Foley NO es drenaje: «CUIDADOS DE SONDA FOLEY POR TURNO» o «CUANTIFICAR URESIS» no cuentan.
-  const IND_DREN_PAL = "(GASTOS?(?!\\s+(URINARIO|DE\\s+(LA\\s+)?(SONDA\\s+)?FOLEY|POR\\s+(LA\\s+)?(SONDA\\s+)?FOLEY))|DRENAJES?|DRENES|\\bDREN\\b|PENROSE|SARATOGA|BLAKE|JACKSON|\\bJP\\b|HEMOVAC|DRENOVAC|BIOVAC|PIGTAIL|ENDOPLEURAL|ESTOMAS?|ILEOST\\w*|COLOST\\w*|YEYUNOST\\w*|NEFROSTOM\\w*|KEHR|SONDA\\s+EN\\s+T|SONDA\\s+(NASO\\w*|ENDOPLEURAL|PLEURAL)|\\bSEP\\b|\\bSNG\\b|\\bCMP\\b|FISTULA)";
+  const IND_GASTO_NO_FOLEY = "GASTOS?\\b(?!\\s+(URINARIOS?|(DE|POR)\\s+(LA\\s+)?(SONDA\\s+)?FOLEY))";   // el gasto urinario no es del drenaje
+  const IND_DREN_PAL = "(" + IND_GASTO_NO_FOLEY + "|DRENAJES?|DRENES|\\bDREN\\b|PENROSE|SARATOGA|BLAKE|JACKSON|\\bJP\\b|HEMOVAC|DRENOVAC|BIOVAC|PIGTAIL|ENDOPLEURAL|ESTOMAS?|ILEOST\\w*|COLOST\\w*|YEYUNOST\\w*|NEFROSTOM\\w*|KEHR|SONDA\\s+EN\\s+T|SONDA\\s+(NASO\\w*|ENDOPLEURAL|PLEURAL)|\\bSEP\\b|\\bSNG\\b|\\bCMP\\b|FISTULA)";
   // «Reportar sangrado por drenaje» o «cuidados del drenaje» NO es cuantificar: con esos verbos se pide además gasto/ml.
   const IND_GASTO_RE = new RegExp("(CUANTIFIC\\w*|MEDIR|MEDICION|CONTABILIZ\\w*)[^|.]{0,40}" + IND_DREN_PAL +
     "|(REGISTR\\w*|ANOTAR|REPORTAR|VIGILAR|CUIDADOS)[^|]{0,60}" + IND_DREN_PAL + "[^|]{0,40}(GASTO|CUANTIF|\\bML\\b|CC\\b)" +
-    "|(REGISTR\\w*|ANOTAR|REPORTAR)[^|.]{0,30}GASTOS?(?!\\s+URINARIO)" +
+    "|(REGISTR\\w*|ANOTAR|REPORTAR)[^|.]{0,30}" + IND_GASTO_NO_FOLEY +
     "|GASTOS?\\s+(DE|POR|DEL|EN)\\s+(LOS\\s+|LAS\\s+|LA\\s+|EL\\s+)?" + IND_DREN_PAL);
-  const IND_QX_RE = /PREPARA\w*\s+(PARA\s+)?(EL\s+|SU\s+)?(QUIROFANO|\bQX\b|CIRUGIA|PASE\s+A\s+QUIROFANO|PROCEDIMIENTO\s+QUIRURGICO)|PASAR\s+A\s+(QUIROFANO|\bQX\b)|\bAYUNO\b(?:(?!\bPOST|\bPOS(OP|Q)|DESPUES|\bTRAS\b)[^|]){0,50}(QUIROFANO|CIRUGIA|\bQX\b|PROCEDIMIENTO\s+QUIRURGICO|PREQUIRURGIC|PREOPERATORI)/;   // «ayuno post qx», «ayuno para CPRE» no
+  const IND_QX_RE = /PREPARA\w*\s+(PARA\s+)?(EL\s+|SU\s+)?(QUIROFANO|\bQX\b|CIRUGIA|PASE\s+A\s+QUIROFANO|PROCEDIMIENTO\s+QUIRURGICO)|PASAR\s+A\s+(QUIROFANO|\bQX\b)|\bAYUNO\b(?:(?!\bPOST|\bPOS(OP|Q)|DESPUES|\bTRAS\b|\bSIN\b|\bNO\b|VALORA|DIFIER|DIFERI|CONSERVADOR|CANDIDAT)[^|]){0,50}((PARA|PREVI[OA]\s+A|ANTES\s+DE|POR)\s+(EL\s+|LA\s+|SU\s+)?(QUIROFANO|CIRUGIA|\bQX\b|PROCEDIMIENTO\s+QUIRURGICO)|PREQUIRURGIC|PREOPERATORI)/;   // «ayuno post qx», «ayuno para CPRE» no
   const IND_AYUNO_RE = /\bAYUN(O|AS)\b|NADA\s+POR\s+VIA\s+ORAL|\bNVO\b|\bNPO\b|SUSPENDER\s+(LA\s+)?VIA\s+ORAL/;   // «DESAYUNO» no
   const IND_DIETA_RE = /DIETA\s+(LIQUIDA|BLANDA|NORMAL|LIBRE|POLIMERICA|COMPLETA|ASTRINGENTE|HIPO\w*|HIPER\w*|BAJA|RICA|PARA|DE\s|EN\s|BASE|SEMI\w*|PAPILLA|PICADA|COLADA|NORMO\w*)|LIQUIDOS\s+CLAROS|VIA\s+ORAL\s+A\s+TOLERANCIA|DIETA\s*:?\s*$|^DIETA\s+[A-Z]/;
   const IND_SECUENCIA_RE = /POSTERIOR|DESPUES|LUEGO|A\s+PARTIR|AL\s+TERMINO|\bTRAS\b|HASTA|PREVI[OA]|INICIAR|INICIO\s+DE|PROGRESAR|SI\s+TOLERA|CUANDO|POR\s+LA\s+(MAÑANA|MANANA|TARDE|NOCHE)|\d{1,2}\s*:\s*\d{2}|\d{1,2}\s*(HRS?|HORAS)\b/;
@@ -11253,8 +11254,9 @@ function plExportBackup() {
        Cada nota generada o copiada se guarda en checklist.nota_hist (máx. 10) para volver a verla. */
     var PLNE_HIST_MAX = 10;
     var _plneBusy = false, _plneLastIa = false;
-    function _plneCtxLinea(label, txt){
-      var lines=plTextoSinFirmas(txt===undefined||txt===null?"":txt).split("\n").map(function(s){ return s.replace(/^[\s•\-*☐▪·]+/,"").trim(); }).filter(Boolean);
+    function _plneCtxLinea(label, txt, firmas){
+      var base=(txt===undefined||txt===null?"":txt);
+      var lines=String(firmas==="fecha" ? plTextoConFecha(base) : firmas ? plTextoSinFirmas(base) : base).split("\n").map(function(s){ return s.replace(/^[\s•\-*☐▪·]+/,"").trim(); }).filter(Boolean);
       return lines.length?(label+": "+lines.join(" | ")):"";
     }
     function _plneContexto(p, nd){
@@ -11264,11 +11266,11 @@ function plExportBackup() {
         _plneCtxLinea("PADECIMIENTO ACTUAL / RESUMEN", nd.pa),
         _plneCtxLinea("FECHA DE INGRESO", p.ingreso),
         _plneCtxLinea("ESTADO EN EL CENSO", p.estado),
-        _plneCtxLinea("OTROS (NOTAS LIBRES DE LA TARJETA)", nd.manejo),
-        _plneCtxLinea("PENDIENTES", nd.pendientes),
-        _plneCtxLinea("INTERCONSULTAS", ck.interconsultas),
-        _plneCtxLinea("CULTIVOS (CAJA)", ck.cultivos),
-        _plneCtxLinea("CRONOLOGÍA DE GUARDIAS", nd.entrega),
+        _plneCtxLinea("OTROS (NOTAS LIBRES DE LA TARJETA)", nd.manejo, true),
+        _plneCtxLinea("PENDIENTES", nd.pendientes, true),
+        _plneCtxLinea("INTERCONSULTAS", ck.interconsultas, true),
+        _plneCtxLinea("CULTIVOS (CAJA)", ck.cultivos, true),
+        _plneCtxLinea("CRONOLOGÍA DE GUARDIAS", nd.entrega, "fecha"),
         _plneCtxLinea("RECIBO DE GUARDIA (CAJA ANTIGUA)", ck.recibo),
         _plneCtxLinea("HERIDA QUIRÚRGICA (PASE)", ck.pm_hxqx)
       ].filter(Boolean).join("\n");
@@ -12918,6 +12920,7 @@ function plExportBackup() {
         const cand = t.i.filter(function (y) {
           const ny = _stNorm(b[y]);
           if (!ny) return false;
+          if (opts && opts.ajenas && opts.ajenas.has(String(b[y]).trim())) return false;   // lo puso el código, no la persona
           return !borrados.some(function (bx) { return bx === ny || (ny.length >= 3 && bx.indexOf(ny) >= 0); });
         });
         const usado = {}, nc = {}; cand.forEach(function (y) { nc[y] = _stNorm(b[y]); });
@@ -12952,6 +12955,13 @@ function plExportBackup() {
     // ¿El renglón es solo una firma, sin texto? («Gerardo 11.11.26 10:00 - »)
     function plSoloFirma(line) { const t = String(line || "").trim(); const au = plStampAuthor(t); return !!(au && !au.old && !t.slice(au.len).trim()); }
     // El texto del renglón sin la firma nueva (conserva «✓ »).
+    // Bitácoras fechadas (Cronología, nota de drenajes): la firma se acorta a «11.11 03:10: texto» (sin el nombre).
+    function plTextoConFecha(t) {
+      return String(t == null ? "" : t).split("\n").map(function (l) {
+        const m = /^(\s*(?:✓\s*)?)\p{L}[\p{L}.'-]{0,24}\s+(\d{1,2}\.\d{1,2})\.\d{2,4}\s+(\d{1,2}:\d{2})(?:\s*[ap]\.?\s?m\.?)?\s*[-–—]\s?/iu.exec(l);
+        return m ? m[1] + m[2] + " " + m[3] + ": " + l.slice(m[0].length) : l;
+      }).join("\n");
+    }
     function plTextoSinFirmas(t) { return String(t == null ? "" : t).split("\n").filter(function (l) { return !plSoloFirma(l); }).map(plSinFirma).join("\n"); }
     function plSinFirma(line) {
       const s0 = String(line == null ? "" : line); const m = /^\s*✓\s*/.exec(s0); const resto = m ? s0.slice(m[0].length) : s0;
@@ -13046,7 +13056,7 @@ function plExportBackup() {
         document.querySelectorAll(".pl-st-bd").forEach(function (bd) { if (!bd._ta || !bd._ta.isConnected || bd.nextElementSibling !== bd._ta) bd.remove(); });
       } catch (_) {}
     }
-    window.plStampNewLines = plStampNewLines; window.plSoloFirma = plSoloFirma; window.plSinFirma = plSinFirma; window.plTextoSinFirmas = plTextoSinFirmas; window.plFirmaVaciaMia = plFirmaVaciaMia; window.plStampNow = plStampNow; window.plStampAuthor = plStampAuthor; window.plAuthorColor = plAuthorColor; window.plStMountAll = plStMountAll;
+    window.plStampNewLines = plStampNewLines; window.plSoloFirma = plSoloFirma; window.plSinFirma = plSinFirma; window.plTextoSinFirmas = plTextoSinFirmas; window.plTextoConFecha = plTextoConFecha; window.plFirmaVaciaMia = plFirmaVaciaMia; window.plStampNow = plStampNow; window.plStampAuthor = plStampAuthor; window.plAuthorColor = plAuthorColor; window.plStMountAll = plStMountAll;
     (function () {
       // Base = lo que tenía la caja al entrar. Al SOLTARLA (change) se firman los renglones nuevos, antes de que el onchange
       // de la caja guarde (estos escuchas van en captura, en document: corren antes). Mientras se escribe no se toca el texto:
@@ -13056,24 +13066,42 @@ function plExportBackup() {
       const firmar = function (t) {
         if (t.__stBase === undefined) return false;
         const st = plStampNow(); if (!st) return false;
-        const v = t.value, nv = plStampNewLines(t.__stBase, v, st, { pegado: !!t.__stPegado });
+        const v = t.value, nv = plStampNewLines(t.__stBase, v, st, { pegado: !!t.__stPegado, ajenas: t.__stAjenas });
         if (nv === v) return false;
         t.value = nv;
         return true;
       };
-      document.addEventListener("focusin", function (e) { const t = e.target; if (plStampField(t)) { t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; } }, true);
+      document.addEventListener("focusin", function (e) { const t = e.target; if (plStampField(t)) { t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null; } }, true);
+      // Renglones que el CÓDIGO metió en la caja con el foco puesto (no los de la persona): no se firman con su nombre.
+      const ajenas = function (t) {
+        if (t.__stUlt === undefined || t.value === t.__stUlt) return;
+        const antes = {}; String(t.__stUlt).split("\n").forEach(function (l) { const k = l.trim(); antes[k] = (antes[k] || 0) + 1; });
+        String(t.value).split("\n").forEach(function (l) { const k = l.trim(); if (!k) return; if (antes[k]) antes[k]--; else (t.__stAjenas = t.__stAjenas || new Set()).add(k); });
+        t.__stUlt = t.value;
+      };
       document.addEventListener("beforeinput", function (e) {
         const t = e.target; if (!plStampField(t) || t.__stBase === undefined) return;
-        if (t.__stUlt !== undefined && t.value !== t.__stUlt) t.__stBase = t.value;   // cambió por código: es la nueva base
+        ajenas(t);
         if (/^insertFrom(Paste|Drop)/.test(e.inputType || "")) t.__stPegado = true;    // un pegado largo lleva una sola firma
       }, true);
       document.addEventListener("input", function (e) { const t = e.target; if (e.isTrusted && plStampField(t)) t.__stUlt = t.value; }, true);
       document.addEventListener("change", function (e) {
         const t = e.target; if (!e.isTrusted || !plStampField(t)) return;
+        ajenas(t);
         if (firmar(t)) { try { if (typeof _autoResizeTA === "function") _autoResizeTA(t); } catch (_) {} }
-        t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false;
+        t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
         plStMount(t);
       }, true);
+      // Al salir (cerrar, recargar, cambiar de app) no llega el «change»: se firma la caja que tiene el foco antes de guardar.
+      window.__plStFirmarActiva = function () {
+        try {
+          const t = document.activeElement; if (!plStampField(t)) return;
+          ajenas(t);
+          if (!firmar(t)) return;
+          try { t.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) {}   // el oninput de la caja actualiza la nota
+          t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+        } catch (_) {}
+      };
       // Tras cada repintado (vista, tarjeta, Realtime) se vuelve a poner la capa de color.
       try {
         let raf = 0;
@@ -14959,20 +14987,29 @@ function plExportBackup() {
             // carga empezó antes de guardarlos, la foto de la nube es de antes y los regresaba. Se conserva lo de este equipo.
             nd[field] = prevNd[field];
           } else if (field === "labHistory") {
-            // Fechas borradas aquí o en otro equipo (unión de lápidas): no vuelven por ningún lado.
-            const borradas = new Set([].concat(((prevNd.checklist || {}).__lab_deleted) || [], ((nd.checklist || {}).__lab_deleted) || []));
-            const fuera = function (x) { return !(x && borradas.has(x.fecha)); };
-            nd.labHistory = _mergeLabHistory((prevNd.labHistory || []).filter(fuera), (nd.labHistory || []).filter(fuera), true);
+            // Lápidas: la copia de la nube se filtra con las de los dos lados; la de ESTE equipo solo con las que puso otro
+            // equipo (una fecha borrada aquí pudo volver a llenarse aquí). Una fecha regresada o editada aquí después de que
+            // empezó la carga (↩ Regresar, corrección) no se filtra.
+            const locB = new Set(((prevNd.checklist || {}).__lab_deleted) || []);
+            const recientes = new Set((prevNd.labHistory || []).filter(function (x) { return x && (x.client_updated_at || 0) >= sinceTs; }).map(function (x) { return x.fecha; }));
+            const remB = (((nd.checklist || {}).__lab_deleted) || []).filter(function (f) { return !recientes.has(f); });
+            const borradas = new Set([].concat(Array.from(locB), remB));
+            const ajenas = new Set(remB.filter(function (f) { return !locB.has(f); }));
+            nd.labHistory = _mergeLabHistory((prevNd.labHistory || []).filter(function (x) { return !(x && ajenas.has(x.fecha)); }),
+              (nd.labHistory || []).filter(function (x) { return !(x && borradas.has(x.fecha)); }), true);
           } else if (field === "checklist") {
             // Lápidas de labs: se SUMAN las de este equipo a las de la nube (no se reemplazan: la de otro equipo se respeta).
             const pc = prevNd.checklist || {}; if (!nd.checklist) nd.checklist = {}; const rc = nd.checklist;
-            const rem = Array.isArray(rc.__lab_deleted) ? rc.__lab_deleted : [];
-            const extra = (Array.isArray(pc.__lab_deleted) ? pc.__lab_deleted : []).filter(function (f) { return rem.indexOf(f) < 0; });
-            if (extra.length) {
-              rc.__lab_deleted = rem.concat(extra).slice(-100);
-              const dl = Object.assign({}, (pc.__lab_deleted_labs && typeof pc.__lab_deleted_labs === "object") ? pc.__lab_deleted_labs : {}, (rc.__lab_deleted_labs && typeof rc.__lab_deleted_labs === "object") ? rc.__lab_deleted_labs : {});
-              rc.__lab_deleted_labs = dl;
-            }
+            const recientes = new Set((prevNd.labHistory || []).filter(function (x) { return x && (x.client_updated_at || 0) >= sinceTs; }).map(function (x) { return x.fecha; }));
+            const locL = Array.isArray(pc.__lab_deleted) ? pc.__lab_deleted : [];
+            const rem = (Array.isArray(rc.__lab_deleted) ? rc.__lab_deleted : []).filter(function (f) { return !recientes.has(f) || locL.indexOf(f) >= 0; });
+            rc.__lab_deleted = rem.concat(locL.filter(function (f) { return rem.indexOf(f) < 0; })).slice(-100);
+            // Valores de lo borrado: se unen y lo de este equipo gana (es lo más nuevo).
+            const nubeDl = (rc.__lab_deleted_labs && typeof rc.__lab_deleted_labs === "object") ? rc.__lab_deleted_labs : {};
+            const locDl = (pc.__lab_deleted_labs && typeof pc.__lab_deleted_labs === "object") ? pc.__lab_deleted_labs : {};
+            const dl = Object.assign({}, nubeDl, locDl);
+            Object.keys(dl).forEach(function (f) { if (rc.__lab_deleted.indexOf(f) < 0) delete dl[f]; });
+            if (Object.keys(dl).length || rc.__lab_deleted_labs) rc.__lab_deleted_labs = dl;
           }
         });
       });
@@ -16045,6 +16082,7 @@ function plExportBackup() {
 
     // ─── EXIT GUARD: persistir y encolar notas pendientes antes de cerrar/suspender ──
     function persistBeforeExit() {
+      try { if (window.__plStFirmarActiva) window.__plStFirmarActiva(); } catch (_) {}
       try {
         Object.keys(noteData).forEach(function (k) {
           try { lsSaveNote(k, noteData[k]); } catch (_) {}
@@ -18903,7 +18941,7 @@ function plExportBackup() {
       // 💧 Gastos: drenajes y sondas con gasto, nota de drenajes, uresis y balance.
       const dt = (typeof dispositivosTexto === "function") ? dispositivosTexto(ck, " · ", false) : "";
       if (dt) R.gastos.push(dt);
-      if (toSafeString(nd.drenajes).trim()) R.gastos.push(_egCut(plTextoSinFirmas(nd.drenajes), 120));
+      if (toSafeString(nd.drenajes).trim()) R.gastos.push(_egCut(plTextoConFecha(nd.drenajes), 120));
       if (toSafeString(ck.pm_uresis).trim()) { const _iu = iuCalc(ck.pm_uresis, ck.pm_peso, ck.pm_uresis_h); R.gastos.push("Uresis " + toSafeString(ck.pm_uresis).trim() + (/^[\d.,]+$/.test(toSafeString(ck.pm_uresis).trim()) ? " mL" : "") + (_iu ? " (IU " + vpFmt(_iu.v, 2) + " mL/kg/h)" : "")); }
       const bal = (typeof balanceTexto === "function") ? balanceTexto(nd) : "";
       if (bal) R.gastos.push("Balance " + bal);
@@ -20164,7 +20202,7 @@ function plExportBackup() {
       const firma = (PL_STAMP_FIELDS[field] && nuevoRenglon && !plStampAuthor(texto)) ? plStampNow() : "";
       const next = cur.trim() ? (cur.replace(/\s+$/, "") + (sep || "\n") + firma + texto) : firma + texto;
       if (ta) {
-        ta.__stBase = next;   // ya firmado: el «change» de la caja no lo vuelve a firmar
+        ta.__stUlt = next;    // lo del lápiz ya va firmado (el «change» no refirma un renglón firmado); lo tecleado sigue contra la base
         ta.value = next;
         if (field.indexOf("ck:") === 0) { liveCkText(ta); updateCkText(k, field.slice(3), next); }
         else { liveUpdate(ta); updateField(k, field, next, cur); }
