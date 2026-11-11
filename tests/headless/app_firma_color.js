@@ -397,6 +397,75 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     !f10.err && f10.abierto === 'none' && f10.pend.split('\n')[0] === 'Ana 09.11.26 08:00 - ya estaba' && stRe.test(f10.pend.split('\n')[1]) && /Retirar sonda Foley$/.test(f10.pend)
     && f10.app === 'DM2' && stRe.test(f10.dren) && /Penrose 30 ml seroso$/.test(f10.dren) && stRe.test(f10.otros || '') && /Valorar retiro de SNG$/.test(f10.otros) && f10.igual, JSON.stringify(f10));
 
+  // ── F11: ✏️ Editar con teclado real (revisión adversarial del 11 nov) ──
+  const kF = await page.evaluate(async () => {
+    const k = pid(patients[0]); const nd = getNote(k);
+    nd.pendientes = 'Ana 09.11.26 08:00 - ya estaba'; nd.manejo = ''; nd.drenajes = 'Ana 09.11.26 08:00 - Penrose FID 30 cc seroso\nBeto 10.11.26 09:00 - Blake 50 cc hemático';
+    noteData[k] = nd; _dirtyFields[k] = new Set(); focusGoTo(k); await new Promise(r => setTimeout(r, 400));
+    return k;
+  });
+  const pendCard = 'textarea[data-key="' + kF + '"][data-field="pendientes"]';
+  const r11 = {};
+  // a) ✕ sin guardar: la tarjeta se repinta con lo escrito (firmado) y escribir luego en la tarjeta no lo borra
+  await page.evaluate((k) => openEditModal(k), kF);
+  await page.focus('#mf-pendientes-modal'); await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter'); await page.keyboard.type('Retirar sonda Foley', { delay: 5 });
+  await page.$eval('#patient-modal .modal-close', b => b.click());
+  await page.waitForTimeout(2600);
+  r11.cardTrasCerrar = await page.$eval(pendCard, t => t.value);
+  await page.click(pendCard); await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter'); await page.keyboard.type('TAC control', { delay: 5 });
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.waitForTimeout(300);
+  r11.notaTrasTarjeta = await page.evaluate((k) => getNote(k).pendientes, kF);
+  // b) solo cambiar el estado y guardar: la nota de drenajes de varios renglones no se une
+  r11.drenOk = await page.evaluate(async (k) => {
+    const antes = getNote(k).drenajes; openEditModal(k); _setEstadoPill('DELICADO'); saveModal();
+    await new Promise(r => setTimeout(r, 200)); const d = getNote(k).drenajes;
+    openEditModal(k); _setEstadoPill('ESTABLE'); saveModal(); await new Promise(r => setTimeout(r, 200));
+    return d === antes;
+  }, kF);
+  // c) ➕ drenaje con Enter en «Tipo»: renglón nuevo y firmado; lo de Ana y Beto intacto
+  await page.evaluate((k) => openEditModal(k), kF);
+  await page.focus('#mf-dr-tipo'); await page.keyboard.type('Jackson', { delay: 5 }); await page.keyboard.press('Enter');
+  await page.$eval('#modal-save-btn', b => b.click()); await page.waitForTimeout(300);
+  r11.dren = await page.evaluate((k) => getNote(k).drenajes, kF);
+  // d) Esc cierra como ✕: lo escrito en Otros queda firmado en la nota y la ventana cerrada por dentro
+  await page.evaluate((k) => openEditModal(k), kF);
+  await page.focus('#mf-manejo-modal'); await page.keyboard.type('Curación diaria', { delay: 5 });
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  r11.esc = await page.evaluate((k) => ({ otros: getNote(k).manejo, vis: document.getElementById('patient-modal').style.display, clave: _modalCurrentEditKey }), kF);
+  // e) ocultar la app con la ventana abierta (persistBeforeExit): lo escrito se firma en la nota; al cerrar no se refirma
+  await page.evaluate((k) => openEditModal(k), kF);
+  await page.focus('#mf-pendientes-modal'); await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter'); await page.keyboard.type('Interconsulta a nutrición', { delay: 5 });
+  r11.salir = await page.evaluate((k) => { persistBeforeExit(); const a = getNote(k).pendientes; closeModal(); return { a, b: getNote(k).pendientes }; }, kF);
+  // f) la marca de pegado no pasa de una ventana a otra; un alta compara contra nada
+  r11.pegado = await page.evaluate((k) => { openEditModal(k); const el = document.getElementById('mf-pendientes-modal'); el.__stPegado = true; closeModal(); const t1 = el.__stPegado; el.__stPegado = true; openAddModal(); const t2 = el.__stPegado; const snap = _modalNoteSnapshot; closeModal(); return t1 === false && t2 === false && snap === null; }, kF);
+  // g) ➕ Agregar con el expediente de alguien ya registrado → «Mover»: lo escrito en la ventana se suma a su nota
+  r11.mover = await page.evaluate(async (k) => {
+    const p = patients.find(x => pid(x) === k); const camaAntes = p.cama;
+    openAddModal();
+    document.getElementById('mf-cama').value = '3-399'; document.getElementById('mf-exp').value = p.exp; document.getElementById('mf-nombre').value = p.nombre;
+    document.getElementById('mf-pendientes-modal').value = 'Ver TAC de abdomen'; document.getElementById('mf-app-modal').value = 'HAS';
+    saveModal(); await new Promise(r => setTimeout(r, 300));
+    const q = patients.find(x => x.exp === p.exp); const n = getNote(pid(q));
+    const out = { cama: q.cama, pend: n.pendientes, app: n.app, n: patients.filter(x => x.exp === p.exp).length };
+    _moveExistingPatient(q, { cama: camaAntes }); return out;
+  }, kF);
+  await page.evaluate((k) => { const nd = getNote(k); nd.pendientes = ''; nd.manejo = ''; nd.drenajes = ''; nd.app = ''; noteData[k] = nd; _dirtyFields[k] = new Set(); }, kF);
+  const lin = (s) => String(s || '').split('\n');
+  check('F11a ✏️ Editar cerrada con ✕: la tarjeta muestra lo escrito ya firmado y lo que se escribe después en la tarjeta se suma sin borrarlo',
+    lin(r11.cardTrasCerrar)[0] === 'Ana 09.11.26 08:00 - ya estaba' && stRe.test(lin(r11.cardTrasCerrar)[1]) && /Retirar sonda Foley$/.test(r11.cardTrasCerrar)
+    && /Retirar sonda Foley/.test(r11.notaTrasTarjeta) && /TAC control$/.test(r11.notaTrasTarjeta), JSON.stringify(r11));
+  check('F11b-c Drenajes en ✏️ Editar: guardar solo el estado no une los renglones; ➕ (Enter en Tipo) agrega un renglón nuevo firmado',
+    r11.drenOk === true && lin(r11.dren).length === 3 && lin(r11.dren)[0] === 'Ana 09.11.26 08:00 - Penrose FID 30 cc seroso' && lin(r11.dren)[1] === 'Beto 10.11.26 09:00 - Blake 50 cc hemático' && stRe.test(lin(r11.dren)[2]) && /Jackson$/.test(r11.dren), JSON.stringify(r11));
+  check('F11d-e Esc cierra ✏️ Editar como ✕ (Otros firmado, ventana cerrada por dentro); ocultar la app con la ventana abierta firma lo escrito y cerrar después no lo refirma',
+    r11.esc && stRe.test(r11.esc.otros || '') && /Curación diaria$/.test(r11.esc.otros) && r11.esc.vis === 'none' && r11.esc.clave === null
+    && r11.salir && stRe.test(lin(r11.salir.a)[1] || '') && /Interconsulta a nutrición$/.test(r11.salir.a) && r11.salir.b === r11.salir.a, JSON.stringify(r11));
+  check('F11f-g la marca de pegado no pasa a la siguiente ventana y un alta compara contra nada; ➕ Agregar que termina en «Mover» suma lo escrito a la nota (Pendientes firmado, APP tal cual) sin duplicar al paciente',
+    r11.pegado === true && r11.mover && r11.mover.cama === '3-399' && r11.mover.n === 1 && stRe.test(lin(r11.mover.pend).slice(-1)[0]) && /Ver TAC de abdomen$/.test(r11.mover.pend) && r11.mover.app === 'HAS', JSON.stringify(r11));
+
   if (SHOT) {
     await page.evaluate(() => { const k = pid(patients[0]); const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]'); ta.value = 'Ana 10.11.26 22:10 - Revisar herida\n  y retirar puntos alternos\n' + ta.value + '\nTexto viejo sin firma'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.scrollIntoView({ block: 'center' }); });
     await page.waitForTimeout(500);

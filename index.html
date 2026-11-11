@@ -4862,7 +4862,10 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
                   <input class="modal-input" id="mf-dr-carac" inputmode="text" autocorrect="off" placeholder="Características" style="flex:2;min-width:110px" onkeydown="if(event.key==='Enter'){event.preventDefault();appendDrain();}" />
                   <button type="button" onclick="appendDrain()" title="Agregar drenaje" style="background:#0369a1;color:#fff;border:none;border-radius:6px;padding:0 12px;font-weight:700;cursor:pointer">➕</button>
                 </div>
-                <input class="modal-input" id="mf-drenajes-modal" inputmode="text" autocorrect="off" autocapitalize="sentences" oninput="liveModalNote('drenajes',this.value)" placeholder="Ej: Blake HD 100cc serosanguinolento" /></div>
+                <!-- Caja de varios renglones como en la tarjeta (11 nov 2026): era un <input> y el navegador le quitaba los saltos
+                     de renglón; al guardar la ventana, la nota de drenajes (un renglón por drenaje, cada uno con su firma)
+                     quedaba unida en uno solo y así se subía. -->
+                <textarea class="modal-input" id="mf-drenajes-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('drenajes',this.value)" placeholder="Ej: Blake HD 100cc serosanguinolento"></textarea></div>
             </div>
             <div class="modal-field"><label>Pendientes / Plan</label><textarea class="modal-input" id="mf-pendientes-modal" rows="2" inputmode="text" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="liveModalNote('pendientes',this.value)" placeholder="Pendientes, estudios, interconsultas..."></textarea></div>
           </div>
@@ -16126,6 +16129,7 @@ function plExportBackup() {
     // ─── EXIT GUARD: persistir y encolar notas pendientes antes de cerrar/suspender ──
     function persistBeforeExit() {
       try { if (window.__plStFirmarActiva) window.__plStFirmarActiva(); } catch (_) {}
+      try { if (window.__plModalFirmarAbierta) window.__plModalFirmarAbierta(); } catch (_) {}
       try {
         Object.keys(noteData).forEach(function (k) {
           try { lsSaveNote(k, noteData[k]); } catch (_) {}
@@ -17103,7 +17107,9 @@ function plExportBackup() {
         if (!line) return;
         var inp = document.getElementById("mf-drenajes-modal");
         if (!inp) return;
-        inp.value = (inp.value.trim() ? inp.value.trim() + "; " : "") + line;
+        // Un renglón por drenaje, como ➕ en la tarjeta (antes «; » en el mismo renglón: quedaba bajo la firma de otro).
+        var cur = (inp.value || "").replace(/\s+$/, "");
+        inp.value = (cur ? cur + "\n" : "") + line;
         liveModalNote("drenajes", inp.value);
         ["mf-dr-tipo", "mf-dr-gasto", "mf-dr-carac"].forEach(function (id) { var e = document.getElementById(id); if (e) e.value = ""; });
         var t = document.getElementById("mf-dr-tipo"); if (t) t.focus();
@@ -26819,7 +26825,8 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       document.getElementById("modal-save-btn").textContent = "✓ Agregar al censo";
       document.getElementById("modal-warn-edit").style.display = "none";
       ["cama", "exp", "edad", "nombre", "adscrito", "residente", "ingreso", "dx"].forEach(f => { var el = document.getElementById("mf-" + f); if (el) el.value = ""; });
-      ["mf-app-modal", "mf-pa-modal", "mf-manejo-modal", "mf-sangrado-modal", "mf-drenajes-modal", "mf-pendientes-modal"].forEach(function (id) { var el = document.getElementById(id); if (el) el.value = ""; });
+      ["mf-app-modal", "mf-pa-modal", "mf-manejo-modal", "mf-sangrado-modal", "mf-drenajes-modal", "mf-pendientes-modal"].forEach(function (id) { var el = document.getElementById(id); if (el) { el.value = ""; el.__stPegado = false; } });
+      _modalNoteSnapshot = null;   // un alta compara contra nada (todo lo escrito es nuevo)
       document.getElementById("mf-esp").value = "CG";
       _setEstadoPill("ESTABLE");
       document.getElementById("mf-sexo").value = "";
@@ -26856,6 +26863,55 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         if (nv !== el.value) { el.value = nv; hechos.push(par[1]); }
       });
       return hechos;
+    }
+    // Firma lo escrito en la ventana y lo pasa a la nota del paciente que se edita (solo las cajas que la persona tocó,
+    // las que liveModalNote marcó). Para cerrar sin «Guardar» (✕, Cancelar, Esc) y para ocultar o cerrar la app con la
+    // ventana abierta (persistBeforeExit): antes ese texto subía sin firma y ya no se firmaba nunca.
+    function _modalFirmarANota(k) {
+      if (!k || !noteData[k] || !_dirtyFields[k]) return [];
+      return _modalFirmarCampos().filter(function (f) {
+        if (!_dirtyFields[k].has(f)) return false;
+        const par = _MODAL_FIRMA.find(function (x) { return x[1] === f; });
+        const el = par && document.getElementById(par[0]);
+        if (!el) return false;
+        noteData[k][f] = el.value;
+        return true;
+      });
+    }
+    window.__plModalFirmarAbierta = function () {
+      try {
+        const m = document.getElementById("patient-modal");
+        if (!m || m.style.display === "none" || m.style.display === "" || modalMode !== "edit") return;
+        _modalFirmarANota(_modalCurrentEditKey);
+      } catch (e) { safeLog("firma ✏️ Editar al salir:", e); }
+    };
+    // ➕ Agregar que termina en «Mover» (la persona ya estaba registrada en otra cama): lo escrito en la ventana (APP, PA,
+    // Otros, sangrado, Drenajes, Pendientes, sexo) se descartaba. Ahora se suma a su nota sin pisar nada: una caja vacía
+    // toma lo escrito; en una con texto, lo escrito va abajo (si no estaba ya). Pendientes, Otros y Drenajes, firmados.
+    function _modalSumarANota(k) {
+      if (!k) return;
+      _modalFirmarCampos();
+      const ids = { app: "mf-app-modal", pa: "mf-pa-modal", manejo: "mf-manejo-modal", sangrado: "mf-sangrado-modal", drenajes: "mf-drenajes-modal", pendientes: "mf-pendientes-modal" };
+      const next = migrateNote(noteData[k] || defaultData());
+      const cambio = [];
+      MODAL_NOTE_FIELDS.forEach(function (f) {
+        const el = document.getElementById(ids[f]); const v = el ? toSafeString(el.value).trim() : "";
+        if (!v) return;
+        const cur = toSafeString(next[f]).replace(/\s+$/, "");
+        if (!cur.trim()) next[f] = v;
+        else if (cur.indexOf(v) < 0) next[f] = cur + "\n" + v;
+        else return;
+        cambio.push(f);
+      });
+      const sx = normalizeSexValue((document.getElementById("mf-sexo") || {}).value);
+      if (sx && !normalizeSexValue((next.checklist || {}).sexo)) { next.checklist.sexo = sx; cambio.push("checklist"); }
+      if (!cambio.length) return;
+      noteData[k] = next;
+      if (!_dirtyFields[k]) _dirtyFields[k] = new Set();
+      cambio.forEach(function (f) { _dirtyFields[k].add(f); });
+      saveNote(k, next);
+      cambio.forEach(function (f) { _dirtyFields[k].delete(f); });
+      _rerenderCardSoft(k);
     }
     try {
       _MODAL_FIRMA.forEach(function (par) {
@@ -26908,18 +26964,15 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       // tarjeta los muestra pero la nube no los tiene y la siguiente recarga los borra. Subirlos.
       const _ck = _modalCurrentEditKey;
       // Lo escrito en Pendientes / Otros / Drenajes y no guardado con «Guardar» también se sube firmado.
-      if (_ck && _dirtyFields[_ck] && noteData[_ck]) {
-        try {
-          _modalFirmarCampos().forEach(function (f) {
-            if (!_dirtyFields[_ck].has(f)) return;
-            const el = document.getElementById(_MODAL_FIRMA.find(function (par) { return par[1] === f; })[0]);
-            if (el) noteData[_ck][f] = el.value;
-          });
-        } catch (e) { safeLog("closeModal firma:", e); }
-      }
+      try { _modalFirmarANota(_ck); } catch (e) { safeLog("closeModal firma:", e); }
       if (_ck && _dirtyFields[_ck] && _dirtyFields[_ck].size && noteData[_ck] && _findPatientByKey(_ck)) {
         try { saveNote(_ck, noteData[_ck]); } catch (e) { safeLog("closeModal saveNote:", e); }
+        // La tarjeta seguía mostrando el texto de antes de abrir la ventana (nadie la repintaba): no se veía lo escrito y
+        // lo siguiente que se escribiera en esa caja subía «texto viejo + lo nuevo» y borraba lo de la ventana. Repintar
+        // (en calma) y, mientras tanto, al enfocar la caja se le pone el valor del modelo (_cardSoftPending).
+        try { _rerenderCardSoft(_ck); } catch (_) {}
       }
+      _MODAL_FIRMA.forEach(function (par) { var el = document.getElementById(par[0]); if (el) el.__stPegado = false; });
       if (_ck && _dirtyFields[_ck]) {
         delete _dirtyFields[_ck];
       }
@@ -27011,6 +27064,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
               dx: document.getElementById("mf-dx").value.trim().toUpperCase() || _expOwner.dx || "",
               sexo
             });
+            if (modalMode === "add") { try { _modalSumarANota(pid(_expOwner)); } catch (e) { safeLog("mover: nota de la ventana:", e); } }
             closeModal();
             return;
           }
@@ -32465,6 +32519,9 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         modals.forEach(id => {
           const el = document.getElementById(id);
           if (el && el.style.display !== "none" && el.style.display !== "") {
+            // ✏️ Editar (11 nov 2026): con Esc se escondía sin closeModal: lo escrito no se firmaba ni se subía y la
+            // ventana quedaba «abierta» por dentro (clave y foto de la nota al abrir). Esc ahora cierra como ✕.
+            if (id === "patient-modal" && typeof closeModal === "function") { try { closeModal(); return; } catch (_) {} }
             el.style.display = "none";
           }
         });
