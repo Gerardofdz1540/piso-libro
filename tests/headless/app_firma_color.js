@@ -99,6 +99,41 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
   check('F3 ➕ Cultivo, Eliminar labs y 🗑 diagrama guardan y NO dejan la tarjeta marcada como «editada aquí»; si ya había una edición a mano en curso de esa caja, su marca se respeta',
     f3.cultivo.length === 0 && f3.cultivoTxt && JSON.stringify(f3.cultivoPrevia) === '["ck_cultivos"]' && f3.labs.length === 0 && JSON.stringify(f3.labsQuedan) === '["2026-11-02"]'
     && JSON.stringify(f3.labsPrevia) === '["labHistory"]' && !f3.bdErr && f3.canvas && f3.diagrama.length === 0, JSON.stringify(f3));
+  // ── F4: PDF de labs (11 nov 2026): durante la subida (segundos) la nota puede re-armarse (Realtime, autoguardado). Se guarda
+  // sobre la nota VIGENTE: lo escrito en esos segundos no se pierde y los labs no caen en una copia suelta.
+  const f4 = await page.evaluate(async () => {
+    const k = pid(patients[0]); const p = patients[0]; const hoyS = todayStr();
+    const orig = { gp: window.getProxyUrl, cw: window.callLabsExtractionWorker, at: window.attachLabSourceToSnap, al: window.alert };
+    const r = { alerts: [] };
+    window.getProxyUrl = () => 'https://proxy.test';
+    window.callLabsExtractionWorker = async () => ({ patients: [{ paciente: p.nombre, fecha_labs: hoyS, hb: '9.8', k: '4.1' }] });
+    window.attachLabSourceToSnap = async (kk, fecha, snap) => {
+      const copia = JSON.parse(JSON.stringify(getNote(kk))); copia.pendientes = 'ESCRITO DURANTE LA SUBIDA'; noteData[kk] = copia;
+      snap.source = 'manual'; snap.source_file_name = 'lab.pdf';
+    };
+    window.alert = (m) => { r.alerts.push(String(m).slice(0, 80)); };
+    try {
+      _dirtyFields[k] = new Set();
+      const nd = getNote(k); nd.labHistory = [{ fecha: hoyS, labs: { na: '138' } }]; noteData[k] = nd;
+      const file = new File(['%PDF-1.4 x'], 'lab.pdf', { type: 'application/pdf' });
+      await handleLabPDF(k, { files: [file], value: 'x' });
+      const v = getNote(k); const s = (v.labHistory || []).find(x => x.fecha === hoyS) || {};
+      Object.assign(r, { pend: v.pendientes, hb: (s.labs || {}).hb, na: (s.labs || {}).na, file: s.source_file_name, snaps: (v.labHistory || []).filter(x => x.fecha === hoyS).length, marcas: Array.from(_dirtyFields[k] || []) });
+      _dirtyFields[k] = new Set(['labHistory']);
+      await handleLabPDF(k, { files: [file], value: 'x' });
+      r.marcasPrevia = Array.from(_dirtyFields[k] || []);
+    } catch (e) { r.err = String(e); }
+    _dirtyFields[k] = new Set();
+    Object.assign(window, { getProxyUrl: orig.gp, callLabsExtractionWorker: orig.cw, attachLabSourceToSnap: orig.at, alert: orig.al });
+    return r;
+  });
+  check('F4 PDF de labs: si la nota se re-arma durante la subida, lo escrito en esos segundos se conserva, los labs caen en la fecha de la nota vigente (sin duplicarla) con el archivo enlazado, y no queda la marca «editada aquí» (salvo una edición de labs en curso)',
+    !f4.err && f4.alerts.length === 0 && f4.pend === 'ESCRITO DURANTE LA SUBIDA' && f4.hb === '9.8' && f4.na === '138' && f4.file === 'lab.pdf' && f4.snaps === 1
+    && f4.marcas.indexOf('labHistory') < 0 && JSON.stringify(f4.marcasPrevia) === '["labHistory"]', JSON.stringify(f4));
+  // ── F5: la entrega/resumen lee la firma nueva: «Gerardo 10.11.26 23:50 - texto» → fecha 2026-11-10 y «Gerardo: texto» ──
+  const f5 = await page.evaluate(() => _egLineasFechadas('Gerardo 10.11.26 23:50 - Cambiar apósitos\n✓ Ana 09.11.26 08:00 - TAC\n  sigue sin firma\nGerardo 11.11.26 07:00 - '));
+  check('F5 _egLineasFechadas: la firma nueva da la fecha del renglón y «Nombre: texto» (✓ se conserva; la continuación hereda la fecha; la firma sola no crea renglón)',
+    JSON.stringify(f5) === JSON.stringify([{ fecha: '2026-11-10', text: 'Gerardo: Cambiar apósitos' }, { fecha: '2026-11-09', text: '✓ Ana: TAC' }, { fecha: '2026-11-09', text: 'sigue sin firma' }]), JSON.stringify(f5));
   if (SHOT) {
     await page.evaluate(() => { const k = pid(patients[0]); const ta = document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]'); ta.value = 'Ana 10.11.26 22:10 - Revisar herida\n  y retirar puntos alternos\n' + ta.value + '\nTexto viejo sin firma'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.scrollIntoView({ block: 'center' }); });
     await page.waitForTimeout(500);

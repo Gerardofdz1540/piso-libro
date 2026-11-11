@@ -20900,7 +20900,10 @@ function plExportBackup() {
       const firma = plStampNow(d);
       const stamp = firma ? firma.replace(/\s+$/, "") : String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + " —";
       const cur = ta ? ta.value : toSafeString((noteData[k] || {}).pendientes);
-      if (cur.trim().indexOf(stamp) === 0 && !cur.trim().slice(stamp.length).split("\n")[0].trim()) { if (ta) { ta.focus(); ta.setSelectionRange(stamp.length + 1, stamp.length + 1); } return; }
+      // Ya hay arriba un renglón de firma vacío (de este minuto o de otro): no se duplica, solo se pone el cursor ahí.
+      const prim = cur.split("\n")[0];
+      const primVacio = prim.trim() && (prim.trim().indexOf(stamp) === 0 ? !prim.trim().slice(stamp.length).trim() : (PL_STAMP_RE.test(prim) && !prim.replace(PL_STAMP_RE, "").trim() && ((plStampAuthor(prim) || {}).name || "").toLowerCase() === ((plStampAuthor(stamp + " ") || {}).name || "-").toLowerCase()));
+      if (primVacio) { if (ta) { ta.focus(); try { ta.setSelectionRange(prim.length, prim.length); } catch (_) {} } return; }
       _undoPush(k, "fecha de hoy en pendientes", ["pendientes"]);
       _touchBy(getNote(k), "pendientes");
       const next = stamp + " \n" + cur;
@@ -20925,7 +20928,7 @@ function plExportBackup() {
         if (!t) return "";
         const done = /^✓\s/.test(t);
         const txt = t.replace(/^✓\s*/, "").replace(/^[-•·\[\]\s]+/, "");
-        if (/^\d{2}\/\d{2}\s—/.test(t)) return `<div class="pend-date">${esc(t)}</div>`;
+        if (/^\d{2}\/\d{2}\s—/.test(t) || (PL_STAMP_RE.test(t) && !t.replace(PL_STAMP_RE, "").trim())) return `<div class="pend-date">${esc(t)}</div>`;
         return `<button type="button" class="pend-row${done ? " done" : ""}" data-k="${esc(k)}" data-i="${i}" onclick="togglePendLine(this.dataset.k, +this.dataset.i)"><span class="pend-box">${done ? "☑" : "☐"}</span><span class="pend-txt">${esc(txt)}</span></button>`;
       }).join("");
       return `<div class="pend-list">${rows || '<div class="pend-date">Sin pendientes</div>'}</div>`;
@@ -30444,7 +30447,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.07-2";
+    const PL_BUILD = "2026.11.11-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

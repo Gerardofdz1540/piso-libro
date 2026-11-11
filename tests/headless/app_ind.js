@@ -284,8 +284,8 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     nd.checklist.cirugias = [{ id: 'c1', fecha: manS, procedimiento: 'COLECISTECTOMÍA' }];
     poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO DE DRENAJES POR TURNO', 'PREPARAR PARA QUIRÓFANO'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H FI 08/11/2026 (4)'], firma: 'DR X MBCG | DRA Y R1CG' }));
     r.B = reglas();
-    // B2: con ayuno ya no avisa
-    poner(blq({ DIETA: ['AYUNO A PARTIR DE LAS 00:00 HRS'], 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO DE DRENAJES POR TURNO'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H FI 08/11/2026 (4)'], firma: 'DR X MBCG' }));
+    // B2: con ayuno ya no avisa; la profilaxis (dosis única) no necesita FI ni días
+    poner(blq({ DIETA: ['AYUNO A PARTIR DE LAS 00:00 HRS'], 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO DE DRENAJES POR TURNO'], 'ANTIBIÓTICOS': ['CEFTRIAXONA 1 G IV C/12 H FI 08/11/2026 (4)', 'CEFAZOLINA 2 G IV DOSIS ÚNICA PROFILÁCTICA'], firma: 'DR X MBCG' }));
     r.B2 = reglas();
     // C: dieta y ayuno a la vez; con horario no
     nd.checklist.cirugias = []; nd.checklist.dispositivos = [];
@@ -298,7 +298,8 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     // D: NPT sin labs; con labs de hoy no
     nd.checklist.npt = true; nd.labHistory = [];
     poner(blq({ 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.D = reglas();
-    nd.labHistory = [{ fecha: hoyS, labs: { k: '4.1', na: '138', trig: '180' } }]; r.D2 = reglas(); nd.checklist.npt = false; nd.labHistory = [];
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '4.1', na: '138', trig: '180' } }]; r.D2 = reglas();
+    nd.labHistory = [{ fecha: hoyS, labs: { k: '4.1', na: '138' } }]; r.D3 = PLCDS.evaluate(p, getNote(k)).filter(s => s.ruleId === 'ind_npt_labs').map(s => s.suggestion.text); nd.checklist.npt = false; nd.labHistory = [];
     // E: bloque viejo / sin fecha / sin sección; firma ausente en bloque de versión anterior (sin llave) no se juzga
     poner(blq({ fecha: ayerS, 'MEDIDAS GENERALES': ['SIGNOS VITALES POR TURNO'], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.E = reglas();
     poner(blq({ fecha: '', 'MEDIDAS GENERALES': [], 'ANTIBIÓTICOS': [], firma: 'DR X MBCG' })); r.E2 = reglas();
@@ -319,11 +320,11 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
   });
   const has = (arr, ...ids) => ids.every(id => arr.indexOf(id) >= 0);
   const hora = new Date().getHours();
-  check('I16 revisor de indicaciones: (A) drenaje en la tarjeta sin «cuantificar gasto», «preparar para quirófano» sin cirugía programada, antibiótico sin FI ni días y sin firma → los 4 avisos; (B) corregido y con cirugía mañana → solo «cirugía mañana sin ayuno»; con ayuno → nada',
+  check('I16 revisor de indicaciones: (A) drenaje en la tarjeta sin «cuantificar gasto», «preparar para quirófano» sin cirugía programada, antibiótico sin FI ni días y sin firma → los 4 avisos; (B) corregido y con cirugía mañana → solo «cirugía mañana sin ayuno»; con ayuno (y una profilaxis de dosis única sin FI) → nada',
     JSON.stringify(i16.A) === JSON.stringify(['ind_atb_sin_fi', 'ind_dren_gasto', 'ind_firma', 'ind_qx_sin_programar']) && JSON.stringify(i16.B) === JSON.stringify(['ind_cx_sin_ayuno']) && i16.B2.length === 0, JSON.stringify({ A: i16.A, B: i16.B, B2: i16.B2 }));
-  check('I17 revisor de indicaciones: dieta y ayuno a la vez avisa, con horario («a partir de las 18 hrs») no; tarjeta en ayuno con dieta en el Doc avisa; NPT sin electrolitos ni triglicéridos avisa y con labs de hoy no',
-    JSON.stringify(i16.C) === JSON.stringify(['ind_dieta_ayuno']) && i16.C2.length === 0 && JSON.stringify(i16.C3) === JSON.stringify(['ind_npo_dieta']) && JSON.stringify(i16.D) === JSON.stringify(['ind_npt_labs']) && i16.D2.length === 0,
-    JSON.stringify({ C: i16.C, C2: i16.C2, C3: i16.C3, D: i16.D, D2: i16.D2 }));
+  check('I17 revisor de indicaciones: dieta y ayuno a la vez avisa, con horario («a partir de las 18 hrs») no; tarjeta en ayuno con dieta en el Doc avisa; NPT sin electrolitos ni triglicéridos avisa, con electrolitos pero sin triglicéridos pide solo triglicéridos, y con labs de hoy no',
+    JSON.stringify(i16.C) === JSON.stringify(['ind_dieta_ayuno']) && i16.C2.length === 0 && JSON.stringify(i16.C3) === JSON.stringify(['ind_npo_dieta']) && JSON.stringify(i16.D) === JSON.stringify(['ind_npt_labs']) && i16.D2.length === 0 && i16.D3.length === 1 && /triglicéridos/.test(i16.D3[0]) && !/electrolitos/.test(i16.D3[0]),
+    JSON.stringify({ C: i16.C, C2: i16.C2, C3: i16.C3, D: i16.D, D2: i16.D2, D3: i16.D3 }));
   check('I18 revisor de indicaciones: bloque de hace 2 días (después de las 11:00) avisa «no hay de hoy»; sin fecha y sin medidas avisa; un bloque guardado por la versión anterior (sin la llave firma) no se juzga por la firma',
     (hora >= 11 ? JSON.stringify(i16.E) === JSON.stringify(['ind_vieja']) : i16.E.length === 0) && has(i16.E2, 'ind_sin_fecha', 'ind_seccion') && i16.E3.length === 0, JSON.stringify({ hora, E: i16.E, E2: i16.E2, E3: i16.E3 }));
   check('I19 la sección 💊 Indicaciones muestra «🔎 Revisión de indicaciones · 1 por revisar» plegada con el aviso del drenaje; al ignorarlo en Sugerencias desaparece',

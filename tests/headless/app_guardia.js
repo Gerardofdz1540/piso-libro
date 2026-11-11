@@ -169,10 +169,10 @@ const HIST_OLD = {
   // la cronología (entrega) viaja en checklist.__pl_note_meta.entrega; el recibo vacío, en checklist.recibo
   const post4 = calls.slice(from4).filter(c => (c.m === 'POST' || c.m === 'PATCH') && c.url.startsWith('/rest/v1/notes') && c.body && c.body.checklist).map(c => ({ entrega: ((c.body.checklist.__pl_note_meta || {}).entrega), checklist: c.body.checklist }));
   const MERGED4 = '— Recibido 18/10 07:30 DG —\nLO QUE DEJÓ LA GUARDIA ANTERIOR\n\nVIGILAR DRENAJE 3\nK 2.9 EN REPOSICIÓN';
-  check('G4 🕓 Cronología: encabezado único con «➕ Ahora» (sin «Recibir guardia»); lo de «Recibido» pasa una sola vez al principio de la cronología y la caja Recibido desaparece (se sube con entrega y recibo vacío); repintar no duplica; «➕ Ahora» agrega "dd/mm hh:mm GF: " ARRIBA y deja el cursor ahí; etiquetas «Cronología de guardias» y «Otros»',
+  check('G4 🕓 Cronología: encabezado único con «➕ Ahora» (sin «Recibir guardia»); lo de «Recibido» pasa una sola vez al principio de la cronología y la caja Recibido desaparece (se sube con entrega y recibo vacío); repintar no duplica; «➕ Ahora» agrega «Gerardo dd.mm.aa hh:mm - » ARRIBA y deja el cursor ahí; etiquetas «Cronología de guardias» y «Otros»',
     g4.title && /🕓 Cronología/.test(g4.title) && /Ahora/.test(g4.title) && !g4.gdRecibir && g4.inGrid
     && g4.entrega === MERGED4 && g4.recibo === '' && !g4.reciboTa && g4.entregaTa === MERGED4 && /Cronología de guardias/.test(g4.label) && g4.entrega3 === MERGED4
-    && new RegExp('^\\d{2}/\\d{2} \\d{2}:\\d{2} GF: \\n' + MERGED4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$').test(g4.ahora) && g4.focused && /Otros/.test(g4.otros)
+    && new RegExp('^Gerardo \\d{2}\\.\\d{2}\\.\\d{2} \\d{2}:\\d{2} - \\n' + MERGED4.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$').test(g4.ahora) && g4.focused && /Otros/.test(g4.otros)
     && post4.some(b => typeof b.entrega === 'string' && b.entrega.indexOf(MERGED4) >= 0 && b.checklist && b.checklist.recibo === ''), JSON.stringify({ g4, posts: post4.length }));   // el envío agrupa la migración con el «➕ Ahora» (va dentro del mismo debounce)
 
   // ── G4b: 🕓 lo nuevo ARRIBA (7 nov 2026, «que aparezca luego luego arriba, no hasta abajo»): ➕ Ahora pone el renglón al
@@ -203,11 +203,11 @@ const HIST_OLD = {
     const nd3 = getNote(k); nd3.entrega = antes.entrega; nd3.pendientes = antes.pendientes; noteData[k] = nd3; _rerenderCard(k);
     return r;
   });
-  const g4bStamp = /^\d{2}\/\d{2} \d{2}:\d{2} GF: $/;
+  const g4bStamp = /^Gerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - $/;
   check('G4b 🕓 lo nuevo arriba: ➕ Ahora pone el renglón al principio, con el cursor en él y la caja arriba; doble toque no duplica; ✍️ «Agregar arriba» en la Cronología y «Agregar al final» en las demás',
     g4bStamp.test(g4b.v1.split('\n')[0] + ' '.slice(1)) && /\n05\/11 08:00 AB: VIEJO 1\n06\/11 09:00 AB: VIEJO 2$/.test(g4b.v1) && g4b.caret === g4b.stampLen && g4b.bajado > 50 && g4b.top === 0 && g4b.focused
-    && g4b.v2 === g4b.v1 && g4b.lblEntrega === 'Agregar arriba' && /^DEL LIENZO\n\d{2}\/\d{2} \d{2}:\d{2} GF: ?\n04\/11 07:00 AB: RENGLON 0\n/.test(g4b.vInk)
-    && g4b.lblPend === 'Agregar al final' && g4b.pend === 'PEND 1\nPEND 2', JSON.stringify(g4b));
+    && g4b.v2 === g4b.v1 && g4b.lblEntrega === 'Agregar arriba' && /^Gerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - DEL LIENZO\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - ?\n04\/11 07:00 AB: RENGLON 0\n/.test(g4b.vInk)
+    && g4b.lblPend === 'Agregar al final' && /^PEND 1\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - PEND 2$/.test(g4b.pend), JSON.stringify(g4b));
 
   // ── G5: Procedimientos del día muestran quién lo agregó y a qué hora; EDITAR por el modal no cambia autor ni hora (ni en local ni en el PATCH) ──
   const from5 = calls.length;

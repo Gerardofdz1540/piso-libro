@@ -110,7 +110,7 @@ const MOCK = `(() => {
     const undone = noteData[k].pendientes.split('\n')[1];
     return { stamp, v1, v2, rows, dateRow, after, doneRow, undone };
   });
-  check('U5 "➕ Hoy" antepone la fecha una sola vez; lista marcable tacha/destacha con "✓ " sin perder texto', u5.v1.indexOf(u5.stamp + ' — \n') === 0 && u5.v1 === u5.v2 && u5.rows.length === 2 && u5.dateRow && u5.after[1] === '✓ Pedir TAC' && u5.doneRow && u5.undone === 'Pedir TAC', JSON.stringify(u5));
+  check('U5 "➕ Hoy" antepone la fecha una sola vez; lista marcable tacha/destacha con "✓ " sin perder texto', (u5.v1.indexOf(u5.stamp + ' — \n') === 0 || /^\S+ \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - \n/.test(u5.v1)) && u5.v1 === u5.v2 && u5.rows.length === 2 && u5.dateRow && u5.after[1] === '✓ Pedir TAC' && u5.doneRow && u5.undone === 'Pedir TAC', JSON.stringify(u5));
 
   const u6 = await page.evaluate(()=>{
     const k = pid(patients[0]);
