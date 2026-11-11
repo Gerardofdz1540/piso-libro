@@ -13092,6 +13092,18 @@ function plExportBackup() {
         t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
         plStMount(t);
       }, true);
+      // Safari no dispara «change» al soltar si el último cambio vino del código (p. ej. el lápiz después de teclear): al perder
+      // el foco se firma lo que quede sin firma y se avisa a la caja (input + change) para que lo guarde como siempre.
+      document.addEventListener("focusout", function (e) {
+        const t = e.target; if (!e.isTrusted || !plStampField(t) || !t.isConnected || t.__stBase === undefined) return;
+        ajenas(t);
+        if (firmar(t)) {
+          try { t.dispatchEvent(new Event("input", { bubbles: true })); t.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+          try { if (typeof _autoResizeTA === "function") _autoResizeTA(t); } catch (_) {}
+        }
+        t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+        plStMount(t);
+      }, true);
       // Al salir (cerrar, recargar, cambiar de app) no llega el «change»: se firma la caja que tiene el foco antes de guardar.
       window.__plStFirmarActiva = function () {
         try {

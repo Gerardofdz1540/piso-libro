@@ -215,6 +215,13 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
   await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Tecleado', { delay: 10 });
   await page.evaluate((k) => _penInsertText(k, 'pendientes', 'DEL LAPIZ', '\n', true), k7);
   await soltar7(); const f7d3 = await valor7();
+  // (d3b) como Safari: al soltar NO llega «change» (el último cambio fue del código); al perder el foco se firma igual y se guarda
+  await page.evaluate(() => { window.__sinChange = function (e) { e.stopImmediatePropagation(); }; window.addEventListener('change', window.__sinChange, true); });
+  await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Safari', { delay: 10 });
+  await page.evaluate((k) => _penInsertText(k, 'pendientes', 'LAPIZ 2', '\n', true), k7);
+  await soltar7();
+  await page.evaluate(() => window.removeEventListener('change', window.__sinChange, true));
+  const f7d3b = await page.evaluate((k) => ({ val: document.querySelector('textarea[data-key="' + k + '"][data-field="pendientes"]').value, nota: getNote(k).pendientes }), k7);
   // (d4) salir de la app sin soltar la caja: se firma antes de guardar
   await page.click(sel7); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('Sin soltar', { delay: 10 });
   const f7d4 = await page.evaluate((k) => { persistBeforeExit(); return { val: document.activeElement.value, nota: getNote(k).pendientes }; }, k7);
@@ -253,12 +260,13 @@ const PT = { id: '7b000000-0000-4000-8000-000000000001', cama: '3-301', exp: '26
     && F(fh + 'Arriba\nPedir BH\nGerardo \\d{2}\\.\\d{2}\\.\\d{2} \\d{2}:\\d{2} - Retirar SNG$').test(f7c1)
     && /\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Antes\nDE OTRO\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Mío$/.test(f7d) && /\nOTRO SOLO$/.test(f7d2)
     && /\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Tecleado\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - DEL LAPIZ$/.test(f7d3)
+    && /\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Safari\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - LAPIZ 2$/.test(f7d3b.val) && f7d3b.nota === f7d3b.val
     && /\nGerardo \d{2}\.\d{2}\.\d{2} \d{2}:\d{2} - Sin soltar$/.test(f7d4.val) && f7d4.nota === f7d4.val
     && F('^Pedir BH\\nGerardo \\d{2}\\.\\d{2}\\.\\d{2} \\d{2}:\\d{2} - Hb 9\\.1\\n  Leucos 14\\n  Plaq 210\\n  Na 136\\n  K 4\\.1\\n  Cr 0\\.9\\n  PCR 12\\n  Lactato 1\\.1$').test(f7e)
     && F(fh).test(f7f.hoyA) && f7f.hoyA.split('\n').length === 2 && f7f.hoyA2 === f7f.hoyA
     && F(fh).test(f7f.hoyB) && f7f.hoyB.split('\n').length === 3 && /\nGerardo 10\.11\.26 08:00 - \nPedir BH$/.test(f7f.hoyB)
     && /^MI: valorado\n/.test(f7f.ic1) && F(fh).test(f7f.ic1.split('\n')[1]) && f7f.ic1.split('\n').length === 2 && f7f.ic2 === f7f.ic1
-    && JSON.stringify(f7f.capa && f7f.capa.slice(0, 3)) === '[true,true,false]', JSON.stringify({ f7sint, f7durante, f7borrado, f7borradoFin, f7undo, f7c1, f7d, f7d2, f7d3, f7d4, f7e, f7f }));
+    && JSON.stringify(f7f.capa && f7f.capa.slice(0, 3)) === '[true,true,false]', JSON.stringify({ f7sint, f7durante, f7borrado, f7borradoFin, f7undo, f7c1, f7d, f7d2, f7d3, f7d3b, f7d4, f7e, f7f }));
 
   // ── F8: sin la marca «editado aquí», lo que este equipo guardó DESPUÉS de que empezó una carga (diagrama, labs del PDF,
   // fecha de labs borrada) no lo regresa la foto vieja de la nube ──
