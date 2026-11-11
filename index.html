@@ -6197,9 +6197,9 @@ const PLCDS = (function() {
   // «Reportar sangrado por drenaje» o «cuidados del drenaje» NO es cuantificar: con esos verbos se pide además gasto/ml.
   const IND_GASTO_RE = new RegExp("(CUANTIFIC\\w*|MEDIR|MEDICION|CONTABILIZ\\w*)[^|.]{0,40}" + IND_DREN_PAL +
     "|(REGISTR\\w*|ANOTAR|REPORTAR|VIGILAR|CUIDADOS)[^|]{0,60}" + IND_DREN_PAL + "[^|]{0,40}(GASTO|CUANTIF|\\bML\\b|CC\\b)" +
-    "|(REGISTR\\w*|ANOTAR|REPORTAR)[^|.]{0,30}(" + IND_GASTO_NO_FOLEY + "|GASTOS?\\b[^|.]{0,40}" + IND_DREN_PAL + ")" +
+    "|(REGISTR\\w*|ANOTAR|REPORTAR)[^|.]{0,30}(" + IND_GASTO_NO_FOLEY + "|GASTOS?\\b[^|.,]{0,25}\\bY\\s+(DE|POR|DEL|EN)\\s+(LOS\\s+|LAS\\s+|LA\\s+|EL\\s+)?" + IND_DREN_PAL + ")" +
     "|GASTOS?\\s+(DE|POR|DEL|EN)\\s+(LOS\\s+|LAS\\s+|LA\\s+|EL\\s+)?" + IND_DREN_PAL);
-  const IND_QX_RE = /PREPARA\w*\s+((PARA|A)\s+)?(EL\s+|SU\s+)?(QUIROFANO|\bQX\b|CIRUGIA|PASE\s+A\s+QUIROFANO|PROCEDIMIENTO\s+QUIRURGICO)|PAS(AR|A|E)\s+A\s+(QUIROFANO|\bQX\b)|\bAYUNO\b(?:(?!\bPOST|\bPOS(OP|Q)|DESPUES|\bTRAS\b|\bSIN\b|\bNO\b|VALORA|DIFIER|DIFERI|CONSERVADOR|CANDIDAT)[^|]){0,50}((PARA|PREVI[OA]\s+A|ANTES\s+DE|POR|ESPERA\s+DE|LISTA\s+DE)\s+(EL\s+|LA\s+|SU\s+)?(PASE\s+A\s+)?(QUIROFANO|CIRUGIA|\bQX\b|PROCEDIMIENTO\s+QUIRURGICO)|PREQUIRURGIC|PREOPERATORI)/;   // «ayuno post qx», «ayuno para CPRE» no
+  const IND_QX_RE = /PREPARA\w*\s+((PARA|A)\s+)?(EL\s+|SU\s+)?(QUIROFANO|\bQX\b|CIRUGIA|PASE\s+A\s+QUIROFANO|PROCEDIMIENTO\s+QUIRURGICO)|(?:^|\|)(?:(?!\bNO\b|\bSIN\b|VALORA|DIFIER|DIFERI|SUSP|CANDIDAT|CONSERVADOR|\bPOST|DESPUES|\bTRAS\b)[^|])*PAS(AR|A|E)\s+A\s+(QUIROFANO|\bQX\b)|\bAYUNO\b(?:(?!\bPOST|\bPOS(OP|Q)|DESPUES|\bTRAS\b|\bSIN\b|\bNO\b|VALORA|DIFIER|DIFERI|CONSERVADOR|CANDIDAT)[^|]){0,50}((PARA|PREVI[OA]\s+A|ANTES\s+DE|POR|ESPERA\s+DE|LISTA\s+DE)\s+(EL\s+|LA\s+|SU\s+)?(PASE\s+A\s+)?(QUIROFANO|CIRUGIA|\bQX\b|PROCEDIMIENTO\s+QUIRURGICO)|PREQUIRURGIC|PREOPERATORI)/;   // «ayuno post qx», «ayuno para CPRE» no
   const IND_AYUNO_RE = /\bAYUN(O|AS)\b|NADA\s+POR\s+VIA\s+ORAL|\bNVO\b|\bNPO\b|SUSPENDER\s+(LA\s+)?VIA\s+ORAL/;   // «DESAYUNO» no
   const IND_DIETA_RE = /DIETA\s+(LIQUIDA|BLANDA|NORMAL|LIBRE|POLIMERICA|COMPLETA|ASTRINGENTE|HIPO\w*|HIPER\w*|BAJA|RICA|PARA|DE\s|EN\s|BASE|SEMI\w*|PAPILLA|PICADA|COLADA|NORMO\w*)|LIQUIDOS\s+CLAROS|VIA\s+ORAL\s+A\s+TOLERANCIA|DIETA\s*:?\s*$|^DIETA\s+[A-Z]/;
   const IND_SECUENCIA_RE = /POSTERIOR|DESPUES|LUEGO|A\s+PARTIR|AL\s+TERMINO|\bTRAS\b|HASTA|PREVI[OA]|INICIAR|INICIO\s+DE|PROGRESAR|SI\s+TOLERA|CUANDO|POR\s+LA\s+(MAÑANA|MANANA|TARDE|NOCHE)|\d{1,2}\s*:\s*\d{2}|\d{1,2}\s*(HRS?|HORAS)\b/;
@@ -13087,7 +13087,16 @@ function plExportBackup() {
         }
         return true;
       };
-      document.addEventListener("focusin", function (e) { const t = e.target; if (plStampField(t)) { t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null; } }, true);
+      document.addEventListener("focusin", function (e) {
+        const t = e.target; if (!plStampField(t)) return;
+        // Vuelve la ventana o la pestaña con la caja intacta: misma base. Si la caja cambió mientras tanto, base nueva.
+        if (t.__stSigue && t.value === t.__stUlt && t.__stBase !== undefined) { t.__stSigue = false; return; }
+        t.__stSigue = false;
+        t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+      }, true);
+      // ¿Se fue la VENTANA o la PESTAÑA (la caja sigue activa) y no la persona de la caja? Entonces se firma pero se conserva la
+      // base de cuando entró: lo que termine de escribir al volver se compara contra eso (11 nov 2026, quinta revisión).
+      const sigue = function (t) { if (document.activeElement !== t) return false; t.__stUlt = t.value; t.__stSigue = true; plStMount(t); return true; };
       // Renglones que el CÓDIGO metió en la caja con el foco puesto (no los de la persona): no se firman con su nombre.
       const ajenas = function (t) {
         if (t.__stUlt === undefined || t.value === t.__stUlt) return;
@@ -13105,7 +13114,8 @@ function plExportBackup() {
         const t = e.target; if (!e.isTrusted || !plStampField(t)) return;
         ajenas(t);
         if (firmar(t)) { try { if (typeof _autoResizeTA === "function") _autoResizeTA(t); } catch (_) {} }
-        t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+        if (sigue(t)) return;
+        t.__stSigue = false; t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
         plStMount(t);
       }, true);
       // Safari no dispara «change» al soltar si el último cambio vino del código (p. ej. el lápiz después de teclear): al perder
@@ -13117,7 +13127,8 @@ function plExportBackup() {
           try { t.dispatchEvent(new Event("input", { bubbles: true })); t.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
           try { if (typeof _autoResizeTA === "function") _autoResizeTA(t); } catch (_) {}
         }
-        t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
+        if (sigue(t)) return;
+        t.__stSigue = false; t.__stBase = t.value; t.__stUlt = t.value; t.__stPegado = false; t.__stAjenas = null;
         plStMount(t);
       }, true);
       // Al salir (cerrar, recargar, cambiar de app) no llega el «change»: se firma la caja que tiene el foco antes de guardar.

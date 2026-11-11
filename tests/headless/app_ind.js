@@ -384,11 +384,15 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     poner(blq({ 'MEDIDAS GENERALES': ['PREPARAR A QUIRÓFANO', 'SIGNOS VITALES POR TURNO'] })); r.prepA = reglas();
     poner(blq({ DIETA: ['AYUNO PARA PASE A QUIRÓFANO'] })); r.pase = reglas();
     poner(blq({ DIETA: ['AYUNO EN ESPERA DE QUIRÓFANO'] })); r.espera = reglas();
+    poner(blq({ DIETA: ['AYUNO, MANEJO CONSERVADOR, VALORAR PASE A QUIRÓFANO'] })); r.valorarPase = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['SE DIFIERE PASE A QUIRÓFANO', 'SIGNOS VITALES POR TURNO'] })); r.difierePase = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['PASA A QUIRÓFANO HOY', 'SIGNOS VITALES POR TURNO'] })); r.pasaHoy = reglas();
     poner(blq({ DIETA: ['AYUNO POR PANCREATITIS, VALORADO POR CIRUGÍA'] })); r.valorado = reglas();
     ck.dispositivos = [{ id: 'd3', tipo: 'Saratoga', fi: hoyS }];
     poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTOS URINARIOS POR TURNO'] })); r.urinarios = reglas();
     poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTO DE SONDA FOLEY'] })); r.regFoley = reglas();
     poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTOS URINARIOS Y DE DRENAJES POR TURNO'] })); r.regAmbos = reglas();
+    poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTOS URINARIOS, CUIDADOS DE DRENAJE'] })); r.regComa = reglas();
     poner(blq({ 'MEDIDAS GENERALES': ['REPORTAR SANGRADO POR DRENAJE'] })); r.reportar = reglas();
     poner(blq({ 'MEDIDAS GENERALES': ['CUANTIFICAR GASTO URINARIO POR SONDA FOLEY'] })); r.urinario = reglas();
     poner(blq({ 'MEDIDAS GENERALES': ['REGISTRAR GASTO DE DRENAJE POR TURNO'] })); r.registrar = reglas();
@@ -415,7 +419,8 @@ const DOC_V2 = DOC_V1.replace('PARACETAMOL 1 GR IV CADA 8 HORAS', 'PARACETAMOL 1
     && i21.revK.indexOf('hiperK') >= 0 && i21.revSinK.indexOf('hiperK') < 0
     && i21.cpre.indexOf('ind_qx_sin_programar') < 0 && i21.previo.indexOf('ind_qx_sin_programar') >= 0 && i21.porQx.indexOf('ind_qx_sin_programar') >= 0
     && i21.conserv.indexOf('ind_qx_sin_programar') < 0 && i21.postPor.indexOf('ind_qx_sin_programar') < 0 && i21.prepA.indexOf('ind_qx_sin_programar') >= 0 && i21.pase.indexOf('ind_qx_sin_programar') >= 0 && i21.espera.indexOf('ind_qx_sin_programar') >= 0
-    && i21.regAmbos.indexOf('ind_dren_gasto') < 0 && i21.valorado.indexOf('ind_qx_sin_programar') < 0 && i21.urinarios.indexOf('ind_dren_gasto') >= 0 && i21.regFoley.indexOf('ind_dren_gasto') >= 0
+    && i21.regAmbos.indexOf('ind_dren_gasto') < 0 && i21.regComa.indexOf('ind_dren_gasto') >= 0
+    && i21.valorarPase.indexOf('ind_qx_sin_programar') < 0 && i21.difierePase.indexOf('ind_qx_sin_programar') < 0 && i21.pasaHoy.indexOf('ind_qx_sin_programar') >= 0 && i21.valorado.indexOf('ind_qx_sin_programar') < 0 && i21.urinarios.indexOf('ind_dren_gasto') >= 0 && i21.regFoley.indexOf('ind_dren_gasto') >= 0
     && i21.reportar.indexOf('ind_dren_gasto') >= 0 && i21.urinario.indexOf('ind_dren_gasto') >= 0 && i21.registrar.indexOf('ind_dren_gasto') < 0
     && i21.revKmed.indexOf('hiperK') >= 0 && i21.revEnal.indexOf('hiperK') >= 0 && i21.revEnox.indexOf('plaq_bajas') >= 0
     && i21.parse.length === 2 && i21.parse[0].firma === 'DR PRUEBA MBCG | DRA OTRA R1CG' && JSON.stringify(i21.parse[0].medidas) === '["SIGNOS VITALES POR TURNO"]' && i21.parse[1].firma === 'DR TERCERO MBCG', JSON.stringify(i21));
