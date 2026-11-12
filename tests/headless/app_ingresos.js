@@ -34,26 +34,40 @@ const PTS = [
   pt(10, '3-310', 'CT', '2026-10-20', true, 'JAIME FICTICIO DIEZ'),    // azul en la hoja con fecha vieja → ingreso
 ];
 const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
+// Con el reloj de Playwright, lo que truena dentro de setTimeout / setInterval / requestAnimationFrame ya no llega a
+// 'pageerror' (el reloj falso lo atrapa). Este envoltorio lo anota en window.__errTemp para el chequeo final.
+const TEMPORIZADORES = `(() => {
+  window.__errTemp = [];
+  const env = (fn) => typeof fn !== 'function' ? fn : function () { try { return fn.apply(this, arguments); } catch (e) { window.__errTemp.push(String((e && e.stack) || e).slice(0, 300)); throw e; } };
+  ['setTimeout', 'setInterval', 'requestAnimationFrame'].forEach((n) => { const o = window[n]; if (typeof o !== 'function') return; window[n] = function (fn) { const a = Array.prototype.slice.call(arguments); a[0] = env(fn); return o.apply(window, a); }; });
+})();`;
 (async () => {
   const browser = await launch();
-  const page = await browser.newPage({ viewport: { width: 1194, height: 834 }, timezoneId: TZ });
-  const errors = []; page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
-  const escrituras = [];
-  await page.route('**/vendor/supabase*', r => r.abort());
-  await page.route('**/rest/v1/**', async (route) => {
-    const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
-    let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
-    const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
-    if (url.startsWith('/rest/v1/patients')) { if (m === 'GET') return json(200, PTS); escrituras.push({ m, url, body }); return json(m === 'POST' ? 201 : 200, [{ id: PTS[0].id }]); }
-    if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: PTS[0].id }]); }
-    return json(200, []);
-  });
-  await page.clock.install({ time: AHORA });   // el tiempo sigue corriendo solo desde esa hora (temporizadores incluidos)
-  await page.addInitScript(MOCK);
+  const errors = [], escrituras = [], paginas = [];
+  // Abre la app con el reloj de la página en `ahora` (el tiempo sigue corriendo solo desde ahí, temporizadores incluidos).
+  const abrir = async (ahora) => {
+    const page = await browser.newPage({ viewport: { width: 1194, height: 834 }, timezoneId: TZ });
+    page.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+    await page.route('**/vendor/supabase*', r => r.abort());
+    await page.route('**/rest/v1/**', async (route) => {
+      const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
+      let body = null; try { body = JSON.parse(req.postData() || 'null'); } catch (_) {}
+      const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+      if (url.startsWith('/rest/v1/patients')) { if (m === 'GET') return json(200, PTS); escrituras.push({ m, url, body }); return json(m === 'POST' ? 201 : 200, [{ id: PTS[0].id }]); }
+      if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: PTS[0].id }]); }
+      return json(200, []);
+    });
+    await page.clock.install({ time: ahora });
+    await page.addInitScript(TEMPORIZADORES);
+    await page.addInitScript(MOCK);
+    await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+    await page.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 10 && document.querySelectorAll('#board-nav .bn-beds .bb').length === 10, null, { timeout: 30000 });
+    await page.waitForTimeout(1500);
+    paginas.push(page);
+    return page;
+  };
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
-  await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
-  await page.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 10 && document.querySelectorAll('#board-nav .bn-beds .bb').length === 10, null, { timeout: 30000 });
-  await page.waitForTimeout(1500);
+  const page = await abrir(AHORA);
 
   // ── N1: la regla, con el día fijado (21:30 del 11 nov en México = 03:30 UTC del 12: cuenta el día LOCAL) ──
   const n1 = await page.evaluate(() => {
@@ -86,7 +100,7 @@ const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
     && !n1.ncx && !n1.ncxAzul && !n1.uro && !n1.ncxMadrugada && !n1.urologia && !n1.neuro && !n1.dos && n1.mixto && n1.mixtoAzul && n1.sinEsp && !n1.nulo && !n1.vacio, JSON.stringify(n1));
 
   // ── N2: la tira (iPad) y el riel (laptop) marcan las mismas camas, con su aviso al pasar el cursor ──
-  const leer = () => page.evaluate(() => {
+  const leer = (pg) => (pg || page).evaluate(() => {
     const camaDe = {}; patients.forEach(p => { camaDe[pid(p)] = p.cama; });
     const tira = Array.from(document.querySelectorAll('#board-nav .bn-beds .bb'));
     const riel = Array.from(document.querySelectorAll('#board-side .bs-btn'));
@@ -216,7 +230,33 @@ const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
   check('N8 Papelera: la copia archivada no guarda la marca de ingreso y al restaurar (aun una copia vieja que la traiga) la cama no sale azul',
     !n8.err && n8.antes && n8.papelera && n8.restaurado && n8.sinMarca && n8.sinColor, JSON.stringify(n8));
 
-  check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
+  // ── N9: el caso real (guardia del 11 al 12 de noviembre): abrir la app a la 1:45 de la madrugada, con el reloj de la
+  //    página en esa hora. Los ingresos de ayer salen en azul desde la carga; y el refresco automático (al volver a la
+  //    app y cada 10 min) los quita a las 11:00 sin que nadie toque nada. ──
+  const pg2 = await abrir(new Date('2026-11-12T07:45:00Z'));     // 12 nov 01:45 en México
+  const GUARDIA2 = ['3-301', '3-306', '3-305', '3-310', '3-309'].sort();   // ayer (11/11), azules de la hoja y el del día nuevo (12/11)
+  const m1 = await leer(pg2);
+  const hora = await pg2.evaluate(() => new Date().getDate() + ' ' + new Date().getHours() + ':' + new Date().getMinutes());
+  // Pasan las horas con la app abierta: a las 11:05 el reloj cambia sin disparar temporizadores; «volver a la app» repinta.
+  await pg2.clock.setSystemTime(new Date('2026-11-12T17:05:00Z'));
+  const m2 = await leer(pg2);                                      // todavía nadie avisó: sigue como estaba
+  await pg2.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  const m3 = await leer(pg2);
+  // De vuelta a la madrugada y que corra solo el temporizador de 10 min (sin eventos): vuelve a marcar a los de ayer.
+  await pg2.clock.setSystemTime(new Date('2026-11-12T07:50:00Z'));
+  const m4 = await leer(pg2);
+  // Se cuenta cuántas veces corre el refresco: en 10 min y medio otros repintados de la app también ponen el color al día,
+  // así que solo el conteo prueba que el temporizador propio sigue puesto.
+  await pg2.evaluate(() => { window.__nMarcar = 0; const orig = _marcarIngresos; window._marcarIngresos = function () { window.__nMarcar++; return orig.apply(this, arguments); }; });
+  await pg2.clock.fastForward('10:30');
+  const m5 = await leer(pg2);
+  const nMarcar = await pg2.evaluate(() => window.__nMarcar);
+  check('N9 abrir la app a la 1:45 de la madrugada: los ingresos de ayer (3-301, 3-306), los azules de la hoja y el del día nuevo salen en azul en la tira y en el riel desde la carga; a las 11:05, al volver a la app, quedan solo el del día nuevo y los azules; y el temporizador de 10 min lo pone al día solo',
+    hora === '12 1:45' && igual(m1.tira, GUARDIA2) && igual(m1.riel, GUARDIA2) && igual(m2.tira, GUARDIA2) && igual(m3.tira, ['3-305', '3-309', '3-310']) && igual(m3.riel, ['3-305', '3-309', '3-310'])
+    && igual(m4.tira, ['3-305', '3-309', '3-310']) && nMarcar >= 1 && igual(m5.tira, GUARDIA2) && igual(m5.riel, GUARDIA2), JSON.stringify({ hora, nMarcar, m1: m1.tira, m2: m2.tira, m3: m3.tira, m4: m4.tira, m5: m5.tira }));
+
+  for (const pg of paginas) { try { errors.push(...await pg.evaluate(() => window.__errTemp || [])); } catch (_) {} }
+  check('final: sin errores no capturados (también los de dentro de temporizadores)', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-INGRESOS: ' + pass + ' passed, ' + fail + ' failed');
   await browser.close();
 })().catch(e => { console.error('CRASH', e); process.exit(2); });
