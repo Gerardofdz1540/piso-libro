@@ -1713,7 +1713,7 @@ se escribe no se toca el texto: el retroceso, Cmd+Z, el dictado y Scribble funci
   cada equipo. El 11 de noviembre la construcción de GitHub Pages falló (un enlace simbólico de `node_modules` entró al
   repositorio) y quien abría la app desde `github.io` no veía ni la versión nueva ni el aviso; CI ahora lo impide.
 
-## 🆕 Ingresos del día en el navegador de camas (12 de noviembre de 2026, versión 2026.11.12-1)
+## 🆕 Ingresos del día en el navegador de camas (12 de noviembre de 2026, versiones 2026.11.12-1 y -2)
 
 Las camas de **ingreso** se ven en **azul claro** en el navegador de camas: la tira de arriba en el iPad y el riel de la
 izquierda en la laptop. La cama abierta conserva su color de siempre (blanca en la tira, marina en el riel) y, si es
@@ -1721,7 +1721,9 @@ ingreso, lleva una franja azul abajo. Al dejar el cursor encima dice «🆕 Ingr
 
 Una cama es ingreso si pasa **una** de estas dos cosas:
 
-- **Su fecha de ingreso es hoy** (el día del equipo). Al día siguiente se quita sola.
+- **Su fecha de ingreso es la del día de guardia**: hoy y, **hasta las 11:00 de la mañana, también ayer**. Así, pasada
+  la medianoche los ingresos de la guardia siguen en azul para la entrega y el pase de visita; a las 11:00 quedan solo
+  los del día nuevo. (En la 2026.11.12-1 contaba solo el día de calendario y a medianoche se despintaban todos.)
 - **Su fila está pintada de azul en la hoja del censo**, como ya lo hacen (el «azul aciano claro»; vale cualquier azul
   claro o celeste). Cuenta la celda del nombre, o las de cama y expediente juntas; una celda suelta de otra columna no.
   Sirve para los que todavía no tienen fecha. Se quita cuando despintan la fila (el censo se lee cada 5 min). También
