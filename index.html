@@ -4276,6 +4276,13 @@ body.focus-on #board-main{ padding-bottom:160px; }
   body.focus-on #board-side{ display:none; }
   #board-nav .bn-beds{ display:flex; }
 }
+/* 🆕 Ingresos del día en el navegador de camas (12 nov 2026): azul claro, como la fila pintada en la hoja del censo.
+   La cama abierta sigue en su color de siempre (blanca en la tira, marina en el riel) con una franja azul abajo. */
+#board-nav .bn-beds .bb.bb-ing{ background:#7dd3fc; color:#0a1628; }
+#board-nav .bn-beds .bb.bb-ing.bb-cur{ background:#fff; color:#0a1628; box-shadow:inset 0 -4px 0 #38bdf8; }
+#board-side .bs-btn.bs-ing{ background:#dbeafe; border-color:#60a5fa; }
+#board-side .bs-btn.bs-ing:hover{ background:#bfdbfe; }
+#board-side .bs-btn.bs-ing.bs-cur{ background:#0a1628; border-color:#0a1628; box-shadow:inset 0 -3px 0 #38bdf8; }
 /* ✍️ Lápiz directo sobre las cajas: la capa de tinta no atrapa el dedo (pointer-events:none); el botón ✍️ de la esquina sí. */
 .pl-ink-cv{ position:absolute; pointer-events:none; z-index:2; }
 /* ✍️ Color por autor (11 nov 2026): capa encima de la caja, sin eventos; copia la letra y el acomodo de la caja */
@@ -14407,6 +14414,7 @@ function plExportBackup() {
             cama_app_ts: row.cama_app_ts || null,
             seccion: row.seccion || ""   // sala del censo: filtro de servicio del tablero
           };
+          if (row.hoja_azul === true) p.hoja_azul = true;   // fila pintada de azul en la hoja = ingreso (solo lectura; ver _plIngresoHoy)
           // Si los campos de identidad llegaron vacíos desde Supabase, intentar
           // restaurarlos desde el caché local (mismo _supa_id)
           if (!p.nombre && !p.cama && !p.exp) {
@@ -15487,6 +15495,7 @@ function plExportBackup() {
         if (dupIdx !== -1) {
           const oldSupaId = patients[dupIdx]._supa_id;
           patients[dupIdx] = { ...patients[dupIdx], ...p };
+          if (!p.hoja_azul) delete patients[dupIdx].hoja_azul;   // la marca de la hoja es de la fila nueva, no de la que reemplaza
           lsSavePatients(patients);
           if (oldSupaId && oldSupaId !== newRow.id) {
             safeInfo("[RT] Patient replaced (dedup by pid):", p.nombre, oldSupaId, "→", newRow.id);
@@ -15583,6 +15592,7 @@ function plExportBackup() {
           const _navChanged = existing.cama !== updated.cama || existing.nombre !== updated.nombre || existing.esp !== updated.esp;
           if (_navChanged && document.body.classList.contains("focus-on")) renderViewSoft(); else _rerenderCardSoft(newKey);
         }
+        _marcarIngresos();   // la hoja pintó o despintó la fila, o cambió la fecha de ingreso: el color del navegador, sin repintar
         safeInfo("[RT] Patient updated:", updated.nombre);
       }
       else if (eventType === "DELETE") {
@@ -16093,7 +16103,7 @@ function plExportBackup() {
       });
     }
     function supaRowToPatient(row) {
-      return {
+      const p = {
         _supa_id: row.id,
         cama: row.cama || "", nombre: row.nombre || "", exp: row.exp || "",
         dx: row.dx || "", edad: row.edad || "", esp: row.esp || "",
@@ -16102,7 +16112,46 @@ function plExportBackup() {
         cama_app_ts: row.cama_app_ts || null,
         seccion: row.seccion || ""   // sala del censo (la pone el sheet-sync; la app solo la lee para el filtro de servicio)
       };
+      // Fila pintada de azul en la hoja = ingreso (la pone el sheet-sync; la app solo la lee). La llave existe solo cuando es
+      // true: la copia local de los pacientes no crece por los que no son ingreso.
+      if (row.hoja_azul === true) p.hoja_azul = true;
+      return p;
     }
+    // 🆕 Ingresos del día en el navegador de camas (12 nov 2026, pedido de Gera): la cama se pinta de azul claro, como la
+    // fila en la hoja del censo, para ver de un vistazo cuáles fueron los ingresos. Es ingreso si la hoja lo tiene pintado
+    // de azul (patients.hoja_azul; lo lee censo-sync 2026.11.12 o posterior) o si su fecha de ingreso es HOY (el día de
+    // este equipo, no el de UTC). NCX y Urología no se marcan: misma regla que los robots (_plSinRobot: fuera solo si
+    // TODOS los servicios de `esp` son NCX/Urología; «CG/URO» sí se marca). `hoy` es para las pruebas.
+    const PL_ING_TIT = " · 🆕 Ingreso";
+    function _plIngresoHoy(p, hoy) {
+      if (!p || _plSinRobot(p.esp)) return false;
+      if (p.hoja_azul === true) return true;
+      const t = toSafeString(p.ingreso).trim(); if (!t) return false;
+      const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(t);   // fecha ISO: se lee como día local (new Date("aaaa-mm-dd") es UTC)
+      const d = iso ? new Date(+iso[1], +iso[2] - 1, +iso[3]) : parseDmy(t);
+      if (!(d instanceof Date) || isNaN(d.getTime())) return false;
+      const h = hoy instanceof Date ? hoy : new Date();
+      return d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth() && d.getDate() === h.getDate();
+    }
+    // Pone o quita el color de ingreso en los botones que YA están en el navegador (riel y tira), sin repintar nada: al
+    // llegar un cambio de la hoja, al volver a la app y cada 10 min (a medianoche los de ayer dejan de ser ingreso).
+    function _marcarIngresos(hoy) {
+      try {
+        const h = hoy instanceof Date ? hoy : new Date(), porK = {};
+        patients.forEach(function (p) { porK[pid(p)] = p; });
+        document.querySelectorAll("#board-side .bs-btn[data-k], #board-nav .bn-beds .bb[data-k]").forEach(function (b) {
+          const es = _plIngresoHoy(porK[b.dataset.k], h), cls = b.classList.contains("bb") ? "bb-ing" : "bs-ing";
+          if (b.classList.contains(cls) === es) return;
+          b.classList.toggle(cls, es);
+          const tit = String(b.getAttribute("title") || "").split(PL_ING_TIT).join("");
+          b.setAttribute("title", tit + (es ? PL_ING_TIT : ""));
+        });
+      } catch (_) {}
+    }
+    try {
+      document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") _marcarIngresos(); });
+      setInterval(function () { if (document.visibilityState === "visible") _marcarIngresos(); }, 10 * 60e3);
+    } catch (_) {}
     // La app cambió la cama de este paciente (Editar, cama en línea, 🛏 Cambiar cama, mover por expediente): se marca con
     // la hora para que el sheet-sync no la regrese a la cama de la hoja mientras la hoja no cambie.
     function _markCamaApp(p) { if (p) p.cama_app_ts = new Date().toISOString(); }
@@ -17803,6 +17852,7 @@ function plExportBackup() {
           try { fcard = isSimpleEsp(fp.esp, fnd) ? renderSimpleCard(fp, fnd, fk) : (typeof renderFocusBoard === "function" ? renderFocusBoard(fp, fnd, fk) : renderFullCard(fp, fnd, fk)); }
           catch (e) { fcard = `<div class="full-card" style="padding:16px;color:#b91c1c">⚠️ Error al renderizar este paciente.</div>`; }
           const _sinSubir = _clavesSinSubir(), _lh = _labsHoyPendientes(_ordered), _qc = _qcLista(_ordered);
+          const _hoyIng = new Date();   // 🆕 ingresos del día: azul claro en el riel y en la tira (_plIngresoHoy)
           const _side = `<div id="board-side"><div class="bs-h">Camas</div>` + _ordered.map(pp => {
             const kk = pid(pp);
             const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
@@ -17811,14 +17861,16 @@ function plExportBackup() {
             // Punto de estado: rojo = lab crítico sin reconocer; ámbar = sin labs de hoy / viejos
             let _dot = "";
             try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}" title="${_st === "red" ? "Lab crítico" : "Sin labs recientes"}"></span>`; } catch (_) {}
-            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_sinSubirDot(kk, _sinSubir)}${_dot}${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
+            const _ing = _plIngresoHoy(pp, _hoyIng);
+            return `<button class="bs-btn${kk === fk ? " bs-cur" : ""}${_ing ? " bs-ing" : ""}" data-k="${esc(kk)}" onclick="focusGoTo(this.dataset.k)" style="border-left:3px solid ${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}${_ing ? PL_ING_TIT : ""}">${_sinSubirDot(kk, _sinSubir)}${_dot}${_new}<span class="bs-cama">${esc(pp.cama)}</span><span class="bs-name">${_fn}</span></button>`;
           }).join("") + `</div>`;
           // Carril de camas HORIZONTAL (oct 2026, pedido de Gera): en el iPad el riel lateral estorbaba a las cajas.
           // En pantallas < 1340 px las camas van en esta tira deslizable dentro de la barra pegajosa (#board-side se oculta por CSS).
           const _beds = `<div class="bn-beds" data-testid="bn-beds">` + _ordered.map(pp => {
             const kk = pid(pp); const ec = ESP_COLORS[pp.esp] || "#1a3a6b";
             let _dot = ""; try { const _st = computePatientStatus(migrateNote(noteData[kk] || defaultData()), kk); if (_st === "red" || _st === "yellow") _dot = `<span class="bs-dot ${_st}"></span>`; } catch (_) {}
-            return `<button type="button" class="bb${kk === fk ? " bb-cur" : ""}" data-k="${esc(kk)}" data-cama="${esc(pp.cama || "")}" onclick="focusGoTo(this.dataset.k)" style="border-top-color:${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}">${_sinSubirDot(kk, _sinSubir)}${_dot}${_labNewsFor(kk) ? "🧪" : ""}${esc(pp.cama || "S/C")}</button>`;
+            const _ing = _plIngresoHoy(pp, _hoyIng);
+            return `<button type="button" class="bb${kk === fk ? " bb-cur" : ""}${_ing ? " bb-ing" : ""}" data-k="${esc(kk)}" data-cama="${esc(pp.cama || "")}" onclick="focusGoTo(this.dataset.k)" style="border-top-color:${ec}" title="${esc(pp.cama || "")} · ${esc(pp.nombre || "")} · ${esc(pp.esp || "")}${_ing ? PL_ING_TIT : ""}">${_sinSubirDot(kk, _sinSubir)}${_dot}${_labNewsFor(kk) ? "🧪" : ""}${esc(pp.cama || "S/C")}</button>`;
           }).join("") + `</div>`;
           const _nav = `<div id="board-nav">`
             + `<button class="bn-btn" onclick="focusPrev()" ${_idx <= 0 ? "disabled" : ""} title="Anterior (flecha izquierda)">←</button>`
@@ -30854,7 +30906,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.11-2";
+    const PL_BUILD = "2026.11.12-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

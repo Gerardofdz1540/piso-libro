@@ -28,11 +28,13 @@
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones», función
 // pl_reportar_version) y el vigilante la compara con la del repositorio: si no coinciden, falta pegar esta versión.
 // Cambiarla en cada cambio del archivo.
-var CENSO_SYNC_VERSION = '2026.10.30';
+var CENSO_SYNC_VERSION = '2026.11.12';
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
 var _censoWriteStats_ = { upserts: 0, unchanged: 0 };
+// false si la base todavía no tiene patients.hoja_azul (ver syncPatients_): se sincroniza igual, sin la marca de ingreso.
+var _hojaAzulCol_ = true;
 // Google Doc "INDICACIONES HOSPITALIZACION": su texto completo se empuja a Supabase
 // (tabla indicaciones_doc, una sola fila) y la app lo cruza por cama + nombre en cada tarjeta.
 var INDICACIONES_DOC_ID = '1gRCydpjiByBjMxp5edTbuiEwrzHTh8Ir2IvgYqZY73A';
@@ -102,6 +104,7 @@ function doSyncForce() {
 /** Lee la hoja, parsea, deduplica/cuarentena y hace UPSERT column-scoped a Supabase. opts.force: ver doSyncForce. */
 function doSync(opts) {
   _censoWriteStats_ = { upserts: 0, unchanged: 0 };
+  _hojaAzulCol_ = true;
   var key = PropertiesService.getScriptProperties().getProperty('SUPABASE_KEY');
   if (!key) { Logger.log('FALTA Script Property SUPABASE_KEY'); throw new Error('Falta SUPABASE_KEY en Script Properties'); }
 
@@ -152,19 +155,62 @@ function reportarVersion_(key, pieza, version) {
 function readCensoRows_() {
   var ss = SpreadsheetApp.openById(CENSO_SHEET_ID), sheets = ss.getSheets();
   for (var i = 0; i < sheets.length; i++) {
-    if (sheets[i].getSheetId() === CENSO_GID) return sheets[i].getDataRange().getValues();
+    if (sheets[i].getSheetId() === CENSO_GID) return conColores_(sheets[i].getDataRange());
   }
   var candidates = [];
   sheets.forEach(function (sheet) {
-    var rows = sheet.getDataRange().getValues();
+    var range = sheet.getDataRange(), rows = range.getValues();
     var hasHeader = rows.slice(0, 8).some(function (row) {
       var up = row.map(norm_);
       return up.indexOf('CAMA') >= 0 && contains_(up, 'NOMBRE') && contains_(up, 'EXPEDIENTE');
     });
-    if (hasHeader) candidates.push(rows);
+    if (hasHeader) candidates.push({ range: range, rows: rows });
   });
   if (candidates.length !== 1) throw new Error('Censo: se esperaba una sola pestaña con CAMA/NOMBRE/EXPEDIENTE; encontradas: ' + candidates.length + '. No se sincronizó.');
-  return candidates[0];
+  return conColores_(candidates[0].range, candidates[0].rows);
+}
+
+/**
+ * Valores de la hoja con sus colores de fondo en `rows._bg` (misma forma que los valores; propiedad no enumerable, así
+ * las filas siguen siendo la matriz de siempre). 12 nov 2026: la hoja marca los INGRESOS pintando la fila de azul claro y
+ * la app los pinta de otro color en el navegador de camas (parseCenso_ → azul → patients.hoja_azul).
+ * Si los colores no se pueden leer o no cuadran con los valores, se sincroniza igual, sin la marca (nunca falla por esto).
+ */
+function conColores_(range, rows) {
+  rows = rows || range.getValues();
+  try {
+    var bg = range.getBackgrounds();
+    if (bg && bg.length === rows.length) Object.defineProperty(rows, '_bg', { value: bg });
+    else Logger.log('Censo: los colores de la hoja no cuadran con las filas (' + (bg ? bg.length : 'sin colores') + ' vs ' + rows.length + '); se sincroniza sin la marca de ingreso.');
+  } catch (e) {
+    Logger.log('Censo: no se pudieron leer los colores de la hoja (' + e + '); se sincroniza sin la marca de ingreso.');
+  }
+  return rows;
+}
+
+/**
+ * ¿El color de fondo de una celda es el AZUL con que la hoja marca los ingresos? La hoja usa «azul aciano claro 3»
+ * (#c9daf8) en toda la fila. Se acepta cualquier azul o celeste de relleno: tono entre cian y azul, con color y sin ser
+ * oscuro. NO cuentan el azul marino de la columna de la izquierda y de los encabezados de sección (#051643, #001746…),
+ * ni el blanco, los grises, el verde, el rojo, el amarillo o el morado claros.
+ */
+function esAzulHoja_(hex) {
+  var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex == null ? '' : hex).trim());
+  if (!m) return false;
+  var r = parseInt(m[1], 16) / 255, g = parseInt(m[2], 16) / 255, b = parseInt(m[3], 16) / 255;
+  var max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
+  if (d < 0.04) return false;                              // blanco, gris o negro
+  var s = d / (1 - Math.abs(2 * l - 1));
+  var h = max === r ? ((g - b) / d) % 6 : (max === g ? (b - r) / d + 2 : (r - g) / d + 4);
+  h = (h * 60 + 360) % 360;
+  return h >= 175 && h <= 250 && s >= 0.2 && l >= 0.4 && l <= 0.95;
+}
+
+/** ¿La fila del paciente está pintada de azul? Cuenta la celda del NOMBRE, o las de CAMA y EXPEDIENTE juntas (una sola celda suelta de otra columna no). */
+function filaAzul_(bgRow, col) {
+  if (!bgRow) return false;
+  var az = function (i) { return i >= 0 && esAzulHoja_(bgRow[i]); };
+  return az(col.nombre) || (az(col.cama) && az(col.exp));
 }
 
 /**
@@ -183,6 +229,7 @@ function parseCenso_(rows) {
   if (headerRow < 0) throw new Error('No se encontro la fila de encabezados (CAMA/NOMBRE/EXPEDIENTE).');
 
   var out = [], section = 'PISO';   // primer bloque es PISO (implicito)
+  var bg = rows._bg || null;        // colores de fondo (conColores_); sin ellos nadie sale marcado
   for (var i = headerRow + 1; i < rows.length; i++) {
     var row = rows[i];
     // DETENER en una 2a fila-encabezado: la hoja trae OTRA tabla mas abajo con columnas en
@@ -214,7 +261,8 @@ function parseCenso_(rows) {
         _invalidIngreso: String(row[col.ingreso] == null ? '' : row[col.ingreso]).trim() !== '' && !toISODate_(row[col.ingreso]),
         dias:      toInt_(cell_(row, col.dias)),
         estado:    cell_(row, col.estado),
-        seccion:   section
+        seccion:   section,
+        azul:      filaAzul_(bg && bg[i], col)
       });
     } else if (!exp) {
       var nonEmpty = row.map(function (c) { return String(c == null ? '' : c).trim(); }).filter(Boolean);
@@ -225,6 +273,13 @@ function parseCenso_(rows) {
       // al censo activo. La identidad de seccion la dan los nombres reales (ALTAS, UCIA, ...).
       if (nonEmpty.length >= 1 && nonEmpty.length <= 2 && !looksLikeCama_(nonEmpty[0])) section = norm_(nonEmpty[0]);
     }
+  }
+  // Si más de la mitad de los pacientes sale «azul» no son ingresos: es el diseño de la hoja (bandas de color, una
+  // columna pintada). Se ignora la marca completa en vez de pintar media hoja de ingreso.
+  var nAzul = out.filter(function (p) { return p.azul; }).length;
+  if (out.length >= 6 && nAzul * 2 > out.length) {
+    out.forEach(function (p) { p.azul = false; });
+    Logger.log('Censo: ' + nAzul + ' de ' + out.length + ' filas pintadas de azul: se toma como diseño de la hoja y no se marca ningún ingreso por color.');
   }
   return out;
 }
@@ -627,6 +682,7 @@ function toPatientRow_(p) {
     esp: p.esp || '', adscrito: p.adscrito || '', residente: p.residente || '',
     ingreso: p.ingreso || null, dias: (p.dias === '' ? null : p.dias),
     estado: p.estado || '', seccion: p.seccion || '', es_mio: computeEsMio_(p.esp),
+    hoja_azul: p.azul === true,   // la fila está pintada de azul en la hoja (ingreso); siempre presente: el upsert por lotes exige las mismas llaves
     updated_by: 'sheet-sync'
   };
   // Marca interna: nunca se envía como columna a PostgREST.
@@ -865,9 +921,16 @@ function syncPatients_(key, payload, opts) {
   var nSheet = Object.keys(maps.byCama).length;   // tamaño REAL de la hoja (antes de excluir nada) para la guarda
 
   // Estado actual en Supabase
-  var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev,edad,ingreso,dx,esp,adscrito,residente,dias,estado,seccion,es_mio', {
-    method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true
-  });
+  var SEL_CUR = '/rest/v1/patients?select=id,cama,exp,nombre,updated_by,cama_app_ts,cama_hoja_prev,edad,ingreso,dx,esp,adscrito,residente,dias,estado,seccion,es_mio';
+  var getCur = function (sel) { return UrlFetchApp.fetch(SUPABASE_URL + sel, { method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true }); };
+  var res = getCur(SEL_CUR + ',hoja_azul');
+  // Base sin la columna hoja_azul (12 nov 2026; scripts/db/supabase_patients_hoja_azul_20261112.sql): el censo se
+  // sincroniza igual que antes, solo que sin la marca de ingreso por color. Nunca se detiene el sync por esto.
+  if (res.getResponseCode() === 400 && /hoja_azul/.test(res.getContentText() || '')) {
+    _hojaAzulCol_ = false;
+    Logger.log('Censo: la base no tiene la columna patients.hoja_azul; se sincroniza sin la marca de ingreso por color.');
+    res = getCur(SEL_CUR);
+  }
   // Sin el estado actual NO se upsertea a ciegas: con camas fijadas desde la app (caso e) la fila de la
   // hoja en la cama vieja caería sobre OTRO paciente que la app puso ahí (intercambio, cama liberada) y su
   // nota quedaría bajo otro nombre, o duplicaría al paciente. Mejor una corrida perdida (≤ 5 min) que dato ajeno.
@@ -1259,6 +1322,7 @@ function preserveInvalidIngresos_(payload, known) {
 }
 
 function upsertPatients_(key, payload, current) {
+  if (!_hojaAzulCol_) payload.forEach(function (p) { delete p.hoja_azul; });   // la base aún no tiene la columna
   var byCama = {};
   (current || []).forEach(function (r) { byCama[normalizeCama_(r.cama)] = r; });
   // Se compara la foto actual, nunca un hash de la hoja: una edición en la app también se detecta.

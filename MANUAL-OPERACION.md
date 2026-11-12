@@ -57,6 +57,9 @@ dirección, que la borre y la vuelva a instalar desde la principal.
 Hay que hacerlo **cada vez** que cambie el archivo `apps-script/censo-sync.gs`
 en GitHub (el aviso lo da el PR). Son 2 minutos:
 
+> **Versión vigente: 2026.11.12** (12 nov 2026): lee qué filas están pintadas de azul (ingresos) para el navegador
+> de camas de la app. Si en Supabase `config` → «versiones» → `censo-sync` dice una versión anterior, falta pegarla.
+
 1. Abre en GitHub el archivo
    `https://github.com/Gerardofdz1540/piso-libro/blob/main/apps-script/censo-sync.gs`.
 2. Pulsa el botón **Raw** (arriba a la derecha del archivo). Se abre texto
@@ -1709,6 +1712,30 @@ se escribe no se toca el texto: el retroceso, Cmd+Z, el dictado y Scribble funci
   Cmd+Shift+R); en el iPad o el iPhone, cerrar la app y volver a abrirla. Admin → 📱 Versiones muestra la versión de
   cada equipo. El 11 de noviembre la construcción de GitHub Pages falló (un enlace simbólico de `node_modules` entró al
   repositorio) y quien abría la app desde `github.io` no veía ni la versión nueva ni el aviso; CI ahora lo impide.
+
+## 🆕 Ingresos del día en el navegador de camas (12 de noviembre de 2026, versión 2026.11.12-1)
+
+Las camas de **ingreso** se ven en **azul claro** en el navegador de camas: la tira de arriba en el iPad y el riel de la
+izquierda en la laptop. La cama abierta conserva su color de siempre (blanca en la tira, marina en el riel) y, si es
+ingreso, lleva una franja azul abajo. Al dejar el cursor encima dice «🆕 Ingreso».
+
+Una cama es ingreso si pasa **una** de estas dos cosas:
+
+- **Su fecha de ingreso es hoy** (el día del equipo). Al día siguiente se quita sola.
+- **Su fila está pintada de azul en la hoja del censo**, como ya lo hacen (el «azul aciano claro»; vale cualquier azul
+  claro o celeste). Cuenta la celda del nombre, o las de cama y expediente juntas; una celda suelta de otra columna no.
+  Sirve para los que todavía no tienen fecha. Se quita cuando despintan la fila (el censo se lee cada 5 min).
+
+**NCX y Urología no se marcan** (igual que con los robots: «CG/URO» sí, porque también es nuestro).
+
+- **Para que se lea el azul de la hoja hay que pegar el programa nuevo de la hoja** (`censo-sync.gs` **2026.11.12**; ver
+  «Paso a paso: actualizar el programa de la hoja»). Mientras tanto la app marca solo por fecha de ingreso.
+- El azul marino de la columna de la izquierda y de los encabezados de sección no cuenta, ni el verde, el rojo, el
+  amarillo o el morado. Si más de la mitad de las filas saliera «azul» (bandas de color en toda la hoja), el programa
+  lo toma como diseño y no marca a nadie.
+- La marca vive en `patients.hoja_azul` (`scripts/db/supabase_patients_hoja_azul_20261112.sql`). La escribe solo el
+  programa de la hoja; la app nunca la manda. Si el color no se puede leer, el censo se sincroniza igual, sin la marca.
+- El filtro **🆕 Ingresos** de «Filtrar camas» no cambió (hoy o ayer, todos los servicios).
 
 ## 🛡 Tarjetas que se quedaban «editadas aquí» (11 de noviembre de 2026, versión 2026.11.11-1)
 
