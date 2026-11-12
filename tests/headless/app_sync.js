@@ -35,7 +35,9 @@ const REMOTE_NOTE = { patient_id:'a1', app:'APP REMOTO', pa:'', drenajes:'DREN R
       return json(200, [{ id:'a1' }]);
     }
     if (url.startsWith('/rest/v1/notes')) {
-      if (m==='GET') return json(200, [REMOTE_NOTE]);
+      // «La nube»: la fila que devuelve una lectura. ctl.remoteNote la cambia una prueba cuando simula que otro dispositivo
+      // escribió (así una relectura tardía de la app, p. ej. la de después de subir la cola, trae lo mismo que el aviso).
+      if (m==='GET') { ctl.notesGetPend = (ctl.notesGetPend||0) + 1; try { return await json(200, [ctl.remoteNote || REMOTE_NOTE]); } finally { ctl.notesGetPend--; } }
       ctl.notesPostCount++;
       if (ctl.failNotesPostOnce) { ctl.failNotesPostOnce=false; return json(500, { message:'boom' }); }
       if (ctl.slowNotesPost) await new Promise(r=>setTimeout(r, ctl.slowNotesPost));
@@ -94,6 +96,12 @@ const REMOTE_NOTE = { patient_id:'a1', app:'APP REMOTO', pa:'', drenajes:'DREN R
   check('S4 recoverPendingNoteSync sin lista remota: cero POST (sin push masivo)', notePosts().length===0 && s4.a.synced===0 && s4.b.synced===0, JSON.stringify({ posts: notePosts(), s4 }));
 
   // ── S5: modal de edición abierto mientras otro dispositivo cambia pendientes → al guardar solo el estado, no se pisa ──
+  // Antes se deja terminar cualquier relectura en vuelo (la de S3 tras subir la cola): con la máquina cargada llegaba
+  // DESPUÉS del aviso de abajo y reponía la fila fija del servidor simulado («PEND REMOTO») encima de «PEND DE B».
+  // Y mientras dura S5 «la nube» ya tiene lo que escribió B, como en la realidad.
+  for (let i=0; i<80 && ctl.notesGetPend>0; i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(400);
+  ctl.remoteNote = Object.assign({}, REMOTE_NOTE, { app:'APP REMOTO', drenajes:'DREN NUEVO', manejo:'M2 LOCAL', pendientes:'PEND DE B', checklist:{ npo:true } });
   await page.evaluate(()=>{ try { _suppressRealtimeKeys.clear(); } catch(_){} });
   calls.length=0;
   const s5 = await page.evaluate(async()=>{
@@ -108,6 +116,9 @@ const REMOTE_NOTE = { patient_id:'a1', app:'APP REMOTO', pa:'', drenajes:'DREN R
   const s5Posts = notePosts();
   const s5Patch = calls.find(c=>c.m==='PATCH' && c.url.includes('/rest/v1/patients') && c.body && c.body.estado==='GRAVE');
   check('S5 modal: pendientes de B sobrevive (no se reescribe) y el estado sí se guarda', s5.pend==='PEND DE B' && !!s5Patch && !s5Posts.some(keys=>keys.includes('pendientes')) && s5.modalOpen==='none', JSON.stringify({ s5, s5Posts, patch: !!s5Patch }));
+  for (let i=0; i<80 && ctl.notesGetPend>0; i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(300);
+  ctl.remoteNote = null;
 
   // ── S6: texto escrito en el modal y "Cancelar" → se sube igual (la tarjeta ya lo muestra) ──
   calls.length=0;

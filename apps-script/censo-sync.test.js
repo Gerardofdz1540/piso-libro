@@ -1406,5 +1406,131 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   check('T27e de EXT a 3-190: la fila se mueve (PATCH de cama), sin archivo ni DELETE', p2.length === 1 && p2[0].body.cama === '3-190' && !env2.calls.some((c) => c.m === 'DELETE' || c.u.startsWith('/rest/v1/archive')), JSON.stringify(p2));
 }
 
+// ── 28) Ingresos pintados de azul en la hoja → patients.hoja_azul (12 nov 2026) ─────────────
+{
+  const { sb } = makeSandbox({});
+  const AZ = '#c9daf8', BL = '#ffffff', MARINO = '#051643';
+  check('T28 esAzulHoja_: el azul claro de la hoja y otros azules/celestes de relleno sí; blanco, grises, azul marino, verde, rojo, amarillo y morados no',
+    ['#c9daf8', '#CFE2F3', 'c9daf8', '#00ffff', '#4a86e8', '#d0e0e3', '#a4c2f4', '#0000ff'].every((c) => sb.esAzulHoja_(c) === true)
+    && ['#ffffff', '#051643', '#001746', '#0c1843', '#1c4587', '#d9ead3', '#ea9999', '#d9d2e9', '#fff2cc', '#ddcee4', '#f3f3f3', '#eaeef2', '#000000', '', null, undefined, 'red', '#12'].every((c) => sb.esAzulHoja_(c) === false));
+  const header = ['46337', 'CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DÍAS', 'ESTADO'];
+  const pr = (cama, exp, nombre, esp, ing) => ['', cama, exp, nombre, '40', 'DX FICTICIO', esp || 'CG', 'ADS', 'RES', ing || '', '', 'ESTABLE'];
+  const bgFila = (modo) => {
+    const b = new Array(12).fill(BL); b[0] = MARINO;                 // la columna de la izquierda siempre es azul marino
+    if (modo === 'toda') for (let i = 1; i <= 10; i++) b[i] = AZ;
+    if (modo === 'nombre') b[3] = AZ;
+    if (modo === 'cama+exp') { b[1] = AZ; b[2] = AZ; }
+    if (modo === 'cama') b[1] = AZ;
+    if (modo === 'suelta') b[5] = AZ;                                 // una celda suelta (dx)
+    return b;
+  };
+  const filas = [
+    [pr('3-101', '26-80001', 'ANA FICTICIA UNO', 'CG', '11/11/2026'), 'toda'],
+    [pr('3-102', '26-80002', 'BETO FICTICIO DOS', 'CG', '01/11/2026'), ''],
+    [pr('3-103', '26-80003', 'CARLA FICTICIA TRES', 'NCX', ''), 'nombre'],
+    [pr('3-104', '26-80004', 'DARIO FICTICIO CUATRO', 'CCR', ''), 'cama+exp'],
+    [pr('3-105', '26-80005', 'ELSA FICTICIA CINCO', 'CG', ''), 'cama'],
+    [pr('3-106', '26-80006', 'FIDEL FICTICIO SEIS', 'URO', ''), 'suelta'],
+    [pr('3-107', '26-80007', 'GABY FICTICIA SIETE', 'CG', ''), ''],
+    [pr('3-108', '26-80008', 'HUGO FICTICIO OCHO', 'CG', ''), ''],
+    [pr('3-109', '26-80009', 'INES FICTICIA NUEVE', 'CG', ''), ''],
+    [pr('3-110', '26-80010', 'JAIME FICTICIO DIEZ', 'CG', ''), ''],
+    [pr('3-111', '26-80011', 'KARLA FICTICIA ONCE', 'CG', ''), ''],
+    [pr('3-112', '26-80012', 'LEO FICTICIO DOCE', 'CG', ''), ''],
+    [['ALTAS'], 'marino'],
+    [pr('3-113', '26-80013', 'MARA FICTICIA ALTA', 'CG', '10/11/2026'), 'toda'],
+  ];
+  const conBg = (lista) => { const rows = [header].concat(lista.map((f) => f[0])); Object.defineProperty(rows, '_bg', { value: [new Array(12).fill(MARINO)].concat(lista.map((f) => bgFila(f[1]))) }); return rows; };
+  const rows = conBg(filas);
+  const parsed = sb.parseCenso_(rows);
+  const az = Object.fromEntries(parsed.map((r) => [r.cama, r.azul]));
+  check('T28b parseCenso_: fila toda azul, solo el nombre, o cama+expediente → azul; solo la cama, una celda suelta o sin pintar → no; la columna marina de la izquierda no cuenta; ALTAS sigue fuera',
+    parsed.length === 12 && az['3-101'] === true && az['3-103'] === true && az['3-104'] === true && az['3-102'] === false && az['3-105'] === false && az['3-106'] === false
+    && az['3-107'] === false && !('3-113' in az), JSON.stringify(az));
+  const sinBg = sb.parseCenso_([header].concat(filas.map((f) => f[0])));
+  check('T28c sin colores (programa leyendo solo valores): nadie sale marcado y el resto del parseo es idéntico',
+    sinBg.length === 12 && sinBg.every((r) => r.azul === false) && JSON.stringify(sinBg.map((r) => Object.assign({}, r, { azul: 0 }))) === JSON.stringify(parsed.map((r) => Object.assign({}, r, { azul: 0 }))));
+  const pay = parsed.map(sb.toPatientRow_);
+  check('T28d toPatientRow_: hoja_azul va SIEMPRE (true/false) para que el lote tenga las mismas llaves',
+    pay.every((r) => typeof r.hoja_azul === 'boolean' && Object.prototype.hasOwnProperty.call(r, 'hoja_azul')) && pay.find((r) => r.cama === '3-101').hoja_azul === true && pay.find((r) => r.cama === '3-102').hoja_azul === false
+    && new Set(pay.map((r) => Object.keys(r).join(','))).size === 1);
+  // Más de la mitad «azul» = diseño de la hoja, no ingresos: se ignora la marca.
+  const bandas = conBg(filas.slice(0, 12).map((f, i) => [f[0], i < 7 ? 'toda' : '']));
+  const envB = makeSandbox({});
+  const pB = envB.sb.parseCenso_(bandas);
+  check('T28e más de la mitad de las filas en azul: se toma como diseño de la hoja, nadie queda marcado y se avisa en la bitácora',
+    pB.length === 12 && pB.every((r) => r.azul === false) && envB.logs.some((l) => /diseño de la hoja/.test(l)), JSON.stringify(envB.logs));
+  // Lectura de la hoja: colores en rows._bg sin cambiar la matriz; si fallan o no cuadran, se sigue sin ellos.
+  const vals = [header, pr('3-101', '26-80001', 'ANA FICTICIA UNO')];
+  const hoja = (rng) => ({ openById: () => ({ getSheets: () => [{ getSheetId: () => sb.CENSO_GID, getDataRange: () => rng }] }) });
+  sb.SpreadsheetApp = hoja({ getValues: () => vals, getBackgrounds: () => [new Array(12).fill(MARINO), bgFila('toda')] });
+  const r1 = sb.readCensoRows_();
+  sb.SpreadsheetApp = hoja({ getValues: () => [header, pr('3-101', '26-80001', 'ANA FICTICIA UNO')], getBackgrounds: () => { throw new Error('servicio no disponible'); } });
+  let r2 = null, err2 = ''; try { r2 = sb.readCensoRows_(); } catch (e) { err2 = String(e); }
+  sb.SpreadsheetApp = hoja({ getValues: () => [header, pr('3-101', '26-80001', 'ANA FICTICIA UNO')], getBackgrounds: () => [bgFila('toda')] });
+  const r3 = sb.readCensoRows_();
+  check('T28f readCensoRows_: devuelve la misma matriz de valores con los colores en _bg (no enumerable); si getBackgrounds falla o no cuadra, sigue sin colores y sin error',
+    r1 === vals && Array.isArray(r1._bg) && r1._bg.length === 2 && Object.keys(r1).join(',') === '0,1' && sb.parseCenso_(r1)[0].azul === true
+    && !err2 && r2 && r2._bg === undefined && sb.parseCenso_(r2)[0].azul === false && r3._bg === undefined, JSON.stringify({ err2, k: Object.keys(r1) }));
+  // Corrida completa: solo se reescriben las filas cuya marca cambió.
+  const base = sinBg.map(sb.toPatientRow_).map((r, i) => Object.assign({ id: 'h' + i }, r));
+  base.find((r) => r.cama === '3-102').hoja_azul = true;            // ayer estaba azul; hoy la hoja ya no la pinta
+  const env = makeSandbox({ cur: base, props: {} });
+  env.sb.readCensoRows_ = () => rows;
+  env.sb.doSync();
+  const get = env.calls.find((c) => c.m === 'GET' && c.u.startsWith('/rest/v1/patients?select=id,cama'));
+  const ups = [].concat(...env.calls.filter((c) => c.m === 'POST' && c.u.startsWith('/rest/v1/patients?on_conflict=cama')).map((c) => c.body));
+  const porCama = Object.fromEntries(ups.map((r) => [r.cama, r.hoja_azul]));
+  check('T28g corrida completa: el GET pide hoja_azul; se suben SOLO las camas cuya marca cambió (3 a true, 1 a false) y nada se archiva ni se borra',
+    /[,=]hoja_azul(&|$)/.test(get.u) && ups.length === 4 && porCama['3-101'] === true && porCama['3-103'] === true && porCama['3-104'] === true && porCama['3-102'] === false
+    && !env.calls.some((c) => c.m === 'DELETE' || c.m === 'PATCH' || c.u.startsWith('/rest/v1/archive')), JSON.stringify({ porCama, get: get && get.u }));
+  // Segunda corrida con la base ya al día: cero escrituras.
+  const base2 = parsed.map(sb.toPatientRow_).map((r, i) => Object.assign({ id: 'h' + i }, r));
+  const env2 = makeSandbox({ cur: base2, props: {} });
+  env2.sb.readCensoRows_ = () => rows;
+  env2.sb.doSync();
+  check('T28h con la base al día no se reescribe ninguna fila', !env2.calls.some((c) => c.m === 'POST' && c.u.startsWith('/rest/v1/patients?on_conflict=cama')));
+  // Base SIN la columna (programa nuevo pegado antes de crearla): el censo se sincroniza igual, sin mandar hoja_azul.
+  const viejo = sinBg.map(sb.toPatientRow_).map((r, i) => { const o = Object.assign({ id: 'h' + i }, r); delete o.hoja_azul; return o; });
+  viejo.find((r) => r.cama === '3-107').dx = 'OTRO DX';             // un cambio real para que haya upsert
+  const env3 = makeSandbox({ cur: viejo, props: {}, handler: (m, u) => (m === 'GET' && u.startsWith('/rest/v1/patients?select=id,cama') && /hoja_azul/.test(u) ? { code: 400, body: { code: '42703', message: 'column patients.hoja_azul does not exist' } } : null) });
+  env3.sb.readCensoRows_ = () => rows;
+  let err3 = ''; try { env3.sb.doSync(); } catch (e) { err3 = String(e); }
+  const gets3 = env3.calls.filter((c) => c.m === 'GET' && c.u.startsWith('/rest/v1/patients?select=id,cama'));
+  const ups3 = [].concat(...env3.calls.filter((c) => c.m === 'POST' && c.u.startsWith('/rest/v1/patients?on_conflict=cama')).map((c) => c.body));
+  check('T28i base sin la columna hoja_azul: no falla; repite el GET sin ella, sube solo el cambio real y sin la llave hoja_azul',
+    !err3 && gets3.length === 2 && !/hoja_azul/.test(gets3[1].u) && ups3.length === 1 && ups3[0].cama === '3-107' && !('hoja_azul' in ups3[0]) && env3.logs.some((l) => /no tiene la columna/.test(l)),
+    JSON.stringify({ err3, gets: gets3.map((c) => c.u.slice(-30)), ups3: ups3.map((r) => Object.keys(r).join(',')) }));
+}
+
+// ── 28j) Cama fijada desde la app: la marca de ingreso de la hoja también le llega (PATCH por id, solo esa columna) ──
+{
+  const { sb } = makeSandbox({});
+  const header = ['46337', 'CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DÍAS', 'ESTADO'];
+  const pr = (cama, exp, nombre) => ['', cama, exp, nombre, '40', 'DX FICTICIO', 'CG', 'ADS', 'RES', '', '', 'ESTABLE'];
+  const filas = []; for (let i = 0; i < 13; i++) filas.push(pr('3-' + (101 + i), '26-8' + String(100 + i), 'PACIENTE FICTICIO ' + 'ABCDEFGHIJKLM'[i] + 'A'));
+  const bgDe = (azules) => [new Array(12).fill('#051643')].concat(filas.map((f) => new Array(12).fill(azules.includes(f[1]) ? '#c9daf8' : '#ffffff')));
+  const hoja = (azules) => { const rows = [header].concat(filas); Object.defineProperty(rows, '_bg', { value: bgDe(azules) }); return rows; };
+  const base = (azulFijada) => sb.parseCenso_([header].concat(filas)).map(sb.toPatientRow_).map((r, i) => Object.assign({ id: 'f' + i }, r))
+    .map((r) => (r.cama === '3-101' ? Object.assign(r, { cama: '3-160', cama_app_ts: '2026-11-11T20:00:00Z', cama_hoja_prev: '3-101', updated_by: 'Gerardo', hoja_azul: azulFijada }) : r));
+  const correr = (azulFijada, azules, extra) => { const env = makeSandbox(Object.assign({ cur: base(azulFijada), props: {} }, extra || {})); env.sb.readCensoRows_ = () => hoja(azules); env.sb.doSync(); return env; };
+  const lee = (env) => ({ patch: env.calls.filter((c) => c.m === 'PATCH').map((c) => ({ u: c.u, body: c.body })), ups: [].concat(...env.calls.filter((c) => c.m === 'POST' && c.u.startsWith('/rest/v1/patients?on_conflict=cama')).map((c) => c.body)),
+    malo: env.calls.some((c) => c.m === 'DELETE' || c.u.startsWith('/rest/v1/archive')) });
+  // La hoja despinta la fila (sigue diciendo la cama vieja 3-101): la fijada 3-160 pasa a false.
+  const a = lee(correr(true, []));
+  check('T28j cama fijada desde la app y la hoja despinta su fila: un solo PATCH por id con {hoja_azul:false}; no toca cama ni updated_by, no la sube por upsert y nada se archiva ni se borra',
+    a.patch.length === 1 && a.patch[0].u.includes('id=eq.f0') && JSON.stringify(a.patch[0].body) === '{"hoja_azul":false}' && a.ups.length === 0 && !a.malo, JSON.stringify(a));
+  // Al revés: la pintan después de fijada → true.
+  const b = lee(correr(false, ['3-101']));
+  check('T28k cama fijada y la hoja pinta su fila: PATCH {hoja_azul:true} a esa fila', b.patch.length === 1 && b.patch[0].u.includes('id=eq.f0') && JSON.stringify(b.patch[0].body) === '{"hoja_azul":true}' && b.ups.length === 0 && !b.malo, JSON.stringify(b));
+  // Sin cambio de marca: ninguna escritura.
+  const c = lee(correr(true, ['3-101']));
+  check('T28l cama fijada con la marca ya al día: cero escrituras', c.patch.length === 0 && c.ups.length === 0 && !c.malo, JSON.stringify(c));
+  // Base sin la columna: no se intenta el PATCH.
+  const sinCol = (m, u) => (m === 'GET' && u.startsWith('/rest/v1/patients?select=id,cama') && /hoja_azul/.test(u) ? { code: 400, body: { message: 'column patients.hoja_azul does not exist' } } : null);
+  const d = lee(correr(true, [], { handler: sinCol }));
+  check('T28m cama fijada y base sin la columna: no se manda ningún PATCH de hoja_azul', !d.patch.some((x) => 'hoja_azul' in (x.body || {})) && !d.malo, JSON.stringify(d));
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);
