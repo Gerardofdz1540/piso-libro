@@ -1,5 +1,7 @@
 // 🆕 Ingresos del día en el navegador de camas (12 nov 2026): la cama se pinta de azul claro en la tira (iPad) y en el
-// riel (laptop) si la hoja la tiene pintada de azul (patients.hoja_azul) o si su fecha de ingreso es HOY; NCX y Urología no.
+// riel (laptop) si la hoja la tiene pintada de azul (patients.hoja_azul) o si su fecha de ingreso es la del día de guardia
+// (hoy; y hasta las 11:00 también ayer); NCX y Urología no. El reloj de la página se fija (page.clock) en las 21:00 del
+// 11 nov 2026 en la zona del hospital: la prueba da lo mismo a cualquier hora.
 //   node tests/headless/app_ingresos.js   (sirve el repo en 127.0.0.1:8771; ver run_all.sh). Pacientes ficticios.
 const { launch } = require('./_browser');
 const BASE_URL = process.env.PL_BASE_URL || 'http://127.0.0.1:8771';
@@ -14,9 +16,9 @@ const MOCK = `(() => {
   const chan={ on(){ return chan; }, subscribe(){ return chan; }, unsubscribe(){ return Promise.resolve('ok'); }, send(){ return Promise.resolve('ok'); } };
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
-// Día de hoy, ayer y mañana en la zona del hospital (la del navegador de la prueba), en ISO como los guarda la base.
-const isoMx = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d);
-const HOY = isoMx(new Date()), AYER = isoMx(new Date(Date.now() - 86400000)), MANANA = isoMx(new Date(Date.now() + 86400000));
+// «Ahora» de la página: 11 nov 2026, 21:00 en México (03:00 UTC del 12). Fechas en ISO, como las guarda la base.
+const AHORA = new Date('2026-11-12T03:00:00Z');
+const HOY = '2026-11-11', AYER = '2026-11-10', MANANA = '2026-11-12';
 const id = (n) => '7c000000-0000-4000-8000-0000000000' + String(n).padStart(2, '0');
 const pt = (n, cama, esp, ingreso, azul, nombre) => ({ id: id(n), cama, exp: '26-71' + String(n).padStart(3, '0'), nombre, esp, estado: 'ESTABLE', dx: 'DX FICTICIO', edad: '40', ingreso, hoja_azul: azul, seccion: 'PISO' });
 const PTS = [
@@ -46,6 +48,7 @@ const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
     if (url.startsWith('/rest/v1/notes')) { if (m === 'GET') return json(200, []); return json(201, [{ patient_id: PTS[0].id }]); }
     return json(200, []);
   });
+  await page.clock.install({ time: AHORA });   // el tiempo sigue corriendo solo desde esa hora (temporizadores incluidos)
   await page.addInitScript(MOCK);
   let pass = 0, fail = 0; const check = (n, c, x) => { if (c) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (x ? ' :: ' + x : '')); } };
   await page.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
@@ -54,25 +57,33 @@ const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
 
   // ── N1: la regla, con el día fijado (21:30 del 11 nov en México = 03:30 UTC del 12: cuenta el día LOCAL) ──
   const n1 = await page.evaluate(() => {
-    const noche = new Date('2026-11-12T03:30:00Z'), madrugada = new Date('2026-11-11T06:00:01Z');
+    const noche = new Date('2026-11-12T03:30:00Z');                        // 11 nov 21:30 local
+    const L = (d, h, m) => new Date(2026, 10, d, h, m || 0, 0);            // hora local de noviembre de 2026
     const f = (o, h) => _plIngresoHoy(o, h || noche);
+    const cg = (ing) => ({ esp: 'CG', ingreso: ing });
     return {
-      tz: Intl.DateTimeFormat().resolvedOptions().timeZone, dia: noche.getDate(),
-      hoy: f({ esp: 'CG', ingreso: '11/11/26' }), hoyLargo: f({ esp: 'CG', ingreso: '11/11/2026' }), hoyIso: f({ esp: 'CG', ingreso: '2026-11-11' }),
-      utcNoCuenta: f({ esp: 'CG', ingreso: '12/11/26' }), isoUtcNoCuenta: f({ esp: 'CG', ingreso: '2026-11-12' }), ayer: f({ esp: 'CG', ingreso: '10/11/26' }),
-      primerSegundo: f({ esp: 'CG', ingreso: '11/11/26' }, madrugada), ayerPrimerSegundo: f({ esp: 'CG', ingreso: '10/11/26' }, madrugada),
-      sinFecha: f({ esp: 'CG', ingreso: '' }), basura: f({ esp: 'CG', ingreso: 'pendiente' }), imposible: f({ esp: 'CG', ingreso: '31/02/26' }),
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone, dia: noche.getDate(), relojFijo: new Date().getFullYear() === 2026 && new Date().getMonth() === 10 && new Date().getDate() === 11 && new Date().getHours() === 21,
+      hoy: f(cg('11/11/26')), hoyLargo: f(cg('11/11/2026')), hoyIso: f(cg('2026-11-11')),
+      utcNoCuenta: f(cg('12/11/26')), isoUtcNoCuenta: f(cg('2026-11-12')), ayerDeNoche: f(cg('10/11/26')),
+      // Día de guardia: pasada la medianoche los ingresos de AYER siguen marcados hasta las 11:00; los de antier nunca.
+      madrugadaAyer: f(cg('11/11/26'), L(12, 1, 45)), madrugadaHoy: f(cg('12/11/26'), L(12, 1, 45)), madrugadaAntier: f(cg('10/11/26'), L(12, 1, 45)), madrugadaManana: f(cg('13/11/26'), L(12, 1, 45)),
+      primerSegundoAyer: f(cg('11/11/26'), L(12, 0, 0)), entregaAyer: f(cg('11/11/26'), L(12, 7, 30)), casiCorteAyer: f(cg('11/11/26'), L(12, 10, 59)),
+      corteAyer: f(cg('11/11/26'), L(12, 11, 0)), corteHoy: f(cg('12/11/26'), L(12, 11, 0)), tardeAyer: f(cg('11/11/26'), L(12, 18, 0)),
+      cambioDeMes: _plIngresoHoy(cg('31/10/26'), new Date(2026, 10, 1, 3, 0, 0)), cambioDeAnio: _plIngresoHoy(cg('31/12/26'), new Date(2027, 0, 1, 6, 0, 0)), corte: PL_ING_CORTE_H,
+      sinFecha: f(cg('')), basura: f(cg('pendiente')), imposible: f(cg('31/02/26')),
       azul: f({ esp: 'CG', ingreso: '', hoja_azul: true }), azulViejo: f({ esp: 'CCR', ingreso: '01/10/26', hoja_azul: true }), azulTexto: f({ esp: 'CG', hoja_azul: 'true' }),
-      ncx: f({ esp: 'NCX', ingreso: '11/11/26' }), ncxAzul: f({ esp: 'NCX', hoja_azul: true }), uro: f({ esp: 'URO', ingreso: '11/11/26', hoja_azul: true }),
+      ncx: f({ esp: 'NCX', ingreso: '11/11/26' }), ncxAzul: f({ esp: 'NCX', hoja_azul: true }), uro: f({ esp: 'URO', ingreso: '11/11/26', hoja_azul: true }), ncxMadrugada: f({ esp: 'NCX', ingreso: '11/11/26' }, L(12, 1, 45)),
       urologia: f({ esp: 'Urología', ingreso: '11/11/26' }), neuro: f({ esp: 'NEUROCX', hoja_azul: true }), dos: f({ esp: 'NCX/URO', ingreso: '11/11/26' }),
       mixto: f({ esp: 'CG/URO', ingreso: '11/11/26' }), mixtoAzul: f({ esp: 'CG / NCX', hoja_azul: true }), sinEsp: f({ esp: '', ingreso: '11/11/26' }),
       nulo: f(null), vacio: f({}),
     };
   });
-  check('N1 regla: fecha de HOY (día local del equipo, no el de UTC; dd/mm/aa, dd/mm/aaaa o ISO) o fila azul en la hoja; ayer, mañana, sin fecha o fecha inválida no; NCX y Urología nunca (ni azules); servicio compartido con el nuestro sí',
-    n1.tz === TZ && n1.dia === 11 && n1.hoy && n1.hoyLargo && n1.hoyIso && !n1.utcNoCuenta && !n1.isoUtcNoCuenta && !n1.ayer && n1.primerSegundo && !n1.ayerPrimerSegundo
+  check('N1 regla: fila azul en la hoja o fecha de ingreso del día de guardia: HOY (día local del equipo, no el de UTC; dd/mm/aa, dd/mm/aaaa o ISO) y, pasada la medianoche y hasta las 11:00, también AYER; antier, mañana, sin fecha o fecha inválida no; NCX y Urología nunca (ni azules); servicio compartido con el nuestro sí',
+    n1.tz === TZ && n1.dia === 11 && n1.relojFijo && n1.corte === 11 && n1.hoy && n1.hoyLargo && n1.hoyIso && !n1.utcNoCuenta && !n1.isoUtcNoCuenta && !n1.ayerDeNoche
+    && n1.madrugadaAyer && n1.madrugadaHoy && !n1.madrugadaAntier && !n1.madrugadaManana && n1.primerSegundoAyer && n1.entregaAyer && n1.casiCorteAyer
+    && !n1.corteAyer && n1.corteHoy && !n1.tardeAyer && n1.cambioDeMes && n1.cambioDeAnio
     && !n1.sinFecha && !n1.basura && !n1.imposible && n1.azul && n1.azulViejo && !n1.azulTexto
-    && !n1.ncx && !n1.ncxAzul && !n1.uro && !n1.urologia && !n1.neuro && !n1.dos && n1.mixto && n1.mixtoAzul && n1.sinEsp && !n1.nulo && !n1.vacio, JSON.stringify(n1));
+    && !n1.ncx && !n1.ncxAzul && !n1.uro && !n1.ncxMadrugada && !n1.urologia && !n1.neuro && !n1.dos && n1.mixto && n1.mixtoAzul && n1.sinEsp && !n1.nulo && !n1.vacio, JSON.stringify(n1));
 
   // ── N2: la tira (iPad) y el riel (laptop) marcan las mismas camas, con su aviso al pasar el cursor ──
   const leer = () => page.evaluate(() => {
@@ -145,16 +156,21 @@ const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
   const n4b = await leer();
   check('N4b después de los cambios el navegador vuelve a marcar las mismas camas', igual(n4b.tira, ESPERADAS) && igual(n4b.riel, ESPERADAS), JSON.stringify(n4b));
 
-  // ── N5: a medianoche los de fecha de ayer dejan de ser ingreso (los azules de la hoja siguen hasta que la hoja cambie) ──
+  // ── N5: después de medianoche los ingresos de la guardia siguen en azul; a las 11:00 quedan solo los del día nuevo ──
   const n5 = await page.evaluate(() => {
     const marcadas = () => Array.from(document.querySelectorAll('#board-nav .bn-beds .bb.bb-ing')).map(b => b.dataset.cama).sort();
-    const man = new Date(); man.setDate(man.getDate() + 1); man.setHours(0, 0, 5, 0);
-    _marcarIngresos(man); const manana = marcadas();
-    _marcarIngresos(); const hoy = marcadas();
-    return { manana, hoy };
+    const riel = () => { const camaDe = {}; patients.forEach(p => { camaDe[pid(p)] = p.cama; }); return Array.from(document.querySelectorAll('#board-side .bs-btn.bs-ing')).map(b => camaDe[b.dataset.k]).sort(); };
+    const r = {};
+    _marcarIngresos(new Date(2026, 10, 12, 1, 45, 0)); r.madrugada = marcadas(); r.madrugadaRiel = riel();
+    _marcarIngresos(new Date(2026, 10, 12, 7, 30, 0)); r.entrega = marcadas();
+    _marcarIngresos(new Date(2026, 10, 12, 11, 0, 0)); r.onceEnPunto = marcadas();
+    _marcarIngresos(new Date(2026, 10, 13, 12, 0, 0)); r.dosDias = marcadas();
+    _marcarIngresos(); r.hoy = marcadas();
+    return r;
   });
-  check('N5 al cambiar el día: los ingresos por fecha de ayer se despintan (la de mañana pasa a ser de hoy) y los azules de la hoja siguen; al volver al día real queda como estaba',
-    igual(n5.manana, ['3-305', '3-309', '3-310']) && igual(n5.hoy, ESPERADAS), JSON.stringify(n5));
+  const GUARDIA = ['3-301', '3-305', '3-306', '3-309', '3-310'];   // los de ayer (3-301, 3-306), el del día nuevo (3-309) y los azules de la hoja
+  check('N5 día de guardia: a la 1:45 y a las 7:30 del día siguiente los ingresos de ayer siguen en azul (más el del día nuevo); a las 11:00 quedan solo el del día nuevo y los azules de la hoja; al mediodía del día 13, solo los azules; al volver a la hora real queda como estaba',
+    igual(n5.madrugada, GUARDIA) && igual(n5.madrugadaRiel, GUARDIA) && igual(n5.entrega, GUARDIA) && igual(n5.onceEnPunto, ['3-305', '3-309', '3-310']) && igual(n5.dosDias, ['3-305', '3-310']) && igual(n5.hoy, ESPERADAS), JSON.stringify(n5));
 
   // ── N6: la marca solo se lee: la copia local no crece por los que no la tienen y la app nunca la manda a la base ──
   escrituras.length = 0;

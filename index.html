@@ -16120,10 +16120,14 @@ function plExportBackup() {
     }
     // 🆕 Ingresos del día en el navegador de camas (12 nov 2026, pedido de Gera): la cama se pinta de azul claro, como la
     // fila en la hoja del censo, para ver de un vistazo cuáles fueron los ingresos. Es ingreso si la hoja lo tiene pintado
-    // de azul (patients.hoja_azul; lo lee censo-sync 2026.11.12 o posterior) o si su fecha de ingreso es HOY (el día de
-    // este equipo, no el de UTC). NCX y Urología no se marcan: misma regla que los robots (_plSinRobot: fuera solo si
+    // de azul (patients.hoja_azul; lo lee censo-sync 2026.11.12 o posterior) o si su fecha de ingreso es la del DÍA DE
+    // GUARDIA: hoy (el día de este equipo, no el de UTC) y, hasta las 11:00, también ayer. Sin esto, a medianoche se
+    // despintaban todos los ingresos de la guardia (traen la fecha del día anterior) justo cuando se entregan. Las 11:00
+    // son la hora en que la app ya da por empezado el día nuevo (la misma del revisor de indicaciones: «sin el bloque de
+    // hoy después de las 11:00»). NCX y Urología no se marcan: misma regla que los robots (_plSinRobot: fuera solo si
     // TODOS los servicios de `esp` son NCX/Urología; «CG/URO» sí se marca). `hoy` es para las pruebas.
     const PL_ING_TIT = " · 🆕 Ingreso";
+    const PL_ING_CORTE_H = 11;
     function _plIngresoHoy(p, hoy) {
       if (!p || _plSinRobot(p.esp)) return false;
       if (p.hoja_azul === true) return true;
@@ -16132,10 +16136,13 @@ function plExportBackup() {
       const d = iso ? new Date(+iso[1], +iso[2] - 1, +iso[3]) : parseDmy(t);
       if (!(d instanceof Date) || isNaN(d.getTime())) return false;
       const h = hoy instanceof Date ? hoy : new Date();
-      return d.getFullYear() === h.getFullYear() && d.getMonth() === h.getMonth() && d.getDate() === h.getDate();
+      const mismoDia = function (x, y) { return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate(); };
+      if (mismoDia(d, h)) return true;
+      if (h.getHours() >= PL_ING_CORTE_H) return false;                                   // ya empezó el día nuevo: solo los de hoy
+      return mismoDia(d, new Date(h.getFullYear(), h.getMonth(), h.getDate() - 1));      // madrugada y mañana: los de la guardia (ayer)
     }
     // Pone o quita el color de ingreso en los botones que YA están en el navegador (riel y tira), sin repintar nada: al
-    // llegar un cambio de la hoja, al volver a la app y cada 10 min (a medianoche los de ayer dejan de ser ingreso).
+    // llegar un cambio de la hoja, al volver a la app y cada 10 min (a las 11:00 los de ayer dejan de ser ingreso).
     function _marcarIngresos(hoy) {
       try {
         const h = hoy instanceof Date ? hoy : new Date(), porK = {};
@@ -30909,7 +30916,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.12-1";
+    const PL_BUILD = "2026.11.12-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
