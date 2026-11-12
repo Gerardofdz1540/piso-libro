@@ -891,10 +891,10 @@ function camaResolvedCols_(r) {
  * quedaría bajo otro nombre) ni se mueve a nadie ahí (chocaría con UNIQUE(cama)). Si en la cama
  * vieja la hoja ya puso a otra persona, esa fila sí entra al upsert (reasignación normal).
  * Devuelve { pinnedIds, pinnedCamas, dropCamas (fuera de mapas y upsert), holdCamas (solo fuera del
- * upsert), toPin [{row, prev}], kept [texto para log] }.
+ * upsert), toPin [{row, prev}], kept [texto para log], azul [{row, azul}] (marca de ingreso de la hoja que cambió) }.
  */
 function appBedDecisions_(cur, maps) {
-  var out = { pinnedIds: {}, pinnedCamas: {}, dropCamas: {}, holdCamas: {}, toPin: [], kept: [] };
+  var out = { pinnedIds: {}, pinnedCamas: {}, dropCamas: {}, holdCamas: {}, toPin: [], kept: [], azul: [] };
   cur.forEach(function (r) {
     if (!camaAppActive_(r)) return;
     var cama = normalizeCama_(r.cama), exp = String(r.exp || '').trim();
@@ -906,6 +906,10 @@ function appBedDecisions_(cur, maps) {
     out.pinnedIds[r.id] = true;
     out.pinnedCamas[cama] = true;
     out.dropCamas[sheetNow] = true;                            // la fila de la hoja con este exp (cama vieja) no cuenta
+    // La marca de ingreso (fila azul) de una cama fijada no viaja en el upsert (su fila de la hoja queda fuera): se anota
+    // aquí y syncPatients_ la aplica con un PATCH por id de esa sola columna (no toca la cama ni updated_by).
+    var srow = maps.rowByCama && maps.rowByCama[sheetNow];
+    if (srow && typeof srow.hoja_azul === 'boolean' && (r.hoja_azul === true) !== srow.hoja_azul) out.azul.push({ row: r, azul: srow.hoja_azul });
     if (prev === null) out.toPin.push({ row: r, prev: sheetNow });
     else out.kept.push(cama + ' (la hoja aún dice ' + sheetNow + ')');
     // otra persona (otro exp, o el mismo exp repetido con otro nombre) en la cama fijada → no pisar
@@ -1172,6 +1176,12 @@ function syncPatients_(key, payload, opts) {
   ab.toPin.forEach(function (p) { if (patchPatient_(key, p.row.id, { cama_hoja_prev: p.prev })) pinnedOk++; });
   if (ab.toPin.length) Logger.log('syncPatients: cama fijada desde la app (1ª vez) ' + pinnedOk + '/' + ab.toPin.length + ': ' + ab.toPin.map(function (p) { return normalizeCama_(p.row.cama) + ' (la hoja dice ' + p.prev + ')'; }).join(', '));
   if (ab.kept.length) Logger.log('syncPatients: ' + ab.kept.length + ' cama(s) fijada(s) desde la app, la hoja no ha cambiado: ' + ab.kept.join(', '));
+  // Marca de ingreso (fila azul en la hoja) de las camas fijadas: su fila de la hoja no entra al upsert, así que va aparte.
+  if (_hojaAzulCol_ && ab.azul.length) {
+    var azulOk = 0;
+    ab.azul.forEach(function (p) { if (patchPatient_(key, p.row.id, { hoja_azul: p.azul })) azulOk++; });
+    Logger.log('syncPatients: marca de ingreso (azul en la hoja) puesta al día en ' + azulOk + '/' + ab.azul.length + ' cama(s) fijada(s) desde la app: ' + ab.azul.map(function (p) { return normalizeCama_(p.row.cama); }).join(', '));
+  }
   var cleared = 0;
   toClear.forEach(function (c) { if (patchPatient_(key, c.row.id, c.cols)) cleared++; });
   if (toClear.length) Logger.log('syncPatients: la hoja ya coincide con la app en ' + cleared + '/' + toClear.length + ' cama(s), movimiento resuelto: ' + toClear.map(function (c) { return normalizeCama_(c.row.cama); }).join(', '));

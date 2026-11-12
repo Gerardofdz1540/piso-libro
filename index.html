@@ -4282,6 +4282,7 @@ body.focus-on #board-main{ padding-bottom:160px; }
 #board-nav .bn-beds .bb.bb-ing.bb-cur{ background:#fff; color:#0a1628; box-shadow:inset 0 -4px 0 #38bdf8; }
 #board-side .bs-btn.bs-ing{ background:#dbeafe; border-color:#60a5fa; }
 #board-side .bs-btn.bs-ing:hover{ background:#bfdbfe; }
+#board-side .bs-btn.bs-ing:not(.bs-cur) .bs-name{ color:#475569; }   /* el nombre (letra chica) con buen contraste sobre el azul claro */
 #board-side .bs-btn.bs-ing.bs-cur{ background:#0a1628; border-color:#0a1628; box-shadow:inset 0 -3px 0 #38bdf8; }
 /* ✍️ Lápiz directo sobre las cajas: la capa de tinta no atrapa el dedo (pointer-events:none); el botón ✍️ de la esquina sí. */
 .pl-ink-cv{ position:absolute; pointer-events:none; z-index:2; }
@@ -27305,6 +27306,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       nd = nd || defaultData();
       if (etiqueta && !nd._egreso) { nd._egreso = etiqueta; nd._egresoFecha = new Date().toLocaleDateString("es-MX"); }
       const archived = { ...p, _archivedAt: new Date().toISOString(), _archiveKey: k, _note: nd };
+      delete archived.hoja_azul;   // marca de ingreso de la hoja: no se guarda en la Papelera
       archivados.unshift(archived);
       _persistArchivados();
       const by = localStorage.getItem("pl_user_name") || "";
@@ -27650,6 +27652,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       delete p._supa_id; // Force new Supabase row on save
       delete p._supaArchiveId;
       delete p._deletedRemotely;
+      delete p.hoja_azul;   // la marca de ingreso es de la fila de la hoja, no de la copia archivada: la fila nueva nace sin ella
       // Su cama ya la tiene OTRA persona (p. ej. el sync se la dio con el mismo expediente al archivarlo como cama
       // reasignada): restaurarlo ahí fusionaba las dos tarjetas (el upsert por exp+cama reescribía la fila del otro).
       // Se mira el censo local Y la nube (la copia local puede ir atrasada): si solo se viera aquí, el guardado la

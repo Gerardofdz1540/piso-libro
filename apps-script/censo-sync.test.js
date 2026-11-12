@@ -1503,5 +1503,34 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
     JSON.stringify({ err3, gets: gets3.map((c) => c.u.slice(-30)), ups3: ups3.map((r) => Object.keys(r).join(',')) }));
 }
 
+// ── 28j) Cama fijada desde la app: la marca de ingreso de la hoja también le llega (PATCH por id, solo esa columna) ──
+{
+  const { sb } = makeSandbox({});
+  const header = ['46337', 'CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DÍAS', 'ESTADO'];
+  const pr = (cama, exp, nombre) => ['', cama, exp, nombre, '40', 'DX FICTICIO', 'CG', 'ADS', 'RES', '', '', 'ESTABLE'];
+  const filas = []; for (let i = 0; i < 13; i++) filas.push(pr('3-' + (101 + i), '26-8' + String(100 + i), 'PACIENTE FICTICIO ' + 'ABCDEFGHIJKLM'[i] + 'A'));
+  const bgDe = (azules) => [new Array(12).fill('#051643')].concat(filas.map((f) => new Array(12).fill(azules.includes(f[1]) ? '#c9daf8' : '#ffffff')));
+  const hoja = (azules) => { const rows = [header].concat(filas); Object.defineProperty(rows, '_bg', { value: bgDe(azules) }); return rows; };
+  const base = (azulFijada) => sb.parseCenso_([header].concat(filas)).map(sb.toPatientRow_).map((r, i) => Object.assign({ id: 'f' + i }, r))
+    .map((r) => (r.cama === '3-101' ? Object.assign(r, { cama: '3-160', cama_app_ts: '2026-11-11T20:00:00Z', cama_hoja_prev: '3-101', updated_by: 'Gerardo', hoja_azul: azulFijada }) : r));
+  const correr = (azulFijada, azules, extra) => { const env = makeSandbox(Object.assign({ cur: base(azulFijada), props: {} }, extra || {})); env.sb.readCensoRows_ = () => hoja(azules); env.sb.doSync(); return env; };
+  const lee = (env) => ({ patch: env.calls.filter((c) => c.m === 'PATCH').map((c) => ({ u: c.u, body: c.body })), ups: [].concat(...env.calls.filter((c) => c.m === 'POST' && c.u.startsWith('/rest/v1/patients?on_conflict=cama')).map((c) => c.body)),
+    malo: env.calls.some((c) => c.m === 'DELETE' || c.u.startsWith('/rest/v1/archive')) });
+  // La hoja despinta la fila (sigue diciendo la cama vieja 3-101): la fijada 3-160 pasa a false.
+  const a = lee(correr(true, []));
+  check('T28j cama fijada desde la app y la hoja despinta su fila: un solo PATCH por id con {hoja_azul:false}; no toca cama ni updated_by, no la sube por upsert y nada se archiva ni se borra',
+    a.patch.length === 1 && a.patch[0].u.includes('id=eq.f0') && JSON.stringify(a.patch[0].body) === '{"hoja_azul":false}' && a.ups.length === 0 && !a.malo, JSON.stringify(a));
+  // Al revés: la pintan después de fijada → true.
+  const b = lee(correr(false, ['3-101']));
+  check('T28k cama fijada y la hoja pinta su fila: PATCH {hoja_azul:true} a esa fila', b.patch.length === 1 && b.patch[0].u.includes('id=eq.f0') && JSON.stringify(b.patch[0].body) === '{"hoja_azul":true}' && b.ups.length === 0 && !b.malo, JSON.stringify(b));
+  // Sin cambio de marca: ninguna escritura.
+  const c = lee(correr(true, ['3-101']));
+  check('T28l cama fijada con la marca ya al día: cero escrituras', c.patch.length === 0 && c.ups.length === 0 && !c.malo, JSON.stringify(c));
+  // Base sin la columna: no se intenta el PATCH.
+  const sinCol = (m, u) => (m === 'GET' && u.startsWith('/rest/v1/patients?select=id,cama') && /hoja_azul/.test(u) ? { code: 400, body: { message: 'column patients.hoja_azul does not exist' } } : null);
+  const d = lee(correr(true, [], { handler: sinCol }));
+  check('T28m cama fijada y base sin la columna: no se manda ningún PATCH de hoja_azul', !d.patch.some((x) => 'hoja_azul' in (x.body || {})) && !d.malo, JSON.stringify(d));
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

@@ -98,7 +98,7 @@ const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
     const t = (c) => document.querySelector('#board-nav .bn-beds .bb[data-cama="' + c + '"]');
     const k = (c) => pid(patients.find(p => p.cama === c)), r = (c) => document.querySelector('#board-side .bs-btn[data-k="' + k(c) + '"]');
     return { tIng: bg(t('3-305')), tNormal: bg(t('3-307')), tNcx: bg(t('3-303')), tCur: bg(document.querySelector('#board-nav .bn-beds .bb-cur')), tCurSh: sh(document.querySelector('#board-nav .bn-beds .bb-cur')),
-      rIng: bg(r('3-305')), rNormal: bg(r('3-307')), rCur: bg(document.querySelector('#board-side .bs-cur')), rCurSh: sh(document.querySelector('#board-side .bs-cur')),
+      rIng: bg(r('3-305')), rIngNombre: getComputedStyle(r('3-305').querySelector('.bs-name')).color, rNormalNombre: getComputedStyle(r('3-307').querySelector('.bs-name')).color, rNormal: bg(r('3-307')), rCur: bg(document.querySelector('#board-side .bs-cur')), rCurSh: sh(document.querySelector('#board-side .bs-cur')),
       cur: (document.querySelector('#board-nav .bn-beds .bb-cur') || {}).dataset.cama, stripVisible: getComputedStyle(document.querySelector('#board-nav .bn-beds')).display };
   });
   await page.evaluate(() => { focusGoTo(pid(patients.find(p => p.cama === '3-302'))); });
@@ -109,7 +109,7 @@ const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
   const c2 = await colores();
   check('N3 color: el ingreso va en azul claro en la tira y en el riel, la cama normal y la de NCX siguen igual; la cama abierta conserva su color (blanca / marina) y, si es ingreso, lleva una franja azul',
     c1.stripVisible === 'flex' && c1.cur === '3-302' && c1.tIng === 'rgb(125, 211, 252)' && c1.tNormal !== c1.tIng && c1.tNcx === c1.tNormal && c1.tCur === 'rgb(255, 255, 255)' && c1.tCurSh === 'none'
-    && c1.rIng === 'rgb(219, 234, 254)' && c1.rNormal === 'rgb(255, 255, 255)' && c1.rCur === 'rgb(10, 22, 40)' && c1.rCurSh === 'none'
+    && c1.rIng === 'rgb(219, 234, 254)' && c1.rIngNombre === 'rgb(71, 85, 105)' && c1.rNormalNombre === 'rgb(100, 116, 139)' && c1.rNormal === 'rgb(255, 255, 255)' && c1.rCur === 'rgb(10, 22, 40)' && c1.rCurSh === 'none'
     && c2.cur === '3-301' && c2.tCur === 'rgb(255, 255, 255)' && /rgb\(56, 189, 248\)/.test(c2.tCurSh) && c2.rCur === 'rgb(10, 22, 40)' && /rgb\(56, 189, 248\)/.test(c2.rCurSh), JSON.stringify({ c1, c2 }));
 
   // ── N4: la hoja pinta o despinta una fila (Realtime): el color cambia en su sitio, sin rehacer la tira ──
@@ -176,6 +176,29 @@ const ESPERADAS = ['3-301', '3-305', '3-306', '3-310'];
   await page.waitForTimeout(400);
   const n7 = await leer();
   check('N7 repintado completo: las mismas camas marcadas en la tira y en el riel', igual(n7.tira, ESPERADAS) && igual(n7.riel, ESPERADAS), JSON.stringify(n7));
+
+  // ── N8: egresar desde la app y restaurar de la Papelera: la marca de la hoja no revive (la fila nueva nace sin ella) ──
+  const n8 = await page.evaluate(async () => {
+    const r = {};
+    try {
+      const p = patients.find(x => x.cama === '3-310'); const k = pid(p);
+      r.antes = p.hoja_azul === true;
+      _archivePatientRecord(p, getNote(k), k, 'ALTA');
+      r.papelera = archivados[0] && archivados[0].cama === '3-310' && !('hoja_azul' in archivados[0]);
+      patients = patients.filter(x => x !== p);
+      // Copia vieja de la Papelera (archivada antes de este arreglo, o desde otro equipo) que sí trae la llave:
+      archivados[0].hoja_azul = true;
+      await restorePatient(0);
+      await new Promise(res => setTimeout(res, 400));
+      const q = patients.find(x => x.cama === '3-310');
+      r.restaurado = !!q; r.sinMarca = !!q && !('hoja_azul' in q);
+      const b = document.querySelector('#board-nav .bn-beds .bb[data-cama="3-310"]');
+      r.sinColor = !!b && !b.classList.contains('bb-ing');
+    } catch (e) { r.err = String(e && e.stack || e).slice(0, 300); }
+    return r;
+  });
+  check('N8 Papelera: la copia archivada no guarda la marca de ingreso y al restaurar (aun una copia vieja que la traiga) la cama no sale azul',
+    !n8.err && n8.antes && n8.papelera && n8.restaurado && n8.sinMarca && n8.sinColor, JSON.stringify(n8));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
   console.log('RESULT APP-INGRESOS: ' + pass + ' passed, ' + fail + ' failed');

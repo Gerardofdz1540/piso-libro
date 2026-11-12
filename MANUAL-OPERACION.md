@@ -1724,7 +1724,8 @@ Una cama es ingreso si pasa **una** de estas dos cosas:
 - **Su fecha de ingreso es hoy** (el día del equipo). Al día siguiente se quita sola.
 - **Su fila está pintada de azul en la hoja del censo**, como ya lo hacen (el «azul aciano claro»; vale cualquier azul
   claro o celeste). Cuenta la celda del nombre, o las de cama y expediente juntas; una celda suelta de otra columna no.
-  Sirve para los que todavía no tienen fecha. Se quita cuando despintan la fila (el censo se lee cada 5 min).
+  Sirve para los que todavía no tienen fecha. Se quita cuando despintan la fila (el censo se lee cada 5 min). También
+  le llega a un paciente cuya cama se cambió desde la app y la hoja todavía dice la cama anterior.
 
 **NCX y Urología no se marcan** (igual que con los robots: «CG/URO» sí, porque también es nuestro).
 
@@ -1735,6 +1736,7 @@ Una cama es ingreso si pasa **una** de estas dos cosas:
   lo toma como diseño y no marca a nadie.
 - La marca vive en `patients.hoja_azul` (`scripts/db/supabase_patients_hoja_azul_20261112.sql`). La escribe solo el
   programa de la hoja; la app nunca la manda. Si el color no se puede leer, el censo se sincroniza igual, sin la marca.
+- Al restaurar a alguien de la Papelera la marca no vuelve sola: la pone la hoja si su fila sigue azul.
 - El filtro **🆕 Ingresos** de «Filtrar camas» no cambió (hoy o ayer, todos los servicios).
 
 ## 🛡 Tarjetas que se quedaban «editadas aquí» (11 de noviembre de 2026, versión 2026.11.11-1)
