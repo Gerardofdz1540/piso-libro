@@ -1702,7 +1702,8 @@ se escribe no se toca el texto: el retroceso, Cmd+Z, el dictado y Scribble funci
   abierta, lo escrito se firma igual y el cursor se queda donde estaba. APP, PA, sangrado y diagnóstico no llevan firma. Drenajes y Sangrado ahora son
   cajas de varios renglones (antes campos de un renglón que, al guardar la ventana, unían la nota en uno solo) y ➕
   agrega cada drenaje en su propio renglón. Si ➕ Agregar termina en «Mover» (la persona ya estaba en otra cama), lo escrito
-  en la ventana se suma a su nota sin pisar nada (antes se perdía); solo se omite un renglón que ya estaba completo.
+  en la ventana se suma completo, abajo de su nota y sin pisar nada (antes se perdía): en Pendientes, Otros y Drenajes
+  siempre, firmado; en APP, PA y Sangrado solo se omite si todo lo escrito ya estaba idéntico.
 - **Para verlo hay que tener la versión nueva.** Cada equipo se queda con la versión que abrió hasta que toca
   **«🔄 Hay una versión nueva · Actualizar»** (barra pequeña abajo) o recarga la página (Mac: Cmd+R; si sigue igual,
   Cmd+Shift+R); en el iPad o el iPhone, cerrar la app y volver a abrirla. Admin → 📱 Versiones muestra la versión de

@@ -12912,7 +12912,13 @@ function plExportBackup() {
         const mapa = function (pos) {
           let acc = 0, accN = 0;
           for (let x = 0; x < vl.length; x++) {
-            if (pos <= acc + vl[x].length) return accN + Math.max(0, Math.min(nl[x].length, pos - acc + nl[x].length - vl[x].length));
+            if (pos <= acc + vl[x].length) {
+              // Renglón que acaba de recibir firma: el cursor nunca queda DENTRO de ella (al inicio de un renglón con viñeta
+              // «- », que la firma reemplaza, caía antes del «- » de la firma y lo siguiente la rompía).
+              const au = plStampAuthor(nl[x]), nueva = au && !au.old && !plStampAuthor(vl[x]);
+              const piso = nueva ? Math.min(au.len, nl[x].length) : 0;
+              return accN + Math.max(piso, Math.min(nl[x].length, pos - acc + nl[x].length - vl[x].length));
+            }
             acc += vl[x].length + 1; accN += nl[x].length + 1;
           }
           return nv.length;
@@ -26889,6 +26895,24 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         _modalFirmarANota(_modalCurrentEditKey);
       } catch (e) { safeLog("firma ✏️ Editar al salir:", e); }
     };
+    // Las cajas de la tarjeta toman YA lo que se guardó desde la ventana (con la ventana encima no pudieron editarse). Sin
+    // esto mostraban el texto de antes hasta el repintado en calma, y escribir en ellas en ese lapso subía «viejo + nuevo»
+    // y borraba lo de la ventana (la protección de «caja vieja» no actúa mientras el campo está subiendo).
+    function _modalPintarTarjeta(k, campos) {
+      try {
+        if (!k || !noteData[k]) return;
+        (campos || []).forEach(function (f) {
+          if (MODAL_NOTE_FIELDS.indexOf(f) < 0) return;
+          document.querySelectorAll('textarea[data-key="' + k + '"][data-field="' + f + '"]').forEach(function (ta) {
+            const nv = toSafeString(noteData[k][f]);
+            if (ta.value === nv || document.activeElement === ta) return;
+            ta.value = nv;
+            try { _autoResizeTA(ta); } catch (_) {}
+            try { plStRefresh(ta); } catch (_) {}
+          });
+        });
+      } catch (e) { safeLog("_modalPintarTarjeta:", e); }
+    }
     // ➕ Agregar que termina en «Mover» (la persona ya estaba registrada en otra cama): lo escrito en la ventana (APP, PA,
     // Otros, sangrado, Drenajes, Pendientes, sexo) se descartaba. Ahora se suma a su nota sin pisar nada: una caja vacía
     // toma lo escrito; en una con texto, lo escrito va abajo (si no estaba ya). Pendientes, Otros y Drenajes, firmados.
@@ -26904,11 +26928,16 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         const cur = toSafeString(next[f]).replace(/\s+$/, "");
         if (!cur.trim()) next[f] = v;
         else {
-          // Se omiten solo los renglones que ya estaban COMPLETOS (sin contar la firma): «500 mL» no es «1500 mL».
-          const ya = new Set(cur.split("\n").map(_stNorm).filter(Boolean));
-          const nuevos = v.split("\n").filter(function (l) { const n = _stNorm(l); return !n || !ya.has(n); });
-          if (!nuevos.some(function (l) { return !!_stNorm(l); })) return;
-          next[f] = cur + "\n" + nuevos.join("\n").replace(/^\s*\n+|\n+\s*$/g, "");
+          // Lo escrito va COMPLETO abajo de lo que había (nunca renglones sueltos: una continuación con sangría quedaría bajo
+          // la firma de otra persona). En Pendientes, Otros y Drenajes todo lo escrito en la ventana es de ahora y lleva la
+          // firma de hoy: no se omite nunca (un pendiente igual a uno ya hecho ✓, o la lectura de hoy igual a la de ayer,
+          // son registros nuevos). En APP, PA y Sangrado solo se omite si TODOS sus renglones ya estaban idénticos y
+          // completos («500 mL» no es «1500 mL»).
+          if (!PL_STAMP_FIELDS[f]) {
+            const ya = new Set(cur.split("\n").map(function (l) { return l.trim(); }).filter(Boolean));
+            if (v.split("\n").every(function (l) { return !l.trim() || ya.has(l.trim()); })) return;
+          }
+          next[f] = cur + "\n" + v;
         }
         cambio.push(f);
       });
@@ -26920,6 +26949,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       cambio.forEach(function (f) { _dirtyFields[k].add(f); });
       saveNote(k, next);
       cambio.forEach(function (f) { _dirtyFields[k].delete(f); });
+      _modalPintarTarjeta(k, cambio);
       _rerenderCardSoft(k);
     }
     try {
@@ -26983,15 +27013,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         // La tarjeta seguía mostrando el texto de antes de abrir la ventana (nadie la repintaba): no se veía lo escrito y
         // lo siguiente que se escribiera en esa caja subía «texto viejo + lo nuevo» y borraba lo de la ventana. Las cajas
         // de esos campos toman YA lo guardado (con la ventana encima no pudieron editarse) y la tarjeta se repinta en calma.
-        _guardados.forEach(function (f) {
-          document.querySelectorAll('textarea[data-key="' + _ck + '"][data-field="' + f + '"]').forEach(function (ta) {
-            const nv = toSafeString(noteData[_ck][f]);
-            if (ta.value === nv) return;
-            ta.value = nv;
-            try { _autoResizeTA(ta); } catch (_) {}
-            try { plStRefresh(ta); } catch (_) {}
-          });
-        });
+        _modalPintarTarjeta(_ck, _guardados);
         try { _rerenderCardSoft(_ck); } catch (_) {}
       }
       _MODAL_FIRMA.forEach(function (par) { var el = document.getElementById(par[0]); if (el) el.__stPegado = false; });
