@@ -1674,7 +1674,7 @@ antibiograma reporta resistente, KCl con potasio alto, heparina con plaquetas ba
 duplicados (dos IBP, dos AINE). Para ignorar un aviso o pasarlo a pendientes: 💡 Sugerencias clínicas (🔇 / ➕).
 El código está en `PLCDS` (`reglasIndicaciones`) y el lector del Doc guarda ahora la firma del bloque.
 
-## ✍️ Firma y color por renglón en las cajas (11 de noviembre de 2026, versión 2026.11.11-1)
+## ✍️ Firma y color por renglón en las cajas (11 de noviembre de 2026, versiones 2026.11.11-1 y -2)
 
 Todo lo que se escribe en **Pendientes / Plan, Cronología, Otros, Interconsultas, Cultivos, Pendientes MIPs, Pendientes R1 y
 la nota de drenajes** queda firmado: al **soltar la caja** (tocar fuera), cada renglón **nuevo** recibe
@@ -1696,6 +1696,19 @@ se escribe no se toca el texto: el retroceso, Cmd+Z, el dictado y Scribble funci
 - El color es una capa encima de la caja: no se puede tocar ni copiar, y no se imprime. El texto guardado es el mismo.
 - Los renglones viejos (`14/10 08:15 GF:`) se siguen reconociendo y la 🕘 Entrega de guardia lee las dos formas.
 - Sin nombre en la cuenta no se firma (poner el nombre en 👤 Cuenta).
+- **✏️ Editar** (versión 2026.11.11-2): lo que se escribe en Pendientes, Otros y Drenajes dentro de la ventana del paciente
+  también se firma, con las mismas reglas, al tocar «✓ Guardar cambios» o al cerrarla con ✕, Cancelar o Esc (cerrar también
+  guarda lo escrito, y las cajas de la tarjeta lo muestran al instante); si la app se oculta o se cierra con la ventana
+  abierta, lo escrito se firma igual y el cursor se queda donde estaba. APP, PA, sangrado y diagnóstico no llevan firma. Drenajes y Sangrado ahora son
+  cajas de varios renglones (antes campos de un renglón que, al guardar la ventana, unían la nota en uno solo) y ➕
+  agrega cada drenaje en su propio renglón. Si ➕ Agregar termina en «Mover» (la persona ya estaba en otra cama), lo escrito
+  en la ventana se suma completo, abajo de su nota y sin pisar nada (antes se perdía): en Pendientes, Otros y Drenajes
+  siempre, firmado; en APP, PA y Sangrado solo se omite si todo lo escrito ya estaba idéntico.
+- **Para verlo hay que tener la versión nueva.** Cada equipo se queda con la versión que abrió hasta que toca
+  **«🔄 Hay una versión nueva · Actualizar»** (barra pequeña abajo) o recarga la página (Mac: Cmd+R; si sigue igual,
+  Cmd+Shift+R); en el iPad o el iPhone, cerrar la app y volver a abrirla. Admin → 📱 Versiones muestra la versión de
+  cada equipo. El 11 de noviembre la construcción de GitHub Pages falló (un enlace simbólico de `node_modules` entró al
+  repositorio) y quien abría la app desde `github.io` no veía ni la versión nueva ni el aviso; CI ahora lo impide.
 
 ## 🛡 Tarjetas que se quedaban «editadas aquí» (11 de noviembre de 2026, versión 2026.11.11-1)
 

@@ -2,7 +2,7 @@ index.backup-*
 index.html.*
 *.ROTO*
 *.pre-v*
-node_modules/
+node_modules
 dist/
 
 # worktrees temporales de los agentes de revisión
