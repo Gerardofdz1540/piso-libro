@@ -148,6 +148,7 @@ cd rpa && npm test
 | Paciente con más de 20 reportes (WinLab pagina de 20 en 20, más reciente primero por fecha de reporte) | El robot lee la primera página; un reporte que se reemite (cultivo que pasa de "en proceso" a final) sube de nuevo arriba, y la historia se acumula corrida a corrida en `winlab_labs` por fecha |
 | Cultivos pendientes detrás de los labs diarios (tope de 12 drills por paciente) | `drill-order.js`: primero los cultivos sin texto de PDF, luego el resto por recencia; el tope aplica a los no-cultivo (máximo +6 cultivos extra) |
 | Hoja con APELLIDOS primero y nombre de pila guardado distinto en WinLab ("MA DEL ROSARIO") | Candidato "invertido apellidos solos": los dos primeros tokens como apellidos sin filtrar por nombre; el encabezado difuso (MA→MARIA) identifica al paciente y el retry-guard descarta si no aparece |
+| Hoja con APELLIDOS primero en un nombre de 3 palabras ("PATERNO MATERNO NOMBRE", 15 nov 2026) y alias con solo los dos apellidos | `buildSearchCandidates` agrega «invertido apellidos-primero» e «invertido apellidos solos» también con 3 palabras (antes solo con 4+); `buildSearchCandidatesWithAlias` agrega «alias · como apellidos» (el alias de 2 palabras completo como apellidos, sin nombre). El estado es `homonimos` solo si WinLab devolvió a otras personas; si todo fue NINGÚN REGISTRO, `sin_registro`. Bitácora: los términos de búsqueda de una palabra también salen en iniciales. |
 
 ---
 

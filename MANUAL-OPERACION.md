@@ -1615,6 +1615,12 @@ error de dedo (cama 3-181: dos letras invertidas en el apellido paterno), WinLab
    (5:00, 12:30 y 20:07; sábado y domingo también 13:00). Sirve desde el iPad, que no puede abrir la página de WinLab.
 4. **Mientras tanto**: 📄 PDF / 📷 Foto en la sección de labs lee la hoja impresa o la pantalla con
    IA y guarda los valores en la tarjeta.
+5. **(15 nov 2026) Nombre de 3 palabras con los apellidos primero** (`PATERNO MATERNO NOMBRE`): el robot solo
+   probaba el orden invertido con 4 palabras o más; con 3 buscaba `MATERNO NOMBRE` como apellidos y no lo encontraba
+   (cama 3-151, varios días sin labs). Ahora también prueba los dos primeros como apellidos (con y sin el nombre).
+   Y si en **✏️ Nombre en WinLab** se escriben solo los **dos apellidos** sin coma, también se buscan juntos como
+   apellidos. Si el robot no encuentra a nadie con esos datos, la tarjeta ya no dice «WinLab devolvió otras personas»
+   sino «El robot no encontró a este paciente en WinLab» (revisa la ortografía o fija el nombre con coma).
 
 Lo que el robot encuentra o no por paciente queda en la tabla `winlab_match` (qué buscó, nombres
 vistos, "encontrado como", hora); el alias vive en `notes.checklist.winlab_alias`. La corrida dirigida

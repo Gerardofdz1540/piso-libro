@@ -382,28 +382,30 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
   // Diagnóstico para la app (winlab_match): qué se buscó y qué nombres parecidos devolvió WinLab.
   const tried = [], seen = new Set();
   const noteSearch = (res) => { if (res && Array.isArray(res.seenNames)) for (const n of res.seenNames) seen.add(n); };
+  let huboHomonimos = false;   // algún intento trajo a otras personas (para el estado «homonimos» vs «sin_registro»)
   for (let ci = 0; ci < MAX_TRIES; ci++) {
     const c = candidates[ci];
     if (ci > 0) {
       // Presupuesto: cada retry cuesta ~12-15s (goto + postback). Dejar >=25s para drill.
       if (deadlineTs && Date.now() > deadlineTs - 25000) {
-        console.log(`       [retry] sin presupuesto para candidato ${ci + 1}/${MAX_TRIES} ("${c.cognome}") — devolviendo lo que hay`);
+        console.log(`       [retry] sin presupuesto para candidato ${ci + 1}/${MAX_TRIES} (${iniciales(c.cognome)}) — devolviendo lo que hay`);
         break;
       }
       console.log(`       [retry ${ci}/${MAX_TRIES - 1}] ${c.tag}`);
     }
-    console.log(`       [busqueda] Apellidos → txtCognome: "${c.cognome}"${c.nome ? ` + txtNome: "${c.nome}"` : ""}`);
+    console.log(`       [busqueda] Apellidos → txtCognome: "${iniciales(c.cognome)}"${c.nome ? ` + txtNome: "${iniciales(c.nome)}"` : ""}`);
     if (c.sibling) continue; // las variantes "sibling" se buscan junto con su principal (abajo), no como retry
     tried.push(c.cognome + (c.nome ? " + " + c.nome : ""));
     last = await doSingleSearch(page, searchUrl, paciente, {
       codice: null, cognome: c.cognome, nome: c.nome,
-      tag: `apellidos="${c.cognome}"${c.nome ? `,nome="${c.nome}"` : ""}`,
+      tag: `apellidos="${iniciales(c.cognome)}"${c.nome ? `,nome="${iniciales(c.nome)}"` : ""}`,   // solo para la bitácora (pública)
       // El alias lo fijó una persona viendo WinLab: su primer candidato se trata como búsqueda
       // primaria; todo lo demás exige identificación positiva del objetivo.
       requireTargetMatch: c.alias ? false : ci > 0,
       parsedMap: opts.parsedMap || null,
     }, deadlineTs);
     noteSearch(last);
+    if (last && last.noTarget) huboHomonimos = true;
     last.tried = tried.slice(); last.seenNames = Array.from(seen).slice(0, 8);
     if (!last.noResults) {
       // Variante literal del mismo nombre abreviado (ej. "MA ELISA" además de "MARIA ELISA"): WinLab
@@ -412,10 +414,10 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
       const sib = candidates[ci + 1];
       if (sib && sib.sibling && (!deadlineTs || Date.now() < deadlineTs - 25000)) {
         try {
-          console.log(`       [busqueda] variante literal → txtCognome: "${sib.cognome}" + txtNome: "${sib.nome}"`);
+          console.log(`       [busqueda] variante literal → txtCognome: "${iniciales(sib.cognome)}" + txtNome: "${iniciales(sib.nome)}"`);
           const extra = await doSingleSearch(page, searchUrl, paciente, {
             codice: null, cognome: sib.cognome, nome: sib.nome,
-            tag: `apellidos="${sib.cognome}",nome="${sib.nome}"`,
+            tag: `apellidos="${iniciales(sib.cognome)}",nome="${iniciales(sib.nome)}"`,
             requireTargetMatch: true,
             parsedMap: opts.parsedMap || null,
           }, deadlineTs);
@@ -434,7 +436,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
       return last;
     }
   }
-  if (last) { last.tried = tried.slice(); last.seenNames = Array.from(seen).slice(0, 8); return last; }
+  if (last) { last.tried = tried.slice(); last.seenNames = Array.from(seen).slice(0, 8); last.noTarget = huboHomonimos; return last; }
   return { rows: [], headers: [], tableCount: 0, bestTableIdx: -1, noResults: true, tried, seenNames: [] };
 }
 
@@ -541,7 +543,7 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // Nombre de pila en txtNome (solo para nombres de 2 palabras → desambigua sin homónimos).
   if (params.nome) {
     if (await page.locator(WL_SEARCH_NOME_SEL).count()) {
-      await setField(page, WL_SEARCH_NOME_SEL, String(params.nome), `[nome=${params.nome}]`);
+      await setField(page, WL_SEARCH_NOME_SEL, String(params.nome), `[nome=${iniciales(params.nome)}]`);
     }
   }
 
@@ -801,7 +803,8 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
     // "0 filas de homónimos" y confundía el diagnóstico (corrida #441).
     if (result.noResults || !result.rows.length) console.log(`       [retry-guard] NINGÚN REGISTRO con este candidato → siguiente`);
     else console.log(`       [retry-guard] resultados sin match del objetivo (${result.rows.length} filas de homónimos${ageRejected.length ? `, ${ageRejected.length} bloque(s) descartados por edad` : ""}) → descartados`);
-    return { ...result, rows: [], noResults: true, noTarget: true };
+    // noTarget («solo homónimos») solo si WinLab devolvió a otras personas; si no devolvió nada es «sin registro».
+    return { ...result, rows: [], noResults: true, noTarget: !result.noResults && result.rows.length > 0 };
   }
 
   // ── DRILL-DOWN: para cada reporte, click y extraer valores reales ──

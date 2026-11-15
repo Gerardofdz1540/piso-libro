@@ -816,6 +816,51 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   assert(!malas.length, "ninguna línea de bitácora de los robots imprime un nombre sin iniciales(): " + malas.join(" ; "));
 }
 
+// ── 15 nov 2026: hoja con APELLIDOS primero en un nombre de 3 palabras y alias = los dos apellidos (cama 3-151) ──
+{
+  // Nombre ficticio con la forma real: «PATERNO MATERNO NOMBRE».
+  const c = buildSearchCandidates("ROJAS PRUEBA ANDRES");
+  assert(c[0].cognome === "PRUEBA ANDRES" && !c[0].nome, "cand 3 palabras: la primaria sigue siendo la convención (últimas 2)");
+  const iNome = c.findIndex((x) => x.cognome === "ROJAS PRUEBA" && x.nome === "ANDRES" && x.tag === "invertido apellidos-primero");
+  const iSolo = c.findIndex((x) => x.cognome === "ROJAS PRUEBA" && !x.nome && x.tag === "invertido apellidos solos");
+  assert(iNome > 0 && iSolo === iNome + 1, "cand 3 palabras: invertido apellidos-primero (+ nombre) y, justo después, invertido apellidos solos");
+  assert(c[c.length - 2].tag === "paterno-solo + nombre" && c[c.length - 1].tag === "materno-solo + nombre", "cand 3 palabras: paterno/materno-solo siguen al final");
+  assert(c.length <= 7 && buildSearchCandidates("ROJAS PEÑA ANDRES").length <= 7, "cand 3 palabras (con y sin Ñ): caben en los 7 intentos");
+  // Nombre normal de 3 palabras: nada cambia al frente.
+  const n = buildSearchCandidates("ANDRES ROJAS PRUEBA");
+  assert(n[0].cognome === "ROJAS PRUEBA" && !n[0].nome, "cand 3 palabras normal: la primaria es la de siempre");
+  // Nombre abreviado al inicio: sin invertidos.
+  assert(!buildSearchCandidates("MA GUADALUPE RIOS").some((x) => /^invertido/.test(x.tag)), "cand: con nombre abreviado de 3 palabras no hay invertidos");
+  // WinLab lista «PATERNO MATERNO, NOMBRE»: el encabezado identifica al censo invertido; otro nombre de pila no.
+  assert(patientHeaderMatches("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA ANDRES") === true && patientHeaderMatches("ROJAS PRUEBA LUIS", "ROJAS PRUEBA ANDRES") === false, "match: censo invertido de 3 palabras vs encabezado de WinLab");
+  // Alias sin coma = los DOS APELLIDOS: también se buscan juntos como apellidos (sin nombre), como 2.º candidato.
+  const ca = buildSearchCandidatesWithAlias("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA");
+  const iAp = ca.findIndex((x) => x.alias && x.cognome === "ROJAS PRUEBA" && !x.nome);
+  assert(iAp === 1 && ca[iAp].tag === "alias · como apellidos", "alias de 2 palabras sin coma: «como apellidos» es el 2.º candidato");
+  assert(new Set(ca.map((x) => x.key)).size === ca.length, "alias + censo: sin candidatos repetidos");
+  assert(ca.slice(0, 7).some((x) => x.cognome === "ROJAS PRUEBA" && x.nome === "ANDRES"), "alias + censo: el invertido del censo con nombre cabe en los 7 intentos");
+  // Alias con coma o de una sola palabra: sin cambios.
+  assert(!buildSearchCandidatesWithAlias("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA, ANDRES").some((x) => x.tag === "alias · como apellidos"), "alias con coma: sin «como apellidos» (ya trae apellidos solos)");
+}
+// ── 15 nov 2026: bitácora pública: términos de búsqueda de UNA palabra y etiquetas sin comillas ──
+{
+  const s1 = sanearLog('       [busqueda] Apellidos → txtCognome: "PRUEBA" + txtNome: "ANDRES"');
+  const s2 = sanearLog('       [apellidos="PRUEBA",nome="ANDRES"]: 1 matches, usando indice 0 (visible)');
+  const s3 = sanearLog('       [nome=ANDRES ROJAS]: 1 matches, usando indice 0 (visible)');
+  const s4 = sanearLog('       profilo: seleccionado "MES" · [apellidos="P.A."]: 1 matches');
+  assert(s1 === '       [busqueda] Apellidos → txtCognome: "P." + txtNome: "A."', "sanearLog: txtCognome/txtNome de una palabra → iniciales :: " + s1);
+  assert(s2 === '       [apellidos="P.",nome="A."]: 1 matches, usando indice 0 (visible)', "sanearLog: [apellidos=\"X\",nome=\"Y\"] de una palabra → iniciales :: " + s2);
+  assert(s3 === '       [nome=A.R.]: 1 matches, usando indice 0 (visible)', "sanearLog: [nome=X Y] sin comillas → iniciales :: " + s3);
+  assert(s4 === '       profilo: seleccionado "MES" · [apellidos="P.A."]: 1 matches', "sanearLog: lo que ya son iniciales y el perfil de WinLab no cambian :: " + s4);
+  // Ninguna línea del robot interpola términos de búsqueda sin iniciales().
+  const src = fs.readFileSync(new URL("./scraper.js", import.meta.url), "utf8");
+  const malas = [];
+  src.split("\n").forEach((l, i) => {
+    if (!/console\.(log|error|warn|info)\(|\btag:|setField\(/.test(l)) return;
+    (l.match(/\$\{[^}]*\b(c|sib|params)\.(cognome|nome)\b[^}]*\}/g) || []).forEach((x) => { if (!/iniciales\(|^\$\{c\.nome \?|^\$\{sib\.nome \?/.test(x)) malas.push("scraper.js:" + (i + 1) + " " + x); });
+  });
+  assert(!malas.length, "bitácora: ningún término de búsqueda sin iniciales(): " + malas.join(" ; "));
+}
 {
   const o = parseObjetivo("ID-8F0C2A4E-1111-4B7A-9C1D-000000000001, 26-00001 0012345");
   assert(JSON.stringify(o) === JSON.stringify({ ids: ["8f0c2a4e-1111-4b7a-9c1d-000000000001"], exps: ["2600001", "0012345"] }) && parseObjetivo("").ids.length === 0 && parseObjetivo("ID-corto").exps[0] === "IDCORTO",
