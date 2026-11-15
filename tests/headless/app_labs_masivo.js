@@ -150,6 +150,22 @@ const PATS = [
     //      otro → no se asigna solo; queda sugerido el que encaja.
     c = await correr([{ paciente: 'LOPEZ DIAZ, ANA SOFIX', cama: '205', fecha_labs: '2026-10-30', values: { hb: '7.7' } }]);
     out.l14 = { sel: c.sel, esperado: pidDe('3-204'), a: snapDe('3-204', '2026-10-30').length, b: snapDe('3-205', '2026-10-30').length };
+    // L15 (15 nov 2026): «nombre en WinLab» con SOLO los apellidos y el PDF de un familiar con esos apellidos → no entra
+    //      solo a la tarjeta (antes: «Identificado por nombre en WinLab» y los labs del hermano en la tarjeta).
+    { const nd = getNote(pidDe('3-205')); nd.checklist = nd.checklist || {}; nd.checklist.winlab_alias = 'LOPEZ DIAS'; noteData[pidDe('3-205')] = nd; }
+    c = await correr([{ paciente: 'LOPEZ DIAS, LUIS ALBERTO', fecha_labs: '2026-11-01', values: { hb: '6.2' } }]);
+    out.l15 = { b: snapDe('3-205', '2026-11-01').length, a: snapDe('3-204', '2026-11-01').length, txt: c.txt.slice(0, 200), cards: c.cards.length, sel: c.sel, no: pidDe('3-205') };
+    // L16 (revisión 15 nov): «nombre en WinLab» SIN coma con el nombre completo (apellido de casada) y el PDF SIN coma
+    //      (como lo pide el prompt: «APELLIDOS NOMBRE») → se asigna solo (antes de la corrección quedaba «no identificado»).
+    { const nd = getNote(pidDe('3-205')); nd.checklist.winlab_alias = 'LOPEZ RAMIREZ ANA MARIA'; noteData[pidDe('3-205')] = nd; }
+    c = await correr([{ paciente: 'LOPEZ RAMIREZ ANA MARIA', fecha_labs: '2026-11-02', values: { hb: '9.4' } }]);
+    out.l16 = { b: (snapDe('3-205', '2026-11-02')[0] || { labs: {} }).labs.hb, a: snapDe('3-204', '2026-11-02').length, txt: c.txt.slice(0, 200), cards: c.cards.length };
+    // L17: alias CON coma pero con el nombre de pila incompleto («…, ANA») y el PDF de la hermana «…, ANA LUCIA» → no se
+    //      asigna solo: queda sugerido (antes: «Identificado por nombre en WinLab» y los labs de la hermana en la tarjeta).
+    { const nd = getNote(pidDe('3-205')); nd.checklist.winlab_alias = 'LOPEZ RAMIREZ, ANA'; noteData[pidDe('3-205')] = nd; }
+    c = await correr([{ paciente: 'LOPEZ RAMIREZ, ANA LUCIA', fecha_labs: '2026-11-03', values: { hb: '5.9' } }]);
+    out.l17 = { b: snapDe('3-205', '2026-11-03').length, a: snapDe('3-204', '2026-11-03').length, txt: c.txt.slice(0, 200), cards: c.cards.length, sel: c.sel, esperado: pidDe('3-205') };
+    { const nd = getNote(pidDe('3-205')); nd.checklist.winlab_alias = 'LOPEZ DIAS ANA MARIA'; noteData[pidDe('3-205')] = nd; }
     return out;
   });
   check('L8 una letra distinta en el nombre + mismo expediente en el PDF: se asigna solo a su tarjeta y lo dice; el expediente no entra a los labs',
@@ -158,6 +174,9 @@ const PATS = [
     r3.l9.antes === 0 && r3.l9.sel[0] === r3.l9.esperado && /¿Es este paciente\? \(nombre parecido\)/.test(r3.l9.txt) && r3.l9.despues === '9.9' && r3.l9.confirm.length === 1 && r3.l9.done, JSON.stringify(r3.l9));
   check('L10 una letra distinta + la cama del PDF igual: se asigna solo y nadie más recibe nada', r3.l10.hb === '12.7' && r3.l10.otros[0] === 0 && r3.l10.otros[1] === 0 && /Identificado por cama/.test(r3.l10.txt), JSON.stringify(r3.l10));
   check('L11 el PDF trae el «nombre en WinLab» fijado en la tarjeta: se asigna solo a esa tarjeta', r3.l11.b === '8.1' && r3.l11.a === 0 && /Identificado por nombre en WinLab/.test(r3.l11.txt), JSON.stringify(r3.l11));
+  check('L16 «nombre en WinLab» sin coma igual al nombre del PDF sin coma: se asigna solo a esa tarjeta', r3.l16.b === '9.4' && r3.l16.a === 0 && /Identificado por nombre en WinLab/.test(r3.l16.txt) && r3.l16.cards === 0, JSON.stringify(r3.l16));
+  check('L17 «nombre en WinLab» con coma y nombre de pila incompleto, PDF de la hermana: solo sugerido, nada escrito', r3.l17.b === 0 && r3.l17.a === 0 && !/Identificado por nombre en WinLab/.test(r3.l17.txt) && r3.l17.cards === 1 && r3.l17.sel[0] === r3.l17.esperado, JSON.stringify(r3.l17));
+  check('L15 «nombre en WinLab» con solo los apellidos y el PDF de un familiar: no se asigna solo a nadie ni se sugiere esa tarjeta (queda para asignar a mano)', r3.l15.b === 0 && r3.l15.a === 0 && !/Identificado por nombre en WinLab/.test(r3.l15.txt) && r3.l15.cards === 1 && r3.l15.sel[0] !== r3.l15.no, JSON.stringify(r3.l15));
   check('L12 dos palabras con una letra distinta cada una: nada sugerido ni escrito; sin elegir avisa; eligiendo el paciente a mano sí se carga',
     r3.l12.sel[0] === '' && r3.l12.antes === 0 && /Elige el paciente/.test(r3.l12.sinElegir || '') && r3.l12.despues === '11.9', JSON.stringify(r3.l12));
   check('L13 mismo expediente con otro nombre (expediente copiado): solo se sugiere, no se escribe', r3.l13.sel[0] === r3.l13.esperado && r3.l13.escrito === 0 && /mismo expediente, nombre distinto/.test(r3.l13.txt), JSON.stringify(r3.l13));

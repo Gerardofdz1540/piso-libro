@@ -352,14 +352,18 @@ export function buildSearchCandidates(nombre) {
   if (parts.length >= 5) push(parts.slice(-3).join(" "), null, "apellido 3 palabras");
   // (c) nombre invertido en la hoja (APELLIDOS primero): primeras 2 como cognome + resto en nome.
   //     No aplica si empieza con abreviatura de nombre (FCO/MA/J…): ahí el orden es evidente.
-  if (parts.length >= 4 && !abbrevLed) push(parts.slice(0, 2).join(" "), parts.slice(2).join(" "), "invertido apellidos-primero");
+  //     15 nov 2026: también con 3 palabras («PATERNO MATERNO NOMBRE», cama 3-151, corrida 43749882180): la
+  //     hoja lo trae así y la escalera solo probaba «MATERNO NOMBRE» como apellidos → NINGÚN REGISTRO en todos
+  //     los intentos y el paciente se quedó días sin labs. Los dos son retries: exigen que el encabezado de
+  //     WinLab identifique al objetivo (orden libre), así que con un nombre normal solo cuestan una búsqueda.
+  if (parts.length >= 3 && !abbrevLed) push(parts.slice(0, 2).join(" "), parts.slice(2).join(" "), "invertido apellidos-primero");
   // (c2) invertido con apellidos SOLOS (oct 2026, cama 3-160, corrida #441): la hoja traía APELLIDOS
   //      primero y WinLab guarda el nombre de pila de otra forma ("MA DEL ROSARIO", "MA." o un segundo
   //      nombre distinto), así que el filtro txtNome de (c) devolvía NINGÚN REGISTRO. Con los dos primeros
   //      tokens como apellidos y SIN nome, WinLab lista a todos los homónimos de apellido y el encabezado
   //      difuso (MA→MARIA, orden libre) identifica al objetivo; el retry-guard descarta si no aparece.
   //      Nunca drill a ciegas. Va después de (c): primero la búsqueda estrecha, luego la ancha.
-  if (parts.length >= 4 && !abbrevLed) push(parts.slice(0, 2).join(" "), null, "invertido apellidos solos");
+  if (parts.length >= 3 && !abbrevLed) push(parts.slice(0, 2).join(" "), null, "invertido apellidos solos");
   // (d) 2 palabras: probar el swap (hoja "APELLIDO NOMBRE")
   if (parts.length === 2) push(parts[0], parts[1], "2-palabras invertido");
   // (e) ÚLTIMO RECURSO: paterno-solo + nombre de pila. Recupera al paciente cuyo MATERNO
@@ -411,6 +415,15 @@ export function buildSearchCandidatesWithAlias(nombre, alias) {
     if (apParts.length >= 2 && nome) { push(apParts[0], nome, "paterno + nombre"); push(apParts.slice(1).join(" "), nome, "materno + nombre"); }
   } else {
     fromAlias = buildSearchCandidates(a).map((c) => ({ ...c, alias: true, tag: "alias · " + c.tag }));
+    // Alias de 2 palabras sin coma que en realidad son los APELLIDOS (15 nov 2026, cama 3-151: el equipo fijó
+    // «PATERNO MATERNO» y la escalera solo los probaba como «apellido + nombre» y su swap). Se busca también el alias
+    // completo como apellidos, sin nombre de pila, justo después de su primer candidato.
+    const aw = a.split(/\s+/).filter(Boolean);
+    const extraCenso = normNameTokens(nombre).filter((t) => !normNameTokens(a).includes(t));
+    if (aw.length === 2 && extraCenso.length && !fromAlias.some((c) => c.cognome === a && !c.nome)) {
+      // requireTarget: lista a todos los que llevan esos apellidos; el objetivo debe identificarse por el nombre del censo.
+      fromAlias.splice(Math.min(1, fromAlias.length), 0, { key: a + "|", cognome: a, nome: null, tag: "alias · como apellidos", sibling: false, alias: true, requireTarget: true });
+    }
   }
   const seen = new Set(fromAlias.map((c) => c.key));
   return fromAlias.concat(base.filter((c) => !seen.has(c.key)));
@@ -621,6 +634,49 @@ export function possiblySameWinlabPerson(a, b) {
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fa) || !/^\d{2}\/\d{2}\/\d{4}$/.test(fb)) return true;   // falta fecha → no se puede separar
   return fa === fb || sameBirthdayOtherYear(fa, fb);
 }
+// ¿El «nombre en WinLab» (alias que fija el equipo en la app) identifica a UNA persona por sí solo? Solo con el formato
+// «APELLIDOS, NOMBRE» y algo después de la coma. Sin coma no se sabe qué palabras son el nombre de pila: dos apellidos
+// («ROJAS PRUEBA», cama 3-151, 15 nov 2026) o apellidos compuestos («DIAZ DE LEON LOPEZ») encajan «completo» con un
+// hermano o con cualquiera que los lleve. Sin coma el alias sirve para BUSCAR, y solo identifica a un nombre con
+// EXACTAMENTE sus mismas palabras (aliasMismoNombre). Copias: _plAliasIdentifica (app), regWlAliasIdentifica (registro).
+export function aliasIdentifica(alias) {
+  const a = String(alias || "").trim();
+  if (!a || !a.includes(",")) return false;
+  return normNameTokens(a.split(",").slice(1).join(" ")).length > 0;
+}
+// Palabras de un nombre para compararlo «tal cual»: la normalización de normNameTokens pero SIN tirar partículas ni
+// palabras cortas (DE, LA, DEL…): sin ellas «DIAZ DE LEON LOPEZ» sería «DIAZ LOPEZ, LEON» (otra persona).
+function _nameWordsAll(name) {
+  if (!name) return [];
+  const s = String(name).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\./g, " ").replace(/[^A-Z\s]/g, " ")
+    .replace(/\bMA\b/g, "MARIA").replace(/\bJ\b/g, "JOSE").replace(/\bGPE\b/g, "GUADALUPE")
+    .replace(/\bFCO\b/g, "FRANCISCO").replace(/\bFCA\b/g, "FRANCISCA");
+  return s.split(/\s+/).filter((w) => w.length >= 2);
+}
+// ¿El alias SIN coma es exactamente este nombre? Mismas palabras en cualquier orden, una a una, con la tolerancia de
+// letras del cotejo de nombres (_tokenMatch: ≥ 5 letras, Jaro-Winkler ≥ 0.88, nunca la variante A/O). Revisión del
+// 15 nov 2026: «el nombre de pila del encabezado está en el alias» no bastaba: «SANTIAGO LOPEZ» (solo apellidos)
+// tomaba a un niño «LOPEZ HERNANDEZ, SANTIAGO»; tampoco servía con PDFs sin coma (📦 Labs Masivo).
+export function aliasMismoNombre(alias, nombre) {
+  const a = _nameWordsAll(alias), b = _nameWordsAll(nombre);
+  if (!a.length || a.length !== b.length) return false;
+  const used = new Array(b.length).fill(false), pend = [];
+  for (const x of a) { const j = b.findIndex((y, k) => !used[k] && y === x); if (j >= 0) used[j] = true; else pend.push(x); }
+  for (const x of pend) {
+    const j = b.findIndex((y, k) => !used[k] && _tokenMatch(x, y));
+    if (j < 0) return false;
+    used[j] = true;
+  }
+  return true;
+}
+// ¿El alias identifica a ESTE nombre (encabezado de WinLab, estudio del RIS, PDF)? Con coma y nombre: sí, y el cotejo
+// de nombres decide qué tanto («full»/«partial»). Sin coma: solo si es exactamente ese nombre.
+export function aliasIdentificaA(alias, nombre) {
+  const a = String(alias || "").trim();
+  if (!a) return false;
+  return aliasIdentifica(a) || aliasMismoNombre(a, nombre);
+}
 export function selectTargetRows(rows, paciente, opts = {}) {
   const tolerance = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : 2;
   const today = opts.today || new Date();
@@ -638,7 +694,8 @@ export function selectTargetRows(rows, paciente, opts = {}) {
       if (!seenNames.includes(seenLabel)) seenNames.push(seenLabel);
       // El alias ("nombre en WinLab" fijado en la app) también identifica al objetivo.
       const kindN = patientHeaderMatchKind(hdrName, paciente && paciente.nombre);
-      const kindA = alias ? patientHeaderMatchKind(hdrName, alias) : "";
+      // …pero solo con «APELLIDOS, NOMBRE» (coma) o si es exactamente el nombre de ESTE encabezado: ver aliasIdentificaA.
+      const kindA = aliasIdentifica(alias) ? patientHeaderMatchKind(hdrName, alias) : (aliasMismoNombre(alias, hdrName) ? "full" : "");
       const full = kindN === "full" || kindA === "full";
       const nameOk = full || !!kindN || !!kindA;
       const fnac = extractHeaderBirthDate(row.__cells);
@@ -779,6 +836,10 @@ export function expOculto(exp) {
 // sale como «(…345 …)».
 export function sanearLog(texto) {
   return String(texto)
+    // 15 nov 2026: los términos de búsqueda de WinLab salían tal cual cuando eran de UNA palabra («txtCognome: "PEREZ"»,
+    // «[apellidos="PEREZ",nome="JUAN"]») o sin comillas («[nome=JUAN PEREZ]»): la regla de abajo pide 2+ palabras.
+    .replace(/\b(txtCognome|txtNome):\s*"([^"]*)"/g, (m, k, n) => k + ': "' + (n.trim() ? iniciales(n) : "") + '"')
+    .replace(/\b(apellidos|nome|cognome)=("?)([^",\]\)]*)("?)/g, (m, k, q1, n, q2) => k + "=" + q1 + (n.trim() ? iniciales(n) : "") + q2)
     .replace(/(["«'])([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ.,]*(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ.,]*)+)(["»'])/g, (m, a, n, b) => a + iniciales(n) + b)
     .replace(/\bexp=(\S+)/g, (m, e) => "exp=" + expOculto(e))
     .replace(/\((?!\d{4}-\d{2}-\d{2}\b)(\d[\d\s/-]{2,}\d)((?:\s+[A-ZÁÉÍÓÚÜÑ.]{1,12})*)\)/g, (m, e, extra) => (e.replace(/\D/g, "").length >= 4 ? "(" + expOculto(e) + extra + ")" : m));

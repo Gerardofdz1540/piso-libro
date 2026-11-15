@@ -7,7 +7,7 @@ import {
   isMeaningfulReportRow, extractApellidos, expVariants,
   stripAccentsKeepEnie, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
   jaroWinkler, patientHeaderMatches,
-  extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows, sameBirthdayOtherYear, possiblySameWinlabPerson,
+  extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows, sameBirthdayOtherYear, possiblySameWinlabPerson, aliasIdentifica, aliasMismoNombre, aliasIdentificaA,
   todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
   normNameTokens, expandNomeAbbrev,
   isGarbageCell, looksLikeReportLinkRow, patientHeaderMatchKind,
@@ -816,6 +816,106 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   assert(!malas.length, "ninguna línea de bitácora de los robots imprime un nombre sin iniciales(): " + malas.join(" ; "));
 }
 
+// ── 15 nov 2026: hoja con APELLIDOS primero en un nombre de 3 palabras y alias = los dos apellidos (cama 3-151) ──
+{
+  // Nombre ficticio con la forma real: «PATERNO MATERNO NOMBRE».
+  const c = buildSearchCandidates("ROJAS PRUEBA ANDRES");
+  assert(c[0].cognome === "PRUEBA ANDRES" && !c[0].nome, "cand 3 palabras: la primaria sigue siendo la convención (últimas 2)");
+  const iNome = c.findIndex((x) => x.cognome === "ROJAS PRUEBA" && x.nome === "ANDRES" && x.tag === "invertido apellidos-primero");
+  const iSolo = c.findIndex((x) => x.cognome === "ROJAS PRUEBA" && !x.nome && x.tag === "invertido apellidos solos");
+  assert(iNome > 0 && iSolo === iNome + 1, "cand 3 palabras: invertido apellidos-primero (+ nombre) y, justo después, invertido apellidos solos");
+  assert(c[c.length - 2].tag === "paterno-solo + nombre" && c[c.length - 1].tag === "materno-solo + nombre", "cand 3 palabras: paterno/materno-solo siguen al final");
+  assert(c.length <= 7 && buildSearchCandidates("ROJAS PEÑA ANDRES").length <= 7, "cand 3 palabras (con y sin Ñ): caben en los 7 intentos");
+  // Nombre normal de 3 palabras: nada cambia al frente.
+  const n = buildSearchCandidates("ANDRES ROJAS PRUEBA");
+  assert(n[0].cognome === "ROJAS PRUEBA" && !n[0].nome, "cand 3 palabras normal: la primaria es la de siempre");
+  // Nombre abreviado al inicio: sin invertidos.
+  assert(!buildSearchCandidates("MA GUADALUPE RIOS").some((x) => /^invertido/.test(x.tag)), "cand: con nombre abreviado de 3 palabras no hay invertidos");
+  // WinLab lista «PATERNO MATERNO, NOMBRE»: el encabezado identifica al censo invertido; otro nombre de pila no.
+  assert(patientHeaderMatches("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA ANDRES") === true && patientHeaderMatches("ROJAS PRUEBA LUIS", "ROJAS PRUEBA ANDRES") === false, "match: censo invertido de 3 palabras vs encabezado de WinLab");
+  // Alias sin coma = los DOS APELLIDOS: también se buscan juntos como apellidos (sin nombre), como 2.º candidato.
+  const ca = buildSearchCandidatesWithAlias("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA");
+  const iAp = ca.findIndex((x) => x.alias && x.cognome === "ROJAS PRUEBA" && !x.nome);
+  assert(iAp === 1 && ca[iAp].tag === "alias · como apellidos", "alias de 2 palabras sin coma: «como apellidos» es el 2.º candidato");
+  assert(new Set(ca.map((x) => x.key)).size === ca.length, "alias + censo: sin candidatos repetidos");
+  assert(ca.slice(0, 7).some((x) => x.cognome === "ROJAS PRUEBA" && x.nome === "ANDRES"), "alias + censo: el invertido del censo con nombre cabe en los 7 intentos");
+  // Alias con coma o de una sola palabra: sin cambios.
+  assert(!buildSearchCandidatesWithAlias("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA, ANDRES").some((x) => x.tag === "alias · como apellidos"), "alias con coma: sin «como apellidos» (ya trae apellidos solos)");
+}
+// ── 15 nov 2026: un alias con SOLO los dos apellidos busca, pero no identifica (hermanos / homónimos de apellidos) ──
+{
+  const TODAY = new Date(2026, 10, 15);
+  const hdr = (ap, no, sexo, fnac) => ({ __cells: ["", "", "", ap, no, sexo, fnac], __hasLink: false });
+  const rep = (id) => ({ __cells: ["", id, "12/11/2026 06:16", "12/11/2026 06:34", "12/11/2026 12:56", ""], __hasLink: true });
+  assert(aliasIdentifica("ROJAS PRUEBA") === false && aliasIdentifica("ROJAS PRUEBA,") === false && aliasIdentifica("") === false
+    && aliasIdentifica("ROJAS PRUEBA, ANDRES") === true && aliasIdentifica("RIOS, ADRIAN") === true
+    && aliasIdentifica("ANDRES ROJAS PRUEBA") === false && aliasIdentifica("DIAZ DE LEON LOPEZ") === false,
+    "aliasIdentifica: por sí solo, solo «APELLIDOS, NOMBRE» con nombre tras la coma (sin coma no se sabe cuál es el nombre de pila)");
+  assert(aliasMismoNombre("ROJAS PRUEBA", "ROJAS PRUEBA LUIS") === false && aliasMismoNombre("DIAZ DE LEON LOPEZ", "DIAZ DE LEON LOPEZ LUIS") === false
+    && aliasMismoNombre("LOPEZ DIAS ANA MARIA", "LOPEZ DIAS ANA MARIA") === true && aliasMismoNombre("LOPEZ DIAS ANA MARIA", "LOPEZ DIAS ANA SOFIA") === false
+    && aliasMismoNombre("ANA MARIA LOPEZ DIAS", "LOPEZ DIAS, ANA MARIA") === true && aliasMismoNombre("LOPEZ DIAS ANA", "LOPEZ DIAS ANA MARIA") === false
+    && aliasMismoNombre("LOPEZ RAMIREZ ANA", "LOPEZ RAMIRES ANA") === true && aliasMismoNombre("LOPEZ RAMIREZ ANTONIO", "LOPEZ RAMIREZ ANTONIA") === false
+    && aliasMismoNombre("LOPEZ RAMIREZ MA ELENA", "LOPEZ RAMIREZ MARIA ELENA") === true && aliasMismoNombre("", "") === false
+    && aliasMismoNombre("SANTIAGO LOPEZ", "LOPEZ HERNANDEZ SANTIAGO") === false
+    && aliasMismoNombre("DIAZ DE LEON LOPEZ", "DIAZ LOPEZ LEON") === false && aliasMismoNombre("LOPEZ RAMIRES RAMIRES", "LOPEZ RAMIREZ GARCIA") === false,
+    "aliasMismoNombre: sin coma identifica solo un nombre con exactamente sus palabras (cualquier orden, una letra de tolerancia, partículas incluidas)");
+  assert(aliasIdentificaA("ROJAS PRUEBA, ANDRES", "ROJAS PRUEBA LUIS") === true && aliasIdentificaA("ROJAS PRUEBA", "ROJAS PRUEBA LUIS") === false
+    && aliasIdentificaA("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA ANDRES") === true && aliasIdentificaA("", "ROJAS PRUEBA ANDRES") === false,
+    "aliasIdentificaA: con coma y nombre, sí (el cotejo decide); sin coma, solo el mismo nombre");
+  // Revisión del 15 nov 2026: un alias de solo apellidos NO identifica a un extraño cuyo nombre de pila es uno de ellos
+  // (antes: «LOPEZ HERNANDEZ, SANTIAGO», niño, era el único bloque y la excepción de registro único saltaba la edad).
+  const s0 = selectTargetRows([hdr("LOPEZ HERNANDEZ", "SANTIAGO", "MASCULINO", "03/04/2019"), rep("9")],
+    { nombre: "MARIA SANTIAGO LOPEZ", edad: "70", alias: "SANTIAGO LOPEZ" }, { today: TODAY });
+  assert(s0.targetIdxs.length === 0, "alias de solo apellidos: no toma a un extraño cuyo nombre de pila es uno de esos apellidos :: " + JSON.stringify(s0.targetIdxs));
+  // WinLab lista a tres hermanos con los mismos apellidos.
+  const lista = [hdr("ROJAS PRUEBA", "ANDRES", "MASCULINO", "01/01/1960"), rep("1"), hdr("ROJAS PRUEBA", "LUIS", "MASCULINO", "01/01/1961"), rep("2"), hdr("ROJAS PRUEBA", "MARTHA", "FEMENINO", "01/01/1990"), rep("3")];
+  const pac = (edad, alias) => ({ nombre: "ROJAS PRUEBA ANDRES", edad, alias });
+  const s1 = selectTargetRows(lista, pac("66", "ROJAS PRUEBA"), { today: TODAY });
+  const s2 = selectTargetRows(lista, pac("", "ROJAS PRUEBA"), { today: TODAY });
+  const s3 = selectTargetRows([hdr("ROJAS PRUEBA", "LUIS", "MASCULINO", "01/01/1940"), rep("2")], pac("66", "ROJAS PRUEBA"), { today: TODAY });
+  const s4 = selectTargetRows(lista, pac("", "ROJAS PRUEBA, ANDRES"), { today: TODAY });
+  assert(JSON.stringify(s1.targetIdxs) === "[1]" && JSON.stringify(s2.targetIdxs) === "[1]", "alias de solo apellidos: con o sin edad, solo los reportes del paciente (ANDRES), nunca los del hermano ni la hermana :: " + JSON.stringify([s1.targetIdxs, s2.targetIdxs]));
+  assert(s3.targetIdxs.length === 0, "alias de solo apellidos: si WinLab solo lista al hermano, no se le asigna nada");
+  assert(JSON.stringify(s4.targetIdxs) === "[1]", "alias con nombre de pila: sigue identificando");
+  // Apellidos COMPUESTOS como alias (3 palabras tras normalizar, sin nombre de pila): tampoco toman al hermano.
+  const comp = [hdr("DIAZ DE LEON LOPEZ", "ANDRES", "MASCULINO", "01/01/1960"), rep("1"), hdr("DIAZ DE LEON LOPEZ", "LUIS", "MASCULINO", "01/01/1961"), rep("2")];
+  const s5 = selectTargetRows(comp, { nombre: "DIAZ DE LEON LOPEZ ANDRES", edad: "", alias: "DIAZ DE LEON LOPEZ" }, { today: TODAY });
+  const s6 = selectTargetRows([comp[2], comp[3]], { nombre: "DIAZ DE LEON LOPEZ ANDRES", edad: "30", alias: "DIAZ DE LEON LOPEZ" }, { today: TODAY });
+  assert(JSON.stringify(s5.targetIdxs) === "[1]" && s6.targetIdxs.length === 0, "alias de apellidos compuestos: solo el paciente; si WinLab solo lista al hermano, nada :: " + JSON.stringify([s5.targetIdxs, s6.targetIdxs]));
+  // Alias sin coma con el nombre completo (censo con error de dedo): sigue identificando al paciente, no al hermano.
+  const s7 = selectTargetRows([hdr("LOPEZ DIAS", "ANA MARIA", "FEMENINO", "01/01/1960"), rep("1"), hdr("LOPEZ DIAS", "ANA SOFIA", "FEMENINO", "01/01/1990"), rep("2")],
+    { nombre: "ANA MARIA LOPEZ DIAZ", edad: "", alias: "LOPEZ DIAS ANA MARIA" }, { today: TODAY });
+  assert(JSON.stringify(s7.targetIdxs) === "[1]", "alias sin coma con el nombre completo: identifica al paciente y no a la hermana :: " + JSON.stringify(s7.targetIdxs));
+  // «como apellidos» solo si el censo trae un nombre de pila además de esos apellidos.
+  assert(!buildSearchCandidatesWithAlias("ROJAS PRUEBA", "ROJAS PRUEBA").some((x) => x.tag === "alias · como apellidos"), "censo sin nombre de pila: no se agrega «alias · como apellidos»");
+  // El candidato «como apellidos» exige que el objetivo se identifique (por el nombre del censo).
+  const ca = buildSearchCandidatesWithAlias("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA");
+  assert(ca.find((x) => x.tag === "alias · como apellidos").requireTarget === true, "alias · como apellidos: exige identificación positiva");
+  const src = fs.readFileSync(new URL("./scraper.js", import.meta.url), "utf8");
+  assert(/requireTargetMatch:\s*c\.requireTarget \? true/.test(src), "scraper: requireTarget del candidato manda sobre «alias sin exigencia»");
+  // Bitácora pública: los expedientes no salen completos (flush final y DRY-RUN de winlab_match).
+  assert(!/Array\.from\(pendingExps\)\.join/.test(src) && /Array\.from\(pendingExps\)\.map\(expOculto\)/.test(src) && !/\$\{r\.exp\}=/.test(src) && /\$\{expOculto\(r\.exp\)\}=\$\{r\.status\}/.test(src),
+    "scraper: [flush] y [DRY-RUN] winlab_match imprimen el expediente oculto (…123), no completo");
+}
+// ── 15 nov 2026: bitácora pública: términos de búsqueda de UNA palabra y etiquetas sin comillas ──
+{
+  const s1 = sanearLog('       [busqueda] Apellidos → txtCognome: "PRUEBA" + txtNome: "ANDRES"');
+  const s2 = sanearLog('       [apellidos="PRUEBA",nome="ANDRES"]: 1 matches, usando indice 0 (visible)');
+  const s3 = sanearLog('       [nome=ANDRES ROJAS]: 1 matches, usando indice 0 (visible)');
+  const s4 = sanearLog('       profilo: seleccionado "MES" · [apellidos="P.A."]: 1 matches');
+  assert(s1 === '       [busqueda] Apellidos → txtCognome: "P." + txtNome: "A."', "sanearLog: txtCognome/txtNome de una palabra → iniciales :: " + s1);
+  assert(s2 === '       [apellidos="P.",nome="A."]: 1 matches, usando indice 0 (visible)', "sanearLog: [apellidos=\"X\",nome=\"Y\"] de una palabra → iniciales :: " + s2);
+  assert(s3 === '       [nome=A.R.]: 1 matches, usando indice 0 (visible)', "sanearLog: [nome=X Y] sin comillas → iniciales :: " + s3);
+  assert(s4 === '       profilo: seleccionado "MES" · [apellidos="P.A."]: 1 matches', "sanearLog: lo que ya son iniciales y el perfil de WinLab no cambian :: " + s4);
+  // Ninguna línea del robot interpola términos de búsqueda sin iniciales().
+  const src = fs.readFileSync(new URL("./scraper.js", import.meta.url), "utf8");
+  const malas = [];
+  src.split("\n").forEach((l, i) => {
+    if (!/console\.(log|error|warn|info)\(|\btag:|setField\(/.test(l)) return;
+    (l.match(/\$\{[^}]*\b(c|sib|params)\.(cognome|nome)\b[^}]*\}/g) || []).forEach((x) => { if (!/iniciales\(|^\$\{c\.nome \?|^\$\{sib\.nome \?/.test(x)) malas.push("scraper.js:" + (i + 1) + " " + x); });
+  });
+  assert(!malas.length, "bitácora: ningún término de búsqueda sin iniciales(): " + malas.join(" ; "));
+}
 {
   const o = parseObjetivo("ID-8F0C2A4E-1111-4B7A-9C1D-000000000001, 26-00001 0012345");
   assert(JSON.stringify(o) === JSON.stringify({ ids: ["8f0c2a4e-1111-4b7a-9c1d-000000000001"], exps: ["2600001", "0012345"] }) && parseObjetivo("").ids.length === 0 && parseObjetivo("ID-corto").exps[0] === "IDCORTO",

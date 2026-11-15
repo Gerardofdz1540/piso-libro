@@ -1503,5 +1503,25 @@ const fichas = /FICTICI|0001111|0002222|0003333|0004444|0005555|000123|000456|00
     JSON.stringify([P.y1["Antibiótico"], P.y1["Dieta y NPO"], P.y1["NPT"], P.y2["Antibiótico"], P.y2["Dieta y NPO"]]));
 }
 
+// ─── R34 (15 nov 2026): el «nombre en WinLab» sin coma solo identifica al MISMO nombre (como el robot) ───
+{
+  const { sb } = makeSandbox({ db: {} });
+  const hoy = new Date(Date.UTC(2026, 10, 15));
+  const hdr = (ap, no, sexo, fnac) => ({ __cells: ["", "", "", ap, no, sexo, fnac], __hasLink: false });
+  const rep = (id) => ({ __cells: ["", id, "12/11/2026 06:16", "12/11/2026 06:34", "12/11/2026 12:56", ""], __hasLink: true });
+  const lista = [hdr("ROJAS PRUEBA", "LUIS", "MASCULINO", "01/01/1961"), rep("2")];
+  const k = (r) => JSON.stringify(Object.keys(r.idx));
+  const a1 = sb.regWlObjetivo(lista, { nombre: "ROJAS PRUEBA ANDRES", edad: "", alias: "ROJAS PRUEBA" }, hoy);
+  const a2 = sb.regWlObjetivo([hdr("LOPEZ HERNANDEZ", "SANTIAGO", "MASCULINO", "03/04/2019"), rep("9")], { nombre: "MARIA SANTIAGO LOPEZ", edad: "70", alias: "SANTIAGO LOPEZ" }, hoy);
+  const a3 = sb.regWlObjetivo([hdr("LOPEZ DIAS", "ANA MARIA", "FEMENINO", "01/01/1960"), rep("1")], { nombre: "ANA MARIA LOPEZ DIAZ", edad: "", alias: "LOPEZ DIAS ANA MARIA" }, hoy);
+  const a4 = sb.regWlObjetivo(lista, { nombre: "ROJAS PRUEBA ANDRES", edad: "", alias: "ROJAS PRUEBA, LUIS" }, hoy);
+  const a5 = sb.regWlObjetivo([hdr("DIAZ DE LEON LOPEZ", "LUIS", "MASCULINO", "01/01/1961"), rep("2")], { nombre: "DIAZ DE LEON LOPEZ ANDRES", edad: "", alias: "DIAZ DE LEON LOPEZ" }, hoy);
+  check("R34 alias sin coma: solo los apellidos no toman al hermano ni a un extraño; el nombre completo sí identifica; con coma, como antes",
+    k(a1) === "[]" && k(a2) === "[]" && k(a3) === '["1"]' && k(a4) === '["1"]' && k(a5) === "[]"
+    && sb.regWlAliasIdentifica("ROJAS PRUEBA,") === false && sb.regWlAliasIdentifica("ROJAS PRUEBA, ANDRES") === true
+    && sb.regWlAliasMismoNombre("DIAZ DE LEON LOPEZ", "DIAZ LOPEZ LEON") === false && sb.regWlAliasMismoNombre("ANA MARIA LOPEZ RAMIRES", "LOPEZ RAMIREZ ANA MARIA") === true,
+    JSON.stringify([k(a1), k(a2), k(a3), k(a4), k(a5)]));
+}
+
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

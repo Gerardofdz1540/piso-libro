@@ -169,6 +169,21 @@ const pac = (exp, nombre, edad, extra = {}) => ({ id: "id-" + exp, exp, nombre, 
   assert(scoreMatch(pac("12", "AMALIA PEREZ RUIZ", 58, { alias: "SOTO MEDINA" }), est("SOTO MEDINA", 58)).via === "alias", "…y si el nombre del censo no cruza, el alias idéntico es quien identifica");
   const sCen = scoreMatch(pCorto, est("AMALIA SOTO MEDINA", 58));
   assert(sCen && sCen.via === "nombre" && sCen.level === 4, "con alias corto el nombre del censo sigue cruzando por su cuenta (idéntico → nivel 4)");
+  // 15 nov 2026: alias de apellidos COMPUESTOS (3 tokens sin nombre de pila) tampoco cruza con un hermano de esos apellidos.
+  const pComp = pac("13", "ANDRES DIAZ DE LEON LOPEZ", 60, { alias: "DIAZ DE LEON LOPEZ" });
+  assert(scoreMatch(pComp, est("LUIS DIAZ DE LEON LOPEZ", 61)) === null, "alias de apellidos compuestos NO cruza con el hermano");
+  const pComa = pac("14", "ANDRES DIAS DE LEON LOPEZ", 60, { alias: "DIAZ DE LEON LOPEZ, ANDRES" });
+  const sComa = scoreMatch(pComa, est("ANDRES DIAZ DE LEON LOPEZ", 60));
+  assert(sComa && sComa.via === "alias", "alias «APELLIDOS, NOMBRE» sí identifica (el censo traía DIAS)");
+  // Sin coma: solo el MISMO nombre (cualquier orden); con un nombre de pila de más o de menos, no (misma regla que WinLab).
+  const sIgual = scoreMatch(pac("15", "ANA LOPEZ GARCIA", 60, { alias: "RAMIREZ GARCIA ANA" }), est("ANA RAMIREZ GARCIA", 61));
+  const sMas = scoreMatch(pac("16", "ANA LOPEZ GARCIA", 60, { alias: "RAMIREZ GARCIA ANA MARIA" }), est("ANA RAMIREZ GARCIA", 61));
+  const sPart = scoreMatch(pac("17", "ANDRES DIAZ LEON", 60, { alias: "DIAZ DE LEON LOPEZ" }), est("LEON DIAZ LOPEZ", 61));
+  // Alias con coma pero de solo 2 palabras: en el RIS cruzaría por subconjunto con cualquiera que las lleve → solo el mismo nombre.
+  const sCorto = scoreMatch(pac("18", "ADRIAN RIOS PEREZ", 40, { alias: "RIOS, ADRIAN" }), est("ADRIAN RIOS LOPEZ", 40));
+  const sCortoIgual = scoreMatch(pac("19", "LUIS RIOS PEREZ", 40, { alias: "RIOS, ADRIAN" }), est("ADRIAN RIOS", 40));
+  assert(sCorto === null && sCortoIgual && sCortoIgual.via === "alias", "alias con coma de 2 palabras: no cruza con otro que las lleve; con el mismo nombre, sí :: " + JSON.stringify([sCorto, sCortoIgual && sCortoIgual.via]));
+  assert(sIgual && sIgual.via === "alias" && sMas === null && sPart === null, "alias sin coma: el mismo nombre del RIS identifica; con palabras de más, o con las partículas que cambian el nombre, no :: " + JSON.stringify([sIgual && sIgual.via, sMas, sPart]));
   const sLargo = scoreMatch(pac("11", "ANA RUIZ", 40, { alias: "RUIZ SOTOMAYOR, ANA MARIA" }), est("ANA MARIA RUIZ SOTOMAYOR", 41));
   assert(sLargo && sLargo.via === "alias" && sLargo.level === 4, "alias completo (≥ 3 tokens) cruza como siempre");
   assert(ageCompat(null) === 1 && ageCompat(3) === 2 && ageCompat(9) === 0, "ageCompat: 2 cuadra, 1 desconocida, 0 no cuadra");
@@ -197,6 +212,9 @@ const pac = (exp, nombre, edad, extra = {}) => ({ id: "id-" + exp, exp, nombre, 
   const rows = (nombre, edad, n, fecha) => Array.from({ length: n }, (_, i) => ({ e: est(nombre, edad, "Años", { fecha: fecha || "2026-10-0" + (i + 1), documento: "PAT" + edad + i }), p, level: 4 }));
   const r1 = resolveHomonyms([...rows("MARIA RUIZ SOTO", 70, 2), ...rows("MARIA RUIZ SOTO", 30, 3)]);
   assert(r1.kept.length === 2 && r1.dropped.length === 3 && /homónimo/.test(r1.dropped[0].motivo) && r1.ambiguous.length === 0, "homónimo real (mismo nombre, 70 vs 30 años, censo 69) → se conservan los de 70 y se descartan los de 30 con motivo");
+  // El motivo va a la bitácora PÚBLICA: el nombre del RIS sale en iniciales aunque traiga guion o minúsculas (sanearLog no los tapa).
+  const rG = resolveHomonyms([...rows("MARIA RUIZ-SOTO", 70, 1), ...rows("MARIA RUIZ-SOTO", 30, 1)].map((m) => ({ ...m, p: pac("H", "MARIA RUIZ SOTO", 69) })));
+  assert(rG.dropped.length === 1 && !/RUIZ|SOTO|MARIA/.test(rG.dropped[0].motivo) && /"M\.R\.?/.test(rG.dropped[0].motivo), "homónimos del RIS: el motivo (log público) lleva el nombre en iniciales :: " + (rG.dropped[0] && rG.dropped[0].motivo));
   const r2 = resolveHomonyms([...rows("MARIA RUIZ SOTO", 58, 1), ...rows("MARIA RUIZ SOTO", 60, 1)].map((m) => ({ ...m, p: pac("H", "MARIA RUIZ SOTO", 59) })));
   assert(r2.kept.length === 2 && r2.dropped.length === 0, "misma persona con 58 y 60 años en el RIS (±2) → es una sola identidad, se conserva todo");
   const r3 = resolveHomonyms([...rows("MARIA RUIZ SOTO", 70, 1), ...rows("MARIA ELENA RUIZ SOTO", 71, 1)]);
