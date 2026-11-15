@@ -1576,7 +1576,7 @@ async function scrapeForCenso(page, searchUrl, censo, supa, opts = {}) {
   // bucle infinito. Lo que no se pudo guardar cuenta como corrida abortada (salida ≠ 0).
   for (let attempt = 0; pendingExps.size && attempt < 3; attempt++) await flush("final");
   if (pendingExps.size) {
-    console.error(`       [flush] ${pendingExps.size} paciente(s) NO guardados tras reintentos: ${Array.from(pendingExps).join(", ")}`);
+    console.error(`       [flush] ${pendingExps.size} paciente(s) NO guardados tras reintentos: ${Array.from(pendingExps).map(expOculto).join(", ")}`);
     aborted = true;
   }
   process.off("SIGTERM", onSigterm);
@@ -1593,7 +1593,7 @@ async function upsertMatch(supa, recs, why = "final") {
   const rows = Array.from(byExp.values());
   if (!rows.length) return 0;
   if (DRY_RUN) {
-    console.log(`[DRY-RUN] (${why}) winlab_match: ${rows.length} fila(s) NO escritas: ${rows.map((r) => `${r.exp}=${r.status}${r.encontrado_como ? ` («${r.encontrado_como}»)` : ""}`).join(", ")}`);
+    console.log(`[DRY-RUN] (${why}) winlab_match: ${rows.length} fila(s) NO escritas: ${rows.map((r) => `${expOculto(r.exp)}=${r.status}${r.encontrado_como ? ` («${iniciales(r.encontrado_como)}»)` : ""}`).join(", ")}`);
     return rows.length;
   }
   const { error } = await supa.from(SUPABASE_MATCH_TABLE).upsert(rows, { onConflict: "exp" });

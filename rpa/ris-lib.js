@@ -22,7 +22,7 @@
 //       fuera), con tope RIS_MAX_WINDOWS.
 // ════════════════════════════════════════════════════════════════════════
 
-import { normNameTokens, parseCensusAge, jaroWinkler, iniciales, esServicioSinRobot } from "./lib.js";
+import { normNameTokens, parseCensusAge, jaroWinkler, iniciales, esServicioSinRobot, aliasIdentifica, aliasMismoNombre } from "./lib.js";
 
 export const RIS_AGE_TOLERANCE_DEFAULT = 2;   // ±2 años: cruces débiles (2 tokens, letra cambiada, extras a ambos lados)
 export const RIS_AGE_TOLERANCE_WIDE = 5;      // ±5 años: cruces por subconjunto de ≥ 3 tokens
@@ -231,7 +231,7 @@ export function scoreMatchByName(nombreCenso, est, diff, opts = {}) {
   return { level, label, cov, diff };
 }
 // Un paciente puede traer `alias` ("nombre en WinLab" fijado desde la app): también identifica.
-// Un alias CORTO (≤ 2 tokens: el equipo a veces fija solo los apellidos, "SOTO MEDINA", para que WinLab
+// Un alias sin «APELLIDOS, NOMBRE» (corto: ≤ 2 tokens, el equipo a veces fija solo los apellidos, "SOTO MEDINA", para que WinLab
 // busque por ellos) solo identifica en el RIS si el nombre del RIS es IDÉNTICO al alias; si no, cualquier
 // homónimo de apellidos con edad parecida (corrida #23: "MARTHA SOTO MEDINA" 60 a por "AMALIA SOTO
 // MEDINA" 58 a) entraría a la tarjeta. El nombre del censo sigue cruzando por su cuenta.
@@ -243,7 +243,11 @@ export function scoreMatch(p, est, opts = {}) {
     const s = scoreMatchByName(nm, est, diff, opts);
     if (!s) continue;
     const isAlias = nm !== p.nombre;
-    if (isAlias && normNameTokens(nm).length < 3 && !(s.cov.censoCovered && s.cov.risCovered)) continue;
+    // 15 nov 2026: no solo el alias corto: cualquiera sin «APELLIDOS, NOMBRE» (apellidos compuestos «DIAZ DE LEON LOPEZ»)
+    // solo cuenta si es exactamente el nombre del RIS (aliasMismoNombre: la misma regla del robot de labs y de la app).
+    // Un alias con coma pero CORTO («RIOS, ADRIAN», 2 palabras) tampoco identifica por sí solo en el RIS: con 2 palabras
+    // cruza por subconjunto con cualquiera que las lleve (como antes de este cambio, solo si es el mismo nombre).
+    if (isAlias && !((aliasIdentifica(nm) && normNameTokens(nm).length >= 3) || aliasMismoNombre(nm, est && est.nombre))) continue;
     if (!best || s.level > best.level || (s.level === best.level && s.cov.exact > best.cov.exact)) best = { ...s, via: isAlias ? "alias" : "nombre" };
   }
   return best;
@@ -311,7 +315,7 @@ export function resolveHomonyms(matched, opts = {}) {
       const rows = list.flatMap((x) => x.rows);
       const ages = list.map((x) => x.age).filter((a) => a != null);
       const ageDist = censusAge == null || !ages.length ? null : Math.min(...ages.map((a) => Math.abs(a - censusAge)));
-      return { rows, bestLevel: Math.max(...rows.map((r) => r.level || 0)), ageDist, compat: ageCompat(ageDist, tolWide), label: `"${list[0].nombre}" ${ages.length ? ages.join("/") + " a" : "edad ?"}` };
+      return { rows, bestLevel: Math.max(...rows.map((r) => r.level || 0)), ageDist, compat: ageCompat(ageDist, tolWide), label: `"${iniciales(list[0].nombre)}" ${ages.length ? ages.join("/") + " a" : "edad ?"}` };   // solo va al log público
     });
     const bestCompat = Math.max(...persons.map((x) => x.compat));
     if (bestCompat === 2) {

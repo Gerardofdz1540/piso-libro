@@ -33,7 +33,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.10.30-2';
+var REGISTRO_VERSION = '2026.11.15';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -575,6 +575,35 @@ function regWlCoincide(encabezado, nombre) {
   if (regWlTodosEn(t, h)) return 'full';
   return h.length >= 3 && regWlTodosEn(h, t) ? 'partial' : '';
 }
+/** ¿El «nombre en WinLab» identifica a una persona por sí solo? Solo «APELLIDOS, NOMBRE» con nombre tras la coma (copia de
+ *  aliasIdentifica del robot, rpa/lib.js). Sin coma («ROJAS PRUEBA», apellidos compuestos) solo sirve para buscar. */
+function regWlAliasIdentifica(alias) {
+  var a = String(alias || '').trim();
+  if (!a || a.indexOf(',') < 0) return false;
+  return regWlTokens(a.split(',').slice(1).join(' ')).length > 0;
+}
+/** Palabras «tal cual» (sin tirar partículas ni palabras cortas: DE, LA…). */
+function regWlPalabras(name) {
+  if (!name) return [];
+  return String(name).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\./g, ' ').replace(/[^A-Z\s]/g, ' ')
+    .replace(/\bMA\b/g, 'MARIA').replace(/\bJ\b/g, 'JOSE').replace(/\bGPE\b/g, 'GUADALUPE')
+    .replace(/\bFCO\b/g, 'FRANCISCO').replace(/\bFCA\b/g, 'FRANCISCA')
+    .split(/\s+/).filter(function (w) { return w.length >= 2; });
+}
+/** ¿El alias sin coma es exactamente este nombre? Mismas palabras en cualquier orden, una a una (aliasMismoNombre del robot). */
+function regWlAliasMismoNombre(alias, nombre) {
+  var a = regWlPalabras(alias), b = regWlPalabras(nombre);
+  if (!a.length || a.length !== b.length) return false;
+  var used = b.map(function () { return false; }), pend = [];
+  a.forEach(function (x) { var j = b.indexOf(x); while (j >= 0 && used[j]) j = b.indexOf(x, j + 1); if (j >= 0) used[j] = true; else pend.push(x); });
+  for (var i = 0; i < pend.length; i++) {
+    var hit = -1;
+    for (var k = 0; k < b.length; k++) { if (!used[k] && regWlTokenIgual(pend[i], b[k])) { hit = k; break; } }
+    if (hit < 0) return false;
+    used[hit] = true;
+  }
+  return true;
+}
 var REG_WL_SEXO = /^(FEMENIN[OA]|MASCULIN[OA]|FEMMIN[A-Z]*|MASCHI[A-Z]*|FEMALE|MALE|DONNA|UOMO|MUJER|HOMBRE|[FM])$/;
 function regWlIdxSexo(cells) {
   if (!Array.isArray(cells)) return -1;
@@ -646,7 +675,10 @@ function regWlObjetivo(rows, paciente, hoy) {
     if (hdr) {
       var sxi = regWlIdxSexo(cells);
       var label = sxi >= 2 ? String(cells[sxi - 2] || '').trim() + ', ' + String(cells[sxi - 1] || '').trim() : hdr;
-      var kN = regWlCoincide(hdr, paciente && paciente.nombre), kA = alias ? regWlCoincide(hdr, alias) : '';
+      // El alias solo identifica con «APELLIDOS, NOMBRE» o si es exactamente el nombre del encabezado (15 nov 2026: con solo
+      // los apellidos los reportes de un hermano entraban a la pestaña del paciente).
+      var kN = regWlCoincide(hdr, paciente && paciente.nombre);
+      var kA = regWlAliasIdentifica(alias) ? regWlCoincide(hdr, alias) : (regWlAliasMismoNombre(alias, hdr) ? 'full' : '');
       var full = kN === 'full' || kA === 'full', nameOk = full || !!kN || !!kA;
       var fnac = regWlNacimiento(cells);
       var hdrAge = nameOk && edadCenso !== null ? regWlEdadDe(fnac, hoy) : null;

@@ -50,6 +50,9 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
     («nombre en WinLab») del censo o de la Papelera; lee encabezados en español o italiano; acepta una letra cambiada
     por el OCR, FCO = FRANCISCO y similares. Las variantes A/O (MARIO/MARIA) son otra persona. Con homónimos del mismo
     nombre decide la edad; si no se conoce, esos reportes no se copian y queda un aviso.
+  - **Alias sin coma (15 nov 2026, versión 2026.11.15):** el «nombre en WinLab» identifica solo con `APELLIDOS, NOMBRE`
+    o si es exactamente el nombre del encabezado (mismas palabras). Con solo los apellidos ya no entran los reportes de
+    un hermano. Pega el `registro-pacientes.gs` actualizado en el proyecto de Apps Script para que aplique.
   - El mismo reporte capturado varios días es un solo renglón: manda la captura con más valores, y el cultivo leído del
     PDF manda sobre el de la tabla, también entre corridas.
   - La columna «Atribución» dice por qué entró.

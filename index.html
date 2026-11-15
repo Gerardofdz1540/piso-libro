@@ -9500,27 +9500,55 @@ function plExportBackup() {
     }
     // Identidad de un paciente del censo para atribuir reportes: su nombre, su «nombre en WinLab» (alias que fija la
     // app y con el que busca el robot) y los nombres de los OTROS pacientes con su mismo expediente.
-    // ¿El «nombre en WinLab» identifica a UNA persona? Solo con nombre de pila: «APELLIDOS, NOMBRE» con algo tras la coma,
-    // o 3 palabras o más. Dos palabras sin coma suelen ser los dos apellidos (cama 3-151, 15 nov 2026) y encajan con
-    // cualquiera que los lleve (un hermano): sirven para que el robot busque, no para atribuir reportes. Copia de
-    // aliasIdentifica (rpa/lib.js).
+    // ¿El «nombre en WinLab» identifica a UNA persona por sí solo? Solo con «APELLIDOS, NOMBRE» y algo tras la coma. Sin
+    // coma no se sabe qué es el nombre de pila: dos apellidos («ROJAS PRUEBA», cama 3-151, 15 nov 2026) o apellidos
+    // compuestos («DIAZ DE LEON LOPEZ») encajan con un hermano o con cualquiera que los lleve. Sin coma sirve para que el
+    // robot busque y solo identifica a un nombre con exactamente sus mismas palabras (_plAliasMismoNombre). Copias de
+    // aliasIdentifica / aliasMismoNombre (rpa/lib.js).
     function _plAliasIdentifica(alias) {
       const a = toSafeString(alias).trim();
-      if (!a) return false;
-      if (a.indexOf(",") >= 0) return _winlabNormalizeName(a.split(",").slice(1).join(" ")).length > 0;
-      return _winlabNormalizeName(a).length >= 3;
+      if (!a || a.indexOf(",") < 0) return false;
+      return _winlabNormalizeName(a.split(",").slice(1).join(" ")).length > 0;
     }
-    window._plAliasIdentifica = _plAliasIdentifica;
+    // Palabras de un nombre «tal cual» (como _winlabNormalizeName pero sin tirar partículas ni palabras cortas: DE, LA…).
+    function _plNombrePalabras(name) {
+      if (!name) return [];
+      return String(name).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\./g, " ").replace(/[^A-Z\s]/g, " ")
+        .replace(/\bMA\b/g, "MARIA").replace(/\bJ\b/g, "JOSE").replace(/\bGPE\b/g, "GUADALUPE")
+        .replace(/\bFCO\b/g, "FRANCISCO").replace(/\bFCA\b/g, "FRANCISCA")
+        .split(/\s+/).filter(function (w) { return w.length >= 2; });
+    }
+    // ¿El alias SIN coma es exactamente este nombre? (copia de aliasMismoNombre del robot, rpa/lib.js): mismas palabras en
+    // cualquier orden, una a una, con la tolerancia de letras del cotejo (_winlabTokenMatch). «SANTIAGO LOPEZ» (solo
+    // apellidos) nunca es «LOPEZ HERNANDEZ, SANTIAGO»; «LOPEZ DIAS ANA MARIA» sí es «LOPEZ DIAS, ANA MARIA».
+    function _plAliasMismoNombre(alias, nombre) {
+      const a = _plNombrePalabras(alias), b = _plNombrePalabras(nombre);
+      if (!a.length || a.length !== b.length) return false;
+      const used = b.map(function () { return false; }), pend = [];
+      a.forEach(function (x) { const j = b.findIndex(function (y, k) { return !used[k] && y === x; }); if (j >= 0) used[j] = true; else pend.push(x); });
+      for (const x of pend) {
+        const j = b.findIndex(function (y, k) { return !used[k] && _winlabTokenMatch(x, y); });
+        if (j < 0) return false;
+        used[j] = true;
+      }
+      return true;
+    }
+    window._plAliasIdentifica = _plAliasIdentifica; window._plAliasMismoNombre = _plAliasMismoNombre;
     function _wlIdent(p) {
       if (!p) return null;
       const nd = (typeof noteData !== "undefined" && noteData) ? noteData[pid(p)] : null;
       const alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
-      return { names: [toSafeString(p.nombre).trim(), _plAliasIdentifica(alias) ? alias : ""].filter(Boolean), twins: _plExpTwins(p).map(function (q) { return toSafeString(q.nombre).trim(); }).filter(Boolean) };
+      // names: lo que identifica siempre (censo y alias «APELLIDOS, NOMBRE»); aliasLibre: alias sin coma, que solo cuenta
+      // contra un encabezado que es exactamente ese nombre (_plAliasMismoNombre).
+      return { names: [toSafeString(p.nombre).trim(), _plAliasIdentifica(alias) ? alias : ""].filter(Boolean),
+        aliasLibre: alias && alias.indexOf(",") < 0 ? alias : "",
+        twins: _plExpTwins(p).map(function (q) { return toSafeString(q.nombre).trim(); }).filter(Boolean) };
     }
     // ¿Este encabezado es del paciente? "full"/"partial"/false. Con expediente repetido, un encabezado que también
     // encaja con el otro paciente no es de nadie (precisión > recall).
     function _wlHeaderKindFor(hName, ident, paciente) {
-      const names = ident && ident.names.length ? ident.names : [paciente || ""];
+      const names = (ident && ident.names.length ? ident.names : [paciente || ""]).slice();
+      if (ident && ident.aliasLibre && _plAliasMismoNombre(ident.aliasLibre, hName)) names.push(ident.aliasLibre);
       let best = false;
       for (const n of names) { const k = _winlabHeaderKindByName(n, hName); if (k === "full") { best = "full"; break; } if (k && !best) best = k; }
       if (best && ident && ident.twins.some(function (t) { return !!_winlabHeaderKindByName(t, hName) && _winlabNormalizeName(t).length; })) return false;
@@ -29834,7 +29862,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           for (var j = 0; j < pt.length; j++) if (!used[j] && _plTokenClose(t, pt[j])) { used[j] = 1; close++; return; }
         });
         var need = Math.min(en.length, pt.length);
-        return { ok: exact >= 1 && exact + close >= 2 && exact + close >= need && close <= 1, close: close };
+        return { ok: exact >= 1 && exact + close >= 2 && exact + close >= need && close <= 1, close: close, mismas: en.length === pt.length && exact + close === en.length };
       }
       function _bulkSegundoIntento(nombrePdf, expPdf, camaPdf) {
         var en = nameTokens(nombrePdf), expD = _bulkDigits(expPdf), camaN = _bulkCamaNum(camaPdf);
@@ -29843,7 +29871,10 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           var nd = noteData[pid(p)];
           var alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
           var fit = null, viaAlias = false;
-          [[p.nombre, false], [alias, true]].forEach(function (par) {
+          // El alias identifica el PDF solo con «APELLIDOS, NOMBRE» o si es exactamente el nombre del PDF (con o sin coma):
+          // con solo los apellidos («ROJAS PRUEBA») el PDF de un hermano entraba solo a esta tarjeta.
+          var aliasVale = alias && (_plAliasIdentifica(alias) || _plAliasMismoNombre(alias, nombrePdf));
+          [[p.nombre, false], [aliasVale ? alias : "", true]].forEach(function (par) {
             if (!par[0] || en.length < 2) return;
             var pt = nameTokens(par[0]); if (pt.length < 2) return;
             var f = _bulkTokFit(en, pt);
@@ -29851,7 +29882,9 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           });
           var expOk = expD.length >= 4 && _bulkDigits(p.exp) === expD;
           var camaOk = !!camaN && _bulkCamaNum(p.cama) === camaN;
-          if (fit) fuertes.push({ p: p, close: fit.close, expOk: expOk, camaOk: camaOk, aliasExacto: viaAlias && fit.close === 0 });
+          // «nombre en WinLab» tal cual = las MISMAS palabras que el PDF; si al PDF le sobra o le falta un nombre de pila
+          // («LOPEZ RAMIREZ, ANA» vs la hermana «ANA LUCIA») solo queda sugerido.
+          if (fit) fuertes.push({ p: p, close: fit.close, expOk: expOk, camaOk: camaOk, aliasExacto: viaAlias && fit.close === 0 && fit.mismas });
           else if (expOk) porExp.push({ p: p });
         });
         if (fuertes.length === 1) {

@@ -1041,7 +1041,9 @@ una copia: además trae pestañas listas para estadística.
   exacta no encuentra a nadie, hay un segundo intento: cada palabra puede ser igual o diferir en una letra (palabras de
   5+ letras) o ser abreviatura, a lo más una así, y también se compara con el «nombre en WinLab» de la tarjeta.
   - **Se asigna solo** cuando hay UN solo candidato y lo respalda algo más: el mismo **expediente**, la misma **cama** o
-    el «nombre en WinLab» tal cual. El renglón verde lo dice («Identificado por expediente…»).
+    el «nombre en WinLab» tal cual: las mismas palabras que el nombre del PDF, con o sin coma (solo los apellidos, o un
+    nombre de pila de más o de menos, no bastan: podría ser un familiar; queda sugerido). El renglón verde lo dice
+    («Identificado por expediente…»).
   - **Si no hay respaldo**, el paciente queda **sugerido** («¿Es este paciente? (nombre parecido)») con el selector ya
     puesto en él: revisa y toca **✓ Asignar** (pide confirmación). Nada se escribe antes.
   - **Si no se parece a nadie**, el mismo selector deja **elegir a mano** cualquier paciente del censo. Un expediente
@@ -1618,10 +1620,13 @@ error de dedo (cama 3-181: dos letras invertidas en el apellido paterno), WinLab
 5. **(15 nov 2026) Nombre de 3 palabras con los apellidos primero** (`PATERNO MATERNO NOMBRE`): el robot solo
    probaba el orden invertido con 4 palabras o más; con 3 buscaba `MATERNO NOMBRE` como apellidos y no lo encontraba
    (cama 3-151, varios días sin labs). Ahora también prueba los dos primeros como apellidos (con y sin el nombre).
-   Y si en **✏️ Nombre en WinLab** se escriben solo los **dos apellidos** sin coma, también se buscan juntos como
-   apellidos, pero **solo para buscar**: un nombre en WinLab sin nombre de pila no dice quién es el paciente (encajaría
-   con un hermano o con cualquiera con esos apellidos); al paciente lo identifica el nombre del censo. Lo mejor sigue
-   siendo `APELLIDOS, NOMBRE` con coma. Si el robot no encuentra a nadie con esos datos, la tarjeta ya no dice «WinLab devolvió otras personas»
+   Y si en **✏️ Nombre en WinLab** se escriben solo los **apellidos** sin coma (dos o compuestos, p. ej. «DIAZ DE LEON
+   LOPEZ»), también se buscan juntos como apellidos, pero **solo para buscar**: un nombre en WinLab sin nombre de pila no
+   dice quién es el paciente (encajaría con un hermano o con cualquiera con esos apellidos); al paciente lo identifica el
+   nombre del censo. Sin coma, el nombre en WinLab solo identifica a un reporte con **exactamente las mismas palabras**
+   (en cualquier orden; tolera una letra cambiada): «LOPEZ DIAS ANA MARIA» identifica a «LOPEZ DIAS, ANA MARIA», pero
+   no a «LOPEZ DIAS, ANA SOFIA» ni a «LOPEZ DIAS, ANA». El robot de labs, la app, 📦 Labs Masivo, el robot de imagen y
+   el registro siguen la misma regla. Lo mejor sigue siendo `APELLIDOS, NOMBRE` con coma. Si el robot no encuentra a nadie con esos datos, la tarjeta ya no dice «WinLab devolvió otras personas»
    sino «El robot no encontró a este paciente en WinLab» (revisa la ortografía o fija el nombre con coma).
 
 Lo que el robot encuentra o no por paciente queda en la tabla `winlab_match` (qué buscó, nombres

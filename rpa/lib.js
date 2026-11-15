@@ -419,7 +419,8 @@ export function buildSearchCandidatesWithAlias(nombre, alias) {
     // «PATERNO MATERNO» y la escalera solo los probaba como «apellido + nombre» y su swap). Se busca también el alias
     // completo como apellidos, sin nombre de pila, justo después de su primer candidato.
     const aw = a.split(/\s+/).filter(Boolean);
-    if (aw.length === 2 && !fromAlias.some((c) => c.cognome === a && !c.nome)) {
+    const extraCenso = normNameTokens(nombre).filter((t) => !normNameTokens(a).includes(t));
+    if (aw.length === 2 && extraCenso.length && !fromAlias.some((c) => c.cognome === a && !c.nome)) {
       // requireTarget: lista a todos los que llevan esos apellidos; el objetivo debe identificarse por el nombre del censo.
       fromAlias.splice(Math.min(1, fromAlias.length), 0, { key: a + "|", cognome: a, nome: null, tag: "alias · como apellidos", sibling: false, alias: true, requireTarget: true });
     }
@@ -633,24 +634,55 @@ export function possiblySameWinlabPerson(a, b) {
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fa) || !/^\d{2}\/\d{2}\/\d{4}$/.test(fb)) return true;   // falta fecha → no se puede separar
   return fa === fb || sameBirthdayOtherYear(fa, fb);
 }
-// ¿El «nombre en WinLab» (alias que fija el equipo en la app) identifica a UNA persona? Solo si trae nombre de pila:
-// «APELLIDOS, NOMBRE» con algo después de la coma, o 3 palabras o más. Dos palabras sin coma suelen ser los DOS APELLIDOS
-// (cama 3-151, 15 nov 2026) y encajan «completo» con cualquiera que los lleve (un hermano, un homónimo): sirven para
-// BUSCAR en WinLab, nunca para decir quién es el paciente; eso lo decide el nombre del censo. Copia en la app:
-// _plAliasIdentifica (index.html).
+// ¿El «nombre en WinLab» (alias que fija el equipo en la app) identifica a UNA persona por sí solo? Solo con el formato
+// «APELLIDOS, NOMBRE» y algo después de la coma. Sin coma no se sabe qué palabras son el nombre de pila: dos apellidos
+// («ROJAS PRUEBA», cama 3-151, 15 nov 2026) o apellidos compuestos («DIAZ DE LEON LOPEZ») encajan «completo» con un
+// hermano o con cualquiera que los lleve. Sin coma el alias sirve para BUSCAR, y solo identifica a un nombre con
+// EXACTAMENTE sus mismas palabras (aliasMismoNombre). Copias: _plAliasIdentifica (app), regWlAliasIdentifica (registro).
 export function aliasIdentifica(alias) {
   const a = String(alias || "").trim();
+  if (!a || !a.includes(",")) return false;
+  return normNameTokens(a.split(",").slice(1).join(" ")).length > 0;
+}
+// Palabras de un nombre para compararlo «tal cual»: la normalización de normNameTokens pero SIN tirar partículas ni
+// palabras cortas (DE, LA, DEL…): sin ellas «DIAZ DE LEON LOPEZ» sería «DIAZ LOPEZ, LEON» (otra persona).
+function _nameWordsAll(name) {
+  if (!name) return [];
+  const s = String(name).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\./g, " ").replace(/[^A-Z\s]/g, " ")
+    .replace(/\bMA\b/g, "MARIA").replace(/\bJ\b/g, "JOSE").replace(/\bGPE\b/g, "GUADALUPE")
+    .replace(/\bFCO\b/g, "FRANCISCO").replace(/\bFCA\b/g, "FRANCISCA");
+  return s.split(/\s+/).filter((w) => w.length >= 2);
+}
+// ¿El alias SIN coma es exactamente este nombre? Mismas palabras en cualquier orden, una a una, con la tolerancia de
+// letras del cotejo de nombres (_tokenMatch: ≥ 5 letras, Jaro-Winkler ≥ 0.88, nunca la variante A/O). Revisión del
+// 15 nov 2026: «el nombre de pila del encabezado está en el alias» no bastaba: «SANTIAGO LOPEZ» (solo apellidos)
+// tomaba a un niño «LOPEZ HERNANDEZ, SANTIAGO»; tampoco servía con PDFs sin coma (📦 Labs Masivo).
+export function aliasMismoNombre(alias, nombre) {
+  const a = _nameWordsAll(alias), b = _nameWordsAll(nombre);
+  if (!a.length || a.length !== b.length) return false;
+  const used = new Array(b.length).fill(false), pend = [];
+  for (const x of a) { const j = b.findIndex((y, k) => !used[k] && y === x); if (j >= 0) used[j] = true; else pend.push(x); }
+  for (const x of pend) {
+    const j = b.findIndex((y, k) => !used[k] && _tokenMatch(x, y));
+    if (j < 0) return false;
+    used[j] = true;
+  }
+  return true;
+}
+// ¿El alias identifica a ESTE nombre (encabezado de WinLab, estudio del RIS, PDF)? Con coma y nombre: sí, y el cotejo
+// de nombres decide qué tanto («full»/«partial»). Sin coma: solo si es exactamente ese nombre.
+export function aliasIdentificaA(alias, nombre) {
+  const a = String(alias || "").trim();
   if (!a) return false;
-  if (a.includes(",")) return normNameTokens(a.split(",").slice(1).join(" ")).length > 0;
-  return normNameTokens(a).length >= 3;
+  return aliasIdentifica(a) || aliasMismoNombre(a, nombre);
 }
 export function selectTargetRows(rows, paciente, opts = {}) {
   const tolerance = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : 2;
   const today = opts.today || new Date();
   const censusAge = parseCensusAge(paciente && paciente.edad);
   const linkIdxs = [], seenNames = [], blocks = [];
-  const alias0 = String((paciente && paciente.alias) || "").trim();
-  const alias = aliasIdentifica(alias0) ? alias0 : "";   // un alias sin nombre de pila no identifica (ver aliasIdentifica)
+  const alias = String((paciente && paciente.alias) || "").trim();
   let cur = null;
   for (let i = 0; i < (rows || []).length; i++) {
     const row = rows[i];
@@ -662,7 +694,8 @@ export function selectTargetRows(rows, paciente, opts = {}) {
       if (!seenNames.includes(seenLabel)) seenNames.push(seenLabel);
       // El alias ("nombre en WinLab" fijado en la app) también identifica al objetivo.
       const kindN = patientHeaderMatchKind(hdrName, paciente && paciente.nombre);
-      const kindA = alias ? patientHeaderMatchKind(hdrName, alias) : "";
+      // …pero solo con «APELLIDOS, NOMBRE» (coma) o si es exactamente el nombre de ESTE encabezado: ver aliasIdentificaA.
+      const kindA = aliasIdentifica(alias) ? patientHeaderMatchKind(hdrName, alias) : (aliasMismoNombre(alias, hdrName) ? "full" : "");
       const full = kindN === "full" || kindA === "full";
       const nameOk = full || !!kindN || !!kindA;
       const fnac = extractHeaderBirthDate(row.__cells);
