@@ -78,6 +78,12 @@ const PTS = [
       { const nd2 = defaultData(); nd2.checklist = { winlab_alias: 'LOPEZ RAMIREZ, MARIA ELENA' }; noteData[pid(p2)] = nd2;
         await applyWinlabSyncToPatients({ verbose: false, only: [p2] }); }
       out.W2 = labsOf(p2);
+      // 15 nov 2026: «nombre en WinLab» con SOLO los dos apellidos (sin coma ni nombre de pila): sirve para que el robot
+      // busque, pero no identifica: un reporte de «LOPEZ RAMIREZ, MARIA ELENA» (u otro hermano) no entra por él.
+      { const nd2 = defaultData(); nd2.checklist = { winlab_alias: 'LOPEZ RAMIREZ' }; noteData[pid(p2)] = nd2;
+        await applyWinlabSyncToPatients({ verbose: false, only: [p2] }); }
+      out.W2ap = labsOf(p2);
+      out.W2id = [_plAliasIdentifica('LOPEZ RAMIREZ'), _plAliasIdentifica('LOPEZ RAMIREZ,'), _plAliasIdentifica('LOPEZ RAMIREZ, MARIA ELENA'), _plAliasIdentifica('MARIA LOPEZ RAMIREZ'), _plAliasIdentifica('')].join(',');
       const twinsES = [hdrES('MENDEZ ORTIZ', 'JUAN CARLOS', 'MASCULINO', '01/02/1986'), repES(Dd + ' 06:10', 'CIRUGIA GENERAL', BH('13.0', '8.0'), true),
                        hdrES('VEGA LUNA', 'ROSA MARIA', 'FEMENINO', '03/04/1956'), repES(Dd + ' 07:30', 'CIRUGIA GENERAL', BH('8.1', '15.2'), true)];
       await run([row('26-90003', p3.nombre, twinsES, { aliases: [p3.nombre, p4.nombre] })], [p3, p4]);
@@ -112,6 +118,8 @@ const PTS = [
   const J = JSON.stringify, hb = (L) => (L || []).map(s => s.hb).join(',');
   check('W1 «FCO.» del censo = «FRANCISCO» de WinLab', hb(res.W1) === '11.2', J(res));
   check('W2 con «nombre en WinLab» entra aunque el encabezado use otro apellido; sin él, no', hb(res.W2) === '10.4' && hb(res.W2sin) === '', J([res.W2, res.W2sin]));
+  check('W2b «nombre en WinLab» con solo los dos apellidos (sin nombre de pila) no identifica: el reporte marcado de esa persona no entra; con coma y nombre, sí',
+    hb(res.W2ap) === '' && res.W2id === 'false,false,true,true,false', J([res.W2ap, res.W2id]));
   check('W3 expediente repetido (fila juntada por el robot): cada cama recibe SOLO sus labs (3-160 ya no se queda sin)', res.W3 && hb(res.W3.A) === '13.0' && hb(res.W3.B) === '8.1', J(res.W3));
   check('W4 lo mismo con WinLab en italiano (antes 3-159 recibía los de 3-160)', res.W4 && hb(res.W4.A) === '13.0' && hb(res.W4.B) === '8.1', J(res.W4));
   check('W5 expediente repetido sin encabezados: nadie recibe labs que no se pueden atribuir', res.W5 && hb(res.W5.A) === '' && hb(res.W5.B) === '', J(res.W5));

@@ -9500,11 +9500,22 @@ function plExportBackup() {
     }
     // Identidad de un paciente del censo para atribuir reportes: su nombre, su «nombre en WinLab» (alias que fija la
     // app y con el que busca el robot) y los nombres de los OTROS pacientes con su mismo expediente.
+    // ¿El «nombre en WinLab» identifica a UNA persona? Solo con nombre de pila: «APELLIDOS, NOMBRE» con algo tras la coma,
+    // o 3 palabras o más. Dos palabras sin coma suelen ser los dos apellidos (cama 3-151, 15 nov 2026) y encajan con
+    // cualquiera que los lleve (un hermano): sirven para que el robot busque, no para atribuir reportes. Copia de
+    // aliasIdentifica (rpa/lib.js).
+    function _plAliasIdentifica(alias) {
+      const a = toSafeString(alias).trim();
+      if (!a) return false;
+      if (a.indexOf(",") >= 0) return _winlabNormalizeName(a.split(",").slice(1).join(" ")).length > 0;
+      return _winlabNormalizeName(a).length >= 3;
+    }
+    window._plAliasIdentifica = _plAliasIdentifica;
     function _wlIdent(p) {
       if (!p) return null;
       const nd = (typeof noteData !== "undefined" && noteData) ? noteData[pid(p)] : null;
       const alias = toSafeString(nd && nd.checklist && nd.checklist.winlab_alias).trim();
-      return { names: [toSafeString(p.nombre).trim(), alias].filter(Boolean), twins: _plExpTwins(p).map(function (q) { return toSafeString(q.nombre).trim(); }).filter(Boolean) };
+      return { names: [toSafeString(p.nombre).trim(), _plAliasIdentifica(alias) ? alias : ""].filter(Boolean), twins: _plExpTwins(p).map(function (q) { return toSafeString(q.nombre).trim(); }).filter(Boolean) };
     }
     // ¿Este encabezado es del paciente? "full"/"partial"/false. Con expediente repetido, un encabezado que también
     // encaja con el otro paciente no es de nadie (precisión > recall).
@@ -9787,7 +9798,7 @@ function plExportBackup() {
       const nd = getNote(k); if (!nd.checklist) nd.checklist = {};
       const cur = toSafeString(nd.checklist.winlab_alias);
       let v = value;
-      if (v === undefined || v === null) { v = prompt("Nombre del paciente TAL COMO está en WinLab (apellidos y nombre). Déjalo vacío para quitarlo:", cur); if (v === null) return; }
+      if (v === undefined || v === null) { v = prompt("Nombre del paciente TAL COMO está en WinLab, con coma: APELLIDOS, NOMBRE (sin el nombre de pila solo sirve para buscar). Déjalo vacío para quitarlo:", cur); if (v === null) return; }
       v = toSafeString(v).trim().toUpperCase().replace(/\s+/g, " ");
       if (v === cur) return;
       _undoPush(k, v ? "nombre en WinLab «" + v + "»" : "quitar nombre en WinLab");
@@ -30916,7 +30927,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.12-2";
+    const PL_BUILD = "2026.11.15-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

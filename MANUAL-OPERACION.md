@@ -1619,7 +1619,9 @@ error de dedo (cama 3-181: dos letras invertidas en el apellido paterno), WinLab
    probaba el orden invertido con 4 palabras o más; con 3 buscaba `MATERNO NOMBRE` como apellidos y no lo encontraba
    (cama 3-151, varios días sin labs). Ahora también prueba los dos primeros como apellidos (con y sin el nombre).
    Y si en **✏️ Nombre en WinLab** se escriben solo los **dos apellidos** sin coma, también se buscan juntos como
-   apellidos. Si el robot no encuentra a nadie con esos datos, la tarjeta ya no dice «WinLab devolvió otras personas»
+   apellidos, pero **solo para buscar**: un nombre en WinLab sin nombre de pila no dice quién es el paciente (encajaría
+   con un hermano o con cualquiera con esos apellidos); al paciente lo identifica el nombre del censo. Lo mejor sigue
+   siendo `APELLIDOS, NOMBRE` con coma. Si el robot no encuentra a nadie con esos datos, la tarjeta ya no dice «WinLab devolvió otras personas»
    sino «El robot no encontró a este paciente en WinLab» (revisa la ortografía o fija el nombre con coma).
 
 Lo que el robot encuentra o no por paciente queda en la tabla `winlab_match` (qué buscó, nombres

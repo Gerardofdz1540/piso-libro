@@ -7,7 +7,7 @@ import {
   isMeaningfulReportRow, extractApellidos, expVariants,
   stripAccentsKeepEnie, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
   jaroWinkler, patientHeaderMatches,
-  extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows, sameBirthdayOtherYear, possiblySameWinlabPerson,
+  extractHeaderBirthDate, extractHeaderName, ageFromBirthDate, parseCensusAge, selectTargetRows, sameBirthdayOtherYear, possiblySameWinlabPerson, aliasIdentifica,
   todayISO, reportKey, indexParsedReportes, mergeReportesPreservingValores,
   normNameTokens, expandNomeAbbrev,
   isGarbageCell, looksLikeReportLinkRow, patientHeaderMatchKind,
@@ -841,6 +841,30 @@ assert(buildSearchCandidates(null).length === 0, "cand: null -> []");
   assert(ca.slice(0, 7).some((x) => x.cognome === "ROJAS PRUEBA" && x.nome === "ANDRES"), "alias + censo: el invertido del censo con nombre cabe en los 7 intentos");
   // Alias con coma o de una sola palabra: sin cambios.
   assert(!buildSearchCandidatesWithAlias("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA, ANDRES").some((x) => x.tag === "alias · como apellidos"), "alias con coma: sin «como apellidos» (ya trae apellidos solos)");
+}
+// ── 15 nov 2026: un alias con SOLO los dos apellidos busca, pero no identifica (hermanos / homónimos de apellidos) ──
+{
+  const TODAY = new Date(2026, 10, 15);
+  const hdr = (ap, no, sexo, fnac) => ({ __cells: ["", "", "", ap, no, sexo, fnac], __hasLink: false });
+  const rep = (id) => ({ __cells: ["", id, "12/11/2026 06:16", "12/11/2026 06:34", "12/11/2026 12:56", ""], __hasLink: true });
+  assert(aliasIdentifica("ROJAS PRUEBA") === false && aliasIdentifica("ROJAS PRUEBA,") === false && aliasIdentifica("") === false
+    && aliasIdentifica("ROJAS PRUEBA, ANDRES") === true && aliasIdentifica("RIOS, ADRIAN") === true && aliasIdentifica("ANDRES ROJAS PRUEBA") === true,
+    "aliasIdentifica: solo con nombre de pila (coma + nombre, o 3+ palabras)");
+  // WinLab lista a tres hermanos con los mismos apellidos.
+  const lista = [hdr("ROJAS PRUEBA", "ANDRES", "MASCULINO", "01/01/1960"), rep("1"), hdr("ROJAS PRUEBA", "LUIS", "MASCULINO", "01/01/1961"), rep("2"), hdr("ROJAS PRUEBA", "MARTHA", "FEMENINO", "01/01/1990"), rep("3")];
+  const pac = (edad, alias) => ({ nombre: "ROJAS PRUEBA ANDRES", edad, alias });
+  const s1 = selectTargetRows(lista, pac("66", "ROJAS PRUEBA"), { today: TODAY });
+  const s2 = selectTargetRows(lista, pac("", "ROJAS PRUEBA"), { today: TODAY });
+  const s3 = selectTargetRows([hdr("ROJAS PRUEBA", "LUIS", "MASCULINO", "01/01/1940"), rep("2")], pac("66", "ROJAS PRUEBA"), { today: TODAY });
+  const s4 = selectTargetRows(lista, pac("", "ROJAS PRUEBA, ANDRES"), { today: TODAY });
+  assert(JSON.stringify(s1.targetIdxs) === "[1]" && JSON.stringify(s2.targetIdxs) === "[1]", "alias de solo apellidos: con o sin edad, solo los reportes del paciente (ANDRES), nunca los del hermano ni la hermana :: " + JSON.stringify([s1.targetIdxs, s2.targetIdxs]));
+  assert(s3.targetIdxs.length === 0, "alias de solo apellidos: si WinLab solo lista al hermano, no se le asigna nada");
+  assert(JSON.stringify(s4.targetIdxs) === "[1]", "alias con nombre de pila: sigue identificando");
+  // El candidato «como apellidos» exige que el objetivo se identifique (por el nombre del censo).
+  const ca = buildSearchCandidatesWithAlias("ROJAS PRUEBA ANDRES", "ROJAS PRUEBA");
+  assert(ca.find((x) => x.tag === "alias · como apellidos").requireTarget === true, "alias · como apellidos: exige identificación positiva");
+  const src = fs.readFileSync(new URL("./scraper.js", import.meta.url), "utf8");
+  assert(/requireTargetMatch:\s*c\.requireTarget \? true/.test(src), "scraper: requireTarget del candidato manda sobre «alias sin exigencia»");
 }
 // ── 15 nov 2026: bitácora pública: términos de búsqueda de UNA palabra y etiquetas sin comillas ──
 {

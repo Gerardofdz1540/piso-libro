@@ -401,7 +401,7 @@ async function searchAndScrapeOne(page, searchUrl, paciente, deadlineTs, opts = 
       tag: `apellidos="${iniciales(c.cognome)}"${c.nome ? `,nome="${iniciales(c.nome)}"` : ""}`,   // solo para la bitácora (pública)
       // El alias lo fijó una persona viendo WinLab: su primer candidato se trata como búsqueda
       // primaria; todo lo demás exige identificación positiva del objetivo.
-      requireTargetMatch: c.alias ? false : ci > 0,
+      requireTargetMatch: c.requireTarget ? true : (c.alias ? false : ci > 0),
       parsedMap: opts.parsedMap || null,
     }, deadlineTs);
     noteSearch(last);

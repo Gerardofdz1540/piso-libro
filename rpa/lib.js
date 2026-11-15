@@ -420,7 +420,8 @@ export function buildSearchCandidatesWithAlias(nombre, alias) {
     // completo como apellidos, sin nombre de pila, justo después de su primer candidato.
     const aw = a.split(/\s+/).filter(Boolean);
     if (aw.length === 2 && !fromAlias.some((c) => c.cognome === a && !c.nome)) {
-      fromAlias.splice(Math.min(1, fromAlias.length), 0, { key: a + "|", cognome: a, nome: null, tag: "alias · como apellidos", sibling: false, alias: true });
+      // requireTarget: lista a todos los que llevan esos apellidos; el objetivo debe identificarse por el nombre del censo.
+      fromAlias.splice(Math.min(1, fromAlias.length), 0, { key: a + "|", cognome: a, nome: null, tag: "alias · como apellidos", sibling: false, alias: true, requireTarget: true });
     }
   }
   const seen = new Set(fromAlias.map((c) => c.key));
@@ -632,12 +633,24 @@ export function possiblySameWinlabPerson(a, b) {
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fa) || !/^\d{2}\/\d{2}\/\d{4}$/.test(fb)) return true;   // falta fecha → no se puede separar
   return fa === fb || sameBirthdayOtherYear(fa, fb);
 }
+// ¿El «nombre en WinLab» (alias que fija el equipo en la app) identifica a UNA persona? Solo si trae nombre de pila:
+// «APELLIDOS, NOMBRE» con algo después de la coma, o 3 palabras o más. Dos palabras sin coma suelen ser los DOS APELLIDOS
+// (cama 3-151, 15 nov 2026) y encajan «completo» con cualquiera que los lleve (un hermano, un homónimo): sirven para
+// BUSCAR en WinLab, nunca para decir quién es el paciente; eso lo decide el nombre del censo. Copia en la app:
+// _plAliasIdentifica (index.html).
+export function aliasIdentifica(alias) {
+  const a = String(alias || "").trim();
+  if (!a) return false;
+  if (a.includes(",")) return normNameTokens(a.split(",").slice(1).join(" ")).length > 0;
+  return normNameTokens(a).length >= 3;
+}
 export function selectTargetRows(rows, paciente, opts = {}) {
   const tolerance = Number.isFinite(opts.ageTolerance) ? opts.ageTolerance : 2;
   const today = opts.today || new Date();
   const censusAge = parseCensusAge(paciente && paciente.edad);
   const linkIdxs = [], seenNames = [], blocks = [];
-  const alias = String((paciente && paciente.alias) || "").trim();
+  const alias0 = String((paciente && paciente.alias) || "").trim();
+  const alias = aliasIdentifica(alias0) ? alias0 : "";   // un alias sin nombre de pila no identifica (ver aliasIdentifica)
   let cur = null;
   for (let i = 0; i < (rows || []).length; i++) {
     const row = rows[i];
