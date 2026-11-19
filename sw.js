@@ -23,16 +23,22 @@
  *     ya no se abandona al vencer el tope de 15 s: se termina en segundo plano y actualiza la copia guardada (ver el
  *     manejador de navegación). Subir VERSION hace que cada equipo instale este SW, y la instalación baja la versión
  *     publicada completa sin tope de tiempo (`fresco`), así que hasta los equipos ya atorados quedan al día. Tras una
- *     revisión independiente: esa espera tiene tope de 2 min (si no, frenaba la activación del SW siguiente), una
+ *     revisión independiente: esa espera se suelta en cuanto llega un SW nuevo (si no, frenaba su activación), una
  *     descarga vieja ya no pisa una copia más nueva, /index.html redirigido ya no se queda en la copia vieja y la
  *     instalación copia las librerías de ./vendor/ de la caché anterior en vez de bajarlas otra vez (más rápida).
  */
 const VERSION = 'pisolibro-v13';
 const CACHE = VERSION;
 const NAV_TIMEOUT_MS = 4000;
-// Cuánto se mantiene abierta la descarga de la página que sigue en segundo plano cuando ya se mostró la copia guardada
-// (ver el manejador de navegación). 2 min alcanzan para la página aun con el wifi del hospital muy lento.
-const TOPE_FONDO_MS = 120000;
+// Descarga de la página que sigue en segundo plano cuando ya se mostró la copia guardada (ver el manejador de
+// navegación). Se suelta en cuanto aparece un SW nuevo (`updatefound`: si no, el navegador no lo activa mientras la
+// descarga siga abierta) y, como red de seguridad, a los TOPE_FONDO_MS: 280 s, por debajo de los 5 min que Chromium da
+// a un evento, para nunca cortar antes que el propio navegador (un tope de 2 min hacía que Chrome cerrara el SW y
+// perdiera descargas de 2.5 a 5 min: el equipo se quedaba otra vez en la versión vieja).
+const TOPE_FONDO_MS = 280000;
+const sueltas = new Set();
+const soltarTodas = () => { for (const s of Array.from(sueltas)) { try { s(); } catch (_) {} } };
+try { self.registration.addEventListener('updatefound', soltarTodas); } catch (_) {}
 // Turnos de las descargas de la página (solo en memoria; si el navegador cierra el SW, sus descargas mueren con él).
 let navTurno = 0, copiaTurno = 0, copiaCola = Promise.resolve();
 // Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
@@ -118,14 +124,14 @@ self.addEventListener('fetch', (event) => {
     // se ABANDONABA, la copia nunca se actualizaba y el iPad se quedaba para siempre en la versión vieja aunque tocara
     // «Actualizar». Ahora la descarga sigue en segundo plano (waitUntil) y deja la copia en la versión publicada: la
     // siguiente apertura (o «Actualizar») ya abre la nueva. Los topes para mostrar algo rápido no cambian.
-    //   - Tope de la espera en segundo plano (TOPE_FONDO_MS): mientras el evento siga abierto el navegador no activa el
-    //     SW de la siguiente versión aunque llame a skipWaiting (una red colgada lo detenía 5 min en Chromium y más en
-    //     WebKit). Si la página aún espera esa descarga (sin copia guardada), la respuesta misma sigue esperando como
-    //     siempre: respondWith mantiene el evento abierto hasta entregarla.
+    //   - Mientras el evento siga abierto el navegador no activa el SW de la siguiente versión aunque llame a skipWaiting
+    //     (una red colgada lo detenía 5 min en Chromium y más en WebKit): se suelta en cuanto hay un SW nuevo instalándose
+    //     o en espera, o al vencer TOPE_FONDO_MS. Si la página aún espera esa descarga (sin copia guardada), la respuesta
+    //     misma sigue esperando como siempre: respondWith mantiene el evento abierto hasta entregarla.
     //   - Cada descarga lleva su turno (`turno`): una descarga lenta que termina tarde no pisa la copia que ya dejó otra
     //     más reciente (si no, la app podía volver a una versión anterior).
-    //     La petición de la página no se modifica (sigue siendo la navegación original): al vencer el tope solo se suelta
-    //     el evento y el navegador puede cerrar el SW (y con él la descarga) cuando quiera.
+    //     La petición de la página no se modifica (sigue siendo la navegación original): al soltarse solo se libera el
+    //     evento y el navegador puede cerrar el SW (y con él la descarga) cuando quiera.
     const turno = ++navTurno;
     const red = fetch(req);
     const guardada = red.then(async (res) => {
@@ -147,9 +153,12 @@ self.addEventListener('fetch', (event) => {
     const ignorar = () => {};
     let soltar = ignorar;
     const sostener = new Promise((r) => { soltar = r; });
-    red.catch(ignorar); guardada.then(() => soltar(), () => soltar());
+    const suelta = () => { sueltas.delete(suelta); soltar(); };
+    sueltas.add(suelta);
+    red.catch(ignorar); guardada.then(suelta, suelta);
     try { event.waitUntil(sostener); } catch (_) {}
-    setTimeout(() => soltar(), TOPE_FONDO_MS);
+    setTimeout(suelta, TOPE_FONDO_MS);
+    try { const r = self.registration; if (r && (r.installing || r.waiting)) suelta(); } catch (_) {}
     const espera = (ms, msg) => new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms));
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);

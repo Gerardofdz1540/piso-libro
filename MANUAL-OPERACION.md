@@ -2079,8 +2079,11 @@ tiempo: hasta los equipos ya atorados quedan al día. Prueba: `tests/headless/ap
 Ajustes tras una revisión independiente (también en v13, antes de publicarlo):
 - La instalación copia las librerías de `./vendor/` (llevan versión en el nombre, ~2.8 MB) de la caché anterior en vez
   de bajarlas otra vez: con el wifi lento instala unas 3 veces más rápido y el equipo atorado sale antes.
-- La espera de la descarga en segundo plano tiene tope de 2 min cuando ya hay copia guardada: con una red colgada, el
-  navegador no activaba el service worker de la versión siguiente hasta abandonar la petición (5 min o más).
+- La espera de la descarga en segundo plano se suelta en cuanto llega un service worker nuevo: con una red colgada, el
+  navegador no activaba el de la versión siguiente hasta abandonar la petición (5 min o más). Como red de seguridad se
+  suelta a los 280 s (Chromium da 5 min por evento). Un tope fijo de 2 min se descartó: en un Chrome normal (PC o
+  Android) hacía que el navegador cortara descargas de 2.5 a 5 min y el equipo volviera a quedarse en la versión vieja
+  (`tests/headless/sw_chrome_real.js` lo prueba en un Chrome sin DevTools; tarda ~5 min y se corre a mano).
 - Una descarga lenta que termina tarde ya no pisa la copia más nueva que dejó otra apertura (la app no retrocede).
 - Quien entra por `/index.html` en Cloudflare Pages (redirige a `/`) ya no se queda en la copia vieja.
 

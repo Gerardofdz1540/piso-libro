@@ -7,9 +7,11 @@
 // Además (revisión independiente del SW v13):
 //   L5 una descarga lenta que termina tarde no pisa la copia más nueva que ya dejó una navegación posterior;
 //   L6 /index.html redirigido (Cloudflare: 308 → /) abre la versión publicada, no la copia vieja;
-//   L7 una navegación colgada no frena la activación del SW de la siguiente versión más allá del tope (aquí el tope se
-//      sirve corto, 5 s, en un contexto aparte; en producción son 2 min);
-//   L8 la instalación del SW nuevo copia las librerías de ./vendor/ de la caché anterior en vez de bajarlas otra vez.
+//   L7 una navegación colgada no frena la activación del SW de la siguiente versión: la espera en segundo plano se suelta
+//      en cuanto aparece el SW nuevo (updatefound), sin esperar al tope de seguridad (contexto aparte);
+//   L8 la instalación del SW nuevo copia las librerías de ./vendor/ de la caché anterior en vez de bajarlas otra vez;
+//   L9 el tope de seguridad no corta antes que Chromium (5 min por evento): con Playwright Chromium nunca cierra el SW
+//      (DevTools lo mantiene vivo), así que el corte real de Chrome se prueba aparte con sw_chrome_real.js.
 //   node tests/headless/app_sw_lento.js   (levanta su propio servidor; ver run_all.sh)
 const http = require('http');
 const fs = require('fs');
@@ -31,12 +33,11 @@ const MOCK = `(() => {
 
 (async () => {
   let build = 'TEST-A', lento = false, lentoMs = 1000, colgar = 0, redirigir = false;
-  let swTope = 0, swVersion = '';           // L7: tope corto y VERSION nueva en el sw.js servido
+  let swVersion = '';                       // L7: VERSION nueva en el sw.js servido
   let lentasActivas = 0, pedidosVendor = 0; const colgadas = [];
   const SW_TXT = fs.readFileSync(SW, 'utf8');
   const swServido = () => {
     let t = SW_TXT;
-    if (swTope) t = t.replace(/const TOPE_FONDO_MS = \d+;/, 'const TOPE_FONDO_MS = ' + swTope + ';');
     if (swVersion) t = t.replace(/const VERSION = '[^']+';/, "const VERSION = '" + swVersion + "';");
     return t;
   };
@@ -146,9 +147,9 @@ const MOCK = `(() => {
     b6 === 'TEST-E' && u6 === BASE && c6 === 'TEST-E', JSON.stringify({ b6, u6, c6 }));
 
   // 7) Navegación colgada (acepta la conexión y nunca responde) con copia guardada y, mientras, una versión nueva del SW:
-  //    el SW nuevo toma el control al vencer el tope (aquí 5 s) y no hasta que el navegador abandone la petición
-  //    (5 min en Chromium, más en WebKit). Contexto aparte para estrenar el SW con el tope corto.
-  swTope = 5000; build = 'TEST-F';
+  //    el SW nuevo toma el control en segundos (la espera se suelta con updatefound) y no hasta que el navegador abandone
+  //    la petición (5 min en Chromium, más en WebKit). Con el tope de seguridad real (280 s). Contexto aparte.
+  build = 'TEST-F';
   const ctx2 = await browser.newContext({ viewport: { width: 834, height: 1194 } });
   await ctx2.addInitScript(MOCK);
   const p2 = await ctx2.newPage();
@@ -169,7 +170,7 @@ const MOCK = `(() => {
     return { ok, ms: Date.now() - t0, keys: await caches.keys() };
   });
   const seg7 = Math.round((Date.now() - t7) / 1000);
-  check('L7 con una navegación colgada, el SW de la versión siguiente toma el control al vencer el tope (no se queda esperando)',
+  check('L7 con una navegación colgada, el SW de la versión siguiente toma el control en segundos (no espera a que se abandone la petición)',
     c7a === 'TEST-F' && b7 === 'TEST-F' && r7.ok === true && seg7 <= 30 && r7.keys.includes('pisolibro-v99'), JSON.stringify({ c7a, b7, r7, seg7 }));
   // 8) La instalación de esa versión nueva copió las librerías de ./vendor/ de la caché anterior (no las volvió a bajar)
   //    y la caché nueva las tiene todas, igual que la página.
@@ -188,6 +189,10 @@ const MOCK = `(() => {
       && c8['./vendor/docx-8.5.0.umd.js'] === tam('vendor/docx-8.5.0.umd.js'), JSON.stringify({ vendorBajadas, c8 }));
   for (const r of colgadas) { try { r.destroy(); } catch (_) {} }
   await ctx2.close().catch(() => {});
+
+  // 9) Tope de seguridad entre 4.5 y 5 min: no corta descargas lentas antes que el propio Chromium (5 min por evento).
+  const tope = +((SW_TXT.match(/const TOPE_FONDO_MS = (\d+);/) || [])[1] || 0);
+  check('L9 el tope de seguridad de la descarga en segundo plano no corta antes que Chromium (entre 270 y 299 s)', tope >= 270000 && tope < 300000, JSON.stringify({ tope }));
 
   console.log(`\nRESULT APP-SW-LENTO: ${pass} passed, ${fail} failed`);
   await browser.close(); server.close();
