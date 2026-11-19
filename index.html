@@ -4479,6 +4479,43 @@ details.fc-sec:not([open]) > .fcs-body{ display:none; }
 details.fc-sec > .fcs-body > .cds-section, details.fc-sec > .fcs-body > .ind-section, details.fc-sec > .fcs-body > .pt-reminders, details.fc-sec > .fcs-body > .cultivos-lab-box{ margin-top:0 !important; }
 .fc-cnt{ display:inline-block; background:#0e7490; color:#fff; border-radius:8px; padding:0 6px; font-size:10px; line-height:16px; font-weight:800; vertical-align:middle; }
 .fc-cnt.fc-cnt-crit{ background:#dc2626; }
+/* 🧪 Otros estudios de WinLab (19 nov 2026): líquidos, virología/serología y otros, por fecha */
+.wlo-box{ margin-top:8px; }
+.wlo-dia{ margin-top:6px; }
+.wlo-fecha{ font-size:11px; font-weight:800; color:#0e7490; margin:4px 0; }
+.wlo-fecha .wlo-act{ font-weight:700; color:#64748b; }
+.wlo-grupos{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:6px; align-items:start; }
+.wlo-grupo{ border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; padding:6px 8px; min-width:0; }
+.wlo-grupo.wlo-liq{ background:#f0f9ff; border-color:#bae6fd; }
+.wlo-grupo.wlo-viro{ background:#fdf4ff; border-color:#f0abfc; }
+.wlo-gt{ font-size:10.5px; font-weight:800; color:#334155; margin-bottom:3px; }
+.wlo-sub{ font-size:10px; font-weight:800; color:#0369a1; margin:4px 0 2px; }
+.wlo-sub .wlo-hr{ font-weight:600; color:#64748b; }
+.wlo-row{ display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:8px; align-items:baseline; padding:2px 0; border-bottom:1px dashed #e2e8f0; font-size:11.5px; overflow-wrap:anywhere; }
+.wlo-row:last-child{ border-bottom:0; }
+.wlo-n{ color:#0f172a; min-width:0; }
+.wlo-v{ font-weight:800; color:#0f172a; text-align:right; white-space:nowrap; }
+.wlo-v .wlo-u{ font-weight:600; color:#64748b; font-size:10px; margin-left:2px; }
+.wlo-ref{ grid-column:1 / -1; font-size:10px; color:#64748b; }
+.wlo-row.wlo-pos .wlo-v{ color:#b91c1c; }
+.wlo-row.wlo-pos{ background:#fef2f2; border-radius:4px; padding:2px 4px; }
+.wlo-row.wlo-alt .wlo-v{ color:#b45309; }
+.wlo-row.wlo-av .wlo-v{ color:#b45309; white-space:normal; text-align:left; grid-column:1 / -1; font-size:10.5px; }
+.wlo-warn{ grid-column:1 / -1; font-size:10px; color:#b45309; font-weight:700; }
+.wlo-inc{ font-size:9.5px; color:#94a3b8; font-weight:600; }
+.wlo-txt summary{ font-size:10.5px; color:#0e7490; cursor:pointer; font-weight:700; }
+.wlo-txt pre{ white-space:pre-wrap; font-size:10.5px; line-height:1.35; margin:4px 0 0; color:#334155; max-height:260px; overflow:auto; overflow-wrap:anywhere; }
+.wlo-nota{ font-size:10px; color:#64748b; margin-top:6px; }
+body.dark .wlo-grupo{ background:#0f1c2e; border-color:#23405f; }
+body.dark .wlo-grupo.wlo-liq{ background:#0c2233; border-color:#1e4a6b; }
+body.dark .wlo-grupo.wlo-viro{ background:#1f1430; border-color:#5b2a6e; }
+body.dark .wlo-gt, body.dark .wlo-n, body.dark .wlo-v{ color:#e2e8f0; }
+body.dark .wlo-sub{ color:#7dd3fc; }
+body.dark .wlo-row{ border-bottom-color:#23405f; }
+body.dark .wlo-row.wlo-pos{ background:#3a1418; }
+body.dark .wlo-row.wlo-pos .wlo-v{ color:#fca5a5; }
+body.dark .wlo-txt pre{ color:#cbd5e1; }
+@media print{ .wlo-txt pre{ max-height:none; overflow:visible; } }
 .fc-flash{ animation:fc-flash 1s ease-out; }
 @keyframes fc-flash{ 0%{ box-shadow:0 0 0 3px rgba(14,116,144,.55); } 100%{ box-shadow:0 0 0 0 rgba(14,116,144,0); } }
 .ff-labs-split{ display:grid; grid-template-columns:1fr 1fr; gap:6px; align-items:start; }
@@ -7607,6 +7644,7 @@ function plExportBackup() {
     // en cada sync (load + realtime) tras pasar los MISMOS guards de identidad que los labs
     // (exp + _winlabCensoNameOk + match de nombre por encabezado). renderCultivosSection lo lee.
     let _winlabCultByK = {};  // CULTIVOS-WINLAB-v56
+    let _winlabOtrosByK = {}; // 🧪 Otros estudios (19 nov 2026): solo en memoria, se arma en cada sync (buildWinlabOtros)
     let expandedCards = {};
     let labLoadingSet = new Set();
     let activeLabDate = {};   // k -> "YYYY-MM-DD"
@@ -9157,18 +9195,40 @@ function plExportBackup() {
       }
       return { v: "REVISAR UNIDAD (" + String(unidad).trim().slice(0, 12) + ")" };
     }
+    // ── LÍQUIDOS Y AVISOS DEL LABORATORIO (19 nov 2026) ─────────────────────────────────────────────────────
+    // Un reporte de LÍQUIDO (LCR, pleural, peritoneal/ascitis, drenaje, sinovial, pericárdico, biliar) nunca trae BH ni
+    // QS (verificado en winlab_labs: 0 de 52), pero sus LEUCOCITOS/ERITROCITOS (10³/µL), lípidos o proteínas se pintaban
+    // como de SANGRE (Leu 0.850 «leucopenia» que en realidad era el recuento del LCR). Si algún valor del reporte es de
+    // un líquido (nombre, sección del robot o cultivo del PDF), TODO el reporte es del líquido: no llena la tabla de
+    // sangre y se muestra en «🧪 Otros estudios › Líquidos».
+    const WINLAB_FLUID_RX = /L[IÍ]QUIDO|CEFALORRAQU|\bLCR\b|PERITONEAL|PLEURAL|ASC[IÍ]TI|DRENAJE|SINOVIAL|PERIC[AÁ]RDIC|\bBILIAR\b/i;
+    function _wlRepEsLiquido(rep) {
+      if (!rep) return false;
+      const vals = Array.isArray(rep.valores) ? rep.valores : [];
+      if (vals.some(function (v) { return v && (v.bucket === "fluid" || WINLAB_FLUID_RX.test(String(v.estudio || v.nombre || "") + " " + String(v.seccion || ""))); })) return true;
+      const c = rep.cultivo && typeof rep.cultivo === "object" ? rep.cultivo : null;
+      const secs = c ? (Array.isArray(c.secciones) && c.secciones.length ? c.secciones : [c]) : [];
+      return secs.some(function (x) { return x && /LCR|L[IÍ]QUIDO|PLEURAL|PERITONEAL/i.test(String(x.tipo || "") + " " + String(x.muestra || "")); });
+    }
+    // Avisos del laboratorio pegados al nombre: el número de WinLab es el rango de referencia, no un resultado.
+    // "HEMATOCRITO NO EJECUTADO" 36.00 se pintaba como Hto 36; "TIEMPO DE PROTROMBINA VALOR POR ENCIMA DEL LIMITE
+    // MEDIBLE" 11.00 como TP normal (era incoagulable). No llenan la tabla; salen en «Otros estudios» con el aviso.
+    const WINLAB_AVISO_RX = /\s*\b(?:NO\s+EJECUTADO|VALOR\s+POR\s+(?:ENCIMA|DEBAJO)\s+DEL\s+L[IÍ]MITE\s+MEDIBLE|FUERA\s+DEL\s+L[IÍ]MITE\s+MEDIBLE)\b.*$/i;
     // Primera llave de WINLAB_ALIASES que corresponde a un nombre ya normalizado (sin mirar si ya está en labs).
     function _wlAliasKey(name) {
       for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) { if (patterns.some(rx => rx.test(name))) return key; }
       return null;
     }
 
-    function mapWinlabReportesToLabs(reportes) {
+    // trace (opcional, 19 nov 2026): arreglo donde se anota, por cada valor, qué hizo el lector con él
+    // ({ v, rep, motivo, key }): «🧪 Otros estudios» muestra lo que NO llegó a la tabla. Sin trace, igual que siempre.
+    function mapWinlabReportesToLabs(reportes, trace) {
       const labs = {};
       if (!Array.isArray(reportes)) return labs;
       const rechazadas = {};
       for (const rep of reportes) {
         const valores = Array.isArray(rep?.valores) ? rep.valores : [];
+        const _repLiq = _wlRepEsLiquido(rep);
         // Contexto de PANEL (oct 2026). El scraper no persiste bucket/seccion y WinLab junta
         // química + BH + EGO en UN solo reporte (verificado en la BD): la orina va al final,
         // después de DENSIDAD, con nombres idénticos a los de sangre ("PH", "LEUCOCITOS",
@@ -9180,7 +9240,8 @@ function plExportBackup() {
         for (const v of valores) {
           const rawName = v?.estudio || v?.nombre || "";
           const rawVal = v?.valor;
-          if (!rawName || rawVal === null || rawVal === undefined || rawVal === "") continue;
+          const T = trace ? function (motivo, key) { trace.push({ v: v, rep: rep, motivo: motivo, key: key || "", modo: _panelMode, liquido: _repLiq }); } : null;
+          if (!rawName || rawVal === null || rawVal === undefined || rawVal === "") { if (T) T("vacio"); continue; }
           const _nm = normalizeWinlabName(rawName);
           if (WINLAB_URINE_MARKERS.test(_nm)) _panelMode = "urine";
           else if (WINLAB_CULTURE_MARKERS.test(_nm)) _panelMode = "culture";
@@ -9188,19 +9249,24 @@ function plExportBackup() {
           // EGO listado ANTES que la BH en el mismo reporte: HEMOGLOBINA/LEUCOCITOS/ERITROCITOS con unidad de sangre
           // (g/dL, 10^3/µL, 10^6/µL) regresan a sangre; los de orina vienen en /campo, Leu/µL, mg/dL…
           else if (_panelMode === "urine" && _wlBloodUnitName(_nm, v && v.unidad)) _panelMode = "blood";
-          if (_panelMode === "culture") continue;
+          if (_panelMode === "culture") { if (T) T("cultivo"); continue; }
+          // Reporte de LÍQUIDO (19 nov 2026): nada de él llena la tabla de sangre (ver _wlRepEsLiquido).
+          if (_repLiq) { if (T) T("liquido"); continue; }
           // Guarda CRÍTICA: si el valor proviene de orina/cultivo/drenaje, NO
           // mapearlo a aliases sanguíneos. Esto previene que LEUCOCITOS de
           // urocultivo (X CAMPO) se mapee al recuadro de leucos de BH.
-          if (isWinlabNonBloodValue(v)) continue;
+          if (isWinlabNonBloodValue(v)) { if (T) T("noSangre"); continue; }
           const name = normalizeWinlabName(rawName);
-          if (!name) continue;
+          if (!name) { if (T) T("vacio"); continue; }
           // Defense in depth: rechazar si parece basura (fecha, código, servicio)
-          if (isWinlabGarbageEstudio(name)) continue;
+          if (isWinlabGarbageEstudio(name)) { if (T) T("basura"); continue; }
+          // Aviso del laboratorio pegado al nombre (NO EJECUTADO, fuera del límite medible): no es un resultado.
+          if (WINLAB_AVISO_RX.test(name)) { if (T) T("aviso"); continue; }
           // Muestra rechazada: el número es el rango de referencia, no un resultado. Se recuerda la llave (solo sangre).
           const _rej = WINLAB_RECHAZO_RX.exec(name);
           if (_rej) {
             if (_panelMode !== "urine") { const _rk = _wlAliasKey(name.slice(0, _rej.index).trim()); if (_rk && _rk.indexOf("ego_") !== 0) rechazadas[_rk] = true; }
+            if (T) T("rechazo");
             continue;
           }
           // Guarda ORINA/EGO (jun 2026): un valor de orina (creatinina en orina,
@@ -9209,15 +9275,16 @@ function plExportBackup() {
           // Sin esto, "CREATININA EN ORINA" (116.10) caía en cr y "HEMOGLOBINA
           // LIBRE" (200) en hb, pisando los valores reales de sangre.
           const _sec = normalizeWinlabName(v?.seccion || "");
+          // URINARI[OA] (19 nov 2026): "CREATININA URINARIA" 48.78 caía en la creatinina sérica.
           const _isUrine = (_panelMode === "urine") || (v?.bucket === "urine")
-            || /\bEN ORINA\b|\bORINA\b|MICCION|EXAMEN GENERAL DE ORINA|UROCULTIVO|\bEGO\b/i.test(name + " " + _sec)
+            || /\bEN ORINA\b|\bORINA\b|MICCION|EXAMEN GENERAL DE ORINA|UROCULTIVO|\bEGO\b|\bURINARI[OA]S?\b/i.test(name + " " + _sec)
             || /HEMOGLOBINA\s+LIBRE/i.test(name);
           // En la sección de orina los nombres "pelados" (PH, LEUCOCITOS, ERITROCITOS, PROTEINAS,
           // GLUCOSA, BACTERIAS) son del EGO: se asignan a su llave ego_* sin pasar por los alias de sangre.
           if (_isUrine) {
             let _egoKey = null;
             for (const [ek, rx] of Object.entries(WINLAB_URINE_BARE_ALIASES)) { if (rx.test(name)) { _egoKey = ek; break; } }
-            if (_egoKey) { if (!(_egoKey in labs)) labs[_egoKey] = String(rawVal).trim(); continue; }
+            if (_egoKey) { if (!(_egoKey in labs)) labs[_egoKey] = String(rawVal).trim(); if (T) T("mapeado", _egoKey); continue; }
           }
           // Guarda LÍQUIDOS (jun 2026): un valor de líquido pleural/peritoneal/ascítico/LCR
           // NUNCA debe llenar una llave de SANGRE (ej. "ALBUMINA EN LIQUIDO PLEURAL" 1.8
@@ -9225,19 +9292,29 @@ function plExportBackup() {
           // → se descartan por completo (precisión > recall).
           const _isFluid = (v?.bucket === "fluid")
             || /\bLIQUIDO\s+(PLEURAL|PERITONEAL|ASCITIS|ASCITICO|CEFALORRAQUIDEO)\b|\bPLEURAL\b|\bPERITONEAL\b|\bASCITIC/i.test(name + " " + _sec);
-          if (_isFluid) continue;
+          if (_isFluid) { if (T) T("liquido"); continue; }
           // Probar contra cada alias en orden de definición; primer match gana.
+          let _tr = "sinAlias", _trKey = "";
           for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) {
             if (key in labs) continue; // ya mapeado, no sobreescribir
             if (_isUrine && key.indexOf("ego_") !== 0) continue; // orina solo → ego_*
             if (patterns.some(rx => rx.test(name))) {
               const fix = key.indexOf("ego_") === 0 ? { v: String(rawVal).trim() } : _wlUnitFix(key, rawVal, v && v.unidad);
+              _trKey = key;
               // Sin número en una llave de sangre (GLUCOSA "NEGATIVO" del EGO): no ocupa la llave.
-              if (fix && key.indexOf("ego_") !== 0 && !/^REVISAR UNIDAD/.test(fix.v) && !Number.isFinite(parseLabNumber(fix.v))) break;
-              if (fix) labs[key] = fix.v;
+              if (fix && key.indexOf("ego_") !== 0 && !/^REVISAR UNIDAD/.test(fix.v) && !Number.isFinite(parseLabNumber(fix.v))) { _tr = "sinNumero"; break; }
+              if (fix) { labs[key] = fix.v; _tr = "mapeado"; } else _tr = "unidad";
               break;
             }
           }
+          // Solo para la traza: sin llave libre pero con una ya ocupada por el mismo nombre → valor repetido (no es «otro estudio»).
+          if (T && _tr === "sinAlias") {
+            for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) {
+              if (!(key in labs) || (_isUrine && key.indexOf("ego_") !== 0)) continue;
+              if (patterns.some(rx => rx.test(name))) { _tr = "repetido"; _trKey = key; break; }
+            }
+          }
+          if (T) T(_isUrine && _tr === "sinAlias" ? "orinaSinAlias" : _tr, _trKey);
         }
       }
       Object.keys(rechazadas).forEach(function (k) { if (!(k in labs)) labs[k] = WL_RECHAZADA; });
@@ -9448,6 +9525,9 @@ function plExportBackup() {
         var sec = String(v.seccion || "");
         var cultRow = /cultivo/i.test(est) || /cultivo/i.test(sec);
         var orgHit = _WL_CULT_ORG.test(val) ? val : (_WL_CULT_ORG.test(ref) ? ref : (_WL_CULT_ORG.test(est) ? est : ""));
+        // Antígeno de coaglutinación / blanco de un panel / tinción de un líquido ("Streptococcus pneumoniae NEGATIVO",
+        // "Haemophilus influenzae b NO DETECTADO"): un germen en el NOMBRE no es un aislamiento (19 nov 2026).
+        if (!cultRow && orgHit && (/COAGLUT|TINCI|PANEL|VIROL|PCR|MOLECUL|ANT[IÍ]GENO|L[IÍ]QUIDO|CEFALORRAQ/i.test(sec) || /^(NO\s+)?(NEGATIV|DETECTAD|REACTIV)|^NO\s+SE\b|^AUSENTE/i.test(val))) continue;
         if (cultRow || orgHit) {
           isCult = true;
           if (!muestra) muestra = sec.trim();
@@ -9635,6 +9715,128 @@ function plExportBackup() {
         });
       }
       out.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)); });
+      return out;
+    }
+
+    // ── 🧪 OTROS ESTUDIOS (19 nov 2026) ──────────────────────────────────────────────────────────────────────────
+    // «No aparecen paneles virales, citológicos ni citoquímicos». Lo que WinLab sí manda pero la tabla de labs no tiene
+    // dónde poner: líquidos (citoquímico/citológico, examen físico, coaglutinación, Gram), virología/serología/pruebas
+    // cualitativas y otros (hormonas, marcadores, hierro, HbA1c…), más los reportes que el robot no supo leer
+    // (reporte_texto, cuerpo del PDF sin datos del paciente). Se ARMA al sincronizar con las MISMAS reglas de identidad
+    // que labs y cultivos (_wlReportFilter + guardia de servicio), vive solo en memoria (_winlabOtrosByK) y NUNCA se
+    // guarda en la nota: no crece la base ni se sube nada.
+    const _WLO_VIRO_RX = /VIRUS|VIRAL|SARS|\bCOV\b|COVID|INFLUENZA|SINCITIAL|\bVSR\b|\bRSV\b|ADENOVIRUS|RINOVIRUS|ENTEROVIRUS|METAP?NEUMO|PARAINFLU|BOCAVIRUS|CORONAVIRUS|HEPATITIS|HBSAG|\bVH[ABC]\b|\bVIH\b|\bHIV\b|VDRL|\bRPR\b|TREPONEM|TOXOPLASM|CITOMEGALO|\bCMV\b|EPSTEIN|\bEBV\b|DENGUE|CHIKUNG|ZIKA|ROTAVIRUS|NOROVIRUS|CLOSTRIDI|TOXINA|ANTICUERPO|\bANTI[\s-]|ANT[IÍ]GENO(?!\s+PROST|\s+CARCINO)|\bIG[GMA]\b|PANEL|FILMARRAY|GENEXPERT|BACILOSCOP|TUBERCUL|MYCOBACT|\bPCR\s+(PARA|DE|SARS|EN\s+TIEMPO|MULTIPLE|MULTIPLEX)\b|COOMBS|EMBARAZO|SANGRE\s+OCULTA|RUBEOLA|HERPES|VARICELA|MYCOPLASMA|CHLAMYD|LEGIONELLA|NEUMOCOCO|BRUCELL|\bTIFO|WIDAL|COAGLUTIN|TINTA\s+CHINA|\bGRAM\b|CARBAPENEM/i;
+    const _WLO_QUAL_RX = /^(NO\s+)?(REACTIV[OA]|DETECTAD[OA]|DETECTABLE)\b|^(NEGATIV[OA]|POSITIV[OA]|INDETERMINAD[OA]|INVALIDO)\b/i;
+    const _WLO_POS_RX = /^(POSITIV[OA]|REACTIV[OA]|DETECTAD[OA]|DETECTABLE|SE\s+DETECTA)\b/i;
+    // Ruido que no se muestra: pedazos del PDF (referencias y textos partidos), notas administrativas sin estudio y valores
+    // de rutina que no tienen casilla (eritrocitos de la BH, relación A/G).
+    const _WLO_RUIDO_RX = /^(NEGATIVOS?|POSITIVOS?|NEGATIVO\s+A|RACIMOS|POSITIVOS\s+EN\s+PARES|CADENAS|POLIMICROBIANO|LACTOBACILOS(\s+SP)?|BOTELLAS\b.*|QUE\s+SECRECION|ULCERA\b.*|TOMAR\s+A\s+RESERVA\b.*|DE\s+SONDA\b.*|ESTUDIO|NORMAL\.?|DETECCION\s+(A\s+LAS|EN)|DE|PARA\s+UROCULTIVO|TIPO\s+DE\s+MUESTRA|MUESTRA\.?|TUBO\s+NO\s+ROTULADO|SIN\s+REACTIVO|NO\s+HAY\s+REACTIVO|INCIDENCIAS\b.*|RELACION\s+A\s*\/?\s*G|U\/L|MG\/DL|G\/DL|RANGO\s+DE\s+REFERENCIA|NO\s+EJECUTADO|GESTACION|VOLUMEN\s+MINUTADO)$/i;
+    // Química de orina con nombre propio (sí se muestra); el sedimento y la tira del EGO no (ya están en la tabla).
+    const _WLO_ORINA_QUIM_RX = /URINARI|EN\s+ORINA|ORINA\s+DE|24\s*H|MICCION|DEPURACION/i;
+    // Nombre partido por el PDF que quedó en una sola palabra genérica ("TOTAL" del APE total, "ESTIMULANTE" de la FSH).
+    const _WLO_INCOMPLETO_RX = /^(TOTAL|LIBRE|ESTIMULANTE|DIRECTA|INDIRECTA|CEFALORRAQUIDEO|PERITONEAL|PLEURAL|ASCITICO|SINOVIAL|PERICARDICO|MICCION)$/i;
+    function _wloLiquido(s) {
+      const U = String(s || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (/CEFALORRAQU|\bLCR\b/.test(U)) return "LCR";
+      if (/PERITONEAL|ASCITI/.test(U)) return "Líquido peritoneal";
+      if (/PLEURAL/.test(U)) return "Líquido pleural";
+      if (/SINOVIAL|ARTICULAR/.test(U)) return "Líquido sinovial";
+      if (/PERICARDI/.test(U)) return "Líquido pericárdico";
+      if (/DRENAJE/.test(U)) return "Líquido de drenaje";
+      if (/\bBILIAR\b|\bBILIS\b/.test(U)) return "Líquido biliar";
+      return "";
+    }
+    function _wloLiquidoDeReporte(rep) {
+      const vals = Array.isArray(rep && rep.valores) ? rep.valores : [];
+      for (const v of vals) { const l = _wloLiquido((v && v.seccion) || "") || _wloLiquido((v && (v.estudio || v.nombre)) || ""); if (l) return l; }
+      const c = rep && rep.cultivo && typeof rep.cultivo === "object" ? rep.cultivo : null;
+      const secs = c ? (Array.isArray(c.secciones) && c.secciones.length ? c.secciones : [c]) : [];
+      for (const x of secs) { const l = _wloLiquido((x && x.tipo) + " " + (x && x.muestra)); if (l) return l; }
+      return "Líquido";
+    }
+    // Sub-encabezado de un valor: el panel o la técnica que trae la sección del robot ("PANEL RESPIRATORIO", "COAGLUTINACION").
+    function _wloPanel(sec) {
+      const parts = String(sec || "").split("·").map(function (x) { return x.trim(); }).filter(Boolean);
+      const p = parts.filter(function (x) { return !_wloLiquido(x) || /^(PANEL|COAGLUT|TINCION)/i.test(x); }).pop() || "";
+      return p ? p.charAt(0) + p.slice(1).toLowerCase() : "";
+    }
+    // Una entrada por valor que hoy no se ve. motivo = lo que hizo mapWinlabReportesToLabs con él (traza).
+    function _wloItemsDeReporte(rep) {
+      const out = [];
+      if (Array.isArray(rep.valores) && rep.valores.length) {
+        const tr = [];
+        try { mapWinlabReportesToLabs([rep], tr); } catch (_) { return out; }
+        const liqLbl = tr.some(function (t) { return t.liquido; }) ? _wloLiquidoDeReporte(rep) : "";
+        tr.forEach(function (t) {
+          const v = t.v || {}, nombre = toSafeString(v.estudio || v.nombre).trim(), valor = toSafeString(v.valor).trim();
+          if (!nombre || !valor) return;
+          const N = normalizeWinlabName(nombre).toUpperCase();
+          const sec = toSafeString(v.seccion).trim();
+          let grupo = "", aviso = "";
+          if (t.motivo === "liquido") grupo = "liq";
+          else if (t.motivo === "aviso") { grupo = "otros"; aviso = (WINLAB_AVISO_RX.exec(N) || [""])[0].trim(); }
+          else if (t.motivo === "sinAlias" || t.motivo === "sinNumero") {
+            if (_WLO_VIRO_RX.test(N + " " + sec) || _WLO_QUAL_RX.test(valor)) grupo = "viro";
+            else if (t.motivo === "sinAlias") grupo = "otros";
+          }
+          else if (t.motivo === "orinaSinAlias") { if (_WLO_ORINA_QUIM_RX.test(N)) grupo = "otros"; }
+          else if (t.motivo === "mapeado" && t.key && !LAB_FIELD_BY_KEY[t.key] && t.key !== "tp_testigo" && t.key.indexOf("ego_") !== 0) grupo = "otros";
+          if (!grupo) return;
+          if (_WLO_RUIDO_RX.test(N)) return;
+          if (grupo !== "liq" && /^ERITROCITOS$/.test(N)) return;
+          const nom = aviso ? nombre.replace(WINLAB_AVISO_RX, "").trim() : nombre;
+          out.push({
+            grupo: grupo, sub: grupo === "liq" ? liqLbl : _wloPanel(sec), nombre: nom,
+            valor: aviso ? aviso : valor, unidad: aviso ? "" : toSafeString(v.unidad).trim(), ref: aviso ? "" : toSafeString(v.referencia).trim(),
+            pos: (grupo === "viro" || grupo === "liq") && _WLO_POS_RX.test(valor) && !/^NO\b/i.test(valor),
+            aviso: !!aviso, incompleto: _WLO_INCOMPLETO_RX.test(N),
+            panel: grupo === "liq" ? _wloPanel(sec) : "",
+            llave: grupo === "liq" ? (_wlAliasKey(N) || "") : ""
+          });
+        });
+      } else if (rep.reporte_texto) {
+        const tx = toSafeString(rep.reporte_texto);
+        const liq = _wloLiquido(tx);
+        out.push({ grupo: liq ? "liq" : (_WLO_VIRO_RX.test(tx) ? "viro" : "otros"), sub: liq || "", nombre: (tx.split("\n")[0] || "Reporte").slice(0, 80), valor: "", unidad: "", ref: "", texto: tx, pos: false });
+      }
+      return out;
+    }
+    const _wloCache = new Map();   // firma del reporte → entradas (el mismo reporte viaja en varias filas del robot)
+    function _wlSvcOk(rep, targetEspCanon) {
+      const raw = rep.SEXO || (Array.isArray(rep.__cells) && rep.__cells.length ? rep.__cells[rep.__cells.length - 1] : "");
+      const c = normalizeEspImport(raw);
+      if (!c) return true;
+      const set = String(targetEspCanon).split("/").map(function (x) { return x.trim(); }).filter(Boolean);
+      return !set.length || set.indexOf(c) >= 0;
+    }
+    // rows: filas del robot YA validadas por nombre (_winlabCensoNameOk). Devuelve las entradas ordenadas, más nuevo primero.
+    function buildWinlabOtros(rows, ident, targetEspCanon) {
+      const out = [], seen = new Set();
+      (rows || []).forEach(function (row) {
+        if (!row || !row.data) return;
+        const reportes = Array.isArray(row.data.reportes) ? row.data.reportes : [];
+        const usar = _wlReportFilter(row, ident || null);
+        const fallback = row.fecha || (row.scraped_at ? String(row.scraped_at).slice(0, 10) : "");
+        reportes.forEach(function (rep) {
+          if (!rep || !usar(rep)) return;
+          const hasV = Array.isArray(rep.valores) && rep.valores.length;
+          if (!hasV && !rep.reporte_texto) return;
+          if (targetEspCanon && !usar.namePositive && !_wlSvcOk(rep, targetEspCanon)) return;   // misma guardia que los labs
+          let firma = "";
+          try { firma = JSON.stringify([rep.__cells || null, rep.valores || null, rep.reporte_texto || "", rep.cultivo ? 1 : 0]); } catch (_) { return; }
+          let items = _wloCache.get(firma);
+          if (!items) { items = _wloItemsDeReporte(rep); if (_wloCache.size > 4000) _wloCache.clear(); _wloCache.set(firma, items); }
+          if (!items.length) return;
+          const fecha = extractReportDate(rep) || fallback || "";
+          const ts = extractReportTomaTs(rep);
+          items.forEach(function (it) {
+            const key = [fecha, ts, it.grupo, it.sub, it.nombre, it.valor, it.unidad, it.texto ? it.texto.length : 0].join("|");
+            if (seen.has(key)) return; seen.add(key);
+            out.push(Object.assign({ fecha: fecha, ts: Number.isFinite(ts) ? ts : 0 }, it));
+          });
+        });
+      });
+      out.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)) || (b.ts - a.ts); });
       return out;
     }
 
@@ -10330,6 +10532,7 @@ function plExportBackup() {
             if (own.length) wl = own[own.length - 1];
           }
           if (!wl || !wl.data) {
+            if (_winlabOtrosByK[pid(p)]) { delete _winlabOtrosByK[pid(p)]; stats.otros = (stats.otros || 0) + 1; }
             stats.skipped++; stats.no_winlab++;
             if (verbose && sample_mismatches.length < 5) {
               sample_mismatches.push({ cama: p.cama, exp: exp, variants: getExpVariants(exp) });
@@ -10341,6 +10544,7 @@ function plExportBackup() {
           // con el mismo apellido. Verificar nombre censo↔WinLab antes de atribuir
           // CUALQUIER lab. Si no coincide → NO incluir (jamás labs de otro).
           if (!_winlabCensoNameOk(p, wl)) {
+            if (_winlabOtrosByK[pid(p)]) { delete _winlabOtrosByK[pid(p)]; stats.otros = (stats.otros || 0) + 1; }
             stats.skipped++; stats.name_mismatch = (stats.name_mismatch || 0) + 1;
             if (verbose && sample_mismatches.length < 5) {
               sample_mismatches.push({ cama: p.cama, exp: exp, censo: p.nombre, winlab: wl.paciente, reason: "name_mismatch" });
@@ -10357,6 +10561,20 @@ function plExportBackup() {
           // Fechas de TODAS las filas del robot cargadas para este exp (4 días + las viejas del respaldo). Repone las
           // fechas que un guardado con copia vieja le quitó a la nota.
           const _espCanon = normalizeEspImport(p.esp), _ident = _wlIdent(p);
+          // 🧪 Otros estudios: mismas filas y mismas reglas que los labs. Las fechas más viejas que las filas que hay ahora
+          // en memoria (el respaldo de fechas viejas las suelta tras su sync) se conservan de la pasada anterior.
+          try {
+            const _oRows = _winlabAllRowsForPatient(p, wl).filter(function (r) { return r === wl || _winlabCensoNameOk(p, r); });
+            const _oPrev = _winlabOtrosByK[pid(p)] || [];
+            const _oBuilt = buildWinlabOtros(_oRows, _ident, _espCanon);
+            // De la pasada anterior solo sobreviven fechas que ya no cubren las filas de ahora (más viejas que todo lo nuevo).
+            const _oFechas = new Set(_oBuilt.map(function (it) { return it.fecha; }));
+            const _oMin = _oBuilt.reduce(function (m, it) { return it.fecha && (!m || it.fecha < m) ? it.fecha : m; }, "");
+            const _oNew = _oBuilt.concat(_oPrev.filter(function (it) { return _oMin && it.fecha && it.fecha < _oMin && !_oFechas.has(it.fecha); }));
+            const _oSig = function (a) { return a.map(function (it) { return [it.fecha, it.ts, it.grupo, it.nombre, it.valor].join("|"); }).join("\n"); };
+            if (_oSig(_oNew) !== _oSig(_oPrev)) stats.otros = (stats.otros || 0) + 1;
+            if (_oNew.length) _winlabOtrosByK[pid(p)] = _oNew; else delete _winlabOtrosByK[pid(p)];
+          } catch (_) {}
           const _byFecha = {};
           _winlabAllRowsForPatient(p, wl).forEach(function (row) {
             if (row !== wl && !_winlabCensoNameOk(p, row)) return;
@@ -17496,7 +17714,7 @@ function plExportBackup() {
       // poblados sin que el usuario haga nada.
       if (isWinlabAutoSyncEnabled() && patients && patients.length && winlabByExp && Object.keys(winlabByExp).length) {
         applyWinlabSyncToPatients({ verbose: false }).then(stats => {
-          if (stats.inserted + stats.merged > 0) {
+          if (stats.inserted + stats.merged > 0 || stats.otros > 0) {
             renderViewSoft();
             _wlShowToast(
               `💧 WinLab: ${stats.matched} pacientes con labs auto-llenados`,
@@ -19644,6 +19862,73 @@ function plExportBackup() {
       { key: "otro", label: "+ Otro",      color: "#475569", bg: "#f8fafc" }
     ];
 
+    // ── 🧪 OTROS ESTUDIOS (19 nov 2026): lo que WinLab manda y la tabla de labs no tiene dónde poner ────────────────
+    // Lee SOLO la memoria (_winlabOtrosByK, armada en el sync con las reglas de identidad de labs y cultivos); no guarda
+    // nada. Todo texto del robot pasa por esc(). En Hoja se limita a las 2 fechas más nuevas (una hoja por cama).
+    function _wloFueraDeRango(valor, ref) {
+      const n = parseLabNumber(valor); if (!Number.isFinite(n)) return false;
+      const r = String(ref || "").replace(/,/g, ".");
+      let m = /^\s*(-?\d+(?:\.\d+)?)\s*(?:-|a)\s*(-?\d+(?:\.\d+)?)\s*$/.exec(r);
+      if (m) return n < parseFloat(m[1]) || n > parseFloat(m[2]);
+      m = /^\s*<\s*=?\s*(\d+(?:\.\d+)?)\s*$/.exec(r); if (m) return n >= parseFloat(m[1]) && !/^\s*</.test(String(valor));
+      m = /^\s*>\s*=?\s*(\d+(?:\.\d+)?)\s*$/.exec(r); if (m) return n <= parseFloat(m[1]) && !/^\s*>/.test(String(valor));
+      return false;
+    }
+    function renderWinlabOtrosSection(p, nd, k) {
+      const all = (typeof _winlabOtrosByK !== "undefined" && _winlabOtrosByK[k]) ? _winlabOtrosByK[k] : [];
+      if (!all.length) return "";
+      const hoja = (typeof isHojaMode === "function") && isHojaMode();
+      const fechas = all.map(function (it) { return it.fecha; }).filter(function (f, i, a) { return a.indexOf(f) === i; }).sort().reverse();
+      const visibles = hoja ? fechas.slice(0, 2) : fechas;
+      const hist = Array.isArray(nd && nd.labHistory) ? nd.labHistory : [];
+      const act = (typeof activeLabDate !== "undefined" && activeLabDate[k]) || "";
+      const GT = { liq: "💧 Líquidos — citoquímico · citológico", viro: "🦠 Virología · serología · cualitativas", otros: "🧪 Otros estudios" };
+      const hora = function (ts) { if (!ts) return ""; const d = new Date(ts); return String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0"); };
+      const fila = function (it) {
+        if (it.texto) {
+          return `<details class="wlo-txt"${hoja ? " open" : ""}><summary>📄 ${esc(it.nombre)} — reporte sin lectura automática (ver texto)</summary><pre>${esc(it.texto)}</pre></details>`;
+        }
+        const alt = !it.pos && !it.aviso && _wloFueraDeRango(it.valor, it.ref);
+        let warn = "";
+        if (it.llave) {
+          const sn = hist.find(function (sx) { return sx && sx.fecha === it.fecha; });
+          const lv = sn && sn.labs ? sn.labs[it.llave] : undefined;
+          const lf = LAB_FIELD_BY_KEY[it.llave];
+          if (lv !== undefined && lv !== null && String(lv).trim() === it.valor && lf) warn = `<span class="wlo-warn">⚠ Este valor del líquido también aparece en la tabla de sangre (${esc(lf.label)}) de ese día: no es de sangre.</span>`;
+        }
+        const cls = "wlo-row" + (it.pos ? " wlo-pos" : "") + (alt ? " wlo-alt" : "") + (it.aviso ? " wlo-av" : "");
+        const val = it.aviso ? `⚠ ${esc(it.valor.charAt(0) + it.valor.slice(1).toLowerCase())}: no es un resultado` : `${esc(it.valor)}${it.unidad ? `<span class="wlo-u">${esc(it.unidad)}</span>` : ""}`;
+        return `<div class="${cls}"><span class="wlo-n">${esc(it.nombre)}${it.incompleto ? ' <span class="wlo-inc">(nombre incompleto en el PDF)</span>' : ""}</span><span class="wlo-v">${val}</span>${it.ref ? `<span class="wlo-ref">Ref. ${esc(it.ref)}</span>` : ""}${warn}</div>`;
+      };
+      const diaHtml = function (f) {
+        const del = all.filter(function (it) { return it.fecha === f; });
+        const grupos = ["liq", "viro", "otros"].map(function (g) {
+          const its = del.filter(function (it) { return it.grupo === g; });
+          if (!its.length) return "";
+          // Sub-bloques: líquido (+ hora de la toma) o panel/técnica
+          const subs = [];
+          its.forEach(function (it) {
+            const sk = (it.sub || "") + "|" + (g === "liq" ? (it.panel || "") : "") + "|" + (g === "liq" ? it.ts : "");
+            let b = subs.find(function (x) { return x.k === sk; });
+            if (!b) { b = { k: sk, sub: it.sub || "", panel: g === "liq" ? (it.panel || "") : "", ts: it.ts, its: [] }; subs.push(b); }
+            b.its.push(it);
+          });
+          const body = subs.map(function (b) {
+            const t = [b.sub, b.panel].filter(Boolean).join(" · ");
+            const h = g === "liq" ? hora(b.ts) : "";
+            return (t || h ? `<div class="wlo-sub">${esc(t || "")}${h ? ` <span class="wlo-hr">${esc(h)}</span>` : ""}</div>` : "") + b.its.map(fila).join("");
+          }).join("");
+          return `<div class="wlo-grupo wlo-${g}"><div class="wlo-gt">${GT[g]}</div>${body}</div>`;
+        }).join("");
+        return `<div class="wlo-dia" data-fecha="${esc(f)}"><div class="wlo-fecha">📅 ${esc(fmtDateChip(f))}${f === act ? ' <span class="wlo-act">· fecha seleccionada en Labs</span>' : ""}</div><div class="wlo-grupos">${grupos}</div></div>`;
+      };
+      const nPos = all.filter(function (it) { return it.pos; }).length;
+      const recientes = (function () { const d = new Date(Date.now() - 3 * 86400000); const c = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); return fechas.some(function (f) { return f >= c; }); })();
+      const badge = nPos ? `<span class="fc-cnt fc-cnt-crit">${nPos} positivo${nPos > 1 ? "s" : ""}</span>` : `<span class="fc-cnt">${all.length}</span>`;
+      const nota = `<div class="wlo-nota">📡 De WinLab, tal como lo manda el laboratorio (no se guarda en la nota).${hoja && fechas.length > visibles.length ? ` En Hoja: las ${visibles.length} fechas más recientes de ${fechas.length}.` : ""}</div>`;
+      return `<div class="wlo-box">${fcSec("wlotros", k, "🧪 Otros estudios (WinLab)", badge, visibles.map(diaHtml).join("") + nota, recientes || nPos > 0)}</div>`;
+    }
+
     function renderCultivosSection(nd, k) {
       // Recolectar cultivos extraídos de labHistory
       const history = (nd && nd.labHistory) || [];
@@ -21679,7 +21964,7 @@ function plExportBackup() {
       <div class="fc-main">
       <div ${anchor("rec", "rec")} data-sec="rec">${renderPtReminders(nd, k)}</div>
       <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}${(function () { try { return _dxPrincipalHtml(p, nd, k); } catch (_) { return ""; } })()}${_porCompletarHtml(p, nd, k)}</div>
-      <div ${anchor("labs")} style="margin-top:8px">${_labsDiariosLinea(p, nd)}${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
+      <div ${anchor("labs")} style="margin-top:8px">${_labsDiariosLinea(p, nd)}${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}${(function () { try { return renderWinlabOtrosSection(p, nd, k); } catch (_) { return ""; } })()}</div>
       <div ${anchor("cx", "cx")} style="margin-top:8px">${renderCirugiasSection(nd, k)}</div>
       <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("🗂️ Otros (lo que no cabe en otra caja)", nd.manejo, k, "manejo", 3)}</div>
       <div ${anchor("plan", "plan")} style="margin-top:8px">
@@ -31141,7 +31426,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.19-1";
+    const PL_BUILD = "2026.11.19-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -35809,30 +36094,83 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       box-shadow: 0 6px 22px rgba(2,8,23,.42), inset 0 -1px 0 rgba(125,211,252,.14) !important;
       isolation: isolate;
     }
-    /* Cuadrícula fina tipo monitor (se desvanece a los lados) */
+    /* 🔪 Encabezado QUIRÚRGICO (19 nov 2026): «ese EKG se ve más de internista, pon algo más quirúrgico». Se retiró el
+       trazo de ECG y la cuadrícula de monitor; en su lugar, incisión con bisturí y surgete con porta-agujas, y el anillo
+       de anastomosis en el logo. Misma altura en todos los anchos; quieto con «reducir movimiento»; no se imprime. */
+    /* Campo de puntos finos (técnico, ya sin cuadrícula de monitor); se desvanece a los lados */
     #header::before {
       content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-      background-image:
-        linear-gradient(rgba(148,197,240,.055) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148,197,240,.055) 1px, transparent 1px);
-      background-size: 22px 22px;
-      -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%);
-      mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%);
+      background: radial-gradient(circle, rgba(148,197,240,.13) 0 1px, transparent 1.5px) 0 0 / 22px 22px;
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+      mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
     }
-    /* Trazo de ECG que corre despacio detrás del título (se desliza el dibujo dentro de una capa fija: el desvanecido de
-       los lados se queda quieto). Pasos de 1 px, unos 17 por segundo: suave y casi sin gasto de batería. */
-    #header::after {
-      content: ""; position: absolute; z-index: -1; pointer-events: none;
-      left: 0; right: 0; top: 30px; height: 56px; opacity: .22;
-      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='56' viewBox='0 0 240 56'%3E%3Cpath d='M0 30H70l5-5 5 5h14l4 6 6-30 6 42 5-20h17q8-11 16 0h87' fill='none' stroke='%232dd4bf' stroke-width='1.6' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x 0 0 / 240px 56px;
-      -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
-      mask-image: linear-gradient(90deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
+    /* Bisturí (mango n.º 3, hoja n.º 10) que abre una incisión y porta-agujas que la cierra con surgete (antes ECG).
+       ::before = instrumentos + incisión, ::after = puntos; misma caja, así el frente del corte va con el filo.
+       Absolutas y detrás del contenido: no cambian la altura ni tapan nada. */
+    .header-title::before, .header-title::after {
+      content: ""; position: absolute; z-index: -1; pointer-events: none; box-sizing: border-box; align-self: flex-start;
+      left: max(400px, calc(50% - 212px)); right: 0; height: 52px; --ih: 46px;
+      padding: 0 max(24px, calc(50% - 500px)) 0 112px;
+    }
+    .header-title::before {
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-100 -18 200 36'%3E%3Cg transform='rotate(7)translate(5 -2.7)'%3E%3Cpath d='M-20-4.6h-8l-3-1h-47a2.6 2.6 0 0 0 0 5.2h47l3-.8h8z' fill='%237dd3fc' fill-opacity='.2' stroke='%23bae6fd' stroke-width='.8'/%3E%3Cpath d='M-72-3h22' stroke='%237dd3fc' stroke-width='2.2' stroke-dasharray='.8 1.6'/%3E%3Cpath d='M14-3C10 1.5 0 3-8 2.6L-20 1v-6.5H4q7 0 10 2.5z' fill='%23e2e8f0'/%3E%3C/g%3E%3Ccircle r='4.5' fill='%235eead4' opacity='.35'/%3E%3Ccircle r='1.5' fill='%23fff'/%3E%3C/svg%3E") 112px 50% / 200% var(--ih) no-repeat,
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-100 -18 200 36' fill='none' stroke='%23bae6fd' stroke-linecap='round'%3E%3Cpath d='M-7-8.5C-15-2-23 2-36 0' stroke='%23c4b5fd'/%3E%3Cpath d='M-24-12.2-70-14.4m0 9 46-3.2' stroke-width='1.3'/%3E%3Ccircle cx='-74.5' cy='-14' r='3.8'/%3E%3Ccircle cx='-74.5' cy='-5.6' r='3.8'/%3E%3Cpath d='M-5-9.6-19-12.8v4.6zm-19-3.8h5v5.6h-5z' fill='%23e2e8f0' stroke='none'/%3E%3Cpath d='M-7-8.5Q2.5-10 0 5' stroke='%23fff' stroke-width='1.2'/%3E%3C/svg%3E") 112px 50% / 200% var(--ih) no-repeat,
+        linear-gradient(90deg, rgba(204,251,241,.45) 33.34%, #f0fdfa 0 66.66%, transparent 0) 112px 50% / 300% 1.5px no-repeat border-box content-box,
+        linear-gradient(90deg, rgba(45,212,191,.1) 33.34%, rgba(45,212,191,.3) 0 66.66%, transparent 0) 112px 50% / 300% 6px no-repeat border-box content-box;
+      -webkit-mask: linear-gradient(90deg, transparent, #000 96px);
+      mask: linear-gradient(90deg, transparent, #000 96px);
+    }
+    .header-title::after {
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 20'%3E%3Cpath d='M5 15.5 11 4.5' stroke='%23c4b5fd' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") 0 50% / 16px 20px space no-repeat content-box;
+      -webkit-mask: linear-gradient(90deg, #000 50%, transparent 0) 112px 0 / 200% 100% no-repeat;
+      mask: linear-gradient(90deg, #000 50%, transparent 0) 112px 0 / 200% 100% no-repeat;
+      opacity: .9;
+    }
+    @media (max-width: 700px) {
+      .header-title::before, .header-title::after { left: 150px; height: 24px; margin-top: 23px; padding-right: 14px; --ih: 20px; }
+      .header-title::after { background-size: 12px 15px; }
+    }
+    @media (min-width: 1480px) {
+      .header-title::before, .header-title::after { top: auto; bottom: 0; height: 40px; --ih: 38px; left: max(850px, calc(50% - 30px)); padding-right: max(24px, calc(50% - 642px)); }
     }
     @media (prefers-reduced-motion: no-preference) {
-      #header::after { animation: plHdrEcg 14s steps(240) infinite; }
+      .header-title::before { animation: plCut 16s linear infinite; }
+      .header-title::after { animation: plSew 16s linear infinite; }
     }
-    @keyframes plHdrEcg { from { background-position: 0 0; } to { background-position: -240px 0; } }
-    body.hdr-min #header::after { display: none; }
+    @keyframes plCut {
+      0% { background-position: 100% 50%, 100% 50%, 100% 50%, 100% 50%; opacity: 0; }
+      2%, 90% { opacity: 1; }
+      28% { background-position: 112px 50%, 100% 50%, calc(50% + 112px) 50%, calc(50% + 112px) 50%; }
+      36% { background-position: 112px 50%, 100% 50%, 50% 50%, 50% 50%; }
+      64% { background-position: 112px 50%, 112px 50%, 112px 50%, 112px 50%; }
+      100% { opacity: 0; }
+    }
+    @keyframes plSew {
+      0%, 36% { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+      64% { -webkit-mask-position: 112px 0; mask-position: 112px 0; }
+      90% { opacity: .9; } 100% { opacity: 0; }
+    }
+    /* Logo: anillo de anastomosis (24 puntos violeta) que gira muy lento + destello frío que lo recorre */
+    .header-title .pl-svc-badge::before, .header-title .pl-svc-badge::after {
+      content: ""; position: absolute; inset: -5px; border-radius: 50%; pointer-events: none;
+    }
+    .header-title .pl-svc-badge::before {
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 62 62'%3E%3Ccircle cx='31' cy='31' r='29.3' fill='none' stroke='%23c4b5fd' stroke-width='3' stroke-dasharray='1.1 6.57' opacity='.75'/%3E%3C/svg%3E") 0 0 / 100% no-repeat;
+    }
+    .header-title .pl-svc-badge::after {
+      background: conic-gradient(transparent 0 220deg, rgba(103,232,249,.22) 300deg, rgba(236,254,255,.9) 354deg, transparent 360deg);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px) calc(100% - 1px), transparent calc(100% - .5px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px) calc(100% - 1px), transparent calc(100% - .5px));
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .header-title .pl-svc-badge::before { animation: plRing 60s linear infinite; }
+      .header-title .pl-svc-badge::after { animation: plRing 8s linear infinite; }
+    }
+    @keyframes plRing { to { transform: rotate(360deg); } }
+    @media print {
+      #header::before, .header-title::before, .header-title::after,
+      .header-title .pl-svc-badge::before, .header-title .pl-svc-badge::after { display: none !important; animation: none !important; }
+    }
 
     /* Frase del día: franja de vidrio */
     #header #quote-bar {
@@ -35846,23 +36184,13 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       box-shadow: inset 0 0 8px rgba(252,211,77,.08);
     }
 
-    /* Logo del servicio con halo que gira */
+    /* Logo del servicio (el anillo de anastomosis que gira está en el bloque quirúrgico de arriba) */
     .header-title .pl-svc-badge {
       position: relative; flex-shrink: 0; width: 52px; height: 52px; border-radius: 50%;
       display: grid; place-items: center;
       background: radial-gradient(circle at 50% 38%, #12406b 0%, #071a31 62%, #040b18 100%);
       box-shadow: 0 0 0 1px rgba(125,211,252,.30), 0 0 18px rgba(45,212,191,.28), inset 0 0 10px rgba(56,189,248,.22);
     }
-    .header-title .pl-svc-badge::before {
-      content: ""; position: absolute; inset: -3px; border-radius: 50%; pointer-events: none;
-      background: conic-gradient(from 0deg, rgba(45,212,191,0) 0deg, rgba(45,212,191,.95) 90deg, rgba(56,189,248,.9) 150deg, rgba(56,189,248,0) 230deg, rgba(45,212,191,0) 360deg);
-      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
-      mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
-    }
-    @media (prefers-reduced-motion: no-preference) {
-      .header-title .pl-svc-badge::before { animation: plHdrHalo 7s linear infinite; }
-    }
-    @keyframes plHdrHalo { to { transform: rotate(360deg); } }
     .header-title .pl-svc-logo { width: 46px; height: 46px; display: block; position: relative; filter: drop-shadow(0 0 4px rgba(125,211,252,.35)); }
 
     /* Título */

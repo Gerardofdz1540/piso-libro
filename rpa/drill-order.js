@@ -58,10 +58,31 @@ export function isCultureInProcess(row, hoy = Date.now()) {
   return dias <= CULTIVO_REVISAR_DIAS;
 }
 
-// Pendiente de drill = sin valores, o cultivo sin texto del PDF.
-export function isPendingReport(row, looksLikeCultureReport) {
+// Reporte guardado SIN lectura (reporte_texto, 19 nov 2026) cuyo texto dice que sigue en proceso: se vuelve a
+// abrir al final, como los cultivos en proceso (mismos 21 días y mismo cupo por paciente).
+export function isTextReportInProcess(row, hoy = Date.now()) {
+  if (!row || typeof row !== "object" || !row.reporte_texto || hasValores(row)) return false;
+  if (!(EN_PROCESO_RE.test(String(row.reporte_texto)) || /PENDIENTE/i.test(String(row.reporte_texto)))) return false;
+  const f = fechaFila(row);
+  if (f === null) return true;
+  return Math.floor(hoy / 86400000) - Math.floor(f / 86400000) <= CULTIVO_REVISAR_DIAS;
+}
+// Valores escritos por el lector viejo con el nombre del analito PARTIDO ("CEFALORRAQUIDEO" 28 U/L = DHL en LCR):
+// sin texto guardado no se pueden re-leer → se vuelven a abrir (el lector nuevo ya no produce estos nombres). Solo
+// reportes de ≤ CULTIVO_REVISAR_DIAS días: un formato que aún los produjera no se reabre para siempre.
+const STALE_FLUID_NAME_RE = /^(CEFALORRAQU[IÍ]DEO|PERITONEAL|PLEURAL|AS[CS][IÍ]TICO|SINOVIAL|PERIC[AÁ]RDICO)$/i;
+export function hasStaleFluidValores(row, hoy = Date.now()) {
+  if (!hasValores(row) || row.cultivo_texto) return false;
+  if (!row.valores.some((v) => v && STALE_FLUID_NAME_RE.test(String(v.estudio || "").trim()))) return false;
+  const f = fechaFila(row);
+  return f === null || Math.floor(hoy / 86400000) - Math.floor(f / 86400000) <= CULTIVO_REVISAR_DIAS;
+}
+// Pendiente de drill = sin valores, o cultivo sin texto del PDF. Un reporte ya abierto que solo dejó cultivo_texto o
+// reporte_texto (sin valores) NO es pendiente: antes se reabría en cada corrida (21-29 % de los PDFs leídos).
+export function isPendingReport(row, looksLikeCultureReport, hoy = Date.now()) {
   if (!row || typeof row !== "object") return false;
-  if (!hasValores(row)) return true;
+  if (!hasValores(row)) return !row.cultivo_texto && !row.reporte_texto;
+  if (hasStaleFluidValores(row, hoy)) return true;
   return isPendingCulture(row, looksLikeCultureReport);
 }
 
@@ -85,8 +106,8 @@ export function orderDrillCandidates(rows, targetIdxs, opts = {}) {
     if (!Number.isInteger(i) || i < 0 || i >= list.length || seen.has(i)) continue;
     seen.add(i);
     const row = list[i];
-    if (isCultureInProcess(row, hoy)) { enProceso.push(i); continue; }
-    if (!isPendingReport(row, looksLikeCultureReport)) continue;
+    if (isCultureInProcess(row, hoy) || isTextReportInProcess(row, hoy)) { enProceso.push(i); continue; }
+    if (!isPendingReport(row, looksLikeCultureReport, hoy)) continue;
     if (isPendingCulture(row, looksLikeCultureReport)) cultivos.push(i);
     else otros.push(i);
   }

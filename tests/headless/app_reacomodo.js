@@ -404,15 +404,20 @@ const NOTES = [
     r11.img && r11.alt && r11.bw === 52 && r11.bh === 52 && r11.faltan.length === 0 && r11.tabs.length === 7 && r11.primera && !r11.viejoSvg && r11.noPrint
     && ['piso', 'census', 'print', 'noOlvidar', 'pendientes', 'tablero'].every((v2, i) => (r11.tabs[i] || '').includes("'" + v2 + "'")) && /startRondas/.test(r11.tabs[6] || ''), JSON.stringify(r11));
   // Movimiento: con «reducir movimiento» no hay animaciones; al imprimir no salen el logo ni los fondos.
+  // 19 nov 2026: el ECG («se ve más de internista») se cambió por incisión con bisturí + surgete (.header-title::before /
+  // ::after) y el halo por el anillo de anastomosis (badge ::before / ::after).
+  const anims = () => page.evaluate(() => { const t = document.querySelector('.header-title'), b = document.querySelector('.pl-svc-badge'), cs = (el, ps) => getComputedStyle(el, ps).animationName;
+    return { corte: cs(t, '::before'), surgete: cs(t, '::after'), anillo: cs(b, '::before'), destello: cs(b, '::after'), ecg: getComputedStyle(document.getElementById('header'), '::after').content }; });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const mov = await page.evaluate(() => ({ ecg: getComputedStyle(document.getElementById('header'), '::after').animationName, halo: getComputedStyle(document.querySelector('.pl-svc-badge'), '::before').animationName }));
+  const mov = await anims();
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  const mov2 = await page.evaluate(() => ({ ecg: getComputedStyle(document.getElementById('header'), '::after').animationName, halo: getComputedStyle(document.querySelector('.pl-svc-badge'), '::before').animationName }));
+  const mov2 = await anims();
   await page.emulateMedia({ media: 'print' });
-  const imp = await page.evaluate(() => ({ badge: getComputedStyle(document.querySelector('.pl-svc-badge')).display, ecg: getComputedStyle(document.getElementById('header'), '::after').display }));
+  const imp = await page.evaluate(() => { const t = document.querySelector('.header-title'); return { badge: getComputedStyle(document.querySelector('.pl-svc-badge')).display, corte: getComputedStyle(t, '::before').display, surgete: getComputedStyle(t, '::after').display, puntos: getComputedStyle(document.getElementById('header'), '::before').display }; });
   await page.emulateMedia({ media: 'screen' });
-  check('R12 encabezado: el ECG y el halo del logo se mueven solo si el iPad no pide «reducir movimiento»; al imprimir no salen ni el logo ni los fondos',
-    mov.ecg === 'none' && mov.halo === 'none' && mov2.ecg === 'plHdrEcg' && mov2.halo === 'plHdrHalo' && imp.badge === 'none' && imp.ecg === 'none', JSON.stringify({ mov, mov2, imp }));
+  check('R12 encabezado quirúrgico: bisturí/surgete y anillo del logo se mueven solo si el iPad no pide «reducir movimiento»; ya no hay ECG; al imprimir no salen ni el logo ni los fondos',
+    [mov.corte, mov.surgete, mov.anillo, mov.destello].every(a => a === 'none') && mov2.corte === 'plCut' && mov2.surgete === 'plSew' && mov2.anillo === 'plRing' && mov2.destello === 'plRing'
+    && (mov2.ecg === 'none' || mov2.ecg === 'normal') && imp.badge === 'none' && imp.corte === 'none' && imp.surgete === 'none' && imp.puntos === 'none', JSON.stringify({ mov, mov2, imp }));
 
   check('R13 sin errores de página', errors.length === 0, errors.join(' | '));
   console.log(`\nRESULT APP-REACOMODO: ${pass} passed, ${fail} failed`);

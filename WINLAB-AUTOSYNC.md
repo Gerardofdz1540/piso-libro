@@ -252,3 +252,17 @@ feat(labs): WinLab auto-sync mapper inicial
 5. **Soporte multi-página**: si reportes muy largos generan PDFs con paginación
 6. **PDFs protegidos**: implementar parser de PDF cifrado con password de servicio
 7. **PoC con `getTable()`**: pdf-parse v2 tiene API específica para tablas; evaluar si mejora precisión
+
+## Líquidos, paneles y reportes sin lectura (19 nov 2026)
+
+- `rpa/pdf-extract.js`: secciones de líquido/panel (`seccion` en cada valor), nombres de 2 renglones unidos, bandera
+  `*A`/`*B` sola, valor pegado al renglón de método, renglones en minúsculas dentro de una sección, diferencial con
+  `%`/`#`, género abreviado en antígenos/blancos de panel. `CULTURE_PARSER_VERSION = 3`: la referencia partida del Gram
+  ya no abre la lista de gérmenes (LCR negativos que salían POSITIVO).
+- `compactReportText()` → `reporte_texto` (cuerpo del PDF sin encabezado del paciente, ≤ 1500 caracteres) cuando no
+  sale ningún valor ni cultivo; `drill-order.js` ya no reabre esos reportes (ni los cultivos sin valores) en cada
+  corrida, salvo «en proceso» (≤ 21 días) o valores viejos con el nombre partido (≤ 21 días).
+- App: `_wlRepEsLiquido` (un reporte de líquido no llena la tabla de sangre), `WINLAB_AVISO_RX` (NO EJECUTADO, límite
+  medible), traza opcional en `mapWinlabReportesToLabs(reportes, trace)` y caja «🧪 Otros estudios»
+  (`buildWinlabOtros` → `_winlabOtrosByK`, solo memoria). Pruebas: `rpa/liquidos.test.js`,
+  `tests/headless/app_labs_otros.js`.

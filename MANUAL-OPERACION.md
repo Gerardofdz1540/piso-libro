@@ -1972,3 +1972,53 @@ base»).
 | `cloudflare-worker/` | El ayudante de IA (extraer labs de PDF, disparar el robot) |
 | `scripts/supabase_rls_current.sql` | La configuración de seguridad vigente de la base de datos |
 | `scripts/SECURITY_NOTES.md` | Qué llaves existen y qué hacer si se filtra alguna |
+
+## 🧪 Otros estudios: líquidos, paneles virales y serologías, y encabezado quirúrgico (19 de noviembre de 2026, versión 2026.11.19-2)
+
+No se borró ningún dato ni ninguna caja. Lo nuevo se arma con lo que el robot ya baja y **no se guarda en la nota** (no
+crece la base).
+
+**Qué pasaba.**
+- El robot leía mal el PDF de los **líquidos** (LCR, peritoneal, pleural):
+  - el nombre largo venía en dos renglones («GLUCOSA EN LIQUIDO» / «CEFALORRAQUIDEO») y se guardaba solo «CEFALORRAQUIDEO»;
+  - los valores **fuera de rango** (con «*A»/«*B» solo en su renglón) se perdían;
+  - el examen físico, la coaglutinación, el Gram y el diferencial (% PMN / % MN) no se leían.
+- En **9 LCR y 1 peritoneal NEGATIVOS** el robot tomaba la glucosa y las proteínas del citoquímico como si fueran
+  «gérmenes» y el cultivo salía **POSITIVO**.
+- La app solo enseñaba lo que cabe en la tabla de labs: los líquidos, los paneles virales, las serologías y las pruebas
+  cualitativas se tiraban. Además, el recuento del LCR («Leu 0.850») se pintaba como **leucocitos de sangre**.
+- Un PDF del que el robot no sacaba nada (por ejemplo un panel viral con otro formato) no dejaba rastro y se volvía a
+  abrir en cada corrida.
+
+**Qué cambió.**
+- **Robot**
+  - Lee el citoquímico y el citológico con su nombre completo y sus valores fuera de rango, el examen físico, la
+    coaglutinación, el Gram, la tinta china y los paneles (respiratorio, meningitis…) aunque vengan en minúsculas.
+  - Cada valor de un líquido o de un panel lleva su **sección** (p. ej. «LIQUIDO CEFALORRAQUIDEO · COAGLUTINACION»).
+  - En los antígenos y blancos de un panel el género va abreviado («S. pneumoniae»): nunca se confunde con un cultivo.
+  - Los **cultivos de LCR/peritoneal negativos** que habían quedado como POSITIVO se corrigen solos en la siguiente
+    corrida (se vuelve a leer el texto guardado; no hace falta abrir el PDF).
+  - Si de un PDF no sale nada, guarda **solo el cuerpo del reporte** (sin nombre, expediente, CURP, fecha de nacimiento
+    ni diagnóstico; máximo 1,500 letras) y ya no lo reabre en cada corrida.
+- **Tarjeta del paciente: caja «🧪 Otros estudios (WinLab)»**, debajo de la tabla de Labs, por fecha (la más nueva
+  arriba):
+  - **💧 Líquidos — citoquímico · citológico**: por líquido y hora de la toma.
+  - **🦠 Virología · serología · cualitativas**: paneles, VIH, VDRL, toxinas de *C. difficile*, Coombs, embarazo… Lo
+    **positivo / reactivo / detectado** va en rojo y la caja muestra «N positivos».
+  - **🧪 Otros estudios**: HbA1c, hormonas, marcadores, hierro, química de orina… y los **avisos del laboratorio**
+    («NO EJECUTADO», «valor por encima del límite medible»), que antes salían como un número normal en la tabla.
+  - Lo que el robot no pudo leer sale como «📄 … reporte sin lectura automática (ver texto)».
+  - Fuera de rango en ámbar. En modo Hoja la caja va abierta con las 2 fechas más recientes.
+  - Usa las mismas reglas de identidad que los labs y los cultivos: nunca muestra estudios de otra persona con los
+    mismos apellidos ni del otro paciente con el mismo expediente.
+- **Tabla de labs**: los valores de un reporte de líquido ya **no** llenan las casillas de sangre (el recuento del LCR
+  ya no es «leucopenia»). «HEMATOCRITO NO EJECUTADO», «TP por encima del límite medible» y la «creatinina urinaria» ya
+  no aparecen como resultados de sangre. Si un valor de líquido viejo sigue en la tabla de un día, la caja lo avisa
+  («⚠ también aparece en la tabla de sangre: no es de sangre»).
+- **Encabezado quirúrgico**: se quitó el trazo de ECG («se ve más de internista»). Ahora un bisturí abre una incisión y
+  un porta-agujas la cierra con un surgete; el logo lleva un anillo de anastomosis. Misma altura; quieto si el iPad
+  tiene «reducir movimiento»; no se imprime.
+
+**Paneles virales.** En la base no hay hasta hoy ningún resultado de panel viral: o no salen por WinLab o eran de los
+PDF que el robot no sabía leer. Con este cambio, si llegan, aparecen leídos o, al menos, con su texto en «Otros
+estudios».

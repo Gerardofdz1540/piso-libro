@@ -7,7 +7,11 @@ const html = fs.readFileSync(file, "utf8");
 const start = html.indexOf("    const WINLAB_ALIASES = {");
 const end = html.indexOf("    // Extrae la fecha (YYYY-MM-DD) de un reporte", start);
 if (start < 0 || end < 0) { console.error("no se encontró el bloque"); process.exit(2); }
-const src = html.slice(start, end) + "\n;globalThis.__map = mapWinlabReportesToLabs;";
+// parseLabNumber vive fuera del bloque (la usa el mapper desde oct 2026): se agrega aparte.
+const plnStart = html.indexOf("    function parseLabNumber(v) {");
+const plnEnd = plnStart >= 0 ? html.indexOf("\n    }\n", plnStart) + 7 : -1;
+const pln = plnStart >= 0 && plnEnd > plnStart ? html.slice(plnStart, plnEnd) + "\n" : "";
+const src = pln + html.slice(start, end) + "\n;globalThis.__map = mapWinlabReportesToLabs;";
 const ctx = { console };
 vm.createContext(ctx);
 vm.runInContext(src, ctx, { filename: "winlab-block.js" });

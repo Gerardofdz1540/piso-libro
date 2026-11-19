@@ -17,7 +17,7 @@ import { N, todayISO, isAllowedEsp, esServicioSinRobot, formatDate as _formatDat
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
          selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport,
          conTope, esNavegacionPasajera, esNavegadorCaido, iniciales, expOculto, instalarLogSeguro, parseObjetivo, firmaFilaLabs } from "./lib.js";
-import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
+import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, extractLabValuesFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
 import { orderDrillCandidates, isPendingCulture, isCultureInProcess } from "./drill-order.js";
 // Bitácora pública: ningún nombre de paciente sale a GitHub Actions (ver instalarLogSeguro en lib.js).
 instalarLogSeguro();
@@ -784,6 +784,20 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   for (const r of result.rows) {
     if (r && r.cultivo_texto && (!r.cultivo || r.cultivo.v !== CULTURE_PARSER_VERSION)) {
       try { const c = extractCultureFromText(r.cultivo_texto); if (c) r.cultivo = c; } catch (_) {}
+      // Mismo texto del PDF → también los VALORES con el lector actual (19 nov 2026: LCR/líquidos con cultivo, con el
+      // nombre partido, la bandera *A sola, el recuento celular y el examen físico). Solo si el texto está completo
+      // (< 8000) y salen valores; si no, se quedan los de antes.
+      if (r.cultivo_texto.length < 8000) {
+        try { const v = extractLabValuesFromText(r.cultivo_texto); if (v.length) r.valores = v; } catch (_) {}
+      }
+    }
+    // Reporte guardado sin lectura (reporte_texto): si el lector de hoy ya saca valores de su texto, se usan. Con el
+    // texto recortado (termina en "…") no: se suelta el texto y el reporte se vuelve a abrir completo una vez.
+    if (r && r.reporte_texto && !(Array.isArray(r.valores) && r.valores.length) && !r.cultivo_texto) {
+      try {
+        const v = extractLabValuesFromText(r.reporte_texto);
+        if (v.length) { if (/\n…$/.test(r.reporte_texto)) delete r.reporte_texto; else { r.valores = v; delete r.reporte_texto; } }
+      } catch (_) {}
     }
   }
   for (const r of ageRejected) {
@@ -871,6 +885,12 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
           row.cultivo_texto = rep.text || "";
           if (!valores.length) drilledOk++;
         }
+        // Sin valores ni cultivo (panel viral u otro formato que el lector no conoce): el cuerpo compacto del PDF
+        // (sin datos del paciente) para que la app lo muestre y para no volver a abrirlo en cada corrida.
+        if (rep && !Array.isArray(rep) && !rep.cultivo && !valores.length && rep.texto) {
+          row.reporte_texto = rep.texto;
+          drilledOk++;
+        } else if (valores.length && row.reporte_texto) delete row.reporte_texto;
       } catch (e) {
         console.log(`       drill-down [${i}]: ${e.message.split("\n")[0]}`);
       }
@@ -1029,7 +1049,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
     if (capturedPdfBuffer) {
       console.log(`       [drilldown] PDF capturado del browser: ${capturedPdfBuffer.length} bytes (url=${capturedPdfUrl})`);
       const repPDF = await parsePdfToReport(capturedPdfBuffer, 10000);
-      console.log(`       [drilldown] PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}`);
+      console.log(`       [drilldown] PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}${repPDF.texto ? ` · sin lectura: texto guardado (${repPDF.texto.length} car.)` : ""}`);
 
       // Cleanup popup antes de retornar
       detailPage.off("response", responseListener);
@@ -1075,7 +1095,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
             if (isPdf && body.length > 500) {
               console.log(`       [drilldown] v5: PDF descargado directo: ${body.length} bytes`);
               const repPDF = await parsePdfToReport(body, 10000);
-              console.log(`       [drilldown] v5: PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}`);
+              console.log(`       [drilldown] v5: PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}${repPDF.texto ? ` · sin lectura: texto guardado (${repPDF.texto.length} car.)` : ""}`);
 
               // Cleanup popup antes de retornar
               detailPage.off("response", responseListener);
@@ -1325,7 +1345,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
     await waitForAspNetReady(page, WL_PER_PATIENT_TIMEOUT);
   }
 
-  return { valores: detail.valores || [], text: "", cultivo: null };
+  return { valores: detail.valores || [], text: "", cultivo: null, texto: "" };
 }
 
 // Filas de winlab_labs de hoy y ayer (zona León) para los exps del censo →
