@@ -234,7 +234,10 @@ const PTS = [
       // Recuento de LCR seguido de una BH en el mismo reporte (robot nuevo: la sección solo en el líquido)
       rep('R3', Dd + ' 07:00', [{ estudio: 'LEUCOCITOS', valor: '0.030', unidad: '10³/μL', referencia: '0.000 - 5.000', seccion: 'LIQUIDO CEFALORRAQUIDEO' }, { estudio: 'LEUCOCITOS', valor: '20.97', unidad: '10³/μL', referencia: '4.00 - 10.00' }, { estudio: 'HEMOGLOBINA', valor: '11.0', unidad: 'g/dL', referencia: '12 - 16' }]),
       // LCR con cultivo POSITIVO y el citoquímico después
-      rep('R4', Dd + ' 08:00', [{ estudio: 'Gram', valor: 'SE OBSERVAN COCOS GRAM POSITIVOS EN CADENAS', unidad: '', referencia: '', seccion: 'LIQUIDO CEFALORRAQUIDEO · TINCION' }, { estudio: 'CULTIVO', valor: 'POSITIVO', unidad: '', referencia: 'SIN DESARROLLO' }, { estudio: 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO', valor: '12.0', unidad: 'mg/dL', referencia: '40.0 - 70.0' }, { estudio: 'COLOR', valor: 'AMARILLO', unidad: '', referencia: 'Incoloro', seccion: 'LIQUIDO CEFALORRAQUIDEO' }]),
+      rep('R4', Dd + ' 08:00', [{ estudio: 'Gram', valor: 'SE OBSERVAN COCOS GRAM POSITIVOS EN CADENAS', unidad: '', referencia: '', seccion: 'LIQUIDO CEFALORRAQUIDEO · TINCION' },
+        { estudio: 'TINCION DE GRAM', valor: 'SE OBSERVAN COCOS GRAM POSITIVOS EN RACIMOS', unidad: '', referencia: '', seccion: 'LIQUIDO CEFALORRAQUIDEO' },
+        { estudio: 'Tinta China', valor: 'NEGATIVO, NO SE OBSERVAN LEVADURAS', unidad: '', referencia: '', seccion: 'LIQUIDO CEFALORRAQUIDEO · TINCION' },
+        { estudio: 'KOH', valor: 'NEGATIVO PARA HIFAS Y LEVADURAS', unidad: '', referencia: '', seccion: 'LIQUIDO CEFALORRAQUIDEO · TINCION' }, { estudio: 'CULTIVO', valor: 'POSITIVO', unidad: '', referencia: 'SIN DESARROLLO' }, { estudio: 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO', valor: '12.0', unidad: 'mg/dL', referencia: '40.0 - 70.0' }, { estudio: 'COLOR', valor: 'AMARILLO', unidad: '', referencia: 'Incoloro', seccion: 'LIQUIDO CEFALORRAQUIDEO' }]),
       // Perfil prequirúrgico con EGO y luego serologías; grupo y Rh; comentario del laboratorio en vez del número
       rep('R5', Dd + ' 09:00', [{ estudio: 'GRUPO SANGUINEO', valor: 'O', unidad: '', referencia: '' }, { estudio: 'FACTOR RH', valor: 'POSITIVO', unidad: '', referencia: '' }, { estudio: 'SODIO', valor: '139', unidad: 'mmol/L', referencia: '' }, { estudio: 'POTASIO', valor: 'MUESTRA HEMOLIZADA, FAVOR DE REPETIR', unidad: '', referencia: '' }, { estudio: 'DENSIDAD', valor: '1.015', unidad: '', referencia: '' }, { estudio: 'PH', valor: '6.0', unidad: '', referencia: '' }, { estudio: 'VDRL', valor: 'REACTIVO', unidad: '', referencia: '' }]),
       // Recuento de un líquido leído por el robot VIEJO sin ninguna palabra de líquido (toma más nueva que la BH de R3)
@@ -249,6 +252,12 @@ const PTS = [
       rep('R13', Dd + ' 14:00', [{ estudio: 'BILIRRUBINA TOTAL', valor: '1.10', unidad: 'mg/dL', referencia: '0.2 - 1.2' }, { estudio: 'ALBUMINA EN LIQUIDO PERITONEAL', valor: '1.0', unidad: 'g/dL', referencia: '' }]),
       // Valor basura guardado por un lector que partió la referencia («NO» = «DETECTADO»): nunca un positivo
       rep('R14', Dd + ' 14:30', [{ estudio: 'NO', valor: 'DETECTADO', unidad: '', referencia: '', seccion: 'PANEL RESPIRATORIO' }]),
+      // Formato viejo (sin sección), AYER: glucosa SÉRICA con el citoquímico del LCR y el recuento → la sérica a la tabla
+      rep('R15', Ad + ' 15:00', [{ estudio: 'GLUCOSA', valor: '45.0', unidad: 'mg/dL', referencia: '74.0 - 106.0' }, { estudio: 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO', valor: '20.0', unidad: 'mg/dL', referencia: '40.0 - 70.0' }, { estudio: 'LEUCOCITOS', valor: '0.640', unidad: '10³/μL', referencia: '0.000 - 5.000' }, { estudio: 'CREATININA PRE HEMODIALISIS', valor: '8.50', unidad: 'mg/dL', referencia: '' }]),
+      // Creatinina URINARIA fuera del límite medible (toma más nueva que la QS de R2): nunca a la creatinina sérica
+      rep('R16', Dd + ' 16:00', [{ estudio: 'CREATININA URINARIA VALOR POR ENCIMA DEL LIMITE MEDIBLE', valor: '300.00', unidad: 'mg/dL', referencia: '' }]),
+      // Gram de una SECRECIÓN (sección de tinción, no de líquido): «Leucocitos > 25» nunca a la BH
+      rep('R18', Dd + ' 17:00', [{ estudio: 'Leucocitos', valor: '> 25', unidad: '', referencia: '', seccion: 'TINCION DE GRAM' }, { estudio: 'Celulas epiteliales', valor: '< 10', unidad: '', referencia: '', seccion: 'TINCION DE GRAM' }]),
       // Panel de hemocultivo solo con antígenos (sin valores)
       rep('R6', Dd + ' 10:00', null, { antigenos: [{ estudio: 'Staphylococcus', valor: 'DETECTADO', unidad: '', referencia: '', seccion: 'PANEL DE IDENTIFICACION EN HEMOCULTIVO P' }, { estudio: 'Streptococcus', valor: 'NO DETECTADO', unidad: '', referencia: '', seccion: 'PANEL DE IDENTIFICACION EN HEMOCULTIVO P' }] }),
     ], D, new Date(Date.now() - 3600e3).toISOString());
@@ -258,7 +267,8 @@ const PTS = [
     await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
     const it = (_winlabOtrosByK[k3] || []);
     const snap = (f) => ((noteData[k3].labHistory || []).find(s => s.fecha === f) || { labs: {} }).labs;
-    out.labs = snap(D);
+    out.labs = snap(D); out.labsA = snap(A);
+    out.critLim = getCriticalLabItemsFromSnapshot({ labs: { tp: '> LÍMITE', hb: '12.1' } }).map(c => c.key + ':' + c.value);
     out.cult3 = (_winlabCultByK[k3] || []).map(c => ({ t: c.tipo, o: c.organismo, pos: !!c.positivo }));
     out.items = it.map(x => ({ n: x.nombre, v: x.valor, g: x.grupo, s: x.sub, pos: !!x.pos, av: !!x.aviso, llave: x.llave, f: x.fecha }));
     // Card render for warnings
@@ -272,25 +282,44 @@ const PTS = [
     delete noteData[k3].checklist.winlab_alias;
     await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
     out.sinAliasOtra = (_winlabOtrosByK[k3] || []).some(x => x.nombre === 'VIH');
-    // Misma identidad: lo de una fila que ya salió de memoria se conserva aunque las filas nuevas no traigan «otros»
+    // Misma identidad: lo de una fila VIEJA (otra fecha) que el respaldo ya soltó se conserva aunque las filas nuevas no traigan «otros»
+    const AA = (function () { const d = new Date(Date.now() - 3 * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    const AAd = AA.split('-').reverse().join('/');
+    const respaldo = row('26-91003', p3.nombre, [H3, rep('R20', AAd + ' 06:00', [{ estudio: 'GLUCOSA EN LIQUIDO PLEURAL', valor: '30.0', unidad: 'mg/dL', referencia: '' }])], AA, new Date(Date.now() - 72 * 3600e3).toISOString());
     const soloBH = row('26-91003', p3.nombre, [H3, rep('R7', Dd + ' 11:00', [{ estudio: 'HEMOGLOBINA', valor: '11.5', unidad: 'g/dL', referencia: '' }])], D, new Date().toISOString());
-    winlabByExp = Object.assign({}, winlabByExp, { '26-91003': soloBH }); winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [nuevo, soloBH] }); _winlabExpIndex = null;
+    winlabByExp = Object.assign({}, winlabByExp, { '26-91003': soloBH }); winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [respaldo, soloBH] }); _winlabExpIndex = null;
     await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
-    const antes = (_winlabOtrosByK[k3] || []).length;
-    winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [soloBH] }); _winlabExpIndex = null;
+    const antes = (_winlabOtrosByK[k3] || []).filter(x => x.nombre === 'GLUCOSA EN LIQUIDO PLEURAL').length;
+    winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [soloBH] }); _winlabExpIndex = null;   // el respaldo suelta la fila vieja
     await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
-    out.respaldo = { antes, despues: (_winlabOtrosByK[k3] || []).length };
+    out.respaldo = { antes, despues: (_winlabOtrosByK[k3] || []).filter(x => x.nombre === 'GLUCOSA EN LIQUIDO PLEURAL').length };
+    // La fila del DÍA se reescribe (misma fecha, otra corrida) y ya no trae un reporte (anulado o de otra persona): sale
+    const conB2 = row('26-91003', p3.nombre, [H3, rep('R7', Dd + ' 11:00', [{ estudio: 'HEMOGLOBINA', valor: '11.5', unidad: 'g/dL', referencia: '' }]), rep('B2', Dd + ' 12:00', [{ estudio: 'VIH', valor: 'REACTIVO', unidad: '', referencia: '' }])], D, new Date().toISOString());
+    winlabByExp = Object.assign({}, winlabByExp, { '26-91003': conB2 }); winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [conB2] }); _winlabExpIndex = null;
+    await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
+    const conVih = (_winlabOtrosByK[k3] || []).some(x => x.nombre === 'VIH');
+    const sinB2 = row('26-91003', p3.nombre, [H3, rep('R7', Dd + ' 11:00', [{ estudio: 'HEMOGLOBINA', valor: '11.5', unidad: 'g/dL', referencia: '' }]), OTRA, rep('B2', Dd + ' 12:00', [{ estudio: 'VIH', valor: 'REACTIVO', unidad: '', referencia: '' }], { __target: false })], D, new Date(Date.now() + 1000).toISOString());
+    winlabByExp = Object.assign({}, winlabByExp, { '26-91003': sinB2 }); winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [sinB2] }); _winlabExpIndex = null;
+    await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
+    out.upsert = { conVih, despues: (_winlabOtrosByK[k3] || []).some(x => x.nombre === 'VIH') };
     return out;
   }, { D: ymd(d0), A: ymd(ayer), Dd: dmy(d0), Ad: dmy(ayer) });
   const ri = (pred) => rv.items.filter(pred);
   check('R-O14 química + amilasa del drenaje en la misma orden: Cr, K y amilasa SÉRICAS siguen en la tabla; solo la del drenaje va a Líquidos',
     rv.labs.cr === '0.90' && rv.labs.k === '3.1' && rv.labs.amilasa === '80' && ri(x => x.g === 'liq').some(x => x.n === 'AMILASA EN LIQUIDO DE DRENAJE' && x.s === 'Líquido de drenaje') && !ri(x => x.g === 'liq').some(x => /^(CREATININA|POTASIO|AMILASA)$/.test(x.n)), JSON.stringify(rv.labs));
   check('R-O15 recuento de LCR + BH en el mismo reporte (robot nuevo): Leu 20.97 y Hb 11.0 de sangre en la tabla; 0.030 en Líquidos', rv.labs.leucos === '20.97' && rv.labs.hb === '11.0' && ri(x => x.g === 'liq' && x.n === 'LEUCOCITOS' && x.v === '0.030').length === 1, JSON.stringify(rv.labs));
-  check('R-O15b recuento de líquido del robot viejo SIN palabra de líquido (ref. 0.000 - 5.000, eritrocitos «Ausentes»): no pisa la BH; sale en Líquidos', rv.labs.leucos === '20.97' && ri(x => x.g === 'liq' && x.n === 'LEUCOCITOS' && x.v === '0.640').length === 1, JSON.stringify(rv.labs));
+  check('R-O15b recuento de líquido del robot viejo SIN palabra de líquido (ref. 0.000 - 5.000, eritrocitos «Ausentes»): no pisa la BH; sale en Líquidos', rv.labs.leucos === '20.97' && ri(x => x.g === 'liq' && x.n === 'LEUCOCITOS' && x.v === '0.640' && x.f === D).length === 1, JSON.stringify(rv.labs));
   check('R-O15d glucosa sérica tomada con el LCR (robot nuevo): 98 a la tabla; la del LCR (60) en Líquidos', rv.labs.glu === '98.0' && ri(x => x.g === 'liq' && x.n === 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO' && x.v === '60.0').length === 1, JSON.stringify(rv.labs));
   check('R-O15e formato viejo: lipasa sérica con la amilasa del drenaje (líquido que no es de cavidad) → lipasa a la tabla', rv.labs.lipasa === '40' && ri(x => x.n === 'AMILASA EN LIQUIDO DE DRENAJE' && x.v === '5200').length === 1, JSON.stringify(rv.labs));
   check('R-O15f formato viejo: bilirrubina sérica con la albúmina del líquido peritoneal → bilirrubina a la tabla', rv.labs.bt === '1.10' && ri(x => x.n === 'ALBUMINA EN LIQUIDO PERITONEAL').length === 1, JSON.stringify(rv.labs));
   check('R-O15g un «NO» = «DETECTADO» suelto (referencia partida) nunca sale ni cuenta como positivo', !ri(x => /^NO$/i.test(x.n)).length);
+  check('R-O26 formato viejo: glucosa SÉRICA con el citoquímico del LCR (cociente) → 45 a la tabla; la del LCR y el recuento a Líquidos', rv.labsA.glu === '45.0' && rv.labsA.leucos !== '0.640' && ri(x => x.g === 'liq' && x.n === 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO' && x.v === '20.0').length === 1 && !ri(x => x.g === 'liq' && x.n === 'GLUCOSA').length, JSON.stringify(rv.labsA));
+  check('R-O27 creatinina URINARIA fuera del límite medible no pinta «> LÍMITE» en la creatinina sérica', rv.labs.cr === '0.90', JSON.stringify(rv.labs));
+  check('R-O28 «Leucocitos > 25» de un Gram de secreción no llega a la BH', rv.labs.leucos === '20.97', JSON.stringify(rv.labs));
+  check('R-O29 tinciones negativas (tinta china, KOH) sin rojo; TINCION DE GRAM de un líquido con cocos sí sale (en rojo)', ri(x => x.n === 'Tinta China' && !x.pos).length === 1 && ri(x => x.n === 'KOH' && !x.pos).length === 1 && ri(x => x.n === 'TINCION DE GRAM' && x.g === 'liq' && x.pos).length === 1, JSON.stringify(ri(x => /TINCION|Tinta|KOH/.test(x.n))));
+  check('R-O30 creatinina PRE-HEMODIÁLISIS (sérica) nunca se vuelve «líquido»', !ri(x => x.g === 'liq' && /HEMODIALISIS/.test(x.n)).length);
+  check('R-O31 identificación rápida en hemocultivo (Staphylococcus DETECTADO) llega a 🦠 Cultivos como POSITIVO', rv.cult3.some(c => c.pos && /identificaci/i.test(c.t) && /Staphylococcus/.test(c.o)), JSON.stringify(rv.cult3));
+  check('R-O32 «> LÍMITE» cuenta como crítico en el banner/semáforo y en la Entrega', rv.critLim.includes('tp:> LÍMITE'), JSON.stringify(rv.critLim));
   check('R-O15c hemocultivo con «Staphylococcus aureus DETECTADO» (identificación rápida, sin sección) sigue siendo cultivo POSITIVO', rv.cult3.some(c => c.pos && /Staphylococcus aureus/.test(c.o)), JSON.stringify(rv.cult3));
   check('R-O16 LCR con cultivo POSITIVO: el citoquímico de después (glucosa 12) sí sale; Gram con cocos en rojo', ri(x => x.g === 'liq' && x.n === 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO' && x.v === '12.0').length === 1 && ri(x => x.n === 'Gram' && x.pos).length === 1);
   check('R-O17 grupo y Rh en «Otros» sin rojo (Rh POSITIVO es normal)', ri(x => x.n === 'FACTOR RH' && x.g === 'otros' && !x.pos).length === 1 && ri(x => x.n === 'GRUPO SANGUINEO').length === 1);
@@ -300,7 +329,8 @@ const PTS = [
   check('R-O21 panel de hemocultivo con solo antígenos: Staphylococcus DETECTADO en rojo y Streptococcus NO DETECTADO, con nombre completo', ri(x => x.n === 'Staphylococcus' && x.pos && x.g === 'viro').length === 1 && ri(x => x.n === 'Streptococcus' && !x.pos).length === 1);
   check('R-O22 COLOR del líquido igual al del EGO: sin aviso falso de «también en la tabla de sangre»', !rv.warnColor && ri(x => x.n === 'COLOR' && x.llave === '').length === 1);
   check('R-O23 alias de otra persona y luego quitado: sus estudios (VIH) no se quedan pegados', rv.conAliasOtra === true && rv.sinAliasOtra === false, JSON.stringify([rv.conAliasOtra, rv.sinAliasOtra]));
-  check('R-O24 misma identidad: lo de una fila que el respaldo ya soltó se conserva aunque las filas nuevas no traigan «otros»', rv.respaldo.antes > 0 && rv.respaldo.despues === rv.respaldo.antes, JSON.stringify(rv.respaldo));
+  check('R-O24 misma identidad: lo de una fila VIEJA que el respaldo ya soltó se conserva aunque las filas nuevas no traigan «otros»', rv.respaldo.antes === 1 && rv.respaldo.despues === 1, JSON.stringify(rv.respaldo));
+  check('R-O25 la fila del día se reescribe y el reporte pasa a otra persona: su VIH REACTIVO ya no se queda en la tarjeta', rv.upsert.conVih === true && rv.upsert.despues === false, JSON.stringify(rv.upsert));
 
   // ── Al abrir la app: la caja aparece sola aunque el paciente solo tenga un líquido (sin labs de sangre nuevos) ──
   {

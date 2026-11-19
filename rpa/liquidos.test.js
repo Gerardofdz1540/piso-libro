@@ -11,7 +11,7 @@ import {
   REPORTE_TEXTO_MAX,
   CULTURE_PARSER_VERSION,
 } from "./pdf-extract.js";
-import { isPendingReport, isTextReportInProcess, hasStaleFluidValores, orderDrillCandidates } from "./drill-order.js";
+import { isPendingReport, isTextReportInProcess, hasStaleFluidValores, orderDrillCandidates, isCultureInProcess } from "./drill-order.js";
 import { indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport, parsedEsMejor } from "./lib.js";
 
 let pass = 0, fail = 0;
@@ -184,6 +184,36 @@ const LCR = H + [
     "Pleural: encabezados CITOQUIMICO/CITOLOGICO, aspecto en 2 renglones y diferencial");
 }
 
+// ── 5a. Revisión ronda 2: el lector no inventa ni invierte resultados y la química sérica sigue siendo sérica ──
+{
+  const notas = extractLabValuesFromText(H + ["DETECCION DE INFLUENZA A Y B", "METODOLOGIA: INMUNOCROMATOGRAFIA", "Nota: confirmar todo resultado", "positivo por PCR.", "INFLUENZA A NEGATIVO", "INFLUENZA B NEGATIVO"].join("\n") + F);
+  assert(!notas.some((x) => x.valor === "POSITIVO") && notas.filter((x) => /^INFLUENZA [AB]$/.test(x.estudio) && x.valor === "NEGATIVO").length === 2, "Nota con texto libre «positivo por PCR.» no se vuelve resultado");
+  const leyenda = extractLabValuesFromText(H + ["PANEL RESPIRATORIO", "Negativo = No detectado", "Positivo = Detectado", "Influenza A DETECTADO No detectado"].join("\n") + F);
+  assert(leyenda.length === 1 && leyenda[0].estudio === "Influenza A" && leyenda[0].valor === "DETECTADO", "Leyenda «Negativo = No detectado» no es un resultado");
+  const nota2 = extractLabValuesFromText(H + ["PANEL RESPIRATORIO", "SARS-COV-2", "Nota: un resultado", "negativo no excluye infección", "DETECTADO"].join("\n") + F);
+  assert(!nota2.some((x) => x.valor === "NEGATIVO"), "«negativo no excluye infección» (texto de nota) nunca es el resultado del SARS-COV-2");
+  const pleural = extractLabValuesFromText(H + ["LIQUIDO PLEURAL", "Aspecto TURBIO Claro", "GLUCOSA", "METODOLOGIA: QUIMICA SECA", "110.0 mg/dL 74.0 - 106.0", "PROTEINAS TOTALES", "METODOLOGIA: X", "6.0 g/dL 6.4 - 8.3"].join("\n") + F);
+  assert(pleural.find((x) => x.estudio === "GLUCOSA") && !pleural.find((x) => x.estudio === "GLUCOSA").seccion && !pleural.find((x) => x.estudio === "PROTEINAS TOTALES").seccion && pleural.find((x) => x.estudio === "ASPECTO").seccion === "LIQUIDO PLEURAL",
+    "Química SÉRICA después de un líquido: sin sección (la sección solo para el examen físico del líquido)");
+  const vdrl = extractLabValuesFromText(H + ["RECUENTO CELULAR DE LCR", "LEUCOCITOS 0.030 10³/μL 0.000 - 5.000", "PANEL DE HEPATITIS", "VDRL REACTIVO"].join("\n") + F);
+  assert(vdrl.find((x) => x.estudio === "VDRL").seccion === "PANEL DE HEPATITIS", "Panel de serología después del LCR: no hereda el líquido (el VDRL sérico no es del LCR)");
+  const gramS = extractLabValuesFromText(H + ["LIQUIDO CEFALORRAQUIDEO", "TINCION", "Cocos Gram positivo NO SE OBSERVAN", "Bacilos Gram negativos ESCASOS"].join("\n") + F);
+  assert(J(gramS.map((x) => [x.estudio, x.valor])) === J([["Cocos Gram positivo", "NO SE OBSERVAN"], ["Bacilos Gram negativos", "ESCASOS"]]), "Morfotipo de Gram: «positivo/negativo» es nombre; el resultado es lo que sigue");
+  const para = extractLabValuesFromText(H + ["PANEL RESPIRATORIO", "PARAINFLUENZA 3", "DETECTADO", "Coronavirus 229E", "NO DETECTADO"].join("\n") + F);
+  assert(J(para.map((x) => [x.estudio, x.valor])) === J([["PARAINFLUENZA 3", "DETECTADO"], ["Coronavirus 229E", "NO DETECTADO"]]), "Blanco con número en el nombre y resultado abajo");
+  const encNum = extractLabValuesFromText(H + ["PANEL RESPIRATORIO 2.1", "METODOLOGIA: PCR", "Adenovirus NO DETECTADO No detectado", "Influenza A H1N1 DETECTADO No detectado", "PCR PARA HERPES SIMPLE 1 Y 2", "METODOLOGIA: PCR", "DETECTADO"].join("\n") + F);
+  assert(encNum.some((x) => x.estudio === "Influenza A H1N1" && x.valor === "DETECTADO") && encNum.some((x) => x.estudio === "PCR PARA HERPES SIMPLE 1 Y 2" && x.valor === "DETECTADO") && !encNum.some((x) => x.estudio === "PANEL RESPIRATORIO"),
+    "Encabezado de panel con un número («2.1», «1 Y 2») sí abre la sección; el DETECTADO no se pierde");
+  const hojas = extractLabValuesFromText(H + ["PANEL RESPIRATORIO", "Adenovirus NO DETECTADO No detectado"].join("\n") + F + H + ["Influenza A H1N1 DETECTADO No detectado"].join("\n") + F);
+  assert(hojas.some((x) => x.estudio === "Influenza A H1N1" && x.valor === "DETECTADO" && x.seccion === "PANEL RESPIRATORIO"), "Panel que sigue en la hoja 2: el DETECTADO de la hoja 2 sí se lee");
+  const hojaQS = extractLabValuesFromText(H + ["PANEL RESPIRATORIO", "Adenovirus NO DETECTADO No detectado"].join("\n") + F + H + ["GLUCOSA 98.0 mg/dL 74.0 - 106.0", "Algo raro NEGATIVO"].join("\n") + F);
+  assert(!hojaQS.find((x) => x.estudio === "GLUCOSA").seccion && !hojaQS.some((x) => x.estudio === "Algo raro"), "Tras el salto de hoja, un estudio normal termina el panel (no se reanuda)");
+  const det = extractCultureFromText(H + "HEMOCULTIVO PERIFERICO 1 DESARROLLO\nStaphylococcus aureus DETECTADO\nmecA DETECTADO" + F);
+  assert(det && det.resultado === "POSITIVO" && /Staphylococcus aureus/.test(det.germenes[0] || ""), "Cultivo: «Staphylococcus aureus DETECTADO» (identificación) sigue siendo germen POSITIVO");
+  const neg = extractCultureFromText(H + "HEMOCULTIVO PERIFERICO 1 DESARROLLO\nNEGATIVO A 5 DIAS\nStaphylococcus aureus NO DETECTADO" + F);
+  assert(neg && neg.resultado === "NEGATIVO", "Cultivo: «… NO DETECTADO» no es germen");
+}
+
 // ── 5b. Cultivos: germen suelto con su mecanismo «detectada» sigue siendo germen ─────────────────────────
 {
   const k = extractCultureFromText("CULTIVO DE SECRECION BRONQUIAL\nKlebsiella pneumoniae KPC detectada\nMEROPENEM >=16 R\nAMIKACINA <=2 S");
@@ -216,19 +246,32 @@ const LCR = H + [
   assert(isPendingReport(row("18/11/2026"), looksLikeCultureReport, HOY) === true, "Reporte nunca abierto: pendiente");
   assert(isPendingReport(row("18/11/2026", { reporte_texto: "PANEL X\nalgo" }), looksLikeCultureReport, HOY) === false, "Reporte sin lectura ya guardado: ya no se reabre en cada corrida");
   assert(isPendingReport(row("18/11/2026", { cultivo_texto: "CULTIVO …", cultivo: { v: 3, resultado: "POSITIVO" } }), looksLikeCultureReport, HOY) === false, "Cultivo con solo germen (sin valores): ya no se reabre en cada corrida");
-  assert(isTextReportInProcess(row("10/11/2026", { reporte_texto: "PANEL X\nResultado EN PROCESO" }), HOY) === true && isTextReportInProcess(row("10/10/2026", { reporte_texto: "PANEL X\nEN PROCESO" }), HOY) === false && isTextReportInProcess(row("10/11/2026", { reporte_texto: "PANEL X\nNEGATIVO" }), HOY) === false,
-    "Reporte sin lectura EN PROCESO: se revisa ≤ 21 días; terminado o viejo no");
+  assert(isTextReportInProcess(row("10/11/2026", { reporte_texto: "CARGA VIRAL\nMuestra enviada a laboratorio de referencia" }), HOY) === true
+    && isTextReportInProcess(row("10/11/2026", { antigenos: [{ estudio: "Staphylococcus", valor: "DETECTADO" }] }), HOY) === true
+    && isTextReportInProcess(row("10/10/2026", { reporte_texto: "PANEL X\nEN PROCESO" }), HOY) === false
+    && isTextReportInProcess(row("10/11/2026", { reporte_texto: "X", valores: [{ estudio: "A", valor: "1" }] }), HOY) === false,
+    "Reporte sin valores (solo texto o antígenos): se revisa al final mientras tenga ≤ 21 días (WinLab puede completarlo); viejo o con valores no");
   const stale = row("15/11/2026", { valores: [{ estudio: "CEFALORRAQUIDEO", valor: "28", unidad: "U/L" }] });
   assert(hasStaleFluidValores(stale, HOY) === true && isPendingReport(stale, looksLikeCultureReport, HOY) === true, "Valores viejos con nombre partido: se reabren una vez");
   assert(hasStaleFluidValores(row("01/09/2026", { valores: [{ estudio: "PERITONEAL", valor: "1867" }] }), HOY) === false, "Nombre partido de hace > 21 días: no se reabre");
   assert(hasStaleFluidValores(row("15/11/2026", { valores: [{ estudio: "GLUCOSA EN LIQUIDO CEFALORRAQUIDEO", valor: "73" }] }), HOY) === false, "Nombre completo: no se reabre");
-  assert(hasStaleFluidValores(row("15/11/2026", { valores: [{ estudio: "LEUCOCITOS", valor: "0.640", unidad: "10³/μL", referencia: "0.000 - 5.000" }] }), HOY) === true
-    && hasStaleFluidValores(row("15/11/2026", { valores: [{ estudio: "LEUCOCITOS", valor: "0.640", referencia: "0.000 - 5.000", seccion: "LIQUIDO CEFALORRAQUIDEO" }] }), HOY) === false
-    && hasStaleFluidValores(row("15/11/2026", { valores: [{ estudio: "LEUCOCITOS", valor: "9.10", referencia: "4.00 - 10.00" }] }), HOY) === false,
-    "Recuento de líquido del lector viejo SIN sección (leucocitos con ref. 0.000 - 5.000): se reabre una vez; con sección o BH normal, no");
+  assert(hasStaleFluidValores(row("15/11/2026", { valores: [{ estudio: "LEUCOCITOS", valor: "0.640", unidad: "10³/μL", referencia: "0.000 - 5.000" }] }), HOY) === false,
+    "Recuento de líquido sin sección: NO se reabre (el lector de hoy puede dejarlo igual y se reabriría en cada corrida; la app lo reconoce por su referencia)");
   const rows = [row("18/11/2026"), row("18/11/2026", { reporte_texto: "X\nEN PROCESO" }), row("18/11/2026", { reporte_texto: "X\nlisto" })];
   rows[0].__cells[2] = "A"; rows[1].__cells[2] = "B"; rows[2].__cells[2] = "C";
-  assert(J(orderDrillCandidates(rows, [0, 1, 2], { looksLikeCultureReport, max: 12, hoy: HOY })) === J([0, 1]), "Orden: nuevo primero, el sin lectura en proceso al final, el terminado no se abre");
+  assert(J(orderDrillCandidates(rows, [0, 1, 2], { looksLikeCultureReport, max: 12, hoy: HOY })) === J([0, 1, 2])
+    && J(orderDrillCandidates(rows, [0, 1, 2], { looksLikeCultureReport, max: 12, hoy: HOY, revisarTextos: 1 })) === J([0, 1]),
+    "Orden: el reporte nuevo primero; los que solo tienen texto al final, con su propio cupo");
+  // Cupos separados: 4 textos recientes no le quitan la revisión a un cultivo en proceso
+  const muchos = [0, 1, 2, 3].map((n) => row("18/11/2026", { reporte_texto: "T" + n }));
+  muchos.forEach((r, n) => { r.__cells[2] = "T" + n; });
+  const cultEP = row("12/11/2026", { valores: [{ estudio: "CULTIVO", valor: "EN PROCESO" }], cultivo_texto: "UROCULTIVO EN PROCESO", cultivo: { v: 3, resultado: "PENDIENTE", secciones: [{ resultado: "PENDIENTE" }] } }); cultEP.__cells[2] = "C1";
+  const ord = orderDrillCandidates(muchos.concat([cultEP]), [0, 1, 2, 3, 4], { looksLikeCultureReport, max: 12, hoy: HOY });
+  assert(ord[0] === 4 && ord.length === 3, "Cupos: el cultivo en proceso se revisa primero aunque haya 4 textos recientes (textos: 2)");
+  assert(isPendingReport(row("18/11/2026", { cultivo_texto: "X", cultivo: { resultado: "POSITIVO" } }), looksLikeCultureReport, HOY) === false
+    && isCultureInProcess(row("18/11/2026", { cultivo_texto: "UROCULTIVO\nAntibiograma pendiente", cultivo: { resultado: "POSITIVO", secciones: [{ resultado: "POSITIVO" }] } }), HOY) === true
+    && isCultureInProcess(row("18/11/2026", { cultivo_texto: "ELECTROFORESIS\nInterpretación dependiente de la clínica", cultivo: { resultado: "POSITIVO", secciones: [{ resultado: "POSITIVO" }] } }), HOY) === false,
+    "Cultivo con «Antibiograma pendiente»: se revisa; «dependiente» no cuenta como pendiente");
 }
 
 // ── 9. Reutilización entre corridas: el texto del reporte sin lectura se conserva ─────────────────────────
@@ -254,8 +297,10 @@ const LCR = H + [
   assert(/r\.cultivo_texto\.length < 8000[\s\S]{0,200}extractLabValuesFromText\(r\.cultivo_texto\)[\s\S]{0,80}if \(v\.length\) r\.valores = v/.test(src), "scraper: con lector nuevo re-lee los VALORES del texto del cultivo guardado (sin abrir el PDF)");
   assert(/row\.reporte_texto = rep\.texto;/.test(src) && /!rep\.cultivo && !valores\.length && !antigenos\.length && rep\.texto/.test(src) && /row\.antigenos = antigenos/.test(src),
     "scraper: guarda antígenos aparte y reporte_texto solo sin valores, antígenos ni cultivo");
-  assert(/extractLabReportFromText\(r\.reporte_texto\)/.test(src) && /!r\.cultivo_texto && !\/\\n…\$\/\.test\(r\.reporte_texto\)/.test(src),
-    "scraper: re-lee reporte_texto completo; uno recortado se queda como texto (no se reabre en cada corrida)");
+  assert(!/extractLabReportFromText\(r\.reporte_texto\)/.test(src) && !/extractLabValuesFromText\(r\.reporte_texto\)/.test(src),
+    "scraper: el texto de un reporte sin lectura NO se re-lee (un valor espurio taparía el texto completo)");
+  assert(/if \(c\) r\.cultivo = c; else if \(r\.cultivo_texto\.length < 8000\) delete r\.cultivo;/.test(src) && /delete row\.cultivo; delete row\.cultivo_texto;/.test(src),
+    "scraper: un cultivo falso del lector viejo se quita si el texto ya no tiene cultivo; un PDF releído sin cultivo no arrastra el viejo");
   assert(/sin lectura: texto guardado \(\$\{repPDF\.texto\.length\} car\.\)/.test(src) && !/console\.log\([^)]*repPDF\.texto\)/.test(src), "scraper: la bitácora pública solo dice cuántos caracteres (nunca el texto)");
 }
 

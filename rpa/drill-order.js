@@ -37,7 +37,8 @@ export function isPendingCulture(row, looksLikeCultureReport) {
 // recientes (≤ CULTIVO_REVISAR_DIAS por la primera fecha de la fila): uno que nunca se cierra no se revisa para siempre.
 export const CULTIVO_REVISAR_DIAS = 21;
 export const DRILL_REVISAR_CULTIVOS = 4;   // por paciente y corrida, DESPUÉS de los refertos nuevos (no les quita lugar)
-const EN_PROCESO_RE = /EN\s+PROCESO|EN\s+CURSO|PRELIMINAR/i;
+const EN_PROCESO_RE = /\bEN\s+PROCESO\b|\bEN\s+CURSO\b|\bPRELIMINAR\b|\bPENDIENTES?\b/i;
+export const DRILL_REVISAR_TEXTOS = 2;   // reportes sin valores (solo texto o solo antígenos): por paciente y corrida, después de los cultivos
 function fechaFila(row) {
   for (const c of (row && Array.isArray(row.__cells)) ? row.__cells : []) {
     const m = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(c || ""));
@@ -49,6 +50,7 @@ export function isCultureInProcess(row, hoy = Date.now()) {
   if (!row || typeof row !== "object" || !row.cultivo_texto) return false;
   const c = row.cultivo && typeof row.cultivo === "object" ? row.cultivo : null;
   const secs = c && Array.isArray(c.secciones) ? c.secciones : [];
+  // «Antibiograma pendiente» también cuenta (EN_PROCESO_RE incluye PENDIENTE, como palabra completa).
   const enProceso = (secs.length ? secs.some((s) => s && s.resultado === "PENDIENTE") : !!(c && c.resultado === "PENDIENTE"))
     || EN_PROCESO_RE.test(String(row.cultivo_texto));
   if (!enProceso) return false;
@@ -58,11 +60,12 @@ export function isCultureInProcess(row, hoy = Date.now()) {
   return dias <= CULTIVO_REVISAR_DIAS;
 }
 
-// Reporte guardado SIN lectura (reporte_texto, 19 nov 2026) cuyo texto dice que sigue en proceso: se vuelve a
-// abrir al final, como los cultivos en proceso (mismos 21 días y mismo cupo por paciente).
+// Reporte ya abierto SIN valores (solo reporte_texto o solo antígenos, 19 nov 2026): WinLab puede completarlo después
+// («Muestra enviada a laboratorio de referencia» → «45 copias/mL»), así que se vuelve a abrir al final de cada corrida
+// mientras sea reciente (≤ CULTIVO_REVISAR_DIAS), con su propio cupo (DRILL_REVISAR_TEXTOS) después de los cultivos.
 export function isTextReportInProcess(row, hoy = Date.now()) {
-  if (!row || typeof row !== "object" || !row.reporte_texto || hasValores(row)) return false;
-  if (!(EN_PROCESO_RE.test(String(row.reporte_texto)) || /PENDIENTE/i.test(String(row.reporte_texto)))) return false;
+  if (!row || typeof row !== "object" || hasValores(row) || row.cultivo_texto) return false;
+  if (!row.reporte_texto && !(Array.isArray(row.antigenos) && row.antigenos.length)) return false;
   const f = fechaFila(row);
   if (f === null) return true;
   return Math.floor(hoy / 86400000) - Math.floor(f / 86400000) <= CULTIVO_REVISAR_DIAS;
@@ -71,17 +74,11 @@ export function isTextReportInProcess(row, hoy = Date.now()) {
 // sin texto guardado no se pueden re-leer → se vuelven a abrir (el lector nuevo ya no produce estos nombres). Solo
 // reportes de ≤ CULTIVO_REVISAR_DIAS días: un formato que aún los produjera no se reabre para siempre.
 const STALE_FLUID_NAME_RE = /^(CEFALORRAQU[IÍ]DEO|PERITONEAL|PLEURAL|AS[CS][IÍ]TICO|SINOVIAL|PERIC[AÁ]RDICO)$/i;
-// También el recuento celular de un líquido que el lector viejo dejó SIN nombre del líquido ni `seccion` (leucocitos
-// con la referencia del líquido «0.000 - 5.000», diferencial POLIMORFONUCLEARES/MONONUCLEARES): se reabre para que el
-// lector nuevo le ponga su sección (si no, la app no puede distinguirlo de una BH).
-const _celLiquidoViejo = (v) => {
-  const n = String(v && v.estudio || "").trim().toUpperCase(), r = String(v && v.referencia || "").trim();
-  return !v.seccion && (/^(POLIMORFONUCLEARES|MONONUCLEARES)\b/.test(n) || (n === "LEUCOCITOS" && /^0(?:[.,]0+)?\s*-\s*5(?:[.,]0+)?$/.test(r)));
-};
+// (El recuento celular viejo sin nombre de líquido NO se reabre: el lector de hoy también puede dejarlo sin sección y
+// se reabriría en cada corrida. La app lo reconoce por su referencia, ver _wlValEsCelLiquido en index.html.)
 export function hasStaleFluidValores(row, hoy = Date.now()) {
   if (!hasValores(row) || row.cultivo_texto) return false;
-  if (row.valores.some((v) => v && v.seccion)) return false;   // ya leído por el lector nuevo
-  if (!row.valores.some((v) => v && (STALE_FLUID_NAME_RE.test(String(v.estudio || "").trim()) || _celLiquidoViejo(v)))) return false;
+  if (!row.valores.some((v) => v && STALE_FLUID_NAME_RE.test(String(v.estudio || "").trim()))) return false;
   const f = fechaFila(row);
   return f === null || Math.floor(hoy / 86400000) - Math.floor(f / 86400000) <= CULTIVO_REVISAR_DIAS;
 }
@@ -108,17 +105,19 @@ export function orderDrillCandidates(rows, targetIdxs, opts = {}) {
   const list = Array.isArray(rows) ? rows : [];
   const revisar = Number.isFinite(opts.revisarCultivos) ? Math.max(0, Math.floor(opts.revisarCultivos)) : DRILL_REVISAR_CULTIVOS;
   const hoy = Number.isFinite(opts.hoy) ? opts.hoy : Date.now();
-  const cultivos = [], otros = [], enProceso = [];
+  const cultivos = [], otros = [], enProceso = [], textos = [];
+  const revisarTextos = Number.isFinite(opts.revisarTextos) ? Math.max(0, Math.floor(opts.revisarTextos)) : DRILL_REVISAR_TEXTOS;
   const seen = new Set();
   for (const i of Array.isArray(targetIdxs) ? targetIdxs : []) {
     if (!Number.isInteger(i) || i < 0 || i >= list.length || seen.has(i)) continue;
     seen.add(i);
     const row = list[i];
-    if (isCultureInProcess(row, hoy) || isTextReportInProcess(row, hoy)) { enProceso.push(i); continue; }
+    if (isCultureInProcess(row, hoy)) { enProceso.push(i); continue; }
+    if (isTextReportInProcess(row, hoy)) { textos.push(i); continue; }
     if (!isPendingReport(row, looksLikeCultureReport, hoy)) continue;
     if (isPendingCulture(row, looksLikeCultureReport)) cultivos.push(i);
     else otros.push(i);
   }
   // Los cultivos en proceso se revisan al final: un referto nuevo nunca pierde su lugar por ellos (y dentro del tope total).
-  return cultivos.concat(otros.slice(0, max)).slice(0, absMax).concat(enProceso.slice(0, revisar));
+  return cultivos.concat(otros.slice(0, max)).slice(0, absMax).concat(enProceso.slice(0, revisar)).concat(textos.slice(0, revisarTextos));
 }

@@ -783,7 +783,9 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // (sin volver a abrirlo) para que germen/antibiograma salgan con el formato real del HGL.
   for (const r of result.rows) {
     if (r && r.cultivo_texto && (!r.cultivo || r.cultivo.v !== CULTURE_PARSER_VERSION)) {
-      try { const c = extractCultureFromText(r.cultivo_texto); if (c) r.cultivo = c; } catch (_) {}
+      // Sin cultivo en el texto completo (LCR/peritoneal con Gram y citoquímico pero sin sección de cultivo): el
+      // «POSITIVO» que dejó el lector viejo con «gérmenes» del citoquímico se quita.
+      try { const c = extractCultureFromText(r.cultivo_texto); if (c) r.cultivo = c; else if (r.cultivo_texto.length < 8000) delete r.cultivo; } catch (_) {}
       // Mismo texto del PDF → también los VALORES con el lector actual (19 nov 2026: LCR/líquidos con cultivo, con el
       // nombre partido, la bandera *A sola, el recuento celular y el examen físico). Solo si el texto está completo
       // (< 8000) y salen valores; si no, se quedan los de antes.
@@ -792,18 +794,8 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
         try { const a = extractLabReportFromText(r.cultivo_texto).antigenos; if (a.length) r.antigenos = a; } catch (_) {}
       }
     }
-    // Reporte guardado sin lectura (reporte_texto): si el lector de hoy ya saca valores de su texto completo, se usan.
-    // Con el texto recortado (termina en "…") se queda como texto: no se reabre el PDF en cada corrida.
-    if (r && r.reporte_texto && !(Array.isArray(r.valores) && r.valores.length) && !r.cultivo_texto && !/\n…$/.test(r.reporte_texto)) {
-      try {
-        const rr = extractLabReportFromText(r.reporte_texto);
-        if (rr.valores.length || rr.antigenos.length) {
-          if (rr.valores.length) r.valores = rr.valores;
-          if (rr.antigenos.length) r.antigenos = rr.antigenos;
-          delete r.reporte_texto;
-        }
-      } catch (_) {}
-    }
+    // (El texto guardado de un reporte sin lectura NO se re-lee: un solo valor espurio del texto compacto taparía el
+    // texto completo. Se queda como texto y el reporte se revisa al final de cada corrida mientras sea reciente.)
   }
   for (const r of ageRejected) {
     console.log(`       [age-guard] encabezado coincide por nombre pero edad WinLab ${r.headerAge} vs censo ${r.censusAge} (±${sel.tolerance}) → bloque descartado`);
@@ -889,6 +881,9 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
           row.cultivo = rep.cultivo;
           row.cultivo_texto = rep.text || "";
           if (!valores.length) drilledOk++;
+        } else if (rep && !Array.isArray(rep) && row.cultivo && (valores.length || rep.texto || (Array.isArray(rep.antigenos) && rep.antigenos.length))) {
+          // PDF leído de nuevo y ya sin cultivo: no se arrastra el cultivo que trajo la fusión con la corrida anterior.
+          delete row.cultivo; delete row.cultivo_texto;
         }
         // Antígenos / blancos de panel con nombre de germen (aparte de `valores`; ver PDF_APP_GERMEN_RE).
         const antigenos = (rep && !Array.isArray(rep) && Array.isArray(rep.antigenos)) ? rep.antigenos : [];
