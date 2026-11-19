@@ -515,7 +515,7 @@ export function extractCultureFromText(text) {
       const mkGerm = (g) => { lastGerm = { nombre: g, flags: [], ufc: "", deteccion: "", antibiograma: [] }; s.germenes.push(lastGerm); };
       let germLine = false;
       // "1. Klebsiella…" sí; "73.0 mg/dL 40.0 - 70.0" no (tras "N." debe venir una letra).
-      const numbered = line.match(/^(\d{1,2})\.\s*([A-Za-zÁÉÍÓÚÑ].*)$/);
+      const numbered = line.match(/^(\d{1,2})\.-?\s*([A-Za-zÁÉÍÓÚÑ].*)$/);
       if (numbered && (inOrgList || CULTURE_GENUS_RE.test(numbered[2]))) {
         mkGerm(_germFromLine(numbered[2]) || numbered[2].replace(/\.$/, "").trim());
         germLine = true;

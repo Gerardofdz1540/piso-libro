@@ -9819,6 +9819,7 @@ function plExportBackup() {
           const v = t.v || {}, nombre = toSafeString(v.estudio || v.nombre).trim(), valor = toSafeString(v.valor).trim();
           if (!nombre || !valor) return;
           const N = normalizeWinlabName(nombre).toUpperCase();
+          if (/^(NO|SE|NO SE)$/.test(N)) return;   // pedazo de una referencia partida («NO» = «DETECTADO»): nunca un estudio
           const sec = toSafeString(v.seccion).trim();
           let grupo = "", aviso = "", crit = false;
           const viro = _WLO_VIRO_RX.test(N + " " + sec) || _WLO_QUAL_RX.test(valor);
