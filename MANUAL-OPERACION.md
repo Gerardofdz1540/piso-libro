@@ -2029,6 +2029,15 @@ crece la base).
   un porta-agujas la cierra con un surgete; el logo lleva un anillo de anastomosis. Misma altura; quieto si el iPad
   tiene «reducir movimiento»; no se imprime.
 
+**Cómo se verificó (además de las pruebas automáticas y dos revisiones independientes).**
+- Con 518 reportes reales des-identificados (268 con líquidos, cultivos o avisos y 250 al azar), la tabla de labs solo
+  cambia donde se buscaba: 16 recuentos de LCR salen de «Leu», 1 BH «NO EJECUTADO» deja de mostrar números de
+  referencia y 1 TP pasa a «> LÍMITE». En los 250 al azar no cambia nada.
+- Con 182 textos reales de cultivos/líquidos: los 9 cultivos falsos POSITIVO pasan a NEGATIVO, ningún positivo real
+  cambia y aparecen valores que se perdían (citoquímico y recuento del LCR, examen físico, coaglutinación, Gram, y
+  algunos valores séricos anormales). La química cuantitativa de orina (micción única, 24 h) va a «Otros» y no pisa
+  la tira del EGO.
+
 **Paneles virales.** En la base no hay hasta hoy ningún resultado de panel viral: o no salen por WinLab o eran de los
 PDF que el robot no sabía leer. Con este cambio, si llegan, aparecen leídos o, al menos, con su texto en «Otros
 estudios».
