@@ -241,6 +241,14 @@ const PTS = [
       rep('R8', Dd + ' 12:00', [{ estudio: 'LEUCOCITOS', valor: '0.640', unidad: '10³/μL', referencia: '0.000 - 5.000' }, { estudio: 'ERITROCITOS', valor: '0.001', unidad: '10^6/μL', referencia: 'Ausentes' }]),
       // Hemocultivo con identificación rápida «DETECTADO» (formato viejo, sin sección): SÍ es cultivo positivo
       rep('R10', Dd + ' 12:30', [{ estudio: 'HEMOCULTIVO PERIFERICO', valor: 'POSITIVO', unidad: '', referencia: '' }, { estudio: 'Staphylococcus aureus', valor: 'DETECTADO', unidad: '', referencia: '' }]),
+      // Glucosa SÉRICA tomada junto con el LCR (robot nuevo: la sección solo en el líquido) → la sérica a la tabla
+      rep('R11', Dd + ' 13:00', [{ estudio: 'LEUCOCITOS', valor: '0.050', unidad: '10³/μL', referencia: '0.000 - 5.000', seccion: 'LIQUIDO CEFALORRAQUIDEO' }, { estudio: 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO', valor: '60.0', unidad: 'mg/dL', referencia: '40.0 - 70.0' }, { estudio: 'GLUCOSA', valor: '98.0', unidad: 'mg/dL', referencia: '74.0 - 106.0' }]),
+      // Formato viejo (sin sección): amilasa y lipasa séricas con la amilasa del drenaje → las séricas a la tabla
+      rep('R12', Dd + ' 13:30', [{ estudio: 'LIPASA', valor: '40', unidad: 'U/L', referencia: '13 - 60' }, { estudio: 'AMILASA EN LIQUIDO DE DRENAJE', valor: '5200', unidad: 'U/L', referencia: '' }]),
+      // Formato viejo: creatinina sérica en la misma orden que la albúmina del líquido peritoneal → la sérica a la tabla
+      rep('R13', Dd + ' 14:00', [{ estudio: 'BILIRRUBINA TOTAL', valor: '1.10', unidad: 'mg/dL', referencia: '0.2 - 1.2' }, { estudio: 'ALBUMINA EN LIQUIDO PERITONEAL', valor: '1.0', unidad: 'g/dL', referencia: '' }]),
+      // Valor basura guardado por un lector que partió la referencia («NO» = «DETECTADO»): nunca un positivo
+      rep('R14', Dd + ' 14:30', [{ estudio: 'NO', valor: 'DETECTADO', unidad: '', referencia: '', seccion: 'PANEL RESPIRATORIO' }]),
       // Panel de hemocultivo solo con antígenos (sin valores)
       rep('R6', Dd + ' 10:00', null, { antigenos: [{ estudio: 'Staphylococcus', valor: 'DETECTADO', unidad: '', referencia: '', seccion: 'PANEL DE IDENTIFICACION EN HEMOCULTIVO P' }, { estudio: 'Streptococcus', valor: 'NO DETECTADO', unidad: '', referencia: '', seccion: 'PANEL DE IDENTIFICACION EN HEMOCULTIVO P' }] }),
     ], D, new Date(Date.now() - 3600e3).toISOString());
@@ -279,6 +287,10 @@ const PTS = [
     rv.labs.cr === '0.90' && rv.labs.k === '3.1' && rv.labs.amilasa === '80' && ri(x => x.g === 'liq').some(x => x.n === 'AMILASA EN LIQUIDO DE DRENAJE' && x.s === 'Líquido de drenaje') && !ri(x => x.g === 'liq').some(x => /^(CREATININA|POTASIO|AMILASA)$/.test(x.n)), JSON.stringify(rv.labs));
   check('R-O15 recuento de LCR + BH en el mismo reporte (robot nuevo): Leu 20.97 y Hb 11.0 de sangre en la tabla; 0.030 en Líquidos', rv.labs.leucos === '20.97' && rv.labs.hb === '11.0' && ri(x => x.g === 'liq' && x.n === 'LEUCOCITOS' && x.v === '0.030').length === 1, JSON.stringify(rv.labs));
   check('R-O15b recuento de líquido del robot viejo SIN palabra de líquido (ref. 0.000 - 5.000, eritrocitos «Ausentes»): no pisa la BH; sale en Líquidos', rv.labs.leucos === '20.97' && ri(x => x.g === 'liq' && x.n === 'LEUCOCITOS' && x.v === '0.640').length === 1, JSON.stringify(rv.labs));
+  check('R-O15d glucosa sérica tomada con el LCR (robot nuevo): 98 a la tabla; la del LCR (60) en Líquidos', rv.labs.glu === '98.0' && ri(x => x.g === 'liq' && x.n === 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO' && x.v === '60.0').length === 1, JSON.stringify(rv.labs));
+  check('R-O15e formato viejo: lipasa sérica con la amilasa del drenaje (líquido que no es de cavidad) → lipasa a la tabla', rv.labs.lipasa === '40' && ri(x => x.n === 'AMILASA EN LIQUIDO DE DRENAJE' && x.v === '5200').length === 1, JSON.stringify(rv.labs));
+  check('R-O15f formato viejo: bilirrubina sérica con la albúmina del líquido peritoneal → bilirrubina a la tabla', rv.labs.bt === '1.10' && ri(x => x.n === 'ALBUMINA EN LIQUIDO PERITONEAL').length === 1, JSON.stringify(rv.labs));
+  check('R-O15g un «NO» = «DETECTADO» suelto (referencia partida) nunca sale ni cuenta como positivo', !ri(x => /^NO$/i.test(x.n)).length);
   check('R-O15c hemocultivo con «Staphylococcus aureus DETECTADO» (identificación rápida, sin sección) sigue siendo cultivo POSITIVO', rv.cult3.some(c => c.pos && /Staphylococcus aureus/.test(c.o)), JSON.stringify(rv.cult3));
   check('R-O16 LCR con cultivo POSITIVO: el citoquímico de después (glucosa 12) sí sale; Gram con cocos en rojo', ri(x => x.g === 'liq' && x.n === 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO' && x.v === '12.0').length === 1 && ri(x => x.n === 'Gram' && x.pos).length === 1);
   check('R-O17 grupo y Rh en «Otros» sin rojo (Rh POSITIVO es normal)', ri(x => x.n === 'FACTOR RH' && x.g === 'otros' && !x.pos).length === 1 && ri(x => x.n === 'GRUPO SANGUINEO').length === 1);
