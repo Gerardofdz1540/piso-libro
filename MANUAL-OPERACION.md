@@ -187,7 +187,7 @@ En **cada** PR que cambie `index.html`, sube las dos con un valor nuevo: la fech
 los dos valores no son iguales, y en el PR el paso «version.json acompaña a index.html» de `ci.yml` falla si
 `index.html` cambió y `version.json` no (o trae el mismo valor). Si se olvidara, los equipos con la versión anterior
 no verían el aviso; si los dos valores no coincidieran, todos lo verían siempre. El service worker (`sw.js`, versión
-`pisolibro-v12`) nunca guarda `version.json`: siempre lo pide a la red; y al instalarse baja la app del servidor sin
+`pisolibro-v13`) nunca guarda `version.json`: siempre lo pide a la red; y al instalarse baja la app del servidor sin
 usar la copia que el navegador tenga guardada.
 
 **Dos PR abiertos a la vez que cambian `index.html`:** los dos suben la versión al mismo valor siguiente (p. ej.
@@ -2062,3 +2062,21 @@ estudios».
   unos segundos en «Otros» para desaparecer en la siguiente recarga. Pruebas R-O35 / R-O36.
 - **Batería.** El bisturí y el surgete del encabezado van a pasos (~21 por segundo), como el ECG de antes: el mismo
   repintado que el ECG o menos (539 contra 550 en un ciclo de 16 s, medido en Chromium). Prueba R12b.
+
+## Equipos que se quedan en una versión vieja con el wifi lento (19 de noviembre de 2026, service worker v13)
+
+**Qué pasaba.** «Seguimos con la versión antigua de la app» aunque la nueva ya estaba publicada (los equipos abren
+`gerardofdz1540.github.io/piso-libro`, que sí servía la nueva). La página pesa ~700 KB; con el wifi del hospital
+saturado tardaba más de 15 s en bajar. El service worker mostraba la copia guardada (para no dejar la pantalla en
+blanco), pero **abandonaba la descarga**: la copia nunca se actualizaba y el equipo se quedaba en la versión vieja para
+siempre, aunque tocara «Actualizar».
+
+**Arreglo (sw.js v13).** La descarga de la página se termina en segundo plano aunque ya se haya mostrado la copia, y
+deja la copia guardada en la versión publicada: la siguiente apertura (o «Actualizar») ya abre la nueva. Además, al
+cambiar el service worker cada equipo lo instala solo, y la instalación baja la versión publicada completa, sin tope de
+tiempo: hasta los equipos ya atorados quedan al día. Prueba: `tests/headless/app_sw_lento.js` (con el SW v12 falla).
+
+**Si un equipo sigue con la versión vieja:** ábrelo con red, espera ~1 min y toca «Actualizar» (si sigue igual, otra
+vez: la primera vez instala el service worker nuevo). En una Mac/PC también sirve ⌘⇧R / Ctrl+Shift+R (recarga sin
+caché). **No borres los datos del sitio** (Ajustes → Safari → Datos de sitios web): se perdería lo escrito sin subir.
+

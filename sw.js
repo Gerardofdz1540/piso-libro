@@ -19,8 +19,12 @@
  *     con ?ts= se guardaría una copia por revisión (la caché crecería sin fin). Subir VERSION hace que cada equipo
  *     instale este SW (y descarte la caché vieja) en la siguiente visita con red. Además, la instalación baja la app del
  *     servidor sin pasar por la caché HTTP del navegador (ver `fresco`).
+ *   - v13 (19-nov-2026): equipos atorados en una versión vieja con el wifi lento del hospital. La descarga de la página
+ *     ya no se abandona al vencer el tope de 15 s: se termina en segundo plano y actualiza la copia guardada (ver el
+ *     manejador de navegación). Subir VERSION hace que cada equipo instale este SW, y la instalación baja la versión
+ *     publicada completa sin tope de tiempo (`fresco`), así que hasta los equipos ya atorados quedan al día.
  */
-const VERSION = 'pisolibro-v12';
+const VERSION = 'pisolibro-v13';
 const CACHE = VERSION;
 const NAV_TIMEOUT_MS = 4000;
 // Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
@@ -66,13 +70,6 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-function fetchWithTimeout(req, ms) {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('timeout')), ms);
-    fetch(req).then((res) => { clearTimeout(t); resolve(res); }, (err) => { clearTimeout(t); reject(err); });
-  });
-}
-
 async function putClean(cache, key, res) {
   // Copia "limpia" (sin bandera redirected) para que sirva como fallback de navegación.
   try {
@@ -93,21 +90,34 @@ self.addEventListener('fetch', (event) => {
 
   const isHTML = req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
   if (isHTML) {
+    // v13 (19 nov 2026): UNA sola descarga de la página, que se termina y se guarda aunque llegue tarde. Con el wifi
+    // lento del hospital la página (~700 KB) tardaba más de 15 s: se mostraba la copia guardada (bien) pero la descarga
+    // se ABANDONABA, la copia nunca se actualizaba y el iPad se quedaba para siempre en la versión vieja aunque tocara
+    // «Actualizar». Ahora la descarga sigue en segundo plano (waitUntil) y deja la copia en la versión publicada: la
+    // siguiente apertura (o «Actualizar») ya abre la nueva. Los topes para mostrar algo rápido no cambian.
+    const red = fetch(req);
+    const guardada = red.then(async (res) => {
+      if (!res || !res.ok) return null;
+      const body = await res.blob();
+      const h = new Headers(res.headers); h.delete('content-encoding'); h.delete('content-length');
+      const fresh = new Response(body, { status: 200, headers: h });
+      try { const c = await caches.open(CACHE); await c.put('./', fresh.clone()); } catch (_) {}
+      return fresh;
+    });
+    const ignorar = () => {};
+    red.catch(ignorar); guardada.catch(ignorar);
+    try { event.waitUntil(guardada.then(ignorar, ignorar)); } catch (_) {}
+    const espera = (ms, msg) => new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms));
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       try {
-        const res = await fetchWithTimeout(req, NAV_TIMEOUT_MS);
+        const res = await Promise.race([red, espera(NAV_TIMEOUT_MS, 'timeout')]);
         if (res && res.ok) {
           // Documento COMPLETO antes de responder y, si hay copia guardada, con tope propio: con cabeceras a tiempo
           // pero cuerpo lento o cortado (wifi saturado) antes se colgaba en blanco o entregaba la página truncada.
           const prev = await cache.match('./');
-          const body = await (prev
-            ? Promise.race([res.blob(), new Promise((_, rej) => setTimeout(() => rej(new Error('body timeout')), 15000))])
-            : res.blob());
-          const h = new Headers(res.headers); h.delete('content-encoding'); h.delete('content-length');
-          const fresh = new Response(body, { status: 200, headers: h });
-          try { await cache.put('./', fresh.clone()); } catch (_) {}
-          return fresh;
+          const fresh = await (prev ? Promise.race([guardada, espera(15000, 'body timeout')]) : guardada);
+          if (fresh) return fresh;
         }
         const cached = await cache.match('./');
         return cached || res;

@@ -342,7 +342,7 @@ const MOCK = `(() => {
 
   // 13) version.json (aviso de versión nueva, 20 oct 2026) va SIEMPRE a la red: el service worker no lo guarda ni lo
   //     sirve de su caché (con el cache-first de los assets el aviso nunca vería una versión nueva) y sin red falla (la
-  //     app entonces no avisa nada). La caché es la de esta versión del SW (pisolibro-v12), sin restos de la anterior.
+  //     app entonces no avisa nada). La caché es la de esta versión del SW (pisolibro-v13), sin restos de la anterior.
   let verBody = { v: 'aaa1111' };
   await context.route('**/version.json*', (r) => offline ? r.abort('internetdisconnected') : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(verBody) }));
   const o13a = await page2.evaluate(async () => { const r = await fetch('./version.json', { cache: 'no-store' }); return { ctrl: !!navigator.serviceWorker.controller, v: (await r.json()).v }; });
@@ -363,8 +363,8 @@ const MOCK = `(() => {
   const o13Ruta = o13a.v === 'aaa1111' && o13b.v === 'bbb2222' && o13b.v2 === 'bbb2222';
   const o13WebkitSinRuta = BROWSER === 'webkit' && !!o13a.v && o13a.v !== 'aaa1111' && o13b.v === o13a.v && o13b.v2 === o13a.v;
   if (o13WebkitSinRuta) console.log('INFO O13 (WebKit): la ruta no intercepta version.json pedido desde la página controlada por el service worker (llegó el del servidor, «' + o13a.v + '»); se comprobó lo demás');
-  check('O13 version.json siempre a la red: con el service worker controlando la página cada petición trae lo publicado (aunque sea la misma URL), nada de version.json en la caché, sin red falla (no se sirve copia guardada) y la caché es pisolibro-v12 sola',
-    o13a.ctrl && (o13Ruta || o13WebkitSinRuta) && o13b.cached === 0 && o13b.names.includes('pisolibro-v12') && o13b.names.filter(n => /^pisolibro-v/.test(n)).length === 1 && o13c.failed,
+  check('O13 version.json siempre a la red: con el service worker controlando la página cada petición trae lo publicado (aunque sea la misma URL), nada de version.json en la caché, sin red falla (no se sirve copia guardada) y la caché es pisolibro-v13 sola',
+    o13a.ctrl && (o13Ruta || o13WebkitSinRuta) && o13b.cached === 0 && o13b.names.includes('pisolibro-v13') && o13b.names.filter(n => /^pisolibro-v/.test(n)).length === 1 && o13c.failed,
     JSON.stringify({ o13a, o13b, o13c }));
 
   check('final: sin errores no capturados', errors.length === 0, errors.join(' | '));
