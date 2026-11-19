@@ -11,6 +11,7 @@ import {
   parsePdfToLabValues,
   PDF_NOISE_PATTERNS,
   PDF_LAB_LINE_RE,
+  CULTURE_PARSER_VERSION,
 } from "./pdf-extract.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -254,7 +255,7 @@ DIMERO D >5000 ng/mL 0-500`;
     "AMIKACINA <=2 S", "CIPROFLOXACINO >=4 R", "MEROPENEM <=0.25 S", "CEFTRIAXONA >=64 R",
     "TRIMETOPRIM/SULFAMETOXAZOL <=20 S", "NITROFURANTOINA 64 I", "VALIDADO POR QFB X",
   ].join("\n"));
-  assert(c1 && c1.tipo === "Urocultivo" && c1.resultado === "POSITIVO" && c1.v === 2, "cultivo PDF: urocultivo positivo (v2)");
+  assert(c1 && c1.tipo === "Urocultivo" && c1.resultado === "POSITIVO" && c1.v === CULTURE_PARSER_VERSION && CULTURE_PARSER_VERSION === 3, "cultivo PDF: urocultivo positivo (v3: lector corregido nov 2026)");
   assert(c1 && c1.germenes.length === 1 && c1.germenes[0] === "Klebsiella pneumoniae (BLEE)" && c1.blee === true && /100,000 UFC/.test(c1.ufc), "cultivo PDF: germen género+especie, BLEE y UFC");
   const by = (n) => c1.antibiograma.find((a) => a.antibiotico === n);
   assert(c1.antibiograma.length === 6 && by("Amikacina").interp === "S" && by("Amikacina").cim === "<=2" && by("Ciprofloxacino").interp === "R" && by("Nitrofurantoina").interp === "I" && by("Trimetoprim/sulfametoxazol").interp === "S", "cultivo PDF: antibiograma NOMBRE CIM S/I/R (filas sueltas)");

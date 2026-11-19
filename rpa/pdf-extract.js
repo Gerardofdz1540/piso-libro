@@ -100,24 +100,115 @@ export const PDF_ESTUDIO_NAME_RE =
 export const PDF_QUALITATIVE_VALUES =
   "NEGATIVO|NEGATIVA|POSITIVO|POSITIVA|NO REACTIVO|REACTIVO|NO DETECTADO|DETECTADO|SIN DESARROLLO|NO DESARROLLO|" +
   "AUSENTE|AUSENTES|PRESENTE|PRESENTES|NORMAL|ANORMAL|TRAZAS|INDETERMINADO|NO SE OBSERVAN?|ESCASOS?|ABUNDANTES?|MODERADOS?";
+// El nombre puede terminar en dígito ("INFLUENZA A H1N1", "VITAMINA B12"; 19 nov 2026): si no, «INFLUENZA A H1N1 DETECTADO
+// NO DETECTADO» se leía como estudio «… DETECTADO» = «NO DETECTADO» (un positivo leído como negativo).
 export const PDF_QUALITATIVE_LINE_RE = new RegExp(
-  "^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\\s\\/.,()'\\-]*?[A-ZÁÉÍÓÚÑ\\)])\\s+(?:\\*[AB]\\s+)?(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$"
+  "^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\\s\\/.,()'\\-]*?[A-ZÁÉÍÓÚÑ0-9\\)])\\s+(?:\\*[AB]\\s+)?(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$"
 );
+const PDF_QUAL_START_RE = new RegExp("^(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$");
 export const PDF_QUALITATIVE_VALUE_LINE_RE = new RegExp("^(?:\\*[AB]\\s+)?(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$");
+
+// ── LÍQUIDOS Y PANELES (19 nov 2026): contexto de SECCIÓN ──────────────────────────────────────────
+// «No aparecen paneles virales, citológicos ni citoquímicos». En el PDF del HGL el citoquímico de un líquido
+// trae el nombre partido en 2 renglones ("GLUCOSA EN LIQUIDO" / "CEFALORRAQUIDEO") y la bandera *A/*B sola en
+// su renglón; el examen físico, la coaglutinación, el Gram y los paneles vienen en minúsculas/mixtos; el
+// diferencial lleva "%"/"#" en el nombre. Todo eso se perdía (o quedaba como "CEFALORRAQUIDEO" 28 U/L).
+// Solo AÑADE: dentro de un bloque de líquido (LCR, peritoneal, pleural, drenaje…) o de panel (viral, PCR,
+// coaglutinación) los valores llevan `seccion` y se aceptan renglones en minúsculas/mixtos ("Volumen 7 ml",
+// "Gram NO SE OBSERVAN", "SARS-CoV-2 NO DETECTADO"). Fuera de esos bloques el lector es el de siempre.
+const _UP = (s) => String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+export function pdfFluidOf(U) {
+  if (/\bLCR\b|CEFALORRAQU/.test(U)) return "LIQUIDO CEFALORRAQUIDEO";
+  if (/PERITONEAL|ASCITI|DIALISIS/.test(U)) return "LIQUIDO PERITONEAL";
+  if (/PLEURAL/.test(U)) return "LIQUIDO PLEURAL";
+  if (/SINOVIAL|ARTICULAR/.test(U)) return "LIQUIDO SINOVIAL";
+  if (/PERICARDIC/.test(U)) return "LIQUIDO PERICARDICO";
+  if (/DRENAJE/.test(U)) return "LIQUIDO DE DRENAJE";
+  if (/BILIAR|\bBILIS\b/.test(U)) return "LIQUIDO BILIAR";
+  return null;
+}
+// Encabezado que ABRE una sección no sanguínea → { fluid, panel, kind } (kind: liq | quim | cel | panel)
+export function pdfSectionHeader(line) {
+  const U = _UP(line);
+  if (/^(LIQUIDO\s|CITOQUIMICO\b|CITOLOGICO\b|(ESTUDIO|EXAMEN)\s+CITO(QUIMICO|LOGICO)\b|RECUENTO\s+CELULAR\b)/.test(U)) {
+    const fluid = pdfFluidOf(U);
+    const kind = /^(RECUENTO|CITOLOGICO|(ESTUDIO|EXAMEN)\s+CITOLOGICO)/.test(U) ? "cel" : /^LIQUIDO\s/.test(U) ? "liq" : "quim";
+    if (fluid || kind !== "liq") return { fluid, panel: null, kind };
+  }
+  if (/^(PANEL\b(?!\s+(?:DE\s+)?(?:LIPIDOS|HEPATICO|RENAL|TIROIDEO|METABOLICO|ELECTROLITOS|QUIMICO|COAGULACION|DE\s+COAGULACION)\b)|VIROLOGIA\b|BIOLOGIA\s+MOLECULAR\b|FILMARRAY|BIOFIRE|GENEXPERT|PCR\s+(MULTIPLE|MULTIPLEX|EN\s+TIEMPO|TIEMPO|PARA|RESPIRATORIA)\b|DETECCION\s+(MOLECULAR|DE\s+(VIRUS|SARS|INFLUENZA))\b|COAGLUTINACION\b|AGLUTINACION\s+(EN\s+)?LATEX|TINCION\b|TINTA\s+CHINA$)/.test(U)) {
+    return { fluid: null, panel: U.replace(/\s+(EN PROCESO|PENDIENTE)$/, "").slice(0, 40), kind: "panel" };
+  }
+  return null;
+}
+// Lo que CIERRA cualquier sección: salto de página / encabezado de tabla, cultivo, o un examen de sangre/orina.
+const PDF_SECTION_CLOSE_RE = /^(EXAMENES\s+RESULTADOS|--\s*\d+\s+OF\s+\d+\s*--|PAGINA\s+NO|Q\.?F\.?B|CED\.?\s*PROF|\*\s*RESULTADOS\s+FUERA|JEFE\s+DE\s+LAB|VALIDADO|BIOMETRIA|QUIMICA\b|ELECTROLITOS|GASOMETRIA|GASES\s+(ARTERIALES|VENOSOS)|EXAMEN\s+GENERAL\s+DE\s+ORINA|PRUEBAS?\s+DE\s+FUNCION|PERFIL\b|TIEMPOS?\s+DE\b|HEMOGLOBINA\s+GLICADA|UROCULTIVO|HEMOCULTIVO|COPROCULTIVO|CULTIVO\b)/;
+// En un recuento celular solo caben nombres de células; cualquier otro valor cierra la sección.
+const PDF_CELL_NAME_RE = /^(LEUCOCITOS|ERITROCITOS|HEMATIES|CELULAS|CELULARIDAD|POLIMORFONUCLEARES|MONONUCLEARES|PMN|MN|NEUTROFILOS|SEGMENTADOS|LINFOCITOS|MONOCITOS|EOSINOFILOS|BASOFILOS|MACROFAGOS|MESOTELIALES|RECUENTO)\b/;
+// Analitos que solo existen en sangre: si aparecen, la sección de líquido terminó.
+const PDF_BLOOD_ONLY_RE = /^(HEMOGLOBINA(?!\s+LIBRE)|HEMATOCRITO|PLAQUETAS|VOL\.?\s*CORPUSCULAR|VCM|HCM|CHCM|RDW|UREA|NITROGENO\s+UREICO|CREATININA$|SODIO|POTASIO|CALCIO|MAGNESIO|FOSFORO|BILIRRUBINA|TRANSAMINASA|ALANINO|ASPARTATO|FOSFATASA|GAMMA|TIEMPO|INR|FIBRINOGENO|DIMERO|PROCALCITONINA|PROTEINA\s+C\s+REACTIVA|TROPONINA|PH$|PCO2|PO2|HCO3|LACTATO)/;
+// Resultados cualitativos de panel/líquido (insensible a mayúsculas, SOLO dentro de una sección).
+const PDF_QUAL_EXT = PDF_QUALITATIVE_VALUES + "|NO SE DETECTA|SE DETECTA|NO DETECTABLE|DETECTABLE|INVALIDO|NO SE OBSERVAN? (?:BACTERIAS|MICROORGANISMOS|LEVADURAS)";
+const PDF_EXT_QUAL_LINE_RE = new RegExp("^([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ0-9\\s\\/.,()'+\\-]*?[A-Za-zÁÉÍÓÚÑáéíóúñ0-9\\)])\\s+(?:\\*[AB]\\s+)?(" + PDF_QUAL_EXT + ")(?:\\s+(.*))?$", "i");
+const PDF_EXT_NUM_LINE_RE = /^([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ0-9\s\/.,()'+\-]*?(?:[A-Za-zÁÉÍÓÚÑáéíóúñ\)]|\s[%#]))\s+(?:\*[AB]\s+)?([<>≤≥]?\s*-?\d+(?:[.,]\d+)?)\s*(?:(\S+)\s*(.*))?$/;
+// Descriptivos del examen físico: valor = palabras en MAYÚSCULAS (columna RESULTADO); lo demás es la referencia.
+const PDF_EXT_DESC_RE = /^(Aspecto|Color|Olor|Coagulo|Coágulo|Sedimento|Turbidez|Xantocromia|Consistencia|ASPECTO|COLOR|OLOR|COAGULO|COÁGULO|SEDIMENTO|TURBIDEZ|XANTOCROMIA|CONSISTENCIA)\s+((?:[A-ZÁÉÍÓÚÑ0-9][A-ZÁÉÍÓÚÑ0-9.\/\-]*\s*)+?)(?:\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ].*))?$/;
+// Continuación de un nombre partido en 2 renglones ("GLUCOSA EN LIQUIDO" / "CEFALORRAQUIDEO").
+const PDF_NAME_CONT_PREV_RE = /\b(EN|DE|DEL|LA|UNA|Y|CON|L[IÍ]QUIDO)$/;
+const PDF_NAME_CONT_NEXT_RE = /^(CEFALORRAQU[IÍ]DEO|PERITONEAL|PLEURAL|AS[CS][IÍ]TICO|SINOVIAL|PERIC[AÁ]RDICO|BILIAR|DE\s+DRENAJE|MICCI[OÓ]N)$/;
+// "SARS COV 2 NO DETECTADO": la "unidad" del renglón numérico es en realidad un resultado → no es numérico.
+const PDF_UNIT_IS_RESULT_RE = /^(NO|NEGATIV[OA]|POSITIV[OA]|DETECTAD[OA]|REACTIV[OA]|INDETERMINAD[OA])$/i;
+// Antígenos de coaglutinación / blancos de un panel con nombre de GERMEN ("Streptococcus pneumoniae NEGATIVO",
+// "Staphylococcus DETECTADO", "Salmonella NO DETECTADO"): van con su nombre COMPLETO en `antigenos`, aparte de
+// `valores`. La app vieja (un iPad que aún no se actualiza) toma un nombre de germen en un valor como CULTIVO POSITIVO;
+// `antigenos` no lo lee. Abreviar el género no servía: Staphylococcus y Streptococcus quedaban los dos como «S.».
+// Misma lista de géneros que _WL_CULT_ORG de index.html.
+export const PDF_APP_GERMEN_RE = /\b(ESCHERICHIA|KLEBSIELLA|CANDIDA|STAPHYLOCOC\w*|STREPTOCOC\w*|PSEUDOMONAS|ENTEROCOC\w*|ACINETOBACTER|PROTEUS|ENTEROBACTER|SERRATIA|MORGANELLA|CITROBACTER|STENOTROPHOMONAS|SALMONELLA|SHIGELLA|HAEMOPHILUS|PROVIDENCIA)\b/i;
+// Renglón que es SOLO un resultado ("No detectado", "DETECTADO", "No reactivo"), a lo más seguido de otra palabra de
+// resultado o de una referencia numérica: la referencia partida en su renglón o el resultado de un estudio cuyo nombre
+// vino antes. Nunca un estudio llamado «NO», y nunca texto libre («positivo por PCR.», «negativo no excluye…»).
+const _PDF_RES = PDF_QUALITATIVE_VALUES + "|NO SE DETECTA|SE DETECTA|NO DETECTABLE|DETECTABLE|INVALIDO";
+const PDF_EXT_BARE_RESULT_RE = new RegExp("^(?:\\*[AB]\\s+)?(" + _PDF_RES + ")(?:\\s+(" + _PDF_RES + "|[<>≤≥]?\\s*-?\\d[\\d.,]*(?:\\s*-\\s*\\d[\\d.,]*)?))?\\s*$", "i");
+// Examen físico de un líquido: se anota la sección (el nombre no dice de qué líquido es).
+const PDF_PHYS_NAME_RE = /^(VOLUMEN|ASPECTO|COLOR|OLOR|COAGULO|SEDIMENTO|TURBIDEZ|XANTOCROMIA|CONSISTENCIA|DENSIDAD|PH|VISCOSIDAD)\b/;
+// Morfotipo de una tinción con su hallazgo DESPUÉS ("Cocos Gram positivo NO SE OBSERVAN", "Bacilos Gram negativos
+// ESCASOS"): «positivo/negativo» es parte del nombre, el resultado es lo que sigue.
+const PDF_MORFOTIPO_RE = /^(.*?\b(?:GRAM\s+)?(?:positiv|negativ)[oa]s?)\s+((?:NO\s+SE\s+OBSERVAN?|SE\s+OBSERVAN?|ESCAS[OA]S?|ABUNDANTES?|MODERAD[OA]S?|AUSENTES?|PRESENTES?|RAR[OA]S?|ESCASOS)\b.*)$/i;
+// Nombre de estudio «amplio» (admite dígitos) para dejarlo pendiente cuando su resultado viene en el renglón siguiente.
+const PDF_NOMBRE_AMPLIO_RE = /^[A-ZÁÉÍÓÚÑ][A-Z0-9ÁÉÍÓÚÑ\s\/().'+\-]{2,79}$/i;
+// Unidad de verdad en un renglón de encabezado ("RECUENTO CELULAR 350 cel/uL"); "PANEL RESPIRATORIO 2.1" o
+// "FILMARRAY … 22 PATOGENOS" no son un resultado.
+const PDF_UNIDAD_REAL_RE = /[\/%³]|^(MG|G|U|UI|MUI|MMOL|MEQ|NG|PG|UG|SEG|FL|CEL|CELS|CELULAS|COPIAS|LOG|MM)\b/i;
+// Valor pegado al final del renglón de método ("METODOLOGIA: ESPECTROFOTOMETRIA AUTOMATIZADA < 2.0") con la unidad
+// y la referencia en el renglón siguiente ("g/dL <3"): proteínas y albúmina en líquido peritoneal.
+const PDF_METHOD_VALUE_RE = /^METODOLOG[IÍ]A\b[^0-9<>≤≥]*\s([<>≤≥]\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)$/i;
+const PDF_UNIT_LINE_RE = /^([A-Za-zµμ%][^\s]*\/[^\s]+|%)\s*(.*)$/;
 
 /**
  * Extrae valores de lab tipados desde texto plano de un PDF.
  * @param {string} text - Texto extraído del PDF
- * @returns {Array<{estudio:string,valor:string,unidad:string,referencia:string}>}
+ * @returns {Array<{estudio:string,valor:string,unidad:string,referencia:string,seccion?:string}>}
  */
 export function extractLabValuesFromText(text) {
-  if (!text || typeof text !== "string") return [];
+  return extractLabReportFromText(text).valores;
+}
 
-  const valores = [];
+/**
+ * Igual que extractLabValuesFromText, más `antigenos`: blancos de panel / antígenos de coaglutinación cuyo nombre es
+ * un germen (ver PDF_APP_GERMEN_RE), con su nombre completo y su sección.
+ * @returns {{ valores: Array, antigenos: Array }}
+ */
+export function extractLabReportFromText(text) {
+  if (!text || typeof text !== "string") return { valores: [], antigenos: [] };
+
+  const valores = [], antigenos = [];
   const lines = text.split(/\r?\n/);
   // `pending` = nombre de estudio cuya línea de VALOR viene después (formato QS/hepática
   // multi-línea). Las líneas de método (METODOLOGIA) son ruido y NO lo pisan.
   let pending = null;
+  let ctx = null;            // { fluid, panel, kind }
+  let lastExt = null;        // último valor descriptivo (para "Aspecto LIGERAMENTE" / "TURBIO")
+  let awaitUnit = null;      // valor sacado del renglón de método: su unidad/referencia viene en el siguiente
+  let ctxPausa = null;       // panel interrumpido por el salto de hoja (sigue en la hoja siguiente)
 
   // Si la "unidad" capturada es en realidad un número PURO (ej. analito sin unidad como
   // "RELACION A/G  0.74  1.10 - 1.80" → "1.10" es el inicio del rango), muévela al rango.
@@ -128,21 +219,102 @@ export function extractLabValuesFromText(text) {
     if (/^[<>≤≥]?\d+(?:[.,]\d+)?$/.test(u)) return { unidad: "", referencia: (u + " " + r).trim() };
     return { unidad: u, referencia: r };
   };
+  // Empuja un valor. Con sección abierta la anota SOLO donde hace falta (renglones leídos por las reglas de sección,
+  // recuento celular, examen físico y blancos de un panel): un estudio en MAYÚSCULAS de los de siempre que no es del
+  // líquido (GLUCOSA, PROTEINAS TOTALES, ALBUMINA séricas) CIERRA la sección y se lee igual que antes.
+  // ext = renglón leído por una regla de sección (minúsculas/mixtos); antes no se leía.
+  const push = (o, ext) => {
+    if (ctx) {
+      const N = _UP(o.estudio);
+      const esCel = PDF_CELL_NAME_RE.test(N), esFis = PDF_PHYS_NAME_RE.test(N), conLiq = !!pdfFluidOf(N);
+      const closes = PDF_BLOOD_ONLY_RE.test(N) || (ctx.kind === "cel" && !esCel && !conLiq)
+        || ((ctx.kind === "liq" || ctx.kind === "quim") && !ext && !esCel && !esFis && !conLiq);
+      if (closes) ctx = null;
+      else {
+        const anotar = ext || esCel || esFis || ctx.kind === "panel";
+        const sec = [ctx.fluid, ctx.panel].filter(Boolean).join(" · ");
+        if (anotar && sec && !(conLiq && !ctx.panel) && sec !== N.slice(0, 40)) o.seccion = sec;
+        if (PDF_APP_GERMEN_RE.test(o.estudio + " " + o.valor + " " + o.referencia)) { antigenos.push(o); lastExt = null; return o; }
+      }
+    } else ctxPausa = null;   // un estudio normal tras el salto de hoja: el panel de la hoja anterior ya terminó
+    valores.push(o);
+    lastExt = null;
+    return o;
+  };
+  // Siguiente renglón con contenido (sin ruido ni bandera *A/*B sola), para saber si el resultado viene abajo.
+  const siguiente = (i) => {
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j].trim().replace(/\s+/g, " ");
+      if (!l || /^\*[AB]$/.test(l) || PDF_NOISE_PATTERNS.some((rx) => rx.test(l))) continue;
+      return l;
+    }
+    return "";
+  };
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim().replace(/\s+/g, " ");
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li].trim().replace(/\s+/g, " ");
     if (!line) continue;
+    const U = _UP(line);
 
+    // 0) Unidad y referencia del valor que venía pegado al renglón de método ("g/dL <3").
+    if (awaitUnit) {
+      const o = awaitUnit; awaitUnit = null;
+      const um = line.match(PDF_UNIT_LINE_RE);
+      if (um) { o.unidad = um[1]; o.referencia = (um[2] || "").trim(); continue; }
+    }
+
+    // 0a) Sección: cerrar (página/encabezado de tabla/cultivo/examen de sangre u orina) o abrir (líquido/panel).
+    //     Un PANEL cortado por el salto de hoja queda en pausa: sigue si la hoja nueva empieza con sus renglones.
+    if (ctx && PDF_SECTION_CLOSE_RE.test(U)) { if (ctx.kind === "panel" && /^(EXAMENES\s+RESULTADOS|--\s*\d+\s+OF|PAGINA\s+NO|Q\.?F\.?B|CED\.?\s*PROF|\*\s*RESULTADOS\s+FUERA|JEFE\s+DE\s+LAB|VALIDADO)/.test(U)) ctxPausa = ctx; ctx = null; }
+    const sh = pdfSectionHeader(line);
+    // Un renglón que empieza como encabezado pero TRAE su resultado ("GENEXPERT MTB/RIF NO DETECTADO", "DETECCION DE
+    // VIRUS SINCITIAL RESPIRATORIO POSITIVO", "RECUENTO CELULAR 350 cel/uL") no abre sección: se lee como siempre.
+    const mH = sh ? line.match(PDF_LAB_LINE_RE) : null;
+    const shConResultado = sh && (PDF_QUALITATIVE_LINE_RE.test(line) || PDF_EXT_QUAL_LINE_RE.test(line)
+      || (!!mH && !PDF_UNIT_IS_RESULT_RE.test(mH[3] || "") && PDF_UNIDAD_REAL_RE.test(mH[3] || "")));
+    if (sh && !shConResultado) {
+      // Subtítulo dentro de un líquido (COAGLUTINACION, TINCION, CITOQUIMICO/RECUENTO sin líquido) hereda el líquido
+      // abierto; un panel de serología o virología NO (el VDRL sérico no es «del LCR»).
+      const hereda = ctx && ctx.fluid && (sh.kind !== "panel" || /^(COAGLUT|AGLUTINACION|TINCION|TINTA|PANEL\s+(DE\s+)?MENINGITIS)/.test(sh.panel || ""));
+      ctx = { fluid: sh.fluid || (hereda ? ctx.fluid : null), panel: sh.panel, kind: sh.kind };
+      ctxPausa = null;
+      // El encabezado queda como nombre pendiente SOLO si su resultado viene abajo ("DETECCION DE INFLUENZA A Y B" /
+      // METODOLOGIA / "DETECTADO"; "PCR PARA HERPES SIMPLE 1 Y 2" / … / "DETECTADO").
+      pending = PDF_NOMBRE_AMPLIO_RE.test(line) && PDF_EXT_BARE_RESULT_RE.test(siguiente(li)) ? line : null; lastExt = null;
+      continue;
+    }
+    // 0b) "*A"/"*B" solo en su renglón (nombre de 2 renglones): no pisa `pending`.
+    if (/^\*[AB]$/.test(line)) continue;
+    // 0c) Valor al final del renglón de método (antes del filtro de ruido, que tira todo METODOLOGIA).
+    if (pending) {
+      const mv = line.match(PDF_METHOD_VALUE_RE);
+      if (mv) { const o = { estudio: pending, valor: mv[1].replace(/\s+/g, " ").trim(), unidad: "", referencia: "" }; push(o); pending = null; awaitUnit = o; continue; }
+    }
+
+    // Dentro de una sección, una nota/observación/interpretación cierra el estudio pendiente (su texto no es resultado).
+    if (ctx && /^(NOTA|OBSERVACI|INTERPRETACI|COMENTARIO|LEYENDA)/.test(U)) { pending = null; continue; }
     // Filtrar ruido conocido (METODOLOGIA, firmas, headers...) — NO toca `pending`.
     if (PDF_NOISE_PATTERNS.some(rx => rx.test(line))) continue;
+    // Panel en pausa (salto de hoja) que sigue con sus renglones mixtos → se reanuda.
+    if (!ctx && ctxPausa && PDF_EXT_QUAL_LINE_RE.test(line) && !PDF_QUALITATIVE_LINE_RE.test(line)) ctx = ctxPausa;
+    // Blanco de panel con número en el nombre ("PARAINFLUENZA 3", "Coronavirus 229E") y su resultado abajo.
+    if (ctx && ctx.kind === "panel" && /^[A-Za-zÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑ\s\-]{2,}\s\d{1,4}[A-Za-z]?$/.test(line) && PDF_EXT_BARE_RESULT_RE.test(siguiente(li))) { pending = line; continue; }
 
     // 1) Formato de UNA línea (BH): NOMBRE VALOR UNIDAD RANGO.
     const m = line.match(PDF_LAB_LINE_RE);
     if (m) {
       const cleanNombre = (m[1] || "").trim();
       if (cleanNombre.length >= 2 && !/^\d/.test(cleanNombre)) {
+        // Un ENTERO corto seguido de una palabra-resultado es parte del NOMBRE del blanco ("SARS COV 2 DETECTADO",
+        // "PARAINFLUENZA 3 NO DETECTADO NO DETECTADO"): estudio «SARS COV 2», valor el resultado, lo demás referencia.
+        const rm = PDF_UNIT_IS_RESULT_RE.test(m[3] || "") && /^\d{1,3}$/.test((m[2] || "").trim()) ? ((m[3] || "") + " " + (m[4] || "")).trim().match(PDF_QUAL_START_RE) : null;
+        if (rm) {
+          push({ estudio: cleanNombre + " " + (m[2] || "").trim(), valor: rm[1], unidad: "", referencia: (rm[2] || "").trim() });
+          pending = null;
+          continue;
+        }
         const f = fixUnit(m[3], m[4]);
-        valores.push({ estudio: cleanNombre, valor: (m[2] || "").trim(), unidad: f.unidad, referencia: f.referencia });
+        push({ estudio: cleanNombre, valor: (m[2] || "").trim(), unidad: f.unidad, referencia: f.referencia });
         pending = null;
         continue;
       }
@@ -152,10 +324,12 @@ export function extractLabValuesFromText(text) {
     //     El nombre NO puede ser él mismo una palabra-resultado ni un encabezado.
     const q = line.match(PDF_QUALITATIVE_LINE_RE);
     if (q) {
-      const cleanNombre = (q[1] || "").trim();
+      let cleanNombre = (q[1] || "").trim(), val = (q[2] || "").trim();
       const qualRe = new RegExp("^(" + PDF_QUALITATIVE_VALUES + ")$");
       if (cleanNombre.length >= 3 && !/^\d/.test(cleanNombre) && !qualRe.test(cleanNombre)) {
-        valores.push({ estudio: cleanNombre, valor: (q[2] || "").trim(), unidad: "", referencia: (q[3] || "").trim() });
+        // "INFLUENZA A H1N1 NO DETECTADO": el "NO" quedó pegado al nombre → devolverlo al resultado.
+        if (/\sNO$/.test(cleanNombre) && /^(DETECTAD|REACTIV|SE OBSERV)/.test(val)) { cleanNombre = cleanNombre.replace(/\sNO$/, ""); val = "NO " + val; }
+        push({ estudio: cleanNombre, valor: val, unidad: "", referencia: (q[3] || "").trim() });
         pending = null;
         continue;
       }
@@ -166,22 +340,57 @@ export function extractLabValuesFromText(text) {
       const vm = line.match(PDF_VALUE_LINE_RE);
       if (vm) {
         const f = fixUnit(vm[2], vm[3]);
-        valores.push({ estudio: pending, valor: (vm[1] || "").trim(), unidad: f.unidad, referencia: f.referencia });
+        push({ estudio: pending, valor: (vm[1] || "").trim(), unidad: f.unidad, referencia: f.referencia });
         pending = null;
         continue;
       }
       // 2b) Línea de resultado CUALITATIVO del estudio pendiente ("SIN DESARROLLO", "NEGATIVO"...).
       const qv = line.match(PDF_QUALITATIVE_VALUE_LINE_RE);
       if (qv) {
-        valores.push({ estudio: pending, valor: (qv[1] || "").trim(), unidad: "", referencia: (qv[2] || "").trim() });
+        push({ estudio: pending, valor: (qv[1] || "").trim(), unidad: "", referencia: (qv[2] || "").trim() });
         pending = null;
         continue;
       }
     }
 
+    // 2c) SOLO dentro de una sección de líquido/panel: renglones en minúsculas o mixtos.
+    if (ctx) {
+      const d = line.match(PDF_EXT_DESC_RE);
+      if (d) {
+        const o = { estudio: d[1].toUpperCase(), valor: d[2].trim(), unidad: "", referencia: (d[3] || "").trim() };
+        push(o, true); lastExt = /\b(LIGERAMENTE|LIG\.?|MUY|POCO)$/.test(o.valor) ? o : null; pending = null; continue;
+      }
+      if (lastExt && /^[A-ZÁÉÍÓÚÑ]+$/.test(line)) { lastExt.valor += " " + line; lastExt = null; continue; }
+      // Renglón que es SOLO un resultado: es del estudio pendiente ("SARS-COV-2" / "NO DETECTADO") o es la referencia
+      // partida del renglón anterior ("Influenza A NO DETECTADO" / "No detectado") → se descarta.
+      const br = line.match(PDF_EXT_BARE_RESULT_RE);
+      if (br) {
+        if (pending) { push({ estudio: pending, valor: br[1].trim().toUpperCase(), unidad: "", referencia: (br[2] || "").trim() }, true); pending = null; }
+        continue;
+      }
+      const mf = line.match(PDF_MORFOTIPO_RE);
+      if (mf && /GRAM|COCO|BACIL|DIPLOCOC|LEVADUR/i.test(mf[1])) { push({ estudio: mf[1].trim(), valor: mf[2].trim().toUpperCase(), unidad: "", referencia: "" }, true); pending = null; continue; }
+      const eq = line.match(PDF_EXT_QUAL_LINE_RE);
+      if (eq && eq[1].trim().length >= 2 && !/^(NO|SE|NO SE)$/i.test(eq[1].trim())) {
+        const o = { estudio: eq[1].trim(), valor: eq[2].trim().toUpperCase(), unidad: "", referencia: (eq[3] || "").trim() };
+        push(o, true); lastExt = /^NO SE OBSERVAN?$/.test(o.valor) && !o.referencia ? o : null;   // "Gram NO SE OBSERVAN" / "BACTERIAS"
+        pending = null; continue;
+      }
+      const en = line.match(PDF_EXT_NUM_LINE_RE);
+      if (en && !PDF_UNIT_IS_RESULT_RE.test(en[3] || "")) {
+        const f = fixUnit(en[3], en[4]);
+        push({ estudio: en[1].trim(), valor: en[2].trim(), unidad: f.unidad, referencia: f.referencia }, true);
+        pending = null; continue;
+      }
+      // Nombre de un blanco con dígitos, solo en su renglón ("SARS-COV-2"): su resultado viene en el renglón siguiente.
+      if (/\d/.test(line) && PDF_NOMBRE_AMPLIO_RE.test(line) && !/^\d/.test(line) && PDF_EXT_BARE_RESULT_RE.test(siguiente(li))) { pending = line; continue; }
+    }
+
     // 3) Línea de NOMBRE de estudio (sin valor) → recordarla para la línea de valor siguiente.
+    //    Un renglón de continuación se PEGA al nombre pendiente ("GLUCOSA EN LIQUIDO" + "CEFALORRAQUIDEO").
     if (PDF_ESTUDIO_NAME_RE.test(line)) {
-      pending = line;
+      if (pending && (PDF_NAME_CONT_PREV_RE.test(pending) || PDF_NAME_CONT_NEXT_RE.test(line)) && (pending + " " + line).length <= 90) pending = pending + " " + line;
+      else pending = line;
       continue;
     }
 
@@ -189,7 +398,7 @@ export function extractLabValuesFromText(text) {
     pending = null;
   }
 
-  return valores;
+  return { valores, antigenos };
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -204,7 +413,10 @@ export function extractLabValuesFromText(text) {
 // El scraper guarda ADEMÁS el texto completo del PDF (cultivo_texto) para que la tarjeta lo
 // muestre tal cual y para afinar este parser con reportes reales.
 // ════════════════════════════════════════════════════════════════════════
-export const CULTURE_PARSER_VERSION = 2;
+// v3 (19 nov 2026): la referencia partida del Gram ("No se observan / microorganismos") ya no abre la lista de
+// gérmenes y "73.0 mg/dL" ya no es "germen 73." → al cambiar la versión el robot vuelve a leer cada cultivo_texto
+// guardado (sin abrir el PDF) y corrige los LCR/peritoneales negativos que quedaron como POSITIVO.
+export const CULTURE_PARSER_VERSION = 3;
 export const CULTURE_TEXT_MARKERS = /CULTIVO|ANTIBIOGRAMA|ANTIBIOTICOS\s+CMI|MICROORGANISMO|MICRORGANISMO|GERMEN|AISLAD[OA]|UFC\s*\/\s*ML|SENSIBILIDAD\s+ANTIMICROBIANA|TINCI[OÓ]N\s+DE\s+GRAM/i;
 export const CULTURE_GENUS_RE = /\b(ESCHERICHIA|KLEBSIELLA|ENTEROBACTER|PROTEUS|PSEUDOMONAS|ACINETOBACTER|STAPHYLOCOCCUS|STREPTOCOCCUS|ENTEROCOCCUS|CANDIDA|SERRATIA|MORGANELLA|CITROBACTER|STENOTROPHOMONAS|PROVIDENCIA|SALMONELLA|SHIGELLA|HAEMOPHILUS|BURKHOLDERIA|BACTEROIDES|CLOSTRIDI(?:UM|OIDES)|LISTERIA|NEISSERIA|MORAXELLA|AEROMONAS|ACHROMOBACTER|CORYNEBACTERIUM|MICROCOCCUS|KOCURIA|RAOULTELLA|HAFNIA|PANTOEA|SPHINGOMONAS|ELIZABETHKINGIA|CHRYSEOBACTERIUM|ASPERGILLUS|CRYPTOCOCCUS|TRICHOSPORON|BACILLUS|LACTOBACILLUS|PEPTOSTREPTOCOCCUS|FUSOBACTERIUM|PREVOTELLA|ALCALIGENES|OCHROBACTRUM|RALSTONIA|EDWARDSIELLA|YERSINIA|VIBRIO|CAMPYLOBACTER|HELICOBACTER|MYCOBACTERIUM|NOCARDIA|ACTINOMYCES|GARDNERELLA|TRICHOMONAS|E\.\s?COLI|S\.\s?AUREUS)\b/i;
 export const CULTURE_ANTIBIOTIC_RE = /\b(AMIKACINA|GENTAMICINA|TOBRAMICINA|ESTREPTOMICINA|CIPROFLOXACIN[OA]|LEVOFLOXACIN[OA]|MOXIFLOXACIN[OA]|NORFLOXACIN[OA]|OFLOXACIN[OA]|CEFTRIAXONA|CEFOTAXIMA|CEFTAZI[DT]IMA(?:[\s\-\/]+AVIBACTAM)?|CEFEPIM[AE]|CEFUROXIMA|CEFAZOLINA|CEFOXITINA|CEFALOTINA|CEFALEXINA|CEFIXIMA|CEFTAROLINA|CEFTOLOZAN[OA](?:[\s\-\/]+TAZOBACTAM)?|CEFIDEROCOL|AMPICILINA(?:[\s\-\/]+SULBACTAM)?|AMOXICILINA(?:[\s\-\/]+(?:[AÁ]C(?:IDO)?\.?\s+)?CLAVUL[AÁ]NICO)?|PIPERACILINA(?:[\s\-\/]+TAZOBACTAM)?|TICARCILINA(?:[\s\-\/]+CLAVULANATO)?|OXACILINA|PENICILINA(?:\s+G)?|DICLOXACILINA|MEROPENEM|IMIPENEM(?:[\s\-\/]+CILASTATINA)?|ERTAPENEM|DORIPENEM|AZTREONAM|VANCOMICINA|TEICOPLANINA|LINEZOLID|DAPTOMICINA|CLINDAMICINA|ERITROMICINA|CLARITROMICINA|AZITROMICINA|TRIMETOPRIM(?:A)?(?:[\s\-\/]+SULFAMETOXAZOL)?|SULFAMETOXAZOL(?:[\s\-\/]+TRIMETOPRIM(?:A)?)?|NITROFURANTO[IÍ]NA|FOSFOMICINA|COLISTINA|POLIMIXINA\s*B|TIGECICLINA|DOXICICLINA|MINOCICLINA|TETRACICLINA|RIFAMPICINA|CLORANFENICOL|METRONIDAZOL|QUINUPRISTINA(?:[\s\-\/]+DALFOPRISTINA)?|FLUCONAZOL|VORICONAZOL|ITRACONAZOL|POSACONAZOL|ANFOTERICINA\s*B|CASPOFUNGINA|MICAFUNGINA|ANIDULAFUNGINA|FLUCITOSINA|BENZILPENICILINA|CEFOTETAN|CEFACLOR|CEFPODOXIMA|CEFDITOREN|LOMEFLOXACIN[OA]|GATIFLOXACIN[OA]|NETILMICINA|KANAMICINA|TEDIZOLID|DALBAVANCINA|ORITAVANCINA|FUSIDICO|MUPIROCINA)\b/i;
@@ -350,10 +562,14 @@ export function extractCultureFromText(text) {
     for (let i = 0; i < L.length; i++) {
       const line = L[i], U = LU[i];
       if (/^ANTIBIOTICOS?\b/.test(U) || /^ANTIBIOGRAMA/.test(U)) { abStart = i; break; }
-      if (/^MICRO+RGANISMOS?\s*(AISLADOS?)?\s*:?$/.test(U)) { inOrgList = true; continue; }
+      // Encabezado de la lista de gérmenes ("Microrganismo"). NO la referencia partida del Gram ("No se observan" /
+      // "microorganismos", en minúscula): encendía la lista y cada "73.0 mg/dL…" del citoquímico salía como germen
+      // "0 mg/dL…" → 8 LCR y 1 peritoneal NEGATIVOS guardados como POSITIVO (nov 2026).
+      if (/^MICRO+RGANISMOS?\s*(AISLADOS?)?\s*:?$/.test(U) && /^M/.test(line) && !(i > 0 && /^NO SE OBSERVAN?$/.test(LU[i - 1]))) { inOrgList = true; continue; }
       const mkGerm = (g) => { lastGerm = { nombre: g, flags: [], ufc: "", deteccion: "", antibiograma: [] }; s.germenes.push(lastGerm); };
       let germLine = false;
-      const numbered = line.match(/^(\d+)\.\s*(.+)$/);
+      // "1. Klebsiella…" sí; "73.0 mg/dL 40.0 - 70.0" no (tras "N." debe venir una letra).
+      const numbered = line.match(/^(\d{1,2})\.-?\s*([A-Za-zÁÉÍÓÚÑ].*)$/);
       if (numbered && (inOrgList || CULTURE_GENUS_RE.test(numbered[2]))) {
         mkGerm(_germFromLine(numbered[2]) || numbered[2].replace(/\.$/, "").trim());
         germLine = true;
@@ -365,8 +581,11 @@ export function extractCultureFromText(text) {
           for (const p of parts) { const g = _germFromLine(p); if (g) { mkGerm(g); germLine = true; } }
         }
       }
-      if (!germLine && !inOrgList && !lastGerm && CULTURE_GENUS_RE.test(line) && !TEST_LINE_RE.test(U) && !/CULTIVO/.test(U) && !CULTURE_ANTIBIOTIC_RE.test(U) && !/NEGATIV|POSITIV/.test(U)) {
-        // Germen suelto en su propia línea (formatos sin "Microrganismo")
+      // Blanco de panel NEGATIVO ("Staphylococcus aureus NO DETECTADO"); «X DETECTADO/detectada» sí es germen.
+      const _blancoPanel = /\bNO\s+(SE\s+)?DETECTA|\bNO\s+REACTIV|\bNO\s+DETECTABLE/.test(U);
+      if (!germLine && !inOrgList && !lastGerm && CULTURE_GENUS_RE.test(line) && !TEST_LINE_RE.test(U) && !/CULTIVO/.test(U) && !CULTURE_ANTIBIOTIC_RE.test(U) && !/NEGATIV|POSITIV/.test(U) && !_blancoPanel) {
+        // Germen suelto en su propia línea (formatos sin "Microrganismo"). Un blanco de panel/PCR o un antígeno
+        // ("Streptococcus pneumoniae NO DETECTADO", "… REACTIVO") no es un aislamiento.
         const g = _germFromLine(line);
         if (g && /^[A-Za-z]/.test(line) && line.split(" ").length <= 5) { mkGerm(g); germLine = true; }
       }
@@ -463,26 +682,56 @@ export function extractCultureFromText(text) {
   };
 }
 
+// ── REPORTE SIN LECTURA (19 nov 2026) ────────────────────────────────────────────────────────────────
+// Un PDF del que no sale NINGÚN valor ni cultivo (panel viral u otro formato que el lector aún no conoce) antes no
+// dejaba rastro: la app nunca lo mostraba y el robot lo volvía a abrir en cada corrida (6 de ~21 PDFs por corrida).
+// Ahora se guarda su CUERPO compacto —sin el encabezado con los datos del paciente (se repite en cada página), sin
+// firmas ni pies— con tope de REPORTE_TEXTO_MAX caracteres: la app lo muestra tal cual y sirve para afinar el lector.
+// Si el texto no trae el encabezado de tabla ("EXAMENES RESULTADOS") no se sabe dónde acaba el encabezado del
+// paciente → no se guarda nada (precisión > recall).
+export const REPORTE_TEXTO_MAX = 1500;
+export function compactReportText(text) {
+  if (!text || typeof text !== "string") return "";
+  const out = [];
+  let inBody = false, sawBody = false;
+  for (const raw of text.split(/\r?\n/)) {
+    const l = raw.replace(/\s+/g, " ").trim();
+    if (!l) continue;
+    const U = _UP(l);
+    if (/^EXAMENES?\s+RESULTADOS?\b/.test(U)) { inBody = true; sawBody = true; continue; }
+    if (/^--\s*\d+\s+OF\s+\d+\s*--$/.test(U) || /^\d+\s+OF\s+\d+$/.test(U) || /^HOSPITAL\b/.test(U)) { inBody = false; continue; }
+    if (!inBody) continue;
+    if (/^(Q\.?\s*F\.?\s*B|T\.?\s*L\.?\s*C|CED\.?\s*PROF|REG\.?\s*SSG|UNIVERSIDAD|NOTA\s*:|\*\s*RESULTADOS\s+FUERA|PAGINA\s+(NO|\d)|JEFE\s+DE\s+LAB|VALIDADO|FIRMADO|REPORTE\s+NO\s+VALIDADO|PACIENTE\s*:|EXPEDIENTE|FECHA\s+DE\s+NAC|C[OÓ]DIGO\s+DE\s+ADMISI|CURP)/.test(U)) continue;
+    out.push(l);
+  }
+  if (!sawBody || !out.length) return "";
+  let t = out.join("\n");
+  if (t.length > REPORTE_TEXTO_MAX) t = t.slice(0, REPORTE_TEXTO_MAX).replace(/\n[^\n]*$/, "") + "\n…";
+  return t;
+}
+
 /**
  * Parsea un buffer de PDF y devuelve valores tipados + texto plano (el texto solo se conserva si
  * el reporte es un cultivo: la app lo muestra íntegro y sirve para afinar extractCultureFromText).
+ * Si no sale ningún valor ni cultivo, `texto` trae el cuerpo compacto del reporte (compactReportText).
  * @param {Buffer} buffer
- * @returns {Promise<{valores: Array, text: string, cultivo: object|null}>}
+ * @returns {Promise<{valores: Array, antigenos: Array, text: string, cultivo: object|null, texto: string}>}
  */
 export async function parsePdfToReport(buffer) {
-  if (!buffer || !buffer.length) return { valores: [], text: "", cultivo: null };
+  if (!buffer || !buffer.length) return { valores: [], antigenos: [], text: "", cultivo: null, texto: "" };
   let parser = null;
   try {
     parser = new PDFParse({ data: buffer });
     const result = await parser.getText();
     const text = (result && result.text) ? String(result.text) : "";
-    if (!text) return { valores: [], text: "", cultivo: null };
-    const valores = extractLabValuesFromText(text);
+    if (!text) return { valores: [], antigenos: [], text: "", cultivo: null, texto: "" };
+    const { valores, antigenos } = extractLabReportFromText(text);
     const cultivo = extractCultureFromText(text);
-    return { valores, text: cultivo ? text.slice(0, 8000) : "", cultivo };
+    const texto = (!cultivo && !valores.length && !antigenos.length) ? compactReportText(text) : "";
+    return { valores, antigenos, text: cultivo ? text.slice(0, 8000) : "", cultivo, texto };
   } catch (e) {
     console.log(`       [pdf-parse] Error: ${e.message.split("\n")[0]}`);
-    return { valores: [], text: "", cultivo: null };
+    return { valores: [], antigenos: [], text: "", cultivo: null, texto: "" };
   } finally {
     try { if (parser && typeof parser.destroy === "function") await parser.destroy(); } catch (_) {}
   }

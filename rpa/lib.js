@@ -127,12 +127,19 @@ export function indexParsedReportes(rows) {
     const reportes = Array.isArray(row) ? row
       : (row && row.data && Array.isArray(row.data.reportes)) ? row.data.reportes : [];
     for (const rep of reportes) {
-      if (rep && rep.__target === true && Array.isArray(rep.valores) && rep.valores.length) {
+      const hasV = !!(rep && Array.isArray(rep.valores) && rep.valores.length);
+      // 19 nov 2026: también se reutilizan los reportes ya abiertos SIN valores — cultivo con solo germen/antibiograma
+      // (cultivo_texto) o reporte sin lectura (reporte_texto) —: antes se volvían a abrir en cada corrida y, si esa
+      // corrida no alcanzaba, la fila del día los perdía.
+      const hasA = !!(rep && Array.isArray(rep.antigenos) && rep.antigenos.length);
+      if (rep && rep.__target === true && (hasV || hasA || rep.cultivo_texto || rep.reporte_texto)) {
         // Los valores viajan como array (compat); el cultivo parseado y el texto del PDF van en
         // propiedades no enumerables del mismo array para que la reutilización los conserve.
-        const v = rep.valores.slice();
+        const v = hasV ? rep.valores.slice() : [];
         if (rep.cultivo) Object.defineProperty(v, "__cultivo", { value: rep.cultivo, enumerable: false });
         if (rep.cultivo_texto) Object.defineProperty(v, "__cultivo_texto", { value: rep.cultivo_texto, enumerable: false });
+        if (rep.reporte_texto) Object.defineProperty(v, "__reporte_texto", { value: rep.reporte_texto, enumerable: false });
+        if (hasA) Object.defineProperty(v, "__antigenos", { value: rep.antigenos, enumerable: false });
         map.set(reportKey(rep), v);
       }
     }
@@ -149,12 +156,23 @@ export function mergeReportesPreservingValores(reportes, parsedMap) {
     if (Array.isArray(rep.valores) && rep.valores.length) continue;
     const prev = parsedMap.get(reportKey(rep));
     if (prev) {
-      rep.valores = prev; rep.valores_src = "prev"; reused++;
+      if (prev.length) { rep.valores = prev; rep.valores_src = "prev"; reused++; }
       if (prev.__cultivo && !rep.cultivo) rep.cultivo = prev.__cultivo;
       if (prev.__cultivo_texto && !rep.cultivo_texto) rep.cultivo_texto = prev.__cultivo_texto;
+      if (prev.__reporte_texto && !rep.reporte_texto && !prev.length) rep.reporte_texto = prev.__reporte_texto;
+      if (prev.__antigenos && !rep.antigenos) rep.antigenos = prev.__antigenos;
     }
   }
   return { reportes: out, reused };
+}
+// Dos entradas del mismo reporte en filas distintas (loadParsedByExp): ¿`a` es mejor que `b` para reutilizar?
+// Con valores > sin valores; cultivo terminado > cultivo «en proceso» (PENDIENTE).
+export function parsedEsMejor(a, b) {
+  if (!b) return true;
+  if (!a) return false;
+  if (a.length && !b.length) return true;
+  const ra = a.__cultivo && a.__cultivo.resultado, rb = b.__cultivo && b.__cultivo.resultado;
+  return rb === "PENDIENTE" && !!ra && ra !== "PENDIENTE";
 }
 
 // ¿El referto es un cultivo? (por sus valores de la tabla/PDF: estudio o valor con CULTIVO,

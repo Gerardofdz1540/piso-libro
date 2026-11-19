@@ -15,9 +15,9 @@ import ws from "ws";
 import { N, todayISO, isAllowedEsp, esServicioSinRobot, formatDate as _formatDate, daysAgo, dedupRecords,
          isMenuTableText, isFormTableText, isNoResultsText, isIrrelevantTable,
          isMeaningfulReportRow, extractApellidos, buildSearchCandidates, buildSearchCandidatesWithAlias, normExp,
-         selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, looksLikeCultureReport,
+         selectTargetRows, reportKey, indexParsedReportes, mergeReportesPreservingValores, parsedEsMejor, looksLikeCultureReport,
          conTope, esNavegacionPasajera, esNavegadorCaido, iniciales, expOculto, instalarLogSeguro, parseObjetivo, firmaFilaLabs } from "./lib.js";
-import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
+import { parsePdfToReport, findPdfFrameUrl, extractCultureFromText, extractLabValuesFromText, extractLabReportFromText, CULTURE_PARSER_VERSION } from "./pdf-extract.js";
 import { orderDrillCandidates, isPendingCulture, isCultureInProcess } from "./drill-order.js";
 // Bitácora pública: ningún nombre de paciente sale a GitHub Actions (ver instalarLogSeguro en lib.js).
 instalarLogSeguro();
@@ -783,8 +783,19 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
   // (sin volver a abrirlo) para que germen/antibiograma salgan con el formato real del HGL.
   for (const r of result.rows) {
     if (r && r.cultivo_texto && (!r.cultivo || r.cultivo.v !== CULTURE_PARSER_VERSION)) {
-      try { const c = extractCultureFromText(r.cultivo_texto); if (c) r.cultivo = c; } catch (_) {}
+      // Sin cultivo en el texto completo (LCR/peritoneal con Gram y citoquímico pero sin sección de cultivo): el
+      // «POSITIVO» que dejó el lector viejo con «gérmenes» del citoquímico se quita.
+      try { const c = extractCultureFromText(r.cultivo_texto); if (c) r.cultivo = c; else if (r.cultivo_texto.length < 8000) delete r.cultivo; } catch (_) {}
+      // Mismo texto del PDF → también los VALORES con el lector actual (19 nov 2026: LCR/líquidos con cultivo, con el
+      // nombre partido, la bandera *A sola, el recuento celular y el examen físico). Solo si el texto está completo
+      // (< 8000) y salen valores; si no, se quedan los de antes.
+      if (r.cultivo_texto.length < 8000) {
+        try { const v = extractLabValuesFromText(r.cultivo_texto); if (v.length) r.valores = v; } catch (_) {}
+        try { const a = extractLabReportFromText(r.cultivo_texto).antigenos; if (a.length) r.antigenos = a; } catch (_) {}
+      }
     }
+    // (El texto guardado de un reporte sin lectura NO se re-lee: un solo valor espurio del texto compacto taparía el
+    // texto completo. Se queda como texto y el reporte se revisa al final de cada corrida mientras sea reciente.)
   }
   for (const r of ageRejected) {
     console.log(`       [age-guard] encabezado coincide por nombre pero edad WinLab ${r.headerAge} vs censo ${r.censusAge} (±${sel.tolerance}) → bloque descartado`);
@@ -870,7 +881,20 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
           row.cultivo = rep.cultivo;
           row.cultivo_texto = rep.text || "";
           if (!valores.length) drilledOk++;
+        } else if (rep && !Array.isArray(rep) && row.cultivo && (valores.length || rep.texto || (Array.isArray(rep.antigenos) && rep.antigenos.length))) {
+          // PDF leído de nuevo y ya sin cultivo: no se arrastra el cultivo que trajo la fusión con la corrida anterior.
+          delete row.cultivo; delete row.cultivo_texto;
         }
+        // Antígenos / blancos de panel con nombre de germen (aparte de `valores`; ver PDF_APP_GERMEN_RE).
+        const antigenos = (rep && !Array.isArray(rep) && Array.isArray(rep.antigenos)) ? rep.antigenos : [];
+        if (antigenos.length) { row.antigenos = antigenos; if (!valores.length) drilledOk++; }
+        else if (valores.length && row.antigenos) delete row.antigenos;
+        // Sin valores ni cultivo (panel viral u otro formato que el lector no conoce): el cuerpo compacto del PDF
+        // (sin datos del paciente) para que la app lo muestre y para no volver a abrirlo en cada corrida.
+        if (rep && !Array.isArray(rep) && !rep.cultivo && !valores.length && !antigenos.length && rep.texto) {
+          row.reporte_texto = rep.texto;
+          drilledOk++;
+        } else if ((valores.length || antigenos.length) && row.reporte_texto) delete row.reporte_texto;
       } catch (e) {
         console.log(`       drill-down [${i}]: ${e.message.split("\n")[0]}`);
       }
@@ -1029,7 +1053,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
     if (capturedPdfBuffer) {
       console.log(`       [drilldown] PDF capturado del browser: ${capturedPdfBuffer.length} bytes (url=${capturedPdfUrl})`);
       const repPDF = await parsePdfToReport(capturedPdfBuffer, 10000);
-      console.log(`       [drilldown] PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}`);
+      console.log(`       [drilldown] PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}${(repPDF.antigenos || []).length ? ` · ${repPDF.antigenos.length} antígeno(s) de panel` : ""}${repPDF.texto ? ` · sin lectura: texto guardado (${repPDF.texto.length} car.)` : ""}`);
 
       // Cleanup popup antes de retornar
       detailPage.off("response", responseListener);
@@ -1075,7 +1099,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
             if (isPdf && body.length > 500) {
               console.log(`       [drilldown] v5: PDF descargado directo: ${body.length} bytes`);
               const repPDF = await parsePdfToReport(body, 10000);
-              console.log(`       [drilldown] v5: PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}`);
+              console.log(`       [drilldown] v5: PDF parseado: ${repPDF.valores.length} valores${repPDF.cultivo ? ` · CULTIVO ${repPDF.cultivo.resultado} (${repPDF.cultivo.germenes.join("+") || "sin germen"}, ${repPDF.cultivo.antibiograma.length} ATB)` : ""}${(repPDF.antigenos || []).length ? ` · ${repPDF.antigenos.length} antígeno(s) de panel` : ""}${repPDF.texto ? ` · sin lectura: texto guardado (${repPDF.texto.length} car.)` : ""}`);
 
               // Cleanup popup antes de retornar
               detailPage.off("response", responseListener);
@@ -1325,7 +1349,7 @@ async function _drillDownReportInner(page, searchUrl, paciente, tableIdx, rowIdx
     await waitForAspNetReady(page, WL_PER_PATIENT_TIMEOUT);
   }
 
-  return { valores: detail.valores || [], text: "", cultivo: null };
+  return { valores: detail.valores || [], antigenos: [], text: "", cultivo: null, texto: "" };
 }
 
 // Filas de winlab_labs de hoy y ayer (zona León) para los exps del censo →
@@ -1340,10 +1364,13 @@ async function loadParsedByExp(supa, censo, fechaToday) {
     if (error) throw new Error(error.message);
     const runId = process.env.GITHUB_RUN_ID || "";
     const doneThisRun = new Set(), firmaHoy = new Map();
-    for (const row of data || []) {
+    // La fila MÁS RECIENTE gana (la consulta no trae orden); de otra fila solo entra lo que es mejor (con valores frente
+    // a solo texto, cultivo terminado frente a «en proceso»): una entrada de ayer «en proceso» no tapa el resultado de hoy.
+    const filas = (data || []).slice().sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")));
+    for (const row of filas) {
       if (row.fecha === fechaToday && row.data) firmaHoy.set(String(row.exp || "").trim(), firmaFilaLabs(row.data));
       const m = byExp.get(row.exp) || new Map();
-      for (const [k, v] of indexParsedReportes([row])) if (!m.has(k)) m.set(k, v);
+      for (const [k, v] of indexParsedReportes([row])) if (!m.has(k) || parsedEsMejor(v, m.get(k))) m.set(k, v);
       byExp.set(row.exp, m);
       // Fila de HOY escrita por ESTE mismo job (intento anterior que se agotó por tiempo): ya está
       // capturado; el reintento lo manda al final de la cola para llegar a los que faltan.
