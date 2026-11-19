@@ -9791,7 +9791,7 @@ function plExportBackup() {
     const _WLO_POS_RX = /^(POSITIV[OA]|REACTIV[OA]|DETECTAD[OA]|DETECTABLE|SE\s+DETECTA)\b/i;
     // Ruido que no se muestra: pedazos del PDF (referencias y textos partidos), notas administrativas sin estudio y valores
     // de rutina que no tienen casilla (eritrocitos de la BH, relación A/G).
-    const _WLO_RUIDO_RX = /^(NEGATIVOS?|POSITIVOS?|NEGATIVO\s+A|RACIMOS|POSITIVOS\s+EN\s+PARES|CADENAS|POLIMICROBIANO|LACTOBACILOS(\s+SP)?|BOTELLAS\b.*|QUE\s+SECRECION|ULCERA\b.*|TOMAR\s+A\s+RESERVA\b.*|DE\s+SONDA\b.*|ESTUDIO|NORMAL\.?|DETECCION\s+(A\s+LAS|EN)|DE|PARA\s+UROCULTIVO|TIPO\s+DE\s+MUESTRA|MUESTRA\.?|TUBO\s+NO\s+ROTULADO|SIN\s+REACTIVO|NO\s+HAY\s+REACTIVO|INCIDENCIAS\b.*|RELACION\s+A\s*\/?\s*G|U\/L|MG\/DL|G\/DL|RANGO\s+DE\s+REFERENCIA|NO\s+EJECUTADO|GESTACION|VOLUMEN\s+MINUTADO)$/i;
+    const _WLO_RUIDO_RX = /^(.*\bINCONTABLES?\b.*|.*\bX\s*CAMPO\b.*|BILIRRUBINA|CUERPOS\s+CETONICOS|UROBILINOGENO|NITRITOS|ESTERASA\b.*|NEGATIVOS?|POSITIVOS?|NEGATIVO\s+A|RACIMOS|POSITIVOS\s+EN\s+PARES|CADENAS|POLIMICROBIANO|LACTOBACILOS(\s+SP)?|BOTELLAS\b.*|QUE\s+SECRECION|ULCERA\b.*|TOMAR\s+A\s+RESERVA\b.*|DE\s+SONDA\b.*|ESTUDIO|NORMAL\.?|DETECCION\s+(A\s+LAS|EN)|DE|PARA\s+UROCULTIVO|TIPO\s+DE\s+MUESTRA|MUESTRA\.?|TUBO\s+NO\s+ROTULADO|SIN\s+REACTIVO|NO\s+HAY\s+REACTIVO|INCIDENCIAS\b.*|RELACION\s+A\s*\/?\s*G|U\/L|MG\/DL|G\/DL|RANGO\s+DE\s+REFERENCIA|NO\s+EJECUTADO|GESTACION|VOLUMEN\s+MINUTADO)$/i;
     // Química de orina con nombre propio (sí se muestra); el sedimento y la tira del EGO no (ya están en la tabla).
     const _WLO_ORINA_QUIM_RX = /URINARI|EN\s+ORINA|ORINA\s+DE|24\s*H|MICCION|DEPURACION/i;
     // Nombre partido por el PDF que quedó en una sola palabra genérica ("TOTAL" del APE total, "ESTIMULANTE" de la FSH).
@@ -9847,17 +9847,20 @@ function plExportBackup() {
           if (/^(NO|SE|NO SE)$/.test(N)) return;   // pedazo de una referencia partida («NO» = «DETECTADO»): nunca un estudio
           const sec = toSafeString(v.seccion).trim();
           let grupo = "", aviso = "", crit = false;
-          const viro = _WLO_VIRO_RX.test(N + " " + sec) || _WLO_QUAL_RX.test(valor);
+          // Virología/serología por su NOMBRE; un resultado cualitativo («NEGATIVO») sin nombre de serología solo cuenta para
+          // un estudio sin casilla (prueba de embarazo, Coombs…), nunca para la tira del EGO (bilirrubina, cetonas).
+          const viroNom = _WLO_VIRO_RX.test(N + " " + sec);
+          const viro = viroNom || (t.motivo === "sinAlias" && _WLO_QUAL_RX.test(valor));
           if (t.motivo === "liquido") grupo = "liq";
           else if (t.motivo === "aviso") { grupo = "otros"; aviso = (WINLAB_AVISO_RX.exec(N) || [""])[0].trim(); }
           else if (t.motivo === "limite") { grupo = "otros"; crit = true; aviso = _wlLimiteTxt(WINLAB_LIMITE_RX.exec(N)) === "< LÍMITE" ? "POR DEBAJO DEL LÍMITE MEDIBLE" : (_wlLimiteTxt(WINLAB_LIMITE_RX.exec(N)) === "> LÍMITE" ? "POR ENCIMA DEL LÍMITE MEDIBLE" : "FUERA DEL LÍMITE MEDIBLE"); }
           else if (t.motivo === "sinAlias") grupo = viro ? "viro" : "otros";
           else if (t.motivo === "sinNumero") {
-            if (viro) grupo = "viro";
+            if (viroNom) grupo = "viro";
             // Comentario del laboratorio en lugar del número ("POTASIO" = "MUESTRA HEMOLIZADA"): aviso en «Otros».
             else if (!/^(NEGATIV|POSITIV|NORMAL|AUSENTE|PRESENTE|TRAZAS|ESCAS|MODERAD|ABUNDANT)/i.test(valor)) { grupo = "otros"; aviso = valor; }
           }
-          else if (t.motivo === "orinaSinAlias") { if (viro) grupo = "viro"; else if (_WLO_ORINA_QUIM_RX.test(N)) grupo = "otros"; }
+          else if (t.motivo === "orinaSinAlias") { if (viroNom) grupo = "viro"; else if (_WLO_ORINA_QUIM_RX.test(N)) grupo = "otros"; }
           else if (t.motivo === "mapeado" && t.key && !LAB_FIELD_BY_KEY[t.key] && t.key !== "tp_testigo" && t.key.indexOf("ego_") !== 0) grupo = "otros";
           if (!grupo) return;
           if (_WLO_RUIDO_RX.test(N)) return;
