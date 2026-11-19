@@ -22,11 +22,19 @@
  *   - v13 (19-nov-2026): equipos atorados en una versión vieja con el wifi lento del hospital. La descarga de la página
  *     ya no se abandona al vencer el tope de 15 s: se termina en segundo plano y actualiza la copia guardada (ver el
  *     manejador de navegación). Subir VERSION hace que cada equipo instale este SW, y la instalación baja la versión
- *     publicada completa sin tope de tiempo (`fresco`), así que hasta los equipos ya atorados quedan al día.
+ *     publicada completa sin tope de tiempo (`fresco`), así que hasta los equipos ya atorados quedan al día. Tras una
+ *     revisión independiente: esa espera tiene tope de 2 min (si no, frenaba la activación del SW siguiente), una
+ *     descarga vieja ya no pisa una copia más nueva, /index.html redirigido ya no se queda en la copia vieja y la
+ *     instalación copia las librerías de ./vendor/ de la caché anterior en vez de bajarlas otra vez (más rápida).
  */
 const VERSION = 'pisolibro-v13';
 const CACHE = VERSION;
 const NAV_TIMEOUT_MS = 4000;
+// Cuánto se mantiene abierta la descarga de la página que sigue en segundo plano cuando ya se mostró la copia guardada
+// (ver el manejador de navegación). 2 min alcanzan para la página aun con el wifi del hospital muy lento.
+const TOPE_FONDO_MS = 120000;
+// Turnos de las descargas de la página (solo en memoria; si el navegador cierra el SW, sus descargas mueren con él).
+let navTurno = 0, copiaTurno = 0, copiaCola = Promise.resolve();
 // Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
 // redirigida guardada en caché no sirve como fallback de navegación (primer arranque offline en blanco).
 const SHELL = [
@@ -53,11 +61,26 @@ const OPTIONAL = [
 // siguiente apertura con red. Con Cloudflare/Netlify (_headers: no-cache) no pasaba.
 const fresco = (u) => new Request(u, { cache: 'reload' });
 
+// Librerías de ./vendor/ (llevan versión en el nombre, nunca cambian): v13 (19 nov 2026) las copia de la caché que dejó
+// el SW anterior en vez de bajarlas otra vez. Con el wifi lento del hospital la instalación bajaba ~2.8 MB de librerías
+// además de la página y tardaba unas 3 veces más; mientras tanto el equipo seguía en la versión vieja y, en el iPad, si se
+// salía de la app a media instalación, ésta se quedaba trabada. Si no hay copia anterior se bajan como siempre.
+const esInmutable = (u) => /\/vendor\//.test(u);
+async function guardarInmutable(cache, u, obligatoria) {
+  try {
+    const previa = await caches.match(u);
+    if (previa && previa.ok && !previa.redirected) { await cache.put(u, previa); return; }
+  } catch (_) {}
+  if (obligatoria) await cache.add(fresco(u));
+  else await cache.add(fresco(u)).catch(() => {});
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    await cache.addAll(SHELL.map(fresco));
-    await Promise.all(OPTIONAL.map((u) => cache.add(fresco(u)).catch(() => {})));
+    await cache.addAll(SHELL.filter((u) => !esInmutable(u)).map(fresco));
+    await Promise.all(SHELL.filter(esInmutable).map((u) => guardarInmutable(cache, u, true)));
+    await Promise.all(OPTIONAL.map((u) => guardarInmutable(cache, u, false)));
     await self.skipWaiting();
   })());
 });
@@ -95,27 +118,52 @@ self.addEventListener('fetch', (event) => {
     // se ABANDONABA, la copia nunca se actualizaba y el iPad se quedaba para siempre en la versión vieja aunque tocara
     // «Actualizar». Ahora la descarga sigue en segundo plano (waitUntil) y deja la copia en la versión publicada: la
     // siguiente apertura (o «Actualizar») ya abre la nueva. Los topes para mostrar algo rápido no cambian.
+    //   - Tope de la espera en segundo plano (TOPE_FONDO_MS): mientras el evento siga abierto el navegador no activa el
+    //     SW de la siguiente versión aunque llame a skipWaiting (una red colgada lo detenía 5 min en Chromium y más en
+    //     WebKit). Si la página aún espera esa descarga (sin copia guardada), la respuesta misma sigue esperando como
+    //     siempre: respondWith mantiene el evento abierto hasta entregarla.
+    //   - Cada descarga lleva su turno (`turno`): una descarga lenta que termina tarde no pisa la copia que ya dejó otra
+    //     más reciente (si no, la app podía volver a una versión anterior).
+    //     La petición de la página no se modifica (sigue siendo la navegación original): al vencer el tope solo se suelta
+    //     el evento y el navegador puede cerrar el SW (y con él la descarga) cuando quiera.
+    const turno = ++navTurno;
     const red = fetch(req);
     const guardada = red.then(async (res) => {
       if (!res || !res.ok) return null;
       const body = await res.blob();
       const h = new Headers(res.headers); h.delete('content-encoding'); h.delete('content-length');
       const fresh = new Response(body, { status: 200, headers: h });
-      try { const c = await caches.open(CACHE); await c.put('./', fresh.clone()); } catch (_) {}
+      const copia = fresh.clone();
+      copiaCola = copiaCola.then(async () => {
+        if (turno < copiaTurno) return;   // ya hay una copia de una descarga posterior
+        // Si un SW más nuevo ya se activó y borró esta caché, no se vuelve a crear (quedaría huérfana).
+        if (!(await caches.has(CACHE))) return;
+        copiaTurno = turno;
+        const c = await caches.open(CACHE); await c.put('./', copia);
+      }).catch(() => {});
+      await copiaCola;
       return fresh;
     });
     const ignorar = () => {};
-    red.catch(ignorar); guardada.catch(ignorar);
-    try { event.waitUntil(guardada.then(ignorar, ignorar)); } catch (_) {}
+    let soltar = ignorar;
+    const sostener = new Promise((r) => { soltar = r; });
+    red.catch(ignorar); guardada.then(() => soltar(), () => soltar());
+    try { event.waitUntil(sostener); } catch (_) {}
+    setTimeout(() => soltar(), TOPE_FONDO_MS);
     const espera = (ms, msg) => new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms));
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
+      let prev = null;
+      try { prev = await cache.match('./'); } catch (_) {}
       try {
         const res = await Promise.race([red, espera(NAV_TIMEOUT_MS, 'timeout')]);
+        // Redirección (Cloudflare: /index.html → 308 → /): se entrega tal cual para que el navegador la siga y pida '/'
+        // (ésa sí se baja y actualiza la copia). Antes se servía la copia guardada y quien entraba por /index.html se
+        // quedaba en la versión vieja aunque la red fuera buena.
+        if (res && res.type === 'opaqueredirect') return res;
         if (res && res.ok) {
           // Documento COMPLETO antes de responder y, si hay copia guardada, con tope propio: con cabeceras a tiempo
           // pero cuerpo lento o cortado (wifi saturado) antes se colgaba en blanco o entregaba la página truncada.
-          const prev = await cache.match('./');
           const fresh = await (prev ? Promise.race([guardada, espera(15000, 'body timeout')]) : guardada);
           if (fresh) return fresh;
         }

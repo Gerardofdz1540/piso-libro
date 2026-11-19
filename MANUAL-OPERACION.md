@@ -2076,7 +2076,18 @@ deja la copia guardada en la versión publicada: la siguiente apertura (o «Actu
 cambiar el service worker cada equipo lo instala solo, y la instalación baja la versión publicada completa, sin tope de
 tiempo: hasta los equipos ya atorados quedan al día. Prueba: `tests/headless/app_sw_lento.js` (con el SW v12 falla).
 
-**Si un equipo sigue con la versión vieja:** ábrelo con red, espera ~1 min y toca «Actualizar» (si sigue igual, otra
-vez: la primera vez instala el service worker nuevo). En una Mac/PC también sirve ⌘⇧R / Ctrl+Shift+R (recarga sin
+Ajustes tras una revisión independiente (también en v13, antes de publicarlo):
+- La instalación copia las librerías de `./vendor/` (llevan versión en el nombre, ~2.8 MB) de la caché anterior en vez
+  de bajarlas otra vez: con el wifi lento instala unas 3 veces más rápido y el equipo atorado sale antes.
+- La espera de la descarga en segundo plano tiene tope de 2 min cuando ya hay copia guardada: con una red colgada, el
+  navegador no activaba el service worker de la versión siguiente hasta abandonar la petición (5 min o más).
+- Una descarga lenta que termina tarde ya no pisa la copia más nueva que dejó otra apertura (la app no retrocede).
+- Quien entra por `/index.html` en Cloudflare Pages (redirige a `/`) ya no se queda en la copia vieja.
+
+Límites que no dependen de la app: en Safari, si la app se cierra o se sale de ella a media descarga, el navegador
+corta la descarga a los ~10 s (se retoma en la siguiente apertura); en Firefox el corte es ~1 min después de abrir.
+
+**Si un equipo sigue con la versión vieja:** ábrelo con red, **déjalo abierto** ~1 min y toca «Actualizar» (si sigue
+igual, otra vez: la primera vez instala el service worker nuevo). En una Mac/PC también sirve ⌘⇧R / Ctrl+Shift+R (recarga sin
 caché). **No borres los datos del sitio** (Ajustes → Safari → Datos de sitios web): se perdería lo escrito sin subir.
 
