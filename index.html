@@ -16956,9 +16956,10 @@ function plExportBackup() {
       }
       // Altura real de las cajas AHORA (no en el rAF del MutationObserver): el documento no se encoge y el scroll no se recorta.
       try { if (typeof autoResizeAll === "function") autoResizeAll(vp); } catch (_) {}
-      // Posición a restaurar: la misma de antes (st.y), o, si «🧪 Otros estudios» cambió de alto ARRIBA de lo que se ve
-      // (por debajo de la barra de camas, que es fija), la que deja lo que va después (Cirugías, Plan…) en su lugar de la
-      // pantalla. Si la caja está a la vista no se compensa (igual que antes: se ve aparecer). En dos columnas (iPad
+      // Posición a restaurar: la misma de antes (st.y), o, si «🧪 Otros estudios» cambió de alto ENTERA arriba de lo que
+      // se ve (por debajo de la barra de camas, que es fija), la que deja lo que va después (Cirugías, Plan…) en su lugar
+      // de la pantalla. Si la caja se ve aunque sea en parte no se compensa (igual que antes: lo nuevo se ve aparecer y lo
+      // que se está leyendo dentro de la caja no brinca). En dos columnas (iPad
       // horizontal) solo si lo último que se tocó es de la columna principal y no se ha desplazado la página desde entonces
       // (si no, la columna lateral perdería su lugar).
       try {
@@ -16974,7 +16975,7 @@ function plExportBackup() {
           const dosCol = !!(rm && rsd && rm.height > 0 && rsd.height > 0 && rsd.left >= rm.right - 2);
           const t = _lastInteractEl;
           const enMain = !!(m && t && t.isConnected && m.contains(t) && _lastInteractTs >= _lastScrollTs);
-          if (w.top < borde && (!dosCol || enMain)) {
+          if (w.top + w.h <= borde && (!dosCol || enMain)) {
             compensa = true;
             objetivo = function () {
               const sg = document.getElementById(w.sig);
@@ -16986,10 +16987,11 @@ function plExportBackup() {
         }
         const aplicar = function () { const y = objetivo(); if (y != null && Math.abs((window.scrollY || 0) - y) > 1) window.scrollTo(0, Math.max(0, y)); };
         aplicar();
-        // WebKit (iPad): justo tras el repintado la página puede quedar unos cuadros más corta (cajas de texto aún sin su
-        // altura) y el navegador recorta el scroll (al fondo de la ficha la vista quedaba ~10-40 px corrida). Se vuelve a
-        // aplicar cuando el diseño se asienta, SOLO si nadie tocó la pantalla ni movió el scroll desde entonces (nunca
-        // pelea con un salto, un toque o un desplazamiento del usuario) y solo si hace falta.
+        // WebKit (iPad): justo tras el repintado la página puede quedar unos cuadros más corta (cajas de texto y selects aún
+        // sin su altura) y el navegador recorta el scroll (al fondo de la ficha la vista quedaba ~10-40 px corrida). Se
+        // vuelve a aplicar cuando el diseño se asienta (200 y 600 ms), SOLO si nadie tocó la pantalla ni se movió el scroll
+        // desde entonces. Nunca en el cuadro siguiente: ahí un desplazamiento suave que el mismo toque acaba de pedir
+        // (🔔 Labs nuevos → ficha, «Diagrama» de la barra) todavía no avanza y se cancelaría.
         const yAhora = window.scrollY || 0, y0 = objetivo();
         if (compensa || (y0 != null && Math.abs(yAhora - y0) > 1)) {
           let yEsperada = yAhora; const tToque = _lastInteractTs;
@@ -16999,7 +17001,6 @@ function plExportBackup() {
               aplicar(); yEsperada = window.scrollY || 0;
             } catch (_) {}
           };
-          try { requestAnimationFrame(function () { otraVez(); requestAnimationFrame(otraVez); }); } catch (_) {}
           setTimeout(otraVez, 200); setTimeout(otraVez, 600);
         }
       } catch (_) {}

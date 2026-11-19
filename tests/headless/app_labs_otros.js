@@ -508,6 +508,37 @@ const PTS = [
     check('O14d «Otros» entra a la vista (se lee la tabla de Labs): la tabla no se mueve y Cirugías baja lo que mide la caja',
       // (Firefox: su anclaje nativo ya movía la tabla 68 px en este caso en 854e260; ahí solo se exige que la caja entre.)
       !vista.otrosYa && vista.y > 0 && llego4 && (TOL_PX > 3 || Math.abs(vista2.labs - vista.labs) <= TOL_PX) && vista2.cx - vista.cx > 100, JSON.stringify({ vista, vista2 }));
+    // Se está LEYENDO la caja (su título apenas tapado por la barra fija) y el robot agrega otra muestra de LCR del mismo
+    // día más temprana (va DEBAJO de lo que se lee): lo leído no brinca (revisión 3: la caja casi entera a la vista
+    // contaba como «arriba» y el texto subía ~190 px bajo la barra).
+    const leer = await page4.evaluate(async () => {
+      const p = patients.find(x => x.cama === '3-301'), k = pid(p), ek = k.replace(/[^a-zA-Z0-9]/g, '_');
+      const box = document.getElementById('sec-wlotros-' + ek), nav = document.getElementById('board-nav');
+      window.scrollBy(0, box.getBoundingClientRect().top - (nav.getBoundingClientRect().bottom - 40));
+      await new Promise(r => setTimeout(r, 600));
+      const celda = () => { const b = document.getElementById('sec-wlotros-' + ek); return Array.from(b.querySelectorAll('*')).filter(e => e.children.length === 0 && /^GLUCOSA EN LIQUIDO CEFALORRAQUIDEO$/.test((e.textContent || '').trim()))[0]; };
+      const t0 = Math.round(celda().getBoundingClientRect().top), h0 = Math.round(box.getBoundingClientRect().height);
+      const fila = winlabByExp['26-91001']; const toma = fila.data.reportes[2].__cells[3].replace(/\d\d:\d\d$/, '06:00');
+      fila.data.reportes.push({ '': '', 'CODIGO PACIENTE': '2611190909', __cells: ['', '', '2611190909', toma, toma, 'CIRUGIA GENERAL'], __hasLink: true, __target: true,
+        valores: [{ estudio: 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO', valor: '61.0', unidad: 'mg/dL', referencia: '40.0 - 70.0' }, { estudio: 'LEUCOCITOS', valor: '0.120', unidad: '10³/μL', referencia: '0.000 - 5.000', seccion: 'LIQUIDO CEFALORRAQUIDEO' }] });
+      _winlabExpIndex = null;
+      await applyWinlabSyncToPatients({ verbose: false, only: [p] }); _rerenderCard(k);
+      await new Promise(r => setTimeout(r, 900));
+      return { t0, t1: Math.round(celda().getBoundingClientRect().top), h0, h1: Math.round(document.getElementById('sec-wlotros-' + ek).getBoundingClientRect().height) };
+    });
+    check('O14e leyendo la caja «Otros» (casi entera a la vista): llega otra muestra del mismo día debajo y lo que se lee no brinca',
+      leer.h1 - leer.h0 > 30 && Math.abs(leer.t1 - leer.t0) <= TOL_PX, JSON.stringify(leer));
+    // Al fondo de la ficha, el mismo toque repinta la tarjeta y pide subir suave (🔔 Labs nuevos → ficha del mismo paciente):
+    // la subida no se cancela (revisión 3: un reintento en el cuadro siguiente la detenía).
+    const suave = await page4.evaluate(async () => {
+      const k = pid(patients.find(x => x.cama === '3-301'));
+      window.scrollTo(0, 1e6); await new Promise(r => setTimeout(r, 900)); window.scrollTo(0, 1e6); await new Promise(r => setTimeout(r, 900));
+      const y0 = Math.round(scrollY);
+      _rerenderCard(k); window.scrollTo({ top: 0, behavior: 'smooth' });
+      await new Promise(r => setTimeout(r, 1800));
+      return { y0, y1: Math.round(scrollY) };
+    });
+    check('O14f al fondo: repintar la tarjeta y subir suave en el mismo toque llega arriba (no se cancela)', suave.y0 > 300 && suave.y1 <= Math.max(5, TOL_PX), JSON.stringify(suave));   // Firefox queda a ~23 px también en 854e260
     await page4.close();
 
     // iPad HORIZONTAL (dos columnas): el residente salta a «🖼 Estudios de imagen» (columna lateral; Cirugías queda arriba,
