@@ -315,6 +315,23 @@ const PTS = [
     winlabByExp = Object.assign({}, winlabByExp, { '26-91003': sinB2 }); winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [sinB2] }); _winlabExpIndex = null;
     await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
     out.upsert = { conVih, despues: (_winlabOtrosByK[k3] || []).some(x => x.nombre === 'VIH') };
+    // Fila VIEJA que trae el respaldo (> 4 días): sus labs van a la tabla, pero NO a «Otros» (al recargar no estaría y cada
+    // iPad vería algo distinto); la de 3 días (dentro de la ventana normal) sí cuenta (R-O24).
+    const A5 = (function () { const d = new Date(Date.now() - 5 * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    const vieja = row('26-91003', p3.nombre, [H3, rep('R30', A5.split('-').reverse().join('/') + ' 06:00', [{ estudio: 'GLUCOSA EN LIQUIDO PERITONEAL', valor: '25.0', unidad: 'mg/dL', referencia: '' }, { estudio: 'HEMOGLOBINA', valor: '10.4', unidad: 'g/dL', referencia: '' }])], A5, new Date(Date.now() - 5 * 86400000).toISOString());
+    winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [vieja, sinB2] }); _winlabExpIndex = null;
+    await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
+    out.vieja = { otros: (_winlabOtrosByK[k3] || []).some(x => /PERITONEAL/.test(x.nombre)), tabla: ((noteData[k3].labHistory || []).find(s => s.fecha === A5) || { labs: {} }).labs.hb || '' };
+    // Una fila que sale de la ventana de 4 días con la app abierta deja de contar (y no se queda «arrastrada»), igual que
+    // al recargar.
+    const A4 = (function () { const d = new Date(Date.now() - 4 * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    const borde = row('26-91003', p3.nombre, [H3, rep('R31', A4.split('-').reverse().join('/') + ' 08:00', [{ estudio: 'AMILASA EN LIQUIDO PERITONEAL', valor: '900', unidad: 'U/L', referencia: '' }])], A4, new Date(Date.now() - 4 * 86400000 + 2500).toISOString());
+    winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [borde, sinB2] }); _winlabExpIndex = null;
+    await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
+    const bordeAntes = (_winlabOtrosByK[k3] || []).some(x => /AMILASA EN LIQUIDO PERITONEAL/.test(x.nombre));
+    await new Promise(r => setTimeout(r, 3200));
+    await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
+    out.borde = { antes: bordeAntes, despues: (_winlabOtrosByK[k3] || []).some(x => /AMILASA EN LIQUIDO PERITONEAL/.test(x.nombre)) };
     return out;
   }, { D: ymd(d0), A: ymd(ayer), Dd: dmy(d0), Ad: dmy(ayer) });
   const ri = (pred) => rv.items.filter(pred);
@@ -346,6 +363,8 @@ const PTS = [
   check('R-O23 alias de otra persona y luego quitado: sus estudios (VIH) no se quedan pegados', rv.conAliasOtra === true && rv.sinAliasOtra === false, JSON.stringify([rv.conAliasOtra, rv.sinAliasOtra]));
   check('R-O24 misma identidad: lo de una fila VIEJA que el respaldo ya soltó se conserva aunque las filas nuevas no traigan «otros»', rv.respaldo.antes === 1 && rv.respaldo.despues === 1, JSON.stringify(rv.respaldo));
   check('R-O25 la fila del día se reescribe y el reporte pasa a otra persona: su VIH REACTIVO ya no se queda en la tarjeta', rv.upsert.conVih === true && rv.upsert.despues === false, JSON.stringify(rv.upsert));
+  check('R-O35 fila vieja del respaldo (> 4 días): su BH sí va a la tabla (se guarda) pero su líquido NO aparece en «Otros» (igual en cada apertura y en cada iPad)', rv.vieja.otros === false && rv.vieja.tabla === '10.4', JSON.stringify(rv.vieja));
+  check('R-O36 fila que cumple 4 días con la app abierta: estaba en «Otros» y deja de estar (no se queda arrastrada), igual que al recargar', rv.borde.antes === true && rv.borde.despues === false, JSON.stringify(rv.borde));
 
   // ── Al abrir la app: la caja aparece sola aunque el paciente solo tenga un líquido (sin labs de sangre nuevos) ──
   {
@@ -403,6 +422,61 @@ const PTS = [
     const st3 = await page3.evaluate(() => { const p = patients.find(x => x.cama === '3-301'); const k = pid(p); return { n: (_winlabOtrosByK[k] || []).length, leu: ((noteData[k] && noteData[k].labHistory) || []).map(s => s.labs && s.labs.leucos).filter(Boolean), avisos: window.__plAvisos || [] }; });
     check('O13c con una BH nueva SÍ sale el aviso «labs auto-llenados» (Leu 9.10 a la tabla) y «Otros» sigue apareciendo', ok3 && st3.leu.includes('9.10') && st3.n === 3 && st3.avisos.every(a => /auto-llenados/.test(a)), JSON.stringify({ ok3, st3 }));
     await page3.close();
+  }
+
+  // ── Al REABRIR (con la copia local) «Otros» llega con la nube unos segundos después: Plan no se mueve de su lugar ──
+  // (revisión 19 nov 2026: la caja, abierta, empujaba Plan/Pendientes ~300 px justo cuando el residente iba a escribir)
+  {
+    const page4 = await browser.newPage({ viewport: { width: 834, height: 1194 } });
+    page4.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+    const scr4 = new Date(Date.now() - 3600e3).toISOString();
+    const H1 = { '': '', 'CODIGO PACIENTE': '1', 'APELLIDOS COMPLETOS': 'FICTICIA PRUEBA', NOMBRE: 'ANA LUCIA', SEXO: 'FEMENINO', 'FECHA DE NAC.': '01/01/1976', __cells: ['', '', '1', 'FICTICIA PRUEBA', 'ANA LUCIA', 'FEMENINO', '01/01/1976'], __hasLink: false };
+    const rp = (code, toma, valores) => ({ '': '', 'CODIGO PACIENTE': code, __cells: ['', '', code, toma, toma, 'CIRUGIA GENERAL'], __hasLink: true, __target: true, valores });
+    const LCR = 'LIQUIDO CEFALORRAQUIDEO';
+    const wl4 = [{ exp: '26-91001', paciente: PTS[0].nombre, fecha: ymd(d0), scraped_at: scr4, data: { headers: [], reportes: [H1,
+      rp('2611190901', dmy(d0) + ' 07:00', [{ estudio: 'GRUPO SANGUINEO', valor: 'O', unidad: '', referencia: '' }, { estudio: 'FACTOR RH', valor: 'POSITIVO', unidad: '', referencia: '' }, { estudio: 'HEMOGLOBINA GLICADA', valor: '6.10', unidad: '%', referencia: '4.0 - 5.6' }]),
+      rp('2611190902', dmy(d0) + ' 09:00', [{ estudio: 'Volumen', valor: '7', unidad: 'ml', referencia: '5.0 - 10.0', seccion: LCR }, { estudio: 'ASPECTO', valor: 'TURBIO', unidad: '', referencia: 'Transparente', seccion: LCR },
+        { estudio: 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO', valor: '73.0', unidad: 'mg/dL', referencia: '40.0 - 70.0' }, { estudio: 'LEUCOCITOS', valor: '0.850', unidad: '10³/μL', referencia: '0.000 - 5.000', seccion: LCR },
+        { estudio: 'POLIMORFONUCLEARES %', valor: '71.90', unidad: '%', referencia: 'Ausentes', seccion: LCR }, { estudio: 'MONONUCLEARES %', valor: '28.10', unidad: '%', referencia: '', seccion: LCR }]),
+      rp('2611190903', dmy(d0) + ' 10:00', ['SARS-CoV-2', 'Influenza A', 'Influenza B', 'VSR', 'Adenovirus', 'Rinovirus/Enterovirus'].map(n => ({ estudio: n, valor: 'NO DETECTADO', unidad: '', referencia: 'No detectado', seccion: 'PANEL RESPIRATORIO' }))),
+    ] } }];
+    let delayWl = 0; const notesRows = [];
+    await page4.route('**/vendor/supabase*', r => r.abort());
+    await page4.route('**/rest/v1/**', async (route) => {
+      const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
+      const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+      if (url.startsWith('/rest/v1/patients') && m === 'GET') return json(200, PTS);
+      if (url.startsWith('/rest/v1/winlab_labs') && m === 'GET') { if (delayWl) await new Promise(r => setTimeout(r, delayWl)); return json(200, wl4); }
+      if (url.startsWith('/rest/v1/notes') && m === 'GET') return json(200, notesRows);
+      if (url.startsWith('/rest/v1/notes') && m !== 'GET') {   // la «nube» guarda lo que sube la app (la 2ª apertura lo baja)
+        try { const arr = JSON.parse(req.postData() || '[]'); (Array.isArray(arr) ? arr : [arr]).forEach(r => { if (r && r.patient_id) { const i = notesRows.findIndex(x => x.patient_id === r.patient_id); const mg = Object.assign({}, i >= 0 ? notesRows[i] : {}, r, { updated_at: new Date().toISOString() }); if (i >= 0) notesRows[i] = mg; else notesRows.push(mg); } }); } catch (_) {}
+        return json(201, [{}]);
+      }
+      return json(200, []);
+    });
+    await page4.addInitScript(MOCK);
+    await page4.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+    await page4.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3, null, { timeout: 30000 });
+    await page4.waitForFunction(() => { const p = patients.find(x => x.cama === '3-301'); return !!(p && document.getElementById('sec-wlotros-' + pid(p).replace(/[^a-zA-Z0-9]/g, '_'))); }, null, { timeout: 10000 }).catch(() => {});
+    await page4.waitForTimeout(1500);
+    // 2ª apertura: la copia local pinta primero (sin «Otros», que vive solo en memoria); WinLab tarda 2.5 s.
+    delayWl = 2500;
+    await page4.reload({ waitUntil: 'load' });
+    await page4.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3 && document.querySelector('[id^="sec-cx-"]'), null, { timeout: 30000 });
+    await page4.waitForTimeout(700);
+    const antes = await page4.evaluate(() => {
+      const ek = pid(patients.find(x => x.cama === '3-301')).replace(/[^a-zA-Z0-9]/g, '_');
+      const plan = document.getElementById('sec-plan-' + ek) || document.getElementById('sec-cx-' + ek);
+      window.scrollTo(0, plan.getBoundingClientRect().top + scrollY - 120);
+      return { ek, otrosYa: !!document.getElementById('sec-wlotros-' + ek), top: Math.round(plan.getBoundingClientRect().top), focusOn: document.body.classList.contains('focus-on') };
+    });
+    const llego = await page4.waitForFunction((ek) => !!document.getElementById('sec-wlotros-' + ek), antes.ek, { timeout: 10000 }).then(() => true, () => false);
+    await page4.waitForTimeout(2500);   // calma (1.8 s) + repintado
+    const despues = await page4.evaluate((ek) => { const plan = document.getElementById('sec-plan-' + ek) || document.getElementById('sec-cx-' + ek); const o = document.getElementById('sec-wlotros-' + ek);
+      return { top: Math.round(plan.getBoundingClientRect().top), otrosH: o ? Math.round(o.getBoundingClientRect().height) : 0, abierta: !!(o && o.open) }; }, antes.ek);
+    check('O14 al reabrir, «Otros» llega tarde (abierta, con su altura) y la sección que estaba a la vista (Plan) no se mueve de su lugar',
+      antes.focusOn && !antes.otrosYa && llego && despues.otrosH > 150 && despues.abierta && Math.abs(despues.top - antes.top) <= 3, JSON.stringify({ antes, despues }));
+    await page4.close();
   }
   check('O12 sin errores de página', errors.length === 0, errors.join(' | '));
   console.log(`\n${pass} passed, ${fail} failed`);

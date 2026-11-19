@@ -2042,8 +2042,17 @@ crece la base).
 PDF que el robot no sabía leer. Con este cambio, si llegan, aparecen leídos o, al menos, con su texto en «Otros
 estudios».
 
-**Ajuste 2026.11.19-3.** Como «🧪 Otros estudios» vive solo en memoria, al abrir la app siempre «cambia»; en la -2 eso
-hacía salir en cada apertura el aviso «💧 WinLab: N pacientes con labs auto-llenados» aunque no se hubiera llenado nada
-(a veces «0 pacientes»). Ahora la caja se pinta igual, pero el aviso vuelve a salir solo cuando de verdad entran labs
-a la tabla (como antes). Los estudios de fechas viejas que trae el respaldo también repintan la tarjeta al llegar.
-Pruebas: O13b (sin aviso con solo «Otros») y O13c (con una BH nueva el aviso sí sale).
+**Ajustes 2026.11.19-3 (revisión independiente después de publicar la -2).**
+- **Aviso al abrir.** Como «🧪 Otros estudios» vive solo en memoria, al abrir la app siempre «cambia»; en la -2 eso
+  hacía salir en cada apertura el aviso «💧 WinLab: N pacientes con labs auto-llenados» aunque no se hubiera llenado
+  nada (a veces «0 pacientes»). Ahora la caja se pinta igual, pero ese aviso ya no lo provoca «Otros»: sale solo cuando
+  hay labs para la tabla, como antes de la -2. Pruebas O13b / O13c.
+- **La ficha ya no salta al abrir.** La caja llega con la nube unos segundos después de abrir (abierta, ~300-400 px) y
+  empujaba Plan/Pendientes justo cuando se iba a escribir. Ahora, en cada repintado, la sección que se tiene a la vista
+  (la del último campo tocado o la primera que se ve) se queda en el mismo lugar de la pantalla aunque arriba crezca
+  o se encoja algo (también la línea «🤖 El robot aún no ha buscado…» que antes la subía ~100 px). Prueba O14.
+- **Lo mismo en todos los iPads.** «Otros» usa solo las filas de los últimos 4 días (lo que la app baja al abrir). Las
+  fechas viejas que trae el respaldo semanal siguen llenando la tabla de labs (eso sí se guarda), pero ya no aparecen
+  unos segundos en «Otros» para desaparecer en la siguiente recarga. Pruebas R-O35 / R-O36.
+- **Batería.** El bisturí y el surgete del encabezado van a pasos (~21 por segundo), como el ECG de antes: el mismo
+  repintado que el ECG o menos (539 contra 550 en un ciclo de 16 s, medido en Chromium). Prueba R12b.

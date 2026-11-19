@@ -9949,7 +9949,7 @@ function plExportBackup() {
           if (!rep || !usar(rep)) return;
           if (!_wloTieneContenido(rep)) return;
           if (targetEspCanon && !usar.namePositive && !_wlSvcOk(rep, targetEspCanon)) return;   // misma guardia que los labs
-          porRid.set(_wloRid(rep), { rep: rep, fallback: fallback, fila: _wloFila(row) });
+          porRid.set(_wloRid(rep), { rep: rep, fallback: fallback, fila: _wloFila(row), scr: String(row.scraped_at || "") });
         });
       });
       const out = [], seen = new Set();
@@ -9969,7 +9969,7 @@ function plExportBackup() {
         items.forEach(function (it) {
           const key = [fecha, ts, it.grupo, it.sub, it.nombre, it.valor, it.unidad, it.texto ? it.texto.length : 0].join("|");
           if (seen.has(key)) return; seen.add(key);
-          out.push(Object.assign({ fecha: fecha, ts: Number.isFinite(ts) ? ts : 0, fila: x.fila, rid: rid }, it));
+          out.push(Object.assign({ fecha: fecha, ts: Number.isFinite(ts) ? ts : 0, fila: x.fila, scr: x.scr, rid: rid }, it));
         });
       });
       out.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)) || (b.ts - a.ts); });
@@ -10698,21 +10698,23 @@ function plExportBackup() {
           // Fechas de TODAS las filas del robot cargadas para este exp (4 días + las viejas del respaldo). Repone las
           // fechas que un guardado con copia vieja le quitó a la nota.
           const _espCanon = normalizeEspImport(p.esp), _ident = _wlIdent(p);
-          // 🧪 Otros estudios: mismas filas y mismas reglas que los labs. Las fechas más viejas que las filas que hay ahora
-          // en memoria (el respaldo de fechas viejas las suelta tras su sync) se conservan de la pasada anterior.
+          // 🧪 Otros estudios: mismas reglas de identidad que los labs, con las filas de los últimos 4 días.
           try {
-            const _oRows = _winlabAllRowsForPatient(p, wl).filter(function (r) { return r === wl || _winlabCensoNameOk(p, r); });
+            // Solo las filas de la ventana normal de 4 días (la misma que baja la app al abrir): las fechas viejas que trae
+            // el respaldo llenan la tabla de labs (eso sí se guarda), pero en «Otros» aparecían unos segundos tras abrir y
+            // se iban en la siguiente recarga; así todos los equipos ven lo mismo siempre.
+            const _oSince = new Date(Date.now() - 4 * 86400000).toISOString();
+            const _oRows = _winlabAllRowsForPatient(p, wl).filter(function (r) { return (r === wl || _winlabCensoNameOk(p, r)) && !(r && r.scraped_at && String(r.scraped_at) < _oSince); });
             const _oPrev = _winlabOtrosByK[pid(p)] || [];
             const _oBuilt = buildWinlabOtros(_oRows, _ident, _espCanon);
-            // De la pasada anterior solo sobrevive lo que venía de filas que ya salieron de memoria (el respaldo de fechas
-            // viejas las suelta tras su sync) y de reportes que no están en las filas de ahora, y SOLO si la identidad del
-            // paciente no cambió (nombre, «nombre en WinLab», gemelos de expediente): un alias corregido no arrastra
-            // estudios de la otra persona.
+            // De la pasada anterior solo sobrevive lo que venía de filas (aún dentro de los 4 días) que ya salieron de memoria
+            // y de reportes que no están en las filas de ahora, y SOLO si la identidad del paciente no cambió (nombre,
+            // «nombre en WinLab», gemelos de expediente): un alias corregido no arrastra estudios de la otra persona.
             const _oSig = JSON.stringify([toSafeString(p.exp).trim(), _ident]);
             // Un reporte que sigue en alguna fila de hoy (aunque ya sea de otra persona o venga vacío) nunca se arrastra.
             const _oFilas = new Set(_oRows.map(_wloFila)), _oRids = _oBuilt.ridsTodos || new Set();
             const _oKeep = _winlabOtrosSigByK[pid(p)] === _oSig
-              ? _oPrev.filter(function (it) { return it.fila && !_oFilas.has(it.fila) && !_oRids.has(it.rid); }) : [];
+              ? _oPrev.filter(function (it) { return it.fila && !_oFilas.has(it.fila) && !_oRids.has(it.rid) && !(it.scr && it.scr < _oSince); }) : [];
             _winlabOtrosSigByK[pid(p)] = _oSig;
             const _oNew = _oBuilt.concat(_oKeep).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)) || (b.ts - a.ts); });
             const _oFirma = function (a) { return a.map(function (it) { return [it.fecha, it.ts, it.grupo, it.nombre, it.valor].join("|"); }).join("\n"); };
@@ -14626,8 +14628,7 @@ function plExportBackup() {
           Object.keys(winlabRowsByExp).forEach(function (e) {
             winlabRowsByExp[e] = winlabRowsByExp[e].filter(function (r) { return r === winlabByExp[e] || !(r.scraped_at && r.scraped_at < since); });
           });
-          // También repinta si solo cambió «🧪 Otros estudios» (estudios de fechas viejas sin labs de la tabla).
-          if ((inserted || (st && st.otros)) && typeof renderViewSoft === "function") renderViewSoft();
+          if (inserted && typeof renderViewSoft === "function") renderViewSoft();
         }
         try { localStorage.setItem(WL_BACKFILL_KEY, JSON.stringify(done)); } catch (_) {}
       } finally { _wlBackfillRunning = false; }
@@ -16872,7 +16873,7 @@ function plExportBackup() {
     // dedo. Ventana corta: sólo mientras llegan eventos de scroll de la ventana (no los de la tira/tablas: esos son de
     // elementos y no detienen la página).
     const RENDER_SCROLL_QUIET_MS = 400;
-    let _lastInteractTs = 0, _lastInteractCtrl = false, _lastScrollTs = 0;
+    let _lastInteractTs = 0, _lastInteractCtrl = false, _lastScrollTs = 0, _lastInteractEl = null;
     try { window.addEventListener("scroll", function () { _lastScrollTs = Date.now(); }, { passive: true }); } catch (_) {}
     (function _bindCalmMarks() {
       const FIELD_SEL = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable], .pl-pen-glass, .pl-ink-cv, .pl-ink-menu, #board-nav, #board-side';
@@ -16880,6 +16881,7 @@ function plExportBackup() {
       const byTarget = { click: 1, pointerdown: 1, pointerup: 1, touchstart: 1, touchend: 1 };
       const mark = function (e) {
         _lastInteractTs = Date.now();
+        try { if (e && e.target && e.target.nodeType === 1) _lastInteractEl = e.target; } catch (_) {}   // ancla de _viewStateCapture
         let ctrl = false;
         try {
           const t = e && e.target;
@@ -16929,6 +16931,24 @@ function plExportBackup() {
         const jb = vp.querySelector("#board-nav .bn-jump");
         const st = { pid: vp.dataset.plPid, mode: vp.dataset.plMode || "", y: window.scrollY || window.pageYOffset || 0, secs: {}, jl: jb ? jb.scrollLeft : 0 };
         vp.querySelectorAll("details.fc-sec[data-sec]").forEach(function (d) { st.secs[d.dataset.sec] = !!d.open; });
+        // Ancla (19 nov 2026): la sección que el usuario tiene a la vista no se mueve aunque ARRIBA de ella cambie la
+        // altura (la caja «🧪 Otros estudios» o la línea del robot llegan con la nube unos segundos después de abrir y
+        // empujaban Plan/Pendientes ~300 px). Prioridad: la sección del último campo/control tocado si se ve y no se ha
+        // desplazado la página desde entonces; si no, la primera sección que empieza dentro de la pantalla; si no, la que
+        // cruza el borde de arriba.
+        try {
+          const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+          const secs = Array.prototype.slice.call(vp.querySelectorAll("details.fc-sec[data-sec]"));
+          const rc = function (d) { return d.getBoundingClientRect(); };
+          const seVe = function (d) { const r = rc(d); return r.height > 0 && r.bottom > 0 && r.top < vh; };
+          let a = null;
+          const t = _lastInteractEl;
+          if (t && t.isConnected && vp.contains(t) && _lastInteractTs >= _lastScrollTs && t.closest) {
+            const s = t.closest("details.fc-sec[data-sec]"); if (s && seVe(s)) a = s;
+          }
+          if (!a) a = secs.find(function (d) { const r = rc(d); return r.height > 0 && r.top >= 0 && r.top < vh; }) || secs.find(seVe) || null;
+          if (a) { st.anc = a.dataset.sec; st.ancTop = rc(a).top; }
+        } catch (_) {}
         return st;
       } catch (_) { return null; }
     }
@@ -16945,6 +16965,14 @@ function plExportBackup() {
       // Altura real de las cajas AHORA (no en el rAF del MutationObserver): el documento no se encoge y el scroll no se recorta.
       try { if (typeof autoResizeAll === "function") autoResizeAll(vp); } catch (_) {}
       try { if (Math.abs((window.scrollY || 0) - st.y) > 1) window.scrollTo(0, st.y); } catch (_) {}
+      // La sección ancla vuelve a quedar donde estaba en la pantalla (lo que creció o se encogió arriba no la mueve).
+      try {
+        if (st.anc != null) {
+          const sel = 'details.fc-sec[data-sec="' + (window.CSS && CSS.escape ? CSS.escape(st.anc) : String(st.anc).replace(/["\\]/g, "")) + '"]';
+          const a = Array.prototype.slice.call(vp.querySelectorAll(sel)).find(function (d) { return d.getBoundingClientRect().height > 0; });
+          if (a) { const dy = a.getBoundingClientRect().top - st.ancTop; if (Math.abs(dy) > 1) window.scrollTo(0, Math.max(0, (window.scrollY || 0) + dy)); }
+        }
+      } catch (_) {}
       try { const jb = st.jl && vp.querySelector("#board-nav .bn-jump"); if (jb && jb.scrollLeft !== st.jl) jb.scrollLeft = st.jl; } catch (_) {}   // barra de saltos (renderView la reconstruye)
     }
     // Repintado de UNA tarjeta en calma (Realtime: notas de otro dispositivo, censo, WinLab, RIS). Varias peticiones se
@@ -36252,8 +36280,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
   <!-- ═══ ENCABEZADO v2 (19 nov 2026, pedido de Gera: «está muy cutre… algo más innovador, más de cirugía, que se vea
        tecnológico; no aumentes el tamaño; agrega el logo del servicio»). SOLO estilo: mismos elementos, ids, botones,
        pestañas y textos; misma altura o menor (paddings y separaciones iguales o más chicos). Va al final de la cascada
-       para ganar a las reglas anteriores. Movimiento suave (monitor/ECG y halo del logo) solo si el sistema no pide
-       «reducir movimiento»; las animaciones mueven capas con transform (no repintan la página). ═══ -->
+       para ganar a las reglas anteriores. Movimiento suave (bisturí/surgete y anillo del logo) solo si el sistema no
+       pide «reducir movimiento». El bisturí y el surgete mueven fondos/máscaras (eso repinta): van a pasos de ~20 por
+       segundo (steps), como el ECG de antes, para no gastar batería en el iPad todo el turno; el anillo gira con
+       transform (no repinta). ═══ -->
   <style id="hdr-v2">
     #header {
       background:
@@ -36306,16 +36336,17 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       .header-title::before { animation: plCut 16s linear infinite; }
       .header-title::after { animation: plSew 16s linear infinite; }
     }
+    /* A pasos (~21 por segundo en cada tramo: 4.48 s → 96, 1.28 s → 28): fondos y máscaras repintan en cada cambio. */
     @keyframes plCut {
-      0% { background-position: 100% 50%, 100% 50%, 100% 50%, 100% 50%; opacity: 0; }
+      0% { background-position: 100% 50%, 100% 50%, 100% 50%, 100% 50%; opacity: 0; animation-timing-function: steps(96); }
       2%, 90% { opacity: 1; }
-      28% { background-position: 112px 50%, 100% 50%, calc(50% + 112px) 50%, calc(50% + 112px) 50%; }
-      36% { background-position: 112px 50%, 100% 50%, 50% 50%, 50% 50%; }
+      28% { background-position: 112px 50%, 100% 50%, calc(50% + 112px) 50%, calc(50% + 112px) 50%; animation-timing-function: steps(28); }
+      36% { background-position: 112px 50%, 100% 50%, 50% 50%, 50% 50%; animation-timing-function: steps(96); }
       64% { background-position: 112px 50%, 112px 50%, 112px 50%, 112px 50%; }
       100% { opacity: 0; }
     }
     @keyframes plSew {
-      0%, 36% { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+      0%, 36% { -webkit-mask-position: 100% 0; mask-position: 100% 0; animation-timing-function: steps(96); }
       64% { -webkit-mask-position: 112px 0; mask-position: 112px 0; }
       90% { opacity: .9; } 100% { opacity: 0; }
     }
