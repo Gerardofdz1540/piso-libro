@@ -1754,6 +1754,65 @@ Una cama es ingreso si pasa **una** de estas dos cosas:
 - Al restaurar a alguien de la Papelera la marca no vuelve sola: la pone la hoja si su fila sigue azul.
 - El filtro **🆕 Ingresos** de «Filtrar camas» no cambió (hoy o ayer, todos los servicios).
 
+## 📌 Tarjeta para el iPad, «No olvidar» por cama, autor en el Tablero y encabezado nuevo (19 de noviembre de 2026, versión 2026.11.19-1)
+
+Solo se reacomodó y se agregó lo pedido. No se borró ninguna caja ni ningún dato, y no hay tablas, columnas ni llaves
+nuevas.
+
+- **Signos vitales y drenajes a la mano.**
+  - Dentro del Pase, **🫀 Pase matutino** (signos vitales) y **🩺 Drenajes y sondas** van primero; después siguen
+    dieta/ATB/TVP, herida, clínico y vasopresor.
+  - En el **iPad vertical** (una columna) el Pase ya no queda hasta abajo: va justo después del DX y antes de Labs.
+  - En el **iPad horizontal** y en la laptop sigue arriba a la derecha.
+  - En **modo Hoja** el Pase va en el segundo renglón, después del DX.
+  - Es solo el orden en pantalla (CSS). Las cajas, sus datos y sus botones son los mismos.
+- **📌 No olvidar de cada cama, siempre a la vista.**
+  - Va arriba de la tarjeta. En el iPad horizontal y en la laptop es lo primero de la columna izquierda, con el Pase
+    (signos vitales) a su lado, arriba a la derecha. En el iPad vertical y en Hoja es lo primero de la ficha. También
+    aparece en las tarjetas simples de otros servicios. Antes era una sección plegada al final.
+  - Para anotar: escribe y toca **＋** o Enter (puedes anotar varios seguidos). Lo que escribiste sin dar Enter no se
+    borra si la tarjeta se repinta. Sirve para «revisar la nota de valoración
+    de la IC», «la postquirúrgica», «el reporte de endoscopía»… El ejemplo gris es solo una sugerencia: la app no anota
+    nada por su cuenta.
+  - Cada uno nuevo guarda **quién lo anotó y cuándo** (etiqueta con el nombre y la hora, del color de esa persona). Los
+    anteriores no traen esos datos y se ven igual que antes.
+  - Para marcarlo hecho, usa la casilla. Los hechos se pliegan en «✓ n hechos».
+  - **✕ pide confirmación**, porque se borra para todo el equipo.
+  - Los pendientes **aparecen solos en la pestaña 📌 No olvidar**, en «🏥 Por paciente», arriba de la lista del equipo:
+    - van en orden de cama y con su autor;
+    - **«Ir a la cama ›»** abre la tarjeta;
+    - la pestaña se actualiza sola cuando otro iPad agrega uno, sin borrar lo que estés escribiendo en ella;
+    - «Ir a la cama ›» quita los filtros del tablero si escondían esa cama.
+  - **Dos iPads a la vez en la misma cama:**
+    - Cada recordatorio nuevo lleva su propia identidad, y lo que agrega cada iPad se junta.
+    - Si uno cambia la casilla o lo borra, gana el cambio más reciente.
+    - Borrar deja una marca, para que otro iPad no lo regrese. La marca se limpia sola a los 30 días.
+    - Palomear o borrar busca el recordatorio por su identidad, no por su posición: una pantalla vieja no marca otro.
+    - Antes ganaba la última copia y se perdía el recordatorio del otro. Ahora tampoco se pierde si una subida falla por
+      la red, ni si la app se cierra con algo sin subir.
+    - Los recordatorios de antes de esta versión siguen igual. Un iPad todavía sin actualizar ve los borrados como hechos
+      (tachados).
+  - El dato sigue siendo `notes.checklist._ptReminders`.
+  - En Hoja, **⚙ Cajas** lo sigue ocultando.
+  - Al imprimir sale solo si tiene pendientes, sin la caja para anotar.
+- **Tablero: quién escribió cada renglón.**
+  - Al crear un renglón o al cambiar su texto queda **«✍️ Nombre · dd/mm hh:mm»**: el primer nombre de la cuenta, en el
+    color de sus firmas.
+  - Palomearlo, moverlo o solo tocarlo no cambia el autor. Si la pantalla estaba vieja (otro iPad lo cambió y aún no se
+    repinta), tocarlo y salir ya no pisa lo del otro iPad.
+  - La etiqueta va en el mismo renglón del texto cuando cabe, así que la lista no se alarga.
+  - Viaja dentro del mismo renglón (`config.tablero_v1`: `by`, `bt`), así que los demás iPads lo ven en su siguiente
+    bajada (cada 20 s como máximo).
+  - Los renglones viejos no tienen autor.
+- **Encabezado nuevo**, con el logo del servicio:
+  - **misma altura o menor** en todos los anchos y estados (laptop 179 px, iPad horizontal 179–207 px, iPad vertical
+    211 px; antes 183, 212 y 216). En monitores anchos sigue en un renglón y al bajar se encoge igual (40 px);
+  - mismos botones, campos y pestañas, en el mismo orden;
+  - fondo de monitor con un trazo de ECG y un halo en el logo, que se mueven despacio y se detienen si el iPad tiene
+    activado «Reducir movimiento»;
+  - controles de vidrio, y el chip de «Labs» ya se lee;
+  - el logo va incrustado en la app (funciona sin red) y no se imprime.
+
 ## 🛡 Tarjetas que se quedaban «editadas aquí» (11 de noviembre de 2026, versión 2026.11.11-1)
 
 La revisión integral del 11 de noviembre encontró la causa de las sobrescrituras del 8 de noviembre (dos sesiones de Mac

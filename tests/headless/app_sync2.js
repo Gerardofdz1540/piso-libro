@@ -279,6 +279,95 @@ const store = {
   check('S16 📌 Tablero compartido: baja lo de otros iPads, sube lo de este (con hora por renglón) y un borrado deja marca para no resucitar',
     s16.bajo === 'ALTA DE OTRO IPAD' && (nube.r1 || []).some(i => i.text === 'PENDIENTE DE ESTE IPAD' && i.ts > 0) && !(nube.altas || []).some(i => i.id === 'r1') && !!(nube._borrados || {}).r1, JSON.stringify({ s16, nube }));
 
+  // ── S16b (19 nov 2026): quién escribió cada renglón del Tablero ──
+  // Renglones que ya bajaron de otro iPad (la bajada se limita a una cada 20 s y S16 acaba de hacerla): copia local y nube iguales.
+  const T16b = { altas: [{ id: 'v1', text: 'RENGLON VIEJO SIN AUTOR', done: false, createdAt: '2026-10-27T08:00:00Z', ts: 1 },
+    { id: 'x1', text: 'DE OTRO IPAD', done: false, createdAt: '2026-10-27T08:00:00Z', ts: 2, by: '<img src=x onerror=window.__xss=1>', bt: 1763550000000 }], _borrados: {} };
+  store.config.tablero_v1 = JSON.parse(JSON.stringify(T16b));
+  const s16b = await page.evaluate(async (T) => {
+    localStorage.setItem('pl_tablero_v1', JSON.stringify(T));
+    window.__xss = 0;
+    setView('tablero');
+    await new Promise(r => setTimeout(r, 700));
+    renderTablero();
+    const chipDe = (id) => { const li = document.querySelector('#view-tablero [data-item-id="' + id + '"]'); const c = li && li.querySelector('.t-by'); return c ? c.textContent : null; };
+    const viejo = chipDe('v1'), otro = chipDe('x1'), imgs = document.querySelectorAll('#view-tablero .t-by img').length;
+    tableroAddItem('postqx');
+    let d = JSON.parse(localStorage.getItem('pl_tablero_v1')); const id = d.postqx[d.postqx.length - 1].id;
+    const alCrear = { by: d.postqx[d.postqx.length - 1].by, bt: d.postqx[d.postqx.length - 1].bt };
+    tableroUpdateText('postqx', id, 'REVISAR NOTA POSTQX 3-301');
+    d = JSON.parse(localStorage.getItem('pl_tablero_v1')); const tras = d.postqx.find(i => i.id === id);
+    // Otra persona: solo lo toca (blur sin cambiar), lo palomea y lo mueve → el autor no cambia; si cambia el texto, sí.
+    localStorage.setItem('pl_user_name', 'Otra Persona');
+    tableroUpdateText('postqx', id, 'REVISAR NOTA POSTQX 3-301 ');
+    tableroToggleDone('postqx', id);
+    d = JSON.parse(localStorage.getItem('pl_tablero_v1')); const tocado = d.postqx.find(i => i.id === id);
+    tableroUpdateText('postqx', id, 'REVISAR NOTA POSTQX 3-301 Y DE ENDOSCOPIA');
+    d = JSON.parse(localStorage.getItem('pl_tablero_v1')); const editado = d.postqx.find(i => i.id === id);
+    localStorage.setItem('pl_user_name', 'Tester Uno');
+    renderTablero();
+    const chipNuevo = chipDe(id);
+    // Un renglón vacío (recién agregado, sin texto) no muestra autor.
+    tableroAddItem('r1'); renderTablero();
+    d = JSON.parse(localStorage.getItem('pl_tablero_v1')); const vacioId = d.r1[d.r1.length - 1].id;
+    const chipVacio = chipDe(vacioId);
+    await new Promise(r => setTimeout(r, 1800));
+    setView('piso');
+    return { viejo, otro, imgs, xss: window.__xss, alCrear, tras: { by: tras.by, bt: tras.bt > 0 }, tocado: { by: tocado.by, done: tocado.done }, editado: editado.by, chipNuevo, chipVacio, id };
+  }, T16b);
+  const nube16b = store.config.tablero_v1 || {};
+  check('S16b ✍️ Tablero: cada renglón dice quién lo escribió (primer nombre y hora); tocarlo, palomearlo o moverlo no cambia el autor; cambiar el texto sí; los viejos sin autor y los vacíos no muestran nada; el nombre llega escapado y sube a la nube con el renglón',
+    s16b.viejo === null && /^✍️ <img src=x onerror=window.__xss=1> · \d\d\/\d\d \d\d:\d\d$/.test(s16b.otro || '') && s16b.imgs === 0 && s16b.xss === 0
+    && s16b.alCrear.by === 'Tester' && s16b.alCrear.bt > 0 && s16b.tras.by === 'Tester' && s16b.tras.bt
+    && s16b.tocado.by === 'Tester' && s16b.tocado.done === true && s16b.editado === 'Otra'
+    && /^✍️ Otra · \d\d\/\d\d \d\d:\d\d$/.test(s16b.chipNuevo || '') && s16b.chipVacio === null
+    && (nube16b.postqx || []).some(i => i.id === s16b.id && i.by === 'Otra' && i.bt > 0),
+    JSON.stringify({ s16b, postqx: nube16b.postqx }));
+
+  // ── S16c: tocar un renglón y salir (blur real) no cambia el autor ni el texto, aunque traiga saltos de línea o «&lt;» ──
+  const s16c = await page.evaluate(async () => {
+    const T = { altas: [{ id: 'z1', text: 'LINEA UNO\nLINEA DOS', done: false, createdAt: '2026-11-19T08:00:00Z', ts: 5, by: 'Luis', bt: 1763550000000 },
+      { id: 'z2', text: 'usar &lt; y <b> tal cual', done: false, createdAt: '2026-11-19T08:01:00Z', ts: 6, by: 'Luis', bt: 1763550000000 }], _borrados: {} };
+    localStorage.setItem('pl_tablero_v1', JSON.stringify(T));
+    setView('tablero'); renderTablero(); await new Promise(r => setTimeout(r, 300));
+    for (const id of ['z1', 'z2']) {
+      const el = document.querySelector('#view-tablero [data-item-id="' + id + '"] .tablero-text');
+      el.focus(); await new Promise(r => setTimeout(r, 30)); el.blur(); await new Promise(r => setTimeout(r, 120));
+    }
+    const d = JSON.parse(localStorage.getItem('pl_tablero_v1'));
+    const z1 = d.altas.find(i => i.id === 'z1'), z2 = d.altas.find(i => i.id === 'z2');
+    // Una cuenta sin nombre que SÍ cambia el texto: no se le atribuye a Luis.
+    localStorage.setItem('pl_user_name', '');
+    tableroUpdateText('altas', 'z2', 'texto cambiado sin nombre');
+    const z2b = JSON.parse(localStorage.getItem('pl_tablero_v1')).altas.find(i => i.id === 'z2');
+    localStorage.setItem('pl_user_name', 'Tester Uno');
+    setView('piso');
+    return { z1: { by: z1.by, bt: z1.bt }, z2: { by: z2.by, text: z2.text }, z2b: { by: z2b.by || null, bt: z2b.bt || null } };
+  });
+  check('S16c ✍️ Tablero: tocar un renglón y salir sin escribir no cambia su autor (ni con saltos de línea) ni su texto («&lt;» se queda tal cual); si alguien sin nombre cambia el texto, ya no se le atribuye al anterior',
+    s16c.z1.by === 'Luis' && s16c.z1.bt === 1763550000000 && s16c.z2.by === 'Luis' && s16c.z2.text === 'usar &lt; y <b> tal cual' && s16c.z2b.by === null && s16c.z2b.bt === null, JSON.stringify(s16c));
+
+  // ── S16d: pantalla vieja: otro iPad cambió el renglón (ya está en la copia local) y aquí solo lo tocan y salen →
+  //    no se pisa lo del otro iPad ni cambia el autor; al repintar se ve lo nuevo ──
+  const s16d = await page.evaluate(async () => {
+    const T = { altas: [{ id: 'x9', text: 'TAC abdomen', done: false, createdAt: '2026-11-19T08:00:00Z', ts: 10, by: 'Carlos', bt: 1763550000000 }], _borrados: {} };
+    localStorage.setItem('pl_tablero_v1', JSON.stringify(T));
+    setView('tablero'); renderTablero(); await new Promise(r => setTimeout(r, 200));
+    const d = JSON.parse(localStorage.getItem('pl_tablero_v1'));   // llega lo de Ana (como la fusión en segundo plano, sin repintar)
+    Object.assign(d.altas[0], { text: 'TAC cancelada', by: 'Ana', bt: 1763560000000, ts: Date.now() });
+    localStorage.setItem('pl_tablero_v1', JSON.stringify(d));
+    const el = document.querySelector('#view-tablero [data-item-id="x9"] .tablero-text');
+    const enPantalla = el.innerText;
+    el.focus(); await new Promise(r => setTimeout(r, 30)); el.blur(); await new Promise(r => setTimeout(r, 200));
+    const x = JSON.parse(localStorage.getItem('pl_tablero_v1')).altas[0];
+    renderTablero();
+    const ahora = document.querySelector('#view-tablero [data-item-id="x9"] .tablero-text').innerText;
+    setView('piso');
+    return { enPantalla, guardado: x.text, by: x.by, ahora };
+  });
+  check('S16d ✍️ Tablero con la pantalla vieja: tocar el renglón y salir no pisa lo que escribió otro iPad ni cambia el autor; al repintar se ve lo nuevo',
+    s16d.enPantalla === 'TAC abdomen' && s16d.guardado === 'TAC cancelada' && s16d.by === 'Ana' && s16d.ahora === 'TAC cancelada', JSON.stringify(s16d));
+
   // ── S17 + S18: letra, altas viejas ──
   const s17 = await page.evaluate(() => {
     const v = () => getComputedStyle(document.documentElement).getPropertyValue('--pl-fs-scale').trim();
