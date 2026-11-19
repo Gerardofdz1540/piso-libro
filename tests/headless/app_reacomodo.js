@@ -418,6 +418,19 @@ const NOTES = [
   check('R12 encabezado quirúrgico: bisturí/surgete y anillo del logo se mueven solo si el iPad no pide «reducir movimiento»; ya no hay ECG; al imprimir no salen ni el logo ni los fondos',
     [mov.corte, mov.surgete, mov.anillo, mov.destello].every(a => a === 'none') && mov2.corte === 'plCut' && mov2.surgete === 'plSew' && mov2.anillo === 'plRing' && mov2.destello === 'plRing'
     && (mov2.ecg === 'none' || mov2.ecg === 'normal') && imp.badge === 'none' && imp.corte === 'none' && imp.surgete === 'none' && imp.puntos === 'none', JSON.stringify({ mov, mov2, imp }));
+  // Batería: el bisturí y el surgete mueven fondos/máscaras (eso repinta en cada cambio); cada tramo que se mueve va a pasos
+  // (steps), no «linear» a 60 cuadros por segundo todo el turno (revisión 19 nov 2026: ~2.7× más repintado que el ECG).
+  const pasos = await page.evaluate(() => {
+    const out = {}; const sh = document.getElementById('hdr-v2'); const rules = (sh && sh.sheet) ? Array.from(sh.sheet.cssRules) : [];
+    rules.filter(r => r.type === 7 && (r.name === 'plCut' || r.name === 'plSew')).forEach(r => {
+      Array.from(r.cssRules).forEach(k => { const mueve = /position/.test(k.style.cssText); if (mueve) out[r.name + ' ' + k.keyText] = k.style.animationTimingFunction || ''; });
+    });
+    return out;
+  });
+  const tramos = Object.keys(pasos);
+  check('R12b encabezado sin gastar batería: cada tramo con movimiento del bisturí (0 %, 28 %, 36 %) y del surgete (36 %) va a pasos (steps), no a 60 cuadros por segundo',
+    ['plCut 0%', 'plCut 28%', 'plCut 36%'].every(t => /^steps\(/.test(pasos[t] || '')) && tramos.some(t => /^plSew .*36%/.test(t) && /^steps\(/.test(pasos[t]))
+    && tramos.filter(t => !/64%/.test(t)).every(t => /^steps\(/.test(pasos[t])), JSON.stringify(pasos));
 
   check('R13 sin errores de página', errors.length === 0, errors.join(' | '));
   console.log(`\nRESULT APP-REACOMODO: ${pass} passed, ${fail} failed`);

@@ -9949,7 +9949,7 @@ function plExportBackup() {
           if (!rep || !usar(rep)) return;
           if (!_wloTieneContenido(rep)) return;
           if (targetEspCanon && !usar.namePositive && !_wlSvcOk(rep, targetEspCanon)) return;   // misma guardia que los labs
-          porRid.set(_wloRid(rep), { rep: rep, fallback: fallback, fila: _wloFila(row) });
+          porRid.set(_wloRid(rep), { rep: rep, fallback: fallback, fila: _wloFila(row), scr: String(row.scraped_at || "") });
         });
       });
       const out = [], seen = new Set();
@@ -9969,7 +9969,7 @@ function plExportBackup() {
         items.forEach(function (it) {
           const key = [fecha, ts, it.grupo, it.sub, it.nombre, it.valor, it.unidad, it.texto ? it.texto.length : 0].join("|");
           if (seen.has(key)) return; seen.add(key);
-          out.push(Object.assign({ fecha: fecha, ts: Number.isFinite(ts) ? ts : 0, fila: x.fila, rid: rid }, it));
+          out.push(Object.assign({ fecha: fecha, ts: Number.isFinite(ts) ? ts : 0, fila: x.fila, scr: x.scr, rid: rid }, it));
         });
       });
       out.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)) || (b.ts - a.ts); });
@@ -10698,21 +10698,23 @@ function plExportBackup() {
           // Fechas de TODAS las filas del robot cargadas para este exp (4 días + las viejas del respaldo). Repone las
           // fechas que un guardado con copia vieja le quitó a la nota.
           const _espCanon = normalizeEspImport(p.esp), _ident = _wlIdent(p);
-          // 🧪 Otros estudios: mismas filas y mismas reglas que los labs. Las fechas más viejas que las filas que hay ahora
-          // en memoria (el respaldo de fechas viejas las suelta tras su sync) se conservan de la pasada anterior.
+          // 🧪 Otros estudios: mismas reglas de identidad que los labs, con las filas de los últimos 4 días.
           try {
-            const _oRows = _winlabAllRowsForPatient(p, wl).filter(function (r) { return r === wl || _winlabCensoNameOk(p, r); });
+            // Solo las filas de la ventana normal de 4 días (la misma que baja la app al abrir): las fechas viejas que trae
+            // el respaldo llenan la tabla de labs (eso sí se guarda), pero en «Otros» aparecían unos segundos tras abrir y
+            // se iban en la siguiente recarga; así todos los equipos ven lo mismo siempre.
+            const _oSince = new Date(Date.now() - 4 * 86400000).toISOString();
+            const _oRows = _winlabAllRowsForPatient(p, wl).filter(function (r) { return (r === wl || _winlabCensoNameOk(p, r)) && !(r && r.scraped_at && String(r.scraped_at) < _oSince); });
             const _oPrev = _winlabOtrosByK[pid(p)] || [];
             const _oBuilt = buildWinlabOtros(_oRows, _ident, _espCanon);
-            // De la pasada anterior solo sobrevive lo que venía de filas que ya salieron de memoria (el respaldo de fechas
-            // viejas las suelta tras su sync) y de reportes que no están en las filas de ahora, y SOLO si la identidad del
-            // paciente no cambió (nombre, «nombre en WinLab», gemelos de expediente): un alias corregido no arrastra
-            // estudios de la otra persona.
+            // De la pasada anterior solo sobrevive lo que venía de filas (aún dentro de los 4 días) que ya salieron de memoria
+            // y de reportes que no están en las filas de ahora, y SOLO si la identidad del paciente no cambió (nombre,
+            // «nombre en WinLab», gemelos de expediente): un alias corregido no arrastra estudios de la otra persona.
             const _oSig = JSON.stringify([toSafeString(p.exp).trim(), _ident]);
             // Un reporte que sigue en alguna fila de hoy (aunque ya sea de otra persona o venga vacío) nunca se arrastra.
             const _oFilas = new Set(_oRows.map(_wloFila)), _oRids = _oBuilt.ridsTodos || new Set();
             const _oKeep = _winlabOtrosSigByK[pid(p)] === _oSig
-              ? _oPrev.filter(function (it) { return it.fila && !_oFilas.has(it.fila) && !_oRids.has(it.rid); }) : [];
+              ? _oPrev.filter(function (it) { return it.fila && !_oFilas.has(it.fila) && !_oRids.has(it.rid) && !(it.scr && it.scr < _oSince); }) : [];
             _winlabOtrosSigByK[pid(p)] = _oSig;
             const _oNew = _oBuilt.concat(_oKeep).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)) || (b.ts - a.ts); });
             const _oFirma = function (a) { return a.map(function (it) { return [it.fecha, it.ts, it.grupo, it.nombre, it.valor].join("|"); }).join("\n"); };
@@ -16871,7 +16873,7 @@ function plExportBackup() {
     // dedo. Ventana corta: sólo mientras llegan eventos de scroll de la ventana (no los de la tira/tablas: esos son de
     // elementos y no detienen la página).
     const RENDER_SCROLL_QUIET_MS = 400;
-    let _lastInteractTs = 0, _lastInteractCtrl = false, _lastScrollTs = 0;
+    let _lastInteractTs = 0, _lastInteractCtrl = false, _lastScrollTs = 0, _lastInteractEl = null;
     try { window.addEventListener("scroll", function () { _lastScrollTs = Date.now(); }, { passive: true }); } catch (_) {}
     (function _bindCalmMarks() {
       const FIELD_SEL = 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), [contenteditable], .pl-pen-glass, .pl-ink-cv, .pl-ink-menu, #board-nav, #board-side';
@@ -16879,6 +16881,7 @@ function plExportBackup() {
       const byTarget = { click: 1, pointerdown: 1, pointerup: 1, touchstart: 1, touchend: 1 };
       const mark = function (e) {
         _lastInteractTs = Date.now();
+        try { if (e && e.target && e.target.nodeType === 1) _lastInteractEl = e.target; } catch (_) {}   // ancla de _viewStateCapture
         let ctrl = false;
         try {
           const t = e && e.target;
@@ -16928,6 +16931,16 @@ function plExportBackup() {
         const jb = vp.querySelector("#board-nav .bn-jump");
         const st = { pid: vp.dataset.plPid, mode: vp.dataset.plMode || "", y: window.scrollY || window.pageYOffset || 0, secs: {}, jl: jb ? jb.scrollLeft : 0 };
         vp.querySelectorAll("details.fc-sec[data-sec]").forEach(function (d) { st.secs[d.dataset.sec] = !!d.open; });
+        // «🧪 Otros estudios» (19 nov 2026): vive solo en memoria y llega con la nube unos segundos después de abrir, ya
+        // abierta (~300-400 px). Si entra ARRIBA de lo que se está viendo empujaba Plan/Pendientes justo al ir a escribir.
+        // Se anota dónde está (o dónde entraría: justo antes de Cirugías) para compensar SOLO ese cambio en el restore.
+        // Hasta arriba de la página (y = 0) no se compensa nada: lo nuevo de arriba se ve.
+        if (st.y > 0) try {
+          const card = document.getElementById("card-" + st.pid);
+          const box = card && card.querySelector('[id^="sec-wlotros-"]'), sig = card && card.querySelector('[id^="sec-cx-"]');
+          const rb = box && box.getBoundingClientRect(), rs = sig && sig.getBoundingClientRect();
+          if (sig && rs.height > 0) st.wlo = { h: rb && rb.height > 0 ? rb.height : 0, top: rb && rb.height > 0 ? rb.top : rs.top, sig: sig.id, sigTop: rs.top };
+        } catch (_) {}
         return st;
       } catch (_) { return null; }
     }
@@ -16943,7 +16956,54 @@ function plExportBackup() {
       }
       // Altura real de las cajas AHORA (no en el rAF del MutationObserver): el documento no se encoge y el scroll no se recorta.
       try { if (typeof autoResizeAll === "function") autoResizeAll(vp); } catch (_) {}
-      try { if (Math.abs((window.scrollY || 0) - st.y) > 1) window.scrollTo(0, st.y); } catch (_) {}
+      // Posición a restaurar: la misma de antes (st.y), o, si «🧪 Otros estudios» cambió de alto ENTERA arriba de lo que
+      // se ve (por debajo de la barra de camas, que es fija), la que deja lo que va después (Cirugías, Plan…) en su lugar
+      // de la pantalla. Si la caja se ve aunque sea en parte no se compensa (igual que antes: lo nuevo se ve aparecer y lo
+      // que se está leyendo dentro de la caja no brinca). En dos columnas (iPad
+      // horizontal) solo si lo último que se tocó es de la columna principal y no se ha desplazado la página desde entonces
+      // (si no, la columna lateral perdería su lugar).
+      try {
+        let objetivo = function () { return st.y; }, compensa = false;
+        const w = st.wlo; const card = w && document.getElementById("card-" + st.pid);
+        const box = card && card.querySelector('[id^="sec-wlotros-"]'); const rb = box && box.getBoundingClientRect();
+        const h = rb && rb.height > 0 ? rb.height : 0;
+        if (card && Math.abs(h - w.h) > 1) {
+          const nav = document.getElementById("board-nav"); let borde = 0;
+          try { if (nav && /sticky|fixed/.test(getComputedStyle(nav).position)) borde = Math.max(0, nav.getBoundingClientRect().bottom); } catch (_) {}
+          const m = card.querySelector(".fc-main"), sd = card.querySelector(".fc-side");
+          const rm = m && m.getBoundingClientRect(), rsd = sd && sd.getBoundingClientRect();
+          const dosCol = !!(rm && rsd && rm.height > 0 && rsd.height > 0 && rsd.left >= rm.right - 2);
+          const t = _lastInteractEl;
+          const enMain = !!(m && t && t.isConnected && m.contains(t) && _lastInteractTs >= _lastScrollTs);
+          if (w.top + w.h <= borde && (!dosCol || enMain)) {
+            compensa = true;
+            objetivo = function () {
+              const sg = document.getElementById(w.sig);
+              if (!sg || !vp.isConnected || !vp.contains(sg) || vp.dataset.plPid !== st.pid || (vp.dataset.plMode || "") !== st.mode) return null;
+              const r = sg.getBoundingClientRect(); if (r.height <= 0) return null;
+              return (window.scrollY || 0) + (r.top - w.sigTop);
+            };
+          }
+        }
+        const aplicar = function () { const y = objetivo(); if (y != null && Math.abs((window.scrollY || 0) - y) > 1) window.scrollTo(0, Math.max(0, y)); };
+        aplicar();
+        // WebKit (iPad): justo tras el repintado la página puede quedar unos cuadros más corta (cajas de texto y selects aún
+        // sin su altura) y el navegador recorta el scroll (al fondo de la ficha la vista quedaba ~10-40 px corrida). Se
+        // vuelve a aplicar cuando el diseño se asienta (200 y 600 ms), SOLO si nadie tocó la pantalla ni se movió el scroll
+        // desde entonces. Nunca en el cuadro siguiente: ahí un desplazamiento suave que el mismo toque acaba de pedir
+        // (🔔 Labs nuevos → ficha, «Diagrama» de la barra) todavía no avanza y se cancelaría.
+        const yAhora = window.scrollY || 0, y0 = objetivo();
+        if (compensa || (y0 != null && Math.abs(yAhora - y0) > 1)) {
+          let yEsperada = yAhora; const tToque = _lastInteractTs;
+          const otraVez = function () {
+            try {
+              if (_lastInteractTs !== tToque || Math.abs((window.scrollY || 0) - yEsperada) > 1) return;
+              aplicar(); yEsperada = window.scrollY || 0;
+            } catch (_) {}
+          };
+          setTimeout(otraVez, 200); setTimeout(otraVez, 600);
+        }
+      } catch (_) {}
       try { const jb = st.jl && vp.querySelector("#board-nav .bn-jump"); if (jb && jb.scrollLeft !== st.jl) jb.scrollLeft = st.jl; } catch (_) {}   // barra de saltos (renderView la reconstruye)
     }
     // Repintado de UNA tarjeta en calma (Realtime: notas de otro dispositivo, censo, WinLab, RIS). Varias peticiones se
@@ -17859,8 +17919,10 @@ function plExportBackup() {
       // poblados sin que el usuario haga nada.
       if (isWinlabAutoSyncEnabled() && patients && patients.length && winlabByExp && Object.keys(winlabByExp).length) {
         applyWinlabSyncToPatients({ verbose: false }).then(stats => {
-          if (stats.inserted + stats.merged > 0 || stats.otros > 0) {
-            renderViewSoft();
+          // «🧪 Otros estudios» vive solo en memoria: al abrir siempre cambia, así que solo repinta; el aviso sale solo
+          // cuando de verdad se llenaron labs (como antes), no en cada apertura.
+          if (stats.inserted + stats.merged > 0 || stats.otros > 0) renderViewSoft();
+          if (stats.inserted + stats.merged > 0) {
             _wlShowToast(
               `💧 WinLab: ${stats.matched} pacientes con labs auto-llenados`,
               "#0e7490", 3500
@@ -31592,7 +31654,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.19-2";
+    const PL_BUILD = "2026.11.19-3";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -36249,8 +36311,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
   <!-- ═══ ENCABEZADO v2 (19 nov 2026, pedido de Gera: «está muy cutre… algo más innovador, más de cirugía, que se vea
        tecnológico; no aumentes el tamaño; agrega el logo del servicio»). SOLO estilo: mismos elementos, ids, botones,
        pestañas y textos; misma altura o menor (paddings y separaciones iguales o más chicos). Va al final de la cascada
-       para ganar a las reglas anteriores. Movimiento suave (monitor/ECG y halo del logo) solo si el sistema no pide
-       «reducir movimiento»; las animaciones mueven capas con transform (no repintan la página). ═══ -->
+       para ganar a las reglas anteriores. Movimiento suave (bisturí/surgete y anillo del logo) solo si el sistema no
+       pide «reducir movimiento». El bisturí y el surgete mueven fondos/máscaras (eso repinta): van a pasos de ~20 por
+       segundo (steps), como el ECG de antes, para no gastar batería en el iPad todo el turno; el anillo gira con
+       transform (no repinta). ═══ -->
   <style id="hdr-v2">
     #header {
       background:
@@ -36303,16 +36367,17 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       .header-title::before { animation: plCut 16s linear infinite; }
       .header-title::after { animation: plSew 16s linear infinite; }
     }
+    /* A pasos (~21 por segundo en cada tramo: 4.48 s → 96, 1.28 s → 28): fondos y máscaras repintan en cada cambio. */
     @keyframes plCut {
-      0% { background-position: 100% 50%, 100% 50%, 100% 50%, 100% 50%; opacity: 0; }
+      0% { background-position: 100% 50%, 100% 50%, 100% 50%, 100% 50%; opacity: 0; animation-timing-function: steps(96); }
       2%, 90% { opacity: 1; }
-      28% { background-position: 112px 50%, 100% 50%, calc(50% + 112px) 50%, calc(50% + 112px) 50%; }
-      36% { background-position: 112px 50%, 100% 50%, 50% 50%, 50% 50%; }
+      28% { background-position: 112px 50%, 100% 50%, calc(50% + 112px) 50%, calc(50% + 112px) 50%; animation-timing-function: steps(28); }
+      36% { background-position: 112px 50%, 100% 50%, 50% 50%, 50% 50%; animation-timing-function: steps(96); }
       64% { background-position: 112px 50%, 112px 50%, 112px 50%, 112px 50%; }
       100% { opacity: 0; }
     }
     @keyframes plSew {
-      0%, 36% { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+      0%, 36% { -webkit-mask-position: 100% 0; mask-position: 100% 0; animation-timing-function: steps(96); }
       64% { -webkit-mask-position: 112px 0; mask-position: 112px 0; }
       90% { opacity: .9; } 100% { opacity: 0; }
     }

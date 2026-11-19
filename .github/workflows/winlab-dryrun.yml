@@ -15,6 +15,17 @@ on:
   schedule:
     - cron: "17 9 * * 0"  # domingo 03:17 León (UTC-6, sin horario de verano)
   workflow_dispatch:
+    inputs:
+      profilo:
+        description: "Ventana de búsqueda de WinLab para esta corrida (vacío = la de siempre, MES). Ej.: SEMANA, AYER Y HOY. Sirve para comparar si la lista trae los reportes más nuevos."
+        required: false
+        default: ""
+        type: string
+      exp:
+        description: "Solo estos pacientes: «ID-<uuid>» separados por coma (vacío = todo el censo). No uses expedientes: el dato es público."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -84,7 +95,8 @@ jobs:
           WINLAB_NEXT_SELECTOR:     ${{ secrets.WINLAB_NEXT_SELECTOR }}
           WL_TEMPORALIDAD_TAB_SEL:  ${{ secrets.WL_TEMPORALIDAD_TAB_SEL }}
           WL_PROFILO_SEL:           ${{ secrets.WL_PROFILO_SEL }}
-          WL_PROFILO_VALUE:         ${{ secrets.WL_PROFILO_VALUE }}
+          WL_PROFILO_VALUE:         ${{ inputs.profilo || secrets.WL_PROFILO_VALUE }}
+          WL_TARGET_EXP:            ${{ inputs.exp }}
           WL_LOOKBACK_DAYS:         ${{ secrets.WL_LOOKBACK_DAYS }}
           # Mismo tope de drill-down que la corrida real (ver winlab-scraper.yml).
           WL_DRILLDOWN_MAX:         "12"

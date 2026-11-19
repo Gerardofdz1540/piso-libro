@@ -19,6 +19,14 @@ const MOCK = `(() => {
   const chan={ on(){ return chan; }, subscribe(){ return chan; }, unsubscribe(){ return Promise.resolve('ok'); }, send(){ return Promise.resolve('ok'); } };
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
+// Vigía del aviso de sincronización: anota cada «labs auto-llenados» que muestra el aviso, aunque luego se oculte.
+const VIGIA_AVISOS = `(() => {
+  window.__plAvisos = [];
+  const leer = () => { const t = document.getElementById('__wl_sync_toast'); const s = t ? (t.textContent || '') : '';
+    if (t && t.style.display !== 'none' && /auto-llenados/.test(s) && window.__plAvisos[window.__plAvisos.length - 1] !== s) window.__plAvisos.push(s); };
+  const iniciar = () => new MutationObserver(leer).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style'] });
+  if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
+})();`;
 const d0 = new Date();
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const dmy = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -307,6 +315,23 @@ const PTS = [
     winlabByExp = Object.assign({}, winlabByExp, { '26-91003': sinB2 }); winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [sinB2] }); _winlabExpIndex = null;
     await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
     out.upsert = { conVih, despues: (_winlabOtrosByK[k3] || []).some(x => x.nombre === 'VIH') };
+    // Fila VIEJA que trae el respaldo (> 4 días): sus labs van a la tabla, pero NO a «Otros» (al recargar no estaría y cada
+    // iPad vería algo distinto); la de 3 días (dentro de la ventana normal) sí cuenta (R-O24).
+    const A5 = (function () { const d = new Date(Date.now() - 5 * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    const vieja = row('26-91003', p3.nombre, [H3, rep('R30', A5.split('-').reverse().join('/') + ' 06:00', [{ estudio: 'GLUCOSA EN LIQUIDO PERITONEAL', valor: '25.0', unidad: 'mg/dL', referencia: '' }, { estudio: 'HEMOGLOBINA', valor: '10.4', unidad: 'g/dL', referencia: '' }])], A5, new Date(Date.now() - 5 * 86400000).toISOString());
+    winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [vieja, sinB2] }); _winlabExpIndex = null;
+    await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
+    out.vieja = { otros: (_winlabOtrosByK[k3] || []).some(x => /PERITONEAL/.test(x.nombre)), tabla: ((noteData[k3].labHistory || []).find(s => s.fecha === A5) || { labs: {} }).labs.hb || '' };
+    // Una fila que sale de la ventana de 4 días con la app abierta deja de contar (y no se queda «arrastrada»), igual que
+    // al recargar.
+    const A4 = (function () { const d = new Date(Date.now() - 4 * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    const borde = row('26-91003', p3.nombre, [H3, rep('R31', A4.split('-').reverse().join('/') + ' 08:00', [{ estudio: 'AMILASA EN LIQUIDO PERITONEAL', valor: '900', unidad: 'U/L', referencia: '' }])], A4, new Date(Date.now() - 4 * 86400000 + 2500).toISOString());
+    winlabRowsByExp = Object.assign({}, winlabRowsByExp, { '26-91003': [borde, sinB2] }); _winlabExpIndex = null;
+    await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
+    const bordeAntes = (_winlabOtrosByK[k3] || []).some(x => /AMILASA EN LIQUIDO PERITONEAL/.test(x.nombre));
+    await new Promise(r => setTimeout(r, 3200));
+    await applyWinlabSyncToPatients({ verbose: false, only: [p3] });
+    out.borde = { antes: bordeAntes, despues: (_winlabOtrosByK[k3] || []).some(x => /AMILASA EN LIQUIDO PERITONEAL/.test(x.nombre)) };
     return out;
   }, { D: ymd(d0), A: ymd(ayer), Dd: dmy(d0), Ad: dmy(ayer) });
   const ri = (pred) => rv.items.filter(pred);
@@ -338,6 +363,8 @@ const PTS = [
   check('R-O23 alias de otra persona y luego quitado: sus estudios (VIH) no se quedan pegados', rv.conAliasOtra === true && rv.sinAliasOtra === false, JSON.stringify([rv.conAliasOtra, rv.sinAliasOtra]));
   check('R-O24 misma identidad: lo de una fila VIEJA que el respaldo ya soltó se conserva aunque las filas nuevas no traigan «otros»', rv.respaldo.antes === 1 && rv.respaldo.despues === 1, JSON.stringify(rv.respaldo));
   check('R-O25 la fila del día se reescribe y el reporte pasa a otra persona: su VIH REACTIVO ya no se queda en la tarjeta', rv.upsert.conVih === true && rv.upsert.despues === false, JSON.stringify(rv.upsert));
+  check('R-O35 fila vieja del respaldo (> 4 días): su BH sí va a la tabla (se guarda) pero su líquido NO aparece en «Otros» (igual en cada apertura y en cada iPad)', rv.vieja.otros === false && rv.vieja.tabla === '10.4', JSON.stringify(rv.vieja));
+  check('R-O36 fila que cumple 4 días con la app abierta: estaba en «Otros» y deja de estar (no se queda arrastrada), igual que al recargar', rv.borde.antes === true && rv.borde.despues === false, JSON.stringify(rv.borde));
 
   // ── Al abrir la app: la caja aparece sola aunque el paciente solo tenga un líquido (sin labs de sangre nuevos) ──
   {
@@ -358,7 +385,7 @@ const PTS = [
       if (url.startsWith('/rest/v1/notes') && m !== 'GET') return json(201, [{}]);
       return json(200, []);
     });
-    await page2.addInitScript(MOCK);
+    await page2.addInitScript(MOCK); await page2.addInitScript(VIGIA_AVISOS);
     await page2.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
     await page2.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3, null, { timeout: 30000 });
     // Sin ningún repintado a mano: la pasada inicial del sync debe repintar sola si cambió «Otros estudios» (el tablero
@@ -367,7 +394,207 @@ const PTS = [
       return (_winlabOtrosByK[k] || []).length > 0 && !!document.getElementById('sec-wlotros-' + ek); }, null, { timeout: 6000 }).then(() => true, () => false);
     const st = await page2.evaluate(() => { const p = patients.find(x => x.cama === '3-301'); const k = pid(p); return { n: (_winlabOtrosByK[k] || []).length, leu: ((noteData[k] && noteData[k].labHistory) || []).map(s => s.labs && s.labs.leucos).filter(Boolean) }; });
     check('O13 al abrir la app, un paciente con solo un líquido ya muestra «Otros estudios» (repintado de la pasada inicial) y su recuento no entra a la tabla', ok && st.n === 3 && st.leu.length === 0, JSON.stringify({ ok, st }));
+    // El aviso «labs auto-llenados» sale solo cuando de verdad se llenaron labs; «Otros» (solo memoria) no lo dispara en
+    // cada apertura. Se espera más que el aviso (3.5 s) y se lee lo que el vigía anotó, aunque ya se haya ocultado.
+    await page2.waitForTimeout(1500);
+    const avisos2 = await page2.evaluate(() => window.__plAvisos || []);
+    check('O13b sin labs nuevos (solo «Otros») NO sale el aviso «labs auto-llenados» al abrir', avisos2.length === 0, JSON.stringify(avisos2));
     await page2.close();
+    // Control: con una BH nueva sí sale el aviso (como siempre) y «Otros» también aparece.
+    const page3 = await browser.newPage({ viewport: { width: 834, height: 1194 } });
+    page3.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+    const wl3 = JSON.parse(JSON.stringify(wl));
+    wl3[0].data.reportes.push({ '': '', 'CODIGO PACIENTE': '2611190998', __cells: ['', '', '2611190998', dmy(d0) + ' 06:00', dmy(d0) + ' 08:00', 'CIRUGIA GENERAL'], __hasLink: true, __target: true,
+      valores: [{ estudio: 'LEUCOCITOS', valor: '9.10', unidad: '10³/μL', referencia: '4.00 - 10.00' }, { estudio: 'HEMOGLOBINA', valor: '12.10', unidad: 'g/dL', referencia: '12.00 - 16.00' }] });
+    await page3.route('**/vendor/supabase*', r => r.abort());
+    await page3.route('**/rest/v1/**', async (route) => {
+      const url = route.request().url().replace(/^https?:\/\/[^/]+/, ''); const m = route.request().method();
+      const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+      if (url.startsWith('/rest/v1/patients') && m === 'GET') return json(200, PTS);
+      if (url.startsWith('/rest/v1/winlab_labs') && m === 'GET') return json(200, wl3);
+      if (url.startsWith('/rest/v1/notes') && m !== 'GET') return json(201, [{}]);
+      return json(200, []);
+    });
+    await page3.addInitScript(MOCK); await page3.addInitScript(VIGIA_AVISOS);
+    await page3.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+    await page3.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3, null, { timeout: 30000 });
+    const ok3 = await page3.waitForFunction(() => (window.__plAvisos || []).length > 0, null, { timeout: 8000 }).then(() => true, () => false);
+    const st3 = await page3.evaluate(() => { const p = patients.find(x => x.cama === '3-301'); const k = pid(p); return { n: (_winlabOtrosByK[k] || []).length, leu: ((noteData[k] && noteData[k].labHistory) || []).map(s => s.labs && s.labs.leucos).filter(Boolean), avisos: window.__plAvisos || [] }; });
+    check('O13c con una BH nueva SÍ sale el aviso «labs auto-llenados» (Leu 9.10 a la tabla) y «Otros» sigue apareciendo', ok3 && st3.leu.includes('9.10') && st3.n === 3 && st3.avisos.every(a => /auto-llenados/.test(a)), JSON.stringify({ ok3, st3 }));
+    await page3.close();
+  }
+
+  // Tolerancia de las pruebas de «no se mueve»: ±3 px en Chromium y WebKit (iPad). Firefox, por su anclaje nativo del
+  // scroll, ya movía 20-23 px estos mismos casos ANTES de esta caja (medido en 854e260): ahí ±30 px, que sigue atrapando
+  // los saltos de ~300 px que se buscan evitar.
+  const TOL_PX = (process.env.BROWSER || '').toLowerCase() === 'firefox' ? 30 : 3;
+  // ── Al REABRIR (con la copia local) «Otros» llega con la nube unos segundos después: Plan no se mueve de su lugar ──
+  // (revisión 19 nov 2026: la caja, abierta, empujaba Plan/Pendientes ~300 px justo cuando el residente iba a escribir)
+  {
+    const page4 = await browser.newPage({ viewport: { width: 834, height: 1194 } });
+    page4.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+    const scr4 = new Date(Date.now() - 3600e3).toISOString();
+    const H1 = { '': '', 'CODIGO PACIENTE': '1', 'APELLIDOS COMPLETOS': 'FICTICIA PRUEBA', NOMBRE: 'ANA LUCIA', SEXO: 'FEMENINO', 'FECHA DE NAC.': '01/01/1976', __cells: ['', '', '1', 'FICTICIA PRUEBA', 'ANA LUCIA', 'FEMENINO', '01/01/1976'], __hasLink: false };
+    const rp = (code, toma, valores) => ({ '': '', 'CODIGO PACIENTE': code, __cells: ['', '', code, toma, toma, 'CIRUGIA GENERAL'], __hasLink: true, __target: true, valores });
+    const LCR = 'LIQUIDO CEFALORRAQUIDEO';
+    const wl4 = [{ exp: '26-91001', paciente: PTS[0].nombre, fecha: ymd(d0), scraped_at: scr4, data: { headers: [], reportes: [H1,
+      rp('2611190901', dmy(d0) + ' 07:00', [{ estudio: 'GRUPO SANGUINEO', valor: 'O', unidad: '', referencia: '' }, { estudio: 'FACTOR RH', valor: 'POSITIVO', unidad: '', referencia: '' }, { estudio: 'HEMOGLOBINA GLICADA', valor: '6.10', unidad: '%', referencia: '4.0 - 5.6' }]),
+      rp('2611190902', dmy(d0) + ' 09:00', [{ estudio: 'Volumen', valor: '7', unidad: 'ml', referencia: '5.0 - 10.0', seccion: LCR }, { estudio: 'ASPECTO', valor: 'TURBIO', unidad: '', referencia: 'Transparente', seccion: LCR },
+        { estudio: 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO', valor: '73.0', unidad: 'mg/dL', referencia: '40.0 - 70.0' }, { estudio: 'LEUCOCITOS', valor: '0.850', unidad: '10³/μL', referencia: '0.000 - 5.000', seccion: LCR },
+        { estudio: 'POLIMORFONUCLEARES %', valor: '71.90', unidad: '%', referencia: 'Ausentes', seccion: LCR }, { estudio: 'MONONUCLEARES %', valor: '28.10', unidad: '%', referencia: '', seccion: LCR }]),
+      rp('2611190903', dmy(d0) + ' 10:00', ['SARS-CoV-2', 'Influenza A', 'Influenza B', 'VSR', 'Adenovirus', 'Rinovirus/Enterovirus'].map(n => ({ estudio: n, valor: 'NO DETECTADO', unidad: '', referencia: 'No detectado', seccion: 'PANEL RESPIRATORIO' }))),
+    ] } }];
+    let delayWl = 0; const notesRows = [];
+    await page4.route('**/vendor/supabase*', r => r.abort());
+    await page4.route('**/rest/v1/**', async (route) => {
+      const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
+      const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+      if (url.startsWith('/rest/v1/patients') && m === 'GET') return json(200, PTS);
+      if (url.startsWith('/rest/v1/winlab_labs') && m === 'GET') { if (delayWl) await new Promise(r => setTimeout(r, delayWl)); return json(200, wl4); }
+      if (url.startsWith('/rest/v1/notes') && m === 'GET') return json(200, notesRows);
+      if (url.startsWith('/rest/v1/notes') && m !== 'GET') {   // la «nube» guarda lo que sube la app (la 2ª apertura lo baja)
+        try { const arr = JSON.parse(req.postData() || '[]'); (Array.isArray(arr) ? arr : [arr]).forEach(r => { if (r && r.patient_id) { const i = notesRows.findIndex(x => x.patient_id === r.patient_id); const mg = Object.assign({}, i >= 0 ? notesRows[i] : {}, r, { updated_at: new Date().toISOString() }); if (i >= 0) notesRows[i] = mg; else notesRows.push(mg); } }); } catch (_) {}
+        return json(201, [{}]);
+      }
+      return json(200, []);
+    });
+    await page4.addInitScript(MOCK);
+    await page4.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+    await page4.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3, null, { timeout: 30000 });
+    await page4.waitForFunction(() => { const p = patients.find(x => x.cama === '3-301'); return !!(p && document.getElementById('sec-wlotros-' + pid(p).replace(/[^a-zA-Z0-9]/g, '_'))); }, null, { timeout: 10000 }).catch(() => {});
+    await page4.waitForTimeout(1500);
+    // 2ª apertura: la copia local pinta primero (sin «Otros», que vive solo en memoria); WinLab tarda 2.5 s.
+    delayWl = 2500;
+    await page4.reload({ waitUntil: 'load' });
+    await page4.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3 && document.querySelector('[id^="sec-cx-"]'), null, { timeout: 30000 });
+    await page4.waitForTimeout(700);
+    const antes = await page4.evaluate(() => {
+      const ek = pid(patients.find(x => x.cama === '3-301')).replace(/[^a-zA-Z0-9]/g, '_');
+      const plan = document.getElementById('sec-plan-' + ek) || document.getElementById('sec-cx-' + ek);
+      window.scrollTo(0, plan.getBoundingClientRect().top + scrollY - 120);
+      return { ek, otrosYa: !!document.getElementById('sec-wlotros-' + ek), top: Math.round(plan.getBoundingClientRect().top), focusOn: document.body.classList.contains('focus-on') };
+    });
+    const llego = await page4.waitForFunction((ek) => !!document.getElementById('sec-wlotros-' + ek), antes.ek, { timeout: 10000 }).then(() => true, () => false);
+    await page4.waitForTimeout(2500);   // calma (1.8 s) + repintado
+    const despues = await page4.evaluate((ek) => { const plan = document.getElementById('sec-plan-' + ek) || document.getElementById('sec-cx-' + ek); const o = document.getElementById('sec-wlotros-' + ek);
+      return { top: Math.round(plan.getBoundingClientRect().top), otrosH: o ? Math.round(o.getBoundingClientRect().height) : 0, abierta: !!(o && o.open) }; }, antes.ek);
+    check('O14 al reabrir, «Otros» llega tarde (abierta, con su altura) y la sección que estaba a la vista (Plan) no se mueve de su lugar',
+      antes.focusOn && !antes.otrosYa && llego && despues.otrosH > 150 && despues.abierta && Math.abs(despues.top - antes.top) <= TOL_PX, JSON.stringify({ antes, despues }));
+    // ☑ Lista en Plan (repinta la tarjeta y la lista aparece DENTRO de Plan, a la vista): el botón que se tocó no se mueve
+    // (lo de abajo baja, como siempre). Revisión 19 nov 2026: un ancla general lo mandaba fuera de la pantalla.
+    const lista = await page4.evaluate(async () => {
+      const ek = pid(patients.find(x => x.cama === '3-301')).replace(/[^a-zA-Z0-9]/g, '_');
+      const plan = document.getElementById('sec-plan-' + ek); window.scrollTo(0, plan.getBoundingClientRect().top + scrollY - 300);
+      await new Promise(r => setTimeout(r, 500));
+      const btn = () => document.querySelector('#sec-plan-' + ek + ' .pend-tool[onclick^="togglePendList"]');
+      const b0 = Math.round(btn().getBoundingClientRect().top), y0 = Math.round(scrollY);
+      btn().click(); await new Promise(r => setTimeout(r, 900));
+      return { y0, b0, y1: Math.round(scrollY), b1: Math.round(btn().getBoundingClientRect().top), on: btn().classList.contains('on') };
+    });
+    check('O14c «☑ Lista» en Plan: la lista aparece y el botón que se tocó se queda donde estaba', lista.on && lista.y0 > 0 && Math.abs(lista.b1 - lista.b0) <= TOL_PX, JSON.stringify(lista));
+    // Si la caja entra A LA VISTA (se está leyendo la tabla de Labs), no se compensa nada: la tabla no se mueve y lo de
+    // abajo baja (como siempre).
+    await page4.reload({ waitUntil: 'load' });
+    await page4.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3 && document.querySelector('[id^="sec-cx-"]'), null, { timeout: 30000 });
+    await page4.waitForTimeout(700);
+    const vista = await page4.evaluate(() => {
+      const ek = pid(patients.find(x => x.cama === '3-301')).replace(/[^a-zA-Z0-9]/g, '_');
+      const labs = document.getElementById('sec-labs-' + ek); window.scrollTo(0, labs.getBoundingClientRect().top + scrollY - 260);
+      return { ek, otrosYa: !!document.getElementById('sec-wlotros-' + ek), labs: Math.round(labs.getBoundingClientRect().top), cx: Math.round(document.getElementById('sec-cx-' + ek).getBoundingClientRect().top), y: Math.round(scrollY) };
+    });
+    const llego4 = await page4.waitForFunction((ek) => !!document.getElementById('sec-wlotros-' + ek), vista.ek, { timeout: 20000 }).then(() => true, () => false);
+    await page4.waitForTimeout(2500);
+    const vista2 = await page4.evaluate((ek) => { const o = document.getElementById('sec-wlotros-' + ek); return { labs: Math.round(document.getElementById('sec-labs-' + ek).getBoundingClientRect().top), cx: Math.round(document.getElementById('sec-cx-' + ek).getBoundingClientRect().top), y: Math.round(scrollY), caja: o ? Math.round(o.getBoundingClientRect().height) : 0 }; }, vista.ek);
+    // Lo que se mide: la app NO desplaza la página (el scroll queda igual) y entre Labs y Cirugías aparece la caja.
+    // (No se exige que la tabla quede en el mismo pixel ni que el hueco crezca exactamente lo que mide la caja: la línea
+    // «🤖 El robot aún no ha buscado…» del arranque, arriba y dentro de Labs, desaparece en ese mismo repintado, como antes
+    // de esta caja; Firefox además mueve la página con su anclaje nativo.)
+    const crece = (vista2.cx - vista2.labs) - (vista.cx - vista.labs);
+    check('O14d «Otros» entra a la vista (se lee la tabla de Labs): la app no desplaza la página y entre Labs y Cirugías aparece la caja',
+      !vista.otrosYa && vista.y > 0 && llego4 && vista2.caja > 100 && (TOL_PX > 3 || Math.abs(vista2.y - vista.y) <= TOL_PX) && crece > 100, JSON.stringify({ vista, vista2, crece }));
+    // Se está LEYENDO la caja (su título apenas tapado por la barra fija) y el robot agrega otra muestra de LCR del mismo
+    // día más temprana (va DEBAJO de lo que se lee): lo leído no brinca (revisión 3: la caja casi entera a la vista
+    // contaba como «arriba» y el texto subía ~190 px bajo la barra).
+    const leer = await page4.evaluate(async () => {
+      const p = patients.find(x => x.cama === '3-301'), k = pid(p), ek = k.replace(/[^a-zA-Z0-9]/g, '_');
+      const box = document.getElementById('sec-wlotros-' + ek), nav = document.getElementById('board-nav');
+      window.scrollBy(0, box.getBoundingClientRect().top - (nav.getBoundingClientRect().bottom - 40));
+      await new Promise(r => setTimeout(r, 600));
+      const celda = () => { const b = document.getElementById('sec-wlotros-' + ek); return Array.from(b.querySelectorAll('*')).filter(e => e.children.length === 0 && /^GLUCOSA EN LIQUIDO CEFALORRAQUIDEO$/.test((e.textContent || '').trim()))[0]; };
+      const t0 = Math.round(celda().getBoundingClientRect().top), h0 = Math.round(box.getBoundingClientRect().height);
+      const fila = winlabByExp['26-91001']; const toma = fila.data.reportes[2].__cells[3].replace(/\d\d:\d\d$/, '06:00');
+      fila.data.reportes.push({ '': '', 'CODIGO PACIENTE': '2611190909', __cells: ['', '', '2611190909', toma, toma, 'CIRUGIA GENERAL'], __hasLink: true, __target: true,
+        valores: [{ estudio: 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO', valor: '61.0', unidad: 'mg/dL', referencia: '40.0 - 70.0' }, { estudio: 'LEUCOCITOS', valor: '0.120', unidad: '10³/μL', referencia: '0.000 - 5.000', seccion: 'LIQUIDO CEFALORRAQUIDEO' }] });
+      _winlabExpIndex = null;
+      await applyWinlabSyncToPatients({ verbose: false, only: [p] }); _rerenderCard(k);
+      await new Promise(r => setTimeout(r, 900));
+      return { t0, t1: Math.round(celda().getBoundingClientRect().top), h0, h1: Math.round(document.getElementById('sec-wlotros-' + ek).getBoundingClientRect().height) };
+    });
+    check('O14e leyendo la caja «Otros» (casi entera a la vista): llega otra muestra del mismo día debajo y lo que se lee no brinca',
+      leer.h1 - leer.h0 > 30 && Math.abs(leer.t1 - leer.t0) <= TOL_PX, JSON.stringify(leer));
+    // Al fondo de la ficha, el mismo toque repinta la tarjeta y pide subir suave (🔔 Labs nuevos → ficha del mismo paciente):
+    // la subida no se cancela (revisión 3: un reintento en el cuadro siguiente la detenía).
+    const suave = await page4.evaluate(async () => {
+      const k = pid(patients.find(x => x.cama === '3-301'));
+      window.scrollTo(0, 1e6); await new Promise(r => setTimeout(r, 900)); window.scrollTo(0, 1e6); await new Promise(r => setTimeout(r, 900));
+      const y0 = Math.round(scrollY);
+      _rerenderCard(k); window.scrollTo({ top: 0, behavior: 'smooth' });
+      await new Promise(r => setTimeout(r, 1800));
+      return { y0, y1: Math.round(scrollY) };
+    });
+    check('O14f al fondo: repintar la tarjeta y subir suave en el mismo toque llega arriba (no se cancela)', suave.y0 > 300 && suave.y1 <= Math.max(5, TOL_PX), JSON.stringify(suave));   // Firefox queda a ~23 px también en 854e260
+    await page4.close();
+
+    // iPad HORIZONTAL (dos columnas): el residente salta a «🖼 Estudios de imagen» (columna lateral; Cirugías queda arriba,
+    // fuera de la pantalla) y luego llega «Otros» a la columna principal: Imagen no se mueve (antes de esta caja tampoco se
+    // movía; compensar ahí la sacaría ~300 px de la pantalla).
+    const page5 = await browser.newPage({ viewport: { width: 1194, height: 834 } });
+    page5.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+    let delay5 = 0; const notes5 = [];
+    await page5.route('**/vendor/supabase*', r => r.abort());
+    await page5.route('**/rest/v1/**', async (route) => {
+      const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
+      const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+      if (url.startsWith('/rest/v1/patients') && m === 'GET') return json(200, PTS);
+      if (url.startsWith('/rest/v1/winlab_labs') && m === 'GET') { if (delay5) await new Promise(r => setTimeout(r, delay5)); return json(200, wl4); }
+      if (url.startsWith('/rest/v1/notes') && m === 'GET') return json(200, notes5);
+      if (url.startsWith('/rest/v1/notes') && m !== 'GET') {
+        try { const arr = JSON.parse(req.postData() || '[]'); (Array.isArray(arr) ? arr : [arr]).forEach(r => { if (r && r.patient_id) { const i = notes5.findIndex(x => x.patient_id === r.patient_id); const mg = Object.assign({}, i >= 0 ? notes5[i] : {}, r, { updated_at: new Date().toISOString() }); if (i >= 0) notes5[i] = mg; else notes5.push(mg); } }); } catch (_) {}
+        return json(201, [{}]);
+      }
+      return json(200, []);
+    });
+    await page5.addInitScript(MOCK);
+    await page5.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+    await page5.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3, null, { timeout: 30000 });
+    await page5.waitForFunction(() => { const p = patients.find(x => x.cama === '3-301'); return !!(p && document.getElementById('sec-wlotros-' + pid(p).replace(/[^a-zA-Z0-9]/g, '_'))); }, null, { timeout: 10000 }).catch(() => {});
+    await page5.waitForTimeout(1500);
+    delay5 = 3500;
+    await page5.reload({ waitUntil: 'load' });
+    await page5.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3 && document.querySelector('[id^="sec-img-"]'), null, { timeout: 30000 });
+    await page5.waitForTimeout(500);
+    const salto = await page5.evaluate(async () => {
+      const ek = pid(patients.find(x => x.cama === '3-301')).replace(/[^a-zA-Z0-9]/g, '_');
+      const b = document.querySelector('#board-nav .bn-jump [data-sec="img"]');
+      if (b) b.click(); else fcJump(pid(patients.find(x => x.cama === '3-301')), 'img');
+      await new Promise(r => setTimeout(r, 900));
+      // Que Cirugías (donde entra «Otros», columna principal) quede arriba de la barra fija, fuera de la vista.
+      const nav0 = document.getElementById('board-nav'), cx0 = document.getElementById('sec-cx-' + ek);
+      const falta = cx0.getBoundingClientRect().top - (nav0.getBoundingClientRect().bottom - 60);
+      if (falta > 0) { window.scrollBy(0, falta); await new Promise(r => setTimeout(r, 600)); }
+      const k = pid(patients.find(x => x.cama === '3-301')); const ind = document.getElementById('sec-img-' + ek), card = document.getElementById('card-' + k), main = card && card.querySelector('.fc-main');
+      const side = ind && ind.closest('.fc-side');
+      const nav = document.getElementById('board-nav');
+      return { ek, top: Math.round(ind.getBoundingClientRect().top), y: Math.round(scrollY), boton: !!b, otrosYa: !!document.getElementById('sec-wlotros-' + ek),
+        cxArriba: document.getElementById('sec-cx-' + ek).getBoundingClientRect().top < nav.getBoundingClientRect().bottom,
+        dosCol: !!(side && main && side.getBoundingClientRect().left >= main.getBoundingClientRect().right - 2) };
+    });
+    const llego5 = await page5.waitForFunction((ek) => !!document.getElementById('sec-wlotros-' + ek), salto.ek, { timeout: 20000 }).then(() => true, () => false);
+    await page5.waitForTimeout(2500);
+    const tras = await page5.evaluate((ek) => ({ top: Math.round(document.getElementById('sec-img-' + ek).getBoundingClientRect().top), y: Math.round(scrollY) }), salto.ek);
+    check('O14b iPad horizontal (2 columnas): tras saltar a Estudios de imagen (columna lateral; Cirugías arriba, fuera de la pantalla), la llegada de «Otros» a la columna principal no la mueve',
+      salto.dosCol && salto.cxArriba && salto.boton && !salto.otrosYa && llego5 && Math.abs(tras.top - salto.top) <= TOL_PX, JSON.stringify({ salto, tras }));
+    await page5.close();
   }
   check('O12 sin errores de página', errors.length === 0, errors.join(' | '));
   console.log(`\n${pass} passed, ${fail} failed`);
