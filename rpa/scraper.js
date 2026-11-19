@@ -731,6 +731,22 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
     return { headers, rows, tableCount: tables.length, bestTableIdx, headerIdx, zeroRowsDiag };
   });
 
+  // Pie de la lista de WinLab («ELEMENTOS ENCONTRADOS : 26 · PÁGINA 1 DE 2», 20 reportes por página): solo números, para
+  // la bitácora (19 nov 2026: saber si a un paciente le quedan reportes en otra página). Se lee ANTES de quitar la basura.
+  try {
+    const pie = [];
+    for (const r of (Array.isArray(result.rows) ? result.rows : [])) {
+      for (const c of (r && r.__cells) || []) {
+        const s = String(c || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+        let m = s.match(/^(?:ELEMENTOS ?ENCONTRADOS|(?:ELEMENTI|RECORD) ?TROVATI) ?: ?(\d+)/);
+        if (m) pie.push(m[1] + " elementos");
+        m = s.match(/^PAGINA (\d+) (?:DE|DI) (\d+)/);
+        if (m) pie.push("página " + m[1] + " de " + m[2]);
+      }
+    }
+    if (pie.length) result.pieLista = Array.from(new Set(pie)).join(" · ");
+  } catch (_) {}
+
   // Filtrar reportes basura: filas que solo tengan COL_X/__hasLink/etc
   // (= la heuristica capto el menu/form, no datos reales). Se descartan
   // ANTES del drill-down para no clickear cosas que no son reportes.
@@ -839,6 +855,14 @@ async function doSingleSearchInner(page, searchUrl, paciente, params, deadlineTs
       const nCultivos = drillIdxs.filter((i) => isPendingCulture(result.rows[i], looksLikeCultureReport)).length;
       const nRevisar = drillIdxs.filter((i) => isCultureInProcess(result.rows[i])).length;
       console.log(`       [targeting] ${targetIdxs.length} reporte(s) del objetivo identificados; ${result.reusedValores || 0} con valores de corridas previas; drilleando ${drillIdxs.length} (${nCultivos} cultivos primero${nRevisar ? `, ${nRevisar} cultivo(s) en proceso que se vuelven a revisar al final` : ""})`);
+      // Rango de fechas de toma del paciente en la lista (solo día/mes) y el pie de WinLab: si la toma más nueva se queda
+      // días atrás, se ve aquí sin abrir la base.
+      try {
+        const dias = targetIdxs.map((i) => String(((result.rows[i] || {}).__cells || [])[3] || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/))
+          .filter(Boolean).map((m) => m[3] + m[2] + m[1]).sort();
+        const dm = (s) => s.slice(6, 8) + "/" + s.slice(4, 6);
+        console.log(`       [lista] WinLab: ${result.pieLista || "sin pie de página"}${dias.length ? ` · tomas del paciente del ${dm(dias[0])} al ${dm(dias[dias.length - 1])}` : ""}`);
+      } catch (_) {}
     } else if (WL_BLIND_FALLBACK === 1) {
       drillIdxs = linkIdxs.slice(0, WL_DRILLDOWN_MAX);
       console.log(`       [targeting] objetivo no identificado por encabezado → fallback LEGACY (WL_BLIND_FALLBACK=1): primeros ${drillIdxs.length}`);
