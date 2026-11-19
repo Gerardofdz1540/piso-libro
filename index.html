@@ -4497,6 +4497,8 @@ details.fc-sec > .fcs-body > .cds-section, details.fc-sec > .fcs-body > .ind-sec
 .wlo-v{ font-weight:800; color:#0f172a; text-align:right; white-space:nowrap; }
 .wlo-v .wlo-u{ font-weight:600; color:#64748b; font-size:10px; margin-left:2px; }
 .wlo-ref{ grid-column:1 / -1; font-size:10px; color:#64748b; }
+.wlo-row.wlo-largo{ grid-template-columns:minmax(0,1fr); }
+.wlo-row.wlo-largo .wlo-v{ text-align:left; white-space:normal; overflow-wrap:anywhere; }
 .wlo-row.wlo-pos .wlo-v{ color:#b91c1c; }
 .wlo-row.wlo-pos{ background:#fef2f2; border-radius:4px; padding:2px 4px; }
 .wlo-row.wlo-alt .wlo-v{ color:#b45309; }
@@ -19896,7 +19898,10 @@ function plExportBackup() {
           const lf = LAB_FIELD_BY_KEY[it.llave];
           if (lv !== undefined && lv !== null && String(lv).trim() === it.valor && lf) warn = `<span class="wlo-warn">⚠ Este valor del líquido también aparece en la tabla de sangre (${esc(lf.label)}) de ese día: no es de sangre.</span>`;
         }
-        const cls = "wlo-row" + (it.pos ? " wlo-pos" : "") + (alt ? " wlo-alt" : "") + (it.aviso ? " wlo-av" : "");
+        // Valor largo (texto cualitativo, rango escrito): va en su propio renglón bajo el nombre; si no, en la columna
+        // derecha se comía el ancho y el nombre quedaba en 0 px.
+        const largo = (String(it.valor || "") + " " + String(it.unidad || "")).trim().length > 16;
+        const cls = "wlo-row" + (it.pos ? " wlo-pos" : "") + (alt ? " wlo-alt" : "") + (it.aviso ? " wlo-av" : "") + (largo ? " wlo-largo" : "");
         const val = it.aviso ? `⚠ ${esc(it.valor.charAt(0) + it.valor.slice(1).toLowerCase())}: no es un resultado` : `${esc(it.valor)}${it.unidad ? `<span class="wlo-u">${esc(it.unidad)}</span>` : ""}`;
         return `<div class="${cls}"><span class="wlo-n">${esc(it.nombre)}${it.incompleto ? ' <span class="wlo-inc">(nombre incompleto en el PDF)</span>' : ""}</span><span class="wlo-v">${val}</span>${it.ref ? `<span class="wlo-ref">Ref. ${esc(it.ref)}</span>` : ""}${warn}</div>`;
       };

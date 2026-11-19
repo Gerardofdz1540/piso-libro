@@ -84,6 +84,8 @@ const PTS = [
       { estudio: 'CREATININA URINARIA', valor: '48.78', unidad: 'mg/dL', referencia: '' },
       { estudio: 'CREATININA', valor: '0.80', unidad: 'mg/dL', referencia: '0.6 - 1.1' },
       { estudio: 'ALFAFETOPROTEINA', valor: '<img src=x onerror="window.__xss=1">', unidad: 'ng/mL', referencia: '<b>x</b>' },
+      { estudio: 'HORMONA <img src=x onerror="window.__xss3=1">', valor: '1.2', unidad: '<i>u</i>', referencia: '' },
+      { estudio: 'ANTICUERPOS IGG CONTRA ANTIGENO NUCLEAR EXTRAIBLE RIBONUCLEOPROTEINA SM/RNP CUANTITATIVO POR QUIMIOLUMINISCENCIA', valor: '123456.78', unidad: 'U/mL', referencia: 'MENOR DE 20 U/mL NEGATIVO; 20 A 40 INDETERMINADO; MAYOR DE 40 POSITIVO' },
     ];
     const EGO = [{ estudio: 'DENSIDAD', valor: '1.015', unidad: '', referencia: '1.010 - 1.030' }, { estudio: 'PH', valor: '6.0', unidad: '', referencia: '5.0 - 6.5' }, { estudio: 'AGREGADOS LEUCOCITARIOS', valor: '7.92', unidad: 'p/μL', referencia: 'Ausentes' }];
     // Coaglutinación de un robot viejo (género COMPLETO, sin cultivo del PDF): nunca un cultivo positivo.
@@ -118,6 +120,7 @@ const PTS = [
     out.st1otros = st1.otros || 0;
     out.labsHoy = snap(k1, D); out.labsAyer = snap(k1, A);
     out.items = o1.map(it => ({ f: it.fecha, g: it.grupo, s: it.sub, n: it.nombre, v: it.valor, u: it.unidad, pos: !!it.pos, av: !!it.aviso, inc: !!it.incompleto, tx: it.texto ? it.texto.length : 0, llave: it.llave || '' }));
+    out.ordenOk = o1.every((it, i) => i === 0 || String(o1[i - 1].fecha) > String(it.fecha) || (o1[i - 1].fecha === it.fecha && o1[i - 1].ts >= it.ts));
     out.p2items = (_winlabOtrosByK[k2] || []).length;
     out.p3items = (_winlabOtrosByK[k3] || []).length;
     out.cult = (_winlabCultByK[k1] || []).map(c => ({ f: c.fecha, t: c.tipo, o: c.organismo, pos: !!c.positivo }));
@@ -180,22 +183,22 @@ const PTS = [
       grupos: sec ? Array.from(sec.querySelectorAll('.wlo-grupo .wlo-gt')).map(x => x.textContent) : [],
       rojo: sec ? Array.from(sec.querySelectorAll('.wlo-row.wlo-pos .wlo-n')).map(x => x.textContent) : [],
       ambar: sec ? Array.from(sec.querySelectorAll('.wlo-row.wlo-alt .wlo-n')).map(x => x.textContent) : [],
-      xss: !!(window.__xss || window.__xss2), imgs: sec ? sec.querySelectorAll('img').length : -1, scripts: sec ? sec.querySelectorAll('script').length : -1,
-      textoXss: sec ? /<img src=x/.test(sec.textContent) && /<script>/.test(sec.textContent) : false,
+      xss: !!(window.__xss || window.__xss2 || window.__xss3), imgs: sec ? sec.querySelectorAll('img').length : -1, scripts: sec ? sec.querySelectorAll('script').length : -1,
+      textoXss: sec ? /<img src=x/.test(sec.textContent) && /<script>/.test(sec.textContent) && /HORMONA <img/.test(sec.textContent) && /<i>u<\/i>/.test(sec.textContent) : false,
       fechas: sec ? Array.from(sec.querySelectorAll('.wlo-dia')).map(x => x.dataset.fecha) : [],
       sx: document.documentElement.scrollWidth > innerWidth + 1,
-      wide: sec ? Array.from(sec.querySelectorAll('.wlo-row, .wlo-grupo')).filter(x => x.getBoundingClientRect().right > innerWidth + 1).length : -1,
+      wide: sec ? Array.from(sec.querySelectorAll('.wlo-row, .wlo-grupo, .wlo-n, .wlo-v, .wlo-ref')).filter(x => x.getBoundingClientRect().right > innerWidth + 1 || x.scrollWidth > x.clientWidth + 1).length : -1,
     };
   }, K);
   check('O9 la caja «🧪 Otros estudios» está en la tarjeta, dentro de Labs y abierta (hay resultados recientes)', card.existe && card.open && card.dentroDeLabs, JSON.stringify(card));
   check('O9b insignia roja «1 positivo» y los 3 grupos', /1 positivo/.test(card.badge) && card.grupos.length >= 3, JSON.stringify([card.badge, card.grupos]));
   check('O9c positivo en rojo (Influenza B) y fuera de rango en ámbar (glucosa del LCR 73 > 70)', card.rojo.includes('Influenza B') && card.ambar.includes('GLUCOSA EN LIQUIDO CEFALORRAQUIDEO'), JSON.stringify([card.rojo, card.ambar]));
   check('O9d texto del robot escapado (sin <img>/<script> ejecutados)', !card.xss && card.imgs === 0 && card.scripts === 0 && card.textoXss, JSON.stringify(card));
-  check('O9e fechas de la más nueva a la más vieja', card.fechas.join(',') === [D, A, AA].join(','), card.fechas.join(','));
+  check('O9e fechas de la más nueva a la más vieja (pantalla y memoria; dentro del día, la toma más nueva primero)', card.fechas.join(',') === [D, A, AA].join(',') && res.ordenOk, card.fechas.join(',') + ' orden=' + res.ordenOk);
   check('O10 iPad vertical (834): nada se sale de la pantalla', !card.sx && card.wide === 0, JSON.stringify(card));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
-  const ph = await page.evaluate((k) => { const ek = k.replace(/[^a-zA-Z0-9]/g, '_'); const sec = document.getElementById('sec-wlotros-' + ek); return { sx: document.documentElement.scrollWidth > innerWidth + 1, wide: sec ? Array.from(sec.querySelectorAll('.wlo-row, .wlo-grupo')).filter(x => x.getBoundingClientRect().right > innerWidth + 1).length : -1 }; }, K);
+  const ph = await page.evaluate((k) => { const ek = k.replace(/[^a-zA-Z0-9]/g, '_'); const sec = document.getElementById('sec-wlotros-' + ek); return { sx: document.documentElement.scrollWidth > innerWidth + 1, wide: sec ? Array.from(sec.querySelectorAll('.wlo-row, .wlo-grupo, .wlo-n, .wlo-v, .wlo-ref')).filter(x => x.getBoundingClientRect().right > innerWidth + 1 || x.scrollWidth > x.clientWidth + 1).length : -1 }; }, K);
   check('O10b teléfono (390): nada se sale de la pantalla', !ph.sx && ph.wide === 0, JSON.stringify(ph));
   await page.setViewportSize({ width: 834, height: 1194 });
   // Hoja: abierta, 2 fechas más nuevas y el texto del reporte abierto
@@ -235,7 +238,7 @@ const PTS = [
     // Sin ningún repintado a mano: la pasada inicial del sync debe repintar sola si cambió «Otros estudios» (el tablero
     // muestra la primera cama, 3-301).
     const ok = await page2.waitForFunction(() => { const p = patients.find(x => x.cama === '3-301'); const k = pid(p); const ek = k.replace(/[^a-zA-Z0-9]/g, '_');
-      return (_winlabOtrosByK[k] || []).length > 0 && !!document.getElementById('sec-wlotros-' + ek); }, null, { timeout: 20000 }).then(() => true, () => false);
+      return (_winlabOtrosByK[k] || []).length > 0 && !!document.getElementById('sec-wlotros-' + ek); }, null, { timeout: 6000 }).then(() => true, () => false);
     const st = await page2.evaluate(() => { const p = patients.find(x => x.cama === '3-301'); const k = pid(p); return { n: (_winlabOtrosByK[k] || []).length, leu: ((noteData[k] && noteData[k].labHistory) || []).map(s => s.labs && s.labs.leucos).filter(Boolean) }; });
     check('O13 al abrir la app, un paciente con solo un líquido ya muestra «Otros estudios» (repintado de la pasada inicial) y su recuento no entra a la tabla', ok && st.n === 3 && st.leu.length === 0, JSON.stringify({ ok, st }));
     await page2.close();
