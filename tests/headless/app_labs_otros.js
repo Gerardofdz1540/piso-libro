@@ -86,7 +86,7 @@ const PTS = [
       { estudio: 'HORMONA <img src=x onerror="window.__xss3=1">', valor: '1.2', unidad: '<i>u</i>', referencia: '' },
       { estudio: 'ANTICUERPOS IGG CONTRA ANTIGENO NUCLEAR EXTRAIBLE RIBONUCLEOPROTEINA SM/RNP CUANTITATIVO POR QUIMIOLUMINISCENCIA', valor: '123456.78', unidad: 'U/mL', referencia: 'MENOR DE 20 U/mL NEGATIVO; 20 A 40 INDETERMINADO; MAYOR DE 40 POSITIVO' },
     ];
-    const EGO = [{ estudio: 'DENSIDAD', valor: '1.015', unidad: '', referencia: '1.010 - 1.030' }, { estudio: 'PH', valor: '6.0', unidad: '', referencia: '5.0 - 6.5' }, { estudio: 'BILIRRUBINA', valor: 'NEGATIVO', unidad: '', referencia: 'Negativo' }, { estudio: 'CUERPOS CETONICOS', valor: 'NEGATIVO', unidad: '', referencia: 'Negativo' }, { estudio: 'LEUCOCITOS INCONTABLES X CAMPO', valor: '0', unidad: '', referencia: '' }, { estudio: 'AGREGADOS LEUCOCITARIOS', valor: '7.92', unidad: 'p/μL', referencia: 'Ausentes' }];
+    const EGO = [{ estudio: 'DENSIDAD', valor: '1.015', unidad: '', referencia: '1.010 - 1.030' }, { estudio: 'PH', valor: '6.0', unidad: '', referencia: '5.0 - 6.5' }, { estudio: 'PROTEINAS TOTALES EN ORINA DE UNA MICCIÓN', valor: '120.50', unidad: 'mg/dL', referencia: '1.00 - 14.00' }, { estudio: 'PROTEINAS', valor: '30', unidad: 'mg/dL', referencia: 'Negativo' }, { estudio: 'BILIRRUBINA', valor: 'NEGATIVO', unidad: '', referencia: 'Negativo' }, { estudio: 'CUERPOS CETONICOS', valor: 'NEGATIVO', unidad: '', referencia: 'Negativo' }, { estudio: 'LEUCOCITOS INCONTABLES X CAMPO', valor: '0', unidad: '', referencia: '' }, { estudio: 'AGREGADOS LEUCOCITARIOS', valor: '7.92', unidad: 'p/μL', referencia: 'Ausentes' }];
     // Coaglutinación de un robot viejo (género COMPLETO, sin cultivo del PDF): nunca un cultivo positivo.
     const COAG_VIEJO = [{ estudio: 'STREPTOCOCCUS PNEUMONIAE', valor: 'NEGATIVO', unidad: '', referencia: 'NEGATIVO' }, { estudio: 'HAEMOPHILUS INFLUENZAE B', valor: 'NEGATIVO', unidad: '', referencia: 'NEGATIVO' }];
     const p1 = P('o1'), p2 = P('o2'), p3 = P('o3');
@@ -157,6 +157,7 @@ const PTS = [
   check('O4b avisos: HEMATOCRITO «NO EJECUTADO» (no es resultado) y TP «por encima del límite medible» como CRÍTICO (extremo)',
     otr.some(x => x.n === 'HEMATOCRITO' && x.av && /NO EJECUTADO/.test(x.v)) && otr.some(x => x.n === 'TIEMPO DE PROTROMBINA' && x.crit && x.pos && /ENCIMA/.test(x.v)), JSON.stringify(otr));
   check('O4c creatinina URINARIA en Otros (no en la creatinina sérica)', otr.some(x => x.n === 'CREATININA URINARIA' && x.v === '48.78'));
+  check('O4d proteínas en orina de una micción (cuantitativa) en Otros; las proteínas del EGO (tira) siguen en su casilla', res.labsHoy.ego_prot === '30' && otr.some(x => /PROTEINAS TOTALES EN ORINA/.test(x.n) && x.v === '120.50'), JSON.stringify([res.labsHoy.ego_prot]));
   check('O5 sin ruido: ni ERITROCITOS de la BH, ni RELACION A/G, ni tira/sedimento del EGO (bilirrubina, cetonas «NEGATIVO»), ni lo que ya está en la tabla',
     !res.items.some(x => (x.g !== 'liq' && x.n === 'ERITROCITOS') || /RELACION A\/G|AGREGADOS|^DENSIDAD$|^PH$|^HEMOGLOBINA$|^CREATININA$|^BILIRRUBINA$|CETONICOS|INCONTABLES/.test(x.n)), JSON.stringify(res.items.map(x => x.n)));
   // ── Identidad ─────────────────────────────────────────────────────────────────────────────────────────────

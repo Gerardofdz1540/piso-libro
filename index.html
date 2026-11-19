@@ -9343,7 +9343,11 @@ function plExportBackup() {
           if (_isFluid) { if (T) T("liquido"); continue; }
           // Probar contra cada alias en orden de definición; primer match gana.
           let _tr = "sinAlias", _trKey = "";
+          // Química CUANTITATIVA de orina (micción única, 24 h, depuración): no es la tira del EGO → no ocupa ego_*
+          // (19 nov 2026: «PROTEINAS TOTALES EN ORINA DE UNA MICCION» pisaba las proteínas del EGO); sale en «Otros».
+          const _orinaCuant = _isUrine && /MICCION|\b24\s*H|DEPURACI|RECOLECCI/.test(name.toUpperCase());
           for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) {
+            if (_orinaCuant) break;
             if (key in labs) continue; // ya mapeado, no sobreescribir
             if (_isUrine && key.indexOf("ego_") !== 0) continue; // orina solo → ego_*
             if (patterns.some(rx => rx.test(name))) {
