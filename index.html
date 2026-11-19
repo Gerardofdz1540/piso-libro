@@ -14626,7 +14626,8 @@ function plExportBackup() {
           Object.keys(winlabRowsByExp).forEach(function (e) {
             winlabRowsByExp[e] = winlabRowsByExp[e].filter(function (r) { return r === winlabByExp[e] || !(r.scraped_at && r.scraped_at < since); });
           });
-          if (inserted && typeof renderViewSoft === "function") renderViewSoft();
+          // También repinta si solo cambió «🧪 Otros estudios» (estudios de fechas viejas sin labs de la tabla).
+          if ((inserted || (st && st.otros)) && typeof renderViewSoft === "function") renderViewSoft();
         }
         try { localStorage.setItem(WL_BACKFILL_KEY, JSON.stringify(done)); } catch (_) {}
       } finally { _wlBackfillRunning = false; }
@@ -17859,8 +17860,10 @@ function plExportBackup() {
       // poblados sin que el usuario haga nada.
       if (isWinlabAutoSyncEnabled() && patients && patients.length && winlabByExp && Object.keys(winlabByExp).length) {
         applyWinlabSyncToPatients({ verbose: false }).then(stats => {
-          if (stats.inserted + stats.merged > 0 || stats.otros > 0) {
-            renderViewSoft();
+          // «🧪 Otros estudios» vive solo en memoria: al abrir siempre cambia, así que solo repinta; el aviso sale solo
+          // cuando de verdad se llenaron labs (como antes), no en cada apertura.
+          if (stats.inserted + stats.merged > 0 || stats.otros > 0) renderViewSoft();
+          if (stats.inserted + stats.merged > 0) {
             _wlShowToast(
               `💧 WinLab: ${stats.matched} pacientes con labs auto-llenados`,
               "#0e7490", 3500
@@ -31592,7 +31595,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.19-2";
+    const PL_BUILD = "2026.11.19-3";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

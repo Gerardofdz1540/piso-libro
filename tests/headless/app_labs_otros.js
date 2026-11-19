@@ -19,6 +19,14 @@ const MOCK = `(() => {
   const chan={ on(){ return chan; }, subscribe(){ return chan; }, unsubscribe(){ return Promise.resolve('ok'); }, send(){ return Promise.resolve('ok'); } };
   window.supabase={ createClient:()=>({ auth, channel:()=>chan, removeChannel:()=>Promise.resolve('ok'), removeAllChannels:()=>Promise.resolve([]), getChannels:()=>[], storage:{ from:()=>({}) } }) };
 })();`;
+// Vigía del aviso de sincronización: anota cada «labs auto-llenados» que muestra el aviso, aunque luego se oculte.
+const VIGIA_AVISOS = `(() => {
+  window.__plAvisos = [];
+  const leer = () => { const t = document.getElementById('__wl_sync_toast'); const s = t ? (t.textContent || '') : '';
+    if (t && t.style.display !== 'none' && /auto-llenados/.test(s) && window.__plAvisos[window.__plAvisos.length - 1] !== s) window.__plAvisos.push(s); };
+  const iniciar = () => new MutationObserver(leer).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style'] });
+  if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
+})();`;
 const d0 = new Date();
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const dmy = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -358,7 +366,7 @@ const PTS = [
       if (url.startsWith('/rest/v1/notes') && m !== 'GET') return json(201, [{}]);
       return json(200, []);
     });
-    await page2.addInitScript(MOCK);
+    await page2.addInitScript(MOCK); await page2.addInitScript(VIGIA_AVISOS);
     await page2.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
     await page2.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3, null, { timeout: 30000 });
     // Sin ningún repintado a mano: la pasada inicial del sync debe repintar sola si cambió «Otros estudios» (el tablero
@@ -367,7 +375,34 @@ const PTS = [
       return (_winlabOtrosByK[k] || []).length > 0 && !!document.getElementById('sec-wlotros-' + ek); }, null, { timeout: 6000 }).then(() => true, () => false);
     const st = await page2.evaluate(() => { const p = patients.find(x => x.cama === '3-301'); const k = pid(p); return { n: (_winlabOtrosByK[k] || []).length, leu: ((noteData[k] && noteData[k].labHistory) || []).map(s => s.labs && s.labs.leucos).filter(Boolean) }; });
     check('O13 al abrir la app, un paciente con solo un líquido ya muestra «Otros estudios» (repintado de la pasada inicial) y su recuento no entra a la tabla', ok && st.n === 3 && st.leu.length === 0, JSON.stringify({ ok, st }));
+    // El aviso «labs auto-llenados» sale solo cuando de verdad se llenaron labs; «Otros» (solo memoria) no lo dispara en
+    // cada apertura. Se espera más que el aviso (3.5 s) y se lee lo que el vigía anotó, aunque ya se haya ocultado.
+    await page2.waitForTimeout(1500);
+    const avisos2 = await page2.evaluate(() => window.__plAvisos || []);
+    check('O13b sin labs nuevos (solo «Otros») NO sale el aviso «labs auto-llenados» al abrir', avisos2.length === 0, JSON.stringify(avisos2));
     await page2.close();
+    // Control: con una BH nueva sí sale el aviso (como siempre) y «Otros» también aparece.
+    const page3 = await browser.newPage({ viewport: { width: 834, height: 1194 } });
+    page3.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+    const wl3 = JSON.parse(JSON.stringify(wl));
+    wl3[0].data.reportes.push({ '': '', 'CODIGO PACIENTE': '2611190998', __cells: ['', '', '2611190998', dmy(d0) + ' 06:00', dmy(d0) + ' 08:00', 'CIRUGIA GENERAL'], __hasLink: true, __target: true,
+      valores: [{ estudio: 'LEUCOCITOS', valor: '9.10', unidad: '10³/μL', referencia: '4.00 - 10.00' }, { estudio: 'HEMOGLOBINA', valor: '12.10', unidad: 'g/dL', referencia: '12.00 - 16.00' }] });
+    await page3.route('**/vendor/supabase*', r => r.abort());
+    await page3.route('**/rest/v1/**', async (route) => {
+      const url = route.request().url().replace(/^https?:\/\/[^/]+/, ''); const m = route.request().method();
+      const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+      if (url.startsWith('/rest/v1/patients') && m === 'GET') return json(200, PTS);
+      if (url.startsWith('/rest/v1/winlab_labs') && m === 'GET') return json(200, wl3);
+      if (url.startsWith('/rest/v1/notes') && m !== 'GET') return json(201, [{}]);
+      return json(200, []);
+    });
+    await page3.addInitScript(MOCK); await page3.addInitScript(VIGIA_AVISOS);
+    await page3.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+    await page3.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3, null, { timeout: 30000 });
+    const ok3 = await page3.waitForFunction(() => (window.__plAvisos || []).length > 0, null, { timeout: 8000 }).then(() => true, () => false);
+    const st3 = await page3.evaluate(() => { const p = patients.find(x => x.cama === '3-301'); const k = pid(p); return { n: (_winlabOtrosByK[k] || []).length, leu: ((noteData[k] && noteData[k].labHistory) || []).map(s => s.labs && s.labs.leucos).filter(Boolean), avisos: window.__plAvisos || [] }; });
+    check('O13c con una BH nueva SÍ sale el aviso «labs auto-llenados» (Leu 9.10 a la tabla) y «Otros» sigue apareciendo', ok3 && st3.leu.includes('9.10') && st3.n === 3 && st3.avisos.every(a => /auto-llenados/.test(a)), JSON.stringify({ ok3, st3 }));
+    await page3.close();
   }
   check('O12 sin errores de página', errors.length === 0, errors.join(' | '));
   console.log(`\n${pass} passed, ${fail} failed`);

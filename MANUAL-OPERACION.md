@@ -2041,3 +2041,9 @@ crece la base).
 **Paneles virales.** En la base no hay hasta hoy ningún resultado de panel viral: o no salen por WinLab o eran de los
 PDF que el robot no sabía leer. Con este cambio, si llegan, aparecen leídos o, al menos, con su texto en «Otros
 estudios».
+
+**Ajuste 2026.11.19-3.** Como «🧪 Otros estudios» vive solo en memoria, al abrir la app siempre «cambia»; en la -2 eso
+hacía salir en cada apertura el aviso «💧 WinLab: N pacientes con labs auto-llenados» aunque no se hubiera llenado nada
+(a veces «0 pacientes»). Ahora la caja se pinta igual, pero el aviso vuelve a salir solo cuando de verdad entran labs
+a la tabla (como antes). Los estudios de fechas viejas que trae el respaldo también repintan la tarjeta al llegar.
+Pruebas: O13b (sin aviso con solo «Otros») y O13c (con una BH nueva el aviso sí sale).
