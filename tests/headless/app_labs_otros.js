@@ -504,10 +504,14 @@ const PTS = [
     });
     const llego4 = await page4.waitForFunction((ek) => !!document.getElementById('sec-wlotros-' + ek), vista.ek, { timeout: 20000 }).then(() => true, () => false);
     await page4.waitForTimeout(2500);
-    const vista2 = await page4.evaluate((ek) => ({ labs: Math.round(document.getElementById('sec-labs-' + ek).getBoundingClientRect().top), cx: Math.round(document.getElementById('sec-cx-' + ek).getBoundingClientRect().top) }), vista.ek);
-    check('O14d «Otros» entra a la vista (se lee la tabla de Labs): la tabla no se mueve y Cirugías baja lo que mide la caja',
-      // (Firefox: su anclaje nativo ya movía la tabla 68 px en este caso en 854e260; ahí solo se exige que la caja entre.)
-      !vista.otrosYa && vista.y > 0 && llego4 && (TOL_PX > 3 || Math.abs(vista2.labs - vista.labs) <= TOL_PX) && vista2.cx - vista.cx > 100, JSON.stringify({ vista, vista2 }));
+    const vista2 = await page4.evaluate((ek) => { const o = document.getElementById('sec-wlotros-' + ek); return { labs: Math.round(document.getElementById('sec-labs-' + ek).getBoundingClientRect().top), cx: Math.round(document.getElementById('sec-cx-' + ek).getBoundingClientRect().top), y: Math.round(scrollY), caja: o ? Math.round(o.getBoundingClientRect().height) : 0 }; }, vista.ek);
+    // Lo que se mide: la app NO desplaza la página (el scroll queda igual) y entre Labs y Cirugías aparece la caja.
+    // (No se exige que la tabla quede en el mismo pixel ni que el hueco crezca exactamente lo que mide la caja: la línea
+    // «🤖 El robot aún no ha buscado…» del arranque, arriba y dentro de Labs, desaparece en ese mismo repintado, como antes
+    // de esta caja; Firefox además mueve la página con su anclaje nativo.)
+    const crece = (vista2.cx - vista2.labs) - (vista.cx - vista.labs);
+    check('O14d «Otros» entra a la vista (se lee la tabla de Labs): la app no desplaza la página y entre Labs y Cirugías aparece la caja',
+      !vista.otrosYa && vista.y > 0 && llego4 && vista2.caja > 100 && (TOL_PX > 3 || Math.abs(vista2.y - vista.y) <= TOL_PX) && crece > 100, JSON.stringify({ vista, vista2, crece }));
     // Se está LEYENDO la caja (su título apenas tapado por la barra fija) y el robot agrega otra muestra de LCR del mismo
     // día más temprana (va DEBAJO de lo que se lee): lo leído no brinca (revisión 3: la caja casi entera a la vista
     // contaba como «arriba» y el texto subía ~190 px bajo la barra).
