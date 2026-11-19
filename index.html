@@ -16931,23 +16931,15 @@ function plExportBackup() {
         const jb = vp.querySelector("#board-nav .bn-jump");
         const st = { pid: vp.dataset.plPid, mode: vp.dataset.plMode || "", y: window.scrollY || window.pageYOffset || 0, secs: {}, jl: jb ? jb.scrollLeft : 0 };
         vp.querySelectorAll("details.fc-sec[data-sec]").forEach(function (d) { st.secs[d.dataset.sec] = !!d.open; });
-        // Ancla (19 nov 2026): la sección que el usuario tiene a la vista no se mueve aunque ARRIBA de ella cambie la
-        // altura (la caja «🧪 Otros estudios» o la línea del robot llegan con la nube unos segundos después de abrir y
-        // empujaban Plan/Pendientes ~300 px). Prioridad: la sección del último campo/control tocado si se ve y no se ha
-        // desplazado la página desde entonces; si no, la primera sección que empieza dentro de la pantalla; si no, la que
-        // cruza el borde de arriba.
-        try {
-          const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-          const secs = Array.prototype.slice.call(vp.querySelectorAll("details.fc-sec[data-sec]"));
-          const rc = function (d) { return d.getBoundingClientRect(); };
-          const seVe = function (d) { const r = rc(d); return r.height > 0 && r.bottom > 0 && r.top < vh; };
-          let a = null;
-          const t = _lastInteractEl;
-          if (t && t.isConnected && vp.contains(t) && _lastInteractTs >= _lastScrollTs && t.closest) {
-            const s = t.closest("details.fc-sec[data-sec]"); if (s && seVe(s)) a = s;
-          }
-          if (!a) a = secs.find(function (d) { const r = rc(d); return r.height > 0 && r.top >= 0 && r.top < vh; }) || secs.find(seVe) || null;
-          if (a) { st.anc = a.dataset.sec; st.ancTop = rc(a).top; }
+        // «🧪 Otros estudios» (19 nov 2026): vive solo en memoria y llega con la nube unos segundos después de abrir, ya
+        // abierta (~300-400 px). Si entra ARRIBA de lo que se está viendo empujaba Plan/Pendientes justo al ir a escribir.
+        // Se anota dónde está (o dónde entraría: justo antes de Cirugías) para compensar SOLO ese cambio en el restore.
+        // Hasta arriba de la página (y = 0) no se compensa nada: lo nuevo de arriba se ve.
+        if (st.y > 0) try {
+          const card = document.getElementById("card-" + st.pid);
+          const box = card && card.querySelector('[id^="sec-wlotros-"]'), sig = card && card.querySelector('[id^="sec-cx-"]');
+          const rb = box && box.getBoundingClientRect(), rs = sig && sig.getBoundingClientRect();
+          if (sig && rs.height > 0) st.wlo = { h: rb && rb.height > 0 ? rb.height : 0, top: rb && rb.height > 0 ? rb.top : rs.top, sig: sig.id, sigTop: rs.top };
         } catch (_) {}
         return st;
       } catch (_) { return null; }
@@ -16964,13 +16956,51 @@ function plExportBackup() {
       }
       // Altura real de las cajas AHORA (no en el rAF del MutationObserver): el documento no se encoge y el scroll no se recorta.
       try { if (typeof autoResizeAll === "function") autoResizeAll(vp); } catch (_) {}
-      try { if (Math.abs((window.scrollY || 0) - st.y) > 1) window.scrollTo(0, st.y); } catch (_) {}
-      // La sección ancla vuelve a quedar donde estaba en la pantalla (lo que creció o se encogió arriba no la mueve).
+      // Posición a restaurar: la misma de antes (st.y), o, si «🧪 Otros estudios» cambió de alto ARRIBA de lo que se ve
+      // (por debajo de la barra de camas, que es fija), la que deja lo que va después (Cirugías, Plan…) en su lugar de la
+      // pantalla. Si la caja está a la vista no se compensa (igual que antes: se ve aparecer). En dos columnas (iPad
+      // horizontal) solo si lo último que se tocó es de la columna principal y no se ha desplazado la página desde entonces
+      // (si no, la columna lateral perdería su lugar).
       try {
-        if (st.anc != null) {
-          const sel = 'details.fc-sec[data-sec="' + (window.CSS && CSS.escape ? CSS.escape(st.anc) : String(st.anc).replace(/["\\]/g, "")) + '"]';
-          const a = Array.prototype.slice.call(vp.querySelectorAll(sel)).find(function (d) { return d.getBoundingClientRect().height > 0; });
-          if (a) { const dy = a.getBoundingClientRect().top - st.ancTop; if (Math.abs(dy) > 1) window.scrollTo(0, Math.max(0, (window.scrollY || 0) + dy)); }
+        let objetivo = function () { return st.y; }, compensa = false;
+        const w = st.wlo; const card = w && document.getElementById("card-" + st.pid);
+        const box = card && card.querySelector('[id^="sec-wlotros-"]'); const rb = box && box.getBoundingClientRect();
+        const h = rb && rb.height > 0 ? rb.height : 0;
+        if (card && Math.abs(h - w.h) > 1) {
+          const nav = document.getElementById("board-nav"); let borde = 0;
+          try { if (nav && /sticky|fixed/.test(getComputedStyle(nav).position)) borde = Math.max(0, nav.getBoundingClientRect().bottom); } catch (_) {}
+          const m = card.querySelector(".fc-main"), sd = card.querySelector(".fc-side");
+          const rm = m && m.getBoundingClientRect(), rsd = sd && sd.getBoundingClientRect();
+          const dosCol = !!(rm && rsd && rm.height > 0 && rsd.height > 0 && rsd.left >= rm.right - 2);
+          const t = _lastInteractEl;
+          const enMain = !!(m && t && t.isConnected && m.contains(t) && _lastInteractTs >= _lastScrollTs);
+          if (w.top < borde && (!dosCol || enMain)) {
+            compensa = true;
+            objetivo = function () {
+              const sg = document.getElementById(w.sig);
+              if (!sg || !vp.isConnected || !vp.contains(sg) || vp.dataset.plPid !== st.pid || (vp.dataset.plMode || "") !== st.mode) return null;
+              const r = sg.getBoundingClientRect(); if (r.height <= 0) return null;
+              return (window.scrollY || 0) + (r.top - w.sigTop);
+            };
+          }
+        }
+        const aplicar = function () { const y = objetivo(); if (y != null && Math.abs((window.scrollY || 0) - y) > 1) window.scrollTo(0, Math.max(0, y)); };
+        aplicar();
+        // WebKit (iPad): justo tras el repintado la página puede quedar unos cuadros más corta (cajas de texto aún sin su
+        // altura) y el navegador recorta el scroll (al fondo de la ficha la vista quedaba ~10-40 px corrida). Se vuelve a
+        // aplicar cuando el diseño se asienta, SOLO si nadie tocó la pantalla ni movió el scroll desde entonces (nunca
+        // pelea con un salto, un toque o un desplazamiento del usuario) y solo si hace falta.
+        const yAhora = window.scrollY || 0, y0 = objetivo();
+        if (compensa || (y0 != null && Math.abs(yAhora - y0) > 1)) {
+          let yEsperada = yAhora; const tToque = _lastInteractTs;
+          const otraVez = function () {
+            try {
+              if (_lastInteractTs !== tToque || Math.abs((window.scrollY || 0) - yEsperada) > 1) return;
+              aplicar(); yEsperada = window.scrollY || 0;
+            } catch (_) {}
+          };
+          try { requestAnimationFrame(function () { otraVez(); requestAnimationFrame(otraVez); }); } catch (_) {}
+          setTimeout(otraVez, 200); setTimeout(otraVez, 600);
         }
       } catch (_) {}
       try { const jb = st.jl && vp.querySelector("#board-nav .bn-jump"); if (jb && jb.scrollLeft !== st.jl) jb.scrollLeft = st.jl; } catch (_) {}   // barra de saltos (renderView la reconstruye)

@@ -424,6 +424,10 @@ const PTS = [
     await page3.close();
   }
 
+  // Tolerancia de las pruebas de «no se mueve»: ±3 px en Chromium y WebKit (iPad). Firefox, por su anclaje nativo del
+  // scroll, ya movía 20-23 px estos mismos casos ANTES de esta caja (medido en 854e260): ahí ±30 px, que sigue atrapando
+  // los saltos de ~300 px que se buscan evitar.
+  const TOL_PX = (process.env.BROWSER || '').toLowerCase() === 'firefox' ? 30 : 3;
   // ── Al REABRIR (con la copia local) «Otros» llega con la nube unos segundos después: Plan no se mueve de su lugar ──
   // (revisión 19 nov 2026: la caja, abierta, empujaba Plan/Pendientes ~300 px justo cuando el residente iba a escribir)
   {
@@ -475,8 +479,87 @@ const PTS = [
     const despues = await page4.evaluate((ek) => { const plan = document.getElementById('sec-plan-' + ek) || document.getElementById('sec-cx-' + ek); const o = document.getElementById('sec-wlotros-' + ek);
       return { top: Math.round(plan.getBoundingClientRect().top), otrosH: o ? Math.round(o.getBoundingClientRect().height) : 0, abierta: !!(o && o.open) }; }, antes.ek);
     check('O14 al reabrir, «Otros» llega tarde (abierta, con su altura) y la sección que estaba a la vista (Plan) no se mueve de su lugar',
-      antes.focusOn && !antes.otrosYa && llego && despues.otrosH > 150 && despues.abierta && Math.abs(despues.top - antes.top) <= 3, JSON.stringify({ antes, despues }));
+      antes.focusOn && !antes.otrosYa && llego && despues.otrosH > 150 && despues.abierta && Math.abs(despues.top - antes.top) <= TOL_PX, JSON.stringify({ antes, despues }));
+    // ☑ Lista en Plan (repinta la tarjeta y la lista aparece DENTRO de Plan, a la vista): el botón que se tocó no se mueve
+    // (lo de abajo baja, como siempre). Revisión 19 nov 2026: un ancla general lo mandaba fuera de la pantalla.
+    const lista = await page4.evaluate(async () => {
+      const ek = pid(patients.find(x => x.cama === '3-301')).replace(/[^a-zA-Z0-9]/g, '_');
+      const plan = document.getElementById('sec-plan-' + ek); window.scrollTo(0, plan.getBoundingClientRect().top + scrollY - 300);
+      await new Promise(r => setTimeout(r, 500));
+      const btn = () => document.querySelector('#sec-plan-' + ek + ' .pend-tool[onclick^="togglePendList"]');
+      const b0 = Math.round(btn().getBoundingClientRect().top), y0 = Math.round(scrollY);
+      btn().click(); await new Promise(r => setTimeout(r, 900));
+      return { y0, b0, y1: Math.round(scrollY), b1: Math.round(btn().getBoundingClientRect().top), on: btn().classList.contains('on') };
+    });
+    check('O14c «☑ Lista» en Plan: la lista aparece y el botón que se tocó se queda donde estaba', lista.on && lista.y0 > 0 && Math.abs(lista.b1 - lista.b0) <= TOL_PX, JSON.stringify(lista));
+    // Si la caja entra A LA VISTA (se está leyendo la tabla de Labs), no se compensa nada: la tabla no se mueve y lo de
+    // abajo baja (como siempre).
+    await page4.reload({ waitUntil: 'load' });
+    await page4.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3 && document.querySelector('[id^="sec-cx-"]'), null, { timeout: 30000 });
+    await page4.waitForTimeout(700);
+    const vista = await page4.evaluate(() => {
+      const ek = pid(patients.find(x => x.cama === '3-301')).replace(/[^a-zA-Z0-9]/g, '_');
+      const labs = document.getElementById('sec-labs-' + ek); window.scrollTo(0, labs.getBoundingClientRect().top + scrollY - 260);
+      return { ek, otrosYa: !!document.getElementById('sec-wlotros-' + ek), labs: Math.round(labs.getBoundingClientRect().top), cx: Math.round(document.getElementById('sec-cx-' + ek).getBoundingClientRect().top), y: Math.round(scrollY) };
+    });
+    const llego4 = await page4.waitForFunction((ek) => !!document.getElementById('sec-wlotros-' + ek), vista.ek, { timeout: 20000 }).then(() => true, () => false);
+    await page4.waitForTimeout(2500);
+    const vista2 = await page4.evaluate((ek) => ({ labs: Math.round(document.getElementById('sec-labs-' + ek).getBoundingClientRect().top), cx: Math.round(document.getElementById('sec-cx-' + ek).getBoundingClientRect().top) }), vista.ek);
+    check('O14d «Otros» entra a la vista (se lee la tabla de Labs): la tabla no se mueve y Cirugías baja lo que mide la caja',
+      // (Firefox: su anclaje nativo ya movía la tabla 68 px en este caso en 854e260; ahí solo se exige que la caja entre.)
+      !vista.otrosYa && vista.y > 0 && llego4 && (TOL_PX > 3 || Math.abs(vista2.labs - vista.labs) <= TOL_PX) && vista2.cx - vista.cx > 100, JSON.stringify({ vista, vista2 }));
     await page4.close();
+
+    // iPad HORIZONTAL (dos columnas): el residente salta a «🖼 Estudios de imagen» (columna lateral; Cirugías queda arriba,
+    // fuera de la pantalla) y luego llega «Otros» a la columna principal: Imagen no se mueve (antes de esta caja tampoco se
+    // movía; compensar ahí la sacaría ~300 px de la pantalla).
+    const page5 = await browser.newPage({ viewport: { width: 1194, height: 834 } });
+    page5.on('pageerror', e => errors.push(String((e && e.stack) || e).slice(0, 300)));
+    let delay5 = 0; const notes5 = [];
+    await page5.route('**/vendor/supabase*', r => r.abort());
+    await page5.route('**/rest/v1/**', async (route) => {
+      const req = route.request(); const url = req.url().replace(/^https?:\/\/[^/]+/, ''); const m = req.method();
+      const json = (status, obj) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(obj) });
+      if (url.startsWith('/rest/v1/patients') && m === 'GET') return json(200, PTS);
+      if (url.startsWith('/rest/v1/winlab_labs') && m === 'GET') { if (delay5) await new Promise(r => setTimeout(r, delay5)); return json(200, wl4); }
+      if (url.startsWith('/rest/v1/notes') && m === 'GET') return json(200, notes5);
+      if (url.startsWith('/rest/v1/notes') && m !== 'GET') {
+        try { const arr = JSON.parse(req.postData() || '[]'); (Array.isArray(arr) ? arr : [arr]).forEach(r => { if (r && r.patient_id) { const i = notes5.findIndex(x => x.patient_id === r.patient_id); const mg = Object.assign({}, i >= 0 ? notes5[i] : {}, r, { updated_at: new Date().toISOString() }); if (i >= 0) notes5[i] = mg; else notes5.push(mg); } }); } catch (_) {}
+        return json(201, [{}]);
+      }
+      return json(200, []);
+    });
+    await page5.addInitScript(MOCK);
+    await page5.goto(BASE_URL + '/index.html', { waitUntil: 'load', timeout: 90000 });
+    await page5.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3, null, { timeout: 30000 });
+    await page5.waitForFunction(() => { const p = patients.find(x => x.cama === '3-301'); return !!(p && document.getElementById('sec-wlotros-' + pid(p).replace(/[^a-zA-Z0-9]/g, '_'))); }, null, { timeout: 10000 }).catch(() => {});
+    await page5.waitForTimeout(1500);
+    delay5 = 3500;
+    await page5.reload({ waitUntil: 'load' });
+    await page5.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 3 && document.querySelector('[id^="sec-img-"]'), null, { timeout: 30000 });
+    await page5.waitForTimeout(500);
+    const salto = await page5.evaluate(async () => {
+      const ek = pid(patients.find(x => x.cama === '3-301')).replace(/[^a-zA-Z0-9]/g, '_');
+      const b = document.querySelector('#board-nav .bn-jump [data-sec="img"]');
+      if (b) b.click(); else fcJump(pid(patients.find(x => x.cama === '3-301')), 'img');
+      await new Promise(r => setTimeout(r, 900));
+      // Que Cirugías (donde entra «Otros», columna principal) quede arriba de la barra fija, fuera de la vista.
+      const nav0 = document.getElementById('board-nav'), cx0 = document.getElementById('sec-cx-' + ek);
+      const falta = cx0.getBoundingClientRect().top - (nav0.getBoundingClientRect().bottom - 60);
+      if (falta > 0) { window.scrollBy(0, falta); await new Promise(r => setTimeout(r, 600)); }
+      const k = pid(patients.find(x => x.cama === '3-301')); const ind = document.getElementById('sec-img-' + ek), card = document.getElementById('card-' + k), main = card && card.querySelector('.fc-main');
+      const side = ind && ind.closest('.fc-side');
+      const nav = document.getElementById('board-nav');
+      return { ek, top: Math.round(ind.getBoundingClientRect().top), y: Math.round(scrollY), boton: !!b, otrosYa: !!document.getElementById('sec-wlotros-' + ek),
+        cxArriba: document.getElementById('sec-cx-' + ek).getBoundingClientRect().top < nav.getBoundingClientRect().bottom,
+        dosCol: !!(side && main && side.getBoundingClientRect().left >= main.getBoundingClientRect().right - 2) };
+    });
+    const llego5 = await page5.waitForFunction((ek) => !!document.getElementById('sec-wlotros-' + ek), salto.ek, { timeout: 20000 }).then(() => true, () => false);
+    await page5.waitForTimeout(2500);
+    const tras = await page5.evaluate((ek) => ({ top: Math.round(document.getElementById('sec-img-' + ek).getBoundingClientRect().top), y: Math.round(scrollY) }), salto.ek);
+    check('O14b iPad horizontal (2 columnas): tras saltar a Estudios de imagen (columna lateral; Cirugías arriba, fuera de la pantalla), la llegada de «Otros» a la columna principal no la mueve',
+      salto.dosCol && salto.cxArriba && salto.boton && !salto.otrosYa && llego5 && Math.abs(tras.top - salto.top) <= TOL_PX, JSON.stringify({ salto, tras }));
+    await page5.close();
   }
   check('O12 sin errores de página', errors.length === 0, errors.join(' | '));
   console.log(`\n${pass} passed, ${fail} failed`);

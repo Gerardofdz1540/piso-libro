@@ -2048,9 +2048,13 @@ estudios».
   nada (a veces «0 pacientes»). Ahora la caja se pinta igual, pero ese aviso ya no lo provoca «Otros»: sale solo cuando
   hay labs para la tabla, como antes de la -2. Pruebas O13b / O13c.
 - **La ficha ya no salta al abrir.** La caja llega con la nube unos segundos después de abrir (abierta, ~300-400 px) y
-  empujaba Plan/Pendientes justo cuando se iba a escribir. Ahora, en cada repintado, la sección que se tiene a la vista
-  (la del último campo tocado o la primera que se ve) se queda en el mismo lugar de la pantalla aunque arriba crezca
-  o se encoja algo (también la línea «🤖 El robot aún no ha buscado…» que antes la subía ~100 px). Prueba O14.
+  empujaba Plan/Pendientes justo cuando se iba a escribir. Ahora, si la caja entra (o cambia de alto) ARRIBA de lo que
+  se está viendo, lo que va después (Cirugías, Plan…) se queda en su lugar de la pantalla. Si entra a la vista, se ve
+  aparecer como siempre (nada se compensa). En iPad horizontal (dos columnas) solo se compensa si lo último que se tocó
+  es de la columna principal (si no, la lateral —Pase, Indicaciones— perdería su lugar). Hasta arriba de la página no se
+  compensa nada. En WebKit (iPad), si tras un repintado la página queda unos cuadros más corta y recorta el scroll, se
+  reacomoda cuando el diseño se asienta, solo si nadie tocó la pantalla. Pruebas O14, O14b, O14c y O14d (una primera
+  versión con un ancla general se descartó en la revisión: movía la columna lateral y la lista ☑ de Plan).
 - **Lo mismo en todos los iPads.** «Otros» usa solo las filas de los últimos 4 días (lo que la app baja al abrir). Las
   fechas viejas que trae el respaldo semanal siguen llenando la tabla de labs (eso sí se guarda), pero ya no aparecen
   unos segundos en «Otros» para desaparecer en la siguiente recarga. Pruebas R-O35 / R-O36.
