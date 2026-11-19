@@ -208,6 +208,12 @@ const LCR = H + [
   assert(hojas.some((x) => x.estudio === "Influenza A H1N1" && x.valor === "DETECTADO" && x.seccion === "PANEL RESPIRATORIO"), "Panel que sigue en la hoja 2: el DETECTADO de la hoja 2 sí se lee");
   const hojaQS = extractLabValuesFromText(H + ["PANEL RESPIRATORIO", "Adenovirus NO DETECTADO No detectado"].join("\n") + F + H + ["GLUCOSA 98.0 mg/dL 74.0 - 106.0", "Algo raro NEGATIVO"].join("\n") + F);
   assert(!hojaQS.find((x) => x.estudio === "GLUCOSA").seccion && !hojaQS.some((x) => x.estudio === "Algo raro"), "Tras el salto de hoja, un estudio normal termina el panel (no se reanuda)");
+  // Ronda 3: blanco en MAYÚSCULAS con número en el nombre, positivo, con y sin referencia
+  const may = extractLabValuesFromText(H + ["SARS COV 2 DETECTADO", "INFLUENZA A NO DETECTADO", "PANEL RESPIRATORIO", "SARS COV 2 DETECTADO NO DETECTADO", "INFLUENZA A H1N1 DETECTADO NO DETECTADO", "PARAINFLUENZA 3 DETECTADO NO DETECTADO"].join("\n") + F);
+  assert(J(may.map((x) => [x.estudio, x.valor])) === J([["SARS COV 2", "DETECTADO"], ["INFLUENZA A", "NO DETECTADO"], ["SARS COV 2", "DETECTADO"], ["INFLUENZA A H1N1", "DETECTADO"], ["PARAINFLUENZA 3", "DETECTADO"]]),
+    "Blanco en MAYÚSCULAS con número en el nombre (SARS COV 2, H1N1, PARAINFLUENZA 3): DETECTADO no se pierde ni se lee como NO DETECTADO");
+  const sero = extractLabValuesFromText(H + ["ANTICUERPOS ANTI HIV 0.24 S/CO NO REACTIVO < 1.0", "HEPATITIS A IGM 0.19 NEGATIVO", "VITAMINA B12 NORMAL"].join("\n") + F);
+  assert(sero[0].valor === "0.24" && sero[1].estudio === "HEPATITIS A IGM" && sero[1].valor === "0.19" && sero[2].estudio === "VITAMINA B12", "Serología con índice decimal: el número sigue siendo el valor (como antes)");
   const det = extractCultureFromText(H + "HEMOCULTIVO PERIFERICO 1 DESARROLLO\nStaphylococcus aureus DETECTADO\nmecA DETECTADO" + F);
   assert(det && det.resultado === "POSITIVO" && /Staphylococcus aureus/.test(det.germenes[0] || ""), "Cultivo: «Staphylococcus aureus DETECTADO» (identificación) sigue siendo germen POSITIVO");
   const neg = extractCultureFromText(H + "HEMOCULTIVO PERIFERICO 1 DESARROLLO\nNEGATIVO A 5 DIAS\nStaphylococcus aureus NO DETECTADO" + F);

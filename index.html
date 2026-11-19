@@ -9232,6 +9232,8 @@ function plExportBackup() {
       const vals = Array.isArray(rep.valores) ? rep.valores : [];
       if (vals.some(function (v) { return v && v.seccion; })) return false;   // robot nuevo: valor por valor
       if (vals.some(function (v) { return v && !_wlValEsLiquido(v) && WINLAB_SOLO_SANGRE_RX.test(normalizeWinlabName(v.estudio || v.nombre || "").toUpperCase()); })) return false;
+      // Con EGO en la misma orden (densidad, nitritos, urobilinógeno…) los leucocitos/eritrocitos son de la ORINA.
+      if (vals.some(function (v) { return v && WINLAB_URINE_MARKERS.test(normalizeWinlabName(v.estudio || v.nombre || "")); })) return false;
       if (vals.some(function (v) { return v && (v.bucket === "fluid" || WINLAB_CAVIDAD_RX.test(String(v.estudio || v.nombre || ""))); })) return true;
       if (vals.some(_wlValEsCelLiquido)) return true;
       const c = rep.cultivo && typeof rep.cultivo === "object" ? rep.cultivo : null;
@@ -9246,6 +9248,17 @@ function plExportBackup() {
     const WINLAB_LIMITE_RX = /\s*\b(?:VALOR\s+)?(?:POR\s+(ENCIMA|DEBAJO)\s+DEL|FUERA\s+DEL)\s+L[IÍ]MITE\s+MEDIBLE\b.*$/i;
     function _wlLimiteTxt(m) { return m && /ENCIMA/i.test(m[1] || "") ? "> LÍMITE" : (m && /DEBAJO/i.test(m[1] || "") ? "< LÍMITE" : "FUERA DE LÍMITE"); }
     function labEsLimite(v) { return /^(>|<|FUERA DE)\s*L[IÍ]MITE$/i.test(String(v === undefined || v === null ? "" : v).trim()); }
+    // ¿Qué tan grave es un «> LÍMITE» / «< LÍMITE»? Por arriba: crítico si el analito tiene umbral crítico alto (o es un
+    // tiempo de coagulación: incoagulable); si no, alterado. Por abajo: crítico solo si tiene umbral crítico bajo
+    // (plaquetas, Hb, K, glucosa…); troponina, PCT, PCR o dímero D «por debajo del límite» = indetectable = normal.
+    function labLimiteNivel(key, v) {
+      if (!labEsLimite(v)) return "";
+      const lf = (typeof LAB_FIELD_BY_KEY !== "undefined" && LAB_FIELD_BY_KEY[key]) || {};
+      const t = String(v).trim();
+      if (/^>/.test(t)) return (lf.ch != null || /^(tp|ttp|inr)$/.test(key)) ? "crit" : (lf.high != null ? "abn" : "");
+      if (/^</.test(t)) return lf.cl != null ? "crit" : ((lf.low != null && lf.low > 0) ? "abn" : "");
+      return "abn";
+    }
     // Primera llave de WINLAB_ALIASES que corresponde a un nombre ya normalizado (sin mirar si ya está en labs).
     function _wlAliasKey(name) {
       for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) { if (patterns.some(rx => rx.test(name))) return key; }
@@ -9287,7 +9300,8 @@ function plExportBackup() {
           // Por VALOR: su nombre o sección dicen el líquido, o es la firma del recuento de un líquido; de un reporte de
           // líquido del formato viejo solo las células y el examen físico (la GLUCOSA/ALBUMINA «pelada» es la sérica que
           // se pide junto: cociente de glucosa, SAAG, criterios de Light).
-          if (_wlValEsLiquido(v) || _wlValEsCelLiquido(v) || (_repLiq && WINLAB_CEL_FIS_RX.test(_nm.toUpperCase()))) { if (T) T(/CULTIVO|ANTIBIOGRAMA|MICROORGANISMO AISLADO/i.test(_nm) || /^NEGATIVO\s+A$/.test(_nm) ? "cultivo" : "liquido"); continue; }
+          const _orinaU = _panelMode === "urine" || /P\/[UΜµ]L|CAMPO/i.test(String(v && v.unidad || "") + " " + String(v && v.referencia || ""));
+          if (_wlValEsLiquido(v) || (!_orinaU && (_wlValEsCelLiquido(v) || (_repLiq && WINLAB_CEL_FIS_RX.test(_nm.toUpperCase()))))) { if (T) T(/CULTIVO|ANTIBIOGRAMA|MICROORGANISMO AISLADO/i.test(_nm) || /^NEGATIVO\s+A$/.test(_nm) ? "cultivo" : "liquido"); continue; }
           if (_wlValEsMicro(v)) { if (T) T("sinAlias"); continue; }
           if (_panelMode === "culture") { if (T) T("cultivo"); continue; }
           // Guarda CRÍTICA: si el valor proviene de orina/cultivo/drenaje, NO
@@ -9857,7 +9871,11 @@ function plExportBackup() {
           const viro = viroNom || (t.motivo === "sinAlias" && _WLO_QUAL_RX.test(valor));
           if (t.motivo === "liquido") grupo = "liq";
           else if (t.motivo === "aviso") { grupo = "otros"; aviso = (WINLAB_AVISO_RX.exec(N) || [""])[0].trim(); }
-          else if (t.motivo === "limite") { grupo = "otros"; crit = true; aviso = _wlLimiteTxt(WINLAB_LIMITE_RX.exec(N)) === "< LÍMITE" ? "POR DEBAJO DEL LÍMITE MEDIBLE" : (_wlLimiteTxt(WINLAB_LIMITE_RX.exec(N)) === "> LÍMITE" ? "POR ENCIMA DEL LÍMITE MEDIBLE" : "FUERA DEL LÍMITE MEDIBLE"); }
+          else if (t.motivo === "limite") {
+            const _lt = _wlLimiteTxt(WINLAB_LIMITE_RX.exec(N));
+            grupo = "otros"; crit = labLimiteNivel(t.key || "", _lt) === "crit";
+            aviso = _lt === "< LÍMITE" ? (crit ? "POR DEBAJO DEL LÍMITE MEDIBLE" : "POR DEBAJO DEL LÍMITE MEDIBLE (INDETECTABLE)") : (_lt === "> LÍMITE" ? "POR ENCIMA DEL LÍMITE MEDIBLE" : "FUERA DEL LÍMITE MEDIBLE");
+          }
           else if (t.motivo === "sinAlias") grupo = viro ? "viro" : "otros";
           else if (t.motivo === "sinNumero") {
             if (viroNom) grupo = "viro";
@@ -12039,7 +12057,7 @@ function plExportBackup() {
         function labClass(key, raw){
           var f = TH[key];
           if(!f) return "";
-          if(typeof labEsLimite === "function" && labEsLimite(raw)) return "ff-crit";   // fuera del límite medible (extremo)
+          if(typeof labLimiteNivel === "function" && labEsLimite(raw)) { var _ln = labLimiteNivel(key, raw); return _ln === "crit" ? "ff-crit" : (_ln === "abn" ? (/^</.test(String(raw).trim()) ? "ff-lo" : "ff-hi") : ""); }   // fuera del límite medible
           var n = parseFloat(String(raw).replace(/[<>]/g, "").replace(",", "."));
           if(isNaN(n)) return "";               // texto (Positivo, +++, etc.) → sin color
           if(typeof labCritOf === "function" ? labCritOf(key, n) : ((f.ch != null && n >= f.ch) || (f.cl != null && n <= f.cl))) return "ff-crit";   // tabla única (≤ cl / ≥ ch)
@@ -18668,7 +18686,7 @@ function plExportBackup() {
         if (raw === undefined || raw === null || String(raw).trim() === "") return;
         // Fuera del límite medible del equipo (TP incoagulable, plaquetas no medibles): crítico aunque no tenga número.
         if (labEsLimite(raw)) {
-          critical.push({ key: lf.key, label: lf.label, value: String(raw).trim(), unit: "", title: "Fuera del límite medible (valor extremo): confirmar con el laboratorio" });
+          if (labLimiteNivel(lf.key, raw) === "crit") critical.push({ key: lf.key, label: lf.label, value: String(raw).trim(), unit: "", title: "Fuera del límite medible (valor extremo): confirmar con el laboratorio" });
           return;
         }
         const num = parseLabNumber(String(raw).replace(/^≈/, ""));
@@ -19488,10 +19506,13 @@ function plExportBackup() {
           items.push({ key: key, crit: false, text: (labelMap[key] || key.toUpperCase()) + " muestra rechazada — repetir" });
           return;
         }
-        // Fuera del límite medible: se entrega como crítico (no tiene número).
+        // Fuera del límite medible: se entrega si es crítico o alterado (no tiene número); «< LÍMITE» de una troponina o
+        // una PCT es indetectable (normal) y no se entrega.
         if (labEsLimite(snap.labs[key])) {
+          const _ln = labLimiteNivel(key, snap.labs[key]);
+          if (!_ln) return;
           if (items.length >= 6) { extra++; return; }
-          items.push({ key: key, crit: true, text: (labelMap[key] || key.toUpperCase()) + " " + String(snap.labs[key]).trim().toLowerCase() + " medible — valor extremo, confirmar" });
+          items.push({ key: key, crit: _ln === "crit", text: (labelMap[key] || key.toUpperCase()) + " " + String(snap.labs[key]).trim().toLowerCase() + " medible — valor extremo, confirmar" });
           return;
         }
         let n, txt, pn, est = false, pTxt = "";
@@ -23344,8 +23365,8 @@ function plExportBackup() {
       const estOn = !val && !!(est && est.est && est.txt);
       const num = parseLabNumber(estOn ? est.txt : val);
       const has = !!val || estOn;
-      const crit = has && (((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)) || labEsLimite(val));
-      const abn = has && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
+      const crit = has && (((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)) || labLimiteNivel(lf.key, val) === "crit");
+      const abn = has && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high) || labLimiteNivel(lf.key, val) === "abn");
       const cls = crit ? "crit" : abn ? "abn" : "";
       const hasAlert = (crit || abn) && LAB_QUICK[lf.key];
       // Muestra rechazada (WinLab: coagulada, mal aforada…) o unidad que la app no reconoce: aviso, nunca un número.

@@ -259,6 +259,10 @@ const PTS = [
       rep('R16', Dd + ' 16:00', [{ estudio: 'CREATININA URINARIA VALOR POR ENCIMA DEL LIMITE MEDIBLE', valor: '300.00', unidad: 'mg/dL', referencia: '' }]),
       // Gram de una SECRECIÓN (sección de tinción, no de líquido): «Leucocitos > 25» nunca a la BH
       rep('R18', Dd + ' 17:00', [{ estudio: 'Leucocitos', valor: '> 25', unidad: '', referencia: '', seccion: 'TINCION DE GRAM' }, { estudio: 'Celulas epiteliales', valor: '< 10', unidad: '', referencia: '', seccion: 'TINCION DE GRAM' }]),
+      // Formato viejo, AYER: EGO y citoquímico de líquido peritoneal en la MISMA orden → leucocitos/eritrocitos de ORINA al EGO
+      rep('R19', Ad + ' 18:00', [{ estudio: 'GLUCOSA EN LIQUIDO PERITONEAL', valor: '90.0', unidad: 'mg/dL', referencia: '' }, { estudio: 'DENSIDAD', valor: '1.020', unidad: '', referencia: '1.010 - 1.030' }, { estudio: 'LEUCOCITOS', valor: '320.10', unidad: 'p/μL', referencia: '< 5' }, { estudio: 'ERITROCITOS', valor: '11', unidad: 'p/μL', referencia: '< 5' }]),
+      // Troponina por DEBAJO del límite medible (indetectable): no es crítico
+      rep('R21', Dd + ' 18:00', [{ estudio: 'TROPONINA I VALOR POR DEBAJO DEL LIMITE MEDIBLE', valor: '1.00', unidad: 'pg/mL', referencia: '' }]),
       // Panel de hemocultivo solo con antígenos (sin valores)
       rep('R6', Dd + ' 10:00', null, { antigenos: [{ estudio: 'Staphylococcus', valor: 'DETECTADO', unidad: '', referencia: '', seccion: 'PANEL DE IDENTIFICACION EN HEMOCULTIVO P' }, { estudio: 'Streptococcus', valor: 'NO DETECTADO', unidad: '', referencia: '', seccion: 'PANEL DE IDENTIFICACION EN HEMOCULTIVO P' }] }),
     ], D, new Date(Date.now() - 3600e3).toISOString());
@@ -269,7 +273,7 @@ const PTS = [
     const it = (_winlabOtrosByK[k3] || []);
     const snap = (f) => ((noteData[k3].labHistory || []).find(s => s.fecha === f) || { labs: {} }).labs;
     out.labs = snap(D); out.labsA = snap(A);
-    out.critLim = getCriticalLabItemsFromSnapshot({ labs: { tp: '> LÍMITE', hb: '12.1' } }).map(c => c.key + ':' + c.value);
+    out.critLim = getCriticalLabItemsFromSnapshot({ labs: { tp: '> LÍMITE', hb: '12.1', tropI: '< LÍMITE', plaq: '< LÍMITE' } }).map(c => c.key + ':' + c.value);
     out.cult3 = (_winlabCultByK[k3] || []).map(c => ({ t: c.tipo, o: c.organismo, pos: !!c.positivo }));
     out.items = it.map(x => ({ n: x.nombre, v: x.valor, g: x.grupo, s: x.sub, pos: !!x.pos, av: !!x.aviso, llave: x.llave, f: x.fecha }));
     // Card render for warnings
@@ -320,7 +324,9 @@ const PTS = [
   check('R-O29 tinciones negativas (tinta china, KOH) sin rojo; TINCION DE GRAM de un líquido con cocos sí sale (en rojo)', ri(x => x.n === 'Tinta China' && !x.pos).length === 1 && ri(x => x.n === 'KOH' && !x.pos).length === 1 && ri(x => x.n === 'TINCION DE GRAM' && x.g === 'liq' && x.pos).length === 1, JSON.stringify(ri(x => /TINCION|Tinta|KOH/.test(x.n))));
   check('R-O30 creatinina PRE-HEMODIÁLISIS (sérica) nunca se vuelve «líquido»', !ri(x => x.g === 'liq' && /HEMODIALISIS/.test(x.n)).length);
   check('R-O31 identificación rápida en hemocultivo (Staphylococcus DETECTADO) llega a 🦠 Cultivos como POSITIVO', rv.cult3.some(c => c.pos && /identificaci/i.test(c.t) && /Staphylococcus/.test(c.o)), JSON.stringify(rv.cult3));
-  check('R-O32 «> LÍMITE» cuenta como crítico en el banner/semáforo y en la Entrega', rv.critLim.includes('tp:> LÍMITE'), JSON.stringify(rv.critLim));
+  check('R-O32 «> LÍMITE» del TP y «< LÍMITE» de plaquetas son críticos; «< LÍMITE» de troponina (indetectable) no', rv.critLim.includes('tp:> LÍMITE') && rv.critLim.includes('plaq:< LÍMITE') && !rv.critLim.some(x => /^tropI/.test(x)), JSON.stringify(rv.critLim));
+  check('R-O33 formato viejo: EGO + líquido peritoneal en la misma orden → leucocitos y eritrocitos de ORINA siguen en el EGO', rv.labsA.ego_leuco === '320.10' && rv.labsA.ego_hem === '11' && !ri(x => x.g === 'liq' && x.v === '320.10').length, JSON.stringify(rv.labsA));
+  check('R-O34 troponina «por debajo del límite medible» (indetectable): en la tabla «< LÍMITE» sin rojo, en Otros sin rojo', rv.labs.tropI === '< LÍMITE' && ri(x => x.n === 'TROPONINA I' && !x.pos && /INDETECTABLE/.test(x.v)).length === 1, JSON.stringify([rv.labs.tropI, ri(x => /TROPONINA/.test(x.n))]));
   check('R-O15c hemocultivo con «Staphylococcus aureus DETECTADO» (identificación rápida, sin sección) sigue siendo cultivo POSITIVO', rv.cult3.some(c => c.pos && /Staphylococcus aureus/.test(c.o)), JSON.stringify(rv.cult3));
   check('R-O16 LCR con cultivo POSITIVO: el citoquímico de después (glucosa 12) sí sale; Gram con cocos en rojo', ri(x => x.g === 'liq' && x.n === 'GLUCOSA EN LIQUIDO CEFALORRAQUIDEO' && x.v === '12.0').length === 1 && ri(x => x.n === 'Gram' && x.pos).length === 1);
   check('R-O17 grupo y Rh en «Otros» sin rojo (Rh POSITIVO es normal)', ri(x => x.n === 'FACTOR RH' && x.g === 'otros' && !x.pos).length === 1 && ri(x => x.n === 'GRUPO SANGUINEO').length === 1);

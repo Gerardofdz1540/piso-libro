@@ -100,9 +100,12 @@ export const PDF_ESTUDIO_NAME_RE =
 export const PDF_QUALITATIVE_VALUES =
   "NEGATIVO|NEGATIVA|POSITIVO|POSITIVA|NO REACTIVO|REACTIVO|NO DETECTADO|DETECTADO|SIN DESARROLLO|NO DESARROLLO|" +
   "AUSENTE|AUSENTES|PRESENTE|PRESENTES|NORMAL|ANORMAL|TRAZAS|INDETERMINADO|NO SE OBSERVAN?|ESCASOS?|ABUNDANTES?|MODERADOS?";
+// El nombre puede terminar en dígito ("INFLUENZA A H1N1", "VITAMINA B12"; 19 nov 2026): si no, «INFLUENZA A H1N1 DETECTADO
+// NO DETECTADO» se leía como estudio «… DETECTADO» = «NO DETECTADO» (un positivo leído como negativo).
 export const PDF_QUALITATIVE_LINE_RE = new RegExp(
-  "^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\\s\\/.,()'\\-]*?[A-ZÁÉÍÓÚÑ\\)])\\s+(?:\\*[AB]\\s+)?(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$"
+  "^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9\\s\\/.,()'\\-]*?[A-ZÁÉÍÓÚÑ0-9\\)])\\s+(?:\\*[AB]\\s+)?(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$"
 );
+const PDF_QUAL_START_RE = new RegExp("^(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$");
 export const PDF_QUALITATIVE_VALUE_LINE_RE = new RegExp("^(?:\\*[AB]\\s+)?(" + PDF_QUALITATIVE_VALUES + ")(?:\\s+(.*))?$");
 
 // ── LÍQUIDOS Y PANELES (19 nov 2026): contexto de SECCIÓN ──────────────────────────────────────────
@@ -299,9 +302,17 @@ export function extractLabReportFromText(text) {
 
     // 1) Formato de UNA línea (BH): NOMBRE VALOR UNIDAD RANGO.
     const m = line.match(PDF_LAB_LINE_RE);
-    if (m && !PDF_UNIT_IS_RESULT_RE.test(m[3] || "")) {
+    if (m) {
       const cleanNombre = (m[1] || "").trim();
       if (cleanNombre.length >= 2 && !/^\d/.test(cleanNombre)) {
+        // Un ENTERO corto seguido de una palabra-resultado es parte del NOMBRE del blanco ("SARS COV 2 DETECTADO",
+        // "PARAINFLUENZA 3 NO DETECTADO NO DETECTADO"): estudio «SARS COV 2», valor el resultado, lo demás referencia.
+        const rm = PDF_UNIT_IS_RESULT_RE.test(m[3] || "") && /^\d{1,3}$/.test((m[2] || "").trim()) ? ((m[3] || "") + " " + (m[4] || "")).trim().match(PDF_QUAL_START_RE) : null;
+        if (rm) {
+          push({ estudio: cleanNombre + " " + (m[2] || "").trim(), valor: rm[1], unidad: "", referencia: (rm[2] || "").trim() });
+          pending = null;
+          continue;
+        }
         const f = fixUnit(m[3], m[4]);
         push({ estudio: cleanNombre, valor: (m[2] || "").trim(), unidad: f.unidad, referencia: f.referencia });
         pending = null;
