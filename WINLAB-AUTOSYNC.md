@@ -257,12 +257,14 @@ feat(labs): WinLab auto-sync mapper inicial
 
 - `rpa/pdf-extract.js`: secciones de líquido/panel (`seccion` en cada valor), nombres de 2 renglones unidos, bandera
   `*A`/`*B` sola, valor pegado al renglón de método, renglones en minúsculas dentro de una sección, diferencial con
-  `%`/`#`, género abreviado en antígenos/blancos de panel. `CULTURE_PARSER_VERSION = 3`: la referencia partida del Gram
+  `%`/`#`; antígenos/blancos de panel con nombre de germen en `antigenos` (nombre completo, aparte de `valores`:
+  la app vieja tomaba un germen en `valores` como cultivo positivo); renglón suelto «No detectado» nunca es estudio;
+  encabezado con su resultado en el mismo renglón se lee como antes; «Nota:» no cierra la sección. `CULTURE_PARSER_VERSION = 3`: la referencia partida del Gram
   ya no abre la lista de gérmenes (LCR negativos que salían POSITIVO).
 - `compactReportText()` → `reporte_texto` (cuerpo del PDF sin encabezado del paciente, ≤ 1500 caracteres) cuando no
   sale ningún valor ni cultivo; `drill-order.js` ya no reabre esos reportes (ni los cultivos sin valores) en cada
   corrida, salvo «en proceso» (≤ 21 días) o valores viejos con el nombre partido (≤ 21 días).
-- App: `_wlRepEsLiquido` (un reporte de líquido no llena la tabla de sangre), `WINLAB_AVISO_RX` (NO EJECUTADO, límite
-  medible), traza opcional en `mapWinlabReportesToLabs(reportes, trace)` y caja «🧪 Otros estudios»
+- App: `_wlValEsLiquido` / `_wlRepEsLiquido` (valor por valor; todo el reporte solo en el formato viejo de un líquido
+  de cavidad sin analitos de sangre), `WINLAB_AVISO_RX` (NO EJECUTADO), `WINLAB_LIMITE_RX` («> LÍMITE» / «< LÍMITE»), traza opcional en `mapWinlabReportesToLabs(reportes, trace)` y caja «🧪 Otros estudios»
   (`buildWinlabOtros` → `_winlabOtrosByK`, solo memoria). Pruebas: `rpa/liquidos.test.js`,
   `tests/headless/app_labs_otros.js`.

@@ -4503,6 +4503,7 @@ details.fc-sec > .fcs-body > .cds-section, details.fc-sec > .fcs-body > .ind-sec
 .wlo-row.wlo-pos{ background:#fef2f2; border-radius:4px; padding:2px 4px; }
 .wlo-row.wlo-alt .wlo-v{ color:#b45309; }
 .wlo-row.wlo-av .wlo-v{ color:#b45309; white-space:normal; text-align:left; grid-column:1 / -1; font-size:10.5px; }
+.wlo-row.wlo-pos.wlo-av .wlo-v{ color:#b91c1c; }
 .wlo-warn{ grid-column:1 / -1; font-size:10px; color:#b45309; font-weight:700; }
 .wlo-inc{ font-size:9.5px; color:#94a3b8; font-weight:600; }
 .wlo-txt summary{ font-size:10.5px; color:#0e7490; cursor:pointer; font-weight:700; }
@@ -7647,6 +7648,7 @@ function plExportBackup() {
     // (exp + _winlabCensoNameOk + match de nombre por encabezado). renderCultivosSection lo lee.
     let _winlabCultByK = {};  // CULTIVOS-WINLAB-v56
     let _winlabOtrosByK = {}; // 🧪 Otros estudios (19 nov 2026): solo en memoria, se arma en cada sync (buildWinlabOtros)
+    let _winlabOtrosSigByK = {}; // identidad con la que se armó (si cambia, no se arrastra nada de la pasada anterior)
     let expandedCards = {};
     let labLoadingSet = new Set();
     let activeLabDate = {};   // k -> "YYYY-MM-DD"
@@ -9198,24 +9200,44 @@ function plExportBackup() {
       return { v: "REVISAR UNIDAD (" + String(unidad).trim().slice(0, 12) + ")" };
     }
     // ── LÍQUIDOS Y AVISOS DEL LABORATORIO (19 nov 2026) ─────────────────────────────────────────────────────
-    // Un reporte de LÍQUIDO (LCR, pleural, peritoneal/ascitis, drenaje, sinovial, pericárdico, biliar) nunca trae BH ni
-    // QS (verificado en winlab_labs: 0 de 52), pero sus LEUCOCITOS/ERITROCITOS (10³/µL), lípidos o proteínas se pintaban
-    // como de SANGRE (Leu 0.850 «leucopenia» que en realidad era el recuento del LCR). Si algún valor del reporte es de
-    // un líquido (nombre, sección del robot o cultivo del PDF), TODO el reporte es del líquido: no llena la tabla de
-    // sangre y se muestra en «🧪 Otros estudios › Líquidos».
-    const WINLAB_FLUID_RX = /L[IÍ]QUIDO|CEFALORRAQU|\bLCR\b|PERITONEAL|PLEURAL|ASC[IÍ]TI|DRENAJE|SINOVIAL|PERIC[AÁ]RDIC|\bBILIAR\b/i;
+    // Los LEUCOCITOS/ERITROCITOS (10³/µL), lípidos o proteínas de un líquido se pintaban como de SANGRE (Leu 0.850
+    // «leucopenia» que en realidad era el recuento del LCR). Un valor es del líquido si su NOMBRE o la SECCIÓN que le pone
+    // el robot lo dicen (_wlValEsLiquido): no llena la tabla de sangre y sale en «🧪 Otros estudios › Líquidos».
+    // Formato VIEJO del robot (sin `seccion`): el recuento celular del LCR no dice «líquido», así que si el reporte es de
+    // un líquido de CAVIDAD (LCR, pleural, peritoneal, sinovial, pericárdico) y no trae ningún analito que solo exista en
+    // sangre, TODO el reporte es del líquido (_wlRepEsLiquido). Drenaje y bilis no: suelen venir en la misma orden que la
+    // química del día (amilasa del drenaje + QS), y cada valor se decide por su nombre.
+    const WINLAB_FLUID_RX = /L[IÍ]QUIDO|CEFALORRAQU|\bLCR\b|PERITONEAL|PLEURAL|ASC[IÍ]TI|DRENAJE|SINOVIAL|PERIC[AÁ]RDIC|\bBILIAR\b|\bBILIS\b|DI[AÁ]LISIS/i;
+    const WINLAB_CAVIDAD_RX = /CEFALORRAQU|\bLCR\b|PERITONEAL|PLEURAL|ASC[IÍ]TI|SINOVIAL|PERIC[AÁ]RDIC/i;
+    const WINLAB_SOLO_SANGRE_RX = /^(HEMOGLOBINA$|HEMATOCRITO|PLAQUETA|VOL\.?\s*CORPUSCULAR|VOLUMEN CORPUSCULAR|CONC\.?\s*HB|HB\.?\s*CORPUSCULAR|RDW|NEUTROFILOS|LINFOCITOS|MONOCITOS|EOSINOFILOS|BASOFILOS|UREA$|NITROGENO UREICO|CREATININA$|SODIO$|POTASIO$|CLORO$|CALCIO$|FOSFORO$|MAGNESIO$|BILIRRUBINA|TRANSAMINASA|ALANINO|ASPARTATO|FOSFATASA|TIEMPO DE|INR|FIBRINOGENO|DIMERO|PROCALCITONINA|PROTEINA C REACTIVA|TROPONINA)/i;
+    function _wlValEsLiquido(v) {
+      return !!v && (v.bucket === "fluid" || WINLAB_FLUID_RX.test(String(v.estudio || v.nombre || "") + " " + String(v.seccion || "")));
+    }
     function _wlRepEsLiquido(rep) {
       if (!rep) return false;
       const vals = Array.isArray(rep.valores) ? rep.valores : [];
-      if (vals.some(function (v) { return v && (v.bucket === "fluid" || WINLAB_FLUID_RX.test(String(v.estudio || v.nombre || "") + " " + String(v.seccion || ""))); })) return true;
+      if (vals.some(function (v) { return v && v.seccion; })) return false;   // robot nuevo: valor por valor
+      if (vals.some(function (v) { return v && !_wlValEsLiquido(v) && WINLAB_SOLO_SANGRE_RX.test(normalizeWinlabName(v.estudio || v.nombre || "").toUpperCase()); })) return false;
+      if (vals.some(function (v) { return v && (v.bucket === "fluid" || WINLAB_CAVIDAD_RX.test(String(v.estudio || v.nombre || ""))); })) return true;
+      // Recuento celular de un líquido que el robot viejo dejó sin ninguna palabra de líquido: el diferencial se llama
+      // POLIMORFONUCLEARES/MONONUCLEARES (en sangre es NEUTRÓFILOS/LINFOCITOS), los leucocitos traen la referencia del
+      // líquido (0.000 - 5.000) y los eritrocitos «Ausentes».
+      if (vals.some(function (v) {
+        const n = normalizeWinlabName(v && (v.estudio || v.nombre) || "").toUpperCase(), r = String(v && v.referencia || "").trim();
+        return /^(POLIMORFONUCLEARES|MONONUCLEARES)\b/.test(n) || (n === "LEUCOCITOS" && /^0(?:[.,]0+)?\s*-\s*5(?:[.,]0+)?$/.test(r)) || (n === "ERITROCITOS" && /^AUSENTES?$/i.test(r));
+      })) return true;
       const c = rep.cultivo && typeof rep.cultivo === "object" ? rep.cultivo : null;
       const secs = c ? (Array.isArray(c.secciones) && c.secciones.length ? c.secciones : [c]) : [];
-      return secs.some(function (x) { return x && /LCR|L[IÍ]QUIDO|PLEURAL|PERITONEAL/i.test(String(x.tipo || "") + " " + String(x.muestra || "")); });
+      return secs.some(function (x) { return x && /LCR|CEFALORRAQU|PLEURAL|PERITONEAL|ASC[IÍ]TI/i.test(String(x.tipo || "") + " " + String(x.muestra || "")); });
     }
-    // Avisos del laboratorio pegados al nombre: el número de WinLab es el rango de referencia, no un resultado.
-    // "HEMATOCRITO NO EJECUTADO" 36.00 se pintaba como Hto 36; "TIEMPO DE PROTROMBINA VALOR POR ENCIMA DEL LIMITE
-    // MEDIBLE" 11.00 como TP normal (era incoagulable). No llenan la tabla; salen en «Otros estudios» con el aviso.
-    const WINLAB_AVISO_RX = /\s*\b(?:NO\s+EJECUTADO|VALOR\s+POR\s+(?:ENCIMA|DEBAJO)\s+DEL\s+L[IÍ]MITE\s+MEDIBLE|FUERA\s+DEL\s+L[IÍ]MITE\s+MEDIBLE)\b.*$/i;
+    // Avisos del laboratorio pegados al nombre. «NO EJECUTADO»: el número de WinLab es el rango de referencia, no un
+    // resultado ("HEMATOCRITO NO EJECUTADO" 36.00 se pintaba como Hto 36) → no llena la tabla; sale en «Otros» como aviso.
+    // «Valor por encima/debajo del límite medible»: SÍ es un resultado, extremo (TP incoagulable, plaquetas no medibles)
+    // → la casilla dice «> LÍMITE» / «< LÍMITE» en rojo (antes «TP 11.00», normal).
+    const WINLAB_AVISO_RX = /\s*\bNO\s+EJECUTADO\b.*$/i;
+    const WINLAB_LIMITE_RX = /\s*\b(?:VALOR\s+)?(?:POR\s+(ENCIMA|DEBAJO)\s+DEL|FUERA\s+DEL)\s+L[IÍ]MITE\s+MEDIBLE\b.*$/i;
+    function _wlLimiteTxt(m) { return m && /ENCIMA/i.test(m[1] || "") ? "> LÍMITE" : (m && /DEBAJO/i.test(m[1] || "") ? "< LÍMITE" : "FUERA DE LÍMITE"); }
+    function labEsLimite(v) { return /^(>|<|FUERA DE)\s*L[IÍ]MITE$/i.test(String(v === undefined || v === null ? "" : v).trim()); }
     // Primera llave de WINLAB_ALIASES que corresponde a un nombre ya normalizado (sin mirar si ya está en labs).
     function _wlAliasKey(name) {
       for (const [key, patterns] of Object.entries(WINLAB_ALIASES)) { if (patterns.some(rx => rx.test(name))) return key; }
@@ -9251,9 +9273,11 @@ function plExportBackup() {
           // EGO listado ANTES que la BH en el mismo reporte: HEMOGLOBINA/LEUCOCITOS/ERITROCITOS con unidad de sangre
           // (g/dL, 10^3/µL, 10^6/µL) regresan a sangre; los de orina vienen en /campo, Leu/µL, mg/dL…
           else if (_panelMode === "urine" && _wlBloodUnitName(_nm, v && v.unidad)) _panelMode = "blood";
+          // Valor de LÍQUIDO (19 nov 2026): nunca llena la tabla de sangre (ver _wlValEsLiquido / _wlRepEsLiquido). Va
+          // antes del modo «cultivo»: el citoquímico que viene después del cultivo del LCR no se pierde; solo el renglón
+          // del cultivo mismo se salta (ya está en 🦠 Cultivos).
+          if (_repLiq || _wlValEsLiquido(v)) { if (T) T(WINLAB_CULTURE_MARKERS.test(_nm) || /^NEGATIVO\s+A$/.test(_nm) ? "cultivo" : "liquido"); continue; }
           if (_panelMode === "culture") { if (T) T("cultivo"); continue; }
-          // Reporte de LÍQUIDO (19 nov 2026): nada de él llena la tabla de sangre (ver _wlRepEsLiquido).
-          if (_repLiq) { if (T) T("liquido"); continue; }
           // Guarda CRÍTICA: si el valor proviene de orina/cultivo/drenaje, NO
           // mapearlo a aliases sanguíneos. Esto previene que LEUCOCITOS de
           // urocultivo (X CAMPO) se mapee al recuadro de leucos de BH.
@@ -9262,15 +9286,23 @@ function plExportBackup() {
           if (!name) { if (T) T("vacio"); continue; }
           // Defense in depth: rechazar si parece basura (fecha, código, servicio)
           if (isWinlabGarbageEstudio(name)) { if (T) T("basura"); continue; }
-          // Aviso del laboratorio pegado al nombre (NO EJECUTADO, fuera del límite medible): no es un resultado.
-          if (WINLAB_AVISO_RX.test(name)) { if (T) T("aviso"); continue; }
           // Muestra rechazada: el número es el rango de referencia, no un resultado. Se recuerda la llave (solo sangre).
           const _rej = WINLAB_RECHAZO_RX.exec(name);
           if (_rej) {
-            if (_panelMode !== "urine") { const _rk = _wlAliasKey(name.slice(0, _rej.index).trim()); if (_rk && _rk.indexOf("ego_") !== 0) rechazadas[_rk] = true; }
+            if (_panelMode !== "urine") { const _rk = _wlAliasKey(name.slice(0, _rej.index).replace(WINLAB_AVISO_RX, "").trim()); if (_rk && _rk.indexOf("ego_") !== 0) rechazadas[_rk] = true; }
             if (T) T("rechazo");
             continue;
           }
+          // Fuera del límite medible: resultado EXTREMO → «> LÍMITE» / «< LÍMITE» en su casilla (rojo en la tabla).
+          const _lim = WINLAB_LIMITE_RX.exec(name);
+          if (_lim) {
+            const _lk = _wlAliasKey(name.slice(0, _lim.index).trim());
+            if (_lk && _lk.indexOf("ego_") !== 0 && _panelMode !== "urine" && !(_lk in labs)) labs[_lk] = _wlLimiteTxt(_lim);
+            if (T) T("limite", _lk || "");
+            continue;
+          }
+          // NO EJECUTADO: no es un resultado (sale en «Otros estudios» como aviso).
+          if (WINLAB_AVISO_RX.test(name)) { if (T) T("aviso"); continue; }
           // Guarda ORINA/EGO (jun 2026): un valor de orina (creatinina en orina,
           // hemoglobina libre, micción, urocultivo, EGO, o bucket "urine") NUNCA
           // debe llenar una llave de sangre/química. Solo puede llenar ego_*.
@@ -9529,7 +9561,9 @@ function plExportBackup() {
         var orgHit = _WL_CULT_ORG.test(val) ? val : (_WL_CULT_ORG.test(ref) ? ref : (_WL_CULT_ORG.test(est) ? est : ""));
         // Antígeno de coaglutinación / blanco de un panel / tinción de un líquido ("Streptococcus pneumoniae NEGATIVO",
         // "Haemophilus influenzae b NO DETECTADO"): un germen en el NOMBRE no es un aislamiento (19 nov 2026).
-        if (!cultRow && orgHit && (/COAGLUT|TINCI|PANEL|VIROL|PCR|MOLECUL|ANT[IÍ]GENO|L[IÍ]QUIDO|CEFALORRAQ/i.test(sec) || /^(NO\s+)?(NEGATIV|DETECTAD|REACTIV)|^NO\s+SE\b|^AUSENTE/i.test(val))) continue;
+        // Un germen «DETECTADO» sin sección de panel (identificación rápida en un hemocultivo) sí cuenta: solo se saltan
+        // los resultados NEGATIVOS y los valores de una sección de panel/coaglutinación/tinción/líquido.
+        if (!cultRow && orgHit && (/COAGLUT|TINCI|PANEL|VIROL|PCR|MOLECUL|ANT[IÍ]GENO|L[IÍ]QUIDO|CEFALORRAQ/i.test(sec) || /^NO\s+(DETECTAD|REACTIV)|^NEGATIV|^NO\s+SE\b|^AUSENTE/i.test(val))) continue;
         if (cultRow || orgHit) {
           isCult = true;
           if (!muestra) muestra = sec.trim();
@@ -9762,9 +9796,21 @@ function plExportBackup() {
       const p = parts.filter(function (x) { return !_wloLiquido(x) || /^(PANEL|COAGLUT|TINCION)/i.test(x); }).pop() || "";
       return p ? p.charAt(0) + p.slice(1).toLowerCase() : "";
     }
+    // Grupo sanguíneo / Rh / prueba cruzada: un «POSITIVO» es normal (Rh+) → van a «Otros», nunca en rojo.
+    const _WLO_INMUNOHEMA_RX = /GRUPO\s+SANGU|FACTOR\s+RH|\bRH\b|\bDU\b|PRUEBA\s+CRUZADA|ANTICUERPOS\s+IRREGULARES|RASTREO\s+DE\s+ANTICUERPOS/i;
+    // Hallazgo positivo de una tinción («SE OBSERVAN COCOS GRAM POSITIVOS», «… LEVADURAS ENCAPSULADAS»).
+    const _WLO_TINCION_POS_RX = /^SE\s+OBSERVAN?\b|\b(BACILOS|COCOS|DIPLOCOCOS|COCOBACILOS|LEVADURAS|HIFAS|BLASTOCONIDIAS)\b/i;
+    function _wloEsPositivo(grupo, nombre, valor) {
+      if (grupo !== "viro" && grupo !== "liq") return false;
+      if (_WLO_INMUNOHEMA_RX.test(nombre)) return false;
+      if (/^NO\b/i.test(valor)) return false;
+      if (_WLO_POS_RX.test(valor)) return true;
+      return /GRAM|TINCI|TINTA\s+CHINA|ZIEHL|KOH/i.test(nombre) && _WLO_TINCION_POS_RX.test(valor);
+    }
     // Una entrada por valor que hoy no se ve. motivo = lo que hizo mapWinlabReportesToLabs con él (traza).
     function _wloItemsDeReporte(rep) {
       const out = [];
+      const liqDe = function (v, liqLbl) { return _wloLiquido((v && v.seccion) || "") || _wloLiquido((v && (v.estudio || v.nombre)) || "") || liqLbl || "Líquido"; };
       if (Array.isArray(rep.valores) && rep.valores.length) {
         const tr = [];
         try { mapWinlabReportesToLabs([rep], tr); } catch (_) { return out; }
@@ -9774,29 +9820,45 @@ function plExportBackup() {
           if (!nombre || !valor) return;
           const N = normalizeWinlabName(nombre).toUpperCase();
           const sec = toSafeString(v.seccion).trim();
-          let grupo = "", aviso = "";
+          let grupo = "", aviso = "", crit = false;
+          const viro = _WLO_VIRO_RX.test(N + " " + sec) || _WLO_QUAL_RX.test(valor);
           if (t.motivo === "liquido") grupo = "liq";
           else if (t.motivo === "aviso") { grupo = "otros"; aviso = (WINLAB_AVISO_RX.exec(N) || [""])[0].trim(); }
-          else if (t.motivo === "sinAlias" || t.motivo === "sinNumero") {
-            if (_WLO_VIRO_RX.test(N + " " + sec) || _WLO_QUAL_RX.test(valor)) grupo = "viro";
-            else if (t.motivo === "sinAlias") grupo = "otros";
+          else if (t.motivo === "limite") { grupo = "otros"; crit = true; aviso = _wlLimiteTxt(WINLAB_LIMITE_RX.exec(N)) === "< LÍMITE" ? "POR DEBAJO DEL LÍMITE MEDIBLE" : (_wlLimiteTxt(WINLAB_LIMITE_RX.exec(N)) === "> LÍMITE" ? "POR ENCIMA DEL LÍMITE MEDIBLE" : "FUERA DEL LÍMITE MEDIBLE"); }
+          else if (t.motivo === "sinAlias") grupo = viro ? "viro" : "otros";
+          else if (t.motivo === "sinNumero") {
+            if (viro) grupo = "viro";
+            // Comentario del laboratorio en lugar del número ("POTASIO" = "MUESTRA HEMOLIZADA"): aviso en «Otros».
+            else if (!/^(NEGATIV|POSITIV|NORMAL|AUSENTE|PRESENTE|TRAZAS|ESCAS|MODERAD|ABUNDANT)/i.test(valor)) { grupo = "otros"; aviso = valor; }
           }
-          else if (t.motivo === "orinaSinAlias") { if (_WLO_ORINA_QUIM_RX.test(N)) grupo = "otros"; }
+          else if (t.motivo === "orinaSinAlias") { if (viro) grupo = "viro"; else if (_WLO_ORINA_QUIM_RX.test(N)) grupo = "otros"; }
           else if (t.motivo === "mapeado" && t.key && !LAB_FIELD_BY_KEY[t.key] && t.key !== "tp_testigo" && t.key.indexOf("ego_") !== 0) grupo = "otros";
           if (!grupo) return;
           if (_WLO_RUIDO_RX.test(N)) return;
           if (grupo !== "liq" && /^ERITROCITOS$/.test(N)) return;
-          const nom = aviso ? nombre.replace(WINLAB_AVISO_RX, "").trim() : nombre;
+          if (grupo === "viro" && _WLO_INMUNOHEMA_RX.test(N)) grupo = "otros";
+          const nom = t.motivo === "aviso" ? nombre.replace(WINLAB_AVISO_RX, "").trim() : (t.motivo === "limite" ? nombre.replace(WINLAB_LIMITE_RX, "").trim() : nombre);
+          const lk = grupo === "liq" ? (_wlAliasKey(N) || "") : "";
           out.push({
-            grupo: grupo, sub: grupo === "liq" ? liqLbl : _wloPanel(sec), nombre: nom,
+            grupo: grupo, sub: grupo === "liq" ? liqDe(v, liqLbl) : _wloPanel(sec), nombre: nom,
             valor: aviso ? aviso : valor, unidad: aviso ? "" : toSafeString(v.unidad).trim(), ref: aviso ? "" : toSafeString(v.referencia).trim(),
-            pos: (grupo === "viro" || grupo === "liq") && _WLO_POS_RX.test(valor) && !/^NO\b/i.test(valor),
-            aviso: !!aviso, incompleto: _WLO_INCOMPLETO_RX.test(N),
+            pos: crit || _wloEsPositivo(grupo, N, valor), crit: crit,
+            aviso: !!aviso && !crit, incompleto: _WLO_INCOMPLETO_RX.test(N),
             panel: grupo === "liq" ? _wloPanel(sec) : "",
-            llave: grupo === "liq" ? (_wlAliasKey(N) || "") : ""
+            llave: lk && lk.indexOf("ego_") !== 0 ? lk : ""
           });
         });
-      } else if (rep.reporte_texto) {
+      }
+      // Antígenos / blancos de panel con nombre de germen (el robot los guarda aparte de `valores`).
+      (Array.isArray(rep.antigenos) ? rep.antigenos : []).forEach(function (v) {
+        const nombre = toSafeString(v && (v.estudio || v.nombre)).trim(), valor = toSafeString(v && v.valor).trim();
+        if (!nombre || !valor) return;
+        const sec = toSafeString(v.seccion).trim();
+        const grupo = _wloLiquido(sec) ? "liq" : "viro";
+        out.push({ grupo: grupo, sub: grupo === "liq" ? liqDe(v, "") : _wloPanel(sec), nombre: nombre, valor: valor, unidad: toSafeString(v.unidad).trim(), ref: toSafeString(v.referencia).trim(),
+          pos: _wloEsPositivo(grupo, normalizeWinlabName(nombre).toUpperCase(), valor), crit: false, aviso: false, incompleto: false, panel: grupo === "liq" ? _wloPanel(sec) : "", llave: "" });
+      });
+      if (!(Array.isArray(rep.valores) && rep.valores.length) && !(Array.isArray(rep.antigenos) && rep.antigenos.length) && rep.reporte_texto) {
         const tx = toSafeString(rep.reporte_texto);
         const liq = _wloLiquido(tx);
         out.push({ grupo: liq ? "liq" : (_WLO_VIRO_RX.test(tx) ? "viro" : "otros"), sub: liq || "", nombre: (tx.split("\n")[0] || "Reporte").slice(0, 80), valor: "", unidad: "", ref: "", texto: tx, pos: false });
@@ -9811,9 +9873,20 @@ function plExportBackup() {
       const set = String(targetEspCanon).split("/").map(function (x) { return x.trim(); }).filter(Boolean);
       return !set.length || set.indexOf(c) >= 0;
     }
-    // rows: filas del robot YA validadas por nombre (_winlabCensoNameOk). Devuelve las entradas ordenadas, más nuevo primero.
+    function _wloFila(row) { return String(row.exp || "") + "|" + String(row.fecha || "") + "|" + String(row.scraped_at || ""); }
+    // Identidad de un reporte entre filas del robot: código de la orden + toma (cada fila diaria repite los reportes).
+    function _wloRid(rep) {
+      const c = Array.isArray(rep.__cells) ? rep.__cells : [];
+      return c.length >= 4 ? String(c[2] || "") + "|" + String(c[3] || "") : JSON.stringify(c);
+    }
+    function _wloTieneContenido(rep) {
+      return (Array.isArray(rep.valores) && rep.valores.length > 0) || (Array.isArray(rep.antigenos) && rep.antigenos.length > 0) || !!rep.reporte_texto;
+    }
+    // rows: filas del robot YA validadas por nombre (_winlabCensoNameOk), de la más vieja a la más nueva. Un reporte que
+    // viaja en varias filas se toma de la MÁS NUEVA que lo trae con contenido (la de ayer «en proceso» o leída por el robot
+    // viejo no se queda al lado de la final). Devuelve las entradas ordenadas, más nuevo primero, con `fila` y `rid`.
     function buildWinlabOtros(rows, ident, targetEspCanon) {
-      const out = [], seen = new Set();
+      const porRid = new Map();
       (rows || []).forEach(function (row) {
         if (!row || !row.data) return;
         const reportes = Array.isArray(row.data.reportes) ? row.data.reportes : [];
@@ -9821,21 +9894,29 @@ function plExportBackup() {
         const fallback = row.fecha || (row.scraped_at ? String(row.scraped_at).slice(0, 10) : "");
         reportes.forEach(function (rep) {
           if (!rep || !usar(rep)) return;
-          const hasV = Array.isArray(rep.valores) && rep.valores.length;
-          if (!hasV && !rep.reporte_texto) return;
+          if (!_wloTieneContenido(rep)) return;
           if (targetEspCanon && !usar.namePositive && !_wlSvcOk(rep, targetEspCanon)) return;   // misma guardia que los labs
-          let firma = "";
-          try { firma = JSON.stringify([rep.__cells || null, rep.valores || null, rep.reporte_texto || "", rep.cultivo ? 1 : 0]); } catch (_) { return; }
-          let items = _wloCache.get(firma);
-          if (!items) { items = _wloItemsDeReporte(rep); if (_wloCache.size > 4000) _wloCache.clear(); _wloCache.set(firma, items); }
-          if (!items.length) return;
-          const fecha = extractReportDate(rep) || fallback || "";
-          const ts = extractReportTomaTs(rep);
-          items.forEach(function (it) {
-            const key = [fecha, ts, it.grupo, it.sub, it.nombre, it.valor, it.unidad, it.texto ? it.texto.length : 0].join("|");
-            if (seen.has(key)) return; seen.add(key);
-            out.push(Object.assign({ fecha: fecha, ts: Number.isFinite(ts) ? ts : 0 }, it));
-          });
+          porRid.set(_wloRid(rep), { rep: rep, fallback: fallback, fila: _wloFila(row) });
+        });
+      });
+      const out = [], seen = new Set();
+      porRid.forEach(function (x, rid) {
+        const rep = x.rep;
+        let firma = "";
+        try {
+          const c = rep.cultivo && typeof rep.cultivo === "object" ? rep.cultivo : null;
+          const cs = c ? (Array.isArray(c.secciones) && c.secciones.length ? c.secciones : [c]).map(function (z) { return [z && z.tipo, z && z.muestra]; }) : null;
+          firma = JSON.stringify([rep.__cells || null, rep.valores || null, rep.antigenos || null, rep.reporte_texto || "", cs]);
+        } catch (_) { return; }
+        let items = _wloCache.get(firma);
+        if (!items) { items = _wloItemsDeReporte(rep); if (_wloCache.size > 4000) _wloCache.clear(); _wloCache.set(firma, items); }
+        if (!items.length) return;
+        const fecha = extractReportDate(rep) || x.fallback || "";
+        const ts = extractReportTomaTs(rep);
+        items.forEach(function (it) {
+          const key = [fecha, ts, it.grupo, it.sub, it.nombre, it.valor, it.unidad, it.texto ? it.texto.length : 0].join("|");
+          if (seen.has(key)) return; seen.add(key);
+          out.push(Object.assign({ fecha: fecha, ts: Number.isFinite(ts) ? ts : 0, fila: x.fila, rid: rid }, it));
         });
       });
       out.sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)) || (b.ts - a.ts); });
@@ -10525,7 +10606,7 @@ function plExportBackup() {
         const _wlRecentCut = (function () { const d = new Date(Date.now() - 4 * 86400000); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
         for (const p of (only || patients)) {
           const exp = String(p?.exp || "").trim();
-          if (!exp) { stats.skipped++; stats.no_exp++; continue; }
+          if (!exp) { if (_winlabOtrosByK[pid(p)]) { delete _winlabOtrosByK[pid(p)]; stats.otros = (stats.otros || 0) + 1; } stats.skipped++; stats.no_exp++; continue; }
           let wl = findWinlabRowForPatient(p);
           // Expediente repetido: la fila más nueva puede ser de la otra persona (el robot guarda una por exp y
           // fecha); entonces se usa la más reciente que sí es de este paciente, si ya está en memoria.
@@ -10569,12 +10650,18 @@ function plExportBackup() {
             const _oRows = _winlabAllRowsForPatient(p, wl).filter(function (r) { return r === wl || _winlabCensoNameOk(p, r); });
             const _oPrev = _winlabOtrosByK[pid(p)] || [];
             const _oBuilt = buildWinlabOtros(_oRows, _ident, _espCanon);
-            // De la pasada anterior solo sobreviven fechas que ya no cubren las filas de ahora (más viejas que todo lo nuevo).
-            const _oFechas = new Set(_oBuilt.map(function (it) { return it.fecha; }));
-            const _oMin = _oBuilt.reduce(function (m, it) { return it.fecha && (!m || it.fecha < m) ? it.fecha : m; }, "");
-            const _oNew = _oBuilt.concat(_oPrev.filter(function (it) { return _oMin && it.fecha && it.fecha < _oMin && !_oFechas.has(it.fecha); }));
-            const _oSig = function (a) { return a.map(function (it) { return [it.fecha, it.ts, it.grupo, it.nombre, it.valor].join("|"); }).join("\n"); };
-            if (_oSig(_oNew) !== _oSig(_oPrev)) stats.otros = (stats.otros || 0) + 1;
+            // De la pasada anterior solo sobrevive lo que venía de filas que ya salieron de memoria (el respaldo de fechas
+            // viejas las suelta tras su sync) y de reportes que no están en las filas de ahora, y SOLO si la identidad del
+            // paciente no cambió (nombre, «nombre en WinLab», gemelos de expediente): un alias corregido no arrastra
+            // estudios de la otra persona.
+            const _oSig = JSON.stringify([toSafeString(p.exp).trim(), _ident]);
+            const _oFilas = new Set(_oRows.map(_wloFila)), _oRids = new Set(_oBuilt.map(function (it) { return it.rid; }));
+            const _oKeep = _winlabOtrosSigByK[pid(p)] === _oSig
+              ? _oPrev.filter(function (it) { return it.fila && !_oFilas.has(it.fila) && !_oRids.has(it.rid); }) : [];
+            _winlabOtrosSigByK[pid(p)] = _oSig;
+            const _oNew = _oBuilt.concat(_oKeep).sort(function (a, b) { return String(b.fecha).localeCompare(String(a.fecha)) || (b.ts - a.ts); });
+            const _oFirma = function (a) { return a.map(function (it) { return [it.fecha, it.ts, it.grupo, it.nombre, it.valor].join("|"); }).join("\n"); };
+            if (_oFirma(_oNew) !== _oFirma(_oPrev)) stats.otros = (stats.otros || 0) + 1;
             if (_oNew.length) _winlabOtrosByK[pid(p)] = _oNew; else delete _winlabOtrosByK[pid(p)];
           } catch (_) {}
           const _byFecha = {};
@@ -19901,8 +19988,10 @@ function plExportBackup() {
         // Valor largo (texto cualitativo, rango escrito): va en su propio renglón bajo el nombre; si no, en la columna
         // derecha se comía el ancho y el nombre quedaba en 0 px.
         const largo = (String(it.valor || "") + " " + String(it.unidad || "")).trim().length > 16;
-        const cls = "wlo-row" + (it.pos ? " wlo-pos" : "") + (alt ? " wlo-alt" : "") + (it.aviso ? " wlo-av" : "") + (largo ? " wlo-largo" : "");
-        const val = it.aviso ? `⚠ ${esc(it.valor.charAt(0) + it.valor.slice(1).toLowerCase())}: no es un resultado` : `${esc(it.valor)}${it.unidad ? `<span class="wlo-u">${esc(it.unidad)}</span>` : ""}`;
+        const cls = "wlo-row" + (it.pos ? " wlo-pos" : "") + (alt ? " wlo-alt" : "") + (it.aviso || it.crit ? " wlo-av" : "") + (largo ? " wlo-largo" : "");
+        const cap = function (x) { x = String(x || ""); return x.charAt(0) + x.slice(1).toLowerCase(); };
+        const val = it.crit ? `⚠ ${esc(cap(it.valor))} (valor extremo)`
+          : (it.aviso ? `⚠ ${esc(cap(it.valor))}: no es un resultado` : `${esc(it.valor)}${it.unidad ? `<span class="wlo-u">${esc(it.unidad)}</span>` : ""}`);
         return `<div class="${cls}"><span class="wlo-n">${esc(it.nombre)}${it.incompleto ? ' <span class="wlo-inc">(nombre incompleto en el PDF)</span>' : ""}</span><span class="wlo-v">${val}</span>${it.ref ? `<span class="wlo-ref">Ref. ${esc(it.ref)}</span>` : ""}${warn}</div>`;
       };
       const diaHtml = function (f) {
@@ -19927,11 +20016,12 @@ function plExportBackup() {
         }).join("");
         return `<div class="wlo-dia" data-fecha="${esc(f)}"><div class="wlo-fecha">📅 ${esc(fmtDateChip(f))}${f === act ? ' <span class="wlo-act">· fecha seleccionada en Labs</span>' : ""}</div><div class="wlo-grupos">${grupos}</div></div>`;
       };
-      const nPos = all.filter(function (it) { return it.pos; }).length;
+      const nPos = all.filter(function (it) { return it.pos && !it.crit; }).length;
+      const nCrit = all.filter(function (it) { return it.crit; }).length;
       const recientes = (function () { const d = new Date(Date.now() - 3 * 86400000); const c = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); return fechas.some(function (f) { return f >= c; }); })();
-      const badge = nPos ? `<span class="fc-cnt fc-cnt-crit">${nPos} positivo${nPos > 1 ? "s" : ""}</span>` : `<span class="fc-cnt">${all.length}</span>`;
+      const badge = (nPos || nCrit) ? [nPos ? `<span class="fc-cnt fc-cnt-crit">${nPos} positivo${nPos > 1 ? "s" : ""}</span>` : "", nCrit ? `<span class="fc-cnt fc-cnt-crit">${nCrit} fuera de límite</span>` : ""].filter(Boolean).join(" ") : `<span class="fc-cnt">${all.length}</span>`;
       const nota = `<div class="wlo-nota">📡 De WinLab, tal como lo manda el laboratorio (no se guarda en la nota).${hoja && fechas.length > visibles.length ? ` En Hoja: las ${visibles.length} fechas más recientes de ${fechas.length}.` : ""}</div>`;
-      return `<div class="wlo-box">${fcSec("wlotros", k, "🧪 Otros estudios (WinLab)", badge, visibles.map(diaHtml).join("") + nota, recientes || nPos > 0)}</div>`;
+      return `<div class="wlo-box">${fcSec("wlotros", k, "🧪 Otros estudios (WinLab)", badge, visibles.map(diaHtml).join("") + nota, recientes || nPos > 0 || nCrit > 0)}</div>`;
     }
 
     function renderCultivosSection(nd, k) {
@@ -23205,7 +23295,7 @@ function plExportBackup() {
       const estOn = !val && !!(est && est.est && est.txt);
       const num = parseLabNumber(estOn ? est.txt : val);
       const has = !!val || estOn;
-      const crit = has && ((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch));
+      const crit = has && (((lf.cl != null && num <= lf.cl) || (lf.ch != null && num >= lf.ch)) || labEsLimite(val));
       const abn = has && !crit && ((lf.low != null && num < lf.low) || (lf.high != null && num > lf.high));
       const cls = crit ? "crit" : abn ? "abn" : "";
       const hasAlert = (crit || abn) && LAB_QUICK[lf.key];
@@ -23214,7 +23304,8 @@ function plExportBackup() {
       const _snapIa = (typeof _labCellSnapIa !== "undefined" && _labCellSnapIa) ? _labCellSnapIa : null;
       const esIa = !!(val && _snapIa && _snapIa.indexOf(lf.key) >= 0);
       const avisoTxt = rech ? "Muestra rechazada por el laboratorio (coagulada, mal aforada o insuficiente): el número de WinLab no es un resultado. Repetir la toma."
-        : (revU ? "WinLab mandó este estudio en una unidad que la app no reconoce: revisa el valor y la unidad en WinLab." : "");
+        : (revU ? "WinLab mandó este estudio en una unidad que la app no reconoce: revisa el valor y la unidad en WinLab."
+        : (labEsLimite(val) ? "Valor fuera del límite medible del equipo (valor EXTREMO, p. ej. TP incoagulable): confirmar con el laboratorio." : ""));
       const tid = ("tip-" + k + "-" + lf.key).replace(/[^a-zA-Z0-9]/g, "_");
 
       // ── Tendencia Δ ──────────────────────────────────────────────────────────

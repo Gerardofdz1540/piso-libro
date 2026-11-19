@@ -1995,7 +1995,12 @@ crece la base).
   - Lee el citoquímico y el citológico con su nombre completo y sus valores fuera de rango, el examen físico, la
     coaglutinación, el Gram, la tinta china y los paneles (respiratorio, meningitis…) aunque vengan en minúsculas.
   - Cada valor de un líquido o de un panel lleva su **sección** (p. ej. «LIQUIDO CEFALORRAQUIDEO · COAGLUTINACION»).
-  - En los antígenos y blancos de un panel el género va abreviado («S. pneumoniae»): nunca se confunde con un cultivo.
+  - Los antígenos y blancos de panel con nombre de germen («Streptococcus pneumoniae NEGATIVO», «Staphylococcus
+    DETECTADO») se guardan con su nombre completo **aparte** de los valores: nunca se confunden con un cultivo, ni
+    siquiera en un iPad que todavía no se actualiza.
+  - Un «No detectado» suelto (la referencia partida en su renglón) ya no se lee como un estudio «NO = DETECTADO».
+  - Un renglón que trae el resultado junto al título («GENEXPERT MTB/RIF NO DETECTADO», «DETECCION DE VIRUS
+    SINCITIAL RESPIRATORIO POSITIVO») se lee igual que antes.
   - Los **cultivos de LCR/peritoneal negativos** que habían quedado como POSITIVO se corrigen solos en la siguiente
     corrida (se vuelve a leer el texto guardado; no hace falta abrir el PDF).
   - Si de un PDF no sale nada, guarda **solo el cuerpo del reporte** (sin nombre, expediente, CURP, fecha de nacimiento
@@ -2004,17 +2009,22 @@ crece la base).
   arriba):
   - **💧 Líquidos — citoquímico · citológico**: por líquido y hora de la toma.
   - **🦠 Virología · serología · cualitativas**: paneles, VIH, VDRL, toxinas de *C. difficile*, Coombs, embarazo… Lo
-    **positivo / reactivo / detectado** va en rojo y la caja muestra «N positivos».
+    **positivo / reactivo / detectado** (y una tinción con cocos, bacilos o levaduras) va en rojo y la caja muestra
+    «N positivos». El grupo sanguíneo y el Rh van en «Otros» y nunca en rojo.
   - **🧪 Otros estudios**: HbA1c, hormonas, marcadores, hierro, química de orina… y los **avisos del laboratorio**
     («NO EJECUTADO», «valor por encima del límite medible»), que antes salían como un número normal en la tabla.
   - Lo que el robot no pudo leer sale como «📄 … reporte sin lectura automática (ver texto)».
   - Fuera de rango en ámbar. En modo Hoja la caja va abierta con las 2 fechas más recientes.
   - Usa las mismas reglas de identidad que los labs y los cultivos: nunca muestra estudios de otra persona con los
     mismos apellidos ni del otro paciente con el mismo expediente.
-- **Tabla de labs**: los valores de un reporte de líquido ya **no** llenan las casillas de sangre (el recuento del LCR
-  ya no es «leucopenia»). «HEMATOCRITO NO EJECUTADO», «TP por encima del límite medible» y la «creatinina urinaria» ya
-  no aparecen como resultados de sangre. Si un valor de líquido viejo sigue en la tabla de un día, la caja lo avisa
-  («⚠ también aparece en la tabla de sangre: no es de sangre»).
+- **Tabla de labs**
+  - Un valor de líquido ya **no** llena las casillas de sangre (el recuento del LCR ya no es «leucopenia»). Se decide
+    valor por valor: la química sérica que viene en la misma orden que la amilasa del drenaje sigue en la tabla.
+  - «HEMATOCRITO NO EJECUTADO» y la «creatinina urinaria» ya no aparecen como resultados de sangre.
+  - «Valor por encima / por debajo del límite medible» (p. ej. TP incoagulable) ahora dice **«> LÍMITE» / «< LÍMITE»
+    en rojo** en su casilla (antes «TP 11.00», como si fuera normal) y en «Otros» como valor extremo.
+  - Si un valor de líquido viejo sigue en la tabla de un día, la caja lo avisa («⚠ también aparece en la tabla de
+    sangre: no es de sangre»).
 - **Encabezado quirúrgico**: se quitó el trazo de ECG («se ve más de internista»). Ahora un bisturí abre una incisión y
   un porta-agujas la cierra con un surgete; el logo lleva un anillo de anastomosis. Misma altura; quieto si el iPad
   tiene «reducir movimiento»; no se imprime.

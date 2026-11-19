@@ -71,9 +71,17 @@ export function isTextReportInProcess(row, hoy = Date.now()) {
 // sin texto guardado no se pueden re-leer → se vuelven a abrir (el lector nuevo ya no produce estos nombres). Solo
 // reportes de ≤ CULTIVO_REVISAR_DIAS días: un formato que aún los produjera no se reabre para siempre.
 const STALE_FLUID_NAME_RE = /^(CEFALORRAQU[IÍ]DEO|PERITONEAL|PLEURAL|AS[CS][IÍ]TICO|SINOVIAL|PERIC[AÁ]RDICO)$/i;
+// También el recuento celular de un líquido que el lector viejo dejó SIN nombre del líquido ni `seccion` (leucocitos
+// con la referencia del líquido «0.000 - 5.000», diferencial POLIMORFONUCLEARES/MONONUCLEARES): se reabre para que el
+// lector nuevo le ponga su sección (si no, la app no puede distinguirlo de una BH).
+const _celLiquidoViejo = (v) => {
+  const n = String(v && v.estudio || "").trim().toUpperCase(), r = String(v && v.referencia || "").trim();
+  return !v.seccion && (/^(POLIMORFONUCLEARES|MONONUCLEARES)\b/.test(n) || (n === "LEUCOCITOS" && /^0(?:[.,]0+)?\s*-\s*5(?:[.,]0+)?$/.test(r)));
+};
 export function hasStaleFluidValores(row, hoy = Date.now()) {
   if (!hasValores(row) || row.cultivo_texto) return false;
-  if (!row.valores.some((v) => v && STALE_FLUID_NAME_RE.test(String(v.estudio || "").trim()))) return false;
+  if (row.valores.some((v) => v && v.seccion)) return false;   // ya leído por el lector nuevo
+  if (!row.valores.some((v) => v && (STALE_FLUID_NAME_RE.test(String(v.estudio || "").trim()) || _celLiquidoViejo(v)))) return false;
   const f = fechaFila(row);
   return f === null || Math.floor(hoy / 86400000) - Math.floor(f / 86400000) <= CULTIVO_REVISAR_DIAS;
 }
@@ -81,7 +89,7 @@ export function hasStaleFluidValores(row, hoy = Date.now()) {
 // reporte_texto (sin valores) NO es pendiente: antes se reabría en cada corrida (21-29 % de los PDFs leídos).
 export function isPendingReport(row, looksLikeCultureReport, hoy = Date.now()) {
   if (!row || typeof row !== "object") return false;
-  if (!hasValores(row)) return !row.cultivo_texto && !row.reporte_texto;
+  if (!hasValores(row)) return !row.cultivo_texto && !row.reporte_texto && !(Array.isArray(row.antigenos) && row.antigenos.length);
   if (hasStaleFluidValores(row, hoy)) return true;
   return isPendingCulture(row, looksLikeCultureReport);
 }
