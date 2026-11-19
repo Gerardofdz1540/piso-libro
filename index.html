@@ -296,7 +296,10 @@
     body.dark .pase-inteligente-btn { background: rgba(16,185,129,.14) !important; color: #6ee7b7 !important; border-color: rgba(16,185,129,.45) !important; }
     body.dark .bd-container { background: #122843 !important; border-color: #23405f !important; }
     body.dark .bd-section { background: #0e2138 !important; }
-    body.dark .pt-reminders { background: #0e2138 !important; border-color: #23405f !important; }
+    body.dark .pt-reminders { background: #0e2138 !important; border-color: #23405f !important; border-left-color: #f59e0b !important; }
+    body.dark .pt-reminders .ptr-title, body.dark .ptr-hint { color: #fcd34d !important; }
+    body.dark .ptr-text { color: #e2e8f0; }
+    body.dark .ptr-add-input { background: #0b1b2e; color: #e2e8f0; border-color: #7c5a12; }
     body.dark .di-drop-zone { background: #0e2138 !important; border-color: #2f4f79 !important; color: #cfdded; }
     body.dark .di-drop-zone:hover, body.dark .di-drop-zone.drag-over { background: #142c4a !important; border-color: #4f9be0 !important; }
     body.dark .btn,
@@ -1762,26 +1765,48 @@
       .fc-side .fc-side-g3 { grid-template-columns: repeat(3, 1fr) !important; }
       .fc-side .fc-side-g2 { grid-template-columns: 1fr 1fr !important; }
     }
+    /* 19 nov 2026 (pedido de Gera: «en la iPad que estén a la mano los signos vitales y los gastos de los drenajes»):
+       dentro del Pase, 🫀 signos vitales y 🩺 drenajes van primero (siguen dentro de #ck-row-<ek>: solo cambia el orden
+       en pantalla, con CSS). */
+    .checklist-wrap > .ck-r-vitales { order: -3; }
+    .checklist-wrap > .pm-hist { order: -2; }
+    .checklist-wrap > .ck-r-drenajes { order: -1; }
+    /* iPad vertical (una columna): el Pase deja de quedar hasta abajo; va justo después del DX. Las columnas se vuelven
+       «display: contents» (como en modo Hoja) y el orden lo da CSS: los bloques, ids y datos son los mismos. */
+    @media (max-width: 1000px) {
+      body:not(.pl-hoja) .fc-bento { grid-template-columns: minmax(0, 1fr); row-gap: 8px; }
+      body:not(.pl-hoja) .fc-bento > .fc-main, body:not(.pl-hoja) .fc-bento > .fc-side { display: contents; }
+      /* como en Hoja: sin esto un bloque ancho (sección abierta) ensanchaba la columna y las cajas se cortaban */
+      body:not(.pl-hoja) .fc-bento > .fc-main > *, body:not(.pl-hoja) .fc-bento > .fc-side > * { min-width: 0; }
+      body:not(.pl-hoja) .fc-bento > .fc-main > .fc-anchor, body:not(.pl-hoja) .fc-bento > .fc-main > .fc-guardia,
+      body:not(.pl-hoja) .fc-bento > .fc-main > .fc-secs, body:not(.pl-hoja) .fc-bento > .fc-side > .fc-secs { margin-top: 0 !important; }   /* el espacio lo da row-gap (8 px, como antes) */
+      body:not(.pl-hoja) .fc-bento > .fc-main > .fc-blk-rec { order: -3; margin-bottom: 0; }
+      body:not(.pl-hoja) .fc-bento > .fc-main > .fc-blk-dx { order: -2; }
+      body:not(.pl-hoja) .fc-bento > .fc-side > .fc-anchor[id^="sec-pase-"] { order: -1; }
+    }
 
     /* ═══ MODO HOJA (oct 2026, pedido de Gera): la ficha como la hoja de visita de GoodNotes ═══
        Una cuadrícula fija con TODAS las cajas abiertas y a la vista (sin plegables):
-       DX · Labs · APP/PA | Cirugías | IC·Cultivos · Imagen | Pendientes | Entrega/Recibo · Pase matutino ·
-       Manejo | MIPs/R1 · Sugerencias | Indicaciones | Diagrama | No olvidar.
+       📌 No olvidar (primer renglón) · DX · Pase matutino (vitales y drenajes, desde el 19 nov 2026 justo
+       después del DX) · Labs · APP/PA | Cirugías | IC·Cultivos · Imagen | Pendientes | Cronología · Manejo | MIPs/R1 ·
+       Sugerencias | Indicaciones | Diagrama.
        Mismos bloques y handlers de siempre: solo cambia dónde se pintan (grid-area) y que no se pliegan. */
     body.pl-hoja .fc-bento {
       grid-template-columns: repeat(4, minmax(0, 1fr));
       grid-template-areas:
+        "rec rec rec rec"
         "dx dx dx dx"
+        "pase pase pase pase"
         "labs labs labs labs"
         "hist hist cx cx"
         "ic ic img plan"
         "guardia guardia guardia guardia"
-        "pase pase pase pase"
         "manejo manejo roles roles"
-        "sug ind diag rec";
+        "sug ind diag diag";
       gap: 8px;
     }
     body.pl-hoja .fc-main, body.pl-hoja .fc-side, body.pl-hoja .fc-secs { display: contents; }
+    body.pl-hoja .fc-blk-rec { grid-area: rec; margin-bottom: 0; }
     body.pl-hoja .fc-blk-dx { grid-area: dx; }
     body.pl-hoja .fc-anchor[id^="sec-labs-"] { grid-area: labs; margin-top: 0 !important; }
     body.pl-hoja .fc-blk-cx { grid-area: cx; margin-top: 0 !important; }
@@ -1796,7 +1821,6 @@
     body.pl-hoja details[data-sec="ind"] { grid-area: ind; }
     body.pl-hoja details[data-sec="img"] { grid-area: img; }
     body.pl-hoja .drains-collapse { grid-area: diag; }
-    body.pl-hoja details[data-sec="rec"] { grid-area: rec; }
     body.pl-hoja details.fc-sec, body.pl-hoja .drains-collapse { max-width: 100%; margin-top: 0; min-width: 0; }
     body.pl-hoja details.fc-sec > summary { cursor: default; }
     body.pl-hoja .fc-blk, body.pl-hoja .fc-anchor { min-width: 0; }
@@ -1806,7 +1830,7 @@
     /* Cajas que el usuario decidió ocultar en modo Hoja (⚙ Cajas) */
     body.pl-hoja.hoja-hide-labs .fc-anchor[id^="sec-labs-"], body.pl-hoja.hoja-hide-manejo .fc-blk-manejo, body.pl-hoja.hoja-hide-roles details[data-sec="roles"],
     body.pl-hoja.hoja-hide-sug details[data-sec="sug"], body.pl-hoja.hoja-hide-ind details[data-sec="ind"], body.pl-hoja.hoja-hide-diag .drains-collapse,
-    body.pl-hoja.hoja-hide-rec details[data-sec="rec"], body.pl-hoja.hoja-hide-img details[data-sec="img"] { display: none !important; }
+    body.pl-hoja.hoja-hide-rec .fc-blk-rec, body.pl-hoja.hoja-hide-img details[data-sec="img"] { display: none !important; }
     .hoja-cfg { position: relative; display: inline-block; }
     .hoja-cfg > summary { list-style: none; cursor: pointer; font-size: 11px; font-weight: 800; padding: 0 10px; min-height: 30px; display: inline-flex; align-items: center; border: 1px solid #c7d2fe; border-radius: 8px; background: #eef2ff; color: #3730a3; }
     .hoja-cfg > summary::-webkit-details-marker { display: none; }
@@ -1815,13 +1839,13 @@
     @media (max-width: 1000px) {
       body.pl-hoja .fc-bento {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-template-areas: "dx dx" "labs labs" "hist hist" "cx cx" "ic ic" "img plan" "guardia guardia" "pase pase" "manejo roles" "sug ind" "diag rec";
+        grid-template-areas: "rec rec" "dx dx" "pase pase" "labs labs" "hist hist" "cx cx" "ic ic" "img plan" "guardia guardia" "manejo roles" "sug ind" "diag diag";
       }
     }
     @media (max-width: 640px) {
       body.pl-hoja .fc-bento {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-areas: "dx" "labs" "hist" "cx" "ic" "img" "plan" "guardia" "pase" "manejo" "roles" "sug" "ind" "diag" "rec";
+        grid-template-areas: "rec" "dx" "pase" "labs" "hist" "cx" "ic" "img" "plan" "guardia" "manejo" "roles" "sug" "ind" "diag";
       }
       body.pl-hoja .fc-hist-grid { grid-template-columns: 1fr; }
       body.pl-hoja .fc-side-g2 { grid-template-columns: 1fr !important; }
@@ -2367,35 +2391,65 @@
       cursor:pointer;font-size:11px;font-weight:700
     }
 
-    /* No olvidar por paciente */
+    /* 📌 No olvidar por paciente (19 nov 2026): cuadro siempre a la vista arriba de la ficha. Vacío ocupa una sola línea
+       (título + caja para anotar); con pendientes se pinta ámbar. */
+    .fc-blk.fc-blk-rec { margin-bottom: 10px; border-left: 0; padding-left: 0; border-radius: 0; }
+    .simple-body > .fc-blk-rec { margin-bottom: 8px; }
     .pt-reminders {
-      background:#fafafa;border:1.5px solid #e2e8f0;border-radius:8px;
-      padding:10px 12px;margin-top:10px
+      display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;
+      background:#f8fafc;border:1.5px solid #e2e8f0;border-left:4px solid #fbbf24;border-radius:10px;
+      padding:7px 10px
     }
+    .pt-reminders.has-open { background:#fffbeb;border-color:#fcd34d;border-left-color:#f59e0b }
+    .ptr-head { display:flex;align-items:baseline;gap:8px;flex:0 0 auto;min-width:0 }
     .pt-reminders .ptr-title {
-      font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;
-      letter-spacing:.5px;margin-bottom:7px
+      font-size:12px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap
     }
+    .ptr-cnt {
+      display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;
+      border-radius:9px;background:#f59e0b;color:#fff;font-size:11px;letter-spacing:0;vertical-align:1px
+    }
+    .ptr-hint { font-size:10.5px;color:#a16207;opacity:.75;white-space:nowrap }
     .ptr-item {
-      display:flex;align-items:center;gap:7px;padding:3px 0;
-      border-bottom:1px solid #f1f5f9
+      flex:1 1 100%;display:flex;align-items:center;gap:8px;padding:4px 2px;min-width:0;
+      border-bottom:1px solid rgba(146,64,14,.12)
     }
-    .ptr-item:last-child { border-bottom:none }
-    .ptr-item input[type=checkbox] { width:14px;height:14px;cursor:pointer;flex-shrink:0 }
-    .ptr-text { flex:1;font-size:12px;color:#374151 }
+    .ptr-item input[type=checkbox] { width:18px;height:18px;cursor:pointer;flex-shrink:0;accent-color:#d97706 }
+    .ptr-text { flex:1;min-width:0;font-size:13px;color:#1f2937;word-break:break-word }
     .ptr-text.done { text-decoration:line-through;color:#94a3b8 }
+    .ptr-by { flex-shrink:0;font-size:10px;font-weight:700;color:#fff;padding:1px 7px;border-radius:9px;white-space:nowrap }
     .ptr-del {
-      background:none;border:none;cursor:pointer;font-size:12px;color:#94a3b8;
-      padding:0 3px;line-height:1
+      flex-shrink:0;background:none;border:none;cursor:pointer;font-size:13px;color:#94a3b8;
+      min-width:28px;min-height:28px;padding:0;line-height:1
     }
     .ptr-del:hover { color:#ef4444 }
-    .ptr-add-row { display:flex;gap:6px;margin-top:7px }
+    .ptr-add-row { flex:1 1 260px;display:flex;gap:6px;min-width:0 }
     .ptr-add-input {
-      flex:1;padding:5px 9px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:12px
+      flex:1;min-width:0;padding:5px 10px;border:1.5px solid #fcd34d;border-radius:8px;background:#fff;font-size:13px
     }
+    .ptr-add-input:focus { outline:none;border-color:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.18) }
     .ptr-add-btn {
-      padding:5px 12px;border-radius:6px;border:none;background:#0ea5e9;color:#fff;
-      cursor:pointer;font-size:12px;font-weight:700
+      flex-shrink:0;min-width:40px;padding:0 12px;border-radius:8px;border:none;background:#f59e0b;color:#fff;
+      cursor:pointer;font-size:18px;font-weight:800;line-height:1
+    }
+    .ptr-hechos { flex:1 1 100%;font-size:11.5px;color:#64748b }
+    .ptr-hechos > summary { cursor:pointer;font-weight:700;padding:2px 0;width:max-content }
+    .ptr-hechos .ptr-item { border-bottom-color:#eef2f7 }
+    @media (max-width: 700px) { .ptr-hint { display:none } }
+    /* Pestaña 📌 No olvidar · «Por paciente» */
+    .no-pt-wrap { margin:0 0 22px;padding:12px 12px 4px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px }
+    .no-pt-h { font-size:12px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap }
+    .no-pt-n { background:#f59e0b;color:#fff;border-radius:9px;padding:0 7px;font-size:11px;letter-spacing:0 }
+    .no-pt-sub { font-size:10.5px;font-weight:600;color:#a16207;text-transform:none;letter-spacing:0;opacity:.8 }
+    .no-pt-blk { margin-bottom:12px }
+    .no-pt-cama { display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;font-weight:800;color:#78350f;margin-bottom:6px }
+    .no-pt-ir { flex-shrink:0;border:1px solid #f59e0b;background:#fff;color:#b45309;border-radius:8px;font-size:11.5px;font-weight:800;padding:4px 10px;cursor:pointer;min-height:30px }
+    .no-pt-item { display:flex;align-items:center;gap:8px;padding:7px 10px;background:#fff;border:1px solid #fde68a;border-radius:8px;margin-bottom:6px }
+    .no-pt-check { flex-shrink:0;width:22px;height:22px;border-radius:50%;border:2px solid #d97706;background:#fff;cursor:pointer;padding:0 }
+    .no-pt-text { flex:1;min-width:0;font-size:13.5px;color:#1e293b;word-break:break-word }
+    @media print {
+      .ptr-add-row, .ptr-hechos, .ptr-del, .ptr-hint { display:none !important }
+      .fc-blk-rec:not(:has(.has-open)) { display:none !important }
     }
 
     /* Pase de guardia inteligente */
@@ -4496,35 +4550,12 @@ body.dark #board-nav .bn-jump button{ color:#cbd5e1; }
     </div>
     <div id="header-top">
       <div class="header-title">
-        <svg class="pl-brand-logo" width="52" height="52" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="PisoLibro" role="img" style="width:52px;height:52px;flex-shrink:0;display:block">
-          <defs>
-            <linearGradient id="pl-brand-grad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
-              <stop offset="100%" stop-color="#ffffff" stop-opacity="0.85"/>
-            </linearGradient>
-            <linearGradient id="pl-brand-accent" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#60a5fa"/>
-              <stop offset="100%" stop-color="#3b82f6"/>
-            </linearGradient>
-          </defs>
-          <!-- Libro abierto en 2 páginas -->
-          <path d="M 8 16 L 8 50 Q 8 52 10 52 L 30 52 Q 32 52 32 50 L 32 18 Q 32 16 30 16 Q 18 16 8 16 Z"
-                fill="none" stroke="url(#pl-brand-grad)" stroke-width="2.5" stroke-linejoin="round"/>
-          <path d="M 56 16 L 56 50 Q 56 52 54 52 L 34 52 Q 32 52 32 50 L 32 18 Q 32 16 34 16 Q 46 16 56 16 Z"
-                fill="none" stroke="url(#pl-brand-grad)" stroke-width="2.5" stroke-linejoin="round"/>
-          <!-- Cruz médica izquierda -->
-          <rect x="14" y="29" width="14" height="3.5" rx="0.5" fill="url(#pl-brand-accent)"/>
-          <rect x="19" y="24" width="4" height="13.5" rx="0.5" fill="url(#pl-brand-accent)"/>
-          <!-- Líneas de texto derecha -->
-          <line x1="37" y1="24" x2="52" y2="24" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-          <line x1="37" y1="29" x2="52" y2="29" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-          <line x1="37" y1="34" x2="48" y2="34" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-          <line x1="37" y1="39" x2="52" y2="39" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-          <line x1="37" y1="44" x2="46" y2="44" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-        </svg>
+        <!-- Logo del servicio de Cirugía General · Hospital General de León (19 nov 2026, el que mandó Gera; versión blanca
+             para el fondo azul, 96 px incrustado: funciona sin red y no ocupa nada en el dispositivo). -->
+        <span class="pl-svc-badge no-print" aria-hidden="true"><img class="pl-svc-logo" width="46" height="46" alt="" decoding="async" src="data:image/png;base64,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"></span>
         <div class="header-title-text">
           <div class="sub">Hospital General de León — Cirugía General</div>
-          <h1>Piso Libro</h1>
+          <h1 aria-label="Piso Libro · Cirugía General, Hospital General de León">Piso Libro</h1>
         </div>
       </div>
       <div class="header-controls">
@@ -13823,6 +13854,48 @@ function plExportBackup() {
       });
       return out;
     }
+    // 📌 No olvidar · sincronización entre iPads (19 nov 2026). Con el cuadro siempre a la vista es fácil que dos personas
+    // anoten a la vez en la misma cama. Antes la lista entera (_ptReminders, UNA llave del checklist) la ganaba la última
+    // copia y se perdía el recordatorio del otro. Ahora cada recordatorio tiene identidad y se unen, sin depender de una
+    // «copia base» (que se desfasa con cortes de red, recargas o la cola):
+    //   · los nuevos llevan id y u (hora del último cambio, ms): se juntan los de los dos lados; si un mismo id está en los
+    //     dos, gana el cambio más reciente (empate: la nube). Borrar NO lo quita: deja una marca (del, y done para que un
+    //     iPad aún sin actualizar lo vea tachado) que también se reparte; las marcas de más de 30 días se limpian.
+    //   · los de antes (sin id) se reconocen por su texto y su número de repetición; si existen lo decide la nube (un iPad
+    //     viejo los borraba quitándolos) y la casilla, el cambio más reciente.
+    // Unos bytes por recordatorio, dentro de la misma llave: sin tablas, columnas ni llaves nuevas.
+    const PTR_BORRADO_MS = 30 * 864e5;
+    function _ptrNuevoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+    function _ptrClaves(lista) {
+      const rep = {};
+      return (Array.isArray(lista) ? lista : []).map(function (r) {
+        if (!r || typeof r !== "object") return null;
+        if (r.id) return "i:" + String(r.id);
+        const t = "L:" + toSafeString(r.text); rep[t] = (rep[t] || 0) + 1; return t + "#" + rep[t];
+      });
+    }
+    function _ptrVisible(r) { return !!(r && typeof r === "object" && !r.del && toSafeString(r.text).trim()); }
+    function _ptrMerge(local, remote, ahora) {
+      const L = Array.isArray(local) ? local : [], R = Array.isArray(remote) ? remote : [];
+      const kL = _ptrClaves(L), kR = _ptrClaves(R), mL = new Map(), mR = new Map();
+      L.forEach(function (r, i) { if (kL[i]) mL.set(kL[i], r); });
+      R.forEach(function (r, i) { if (kR[i]) mR.set(kR[i], r); });
+      const limite = (ahora || Date.now()) - PTR_BORRADO_MS, out = [], vistos = new Set();
+      const elegir = function (l, r) { if (!l) return r; if (!r) return l; return (+l.u || 0) > (+r.u || 0) ? l : r; };
+      const meter = function (c) {
+        if (!c || vistos.has(c)) return; vistos.add(c);
+        const l = mL.get(c), r = mR.get(c);
+        if (c.indexOf("L:") === 0 && !r) return;              // de antes: si la nube ya no lo tiene, se borró
+        const it = elegir(l, r);
+        if (it.del && (+it.u || 0) < limite) return;          // marca de borrado vencida
+        out.push(it);
+      };
+      kR.forEach(meter); kL.forEach(meter);
+      // Orden: por fecha de creación (los de antes, sin fecha, primero y en su orden).
+      return out.map(function (r, i) { return { r: r, i: i }; })
+        .sort(function (a, b) { const ta = toSafeString(a.r.t), tb = toSafeString(b.r.t); return ta < tb ? -1 : (ta > tb ? 1 : a.i - b.i); })
+        .map(function (x) { return x.r; });
+    }
     async function _checklistMergeRemote(patientId, local) {
       const b0 = _noteBaseline[patientId];
       if (!b0 || !isPlainObject(b0.checklist) || !isPlainObject(local)) return local;
@@ -13834,6 +13907,8 @@ function plExportBackup() {
       if (!isPlainObject(remote)) return local;
       const M = NOTE_SYNC_META_KEY, base = b0.checklist;
       const out = _mergeChangedKeys(remote, local, base, M);
+      // 📌 No olvidar: siempre se unen las dos listas (ver _ptrMerge); la llave nunca se quita (la base la restauraría).
+      if (Array.isArray(local._ptReminders) || Array.isArray(remote._ptReminders)) out._ptReminders = _ptrMerge(local._ptReminders, remote._ptReminders);
       const lm = isPlainObject(local[M]) ? local[M] : {}, bm = isPlainObject(base[M]) ? base[M] : {}, rm = isPlainObject(remote[M]) ? remote[M] : {};
       const om = _mergeChangedKeys(rm, lm, bm, "by");
       const ob = _mergeChangedKeys(rm.by, lm.by, bm.by);
@@ -14924,6 +14999,8 @@ function plExportBackup() {
         if (enRT && it.key !== soloClave) return;
         const src = it.data;
         const base = target[it.key];
+        // Lista 📌 No olvidar de la nube ANTES de aplicar lo encolado (migrateNote puede devolver el mismo objeto).
+        const _ptrNube = base && base.checklist && Array.isArray(base.checklist._ptReminders) ? base.checklist._ptReminders.slice() : null;
         if (!base) {
           // La nube aún no tiene nota para este paciente (creado sin red): lo encolado es lo único que hay.
           if (!enRT && _findPatientByKey(it.key)) target[it.key] = migrateNote(Object.assign(defaultData(), src));
@@ -14932,8 +15009,10 @@ function plExportBackup() {
         const dirty = Array.isArray(it.dirty) && it.dirty.length ? it.dirty : null;
         if (!dirty) {
           if (enRT) return;
-          // Nota completa encolada (sin lista de campos): lo local pendiente gana.
-          target[it.key] = migrateNote(Object.assign({}, base, src));
+          // Nota completa encolada (sin lista de campos): lo local pendiente gana (el 📌 No olvidar se une).
+          const ndc = migrateNote(Object.assign({}, base, src));
+          if (src.checklist && Array.isArray(src.checklist._ptReminders) && _ptrNube) ndc.checklist._ptReminders = _ptrMerge(src.checklist._ptReminders, _ptrNube);
+          target[it.key] = ndc;
           return;
         }
         const nd = migrateNote(base);
@@ -14955,6 +15034,11 @@ function plExportBackup() {
         // en el meta (y migrateNote la sacaba a la caja si la de la base estaba vacía). Se iguala el meta a nd.entrega:
         // sin 'entrega' en dirty queda el de la base; con 'entrega', el del ítem. La rama sin lista (arriba) no cambia.
         _entregaMetaAlign(nd);
+        // 📌 No olvidar: lo encolado aquí y lo que ya tiene la nube se unen (no se esconde lo que agregó un colega).
+        if (src.checklist && Array.isArray(src.checklist._ptReminders) && _ptrNube) {
+          if (!nd.checklist) nd.checklist = {};
+          nd.checklist._ptReminders = _ptrMerge(src.checklist._ptReminders, _ptrNube);
+        }
         target[it.key] = nd;
       });
     }
@@ -16048,6 +16132,7 @@ function plExportBackup() {
       // Firma de lo que se ve ANTES de aplicar lo remoto (19 oct 2026): un evento que no cambia nada (eco del sync de
       // labs con las mismas cifras, misma nota con las llaves en otro orden por jsonb) no repinta ni avisa «📡».
       const _antes = _noteViewSig(nd);
+      const _remAntes = JSON.stringify((nd.checklist && nd.checklist._ptReminders) || []);   // 📌 ¿cambiaron los recordatorios?
       // Aplicar campos remotos solo si NO están siendo editados localmente
       textFields.forEach(function(f) {
         nd[f] = dirty.has(f) ? existing[f] : (newRow[f] || "");
@@ -16073,6 +16158,8 @@ function plExportBackup() {
       // Cualquier otro campo del checklist marcado sucio (ck_<campo>: fotos de Cultivos / trazos, tinta __ink…), igual que
       // _applyLoadedNotes: sin esto un evento remoto durante la subida reemplazaba el campo y lo local se perdía.
       dirty.forEach(function (f) { if (f.indexOf("ck_") === 0 && f.length > 3 && localChecklist[f.slice(3)] !== undefined) nd.checklist[f.slice(3)] = localChecklist[f.slice(3)]; });
+      // 📌 No olvidar: la lista de aquí y la que llegó se UNEN (lo nuevo de cada lado se queda; gana el cambio más reciente).
+      if (Array.isArray(localChecklist._ptReminders) || Array.isArray(remoteChecklist._ptReminders)) nd.checklist._ptReminders = _ptrMerge(localChecklist._ptReminders, remoteChecklist._ptReminders);
       if (remoteMeta.exists && !dirty.has("entrega")) nd.entrega = remoteMeta.entrega;
       if (remoteMeta.exists) {
         // Diagrama corporal: no pisar un trazo local en edición/pendiente, ni borrar el local con
@@ -16119,6 +16206,8 @@ function plExportBackup() {
       // avisa (como antes). renderFocusBoard delega en renderFullCard, así que _rerenderCard pinta lo mismo que el tablero.
       const _enPantalla = !!document.getElementById("card-" + k);
       if (_cambio && _enPantalla && !_modalIsOpenForThis) _rerenderCardSoft(k);
+      // 📌 La pestaña No olvidar lista los recordatorios de cada tarjeta: si está abierta, se pone al día sola (19 nov 2026).
+      if (_cambio && JSON.stringify((noteData[k] && noteData[k].checklist && noteData[k].checklist._ptReminders) || []) !== _remAntes) { try { _ptrRefrescarFuera(); } catch (_) {} }
       // Aviso solo si cambió algo de un paciente que se está viendo (tarjeta en pantalla o modal abierto).
       if (_cambio && (_enPantalla || _modalIsOpenForThis)) _showRTToast("📡 Actualización recibida: " + (p.nombre || k));
       safeInfo("[RT] Note updated:", k, _cambio ? "" : "(sin cambios visibles)");
@@ -19145,7 +19234,7 @@ function plExportBackup() {
         .map(function (s) { return plSinFirma(s).replace(/^\d{2}\/\d{2}(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{1,4})?:\s*/, "").replace(/^[-•·*]\s*/, "").trim(); }).filter(Boolean);
       pendOpen.slice(0, 6).forEach(function (s) { R.pend.push(_egCut(s, 90)); });
       if (pendOpen.length > 6) R.pend.push("+" + (pendOpen.length - 6) + " más");
-      (Array.isArray(ck._ptReminders) ? ck._ptReminders : []).filter(function (r) { return r && !r.done && toSafeString(r.text).trim(); }).slice(0, 3).forEach(function (r) { R.pend.push("No olvidar: " + _egCut(r.text, 80)); });
+      (Array.isArray(ck._ptReminders) ? ck._ptReminders : []).filter(function (r) { return _ptrVisible(r) && !r.done; }).slice(0, 3).forEach(function (r) { R.pend.push("No olvidar: " + _egCut(r.text, 80)); });
       return R;
     }
     // ── Vista 📤 Entrega (oct 2026, pedido de Gera): por paciente SOLO Diagnóstico + signos vitales + gastos +
@@ -19329,23 +19418,68 @@ function plExportBackup() {
     }
 
     // ── No olvidar por paciente ────────────────────────────────────────
+    // 19 nov 2026 (pedido de Gera: «que cada cama tenga un cuadro de No olvidar… revisar la nota de valoración de una
+    // interconsulta, la nota postquirúrgica, la de endoscopía…»): el cuadro ya no va plegado al final de la ficha, va SIEMPRE
+    // a la vista al principio del cuerpo de la tarjeta (#sec-rec-<ek>), con alta rápida. Solo lo que escribe la gente: la
+    // app no agrega nada sola (el placeholder solo sugiere). Los abiertos se listan solos en la pestaña 📌 No olvidar. Cada
+    // recordatorio nuevo guarda quién lo anotó (by, primer nombre) y cuándo (t); los viejos no traen eso y se ven igual.
+    // Mismo dato de siempre: notes.checklist._ptReminders [{text, done, by?, t?, id?, u?, del?}] (sin tablas ni llaves nuevas;
+    // id/u/del son para unir lo de varios iPads: ver _ptrMerge).
+    function _ptrCuando(t) {
+      const d = t ? new Date(t) : null;
+      if (!d || isNaN(d.getTime())) return "";
+      const z = function (n) { return String(n).padStart(2, "0"); };
+      return z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
+    }
+    function _ptrAutorHtml(r) {
+      const n = toSafeString(r && r.by).trim().slice(0, 40);
+      if (!n) return "";
+      const f = _ptrCuando(r.t);
+      return `<span class="ptr-by" style="background:${_byColor(n)}" title="Lo anotó ${esc(n)}${f ? " · " + f : ""}">${esc(n)}${f ? " · " + f : ""}</span>`;
+    }
+    // Lo que se está escribiendo en la caja (sin Enter todavía) y si «✓ hechos» está abierto: solo en memoria, para que un
+    // repintado de la tarjeta (palomear otro, cambio de un colega) no lo borre ni lo cierre.
+    const _ptrBorrador = {}, _ptrHechosAbiertos = {};
+    function _ptrGuardarBorrador(k, v) { if (v) _ptrBorrador[k] = v; else delete _ptrBorrador[k]; }
+    function _ptrHechosToggle(k, abierto) { if (abierto) _ptrHechosAbiertos[k] = true; else delete _ptrHechosAbiertos[k]; }
     function renderPtReminders(nd, k) {
       const reminders = (nd.checklist && nd.checklist._ptReminders) || [];
-      const itemsHtml = reminders.map((r, i) =>
-        `<div class="ptr-item">
-          <input type="checkbox" ${r.done ? "checked" : ""} onchange="togglePtReminder('${k}',${i})">
-          <span class="ptr-text${r.done ? " done" : ""}">${esc(r.text)}</span>
-          <button class="ptr-del" onclick="deletePtReminder('${k}',${i})" title="Eliminar">✕</button>
-        </div>`
-      ).join("");
-      return `<div class="pt-reminders">
-        <div class="ptr-title">📌 No olvidar (paciente)</div>
-        ${itemsHtml}
-        <div class="ptr-add-row">
-          <input class="ptr-add-input" id="ptr-input-${k}" placeholder="Agregar recordatorio..." onkeydown="if(event.key==='Enter')addPtReminder('${k}')">
-          <button class="ptr-add-btn" onclick="addPtReminder('${k}')">+</button>
+      const kk = esc(k), claves = _ptrClaves(reminders);
+      const abiertos = [], hechos = [];
+      reminders.forEach(function (r, i) { if (_ptrVisible(r)) (r.done ? hechos : abiertos).push({ r: r, i: i, c: claves[i] }); });
+      // i = posición en la lista COMPLETA y c = su clave (id, o texto + repetición en los de antes): al tocar se busca por la
+      // clave, así una tarjeta pintada antes de que un colega borrara otro no marca el que no es.
+      const item = function (x) {
+        const r = x.r;
+        return `<div class="ptr-item${r.done ? " is-done" : ""}">
+          <input type="checkbox" ${r.done ? "checked" : ""} data-k="${kk}" data-i="${x.i}" data-c="${esc(x.c)}" onchange="togglePtReminder(this.dataset.k,+this.dataset.i,this.dataset.c)" aria-label="Marcar como hecho">
+          <span class="ptr-text${r.done ? " done" : ""}">${esc(r.text)}</span>${_ptrAutorHtml(r)}
+          <button type="button" class="ptr-del" data-k="${kk}" data-i="${x.i}" data-c="${esc(x.c)}" onclick="deletePtReminder(this.dataset.k,+this.dataset.i,this.dataset.c)" title="Eliminar">✕</button>
+        </div>`;
+      };
+      return `<div class="pt-reminders${abiertos.length ? " has-open" : ""}">
+        <div class="ptr-head">
+          <span class="ptr-title">📌 No olvidar${abiertos.length ? ` <span class="ptr-cnt">${abiertos.length}</span>` : ""}</span>
+          <span class="ptr-hint">se ve también en la pestaña 📌 No olvidar</span>
         </div>
+        ${abiertos.map(item).join("")}
+        <div class="ptr-add-row">
+          <input class="ptr-add-input" id="ptr-input-${kk}" data-k="${kk}" value="${esc(_ptrBorrador[k] || "")}" placeholder="Revisar nota de IC, postquirúrgica, de endoscopía…" enterkeyhint="enter" autocorrect="off" autocapitalize="sentences" spellcheck="false" oninput="_ptrGuardarBorrador(this.dataset.k,this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();addPtReminder(this.dataset.k)}">
+          <button type="button" class="ptr-add-btn" data-k="${kk}" onclick="addPtReminder(this.dataset.k)" title="Agregar a No olvidar">＋</button>
+        </div>
+        ${hechos.length ? `<details class="ptr-hechos" data-k="${kk}"${_ptrHechosAbiertos[k] ? " open" : ""} ontoggle="_ptrHechosToggle(this.dataset.k,this.open)"><summary>✓ ${hechos.length} hecho${hechos.length === 1 ? "" : "s"}</summary>${hechos.map(item).join("")}</details>` : ""}
       </div>`;
+    }
+    // Repinta lo que muestra los recordatorios fuera de la tarjeta: la pestaña 📌 No olvidar (si está abierta y nadie
+    // escribe en ella) y el contador del botón «No olvidar» de la barra de saltos.
+    function _ptrRefrescarFuera() {
+      try {
+        if (typeof currentView !== "undefined" && currentView === "noOlvidar" && typeof renderNoOlvidar === "function") {
+          const a = document.activeElement, enTab = a && a.closest && a.closest("#view-noOlvidar") && /^(INPUT|TEXTAREA)$/.test(a.tagName);
+          if (!enTab) renderNoOlvidar();   // con el foco en una caja de la pestaña, no (lo escrito sin foco se conserva al repintar)
+        }
+      } catch (_) {}
+      try { _refreshJumpBar(); } catch (_) {}
     }
 
     function addPtReminder(k) {
@@ -19353,32 +19487,68 @@ function plExportBackup() {
       if (!inp) return;
       const txt = (inp.value || "").trim();
       if (!txt) return;
+      const seguir = document.activeElement === inp;   // con Enter se pueden anotar varios seguidos
       const nd = migrateNote(noteData[k] || defaultData());
       if (!nd.checklist) nd.checklist = {};
       if (!nd.checklist._ptReminders) nd.checklist._ptReminders = [];
-      nd.checklist._ptReminders.push({ text: txt, done: false });
+      const ahora = Date.now();
+      const it = { id: _ptrNuevoId(), text: txt, done: false };
+      let quien = ""; try { quien = plStampName() || (localStorage.getItem("pl_user_name") || "").trim().slice(0, 40); } catch (_) {}
+      if (quien) it.by = quien;
+      it.t = new Date(ahora).toISOString(); it.u = ahora;
+      nd.checklist._ptReminders.push(it);
       _saveNoteNow(k, nd);
-      inp.value = "";
+      inp.value = ""; delete _ptrBorrador[k];
       _rerenderCard(k);
+      if (seguir) { const n = document.getElementById("ptr-input-" + k); if (n) { try { n.focus({ preventScroll: true }); } catch (_) { n.focus(); } } }
+      _ptrRefrescarFuera();
     }
 
-    function togglePtReminder(k, idx) {
+    // Posición vigente del recordatorio: por su clave si viene (la lista pudo cambiar desde que se pintó), si no por idx.
+    function _ptrIndice(lista, idx, clave) {
+      if (clave) { const i = _ptrClaves(lista).indexOf(String(clave)); return i; }
+      return lista[idx] ? idx : -1;
+    }
+    function togglePtReminder(k, idx, clave) {
       const nd = migrateNote(noteData[k] || defaultData());
       if (!nd.checklist || !nd.checklist._ptReminders) return;
-      if (!nd.checklist._ptReminders[idx]) return;
-      nd.checklist._ptReminders[idx].done = !nd.checklist._ptReminders[idx].done;
+      const i = _ptrIndice(nd.checklist._ptReminders, idx, clave);
+      const r = nd.checklist._ptReminders[i];
+      if (!r || r.del) return;
+      r.done = !r.done; r.u = Date.now();
       _saveNoteNow(k, nd);
       _rerenderCard(k);
       // El mismo recordatorio se lista en la vista "No olvidar": refrescarla si está abierta.
       if (typeof currentView !== "undefined" && currentView === "noOlvidar" && typeof renderNoOlvidar === "function") renderNoOlvidar();
+      try { _refreshJumpBar(); } catch (_) {}
     }
 
-    function deletePtReminder(k, idx) {
+    function deletePtReminder(k, idx, clave) {
       const nd = migrateNote(noteData[k] || defaultData());
       if (!nd.checklist || !nd.checklist._ptReminders) return;
-      nd.checklist._ptReminders.splice(idx, 1);
+      const r = nd.checklist._ptReminders[_ptrIndice(nd.checklist._ptReminders, idx, clave)];
+      if (!r || r.del) return;
+      // Se borra para todo el equipo: con el cuadro siempre a la vista, un toque de más no debe bastar (como en la pestaña).
+      if (!confirm("¿Eliminar este recordatorio?\n\n" + toSafeString(r.text).slice(0, 120))) return;
+      // Queda una marca de borrado (no se quita de la lista): así otro iPad que aún lo tiene no lo regresa (ver _ptrMerge).
+      r.del = true; r.done = true; r.u = Date.now();
       _saveNoteNow(k, nd);
       _rerenderCard(k);
+      _ptrRefrescarFuera();
+    }
+    // Desde la pestaña 📌 No olvidar: ir a la tarjeta del paciente, a su cuadro No olvidar.
+    function irANoOlvidarPaciente(k) {
+      const p = (typeof patients !== "undefined" ? patients : []).find(function (x) { return pid(x) === k; });
+      if (!p) return;
+      const tab = document.querySelector('.tab[onclick*="\'piso\'"]') || document.querySelector(".tab");
+      setView("piso", tab);
+      // Un filtro del tablero (especialidad, Solo míos, búsqueda, ingresos, 🛏 camas libres…) puede esconder esa cama: el
+      // tablero abriría otra, la lista de camas libres o «Sin pacientes». Entonces se quitan los filtros y se abre la pedida.
+      const _visible = function () { return !showLibres && Array.isArray(window.__boardOrder) && window.__boardOrder.indexOf(k) >= 0; };
+      if (!_visible()) { try { quitarFiltrosTodo(); } catch (_) {} }
+      enterFocus(k);
+      if (window.__focusPid !== k || !_visible()) { try { quitarFiltrosTodo(); } catch (_) {} enterFocus(k); }
+      setTimeout(function () { try { fcJump(k, "rec"); } catch (_) {} }, 350);
     }
 
     // ── Modo Rondas ────────────────────────────────────────────────────
@@ -19977,7 +20147,7 @@ function plExportBackup() {
         const dias = getDiasSinLabs(nd);
         const labsBadge = dias === null ? '<span class="bj-n bj-crit">sin</span>' : (dias >= 2 ? `<span class="bj-n bj-crit">${dias}d</span>` : (dias === 0 ? '<span class="bj-n bj-ok">hoy</span>' : ""));
         const imgCount = (nd.imagenHistory || []).reduce(function (n, e) { return n + ((e && e.estudios) || []).length; }, 0) + ((typeof risForPatient === "function") ? risForPatient(p).length : 0);
-        const remOpen = ((ck._ptReminders) || []).filter(function (r) { return !r.done; }).length;
+        const remOpen = ((ck._ptReminders) || []).filter(function (r) { return _ptrVisible(r) && !r.done; }).length;
         let cds = 0, cdsCrit = false;
         try { const s = PLCDS.sortBySeverity(PLCDS.evaluate(p, nd)).filter(function (x) { return !PLCDSStore.isIgnored(k, x.ruleId, x.valueHash); }); cds = s.length; cdsCrit = s.some(function (x) { return x.critical; }); } catch (_) {}
         let indBadge = "";
@@ -21473,8 +21643,10 @@ function plExportBackup() {
       ${(function () {
         /* ═══ FICHA COMPACTA (oct 2026, pedido de Gera): misma información, menos alto y todo a un clic.
            - Columna principal: DX → Labs (dos mitades) → Manejo → Pendientes/Plan → Entrega → Historia (APP/Qx/PA, plegable) → MIPs/R1 (plegable).
-           - Columna lateral: Pase (dieta/ATB/TVP, herida, vitales, drenajes, clínico) → Drenajes/Sangrado/Balance →
-             IC·Cultivos → Sugerencias → Indicaciones → Estudios → Diagrama → No olvidar (plegables con estado recordado).
+           - Columna lateral: Pase (vitales y drenajes primero; dieta/ATB/TVP, herida, clínico) →
+             IC·Cultivos → Sugerencias → Indicaciones → Estudios → Diagrama (plegables con estado recordado).
+           - 📌 No olvidar va primero en la columna principal, siempre a la vista (19 nov 2026).
+           - iPad vertical (≤ 1000 px, una columna): No olvidar → DX → Pase (vitales/drenajes) → Labs → … (CSS, sin mover datos).
            - Cada bloque lleva id "sec-<nombre>-<ek>" para la barra de saltos del tablero (fcJump).
            Mismos bloques y handlers de siempre: el contrato data-* / onclick no cambia. ═══ */
         const ek = k.replace(/[^a-zA-Z0-9]/g, "_");
@@ -21494,16 +21666,18 @@ function plExportBackup() {
         const cultPos = /POSITIVO/.test(cultLab);
         const hasMicro = (nd.labHistory || []).some(function (s) { return s && s.labs && (s.labs.micro_tipo_cultivo || s.labs.micro_organismo); });
         const icHas = !!(icText || cultText || cultLab || hasMicro);
-        const rems = (nd.checklist && nd.checklist._ptReminders) || [];
-        const remOpen = rems.filter(function (r) { return !r.done; }).length;
         const mipsTxt = toSafeString(nd.checklist && nd.checklist.pendientes_mips).trim();
         const r1Txt = toSafeString(nd.checklist && nd.checklist.pendientes_r1).trim();
         const indHtml = renderIndicacionesSection(p, nd, k);
         const indHas = !/ind-empty/.test(indHtml);
         const cruceText = getCruceEntregaText(nd.checklist);
         const _dOpen = !!(window.__drainsOpen && window.__drainsOpen[k]);
+        // 📌 No olvidar (19 nov 2026): siempre a la vista, lo primero de la columna principal (en iPad horizontal el Pase con
+        // los signos vitales sigue arriba a la derecha, a su lado; en iPad vertical y en Hoja es lo primero de la ficha).
+        // Conserva id sec-rec-<ek> y data-sec="rec" (barra de saltos, ⚙ Cajas de Hoja).
         return `<div class="fc-bento">
       <div class="fc-main">
+      <div ${anchor("rec", "rec")} data-sec="rec">${renderPtReminders(nd, k)}</div>
       <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}${(function () { try { return _dxPrincipalHtml(p, nd, k); } catch (_) { return ""; } })()}${_porCompletarHtml(p, nd, k)}</div>
       <div ${anchor("labs")} style="margin-top:8px">${_labsDiariosLinea(p, nd)}${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}</div>
       <div ${anchor("cx", "cx")} style="margin-top:8px">${renderCirugiasSection(nd, k)}</div>
@@ -21596,7 +21770,6 @@ function plExportBackup() {
         </button>
         ${_dOpen ? renderBodyDiagram(nd, k, true) : ""}
       </div>
-      ${fcSec("rec", k, "📌 No olvidar (paciente)", remOpen ? `<span class="fc-cnt">${remOpen}</span>` : "", renderPtReminders(nd, k), remOpen > 0)}
       </div><!-- /fc-secs -->
       </div><!-- /fc-side -->
       </div><!-- /fc-bento -->`;
@@ -21642,6 +21815,7 @@ function plExportBackup() {
       </div>
     </div>
     <div class="simple-body">
+      <div id="sec-rec-${k.replace(/[^a-zA-Z0-9]/g, "_")}" class="fc-blk-rec" data-sec="rec">${renderPtReminders(nd, k)}</div>
       ${fieldRow("⚠️ Pendiente", nd.pendientes, k, "pendientes", 2)}
       <div class="grid-2">
         ${renderInterconsultasSection(nd, k)}
@@ -25962,13 +26136,56 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
       }
     }
 
+    // «🏥 Por paciente»: los 📌 No olvidar abiertos de cada tarjeta (notes.checklist._ptReminders), solos, en orden de cama.
+    // 19 nov 2026: van arriba (antes de la lista del equipo), con quién lo anotó y un botón para ir a la tarjeta. Solo
+    // pacientes del censo (las notas de un egresado siguen 24 h en memoria y salían sin cama ni nombre).
+    function _noOlvidarPorPacienteHtml() {
+      const ptBlocks = [];
+      const lista = (typeof orderPisoPatients === "function") ? orderPisoPatients(typeof patients !== "undefined" ? patients : []) : [];
+      let total = 0;
+      for (const _p of lista) {
+        const k = pid(_p);
+        const nd = noteData[k];
+        if (!nd || !nd.checklist) continue;
+        const reminders = nd.checklist._ptReminders;
+        if (!Array.isArray(reminders) || reminders.length === 0) continue;
+        // Posición en la lista COMPLETA (togglePtReminder la usa así; con uno ya hecho antes se marcaba otro).
+        const claves = _ptrClaves(reminders);
+        const pendPt = reminders.map((r, i) => ({ r, i, c: claves[i] })).filter(x => _ptrVisible(x.r) && !x.r.done);
+        if (pendPt.length === 0) continue;
+        total += pendPt.length;
+        const rows = pendPt.map(({ r, i: idx, c }) => `
+              <div class="no-pt-item">
+                <button onclick="togglePtReminder(${esc(JSON.stringify(k))},${idx},${esc(JSON.stringify(c))})" class="no-pt-check" title="Marcar como hecho" aria-label="Marcar como hecho"></button>
+                <span class="no-pt-text">${esc(r.text)}</span>${_ptrAutorHtml(r)}
+              </div>`).join("");
+        ptBlocks.push(`
+              <div class="no-pt-blk">
+                <div class="no-pt-cama">
+                  <span>🛏 ${_p.cama ? esc(_p.cama) + " · " : ""}${esc(_p.nombre || "")}</span>
+                  <button type="button" class="no-pt-ir" data-k="${esc(k)}" onclick="irANoOlvidarPaciente(this.dataset.k)" title="Abrir la tarjeta del paciente">Ir a la cama ›</button>
+                </div>
+                ${rows}
+              </div>`);
+      }
+      if (ptBlocks.length === 0) return "";
+      return `
+            <div class="no-pt-wrap">
+              <div class="no-pt-h">🏥 Por paciente <span class="no-pt-n">${total}</span> <span class="no-pt-sub">se anotan en el cuadro 📌 de cada tarjeta</span></div>
+              ${ptBlocks.join("")}
+            </div>`;
+    }
+
     function renderNoOlvidar() {
       const el = document.getElementById("view-noOlvidar");
       if (!el) return;
+      // Lo escrito (y no agregado) en la caja del equipo sobrevive al repintado (palomear, cambios de otro iPad).
+      const _eqPrev = document.getElementById("no-olvidar-input"), _eqVal = _eqPrev ? _eqPrev.value : "", _eqFoco = !!_eqPrev && document.activeElement === _eqPrev;
       const items = lsGetNoOlvidar();
       const pending = items.filter(i => !i.done);
       const done    = items.filter(i => i.done);
       const author  = localStorage.getItem("pl_user_name") || "Anónimo";
+      const _ptHtml = _noOlvidarPorPacienteHtml();
 
       const itemHtml = (i) => `
         <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:${i.done ? "#f8fafc" : "#fff"};border:1.5px solid ${i.done ? "#e2e8f0" : "#cbd5e1"};border-radius:10px;margin-bottom:8px;opacity:${i.done ? ".6" : "1"}">
@@ -25994,7 +26211,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
         <!-- Input nuevo recordatorio -->
         <div style="display:flex;gap:8px;margin-bottom:20px">
           <input id="no-olvidar-input" type="text" placeholder="Agregar recordatorio para el equipo..."
-            style="flex:1;padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:var(--font);outline:none"
+            style="flex:1;min-width:0;padding:10px 14px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px;font-family:var(--font);outline:none"
             onkeydown="if(event.key==='Enter')addNoOlvidar()"
             onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'"/>
           <button onclick="addNoOlvidar()"
@@ -26003,9 +26220,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           </button>
         </div>
 
+        ${_ptHtml}
+
         <!-- Pendientes -->
         ${pending.length === 0
-          ? `<div style="text-align:center;padding:32px 0;color:#94a3b8;font-size:14px">No hay recordatorios pendientes 🎉</div>`
+          ? `<div style="text-align:center;padding:${_ptHtml ? "12px" : "32px"} 0;color:#94a3b8;font-size:14px">${_ptHtml ? "Sin recordatorios del equipo" : "No hay recordatorios pendientes 🎉"}</div>`
           : `<div style="margin-bottom:6px">
               <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Pendientes (${pending.length})</span>
              </div>
@@ -26023,49 +26242,11 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
           ${done.map(itemHtml).join("")}
         </div>` : ""}
 
-        <!-- Recordatorios por paciente -->
-        ${(() => {
-          const ptBlocks = [];
-          const keys = Object.keys(noteData || {});
-          for (const k of keys) {
-            const nd = noteData[k];
-            if (!nd || !nd.checklist) continue;
-            const reminders = nd.checklist._ptReminders;
-            if (!Array.isArray(reminders) || reminders.length === 0) continue;
-            // FIX (jun 2026): nombre/cama viven en el objeto PACIENTE, no en la nota.
-            // Antes leía nd.nombre/nd.cama (undefined) → ptName caía a `k` (el id/llave del
-            // paciente = el "número raro" donde va la cama) y cama quedaba vacía.
-            const _p = (typeof patients !== "undefined" ? patients.find(pt => pid(pt) === k) : null);
-            const ptName = (_p && _p.nombre) || nd.nombre || nd.name || k;
-            const cama = (_p && _p.cama) || nd.cama || nd.room || "";
-            // Posición en la lista COMPLETA (togglePtReminder la usa así; con uno ya hecho antes se marcaba otro).
-            const pendPt = reminders.map((r, i) => ({ r, i })).filter(x => x.r && !x.r.done);
-            if (pendPt.length === 0) continue;
-            const rows = pendPt.map(({ r, i: idx }) => `
-              <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:6px">
-                <button onclick="togglePtReminder(${esc(JSON.stringify(k))},${idx})"
-                  style="flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid #94a3b8;background:#fff;cursor:pointer;font-size:12px;padding:0">
-                </button>
-                <span style="font-size:13px;color:#1e293b;word-break:break-word;flex:1">${esc(r.text)}</span>
-              </div>`).join("");
-            ptBlocks.push(`
-              <div style="margin-bottom:14px">
-                <div style="font-size:12px;font-weight:700;color:#4f46e5;margin-bottom:6px">
-                  🛏 ${cama ? esc(cama) + " · " : ""}${esc(ptName)}
-                </div>
-                ${rows}
-              </div>`);
-          }
-          if (ptBlocks.length === 0) return "";
-          return `
-            <div style="margin-top:24px;border-top:2px solid #e0e7ff;padding-top:16px">
-              <div style="font-size:12px;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">
-                🏥 Por paciente (${ptBlocks.length})
-              </div>
-              ${ptBlocks.join("")}
-            </div>`;
-        })()}
       </div>`;
+      if (_eqVal || _eqFoco) {
+        const _eq = document.getElementById("no-olvidar-input");
+        if (_eq) { _eq.value = _eqVal; if (_eqFoco) { try { _eq.focus({ preventScroll: true }); } catch (_) { _eq.focus(); } } }
+      }
     }
 
     function fmtV(id) { const el = document.getElementById(id); return el ? (el.value || el.textContent || "").trim() : ""; }
@@ -30960,7 +31141,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.15-1";
+    const PL_BUILD = "2026.11.19-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -34451,6 +34632,30 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         return found || null;
       }
 
+      // ✍️ Quién escribió cada renglón (19 nov 2026, pedido de Gera): primer nombre de la cuenta (el mismo de la «firma por
+      // renglón») en item.by y la hora en item.bt (ms). Viven DENTRO del renglón: _tabMerge/_tabSync ya los llevan a la nube
+      // con el resto (sin llaves, tablas ni columnas nuevas). Solo se anotan al crear el renglón o al cambiar su texto; al
+      // palomear, mover o borrar no (si no, quien solo lo palomea se volvería el autor). Los renglones viejos no traen autor.
+      function _tabAutor() {
+        let n = "";
+        try { n = (typeof plStampName === "function" ? plStampName() : "") || (localStorage.getItem("pl_user_name") || "").trim().slice(0, 40); } catch (_) {}
+        return n;
+      }
+      function _tabAutorHtml(item) {
+        const n = String((item && item.by) || "").trim().slice(0, 40);
+        if (!n) return "";
+        const e = (typeof esc === "function") ? esc : function (x) { return String(x).replace(/[&<>"']/g, ""); };
+        const d = new Date(Number(item.bt) || Date.parse(item.createdAt || "") || NaN);
+        const z = function (v) { return String(v).padStart(2, "0"); };
+        const f = isNaN(d.getTime()) ? "" : z(d.getDate()) + "/" + z(d.getMonth() + 1) + " " + z(d.getHours()) + ":" + z(d.getMinutes());
+        const col = (typeof _byColor === "function") ? _byColor(n) : "#475569";
+        return `<span class="t-by" style="background:${col}" title="Lo escribió ${e(n)}${f ? " · " + f : ""}">✍️ ${e(n)}${f ? " · " + f : ""}</span>`;
+      }
+
+      // Texto con el que se PINTÓ cada renglón: si la pantalla quedó vieja (otro iPad lo cambió y aún no se repinta) y la
+      // persona solo lo toca y sale, lo que devuelve la pantalla es ese texto viejo: no se guarda (no pisa lo del otro iPad)
+      // ni cambia el autor.
+      const _tabDibujado = {};
       window.tableroAddItem = function(qId) {
         const data = tableroLoad();
         if (!data[qId]) data[qId] = [];
@@ -34460,6 +34665,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
           done: false,
           createdAt: new Date().toISOString(),
         };
+        const autor = _tabAutor();
+        if (autor) { item.by = autor; item.bt = Date.now(); }
         data[qId].push(item);
         tableroSave(data);
         renderTablero();
@@ -34503,7 +34710,17 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         if (!data[qId]) return;
         const item = data[qId].find(i => i.id === itemId);
         if (!item) return;
-        item.text = String(newText || "").trim();
+        const nuevo = String(newText || "").trim();
+        // Solo quien CAMBIA el texto queda como autor. Se compara sin espacios de más: el renglón pintado puede devolver
+        // otros espacios o saltos (innerText) aunque nadie haya escrito, y tocarlo y salir no debe cambiar el autor.
+        const _norm = function (x) { return String(x || "").replace(/[\s\u00a0]+/g, " ").trim(); };
+        if (Object.prototype.hasOwnProperty.call(_tabDibujado, itemId) && _norm(nuevo) === _norm(_tabDibujado[itemId]) && _norm(nuevo) !== _norm(item.text)) return;
+        if (_norm(nuevo) !== _norm(item.text)) {
+          const autor = _tabAutor();
+          if (autor) { item.by = autor; item.bt = Date.now(); }
+          else { delete item.by; delete item.bt; }   // sin nombre en la cuenta: no se le atribuye al autor anterior
+        }
+        item.text = nuevo;
         // Detectar referencia a cama
         const pac = tableroDetectCama(item.text);
         item.camaRef = pac ? pac.cama : null;
@@ -34866,6 +35083,7 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
           weekday: "long", year: "numeric", month: "long", day: "numeric"
         });
 
+        for (const _k in _tabDibujado) delete _tabDibujado[_k];
         let html = `
           <div class="tablero-wrap">
             <div class="tablero-header">
@@ -34903,8 +35121,10 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
         `;
           for (const item of items) {
             const textShown = item.text || "";
+            _tabDibujado[item.id] = textShown;
+            const _e = (typeof esc === "function") ? esc : function (x) { return String(x).replace(/[&<>"']/g, ""); };
             const pacBadge = item.camaRef
-              ? `<button class="t-cama-badge" onclick="event.stopPropagation();tableroGotoPaciente('${item.camaRef}')" title="Ir al paciente">${item.camaRef}${item.pacienteRef ? ' · ' + item.pacienteRef : ''}</button>`
+              ? `<button class="t-cama-badge" data-tcama="${_e(item.camaRef)}" onclick="event.stopPropagation();tableroGotoPaciente(this.dataset.tcama)" title="Ir al paciente">${_e(item.camaRef)}${item.pacienteRef ? ' · ' + _e(item.pacienteRef) : ''}</button>`
               : "";
             html += `
               <li class="tablero-item ${item.done ? 'done' : ''}"
@@ -34923,8 +35143,8 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
                        data-item-id="${item.id}"
                        onblur="tableroUpdateText('${q.id}','${item.id}', this.innerText); tableroRenderLater();"
                        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();tableroAddItem('${q.id}');}"
-                       data-placeholder="Escribe aquí...">${textShown.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
-                  ${pacBadge}
+                       data-placeholder="Escribe aquí...">${textShown.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+                  ${(pacBadge || (textShown && item.by)) ? `<div class="t-meta">${pacBadge}${textShown ? _tabAutorHtml(item) : ""}</div>` : ""}
                 </div>
                 <button class="t-del" onclick="tableroDeleteItem('${q.id}','${item.id}')" title="Eliminar">✕</button>
               </li>
@@ -35115,6 +35335,17 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
       font-family: -apple-system, sans-serif;
     }
     .t-cama-badge:hover { background: rgba(168,85,247,.4); color: white; }
+    /* ✍️ Quién escribió el renglón (19 nov 2026): en el mismo renglón del texto cuando cabe (no alarga la lista) */
+    .t-body { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
+    .t-body > .tablero-text { flex: 1 1 140px; min-width: 0; }
+    .t-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; margin-left: auto; }
+    .t-meta .t-cama-badge { margin-top: 0; }
+    .t-by {
+      display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 700; color: #fff; white-space: nowrap; line-height: 16px;
+      font-family: -apple-system, sans-serif; user-select: none; -webkit-user-select: none;
+    }
+    .tablero-item.done .t-by { opacity: .75; }
     .t-del {
       background: none;
       border: none;
@@ -35562,6 +35793,158 @@ ${nd.pendientes.trim()}` : "⚠️ Plan: (sin registrar)",
     body.dark .patient-card {
       background: #1a2332 !important;
       border-color: rgba(100,116,139,.25) !important;
+    }
+  </style>
+  <!-- ═══ ENCABEZADO v2 (19 nov 2026, pedido de Gera: «está muy cutre… algo más innovador, más de cirugía, que se vea
+       tecnológico; no aumentes el tamaño; agrega el logo del servicio»). SOLO estilo: mismos elementos, ids, botones,
+       pestañas y textos; misma altura o menor (paddings y separaciones iguales o más chicos). Va al final de la cascada
+       para ganar a las reglas anteriores. Movimiento suave (monitor/ECG y halo del logo) solo si el sistema no pide
+       «reducir movimiento»; las animaciones mueven capas con transform (no repintan la página). ═══ -->
+  <style id="hdr-v2">
+    #header {
+      background:
+        radial-gradient(900px 160px at 8% -30%, rgba(45,212,191,.20), transparent 62%),
+        radial-gradient(800px 180px at 96% -50%, rgba(56,189,248,.18), transparent 60%),
+        linear-gradient(135deg, #040b18 0%, #0a1b33 46%, #0b3150 100%) !important;
+      box-shadow: 0 6px 22px rgba(2,8,23,.42), inset 0 -1px 0 rgba(125,211,252,.14) !important;
+      isolation: isolate;
+    }
+    /* Cuadrícula fina tipo monitor (se desvanece a los lados) */
+    #header::before {
+      content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148,197,240,.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,197,240,.055) 1px, transparent 1px);
+      background-size: 22px 22px;
+      -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%);
+      mask-image: linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%);
+    }
+    /* Trazo de ECG que corre despacio detrás del título (se desliza el dibujo dentro de una capa fija: el desvanecido de
+       los lados se queda quieto). Pasos de 1 px, unos 17 por segundo: suave y casi sin gasto de batería. */
+    #header::after {
+      content: ""; position: absolute; z-index: -1; pointer-events: none;
+      left: 0; right: 0; top: 30px; height: 56px; opacity: .22;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='56' viewBox='0 0 240 56'%3E%3Cpath d='M0 30H70l5-5 5 5h14l4 6 6-30 6 42 5-20h17q8-11 16 0h87' fill='none' stroke='%232dd4bf' stroke-width='1.6' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x 0 0 / 240px 56px;
+      -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
+      mask-image: linear-gradient(90deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      #header::after { animation: plHdrEcg 14s steps(240) infinite; }
+    }
+    @keyframes plHdrEcg { from { background-position: 0 0; } to { background-position: -240px 0; } }
+    body.hdr-min #header::after { display: none; }
+
+    /* Frase del día: franja de vidrio */
+    #header #quote-bar {
+      background: linear-gradient(90deg, transparent, rgba(45,212,191,.09) 30%, rgba(56,189,248,.09) 70%, transparent) !important;
+      border-bottom: 1px solid rgba(125,211,252,.10);
+      color: rgba(186,230,253,.86) !important;
+    }
+    #header #course-countdown {
+      background: rgba(4,11,24,.55) !important;
+      border: 1px solid rgba(252,211,77,.32);
+      box-shadow: inset 0 0 8px rgba(252,211,77,.08);
+    }
+
+    /* Logo del servicio con halo que gira */
+    .header-title .pl-svc-badge {
+      position: relative; flex-shrink: 0; width: 52px; height: 52px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: radial-gradient(circle at 50% 38%, #12406b 0%, #071a31 62%, #040b18 100%);
+      box-shadow: 0 0 0 1px rgba(125,211,252,.30), 0 0 18px rgba(45,212,191,.28), inset 0 0 10px rgba(56,189,248,.22);
+    }
+    .header-title .pl-svc-badge::before {
+      content: ""; position: absolute; inset: -3px; border-radius: 50%; pointer-events: none;
+      background: conic-gradient(from 0deg, rgba(45,212,191,0) 0deg, rgba(45,212,191,.95) 90deg, rgba(56,189,248,.9) 150deg, rgba(56,189,248,0) 230deg, rgba(45,212,191,0) 360deg);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .header-title .pl-svc-badge::before { animation: plHdrHalo 7s linear infinite; }
+    }
+    @keyframes plHdrHalo { to { transform: rotate(360deg); } }
+    .header-title .pl-svc-logo { width: 46px; height: 46px; display: block; position: relative; filter: drop-shadow(0 0 4px rgba(125,211,252,.35)); }
+
+    /* Título */
+    /* mismo tamaño y espaciado que antes (más ancho partía el encabezado en dos renglones en monitores de 1600-2000 px) */
+    #header-top .header-title-text .sub { color: #7dd3fc !important; opacity: .95; }
+    #header-top .header-title-text h1 {
+      background: linear-gradient(90deg, #ffffff 0%, #e0f2fe 52%, #5eead4 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; color: #fff;
+      letter-spacing: -.2px;
+    }
+
+    /* Controles: cajas y chips de vidrio, un poco más juntos (menos renglones en el iPad) */
+    @media (min-width: 701px) {
+      #header-top { padding-top: 10px !important; padding-bottom: 6px !important; }
+      #header-top .header-controls { gap: 5px !important; }
+    }
+    #header .header-input {
+      background: rgba(255,255,255,.06) !important;
+      border: 1px solid rgba(148,197,240,.24) !important;
+      border-radius: 10px !important;
+      color: #f0f9ff !important;
+      transition: border-color .2s, box-shadow .2s, background .2s;
+    }
+    #header .header-input::placeholder { color: rgba(186,230,253,.55) !important; }
+    #header .header-input:focus {
+      outline: none; background: rgba(255,255,255,.10) !important;
+      border-color: rgba(45,212,191,.75) !important; box-shadow: 0 0 0 3px rgba(45,212,191,.18) !important;
+    }
+    /* el filo va como sombra interior (un borde de verdad agregaría 2 px de alto a cada renglón) */
+    #header-top .btn-green {
+      background: linear-gradient(135deg, #047857, #10b981) !important; border-radius: 10px !important;
+      box-shadow: inset 0 0 0 1px rgba(110,231,183,.45), inset 0 1px 0 rgba(255,255,255,.18), 0 3px 12px rgba(16,185,129,.22) !important;
+    }
+    #header-top .btn-blue {
+      background: linear-gradient(135deg, #0369a1, #06b6d4) !important; border-radius: 10px !important;
+      box-shadow: inset 0 0 0 1px rgba(125,211,252,.45), inset 0 1px 0 rgba(255,255,255,.18), 0 3px 12px rgba(6,182,212,.22) !important;
+    }
+    #header #winlab-refresh-pill, #header #hc-more-btn, #header #account-btn, #header #admin-btn, #header #logout-btn,
+    #header #winlab-autosync-btn:not([data-scraper-status]) {
+      background: rgba(255,255,255,.07) !important;
+      border: 1px solid rgba(148,197,240,.24) !important;
+      border-radius: 999px !important;
+      -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+      transition: background .2s, border-color .2s, box-shadow .2s, transform .15s;
+    }
+    #header #winlab-refresh-pill { color: #7dd3fc !important; }   /* antes azul oscuro sobre azul: no se leía */
+    #header #account-btn { color: #c7d2fe !important; }
+    #header #admin-btn { color: #a7f3d0 !important; border-color: rgba(16,185,129,.40) !important; }
+    #header #logout-btn { color: #fecaca !important; border-color: rgba(239,68,68,.35) !important; }
+    #header #winlab-autosync-btn, #header #sync-status, #header #proxy-pill { border-radius: 999px !important; }
+    @media (hover: hover) {
+      #header #winlab-refresh-pill:hover, #header #hc-more-btn:hover, #header #account-btn:hover,
+      #header #admin-btn:hover, #header #logout-btn:hover, #header #winlab-autosync-btn:hover, #header #proxy-pill:hover {
+        border-color: rgba(45,212,191,.6) !important; box-shadow: 0 0 0 3px rgba(45,212,191,.12) !important;
+      }
+    }
+    #header-top .header-controls button:active { transform: translateY(1px); }
+
+    /* Pestañas: barra de vidrio; la activa brilla con el acento quirúrgico (verde-azul) */
+    #header #tabs {
+      background: rgba(255,255,255,.055) !important;
+      box-shadow: inset 0 0 0 1px rgba(148,197,240,.14), inset 0 1px 0 rgba(255,255,255,.05) !important;   /* filo sin sumar alto */
+      -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    }
+    #header #tabs .tab { position: relative; color: rgba(224,242,254,.80) !important; }
+    #header #tabs .tab:hover { color: #fff !important; background: rgba(125,211,252,.10) !important; }
+    #header #tabs .tab.active {
+      color: #06182e !important;
+      background: linear-gradient(180deg, #ffffff 0%, #e6fbff 100%) !important;
+      box-shadow: 0 0 0 1px rgba(45,212,191,.40), 0 3px 14px rgba(45,212,191,.30) !important;
+    }
+    #header #tabs .tab.active::after {
+      content: ""; position: absolute; left: 22%; right: 22%; bottom: 2px; height: 2px; border-radius: 2px;
+      background: linear-gradient(90deg, #2dd4bf, #38bdf8);
+    }
+    #header #tabs .tab-ronda:not(.active) { color: #b7f0ff !important; }
+
+    /* Impresión: sin fondos ni efectos (el logo blanco no se vería en papel) */
+    @media print {
+      #header::before, #header::after, .header-title .pl-svc-badge { display: none !important; }
+      #header-top .header-title-text h1 { -webkit-text-fill-color: currentColor; background: none; }
     }
   </style>
 
