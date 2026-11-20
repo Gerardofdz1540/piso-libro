@@ -1812,7 +1812,9 @@ function mockSupabase(ctx, store, ctl, calls) {
   };
   const fuente = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
   const cf = publicar(pasoCF), nl = publicar(pasoNL);
-  const pubOk = (p) => p.rc === 0 && !!p.ver && p.ver.v === BUILD && p.html === fuente && /const PL_BUILD = "/.test(p.html) && /pisolibro-v12/.test(p.sw);
+  // sw.js publicado = el del repositorio, con su VERSION (v13 desde el 19 nov 2026: wifi lento; ver app_sw_lento.js).
+  const swRepo = fs.readFileSync(path.join(REPO, 'sw.js'), 'utf8'), swVer = (swRepo.match(/const VERSION = '([^']+)'/) || [])[1] || '?';
+  const pubOk = (p) => p.rc === 0 && !!p.ver && p.ver.v === BUILD && p.html === fuente && /const PL_BUILD = "/.test(p.html) && p.sw === swRepo && /^pisolibro-v\d+$/.test(swVer);
   // La copia de Cloudflare abierta en el navegador (index.html y version.json de dist/): misma versión → sin barra.
   const ctxP = await browser.newContext({ viewport: { width: 1194, height: 834 } });
   await guardSupa(ctxP);
@@ -1826,7 +1828,7 @@ function mockSupabase(ctx, store, ctl, calls) {
   await pp.waitForFunction(() => typeof patients !== 'undefined' && patients.length === 1, null, { timeout: 30000 });
   const c7l = await pp.evaluate(async () => ({ build: PL_BUILD, r: await _plVersionRevisar(), bar: !!document.getElementById('pl-ver-bar') && getComputedStyle(document.getElementById('pl-ver-bar')).display !== 'none' }));
   await ctxP.close();
-  check('C7l lo que publican deploy-pages.yml (Cloudflare) y netlify.toml (Netlify): el paso termina bien, dist/ lleva version.json con "v" igual a PL_BUILD, index.html sin cambios y sw.js v12; abierta la copia de Cloudflare, misma versión → sin barra',
+  check('C7l lo que publican deploy-pages.yml (Cloudflare) y netlify.toml (Netlify): el paso termina bien, dist/ lleva version.json con "v" igual a PL_BUILD, index.html y sw.js sin cambios (sw.js con su VERSION); abierta la copia de Cloudflare, misma versión → sin barra',
     !!pasoCF && !!pasoNL && pubOk(cf) && pubOk(nl) && c7l.build === BUILD && c7l.r === BUILD && !c7l.bar,
     JSON.stringify({ pasoCF: !!pasoCF, pasoNL: !!pasoNL, cf: { rc: cf.rc, out: cf.out.slice(-120), ver: cf.ver, igual: cf.html === fuente }, nl: { rc: nl.rc, out: nl.out.slice(-120), ver: nl.ver, igual: nl.html === fuente }, c7l }));
   // C7l2 (21 oct 2026): cada archivo que copia ese paso a dist/ está en on.push.paths de deploy-pages.yml; si no, un push

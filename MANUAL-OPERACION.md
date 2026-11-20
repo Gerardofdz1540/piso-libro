@@ -187,7 +187,7 @@ En **cada** PR que cambie `index.html`, sube las dos con un valor nuevo: la fech
 los dos valores no son iguales, y en el PR el paso «version.json acompaña a index.html» de `ci.yml` falla si
 `index.html` cambió y `version.json` no (o trae el mismo valor). Si se olvidara, los equipos con la versión anterior
 no verían el aviso; si los dos valores no coincidieran, todos lo verían siempre. El service worker (`sw.js`, versión
-`pisolibro-v12`) nunca guarda `version.json`: siempre lo pide a la red; y al instalarse baja la app del servidor sin
+`pisolibro-v13`) nunca guarda `version.json`: siempre lo pide a la red; y al instalarse baja la app del servidor sin
 usar la copia que el navegador tenga guardada.
 
 **Dos PR abiertos a la vez que cambian `index.html`:** los dos suben la versión al mismo valor siguiente (p. ej.
@@ -2062,3 +2062,40 @@ estudios».
   unos segundos en «Otros» para desaparecer en la siguiente recarga. Pruebas R-O35 / R-O36.
 - **Batería.** El bisturí y el surgete del encabezado van a pasos (~21 por segundo), como el ECG de antes: el mismo
   repintado que el ECG o menos (539 contra 550 en un ciclo de 16 s, medido en Chromium). Prueba R12b.
+
+## Equipos que se quedan en una versión vieja con el wifi lento (19 de noviembre de 2026, service worker v13)
+
+**Qué pasaba.** «Seguimos con la versión antigua de la app» aunque la nueva ya estaba publicada (los equipos abren
+`gerardofdz1540.github.io/piso-libro`, que sí servía la nueva). La página pesa ~700 KB; con el wifi del hospital
+saturado tardaba más de 15 s en bajar. El service worker mostraba la copia guardada (para no dejar la pantalla en
+blanco), pero **abandonaba la descarga**: la copia nunca se actualizaba y el equipo se quedaba en la versión vieja para
+siempre, aunque tocara «Actualizar».
+
+**Arreglo (sw.js v13).** La descarga de la página se termina en segundo plano aunque ya se haya mostrado la copia, y
+deja la copia guardada en la versión publicada: la siguiente apertura (o «Actualizar») ya abre la nueva. Además, al
+cambiar el service worker cada equipo lo instala solo, y la instalación baja la versión publicada completa, sin tope de
+tiempo: hasta los equipos ya atorados quedan al día. Prueba: `tests/headless/app_sw_lento.js` (con el SW v12 falla).
+
+Ajustes tras una revisión independiente (también en v13, antes de publicarlo):
+- La instalación copia las librerías de `./vendor/` (llevan versión en el nombre, ~2.8 MB) de la caché anterior en vez
+  de bajarlas otra vez: con el wifi lento instala unas 3 veces más rápido y el equipo atorado sale antes.
+- La espera de la descarga en segundo plano se suelta en cuanto un service worker nuevo queda instalado: con una red
+  colgada, el navegador no activaba el de la versión siguiente hasta abandonar la petición (5 min o más). Como red de
+  seguridad se suelta a los 280 s (Chromium da 5 min por evento). Se descartaron dos variantes (tres revisiones
+  independientes): un tope fijo de 2 min (en un Chrome normal, PC o Android, el navegador cortaba descargas de 2.5 a
+  5 min) y soltar al EMPEZAR la instalación del nuevo (si esa instalación fallaba, Chrome cortaba la descarga). En los
+  dos casos el equipo volvía a quedarse en la versión vieja. `tests/headless/sw_chrome_real.js` prueba ambos en un
+  Chrome sin DevTools (~9 min; se corre a mano).
+- En Chrome (PC o Android), al abrir la app «en frío» (sin uso los ~30 s anteriores), el navegador lanza él mismo la
+  descarga de la página y la descarta cuando la app muestra la copia guardada. Si esa descarga se pierde después de
+  mostrar la copia, el service worker la repite una vez en segundo plano (en Safari no pasa).
+- Una descarga lenta que termina tarde ya no pisa la copia más nueva que dejó otra apertura (la app no retrocede).
+- Quien entra por `/index.html` en Cloudflare Pages (redirige a `/`) ya no se queda en la copia vieja.
+
+Límites que no dependen de la app: en Safari, si la app se cierra o se sale de ella a media descarga, el navegador
+corta la descarga a los ~10 s (se retoma en la siguiente apertura); en Firefox el corte es ~1 min después de abrir.
+
+**Si un equipo sigue con la versión vieja:** ábrelo con red, **déjalo abierto** ~1 min y toca «Actualizar» (si sigue
+igual, otra vez: la primera vez instala el service worker nuevo). En una Mac/PC también sirve ⌘⇧R / Ctrl+Shift+R (recarga sin
+caché). **No borres los datos del sitio** (Ajustes → Safari → Datos de sitios web): se perdería lo escrito sin subir.
+
