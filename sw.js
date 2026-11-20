@@ -149,28 +149,29 @@ self.addEventListener('fetch', (event) => {
     //     vez en segundo plano con una petición propia (en Safari y Firefox no hay precarga: solo ocurre si la red se cae).
     const turno = ++navTurno;
     const red = fetch(req);
-    const bajar = (pedido) => pedido.then(async (res) => {
+    const bajar = (pedido, t) => pedido.then(async (res) => {
       if (!res || !res.ok) return null;
       const body = await res.blob();
       const h = new Headers(res.headers); h.delete('content-encoding'); h.delete('content-length');
       const fresh = new Response(body, { status: 200, headers: h });
       const copia = fresh.clone();
       copiaCola = copiaCola.then(async () => {
-        if (turno < copiaTurno) return;   // ya hay una copia de una descarga posterior
+        if (t < copiaTurno) return;   // ya hay una copia de una descarga posterior
         // Si un SW más nuevo ya se activó y borró esta caché, no se vuelve a crear (quedaría huérfana).
         if (!(await caches.has(CACHE))) return;
-        copiaTurno = turno;
+        copiaTurno = t;
         const c = await caches.open(CACHE); await c.put('./', copia);
       }).catch(() => {});
       await copiaCola;
       return fresh;
     });
-    const guardada = bajar(red);
+    const guardada = bajar(red, turno);
     let bajando = true, copiaServida = false;
     guardada.then(() => { bajando = false; }, () => { bajando = false; });
     const completa = guardada.catch((e) => {
       if (!copiaServida) throw e;
-      return bajar(fetch(req.url, { credentials: 'same-origin', cache: 'no-cache', redirect: 'manual' }));
+      // Turno NUEVO: el reintento sale después que cualquier navegación ya empezada, así que solo él puede pisarlas.
+      return bajar(fetch(req.url, { credentials: 'same-origin', cache: 'no-cache', redirect: 'manual' }), ++navTurno);
     });
     const ignorar = () => {};
     let soltar = ignorar;

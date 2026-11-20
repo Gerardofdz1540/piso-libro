@@ -13,7 +13,9 @@
 //   L9 el tope de seguridad no corta antes que Chromium (5 min por evento): con Playwright Chromium nunca cierra el SW
 //      (DevTools lo mantiene vivo), así que el corte real de Chrome se prueba aparte con sw_chrome_real.js;
 //   L10 si la descarga se corta DESPUÉS de mostrar la copia (en Chrome, la precarga automática que se descarta al abrir
-//      en frío; aquí, el servidor corta la conexión a los 17 s), se repite una vez en segundo plano y la copia queda al día.
+//      en frío; aquí, el servidor corta la conexión a los 17 s), se repite una vez en segundo plano y la copia queda al día;
+//   L11 ese reintento lleva turno nuevo: si sale después que otra navegación más lenta, ésta (más vieja) no lo pisa al
+//      terminar (la copia no retrocede de versión: I no vuelve a H).
 //   node tests/headless/app_sw_lento.js   (levanta su propio servidor; ver run_all.sh)
 const http = require('http');
 const fs = require('fs');
@@ -35,6 +37,7 @@ const MOCK = `(() => {
 
 (async () => {
   let build = 'TEST-A', lento = false, lentoMs = 1000, colgar = 0, redirigir = false, cortarUnaMs = 0, pedidosPagina = 0;
+  const planPagina = [];                    // L11: plan por petición lenta de la página { ms: cuerpo, corte: ms }
   let swVersion = '';                       // L7: VERSION nueva en el sw.js servido
   let lentasActivas = 0, pedidosVendor = 0; const colgadas = [];
   const SW_TXT = fs.readFileSync(SW, 'utf8');
@@ -57,16 +60,19 @@ const MOCK = `(() => {
       if (!lento) return res.end(body);
       // Wifi saturado: cabeceras y un primer pedazo al instante; el resto en 20 pedazos (lentoMs entre cada uno).
       const partes = 20, tam = Math.ceil(body.length / partes); let i = 0;
+      const plan = planPagina.length ? planPagina.shift() : null;
+      if (process.env.SW_DEBUG) { const b0 = build, t0 = Date.now(); console.log('[srv] / lenta', b0, JSON.stringify(plan), req.headers['sec-fetch-mode'] || ''); res.on('close', () => console.log('[srv] / cerrada', b0, Date.now() - t0, 'ms', res.writableFinished ? 'completa' : 'cortada')); }
       lentasActivas++;
       let cerrada = false; const cerrar = () => { if (!cerrada) { cerrada = true; lentasActivas--; } };
       res.on('close', cerrar);
       // L10: esta respuesta se corta a los cortarUnaMs (conexión destruida a media página), después del tope de 15 s.
       if (cortarUnaMs) { const ms = cortarUnaMs; cortarUnaMs = 0; setTimeout(() => { try { res.destroy(); } catch (_) {} }, ms); }
+      if (plan && plan.corte) setTimeout(() => { try { res.destroy(); } catch (_) {} }, plan.corte);
       const t = setInterval(() => {
         if (res.destroyed) { clearInterval(t); return cerrar(); }
         res.write(body.subarray(i * tam, (i + 1) * tam)); i++;
         if (i >= partes) { clearInterval(t); res.end(); cerrar(); }
-      }, lentoMs);
+      }, plan ? plan.ms / partes : lentoMs);
       return;
     }
     if (p === '/version.json') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(JSON.stringify({ v: build })); }
@@ -162,6 +168,35 @@ const MOCK = `(() => {
   const reintentos = pedidosPagina - pp0;
   check('L10 si la descarga se corta después de mostrar la copia, se repite en segundo plano y la copia queda al día (G)',
     b10 === 'TEST-E' && c10 === 'TEST-G' && reintentos === 2, JSON.stringify({ b10, c10, reintentos }));
+
+  // 11) Turno del reintento. N1 (esta pestaña) baja H (cuerpo de 24 s; el servidor la corta a los 18 s, cuando la página
+  //     ya abrió la copia a los 15 s). A los 16 s otra pestaña de la app abre (N2) y baja H despacio (30 s). A los 17 s se
+  //     publica I. El reintento de N1 (a los 18 s) baja I en ~3 s. Cuando N2 termina (~46 s) con H, NO debe pisar la I:
+  //     el reintento salió después (con el turno de N1 la pisaba y la app volvía a H).
+  {
+    const aux = await context.newPage();
+    await aux.goto(BASE + 'version.json');   // pestaña auxiliar para leer la caché sin navegar la app
+    build = 'TEST-H'; lento = true;
+    planPagina.length = 0; planPagina.push({ ms: 24000, corte: 18000 }, { ms: 30000 }, { ms: 3000 }, { ms: 3000 });
+    const t11 = Date.now();
+    const n1 = page.reload({ waitUntil: 'load', timeout: 90000 }).catch(() => {});
+    await page.waitForTimeout(Math.max(0, 16000 - (Date.now() - t11)));
+    const p11 = await context.newPage();
+    const n2 = p11.goto(BASE, { waitUntil: 'load', timeout: 90000 }).catch(() => {});
+    await page.waitForTimeout(Math.max(0, 17000 - (Date.now() - t11)));
+    build = 'TEST-I';
+    const hist = []; let ult = '';
+    while (Date.now() - t11 < 52000) { const c = await copiaGuardada(aux).catch(() => ''); if (c && c !== ult) { hist.push(c); ult = c; } await aux.waitForTimeout(250); }
+    await n1; await n2;
+    { const t = Date.now(); while (lentasActivas > 0 && Date.now() - t < 20000) await aux.waitForTimeout(500); }
+    await aux.waitForTimeout(1500);
+    const c11 = await copiaGuardada(aux);
+    lento = false; planPagina.length = 0;
+    await p11.close().catch(() => {}); await aux.close().catch(() => {});
+    if (process.env.SW_DEBUG) console.log('[L11]', JSON.stringify({ hist, c11 }));
+    check('L11 el reintento lleva turno nuevo: la descarga más vieja que termina después no lo pisa (la copia queda en I, no vuelve a H)',
+      c11 === 'TEST-I' && hist.includes('TEST-I') && hist.indexOf('TEST-H') < 0, JSON.stringify({ hist, c11, s: Math.round((Date.now() - t11) / 1000) }));
+  }
 
   // 7) Navegación colgada (acepta la conexión y nunca responde) con copia guardada y, mientras, una versión nueva del SW:
   //    el SW nuevo toma el control en segundos (la espera se suelta con updatefound) y no hasta que el navegador abandone
