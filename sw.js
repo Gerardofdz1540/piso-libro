@@ -23,7 +23,7 @@
  *     ya no se abandona al vencer el tope de 15 s: se termina en segundo plano y actualiza la copia guardada (ver el
  *     manejador de navegación). Subir VERSION hace que cada equipo instale este SW, y la instalación baja la versión
  *     publicada completa sin tope de tiempo (`fresco`), así que hasta los equipos ya atorados quedan al día. Tras una
- *     revisión independiente: esa espera se suelta en cuanto llega un SW nuevo (si no, frenaba su activación), una
+ *     revisión independiente: esa espera se suelta en cuanto un SW nuevo queda instalado (si no, frenaba su activación), una
  *     descarga vieja ya no pisa una copia más nueva, /index.html redirigido ya no se queda en la copia vieja y la
  *     instalación copia las librerías de ./vendor/ de la caché anterior en vez de bajarlas otra vez (más rápida).
  */
@@ -31,14 +31,25 @@ const VERSION = 'pisolibro-v13';
 const CACHE = VERSION;
 const NAV_TIMEOUT_MS = 4000;
 // Descarga de la página que sigue en segundo plano cuando ya se mostró la copia guardada (ver el manejador de
-// navegación). Se suelta en cuanto aparece un SW nuevo (`updatefound`: si no, el navegador no lo activa mientras la
-// descarga siga abierta) y, como red de seguridad, a los TOPE_FONDO_MS: 280 s, por debajo de los 5 min que Chromium da
-// a un evento, para nunca cortar antes que el propio navegador (un tope de 2 min hacía que Chrome cerrara el SW y
-// perdiera descargas de 2.5 a 5 min: el equipo se quedaba otra vez en la versión vieja).
+// navegación). Se suelta cuando un SW nuevo ya quedó INSTALADO (si no, el navegador no lo activa mientras la descarga
+// siga abierta) y, como red de seguridad, a los TOPE_FONDO_MS: 280 s, por debajo de los 5 min que Chromium da a un
+// evento, para nunca cortar antes que el propio navegador (un tope de 2 min hacía que Chrome cerrara el SW y perdiera
+// descargas de 2.5 a 5 min: el equipo se quedaba otra vez en la versión vieja). No se suelta al EMPEZAR la instalación
+// (`updatefound`): si ésta falla (wifi inestable, un ícono que no baja), el SW nuevo queda descartado, Chrome cierra
+// este SW ~30 s después y la descarga se perdía. Por eso se vigila el estado del nuevo y se suelta solo con
+// 'installed'/'activating'/'activated', nunca con 'redundant'.
 const TOPE_FONDO_MS = 280000;
 const sueltas = new Set();
 const soltarTodas = () => { for (const s of Array.from(sueltas)) { try { s(); } catch (_) {} } };
-try { self.registration.addEventListener('updatefound', soltarTodas); } catch (_) {}
+const vigilados = new WeakSet();
+function vigilarNuevo(w) {
+  if (!w || vigilados.has(w)) return;
+  vigilados.add(w);
+  const ver = () => { if (w.state === 'installed' || w.state === 'activating' || w.state === 'activated') soltarTodas(); };
+  try { w.addEventListener('statechange', ver); } catch (_) {}
+  ver();
+}
+try { self.registration.addEventListener('updatefound', () => { try { vigilarNuevo(self.registration.installing); } catch (_) {} }); } catch (_) {}
 // Turnos de las descargas de la página (solo en memoria; si el navegador cierra el SW, sus descargas mueren con él).
 let navTurno = 0, copiaTurno = 0, copiaCola = Promise.resolve();
 // Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
@@ -125,8 +136,8 @@ self.addEventListener('fetch', (event) => {
     // «Actualizar». Ahora la descarga sigue en segundo plano (waitUntil) y deja la copia en la versión publicada: la
     // siguiente apertura (o «Actualizar») ya abre la nueva. Los topes para mostrar algo rápido no cambian.
     //   - Mientras el evento siga abierto el navegador no activa el SW de la siguiente versión aunque llame a skipWaiting
-    //     (una red colgada lo detenía 5 min en Chromium y más en WebKit): se suelta en cuanto hay un SW nuevo instalándose
-    //     o en espera, o al vencer TOPE_FONDO_MS. Si la página aún espera esa descarga (sin copia guardada), la respuesta
+    //     (una red colgada lo detenía 5 min en Chromium y más en WebKit): se suelta en cuanto hay un SW nuevo ya instalado
+    //     (en espera o activándose), o al vencer TOPE_FONDO_MS. Si la página aún espera esa descarga (sin copia guardada), la respuesta
     //     misma sigue esperando como siempre: respondWith mantiene el evento abierto hasta entregarla.
     //   - Cada descarga lleva su turno (`turno`): una descarga lenta que termina tarde no pisa la copia que ya dejó otra
     //     más reciente (si no, la app podía volver a una versión anterior).
@@ -158,7 +169,11 @@ self.addEventListener('fetch', (event) => {
     red.catch(ignorar); guardada.then(suelta, suelta);
     try { event.waitUntil(sostener); } catch (_) {}
     setTimeout(suelta, TOPE_FONDO_MS);
-    try { const r = self.registration; if (r && (r.installing || r.waiting)) suelta(); } catch (_) {}
+    try {
+      const r = self.registration;
+      if (r && r.waiting) suelta();                   // ya hay uno instalado esperando
+      else if (r && r.installing) vigilarNuevo(r.installing);
+    } catch (_) {}
     const espera = (ms, msg) => new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms));
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
