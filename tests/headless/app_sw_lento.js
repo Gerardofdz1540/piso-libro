@@ -11,7 +11,9 @@
 //      en cuanto aparece el SW nuevo (updatefound), sin esperar al tope de seguridad (contexto aparte);
 //   L8 la instalación del SW nuevo copia las librerías de ./vendor/ de la caché anterior en vez de bajarlas otra vez;
 //   L9 el tope de seguridad no corta antes que Chromium (5 min por evento): con Playwright Chromium nunca cierra el SW
-//      (DevTools lo mantiene vivo), así que el corte real de Chrome se prueba aparte con sw_chrome_real.js.
+//      (DevTools lo mantiene vivo), así que el corte real de Chrome se prueba aparte con sw_chrome_real.js;
+//   L10 si la descarga se corta DESPUÉS de mostrar la copia (en Chrome, la precarga automática que se descarta al abrir
+//      en frío; aquí, el servidor corta la conexión a los 17 s), se repite una vez en segundo plano y la copia queda al día.
 //   node tests/headless/app_sw_lento.js   (levanta su propio servidor; ver run_all.sh)
 const http = require('http');
 const fs = require('fs');
@@ -32,7 +34,7 @@ const MOCK = `(() => {
 })();`;
 
 (async () => {
-  let build = 'TEST-A', lento = false, lentoMs = 1000, colgar = 0, redirigir = false;
+  let build = 'TEST-A', lento = false, lentoMs = 1000, colgar = 0, redirigir = false, cortarUnaMs = 0, pedidosPagina = 0;
   let swVersion = '';                       // L7: VERSION nueva en el sw.js servido
   let lentasActivas = 0, pedidosVendor = 0; const colgadas = [];
   const SW_TXT = fs.readFileSync(SW, 'utf8');
@@ -49,6 +51,7 @@ const MOCK = `(() => {
     if (p === '/' || p === '/index.html') {
       // L7: red colgada para UNA petición de la página (acepta la conexión y nunca responde).
       if (colgar > 0) { colgar--; colgadas.push(res); return; }
+      pedidosPagina++;
       const body = Buffer.from(pagina(), 'utf8');
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'Content-Length': body.length });
       if (!lento) return res.end(body);
@@ -57,6 +60,8 @@ const MOCK = `(() => {
       lentasActivas++;
       let cerrada = false; const cerrar = () => { if (!cerrada) { cerrada = true; lentasActivas--; } };
       res.on('close', cerrar);
+      // L10: esta respuesta se corta a los cortarUnaMs (conexión destruida a media página), después del tope de 15 s.
+      if (cortarUnaMs) { const ms = cortarUnaMs; cortarUnaMs = 0; setTimeout(() => { try { res.destroy(); } catch (_) {} }, ms); }
       const t = setInterval(() => {
         if (res.destroyed) { clearInterval(t); return cerrar(); }
         res.write(body.subarray(i * tam, (i + 1) * tam)); i++;
@@ -145,6 +150,18 @@ const MOCK = `(() => {
   redirigir = false;
   check('L6 /index.html redirigido a / abre la versión publicada (no la copia vieja) y la copia queda al día',
     b6 === 'TEST-E' && u6 === BASE && c6 === 'TEST-E', JSON.stringify({ b6, u6, c6 }));
+
+  // 10) La descarga se corta después de mostrar la copia guardada (la conexión muere a los 17 s; la página tardaría 30 s):
+  //     el SW la repite una vez en segundo plano y la copia queda en G. Sin el reintento se quedaba en E.
+  build = 'TEST-G'; lento = true; lentoMs = 1500; cortarUnaMs = 17000;
+  const pp0 = pedidosPagina;
+  await page.reload({ waitUntil: 'load', timeout: 60000 });
+  const b10 = await page.evaluate(() => PL_BUILD);
+  lento = false;
+  const c10 = await esperarCopia('TEST-G', 25000);
+  const reintentos = pedidosPagina - pp0;
+  check('L10 si la descarga se corta después de mostrar la copia, se repite en segundo plano y la copia queda al día (G)',
+    b10 === 'TEST-E' && c10 === 'TEST-G' && reintentos === 2, JSON.stringify({ b10, c10, reintentos }));
 
   // 7) Navegación colgada (acepta la conexión y nunca responde) con copia guardada y, mientras, una versión nueva del SW:
   //    el SW nuevo toma el control en segundos (la espera se suelta con updatefound) y no hasta que el navegador abandone

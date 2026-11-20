@@ -2085,7 +2085,10 @@ Ajustes tras una revisión independiente (también en v13, antes de publicarlo):
   independientes): un tope fijo de 2 min (en un Chrome normal, PC o Android, el navegador cortaba descargas de 2.5 a
   5 min) y soltar al EMPEZAR la instalación del nuevo (si esa instalación fallaba, Chrome cortaba la descarga). En los
   dos casos el equipo volvía a quedarse en la versión vieja. `tests/headless/sw_chrome_real.js` prueba ambos en un
-  Chrome sin DevTools (~7 min; se corre a mano).
+  Chrome sin DevTools (~9 min; se corre a mano).
+- En Chrome (PC o Android), al abrir la app «en frío» (sin uso los ~30 s anteriores), el navegador lanza él mismo la
+  descarga de la página y la descarta cuando la app muestra la copia guardada. Si esa descarga se pierde después de
+  mostrar la copia, el service worker la repite una vez en segundo plano (en Safari no pasa).
 - Una descarga lenta que termina tarde ya no pisa la copia más nueva que dejó otra apertura (la app no retrocede).
 - Quien entra por `/index.html` en Cloudflare Pages (redirige a `/`) ya no se queda en la copia vieja.
 

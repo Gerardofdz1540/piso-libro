@@ -143,9 +143,13 @@ self.addEventListener('fetch', (event) => {
     //     más reciente (si no, la app podía volver a una versión anterior).
     //     La petición de la página no se modifica (sigue siendo la navegación original): al soltarse solo se libera el
     //     evento y el navegador puede cerrar el SW (y con él la descarga) cuando quiera.
+    //   - Reintento (cuarta revisión): Chrome, al abrir con el SW detenido (sin uso por ~30 s), lanza él mismo la petición
+    //     de la página (precarga automática) y la DESCARTA en cuanto se le entrega la copia guardada; la descarga se perdía
+    //     y la copia se quedaba en la versión vieja. Si la descarga falla después de haber mostrado la copia, se repite UNA
+    //     vez en segundo plano con una petición propia (en Safari y Firefox no hay precarga: solo ocurre si la red se cae).
     const turno = ++navTurno;
     const red = fetch(req);
-    const guardada = red.then(async (res) => {
+    const bajar = (pedido) => pedido.then(async (res) => {
       if (!res || !res.ok) return null;
       const body = await res.blob();
       const h = new Headers(res.headers); h.delete('content-encoding'); h.delete('content-length');
@@ -161,12 +165,19 @@ self.addEventListener('fetch', (event) => {
       await copiaCola;
       return fresh;
     });
+    const guardada = bajar(red);
+    let bajando = true, copiaServida = false;
+    guardada.then(() => { bajando = false; }, () => { bajando = false; });
+    const completa = guardada.catch((e) => {
+      if (!copiaServida) throw e;
+      return bajar(fetch(req.url, { credentials: 'same-origin', cache: 'no-cache', redirect: 'manual' }));
+    });
     const ignorar = () => {};
     let soltar = ignorar;
     const sostener = new Promise((r) => { soltar = r; });
     const suelta = () => { sueltas.delete(suelta); soltar(); };
     sueltas.add(suelta);
-    red.catch(ignorar); guardada.then(suelta, suelta);
+    red.catch(ignorar); completa.then(suelta, suelta);
     try { event.waitUntil(sostener); } catch (_) {}
     setTimeout(suelta, TOPE_FONDO_MS);
     try {
@@ -195,7 +206,7 @@ self.addEventListener('fetch', (event) => {
         return cached || res;
       } catch (_) {
         const cached = await cache.match('./');
-        if (cached) return cached;
+        if (cached) { if (bajando) copiaServida = true; return cached; }
         return new Response('<!doctype html><meta charset="utf-8"><title>Piso Libro</title><body style="font-family:sans-serif;padding:24px"><h2>Sin conexión</h2><p>La app aún no se ha guardado en este dispositivo. Ábrela una vez con internet (Wi-Fi del hospital) y después funcionará sin red.</p></body>', { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       }
     })());

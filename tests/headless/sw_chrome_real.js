@@ -9,7 +9,10 @@
 //   R2 (tercera revisión) se publica B junto con un sw.js nuevo cuya instalación FALLA (manifest.json 503) y la página
 //      tarda D2 s: soltar la espera al empezar esa instalación (updatefound) hacía que Chrome cortara la descarga y la
 //      copia se quedara en A. Debe terminar en B.
-//   SW_FILE=<sw.js> D=<s> D2=<s> CASOS=r1,r2 node tests/headless/sw_chrome_real.js   (por defecto ./sw.js, 240 y 90 s; ~7 min)
+//   R3 (cuarta revisión) apertura en frío: la app queda quieta 45 s (Chrome detiene el SW), luego se publica B y la página
+//      tarda D3 s (más que el tope de 15 s). Chrome lanza él mismo la petición (precarga automática) y la descarta al
+//      recibir la copia guardada; el SW debe repetir la descarga en segundo plano y la copia debe terminar en B.
+//   SW_FILE=<sw.js> D=<s> D2=<s> D3=<s> CASOS=r1,r2,r3 node tests/headless/sw_chrome_real.js   (240, 90 y 25 s; ~9 min)
 // No está en run_all.sh (tarda varios minutos); se corre a mano al tocar el manejador de navegación de sw.js.
 const http = require('http');
 const fs = require('fs');
@@ -18,8 +21,8 @@ const path = require('path');
 const { spawn } = require('child_process');
 const ROOT = path.resolve(__dirname, '..', '..');
 const SW = process.env.SW_FILE || path.join(ROOT, 'sw.js');
-const D1 = +(process.env.D || 240), D2 = +(process.env.D2 || 90);
-const CASOS = String(process.env.CASOS || 'r1,r2').split(',').map((x) => x.trim()).filter(Boolean);
+const D1 = +(process.env.D || 240), D2 = +(process.env.D2 || 90), D3 = +(process.env.D3 || 25);
+const CASOS = String(process.env.CASOS || 'r1,r2,r3').split(',').map((x) => x.trim()).filter(Boolean);
 const CHROME = process.env.CHROME || require('playwright').chromium.executablePath();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T0 = Date.now();
@@ -29,7 +32,7 @@ const pagina = (b) => Buffer.from(`<!doctype html><html><head><meta charset="utf
 <script>window.PL_BUILD = "BUILD-${b}"; if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');</script>
 <!--` + 'x'.repeat(700 * 1024) + '--></body></html>', 'utf8');
 
-async function correr(caso, D, swNuevoFalla) {
+async function correr(caso, D, { swNuevoFalla = false, frio = 0, cortes = 0 } = {}) {
   const st = { build: 'A', lento: false, cortadas: 0, completas: 0, swVer: '', fallas: 0 };
   const server = http.createServer((req, res) => {
     const p = new URL(req.url, 'http://x').pathname;
@@ -81,12 +84,13 @@ async function correr(caso, D, swNuevoFalla) {
   await sleep(1500);
   const c0 = await copia();
   log(caso, 'inicio: copia', c0);
+  if (frio) { log(caso, 'app quieta', frio, 's (Chrome detiene el SW)'); await sleep(frio * 1000); }
   st.build = 'B'; st.lento = true; if (swNuevoFalla) st.swVer = 'pisolibro-v99';
   await cargar(() => send('Page.reload', {}, S));
   log(caso, 'recarga con la página lenta: muestra', await evalp('window.PL_BUILD'));
   let c = '';
   const t1 = Date.now();
-  while (Date.now() - t1 < (D + 40) * 1000) { await sleep(5000); c = await copia(); if (c === 'B' || st.cortadas > (swNuevoFalla ? 1 : 0)) break; }
+  while (Date.now() - t1 < (D + 40) * 1000) { await sleep(5000); c = await copia(); if (c === 'B' || st.cortadas > cortes) break; }
   await sleep(3000); c = await copia();
   try { ws.close(); } catch (_) {}
   ch.kill('SIGTERM'); server.close();
@@ -97,16 +101,22 @@ async function correr(caso, D, swNuevoFalla) {
 (async () => {
   let pass = 0, fail = 0; const check = (n, ok, x) => { if (ok) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + ' :: ' + JSON.stringify(x)); } };
   if (CASOS.includes('r1')) {
-    const r = await correr('R1', D1, false);
+    const r = await correr('R1', D1);
     check('R1 Chrome normal (SW sin DevTools), página de ' + D1 + ' s con la app abierta y quieta: la descarga en segundo plano se termina y la copia queda en B',
       r.c0 === 'A' && r.copia === 'B' && r.cortadas === 0, r);
   }
   if (CASOS.includes('r2')) {
-    const r = await correr('R2', D2, true);
+    const r = await correr('R2', D2, { swNuevoFalla: true, cortes: 1 });
     // La instalación del SW nuevo falla (su propia descarga de la página puede cortarse: 1 cortada se admite); la
     // descarga en segundo plano del SW actual se termina y deja la copia en B.
     check('R2 se publica un sw.js nuevo cuya instalación falla (manifest 503) y la página tarda ' + D2 + ' s: la descarga en segundo plano no se suelta y la copia queda en B',
       r.c0 === 'A' && r.copia === 'B' && r.fallas > 0 && r.completas >= 1, r);
+  }
+  if (CASOS.includes('r3')) {
+    const r = await correr('R3', D3, { frio: 45, cortes: 1 });
+    // La precarga de Chrome se corta al entregar la copia (1 cortada se admite); el reintento la termina.
+    check('R3 apertura en frío (SW detenido) con la página de ' + D3 + ' s: la descarga se repite en segundo plano y la copia queda en B',
+      r.c0 === 'A' && r.copia === 'B' && r.completas >= 1, r);
   }
   console.log(`\nRESULT SW-CHROME-REAL: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
