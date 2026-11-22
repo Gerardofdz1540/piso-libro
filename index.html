@@ -16813,8 +16813,24 @@ function plExportBackup() {
     // Recarga completa (censo, notas y listas compartidas) sin pisar lo propio: primero sube la cola, después baja.
     // La usan: volver a la app, reconexión de los canales en vivo y la recarga ligera periódica.
     let _recargando = null;
+    // Tope de recargas completas automáticas (22 nov 2026: Supabase bloqueó el proyecto por pasar la cuota gratuita de
+    // datos descargados al mes). Un iPad con el canal en vivo cayéndose y volviendo cada ~15 s recargaba TODO cada vez
+    // (972 recargas en 5 horas, casi dos tercios del consumo). Ahora, entre dos recargas automáticas pasan al menos
+    // PL_RECARGA_MIN_MS; la que llega antes se hace UNA vez al cumplirse el plazo (nada se queda sin bajar).
+    const PL_RECARGA_MIN_MS = 3 * 60 * 1000;
+    let _recargaDiferida = null;
     function _recargaCompleta(motivo) {
       if (_recargando || !navigator.onLine) return _recargando || Promise.resolve(false);
+      const falta = _lastVisibleRefreshTs + PL_RECARGA_MIN_MS - Date.now();
+      if (falta > 0) {
+        if (!_recargaDiferida) _recargaDiferida = setTimeout(function () {
+          _recargaDiferida = null;
+          if (document.visibilityState === "hidden") return;   // al volver a la app se recarga (visibilitychange)
+          _recargaCompleta(motivo + " (diferida)");
+        }, falta + 500);
+        return Promise.resolve(false);
+      }
+      if (_recargaDiferida) { clearTimeout(_recargaDiferida); _recargaDiferida = null; }
       _lastVisibleRefreshTs = Date.now();
       _recargando = (async function () {
         try {
@@ -16841,9 +16857,10 @@ function plExportBackup() {
       const a = document.activeElement;
       return !!(a && (a.tagName === "TEXTAREA" || (a.tagName === "INPUT" && !/^(button|checkbox|radio|submit)$/i.test(a.type || "")) || a.isContentEditable));
     }
-    // Recarga ligera cada 10 min con la app en pantalla y nadie escribiendo: los cambios que el canal en vivo no trajo
+    // Recarga ligera cada 30 min con la app en pantalla y nadie escribiendo: los cambios que el canal en vivo no trajo
     // (por ejemplo un censo editado mientras se escribía, o eventos perdidos en un corte corto de Wi-Fi) llegan solos.
-    const PL_RECARGA_LIGERA_MS = 10 * 60 * 1000;
+    // 22 nov 2026: era cada 10 min; con varios iPads siempre encendidos era buena parte de la cuota mensual de Supabase.
+    const PL_RECARGA_LIGERA_MS = 30 * 60 * 1000;
     setInterval(function () {
       try {
         if (document.visibilityState !== "visible" || !navigator.onLine || !_userAccessToken) return;
@@ -31654,7 +31671,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.19-3";
+    const PL_BUILD = "2026.11.22-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

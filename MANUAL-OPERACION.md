@@ -2099,3 +2099,20 @@ corta la descarga a los ~10 s (se retoma en la siguiente apertura); en Firefox e
 igual, otra vez: la primera vez instala el service worker nuevo). En una Mac/PC también sirve ⌘⇧R / Ctrl+Shift+R (recarga sin
 caché). **No borres los datos del sitio** (Ajustes → Safari → Datos de sitios web): se perdería lo escrito sin subir.
 
+
+## Supabase bloqueado por la cuota de datos (22 de noviembre de 2026, 2026.11.22-1)
+
+**Qué pasó.** El proyecto está en el plan gratuito de Supabase, que incluye 5 GB al mes de datos *descargados* (no de
+espacio guardado). Al pasarlo, Supabase contesta 402 a todo y la pantalla de acceso muestra «Service for this project is
+restricted due to the following violations: exceed_egress_quota». Borrar datos NO lo desbloquea: lo ya descargado cuenta
+hasta que empieza el siguiente ciclo de facturación (la fecha está en Billing → Upcoming invoice). Se desbloquea al
+empezar el ciclo nuevo, subiendo a Pro (25 USD/mes, 250 GB) o pasando el proyecto a otra organización gratuita.
+
+**Causa principal y arreglo (2026.11.22-1).** Un iPad con el canal en vivo cayéndose y volviendo cada ~15 s recargaba
+TODO (censo, notas, labs, imagen, robot) en cada reconexión: 972 recargas en 5 horas, casi dos tercios del consumo del
+día. Ahora entre dos recargas completas automáticas (reconexión, volver a la app, periódica) pasan al menos 3 min; la que
+llega antes se hace una sola vez al cumplirse el plazo. La recarga periódica pasó de cada 10 a cada 30 min (los cambios
+llegan en vivo igual). Prueba: `app_sync2` S4b/S4c.
+
+**Para revisar el consumo:** Supabase → Organization → Usage (Egress). Con los registros de `edge_logs` se ve qué equipo
+recarga de más (peticiones a `/rest/v1/patients?order=cama` por equipo y por hora; lo normal es 1–3 por hora).
