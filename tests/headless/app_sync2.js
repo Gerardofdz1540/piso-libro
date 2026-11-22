@@ -155,6 +155,23 @@ const store = {
   check('S4 los canales en vivo vuelven después de una caída: una recarga completa (censo, notas, «No olvidar», procedimientos), no una por canal',
     s4.filter(u => u === '/rest/v1/patients').length === 1 && s4.includes('/rest/v1/no_olvidar') && s4.includes('/rest/v1/procedimientos_dia'), JSON.stringify(s4));
 
+  // ── S4b (22 nov 2026, cuota de Supabase): el canal en vivo cayéndose y volviendo cada pocos segundos ya no recarga todo
+  //    cada vez. Entre dos recargas automáticas pasan al menos 3 min; la que llega antes queda UNA sola, diferida. ──
+  const n4b = calls.length;
+  await page.evaluate(() => { for (let i = 0; i < 3; i++) { _rtHuboCaida = true; window.__subs.forEach(cb => { try { cb('SUBSCRIBED'); } catch (_) {} }); } });
+  await page.waitForTimeout(3200);
+  await page.evaluate(() => _recargaCompleta('periódica'));
+  const s4b = { pts: calls.slice(n4b).filter(c => c.m === 'GET' && c.url.split('?')[0] === '/rest/v1/patients').length,
+    diferida: await page.evaluate(() => !!_recargaDiferida), min: await page.evaluate(() => PL_RECARGA_MIN_MS) };
+  check('S4b reconexiones seguidas: ninguna recarga completa antes de 3 min de la anterior (queda una diferida)',
+    s4b.pts === 0 && s4b.diferida && s4b.min >= 180000, JSON.stringify(s4b));
+  // Pasado el plazo, la diferida corre una sola vez.
+  const n4c = calls.length;
+  await page.evaluate(() => { _lastVisibleRefreshTs -= PL_RECARGA_MIN_MS; clearTimeout(_recargaDiferida); _recargaDiferida = null; return _recargaCompleta('reconexión (diferida)'); });
+  await page.waitForTimeout(1500);
+  const s4c = calls.slice(n4c).filter(c => c.m === 'GET' && c.url.split('?')[0] === '/rest/v1/patients').length;
+  check('S4c cumplido el plazo, la recarga corre (una vez)', s4c === 1, JSON.stringify({ s4c }));
+
   // ── S5: aviso en vivo recortado (>1 MB) ──
   const s5 = await page.evaluate(async () => {
     const k = pid(patients.find(x => x._supa_id === 's1'));
