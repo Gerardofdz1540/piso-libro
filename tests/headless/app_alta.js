@@ -193,7 +193,7 @@ function unzip(buf) {
   const hdrName = Object.keys(z).find(n => /^word\/header\d*\.xml$/.test(n));
   const hdr = hdrName ? z[hdrName].toString('utf8') : '';
   const media = Object.keys(z).filter(n => /^word\/media\/.+\.png$/.test(n));
-  const pngSize = fs.statSync(path.join(ROOT, 'vendor', 'alta-encabezado.png')).size;
+  const pngSize = fs.statSync(path.join(ROOT, 'vendor', 'alta-encabezado-v2.png')).size;
   check('A14 el .docx descargado se llama «ALTA <exp> <NOMBRE> <fecha>.docx» y se abre (zip con word/document.xml)', d1.suggestedFilename().replace(/_/g, ' ') === 'ALTA 26-55501 PEDRO SALAS VIDAL ' + hoy + '.docx' && !!doc, d1.suggestedFilename() + ' ' + Object.keys(z).join(','));
   check('A15 document.xml trae los textos clave del formato y de la nota',
     ['FECHA DE ELABORACIÓN:', 'NOMBRE DEL PACIENTE:', 'PEDRO SALAS VIDAL', 'XAXX010101HGTLLL09', 'NO. DE DÍAS DE HOSPITALIZACIÓN:', 'DIAGNÓSTICO DE INGRESO:', 'RESUMEN CLÍNICO:', 'ANTECEDENTES DE IMPORTANCIA',
@@ -202,7 +202,7 @@ function unzip(buf) {
       'SELLO Y FIRMA DE MÉDICO ADSCRITO', 'NOMBRE CÉDULA Y FIRMA DE MÉDICO RESIDENTE'].every(s => txt.indexOf(s) >= 0)
       && /<w:pgSz w:w="11909" w:h="16834"/.test(doc) && /<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/.test(doc) && /w:ascii="Calibri"/.test(z['word/styles.xml'] ? z['word/styles.xml'].toString('utf8') + doc : doc) && /<w:numPr>/.test(doc),
     txt.slice(0, 900));
-  check('A16 el encabezado del Word lleva la imagen del formato (logo + recuadro), del mismo tamaño que vendor/alta-encabezado.png',
+  check('A16 el encabezado del Word lleva la imagen del formato (logo + recuadro), del mismo tamaño que vendor/alta-encabezado-v2.png',
     !!hdr && /<w:drawing>/.test(hdr) && /behindDoc="1"/.test(hdr) && media.length === 1 && z[media[0]].length === pngSize, JSON.stringify({ hdrName, media, pngSize, len: media[0] && z[media[0]].length }));
 
   // A17 — Guardar en Drive (con red): descarga + subida al bucket + fila en altas_docs; luego «Abrir en Drive»
@@ -454,6 +454,25 @@ function unzip(buf) {
       !/add column if not exists creado_uid uuid not null/.test(sql) && /add column if not exists creado_uid uuid;/.test(sql) && /alter column creado_uid set default auth\.uid\(\)/.test(sql)
       && /if not exists \(select 1 from public\.altas_docs where creado_uid is null\) then\s+alter table public\.altas_docs alter column creado_uid set not null/.test(sql)
       && /add column if not exists ultimo_intento timestamptz/.test(sql) && /ultimo_intento is null/.test(pol), pol);
+  }
+  // R12 — publicación (25 nov 2026): deploy-pages.yml y netlify.toml copiaban solo vendor/*.js y Cloudflare servía la
+  // PÁGINA (200 text/html) en lugar del encabezado; el SW la guardaba como si fuera la imagen. Todo lo que el SW pide
+  // de ./vendor/ debe existir y publicarse; una respuesta HTML no entra al Word (firma PNG).
+  {
+    const swTxt = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const dep = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy-pages.yml'), 'utf8');
+    const nt = fs.readFileSync(path.join(ROOT, 'netlify.toml'), 'utf8');
+    const pedidos = (swTxt.match(/'\.\/vendor\/[^']+'/g) || []).map(x => x.slice(3, -1));
+    const faltan = pedidos.filter(f => !fs.existsSync(path.join(ROOT, f)));
+    const ext = [...new Set(pedidos.map(f => f.split('.').pop()))];
+    const noPub = ext.filter(e => !new RegExp('cp vendor/\\*\\.' + e + '\\b').test(dep) || !new RegExp('vendor/\\*\\.' + e + '\\b').test(nt));
+    check('R12 cada archivo de ./vendor/ que pide sw.js existe en el repo y su tipo se copia en deploy-pages.yml y netlify.toml',
+      pedidos.length >= 5 && !faltan.length && !noPub.length && /esPagina\(previa\)/.test(swTxt), JSON.stringify({ pedidos, faltan, noPub }));
+    await page.route('**/vendor/alta-encabezado-v2.png', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html><body>app</body></html>' }));
+    const sinImg = await page.evaluate(async () => { _altaImgCache = null; const i = await _altaEncabezado(); return i === null || i === undefined ? 'null' : String(i.length); });
+    await page.unroute('**/vendor/alta-encabezado-v2.png');
+    await page.evaluate(() => { _altaImgCache = null; });
+    check('R12b si el encabezado llega como página (HTML), no se usa como imagen del Word', sinImg === 'null', sinImg);
   }
   // R10 — «Durante su estancia» solo quita el renglón que narra la MISMA cirugía (antes se iba todo «se realiza…» a ±1 día
   // de la cirugía, o de cualquier día si la cirugía no tenía fecha: TAC, transfusión, relaparotomía, lavado, drenaje).

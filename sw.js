@@ -81,7 +81,7 @@ const OPTIONAL = [
   // Encabezado de la 📄 Nota de alta (25 nov 2026): logo del hospital + recuadro del formato, para armar el Word sin red.
   // Sin subir VERSION: los equipos con este SW ya instalado lo guardan la primera vez que arman un alta (cache-first de
   // abajo) y lo precachean con la siguiente versión.
-  './vendor/alta-encabezado.png'
+  './vendor/alta-encabezado-v2.png'
 ];
 
 // Precache siempre desde el servidor, sin la caché HTTP del navegador (20 oct 2026): GitHub Pages sirve todo con
@@ -95,13 +95,16 @@ const fresco = (u) => new Request(u, { cache: 'reload' });
 // además de la página y tardaba unas 3 veces más; mientras tanto el equipo seguía en la versión vieja y, en el iPad, si se
 // salía de la app a media instalación, ésta se quedaba trabada. Si no hay copia anterior se bajan como siempre.
 const esInmutable = (u) => /\/vendor\//.test(u);
+// 25 nov 2026: un archivo de ./vendor/ que falta en el servidor puede volver como la página (200 text/html, Cloudflare
+// sirve index.html para rutas que no existen): esa respuesta no se guarda ni se copia de la caché anterior.
+const esPagina = (r) => /text\/html/i.test((r && r.headers && r.headers.get('content-type')) || '');
 async function guardarInmutable(cache, u, obligatoria) {
   try {
     const previa = await caches.match(u);
-    if (previa && previa.ok && !previa.redirected) { await cache.put(u, previa); return; }
+    if (previa && previa.ok && !previa.redirected && !esPagina(previa)) { await cache.put(u, previa); return; }
   } catch (_) {}
-  if (obligatoria) await cache.add(fresco(u));
-  else await cache.add(fresco(u)).catch(() => {});
+  if (obligatoria) { await cache.add(fresco(u)); return; }
+  try { const r = await fetch(fresco(u)); if (r.ok && !esPagina(r)) await cache.put(u, r); } catch (_) {}
 }
 
 self.addEventListener('install', (event) => {

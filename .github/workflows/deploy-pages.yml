@@ -57,6 +57,8 @@ jobs:
           cp icons/*.png  dist/icons/
           # Librerías empaquetadas (oct 2026): la app ya no depende de CDNs externos
           cp vendor/*.js  dist/vendor/
+          # Imágenes de ./vendor/ (encabezado de la nota de alta, 25 nov 2026): sin esto Cloudflare servía la página en su lugar.
+          cp vendor/*.png dist/vendor/
           # Aviso de versión nueva (20 oct 2026): la app compara su PL_BUILD (index.html) con "v" de version.json;
           # los dos se suben a mano en el mismo PR (ci.yml lo exige) y aquí se publican tal cual.
           cp version.json dist/version.json
