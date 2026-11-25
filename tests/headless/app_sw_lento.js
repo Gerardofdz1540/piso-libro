@@ -246,6 +246,30 @@ const MOCK = `(() => {
   const tope = +((SW_TXT.match(/const TOPE_FONDO_MS = (\d+);/) || [])[1] || 0);
   check('L9 el tope de seguridad de la descarga en segundo plano no corta antes que Chromium (entre 270 y 299 s)', tope >= 270000 && tope < 300000, JSON.stringify({ tope }));
 
+  // 12) (25 nov 2026, CI) El SW nuevo ya quedó «installed» cuando este SW atiende 'updatefound' (registration.installing es
+  //     null y waiting tiene al nuevo): la espera en segundo plano igual se suelta. Se prueba sw.js en una sandbox de node.
+  {
+    const vm = require('vm');
+    const oyentes = {}, regOyentes = {};
+    let soltadas = 0;
+    const nuevo = { state: 'installed', addEventListener() {} };
+    const reg = { installing: null, waiting: null, addEventListener: (t, f) => { regOyentes[t] = f; } };
+    const ctx = { self: { registration: reg, addEventListener: (t, f) => { oyentes[t] = f; }, location: { origin: 'http://x' } },
+      caches: { open: async () => ({ match: async () => null, put: async () => {} }), has: async () => true, keys: async () => [], match: async () => null },
+      fetch: () => new Promise(() => {}), Response, Request, Headers, URL, setTimeout, clearTimeout, Promise, console };
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(SW, 'utf8'), ctx);
+    // Una navegación queda reteniendo (descarga colgada).
+    const ev = { request: { method: 'GET', url: 'http://x/', mode: 'navigate', headers: { get: () => '' } },
+      waitUntil: (p) => { p.then(() => { soltadas++; }); }, respondWith: () => {} };
+    oyentes.fetch(ev);
+    // El SW nuevo termina de instalarse ANTES de que llegue 'updatefound' aquí.
+    reg.waiting = nuevo;
+    if (regOyentes.updatefound) regOyentes.updatefound();
+    await new Promise((r) => setTimeout(r, 50));
+    check('L12 si el SW nuevo ya está en espera cuando llega «updatefound», la descarga en segundo plano igual se suelta (no frena su activación)', soltadas === 1, JSON.stringify({ soltadas }));
+  }
+
   console.log(`\nRESULT APP-SW-LENTO: ${pass} passed, ${fail} failed`);
   await browser.close(); server.close();
   process.exit(fail ? 1 : 0);
