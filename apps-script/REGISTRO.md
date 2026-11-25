@@ -21,7 +21,7 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Pestaña | Una fila por… | Contenido |
 |---|---|---|
 | Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos.<br>**Peso y talla**; **Dx principal**, su grupo CIE-10 y su fuente (28 oct 2026).<br>**Sexo (fuente)**: «Tarjeta» o «de WinLab» (29 oct 2026). |
-| Cirugías | cirugía | fecha, procedimiento, hallazgos, sangrado, cirujano, **Grupo**, **Fuente** · **Vigente** · **Tipo** (urgencia/electiva), **Abordaje**, **Clavien-Dindo**, **Complicación**. Desde el 28 oct 2026 también las que no están en la caja: fecha POP, texto Qx anterior, Cronología, DX y programación del día (ver abajo) |
+| Cirugías | cirugía | fecha, procedimiento, hallazgos, sangrado, cirujano, **Grupo**, **Fuente** · **Vigente** · **Tipo** (urgencia/electiva), **Abordaje**, **Clavien-Dindo**, **Complicación**. Desde el 28 oct 2026 también las que no están en la caja: fecha POP, texto Qx anterior, Cronología, DX y programación del día (ver abajo). Desde el 24 nov 2026, al final: **ID cirugía** (el de la caja; vacío en las inferidas), **Fotos (n)**, **Foto subida por** y **Foto subida el** (la última; nunca la imagen ni su ruta) |
 | Labs | fecha y estudio | valor como está en la tarjeta · **Vigente** · **Corregido a mano** (quién, cuándo y qué decía antes) |
 | Imagen | estudio | fecha, tipo, descripción, enlace (solo http) · **Vigente** |
 | Signos vitales | día | FC, FR, temp, SaO2, O2, TA, uresis, DxTx, IU (insulina), balance, horas de uresis. La app guarda 14 días; aquí se acumulan todos. |
@@ -31,15 +31,23 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Labs del robot (WinLab) | reporte de WinLab del paciente | folio, toma, resultado, servicio y **valores** (un renglón por estudio: «ESTUDIO: valor unidad (ref. …)»), aunque no hayan llegado a la tarjeta · **Atribución** · **Sexo en WinLab** (F/M del encabezado) |
 | Cultivos del robot (WinLab) | muestra de cultivo de esos reportes | tipo, muestra, resultado, germen, antibiograma S/I/R, UFC, texto del reporte (del PDF cuando el robot lo leyó; si no, de la tabla) |
 | Imagen del robot (RIS) | estudio | modalidad, estudios, crítico, reporte, enlace (con su episodio) |
+| Guardia · renglones retirados | renglón de un corte de la guardia | id del corte, **ID episodio** (sin nombre ni expediente: se cruza con Pacientes), fecha y hora, motivo (`corte` de las 06:15 o `borrado`), orden y texto. La base los purga a los 7 días; aquí se acumulan (desde el 24 nov 2026). |
+| Estado diario | hospitalizado y noche | **sin nombre ni expediente** (se cruza por «ID episodio»): cama, sección y estado (validados), casillas de antibiótico / ayuno / NPT / ventilación, antibiótico escrito y los detectados en Manejo, dieta, TVP, ventilador, vasopresores, peso, curación y n.º de dispositivos. Solo hacia adelante (desde el 24 nov 2026). |
+| Dispositivos | drenaje, sonda o estoma de la tarjeta | **sin nombre**: tipo y su grupo, lado, sitio, características, fecha de colocación, último gasto, **Primera vez visto**, **Última vez visto** · **Vigente** (No = retirado; la fecha es aproximada) |
+| Drenajes · diario | dispositivo con gasto y noche | **sin nombre**: gasto como está escrito y en mL (número). Solo hospitalizados. |
+| Movimientos y estado | cambio del censo (auditoría de la base) | **sin nombre ni quién**: alta y baja del censo, y cambios de cama, sección, estado y especialidad (De → A), origen app u hoja. Un valor raro se escribe «valor no válido». |
+| Soporte y exposiciones (historial) | cambio de una casilla de soporte (auditoría de las notas) | **sin nombre**: cuándo se prendió o apagó antibiótico, ayuno, NPT, tromboprofilaxis, norepinefrina, vasopresina y ventilación, o cambió el antibiótico, la dieta o el % de NPT; «Quién» es un seudónimo de la cuenta |
+| Actividad por episodio y día | episodio y día | **sin nombre**: ediciones de la nota, usuarios distintos (seudónimos), primera y última hora, ediciones de noche y cajas tocadas |
+| Integridad | corrida del registro | **sin nombres**: resultado (Completa / Parcial: faltó… / Falló…), duración total y por etapa, vueltas extra, bytes leídos por tabla, cuadre base ↔ hoja, celdas recortadas, celdas usadas y avisos. Nunca se pisa. |
 | Diccionario | — | qué es cada columna, última actualización, conteos y avisos |
 | Clave de seudónimos | parte de un episodio | ID episodio de la base → ID paciente / ID episodio de análisis (la llave: **no se comparte**) |
-| Análisis · Episodios | hospitalización | sin nombres: edad, sexo (y su fuente), peso, talla, IMC, comorbilidades, fechas, estancia, desenlace, reingresos, cirugías (grupo, reintervención), índice urinario mínimo, resúmenes de labs, cultivos, calidad de datos |
+| Análisis · Episodios | hospitalización | sin nombres: edad, sexo (y su fuente), peso, talla, IMC, comorbilidades, fechas, estancia, desenlace, reingresos, cirugías (grupo, reintervención), índice urinario mínimo, resúmenes de labs, cultivos, calidad de datos. Desde el 24 nov 2026, al final: **Unión (fuente)**, cirugías sin fecha, reintervención planeada / no planeada (probable), estancia posoperatoria, cirugía en ≤1 día del ingreso y defunción posoperatoria |
 | Análisis · Labs | episodio y día | una columna por estudio, en número y en la unidad de la app; críticos y observaciones |
 | Análisis · Signos vitales | episodio y día | números limpios; TA en sistólica, diastólica y PAM; horas de uresis e índice urinario (mL/kg/h) |
 | Análisis · Cultivos | muestra | toma, tipo, resultado (0/1), germen, antibiograma |
 | Diccionario de variables | variable | definición, tipo y unidad de cada columna de análisis (codebook) |
-| Resumen mensual | mes | solo cuentas: ingresos, egresos, mortalidad sobre desenlace conocido, estancia, cirugías, urgencias, laparoscopía, conversiones, Clavien ≥ IIIa, reintervenciones, reingresos, cultivos y lo más frecuente |
-| Por completar | episodio | **con nombres** (no se comparte): hospitalizados y egresados de los últimos 30 días y lo que le falta a cada tarjeta |
+| Resumen mensual | mes | solo cuentas: ingresos, egresos, mortalidad sobre desenlace conocido, estancia, cirugías, urgencias, laparoscopía, conversiones, Clavien ≥ IIIa, reintervenciones, reingresos, cultivos y lo más frecuente. Desde el 24 nov 2026: cirugías sin fecha exacta, reintervenciones no planeadas e ingresos sin talla |
+| Por completar | episodio | **con nombres** (no se comparte): hospitalizados, egresados de los últimos 30 días y (24 nov 2026) todo egresado sin motivo del egreso, con lo que le falta a cada tarjeta (ya no pide la talla) |
 
 - **Episodio:** el id del paciente en la base. Un reingreso crea otro id y por lo tanto otro episodio.
 - **WinLab:** cada fila de `winlab_labs` trae todos los reportes de la búsqueda por apellido (también de homónimos) y se
@@ -142,6 +150,44 @@ siempre. Cada columna está definida en «Diccionario de variables».
   marcar 1. Es texto libre: revisar una muestra antes de publicar.
 - **Antibiótico, NPO y NPT** (30 oct 2026): si en la app se puso la fecha de inicio, se anota «desde AAAA-MM-DD» en lugar
   de los días escritos a mano (los días dependen del corte del estudio).
+- **Correcciones de cálculo (24 nov 2026).** Cambian cifras ya vistas; las columnas nuevas van al final de cada pestaña:
+  - *Cirugías sin fecha:* el Resumen mensual las descartaba todas (casi todas las inferidas). Ahora cuentan en el mes
+    del ingreso del episodio (o del egreso) y se dicen aparte en «Cirugías sin fecha exacta (n)»; el episodio tiene
+    «Cirugías sin fecha (n)». Suben «Cirugías (n)» y «Pacientes operados (n)» de los meses anteriores.
+  - *DX con marca de postoperado y sin grupo* («PO PROCEDIMIENTO X»): se conserva como cirugía del grupo «Otro» (antes
+    se perdía). Sin marca sigue haciendo falta un procedimiento reconocido. Grupos nuevos: Neurocirugía (cráneo y
+    columna), Urología, Cirugía cardiovascular, Cirugía plástica y reconstructiva, Cirugía maxilofacial, y más
+    procedimientos de tórax. Ningún texto que ya tenía grupo cambia (salvo el genérico «Laparoscopia»).
+  - *Motivo de egreso en una copia de rescate sin id:* si alguien eligió el motivo en la Papelera sobre una copia de
+    iPad sin id de la base, ahora llega a su episodio (no tapa otro motivo ya elegido por una persona). Sin episodio en
+    la base, esa copia deja de ser «Duplicado» y cuenta como el egreso que se registró.
+  - *Reintervención:* la columna de siempre es «2.ª cirugía de cualquier tipo» (sobrecuenta). Las nuevas separan
+    **planeada (probable)** (SEGUNDO TIEMPO, SECOND LOOK, CIERRE DE PARED / DIFERIDO, RECAMBIO, LAVADO PROGRAMADO, VAC en
+    la 2.ª cirugía o después) y **no planeada (probable)** (el resto, ≤30 días de la primera; o una relaparotomía como
+    única cirugía). Una 2.ª cirugía sin fecha en un episodio de más de 30 días queda vacía. Es texto libre: validar una
+    muestra antes de publicar.
+  - *Episodios partidos:* dos id de la misma persona (mismo expediente válido y nombre compatible) son UN episodio si
+    tienen la misma fecha de ingreso, o si el siguiente ingresó 0–1 día después de un egreso que no dice el motivo.
+    «Unión (fuente)» dice por qué (Restauración / Mismo ingreso / Contiguo) y se anota en «Calidad de datos». No se une
+    tras una defunción ni tras un motivo registrado por una persona (salvo «no fue egreso»), ni con duplicados.
+    **Baja «Egresos (n)» y alarga la estancia** de los meses anteriores; «Contiguo» puede esconder un reingreso real al
+    día siguiente de un egreso sin motivo: revisar una muestra. Más estricto que el plan original: un egreso que dice
+    «alta» (aunque no lo haya elegido una persona) tampoco se une por contigüidad.
+  - *Por completar:* ya no pide la talla (casi nadie la tiene; se cuenta en «Ingresos sin talla (n)» del Resumen
+    mensual) y el egresado sin motivo entra sin límite de días, primero en las filas nuevas. «Ingresos con datos
+    incompletos (n)» baja porque ya no cuenta la talla.
+  - *Fechas de inicio:* además de `atb_inicio` / `npo_inicio` / `npt_inicio` (lo que escribe la app) se acepta
+    `…_fecha_inicio` como respaldo. «Lactato máximo» está vacío porque ninguna captura trae esa clave (dicho en el
+    Diccionario de variables).
+  - *Cirugías con id:* con «ID cirugía» el análisis no cuenta dos veces una cirugía a la que le corrigieron el texto
+    (tarjeta restaurada con el texto nuevo, o fila vieja sin id + fila nueva con id).
+- **Pacientes: quién y cuándo (24 nov 2026).** Seis columnas al final: «Egresado por» (`archive.archived_by` de la copia
+  que da el egreso), «Motivo de egreso registrado por» y «Motivo registrado el» (solo si el motivo lo eligió una
+  persona), «Última modificación por» (`notes.updated_by` o `patients.updated_by`), «Nota restaurada el»
+  (`notes.restaurada_en`) y «Alias WinLab». Identifican a personal: no se comparten ni entran a las pestañas de
+  análisis. El script pide ahora `updated_by` (patients y notes), `restaurada_en` (notes) y `archived_by` (archive):
+  esas tres tablas no son opcionales, así que **si alguna de esas columnas se quitara de la base la corrida se detiene
+  con 42703** (queda dicho en «Integridad»). Existen en la base al 24 nov 2026.
 - **Índice urinario** = uresis ÷ peso del episodio ÷ horas (columna «Horas» del Pase, o «900/12 H»; sin horas, 24 h
   con aviso), igual que la app.
 - **Tamaño.** Con unos 240 egresos al mes:
@@ -192,9 +238,62 @@ siempre. Cada columna está definida en «Diccionario de variables».
   - Como mucho 8 vueltas extra en 24 h corridas. Los disparadores de una cuenta personal de Google tienen 90 min al día,
     compartidos con el script del censo, que corre cada 5 min. Al terminar la carga se borra cualquier vuelta pendiente.
   - Las URL miden menos de 2 KB (límite de UrlFetchApp): las copias de la Papelera se piden de 20 en 20 episodios.
-- **Si una fuente falla:** si WinLab, RIS o los procedimientos no se pueden leer, sus pestañas no se tocan ese día y lo
+- **Si una fuente falla:** si WinLab, RIS, los procedimientos, `guardia_cortes`, `archive_eliminados` o la auditoría (`audit_log`) no se pueden leer, sus pestañas no se tocan ese día y lo
   demás sí se escribe. El aviso queda en el Diccionario («Avisos de la última corrida»). Si fallan el censo, las notas,
   la Papelera o la cronología, no se escribe nada.
+- **Integridad (24 nov 2026, versión 2026.11.24):** cada corrida deja una fila en «Integridad», también la que falla
+  (con la causa, sin datos de pacientes; las demás pestañas no se tocan).
+  - *Resultado:* «Completa» solo si se leyó y escribió todo, análisis incluido. Solo entonces avanza la propiedad
+    `REG_ULTIMA_COMPLETA`; si pasan más de 36 h sin una corrida completa, se avisa en el Diccionario y en «Integridad».
+    Una noche sin fila = el disparador no corrió.
+  - *Cuadre:* «Episodios en base» sale del censo y de una lectura ligera de la Papelera (`id` y los dos ids de
+    `patient_data`, sin nombres); «Diferencia» = ids de la base que no están en Pacientes (debe ser 0). Las filas de
+    `winlab_labs` y `ris_estudios` se cuentan sin bajar nada (`limit=0` con `Prefer: count=exact`; el total viene en
+    `Content-Range`). Si un conteo falla o no alcanza el tiempo, el número queda vacío y la corrida sigue.
+  - *Bytes leídos por tabla:* caracteres de cada respuesta de Supabase (aproxima el egress de la noche).
+- **Margen de relectura por tabla (24 nov 2026):** la Papelera y RIS se releen desde 2 días antes de lo último leído;
+  WinLab, que era ~80 % de lo que se baja cada noche, desde 6 h antes (ahorra ~2 MB por noche). «WinLab actualizadas en
+  sitio (n)» en «Integridad» cuenta las filas que el robot cambió después de leídas y quedaron fuera de esa ventana:
+  debe ser 0; si no, se avisa (habría que ampliar `REG_MARGEN_WINLAB_MS`).
+- **Celdas largas (24 nov 2026):** la «Nota completa (JSON)» ya no lleva la bóveda de documentos, DICOM, capturas ni
+  diagramas, y si aun así pasa de 45 000 caracteres sigue en «Nota completa (JSON) · 2» (las dos pegadas son el JSON
+  completo). Cualquier otra celda que se recorte se cuenta en «Celdas recortadas (n)» y se avisa.
+- **Lo borrado de la Papelera (24 nov 2026):** se lee `archive_eliminados` (solo `id`, `eliminado_en`, `archive_id` y
+  `fila`; nada de quién borró). Una copia archivada y borrada antes de la corrida entra a Pacientes con Fuente
+  «Papelera (borrado)».
+- **Renglones retirados de la guardia (24 nov 2026):** `guardia_cortes` se lee cada noche por cursor (1 h de margen).
+  La base la purga a los 7 días: si pasan más de 6 días sin copiarla (propiedad `REG_GUARDIA_LEIDA`), se avisa.
+- **Foto diaria, dispositivos y drenajes (24 nov 2026).** Tres pestañas compactas (solo «ID episodio»), sin costo de
+  lectura (salen del censo y las notas que ya se leen cada noche):
+  - *Estado diario:* una fila por hospitalizado y noche, desde la nota viva del censo (no de la unión con copias viejas
+    de la Papelera). Una corrida después de medianoche crea la fila del día nuevo y la de las 23 h la reemplaza. No se
+    puede reconstruir hacia atrás: una noche sin corrida es un día sin foto.
+  - *Antibióticos en Manejo:* lista cerrada (`REG_ATB`, con clase y categoría AWaRe de la OMS) sobre la caja Manejo;
+    «SIN MEROPENEM» o «SE SUSPENDE VANCO» no cuentan. Detecta menciones, no dosis.
+  - *Dispositivos:* `regFusionar` conserva «Primera vez visto» (opción `conservarViejo`). El que desaparece de la
+    tarjeta queda «Vigente: No» y su «Última vez visto» aproxima el retiro. En un egresado es la fecha de egreso.
+  - *Drenajes · diario:* el último gasto escrito a la hora de la corrida (no es el de 24 h de enfermería).
+  - Cama, sección, estado y especialidad pasan por un catálogo: lo que no tiene la forma esperada se escribe «valor no
+    válido» (la sección del censo de la hoja a veces trae texto corrido, incluso nombres).
+- **Historial de auditoría (24 nov 2026).** Se lee `audit_log` de la base con dos cursores propios (`ts` + `id`, 1 h de
+  margen, propiedades `REG_CURSOR_audit_pacientes` y `REG_CURSOR_audit_notas`), al final de la lectura y como fuente
+  opcional: si falla, sus tres pestañas no se tocan y lo demás se escribe.
+  - **Privacidad:** nunca se pide `email`, `nombre`, `paciente`, `ip`, `ua` ni el `diff` entero; solo sub-rutas con
+    alias (`cama:diff->cama`, `a:diff->checklist->atb`…). `user_id` solo sirve para «Origen» (app / hoja) y para el
+    seudónimo de «Quién» (SHA-256 con la sal del registro); no se escribe.
+  - *Movimientos y estado:* filas de `patients` (alta, baja y cambios de cama, estado, sección o especialidad). De ahí
+    salen, en «Análisis · Episodios»: «Cambios de cama (n)», «Pasó por UCI», «Días en UCI», «Peor estado clínico»,
+    «Fecha del primer GRAVE», «Fecha de ingreso (estimada)» con su fuente y «Hora de egreso del censo». Vacío = sin
+    movimientos copiados (no es 0).
+  - *Soporte y exposiciones (historial):* filas de `notes` con cambio en 12 sub-llaves del checklist. La base guarda cada
+    valor como texto JSON: se escribe «Sí» / «No» o el texto. Marca cuándo se capturó el cambio, no cuándo se indicó.
+  - *Actividad por episodio y día:* se suma en la misma pasada. Como la lectura es por partes, la fila de la hoja se
+    acumula y «Último ID» evita contar dos veces lo releído (no borrar esa columna).
+  - La auditoría existe desde el 14 oct 2026 y la base la purga a los 180 días; lo copiado se queda. La primera carga
+    baja todo lo que haya (tope de 6 000 y 12 000 filas por vuelta; el límite real es el tiempo de lectura).
+  - **Sin verificar contra la base real:** que PostgREST acepte dos `or=` en la misma consulta (el del filtro y el de la
+    paginación) y el volumen por noche. Si la consulta falla, el aviso dice «No se pudo leer audit_pacientes…» y nada
+    más se detiene.
 - **Índices en la base** (`scripts/supabase_registro_indices.sql`): (fecha de captura, id) en `winlab_labs`,
   `ris_estudios` y `archive`. Sin ellos, cada página de WinLab tardaba 3.9 s (PostgREST corta a los 8 s); con ellos,
   26 ms.
