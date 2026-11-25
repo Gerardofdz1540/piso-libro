@@ -181,7 +181,8 @@ function unzip(buf) {
   const re = { pr: await val('pronostico'), mot: await val('motivo'), curp: await val('curp'), aviso: await page.textContent('[data-testid="alta-aviso"]'), cambio: await page.$('[data-testid="alta-cambio"]') };
   check('A13 al cerrar y volver a abrir sale el borrador (no se pierde lo editado) y, como la tarjeta no cambió, sin aviso de cambio', re.pr === 'BUENO PARA LA VIDA' && re.mot === 'PASE A OTRO HOSPITAL' && re.curp === 'XAXX010101HGTLLL09' && /Borrador guardado/.test(re.aviso) && /Tester/.test(re.aviso) && !re.cambio, JSON.stringify(re));
 
-  // A14 — Word: se descarga y se abre (zip con document.xml, encabezado con la imagen del formato)
+  // A14 — Word: se descarga y se abre (zip con document.xml, encabezado con la imagen del formato). El WebKit del CI
+  // (Ubuntu 24.04) cambia los espacios del nombre sugerido por «_»: se comparan con «_» → espacio.
   let dl = page.waitForEvent('download', { timeout: 20000 });
   await page.click('[data-testid="alta-descargar"]');
   let d1 = await dl;
@@ -193,7 +194,7 @@ function unzip(buf) {
   const hdr = hdrName ? z[hdrName].toString('utf8') : '';
   const media = Object.keys(z).filter(n => /^word\/media\/.+\.png$/.test(n));
   const pngSize = fs.statSync(path.join(ROOT, 'vendor', 'alta-encabezado.png')).size;
-  check('A14 el .docx descargado se llama «ALTA <exp> <NOMBRE> <fecha>.docx» y se abre (zip con word/document.xml)', d1.suggestedFilename() === 'ALTA 26-55501 PEDRO SALAS VIDAL ' + hoy + '.docx' && !!doc, d1.suggestedFilename() + ' ' + Object.keys(z).join(','));
+  check('A14 el .docx descargado se llama «ALTA <exp> <NOMBRE> <fecha>.docx» y se abre (zip con word/document.xml)', d1.suggestedFilename().replace(/_/g, ' ') === 'ALTA 26-55501 PEDRO SALAS VIDAL ' + hoy + '.docx' && !!doc, d1.suggestedFilename() + ' ' + Object.keys(z).join(','));
   check('A15 document.xml trae los textos clave del formato y de la nota',
     ['FECHA DE ELABORACIÓN:', 'NOMBRE DEL PACIENTE:', 'PEDRO SALAS VIDAL', 'XAXX010101HGTLLL09', 'NO. DE DÍAS DE HOSPITALIZACIÓN:', 'DIAGNÓSTICO DE INGRESO:', 'RESUMEN CLÍNICO:', 'ANTECEDENTES DE IMPORTANCIA',
       'EVOLUCIÓN, MANEJO Y ESTADO ACTUAL', 'APENDICECTOMÍA ABIERTA EL ' + dmy(cx, '.'), 'CITA A LA CONSULTA EXTERNA DE CIRUGÍA GENERAL CON EL DR. FERRO A DISPONIBILIDAD', 'CEFALEXINA TABLETAS 500 MG', 'OMEPRAZOL',
