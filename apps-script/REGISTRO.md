@@ -28,7 +28,7 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Notas de evolución | nota | fecha y hora, autor, con IA o no, texto. La app guarda 10; aquí se acumulan. |
 | Guardia y cronología | renglón | Cronología (de la nota y del respaldo de la base) y Guardia vigente · **Vigente** |
 | Procedimientos programados | procedimiento | la lista del día de la app |
-| Procedimientos del censo | fecha + expediente + nombre | **con nombres** (25 nov 2026, registro 2026.11.26-2): la sección PROCEDIMIENTOS de la hoja del censo (tabla `censo_procedimientos`): cama («EXT» = ambulatorio, «QX», «UCIP»), expediente, nombre, edad, diagnóstico, especialidad, adscrito, residente, visto primero / por última vez, **ID episodio** (el del registro que cubre la fecha), **Ambulatorio**, **Grupo** (del diagnóstico) · **Vigente**. Solo desde el 25 nov 2026. |
+| Procedimientos del censo | fecha + expediente + nombre | **con nombres** (25 nov 2026, registro 2026.11.26.2): la sección PROCEDIMIENTOS de la hoja del censo (tabla `censo_procedimientos`): cama («EXT» = ambulatorio, «QX», «UCIP»), expediente, nombre, edad, diagnóstico, especialidad, adscrito, residente, visto primero / por última vez, **ID episodio** (el del registro que cubre la fecha), **Ambulatorio**, **Grupo** (del diagnóstico) · **Vigente**. Solo desde el 25 nov 2026. |
 | Labs del robot (WinLab) | reporte de WinLab del paciente | folio, toma, resultado, servicio y **valores** (un renglón por estudio: «ESTUDIO: valor unidad (ref. …)»), aunque no hayan llegado a la tarjeta · **Atribución** · **Sexo en WinLab** (F/M del encabezado) · **Nacimiento en WinLab** (24 nov 2026, al final; solo en reportes capturados desde esa fecha) |
 | Cultivos del robot (WinLab) | muestra de cultivo de esos reportes | tipo, muestra, resultado, germen, antibiograma S/I/R, UFC, texto del reporte (del PDF cuando el robot lo leyó; si no, de la tabla) |
 | Imagen del robot (RIS) | estudio | modalidad, estudios, crítico, reporte, enlace (con su episodio) |
@@ -182,10 +182,10 @@ siempre. Cada columna está definida en «Diccionario de variables».
   - Error esperado: bajo en los nombres que sí se clasifican (no se ha medido contra una muestra real; los casos dudosos
     se dejan vacíos, así que habrá más vacíos que errores); sobre todo nombres poco usuales del otro sexo. Para un estudio
     que dependa del sexo, reportar cuántos son inferidos.
-- **Procedimientos del censo y seguimiento de operados** (25 nov 2026, registro 2026.11.26-2). «En procedimientos se centra
+- **Procedimientos del censo y seguimiento de operados** (25 nov 2026, registro 2026.11.26.2). «En procedimientos se centra
   el total de cirugías que se realizan, al menos de cirugía general; que lo registre, nos servirá para conservar a esos
   pacientes como seguimiento.»
-  - El script del censo (`censo-sync.gs`, versión 2026.11.25-2) guarda la sección PROCEDIMIENTOS de la hoja en
+  - El script del censo (`censo-sync.gs`, versión 2026.11.25.2) guarda la sección PROCEDIMIENTOS de la hoja en
     `censo_procedimientos` (una fila por fecha + expediente + nombre normalizado; fecha = celda A2 del censo). El
     registro la lee **por cursor** (`visto_ultimo`, `id`) con 2 días de margen, dentro de `opcional()`: si falla, solo
     esa pestaña se queda sin tocar y se avisa.

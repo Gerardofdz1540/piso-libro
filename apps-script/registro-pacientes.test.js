@@ -3278,7 +3278,7 @@ const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Compl
     R["Egresos con motivo (%)"] === 100 && R["Defunciones (n)"] === 1 && R["Egresos con desenlace conocido (n)"] === 3, JSON.stringify(R));
 }
 
-// ─── P: procedimientos del censo y seguimiento de operados (25 nov 2026, registro 2026.11.26-2) ─────────────────────
+// ─── P: procedimientos del censo y seguimiento de operados (25 nov 2026, registro 2026.11.26.2) ─────────────────────
 {
   const PCZ = "Procedimientos del censo", SG = "Seguimiento de operados";
   const proc = (id, fecha, cama, exp, nombre, esp, dx, visto) => ({ id, fecha, cama, exp, nombre, nombre_norm: nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim(),
@@ -3389,9 +3389,9 @@ const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Compl
     && sb.regEsCg_("CG") && sb.regEsCg_("cg/uro") && sb.regEsCg_("Cirugía General") && !sb.regEsCg_("CCR") && !sb.regEsCg_("ENDOSCO") && !sb.regEsCg_(""), "");
   const vars = sb.regVariables_().slice(1), txt = JSON.stringify(vars), falta = [];
   [PCZ].forEach((n) => sb.REG_PESTANAS.find((c) => c.nombre === n).columnas.forEach((c) => { if (!vars.some((v) => v[0] === n && v[1].split(" · ").indexOf(c) !== -1)) falta.push(n + "/" + c); }));
-  check("P15 Diccionario de variables: define las columnas de «Procedimientos del censo», dice que tienen nombres y que solo hay datos desde el 25 nov 2026 (Google no guarda censos viejos); versión 2026.11.26-2",
+  check("P15 Diccionario de variables: define las columnas de «Procedimientos del censo», dice que tienen nombres y que solo hay datos desde el 25 nov 2026 (Google no guarda censos viejos); versión 2026.11.26.2",
     !falta.length && vars.some((v) => v[0] === SG && v[1] === "Privacidad" && /TIENE NOMBRES/.test(v[4])) && vars.some((v) => v[0] === PCZ && v[1] === "Privacidad" && /TIENE NOMBRES/.test(v[4]))
-    && /Solo hay datos desde el 25 nov 2026: Google no guarda los censos viejos/.test(txt) && sb.REGISTRO_VERSION === "2026.11.26-2"
+    && /Solo hay datos desde el 25 nov 2026: Google no guarda los censos viejos/.test(txt) && sb.REGISTRO_VERSION === "2026.11.26.2"
     && /Seguimiento de operados/.test(JSON.stringify(st.ss.sheets["Diccionario"].cells)), falta.join(" | "));
 }
 

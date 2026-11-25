@@ -41,7 +41,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.11.26-2';
+var REGISTRO_VERSION = '2026.11.26.2';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -72,7 +72,7 @@ var REG_CURSORES = {
   // (~0.3 KB cada una, todo sub-rutas nulas). Las de campos nulo sí se leen (no se pierde nada por el filtro).
   audit_pacientes: { tabla: 'audit_log', col: 'ts', tope: 6000, margenMs: REG_MARGEN_AUDIT_MS, filtro: 'tabla=eq.patients&or=(op.in.(INSERT,DELETE),campos.ov.{cama,estado,seccion,esp})' },
   audit_notas: { tabla: 'audit_log', col: 'ts', tope: 12000, margenMs: REG_MARGEN_AUDIT_MS, filtro: 'tabla=eq.notes&op=eq.UPDATE&or=(campos.is.null,campos.not.cd.{lab_history,imagen_history})' },
-  // 25 nov 2026 (registro 2026.11.26-2): la sección PROCEDIMIENTOS de la hoja del censo (censo-sync.gs la guarda en
+  // 25 nov 2026 (registro 2026.11.26.2): la sección PROCEDIMIENTOS de la hoja del censo (censo-sync.gs la guarda en
   // censo_procedimientos y le pone visto_ultimo al día cada hora mientras siga en la hoja). Margen de 2 días.
   censo_procedimientos: { col: 'visto_ultimo', tope: 3000 }
 };
@@ -96,7 +96,7 @@ var REG_WL_LABS = 'Labs del robot (WinLab)';
 var REG_ESTADO_DIARIO = 'Estado diario', REG_DISPOSITIVOS = 'Dispositivos', REG_DRENAJES_DIARIO = 'Drenajes · diario';
 var REG_MOVIMIENTOS = 'Movimientos y estado', REG_SOPORTE = 'Soporte y exposiciones (historial)', REG_ACTIVIDAD = 'Actividad por episodio y día';
 var REG_NO_VALIDO = 'valor no válido';
-// 25 nov 2026 (registro 2026.11.26-2): seguimiento de operados. «Procedimientos del censo» es cruda (con nombres, junto a
+// 25 nov 2026 (registro 2026.11.26.2): seguimiento de operados. «Procedimientos del censo» es cruda (con nombres, junto a
 // las demás crudas); «Seguimiento de operados» es lista de trabajo con nombres, como «Por completar».
 var REG_PROC_CENSO = 'Procedimientos del censo', REG_SEGUIMIENTO = 'Seguimiento de operados';
 var REG_GUARDIA_CORTES = 'Guardia · renglones retirados', REG_RIS = 'Imagen del robot (RIS)', REG_NOTA_JSON = 'Nota completa (JSON)', REG_NOTA_JSON_2 = 'Nota completa (JSON) · 2';
@@ -138,7 +138,7 @@ var REG_PESTANAS = [
   { nombre: 'Notas de evolución', modo: 'acumula', clave: ['ID episodio', 'Fecha y hora'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha y hora', 'Autor', 'Con IA', 'Texto'] },
   { nombre: 'Guardia y cronología', modo: 'vigente', clave: ['ID episodio', 'Caja', 'Renglón'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Caja', 'Orden', 'Renglón', 'Vigente'] },
   { nombre: 'Procedimientos programados', modo: 'acumula', fuente: 'procedimientos_dia', clave: ['ID'], columnas: ['ID', 'Fecha', 'Cama', 'Expediente', 'Nombre', 'Edad', 'Diagnóstico', 'Especialidad', 'Adscrito', 'Residente', 'Agregado por'] },
-  // 25 nov 2026 (registro 2026.11.26-2): la sección PROCEDIMIENTOS de la hoja del censo (tabla censo_procedimientos), una
+  // 25 nov 2026 (registro 2026.11.26.2): la sección PROCEDIMIENTOS de la hoja del censo (tabla censo_procedimientos), una
   // fila por fecha + expediente + nombre. «ID episodio», «Ambulatorio» y «Grupo» se recalculan en cada corrida contra
   // «Pacientes» (regCompletarProcCenso_): un episodio que aparece después también se liga. Solo hay datos desde el 25 nov
   // 2026 (Google no guarda los censos viejos).
@@ -305,7 +305,7 @@ function actualizarRegistro() {
     datos.restauraciones = leer('archive', 'id,de:patient_data->>_supa_id,a:note_data->>_restaurado_a', 'id', 'note_data->>_restaurado_a=not.is.null', 1000);
     datos.cronologias = leer('cronologia_respaldo', 'patient_id,exp,nombre,cronologia,actualizado', 'patient_id', '', 200);
     datos.procedimientos = opcional('procedimientos_dia', function () { return leer('procedimientos_dia', 'id,cama,exp,nombre,edad,dx,esp,adscrito,residente,fecha_dia,added_by', 'id', '', 500); });
-    // 25 nov 2026 (registro 2026.11.26-2): procedimientos del censo (sección PROCEDIMIENTOS de la hoja), por cursor
+    // 25 nov 2026 (registro 2026.11.26.2): procedimientos del censo (sección PROCEDIMIENTOS de la hoja), por cursor
     // (visto_ultimo, id) con 2 días de margen. Si falla, solo su pestaña se queda sin tocar.
     datos.censoProcs = opcional('censo_procedimientos', function () {
       return leerCursor('censo_procedimientos', 'id,fecha,cama,exp,nombre,edad,dx,esp,adscrito,residente,visto_primero,visto_ultimo', 1000);
@@ -1275,7 +1275,7 @@ function regCompletarSexoWl(filas, ctx) {
   });
 }
 
-// ─── Procedimientos del censo (25 nov 2026, registro 2026.11.26-2) ───────────────────────────────────────────────
+// ─── Procedimientos del censo (25 nov 2026, registro 2026.11.26.2) ───────────────────────────────────────────────
 /** Filas de «Pacientes» por expediente válido (regExpValido). */
 function regPacientesPorExp_(pacientes) {
   var m = {};
@@ -1860,7 +1860,7 @@ function regConstruir(datos, hoy) {
     if (!x || !x.id) return;
     fila('Procedimientos programados', { 'ID': regTexto(x.id), 'Fecha': regFecha(x.fecha_dia), 'Cama': regTexto(x.cama), 'Expediente': regTexto(x.exp), 'Nombre': regTexto(x.nombre), 'Edad': regTexto(x.edad), 'Diagnóstico': regTexto(x.dx), 'Especialidad': regTexto(x.esp), 'Adscrito': regTexto(x.adscrito), 'Residente': regTexto(x.residente), 'Agregado por': regTexto(x.added_by) });
   });
-  // 25 nov 2026 (registro 2026.11.26-2): procedimientos del censo. ID episodio / Ambulatorio se completan al escribir
+  // 25 nov 2026 (registro 2026.11.26.2): procedimientos del censo. ID episodio / Ambulatorio se completan al escribir
   // (regCompletarProcCenso_, contra todo «Pacientes»).
   regArr(datos.censoProcs).forEach(function (x) {
     if (!x || x.id === undefined || x.id === null) return;
@@ -1965,7 +1965,7 @@ var REG_RESUMEN_COLUMNAS = ['Mes', 'Ingresos (n)', 'Egresos (n)', 'Egresos con d
   'Dx principales (más frecuentes)', 'Cirugías por grupo (más frecuentes)', 'Gérmenes (más frecuentes)', 'Ingresos con datos incompletos (n)', 'Vigente',
   // 24 nov 2026 (al final).
   'Cirugías sin fecha exacta (n)', 'Reintervenciones no planeadas (n)', 'Ingresos sin talla (n)', 'Egresos con motivo (%)', 'Con sexo (%)', 'Episodios sin labs (n)',
-  // 25 nov 2026 (registro 2026.11.26-2, al final): la sección PROCEDIMIENTOS del censo, por mes de la fecha.
+  // 25 nov 2026 (registro 2026.11.26.2, al final): la sección PROCEDIMIENTOS del censo, por mes de la fecha.
   'Procedimientos en el censo (n)', 'Procedimientos en el censo de CG (n)', 'Ambulatorios (n)'];
 // Desde cuándo hay procedimientos del censo (25 nov 2026): Google no guarda los censos viejos. Antes de ese mes las
 // columnas del Resumen mensual van vacías (no hay dato), no en 0.
@@ -2357,7 +2357,7 @@ var REG_ANALISIS = [
   { nombre: REG_AN_FLUJO, modo: 'derivada', clave: ['Paso'], columnas: REG_FLUJO_COLUMNAS, formatos: regFormatos_(['Orden', 'Episodios (n)'], []) },
   { nombre: REG_AN_INDICADORES, modo: 'derivada', clave: ['Periodo', 'Indicador', 'Estrato'], columnas: REG_INDICADORES_COLUMNAS,
     formatos: regFormatos_(['Numerador', 'Denominador', 'Excluidos por dato faltante (n)'], ['Tasa (%)', 'IC95 inferior', 'IC95 superior', 'Valor']) },
-  // 25 nov 2026 (registro 2026.11.26-2): seguimiento de operados. CON NOMBRES (lista de trabajo, como «Por completar»):
+  // 25 nov 2026 (registro 2026.11.26.2): seguimiento de operados. CON NOMBRES (lista de trabajo, como «Por completar»):
   // una fila por persona que aparece en «Procedimientos del censo» o tiene cirugías en el registro. Va al final: las
   // pestañas que ya existían se escriben primero si se acaba el tiempo.
   { nombre: REG_SEGUIMIENTO, modo: 'derivada', clave: ['Expediente', 'Nombre'], columnas: REG_SEGUIMIENTO_COLUMNAS,
@@ -4365,7 +4365,7 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
   porCompletar.sort(function (a, b) { return (a.sinMotivo ? 0 : 1) - (b.sinMotivo ? 0 : 1) || (a.sinMotivo ? regTexto(b.egreso).localeCompare(regTexto(a.egreso)) : 0) || a.n - b.n; });
   out[REG_POR_COMPLETAR] = porCompletar.map(function (x) { return x.fila; });
   out[REG_AN_RESUMEN] = regResumenMensual(resumenEps, resumenCxs, out[REG_AN_CULTIVOS], fus[REG_PROC_CENSO]);
-  // 25 nov 2026 (registro 2026.11.26-2): seguimiento de operados (con nombres).
+  // 25 nov 2026 (registro 2026.11.26.2): seguimiento de operados (con nombres).
   out[REG_SEGUIMIENTO] = regSeguimientoOperados_({ procs: fus[REG_PROC_CENSO], personas: listaPersonas, P: P, sexosWl: sexosWl, hoy: hoy });
   // 24 nov 2026: completitud por mes, flujo de la cohorte e indicadores de calidad (solo cuentas), de las filas de esta corrida.
   out[REG_AN_COMPLETITUD] = regCompletitud_(grupos.map(function (g) { return { e: g.fila, exp: !!g.exp, sv01: !!g.sv01 }; }), out[REG_AN_CIRUGIAS]);
@@ -4440,7 +4440,7 @@ function regEsCg_(esp) {
   return /\bCIRUGIA GENERAL\b/.test(s) || s.split(/[\/,+&\s]+/).indexOf('CG') !== -1;
 }
 
-/** «Seguimiento de operados» (25 nov 2026, registro 2026.11.26-2). Una fila por persona (expediente válido + nombre
+/** «Seguimiento de operados» (25 nov 2026, registro 2026.11.26.2). Una fila por persona (expediente válido + nombre
  *  compatible, regMismaPersona; las personas del registro son las de «Clave de seudónimos») que aparece en «Procedimientos
  *  del censo» o tiene cirugías en el registro (las de cada episodio sin la programación sin confirmar ni las tarjetas
  *  duplicadas). Un procedimiento del censo ligado a un episodio va con la persona de ese episodio; si no, con la del mismo
@@ -4838,7 +4838,7 @@ function regVariables_() {
   add(IN, 'Tasa (%) · IC95 inferior · IC95 superior', 'número', '%', 'Numerador ÷ denominador × 100 e intervalo de confianza de 95 % de Wilson (sin corrección de continuidad). VACÍOS si el denominador es menor de ' + REG_INDICADOR_MIN + ' (se dejan n y N). Solo en proporciones.');
   add(IN, 'Valor · Unidad', 'número · texto', '', 'Para lo que no es una proporción: la mediana (días) o la razón (días de antibiótico por 100 días-paciente; % de días Watch o Reserve). Vacío con menos de ' + REG_INDICADOR_MIN + ' casos. Unidad dice cómo leerlo («%» en las proporciones).');
   add(REG_AN_RESUMEN, 'Egresos con motivo (%) · Con sexo (%) · Episodios sin labs (n)', 'número · número · entero', '', 'Desde el 24 nov 2026: egresos del mes con motivo registrado ÷ egresos; ingresos del mes con sexo (de la tarjeta, de WinLab o, desde el 25 nov 2026, inferido del nombre) ÷ ingresos; ingresos del mes sin ninguna fecha de laboratorio. Sesgo: miden llenado, no calidad del dato.');
-  // 25 nov 2026 (registro 2026.11.26-2): procedimientos del censo y seguimiento de operados.
+  // 25 nov 2026 (registro 2026.11.26.2): procedimientos del censo y seguimiento de operados.
   var PCZ = REG_PROC_CENSO, SG = REG_SEGUIMIENTO, desdeProc = 'Solo hay datos desde el 25 nov 2026: Google no guarda los censos viejos (la hoja del censo se reescribe cada día y la sección PROCEDIMIENTOS de días anteriores no se puede recuperar).';
   add(REG_AN_RESUMEN, 'Procedimientos en el censo (n) · Procedimientos en el censo de CG (n) · Ambulatorios (n)', 'entero', '', 'Filas de «' + PCZ + '» con fecha en el mes (una por fecha + expediente + nombre: el mismo paciente listado dos días cuenta dos veces); las de especialidad CG (Cirugía General, también en combinación «CG/URO»); las ambulatorias (cama EXT o sin episodio del registro que cubra la fecha). VACÍAS antes de noviembre de 2026 (no hay dato, no es cero). Sesgo: ' + desdeProc + ' Noviembre de 2026 es un mes incompleto. Lo que el equipo no anotó en la sección no se cuenta.');
   add(PCZ, 'Privacidad', '', '', 'TIENE NOMBRES Y EXPEDIENTES: copia fiel de la sección PROCEDIMIENTOS de la hoja del censo (tabla censo_procedimientos, la escribe el script del censo). No es una pestaña de análisis: no compartir.');

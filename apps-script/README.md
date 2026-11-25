@@ -115,7 +115,7 @@ exitosa `aplicarEgresosCenso_` las usa así:
   duda no se aplica). Si la más reciente no cumple, no se busca otra más vieja (sería de otro ingreso o retiro).
 - Mientras el expediente siga en el censo activo **o en el tablero** (gracia de 12 min, guardas), espera: su
   copia todavía no existe.
-- Si la copia **no tiene motivo**, llama a `archive_set_egreso_si_vacio` (versión 2026.11.25-2) con
+- Si la copia **no tiene motivo**, llama a `archive_set_egreso_si_vacio` (versión 2026.11.25.2) con
   `p_tipo` = `alta` o `defuncion` y `p_por` = `Censo (hoja · ALTAS)` / `Censo (hoja · DEFUNCIONES)`. Es
   **atómica**: la base solo escribe si `_egreso_tipo` sigue vacío y responde `ok`, `ya-tenia` o `no-encontrado`.
 - **Nunca pisa** un motivo elegido por una persona. Si la hoja dice DEFUNCIONES y la copia otra cosa (o al
@@ -135,7 +135,7 @@ exitosa `aplicarEgresosCenso_` las usa así:
 Requiere `public.archive_set_egreso_si_vacio` (scripts/supabase_archive_egreso.sql; solo la `service_role` puede
 ejecutarla). Si la llamada falla, el egreso sigue pendiente y el log cuenta los errores.
 
-## Procedimientos del censo → `censo_procedimientos` (versión 2026.11.25-2)
+## Procedimientos del censo → `censo_procedimientos` (versión 2026.11.25.2)
 
 «En procedimientos se centra el total de cirugías que se realizan, al menos de cirugía general; que lo
 registre, nos servirá para conservar a esos pacientes como seguimiento.» La sección **PROCEDIMIENTOS** de la

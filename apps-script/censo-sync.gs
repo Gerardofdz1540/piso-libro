@@ -33,7 +33,7 @@
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones», función
 // pl_reportar_version) y el vigilante la compara con la del repositorio: si no coinciden, falta pegar esta versión.
 // Cambiarla en cada cambio del archivo.
-var CENSO_SYNC_VERSION = '2026.11.25-2';
+var CENSO_SYNC_VERSION = '2026.11.25.2';
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
