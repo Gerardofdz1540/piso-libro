@@ -30,3 +30,27 @@ begin
 end $function$;
 revoke all on function public.archive_set_egreso(uuid, text, text) from public, anon;
 grant execute on function public.archive_set_egreso(uuid, text, text) to authenticated;
+
+-- 25 nov 2026 · aplicado en producción (migración archive_set_egreso_si_vacio): variante ATÓMICA para censo-sync.gs.
+create or replace function public.archive_set_egreso_si_vacio(p_id uuid, p_tipo text, p_por text default '')
+ returns text
+ language plpgsql
+ security invoker
+ set search_path to 'public'
+as $function$
+declare n int; ts text := to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"');
+begin
+  if p_tipo is null or p_tipo not in ('alta', 'defuncion', 'cambio_servicio', 'contrarreferencia', 'traslado',
+                                      'alta_voluntaria', 'fuga', 'otro', 'no_egreso') then
+    raise exception 'tipo de egreso no válido';
+  end if;
+  update public.archive set note_data = coalesce(note_data, '{}'::jsonb)
+      || jsonb_build_object('_egreso_tipo', p_tipo, '_egreso_tipo_por', left(coalesce(p_por, ''), 80), '_egreso_tipo_ts', ts)
+  where id = p_id and coalesce(note_data ->> '_egreso_tipo', '') = '';
+  get diagnostics n = row_count;
+  if n = 1 then return 'ok'; end if;
+  perform 1 from public.archive where id = p_id;
+  return case when found then 'ya-tenia' else 'no-encontrado' end;
+end $function$;
+revoke all on function public.archive_set_egreso_si_vacio(uuid, text, text) from public, anon, authenticated;
+grant execute on function public.archive_set_egreso_si_vacio(uuid, text, text) to service_role;
