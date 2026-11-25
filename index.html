@@ -27364,7 +27364,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     //   medicamentos de egreso con posología, recomendaciones, pronóstico, motivo y firmas. Todo editable.
     // · El borrador vive en checklist.alta_borrador (se guarda y sincroniza como cualquier caja: otro iPad lo ve) y la CURP,
     //   si se llena, en checklist.curp para la próxima.
-    // · «⬇️ Descargar Word» arma el .docx con la librería docx (vendor/) y el encabezado vendor/alta-encabezado.png.
+    // · «⬇️ Descargar Word» arma el .docx con la librería docx (vendor/) y el encabezado vendor/alta-encabezado-v2.png.
     //   «☁️ Guardar en Drive» además lo sube al bucket privado «altas» de Supabase (<patient_id>/<AAAA-MM-DD>_<exp>_<ms>.docx)
     //   y registra la fila en altas_docs; apps-script/censo-sync.gs (cada 5 min) lo copia al Drive («Altas · Piso Libro» /
     //   «AAAA-MM») y escribe drive_url. Sin red el Word se descarga igual y queda en cola en este iPad (localStorage, con
@@ -27975,7 +27975,12 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     let _altaImgCache = null;
     async function _altaEncabezado() {
       if (_altaImgCache) return _altaImgCache;
-      try { const r = await fetch("vendor/alta-encabezado.png"); if (r.ok) { _altaImgCache = new Uint8Array(await r.arrayBuffer()); return _altaImgCache; } } catch (_) {}
+      // Solo si de verdad es un PNG (firma 89 50 4E 47): si el archivo faltara en el servidor llegaría la página (HTML) y el
+      // Word quedaría con una imagen rota. Sin imagen válida el Word sale igual, sin el logo.
+      try {
+        const r = await fetch("vendor/alta-encabezado-v2.png");
+        if (r.ok) { const u = new Uint8Array(await r.arrayBuffer()); if (u.length > 8 && u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4E && u[3] === 0x47) { _altaImgCache = u; return _altaImgCache; } }
+      } catch (_) {}
       return null;
     }
     async function _altaDocxBlob(d) {
@@ -32660,7 +32665,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.25-2";
+    const PL_BUILD = "2026.11.25-3";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

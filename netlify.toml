@@ -4,5 +4,5 @@
 # versión nueva, 20 oct 2026: la app lo compara con su PL_BUILD).
 # El resto del repositorio (robot, scripts, docs) no se publica.
 [build]
-  command = "mkdir -p dist/icons dist/vendor && cp index.html _headers manifest.json sw.js version.json dist/ && cp icons/*.png dist/icons/ && cp vendor/*.js dist/vendor/"
+  command = "mkdir -p dist/icons dist/vendor && cp index.html _headers manifest.json sw.js version.json dist/ && cp icons/*.png dist/icons/ && cp vendor/*.js vendor/*.png dist/vendor/"
   publish = "dist"
