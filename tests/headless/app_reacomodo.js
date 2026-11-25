@@ -432,6 +432,16 @@ const NOTES = [
     ['plCut 0%', 'plCut 28%', 'plCut 36%'].every(t => /^steps\(/.test(pasos[t] || '')) && tramos.some(t => /^plSew .*36%/.test(t) && /^steps\(/.test(pasos[t]))
     && tramos.filter(t => !/64%/.test(t)).every(t => /^steps\(/.test(pasos[t])), JSON.stringify(pasos));
 
+  // R14 (25 nov 2026): las camas van en el orden de la hoja del censo: piso 3 → quirófano/recuperación → UCIA → oncología/
+  // ginecología (2-xxx) → pediatría (UCIP) → medicina interna (4-xxx); la sección del censo manda y sin ella se deduce de la cama.
+  const orden = await page.evaluate(() => {
+    const L = [['4-232', 'MEDICINA INTERNA'], ['UCIP 2', 'PEDIATRIA'], ['2-079', 'ONCOLOGÍA / GINECOLOGÍA'], ['UCI 10', 'UCIA'], ['UCI 3', 'UCIA'],
+      ['QX', 'QUIRÓFANO / RECUPERACION'], ['3-190', 'PISO'], ['3-150', ''], ['UCIP 4', ''], ['QX 2', ''], ['2-041', ''], ['4-202', ''], ['EXT', '']];
+    return orderPisoPatients(L.map(x => ({ cama: x[0], seccion: x[1] }))).map(p => p.cama).join(',');
+  });
+  check('R14 tablero en el orden del censo: piso 3, quirófano/recuperación, UCIA, oncología/ginecología, pediatría, medicina interna, resto',
+    orden === '3-150,3-190,QX 2,QX,UCI 3,UCI 10,2-041,2-079,UCIP 2,UCIP 4,4-202,4-232,EXT', orden);
+
   check('R13 sin errores de página', errors.length === 0, errors.join(' | '));
   console.log(`\nRESULT APP-REACOMODO: ${pass} passed, ${fail} failed`);
   await browser.close();

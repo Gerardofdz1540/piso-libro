@@ -2135,3 +2135,10 @@ calidad, sin subir costos (el consumo nocturno de Supabase baja ~2 MB: WinLab se
   vueltas de 10 minutos. Revisar después la pestaña «Integridad».
 - **Lo derivado por texto es «probable»:** eventos adversos, comorbilidades y reintervención no planeada deben validarse
   contra expediente en una muestra antes de publicar.
+
+## Camas en el orden del censo (25 de noviembre de 2026, 2026.11.25-1)
+
+El tablero, la barra de camas y «Pendientes» siguen el orden de la hoja del censo: piso 3 → QUIRÓFANO / RECUPERACIÓN
+(QX) → UCIA → ONCOLOGÍA / GINECOLOGÍA (2-xxx) → PEDIATRÍA (UCIP) → MEDICINA INTERNA (4-xxx) → el resto (EXT…).
+Antes UCIP iba junto a las UCI y QX al final. Manda la sección que trae el censo (`patients.seccion`); si la cama se
+agregó en la app sin sección, se deduce de la cama. Prueba: `app_reacomodo` R14.

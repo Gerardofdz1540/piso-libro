@@ -49,7 +49,15 @@ function vigilarNuevo(w) {
   try { w.addEventListener('statechange', ver); } catch (_) {}
   ver();
 }
-try { self.registration.addEventListener('updatefound', () => { try { vigilarNuevo(self.registration.installing); } catch (_) {} }); } catch (_) {}
+// 25 nov 2026 (CI): la instalación ya es tan rápida (copia ./vendor/ de la caché) que el SW nuevo puede quedar «installed»
+// (en espera) ANTES de que este SW atienda su 'updatefound': ahí registration.installing ya es null y se perdía el aviso
+// (la descarga colgada seguía reteniendo y el nuevo no se activaba). Se vigila el que esté instalándose o, si ya terminó,
+// el que espera.
+try {
+  self.registration.addEventListener('updatefound', () => {
+    try { const r = self.registration; vigilarNuevo(r.installing || r.waiting); } catch (_) {}
+  });
+} catch (_) {}
 // Turnos de las descargas de la página (solo en memoria; si el navegador cierra el SW, sus descargas mueren con él).
 let navTurno = 0, copiaTurno = 0, copiaCola = Promise.resolve();
 // Solo './' como documento: en Cloudflare Pages '/index.html' redirige (308) a '/', y una respuesta
