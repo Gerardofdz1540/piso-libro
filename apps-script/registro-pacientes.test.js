@@ -97,7 +97,11 @@ function postgrest(state, url, headers) {
       // 24 nov 2026 (auditoría): or=(col.in.(A,B),arr.ov.{x,y}) — `in` sobre texto y `ov` (traslape) sobre text[]. Como en
       // PostgREST, varios «or» en la misma consulta se suman con AND (aquí: este y el de la paginación por llave).
       const m2 = /^\(([a-z_]+)\.in\.\(([^()]*)\),([a-z_]+)\.ov\.\{([^{}]*)\}\)$/.exec(v);
+      // 24 nov 2026 (revisión): or=(arr.is.null,arr.not.cd.{x,y}) — nulo, o NO contenido en la lista (text[] <@; el arreglo
+      // vacío está contenido en cualquiera, como en Postgres).
+      const m3 = /^\(([a-z_]+)\.is\.null,\1\.not\.cd\.\{([^{}]*)\}\)$/.exec(v);
       if (m) filtros.push((x) => cmpPg(x[m[1]], m[2]) > 0 || (cmpPg(x[m[1]], m[3]) === 0 && cmpPg(x[m[4]], m[5]) > 0));
+      else if (m3) { const arr = m3[2].split(","); filtros.push((x) => x[m3[1]] === null || x[m3[1]] === undefined || !(Array.isArray(x[m3[1]]) && x[m3[1]].every((c) => arr.includes(c)))); }
       else if (m2) { const lista = m2[2].split(","), arr = m2[4].split(","); filtros.push((x) => lista.includes(String(x[m2[1]])) || (Array.isArray(x[m2[3]]) && x[m2[3]].some((c) => arr.includes(c)))); }
       else return { status: 400, body: { code: "PGRST100", message: "or mal formado" } };
     } else {
@@ -1584,6 +1588,8 @@ const conteos = (m) => m.calls.filter((c) => /limit=0$/.test(c.u));
     f2.length === 2 && JSON.stringify(f2[0]) === JSON.stringify(f1[0]) && f2[1]["Resultado"] === "Completa" && f2[1]["WinLab actualizadas en sitio (n)"] === 0 && conteos(m2).length === 3, JSON.stringify(f2));
   // Una copia de la Papelera que la lectura por fecha no alcanza (archivada «antes» de la ventana) no está en Pacientes.
   st.db.archive.push({ id: "a77", archived_at: "2026-10-01T10:00:00+00:00", patient_data: { _supa_id: "p77", nombre: "PRUEBA FICTICIA SETENTA", exp: "000777" }, note_data: {} });
+  // El cuadre de episodios se hace una vez al día (24 nov 2026, revisión): aquí se simula el día siguiente.
+  delete st.props.REG_CUADRE_EPISODIOS;
   const r3 = makeSandbox(st).sb.actualizarRegistro(), f3 = tab(st.ss, INT);
   check("I1e una copia de archive que no está en Pacientes: Diferencia 1, 5 episodios en base y aviso (sin nombres)",
     f3.length === 3 && f3[2]["Diferencia (en base y no en Pacientes)"] === 1 && f3[2]["Episodios en base (n)"] === 5 && f3[2]["Episodios en Pacientes (n)"] === 4
@@ -2307,7 +2313,7 @@ const aud = (id, ts, tabla, op, rec, user, campos, diff, cama) => ({ id, ts, tab
     && A[0]["Ediciones de noche (n)"] === 1 && A[0]["Cajas tocadas"] === "checklist · pendientes" && A[0]["Último ID"] === 9103 && A[0]["Usuarios"] === [sN["Quién"], sA["Quién"]].sort().join(" · "), JSON.stringify(A));
   const llamadas = m.calls.filter((c) => /audit_log\?.*tabla=eq\.notes/.test(c.u));
   check("C15d una sola petición por página, de menos de 2 KB aun con la paginación por llave, solo con sub-rutas del checklist (alias de una letra) y sin columnas privadas",
-    llamadas.length === 1 && llamadas.every((c) => c.raw.length < 2048) && /select=id,ts,record_id,user_id,campos,a:diff->checklist->atb,b:diff->checklist->atb_nombre,.*l:diff->checklist->pm_vent&tabla=eq\.notes&op=eq\.UPDATE&ts=not\.is\.null&order=ts\.asc,id\.asc&limit=1000$/.test(llamadas[0].u)
+    llamadas.length === 1 && llamadas.every((c) => c.raw.length < 2048) && /select=id,ts,record_id,user_id,campos,a:diff->checklist->atb,b:diff->checklist->atb_nombre,.*l:diff->checklist->pm_vent&tabla=eq\.notes&op=eq\.UPDATE&or=\(campos\.is\.null,campos\.not\.cd\.\{lab_history,imagen_history\}\)&ts=not\.is\.null&order=ts\.asc,id\.asc&limit=1000$/.test(llamadas[0].u)
     && !/email|nombre:|paciente|[,=]ip|[,=]ua|dispositivo[,&]|select=[^&]*diff[,&]/.test(llamadas[0].u.replace(/atb_nombre/g, ""))
     && m.sb.regUrl_("audit_log", m.sb.regAudNotasSelect_(), "ts,id", m.sb.REG_CURSORES.audit_notas.filtro + "&ts=not.is.null&" + m.sb.regKeyset_(["ts", "id"], ["2026-11-24T05:00:00.123456+00:00", "123456789012"]), 1000).length < 2048, llamadas.map((c) => c.raw.length + " " + c.u).join(" | "));
   const s1 = snap(st.ss); makeSandbox(st).sb.actualizarRegistro();
@@ -2508,8 +2514,8 @@ const AQ = "Análisis · Cirugías";
   // ─── Estructura: lo nuevo va AL FINAL de «Análisis · Episodios» y todo está en el Diccionario de variables ──────
   const colsE = sb.REG_ANALISIS[0].columnas, iMov = colsE.indexOf("Hora de egreso del censo");
   check("C18h las columnas nuevas de Episodios van al final, después de las del 24 nov anteriores, y ninguna columna que ya existía cambió de lugar",
-    colsE.indexOf("Días con antibiótico (observados)") === iMov + 1 && colsE[colsE.length - 1] === "Riesgo preoperatorio simple (0-6)" && colsE.length === iMov + 1 + sb.REG_EP_LOTE_C.length
-    && colsE.indexOf("Tabaquismo") === colsE.indexOf("Comorbilidades (n)") - 1 && colsE.indexOf("INR máximo") === colsE.indexOf("Cultivos (n)") - 1 && sb.REG_ANALISIS[sb.REG_ANALISIS.length - 1].nombre === AQ);
+    colsE.indexOf("Días con antibiótico (observados)") === iMov + 1 && colsE[iMov + sb.REG_EP_LOTE_C.length] === "Riesgo preoperatorio simple (0-6)" && colsE.length === iMov + 1 + sb.REG_EP_LOTE_C.length + sb.REG_EP_LOTE_C2.length
+    && colsE.indexOf("Tabaquismo") === colsE.indexOf("Comorbilidades (n)") - 1 && colsE.indexOf("INR máximo") === colsE.indexOf("Cultivos (n)") - 1 && sb.REG_ANALISIS[6].nombre === AQ);
   const vars = sb.regVariables_().slice(1), sinDef = [];
   sb.REG_EP_LOTE_C.concat(sb.REG_CULT_NUEVAS).forEach((c) => { const v = vars.find((r) => r[1].split(" · ").indexOf(c) !== -1 && (r[0] === AN[0] || r[0] === AN[3])); if (!v || !/Sesgo|sesgo/.test(v[4])) sinDef.push(c); });
   sb.REG_CX_AN_COLUMNAS.forEach((c) => { if (!vars.some((r) => (r[0] === AQ || r[0] === "Todas") && r[1].split(" · ").indexOf(c) !== -1)) sinDef.push(AQ + "/" + c); });
@@ -2562,6 +2568,595 @@ const AQ = "Análisis · Cirugías";
   const ab = ["LAPAROSCOPIA DIAGNOSTICA CONVERTIDA A LAPE", "COLELAP", "CPRE + ESFINTEROTOMIA", "HERNIOPLASTIA INGUINAL ABIERTA", "APENDICECTOMIA", "RTUP"].map(sbq.regCxAbordajeTexto);
   check("C19j regCxAbordajeTexto: convertida, laparoscópica, endoscópica, abierta; si el texto no lo dice queda vacío (no se asume abierta)",
     JSON.stringify(ab) === JSON.stringify(["Convertida (laparoscópica → abierta)", "Laparoscópica", "Endoscópica / percutánea", "Abierta", "", "Endoscópica / percutánea"]), JSON.stringify(ab));
+}
+
+// ═══ Lote C (2.ª parte), 24 nov 2026: eventos adversos (23), columnas de apoyo (24), completitud y flujo (25), indicadores
+//     de calidad (26) y antibióticos por curso (27). Egress 0: todo sale de lo ya fusionado. Datos FICTICIOS. ══════════
+const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Completitud", AFL = "Flujo de la cohorte", AIN = "Indicadores de calidad";
+{
+  const sb = makeSandbox({ db: VACIO() }).sb, cod = (pre, ident) => pre + "-" + ident;
+  const pac = (id, exp, nombre, extra) => Object.assign({ "ID episodio": id, "Estado en registro": "Egresado", "Motivo de egreso": "ALTA (registrado en la app)", "Expediente": exp, "Nombre": nombre, "Edad": "45", "Sexo": "F",
+    "Fecha de ingreso": "2026-11-24", "Fecha de egreso": "2026-11-30", "Diagnóstico": "OCLUSION INTESTINAL" }, extra || {});
+  const cx = (id, fecha, proc, extra) => Object.assign({ "ID episodio": id, "Fecha": fecha, "Procedimiento": proc, "Grupo": "Laparotomía exploradora", "Fuente": "Caja Cirugías", "Vigente": "Sí" }, extra || {});
+  const noche = (id, fecha, o) => Object.assign({ "ID episodio": id, "Fecha": fecha, "ATB (casilla)": "No", "Antibióticos en Manejo (detectados)": "", "Antibiótico (texto)": "", "NPO": "No", "NPT": "No", "NPT %": "", "TVP": "No", "VM": "No",
+    "Norepinefrina mL/h": "", "Vasopresina mL/h": "" }, o || {});
+  const SIN = "RETIRADO DEL CENSO (hoja)";
+  const de = (an, pestana, id) => an[pestana].filter((r) => r["ID episodio"] === "E-EP|" + id);
+  const E1 = (an, id) => de(an, AN[0], id)[0];
+
+  // ─── C23: «Eventos adversos» y Clavien-Dindo mínimo inferido ─────────────────────────────────────────────────────
+  const fusV = { "Pacientes": [
+      pac("v1", "000971", "PRUEBA FICTICIA NEGADA", { "Manejo": "SIN DATOS DE FUGA DE ANASTOMOSIS. VIGILAR SANGRADO POSOPERATORIO\nPROBABLE NEUMONIA, CRUZAR 2 PG\nANTECEDENTE DE TEP HACE 2 AÑOS" }),
+      pac("v2", "000972", "PRUEBA FICTICIA FUGA", { "Manejo": "SIN FIEBRE, CON FUGA DE ANASTOMOSIS. AYUNO" }),
+      pac("v3", "000973", "PRUEBA FICTICIA FINADA", { "Motivo de egreso": "DEFUNCIÓN" }),
+      pac("v4", "000974", "PRUEBA FICTICIA VASOPRESOR"), pac("v5", "000975", "PRUEBA FICTICIA DIA CERO"),
+      pac("v6", "000976", "PRUEBA FICTICIA SIN CIRUGIA", { "Manejo": "CHOQUE SEPTICO, SE TRANSFUNDEN 2 PG", "Diagnóstico": "NEUMONIA ADQUIRIDA EN LA COMUNIDAD" }),
+      pac("v7", "000977", "PRUEBA FICTICIA DX", { "Diagnóstico": "POP LAPE + DEHISCENCIA DE ANASTOMOSIS" })],
+    "Cirugías": ["v1", "v2", "v3", "v4", "v5", "v7"].map((id) => cx(id, "2026-11-25", "LAPE + RESECCION INTESTINAL")),
+    "Estado diario": [noche("v4", "2026-11-27", { "Norepinefrina mL/h": "5" }), noche("v5", "2026-11-25", { "Norepinefrina mL/h": "5" })],
+    "Imagen del robot (RIS)": [{ "ID": "1", "ID episodio": "v7", "Fecha": "2026-11-28", "Modalidad": "XA", "Estudios": "DRENAJE PERCUTANEO DE COLECCION" }, { "ID": "2", "ID episodio": "v1", "Fecha": "2026-11-28", "Modalidad": "XA", "Estudios": "ESOFAGOGRAMA" }] };
+  const anV = sb.regAnalisis(fusV, [], [], "2026-12-20", cod), EV = (id) => de(anV, AEV, id), CL = ["Clavien-Dindo mínimo inferido", "Complicación mayor inferida (≥ IIIa)", "Eventos adversos (n)", "Clavien (fuente)"];
+  const cl = (id) => JSON.stringify(CL.map((c) => E1(anV, id)[c]));
+  check("C23a «SIN DATOS DE FUGA DE ANASTOMOSIS», «VIGILAR SANGRADO POSOPERATORIO», «PROBABLE NEUMONIA», «CRUZAR 2 PG» y un antecedente de TEP: ningún evento; el operado queda «Sin evento detectado» y complicación mayor inferida 0 (el estudio de XA que no es drenaje no cuenta)",
+    EV("v1").length === 0 && cl("v1") === JSON.stringify(["Sin evento detectado", 0, 0, ""]), JSON.stringify([EV("v1"), cl("v1")]));
+  check("C23b «SIN FIEBRE, CON FUGA DE ANASTOMOSIS» en Manejo → evento «Fuga / dehiscencia» con certeza «Mención en texto», sin fecha, grado mínimo II; el episodio: Clavien inferido II por mención, mayor 0",
+    EV("v2").length === 1 && EV("v2")[0]["Evento"] === "Fuga / dehiscencia" && EV("v2")[0]["Certeza"] === "Mención en texto" && EV("v2")[0]["Fecha"] === "" && EV("v2")[0]["Grado Clavien mínimo implícito"] === "II" && EV("v2")[0]["Revisado"] === ""
+    && cl("v2") === JSON.stringify(["II", 0, 1, "Mención en texto"]), JSON.stringify([EV("v2"), cl("v2")]));
+  check("C23c defunción → evento objetivo de grado V con la fecha del egreso y su día posoperatorio; Clavien inferido V, complicación mayor inferida 1; el Clavien CAPTURADO no se toca (sigue vacío)",
+    EV("v3").length === 1 && EV("v3")[0]["Evento"] === "Defunción" && EV("v3")[0]["Certeza"] === "Objetivo" && EV("v3")[0]["Fecha"] === "2026-11-30" && EV("v3")[0]["Día posoperatorio"] === 5 && cl("v3") === JSON.stringify(["V", 1, 1, "Objetivo"])
+    && E1(anV, "v3")["Clavien-Dindo máximo"] === "" && E1(anV, "v3")["Complicación mayor (Clavien ≥ IIIa)"] === "", JSON.stringify([EV("v3"), cl("v3")]));
+  check("C23d vasopresor en el diario el día posoperatorio 2 → evento «Vasopresor» objetivo, grado IVa, complicación mayor inferida 1",
+    EV("v4").length === 1 && EV("v4")[0]["Evento"] === "Vasopresor" && EV("v4")[0]["Fecha"] === "2026-11-27" && EV("v4")[0]["Día posoperatorio"] === 2 && cl("v4") === JSON.stringify(["IVa", 1, 1, "Objetivo"]), JSON.stringify([EV("v4"), cl("v4")]));
+  check("C23e vasopresor SOLO la noche de la cirugía (día 0): el evento se lista pero no cuenta para el Clavien inferido (pudo ser el choque que llevó a operar)",
+    EV("v5").length === 1 && EV("v5")[0]["Día posoperatorio"] === 0 && cl("v5") === JSON.stringify(["Sin evento detectado", 0, 1, ""]), JSON.stringify([EV("v5"), cl("v5")]));
+  check("C23f sin cirugía: «CHOQUE SEPTICO» y «SE TRANSFUNDEN 2 PG» dan dos eventos por mención, la neumonía del DIAGNÓSTICO no (es el motivo de ingreso), y el Clavien inferido queda vacío (no aplica)",
+    JSON.stringify(EV("v6").map((x) => x["Evento"]).sort()) === JSON.stringify(["Sepsis / choque", "Transfusión"]) && cl("v6") === JSON.stringify(["", "", 2, ""]), JSON.stringify([EV("v6"), cl("v6")]));
+  check("C23g la dehiscencia escrita en el Diagnóstico sí cuenta (II, «Texto del diagnóstico») y el drenaje percutáneo del RIS (XA, día 3) es objetivo de grado IIIa: Clavien inferido IIIa de fuente objetiva",
+    JSON.stringify(EV("v7").map((x) => [x["Evento"], x["Certeza"], x["Fuente"], x["Día posoperatorio"]]).sort()) === JSON.stringify([["Drenaje percutáneo", "Objetivo", "RIS (intervencionismo)", 3], ["Fuga / dehiscencia", "Mención en texto", "Texto del diagnóstico", ""]])
+    && cl("v7") === JSON.stringify(["IIIa", 1, 2, "Objetivo"]), JSON.stringify([EV("v7"), cl("v7")]));
+  const men = (t, i) => sb.regMencion_(t, sb.REG_EVENTOS_TEXTO[i][1], sb.REG_EVENTOS_TEXTO[i][4]);
+  const iT = (n) => sb.REG_EVENTOS_TEXTO.findIndex((t) => t[0] === n);
+  check("C23h regMencion_: negación, plan, riesgo y antecedente no cuentan; la afirmación después de la negación sí; «TVP: ENOXAPARINA» (profilaxis) no es trombosis",
+    !men("NIEGA TRANSFUSIONES", iT("Transfusión")) && men("SE TRANSFUNDE 1 CE", iT("Transfusión")) && !men("PROFILAXIS TVP DE MIEMBROS", iT("TEV")) && men("TVP DE MIEMBRO PELVICO IZQUIERDO, INICIA ANTICOAGULACION", iT("TEV"))
+    && !men("PENDIENTE DESCARTAR FISTULA ENTEROCUTANEA", iT("Fístula")) && men("FISTULA ENTEROCUTANEA DE BAJO GASTO", iT("Fístula")) && !men("FISTULA PERIANAL", iT("Fístula")) && !men("ILEO BILIAR", iT("Íleo")) && men("CURSA CON ILEO POSTQUIRURGICO", iT("Íleo"))
+    && !men("NO EVISCERACION", iT("Evisceración")) && men("EVISCERACION CONTENIDA", iT("Evisceración")));
+
+  // ─── C24: columnas de apoyo (tipo de egreso probable, reingreso, edad calculada, periodo de captura) ─────────────
+  const fusA = { "Pacientes": [
+      pac("a1", "000981", "PRUEBA FICTICIA SIN MOTIVO", { "Motivo de egreso": SIN, "Pendientes": "LABS DE CONTROL\nALTA A DOMICILIO" }),
+      pac("a2", "000982", "PRUEBA FICTICIA RENGLON", { "Motivo de egreso": SIN, "Pendientes": "PREALTA" }),
+      pac("a3", "000983", "PRUEBA FICTICIA VUELVE", { "Motivo de egreso": SIN }),
+      pac("a4", "000983", "PRUEBA FICTICIA VUELVE", { "Fecha de ingreso": "2026-12-10", "Fecha de egreso": "2026-12-12", "Diagnóstico": "CIERRE DE ILEOSTOMIA PROGRAMADA" }),
+      pac("a5", "000985", "PRUEBA FICTICIA SIGUE", { "Motivo de egreso": SIN }),
+      pac("a6", "000986", "PRUEBA FICTICIA VOLUNTARIA", { "Motivo de egreso": SIN, "Pendientes": "SE FIRMA ALTA VOLUNTARIA" }),
+      pac("a7", "000987", "PRUEBA FICTICIA NO CANDIDATA", { "Motivo de egreso": SIN, "Pendientes": "NO CANDIDATA A ALTA A DOMICILIO\nVALORAR PREALTA" }),
+      pac("a8", "000988", "PRUEBA FICTICIA ANTERIOR", { "Fecha de ingreso": "2026-10-01", "Fecha de egreso": "2026-10-05" }),
+      pac("a9", "000989", "PRUEBA FICTICIA EN CENSO", { "Estado en registro": "Hospitalizado", "Motivo de egreso": "", "Fecha de egreso": "", "Fecha de ingreso": "2026-12-15" }),
+      pac("a10", "000990", "PRUEBA FICTICIA CON CORTE", { "Motivo de egreso": SIN })],
+    "Guardia y cronología": [{ "ID episodio": "a2", "Caja": "Guardia vigente", "Orden": 1, "Renglón": "PACIENTE FALLECE 03:00 H", "Vigente": "Sí" }],
+    "Guardia · renglones retirados": [{ "ID": "9", "ID episodio": "a10", "Fecha y hora": "2026-11-30 12:15", "Motivo": "corte", "Orden": 1, "Renglón": "TRASLADO A OTRO HOSPITAL POR FALTA DE INSUMOS" }],
+    "Labs del robot (WinLab)": [{ "Expediente": "000985", "Paciente": "PRUEBA FICTICIA SIGUE", "Nombre en WinLab": "", "Reporte": "w1", "Toma": "2026-12-03 08:00", "Sexo en WinLab": "F", "Nacimiento en WinLab": "15/06/1970" },
+      { "Expediente": "000981", "Paciente": "PRUEBA FICTICIA SIN MOTIVO", "Nombre en WinLab": "", "Reporte": "w2", "Toma": "2026-11-25 08:00", "Sexo en WinLab": "F", "Nacimiento en WinLab": "30/11/1980" },
+      { "Expediente": "000981", "Paciente": "PRUEBA FICTICIA SIN MOTIVO", "Nombre en WinLab": "", "Reporte": "w3", "Toma": "2026-11-26 08:00", "Sexo en WinLab": "F", "Nacimiento en WinLab": "30/11/1980" },
+      { "Expediente": "000986", "Paciente": "PRUEBA FICTICIA VOLUNTARIA", "Nombre en WinLab": "", "Reporte": "w4", "Toma": "2026-11-25 08:00", "Nacimiento en WinLab": "01/01/1990" },
+      { "Expediente": "000986", "Paciente": "PRUEBA FICTICIA VOLUNTARIA", "Nombre en WinLab": "", "Reporte": "w5", "Toma": "2026-11-26 08:00", "Nacimiento en WinLab": "02/02/1991" },
+      { "Expediente": "000555", "Paciente": "PRUEBA FICTICIA AJENA", "Nombre en WinLab": "", "Reporte": "w6", "Toma": "2026-11-26 08:00" }] };
+  const anA = sb.regAnalisis(fusA, [], [], "2026-12-20", cod), A = (id) => E1(anA, id), ap = (id) => JSON.stringify(sb.REG_EP_APOYO.map((c) => A(id)[c]));
+  check("C24a egresado sin motivo con el renglón «ALTA A DOMICILIO» en Pendientes → «Tipo de egreso (probable)» = Alta con su fuente; «Defunción» sigue VACÍA, «Tipo de egreso» sigue «Motivo no registrado» y «Desenlace conocido» = 0",
+    A("a1")["Tipo de egreso (probable)"] === "Alta" && A("a1")["Fuente del tipo"] === "Texto de guardia, cronología o pendientes" && A("a1")["Defunción"] === "" && A("a1")["Tipo de egreso"] === "Motivo no registrado" && A("a1")["Desenlace conocido"] === 0, ap("a1"));
+  check("C24b un renglón de guardia que habla de un fallecimiento: no se infiere NADA (ni alta por la «PREALTA» ni defunción): el desenlace sigue desconocido",
+    A("a2")["Tipo de egreso (probable)"] === "" && A("a2")["Fuente del tipo"] === "" && A("a2")["Defunción"] === "", ap("a2"));
+  check("C24c reingreso a los 10 días con «CIERRE DE ILEOSTOMIA PROGRAMADA»: días al reingreso 10, planeado 1, reingreso a 30 días 1 y NO planeado a 30 días 0, sin cirugía 0; el egreso sin motivo queda «Volvió al censo» (egresó vivo) sin tocar Defunción",
+    A("a3")["Días al reingreso"] === 10 && A("a3")["Reingreso planeado (probable)"] === 1 && A("a3")["Reingreso a 30 días"] === 1 && A("a3")["Reingreso no planeado a 30 días"] === 0 && A("a3")["Reingreso con cirugía"] === 0
+    && A("a3")["Tipo de egreso (probable)"] === "Volvió al censo" && A("a3")["Defunción"] === "" && A("a4")["Días al reingreso"] === "" && A("a4")["Reingreso planeado (probable)"] === "" && A("a4")["Tipo de egreso (probable)"] === "" && A("a4")["Desenlace conocido"] === 1
+    && !de(anA, AEV, "a3").some((x) => x["Evento"] === "Reingreso 30 d"), ap("a3") + ap("a4"));
+  check("C24d labs de WinLab 3 días después del egreso sin motivo → «Sigue en el hospital»; la fecha de nacimiento de WinLab da «Edad al ingreso (calculada)» = 56 (cumplió en junio) y 45 a quien cumple años 6 días después del ingreso; dos fechas de nacimiento distintas → vacía; sin WinLab → vacía",
+    A("a5")["Tipo de egreso (probable)"] === "Sigue en el hospital" && A("a5")["Fuente del tipo"] === "Labs de WinLab o imagen del RIS posteriores al egreso" && A("a5")["Edad al ingreso (calculada)"] === 56 && A("a1")["Edad al ingreso (calculada)"] === 45
+    && A("a6")["Edad al ingreso (calculada)"] === "" && A("a3")["Edad al ingreso (calculada)"] === "", JSON.stringify(["a5", "a1", "a6", "a3"].map((id) => [A(id)["Tipo de egreso (probable)"], A(id)["Edad al ingreso (calculada)"]])));
+  check("C24e «SE FIRMA ALTA VOLUNTARIA» → Alta voluntaria; «NO CANDIDATA A ALTA A DOMICILIO» y «VALORAR PREALTA» no dan nada; el renglón retirado por la guardia «TRASLADO A OTRO HOSPITAL» → Traslado",
+    A("a6")["Tipo de egreso (probable)"] === "Alta voluntaria" && A("a7")["Tipo de egreso (probable)"] === "" && A("a10")["Tipo de egreso (probable)"] === "Traslado", JSON.stringify(["a6", "a7", "a10"].map((id) => A(id)["Tipo de egreso (probable)"])));
+  check("C24f periodo de captura: egreso anterior al 28 oct 2026 = «Anterior a la captura estructurada», después = «Estructurada»; seguimiento posalta con tope de 30 días (20 a los 20 días del egreso); el hospitalizado no tiene desenlace ni seguimiento",
+    A("a8")["Periodo de captura"] === "Anterior a la captura estructurada" && A("a1")["Periodo de captura"] === "Estructurada" && A("a9")["Periodo de captura"] === "Estructurada" && A("a8")["Seguimiento posalta observable (días)"] === 30
+    && A("a1")["Seguimiento posalta observable (días)"] === 20 && A("a9")["Seguimiento posalta observable (días)"] === "" && A("a9")["Desenlace conocido"] === "" && A("a8")["Desenlace conocido"] === 1 && A("a8")["Reingreso no planeado a 30 días"] === 0, ap("a8") + ap("a9"));
+  // Reingreso NO planeado: el mismo caso sin la palabra «programada» y con una cirugía en el reingreso.
+  const fusN = { "Pacientes": [pac("n1", "000995", "PRUEBA FICTICIA REINGRESA"), pac("n2", "000995", "PRUEBA FICTICIA REINGRESA", { "Fecha de ingreso": "2026-12-05", "Fecha de egreso": "2026-12-09", "Diagnóstico": "ABSCESO RESIDUAL" })],
+    "Cirugías": [cx("n2", "2026-12-06", "DRENAJE DE ABSCESO")] };
+  const anN = sb.regAnalisis(fusN, [], [], "2026-12-20", cod), evN = de(anN, AEV, "n1");
+  check("C24g reingreso a los 5 días por absceso, con cirugía: planeado 0, no planeado a 30 días 1, con cirugía 1, y entra a «Eventos adversos» como «Reingreso 30 d» con la fecha del reingreso (sin grado de Clavien)",
+    E1(anN, "n1")["Días al reingreso"] === 5 && E1(anN, "n1")["Reingreso planeado (probable)"] === 0 && E1(anN, "n1")["Reingreso no planeado a 30 días"] === 1 && E1(anN, "n1")["Reingreso con cirugía"] === 1
+    && evN.length === 1 && evN[0]["Evento"] === "Reingreso 30 d" && evN[0]["Fecha"] === "2026-12-05" && evN[0]["Grado Clavien mínimo implícito"] === "", JSON.stringify([sb.REG_EP_APOYO.map((c) => E1(anN, "n1")[c]), evN]));
+
+  // ─── C25: «Completitud», «Flujo de la cohorte» y porcentajes de llenado en el Resumen mensual ────────────────────
+  const fusK = { "Pacientes": [pac("k1", "000901", "PRUEBA FICTICIA COMPLETA", { "Fecha de ingreso": "2026-11-10", "Fecha de egreso": "2026-11-15" }),
+      pac("k2", "000902", "PRUEBA FICTICIA INCOMPLETA", { "Sexo": "", "Motivo de egreso": SIN, "Fecha de ingreso": "2026-11-12", "Fecha de egreso": "2026-11-16", "Expediente": "S/E" }),
+      pac("k3", "000903", "PRUEBA FICTICIA DUPLICADA", { "Motivo de egreso": "DUPLICADO (eliminado a mano)", "Fecha de ingreso": "2026-11-12", "Fecha de egreso": "2026-11-13" }),
+      pac("k4", "000904", "PRUEBA FICTICIA SIN INGRESO", { "Sexo": "M", "Fecha de ingreso": "", "Fecha de egreso": "2026-12-02" })],
+    "Cirugías": [cx("k1", "2026-11-11", "LAPE", { "Tipo": "Urgencia" }), cx("k1", "", "LAVADO QUIRURGICO")],
+    "Signos vitales": [{ "ID episodio": "k1", "Fecha": "2026-11-11", "FC": "80" }, { "ID episodio": "k2", "Fecha": "2026-11-15", "FC": "80" }],
+    "Labs del robot (WinLab)": [{ "Expediente": "000777", "Paciente": "PRUEBA FICTICIA AJENA", "Nombre en WinLab": "", "Reporte": "w9", "Toma": "2026-11-12 08:00" }],
+    "Cultivos del robot (WinLab)": [{ "Expediente": "000777", "Paciente": "PRUEBA FICTICIA AJENA", "Reporte": "c9", "N": "1", "Toma": "2026-11-12 08:00", "Tipo": "Urocultivo", "Muestra": "ORINA", "Resultado": "Negativo" }] };
+  const anK = sb.regAnalisis(fusK, [], [], "2026-12-20", cod), co = (mes, v) => { const r = anK[ACO].find((x) => x["Mes de ingreso"] === mes && x["Variable"] === v); return r ? [r["Con dato (n)"], r["Aplicables (n)"], r["Completitud (%)"]] : null; };
+  check("C25a 4 episodios (2 con sexo, 1 tarjeta duplicada, 1 sin fecha de ingreso): la duplicada no cuenta; en noviembre el sexo está en 1 de 2 (50 %) y en «Acumulado» en 2 de 3 (66.7 %); el sin ingreso solo entra en «Acumulado»",
+    JSON.stringify(co("2026-11", "Sexo (cualquier fuente)")) === "[1,2,50]" && JSON.stringify(co("Acumulado", "Sexo (cualquier fuente)")) === "[2,3,66.7]" && JSON.stringify(co("Acumulado", "Fecha de ingreso")) === "[2,3,66.7]"
+    && JSON.stringify(co("2026-11", "Fecha de ingreso")) === "[2,2,100]" && !anK[ACO].some((x) => x["Mes de ingreso"] === ""), JSON.stringify(anK[ACO].filter((x) => /Sexo|Fecha de ingreso/.test(x["Variable"]))));
+  check("C25b cada variable con su denominador: el tipo de egreso solo aplica a egresados (2 de 3 con motivo), la tromboprofilaxis solo a operados (0 de 1), expediente válido 2 de 3, signos el día 0-1 en 1 de 3, y por CIRUGÍA: con fecha 1 de 2, con tipo 1 de 2",
+    JSON.stringify(co("Acumulado", "Tipo de egreso (motivo registrado)")) === "[2,3,66.7]" && JSON.stringify(co("Acumulado", "Tromboprofilaxis registrada (operados)")) === "[0,1,0]" && JSON.stringify(co("Acumulado", "Expediente válido")) === "[2,3,66.7]"
+    && JSON.stringify(co("Acumulado", "Signos vitales el día 0 o 1")) === "[1,3,33.3]" && JSON.stringify(co("2026-11", "Cirugía con fecha")) === "[1,2,50]" && JSON.stringify(co("Acumulado", "Cirugía con tipo (urgencia / electiva)")) === "[1,2,50]",
+    JSON.stringify(anK[ACO].filter((x) => x["Mes de ingreso"] === "Acumulado").map((x) => [x["Variable"], x["Con dato (n)"], x["Aplicables (n)"]])));
+  const fl = anK[AFL].map((x) => [x["Orden"], x["Paso"].replace(/ \(.*$/, ""), x["Episodios (n)"]]);
+  // 24 nov 2026 (revisión): el episodio sin fecha de ingreso ya NO se resta (tiene egreso y desenlace: entra a los
+  // denominadores de mortalidad); se cuenta aparte al final, y «analizables» es el universo de los indicadores.
+  const morK = anK[AIN].find((x) => x["Periodo"] === "Acumulado" && x["Indicador"] === "Mortalidad hospitalaria (desenlace conocido)" && x["Estrato"] === "Todos");
+  check("C25c el flujo de la cohorte resta en orden: 4 en el registro − 1 duplicada − 0 borrados − 0 hospitalizados − 1 sin desenlace = 2 analizables (operado 1, con labs seriados 0, sin fecha de ingreso 1) = denominador de la mortalidad con desenlace conocido; 1 cultivo y 1 expediente de WinLab sin episodio",
+    JSON.stringify(fl.map((x) => x[2])) === JSON.stringify([4, 1, 0, 0, 1, 2, 1, 0, 1, 1, 1]) && fl[0][1] === "Episodios en el registro" && /^= Episodios analizables/.test(fl[5][1]) && morK && morK["Denominador"] === fl[5][2] && fl.every((x, i) => x[0] === i + 1) && new Set(anK[AFL].map((x) => x["Paso"])).size === fl.length,
+    JSON.stringify(fl));
+  const rk = anK["Resumen mensual"].find((x) => x["Mes"] === "2026-11");
+  check("C25d Resumen mensual: «Egresos con motivo (%)» = 50 (1 de 2 egresos de noviembre), «Con sexo (%)» = 50 (1 de 2 ingresos) y «Episodios sin labs (n)» = 2; las tres van al final de la pestaña",
+    rk && rk["Egresos con motivo (%)"] === 50 && rk["Con sexo (%)"] === 50 && rk["Episodios sin labs (n)"] === 2 && JSON.stringify(sb.REG_RESUMEN_COLUMNAS.slice(-3)) === JSON.stringify(["Egresos con motivo (%)", "Con sexo (%)", "Episodios sin labs (n)"])
+    && sb.REG_RESUMEN_COLUMNAS.indexOf("Ingresos sin talla (n)") === sb.REG_RESUMEN_COLUMNAS.length - 4, JSON.stringify(rk));
+  const varsT = sb.regVariables_().slice(1);
+  check("C25e el Diccionario de variables tiene las secciones «Sesgos y limitaciones» y «No disponible en esta fuente» (ASA, clase de herida, profilaxis, seguimiento a 30 días…)",
+    varsT.filter((v) => v[0] === "Sesgos y limitaciones").length >= 5 && varsT.filter((v) => v[0] === "No disponible en esta fuente").length >= 6 && varsT.some((v) => v[0] === "No disponible en esta fuente" && /ASA/.test(v[1])));
+
+  // ─── C26: «Indicadores de calidad» (numerador, denominador, IC 95 % de Wilson) ───────────────────────────────────
+  const w = [sb.regWilson_(2, 20), sb.regWilson_(0, 10), sb.regWilson_(10, 10), sb.regWilson_(0, 0), sb.regWilson_(5, 3)];
+  check("C26a Wilson: 2 de 20 → 2.8 % a 30.1 %; 0 de 10 → 0 a 27.8; 10 de 10 → 72.2 a 100; sin denominador o imposible → vacío", JSON.stringify(w) === JSON.stringify([[2.8, 30.1], [0, 27.8], [72.2, 100], ["", ""], ["", ""]]), JSON.stringify(w));
+  const epI = (i, egreso, def, extra) => Object.assign({ "ID episodio": "E-" + i, "Egreso observado": 1, "Excluir (duplicado)": 0, "Fecha de egreso": egreso, "Defunción": def, "Días de estancia": 4, "Cirugías (n)": 0, "Dx principal": i < 12 ? "Apendicitis aguda" : (i < 15 ? "Hernia" : ""),
+    "Días con antibiótico (observados)": 2, "Cobertura del diario (%)": 100 }, extra || {});
+  const epsI = [];
+  for (let i = 0; i < 20; i++) epsI.push(epI(i, "2026-11-15", i < 2 ? 1 : 0));
+  for (let i = 20; i < 25; i++) epsI.push(epI(i, "2026-12-03", i === 20 ? 1 : 0));
+  for (let i = 25; i < 28; i++) epsI.push(epI(i, "2026-12-04", "", { "Cobertura del diario (%)": 40 }));
+  epsI.push(epI(98, "2026-11-20", 1, { "Excluir (duplicado)": 1 }), epI(99, "", 0, { "Egreso observado": 0 }));
+  const cxI = [];
+  for (let i = 0; i < 20; i++) cxI.push({ "ID episodio": "E-" + i, "Fecha": "2026-11-05", "Abordaje": i < 10 ? "Laparoscópica" : (i < 12 ? "Convertida (laparoscópica → abierta)" : "Abierta"), "Tipo": "Urgencia", "Grupo": "Apendicectomía" });
+  cxI.push({ "ID episodio": "E-0", "Fecha": "", "Fecha estimada": "2026-11-01", "Abordaje": "", "Tipo": "", "Grupo": "" });
+  const atbI = [{ "ID episodio": "E-0", "AWaRe": "Watch", "Días de tratamiento": 6 }, { "ID episodio": "E-1", "AWaRe": "Access", "Días de tratamiento": 4 }, { "ID episodio": "E-2", "AWaRe": "", "Días de tratamiento": 3 }, { "ID episodio": "E-98", "AWaRe": "Reserve", "Días de tratamiento": 9 }];
+  const ind = sb.regIndicadores_(epsI, cxI, atbI), I = (p, n, s) => ind.find((x) => x["Periodo"] === p && x["Indicador"] === n && x["Estrato"] === (s || "Todos"));
+  const nums = (r) => r ? [r["Numerador"], r["Denominador"], r["Tasa (%)"], r["IC95 inferior"], r["IC95 superior"], r["Excluidos por dato faltante (n)"]] : null;
+  const MORT = "Mortalidad hospitalaria (desenlace conocido)", MORT2 = "Mortalidad hospitalaria (desconocidos como vivos)";
+  check("C26b mortalidad de noviembre: 2 de 20 → 10 % con IC 95 % de 2.8 a 30.1; la tarjeta duplicada y el que no ha egresado no entran",
+    JSON.stringify(nums(I("2026-11", MORT))) === JSON.stringify([2, 20, 10, 2.8, 30.1, 0]) && I("2026-11", MORT)["Unidad"] === "%" && /Defunciones ÷ egresos con motivo/.test(I("2026-11", MORT)["Definición"]), JSON.stringify(I("2026-11", MORT)));
+  check("C26c denominador 5 (diciembre): tasa e IC VACÍOS, pero el numerador, el denominador y los 3 excluidos por dato faltante están",
+    JSON.stringify(nums(I("2026-12", MORT))) === JSON.stringify([1, 5, "", "", "", 3]), JSON.stringify(I("2026-12", MORT)));
+  check("C26d sensibilidad: en «Acumulado», 3 de 25 con desenlace conocido (12 %) contra 3 de 28 contando a los desconocidos como vivos (10.7 %); el trimestre 2026-T4 junta los dos meses",
+    JSON.stringify(nums(I("Acumulado", MORT)).slice(0, 3).concat(nums(I("Acumulado", MORT))[5])) === "[3,25,12,3]" && JSON.stringify(nums(I("Acumulado", MORT2)).slice(0, 3).concat(nums(I("Acumulado", MORT2))[5])) === "[3,28,10.7,0]"
+    && JSON.stringify(nums(I("2026-T4", MORT)).slice(0, 2)) === "[3,25]", JSON.stringify([I("Acumulado", MORT), I("Acumulado", MORT2), I("2026-T4", MORT)]));
+  check("C26e estratos sin gastar celdas: el mes solo lleva «Todos»; «Acumulado» lleva «Dx: Apendicitis aguda» (12 casos) y no «Dx: Hernia» (3, menos de 10); el trimestre lleva Urgencia en las cirugías pero no el Dx",
+    !ind.some((x) => /^\d{4}-\d{2}$/.test(x["Periodo"]) && x["Estrato"] !== "Todos") && JSON.stringify(nums(I("Acumulado", MORT, "Dx: Apendicitis aguda")).slice(0, 2)) === "[2,12]" && !I("Acumulado", MORT, "Dx: Hernia")
+    && !ind.some((x) => /-T\d$/.test(x["Periodo"]) && /: /.test(x["Estrato"])) && !!I("2026-T4", "Abordaje laparoscópico", "Urgencia") && !!I("Acumulado", "Abordaje laparoscópico", "Cirugía: Apendicectomía"),
+    JSON.stringify([...new Set(ind.map((x) => x["Periodo"] + "|" + x["Estrato"]))]));
+  check("C26f por cirugía: laparoscopía 12 de 20 con abordaje (60 %; la que no lo tiene va en excluidos) y conversión 2 de 12 (16.7 %); la mediana de estancia va en «Valor» con su unidad y sin numerador",
+    JSON.stringify(nums(I("2026-11", "Abordaje laparoscópico")).slice(0, 3).concat(nums(I("2026-11", "Abordaje laparoscópico"))[5])) === "[12,20,60,1]" && JSON.stringify(nums(I("2026-11", "Conversión a cirugía abierta")).slice(0, 3)) === "[2,12,16.7]"
+    && I("2026-11", "Estancia (días)")["Valor"] === 4 && I("2026-11", "Estancia (días)")["Unidad"] === "días (mediana)" && I("2026-11", "Estancia (días)")["Numerador"] === "" && I("2026-11", "Estancia (días)")["Denominador"] === 20 && I("2026-11", "Estancia (días)")["Tasa (%)"] === "",
+    JSON.stringify([I("2026-11", "Abordaje laparoscópico"), I("2026-11", "Conversión a cirugía abierta"), I("2026-11", "Estancia (días)")]));
+  const dot = I("2026-11", "Días de antibiótico por 100 días-paciente"), awa = I("2026-11", "Días de antibiótico Watch o Reserve (AWaRe)");
+  check("C26g razones sin IC: 40 días de antibiótico en 80 días-paciente = 50 por 100 (los de cobertura del diario < 80 % se excluyen); Watch o Reserve 6 de 10 días clasificados = 60 % con 3 cursos (menos de 10): sin valor, y el curso sin AWaRe en excluidos",
+    dot && dot["Numerador"] === 40 && dot["Denominador"] === 80 && dot["Valor"] === 50 && dot["IC95 inferior"] === "" && dot["Tasa (%)"] === "" && I("2026-12", "Días de antibiótico por 100 días-paciente")["Excluidos por dato faltante (n)"] === 3
+    && awa && awa["Numerador"] === 6 && awa["Denominador"] === 10 && awa["Valor"] === "" && awa["Excluidos por dato faltante (n)"] === 1, JSON.stringify([dot, awa]));
+  check("C26h claves únicas (Periodo + Indicador + Estrato) y orden: meses, luego trimestres, luego «Acumulado»",
+    new Set(ind.map((x) => x["Periodo"] + "|" + x["Indicador"] + "|" + x["Estrato"])).size === ind.length && JSON.stringify([...new Set(ind.map((x) => x["Periodo"]))]) === JSON.stringify(["2026-11", "2026-12", "2026-T4", "Acumulado"]));
+
+  // ─── C27: «Análisis · Antibióticos» por curso ────────────────────────────────────────────────────────────────────
+  const man = (id, fecha, nombres) => noche(id, fecha, { "Antibióticos en Manejo (detectados)": nombres });
+  const evS = (id, idEp, ts, variable, a) => ({ "ID": String(id), "ID episodio": idEp, "Fecha y hora": ts, "Variable": variable, "De": "", "A": a, "Quién": "U-X" });
+  const fusM = { "Pacientes": [pac("m1", "000911", "PRUEBA FICTICIA CURSO", { "Fecha de egreso": "2026-12-02" }), pac("m2", "000912", "PRUEBA FICTICIA DIA CINCO", { "Fecha de egreso": "2026-12-02" }),
+      pac("m3", "000913", "PRUEBA FICTICIA HUECO", { "Fecha de egreso": "2026-12-02" }), pac("m4", "000914", "PRUEBA FICTICIA CULTIVO", { "Fecha de egreso": "2026-11-28" }), pac("m5", "000915", "PRUEBA FICTICIA HISTORIAL", { "Fecha de egreso": "2026-12-02" }),
+      pac("m6", "000916", "PRUEBA FICTICIA PARTIDO", { "Fecha de egreso": "2026-12-02" })],
+    "Cirugías": [cx("m4", "2026-11-24", "LAPE")],
+    "Estado diario": [man("m1", "2026-11-24", "MEROPENEM"), man("m1", "2026-11-25", "MEROPENEM"), man("m1", "2026-11-26", "MEROPENEM"), man("m1", "2026-11-27", ""), man("m1", "2026-11-28", ""),
+      noche("m2", "2026-11-26", { "ATB (casilla)": "Sí", "Antibiótico (texto)": "MEROPENEM D5 + VANCOMICINA" }), noche("m2", "2026-11-27", { "ATB (casilla)": "No", "Antibiótico (texto)": "MEROPENEM D5 + VANCOMICINA" }),
+      man("m3", "2026-11-25", "CEFTRIAXONA"), man("m3", "2026-11-27", "CEFTRIAXONA"),
+      man("m6", "2026-11-25", "CEFTRIAXONA"), man("m6", "2026-11-26", ""), man("m6", "2026-11-27", "CEFTRIAXONA"),
+      man("m4", "2026-11-25", "CEFTRIAXONA"), man("m4", "2026-11-26", "MEROPENEM"), man("m4", "2026-11-27", "MEROPENEM · FLUCONAZOL")],
+    "Soporte y exposiciones (historial)": [evS(1, "m5", "2026-11-25 15:00:00", "Antibiótico (texto)", "IMIPENEM 500 MG C/6 H"), evS(2, "m5", "2026-11-28 15:00:00", "Antibiótico (casilla)", "No")],
+    "Cultivos del robot (WinLab)": [{ "Expediente": "000914", "Paciente": "PRUEBA FICTICIA CULTIVO", "Reporte": "c1", "N": "1", "Toma": "2026-11-24 10:00", "Tipo": "Cultivo de líquido", "Muestra": "LIQUIDO PERITONEAL", "Resultado": "POSITIVO",
+      "Germen": "Escherichia coli (BLEE)", "Sensibles": "MEROPENEM <=0.25 · AMIKACINA <=2", "Intermedios": "", "Resistentes": "CEFTRIAXONA >=64" }] };
+  const anM = sb.regAnalisis(fusM, [], [], "2026-12-20", cod), AB = (id) => de(anM, AAB, id), ab = (r) => [r["Antibiótico"], r["Inicio"], r["Inicio estimado"], r["Fin"], r["Días de tratamiento"], r["Fuente"]];
+  check("C27a 3 noches con MEROPENEM y luego ninguna → 1 curso de 3 días (carbapenémico, Watch, «Texto de manejo»), que no sigue al egreso",
+    AB("m1").length === 1 && JSON.stringify(ab(AB("m1")[0])) === JSON.stringify(["MEROPENEM", "2026-11-24", "", "2026-11-26", 3, "Texto de manejo"]) && AB("m1")[0]["Clase"] === "Carbapenémico" && AB("m1")[0]["AWaRe"] === "Watch" && AB("m1")[0]["Sigue al egreso"] === 0
+    && AB("m1")[0]["ID paciente"] === E1(anM, "m1")["ID paciente"] && AB("m1")[0]["Vigente"] === "Sí", JSON.stringify(AB("m1")));
+  // 24 nov 2026 (revisión): el inicio estimado se topa en el ingreso (el 24): los días de antes no son de esta estancia.
+  check("C27b «MEROPENEM D5» visto por primera vez el día 26 → inicio estimado = fecha − 4 (el 22), topado en el ingreso (el 24): 3 días de tratamiento; la vancomicina de la misma casilla no trae día: sin estimado, 1 día; la noche con la casilla apagada no cuenta aunque el texto siga escrito",
+    JSON.stringify(AB("m2").map(ab)) === JSON.stringify([["MEROPENEM", "2026-11-26", "2026-11-24", "2026-11-26", 3, "Casilla"], ["VANCOMICINA", "2026-11-26", "", "2026-11-26", 1, "Casilla"]]), JSON.stringify(AB("m2")));
+  check("C27c una noche SIN foto en medio no parte el curso (25 a 27 = 3 días); una noche CON foto y sin el antibiótico sí lo parte en dos cursos de 1 día",
+    JSON.stringify(AB("m3").map(ab)) === JSON.stringify([["CEFTRIAXONA", "2026-11-25", "", "2026-11-27", 3, "Texto de manejo"]])
+    && JSON.stringify(AB("m6").map(ab)) === JSON.stringify([["CEFTRIAXONA", "2026-11-25", "", "2026-11-25", 1, "Texto de manejo"], ["CEFTRIAXONA", "2026-11-27", "", "2026-11-27", 1, "Texto de manejo"]]), JSON.stringify([AB("m3"), AB("m6")]));
+  const m4 = Object.fromEntries(AB("m4").map((r) => [r["Antibiótico"], r]));
+  check("C27d con cultivo: ceftriaxona con el germen RESISTENTE → concordante 0; meropenem sensible → 1; fluconazol no probado → vacío y sin AWaRe; cultivo previo 1, germen sin la marca, días desde la cirugía, y el meropenem que llega a la última noche «sigue al egreso»",
+    m4["CEFTRIAXONA"]["Concordante con antibiograma"] === 0 && m4["MEROPENEM"]["Concordante con antibiograma"] === 1 && m4["FLUCONAZOL"]["Concordante con antibiograma"] === "" && m4["FLUCONAZOL"]["AWaRe"] === "" && m4["CEFTRIAXONA"]["Cultivo previo o ≤24 h"] === 1
+    && m4["CEFTRIAXONA"]["Germen aislado"] === "Escherichia coli" && m4["CEFTRIAXONA"]["Días desde la última cirugía"] === 1 && m4["MEROPENEM"]["Días desde la última cirugía"] === 2 && m4["MEROPENEM"]["Sigue al egreso"] === 1 && m4["CEFTRIAXONA"]["Sigue al egreso"] === 0
+    && AB("m1")[0]["Cultivo previo o ≤24 h"] === 0 && AB("m1")[0]["Concordante con antibiograma"] === "", JSON.stringify(AB("m4")));
+  check("C27e sin fotos: el historial de auditoría llena del día en que se escribió el antibiótico a la víspera del apagado de la casilla (25, 26 y 27: 3 días, fuente «Historial»)",
+    JSON.stringify(AB("m5").map(ab)) === JSON.stringify([["IMIPENEM", "2026-11-25", "", "2026-11-27", 3, "Historial"]]), JSON.stringify(AB("m5")));
+  const dn = [sb.regAtbDiaN_("MEROPENEM 1 G C/8 H D5/14"), sb.regAtbDiaN_("VANCO DIA 3, CEFEPIME 2 G"), sb.regAtbDiaN_("CEFTRIAXONA 1 G IV C/12 H DOSIS 2"), sb.regAtbDiaN_("PIP/TAZO D-2 + METRO (D 7)")];
+  check("C27f regAtbDiaN_: «D5/14», «DIA 3», «D-2» y «(D 7)» junto a su antibiótico; «DOSIS 2» no es un día",
+    JSON.stringify(dn) === JSON.stringify([{ "MEROPENEM": 5 }, { "VANCOMICINA": 3 }, {}, { "PIPERACILINA/TAZOBACTAM": 2, "METRONIDAZOL": 7 }]), JSON.stringify(dn));
+  const awM = sb.regIndicadores_(anM[AN[0]], anM[AQ], anM[AAB]).find((x) => x["Periodo"] === "Acumulado" && x["Indicador"] === "Días de antibiótico Watch o Reserve (AWaRe)" && x["Estrato"] === "Todos");
+  check("C27g los cursos alimentan el indicador AWaRe: todos los días clasificados de estos episodios son Watch (meropenem, ceftriaxona, vancomicina, imipenem) y el fluconazol va en excluidos",
+    awM && awM["Numerador"] === awM["Denominador"] && awM["Denominador"] === 3 + 3 + 1 + 3 + 1 + 1 + 1 + 2 + 3 && awM["Excluidos por dato faltante (n)"] === 1, JSON.stringify(awM));
+
+  // ─── Estructura: lo nuevo va al final, con formato, sin identificadores y definido en el Diccionario de variables ─
+  const colsE = sb.REG_ANALISIS[0].columnas, nombres = sb.REG_ANALISIS.map((c) => c.nombre);
+  check("C23i las 15 columnas nuevas de Episodios van al final (después de «Riesgo preoperatorio simple (0-6)») y las 5 pestañas nuevas van después de «Análisis · Cirugías», en este orden",
+    JSON.stringify(colsE.slice(-15)) === JSON.stringify(sb.REG_EP_APOYO.concat(sb.REG_EP_EVENTOS)) && colsE[colsE.length - 16] === "Riesgo preoperatorio simple (0-6)" && sb.REG_EP_LOTE_C2.length === 15
+    && JSON.stringify(nombres.slice(nombres.indexOf(AQ))) === JSON.stringify([AQ, AEV, AAB, ACO, AFL, AIN]), JSON.stringify(nombres));
+  const sinDef = [];
+  sb.REG_EP_LOTE_C2.forEach((c) => { const v = varsT.find((r) => r[0] === AN[0] && r[1].split(" · ").indexOf(c) !== -1); if (!v || !/Sesgo/.test(v[4])) sinDef.push(c); });
+  [AEV, AAB, ACO, AFL, AIN].forEach((n) => sb.REG_ANALISIS.find((c) => c.nombre === n).columnas.forEach((c) => { if (!varsT.some((r) => (r[0] === n || r[0] === "Todas") && r[1].split(" · ").indexOf(c) !== -1)) sinDef.push(n + "/" + c); }));
+  check("C23j el Diccionario de variables define cada columna nueva de Episodios CON su sesgo conocido y todas las de las 5 pestañas nuevas", !sinDef.length, sinDef.join(" | "));
+  check("C23k pestañas compactas: ninguna de las 5 nuevas lleva Expediente, Nombre, Paciente ni fecha de nacimiento; «Revisado» de Eventos se conserva de la hoja (conservarViejo)",
+    [AEV, AAB, ACO, AFL, AIN].every((n) => !sb.REG_ANALISIS.find((c) => c.nombre === n).columnas.some((c) => /Expediente|Nombre|^Paciente$|Nacimiento/.test(c))) && colsE.indexOf("Nacimiento en WinLab") === -1
+    && JSON.stringify(sb.REG_ANALISIS.find((c) => c.nombre === AEV).conservarViejo) === JSON.stringify(["Revisado"]));
+}
+
+// ─── C23-C27 de punta a punta por actualizarRegistro: las pestañas se escriben, son idempotentes y no llevan nombres ───
+{
+  const d = VACIO();
+  d.archive = [egresado("ae1", "e1", "PRUEBA FICTICIA EVENTO", "000991", "2026-11-10", "2026-11-20", { edad: "46" }, { manejo: "MEROPENEM 1 G C/8 H\nCURSA CON FUGA DE ANASTOMOSIS", pendientes: "ALTA A DOMICILIO",
+    checklist: { sexo: "F", cirugias: [{ id: "cx-e1", fecha: "2026-11-11", procedimiento: "LAPE + ANASTOMOSIS", tipo: "urgencia", abordaje: "abierta" }] } })];
+  d.winlab_labs = [{ id: 1, exp: "000991", paciente: "PRUEBA FICTICIA EVENTO", fecha: "2026-11-12", scraped_at: "2026-11-12T08:00:00+00:00", data: { reportes: [
+    { __hasLink: false, __cells: ["", "", "000991", "PRUEBA FICTICIA", "EVENTO", "FEMENINO", "20/11/1979"] },
+    { __hasLink: true, __target: true, __cells: ["", "", "F991", "12/11/2026 06:00", "12/11/2026 07:00", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOGLOBINA", valor: "12.0" }] }] } }];
+  const st = { db: d, hoy: "2026-11-24" }; const m = makeSandbox(st), r = m.sb.actualizarRegistro();
+  const E = episodiosDe(st.ss)("e1"), EVT = tab(st.ss, AEV), W = tab(st.ss, "Labs del robot (WinLab)");
+  check("C23l de punta a punta: la corrida escribe las 5 pestañas nuevas con el encabezado de su configuración (termina en «Vigente») y sin avisos",
+    r.ok && !r.avisos.length && [AEV, AAB, ACO, AFL, AIN].every((n) => st.ss.sheets[n] && JSON.stringify(st.ss.sheets[n].cells[0]) === JSON.stringify(m.sb.REG_ANALISIS.find((c) => c.nombre === n).columnas) && st.ss.sheets[n].cells[0].slice(-1)[0] === "Vigente")
+    && tab(st.ss, AFL).length === 11 && tab(st.ss, ACO).length > 10 && tab(st.ss, AIN).length > 10, JSON.stringify(r.avisos));
+  check("C23m el egresado sin motivo con «ALTA A DOMICILIO» y la fuga escrita en Manejo: tipo probable Alta, Defunción vacía, 1 evento (fuga, mención en texto), Clavien inferido II; periodo «Estructurada»",
+    E["Tipo de egreso (probable)"] === "Alta" && E["Defunción"] === "" && E["Eventos adversos (n)"] === 1 && E["Clavien-Dindo mínimo inferido"] === "II" && E["Clavien (fuente)"] === "Mención en texto" && E["Complicación mayor inferida (≥ IIIa)"] === 0
+    && E["Periodo de captura"] === "Estructurada" && EVT.length === 1 && EVT[0]["Evento"] === "Fuga / dehiscencia" && EVT[0]["ID episodio"] === E["ID episodio"], JSON.stringify([m.sb.REG_EP_LOTE_C2.map((c) => E[c]), EVT]));
+  check("C24h «Labs del robot (WinLab)» guarda la fecha de nacimiento del encabezado en su ÚLTIMA columna y de ahí sale «Edad al ingreso (calculada)» = 46 (cumple 47 diez días después del ingreso); la fecha no llega a ninguna pestaña de análisis",
+    W.length === 1 && W[0]["Nacimiento en WinLab"] === "20/11/1979" && st.ss.sheets["Labs del robot (WinLab)"].cells[0].slice(-2).join("|") === "Sexo en WinLab|Nacimiento en WinLab" && E["Edad al ingreso (calculada)"] === 46
+    && !/20\/11\/1979|1979-11-20/.test(JSON.stringify(m.sb.REG_ANALISIS.map((c) => st.ss.sheets[c.nombre].cells))), JSON.stringify([W, E["Edad al ingreso (calculada)"]]));
+  const tN = JSON.stringify([AEV, AAB, ACO, AFL, AIN].map((n) => st.ss.sheets[n].cells));
+  check("C23n ninguna de las 5 pestañas nuevas lleva el nombre, el expediente ni el id de la base", !/FICTICIA|000991|"e1"|"ae1"|cx-e1/.test(tN), (tN.match(/FICTICIA|000991|"e1"|"ae1"|cx-e1/) || [])[0]);
+  const formatoDe = (n, col) => { const sh = st.ss.sheets[n]; return sh.fmt["2:" + (sh.cells[0].indexOf(col) + 1)]; };
+  check("C26i los números se guardan como número (formato de la configuración) y los textos como texto plano", formatoDe(AIN, "Denominador") === "0" && formatoDe(AIN, "Tasa (%)") === "0.0#####" && formatoDe(AIN, "Indicador") === "@" && formatoDe(ACO, "Completitud (%)") === "0.0#####"
+    && formatoDe(AFL, "Episodios (n)") === "0" && formatoDe(AEV, "Evento") === "@");
+  // Quien valida escribe en «Revisado»; la corrida siguiente no lo pisa y no reescribe nada.
+  const shE = st.ss.sheets[AEV]; shE.cells[1][shE.cells[0].indexOf("Revisado")] = "Confirmado · FICT 24-nov";
+  const s1 = snap(st.ss); makeSandbox(st).sb.actualizarRegistro();
+  check("C23o idempotente: otra corrida con la misma base deja todo igual y «Revisado» (escrito a mano en la hoja) se conserva", snap(st.ss) === s1 && tab(st.ss, AEV)[0]["Revisado"] === "Confirmado · FICT 24-nov");
+  // Al día siguiente registran el motivo (defunción): el evento de la fuga conserva su «Revisado», entra la defunción y nunca se pierden filas.
+  d.archive[0].note_data._egreso = "DEFUNCIÓN"; st.hoy = "2026-11-25"; makeSandbox(st).sb.actualizarRegistro();
+  const EVT2 = tab(st.ss, AEV), E2 = episodiosDe(st.ss)("e1");
+  check("C23p al registrarse la defunción: entra el evento «Defunción» (V, objetivo), la fuga sigue con su «Revisado», el tipo probable se vacía (ya hay motivo) y el Clavien inferido sube a V",
+    EVT2.length === 2 && EVT2[0]["Revisado"] === "Confirmado · FICT 24-nov" && EVT2[0]["Vigente"] === "Sí" && EVT2[1]["Evento"] === "Defunción" && EVT2[1]["Grado Clavien mínimo implícito"] === "V" && E2["Tipo de egreso (probable)"] === ""
+    && E2["Defunción"] === 1 && E2["Clavien-Dindo mínimo inferido"] === "V" && E2["Clavien (fuente)"] === "Objetivo" && E2["Desenlace conocido"] === 1, JSON.stringify([EVT2, m.sb.REG_EP_LOTE_C2.map((c) => E2[c])]));
+}
+
+// ─── V: correcciones de la revisión del 24 nov 2026 (tres revisores; el número es el del hallazgo). Datos FICTICIOS. ───
+{
+  const sb = makeSandbox({ db: VACIO() }).sb, cod = (pre, ident) => pre + "-" + ident;
+  const pac = (id, exp, nombre, extra) => Object.assign({ "ID episodio": id, "Estado en registro": "Egresado", "Motivo de egreso": "ALTA (registrado en la app)", "Expediente": exp, "Nombre": nombre, "Edad": "45", "Sexo": "F",
+    "Fecha de ingreso": "2026-11-24", "Fecha de egreso": "2026-11-30", "Diagnóstico": "OCLUSION INTESTINAL" }, extra || {});
+  const cx = (id, fecha, proc, extra) => Object.assign({ "ID episodio": id, "Fecha": fecha, "Procedimiento": proc, "Grupo": sb.regCxGrupo(proc) || "Otro", "Fuente": "Caja Cirugías", "Vigente": "Sí" }, extra || {});
+  const noche = (id, fecha, o) => Object.assign({ "ID episodio": id, "Fecha": fecha, "ATB (casilla)": "No", "Antibióticos en Manejo (detectados)": "", "Antibiótico (texto)": "", "NPO": "No", "NPT": "No", "NPT %": "", "TVP": "No", "VM": "No",
+    "Norepinefrina mL/h": "", "Vasopresina mL/h": "" }, o || {});
+  const SIN = "RETIRADO DEL CENSO (hoja)";
+  const de = (an, pestana, id) => an[pestana].filter((r) => r["ID episodio"] === "E-EP|" + id);
+  const E1 = (an, id) => de(an, AN[0], id)[0];
+  const ind = (an, nombre, periodo) => an[AIN].find((x) => x["Periodo"] === (periodo || "Acumulado") && x["Indicador"] === nombre && x["Estrato"] === "Todos");
+
+  // ── V12 y V20: menciones en texto (negación antes y después, preventivo, condicional, familiar; dehiscencia y drenaje) ──
+  const NO = ["NO PRESENTA DATOS DE SEPSIS", "NO CURSA CON NEUMONIA", "NEUMONIA DESCARTADA POR TAC", "TEP DESCARTADA", "TROMBOSIS VENOSA PROFUNDA DESCARTADA POR DOPPLER", "TRANSFUSION NO REQUERIDA", "ILEO PARALITICO NO",
+    "SE SUSPENDE TRANSFUSION", "CABECERA A 30 GRADOS PARA EVITAR BRONCOASPIRACION", "TRANSFUNDIR SI HB MENOR A 7", "TIPAR Y CRUZAR, TRANSFUNDIR SI HB <7", "EN CASO DE SANGRADO TRANSFUNDIR", "EVITAR TRANSFUSION", "SOLICITAR 2 PG",
+    "FAMILIAR CON NEUMONIA", "ESQUEMA DE VACUNACION NEUMONIA", "SE SUSPENDE LA TRANSFUSION", "PREVENIR BRONCOASPIRACION", "SIN DATOS DE FUGA DE ANASTOMOSIS", "AFEBRIL, CON DRENAJE SEROSO SIN DATOS DE FUGA BILIAR", "NO HA REQUERIDO TRANSFUSION"];
+  const SI = [["SIN FIEBRE, CON FUGA DE ANASTOMOSIS", "Fuga / dehiscencia"], ["GLASGOW 15 SIN VASOPRESOR CON SEPSIS ABDOMINAL RESUELTA", "Sepsis / choque"], ["NO PRESENTA FIEBRE, PERO CURSA CON NEUMONIA", "Neumonía"],
+    ["FUGA DE ANASTOMOSIS RESUELTA", "Fuga / dehiscencia"], ["SE TRANSFUNDEN 2 PG", "Transfusión"], ["NAV EN TRATAMIENTO", "Neumonía"], ["CURSA CON NEUMONIA Y SE DESCARTA TEP", "Neumonía"], ["SE SUSPENDE ENOXAPARINA POR SANGRADO DE LA HERIDA", "Hemorragia posoperatoria"]];
+  const fusN = { "Pacientes": NO.map((f, i) => pac("n" + i, "00070" + (10 + i), "PRUEBA FICTICIA N" + i, { "Manejo": f })).concat(SI.map((f, i) => pac("s" + i, "00071" + (10 + i), "PRUEBA FICTICIA S" + i, { "Manejo": f[0] })))
+      .concat([pac("dh", "000731", "PRUEBA FICTICIA HERIDA", { "Manejo": "DEHISCENCIA DE HERIDA QUIRURGICA SUPERFICIAL" }), pac("da", "000732", "PRUEBA FICTICIA ANASTOMOSIS", { "Manejo": "CURSA CON DEHISCENCIA DE ANASTOMOSIS" }),
+        pac("dp", "000733", "PRUEBA FICTICIA PUNCION", { "Manejo": "DRENAJE PERCUTANEO DE ABSCESO HEPATICO EL 20/11" }),
+        pac("iq", "000734", "PRUEBA FICTICIA ISQ", { "Manejo": "NO PRESENTA DATOS DE ISQ. HERIDA LIMPIA, NO PRESENTA INFECCION DE HERIDA\nISQ DESCARTADA" }), pac("iy", "000735", "PRUEBA FICTICIA ISQ DOS", { "Manejo": "SIN FIEBRE, PERO CON ISQ SUPERFICIAL" })]) };
+  fusN["Cirugías"] = fusN["Pacientes"].map((p) => cx(p["ID episodio"], "2026-11-25", "LAPE"));
+  const anN = sb.regAnalisis(fusN, [], [], "2026-12-20", cod), evN = (id) => de(anN, AEV, id).map((x) => x["Evento"]);
+  const malNo = NO.filter((f, i) => evN("n" + i).length || E1(anN, "n" + i)["Clavien-Dindo mínimo inferido"] !== "Sin evento detectado"), malSi = SI.filter((f, i) => evN("s" + i).join() !== f[1]);
+  check("V12a lo negado con «NO PRESENTA / NO CURSA CON», la negación pospuesta («… DESCARTADA», «… NO REQUERIDA», «… NO») y lo preventivo, condicional o de un familiar NO dan evento ni suben el Clavien inferido (" + NO.length + " frases)", !malNo.length, malNo.join(" | "));
+  check("V12b lo afirmado sigue contando: «SIN FIEBRE, CON FUGA…», «SIN VASOPRESOR CON SEPSIS… RESUELTA», «NO PRESENTA FIEBRE, PERO CURSA CON NEUMONIA», «… RESUELTA», y la negación de OTRO evento después de una conjunción no lo tapa", !malSi.length, JSON.stringify(malSi.map((f) => f[0])));
+  check("V12c ISQ en texto: «NO PRESENTA DATOS DE ISQ», «NO PRESENTA INFECCION DE HERIDA» e «ISQ DESCARTADA» → 0 y sin evento; «SIN FIEBRE, PERO CON ISQ» → 1",
+    E1(anN, "iq")["ISQ mencionada (texto)"] === 0 && evN("iq").length === 0 && E1(anN, "iy")["ISQ mencionada (texto)"] === 1 && evN("iy").join() === "ISQ probable"
+    && !sb.regIsqTexto("NO PRESENTA DATOS DE ISQ") && !sb.regIsqTexto("ISQ DESCARTADA") && sb.regIsqTexto("CURSA CON ISQ"), JSON.stringify([evN("iq"), evN("iy")]));
+  const g = (id) => de(anN, AEV, id).map((x) => [x["Evento"], x["Grado Clavien mínimo implícito"]]);
+  check("V20a la dehiscencia de HERIDA es «Dehiscencia de herida» con grado I (Clavien inferido I, no II); la de anastomosis sigue en «Fuga / dehiscencia» con grado II",
+    JSON.stringify(g("dh")) === JSON.stringify([["Dehiscencia de herida", "I"]]) && E1(anN, "dh")["Clavien-Dindo mínimo inferido"] === "I" && JSON.stringify(g("da")) === JSON.stringify([["Fuga / dehiscencia", "II"]]), JSON.stringify([g("dh"), g("da")]));
+  check("V20b el drenaje percutáneo que solo está en el TEXTO se lista sin grado (no dice si fue antes o después de la cirugía): no da complicación mayor inferida",
+    JSON.stringify(g("dp")) === JSON.stringify([["Drenaje percutáneo", ""]]) && E1(anN, "dp")["Complicación mayor inferida (≥ IIIa)"] === 0 && E1(anN, "dp")["Clavien-Dindo mínimo inferido"] === "Sin evento detectado", JSON.stringify([g("dp"), E1(anN, "dp")["Clavien-Dindo mínimo inferido"]]));
+
+  // ── V11: reingreso planeado ──
+  const rp = (dx, pa, el) => sb.regReingresoPlaneado_(dx, pa || "", !!el);
+  check("V11a regReingresoPlaneado_: nombrar la cirugía previa, «POSTERIOR A QUIMIOTERAPIA» o «NO PROGRAMADO PARA» no es planeado; decir a qué viene sí; con una complicación en el diagnóstico nunca (aunque la cirugía sea electiva)",
+    rp("PO CIERRE DE ILEOSTOMIA 02/11 + FUGA DE ANASTOMOSIS, SEPSIS ABDOMINAL") === 0 && rp("NEUTROPENIA FEBRIL POSTERIOR A QUIMIOTERAPIA") === 0 && rp("ABSCESO RESIDUAL, NO PROGRAMADO PARA CIRUGIA") === 0 && rp("POSTOPERADA DE CIERRE DE COLOSTOMIA") === 0
+    && rp("CIERRE DE ILEOSTOMIA PROGRAMADA") === 1 && rp("PORTADOR DE COLOSTOMIA", "INGRESA PARA RESTITUCION DEL TRANSITO") === 1 && rp("CANCER DE COLON", "QUIMIOTERAPIA CICLO 3") === 1 && rp("COLELITIASIS", "", true) === 1
+    && rp("DEHISCENCIA DE HERIDA", "", true) === 0 && rp("DOLOR ABDOMINAL") === 0);
+  const fusR = { "Pacientes": [pac("b1", "000741", "PRUEBA FICTICIA REINGRESA", { "Fecha de ingreso": "2026-11-01", "Fecha de egreso": "2026-11-05", "Diagnóstico": "PORTADOR DE ILEOSTOMIA" }),
+      pac("b2", "000741", "PRUEBA FICTICIA REINGRESA", { "Fecha de ingreso": "2026-11-09", "Fecha de egreso": "2026-11-15", "Diagnóstico": "PO CIERRE DE ILEOSTOMIA 02/11 + FUGA DE ANASTOMOSIS, SEPSIS ABDOMINAL" })],
+    "Cirugías": [cx("b1", "2026-11-02", "CIERRE DE ILEOSTOMIA")] };
+  const anR = sb.regAnalisis(fusR, [], [], "2026-12-20", cod), b1 = E1(anR, "b1");
+  check("V11b el reingreso por fuga que CITA la cirugía previa («PO CIERRE DE ILEOSTOMIA + FUGA…»): planeado 0, reingreso no planeado a 30 días 1 y evento «Reingreso 30 d»",
+    b1["Reingreso a 30 días"] === 1 && b1["Reingreso planeado (probable)"] === 0 && b1["Reingreso no planeado a 30 días"] === 1 && de(anR, AEV, "b1").some((x) => x["Evento"] === "Reingreso 30 d"), JSON.stringify(b1));
+
+  // ── V13: reintervención no planeada ──
+  const fusH = { "Pacientes": ["h1", "h2", "h3", "h4", "h5", "h6"].map((id, i) => pac(id, "00075" + i, "PRUEBA FICTICIA REINT " + id)),
+    "Cirugías": [cx("h1", "2026-11-25", "CPRE + ESFINTEROTOMIA"), cx("h1", "2026-11-27", "COLECISTECTOMIA LAPAROSCOPICA"),
+      cx("h2", "2026-11-25", "COLECISTECTOMIA ABIERTA"), cx("h2", "2026-11-25", "COLANGIOGRAFIA TRANSOPERATORIA"),
+      cx("h3", "2026-11-25", "LAPE + RESECCION INTESTINAL"), cx("h3", "2026-11-28", "RELAPAROTOMIA POR FUGA DE ANASTOMOSIS"),
+      cx("h4", "2026-11-25", "APENDICECTOMIA"), cx("h4", "2026-11-28", "COLECISTECTOMIA"),
+      cx("h5", "2026-11-25", "HERNIOPLASTIA INGUINAL", { "Tipo": "Electiva" }), cx("h5", "2026-11-28", "COLECISTECTOMIA LAPAROSCOPICA", { "Tipo": "Electiva" }),
+      cx("h6", "2026-11-25", "LAPE"), cx("h6", "2026-11-27", "TRAQUEOSTOMIA PERCUTANEA")] };
+  const anH = sb.regAnalisis(fusH, [], [], "2026-12-20", cod), rh = (id) => [E1(anH, id)["Reintervención planeada (probable)"], E1(anH, id)["Reintervención no planeada (probable)"], E1(anH, id)["Clavien-Dindo mínimo inferido"], E1(anH, id)["Complicación mayor inferida (≥ IIIa)"]];
+  const evH = (id) => de(anH, AEV, id).map((x) => [x["Evento"], x["Certeza"], x["Grado Clavien mínimo implícito"], x["Ocurrencia"]]);
+  check("V13a «CPRE» y dos días después «COLECISTECTOMIA» (la CPRE no es la índice), dos renglones del MISMO día y una traqueostomía después de la LAPE: no son reintervención no planeada, sin evento y sin complicación mayor inferida",
+    JSON.stringify([rh("h1"), rh("h2"), rh("h6")]) === JSON.stringify([[0, 0, "Sin evento detectado", 0], [0, 0, "Sin evento detectado", 0], [0, 0, "Sin evento detectado", 0]]) && !evH("h1").length && !evH("h2").length && !evH("h6").length, JSON.stringify([rh("h1"), rh("h2"), rh("h6")]));
+  check("V13b la relaparotomía por fuga sí: evento OBJETIVO de grado IIIb (complicación mayor inferida 1), con su fecha como «Ocurrencia»",
+    JSON.stringify(rh("h3")) === JSON.stringify([0, 1, "IIIb", 1]) && JSON.stringify(evH("h3")) === JSON.stringify([["Reintervención no planeada", "Objetivo", "IIIb", "2026-11-28"]]), JSON.stringify([rh("h3"), evH("h3")]));
+  check("V13c una 2.ª cirugía que solo lo parece por fechas: la columna «(probable)» da 1, pero el evento es «Probable (por fechas)» SIN grado (no sube el Clavien inferido); si se eligió «Electiva» en la caja cuenta como planeada",
+    JSON.stringify(rh("h4")) === JSON.stringify([0, 1, "Sin evento detectado", 0]) && JSON.stringify(evH("h4")) === JSON.stringify([["Reintervención no planeada", "Probable (por fechas)", "", "2026-11-28"]])
+    && JSON.stringify(rh("h5")) === JSON.stringify([1, 0, "Sin evento detectado", 0]) && !evH("h5").length, JSON.stringify([rh("h4"), evH("h4"), rh("h5")]));
+  const QH = (id) => de(anH, AQ, id).map((c) => [c["Es índice"], c["Reintervención planeada (probable)"], c["Reintervención no planeada (probable)"]]);
+  check("V13d en «Análisis · Cirugías»: el procedimiento menor y el renglón del mismo día llevan 0 / 0; la relaparotomía 0 / 1", JSON.stringify([QH("h1"), QH("h2"), QH("h3")]) === JSON.stringify([[[1, 0, 0], [0, 0, 0]], [[1, 0, 0], [0, 0, 0]], [[1, 0, 0], [0, 0, 1]]]), JSON.stringify([QH("h1"), QH("h2"), QH("h3")]));
+
+  // ── V14: reingreso a 30 días con el mismo seguimiento en numerador y denominador ──
+  const P40 = [];
+  for (let i = 0; i < 40; i++) {
+    P40.push(pac("r" + i, "0008" + (10 + i), "PRUEBA FICTICIA SALE " + i, { "Fecha de ingreso": "2026-12-01", "Fecha de egreso": "2026-12-05" }));
+    if (i < 10) P40.push(pac("q" + i, "0008" + (10 + i), "PRUEBA FICTICIA SALE " + i, { "Fecha de ingreso": "2026-12-10", "Fecha de egreso": "", "Estado en registro": "Hospitalizado", "Motivo de egreso": "" }));
+  }
+  const an15 = sb.regAnalisis({ "Pacientes": P40 }, [], [], "2026-12-20", cod), an40 = sb.regAnalisis({ "Pacientes": P40 }, [], [], "2027-01-10", cod);
+  const r15 = ind(an15, "Reingreso a 30 días", "2026-12"), r40 = ind(an40, "Reingreso a 30 días", "2026-12"), n40 = ind(an40, "Reingreso no planeado a 30 días", "2026-12");
+  check("V14a 40 egresos hace 15 días, 10 ya reingresaron: el indicador NO da 10 de 10 (100 %): los 40 van en «Excluidos» hasta tener 30 días observados; la columna del episodio sí dice 1",
+    r15 && r15["Numerador"] === 0 && r15["Denominador"] === 0 && r15["Tasa (%)"] === "" && r15["Excluidos por dato faltante (n)"] === 40 && E1(an15, "r0")["Reingreso a 30 días"] === 1 && E1(an15, "r20")["Reingreso a 30 días"] === "", JSON.stringify(r15));
+  check("V14b ya con 30 días observados: 10 de 40 (25 %) con su IC de Wilson, también en el no planeado", r40 && r40["Numerador"] === 10 && r40["Denominador"] === 40 && r40["Tasa (%)"] === 25 && r40["Excluidos por dato faltante (n)"] === 0 && n40["Numerador"] === 10 && n40["Denominador"] === 40, JSON.stringify([r40, n40]));
+
+  // ── V15: cursos de antibiótico ──
+  const cas = (id, f, txt, extra) => noche(id, f, Object.assign({ "ATB (casilla)": "Sí", "Antibiótico (texto)": txt }, extra || {}));
+  const fusC = { "Pacientes": [pac("c1", "000761", "PRUEBA FICTICIA CORTE"), pac("c2", "000762", "PRUEBA FICTICIA ANIO"), pac("c3", "000763", "PRUEBA FICTICIA ESTANCIA"),
+      pac("c4", "000764", "PRUEBA FICTICIA DIA CINCO", { "Fecha de ingreso": "2026-11-20" }), pac("c5", "000765", "PRUEBA FICTICIA OTRO CURSO", { "Fecha de ingreso": "2026-11-10" })],
+    "Estado diario": [cas("c1", "2026-11-24", "MEROPENEM D1"), cas("c1", "2026-11-25", "MEROPENEM D2"), noche("c1", "2026-11-26"), cas("c1", "2026-11-27", "MEROPENEM D4"), cas("c1", "2026-11-28", "MEROPENEM D5"),
+      cas("c2", "2026-11-24", "CEFTRIAXONA", { "ATB inicio": "2025-11-24" }), cas("c3", "2026-11-28", "CEFTRIAXONA 1 G C/12 H, D5 DE ESTANCIA"), cas("c4", "2026-11-26", "MEROPENEM D5"),
+      cas("c5", "2026-11-12", "CEFTRIAXONA"), noche("c5", "2026-11-13"), cas("c5", "2026-11-26", "CEFTRIAXONA D2")] };
+  const anC = sb.regAnalisis(fusC, [], [], "2026-12-20", cod), cur = (id) => de(anC, AAB, id).map((r) => [r["Antibiótico"], r["Inicio"], r["Inicio estimado"], r["Fin"], r["Días de tratamiento"]]);
+  check("V15a «D1, D2, una noche con la casilla apagada, D4, D5»: UN curso del 24 al 28 (5 días), no dos cursos que suman 7", JSON.stringify(cur("c1")) === JSON.stringify([["MEROPENEM", "2026-11-24", "", "2026-11-28", 5]]), JSON.stringify(cur("c1")));
+  check("V15b una fecha de inicio de la tarjeta con el año mal escrito (365 días atrás) se descarta: 1 día, no 366; «D5 DE ESTANCIA» no es el día del antibiótico",
+    JSON.stringify(cur("c2")) === JSON.stringify([["CEFTRIAXONA", "2026-11-24", "", "2026-11-24", 1]]) && JSON.stringify(cur("c3")) === JSON.stringify([["CEFTRIAXONA", "2026-11-28", "", "2026-11-28", 1]])
+    && JSON.stringify(sb.regAtbDiaN_("CEFTRIAXONA 1 G, D10 DE ESTANCIA")) === "{}" && JSON.stringify(sb.regAtbDiaN_("CEFTRIAXONA D3 PO")) === "{}", JSON.stringify([cur("c2"), cur("c3")]));
+  check("V15c con el ingreso antes del inicio estimado, «D5» sí retrocede (fecha − 4); y un curso nuevo cuyo estimado NO alcanza al anterior sigue siendo otro curso",
+    JSON.stringify(cur("c4")) === JSON.stringify([["MEROPENEM", "2026-11-26", "2026-11-22", "2026-11-26", 5]])
+    && JSON.stringify(cur("c5")) === JSON.stringify([["CEFTRIAXONA", "2026-11-12", "", "2026-11-12", 1], ["CEFTRIAXONA", "2026-11-26", "2026-11-25", "2026-11-26", 2]]), JSON.stringify([cur("c4"), cur("c5")]));
+  const awC = ind(anC, "Días de antibiótico Watch o Reserve (AWaRe)");
+  check("V15d el indicador AWaRe suma 5 + 1 + 1 + 5 + 1 + 2 = 15 días (antes, con los mismos datos de c1-c3: 383)", awC && awC["Denominador"] === 15, JSON.stringify(awC));
+
+  // ── V16: vasopresor / ventilación que ya traía antes de operarse ──
+  const nore = (id, f) => noche(id, f, { "Norepinefrina mL/h": "5", "VM": "Sí" });
+  const fusS = { "Pacientes": [pac("s1", "000771", "PRUEBA FICTICIA CHOQUE"), pac("s2", "000772", "PRUEBA FICTICIA RECAE"), pac("s3", "000773", "PRUEBA FICTICIA NUEVO")],
+    "Cirugías": ["s1", "s2", "s3"].map((id) => cx(id, "2026-11-25", "LAPE")),
+    "Estado diario": [nore("s1", "2026-11-24"), nore("s1", "2026-11-25"), nore("s1", "2026-11-26"), noche("s1", "2026-11-27"),
+      nore("s2", "2026-11-24"), nore("s2", "2026-11-25"), noche("s2", "2026-11-26"), noche("s2", "2026-11-27"), nore("s2", "2026-11-28"),
+      noche("s3", "2026-11-25"), nore("s3", "2026-11-27")] };
+  const anS = sb.regAnalisis(fusS, [], [], "2026-12-20", cod), evS2 = (id) => de(anS, AEV, id).map((x) => [x["Evento"], x["Fecha"], x["Día posoperatorio"], x["Detalle"]]);
+  const clS = (id) => [E1(anS, id)["Clavien-Dindo mínimo inferido"], E1(anS, id)["Complicación mayor inferida (≥ IIIa)"]];
+  check("V16a el que llega en choque, se opera y sigue con vasopresor y ventilación el día posoperatorio 1: los dos eventos se listan con su primera noche REAL (día −1) y la nota, pero NO cuentan para el Clavien inferido",
+    JSON.stringify(evS2("s1")) === JSON.stringify([["Vasopresor", "2026-11-24", -1, "Ya lo tenía el día de la cirugía o antes"], ["Ventilación", "2026-11-24", -1, "Ya lo tenía el día de la cirugía o antes"]])
+    && JSON.stringify(clS("s1")) === JSON.stringify(["Sin evento detectado", 0]), JSON.stringify([evS2("s1"), clS("s1")]));
+  check("V16b si se le retiró (noches observadas sin soporte) y REINICIA después de la cirugía, o empieza por primera vez el día 2: sí es IVa, con la fecha de ese inicio",
+    JSON.stringify(evS2("s2")[0]) === JSON.stringify(["Vasopresor", "2026-11-28", 3, ""]) && JSON.stringify(clS("s2")) === JSON.stringify(["IVa", 1])
+    && JSON.stringify(evS2("s3")[0]) === JSON.stringify(["Vasopresor", "2026-11-27", 2, ""]) && JSON.stringify(clS("s3")) === JSON.stringify(["IVa", 1]), JSON.stringify([evS2("s2"), evS2("s3")]));
+
+  // ── V17: LRA posoperatoria ──
+  const lab = (id, f, v) => ({ "ID episodio": id, "Fecha": f, "Estudio": "cr", "Valor": String(v), "Origen": "WinLab", "Vigente": "Sí" });
+  const fusL = { "Pacientes": [pac("l1", "000781", "PRUEBA FICTICIA MEJORA"), pac("l2", "000782", "PRUEBA FICTICIA LESION"), pac("l3", "000783", "PRUEBA FICTICIA YA VENIA")],
+    "Cirugías": ["l1", "l2", "l3"].map((id) => cx(id, "2026-11-24", "LAPE")),
+    "Labs": [lab("l1", "2026-11-25", 3.2), lab("l1", "2026-11-26", 2.1), lab("l1", "2026-11-28", 1.0),
+      lab("l2", "2026-11-24", 1.0), lab("l2", "2026-11-25", 1.1), lab("l2", "2026-11-26", 2.4),
+      lab("l3", "2026-11-24", 3.2), lab("l3", "2026-11-25", 2.1), lab("l3", "2026-11-28", 1.0)] };
+  const anL = sb.regAnalisis(fusL, [], [], "2026-12-20", cod), lr = (id) => [E1(anL, id)["LRA KDIGO (estadio máx.)"], E1(anL, id)["LRA posoperatoria"], E1(anL, id)["Clavien-Dindo mínimo inferido"]];
+  const evL = (id) => de(anL, AEV, id).map((x) => [x["Evento"], x["Ocurrencia"], x["Detalle"]]);
+  check("V17a creatinina que solo BAJA después de operarse y sin laboratorio preoperatorio: «LRA posoperatoria» VACÍA (no 1) y el evento no cuenta para el Clavien inferido; con el mismo laboratorio y una toma el día de la cirugía: 0",
+    JSON.stringify(lr("l1")) === JSON.stringify([3, "", "Sin evento detectado"]) && JSON.stringify(lr("l3")) === JSON.stringify([3, 0, "Sin evento detectado"]), JSON.stringify([lr("l1"), lr("l3")]));
+  check("V17b con creatinina preoperatoria normal y ascenso en los días 1-7: 1, Clavien inferido I; el evento es «LRA (KDIGO)» con el estadio en «Detalle» (la fila no cambia si sube de estadio)",
+    JSON.stringify(lr("l2")) === JSON.stringify([2, 1, "I"]) && JSON.stringify(evL("l2")) === JSON.stringify([["LRA (KDIGO)", "única", "Estadio 2"]]) && JSON.stringify(evL("l1")) === JSON.stringify([["LRA (KDIGO)", "única", "Estadio 3"]]), JSON.stringify([lr("l2"), evL("l2")]));
+  const lraI = ind(anL, "LRA posoperatoria (KDIGO)");
+  check("V17c el indicador deja al que no tiene creatinina preoperatoria en «Excluidos»: 1 de 2, excluidos 1", lraI && lraI["Numerador"] === 1 && lraI["Denominador"] === 2 && lraI["Excluidos por dato faltante (n)"] === 1, JSON.stringify(lraI));
+
+  // ── V18: cirugía con fecha anterior al ingreso ──
+  const fusQ = { "Pacientes": [pac("q1", "000791", "PRUEBA FICTICIA OPERADA ANTES"), pac("q2", "000792", "PRUEBA FICTICIA DIA UNO")], "Cirugías": [cx("q1", "2026-11-20", "LAPE"), cx("q2", "2026-11-25", "LAPE")] };
+  const anQ = sb.regAnalisis(fusQ, [], [], "2026-12-20", cod), q1 = E1(anQ, "q1"), q2 = E1(anQ, "q2");
+  check("V18 cirugía 4 días ANTES del ingreso: «Días ingreso a 1.ª cirugía» −4, «Cirugía en ≤1 día del ingreso» y «Estancia posoperatoria» vacías (antes 1 y 10 con 6 días de estancia), se dice en «Calidad de datos» y la urgencia inferida de la cirugía queda vacía; la del día 1 sigue dando 1 y 5",
+    q1["Días ingreso a 1.ª cirugía"] === -4 && q1["Cirugía en ≤1 día del ingreso"] === "" && q1["Estancia posoperatoria (días)"] === "" && /anterior al ingreso/.test(q1["Calidad de datos"]) && de(anQ, AQ, "q1")[0]["Urgencia inferida (día 0-1)"] === ""
+    && q2["Cirugía en ≤1 día del ingreso"] === 1 && q2["Estancia posoperatoria (días)"] === 5 && de(anQ, AQ, "q2")[0]["Urgencia inferida (día 0-1)"] === 1, JSON.stringify([q1["Cirugía en ≤1 día del ingreso"], q1["Estancia posoperatoria (días)"], q1["Calidad de datos"]]));
+
+  // ── V19: flujo de la cohorte = universo de los indicadores ──
+  const PF = [];
+  for (let i = 0; i < 12; i++) PF.push(pac("f" + i, "0009" + (10 + i), "PRUEBA FICTICIA FLUJO " + i, i < 3 ? { "Fecha de ingreso": "", "Motivo de egreso": i === 0 ? "DEFUNCIÓN" : "ALTA (registrado en la app)" } : {}));
+  PF.push(pac("fb", "000930", "PRUEBA FICTICIA BORRADA", { "Motivo de egreso": "BORRADO EN BD" }), pac("fs", "000931", "PRUEBA FICTICIA SIN MOTIVO", { "Motivo de egreso": SIN }));
+  const anF = sb.regAnalisis({ "Pacientes": PF }, [], [], "2026-12-20", cod), paso = (re) => (anF[AFL].find((x) => re.test(x["Paso"])) || {})["Episodios (n)"];
+  const mc = ind(anF, "Mortalidad hospitalaria (desenlace conocido)"), mv = ind(anF, "Mortalidad hospitalaria (desconocidos como vivos)"), bac = ind(anF, "Bacteriemia");
+  check("V19a «= Episodios analizables» (12) es el denominador de «Mortalidad (desenlace conocido)» en Acumulado (1 de 12): el episodio sin fecha de ingreso ya no se resta (3, contados aparte) y la defunción sin ingreso sí está",
+    paso(/^= Episodios analizables/) === 12 && mc && mc["Numerador"] === 1 && mc["Denominador"] === 12 && paso(/^Analizables sin fecha de ingreso/) === 3 && paso(/^− Borrados/) === 1 && paso(/^− Egresados sin desenlace/) === 1 && paso(/^Episodios en el registro/) === 14
+    && !anF[AFL].some((x) => /^− Sin fecha de ingreso/.test(x["Paso"])), JSON.stringify(anF[AFL].map((x) => [x["Paso"].slice(0, 30), x["Episodios (n)"]])));
+  check("V19b la tarjeta «BORRADO EN BD» que el flujo resta tampoco entra a los denominadores de «todos los egresos»: 13 (los 12 con desenlace + el sin motivo), no 14",
+    mv && mv["Denominador"] === 13 && bac && bac["Denominador"] === 13 && mc["Excluidos por dato faltante (n)"] === 1, JSON.stringify([mv, bac]));
+
+  // ── V21: ayuno > 5 días sin NPT ──
+  const PA = [], NA = [];
+  for (let i = 0; i < 12; i++) {
+    PA.push(pac("y" + i, "0009" + (40 + i), "PRUEBA FICTICIA AYUNO " + i));
+    const dias = i < 6 ? ["2026-11-24", "2026-11-25"] : ["2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"];
+    dias.forEach((f) => NA.push(noche("y" + i, f, i === 11 ? { "NPO": "Sí" } : {})));
+  }
+  const anA = sb.regAnalisis({ "Pacientes": PA, "Estado diario": NA }, [], [], "2026-12-20", cod), ay = ind(anA, "Ayuno >5 días sin NPT");
+  check("V21 «Ayuno >5 días sin NPT»: solo entran los egresos con el diario observado (cobertura ≥ 80 %): 1 de 6 y 6 excluidos (antes los 12 iban al denominador aunque tuvieran 2 fotos de 6 noches); la definición lo dice",
+    ay && ay["Numerador"] === 1 && ay["Denominador"] === 6 && ay["Excluidos por dato faltante (n)"] === 6 && /cobertura ≥ 80 %/.test(ay["Definición"]) && E1(anA, "y0")["Ayuno >5 días sin NPT"] === 0, JSON.stringify(ay));
+
+  // ── V22: tipo de egreso probable ──
+  const eg = (t) => sb.regEgresoTexto_(t);
+  check("V22a regEgresoTexto_: el traslado dentro del hospital, «SE REFIERE A HOMBRO», el alta de un interconsultante y el alta condicionada o probable no dan tipo; el traslado a otro hospital, la prealta y el alta a domicilio sí",
+    JSON.stringify(["TRASLADO A UNIDAD DE CUIDADOS INTENSIVOS", "DOLOR QUE SE REFIERE A HOMBRO DERECHO", "ALTA DEL SERVICIO DE INFECTOLOGIA", "INTERCONSULTA: ALTA POR MEJORIA DE NEFROLOGIA", "ALTA A DOMICILIO SI TOLERA VIA ORAL",
+      "PROBABLE ALTA A DOMICILIO MAÑANA SI TOLERA DIETA", "CUANDO TOLERE DIETA, ALTA HOY", "TRASLADO A OTRO HOSPITAL", "SE REFIERE A SU UNIDAD DE ADSCRIPCION", "TRASLADO A HGZ 1", "PREALTA", "ALTA A DOMICILIO", "ALTA DEL SERVICIO", "SE FIRMA ALTA VOLUNTARIA"].map(eg))
+    === JSON.stringify(["", "", "", "", "", "", "", "Traslado", "Traslado", "Traslado", "Alta", "Alta", "Alta", "Alta voluntaria"]));
+  const wlF = (exp, nom, toma, servicio) => ({ "Expediente": exp, "Paciente": nom, "Nombre en WinLab": nom, "Reporte": "r-" + exp, "Toma": toma, "Servicio": servicio });
+  const fusW = { "Pacientes": [pac("w1", "000961", "PRUEBA FICTICIA CONTROL", { "Motivo de egreso": SIN, "Fecha de egreso": "2026-11-05", "Fecha de ingreso": "2026-11-01" }), pac("w2", "000962", "PRUEBA FICTICIA SIGUE", { "Motivo de egreso": SIN, "Fecha de egreso": "2026-11-05", "Fecha de ingreso": "2026-11-01" })],
+    "Labs del robot (WinLab)": [wlF("000961", "PRUEBA FICTICIA CONTROL", "2026-11-19 08:00", "CONSULTA EXTERNA"), wlF("000962", "PRUEBA FICTICIA SIGUE", "2026-11-19 08:00", "MEDICINA INTERNA")] };
+  const anW = sb.regAnalisis(fusW, [], [], "2026-12-20", cod);
+  check("V22b un laboratorio de CONSULTA EXTERNA dos semanas después del egreso no es «Sigue en el hospital»; el de un servicio de hospitalización sí",
+    E1(anW, "w1")["Tipo de egreso (probable)"] === "" && E1(anW, "w2")["Tipo de egreso (probable)"] === "Sigue en el hospital", JSON.stringify([E1(anW, "w1")["Tipo de egreso (probable)"], E1(anW, "w2")["Tipo de egreso (probable)"]]));
+
+  // ── V23: comorbilidades (negación pospuesta, «NO DIABETICO», antecedentes familiares) ──
+  const co = (app) => { const c = sb.regComorbilidades(app, ""); return Object.keys(c).filter((k) => c[k] === 1).sort().join(","); };
+  const ch = (app) => { const c = sb.regComorbilidades(app, ""), x = sb.regComorbilidades(app, "", sb.REG_COMORB_1124); return sb.regCharlson_(c, x, 60, true).puntos; };
+  check("V23 «DM2 E HAS NEGADAS», «NO DIABETICO, HIPERTENSO» y «CRONICODEGENERATIVOS NEGADOS. PADRE CON DIABETES Y CANCER DE COLON» ya no dan diabetes ni cáncer (Charlson 0); lo afirmado sigue: «ALERGIAS NEGADAS. DM2 EN TX», «HAS EN TRATAMIENTO, DM Y ALERGIAS NEGADAS», «AHF NEGADOS, DM2 DE 10 AÑOS»",
+    co("DM2 E HAS NEGADAS") === "" && ch("DM2 E HAS NEGADAS") === 0 && co("NO DIABETICO, HIPERTENSO") === "Hipertensión" && co("CRONICODEGENERATIVOS NEGADOS. PADRE CON DIABETES Y CANCER DE COLON") === "" && ch("CRONICODEGENERATIVOS NEGADOS. PADRE CON DIABETES Y CANCER DE COLON") === 0
+    && co("ALERGIAS NEGADAS. DM2 EN TX CON METFORMINA") === "Diabetes" && co("HAS EN TRATAMIENTO, DM Y ALERGIAS NEGADAS") === "Hipertensión" && co("AHF NEGADOS, DM2 DE 10 AÑOS") === "Diabetes" && co("NIEGA DM, HAS") === "" && co("HAS DE 10 AÑOS, NIEGA DM") === "Hipertensión"
+    && co("MADRE CON DM. APP: HAS EN TX") === "Hipertensión",
+    JSON.stringify(["DM2 E HAS NEGADAS", "NO DIABETICO, HIPERTENSO", "CRONICODEGENERATIVOS NEGADOS. PADRE CON DIABETES Y CANCER DE COLON", "HAS EN TRATAMIENTO, DM Y ALERGIAS NEGADAS", "AHF NEGADOS, DM2 DE 10 AÑOS", "MADRE CON DM. APP: HAS EN TX"].map(co)));
+
+  // ── V5 y V9: nada de texto libre en las pestañas seudonimizadas ni en las compactas ──
+  const fusT = { "Pacientes": [pac("t1", "000971", "PRUEBA FICTICIA TEXTO", { "Sección": "PISO 3 FICTICIA SECRETA MARIA", "Especialidad": "LUZ/EVA" }), pac("t2", "000972", "PRUEBA FICTICIA BIEN", { "Sección": "Piso 3", "Especialidad": "CG/URO" })] };
+  const anT = sb.regAnalisis(fusT, [], [], "2026-12-20", cod), todoT = JSON.stringify(sb.REG_ANALISIS.filter((c) => c.nombre !== "Por completar").map((c) => anT[c.nombre]));
+  check("V5 «Análisis · Episodios» ya no copia la Sección ni la Especialidad tal cual: un texto que no es una sala o un código conocido sale «valor no válido», y ninguna pestaña seudonimizada lo trae",
+    E1(anT, "t1")["Sección"] === "valor no válido" && E1(anT, "t1")["Especialidad"] === "valor no válido" && E1(anT, "t2")["Sección"] === "PISO 3" && E1(anT, "t2")["Especialidad"] === "CG/URO" && !/SECRETA|MARIA|LUZ|EVA/.test(todoT), (todoT.match(/SECRETA|MARIA|LUZ|EVA/) || [])[0]);
+  const vc = (c, v) => sb.regValorCenso_(c, v);
+  check("V9a la cama debe tener FORMA de cama y la especialidad estar en el catálogo: «GARCIA LOPEZ 12», «M PEREZ 3-151», «EXP 4521», «UCI JUAN PEREZ» y «LUZ/EVA» son «valor no válido»",
+    JSON.stringify([vc("cama", "GARCIA LOPEZ 12"), vc("cama", "M PEREZ 3-151"), vc("cama", "EXP 4521"), vc("cama", "UCI JUAN PEREZ"), vc("esp", "LUZ/EVA"), vc("cama", "3-151"), vc("cama", "UCI 4"), vc("cama", "12A"), vc("cama", "urg"), vc("cama", "3-151 B"), vc("esp", "CG / NCX"), vc("esp", "Cirugía General")])
+    === JSON.stringify(["valor no válido", "valor no válido", "valor no válido", "valor no válido", "valor no válido", "3-151", "UCI 4", "12A", "URG", "valor no válido", "CG / NCX", "CIRUGIA GENERAL"]));
+  check("V9b antibiótico y dieta del checklist: el texto hecho de vocabulario conocido pasa (en mayúsculas); si trae otra palabra solo quedan los antibióticos detectados con su día (o las palabras de dieta) y la marca «[…]»",
+    sb.regAtbTextoSeguro_("Meropenem 1 g IV c/8 h D3 + vancomicina") === "MEROPENEM 1 G IV C/8 H D3 + VANCOMICINA" && sb.regAtbTextoSeguro_("MEROPENEM D3 (INDICA DR. FICTICIO SECRETO)") === "MEROPENEM D3 · […]" && sb.regAtbTextoSeguro_("PRUEBA FICTICIA SECRETA") === "[…]" && sb.regAtbTextoSeguro_("") === ""
+    && sb.regDietaTextoSeguro_("Líquidos claros") === "LIQUIDOS CLAROS" && sb.regDietaTextoSeguro_("LIQUIDOS - FAM. FICTICIA SECRETA TRAE") === "LIQUIDOS […]" && sb.regDietaTextoSeguro_("") === "",
+    JSON.stringify([sb.regAtbTextoSeguro_("Meropenem 1 g IV c/8 h D3 + vancomicina"), sb.regAtbTextoSeguro_("MEROPENEM D3 (INDICA DR. FICTICIO SECRETO)"), sb.regDietaTextoSeguro_("LIQUIDOS - FAM. FICTICIA SECRETA TRAE")]));
+
+  // ── V8: «Revisado» sobrevive al cambio de fecha del evento ──
+  const fus8 = (conCx) => ({ "Pacientes": [pac("k1", "000981", "PRUEBA FICTICIA REVISADA", { "Estado en registro": "Hospitalizado", "Motivo de egreso": "", "Fecha de egreso": "" })],
+    "Cirugías": conCx ? [cx("k1", "2026-11-26", "LAPE")] : [],
+    "Estado diario": [noche("k1", "2026-11-25", { "Norepinefrina mL/h": "5" }), noche("k1", "2026-11-26"), noche("k1", "2026-11-27"), noche("k1", "2026-11-28", { "Norepinefrina mL/h": "5" })] });
+  const cfgEv = sb.REG_ANALISIS.find((c) => c.nombre === AEV);
+  const ev1 = sb.regFusionar([], sb.regAnalisis(fus8(false), [], [], "2026-11-28", cod)[AEV], cfgEv, null, "2026-11-28", null).map((r, i) => Object.assign({}, r, { __fila: i + 2, "Revisado": "Confirmado JL 28/11" }));
+  const ev2 = sb.regFusionar(ev1, sb.regAnalisis(fus8(true), [], [], "2026-11-29", cod)[AEV], cfgEv, null, "2026-11-29", null);
+  check("V8 al capturarse la cirugía, el evento «Vasopresor» pasa del 25 al 28 (el tramo nuevo posoperatorio): es la MISMA fila (clave sin la fecha), conserva «Revisado» y no queda ninguna fila «Vigente: No»",
+    ev1.length === 1 && ev1[0]["Fecha"] === "2026-11-25" && ev2.length === 1 && ev2[0]["Fecha"] === "2026-11-28" && ev2[0]["Revisado"] === "Confirmado JL 28/11" && ev2[0]["Vigente"] === "Sí" && ev2[0].__fila === 2
+    && JSON.stringify(cfgEv.clave) === JSON.stringify(["ID episodio", "Evento", "Ocurrencia"]), JSON.stringify([ev1, ev2]));
+
+  // ── V4: el Diccionario ya no dice que el dato no existe ──
+  const defEdad = sb.regVariables_().find((v) => v[1] === "Edad al ingreso (calculada)")[4], defNac = sb.regVariables_().find((v) => v[1] === "Nacimiento en WinLab")[4];
+  check("V4 «Edad al ingreso (calculada)» y «Nacimiento en WinLab»: el Diccionario dice que el encabezado SÍ está en la base y que WinLab no se releyó completo (ya no «los anteriores no guardaron el encabezado»)",
+    !/no guardaron el encabezado/.test(defEdad) && /SÍ existe en la base/.test(defEdad) && /no se releyó completo/.test(defEdad) && /no se releyó completo/.test(defNac));
+}
+
+// ─── V (de punta a punta): carga inicial por partes, avisos por tiempo, «Integridad», celdas, auditoría y cuadre ───
+{
+  // V1: la carga inicial del historial por partes no deja cursos basura en «Análisis · Antibióticos».
+  const base1 = () => {
+    const d = VACIO(); d.guardia_cortes = []; d.archive_eliminados = [];
+    const [p, n] = hospitalizado("i1", "PRUEBA FICTICIA INICIAL", "000651", { ingreso: "2026-11-10" }, { manejo: "MEROPENEM 1 G C/8 H", checklist: { atb: true, atb_nombre: "MEROPENEM" } });
+    d.patients = [p]; d.notes = [n];
+    d.audit_log = [aud(1, "2026-11-20T15:00:00+00:00", "notes", "UPDATE", "i1", "cuenta-secreta-a", ["checklist"], { checklist: { atb: { de: "false", a: "true" }, atb_nombre: { de: "\"\"", a: "\"MEROPENEM\"" } } })];
+    for (let i = 2; i <= 9; i++) d.audit_log.push(aud(i, "2026-11-1" + (i < 6 ? 8 : 9) + "T1" + i + ":00:00+00:00", "notes", "UPDATE", "i1", "cuenta-secreta-a", ["manejo"], {}));   // antes, en el tiempo, que el antibiótico
+    return { db: d, hoy: "2026-11-25", reloj: Date.parse("2026-11-26T05:00:00Z") };
+  };
+  const correr = (st, tope) => { let n = 0, r, avisos = []; do { const m = makeSandbox(st); if (tope) m.sb.REG_CURSORES.audit_notas.tope = tope; r = n ? m.sb.continuarRegistro() : m.sb.actualizarRegistro(); avisos.push(r.avisos); n++; st.reloj += 600000; } while (r.pendiente && n < 10); return { n, avisos, r }; };
+  const U = base1(), A = base1(), cU = correr(U, 0), cA1 = (() => { const m = makeSandbox(A); m.sb.REG_CURSORES.audit_notas.tope = 4; return m.sb.actualizarRegistro(); })();
+  const tras1 = tab(A.ss, AAB).length, aviso1 = cA1.avisos.some((a) => /Análisis · Antibióticos.*se escribe cuando termine/.test(a));
+  A.reloj += 600000; let rA = cA1, vueltas = 1;
+  while (rA.pendiente && vueltas < 10) { const m = makeSandbox(A); m.sb.REG_CURSORES.audit_notas.tope = 4; rA = m.sb.continuarRegistro(); vueltas++; A.reloj += 600000; }
+  const cursos = (st) => tab(st.ss, AAB).map((r) => [r["Antibiótico"], r["Inicio"], r["Fin"], r["Días de tratamiento"], r["Fuente"], r["Vigente"]]);
+  check("V1a con el historial de las notas a medias (carga inicial por partes), la vuelta 1 NO escribe «Análisis · Antibióticos» y lo avisa; las demás pestañas de análisis sí se escriben",
+    cA1.ok && cA1.pendiente && tras1 === 0 && aviso1 && tab(A.ss, AN[0]).length === 1 && tab(A.ss, AEV).length >= 0 && !!A.ss.sheets[AIN], JSON.stringify(cA1.avisos));
+  check("V1b al terminar la lectura (" + vueltas + " vueltas) la pestaña queda IGUAL que leyendo todo de una vez: un curso de meropenem desde el 20 nov (historial + casilla), y ninguna fila «Vigente: No»",
+    vueltas >= 3 && !rA.pendiente && cU.n === 1 && JSON.stringify(cursos(A)) === JSON.stringify(cursos(U)) && JSON.stringify(cursos(A)) === JSON.stringify([["MEROPENEM", "2026-11-20", "2026-11-25", 6, "Casilla + Texto de manejo + Historial", "Sí"]])
+    && [AAB, AEV].every((n) => !tab(A.ss, n).some((x) => x["Vigente"] === "No")), JSON.stringify([cursos(A), cursos(U)]));
+  // Si audit_log no se puede leer, el análisis completo se escribe de todos modos (no se queda esperando para siempre).
+  const F = base1(); F.falla = { audit_log: 500 }; const rF = makeSandbox(F).sb.actualizarRegistro();
+  check("V1c con audit_log caído (no «a medias») «Análisis · Antibióticos» sí se escribe con lo que hay (la foto de hoy): no se queda esperando", rF.ok && tab(F.ss, AAB).length === 1 && tab(F.ss, AAB)[0]["Inicio"] === "2026-11-25", JSON.stringify(rF.avisos));
+
+  // V2: avisos por tiempo aunque la propiedad nunca se haya guardado.
+  const G = base1(); G.falla = { guardia_cortes: 500 }; let rG, dia6 = null, dia2 = null;
+  for (let n = 1; n <= 8; n++) {
+    rG = makeSandbox(G).sb.actualizarRegistro();
+    if (n === 2) dia2 = rG.avisos.slice(); if (n === 6) dia6 = rG.avisos.slice();
+    G.reloj += 86400000; G.hoy = new Date(G.reloj - 6 * 3600000).toISOString().slice(0, 10);
+  }
+  check("V2a guardia_cortes caída DESDE la instalación (la propiedad nunca se guardó): a los 7 días sale «días sin copiar los renglones retirados… (nunca se han podido leer)»; el día 6 todavía no",
+    !G.props.REG_GUARDIA_LEIDA && rG.avisos.some((a) => /^Pasaron 7 días sin copiar los renglones retirados de la guardia \(nunca se han podido leer\)/.test(a)) && !dia6.some((a) => /días sin copiar/.test(a)), JSON.stringify(rG.avisos));
+  check("V2b y sin NINGUNA corrida completa desde la instalación, a las 36 h sale el aviso (desde la 3.ª noche: 48 h); la 2.ª noche (24 h) todavía no; nada de esto toca REG_ULTIMA_COMPLETA",
+    !G.props.REG_ULTIMA_COMPLETA && !!G.props.REG_CUENTA_DESDE && rG.avisos.some((a) => /sin ninguna corrida completa desde que se instaló esta versión \(más de 36 h\)/.test(a)) && !dia2.some((a) => /corrida completa/.test(a)), JSON.stringify([dia2, rG.avisos]));
+  const H = base1(); makeSandbox(H).sb.actualizarRegistro(); H.reloj += 86400000; const rH = makeSandbox(H).sb.actualizarRegistro();
+  check("V2c con todo en orden no sale ninguno de los dos avisos y las dos marcas se guardan", rH.ok && !rH.avisos.some((a) => /Pasaron/.test(a)) && !!H.props.REG_ULTIMA_COMPLETA && !!H.props.REG_GUARDIA_LEIDA, JSON.stringify(rH.avisos));
+
+  // V3: un fallo al escribir «Integridad» no tumba la corrida que ya terminó bien.
+  const I = base1(); I.failWriteOn = "Integridad"; const mI = makeSandbox(I); let rI = null, errI = "";
+  try { rI = mI.sb.actualizarRegistro(); } catch (e) { errI = e.message; }
+  const dicI = (I.ss.sheets["Diccionario"].cells.find((x) => x[0] === "Avisos de la última corrida") || [])[1] || "";
+  check("V3a si Sheets falla al escribir la fila de «Integridad», la corrida NO lanza: termina, lo avisa (también en el Diccionario), reporta la versión, deja su renglón en el registro de ejecución y la marca de corrida completa",
+    !errI && rI && rI.ok && rI.avisos.some((a) => /^No se pudo anotar la corrida en «Integridad»/.test(a)) && /No se pudo anotar la corrida en «Integridad»/.test(dicI) && I.versiones === 1 && mI.logs.some((l) => /^Registro actualizado/.test(l)) && !!I.props.REG_ULTIMA_COMPLETA, errI + JSON.stringify(rI && rI.avisos));
+  const J = base1(); J.ss = makeSpreadsheet(); const shJ = J.ss.insertSheet("Integridad"); shJ.cells = [["Fecha", "Nota"], ["2026-11-01", "revisado por FICT"]];
+  let rJ = null, errJ = ""; try { rJ = makeSandbox(J).sb.actualizarRegistro(); } catch (e) { errJ = e.message; }
+  check("V3b si el libro ya tenía una pestaña «Integridad» propia (otros encabezados), la corrida termina y lo dice en cada corrida; la pestaña ajena no se toca",
+    !errJ && rJ && rJ.ok && rJ.avisos.some((a) => /No se pudo anotar la corrida en «Integridad» \(La pestaña «Integridad» no tiene la columna «Corrida»/.test(a)) && JSON.stringify(shJ.cells) === JSON.stringify([["Fecha", "Nota"], ["2026-11-01", "revisado por FICT"]]) && tab(J.ss, "Pacientes").length === 1, errJ + JSON.stringify(rJ && rJ.avisos));
+
+  // V7: la lectura de audit_notas no baja las filas que solo traen lab_history / imagen_history.
+  const K = base1();
+  for (let i = 100; i < 140; i++) K.db.audit_log.push(aud(i, "2026-11-23T1" + (i % 10) + ":" + (10 + (i % 40)) + ":00+00:00", "notes", "UPDATE", "i1", "cuenta-secreta-b", i % 2 ? ["lab_history"] : ["lab_history", "imagen_history"], {}));
+  K.db.audit_log.push(aud(200, "2026-11-23T20:00:00+00:00", "notes", "UPDATE", "i1", "cuenta-secreta-b", ["lab_history", "pendientes"], {}), aud(201, "2026-11-23T20:30:00+00:00", "notes", "UPDATE", "i1", "cuenta-secreta-b", null, {}));
+  const mK = makeSandbox(K), rK = mK.sb.actualizarRegistro(), actK = tab(K.ss, AC).find((x) => x["Fecha"] === "2026-11-23") || {};
+  const bytesK = JSON.parse(tab(K.ss, INT)[0]["Bytes leídos por tabla"]).audit_log, bytesU = JSON.parse(tab(U.ss, INT)[0]["Bytes leídos por tabla"]).audit_log;
+  const sinc = []; mK.sb.regAudNotasAcumular({ soporte: [], actividad: (sinc.acc = {}) }, [{ id: 1, ts: "2026-11-23T10:00:00+00:00", record_id: "i1", user_id: "cuenta-secreta-b", campos: ["lab_history"] }], () => "U-X");
+  check("V7a 40 reescrituras de lab_history / imagen_history hechas por la sincronización de la app (CON usuario) no se bajan ni cuentan como ediciones: ese día hay 2 (la que también toca pendientes y la de campos nulo), y lo bajado de audit_log casi no crece",
+    rK.ok && actK["Ediciones (n)"] === 2 && actK["Cajas tocadas"] === "lab_history · pendientes" && bytesK - bytesU < 800 && /or=\(campos\.is\.null,campos\.not\.cd\.\{lab_history,imagen_history\}\)/.test(mK.calls.find((c) => /audit_log\?.*tabla=eq\.notes/.test(c.u)).u), JSON.stringify([actK, bytesK, bytesU]));
+  check("V7b y si una fila solo de sincronización llega de todos modos, regAudNotasAcumular la descarta aunque lleve usuario", Object.keys(sinc.acc).length === 0);
+
+  // V9 de punta a punta: el texto libre del checklist no llega a «Estado diario» ni a «Soporte».
+  const L = base1(); L.db.notes[0].checklist = { atb: true, atb_nombre: "MEROPENEM D3 (INDICA DR. FICTICIO SECRETO)", dieta: "LIQUIDOS - FAM. FICTICIA SECRETA TRAE" }; L.db.patients[0].seccion = "PISO 3 FICTICIA SECRETA MARIA";
+  L.db.audit_log.push(aud(300, "2026-11-24T15:00:00+00:00", "notes", "UPDATE", "i1", "cuenta-secreta-a", ["checklist"], { checklist: { atb_nombre: { de: "\"MEROPENEM\"", a: "\"MEROPENEM D3 (INDICA DR. FICTICIO SECRETO)\"" }, dieta: { de: "\"\"", a: "\"LIQUIDOS - FAM. FICTICIA SECRETA TRAE\"" } } }));
+  const mL = makeSandbox(L), rL = mL.sb.actualizarRegistro(), edL = tab(L.ss, ED)[0], soL = tab(L.ss, SO).filter((x) => x["ID"] === "300");
+  const sinNombres = JSON.stringify([ED, SO, AC, MV].concat(mL.sb.REG_ANALISIS.filter((c) => c.nombre !== "Por completar").map((c) => c.nombre)).map((n) => (L.ss.sheets[n] || { cells: [] }).cells));
+  check("V9c de punta a punta: «Estado diario» y «Soporte y exposiciones» guardan «MEROPENEM D3 · […]» y «LIQUIDOS […]», y ni esas pestañas ni las de análisis traen el texto libre (tampoco la sección con un nombre)",
+    rL.ok && edL["Antibiótico (texto)"] === "MEROPENEM D3 · […]" && edL["Dieta"] === "LIQUIDOS […]" && edL["Sección"] === "valor no válido" && JSON.stringify(soL.map((x) => [x["Variable"], x["De"], x["A"]])) === JSON.stringify([["Antibiótico (texto)", "MEROPENEM", "MEROPENEM D3 · […]"], ["Dieta", "", "LIQUIDOS […]"]])
+    && !/SECRET|MARIA|INDICA|FAM\b/.test(sinNombres), JSON.stringify([edL["Antibiótico (texto)"], edL["Dieta"], soL, (sinNombres.match(/SECRET|MARIA|INDICA|FAM\b/) || [])[0]]));
+
+  // V10: el cuadre de episodios (lectura ligera de archive completa) se hace una vez al día.
+  const ligera = (m) => m.calls.filter((c) => /archive\?select=id,s:patient_data->>_supa_id/.test(c.u)).length;
+  const M = base1(), m1 = makeSandbox(M); m1.sb.actualizarRegistro(); const m2 = makeSandbox(M); m2.sb.actualizarRegistro();
+  M.reloj += 86400000; M.hoy = "2026-11-26"; const m3 = makeSandbox(M); m3.sb.actualizarRegistro(); const fM = tab(M.ss, INT);
+  check("V10 dos corridas el mismo día: la lectura ligera de archive se hace solo en la primera (la segunda deja el cuadre vacío y lo dice en «Integridad», sin dejar de ser «Completa»); al día siguiente se vuelve a hacer",
+    ligera(m1) === 1 && ligera(m2) === 0 && ligera(m3) === 1 && fM.length === 3 && fM[0]["Episodios en base (n)"] === 1 && fM[1]["Episodios en base (n)"] === "" && /El cuadre de episodios ya se hizo hoy/.test(fM[1]["Avisos"]) && fM[1]["Resultado"] === "Completa" && fM[2]["Episodios en base (n)"] === 1,
+    JSON.stringify(fM.map((x) => [x["Resultado"], x["Episodios en base (n)"], x["Avisos"]])));
+
+  // V6: límite de celdas.
+  const base6 = () => { const st = base1(); st.db.guardia_cortes = [{ id: 1, patient_id: "i1", ts: "2026-11-25T12:15:00+00:00", lineas: ["RENGLON FICTICIO UNO"], motivo: "corte" }];
+    st.db.winlab_labs = [{ id: 1, exp: "000651", paciente: "PRUEBA FICTICIA INICIAL", fecha: "2026-11-24", scraped_at: "2026-11-24T08:00:00+00:00", data: { reportes: [
+      { __hasLink: true, __target: true, __cells: ["", "", "F651", "24/11/2026 06:00", "24/11/2026 07:00", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOGLOBINA", valor: "12.0" }] }] } }];
+    return st; };
+  const N = base6(); makeSandbox(N).sb.actualizarRegistro();   // noche 1: todo normal
+  const cursorWl = N.props.REG_CURSOR_winlab_labs, celdasN = Object.values(N.ss.sheets).reduce((s, h) => s + h.maxR * h.maxC, 0);
+  N.reloj += 86400000; N.hoy = "2026-11-26";
+  N.db.guardia_cortes.push({ id: 2, patient_id: "i1", ts: "2026-11-26T12:15:00+00:00", lineas: ["RENGLON FICTICIO DOS"], motivo: "corte" });
+  N.db.winlab_labs.push({ id: 2, exp: "000651", paciente: "PRUEBA FICTICIA INICIAL", fecha: "2026-11-26", scraped_at: "2026-11-26T08:00:00+00:00", data: { reportes: [] } });
+  const mN = makeSandbox(N); mN.sb.REG_CELDAS_MAX = Math.round(celdasN / 0.96); let rN = null, errN = "";
+  try { rN = mN.sb.actualizarRegistro(); } catch (e) { errN = e.message; }
+  const fN = tab(N.ss, INT), llamadasWl = mN.calls.filter((c) => /\/(winlab_labs|ris_estudios)\?/.test(c.u) && !/limit=0$/.test(c.u)).length;
+  check("V6a con el libro al 96 % de las celdas: PAUSA PARCIAL. No se leen WinLab ni RIS (su cursor no avanza) ni se escriben las pestañas de análisis; SÍ se escriben la foto de «Estado diario» y el renglón de guardia de esa noche",
+    llamadasWl === 0 && N.props.REG_CURSOR_winlab_labs === cursorWl && tab(N.ss, ED).length === 2 && tab(N.ss, GC).length === 2 && !!N.props.REG_GUARDIA_LEIDA && N.props.REG_GUARDIA_LEIDA.slice(0, 10) === "2026-11-27", JSON.stringify([llamadasWl, tab(N.ss, ED).length, tab(N.ss, GC).length]));
+  check("V6b y la corrida TERMINA CON ERROR a propósito (Google le avisa por correo al dueño) después de anotar su fila «Parcial… en pausa» (no «Falló»), escribir el aviso en el Diccionario, reportar la versión y dejar su renglón en el registro de ejecución",
+    /límite de celdas de Sheets \(96 %\)/.test(errN) && fN.length === 2 && /^Parcial: faltó las pestañas de análisis \(en pausa: libro casi lleno\); leer \(en pausa\) winlab_labs; leer \(en pausa\) ris_estudios$/.test(fN[1]["Resultado"]) && /EN PAUSA/.test(fN[1]["Avisos"])
+    && /EN PAUSA/.test((N.ss.sheets["Diccionario"].cells.find((x) => x[0] === "Avisos de la última corrida") || [])[1]) && N.versiones === 2 && mN.logs.some((l) => /^Registro actualizado/.test(l)) && mN.logs.some((l) => /terminó con error: Registro: el libro está en el límite/.test(l)), errN + JSON.stringify(fN[1]));
+  // El libro sin un renglón libre y en el tope: cada pestaña que necesita renglones falla por su cuenta; las demás siguen.
+  const O = base6(); makeSandbox(O).sb.actualizarRegistro();
+  O.reloj += 86400000; O.hoy = "2026-11-26"; O.db.guardia_cortes.push({ id: 2, patient_id: "i1", ts: "2026-11-26T12:15:00+00:00", lineas: ["RENGLON FICTICIO DOS"], motivo: "corte" });
+  O.db.winlab_labs.push({ id: 2, exp: "000651", paciente: "PRUEBA FICTICIA INICIAL", fecha: "2026-11-26", scraped_at: "2026-11-26T08:00:00+00:00", data: { reportes: [
+    { __hasLink: true, __target: true, __cells: ["", "", "F652", "26/11/2026 06:00", "26/11/2026 07:00", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOGLOBINA", valor: "11.0" }] }] } });
+  const shWl = O.ss.sheets["Labs del robot (WinLab)"], cursorO = O.props.REG_CURSOR_winlab_labs; shWl.maxR = shWl.getLastRow();
+  shWl.insertRowsAfter = () => { throw new Error("Exception: This action would increase the number of cells in the workbook above the limit of 10000000 cells."); };
+  const mO = makeSandbox(O); let errO = "";
+  try { mO.sb.actualizarRegistro(); } catch (e) { errO = e.message; }
+  const fO = tab(O.ss, INT);
+  check("V6c si Sheets rechaza agregar renglones a UNA pestaña (límite de celdas), las demás se escriben (antes la corrida entera fallaba cada noche y se perdían las fotos y la guardia): «Estado diario» y guardia ganan su fila, el cursor de WinLab no avanza y la fila de «Integridad» dice qué faltó",
+    tab(O.ss, ED).length === 2 && tab(O.ss, GC).length === 2 && tab(O.ss, "Labs del robot (WinLab)").length === 1 && O.props.REG_CURSOR_winlab_labs === cursorO && fO.length === 2 && /^Parcial: faltó espacio en el libro para 1 pestaña\(s\)/.test(fO[1]["Resultado"])
+    && /Sin espacio en el libro \(límite de celdas de Sheets\) para escribir «Labs del robot \(WinLab\)»/.test(fO[1]["Avisos"]) && /límite de celdas/.test(errO) && O.props.REG_ULTIMA_CORRIDA.slice(0, 10) === "2026-11-26", errO + JSON.stringify(fO[1]));
+  // Con espacio otra vez, lo que no se escribió se vuelve a leer y entra.
+  delete shWl.insertRowsAfter; shWl.insertRowsAfter = (after, n) => { shWl.maxR += n; return shWl; };
+  O.reloj += 600000; const rO2 = makeSandbox(O).sb.actualizarRegistro();
+  check("V6d al haber espacio de nuevo, la corrida siguiente vuelve a leer WinLab desde donde se quedó y escribe el reporte que faltaba; ya no lanza", rO2.ok && tab(O.ss, "Labs del robot (WinLab)").length === 2 && O.props.REG_CURSOR_winlab_labs !== cursorO, JSON.stringify(rO2.avisos));
+  check("V6e el aviso de celdas sale desde el 50 % (antes 70 %) y la pausa desde el 95 %", makeSandbox({ db: VACIO() }).sb.REG_CELDAS_AVISO === 0.5 && makeSandbox({ db: VACIO() }).sb.REG_CELDAS_CRITICO === 0.95
+    && makeSandbox({ db: VACIO() }).sb.regEsLimiteCeldas_(new Error("Exception: This action would increase the number of cells in the workbook above the limit of 10000000 cells.")) && !makeSandbox({ db: VACIO() }).sb.regEsLimiteCeldas_(new Error("Exception: Service Spreadsheets timed out")));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");

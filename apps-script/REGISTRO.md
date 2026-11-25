@@ -28,7 +28,7 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Notas de evolución | nota | fecha y hora, autor, con IA o no, texto. La app guarda 10; aquí se acumulan. |
 | Guardia y cronología | renglón | Cronología (de la nota y del respaldo de la base) y Guardia vigente · **Vigente** |
 | Procedimientos programados | procedimiento | la lista del día de la app |
-| Labs del robot (WinLab) | reporte de WinLab del paciente | folio, toma, resultado, servicio y **valores** (un renglón por estudio: «ESTUDIO: valor unidad (ref. …)»), aunque no hayan llegado a la tarjeta · **Atribución** · **Sexo en WinLab** (F/M del encabezado) |
+| Labs del robot (WinLab) | reporte de WinLab del paciente | folio, toma, resultado, servicio y **valores** (un renglón por estudio: «ESTUDIO: valor unidad (ref. …)»), aunque no hayan llegado a la tarjeta · **Atribución** · **Sexo en WinLab** (F/M del encabezado) · **Nacimiento en WinLab** (24 nov 2026, al final; solo en reportes capturados desde esa fecha) |
 | Cultivos del robot (WinLab) | muestra de cultivo de esos reportes | tipo, muestra, resultado, germen, antibiograma S/I/R, UFC, texto del reporte (del PDF cuando el robot lo leyó; si no, de la tabla) |
 | Imagen del robot (RIS) | estudio | modalidad, estudios, crítico, reporte, enlace (con su episodio) |
 | Guardia · renglones retirados | renglón de un corte de la guardia | id del corte, **ID episodio** (sin nombre ni expediente: se cruza con Pacientes), fecha y hora, motivo (`corte` de las 06:15 o `borrado`), orden y texto. La base los purga a los 7 días; aquí se acumulan (desde el 24 nov 2026). |
@@ -41,12 +41,18 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Integridad | corrida del registro | **sin nombres**: resultado (Completa / Parcial: faltó… / Falló…), duración total y por etapa, vueltas extra, bytes leídos por tabla, cuadre base ↔ hoja, celdas recortadas, celdas usadas y avisos. Nunca se pisa. |
 | Diccionario | — | qué es cada columna, última actualización, conteos y avisos |
 | Clave de seudónimos | parte de un episodio | ID episodio de la base → ID paciente / ID episodio de análisis (la llave: **no se comparte**) |
-| Análisis · Episodios | hospitalización | sin nombres: edad, sexo (y su fuente), peso, talla, IMC, comorbilidades, fechas, estancia, desenlace, reingresos, cirugías (grupo, reintervención), índice urinario mínimo, resúmenes de labs, cultivos, calidad de datos. Desde el 24 nov 2026, al final: **Unión (fuente)**, cirugías sin fecha, reintervención planeada / no planeada (probable), estancia posoperatoria, cirugía en ≤1 día del ingreso y defunción posoperatoria |
+| Análisis · Episodios | hospitalización | sin nombres: edad, sexo (y su fuente), peso, talla, IMC, comorbilidades, fechas, estancia, desenlace, reingresos, cirugías (grupo, reintervención), índice urinario mínimo, resúmenes de labs, cultivos, calidad de datos. Desde el 24 nov 2026, al final: **Unión (fuente)**, cirugías sin fecha, reintervención planeada / no planeada (probable), estancia posoperatoria, cirugía en ≤1 día del ingreso y defunción posoperatoria; después, las variables derivadas (ver «Variables derivadas» abajo): días observados de antibiótico, ayuno, NPT, ventilación, vasopresor, tromboprofilaxis y drenaje, cobertura del diario, lesión renal aguda (KDIGO), hemoglobina, albúmina, PCR y glucosa, ISQ probable, bacteriemia, germen multirresistente, comorbilidades de Charlson, Charlson y riesgo preoperatorio simple; y al final de todo, las columnas de apoyo (tipo de egreso probable y su fuente, desenlace conocido, reingreso planeado / no planeado, seguimiento posalta, edad calculada con la fecha de nacimiento de WinLab, periodo de captura) y las de eventos adversos (Clavien-Dindo mínimo inferido, complicación mayor inferida, número de eventos) |
+| Análisis · Cirugías | cirugía | **sin nombre ni expediente** (24 nov 2026): ID cirugía (Q-…), ID episodio, ID paciente, fecha, n.º de cirugía en el episodio, día de estancia, días desde la previa, grupo, procedimiento (texto libre), tipo, urgencia inferida (día 0-1), abordaje elegido y abordaje inferido del texto, Clavien-Dindo, sangrado, fuente, es índice, reintervención planeada / no planeada (probable), días cirugía→egreso, defunción en el episodio, dx principal, edad, fecha estimada, revisar |
+| Eventos adversos | evento de un episodio | **sin nombre ni expediente** (24 nov 2026): evento de un catálogo cerrado (defunción, reintervención no planeada, reingreso 30 d, lesión renal, ISQ, bacteriemia, fuga, fístula, neumonía, TEV, sepsis, transfusión, vasopresor, ventilación, UCI, hemorragia, drenaje percutáneo…), ocurrencia («única» o la fecha: con el episodio y el evento es la clave), fecha, día posoperatorio, detalle, fuente, certeza (Objetivo / Probable (por fechas) / Mención en texto), grado de Clavien mínimo que implica y **Revisado** (la llena quien valida; el registro no la pisa) |
+| Análisis · Antibióticos | curso de antibiótico | **sin nombre ni expediente** (24 nov 2026): antibiótico, clase, AWaRe, inicio, inicio estimado, fin, días de tratamiento, sigue al egreso, cultivo previo, germen, concordancia con el antibiograma, días desde la última cirugía y fuente |
+| Completitud | mes de ingreso y variable | solo cuentas (24 nov 2026): cuántos episodios (o cirugías) tienen cada dato, de cuántos a los que aplica, y el porcentaje; con fila «Acumulado» |
+| Flujo de la cohorte | paso | solo cuentas (24 nov 2026): de todos los episodios a los analizables, restando en orden duplicados, borrados, sin ingreso, no egresados y sin desenlace; operados, con labs seriados y lo que el robot vio sin episodio |
+| Indicadores de calidad | periodo, indicador y estrato | solo cuentas (24 nov 2026): numerador, denominador, tasa, **IC 95 % de Wilson**, excluidos por dato faltante y definición, por mes, trimestre y acumulado |
 | Análisis · Labs | episodio y día | una columna por estudio, en número y en la unidad de la app; críticos y observaciones |
 | Análisis · Signos vitales | episodio y día | números limpios; TA en sistólica, diastólica y PAM; horas de uresis e índice urinario (mL/kg/h) |
-| Análisis · Cultivos | muestra | toma, tipo, resultado (0/1), germen, antibiograma |
+| Análisis · Cultivos | muestra | toma, tipo, resultado (0/1), germen, antibiograma. Desde el 24 nov 2026, al final: **Sitio (grupo)**, días desde la última cirugía, posoperatorio (1-30 d), multirresistente (probable) y contaminante probable |
 | Diccionario de variables | variable | definición, tipo y unidad de cada columna de análisis (codebook) |
-| Resumen mensual | mes | solo cuentas: ingresos, egresos, mortalidad sobre desenlace conocido, estancia, cirugías, urgencias, laparoscopía, conversiones, Clavien ≥ IIIa, reintervenciones, reingresos, cultivos y lo más frecuente. Desde el 24 nov 2026: cirugías sin fecha exacta, reintervenciones no planeadas e ingresos sin talla |
+| Resumen mensual | mes | solo cuentas: ingresos, egresos, mortalidad sobre desenlace conocido, estancia, cirugías, urgencias, laparoscopía, conversiones, Clavien ≥ IIIa, reintervenciones, reingresos, cultivos y lo más frecuente. Desde el 24 nov 2026: cirugías sin fecha exacta, reintervenciones no planeadas, ingresos sin talla, **egresos con motivo (%)**, **con sexo (%)** y episodios sin labs |
 | Por completar | episodio | **con nombres** (no se comparte): hospitalizados, egresados de los últimos 30 días y (24 nov 2026) todo egresado sin motivo del egreso, con lo que le falta a cada tarjeta (ya no pide la talla) |
 
 - **Episodio:** el id del paciente en la base. Un reingreso crea otro id y por lo tanto otro episodio.
@@ -294,13 +300,199 @@ siempre. Cada columna está definida en «Diccionario de variables».
   - **Sin verificar contra la base real:** que PostgREST acepte dos `or=` en la misma consulta (el del filtro y el de la
     paginación) y el volumen por noche. Si la consulta falla, el aviso dice «No se pudo leer audit_pacientes…» y nada
     más se detiene.
+- **Variables derivadas (24 nov 2026).** Todo sale de lo que ya está en la hoja: no hay ninguna lectura nueva a la base.
+  Las columnas van al final de «Análisis · Episodios» y de «Análisis · Cultivos»; cada una tiene su definición y su
+  sesgo conocido en «Diccionario de variables». En todas, **vacío no es 0**: vacío = no se pudo saber.
+  - *Días observados:* «Días con antibiótico (observados)» con primer y último día, «Antibióticos distintos (n)»,
+    «Carbapenémico», «Días en ayuno», «Ayuno posoperatorio (días)», «Día posoperatorio de inicio de dieta», «Días con
+    NPT», «NPT % máximo», «Ayuno >5 días sin NPT», «Días con ventilación», «Días con vasopresor» y «Días con
+    tromboprofilaxis». Se cuentan las noches fotografiadas en «Estado diario» con la casilla prendida; solo en las
+    noches sin foto se usa el historial de la casilla (del prendido a la víspera del apagado). Subestiman en todo
+    episodio anterior al 24 nov 2026 (foto) o al 14 oct 2026 (auditoría). Las banderas «(registrado)» se conservan.
+  - *Cobertura del diario (%):* noches fotografiadas ÷ días de estancia. Dice cuánto de la estancia sustenta los días
+    observados; con cobertura baja no se deben comparar episodios.
+  - *Dispositivos y drenajes:* «Dispositivos (n)», «Sonda endopleural», «Estoma», «Terapia de presión negativa», «Días
+    con drenaje» (de la primera a la última vez visto, más las fechas con gasto) y «Gasto máximo (mL)». Los días en UCI
+    ya estaban en «Días en UCI» (movimientos).
+  - *Lesión renal aguda (KDIGO 2012, solo creatinina):* «Creatinina basal (mg/dL)» es la **mínima del episodio**, no la
+    previa al ingreso: subestima en quien llega lesionado. Estadio 1 = ≥1.5 veces la basal o +0.3 mg/dL frente a un valor
+    de hasta 2 días antes (las 48 h se aproximan con fechas sin hora); 2 = ≥2 veces; 3 = ≥3 veces o ≥4.0 mg/dL. Con menos
+    de 2 creatininas todo queda vacío. «LRA posoperatoria» = criterio en los días 1 a 7 de la primera cirugía sin lesión
+    previa. No usa uresis ni diálisis; en enfermedad renal crónica hay que estratificar.
+  - *Laboratorio:* «Hb inicial», «Hb preoperatoria», «Caída máxima de Hb», «Anemia al ingreso (OMS)», «Hipoalbuminemia
+    (<3.5)», «Albúmina <3.0», leucocitos, plaquetas y sodio iniciales, «PCR día 3-4 posoperatorio» y «Glucosa >180
+    (días)». Los «iniciales» son columnas nuevas al final (no se tocó el orden de los resúmenes de labs que ya había) y
+    son el primer laboratorio que llegó al registro, que puede ser posterior al ingreso o a la cirugía.
+  - *Cultivos:* el sitio sale de palabras en «Tipo» + «Muestra». «ISQ probable (cultivo)» = cultivo positivo, no
+    contaminante, de herida o abdominal, tomado 1 a 30 días después de una cirugía del episodio (el del mismo día de la
+    cirugía no cuenta). Subestima: la infección superficial casi nunca se cultiva. «ISQ mencionada (texto)» busca la
+    mención afirmada en la tarjeta («SIN DATOS DE ISQ» o «VIGILAR ISQ» no cuentan). «Bacteriemia» excluye el hemocultivo
+    con solo flora de piel. «Multirresistente (probable)» sale de las marcas del germen y de «Resistentes»; no es la
+    definición internacional completa (no cuenta los intermedios, no descuenta la resistencia natural del germen y
+    depende de los antibióticos que el laboratorio probó).
+  - *Charlson simplificado:* 14 comorbilidades nuevas con la misma regla de negación (EVC, vascular periférica,
+    demencia, úlcera péptica, tejido conectivo, hemiplejía, diabetes con daño a órgano blanco, hepatopatía grave,
+    metástasis, leucemia / linfoma, VIH / SIDA, alcoholismo, anticoagulante / antiagregante, cirugía abdominal previa).
+    «Charlson (puntos)» usa los pesos de 1987; «Charlson (calculable)» = 1 solo si hay APP, y sin APP los puntos quedan
+    vacíos. **No es el Charlson de expediente**: depende de lo escrito en el APP; decirlo así en métodos y validar una
+    muestra. «Riesgo preoperatorio simple (0-6)» es un puntaje **interno, no validado**, solo para estratificar.
+- **«Análisis · Cirugías» (24 nov 2026).** Una fila por cirugía de cada episodio (las de la caja y las inferidas de DX,
+  Cronología, fecha POP o texto Qx; no la programación sin confirmar ni las tarjetas duplicadas). Son las mismas que
+  cuenta «Cirugías (n)» de Episodios.
+  - Numeradas por fecha dentro del episodio; las que no tienen fecha van al final.
+  - El «ID cirugía» sale del seudónimo del episodio y del id de la cirugía en la caja; en las inferidas, de su fecha y
+    procedimiento. Una inferida a la que le corrigen el texto cambia de ID y la fila anterior queda «Vigente: No»:
+    analizar solo «Vigente: Sí».
+  - «Abordaje (inferido del texto)» va aparte del elegido en la caja y queda vacío si el texto no lo dice (no se asume
+    abierta). «Urgencia inferida (día 0-1)» es un sustituto por fechas, no el tipo elegido.
+  - «Procedimiento» es texto libre: revisarlo antes de compartir la pestaña.
+  - Crecimiento estimado: ~4 000 cirugías al año × 26 columnas ≈ 0.1 millones de celdas.
+- **Eventos adversos, apoyo, completitud, flujo, indicadores y antibióticos (24 nov 2026).** Cinco pestañas nuevas y 15
+  columnas al final de «Análisis · Episodios». Todo sale de lo que ya está en la hoja: **ninguna lectura nueva a la
+  base** (egress 0). Sin nombres ni expedientes. Cada columna, con su sesgo, está en «Diccionario de variables», que
+  además gana dos secciones: «Sesgos y limitaciones» y «No disponible en esta fuente» (lo que habría que capturar en la
+  app: ASA, clase de herida, profilaxis, seguimiento a 30 días…).
+  - **«Eventos adversos».** Una fila por evento detectado en cada episodio, de un catálogo cerrado.
+    - *Objetivo* (dato estructurado o laboratorio): defunción (motivo de egreso), reintervención no planeada (cirugías),
+      reingreso no planeado a 30 días, lesión renal KDIGO, ISQ probable y bacteriemia (cultivos), vasopresor y
+      ventilación (foto nocturna o historial), UCI (movimientos) y drenaje percutáneo (estudio de RIS de modalidad XA
+      cuyo nombre dice drenaje o punción).
+    - *Mención en texto* (Manejo, Pendientes, Cronología, guardia y la «Complicación» de la cirugía): fuga /
+      dehiscencia, fístula, evisceración, hemorragia posoperatoria, íleo, neumonía, TEV, sepsis / choque, transfusión y
+      drenaje percutáneo. No cuenta lo negado, lo planeado, el riesgo ni el antecedente («SIN DATOS DE FUGA», «VIGILAR
+      SANGRADO», «PROBABLE NEUMONÍA», «CRUZAR 2 PG»). Neumonía, sepsis, TEV, íleo y transfusión no se buscan en el
+      Diagnóstico: ahí suelen ser el motivo de ingreso.
+    - Cada evento lleva el grado de Clavien-Dindo **mínimo** que implica. En operados, Episodios gana «Clavien-Dindo
+      mínimo inferido», «Complicación mayor inferida (≥ IIIa)», «Eventos adversos (n)» y «Clavien (fuente)». Es un
+      **piso**: lo objetivo solo cuenta desde el día posoperatorio que le toca (vasopresor y ventilación, desde el día
+      1) y lo no registrado no se ve. «Clavien-Dindo máximo» y «Complicación mayor (Clavien ≥ IIIa)», los elegidos en la
+      caja, **no se tocan**.
+    - **«Revisado»** es para quien valida contra el expediente: lo que se escriba ahí se conserva en cada corrida.
+      Antes de publicar hay que validar una muestra, sobre todo de las menciones en texto.
+  - **Columnas de apoyo en Episodios.**
+    - «Tipo de egreso (probable)» y «Fuente del tipo», solo en el egresado sin motivo: Alta, Alta voluntaria o Traslado
+      si lo dice un renglón de guardia, cronología o pendientes (también los renglones retirados por la guardia);
+      «Volvió al censo» si la persona tiene un episodio posterior; «Sigue en el hospital» si WinLab o el RIS traen
+      estudios de 1 a 30 días después del egreso. **Nunca alimenta «Defunción» ni «Tipo de egreso»**; si un renglón
+      habla de una defunción, queda vacío. Es una pista para completar el motivo en la app, no un desenlace.
+    - «Desenlace conocido» (1 / 0), «Días al reingreso», «Dx principal del reingreso», «Reingreso planeado (probable)»
+      (el episodio siguiente dice cierre de ileostomía, segundo tiempo, cirugía programada… o su primera cirugía es
+      electiva), «Reingreso no planeado a 30 días», «Reingreso con cirugía» y «Seguimiento posalta observable (días)»
+      (tope de 30, para que las filas viejas no cambien cada noche).
+    - «Edad al ingreso (calculada)»: con la fecha de nacimiento del encabezado de WinLab, que se guarda en la columna
+      nueva «Nacimiento en WinLab» de «Labs del robot (WinLab)» (pestaña con nombres). **Decisión de privacidad:** la
+      fecha de nacimiento NO pasa a las pestañas de análisis, solo la edad. Solo se llena con los reportes que el registro
+      lee desde esta versión (los nuevos y los que se vuelven a capturar). El encabezado sí está en la base para los
+      anteriores, pero no se vuelve a leer WinLab completo: costaría ~57 MB.
+    - «Periodo de captura»: «Anterior a la captura estructurada» si el episodio terminó antes del 28 oct 2026.
+  - **«Completitud» y «Flujo de la cohorte».** Por mes de ingreso y acumulado, cuántos episodios no duplicados tienen
+    cada dato (edad, sexo por fuente, ingreso, tipo de egreso, dx principal, APP, peso, talla, laboratorio, creatininas,
+    albúmina, signos del día 0-1, tromboprofilaxis, cobertura del diario, expediente válido) y, por cirugía, fecha, tipo,
+    abordaje, Clavien-Dindo y sangrado. El flujo resta en orden y cada episodio sale en el primer paso que le toca. El
+    Resumen mensual gana «Egresos con motivo (%)», «Con sexo (%)» y «Episodios sin labs (n)».
+    - Sin hacer: completitud del cirujano (el análisis no lleva nombres de personal).
+  - **«Indicadores de calidad».** Universo: egresos observados que no son tarjetas duplicadas ni borrados en la base; por mes de egreso (los
+    de cirugía, por mes de la cirugía).
+    - Mortalidad hospitalaria y posoperatoria en dos versiones (**desenlace conocido** y **desconocidos como vivos**: la
+      real está entre las dos), reintervención no planeada, reingreso a 30 días y no planeado, complicación mayor
+      capturada e inferida, ISQ probable, lesión renal posoperatoria, bacteriemia, estancia y estancia posoperatoria
+      (medianas), cirugía en ≤1 día, laparoscopía y conversión, días de antibiótico por 100 días-paciente, % de días
+      Watch o Reserve, tromboprofilaxis en operados, NPT y ayuno.
+    - Intervalo de 95 % de **Wilson** en las proporciones. **Con menos de 10 en el denominador no hay tasa**: quedan
+      el numerador y el denominador. «Excluidos por dato faltante» dice cuántos casos no entraron al denominador.
+    - Para no gastar celdas: el mes solo lleva el estrato «Todos»; el trimestre agrega Urgencia y Electiva;
+      «Acumulado» agrega «Dx: …» y «Cirugía: …» cuando tienen 10 o más. Dos columnas más que en el plan, «Valor» y
+      «Unidad», para lo que no es una proporción (medianas y razones).
+  - **«Análisis · Antibióticos».** Un curso = noches seguidas con el mismo antimicrobiano de la lista cerrada (casilla
+    prendida con su nombre, detectado en Manejo, o el historial en las noches sin foto). Un hueco de hasta 3 días solo
+    parte el curso si alguna noche del hueco tiene foto sin el antibiótico. «MEROPENEM D5» visto por primera vez
+    retrocede el inicio estimado 4 días. AWaRe sale de una tabla fija del script. Solo sirve hacia adelante (fotos
+    desde el 24 nov 2026, historial desde el 14 oct 2026) y no mide dosis, vía ni la profilaxis de quirófano.
+  - **Costo.** Lecturas a Supabase: ninguna nueva. Celdas estimadas al año: Eventos ~15 000-30 000, Antibióticos
+    <10 000 (16 columnas por curso), Completitud <5 000, Flujo ~50, Indicadores ~20 000, las 15 columnas de Episodios
+    ~45 000 y «Nacimiento en WinLab» una celda por reporte nuevo. El tiempo del análisis queda en «Análisis (s)» de
+    «Integridad»: revisarlo las primeras noches.
+  - **Sin verificar contra la hoja real:** el tiempo de las reglas de texto con todos los episodios, y cuántos
+    estudios XA del RIS son drenajes (el nombre del estudio es texto del hospital).
+- **Correcciones de la revisión (24 nov 2026, misma versión 2026.11.24).** Tres revisores reprodujeron 23 problemas
+  en lo anterior; esto es lo que cambió (cada punto tiene su prueba «V…» en `registro-pacientes.test.js`).
+  - **Privacidad.**
+    - «Análisis · Episodios» ya no copia *Sección* ni *Especialidad* tal cual: pasan por la misma regla de «Estado
+      diario» (salas y códigos conocidos; lo demás, «valor no válido»). Las filas ya escritas se corrigen solas.
+    - La *cama* debe tener forma de cama («3-151», «UCI 4», «12A») y la *especialidad* estar en el catálogo del script
+      (`REG_ESP_CODIGOS`; si el servicio usa un código nuevo hay que agregarlo). «Antibiótico (texto)» y «Dieta» (texto
+      libre del checklist) solo pasan a «Estado diario» y a «Soporte y exposiciones» si están hechos de vocabulario
+      conocido; si traen otra palabra queda lo conocido y la marca «[…]» («MEROPENEM D3 · […]»).
+    - Sin cambiar: «TVP» en «Estado diario» sigue llevando el texto de «otro» de la tromboprofilaxis.
+  - **Eventos adversos.**
+    - La mención en texto ya no cuenta si va negada con verbo («NO PRESENTA DATOS DE…», «NO CURSA CON…»), negada
+      después («… DESCARTADA», «… NO REQUERIDA»), si es preventiva o condicional («PARA EVITAR…», «TRANSFUNDIR SI HB
+      <7», «SOLICITAR 2 PG») o habla de un familiar. Lo mismo en «ISQ mencionada (texto)». «… RESUELTA» sí cuenta.
+    - «Dehiscencia de herida» (grado I) va aparte de «Fuga / dehiscencia» (anastomosis, grado II). El drenaje
+      percutáneo que solo está en el texto no lleva grado (el IIIa sale del RIS, después de la cirugía).
+    - Reintervención no planeada: no cuentan los procedimientos menores (CPRE, endoscopia, traqueostomía, catéteres,
+      punciones), ni otro renglón del mismo día que la índice; la 2.ª cirugía elegida «Electiva» es planeada. Solo la
+      relaparotomía o la que el texto llama reintervención / complicación es un evento *Objetivo* de grado IIIb; la que
+      solo lo parece por fechas sale con certeza «Probable (por fechas)», sin grado, para revisar.
+    - Vasopresor y ventilación: solo cuenta el que **empieza** después de operarse; el que ya traía el día de la
+      cirugía o antes y sigue se lista con «Ya lo tenía…» en «Detalle» y no sube el Clavien inferido.
+    - Lesión renal posoperatoria: exige una creatinina de hasta el día de la cirugía (sin ella queda vacía: con la basal
+      mínima, el que llega lesionado y mejora salía como lesión nueva).
+    - La clave de la pestaña ya no lleva la fecha: «ID episodio» + «Evento» + **«Ocurrencia»** («única», o la fecha
+      en reintervención y drenaje percutáneo). Si a un evento se le corrige la fecha conserva su renglón y su
+      «Revisado». El estadio de la lesión renal va en la columna nueva **«Detalle»** (el evento se llama «LRA (KDIGO)»).
+  - **Indicadores.**
+    - *Reingreso a 30 días*: el egreso entra (numerador y denominador) cuando ya tiene 30 días observados; antes, el
+      que reingresaba entraba de inmediato y el mes reciente salía inflado (hasta 100 %).
+    - *Reingreso planeado*: se evalúa por cláusula; nombrar la cirugía previa («PO CIERRE DE ILEOSTOMIA + FUGA») o
+      negarla no es planeado, y con una complicación en el diagnóstico del reingreso nunca lo es.
+    - *Flujo de la cohorte* e *Indicadores* usan el mismo universo: «= Episodios analizables» es el denominador de
+      «Mortalidad hospitalaria (desenlace conocido)». El episodio sin fecha de ingreso ya no se resta (se cuenta
+      aparte) y la tarjeta borrada en la base no entra a ningún denominador.
+    - *Cirugía en ≤1 día* y *Estancia posoperatoria* quedan vacías si la cirugía tiene fecha anterior al ingreso.
+    - *Ayuno >5 días sin NPT*: solo egresos con cobertura del diario ≥ 80 %.
+    - *Antibióticos*: el inicio estimado se topa en el ingreso, se descarta si retrocede 60 días o más, «D10 DE
+      ESTANCIA» no es el día del antibiótico, y un tramo cuyo inicio estimado alcanza al anterior es el mismo curso
+      (antes se contaban dos veces los días).
+    - *Tipo de egreso (probable)*: no cuentan el traslado dentro del hospital, el alta de un interconsultante, el alta
+      condicionada («SI TOLERA», «PROBABLE… MAÑANA») ni el laboratorio de consulta externa posterior al egreso.
+    - *Comorbilidades / Charlson*: «DM2 E HAS NEGADAS», «NO DIABETICO» y los antecedentes de un familiar ya no cuentan.
+  - **Operación.**
+    - *Carga inicial del historial por partes*: mientras `audit_log` (notas) se sigue leyendo, «Análisis ·
+      Antibióticos» no se escribe (se avisa) y se escribe completa al terminar; así no quedan cursos con el inicio
+      equivocado marcados «Vigente: No».
+    - *Avisos por tiempo*: «más de 36 h sin corrida completa» y «N días sin copiar la guardia» también salen si la marca
+      nunca se guardó (se cuenta desde la primera corrida de esta versión, propiedad `REG_CUENTA_DESDE`).
+    - *«Integridad»*: si su fila no se puede escribir, la corrida termina bien y lo avisa (antes fallaba al final).
+    - *Auditoría de notas*: la lectura ya no baja las filas que solo tocan `lab_history` / `imagen_history` (las
+      reescribe la sincronización de la app; eran 60-87 % de las filas) ni las cuenta como ediciones. **Revisar
+      `audit_log` en «Bytes leídos por tabla» la primera noche.**
+    - *Cuadre de episodios*: la lectura ligera de `archive` se hace una vez al día (no en cada vuelta extra).
+  - **Sin hacer, y por qué.**
+    - Releer WinLab para llenar «Nacimiento en WinLab» de los reportes viejos: el dato sí está en la base, pero la
+      relectura completa cuesta ~57 MB. El Diccionario ahora lo dice así.
+    - Aviso por correo propio (`MailApp`): pide un permiso nuevo al dueño. En su lugar, con el libro casi lleno la
+      corrida termina con error a propósito y Google manda su correo de fallo (ver «Capacidad»).
+    - Partir pestañas por año / libro histórico automático (punto 32 del plan): se decide con los números de
+      «Integridad»; queda el procedimiento manual de «Capacidad».
 - **Índices en la base** (`scripts/supabase_registro_indices.sql`): (fecha de captura, id) en `winlab_labs`,
   `ris_estudios` y `archive`. Sin ellos, cada página de WinLab tardaba 3.9 s (PostgREST corta a los 8 s); con ellos,
   26 ms.
 - **Capacidad:** Sheets admite 10 millones de celdas por libro.
   - Las pestañas nuevas se crean sin las columnas vacías de sobra.
-  - El Diccionario cuenta las celdas de todas las hojas y avisa al pasar del 70%. Entonces habrá que pasar lo viejo a un
-    libro histórico.
+  - El Diccionario cuenta las celdas de todas las hojas y avisa al pasar del **50 %** (antes 70 %, que dejaba unos 4
+    meses). Entonces hay que pasar lo viejo a un libro histórico.
+  - **Pausa parcial desde el 95 %** (24 nov 2026, revisión). Para que las celdas que quedan sean de lo que no se puede
+    volver a tomar, el registro deja de leer y escribir WinLab y RIS (la base los conserva; su cursor no avanza) y las
+    pestañas de análisis (se recalculan). Sí escribe pacientes, «Estado diario», guardia, drenajes y auditoría.
+    - Esa corrida **termina con error a propósito**, después de escribir y anotar todo: Google le manda al dueño del
+      disparador su correo de fallo. Es el aviso fuera de la hoja; no cuesta nada ni pide permisos.
+    - Si Sheets rechaza agregar renglones a una pestaña (ya en el límite), solo esa pestaña se queda sin escribir; su
+      cursor no avanza y se vuelve a leer cuando haya espacio. «Integridad» dice cuál.
+  - **Para liberar espacio (a mano):** hacer una copia del libro («Registro histórico AAAA»), y en el libro vivo borrar
+    los renglones viejos de las pestañas grandes de robots («Labs del robot (WinLab)», «Cultivos del robot»,
+    «Imagen del robot (RIS)») que ya están en la copia. El script nunca borra renglones; las pestañas de análisis se
+    recalculan con lo que quede en el libro vivo, así que los estudios históricos se hacen sobre la copia.
 - **Al usar la hoja:**
   - Se pueden agregar columnas propias (grupo del estudio, inclusión…) y usar filtros; el registro no las toca.
   - No renombres los encabezados del registro. Si cambia el de una columna clave («ID episodio», «Expediente»,
@@ -329,6 +521,15 @@ Supabase.
 5. Para copiar en cualquier momento, ejecuta `actualizarRegistro` desde el editor.
 6. **Para actualizar el script** a una versión nueva: abre el proyecto, borra todo `Código.gs`, pega el archivo nuevo y
    guarda. Las Propiedades del script y la actualización diaria se conservan; no hace falta volver a instalar.
+   - **Al pasar a la versión 2026.11.24** no hay que crear nada a mano ni cambiar la base:
+     - La primera corrida crea las pestañas nuevas («Eventos adversos», «Análisis · Antibióticos», «Completitud»,
+       «Flujo de la cohorte», «Indicadores de calidad») y agrega al final las columnas nuevas de «Análisis ·
+       Episodios», «Resumen mensual» y «Labs del robot (WinLab)».
+     - Esa noche el Diccionario avisa «no tenía la(s) columna(s)… se agregaron al final»: es lo esperado, una sola vez.
+     - Esa corrida reescribe «Análisis · Episodios» completa (cada fila gana columnas). Si no alcanza el tiempo,
+       avisa y se completa en la siguiente corrida; revisar «Resultado» y «Análisis (s)» en «Integridad» al día siguiente.
+     - No mover ni renombrar las columnas nuevas. En «Eventos adversos» solo se escribe en «Revisado».
+     - Las pestañas nuevas no llevan nombres, pero siguen siendo seudonimizadas: se comparten con las mismas reglas.
 
 Opcionalmente, el script se puede ligar a la hoja (Extensiones → Apps Script, sin `REGISTRO_SHEET_ID`). Eso agrega el
 menú **Registro → Actualizar ahora**, pero cualquiera con permiso de **editor** en la hoja podría ver la llave. En ese
